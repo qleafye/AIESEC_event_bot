@@ -21,7 +21,8 @@ from database.db import (
     delete_setting,
 )
 from handlers.states import Broadcast, EditSetting
-from keyboards.builders import get_cancel_kb
+from keyboards.builders import get_cancel_kb, MENU_BUTTONS
+from handlers.registration import REG_FLOW, REG_DEFAULTS, REG_LABELS
 
 router = Router()
 logger = logging.getLogger(__name__)
@@ -258,6 +259,7 @@ SETTINGS_FIELDS = [
     ("contact_vk", "🔵 VK", "Введите ссылку на группу ВК"),
     ("contact_tg", "🔹 TG", "Введите ссылку на Telegram-канал"),
     ("start_text", "💬 Приветствие", "Введите текст приветствия при /start (поддерживается HTML-разметка)"),
+    ("source_options", "📢 Источники", "Отправьте варианты источников, каждый с новой строки"),
 ]
 
 PHOTO_FIELDS = [
@@ -282,6 +284,21 @@ async def render_settings_text() -> str:
     bonus_enabled = await get_setting("reg_bonus_enabled") or "off"
     bonus_label = "✅ Вкл" if bonus_enabled == "on" else "❌ Выкл"
     lines.append(f"🎁 Бонус за регистрацию: <b>{bonus_label}</b>")
+
+    enabled_q = 0
+    for _, sk in REG_FLOW:
+        v = await get_setting(sk)
+        is_on = (v == "on") if v is not None else (REG_DEFAULTS.get(sk, "on") == "on")
+        if is_on:
+            enabled_q += 1
+    lines.append(f"📋 Вопросы: <b>{enabled_q} из {len(REG_FLOW)}</b> включено")
+
+    enabled_m = 0
+    for key, _ in MENU_BUTTONS:
+        v = await get_setting(key)
+        if (v == "on") if v is not None else True:
+            enabled_m += 1
+    lines.append(f"🔘 Меню: <b>{enabled_m} из {len(MENU_BUTTONS)}</b> кнопок")
     lines.append("")
 
     for key, label, _ in SETTINGS_FIELDS:
@@ -322,6 +339,8 @@ async def build_settings_keyboard():
     buttons = [
         [InlineKeyboardButton(text=toggle_text, callback_data="settings_toggle_reg")],
         [InlineKeyboardButton(text=bonus_toggle_text, callback_data="settings_toggle_bonus")],
+        [InlineKeyboardButton(text="📋 Вопросы регистрации", callback_data="admin_reg_questions")],
+        [InlineKeyboardButton(text="🔘 Кнопки меню", callback_data="admin_menu_buttons")],
     ]
     for key, label, _ in SETTINGS_FIELDS:
         buttons.append([InlineKeyboardButton(text=f"✏️ {label}", callback_data=f"settings_edit:{key}")])
@@ -803,3 +822,142 @@ async def process_broadcast(message: types.Message, state: FSMContext, bot: Bot)
         f"❌ Недоступно: {blocked}"
     )
     await state.clear()
+
+
+# --- Registration Question Toggles ---
+
+async def render_questions_text() -> str:
+    lines = ["📋 <b>Вопросы регистрации</b>", ""]
+    lines.append("<i>Действуют в режиме «📋 Полная регистрация».</i>")
+    lines.append("")
+
+    for _, setting_key in REG_FLOW:
+        label = REG_LABELS.get(setting_key, setting_key)
+        val = await get_setting(setting_key)
+        is_on = (val == "on") if val is not None else (REG_DEFAULTS.get(setting_key, "on") == "on")
+        status = "✅" if is_on else "❌"
+        lines.append(f"{status} {label}")
+
+    return "\n".join(lines)
+
+
+async def build_questions_keyboard():
+    buttons = []
+    for _, setting_key in REG_FLOW:
+        label = REG_LABELS.get(setting_key, setting_key)
+        val = await get_setting(setting_key)
+        is_on = (val == "on") if val is not None else (REG_DEFAULTS.get(setting_key, "on") == "on")
+        toggle_text = f"{'✅' if is_on else '❌'} {label}"
+        buttons.append([InlineKeyboardButton(text=toggle_text, callback_data=f"reg_q_toggle:{setting_key}")])
+    buttons.append([InlineKeyboardButton(text="← Назад к настройкам", callback_data="reg_q_back")])
+    return InlineKeyboardMarkup(inline_keyboard=buttons)
+
+
+@router.callback_query(F.data == "admin_reg_questions")
+async def show_reg_questions(callback: types.CallbackQuery):
+    if callback.from_user.id not in config.ADMIN_IDS:
+        await callback.answer("Недостаточно прав", show_alert=True)
+        return
+
+    text = await render_questions_text()
+    await callback.message.edit_text(text, parse_mode="HTML", reply_markup=await build_questions_keyboard())
+    await callback.answer()
+
+
+@router.callback_query(F.data.startswith("reg_q_toggle:"))
+async def toggle_reg_question(callback: types.CallbackQuery):
+    if callback.from_user.id not in config.ADMIN_IDS:
+        await callback.answer("Недостаточно прав", show_alert=True)
+        return
+
+    setting_key = callback.data.split(":", 1)[1]
+
+    val = await get_setting(setting_key)
+    current_on = (val == "on") if val is not None else (REG_DEFAULTS.get(setting_key, "on") == "on")
+
+    new_val = "off" if current_on else "on"
+    await set_setting(setting_key, new_val)
+
+    label = REG_LABELS.get(setting_key, setting_key)
+    status = "✅ Вкл" if new_val == "on" else "❌ Выкл"
+    await callback.answer(f"{label}: {status}", show_alert=True)
+
+    text = await render_questions_text()
+    await callback.message.edit_text(text, parse_mode="HTML", reply_markup=await build_questions_keyboard())
+
+
+@router.callback_query(F.data == "reg_q_back")
+async def reg_questions_back(callback: types.CallbackQuery):
+    if callback.from_user.id not in config.ADMIN_IDS:
+        await callback.answer("Недостаточно прав", show_alert=True)
+        return
+
+    text = await render_settings_text()
+    await callback.message.edit_text(text, parse_mode="HTML", reply_markup=await build_settings_keyboard())
+    await callback.answer()
+
+
+# --- Menu Button Toggles ---
+
+async def render_menu_text() -> str:
+    lines = ["🔘 <b>Кнопки главного меню</b>", ""]
+    for key, text in MENU_BUTTONS:
+        val = await get_setting(key)
+        is_on = (val == "on") if val is not None else True
+        status = "✅" if is_on else "❌"
+        lines.append(f"{status} {text}")
+    return "\n".join(lines)
+
+
+async def build_menu_keyboard():
+    buttons = []
+    for key, text in MENU_BUTTONS:
+        val = await get_setting(key)
+        is_on = (val == "on") if val is not None else True
+        toggle_text = f"{'✅' if is_on else '❌'} {text}"
+        buttons.append([InlineKeyboardButton(text=toggle_text, callback_data=f"menu_toggle:{key}")])
+    buttons.append([InlineKeyboardButton(text="← Назад к настройкам", callback_data="menu_back")])
+    return InlineKeyboardMarkup(inline_keyboard=buttons)
+
+
+@router.callback_query(F.data == "admin_menu_buttons")
+async def show_menu_buttons(callback: types.CallbackQuery):
+    if callback.from_user.id not in config.ADMIN_IDS:
+        await callback.answer("Недостаточно прав", show_alert=True)
+        return
+
+    text = await render_menu_text()
+    await callback.message.edit_text(text, parse_mode="HTML", reply_markup=await build_menu_keyboard())
+    await callback.answer()
+
+
+@router.callback_query(F.data.startswith("menu_toggle:"))
+async def toggle_menu_button(callback: types.CallbackQuery):
+    if callback.from_user.id not in config.ADMIN_IDS:
+        await callback.answer("Недостаточно прав", show_alert=True)
+        return
+
+    key = callback.data.split(":", 1)[1]
+    val = await get_setting(key)
+    current_on = (val == "on") if val is not None else True
+
+    new_val = "off" if current_on else "on"
+    await set_setting(key, new_val)
+
+    label = dict(MENU_BUTTONS).get(key, key)
+    status = "✅ Вкл" if new_val == "on" else "❌ Выкл"
+    await callback.answer(f"{label}: {status}", show_alert=True)
+
+    text = await render_menu_text()
+    await callback.message.edit_text(text, parse_mode="HTML", reply_markup=await build_menu_keyboard())
+
+
+@router.callback_query(F.data == "menu_back")
+async def menu_buttons_back(callback: types.CallbackQuery):
+    if callback.from_user.id not in config.ADMIN_IDS:
+        await callback.answer("Недостаточно прав", show_alert=True)
+        return
+
+    text = await render_settings_text()
+    await callback.message.edit_text(text, parse_mode="HTML", reply_markup=await build_settings_keyboard())
+    await callback.answer()

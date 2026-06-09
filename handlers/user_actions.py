@@ -223,7 +223,7 @@ async def ask_organizer_start(message: types.Message, state: FSMContext):
 async def cancel_question(message: types.Message, state: FSMContext):
     logger.info(f"User {message.from_user.id} canceled question")
     await state.clear()
-    await message.answer("Действие отменено.", reply_markup=get_main_menu_kb())
+    await message.answer("Действие отменено.", reply_markup=await get_main_menu_kb())
 
 
 @router.message(Question.waiting_for_question)
@@ -254,12 +254,12 @@ async def process_question(message: types.Message, state: FSMContext, bot: Bot):
                 pass
         
         if sent_count > 0:
-            await message.answer("Твой вопрос отправлен!", reply_markup=get_main_menu_kb())
+            await message.answer("Твой вопрос отправлен!", reply_markup=await get_main_menu_kb())
         else:
             logger.error(f"Failed to send question from {message.from_user.id} to any admin")
-            await message.answer("Не удалось отправить вопрос, попробуйте позже.", reply_markup=get_main_menu_kb())
+            await message.answer("Не удалось отправить вопрос, попробуйте позже.", reply_markup=await get_main_menu_kb())
     else:
         logger.warning("No admins configured to receive questions")
-        await message.answer("Администраторы не настроены.", reply_markup=get_main_menu_kb())
+        await message.answer("Администраторы не настроены.", reply_markup=await get_main_menu_kb())
     
     await state.clear()

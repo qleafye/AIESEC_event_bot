@@ -1,18 +1,27 @@
 from aiogram.types import ReplyKeyboardMarkup, InlineKeyboardMarkup, InlineKeyboardButton
 from aiogram.utils.keyboard import ReplyKeyboardBuilder, InlineKeyboardBuilder
 from config import config
+from database.db import get_setting
 
 # --- Main Menu ---
-def get_main_menu_kb() -> ReplyKeyboardMarkup:
+
+MENU_BUTTONS = [
+    ("menu_referral", "🔗 Моя реферальная ссылка"),
+    ("menu_invites", "👥 Мои приглашённые"),
+    ("menu_info", "ℹ️ Информация о форуме"),
+    ("menu_program", "📅 Программа форума"),
+    ("menu_speakers", "🗣 Спикеры"),
+    ("menu_contacts", "📞 Контакты"),
+    ("menu_question", "❓ Задать вопрос"),
+]
+
+async def get_main_menu_kb() -> ReplyKeyboardMarkup:
     kb = ReplyKeyboardBuilder()
-    kb.button(text="🔗 Моя реферальная ссылка")
-    kb.button(text="👥 Мои приглашённые")
-    kb.button(text="ℹ️ Информация о форуме")
-    kb.button(text="📅 Программа форума")
-    kb.button(text="🗣 Спикеры")
-    kb.button(text="📞 Контакты")
-    kb.button(text="❓ Задать вопрос")
-    kb.adjust(2, 2, 2, 1)
+    for key, text in MENU_BUTTONS:
+        val = await get_setting(key)
+        if (val == "on") if val is not None else True:
+            kb.button(text=text)
+    kb.adjust(2)
     return kb.as_markup(resize_keyboard=True)
 
 # --- Registration Keyboards ---
@@ -24,17 +33,23 @@ def get_yes_no_kb() -> ReplyKeyboardMarkup:
     kb.adjust(2)
     return kb.as_markup(resize_keyboard=True, one_time_keyboard=True)
 
-def get_source_kb() -> ReplyKeyboardMarkup:
+DEFAULT_SOURCE_OPTIONS = [
+    "От амбассадора",
+    "От друга",
+    "В ВК",
+    "В ТГ",
+    "В соцсетях партнера форума",
+    "Увидел плакат в вузе",
+    "Другое",
+]
+
+async def get_source_kb() -> ReplyKeyboardMarkup:
     kb = ReplyKeyboardBuilder()
-    items = [
-        "От амбассадора", 
-        "От друга", 
-        "В ВК", 
-        "В ТГ", 
-        "В соцсетях партнера форума",
-        "Увидел плакат в вузе",
-        "Другое"
-    ]
+    custom = await get_setting("source_options")
+    if custom:
+        items = [line.strip() for line in custom.split("\n") if line.strip()]
+    else:
+        items = DEFAULT_SOURCE_OPTIONS
     for item in items:
         kb.button(text=item)
     kb.adjust(2)

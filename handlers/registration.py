@@ -32,6 +32,116 @@ DEFAULT_START_TEXT = (
     "Настройте текст приветствия через /admin → Настройки → Приветствие."
 )
 
+# --- Registration Flow Engine ---
+# Ordered toggleable steps. Sub-steps (university, course, specialty, work_sphere)
+# are handled within their parent's handler, not listed here.
+
+REG_FLOW = [
+    ("email", "reg_q_email"),
+    ("phone", "reg_q_phone"),
+    ("city", "reg_q_city"),
+    ("source", "reg_q_source"),
+    ("is_aiesec_member", "reg_q_aiesec"),
+    ("education_status", "reg_q_education"),
+    ("work_status", "reg_q_work"),
+    ("missing_skills", "reg_q_skills"),
+    ("expectations", "reg_q_expectations"),
+]
+
+REG_DEFAULTS = {
+    "reg_q_email": "off",
+    "reg_q_phone": "off",
+    "reg_q_city": "off",
+    "reg_q_source": "on",
+    "reg_q_aiesec": "off",
+    "reg_q_education": "on",
+    "reg_q_work": "on",
+    "reg_q_skills": "on",
+    "reg_q_expectations": "on",
+}
+
+REG_LABELS = {
+    "reg_q_email": "📧 Email",
+    "reg_q_phone": "📱 Телефон",
+    "reg_q_city": "🏙 Город",
+    "reg_q_source": "📢 Источник",
+    "reg_q_aiesec": "🌍 AIESEC",
+    "reg_q_education": "🎓 Образование",
+    "reg_q_work": "💼 Работа",
+    "reg_q_skills": "🧠 Навыки",
+    "reg_q_expectations": "✨ Ожидания",
+}
+
+
+async def _is_step_enabled(setting_key: str) -> bool:
+    val = await get_setting(setting_key)
+    if val is None:
+        return REG_DEFAULTS.get(setting_key, "on") == "on"
+    return val == "on"
+
+
+async def _get_enabled_steps(data: dict) -> list[str]:
+    enabled = []
+    for step_key, setting_key in REG_FLOW:
+        if not await _is_step_enabled(setting_key):
+            continue
+        if step_key == "source" and data.get("source"):
+            continue
+        enabled.append(step_key)
+    return enabled
+
+
+async def _ask_step(step_key: str, message: types.Message, state: FSMContext, step: int, total: int):
+    p = _progress(step, total)
+    if step_key == "email":
+        await message.answer(f"{p} Укажи свой email:", reply_markup=get_cancel_kb())
+        await state.set_state(Registration.email)
+    elif step_key == "phone":
+        await message.answer(f"{p} Укажи номер телефона:", reply_markup=get_skip_kb())
+        await state.set_state(Registration.phone)
+    elif step_key == "city":
+        await message.answer(f"{p} Из какого ты города?", reply_markup=get_skip_kb())
+        await state.set_state(Registration.city)
+    elif step_key == "source":
+        await message.answer(f"{p} Откуда ты узнал(а) о форуме?", reply_markup=await get_source_kb())
+        await state.set_state(Registration.source)
+    elif step_key == "is_aiesec_member":
+        await message.answer(f"{p} Являешься ли ты членом AIESEC?", reply_markup=get_yes_no_kb())
+        await state.set_state(Registration.is_aiesec_member)
+    elif step_key == "education_status":
+        await message.answer(f"{p} Учишься ли ты сейчас?", reply_markup=get_education_status_kb())
+        await state.set_state(Registration.education_status)
+    elif step_key == "work_status":
+        await message.answer(f"{p} Работаешь ли ты сейчас?", reply_markup=get_yes_no_kb())
+        await state.set_state(Registration.work_status)
+    elif step_key == "missing_skills":
+        await message.answer(f"{p} Каких навыков тебе сейчас не хватает?", reply_markup=get_skip_kb())
+        await state.set_state(Registration.missing_skills)
+    elif step_key == "expectations":
+        await message.answer(f"{p} Что ты ожидаешь от форума?", reply_markup=get_skip_kb())
+        await state.set_state(Registration.expectations)
+
+
+async def _advance(after_step: str, message: types.Message, state: FSMContext, bot: Bot):
+    data = await state.get_data()
+    enabled = await _get_enabled_steps(data)
+
+    try:
+        idx = enabled.index(after_step)
+        next_idx = idx + 1
+    except ValueError:
+        next_idx = 0
+
+    if next_idx < len(enabled):
+        step = data.get("_reg_step", 0) + 1
+        total = data.get("_reg_total", len(enabled))
+        await state.update_data(_reg_step=step)
+        await _ask_step(enabled[next_idx], message, state, step, total)
+    else:
+        await finalize_registration(message, state, bot)
+
+
+# --- Helpers ---
 
 def _extract_referrer_id(command_args: str | None, current_user_id: int) -> int | None:
     if not command_args:
@@ -93,8 +203,12 @@ def _build_sheet_row(data: dict) -> list:
         data.get("work_sphere", "-"),
         data.get("missing_skills", "-"),
         data.get("expectations", "-"),
+        data.get("phone", "-"),
+        data.get("city", "-"),
     ]
 
+
+# --- /start ---
 
 async def _start_registration_flow(message: types.Message, state: FSMContext, referrer_id: int | None = None, source_tag: str | None = None):
     existing_data = await state.get_data()
@@ -136,16 +250,16 @@ async def cmd_start(message: types.Message, state: FSMContext, command: CommandO
 
         if start_photo:
             try:
-                await message.answer_photo(start_photo, caption=start_text, reply_markup=get_main_menu_kb(), parse_mode="HTML")
+                await message.answer_photo(start_photo, caption=start_text, reply_markup=await get_main_menu_kb(), parse_mode="HTML")
                 return
             except Exception:
                 pass
 
         try:
             photo = FSInputFile("resources/start.jpg")
-            await message.answer_photo(photo, caption=start_text, reply_markup=get_main_menu_kb(), parse_mode="HTML")
+            await message.answer_photo(photo, caption=start_text, reply_markup=await get_main_menu_kb(), parse_mode="HTML")
         except Exception:
-            await message.answer(start_text, reply_markup=get_main_menu_kb(), parse_mode="HTML")
+            await message.answer(start_text, reply_markup=await get_main_menu_kb(), parse_mode="HTML")
         return
 
     await _start_registration_flow(message, state, referrer_id=referrer_id, source_tag=source_tag)
@@ -159,6 +273,8 @@ async def cancel_registration(message: types.Message, state: FSMContext):
         reply_markup=ReplyKeyboardRemove(),
     )
 
+
+# --- Core Registration (always active) ---
 
 @router.message(Registration.full_name)
 async def process_full_name(message: types.Message, state: FSMContext):
@@ -218,82 +334,99 @@ async def process_confirm(message: types.Message, state: FSMContext, bot: Bot):
         return
 
     data = await state.get_data()
-    has_source = bool(data.get("source"))
-    total = 4
-    if not has_source:
-        total += 1
+    enabled = await _get_enabled_steps(data)
 
-    await state.update_data(_reg_step=0, _reg_total=total)
+    if not enabled:
+        await finalize_registration(message, state, bot)
+        return
+
+    total = len(enabled)
+    await state.update_data(_reg_step=1, _reg_total=total)
     await message.answer("Отлично! Осталось несколько вопросов о тебе.")
-
-    if has_source:
-        await state.update_data(_reg_step=1)
-        await message.answer(
-            f"{_progress(1, total)} Учишься ли ты сейчас?",
-            reply_markup=get_education_status_kb(),
-        )
-        await state.set_state(Registration.education_status)
-    else:
-        await state.update_data(_reg_step=1)
-        await message.answer(
-            f"{_progress(1, total)} Откуда ты узнал(а) о форуме?",
-            reply_markup=get_source_kb(),
-        )
-        await state.set_state(Registration.source)
+    await _ask_step(enabled[0], message, state, 1, total)
 
 
-# --- Full form handlers ---
+# --- Extended Question Handlers ---
+
+@router.message(Registration.email)
+async def process_email(message: types.Message, state: FSMContext, bot: Bot):
+    email = (message.text or "").strip()
+    if not email or "@" not in email or "." not in email:
+        await message.answer("Укажи корректный email (например, name@example.com).")
+        return
+    await state.update_data(email=email)
+    await _advance("email", message, state, bot)
+
+
+@router.message(Registration.phone)
+async def process_phone(message: types.Message, state: FSMContext, bot: Bot):
+    text = (message.text or "").strip()
+    if text == "Пропустить":
+        await state.update_data(phone="-")
+        await _advance("phone", message, state, bot)
+        return
+    cleaned = text.replace(" ", "").replace("-", "").replace("(", "").replace(")", "")
+    if not cleaned:
+        await message.answer("Укажи номер телефона или нажми «Пропустить».")
+        return
+    if not (cleaned.startswith("+") and cleaned[1:].isdigit()) and not cleaned.isdigit():
+        await message.answer("Укажи корректный номер телефона или нажми «Пропустить».")
+        return
+    await state.update_data(phone=text)
+    await _advance("phone", message, state, bot)
+
+
+@router.message(Registration.city)
+async def process_city(message: types.Message, state: FSMContext, bot: Bot):
+    text = (message.text or "").strip()
+    if not text:
+        await message.answer("Напиши город или нажми «Пропустить».")
+        return
+    await state.update_data(city="-" if text == "Пропустить" else text)
+    await _advance("city", message, state, bot)
+
 
 @router.message(Registration.source)
-async def process_source(message: types.Message, state: FSMContext):
+async def process_source(message: types.Message, state: FSMContext, bot: Bot):
     source = (message.text or "").strip()
     if not source:
         await message.answer("Выбери один из вариантов или напиши свой.")
         return
     await state.update_data(source=source)
+    await _advance("source", message, state, bot)
 
-    data = await state.get_data()
-    step = data.get("_reg_step", 1) + 1
-    total = data.get("_reg_total", 5)
-    await state.update_data(_reg_step=step)
 
-    await message.answer(
-        f"{_progress(step, total)} Учишься ли ты сейчас?",
-        reply_markup=get_education_status_kb(),
-    )
-    await state.set_state(Registration.education_status)
+@router.message(Registration.is_aiesec_member)
+async def process_is_aiesec_member(message: types.Message, state: FSMContext, bot: Bot):
+    answer = (message.text or "").strip()
+    if answer not in ("Да", "Нет"):
+        await message.answer("Выбери «Да» или «Нет».")
+        return
+    await state.update_data(is_aiesec_member=(answer == "Да"))
+    await _advance("is_aiesec_member", message, state, bot)
 
 
 @router.message(Registration.education_status)
-async def process_education_status(message: types.Message, state: FSMContext):
+async def process_education_status(message: types.Message, state: FSMContext, bot: Bot):
     status = (message.text or "").strip()
     if not status:
         await message.answer("Выбери один из вариантов.")
         return
     await state.update_data(education_status=status)
 
-    data = await state.get_data()
-    step = data.get("_reg_step", 2) + 1
-    total = data.get("_reg_total", 5)
-
     if status.startswith("Да"):
-        total += 3
-        await state.update_data(_reg_step=step, _reg_total=total)
+        data = await state.get_data()
+        total = data.get("_reg_total", 5) + 3
+        step = data.get("_reg_step", 1) + 1
+        await state.update_data(_reg_total=total, _reg_step=step)
         await message.answer(
             f"{_progress(step, total)} В каком ВУЗе/колледже ты учишься?",
             reply_markup=get_universities_kb(),
         )
         await state.set_state(Registration.university)
     else:
-        await state.update_data(
-            university="-", course="-", specialty="-",
-            _reg_step=step, _reg_total=total,
-        )
-        await message.answer(
-            f"{_progress(step, total)} Работаешь ли ты сейчас?",
-            reply_markup=get_yes_no_kb(),
-        )
-        await state.set_state(Registration.work_status)
+        await state.update_data(university="-", course="-", specialty="-")
+        await _advance("education_status", message, state, bot)
 
 
 @router.message(Registration.university)
@@ -337,28 +470,17 @@ async def process_course(message: types.Message, state: FSMContext):
 
 
 @router.message(Registration.specialty)
-async def process_specialty(message: types.Message, state: FSMContext):
+async def process_specialty(message: types.Message, state: FSMContext, bot: Bot):
     text = (message.text or "").strip()
     if not text:
         await message.answer("Напиши специальность или нажми «Пропустить».")
         return
-
     await state.update_data(specialty="-" if text == "Пропустить" else text)
-
-    data = await state.get_data()
-    step = data.get("_reg_step", 5) + 1
-    total = data.get("_reg_total", 8)
-    await state.update_data(_reg_step=step)
-
-    await message.answer(
-        f"{_progress(step, total)} Работаешь ли ты сейчас?",
-        reply_markup=get_yes_no_kb(),
-    )
-    await state.set_state(Registration.work_status)
+    await _advance("education_status", message, state, bot)
 
 
 @router.message(Registration.work_status)
-async def process_work_status(message: types.Message, state: FSMContext):
+async def process_work_status(message: types.Message, state: FSMContext, bot: Bot):
     answer = (message.text or "").strip()
     if answer not in ("Да", "Нет"):
         await message.answer("Выбери «Да» или «Нет».")
@@ -367,67 +489,39 @@ async def process_work_status(message: types.Message, state: FSMContext):
     working = answer == "Да"
     await state.update_data(work_status=working)
 
-    data = await state.get_data()
-    step = data.get("_reg_step", 6) + 1
-    total = data.get("_reg_total", 8)
-
     if working:
-        total += 1
-        await state.update_data(_reg_step=step, _reg_total=total)
+        data = await state.get_data()
+        total = data.get("_reg_total", 5) + 1
+        step = data.get("_reg_step", 1) + 1
+        await state.update_data(_reg_total=total, _reg_step=step)
         await message.answer(
             f"{_progress(step, total)} В какой сфере ты работаешь?",
             reply_markup=get_skip_kb(),
         )
         await state.set_state(Registration.work_sphere)
     else:
-        await state.update_data(work_sphere="-", _reg_step=step, _reg_total=total)
-        await message.answer(
-            f"{_progress(step, total)} Каких навыков тебе сейчас не хватает?",
-            reply_markup=get_skip_kb(),
-        )
-        await state.set_state(Registration.missing_skills)
+        await state.update_data(work_sphere="-")
+        await _advance("work_status", message, state, bot)
 
 
 @router.message(Registration.work_sphere)
-async def process_work_sphere(message: types.Message, state: FSMContext):
+async def process_work_sphere(message: types.Message, state: FSMContext, bot: Bot):
     text = (message.text or "").strip()
     if not text:
         await message.answer("Напиши сферу работы или нажми «Пропустить».")
         return
-
     await state.update_data(work_sphere="-" if text == "Пропустить" else text)
-
-    data = await state.get_data()
-    step = data.get("_reg_step", 7) + 1
-    total = data.get("_reg_total", 9)
-    await state.update_data(_reg_step=step)
-
-    await message.answer(
-        f"{_progress(step, total)} Каких навыков тебе сейчас не хватает?",
-        reply_markup=get_skip_kb(),
-    )
-    await state.set_state(Registration.missing_skills)
+    await _advance("work_status", message, state, bot)
 
 
 @router.message(Registration.missing_skills)
-async def process_missing_skills(message: types.Message, state: FSMContext):
+async def process_missing_skills(message: types.Message, state: FSMContext, bot: Bot):
     text = (message.text or "").strip()
     if not text:
         await message.answer("Напиши или нажми «Пропустить».")
         return
-
     await state.update_data(missing_skills="-" if text == "Пропустить" else text)
-
-    data = await state.get_data()
-    step = data.get("_reg_step", 8) + 1
-    total = data.get("_reg_total", 9)
-    await state.update_data(_reg_step=step)
-
-    await message.answer(
-        f"{_progress(step, total)} Что ты ожидаешь от форума?",
-        reply_markup=get_skip_kb(),
-    )
-    await state.set_state(Registration.expectations)
+    await _advance("missing_skills", message, state, bot)
 
 
 @router.message(Registration.expectations)
@@ -436,9 +530,8 @@ async def process_expectations(message: types.Message, state: FSMContext, bot: B
     if not text:
         await message.answer("Напиши или нажми «Пропустить».")
         return
-
     await state.update_data(expectations="-" if text == "Пропустить" else text)
-    await finalize_registration(message, state, bot)
+    await _advance("expectations", message, state, bot)
 
 
 # --- Finalize ---
@@ -450,6 +543,8 @@ async def finalize_registration(message: types.Message, state: FSMContext, bot: 
     data["registration_date"] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
     data.setdefault("email", "-")
+    data.setdefault("phone", "-")
+    data.setdefault("city", "-")
     data.setdefault("is_aiesec_member", False)
     data.setdefault("source", "Реферальная ссылка" if data.get("referrer_id") else "Самостоятельно")
     data.setdefault("source_details", f"Referrer ID: {data.get('referrer_id', '-')}")
@@ -479,6 +574,13 @@ async def finalize_registration(message: types.Message, state: FSMContext, bot: 
             f"🎂 {data.get('age', '-')}\n"
             f"📝 {safe_source}"
         )
+        if data.get("email") and data["email"] != "-":
+            admin_text += f"\n📧 {html.escape(str(data['email']))}"
+        if data.get("phone") and data["phone"] != "-":
+            admin_text += f"\n📱 {data['phone']}"
+        if data.get("city") and data["city"] != "-":
+            admin_text += f"\n🏙 {html.escape(str(data['city']))}"
+
         for admin_id in config.ADMIN_IDS:
             try:
                 await bot.send_message(admin_id, admin_text, parse_mode="HTML")
@@ -486,7 +588,7 @@ async def finalize_registration(message: types.Message, state: FSMContext, bot: 
                 logger.error(f"Failed to notify admin {admin_id}: {e}")
 
     await state.clear()
-    await message.answer("Регистрация завершена! Увидимся на форуме! 🎉", reply_markup=get_main_menu_kb())
+    await message.answer("Регистрация завершена! Увидимся на форуме! 🎉", reply_markup=await get_main_menu_kb())
 
     bonus_enabled = await get_setting("reg_bonus_enabled")
     if bonus_enabled == "on":

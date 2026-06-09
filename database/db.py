@@ -37,6 +37,7 @@ async def init_db():
                 missing_skills TEXT,
                 expectations TEXT,
                 phone TEXT,
+                city TEXT,
                 referrer_id INTEGER,
                 registration_date TEXT,
                 is_ambassador_candidate BOOLEAN DEFAULT 0
@@ -44,6 +45,7 @@ async def init_db():
         ''')
 
         await _ensure_column(db, "users", "phone", "TEXT")
+        await _ensure_column(db, "users", "city", "TEXT")
         await _ensure_column(db, "users", "referrer_id", "INTEGER")
 
         await db.execute('''
@@ -87,9 +89,9 @@ async def add_user(data: dict):
                 is_aiesec_member, source, source_details,
                 education_status, university, course, specialty,
                 work_status, work_sphere,
-                missing_skills, expectations, phone, referrer_id, registration_date,
+                missing_skills, expectations, phone, city, referrer_id, registration_date,
                 is_ambassador_candidate
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         ''', (
             data['telegram_id'],
             data.get('username'),
@@ -108,6 +110,7 @@ async def add_user(data: dict):
             data.get('missing_skills', '-'),
             data.get('expectations', '-'),
             data.get('phone'),
+            data.get('city'),
             data.get('referrer_id'),
             data['registration_date'],
             data.get('is_ambassador_candidate', False)
