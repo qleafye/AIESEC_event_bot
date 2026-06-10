@@ -71,6 +71,37 @@ def get_universities_kb() -> ReplyKeyboardMarkup:
     kb.adjust(2)
     return kb.as_markup(resize_keyboard=True, one_time_keyboard=True)
 
+def get_local_committee_kb() -> ReplyKeyboardMarkup:
+    kb = ReplyKeyboardBuilder()
+    for lc in ["SPUEF", "E&G", "Moscow Pride", "Ufa", "Tyumen", "Ekaterinburg"]:
+        kb.button(text=lc)
+    kb.button(text="Другое")
+    kb.adjust(2)
+    return kb.as_markup(resize_keyboard=True, one_time_keyboard=True)
+
+def get_position_kb() -> ReplyKeyboardMarkup:
+    kb = ReplyKeyboardBuilder()
+    for pos in ["AIESECer", "Alumni", "AIESEC Friend"]:
+        kb.button(text=pos)
+    kb.button(text="Другое")
+    kb.adjust(2)
+    return kb.as_markup(resize_keyboard=True, one_time_keyboard=True)
+
+def get_attendance_format_kb() -> ReplyKeyboardMarkup:
+    kb = ReplyKeyboardBuilder()
+    kb.button(text="Offline")
+    kb.button(text="Online")
+    kb.adjust(2)
+    return kb.as_markup(resize_keyboard=True, one_time_keyboard=True)
+
+def get_informal_day_kb() -> ReplyKeyboardMarkup:
+    kb = ReplyKeyboardBuilder()
+    kb.button(text="Да")
+    kb.button(text="Нет")
+    kb.button(text="Буду только в онлайне")
+    kb.adjust(2, 1)
+    return kb.as_markup(resize_keyboard=True, one_time_keyboard=True)
+
 def get_course_kb() -> ReplyKeyboardMarkup:
     kb = ReplyKeyboardBuilder()
     for i in range(1, 5):

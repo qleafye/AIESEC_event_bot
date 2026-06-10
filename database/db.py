@@ -40,13 +40,23 @@ async def init_db():
                 city TEXT,
                 referrer_id INTEGER,
                 registration_date TEXT,
-                is_ambassador_candidate BOOLEAN DEFAULT 0
+                is_ambassador_candidate BOOLEAN DEFAULT 0,
+                local_committee TEXT,
+                position TEXT,
+                attendance_format TEXT,
+                comments TEXT
             )
         ''')
 
         await _ensure_column(db, "users", "phone", "TEXT")
         await _ensure_column(db, "users", "city", "TEXT")
         await _ensure_column(db, "users", "referrer_id", "INTEGER")
+        await _ensure_column(db, "users", "local_committee", "TEXT")
+        await _ensure_column(db, "users", "position", "TEXT")
+        await _ensure_column(db, "users", "attendance_format", "TEXT")
+        await _ensure_column(db, "users", "comments", "TEXT")
+        await _ensure_column(db, "users", "expectations_ar", "TEXT")
+        await _ensure_column(db, "users", "informal_day", "TEXT")
 
         await db.execute('''
             CREATE TABLE IF NOT EXISTS bot_settings (
@@ -90,8 +100,10 @@ async def add_user(data: dict):
                 education_status, university, course, specialty,
                 work_status, work_sphere,
                 missing_skills, expectations, phone, city, referrer_id, registration_date,
-                is_ambassador_candidate
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                is_ambassador_candidate,
+                local_committee, position, attendance_format, comments,
+                expectations_ar, informal_day
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         ''', (
             data['telegram_id'],
             data.get('username'),
@@ -113,7 +125,13 @@ async def add_user(data: dict):
             data.get('city'),
             data.get('referrer_id'),
             data['registration_date'],
-            data.get('is_ambassador_candidate', False)
+            data.get('is_ambassador_candidate', False),
+            data.get('local_committee'),
+            data.get('position'),
+            data.get('attendance_format'),
+            data.get('comments'),
+            data.get('expectations_ar'),
+            data.get('informal_day'),
         ))
         await db.commit()
 
