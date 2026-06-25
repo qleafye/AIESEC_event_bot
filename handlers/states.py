@@ -1,9 +1,18 @@
 from aiogram.fsm.state import StatesGroup, State
 
 class Registration(StatesGroup):
+    admin_rereg = State()
     full_name = State()
     age = State()
-    confirm = State()
+    email = State()
+    phone = State()
+    city = State()
+    local_committee = State()
+    position = State()
+    expectations_ar = State()
+    informal_day = State()
+    attendance_format = State()
+    comments = State()
     source = State()
     education_status = State()
     university = State()

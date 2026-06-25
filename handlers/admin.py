@@ -1,4 +1,5 @@
 import csv
+import html as html_module
 import io
 import asyncio
 import logging
@@ -12,6 +13,7 @@ from config import config
 from database.db import (
     get_stats,
     get_all_users_ids,
+    get_all_users_dicts,
     export_users_csv,
     get_user_by_username,
     get_monthly_registration_stats,
@@ -20,8 +22,10 @@ from database.db import (
     set_setting,
     delete_setting,
 )
+from services.sheets import get_existing_sheet_ids, append_rows_to_sheet
 from handlers.states import Broadcast, EditSetting
-from keyboards.builders import get_cancel_kb
+from keyboards.builders import get_cancel_kb, MENU_BUTTONS
+from handlers.registration import REG_FLOW, REG_DEFAULTS, REG_LABELS, _build_sheet_row
 
 router = Router()
 logger = logging.getLogger(__name__)
@@ -54,6 +58,7 @@ def build_admin_keyboard():
         [InlineKeyboardButton(text="📈 Источники", callback_data="admin_source_stats")],
         [InlineKeyboardButton(text="📄 Экспорт CSV", callback_data="admin_export_csv")],
         [InlineKeyboardButton(text="📢 Рассылка", callback_data="admin_broadcast")],
+        [InlineKeyboardButton(text="🔄 Синхронизация таблицы", callback_data="admin_sync_sheet")],
         [InlineKeyboardButton(text="⚙️ Настройки форума", callback_data="admin_settings")],
     ])
 
@@ -97,7 +102,7 @@ async def cmd_find_user(message: types.Message):
 
     username = args[1]
     user = await get_user_by_username(username)
-    
+
     if user:
         text = (
             f"👤 <b>Пользователь найден:</b>\n"
@@ -180,16 +185,16 @@ async def admin_reply_to_question(message: types.Message, bot: Bot):
 @router.message(Command("stats"), is_admin)
 async def cmd_stats(message: types.Message):
     total, top_unis = await get_stats()
-    
+
     text = (
         f"📊 <b>Статистика:</b>\n"
         f"Всего регистраций: {total}\n"
         f"🏆 <b>Топ-3 ВУЗа:</b>\n"
     )
-    
+
     for i, (uni, count) in enumerate(top_unis, 1):
         text += f"{i}. {uni} — {count}\n"
-        
+
     await message.answer(text, parse_mode="HTML")
 
 
@@ -258,6 +263,8 @@ SETTINGS_FIELDS = [
     ("contact_vk", "🔵 VK", "Введите ссылку на группу ВК"),
     ("contact_tg", "🔹 TG", "Введите ссылку на Telegram-канал"),
     ("start_text", "💬 Приветствие", "Введите текст приветствия при /start (поддерживается HTML-разметка)"),
+    ("source_options", "📢 Источники", "Отправьте варианты источников, каждый с новой строки"),
+    ("reg_complete_text", "✅ После регистрации", "Введите текст, который увидит пользователь после регистрации (поддерживается HTML-разметка)"),
 ]
 
 PHOTO_FIELDS = [
@@ -282,16 +289,33 @@ async def render_settings_text() -> str:
     bonus_enabled = await get_setting("reg_bonus_enabled") or "off"
     bonus_label = "✅ Вкл" if bonus_enabled == "on" else "❌ Выкл"
     lines.append(f"🎁 Бонус за регистрацию: <b>{bonus_label}</b>")
+
+    enabled_q = 0
+    for _, sk in REG_FLOW:
+        v = await get_setting(sk)
+        is_on = (v == "on") if v is not None else (REG_DEFAULTS.get(sk, "on") == "on")
+        if is_on:
+            enabled_q += 1
+    lines.append(f"📋 Вопросы: <b>{enabled_q} из {len(REG_FLOW)}</b> включено")
+
+    enabled_m = 0
+    for key, _ in MENU_BUTTONS:
+        v = await get_setting(key)
+        if (v == "on") if v is not None else True:
+            enabled_m += 1
+    lines.append(f"🔘 Меню: <b>{enabled_m} из {len(MENU_BUTTONS)}</b> кнопок")
     lines.append("")
 
     for key, label, _ in SETTINGS_FIELDS:
         value = await get_setting(key)
         if not value:
             status = "<i>не указано</i>"
-        elif len(value) > 60:
-            status = value[:60] + "…"
         else:
-            status = value
+            escaped = html_module.escape(value)
+            if len(value) > 60:
+                status = html_module.escape(value[:60]) + "…"
+            else:
+                status = escaped
         lines.append(f"{label}: {status}")
 
     lines.append("")
@@ -322,6 +346,8 @@ async def build_settings_keyboard():
     buttons = [
         [InlineKeyboardButton(text=toggle_text, callback_data="settings_toggle_reg")],
         [InlineKeyboardButton(text=bonus_toggle_text, callback_data="settings_toggle_bonus")],
+        [InlineKeyboardButton(text="📋 Вопросы регистрации", callback_data="admin_reg_questions")],
+        [InlineKeyboardButton(text="🔘 Кнопки меню", callback_data="admin_menu_buttons")],
     ]
     for key, label, _ in SETTINGS_FIELDS:
         buttons.append([InlineKeyboardButton(text=f"✏️ {label}", callback_data=f"settings_edit:{key}")])
@@ -457,6 +483,47 @@ async def cancel_edit_setting_callback(callback: types.CallbackQuery, state: FSM
     await callback.answer()
 
 
+@router.callback_query(F.data == "admin_sync_sheet")
+async def sync_sheet(callback: types.CallbackQuery):
+    if callback.from_user.id not in config.ADMIN_IDS:
+        await callback.answer("Недостаточно прав", show_alert=True)
+        return
+
+    await callback.answer("🔄 Синхронизация...")
+    await callback.message.edit_text("🔄 Получаю данные из таблицы...", parse_mode="HTML")
+
+    try:
+        existing_ids = await get_existing_sheet_ids()
+        all_users = await get_all_users_dicts()
+
+        missing = [u for u in all_users if u["telegram_id"] not in existing_ids]
+
+        if not missing:
+            await callback.message.edit_text(
+                "✅ Таблица синхронизирована, пропущенных записей нет.",
+                parse_mode="HTML",
+                reply_markup=build_admin_keyboard(),
+            )
+            return
+
+        rows = [_build_sheet_row(u) for u in missing]
+        count = await append_rows_to_sheet(rows)
+
+        await callback.message.edit_text(
+            f"✅ Синхронизация завершена!\n\n"
+            f"Добавлено записей: <b>{count}</b>",
+            parse_mode="HTML",
+            reply_markup=build_admin_keyboard(),
+        )
+    except Exception as e:
+        logger.error(f"Sheet sync failed: {e}")
+        await callback.message.edit_text(
+            f"❌ Ошибка синхронизации:\n<code>{html_module.escape(str(e))}</code>",
+            parse_mode="HTML",
+            reply_markup=build_admin_keyboard(),
+        )
+
+
 @router.callback_query(F.data == "settings_back")
 async def settings_back_to_admin(callback: types.CallbackQuery):
     if callback.from_user.id not in config.ADMIN_IDS:
@@ -548,11 +615,17 @@ async def settings_receive_file_invalid(message: types.Message):
     await message.answer("Отправьте фото или документ.")
 
 
+HTML_SETTINGS = {"start_text", "reg_complete_text"}
+
 @router.message(EditSetting.waiting_for_value, is_admin)
 async def settings_edit_value(message: types.Message, state: FSMContext):
     data = await state.get_data()
     key = data["setting_key"]
-    value = (message.text or "").strip()
+
+    if key in HTML_SETTINGS:
+        value = (message.html_text or message.text or "").strip()
+    else:
+        value = (message.text or "").strip()
 
     if value == "-":
         await delete_setting(key)
@@ -599,20 +672,16 @@ async def show_admin_broadcast(callback: types.CallbackQuery, state: FSMContext)
 @router.message(Command("export"), is_admin)
 async def cmd_export(message: types.Message):
     headers, rows = await export_users_csv()
-    
+
     output = io.StringIO()
-    # Используем разделитель ;, так как Excel в РФ часто его ждет
-    # quotechar='"' нужен чтобы экранировать поля с кавычками или разделителями
     writer = csv.writer(output, delimiter=';', quotechar='"', quoting=csv.QUOTE_MINIMAL)
     writer.writerow(headers)
     writer.writerows(rows)
-    
+
     output.seek(0)
-    # Используем utf-8-sig, чтобы добавить BOM (Byte Order Mark). 
-    # Это подскажет Excel, что файл в кодировке UTF-8 и починит кракозябры.
     file_bytes = output.getvalue().encode('utf-8-sig')
     document = BufferedInputFile(file_bytes, filename="users.csv")
-    
+
     await message.answer_document(document, caption="База данных пользователей")
 
 @router.message(Command("broadcast"), is_admin)
@@ -642,7 +711,7 @@ async def process_broadcast_all(callback: types.CallbackQuery, state: FSMContext
 @router.callback_query(F.data == "broadcast_local", Broadcast.target_selection)
 async def process_broadcast_local_file(callback: types.CallbackQuery, state: FSMContext):
     file_path = "data/broadcast_target.txt"
-    
+
     if not os.path.exists(file_path):
         await callback.message.edit_text(f"❌ Файл {file_path} не найден! Создайте его и добавьте ID пользователей.")
         await state.clear()
@@ -651,24 +720,22 @@ async def process_broadcast_local_file(callback: types.CallbackQuery, state: FSM
     try:
         with open(file_path, 'r', encoding='utf-8') as f:
             content = f.read()
-        
+
         user_ids = []
         for line in content.splitlines():
             line = line.strip()
-            # Handle potential common delimiters
             clean_line = line.replace(',', '').replace(';', '')
-            
+
             if clean_line.isdigit():
                 user_ids.append(int(clean_line))
-        
+
         if not user_ids:
             await callback.message.edit_text("⚠️ Файл пуст или не содержит корректных ID.")
             await state.clear()
             return
 
-        # Unique IDs
         user_ids = list(set(user_ids))
-            
+
         await state.update_data(target_type="list", target_users=user_ids)
         await callback.answer()
         try:
@@ -680,7 +747,7 @@ async def process_broadcast_local_file(callback: types.CallbackQuery, state: FSM
             reply_markup=get_cancel_kb(),
         )
         await state.set_state(Broadcast.message)
-        
+
     except Exception as e:
         await callback.message.edit_text(f"Ошибка при чтении файла: {e}")
         await state.clear()
@@ -704,14 +771,13 @@ async def _wait_and_send_album(media_group_id: str, users_ids: list, bot: Bot, s
     album_data = pending_albums.pop(media_group_id, None)
     if not album_data:
         return
-        
+
     messages = album_data["messages"]
     media = []
-    
+
     for msg in messages:
-        # Получаем caption_html для сохранения всех гиперссылок и форматирования
         caption_text = msg.html_text if getattr(msg, "html_text", None) else None
-        
+
         if msg.photo:
             media.append(types.InputMediaPhoto(
                 media=msg.photo[-1].file_id,
@@ -757,14 +823,14 @@ async def _wait_and_send_album(media_group_id: str, users_ids: list, bot: Bot, s
         )
     except Exception:
         pass
-        
+
     await state.clear()
 
 @router.message(Broadcast.message, is_admin)
 async def process_broadcast(message: types.Message, state: FSMContext, bot: Bot):
     data = await state.get_data()
     target_type = data.get("target_type", "all")
-    
+
     if target_type == "list":
         users_ids = data.get("target_users", [])
         if not users_ids:
@@ -773,7 +839,7 @@ async def process_broadcast(message: types.Message, state: FSMContext, bot: Bot)
              return
     else:
         users_ids = await get_all_users_ids()
-        
+
     mgid = message.media_group_id
     if mgid:
         if mgid not in pending_albums:
@@ -786,20 +852,159 @@ async def process_broadcast(message: types.Message, state: FSMContext, bot: Bot)
 
     count = 0
     blocked = 0
-    
+
     status_msg = await message.answer(f"Начинаю рассылку на {len(users_ids)} пользователей...")
-    
+
     for chat_id in users_ids:
         try:
             await message.send_copy(chat_id)
             count += 1
-            await asyncio.sleep(0.05) # Prevent flood wait
+            await asyncio.sleep(0.05)
         except Exception:
             blocked += 1
-            
+
     await message.answer(
         f"Рассылка завершена.\n"
         f"✅ Успешно: {count}\n"
         f"❌ Недоступно: {blocked}"
     )
     await state.clear()
+
+
+# --- Registration Question Toggles ---
+
+async def render_questions_text() -> str:
+    lines = ["📋 <b>Вопросы регистрации</b>", ""]
+    lines.append("<i>Действуют в режиме «📋 Полная регистрация».</i>")
+    lines.append("")
+
+    for _, setting_key in REG_FLOW:
+        label = REG_LABELS.get(setting_key, setting_key)
+        val = await get_setting(setting_key)
+        is_on = (val == "on") if val is not None else (REG_DEFAULTS.get(setting_key, "on") == "on")
+        status = "✅" if is_on else "❌"
+        lines.append(f"{status} {label}")
+
+    return "\n".join(lines)
+
+
+async def build_questions_keyboard():
+    buttons = []
+    for _, setting_key in REG_FLOW:
+        label = REG_LABELS.get(setting_key, setting_key)
+        val = await get_setting(setting_key)
+        is_on = (val == "on") if val is not None else (REG_DEFAULTS.get(setting_key, "on") == "on")
+        toggle_text = f"{'✅' if is_on else '❌'} {label}"
+        buttons.append([InlineKeyboardButton(text=toggle_text, callback_data=f"reg_q_toggle:{setting_key}")])
+    buttons.append([InlineKeyboardButton(text="← Назад к настройкам", callback_data="reg_q_back")])
+    return InlineKeyboardMarkup(inline_keyboard=buttons)
+
+
+@router.callback_query(F.data == "admin_reg_questions")
+async def show_reg_questions(callback: types.CallbackQuery):
+    if callback.from_user.id not in config.ADMIN_IDS:
+        await callback.answer("Недостаточно прав", show_alert=True)
+        return
+
+    text = await render_questions_text()
+    await callback.message.edit_text(text, parse_mode="HTML", reply_markup=await build_questions_keyboard())
+    await callback.answer()
+
+
+@router.callback_query(F.data.startswith("reg_q_toggle:"))
+async def toggle_reg_question(callback: types.CallbackQuery):
+    if callback.from_user.id not in config.ADMIN_IDS:
+        await callback.answer("Недостаточно прав", show_alert=True)
+        return
+
+    setting_key = callback.data.split(":", 1)[1]
+
+    val = await get_setting(setting_key)
+    current_on = (val == "on") if val is not None else (REG_DEFAULTS.get(setting_key, "on") == "on")
+
+    new_val = "off" if current_on else "on"
+    await set_setting(setting_key, new_val)
+
+    label = REG_LABELS.get(setting_key, setting_key)
+    status = "✅ Вкл" if new_val == "on" else "❌ Выкл"
+    await callback.answer(f"{label}: {status}", show_alert=True)
+
+    text = await render_questions_text()
+    await callback.message.edit_text(text, parse_mode="HTML", reply_markup=await build_questions_keyboard())
+
+
+@router.callback_query(F.data == "reg_q_back")
+async def reg_questions_back(callback: types.CallbackQuery):
+    if callback.from_user.id not in config.ADMIN_IDS:
+        await callback.answer("Недостаточно прав", show_alert=True)
+        return
+
+    text = await render_settings_text()
+    await callback.message.edit_text(text, parse_mode="HTML", reply_markup=await build_settings_keyboard())
+    await callback.answer()
+
+
+# --- Menu Button Toggles ---
+
+async def render_menu_text() -> str:
+    lines = ["🔘 <b>Кнопки главного меню</b>", ""]
+    for key, text in MENU_BUTTONS:
+        val = await get_setting(key)
+        is_on = (val == "on") if val is not None else True
+        status = "✅" if is_on else "❌"
+        lines.append(f"{status} {text}")
+    return "\n".join(lines)
+
+
+async def build_menu_keyboard():
+    buttons = []
+    for key, text in MENU_BUTTONS:
+        val = await get_setting(key)
+        is_on = (val == "on") if val is not None else True
+        toggle_text = f"{'✅' if is_on else '❌'} {text}"
+        buttons.append([InlineKeyboardButton(text=toggle_text, callback_data=f"menu_toggle:{key}")])
+    buttons.append([InlineKeyboardButton(text="← Назад к настройкам", callback_data="menu_back")])
+    return InlineKeyboardMarkup(inline_keyboard=buttons)
+
+
+@router.callback_query(F.data == "admin_menu_buttons")
+async def show_menu_buttons(callback: types.CallbackQuery):
+    if callback.from_user.id not in config.ADMIN_IDS:
+        await callback.answer("Недостаточно прав", show_alert=True)
+        return
+
+    text = await render_menu_text()
+    await callback.message.edit_text(text, parse_mode="HTML", reply_markup=await build_menu_keyboard())
+    await callback.answer()
+
+
+@router.callback_query(F.data.startswith("menu_toggle:"))
+async def toggle_menu_button(callback: types.CallbackQuery):
+    if callback.from_user.id not in config.ADMIN_IDS:
+        await callback.answer("Недостаточно прав", show_alert=True)
+        return
+
+    key = callback.data.split(":", 1)[1]
+    val = await get_setting(key)
+    current_on = (val == "on") if val is not None else True
+
+    new_val = "off" if current_on else "on"
+    await set_setting(key, new_val)
+
+    label = dict(MENU_BUTTONS).get(key, key)
+    status = "✅ Вкл" if new_val == "on" else "❌ Выкл"
+    await callback.answer(f"{label}: {status}", show_alert=True)
+
+    text = await render_menu_text()
+    await callback.message.edit_text(text, parse_mode="HTML", reply_markup=await build_menu_keyboard())
+
+
+@router.callback_query(F.data == "menu_back")
+async def menu_buttons_back(callback: types.CallbackQuery):
+    if callback.from_user.id not in config.ADMIN_IDS:
+        await callback.answer("Недостаточно прав", show_alert=True)
+        return
+
+    text = await render_settings_text()
+    await callback.message.edit_text(text, parse_mode="HTML", reply_markup=await build_settings_keyboard())
+    await callback.answer()

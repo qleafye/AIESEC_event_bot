@@ -1,5 +1,10 @@
+import logging
+import os
+
 import aiosqlite
 from config import config
+
+logger = logging.getLogger(__name__)
 
 
 async def _column_exists(db: aiosqlite.Connection, table_name: str, column_name: str) -> bool:
@@ -14,10 +19,6 @@ async def _ensure_column(db: aiosqlite.Connection, table_name: str, column_name:
 
 async def init_db():
     async with aiosqlite.connect(config.DB_PATH) as db:
-        # Dropping table for dev purposes since schema changed drastically
-        # In prod you would use migration
-        # await db.execute('DROP TABLE IF EXISTS users') 
-        
         await db.execute('''
             CREATE TABLE IF NOT EXISTS users (
                 telegram_id INTEGER PRIMARY KEY,
@@ -37,14 +38,28 @@ async def init_db():
                 missing_skills TEXT,
                 expectations TEXT,
                 phone TEXT,
+                city TEXT,
                 referrer_id INTEGER,
                 registration_date TEXT,
-                is_ambassador_candidate BOOLEAN DEFAULT 0
+                is_ambassador_candidate BOOLEAN DEFAULT 0,
+                local_committee TEXT,
+                position TEXT,
+                attendance_format TEXT,
+                comments TEXT,
+                expectations_ar TEXT,
+                informal_day TEXT
             )
         ''')
 
         await _ensure_column(db, "users", "phone", "TEXT")
+        await _ensure_column(db, "users", "city", "TEXT")
         await _ensure_column(db, "users", "referrer_id", "INTEGER")
+        await _ensure_column(db, "users", "local_committee", "TEXT")
+        await _ensure_column(db, "users", "position", "TEXT")
+        await _ensure_column(db, "users", "attendance_format", "TEXT")
+        await _ensure_column(db, "users", "comments", "TEXT")
+        await _ensure_column(db, "users", "expectations_ar", "TEXT")
+        await _ensure_column(db, "users", "informal_day", "TEXT")
 
         await db.execute('''
             CREATE TABLE IF NOT EXISTS bot_settings (
@@ -80,56 +95,73 @@ async def delete_setting(key: str):
 
 
 async def add_user(data: dict):
-    async with aiosqlite.connect(config.DB_PATH) as db:
-        await db.execute('''
-            INSERT OR REPLACE INTO users (
-                telegram_id, username, full_name, email, age,
-                is_aiesec_member, source, source_details,
-                education_status, university, course, specialty,
-                work_status, work_sphere,
-                missing_skills, expectations, phone, referrer_id, registration_date,
-                is_ambassador_candidate
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-        ''', (
-            data['telegram_id'],
-            data.get('username'),
-            data.get('full_name', ''),
-            data.get('email', '-'),
-            data.get('age'),
-            data.get('is_aiesec_member', False),
-            data.get('source', '-'),
-            data.get('source_details'),
-            data.get('education_status', '-'),
-            data.get('university'),
-            data.get('course'),
-            data.get('specialty'),
-            data.get('work_status', False),
-            data.get('work_sphere'),
-            data.get('missing_skills', '-'),
-            data.get('expectations', '-'),
-            data.get('phone'),
-            data.get('referrer_id'),
-            data['registration_date'],
-            data.get('is_ambassador_candidate', False)
-        ))
-        await db.commit()
+    db_path = os.path.abspath(config.DB_PATH)
+    logger.info(f"add_user: saving user {data.get('telegram_id')} to {db_path}")
+    try:
+        async with aiosqlite.connect(config.DB_PATH) as db:
+            await db.execute('''
+                INSERT OR REPLACE INTO users (
+                    telegram_id, username, full_name, email, age,
+                    is_aiesec_member, source, source_details,
+                    education_status, university, course, specialty,
+                    work_status, work_sphere,
+                    missing_skills, expectations, phone, city, referrer_id, registration_date,
+                    is_ambassador_candidate,
+                    local_committee, position, attendance_format, comments,
+                    expectations_ar, informal_day
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ''', (
+                data['telegram_id'],
+                data.get('username'),
+                data.get('full_name', ''),
+                data.get('email', '-'),
+                data.get('age'),
+                data.get('is_aiesec_member', False),
+                data.get('source', '-'),
+                data.get('source_details'),
+                data.get('education_status', '-'),
+                data.get('university'),
+                data.get('course'),
+                data.get('specialty'),
+                data.get('work_status', False),
+                data.get('work_sphere'),
+                data.get('missing_skills', '-'),
+                data.get('expectations', '-'),
+                data.get('phone'),
+                data.get('city'),
+                data.get('referrer_id'),
+                data['registration_date'],
+                data.get('is_ambassador_candidate', False),
+                data.get('local_committee'),
+                data.get('position'),
+                data.get('attendance_format'),
+                data.get('comments'),
+                data.get('expectations_ar'),
+                data.get('informal_day'),
+            ))
+            await db.commit()
+            logger.info(f"add_user: user {data.get('telegram_id')} saved OK")
+    except Exception as e:
+        logger.error(f"add_user FAILED for {data.get('telegram_id')}: {e}")
+        raise
 
 async def get_user(telegram_id: int):
+    db_path = os.path.abspath(config.DB_PATH)
     async with aiosqlite.connect(config.DB_PATH) as db:
         db.row_factory = aiosqlite.Row
         async with db.execute('SELECT * FROM users WHERE telegram_id = ?', (telegram_id,)) as cursor:
             row = await cursor.fetchone()
             if row:
                 return dict(row)
+            logger.info(f"get_user: {telegram_id} not found in {db_path}")
             return None
 
 async def get_user_by_username(username: str):
     async with aiosqlite.connect(config.DB_PATH) as db:
         db.row_factory = aiosqlite.Row
-        # Ensure username starts with @ for search, or try both
         if not username.startswith('@'):
             username = f"@{username}"
-            
+
         async with db.execute('SELECT * FROM users WHERE username = ? COLLATE NOCASE', (username,)) as cursor:
             row = await cursor.fetchone()
             if row:
@@ -149,17 +181,24 @@ async def get_all_users_ids():
         async with db.execute('SELECT telegram_id FROM users') as cursor:
             return [row[0] for row in await cursor.fetchall()]
 
+
+async def get_all_users_dicts() -> list[dict]:
+    async with aiosqlite.connect(config.DB_PATH) as db:
+        db.row_factory = aiosqlite.Row
+        async with db.execute('SELECT * FROM users ORDER BY registration_date') as cursor:
+            return [dict(row) for row in await cursor.fetchall()]
+
 async def get_stats():
     async with aiosqlite.connect(config.DB_PATH) as db:
         async with db.execute('SELECT COUNT(*) FROM users') as cursor:
             total = (await cursor.fetchone())[0]
 
         async with db.execute('''
-            SELECT university, COUNT(*) as cnt 
-            FROM users 
+            SELECT university, COUNT(*) as cnt
+            FROM users
             WHERE university IS NOT NULL AND TRIM(university) != '' AND university != '-'
-            GROUP BY university 
-            ORDER BY cnt DESC 
+            GROUP BY university
+            ORDER BY cnt DESC
             LIMIT 3
         ''') as cursor:
             top_universities = await cursor.fetchall()
@@ -193,7 +232,6 @@ async def get_source_stats():
 async def export_users_csv():
     async with aiosqlite.connect(config.DB_PATH) as db:
         async with db.execute('SELECT * FROM users') as cursor:
-             # Get headers
             headers = [description[0] for description in cursor.description]
             rows = await cursor.fetchall()
             if "phone" in headers:
