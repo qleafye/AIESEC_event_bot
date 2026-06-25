@@ -41,13 +41,7 @@ async def init_db():
                 city TEXT,
                 referrer_id INTEGER,
                 registration_date TEXT,
-                is_ambassador_candidate BOOLEAN DEFAULT 0,
-                local_committee TEXT,
-                position TEXT,
-                attendance_format TEXT,
-                comments TEXT,
-                expectations_ar TEXT,
-                informal_day TEXT
+                is_ambassador_candidate BOOLEAN DEFAULT 0
             )
         ''')
 
@@ -95,55 +89,39 @@ async def delete_setting(key: str):
 
 
 async def add_user(data: dict):
-    db_path = os.path.abspath(config.DB_PATH)
-    logger.info(f"add_user: saving user {data.get('telegram_id')} to {db_path}")
-    try:
-        async with aiosqlite.connect(config.DB_PATH) as db:
-            await db.execute('''
-                INSERT OR REPLACE INTO users (
-                    telegram_id, username, full_name, email, age,
-                    is_aiesec_member, source, source_details,
-                    education_status, university, course, specialty,
-                    work_status, work_sphere,
-                    missing_skills, expectations, phone, city, referrer_id, registration_date,
-                    is_ambassador_candidate,
-                    local_committee, position, attendance_format, comments,
-                    expectations_ar, informal_day
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-            ''', (
-                data['telegram_id'],
-                data.get('username'),
-                data.get('full_name', ''),
-                data.get('email', '-'),
-                data.get('age'),
-                data.get('is_aiesec_member', False),
-                data.get('source', '-'),
-                data.get('source_details'),
-                data.get('education_status', '-'),
-                data.get('university'),
-                data.get('course'),
-                data.get('specialty'),
-                data.get('work_status', False),
-                data.get('work_sphere'),
-                data.get('missing_skills', '-'),
-                data.get('expectations', '-'),
-                data.get('phone'),
-                data.get('city'),
-                data.get('referrer_id'),
-                data['registration_date'],
-                data.get('is_ambassador_candidate', False),
-                data.get('local_committee'),
-                data.get('position'),
-                data.get('attendance_format'),
-                data.get('comments'),
-                data.get('expectations_ar'),
-                data.get('informal_day'),
-            ))
-            await db.commit()
-            logger.info(f"add_user: user {data.get('telegram_id')} saved OK")
-    except Exception as e:
-        logger.error(f"add_user FAILED for {data.get('telegram_id')}: {e}")
-        raise
+    async with aiosqlite.connect(config.DB_PATH) as db:
+        await db.execute('''
+            INSERT OR REPLACE INTO users (
+                telegram_id, username, full_name, email, age,
+                is_aiesec_member, source, source_details,
+                education_status, university, course, specialty,
+                work_status, work_sphere,
+                missing_skills, expectations, phone, referrer_id, registration_date,
+                is_ambassador_candidate
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ''', (
+            data['telegram_id'],
+            data.get('username'),
+            data.get('full_name', ''),
+            data.get('email', '-'),
+            data.get('age'),
+            data.get('is_aiesec_member', False),
+            data.get('source', '-'),
+            data.get('source_details'),
+            data.get('education_status', '-'),
+            data.get('university'),
+            data.get('course'),
+            data.get('specialty'),
+            data.get('work_status', False),
+            data.get('work_sphere'),
+            data.get('missing_skills', '-'),
+            data.get('expectations', '-'),
+            data.get('phone'),
+            data.get('referrer_id'),
+            data['registration_date'],
+            data.get('is_ambassador_candidate', False)
+        ))
+        await db.commit()
 
 async def get_user(telegram_id: int):
     db_path = os.path.abspath(config.DB_PATH)

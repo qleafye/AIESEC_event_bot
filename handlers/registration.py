@@ -260,7 +260,6 @@ def _build_sheet_row(data: dict) -> list:
         data.get("username", "-"),
         data.get("registration_date", "-"),
         data.get("full_name", "-"),
-        data.get("age", "-"),
         data.get("email", "-"),
         data.get("source", "-"),
         details,
@@ -397,6 +396,7 @@ async def process_admin_rereg(message: types.Message, state: FSMContext):
 async def process_admin_rereg_skip(message: types.Message, state: FSMContext):
     await state.clear()
     await message.answer("Ок, остаёмся.", reply_markup=await get_main_menu_kb())
+
 
 
 # --- Core Registration ---
@@ -556,7 +556,7 @@ async def process_course(message: types.Message, state: FSMContext, bot: Bot):
 async def process_specialty(message: types.Message, state: FSMContext, bot: Bot):
     text = (message.text or "").strip()
     if not text:
-        await message.answer("Напиши специальность или нажми «Пропустить».")
+        await message.answer("Напиши или нажми «Пропустить».")
         return
     await state.update_data(specialty="-" if text == "Пропустить" else text)
     await _advance("specialty", message, state, bot)
