@@ -6,7 +6,7 @@ Brownfield extension of a production aiogram 3 + SQLite bot. The milestone adds 
 
 ## Phases
 
-- [ ] **Phase 1: DB Foundation + Quick Wins + Coins** - Safe schema migrations, coins ledger, channel subscription gate, registration confirmation step
+- [ ] **Phase 1: DB Foundation + Quick Wins + Coins** - Safe schema migrations, coins ledger, registration confirmation, subscription check + reminder broadcast, incomplete-registration tracking
 - [ ] **Phase 2: Approval Flow** - Core milestone: moderated application queue, tinder UI, atomic guards, per-form moderation toggles
 - [ ] **Phase 3: Scheduler + Communications + Verification** - Persistent APScheduler, filtered/scheduled broadcasts, dropout reminders, pre-selection gate
 - [ ] **Phase 4: Universal Modules** - Payment flow, consent module, event type/module toggles for conference support
@@ -17,13 +17,14 @@ Brownfield extension of a production aiogram 3 + SQLite bot. The milestone adds 
 **Goal:** Bot runs safely against ~590 live users with correct schema migrations, coins economy established correctly from the start, and visible UX quick wins
 **Mode:** mvp
 **Depends on:** Nothing (brownfield baseline; all migrations safe to deploy immediately due to DEFAULT 'approved')
-**Requirements:** DB-01, DB-02, DB-03, QW-01, QW-02, QW-03, COIN-01, COIN-02, COIN-03
+**Requirements:** DB-01, DB-02, DB-03, QW-01, QW-02, QW-03, COIN-01, COIN-02, COIN-03, SCHED-02
 **Success Criteria** (what must be TRUE):
   1. Running `init_db()` against the production `data/forum.db` leaves all existing users with `status='approved'` — no user loses access after migration
   2. Re-registration of an existing user (via admin test-reregister) does not reset `status`, `resume_file_id`, or any new columns — ON CONFLICT DO UPDATE verified
   3. `/coins @username +10` followed immediately by `/coins @username -3` produces a balance of 7 computed as `SUM(delta)` from the ledger; no read-modify-write race is possible
-  4. `/рейтинг` returns the top-10 users by coin balance and shows the requesting user's rank
-  5. When `channel_id` is configured, an unsubscribed user sees a subscribe prompt at `/start` and cannot proceed; when the bot lacks admin rights in the channel, `/start` fails open (user is allowed through)
+  4. `/рейтинг` returns the top-10 users by coin balance and shows the requesting user's rank; users see their own balance via the `🪙 Мои монеты` menu button
+  5. Subscription is **checked** (not gated) against the channel in the existing `contact_tg` setting via `getChatMember`; the admin is shown the count of non-subscribers and can send them a reminder via a broadcast segment; the check fails open when the bot lacks admin rights in the channel (no user is blocked at any point)
+  6. A user who starts `/start` but abandons before finishing is recorded in a persistent `reg_started` DB table (survives restart, independent of MemoryStorage) and deleted on completion; these incomplete registrations are selectable as a distinct broadcast audience segment (automated scheduled nudging remains SCHED-03 in Phase 3)
 **Plans:** TBD
 **UI hint:** yes
 
@@ -45,7 +46,8 @@ Brownfield extension of a production aiogram 3 + SQLite bot. The milestone adds 
 **Goal:** Admins can schedule filtered broadcasts that survive bot restarts; incomplete registrations are auto-reminded; pre-selected users are gated at /start
 **Mode:** mvp
 **Depends on:** Phase 2 (status field queryable for broadcast filters; finalize_registration() stable before reg_in_progress writes are added to it)
-**Requirements:** COMM-01, COMM-02, COMM-03, COMM-04, SCHED-01, SCHED-02, SCHED-03, VERIF-01, VERIF-02
+**Requirements:** COMM-01, COMM-02, COMM-03, COMM-04, SCHED-01, SCHED-03, VERIF-01, VERIF-02
+**Note:** SCHED-02 (`reg_started` dropout tracking) moved to Phase 1 per discussion; SCHED-03 here reuses that table for the automated scheduled nudge once APScheduler exists.
 **Success Criteria** (what must be TRUE):
   1. Admin schedules a broadcast for a future time, bot restarts, and the broadcast fires at the correct time — scheduler jobs survive restart via `scheduled_broadcasts` DB table and startup job restore
   2. Admin builds a filtered broadcast (e.g., город=Москва AND статус=approved AND registered after 01.06.2026), sees the matching user count before sending, and only those users receive the message
