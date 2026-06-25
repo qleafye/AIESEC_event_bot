@@ -127,7 +127,7 @@ Scope этого milestone: Фаза 1 (quick wins) + ядро (approval flow) +
 | COMM-03 | Phase 3 | Pending |
 | COMM-04 | Phase 3 | Pending |
 | SCHED-01 | Phase 3 | Pending |
-| SCHED-02 | Phase 3 | Pending |
+| SCHED-02 | Phase 1 | Pending |
 | SCHED-03 | Phase 3 | Pending |
 | VERIF-01 | Phase 3 | Pending |
 | VERIF-02 | Phase 3 | Pending |
