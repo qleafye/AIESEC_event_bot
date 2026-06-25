@@ -103,17 +103,51 @@ Scope этого milestone: Фаза 1 (quick wins) + ядро (approval flow) +
 
 ## Traceability
 
-Заполняется при создании роадмапа.
-
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| _(populated by roadmapper)_ | | |
+| DB-01 | Phase 1 | Pending |
+| DB-02 | Phase 1 | Pending |
+| DB-03 | Phase 1 | Pending |
+| QW-01 | Phase 1 | Pending |
+| QW-02 | Phase 1 | Pending |
+| QW-03 | Phase 1 | Pending |
+| COIN-01 | Phase 1 | Pending |
+| COIN-02 | Phase 1 | Pending |
+| COIN-03 | Phase 1 | Pending |
+| APP-01 | Phase 2 | Pending |
+| APP-02 | Phase 2 | Pending |
+| APP-03 | Phase 2 | Pending |
+| APP-04 | Phase 2 | Pending |
+| APP-05 | Phase 2 | Pending |
+| APP-06 | Phase 2 | Pending |
+| APP-07 | Phase 2 | Pending |
+| APP-08 | Phase 2 | Pending |
+| COMM-01 | Phase 3 | Pending |
+| COMM-02 | Phase 3 | Pending |
+| COMM-03 | Phase 3 | Pending |
+| COMM-04 | Phase 3 | Pending |
+| SCHED-01 | Phase 3 | Pending |
+| SCHED-02 | Phase 3 | Pending |
+| SCHED-03 | Phase 3 | Pending |
+| VERIF-01 | Phase 3 | Pending |
+| VERIF-02 | Phase 3 | Pending |
+| MOD-01 | Phase 4 | Pending |
+| MOD-02 | Phase 4 | Pending |
+| MOD-03 | Phase 4 | Pending |
+| CONS-01 | Phase 4 | Pending |
+| CONS-02 | Phase 4 | Pending |
+| PAY-01 | Phase 4 | Pending |
+| PAY-02 | Phase 4 | Pending |
+| PAY-03 | Phase 4 | Pending |
+| PAY-04 | Phase 4 | Pending |
+| PAY-05 | Phase 4 | Pending |
+| PAY-06 | Phase 4 | Pending |
 
 **Coverage:**
-- v1 requirements: 36 total
-- Mapped to phases: TBD
-- Unmapped: TBD
+- v1 requirements: 37 total (REQUIREMENTS.md originally listed 36; actual count from IDs is 37 — PAY-06 is the 37th)
+- Mapped to phases: 37/37
+- Unmapped: 0
 
 ---
 *Requirements defined: 2026-06-25*
-*Last updated: 2026-06-25 after initial definition*
+*Last updated: 2026-06-25 — traceability populated by roadmapper*
