@@ -262,4 +262,5 @@ async def process_question(message: types.Message, state: FSMContext, bot: Bot):
         logger.warning("No admins configured to receive questions")
         await message.answer("Администраторы не настроены.", reply_markup=await get_main_menu_kb())
 
+
     await state.clear()
