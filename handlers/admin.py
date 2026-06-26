@@ -347,6 +347,15 @@ async def render_settings_text() -> str:
     bonus_label = "✅ Вкл" if bonus_enabled == "on" else "❌ Выкл"
     lines.append(f"🎁 Бонус за регистрацию: <b>{bonus_label}</b>")
 
+    full_appr = await get_setting("full_approval") or "manual"
+    short_appr = await get_setting("short_approval") or "auto"
+    notify_mode = await get_setting("pending_notify_mode") or "batched"
+    appr_lbl = lambda v: "👮 Ручная" if v == "manual" else "⚡ Авто"
+    lines.append(f"✅ Модерация полной формы: <b>{appr_lbl(full_appr)}</b>")
+    lines.append(f"✅ Модерация краткой формы: <b>{appr_lbl(short_appr)}</b>")
+    notify_lbl = "📨 Сразу" if notify_mode == "instant" else "🕒 Пачкой (напоминалка)"
+    lines.append(f"🔔 Уведомление о заявке: <b>{notify_lbl}</b>")
+
     enabled_q = 0
     for _, sk in REG_FLOW:
         v = await get_setting(sk)
@@ -400,9 +409,19 @@ async def build_settings_keyboard():
     bonus_enabled = await get_setting("reg_bonus_enabled") or "off"
     bonus_toggle_text = "🎁 Бонус: ❌ Выкл → ✅ Вкл" if bonus_enabled == "off" else "🎁 Бонус: ✅ Вкл → ❌ Выкл"
 
+    full_appr = await get_setting("full_approval") or "manual"
+    short_appr = await get_setting("short_approval") or "auto"
+    notify_mode = await get_setting("pending_notify_mode") or "batched"
+    full_txt = "✅ Полная форма: 👮 Ручная → ⚡ Авто" if full_appr == "manual" else "✅ Полная форма: ⚡ Авто → 👮 Ручная"
+    short_txt = "✅ Краткая форма: 👮 Ручная → ⚡ Авто" if short_appr == "manual" else "✅ Краткая форма: ⚡ Авто → 👮 Ручная"
+    notify_txt = "🔔 Уведомление: 📨 Сразу → 🕒 Пачкой" if notify_mode == "instant" else "🔔 Уведомление: 🕒 Пачкой → 📨 Сразу"
+
     buttons = [
         [InlineKeyboardButton(text=toggle_text, callback_data="settings_toggle_reg")],
         [InlineKeyboardButton(text=bonus_toggle_text, callback_data="settings_toggle_bonus")],
+        [InlineKeyboardButton(text=full_txt, callback_data="settings_toggle_full_approval")],
+        [InlineKeyboardButton(text=short_txt, callback_data="settings_toggle_short_approval")],
+        [InlineKeyboardButton(text=notify_txt, callback_data="settings_toggle_notify")],
         [InlineKeyboardButton(text="📋 Вопросы регистрации", callback_data="admin_reg_questions")],
         [InlineKeyboardButton(text="🔘 Кнопки меню", callback_data="admin_menu_buttons")],
     ]
@@ -440,6 +459,41 @@ async def toggle_registration_mode(callback: types.CallbackQuery):
     label = "📋 Полная" if new_mode == "full" else "⚡ Краткая"
     await callback.answer(f"Форма регистрации: {label}", show_alert=True)
 
+    text = await render_settings_text()
+    await callback.message.edit_text(text, parse_mode="HTML", reply_markup=await build_settings_keyboard())
+
+
+async def _toggle_approval_setting(callback: types.CallbackQuery, key: str, default: str, title: str):
+    if callback.from_user.id not in config.ADMIN_IDS:
+        await callback.answer("Недостаточно прав", show_alert=True)
+        return
+    current = await get_setting(key) or default
+    new_val = "auto" if current == "manual" else "manual"
+    await set_setting(key, new_val)
+    await callback.answer(f"{title}: {'👮 Ручная' if new_val == 'manual' else '⚡ Авто'}", show_alert=True)
+    text = await render_settings_text()
+    await callback.message.edit_text(text, parse_mode="HTML", reply_markup=await build_settings_keyboard())
+
+
+@router.callback_query(F.data == "settings_toggle_full_approval")
+async def toggle_full_approval(callback: types.CallbackQuery):
+    await _toggle_approval_setting(callback, "full_approval", "manual", "Модерация полной формы")
+
+
+@router.callback_query(F.data == "settings_toggle_short_approval")
+async def toggle_short_approval(callback: types.CallbackQuery):
+    await _toggle_approval_setting(callback, "short_approval", "auto", "Модерация краткой формы")
+
+
+@router.callback_query(F.data == "settings_toggle_notify")
+async def toggle_notify_mode(callback: types.CallbackQuery):
+    if callback.from_user.id not in config.ADMIN_IDS:
+        await callback.answer("Недостаточно прав", show_alert=True)
+        return
+    current = await get_setting("pending_notify_mode") or "batched"
+    new_val = "batched" if current == "instant" else "instant"
+    await set_setting("pending_notify_mode", new_val)
+    await callback.answer(f"Уведомление: {'📨 Сразу' if new_val == 'instant' else '🕒 Пачкой'}", show_alert=True)
     text = await render_settings_text()
     await callback.message.edit_text(text, parse_mode="HTML", reply_markup=await build_settings_keyboard())
 
