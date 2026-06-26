@@ -25,6 +25,7 @@ Brownfield extension of a production aiogram 3 + SQLite bot. The milestone adds 
   4. `/рейтинг` returns the top-10 users by coin balance and shows the requesting user's rank; users see their own balance via the `🪙 Мои монеты` menu button
   5. Subscription is **checked** (not gated) against the channel in the existing `contact_tg` setting via `getChatMember`; the admin is shown the count of non-subscribers and can send them a reminder via a broadcast segment; the check fails open when the bot lacks admin rights in the channel (no user is blocked at any point)
   6. A user who starts `/start` but abandons before finishing is recorded in a persistent `reg_started` DB table (survives restart, independent of MemoryStorage) and deleted on completion; these incomplete registrations are selectable as a distinct broadcast audience segment (automated scheduled nudging remains SCHED-03 in Phase 3)
+**Note:** QW-03 is split across phases — Phase 1 delivers the delegate-side upload/validation/storage of `resume_file_id`; the manager-side viewing half is delivered by APP-04 in Phase 2 (see below).
 **Plans:** 4 plans (3 waves)
 Plans:
 - [ ] 01-01-PLAN.md — DB foundation: safe migrations (status/resume_file_id/subscribed), ON CONFLICT add_user, coins ledger + reg_started + subscription helpers (Wave 1)
@@ -40,7 +41,7 @@ Plans:
 **Requirements:** APP-01, APP-02, APP-03, APP-04, APP-05, APP-06, APP-07, APP-08
 **Success Criteria** (what must be TRUE):
   1. User completing registration with `short_approval=manual` or `full_approval=manual` sees "заявка отправлена" with no main menu; `ensure_registered()` denies all gated actions until status is 'approved'
-  2. Manager opens "Заявки" in the admin panel and sees one paginated application card at a time with Одобрить / Отклонить / Пропустить / Одобрить все N buttons; the queue is driven by the oldest `status=pending` DB row, not FSM page offsets that would reset on restart
+  2. Manager opens "Заявки" in the admin panel and sees one paginated application card at a time with Одобрить / Отклонить / Пропустить / Одобрить все N buttons; the queue is driven by the oldest `status=pending` DB row, not FSM page offsets that would reset on restart; when the applicant has a stored `resume_file_id` (from Phase 1 QW-03 upload) the card re-sends that file via `answer_document` so the manager can open the resume — this delivers the manager-side viewing half of QW-03 (APP-04)
   3. Two managers clicking "Одобрить" on the same application simultaneously results in exactly one approval message sent to the user — the atomic `UPDATE … WHERE status='pending'` + rowcount=0 guard prevents the duplicate
   4. "Одобрить все N" shows a confirmation dialog before executing; each approved user receives welcome content + main menu exactly once
   5. Managers receive a periodic reminder with the count of pending applications (not one push per submission — notification storm prevented)
