@@ -28,5 +28,6 @@ class Settings(BaseSettings):
     class Config:
         env_file = ".env"
         env_file_encoding = 'utf-8'
+        extra = "ignore"  # tolerate undeclared .env keys (e.g. legacy flags) — don't crash boot
 
 config = Settings()
