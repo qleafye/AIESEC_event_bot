@@ -45,7 +45,12 @@ Plans:
   3. Two managers clicking "Одобрить" on the same application simultaneously results in exactly one approval message sent to the user — the atomic `UPDATE … WHERE status='pending'` + rowcount=0 guard prevents the duplicate
   4. "Одобрить все N" shows a confirmation dialog before executing; each approved user receives welcome content + main menu exactly once
   5. Managers receive a periodic reminder with the count of pending applications (not one push per submission — notification storm prevented)
-**Plans:** TBD
+**Plans:** 4 plans (3 waves)
+Plans:
+- [ ] 02-01-PLAN.md — DB approval layer: atomic approve/reject guards, oldest-pending queue + count, bulk approve_all_pending (Wave 1)
+- [ ] 02-02-PLAN.md — finalize split (submit/approve_user), status decision + per-form toggles, ensure_registered gating, rejected re-apply (Wave 2)
+- [ ] 02-03-PLAN.md — admin "Заявки" tinder UI: cards + resume re-send, atomic approve, reject-reason FSM, Одобрить все N + 429-safe sends, /settings_guide (Wave 3)
+- [ ] 02-04-PLAN.md — periodic pending-count reminder asyncio task at startup (Wave 2)
 **UI hint:** yes
 
 ### Phase 3: Scheduler + Communications + Verification
