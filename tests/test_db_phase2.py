@@ -70,6 +70,29 @@ def test_pending_queue_order_and_count(tmp_path):
 
 # ── bulk approve all ─────────────────────────────────────────────────────────
 
+def test_conference_fields_roundtrip(tmp_path):
+    _use_tmp_db(tmp_path)
+    asyncio.run(db.init_db())
+    asyncio.run(db.add_user({
+        "telegram_id": 99,
+        "full_name": "Конф Юзер",
+        "registration_date": "2026-03-01",
+        "department": "BD",
+        "aiesec_role": "TL",
+        "needs_certificate": "Нет",
+        "english_level": "Средний",
+        "arrival": "В дни конфы",
+        "housing": "Хост",
+        "volunteer": "Да",
+    }))
+    u = asyncio.run(db.get_user(99))
+    assert u["department"] == "BD"
+    assert u["aiesec_role"] == "TL"
+    assert u["english_level"] == "Средний"
+    assert u["arrival"] == "В дни конфы"
+    assert u["volunteer"] == "Да"
+
+
 def test_approve_all_pending_flips_once(tmp_path):
     _use_tmp_db(tmp_path)
     asyncio.run(db.init_db())
