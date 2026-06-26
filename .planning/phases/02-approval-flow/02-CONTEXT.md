@@ -1,6 +1,7 @@
 # Phase 2: Approval Flow - Context
 
 **Gathered:** 2026-06-26
+**Updated:** 2026-06-26 (reconciled against master plan `PLAN_YOULEAD_TZ.md`; resolved APP-02↔D-15 notify conflict, rejected re-apply, mass-approve sends, resume-toggle scope)
 **Status:** Ready for planning (discussion done; coding deferred to next session — token budget)
 
 <domain>
@@ -22,6 +23,7 @@ Builds directly on Phase 1: the `status` column (DEFAULT 'approved'), `resume_fi
 - **D-03:** `finalize_registration` sets `status` based on form type + the matching setting: full form + `full_approval=manual` → `pending`; short form + `short_approval=manual` → `pending`; otherwise `approved`. Existing column DEFAULT 'approved' keeps the 590 live users intact.
 - **D-04:** After registration, a `pending` user sees a "заявка отправлена / на рассмотрении" message and **no main menu**. An `approved` user gets the existing complete-text + main menu flow.
 - **D-05:** `ensure_registered(message)` (user_actions.py:19) returns True **only** when the user exists AND `status='approved'`. `pending` → "заявка на рассмотрении" message + False; `rejected` → rejection text + False. This gates ALL menu actions (decided: manual approval is meaningless without gating; impact is limited because short=auto).
+- **D-05a (NEW — rejected re-apply):** A `rejected` user who runs `/start` again **can re-register** → new submission resets `status` to `pending` (or `approved` if that form is auto), creating a fresh application the manager sees again. `/start` for rejected does NOT dead-end on the rejection text — it re-enters the registration flow. `ensure_registered` still returns False for `rejected` (menu stays gated until re-approval). Implementation: on re-submit, `submit_application`/`finalize_registration` overwrites `status` via the existing ON CONFLICT DO UPDATE path (Phase 1 D-17). Clear any prior `reject reason` on re-submit.
 
 ### Application review UI (APP-02, APP-03, APP-04)
 - **D-06:** Admin panel gets a "📋 Заявки" entry. Shows **one paginated application card at a time**.
@@ -31,18 +33,25 @@ Builds directly on Phase 1: the `status` column (DEFAULT 'approved'), `resume_fi
 
 ### Atomic approval (APP-05)
 - **D-10:** Approve = **atomic** `UPDATE users SET status='approved' WHERE telegram_id=? AND status='pending'`; check `rowcount`. If `rowcount=0` the row was already handled by another manager → **send nothing** (prevents duplicate approval message). Only on `rowcount=1` send the welcome content + main menu to the user (exactly once).
-- **D-11:** "Одобрить все N" shows a **confirmation dialog** before executing. Each newly-approved user receives welcome + main menu exactly once (reuse the atomic per-row guard in a loop, or a single UPDATE + iterate the rows that flipped).
+- **D-11:** "Одобрить все N" shows a **confirmation dialog** before executing. **DB-flip-first, queue the sends:** atomically flip all pending → approved in one `UPDATE ... WHERE status='pending'` (capture the flipped telegram_ids via RETURNING or a pre-SELECT snapshot), so the queue clears immediately and the manager UI returns fast. THEN drain the welcome+menu sends in a background pass that handles Telegram rate limits — catch `TelegramRetryAfter` and `sleep(retry_after + 1)` before retrying (reuse the existing broadcast loop's 429 pattern in admin.py). At 590+ scale a mass approve can be hundreds of sends; sequential-with-sleep is acceptable as long as the DB flip is not blocked on send completion. Each flipped user receives welcome + main menu exactly once (the atomic flip guarantees no double-send even if two managers race).
 
 ### Rejection (APP-03)
 - **D-12:** "Отклонить" prompts the manager for a **free-text reason** (FSM step). Sets `status='rejected'`. The user receives a configurable rejection text (`reject_text` setting) **+ the manager's reason**. html.escape the reason before sending.
 
-### Periodic reminder (APP-08) — anti-storm
-- **D-13:** A single **asyncio background task** (started in main.py startup; NO APScheduler this phase) sends the pending count to all `config.ADMIN_IDS`. One message per interval, NOT one push per submission.
-- **D-14:** Configurable via settings: `pending_reminder_enabled` (on|off, default on) and `pending_reminder_interval` (seconds). **Default interval = 1800s (30 min)** — overriding the user's "60 sec" request for storm-safety; admin can lower to 60s via the settings command if desired. Reminder fires only when pending count > 0.
-- **D-15:** **Suppress the instant per-registration admin ping for `pending` submissions** (finalize_registration currently notifies admins on every registration, registration.py ~684-705). For pending users rely on the periodic reminder instead (prevents the storm). Keep/instant-notify behavior for auto-approved is acceptable (or also fold into reminder — Claude discretion at plan time).
+### Submission notification + periodic reminder (APP-02, APP-08) — admin-configurable
+- **D-13:** A single **asyncio background task** (started in main.py startup; NO APScheduler this phase) sends the **standing pending count** to all `config.ADMIN_IDS`. One message per interval, NOT one push per submission. Fires only when pending count > 0.
+- **D-14:** Configurable via settings: `pending_reminder_enabled` (on|off, default on) and `pending_reminder_interval` (seconds). **Default interval = 1800s (30 min)** — storm-safe; admin can lower via the settings command.
+- **D-15 (REVISED — resolves APP-02↔anti-storm conflict):** The per-submission manager notification is **admin-configurable via /admin**, not hardcoded-suppressed. New setting `pending_notify_mode` ∈ {`instant`, `batched`}, **default `batched`**:
+  - `instant` — each `pending` submission fires an immediate admin ping (literal APP-02 "менеджер получает уведомление"). Admin opt-in for low-volume events.
+  - `batched` (default) — NO per-submission ping; the manager learns of new pendings through the periodic reminder (D-13/D-14) every `pending_reminder_interval`. This is the storm-safe path for the 590+ surge. Satisfies APP-02 as "notified on a batched cadence."
+  - The existing instant admin ping for **auto-approved** registrations (registration.py ~684-705) is unaffected — only the `pending`-submission ping is gated by `pending_notify_mode`.
+  - Expose `pending_notify_mode` in the D-16 settings-guide command.
 
 ### Self-documenting settings (cross-cutting, user-requested)
-- **D-16:** Add an admin command (e.g. `/settings_guide` or extend the `/admin` panel) that **lists every configurable `bot_settings` key with a human description and current value** — so a new admin understands what to configure and where, without reading git/README. Cover at minimum: `short_approval`, `full_approval`, `reject_text`, `pending_reminder_enabled`, `pending_reminder_interval`, plus the existing REG_FLOW toggles and texts.
+- **D-16:** Add an admin command (e.g. `/settings_guide` or extend the `/admin` panel) that **lists every configurable `bot_settings` key with a human description and current value** — so a new admin understands what to configure and where, without reading git/README. Cover at minimum: `short_approval`, `full_approval`, `reject_text`, `pending_notify_mode`, `pending_reminder_enabled`, `pending_reminder_interval`, plus the existing REG_FLOW toggles and texts (incl. Phase 1 `reg_q_resume`).
+
+### Resume toggle — scope clarification (NOT a Phase 2 decision)
+- **D-09a (carry-over, no new work):** The "Резюме: Вкл/Выкл" per-form toggle in `PLAN_YOULEAD_TZ.md` (line 139) is **already delivered by Phase 1** as `reg_q_resume` (Phase 1 D-08: toggleable REG_FLOW step, default off, full form, PDF/DOCX, mandatory when on). Phase 2 adds ONLY the **manager-side view** (D-09: re-send the stored `resume_file_id` via `answer_document` on the application card). No new resume setting or upload logic in Phase 2.
 
 ### Claude's Discretion (resolve at plan/code time)
 - Exact pagination/skip-tracking mechanism; "Одобрить все N" implementation (loop vs bulk UPDATE + RETURNING); whether auto-approved registrations keep the instant admin ping or also defer to reminder; exact card layout/copy; settings-guide command name and formatting; where the reminder task is registered in main.py.
@@ -54,8 +63,9 @@ Builds directly on Phase 1: the `status` column (DEFAULT 'approved'), `resume_fi
 **Downstream agents/coder MUST read before implementing.**
 
 ### Plan & requirements
-- `.planning/REQUIREMENTS.md` §Approval — APP-01..APP-08 (verify each maps to a decision above)
+- `.planning/REQUIREMENTS.md` §Approval — APP-01..APP-08 (verified: each maps to a decision above; APP-07 = moderation toggle only, NOT the REG_DEFAULTS_SHORT/FULL question-set split)
 - `.planning/ROADMAP.md` §Phase 2 — goal + 5 success criteria (criterion 2 includes the QW-03 resume-view via answer_document)
+- `PLAN_YOULEAD_TZ.md` — master plan / source TЗ digest. §"регистрация → заявки" (approval architecture, tinder UI mock lines 103-121), §"Раздельные настройки для форм" (per-form settings — note: full question-set split is broader than Phase 2; APP-07 is only the moderation toggle), §"Открытые вопросы" (баллы слетали → transactions log already addressed by Phase 1 coins ledger).
 
 ### Existing code (source of truth)
 - `database/db.py` — `add_user` (ON CONFLICT, status excluded — Phase 1), `get_setting/set_setting`, `get_user`, `get_user_by_username`. NEW needed: `get_pending_users()` (oldest first), `approve_user_atomic(telegram_id) -> bool` (rowcount guard), `reject_user(telegram_id)`, `get_pending_count()`.
@@ -75,7 +85,9 @@ Builds directly on Phase 1: the `status` column (DEFAULT 'approved'), `resume_fi
 - Pending submitted message: e.g. "✅ Заявка отправлена! Менеджер рассмотрит её в ближайшее время."
 - Pending gated message (ensure_registered): "⏳ Твоя заявка на рассмотрении. Доступ откроется после одобрения."
 - Reminder message: "📋 Заявок в ожидании: N. Открой /admin → Заявки."
-- Settings keys defaults: `full_approval=manual`, `short_approval=auto`, `pending_reminder_enabled=on`, `pending_reminder_interval=1800`, `reject_text` (configurable prefix).
+- Settings keys defaults: `full_approval=manual`, `short_approval=auto`, `pending_notify_mode=batched`, `pending_reminder_enabled=on`, `pending_reminder_interval=1800`, `reject_text` (configurable prefix).
+- Rejected re-apply: on `/start` a rejected user re-enters registration; new submission overwrites status (pending/approved per form). Prior reject reason cleared.
+- Mass approve: DB flip-all-pending first (fast UI return), then background welcome-send drain with `TelegramRetryAfter` handling.
 </specifics>
 
 <deferred>
@@ -87,5 +99,5 @@ Builds directly on Phase 1: the `status` column (DEFAULT 'approved'), `resume_fi
 ---
 
 *Phase: 02-approval-flow*
-*Context gathered: 2026-06-26 (discussion-only session; implementation pending token reset)*
+*Context gathered: 2026-06-26; updated 2026-06-26 (reconciled vs PLAN_YOULEAD_TZ.md). Implementation pending — Phase 1 not yet executed.*
 </context>
