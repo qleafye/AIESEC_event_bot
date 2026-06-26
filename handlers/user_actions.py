@@ -24,14 +24,34 @@ from config import config
 router = Router()
 logger = logging.getLogger(__name__)
 
+def _gate_decision(status) -> tuple[bool, str | None]:
+    """Map a user's status to (allowed, denial_kind). Legacy/missing/unknown -> allowed
+    (the ~590 live users have status='approved' via the migration default)."""
+    status = status or "approved"
+    if status == "pending":
+        return False, "pending"
+    if status == "rejected":
+        return False, "rejected"
+    return True, None  # approved + any unknown legacy value
+
+
 async def ensure_registered(message: types.Message) -> bool:
     user = await get_user(message.from_user.id)
-    if user:
-        return True
+    if not user:
+        await message.answer(
+            "Чтобы пользоваться ботом, сначала нужно зарегистрироваться. Отправь команду /start.",
+        )
+        return False
 
-    await message.answer(
-        "Чтобы пользоваться ботом, сначала нужно зарегистрироваться. Отправь команду /start.",
-    )
+    allowed, kind = _gate_decision(user.get("status"))
+    if allowed:
+        return True
+    if kind == "pending":
+        await message.answer("⏳ Твоя заявка на рассмотрении. Доступ откроется после одобрения.")
+    else:  # rejected
+        await message.answer(
+            await get_setting("reject_text") or "К сожалению, твоя заявка отклонена.",
+        )
     return False
 
 

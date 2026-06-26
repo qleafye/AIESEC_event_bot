@@ -11,7 +11,7 @@ from aiogram.types import FSInputFile, ReplyKeyboardRemove
 from aiogram.utils.keyboard import ReplyKeyboardBuilder
 
 from config import config
-from database.db import add_user, get_user, get_setting, mark_reg_started, clear_reg_started, set_user_subscribed
+from database.db import add_user, get_user, get_setting, mark_reg_started, clear_reg_started, set_user_subscribed, set_user_status
 from handlers.states import Registration
 from keyboards.builders import (
     get_main_menu_kb,
@@ -39,6 +39,15 @@ DEFAULT_START_TEXT = (
     "Это бот мероприятия. Зарегистрируйся, чтобы получить доступ ко всей информации.\n\n"
     "Настройте текст приветствия через /admin → Настройки → Приветствие."
 )
+
+# --- Approval status decision (Phase 2, D-01..D-03) ---
+
+def _decide_status(reg_mode: str, full_setting: str, short_setting: str) -> str:
+    """Form type x per-form moderation setting -> 'pending' | 'approved'.
+    Full form uses full_setting, short form uses short_setting; 'manual' -> pending."""
+    setting = full_setting if reg_mode == "full" else short_setting
+    return "pending" if setting == "manual" else "approved"
+
 
 # --- Registration Flow Engine ---
 
@@ -448,7 +457,8 @@ async def cmd_start(message: types.Message, state: FSMContext, bot: Bot, command
     start_photo = await get_setting("start_photo_file_id")
     logger.info(f"Settings: start_text={start_text[:80]!r}, start_photo={start_photo!r}")
 
-    if user:
+    if user and (user.get("status") or "approved") != "rejected":
+        # D-05a: a rejected user falls through to re-register; others see the welcome menu.
         logger.info(f"User {user_id} already registered")
         await _send_welcome(message, start_text, start_photo, await get_main_menu_kb(), user_id)
 
@@ -769,6 +779,26 @@ async def process_comments(message: types.Message, state: FSMContext, bot: Bot):
 
 # --- Finalize ---
 
+async def approve_user(bot: Bot, telegram_id: int):
+    """Send the post-approval welcome (complete text + main menu + bonus) to a user
+    by chat id. Reused by the auto-approve path here and the manager manual-approve
+    path (admin.py). Fail-soft: a blocked/unknown user never raises."""
+    try:
+        complete_text = await get_setting("reg_complete_text") or "Регистрация завершена! Увидимся на форуме! 🎉"
+        await bot.send_message(telegram_id, complete_text, reply_markup=await get_main_menu_kb(), parse_mode="HTML")
+
+        if await get_setting("reg_bonus_enabled") == "on":
+            bonus_caption = await get_setting("reg_bonus_caption") or "\U0001f381 Бонус за регистрацию!"
+            bonus_photo = await get_setting("reg_bonus_photo_file_id")
+            bonus_doc = await get_setting("reg_bonus_doc_file_id")
+            if bonus_doc:
+                await bot.send_document(telegram_id, bonus_doc, caption=bonus_caption, parse_mode="HTML")
+            elif bonus_photo:
+                await bot.send_photo(telegram_id, bonus_photo, caption=bonus_caption, parse_mode="HTML")
+    except Exception as e:
+        logger.error(f"Failed to send approval welcome to {telegram_id}: {e}")
+
+
 async def finalize_registration(message: types.Message, state: FSMContext, bot: Bot):
     data = await state.get_data()
     data["telegram_id"] = message.from_user.id
@@ -810,13 +840,29 @@ async def finalize_registration(message: types.Message, state: FSMContext, bot: 
     except Exception as e:
         logger.error(f"Failed to append user {message.from_user.id} to Google Sheet: {e}")
 
-    if config.ADMIN_IDS:
+    # Phase 2 (D-01..D-04): decide approval status from form type + per-form setting, persist it.
+    reg_mode = await get_setting("registration_mode") or "short"
+    full_setting = await get_setting("full_approval") or "manual"
+    short_setting = await get_setting("short_approval") or "auto"
+    status = _decide_status(reg_mode, full_setting, short_setting)
+    try:
+        await set_user_status(message.from_user.id, status)
+    except Exception as e:
+        logger.error(f"Failed to set status for {message.from_user.id}: {e}")
+
+    # Admin notify: always for approved; for pending only when pending_notify_mode='instant' (D-15).
+    notify_admins = status == "approved" or (
+        status == "pending" and (await get_setting("pending_notify_mode") or "batched") == "instant"
+    )
+    if config.ADMIN_IDS and notify_admins:
         safe_name = html.escape(str(data.get("full_name", "-")))
         safe_username = html.escape(str(data.get("username", "-")))
         admin_text = (
             f"\U0001f195 <b>Новая регистрация!</b>\n"
             f"\U0001f464 {safe_name} ({safe_username})"
         )
+        if status == "pending":
+            admin_text += "\n⏳ Ожидает одобрения (/admin → Заявки)"
         if data.get("local_committee") and data["local_committee"] != "-":
             admin_text += f"\n\U0001f3e2 {html.escape(str(data['local_committee']))}"
         if data.get("position") and data["position"] != "-":
@@ -834,18 +880,10 @@ async def finalize_registration(message: types.Message, state: FSMContext, bot: 
                 logger.error(f"Failed to notify admin {admin_id}: {e}")
 
     await state.clear()
-    complete_text = await get_setting("reg_complete_text") or "Регистрация завершена! Увидимся на форуме! 🎉"
-    await message.answer(complete_text, reply_markup=await get_main_menu_kb(), parse_mode="HTML")
-
-    bonus_enabled = await get_setting("reg_bonus_enabled")
-    if bonus_enabled == "on":
-        bonus_caption = await get_setting("reg_bonus_caption") or "\U0001f381 Бонус за регистрацию!"
-        bonus_photo = await get_setting("reg_bonus_photo_file_id")
-        bonus_doc = await get_setting("reg_bonus_doc_file_id")
-        try:
-            if bonus_doc:
-                await message.answer_document(bonus_doc, caption=bonus_caption, parse_mode="HTML")
-            elif bonus_photo:
-                await message.answer_photo(bonus_photo, caption=bonus_caption, parse_mode="HTML")
-        except Exception as e:
-            logger.error(f"Failed to send bonus to {message.from_user.id}: {e}")
+    if status == "approved":
+        await approve_user(bot, message.from_user.id)
+    else:
+        await message.answer(
+            "✅ Заявка отправлена! Менеджер рассмотрит её в ближайшее время.",
+            reply_markup=ReplyKeyboardRemove(),
+        )
