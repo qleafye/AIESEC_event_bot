@@ -1,5 +1,6 @@
 import logging
 import os
+from datetime import datetime
 
 import aiosqlite
 from config import config
@@ -55,10 +56,37 @@ async def init_db():
         await _ensure_column(db, "users", "expectations_ar", "TEXT")
         await _ensure_column(db, "users", "informal_day", "TEXT")
 
+        # Phase 1 migrations (additive, idempotent — safe against ~590 live users)
+        await _ensure_column(db, "users", "status", "TEXT DEFAULT 'approved'")
+        await _ensure_column(db, "users", "resume_file_id", "TEXT")
+        await _ensure_column(db, "users", "subscribed", "INTEGER")
+
         await db.execute('''
             CREATE TABLE IF NOT EXISTS bot_settings (
                 key TEXT PRIMARY KEY,
                 value TEXT NOT NULL
+            )
+        ''')
+
+        # Phase 1: append-only coins ledger (balance = SUM(delta), never UPDATE)
+        await db.execute('''
+            CREATE TABLE IF NOT EXISTS coins (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                user_id INTEGER NOT NULL,
+                delta INTEGER NOT NULL,
+                reason TEXT,
+                changed_by INTEGER,
+                timestamp TEXT NOT NULL
+            )
+        ''')
+        await db.execute('CREATE INDEX IF NOT EXISTS idx_coins_user ON coins(user_id)')
+
+        # Phase 1: persistent dropout tracking (survives restart, independent of FSM)
+        await db.execute('''
+            CREATE TABLE IF NOT EXISTS reg_started (
+                telegram_id INTEGER PRIMARY KEY,
+                username TEXT,
+                started_at TEXT NOT NULL
             )
         ''')
 
@@ -90,15 +118,49 @@ async def delete_setting(key: str):
 
 async def add_user(data: dict):
     async with aiosqlite.connect(config.DB_PATH) as db:
+        # ON CONFLICT DO UPDATE (not INSERT OR REPLACE): REPLACE is DELETE+INSERT and would
+        # wipe columns absent from this list (e.g. status) on re-registration. status is
+        # owned by the approval flow + migration default only — never touched here.
         await db.execute('''
-            INSERT OR REPLACE INTO users (
+            INSERT INTO users (
                 telegram_id, username, full_name, email, age,
                 is_aiesec_member, source, source_details,
                 education_status, university, course, specialty,
                 work_status, work_sphere,
-                missing_skills, expectations, phone, referrer_id, registration_date,
-                is_ambassador_candidate
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                missing_skills, expectations, phone, city,
+                referrer_id, registration_date,
+                is_ambassador_candidate,
+                local_committee, position, attendance_format,
+                comments, expectations_ar, informal_day, resume_file_id
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ON CONFLICT(telegram_id) DO UPDATE SET
+                username=excluded.username,
+                full_name=excluded.full_name,
+                email=excluded.email,
+                age=excluded.age,
+                is_aiesec_member=excluded.is_aiesec_member,
+                source=excluded.source,
+                source_details=excluded.source_details,
+                education_status=excluded.education_status,
+                university=excluded.university,
+                course=excluded.course,
+                specialty=excluded.specialty,
+                work_status=excluded.work_status,
+                work_sphere=excluded.work_sphere,
+                missing_skills=excluded.missing_skills,
+                expectations=excluded.expectations,
+                phone=excluded.phone,
+                city=excluded.city,
+                referrer_id=excluded.referrer_id,
+                registration_date=excluded.registration_date,
+                is_ambassador_candidate=excluded.is_ambassador_candidate,
+                local_committee=excluded.local_committee,
+                position=excluded.position,
+                attendance_format=excluded.attendance_format,
+                comments=excluded.comments,
+                expectations_ar=excluded.expectations_ar,
+                informal_day=excluded.informal_day,
+                resume_file_id=COALESCE(excluded.resume_file_id, users.resume_file_id)
         ''', (
             data['telegram_id'],
             data.get('username'),
@@ -117,9 +179,17 @@ async def add_user(data: dict):
             data.get('missing_skills', '-'),
             data.get('expectations', '-'),
             data.get('phone'),
+            data.get('city'),
             data.get('referrer_id'),
             data['registration_date'],
-            data.get('is_ambassador_candidate', False)
+            data.get('is_ambassador_candidate', False),
+            data.get('local_committee'),
+            data.get('position'),
+            data.get('attendance_format'),
+            data.get('comments'),
+            data.get('expectations_ar'),
+            data.get('informal_day'),
+            data.get('resume_file_id'),
         ))
         await db.commit()
 
@@ -217,3 +287,117 @@ async def export_users_csv():
                 headers = [header for header in headers if header != "phone"]
                 rows = [tuple(value for index, value in enumerate(row) if index != phone_index) for row in rows]
             return headers, rows
+
+
+# ── Phase 1: coins ledger (append-only) ──────────────────────────────────────
+
+async def add_coins(user_id: int, delta: int, reason: str | None = None, changed_by: int | None = None):
+    """Append a ledger row. Never UPDATE — balance is the derived SUM(delta)."""
+    timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    async with aiosqlite.connect(config.DB_PATH) as db:
+        await db.execute(
+            "INSERT INTO coins (user_id, delta, reason, changed_by, timestamp) VALUES (?, ?, ?, ?, ?)",
+            (user_id, delta, reason, changed_by, timestamp),
+        )
+        await db.commit()
+
+
+async def get_balance(user_id: int) -> int:
+    async with aiosqlite.connect(config.DB_PATH) as db:
+        async with db.execute(
+            "SELECT COALESCE(SUM(delta), 0) FROM coins WHERE user_id = ?", (user_id,)
+        ) as cursor:
+            row = await cursor.fetchone()
+            return int(row[0]) if row else 0
+
+
+async def get_leaderboard(limit: int = 10) -> list[dict]:
+    """Top users by summed balance, joined to users for display name."""
+    async with aiosqlite.connect(config.DB_PATH) as db:
+        db.row_factory = aiosqlite.Row
+        async with db.execute('''
+            SELECT c.user_id AS user_id,
+                   COALESCE(SUM(c.delta), 0) AS balance,
+                   u.full_name AS full_name,
+                   u.username AS username
+            FROM coins c
+            LEFT JOIN users u ON u.telegram_id = c.user_id
+            GROUP BY c.user_id
+            ORDER BY balance DESC
+            LIMIT ?
+        ''', (limit,)) as cursor:
+            return [dict(row) for row in await cursor.fetchall()]
+
+
+async def get_user_rank(user_id: int) -> int | None:
+    """1-based rank by summed balance; None if the user has no ledger rows."""
+    async with aiosqlite.connect(config.DB_PATH) as db:
+        async with db.execute(
+            "SELECT COALESCE(SUM(delta), 0) FROM coins WHERE user_id = ?", (user_id,)
+        ) as cursor:
+            row = await cursor.fetchone()
+            if row is None or row[0] is None:
+                return None
+            my_balance = int(row[0])
+        async with db.execute('''
+            SELECT COUNT(*) FROM (
+                SELECT user_id, SUM(delta) AS bal
+                FROM coins
+                GROUP BY user_id
+                HAVING bal > ?
+            )
+        ''', (my_balance,)) as cursor:
+            greater = (await cursor.fetchone())[0]
+        # confirm the user actually has rows in the ledger
+        async with db.execute(
+            "SELECT 1 FROM coins WHERE user_id = ? LIMIT 1", (user_id,)
+        ) as cursor:
+            if await cursor.fetchone() is None:
+                return None
+        return greater + 1
+
+
+# ── Phase 1: reg_started dropout tracking (independent of FSM) ────────────────
+
+async def mark_reg_started(telegram_id: int, username: str | None):
+    started_at = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    async with aiosqlite.connect(config.DB_PATH) as db:
+        await db.execute('''
+            INSERT INTO reg_started (telegram_id, username, started_at)
+            VALUES (?, ?, ?)
+            ON CONFLICT(telegram_id) DO UPDATE SET
+                username=excluded.username,
+                started_at=excluded.started_at
+        ''', (telegram_id, username, started_at))
+        await db.commit()
+
+
+async def clear_reg_started(telegram_id: int):
+    async with aiosqlite.connect(config.DB_PATH) as db:
+        await db.execute("DELETE FROM reg_started WHERE telegram_id = ?", (telegram_id,))
+        await db.commit()
+
+
+async def get_incomplete_user_ids() -> list[int]:
+    async with aiosqlite.connect(config.DB_PATH) as db:
+        async with db.execute("SELECT telegram_id FROM reg_started") as cursor:
+            return [row[0] for row in await cursor.fetchall()]
+
+
+# ── Phase 1: subscription flag ───────────────────────────────────────────────
+
+async def set_user_subscribed(telegram_id: int, subscribed: bool):
+    async with aiosqlite.connect(config.DB_PATH) as db:
+        await db.execute(
+            "UPDATE users SET subscribed = ? WHERE telegram_id = ?",
+            (1 if subscribed else 0, telegram_id),
+        )
+        await db.commit()
+
+
+async def get_non_subscriber_ids() -> list[int]:
+    async with aiosqlite.connect(config.DB_PATH) as db:
+        async with db.execute(
+            "SELECT telegram_id FROM users WHERE subscribed = 0"
+        ) as cursor:
+            return [row[0] for row in await cursor.fetchall()]
