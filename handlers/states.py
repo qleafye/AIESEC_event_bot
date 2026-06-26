@@ -9,7 +9,6 @@ class Registration(StatesGroup):
     city = State()
     local_committee = State()
     position = State()
-    expectations_ar = State()
     informal_day = State()
     attendance_format = State()
     comments = State()

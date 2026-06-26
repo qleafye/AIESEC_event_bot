@@ -67,7 +67,6 @@ REG_FLOW = [
     ("work_sphere", "reg_q_work_sphere"),
     ("missing_skills", "reg_q_skills"),
     ("expectations", "reg_q_expectations"),
-    ("expectations_ar", "reg_q_expectations_ar"),
     ("attendance_format", "reg_q_attendance"),
     ("informal_day", "reg_q_informal_day"),
     ("comments", "reg_q_comments"),
@@ -90,7 +89,6 @@ REG_DEFAULTS = {
     "reg_q_work_sphere": "on",
     "reg_q_skills": "on",
     "reg_q_expectations": "on",
-    "reg_q_expectations_ar": "off",
     "reg_q_attendance": "off",
     "reg_q_informal_day": "off",
     "reg_q_comments": "off",
@@ -113,7 +111,6 @@ REG_LABELS = {
     "reg_q_work_sphere": "\U0001f3ed Сфера работы",
     "reg_q_skills": "\U0001f4a1 Навыки",
     "reg_q_expectations": "\U0001f4ac Ожидания",
-    "reg_q_expectations_ar": "✨ Ожидания AR",
     "reg_q_informal_day": "\U0001f3d5 Неформальный день",
     "reg_q_attendance": "\U0001f4cd Формат",
     "reg_q_comments": "\U0001f4ac Комментарии",
@@ -162,7 +159,7 @@ async def _ask_step(step_key: str, message: types.Message, state: FSMContext, st
         await message.answer(f"{p} Из какого ты города?", reply_markup=get_skip_kb())
         await state.set_state(Registration.city)
     elif step_key == "source":
-        await message.answer(f"{p} Откуда ты узнал(а) о форуме?", reply_markup=await get_source_kb())
+        await message.answer(f"{p} Откуда ты узнал(а) о нас?", reply_markup=await get_source_kb())
         await state.set_state(Registration.source)
     elif step_key == "local_committee":
         await message.answer(f"{p} Локальный комитет:", reply_markup=get_local_committee_kb())
@@ -192,19 +189,15 @@ async def _ask_step(step_key: str, message: types.Message, state: FSMContext, st
         await message.answer(f"{p} Каких навыков тебе сейчас не хватает?", reply_markup=get_skip_kb())
         await state.set_state(Registration.missing_skills)
     elif step_key == "expectations":
-        await message.answer(f"{p} Что ты ожидаешь от форума?", reply_markup=get_skip_kb())
-        await state.set_state(Registration.expectations)
-    elif step_key == "expectations_ar":
+        event_name = await get_setting("event_name") or "мероприятия"
         await message.answer(
-            f"{p} Какие ваши ожидания от посещения Годового отчета AIESEC в России? "
-            "Что бы вы хотели узнать/получить?",
+            f"{p} Что ты ожидаешь от {event_name}? Что хотел(а) бы узнать или получить?",
             reply_markup=get_skip_kb(),
         )
-        await state.set_state(Registration.expectations_ar)
+        await state.set_state(Registration.expectations)
     elif step_key == "informal_day":
         await message.answer(
-            f"{p} Планируете ли вы посетить второй неформальный день годового отчета, "
-            "который пройдет загородом?",
+            f"{p} Планируете ли вы посетить второй неформальный день (пройдёт загородом)?",
             reply_markup=get_informal_day_kb(),
         )
         await state.set_state(Registration.informal_day)
@@ -326,7 +319,6 @@ def _build_summary(data: dict) -> str:
         ("Сфера работы", data.get("work_sphere")),
         ("Навыки", data.get("missing_skills")),
         ("Ожидания", data.get("expectations")),
-        ("Ожидания AR", data.get("expectations_ar")),
         ("Неформальный день", data.get("informal_day")),
         ("Формат", data.get("attendance_format")),
         ("Комментарии", data.get("comments")),
@@ -737,16 +729,6 @@ async def process_expectations(message: types.Message, state: FSMContext, bot: B
     await _advance("expectations", message, state, bot)
 
 
-@router.message(Registration.expectations_ar)
-async def process_expectations_ar(message: types.Message, state: FSMContext, bot: Bot):
-    text = (message.text or "").strip()
-    if not text:
-        await message.answer("Напиши или нажми «Пропустить».")
-        return
-    await state.update_data(expectations_ar="-" if text == "Пропустить" else text)
-    await _advance("expectations_ar", message, state, bot)
-
-
 @router.message(Registration.informal_day)
 async def process_informal_day(message: types.Message, state: FSMContext, bot: Bot):
     text = (message.text or "").strip()
@@ -784,7 +766,7 @@ async def approve_user(bot: Bot, telegram_id: int):
     by chat id. Reused by the auto-approve path here and the manager manual-approve
     path (admin.py). Fail-soft: a blocked/unknown user never raises."""
     try:
-        complete_text = await get_setting("reg_complete_text") or "Регистрация завершена! Увидимся на форуме! 🎉"
+        complete_text = await get_setting("reg_complete_text") or "Регистрация завершена! Скоро увидимся! 🎉"
         await bot.send_message(telegram_id, complete_text, reply_markup=await get_main_menu_kb(), parse_mode="HTML")
 
         if await get_setting("reg_bonus_enabled") == "on":
