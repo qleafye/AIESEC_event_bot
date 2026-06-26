@@ -21,6 +21,10 @@ from database.db import (
     get_setting,
     set_setting,
     delete_setting,
+    add_coins,
+    get_balance,
+    get_non_subscriber_ids,
+    get_incomplete_user_ids,
 )
 from services.sheets import get_existing_sheet_ids, append_rows_to_sheet
 from handlers.states import Broadcast, EditSetting
@@ -49,6 +53,18 @@ MONTH_NAMES = {
 
 def is_admin(message: types.Message):
     return message.from_user.id in config.ADMIN_IDS
+
+
+def _parse_coins_amount(token: str) -> int | None:
+    """Parse a signed coin amount like '+10', '-3', '10'. None on failure."""
+    if not token:
+        return None
+    token = token.strip()
+    body = token[1:] if token[0] in "+-" else token
+    if not body.isdigit():
+        return None
+    value = int(body)
+    return -value if token[0] == "-" else value
 
 
 def build_admin_keyboard():
@@ -89,9 +105,41 @@ async def cmd_admin_help(message: types.Message):
         "/create_link &lt;название&gt; - Создать ссылку с меткой\n"
         "/export - Скачать базу пользователей (CSV)\n"
         "/broadcast - Рассылка сообщения всем\n"
-        "/find @username - Найти пользователя по юзернейму"
+        "/find @username - Найти пользователя по юзернейму\n"
+        "/coins @username +N [причина] - Начислить/списать монеты"
     )
     await message.answer(text, parse_mode="HTML", reply_markup=build_admin_keyboard())
+
+
+@router.message(Command("coins"), is_admin)
+async def cmd_coins(message: types.Message, bot: Bot):
+    args = (message.text or "").split(maxsplit=3)
+    hint = "⚠️ Формат: /coins @username +N [причина]"
+    if len(args) < 3:
+        await message.answer(hint)
+        return
+
+    user = await get_user_by_username(args[1])
+    if not user:
+        await message.answer(f"❌ Пользователь {html_module.escape(args[1])} не найден.")
+        return
+
+    amount = _parse_coins_amount(args[2])
+    if amount is None:
+        await message.answer(hint)
+        return
+
+    reason = args[3] if len(args) > 3 else None  # optional free text (D-13)
+    await add_coins(user["telegram_id"], amount, reason=reason, changed_by=message.from_user.id)
+    balance = await get_balance(user["telegram_id"])
+
+    safe_username = html_module.escape(str(user.get("username") or args[1]))
+    sign = "начислено" if amount >= 0 else "списано"
+    await message.answer(
+        f"🪙 {sign} {abs(amount)} монет(ы) для {safe_username}.\n"
+        f"Новый баланс: <b>{balance}</b>.",
+        parse_mode="HTML",
+    )
 
 @router.message(Command("find"), is_admin)
 async def cmd_find_user(message: types.Message):
@@ -663,6 +711,8 @@ async def show_admin_broadcast(callback: types.CallbackQuery, state: FSMContext)
     kb = InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text="📢 Все пользователи", callback_data="broadcast_all")],
         [InlineKeyboardButton(text="📄 По файлу в проекте", callback_data="broadcast_local")],
+        [InlineKeyboardButton(text="🚫 Не подписаны на канал", callback_data="broadcast_unsubscribed")],
+        [InlineKeyboardButton(text="📝 Не завершили регистрацию", callback_data="broadcast_incomplete")],
         [InlineKeyboardButton(text="❌ Отмена", callback_data="broadcast_cancel")],
     ])
     await callback.message.edit_text("Выберите целевую аудиторию рассылки:", reply_markup=kb)
@@ -689,6 +739,8 @@ async def cmd_broadcast(message: types.Message, state: FSMContext):
     kb = InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text="📢 Все пользователи", callback_data="broadcast_all")],
         [InlineKeyboardButton(text="📄 По файлу в проекте", callback_data="broadcast_local")],
+        [InlineKeyboardButton(text="🚫 Не подписаны на канал", callback_data="broadcast_unsubscribed")],
+        [InlineKeyboardButton(text="📝 Не завершили регистрацию", callback_data="broadcast_incomplete")],
         [InlineKeyboardButton(text="❌ Отмена", callback_data="broadcast_cancel")],
     ])
     await message.answer("Выберите целевую аудиторию рассылки:", reply_markup=kb)
@@ -751,6 +803,53 @@ async def process_broadcast_local_file(callback: types.CallbackQuery, state: FSM
     except Exception as e:
         await callback.message.edit_text(f"Ошибка при чтении файла: {e}")
         await state.clear()
+
+async def _start_segment_broadcast(callback: types.CallbackQuery, state: FSMContext, user_ids: list, prompt: str):
+    # Callbacks are not covered by the message-level is_admin filter — re-check here (D-06 / T-04-03).
+    if callback.from_user.id not in config.ADMIN_IDS:
+        await callback.answer("Недостаточно прав", show_alert=True)
+        return
+    user_ids = list(set(user_ids))
+    if not user_ids:
+        await callback.message.edit_text("В этом сегменте сейчас нет пользователей.")
+        await state.clear()
+        await callback.answer()
+        return
+    await state.update_data(target_type="list", target_users=user_ids)
+    await callback.answer()
+    try:
+        await callback.message.delete()
+    except Exception:
+        pass
+    await callback.message.answer(prompt, reply_markup=get_cancel_kb())
+    await state.set_state(Broadcast.message)
+
+
+@router.callback_query(F.data == "broadcast_unsubscribed", Broadcast.target_selection)
+async def process_broadcast_unsubscribed(callback: types.CallbackQuery, state: FSMContext):
+    if callback.from_user.id not in config.ADMIN_IDS:
+        await callback.answer("Недостаточно прав", show_alert=True)
+        return
+    user_ids = await get_non_subscriber_ids()
+    await _start_segment_broadcast(
+        callback, state, user_ids,
+        f"🚫 {len(set(user_ids))} пользователей не подписаны на канал, давайте пришлём им уведомление.\n"
+        "Теперь отправьте сообщение для рассылки.",
+    )
+
+
+@router.callback_query(F.data == "broadcast_incomplete", Broadcast.target_selection)
+async def process_broadcast_incomplete(callback: types.CallbackQuery, state: FSMContext):
+    if callback.from_user.id not in config.ADMIN_IDS:
+        await callback.answer("Недостаточно прав", show_alert=True)
+        return
+    user_ids = await get_incomplete_user_ids()
+    await _start_segment_broadcast(
+        callback, state, user_ids,
+        f"📝 {len(set(user_ids))} пользователей не завершили регистрацию.\n"
+        "Теперь отправьте сообщение для рассылки.",
+    )
+
 
 @router.callback_query(F.data == "broadcast_cancel")
 async def cancel_broadcast_callback(callback: types.CallbackQuery, state: FSMContext):

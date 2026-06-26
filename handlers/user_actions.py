@@ -1,9 +1,17 @@
 import html
 import logging
 from aiogram import Router, F, types, Bot
+from aiogram.filters import Command
 from aiogram.types import FSInputFile
 from aiogram.fsm.context import FSMContext
-from database.db import get_user, get_referrals, get_setting
+from database.db import (
+    get_user,
+    get_referrals,
+    get_setting,
+    get_balance,
+    get_leaderboard,
+    get_user_rank,
+)
 from keyboards.builders import (
     get_cancel_kb,
     get_main_menu_kb,
@@ -25,6 +33,43 @@ async def ensure_registered(message: types.Message) -> bool:
         "Чтобы пользоваться ботом, сначала нужно зарегистрироваться. Отправь команду /start.",
     )
     return False
+
+
+# --- Coins (COIN-03) ---
+
+def render_leaderboard(rows: list, requester_id: int, requester_rank, requester_balance: int) -> str:
+    lines = ["🏆 <b>Рейтинг по монетам</b>", ""]
+    if not rows:
+        lines.append("Пока ни у кого нет монет.")
+    else:
+        for i, row in enumerate(rows, start=1):
+            name = row.get("full_name") or row.get("username") or str(row.get("user_id"))
+            lines.append(f"{i}. {html.escape(str(name))} — {row.get('balance', 0)}")
+    lines.append("")
+    rank_text = requester_rank if requester_rank is not None else "—"
+    lines.append(f"Твоё место: <b>{rank_text}</b> · баланс: <b>{requester_balance}</b>")
+    return "\n".join(lines)
+
+
+@router.message(F.text == "🪙 Мои монеты")
+async def show_my_coins(message: types.Message):
+    if not await ensure_registered(message):
+        return
+    balance = await get_balance(message.from_user.id)
+    await message.answer(f"🪙 Твой баланс: <b>{balance}</b> монет(ы)", parse_mode="HTML")
+
+
+@router.message(Command("рейтинг", "rating", "leaderboard"))
+async def show_leaderboard(message: types.Message):
+    if not await ensure_registered(message):
+        return
+    rows = await get_leaderboard(10)
+    rank = await get_user_rank(message.from_user.id)
+    balance = await get_balance(message.from_user.id)
+    await message.answer(
+        render_leaderboard(rows, message.from_user.id, rank, balance),
+        parse_mode="HTML",
+    )
 
 
 #ℹ️ Информация о форуме

@@ -13,6 +13,7 @@ MENU_BUTTONS = [
     ("menu_speakers", "🗣 Спикеры"),
     ("menu_contacts", "📞 Контакты"),
     ("menu_question", "❓ Задать вопрос"),
+    ("menu_coins", "🪙 Мои монеты"),
 ]
 
 async def get_main_menu_kb() -> ReplyKeyboardMarkup:
