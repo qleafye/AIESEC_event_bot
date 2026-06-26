@@ -7,7 +7,7 @@ Brownfield extension of a production aiogram 3 + SQLite bot. The milestone adds 
 ## Phases
 
 - [ ] **Phase 1: DB Foundation + Quick Wins + Coins** - Safe schema migrations, coins ledger, registration confirmation, subscription check + reminder broadcast, incomplete-registration tracking
-- [ ] **Phase 2: Approval Flow** - Core milestone: moderated application queue, tinder UI, atomic guards, per-form moderation toggles
+- [x] **Phase 2: Approval Flow** - Core milestone: moderated application queue, tinder UI, atomic guards, per-form moderation toggles
 - [ ] **Phase 3: Scheduler + Communications + Verification** - Persistent APScheduler, filtered/scheduled broadcasts, dropout reminders, pre-selection gate
 - [ ] **Phase 4: Universal Modules** - Payment flow, consent module, event type/module toggles for conference support
 
@@ -47,10 +47,10 @@ Plans:
   5. Managers receive a periodic reminder with the count of pending applications (not one push per submission — notification storm prevented)
 **Plans:** 4 plans (3 waves)
 Plans:
-- [ ] 02-01-PLAN.md — DB approval layer: atomic approve/reject guards, oldest-pending queue + count, bulk approve_all_pending (Wave 1)
-- [ ] 02-02-PLAN.md — finalize split (submit/approve_user), status decision + per-form toggles, ensure_registered gating, rejected re-apply (Wave 2)
-- [ ] 02-03-PLAN.md — admin "Заявки" tinder UI: cards + resume re-send, atomic approve, reject-reason FSM, Одобрить все N + 429-safe sends, /settings_guide (Wave 3)
-- [ ] 02-04-PLAN.md — periodic pending-count reminder asyncio task at startup (Wave 2)
+- [x] 02-01-PLAN.md — DB approval layer: atomic approve/reject guards, oldest-pending queue + count, bulk approve_all_pending (Wave 1)
+- [x] 02-02-PLAN.md — finalize split (submit/approve_user), status decision + per-form toggles, ensure_registered gating, rejected re-apply (Wave 2)
+- [x] 02-03-PLAN.md — admin "Заявки" tinder UI: cards + resume re-send, atomic approve, reject-reason FSM, Одобрить все N + 429-safe sends, /settings_guide (Wave 3)
+- [x] 02-04-PLAN.md — periodic pending-count reminder asyncio task at startup (Wave 2)
 **UI hint:** yes
 
 ### Phase 3: Scheduler + Communications + Verification
@@ -87,6 +87,6 @@ Plans:
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
 | 1. DB Foundation + Quick Wins + Coins | 0/4 | Planned | - |
-| 2. Approval Flow | 0/? | Not started | - |
+| 2. Approval Flow | 4/4 | Implemented | 2026-06-26 |
 | 3. Scheduler + Communications + Verification | 0/? | Not started | - |
 | 4. Universal Modules | 0/? | Not started | - |
