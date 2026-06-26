@@ -25,6 +25,9 @@ class Registration(StatesGroup):
     resume = State()
     confirm = State()
 
+class Approval(StatesGroup):
+    reason = State()
+
 class Question(StatesGroup):
     waiting_for_question = State()
 

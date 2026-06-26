@@ -6,6 +6,7 @@ from aiogram.fsm.storage.memory import MemoryStorage
 from config import config
 from database.db import init_db
 from handlers import registration, user_actions, admin
+from services.reminders import pending_reminder_loop
 from aiogram.client.default import DefaultBotProperties
 from aiogram.client.session.aiohttp import AiohttpSession
 from aiogram.enums import ParseMode
@@ -42,6 +43,8 @@ async def main():
     dp.include_router(user_actions.router)
     
     await bot.delete_webhook(drop_pending_updates=True)
+    asyncio.create_task(pending_reminder_loop(bot))
+    logger.info("Pending-application reminder task started")
     await dp.start_polling(bot)
     logger.info("Bot started polling")
 
