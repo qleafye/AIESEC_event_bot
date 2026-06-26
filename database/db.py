@@ -401,3 +401,74 @@ async def get_non_subscriber_ids() -> list[int]:
             "SELECT telegram_id FROM users WHERE subscribed = 0"
         ) as cursor:
             return [row[0] for row in await cursor.fetchall()]
+
+
+# ── Phase 2: approval flow ───────────────────────────────────────────────────
+
+async def set_user_status(telegram_id: int, status: str):
+    """Set one user's approval status. Used after add_user to land pending/approved."""
+    async with aiosqlite.connect(config.DB_PATH) as db:
+        await db.execute(
+            "UPDATE users SET status = ? WHERE telegram_id = ?",
+            (status, telegram_id),
+        )
+        await db.commit()
+
+
+async def approve_user_atomic(telegram_id: int) -> bool:
+    """Atomically approve one pending user. True iff this call flipped the row
+    (rowcount==1) — a concurrent second approve returns False (no double approval)."""
+    async with aiosqlite.connect(config.DB_PATH) as db:
+        cursor = await db.execute(
+            "UPDATE users SET status = 'approved' WHERE telegram_id = ? AND status = 'pending'",
+            (telegram_id,),
+        )
+        await db.commit()
+        return cursor.rowcount == 1
+
+
+async def reject_user(telegram_id: int) -> bool:
+    """Atomically reject one pending user. True iff one row flipped."""
+    async with aiosqlite.connect(config.DB_PATH) as db:
+        cursor = await db.execute(
+            "UPDATE users SET status = 'rejected' WHERE telegram_id = ? AND status = 'pending'",
+            (telegram_id,),
+        )
+        await db.commit()
+        return cursor.rowcount == 1
+
+
+async def get_pending_users(limit: int = 1, offset: int = 0) -> list[dict]:
+    """Pending applications, oldest first (registration_date then telegram_id)."""
+    async with aiosqlite.connect(config.DB_PATH) as db:
+        db.row_factory = aiosqlite.Row
+        async with db.execute(
+            "SELECT * FROM users WHERE status = 'pending' "
+            "ORDER BY registration_date ASC, telegram_id ASC LIMIT ? OFFSET ?",
+            (limit, offset),
+        ) as cursor:
+            return [dict(row) for row in await cursor.fetchall()]
+
+
+async def get_pending_count() -> int:
+    async with aiosqlite.connect(config.DB_PATH) as db:
+        async with db.execute(
+            "SELECT COUNT(*) FROM users WHERE status = 'pending'"
+        ) as cursor:
+            row = await cursor.fetchone()
+            return int(row[0]) if row and row[0] is not None else 0
+
+
+async def approve_all_pending() -> list[int]:
+    """Flip every pending row to approved in one atomic statement; return the
+    telegram_ids that flipped (each once). RETURNING requires sqlite >= 3.35
+    (bundled in CPython 3.10+). Older sqlite fallback: BEGIN IMMEDIATE; SELECT
+    ids WHERE pending; UPDATE WHERE pending; COMMIT (the IMMEDIATE lock makes the
+    snapshot atomic)."""
+    async with aiosqlite.connect(config.DB_PATH) as db:
+        async with db.execute(
+            "UPDATE users SET status = 'approved' WHERE status = 'pending' RETURNING telegram_id"
+        ) as cursor:
+            rows = await cursor.fetchall()
+        await db.commit()
+        return [row[0] for row in rows]
