@@ -21,6 +21,11 @@ from keyboards.builders import (
     get_phone_kb,
     get_local_committee_kb,
     get_position_kb,
+    get_department_kb,
+    get_aiesec_role_kb,
+    get_english_level_kb,
+    get_arrival_kb,
+    get_housing_kb,
     get_attendance_format_kb,
     get_informal_day_kb,
     get_source_kb,
@@ -70,6 +75,18 @@ REG_FLOW = [
     ("attendance_format", "reg_q_attendance"),
     ("informal_day", "reg_q_informal_day"),
     ("comments", "reg_q_comments"),
+    ("department", "reg_q_department"),
+    ("aiesec_role", "reg_q_aiesec_role"),
+    ("needs_certificate", "reg_q_certificate"),
+    ("english_level", "reg_q_english"),
+    ("allergies", "reg_q_allergies"),
+    ("food_pref", "reg_q_food"),
+    ("arrival", "reg_q_arrival"),
+    ("housing", "reg_q_housing"),
+    ("cc_shop", "reg_q_cc_shop"),
+    ("exp_organizers", "reg_q_exp_organizers"),
+    ("exp_content", "reg_q_exp_content"),
+    ("volunteer", "reg_q_volunteer"),
     ("resume", "reg_q_resume"),
 ]
 
@@ -92,6 +109,18 @@ REG_DEFAULTS = {
     "reg_q_attendance": "off",
     "reg_q_informal_day": "off",
     "reg_q_comments": "off",
+    "reg_q_department": "off",
+    "reg_q_aiesec_role": "off",
+    "reg_q_certificate": "off",
+    "reg_q_english": "off",
+    "reg_q_allergies": "off",
+    "reg_q_food": "off",
+    "reg_q_arrival": "off",
+    "reg_q_housing": "off",
+    "reg_q_cc_shop": "off",
+    "reg_q_exp_organizers": "off",
+    "reg_q_exp_content": "off",
+    "reg_q_volunteer": "off",
     "reg_q_resume": "off",
 }
 
@@ -114,6 +143,18 @@ REG_LABELS = {
     "reg_q_informal_day": "\U0001f3d5 Неформальный день",
     "reg_q_attendance": "\U0001f4cd Формат",
     "reg_q_comments": "\U0001f4ac Комментарии",
+    "reg_q_department": "🏢 Департамент",
+    "reg_q_aiesec_role": "🎖 Позиция AIESEC",
+    "reg_q_certificate": "📄 Справка в ВУЗ",
+    "reg_q_english": "🇬🇧 Англ. язык",
+    "reg_q_allergies": "🤧 Аллергии",
+    "reg_q_food": "🥗 Питание",
+    "reg_q_arrival": "🚌 Приезд",
+    "reg_q_housing": "🏠 Проживание",
+    "reg_q_cc_shop": "🛍 CC-shop",
+    "reg_q_exp_organizers": "💬 Ожид. от орг",
+    "reg_q_exp_content": "💬 Ожид. от контента",
+    "reg_q_volunteer": "🙋 Волонтёр",
     "reg_q_resume": "\U0001f4c4 Резюме",
 }
 
@@ -207,6 +248,42 @@ async def _ask_step(step_key: str, message: types.Message, state: FSMContext, st
     elif step_key == "comments":
         await message.answer(f"{p} Любые вопросы/комментарии/пожелания:", reply_markup=get_skip_kb())
         await state.set_state(Registration.comments)
+    elif step_key == "department":
+        await message.answer(f"{p} Твой департамент:", reply_markup=get_department_kb())
+        await state.set_state(Registration.department)
+    elif step_key == "aiesec_role":
+        await message.answer(f"{p} Твоя позиция (Member/TL/Manager/VP/LCP/Coordinator):", reply_markup=get_aiesec_role_kb())
+        await state.set_state(Registration.aiesec_role)
+    elif step_key == "needs_certificate":
+        await message.answer(f"{p} Нужна справка в ВУЗ?", reply_markup=get_yes_no_kb())
+        await state.set_state(Registration.needs_certificate)
+    elif step_key == "english_level":
+        await message.answer(f"{p} Уровень английского:", reply_markup=get_english_level_kb())
+        await state.set_state(Registration.english_level)
+    elif step_key == "allergies":
+        await message.answer(f"{p} Есть ли у тебя аллергии на продукты/запахи? (если нет — поставь «-»)", reply_markup=get_skip_kb())
+        await state.set_state(Registration.allergies)
+    elif step_key == "food_pref":
+        await message.answer(f"{p} Особенности питания? Напиши, если ты веган/вегетарианец (иначе — обычное):", reply_markup=get_skip_kb())
+        await state.set_state(Registration.food_pref)
+    elif step_key == "arrival":
+        await message.answer(f"{p} Когда приедешь?", reply_markup=get_arrival_kb())
+        await state.set_state(Registration.arrival)
+    elif step_key == "housing":
+        await message.answer(f"{p} Где будешь жить?", reply_markup=get_housing_kb())
+        await state.set_state(Registration.housing)
+    elif step_key == "cc_shop":
+        await message.answer(f"{p} Что бы ты хотел(а) видеть в CC-shop?", reply_markup=get_skip_kb())
+        await state.set_state(Registration.cc_shop)
+    elif step_key == "exp_organizers":
+        await message.answer(f"{p} Ожидания от команды организаторов?", reply_markup=get_skip_kb())
+        await state.set_state(Registration.exp_organizers)
+    elif step_key == "exp_content":
+        await message.answer(f"{p} Ожидания от контента?", reply_markup=get_skip_kb())
+        await state.set_state(Registration.exp_content)
+    elif step_key == "volunteer":
+        await message.answer(f"{p} Хочешь быть волонтёром?", reply_markup=get_yes_no_kb())
+        await state.set_state(Registration.volunteer)
     elif step_key == "resume":
         await message.answer(f"{p} Прикрепи резюме (PDF или DOCX):", reply_markup=get_cancel_kb())
         await state.set_state(Registration.resume)
@@ -290,6 +367,18 @@ def _build_sheet_row(data: dict) -> list:
         data.get("informal_day") or "-",
         data.get("attendance_format") or "-",
         data.get("comments") or "-",
+        data.get("department") or "-",
+        data.get("aiesec_role") or "-",
+        data.get("needs_certificate") or "-",
+        data.get("english_level") or "-",
+        data.get("allergies") or "-",
+        data.get("food_pref") or "-",
+        data.get("arrival") or "-",
+        data.get("housing") or "-",
+        data.get("cc_shop") or "-",
+        data.get("exp_organizers") or "-",
+        data.get("exp_content") or "-",
+        data.get("volunteer") or "-",
     ]
 
 
@@ -322,6 +411,18 @@ def _build_summary(data: dict) -> str:
         ("Неформальный день", data.get("informal_day")),
         ("Формат", data.get("attendance_format")),
         ("Комментарии", data.get("comments")),
+        ("Департамент", data.get("department")),
+        ("Позиция AIESEC", data.get("aiesec_role")),
+        ("Справка в ВУЗ", data.get("needs_certificate")),
+        ("Английский", data.get("english_level")),
+        ("Аллергии", data.get("allergies")),
+        ("Питание", data.get("food_pref")),
+        ("Приезд", data.get("arrival")),
+        ("Проживание", data.get("housing")),
+        ("CC-shop", data.get("cc_shop")),
+        ("Ожидания от орг", data.get("exp_organizers")),
+        ("Ожидания от контента", data.get("exp_content")),
+        ("Волонтёр", data.get("volunteer")),
     ]
     for label, value in fields:
         if value is None or str(value) == "":
@@ -757,6 +858,86 @@ async def process_comments(message: types.Message, state: FSMContext, bot: Bot):
         return
     await state.update_data(comments="-" if text == "Пропустить" else text)
     await _advance("comments", message, state, bot)
+
+
+# --- Conference (RusCo) reg-flow handlers ---
+
+async def _store_choice(field: str, after: str, message: types.Message, state: FSMContext, bot: Bot):
+    text = (message.text or "").strip()
+    if not text:
+        await message.answer("Выбери вариант на клавиатуре или напиши ответ.")
+        return
+    await state.update_data(**{field: text})
+    await _advance(after, message, state, bot)
+
+
+async def _store_text(field: str, after: str, message: types.Message, state: FSMContext, bot: Bot):
+    text = (message.text or "").strip()
+    if not text:
+        await message.answer("Напиши или нажми «Пропустить».")
+        return
+    await state.update_data(**{field: "-" if text == "Пропустить" else text})
+    await _advance(after, message, state, bot)
+
+
+@router.message(Registration.department)
+async def process_department(message: types.Message, state: FSMContext, bot: Bot):
+    await _store_choice("department", "department", message, state, bot)
+
+
+@router.message(Registration.aiesec_role)
+async def process_aiesec_role(message: types.Message, state: FSMContext, bot: Bot):
+    await _store_choice("aiesec_role", "aiesec_role", message, state, bot)
+
+
+@router.message(Registration.needs_certificate)
+async def process_needs_certificate(message: types.Message, state: FSMContext, bot: Bot):
+    await _store_choice("needs_certificate", "needs_certificate", message, state, bot)
+
+
+@router.message(Registration.english_level)
+async def process_english_level(message: types.Message, state: FSMContext, bot: Bot):
+    await _store_choice("english_level", "english_level", message, state, bot)
+
+
+@router.message(Registration.allergies)
+async def process_allergies(message: types.Message, state: FSMContext, bot: Bot):
+    await _store_text("allergies", "allergies", message, state, bot)
+
+
+@router.message(Registration.food_pref)
+async def process_food_pref(message: types.Message, state: FSMContext, bot: Bot):
+    await _store_text("food_pref", "food_pref", message, state, bot)
+
+
+@router.message(Registration.arrival)
+async def process_arrival(message: types.Message, state: FSMContext, bot: Bot):
+    await _store_choice("arrival", "arrival", message, state, bot)
+
+
+@router.message(Registration.housing)
+async def process_housing(message: types.Message, state: FSMContext, bot: Bot):
+    await _store_choice("housing", "housing", message, state, bot)
+
+
+@router.message(Registration.cc_shop)
+async def process_cc_shop(message: types.Message, state: FSMContext, bot: Bot):
+    await _store_text("cc_shop", "cc_shop", message, state, bot)
+
+
+@router.message(Registration.exp_organizers)
+async def process_exp_organizers(message: types.Message, state: FSMContext, bot: Bot):
+    await _store_text("exp_organizers", "exp_organizers", message, state, bot)
+
+
+@router.message(Registration.exp_content)
+async def process_exp_content(message: types.Message, state: FSMContext, bot: Bot):
+    await _store_text("exp_content", "exp_content", message, state, bot)
+
+
+@router.message(Registration.volunteer)
+async def process_volunteer(message: types.Message, state: FSMContext, bot: Bot):
+    await _store_choice("volunteer", "volunteer", message, state, bot)
 
 
 # --- Finalize ---
