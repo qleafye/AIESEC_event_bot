@@ -65,7 +65,13 @@ Plans:
   3. User who starts registration but abandons mid-flow receives exactly one automatic reminder nudge (after ~2h of inactivity via `reg_in_progress` DB table); already-registered users are never nudged
   4. Broadcast loop handles Telegram 429 rate limits by catching `TelegramRetryAfter` and waiting `retry_after + 1` seconds before retrying — rate-limited users are not counted as blocked
   5. When pre-selection verification is on, a Telegram username not in the Google Sheet sees "отбор не пройден" + external registration link; a user without a username sees a prompt to set one
-**Plans:** TBD
+**Plans:** 5 plans (4 waves)
+Plans:
+- [ ] 03-01-PLAN.md — SCHED-01: AsyncIOScheduler + SQLAlchemyJobStore foundation, scheduled_broadcasts payload table, schedule-broadcast UI, main.py wiring (Wave 1)
+- [ ] 03-02-PLAN.md — SCHED-03: reg_started.nudged_at migration + one-shot dropout nudge interval job on the shared scheduler (Wave 2)
+- [ ] 03-03-PLAN.md — COMM-04: flood-safe 429 hardening of process_broadcast + album send loops (Wave 2)
+- [ ] 03-04-PLAN.md — COMM-01/02/03: AND filter builder over city/uni/status/source/reg-date with count preview, send-now or schedule (Wave 3)
+- [ ] 03-05-PLAN.md — VERIF-01/02: pre-selection gate at /start via cached Google-Sheet allowlist (separate tab) + usernameless prompt + manual-id fallback (Wave 4)
 **UI hint:** yes
 
 ### Phase 4: Universal Modules
@@ -88,5 +94,5 @@ Plans:
 |-------|----------------|--------|-----------|
 | 1. DB Foundation + Quick Wins + Coins | 0/4 | Planned | - |
 | 2. Approval Flow | 4/4 | Implemented | 2026-06-26 |
-| 3. Scheduler + Communications + Verification | 0/? | Not started | - |
+| 3. Scheduler + Communications + Verification | 0/5 | Planned | - |
 | 4. Universal Modules | 0/? | Not started | - |
