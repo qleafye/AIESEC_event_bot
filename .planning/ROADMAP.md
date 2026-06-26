@@ -25,7 +25,12 @@ Brownfield extension of a production aiogram 3 + SQLite bot. The milestone adds 
   4. `/рейтинг` returns the top-10 users by coin balance and shows the requesting user's rank; users see their own balance via the `🪙 Мои монеты` menu button
   5. Subscription is **checked** (not gated) against the channel in the existing `contact_tg` setting via `getChatMember`; the admin is shown the count of non-subscribers and can send them a reminder via a broadcast segment; the check fails open when the bot lacks admin rights in the channel (no user is blocked at any point)
   6. A user who starts `/start` but abandons before finishing is recorded in a persistent `reg_started` DB table (survives restart, independent of MemoryStorage) and deleted on completion; these incomplete registrations are selectable as a distinct broadcast audience segment (automated scheduled nudging remains SCHED-03 in Phase 3)
-**Plans:** TBD
+**Plans:** 4 plans (3 waves)
+Plans:
+- [ ] 01-01-PLAN.md — DB foundation: safe migrations (status/resume_file_id/subscribed), ON CONFLICT add_user, coins ledger + reg_started + subscription helpers (Wave 1)
+- [ ] 01-02-PLAN.md — Registration UX: confirmation step, resume upload (PDF/DOCX), reg_started dropout hooks (Wave 2)
+- [ ] 01-03-PLAN.md — Coins economy: /coins admin command, /рейтинг + aliases, 🪙 Мои монеты balance button (Wave 2)
+- [ ] 01-04-PLAN.md — Subscription check (fail-open) + non-subscriber & incomplete-registration broadcast segments (Wave 3)
 **UI hint:** yes
 
 ### Phase 2: Approval Flow
@@ -75,7 +80,7 @@ Brownfield extension of a production aiogram 3 + SQLite bot. The milestone adds 
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
-| 1. DB Foundation + Quick Wins + Coins | 0/? | Not started | - |
+| 1. DB Foundation + Quick Wins + Coins | 0/4 | Planned | - |
 | 2. Approval Flow | 0/? | Not started | - |
 | 3. Scheduler + Communications + Verification | 0/? | Not started | - |
 | 4. Universal Modules | 0/? | Not started | - |
