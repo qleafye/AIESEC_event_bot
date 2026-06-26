@@ -11,11 +11,12 @@ from aiogram.types import FSInputFile, ReplyKeyboardRemove
 from aiogram.utils.keyboard import ReplyKeyboardBuilder
 
 from config import config
-from database.db import add_user, get_user, get_setting
+from database.db import add_user, get_user, get_setting, mark_reg_started, clear_reg_started, set_user_subscribed
 from handlers.states import Registration
 from keyboards.builders import (
     get_main_menu_kb,
     get_cancel_kb,
+    get_confirm_kb,
     get_skip_kb,
     get_phone_kb,
     get_local_committee_kb,
@@ -61,6 +62,7 @@ REG_FLOW = [
     ("attendance_format", "reg_q_attendance"),
     ("informal_day", "reg_q_informal_day"),
     ("comments", "reg_q_comments"),
+    ("resume", "reg_q_resume"),
 ]
 
 REG_DEFAULTS = {
@@ -83,6 +85,7 @@ REG_DEFAULTS = {
     "reg_q_attendance": "off",
     "reg_q_informal_day": "off",
     "reg_q_comments": "off",
+    "reg_q_resume": "off",
 }
 
 REG_LABELS = {
@@ -105,6 +108,7 @@ REG_LABELS = {
     "reg_q_informal_day": "\U0001f3d5 Неформальный день",
     "reg_q_attendance": "\U0001f4cd Формат",
     "reg_q_comments": "\U0001f4ac Комментарии",
+    "reg_q_resume": "\U0001f4c4 Резюме",
 }
 
 
@@ -201,6 +205,9 @@ async def _ask_step(step_key: str, message: types.Message, state: FSMContext, st
     elif step_key == "comments":
         await message.answer(f"{p} Любые вопросы/комментарии/пожелания:", reply_markup=get_skip_kb())
         await state.set_state(Registration.comments)
+    elif step_key == "resume":
+        await message.answer(f"{p} Прикрепи резюме (PDF или DOCX):", reply_markup=get_cancel_kb())
+        await state.set_state(Registration.resume)
 
 
 async def _advance(after_step: str, message: types.Message, state: FSMContext, bot: Bot):
@@ -219,7 +226,9 @@ async def _advance(after_step: str, message: types.Message, state: FSMContext, b
         await state.update_data(_reg_step=step)
         await _ask_step(enabled[next_idx], message, state, step, total)
     else:
-        await finalize_registration(message, state, bot)
+        # QW-01: show a summary + confirm keyboard before finalizing the full form (D-01).
+        await message.answer(_build_summary(data), reply_markup=get_confirm_kb(), parse_mode="HTML")
+        await state.set_state(Registration.confirm)
 
 
 # --- Helpers ---
@@ -256,35 +265,89 @@ def _build_sheet_row(data: dict) -> list:
     details = " | ".join(details_parts) if details_parts else "-"
 
     return [
-        data.get("telegram_id"),
-        data.get("username", "-"),
-        data.get("registration_date", "-"),
-        data.get("full_name", "-"),
-        data.get("email", "-"),
-        data.get("source", "-"),
+        data.get("telegram_id") or "-",
+        data.get("username") or "-",
+        data.get("registration_date") or "-",
+        data.get("full_name") or "-",
+        data.get("email") or "-",
+        data.get("source") or "-",
         details,
-        data.get("phone", "-"),
-        data.get("city", "-"),
-        data.get("local_committee", "-"),
-        data.get("position", "-"),
-        data.get("education_status", "-"),
-        data.get("university", "-"),
-        data.get("course", "-"),
-        data.get("specialty", "-"),
+        data.get("phone") or "-",
+        data.get("city") or "-",
+        data.get("local_committee") or "-",
+        data.get("position") or "-",
+        data.get("education_status") or "-",
+        data.get("university") or "-",
+        data.get("course") or "-",
+        data.get("specialty") or "-",
         "Yes" if data.get("work_status") else "No",
-        data.get("work_sphere", "-"),
-        data.get("missing_skills", "-"),
-        data.get("expectations", "-"),
-        data.get("expectations_ar", "-"),
-        data.get("informal_day", "-"),
-        data.get("attendance_format", "-"),
-        data.get("comments", "-"),
+        data.get("work_sphere") or "-",
+        data.get("missing_skills") or "-",
+        data.get("expectations") or "-",
+        data.get("expectations_ar") or "-",
+        data.get("informal_day") or "-",
+        data.get("attendance_format") or "-",
+        data.get("comments") or "-",
     ]
+
+
+def _esc(value) -> str:
+    """Null-coalesce to '-' and HTML-escape free text for the summary message."""
+    text = value if (value is not None and str(value) != "") else "-"
+    return html.escape(str(text))
+
+
+def _build_summary(data: dict) -> str:
+    """QW-01 pre-finalize summary of the full-form answers (HTML, escaped)."""
+    lines = ["<b>Проверь свои ответы:</b>", ""]
+    fields = [
+        ("Фамилия и Имя", data.get("full_name")),
+        ("Возраст", data.get("age")),
+        ("Email", data.get("email")),
+        ("Телефон", data.get("phone")),
+        ("Город", data.get("city")),
+        ("Источник", data.get("source")),
+        ("Лок. комитет", data.get("local_committee")),
+        ("Позиция", data.get("position")),
+        ("Образование", data.get("education_status")),
+        ("ВУЗ", data.get("university")),
+        ("Курс", data.get("course")),
+        ("Специальность", data.get("specialty")),
+        ("Работа", "Да" if data.get("work_status") else "Нет"),
+        ("Сфера работы", data.get("work_sphere")),
+        ("Навыки", data.get("missing_skills")),
+        ("Ожидания", data.get("expectations")),
+        ("Ожидания AR", data.get("expectations_ar")),
+        ("Неформальный день", data.get("informal_day")),
+        ("Формат", data.get("attendance_format")),
+        ("Комментарии", data.get("comments")),
+    ]
+    for label, value in fields:
+        if value is None or str(value) == "":
+            continue
+        lines.append(f"<b>{label}:</b> {_esc(value)}")
+    if data.get("resume_file_id"):
+        lines.append("<b>Резюме:</b> прикреплено")
+    return "\n".join(lines)
+
+
+def _is_allowed_resume(file_name: str | None) -> bool:
+    """QW-03: accept only PDF/DOCX by extension (case-insensitive)."""
+    if not file_name:
+        return False
+    name = file_name.lower()
+    return name.endswith(".pdf") or name.endswith(".docx")
 
 
 # --- /start ---
 
 async def _start_registration_flow(message: types.Message, state: FSMContext, referrer_id: int | None = None, source_tag: str | None = None):
+    # SCHED-02: record the dropout row at flow start (fail-soft — never block registration).
+    try:
+        await mark_reg_started(message.from_user.id, message.from_user.username)
+    except Exception as e:
+        logger.error(f"Failed to mark reg_started for {message.from_user.id}: {e}")
+
     existing_data = await state.get_data()
     saved_referrer_id = referrer_id or existing_data.get("referrer_id")
     saved_source_tag = source_tag or existing_data.get("source")
@@ -340,10 +403,39 @@ async def _send_welcome(message: types.Message, text: str, photo_file_id: str | 
     logger.info(f"Welcome: text sent for {user_id}")
 
 
+# --- QW-02 subscription check (observe-only, fail-open) ---
+
+def _membership_status_to_bool(status: str) -> bool:
+    """Map a Telegram chat-member status to subscribed/not. Restricted counts as not."""
+    return status in ("creator", "administrator", "member")
+
+
+async def is_subscribed(bot: Bot, channel, user_id: int) -> bool | None:
+    """True/False membership; None on any error (bot not admin / unknown channel) — fail-open (D-07)."""
+    try:
+        member = await bot.get_chat_member(channel, user_id)
+        return _membership_status_to_bool(member.status)
+    except Exception as e:
+        logger.warning(f"Subscription check failed for {user_id} on {channel!r}: {e}")
+        return None
+
+
+# bot is placed BEFORE the defaulted `command` param (a non-default arg after a default is a SyntaxError);
+# aiogram injects by name so position is purely a syntax constraint.
 @router.message(Command("start"), StateFilter("*"))
-async def cmd_start(message: types.Message, state: FSMContext, command: CommandObject | None = None):
+async def cmd_start(message: types.Message, state: FSMContext, bot: Bot, command: CommandObject | None = None):
     user_id = message.from_user.id
     logger.info(f"User {user_id} requested /start")
+
+    # QW-02: observe-only subscription check — never blocks the user (D-04), never crashes /start (D-07).
+    try:
+        channel = await get_setting("contact_tg")
+        if channel:
+            result = await is_subscribed(bot, channel, user_id)
+            if result is not None:
+                await set_user_subscribed(user_id, result)
+    except Exception as e:
+        logger.warning(f"Subscription check skipped for {user_id}: {e}")
 
     user = await get_user(user_id)
     args = command.args if command else None
@@ -382,6 +474,36 @@ async def cancel_registration(message: types.Message, state: FSMContext):
         "Регистрация отменена. Чтобы начать заново, отправь /start.",
         reply_markup=ReplyKeyboardRemove(),
     )
+
+
+# --- QW-01 confirmation step ---
+
+@router.message(Registration.confirm, F.text == "Всё верно ✓")
+async def process_confirm_ok(message: types.Message, state: FSMContext, bot: Bot):
+    await finalize_registration(message, state, bot)
+
+
+@router.message(Registration.confirm, F.text == "Изменить")
+async def process_confirm_edit(message: types.Message, state: FSMContext):
+    # D-02: 'Изменить' restarts the whole flow — no per-field editing.
+    await _start_registration_flow(message, state)
+
+
+# --- QW-03 resume upload step ---
+
+@router.message(Registration.resume, F.document)
+async def process_resume(message: types.Message, state: FSMContext, bot: Bot):
+    if not _is_allowed_resume(message.document.file_name):
+        await message.answer("Принимаются только PDF или DOCX. Прикрепи файл ещё раз.")
+        return
+    await state.update_data(resume_file_id=message.document.file_id)  # file_id only, no download (D-10)
+    await _advance("resume", message, state, bot)
+
+
+@router.message(Registration.resume)
+async def process_resume_invalid(message: types.Message, state: FSMContext):
+    # Non-document input in the resume state — re-prompt, never crash (D-10). Mandatory: no skip (D-09).
+    await message.answer("Пожалуйста, прикрепи документ (PDF или DOCX).")
 
 
 # --- Admin re-registration ---
@@ -673,8 +795,15 @@ async def finalize_registration(message: types.Message, state: FSMContext, bot: 
     data.setdefault("informal_day", "-")
     data.setdefault("attendance_format", "-")
     data.setdefault("comments", "-")
+    data.setdefault("resume_file_id", None)
 
     await add_user(data)
+
+    # SCHED-02: registration finished — drop the dropout row (fail-soft).
+    try:
+        await clear_reg_started(message.from_user.id)
+    except Exception as e:
+        logger.error(f"Failed to clear reg_started for {message.from_user.id}: {e}")
 
     try:
         await append_to_sheet(_build_sheet_row(data))
