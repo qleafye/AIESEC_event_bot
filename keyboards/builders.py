@@ -74,9 +74,53 @@ def get_universities_kb() -> ReplyKeyboardMarkup:
 
 def get_local_committee_kb() -> ReplyKeyboardMarkup:
     kb = ReplyKeyboardBuilder()
-    for lc in ["SPUEF", "E&G", "Moscow Pride", "Ufa", "Tyumen", "Ekaterinburg"]:
+    for lc in ["EG", "SPUEF", "Moscow", "Tyumen", "Ufa", "Ekaterinburg"]:
         kb.button(text=lc)
     kb.button(text="Другое")
+    kb.adjust(2)
+    return kb.as_markup(resize_keyboard=True, one_time_keyboard=True)
+
+
+# --- Conference (RusCo) reg-flow keyboards ---
+
+def get_department_kb() -> ReplyKeyboardMarkup:
+    kb = ReplyKeyboardBuilder()
+    for d in ["OGV", "OGT", "MKT", "BD"]:
+        kb.button(text=d)
+    kb.button(text="Другое")
+    kb.adjust(2)
+    return kb.as_markup(resize_keyboard=True, one_time_keyboard=True)
+
+
+def get_aiesec_role_kb() -> ReplyKeyboardMarkup:
+    kb = ReplyKeyboardBuilder()
+    for r in ["Member", "TL", "Manager", "VP", "LCP", "Coordinator"]:
+        kb.button(text=r)
+    kb.button(text="Другое")
+    kb.adjust(2)
+    return kb.as_markup(resize_keyboard=True, one_time_keyboard=True)
+
+
+def get_english_level_kb() -> ReplyKeyboardMarkup:
+    kb = ReplyKeyboardBuilder()
+    for lvl in ["Начальный", "Средний", "Продвинутый", "Свободный"]:
+        kb.button(text=lvl)
+    kb.adjust(2)
+    return kb.as_markup(resize_keyboard=True, one_time_keyboard=True)
+
+
+def get_arrival_kb() -> ReplyKeyboardMarkup:
+    kb = ReplyKeyboardBuilder()
+    for a in ["В дни конфы", "Заранее", "После"]:
+        kb.button(text=a)
+    kb.adjust(2)
+    return kb.as_markup(resize_keyboard=True, one_time_keyboard=True)
+
+
+def get_housing_kb() -> ReplyKeyboardMarkup:
+    kb = ReplyKeyboardBuilder()
+    for h in ["Хост", "Сам(а)", "Не нужно"]:
+        kb.button(text=h)
     kb.adjust(2)
     return kb.as_markup(resize_keyboard=True, one_time_keyboard=True)
 

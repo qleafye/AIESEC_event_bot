@@ -61,6 +61,20 @@ async def init_db():
         await _ensure_column(db, "users", "resume_file_id", "TEXT")
         await _ensure_column(db, "users", "subscribed", "INTEGER")
 
+        # Conference (RusCo) reg-flow fields — additive, default-off questions
+        await _ensure_column(db, "users", "department", "TEXT")
+        await _ensure_column(db, "users", "aiesec_role", "TEXT")
+        await _ensure_column(db, "users", "needs_certificate", "TEXT")
+        await _ensure_column(db, "users", "english_level", "TEXT")
+        await _ensure_column(db, "users", "allergies", "TEXT")
+        await _ensure_column(db, "users", "food_pref", "TEXT")
+        await _ensure_column(db, "users", "arrival", "TEXT")
+        await _ensure_column(db, "users", "housing", "TEXT")
+        await _ensure_column(db, "users", "cc_shop", "TEXT")
+        await _ensure_column(db, "users", "exp_organizers", "TEXT")
+        await _ensure_column(db, "users", "exp_content", "TEXT")
+        await _ensure_column(db, "users", "volunteer", "TEXT")
+
         await db.execute('''
             CREATE TABLE IF NOT EXISTS bot_settings (
                 key TEXT PRIMARY KEY,
@@ -131,8 +145,11 @@ async def add_user(data: dict):
                 referrer_id, registration_date,
                 is_ambassador_candidate,
                 local_committee, position, attendance_format,
-                comments, expectations_ar, informal_day, resume_file_id
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                comments, expectations_ar, informal_day, resume_file_id,
+                department, aiesec_role, needs_certificate, english_level,
+                allergies, food_pref, arrival, housing, cc_shop,
+                exp_organizers, exp_content, volunteer
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             ON CONFLICT(telegram_id) DO UPDATE SET
                 username=excluded.username,
                 full_name=excluded.full_name,
@@ -160,7 +177,19 @@ async def add_user(data: dict):
                 comments=excluded.comments,
                 expectations_ar=excluded.expectations_ar,
                 informal_day=excluded.informal_day,
-                resume_file_id=COALESCE(excluded.resume_file_id, users.resume_file_id)
+                resume_file_id=COALESCE(excluded.resume_file_id, users.resume_file_id),
+                department=excluded.department,
+                aiesec_role=excluded.aiesec_role,
+                needs_certificate=excluded.needs_certificate,
+                english_level=excluded.english_level,
+                allergies=excluded.allergies,
+                food_pref=excluded.food_pref,
+                arrival=excluded.arrival,
+                housing=excluded.housing,
+                cc_shop=excluded.cc_shop,
+                exp_organizers=excluded.exp_organizers,
+                exp_content=excluded.exp_content,
+                volunteer=excluded.volunteer
         ''', (
             data['telegram_id'],
             data.get('username'),
@@ -190,6 +219,18 @@ async def add_user(data: dict):
             data.get('expectations_ar'),
             data.get('informal_day'),
             data.get('resume_file_id'),
+            data.get('department'),
+            data.get('aiesec_role'),
+            data.get('needs_certificate'),
+            data.get('english_level'),
+            data.get('allergies'),
+            data.get('food_pref'),
+            data.get('arrival'),
+            data.get('housing'),
+            data.get('cc_shop'),
+            data.get('exp_organizers'),
+            data.get('exp_content'),
+            data.get('volunteer'),
         ))
         await db.commit()
 
