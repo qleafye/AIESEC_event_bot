@@ -15,6 +15,7 @@ from database.db import (
     get_all_users_ids,
     get_all_users_dicts,
     export_users_csv,
+    get_user,
     get_user_by_username,
     get_monthly_registration_stats,
     get_source_stats,
@@ -25,11 +26,17 @@ from database.db import (
     get_balance,
     get_non_subscriber_ids,
     get_incomplete_user_ids,
+    get_pending_users,
+    get_pending_count,
+    approve_user_atomic,
+    reject_user,
+    approve_all_pending,
 )
+from aiogram.exceptions import TelegramRetryAfter
 from services.sheets import get_existing_sheet_ids, append_rows_to_sheet
-from handlers.states import Broadcast, EditSetting
+from handlers.states import Broadcast, EditSetting, Approval
 from keyboards.builders import get_cancel_kb, MENU_BUTTONS
-from handlers.registration import REG_FLOW, REG_DEFAULTS, REG_LABELS, _build_sheet_row
+from handlers.registration import REG_FLOW, REG_DEFAULTS, REG_LABELS, _build_sheet_row, approve_user
 
 router = Router()
 logger = logging.getLogger(__name__)
@@ -73,6 +80,7 @@ def build_admin_keyboard():
         [InlineKeyboardButton(text="🗓 Регистрации по месяцам", callback_data="admin_monthly_stats")],
         [InlineKeyboardButton(text="📈 Источники", callback_data="admin_source_stats")],
         [InlineKeyboardButton(text="📄 Экспорт CSV", callback_data="admin_export_csv")],
+        [InlineKeyboardButton(text="📋 Заявки", callback_data="admin_applications")],
         [InlineKeyboardButton(text="📢 Рассылка", callback_data="admin_broadcast")],
         [InlineKeyboardButton(text="🔄 Синхронизация таблицы", callback_data="admin_sync_sheet")],
         [InlineKeyboardButton(text="⚙️ Настройки форума", callback_data="admin_settings")],
@@ -1107,3 +1115,268 @@ async def menu_buttons_back(callback: types.CallbackQuery):
     text = await render_settings_text()
     await callback.message.edit_text(text, parse_mode="HTML", reply_markup=await build_settings_keyboard())
     await callback.answer()
+
+
+# ── Phase 2: application review queue ("Заявки", tinder UI) ───────────────────
+
+def _parse_appr(data: str) -> tuple[str, int | None]:
+    """'appr_approve:123' -> ('appr_approve', 123); 'appr_all' -> ('appr_all', None)."""
+    if ":" in data:
+        prefix, tid = data.split(":", 1)
+        try:
+            return prefix, int(tid)
+        except ValueError:
+            return prefix, None
+    return data, None
+
+
+def _render_application_card(user: dict, position: int, total: int) -> str:
+    """HTML card for one pending application; all free-text escaped."""
+    def esc(v):
+        return html_module.escape(str(v)) if v not in (None, "", "-") else None
+
+    lines = [f"📋 <b>Заявка {position}/{total}</b>", ""]
+    name = esc(user.get("full_name")) or "—"
+    uname = esc(user.get("username"))
+    lines.append(f"👤 {name}" + (f" ({uname})" if uname else ""))
+    edu = esc(user.get("university")) or esc(user.get("education_status"))
+    if edu:
+        course = esc(user.get("course"))
+        lines.append(f"🎓 {edu}" + (f", {course}" if course else ""))
+    if esc(user.get("city")):
+        lines.append(f"📍 {esc(user.get('city'))}")
+    if esc(user.get("local_committee")):
+        lines.append(f"🏢 {esc(user.get('local_committee'))}")
+    if esc(user.get("position")):
+        lines.append(f"👔 {esc(user.get('position'))}")
+    if user.get("age"):
+        lines.append(f"🎂 {esc(user.get('age'))}")
+    lines.append("📎 Резюме: " + ("загружено" if user.get("resume_file_id") else "нет"))
+    return "\n".join(lines)
+
+
+def _appr_card_kb(tid: int, has_resume: bool, total: int) -> InlineKeyboardMarkup:
+    rows = [
+        [
+            InlineKeyboardButton(text="✅ Одобрить", callback_data=f"appr_approve:{tid}"),
+            InlineKeyboardButton(text="❌ Отклонить", callback_data=f"appr_reject:{tid}"),
+        ],
+    ]
+    third = []
+    if has_resume:
+        third.append(InlineKeyboardButton(text="📎 Резюме", callback_data=f"appr_resume:{tid}"))
+    third.append(InlineKeyboardButton(text="⏭ Пропустить", callback_data=f"appr_skip:{tid}"))
+    rows.append(third)
+    rows.append([InlineKeyboardButton(text=f"✅ Одобрить все ({total})", callback_data="appr_all")])
+    return InlineKeyboardMarkup(inline_keyboard=rows)
+
+
+async def _show_current_card(target: types.Message, state: FSMContext):
+    """Render the oldest non-skipped pending card (DB-driven, restart-safe)."""
+    pending = await get_pending_users(limit=50)
+    skipped = set((await state.get_data()).get("appr_skipped", []))
+    visible = [u for u in pending if u["telegram_id"] not in skipped]
+    total = await get_pending_count()
+    if not visible:
+        await target.answer("✅ Заявок нет.", reply_markup=build_admin_keyboard())
+        return
+    current = visible[0]
+    position = total - len(visible) + 1
+    await target.answer(
+        _render_application_card(current, position, total),
+        parse_mode="HTML",
+        reply_markup=_appr_card_kb(current["telegram_id"], bool(current.get("resume_file_id")), total),
+    )
+
+
+@router.callback_query(F.data == "admin_applications")
+async def show_applications(callback: types.CallbackQuery, state: FSMContext):
+    if callback.from_user.id not in config.ADMIN_IDS:
+        await callback.answer("Недостаточно прав", show_alert=True)
+        return
+    await state.update_data(appr_skipped=[])  # session-only skip set (D-07)
+    await callback.answer()
+    await _show_current_card(callback.message, state)
+
+
+@router.callback_query(F.data.startswith("appr_skip:"))
+async def appr_skip(callback: types.CallbackQuery, state: FSMContext):
+    if callback.from_user.id not in config.ADMIN_IDS:
+        await callback.answer("Недостаточно прав", show_alert=True)
+        return
+    _, tid = _parse_appr(callback.data)
+    data = await state.get_data()
+    skipped = list(data.get("appr_skipped", []))
+    if tid is not None and tid not in skipped:
+        skipped.append(tid)
+    await state.update_data(appr_skipped=skipped)
+    try:
+        await callback.message.delete()
+    except Exception:
+        pass
+    await callback.answer("Пропущено")
+    await _show_current_card(callback.message, state)
+
+
+@router.callback_query(F.data.startswith("appr_resume:"))
+async def appr_resume(callback: types.CallbackQuery):
+    if callback.from_user.id not in config.ADMIN_IDS:
+        await callback.answer("Недостаточно прав", show_alert=True)
+        return
+    _, tid = _parse_appr(callback.data)
+    user = await get_user(tid) if tid is not None else None
+    if user and user.get("resume_file_id"):
+        try:
+            await callback.message.answer_document(user["resume_file_id"])
+        except Exception as e:
+            logger.error(f"Failed to re-send resume for {tid}: {e}")
+            await callback.message.answer("Не удалось открыть резюме.")
+    else:
+        await callback.message.answer("Резюме не приложено.")
+    await callback.answer()
+
+
+@router.callback_query(F.data.startswith("appr_approve:"))
+async def appr_approve(callback: types.CallbackQuery, state: FSMContext):
+    if callback.from_user.id not in config.ADMIN_IDS:
+        await callback.answer("Недостаточно прав", show_alert=True)
+        return
+    _, tid = _parse_appr(callback.data)
+    won = await approve_user_atomic(tid) if tid is not None else False
+    if won:
+        await approve_user(callback.bot, tid)  # welcome exactly once (D-10)
+        await callback.answer("Одобрено")
+    else:
+        await callback.answer("Уже обработано")
+    try:
+        await callback.message.delete()
+    except Exception:
+        pass
+    await _show_current_card(callback.message, state)
+
+
+@router.callback_query(F.data.startswith("appr_reject:"))
+async def appr_reject_start(callback: types.CallbackQuery, state: FSMContext):
+    if callback.from_user.id not in config.ADMIN_IDS:
+        await callback.answer("Недостаточно прав", show_alert=True)
+        return
+    _, tid = _parse_appr(callback.data)
+    await state.update_data(appr_reject_id=tid)
+    await callback.message.answer("Укажи причину отклонения:", reply_markup=get_cancel_kb())
+    await state.set_state(Approval.reason)
+    await callback.answer()
+
+
+@router.message(Approval.reason, is_admin, F.text.in_({"Отмена", "/cancel"}))
+async def appr_reject_cancel(message: types.Message, state: FSMContext):
+    await state.set_state(None)
+    await message.answer("Отклонение отменено.", reply_markup=ReplyKeyboardRemove())
+    await _show_current_card(message, state)
+
+
+@router.message(Approval.reason, is_admin)
+async def appr_reject_reason(message: types.Message, state: FSMContext):
+    data = await state.get_data()
+    tid = data.get("appr_reject_id")
+    reason = message.text or "-"
+    ok = await reject_user(tid) if tid is not None else False
+    if ok:
+        try:
+            prefix = await get_setting("reject_text") or "К сожалению, твоя заявка отклонена."
+            await message.bot.send_message(
+                tid, f"{prefix}\n\n{html_module.escape(reason)}", parse_mode="HTML"
+            )
+        except Exception as e:
+            logger.error(f"Failed to notify rejected user {tid}: {e}")
+        await message.answer("Заявка отклонена.", reply_markup=ReplyKeyboardRemove())
+    else:
+        await message.answer("Заявка уже обработана.", reply_markup=ReplyKeyboardRemove())
+    await state.set_state(None)
+    await _show_current_card(message, state)
+
+
+@router.callback_query(F.data == "appr_all")
+async def appr_all_confirm(callback: types.CallbackQuery, state: FSMContext):
+    if callback.from_user.id not in config.ADMIN_IDS:
+        await callback.answer("Недостаточно прав", show_alert=True)
+        return
+    total = await get_pending_count()
+    if total == 0:
+        await callback.answer("Заявок нет")
+        await _show_current_card(callback.message, state)
+        return
+    kb = InlineKeyboardMarkup(inline_keyboard=[[
+        InlineKeyboardButton(text="✅ Да", callback_data="appr_all_yes"),
+        InlineKeyboardButton(text="❌ Отмена", callback_data="appr_all_no"),
+    ]])
+    await callback.message.edit_text(f"Одобрить все {total} заявок?", reply_markup=kb)
+    await callback.answer()
+
+
+@router.callback_query(F.data == "appr_all_no")
+async def appr_all_no(callback: types.CallbackQuery, state: FSMContext):
+    if callback.from_user.id not in config.ADMIN_IDS:
+        await callback.answer("Недостаточно прав", show_alert=True)
+        return
+    await callback.answer("Отменено")
+    await _show_current_card(callback.message, state)
+
+
+async def _welcome_flipped(bot, ids: list):
+    """Drain welcome sends for a mass approval, handling Telegram 429 (D-11)."""
+    for tid in ids:
+        try:
+            await approve_user(bot, tid)
+        except TelegramRetryAfter as e:
+            await asyncio.sleep(e.retry_after + 1)
+            try:
+                await approve_user(bot, tid)
+            except Exception as e2:
+                logger.error(f"Mass-approve welcome retry failed for {tid}: {e2}")
+        except Exception as e:
+            logger.error(f"Mass-approve welcome failed for {tid}: {e}")
+        await asyncio.sleep(0.05)
+
+
+@router.callback_query(F.data == "appr_all_yes")
+async def appr_all_yes(callback: types.CallbackQuery, state: FSMContext):
+    if callback.from_user.id not in config.ADMIN_IDS:
+        await callback.answer("Недостаточно прав", show_alert=True)
+        return
+    ids = await approve_all_pending()  # atomic flip first (D-11)
+    await callback.message.edit_text(
+        f"✅ Одобрено: {len(ids)}. Рассылаю приветствия…",
+        reply_markup=build_admin_keyboard(),
+    )
+    asyncio.create_task(_welcome_flipped(callback.bot, ids))  # drain sends in background
+    await callback.answer()
+
+
+# ── Phase 2: self-documenting settings command (D-16) ────────────────────────
+
+APPROVAL_SETTINGS_DOC = [
+    ("registration_mode", "Режим формы регистрации (full/short)", "short"),
+    ("short_approval", "Модерация короткой формы (auto/manual)", "auto"),
+    ("full_approval", "Модерация полной формы (auto/manual)", "manual"),
+    ("reject_text", "Текст пользователю при отклонении заявки", "(стандартный текст)"),
+    ("pending_notify_mode", "Уведомление о новой заявке: instant/batched", "batched"),
+    ("pending_reminder_enabled", "Периодическая напоминалка о заявках (on/off)", "on"),
+    ("pending_reminder_interval", "Интервал напоминалки, сек", "1800"),
+    ("reg_q_resume", "Запрос резюме в полной форме (on/off)", "off"),
+]
+
+
+def _render_settings_guide(rows: list, current: dict) -> str:
+    out = ["⚙️ <b>Настройки модерации</b>", ""]
+    for key, desc, default in rows:
+        val = current.get(key)
+        shown = val if val is not None else f"{default} (по умолчанию)"
+        out.append(f"<b>{key}</b> — {html_module.escape(desc)}\nТекущее: {html_module.escape(str(shown))}")
+        out.append("")
+    return "\n".join(out).rstrip()
+
+
+@router.message(Command("settings_guide"), is_admin)
+async def cmd_settings_guide(message: types.Message):
+    current = {key: await get_setting(key) for key, _, _ in APPROVAL_SETTINGS_DOC}
+    await message.answer(_render_settings_guide(APPROVAL_SETTINGS_DOC, current), parse_mode="HTML")
