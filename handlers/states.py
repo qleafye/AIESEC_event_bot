@@ -22,6 +22,8 @@ class Registration(StatesGroup):
     work_sphere = State()
     missing_skills = State()
     expectations = State()
+    resume = State()
+    confirm = State()
 
 class Question(StatesGroup):
     waiting_for_question = State()
