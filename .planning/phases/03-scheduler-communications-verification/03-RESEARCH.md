@@ -522,12 +522,12 @@ Phase 2 (`test_reminders_phase2.py`) tests pure helper functions (`_reminder_ena
 | A4 | gspread `worksheet(name)` reads a tab by title within the existing spreadsheet (service account already has access) | Pattern 4 | If the service account lacks access to the tab, refresh fails; covered by fail-soft (Pitfall 6). |
 | A5 | aiogram 3.24.0 (not 3.29) is acceptable for this phase; no upgrade needed | Stack note | Low — `TelegramRetryAfter`/`send_copy` exist in 3.24 (verified). |
 
-## Open Questions
+## Open Questions (RESOLVED)
 
-1. **Misfire policy for past-due scheduled broadcasts.** If the bot is down when a broadcast's `run_date` arrives and stays down for hours, should it fire on reboot or be skipped? Recommendation: fire if within `misfire_grace_time` (suggest 1h); for longer outages, surface pending past-due broadcasts in admin UI for manual decision. **Needs product confirmation.**
-2. **Fail-open vs fail-closed when `preselect_enabled=on` but the allowlist is empty** (tab missing / refresh failed). Fail-open admits everyone (defeats gating); fail-closed locks everyone out. Recommendation: fail-open + loud admin warning, since default is off and turning it on is deliberate. **Needs confirmation.**
-3. **Manual telegram_id allowlist storage (D-12 discretion):** `bot_settings` CSV string vs a tiny table. Recommendation: start with a `bot_settings` CSV (`preselect_manual_ids`) — simplest, no new table, edited via existing settings command. Promote to a table only if it grows.
-4. **Filter-spec serialization (D-05 discretion):** JSON blob in `scheduled_broadcasts.filter_spec`. Recommendation: JSON list of `{field, op, value}` — flexible, no schema churn as fields evolve in Phase 4.
+1. **Misfire policy for past-due scheduled broadcasts.** RESOLVED → `misfire_grace_time=3600` + `coalesce=True` (fire if within 1h of `run_date`; coalesce duplicate catch-ups into one). Longer outages surface as pending past-due broadcasts in admin UI. Encoded in Plan 03-01.
+2. **Fail-open vs fail-closed when `preselect_enabled=on` but the allowlist is empty** (tab missing / refresh failed). RESOLVED (owner sign-off 2026-06-27) → **FAIL-OPEN + loud admin alert**: admit everyone and alert `ADMIN_IDS` when gating is ON and `allowlist_size()==0`. Protects live registration from a config typo locking out all delegates; accepted risk dispositioned in Plan 03-05 threat_model (T-3-11). Encoded in Plan 03-05.
+3. **Manual telegram_id allowlist storage (D-12 discretion):** RESOLVED → `bot_settings` CSV string (`preselect_manual_ids`); no new table, edited via existing settings command. Encoded in Plan 03-05.
+4. **Filter-spec serialization (D-05 discretion):** RESOLVED → JSON blob in `scheduled_broadcasts.filter_spec` (list of `{field, op, value}`); whitelisted columns + `?` binds at query time. Encoded in Plan 03-04.
 
 ## Environment Availability
 
