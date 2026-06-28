@@ -539,6 +539,35 @@ async def cmd_start(message: types.Message, state: FSMContext, bot: Bot, command
     except Exception as e:
         logger.warning(f"Subscription check skipped for {user_id}: {e}")
 
+    # VERIF-01/02: pre-selection gate (D-13, default off → live flow untouched).
+    # Fail-soft like the subscription check above: a glitch never crashes /start.
+    try:
+        if (await get_setting("preselect_enabled") or "off") == "on":
+            from services.allowlist import is_allowed, allowlist_size, _parse_manual_ids
+            if allowlist_size() == 0:
+                # Owner-confirmed fail-open (Open Q2): admit everyone; the refresh job
+                # alerts admins. Do NOT lock out a whole event over a sheet/quota glitch.
+                logger.warning(f"Pre-selection ON but allowlist empty — fail-open admit for {user_id}")
+            else:
+                manual_ids = _parse_manual_ids(await get_setting("preselect_manual_ids"))
+                uname = message.from_user.username
+                if uname is None and user_id not in manual_ids:
+                    prompt = await get_setting("preselect_no_username_text") or (
+                        "Чтобы продолжить, задайте @username в настройках Telegram и снова отправьте /start."
+                    )
+                    await message.answer(html.escape(prompt))
+                    return
+                if uname is not None and not is_allowed(uname) and user_id not in manual_ids:
+                    fail = await get_setting("preselect_fail_text") or "Отбор не пройден."
+                    link = await get_setting("preselect_link")
+                    text = html.escape(fail)
+                    if link:
+                        text += "\n" + html.escape(link)
+                    await message.answer(text)
+                    return
+    except Exception as e:
+        logger.warning(f"Pre-selection gate skipped for {user_id}: {e}")
+
     user = await get_user(user_id)
     args = command.args if command else None
     referrer_id = _extract_referrer_id(args, user_id)

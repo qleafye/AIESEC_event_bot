@@ -2,9 +2,11 @@ import csv
 import html as html_module
 import io
 import asyncio
+import json
 import logging
 import os
 import re
+from datetime import datetime
 from aiogram import Router, F, types, Bot
 from aiogram.filters import Command, StateFilter
 from aiogram.fsm.context import FSMContext
@@ -31,9 +33,20 @@ from database.db import (
     approve_user_atomic,
     reject_user,
     approve_all_pending,
+    create_scheduled_broadcast,
+    list_pending_broadcasts,
+    cancel_scheduled_broadcast,
+    count_and_list_filtered,
 )
 from aiogram.exceptions import TelegramRetryAfter
 from services.sheets import get_existing_sheet_ids, append_rows_to_sheet
+from services.scheduler import (
+    _parse_schedule_dt,
+    _fmt_dt,
+    schedule_broadcast_job,
+    cancel_broadcast_job,
+)
+from services.allowlist import refresh_allowlist, allowlist_size
 from handlers.states import Broadcast, EditSetting, Approval
 from keyboards.builders import get_cancel_kb, MENU_BUTTONS
 from handlers.registration import REG_FLOW, REG_DEFAULTS, REG_LABELS, _build_sheet_row, approve_user
@@ -84,6 +97,7 @@ def build_admin_keyboard():
         [InlineKeyboardButton(text="📢 Рассылка", callback_data="admin_broadcast")],
         [InlineKeyboardButton(text="🔄 Синхронизация таблицы", callback_data="admin_sync_sheet")],
         [InlineKeyboardButton(text="⚙️ Настройки форума", callback_data="admin_settings")],
+        [InlineKeyboardButton(text="📖 Справка по настройкам", callback_data="admin_settings_guide")],
     ])
 
 
@@ -114,7 +128,10 @@ async def cmd_admin_help(message: types.Message):
         "/export - Скачать базу пользователей (CSV)\n"
         "/broadcast - Рассылка сообщения всем\n"
         "/find @username - Найти пользователя по юзернейму\n"
-        "/coins @username +N [причина] - Начислить/списать монеты"
+        "/coins @username +N [причина] - Начислить/списать монеты\n"
+        "/scheduled - Запланированные рассылки\n"
+        "/refresh_allowlist - Обновить список отобранных\n"
+        "/settings_guide - 📖 Справка по всем настройкам бота"
     )
     await message.answer(text, parse_mode="HTML", reply_markup=build_admin_keyboard())
 
@@ -776,6 +793,8 @@ async def show_admin_broadcast(callback: types.CallbackQuery, state: FSMContext)
         [InlineKeyboardButton(text="📄 По файлу в проекте", callback_data="broadcast_local")],
         [InlineKeyboardButton(text="🚫 Не подписаны на канал", callback_data="broadcast_unsubscribed")],
         [InlineKeyboardButton(text="📝 Не завершили регистрацию", callback_data="broadcast_incomplete")],
+        [InlineKeyboardButton(text="🎯 По фильтру", callback_data="broadcast_filter")],
+        [InlineKeyboardButton(text="🕓 Запланировать", callback_data="broadcast_schedule")],
         [InlineKeyboardButton(text="❌ Отмена", callback_data="broadcast_cancel")],
     ])
     await callback.message.edit_text("Выберите целевую аудиторию рассылки:", reply_markup=kb)
@@ -804,6 +823,8 @@ async def cmd_broadcast(message: types.Message, state: FSMContext):
         [InlineKeyboardButton(text="📄 По файлу в проекте", callback_data="broadcast_local")],
         [InlineKeyboardButton(text="🚫 Не подписаны на канал", callback_data="broadcast_unsubscribed")],
         [InlineKeyboardButton(text="📝 Не завершили регистрацию", callback_data="broadcast_incomplete")],
+        [InlineKeyboardButton(text="🎯 По фильтру", callback_data="broadcast_filter")],
+        [InlineKeyboardButton(text="🕓 Запланировать", callback_data="broadcast_schedule")],
         [InlineKeyboardButton(text="❌ Отмена", callback_data="broadcast_cancel")],
     ])
     await message.answer("Выберите целевую аудиторию рассылки:", reply_markup=kb)
@@ -886,6 +907,21 @@ async def _start_segment_broadcast(callback: types.CallbackQuery, state: FSMCont
         pass
     await callback.message.answer(prompt, reply_markup=get_cancel_kb())
     await state.set_state(Broadcast.message)
+
+
+# ── Phase 3 (COMM-04): pure flood-safe send helpers ──────────────────────────
+
+def _retry_delay(retry_after: int) -> int:
+    """Wait Telegram's told delay plus 1s of slack before retrying (D-07)."""
+    return retry_after + 1
+
+
+def _classify_outcome(first_ok: bool, retried_ok) -> tuple[int, int]:
+    """(delivered_inc, blocked_inc). A 429 that succeeds on retry is delivered, NOT
+    blocked (D-08); only a genuine/failed-retry outcome increments blocked."""
+    if first_ok or retried_ok is True:
+        return (1, 0)
+    return (0, 1)
 
 
 @router.callback_query(F.data == "broadcast_unsubscribed", Broadcast.target_selection)
@@ -971,12 +1007,24 @@ async def _wait_and_send_album(media_group_id: str, users_ids: list, bot: Bot, s
     count = 0
     blocked = 0
     for chat_id in users_ids:
+        retried_ok = None
         try:
             await bot.send_media_group(chat_id, media=media)
-            count += 1
-            await asyncio.sleep(0.05)
+            first_ok = True
+        except TelegramRetryAfter as e:
+            first_ok = False
+            await asyncio.sleep(_retry_delay(e.retry_after))
+            try:
+                await bot.send_media_group(chat_id, media=media)
+                retried_ok = True
+            except Exception:
+                retried_ok = "error"
         except Exception:
-            blocked += 1
+            first_ok = False
+        delivered_inc, blocked_inc = _classify_outcome(first_ok, retried_ok)
+        count += delivered_inc
+        blocked += blocked_inc
+        await asyncio.sleep(0.05)
 
     try:
         await bot.send_message(
@@ -1018,12 +1066,24 @@ async def process_broadcast(message: types.Message, state: FSMContext, bot: Bot)
     status_msg = await message.answer(f"Начинаю рассылку на {len(users_ids)} пользователей...")
 
     for chat_id in users_ids:
+        retried_ok = None
         try:
             await message.send_copy(chat_id)
-            count += 1
-            await asyncio.sleep(0.05)
+            first_ok = True
+        except TelegramRetryAfter as e:
+            first_ok = False
+            await asyncio.sleep(_retry_delay(e.retry_after))
+            try:
+                await message.send_copy(chat_id)
+                retried_ok = True
+            except Exception:
+                retried_ok = "error"
         except Exception:
-            blocked += 1
+            first_ok = False
+        delivered_inc, blocked_inc = _classify_outcome(first_ok, retried_ok)
+        count += delivered_inc
+        blocked += blocked_inc
+        await asyncio.sleep(0.05)
 
     await message.answer(
         f"Рассылка завершена.\n"
@@ -1031,6 +1091,320 @@ async def process_broadcast(message: types.Message, state: FSMContext, bot: Bot)
         f"❌ Недоступно: {blocked}"
     )
     await state.clear()
+
+
+# ── Phase 3 (SCHED-01): schedule-a-broadcast UI ──────────────────────────────
+
+@router.callback_query(F.data == "broadcast_schedule", Broadcast.target_selection)
+async def broadcast_schedule_start(callback: types.CallbackQuery, state: FSMContext):
+    if callback.from_user.id not in config.ADMIN_IDS:
+        await callback.answer("Недостаточно прав", show_alert=True)
+        return
+    await callback.answer()
+    try:
+        await callback.message.delete()
+    except Exception:
+        pass
+    await callback.message.answer(
+        "🕓 Введите дату и время рассылки в формате <b>ДД.ММ.ГГГГ ЧЧ:ММ</b>\n"
+        "Например: 01.07.2026 14:30",
+        reply_markup=get_cancel_kb(),
+    )
+    await state.set_state(Broadcast.schedule_when)
+
+
+@router.message(Broadcast.schedule_when, is_admin)
+async def broadcast_schedule_when(message: types.Message, state: FSMContext):
+    when = _parse_schedule_dt(message.text)
+    if when is None:
+        await message.answer("❌ Не понял дату. Формат: ДД.ММ.ГГГГ ЧЧ:ММ (напр. 01.07.2026 14:30)")
+        return
+    if when <= datetime.now():
+        await message.answer("❌ Это время уже прошло. Введите будущую дату.")
+        return
+    await state.update_data(schedule_dt=when)
+    await message.answer(
+        f"✅ Запланировано на {when.strftime('%d.%m.%Y %H:%M')}.\n"
+        "Теперь отправьте сообщение (текст или фото с подписью) для рассылки.",
+        reply_markup=get_cancel_kb(),
+    )
+    await state.set_state(Broadcast.schedule_message)
+
+
+@router.message(Broadcast.schedule_message, is_admin)
+async def broadcast_schedule_message(message: types.Message, state: FSMContext):
+    data = await state.get_data()
+    when = data.get("schedule_dt")
+    if not when:
+        await message.answer("Сессия истекла, начните заново через /broadcast.")
+        await state.clear()
+        return
+
+    photo = message.photo[-1].file_id if message.photo else None
+    if message.text:
+        text = message.html_text
+    elif message.caption:
+        text = message.caption
+    else:
+        text = None
+
+    filters = data.get("filters")
+    filter_spec = json.dumps(filters, ensure_ascii=False) if filters else None
+
+    bid = await create_scheduled_broadcast(text, photo, filter_spec, _fmt_dt(when), message.from_user.id)
+    schedule_broadcast_job(bid, when)
+
+    scope = "по фильтру" if filters else "всем пользователям"
+    await message.answer(
+        f"✅ Рассылка #{bid} запланирована на {when.strftime('%d.%m.%Y %H:%M')} ({scope}).\n"
+        "Управление: /scheduled"
+    )
+    await state.clear()
+
+
+@router.message(Command("scheduled"), is_admin)
+async def cmd_scheduled(message: types.Message):
+    rows = await list_pending_broadcasts()
+    if not rows:
+        await message.answer("Нет запланированных рассылок.")
+        return
+    for row in rows:
+        preview = (row.get("text") or "(фото)")[:60]
+        kb = InlineKeyboardMarkup(inline_keyboard=[[
+            InlineKeyboardButton(text="❌ Отменить", callback_data=f"sched_cancel_{row['id']}")
+        ]])
+        await message.answer(
+            f"#{row['id']} — {row['scheduled_at']}\n{html_module.escape(preview)}",
+            reply_markup=kb,
+        )
+
+
+@router.callback_query(F.data.startswith("sched_cancel_"))
+async def sched_cancel(callback: types.CallbackQuery):
+    if callback.from_user.id not in config.ADMIN_IDS:
+        await callback.answer("Недостаточно прав", show_alert=True)
+        return
+    bid = int(callback.data.rsplit("_", 1)[1])
+    await cancel_scheduled_broadcast(bid)
+    cancel_broadcast_job(bid)
+    await callback.answer("Отменено")
+    try:
+        await callback.message.edit_text(f"#{bid} — отменено ❌")
+    except Exception:
+        pass
+
+
+# ── Phase 3 (COMM-01/02/03): filtered-broadcast builder ──────────────────────
+
+_FILTER_FIELD_LABELS = {
+    "city": "Город", "university": "ВУЗ", "status": "Статус",
+    "source": "Источник", "registration_date": "Дата регистрации",
+}
+
+
+def _filter_summary(filters: list[dict]) -> str:
+    if not filters:
+        return "Фильтры пока не выбраны."
+    parts = []
+    for f in filters:
+        label = _FILTER_FIELD_LABELS.get(f["field"], f["field"])
+        val = html_module.escape(str(f.get("value")))
+        if f["field"] == "registration_date":
+            opl = "после" if f.get("op") == "after" else "до"
+            parts.append(f"{label} {opl} {val}")
+        else:
+            parts.append(f"{label} = {val}")
+    return " И ".join(parts)
+
+
+def _filter_menu_kb(filters: list[dict]) -> InlineKeyboardMarkup:
+    kb = [
+        [InlineKeyboardButton(text="Город", callback_data="filter_f_city"),
+         InlineKeyboardButton(text="ВУЗ", callback_data="filter_f_university")],
+        [InlineKeyboardButton(text="Статус", callback_data="filter_f_status"),
+         InlineKeyboardButton(text="Источник", callback_data="filter_f_source")],
+        [InlineKeyboardButton(text="Дата регистрации", callback_data="filter_f_date")],
+    ]
+    if filters:
+        kb.append([InlineKeyboardButton(text="📊 Показать и отправить", callback_data="filter_count")])
+    kb.append([InlineKeyboardButton(text="❌ Отмена", callback_data="broadcast_cancel")])
+    return InlineKeyboardMarkup(inline_keyboard=kb)
+
+
+async def _render_filter_menu(target, filters: list[dict], *, edit: bool):
+    text = (
+        "🎯 <b>Рассылка по фильтру</b>\n"
+        f"Текущие условия (AND): {_filter_summary(filters)}\n\n"
+        "Добавьте поле фильтра или покажите количество."
+    )
+    kb = _filter_menu_kb(filters)
+    if edit:
+        await target.edit_text(text, reply_markup=kb)
+    else:
+        await target.answer(text, reply_markup=kb)
+
+
+@router.callback_query(F.data == "broadcast_filter", Broadcast.target_selection)
+async def broadcast_filter_start(callback: types.CallbackQuery, state: FSMContext):
+    if callback.from_user.id not in config.ADMIN_IDS:
+        await callback.answer("Недостаточно прав", show_alert=True)
+        return
+    await state.update_data(filters=[])
+    await callback.answer()
+    await _render_filter_menu(callback.message, [], edit=True)
+    await state.set_state(Broadcast.filter_field)
+
+
+@router.callback_query(F.data.in_({"filter_f_city", "filter_f_university", "filter_f_source"}), Broadcast.filter_field)
+async def filter_pick_text_field(callback: types.CallbackQuery, state: FSMContext):
+    if callback.from_user.id not in config.ADMIN_IDS:
+        await callback.answer("Недостаточно прав", show_alert=True)
+        return
+    field = callback.data[len("filter_f_"):]
+    await state.update_data(filter_pending_field=field, filter_pending_op=None)
+    await callback.answer()
+    await callback.message.edit_text(f"Введите значение для поля «{_FILTER_FIELD_LABELS[field]}»:")
+    await state.set_state(Broadcast.filter_value)
+
+
+@router.callback_query(F.data == "filter_f_status", Broadcast.filter_field)
+async def filter_pick_status(callback: types.CallbackQuery, state: FSMContext):
+    if callback.from_user.id not in config.ADMIN_IDS:
+        await callback.answer("Недостаточно прав", show_alert=True)
+        return
+    await callback.answer()
+    kb = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="approved", callback_data="filter_v_status_approved")],
+        [InlineKeyboardButton(text="pending", callback_data="filter_v_status_pending")],
+        [InlineKeyboardButton(text="rejected", callback_data="filter_v_status_rejected")],
+    ])
+    await callback.message.edit_text("Выберите статус:", reply_markup=kb)
+
+
+@router.callback_query(F.data.startswith("filter_v_status_"), Broadcast.filter_field)
+async def filter_value_status(callback: types.CallbackQuery, state: FSMContext):
+    if callback.from_user.id not in config.ADMIN_IDS:
+        await callback.answer("Недостаточно прав", show_alert=True)
+        return
+    value = callback.data.rsplit("_", 1)[1]
+    data = await state.get_data()
+    filters = data.get("filters", [])
+    filters.append({"field": "status", "value": value})
+    await state.update_data(filters=filters)
+    await callback.answer()
+    await _render_filter_menu(callback.message, filters, edit=True)
+
+
+@router.callback_query(F.data == "filter_f_date", Broadcast.filter_field)
+async def filter_pick_date(callback: types.CallbackQuery, state: FSMContext):
+    if callback.from_user.id not in config.ADMIN_IDS:
+        await callback.answer("Недостаточно прав", show_alert=True)
+        return
+    await callback.answer()
+    kb = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="После", callback_data="filter_d_after"),
+         InlineKeyboardButton(text="До", callback_data="filter_d_before")],
+    ])
+    await callback.message.edit_text("Зарегистрированы…", reply_markup=kb)
+
+
+@router.callback_query(F.data.in_({"filter_d_after", "filter_d_before"}), Broadcast.filter_field)
+async def filter_pick_date_op(callback: types.CallbackQuery, state: FSMContext):
+    if callback.from_user.id not in config.ADMIN_IDS:
+        await callback.answer("Недостаточно прав", show_alert=True)
+        return
+    op = "after" if callback.data.endswith("after") else "before"
+    await state.update_data(filter_pending_field="registration_date", filter_pending_op=op)
+    await callback.answer()
+    await callback.message.edit_text("Введите дату в формате ДД.ММ.ГГГГ:")
+    await state.set_state(Broadcast.filter_value)
+
+
+@router.message(Broadcast.filter_value, is_admin)
+async def filter_capture_value(message: types.Message, state: FSMContext):
+    data = await state.get_data()
+    field = data.get("filter_pending_field")
+    op = data.get("filter_pending_op")
+    filters = data.get("filters", [])
+    raw = (message.text or "").strip()
+    if not field or not raw:
+        await message.answer("Пустое значение. Попробуйте ещё раз.")
+        return
+    if field == "registration_date":
+        try:
+            normalized = datetime.strptime(raw, "%d.%m.%Y").strftime("%Y-%m-%d")
+        except ValueError:
+            await message.answer("❌ Дата в формате ДД.ММ.ГГГГ, например 01.06.2026")
+            return
+        filters.append({"field": "registration_date", "op": op, "value": normalized})
+    else:
+        filters.append({"field": field, "value": raw})
+    await state.update_data(filters=filters, filter_pending_field=None, filter_pending_op=None)
+    await _render_filter_menu(message, filters, edit=False)
+    await state.set_state(Broadcast.filter_field)
+
+
+@router.callback_query(F.data == "filter_count", Broadcast.filter_field)
+async def filter_count(callback: types.CallbackQuery, state: FSMContext):
+    if callback.from_user.id not in config.ADMIN_IDS:
+        await callback.answer("Недостаточно прав", show_alert=True)
+        return
+    data = await state.get_data()
+    filters = data.get("filters", [])
+    ids = await count_and_list_filtered(filters)
+    await callback.answer()
+    kb = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="📨 Отправить сейчас", callback_data="filter_send_now")],
+        [InlineKeyboardButton(text="🕓 Запланировать", callback_data="filter_schedule")],
+        [InlineKeyboardButton(text="❌ Отмена", callback_data="broadcast_cancel")],
+    ])
+    await callback.message.edit_text(
+        f"🎯 Условия: {_filter_summary(filters)}\n"
+        f"Под фильтр попадает <b>{len(ids)}</b> пользователей.",
+        reply_markup=kb,
+    )
+
+
+@router.callback_query(F.data == "filter_send_now", Broadcast.filter_field)
+async def filter_send_now(callback: types.CallbackQuery, state: FSMContext):
+    if callback.from_user.id not in config.ADMIN_IDS:
+        await callback.answer("Недостаточно прав", show_alert=True)
+        return
+    data = await state.get_data()
+    filters = data.get("filters", [])
+    ids = await count_and_list_filtered(filters)
+    await _start_segment_broadcast(
+        callback, state, ids,
+        f"🎯 {len(set(ids))} получателей по фильтру.\nТеперь отправьте сообщение для рассылки.",
+    )
+
+
+@router.callback_query(F.data == "filter_schedule", Broadcast.filter_field)
+async def filter_schedule(callback: types.CallbackQuery, state: FSMContext):
+    if callback.from_user.id not in config.ADMIN_IDS:
+        await callback.answer("Недостаточно прав", show_alert=True)
+        return
+    # filters stay in FSM state; the schedule flow reads them as filter_spec
+    await callback.answer()
+    await callback.message.edit_text(
+        "🕓 Введите дату и время рассылки в формате ДД.ММ.ГГГГ ЧЧ:ММ (напр. 01.07.2026 14:30):"
+    )
+    await state.set_state(Broadcast.schedule_when)
+
+
+# ── Phase 3 (VERIF): manual allowlist refresh ────────────────────────────────
+
+@router.message(Command("refresh_allowlist"), is_admin)
+async def cmd_refresh_allowlist(message: types.Message):
+    await refresh_allowlist()
+    size = allowlist_size()
+    if size == 0:
+        await message.answer(
+            "⚠️ Allowlist пуст. Если предотбор включён — сейчас впускаются ВСЕ (fail-open). "
+            "Проверьте Google-таблицу (вкладка «Отобранные»)."
+        )
+    else:
+        await message.answer(f"✅ Allowlist обновлён: {size} username в списке.")
 
 
 # --- Registration Question Toggles ---
@@ -1418,6 +1792,19 @@ APPROVAL_SETTINGS_DOC = [
     ("pending_reminder_enabled", "Периодическая напоминалка о заявках (on/off)", "on"),
     ("pending_reminder_interval", "Интервал напоминалки, сек", "1800"),
     ("reg_q_resume", "Запрос резюме в полной форме (on/off)", "off"),
+    # Phase 3 — dropout nudge (SCHED-03)
+    ("nudge_enabled", "Авто-напоминание о дорегистрации (on/off)", "on"),
+    ("nudge_after_minutes", "Через сколько минут бездействия слать напоминание", "120"),
+    ("nudge_scan_minutes", "Период сканирования дропаутов, мин (вступает в силу после перезапуска)", "15"),
+    ("nudge_text", "Текст напоминания о дорегистрации", "(стандартный)"),
+    # Phase 3 — pre-selection gate (VERIF-01/02)
+    ("preselect_enabled", "Предотбор по Google-таблице (on/off)", "off"),
+    ("preselect_tab", "Название вкладки со списком отобранных", "Отобранные"),
+    ("preselect_link", "Ссылка для не прошедших отбор", "(нет)"),
+    ("preselect_fail_text", "Текст не прошедшим отбор", "Отбор не пройден."),
+    ("preselect_no_username_text", "Текст пользователю без @username", "(стандартный)"),
+    ("preselect_manual_ids", "Ручной allowlist по telegram_id (CSV)", "(пусто)"),
+    ("allowlist_refresh_minutes", "Период обновления allowlist, мин", "60"),
 ]
 
 
@@ -1435,3 +1822,15 @@ def _render_settings_guide(rows: list, current: dict) -> str:
 async def cmd_settings_guide(message: types.Message):
     current = {key: await get_setting(key) for key, _, _ in APPROVAL_SETTINGS_DOC}
     await message.answer(_render_settings_guide(APPROVAL_SETTINGS_DOC, current), parse_mode="HTML")
+
+
+@router.callback_query(F.data == "admin_settings_guide")
+async def show_admin_settings_guide(callback: types.CallbackQuery):
+    if callback.from_user.id not in config.ADMIN_IDS:
+        await callback.answer("Недостаточно прав", show_alert=True)
+        return
+    current = {key: await get_setting(key) for key, _, _ in APPROVAL_SETTINGS_DOC}
+    await callback.message.answer(
+        _render_settings_guide(APPROVAL_SETTINGS_DOC, current), parse_mode="HTML"
+    )
+    await callback.answer()
