@@ -7,6 +7,8 @@ from config import config
 from database.db import init_db
 from handlers import registration, user_actions, admin
 from services.reminders import pending_reminder_loop
+from services.scheduler import init_scheduler
+from services.allowlist import refresh_allowlist
 from aiogram.client.default import DefaultBotProperties
 from aiogram.client.session.aiohttp import AiohttpSession
 from aiogram.enums import ParseMode
@@ -45,6 +47,12 @@ async def main():
     await bot.delete_webhook(drop_pending_updates=True)
     asyncio.create_task(pending_reminder_loop(bot))
     logger.info("Pending-application reminder task started")
+
+    # Phase 3: persistent scheduler (SCHED-01/03) + warm the pre-selection allowlist (VERIF)
+    await init_scheduler(bot)
+    asyncio.create_task(refresh_allowlist())
+    logger.info("Scheduler + allowlist refresh started")
+
     await dp.start_polling(bot)
     logger.info("Bot started polling")
 

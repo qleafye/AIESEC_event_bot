@@ -38,6 +38,15 @@ def _append_rows_sync(rows: list[list]):
     sheet.append_rows(rows)
 
 
+def _get_allowlist_rows_sync(tab_name: str) -> list[str]:
+    """Read column 1 of a non-sheet1 tab (the pre-selection allowlist, D-09).
+    Raises WorksheetNotFound if the tab is missing — caller (refresh_allowlist) is fail-soft."""
+    gc = gspread.service_account(filename=config.GOOGLE_CREDENTIALS_FILE)
+    sh = gc.open_by_key(config.GOOGLE_SHEET_ID)
+    ws = sh.worksheet(tab_name)
+    return ws.col_values(1)
+
+
 async def append_to_sheet(data: list):
     if not config.GOOGLE_SHEET_ID or not config.GOOGLE_CREDENTIALS_FILE:
         logger.warning("Google Sheet ID or Credentials not set. Skipping sheet export.")
