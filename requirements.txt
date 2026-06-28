@@ -5,3 +5,5 @@ pydantic-settings
 python-dotenv
 gspread
 google-auth
+apscheduler==3.11.2
+sqlalchemy>=2.0,<3.0

@@ -103,6 +103,23 @@ async def init_db():
                 started_at TEXT NOT NULL
             )
         ''')
+        # Phase 3 (SCHED-03): one-shot dropout-nudge stamp (additive, D-15 — reuse reg_started)
+        await _ensure_column(db, "reg_started", "nudged_at", "TEXT")
+
+        # Phase 3 (SCHED-01): scheduled-broadcast payload store. APScheduler owns the
+        # trigger (data/jobs.sqlite); this row holds the message/filter payload keyed by id.
+        await db.execute('''
+            CREATE TABLE IF NOT EXISTS scheduled_broadcasts (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                text TEXT,
+                photo_file_id TEXT,
+                filter_spec TEXT,
+                scheduled_at TEXT NOT NULL,
+                status TEXT DEFAULT 'pending',
+                created_by INTEGER,
+                created_at TEXT
+            )
+        ''')
 
         await db.commit()
 
@@ -513,3 +530,122 @@ async def approve_all_pending() -> list[int]:
             rows = await cursor.fetchall()
         await db.commit()
         return [row[0] for row in rows]
+
+
+# ── Phase 3: scheduled-broadcast payload store (SCHED-01) ────────────────────
+
+async def create_scheduled_broadcast(
+    text: str | None,
+    photo_file_id: str | None,
+    filter_spec: str | None,
+    scheduled_at: str,
+    created_by: int,
+) -> int:
+    """Insert a pending scheduled broadcast; return its new id (the job's only arg)."""
+    created_at = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    async with aiosqlite.connect(config.DB_PATH) as db:
+        cursor = await db.execute(
+            "INSERT INTO scheduled_broadcasts "
+            "(text, photo_file_id, filter_spec, scheduled_at, status, created_by, created_at) "
+            "VALUES (?, ?, ?, ?, 'pending', ?, ?)",
+            (text, photo_file_id, filter_spec, scheduled_at, created_by, created_at),
+        )
+        await db.commit()
+        return cursor.lastrowid
+
+
+async def get_scheduled_broadcast(broadcast_id: int) -> dict | None:
+    async with aiosqlite.connect(config.DB_PATH) as db:
+        db.row_factory = aiosqlite.Row
+        async with db.execute(
+            "SELECT * FROM scheduled_broadcasts WHERE id = ?", (broadcast_id,)
+        ) as cursor:
+            row = await cursor.fetchone()
+            return dict(row) if row else None
+
+
+async def mark_broadcast_sent(broadcast_id: int):
+    async with aiosqlite.connect(config.DB_PATH) as db:
+        await db.execute(
+            "UPDATE scheduled_broadcasts SET status = 'sent' WHERE id = ?", (broadcast_id,)
+        )
+        await db.commit()
+
+
+async def list_pending_broadcasts() -> list[dict]:
+    async with aiosqlite.connect(config.DB_PATH) as db:
+        db.row_factory = aiosqlite.Row
+        async with db.execute(
+            "SELECT * FROM scheduled_broadcasts WHERE status = 'pending' ORDER BY scheduled_at"
+        ) as cursor:
+            return [dict(row) for row in await cursor.fetchall()]
+
+
+async def cancel_scheduled_broadcast(broadcast_id: int):
+    async with aiosqlite.connect(config.DB_PATH) as db:
+        await db.execute(
+            "UPDATE scheduled_broadcasts SET status = 'cancelled' WHERE id = ?", (broadcast_id,)
+        )
+        await db.commit()
+
+
+# ── Phase 3: dropout-nudge scan/mark (SCHED-03) ──────────────────────────────
+
+async def get_nudge_candidates(cutoff: str) -> list[int]:
+    """Incomplete registrations older than cutoff that were never nudged.
+    started_at is ISO ('%Y-%m-%d %H:%M:%S') so lexicographic `<` is chronological."""
+    async with aiosqlite.connect(config.DB_PATH) as db:
+        async with db.execute(
+            "SELECT telegram_id FROM reg_started WHERE started_at < ? AND nudged_at IS NULL",
+            (cutoff,),
+        ) as cursor:
+            return [row[0] for row in await cursor.fetchall()]
+
+
+async def mark_nudged(telegram_id: int):
+    """Stamp nudged_at so a user is never nudged twice (one-shot dedup, D-14)."""
+    nudged_at = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    async with aiosqlite.connect(config.DB_PATH) as db:
+        await db.execute(
+            "UPDATE reg_started SET nudged_at = ? WHERE telegram_id = ?",
+            (nudged_at, telegram_id),
+        )
+        await db.commit()
+
+
+# ── Phase 3: filtered-broadcast audience query (COMM-01/02/03) ───────────────
+
+# Column whitelist — the ONLY place a column name is composed into SQL (Pitfall 5).
+_FILTER_COLUMNS = {"city", "university", "status", "source"}
+
+
+def _build_filter_clause(filters: list[dict]) -> tuple[str, list]:
+    """Pure: build a parameterized AND WHERE clause from a filter spec.
+
+    Column names come only from `_FILTER_COLUMNS` (or the literal `registration_date`);
+    values are NEVER interpolated — they bind as `?`. Non-whitelisted fields are dropped.
+    """
+    clauses: list[str] = []
+    params: list = []
+    for f in filters:
+        field = f.get("field")
+        if field == "registration_date":
+            op = ">=" if f.get("op") == "after" else "<"
+            clauses.append(f"registration_date {op} ?")
+            params.append(f.get("value"))
+        elif field in _FILTER_COLUMNS:
+            clauses.append(f"{field} = ?")
+            params.append(f.get("value"))
+        # non-whitelisted field → silently skipped (never interpolated)
+    where = (" WHERE " + " AND ".join(clauses)) if clauses else ""
+    return where, params
+
+
+async def count_and_list_filtered(filters: list[dict]) -> list[int]:
+    """Materialize the matched telegram_id list; the count preview is len(...)."""
+    where, params = _build_filter_clause(filters)
+    async with aiosqlite.connect(config.DB_PATH) as db:
+        async with db.execute(
+            f"SELECT telegram_id FROM users{where}", params
+        ) as cursor:
+            return [row[0] for row in await cursor.fetchall()]
