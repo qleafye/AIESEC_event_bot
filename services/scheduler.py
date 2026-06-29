@@ -99,6 +99,12 @@ async def init_scheduler(bot):
         minutes=refresh_minutes, id="allowlist_refresh", replace_existing=True,
     )
 
+    # PAY-06: daily overdue sweep (no-op until a payment_deadline is set and passes).
+    _scheduler.add_job(
+        sweep_payment_overdue, "interval",
+        hours=24, id="payment_overdue_sweep", replace_existing=True,
+    )
+
     _scheduler.start()
     logger.info(
         f"Scheduler started (nudge scan every {scan_minutes}m, "
@@ -180,6 +186,69 @@ def cancel_broadcast_job(broadcast_id: int):
         get_scheduler().remove_job(f"bcast_{broadcast_id}")
     except Exception as e:
         logger.warning(f"cancel_broadcast_job({broadcast_id}): {e}")
+
+
+# ── PAY-06: payment-deadline reminders (D-13) ────────────────────────────────
+
+def schedule_payment_reminder(user_id: int, run_at: datetime, label: str):
+    """One-shot deadline reminder for one user. label: 'minus3d' | 'minus1d'
+    (disambiguates the job id). replace_existing=True so re-uploading a receipt
+    re-schedules cleanly."""
+    get_scheduler().add_job(
+        send_payment_reminder, "date",
+        run_date=run_at, args=[user_id],
+        id=f"pay_reminder_{user_id}_{label}", replace_existing=True,
+    )
+
+
+def cancel_payment_reminders(user_id: int):
+    """Cancel both outstanding reminders for a user (called on receipt confirm)."""
+    for label in ("minus3d", "minus1d"):
+        try:
+            get_scheduler().remove_job(f"pay_reminder_{user_id}_{label}")
+        except Exception:
+            pass  # already fired or never scheduled — both fine
+
+
+async def send_payment_reminder(user_id: int):
+    """Date-job target: nudge a non-payer. Arg is int only (picklable); Bot from _bot
+    module global. SC#5: never fire if already paid or a receipt is already in review."""
+    try:
+        from database.db import get_user
+        user = await get_user(user_id)
+        if not user or user.get("payment_status") in ("paid", "receipt_sent", None):
+            return
+        text = await get_setting("payment_reminder_text") or (
+            "⏰ Напоминание об оплате участия!\n\n"
+            "Срок оплаты истекает скоро. Загрузи чек оплаты через бота."
+        )
+        await _safe_send(lambda cid: _bot.send_message(cid, text), user_id)
+    except Exception as e:
+        logger.error(f"send_payment_reminder({user_id}) failed: {e}")
+
+
+async def sweep_payment_overdue():
+    """Daily interval target: mark past-deadline non-payers as 'overdue'. Touches only
+    'not_paid' rows — 'receipt_sent'/'paid' are left alone. No-op until a parseable
+    payment_deadline is set and has passed."""
+    try:
+        import aiosqlite
+        deadline_str = await get_setting("payment_deadline")
+        if not deadline_str:
+            return
+        try:
+            deadline = datetime.strptime(deadline_str.strip(), "%d.%m.%Y %H:%M")
+        except ValueError:
+            return
+        if datetime.now() < deadline:
+            return
+        async with aiosqlite.connect(config.DB_PATH) as db:
+            await db.execute(
+                "UPDATE users SET payment_status='overdue' WHERE payment_status='not_paid'"
+            )
+            await db.commit()
+    except Exception as e:
+        logger.error(f"sweep_payment_overdue failed: {e}")
 
 
 # ── SCHED-03: dropout-nudge interval job ─────────────────────────────────────

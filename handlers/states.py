@@ -35,9 +35,21 @@ class Registration(StatesGroup):
     volunteer = State()
     resume = State()
     confirm = State()
+    # Phase 4 (CONS-02 / PAY-02/03): consent + payment steps
+    consent_pending = State()   # waiting for «Принимаю» callback on a consent card
+    date_input = State()        # waiting for a ДД.ММ.ГГГГ date-type step answer
+    receipt_upload = State()    # waiting for PDF document or photo receipt
+    payment_option = State()    # waiting for user to pick a payment option
+    # YL'26 reg-flow additions
+    select_input = State()      # configurable single-select step (city / study_field / …)
+    multi_input = State()       # configurable multi-select step (goal / formats)
+    ambassador = State()        # ambassador yes/no question
 
 class Approval(StatesGroup):
     reason = State()
+
+class ReceiptReview(StatesGroup):
+    reject_reason = State()   # admin types receipt rejection reason (mirrors Approval.reason)
 
 class Question(StatesGroup):
     waiting_for_question = State()

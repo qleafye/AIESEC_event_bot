@@ -5,7 +5,7 @@ from aiogram import Bot, Dispatcher
 from aiogram.fsm.storage.memory import MemoryStorage
 from config import config
 from database.db import init_db
-from handlers import registration, user_actions, admin
+from handlers import registration, user_actions, admin, payment
 from services.reminders import pending_reminder_loop
 from services.scheduler import init_scheduler
 from services.allowlist import refresh_allowlist
@@ -40,7 +40,9 @@ async def main():
     dp = Dispatcher(storage=MemoryStorage())
     
     # Register routers
+    payment.init_payment_module(dp.storage)  # out-of-handler FSMContext for free/single-option path
     dp.include_router(admin.router) # Admin first to intercept commands
+    dp.include_router(payment.router)  # payment callbacks/states checked before registration
     dp.include_router(registration.router)
     dp.include_router(user_actions.router)
     
