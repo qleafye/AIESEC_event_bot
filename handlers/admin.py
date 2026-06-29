@@ -37,6 +37,9 @@ from database.db import (
     list_pending_broadcasts,
     cancel_scheduled_broadcast,
     count_and_list_filtered,
+    get_receipt_pending_users,
+    get_receipt_pending_count,
+    update_payment_status,
 )
 from aiogram.exceptions import TelegramRetryAfter
 from services.sheets import get_existing_sheet_ids, append_rows_to_sheet
@@ -47,8 +50,8 @@ from services.scheduler import (
     cancel_broadcast_job,
 )
 from services.allowlist import refresh_allowlist, allowlist_size
-from handlers.states import Broadcast, EditSetting, Approval
-from keyboards.builders import get_cancel_kb, MENU_BUTTONS
+from handlers.states import Broadcast, EditSetting, Approval, ReceiptReview
+from keyboards.builders import get_cancel_kb, MENU_BUTTONS, get_main_menu_kb
 from handlers.registration import REG_FLOW, REG_DEFAULTS, REG_LABELS, _build_sheet_row, approve_user
 
 router = Router()
@@ -94,6 +97,7 @@ def build_admin_keyboard():
         [InlineKeyboardButton(text="📈 Источники", callback_data="admin_source_stats")],
         [InlineKeyboardButton(text="📄 Экспорт CSV", callback_data="admin_export_csv")],
         [InlineKeyboardButton(text="📋 Заявки", callback_data="admin_applications")],
+        [InlineKeyboardButton(text="🧾 Чеки", callback_data="admin_receipts")],
         [InlineKeyboardButton(text="📢 Рассылка", callback_data="admin_broadcast")],
         [InlineKeyboardButton(text="🔄 Синхронизация таблицы", callback_data="admin_sync_sheet")],
         [InlineKeyboardButton(text="⚙️ Настройки форума", callback_data="admin_settings")],
@@ -339,6 +343,23 @@ SETTINGS_FIELDS = [
     ("event_name", "🎪 Название меро", "Название мероприятия в родительном падеже — подставляется в вопрос об ожиданиях (например: «конференции RusCo», «форума YouLead», «Годового отчёта»)"),
     ("source_options", "📢 Источники", "Отправьте варианты источников, каждый с новой строки"),
     ("reg_complete_text", "✅ После регистрации", "Введите текст, который увидит пользователь после регистрации (поддерживается HTML-разметка)"),
+    # Phase 4: event modularity + consent + payment config (all default empty/off → live flow unchanged)
+    ("event_type", "🎭 Тип события", "Тип: forum / conference / custom. Устанавливает пресеты модулей. Сохрани значение для применения пресета."),
+    ("consent_list", "📋 Список согласий", "Согласия — по одному на строку, формат: Название|pdf_key (напр: Обработка данных|consent_pdf_data)"),
+    ("payment_options", "💳 Варианты оплаты", "Варианты оплаты — по одному на строку, формат: Название|Цена (напр: Полный билет|5000). Цена 0 = бесплатно."),
+    ("payment_requisites", "💰 Реквизиты оплаты", "HTML-текст с реквизитами (банк / номер карты / ФИО получателя). Поддерживает <b>/<i>/<code>."),
+    ("payment_deadline", "📅 Дедлайн оплаты", "Дата и время дедлайна оплаты в формате ДД.ММ.ГГГГ ЧЧ:ММ (напр: 15.08.2026 23:59)"),
+    ("penalty_schedule", "⚠️ Штрафы за отмену", "Штрафная шкала — по одному на строку, формат: ДД.ММ.ГГГГ|Остаток (напр: 01.08.2026|3000). Оставить пустым = без штрафов."),
+    # YL'26: configurable option lists + reg-flow modes (0 хардкода — всё правит админ)
+    ("city_options", "🏙 Города (список)", "Города для шага «Город» — по одному на строку. Пусто = список по умолчанию. «Другое» добавляется автоматически."),
+    ("study_field_options", "🎯 Направления обучения", "Варианты направления обучения — по одному на строку. Пусто = список по умолчанию."),
+    ("goal_options", "🎯 Цели участия", "Варианты цели участия (мультивыбор) — по одному на строку. Пусто = список по умолчанию."),
+    ("formats_options", "📋 Форматы форума", "Варианты форматов форума (мультивыбор) — по одному на строку. Пусто = список по умолчанию."),
+    ("university_options", "🏫 База ВУЗов", "Список ВУЗов для режима «база» — по одному на строку. Пусто = встроенный список. «Другое» добавляется автоматически."),
+    ("reg_university_mode", "🏫 Режим ВУЗа", "list = выбор из базы ВУЗов, text = свободный ввод. По умолчанию list."),
+    ("edu_conditional", "🎓 Условный блок ВУЗа", "on = ВУЗ/курс/специальность только если «учусь». off = всегда. По умолчанию on."),
+    # NOTE: per-consent PDF keys (consent_pdf_<key>) задаются через раздел «🧾 Чеки → согласия»
+    # либо вводом file_id; динамические ключи в SETTINGS_FIELDS не перечисляются.
 ]
 
 PHOTO_FIELDS = [
@@ -373,8 +394,13 @@ async def render_settings_text() -> str:
     notify_lbl = "📨 Сразу" if notify_mode == "instant" else "🕒 Пачкой (напоминалка)"
     lines.append(f"🔔 Уведомление о заявке: <b>{notify_lbl}</b>")
 
+    payment_enabled = await get_setting("payment_enabled") or "off"
+    consent_enabled = await get_setting("consent_enabled") or "off"
+    lines.append(f"💳 Модуль оплаты: <b>{'✅ Вкл' if payment_enabled == 'on' else '❌ Выкл'}</b>")
+    lines.append(f"📋 Модуль согласий: <b>{'✅ Вкл' if consent_enabled == 'on' else '❌ Выкл'}</b>")
+
     enabled_q = 0
-    for _, sk in REG_FLOW:
+    for _, sk, *_rest in REG_FLOW:
         v = await get_setting(sk)
         is_on = (v == "on") if v is not None else (REG_DEFAULTS.get(sk, "on") == "on")
         if is_on:
@@ -433,12 +459,20 @@ async def build_settings_keyboard():
     short_txt = "✅ Краткая форма: 👮 Ручная → ⚡ Авто" if short_appr == "manual" else "✅ Краткая форма: ⚡ Авто → 👮 Ручная"
     notify_txt = "🔔 Уведомление: 📨 Сразу → 🕒 Пачкой" if notify_mode == "instant" else "🔔 Уведомление: 🕒 Пачкой → 📨 Сразу"
 
+    payment_enabled = await get_setting("payment_enabled") or "off"
+    consent_enabled = await get_setting("consent_enabled") or "off"
+    payment_toggle_text = "💳 Оплата: ❌ Выкл → ✅ Вкл" if payment_enabled != "on" else "💳 Оплата: ✅ Вкл → ❌ Выкл"
+    consent_toggle_text = "📋 Согласия: ❌ Выкл → ✅ Вкл" if consent_enabled != "on" else "📋 Согласия: ✅ Вкл → ❌ Выкл"
+
     buttons = [
         [InlineKeyboardButton(text=toggle_text, callback_data="settings_toggle_reg")],
         [InlineKeyboardButton(text=bonus_toggle_text, callback_data="settings_toggle_bonus")],
         [InlineKeyboardButton(text=full_txt, callback_data="settings_toggle_full_approval")],
         [InlineKeyboardButton(text=short_txt, callback_data="settings_toggle_short_approval")],
         [InlineKeyboardButton(text=notify_txt, callback_data="settings_toggle_notify")],
+        [InlineKeyboardButton(text=payment_toggle_text, callback_data="toggle_payment_enabled")],
+        [InlineKeyboardButton(text=consent_toggle_text, callback_data="toggle_consent_enabled")],
+        [InlineKeyboardButton(text="🧾 PDF согласий", callback_data="admin_consent_pdfs")],
         [InlineKeyboardButton(text="📋 Вопросы регистрации", callback_data="admin_reg_questions")],
         [InlineKeyboardButton(text="🔘 Кнопки меню", callback_data="admin_menu_buttons")],
     ]
@@ -500,6 +534,44 @@ async def toggle_full_approval(callback: types.CallbackQuery):
 @router.callback_query(F.data == "settings_toggle_short_approval")
 async def toggle_short_approval(callback: types.CallbackQuery):
     await _toggle_approval_setting(callback, "short_approval", "auto", "Модерация краткой формы")
+
+
+# ── Phase 4: module on/off toggles (payment, consent) + event-type preset ────
+
+async def _toggle_module_setting(callback: types.CallbackQuery, key: str, title: str):
+    """On/off toggle for a Phase 4 module flag (fail-safe default OFF, D-15)."""
+    if callback.from_user.id not in config.ADMIN_IDS:
+        await callback.answer("Недостаточно прав", show_alert=True)
+        return
+    current = await get_setting(key) or "off"
+    new_val = "off" if current == "on" else "on"
+    await set_setting(key, new_val)
+    label = "✅ Вкл" if new_val == "on" else "❌ Выкл"
+    await callback.answer(f"{title}: {label}", show_alert=True)
+    text = await render_settings_text()
+    await callback.message.edit_text(text, parse_mode="HTML", reply_markup=await build_settings_keyboard())
+
+
+@router.callback_query(F.data == "toggle_payment_enabled")
+async def toggle_payment_enabled(callback: types.CallbackQuery):
+    await _toggle_module_setting(callback, "payment_enabled", "💳 Оплата")
+
+
+@router.callback_query(F.data == "toggle_consent_enabled")
+async def toggle_consent_enabled(callback: types.CallbackQuery):
+    await _toggle_module_setting(callback, "consent_enabled", "📋 Согласия")
+
+
+async def _apply_event_type_preset(event_type: str):
+    """D-05: event type presets module flags; each is still manually overridable after.
+    conference → payment+consent ON; forum → both OFF; custom → no change."""
+    if event_type == "conference":
+        await set_setting("payment_enabled", "on")
+        await set_setting("consent_enabled", "on")
+    elif event_type == "forum":
+        await set_setting("payment_enabled", "off")
+        await set_setting("consent_enabled", "off")
+    # "custom" → no change (manual control)
 
 
 @router.callback_query(F.data == "settings_toggle_notify")
@@ -666,6 +738,68 @@ async def settings_back_to_admin(callback: types.CallbackQuery):
     await callback.answer()
 
 
+def _parse_consent_list(raw: str) -> list[tuple[str, str]]:
+    """consent_list ('Название|ключ' per line) → [(label, key)]."""
+    items = []
+    for line in (raw or "").strip().splitlines():
+        line = line.strip()
+        if not line or "|" not in line:
+            continue
+        label, key = line.split("|", 1)
+        key = key.strip()
+        if key:
+            items.append((label.strip() or key, key))
+    return items
+
+
+@router.callback_query(F.data == "admin_consent_pdfs")
+async def admin_consent_pdfs(callback: types.CallbackQuery):
+    if callback.from_user.id not in config.ADMIN_IDS:
+        await callback.answer("Недостаточно прав", show_alert=True)
+        return
+    items = _parse_consent_list(await get_setting("consent_list") or "")
+    if not items:
+        await callback.answer()
+        await callback.message.edit_text(
+            "Сначала заполни «📋 Список согласий» (формат: Название|ключ), затем загрузи PDF.",
+            reply_markup=InlineKeyboardMarkup(inline_keyboard=[
+                [InlineKeyboardButton(text="← Назад", callback_data="admin_settings")],
+            ]),
+        )
+        return
+    buttons = []
+    for label, key in items:
+        has_pdf = bool(await get_setting(f"consent_pdf_{key}"))
+        mark = "✅" if has_pdf else "📎"
+        buttons.append([InlineKeyboardButton(text=f"{mark} {label}", callback_data=f"consent_pdf_set:{key}")])
+    buttons.append([InlineKeyboardButton(text="← Назад", callback_data="admin_settings")])
+    await callback.message.edit_text(
+        "🧾 <b>PDF согласий</b>\n\nВыбери согласие и пришли PDF-документ. ✅ — PDF уже загружен.",
+        parse_mode="HTML",
+        reply_markup=InlineKeyboardMarkup(inline_keyboard=buttons),
+    )
+    await callback.answer()
+
+
+@router.callback_query(F.data.startswith("consent_pdf_set:"))
+async def consent_pdf_set(callback: types.CallbackQuery, state: FSMContext):
+    if callback.from_user.id not in config.ADMIN_IDS:
+        await callback.answer("Недостаточно прав", show_alert=True)
+        return
+    key = callback.data.split(":", 1)[1]
+    cancel_kb = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="❌ Отмена", callback_data="settings_cancel")],
+    ])
+    await callback.message.edit_text(
+        f"Пришли PDF-документ для согласия <code>{html_module.escape(key)}</code>.",
+        parse_mode="HTML",
+        reply_markup=cancel_kb,
+    )
+    await state.set_state(EditSetting.waiting_for_file)
+    await state.update_data(raw_file_key=f"consent_pdf_{key}")
+    await callback.answer()
+
+
 @router.message(StateFilter(EditSetting), Command("cancel"))
 @router.message(StateFilter(EditSetting), F.text == "Отмена")
 async def cancel_edit_setting(message: types.Message, state: FSMContext):
@@ -701,6 +835,9 @@ async def settings_receive_photo_invalid(message: types.Message):
 @router.message(EditSetting.waiting_for_file, is_admin, F.photo)
 async def settings_receive_file_photo(message: types.Message, state: FSMContext):
     data = await state.get_data()
+    if data.get("raw_file_key"):
+        await message.answer("Согласие принимается только PDF-документом, не фото.")
+        return
     prefix = data.get("file_setting", "reg_bonus")
 
     file_id = message.photo[-1].file_id
@@ -721,6 +858,20 @@ async def settings_receive_file_photo(message: types.Message, state: FSMContext)
 @router.message(EditSetting.waiting_for_file, is_admin, F.document)
 async def settings_receive_file_doc(message: types.Message, state: FSMContext):
     data = await state.get_data()
+
+    # Consent PDF: store the document file_id directly into an arbitrary settings key.
+    raw_key = data.get("raw_file_key")
+    if raw_key:
+        if (message.document.mime_type or "") != "application/pdf":
+            await message.answer("Принимается только PDF-документ. Пришли PDF.")
+            return
+        await set_setting(raw_key, message.document.file_id)
+        await state.clear()
+        await message.answer("✅ PDF согласия сохранён!")
+        text = await render_settings_text()
+        await message.answer(text, parse_mode="HTML", reply_markup=await build_settings_keyboard())
+        return
+
     prefix = data.get("file_setting", "reg_bonus")
 
     file_id = message.document.file_id
@@ -759,6 +910,9 @@ async def settings_edit_value(message: types.Message, state: FSMContext):
         await delete_setting(key)
     else:
         await set_setting(key, value)
+        # Phase 4 (D-05): saving event_type applies the module-toggle preset.
+        if key == "event_type":
+            await _apply_event_type_preset(value.strip().lower())
 
     await state.clear()
     text = await render_settings_text()
@@ -1414,7 +1568,7 @@ async def render_questions_text() -> str:
     lines.append("<i>Действуют в режиме «📋 Полная регистрация».</i>")
     lines.append("")
 
-    for _, setting_key in REG_FLOW:
+    for _, setting_key, *_rest in REG_FLOW:
         label = REG_LABELS.get(setting_key, setting_key)
         val = await get_setting(setting_key)
         is_on = (val == "on") if val is not None else (REG_DEFAULTS.get(setting_key, "on") == "on")
@@ -1426,7 +1580,7 @@ async def render_questions_text() -> str:
 
 async def build_questions_keyboard():
     buttons = []
-    for _, setting_key in REG_FLOW:
+    for _, setting_key, *_rest in REG_FLOW:
         label = REG_LABELS.get(setting_key, setting_key)
         val = await get_setting(setting_key)
         is_on = (val == "on") if val is not None else (REG_DEFAULTS.get(setting_key, "on") == "on")
@@ -1779,6 +1933,176 @@ async def appr_all_yes(callback: types.CallbackQuery, state: FSMContext):
     )
     asyncio.create_task(_welcome_flipped(callback.bot, ids))  # drain sends in background
     await callback.answer()
+
+
+# ── Phase 4: receipt verification queue ("Чеки", tinder UI, D-12) ─────────────
+
+def _parse_rcpt(data: str) -> tuple[str, int | None]:
+    """'rcpt_confirm:123' -> ('rcpt_confirm', 123)."""
+    if ":" in data:
+        prefix, uid = data.split(":", 1)
+        try:
+            return prefix, int(uid)
+        except ValueError:
+            return prefix, None
+    return data, None
+
+
+def _render_receipt_card(user: dict, position: int, total: int) -> str:
+    lines = [f"🧾 <b>Чек {position}/{total}</b>", ""]
+    lines.append(f"👤 {html_module.escape(str(user.get('full_name') or '—'))}")
+    lines.append(f"💳 Вариант: {html_module.escape(str(user.get('payment_option') or '—'))}")
+    lines.append(f"📎 Чек: {'загружен' if user.get('receipt_file_id') else 'нет'}")
+    return "\n".join(lines)
+
+
+def _rcpt_card_kb(uid: int, has_receipt: bool, total: int) -> InlineKeyboardMarkup:
+    rows = [[
+        InlineKeyboardButton(text="✅ Подтвердить", callback_data=f"rcpt_confirm:{uid}"),
+        InlineKeyboardButton(text="❌ Отклонить", callback_data=f"rcpt_reject:{uid}"),
+    ]]
+    third = []
+    if has_receipt:
+        third.append(InlineKeyboardButton(text="🧾 Чек", callback_data=f"rcpt_view:{uid}"))
+    third.append(InlineKeyboardButton(text="⏭ Следующий", callback_data=f"rcpt_skip:{uid}"))
+    rows.append(third)
+    return InlineKeyboardMarkup(inline_keyboard=rows)
+
+
+async def _show_current_receipt_card(target: types.Message, state: FSMContext):
+    pending = await get_receipt_pending_users(limit=50)
+    skipped = set((await state.get_data()).get("rcpt_skipped", []))
+    visible = [u for u in pending if u["telegram_id"] not in skipped]
+    total = await get_receipt_pending_count()
+    if not visible:
+        await target.answer("✅ Чеков на проверке нет.", reply_markup=build_admin_keyboard())
+        return
+    current = visible[0]
+    position = total - len(visible) + 1
+    await target.answer(
+        _render_receipt_card(current, position, total),
+        parse_mode="HTML",
+        reply_markup=_rcpt_card_kb(current["telegram_id"], bool(current.get("receipt_file_id")), total),
+    )
+
+
+@router.callback_query(F.data == "admin_receipts")
+async def show_receipts(callback: types.CallbackQuery, state: FSMContext):
+    if callback.from_user.id not in config.ADMIN_IDS:
+        await callback.answer("Недостаточно прав", show_alert=True)
+        return
+    await state.update_data(rcpt_skipped=[])
+    await callback.answer()
+    await _show_current_receipt_card(callback.message, state)
+
+
+@router.callback_query(F.data.startswith("rcpt_confirm:"))
+async def rcpt_confirm(callback: types.CallbackQuery, state: FSMContext):
+    if callback.from_user.id not in config.ADMIN_IDS:
+        await callback.answer("Недостаточно прав", show_alert=True)
+        return
+    _, uid = _parse_rcpt(callback.data)
+    rows = await update_payment_status(uid, "paid") if uid is not None else 0
+    if rows == 0:
+        # Atomic guard (T-04-05-02): another manager already confirmed.
+        await callback.answer("Чек уже обработан.")
+        await _show_current_receipt_card(callback.message, state)
+        return
+    from services.scheduler import cancel_payment_reminders
+    cancel_payment_reminders(uid)  # cancel BEFORE notifying — no reminder after paid
+    try:
+        await callback.bot.send_message(
+            uid,
+            "✅ <b>Оплата подтверждена!</b>\n\nСпасибо, ваш взнос получен.",
+            parse_mode="HTML",
+            reply_markup=await get_main_menu_kb(),  # first menu after the payment journey
+        )
+    except Exception as e:
+        logger.error(f"Failed to notify user {uid} of payment confirmation: {e}")
+    await callback.answer("Оплата подтверждена")
+    await _show_current_receipt_card(callback.message, state)
+
+
+@router.callback_query(F.data.startswith("rcpt_reject:"))
+async def rcpt_reject_start(callback: types.CallbackQuery, state: FSMContext):
+    if callback.from_user.id not in config.ADMIN_IDS:
+        await callback.answer("Недостаточно прав", show_alert=True)
+        return
+    _, uid = _parse_rcpt(callback.data)
+    await state.update_data(rcpt_reject_uid=uid)
+    await state.set_state(ReceiptReview.reject_reason)
+    await callback.message.answer("Укажи причину отклонения (или «-» без объяснений):", reply_markup=get_cancel_kb())
+    await callback.answer()
+
+
+@router.message(ReceiptReview.reject_reason, is_admin, F.text.in_({"Отмена", "/cancel"}))
+async def rcpt_reject_cancel(message: types.Message, state: FSMContext):
+    await state.set_state(None)
+    await message.answer("Отклонение отменено.", reply_markup=ReplyKeyboardRemove())
+    await _show_current_receipt_card(message, state)
+
+
+@router.message(ReceiptReview.reject_reason, is_admin)
+async def rcpt_reject_reason(message: types.Message, state: FSMContext):
+    data = await state.get_data()
+    uid = data.get("rcpt_reject_uid")
+    if uid is not None:
+        await update_payment_status(uid, "not_paid")  # reset → user can re-upload
+        reason_text = (message.text or "").strip()
+        user_msg = "❌ Чек отклонён."
+        if reason_text and reason_text != "-":
+            user_msg += f" Причина: {html_module.escape(reason_text)}"
+        user_msg += "\n\nЗагрузи чек повторно через бота."
+        try:
+            await message.bot.send_message(uid, user_msg, parse_mode="HTML")
+        except Exception as e:
+            logger.error(f"Failed to notify user {uid} of receipt rejection: {e}")
+    await state.set_state(None)
+    await message.answer("Готово.", reply_markup=ReplyKeyboardRemove())
+    await _show_current_receipt_card(message, state)
+
+
+@router.callback_query(F.data.startswith("rcpt_skip:"))
+async def rcpt_skip(callback: types.CallbackQuery, state: FSMContext):
+    if callback.from_user.id not in config.ADMIN_IDS:
+        await callback.answer("Недостаточно прав", show_alert=True)
+        return
+    _, uid = _parse_rcpt(callback.data)
+    data = await state.get_data()
+    skipped = list(data.get("rcpt_skipped", []))
+    if uid is not None and uid not in skipped:
+        skipped.append(uid)
+    await state.update_data(rcpt_skipped=skipped)
+    try:
+        await callback.message.delete()
+    except Exception:
+        pass
+    await callback.answer()
+    await _show_current_receipt_card(callback.message, state)
+
+
+@router.callback_query(F.data.startswith("rcpt_view:"))
+async def rcpt_view(callback: types.CallbackQuery):
+    if callback.from_user.id not in config.ADMIN_IDS:
+        await callback.answer("Недостаточно прав", show_alert=True)
+        return
+    _, uid = _parse_rcpt(callback.data)
+    user = await get_user(uid) if uid is not None else None
+    if user and user.get("receipt_file_id"):
+        file_id = user["receipt_file_id"]
+        try:
+            await callback.message.answer_document(file_id, caption=f"Чек пользователя {uid}")
+        except Exception:
+            # receipt may be a photo file_id, not a document — fall back to photo send
+            try:
+                await callback.message.answer_photo(file_id, caption=f"Чек пользователя {uid}")
+            except Exception as e:
+                logger.error(f"Failed to show receipt for {uid}: {e}")
+                await callback.answer("Не удалось открыть чек.", show_alert=True)
+                return
+        await callback.answer()
+    else:
+        await callback.answer("Чек не найден.", show_alert=True)
 
 
 # ── Phase 2: self-documenting settings command (D-16) ────────────────────────
