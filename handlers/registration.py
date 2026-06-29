@@ -7,11 +7,11 @@ from aiogram.filters import Command, CommandObject, StateFilter
 from aiogram.fsm.context import FSMContext
 import os
 
-from aiogram.types import FSInputFile, ReplyKeyboardRemove
+from aiogram.types import FSInputFile, ReplyKeyboardRemove, InlineKeyboardMarkup, InlineKeyboardButton
 from aiogram.utils.keyboard import ReplyKeyboardBuilder
 
 from config import config
-from database.db import add_user, get_user, get_setting, mark_reg_started, clear_reg_started, set_user_subscribed, set_user_status
+from database.db import add_user, get_user, get_setting, mark_reg_started, clear_reg_started, set_user_subscribed, set_user_status, record_user_consent
 from handlers.states import Registration
 from keyboards.builders import (
     get_main_menu_kb,
@@ -56,39 +56,91 @@ def _decide_status(reg_mode: str, full_setting: str, short_setting: str) -> str:
 
 # --- Registration Flow Engine ---
 
+# Phase 4 (D-07): each entry is (step_key, setting_key, type). type is "text" (default
+# free-text handler), "date" (ДД.ММ.ГГГГ validation), or "consent" (injected dynamically,
+# never declared statically here). Iteration sites star-unpack the type so 2-tuples would
+# still work during any incremental migration.
 REG_FLOW = [
-    ("age", "reg_q_age"),
-    ("email", "reg_q_email"),
-    ("phone", "reg_q_phone"),
-    ("city", "reg_q_city"),
-    ("source", "reg_q_source"),
-    ("local_committee", "reg_q_lc"),
-    ("position", "reg_q_position"),
-    ("education_status", "reg_q_education"),
-    ("university", "reg_q_university"),
-    ("course", "reg_q_course"),
-    ("specialty", "reg_q_specialty"),
-    ("work_status", "reg_q_work"),
-    ("work_sphere", "reg_q_work_sphere"),
-    ("missing_skills", "reg_q_skills"),
-    ("expectations", "reg_q_expectations"),
-    ("attendance_format", "reg_q_attendance"),
-    ("informal_day", "reg_q_informal_day"),
-    ("comments", "reg_q_comments"),
-    ("department", "reg_q_department"),
-    ("aiesec_role", "reg_q_aiesec_role"),
-    ("needs_certificate", "reg_q_certificate"),
-    ("english_level", "reg_q_english"),
-    ("allergies", "reg_q_allergies"),
-    ("food_pref", "reg_q_food"),
-    ("arrival", "reg_q_arrival"),
-    ("housing", "reg_q_housing"),
-    ("cc_shop", "reg_q_cc_shop"),
-    ("exp_organizers", "reg_q_exp_organizers"),
-    ("exp_content", "reg_q_exp_content"),
-    ("volunteer", "reg_q_volunteer"),
-    ("resume", "reg_q_resume"),
+    ("age", "reg_q_age", "text"),
+    ("email", "reg_q_email", "text"),
+    ("phone", "reg_q_phone", "text"),
+    ("city", "reg_q_city", "text"),
+    ("source", "reg_q_source", "text"),
+    ("local_committee", "reg_q_lc", "text"),
+    ("position", "reg_q_position", "text"),
+    ("education_status", "reg_q_education", "text"),
+    ("university", "reg_q_university", "text"),
+    ("course", "reg_q_course", "text"),
+    ("specialty", "reg_q_specialty", "text"),
+    ("work_status", "reg_q_work", "text"),
+    ("work_sphere", "reg_q_work_sphere", "text"),
+    ("missing_skills", "reg_q_skills", "text"),
+    ("expectations", "reg_q_expectations", "text"),
+    ("attendance_format", "reg_q_attendance", "text"),
+    ("informal_day", "reg_q_informal_day", "text"),
+    ("comments", "reg_q_comments", "text"),
+    ("department", "reg_q_department", "text"),
+    ("aiesec_role", "reg_q_aiesec_role", "text"),
+    ("needs_certificate", "reg_q_certificate", "text"),
+    ("english_level", "reg_q_english", "text"),
+    ("allergies", "reg_q_allergies", "text"),
+    ("food_pref", "reg_q_food", "text"),
+    ("arrival", "reg_q_arrival", "text"),
+    ("housing", "reg_q_housing", "text"),
+    ("cc_shop", "reg_q_cc_shop", "text"),
+    ("exp_organizers", "reg_q_exp_organizers", "text"),
+    ("exp_content", "reg_q_exp_content", "text"),
+    ("volunteer", "reg_q_volunteer", "text"),
+    ("arrival_date", "reg_q_arrival_date", "date"),
+    # YL'26 additions (all default OFF; options configurable from admin)
+    ("birth_date", "reg_q_birth_date", "date"),
+    ("study_field", "reg_q_study_field", "select"),
+    ("goal", "reg_q_goal", "multi"),
+    ("formats", "reg_q_formats", "multi"),
+    ("ambassador", "reg_q_ambassador", "ambassador"),
+    ("resume", "reg_q_resume", "text"),
 ]
+
+# Map step_key → type for O(1) dispatch in _ask_step (consent:* keys handled separately).
+REG_STEP_TYPES = {step_key: step_type for step_key, _sk, step_type in REG_FLOW}
+
+# Configurable single-select steps: step_key → (options_setting_key, default options).
+# Options edited in admin as newline text (reuse source_options pattern). "Другое" appended.
+SELECT_CONFIG = {
+    "city": ("city_options", [
+        "Москва и МО", "Санкт-Петербург", "Новосибирск", "Екатеринбург",
+        "Казань", "Нижний Новгород", "Красноярск", "Уфа",
+    ]),
+    "study_field": ("study_field_options", [
+        "Бизнес и управление", "IT и технологии",
+        "Социальные и гуманитарные науки", "Математические и естественные науки",
+    ]),
+}
+
+# Configurable multi-select steps: step_key → (options_setting_key, default options).
+MULTI_CONFIG = {
+    "goal": ("goal_options", [
+        "Найти возможность трудоустройства",
+        "Прокачать hard и soft skills",
+        "Нетворкинг",
+        "Карьерная консультация от HR",
+        "Узнать о деятельности компаний",
+    ]),
+    "formats": ("formats_options", [
+        "Панельные дискуссии", "Мастер-классы", "Сессии со спикерами",
+        "Нетворкинг-сессии", "Ярмарка открытых вакансий",
+    ]),
+}
+
+
+async def _get_options(setting_key: str, defaults: list[str]) -> list[str]:
+    """Admin-editable option list (newline text) with a hardcoded fallback."""
+    raw = await get_setting(setting_key)
+    if raw:
+        items = [line.strip() for line in raw.splitlines() if line.strip()]
+        if items:
+            return items
+    return list(defaults)
 
 REG_DEFAULTS = {
     "reg_q_age": "on",
@@ -121,6 +173,12 @@ REG_DEFAULTS = {
     "reg_q_exp_organizers": "off",
     "reg_q_exp_content": "off",
     "reg_q_volunteer": "off",
+    "reg_q_arrival_date": "off",
+    "reg_q_birth_date": "off",
+    "reg_q_study_field": "off",
+    "reg_q_goal": "off",
+    "reg_q_formats": "off",
+    "reg_q_ambassador": "off",
     "reg_q_resume": "off",
 }
 
@@ -155,6 +213,12 @@ REG_LABELS = {
     "reg_q_exp_organizers": "💬 Ожид. от орг",
     "reg_q_exp_content": "💬 Ожид. от контента",
     "reg_q_volunteer": "🙋 Волонтёр",
+    "reg_q_arrival_date": "📅 Дата приезда",
+    "reg_q_birth_date": "🎂 Дата рождения",
+    "reg_q_study_field": "🎯 Направление обучения",
+    "reg_q_goal": "🎯 Цель участия",
+    "reg_q_formats": "📋 Форматы форума",
+    "reg_q_ambassador": "🧡 Амбассадор",
     "reg_q_resume": "\U0001f4c4 Резюме",
 }
 
@@ -166,22 +230,44 @@ async def _is_step_enabled(setting_key: str) -> bool:
     return val == "on"
 
 
+async def _is_module_enabled(key: str) -> bool:
+    """Phase 4 module flag check — None/absent/'off'/anything-but-'on' → False (D-15 fail-safe)."""
+    val = await get_setting(key)
+    return val == "on"
+
+
 async def _get_enabled_steps(data: dict) -> list[str]:
     enabled = []
-    for step_key, setting_key in REG_FLOW:
+    # edu_conditional (default on): skip ВУЗ/курс/специальность when "не учусь". Turn OFF
+    # for events (e.g. YL'26) that ask образование as a level, not a Да/Нет, and want those
+    # steps always shown.
+    edu_conditional = (await get_setting("edu_conditional") or "on") == "on"
+    studying = str(data.get("education_status", "")).startswith("Да")
+    for step_key, setting_key, *_rest in REG_FLOW:
         if not await _is_step_enabled(setting_key):
             continue
         if step_key == "informal_day" and data.get("attendance_format") == "Online":
             continue
-        if step_key == "university" and not str(data.get("education_status", "")).startswith("Да"):
+        if edu_conditional and step_key == "university" and not studying:
             continue
-        if step_key == "course" and not str(data.get("education_status", "")).startswith("Да"):
+        if edu_conditional and step_key == "course" and not studying:
             continue
-        if step_key == "specialty" and not str(data.get("education_status", "")).startswith("Да"):
+        if edu_conditional and step_key == "specialty" and not studying:
             continue
         if step_key == "work_sphere" and not data.get("work_status"):
             continue
         enabled.append(step_key)
+    # Phase 4 (D-03, CONS-02): consent steps appended LAST, just before finalize, when enabled.
+    if await _is_module_enabled("consent_enabled"):
+        raw = await get_setting("consent_list") or ""
+        for line in raw.strip().splitlines():
+            line = line.strip()
+            if not line or "|" not in line:
+                continue
+            _label, consent_key = line.split("|", 1)
+            consent_key = consent_key.strip()
+            if consent_key:
+                enabled.append(f"consent:{consent_key}")
     return enabled
 
 
@@ -197,7 +283,12 @@ async def _ask_step(step_key: str, message: types.Message, state: FSMContext, st
         await message.answer(f"{p} Укажи номер телефона:", reply_markup=get_phone_kb())
         await state.set_state(Registration.phone)
     elif step_key == "city":
-        await message.answer(f"{p} Из какого ты города?", reply_markup=get_skip_kb())
+        opt_key, default = SELECT_CONFIG["city"]
+        options = await _get_options(opt_key, default)
+        await message.answer(
+            f"{p} Из какого ты города?",
+            reply_markup=_reply_kb(options, add_other=True, add_skip=True),
+        )
         await state.set_state(Registration.city)
     elif step_key == "source":
         await message.answer(f"{p} Откуда ты узнал(а) о нас?", reply_markup=await get_source_kb())
@@ -212,7 +303,18 @@ async def _ask_step(step_key: str, message: types.Message, state: FSMContext, st
         await message.answer(f"{p} Учишься ли ты сейчас?", reply_markup=get_education_status_kb())
         await state.set_state(Registration.education_status)
     elif step_key == "university":
-        await message.answer(f"{p} В каком ВУЗе/колледже ты учишься?", reply_markup=get_universities_kb())
+        # Mode toggle (reg_university_mode): "list" = pick from база вузов, "text" = free input.
+        mode = await get_setting("reg_university_mode") or "list"
+        if mode == "text":
+            await message.answer(f"{p} Введи название твоего ВУЗа:", reply_markup=get_skip_kb())
+        else:
+            uni_opts = await get_setting("university_options")
+            if uni_opts and uni_opts.strip():
+                options = [l.strip() for l in uni_opts.splitlines() if l.strip()]
+                kb = _reply_kb(options, add_other=True)
+            else:
+                kb = get_universities_kb()  # fallback: config.UNIVERSITIES
+            await message.answer(f"{p} В каком ВУЗе/колледже ты учишься?", reply_markup=kb)
         await state.set_state(Registration.university)
     elif step_key == "course":
         await message.answer(f"{p} На каком ты курсе?", reply_markup=get_course_kb())
@@ -287,6 +389,62 @@ async def _ask_step(step_key: str, message: types.Message, state: FSMContext, st
     elif step_key == "resume":
         await message.answer(f"{p} Прикрепи резюме (PDF или DOCX):", reply_markup=get_cancel_kb())
         await state.set_state(Registration.resume)
+    elif REG_STEP_TYPES.get(step_key) == "date":
+        # Phase 4 (MOD-02): generic date-type step — one handler validates ДД.ММ.ГГГГ.
+        label = REG_LABELS.get(f"reg_q_{step_key}", "Дата")
+        await message.answer(f"{p} {label} (ДД.ММ.ГГГГ):", reply_markup=get_cancel_kb())
+        await state.update_data(_current_date_step=step_key)
+        await state.set_state(Registration.date_input)
+    elif REG_STEP_TYPES.get(step_key) == "select":
+        # Configurable single-select (study_field etc.) — options from settings.
+        opt_key, default = SELECT_CONFIG.get(step_key, (f"{step_key}_options", []))
+        options = await _get_options(opt_key, default)
+        prompt = REG_LABELS.get(f"reg_q_{step_key}", "Выбери вариант")
+        await message.answer(f"{p} {prompt}:", reply_markup=_reply_kb(options, add_other=True))
+        await state.update_data(_current_select_step=step_key)
+        await state.set_state(Registration.select_input)
+    elif REG_STEP_TYPES.get(step_key) == "multi":
+        # Configurable multi-select via inline toggle keyboard.
+        opt_key, default = MULTI_CONFIG.get(step_key, (f"{step_key}_options", []))
+        options = await _get_options(opt_key, default)
+        prompt = REG_LABELS.get(f"reg_q_{step_key}", "Выбери варианты")
+        await state.update_data(_current_multi_step=step_key, **{f"_multi_{step_key}": []})
+        await message.answer(
+            f"{p} {prompt} (можно выбрать несколько):",
+            reply_markup=_multi_kb(step_key, options, set()),
+        )
+        await state.set_state(Registration.multi_input)
+    elif step_key == "ambassador":
+        await message.answer(
+            f"{p} Хочешь стать амбассадором форума?",
+            reply_markup=_reply_kb(["Да!", "Пока нет"]),
+        )
+        await state.set_state(Registration.ambassador)
+    elif step_key.startswith("consent:"):
+        # Phase 4 (MOD-03, D-03/D-04): one consent per step, PDF attached if configured.
+        consent_key = step_key.split(":", 1)[1]
+        raw_list = await get_setting("consent_list") or ""
+        label = consent_key
+        for line in raw_list.strip().splitlines():
+            if "|" in line:
+                lbl, k = line.split("|", 1)
+                if k.strip() == consent_key:
+                    label = lbl.strip()
+                    break
+        pdf_file_id = await get_setting(f"consent_pdf_{consent_key}")
+        caption = (
+            f"📋 <b>Согласие:</b> {html.escape(label)}\n\n"
+            "Нажми «✅ Принимаю» для продолжения."
+        )
+        kb = InlineKeyboardMarkup(inline_keyboard=[[
+            InlineKeyboardButton(text="✅ Принимаю", callback_data=f"consent_accept:{consent_key}")
+        ]])
+        if pdf_file_id:
+            await message.answer_document(pdf_file_id, caption=caption, reply_markup=kb, parse_mode="HTML")
+        else:
+            await message.answer(caption, reply_markup=kb, parse_mode="HTML")
+        await state.update_data(_consent_key=consent_key)
+        await state.set_state(Registration.consent_pending)
 
 
 async def _advance(after_step: str, message: types.Message, state: FSMContext, bot: Bot):
@@ -337,6 +495,30 @@ def _progress(step: int, total: int) -> str:
     return f"({step}/{total})"
 
 
+def _reply_kb(options: list[str], add_other: bool = False, add_skip: bool = False):
+    """Build a one-time reply keyboard from a dynamic option list (no hardcoded buttons)."""
+    kb = ReplyKeyboardBuilder()
+    for opt in options:
+        kb.button(text=opt)
+    if add_other:
+        kb.button(text="Другое")
+    if add_skip:
+        kb.button(text="Пропустить")
+    kb.adjust(2)
+    return kb.as_markup(resize_keyboard=True, one_time_keyboard=True)
+
+
+def _multi_kb(step_key: str, options: list[str], selected: set[int]):
+    """Inline toggle keyboard for a multi-select step. Each option toggles via
+    regmulti:<step_key>:<idx>; «Готово» finalizes via regmulti_done:<step_key>."""
+    rows = []
+    for i, opt in enumerate(options):
+        mark = "✅ " if i in selected else "▫️ "
+        rows.append([InlineKeyboardButton(text=f"{mark}{opt}", callback_data=f"regmulti:{step_key}:{i}")])
+    rows.append([InlineKeyboardButton(text="Готово ▶️", callback_data=f"regmulti_done:{step_key}")])
+    return InlineKeyboardMarkup(inline_keyboard=rows)
+
+
 def _build_sheet_row(data: dict) -> list:
     details_parts = []
     if data.get("referrer_id"):
@@ -379,6 +561,11 @@ def _build_sheet_row(data: dict) -> list:
         data.get("exp_organizers") or "-",
         data.get("exp_content") or "-",
         data.get("volunteer") or "-",
+        data.get("birth_date") or "-",
+        data.get("study_field") or "-",
+        data.get("goal") or "-",
+        data.get("formats") or "-",
+        "Да" if data.get("is_ambassador_candidate") else "-",
     ]
 
 
@@ -394,6 +581,7 @@ def _build_summary(data: dict) -> str:
     fields = [
         ("Фамилия и Имя", data.get("full_name")),
         ("Возраст", data.get("age")),
+        ("Дата рождения", data.get("birth_date")),
         ("Email", data.get("email")),
         ("Телефон", data.get("phone")),
         ("Город", data.get("city")),
@@ -404,6 +592,7 @@ def _build_summary(data: dict) -> str:
         ("ВУЗ", data.get("university")),
         ("Курс", data.get("course")),
         ("Специальность", data.get("specialty")),
+        ("Направление обучения", data.get("study_field")),
         ("Работа", "Да" if data.get("work_status") else "Нет"),
         ("Сфера работы", data.get("work_sphere")),
         ("Навыки", data.get("missing_skills")),
@@ -423,6 +612,9 @@ def _build_summary(data: dict) -> str:
         ("Ожидания от орг", data.get("exp_organizers")),
         ("Ожидания от контента", data.get("exp_content")),
         ("Волонтёр", data.get("volunteer")),
+        ("Цель участия", data.get("goal")),
+        ("Форматы форума", data.get("formats")),
+        ("Амбассадор", "Да" if data.get("is_ambassador_candidate") else None),
     ]
     for label, value in fields:
         if value is None or str(value) == "":
@@ -636,6 +828,118 @@ async def process_resume(message: types.Message, state: FSMContext, bot: Bot):
 async def process_resume_invalid(message: types.Message, state: FSMContext):
     # Non-document input in the resume state — re-prompt, never crash (D-10). Mandatory: no skip (D-09).
     await message.answer("Пожалуйста, прикрепи документ (PDF или DOCX).")
+
+
+# --- Phase 4: date-type step (MOD-02) ---
+
+@router.message(Registration.date_input)
+async def process_date_input(message: types.Message, state: FSMContext, bot: Bot):
+    raw = (message.text or "").strip()
+    try:
+        datetime.strptime(raw, "%d.%m.%Y")
+    except ValueError:
+        await message.answer("Формат даты: ДД.ММ.ГГГГ. Попробуй ещё раз.")
+        return
+    data = await state.get_data()
+    step_key = data.get("_current_date_step", "arrival_date")
+    await state.update_data(**{step_key: raw})
+    await _advance(step_key, message, state, bot)
+
+
+# --- YL'26: configurable single-select step ---
+
+@router.message(Registration.select_input)
+async def process_select_input(message: types.Message, state: FSMContext, bot: Bot):
+    text = (message.text or "").strip()
+    if not text:
+        await message.answer("Выбери вариант на клавиатуре или напиши свой.")
+        return
+    data = await state.get_data()
+    step_key = data.get("_current_select_step", "study_field")
+    await state.update_data(**{step_key: text})
+    await _advance(step_key, message, state, bot)
+
+
+# --- YL'26: configurable multi-select step (inline toggles) ---
+
+async def _multi_options(step_key: str) -> list[str]:
+    opt_key, default = MULTI_CONFIG.get(step_key, (f"{step_key}_options", []))
+    return await _get_options(opt_key, default)
+
+
+@router.callback_query(F.data.startswith("regmulti:"), Registration.multi_input)
+async def process_multi_toggle(callback: types.CallbackQuery, state: FSMContext):
+    _, step_key, idx_raw = callback.data.split(":", 2)
+    try:
+        idx = int(idx_raw)
+    except ValueError:
+        await callback.answer()
+        return
+    data = await state.get_data()
+    selected = set(data.get(f"_multi_{step_key}", []))
+    if idx in selected:
+        selected.discard(idx)
+    else:
+        selected.add(idx)
+    await state.update_data(**{f"_multi_{step_key}": sorted(selected)})
+    options = await _multi_options(step_key)
+    try:
+        await callback.message.edit_reply_markup(reply_markup=_multi_kb(step_key, options, selected))
+    except Exception:
+        pass
+    await callback.answer()
+
+
+@router.callback_query(F.data.startswith("regmulti_done:"), Registration.multi_input)
+async def process_multi_done(callback: types.CallbackQuery, state: FSMContext, bot: Bot):
+    step_key = callback.data.split(":", 1)[1]
+    data = await state.get_data()
+    selected = sorted(set(data.get(f"_multi_{step_key}", [])))
+    options = await _multi_options(step_key)
+    chosen = [options[i] for i in selected if 0 <= i < len(options)]
+    if not chosen:
+        await callback.answer("Выбери хотя бы один вариант.", show_alert=True)
+        return
+    await state.update_data(**{step_key: ", ".join(chosen)})
+    try:
+        await callback.message.edit_reply_markup(reply_markup=None)
+    except Exception:
+        pass
+    await callback.answer("Сохранено")
+    await _advance(step_key, callback.message, state, bot)
+
+
+@router.message(Registration.multi_input)
+async def process_multi_ignore(message: types.Message):
+    await message.answer("Отмечай варианты кнопками выше и нажми «Готово ▶️».")
+
+
+# --- YL'26: ambassador yes/no ---
+
+@router.message(Registration.ambassador)
+async def process_ambassador(message: types.Message, state: FSMContext, bot: Bot):
+    text = (message.text or "").strip()
+    if not text:
+        await message.answer("Выбери «Да!» или «Пока нет».")
+        return
+    await state.update_data(is_ambassador_candidate=text.lower().startswith("да"))
+    await _advance("ambassador", message, state, bot)
+
+
+# --- Phase 4: consent steps (MOD-03, CONS-02) ---
+
+@router.callback_query(F.data.startswith("consent_accept:"), Registration.consent_pending)
+async def process_consent_accept(callback: types.CallbackQuery, state: FSMContext, bot: Bot):
+    consent_key = callback.data.split(":", 1)[1]
+    await record_user_consent(callback.from_user.id, consent_key)  # D-02 audit row
+    await callback.answer("✅ Принято")
+    await _advance(f"consent:{consent_key}", callback.message, state, bot)
+
+
+@router.message(Registration.consent_pending)
+async def process_consent_ignore(message: types.Message):
+    # SC#2: consent cannot be skipped via text — only the «Принимаю» button advances.
+    await message.answer("Нажми кнопку «✅ Принимаю» для продолжения.")
 
 
 # --- Admin re-registration ---
@@ -976,6 +1280,15 @@ async def approve_user(bot: Bot, telegram_id: int):
     by chat id. Reused by the auto-approve path here and the manager manual-approve
     path (admin.py). Fail-soft: a blocked/unknown user never raises."""
     try:
+        # Phase 4 (D-09): payment module gates the welcome. When ON, the payment flow owns
+        # all messaging (its own option/requisites/receipt path); the main menu lands after
+        # the manager confirms the receipt (admin rcpt_confirm). When OFF, behaviour is
+        # byte-identical to before.
+        if await _is_module_enabled("payment_enabled"):
+            from handlers.payment import start_payment_step  # local import avoids circular
+            await start_payment_step(bot, telegram_id)
+            return
+
         complete_text = await get_setting("reg_complete_text") or "Регистрация завершена! Скоро увидимся! 🎉"
         await bot.send_message(telegram_id, complete_text, reply_markup=await get_main_menu_kb(), parse_mode="HTML")
 

@@ -121,6 +121,32 @@ async def init_db():
             )
         ''')
 
+        # Phase 4 migrations (additive, idempotent — safe against ~590 live users)
+        await _ensure_column(db, "users", "payment_status", "TEXT DEFAULT 'not_paid'")
+        await _ensure_column(db, "users", "payment_option", "TEXT")
+        await _ensure_column(db, "users", "receipt_file_id", "TEXT")
+        await _ensure_column(db, "users", "payment_due", "TEXT")
+        await _ensure_column(db, "users", "paid_at", "TEXT")
+
+        # YL'26 reg fields (additive, default-off questions — no impact on live flow)
+        await _ensure_column(db, "users", "birth_date", "TEXT")
+        await _ensure_column(db, "users", "study_field", "TEXT")
+        await _ensure_column(db, "users", "goal", "TEXT")          # multi-select, CSV
+        await _ensure_column(db, "users", "formats", "TEXT")       # multi-select, CSV
+
+        # Phase 4 (CONS-01/02, D-02): per-user consent audit trail. UNIQUE dedupes
+        # re-taps; index supports the per-user lookup.
+        await db.execute('''
+            CREATE TABLE IF NOT EXISTS user_consents (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                user_id INTEGER NOT NULL,
+                consent_key TEXT NOT NULL,
+                accepted_at TEXT NOT NULL,
+                UNIQUE(user_id, consent_key)
+            )
+        ''')
+        await db.execute('CREATE INDEX IF NOT EXISTS idx_consents_user ON user_consents(user_id)')
+
         await db.commit()
 
 async def get_setting(key: str) -> str | None:
@@ -165,8 +191,10 @@ async def add_user(data: dict):
                 comments, expectations_ar, informal_day, resume_file_id,
                 department, aiesec_role, needs_certificate, english_level,
                 allergies, food_pref, arrival, housing, cc_shop,
-                exp_organizers, exp_content, volunteer
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                exp_organizers, exp_content, volunteer,
+                payment_status, payment_option, receipt_file_id, payment_due, paid_at,
+                birth_date, study_field, goal, formats
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             ON CONFLICT(telegram_id) DO UPDATE SET
                 username=excluded.username,
                 full_name=excluded.full_name,
@@ -206,7 +234,16 @@ async def add_user(data: dict):
                 cc_shop=excluded.cc_shop,
                 exp_organizers=excluded.exp_organizers,
                 exp_content=excluded.exp_content,
-                volunteer=excluded.volunteer
+                volunteer=excluded.volunteer,
+                payment_status=excluded.payment_status,
+                payment_option=excluded.payment_option,
+                receipt_file_id=COALESCE(excluded.receipt_file_id, users.receipt_file_id),
+                payment_due=excluded.payment_due,
+                paid_at=excluded.paid_at,
+                birth_date=excluded.birth_date,
+                study_field=excluded.study_field,
+                goal=excluded.goal,
+                formats=excluded.formats
         ''', (
             data['telegram_id'],
             data.get('username'),
@@ -248,6 +285,15 @@ async def add_user(data: dict):
             data.get('exp_organizers'),
             data.get('exp_content'),
             data.get('volunteer'),
+            data.get('payment_status') or 'not_paid',
+            data.get('payment_option'),
+            data.get('receipt_file_id'),
+            data.get('payment_due'),
+            data.get('paid_at'),
+            data.get('birth_date'),
+            data.get('study_field'),
+            data.get('goal'),
+            data.get('formats'),
         ))
         await db.commit()
 
@@ -649,3 +695,79 @@ async def count_and_list_filtered(filters: list[dict]) -> list[int]:
             f"SELECT telegram_id FROM users{where}", params
         ) as cursor:
             return [row[0] for row in await cursor.fetchall()]
+
+
+# ── Phase 4: consent acceptances (CONS-01/02, D-02) ──────────────────────────
+
+async def record_user_consent(user_id: int, consent_key: str):
+    """Idempotent consent write — re-tapping «Принимаю» never raises (INSERT OR IGNORE)."""
+    accepted_at = datetime.now().isoformat()
+    async with aiosqlite.connect(config.DB_PATH) as db:
+        await db.execute(
+            "INSERT OR IGNORE INTO user_consents (user_id, consent_key, accepted_at) "
+            "VALUES (?, ?, ?)",
+            (user_id, consent_key, accepted_at),
+        )
+        await db.commit()
+
+
+async def get_user_consents(user_id: int) -> list[str]:
+    async with aiosqlite.connect(config.DB_PATH) as db:
+        async with db.execute(
+            "SELECT consent_key FROM user_consents WHERE user_id = ? ORDER BY accepted_at",
+            (user_id,),
+        ) as cursor:
+            return [row[0] for row in await cursor.fetchall()]
+
+
+# ── Phase 4: payment receipt queue + status (PAY-05, D-10/D-12) ──────────────
+
+async def get_receipt_pending_users(limit: int = 50) -> list[dict]:
+    """Users awaiting receipt verification, oldest first (tinder queue source)."""
+    async with aiosqlite.connect(config.DB_PATH) as db:
+        db.row_factory = aiosqlite.Row
+        async with db.execute(
+            "SELECT telegram_id, full_name, payment_option, receipt_file_id, payment_status "
+            "FROM users WHERE payment_status = 'receipt_sent' ORDER BY rowid LIMIT ?",
+            (limit,),
+        ) as cursor:
+            return [dict(row) for row in await cursor.fetchall()]
+
+
+async def get_receipt_pending_count() -> int:
+    async with aiosqlite.connect(config.DB_PATH) as db:
+        async with db.execute(
+            "SELECT COUNT(*) FROM users WHERE payment_status = 'receipt_sent'"
+        ) as cursor:
+            row = await cursor.fetchone()
+            return int(row[0]) if row and row[0] is not None else 0
+
+
+async def update_payment_status(telegram_id: int, status: str, **kwargs) -> int:
+    """Transition one user's payment_status; returns cursor.rowcount.
+
+    Confirm guard (STRIDE T-04-05-02): status='paid' only flips a row currently in
+    'receipt_sent' — a second concurrent confirm matches 0 rows (rowcount=0 is the
+    double-confirm signal the admin handler relies on). Every other status is an
+    unconditional transition (reject reset, receipt upload). Additive UPDATE only —
+    never INSERT OR REPLACE."""
+    sets = ["payment_status = ?"]
+    params: list = [status]
+    extras = dict(kwargs)
+    if status == "paid" and "paid_at" not in extras:
+        extras["paid_at"] = datetime.now().isoformat()
+    for col in ("receipt_file_id", "paid_at", "payment_option", "payment_due"):
+        if col in extras:
+            sets.append(f"{col} = ?")
+            params.append(extras[col])
+    if status == "paid":
+        where = "telegram_id = ? AND payment_status = 'receipt_sent'"
+    else:
+        where = "telegram_id = ?"
+    params.append(telegram_id)
+    async with aiosqlite.connect(config.DB_PATH) as db:
+        cursor = await db.execute(
+            f"UPDATE users SET {', '.join(sets)} WHERE {where}", params
+        )
+        await db.commit()
+        return cursor.rowcount
