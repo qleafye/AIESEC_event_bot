@@ -114,3 +114,18 @@ def test_get_options_uses_setting_then_default(tmp_path):
     asyncio.run(db.set_setting("city_options", "Москва\nКазань\n"))
     opts2 = asyncio.run(reg._get_options("city_options", ["X", "Y"]))
     assert opts2 == ["Москва", "Казань"]
+
+
+# ── editable question wording (reg_prompt_<step>) ────────────────────────────
+
+def test_prompt_falls_back_to_default(tmp_path):
+    _use_tmp_db(tmp_path)
+    asyncio.run(db.init_db())
+    assert asyncio.run(reg._prompt("age", "Сколько тебе лет?")) == "Сколько тебе лет?"
+
+
+def test_prompt_uses_admin_override(tmp_path):
+    _use_tmp_db(tmp_path)
+    asyncio.run(db.init_db())
+    asyncio.run(db.set_setting("reg_prompt_age", "Введи возраст:"))
+    assert asyncio.run(reg._prompt("age", "Сколько тебе лет?")) == "Введи возраст:"
