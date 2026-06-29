@@ -85,7 +85,13 @@ Plans:
   3. Approved user with payment module enabled receives payment instructions (amount, bank details, deadline, penalty schedule) and can upload a receipt; non-PDF uploads are rejected by MIME type with a clear user-facing error
   4. Manager reviews the receipt queue in tinder format (Подтвердить / Отклонить / Следующий); confirmed users receive payment confirmation and their payment reminders are cancelled; rejected users can re-upload
   5. Users with `payment_status=not_paid` receive auto-reminders at deadline−3 days and deadline−1 day; reminders do not fire if payment is already confirmed
-**Plans:** TBD
+**Plans:** 5 plans (4 waves)
+Plans:
+- [ ] 04-01-PLAN.md — DB schema foundation: user_consents table, payment columns on users, DB helper functions, FSM states (Wave 1)
+- [ ] 04-02-PLAN.md — Admin event type + module toggles panel: SETTINGS_FIELDS additions, payment_enabled/consent_enabled toggles, event_type preset handler (Wave 1)
+- [ ] 04-03-PLAN.md — REG_FLOW typed steps + consent module: 3-tuple migration, date validator, consent step injection and accept handlers (Wave 2)
+- [ ] 04-04-PLAN.md — Payment FSM: option selection, requisites display, receipt upload, approve_user hook, router wiring (Wave 3)
+- [ ] 04-05-PLAN.md — Receipt tinder queue + PAY-06 payment reminders: admin confirm/reject/skip, atomic guard, scheduler deadline jobs, overdue sweep (Wave 4)
 **UI hint:** yes
 
 ## Progress
@@ -95,4 +101,4 @@ Plans:
 | 1. DB Foundation + Quick Wins + Coins | 0/4 | Planned | - |
 | 2. Approval Flow | 4/4 | Implemented | 2026-06-26 |
 | 3. Scheduler + Communications + Verification | 0/5 | Planned | - |
-| 4. Universal Modules | 0/? | Not started | - |
+| 4. Universal Modules | 0/5 | Planned | - |
