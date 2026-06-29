@@ -474,6 +474,7 @@ async def build_settings_keyboard():
         [InlineKeyboardButton(text=consent_toggle_text, callback_data="toggle_consent_enabled")],
         [InlineKeyboardButton(text="🧾 PDF согласий", callback_data="admin_consent_pdfs")],
         [InlineKeyboardButton(text="📋 Вопросы регистрации", callback_data="admin_reg_questions")],
+        [InlineKeyboardButton(text="✏️ Тексты вопросов", callback_data="admin_reg_prompts")],
         [InlineKeyboardButton(text="🔘 Кнопки меню", callback_data="admin_menu_buttons")],
     ]
     for key, label, _ in SETTINGS_FIELDS:
@@ -1631,6 +1632,57 @@ async def reg_questions_back(callback: types.CallbackQuery):
 
     text = await render_settings_text()
     await callback.message.edit_text(text, parse_mode="HTML", reply_markup=await build_settings_keyboard())
+    await callback.answer()
+
+
+# --- Editable question prompts (YL'26: per-event wording, 0 хардкода) ---
+
+def _prompt_steps() -> list[tuple[str, str]]:
+    """(step_key, human label) for every question whose wording can be overridden."""
+    steps = [("full_name", "🪪 Фамилия и Имя")]
+    for step_key, setting_key, *_ in REG_FLOW:
+        steps.append((step_key, REG_LABELS.get(setting_key, step_key)))
+    return steps
+
+
+@router.callback_query(F.data == "admin_reg_prompts")
+async def admin_reg_prompts(callback: types.CallbackQuery):
+    if callback.from_user.id not in config.ADMIN_IDS:
+        await callback.answer("Недостаточно прав", show_alert=True)
+        return
+    buttons = []
+    for step_key, label in _prompt_steps():
+        custom = await get_setting(f"reg_prompt_{step_key}")
+        mark = "✅" if custom else "✏️"
+        buttons.append([InlineKeyboardButton(text=f"{mark} {label}", callback_data=f"reg_prompt_edit:{step_key}")])
+    buttons.append([InlineKeyboardButton(text="← Назад к настройкам", callback_data="admin_settings")])
+    await callback.message.edit_text(
+        "✏️ <b>Тексты вопросов</b>\n\nВыбери вопрос и пришли свой текст. ✅ — текст переопределён, "
+        "✏️ — стандартный. Чтобы вернуть стандартный, отправь «-».",
+        parse_mode="HTML",
+        reply_markup=InlineKeyboardMarkup(inline_keyboard=buttons),
+    )
+    await callback.answer()
+
+
+@router.callback_query(F.data.startswith("reg_prompt_edit:"))
+async def reg_prompt_edit(callback: types.CallbackQuery, state: FSMContext):
+    if callback.from_user.id not in config.ADMIN_IDS:
+        await callback.answer("Недостаточно прав", show_alert=True)
+        return
+    step_key = callback.data.split(":", 1)[1]
+    key = f"reg_prompt_{step_key}"
+    current = await get_setting(key)
+    text = "Пришли новый текст вопроса."
+    if current:
+        text = f"Текущий текст: <b>{html_module.escape(current)}</b>\n\n{text}"
+    text += "\n\n<i>«-» — вернуть стандартный текст.</i>"
+    cancel_kb = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="❌ Отмена", callback_data="settings_cancel")],
+    ])
+    await callback.message.edit_text(text, parse_mode="HTML", reply_markup=cancel_kb)
+    await state.set_state(EditSetting.waiting_for_value)
+    await state.update_data(setting_key=key)
     await callback.answer()
 
 
