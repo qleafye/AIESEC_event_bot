@@ -236,11 +236,12 @@ async def add_user(data: dict):
                 exp_organizers=excluded.exp_organizers,
                 exp_content=excluded.exp_content,
                 volunteer=excluded.volunteer,
-                payment_status=excluded.payment_status,
-                payment_option=excluded.payment_option,
                 receipt_file_id=COALESCE(excluded.receipt_file_id, users.receipt_file_id),
-                payment_due=excluded.payment_due,
-                paid_at=excluded.paid_at,
+                -- WR-06: payment_status/payment_option/payment_due/paid_at are deliberately
+                -- omitted here so re-registration (e.g. a rejected user) never wipes payment
+                -- state. They are owned by update_payment_status / the payment flow. COALESCE
+                -- would not help payment_status (its bound value defaults to 'not_paid', never
+                -- NULL), so omission is the correct guard.
                 arrival_date=excluded.arrival_date,
                 birth_date=excluded.birth_date,
                 study_field=excluded.study_field,
