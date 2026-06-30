@@ -640,9 +640,11 @@ async def settings_edit_start(callback: types.CallbackQuery, state: FSMContext):
     prompt = prompts.get(key, "Введите значение")
     current = await get_setting(key)
 
-    text = f"{prompt}:"
+    # Escape both the field description (may contain literal <b>/<code> examples) and the
+    # current value (admin may have stored raw HTML) — otherwise parse_mode=HTML breaks.
+    text = f"{html_module.escape(prompt)}:"
     if current:
-        text = f"Текущее значение: <b>{current}</b>\n\n{text}"
+        text = f"Текущее значение: <b>{html_module.escape(current)}</b>\n\n{text}"
     text += "\n\n<i>Отправьте «-» чтобы скрыть это поле.</i>"
 
     cancel_kb = InlineKeyboardMarkup(inline_keyboard=[
