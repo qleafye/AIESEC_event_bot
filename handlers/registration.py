@@ -461,7 +461,10 @@ async def _advance(after_step: str, message: types.Message, state: FSMContext, b
         idx = enabled.index(after_step)
         next_idx = idx + 1
     except ValueError:
-        next_idx = 0
+        # WR-01: the just-answered step is no longer in the enabled list (a question was
+        # toggled off mid-flow, or a conditional removed it). Finalize instead of bouncing
+        # the user back to step 0 — a silent restart is the wrong failure mode.
+        next_idx = len(enabled)
 
     if next_idx < len(enabled):
         step = data.get("_reg_step", 0) + 1
