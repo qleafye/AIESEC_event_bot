@@ -2119,6 +2119,10 @@ async def rcpt_confirm(callback: types.CallbackQuery, state: FSMContext):
             parse_mode="HTML",
             reply_markup=await get_main_menu_kb(),  # first menu after the payment journey
         )
+        # WR-04: payment-confirm must mirror the non-payment approval path — deliver the
+        # configured completion text + registration bonus. Menu already sent above.
+        from handlers.registration import send_completion_and_bonus
+        await send_completion_and_bonus(callback.bot, uid, with_menu=False)
     except Exception as e:
         logger.error(f"Failed to notify user {uid} of payment confirmation: {e}")
     await callback.answer("Оплата подтверждена")
