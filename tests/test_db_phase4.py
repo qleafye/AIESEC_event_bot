@@ -89,17 +89,19 @@ def test_yl26_fields_roundtrip(tmp_path):
     assert u["is_ambassador_candidate"] == 1
 
 
-def test_reregistration_preserves_receipt_resets_payment(tmp_path):
+def test_reregistration_preserves_payment_state(tmp_path):
     _use_tmp_db(tmp_path)
     asyncio.run(db.init_db())
     _seed(1)
     asyncio.run(db.update_payment_status(1, "receipt_sent", receipt_file_id="FID"))
-    # re-register same user (new application cycle)
+    # re-register same user (e.g. a rejected user re-applying)
     _seed(1, full_name="User 1 v2")
     u = asyncio.run(db.get_user(1))
     assert u["full_name"] == "User 1 v2"
     assert u["receipt_file_id"] == "FID"          # COALESCE keeps prior file
-    assert u["payment_status"] == "not_paid"      # reset for new cycle
+    # WR-06: payment state is owned by the payment flow and must NOT be wiped by
+    # re-registration — add_user no longer touches payment_status on conflict.
+    assert u["payment_status"] == "receipt_sent"
 
 
 # ── consent helpers ──────────────────────────────────────────────────────────
