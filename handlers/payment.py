@@ -108,6 +108,14 @@ async def _show_payment_details(bot: Bot, telegram_id: int, state: FSMContext, o
     deadline = await get_setting("payment_deadline")
     penalties = await get_setting("penalty_schedule")
 
+    # WR-05: free participation (price 0 and no bank requisites) must not be forced
+    # through a receipt-upload gate. Land the user on the completion text + menu instead.
+    if option_price == 0 and not (requisites and requisites.strip()):
+        from handlers.registration import send_completion_and_bonus
+        await send_completion_and_bonus(bot, telegram_id)
+        await state.clear()
+        return
+
     parts = [
         "💰 <b>Оплата участия</b>\n",
         f"Вариант: {html.escape(option_label)}",
