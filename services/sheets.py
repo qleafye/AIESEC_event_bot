@@ -21,6 +21,20 @@ def _append_to_sheet_sync(data: list):
     sheet.append_row(data)
 
 
+def _ensure_header_sync(headers: list[str]):
+    sheet = _get_sheet()
+    col1 = sheet.col_values(1)
+    if not col1:
+        # empty sheet → header becomes the first row
+        sheet.append_row(headers)
+        return
+    first = (col1[0] or "").strip()
+    if first.lstrip("-").isdigit():
+        # first row is data (a Telegram id) → no header yet, insert one on top
+        sheet.insert_row(headers, 1)
+    # else: a text header is already present — leave it untouched
+
+
 def _get_existing_ids_sync() -> set[int]:
     sheet = _get_sheet()
     col_values = sheet.col_values(1)
@@ -63,6 +77,17 @@ async def append_to_sheet(data: list):
             await asyncio.sleep(delay)
 
     logger.error(f"Failed to append to Google Sheet after {MAX_RETRIES} attempts: {data}")
+
+
+async def ensure_sheet_header(headers: list[str]):
+    """Make sure row 1 of the sheet is the column-name header. Fail-soft: a missing
+    sheet/credentials or API error never blocks the bot."""
+    if not config.GOOGLE_SHEET_ID or not config.GOOGLE_CREDENTIALS_FILE:
+        return
+    try:
+        await asyncio.to_thread(_ensure_header_sync, headers)
+    except Exception as e:
+        logger.warning(f"ensure_sheet_header failed (skipping): {e}")
 
 
 async def get_existing_sheet_ids() -> set[int]:
