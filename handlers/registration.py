@@ -1294,22 +1294,17 @@ async def process_volunteer(message: types.Message, state: FSMContext, bot: Bot)
 
 # --- Finalize ---
 
-async def approve_user(bot: Bot, telegram_id: int):
-    """Send the post-approval welcome (complete text + main menu + bonus) to a user
-    by chat id. Reused by the auto-approve path here and the manager manual-approve
-    path (admin.py). Fail-soft: a blocked/unknown user never raises."""
+async def send_completion_and_bonus(bot: Bot, telegram_id: int, with_menu: bool = True):
+    """Deliver reg_complete_text + the configured registration bonus. Reused by the
+    non-payment approval path, the free/single payment path (handlers.payment), and the
+    admin receipt-confirm path (handlers.admin). Fail-soft: a blocked/unknown user never
+    raises. `with_menu=False` skips the main-menu keyboard when the caller already sent it."""
     try:
-        # Phase 4 (D-09): payment module gates the welcome. When ON, the payment flow owns
-        # all messaging (its own option/requisites/receipt path); the main menu lands after
-        # the manager confirms the receipt (admin rcpt_confirm). When OFF, behaviour is
-        # byte-identical to before.
-        if await _is_module_enabled("payment_enabled"):
-            from handlers.payment import start_payment_step  # local import avoids circular
-            await start_payment_step(bot, telegram_id)
-            return
-
         complete_text = await get_setting("reg_complete_text") or "Регистрация завершена! Скоро увидимся! 🎉"
-        await bot.send_message(telegram_id, complete_text, reply_markup=await get_main_menu_kb(), parse_mode="HTML")
+        kwargs = {"parse_mode": "HTML"}
+        if with_menu:
+            kwargs["reply_markup"] = await get_main_menu_kb()
+        await bot.send_message(telegram_id, complete_text, **kwargs)
 
         if await get_setting("reg_bonus_enabled") == "on":
             bonus_caption = await get_setting("reg_bonus_caption") or "\U0001f381 Бонус за регистрацию!"
@@ -1319,6 +1314,25 @@ async def approve_user(bot: Bot, telegram_id: int):
                 await bot.send_document(telegram_id, bonus_doc, caption=bonus_caption, parse_mode="HTML")
             elif bonus_photo:
                 await bot.send_photo(telegram_id, bonus_photo, caption=bonus_caption, parse_mode="HTML")
+    except Exception as e:
+        logger.error(f"Failed to send completion/bonus to {telegram_id}: {e}")
+
+
+async def approve_user(bot: Bot, telegram_id: int):
+    """Send the post-approval welcome (complete text + main menu + bonus) to a user
+    by chat id. Reused by the auto-approve path here and the manager manual-approve
+    path (admin.py). Fail-soft: a blocked/unknown user never raises."""
+    try:
+        # Phase 4 (D-09): payment module gates the welcome. When ON, the payment flow owns
+        # all messaging (its own option/requisites/receipt path); the completion text + bonus
+        # land after the manager confirms the receipt (admin rcpt_confirm) or immediately for
+        # a free/single option. When OFF, behaviour is byte-identical to before.
+        if await _is_module_enabled("payment_enabled"):
+            from handlers.payment import start_payment_step  # local import avoids circular
+            await start_payment_step(bot, telegram_id)
+            return
+
+        await send_completion_and_bonus(bot, telegram_id)
     except Exception as e:
         logger.error(f"Failed to send approval welcome to {telegram_id}: {e}")
 
