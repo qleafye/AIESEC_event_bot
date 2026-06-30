@@ -344,22 +344,20 @@ SETTINGS_FIELDS = [
     ("source_options", "📢 Источники", "Отправьте варианты источников, каждый с новой строки"),
     ("reg_complete_text", "✅ После регистрации", "Введите текст, который увидит пользователь после регистрации (поддерживается HTML-разметка)"),
     # Phase 4: event modularity + consent + payment config (all default empty/off → live flow unchanged)
-    ("event_type", "🎭 Тип события", "Тип: forum / conference / custom. Устанавливает пресеты модулей. Сохрани значение для применения пресета."),
-    ("consent_list", "📋 Список согласий", "Согласия — по одному на строку, формат: Название|pdf_key (напр: Обработка данных|consent_pdf_data)"),
-    ("payment_options", "💳 Варианты оплаты", "Варианты оплаты — по одному на строку, формат: Название|Цена (напр: Полный билет|5000). Цена 0 = бесплатно."),
-    ("payment_requisites", "💰 Реквизиты оплаты", "HTML-текст с реквизитами (банк / номер карты / ФИО получателя). Поддерживает <b>/<i>/<code>."),
-    ("payment_deadline", "📅 Дедлайн оплаты", "Дата и время дедлайна оплаты в формате ДД.ММ.ГГГГ ЧЧ:ММ (напр: 15.08.2026 23:59)"),
-    ("penalty_schedule", "⚠️ Штрафы за отмену", "Штрафная шкала — по одному на строку, формат: ДД.ММ.ГГГГ|Остаток (напр: 01.08.2026|3000). Оставить пустым = без штрафов."),
-    # YL'26: configurable option lists + reg-flow modes (0 хардкода — всё правит админ)
-    ("city_options", "🏙 Города (список)", "Города для шага «Город» — по одному на строку. Пусто = список по умолчанию. «Другое» добавляется автоматически."),
-    ("study_field_options", "🎯 Направления обучения", "Варианты направления обучения — по одному на строку. Пусто = список по умолчанию."),
-    ("goal_options", "🎯 Цели участия", "Варианты цели участия (мультивыбор) — по одному на строку. Пусто = список по умолчанию."),
-    ("formats_options", "📋 Форматы форума", "Варианты форматов форума (мультивыбор) — по одному на строку. Пусто = список по умолчанию."),
-    ("university_options", "🏫 База ВУЗов", "Список ВУЗов для режима «база» — по одному на строку. Пусто = встроенный список. «Другое» добавляется автоматически."),
-    ("reg_university_mode", "🏫 Режим ВУЗа", "list = выбор из базы ВУЗов, text = свободный ввод. По умолчанию list."),
-    ("edu_conditional", "🎓 Условный блок ВУЗа", "on = ВУЗ/курс/специальность только если «учусь». off = всегда. По умолчанию on."),
-    # NOTE: per-consent PDF keys (consent_pdf_<key>) задаются через раздел «🧾 Чеки → согласия»
-    # либо вводом file_id; динамические ключи в SETTINGS_FIELDS не перечисляются.
+    ("event_type", "🎭 Тип события", "Напишите одно слово: forum (форум) / conference (конференция) / custom (вручную).\n\nДля forum и conference бот сам включит/выключит модули оплаты и согласий — потом можно поправить кнопками выше."),
+    ("consent_list", "📋 Список согласий", "Согласия, которые участник примет в конце анкеты.\n\nКаждое согласие — отдельной строкой в формате:\nВидимое название | короткий_ключ_латиницей\n\nКлюч нужен, чтобы привязать к согласию PDF. Пример (две строки):\nСогласие на обработку данных|data\nПолитика конфиденциальности|policy\n\nПосле сохранения загрузите PDF в разделе «🧾 PDF согласий»."),
+    ("payment_options", "💳 Варианты оплаты", "Варианты участия (билеты/тарифы), каждый — отдельной строкой:\nНазвание | Цена\n\nПример:\nПолный билет|5000\nСтудент|3000\n\nЦена 0 = бесплатно. Если вариант один — участник его не выбирает, сразу видит реквизиты."),
+    ("payment_requisites", "💰 Реквизиты оплаты", "Куда переводить деньги: банк, номер карты, ФИО получателя. Можно обычным текстом — участник увидит его как есть."),
+    ("payment_deadline", "📅 Дедлайн оплаты", "Крайний срок оплаты в формате ДД.ММ.ГГГГ ЧЧ:ММ.\n\nПример: 15.08.2026 23:59\n\nПо этому сроку бот сам пришлёт участнику напоминания за 3 дня и за 1 день."),
+    ("penalty_schedule", "⚠️ Штрафы за отмену", "Необязательно. Каждая строка: дата | сумма возврата/остатка.\n\nПример:\n01.08.2026|3000\n10.08.2026|0\n\nОставьте пустым (отправьте «-»), если штрафов нет."),
+    # YL'26: configurable option lists (0 хардкода — всё правит админ)
+    ("city_options", "🏙 Города (варианты)", "Города-кнопки для вопроса «Город». Каждый город — на отдельной строке.\n\nКнопка «Другое» добавится сама. Оставьте пустым — будет стандартный список."),
+    ("study_field_options", "🎯 Направления обучения (варианты)", "Варианты-кнопки для вопроса «Направление обучения». Каждый — на отдельной строке.\n\nПусто = стандартный список."),
+    ("goal_options", "🎯 Цель участия (варианты)", "Варианты для вопроса «Цель участия» — участник сможет выбрать несколько. Каждый — на отдельной строке.\n\nПусто = стандартный список."),
+    ("formats_options", "📋 Форматы форума (варианты)", "Варианты для вопроса «Форматы форума» — выбор нескольких. Каждый — на отдельной строке.\n\nПусто = стандартный список."),
+    ("university_options", "🏫 Список ВУЗов", "ВУЗы-кнопки для режима «выбор из базы». Каждый ВУЗ — на отдельной строке.\n\nКнопка «Другое» добавится сама. Пусто = встроенный список."),
+    # NOTE: reg_university_mode и edu_conditional вынесены в кнопки-переключатели (build_settings_keyboard).
+    # PDF согласий грузятся в разделе «🧾 PDF согласий».
 ]
 
 PHOTO_FIELDS = [
@@ -464,6 +462,13 @@ async def build_settings_keyboard():
     payment_toggle_text = "💳 Оплата: ❌ Выкл → ✅ Вкл" if payment_enabled != "on" else "💳 Оплата: ✅ Вкл → ❌ Выкл"
     consent_toggle_text = "📋 Согласия: ❌ Выкл → ✅ Вкл" if consent_enabled != "on" else "📋 Согласия: ✅ Вкл → ❌ Выкл"
 
+    uni_mode = await get_setting("reg_university_mode") or "list"
+    uni_mode_text = ("🏫 ВУЗ: выбор из списка → свободный ввод" if uni_mode == "list"
+                     else "🏫 ВУЗ: свободный ввод → выбор из списка")
+    edu_cond = await get_setting("edu_conditional") or "on"
+    edu_cond_text = ("🎓 ВУЗ/курс только у студентов: ✅ Вкл → ❌ Выкл" if edu_cond == "on"
+                     else "🎓 ВУЗ/курс только у студентов: ❌ Выкл → ✅ Вкл")
+
     buttons = [
         [InlineKeyboardButton(text=toggle_text, callback_data="settings_toggle_reg")],
         [InlineKeyboardButton(text=bonus_toggle_text, callback_data="settings_toggle_bonus")],
@@ -473,6 +478,8 @@ async def build_settings_keyboard():
         [InlineKeyboardButton(text=payment_toggle_text, callback_data="toggle_payment_enabled")],
         [InlineKeyboardButton(text=consent_toggle_text, callback_data="toggle_consent_enabled")],
         [InlineKeyboardButton(text="🧾 PDF согласий", callback_data="admin_consent_pdfs")],
+        [InlineKeyboardButton(text=uni_mode_text, callback_data="toggle_uni_mode")],
+        [InlineKeyboardButton(text=edu_cond_text, callback_data="toggle_edu_conditional")],
         [InlineKeyboardButton(text="📋 Вопросы регистрации", callback_data="admin_reg_questions")],
         [InlineKeyboardButton(text="✏️ Тексты вопросов", callback_data="admin_reg_prompts")],
         [InlineKeyboardButton(text="🔘 Кнопки меню", callback_data="admin_menu_buttons")],
@@ -563,6 +570,35 @@ async def toggle_consent_enabled(callback: types.CallbackQuery):
     await _toggle_module_setting(callback, "consent_enabled", "📋 Согласия")
 
 
+async def _toggle_value_setting(callback, key, val_a, val_b, default, title_a, title_b):
+    """Generic two-value toggle (e.g. list↔text, on↔off) with a friendly alert."""
+    if callback.from_user.id not in config.ADMIN_IDS:
+        await callback.answer("Недостаточно прав", show_alert=True)
+        return
+    current = await get_setting(key) or default
+    new_val = val_b if current == val_a else val_a
+    await set_setting(key, new_val)
+    await callback.answer(title_a if new_val == val_a else title_b, show_alert=True)
+    text = await render_settings_text()
+    await callback.message.edit_text(text, parse_mode="HTML", reply_markup=await build_settings_keyboard())
+
+
+@router.callback_query(F.data == "toggle_uni_mode")
+async def toggle_uni_mode(callback: types.CallbackQuery):
+    await _toggle_value_setting(
+        callback, "reg_university_mode", "list", "text", "list",
+        "🏫 ВУЗ: выбор из списка", "🏫 ВУЗ: свободный ввод",
+    )
+
+
+@router.callback_query(F.data == "toggle_edu_conditional")
+async def toggle_edu_conditional(callback: types.CallbackQuery):
+    await _toggle_value_setting(
+        callback, "edu_conditional", "on", "off", "on",
+        "🎓 ВУЗ/курс спрашиваются только у студентов", "🎓 ВУЗ/курс спрашиваются у всех",
+    )
+
+
 async def _apply_event_type_preset(event_type: str):
     """D-05: event type presets module flags; each is still manually overridable after.
     conference → payment+consent ON; forum → both OFF; custom → no change."""
@@ -642,10 +678,10 @@ async def settings_edit_start(callback: types.CallbackQuery, state: FSMContext):
 
     # Escape both the field description (may contain literal <b>/<code> examples) and the
     # current value (admin may have stored raw HTML) — otherwise parse_mode=HTML breaks.
-    text = f"{html_module.escape(prompt)}:"
+    text = f"{html_module.escape(prompt)}"
     if current:
-        text = f"Текущее значение: <b>{html_module.escape(current)}</b>\n\n{text}"
-    text += "\n\n<i>Отправьте «-» чтобы скрыть это поле.</i>"
+        text = f"Сейчас задано:\n<b>{html_module.escape(current)}</b>\n\n{text}"
+    text += "\n\n<i>Пришлите новое значение сообщением. Чтобы очистить поле — отправьте «-».</i>"
 
     cancel_kb = InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text="❌ Отмена", callback_data="settings_cancel")],
@@ -764,8 +800,15 @@ async def admin_consent_pdfs(callback: types.CallbackQuery):
     if not items:
         await callback.answer()
         await callback.message.edit_text(
-            "Сначала заполни «📋 Список согласий» (формат: Название|ключ), затем загрузи PDF.",
+            "🧾 <b>PDF согласий</b>\n\n"
+            "Здесь пусто, потому что ещё не задан список согласий.\n\n"
+            "<b>Что сделать:</b>\n"
+            "1. Зайди в «📋 Список согласий» и добавь согласия (каждое строкой "
+            "<i>Название|ключ</i>).\n"
+            "2. Вернись сюда — у каждого согласия появится кнопка для загрузки PDF.",
+            parse_mode="HTML",
             reply_markup=InlineKeyboardMarkup(inline_keyboard=[
+                [InlineKeyboardButton(text="📋 К списку согласий", callback_data="settings_edit:consent_list")],
                 [InlineKeyboardButton(text="← Назад", callback_data="admin_settings")],
             ]),
         )
@@ -777,7 +820,9 @@ async def admin_consent_pdfs(callback: types.CallbackQuery):
         buttons.append([InlineKeyboardButton(text=f"{mark} {label}", callback_data=f"consent_pdf_set:{key}")])
     buttons.append([InlineKeyboardButton(text="← Назад", callback_data="admin_settings")])
     await callback.message.edit_text(
-        "🧾 <b>PDF согласий</b>\n\nВыбери согласие и пришли PDF-документ. ✅ — PDF уже загружен.",
+        "🧾 <b>PDF согласий</b>\n\n"
+        "Нажми на согласие и пришли PDF-файл — участник увидит его прикреплённым к этому согласию.\n\n"
+        "✅ — PDF уже загружен · 📎 — ещё нет.",
         parse_mode="HTML",
         reply_markup=InlineKeyboardMarkup(inline_keyboard=buttons),
     )
@@ -794,7 +839,9 @@ async def consent_pdf_set(callback: types.CallbackQuery, state: FSMContext):
         [InlineKeyboardButton(text="❌ Отмена", callback_data="settings_cancel")],
     ])
     await callback.message.edit_text(
-        f"Пришли PDF-документ для согласия <code>{html_module.escape(key)}</code>.",
+        "📎 Пришли сюда <b>PDF-файл</b> этого согласия одним сообщением "
+        "(перетащи файл или прикрепи через скрепку).\n\n"
+        "Просто фото или ссылка не подойдут — нужен именно PDF-документ.",
         parse_mode="HTML",
         reply_markup=cancel_kb,
     )
