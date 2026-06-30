@@ -264,17 +264,26 @@ async def _get_enabled_steps(data: dict) -> list[str]:
             continue
         enabled.append(step_key)
     # Phase 4 (D-03, CONS-02): consent steps appended LAST, just before finalize, when enabled.
-    if await _is_module_enabled("consent_enabled"):
-        raw = await get_setting("consent_list") or ""
-        for line in raw.strip().splitlines():
-            line = line.strip()
-            if not line or "|" not in line:
-                continue
-            _label, consent_key = line.split("|", 1)
-            consent_key = consent_key.strip()
-            if consent_key:
-                enabled.append(f"consent:{consent_key}")
+    enabled.extend(await _get_consent_steps())
     return enabled
+
+
+async def _get_consent_steps() -> list[str]:
+    """Consent step keys (consent:<key>) when consent_enabled is on, else []. Shared by
+    the full-form engine and the short-form path so consents fire regardless of form length."""
+    if not await _is_module_enabled("consent_enabled"):
+        return []
+    steps: list[str] = []
+    raw = await get_setting("consent_list") or ""
+    for line in raw.strip().splitlines():
+        line = line.strip()
+        if not line or "|" not in line:
+            continue
+        _label, consent_key = line.split("|", 1)
+        consent_key = consent_key.strip()
+        if consent_key:
+            steps.append(f"consent:{consent_key}")
+    return steps
 
 
 async def _ask_step(step_key: str, message: types.Message, state: FSMContext, step: int, total: int):
@@ -995,6 +1004,13 @@ async def process_full_name(message: types.Message, state: FSMContext, bot: Bot)
 
     mode = await get_setting("registration_mode")
     if mode != "full":
+        # WR-03: the short form asks no question steps, but required consents must still be
+        # collected when consent_enabled is on. Run just the consent steps, then finalize.
+        consent_steps = await _get_consent_steps()
+        if consent_steps:
+            await state.update_data(_reg_step=1, _reg_total=len(consent_steps))
+            await _ask_step(consent_steps[0], message, state, 1, len(consent_steps))
+            return
         await finalize_registration(message, state, bot)
         return
 
