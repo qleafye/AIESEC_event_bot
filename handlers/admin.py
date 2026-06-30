@@ -470,6 +470,9 @@ async def build_settings_keyboard():
     edu_cond = await get_setting("edu_conditional") or "on"
     edu_cond_text = ("🎓 ВУЗ/курс только у студентов: ✅ Вкл → ❌ Выкл" if edu_cond == "on"
                      else "🎓 ВУЗ/курс только у студентов: ❌ Выкл → ✅ Вкл")
+    show_progress = await get_setting("reg_show_progress") or "off"
+    show_progress_text = ("🔢 Нумерация вопросов: ✅ Вкл → ❌ Выкл" if show_progress == "on"
+                          else "🔢 Нумерация вопросов: ❌ Выкл → ✅ Вкл")
 
     buttons = [
         [InlineKeyboardButton(text=toggle_text, callback_data="settings_toggle_reg")],
@@ -482,6 +485,7 @@ async def build_settings_keyboard():
         [InlineKeyboardButton(text="🧾 PDF согласий", callback_data="admin_consent_pdfs")],
         [InlineKeyboardButton(text=uni_mode_text, callback_data="toggle_uni_mode")],
         [InlineKeyboardButton(text=edu_cond_text, callback_data="toggle_edu_conditional")],
+        [InlineKeyboardButton(text=show_progress_text, callback_data="toggle_show_progress")],
         [InlineKeyboardButton(text="📋 Вопросы регистрации", callback_data="admin_reg_questions")],
         [InlineKeyboardButton(text="✏️ Тексты вопросов", callback_data="admin_reg_prompts")],
         [InlineKeyboardButton(text="🔘 Кнопки меню", callback_data="admin_menu_buttons")],
@@ -598,6 +602,14 @@ async def toggle_edu_conditional(callback: types.CallbackQuery):
     await _toggle_value_setting(
         callback, "edu_conditional", "on", "off", "on",
         "🎓 ВУЗ/курс спрашиваются только у студентов", "🎓 ВУЗ/курс спрашиваются у всех",
+    )
+
+
+@router.callback_query(F.data == "toggle_show_progress")
+async def toggle_show_progress(callback: types.CallbackQuery):
+    await _toggle_value_setting(
+        callback, "reg_show_progress", "on", "off", "off",
+        "🔢 Нумерация вопросов включена", "🔢 Нумерация вопросов выключена",
     )
 
 
