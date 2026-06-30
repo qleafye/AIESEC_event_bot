@@ -342,7 +342,9 @@ SETTINGS_FIELDS = [
     ("start_text", "💬 Приветствие", "Введите текст приветствия при /start (поддерживается HTML-разметка)"),
     ("event_name", "🎪 Название меро", "Название мероприятия в родительном падеже — подставляется в вопрос об ожиданиях (например: «конференции RusCo», «форума YouLead», «Годового отчёта»)"),
     ("source_options", "📢 Источники", "Отправьте варианты источников, каждый с новой строки"),
-    ("reg_complete_text", "✅ После регистрации", "Введите текст, который увидит пользователь после регистрации (поддерживается HTML-разметка)"),
+    ("reg_complete_text", "✅ После регистрации", "Текст, который участник увидит СРАЗУ после отправки анкеты (например «Поздравляем, заявка принята! Рассмотрим за 2-3 дня»). Поддерживается HTML."),
+    ("approve_text", "🎉 После одобрения", "Отдельный текст, который участник увидит, когда менеджер ОДОБРИТ заявку. Поддерживается HTML."),
+    ("consent_button_text", "✅ Текст кнопки согласия", "Надпись на кнопке согласия (по умолчанию «Согласен(-на)»)."),
     # Phase 4: event modularity + consent + payment config (all default empty/off → live flow unchanged)
     ("event_type", "🎭 Тип события", "Напишите одно слово: forum (форум) / conference (конференция) / custom (вручную).\n\nДля forum и conference бот сам включит/выключит модули оплаты и согласий — потом можно поправить кнопками выше."),
     ("consent_list", "📋 Список согласий", "Согласия, которые участник примет в конце анкеты.\n\nКаждое согласие — отдельной строкой в формате:\nВидимое название | короткий_ключ_латиницей\n\nКлюч нужен, чтобы привязать к согласию PDF. Пример (две строки):\nСогласие на обработку данных|data\nПолитика конфиденциальности|policy\n\nПосле сохранения загрузите PDF в разделе «🧾 PDF согласий»."),
@@ -462,7 +464,7 @@ async def build_settings_keyboard():
     payment_toggle_text = "💳 Оплата: ❌ Выкл → ✅ Вкл" if payment_enabled != "on" else "💳 Оплата: ✅ Вкл → ❌ Выкл"
     consent_toggle_text = "📋 Согласия: ❌ Выкл → ✅ Вкл" if consent_enabled != "on" else "📋 Согласия: ✅ Вкл → ❌ Выкл"
 
-    uni_mode = await get_setting("reg_university_mode") or "list"
+    uni_mode = await get_setting("reg_university_mode") or "text"
     uni_mode_text = ("🏫 ВУЗ: выбор из списка → свободный ввод" if uni_mode == "list"
                      else "🏫 ВУЗ: свободный ввод → выбор из списка")
     edu_cond = await get_setting("edu_conditional") or "on"
@@ -586,7 +588,7 @@ async def _toggle_value_setting(callback, key, val_a, val_b, default, title_a, t
 @router.callback_query(F.data == "toggle_uni_mode")
 async def toggle_uni_mode(callback: types.CallbackQuery):
     await _toggle_value_setting(
-        callback, "reg_university_mode", "list", "text", "list",
+        callback, "reg_university_mode", "list", "text", "text",
         "🏫 ВУЗ: выбор из списка", "🏫 ВУЗ: свободный ввод",
     )
 
@@ -945,7 +947,7 @@ async def settings_receive_file_invalid(message: types.Message):
     await message.answer("Отправьте фото или документ.")
 
 
-HTML_SETTINGS = {"start_text", "reg_complete_text"}
+HTML_SETTINGS = {"start_text", "reg_complete_text", "approve_text"}
 
 @router.message(EditSetting.waiting_for_value, is_admin)
 async def settings_edit_value(message: types.Message, state: FSMContext):
@@ -1916,6 +1918,11 @@ async def appr_resume(callback: types.CallbackQuery):
         except Exception as e:
             logger.error(f"Failed to re-send resume for {tid}: {e}")
             await callback.message.answer("Не удалось открыть резюме.")
+    elif user and user.get("resume_text"):
+        await callback.message.answer(
+            f"📄 Резюме (текст):\n\n{html_module.escape(str(user['resume_text']))}",
+            parse_mode="HTML",
+        )
     else:
         await callback.message.answer("Резюме не приложено.")
     await callback.answer()

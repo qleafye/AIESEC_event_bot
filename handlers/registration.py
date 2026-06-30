@@ -45,6 +45,17 @@ DEFAULT_START_TEXT = (
     "Настройте текст приветствия через /admin → Настройки → Приветствие."
 )
 
+# Tatiana: «поздравляем» теперь приходит СРАЗУ после регистрации (раньше — только после
+# одобрения). reg_complete_text = пост-регистрационный скрипт; approve_text = отдельный
+# скрипт после одобрения заявки. Оба правятся в /admin → Настройки.
+DEFAULT_REG_COMPLETE_TEXT = (
+    "Поздравляем, твоя заявка принята!\n\n"
+    "Мы рассмотрим её в течение 2-3 дней и напишем сюда. "
+    "Следи за обновлениями, впереди много интересного.\n\n"
+    "Если у тебя возникнут вопросы — не стесняйся задавать их нам!"
+)
+DEFAULT_APPROVE_TEXT = "Твоя заявка одобрена! Добро пожаловать 🎉"
+
 # --- Approval status decision (Phase 2, D-01..D-03) ---
 
 def _decide_status(reg_mode: str, full_setting: str, short_setting: str) -> str:
@@ -71,6 +82,7 @@ REG_FLOW = [
     ("education_status", "reg_q_education", "text"),
     ("university", "reg_q_university", "text"),
     ("course", "reg_q_course", "text"),
+    ("study_field", "reg_q_study_field", "select"),
     ("specialty", "reg_q_specialty", "text"),
     ("work_status", "reg_q_work", "text"),
     ("work_sphere", "reg_q_work_sphere", "text"),
@@ -94,7 +106,6 @@ REG_FLOW = [
     ("arrival_date", "reg_q_arrival_date", "date"),
     # YL'26 additions (all default OFF; options configurable from admin)
     ("birth_date", "reg_q_birth_date", "date"),
-    ("study_field", "reg_q_study_field", "select"),
     ("goal", "reg_q_goal", "multi"),
     ("formats", "reg_q_formats", "multi"),
     ("ambassador", "reg_q_ambassador", "ambassador"),
@@ -153,7 +164,8 @@ REG_DEFAULTS = {
     "reg_q_education": "on",
     "reg_q_university": "on",
     "reg_q_course": "on",
-    "reg_q_specialty": "on",
+    "reg_q_study_field": "on",   # «Направление обучения» (select) — заменяет специальность
+    "reg_q_specialty": "off",
     "reg_q_work": "on",
     "reg_q_work_sphere": "on",
     "reg_q_skills": "on",
@@ -175,7 +187,6 @@ REG_DEFAULTS = {
     "reg_q_volunteer": "off",
     "reg_q_arrival_date": "off",
     "reg_q_birth_date": "off",
-    "reg_q_study_field": "off",
     "reg_q_goal": "off",
     "reg_q_formats": "off",
     "reg_q_ambassador": "off",
@@ -260,12 +271,35 @@ async def _get_enabled_steps(data: dict) -> list[str]:
             continue
         if edu_conditional and step_key == "specialty" and not studying:
             continue
+        if edu_conditional and step_key == "study_field" and not studying:
+            continue
         if step_key == "work_sphere" and not data.get("work_status"):
             continue
         enabled.append(step_key)
-    # Phase 4 (D-03, CONS-02): consent steps appended LAST, just before finalize, when enabled.
-    enabled.extend(await _get_consent_steps())
-    return enabled
+    # Tatiana: согласие — ПЕРВЫЙ вопрос анкеты (раньше шло последним). Prepend consents.
+    return await _get_consent_steps() + enabled
+
+
+# Fallback when consent_enabled is on but consent_list is empty: one «обработка ПД» consent
+# (ссылки на документы уже в приветственном сообщении, поэтому хватает одной кнопки).
+DEFAULT_CONSENTS = [("Согласие на обработку персональных данных", "personal_data")]
+
+
+async def _consent_entries() -> list[tuple[str, str]]:
+    """Parse consent_list ('Видимое название | ключ' per line) → [(label, key)].
+    Empty/invalid list → DEFAULT_CONSENTS. Shared by step-building and rendering so the
+    label/key stay in sync."""
+    raw = await get_setting("consent_list") or ""
+    entries: list[tuple[str, str]] = []
+    for line in raw.strip().splitlines():
+        line = line.strip()
+        if not line or "|" not in line:
+            continue
+        label, consent_key = line.split("|", 1)
+        consent_key = consent_key.strip()
+        if consent_key:
+            entries.append((label.strip(), consent_key))
+    return entries or DEFAULT_CONSENTS
 
 
 async def _get_consent_steps() -> list[str]:
@@ -273,55 +307,45 @@ async def _get_consent_steps() -> list[str]:
     the full-form engine and the short-form path so consents fire regardless of form length."""
     if not await _is_module_enabled("consent_enabled"):
         return []
-    steps: list[str] = []
-    raw = await get_setting("consent_list") or ""
-    for line in raw.strip().splitlines():
-        line = line.strip()
-        if not line or "|" not in line:
-            continue
-        _label, consent_key = line.split("|", 1)
-        consent_key = consent_key.strip()
-        if consent_key:
-            steps.append(f"consent:{consent_key}")
-    return steps
+    return [f"consent:{key}" for _label, key in await _consent_entries()]
 
 
 async def _ask_step(step_key: str, message: types.Message, state: FSMContext, step: int, total: int):
-    p = _progress(step, total)
+    p = await _progress(step, total)
     if step_key == "age":
-        await message.answer(f"{p} {await _prompt('age', 'Напиши свой возраст числом:')}", reply_markup=get_cancel_kb())
+        await message.answer(f"{p}{await _prompt('age', 'Напиши свой возраст числом:')}", reply_markup=get_cancel_kb())
         await state.set_state(Registration.age)
     elif step_key == "email":
-        await message.answer(f"{p} {await _prompt('email', 'Укажи свой email:')}", reply_markup=get_cancel_kb())
+        await message.answer(f"{p}{await _prompt('email', 'Укажи свой email:')}", reply_markup=get_cancel_kb())
         await state.set_state(Registration.email)
     elif step_key == "phone":
-        await message.answer(f"{p} {await _prompt('phone', 'Укажи номер телефона:')}", reply_markup=get_phone_kb())
+        await message.answer(f"{p}{await _prompt('phone', 'Укажи номер телефона:')}", reply_markup=get_phone_kb())
         await state.set_state(Registration.phone)
     elif step_key == "city":
         opt_key, default = SELECT_CONFIG["city"]
         options = await _get_options(opt_key, default)
         await message.answer(
-            f"{p} {await _prompt('city', 'Из какого ты города?')}",
-            reply_markup=_reply_kb(options, add_other=True, add_skip=True),
+            f"{p}{await _prompt('city', 'Из какого ты города?')}",
+            reply_markup=_reply_kb(options, add_other=True),
         )
         await state.set_state(Registration.city)
     elif step_key == "source":
-        await message.answer(f"{p} {await _prompt('source', 'Откуда ты узнал(а) о нас?')}", reply_markup=await get_source_kb())
+        await message.answer(f"{p}{await _prompt('source', 'Откуда ты узнал(а) о нас?')}", reply_markup=await get_source_kb())
         await state.set_state(Registration.source)
     elif step_key == "local_committee":
-        await message.answer(f"{p} {await _prompt('local_committee', 'Локальный комитет:')}", reply_markup=get_local_committee_kb())
+        await message.answer(f"{p}{await _prompt('local_committee', 'Локальный комитет:')}", reply_markup=get_local_committee_kb())
         await state.set_state(Registration.local_committee)
     elif step_key == "position":
-        await message.answer(f"{p} {await _prompt('position', 'Твоя позиция:')}", reply_markup=get_position_kb())
+        await message.answer(f"{p}{await _prompt('position', 'Твоя позиция:')}", reply_markup=get_position_kb())
         await state.set_state(Registration.position)
     elif step_key == "education_status":
-        await message.answer(f"{p} {await _prompt('education_status', 'Учишься ли ты сейчас?')}", reply_markup=get_education_status_kb())
+        await message.answer(f"{p}{await _prompt('education_status', 'Учишься ли ты сейчас?')}", reply_markup=get_education_status_kb())
         await state.set_state(Registration.education_status)
     elif step_key == "university":
         # Mode toggle (reg_university_mode): "list" = pick from база вузов, "text" = free input.
-        mode = await get_setting("reg_university_mode") or "list"
+        mode = await get_setting("reg_university_mode") or "text"
         if mode == "text":
-            await message.answer(f"{p} {await _prompt('university', 'Введи название твоего ВУЗа:')}", reply_markup=get_skip_kb())
+            await message.answer(f"{p}{await _prompt('university', 'Введи название твоего ВУЗа:')}", reply_markup=get_skip_kb())
         else:
             uni_opts = await get_setting("university_options")
             if uni_opts and uni_opts.strip():
@@ -329,85 +353,88 @@ async def _ask_step(step_key: str, message: types.Message, state: FSMContext, st
                 kb = _reply_kb(options, add_other=True)
             else:
                 kb = get_universities_kb()  # fallback: config.UNIVERSITIES
-            await message.answer(f"{p} {await _prompt('university', 'В каком ВУЗе/колледже ты учишься?')}", reply_markup=kb)
+            await message.answer(f"{p}{await _prompt('university', 'В каком ВУЗе/колледже ты учишься?')}", reply_markup=kb)
         await state.set_state(Registration.university)
     elif step_key == "course":
-        await message.answer(f"{p} {await _prompt('course', 'На каком ты курсе?')}", reply_markup=get_course_kb())
+        await message.answer(f"{p}{await _prompt('course', 'На каком ты курсе?')}", reply_markup=get_course_kb())
         await state.set_state(Registration.course)
     elif step_key == "specialty":
-        await message.answer(f"{p} {await _prompt('specialty', 'Какая у тебя специальность?')}", reply_markup=get_skip_kb())
+        await message.answer(f"{p}{await _prompt('specialty', 'Какая у тебя специальность?')}", reply_markup=get_skip_kb())
         await state.set_state(Registration.specialty)
     elif step_key == "work_status":
-        await message.answer(f"{p} {await _prompt('work_status', 'Работаешь ли ты сейчас?')}", reply_markup=get_yes_no_kb())
+        await message.answer(f"{p}{await _prompt('work_status', 'Работаешь ли ты сейчас?')}", reply_markup=get_yes_no_kb())
         await state.set_state(Registration.work_status)
     elif step_key == "work_sphere":
-        await message.answer(f"{p} {await _prompt('work_sphere', 'В какой сфере ты работаешь?')}", reply_markup=get_skip_kb())
+        await message.answer(f"{p}{await _prompt('work_sphere', 'В какой сфере ты работаешь?')}", reply_markup=get_skip_kb())
         await state.set_state(Registration.work_sphere)
     elif step_key == "missing_skills":
-        await message.answer(f"{p} {await _prompt('missing_skills', 'Каких навыков тебе сейчас не хватает?')}", reply_markup=get_skip_kb())
+        await message.answer(f"{p}{await _prompt('missing_skills', 'Каких навыков тебе сейчас не хватает?')}", reply_markup=get_skip_kb())
         await state.set_state(Registration.missing_skills)
     elif step_key == "expectations":
         event_name = await get_setting("event_name") or "мероприятия"
         await message.answer(
-            f"{p} {await _prompt('expectations', f'Что ты ожидаешь от {event_name}? Что хотел(а) бы узнать или получить?')}",
+            f"{p}{await _prompt('expectations', f'Что ты ожидаешь от {event_name}? Что хотел(а) бы узнать или получить?')}",
             reply_markup=get_skip_kb(),
         )
         await state.set_state(Registration.expectations)
     elif step_key == "informal_day":
         await message.answer(
-            f"{p} {await _prompt('informal_day', 'Планируете ли вы посетить второй неформальный день (пройдёт загородом)?')}",
+            f"{p}{await _prompt('informal_day', 'Планируете ли вы посетить второй неформальный день (пройдёт загородом)?')}",
             reply_markup=get_informal_day_kb(),
         )
         await state.set_state(Registration.informal_day)
     elif step_key == "attendance_format":
-        await message.answer(f"{p} {await _prompt('attendance_format', 'В каком формате ты будешь присутствовать?')}", reply_markup=get_attendance_format_kb())
+        await message.answer(f"{p}{await _prompt('attendance_format', 'В каком формате ты будешь присутствовать?')}", reply_markup=get_attendance_format_kb())
         await state.set_state(Registration.attendance_format)
     elif step_key == "comments":
-        await message.answer(f"{p} {await _prompt('comments', 'Любые вопросы/комментарии/пожелания:')}", reply_markup=get_skip_kb())
+        await message.answer(f"{p}{await _prompt('comments', 'Любые вопросы/комментарии/пожелания:')}", reply_markup=get_skip_kb())
         await state.set_state(Registration.comments)
     elif step_key == "department":
-        await message.answer(f"{p} {await _prompt('department', 'Твой департамент:')}", reply_markup=get_department_kb())
+        await message.answer(f"{p}{await _prompt('department', 'Твой департамент:')}", reply_markup=get_department_kb())
         await state.set_state(Registration.department)
     elif step_key == "aiesec_role":
-        await message.answer(f"{p} {await _prompt('aiesec_role', 'Твоя позиция (Member/TL/Manager/VP/LCP/Coordinator):')}", reply_markup=get_aiesec_role_kb())
+        await message.answer(f"{p}{await _prompt('aiesec_role', 'Твоя позиция (Member/TL/Manager/VP/LCP/Coordinator):')}", reply_markup=get_aiesec_role_kb())
         await state.set_state(Registration.aiesec_role)
     elif step_key == "needs_certificate":
-        await message.answer(f"{p} {await _prompt('needs_certificate', 'Нужна справка в ВУЗ?')}", reply_markup=get_yes_no_kb())
+        await message.answer(f"{p}{await _prompt('needs_certificate', 'Нужна справка в ВУЗ?')}", reply_markup=get_yes_no_kb())
         await state.set_state(Registration.needs_certificate)
     elif step_key == "english_level":
-        await message.answer(f"{p} {await _prompt('english_level', 'Уровень английского:')}", reply_markup=get_english_level_kb())
+        await message.answer(f"{p}{await _prompt('english_level', 'Уровень английского:')}", reply_markup=get_english_level_kb())
         await state.set_state(Registration.english_level)
     elif step_key == "allergies":
-        await message.answer(f"{p} {await _prompt('allergies', 'Есть ли у тебя аллергии на продукты/запахи? (если нет — поставь «-»)')}", reply_markup=get_skip_kb())
+        await message.answer(f"{p}{await _prompt('allergies', 'Есть ли у тебя аллергии на продукты/запахи? (если нет — поставь «-»)')}", reply_markup=get_skip_kb())
         await state.set_state(Registration.allergies)
     elif step_key == "food_pref":
-        await message.answer(f"{p} {await _prompt('food_pref', 'Особенности питания? Напиши, если ты веган/вегетарианец (иначе — обычное):')}", reply_markup=get_skip_kb())
+        await message.answer(f"{p}{await _prompt('food_pref', 'Особенности питания? Напиши, если ты веган/вегетарианец (иначе — обычное):')}", reply_markup=get_skip_kb())
         await state.set_state(Registration.food_pref)
     elif step_key == "arrival":
-        await message.answer(f"{p} {await _prompt('arrival', 'Когда приедешь?')}", reply_markup=get_arrival_kb())
+        await message.answer(f"{p}{await _prompt('arrival', 'Когда приедешь?')}", reply_markup=get_arrival_kb())
         await state.set_state(Registration.arrival)
     elif step_key == "housing":
-        await message.answer(f"{p} {await _prompt('housing', 'Где будешь жить?')}", reply_markup=get_housing_kb())
+        await message.answer(f"{p}{await _prompt('housing', 'Где будешь жить?')}", reply_markup=get_housing_kb())
         await state.set_state(Registration.housing)
     elif step_key == "cc_shop":
-        await message.answer(f"{p} {await _prompt('cc_shop', 'Что бы ты хотел(а) видеть в CC-shop?')}", reply_markup=get_skip_kb())
+        await message.answer(f"{p}{await _prompt('cc_shop', 'Что бы ты хотел(а) видеть в CC-shop?')}", reply_markup=get_skip_kb())
         await state.set_state(Registration.cc_shop)
     elif step_key == "exp_organizers":
-        await message.answer(f"{p} {await _prompt('exp_organizers', 'Ожидания от команды организаторов?')}", reply_markup=get_skip_kb())
+        await message.answer(f"{p}{await _prompt('exp_organizers', 'Ожидания от команды организаторов?')}", reply_markup=get_skip_kb())
         await state.set_state(Registration.exp_organizers)
     elif step_key == "exp_content":
-        await message.answer(f"{p} {await _prompt('exp_content', 'Ожидания от контента?')}", reply_markup=get_skip_kb())
+        await message.answer(f"{p}{await _prompt('exp_content', 'Ожидания от контента?')}", reply_markup=get_skip_kb())
         await state.set_state(Registration.exp_content)
     elif step_key == "volunteer":
-        await message.answer(f"{p} {await _prompt('volunteer', 'Хочешь быть волонтёром?')}", reply_markup=get_yes_no_kb())
+        await message.answer(f"{p}{await _prompt('volunteer', 'Хочешь быть волонтёром?')}", reply_markup=get_yes_no_kb())
         await state.set_state(Registration.volunteer)
     elif step_key == "resume":
-        await message.answer(f"{p} {await _prompt('resume', 'Прикрепи резюме (PDF или DOCX):')}", reply_markup=get_cancel_kb())
+        await message.answer(
+            f"{p}{await _prompt('resume', 'Прикрепи резюме файлом (PDF или DOCX) или напиши его текстом:')}",
+            reply_markup=get_cancel_kb(),
+        )
         await state.set_state(Registration.resume)
     elif REG_STEP_TYPES.get(step_key) == "date":
         # Phase 4 (MOD-02): generic date-type step — one handler validates ДД.ММ.ГГГГ.
         label = REG_LABELS.get(f"reg_q_{step_key}", "Дата")
-        await message.answer(f"{p} {await _prompt(step_key, f'{label} (ДД.ММ.ГГГГ):')}", reply_markup=get_cancel_kb())
+        await message.answer(f"{p}{await _prompt(step_key, f'{label} (ДД.ММ.ГГГГ):')}", reply_markup=get_cancel_kb())
         await state.update_data(_current_date_step=step_key)
         await state.set_state(Registration.date_input)
     elif REG_STEP_TYPES.get(step_key) == "select":
@@ -415,7 +442,7 @@ async def _ask_step(step_key: str, message: types.Message, state: FSMContext, st
         opt_key, default = SELECT_CONFIG.get(step_key, (f"{step_key}_options", []))
         options = await _get_options(opt_key, default)
         label = REG_LABELS.get(f"reg_q_{step_key}", "Выбери вариант")
-        await message.answer(f"{p} {await _prompt(step_key, f'{label}:')}", reply_markup=_reply_kb(options, add_other=True))
+        await message.answer(f"{p}{await _prompt(step_key, f'{label}:')}", reply_markup=_reply_kb(options, add_other=True))
         await state.update_data(_current_select_step=step_key)
         await state.set_state(Registration.select_input)
     elif REG_STEP_TYPES.get(step_key) == "multi":
@@ -425,34 +452,28 @@ async def _ask_step(step_key: str, message: types.Message, state: FSMContext, st
         label = REG_LABELS.get(f"reg_q_{step_key}", "Выбери варианты")
         await state.update_data(_current_multi_step=step_key, **{f"_multi_{step_key}": []})
         await message.answer(
-            f"{p} {await _prompt(step_key, f'{label} (можно выбрать несколько):')}",
+            f"{p}{await _prompt(step_key, f'{label} (можно выбрать несколько):')}",
             reply_markup=_multi_kb(step_key, options, set()),
         )
         await state.set_state(Registration.multi_input)
     elif step_key == "ambassador":
         await message.answer(
-            f"{p} {await _prompt('ambassador', 'Хочешь стать амбассадором форума?')}",
+            f"{p}{await _prompt('ambassador', 'Хочешь стать амбассадором форума?')}",
             reply_markup=_reply_kb(["Да!", "Пока нет"]),
         )
         await state.set_state(Registration.ambassador)
     elif step_key.startswith("consent:"):
         # Phase 4 (MOD-03, D-03/D-04): one consent per step, PDF attached if configured.
         consent_key = step_key.split(":", 1)[1]
-        raw_list = await get_setting("consent_list") or ""
-        label = consent_key
-        for line in raw_list.strip().splitlines():
-            if "|" in line:
-                lbl, k = line.split("|", 1)
-                if k.strip() == consent_key:
-                    label = lbl.strip()
-                    break
-        pdf_file_id = await get_setting(f"consent_pdf_{consent_key}")
-        caption = (
-            f"📋 <b>Согласие:</b> {html.escape(label)}\n\n"
-            "Нажми «✅ Принимаю» для продолжения."
+        label = next(
+            (lbl for lbl, k in await _consent_entries() if k == consent_key), consent_key
         )
+        pdf_file_id = await get_setting(f"consent_pdf_{consent_key}")
+        # Ссылки на документы уже в приветственном сообщении — показываем короткий вопрос.
+        caption = f"{await _prompt(f'consent_{consent_key}', html.escape(label))}"
+        btn_text = await get_setting("consent_button_text") or "Согласен(-на)"
         kb = InlineKeyboardMarkup(inline_keyboard=[[
-            InlineKeyboardButton(text="✅ Принимаю", callback_data=f"consent_accept:{consent_key}")
+            InlineKeyboardButton(text=btn_text, callback_data=f"consent_accept:{consent_key}")
         ]])
         if pdf_file_id:
             await message.answer_document(pdf_file_id, caption=caption, reply_markup=kb, parse_mode="HTML")
@@ -509,8 +530,13 @@ def _extract_source_tag(command_args: str | None) -> str | None:
     return None
 
 
-def _progress(step: int, total: int) -> str:
-    return f"({step}/{total})"
+async def _progress(step: int, total: int) -> str:
+    """Optional «(3/9) » numbering prefix. Off by default (Tatiana: убрать нумерацию);
+    organizers can switch it back on with reg_show_progress=on. Returns a trailing space
+    so prompts read «{p}{question}» with no stray gap when disabled."""
+    if (await get_setting("reg_show_progress") or "off") == "on":
+        return f"({step}/{total}) "
+    return ""
 
 
 def _reply_kb(options: list[str], add_other: bool = False, add_skip: bool = False):
@@ -533,7 +559,7 @@ def _multi_kb(step_key: str, options: list[str], selected: set[int]):
     for i, opt in enumerate(options):
         mark = "✅ " if i in selected else "▫️ "
         rows.append([InlineKeyboardButton(text=f"{mark}{opt}", callback_data=f"regmulti:{step_key}:{i}")])
-    rows.append([InlineKeyboardButton(text="Готово ▶️", callback_data=f"regmulti_done:{step_key}")])
+    rows.append([InlineKeyboardButton(text="Готово", callback_data=f"regmulti_done:{step_key}")])
     return InlineKeyboardMarkup(inline_keyboard=rows)
 
 
@@ -655,7 +681,9 @@ def _build_summary(data: dict) -> str:
             continue
         lines.append(f"<b>{label}:</b> {_esc(value)}")
     if data.get("resume_file_id"):
-        lines.append("<b>Резюме:</b> прикреплено")
+        lines.append("<b>Резюме:</b> прикреплено файлом")
+    elif data.get("resume_text"):
+        lines.append(f"<b>Резюме:</b> {_esc(data.get('resume_text'))}")
     return "\n".join(lines)
 
 
@@ -836,7 +864,7 @@ async def cancel_registration(message: types.Message, state: FSMContext):
 
 # --- QW-01 confirmation step ---
 
-@router.message(Registration.confirm, F.text == "Всё верно ✓")
+@router.message(Registration.confirm, F.text == "Всё верно")
 async def process_confirm_ok(message: types.Message, state: FSMContext, bot: Bot):
     await finalize_registration(message, state, bot)
 
@@ -858,10 +886,21 @@ async def process_resume(message: types.Message, state: FSMContext, bot: Bot):
     await _advance("resume", message, state, bot)
 
 
+@router.message(Registration.resume, F.text)
+async def process_resume_text(message: types.Message, state: FSMContext, bot: Bot):
+    # Tatiana: резюме можно либо файлом, либо текстом. Text branch stores resume_text.
+    text = (message.text or "").strip()
+    if not text:
+        await message.answer("Напиши резюме текстом или прикрепи файл (PDF или DOCX).")
+        return
+    await state.update_data(resume_text=text)
+    await _advance("resume", message, state, bot)
+
+
 @router.message(Registration.resume)
 async def process_resume_invalid(message: types.Message, state: FSMContext):
-    # Non-document input in the resume state — re-prompt, never crash (D-10). Mandatory: no skip (D-09).
-    await message.answer("Пожалуйста, прикрепи документ (PDF или DOCX).")
+    # Neither a document nor text (sticker/photo/etc.) — re-prompt, never crash (D-10).
+    await message.answer("Пришли резюме текстом или прикрепи файл (PDF или DOCX).")
 
 
 # --- Phase 4: date-type step (MOD-02) ---
@@ -945,7 +984,7 @@ async def process_multi_done(callback: types.CallbackQuery, state: FSMContext, b
 
 @router.message(Registration.multi_input)
 async def process_multi_ignore(message: types.Message):
-    await message.answer("Отмечай варианты кнопками выше и нажми «Готово ▶️».")
+    await message.answer("Отмечай варианты кнопками выше и нажми «Готово».")
 
 
 # --- YL'26: ambassador yes/no ---
@@ -972,8 +1011,9 @@ async def process_consent_accept(callback: types.CallbackQuery, state: FSMContex
 
 @router.message(Registration.consent_pending)
 async def process_consent_ignore(message: types.Message):
-    # SC#2: consent cannot be skipped via text — only the «Принимаю» button advances.
-    await message.answer("Нажми кнопку «✅ Принимаю» для продолжения.")
+    # SC#2: consent cannot be skipped via text — only the consent button advances.
+    btn_text = await get_setting("consent_button_text") or "Согласен(-на)"
+    await message.answer(f"Нажми кнопку «{btn_text}» для продолжения.")
 
 
 # --- Admin re-registration ---
@@ -1083,9 +1123,9 @@ async def process_phone(message: types.Message, state: FSMContext, bot: Bot):
 async def process_city(message: types.Message, state: FSMContext, bot: Bot):
     text = (message.text or "").strip()
     if not text:
-        await message.answer("Напиши город или нажми «Пропустить».")
+        await message.answer("Выбери город на клавиатуре или напиши свой.")
         return
-    await state.update_data(city="-" if text == "Пропустить" else text)
+    await state.update_data(city=text)
     await _advance("city", message, state, bot)
 
 
@@ -1127,7 +1167,7 @@ async def process_education_status(message: types.Message, state: FSMContext, bo
         return
     await state.update_data(education_status=status)
     if not status.startswith("Да"):
-        await state.update_data(university="-", course="-", specialty="-")
+        await state.update_data(university="-", course="-", specialty="-", study_field="-")
     await _advance("education_status", message, state, bot)
 
 
@@ -1317,12 +1357,12 @@ async def process_volunteer(message: types.Message, state: FSMContext, bot: Bot)
 # --- Finalize ---
 
 async def send_completion_and_bonus(bot: Bot, telegram_id: int, with_menu: bool = True):
-    """Deliver reg_complete_text + the configured registration bonus. Reused by the
-    non-payment approval path, the free/single payment path (handlers.payment), and the
-    admin receipt-confirm path (handlers.admin). Fail-soft: a blocked/unknown user never
-    raises. `with_menu=False` skips the main-menu keyboard when the caller already sent it."""
+    """Deliver approve_text (post-approval script) + the configured registration bonus.
+    Reused by the non-payment approval path, the free/single payment path (handlers.payment),
+    and the admin receipt-confirm path (handlers.admin). Fail-soft: a blocked/unknown user
+    never raises. `with_menu=False` skips the main-menu keyboard when the caller already sent it."""
     try:
-        complete_text = await get_setting("reg_complete_text") or "Регистрация завершена! Скоро увидимся! 🎉"
+        complete_text = await get_setting("approve_text") or DEFAULT_APPROVE_TEXT
         kwargs = {"parse_mode": "HTML"}
         if with_menu:
             kwargs["reply_markup"] = await get_main_menu_kb()
@@ -1386,6 +1426,7 @@ async def finalize_registration(message: types.Message, state: FSMContext, bot: 
     data.setdefault("attendance_format", "-")
     data.setdefault("comments", "-")
     data.setdefault("resume_file_id", None)
+    data.setdefault("resume_text", None)
 
     await add_user(data)
 
@@ -1440,10 +1481,12 @@ async def finalize_registration(message: types.Message, state: FSMContext, bot: 
                 logger.error(f"Failed to notify admin {admin_id}: {e}")
 
     await state.clear()
+    # Tatiana: «поздравляем»-скрипт приходит сразу после регистрации — всем (и pending, и
+    # approved). Approve/reject досылают свои отдельные скрипты позже.
+    submitted = await get_setting("reg_complete_text") or DEFAULT_REG_COMPLETE_TEXT
+    try:
+        await message.answer(submitted, reply_markup=ReplyKeyboardRemove(), parse_mode="HTML")
+    except Exception:
+        await message.answer(submitted, reply_markup=ReplyKeyboardRemove())
     if status == "approved":
         await approve_user(bot, message.from_user.id)
-    else:
-        await message.answer(
-            "✅ Заявка отправлена! Менеджер рассмотрит её в ближайшее время.",
-            reply_markup=ReplyKeyboardRemove(),
-        )

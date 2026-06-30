@@ -26,9 +26,17 @@ def test_reg_flow_all_3_tuples_with_type():
 
 
 def test_new_steps_default_off():
-    for key in ("reg_q_birth_date", "reg_q_study_field", "reg_q_goal",
+    for key in ("reg_q_birth_date", "reg_q_goal",
                 "reg_q_formats", "reg_q_ambassador", "reg_q_arrival_date"):
         assert reg.REG_DEFAULTS[key] == "off"
+
+
+def test_study_field_replaces_specialty_by_default():
+    # Tatiana: «направление обучения» (select) on, специальность off, и идёт сразу после курса.
+    assert reg.REG_DEFAULTS["reg_q_study_field"] == "on"
+    assert reg.REG_DEFAULTS["reg_q_specialty"] == "off"
+    keys = [k for k, *_ in reg.REG_FLOW]
+    assert keys.index("study_field") == keys.index("course") + 1
 
 
 # ── sheet row + summary carry the new fields ─────────────────────────────────
@@ -78,7 +86,7 @@ def test_consent_steps_absent_by_default(tmp_path):
     assert not any(s.startswith("consent:") for s in steps)
 
 
-def test_consent_steps_injected_last_when_enabled(tmp_path):
+def test_consent_steps_injected_first_when_enabled(tmp_path):
     _use_tmp_db(tmp_path)
     asyncio.run(db.init_db())
     asyncio.run(db.set_setting("consent_enabled", "on"))
@@ -86,7 +94,16 @@ def test_consent_steps_injected_last_when_enabled(tmp_path):
     steps = asyncio.run(reg._get_enabled_steps({"education_status": "Нет", "work_status": False}))
     consents = [s for s in steps if s.startswith("consent:")]
     assert consents == ["consent:data", "consent:policy"]
-    assert steps[-2:] == ["consent:data", "consent:policy"]
+    # Tatiana: согласие — первый вопрос анкеты.
+    assert steps[:2] == ["consent:data", "consent:policy"]
+
+
+def test_consent_defaults_to_personal_data_when_list_empty(tmp_path):
+    _use_tmp_db(tmp_path)
+    asyncio.run(db.init_db())
+    asyncio.run(db.set_setting("consent_enabled", "on"))  # list empty → default consent
+    steps = asyncio.run(reg._get_enabled_steps({"education_status": "Нет", "work_status": False}))
+    assert steps[0] == "consent:personal_data"
 
 
 # ── edu_conditional toggle ───────────────────────────────────────────────────
