@@ -72,6 +72,16 @@ async def start_payment_step(bot: Bot, telegram_id: int):
         await _show_payment_details(bot, telegram_id, ctx, label, price)
     except Exception as e:
         logger.error(f"Failed to start payment step for {telegram_id}: {e}")
+        # CR-01: never strand an approved user. If details failed to send (e.g. a
+        # transient Telegram error), clear any half-set receipt_upload state and deliver
+        # the completion text + menu so they land on the main menu, not a dead end.
+        try:
+            key = StorageKey(bot_id=bot.id, chat_id=telegram_id, user_id=telegram_id)
+            await FSMContext(storage=_storage, key=key).clear()
+            from handlers.registration import send_completion_and_bonus
+            await send_completion_and_bonus(bot, telegram_id)
+        except Exception as e2:
+            logger.error(f"Failed fallback completion for {telegram_id}: {e2}")
 
 
 @router.callback_query(F.data.startswith("pay_option:"))
@@ -104,7 +114,9 @@ async def _show_payment_details(bot: Bot, telegram_id: int, state: FSMContext, o
         f"Сумма: {option_price} ₽\n",
     ]
     if requisites:
-        parts.append(f"📋 Реквизиты:\n{requisites}\n")
+        # CR-01: admin-entered requisites often contain & or < (e.g. "Сбербанк & Тинькофф");
+        # without escaping, parse_mode=HTML rejects the whole message.
+        parts.append(f"📋 Реквизиты:\n{html.escape(requisites)}\n")
     if deadline:
         parts.append(f"📅 Дедлайн: {html.escape(deadline)}\n")
     if penalties and penalties.strip():
@@ -112,13 +124,17 @@ async def _show_payment_details(bot: Bot, telegram_id: int, state: FSMContext, o
         for line in penalties.strip().splitlines():
             if "|" in line:
                 date_part, amount = line.split("|", 1)
-                lines.append(f"• до {date_part.strip()} — остаток {amount.strip()} ₽")
+                # CR-01: escape the admin-entered penalty fields too.
+                lines.append(f"• до {html.escape(date_part.strip())} — остаток {html.escape(amount.strip())} ₽")
         if lines:
             parts.append("⚠️ Штрафы за отмену:\n" + "\n".join(lines) + "\n")
     parts.append("📎 Загрузи чек оплаты (PDF-документ или скриншот).")
 
-    await bot.send_message(telegram_id, "\n".join(parts), parse_mode="HTML")
+    # CR-01: set state BEFORE the send so a transient send failure does not leave the
+    # user approved-but-stateless. start_payment_step's except still delivers a fallback
+    # menu for the single/free path; the multi-option path re-raises to the callback.
     await state.set_state(Registration.receipt_upload)
+    await bot.send_message(telegram_id, "\n".join(parts), parse_mode="HTML")
 
 
 @router.message(Registration.receipt_upload, F.document)
