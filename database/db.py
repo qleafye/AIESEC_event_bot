@@ -129,6 +129,7 @@ async def init_db():
         await _ensure_column(db, "users", "paid_at", "TEXT")
 
         # YL'26 reg fields (additive, default-off questions — no impact on live flow)
+        await _ensure_column(db, "users", "arrival_date", "TEXT")
         await _ensure_column(db, "users", "birth_date", "TEXT")
         await _ensure_column(db, "users", "study_field", "TEXT")
         await _ensure_column(db, "users", "goal", "TEXT")          # multi-select, CSV
@@ -193,8 +194,8 @@ async def add_user(data: dict):
                 allergies, food_pref, arrival, housing, cc_shop,
                 exp_organizers, exp_content, volunteer,
                 payment_status, payment_option, receipt_file_id, payment_due, paid_at,
-                birth_date, study_field, goal, formats
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                arrival_date, birth_date, study_field, goal, formats
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             ON CONFLICT(telegram_id) DO UPDATE SET
                 username=excluded.username,
                 full_name=excluded.full_name,
@@ -240,6 +241,7 @@ async def add_user(data: dict):
                 receipt_file_id=COALESCE(excluded.receipt_file_id, users.receipt_file_id),
                 payment_due=excluded.payment_due,
                 paid_at=excluded.paid_at,
+                arrival_date=excluded.arrival_date,
                 birth_date=excluded.birth_date,
                 study_field=excluded.study_field,
                 goal=excluded.goal,
@@ -290,6 +292,7 @@ async def add_user(data: dict):
             data.get('receipt_file_id'),
             data.get('payment_due'),
             data.get('paid_at'),
+            data.get('arrival_date'),
             data.get('birth_date'),
             data.get('study_field'),
             data.get('goal'),
