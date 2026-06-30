@@ -229,8 +229,10 @@ async def send_payment_reminder(user_id: int):
 
 async def sweep_payment_overdue():
     """Daily interval target: mark past-deadline non-payers as 'overdue'. Touches only
-    'not_paid' rows — 'receipt_sent'/'paid' are left alone. No-op until a parseable
-    payment_deadline is set and has passed."""
+    'not_paid' rows that actually entered the payment flow ('payment_option' set or
+    'payment_due' populated) — 'receipt_sent'/'paid' are left alone, and the ~590 legacy
+    users backfilled to 'not_paid' (who never picked an option) are NOT swept. No-op until
+    a parseable payment_deadline is set and has passed."""
     try:
         import aiosqlite
         deadline_str = await get_setting("payment_deadline")
@@ -244,7 +246,9 @@ async def sweep_payment_overdue():
             return
         async with aiosqlite.connect(config.DB_PATH) as db:
             await db.execute(
-                "UPDATE users SET payment_status='overdue' WHERE payment_status='not_paid'"
+                "UPDATE users SET payment_status='overdue' "
+                "WHERE payment_status='not_paid' "
+                "AND (payment_option IS NOT NULL OR payment_due IS NOT NULL)"
             )
             await db.commit()
     except Exception as e:
