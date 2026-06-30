@@ -525,6 +525,19 @@ def _multi_kb(step_key: str, options: list[str], selected: set[int]):
     return InlineKeyboardMarkup(inline_keyboard=rows)
 
 
+# Header row for the Google Sheet — MUST stay in the same order as _build_sheet_row().
+SHEET_HEADERS = [
+    "ID Telegram", "Username", "Дата регистрации", "Фамилия и Имя", "Email",
+    "Источник", "Детали", "Телефон", "Город", "Локальный комитет", "Позиция",
+    "Образование", "ВУЗ", "Курс", "Специальность", "Работает", "Сфера работы",
+    "Не хватает навыков", "Ожидания", "Ожидания (AR)", "Неформальный день",
+    "Формат участия", "Комментарии", "Департамент", "Роль AIESEC", "Справка в ВУЗ",
+    "Английский", "Аллергии", "Питание", "Приезд", "Проживание", "CC-shop",
+    "Ожидания от орг", "Ожидания от контента", "Волонтёр", "Дата рождения",
+    "Направление обучения", "Цель участия", "Форматы форума", "Амбассадор",
+]
+
+
 def _build_sheet_row(data: dict) -> list:
     details_parts = []
     if data.get("referrer_id"):

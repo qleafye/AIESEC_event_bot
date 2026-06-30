@@ -42,7 +42,7 @@ from database.db import (
     update_payment_status,
 )
 from aiogram.exceptions import TelegramRetryAfter
-from services.sheets import get_existing_sheet_ids, append_rows_to_sheet
+from services.sheets import get_existing_sheet_ids, append_rows_to_sheet, ensure_sheet_header
 from services.scheduler import (
     _parse_schedule_dt,
     _fmt_dt,
@@ -52,7 +52,7 @@ from services.scheduler import (
 from services.allowlist import refresh_allowlist, allowlist_size
 from handlers.states import Broadcast, EditSetting, Approval, ReceiptReview
 from keyboards.builders import get_cancel_kb, MENU_BUTTONS, get_main_menu_kb
-from handlers.registration import REG_FLOW, REG_DEFAULTS, REG_LABELS, _build_sheet_row, approve_user
+from handlers.registration import REG_FLOW, REG_DEFAULTS, REG_LABELS, SHEET_HEADERS, _build_sheet_row, approve_user
 
 router = Router()
 logger = logging.getLogger(__name__)
@@ -732,6 +732,7 @@ async def sync_sheet(callback: types.CallbackQuery):
     await callback.message.edit_text("🔄 Получаю данные из таблицы...", parse_mode="HTML")
 
     try:
+        await ensure_sheet_header(SHEET_HEADERS)  # шапка таблицы, если её ещё нет
         existing_ids = await get_existing_sheet_ids()
         all_users = await get_all_users_dicts()
 

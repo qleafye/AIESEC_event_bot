@@ -48,6 +48,14 @@ def test_sheet_row_includes_new_fields():
     assert "Да" in row  # ambassador
 
 
+def test_sheet_header_matches_row_width():
+    # header column count must equal the data-row column count, same order
+    row = reg._build_sheet_row({"telegram_id": 1, "registration_date": "x", "full_name": "A"})
+    assert len(reg.SHEET_HEADERS) == len(row)
+    assert reg.SHEET_HEADERS[0] == "ID Telegram"
+    assert reg.SHEET_HEADERS[-1] == "Амбассадор"
+
+
 def test_summary_includes_new_fields():
     data = {
         "full_name": "A B", "birth_date": "01.01.2000",
