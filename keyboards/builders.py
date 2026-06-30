@@ -180,7 +180,7 @@ def get_cancel_kb() -> ReplyKeyboardMarkup:
 
 def get_confirm_kb() -> ReplyKeyboardMarkup:
     kb = ReplyKeyboardBuilder()
-    kb.button(text="Всё верно ✓")
+    kb.button(text="Всё верно")
     kb.button(text="Изменить")
     kb.adjust(2)
     return kb.as_markup(resize_keyboard=True, one_time_keyboard=True)
