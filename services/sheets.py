@@ -32,7 +32,14 @@ def _ensure_header_sync(headers: list[str]):
     if first.lstrip("-").isdigit():
         # first row is data (a Telegram id) → no header yet, insert one on top
         sheet.insert_row(headers, 1)
-    # else: a text header is already present — leave it untouched
+        return
+    # a text header is already present — reconcile it if it drifted from the
+    # current schema (columns added/reordered in code). Overwrite row 1 in place
+    # so data rows below keep their positions.
+    current = [h.strip() for h in sheet.row_values(1)]
+    if current != headers:
+        end = gspread.utils.rowcol_to_a1(1, len(headers))
+        sheet.update(values=[headers], range_name=f"A1:{end}")
 
 
 def _get_existing_ids_sync() -> set[int]:
