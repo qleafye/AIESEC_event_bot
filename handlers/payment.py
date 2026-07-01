@@ -32,6 +32,37 @@ def init_payment_module(storage):
     _storage = storage
 
 
+def _parse_lc_requisites(raw: str) -> dict[str, str]:
+    """Parse per-LC requisites ('ЛК | реквизиты' per line) → {lc_lower: requisites}.
+    LC name is matched case-insensitively against the user's local_committee."""
+    out: dict[str, str] = {}
+    for line in (raw or "").splitlines():
+        line = line.strip()
+        if not line or "|" not in line:
+            continue
+        lc, req = line.split("|", 1)
+        lc = lc.strip().lower()
+        req = req.strip()
+        if lc and req:
+            out[lc] = req
+    return out
+
+
+async def _resolve_requisites(telegram_id: int) -> str | None:
+    """Per-LC requisites for this user's local_committee, else the global payment_requisites.
+    Each ЛК collects to its own card (payment_requisites_by_lc); missing/unmatched LC falls
+    back to the single shared card."""
+    by_lc = _parse_lc_requisites(await get_setting("payment_requisites_by_lc") or "")
+    if by_lc:
+        user = await get_user(telegram_id)
+        lc = (user or {}).get("local_committee")
+        if lc:
+            hit = by_lc.get(str(lc).strip().lower())
+            if hit:
+                return hit
+    return await get_setting("payment_requisites")
+
+
 def _parse_options(raw: str) -> list[tuple[str, int]]:
     """Parse the payment_options setting ('label|price' per line) → [(label, price)]."""
     options: list[tuple[str, int]] = []
@@ -104,7 +135,7 @@ async def process_payment_option(callback: types.CallbackQuery, state: FSMContex
 
 
 async def _show_payment_details(bot: Bot, telegram_id: int, state: FSMContext, option_label: str, option_price: int):
-    requisites = await get_setting("payment_requisites")
+    requisites = await _resolve_requisites(telegram_id)  # per-LC card, else shared
     deadline = await get_setting("payment_deadline")
     penalties = await get_setting("penalty_schedule")
 
