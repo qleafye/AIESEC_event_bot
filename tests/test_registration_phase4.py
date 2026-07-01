@@ -62,7 +62,7 @@ def test_sheet_header_matches_row_width():
     row = reg._build_sheet_row({"telegram_id": 1, "registration_date": "x", "full_name": "A"})
     assert len(reg.SHEET_HEADERS) == len(row)
     assert reg.SHEET_HEADERS[0] == "ID Telegram"
-    assert reg.SHEET_HEADERS[-1] == "ВК"
+    assert reg.SHEET_HEADERS[-1] == "Дата план. оплаты"
 
 
 def test_summary_includes_new_fields():

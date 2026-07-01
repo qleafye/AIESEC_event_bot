@@ -107,12 +107,14 @@ REG_FLOW = [
     ("food_pref", "reg_q_food", "text"),
     ("arrival", "reg_q_arrival", "text"),
     ("housing", "reg_q_housing", "text"),
+    ("transport", "reg_q_transport", "text"),
     ("cc_shop", "reg_q_cc_shop", "text"),
     ("exp_organizers", "reg_q_exp_organizers", "text"),
     ("exp_content", "reg_q_exp_content", "text"),
     ("volunteer", "reg_q_volunteer", "text"),
     ("arrival_date", "reg_q_arrival_date", "date"),
     ("birth_date", "reg_q_birth_date", "date"),
+    ("payment_plan_date", "reg_q_payment_date", "date"),
 ]
 
 # Map step_key → type for O(1) dispatch in _ask_step (consent:* keys handled separately).
@@ -185,6 +187,8 @@ REG_DEFAULTS = {
     "reg_q_food": "off",
     "reg_q_arrival": "off",
     "reg_q_housing": "off",
+    "reg_q_transport": "off",
+    "reg_q_payment_date": "off",
     "reg_q_cc_shop": "off",
     "reg_q_exp_organizers": "off",
     "reg_q_exp_content": "off",
@@ -225,6 +229,8 @@ REG_LABELS = {
     "reg_q_food": "🥗 Питание",
     "reg_q_arrival": "🚌 Приезд",
     "reg_q_housing": "🏠 Проживание",
+    "reg_q_transport": "🚗 Трансфер",
+    "reg_q_payment_date": "💳 Дата оплаты",
     "reg_q_cc_shop": "🛍 CC-shop",
     "reg_q_exp_organizers": "💬 Ожид. от орг",
     "reg_q_exp_content": "💬 Ожид. от контента",
@@ -269,6 +275,10 @@ async def _get_enabled_steps(data: dict) -> list[str]:
         if not await _is_step_enabled(setting_key):
             continue
         if step_key == "informal_day" and data.get("attendance_format") == "Online":
+            continue
+        # Tatiana: «Где будешь жить» — только если приезжает Заранее (в дни конфы жильё не нужно).
+        # Backward-safe: gate only when arrival was actually asked; else housing stays unconditional.
+        if step_key == "housing" and "arrival" in data and data.get("arrival") != "Заранее":
             continue
         if edu_conditional and step_key == "university" and not studying:
             continue
@@ -425,6 +435,19 @@ async def _ask_step(step_key: str, message: types.Message, state: FSMContext, st
     elif step_key == "housing":
         await message.answer(f"{p}{await _prompt('housing', 'Где будешь жить?')}", reply_markup=get_housing_kb())
         await state.set_state(Registration.housing)
+    elif step_key == "transport":
+        await message.answer(
+            f"{p}{await _prompt('transport', 'Как добираешься до площадки?')}",
+            reply_markup=_reply_kb(["Трансфер до площадки", "Самостоятельно"]),
+        )
+        await state.set_state(Registration.transport)
+    elif step_key == "payment_plan_date":
+        await message.answer(
+            f"{p}{await _prompt('payment_plan_date', 'Когда планируешь оплатить взнос? Крайний срок 26.08.26 — введи дату (ДД.ММ.ГГГГ):')}",
+            reply_markup=get_cancel_kb(),
+        )
+        await state.update_data(_current_date_step="payment_plan_date")
+        await state.set_state(Registration.date_input)
     elif step_key == "cc_shop":
         await message.answer(f"{p}{await _prompt('cc_shop', 'Что бы ты хотел(а) видеть в CC-shop?')}", reply_markup=get_skip_kb())
         await state.set_state(Registration.cc_shop)
@@ -585,7 +608,7 @@ SHEET_HEADERS = [
     "Английский", "Аллергии", "Питание", "Приезд", "Проживание", "CC-shop",
     "Ожидания от орг", "Ожидания от контента", "Волонтёр", "Дата приезда",
     "Дата рождения", "Направление обучения", "Цель участия", "Форматы форума",
-    "Амбассадор", "ВК",
+    "Амбассадор", "ВК", "Трансфер", "Дата план. оплаты",
 ]
 
 
@@ -638,6 +661,8 @@ def _build_sheet_row(data: dict) -> list:
         data.get("formats") or "-",
         "Да" if data.get("is_ambassador_candidate") else "-",
         data.get("vk_username") or "-",
+        data.get("transport") or "-",
+        data.get("payment_plan_date") or "-",
     ]
 
 
@@ -682,6 +707,8 @@ def _build_summary(data: dict) -> str:
         ("Питание", data.get("food_pref")),
         ("Приезд", data.get("arrival")),
         ("Проживание", data.get("housing")),
+        ("Трансфер", data.get("transport")),
+        ("Дата план. оплаты", data.get("payment_plan_date")),
         ("CC-shop", data.get("cc_shop")),
         ("Ожидания от орг", data.get("exp_organizers")),
         ("Ожидания от контента", data.get("exp_content")),
@@ -1370,6 +1397,11 @@ async def process_arrival(message: types.Message, state: FSMContext, bot: Bot):
 @router.message(Registration.housing)
 async def process_housing(message: types.Message, state: FSMContext, bot: Bot):
     await _store_choice("housing", "housing", message, state, bot)
+
+
+@router.message(Registration.transport)
+async def process_transport(message: types.Message, state: FSMContext, bot: Bot):
+    await _store_choice("transport", "transport", message, state, bot)
 
 
 @router.message(Registration.cc_shop)

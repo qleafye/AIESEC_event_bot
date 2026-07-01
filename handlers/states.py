@@ -7,6 +7,7 @@ class Registration(StatesGroup):
     email = State()
     phone = State()
     vk = State()                # ВК username (@...) — YL'26
+    transport = State()         # трансфер до площадки / самостоятельно
     city = State()
     local_committee = State()
     position = State()
