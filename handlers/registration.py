@@ -461,9 +461,11 @@ async def _ask_step(step_key: str, message: types.Message, state: FSMContext, st
         await message.answer(f"{p}{await _prompt('volunteer', 'Хочешь быть волонтёром?')}", reply_markup=get_yes_no_kb())
         await state.set_state(Registration.volunteer)
     elif step_key == "resume":
+        # No «Отмена» here — tapping it cleared the whole form (все ответы терялись).
+        # «Пропустить» finishes registration without a resume instead.
         await message.answer(
-            f"{p}{await _prompt('resume', 'Прикрепи резюме файлом (PDF или DOCX) или напиши его текстом:')}",
-            reply_markup=get_cancel_kb(),
+            f"{p}{await _prompt('resume', 'Прикрепи резюме файлом (PDF или DOCX) или напиши его текстом. Если резюме нет — нажми «Пропустить».')}",
+            reply_markup=get_skip_kb(),
         )
         await state.set_state(Registration.resume)
     elif REG_STEP_TYPES.get(step_key) == "date":
@@ -941,6 +943,10 @@ async def process_resume(message: types.Message, state: FSMContext, bot: Bot):
 async def process_resume_text(message: types.Message, state: FSMContext, bot: Bot):
     # Tatiana: резюме можно либо файлом, либо текстом. Text branch stores resume_text.
     text = (message.text or "").strip()
+    if text == "Пропустить":
+        # Skip without a resume — finish the form, keep all previous answers.
+        await _advance("resume", message, state, bot)
+        return
     if not text:
         await message.answer("Напиши резюме текстом или прикрепи файл (PDF или DOCX).")
         return
