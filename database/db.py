@@ -136,6 +136,8 @@ async def init_db():
         await _ensure_column(db, "users", "goal", "TEXT")          # multi-select, CSV
         await _ensure_column(db, "users", "formats", "TEXT")       # multi-select, CSV
         await _ensure_column(db, "users", "vk_username", "TEXT")   # ник в ВК (@username) — YL'26
+        await _ensure_column(db, "users", "transport", "TEXT")     # трансфер до площадки / самостоятельно
+        await _ensure_column(db, "users", "payment_plan_date", "TEXT")  # планируемая дата оплаты взноса
 
         # Phase 4 (CONS-01/02, D-02): per-user consent audit trail. UNIQUE dedupes
         # re-taps; index supports the per-user lookup.
@@ -196,8 +198,9 @@ async def add_user(data: dict):
                 allergies, food_pref, arrival, housing, cc_shop,
                 exp_organizers, exp_content, volunteer,
                 payment_status, payment_option, receipt_file_id, payment_due, paid_at,
-                arrival_date, birth_date, study_field, goal, formats, vk_username
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                arrival_date, birth_date, study_field, goal, formats, vk_username,
+                transport, payment_plan_date
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             ON CONFLICT(telegram_id) DO UPDATE SET
                 username=excluded.username,
                 full_name=excluded.full_name,
@@ -250,7 +253,9 @@ async def add_user(data: dict):
                 study_field=excluded.study_field,
                 goal=excluded.goal,
                 formats=excluded.formats,
-                vk_username=excluded.vk_username
+                vk_username=excluded.vk_username,
+                transport=excluded.transport,
+                payment_plan_date=excluded.payment_plan_date
         ''', (
             data['telegram_id'],
             data.get('username'),
@@ -304,6 +309,8 @@ async def add_user(data: dict):
             data.get('goal'),
             data.get('formats'),
             data.get('vk_username'),
+            data.get('transport'),
+            data.get('payment_plan_date'),
         ))
         await db.commit()
 
