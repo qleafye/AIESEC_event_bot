@@ -600,7 +600,7 @@ def _multi_kb(step_key: str, options: list[str], selected: set[int]):
 
 # Header row for the Google Sheet — MUST stay in the same order as _build_sheet_row().
 SHEET_HEADERS = [
-    "ID Telegram", "Username", "Дата регистрации", "Фамилия и Имя", "Email",
+    "ID Telegram", "Username", "Дата регистрации", "ФИО", "Email",
     "Источник", "Детали", "Телефон", "Город", "Локальный комитет", "Позиция",
     "Образование", "ВУЗ", "Курс", "Специальность", "Работает", "Сфера работы",
     "Не хватает навыков", "Ожидания", "Ожидания (AR)", "Неформальный день",
@@ -676,7 +676,7 @@ def _build_summary(data: dict) -> str:
     """QW-01 pre-finalize summary of the full-form answers (HTML, escaped)."""
     lines = ["<b>Проверь свои ответы:</b>", ""]
     fields = [
-        ("Фамилия и Имя", data.get("full_name")),
+        ("ФИО", data.get("full_name")),
         ("Возраст", data.get("age")),
         ("Дата приезда", data.get("arrival_date")),
         ("Дата рождения", data.get("birth_date")),
@@ -772,7 +772,7 @@ async def _start_registration_flow(message: types.Message, state: FSMContext, re
 
 
 async def _ask_full_name(message: types.Message, state: FSMContext):
-    await message.answer(await _prompt("full_name", "Напиши свою Фамилию и Имя:"), reply_markup=get_cancel_kb())
+    await message.answer(await _prompt("full_name", "Напиши свои ФИО (Фамилия Имя Отчество):"), reply_markup=get_cancel_kb())
     await state.set_state(Registration.full_name)
 
 
@@ -1096,7 +1096,7 @@ async def process_admin_rereg_skip(message: types.Message, state: FSMContext):
 async def process_full_name(message: types.Message, state: FSMContext, bot: Bot):
     full_name = (message.text or "").strip()
     if len(full_name.split()) < 2:
-        await message.answer("Пожалуйста, укажи и имя, и фамилию.")
+        await message.answer("Укажи ФИО полностью (минимум фамилию и имя).")
         return
 
     await state.update_data(full_name=full_name)
