@@ -32,11 +32,12 @@ def test_new_steps_default_off():
 
 
 def test_study_field_replaces_specialty_by_default():
-    # Tatiana: «направление обучения» (select) on, специальность off, и идёт сразу после курса.
+    # Tatiana YL'26 order: Образование → Курс → Вуз → Направление. study_field (select) on,
+    # специальность off, и идёт сразу после ВУЗа.
     assert reg.REG_DEFAULTS["reg_q_study_field"] == "on"
     assert reg.REG_DEFAULTS["reg_q_specialty"] == "off"
     keys = [k for k, *_ in reg.REG_FLOW]
-    assert keys.index("study_field") == keys.index("course") + 1
+    assert keys.index("study_field") == keys.index("university") + 1
 
 
 # ── sheet row + summary carry the new fields ─────────────────────────────────
@@ -61,7 +62,7 @@ def test_sheet_header_matches_row_width():
     row = reg._build_sheet_row({"telegram_id": 1, "registration_date": "x", "full_name": "A"})
     assert len(reg.SHEET_HEADERS) == len(row)
     assert reg.SHEET_HEADERS[0] == "ID Telegram"
-    assert reg.SHEET_HEADERS[-1] == "Амбассадор"
+    assert reg.SHEET_HEADERS[-1] == "ВК"
 
 
 def test_summary_includes_new_fields():
@@ -86,24 +87,26 @@ def test_consent_steps_absent_by_default(tmp_path):
     assert not any(s.startswith("consent:") for s in steps)
 
 
-def test_consent_steps_injected_first_when_enabled(tmp_path):
+def test_consent_steps_run_before_name_when_enabled(tmp_path):
     _use_tmp_db(tmp_path)
     asyncio.run(db.init_db())
     asyncio.run(db.set_setting("consent_enabled", "on"))
     asyncio.run(db.set_setting("consent_list", "A|data\nB|policy\nbad-no-pipe\nNoKey|"))
-    steps = asyncio.run(reg._get_enabled_steps({"education_status": "Нет", "work_status": False}))
-    consents = [s for s in steps if s.startswith("consent:")]
+    # Tatiana: согласие — самый первый шаг (перед ФИО), поэтому оно живёт в _get_consent_steps,
+    # а не в движке вопросов. Порядок сохраняется.
+    consents = asyncio.run(reg._get_consent_steps())
     assert consents == ["consent:data", "consent:policy"]
-    # Tatiana: согласие — первый вопрос анкеты.
-    assert steps[:2] == ["consent:data", "consent:policy"]
+    # …и его больше нет среди шагов-вопросов.
+    steps = asyncio.run(reg._get_enabled_steps({"education_status": "Нет", "work_status": False}))
+    assert not any(s.startswith("consent:") for s in steps)
 
 
 def test_consent_defaults_to_personal_data_when_list_empty(tmp_path):
     _use_tmp_db(tmp_path)
     asyncio.run(db.init_db())
     asyncio.run(db.set_setting("consent_enabled", "on"))  # list empty → default consent
-    steps = asyncio.run(reg._get_enabled_steps({"education_status": "Нет", "work_status": False}))
-    assert steps[0] == "consent:personal_data"
+    consents = asyncio.run(reg._get_consent_steps())
+    assert consents == ["consent:personal_data"]
 
 
 # ── edu_conditional toggle ───────────────────────────────────────────────────

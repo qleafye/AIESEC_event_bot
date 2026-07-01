@@ -72,22 +72,30 @@ def _decide_status(reg_mode: str, full_setting: str, short_setting: str) -> str:
 # never declared statically here). Iteration sites star-unpack the type so 2-tuples would
 # still work during any incremental migration.
 REG_FLOW = [
+    # YL'26 launch order (Tatiana). Consent + ФИО run before this list (see
+    # _start_registration_flow). Order here IS the ask order for the enabled steps.
     ("age", "reg_q_age", "text"),
-    ("email", "reg_q_email", "text"),
     ("phone", "reg_q_phone", "text"),
+    ("vk", "reg_q_vk", "text"),
     ("city", "reg_q_city", "text"),
+    ("education_status", "reg_q_education", "text"),
+    ("course", "reg_q_course", "text"),
+    ("university", "reg_q_university", "text"),
+    ("study_field", "reg_q_study_field", "select"),
+    ("goal", "reg_q_goal", "multi"),
+    ("formats", "reg_q_formats", "multi"),
+    ("expectations", "reg_q_expectations", "text"),
     ("source", "reg_q_source", "text"),
+    ("ambassador", "reg_q_ambassador", "ambassador"),
+    ("resume", "reg_q_resume", "text"),
+    # Remaining steps — default OFF, kept for other events (RusCo/Summit).
+    ("email", "reg_q_email", "text"),
     ("local_committee", "reg_q_lc", "text"),
     ("position", "reg_q_position", "text"),
-    ("education_status", "reg_q_education", "text"),
-    ("university", "reg_q_university", "text"),
-    ("course", "reg_q_course", "text"),
-    ("study_field", "reg_q_study_field", "select"),
     ("specialty", "reg_q_specialty", "text"),
     ("work_status", "reg_q_work", "text"),
     ("work_sphere", "reg_q_work_sphere", "text"),
     ("missing_skills", "reg_q_skills", "text"),
-    ("expectations", "reg_q_expectations", "text"),
     ("attendance_format", "reg_q_attendance", "text"),
     ("informal_day", "reg_q_informal_day", "text"),
     ("comments", "reg_q_comments", "text"),
@@ -104,12 +112,7 @@ REG_FLOW = [
     ("exp_content", "reg_q_exp_content", "text"),
     ("volunteer", "reg_q_volunteer", "text"),
     ("arrival_date", "reg_q_arrival_date", "date"),
-    # YL'26 additions (all default OFF; options configurable from admin)
     ("birth_date", "reg_q_birth_date", "date"),
-    ("goal", "reg_q_goal", "multi"),
-    ("formats", "reg_q_formats", "multi"),
-    ("ambassador", "reg_q_ambassador", "ambassador"),
-    ("resume", "reg_q_resume", "text"),
 ]
 
 # Map step_key → type for O(1) dispatch in _ask_step (consent:* keys handled separately).
@@ -155,6 +158,7 @@ async def _get_options(setting_key: str, defaults: list[str]) -> list[str]:
 
 REG_DEFAULTS = {
     "reg_q_age": "on",
+    "reg_q_vk": "on",            # ник в ВК (@username) — YL'26
     "reg_q_email": "off",
     "reg_q_phone": "off",
     "reg_q_city": "off",
@@ -195,6 +199,7 @@ REG_DEFAULTS = {
 
 REG_LABELS = {
     "reg_q_age": "\U0001f382 Возраст",
+    "reg_q_vk": "\U0001f535 ВК",
     "reg_q_email": "\U0001f4e7 Email",
     "reg_q_phone": "\U0001f4f1 Телефон",
     "reg_q_city": "\U0001f3d9 Город",
@@ -276,8 +281,9 @@ async def _get_enabled_steps(data: dict) -> list[str]:
         if step_key == "work_sphere" and not data.get("work_status"):
             continue
         enabled.append(step_key)
-    # Tatiana: согласие — ПЕРВЫЙ вопрос анкеты (раньше шло последним). Prepend consents.
-    return await _get_consent_steps() + enabled
+    # Consents run BEFORE ФИО now (handled in _start_registration_flow /
+    # process_consent_accept), so they are no longer part of the question engine.
+    return enabled
 
 
 # Fallback when consent_enabled is on but consent_list is empty: one «обработка ПД» consent
@@ -321,6 +327,12 @@ async def _ask_step(step_key: str, message: types.Message, state: FSMContext, st
     elif step_key == "phone":
         await message.answer(f"{p}{await _prompt('phone', 'Укажи номер телефона:')}", reply_markup=get_phone_kb())
         await state.set_state(Registration.phone)
+    elif step_key == "vk":
+        await message.answer(
+            f"{p}{await _prompt('vk', 'Введи свой ник в ВК в формате @username:')}",
+            reply_markup=get_cancel_kb(),
+        )
+        await state.set_state(Registration.vk)
     elif step_key == "city":
         opt_key, default = SELECT_CONFIG["city"]
         options = await _get_options(opt_key, default)
@@ -573,7 +585,7 @@ SHEET_HEADERS = [
     "Английский", "Аллергии", "Питание", "Приезд", "Проживание", "CC-shop",
     "Ожидания от орг", "Ожидания от контента", "Волонтёр", "Дата приезда",
     "Дата рождения", "Направление обучения", "Цель участия", "Форматы форума",
-    "Амбассадор",
+    "Амбассадор", "ВК",
 ]
 
 
@@ -625,6 +637,7 @@ def _build_sheet_row(data: dict) -> list:
         data.get("goal") or "-",
         data.get("formats") or "-",
         "Да" if data.get("is_ambassador_candidate") else "-",
+        data.get("vk_username") or "-",
     ]
 
 
@@ -644,6 +657,7 @@ def _build_summary(data: dict) -> str:
         ("Дата рождения", data.get("birth_date")),
         ("Email", data.get("email")),
         ("Телефон", data.get("phone")),
+        ("ВК", data.get("vk_username")),
         ("Город", data.get("city")),
         ("Источник", data.get("source")),
         ("Лок. комитет", data.get("local_committee")),
@@ -721,6 +735,16 @@ async def _start_registration_flow(message: types.Message, state: FSMContext, re
         if not saved_referrer_id
         else "Отлично, ты пришёл по приглашению друга. Начинаем регистрацию."
     )
+    # Tatiana: согласие — САМЫЙ первый шаг (перед ФИО). Run consents first; ФИО follows.
+    consent_steps = await _get_consent_steps()
+    if consent_steps:
+        await state.update_data(_consent_queue=consent_steps, _consent_i=0)
+        await _ask_step(consent_steps[0], message, state, 1, len(consent_steps))
+    else:
+        await _ask_full_name(message, state)
+
+
+async def _ask_full_name(message: types.Message, state: FSMContext):
     await message.answer(await _prompt("full_name", "Напиши свою Фамилию и Имя:"), reply_markup=get_cancel_kb())
     await state.set_state(Registration.full_name)
 
@@ -1006,7 +1030,15 @@ async def process_consent_accept(callback: types.CallbackQuery, state: FSMContex
     consent_key = callback.data.split(":", 1)[1]
     await record_user_consent(callback.from_user.id, consent_key)  # D-02 audit row
     await callback.answer("✅ Принято")
-    await _advance(f"consent:{consent_key}", callback.message, state, bot)
+    # Consents run before ФИО: walk the consent queue, then ask ФИО.
+    data = await state.get_data()
+    queue = data.get("_consent_queue", [])
+    i = data.get("_consent_i", 0) + 1
+    if i < len(queue):
+        await state.update_data(_consent_i=i)
+        await _ask_step(queue[i], callback.message, state, i + 1, len(queue))
+    else:
+        await _ask_full_name(callback.message, state)
 
 
 @router.message(Registration.consent_pending)
@@ -1044,13 +1076,8 @@ async def process_full_name(message: types.Message, state: FSMContext, bot: Bot)
 
     mode = await get_setting("registration_mode")
     if mode != "full":
-        # WR-03: the short form asks no question steps, but required consents must still be
-        # collected when consent_enabled is on. Run just the consent steps, then finalize.
-        consent_steps = await _get_consent_steps()
-        if consent_steps:
-            await state.update_data(_reg_step=1, _reg_total=len(consent_steps))
-            await _ask_step(consent_steps[0], message, state, 1, len(consent_steps))
-            return
+        # WR-03: the short form asks no question steps. Required consents were already
+        # collected before ФИО (see _start_registration_flow), so finalize now.
         await finalize_registration(message, state, bot)
         return
 
@@ -1117,6 +1144,17 @@ async def process_phone(message: types.Message, state: FSMContext, bot: Bot):
         return
     await state.update_data(phone=text)
     await _advance("phone", message, state, bot)
+
+
+@router.message(Registration.vk)
+async def process_vk(message: types.Message, state: FSMContext, bot: Bot):
+    vk = (message.text or "").strip()
+    # Tatiana: ник строго в формате @username.
+    if not vk.startswith("@") or len(vk) < 2 or " " in vk:
+        await message.answer("Укажи ник в ВК в формате @username (начинается с @, без пробелов).")
+        return
+    await state.update_data(vk_username=vk)
+    await _advance("vk", message, state, bot)
 
 
 @router.message(Registration.city)

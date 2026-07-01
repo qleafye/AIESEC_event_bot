@@ -35,12 +35,11 @@ def get_yes_no_kb() -> ReplyKeyboardMarkup:
     return kb.as_markup(resize_keyboard=True, one_time_keyboard=True)
 
 DEFAULT_SOURCE_OPTIONS = [
-    "От амбассадора",
-    "От друга",
-    "В ВК",
-    "В ТГ",
-    "В соцсетях партнера форума",
-    "Увидел плакат в вузе",
+    "Соцсети Юлид",
+    "Соцсети АЙСЕК",
+    "Университетские каналы",
+    "Рассказал друг/знакомый",
+    "Узнал от амбассадора",
     "Другое",
 ]
 
