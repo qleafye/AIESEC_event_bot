@@ -108,6 +108,8 @@ REG_FLOW = [
     ("food_pref", "reg_q_food", "text"),
     ("arrival", "reg_q_arrival", "text"),
     ("housing", "reg_q_housing", "text"),
+    ("bed_sharing", "reg_q_bed_sharing", "text"),   # конфа: делить двуспальную кровать?
+    ("bed_partner", "reg_q_bed_partner", "text"),   # конфа: с кем (условно на «Да»)
     ("transport", "reg_q_transport", "text"),
     ("cc_shop", "reg_q_cc_shop", "text"),
     ("exp_organizers", "reg_q_exp_organizers", "text"),
@@ -188,6 +190,8 @@ REG_DEFAULTS = {
     "reg_q_food": "off",
     "reg_q_arrival": "off",
     "reg_q_housing": "off",
+    "reg_q_bed_sharing": "off",
+    "reg_q_bed_partner": "off",
     "reg_q_transport": "off",
     "reg_q_payment_date": "off",
     "reg_q_cc_shop": "off",
@@ -230,6 +234,8 @@ REG_LABELS = {
     "reg_q_food": "🥗 Питание",
     "reg_q_arrival": "🚌 Приезд",
     "reg_q_housing": "🏠 Проживание",
+    "reg_q_bed_sharing": "🛏 Общая кровать",
+    "reg_q_bed_partner": "🛏 Сосед по кровати",
     "reg_q_transport": "🚗 Трансфер",
     "reg_q_payment_date": "💳 Дата оплаты",
     "reg_q_cc_shop": "🛍 CC-shop",
@@ -267,7 +273,8 @@ REG_PRESETS = {
         "on": [
             "reg_q_age", "reg_q_vk", "reg_q_phone", "reg_q_lc", "reg_q_work",
             "reg_q_department", "reg_q_aiesec_role", "reg_q_english", "reg_q_allergies",
-            "reg_q_food", "reg_q_arrival", "reg_q_transport", "reg_q_payment_date",
+            "reg_q_food", "reg_q_arrival", "reg_q_bed_sharing", "reg_q_bed_partner",
+            "reg_q_transport", "reg_q_payment_date",
             "reg_q_cc_shop", "reg_q_exp_organizers", "reg_q_volunteer",
         ],
     },
@@ -285,6 +292,7 @@ REG_CATEGORIES = [
     ("🎤 Конфа", [
         "reg_q_phone", "reg_q_lc", "reg_q_department", "reg_q_aiesec_role",
         "reg_q_english", "reg_q_allergies", "reg_q_food", "reg_q_arrival",
+        "reg_q_bed_sharing", "reg_q_bed_partner",
         "reg_q_transport", "reg_q_cc_shop", "reg_q_exp_organizers", "reg_q_volunteer",
         "reg_q_payment_date",
     ]),
@@ -331,6 +339,9 @@ async def _get_enabled_steps(data: dict) -> list[str]:
         # Tatiana: «Где будешь жить» — только если приезжает Заранее (в дни конфы жильё не нужно).
         # Backward-safe: gate only when arrival was actually asked; else housing stays unconditional.
         if step_key == "housing" and "arrival" in data and data.get("arrival") != "Заранее":
+            continue
+        # «С кем на кровати» спрашиваем только если согласился делить (bed_sharing = «Да»).
+        if step_key == "bed_partner" and not str(data.get("bed_sharing", "")).startswith("Да"):
             continue
         if edu_conditional and step_key == "university" and not studying:
             continue
@@ -487,6 +498,18 @@ async def _ask_step(step_key: str, message: types.Message, state: FSMContext, st
     elif step_key == "housing":
         await message.answer(f"{p}{await _prompt('housing', 'Где будешь жить?')}", reply_markup=get_housing_kb())
         await state.set_state(Registration.housing)
+    elif step_key == "bed_sharing":
+        await message.answer(
+            f"{p}{await _prompt('bed_sharing', 'На площадке много двуспальных кроватей. Готов(а) спать с кем-то на одной кровати?')}",
+            reply_markup=_reply_kb(["Да", "Нет"]),
+        )
+        await state.set_state(Registration.bed_sharing)
+    elif step_key == "bed_partner":
+        await message.answer(
+            f"{p}{await _prompt('bed_partner', 'С кем хотел(а) бы делить кровать? Напиши имя или «без разницы».')}",
+            reply_markup=get_skip_kb(),
+        )
+        await state.set_state(Registration.bed_partner)
     elif step_key == "transport":
         await message.answer(
             f"{p}{await _prompt('transport', 'Как добираешься до площадки?')}",
@@ -700,6 +723,8 @@ SHEET_COLUMNS = [
     ("Питание", "reg_q_food", lambda d: d.get("food_pref") or "-"),
     ("Приезд", "reg_q_arrival", lambda d: d.get("arrival") or "-"),
     ("Проживание", "reg_q_housing", lambda d: d.get("housing") or "-"),
+    ("Общая кровать", "reg_q_bed_sharing", lambda d: d.get("bed_sharing") or "-"),
+    ("Сосед по кровати", "reg_q_bed_partner", lambda d: d.get("bed_partner") or "-"),
     ("CC-shop", "reg_q_cc_shop", lambda d: d.get("cc_shop") or "-"),
     ("Ожидания от орг", "reg_q_exp_organizers", lambda d: d.get("exp_organizers") or "-"),
     ("Ожидания от контента", "reg_q_exp_content", lambda d: d.get("exp_content") or "-"),
@@ -789,6 +814,8 @@ def _build_summary(data: dict) -> str:
         ("Питание", data.get("food_pref")),
         ("Приезд", data.get("arrival")),
         ("Проживание", data.get("housing")),
+        ("Общая кровать", data.get("bed_sharing")),
+        ("Сосед по кровати", data.get("bed_partner")),
         ("Трансфер", data.get("transport")),
         ("Дата план. оплаты", data.get("payment_plan_date")),
         ("CC-shop", data.get("cc_shop")),
@@ -1483,6 +1510,17 @@ async def process_arrival(message: types.Message, state: FSMContext, bot: Bot):
 @router.message(Registration.housing)
 async def process_housing(message: types.Message, state: FSMContext, bot: Bot):
     await _store_choice("housing", "housing", message, state, bot)
+
+
+@router.message(Registration.bed_sharing)
+async def process_bed_sharing(message: types.Message, state: FSMContext, bot: Bot):
+    # On «Да» the bed_partner step is enabled by _get_enabled_steps; on «Нет» it's skipped.
+    await _store_choice("bed_sharing", "bed_sharing", message, state, bot)
+
+
+@router.message(Registration.bed_partner)
+async def process_bed_partner(message: types.Message, state: FSMContext, bot: Bot):
+    await _store_text("bed_partner", "bed_partner", message, state, bot)
 
 
 @router.message(Registration.transport)
