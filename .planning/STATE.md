@@ -28,7 +28,7 @@ See: .planning/PROJECT.md (updated 2026-06-25)
 Phase: 4 of 4 (Universal Modules)
 Plan: 0 of ? in current phase
 Status: Ready to execute
-Last activity: 2026-07-02 - Completed quick task 260702-x01: conference bed-sharing question (dynamic follow-up)
+Last activity: 2026-07-03 - Completed quick task 260703-00o: custom city text + export incomplete registrations
 
 Progress: [░░░░░░░░░░] 0%
 
@@ -86,6 +86,7 @@ None yet.
 | 260702-wqi | background sheet append + cache gspread client + sync payment deadline into reg question | 2026-07-02 | 21a127f | [260702-wqi-background-sheet-append-cache-gspread-cl](./quick/260702-wqi-background-sheet-append-cache-gspread-cl/) |
 | 260702-wwu | admin receipt-arrival notification + full readable CSV export (RU headers, all columns) | 2026-07-02 | af8a846 | [260702-wwu-admin-receipt-arrival-notification-full-](./quick/260702-wwu-admin-receipt-arrival-notification-full-/) |
 | 260702-x01 | conference bed-sharing question with dynamic follow-up (share bed? if yes, with whom) | 2026-07-02 | a432b81 | [260702-x01-conference-bed-sharing-question-with-dyn](./quick/260702-x01-conference-bed-sharing-question-with-dyn/) |
+| 260703-00o | custom city text via «Другое» prompt + export incomplete registrations to «Незавершённые» tab | 2026-07-03 | eb2f087 | [260703-00o-custom-city-text-via-prompt-export-incom](./quick/260703-00o-custom-city-text-via-prompt-export-incom/) |
 
 ## Deferred Items
 
