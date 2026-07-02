@@ -52,7 +52,7 @@ from services.scheduler import (
 from services.allowlist import refresh_allowlist, allowlist_size
 from handlers.states import Broadcast, EditSetting, Approval, ReceiptReview
 from keyboards.builders import get_cancel_kb, MENU_BUTTONS, get_main_menu_kb
-from handlers.registration import REG_FLOW, REG_DEFAULTS, REG_LABELS, SHEET_HEADERS, _build_sheet_row, approve_user
+from handlers.registration import REG_FLOW, REG_DEFAULTS, REG_LABELS, REG_PRESETS, REG_CATEGORIES, SHEET_HEADERS, _build_sheet_row, approve_user
 
 router = Router()
 logger = logging.getLogger(__name__)
@@ -488,6 +488,7 @@ async def build_settings_keyboard():
         [InlineKeyboardButton(text=uni_mode_text, callback_data="toggle_uni_mode")],
         [InlineKeyboardButton(text=edu_cond_text, callback_data="toggle_edu_conditional")],
         [InlineKeyboardButton(text=show_progress_text, callback_data="toggle_show_progress")],
+        [InlineKeyboardButton(text="🎛 Тип события (пресет)", callback_data="admin_event_preset")],
         [InlineKeyboardButton(text="📋 Вопросы регистрации", callback_data="admin_reg_questions")],
         [InlineKeyboardButton(text="✏️ Тексты вопросов", callback_data="admin_reg_prompts")],
         [InlineKeyboardButton(text="🔘 Кнопки меню", callback_data="admin_menu_buttons")],
@@ -1630,28 +1631,51 @@ async def cmd_refresh_allowlist(message: types.Message):
 
 # --- Registration Question Toggles ---
 
+async def _is_question_on(setting_key: str) -> bool:
+    val = await get_setting(setting_key)
+    return (val == "on") if val is not None else (REG_DEFAULTS.get(setting_key, "on") == "on")
+
+
+def _categorized_question_keys() -> list[tuple[str, str]]:
+    """(header, setting_key) rows in category order. Any REG_FLOW key not placed in a
+    REG_CATEGORIES bucket lands in a trailing «Прочие» group so nothing is ever hidden."""
+    seen = set()
+    rows: list[tuple[str, str]] = []
+    for header, keys in REG_CATEGORIES:
+        for k in keys:
+            rows.append((header, k))
+            seen.add(k)
+    leftover = [sk for _, sk, *_ in REG_FLOW if sk not in seen]
+    for k in leftover:
+        rows.append(("📦 Прочие", k))
+    return rows
+
+
 async def render_questions_text() -> str:
     lines = ["📋 <b>Вопросы регистрации</b>", ""]
-    lines.append("<i>Действуют в режиме «📋 Полная регистрация».</i>")
+    lines.append("<i>Действуют в режиме «📋 Полная регистрация». Сгруппированы по типу события.</i>")
     lines.append("")
-
-    for _, setting_key, *_rest in REG_FLOW:
+    current = None
+    for header, setting_key in _categorized_question_keys():
+        if header != current:
+            lines.append(f"\n<b>{header}</b>")
+            current = header
         label = REG_LABELS.get(setting_key, setting_key)
-        val = await get_setting(setting_key)
-        is_on = (val == "on") if val is not None else (REG_DEFAULTS.get(setting_key, "on") == "on")
-        status = "✅" if is_on else "❌"
+        status = "✅" if await _is_question_on(setting_key) else "❌"
         lines.append(f"{status} {label}")
-
     return "\n".join(lines)
 
 
 async def build_questions_keyboard():
     buttons = []
-    for _, setting_key, *_rest in REG_FLOW:
+    current = None
+    for header, setting_key in _categorized_question_keys():
+        if header != current:
+            # Non-actionable section header (noop callback).
+            buttons.append([InlineKeyboardButton(text=f"── {header} ──", callback_data="reg_q_noop")])
+            current = header
         label = REG_LABELS.get(setting_key, setting_key)
-        val = await get_setting(setting_key)
-        is_on = (val == "on") if val is not None else (REG_DEFAULTS.get(setting_key, "on") == "on")
-        toggle_text = f"{'✅' if is_on else '❌'} {label}"
+        toggle_text = f"{'✅' if await _is_question_on(setting_key) else '❌'} {label}"
         buttons.append([InlineKeyboardButton(text=toggle_text, callback_data=f"reg_q_toggle:{setting_key}")])
     buttons.append([InlineKeyboardButton(text="← Назад к настройкам", callback_data="reg_q_back")])
     return InlineKeyboardMarkup(inline_keyboard=buttons)
@@ -1690,6 +1714,12 @@ async def toggle_reg_question(callback: types.CallbackQuery):
     await callback.message.edit_text(text, parse_mode="HTML", reply_markup=await build_questions_keyboard())
 
 
+@router.callback_query(F.data == "reg_q_noop")
+async def reg_q_noop(callback: types.CallbackQuery):
+    # Section-header button in the categorized question view — not actionable.
+    await callback.answer()
+
+
 @router.callback_query(F.data == "reg_q_back")
 async def reg_questions_back(callback: types.CallbackQuery):
     if callback.from_user.id not in config.ADMIN_IDS:
@@ -1699,6 +1729,83 @@ async def reg_questions_back(callback: types.CallbackQuery):
     text = await render_settings_text()
     await callback.message.edit_text(text, parse_mode="HTML", reply_markup=await build_settings_keyboard())
     await callback.answer()
+
+
+# --- Event-type presets (one-tap bulk toggle) ---
+
+async def _apply_event_preset(preset_key: str) -> None:
+    """Bulk-write reg_q_* + payment_enabled for the chosen preset. Every REG_DEFAULTS
+    key is set explicitly (on if in the preset's list, else off) so the result is
+    deterministic regardless of prior per-question overrides."""
+    preset = REG_PRESETS[preset_key]
+    on_set = set(preset["on"])
+    for key in REG_DEFAULTS:
+        await set_setting(key, "on" if key in on_set else "off")
+    await set_setting("payment_enabled", preset["payment_enabled"])
+
+
+@router.callback_query(F.data == "admin_event_preset")
+async def admin_event_preset(callback: types.CallbackQuery):
+    if callback.from_user.id not in config.ADMIN_IDS:
+        await callback.answer("Недостаточно прав", show_alert=True)
+        return
+    buttons = [
+        [InlineKeyboardButton(text=p["label"], callback_data=f"preset_apply:{key}")]
+        for key, p in REG_PRESETS.items()
+    ]
+    buttons.append([InlineKeyboardButton(text="← Назад к настройкам", callback_data="reg_q_back")])
+    await callback.message.edit_text(
+        "🎛 <b>Тип события</b>\n\n"
+        "Выбери пресет — он одним махом включит нужные вопросы и выключит остальные "
+        "(+ настроит модуль оплаты). Экстра-вопросы потом докинешь вручную в «📋 Вопросы регистрации».\n\n"
+        "⚠️ Перезатрёт текущие тумблеры вопросов.",
+        parse_mode="HTML",
+        reply_markup=InlineKeyboardMarkup(inline_keyboard=buttons),
+    )
+    await callback.answer()
+
+
+@router.callback_query(F.data.startswith("preset_apply:"))
+async def preset_apply(callback: types.CallbackQuery):
+    if callback.from_user.id not in config.ADMIN_IDS:
+        await callback.answer("Недостаточно прав", show_alert=True)
+        return
+    key = callback.data.split(":", 1)[1]
+    preset = REG_PRESETS.get(key)
+    if not preset:
+        await callback.answer("Неизвестный пресет.", show_alert=True)
+        return
+    on_labels = ", ".join(REG_LABELS.get(k, k) for k in preset["on"])
+    pay = "включится" if preset["payment_enabled"] == "on" else "выключится"
+    kb = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="✅ Применить", callback_data=f"preset_confirm:{key}")],
+        [InlineKeyboardButton(text="← Отмена", callback_data="admin_event_preset")],
+    ])
+    await callback.message.edit_text(
+        f"Применить пресет <b>{preset['label']}</b>?\n\n"
+        f"<b>Включатся:</b> {on_labels}\n"
+        f"Остальные вопросы выключатся. Модуль оплаты <b>{pay}</b>.\n\n"
+        "⚠️ Текущие настройки вопросов будут перезаписаны.",
+        parse_mode="HTML",
+        reply_markup=kb,
+    )
+    await callback.answer()
+
+
+@router.callback_query(F.data.startswith("preset_confirm:"))
+async def preset_confirm(callback: types.CallbackQuery):
+    if callback.from_user.id not in config.ADMIN_IDS:
+        await callback.answer("Недостаточно прав", show_alert=True)
+        return
+    key = callback.data.split(":", 1)[1]
+    preset = REG_PRESETS.get(key)
+    if not preset:
+        await callback.answer("Неизвестный пресет.", show_alert=True)
+        return
+    await _apply_event_preset(key)
+    await callback.answer(f"Пресет применён: {preset['label']}", show_alert=True)
+    text = await render_questions_text()
+    await callback.message.edit_text(text, parse_mode="HTML", reply_markup=await build_questions_keyboard())
 
 
 # --- Editable question prompts (YL'26: per-event wording, 0 хардкода) ---

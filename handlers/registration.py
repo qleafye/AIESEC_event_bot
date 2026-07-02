@@ -244,6 +244,57 @@ REG_LABELS = {
     "reg_q_resume": "\U0001f4c4 Резюме",
 }
 
+# --- Event-type presets (admin one-tap bulk toggle) ---
+# A preset lists the reg_q_* keys to turn ON (everything else in REG_DEFAULTS is turned
+# OFF) plus the payment module flag. Applying a preset is an explicit admin action that
+# writes the same settings the per-question toggles write — it changes NOTHING until
+# tapped, so live bots keep their current flow. Extra questions can still be flipped on
+# individually afterwards (see REG_CATEGORIES «➕ Экстра»).
+REG_PRESETS = {
+    "forum": {
+        "label": "🏛 Форум (YouLead)",
+        "payment_enabled": "off",
+        "on": [
+            "reg_q_age", "reg_q_vk", "reg_q_source", "reg_q_education",
+            "reg_q_university", "reg_q_course", "reg_q_study_field", "reg_q_work",
+            "reg_q_work_sphere", "reg_q_skills", "reg_q_expectations",
+        ],
+    },
+    "conf": {
+        "label": "🎤 Конференция (RusCo)",
+        "payment_enabled": "on",
+        "on": [
+            "reg_q_age", "reg_q_vk", "reg_q_phone", "reg_q_lc", "reg_q_work",
+            "reg_q_department", "reg_q_aiesec_role", "reg_q_english", "reg_q_allergies",
+            "reg_q_food", "reg_q_arrival", "reg_q_transport", "reg_q_payment_date",
+            "reg_q_cc_shop", "reg_q_exp_organizers", "reg_q_volunteer",
+        ],
+    },
+}
+
+# Display grouping for the admin question-toggle view. Disjoint buckets covering every
+# REG_FLOW key exactly once — purely cosmetic (helps the manager find a question), does
+# not affect which questions are asked (that is REG_DEFAULTS + per-key settings).
+REG_CATEGORIES = [
+    ("👥 Общие", ["reg_q_age", "reg_q_vk", "reg_q_work"]),
+    ("🏛 Форум", [
+        "reg_q_education", "reg_q_course", "reg_q_university", "reg_q_study_field",
+        "reg_q_expectations", "reg_q_source", "reg_q_work_sphere", "reg_q_skills",
+    ]),
+    ("🎤 Конфа", [
+        "reg_q_phone", "reg_q_lc", "reg_q_department", "reg_q_aiesec_role",
+        "reg_q_english", "reg_q_allergies", "reg_q_food", "reg_q_arrival",
+        "reg_q_transport", "reg_q_cc_shop", "reg_q_exp_organizers", "reg_q_volunteer",
+        "reg_q_payment_date",
+    ]),
+    ("➕ Экстра", [
+        "reg_q_city", "reg_q_goal", "reg_q_formats", "reg_q_ambassador", "reg_q_resume",
+        "reg_q_email", "reg_q_position", "reg_q_specialty", "reg_q_attendance",
+        "reg_q_informal_day", "reg_q_comments", "reg_q_certificate", "reg_q_housing",
+        "reg_q_exp_content", "reg_q_arrival_date", "reg_q_birth_date",
+    ]),
+]
+
 
 async def _prompt(step_key: str, default: str) -> str:
     """Editable question wording: admin override reg_prompt_<step_key> else the default.
