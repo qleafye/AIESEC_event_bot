@@ -31,6 +31,8 @@ class Registration(StatesGroup):
     food_pref = State()
     arrival = State()
     housing = State()
+    bed_sharing = State()       # готов делить двуспальную кровать (Да/Нет) — конфа
+    bed_partner = State()       # с кем именно (условно, только при «Да»)
     cc_shop = State()
     exp_organizers = State()
     exp_content = State()
