@@ -539,6 +539,17 @@ async def get_incomplete_user_ids() -> list[int]:
             return [row[0] for row in await cursor.fetchall()]
 
 
+async def get_incomplete_rows() -> list[tuple]:
+    """Full dropout rows for the «Незавершённые» sheet tab: (telegram_id, username,
+    started_at). These users hit /start but never finished — their partial answers live
+    only in the in-memory FSM, so only identity + start time are persisted."""
+    async with aiosqlite.connect(config.DB_PATH) as db:
+        async with db.execute(
+            "SELECT telegram_id, username, started_at FROM reg_started ORDER BY started_at"
+        ) as cursor:
+            return [tuple(row) for row in await cursor.fetchall()]
+
+
 # ── Phase 1: subscription flag ───────────────────────────────────────────────
 
 async def set_user_subscribed(telegram_id: int, subscribed: bool):

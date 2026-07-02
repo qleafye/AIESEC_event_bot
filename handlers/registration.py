@@ -1091,6 +1091,9 @@ async def process_select_input(message: types.Message, state: FSMContext, bot: B
     if not text:
         await message.answer("Выбери вариант на клавиатуре или напиши свой.")
         return
+    if text == "Другое":
+        await message.answer("Напиши свой вариант:", reply_markup=get_cancel_kb())
+        return
     data = await state.get_data()
     step_key = data.get("_current_select_step", "study_field")
     await state.update_data(**{step_key: text})
@@ -1303,6 +1306,10 @@ async def process_city(message: types.Message, state: FSMContext, bot: Bot):
     if not text:
         await message.answer("Выбери город на клавиатуре или напиши свой.")
         return
+    if text == "Другое":
+        # Tap «Другое» → ask for the free-text value; the next message (any city) is stored.
+        await message.answer("Напиши название своего города:", reply_markup=get_cancel_kb())
+        return
     await state.update_data(city=text)
     await _advance("city", message, state, bot)
 
@@ -1312,6 +1319,9 @@ async def process_source(message: types.Message, state: FSMContext, bot: Bot):
     source = (message.text or "").strip()
     if not source:
         await message.answer("Выбери один из вариантов или напиши свой.")
+        return
+    if source == "Другое":
+        await message.answer("Напиши свой вариант:", reply_markup=get_cancel_kb())
         return
     await state.update_data(source=source)
     await _advance("source", message, state, bot)
@@ -1323,6 +1333,9 @@ async def process_local_committee(message: types.Message, state: FSMContext, bot
     if not text:
         await message.answer("Выбери локальный комитет из списка или напиши свой.")
         return
+    if text == "Другое":
+        await message.answer("Напиши название своего ЛК:", reply_markup=get_cancel_kb())
+        return
     await state.update_data(local_committee=text)
     await _advance("local_committee", message, state, bot)
 
@@ -1332,6 +1345,9 @@ async def process_position(message: types.Message, state: FSMContext, bot: Bot):
     text = (message.text or "").strip()
     if not text:
         await message.answer("Выбери позицию из списка или напиши свою.")
+        return
+    if text == "Другое":
+        await message.answer("Напиши свою позицию:", reply_markup=get_cancel_kb())
         return
     await state.update_data(position=text)
     await _advance("position", message, state, bot)
@@ -1354,6 +1370,9 @@ async def process_university(message: types.Message, state: FSMContext, bot: Bot
     uni = (message.text or "").strip()
     if not uni:
         await message.answer("Выбери ВУЗ из списка или напиши свой.")
+        return
+    if uni == "Другое":
+        await message.answer("Напиши название своего ВУЗа:", reply_markup=get_cancel_kb())
         return
     await state.update_data(university=uni)
     await _advance("university", message, state, bot)

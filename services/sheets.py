@@ -123,3 +123,29 @@ async def append_rows_to_sheet(rows: list[list]):
         return 0
     await asyncio.to_thread(_append_rows_sync, rows)
     return len(rows)
+
+
+def _sync_named_worksheet_sync(title: str, headers: list[str], rows: list[list]) -> int:
+    """Overwrite a dedicated tab (create if missing) with header + rows. Used for the
+    «Незавершённые» dropout export — a full refresh, not an append."""
+    gc = gspread.service_account(filename=config.GOOGLE_CREDENTIALS_FILE)
+    sh = gc.open_by_key(config.GOOGLE_SHEET_ID)
+    try:
+        ws = sh.worksheet(title)
+    except gspread.WorksheetNotFound:
+        ws = sh.add_worksheet(title=title, rows=max(len(rows) + 10, 100), cols=max(len(headers), 4))
+    ws.clear()
+    ws.update(values=[headers] + [list(r) for r in rows], range_name="A1")
+    return len(rows)
+
+
+async def sync_named_worksheet(title: str, headers: list[str], rows: list[list]) -> int:
+    """Fail-soft full-refresh of a named tab. Returns the number of data rows written,
+    or -1 when the sheet is not configured / an API error occurs."""
+    if not config.GOOGLE_SHEET_ID or not config.GOOGLE_CREDENTIALS_FILE:
+        return -1
+    try:
+        return await asyncio.to_thread(_sync_named_worksheet_sync, title, headers, rows)
+    except Exception as e:
+        logger.error(f"sync_named_worksheet('{title}') failed: {e}")
+        return -1
