@@ -92,6 +92,20 @@ async def show_leaderboard(message: types.Message):
     )
 
 
+@router.message(F.text == "💳 Загрузить чек")
+async def upload_receipt_entry(message: types.Message, bot: Bot):
+    """Re-entry into the payment step for a user who deferred (or lost FSM state on a
+    bot restart). The button only appears while a receipt is owed, but re-check here in
+    case status changed since the keyboard was rendered."""
+    if not await ensure_registered(message):
+        return
+    from handlers.payment import should_offer_receipt_upload, start_payment_step
+    if not await should_offer_receipt_upload(message.from_user.id):
+        await message.answer("Оплатили или оплата не требуется.")
+        return
+    await start_payment_step(bot, message.from_user.id)
+
+
 #ℹ️ Информация о форуме
 @router.message(F.text == "ℹ️ Информация о форуме")
 async def show_info_menu(message: types.Message):
@@ -288,7 +302,7 @@ async def ask_organizer_start(message: types.Message, state: FSMContext):
 async def cancel_question(message: types.Message, state: FSMContext):
     logger.info(f"User {message.from_user.id} canceled question")
     await state.clear()
-    await message.answer("Действие отменено.", reply_markup=await get_main_menu_kb())
+    await message.answer("Действие отменено.", reply_markup=await get_main_menu_kb(message.from_user.id))
 
 
 @router.message(Question.waiting_for_question)
@@ -319,13 +333,13 @@ async def process_question(message: types.Message, state: FSMContext, bot: Bot):
                 pass
 
         if sent_count > 0:
-            await message.answer("Твой вопрос отправлен!", reply_markup=await get_main_menu_kb())
+            await message.answer("Твой вопрос отправлен!", reply_markup=await get_main_menu_kb(message.from_user.id))
         else:
             logger.error(f"Failed to send question from {message.from_user.id} to any admin")
-            await message.answer("Не удалось отправить вопрос, попробуйте позже.", reply_markup=await get_main_menu_kb())
+            await message.answer("Не удалось отправить вопрос, попробуйте позже.", reply_markup=await get_main_menu_kb(message.from_user.id))
     else:
         logger.warning("No admins configured to receive questions")
-        await message.answer("Администраторы не настроены.", reply_markup=await get_main_menu_kb())
+        await message.answer("Администраторы не настроены.", reply_markup=await get_main_menu_kb(message.from_user.id))
 
 
     await state.clear()
