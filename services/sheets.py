@@ -10,10 +10,25 @@ MAX_RETRIES = 3
 RETRY_DELAYS = [5, 15, 30]
 
 
+# Cache the authorized client + worksheet handle: gspread.service_account() re-auths
+# (token fetch) and open_by_key() is a network call, so rebuilding on every append cost
+# ~3 round-trips per registration. google-auth refreshes the token on the cached client,
+# so the handle stays valid; _reset_sheet_cache() drops it after a failure to force re-auth.
+_sheet = None
+
+
 def _get_sheet():
+    global _sheet
+    if _sheet is not None:
+        return _sheet
     gc = gspread.service_account(filename=config.GOOGLE_CREDENTIALS_FILE)
-    sh = gc.open_by_key(config.GOOGLE_SHEET_ID)
-    return sh.sheet1
+    _sheet = gc.open_by_key(config.GOOGLE_SHEET_ID).sheet1
+    return _sheet
+
+
+def _reset_sheet_cache():
+    global _sheet
+    _sheet = None
 
 
 def _append_to_sheet_sync(data: list):
@@ -79,6 +94,7 @@ async def append_to_sheet(data: list):
             logger.info(f"Successfully appended to Google Sheet: {data}")
             return
         except Exception as e:
+            _reset_sheet_cache()  # drop possibly-stale client/handle before retrying
             delay = RETRY_DELAYS[attempt] if attempt < len(RETRY_DELAYS) else RETRY_DELAYS[-1]
             logger.warning(f"Sheet append attempt {attempt + 1}/{MAX_RETRIES} failed: {e}. Retrying in {delay}s...")
             await asyncio.sleep(delay)
@@ -94,6 +110,7 @@ async def ensure_sheet_header(headers: list[str]):
     try:
         await asyncio.to_thread(_ensure_header_sync, headers)
     except Exception as e:
+        _reset_sheet_cache()
         logger.warning(f"ensure_sheet_header failed (skipping): {e}")
 
 
