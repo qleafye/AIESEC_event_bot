@@ -99,6 +99,22 @@ def test_active_sheet_row_full_width_when_all_on(tmp_path):
     asyncio.run(go())
 
 
+def test_source_tag_skips_source_question(tmp_path):
+    _use_tmp_db(tmp_path)
+
+    async def go():
+        await db.init_db()
+        await db.set_setting("reg_q_source", "on")
+        # Organic user (no tag) → source question asked.
+        organic = await reg._get_enabled_steps({})
+        # Tagged user → source question skipped (tag is authoritative).
+        tagged = await reg._get_enabled_steps({"source": "vk_post", "_source_from_tag": True})
+        assert "source" in organic
+        assert "source" not in tagged
+
+    asyncio.run(go())
+
+
 def test_summary_includes_new_fields():
     data = {
         "full_name": "A B", "birth_date": "01.01.2000",
