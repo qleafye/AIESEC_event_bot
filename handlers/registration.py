@@ -1478,6 +1478,11 @@ async def _store_choice(field: str, after: str, message: types.Message, state: F
     if not text:
         await message.answer("Выбери вариант на клавиатуре или напиши ответ.")
         return
+    if text == "Другое":
+        # Covers every «Другое»-bearing choice step routed through here (department,
+        # aiesec_role, …): ask for the free-text value, stay in state, store the next reply.
+        await message.answer("Напиши свой вариант:", reply_markup=get_cancel_kb())
+        return
     await state.update_data(**{field: text})
     await _advance(after, message, state, bot)
 
