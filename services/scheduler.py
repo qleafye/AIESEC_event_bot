@@ -105,6 +105,14 @@ async def init_scheduler(bot):
         hours=24, id="payment_overdue_sweep", replace_existing=True,
     )
 
+    # Auto-refresh the «Незавершённые» sheet tab so managers don't have to tap the admin
+    # button. Interval in hours (setting incomplete_sync_hours, default 2) — light load.
+    sync_hours = _int_or_default(await get_setting("incomplete_sync_hours"), 2)
+    _scheduler.add_job(
+        sync_incomplete_sheet_job, "interval",
+        hours=sync_hours, id="incomplete_sheet_sync", replace_existing=True,
+    )
+
     _scheduler.start()
     logger.info(
         f"Scheduler started (nudge scan every {scan_minutes}m, "
@@ -261,6 +269,19 @@ DEFAULT_NUDGE_TEXT = (
     "👋 Вы начали регистрацию, но не завершили её. "
     "Отправьте /start, чтобы продолжить — это займёт пару минут."
 )
+
+
+async def sync_incomplete_sheet_job():
+    """Interval-job target (no args, picklable). Full-refresh the «Незавершённые» sheet tab
+    with the current dropout list every incomplete_sync_hours. Fail-soft."""
+    try:
+        from database.db import get_incomplete_rows
+        from services.sheets import sync_named_worksheet
+        rows = await get_incomplete_rows()
+        headers = ["ID Telegram", "Username", "Начал регистрацию"]
+        await sync_named_worksheet("Незавершённые", headers, rows)
+    except Exception as e:
+        logger.error(f"sync_incomplete_sheet_job failed: {e}")
 
 
 async def nudge_incomplete_registrations():
