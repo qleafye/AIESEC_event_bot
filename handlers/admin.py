@@ -28,6 +28,7 @@ from database.db import (
     get_balance,
     get_non_subscriber_ids,
     get_incomplete_user_ids,
+    get_incomplete_rows,
     get_pending_users,
     get_pending_count,
     approve_user_atomic,
@@ -42,7 +43,7 @@ from database.db import (
     update_payment_status,
 )
 from aiogram.exceptions import TelegramRetryAfter
-from services.sheets import get_existing_sheet_ids, append_rows_to_sheet, ensure_sheet_header
+from services.sheets import get_existing_sheet_ids, append_rows_to_sheet, ensure_sheet_header, sync_named_worksheet
 from services.scheduler import (
     _parse_schedule_dt,
     _fmt_dt,
@@ -96,6 +97,7 @@ def build_admin_keyboard():
         [InlineKeyboardButton(text="🗓 Регистрации по месяцам", callback_data="admin_monthly_stats")],
         [InlineKeyboardButton(text="📈 Источники", callback_data="admin_source_stats")],
         [InlineKeyboardButton(text="📄 Экспорт CSV", callback_data="admin_export_csv")],
+        [InlineKeyboardButton(text="📝 Незавершённые → таблица", callback_data="admin_export_incomplete")],
         [InlineKeyboardButton(text="📋 Заявки", callback_data="admin_applications")],
         [InlineKeyboardButton(text="🧾 Чеки", callback_data="admin_receipts")],
         [InlineKeyboardButton(text="📢 Рассылка", callback_data="admin_broadcast")],
@@ -1004,6 +1006,28 @@ async def show_admin_export(callback: types.CallbackQuery):
     document = BufferedInputFile(file_bytes, filename="users.csv")
     await callback.message.answer_document(document, caption="База данных пользователей")
     await callback.answer()
+
+
+@router.callback_query(F.data == "admin_export_incomplete")
+async def export_incomplete(callback: types.CallbackQuery):
+    if callback.from_user.id not in config.ADMIN_IDS:
+        await callback.answer("Недостаточно прав", show_alert=True)
+        return
+    await callback.answer("📝 Выгружаю…")
+    rows = await get_incomplete_rows()
+    headers = ["ID Telegram", "Username", "Начал регистрацию"]
+    written = await sync_named_worksheet("Незавершённые", headers, rows)
+    if written < 0:
+        await callback.message.answer(
+            "⚠️ Не удалось записать в таблицу (проверь доступ к Google Sheets). "
+            f"Незавершённых регистраций в базе: <b>{len(rows)}</b>.",
+            parse_mode="HTML",
+        )
+        return
+    await callback.message.answer(
+        f"✅ Вкладка «Незавершённые» обновлена: <b>{written}</b> записей.",
+        parse_mode="HTML",
+    )
 
 
 @router.callback_query(F.data == "admin_broadcast")
