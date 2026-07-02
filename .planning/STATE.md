@@ -28,7 +28,7 @@ See: .planning/PROJECT.md (updated 2026-06-25)
 Phase: 4 of 4 (Universal Modules)
 Plan: 0 of ? in current phase
 Status: Ready to execute
-Last activity: 2026-07-02 - Completed quick task 260702-wqi: background sheet append + cache gspread + sync payment deadline
+Last activity: 2026-07-02 - Completed quick task 260702-wwu: receipt notification + full CSV export
 
 Progress: [░░░░░░░░░░] 0%
 
@@ -84,6 +84,7 @@ None yet.
 | 260702-w50 | event-type presets (forum/conference) + categorized question toggles in admin | 2026-07-02 | a9b3c74 | [260702-w50-event-type-presets-forum-conference-cate](./quick/260702-w50-event-type-presets-forum-conference-cate/) |
 | 260702-wf6 | dynamic google sheet columns (only enabled questions) + rename duplicate labels | 2026-07-02 | d78dae6 | [260702-wf6-dynamic-google-sheet-columns-only-enable](./quick/260702-wf6-dynamic-google-sheet-columns-only-enable/) |
 | 260702-wqi | background sheet append + cache gspread client + sync payment deadline into reg question | 2026-07-02 | 21a127f | [260702-wqi-background-sheet-append-cache-gspread-cl](./quick/260702-wqi-background-sheet-append-cache-gspread-cl/) |
+| 260702-wwu | admin receipt-arrival notification + full readable CSV export (RU headers, all columns) | 2026-07-02 | af8a846 | [260702-wwu-admin-receipt-arrival-notification-full-](./quick/260702-wwu-admin-receipt-arrival-notification-full-/) |
 
 ## Deferred Items
 
