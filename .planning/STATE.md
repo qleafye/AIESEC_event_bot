@@ -28,7 +28,7 @@ See: .planning/PROJECT.md (updated 2026-06-25)
 Phase: 4 of 4 (Universal Modules)
 Plan: 0 of ? in current phase
 Status: Ready to execute
-Last activity: 2026-07-02 - Completed quick task 260702-w50: event-type presets + categorized question toggles
+Last activity: 2026-07-02 - Completed quick task 260702-wf6: dynamic google sheet columns + rename duplicate labels
 
 Progress: [░░░░░░░░░░] 0%
 
@@ -82,6 +82,7 @@ None yet.
 |---|-------------|------|--------|-----------|
 | 260702-vr1 | fix payment receipt-upload trap plus pay-later button and upload-receipt menu entry | 2026-07-02 | 5aacb1b | [260702-vr1-fix-payment-receipt-upload-trap-plus-pay](./quick/260702-vr1-fix-payment-receipt-upload-trap-plus-pay/) |
 | 260702-w50 | event-type presets (forum/conference) + categorized question toggles in admin | 2026-07-02 | a9b3c74 | [260702-w50-event-type-presets-forum-conference-cate](./quick/260702-w50-event-type-presets-forum-conference-cate/) |
+| 260702-wf6 | dynamic google sheet columns (only enabled questions) + rename duplicate labels | 2026-07-02 | d78dae6 | [260702-wf6-dynamic-google-sheet-columns-only-enable](./quick/260702-wf6-dynamic-google-sheet-columns-only-enable/) |
 
 ## Deferred Items
 
