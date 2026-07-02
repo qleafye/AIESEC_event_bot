@@ -1,3 +1,4 @@
+import asyncio
 import logging
 import html
 from datetime import datetime
@@ -493,10 +494,15 @@ async def _ask_step(step_key: str, message: types.Message, state: FSMContext, st
         )
         await state.set_state(Registration.transport)
     elif step_key == "payment_plan_date":
-        await message.answer(
-            f"{p}{await _prompt('payment_plan_date', 'Когда планируешь оплатить взнос? Крайний срок 26.08.26 — введи дату (ДД.ММ.ГГГГ):')}",
-            reply_markup=get_cancel_kb(),
-        )
+        # Deadline is pulled live from the payment_deadline setting (stored «ДД.ММ.ГГГГ ЧЧ:ММ»,
+        # show just the date) — was hardcoded before, so it never synced with admin config.
+        deadline = await get_setting("payment_deadline")
+        dl_date = deadline.split()[0] if deadline else ""
+        dl_note = f" Крайний срок: {dl_date}." if dl_date else ""
+        default = f"Когда планируешь оплатить взнос?{dl_note} Введи дату (ДД.ММ.ГГГГ):"
+        # Admin overrides may embed {deadline} to place the date wherever they want.
+        prompt = (await _prompt('payment_plan_date', default)).replace("{deadline}", dl_date)
+        await message.answer(f"{p}{prompt}", reply_markup=get_cancel_kb())
         await state.update_data(_current_date_step="payment_plan_date")
         await state.set_state(Registration.date_input)
     elif step_key == "cc_shop":
@@ -1586,10 +1592,15 @@ async def finalize_registration(message: types.Message, state: FSMContext, bot: 
     except Exception as e:
         logger.error(f"Failed to clear reg_started for {message.from_user.id}: {e}")
 
+    # Fire-and-forget the Google Sheet write so the user is NOT blocked on a ~5s network
+    # round-trip (auth + open + append, plus up to 3 retries with sleeps). append_to_sheet
+    # is fail-soft and logs its own errors. Build the row inline (needs current settings),
+    # then hand the network I/O to the background.
     try:
-        await append_to_sheet(await active_sheet_row(data))
+        _sheet_row = await active_sheet_row(data)
+        asyncio.create_task(append_to_sheet(_sheet_row))
     except Exception as e:
-        logger.error(f"Failed to append user {message.from_user.id} to Google Sheet: {e}")
+        logger.error(f"Failed to schedule sheet append for {message.from_user.id}: {e}")
 
     # Phase 2 (D-01..D-04): decide approval status from form type + per-form setting, persist it.
     reg_mode = await get_setting("registration_mode") or "short"
