@@ -217,10 +217,10 @@ REG_LABELS = {
     "reg_q_work": "\U0001f4bc Работа",
     "reg_q_work_sphere": "\U0001f3ed Сфера работы",
     "reg_q_skills": "\U0001f4a1 Навыки",
-    "reg_q_expectations": "\U0001f4ac Ожидания",
+    "reg_q_expectations": "\U0001f4ac Ожидания (общие)",
     "reg_q_informal_day": "\U0001f3d5 Неформальный день",
     "reg_q_attendance": "\U0001f4cd Формат",
-    "reg_q_comments": "\U0001f4ac Комментарии",
+    "reg_q_comments": "\U0001f4ac Доп. комментарии",
     "reg_q_department": "🏢 Департамент",
     "reg_q_aiesec_role": "🎖 Позиция AIESEC",
     "reg_q_certificate": "📄 Справка в ВУЗ",
@@ -232,8 +232,8 @@ REG_LABELS = {
     "reg_q_transport": "🚗 Трансфер",
     "reg_q_payment_date": "💳 Дата оплаты",
     "reg_q_cc_shop": "🛍 CC-shop",
-    "reg_q_exp_organizers": "💬 Ожид. от орг",
-    "reg_q_exp_content": "💬 Ожид. от контента",
+    "reg_q_exp_organizers": "💬 Ожидания: организация",
+    "reg_q_exp_content": "💬 Ожидания: контент",
     "reg_q_volunteer": "🙋 Волонтёр",
     "reg_q_arrival_date": "📅 Дата приезда",
     "reg_q_birth_date": "🎂 Дата рождения",
@@ -651,72 +651,95 @@ def _multi_kb(step_key: str, options: list[str], selected: set[int]):
     return InlineKeyboardMarkup(inline_keyboard=rows)
 
 
-# Header row for the Google Sheet — MUST stay in the same order as _build_sheet_row().
-SHEET_HEADERS = [
-    "ID Telegram", "Username", "Дата регистрации", "ФИО", "Email",
-    "Источник", "Детали", "Телефон", "Город", "Локальный комитет", "Позиция",
-    "Образование", "ВУЗ", "Курс", "Специальность", "Работает", "Сфера работы",
-    "Не хватает навыков", "Ожидания", "Ожидания (AR)", "Неформальный день",
-    "Формат участия", "Комментарии", "Департамент", "Роль AIESEC", "Справка в ВУЗ",
-    "Английский", "Аллергии", "Питание", "Приезд", "Проживание", "CC-shop",
-    "Ожидания от орг", "Ожидания от контента", "Волонтёр", "Дата приезда",
-    "Дата рождения", "Направление обучения", "Цель участия", "Форматы форума",
-    "Амбассадор", "ВК", "Трансфер", "Дата план. оплаты",
+def _sheet_details(data: dict) -> str:
+    parts = []
+    if data.get("referrer_id"):
+        parts.append(f"Referrer ID: {data['referrer_id']}")
+    return " | ".join(parts) if parts else "-"
+
+
+# Google Sheet columns: (header, gate_setting_or_None, value_fn). gate=None → always
+# written (identity/system columns). gate=reg_q_* → column appears only when that question
+# is enabled, so the sheet width tracks the active preset instead of always being 44 wide.
+# Order is the historical SHEET_HEADERS order — do not reorder (append aligns by position).
+SHEET_COLUMNS = [
+    ("ID Telegram", None, lambda d: d.get("telegram_id") or "-"),
+    ("Username", None, lambda d: d.get("username") or "-"),
+    ("Дата регистрации", None, lambda d: d.get("registration_date") or "-"),
+    ("ФИО", None, lambda d: d.get("full_name") or "-"),
+    ("Email", "reg_q_email", lambda d: d.get("email") or "-"),
+    ("Источник", "reg_q_source", lambda d: d.get("source") or "-"),
+    ("Детали", None, _sheet_details),
+    ("Телефон", "reg_q_phone", lambda d: d.get("phone") or "-"),
+    ("Город", "reg_q_city", lambda d: d.get("city") or "-"),
+    ("Локальный комитет", "reg_q_lc", lambda d: d.get("local_committee") or "-"),
+    ("Позиция", "reg_q_position", lambda d: d.get("position") or "-"),
+    ("Образование", "reg_q_education", lambda d: d.get("education_status") or "-"),
+    ("ВУЗ", "reg_q_university", lambda d: d.get("university") or "-"),
+    ("Курс", "reg_q_course", lambda d: d.get("course") or "-"),
+    ("Специальность", "reg_q_specialty", lambda d: d.get("specialty") or "-"),
+    ("Работает", "reg_q_work", lambda d: "Yes" if d.get("work_status") else "No"),
+    ("Сфера работы", "reg_q_work_sphere", lambda d: d.get("work_sphere") or "-"),
+    ("Не хватает навыков", "reg_q_skills", lambda d: d.get("missing_skills") or "-"),
+    ("Ожидания", "reg_q_expectations", lambda d: d.get("expectations") or "-"),
+    ("Ожидания (AR)", "reg_q_expectations", lambda d: d.get("expectations_ar") or "-"),
+    ("Неформальный день", "reg_q_informal_day", lambda d: d.get("informal_day") or "-"),
+    ("Формат участия", "reg_q_attendance", lambda d: d.get("attendance_format") or "-"),
+    ("Комментарии", "reg_q_comments", lambda d: d.get("comments") or "-"),
+    ("Департамент", "reg_q_department", lambda d: d.get("department") or "-"),
+    ("Роль AIESEC", "reg_q_aiesec_role", lambda d: d.get("aiesec_role") or "-"),
+    ("Справка в ВУЗ", "reg_q_certificate", lambda d: d.get("needs_certificate") or "-"),
+    ("Английский", "reg_q_english", lambda d: d.get("english_level") or "-"),
+    ("Аллергии", "reg_q_allergies", lambda d: d.get("allergies") or "-"),
+    ("Питание", "reg_q_food", lambda d: d.get("food_pref") or "-"),
+    ("Приезд", "reg_q_arrival", lambda d: d.get("arrival") or "-"),
+    ("Проживание", "reg_q_housing", lambda d: d.get("housing") or "-"),
+    ("CC-shop", "reg_q_cc_shop", lambda d: d.get("cc_shop") or "-"),
+    ("Ожидания от орг", "reg_q_exp_organizers", lambda d: d.get("exp_organizers") or "-"),
+    ("Ожидания от контента", "reg_q_exp_content", lambda d: d.get("exp_content") or "-"),
+    ("Волонтёр", "reg_q_volunteer", lambda d: d.get("volunteer") or "-"),
+    ("Дата приезда", "reg_q_arrival_date", lambda d: d.get("arrival_date") or "-"),
+    ("Дата рождения", "reg_q_birth_date", lambda d: d.get("birth_date") or "-"),
+    ("Направление обучения", "reg_q_study_field", lambda d: d.get("study_field") or "-"),
+    ("Цель участия", "reg_q_goal", lambda d: d.get("goal") or "-"),
+    ("Форматы форума", "reg_q_formats", lambda d: d.get("formats") or "-"),
+    ("Амбассадор", "reg_q_ambassador", lambda d: "Да" if d.get("is_ambassador_candidate") else "-"),
+    ("ВК", "reg_q_vk", lambda d: d.get("vk_username") or "-"),
+    ("Трансфер", "reg_q_transport", lambda d: d.get("transport") or "-"),
+    ("Дата план. оплаты", "reg_q_payment_date", lambda d: d.get("payment_plan_date") or "-"),
 ]
+
+# Full static header list (all columns) — kept for reference/tests. Live sync uses the
+# dynamic active_sheet_headers() below.
+SHEET_HEADERS = [h for h, _g, _f in SHEET_COLUMNS]
 
 
 def _build_sheet_row(data: dict) -> list:
-    details_parts = []
-    if data.get("referrer_id"):
-        details_parts.append(f"Referrer ID: {data['referrer_id']}")
-    details = " | ".join(details_parts) if details_parts else "-"
+    """Full-width row (every column) — reference/tests. Live path uses active_sheet_row()."""
+    return [fn(data) for _h, _g, fn in SHEET_COLUMNS]
 
-    return [
-        data.get("telegram_id") or "-",
-        data.get("username") or "-",
-        data.get("registration_date") or "-",
-        data.get("full_name") or "-",
-        data.get("email") or "-",
-        data.get("source") or "-",
-        details,
-        data.get("phone") or "-",
-        data.get("city") or "-",
-        data.get("local_committee") or "-",
-        data.get("position") or "-",
-        data.get("education_status") or "-",
-        data.get("university") or "-",
-        data.get("course") or "-",
-        data.get("specialty") or "-",
-        "Yes" if data.get("work_status") else "No",
-        data.get("work_sphere") or "-",
-        data.get("missing_skills") or "-",
-        data.get("expectations") or "-",
-        data.get("expectations_ar") or "-",
-        data.get("informal_day") or "-",
-        data.get("attendance_format") or "-",
-        data.get("comments") or "-",
-        data.get("department") or "-",
-        data.get("aiesec_role") or "-",
-        data.get("needs_certificate") or "-",
-        data.get("english_level") or "-",
-        data.get("allergies") or "-",
-        data.get("food_pref") or "-",
-        data.get("arrival") or "-",
-        data.get("housing") or "-",
-        data.get("cc_shop") or "-",
-        data.get("exp_organizers") or "-",
-        data.get("exp_content") or "-",
-        data.get("volunteer") or "-",
-        data.get("arrival_date") or "-",
-        data.get("birth_date") or "-",
-        data.get("study_field") or "-",
-        data.get("goal") or "-",
-        data.get("formats") or "-",
-        "Да" if data.get("is_ambassador_candidate") else "-",
-        data.get("vk_username") or "-",
-        data.get("transport") or "-",
-        data.get("payment_plan_date") or "-",
-    ]
+
+def _sheet_value_map(data: dict) -> dict:
+    return {h: fn(data) for h, _g, fn in SHEET_COLUMNS}
+
+
+async def active_sheet_headers() -> list[str]:
+    """Headers for only the columns whose gating question is enabled (system columns
+    always included). The sheet width follows the active preset. NOTE: this reflects the
+    CURRENT toggles — set the event type before delegates register (the physical header row
+    is created once by ensure_sheet_header and is not rewritten if toggles change later)."""
+    out = []
+    for header, gate, _fn in SHEET_COLUMNS:
+        if gate is None or await _is_step_enabled(gate):
+            out.append(header)
+    return out
+
+
+async def active_sheet_row(data: dict) -> list:
+    """Row projected onto the active (enabled) columns, aligned to active_sheet_headers()."""
+    headers = await active_sheet_headers()
+    values = _sheet_value_map(data)
+    return [values.get(h, "-") for h in headers]
 
 
 def _esc(value) -> str:
@@ -1564,7 +1587,7 @@ async def finalize_registration(message: types.Message, state: FSMContext, bot: 
         logger.error(f"Failed to clear reg_started for {message.from_user.id}: {e}")
 
     try:
-        await append_to_sheet(_build_sheet_row(data))
+        await append_to_sheet(await active_sheet_row(data))
     except Exception as e:
         logger.error(f"Failed to append user {message.from_user.id} to Google Sheet: {e}")
 

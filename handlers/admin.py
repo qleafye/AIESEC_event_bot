@@ -52,7 +52,7 @@ from services.scheduler import (
 from services.allowlist import refresh_allowlist, allowlist_size
 from handlers.states import Broadcast, EditSetting, Approval, ReceiptReview
 from keyboards.builders import get_cancel_kb, MENU_BUTTONS, get_main_menu_kb
-from handlers.registration import REG_FLOW, REG_DEFAULTS, REG_LABELS, REG_PRESETS, REG_CATEGORIES, SHEET_HEADERS, _build_sheet_row, approve_user
+from handlers.registration import REG_FLOW, REG_DEFAULTS, REG_LABELS, REG_PRESETS, REG_CATEGORIES, SHEET_HEADERS, _build_sheet_row, active_sheet_headers, _sheet_value_map, approve_user
 
 router = Router()
 logger = logging.getLogger(__name__)
@@ -749,7 +749,8 @@ async def sync_sheet(callback: types.CallbackQuery):
     await callback.message.edit_text("🔄 Получаю данные из таблицы...", parse_mode="HTML")
 
     try:
-        await ensure_sheet_header(SHEET_HEADERS)  # шапка таблицы, если её ещё нет
+        headers = await active_sheet_headers()  # only enabled columns
+        await ensure_sheet_header(headers)  # шапка таблицы, если её ещё нет
         existing_ids = await get_existing_sheet_ids()
         all_users = await get_all_users_dicts()
 
@@ -763,7 +764,8 @@ async def sync_sheet(callback: types.CallbackQuery):
             )
             return
 
-        rows = [_build_sheet_row(u) for u in missing]
+        # Align each row to the active header order so columns match the sheet exactly.
+        rows = [[_sheet_value_map(u).get(h, "-") for h in headers] for u in missing]
         count = await append_rows_to_sheet(rows)
 
         await callback.message.edit_text(

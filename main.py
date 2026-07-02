@@ -10,7 +10,7 @@ from services.reminders import pending_reminder_loop
 from services.scheduler import init_scheduler
 from services.allowlist import refresh_allowlist
 from services.sheets import ensure_sheet_header
-from handlers.registration import SHEET_HEADERS
+from handlers.registration import active_sheet_headers
 from aiogram.client.default import DefaultBotProperties
 from aiogram.client.session.aiohttp import AiohttpSession
 from aiogram.enums import ParseMode
@@ -32,7 +32,8 @@ async def main():
     await init_db()
 
     # Ensure the Google Sheet has a column-name header row (fail-soft, off-thread).
-    asyncio.create_task(ensure_sheet_header(SHEET_HEADERS))
+    # Only the enabled-question columns — set the event type/preset before delegates register.
+    asyncio.create_task(ensure_sheet_header(await active_sheet_headers()))
     
     default = DefaultBotProperties(parse_mode=ParseMode.HTML)
     
