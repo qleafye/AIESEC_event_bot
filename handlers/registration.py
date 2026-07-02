@@ -889,7 +889,7 @@ async def cmd_start(message: types.Message, state: FSMContext, bot: Bot, command
     if user and (user.get("status") or "approved") != "rejected":
         # D-05a: a rejected user falls through to re-register; others see the welcome menu.
         logger.info(f"User {user_id} already registered")
-        await _send_welcome(message, start_text, start_photo, await get_main_menu_kb(), user_id)
+        await _send_welcome(message, start_text, start_photo, await get_main_menu_kb(user_id), user_id)
 
         if user_id in config.ADMIN_IDS:
             kb = ReplyKeyboardBuilder()
@@ -1092,7 +1092,7 @@ async def process_admin_rereg(message: types.Message, state: FSMContext):
 @router.message(Registration.admin_rereg)
 async def process_admin_rereg_skip(message: types.Message, state: FSMContext):
     await state.clear()
-    await message.answer("Ок, остаёмся.", reply_markup=await get_main_menu_kb())
+    await message.answer("Ок, остаёмся.", reply_markup=await get_main_menu_kb(message.from_user.id))
 
 
 
@@ -1441,7 +1441,7 @@ async def send_completion_and_bonus(bot: Bot, telegram_id: int, with_menu: bool 
         complete_text = await get_setting("approve_text") or DEFAULT_APPROVE_TEXT
         kwargs = {"parse_mode": "HTML"}
         if with_menu:
-            kwargs["reply_markup"] = await get_main_menu_kb()
+            kwargs["reply_markup"] = await get_main_menu_kb(telegram_id)
         await bot.send_message(telegram_id, complete_text, **kwargs)
 
         if await get_setting("reg_bonus_enabled") == "on":

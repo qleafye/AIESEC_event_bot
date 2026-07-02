@@ -63,6 +63,27 @@ async def _resolve_requisites(telegram_id: int) -> str | None:
     return await get_setting("payment_requisites")
 
 
+# Inline "pay later" escape shown on the option picker and the requisites message.
+_PAY_LATER_BTN = InlineKeyboardButton(text="⏭ Оплачу позже", callback_data="pay_later")
+
+
+async def should_offer_receipt_upload(telegram_id: int) -> bool:
+    """True when the user still owes a receipt: payment module on, status in
+    {not_paid, overdue}, and there are real requisites to pay to. Drives the
+    persistent '💳 Загрузить чек' menu button so upload works any time — gated on
+    the DB status, not the MemoryStorage FSM, so it survives a bot restart. Free /
+    no-requisites participants (nothing to pay) never trip it."""
+    if (await get_setting("payment_enabled") or "off") != "on":
+        return False
+    user = await get_user(telegram_id)
+    if not user:
+        return False
+    if (user.get("payment_status") or "not_paid") not in ("not_paid", "overdue"):
+        return False
+    requisites = await _resolve_requisites(telegram_id)
+    return bool(requisites and requisites.strip())
+
+
 def _parse_options(raw: str) -> list[tuple[str, int]]:
     """Parse the payment_options setting ('label|price' per line) → [(label, price)]."""
     options: list[tuple[str, int]] = []
@@ -93,7 +114,7 @@ async def start_payment_step(bot: Bot, telegram_id: int):
             kb = InlineKeyboardMarkup(inline_keyboard=[
                 [InlineKeyboardButton(text=f"{label} — {price} ₽", callback_data=f"pay_option:{i}")]
                 for i, (label, price) in enumerate(options)
-            ])
+            ] + [[_PAY_LATER_BTN]])
             await bot.send_message(telegram_id, "💳 Выбери вариант участия:", reply_markup=kb)
             return
         # Single / free path: skip selection, go straight to details.
@@ -131,6 +152,18 @@ async def process_payment_option(callback: types.CallbackQuery, state: FSMContex
     label, price = options[idx]
     await update_payment_status(callback.from_user.id, "not_paid", payment_option=label)
     await _show_payment_details(callback.bot, callback.from_user.id, state, label, price)
+    await callback.answer()
+
+
+@router.callback_query(F.data == "pay_later")
+async def process_pay_later(callback: types.CallbackQuery, state: FSMContext):
+    """Defer payment: clear the receipt-upload state, land on the main menu. The
+    '💳 Загрузить чек' menu button (gated on DB status) lets the user upload later."""
+    await state.clear()
+    await callback.message.answer(
+        "Ок! Оплатишь позже. Кнопка «💳 Загрузить чек» будет в меню, пока чек не отправлен.",
+        reply_markup=await get_main_menu_kb(callback.from_user.id),
+    )
     await callback.answer()
 
 
@@ -173,7 +206,10 @@ async def _show_payment_details(bot: Bot, telegram_id: int, state: FSMContext, o
     # user approved-but-stateless. start_payment_step's except still delivers a fallback
     # menu for the single/free path; the multi-option path re-raises to the callback.
     await state.set_state(Registration.receipt_upload)
-    await bot.send_message(telegram_id, "\n".join(parts), parse_mode="HTML")
+    await bot.send_message(
+        telegram_id, "\n".join(parts), parse_mode="HTML",
+        reply_markup=InlineKeyboardMarkup(inline_keyboard=[[_PAY_LATER_BTN]]),
+    )
 
 
 @router.message(Registration.receipt_upload, F.document)
@@ -191,9 +227,15 @@ async def process_receipt_photo(message: types.Message, state: FSMContext, bot: 
     await _finalize_receipt(message, state, message.photo[-1].file_id)  # highest-res
 
 
-@router.message(Registration.receipt_upload)
+# ~F.text.startswith("/") lets commands (/start, /cancel) fall THROUGH this catch-all.
+# payment.router is included before registration.router, so without this exclusion the
+# catch-all swallowed /start and stranded the user in the payment window with no escape.
+@router.message(Registration.receipt_upload, ~F.text.startswith("/"))
 async def process_receipt_invalid(message: types.Message, state: FSMContext):
-    await message.answer("❌ Отправь PDF-документ или скриншот оплаты (фото).")
+    await message.answer(
+        "❌ Отправь чек оплаты (PDF-документ или фото).\n"
+        "Или /start — вернуться в меню (загрузить чек можно будет позже)."
+    )
 
 
 async def _finalize_receipt(message: types.Message, state: FSMContext, file_id: str):
