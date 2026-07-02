@@ -336,6 +336,9 @@ async def _get_enabled_steps(data: dict) -> list[str]:
             continue
         if step_key == "informal_day" and data.get("attendance_format") == "Online":
             continue
+        # Source came from a src_ deep-link tag — don't ask «Откуда узнал», it's authoritative.
+        if step_key == "source" and data.get("_source_from_tag"):
+            continue
         # Tatiana: «Где будешь жить» — только если приезжает Заранее (в дни конфы жильё не нужно).
         # Backward-safe: gate only when arrival was actually asked; else housing stays unconditional.
         if step_key == "housing" and "arrival" in data and data.get("arrival") != "Заранее":
@@ -857,6 +860,9 @@ async def _start_registration_flow(message: types.Message, state: FSMContext, re
     existing_data = await state.get_data()
     saved_referrer_id = referrer_id or existing_data.get("referrer_id")
     saved_source_tag = source_tag or existing_data.get("source")
+    # A src_ deep-link tag is authoritative: skip the «Источник» question so the delegate's
+    # answer can't overwrite the campaign tag. Organic users (no tag) still get asked.
+    source_from_tag = bool(source_tag) or existing_data.get("_source_from_tag", False)
 
     await state.clear()
     if saved_referrer_id:
@@ -865,6 +871,8 @@ async def _start_registration_flow(message: types.Message, state: FSMContext, re
     if saved_source_tag:
         await state.update_data(source=saved_source_tag)
         logger.info(f"Saved source_tag={saved_source_tag} for user {message.from_user.id}")
+        if source_from_tag:
+            await state.update_data(_source_from_tag=True)
 
     await message.answer(
         "Отлично, начинаем регистрацию."
