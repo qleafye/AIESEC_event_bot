@@ -16,12 +16,21 @@ MENU_BUTTONS = [
     ("menu_coins", "🪙 Мои монеты"),
 ]
 
-async def get_main_menu_kb() -> ReplyKeyboardMarkup:
+async def get_main_menu_kb(telegram_id: int | None = None) -> ReplyKeyboardMarkup:
     kb = ReplyKeyboardBuilder()
     for key, text in MENU_BUTTONS:
         val = await get_setting(key)
         if (val == "on") if val is not None else True:
             kb.button(text=text)
+    # Persistent "upload receipt" entry — only while the user still owes one.
+    # Lazy import avoids a circular import (payment imports get_main_menu_kb); fail-soft.
+    if telegram_id is not None:
+        try:
+            from handlers.payment import should_offer_receipt_upload
+            if await should_offer_receipt_upload(telegram_id):
+                kb.button(text="💳 Загрузить чек")
+        except Exception:
+            pass
     kb.adjust(2)
     return kb.as_markup(resize_keyboard=True)
 

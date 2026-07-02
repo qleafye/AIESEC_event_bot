@@ -2138,7 +2138,7 @@ async def rcpt_confirm(callback: types.CallbackQuery, state: FSMContext):
             uid,
             "✅ <b>Оплата подтверждена!</b>\n\nСпасибо, ваш взнос получен.",
             parse_mode="HTML",
-            reply_markup=await get_main_menu_kb(),  # first menu after the payment journey
+            reply_markup=await get_main_menu_kb(uid),  # first menu after the payment journey
         )
         # WR-04: payment-confirm must mirror the non-payment approval path — deliver the
         # configured completion text + registration bonus. Menu already sent above.
