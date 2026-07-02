@@ -398,15 +398,42 @@ async def get_source_stats():
             return await cursor.fetchall()
 
 
+# Readable RU labels for the full CSV dump. Any column not listed falls back to its raw
+# DB name, so a newly-added column still exports (just with its technical name).
+CSV_HEADER_LABELS = {
+    "telegram_id": "ID Telegram", "username": "Username", "full_name": "ФИО",
+    "email": "Email", "age": "Возраст", "phone": "Телефон", "vk_username": "ВК",
+    "is_aiesec_member": "Член AIESEC", "source": "Источник", "source_details": "Детали источника",
+    "referrer_id": "ID реферера", "registration_date": "Дата регистрации",
+    "education_status": "Образование", "university": "ВУЗ", "course": "Курс",
+    "specialty": "Специальность", "study_field": "Направление обучения",
+    "work_status": "Работает", "work_sphere": "Сфера работы", "missing_skills": "Не хватает навыков",
+    "expectations": "Ожидания (общие)", "expectations_ar": "Ожидания (AR)",
+    "exp_organizers": "Ожидания: организация", "exp_content": "Ожидания: контент",
+    "comments": "Доп. комментарии", "city": "Город", "local_committee": "Локальный комитет",
+    "position": "Позиция", "department": "Департамент", "aiesec_role": "Роль AIESEC",
+    "needs_certificate": "Справка в ВУЗ", "english_level": "Английский",
+    "attendance_format": "Формат участия", "informal_day": "Неформальный день",
+    "goal": "Цель участия", "formats": "Форматы форума", "is_ambassador_candidate": "Амбассадор",
+    "allergies": "Аллергии", "food_pref": "Питание", "arrival": "Приезд",
+    "arrival_date": "Дата приезда", "birth_date": "Дата рождения", "housing": "Проживание",
+    "transport": "Трансфер", "cc_shop": "CC-shop", "volunteer": "Волонтёр",
+    "status": "Статус заявки", "subscribed": "Подписан на канал",
+    "resume_file_id": "Резюме (file_id)", "resume_text": "Резюме (текст)",
+    "payment_status": "Статус оплаты", "payment_option": "Вариант оплаты",
+    "receipt_file_id": "Чек (file_id)", "payment_due": "Срок оплаты", "paid_at": "Оплачено (когда)",
+    "payment_plan_date": "Дата план. оплаты",
+}
+
+
 async def export_users_csv():
+    """Full audit dump — every users column (incl. phone & service fields), with readable
+    RU headers. Unmapped columns keep their raw name so new columns still export."""
     async with aiosqlite.connect(config.DB_PATH) as db:
         async with db.execute('SELECT * FROM users') as cursor:
-            headers = [description[0] for description in cursor.description]
+            raw = [description[0] for description in cursor.description]
             rows = await cursor.fetchall()
-            if "phone" in headers:
-                phone_index = headers.index("phone")
-                headers = [header for header in headers if header != "phone"]
-                rows = [tuple(value for index, value in enumerate(row) if index != phone_index) for row in rows]
+            headers = [CSV_HEADER_LABELS.get(h, h) for h in raw]
             return headers, rows
 
 
