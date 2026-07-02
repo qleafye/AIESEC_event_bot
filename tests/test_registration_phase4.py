@@ -65,6 +65,40 @@ def test_sheet_header_matches_row_width():
     assert reg.SHEET_HEADERS[-1] == "Дата план. оплаты"
 
 
+def test_active_sheet_headers_track_enabled_questions(tmp_path):
+    _use_tmp_db(tmp_path)
+
+    async def go():
+        await db.init_db()
+        # Apply the forum preset via settings → sheet width shrinks below the full 44.
+        on = set(reg.REG_PRESETS["forum"]["on"])
+        for k in reg.REG_DEFAULTS:
+            await db.set_setting(k, "on" if k in on else "off")
+        headers = await reg.active_sheet_headers()
+        # System columns always present; disabled question columns dropped.
+        assert "ID Telegram" in headers and "ФИО" in headers
+        assert "Дата план. оплаты" not in headers  # payment_date off in forum preset
+        assert len(headers) < len(reg.SHEET_HEADERS)
+        # Row aligns to the active header order.
+        row = await reg.active_sheet_row({"telegram_id": 1, "full_name": "A"})
+        assert len(row) == len(headers)
+
+    asyncio.run(go())
+
+
+def test_active_sheet_row_full_width_when_all_on(tmp_path):
+    _use_tmp_db(tmp_path)
+
+    async def go():
+        await db.init_db()
+        for k in reg.REG_DEFAULTS:
+            await db.set_setting(k, "on")
+        headers = await reg.active_sheet_headers()
+        assert len(headers) == len(reg.SHEET_HEADERS)  # every gated column enabled
+
+    asyncio.run(go())
+
+
 def test_summary_includes_new_fields():
     data = {
         "full_name": "A B", "birth_date": "01.01.2000",
