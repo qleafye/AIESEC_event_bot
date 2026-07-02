@@ -14,6 +14,7 @@ from aiogram.fsm.context import FSMContext
 from aiogram.fsm.storage.base import StorageKey
 from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
 
+from config import config
 from database.db import get_setting, get_user, update_payment_status
 from handlers.states import Registration
 from keyboards.builders import get_main_menu_kb
@@ -241,6 +242,20 @@ async def process_receipt_invalid(message: types.Message, state: FSMContext):
 async def _finalize_receipt(message: types.Message, state: FSMContext, file_id: str):
     telegram_id = message.from_user.id
     await update_payment_status(telegram_id, "receipt_sent", receipt_file_id=file_id)
+
+    # Ping admins so the receipt doesn't sit unseen in the «🧾 Чеки» queue. Fail-soft:
+    # a notify error must never break the user's receipt confirmation below.
+    try:
+        user = await get_user(telegram_id)
+        name = html.escape(str((user or {}).get("full_name") or telegram_id))
+        note = f"🧾 <b>Новый чек оплаты</b> от {name}.\nПроверь: /admin → 🧾 Чеки"
+        for admin_id in config.ADMIN_IDS:
+            try:
+                await message.bot.send_message(admin_id, note, parse_mode="HTML")
+            except Exception as e:
+                logger.error(f"Failed to notify admin {admin_id} of receipt from {telegram_id}: {e}")
+    except Exception as e:
+        logger.error(f"Receipt admin-notify failed for {telegram_id}: {e}")
 
     # PAY-06: schedule deadline reminders. send_payment_reminder self-guards on status,
     # so even though we're already in 'receipt_sent' here, scheduling is harmless. A
