@@ -373,7 +373,10 @@ async def _consent_entries() -> list[tuple[str, str]]:
     label/key stay in sync."""
     raw = await get_setting("consent_list") or ""
     entries: list[tuple[str, str]] = []
-    for line in raw.strip().splitlines():
+    # Accept ';' as a line separator too: on mobile Telegram Enter=send splits a
+    # multi-line entry into separate messages (only the first survives set_setting),
+    # so admins can put all consents on one line using ';'. Newline data unaffected.
+    for line in raw.replace(";", "\n").strip().splitlines():
         line = line.strip()
         if not line or "|" not in line:
             continue
