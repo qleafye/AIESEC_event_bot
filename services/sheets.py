@@ -10,6 +10,30 @@ MAX_RETRIES = 3
 RETRY_DELAYS = [5, 15, 30]
 
 
+def _proxies() -> dict | None:
+    """Route gspread through the same proxy as the bot. gspread uses its own requests
+    session, which — unlike the aiogram session — ignores PROXY_URL, so on servers with
+    no direct Google egress every Sheets call died with 'Network is unreachable' and the
+    sync silently no-oped. For SOCKS we force the socks5h:// scheme so DNS resolves through
+    the proxy too (needs PySocks / requests[socks] installed on the host)."""
+    if not config.PROXY_URL:
+        return None
+    url = config.PROXY_URL.get_secret_value()
+    if url.startswith("socks5://"):
+        url = "socks5h://" + url[len("socks5://"):]
+    return {"http": url, "https": url}
+
+
+def _make_client() -> gspread.Client:
+    """Authorized gspread client with the proxy applied to its requests session (covers
+    the lazy token fetch + all API calls)."""
+    gc = gspread.service_account(filename=config.GOOGLE_CREDENTIALS_FILE)
+    proxies = _proxies()
+    if proxies:
+        gc.session.proxies.update(proxies)
+    return gc
+
+
 # Cache the authorized client + worksheet handle: gspread.service_account() re-auths
 # (token fetch) and open_by_key() is a network call, so rebuilding on every append cost
 # ~3 round-trips per registration. google-auth refreshes the token on the cached client,
@@ -21,7 +45,7 @@ def _get_sheet():
     global _sheet
     if _sheet is not None:
         return _sheet
-    gc = gspread.service_account(filename=config.GOOGLE_CREDENTIALS_FILE)
+    gc = _make_client()
     _sheet = gc.open_by_key(config.GOOGLE_SHEET_ID).sheet1
     return _sheet
 
@@ -85,7 +109,7 @@ def _append_rows_sync(rows: list[list]):
 def _get_allowlist_rows_sync(tab_name: str) -> list[str]:
     """Read column 1 of a non-sheet1 tab (the pre-selection allowlist, D-09).
     Raises WorksheetNotFound if the tab is missing — caller (refresh_allowlist) is fail-soft."""
-    gc = gspread.service_account(filename=config.GOOGLE_CREDENTIALS_FILE)
+    gc = _make_client()
     sh = gc.open_by_key(config.GOOGLE_SHEET_ID)
     ws = sh.worksheet(tab_name)
     return ws.col_values(1)
@@ -136,7 +160,7 @@ async def append_rows_to_sheet(rows: list[list]):
 def _sync_named_worksheet_sync(title: str, headers: list[str], rows: list[list]) -> int:
     """Overwrite a dedicated tab (create if missing) with header + rows. Used for the
     «Незавершённые» dropout export — a full refresh, not an append."""
-    gc = gspread.service_account(filename=config.GOOGLE_CREDENTIALS_FILE)
+    gc = _make_client()
     sh = gc.open_by_key(config.GOOGLE_SHEET_ID)
     try:
         ws = sh.worksheet(title)
