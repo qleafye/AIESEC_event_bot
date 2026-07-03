@@ -38,6 +38,14 @@ def _append_to_sheet_sync(data: list):
 
 def _ensure_header_sync(headers: list[str]):
     sheet = _get_sheet()
+    # Grow the grid FIRST. Unlike append_row/append_rows (which auto-expand), sheet.update()
+    # and insert_row() raise "exceeds grid limits" when the target range is wider than the
+    # worksheet's current column count (default 26). Enabling enough registration questions to
+    # push the header past that width made the reconcile below fail silently (ensure_sheet_header
+    # is fail-soft) — so data rows kept appending wider while the header row stayed stuck at its
+    # old, narrower width. Widening the grid up front keeps header and data aligned.
+    if sheet.col_count < len(headers):
+        sheet.add_cols(len(headers) - sheet.col_count)
     col1 = sheet.col_values(1)
     if not col1:
         # empty sheet → header becomes the first row
