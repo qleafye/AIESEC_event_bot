@@ -1043,13 +1043,46 @@ async def cmd_start(message: types.Message, state: FSMContext, bot: Bot, command
     await _start_registration_flow(message, state, referrer_id=referrer_id, source_tag=source_tag)
 
 
+_CANCEL_CONFIRM_KB = InlineKeyboardMarkup(inline_keyboard=[[
+    InlineKeyboardButton(text="Да, отменить", callback_data="reg_cancel_yes"),
+    InlineKeyboardButton(text="Нет, продолжить", callback_data="reg_cancel_no"),
+]])
+
+
 @router.message(StateFilter(Registration), F.text.in_({"Отмена", "/cancel"}))
 async def cancel_registration(message: types.Message, state: FSMContext):
-    await state.clear()
+    # Confirm before wiping the form — one accidental tap on the «Отмена» reply
+    # button used to drop the whole registration with no undo. State is left intact
+    # so «Нет, продолжить» resumes exactly where the user was.
     await message.answer(
+        "Точно отменить регистрацию? Все введённые ответы сотрутся.",
+        reply_markup=_CANCEL_CONFIRM_KB,
+    )
+
+
+@router.callback_query(F.data == "reg_cancel_yes")
+async def cancel_registration_confirm(callback: types.CallbackQuery, state: FSMContext):
+    await state.clear()
+    try:
+        await callback.message.edit_reply_markup(reply_markup=None)
+    except Exception:
+        pass
+    await callback.message.answer(
         "Регистрация отменена. Чтобы начать заново, отправь /start.",
         reply_markup=ReplyKeyboardRemove(),
     )
+    await callback.answer()
+
+
+@router.callback_query(F.data == "reg_cancel_no")
+async def cancel_registration_dismiss(callback: types.CallbackQuery):
+    # Keep the FSM state untouched — the current step's question is still above, so
+    # the user just carries on answering it.
+    try:
+        await callback.message.edit_reply_markup(reply_markup=None)
+    except Exception:
+        pass
+    await callback.answer("Продолжаем 👍")
 
 
 # --- QW-01 confirmation step ---
