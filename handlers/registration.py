@@ -395,6 +395,24 @@ async def _get_consent_steps() -> list[str]:
     return [f"consent:{key}" for _label, key in await _consent_entries()]
 
 
+async def _payment_price_block() -> str:
+    """Price list prepended to the payment-date question so the user sees the cost(s)
+    while picking a plan date (prices otherwise appear only post-approval, in
+    handlers.payment). Empty when the payment module is off or no options are set.
+    Informational only — tariff selection still happens after approval."""
+    if not await _is_module_enabled("payment_enabled"):
+        return ""
+    from handlers.payment import _parse_options  # local import avoids circular import
+    options = _parse_options(await get_setting("payment_options") or "")
+    if not options:
+        return ""
+    lines = []
+    for label, price in options:
+        price_txt = f"{price} ₽" if price > 0 else "бесплатно"
+        lines.append(f"• {html.escape(label)} — {price_txt}")
+    return "💳 <b>Стоимость участия:</b>\n" + "\n".join(lines) + "\n\n"
+
+
 async def _ask_step(step_key: str, message: types.Message, state: FSMContext, step: int, total: int):
     p = await _progress(step, total)
     if step_key == "age":
@@ -531,7 +549,8 @@ async def _ask_step(step_key: str, message: types.Message, state: FSMContext, st
         default = f"Когда планируешь оплатить взнос?{dl_note} Введи дату (ДД.ММ.ГГГГ):"
         # Admin overrides may embed {deadline} to place the date wherever they want.
         prompt = (await _prompt('payment_plan_date', default)).replace("{deadline}", dl_date)
-        await message.answer(f"{p}{prompt}", reply_markup=get_cancel_kb())
+        price_block = await _payment_price_block()  # show tariff prices before asking the date
+        await message.answer(f"{p}{price_block}{prompt}", reply_markup=get_cancel_kb())
         await state.update_data(_current_date_step="payment_plan_date")
         await state.set_state(Registration.date_input)
     elif step_key == "cc_shop":
