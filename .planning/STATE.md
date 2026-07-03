@@ -28,7 +28,7 @@ See: .planning/PROJECT.md (updated 2026-06-25)
 Phase: 4 of 4 (Universal Modules)
 Plan: 0 of ? in current phase
 Status: Ready to execute
-Last activity: 2026-07-03 - Completed quick task 260703-0mj: source tag authoritative
+Last activity: 2026-07-04 - Completed quick task 260704-378: consent list «;» separator
 
 Progress: [░░░░░░░░░░] 0%
 
@@ -89,6 +89,7 @@ None yet.
 | 260703-00o | custom city text via «Другое» prompt + export incomplete registrations to «Незавершённые» tab | 2026-07-03 | eb2f087 | [260703-00o-custom-city-text-via-prompt-export-incom](./quick/260703-00o-custom-city-text-via-prompt-export-incom/) |
 | 260703-06r | «Другое» guard on department/aiesec_role + scheduled auto-sync of incomplete regs (every 2h) | 2026-07-03 | 428b391 | [260703-06r-handle-on-department-and-aiesec-role-plu](./quick/260703-06r-handle-on-department-and-aiesec-role-plu/) |
 | 260703-0mj | make /create_link source tag authoritative (skip «Источник» question for tagged users) | 2026-07-03 | f38b0c3 | [260703-0mj-make-source-tag-authoritative-skip-quest](./quick/260703-0mj-make-source-tag-authoritative-skip-quest/) |
+| 260704-378 | consent list showed only 1 entry — accept «;» separator (Telegram Enter=send trap) | 2026-07-04 | 0bdf07f | [260704-378-fix-consent-list-only-one-entry-shown-sp](./quick/260704-378-fix-consent-list-only-one-entry-shown-sp/) |
 
 ## Deferred Items
 
