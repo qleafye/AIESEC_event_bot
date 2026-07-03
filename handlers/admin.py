@@ -1721,6 +1721,24 @@ async def show_reg_questions(callback: types.CallbackQuery):
     await callback.answer()
 
 
+async def _refresh_sheet_header() -> None:
+    """Regenerate the Google-sheet header after a question toggle so newly enabled
+    questions show up as columns right away. The header is otherwise built only at
+    startup (main.py), so mid-session toggles left the sheet missing enabled columns —
+    the reported bug. Fail-soft (ensure_sheet_header swallows API/credential errors) and
+    backgrounded so the admin UI stays snappy.
+
+    NOTE: a column inserted mid-list only aligns rows appended AFTER the toggle; rows
+    already in the sheet keep their original positions. Set the event type before
+    delegates start registering to avoid mid-event drift."""
+    try:
+        headers = await active_sheet_headers()
+    except Exception as e:
+        logger.warning(f"_refresh_sheet_header: could not compute headers: {e}")
+        return
+    asyncio.create_task(ensure_sheet_header(headers))
+
+
 @router.callback_query(F.data.startswith("reg_q_toggle:"))
 async def toggle_reg_question(callback: types.CallbackQuery):
     if callback.from_user.id not in config.ADMIN_IDS:
@@ -1741,6 +1759,7 @@ async def toggle_reg_question(callback: types.CallbackQuery):
 
     text = await render_questions_text()
     await callback.message.edit_text(text, parse_mode="HTML", reply_markup=await build_questions_keyboard())
+    await _refresh_sheet_header()  # keep the sheet header in sync with enabled questions
 
 
 @router.callback_query(F.data == "reg_q_noop")
@@ -1835,6 +1854,7 @@ async def preset_confirm(callback: types.CallbackQuery):
     await callback.answer(f"Пресет применён: {preset['label']}", show_alert=True)
     text = await render_questions_text()
     await callback.message.edit_text(text, parse_mode="HTML", reply_markup=await build_questions_keyboard())
+    await _refresh_sheet_header()  # preset flips many questions → resync the sheet header
 
 
 # --- Editable question prompts (YL'26: per-event wording, 0 хардкода) ---
