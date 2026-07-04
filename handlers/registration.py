@@ -12,7 +12,7 @@ from aiogram.types import FSInputFile, ReplyKeyboardRemove, InlineKeyboardMarkup
 from aiogram.utils.keyboard import ReplyKeyboardBuilder
 
 from config import config
-from database.db import add_user, get_user, get_setting, mark_reg_started, clear_reg_started, set_user_subscribed, set_user_status, record_user_consent
+from database.db import add_user, get_user, get_setting, mark_reg_started, clear_reg_started, set_reg_step, set_user_subscribed, set_user_status, record_user_consent
 from handlers.states import Registration
 from keyboards.builders import (
     get_main_menu_kb,
@@ -122,6 +122,25 @@ REG_FLOW = [
 
 # Map step_key → type for O(1) dispatch in _ask_step (consent:* keys handled separately).
 REG_STEP_TYPES = {step_key: step_type for step_key, _sk, step_type in REG_FLOW}
+
+# step_key → its reg_q_* setting key, for resolving human labels in dropout analytics.
+_STEP_TO_SETTING = {step_key: setting_key for step_key, setting_key, _t in REG_FLOW}
+
+
+def dropout_step_label(step_key: str | None) -> str:
+    """Human label for a persisted last_step (dropout analytics). Handles the special
+    pre-flow steps (ФИО / consent) and falls back to the raw key if unmapped."""
+    if not step_key:
+        return "— (не начал отвечать)"
+    if step_key == "full_name":
+        return "🪪 ФИО"
+    if step_key.startswith("consent:"):
+        return "📋 Согласие"
+    setting_key = _STEP_TO_SETTING.get(step_key)
+    if setting_key:
+        # REG_LABELS is defined below but only read at call time, so the forward ref is fine.
+        return REG_LABELS.get(setting_key, step_key)
+    return step_key
 
 # Configurable single-select steps: step_key → (options_setting_key, default options).
 # Options edited in admin as newline text (reuse source_options pattern). "Другое" appended.
@@ -414,6 +433,12 @@ async def _payment_price_block() -> str:
 
 
 async def _ask_step(step_key: str, message: types.Message, state: FSMContext, step: int, total: int):
+    # Dropout analytics: stamp the question about to be shown. message.chat.id == the user's
+    # id in private chats (holds for both Message and callback.message). Fail-soft.
+    try:
+        await set_reg_step(message.chat.id, step_key)
+    except Exception as e:
+        logger.error(f"set_reg_step failed for {message.chat.id} @ {step_key}: {e}")
     p = await _progress(step, total)
     if step_key == "age":
         await message.answer(f"{p}{await _prompt('age', 'Напиши свой возраст числом:')}", reply_markup=get_cancel_kb())
@@ -911,6 +936,10 @@ async def _start_registration_flow(message: types.Message, state: FSMContext, re
 
 
 async def _ask_full_name(message: types.Message, state: FSMContext):
+    try:
+        await set_reg_step(message.chat.id, "full_name")  # dropout analytics
+    except Exception as e:
+        logger.error(f"set_reg_step failed for {message.chat.id} @ full_name: {e}")
     await message.answer(await _prompt("full_name", "Напиши свои ФИО (Фамилия Имя Отчество):"), reply_markup=get_cancel_kb())
     await state.set_state(Registration.full_name)
 
