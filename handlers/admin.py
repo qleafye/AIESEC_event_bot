@@ -29,6 +29,7 @@ from database.db import (
     get_non_subscriber_ids,
     get_incomplete_user_ids,
     get_incomplete_rows,
+    get_dropout_step_stats,
     get_pending_users,
     get_pending_count,
     approve_user_atomic,
@@ -53,7 +54,7 @@ from services.scheduler import (
 from services.allowlist import refresh_allowlist, allowlist_size
 from handlers.states import Broadcast, EditSetting, Approval, ReceiptReview
 from keyboards.builders import get_cancel_kb, MENU_BUTTONS, get_main_menu_kb
-from handlers.registration import REG_FLOW, REG_DEFAULTS, REG_LABELS, REG_PRESETS, REG_CATEGORIES, SHEET_HEADERS, _build_sheet_row, active_sheet_headers, _sheet_value_map, approve_user
+from handlers.registration import REG_FLOW, REG_DEFAULTS, REG_LABELS, REG_PRESETS, REG_CATEGORIES, SHEET_HEADERS, _build_sheet_row, active_sheet_headers, _sheet_value_map, approve_user, dropout_step_label
 
 router = Router()
 logger = logging.getLogger(__name__)
@@ -1017,18 +1018,32 @@ async def export_incomplete(callback: types.CallbackQuery):
         await callback.answer("Недостаточно прав", show_alert=True)
         return
     await callback.answer("📝 Выгружаю…")
-    rows = await get_incomplete_rows()
-    headers = ["ID Telegram", "Username", "Начал регистрацию"]
-    written = await sync_named_worksheet("Незавершённые", headers, rows)
+    rows = await get_incomplete_rows()  # (id, username, started_at, last_step)
+    headers = ["ID Telegram", "Username", "Начал регистрацию", "Остановился на"]
+    sheet_rows = [
+        (tid, username, started_at, dropout_step_label(last_step))
+        for tid, username, started_at, last_step in rows
+    ]
+    written = await sync_named_worksheet("Незавершённые", headers, sheet_rows)
+
+    # Aggregate: on which question do dropouts stall most? (works even if the sheet write failed)
+    stats = await get_dropout_step_stats()
+    total = sum(c for _s, c in stats) or 1
+    top = "\n".join(
+        f"• {dropout_step_label(step)} — <b>{cnt}</b> ({round(cnt * 100 / total)}%)"
+        for step, cnt in stats[:8]
+    )
+    summary = f"\n\n📊 <b>Где отваливаются:</b>\n{top}" if stats else ""
+
     if written < 0:
         await callback.message.answer(
             "⚠️ Не удалось записать в таблицу (проверь доступ к Google Sheets). "
-            f"Незавершённых регистраций в базе: <b>{len(rows)}</b>.",
+            f"Незавершённых регистраций в базе: <b>{len(rows)}</b>.{summary}",
             parse_mode="HTML",
         )
         return
     await callback.message.answer(
-        f"✅ Вкладка «Незавершённые» обновлена: <b>{written}</b> записей.",
+        f"✅ Вкладка «Незавершённые» обновлена: <b>{written}</b> записей.{summary}",
         parse_mode="HTML",
     )
 
