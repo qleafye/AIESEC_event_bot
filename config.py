@@ -21,6 +21,10 @@ class Settings(BaseSettings):
     ]
     DB_PATH: str = "data/forum.db"
     
+    # Logging: DEBUG | INFO | WARNING | ERROR. Controls the file-handler level; stdout
+    # (docker logs) is pinned to WARNING+ regardless, to keep container logs clean.
+    LOG_LEVEL: str = "INFO"
+
     # Google Sheets
     GOOGLE_SHEET_ID: str = ""
     GOOGLE_CREDENTIALS_FILE: str = "google_credentials.json"
