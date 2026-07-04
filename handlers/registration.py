@@ -1694,6 +1694,7 @@ async def approve_user(bot: Bot, telegram_id: int):
     """Send the post-approval welcome (complete text + main menu + bonus) to a user
     by chat id. Reused by the auto-approve path here and the manager manual-approve
     path (admin.py). Fail-soft: a blocked/unknown user never raises."""
+    logger.info(f"user={telegram_id} action=approve_welcome")
     try:
         # Phase 4 (D-09): payment module gates the welcome. When ON, the payment flow owns
         # all messaging (its own option/requisites/receipt path); the completion text + bonus
@@ -1739,6 +1740,10 @@ async def finalize_registration(message: types.Message, state: FSMContext, bot: 
     data.setdefault("resume_text", None)
 
     await add_user(data)
+    logger.info(
+        f"user={message.from_user.id} action=registration_complete "
+        f"mode={await get_setting('registration_mode') or 'short'} name={data.get('full_name')!r}"
+    )
 
     # SCHED-02: registration finished — drop the dropout row (fail-soft).
     try:

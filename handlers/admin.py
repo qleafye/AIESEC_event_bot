@@ -44,7 +44,7 @@ from database.db import (
     update_payment_status,
 )
 from aiogram.exceptions import TelegramRetryAfter
-from services.sheets import get_existing_sheet_ids, append_rows_to_sheet, ensure_sheet_header, sync_named_worksheet
+from services.sheets import get_existing_sheet_ids, append_rows_to_sheet, ensure_sheet_header, sync_named_worksheet, dedupe_sheet_by_id
 from services.scheduler import (
     _parse_schedule_dt,
     _fmt_dt,
@@ -103,6 +103,7 @@ def build_admin_keyboard():
         [InlineKeyboardButton(text="🧾 Чеки", callback_data="admin_receipts")],
         [InlineKeyboardButton(text="📢 Рассылка", callback_data="admin_broadcast")],
         [InlineKeyboardButton(text="🔄 Синхронизация таблицы", callback_data="admin_sync_sheet")],
+        [InlineKeyboardButton(text="🧹 Убрать дубли из таблицы", callback_data="admin_dedupe_sheet")],
         [InlineKeyboardButton(text="⚙️ Настройки форума", callback_data="admin_settings")],
         [InlineKeyboardButton(text="📖 Справка по настройкам", callback_data="admin_settings_guide")],
     ])
@@ -1046,6 +1047,58 @@ async def export_incomplete(callback: types.CallbackQuery):
         f"✅ Вкладка «Незавершённые» обновлена: <b>{written}</b> записей.{summary}",
         parse_mode="HTML",
     )
+
+
+@router.callback_query(F.data == "admin_menu")
+async def admin_menu_root(callback: types.CallbackQuery):
+    """Back to the admin panel keyboard (also fixes the previously dead «Отмена» buttons
+    that pointed at admin_menu without a handler)."""
+    if callback.from_user.id not in config.ADMIN_IDS:
+        await callback.answer("Недостаточно прав", show_alert=True)
+        return
+    await callback.message.edit_text(
+        "👮‍♂️ <b>Панель администратора</b>", parse_mode="HTML", reply_markup=build_admin_keyboard()
+    )
+    await callback.answer()
+
+
+@router.callback_query(F.data == "admin_dedupe_sheet")
+async def dedupe_sheet_confirm(callback: types.CallbackQuery):
+    if callback.from_user.id not in config.ADMIN_IDS:
+        await callback.answer("Недостаточно прав", show_alert=True)
+        return
+    kb = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="🧹 Да, убрать дубли", callback_data="admin_dedupe_sheet_go")],
+        [InlineKeyboardButton(text="← Отмена", callback_data="admin_menu")],
+    ])
+    await callback.message.edit_text(
+        "🧹 <b>Убрать дубли из таблицы?</b>\n\n"
+        "Удалю повторные строки с одинаковым Telegram ID (от повторных регистраций / "
+        "тестов админов), оставлю <b>самую свежую</b> по каждому.\n\n"
+        "⚠️ Удаляются целые строки — если на старой строке-дубле были ручные заметки, "
+        "они пропадут (на оставленной строке всё цело).",
+        parse_mode="HTML",
+        reply_markup=kb,
+    )
+    await callback.answer()
+
+
+@router.callback_query(F.data == "admin_dedupe_sheet_go")
+async def dedupe_sheet_run(callback: types.CallbackQuery):
+    if callback.from_user.id not in config.ADMIN_IDS:
+        await callback.answer("Недостаточно прав", show_alert=True)
+        return
+    await callback.answer("🧹 Убираю дубли…")
+    logger.info(f"admin={callback.from_user.id} action=dedupe_sheet start")
+    removed = await dedupe_sheet_by_id()
+    if removed < 0:
+        text = "⚠️ Не удалось (проверь доступ к Google Sheets, подробности в логах)."
+    elif removed == 0:
+        text = "✅ Дублей не найдено — таблица чистая."
+    else:
+        text = f"✅ Удалено дублей: <b>{removed}</b>. Оставлены свежие строки."
+    logger.info(f"admin={callback.from_user.id} action=dedupe_sheet removed={removed}")
+    await callback.message.edit_text(text, parse_mode="HTML", reply_markup=build_admin_keyboard())
 
 
 @router.callback_query(F.data == "admin_broadcast")
@@ -2122,6 +2175,7 @@ async def appr_approve(callback: types.CallbackQuery, state: FSMContext):
     won = await approve_user_atomic(tid) if tid is not None else False
     if won:
         await approve_user(callback.bot, tid)  # welcome exactly once (D-10)
+        logger.info(f"admin={callback.from_user.id} action=approve user={tid}")
         await callback.answer("Одобрено")
     else:
         await callback.answer("Уже обработано")
@@ -2158,6 +2212,7 @@ async def appr_reject_reason(message: types.Message, state: FSMContext):
     reason = message.text or "-"
     ok = await reject_user(tid) if tid is not None else False
     if ok:
+        logger.info(f"admin={message.from_user.id} action=reject user={tid} reason={reason!r}")
         try:
             prefix = await get_setting("reject_text") or "К сожалению, твоя заявка отклонена."
             await message.bot.send_message(

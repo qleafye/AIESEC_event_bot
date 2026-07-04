@@ -3,6 +3,7 @@ google_credentials.json
 data/
 *.db
 bot.log
+logs/
 __pycache__/
 *.pyc
 .venv/
