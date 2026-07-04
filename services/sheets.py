@@ -22,7 +22,10 @@ def _get_sheet():
     if _sheet is not None:
         return _sheet
     gc = gspread.service_account(filename=config.GOOGLE_CREDENTIALS_FILE)
-    _sheet = gc.open_by_key(config.GOOGLE_SHEET_ID).sheet1
+    sh = gc.open_by_key(config.GOOGLE_SHEET_ID)
+    tab = (config.GOOGLE_SHEET_TAB or "").strip()
+    # Target the configured tab by name; fall back to the first tab (historical default).
+    _sheet = sh.worksheet(tab) if tab else sh.sheet1
     return _sheet
 
 
