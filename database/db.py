@@ -106,6 +106,9 @@ async def init_db():
         ''')
         # Phase 3 (SCHED-03): one-shot dropout-nudge stamp (additive, D-15 — reuse reg_started)
         await _ensure_column(db, "reg_started", "nudged_at", "TEXT")
+        # Dropout analytics: last question shown before the user abandoned (step_key). NULL
+        # for rows created before this column existed / before the user saw any question.
+        await _ensure_column(db, "reg_started", "last_step", "TEXT")
 
         # Phase 3 (SCHED-01): scheduled-broadcast payload store. APScheduler owns the
         # trigger (data/jobs.sqlite); this row holds the message/filter payload keyed by id.
@@ -541,11 +544,32 @@ async def get_incomplete_user_ids() -> list[int]:
 
 async def get_incomplete_rows() -> list[tuple]:
     """Full dropout rows for the «Незавершённые» sheet tab: (telegram_id, username,
-    started_at). These users hit /start but never finished — their partial answers live
-    only in the in-memory FSM, so only identity + start time are persisted."""
+    started_at, last_step). These users hit /start but never finished — their partial
+    answers live only in the in-memory FSM, so only identity + start time + the last
+    question they were shown (last_step) are persisted."""
     async with aiosqlite.connect(config.DB_PATH) as db:
         async with db.execute(
-            "SELECT telegram_id, username, started_at FROM reg_started ORDER BY started_at"
+            "SELECT telegram_id, username, started_at, last_step FROM reg_started ORDER BY started_at"
+        ) as cursor:
+            return [tuple(row) for row in await cursor.fetchall()]
+
+
+async def set_reg_step(telegram_id: int, step_key: str):
+    """Stamp the question currently shown to a mid-registration user (dropout analytics).
+    No-op if the reg_started row is gone (finished/cleared). Fail-soft at the call site."""
+    async with aiosqlite.connect(config.DB_PATH) as db:
+        await db.execute(
+            "UPDATE reg_started SET last_step = ? WHERE telegram_id = ?", (step_key, telegram_id)
+        )
+        await db.commit()
+
+
+async def get_dropout_step_stats() -> list[tuple]:
+    """(last_step, count) over all incomplete registrations, most-abandoned first. last_step
+    may be NULL for users who dropped before seeing any question."""
+    async with aiosqlite.connect(config.DB_PATH) as db:
+        async with db.execute(
+            "SELECT last_step, COUNT(*) FROM reg_started GROUP BY last_step ORDER BY COUNT(*) DESC"
         ) as cursor:
             return [tuple(row) for row in await cursor.fetchall()]
 
