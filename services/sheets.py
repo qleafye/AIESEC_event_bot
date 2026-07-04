@@ -23,9 +23,18 @@ def _get_sheet():
         return _sheet
     gc = gspread.service_account(filename=config.GOOGLE_CREDENTIALS_FILE)
     sh = gc.open_by_key(config.GOOGLE_SHEET_ID)
-    tab = (config.GOOGLE_SHEET_TAB or "").strip()
-    # Target the configured tab by name; fall back to the first tab (historical default).
-    _sheet = sh.worksheet(tab) if tab else sh.sheet1
+    # Defensively strip stray quotes some .env parsers keep around the value.
+    tab = (config.GOOGLE_SHEET_TAB or "").strip().strip('"').strip("'").strip()
+    if not tab:
+        _sheet = sh.sheet1  # historical default: first tab by position
+        return _sheet
+    # Target the configured tab by name; auto-create it if the spreadsheet doesn't
+    # have it yet (mirrors the «Незавершённые» tab behaviour) so a fresh work-sheet
+    # doesn't silently drop every write with WorksheetNotFound.
+    try:
+        _sheet = sh.worksheet(tab)
+    except gspread.WorksheetNotFound:
+        _sheet = sh.add_worksheet(title=tab, rows=1000, cols=30)
     return _sheet
 
 
