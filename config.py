@@ -24,6 +24,9 @@ class Settings(BaseSettings):
     # Google Sheets
     GOOGLE_SHEET_ID: str = ""
     GOOGLE_CREDENTIALS_FILE: str = "google_credentials.json"
+    # Target data tab by NAME (e.g. "реги бот"). Empty = first tab by position (.sheet1),
+    # the historical behaviour. Set this so reordering tabs can't redirect the bot's writes.
+    GOOGLE_SHEET_TAB: str = ""
     
     class Config:
         env_file = ".env"
