@@ -242,6 +242,7 @@ async def process_receipt_invalid(message: types.Message, state: FSMContext):
 async def _finalize_receipt(message: types.Message, state: FSMContext, file_id: str):
     telegram_id = message.from_user.id
     await update_payment_status(telegram_id, "receipt_sent", receipt_file_id=file_id)
+    logger.info(f"user={telegram_id} action=receipt_uploaded")
 
     # Ping admins so the receipt doesn't sit unseen in the «🧾 Чеки» queue. Fail-soft:
     # a notify error must never break the user's receipt confirmation below.

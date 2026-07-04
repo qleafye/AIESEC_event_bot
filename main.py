@@ -1,6 +1,8 @@
 import asyncio
 import logging
+import os
 import sys
+from logging.handlers import RotatingFileHandler
 from aiogram import Bot, Dispatcher
 from aiogram.fsm.storage.memory import MemoryStorage
 from config import config
@@ -15,16 +17,37 @@ from aiogram.client.default import DefaultBotProperties
 from aiogram.client.session.aiohttp import AiohttpSession
 from aiogram.enums import ParseMode
 
-async def main():
-    # Configure logging
-    logging.basicConfig(
-        level=logging.INFO,
-        format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
-        handlers=[
-            logging.FileHandler("bot.log", encoding="utf-8"),
-            logging.StreamHandler(sys.stdout)
-        ]
+def _configure_logging():
+    """Full detail → rotating file on a mounted volume (survives container recreate,
+    greppable on the host); only WARNING+ → stdout so `docker logs` stays clean.
+    File level is set by LOG_LEVEL (.env); flip to DEBUG when digging."""
+    os.makedirs("logs", exist_ok=True)
+    level = getattr(logging, (config.LOG_LEVEL or "INFO").upper(), logging.INFO)
+    fmt = logging.Formatter("%(asctime)s - %(name)s - %(levelname)s - %(message)s")
+
+    root = logging.getLogger()
+    root.setLevel(level)
+    root.handlers.clear()
+
+    file_handler = RotatingFileHandler(
+        "logs/bot.log", maxBytes=10 * 1024 * 1024, backupCount=5, encoding="utf-8"
     )
+    file_handler.setLevel(level)
+    file_handler.setFormatter(fmt)
+    root.addHandler(file_handler)
+
+    stdout_handler = logging.StreamHandler(sys.stdout)
+    stdout_handler.setLevel(logging.WARNING)  # docker logs = problems only
+    stdout_handler.setFormatter(fmt)
+    root.addHandler(stdout_handler)
+
+    # Tame chatty third-party loggers so the file isn't drowned in framework noise.
+    for noisy in ("aiogram.event", "apscheduler", "urllib3", "gspread", "asyncio"):
+        logging.getLogger(noisy).setLevel(logging.WARNING)
+
+
+async def main():
+    _configure_logging()
     logger = logging.getLogger(__name__)
     logger.info("Starting bot...")
     

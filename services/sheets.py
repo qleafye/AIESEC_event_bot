@@ -159,6 +159,37 @@ def _sync_named_worksheet_sync(title: str, headers: list[str], rows: list[list])
     return len(rows)
 
 
+def _dedupe_sheet_sync() -> int:
+    """Remove duplicate rows on the data tab that share a Telegram id (col 1), keeping the
+    LAST occurrence (freshest data). Deletes whole rows (bottom-up so indices don't shift),
+    which preserves any manual columns on the kept row. Row 1 (header) is never touched.
+    Returns the number of rows deleted."""
+    sheet = _get_sheet()
+    col1 = sheet.col_values(1)
+    rows_by_id: dict[str, list[int]] = {}
+    for offset, val in enumerate(col1[1:], start=2):  # row numbers are 1-based; skip header
+        v = (val or "").strip()
+        if not v or not v.lstrip("-").isdigit():
+            continue
+        rows_by_id.setdefault(v, []).append(offset)
+    to_delete = [r for rowlist in rows_by_id.values() if len(rowlist) > 1 for r in rowlist[:-1]]
+    for r in sorted(to_delete, reverse=True):
+        sheet.delete_rows(r)
+    return len(to_delete)
+
+
+async def dedupe_sheet_by_id() -> int:
+    """Fail-soft wrapper. Returns rows deleted, or -1 if the sheet is unconfigured / API error."""
+    if not config.GOOGLE_SHEET_ID or not config.GOOGLE_CREDENTIALS_FILE:
+        return -1
+    try:
+        return await asyncio.to_thread(_dedupe_sheet_sync)
+    except Exception as e:
+        _reset_sheet_cache()
+        logger.error(f"dedupe_sheet_by_id failed: {e}")
+        return -1
+
+
 async def sync_named_worksheet(title: str, headers: list[str], rows: list[list]) -> int:
     """Fail-soft full-refresh of a named tab. Returns the number of data rows written,
     or -1 when the sheet is not configured / an API error occurs."""
