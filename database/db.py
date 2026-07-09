@@ -748,7 +748,7 @@ async def mark_nudged(telegram_id: int):
 # ── Phase 3: filtered-broadcast audience query (COMM-01/02/03) ───────────────
 
 # Column whitelist — the ONLY place a column name is composed into SQL (Pitfall 5).
-_FILTER_COLUMNS = {"city", "university", "status", "source"}
+_FILTER_COLUMNS = {"city", "university", "status", "source", "payment_status"}
 
 
 def _build_filter_clause(filters: list[dict]) -> tuple[str, list]:
