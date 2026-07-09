@@ -105,6 +105,30 @@ def _parse_options(raw: str) -> list[tuple[str, int]]:
     return options
 
 
+async def _schedule_deadline_reminders(telegram_id: int):
+    """Schedule the T-3 / T-1 payment-deadline reminders for a user who OWES payment.
+    Called at payment entry (option picked / defer), NOT at receipt upload — a user who
+    tapped «Оплачу позже» (status not_paid) is exactly who must be reminded. Idempotent:
+    scheduler.schedule_payment_reminder uses replace_existing, and send_payment_reminder
+    self-guards on paid/receipt_sent so a user who pays before it fires is never pinged."""
+    deadline_str = await get_setting("payment_deadline")
+    if not deadline_str:
+        return
+    try:
+        from datetime import datetime, timedelta
+        from services.scheduler import schedule_payment_reminder
+        deadline = datetime.strptime(deadline_str.strip(), "%d.%m.%Y %H:%M")
+        now = datetime.now()
+        minus3d = deadline - timedelta(days=3)
+        minus1d = deadline - timedelta(days=1)
+        if minus3d > now:
+            schedule_payment_reminder(telegram_id, minus3d, "minus3d")
+        if minus1d > now:
+            schedule_payment_reminder(telegram_id, minus1d, "minus1d")
+    except Exception as e:
+        logger.error(f"Failed to schedule payment reminders for {telegram_id}: {e}")
+
+
 async def start_payment_step(bot: Bot, telegram_id: int):
     """Entry point called from approve_user() when payment_enabled=on. Fail-soft."""
     try:
@@ -161,6 +185,9 @@ async def process_pay_later(callback: types.CallbackQuery, state: FSMContext):
     """Defer payment: clear the receipt-upload state, land on the main menu. The
     '💳 Загрузить чек' menu button (gated on DB status) lets the user upload later."""
     await state.clear()
+    # Deferring is exactly when reminders matter — schedule T-3/T-1 so a forgetful
+    # not_paid user still gets pinged (the whole point of this change).
+    await _schedule_deadline_reminders(callback.from_user.id)
     await callback.message.answer(
         "Ок! Оплатишь позже. Кнопка «💳 Загрузить чек» будет в меню, пока чек не отправлен.",
         reply_markup=await get_main_menu_kb(callback.from_user.id),
@@ -211,6 +238,8 @@ async def _show_payment_details(bot: Bot, telegram_id: int, state: FSMContext, o
         telegram_id, "\n".join(parts), parse_mode="HTML",
         reply_markup=InlineKeyboardMarkup(inline_keyboard=[[_PAY_LATER_BTN]]),
     )
+    # User now owes payment — schedule deadline reminders up front (not at receipt upload).
+    await _schedule_deadline_reminders(telegram_id)
 
 
 @router.message(Registration.receipt_upload, F.document)
@@ -258,24 +287,10 @@ async def _finalize_receipt(message: types.Message, state: FSMContext, file_id: 
     except Exception as e:
         logger.error(f"Receipt admin-notify failed for {telegram_id}: {e}")
 
-    # PAY-06: schedule deadline reminders. send_payment_reminder self-guards on status,
-    # so even though we're already in 'receipt_sent' here, scheduling is harmless. A
-    # failure here must never break the receipt confirmation.
-    deadline_str = await get_setting("payment_deadline")
-    if deadline_str:
-        try:
-            from datetime import datetime, timedelta
-            from services.scheduler import schedule_payment_reminder
-            deadline = datetime.strptime(deadline_str.strip(), "%d.%m.%Y %H:%M")
-            now = datetime.now()
-            minus3d = deadline - timedelta(days=3)
-            minus1d = deadline - timedelta(days=1)
-            if minus3d > now:
-                schedule_payment_reminder(telegram_id, minus3d, "minus3d")
-            if minus1d > now:
-                schedule_payment_reminder(telegram_id, minus1d, "minus1d")
-        except Exception as e:
-            logger.error(f"Failed to schedule payment reminders for {telegram_id}: {e}")
+    # PAY-06: deadline reminders (T-3/T-1) are scheduled at payment ENTRY now
+    # (_show_payment_details / process_pay_later), not here — by the time a receipt
+    # is uploaded the status is 'receipt_sent' and send_payment_reminder self-guards
+    # would suppress them anyway. cancel_payment_reminders runs when admin marks paid.
 
     await state.clear()
     await message.answer(

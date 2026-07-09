@@ -93,7 +93,7 @@ def get_local_committee_kb() -> ReplyKeyboardMarkup:
 
 def get_department_kb() -> ReplyKeyboardMarkup:
     kb = ReplyKeyboardBuilder()
-    for d in ["OGV", "OGT", "MKT", "BD"]:
+    for d in ["OGV", "OGT", "MKT", "F&L", "BD", "LCP", "EwA"]:
         kb.button(text=d)
     kb.button(text="Другое")
     kb.adjust(2)
