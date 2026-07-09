@@ -90,6 +90,7 @@ None yet.
 | 260703-06r | «Другое» guard on department/aiesec_role + scheduled auto-sync of incomplete regs (every 2h) | 2026-07-03 | 428b391 | [260703-06r-handle-on-department-and-aiesec-role-plu](./quick/260703-06r-handle-on-department-and-aiesec-role-plu/) |
 | 260703-0mj | make /create_link source tag authoritative (skip «Источник» question for tagged users) | 2026-07-03 | f38b0c3 | [260703-0mj-make-source-tag-authoritative-skip-quest](./quick/260703-0mj-make-source-tag-authoritative-skip-quest/) |
 | 260704-378 | consent list showed only 1 entry — accept «;» separator (Telegram Enter=send trap) | 2026-07-04 | 0bdf07f | [260704-378-fix-consent-list-only-one-entry-shown-sp](./quick/260704-378-fix-consent-list-only-one-entry-shown-sp/) |
+| 260709-mog | +departments (F&L/LCP/EwA) + payment reminders now fire for «оплачу позже» (not_paid) + overdue final ping + admin reminder-text settings | 2026-07-09 | 5d19291 | [260709-mog-customer-fixes-departments-payment-reminders](./quick/260709-mog-customer-fixes-departments-payment-reminders/) |
 
 ## Deferred Items
 
