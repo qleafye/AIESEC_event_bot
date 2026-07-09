@@ -406,6 +406,8 @@ async def render_settings_text() -> str:
     consent_enabled = await get_setting("consent_enabled") or "off"
     lines.append(f"💳 Модуль оплаты: <b>{'✅ Вкл' if payment_enabled == 'on' else '❌ Выкл'}</b>")
     lines.append(f"📋 Модуль согласий: <b>{'✅ Вкл' if consent_enabled == 'on' else '❌ Выкл'}</b>")
+    pay_rem_enabled = await get_setting("payment_reminders_enabled") or "on"
+    lines.append(f"⏰ Автонапоминания об оплате: <b>{'✅ Вкл' if pay_rem_enabled == 'on' else '❌ Выкл'}</b>")
 
     enabled_q = 0
     for _, sk, *_rest in REG_FLOW:
@@ -471,6 +473,9 @@ async def build_settings_keyboard():
     consent_enabled = await get_setting("consent_enabled") or "off"
     payment_toggle_text = "💳 Оплата: ❌ Выкл → ✅ Вкл" if payment_enabled != "on" else "💳 Оплата: ✅ Вкл → ❌ Выкл"
     consent_toggle_text = "📋 Согласия: ❌ Выкл → ✅ Вкл" if consent_enabled != "on" else "📋 Согласия: ✅ Вкл → ❌ Выкл"
+    pay_rem_enabled = await get_setting("payment_reminders_enabled") or "on"
+    pay_rem_toggle_text = ("⏰ Автонапоминания оплаты: ✅ Вкл → ❌ Выкл" if pay_rem_enabled == "on"
+                           else "⏰ Автонапоминания оплаты: ❌ Выкл → ✅ Вкл")
 
     uni_mode = await get_setting("reg_university_mode") or "text"
     uni_mode_text = ("🏫 ВУЗ: выбор из списка → свободный ввод" if uni_mode == "list"
@@ -489,6 +494,7 @@ async def build_settings_keyboard():
         [InlineKeyboardButton(text=short_txt, callback_data="settings_toggle_short_approval")],
         [InlineKeyboardButton(text=notify_txt, callback_data="settings_toggle_notify")],
         [InlineKeyboardButton(text=payment_toggle_text, callback_data="toggle_payment_enabled")],
+        [InlineKeyboardButton(text=pay_rem_toggle_text, callback_data="toggle_payment_reminders")],
         [InlineKeyboardButton(text=consent_toggle_text, callback_data="toggle_consent_enabled")],
         [InlineKeyboardButton(text="🧾 PDF согласий", callback_data="admin_consent_pdfs")],
         [InlineKeyboardButton(text=uni_mode_text, callback_data="toggle_uni_mode")],
@@ -583,6 +589,15 @@ async def toggle_payment_enabled(callback: types.CallbackQuery):
 @router.callback_query(F.data == "toggle_consent_enabled")
 async def toggle_consent_enabled(callback: types.CallbackQuery):
     await _toggle_module_setting(callback, "consent_enabled", "📋 Согласия")
+
+
+@router.callback_query(F.data == "toggle_payment_reminders")
+async def toggle_payment_reminders(callback: types.CallbackQuery):
+    # Default ON — preserves prior behaviour (reminders fired whenever a deadline was set).
+    await _toggle_value_setting(
+        callback, "payment_reminders_enabled", "on", "off", "on",
+        "⏰ Автонапоминания об оплате включены", "⏰ Автонапоминания об оплате выключены",
+    )
 
 
 async def _toggle_value_setting(callback, key, val_a, val_b, default, title_a, title_b):
@@ -1520,6 +1535,13 @@ async def sched_cancel(callback: types.CallbackQuery):
 _FILTER_FIELD_LABELS = {
     "city": "Город", "university": "ВУЗ", "status": "Статус",
     "source": "Источник", "registration_date": "Дата регистрации",
+    "payment_status": "Оплата",
+}
+
+# Human labels for payment_status values (shown in the filter summary / value picker).
+_PAYMENT_STATUS_LABELS = {
+    "not_paid": "Не оплатил", "overdue": "Просрочил",
+    "receipt_sent": "Чек на проверке", "paid": "Оплатил",
 }
 
 
@@ -1533,6 +1555,8 @@ def _filter_summary(filters: list[dict]) -> str:
         if f["field"] == "registration_date":
             opl = "после" if f.get("op") == "after" else "до"
             parts.append(f"{label} {opl} {val}")
+        elif f["field"] == "payment_status":
+            parts.append(f"{label} = {_PAYMENT_STATUS_LABELS.get(f.get('value'), val)}")
         else:
             parts.append(f"{label} = {val}")
     return " И ".join(parts)
@@ -1544,7 +1568,8 @@ def _filter_menu_kb(filters: list[dict]) -> InlineKeyboardMarkup:
          InlineKeyboardButton(text="ВУЗ", callback_data="filter_f_university")],
         [InlineKeyboardButton(text="Статус", callback_data="filter_f_status"),
          InlineKeyboardButton(text="Источник", callback_data="filter_f_source")],
-        [InlineKeyboardButton(text="Дата регистрации", callback_data="filter_f_date")],
+        [InlineKeyboardButton(text="Дата регистрации", callback_data="filter_f_date"),
+         InlineKeyboardButton(text="💰 Оплата", callback_data="filter_f_payment")],
     ]
     if filters:
         kb.append([InlineKeyboardButton(text="📊 Показать и отправить", callback_data="filter_count")])
@@ -1611,6 +1636,34 @@ async def filter_value_status(callback: types.CallbackQuery, state: FSMContext):
     data = await state.get_data()
     filters = data.get("filters", [])
     filters.append({"field": "status", "value": value})
+    await state.update_data(filters=filters)
+    await callback.answer()
+    await _render_filter_menu(callback.message, filters, edit=True)
+
+
+@router.callback_query(F.data == "filter_f_payment", Broadcast.filter_field)
+async def filter_pick_payment(callback: types.CallbackQuery, state: FSMContext):
+    if callback.from_user.id not in config.ADMIN_IDS:
+        await callback.answer("Недостаточно прав", show_alert=True)
+        return
+    await callback.answer()
+    # Colon separator (not '_') so «not_paid» survives split — see filter_value_payment.
+    kb = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text=label, callback_data=f"filter_v_pay:{val}")]
+        for val, label in _PAYMENT_STATUS_LABELS.items()
+    ])
+    await callback.message.edit_text("Выберите статус оплаты:", reply_markup=kb)
+
+
+@router.callback_query(F.data.startswith("filter_v_pay:"), Broadcast.filter_field)
+async def filter_value_payment(callback: types.CallbackQuery, state: FSMContext):
+    if callback.from_user.id not in config.ADMIN_IDS:
+        await callback.answer("Недостаточно прав", show_alert=True)
+        return
+    value = callback.data.split(":", 1)[1]
+    data = await state.get_data()
+    filters = data.get("filters", [])
+    filters.append({"field": "payment_status", "value": value})
     await state.update_data(filters=filters)
     await callback.answer()
     await _render_filter_menu(callback.message, filters, edit=True)

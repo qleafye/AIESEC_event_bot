@@ -223,6 +223,10 @@ async def send_payment_reminder(user_id: int):
     module global. SC#5: never fire if already paid or a receipt is already in review."""
     try:
         from database.db import get_user
+        # Gated at FIRE time (not scheduling) so the admin toggle takes effect live — even
+        # on reminders already sitting in the jobstore. Default on = prior behaviour.
+        if (await get_setting("payment_reminders_enabled") or "on") != "on":
+            return
         user = await get_user(user_id)
         if not user or user.get("payment_status") in ("paid", "receipt_sent", None):
             return
@@ -266,8 +270,10 @@ async def sweep_payment_overdue():
             )
             await db.commit()
         # One final ping to each user we just flipped to 'overdue'. The status change
-        # means the next sweep won't re-select them, so this fires exactly once.
-        if overdue_ids:
+        # means the next sweep won't re-select them, so this fires exactly once. The
+        # status flip above always runs (feeds the «неоплатившие» broadcast segment); only
+        # the ping respects the auto-reminders toggle.
+        if overdue_ids and (await get_setting("payment_reminders_enabled") or "on") == "on":
             text = await get_setting("payment_overdue_text") or (
                 "⚠️ Срок оплаты участия истёк.\n\n"
                 "Если ты ещё планируешь участвовать — загрузи чек через бота "
