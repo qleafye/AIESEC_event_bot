@@ -252,13 +252,30 @@ async def sweep_payment_overdue():
             return
         if datetime.now() < deadline:
             return
+        select_where = (
+            "payment_status='not_paid' "
+            "AND (payment_option IS NOT NULL OR payment_due IS NOT NULL)"
+        )
         async with aiosqlite.connect(config.DB_PATH) as db:
+            cursor = await db.execute(
+                f"SELECT telegram_id FROM users WHERE {select_where}"
+            )
+            overdue_ids = [row[0] for row in await cursor.fetchall()]
             await db.execute(
-                "UPDATE users SET payment_status='overdue' "
-                "WHERE payment_status='not_paid' "
-                "AND (payment_option IS NOT NULL OR payment_due IS NOT NULL)"
+                f"UPDATE users SET payment_status='overdue' WHERE {select_where}"
             )
             await db.commit()
+        # One final ping to each user we just flipped to 'overdue'. The status change
+        # means the next sweep won't re-select them, so this fires exactly once.
+        if overdue_ids:
+            text = await get_setting("payment_overdue_text") or (
+                "⚠️ Срок оплаты участия истёк.\n\n"
+                "Если ты ещё планируешь участвовать — загрузи чек через бота "
+                "(кнопка «💳 Загрузить чек» в меню) или свяжись с организатором."
+            )
+            for tid in overdue_ids:
+                await _safe_send(lambda cid: _bot.send_message(cid, text), tid)
+                await asyncio.sleep(0.05)
     except Exception as e:
         logger.error(f"sweep_payment_overdue failed: {e}")
 
