@@ -36,7 +36,7 @@ from keyboards.builders import (
     get_yes_no_kb,
 )
 from services.sheets import append_to_sheet
-from services.nextcloud import upload_resume
+from services.nextcloud import upload_resume, upload_text_resume
 
 router = Router()
 logger = logging.getLogger(__name__)
@@ -1730,6 +1730,21 @@ async def approve_user(bot: Bot, telegram_id: int):
         logger.error(f"Failed to send approval welcome to {telegram_id}: {e}")
 
 
+def _resume_person_name(data) -> str:
+    """Build the human-readable resume filename stem: "<ФИО>_<username|telegram_id>".
+
+    username in finalize is either "@name" or "-" (never None); a leading "@" is stripped
+    and "-"/empty falls back to the telegram_id. Sanitization (unicode-safe) is done later
+    by services.nextcloud._safe_name, so kept RAW here (cyrillic preserved).
+    Example: full_name="Иван Петров", username="@qleafye" → "Иван Петров_qleafye".
+    """
+    name = (data.get("full_name") or "").strip()
+    uname = (data.get("username") or "").strip().lstrip("@")
+    if not uname or uname == "-":
+        uname = str(data.get("telegram_id"))
+    return f"{name}_{uname}"
+
+
 async def finalize_registration(message: types.Message, state: FSMContext, bot: Bot):
     data = await state.get_data()
     data["telegram_id"] = message.from_user.id
@@ -1760,21 +1775,29 @@ async def finalize_registration(message: types.Message, state: FSMContext, bot: 
     data.setdefault("resume_text", None)
     data.setdefault("resume_url", None)
 
-    # WK6: file resume → upload to Nextcloud and capture a public share link BEFORE add_user
-    # so the URL is persisted in DB and lands in the sheet row. Fully fail-soft: bounded by a
-    # 20s wait_for, upload_resume never raises, and any timeout/error leaves resume_url None so
-    # registration always completes even if Nextcloud is down. The share password never leaves
-    # services.nextcloud (never reaches DB or sheet). Text-only resumes: no file_id → skipped.
-    if data.get("resume_file_id"):
-        fname = data.get("resume_file_name") or "resume"
-        try:
+    # WK6/16c: resume (file OR text) → Nextcloud WebDAV PUT + deep-link into the manual folder
+    # share, captured BEFORE add_user so the URL is persisted in DB and lands in the sheet row.
+    # File is named "<ФИО>_<username|id>.<ext>"; text resume is uploaded as a "<...>.txt" file.
+    # Fully fail-soft: bounded by a 20s wait_for, upload_* never raise, and any timeout/error
+    # leaves resume_url None so registration always completes even if Nextcloud is down.
+    try:
+        if data.get("resume_file_id"):
+            ext = os.path.splitext(data.get("resume_file_name") or "")[1]
+            fname = f"{_resume_person_name(data)}{ext}"
             url = await asyncio.wait_for(
                 upload_resume(bot, data["resume_file_id"], fname), timeout=20
             )
             if url:
                 data["resume_url"] = url
-        except (asyncio.TimeoutError, Exception) as e:
-            logger.error(f"Nextcloud resume upload failed for {message.from_user.id}: {e}")
+        elif data.get("resume_text"):
+            fname = f"{_resume_person_name(data)}.txt"
+            url = await asyncio.wait_for(
+                upload_text_resume(data["resume_text"], fname), timeout=20
+            )
+            if url:
+                data["resume_url"] = url
+    except (asyncio.TimeoutError, Exception) as e:
+        logger.error(f"Nextcloud resume upload failed for {message.from_user.id}: {e}")
 
     await add_user(data)
     logger.info(

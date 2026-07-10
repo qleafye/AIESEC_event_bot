@@ -32,12 +32,16 @@ def test_select_pending_resumes_picks_only_missing(tmp_path):
     _use_tmp_db(tmp_path)
     asyncio.run(db.init_db())
 
-    # (a) has file, no url  -> PICKED
+    # (a) has file, no url        -> PICKED
     _seed(1, resume_file_id="FILE_A")
-    # (b) has file AND url  -> SKIPPED (already linked)
+    # (b) has file AND url        -> SKIPPED (already linked)
     _seed(2, resume_file_id="FILE_B", resume_url="https://cloud/x")
-    # (c) no file at all     -> SKIPPED
+    # (c) nothing at all           -> SKIPPED
     _seed(3)
+    # (d) has text, no url        -> PICKED
+    _seed(4, resume_text="Мой текст-резюме")
+    # (e) has text AND url        -> SKIPPED (already linked)
+    _seed(5, resume_text="text", resume_url="https://cloud/y")
 
     async def _run():
         async with aiosqlite.connect(config.DB_PATH) as conn:
@@ -45,7 +49,10 @@ def test_select_pending_resumes_picks_only_missing(tmp_path):
 
     rows = asyncio.run(_run())
 
-    assert len(rows) == 1
-    telegram_id, resume_file_id = rows[0]
-    assert telegram_id == 1
-    assert resume_file_id == "FILE_A"
+    # rows are 5-tuples now: (telegram_id, resume_file_id, resume_text, full_name, username)
+    picked = {row[0] for row in rows}
+    assert picked == {1, 4}
+
+    by_id = {row[0]: row for row in rows}
+    assert by_id[1][1] == "FILE_A"          # file case carries resume_file_id
+    assert by_id[4][2] == "Мой текст-резюме"  # text case carries resume_text
