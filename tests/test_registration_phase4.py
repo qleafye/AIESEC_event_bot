@@ -65,6 +65,29 @@ def test_sheet_header_matches_row_width():
     assert reg.SHEET_HEADERS[-1] == "Дата план. оплаты"
 
 
+def test_sheet_columns_form_order_and_new_columns():
+    # Таня п.1/п.4/п.5: системные колонки впереди, вопросы в порядке REG_FLOW,
+    # есть «Статус» и «Резюме (текст)».
+    h = reg.SHEET_HEADERS
+    assert h[:4] == ["ID Telegram", "Username", "Дата регистрации", "Статус"]
+    assert "Резюме (текст)" in h
+    # порядок вопросов = порядок показа в анкете (подвыборка REG_FLOW)
+    assert h.index("ВК") < h.index("Город") < h.index("Образование")
+    assert h.index("Источник") < h.index("Резюме (текст)")
+    # значение колонки «Статус» берётся из user status
+    vals = reg._sheet_value_map({"status": "approved"})
+    assert vals["Статус"] == "Одобрена"
+    assert reg._sheet_value_map({})["Статус"] == "Новая"  # дефолт pending → Новая
+    assert reg._sheet_value_map({"resume_text": "мой опыт"})["Резюме (текст)"] == "мой опыт"
+
+
+def test_status_label_mapping():
+    assert reg._status_label({"status": "pending"}) == "Новая"
+    assert reg._status_label({"status": "approved"}) == "Одобрена"
+    assert reg._status_label({"status": "rejected"}) == "Отклонена"
+    assert reg._status_label({}) == "Новая"
+
+
 def test_active_sheet_headers_track_enabled_questions(tmp_path):
     _use_tmp_db(tmp_path)
 
