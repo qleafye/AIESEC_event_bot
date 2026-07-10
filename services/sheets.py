@@ -200,3 +200,156 @@ async def sync_named_worksheet(title: str, headers: list[str], rows: list[list])
     except Exception as e:
         logger.error(f"sync_named_worksheet('{title}') failed: {e}")
         return -1
+
+
+# --- Статус заявки в таблице (Таня п.5) -------------------------------------------------
+# Список значений выпадашки в колонке «Статус». Совпадает с registration.STATUS_LABELS.
+STATUS_HEADER = "Статус"
+STATUS_DROPDOWN = ["Новая", "Одобрена", "Отклонена"]
+# ярлык → фон (light): жёлтый / зелёный / красный.
+_STATUS_COLORS = [
+    ("Новая", (1.0, 0.95, 0.6)),
+    ("Одобрена", (0.72, 0.88, 0.70)),
+    ("Отклонена", (0.96, 0.78, 0.78)),
+]
+
+
+def _status_col_index(sheet) -> int:
+    """0-based индекс колонки «Статус» по фактической шапке (row 1). -1 если её нет."""
+    try:
+        return [h.strip() for h in sheet.row_values(1)].index(STATUS_HEADER)
+    except ValueError:
+        return -1
+
+
+def _apply_status_formatting_sync(sheet, num_rows: int):
+    """Выпадашка (data validation ONE_OF_LIST) + условное форматирование (цвета) на
+    колонку «Статус». strict=False — ручные/IMPORTRANGE-значения не блокируются.
+    Повторный вызов может накопить дубли conditional-format правил (безвредно визуально)."""
+    col0 = _status_col_index(sheet)
+    if col0 < 0:
+        return
+    end_row = 1 + max(num_rows, 1)  # данные с row 2 (row 1 — шапка)
+    grid = {
+        "sheetId": sheet.id,
+        "startRowIndex": 1,
+        "endRowIndex": end_row,
+        "startColumnIndex": col0,
+        "endColumnIndex": col0 + 1,
+    }
+    requests = [{
+        "setDataValidation": {
+            "range": grid,
+            "rule": {
+                "condition": {
+                    "type": "ONE_OF_LIST",
+                    "values": [{"userEnteredValue": v} for v in STATUS_DROPDOWN],
+                },
+                "showCustomUi": True,
+                "strict": False,
+            },
+        }
+    }]
+    for idx, (val, (r, g, b)) in enumerate(_STATUS_COLORS):
+        requests.append({
+            "addConditionalFormatRule": {
+                "index": idx,
+                "rule": {
+                    "ranges": [grid],
+                    "booleanRule": {
+                        "condition": {"type": "TEXT_EQ", "values": [{"userEnteredValue": val}]},
+                        "format": {"backgroundColor": {"red": r, "green": g, "blue": b}},
+                    },
+                },
+            }
+        })
+    sheet.spreadsheet.batch_update({"requests": requests})
+
+
+def _update_status_in_sheet_sync(telegram_id: int, label: str) -> bool:
+    """Найти строку по col1==telegram_id и записать label в колонку «Статус». False если
+    колонки/строки нет."""
+    sheet = _get_sheet()
+    status_col = _status_col_index(sheet)  # 0-based
+    if status_col < 0:
+        return False
+    target = str(telegram_id)
+    col1 = sheet.col_values(1)
+    for row_idx, val in enumerate(col1[1:], start=2):  # skip header
+        if (val or "").strip() == target:
+            sheet.update_cell(row_idx, status_col + 1, label)  # update_cell 1-based col
+            return True
+    return False
+
+
+def _bulk_update_status_sync(id_to_label: dict[str, str]) -> int:
+    """Один проход: прочитать col1, записать статусы для всех telegram_id из mapping
+    одним batch_update (quota-friendly для массового одобрения). 0 если колонки нет."""
+    sheet = _get_sheet()
+    status_col = _status_col_index(sheet)  # 0-based
+    if status_col < 0:
+        return 0
+    col1 = sheet.col_values(1)
+    updates = []
+    for row_idx, val in enumerate(col1[1:], start=2):  # skip header
+        key = (val or "").strip()
+        if key in id_to_label:
+            a1 = gspread.utils.rowcol_to_a1(row_idx, status_col + 1)
+            updates.append({"range": a1, "values": [[id_to_label[key]]]})
+    if updates:
+        sheet.batch_update(updates)
+    return len(updates)
+
+
+def _rebuild_main_sheet_sync(headers: list[str], rows: list[list]) -> int:
+    """Полная пересборка листа данных: очистить, записать шапку + все строки в текущем
+    порядке колонок, применить выпадашку/цвета к «Статус». Выравнивает старые строки после
+    смены порядка колонок."""
+    sheet = _get_sheet()
+    if sheet.col_count < len(headers):
+        sheet.add_cols(len(headers) - sheet.col_count)
+    sheet.clear()
+    values = [headers] + [list(r) for r in rows]
+    sheet.update(values=values, range_name="A1")
+    try:
+        _apply_status_formatting_sync(sheet, len(rows))
+    except Exception as e:
+        logger.warning(f"apply_status_formatting failed (skipping): {e}")
+    return len(rows)
+
+
+async def update_status_in_sheet(telegram_id: int, label: str) -> bool:
+    """Fail-soft автосинк статуса заявки в таблицу. True если ячейка обновлена."""
+    if not config.GOOGLE_SHEET_ID or not config.GOOGLE_CREDENTIALS_FILE:
+        return False
+    try:
+        return await asyncio.to_thread(_update_status_in_sheet_sync, telegram_id, label)
+    except Exception as e:
+        _reset_sheet_cache()
+        logger.warning(f"update_status_in_sheet({telegram_id}) failed: {e}")
+        return False
+
+
+async def bulk_update_status_in_sheet(id_to_label: dict[str, str]) -> int:
+    """Fail-soft массовый автосинк статусов (одобрить все). Возвращает число обновлённых
+    ячеек или -1 при ошибке."""
+    if not id_to_label or not config.GOOGLE_SHEET_ID or not config.GOOGLE_CREDENTIALS_FILE:
+        return -1
+    try:
+        return await asyncio.to_thread(_bulk_update_status_sync, id_to_label)
+    except Exception as e:
+        _reset_sheet_cache()
+        logger.warning(f"bulk_update_status_in_sheet failed: {e}")
+        return -1
+
+
+async def rebuild_main_sheet(headers: list[str], rows: list[list]) -> int:
+    """Fail-soft полная пересборка листа данных. Возвращает число строк или -1 при ошибке."""
+    if not config.GOOGLE_SHEET_ID or not config.GOOGLE_CREDENTIALS_FILE:
+        return -1
+    try:
+        return await asyncio.to_thread(_rebuild_main_sheet_sync, headers, rows)
+    except Exception as e:
+        _reset_sheet_cache()
+        logger.error(f"rebuild_main_sheet failed: {e}")
+        return -1
