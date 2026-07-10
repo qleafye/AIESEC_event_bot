@@ -36,6 +36,7 @@ from keyboards.builders import (
     get_yes_no_kb,
 )
 from services.sheets import append_to_sheet
+from services.nextcloud import upload_resume
 
 router = Router()
 logger = logging.getLogger(__name__)
@@ -777,6 +778,7 @@ SHEET_COLUMNS = [
     ("Источник", "reg_q_source", lambda d: d.get("source") or "-"),
     ("Амбассадор", "reg_q_ambassador", lambda d: "Да" if d.get("is_ambassador_candidate") else "-"),
     ("Резюме (текст)", "reg_q_resume", lambda d: d.get("resume_text") or "-"),
+    ("Резюме (ссылка)", "reg_q_resume", lambda d: d.get("resume_url") or "-"),
     ("Email", "reg_q_email", lambda d: d.get("email") or "-"),
     ("Локальный комитет", "reg_q_lc", lambda d: d.get("local_committee") or "-"),
     ("Позиция", "reg_q_position", lambda d: d.get("position") or "-"),
@@ -1151,7 +1153,12 @@ async def process_resume(message: types.Message, state: FSMContext, bot: Bot):
     if not _is_allowed_resume(message.document.file_name):
         await message.answer("Принимаются только PDF или DOCX. Прикрепи файл ещё раз.")
         return
-    await state.update_data(resume_file_id=message.document.file_id)  # file_id only, no download (D-10)
+    # file_id only, no download (D-10). Keep the original file name in FSM (non-persisted,
+    # no DB/sheet column) so the Nextcloud upload preserves the real .pdf/.docx extension.
+    await state.update_data(
+        resume_file_id=message.document.file_id,
+        resume_file_name=message.document.file_name,
+    )
     await _advance("resume", message, state, bot)
 
 
@@ -1751,6 +1758,23 @@ async def finalize_registration(message: types.Message, state: FSMContext, bot: 
     data.setdefault("comments", "-")
     data.setdefault("resume_file_id", None)
     data.setdefault("resume_text", None)
+    data.setdefault("resume_url", None)
+
+    # WK6: file resume → upload to Nextcloud and capture a public share link BEFORE add_user
+    # so the URL is persisted in DB and lands in the sheet row. Fully fail-soft: bounded by a
+    # 20s wait_for, upload_resume never raises, and any timeout/error leaves resume_url None so
+    # registration always completes even if Nextcloud is down. The share password never leaves
+    # services.nextcloud (never reaches DB or sheet). Text-only resumes: no file_id → skipped.
+    if data.get("resume_file_id"):
+        fname = data.get("resume_file_name") or "resume"
+        try:
+            url = await asyncio.wait_for(
+                upload_resume(bot, data["resume_file_id"], fname), timeout=20
+            )
+            if url:
+                data["resume_url"] = url
+        except (asyncio.TimeoutError, Exception) as e:
+            logger.error(f"Nextcloud resume upload failed for {message.from_user.id}: {e}")
 
     await add_user(data)
     logger.info(
