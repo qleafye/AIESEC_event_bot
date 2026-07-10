@@ -28,7 +28,7 @@ See: .planning/PROJECT.md (updated 2026-06-25)
 Phase: 4 of 4 (Universal Modules)
 Plan: 0 of ? in current phase
 Status: Ready to execute
-Last activity: 2026-07-04 - Completed quick task 260704-378: consent list «;» separator
+Last activity: 2026-07-10 - Completed quick task 260710-nkk: sheet columns in form order + status/resume-text columns + resume required + status autosync + rebuild-sheet button
 
 Progress: [░░░░░░░░░░] 0%
 
@@ -92,6 +92,7 @@ None yet.
 | 260704-378 | consent list showed only 1 entry — accept «;» separator (Telegram Enter=send trap) | 2026-07-04 | 0bdf07f | [260704-378-fix-consent-list-only-one-entry-shown-sp](./quick/260704-378-fix-consent-list-only-one-entry-shown-sp/) |
 | 260709-mog | +departments (F&L/LCP/EwA) + payment reminders now fire for «оплачу позже» (not_paid) + overdue final ping + admin reminder-text settings | 2026-07-09 | 5d19291 | [260709-mog-customer-fixes-departments-payment-reminders](./quick/260709-mog-customer-fixes-departments-payment-reminders/) |
 | 260709-n19 | payment auto-reminders on/off toggle (admin) + non-payer broadcast segment (payment_status filter) | 2026-07-09 | d797549 | [260709-n19-payment-reminders-toggle-and-nonpayer-broadcast](./quick/260709-n19-payment-reminders-toggle-and-nonpayer-broadcast/) |
+| 260710-nkk | sheet columns in form order + «Статус»/«Резюме (текст)» columns + resume required (no skip) + resume text in admin card + status autosync on approve/reject + rebuild-sheet button with dropdown/color formatting | 2026-07-10 | 3c6c347 | [260710-nkk-sheet-cols-resume-status](./quick/260710-nkk-sheet-cols-resume-status/) |
 
 ## Deferred Items
 
