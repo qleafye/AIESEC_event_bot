@@ -1,9 +1,10 @@
 """One-shot backfill: re-upload OLD delegates' resumes to Nextcloud.
 
-Delegates who registered BEFORE the Nextcloud integration have a Telegram
-`resume_file_id` but an empty `resume_url`. This script re-downloads each stored
-Telegram file, uploads it to Nextcloud, and writes the resulting public share URL
-into `users.resume_url`.
+Delegates who registered BEFORE the Nextcloud integration have a stored resume
+(Telegram `resume_file_id` OR `resume_text`) but an empty `resume_url`. This script
+re-uploads each — files are re-downloaded from Telegram and PUT to Nextcloud, text
+resumes are PUT as a .txt file — then writes the resulting deep-link into
+`users.resume_url`. Files are named "<ФИО>_<username|id>".
 
 Run on the SERVER (same .env / DB as the bot):
 
@@ -25,20 +26,22 @@ import aiosqlite
 
 from config import config
 from database.db import init_db
-from services.nextcloud import upload_resume
+from handlers.registration import _resume_person_name
+from services.nextcloud import upload_resume, upload_text_resume
 
 logger = logging.getLogger(__name__)
 
 
 async def select_pending_resumes(db) -> list:
-    """Return (telegram_id, resume_file_id) rows for delegates who have a stored
-    Telegram resume file but no Nextcloud share URL yet.
+    """Return (telegram_id, resume_file_id, resume_text, full_name, username) rows for
+    delegates who have a stored resume (Telegram file OR text) but no Nextcloud URL yet.
 
     Takes an ALREADY-OPEN aiosqlite connection — importable/testable without a Bot.
     """
     rows = await db.execute_fetchall(
-        "SELECT telegram_id, resume_file_id FROM users "
-        "WHERE resume_file_id IS NOT NULL AND resume_file_id != '' "
+        "SELECT telegram_id, resume_file_id, resume_text, full_name, username FROM users "
+        "WHERE (resume_file_id IS NOT NULL AND resume_file_id != '' "
+        "       OR resume_text IS NOT NULL AND resume_text != '') "
         "AND (resume_url IS NULL OR resume_url = '')"
     )
     return list(rows)
@@ -78,9 +81,13 @@ async def main():
     # Idempotent — guarantees users.resume_url column exists.
     await init_db()
 
-    # Feature guard: nowhere to upload → exit before any bot/network work.
-    if not config.NEXTCLOUD_BASE_URL:
-        print("Nextcloud не настроен (NEXTCLOUD_BASE_URL пуст) — заливать некуда, выход")
+    # Feature guard: nowhere to upload / no way to build links → exit before any bot/network work.
+    if (
+        not config.NEXTCLOUD_WEBDAV_URL
+        or not config.NEXTCLOUD_PUBLIC_URL
+        or not config.NEXTCLOUD_FOLDER_SHARE_TOKEN
+    ):
+        print("Nextcloud не настроен (нужны WEBDAV_URL/PUBLIC_URL/FOLDER_SHARE_TOKEN) — выход")
         return
 
     limit = args.limit if args.limit and args.limit > 0 else 0
@@ -92,10 +99,11 @@ async def main():
 
         total = len(candidates)
 
-        # --dry-run: list telegram_ids only, no bot/network/writes.
+        # --dry-run: list telegram_ids + resume type only, no bot/network/writes.
         if args.dry_run:
-            for telegram_id, _file_id in candidates:
-                print(f"WOULD process {telegram_id}")
+            for telegram_id, resume_file_id, _resume_text, _full_name, _username in candidates:
+                typ = "file" if resume_file_id else "text"
+                print(f"WOULD process {telegram_id} ({typ})")
             _print_summary(total, 0, 0)
             return
 
@@ -124,21 +132,30 @@ async def main():
         success = 0
         failed = 0
         try:
-            for telegram_id, resume_file_id in candidates:
+            for telegram_id, resume_file_id, resume_text, full_name, username in candidates:
                 try:
-                    # Derive a filename with the original extension. get_file can 400
-                    # if the file was deleted on Telegram's side — fall back to "resume".
-                    try:
-                        f = await bot.get_file(resume_file_id)
-                        ext = os.path.splitext(f.file_path)[1]
-                        filename = f"resume_{telegram_id}{ext}"
-                    except Exception:
-                        logger.warning(
-                            "get_file failed for %s — using fallback filename", telegram_id
-                        )
-                        filename = "resume"
+                    data = {
+                        "full_name": full_name,
+                        "username": username,
+                        "telegram_id": telegram_id,
+                    }
+                    name = _resume_person_name(data)
 
-                    url = await upload_resume(bot, resume_file_id, filename)
+                    if resume_file_id:
+                        # Derive the original extension. get_file can 400 if the file was
+                        # deleted on Telegram's side — fall back to no extension.
+                        try:
+                            f = await bot.get_file(resume_file_id)
+                            ext = os.path.splitext(f.file_path)[1]
+                        except Exception:
+                            logger.warning(
+                                "get_file failed for %s — using no extension", telegram_id
+                            )
+                            ext = ""
+                        url = await upload_resume(bot, resume_file_id, f"{name}{ext}")
+                    else:
+                        url = await upload_text_resume(resume_text, f"{name}.txt")
+
                     if url:
                         await db.execute(
                             "UPDATE users SET resume_url=? WHERE telegram_id=?",

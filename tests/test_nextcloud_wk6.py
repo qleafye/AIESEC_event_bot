@@ -6,11 +6,12 @@ disabled (no config) and fail-soft (raising bot) paths.
 """
 import asyncio
 import sqlite3
+from urllib.parse import quote
 
 from config import config
 from database import db
 from handlers import registration as reg
-from services.nextcloud import upload_resume
+from services.nextcloud import _file_link, upload_resume, upload_text_resume
 
 
 def _use_tmp_db(tmp_path):
@@ -47,18 +48,45 @@ def test_resume_url_sheet_column_present(tmp_path):
 # ── upload_resume: disabled config → None, no network ────────────────────────
 
 def test_upload_resume_disabled_returns_none():
-    config.NEXTCLOUD_BASE_URL = ""
     config.NEXTCLOUD_WEBDAV_URL = ""
+    config.NEXTCLOUD_PUBLIC_URL = ""
+    config.NEXTCLOUD_FOLDER_SHARE_TOKEN = ""
     result = asyncio.run(upload_resume(bot=object(), file_id="f", filename="r.pdf"))
     assert result is None
+
+
+# ── upload_text_resume: disabled config → None, no network, never raises ─────
+
+def test_upload_text_resume_disabled_returns_none():
+    config.NEXTCLOUD_WEBDAV_URL = ""
+    config.NEXTCLOUD_PUBLIC_URL = ""
+    config.NEXTCLOUD_FOLDER_SHARE_TOKEN = ""
+    result = asyncio.run(upload_text_resume("hello резюме", "who.txt"))
+    assert result is None
+
+
+# ── _file_link: deep-link into the single manual folder share ────────────────
+
+def test_file_link_deep_link_format():
+    config.NEXTCLOUD_PUBLIC_URL = "https://x:8443"
+    config.NEXTCLOUD_FOLDER_SHARE_TOKEN = "TOK"
+    try:
+        remote = "ab_Иван.txt"
+        assert _file_link(remote) == (
+            "https://x:8443/s/TOK/download?path=%2F&files=" + quote(remote)
+        )
+    finally:
+        config.NEXTCLOUD_PUBLIC_URL = ""
+        config.NEXTCLOUD_FOLDER_SHARE_TOKEN = ""
 
 
 # ── upload_resume: any error is swallowed → None, never raises ───────────────
 
 def test_upload_resume_failsoft_on_error():
-    # Config "enabled" so we pass the disabled guard and reach bot.download, which raises.
-    config.NEXTCLOUD_BASE_URL = "https://cloud.example.org"
+    # Config "enabled" (all three set) so we pass the guard and reach bot.download, which raises.
     config.NEXTCLOUD_WEBDAV_URL = "https://cloud.example.org/remote.php/dav/files/bot"
+    config.NEXTCLOUD_PUBLIC_URL = "https://cloud.example.org"
+    config.NEXTCLOUD_FOLDER_SHARE_TOKEN = "TOK"
 
     class _BadBot:
         async def download(self, file_id):
@@ -68,8 +96,9 @@ def test_upload_resume_failsoft_on_error():
         result = asyncio.run(upload_resume(bot=_BadBot(), file_id="f", filename="r.pdf"))
         assert result is None
     finally:
-        config.NEXTCLOUD_BASE_URL = ""
         config.NEXTCLOUD_WEBDAV_URL = ""
+        config.NEXTCLOUD_PUBLIC_URL = ""
+        config.NEXTCLOUD_FOLDER_SHARE_TOKEN = ""
 
 
 # ── add_user preserves resume_url on re-registration (COALESCE guard) ─────────
