@@ -31,7 +31,17 @@ class Settings(BaseSettings):
     # Target data tab by NAME (e.g. "реги бот"). Empty = first tab by position (.sheet1),
     # the historical behaviour. Set this so reordering tabs can't redirect the bot's writes.
     GOOGLE_SHEET_TAB: str = ""
-    
+
+    # Nextcloud (self-hosted) resume upload. All empty = feature off (fail-soft, no upload).
+    # The share password is NEVER written to DB or sheet — only the resulting share URL is.
+    NEXTCLOUD_BASE_URL: str = ""          # e.g. "https://cloud.example.org"
+    NEXTCLOUD_WEBDAV_URL: str = ""        # e.g. "https://cloud.example.org/remote.php/dav/files/botuser"
+    NEXTCLOUD_USER: str = ""
+    NEXTCLOUD_APP_PASS: SecretStr | None = None
+    NEXTCLOUD_FOLDER: str = "resumes"
+    NEXTCLOUD_SHARE_PASSWORD: SecretStr | None = None
+    NEXTCLOUD_VERIFY_TLS: bool = False    # False = allow self-signed certs (ssl=False)
+
     class Config:
         env_file = ".env"
         env_file_encoding = 'utf-8'

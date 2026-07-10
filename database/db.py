@@ -60,6 +60,7 @@ async def init_db():
         await _ensure_column(db, "users", "status", "TEXT DEFAULT 'approved'")
         await _ensure_column(db, "users", "resume_file_id", "TEXT")
         await _ensure_column(db, "users", "resume_text", "TEXT")  # резюме текстом (альтернатива файлу)
+        await _ensure_column(db, "users", "resume_url", "TEXT")  # Nextcloud share link на файл-резюме
         await _ensure_column(db, "users", "subscribed", "INTEGER")
 
         # Conference (RusCo) reg-flow fields — additive, default-off questions
@@ -198,14 +199,14 @@ async def add_user(data: dict):
                 referrer_id, registration_date,
                 is_ambassador_candidate,
                 local_committee, position, attendance_format,
-                comments, expectations_ar, informal_day, resume_file_id, resume_text,
+                comments, expectations_ar, informal_day, resume_file_id, resume_text, resume_url,
                 department, aiesec_role, needs_certificate, english_level,
                 allergies, food_pref, arrival, housing, cc_shop,
                 exp_organizers, exp_content, volunteer,
                 payment_status, payment_option, receipt_file_id, payment_due, paid_at,
                 arrival_date, birth_date, study_field, goal, formats, vk_username,
                 transport, payment_plan_date, bed_sharing, bed_partner
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             ON CONFLICT(telegram_id) DO UPDATE SET
                 username=excluded.username,
                 full_name=excluded.full_name,
@@ -235,6 +236,7 @@ async def add_user(data: dict):
                 informal_day=excluded.informal_day,
                 resume_file_id=COALESCE(excluded.resume_file_id, users.resume_file_id),
                 resume_text=COALESCE(excluded.resume_text, users.resume_text),
+                resume_url=COALESCE(excluded.resume_url, users.resume_url),
                 department=excluded.department,
                 aiesec_role=excluded.aiesec_role,
                 needs_certificate=excluded.needs_certificate,
@@ -293,6 +295,7 @@ async def add_user(data: dict):
             data.get('informal_day'),
             data.get('resume_file_id'),
             data.get('resume_text'),
+            data.get('resume_url'),
             data.get('department'),
             data.get('aiesec_role'),
             data.get('needs_certificate'),
@@ -429,7 +432,7 @@ CSV_HEADER_LABELS = {
     "transport": "Трансфер", "cc_shop": "CC-shop", "volunteer": "Волонтёр",
     "bed_sharing": "Общая кровать", "bed_partner": "Сосед по кровати",
     "status": "Статус заявки", "subscribed": "Подписан на канал",
-    "resume_file_id": "Резюме (file_id)", "resume_text": "Резюме (текст)",
+    "resume_file_id": "Резюме (file_id)", "resume_text": "Резюме (текст)", "resume_url": "Резюме (ссылка)",
     "payment_status": "Статус оплаты", "payment_option": "Вариант оплаты",
     "receipt_file_id": "Чек (file_id)", "payment_due": "Срок оплаты", "paid_at": "Оплачено (когда)",
     "payment_plan_date": "Дата план. оплаты",
