@@ -1,14 +1,21 @@
-"""Self-hosted Nextcloud resume upload — WebDAV PUT + OCS public-share link.
+"""Self-hosted Nextcloud resume upload — WebDAV PUT + deep-link into ONE manual folder share.
 
-Fully fail-soft: upload_resume() wraps its entire body in try/except and returns None
-on ANY error (feature off, network down, bad credentials, timeout, unexpected shape).
-It never raises to the caller, so a Nextcloud outage can never block or break
-registration. The share password is read via SecretStr.get_secret_value() and is NEVER
-logged or returned — only the resulting public share URL is.
+Sharing model (new): the bot NO LONGER creates a per-file OCS public share. Instead a
+single public share of the `resumes` folder is created ONCE by hand in the Nextcloud UI
+(its password is set there too). The bot only uploads bytes via WebDAV PUT and builds a
+deep-link into that one folder share, pointing straight at the uploaded file:
+
+    {PUBLIC_URL}/s/{FOLDER_SHARE_TOKEN}/download?path=%2F&files=<name>
+
+Fully fail-soft: upload_resume()/upload_text_resume() wrap their whole body in try/except
+and return None on ANY error (feature off, network down, bad credentials, timeout). They
+never raise to the caller, so a Nextcloud outage can never block or break registration.
+No password is ever read, logged, or returned by this module — only the deep-link URL is.
 """
 import logging
 import re
 import uuid
+from urllib.parse import quote
 
 import aiohttp
 
@@ -24,75 +31,89 @@ def _safe_name(filename: str) -> str:
     return base or "resume"
 
 
+async def _put_bytes(content: bytes, remote_name: str) -> bool:
+    """WebDAV PUT raw bytes to {WEBDAV_URL}/{folder}/{remote_name}. Returns True on
+    2xx-ish success, False (with an error log) otherwise. Assumes config is present —
+    callers guard for that. Never raises to the caller under normal aiohttp errors is
+    NOT guaranteed here; the public entrypoints wrap this in try/except."""
+    folder = config.NEXTCLOUD_FOLDER.strip("/")
+    ssl_arg = None if config.NEXTCLOUD_VERIFY_TLS else False
+    auth = aiohttp.BasicAuth(
+        config.NEXTCLOUD_USER,
+        config.NEXTCLOUD_APP_PASS.get_secret_value() if config.NEXTCLOUD_APP_PASS else "",
+    )
+    timeout = aiohttp.ClientTimeout(total=15)
+    put_url = f"{config.NEXTCLOUD_WEBDAV_URL.rstrip('/')}/{folder}/{remote_name}"
+    async with aiohttp.ClientSession(auth=auth, timeout=timeout) as session:
+        async with session.put(put_url, data=content, ssl=ssl_arg) as resp:
+            if resp.status not in (200, 201, 204):
+                body = await resp.text()
+                logger.error("nextcloud WebDAV PUT failed: status=%s body=%s", resp.status, body[:300])
+                return False
+    return True
+
+
+def _file_link(remote_name: str) -> str:
+    """Build the deep-link into the single manual folder share, targeting one file.
+
+    Kept as a separate function so the link format is trivial to change later
+    (e.g. switch download → in-browser preview)."""
+    return (
+        f"{config.NEXTCLOUD_PUBLIC_URL.rstrip('/')}/s/{config.NEXTCLOUD_FOLDER_SHARE_TOKEN}"
+        f"/download?path=%2F&files={quote(remote_name)}"
+    )
+
+
 async def upload_resume(bot, file_id: str, filename: str) -> str | None:
-    """Download a Telegram file, upload to Nextcloud, return a password-protected
-    public share URL. Returns None on any failure or when the feature is unconfigured.
+    """Download a Telegram file, WebDAV-PUT it to Nextcloud, return a deep-link into the
+    manual folder share. Returns None on any failure or when the feature is unconfigured.
     Never raises."""
     try:
-        # 1. Feature off if base/webdav URLs are not configured.
-        if not config.NEXTCLOUD_BASE_URL or not config.NEXTCLOUD_WEBDAV_URL:
-            logger.debug("nextcloud disabled (NEXTCLOUD_BASE_URL/WEBDAV_URL empty) — skipping upload")
+        if (
+            not config.NEXTCLOUD_WEBDAV_URL
+            or not config.NEXTCLOUD_PUBLIC_URL
+            or not config.NEXTCLOUD_FOLDER_SHARE_TOKEN
+        ):
+            logger.debug(
+                "nextcloud disabled (WEBDAV_URL/PUBLIC_URL/FOLDER_SHARE_TOKEN empty) — skipping upload"
+            )
             return None
 
-        # 2. Download the file bytes from Telegram.
         buf = await bot.download(file_id)
         buf.seek(0)
         content = buf.read()
 
-        # 3. Collision-safe remote name, extension preserved from the original.
-        unique_name = f"{uuid.uuid4().hex[:8]}_{_safe_name(filename)}"
-
-        # 4. TLS: ssl=False disables verification for self-signed certs.
-        ssl_arg = None if config.NEXTCLOUD_VERIFY_TLS else False
-
-        # 5. Basic auth from app password (never logged).
-        auth = aiohttp.BasicAuth(
-            config.NEXTCLOUD_USER,
-            config.NEXTCLOUD_APP_PASS.get_secret_value() if config.NEXTCLOUD_APP_PASS else "",
-        )
-
-        folder = config.NEXTCLOUD_FOLDER.strip("/")
-        remote_path = f"/{folder}/{unique_name}"
-        timeout = aiohttp.ClientTimeout(total=15)
-
-        async with aiohttp.ClientSession(auth=auth, timeout=timeout) as session:
-            # PUT the file to WebDAV.
-            put_url = f"{config.NEXTCLOUD_WEBDAV_URL.rstrip('/')}/{folder}/{unique_name}"
-            async with session.put(put_url, data=content, ssl=ssl_arg) as resp:
-                if resp.status not in (200, 201, 204):
-                    body = await resp.text()
-                    logger.error("nextcloud WebDAV PUT failed: status=%s body=%s", resp.status, body[:300])
-                    return None
-
-            # POST the public share via OCS Share API.
-            share_url = f"{config.NEXTCLOUD_BASE_URL.rstrip('/')}/ocs/v2.php/apps/files_sharing/api/v1/shares?format=json"
-            form = {
-                "path": remote_path,
-                "shareType": "3",   # public link
-                "permissions": "1", # read-only
-            }
-            if config.NEXTCLOUD_SHARE_PASSWORD:
-                form["password"] = config.NEXTCLOUD_SHARE_PASSWORD.get_secret_value()
-
-            async with session.post(
-                share_url,
-                data=form,
-                headers={"OCS-APIRequest": "true"},
-                ssl=ssl_arg,
-            ) as resp:
-                if resp.status not in (200, 201):
-                    body = await resp.text()
-                    logger.error("nextcloud OCS share failed: status=%s body=%s", resp.status, body[:300])
-                    return None
-                payload = await resp.json(content_type=None)
-
-        # 6. Extract the URL from OCS v2 JSON shape: ocs.data.url
-        url = (payload or {}).get("ocs", {}).get("data", {}).get("url")
-        if not url:
-            logger.error("nextcloud OCS share response missing ocs.data.url")
-            return None
-        return url
+        remote = f"{uuid.uuid4().hex[:8]}_{_safe_name(filename)}"
+        if await _put_bytes(content, remote):
+            return _file_link(remote)
+        return None
 
     except Exception:  # noqa: BLE001 — fully fail-soft: never break registration
         logger.exception("nextcloud upload_resume failed — returning None (registration unaffected)")
+        return None
+
+
+async def upload_text_resume(text: str, filename: str) -> str | None:
+    """Upload a text resume as a .txt file via WebDAV PUT, return a deep-link into the
+    manual folder share. No Bot needed. Returns None on failure / when unconfigured.
+    Never raises."""
+    try:
+        if (
+            not config.NEXTCLOUD_WEBDAV_URL
+            or not config.NEXTCLOUD_PUBLIC_URL
+            or not config.NEXTCLOUD_FOLDER_SHARE_TOKEN
+        ):
+            logger.debug(
+                "nextcloud disabled (WEBDAV_URL/PUBLIC_URL/FOLDER_SHARE_TOKEN empty) — skipping upload"
+            )
+            return None
+
+        content = (text or "").encode("utf-8")
+        remote = f"{uuid.uuid4().hex[:8]}_{_safe_name(filename)}"
+        if await _put_bytes(content, remote):
+            return _file_link(remote)
+        return None
+
+    except Exception:  # noqa: BLE001 — fully fail-soft: never break registration
+        logger.exception("nextcloud upload_text_resume failed — returning None (registration unaffected)")
         return None
