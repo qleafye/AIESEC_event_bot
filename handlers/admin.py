@@ -44,7 +44,7 @@ from database.db import (
     update_payment_status,
 )
 from aiogram.exceptions import TelegramRetryAfter
-from services.sheets import get_existing_sheet_ids, append_rows_to_sheet, ensure_sheet_header, sync_named_worksheet, dedupe_sheet_by_id
+from services.sheets import get_existing_sheet_ids, append_rows_to_sheet, ensure_sheet_header, sync_named_worksheet, dedupe_sheet_by_id, update_status_in_sheet, bulk_update_status_in_sheet, rebuild_main_sheet
 from services.scheduler import (
     _parse_schedule_dt,
     _fmt_dt,
@@ -54,7 +54,7 @@ from services.scheduler import (
 from services.allowlist import refresh_allowlist, allowlist_size
 from handlers.states import Broadcast, EditSetting, Approval, ReceiptReview
 from keyboards.builders import get_cancel_kb, MENU_BUTTONS, get_main_menu_kb
-from handlers.registration import REG_FLOW, REG_DEFAULTS, REG_LABELS, REG_PRESETS, REG_CATEGORIES, SHEET_HEADERS, _build_sheet_row, active_sheet_headers, _sheet_value_map, approve_user, dropout_step_label
+from handlers.registration import REG_FLOW, REG_DEFAULTS, REG_LABELS, REG_PRESETS, REG_CATEGORIES, SHEET_HEADERS, STATUS_LABELS, _build_sheet_row, active_sheet_headers, _sheet_value_map, approve_user, dropout_step_label
 
 router = Router()
 logger = logging.getLogger(__name__)
@@ -103,6 +103,7 @@ def build_admin_keyboard():
         [InlineKeyboardButton(text="🧾 Чеки", callback_data="admin_receipts")],
         [InlineKeyboardButton(text="📢 Рассылка", callback_data="admin_broadcast")],
         [InlineKeyboardButton(text="🔄 Синхронизация таблицы", callback_data="admin_sync_sheet")],
+        [InlineKeyboardButton(text="♻️ Пересобрать таблицу", callback_data="admin_rebuild_sheet")],
         [InlineKeyboardButton(text="🧹 Убрать дубли из таблицы", callback_data="admin_dedupe_sheet")],
         [InlineKeyboardButton(text="⚙️ Настройки форума", callback_data="admin_settings")],
         [InlineKeyboardButton(text="📖 Справка по настройкам", callback_data="admin_settings_guide")],
@@ -799,6 +800,46 @@ async def sync_sheet(callback: types.CallbackQuery):
         logger.error(f"Sheet sync failed: {e}")
         await callback.message.edit_text(
             f"❌ Ошибка синхронизации:\n<code>{html_module.escape(str(e))}</code>",
+            parse_mode="HTML",
+            reply_markup=build_admin_keyboard(),
+        )
+
+
+@router.callback_query(F.data == "admin_rebuild_sheet")
+async def rebuild_sheet(callback: types.CallbackQuery):
+    """Полная пересборка листа данных: перезаписать шапку + ВСЕ строки в текущем порядке
+    колонок, применить выпадашку/цвета к «Статус». Выравнивает старые строки после смены
+    порядка колонок (Таня п.1/п.5). Внимание: перезаписывает ручные правки на листе."""
+    if callback.from_user.id not in config.ADMIN_IDS:
+        await callback.answer("Недостаточно прав", show_alert=True)
+        return
+
+    await callback.answer("♻️ Пересборка...")
+    await callback.message.edit_text("♻️ Пересобираю таблицу (перезапись всех строк)…", parse_mode="HTML")
+
+    try:
+        headers = await active_sheet_headers()  # only enabled columns
+        all_users = await get_all_users_dicts()
+        rows = [[_sheet_value_map(u).get(h, "-") for h in headers] for u in all_users]
+        count = await rebuild_main_sheet(headers, rows)
+        if count < 0:
+            await callback.message.edit_text(
+                "❌ Пересборка не выполнена (таблица не настроена или ошибка API). Смотри логи.",
+                parse_mode="HTML",
+                reply_markup=build_admin_keyboard(),
+            )
+            return
+        await callback.message.edit_text(
+            f"✅ Таблица пересобрана!\n\n"
+            f"Строк записано: <b>{count}</b>\n"
+            f"Колонки выстроены в порядке анкеты, «Статус» с выпадашкой и цветами.",
+            parse_mode="HTML",
+            reply_markup=build_admin_keyboard(),
+        )
+    except Exception as e:
+        logger.error(f"Sheet rebuild failed: {e}")
+        await callback.message.edit_text(
+            f"❌ Ошибка пересборки:\n<code>{html_module.escape(str(e))}</code>",
             parse_mode="HTML",
             reply_markup=build_admin_keyboard(),
         )
@@ -2131,7 +2172,16 @@ def _render_application_card(user: dict, position: int, total: int) -> str:
         lines.append(f"👔 {esc(user.get('position'))}")
     if user.get("age"):
         lines.append(f"🎂 {esc(user.get('age'))}")
-    lines.append("📎 Резюме: " + ("загружено" if user.get("resume_file_id") else "нет"))
+    # Резюме: файлом, текстом или нет. Текст показываем прямо в карточке (Таня п.4),
+    # обрезая длинные — полный текст доступен по кнопке «📎 Резюме».
+    if user.get("resume_file_id"):
+        lines.append("📎 Резюме: файлом (кнопка ниже)")
+    elif esc(user.get("resume_text")):
+        rt = str(user.get("resume_text"))
+        preview = html_module.escape(rt[:300] + ("…" if len(rt) > 300 else ""))
+        lines.append(f"📎 Резюме (текст): {preview}")
+    else:
+        lines.append("📎 Резюме: нет")
     return "\n".join(lines)
 
 
@@ -2165,7 +2215,11 @@ async def _show_current_card(target: types.Message, state: FSMContext):
     await target.answer(
         _render_application_card(current, position, total),
         parse_mode="HTML",
-        reply_markup=_appr_card_kb(current["telegram_id"], bool(current.get("resume_file_id")), total),
+        reply_markup=_appr_card_kb(
+            current["telegram_id"],
+            bool(current.get("resume_file_id") or current.get("resume_text")),
+            total,
+        ),
     )
 
 
@@ -2230,6 +2284,8 @@ async def appr_approve(callback: types.CallbackQuery, state: FSMContext):
     won = await approve_user_atomic(tid) if tid is not None else False
     if won:
         await approve_user(callback.bot, tid)  # welcome exactly once (D-10)
+        # Автосинк статуса в таблицу (Таня п.5), fire-and-forget fail-soft.
+        asyncio.create_task(update_status_in_sheet(tid, STATUS_LABELS["approved"]))
         logger.info(f"admin={callback.from_user.id} action=approve user={tid}")
         await callback.answer("Одобрено")
     else:
@@ -2267,6 +2323,7 @@ async def appr_reject_reason(message: types.Message, state: FSMContext):
     reason = message.text or "-"
     ok = await reject_user(tid) if tid is not None else False
     if ok:
+        asyncio.create_task(update_status_in_sheet(tid, STATUS_LABELS["rejected"]))
         logger.info(f"admin={message.from_user.id} action=reject user={tid} reason={reason!r}")
         try:
             prefix = await get_setting("reject_text") or "К сожалению, твоя заявка отклонена."
@@ -2336,6 +2393,11 @@ async def appr_all_yes(callback: types.CallbackQuery, state: FSMContext):
         reply_markup=build_admin_keyboard(),
     )
     asyncio.create_task(_welcome_flipped(callback.bot, ids))  # drain sends in background
+    # Массовый автосинк статуса в таблицу (Таня п.5) — один batch, fail-soft.
+    if ids:
+        asyncio.create_task(
+            bulk_update_status_in_sheet({str(t): STATUS_LABELS["approved"] for t in ids})
+        )
     await callback.answer()
 
 
