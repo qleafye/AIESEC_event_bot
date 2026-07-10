@@ -25,12 +25,19 @@ def test_card_shows_position_and_escapes():
     assert "1/3" in out
     assert "<b>hack</b>" not in out  # escaped
     assert "&lt;b&gt;hack" in out
-    assert "загружено" in out
+    assert "файлом" in out  # резюме файлом → кнопка ниже
 
 
 def test_card_no_resume_marker():
     out = _render_application_card({"full_name": "Иван"}, 2, 2)
     assert "📎 Резюме: нет" in out
+
+
+def test_card_shows_resume_text():
+    # Таня п.4: текст-резюме виден прямо в карточке (обрезка длинного).
+    out = _render_application_card({"full_name": "Иван", "resume_text": "мой богатый опыт"}, 1, 1)
+    assert "Резюме (текст)" in out
+    assert "мой богатый опыт" in out
 
 
 def test_settings_guide_lists_keys_and_defaults():
