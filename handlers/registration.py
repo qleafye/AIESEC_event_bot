@@ -591,11 +591,11 @@ async def _ask_step(step_key: str, message: types.Message, state: FSMContext, st
         await message.answer(f"{p}{await _prompt('volunteer', 'Хочешь быть волонтёром?')}", reply_markup=get_yes_no_kb())
         await state.set_state(Registration.volunteer)
     elif step_key == "resume":
-        # No «Отмена» here — tapping it cleared the whole form (все ответы терялись).
-        # «Пропустить» finishes registration without a resume instead.
+        # Резюме обязательно (Таня п.2): без «Пропустить». Убираем reply-клаву целиком —
+        # ответ = файл (PDF/DOCX) или текст, иначе шаг переспрашивает.
         await message.answer(
-            f"{p}{await _prompt('resume', 'Прикрепи резюме файлом (PDF или DOCX) или напиши его текстом. Если резюме нет — нажми «Пропустить».')}",
-            reply_markup=get_skip_kb(),
+            f"{p}{await _prompt('resume', 'Прикрепи резюме файлом (PDF или DOCX) или напиши его текстом.')}",
+            reply_markup=ReplyKeyboardRemove(),
         )
         await state.set_state(Registration.resume)
     elif REG_STEP_TYPES.get(step_key) == "date":
@@ -737,33 +737,55 @@ def _sheet_details(data: dict) -> str:
     return " | ".join(parts) if parts else "-"
 
 
+# status код БД → человеческий ярлык в колонке «Статус» (Таня, п.5). «Новая» = ещё не
+# смотрели (pending), «Одобрена»/«Отклонена» — после решения менеджера. Совпадает со
+# списком значений выпадашки в services.sheets.STATUS_LABELS.
+STATUS_LABELS = {"pending": "Новая", "approved": "Одобрена", "rejected": "Отклонена"}
+
+
+def _status_label(data: dict) -> str:
+    return STATUS_LABELS.get(data.get("status") or "pending", "Новая")
+
+
 # Google Sheet columns: (header, gate_setting_or_None, value_fn). gate=None → always
 # written (identity/system columns). gate=reg_q_* → column appears only when that question
 # is enabled, so the sheet width tracks the active preset instead of always being 44 wide.
-# Order is the historical SHEET_HEADERS order — do not reorder (append aligns by position).
+# Порядок = порядок вопросов в анкете (REG_FLOW), Таня п.1: сначала системные колонки
+# (ID/Username/Дата/Статус/ФИО/Детали), затем вопросы ровно в том порядке, в каком их
+# задаёт бот. При изменении порядка старые строки на листе разъедутся (шапка правится
+# in place, данные — нет) — пользуйся admin «♻️ Пересобрать таблицу» для выравнивания.
 SHEET_COLUMNS = [
+    # --- системные (всегда) ---
     ("ID Telegram", None, lambda d: d.get("telegram_id") or "-"),
     ("Username", None, lambda d: d.get("username") or "-"),
     ("Дата регистрации", None, lambda d: d.get("registration_date") or "-"),
+    ("Статус", None, _status_label),
     ("ФИО", None, lambda d: d.get("full_name") or "-"),
-    ("Email", "reg_q_email", lambda d: d.get("email") or "-"),
-    ("Источник", "reg_q_source", lambda d: d.get("source") or "-"),
     ("Детали", None, _sheet_details),
+    # --- вопросы в порядке REG_FLOW ---
     ("Телефон", "reg_q_phone", lambda d: d.get("phone") or "-"),
+    ("ВК", "reg_q_vk", lambda d: d.get("vk_username") or "-"),
     ("Город", "reg_q_city", lambda d: d.get("city") or "-"),
+    ("Образование", "reg_q_education", lambda d: d.get("education_status") or "-"),
+    ("Курс", "reg_q_course", lambda d: d.get("course") or "-"),
+    ("ВУЗ", "reg_q_university", lambda d: d.get("university") or "-"),
+    ("Направление обучения", "reg_q_study_field", lambda d: d.get("study_field") or "-"),
+    ("Цель участия", "reg_q_goal", lambda d: d.get("goal") or "-"),
+    ("Форматы форума", "reg_q_formats", lambda d: d.get("formats") or "-"),
+    ("Ожидания", "reg_q_expectations", lambda d: d.get("expectations") or "-"),
+    ("Ожидания (AR)", "reg_q_expectations", lambda d: d.get("expectations_ar") or "-"),
+    ("Источник", "reg_q_source", lambda d: d.get("source") or "-"),
+    ("Амбассадор", "reg_q_ambassador", lambda d: "Да" if d.get("is_ambassador_candidate") else "-"),
+    ("Резюме (текст)", "reg_q_resume", lambda d: d.get("resume_text") or "-"),
+    ("Email", "reg_q_email", lambda d: d.get("email") or "-"),
     ("Локальный комитет", "reg_q_lc", lambda d: d.get("local_committee") or "-"),
     ("Позиция", "reg_q_position", lambda d: d.get("position") or "-"),
-    ("Образование", "reg_q_education", lambda d: d.get("education_status") or "-"),
-    ("ВУЗ", "reg_q_university", lambda d: d.get("university") or "-"),
-    ("Курс", "reg_q_course", lambda d: d.get("course") or "-"),
     ("Специальность", "reg_q_specialty", lambda d: d.get("specialty") or "-"),
     ("Работает", "reg_q_work", lambda d: "Yes" if d.get("work_status") else "No"),
     ("Сфера работы", "reg_q_work_sphere", lambda d: d.get("work_sphere") or "-"),
     ("Не хватает навыков", "reg_q_skills", lambda d: d.get("missing_skills") or "-"),
-    ("Ожидания", "reg_q_expectations", lambda d: d.get("expectations") or "-"),
-    ("Ожидания (AR)", "reg_q_expectations", lambda d: d.get("expectations_ar") or "-"),
-    ("Неформальный день", "reg_q_informal_day", lambda d: d.get("informal_day") or "-"),
     ("Формат участия", "reg_q_attendance", lambda d: d.get("attendance_format") or "-"),
+    ("Неформальный день", "reg_q_informal_day", lambda d: d.get("informal_day") or "-"),
     ("Комментарии", "reg_q_comments", lambda d: d.get("comments") or "-"),
     ("Департамент", "reg_q_department", lambda d: d.get("department") or "-"),
     ("Роль AIESEC", "reg_q_aiesec_role", lambda d: d.get("aiesec_role") or "-"),
@@ -775,18 +797,13 @@ SHEET_COLUMNS = [
     ("Проживание", "reg_q_housing", lambda d: d.get("housing") or "-"),
     ("Общая кровать", "reg_q_bed_sharing", lambda d: d.get("bed_sharing") or "-"),
     ("Сосед по кровати", "reg_q_bed_partner", lambda d: d.get("bed_partner") or "-"),
+    ("Трансфер", "reg_q_transport", lambda d: d.get("transport") or "-"),
     ("CC-shop", "reg_q_cc_shop", lambda d: d.get("cc_shop") or "-"),
     ("Ожидания от орг", "reg_q_exp_organizers", lambda d: d.get("exp_organizers") or "-"),
     ("Ожидания от контента", "reg_q_exp_content", lambda d: d.get("exp_content") or "-"),
     ("Волонтёр", "reg_q_volunteer", lambda d: d.get("volunteer") or "-"),
     ("Дата приезда", "reg_q_arrival_date", lambda d: d.get("arrival_date") or "-"),
     ("Дата рождения", "reg_q_birth_date", lambda d: d.get("birth_date") or "-"),
-    ("Направление обучения", "reg_q_study_field", lambda d: d.get("study_field") or "-"),
-    ("Цель участия", "reg_q_goal", lambda d: d.get("goal") or "-"),
-    ("Форматы форума", "reg_q_formats", lambda d: d.get("formats") or "-"),
-    ("Амбассадор", "reg_q_ambassador", lambda d: "Да" if d.get("is_ambassador_candidate") else "-"),
-    ("ВК", "reg_q_vk", lambda d: d.get("vk_username") or "-"),
-    ("Трансфер", "reg_q_transport", lambda d: d.get("transport") or "-"),
     ("Дата план. оплаты", "reg_q_payment_date", lambda d: d.get("payment_plan_date") or "-"),
 ]
 
@@ -1140,12 +1157,8 @@ async def process_resume(message: types.Message, state: FSMContext, bot: Bot):
 
 @router.message(Registration.resume, F.text)
 async def process_resume_text(message: types.Message, state: FSMContext, bot: Bot):
-    # Tatiana: резюме можно либо файлом, либо текстом. Text branch stores resume_text.
+    # Tatiana: резюме можно либо файлом, либо текстом. Обязательно (без «Пропустить»).
     text = (message.text or "").strip()
-    if text == "Пропустить":
-        # Skip without a resume — finish the form, keep all previous answers.
-        await _advance("resume", message, state, bot)
-        return
     if not text:
         await message.answer("Напиши резюме текстом или прикрепи файл (PDF или DOCX).")
         return
@@ -1751,6 +1764,19 @@ async def finalize_registration(message: types.Message, state: FSMContext, bot: 
     except Exception as e:
         logger.error(f"Failed to clear reg_started for {message.from_user.id}: {e}")
 
+    # Phase 2 (D-01..D-04): decide approval status from form type + per-form setting, persist it.
+    # Считаем статус ДО записи в таблицу, чтобы колонка «Статус» (Таня п.5) заполнилась
+    # сразу правильным значением (Новая/Одобрена), а не дефолтом.
+    reg_mode = await get_setting("registration_mode") or "short"
+    full_setting = await get_setting("full_approval") or "manual"
+    short_setting = await get_setting("short_approval") or "auto"
+    status = _decide_status(reg_mode, full_setting, short_setting)
+    data["status"] = status
+    try:
+        await set_user_status(message.from_user.id, status)
+    except Exception as e:
+        logger.error(f"Failed to set status for {message.from_user.id}: {e}")
+
     # Fire-and-forget the Google Sheet write so the user is NOT blocked on a ~5s network
     # round-trip (auth + open + append, plus up to 3 retries with sleeps). append_to_sheet
     # is fail-soft and logs its own errors. Build the row inline (needs current settings),
@@ -1760,16 +1786,6 @@ async def finalize_registration(message: types.Message, state: FSMContext, bot: 
         asyncio.create_task(append_to_sheet(_sheet_row))
     except Exception as e:
         logger.error(f"Failed to schedule sheet append for {message.from_user.id}: {e}")
-
-    # Phase 2 (D-01..D-04): decide approval status from form type + per-form setting, persist it.
-    reg_mode = await get_setting("registration_mode") or "short"
-    full_setting = await get_setting("full_approval") or "manual"
-    short_setting = await get_setting("short_approval") or "auto"
-    status = _decide_status(reg_mode, full_setting, short_setting)
-    try:
-        await set_user_status(message.from_user.id, status)
-    except Exception as e:
-        logger.error(f"Failed to set status for {message.from_user.id}: {e}")
 
     # Admin notify: always for approved; for pending only when pending_notify_mode='instant' (D-15).
     notify_admins = status == "approved" or (
