@@ -14,7 +14,6 @@ No password is ever read, logged, or returned by this module — only the deep-l
 """
 import logging
 import re
-import uuid
 from urllib.parse import quote
 
 import aiohttp
@@ -83,7 +82,7 @@ async def upload_resume(bot, file_id: str, filename: str) -> str | None:
         buf.seek(0)
         content = buf.read()
 
-        remote = f"{uuid.uuid4().hex[:8]}_{_safe_name(filename)}"
+        remote = _safe_name(filename)
         if await _put_bytes(content, remote):
             return _file_link(remote)
         return None
@@ -109,7 +108,7 @@ async def upload_text_resume(text: str, filename: str) -> str | None:
             return None
 
         content = (text or "").encode("utf-8")
-        remote = f"{uuid.uuid4().hex[:8]}_{_safe_name(filename)}"
+        remote = _safe_name(filename)
         if await _put_bytes(content, remote):
             return _file_link(remote)
         return None
