@@ -28,7 +28,7 @@ See: .planning/PROJECT.md (updated 2026-06-25)
 Phase: 4 of 4 (Universal Modules)
 Plan: 0 of ? in current phase
 Status: Ready to execute
-Last activity: 2026-07-10 - Completed quick task 260710-wk6: Nextcloud resume upload (file resume → password-protected share link in DB + sheet, fail-soft)
+Last activity: 2026-07-11 - Completed quick task 260711-0c7: backfill script for old resumes → Nextcloud (scripts/backfill_resumes.py)
 
 Progress: [░░░░░░░░░░] 0%
 
@@ -94,6 +94,7 @@ None yet.
 | 260709-n19 | payment auto-reminders on/off toggle (admin) + non-payer broadcast segment (payment_status filter) | 2026-07-09 | d797549 | [260709-n19-payment-reminders-toggle-and-nonpayer-broadcast](./quick/260709-n19-payment-reminders-toggle-and-nonpayer-broadcast/) |
 | 260710-nkk | sheet columns in form order + «Статус»/«Резюме (текст)» columns + resume required (no skip) + resume text in admin card + status autosync on approve/reject + rebuild-sheet button with dropdown/color formatting | 2026-07-10 | 3c6c347 | [260710-nkk-sheet-cols-resume-status](./quick/260710-nkk-sheet-cols-resume-status/) |
 | 260710-wk6 | Nextcloud resume upload — file resume → WebDAV PUT + OCS password-protected public share link stored in `resume_url` column + «Резюме (ссылка)» sheet column; awaited-with-timeout, fully fail-soft (Nextcloud down never breaks reg); share password never persisted | 2026-07-10 | 37c3297 | [260710-wk6-nextcloud-resume-upload](./quick/260710-wk6-nextcloud-resume-upload/) |
+| 260711-0c7 | Backfill script `scripts/backfill_resumes.py` — uploads OLD delegates' resumes (have resume_file_id, no resume_url) to Nextcloud, writes resume_url in DB; `--dry-run`/`--limit`, per-user fail-soft, DB-only (reminds to press «Пересобрать таблицу») | 2026-07-11 | 7718a91 | [260711-0c7-backfill-old-resumes-to-nextcloud](./quick/260711-0c7-backfill-old-resumes-to-nextcloud/) |
 
 ## Deferred Items
 
