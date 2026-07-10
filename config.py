@@ -39,8 +39,12 @@ class Settings(BaseSettings):
     NEXTCLOUD_USER: str = ""
     NEXTCLOUD_APP_PASS: SecretStr | None = None
     NEXTCLOUD_FOLDER: str = "resumes"
-    NEXTCLOUD_SHARE_PASSWORD: SecretStr | None = None
+    NEXTCLOUD_SHARE_PASSWORD: SecretStr | None = None  # kept for compat; code no longer reads it
     NEXTCLOUD_VERIFY_TLS: bool = False    # False = allow self-signed certs (ssl=False)
+    # Public address used to build deep-links, e.g. "https://91.223.28.229:8443".
+    NEXTCLOUD_PUBLIC_URL: str = ""
+    # Token XXXX from the ONE manual public folder-share link /s/XXXX (folder `resumes`).
+    NEXTCLOUD_FOLDER_SHARE_TOKEN: str = ""
 
     class Config:
         env_file = ".env"
