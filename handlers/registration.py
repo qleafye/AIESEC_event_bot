@@ -673,8 +673,11 @@ async def _advance(after_step: str, message: types.Message, state: FSMContext, b
 
     if next_idx < len(enabled):
         step = data.get("_reg_step", 0) + 1
-        total = data.get("_reg_total", len(enabled))
-        await state.update_data(_reg_step=step)
+        # WR-01: recompute total fresh each step. _reg_total was captured in process_full_name
+        # before edu_conditional questions were unlocked, so a cached value produces bogus
+        # progress numbers (e.g. "12/9"). Re-derive and re-persist from the live enabled count.
+        total = len(enabled)
+        await state.update_data(_reg_step=step, _reg_total=total)
         await _ask_step(enabled[next_idx], message, state, step, total)
     else:
         # QW-01: show a summary + confirm keyboard before finalizing the full form (D-01).
@@ -1160,8 +1163,10 @@ async def cancel_registration(message: types.Message, state: FSMContext):
     )
 
 
-@router.callback_query(F.data == "reg_cancel_yes")
+@router.callback_query(F.data == "reg_cancel_yes", StateFilter(Registration))
 async def cancel_registration_confirm(callback: types.CallbackQuery, state: FSMContext):
+    # WR-05: state-scoped so a stale "Точно отменить?" button can only clear an active
+    # registration — never wipe unrelated FSM state (e.g. an admin mid-broadcast/settings).
     await state.clear()
     try:
         await callback.message.edit_reply_markup(reply_markup=None)
@@ -1174,7 +1179,7 @@ async def cancel_registration_confirm(callback: types.CallbackQuery, state: FSMC
     await callback.answer()
 
 
-@router.callback_query(F.data == "reg_cancel_no")
+@router.callback_query(F.data == "reg_cancel_no", StateFilter(Registration))
 async def cancel_registration_dismiss(callback: types.CallbackQuery):
     # Keep the FSM state untouched — the current step's question is still above, so
     # the user just carries on answering it.

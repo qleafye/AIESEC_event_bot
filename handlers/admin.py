@@ -349,6 +349,7 @@ SETTINGS_FIELDS = [
     ("source_options", "📢 Источники", "Отправьте варианты источников, каждый с новой строки"),
     ("reg_complete_text", "✅ После регистрации", "Текст, который участник увидит СРАЗУ после отправки анкеты (например «Поздравляем, заявка принята! Рассмотрим за 2-3 дня»). Поддерживается HTML."),
     ("approve_text", "🎉 После одобрения", "Отдельный текст, который участник увидит, когда менеджер ОДОБРИТ заявку. Поддерживается HTML."),
+    ("reject_text", "🚫 При отклонении", "Текст, который участник увидит, когда менеджер ОТКЛОНИТ заявку (перед указанной менеджером причиной). Оставьте пустым — стандартный «К сожалению, твоя заявка отклонена.»"),
     ("consent_button_text", "✅ Текст кнопки согласия", "Надпись на кнопке согласия (по умолчанию «Согласен(-на)»)."),
     ("pending_reminder_interval", "🕒 Тайминг батчей заявок", "Как часто бот присылает админам сводку «Заявок в ожидании: N» (режим «Пачкой»).\n\nВ СЕКУНДАХ. Примеры:\n900 = 15 мин\n1800 = 30 мин (по умолчанию)\n3600 = 1 час\n\nМеняется на лету, перезапуск не нужен."),
     # Phase 4: event modularity + consent + payment config (all default empty/off → live flow unchanged)
@@ -755,6 +756,10 @@ async def settings_photo_start(callback: types.CallbackQuery, state: FSMContext)
 
 @router.callback_query(F.data == "settings_cancel")
 async def cancel_edit_setting_callback(callback: types.CallbackQuery, state: FSMContext):
+    # WR-01: callbacks aren't covered by the message-level is_admin filter — re-check (D-06).
+    if callback.from_user.id not in config.ADMIN_IDS:
+        await callback.answer("Недостаточно прав", show_alert=True)
+        return
     await state.clear()
     text = await render_settings_text()
     await callback.message.edit_text(text, parse_mode="HTML", reply_markup=await build_settings_keyboard())
@@ -1044,6 +1049,7 @@ async def settings_edit_value(message: types.Message, state: FSMContext):
     else:
         value = (message.text or "").strip()
 
+    warning = ""
     if value == "-":
         await delete_setting(key)
     else:
@@ -1051,10 +1057,25 @@ async def settings_edit_value(message: types.Message, state: FSMContext):
         # Phase 4 (D-05): saving event_type applies the module-toggle preset.
         if key == "event_type":
             await _apply_event_type_preset(value.strip().lower())
+        # WR-02: "Отмена"/"Другое"/"Пропустить" are reserved control words in the registration
+        # flow — an option list whose line equals one becomes unreachable (it triggers cancel /
+        # "type your own" instead of being recorded). Warn the admin (the value is still saved).
+        if key.endswith("_options"):
+            reserved = {"отмена", "другое", "пропустить"}
+            clashes = sorted({
+                ln.strip() for ln in value.splitlines() if ln.strip().lower() in reserved
+            })
+            if clashes:
+                warning = (
+                    "\n\n⚠️ Внимание: варианты "
+                    + ", ".join(f"«{html_module.escape(c)}»" for c in clashes)
+                    + " совпадают со служебными словами бота и будут недоступны для выбора. "
+                    "Переименуйте их."
+                )
 
     await state.clear()
     text = await render_settings_text()
-    await message.answer(text, parse_mode="HTML", reply_markup=await build_settings_keyboard())
+    await message.answer(text + warning, parse_mode="HTML", reply_markup=await build_settings_keyboard())
 
 
 @router.callback_query(F.data == "admin_export_csv")
@@ -1212,6 +1233,10 @@ async def cmd_broadcast(message: types.Message, state: FSMContext):
 
 @router.callback_query(F.data == "broadcast_all", Broadcast.target_selection)
 async def process_broadcast_all(callback: types.CallbackQuery, state: FSMContext):
+    # WR-01: callbacks aren't covered by the message-level is_admin filter — re-check (D-06).
+    if callback.from_user.id not in config.ADMIN_IDS:
+        await callback.answer("Недостаточно прав", show_alert=True)
+        return
     await callback.answer()
     try:
         await callback.message.delete()
@@ -1226,6 +1251,10 @@ async def process_broadcast_all(callback: types.CallbackQuery, state: FSMContext
 
 @router.callback_query(F.data == "broadcast_local", Broadcast.target_selection)
 async def process_broadcast_local_file(callback: types.CallbackQuery, state: FSMContext):
+    # WR-01: callbacks aren't covered by the message-level is_admin filter — re-check (D-06).
+    if callback.from_user.id not in config.ADMIN_IDS:
+        await callback.answer("Недостаточно прав", show_alert=True)
+        return
     file_path = "data/broadcast_target.txt"
 
     if not os.path.exists(file_path):
@@ -1332,6 +1361,10 @@ async def process_broadcast_incomplete(callback: types.CallbackQuery, state: FSM
 
 @router.callback_query(F.data == "broadcast_cancel")
 async def cancel_broadcast_callback(callback: types.CallbackQuery, state: FSMContext):
+    # WR-01: callbacks aren't covered by the message-level is_admin filter — re-check (D-06).
+    if callback.from_user.id not in config.ADMIN_IDS:
+        await callback.answer("Недостаточно прав", show_alert=True)
+        return
     await state.clear()
     await callback.message.edit_text("Рассылка отменена.")
     await callback.answer()
@@ -1382,6 +1415,13 @@ async def _wait_and_send_album(media_group_id: str, users_ids: list, bot: Bot, s
             ))
 
     if not media:
+        # WR-04: unsupported-only media group — notify the admin and clear state instead of
+        # silently leaving the FSM parked in Broadcast.message with no feedback.
+        try:
+            await bot.send_message(admin_id, "⚠️ Рассылка отменена: неподдерживаемый тип вложения.")
+        except Exception:
+            pass
+        await state.clear()
         return
 
     count = 0
@@ -1521,10 +1561,11 @@ async def broadcast_schedule_message(message: types.Message, state: FSMContext):
         return
 
     photo = message.photo[-1].file_id if message.photo else None
-    if message.text:
+    # WR-03: html_text already falls back to caption+caption_entities when .text is empty, so
+    # it preserves bold/italic/link formatting for BOTH text and photo-caption broadcasts.
+    # Using raw message.caption here silently stripped entities the admin applied.
+    if message.text or message.caption:
         text = message.html_text
-    elif message.caption:
-        text = message.caption
     else:
         text = None
 
@@ -1564,7 +1605,13 @@ async def sched_cancel(callback: types.CallbackQuery):
     if callback.from_user.id not in config.ADMIN_IDS:
         await callback.answer("Недостаточно прав", show_alert=True)
         return
-    bid = int(callback.data.rsplit("_", 1)[1])
+    # WR-02: guard the int() parse like _parse_appr/_parse_rcpt do — malformed callback_data
+    # (empty suffix) must degrade gracefully, not raise and leave the button spinning.
+    try:
+        bid = int(callback.data.rsplit("_", 1)[1])
+    except ValueError:
+        await callback.answer("Некорректные данные.", show_alert=True)
+        return
     await cancel_scheduled_broadcast(bid)
     cancel_broadcast_job(bid)
     await callback.answer("Отменено")
@@ -2336,8 +2383,10 @@ async def appr_reject_reason(message: types.Message, state: FSMContext):
         logger.info(f"admin={message.from_user.id} action=reject user={tid} reason={reason!r}")
         try:
             prefix = await get_setting("reject_text") or "К сожалению, твоя заявка отклонена."
+            # WR-05: escape the admin-set prefix symmetrically with reason — an unescaped
+            # &/< in the setting would otherwise break every rejection message under HTML mode.
             await message.bot.send_message(
-                tid, f"{prefix}\n\n{html_module.escape(reason)}", parse_mode="HTML"
+                tid, f"{html_module.escape(prefix)}\n\n{html_module.escape(reason)}", parse_mode="HTML"
             )
         except Exception as e:
             logger.error(f"Failed to notify rejected user {tid}: {e}")
