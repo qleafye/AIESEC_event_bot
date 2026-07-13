@@ -38,5 +38,9 @@
   "features": {},
   "resolve_model_ids": "omit",
   "mode": "yolo",
-  "granularity": "standard"
+  "granularity": "standard",
+  "model_overrides": {
+    "gsd-planner": "opus",
+    "gsd-executor": "sonnet"
+  }
 }
