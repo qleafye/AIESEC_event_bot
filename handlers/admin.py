@@ -189,9 +189,9 @@ async def cmd_find_user(message: types.Message):
         text = (
             f"👤 <b>Пользователь найден:</b>\n"
             f"ID: <code>{user['telegram_id']}</code>\n"
-            f"Имя: {user['full_name']}\n"
-            f"Username: {user['username']}\n"
-            f"Email: {user['email']}\n"
+            f"Имя: {html_module.escape(str(user['full_name'] or ''))}\n"
+            f"Username: {html_module.escape(str(user['username'] or ''))}\n"
+            f"Email: {html_module.escape(str(user['email'] or ''))}\n"
             f"Регистрация: {user['registration_date']}"
         )
         await message.answer(text, parse_mode="HTML")
@@ -275,7 +275,7 @@ async def cmd_stats(message: types.Message):
     )
 
     for i, (uni, count) in enumerate(top_unis, 1):
-        text += f"{i}. {uni} — {count}\n"
+        text += f"{i}. {html_module.escape(str(uni))} — {count}\n"
 
     await message.answer(text, parse_mode="HTML")
 
@@ -299,7 +299,7 @@ async def show_admin_stats(callback: types.CallbackQuery):
     )
 
     for i, (uni, count) in enumerate(top_unis, 1):
-        text += f"{i}. {uni} — {count}\n"
+        text += f"{i}. {html_module.escape(str(uni))} — {count}\n"
 
     await callback.message.edit_text(text, parse_mode="HTML", reply_markup=build_admin_keyboard())
     await callback.answer()
@@ -327,7 +327,7 @@ async def show_admin_source_stats(callback: types.CallbackQuery):
     else:
         lines = ["📈 <b>Источники регистраций</b>", ""]
         for source, count in rows:
-            lines.append(f"• {source} — {count}")
+            lines.append(f"• {html_module.escape(str(source))} — {count}")
         text = "\n".join(lines)
 
     await callback.message.edit_text(text, parse_mode="HTML", reply_markup=build_admin_keyboard())

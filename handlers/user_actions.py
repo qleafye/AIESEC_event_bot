@@ -120,10 +120,10 @@ async def show_info_menu(message: types.Message):
 
     if event_date and place_name:
         text = "<b>Информация о мероприятии</b>\n\n"
-        text += f"🗓 <b>Дата:</b> {event_date}\n"
+        text += f"🗓 <b>Дата:</b> {html.escape(event_date)}\n"
         if event_time:
-            text += f"⌚ <b>Время:</b> {event_time}\n"
-        text += f"📍 <b>Место:</b> {place_name}"
+            text += f"⌚ <b>Время:</b> {html.escape(event_time)}\n"
+        text += f"📍 <b>Место:</b> {html.escape(place_name)}"
     else:
         text = (
             "Информация о мероприятии пока заполняется.\n\n"
@@ -136,9 +136,9 @@ async def info_date(callback: types.CallbackQuery):
     event_date = await get_setting("event_date")
     event_time = await get_setting("event_time")
     if event_date:
-        text = f"🗓 Форум пройдет <b>{event_date}</b>!"
+        text = f"🗓 Форум пройдет <b>{html.escape(event_date)}</b>!"
         if event_time:
-            text += f"\n⌚ Время: {event_time}"
+            text += f"\n⌚ Время: {html.escape(event_time)}"
     else:
         text = "🗓 Дата пока уточняется. Скоро сообщим! 🙂"
     await callback.message.answer(text, parse_mode="HTML")
@@ -149,9 +149,9 @@ async def info_place(callback: types.CallbackQuery):
     place_name = await get_setting("event_place_name")
     place_address = await get_setting("event_place_address")
     if place_name:
-        text = f"<b>Наша площадка — {place_name}!</b> 🚀"
+        text = f"<b>Наша площадка — {html.escape(place_name)}!</b> 🚀"
         if place_address:
-            text += f"\n\n📍 <b>Адрес:</b> {place_address}"
+            text += f"\n\n📍 <b>Адрес:</b> {html.escape(place_address)}"
 
         venue_photo = await get_setting("venue_photo_file_id")
         if venue_photo:
@@ -185,6 +185,7 @@ async def show_program(message: types.Message):
 
     program_file_id = await get_setting("program_photo_file_id")
     program_caption = await get_setting("program_caption")
+    program_caption = html.escape(program_caption) if program_caption else program_caption
 
     if program_file_id:
         try:
@@ -209,6 +210,7 @@ async def show_speakers(message: types.Message):
 
     speakers_file_id = await get_setting("speakers_photo_file_id")
     speakers_caption = await get_setting("speakers_caption")
+    speakers_caption = html.escape(speakers_caption) if speakers_caption else speakers_caption
 
     if speakers_file_id:
         try:
@@ -278,7 +280,7 @@ async def my_referrals(message: types.Message, bot: Bot):
         )
         return
 
-    names = "\n".join(f"• {name}" for name in referrals)
+    names = "\n".join(f"• {html.escape(str(name))}" for name in referrals)
     await message.answer(
         f"👥 <b>Твои приглашённые ({len(referrals)}):</b>\n\n{names}",
         parse_mode="HTML",
