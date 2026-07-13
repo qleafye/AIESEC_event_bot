@@ -92,7 +92,7 @@ async def show_leaderboard(message: types.Message):
     )
 
 
-@router.message(F.text == "💳 Загрузить чек")
+@router.message(F.text == "💳 Оплата")
 async def upload_receipt_entry(message: types.Message, bot: Bot):
     """Re-entry into the payment step for a user who deferred (or lost FSM state on a
     bot restart). The button only appears while a receipt is owed, but re-check here in
