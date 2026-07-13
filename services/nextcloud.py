@@ -27,7 +27,11 @@ def _safe_name(filename: str) -> str:
     """Strip any path, keep only [\\w.\\-], fall back to 'resume'. Extension preserved."""
     base = (filename or "").replace("\\", "/").split("/")[-1]
     base = re.sub(r"[^\w.\-]", "_", base).strip("_")
-    return base or "resume"
+    # IN-03: the regex keeps literal dots, so "..", "." survive — reject dot-only names that
+    # could resolve to a parent dir if ever used directly as the remote path segment.
+    if not base or re.fullmatch(r"\.+", base):
+        return "resume"
+    return base
 
 
 async def _put_bytes(content: bytes, remote_name: str) -> bool:
@@ -42,7 +46,9 @@ async def _put_bytes(content: bytes, remote_name: str) -> bool:
         config.NEXTCLOUD_APP_PASS.get_secret_value() if config.NEXTCLOUD_APP_PASS else "",
     )
     timeout = aiohttp.ClientTimeout(total=15)
-    put_url = f"{config.NEXTCLOUD_WEBDAV_URL.rstrip('/')}/{folder}/{remote_name}"
+    # IN-04: percent-encode the filename explicitly (matches _file_link's quote()), rather
+    # than relying on yarl's implicit encoding.
+    put_url = f"{config.NEXTCLOUD_WEBDAV_URL.rstrip('/')}/{folder}/{quote(remote_name)}"
     async with aiohttp.ClientSession(auth=auth, timeout=timeout) as session:
         async with session.put(put_url, data=content, ssl=ssl_arg) as resp:
             if resp.status not in (200, 201, 204):
