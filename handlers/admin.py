@@ -39,6 +39,7 @@ from database.db import (
     list_pending_broadcasts,
     cancel_scheduled_broadcast,
     count_and_list_filtered,
+    get_distinct_filter_values,
     get_receipt_pending_users,
     get_receipt_pending_count,
     update_payment_status,
@@ -1635,12 +1636,39 @@ _FILTER_FIELD_LABELS = {
     "position": "Позиция", "attendance_format": "Формат участия",
 }
 
-# Text-input filter fields (admin types the value); status/payment/date have dedicated pickers.
-_TEXT_FILTER_FIELDS = {
-    "city", "university", "source",
+# Fields whose value is chosen from a DB-distinct picker (buttons pulled from real data).
+# Everything in the filter menu except «Дата регистрации» (a before/after threshold).
+_PICKER_FIELDS = {
+    "city", "university", "source", "status", "payment_status",
     "local_committee", "department", "aiesec_role", "education_status",
     "course", "study_field", "position", "attendance_format",
 }
+
+# How many value buttons per picker page (long cyrillic values → 1 per row).
+_FILTER_PAGE_SIZE = 8
+
+
+def _value_picker_kb(field: str, options: list[str], page: int) -> InlineKeyboardMarkup:
+    """Paginated value picker. The value itself never goes in callback_data (cyrillic values
+    blow past Telegram's 64-byte limit) — buttons carry the option INDEX; the full list lives
+    in FSM state. payment_status shows human labels."""
+    total = len(options)
+    pages = max(1, (total + _FILTER_PAGE_SIZE - 1) // _FILTER_PAGE_SIZE)
+    page = max(0, min(page, pages - 1))
+    start = page * _FILTER_PAGE_SIZE
+    rows = []
+    for i, v in enumerate(options[start:start + _FILTER_PAGE_SIZE], start=start):
+        label = _PAYMENT_STATUS_LABELS.get(v, v) if field == "payment_status" else v
+        rows.append([InlineKeyboardButton(text=label[:60], callback_data=f"filter_opt:{i}")])
+    nav = []
+    if page > 0:
+        nav.append(InlineKeyboardButton(text="◀", callback_data=f"filter_optpage:{page - 1}"))
+    if page < pages - 1:
+        nav.append(InlineKeyboardButton(text="▶", callback_data=f"filter_optpage:{page + 1}"))
+    if nav:
+        rows.append(nav)
+    rows.append([InlineKeyboardButton(text="← Назад", callback_data="filter_back")])
+    return InlineKeyboardMarkup(inline_keyboard=rows)
 
 # Human labels for payment_status values (shown in the filter summary / value picker).
 _PAYMENT_STATUS_LABELS = {
@@ -1681,7 +1709,7 @@ def _filter_menu_kb(filters: list[dict]) -> InlineKeyboardMarkup:
         [InlineKeyboardButton(text="Статус", callback_data="filter_f_status"),
          InlineKeyboardButton(text="Источник", callback_data="filter_f_source")],
         [InlineKeyboardButton(text="Дата регистрации", callback_data="filter_f_date"),
-         InlineKeyboardButton(text="💰 Оплата", callback_data="filter_f_payment")],
+         InlineKeyboardButton(text="💰 Оплата", callback_data="filter_f_payment_status")],
     ]
     if filters:
         kb.append([InlineKeyboardButton(text="📊 Показать и отправить", callback_data="filter_count")])
@@ -1713,72 +1741,26 @@ async def broadcast_filter_start(callback: types.CallbackQuery, state: FSMContex
     await state.set_state(Broadcast.filter_field)
 
 
-@router.callback_query(F.data.in_({f"filter_f_{fld}" for fld in _TEXT_FILTER_FIELDS}), Broadcast.filter_field)
-async def filter_pick_text_field(callback: types.CallbackQuery, state: FSMContext):
+async def _show_value_picker(callback: types.CallbackQuery, state: FSMContext, field: str, prompt: str):
+    """Load distinct DB values for `field`, stash them in FSM, render the paginated picker."""
+    options = await get_distinct_filter_values(field)
+    if not options:
+        await callback.answer("В базе нет значений для этого поля.", show_alert=True)
+        return
+    await state.update_data(filter_options=options, filter_page=0)
+    await callback.answer()
+    await callback.message.edit_text(prompt, reply_markup=_value_picker_kb(field, options, 0))
+
+
+@router.callback_query(F.data.in_({f"filter_f_{fld}" for fld in _PICKER_FIELDS}), Broadcast.filter_field)
+async def filter_pick_field(callback: types.CallbackQuery, state: FSMContext):
+    """Every attribute field → a DB-distinct value picker (no free-text typing)."""
     if callback.from_user.id not in config.ADMIN_IDS:
         await callback.answer("Недостаточно прав", show_alert=True)
         return
     field = callback.data[len("filter_f_"):]
     await state.update_data(filter_pending_field=field, filter_pending_op=None)
-    await callback.answer()
-    await callback.message.edit_text(f"Введите значение для поля «{_FILTER_FIELD_LABELS[field]}»:")
-    await state.set_state(Broadcast.filter_value)
-
-
-@router.callback_query(F.data == "filter_f_status", Broadcast.filter_field)
-async def filter_pick_status(callback: types.CallbackQuery, state: FSMContext):
-    if callback.from_user.id not in config.ADMIN_IDS:
-        await callback.answer("Недостаточно прав", show_alert=True)
-        return
-    await callback.answer()
-    kb = InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="approved", callback_data="filter_v_status_approved")],
-        [InlineKeyboardButton(text="pending", callback_data="filter_v_status_pending")],
-        [InlineKeyboardButton(text="rejected", callback_data="filter_v_status_rejected")],
-    ])
-    await callback.message.edit_text("Выберите статус:", reply_markup=kb)
-
-
-@router.callback_query(F.data.startswith("filter_v_status_"), Broadcast.filter_field)
-async def filter_value_status(callback: types.CallbackQuery, state: FSMContext):
-    if callback.from_user.id not in config.ADMIN_IDS:
-        await callback.answer("Недостаточно прав", show_alert=True)
-        return
-    value = callback.data.rsplit("_", 1)[1]
-    data = await state.get_data()
-    filters = data.get("filters", [])
-    filters.append({"field": "status", "value": value})
-    await state.update_data(filters=filters)
-    await callback.answer()
-    await _render_filter_menu(callback.message, filters, edit=True)
-
-
-@router.callback_query(F.data == "filter_f_payment", Broadcast.filter_field)
-async def filter_pick_payment(callback: types.CallbackQuery, state: FSMContext):
-    if callback.from_user.id not in config.ADMIN_IDS:
-        await callback.answer("Недостаточно прав", show_alert=True)
-        return
-    await callback.answer()
-    # Colon separator (not '_') so «not_paid» survives split — see filter_value_payment.
-    kb = InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text=label, callback_data=f"filter_v_pay:{val}")]
-        for val, label in _PAYMENT_STATUS_LABELS.items()
-    ])
-    await callback.message.edit_text("Выберите статус оплаты:", reply_markup=kb)
-
-
-@router.callback_query(F.data.startswith("filter_v_pay:"), Broadcast.filter_field)
-async def filter_value_payment(callback: types.CallbackQuery, state: FSMContext):
-    if callback.from_user.id not in config.ADMIN_IDS:
-        await callback.answer("Недостаточно прав", show_alert=True)
-        return
-    value = callback.data.split(":", 1)[1]
-    data = await state.get_data()
-    filters = data.get("filters", [])
-    filters.append({"field": "payment_status", "value": value})
-    await state.update_data(filters=filters)
-    await callback.answer()
-    await _render_filter_menu(callback.message, filters, edit=True)
+    await _show_value_picker(callback, state, field, f"Выберите значение — «{_FILTER_FIELD_LABELS.get(field, field)}»:")
 
 
 @router.callback_query(F.data == "filter_f_date", Broadcast.filter_field)
@@ -1790,6 +1772,7 @@ async def filter_pick_date(callback: types.CallbackQuery, state: FSMContext):
     kb = InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text="После", callback_data="filter_d_after"),
          InlineKeyboardButton(text="До", callback_data="filter_d_before")],
+        [InlineKeyboardButton(text="← Назад", callback_data="filter_back")],
     ])
     await callback.message.edit_text("Зарегистрированы…", reply_markup=kb)
 
@@ -1801,33 +1784,71 @@ async def filter_pick_date_op(callback: types.CallbackQuery, state: FSMContext):
         return
     op = "after" if callback.data.endswith("after") else "before"
     await state.update_data(filter_pending_field="registration_date", filter_pending_op=op)
-    await callback.answer()
-    await callback.message.edit_text("Введите дату в формате ДД.ММ.ГГГГ:")
-    await state.set_state(Broadcast.filter_value)
+    opl = "после" if op == "after" else "до"
+    await _show_value_picker(callback, state, "registration_date", f"Зарегистрированы {opl} даты:")
 
 
-@router.message(Broadcast.filter_value, is_admin)
-async def filter_capture_value(message: types.Message, state: FSMContext):
+@router.callback_query(F.data.startswith("filter_optpage:"), Broadcast.filter_field)
+async def filter_page_nav(callback: types.CallbackQuery, state: FSMContext):
+    if callback.from_user.id not in config.ADMIN_IDS:
+        await callback.answer("Недостаточно прав", show_alert=True)
+        return
     data = await state.get_data()
     field = data.get("filter_pending_field")
-    op = data.get("filter_pending_op")
-    filters = data.get("filters", [])
-    raw = (message.text or "").strip()
-    if not field or not raw:
-        await message.answer("Пустое значение. Попробуйте ещё раз.")
+    options = data.get("filter_options", [])
+    if not field or not options:
+        await callback.answer("Список устарел, начните заново.", show_alert=True)
         return
+    try:
+        page = int(callback.data.split(":", 1)[1])
+    except ValueError:
+        await callback.answer()
+        return
+    await state.update_data(filter_page=page)
+    await callback.answer()
+    await callback.message.edit_reply_markup(reply_markup=_value_picker_kb(field, options, page))
+
+
+@router.callback_query(F.data.startswith("filter_opt:"), Broadcast.filter_field)
+async def filter_pick_value(callback: types.CallbackQuery, state: FSMContext):
+    if callback.from_user.id not in config.ADMIN_IDS:
+        await callback.answer("Недостаточно прав", show_alert=True)
+        return
+    data = await state.get_data()
+    field = data.get("filter_pending_field")
+    options = data.get("filter_options", [])
+    try:
+        idx = int(callback.data.split(":", 1)[1])
+    except ValueError:
+        await callback.answer("Некорректный выбор.", show_alert=True)
+        return
+    if not field or not (0 <= idx < len(options)):
+        await callback.answer("Значение больше не доступно, начните заново.", show_alert=True)
+        return
+    value = options[idx]
+    filters = data.get("filters", [])
     if field == "registration_date":
-        try:
-            normalized = datetime.strptime(raw, "%d.%m.%Y").strftime("%Y-%m-%d")
-        except ValueError:
-            await message.answer("❌ Дата в формате ДД.ММ.ГГГГ, например 01.06.2026")
-            return
-        filters.append({"field": "registration_date", "op": op, "value": normalized})
+        filters.append({"field": field, "op": data.get("filter_pending_op"), "value": value})
     else:
-        filters.append({"field": field, "value": raw})
-    await state.update_data(filters=filters, filter_pending_field=None, filter_pending_op=None)
-    await _render_filter_menu(message, filters, edit=False)
-    await state.set_state(Broadcast.filter_field)
+        filters.append({"field": field, "value": value})
+    await state.update_data(
+        filters=filters, filter_pending_field=None, filter_pending_op=None,
+        filter_options=[], filter_page=0,
+    )
+    await callback.answer()
+    await _render_filter_menu(callback.message, filters, edit=True)
+
+
+@router.callback_query(F.data == "filter_back", Broadcast.filter_field)
+async def filter_back(callback: types.CallbackQuery, state: FSMContext):
+    """Abandon the in-progress field pick, return to the filter menu."""
+    if callback.from_user.id not in config.ADMIN_IDS:
+        await callback.answer("Недостаточно прав", show_alert=True)
+        return
+    data = await state.get_data()
+    await state.update_data(filter_pending_field=None, filter_pending_op=None, filter_options=[], filter_page=0)
+    await callback.answer()
+    await _render_filter_menu(callback.message, data.get("filters", []), edit=True)
 
 
 @router.callback_query(F.data == "filter_count", Broadcast.filter_field)

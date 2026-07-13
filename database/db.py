@@ -812,6 +812,29 @@ def _build_filter_clause(filters: list[dict]) -> tuple[str, list]:
     return where, params
 
 
+async def get_distinct_filter_values(field: str) -> list[str]:
+    """Distinct non-empty values present in the users table for a whitelisted filter column —
+    feeds the broadcast value picker (buttons pulled from real data, no free-text typing).
+    `registration_date` returns distinct calendar dates (YYYY-MM-DD). Field is validated against
+    the same whitelist as _build_filter_clause, so the f-string column is never user-derived."""
+    if field == "registration_date":
+        sql = (
+            "SELECT DISTINCT date(registration_date) AS v FROM users "
+            "WHERE registration_date IS NOT NULL AND TRIM(registration_date) != '' ORDER BY v"
+        )
+    elif field in _FILTER_COLUMNS:
+        sql = (
+            f"SELECT DISTINCT {field} AS v FROM users "
+            f"WHERE {field} IS NOT NULL AND TRIM({field}) != '' ORDER BY v"
+        )
+    else:
+        return []
+    async with aiosqlite.connect(config.DB_PATH) as db:
+        async with db.execute(sql) as cursor:
+            rows = await cursor.fetchall()
+    return [str(r[0]) for r in rows if r[0] is not None and str(r[0]).strip()]
+
+
 async def count_and_list_filtered(filters: list[dict]) -> list[int]:
     """Materialize the matched telegram_id list; the count preview is len(...)."""
     where, params = _build_filter_clause(filters)
