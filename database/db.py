@@ -825,14 +825,14 @@ async def get_user_consents(user_id: int) -> list[str]:
 
 # ── Phase 4: payment receipt queue + status (PAY-05, D-10/D-12) ──────────────
 
-async def get_receipt_pending_users(limit: int = 50) -> list[dict]:
+async def get_receipt_pending_users(limit: int = 50, offset: int = 0) -> list[dict]:
     """Users awaiting receipt verification, oldest first (tinder queue source)."""
     async with aiosqlite.connect(config.DB_PATH) as db:
         db.row_factory = aiosqlite.Row
         async with db.execute(
             "SELECT telegram_id, full_name, payment_option, receipt_file_id, payment_status "
-            "FROM users WHERE payment_status = 'receipt_sent' ORDER BY rowid LIMIT ?",
-            (limit,),
+            "FROM users WHERE payment_status = 'receipt_sent' ORDER BY rowid LIMIT ? OFFSET ?",
+            (limit, offset),
         ) as cursor:
             return [dict(row) for row in await cursor.fetchall()]
 
