@@ -28,7 +28,7 @@ See: .planning/PROJECT.md (updated 2026-06-25)
 Phase: 4 of 4 (Universal Modules)
 Plan: 0 of ? in current phase
 Status: Ready to execute
-Last activity: 2026-07-11 - Completed quick task 260711-16c: резюме-ссылки как deep-links в одну шару-папку (убран пофайловый OCS) + имена по ФИО + текст-резюме .txt файлом
+Last activity: 2026-07-13 - Completed quick task 260713-i4p: payment UX — кнопка «💳 Загрузить чек» → «💳 Оплата», реквизиты теперь видны в «оплачу позже» и в пикере вариантов
 
 Progress: [░░░░░░░░░░] 0%
 
@@ -96,6 +96,7 @@ None yet.
 | 260710-wk6 | Nextcloud resume upload — file resume → WebDAV PUT + OCS password-protected public share link stored in `resume_url` column + «Резюме (ссылка)» sheet column; awaited-with-timeout, fully fail-soft (Nextcloud down never breaks reg); share password never persisted | 2026-07-10 | 37c3297 | [260710-wk6-nextcloud-resume-upload](./quick/260710-wk6-nextcloud-resume-upload/) |
 | 260711-0c7 | Backfill script `scripts/backfill_resumes.py` — uploads OLD delegates' resumes (have resume_file_id, no resume_url) to Nextcloud, writes resume_url in DB; `--dry-run`/`--limit`, per-user fail-soft, DB-only (reminds to press «Пересобрать таблицу») | 2026-07-11 | 7718a91 | [260711-0c7-backfill-old-resumes-to-nextcloud](./quick/260711-0c7-backfill-old-resumes-to-nextcloud/) |
 | 260711-16c | Sharing redesign — dropped per-file OCS shares; sheet links are now deep-links into ONE manual password-protected folder share (`{PUBLIC_URL}/s/{TOKEN}/download?path=/&files=`). ФИО-based filenames, text resumes uploaded as `.txt`. New config `NEXTCLOUD_PUBLIC_URL` + `NEXTCLOUD_FOLDER_SHARE_TOKEN`; backfill handles both types | 2026-07-11 | fe5cb96 | [260711-16c-resume-links-via-one-folder-share-deep-l](./quick/260711-16c-resume-links-via-one-folder-share-deep-l/) |
+| 260713-i4p | Payment UX — renamed menu button «💳 Загрузить чек» → «💳 Оплата» (label now reads as "payment", not just "upload"); requisites now surfaced in the pay-later defer message AND the multi-option picker (no longer hidden behind option selection); synced overdue-reminder + docstring button-name references. Reply-keyboard button text and handler filter kept byte-identical | 2026-07-13 | 41b8dfe | [260713-i4p-payment-ux-fixes-rename-zagruzit-chek-bu](./quick/260713-i4p-payment-ux-fixes-rename-zagruzit-chek-bu/) |
 
 ## Deferred Items
 
