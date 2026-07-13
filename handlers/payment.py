@@ -15,7 +15,7 @@ from aiogram.fsm.storage.base import StorageKey
 from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
 
 from config import config
-from database.db import get_setting, get_user, update_payment_status
+from database.db import get_setting, get_user, update_payment_status, set_payment_due
 from handlers.states import Registration
 from keyboards.builders import get_main_menu_kb
 
@@ -62,6 +62,16 @@ async def _resolve_requisites(telegram_id: int) -> str | None:
             if hit:
                 return hit
     return await get_setting("payment_requisites")
+
+
+def _format_requisites_block(requisites: str | None) -> str:
+    """WR-05: single source of truth for the requisites block — resolve/escape/format was
+    duplicated across 3 call sites (picker, defer, details), risking CR-01-class drift.
+    admin-entered requisites often contain & or < (e.g. "Сбербанк & Тинькофф"); without
+    escaping, parse_mode=HTML rejects the whole message. Returns "" when there's nothing to pay."""
+    if not requisites or not requisites.strip():
+        return ""
+    return f"📋 Реквизиты:\n{html.escape(requisites)}"
 
 
 # Inline "pay later" escape shown on the option picker and the requisites message.
@@ -118,6 +128,13 @@ async def _schedule_deadline_reminders(telegram_id: int):
         from datetime import datetime, timedelta
         from services.scheduler import schedule_payment_reminder
         deadline = datetime.strptime(deadline_str.strip(), "%d.%m.%Y %H:%M")
+        # WR-03: persist payment_due so a user who defers straight from the multi-option picker
+        # (never picking an option → payment_option stays NULL) is still caught by the overdue
+        # sweep, which gates on (payment_option IS NOT NULL OR payment_due IS NOT NULL).
+        try:
+            await set_payment_due(telegram_id, deadline_str.strip())
+        except Exception as e:
+            logger.error(f"Failed to persist payment_due for {telegram_id}: {e}")
         now = datetime.now()
         minus3d = deadline - timedelta(days=3)
         minus1d = deadline - timedelta(days=1)
@@ -140,12 +157,10 @@ async def start_payment_step(bot: Bot, telegram_id: int):
                 [InlineKeyboardButton(text=f"{label} — {price} ₽", callback_data=f"pay_option:{i}")]
                 for i, (label, price) in enumerate(options)
             ] + [[_PAY_LATER_BTN]])
-            requisites = await _resolve_requisites(telegram_id)
             text = "💳 Выбери вариант участия:"
-            if requisites and requisites.strip():
-                # CR-01: admin-entered requisites often contain & or < (e.g. "Сбербанк & Тинькофф");
-                # without escaping, parse_mode=HTML rejects the whole message.
-                text += f"\n\n📋 Реквизиты:\n{html.escape(requisites)}"
+            block = _format_requisites_block(await _resolve_requisites(telegram_id))
+            if block:
+                text += f"\n\n{block}"
             await bot.send_message(telegram_id, text, parse_mode="HTML", reply_markup=kb)
             return
         # Single / free path: skip selection, go straight to details.
@@ -181,32 +196,42 @@ async def process_payment_option(callback: types.CallbackQuery, state: FSMContex
         await callback.answer("Вариант больше не доступен.", show_alert=True)
         return
     label, price = options[idx]
-    await update_payment_status(callback.from_user.id, "not_paid", payment_option=label)
-    await _show_payment_details(callback.bot, callback.from_user.id, state, label, price)
-    await callback.answer()
+    # WR-01: fail-soft like start_payment_step, and guarantee callback.answer() via finally so
+    # a mid-flow error never leaves the tapped button spinning.
+    try:
+        await update_payment_status(callback.from_user.id, "not_paid", payment_option=label)
+        await _show_payment_details(callback.bot, callback.from_user.id, state, label, price)
+    except Exception as e:
+        logger.error(f"process_payment_option failed for {callback.from_user.id}: {e}")
+    finally:
+        await callback.answer()
 
 
 @router.callback_query(F.data == "pay_later")
 async def process_pay_later(callback: types.CallbackQuery, state: FSMContext):
     """Defer payment: clear the receipt-upload state, land on the main menu. The
     '💳 Оплата' menu button (gated on DB status) lets the user upload later."""
-    await state.clear()
-    # Deferring is exactly when reminders matter — schedule T-3/T-1 so a forgetful
-    # not_paid user still gets pinged (the whole point of this change).
-    await _schedule_deadline_reminders(callback.from_user.id)
-    requisites = await _resolve_requisites(callback.from_user.id)
-    parts = ["Ок! Оплатишь позже."]
-    if requisites and requisites.strip():
-        # CR-01: admin-entered requisites often contain & or < (e.g. "Сбербанк & Тинькофф");
-        # without escaping, parse_mode=HTML rejects the whole message.
-        parts.append(f"📋 Реквизиты:\n{html.escape(requisites)}")
-    parts.append("Кнопка «💳 Оплата» будет в меню, пока чек не отправлен.")
-    await callback.message.answer(
-        "\n\n".join(parts),
-        parse_mode="HTML",
-        reply_markup=await get_main_menu_kb(callback.from_user.id),
-    )
-    await callback.answer()
+    # WR-01: fail-soft + guaranteed callback.answer() (finally) — any DB/Telegram hiccup here
+    # must not leave the button spinning with the user stranded off the menu.
+    try:
+        await state.clear()
+        # Deferring is exactly when reminders matter — schedule T-3/T-1 so a forgetful
+        # not_paid user still gets pinged (the whole point of this change).
+        await _schedule_deadline_reminders(callback.from_user.id)
+        parts = ["Ок! Оплатишь позже."]
+        block = _format_requisites_block(await _resolve_requisites(callback.from_user.id))
+        if block:
+            parts.append(block)
+        parts.append("Кнопка «💳 Оплата» будет в меню, пока чек не отправлен.")
+        await callback.message.answer(
+            "\n\n".join(parts),
+            parse_mode="HTML",
+            reply_markup=await get_main_menu_kb(callback.from_user.id),
+        )
+    except Exception as e:
+        logger.error(f"process_pay_later failed for {callback.from_user.id}: {e}")
+    finally:
+        await callback.answer()
 
 
 async def _show_payment_details(bot: Bot, telegram_id: int, state: FSMContext, option_label: str, option_price: int):
@@ -227,10 +252,9 @@ async def _show_payment_details(bot: Bot, telegram_id: int, state: FSMContext, o
         f"Вариант: {html.escape(option_label)}",
         f"Сумма: {option_price} ₽\n",
     ]
-    if requisites:
-        # CR-01: admin-entered requisites often contain & or < (e.g. "Сбербанк & Тинькофф");
-        # without escaping, parse_mode=HTML rejects the whole message.
-        parts.append(f"📋 Реквизиты:\n{html.escape(requisites)}\n")
+    block = _format_requisites_block(requisites)  # WR-05: shared resolve/escape/format
+    if block:
+        parts.append(block + "\n")
     if deadline:
         parts.append(f"📅 Дедлайн: {html.escape(deadline)}\n")
     if penalties and penalties.strip():
