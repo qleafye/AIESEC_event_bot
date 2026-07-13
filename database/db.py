@@ -343,14 +343,14 @@ async def add_user(data: dict):
         await db.commit()
 
 async def get_user(telegram_id: int):
-    db_path = os.path.abspath(config.DB_PATH)
     async with aiosqlite.connect(config.DB_PATH) as db:
         db.row_factory = aiosqlite.Row
         async with db.execute('SELECT * FROM users WHERE telegram_id = ?', (telegram_id,)) as cursor:
             row = await cursor.fetchone()
             if row:
                 return dict(row)
-            logger.info(f"get_user: {telegram_id} not found in {db_path}")
+            # IN-01: only compute the abspath on the (rare) not-found logging path.
+            logger.info(f"get_user: {telegram_id} not found in {os.path.abspath(config.DB_PATH)}")
             return None
 
 async def get_user_by_username(username: str):
@@ -368,7 +368,9 @@ async def get_user_by_username(username: str):
 async def get_referrals(telegram_id: int) -> list[str]:
     async with aiosqlite.connect(config.DB_PATH) as db:
         async with db.execute(
-            "SELECT full_name FROM users WHERE referrer_id = ?", (telegram_id,)
+            # IN-04: coalesce NULL full_name so the referral list never renders "• None".
+            "SELECT COALESCE(NULLIF(full_name, ''), 'Без имени') FROM users WHERE referrer_id = ?",
+            (telegram_id,),
         ) as cursor:
             return [row[0] for row in await cursor.fetchall()]
 
@@ -684,10 +686,9 @@ async def get_pending_count() -> int:
 
 async def approve_all_pending() -> list[int]:
     """Flip every pending row to approved in one atomic statement; return the
-    telegram_ids that flipped (each once). RETURNING requires sqlite >= 3.35
-    (bundled in CPython 3.10+). Older sqlite fallback: BEGIN IMMEDIATE; SELECT
-    ids WHERE pending; UPDATE WHERE pending; COMMIT (the IMMEDIATE lock makes the
-    snapshot atomic)."""
+    telegram_ids that flipped (each once). IN-07: requires sqlite >= 3.35 for
+    RETURNING (bundled in CPython 3.10+, which the project already mandates) —
+    there is no pre-3.35 fallback path in this function."""
     async with aiosqlite.connect(config.DB_PATH) as db:
         async with db.execute(
             "UPDATE users SET status = 'approved' WHERE status = 'pending' RETURNING telegram_id"

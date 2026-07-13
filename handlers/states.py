@@ -43,7 +43,8 @@ class Registration(StatesGroup):
     consent_pending = State()   # waiting for «Принимаю» callback on a consent card
     date_input = State()        # waiting for a ДД.ММ.ГГГГ date-type step answer
     receipt_upload = State()    # waiting for PDF document or photo receipt
-    payment_option = State()    # waiting for user to pick a payment option
+    payment_option = State()    # IN-01: intentionally never set — process_payment_option runs
+                                # without an FSMContext (see handlers/payment.py). Kept for clarity.
     # YL'26 reg-flow additions
     select_input = State()      # configurable single-select step (city / study_field / …)
     multi_input = State()       # configurable multi-select step (goal / formats)

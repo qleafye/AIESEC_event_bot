@@ -236,7 +236,8 @@ def _status_col_index(sheet) -> int:
 def _apply_status_formatting_sync(sheet, num_rows: int):
     """Выпадашка (data validation ONE_OF_LIST) + условное форматирование (цвета) на
     колонку «Статус». strict=False — ручные/IMPORTRANGE-значения не блокируются.
-    Повторный вызов может накопить дубли conditional-format правил (безвредно визуально)."""
+    IN-08: удаляем существующие conditional-format правила перед добавлением, чтобы
+    повторные «Пересобрать таблицу» не копили дубли."""
     col0 = _status_col_index(sheet)
     if col0 < 0:
         return
@@ -248,7 +249,22 @@ def _apply_status_formatting_sync(sheet, num_rows: int):
         "startColumnIndex": col0,
         "endColumnIndex": col0 + 1,
     }
-    requests = [{
+    # IN-08: count existing conditional-format rules on this sheet and delete them (highest
+    # index first) in the same batch before re-adding, so rules don't accumulate over rebuilds.
+    existing_rules = 0
+    try:
+        meta = sheet.spreadsheet.fetch_sheet_metadata()
+        for s in meta.get("sheets", []):
+            if s.get("properties", {}).get("sheetId") == sheet.id:
+                existing_rules = len(s.get("conditionalFormats", []) or [])
+                break
+    except Exception:
+        existing_rules = 0
+    requests = [
+        {"deleteConditionalFormatRule": {"sheetId": sheet.id, "index": i}}
+        for i in range(existing_rules - 1, -1, -1)
+    ]
+    requests.append({
         "setDataValidation": {
             "range": grid,
             "rule": {
@@ -260,7 +276,7 @@ def _apply_status_formatting_sync(sheet, num_rows: int):
                 "strict": False,
             },
         }
-    }]
+    })
     for idx, (val, (r, g, b)) in enumerate(_STATUS_COLORS):
         requests.append({
             "addConditionalFormatRule": {

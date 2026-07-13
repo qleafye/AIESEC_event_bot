@@ -1,4 +1,4 @@
-from pydantic_settings import BaseSettings
+from pydantic_settings import BaseSettings, SettingsConfigDict
 from typing import List
 from pydantic import SecretStr
 
@@ -34,7 +34,8 @@ class Settings(BaseSettings):
 
     # Nextcloud (self-hosted) resume upload. All empty = feature off (fail-soft, no upload).
     # The share password is NEVER written to DB or sheet — only the resulting share URL is.
-    NEXTCLOUD_BASE_URL: str = ""          # e.g. "https://cloud.example.org"
+    # IN-02: NEXTCLOUD_BASE_URL removed — it was declared but never read (nextcloud.py uses
+    # WEBDAV_URL / PUBLIC_URL / FOLDER_SHARE_TOKEN). extra="ignore" tolerates it in old .env files.
     NEXTCLOUD_WEBDAV_URL: str = ""        # e.g. "https://cloud.example.org/remote.php/dav/files/botuser"
     NEXTCLOUD_USER: str = ""
     NEXTCLOUD_APP_PASS: SecretStr | None = None
@@ -49,9 +50,8 @@ class Settings(BaseSettings):
     # Token XXXX from the ONE manual public folder-share link /s/XXXX (folder `resumes`).
     NEXTCLOUD_FOLDER_SHARE_TOKEN: str = ""
 
-    class Config:
-        env_file = ".env"
-        env_file_encoding = 'utf-8'
-        extra = "ignore"  # tolerate undeclared .env keys (e.g. legacy flags) — don't crash boot
+    # IN-06: pydantic v2 idiom (was the deprecated inner `class Config`).
+    # extra="ignore" tolerates undeclared .env keys (e.g. legacy flags) — don't crash boot.
+    model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")
 
 config = Settings()

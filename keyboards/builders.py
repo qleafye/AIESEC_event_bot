@@ -20,7 +20,8 @@ async def get_main_menu_kb(telegram_id: int | None = None) -> ReplyKeyboardMarku
     kb = ReplyKeyboardBuilder()
     for key, text in MENU_BUTTONS:
         val = await get_setting(key)
-        if (val == "on") if val is not None else True:
+        # IN-02: button shown when the setting is unset (default on) or explicitly "on".
+        if val is None or val == "on":
             kb.button(text=text)
     # Persistent "upload receipt" entry — only while the user still owes one.
     # Lazy import avoids a circular import (payment imports get_main_menu_kb); fail-soft.

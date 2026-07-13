@@ -3,7 +3,7 @@ aiohttp-socks
 aiosqlite
 pydantic-settings
 python-dotenv
-gspread
+gspread>=6.0,<7.0
 google-auth
 apscheduler==3.11.2
 sqlalchemy>=2.0,<3.0
