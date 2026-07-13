@@ -28,7 +28,7 @@ See: .planning/PROJECT.md (updated 2026-06-25)
 Phase: 4 of 4 (Universal Modules)
 Plan: 0 of ? in current phase
 Status: Ready to execute
-Last activity: 2026-07-13 - Completed quick task 260713-i4p: payment UX — кнопка «💳 Загрузить чек» → «💳 Оплата», реквизиты теперь видны в «оплачу позже» и в пикере вариантов
+Last activity: 2026-07-13 - Completed quick task 260713-jgi: security B1a — HTML-injection + CSV-injection криты (escape user/admin текста, CSV formula-neutralizer)
 
 Progress: [░░░░░░░░░░] 0%
 
@@ -97,6 +97,7 @@ None yet.
 | 260711-0c7 | Backfill script `scripts/backfill_resumes.py` — uploads OLD delegates' resumes (have resume_file_id, no resume_url) to Nextcloud, writes resume_url in DB; `--dry-run`/`--limit`, per-user fail-soft, DB-only (reminds to press «Пересобрать таблицу») | 2026-07-11 | 7718a91 | [260711-0c7-backfill-old-resumes-to-nextcloud](./quick/260711-0c7-backfill-old-resumes-to-nextcloud/) |
 | 260711-16c | Sharing redesign — dropped per-file OCS shares; sheet links are now deep-links into ONE manual password-protected folder share (`{PUBLIC_URL}/s/{TOKEN}/download?path=/&files=`). ФИО-based filenames, text resumes uploaded as `.txt`. New config `NEXTCLOUD_PUBLIC_URL` + `NEXTCLOUD_FOLDER_SHARE_TOKEN`; backfill handles both types | 2026-07-11 | fe5cb96 | [260711-16c-resume-links-via-one-folder-share-deep-l](./quick/260711-16c-resume-links-via-one-folder-share-deep-l/) |
 | 260713-i4p | Payment UX — renamed menu button «💳 Загрузить чек» → «💳 Оплата» (label now reads as "payment", not just "upload"); requisites now surfaced in the pay-later defer message AND the multi-option picker (no longer hidden behind option selection); synced overdue-reminder + docstring button-name references. Reply-keyboard button text and handler filter kept byte-identical | 2026-07-13 | 41b8dfe | [260713-i4p-payment-ux-fixes-rename-zagruzit-chek-bu](./quick/260713-i4p-payment-ux-fixes-rename-zagruzit-chek-bu/) |
+| 260713-jgi | Security B1a — fixed all HTML-injection + CSV-injection criticals from all-phases review. html.escape'd registrant-controlled full_name/username/email/university/source in admin /find,/stats,«Источники» (CR-2/3/4), full_name in user_actions referrals (CR-5), admin event_date/place/captions in info msgs (C-WR-02), consent card admin string (A-WR-03); added `_csv_safe` formula-injection neutralizer (prefix `'` on cells starting =+-@\t\r) to db.export_users_csv (CR-6) + 10-case unit test. 131 tests pass (+10). admin.py uses `html as html_module` — kept distinct from plain `import html` elsewhere | 2026-07-13 | 215db42 | [260713-jgi-security-b1a-html-escape-user-admin-text](./quick/260713-jgi-security-b1a-html-escape-user-admin-text/) |
 
 ## Deferred Items
 
