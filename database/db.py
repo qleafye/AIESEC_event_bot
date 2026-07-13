@@ -439,6 +439,19 @@ CSV_HEADER_LABELS = {
 }
 
 
+_CSV_INJECTION_PREFIXES = ("=", "+", "-", "@", "\t", "\r")
+
+
+def _csv_safe(value):
+    """Neutralize CSV/Excel formula injection (CWE-1236): prefix a single quote to any
+    STRING cell that begins with a formula trigger so spreadsheet apps treat it as text.
+    Non-string cells (int/None) pass through unchanged. Export-side only — never mutates
+    stored data."""
+    if isinstance(value, str) and value.startswith(_CSV_INJECTION_PREFIXES):
+        return "'" + value
+    return value
+
+
 async def export_users_csv():
     """Full audit dump — every users column (incl. phone & service fields), with readable
     RU headers. Unmapped columns keep their raw name so new columns still export."""
@@ -447,6 +460,7 @@ async def export_users_csv():
             raw = [description[0] for description in cursor.description]
             rows = await cursor.fetchall()
             headers = [CSV_HEADER_LABELS.get(h, h) for h in raw]
+            rows = [tuple(_csv_safe(cell) for cell in row) for row in rows]
             return headers, rows
 
 
