@@ -2203,10 +2203,16 @@ def _appr_card_kb(tid: int, has_resume: bool, total: int) -> InlineKeyboardMarku
 
 async def _show_current_card(target: types.Message, state: FSMContext):
     """Render the oldest non-skipped pending card (DB-driven, restart-safe)."""
-    pending = await get_pending_users(limit=50)
     skipped = set((await state.get_data()).get("appr_skipped", []))
-    visible = [u for u in pending if u["telegram_id"] not in skipped]
     total = await get_pending_count()
+    offset = 0
+    visible: list[dict] = []
+    while not visible and offset < total:
+        batch = await get_pending_users(limit=50, offset=offset)
+        if not batch:
+            break
+        visible = [u for u in batch if u["telegram_id"] not in skipped]
+        offset += len(batch)
     if not visible:
         await target.answer("✅ Заявок нет.", reply_markup=build_admin_keyboard())
         return
@@ -2436,10 +2442,16 @@ def _rcpt_card_kb(uid: int, has_receipt: bool, total: int) -> InlineKeyboardMark
 
 
 async def _show_current_receipt_card(target: types.Message, state: FSMContext):
-    pending = await get_receipt_pending_users(limit=50)
     skipped = set((await state.get_data()).get("rcpt_skipped", []))
-    visible = [u for u in pending if u["telegram_id"] not in skipped]
     total = await get_receipt_pending_count()
+    offset = 0
+    visible: list[dict] = []
+    while not visible and offset < total:
+        batch = await get_receipt_pending_users(limit=50, offset=offset)
+        if not batch:
+            break
+        visible = [u for u in batch if u["telegram_id"] not in skipped]
+        offset += len(batch)
     if not visible:
         await target.answer("✅ Чеков на проверке нет.", reply_markup=build_admin_keyboard())
         return
