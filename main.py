@@ -12,10 +12,11 @@ from services.reminders import pending_reminder_loop
 from services.scheduler import init_scheduler
 from services.allowlist import refresh_allowlist
 from services.sheets import ensure_sheet_header
-from handlers.registration import active_sheet_headers
+from handlers.registration import active_sheet_headers, set_sheet_schema
 from aiogram.client.default import DefaultBotProperties
 from aiogram.client.session.aiohttp import AiohttpSession
 from aiogram.enums import ParseMode
+from aiogram.types import ErrorEvent
 
 def _configure_logging():
     """Full detail → rotating file on a mounted volume (survives container recreate,
@@ -56,7 +57,14 @@ async def main():
 
     # Ensure the Google Sheet has a column-name header row (fail-soft, off-thread).
     # Only the enabled-question columns — set the event type/preset before delegates register.
-    asyncio.create_task(ensure_sheet_header(await active_sheet_headers()))
+    _hdrs = await active_sheet_headers()
+    # CR-9: freeze the header snapshot alongside the physical header write so appended rows
+    # stay aligned even if a question is toggled mid-event. Fail-soft — never blocks startup.
+    try:
+        await set_sheet_schema(_hdrs)
+    except Exception:
+        logger.warning("Failed to snapshot sheet schema at startup", exc_info=True)
+    asyncio.create_task(ensure_sheet_header(_hdrs))
     
     default = DefaultBotProperties(parse_mode=ParseMode.HTML)
     
@@ -67,7 +75,19 @@ async def main():
 
     bot = Bot(token=config.BOT_TOKEN.get_secret_value(), default=default, session=session)
     dp = Dispatcher(storage=MemoryStorage())
-    
+
+    # CR-8: global error handler. Without this, any unhandled exception in a handler is
+    # silently dropped (the update just vanishes). Log the exception WITH the offending
+    # update so failures are visible, and fail soft (return True = handled).
+    @dp.errors()
+    async def _on_update_error(event: ErrorEvent):
+        logger.error("Unhandled update error: %s", event.exception, exc_info=event.exception)
+        try:
+            logger.error("Failing update: %s", event.update.model_dump_json(exclude_none=True))
+        except Exception:
+            pass
+        return True
+
     # Register routers
     payment.init_payment_module(dp.storage)  # out-of-handler FSMContext for free/single-option path
     dp.include_router(admin.router) # Admin first to intercept commands

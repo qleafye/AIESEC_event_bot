@@ -78,3 +78,73 @@ def test_receipt_pending_users_offset_default_unchanged(tmp_path):
     asyncio.run(db.update_payment_status(1, "receipt_sent", receipt_file_id="F1"))
     pending = asyncio.run(db.get_receipt_pending_users())
     assert [p["telegram_id"] for p in pending] == [1]
+
+
+# ── CR-8: Unicode-digit-safe int parsing ──────────────────────────────────────
+
+def test_extract_referrer_id_rejects_unicode_digits():
+    # str.isdigit() returns True for these; int() would have raised ValueError → crash.
+    assert reg._extract_referrer_id("²", 999) is None
+    assert reg._extract_referrer_id("①", 999) is None
+    assert reg._extract_referrer_id("１２３", 999) is None  # fullwidth digits
+
+
+def test_extract_referrer_id_valid_and_guards():
+    assert reg._extract_referrer_id("123", 999) == 123
+    assert reg._extract_referrer_id("123", 123) is None   # self-referral guard
+    assert reg._extract_referrer_id("abc", 1) is None
+    assert reg._extract_referrer_id("", 1) is None
+    assert reg._extract_referrer_id(None, 1) is None
+
+
+def test_parse_age_unicode_and_range():
+    assert reg._parse_age("²") is None            # Unicode digit → no crash, rejected
+    assert reg._parse_age("①") is None
+    assert reg._parse_age("25") == 25
+    assert reg._parse_age("5") is None            # below 10
+    assert reg._parse_age("200") is None          # above 120
+    assert reg._parse_age("abc") is None
+    assert reg._parse_age("") is None
+    assert reg._parse_age(None) is None
+
+
+# ── CR-7: stale/foreign consent-tap identity guard ────────────────────────────
+
+def test_consent_key_matches_rejects_stale_and_empty():
+    # A tap advances only when it matches the currently-active consent key.
+    assert reg._consent_key_matches("personal_data", "personal_data") is True
+    assert reg._consent_key_matches("photo", "personal_data") is False   # stale re-tap
+    assert reg._consent_key_matches("personal_data", None) is False      # no active consent
+    assert reg._consent_key_matches(None, "personal_data") is False
+
+
+# ── CR-9: frozen sheet-schema snapshot alignment ──────────────────────────────
+
+def test_sheet_row_aligns_to_frozen_schema_after_toggle(tmp_path):
+    _use_tmp_db(tmp_path)
+    asyncio.run(db.init_db())
+
+    # Enable the Телефон question, freeze the schema to the header actually written.
+    asyncio.run(db.set_setting("reg_q_phone", "on"))
+    full = asyncio.run(reg.active_sheet_headers())
+    asyncio.run(reg.set_sheet_schema(full))
+    assert "Телефон" in full
+
+    # Admin toggles Телефон OFF mid-event — live headers shrink, but the frozen snapshot must not.
+    asyncio.run(db.set_setting("reg_q_phone", "off"))
+    live = asyncio.run(reg.active_sheet_headers())
+    assert "Телефон" not in live
+    assert len(live) < len(full)
+
+    # A row built now must still align to the FROZEN header (same width/order), not live.
+    row = asyncio.run(reg.active_sheet_row({"telegram_id": 7, "phone": "+7900"}))
+    assert len(row) == len(full)
+    assert asyncio.run(reg.get_sheet_schema()) == full
+
+
+def test_sheet_schema_falls_back_to_live_when_unset(tmp_path):
+    # No snapshot persisted → behaves exactly like the old live active_sheet_headers().
+    _use_tmp_db(tmp_path)
+    asyncio.run(db.init_db())
+    live = asyncio.run(reg.active_sheet_headers())
+    assert asyncio.run(reg.get_sheet_schema()) == live

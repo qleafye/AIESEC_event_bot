@@ -54,7 +54,7 @@ from services.scheduler import (
 from services.allowlist import refresh_allowlist, allowlist_size
 from handlers.states import Broadcast, EditSetting, Approval, ReceiptReview
 from keyboards.builders import get_cancel_kb, MENU_BUTTONS, get_main_menu_kb
-from handlers.registration import REG_FLOW, REG_DEFAULTS, REG_LABELS, REG_PRESETS, REG_CATEGORIES, SHEET_HEADERS, STATUS_LABELS, _build_sheet_row, active_sheet_headers, _sheet_value_map, approve_user, dropout_step_label
+from handlers.registration import REG_FLOW, REG_DEFAULTS, REG_LABELS, REG_PRESETS, REG_CATEGORIES, SHEET_HEADERS, STATUS_LABELS, _build_sheet_row, active_sheet_headers, set_sheet_schema, _sheet_value_map, approve_user, dropout_step_label
 
 router = Router()
 logger = logging.getLogger(__name__)
@@ -829,6 +829,9 @@ async def rebuild_sheet(callback: types.CallbackQuery):
                 reply_markup=build_admin_keyboard(),
             )
             return
+        # CR-9: rebuild is the re-sync point — freeze the snapshot to the header just written
+        # so subsequent registrations align to the rebuilt physical header.
+        await set_sheet_schema(headers)
         await callback.message.edit_text(
             f"✅ Таблица пересобрана!\n\n"
             f"Строк записано: <b>{count}</b>\n"

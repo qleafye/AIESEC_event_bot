@@ -1,4 +1,5 @@
 import asyncio
+import json
 import logging
 import html
 from datetime import datetime
@@ -12,7 +13,7 @@ from aiogram.types import FSInputFile, ReplyKeyboardRemove, InlineKeyboardMarkup
 from aiogram.utils.keyboard import ReplyKeyboardBuilder
 
 from config import config
-from database.db import add_user, get_user, get_setting, mark_reg_started, clear_reg_started, set_reg_step, set_user_subscribed, set_user_status, record_user_consent
+from database.db import add_user, get_user, get_setting, set_setting, mark_reg_started, clear_reg_started, set_reg_step, set_user_subscribed, set_user_status, record_user_consent
 from handlers.states import Registration
 from keyboards.builders import (
     get_main_menu_kb,
@@ -687,12 +688,31 @@ def _extract_referrer_id(command_args: str | None, current_user_id: int) -> int 
     if not command_args:
         return None
     arg = command_args.strip()
-    if not arg.isdigit():
+    # CR-8: str.isdigit() accepts Unicode digits — some (²/①) crash int() with an unhandled
+    # ValueError, others (fullwidth １２３) parse to a surprising value. Require plain ASCII
+    # digits so only a normal Telegram id is accepted; anything else yields None, never a crash.
+    if not (arg.isascii() and arg.isdigit()):
         return None
     referrer_id = int(arg)
     if referrer_id == current_user_id:
         return None
     return referrer_id
+
+
+def _parse_age(raw: str | None) -> int | None:
+    """CR-8: ASCII-digit-safe age parse. Returns the age for a plain 10..120 integer, else
+    None (non-numeric, Unicode digits like ²/①, or out of range) — never raises."""
+    raw = (raw or "").strip()
+    if not (raw.isascii() and raw.isdigit()):
+        return None
+    age = int(raw)
+    return age if 10 <= age <= 120 else None
+
+
+def _consent_key_matches(tapped: str | None, active: str | None) -> bool:
+    """CR-7: a consent tap is valid only for the currently-active consent step. A stale re-tap
+    of an earlier card (scrolled up) has a key that no longer matches _consent_key → rejected."""
+    return bool(active) and tapped == active
 
 
 def _extract_source_tag(command_args: str | None) -> str | None:
@@ -841,9 +861,35 @@ async def active_sheet_headers() -> list[str]:
     return out
 
 
+async def set_sheet_schema(headers: list[str]) -> None:
+    """CR-9: persist the header snapshot so appended rows stay aligned to the PHYSICAL header
+    written to the sheet, even if question toggles change mid-event. Fail-soft — a bot_settings
+    hiccup must never block startup or a rebuild."""
+    try:
+        await set_setting("sheet_header_schema", json.dumps(headers, ensure_ascii=False))
+    except Exception:
+        logger.warning("Failed to persist sheet_header_schema", exc_info=True)
+
+
+async def get_sheet_schema() -> list[str]:
+    """Frozen header snapshot (set at header write / rebuild). Falls back to the live
+    active_sheet_headers() when no snapshot exists or it is malformed — zero migration risk
+    for deployments that predate the snapshot."""
+    raw = await get_setting("sheet_header_schema")
+    if raw:
+        try:
+            parsed = json.loads(raw)
+            if isinstance(parsed, list) and parsed:
+                return [str(h) for h in parsed]
+        except Exception:
+            pass
+    return await active_sheet_headers()
+
+
 async def active_sheet_row(data: dict) -> list:
-    """Row projected onto the active (enabled) columns, aligned to active_sheet_headers()."""
-    headers = await active_sheet_headers()
+    """Row projected onto the FROZEN sheet schema (CR-9), aligned to the header actually on the
+    sheet. Name-based projection; falls back to live headers when no snapshot is set."""
+    headers = await get_sheet_schema()
     values = _sheet_value_map(data)
     return [values.get(h, "-") for h in headers]
 
@@ -1289,10 +1335,21 @@ async def process_ambassador(message: types.Message, state: FSMContext, bot: Bot
 @router.callback_query(F.data.startswith("consent_accept:"), Registration.consent_pending)
 async def process_consent_accept(callback: types.CallbackQuery, state: FSMContext, bot: Bot):
     consent_key = callback.data.split(":", 1)[1]
+    data = await state.get_data()
+    # CR-7: only the currently-active consent may advance the flow. A stale re-tap of an
+    # earlier consent card (user scrolled up) carries an old key → ignore silently, record
+    # nothing, do not advance. This guarantees every required consent is accepted in order.
+    if not _consent_key_matches(consent_key, data.get("_consent_key")):
+        await callback.answer()
+        return
     await record_user_consent(callback.from_user.id, consent_key)  # D-02 audit row
     await callback.answer("✅ Принято")
+    # Defense-in-depth: disable the tapped card's button so it can't be re-used.
+    try:
+        await callback.message.edit_reply_markup(reply_markup=None)
+    except Exception:
+        pass
     # Consents run before ФИО: walk the consent queue, then ask ФИО.
-    data = await state.get_data()
     queue = data.get("_consent_queue", [])
     i = data.get("_consent_i", 0) + 1
     if i < len(queue):
@@ -1358,12 +1415,8 @@ async def process_full_name(message: types.Message, state: FSMContext, bot: Bot)
 
 @router.message(Registration.age)
 async def process_age(message: types.Message, state: FSMContext, bot: Bot):
-    raw_age = (message.text or "").strip()
-    if not raw_age.isdigit():
-        await message.answer("Возраст должен быть числом. Попробуй еще раз.")
-        return
-    age = int(raw_age)
-    if age < 10 or age > 120:
+    age = _parse_age(message.text)
+    if age is None:
         await message.answer("Укажи корректный возраст числом от 10 до 120.")
         return
     await state.update_data(age=age)
