@@ -28,7 +28,7 @@ async def get_main_menu_kb(telegram_id: int | None = None) -> ReplyKeyboardMarku
         try:
             from handlers.payment import should_offer_receipt_upload
             if await should_offer_receipt_upload(telegram_id):
-                kb.button(text="💳 Загрузить чек")
+                kb.button(text="💳 Оплата")
         except Exception:
             pass
     kb.adjust(2)
