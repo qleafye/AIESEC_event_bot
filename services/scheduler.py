@@ -83,7 +83,11 @@ async def init_scheduler(bot):
 
     _scheduler = AsyncIOScheduler(
         jobstores={"default": SQLAlchemyJobStore(url=_JOBSTORE_URL)},
-        job_defaults={"misfire_grace_time": 3600, "coalesce": True},
+        # WR-04: 1h grace silently DROPPED any date job (scheduled broadcast / payment
+        # reminder) whose run_date passed during >1h of downtime — the job never fired, the
+        # broadcast row stayed 'pending' forever, no alert. 24h covers realistic deploy/crash
+        # windows; send_payment_reminder self-guards on paid/receipt_sent so a late fire is safe.
+        job_defaults={"misfire_grace_time": 86400, "coalesce": True},
     )
 
     # ── interval jobs (registered fresh each boot; replace_existing avoids dupes) ──
@@ -300,9 +304,18 @@ async def sync_incomplete_sheet_job():
     try:
         from database.db import get_incomplete_rows
         from services.sheets import sync_named_worksheet
+        from handlers.registration import dropout_step_label
         rows = await get_incomplete_rows()
-        headers = ["ID Telegram", "Username", "Начал регистрацию"]
-        await sync_named_worksheet("Незавершённые", headers, rows)
+        # WR-01: get_incomplete_rows returns 4-tuples (tid, username, started_at, last_step).
+        # Match the admin-triggered export: 4 headers + human-readable step label (not the raw
+        # internal step_key). Without this the 2h auto-sync overwrote the labeled manual export
+        # with a narrower, unlabeled sheet each cycle.
+        headers = ["ID Telegram", "Username", "Начал регистрацию", "Остановился на"]
+        sheet_rows = [
+            (tid, uname, started, dropout_step_label(step))
+            for tid, uname, started, step in rows
+        ]
+        await sync_named_worksheet("Незавершённые", headers, sheet_rows)
     except Exception as e:
         logger.error(f"sync_incomplete_sheet_job failed: {e}")
 

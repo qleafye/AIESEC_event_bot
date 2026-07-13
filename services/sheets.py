@@ -1,5 +1,6 @@
 import asyncio
 import logging
+import threading
 
 import gspread
 from config import config
@@ -15,27 +16,35 @@ RETRY_DELAYS = [5, 15, 30]
 # ~3 round-trips per registration. google-auth refreshes the token on the cached client,
 # so the handle stays valid; _reset_sheet_cache() drops it after a failure to force re-auth.
 _sheet = None
+# WR-05: sheet ops run across worker threads (asyncio.to_thread), so the check-then-set in
+# _get_sheet is a TOCTOU race — two concurrent ops could both build a fresh client. Guard with
+# a threading.Lock (NOT asyncio.Lock, which is single-thread only).
+_sheet_lock = threading.Lock()
 
 
 def _get_sheet():
     global _sheet
     if _sheet is not None:
         return _sheet
-    gc = gspread.service_account(filename=config.GOOGLE_CREDENTIALS_FILE)
-    sh = gc.open_by_key(config.GOOGLE_SHEET_ID)
-    # Defensively strip stray quotes some .env parsers keep around the value.
-    tab = (config.GOOGLE_SHEET_TAB or "").strip().strip('"').strip("'").strip()
-    if not tab:
-        _sheet = sh.sheet1  # historical default: first tab by position
+    with _sheet_lock:
+        # Re-check inside the lock — another thread may have built it while we waited.
+        if _sheet is not None:
+            return _sheet
+        gc = gspread.service_account(filename=config.GOOGLE_CREDENTIALS_FILE)
+        sh = gc.open_by_key(config.GOOGLE_SHEET_ID)
+        # Defensively strip stray quotes some .env parsers keep around the value.
+        tab = (config.GOOGLE_SHEET_TAB or "").strip().strip('"').strip("'").strip()
+        if not tab:
+            _sheet = sh.sheet1  # historical default: first tab by position
+            return _sheet
+        # Target the configured tab by name; auto-create it if the spreadsheet doesn't
+        # have it yet (mirrors the «Незавершённые» tab behaviour) so a fresh work-sheet
+        # doesn't silently drop every write with WorksheetNotFound.
+        try:
+            _sheet = sh.worksheet(tab)
+        except gspread.WorksheetNotFound:
+            _sheet = sh.add_worksheet(title=tab, rows=1000, cols=30)
         return _sheet
-    # Target the configured tab by name; auto-create it if the spreadsheet doesn't
-    # have it yet (mirrors the «Незавершённые» tab behaviour) so a fresh work-sheet
-    # doesn't silently drop every write with WorksheetNotFound.
-    try:
-        _sheet = sh.worksheet(tab)
-    except gspread.WorksheetNotFound:
-        _sheet = sh.add_worksheet(title=tab, rows=1000, cols=30)
-    return _sheet
 
 
 def _reset_sheet_cache():
@@ -111,7 +120,9 @@ async def append_to_sheet(data: list):
     for attempt in range(MAX_RETRIES):
         try:
             await asyncio.to_thread(_append_to_sheet_sync, data)
-            logger.info(f"Successfully appended to Google Sheet: {data}")
+            # WR-06: log only the id, not the full row — data carries PII (phone/email/name)
+            # and the file handler retains 5×10MB rotated logs on disk.
+            logger.info(f"Successfully appended row for telegram_id={(data[0] if data else '?')!r} to Google Sheet")
             return
         except Exception as e:
             _reset_sheet_cache()  # drop possibly-stale client/handle before retrying
@@ -119,7 +130,7 @@ async def append_to_sheet(data: list):
             logger.warning(f"Sheet append attempt {attempt + 1}/{MAX_RETRIES} failed: {e}. Retrying in {delay}s...")
             await asyncio.sleep(delay)
 
-    logger.error(f"Failed to append to Google Sheet after {MAX_RETRIES} attempts: {data}")
+    logger.error(f"Failed to append to Google Sheet after {MAX_RETRIES} attempts for telegram_id={(data[0] if data else '?')!r}")
 
 
 async def ensure_sheet_header(headers: list[str]):
