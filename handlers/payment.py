@@ -281,7 +281,7 @@ async def _show_payment_details(bot: Bot, telegram_id: int, state: FSMContext, o
 
 
 @router.message(Registration.receipt_upload, F.document)
-async def process_receipt_document(message: types.Message, state: FSMContext, bot: Bot):
+async def process_receipt_document(message: types.Message, state: FSMContext):  # IN-03: bot param was unused
     if message.document.mime_type != "application/pdf":
         await message.answer(
             "❌ Принимается только PDF-документ. Для скриншота используй функцию отправки фото."
@@ -291,7 +291,7 @@ async def process_receipt_document(message: types.Message, state: FSMContext, bo
 
 
 @router.message(Registration.receipt_upload, F.photo)
-async def process_receipt_photo(message: types.Message, state: FSMContext, bot: Bot):
+async def process_receipt_photo(message: types.Message, state: FSMContext):  # IN-03: bot param was unused
     await _finalize_receipt(message, state, message.photo[-1].file_id)  # highest-res
 
 

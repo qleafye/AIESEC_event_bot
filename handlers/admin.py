@@ -82,11 +82,11 @@ def is_admin(message: types.Message):
 
 def _parse_coins_amount(token: str) -> int | None:
     """Parse a signed coin amount like '+10', '-3', '10'. None on failure."""
-    if not token:
+    token = (token or "").strip()
+    if not token:  # IN-03: check emptiness AFTER strip so a whitespace-only token can't IndexError
         return None
-    token = token.strip()
     body = token[1:] if token[0] in "+-" else token
-    if not body.isdigit():
+    if not (body.isascii() and body.isdigit()):
         return None
     value = int(body)
     return -value if token[0] == "-" else value
@@ -1483,7 +1483,7 @@ async def process_broadcast(message: types.Message, state: FSMContext, bot: Bot)
     count = 0
     blocked = 0
 
-    status_msg = await message.answer(f"Начинаю рассылку на {len(users_ids)} пользователей...")
+    await message.answer(f"Начинаю рассылку на {len(users_ids)} пользователей...")  # IN-01: was assigned to unused status_msg
 
     for chat_id in users_ids:
         retried_ok = None
@@ -1590,7 +1590,9 @@ async def cmd_scheduled(message: types.Message):
         await message.answer("Нет запланированных рассылок.")
         return
     for row in rows:
-        preview = (row.get("text") or "(фото)")[:60]
+        # IN-02: row["text"] was stored as HTML (message.html_text at schedule time). Strip the
+        # tags for a clean plain-text preview instead of escaping them into visible &lt;b&gt; noise.
+        preview = re.sub(r"<[^>]+>", "", row.get("text") or "(фото)")[:60]
         kb = InlineKeyboardMarkup(inline_keyboard=[[
             InlineKeyboardButton(text="❌ Отменить", callback_data=f"sched_cancel_{row['id']}")
         ]])

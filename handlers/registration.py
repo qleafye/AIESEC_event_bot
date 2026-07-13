@@ -1831,7 +1831,9 @@ async def finalize_registration(message: types.Message, state: FSMContext, bot: 
     data.setdefault("expectations", "-")
     data.setdefault("local_committee", "-")
     data.setdefault("position", "-")
-    data.setdefault("expectations_ar", "-")
+    # IN-01: expectations_ar is vestigial (no step ever populates it). The dead setdefault is
+    # dropped; the "Ожидания (AR)" sheet column is left in place to avoid a mid-season sheet
+    # width change (removing it would require an admin «Пересобрать таблицу» to re-align).
     data.setdefault("informal_day", "-")
     data.setdefault("attendance_format", "-")
     data.setdefault("comments", "-")
@@ -1860,7 +1862,7 @@ async def finalize_registration(message: types.Message, state: FSMContext, bot: 
             )
             if url:
                 data["resume_url"] = url
-    except (asyncio.TimeoutError, Exception) as e:
+    except Exception as e:  # IN-02: TimeoutError is already a subclass of Exception
         logger.error(f"Nextcloud resume upload failed for {message.from_user.id}: {e}")
 
     await add_user(data)
