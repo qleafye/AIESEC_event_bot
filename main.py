@@ -47,6 +47,19 @@ def _configure_logging():
         logging.getLogger(noisy).setLevel(logging.WARNING)
 
 
+# WR-02: the event loop keeps only weak references to tasks — a fire-and-forget
+# create_task() can be garbage-collected mid-run (e.g. pending_reminder_loop, the sole
+# admin-backlog notifier, would silently stop). Hold strong refs until each task completes.
+_background_tasks: set[asyncio.Task] = set()
+
+
+def _spawn(coro) -> asyncio.Task:
+    t = asyncio.create_task(coro)
+    _background_tasks.add(t)
+    t.add_done_callback(_background_tasks.discard)
+    return t
+
+
 async def main():
     _configure_logging()
     logger = logging.getLogger(__name__)
@@ -64,7 +77,7 @@ async def main():
         await set_sheet_schema(_hdrs)
     except Exception:
         logger.warning("Failed to snapshot sheet schema at startup", exc_info=True)
-    asyncio.create_task(ensure_sheet_header(_hdrs))
+    _spawn(ensure_sheet_header(_hdrs))
     
     default = DefaultBotProperties(parse_mode=ParseMode.HTML)
     
@@ -96,16 +109,30 @@ async def main():
     dp.include_router(user_actions.router)
     
     await bot.delete_webhook(drop_pending_updates=True)
-    asyncio.create_task(pending_reminder_loop(bot))
+    _spawn(pending_reminder_loop(bot))
     logger.info("Pending-application reminder task started")
 
     # Phase 3: persistent scheduler (SCHED-01/03) + warm the pre-selection allowlist (VERIF)
     await init_scheduler(bot)
-    asyncio.create_task(refresh_allowlist())
+    _spawn(refresh_allowlist())
     logger.info("Scheduler + allowlist refresh started")
 
-    await dp.start_polling(bot)
-    logger.info("Bot started polling")
+    try:
+        await dp.start_polling(bot)
+        logger.info("Bot started polling")
+    finally:
+        # WR-03: graceful shutdown — the SQLAlchemyJobStore holds an open engine to
+        # data/jobs.sqlite and the bot session holds connector sockets. Don't rely on
+        # interpreter teardown (fragile under SIGTERM restarts / test imports).
+        try:
+            from services.scheduler import get_scheduler
+            get_scheduler().shutdown(wait=False)
+        except Exception:
+            logger.warning("Scheduler shutdown failed", exc_info=True)
+        try:
+            await bot.session.close()
+        except Exception:
+            logger.warning("Bot session close failed", exc_info=True)
 
 if __name__ == "__main__":
     try:

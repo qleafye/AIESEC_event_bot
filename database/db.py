@@ -1,5 +1,6 @@
 import logging
 import os
+import re
 from datetime import datetime
 
 import aiosqlite
@@ -7,14 +8,29 @@ from config import config
 
 logger = logging.getLogger(__name__)
 
+# WR-08: SQLite can't bind identifiers (table/column names), so migrations interpolate them
+# into the SQL string. Every current caller passes a hardcoded literal, so there's no
+# injection path today — this guard makes any FUTURE dynamic/user-derived identifier fail
+# loudly instead of silently opening an injection primitive.
+_IDENTIFIER_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
+
+
+def _assert_identifier(name: str) -> str:
+    if not _IDENTIFIER_RE.fullmatch(name or ""):
+        raise ValueError(f"Unsafe SQL identifier: {name!r}")
+    return name
+
 
 async def _column_exists(db: aiosqlite.Connection, table_name: str, column_name: str) -> bool:
+    _assert_identifier(table_name)
     async with db.execute(f"PRAGMA table_info({table_name})") as cursor:
         rows = await cursor.fetchall()
     return any(row[1] == column_name for row in rows)
 
 
 async def _ensure_column(db: aiosqlite.Connection, table_name: str, column_name: str, definition: str):
+    _assert_identifier(table_name)
+    _assert_identifier(column_name)
     if not await _column_exists(db, table_name, column_name):
         await db.execute(f"ALTER TABLE {table_name} ADD COLUMN {column_name} {definition}")
 
@@ -874,3 +890,14 @@ async def update_payment_status(telegram_id: int, status: str, **kwargs) -> int:
         )
         await db.commit()
         return cursor.rowcount
+
+
+async def set_payment_due(telegram_id: int, payment_due: str) -> None:
+    """WR-03: persist the deadline a user owes payment by, WITHOUT touching payment_status.
+    Lets the overdue sweep catch users who deferred from the option picker (payment_option NULL)."""
+    async with aiosqlite.connect(config.DB_PATH) as db:
+        await db.execute(
+            "UPDATE users SET payment_due = ? WHERE telegram_id = ?",
+            (payment_due, telegram_id),
+        )
+        await db.commit()

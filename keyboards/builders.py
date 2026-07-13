@@ -173,12 +173,28 @@ def get_info_submenu_kb() -> InlineKeyboardMarkup:
     builder.adjust(1)
     return builder.as_markup()
 
+def _normalize_url(raw: str) -> str | None:
+    """WR-04: admin contact settings are free text — a bare "@channel" or "vk.com/x" (no
+    scheme) makes Telegram reject the whole message with BUTTON_URL_INVALID. Normalize to a
+    valid URL; return None when there's nothing usable so the button is simply omitted."""
+    if not raw or not raw.strip():
+        return None
+    raw = raw.strip()
+    if raw.startswith(("http://", "https://", "tg://")):
+        return raw
+    if raw.startswith("@"):
+        return f"https://t.me/{raw[1:]}"
+    return f"https://{raw}"
+
+
 def get_socials_kb(tg_url: str, vk_url: str) -> InlineKeyboardMarkup:
     builder = InlineKeyboardBuilder()
-    if tg_url:
-        builder.button(text="Группа в Telegram", url=tg_url)
-    if vk_url:
-        builder.button(text="Группа во ВКонтакте", url=vk_url)
+    tg = _normalize_url(tg_url)
+    vk = _normalize_url(vk_url)
+    if tg:
+        builder.button(text="Группа в Telegram", url=tg)
+    if vk:
+        builder.button(text="Группа во ВКонтакте", url=vk)
     return builder.as_markup()
 
 def get_cancel_kb() -> ReplyKeyboardMarkup:

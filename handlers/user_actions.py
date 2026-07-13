@@ -249,7 +249,13 @@ async def show_contacts(message: types.Message):
         parts.append("Наши группы:\n" + "\n".join(links))
 
     text = "\n\n".join(parts)
-    await message.answer(text, reply_markup=get_socials_kb(contact_tg, contact_vk))
+    # WR-04: an invalid admin URL (BUTTON_URL_INVALID) or stray &/< in a contact field under
+    # the bot's default HTML parse mode would otherwise fail this send with no fallback.
+    try:
+        await message.answer(text, reply_markup=get_socials_kb(contact_tg, contact_vk))
+    except Exception as e:
+        logger.error(f"show_contacts send failed for {message.from_user.id}: {e}")
+        await message.answer(text, parse_mode=None)
 
 @router.message(F.text == "🔗 Моя реферальная ссылка")
 async def my_referral_link(message: types.Message, bot: Bot):
