@@ -1629,6 +1629,17 @@ _FILTER_FIELD_LABELS = {
     "city": "Город", "university": "ВУЗ", "status": "Статус",
     "source": "Источник", "registration_date": "Дата регистрации",
     "payment_status": "Оплата",
+    "local_committee": "Комитет AIESEC", "department": "Департамент",
+    "aiesec_role": "Роль AIESEC", "education_status": "Образование",
+    "course": "Курс", "study_field": "Направление",
+    "position": "Позиция", "attendance_format": "Формат участия",
+}
+
+# Text-input filter fields (admin types the value); status/payment/date have dedicated pickers.
+_TEXT_FILTER_FIELDS = {
+    "city", "university", "source",
+    "local_committee", "department", "aiesec_role", "education_status",
+    "course", "study_field", "position", "attendance_format",
 }
 
 # Human labels for payment_status values (shown in the filter summary / value picker).
@@ -1657,8 +1668,16 @@ def _filter_summary(filters: list[dict]) -> str:
 
 def _filter_menu_kb(filters: list[dict]) -> InlineKeyboardMarkup:
     kb = [
+        [InlineKeyboardButton(text="Комитет AIESEC", callback_data="filter_f_local_committee"),
+         InlineKeyboardButton(text="Департамент", callback_data="filter_f_department")],
+        [InlineKeyboardButton(text="Роль AIESEC", callback_data="filter_f_aiesec_role"),
+         InlineKeyboardButton(text="Позиция", callback_data="filter_f_position")],
         [InlineKeyboardButton(text="Город", callback_data="filter_f_city"),
          InlineKeyboardButton(text="ВУЗ", callback_data="filter_f_university")],
+        [InlineKeyboardButton(text="Образование", callback_data="filter_f_education_status"),
+         InlineKeyboardButton(text="Курс", callback_data="filter_f_course")],
+        [InlineKeyboardButton(text="Направление", callback_data="filter_f_study_field"),
+         InlineKeyboardButton(text="Формат участия", callback_data="filter_f_attendance_format")],
         [InlineKeyboardButton(text="Статус", callback_data="filter_f_status"),
          InlineKeyboardButton(text="Источник", callback_data="filter_f_source")],
         [InlineKeyboardButton(text="Дата регистрации", callback_data="filter_f_date"),
@@ -1694,7 +1713,7 @@ async def broadcast_filter_start(callback: types.CallbackQuery, state: FSMContex
     await state.set_state(Broadcast.filter_field)
 
 
-@router.callback_query(F.data.in_({"filter_f_city", "filter_f_university", "filter_f_source"}), Broadcast.filter_field)
+@router.callback_query(F.data.in_({f"filter_f_{fld}" for fld in _TEXT_FILTER_FIELDS}), Broadcast.filter_field)
 async def filter_pick_text_field(callback: types.CallbackQuery, state: FSMContext):
     if callback.from_user.id not in config.ADMIN_IDS:
         await callback.answer("Недостаточно прав", show_alert=True)
