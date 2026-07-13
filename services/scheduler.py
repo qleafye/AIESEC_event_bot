@@ -277,7 +277,7 @@ async def sweep_payment_overdue():
             text = await get_setting("payment_overdue_text") or (
                 "⚠️ Срок оплаты участия истёк.\n\n"
                 "Если ты ещё планируешь участвовать — загрузи чек через бота "
-                "(кнопка «💳 Загрузить чек» в меню) или свяжись с организатором."
+                "(кнопка «💳 Оплата» в меню) или свяжись с организатором."
             )
             for tid in overdue_ids:
                 await _safe_send(lambda cid: _bot.send_message(cid, text), tid)
