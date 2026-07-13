@@ -71,7 +71,7 @@ _PAY_LATER_BTN = InlineKeyboardButton(text="⏭ Оплачу позже", callba
 async def should_offer_receipt_upload(telegram_id: int) -> bool:
     """True when the user still owes a receipt: payment module on, status in
     {not_paid, overdue}, and there are real requisites to pay to. Drives the
-    persistent '💳 Загрузить чек' menu button so upload works any time — gated on
+    persistent '💳 Оплата' menu button so upload works any time — gated on
     the DB status, not the MemoryStorage FSM, so it survives a bot restart. Free /
     no-requisites participants (nothing to pay) never trip it."""
     if (await get_setting("payment_enabled") or "off") != "on":
@@ -140,7 +140,13 @@ async def start_payment_step(bot: Bot, telegram_id: int):
                 [InlineKeyboardButton(text=f"{label} — {price} ₽", callback_data=f"pay_option:{i}")]
                 for i, (label, price) in enumerate(options)
             ] + [[_PAY_LATER_BTN]])
-            await bot.send_message(telegram_id, "💳 Выбери вариант участия:", reply_markup=kb)
+            requisites = await _resolve_requisites(telegram_id)
+            text = "💳 Выбери вариант участия:"
+            if requisites and requisites.strip():
+                # CR-01: admin-entered requisites often contain & or < (e.g. "Сбербанк & Тинькофф");
+                # without escaping, parse_mode=HTML rejects the whole message.
+                text += f"\n\n📋 Реквизиты:\n{html.escape(requisites)}"
+            await bot.send_message(telegram_id, text, parse_mode="HTML", reply_markup=kb)
             return
         # Single / free path: skip selection, go straight to details.
         label, price = options[0] if options else ("Участие", 0)
@@ -183,13 +189,21 @@ async def process_payment_option(callback: types.CallbackQuery, state: FSMContex
 @router.callback_query(F.data == "pay_later")
 async def process_pay_later(callback: types.CallbackQuery, state: FSMContext):
     """Defer payment: clear the receipt-upload state, land on the main menu. The
-    '💳 Загрузить чек' menu button (gated on DB status) lets the user upload later."""
+    '💳 Оплата' menu button (gated on DB status) lets the user upload later."""
     await state.clear()
     # Deferring is exactly when reminders matter — schedule T-3/T-1 so a forgetful
     # not_paid user still gets pinged (the whole point of this change).
     await _schedule_deadline_reminders(callback.from_user.id)
+    requisites = await _resolve_requisites(callback.from_user.id)
+    parts = ["Ок! Оплатишь позже."]
+    if requisites and requisites.strip():
+        # CR-01: admin-entered requisites often contain & or < (e.g. "Сбербанк & Тинькофф");
+        # without escaping, parse_mode=HTML rejects the whole message.
+        parts.append(f"📋 Реквизиты:\n{html.escape(requisites)}")
+    parts.append("Кнопка «💳 Оплата» будет в меню, пока чек не отправлен.")
     await callback.message.answer(
-        "Ок! Оплатишь позже. Кнопка «💳 Загрузить чек» будет в меню, пока чек не отправлен.",
+        "\n\n".join(parts),
+        parse_mode="HTML",
         reply_markup=await get_main_menu_kb(callback.from_user.id),
     )
     await callback.answer()
