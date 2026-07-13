@@ -41,10 +41,9 @@ class Settings(BaseSettings):
     NEXTCLOUD_APP_PASS: SecretStr | None = None
     NEXTCLOUD_FOLDER: str = "resumes"
     NEXTCLOUD_SHARE_PASSWORD: SecretStr | None = None  # kept for compat; code no longer reads it
-    # WR-07: secure by default — verify the Nextcloud TLS cert (the PUT carries the app-password
-    # + resume PII). Operators with a self-signed cert must OPT OUT explicitly via
-    # NEXTCLOUD_VERIFY_TLS=false in .env. (Was insecure-by-default: ssl verification off.)
-    NEXTCLOUD_VERIFY_TLS: bool = True
+    # Self-signed-cert deployment → default False (ssl verification off). If you move to a
+    # trusted cert (Let's Encrypt), set NEXTCLOUD_VERIFY_TLS=true for MITM protection.
+    NEXTCLOUD_VERIFY_TLS: bool = False
     # Public address used to build deep-links, e.g. "https://91.223.28.229:8443".
     NEXTCLOUD_PUBLIC_URL: str = ""
     # Token XXXX from the ONE manual public folder-share link /s/XXXX (folder `resumes`).
