@@ -638,15 +638,21 @@ async def _ask_step(step_key: str, message: types.Message, state: FSMContext, st
         )
         pdf_file_id = await get_setting(f"consent_pdf_{consent_key}")
         # Ссылки на документы уже в приветственном сообщении — показываем короткий вопрос.
-        caption = f"{await _prompt(f'consent_{consent_key}', html.escape(label))}"
+        caption = html.escape(await _prompt(f'consent_{consent_key}', label))
         btn_text = await get_setting("consent_button_text") or "Согласен(-на)"
         kb = InlineKeyboardMarkup(inline_keyboard=[[
             InlineKeyboardButton(text=btn_text, callback_data=f"consent_accept:{consent_key}")
         ]])
         if pdf_file_id:
-            await message.answer_document(pdf_file_id, caption=caption, reply_markup=kb, parse_mode="HTML")
+            try:
+                await message.answer_document(pdf_file_id, caption=caption, reply_markup=kb, parse_mode="HTML")
+            except Exception:
+                await message.answer_document(pdf_file_id, caption=caption, reply_markup=kb, parse_mode=None)
         else:
-            await message.answer(caption, reply_markup=kb, parse_mode="HTML")
+            try:
+                await message.answer(caption, reply_markup=kb, parse_mode="HTML")
+            except Exception:
+                await message.answer(caption, reply_markup=kb, parse_mode=None)
         await state.update_data(_consent_key=consent_key)
         await state.set_state(Registration.consent_pending)
 
