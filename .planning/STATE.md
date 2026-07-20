@@ -64,6 +64,10 @@ Recent decisions affecting current work:
 - Roadmap init: APP-08 (manager periodic reminder) placed in Phase 2 — can be implemented as a simple asyncio periodic task without APScheduler dependency.
 - Roadmap init: APScheduler persistence approach (Option A: SQLAlchemyJobStore vs Option B: MemoryJobStore + DB restore) is an open decision to confirm before Phase 3 planning. Does not block Phases 1 or 2.
 
+### Roadmap Evolution
+
+- Phase 5 added (2026-07-20): Participant Tracks (Party Delegates) — регистрация делегатов «только на вечеринку» (с ночёвкой / без). Требования TRACK-01..06. Причина: новый запрос заказчика после закрытия scope YL'26; расширяет, а не меняет фазы 1–4.
+
 ### Pending Todos
 
 None yet.
