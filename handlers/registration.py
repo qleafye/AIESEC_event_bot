@@ -299,7 +299,39 @@ REG_PRESETS = {
             "reg_q_cc_shop", "reg_q_exp_organizers", "reg_q_volunteer",
         ],
     },
+    "party": {
+        "label": "🎉 Party",
+        # Phase 5 (D-07): NO "payment_enabled" key here — the party preset must never touch
+        # the payment module (party pricing is D-16/D-17 in plan 05-05, a separate concern).
+        # setting_key spellings (not step_keys) — the shared confirm dialog in admin.py
+        # renders REG_LABELS.get(k, k) for k in preset["on"], and REG_LABELS is keyed by
+        # reg_q_*; matches the "forum"/"conf" entries above.
+        "on": [
+            "reg_q_age", "reg_q_phone", "reg_q_vk", "reg_q_city",
+            "reg_q_allergies", "reg_q_food",
+        ],
+    },
 }
+
+
+async def _apply_party_preset() -> None:
+    """D-07: bulk-write __party overrides ONLY — mirrors _apply_event_preset's
+    determinism guarantee (handlers/admin.py:2040-2048) but targets the __party
+    namespace exclusively. Every REG_FLOW step gets an explicit on/off __party key
+    (not only the enabled ones), so re-tapping the preset is deterministic regardless
+    of prior manual overrides. Matches on setting_key, consistent with the "on" list
+    spelling above — matching on step_key while the list holds setting_keys would
+    silently write "off" for every question.
+
+    This function's ONLY write is to __party-suffixed keys (setting_key + "__party");
+    it never writes a bare reg_q_* key, never touches payment_enabled/party_enabled/
+    party_approval/party_fork_question, and never calls delete_setting. That isolation
+    is the entire point of D-07: applying the party preset while a full delegate is
+    mid-registration cannot alter that delegate's question set (T-05-02-01)."""
+    on_set = set(REG_PRESETS["party"]["on"])
+    for _step_key, setting_key, *_rest in REG_FLOW:
+        await set_setting(f"{setting_key}__party", "on" if setting_key in on_set else "off")
+
 
 # Display grouping for the admin question-toggle view. Disjoint buckets covering every
 # REG_FLOW key exactly once — purely cosmetic (helps the manager find a question), does
