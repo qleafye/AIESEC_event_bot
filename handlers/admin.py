@@ -1695,6 +1695,7 @@ _FILTER_FIELD_LABELS = {
     "aiesec_role": "Роль AIESEC", "education_status": "Образование",
     "course": "Курс", "study_field": "Направление",
     "position": "Позиция", "attendance_format": "Формат участия",
+    "participant_type": "Трек",  # Phase 5 (D-19)
 }
 
 # Fields whose value is chosen from a DB-distinct picker (buttons pulled from real data).
@@ -1703,6 +1704,7 @@ _PICKER_FIELDS = {
     "city", "university", "source", "status", "payment_status",
     "local_committee", "department", "aiesec_role", "education_status",
     "course", "study_field", "position", "attendance_format",
+    "participant_type",  # Phase 5 (D-19) — must ALSO be in db._FILTER_COLUMNS or it's dropped
 }
 
 # How many value buttons per picker page (long cyrillic values → 1 per row).
@@ -1771,6 +1773,7 @@ def _filter_menu_kb(filters: list[dict]) -> InlineKeyboardMarkup:
          InlineKeyboardButton(text="Источник", callback_data="filter_f_source")],
         [InlineKeyboardButton(text="Дата регистрации", callback_data="filter_f_date"),
          InlineKeyboardButton(text="💰 Оплата", callback_data="filter_f_payment_status")],
+        [InlineKeyboardButton(text="🎉 Трек", callback_data="filter_f_participant_type")],
     ]
     if filters:
         kb.append([InlineKeyboardButton(text="📊 Показать и отправить", callback_data="filter_count")])
@@ -2428,6 +2431,16 @@ def _render_application_card(user: dict, position: int, total: int) -> str:
     name = esc(user.get("full_name")) or "—"
     uname = esc(user.get("username"))
     lines.append(f"👤 {name}" + (f" ({uname})" if uname else ""))
+    # Phase 5 (D-14): shared queue — one extra line for a non-full track, no second queue,
+    # no track predicate anywhere in get_pending_users/get_pending_count. Unrecognised values
+    # are HTML-escaped (T-05-03-03): the raw DB column value can never inject markup here.
+    track = user.get("participant_type") or "full"
+    if track != "full":
+        track_label = {
+            "party_overnight": "🎉 Трек: вечеринка с ночёвкой",
+            "party_noovernight": "🎉 Трек: вечеринка без ночёвки",
+        }.get(track, f"🎉 Трек: {html_module.escape(str(track))}")
+        lines.append(track_label)
     edu = esc(user.get("university")) or esc(user.get("education_status"))
     if edu:
         course = esc(user.get("course"))
