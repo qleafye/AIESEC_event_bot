@@ -3,15 +3,15 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: executing
-stopped_at: Completed 05-04-PLAN.md
-last_updated: "2026-07-20T17:48:54.796Z"
+stopped_at: Completed 05-03-PLAN.md
+last_updated: "2026-07-20T23:39:06.349Z"
 last_activity: 2026-07-20
 progress:
   total_phases: 5
   completed_phases: 0
   total_plans: 24
-  completed_plans: 3
-  percent: 13
+  completed_plans: 4
+  percent: 17
 ---
 
 # Project State
@@ -26,11 +26,11 @@ See: .planning/PROJECT.md (updated 2026-06-25)
 ## Current Position
 
 Phase: 05 (participant-tracks-party-delegates) — EXECUTING
-Plan: 4 of 6
+Plan: 5 of 6
 Status: Ready to execute
 Last activity: 2026-07-20
 
-Progress: [█░░░░░░░░░] 13%
+Progress: [██░░░░░░░░] 17%
 
 ## Performance Metrics
 
@@ -55,6 +55,7 @@ Progress: [█░░░░░░░░░] 13%
 | Phase 05 P01 | 7min | 3 tasks | 3 files |
 | Phase 05 P02 | 8min | 3 tasks | 2 files |
 | Phase 05 P04 | 9min | 3 tasks | 2 files |
+| Phase 05 P03 | 7min | 3 tasks | 2 files |
 
 ## Accumulated Context
 
@@ -76,6 +77,9 @@ Recent decisions affecting current work:
 - [Phase 05]: D-13/D-14 (05-04): _decide_status party branch resolves status from party_approval alone (party_setting or 'manual' fail-closed default), placed before the reg_mode logic with no fallthrough; D-14 compliance achieved by adding no participant_type predicate anywhere in the pending queue
 - [Phase 05]: D-15 (05-04): _approve_text_for uses truthiness fallback (empty override falls back to global text); approve_user resolves participant_type ONCE via get_user before the payment_enabled early-return branch, fail-soft to 'full', so plan 05-05 can reuse the same value
 - [Phase 05]: D-09/D-10 (05-04): party fork question implemented as a pre-flow InlineKeyboardMarkup in cmd_start (party_pick: callback), never a REG_FLOW step; _should_show_fork is a pure five-condition gate, false by default, suppressed by an authoritative deep-link/recovered track or a closed party_enabled toggle
+- [Phase 05]: D-04/D-06 (05-03): tri-state party question toggle reads the raw __party setting (never collapsed through the 2-state boolean helper), delete_setting represents inherit; track switcher re-renders the same questions-screen message via callback_data, no new FSM state
+- [Phase 05]: D-07 (05-03): preset_apply/preset_confirm widened with preset.get(payment_enabled) to tolerate the party preset's missing key, and key == party routes to _apply_party_preset() instead of _apply_event_preset() to avoid wiping global reg_q_* settings
+- [Phase 05]: D-13/D-19 (05-03): party_approval wired independently of full_approval/short_approval via _toggle_approval_setting; participant_type whitelisted in BOTH database.db._FILTER_COLUMNS and handlers.admin._PICKER_FIELDS so it becomes a broadcast filter with a DB-distinct value picker
 
 ### Roadmap Evolution
 
@@ -126,6 +130,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-07-20T17:48:54.777Z
-Stopped at: Completed 05-04-PLAN.md
+Last session: 2026-07-20T23:39:06.334Z
+Stopped at: Completed 05-03-PLAN.md
 Resume file: None
