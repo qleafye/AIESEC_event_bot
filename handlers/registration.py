@@ -61,9 +61,19 @@ DEFAULT_APPROVE_TEXT = "Твоя заявка одобрена! Добро по�
 
 # --- Approval status decision (Phase 2, D-01..D-03) ---
 
-def _decide_status(reg_mode: str, full_setting: str, short_setting: str) -> str:
+def _decide_status(reg_mode: str, full_setting: str, short_setting: str,
+                    participant_type: str = "full", party_setting: str | None = None) -> str:
     """Form type x per-form moderation setting -> 'pending' | 'approved'.
-    Full form uses full_setting, short form uses short_setting; 'manual' -> pending."""
+    Full form uses full_setting, short form uses short_setting; 'manual' -> pending.
+
+    Phase 5 (D-13): party tracks resolve status from party_approval alone, completely
+    independent of full_approval/short_approval — this branch never falls through to the
+    reg_mode logic below it, and never reads full_setting/short_setting. `party_setting`
+    of None (an unconfigured party_approval) resolves to "manual": a party track must be
+    moderated by default, never silently auto-approved (T-05-04-02)."""
+    if _is_party_track(participant_type):
+        setting = party_setting or "manual"
+        return "pending" if setting == "manual" else "approved"
     setting = full_setting if reg_mode == "full" else short_setting
     return "pending" if setting == "manual" else "approved"
 
@@ -2033,7 +2043,12 @@ async def finalize_registration(message: types.Message, state: FSMContext, bot: 
     reg_mode = await get_setting("registration_mode") or "short"
     full_setting = await get_setting("full_approval") or "manual"
     short_setting = await get_setting("short_approval") or "auto"
-    status = _decide_status(reg_mode, full_setting, short_setting)
+    # Phase 5 (D-13): party tracks resolve status from their own independent setting.
+    party_setting = await get_setting("party_approval")
+    status = _decide_status(
+        reg_mode, full_setting, short_setting,
+        participant_type=data.get("participant_type", "full"), party_setting=party_setting,
+    )
     data["status"] = status
     try:
         await set_user_status(message.from_user.id, status)

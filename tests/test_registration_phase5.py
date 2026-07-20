@@ -356,3 +356,95 @@ def test_apply_party_preset_on_keys_are_explicitly_on(tmp_path):
         assert await db.get_setting("reg_q_university__party") == "off"
 
     asyncio.run(go())
+
+
+# ── Plan 4 Task 1: _decide_status party branch (D-13, D-14) ─────────────────────
+
+def test_decide_status_full_unchanged_no_track():
+    # No track passed -> byte-identical to pre-Phase-5 behavior.
+    assert reg._decide_status("full", "manual", "manual") == "pending"
+    assert reg._decide_status("full", "auto", "manual") == "approved"
+
+
+def test_decide_status_party_auto_wins_over_full_manual():
+    # ROADMAP SC#6: party_approval=auto approves even though full_approval=manual.
+    assert reg._decide_status("full", "manual", "manual", "party_overnight", "auto") == "approved"
+
+
+def test_decide_status_party_manual_wins_over_full_short_auto():
+    assert reg._decide_status("short", "auto", "auto", "party_noovernight", "manual") == "pending"
+
+
+def test_decide_status_party_setting_ignored_for_full_track():
+    # participant_type="full" -> party_setting is never consulted.
+    assert reg._decide_status("full", "manual", "manual", "full", "auto") == "pending"
+
+
+def test_decide_status_party_none_setting_defaults_to_manual():
+    # D-13: an unconfigured party_approval must moderate, never silently auto-approve.
+    assert reg._decide_status("full", "auto", "auto", "party_overnight", None) == "pending"
+    assert reg._decide_status("full", "auto", "auto", "party_noovernight", None) == "pending"
+
+
+def test_decide_status_party_overnight_and_noovernight_share_same_branch():
+    assert reg._decide_status("full", "manual", "manual", "party_overnight", "auto") == "approved"
+    assert reg._decide_status("full", "manual", "manual", "party_noovernight", "auto") == "approved"
+
+
+def _finalize_row(tmp_path, telegram_id: int, participant_type: str, party_approval: str | None,
+                   full_approval: str = "manual"):
+    """Simulate the status-decision + persistence slice of finalize_registration (D-13/D-14)
+    without driving the full FSM: resolve status via _decide_status, write the row via
+    add_user, then set_user_status — the exact sequence finalize_registration performs."""
+    async def go():
+        await db.init_db()
+        if party_approval is not None:
+            await db.set_setting("party_approval", party_approval)
+        await db.set_setting("full_approval", full_approval)
+        data = {
+            "telegram_id": telegram_id,
+            "registration_date": "2026-07-20 12:00:00",
+            "participant_type": participant_type,
+            "full_name": "Тест Тестов",
+        }
+        await db.add_user(data)
+        reg_mode = await db.get_setting("registration_mode") or "short"
+        full_setting = await db.get_setting("full_approval") or "manual"
+        short_setting = await db.get_setting("short_approval") or "auto"
+        party_setting = await db.get_setting("party_approval")
+        status = reg._decide_status(
+            reg_mode, full_setting, short_setting,
+            participant_type=data.get("participant_type", "full"), party_setting=party_setting,
+        )
+        await db.set_user_status(telegram_id, status)
+
+    asyncio.run(go())
+
+
+def test_party_auto_approval_never_enters_pending_queue(tmp_path):
+    # D-14: with party_approval=auto (and full_approval=manual) a party application is
+    # approved on submit and NEVER appears in the pending queue at all.
+    _use_tmp_db(tmp_path)
+    _finalize_row(tmp_path, 555001, "party_overnight", "auto", full_approval="manual")
+
+    async def check():
+        assert await db.get_pending_count() == 0
+        user = await db.get_user(555001)
+        assert user["status"] == "approved"
+
+    asyncio.run(check())
+
+
+def test_party_manual_approval_appears_in_shared_pending_queue(tmp_path):
+    # D-14: with party_approval=manual the row lands in the SAME status='pending' queue as
+    # full applications — no new query, no second screen.
+    _use_tmp_db(tmp_path)
+    _finalize_row(tmp_path, 555002, "party_noovernight", "manual", full_approval="auto")
+
+    async def check():
+        user = await db.get_user(555002)
+        assert user["status"] == "pending"
+        pending = await db.get_pending_users(limit=50)
+        assert any(u["telegram_id"] == 555002 for u in pending)
+
+    asyncio.run(check())
