@@ -224,3 +224,58 @@ def test_preset_confirm_forum_still_applies_globally(tmp_path):
     on_set = set(REG_PRESETS["forum"]["on"])
     for key in on_set:
         assert asyncio.run(db.get_setting(key)) == "on"
+
+
+# ── Task 2: party_enabled / party_fork_question / party_approval defaults (D-13) ──
+
+def test_party_settings_resolve_to_safe_defaults_when_unset(tmp_path):
+    _use_tmp_db(tmp_path)
+    asyncio.run(db.init_db())
+    assert (asyncio.run(db.get_setting("party_enabled")) or "off") == "off"
+    assert (asyncio.run(db.get_setting("party_fork_question")) or "off") == "off"
+    assert (asyncio.run(db.get_setting("party_approval")) or "manual") == "manual"
+
+
+def test_toggle_party_enabled_flips_off_to_on(tmp_path):
+    _admin_ready(tmp_path)
+    cb = FakeCallback("toggle_party_enabled")
+    asyncio.run(admin_mod.toggle_party_enabled(cb))
+    assert asyncio.run(db.get_setting("party_enabled")) == "on"
+    asyncio.run(admin_mod.toggle_party_enabled(FakeCallback("toggle_party_enabled")))
+    assert asyncio.run(db.get_setting("party_enabled")) == "off"
+
+
+def test_toggle_party_fork_question_flips_off_to_on(tmp_path):
+    _admin_ready(tmp_path)
+    asyncio.run(admin_mod.toggle_party_fork_question(FakeCallback("toggle_party_fork_question")))
+    assert asyncio.run(db.get_setting("party_fork_question")) == "on"
+
+
+def test_toggle_party_approval_is_independent_of_full_and_short(tmp_path):
+    """D-13: party_approval never reads/derives from full_approval/short_approval."""
+    _admin_ready(tmp_path)
+    asyncio.run(db.set_setting("full_approval", "auto"))
+    asyncio.run(db.set_setting("short_approval", "auto"))
+    asyncio.run(admin_mod.toggle_party_approval(FakeCallback("settings_toggle_party_approval")))
+    assert asyncio.run(db.get_setting("party_approval")) == "auto"
+    # full/short untouched by the party toggle
+    assert asyncio.run(db.get_setting("full_approval")) == "auto"
+    assert asyncio.run(db.get_setting("short_approval")) == "auto"
+
+
+def test_party_closed_text_shows_hardcoded_default_when_unset(tmp_path):
+    _admin_ready(tmp_path)
+    text = asyncio.run(admin_mod.render_settings_text())
+    assert "Регистрация на вечеринку сейчас закрыта." in text
+
+
+def test_party_sheet_tab_shows_default_party_when_unset(tmp_path):
+    _admin_ready(tmp_path)
+    text = asyncio.run(admin_mod.render_settings_text())
+    assert "Party" in text
+
+
+def test_party_closed_text_and_sheet_tab_are_settings_edit_fields(tmp_path):
+    keys = {k for k, _, _ in admin_mod.SETTINGS_FIELDS}
+    assert "party_closed_text" in keys
+    assert "party_sheet_tab" in keys
