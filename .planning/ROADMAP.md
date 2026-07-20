@@ -109,9 +109,14 @@ Plans:
   6. `party_approval` работает независимо от `full_approval`/`short_approval`: при `party_approval=auto` и `full_approval=manual` party-заявка одобряется автоматически, а полная уходит в очередь модерации
   7. Одобренный party-делегат видит только party-тарифы из `payment_options`; полный делегат — только полные
   8. Трек виден манагеру в карточке заявки, попадает отдельной колонкой в Google Sheet и доступен как фильтр рассылки
-**Plans:** TBD (run /gsd-plan-phase 5)
+**Plans:** 6 plans (5 waves)
 Plans:
-- [ ] TBD
+- [ ] 05-01-PLAN.md — Track foundation: participant_type migrations, two-point persistence, party deep-link parsing, party_enabled master gate + closed-message fallback (Wave 1)
+- [ ] 05-02-PLAN.md — Per-track question engine: tri-state __party overrides, per-track wording, overnight-only skip rule, 🎉 Party seed preset (Wave 2)
+- [ ] 05-03-PLAN.md — Admin surface: track switcher + tri-state toggle, party preset button, party settings, track on the moderation card, participant_type broadcast filter (Wave 3)
+- [ ] 05-04-PLAN.md — Approval routing: independent party_approval, per-track approve text, optional in-flow fork question (Wave 3)
+- [ ] 05-05-PLAN.md — Per-track tariffs: optional third track field in payment_options, index-preserving keyboard filter, free fallback (Wave 4)
+- [ ] 05-06-PLAN.md — Party Google Sheets tab: named-worksheet append infrastructure, party column set, exclusive routing, gated startup header (Wave 5)
 **UI hint:** yes (Telegram reply/inline keyboards — не веб-фронтенд)
 
 ## Progress
@@ -122,4 +127,4 @@ Plans:
 | 2. Approval Flow | 4/4 | Implemented | 2026-06-26 |
 | 3. Scheduler + Communications + Verification | 0/5 | Planned | - |
 | 4. Universal Modules | 0/5 | Planned | - |
-| 5. Participant Tracks (Party Delegates) | 0/? | Not planned | - |
+| 5. Participant Tracks (Party Delegates) | 0/6 | Planned | - |
