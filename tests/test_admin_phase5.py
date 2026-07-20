@@ -279,3 +279,75 @@ def test_party_closed_text_and_sheet_tab_are_settings_edit_fields(tmp_path):
     keys = {k for k, _, _ in admin_mod.SETTINGS_FIELDS}
     assert "party_closed_text" in keys
     assert "party_sheet_tab" in keys
+
+
+# ── Task 3: track line on the shared moderation card (D-14) ──────────────────
+
+def test_card_byte_identical_for_full_track():
+    u = {"telegram_id": 1, "full_name": "Иван", "participant_type": "full"}
+    out = admin_mod._render_application_card(u, 1, 1)
+    assert "Трек" not in out
+
+
+def test_card_byte_identical_when_participant_type_missing():
+    u = {"telegram_id": 1, "full_name": "Иван"}
+    out = admin_mod._render_application_card(u, 1, 1)
+    assert "Трек" not in out
+
+
+def test_card_shows_overnight_track_line():
+    u = {"telegram_id": 1, "full_name": "Иван", "participant_type": "party_overnight"}
+    out = admin_mod._render_application_card(u, 1, 1)
+    assert "🎉 Трек: вечеринка с ночёвкой" in out
+
+
+def test_card_shows_noovernight_track_line():
+    u = {"telegram_id": 1, "full_name": "Иван", "participant_type": "party_noovernight"}
+    out = admin_mod._render_application_card(u, 1, 1)
+    assert "🎉 Трек: вечеринка без ночёвки" in out
+
+
+def test_card_escapes_unrecognised_track_value():
+    u = {"telegram_id": 1, "full_name": "Иван", "participant_type": "<b>hack</b>"}
+    out = admin_mod._render_application_card(u, 1, 1)
+    assert "<b>hack</b>" not in out
+    assert "&lt;b&gt;hack" in out
+
+
+# ── Task 3: participant_type broadcast filter whitelist (D-19) ───────────────
+
+def test_filter_columns_and_picker_fields_whitelist_participant_type():
+    assert "participant_type" in db._FILTER_COLUMNS
+    assert "participant_type" in admin_mod._PICKER_FIELDS
+    assert admin_mod._FILTER_FIELD_LABELS["participant_type"] == "Трек"
+
+
+def test_filter_clause_accepts_participant_type():
+    where, params = db._build_filter_clause([{"field": "participant_type", "value": "party_overnight"}])
+    assert where == " WHERE participant_type = ?"
+    assert params == ["party_overnight"]
+
+
+def test_get_distinct_filter_values_returns_all_tracks(tmp_path):
+    _use_tmp_db(tmp_path)
+    asyncio.run(db.init_db())
+    asyncio.run(db.add_user({
+        "telegram_id": 1, "full_name": "A", "registration_date": "2026-01-01",
+        "participant_type": "full",
+    }))
+    asyncio.run(db.add_user({
+        "telegram_id": 2, "full_name": "B", "registration_date": "2026-01-01",
+        "participant_type": "party_overnight",
+    }))
+    asyncio.run(db.add_user({
+        "telegram_id": 3, "full_name": "C", "registration_date": "2026-01-01",
+        "participant_type": "party_noovernight",
+    }))
+    values = asyncio.run(db.get_distinct_filter_values("participant_type"))
+    assert set(values) == {"full", "party_overnight", "party_noovernight"}
+
+
+def test_filter_menu_kb_has_track_button():
+    kb = admin_mod._filter_menu_kb([])
+    flat = _flat_callback_data(kb)
+    assert "filter_f_participant_type" in flat

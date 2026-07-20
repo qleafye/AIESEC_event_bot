@@ -805,6 +805,7 @@ _FILTER_COLUMNS = {
     # Broadcast segmentation by more user attributes (all real users columns).
     "local_committee", "department", "aiesec_role", "education_status",
     "course", "study_field", "position", "attendance_format",
+    "participant_type",  # Phase 5 (D-19, TRACK-06 SC#8)
 }
 
 
