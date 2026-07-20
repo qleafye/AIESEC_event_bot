@@ -505,7 +505,10 @@ async def _payment_price_block() -> str:
     if not options:
         return ""
     lines = []
-    for label, price in options:
+    for label, price, _tracks in options:
+        # Phase 5: this is an informational pre-approval price preview shown to every
+        # visitor regardless of track — filtering by track happens post-approval in
+        # handlers.payment (D-17); the third element is unused here, not this task's scope.
         price_txt = f"{price} ₽" if price > 0 else "бесплатно"
         lines.append(f"• {html.escape(label)} — {price_txt}")
     return "💳 <b>Стоимость участия:</b>\n" + "\n".join(lines) + "\n\n"

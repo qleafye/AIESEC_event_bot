@@ -95,23 +95,41 @@ async def should_offer_receipt_upload(telegram_id: int) -> bool:
     return bool(requisites and requisites.strip())
 
 
-def _parse_options(raw: str) -> list[tuple[str, int]]:
-    """Parse the payment_options setting ('label|price' per line) → [(label, price)]."""
-    options: list[tuple[str, int]] = []
+def _parse_options(raw: str) -> list[tuple[str, int, set[str] | None]]:
+    """Parse the payment_options setting → [(label, price, tracks)].
+
+    Two accepted shapes:
+    - 'label|price' (unchanged since Phase 4) — tracks is None, meaning "offered to ALL
+      tracks" (D-16's backward-compat guarantee: existing RusCo config keeps working
+      byte-identical).
+    - 'label|price|track1,track2' (Phase 5, D-16) — an optional third field, comma-separated
+      track values (each stripped). An empty/blank third field ("label|price|") ALSO yields
+      tracks None, not an empty set — an empty set would mean "matches nobody", which is not
+      what a trailing empty field means.
+
+    A pipe-less line still yields (line, 0, None), and a non-integer price still falls back
+    to 0, exactly as before Phase 5.
+    """
+    options: list[tuple[str, int, set[str] | None]] = []
     for line in (raw or "").strip().splitlines():
         line = line.strip()
         if not line:
             continue
         if "|" in line:
-            label, price_raw = line.split("|", 1)
-            label = label.strip() or "Участие"
+            parts = line.split("|")
+            label = parts[0].strip() or "Участие"
             try:
-                price = int(price_raw.strip())
+                price = int(parts[1].strip())
             except ValueError:
                 price = 0
+            tracks: set[str] | None = None
+            if len(parts) >= 3:
+                raw_tracks = parts[2].strip()
+                if raw_tracks:
+                    tracks = {t.strip() for t in raw_tracks.split(",") if t.strip()} or None
         else:
-            label, price = line, 0
-        options.append((label, price))
+            label, price, tracks = line, 0, None
+        options.append((label, price, tracks))
     return options
 
 
@@ -150,12 +168,15 @@ async def start_payment_step(bot: Bot, telegram_id: int):
     """Entry point called from approve_user() when payment_enabled=on. Fail-soft."""
     try:
         options = _parse_options(await get_setting("payment_options") or "")
+        # Phase 5 (D-16): _parse_options now returns 3-tuples (label, price, tracks); the
+        # track-aware filtering itself lands in plan 05-05 Task 2 — this unpack widening
+        # only keeps today's behavior working unchanged (tracks is ignored here for now).
         paid = [o for o in options if o[1] > 0]
         if len(options) > 1 and paid:
             # Multi-option path: let the user pick. State is set later by _show_payment_details.
             kb = InlineKeyboardMarkup(inline_keyboard=[
                 [InlineKeyboardButton(text=f"{label} — {price} ₽", callback_data=f"pay_option:{i}")]
-                for i, (label, price) in enumerate(options)
+                for i, (label, price, _tracks) in enumerate(options)
             ] + [[_PAY_LATER_BTN]])
             text = "💳 Выбери вариант участия:"
             block = _format_requisites_block(await _resolve_requisites(telegram_id))
@@ -164,7 +185,7 @@ async def start_payment_step(bot: Bot, telegram_id: int):
             await bot.send_message(telegram_id, text, parse_mode="HTML", reply_markup=kb)
             return
         # Single / free path: skip selection, go straight to details.
-        label, price = options[0] if options else ("Участие", 0)
+        label, price, _tracks = options[0] if options else ("Участие", 0, None)
         key = StorageKey(bot_id=bot.id, chat_id=telegram_id, user_id=telegram_id)
         ctx = FSMContext(storage=_storage, key=key)
         await _show_payment_details(bot, telegram_id, ctx, label, price)
@@ -195,7 +216,7 @@ async def process_payment_option(callback: types.CallbackQuery, state: FSMContex
     if not (0 <= idx < len(options)):
         await callback.answer("Вариант больше не доступен.", show_alert=True)
         return
-    label, price = options[idx]
+    label, price, _tracks = options[idx]
     # WR-01: fail-soft like start_payment_step, and guarantee callback.answer() via finally so
     # a mid-flow error never leaves the tapped button spinning.
     try:
