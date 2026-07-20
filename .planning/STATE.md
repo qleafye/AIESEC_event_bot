@@ -3,15 +3,15 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: executing
-stopped_at: Phase 5 context gathered
-last_updated: "2026-07-20T09:30:44.485Z"
-last_activity: 2026-07-20 -- Phase 5 planning complete
+stopped_at: Completed 05-01-PLAN.md
+last_updated: "2026-07-20T17:08:27.213Z"
+last_activity: 2026-07-20
 progress:
   total_phases: 5
   completed_phases: 0
   total_plans: 24
-  completed_plans: 0
-  percent: 0
+  completed_plans: 1
+  percent: 4
 ---
 
 # Project State
@@ -21,16 +21,16 @@ progress:
 See: .planning/PROJECT.md (updated 2026-06-25)
 
 **Core value:** Менеджер DXP может полностью провести регистрацию делегатов через бота — от заявки до одобрения — без ручного учёта в таблицах и без перезапуска кода между событиями.
-**Current focus:** Phase 1 — DB Foundation + Quick Wins + Coins
+**Current focus:** Phase 05 — participant-tracks-party-delegates
 
 ## Current Position
 
-Phase: 4 of 4 (Universal Modules)
-Plan: 0 of ? in current phase
+Phase: 05 (participant-tracks-party-delegates) — EXECUTING
+Plan: 2 of 6
 Status: Ready to execute
-Last activity: 2026-07-20 -- Phase 5 planning complete
+Last activity: 2026-07-20
 
-Progress: [░░░░░░░░░░] 0%
+Progress: [░░░░░░░░░░] 4%
 
 ## Performance Metrics
 
@@ -52,6 +52,7 @@ Progress: [░░░░░░░░░░] 0%
 - Trend: —
 
 *Updated after each plan completion*
+| Phase 05 P01 | 7min | 3 tasks | 3 files |
 
 ## Accumulated Context
 
@@ -63,6 +64,9 @@ Recent decisions affecting current work:
 - Roadmap init: 4 phases (research recommendation confirmed). DB + Quick Wins + Coins as Phase 1 — safe against 590 live users.
 - Roadmap init: APP-08 (manager periodic reminder) placed in Phase 2 — can be implemented as a simple asyncio periodic task without APScheduler dependency.
 - Roadmap init: APScheduler persistence approach (Option A: SQLAlchemyJobStore vs Option B: MemoryJobStore + DB restore) is an open decision to confirm before Phase 3 planning. Does not block Phases 1 or 2.
+- [Phase 05]: D-01/D-02 (05-01): users.participant_type TEXT DEFAULT 'full' additive migration; track persisted at TWO points (reg_started at flow start, users at finalize) since clear_reg_started deletes the reg_started row on completion
+- [Phase 05]: D-10 (05-01): _extract_party_track matches ONLY the two literal deep-link tokens via a fixed dict, no prefix matching, keeping referrer_id and src_ tag extraction untouched
+- [Phase 05]: D-11a (05-01): party_enabled master gate placed AFTER the already-registered branch in cmd_start so a returning delegate on a stale party link never sees the closed message; fail-soft, never silently reroutes into full
 
 ### Roadmap Evolution
 
@@ -113,6 +117,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-07-20T08:44:32.902Z
-Stopped at: Phase 5 context gathered
-Resume file: .planning/phases/05-participant-tracks-party-delegates/05-CONTEXT.md
+Last session: 2026-07-20T17:08:27.198Z
+Stopped at: Completed 05-01-PLAN.md
+Resume file: None

@@ -151,9 +151,9 @@ Scope этого milestone: Фаза 1 (quick wins) + ядро (approval flow) +
 | PAY-04 | Phase 4 | Pending |
 | PAY-05 | Phase 4 | Pending |
 | PAY-06 | Phase 4 | Pending |
-| TRACK-01 | Phase 5 | Pending |
+| TRACK-01 | Phase 5 | Complete |
 | TRACK-02 | Phase 5 | Pending |
-| TRACK-03 | Phase 5 | Pending |
+| TRACK-03 | Phase 5 | Complete |
 | TRACK-04 | Phase 5 | Pending |
 | TRACK-05 | Phase 5 | Pending |
 | TRACK-06 | Phase 5 | Pending |
