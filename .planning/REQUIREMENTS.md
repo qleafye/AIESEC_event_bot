@@ -90,6 +90,15 @@ Scope этого milestone: Фаза 1 (quick wins) + ядро (approval flow) +
 - **ROLE-01**: Три роли — Делегат / Менеджер / Администратор с разграничением доступа
 - **ROLE-02**: Управление менеджерами через админку
 
+### Participant Tracks (Фаза 5 — party-делегаты)
+
+- **TRACK-01**: Трек участия `participant_type` (`full` / `party_overnight` / `party_noovernight`) — миграция с `DEFAULT 'full'`, запись в БД в момент старта регистрации (переживает рестарт и повторный `/start`)
+- **TRACK-02**: Набор вопросов настраивается отдельно для каждого трека — оверрайды `reg_q_<step>__party` и `reg_prompt_<step>__party` с fallback на глобальную настройку; переключатель трека в админском экране вопросов
+- **TRACK-03**: Вход в party-трек по deep-link `?start=party_over` / `?start=party_noover`; опциональный вопрос-развилка за тумблером `party_fork_question` (default `off`), не ломая разбор referrer_id и `src_*`
+- **TRACK-04**: Отдельный тумблер модерации `party_approval`, независимый от `full_approval` / `short_approval`
+- **TRACK-05**: Тарифы `payment_options` разделены по трекам — делегат видит только релевантные его треку варианты оплаты
+- **TRACK-06**: Трек виден в карточке заявки у манагера, отдельной колонкой в Google Sheet и как поле фильтра рассылок
+
 ## Out of Scope
 
 | Feature | Reason |
@@ -142,12 +151,19 @@ Scope этого milestone: Фаза 1 (quick wins) + ядро (approval flow) +
 | PAY-04 | Phase 4 | Pending |
 | PAY-05 | Phase 4 | Pending |
 | PAY-06 | Phase 4 | Pending |
+| TRACK-01 | Phase 5 | Pending |
+| TRACK-02 | Phase 5 | Pending |
+| TRACK-03 | Phase 5 | Pending |
+| TRACK-04 | Phase 5 | Pending |
+| TRACK-05 | Phase 5 | Pending |
+| TRACK-06 | Phase 5 | Pending |
 
 **Coverage:**
 - v1 requirements: 37 total (REQUIREMENTS.md originally listed 36; actual count from IDs is 37 — PAY-06 is the 37th)
-- Mapped to phases: 37/37
+- Phase 5 addition: +6 (TRACK-01..06) → 43 total
+- Mapped to phases: 43/43
 - Unmapped: 0
 
 ---
 *Requirements defined: 2026-06-25*
-*Last updated: 2026-06-25 — traceability populated by roadmapper*
+*Last updated: 2026-07-20 — TRACK-01..06 added for Phase 5 (participant tracks / party delegates)*
