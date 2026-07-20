@@ -112,7 +112,7 @@ Plans:
 **Plans:** 6 plans (5 waves)
 Plans:
 **Wave 1**
-- [ ] 05-01-PLAN.md — Track foundation: participant_type migrations, two-point persistence, party deep-link parsing, party_enabled master gate + closed-message fallback (Wave 1)
+- [x] 05-01-PLAN.md — Track foundation: participant_type migrations, two-point persistence, party deep-link parsing, party_enabled master gate + closed-message fallback (Wave 1)
 
 **Wave 2** *(blocked on Wave 1 completion)*
 - [ ] 05-02-PLAN.md — Per-track question engine: tri-state __party overrides, per-track wording, overnight-only skip rule, 🎉 Party seed preset (Wave 2)
