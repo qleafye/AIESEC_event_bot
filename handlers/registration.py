@@ -339,6 +339,21 @@ async def _is_step_enabled(setting_key: str) -> bool:
     return val == "on"
 
 
+async def _is_step_enabled_for_track(setting_key: str, participant_type: str | None) -> bool:
+    """D-03/D-04: tri-state per-track gate. `__party` is ONE namespace shared by
+    party_overnight and party_noovernight — there is no per-sub-track key split.
+    Key-absence means "inherit the global reg_q_<step> value"; key-presence means the
+    explicit on/off wins, regardless of what the global value is. The `is not None` check
+    is load-bearing: collapsing None into a boolean early would make "inherit"
+    indistinguishable from "off" and would break the admin tri-state cycle (plan 05-03).
+    Full track (or None) never reads the __party key — byte-identical to _is_step_enabled."""
+    if _is_party_track(participant_type):
+        override = await get_setting(f"{setting_key}__party")
+        if override is not None:
+            return override == "on"
+    return await _is_step_enabled(setting_key)
+
+
 async def _is_module_enabled(key: str) -> bool:
     """Phase 4 module flag check — None/absent/'off'/anything-but-'on' → False (D-15 fail-safe)."""
     val = await get_setting(key)
@@ -352,8 +367,9 @@ async def _get_enabled_steps(data: dict) -> list[str]:
     # steps always shown.
     edu_conditional = (await get_setting("edu_conditional") or "on") == "on"
     studying = str(data.get("education_status", "")).startswith("Да")
+    participant_type = data.get("participant_type") or "full"  # Phase 5 (D-03/D-04/D-08)
     for step_key, setting_key, *_rest in REG_FLOW:
-        if not await _is_step_enabled(setting_key):
+        if not await _is_step_enabled_for_track(setting_key, participant_type):
             continue
         if step_key == "informal_day" and data.get("attendance_format") == "Online":
             continue
@@ -366,6 +382,13 @@ async def _get_enabled_steps(data: dict) -> list[str]:
             continue
         # «С кем на кровати» спрашиваем только если согласился делить (bed_sharing = «Да»).
         if step_key == "bed_partner" and not str(data.get("bed_sharing", "")).startswith("Да"):
+            continue
+        # Phase 5 (D-08): housing/bed_sharing/bed_partner reuse the SAME steps, gated to the
+        # overnight party sub-track only. No new step keys, no new DB/sheet columns (D-08/D-09).
+        # Written so it can never fire for "full"/None — only excludes party tracks that are
+        # NOT party_overnight (i.e. party_noovernight).
+        if step_key in ("housing", "bed_sharing", "bed_partner") and _is_party_track(participant_type) \
+                and participant_type != "party_overnight":
             continue
         if edu_conditional and step_key == "university" and not studying:
             continue
