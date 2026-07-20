@@ -2069,7 +2069,9 @@ async def approve_user(bot: Bot, telegram_id: int):
         # a free/single option. When OFF, behaviour is byte-identical to before.
         if await _is_module_enabled("payment_enabled"):
             from handlers.payment import start_payment_step  # local import avoids circular
-            await start_payment_step(bot, telegram_id)
+            # Phase 5 (05-05): reuse the SAME participant_type resolved once above (D-15's
+            # ordering guard) — no second get_user call.
+            await start_payment_step(bot, telegram_id, participant_type)
             return
 
         await send_completion_and_bonus(bot, telegram_id, participant_type=participant_type)
