@@ -125,3 +125,7 @@ None - no external service configuration required. `party_approval`, `party_fork
 ---
 *Phase: 05-participant-tracks-party-delegates*
 *Completed: 2026-07-20*
+
+## Self-Check: PASSED
+
+All claimed files verified present (handlers/registration.py, tests/test_registration_phase5.py, this SUMMARY.md). All 4 commits (64e9104, aaf311f, b382bca, 53b3fd5) verified present in git log.
