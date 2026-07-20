@@ -13,7 +13,7 @@ from aiogram.types import FSInputFile, ReplyKeyboardRemove, InlineKeyboardMarkup
 from aiogram.utils.keyboard import ReplyKeyboardBuilder
 
 from config import config
-from database.db import add_user, get_user, get_setting, set_setting, mark_reg_started, clear_reg_started, set_reg_step, set_user_subscribed, set_user_status, record_user_consent
+from database.db import add_user, get_user, get_setting, set_setting, mark_reg_started, clear_reg_started, set_reg_step, set_user_subscribed, set_user_status, record_user_consent, get_reg_started_track
 from handlers.states import Registration
 from keyboards.builders import (
     get_main_menu_kb,
@@ -727,6 +727,26 @@ def _extract_source_tag(command_args: str | None) -> str | None:
     return None
 
 
+# Phase 5 (TRACK-01/03): participant track vocabulary + deep-link parsing (D-10).
+def _is_party_track(participant_type: str | None) -> bool:
+    """The single predicate every later Phase 5 plan imports; do not duplicate elsewhere."""
+    return participant_type in ("party_overnight", "party_noovernight")
+
+
+# Fixed 2-entry map — exact-match only (T-05-01-01: no prefix/startswith/regex matching, so
+# no crafted payload can produce a track value outside this closed vocabulary).
+_PARTY_TAG_MAP = {"party_over": "party_overnight", "party_noover": "party_noovernight"}
+
+
+def _extract_party_track(command_args: str | None) -> str | None:
+    """D-10: matches ONLY the two literal party tokens, so a numeric arg still falls through
+    to _extract_referrer_id and a "src_"-prefixed arg still falls through to
+    _extract_source_tag — the three extractors are mutually exclusive by construction."""
+    if not command_args:
+        return None
+    return _PARTY_TAG_MAP.get(command_args.strip())
+
+
 async def _progress(step: int, total: int) -> str:
     """Optional «(3/9) » numbering prefix. Off by default (Tatiana: убрать нумерацию);
     organizers can switch it back on with reg_show_progress=on. Returns a trailing space
@@ -1119,6 +1139,7 @@ async def cmd_start(message: types.Message, state: FSMContext, bot: Bot, command
     args = command.args if command else None
     referrer_id = _extract_referrer_id(args, user_id)
     source_tag = _extract_source_tag(args)
+    party_track = _extract_party_track(args)          # Phase 5 (D-10)
     if referrer_id:
         logger.info(f"Deep-link referrer_id={referrer_id} for user {user_id}")
 
@@ -1141,9 +1162,56 @@ async def cmd_start(message: types.Message, state: FSMContext, bot: Bot, command
             await state.set_state(Registration.admin_rereg)
         return
 
+    # Phase 5 (D-11a): master toggle. Placed AFTER the already-registered branch above so it
+    # fires ONLY for a user with no existing non-rejected users row — an already-registered
+    # delegate tapping a stale/shared party link still gets their normal welcome + main menu
+    # above, never this closed message. Same fail-soft posture as the pre-selection gate: a
+    # gate bug must never crash /start.
+    try:
+        if party_track and (await get_setting("party_enabled") or "off") != "on":
+            closed_text = await get_setting("party_closed_text") or (
+                "Регистрация на вечеринку сейчас закрыта."
+            )
+            kb = InlineKeyboardMarkup(inline_keyboard=[[
+                InlineKeyboardButton(text="Перейти к полной регистрации", callback_data="party_fallback_full")
+            ]])
+            await message.answer(closed_text, reply_markup=kb)
+            return  # D-11a: NEVER silently reroute — user must tap the button to opt into `full`
+    except Exception as e:
+        logger.error(f"party_enabled gate failed for {user_id}: {e}")
+        party_track = None  # fail-soft: never into a party track, never into a dead end
+
+    # Phase 5 (D-02): a bare repeat /start (no deep-link arg) recovers the track from the
+    # still-open reg_started row written by the first /start — only for a user who has no
+    # users row yet (an already-registered user returned above and never reaches this line).
+    try:
+        if not party_track and not user:
+            party_track = await get_reg_started_track(user_id) or None
+    except Exception as e:
+        logger.error(f"get_reg_started_track failed for {user_id}: {e}")
+
     logger.info(f"User {user_id} not registered, showing welcome then registration")
     await _send_welcome(message, start_text, start_photo, None, user_id)
-    await _start_registration_flow(message, state, referrer_id=referrer_id, source_tag=source_tag)
+    await _start_registration_flow(
+        message, state, referrer_id=referrer_id, source_tag=source_tag, participant_type=party_track
+    )
+
+
+@router.callback_query(F.data == "party_fallback_full")
+async def party_fallback_full(callback: types.CallbackQuery, state: FSMContext):
+    """D-11a explicit opt-in: the ONLY way out of the "party closed" message. Starts the
+    ordinary full flow (participant_type left at its default 'full') — never sets a party
+    track, carries no user-supplied parameters (T-05-01-03)."""
+    await callback.answer()
+    try:
+        await callback.message.edit_reply_markup(reply_markup=None)
+    except Exception:
+        pass
+    # callback.message.from_user is the BOT (it authored that message) — swap in the actual
+    # tapping user (callback.from_user) so mark_reg_started records the right telegram_id.
+    # model_copy() preserves the bound _bot private attr, so .answer() still works.
+    tap_message = callback.message.model_copy(update={"from_user": callback.from_user})
+    await _start_registration_flow(tap_message, state)
 
 
 _CANCEL_CONFIRM_KB = InlineKeyboardMarkup(inline_keyboard=[[
