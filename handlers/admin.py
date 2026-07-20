@@ -55,7 +55,7 @@ from services.scheduler import (
 from services.allowlist import refresh_allowlist, allowlist_size
 from handlers.states import Broadcast, EditSetting, Approval, ReceiptReview
 from keyboards.builders import get_cancel_kb, MENU_BUTTONS, get_main_menu_kb
-from handlers.registration import REG_FLOW, REG_DEFAULTS, REG_LABELS, REG_PRESETS, REG_CATEGORIES, SHEET_HEADERS, STATUS_LABELS, _build_sheet_row, active_sheet_headers, set_sheet_schema, _sheet_value_map, approve_user, dropout_step_label
+from handlers.registration import REG_FLOW, REG_DEFAULTS, REG_LABELS, REG_PRESETS, REG_CATEGORIES, SHEET_HEADERS, STATUS_LABELS, _build_sheet_row, active_sheet_headers, set_sheet_schema, _sheet_value_map, approve_user, dropout_step_label, _apply_party_preset
 
 router = Router()
 logger = logging.getLogger(__name__)
@@ -1921,6 +1921,35 @@ async def _is_question_on(setting_key: str) -> bool:
     return (val == "on") if val is not None else (REG_DEFAULTS.get(setting_key, "on") == "on")
 
 
+# Phase 5 (D-04): party question tri-state helpers. These are PURE — they operate on the
+# raw get_setting(f"{key}__party") return value (None | "on" | "off") and must never route
+# through _is_question_on, which collapses None into a resolved boolean and would make
+# "inherit" indistinguishable from "off".
+def _party_tri_state_label(raw: str | None) -> str:
+    if raw is None:
+        return "➕ Наследует"
+    return "✅ Вкл" if raw == "on" else "❌ Выкл"
+
+
+def _party_tri_state_advance(raw: str | None) -> str | None:
+    """Cycle: None (inherit) -> "on" -> "off" -> None (inherit). The None return value
+    signals the caller to delete_setting (key-absence IS the inherit state, D-04)."""
+    if raw is None:
+        return "on"
+    if raw == "on":
+        return "off"
+    return None
+
+
+def _track_switcher_row(active: str) -> list[InlineKeyboardButton]:
+    """D-06: first row of the questions keyboard — switches the whole screen between the
+    full-track view (existing 2-state toggles) and the party-track view (tri-state)."""
+    return [
+        InlineKeyboardButton(text=("• " if active == "full" else "") + "Полный", callback_data="reg_q_track:full"),
+        InlineKeyboardButton(text=("• " if active == "party" else "") + "Party", callback_data="reg_q_track:party"),
+    ]
+
+
 def _categorized_question_keys() -> list[tuple[str, str]]:
     """(header, setting_key) rows in category order. Any REG_FLOW key not placed in a
     REG_CATEGORIES bucket lands in a trailing «Прочие» group so nothing is ever hidden."""
@@ -1936,9 +1965,15 @@ def _categorized_question_keys() -> list[tuple[str, str]]:
     return rows
 
 
-async def render_questions_text() -> str:
+async def render_questions_text(track: str = "full") -> str:
     lines = ["📋 <b>Вопросы регистрации</b>", ""]
-    lines.append("<i>Действуют в режиме «📋 Полная регистрация». Сгруппированы по типу события.</i>")
+    if track == "party":
+        lines.append(
+            "<i>Действуют в режиме «🎉 Party». ➕ Наследует — берётся общая настройка, "
+            "✅/❌ — переопределено для этого трека.</i>"
+        )
+    else:
+        lines.append("<i>Действуют в режиме «📋 Полная регистрация». Сгруппированы по типу события.</i>")
     lines.append("")
     current = None
     for header, setting_key in _categorized_question_keys():
@@ -1946,13 +1981,17 @@ async def render_questions_text() -> str:
             lines.append(f"\n<b>{header}</b>")
             current = header
         label = REG_LABELS.get(setting_key, setting_key)
-        status = "✅" if await _is_question_on(setting_key) else "❌"
+        if track == "party":
+            raw = await get_setting(f"{setting_key}__party")
+            status = _party_tri_state_label(raw)
+        else:
+            status = "✅" if await _is_question_on(setting_key) else "❌"
         lines.append(f"{status} {label}")
     return "\n".join(lines)
 
 
-async def build_questions_keyboard():
-    buttons = []
+async def build_questions_keyboard(track: str = "full"):
+    buttons = [_track_switcher_row(track)]
     current = None
     for header, setting_key in _categorized_question_keys():
         if header != current:
@@ -1960,8 +1999,13 @@ async def build_questions_keyboard():
             buttons.append([InlineKeyboardButton(text=f"── {header} ──", callback_data="reg_q_noop")])
             current = header
         label = REG_LABELS.get(setting_key, setting_key)
-        toggle_text = f"{'✅' if await _is_question_on(setting_key) else '❌'} {label}"
-        buttons.append([InlineKeyboardButton(text=toggle_text, callback_data=f"reg_q_toggle:{setting_key}")])
+        if track == "party":
+            raw = await get_setting(f"{setting_key}__party")
+            toggle_text = f"{_party_tri_state_label(raw)} {label}"
+            buttons.append([InlineKeyboardButton(text=toggle_text, callback_data=f"reg_q_ptoggle:{setting_key}")])
+        else:
+            toggle_text = f"{'✅' if await _is_question_on(setting_key) else '❌'} {label}"
+            buttons.append([InlineKeyboardButton(text=toggle_text, callback_data=f"reg_q_toggle:{setting_key}")])
     buttons.append([InlineKeyboardButton(text="← Назад к настройкам", callback_data="reg_q_back")])
     return InlineKeyboardMarkup(inline_keyboard=buttons)
 
@@ -2016,6 +2060,53 @@ async def toggle_reg_question(callback: types.CallbackQuery):
     text = await render_questions_text()
     await callback.message.edit_text(text, parse_mode="HTML", reply_markup=await build_questions_keyboard())
     await _refresh_sheet_header()  # keep the sheet header in sync with enabled questions
+
+
+@router.callback_query(F.data.startswith("reg_q_track:"))
+async def reg_q_track_switch(callback: types.CallbackQuery):
+    """D-06: track switcher row — re-renders the SAME «📋 Вопросы регистрации» message in
+    the requested track context. No FSM state — the requested track lives entirely in the
+    callback_data of the tapped button."""
+    if callback.from_user.id not in config.ADMIN_IDS:
+        await callback.answer("Недостаточно прав", show_alert=True)
+        return
+    track = callback.data.split(":", 1)[1]
+    if track not in ("full", "party"):
+        track = "full"
+    text = await render_questions_text(track)
+    await callback.message.edit_text(text, parse_mode="HTML", reply_markup=await build_questions_keyboard(track))
+    await callback.answer()
+
+
+@router.callback_query(F.data.startswith("reg_q_ptoggle:"))
+async def toggle_party_question(callback: types.CallbackQuery):
+    """D-04: tri-state cycle inherit(absent) -> on -> off -> inherit for the party-track
+    override of one question. Reads/writes the RAW f"{setting_key}__party" value — never
+    routes through _is_question_on, which would collapse None and make "inherit"
+    indistinguishable from "off". delete_setting is the "back to inherit" primitive."""
+    if callback.from_user.id not in config.ADMIN_IDS:
+        await callback.answer("Недостаточно прав", show_alert=True)
+        return
+    setting_key = callback.data.split(":", 1)[1]
+    # T-05-03-02: validate setting_key against REG_FLOW before ever suffixing/writing it —
+    # an unknown key from a crafted callback is rejected, never turned into a bot_settings write.
+    valid_keys = {sk for _, sk, *_ in REG_FLOW}
+    if setting_key not in valid_keys:
+        await callback.answer("Неизвестный вопрос.", show_alert=True)
+        return
+
+    party_key = f"{setting_key}__party"
+    current = await get_setting(party_key)  # None | "on" | "off" — do NOT collapse
+    new_val = _party_tri_state_advance(current)
+    if new_val is None:
+        await delete_setting(party_key)  # back to inherit — key ABSENCE is the inherit state
+    else:
+        await set_setting(party_key, new_val)
+    label = _party_tri_state_label(new_val)
+
+    await callback.answer(f"{REG_LABELS.get(setting_key, setting_key)} (party): {label}", show_alert=True)
+    text = await render_questions_text("party")
+    await callback.message.edit_text(text, parse_mode="HTML", reply_markup=await build_questions_keyboard("party"))
 
 
 @router.callback_query(F.data == "reg_q_noop")
@@ -2080,7 +2171,18 @@ async def preset_apply(callback: types.CallbackQuery):
         await callback.answer("Неизвестный пресет.", show_alert=True)
         return
     on_labels = ", ".join(REG_LABELS.get(k, k) for k in preset["on"])
-    pay = "включится" if preset["payment_enabled"] == "on" else "выключится"
+    # D-07: the party preset carries no "payment_enabled" key (party pricing is plan 05-05's
+    # concern, not this preset's). preset.get(...) avoids a KeyError that the global
+    # @dp.errors() handler would otherwise swallow silently (the admin sees nothing happen).
+    payment_enabled = preset.get("payment_enabled")
+    pay_line = ""
+    if payment_enabled is not None:
+        pay = "включится" if payment_enabled == "on" else "выключится"
+        pay_line = f" Модуль оплаты <b>{pay}</b>."
+    # D-07: __party keys never overlap the globals a live full-form admin is looking at, so
+    # the party preset does not need the "перезатрёт текущие настройки" warning the
+    # forum/conf presets carry — nothing existing gets overwritten.
+    warn = "" if key == "party" else "\n\n⚠️ Текущие настройки вопросов будут перезаписаны."
     kb = InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text="✅ Применить", callback_data=f"preset_confirm:{key}")],
         [InlineKeyboardButton(text="← Отмена", callback_data="admin_event_preset")],
@@ -2088,8 +2190,8 @@ async def preset_apply(callback: types.CallbackQuery):
     await callback.message.edit_text(
         f"Применить пресет <b>{preset['label']}</b>?\n\n"
         f"<b>Включатся:</b> {on_labels}\n"
-        f"Остальные вопросы выключатся. Модуль оплаты <b>{pay}</b>.\n\n"
-        "⚠️ Текущие настройки вопросов будут перезаписаны.",
+        f"Остальные вопросы выключатся.{pay_line}"
+        f"{warn}",
         parse_mode="HTML",
         reply_markup=kb,
     )
@@ -2105,6 +2207,19 @@ async def preset_confirm(callback: types.CallbackQuery):
     preset = REG_PRESETS.get(key)
     if not preset:
         await callback.answer("Неизвестный пресет.", show_alert=True)
+        return
+    if key == "party":
+        # D-07: route to the isolated __party-only bulk writer. _apply_event_preset writes
+        # GLOBAL reg_q_* keys for every REG_DEFAULTS entry — routing the party key there
+        # would erase the live full-delegate question set, exactly what D-07 exists to prevent.
+        await _apply_party_preset()
+        await callback.answer(f"Пресет применён: {preset['label']}", show_alert=True)
+        text = await render_questions_text("party")
+        await callback.message.edit_text(
+            text, parse_mode="HTML", reply_markup=await build_questions_keyboard("party")
+        )
+        # No _refresh_sheet_header(): the party preset changes no global setting, so the main
+        # sheet header cannot have drifted — the party tab owns its own header (plan 05-06).
         return
     await _apply_event_preset(key)
     await callback.answer(f"Пресет применён: {preset['label']}", show_alert=True)
