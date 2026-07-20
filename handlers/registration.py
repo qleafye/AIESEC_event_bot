@@ -828,6 +828,40 @@ def _extract_party_track(command_args: str | None) -> str | None:
     return _PARTY_TAG_MAP.get(command_args.strip())
 
 
+DEFAULT_PARTY_FORK_TEXT = "Выбери формат участия:"
+
+
+def _party_fork_kb() -> InlineKeyboardMarkup:
+    """D-10/D-09: pre-flow inline keyboard, not a REG_FLOW step. Reuses the same two literal
+    party tokens as _PARTY_TAG_MAP so there is exactly one token vocabulary in this file."""
+    return InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="Полная регистрация", callback_data="party_pick:full")],
+        [InlineKeyboardButton(text="\U0001f389 Вечеринка с ночёвкой", callback_data="party_pick:party_over")],
+        [InlineKeyboardButton(text="\U0001f389 Вечеринка без ночёвки", callback_data="party_pick:party_noover")],
+    ])
+
+
+async def _should_show_fork(party_track: str | None, recovered_track: str | None, is_registered: bool) -> bool:
+    """D-10: pure(ish) gating helper for the pre-flow fork keyboard, extracted so it is
+    testable without a Telegram update. ALL conditions below must hold before the fork is
+    shown; when party_fork_question is at its default "off", this returns False for every
+    combination of the other inputs (ROADMAP SC#5: an ordinary delegate sees zero extra
+    screens). `party_track`/`recovered_track` truthy means an authoritative deep-link (or a
+    recovered) value is already resolved — same posture as _source_from_tag (D-10)."""
+    if party_track:
+        return False
+    if recovered_track:
+        return False
+    if is_registered:
+        return False
+    if (await get_setting("party_fork_question") or "off") != "on":
+        return False
+    # D-11a: offering a party option while the track is closed would contradict the master gate.
+    if (await get_setting("party_enabled") or "off") != "on":
+        return False
+    return True
+
+
 async def _progress(step: int, total: int) -> str:
     """Optional «(3/9) » numbering prefix. Off by default (Tatiana: убрать нумерацию);
     organizers can switch it back on with reg_show_progress=on. Returns a trailing space
@@ -1090,6 +1124,13 @@ async def _start_registration_flow(message: types.Message, state: FSMContext, re
     # A src_ deep-link tag is authoritative: skip the «Источник» question so the delegate's
     # answer can't overwrite the campaign tag. Organic users (no tag) still get asked.
     source_from_tag = bool(source_tag) or existing_data.get("_source_from_tag", False)
+    # Phase 5 (D-10, forward-compat only): mirror the _source_from_tag marker above. A fresh
+    # `participant_type` arg means the track came from an authoritative source (deep link or
+    # the reg_started recovery in cmd_start) this call. NOT consumed by any REG_FLOW step in
+    # THIS phase — D-09 forbids adding one — recorded only so a later phase that does add a
+    # fork REG_FLOW step key can express "skip it, the track is already authoritative" the
+    # same way the existing source skip rule does.
+    track_from_link = bool(participant_type) or existing_data.get("_track_from_link", False)
 
     await state.clear()
     if saved_referrer_id:
@@ -1103,6 +1144,8 @@ async def _start_registration_flow(message: types.Message, state: FSMContext, re
     # Phase 5 (D-02): persist the resolved track into FSM state so _get_enabled_steps and the
     # ask-step path can read it from data.
     await state.update_data(participant_type=saved_track)
+    if track_from_link:
+        await state.update_data(_track_from_link=True)
 
     await message.answer(
         "Отлично, начинаем регистрацию."
@@ -1229,6 +1272,7 @@ async def cmd_start(message: types.Message, state: FSMContext, bot: Bot, command
     referrer_id = _extract_referrer_id(args, user_id)
     source_tag = _extract_source_tag(args)
     party_track = _extract_party_track(args)          # Phase 5 (D-10)
+    dl_party_track = party_track  # preserved for the fork-suppression check below (D-10)
     if referrer_id:
         logger.info(f"Deep-link referrer_id={referrer_id} for user {user_id}")
 
@@ -1273,17 +1317,65 @@ async def cmd_start(message: types.Message, state: FSMContext, bot: Bot, command
     # Phase 5 (D-02): a bare repeat /start (no deep-link arg) recovers the track from the
     # still-open reg_started row written by the first /start — only for a user who has no
     # users row yet (an already-registered user returned above and never reaches this line).
+    recovered_track = None
     try:
         if not party_track and not user:
-            party_track = await get_reg_started_track(user_id) or None
+            recovered_track = await get_reg_started_track(user_id) or None
+            party_track = recovered_track
     except Exception as e:
         logger.error(f"get_reg_started_track failed for {user_id}: {e}")
 
     logger.info(f"User {user_id} not registered, showing welcome then registration")
     await _send_welcome(message, start_text, start_photo, None, user_id)
+
+    # Phase 5 (D-10): optional pre-flow fork question, behind party_fork_question (default
+    # off). We reach this point only when there is no existing non-rejected users row (the
+    # early-return above already handled that case), so `is_registered` is always False here.
+    try:
+        show_fork = await _should_show_fork(dl_party_track, recovered_track, False)
+    except Exception as e:
+        logger.error(f"fork gate check failed for {user_id}: {e}")
+        show_fork = False
+    if show_fork:
+        fork_text = await get_setting("party_fork_text") or DEFAULT_PARTY_FORK_TEXT
+        await message.answer(fork_text, reply_markup=_party_fork_kb())
+        return  # wait for the tap; the party_pick handler starts the flow with the chosen track
+
     await _start_registration_flow(
         message, state, referrer_id=referrer_id, source_tag=source_tag, participant_type=party_track
     )
+
+
+@router.callback_query(F.data.startswith("party_pick:"))
+async def party_pick(callback: types.CallbackQuery, state: FSMContext):
+    """D-10 fork tap. The token is mapped through the SAME _PARTY_TAG_MAP the deep-link
+    extractor uses (T-05-04-01: one closed token vocabulary, so no arbitrary track value can
+    reach _start_registration_flow) — an unmapped token is rejected and answered, not routed
+    anywhere. The party_enabled gate is re-checked here since the setting can flip between
+    the fork being rendered and the user tapping it."""
+    token = callback.data.split(":", 1)[1]
+    if token == "full":
+        chosen_track = None
+    elif token in _PARTY_TAG_MAP:
+        chosen_track = _PARTY_TAG_MAP[token]
+    else:
+        await callback.answer("Некорректный выбор.", show_alert=True)
+        return
+
+    if chosen_track and (await get_setting("party_enabled") or "off") != "on":
+        # Render-then-flip window (T-05-04-01): the track closed between render and tap.
+        await callback.answer("Регистрация на вечеринку уже закрыта.", show_alert=True)
+        return
+
+    await callback.answer()
+    try:
+        await callback.message.edit_reply_markup(reply_markup=None)
+    except Exception:
+        pass
+    # callback.message.from_user is the BOT — swap in the tapping user, same fix as
+    # party_fallback_full (T-05-01 deviation), so mark_reg_started records the right id.
+    tap_message = callback.message.model_copy(update={"from_user": callback.from_user})
+    await _start_registration_flow(tap_message, state, participant_type=chosen_track)
 
 
 @router.callback_query(F.data == "party_fallback_full")
