@@ -174,6 +174,10 @@ async def init_db():
         ''')
         await db.execute('CREATE INDEX IF NOT EXISTS idx_consents_user ON user_consents(user_id)')
 
+        # Phase 5 migrations (TRACK-01, D-01/D-02) — additive, idempotent, safe against ~590 live users
+        await _ensure_column(db, "users", "participant_type", "TEXT DEFAULT 'full'")
+        await _ensure_column(db, "reg_started", "participant_type", "TEXT")
+
         await db.commit()
 
 async def get_setting(key: str) -> str | None:
@@ -221,8 +225,8 @@ async def add_user(data: dict):
                 exp_organizers, exp_content, volunteer,
                 payment_status, payment_option, receipt_file_id, payment_due, paid_at,
                 arrival_date, birth_date, study_field, goal, formats, vk_username,
-                transport, payment_plan_date, bed_sharing, bed_partner
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                transport, payment_plan_date, bed_sharing, bed_partner, participant_type
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             ON CONFLICT(telegram_id) DO UPDATE SET
                 username=excluded.username,
                 full_name=excluded.full_name,
@@ -280,7 +284,8 @@ async def add_user(data: dict):
                 transport=excluded.transport,
                 payment_plan_date=excluded.payment_plan_date,
                 bed_sharing=excluded.bed_sharing,
-                bed_partner=excluded.bed_partner
+                bed_partner=excluded.bed_partner,
+                participant_type=excluded.participant_type
         ''', (
             data['telegram_id'],
             data.get('username'),
@@ -339,6 +344,7 @@ async def add_user(data: dict):
             data.get('payment_plan_date'),
             data.get('bed_sharing'),
             data.get('bed_partner'),
+            data.get('participant_type', 'full'),
         ))
         await db.commit()
 
@@ -552,16 +558,17 @@ async def get_user_rank(user_id: int) -> int | None:
 
 # ── Phase 1: reg_started dropout tracking (independent of FSM) ────────────────
 
-async def mark_reg_started(telegram_id: int, username: str | None):
+async def mark_reg_started(telegram_id: int, username: str | None, participant_type: str | None = None):
     started_at = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     async with aiosqlite.connect(config.DB_PATH) as db:
         await db.execute('''
-            INSERT INTO reg_started (telegram_id, username, started_at)
-            VALUES (?, ?, ?)
+            INSERT INTO reg_started (telegram_id, username, started_at, participant_type)
+            VALUES (?, ?, ?, ?)
             ON CONFLICT(telegram_id) DO UPDATE SET
                 username=excluded.username,
-                started_at=excluded.started_at
-        ''', (telegram_id, username, started_at))
+                started_at=excluded.started_at,
+                participant_type=COALESCE(excluded.participant_type, reg_started.participant_type)
+        ''', (telegram_id, username, started_at, participant_type))
         await db.commit()
 
 
@@ -569,6 +576,17 @@ async def clear_reg_started(telegram_id: int):
     async with aiosqlite.connect(config.DB_PATH) as db:
         await db.execute("DELETE FROM reg_started WHERE telegram_id = ?", (telegram_id,))
         await db.commit()
+
+
+# Phase 5 (D-02): read the track recorded at flow start, before finalize_registration clears
+# the reg_started row — the source of truth for a bare repeat /start mid-flow.
+async def get_reg_started_track(telegram_id: int) -> str | None:
+    async with aiosqlite.connect(config.DB_PATH) as db:
+        async with db.execute(
+            "SELECT participant_type FROM reg_started WHERE telegram_id = ?", (telegram_id,)
+        ) as cursor:
+            row = await cursor.fetchone()
+            return row[0] if row else None
 
 
 async def get_incomplete_user_ids() -> list[int]:
