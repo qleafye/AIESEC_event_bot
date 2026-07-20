@@ -119,7 +119,7 @@ Plans:
 
 **Wave 3** *(blocked on Wave 2 completion)*
 - [ ] 05-03-PLAN.md — Admin surface: track switcher + tri-state toggle, party preset button, party settings, track on the moderation card, participant_type broadcast filter (Wave 3)
-- [ ] 05-04-PLAN.md — Approval routing: independent party_approval, per-track approve text, optional in-flow fork question (Wave 3)
+- [x] 05-04-PLAN.md — Approval routing: independent party_approval, per-track approve text, optional in-flow fork question (Wave 3)
 
 **Wave 4** *(blocked on Wave 3 completion)*
 - [ ] 05-05-PLAN.md — Per-track tariffs: optional third track field in payment_options, index-preserving keyboard filter, free fallback (Wave 4)
