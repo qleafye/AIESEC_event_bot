@@ -115,7 +115,7 @@ Plans:
 - [x] 05-01-PLAN.md — Track foundation: participant_type migrations, two-point persistence, party deep-link parsing, party_enabled master gate + closed-message fallback (Wave 1)
 
 **Wave 2** *(blocked on Wave 1 completion)*
-- [ ] 05-02-PLAN.md — Per-track question engine: tri-state __party overrides, per-track wording, overnight-only skip rule, 🎉 Party seed preset (Wave 2)
+- [x] 05-02-PLAN.md — Per-track question engine: tri-state __party overrides, per-track wording, overnight-only skip rule, 🎉 Party seed preset (Wave 2)
 
 **Wave 3** *(blocked on Wave 2 completion)*
 - [ ] 05-03-PLAN.md — Admin surface: track switcher + tri-state toggle, party preset button, party settings, track on the moderation card, participant_type broadcast filter (Wave 3)
