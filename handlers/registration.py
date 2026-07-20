@@ -991,14 +991,19 @@ def _is_allowed_resume(file_name: str | None) -> bool:
 
 # --- /start ---
 
-async def _start_registration_flow(message: types.Message, state: FSMContext, referrer_id: int | None = None, source_tag: str | None = None):
+async def _start_registration_flow(message: types.Message, state: FSMContext, referrer_id: int | None = None, source_tag: str | None = None, participant_type: str | None = None):
+    existing_data = await state.get_data()
+    # Phase 5 (D-02): resolve the effective track BEFORE the mark_reg_started write — a fresh
+    # deep-link arg wins; otherwise inherit whatever was already recorded in this FSM session
+    # (mirrors saved_referrer_id / saved_source_tag one line below).
+    saved_track = participant_type or existing_data.get("participant_type", "full")
+
     # SCHED-02: record the dropout row at flow start (fail-soft — never block registration).
     try:
-        await mark_reg_started(message.from_user.id, message.from_user.username)
+        await mark_reg_started(message.from_user.id, message.from_user.username, saved_track)
     except Exception as e:
         logger.error(f"Failed to mark reg_started for {message.from_user.id}: {e}")
 
-    existing_data = await state.get_data()
     saved_referrer_id = referrer_id or existing_data.get("referrer_id")
     saved_source_tag = source_tag or existing_data.get("source")
     # A src_ deep-link tag is authoritative: skip the «Источник» question so the delegate's
@@ -1014,6 +1019,9 @@ async def _start_registration_flow(message: types.Message, state: FSMContext, re
         logger.info(f"Saved source_tag={saved_source_tag} for user {message.from_user.id}")
         if source_from_tag:
             await state.update_data(_source_from_tag=True)
+    # Phase 5 (D-02): persist the resolved track into FSM state so _get_enabled_steps and the
+    # ask-step path can read it from data.
+    await state.update_data(participant_type=saved_track)
 
     await message.answer(
         "Отлично, начинаем регистрацию."
@@ -1933,6 +1941,9 @@ async def finalize_registration(message: types.Message, state: FSMContext, bot: 
     except Exception as e:  # IN-02: TimeoutError is already a subclass of Exception
         logger.error(f"Nextcloud resume upload failed for {message.from_user.id}: {e}")
 
+    # Phase 5 (D-01): a flow that never saw a party link writes the default explicitly rather
+    # than relying on the column default.
+    data.setdefault("participant_type", "full")
     await add_user(data)
     logger.info(
         f"user={message.from_user.id} action=registration_complete "
