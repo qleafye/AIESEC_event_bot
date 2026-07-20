@@ -172,3 +172,98 @@ def test_full_track_regression_unaffected_by_party_override(tmp_path):
         assert "age" in after  # reg_q_age defaults "on" and full track never reads __party
 
     asyncio.run(go())
+
+
+# ── Task 2: per-track question wording via _prompt (D-05) ───────────────────────
+
+def test_prompt_no_settings_returns_default(tmp_path):
+    _use_tmp_db(tmp_path)
+
+    async def go():
+        await db.init_db()
+        assert await reg._prompt("housing", "default") == "default"
+
+    asyncio.run(go())
+
+
+def test_prompt_global_override_unchanged(tmp_path):
+    _use_tmp_db(tmp_path)
+
+    async def go():
+        await db.init_db()
+        await db.set_setting("reg_prompt_housing", "Глобальный")
+        assert await reg._prompt("housing", "default") == "Глобальный"
+
+    asyncio.run(go())
+
+
+def test_prompt_full_track_never_reads_party_key(tmp_path):
+    _use_tmp_db(tmp_path)
+
+    async def go():
+        await db.init_db()
+        await db.set_setting("reg_prompt_housing", "Глобальный")
+        await db.set_setting("reg_prompt_housing__party", "Партийный")
+        assert await reg._prompt("housing", "default", "full") == "Глобальный"
+
+    asyncio.run(go())
+
+
+def test_prompt_party_track_reads_override(tmp_path):
+    _use_tmp_db(tmp_path)
+
+    async def go():
+        await db.init_db()
+        await db.set_setting("reg_prompt_housing__party", "Партийный")
+        assert await reg._prompt("housing", "default", "party_overnight") == "Партийный"
+
+    asyncio.run(go())
+
+
+def test_prompt_party_track_falls_back_to_global_when_override_absent(tmp_path):
+    _use_tmp_db(tmp_path)
+
+    async def go():
+        await db.init_db()
+        await db.set_setting("reg_prompt_housing", "Глобальный")
+        assert await reg._prompt("housing", "default", "party_overnight") == "Глобальный"
+
+    asyncio.run(go())
+
+
+def test_prompt_party_subtracks_share_same_override_key(tmp_path):
+    """D-03: party_overnight and party_noovernight resolve the same __party key."""
+    _use_tmp_db(tmp_path)
+
+    async def go():
+        await db.init_db()
+        await db.set_setting("reg_prompt_housing__party", "Партийный")
+        assert await reg._prompt("housing", "default", "party_overnight") == "Партийный"
+        assert await reg._prompt("housing", "default", "party_noovernight") == "Партийный"
+
+    asyncio.run(go())
+
+
+def test_prompt_two_positional_args_still_work(tmp_path):
+    """Every existing two-argument call site keeps compiling and behaving identically."""
+    _use_tmp_db(tmp_path)
+
+    async def go():
+        await db.init_db()
+        assert await reg._prompt("age", "Напиши свой возраст числом:") == "Напиши свой возраст числом:"
+
+    asyncio.run(go())
+
+
+def test_prompt_empty_party_override_falls_back_to_global(tmp_path):
+    """T-05-02-05: truthiness (not is-not-None) — an empty __party override string must
+    not strand the user on a blank message; it falls back to the global text."""
+    _use_tmp_db(tmp_path)
+
+    async def go():
+        await db.init_db()
+        await db.set_setting("reg_prompt_housing", "Глобальный")
+        await db.set_setting("reg_prompt_housing__party", "")
+        assert await reg._prompt("housing", "default", "party_overnight") == "Глобальный"
+
+    asyncio.run(go())
