@@ -111,11 +111,20 @@ Plans:
   8. Трек виден манагеру в карточке заявки, попадает отдельной колонкой в Google Sheet и доступен как фильтр рассылки
 **Plans:** 6 plans (5 waves)
 Plans:
+**Wave 1**
 - [ ] 05-01-PLAN.md — Track foundation: participant_type migrations, two-point persistence, party deep-link parsing, party_enabled master gate + closed-message fallback (Wave 1)
+
+**Wave 2** *(blocked on Wave 1 completion)*
 - [ ] 05-02-PLAN.md — Per-track question engine: tri-state __party overrides, per-track wording, overnight-only skip rule, 🎉 Party seed preset (Wave 2)
+
+**Wave 3** *(blocked on Wave 2 completion)*
 - [ ] 05-03-PLAN.md — Admin surface: track switcher + tri-state toggle, party preset button, party settings, track on the moderation card, participant_type broadcast filter (Wave 3)
 - [ ] 05-04-PLAN.md — Approval routing: independent party_approval, per-track approve text, optional in-flow fork question (Wave 3)
+
+**Wave 4** *(blocked on Wave 3 completion)*
 - [ ] 05-05-PLAN.md — Per-track tariffs: optional third track field in payment_options, index-preserving keyboard filter, free fallback (Wave 4)
+
+**Wave 5** *(blocked on Wave 4 completion)*
 - [ ] 05-06-PLAN.md — Party Google Sheets tab: named-worksheet append infrastructure, party column set, exclusive routing, gated startup header (Wave 5)
 **UI hint:** yes (Telegram reply/inline keyboards — не веб-фронтенд)
 
