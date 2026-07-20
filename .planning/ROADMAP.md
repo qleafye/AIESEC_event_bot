@@ -118,7 +118,7 @@ Plans:
 - [x] 05-02-PLAN.md — Per-track question engine: tri-state __party overrides, per-track wording, overnight-only skip rule, 🎉 Party seed preset (Wave 2)
 
 **Wave 3** *(blocked on Wave 2 completion)*
-- [ ] 05-03-PLAN.md — Admin surface: track switcher + tri-state toggle, party preset button, party settings, track on the moderation card, participant_type broadcast filter (Wave 3)
+- [x] 05-03-PLAN.md — Admin surface: track switcher + tri-state toggle, party preset button, party settings, track on the moderation card, participant_type broadcast filter (Wave 3)
 - [x] 05-04-PLAN.md — Approval routing: independent party_approval, per-track approve text, optional in-flow fork question (Wave 3)
 
 **Wave 4** *(blocked on Wave 3 completion)*
