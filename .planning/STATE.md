@@ -3,15 +3,15 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: executing
-stopped_at: Completed 05-03-PLAN.md
-last_updated: "2026-07-20T23:39:06.349Z"
+stopped_at: Completed 05-05-PLAN.md
+last_updated: "2026-07-20T23:56:20.388Z"
 last_activity: 2026-07-20
 progress:
   total_phases: 5
   completed_phases: 0
   total_plans: 24
-  completed_plans: 4
-  percent: 17
+  completed_plans: 5
+  percent: 21
 ---
 
 # Project State
@@ -26,11 +26,11 @@ See: .planning/PROJECT.md (updated 2026-06-25)
 ## Current Position
 
 Phase: 05 (participant-tracks-party-delegates) — EXECUTING
-Plan: 5 of 6
+Plan: 6 of 6
 Status: Ready to execute
 Last activity: 2026-07-20
 
-Progress: [██░░░░░░░░] 17%
+Progress: [██░░░░░░░░] 21%
 
 ## Performance Metrics
 
@@ -56,6 +56,7 @@ Progress: [██░░░░░░░░] 17%
 | Phase 05 P02 | 8min | 3 tasks | 2 files |
 | Phase 05 P04 | 9min | 3 tasks | 2 files |
 | Phase 05 P03 | 7min | 3 tasks | 2 files |
+| Phase 05 P05 | 12min | 2 tasks | 3 files |
 
 ## Accumulated Context
 
@@ -80,6 +81,9 @@ Recent decisions affecting current work:
 - [Phase 05]: D-04/D-06 (05-03): tri-state party question toggle reads the raw __party setting (never collapsed through the 2-state boolean helper), delete_setting represents inherit; track switcher re-renders the same questions-screen message via callback_data, no new FSM state
 - [Phase 05]: D-07 (05-03): preset_apply/preset_confirm widened with preset.get(payment_enabled) to tolerate the party preset's missing key, and key == party routes to _apply_party_preset() instead of _apply_event_preset() to avoid wiping global reg_q_* settings
 - [Phase 05]: D-13/D-19 (05-03): party_approval wired independently of full_approval/short_approval via _toggle_approval_setting; participant_type whitelisted in BOTH database.db._FILTER_COLUMNS and handlers.admin._PICKER_FIELDS so it becomes a broadcast filter with a DB-distinct value picker
+- [Phase 05]: D-16 (05-05): _parse_options widened to 3-tuples via unlimited pipe-split; blank third field resolves to None (all tracks), never an empty set
+- [Phase 05]: D-17/T-05-05-07 (05-05): _visible_options is a standalone pure function for testable index-preservation; single/free fallback reads visible[0] never options[0], closing a wrong-price bug for track-split tariffs
+- [Phase 05]: T-05-05-03 (05-05): process_payment_option re-resolves the caller's CURRENT track via get_user and rejects an ineligible tapped index before any charge runs; skipped entirely when the option's tracks is None
 
 ### Roadmap Evolution
 
@@ -130,6 +134,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-07-20T23:39:06.334Z
-Stopped at: Completed 05-03-PLAN.md
+Last session: 2026-07-20T23:56:20.373Z
+Stopped at: Completed 05-05-PLAN.md
 Resume file: None
