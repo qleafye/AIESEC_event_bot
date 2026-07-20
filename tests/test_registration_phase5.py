@@ -448,3 +448,87 @@ def test_party_manual_approval_appears_in_shared_pending_queue(tmp_path):
         assert any(u["telegram_id"] == 555002 for u in pending)
 
     asyncio.run(check())
+
+
+# ── Plan 4 Task 2: _approve_text_for per-track approval message (D-15) ──────────
+
+def test_approve_text_for_full_track_uses_global_when_set(tmp_path):
+    _use_tmp_db(tmp_path)
+
+    async def go():
+        await db.init_db()
+        await db.set_setting("approve_text", "Глобальный текст одобрения")
+        assert await reg._approve_text_for("full") == "Глобальный текст одобрения"
+
+    asyncio.run(go())
+
+
+def test_approve_text_for_full_track_falls_back_to_hardcoded_default(tmp_path):
+    _use_tmp_db(tmp_path)
+
+    async def go():
+        await db.init_db()
+        assert await reg._approve_text_for("full") == reg.DEFAULT_APPROVE_TEXT
+
+    asyncio.run(go())
+
+
+def test_approve_text_for_party_uses_party_override_when_set(tmp_path):
+    _use_tmp_db(tmp_path)
+
+    async def go():
+        await db.init_db()
+        await db.set_setting("approve_text", "Глобальный текст одобрения")
+        await db.set_setting("approve_text__party", "Добро пожаловать на вечеринку!")
+        assert await reg._approve_text_for("party_overnight") == "Добро пожаловать на вечеринку!"
+
+    asyncio.run(go())
+
+
+def test_approve_text_for_party_falls_back_to_global_when_override_absent(tmp_path):
+    _use_tmp_db(tmp_path)
+
+    async def go():
+        await db.init_db()
+        await db.set_setting("approve_text", "Глобальный текст одобрения")
+        assert await reg._approve_text_for("party_overnight") == "Глобальный текст одобрения"
+
+    asyncio.run(go())
+
+
+def test_approve_text_for_party_noovernight_shares_same_override_key(tmp_path):
+    # D-03 single namespace: no __party_overnight / __party_noovernight split.
+    _use_tmp_db(tmp_path)
+
+    async def go():
+        await db.init_db()
+        await db.set_setting("approve_text__party", "Добро пожаловать на вечеринку!")
+        assert await reg._approve_text_for("party_noovernight") == "Добро пожаловать на вечеринку!"
+
+    asyncio.run(go())
+
+
+def test_approve_text_for_party_empty_override_falls_back_to_global(tmp_path):
+    _use_tmp_db(tmp_path)
+
+    async def go():
+        await db.init_db()
+        await db.set_setting("approve_text", "Глобальный текст одобрения")
+        await db.set_setting("approve_text__party", "")
+        assert await reg._approve_text_for("party_overnight") == "Глобальный текст одобрения"
+
+    asyncio.run(go())
+
+
+def test_send_completion_and_bonus_signature_has_participant_type():
+    import inspect
+    sig = inspect.signature(reg.send_completion_and_bonus)
+    assert "participant_type" in sig.parameters
+    assert sig.parameters["participant_type"].default is None
+
+
+def test_approve_user_resolves_track_before_payment_branch():
+    import inspect
+    src = inspect.getsource(reg.approve_user)
+    assert "get_user(" in src
+    assert src.index("get_user(") < src.index("payment_enabled")

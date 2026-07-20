@@ -1907,13 +1907,31 @@ async def process_volunteer(message: types.Message, state: FSMContext, bot: Bot)
 
 # --- Finalize ---
 
-async def send_completion_and_bonus(bot: Bot, telegram_id: int, with_menu: bool = True):
+async def _approve_text_for(participant_type: str | None) -> str:
+    """D-15: per-track approval message. Party tracks check approve_text__party FIRST
+    (truthy wins — an accidentally-empty override falls back rather than sending a blank
+    message, same posture as _prompt's D-05 wording resolution); otherwise (or when the
+    override is absent/empty) fall through to the existing global approve_text resolution,
+    reusing the same DEFAULT_APPROVE_TEXT constant so there is only one copy of the default."""
+    if _is_party_track(participant_type):
+        override = await get_setting("approve_text__party")
+        if override:
+            return override
+    return await get_setting("approve_text") or DEFAULT_APPROVE_TEXT
+
+
+async def send_completion_and_bonus(bot: Bot, telegram_id: int, with_menu: bool = True,
+                                     participant_type: str | None = None):
     """Deliver approve_text (post-approval script) + the configured registration bonus.
     Reused by the non-payment approval path, the free/single payment path (handlers.payment),
     and the admin receipt-confirm path (handlers.admin). Fail-soft: a blocked/unknown user
-    never raises. `with_menu=False` skips the main-menu keyboard when the caller already sent it."""
+    never raises. `with_menu=False` skips the main-menu keyboard when the caller already sent it.
+    Phase 5 (D-15): `participant_type` defaults to None so every pre-Phase-5 call site keeps
+    compiling and behaving identically — only callers that know the track pass it explicitly.
+    Text resolution is delegated entirely to _approve_text_for; no direct approve_text read
+    remains in this function."""
     try:
-        complete_text = await get_setting("approve_text") or DEFAULT_APPROVE_TEXT
+        complete_text = await _approve_text_for(participant_type)
         kwargs = {"parse_mode": "HTML"}
         if with_menu:
             kwargs["reply_markup"] = await get_main_menu_kb(telegram_id)
@@ -1936,6 +1954,19 @@ async def approve_user(bot: Bot, telegram_id: int):
     by chat id. Reused by the auto-approve path here and the manager manual-approve
     path (admin.py). Fail-soft: a blocked/unknown user never raises."""
     logger.info(f"user={telegram_id} action=approve_welcome")
+    # Phase 5 (D-15): resolve the track ONCE, here, at the top — BEFORE the module-gate
+    # branch below (which checks the payment setting and returns early). approve_user
+    # receives only a chat id (no FSM data), so get_user() is the only way to learn the
+    # track. Plan 05-05 Task 2 consumes this same resolved value to pass participant_type
+    # into start_payment_step and must not add a second get_user call. Wrapped so a lookup
+    # failure degrades to "full" rather than blocking the approval — an approved user must
+    # always receive a message (T-05-04-04).
+    try:
+        user_row = await get_user(telegram_id)
+        participant_type = (user_row or {}).get("participant_type") or "full"
+    except Exception as e:
+        logger.error(f"Failed to resolve participant_type for {telegram_id}, defaulting to 'full': {e}")
+        participant_type = "full"
     try:
         # Phase 4 (D-09): payment module gates the welcome. When ON, the payment flow owns
         # all messaging (its own option/requisites/receipt path); the completion text + bonus
@@ -1946,7 +1977,7 @@ async def approve_user(bot: Bot, telegram_id: int):
             await start_payment_step(bot, telegram_id)
             return
 
-        await send_completion_and_bonus(bot, telegram_id)
+        await send_completion_and_bonus(bot, telegram_id, participant_type=participant_type)
     except Exception as e:
         logger.error(f"Failed to send approval welcome to {telegram_id}: {e}")
 
