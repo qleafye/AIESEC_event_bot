@@ -133,6 +133,24 @@ def _parse_options(raw: str) -> list[tuple[str, int, set[str] | None]]:
     return options
 
 
+def _visible_options(
+    options: list[tuple[str, int, set[str] | None]], participant_type: str
+) -> list[tuple[int, str, int]]:
+    """D-17 safeguard: a pure, directly-unit-testable index-preservation helper.
+
+    Enumerates the FULL, unfiltered `options` list and emits (i, label, price) for every
+    entry whose track set is None (offered to all tracks) or contains `participant_type`.
+    The emitted `i` is the enumerate() index into the ORIGINAL list — filtering never
+    renumbers. A tariff sitting at index 1 of the full list keeps callback_data
+    "pay_option:1" whether or not it is visible to a given track.
+    """
+    return [
+        (i, label, price)
+        for i, (label, price, tracks) in enumerate(options)
+        if tracks is None or participant_type in tracks
+    ]
+
+
 async def _schedule_deadline_reminders(telegram_id: int):
     """Schedule the T-3 / T-1 payment-deadline reminders for a user who OWES payment.
     Called at payment entry (option picked / defer), NOT at receipt upload — a user who
@@ -164,19 +182,25 @@ async def _schedule_deadline_reminders(telegram_id: int):
         logger.error(f"Failed to schedule payment reminders for {telegram_id}: {e}")
 
 
-async def start_payment_step(bot: Bot, telegram_id: int):
-    """Entry point called from approve_user() when payment_enabled=on. Fail-soft."""
+async def start_payment_step(bot: Bot, telegram_id: int, participant_type: str = "full"):
+    """Entry point called from approve_user() when payment_enabled=on. Fail-soft.
+
+    Phase 5 (D-17): only the RENDERED keyboard is filtered by track — pay_option:{i}
+    callback_data always indexes the FULL unfiltered `options` list (see
+    process_payment_option), so a keyboard already delivered before a later settings edit
+    can never resolve to a shifted tariff.
+    """
     try:
         options = _parse_options(await get_setting("payment_options") or "")
-        # Phase 5 (D-16): _parse_options now returns 3-tuples (label, price, tracks); the
-        # track-aware filtering itself lands in plan 05-05 Task 2 — this unpack widening
-        # only keeps today's behavior working unchanged (tracks is ignored here for now).
-        paid = [o for o in options if o[1] > 0]
-        if len(options) > 1 and paid:
+        # D-17: visible is built by enumerating the FULL options list once — never
+        # re-enumerated. i is the index into `options`, preserved under filtering.
+        visible = _visible_options(options, participant_type)
+        paid = [v for v in visible if v[2] > 0]
+        if len(visible) > 1 and paid:
             # Multi-option path: let the user pick. State is set later by _show_payment_details.
             kb = InlineKeyboardMarkup(inline_keyboard=[
                 [InlineKeyboardButton(text=f"{label} — {price} ₽", callback_data=f"pay_option:{i}")]
-                for i, (label, price, _tracks) in enumerate(options)
+                for i, label, price in visible
             ] + [[_PAY_LATER_BTN]])
             text = "💳 Выбери вариант участия:"
             block = _format_requisites_block(await _resolve_requisites(telegram_id))
@@ -184,8 +208,17 @@ async def start_payment_step(bot: Bot, telegram_id: int):
                 text += f"\n\n{block}"
             await bot.send_message(telegram_id, text, parse_mode="HTML", reply_markup=kb)
             return
-        # Single / free path: skip selection, go straight to details.
-        label, price, _tracks = options[0] if options else ("Участие", 0, None)
+        if not visible:
+            # D-18: no tariff matches this track — treat as free, same outcome as
+            # payment_enabled=off. Never strand an approved user on a screen with no
+            # actionable button (mirrors the free-path branch in _show_payment_details).
+            from handlers.registration import send_completion_and_bonus
+            await send_completion_and_bonus(bot, telegram_id, participant_type=participant_type)
+            return
+        # Single / free path: skip selection, go straight to details. Read from the
+        # VISIBLE list — never the unfiltered list's first entry (T-05-05-07): a party-only
+        # tariff sitting at a non-zero index of the full list must be the one shown and charged.
+        _idx0, label, price = visible[0]
         key = StorageKey(bot_id=bot.id, chat_id=telegram_id, user_id=telegram_id)
         ctx = FSMContext(storage=_storage, key=key)
         await _show_payment_details(bot, telegram_id, ctx, label, price)
@@ -216,7 +249,22 @@ async def process_payment_option(callback: types.CallbackQuery, state: FSMContex
     if not (0 <= idx < len(options)):
         await callback.answer("Вариант больше не доступен.", show_alert=True)
         return
-    label, price, _tracks = options[idx]
+    label, price, tracks = options[idx]
+    # T-05-05-03: re-check eligibility server-side. Filtering only the rendered keyboard
+    # (D-17) is not enough on its own — a stale keyboard from another track, or one built
+    # before a settings edit, could still tap a `pay_option:{i}` that is not currently
+    # offered to the caller's CURRENT track. Resolve the track fresh via get_user (never
+    # trust anything client-supplied) and reject before any charge/side-effect runs.
+    if tracks is not None:
+        try:
+            user = await get_user(callback.from_user.id)
+        except Exception as e:
+            logger.error(f"process_payment_option: get_user failed for {callback.from_user.id}: {e}")
+            user = None
+        current_track = (user or {}).get("participant_type") or "full"
+        if current_track not in tracks:
+            await callback.answer("Этот вариант недоступен для твоего трека.", show_alert=True)
+            return
     # WR-01: fail-soft like start_payment_step, and guarantee callback.answer() via finally so
     # a mid-flow error never leaves the tapped button spinning.
     try:
