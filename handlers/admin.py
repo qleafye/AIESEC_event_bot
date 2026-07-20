@@ -371,7 +371,23 @@ SETTINGS_FIELDS = [
     ("university_options", "🏫 Список ВУЗов", "ВУЗы-кнопки для режима «выбор из базы». Каждый ВУЗ — на отдельной строке.\n\nКнопка «Другое» добавится сама. Пусто = встроенный список."),
     # NOTE: reg_university_mode и edu_conditional вынесены в кнопки-переключатели (build_settings_keyboard).
     # PDF согласий грузятся в разделе «🧾 PDF согласий».
+    # Phase 5 (D-11a/D-13): party-track text settings (party_enabled/party_fork_question/
+    # party_approval are toggle buttons in build_settings_keyboard, not here).
+    ("party_closed_text", "🎉 Текст «вечеринка закрыта»",
+     "Текст, который увидит гость по вечеринковой ссылке (?start=party_over / party_noover), "
+     "пока трек выключен (party_enabled = ❌). Показывается вместе с кнопкой «Перейти к полной "
+     "регистрации».\n\nОставьте пустым — будет стандартный текст."),
+    ("party_sheet_tab", "📄 Вкладка Google-таблицы (Party)",
+     "Название вкладки в Google-таблице, куда пишутся вечеринковые заявки (отдельно от основной).\n\n"
+     "Оставьте пустым — будет «Party»."),
 ]
+
+# Phase 5 (D-11a): default text shown in render_settings_text when a text setting is unset,
+# so the manager sees what users actually receive today, not a bare "не указано".
+_SETTINGS_DISPLAY_DEFAULTS = {
+    "party_closed_text": "Регистрация на вечеринку сейчас закрыта.",
+    "party_sheet_tab": "Party",
+}
 
 PHOTO_FIELDS = [
     ("program", "📅 Программа", "Отправьте фото программы (можно с подписью)."),
@@ -412,6 +428,15 @@ async def render_settings_text() -> str:
     pay_rem_enabled = await get_setting("payment_reminders_enabled") or "on"
     lines.append(f"⏰ Автонапоминания об оплате: <b>{'✅ Вкл' if pay_rem_enabled == 'on' else '❌ Выкл'}</b>")
 
+    # Phase 5 (D-13): party settings always read as off/manual when unset — new-capability
+    # default-OFF posture (Phase-4 D-15 lineage), independent of full_approval/short_approval.
+    party_enabled = await get_setting("party_enabled") or "off"
+    party_fork_question = await get_setting("party_fork_question") or "off"
+    party_approval = await get_setting("party_approval") or "manual"
+    lines.append(f"🎉 Трек вечеринки: <b>{'✅ Вкл' if party_enabled == 'on' else '❌ Выкл'}</b>")
+    lines.append(f"🔀 Вопрос-развилка формата: <b>{'✅ Вкл' if party_fork_question == 'on' else '❌ Выкл'}</b>")
+    lines.append(f"✅ Модерация вечеринки: <b>{appr_lbl(party_approval)}</b>")
+
     enabled_q = 0
     for _, sk, *_rest in REG_FLOW:
         v = await get_setting(sk)
@@ -431,7 +456,8 @@ async def render_settings_text() -> str:
     for key, label, _ in SETTINGS_FIELDS:
         value = await get_setting(key)
         if not value:
-            status = "<i>не указано</i>"
+            default = _SETTINGS_DISPLAY_DEFAULTS.get(key)
+            status = f"<i>по умолчанию: {html_module.escape(default)}</i>" if default else "<i>не указано</i>"
         else:
             escaped = html_module.escape(value)
             if len(value) > 60:
@@ -490,6 +516,19 @@ async def build_settings_keyboard():
     show_progress_text = ("🔢 Нумерация вопросов: ✅ Вкл → ❌ Выкл" if show_progress == "on"
                           else "🔢 Нумерация вопросов: ❌ Выкл → ✅ Вкл")
 
+    # Phase 5 (D-13): party_enabled / party_fork_question default OFF; party_approval
+    # default "manual" — resolved with the `or "off"`/`or "manual"` idiom so an
+    # unconfigured bot always displays the safe default.
+    party_enabled = await get_setting("party_enabled") or "off"
+    party_toggle_text = ("🎉 Трек вечеринки: ❌ Выкл → ✅ Вкл" if party_enabled != "on"
+                         else "🎉 Трек вечеринки: ✅ Вкл → ❌ Выкл")
+    party_fork_question = await get_setting("party_fork_question") or "off"
+    party_fork_toggle_text = ("🔀 Вопрос-развилка формата: ❌ Выкл → ✅ Вкл" if party_fork_question != "on"
+                              else "🔀 Вопрос-развилка формата: ✅ Вкл → ❌ Выкл")
+    party_approval = await get_setting("party_approval") or "manual"
+    party_appr_txt = ("✅ Модерация вечеринки: 👮 Ручная → ⚡ Авто" if party_approval == "manual"
+                      else "✅ Модерация вечеринки: ⚡ Авто → 👮 Ручная")
+
     buttons = [
         [InlineKeyboardButton(text=toggle_text, callback_data="settings_toggle_reg")],
         [InlineKeyboardButton(text=bonus_toggle_text, callback_data="settings_toggle_bonus")],
@@ -503,6 +542,9 @@ async def build_settings_keyboard():
         [InlineKeyboardButton(text=uni_mode_text, callback_data="toggle_uni_mode")],
         [InlineKeyboardButton(text=edu_cond_text, callback_data="toggle_edu_conditional")],
         [InlineKeyboardButton(text=show_progress_text, callback_data="toggle_show_progress")],
+        [InlineKeyboardButton(text=party_toggle_text, callback_data="toggle_party_enabled")],
+        [InlineKeyboardButton(text=party_fork_toggle_text, callback_data="toggle_party_fork_question")],
+        [InlineKeyboardButton(text=party_appr_txt, callback_data="settings_toggle_party_approval")],
         [InlineKeyboardButton(text="🎛 Тип события (пресет)", callback_data="admin_event_preset")],
         [InlineKeyboardButton(text="📋 Вопросы регистрации", callback_data="admin_reg_questions")],
         [InlineKeyboardButton(text="✏️ Тексты вопросов", callback_data="admin_reg_prompts")],
@@ -568,6 +610,13 @@ async def toggle_short_approval(callback: types.CallbackQuery):
     await _toggle_approval_setting(callback, "short_approval", "auto", "Модерация краткой формы")
 
 
+@router.callback_query(F.data == "settings_toggle_party_approval")
+async def toggle_party_approval(callback: types.CallbackQuery):
+    # D-13: independent setting — never reads/writes/derives from full_approval or
+    # short_approval, no fallback chain between them.
+    await _toggle_approval_setting(callback, "party_approval", "manual", "Модерация вечеринки")
+
+
 # ── Phase 4: module on/off toggles (payment, consent) + event-type preset ────
 
 async def _toggle_module_setting(callback: types.CallbackQuery, key: str, title: str):
@@ -592,6 +641,18 @@ async def toggle_payment_enabled(callback: types.CallbackQuery):
 @router.callback_query(F.data == "toggle_consent_enabled")
 async def toggle_consent_enabled(callback: types.CallbackQuery):
     await _toggle_module_setting(callback, "consent_enabled", "📋 Согласия")
+
+
+@router.callback_query(F.data == "toggle_party_enabled")
+async def toggle_party_enabled(callback: types.CallbackQuery):
+    # D-11a master gate: default OFF (fail-safe, Phase-4 D-15 lineage).
+    await _toggle_module_setting(callback, "party_enabled", "🎉 Трек вечеринки")
+
+
+@router.callback_query(F.data == "toggle_party_fork_question")
+async def toggle_party_fork_question(callback: types.CallbackQuery):
+    # D-10: default OFF — an ordinary delegate sees no extra screen until an admin opts in.
+    await _toggle_module_setting(callback, "party_fork_question", "🔀 Вопрос-развилка формата")
 
 
 @router.callback_query(F.data == "toggle_payment_reminders")
