@@ -10,6 +10,7 @@ Brownfield extension of a production aiogram 3 + SQLite bot. The milestone adds 
 - [x] **Phase 2: Approval Flow** - Core milestone: moderated application queue, tinder UI, atomic guards, per-form moderation toggles
 - [ ] **Phase 3: Scheduler + Communications + Verification** - Persistent APScheduler, filtered/scheduled broadcasts, dropout reminders, pre-selection gate
 - [ ] **Phase 4: Universal Modules** - Payment flow, consent module, event type/module toggles for conference support
+- [ ] **Phase 5: Participant Tracks (Party Delegates)** - Per-track registration: participant_type, per-track question sets, deep-link entry, per-track approval and pricing
 
 ## Phase Details
 
@@ -94,6 +95,25 @@ Plans:
 - [ ] 04-05-PLAN.md — Receipt tinder queue + PAY-06 payment reminders: admin confirm/reject/skip, atomic guard, scheduler deadline jobs, overdue sweep (Wave 4)
 **UI hint:** yes
 
+### Phase 5: Participant Tracks (Party Delegates)
+**Goal:** Один бот обслуживает делегатов разных треков — полное участие и «только вечеринка» (с ночёвкой / без) — с отдельными наборами вопросов, модерацией и тарифами, настраиваемыми из админки без деплоя
+**Mode:** mvp
+**Depends on:** Phase 4 (payment_options и module toggles должны существовать до того, как тарифы разделяются по трекам; REG_FLOW 3-tuple миграция — база для per-track оверрайдов)
+**Requirements:** TRACK-01, TRACK-02, TRACK-03, TRACK-04, TRACK-05, TRACK-06
+**Success Criteria** (what must be TRUE):
+  1. `users.participant_type` мигрирована с `DEFAULT 'full'` — все ~590 существующих делегатов после миграции остаются треком `full`, ни одна запись не теряет данные
+  2. Трек фиксируется в БД в момент старта регистрации (не только в FSM): пользователь переходит по party-ссылке, отправляет `/start` повторно уже без параметра — и остаётся в party-треке, а не проваливается в полную анкету
+  3. Админ включает/выключает конкретный вопрос отдельно для трека party (`reg_q_<step>__party`), не задев тот же вопрос для полных делегатов; при отсутствии оверрайда шаг наследует глобальную настройку `reg_q_<step>`
+  4. Переход по `t.me/<bot>?start=party_over` и `?start=party_noover` заводит соответствующий трек и не ломает существующие deep-link'и: числовой аргумент по-прежнему разбирается как referrer_id, `src_*` — как источник
+  5. Вопрос-развилка «формат участия» показывается только при `party_fork_question=on` (default `off`) — при выключенном тумблере обычный делегат не видит ни одного лишнего экрана
+  6. `party_approval` работает независимо от `full_approval`/`short_approval`: при `party_approval=auto` и `full_approval=manual` party-заявка одобряется автоматически, а полная уходит в очередь модерации
+  7. Одобренный party-делегат видит только party-тарифы из `payment_options`; полный делегат — только полные
+  8. Трек виден манагеру в карточке заявки, попадает отдельной колонкой в Google Sheet и доступен как фильтр рассылки
+**Plans:** TBD (run /gsd-plan-phase 5)
+Plans:
+- [ ] TBD
+**UI hint:** yes (Telegram reply/inline keyboards — не веб-фронтенд)
+
 ## Progress
 
 | Phase | Plans Complete | Status | Completed |
@@ -102,3 +122,4 @@ Plans:
 | 2. Approval Flow | 4/4 | Implemented | 2026-06-26 |
 | 3. Scheduler + Communications + Verification | 0/5 | Planned | - |
 | 4. Universal Modules | 0/5 | Planned | - |
+| 5. Participant Tracks (Party Delegates) | 0/? | Not planned | - |
