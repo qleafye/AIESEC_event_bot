@@ -532,3 +532,89 @@ def test_approve_user_resolves_track_before_payment_branch():
     src = inspect.getsource(reg.approve_user)
     assert "get_user(" in src
     assert src.index("get_user(") < src.index("payment_enabled")
+
+
+# ── Plan 4 Task 3: _should_show_fork pre-flow gate (D-09, D-10) ─────────────────
+
+_INPUT_COMBOS = [
+    (party_track, recovered_track, is_registered)
+    for party_track in (None, "party_overnight")
+    for recovered_track in (None, "party_noovernight")
+    for is_registered in (False, True)
+]
+
+
+def test_should_show_fork_false_when_fork_question_unset_for_every_combo(tmp_path):
+    # ROADMAP SC#5: with party_fork_question at its default (unset -> "off"), an ordinary
+    # delegate sees no extra screen, regardless of the other inputs.
+    _use_tmp_db(tmp_path)
+
+    async def go():
+        await db.init_db()
+        await db.set_setting("party_enabled", "on")
+        for party_track, recovered_track, is_registered in _INPUT_COMBOS:
+            assert await reg._should_show_fork(party_track, recovered_track, is_registered) is False
+
+    asyncio.run(go())
+
+
+def test_should_show_fork_false_when_deep_link_track_resolved_even_both_settings_on(tmp_path):
+    # D-10: an authoritative deep-link (or recovered) track always suppresses the fork.
+    _use_tmp_db(tmp_path)
+
+    async def go():
+        await db.init_db()
+        await db.set_setting("party_fork_question", "on")
+        await db.set_setting("party_enabled", "on")
+        assert await reg._should_show_fork("party_overnight", None, False) is False
+        assert await reg._should_show_fork(None, "party_noovernight", False) is False
+
+    asyncio.run(go())
+
+
+def test_should_show_fork_false_when_party_enabled_off_even_fork_question_on(tmp_path):
+    _use_tmp_db(tmp_path)
+
+    async def go():
+        await db.init_db()
+        await db.set_setting("party_fork_question", "on")
+        # party_enabled left unset -> defaults "off"
+        assert await reg._should_show_fork(None, None, False) is False
+
+    asyncio.run(go())
+
+
+def test_should_show_fork_false_when_already_registered(tmp_path):
+    _use_tmp_db(tmp_path)
+
+    async def go():
+        await db.init_db()
+        await db.set_setting("party_fork_question", "on")
+        await db.set_setting("party_enabled", "on")
+        assert await reg._should_show_fork(None, None, True) is False
+
+    asyncio.run(go())
+
+
+def test_should_show_fork_true_when_both_settings_on_no_track_not_registered(tmp_path):
+    _use_tmp_db(tmp_path)
+
+    async def go():
+        await db.init_db()
+        await db.set_setting("party_fork_question", "on")
+        await db.set_setting("party_enabled", "on")
+        assert await reg._should_show_fork(None, None, False) is True
+
+    asyncio.run(go())
+
+
+def test_reg_flow_entry_count_unchanged_from_phase5_start():
+    # D-09: this plan adds no new REG_FLOW step keys. 42 matches the count recorded in the
+    # 05-02 SUMMARY ("threads participant_type to all 42 internal _prompt call sites").
+    assert len(reg.REG_FLOW) == 42
+
+
+def test_party_pick_token_vocabulary_matches_extract_party_track():
+    # Same closed vocabulary drives both the deep-link extractor and the fork handler.
+    assert reg._extract_party_track("party_over") == reg._PARTY_TAG_MAP["party_over"]
+    assert reg._extract_party_track("party_noover") == reg._PARTY_TAG_MAP["party_noover"]
