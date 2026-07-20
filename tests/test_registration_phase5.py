@@ -267,3 +267,92 @@ def test_prompt_empty_party_override_falls_back_to_global(tmp_path):
         assert await reg._prompt("housing", "default", "party_overnight") == "Глобальный"
 
     asyncio.run(go())
+
+
+# ── Task 3: 🎉 Party seed preset (D-07) ──────────────────────────────────────────
+
+def test_party_preset_shape():
+    p = reg.REG_PRESETS["party"]
+    assert p["label"] == "🎉 Party"
+    assert len(p["on"]) == 6
+    assert all(k.startswith("reg_q_") for k in p["on"])
+    assert "payment_enabled" not in p
+
+
+def test_party_preset_keys_render_russian_labels():
+    """Every seed key must exist in REG_LABELS so the shared confirm dialog in admin.py
+    renders a Russian label instead of the raw internal key."""
+    from handlers.admin import REG_LABELS
+    missing = [k for k in reg.REG_PRESETS["party"]["on"] if k not in REG_LABELS]
+    assert not missing, missing
+
+
+def test_party_preset_keys_are_real_reg_flow_setting_keys():
+    sk = {t[1] for t in reg.REG_FLOW}
+    bad = [k for k in reg.REG_PRESETS["party"]["on"] if k not in sk]
+    assert not bad, bad
+
+
+def test_apply_party_preset_writes_every_reg_flow_step(tmp_path):
+    """After _apply_party_preset(), every REG_FLOW step has an explicit __party key."""
+    _use_tmp_db(tmp_path)
+
+    async def go():
+        await db.init_db()
+        await reg._apply_party_preset()
+        distinct = set()
+        for _step_key, setting_key, *_rest in reg.REG_FLOW:
+            val = await db.get_setting(f"{setting_key}__party")
+            assert val in ("on", "off")
+            distinct.add(f"{setting_key}__party")
+        assert len(distinct) == len(reg.REG_FLOW)
+
+    asyncio.run(go())
+
+
+def test_apply_party_preset_isolation_global_keys_untouched(tmp_path):
+    """D-07 isolation: applying the party preset must never change any global reg_q_*
+    value — pre-set global values are byte-identical before and after the call."""
+    _use_tmp_db(tmp_path)
+
+    async def go():
+        await db.init_db()
+        # Set a handful of global keys to known values, including some that overlap
+        # with the party preset's "on" list and some that don't.
+        await db.set_setting("reg_q_age", "off")
+        await db.set_setting("reg_q_phone", "on")
+        await db.set_setting("reg_q_university", "on")
+        await db.set_setting("reg_q_food", "off")
+        before = {
+            "reg_q_age": await db.get_setting("reg_q_age"),
+            "reg_q_phone": await db.get_setting("reg_q_phone"),
+            "reg_q_university": await db.get_setting("reg_q_university"),
+            "reg_q_food": await db.get_setting("reg_q_food"),
+        }
+
+        await reg._apply_party_preset()
+
+        after = {
+            "reg_q_age": await db.get_setting("reg_q_age"),
+            "reg_q_phone": await db.get_setting("reg_q_phone"),
+            "reg_q_university": await db.get_setting("reg_q_university"),
+            "reg_q_food": await db.get_setting("reg_q_food"),
+        }
+        assert before == after
+
+    asyncio.run(go())
+
+
+def test_apply_party_preset_on_keys_are_explicitly_on(tmp_path):
+    _use_tmp_db(tmp_path)
+
+    async def go():
+        await db.init_db()
+        await reg._apply_party_preset()
+        for k in reg.REG_PRESETS["party"]["on"]:
+            assert await db.get_setting(f"{k}__party") == "on"
+        # A key NOT in the seed list must be explicitly "off" (determinism guarantee),
+        # not merely absent.
+        assert await db.get_setting("reg_q_university__party") == "off"
+
+    asyncio.run(go())
