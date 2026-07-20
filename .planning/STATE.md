@@ -3,15 +3,15 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: executing
-stopped_at: Completed 05-01-PLAN.md
-last_updated: "2026-07-20T17:08:27.213Z"
+stopped_at: Completed 05-02-PLAN.md
+last_updated: "2026-07-20T17:28:36.222Z"
 last_activity: 2026-07-20
 progress:
   total_phases: 5
   completed_phases: 0
   total_plans: 24
-  completed_plans: 1
-  percent: 4
+  completed_plans: 2
+  percent: 8
 ---
 
 # Project State
@@ -26,11 +26,11 @@ See: .planning/PROJECT.md (updated 2026-06-25)
 ## Current Position
 
 Phase: 05 (participant-tracks-party-delegates) — EXECUTING
-Plan: 2 of 6
+Plan: 3 of 6
 Status: Ready to execute
 Last activity: 2026-07-20
 
-Progress: [░░░░░░░░░░] 4%
+Progress: [█░░░░░░░░░] 8%
 
 ## Performance Metrics
 
@@ -53,6 +53,7 @@ Progress: [░░░░░░░░░░] 4%
 
 *Updated after each plan completion*
 | Phase 05 P01 | 7min | 3 tasks | 3 files |
+| Phase 05 P02 | 8min | 3 tasks | 2 files |
 
 ## Accumulated Context
 
@@ -67,6 +68,10 @@ Recent decisions affecting current work:
 - [Phase 05]: D-01/D-02 (05-01): users.participant_type TEXT DEFAULT 'full' additive migration; track persisted at TWO points (reg_started at flow start, users at finalize) since clear_reg_started deletes the reg_started row on completion
 - [Phase 05]: D-10 (05-01): _extract_party_track matches ONLY the two literal deep-link tokens via a fixed dict, no prefix matching, keeping referrer_id and src_ tag extraction untouched
 - [Phase 05]: D-11a (05-01): party_enabled master gate placed AFTER the already-registered branch in cmd_start so a returning delegate on a stale party link never sees the closed message; fail-soft, never silently reroutes into full
+- [Phase 05]: D-03/D-04 (05-02): _is_step_enabled_for_track reads {setting_key}__party only for party tracks; is-not-None (not truthiness) distinguishes explicit off from inherit
+- [Phase 05]: D-08 (05-02): housing/bed_sharing/bed_partner skip rule gated on _is_party_track AND participant_type != 'party_overnight' — structurally cannot fire for full/None
+- [Phase 05]: D-05 (05-02): _prompt wording override uses truthiness (not is-not-None) so an empty __party override falls back to global text instead of a blank message
+- [Phase 05]: D-07 (05-02): REG_PRESETS['party'] carries no payment_enabled key by design — plan 05-03's shared preset_apply/preset_confirm handlers must tolerate its absence
 
 ### Roadmap Evolution
 
@@ -117,6 +122,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-07-20T17:08:27.198Z
-Stopped at: Completed 05-01-PLAN.md
+Last session: 2026-07-20T17:28:36.200Z
+Stopped at: Completed 05-02-PLAN.md
 Resume file: None
