@@ -6,6 +6,10 @@ convention as tests/test_registration_phase4.py and tests/test_db_phase5.py.
 """
 import asyncio
 
+from aiogram.fsm.context import FSMContext
+from aiogram.fsm.storage.base import StorageKey
+from aiogram.fsm.storage.memory import MemoryStorage
+
 from config import config
 from database import db
 from handlers import registration as reg
@@ -618,3 +622,161 @@ def test_party_pick_token_vocabulary_matches_extract_party_track():
     # Same closed vocabulary drives both the deep-link extractor and the fork handler.
     assert reg._extract_party_track("party_over") == reg._PARTY_TAG_MAP["party_over"]
     assert reg._extract_party_track("party_noover") == reg._PARTY_TAG_MAP["party_noover"]
+
+
+# ── CR-01 regression: fork must not drop referrer_id/source_tag attribution ─────
+#
+# cmd_start extracts referrer_id/source_tag BEFORE the party_fork_question gate. When the
+# fork is shown, cmd_start returns without calling _start_registration_flow — the FIRST call
+# for the session happens later, from party_pick/party_fallback_full, with an FSM state that
+# (pre-fix) never saw referrer_id/source_tag at all. These tests drive cmd_start -> party_pick
+# through a REAL FSMContext/MemoryStorage (same key aiogram would use for one chat/user) so the
+# state handoff between the two handlers is exercised for real, not mocked.
+
+class _FakeUser:
+    def __init__(self, uid, username=None):
+        self.id = uid
+        self.username = username
+
+
+class _FakeChat:
+    def __init__(self, cid):
+        self.id = cid
+
+
+class _FakeMessage:
+    def __init__(self, uid, username=None):
+        self.from_user = _FakeUser(uid, username)
+        self.chat = _FakeChat(uid)
+
+    async def answer(self, *a, **k):
+        return None
+
+    async def answer_photo(self, *a, **k):
+        return None
+
+    async def edit_reply_markup(self, reply_markup=None):
+        return None
+
+    def model_copy(self, update=None):
+        new = _FakeMessage(self.from_user.id, self.from_user.username)
+        if update and "from_user" in update:
+            new.from_user = update["from_user"]
+        return new
+
+
+class _FakeCallback:
+    def __init__(self, data, user_id, username=None):
+        self.data = data
+        self.from_user = _FakeUser(user_id, username)
+        # Stands in for the bot's own fork message; party_pick/party_fallback_full swap in
+        # callback.from_user via model_copy() before calling _start_registration_flow.
+        self.message = _FakeMessage(0)
+
+    async def answer(self, text=None, show_alert=False):
+        return None
+
+
+def _new_state(uid: int) -> FSMContext:
+    return FSMContext(storage=MemoryStorage(), key=StorageKey(bot_id=1, chat_id=uid, user_id=uid))
+
+
+def test_cr01_fork_persists_referrer_id_immediately(tmp_path):
+    """The fork branch itself must write referrer_id/source/_source_from_tag into FSM state
+    before returning — this is the exact bug: pre-fix, state stayed empty at this point."""
+    _use_tmp_db(tmp_path)
+
+    async def go():
+        await db.init_db()
+        await db.set_setting("party_fork_question", "on")
+        await db.set_setting("party_enabled", "on")
+
+        uid = 700001
+        referrer = uid + 1
+        state = _new_state(uid)
+
+        class FakeCommand:
+            args = str(referrer)
+
+        await reg.cmd_start(_FakeMessage(uid, "referred"), state, bot=object(), command=FakeCommand())
+
+        data = await state.get_data()
+        assert data.get("referrer_id") == referrer
+
+    asyncio.run(go())
+
+
+def test_cr01_referred_user_picks_full_still_lands_with_referrer_id(tmp_path):
+    """The explicit "picks full" case CR-01 calls out: a referred user who lands on the fork
+    and taps "Полная регистрация" must still finalize with referrer_id attribution intact."""
+    _use_tmp_db(tmp_path)
+
+    async def go():
+        await db.init_db()
+        await db.set_setting("party_fork_question", "on")
+        await db.set_setting("party_enabled", "on")
+
+        uid = 700002
+        referrer = uid + 1
+        state = _new_state(uid)
+
+        class FakeCommand:
+            args = str(referrer)
+
+        await reg.cmd_start(_FakeMessage(uid, "referred2"), state, bot=object(), command=FakeCommand())
+
+        await reg.party_pick(_FakeCallback("party_pick:full", uid, "referred2"), state)
+
+        final_data = await state.get_data()
+        assert final_data.get("referrer_id") == referrer
+        assert final_data.get("participant_type") == "full"
+
+        # Mirror finalize_registration: FSM data flows directly into add_user(data).
+        row = dict(final_data)
+        row["telegram_id"] = uid
+        row["registration_date"] = "2026-07-21 12:00:00"
+        await db.add_user(row)
+        user = await db.get_user(uid)
+        assert user["referrer_id"] == referrer
+
+    asyncio.run(go())
+
+
+def test_cr01_source_tagged_user_picks_party_track_still_lands_with_source(tmp_path):
+    """Same bug, source_tag flavor: a src_-tagged user who forks into a PARTY track must not
+    lose the campaign tag either — _source_from_tag must also survive so the "Источник"
+    question stays skipped."""
+    _use_tmp_db(tmp_path)
+
+    async def go():
+        await db.init_db()
+        await db.set_setting("party_fork_question", "on")
+        await db.set_setting("party_enabled", "on")
+
+        uid = 700003
+        state = _new_state(uid)
+
+        class FakeCommand:
+            args = "src_vk"
+
+        await reg.cmd_start(_FakeMessage(uid, "tagged"), state, bot=object(), command=FakeCommand())
+
+        data_after_fork = await state.get_data()
+        assert data_after_fork.get("source") == "vk"
+        assert data_after_fork.get("_source_from_tag") is True
+
+        await reg.party_pick(_FakeCallback("party_pick:party_over", uid, "tagged"), state)
+
+        final_data = await state.get_data()
+        assert final_data.get("source") == "vk"
+        assert final_data.get("_source_from_tag") is True
+        assert final_data.get("participant_type") == "party_overnight"
+
+        row = dict(final_data)
+        row["telegram_id"] = uid
+        row["registration_date"] = "2026-07-21 12:00:00"
+        await db.add_user(row)
+        user = await db.get_user(uid)
+        assert user["source"] == "vk"
+
+    asyncio.run(go())
