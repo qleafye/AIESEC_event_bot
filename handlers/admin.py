@@ -2451,6 +2451,8 @@ def _render_application_card(user: dict, position: int, total: int) -> str:
         lines.append(f"🏢 {esc(user.get('local_committee'))}")
     if esc(user.get("position")):
         lines.append(f"👔 {esc(user.get('position'))}")
+    if esc(user.get("alumni_status")):
+        lines.append(f"🏷 {esc(user.get('alumni_status'))}")
     if user.get("age"):
         lines.append(f"🎂 {esc(user.get('age'))}")
     # Резюме: файлом, текстом или нет. Текст показываем прямо в карточке (Таня п.4),

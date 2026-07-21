@@ -26,6 +26,7 @@ class Registration(StatesGroup):
     department = State()
     aiesec_role = State()
     needs_certificate = State()
+    alumni_status = State()     # аламни / айсекер / ни то, ни другое
     english_level = State()
     allergies = State()
     food_pref = State()
