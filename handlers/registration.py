@@ -1400,6 +1400,15 @@ async def cmd_start(message: types.Message, state: FSMContext, bot: Bot, command
         logger.error(f"fork gate check failed for {user_id}: {e}")
         show_fork = False
     if show_fork:
+        # CR-01 fix: persist the deep-link attribution BEFORE the fork gate returns, using the
+        # exact same FSM keys _start_registration_flow reads back via existing_data.get(...)
+        # (referrer_id / source / _source_from_tag). Without this, party_pick and
+        # party_fallback_full call _start_registration_flow with an empty FSM state (this is
+        # the first call for the session) and referrer_id/source_tag are silently dropped for
+        # EVERY user who lands on the fork screen — including one who picks "full".
+        await state.update_data(
+            referrer_id=referrer_id, source=source_tag, _source_from_tag=bool(source_tag)
+        )
         fork_text = await get_setting("party_fork_text") or DEFAULT_PARTY_FORK_TEXT
         await message.answer(fork_text, reply_markup=_party_fork_kb())
         return  # wait for the tap; the party_pick handler starts the flow with the chosen track
