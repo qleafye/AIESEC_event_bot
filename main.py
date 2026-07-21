@@ -6,13 +6,14 @@ from logging.handlers import RotatingFileHandler
 from aiogram import Bot, Dispatcher
 from aiogram.fsm.storage.memory import MemoryStorage
 from config import config
-from database.db import init_db
+from database.db import init_db, get_setting
 from handlers import registration, user_actions, admin, payment
 from services.reminders import pending_reminder_loop
 from services.scheduler import init_scheduler
 from services.allowlist import refresh_allowlist
 from services.sheets import ensure_sheet_header
-from handlers.registration import active_sheet_headers, set_sheet_schema
+import services.sheets as sheets_service
+from handlers.registration import active_sheet_headers, set_sheet_schema, party_sheet_headers, PARTY_SHEET_TAB_DEFAULT
 from aiogram.client.default import DefaultBotProperties
 from aiogram.client.session.aiohttp import AiohttpSession
 from aiogram.enums import ParseMode
@@ -60,6 +61,22 @@ def _spawn(coro) -> asyncio.Task:
     return t
 
 
+async def _maybe_ensure_party_sheet_header():
+    """Phase 5 (D-11, plan 05-06): create/sync the party tab's header ONLY when party_enabled
+    is 'on' — a bot that never turns the party track on must never create the tab, keeping the
+    D-15 "new capability defaults OFF" posture visible in the spreadsheet itself. Extracted as
+    its own awaitable (rather than inlined) so the gating decision is independently testable
+    without a live Sheets call. Fail-soft: Sheets being unreachable must never block startup."""
+    if (await get_setting("party_enabled") or "off") != "on":
+        return
+    tab = await get_setting("party_sheet_tab") or PARTY_SHEET_TAB_DEFAULT
+    try:
+        headers = await party_sheet_headers()
+        await sheets_service.ensure_named_sheet_header(tab, headers)
+    except Exception as e:
+        logging.getLogger(__name__).warning(f"Failed to ensure party sheet header (tab={tab!r}): {e}")
+
+
 async def main():
     _configure_logging()
     logger = logging.getLogger(__name__)
@@ -78,7 +95,10 @@ async def main():
     except Exception:
         logger.warning("Failed to snapshot sheet schema at startup", exc_info=True)
     _spawn(ensure_sheet_header(_hdrs))
-    
+    # Phase 5 (D-11): parallel party-tab header call, gated on party_enabled — see
+    # _maybe_ensure_party_sheet_header's docstring. Does not touch the call/order above.
+    _spawn(_maybe_ensure_party_sheet_header())
+
     default = DefaultBotProperties(parse_mode=ParseMode.HTML)
     
     session = None
