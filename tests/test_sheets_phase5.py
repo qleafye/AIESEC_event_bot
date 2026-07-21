@@ -400,3 +400,47 @@ def test_finalize_registration_full_track_schedules_main_append_only(tmp_path, m
 
     assert len(full_calls) == 1
     assert len(party_calls) == 0
+
+
+# ── Task 3: main._maybe_ensure_party_sheet_header gating (D-11) ─────────────────────────────
+
+def test_maybe_ensure_party_sheet_header_noop_when_party_disabled(tmp_path, monkeypatch):
+    """party_enabled unset (defaults 'off') -> the party tab must never be created."""
+    _use_tmp_db(tmp_path)
+    import main
+
+    called = {"hit": False}
+
+    async def fake_ensure(tab_name, headers):
+        called["hit"] = True
+
+    monkeypatch.setattr(main.sheets_service, "ensure_named_sheet_header", fake_ensure)
+
+    async def go():
+        await db.init_db()
+        await main._maybe_ensure_party_sheet_header()
+
+    asyncio.run(go())
+    assert called["hit"] is False
+
+
+def test_maybe_ensure_party_sheet_header_calls_ensure_when_party_enabled(tmp_path, monkeypatch):
+    _use_tmp_db(tmp_path)
+    import main
+
+    called = {}
+
+    async def fake_ensure(tab_name, headers):
+        called["tab"] = tab_name
+        called["headers"] = headers
+
+    monkeypatch.setattr(main.sheets_service, "ensure_named_sheet_header", fake_ensure)
+
+    async def go():
+        await db.init_db()
+        await db.set_setting("party_enabled", "on")
+        await main._maybe_ensure_party_sheet_header()
+
+    asyncio.run(go())
+    assert called.get("tab") == main.PARTY_SHEET_TAB_DEFAULT
+    assert isinstance(called.get("headers"), list) and "Трек" in called["headers"]
