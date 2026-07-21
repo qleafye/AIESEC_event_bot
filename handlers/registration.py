@@ -850,8 +850,8 @@ def _party_fork_kb() -> InlineKeyboardMarkup:
     party tokens as _PARTY_TAG_MAP so there is exactly one token vocabulary in this file."""
     return InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text="Полная регистрация", callback_data="party_pick:full")],
-        [InlineKeyboardButton(text="\U0001f389 Вечеринка с ночёвкой", callback_data="party_pick:party_over")],
-        [InlineKeyboardButton(text="\U0001f389 Вечеринка без ночёвки", callback_data="party_pick:party_noover")],
+        [InlineKeyboardButton(text="\U0001f389 Гости с ночёвкой", callback_data="party_pick:party_over")],
+        [InlineKeyboardButton(text="\U0001f389 Гости без ночёвки", callback_data="party_pick:party_noover")],
     ])
 
 
