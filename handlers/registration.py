@@ -89,6 +89,7 @@ REG_FLOW = [
     # _start_registration_flow). Order here IS the ask order for the enabled steps.
     ("age", "reg_q_age", "text"),
     ("phone", "reg_q_phone", "text"),
+    ("alumni_status", "reg_q_alumni_status", "text"),  # аламни / айсекер / ни то, ни другое
     ("vk", "reg_q_vk", "text"),
     ("city", "reg_q_city", "text"),
     ("education_status", "reg_q_education", "text"),
@@ -216,6 +217,7 @@ REG_DEFAULTS = {
     "reg_q_department": "off",
     "reg_q_aiesec_role": "off",
     "reg_q_certificate": "off",
+    "reg_q_alumni_status": "off",
     "reg_q_english": "off",
     "reg_q_allergies": "off",
     "reg_q_food": "off",
@@ -260,6 +262,7 @@ REG_LABELS = {
     "reg_q_department": "🏢 Департамент",
     "reg_q_aiesec_role": "🎖 Позиция AIESEC",
     "reg_q_certificate": "📄 Справка в ВУЗ",
+    "reg_q_alumni_status": "🎓 Аламни/айсекер",
     "reg_q_english": "🇬🇧 Англ. язык",
     "reg_q_allergies": "🤧 Аллергии",
     "reg_q_food": "🥗 Питание",
@@ -317,7 +320,7 @@ REG_PRESETS = {
         # renders REG_LABELS.get(k, k) for k in preset["on"], and REG_LABELS is keyed by
         # reg_q_*; matches the "forum"/"conf" entries above.
         "on": [
-            "reg_q_age", "reg_q_phone", "reg_q_vk", "reg_q_city",
+            "reg_q_age", "reg_q_phone", "reg_q_alumni_status", "reg_q_vk", "reg_q_city",
             "reg_q_allergies", "reg_q_food",
         ],
     },
@@ -365,6 +368,7 @@ REG_CATEGORIES = [
     ]),
     ("🎤 Конфа", [
         "reg_q_phone", "reg_q_lc", "reg_q_department", "reg_q_aiesec_role",
+        "reg_q_alumni_status",
         "reg_q_english", "reg_q_allergies", "reg_q_food", "reg_q_arrival",
         "reg_q_bed_sharing", "reg_q_bed_partner",
         "reg_q_transport", "reg_q_cc_shop", "reg_q_exp_organizers", "reg_q_volunteer",
@@ -629,6 +633,12 @@ async def _ask_step(step_key: str, message: types.Message, state: FSMContext, st
     elif step_key == "needs_certificate":
         await message.answer(f"{p}{await _prompt('needs_certificate', 'Нужна справка в ВУЗ?', participant_type)}", reply_markup=get_yes_no_kb())
         await state.set_state(Registration.needs_certificate)
+    elif step_key == "alumni_status":
+        await message.answer(
+            f"{p}{await _prompt('alumni_status', 'Ты аламни или айсекер?', participant_type)}",
+            reply_markup=_reply_kb(["Аламни", "Айсекер", "Ни то, ни другое"]),
+        )
+        await state.set_state(Registration.alumni_status)
     elif step_key == "english_level":
         await message.answer(f"{p}{await _prompt('english_level', 'Уровень английского:', participant_type)}", reply_markup=get_english_level_kb())
         await state.set_state(Registration.english_level)
@@ -943,6 +953,7 @@ SHEET_COLUMNS = [
     ("Детали", None, _sheet_details),
     # --- вопросы в порядке REG_FLOW ---
     ("Телефон", "reg_q_phone", lambda d: d.get("phone") or "-"),
+    ("Аламни/айсекер", "reg_q_alumni_status", lambda d: d.get("alumni_status") or "-"),
     ("ВК", "reg_q_vk", lambda d: d.get("vk_username") or "-"),
     ("Город", "reg_q_city", lambda d: d.get("city") or "-"),
     ("Образование", "reg_q_education", lambda d: d.get("education_status") or "-"),
@@ -1061,6 +1072,7 @@ PARTY_SHEET_COLUMNS = [
     }.get(d.get("participant_type"), "-")),
     ("Телефон", "reg_q_phone", lambda d: d.get("phone") or "-"),
     ("ВК", "reg_q_vk", lambda d: d.get("vk_username") or "-"),
+    ("Аламни/айсекер", "reg_q_alumni_status", lambda d: d.get("alumni_status") or "-"),
     ("Аллергии", "reg_q_allergies", lambda d: d.get("allergies") or "-"),
     ("Питание", "reg_q_food", lambda d: d.get("food_pref") or "-"),
     ("Проживание", "reg_q_housing", lambda d: d.get("housing") or "-"),
@@ -1141,6 +1153,7 @@ def _build_summary(data: dict) -> str:
         ("Комментарии", data.get("comments")),
         ("Департамент", data.get("department")),
         ("Позиция AIESEC", data.get("aiesec_role")),
+        ("Аламни/айсекер", data.get("alumni_status")),
         ("Справка в ВУЗ", data.get("needs_certificate")),
         ("Английский", data.get("english_level")),
         ("Аллергии", data.get("allergies")),
@@ -2032,6 +2045,11 @@ async def process_allergies(message: types.Message, state: FSMContext, bot: Bot)
 @router.message(Registration.food_pref)
 async def process_food_pref(message: types.Message, state: FSMContext, bot: Bot):
     await _store_text("food_pref", "food_pref", message, state, bot)
+
+
+@router.message(Registration.alumni_status)
+async def process_alumni_status(message: types.Message, state: FSMContext, bot: Bot):
+    await _store_choice("alumni_status", "alumni_status", message, state, bot)
 
 
 @router.message(Registration.arrival)
