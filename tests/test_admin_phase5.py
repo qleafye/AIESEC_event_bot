@@ -206,13 +206,19 @@ def test_preset_confirm_party_routes_to_apply_party_preset(tmp_path, monkeypatch
 
 
 def test_preset_confirm_party_leaves_global_reg_q_untouched(tmp_path):
-    """D-07: applying the party preset must never write a bare reg_q_* global key."""
+    """D-07: applying the party preset must never write a bare reg_q_* global key. WR-03:
+    the overnight-only trio (housing/bed_sharing/bed_partner) is exempt from the explicit
+    on/off __party write — it stays at inherit so D-08's skip rule keeps governing it."""
+    from handlers.registration import _PARTY_PRESET_OVERNIGHT_EXEMPT
     _admin_ready(tmp_path)
     cb = FakeCallback("preset_confirm:party")
     asyncio.run(admin_mod.preset_confirm(cb))
     for _step_key, setting_key, *_rest in REG_FLOW:
         assert asyncio.run(db.get_setting(setting_key)) is None
-        assert asyncio.run(db.get_setting(f"{setting_key}__party")) in ("on", "off")
+        if setting_key in _PARTY_PRESET_OVERNIGHT_EXEMPT:
+            assert asyncio.run(db.get_setting(f"{setting_key}__party")) is None
+        else:
+            assert asyncio.run(db.get_setting(f"{setting_key}__party")) in ("on", "off")
     assert cb.message.edit_calls == 1  # re-rendered the SAME message, once
 
 
