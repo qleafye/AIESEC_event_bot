@@ -15,7 +15,8 @@ findings:
   warning: 5
   info: 2
   total: 8
-status: issues_found
+status: resolved
+resolution: CR-01, WR-01, WR-03 fixed in-session (commits 136ea0b, f1b9802, 3326fcf); WR-02, WR-04, WR-05, IN-01, IN-02 deferred to backlog
 ---
 
 # Phase 5: Code Review Report — participant-tracks-party-delegates
