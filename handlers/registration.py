@@ -324,14 +324,23 @@ REG_PRESETS = {
 }
 
 
+# WR-03: the D-08 overnight-only questions are excluded from _apply_party_preset's blanket
+# on/off pass. They are governed by the participant_type == 'party_overnight' skip rule in
+# _get_enabled_steps, not by the preset — writing an explicit __party=off override for them
+# would force them off even in a conf-style deployment where they are enabled globally,
+# defeating D-08 entirely. Left at inherit (no __party key written) so that rule keeps
+# working exactly as it does for any other config that never touched the preset.
+_PARTY_PRESET_OVERNIGHT_EXEMPT = {"reg_q_housing", "reg_q_bed_sharing", "reg_q_bed_partner"}
+
+
 async def _apply_party_preset() -> None:
     """D-07: bulk-write __party overrides ONLY — mirrors _apply_event_preset's
     determinism guarantee (handlers/admin.py:2040-2048) but targets the __party
-    namespace exclusively. Every REG_FLOW step gets an explicit on/off __party key
-    (not only the enabled ones), so re-tapping the preset is deterministic regardless
-    of prior manual overrides. Matches on setting_key, consistent with the "on" list
-    spelling above — matching on step_key while the list holds setting_keys would
-    silently write "off" for every question.
+    namespace exclusively. Every REG_FLOW step EXCEPT the D-08 overnight-only trio
+    (_PARTY_PRESET_OVERNIGHT_EXEMPT, WR-03) gets an explicit on/off __party key, so
+    re-tapping the preset is deterministic regardless of prior manual overrides. Matches
+    on setting_key, consistent with the "on" list spelling above — matching on step_key
+    while the list holds setting_keys would silently write "off" for every question.
 
     This function's ONLY write is to __party-suffixed keys (setting_key + "__party");
     it never writes a bare reg_q_* key, never touches payment_enabled/party_enabled/
@@ -340,6 +349,8 @@ async def _apply_party_preset() -> None:
     mid-registration cannot alter that delegate's question set (T-05-02-01)."""
     on_set = set(REG_PRESETS["party"]["on"])
     for _step_key, setting_key, *_rest in REG_FLOW:
+        if setting_key in _PARTY_PRESET_OVERNIGHT_EXEMPT:
+            continue
         await set_setting(f"{setting_key}__party", "on" if setting_key in on_set else "off")
 
 
