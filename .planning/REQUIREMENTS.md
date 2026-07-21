@@ -97,7 +97,7 @@ Scope этого milestone: Фаза 1 (quick wins) + ядро (approval flow) +
 - **TRACK-03**: Вход в party-трек по deep-link `?start=party_over` / `?start=party_noover`; опциональный вопрос-развилка за тумблером `party_fork_question` (default `off`), не ломая разбор referrer_id и `src_*`
 - **TRACK-04**: Отдельный тумблер модерации `party_approval`, независимый от `full_approval` / `short_approval`
 - **TRACK-05**: Тарифы `payment_options` разделены по трекам — делегат видит только релевантные его треку варианты оплаты
-- **TRACK-06**: Трек виден в карточке заявки у манагера, отдельной колонкой в Google Sheet и как поле фильтра рассылок
+- **TRACK-06**: Трек виден в карточке заявки у манагера, на отдельной вкладке Google Sheet (со своей шапкой, без пустых колонок ВУЗ/Курс/Резюме) и как поле фильтра рассылок. *(Исправление 2026-07-20/05-CONTEXT.md, D-11: формулировка «отдельной колонкой» из первоначальной постановки заменена на «отдельная вкладка» — party-делегаты пишутся на отдельный лист, а не в колонку основной таблицы.)*
 
 ## Out of Scope
 
@@ -156,7 +156,7 @@ Scope этого milestone: Фаза 1 (quick wins) + ядро (approval flow) +
 | TRACK-03 | Phase 5 | Complete |
 | TRACK-04 | Phase 5 | Complete |
 | TRACK-05 | Phase 5 | Complete |
-| TRACK-06 | Phase 5 | Pending |
+| TRACK-06 | Phase 5 | Complete |
 
 **Coverage:**
 - v1 requirements: 37 total (REQUIREMENTS.md originally listed 36; actual count from IDs is 37 — PAY-06 is the 37th)
@@ -166,4 +166,4 @@ Scope этого milestone: Фаза 1 (quick wins) + ядро (approval flow) +
 
 ---
 *Requirements defined: 2026-06-25*
-*Last updated: 2026-07-20 — TRACK-01..06 added for Phase 5 (participant tracks / party delegates)*
+*Last updated: 2026-07-21 — TRACK-01..06 all Complete (Phase 5 shipped); TRACK-06 wording corrected from «отдельной колонкой» to «отдельная вкладка» per 05-CONTEXT.md D-11*
