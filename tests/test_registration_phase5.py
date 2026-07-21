@@ -297,8 +297,10 @@ def test_party_preset_keys_are_real_reg_flow_setting_keys():
     assert not bad, bad
 
 
-def test_apply_party_preset_writes_every_reg_flow_step(tmp_path):
-    """After _apply_party_preset(), every REG_FLOW step has an explicit __party key."""
+def test_apply_party_preset_writes_every_reg_flow_step_except_overnight_exempt(tmp_path):
+    """After _apply_party_preset(), every REG_FLOW step has an explicit __party key EXCEPT
+    the WR-03 overnight-only trio (housing/bed_sharing/bed_partner), which stays at inherit
+    so D-08's overnight/no-overnight skip rule keeps governing them."""
     _use_tmp_db(tmp_path)
 
     async def go():
@@ -307,9 +309,12 @@ def test_apply_party_preset_writes_every_reg_flow_step(tmp_path):
         distinct = set()
         for _step_key, setting_key, *_rest in reg.REG_FLOW:
             val = await db.get_setting(f"{setting_key}__party")
+            if setting_key in reg._PARTY_PRESET_OVERNIGHT_EXEMPT:
+                assert val is None
+                continue
             assert val in ("on", "off")
             distinct.add(f"{setting_key}__party")
-        assert len(distinct) == len(reg.REG_FLOW)
+        assert len(distinct) == len(reg.REG_FLOW) - len(reg._PARTY_PRESET_OVERNIGHT_EXEMPT)
 
     asyncio.run(go())
 
@@ -358,6 +363,65 @@ def test_apply_party_preset_on_keys_are_explicitly_on(tmp_path):
         # A key NOT in the seed list must be explicitly "off" (determinism guarantee),
         # not merely absent.
         assert await db.get_setting("reg_q_university__party") == "off"
+
+    asyncio.run(go())
+
+
+# ── WR-03 regression: party preset must not force off overnight housing/bed questions ──
+
+def test_apply_party_preset_never_writes_overnight_trio_keys(tmp_path):
+    """The exact bug: pre-fix, _apply_party_preset wrote reg_q_housing__party=off (and the
+    same for bed_sharing/bed_partner) unconditionally, even though none of the three are in
+    REG_PRESETS["party"]["on"] — defeating D-08 in any config where they are globally on."""
+    _use_tmp_db(tmp_path)
+
+    async def go():
+        await db.init_db()
+        await reg._apply_party_preset()
+        for k in ("reg_q_housing", "reg_q_bed_sharing", "reg_q_bed_partner"):
+            assert await db.get_setting(f"{k}__party") is None
+
+    asyncio.run(go())
+
+
+def test_party_preset_leaves_overnight_guest_asked_when_globally_on(tmp_path):
+    """D-08 end-to-end: with housing/bed_sharing/bed_partner enabled GLOBALLY (RusCo-style
+    conf config) and the party preset applied, an overnight guest is STILL asked — the
+    __party keys are absent (inherit), so the global "on" flows through."""
+    _use_tmp_db(tmp_path)
+
+    async def go():
+        await db.init_db()
+        await db.set_setting("reg_q_housing", "on")
+        await db.set_setting("reg_q_bed_sharing", "on")
+        await db.set_setting("reg_q_bed_partner", "on")
+        await reg._apply_party_preset()
+        steps = await reg._get_enabled_steps({
+            "participant_type": "party_overnight", "arrival": "Заранее",
+        })
+        assert "housing" in steps
+        assert "bed_sharing" in steps
+
+    asyncio.run(go())
+
+
+def test_party_preset_leaves_noovernight_guest_skipped_when_globally_on(tmp_path):
+    """Same globally-on config, but a no-overnight guest must still skip housing/bed via the
+    existing D-08 overnight-only conditional skip rule — the preset fix does not disturb it."""
+    _use_tmp_db(tmp_path)
+
+    async def go():
+        await db.init_db()
+        await db.set_setting("reg_q_housing", "on")
+        await db.set_setting("reg_q_bed_sharing", "on")
+        await db.set_setting("reg_q_bed_partner", "on")
+        await reg._apply_party_preset()
+        steps = await reg._get_enabled_steps({
+            "participant_type": "party_noovernight", "arrival": "Заранее",
+        })
+        assert "housing" not in steps
+        assert "bed_sharing" not in steps
+        assert "bed_partner" not in steps
 
     asyncio.run(go())
 
