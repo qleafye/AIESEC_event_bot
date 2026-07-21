@@ -4,6 +4,32 @@ Ideas captured outside the active milestone. Promote via `/gsd-review-backlog`.
 
 ---
 
+## Phase 5 code-review deferrals (Fable 5 review, 2026-07-21)
+
+Deferred findings from `.planning/phases/05-participant-tracks-party-delegates/05-REVIEW.md`.
+CR-01 + WR-01 + WR-03 were fixed in-session; the below were consciously deferred.
+
+- **WR-02** — `approve_text__party` and `reg_prompt_<step>__party` have no admin UI
+  (`admin.py:2305-2343`, `SETTINGS_FIELDS`). Per-track wording (D-05) and per-track
+  approval message (D-15) can currently only be set by writing `bot_settings` directly.
+  Contradicts the "всё через бота" core value. Fix: add `approve_text__party` editor +
+  a `track` switcher on the prompt-text screen, mirroring `reg_q_track_switch`.
+- **WR-04** — party sheet header has no resync hook on `__party` toggle
+  (`registration.py:1061-1094`, `admin.py:2145-2173`). Column-misalignment risk if an
+  admin flips a `reg_q_*__party` override mid-event. Fix: call
+  `ensure_named_sheet_header(tab, await party_sheet_headers())` from `toggle_party_question`
+  and `preset_confirm`'s party branch.
+- **WR-05** — `payment_options` admin help text (`admin.py:359`) not updated for the new
+  `label|price|track1,track2` syntax. Admin has no in-bot way to discover track filtering.
+- **IN-01** — broadcast filter «Трек» picker shows raw codes (`party_overnight`) instead
+  of RU labels (`admin.py:1808-1827`). Matches pre-existing raw-picker pattern; low priority.
+- **IN-02** — `mark_reg_started` COALESCE-preserve branch (`db.py:558-565`) unreachable in
+  production (only live caller always passes a concrete track). Documentation-only note.
+- **Pre-existing (out of Phase-5 scope)** — main sheet `active_sheet_row` does not apply
+  `_csv_safe`, unlike the party sheet. CSV-injection parity gap worth a quick-task.
+
+---
+
 ## Attendance check-in + post-event feedback survey
 
 **Captured:** 2026-07-20 (during Phase 5 execution)
