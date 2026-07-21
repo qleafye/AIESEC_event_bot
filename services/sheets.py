@@ -380,3 +380,93 @@ async def rebuild_main_sheet(headers: list[str], rows: list[list]) -> int:
         _reset_sheet_cache()
         logger.error(f"rebuild_main_sheet failed: {e}")
         return -1
+
+
+# --- Phase 5 (D-11/D-12, plan 05-06): incremental append to a SECOND, admin-named tab ------
+# `append_to_sheet` above is hardcoded to the single cached `_sheet` global (the main tab); the
+# party tab needs the exact same incremental-append shape but keyed by an arbitrary tab name.
+# `sync_named_worksheet` (above) already targets an arbitrary tab but does a FULL OVERWRITE —
+# wrong shape for per-registration appends. Do not repurpose either — add a parallel cache.
+
+# Second cache, keyed by tab name, mirroring _sheet/_sheet_lock exactly (same TOCTOU rationale
+# at WR-05 above — sheet ops run across worker threads via asyncio.to_thread).
+_named_sheets: dict[str, object] = {}
+_named_sheets_lock = threading.Lock()
+
+
+def _get_named_sheet(tab_name: str):
+    """Lazy double-checked-lock cache keyed by tab name (mirrors _get_sheet). Auto-creates the
+    tab on WorksheetNotFound (D-11: the party tab needs no manual setup)."""
+    if tab_name in _named_sheets:
+        return _named_sheets[tab_name]
+    with _named_sheets_lock:
+        if tab_name in _named_sheets:
+            return _named_sheets[tab_name]
+        gc = gspread.service_account(filename=config.GOOGLE_CREDENTIALS_FILE)
+        sh = gc.open_by_key(config.GOOGLE_SHEET_ID)
+        try:
+            ws = sh.worksheet(tab_name)
+        except gspread.WorksheetNotFound:
+            ws = sh.add_worksheet(title=tab_name, rows=1000, cols=30)
+        _named_sheets[tab_name] = ws
+        return ws
+
+
+def _reset_named_sheet_cache(tab_name: str):
+    _named_sheets.pop(tab_name, None)
+
+
+def _append_to_named_sheet_sync(tab_name: str, data: list):
+    _get_named_sheet(tab_name).append_row(data)
+
+
+async def append_to_named_sheet(tab_name: str, data: list):
+    """Fire-and-forget row append to a named (non-main) tab. Mirrors append_to_sheet's
+    retry/backoff loop verbatim — same MAX_RETRIES/RETRY_DELAYS, same fail-soft posture.
+    WR-06: log only the id + tab name, never the full row (party rows carry phone/allergy PII)."""
+    if not config.GOOGLE_SHEET_ID or not config.GOOGLE_CREDENTIALS_FILE:
+        logger.warning(f"Google Sheet ID or Credentials not set. Skipping named sheet export (tab={tab_name!r}).")
+        return
+
+    for attempt in range(MAX_RETRIES):
+        try:
+            await asyncio.to_thread(_append_to_named_sheet_sync, tab_name, data)
+            logger.info(f"Successfully appended row for telegram_id={(data[0] if data else '?')!r} to tab {tab_name!r}")
+            return
+        except Exception as e:
+            _reset_named_sheet_cache(tab_name)
+            delay = RETRY_DELAYS[attempt] if attempt < len(RETRY_DELAYS) else RETRY_DELAYS[-1]
+            logger.warning(f"Named sheet ({tab_name!r}) append attempt {attempt + 1}/{MAX_RETRIES} failed: {e}. Retrying in {delay}s...")
+            await asyncio.sleep(delay)
+
+    logger.error(f"Failed to append to tab {tab_name!r} after {MAX_RETRIES} attempts for telegram_id={(data[0] if data else '?')!r}")
+
+
+def _ensure_named_header_sync(tab_name: str, headers: list[str]):
+    """Mirror _ensure_header_sync exactly, targeting the named tab."""
+    sheet = _get_named_sheet(tab_name)
+    if sheet.col_count < len(headers):
+        sheet.add_cols(len(headers) - sheet.col_count)
+    col1 = sheet.col_values(1)
+    if not col1:
+        sheet.append_row(headers)
+        return
+    first = (col1[0] or "").strip()
+    if first.lstrip("-").isdigit():
+        sheet.insert_row(headers, 1)
+        return
+    current = [h.strip() for h in sheet.row_values(1)]
+    if current != headers:
+        end = gspread.utils.rowcol_to_a1(1, len(headers))
+        sheet.update(values=[headers], range_name=f"A1:{end}")
+
+
+async def ensure_named_sheet_header(tab_name: str, headers: list[str]):
+    """Fail-soft, mirrors ensure_sheet_header but targets a named tab."""
+    if not config.GOOGLE_SHEET_ID or not config.GOOGLE_CREDENTIALS_FILE:
+        return
+    try:
+        await asyncio.to_thread(_ensure_named_header_sync, tab_name, headers)
+    except Exception as e:
+        _reset_named_sheet_cache(tab_name)
+        logger.warning(f"ensure_named_sheet_header({tab_name!r}) failed (skipping): {e}")
