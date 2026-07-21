@@ -6,77 +6,77 @@ started: 2026-07-21
 updated: 2026-07-21
 ---
 
-## Current Test
+## Текущий тест
 
-[awaiting human testing — live Telegram bot + real Google Sheet]
+[ожидает ручной проверки — живой Telegram-бот + реальная Google-таблица]
 
-## Setup (before you start)
+## Подготовка (перед началом)
 
-1. Admin → Settings: «Трек вечеринки» (`party_enabled`) = ВКЛ.
-2. Apply the 🎉 Party preset (Тип события → 🎉 Party).
+1. Админка → Настройки: «Трек вечеринки» (`party_enabled`) = ВКЛ.
+2. Применить пресет 🎉 Party (Тип события → 🎉 Party).
 3. «Модерация вечеринки» (`party_approval`) = ручная.
-4. Have the real Google Sheet open in a browser tab.
+4. Открыть реальную Google-таблицу в соседней вкладке.
 
-## Tests
+## Тесты
 
-### 1. Party deep link — overnight, only party questions
-steps: Open `t.me/<bot>?start=party_over` from a test account.
-expected: Flow asks ONLY party questions (age, phone, VK, city, allergies, food) + overnight (проживание / общая кровать / сосед). NEVER university or resume.
-result: [pending]
+### 1. Party deep-link (с ночёвкой) — только party-вопросы
+шаги: Открыть `t.me/<bot>?start=party_over` с тестового аккаунта.
+ожидается: Спрашиваются ТОЛЬКО party-вопросы (возраст, телефон, VK, город, аллергии, питание) + про ночёвку (проживание / общая кровать / сосед). НИКОГДА не спрашивает ВУЗ или резюме.
+результат: [ожидает]
 
-### 2. Track survives a bare /start mid-flow
-steps: Mid-registration, send a bare `/start` with no parameter.
-expected: You stay on the party track, flow continues, track not reset to full.
-result: [pending]
+### 2. Трек переживает повторный /start в середине
+шаги: В середине регистрации отправить голый `/start` без параметра.
+ожидается: Остаёшься на party-треке, регистрация продолжается, трек НЕ сбрасывается на полный.
+результат: [ожидает]
 
-### 3. Finalize under manual moderation
-steps: Finish the party registration.
-expected: «заявка отправлена» message, NO main menu shown (manual moderation).
-result: [pending]
+### 3. Завершение при ручной модерации
+шаги: Закончить party-регистрацию.
+ожидается: Сообщение «заявка отправлена», главное меню НЕ показывается (ручная модерация).
+результат: [ожидает]
 
-### 4. Moderation card shows the track
-steps: Admin → «Заявки» queue, find the application.
-expected: Card shows «🎉 Трек: вечеринка с ночёвкой». Approve it.
-result: [pending]
+### 4. Карточка модерации показывает трек
+шаги: Админка → очередь «Заявки», найти заявку.
+ожидается: На карточке видно «🎉 Трек: вечеринка с ночёвкой». Одобрить её.
+результат: [ожидает]
 
-### 5. Party approval text + party-only tariffs
-steps: Observe the approval message and payment options after approve.
-expected: Approval message is the party text (if `approve_text__party` set — note: settable only via DB right now, WR-02 backlog). Payment options shown are ONLY party-eligible tariffs.
-result: [pending]
+### 5. Party-текст одобрения + только party-тарифы
+шаги: Посмотреть сообщение об одобрении и варианты оплаты после одобрения.
+ожидается: Сообщение одобрения — party-текст (если задан `approve_text__party` — учти: сейчас задаётся только через БД, WR-02 в беклоге). Варианты оплаты — ТОЛЬКО тарифы, доступные party-треку.
+результат: [ожидает]
 
-### 6. Party Sheet tab — exclusive routing
-steps: Open the Google Sheet.
-expected: A «Party» tab exists; its header has NO ВУЗ/Курс/Резюме columns; the new row is present with its «Трек» cell filled. Confirm NO corresponding row appeared on the MAIN tab.
-result: [pending]
+### 6. Вкладка Party в таблице — эксклюзивная маршрутизация
+шаги: Открыть Google-таблицу.
+ожидается: Есть вкладка «Party»; в её шапке НЕТ колонок ВУЗ/Курс/Резюме; новая строка на месте, ячейка «Трек» заполнена. Убедиться, что на ГЛАВНОЙ вкладке соответствующей строки НЕ появилось.
+результат: [ожидает]
 
-### 7. No-overnight sub-track skips housing
-steps: Repeat test 1 with `t.me/<bot>?start=party_noover`.
-expected: Housing / bed questions are SKIPPED; other party questions still asked.
-result: [pending]
+### 7. Под-трек «без ночёвки» пропускает вопросы о проживании
+шаги: Повторить тест 1 со ссылкой `t.me/<bot>?start=party_noover`.
+ожидается: Вопросы про проживание / кровать ПРОПУСКАЮТСЯ; остальные party-вопросы задаются.
+результат: [ожидает]
 
-### 8. Full-flow regression (no deep link)
-steps: Register once through the ordinary flow (no deep link).
-expected: Behaves exactly as before Phase 5; lands on the MAIN sheet tab, not Party.
-result: [pending]
+### 8. Регрессия обычной регистрации (без deep-link)
+шаги: Пройти регистрацию обычным путём (без deep-link).
+ожидается: Ведёт себя точно как до Фазы 5; строка уходит на ГЛАВНУЮ вкладку, не на Party.
+результат: [ожидает]
 
-### 9. Legacy deep-link regression
-steps: Open `t.me/<bot>?start=12345` (referral) and separately `?start=src_vk` (source).
-expected: Referral is still recorded; source is still recorded. Behaves as before Phase 5.
-result: [pending]
+### 9. Регрессия старых deep-link
+шаги: Открыть `t.me/<bot>?start=12345` (реферал) и отдельно `?start=src_vk` (источник).
+ожидается: Реферал по-прежнему записывается; источник по-прежнему записывается. Ведёт себя как до Фазы 5.
+результат: [ожидает]
 
-### 10. CR-01 fix — referral survives the party fork
-steps: Set `party_fork_question` = ВКЛ (DB). Open `t.me/<bot>?start=<your_referrer_id>` on a FRESH account → the fork screen appears → pick «Полная регистрация» → finish.
-expected: The finished user row has `referrer_id` filled (referral NOT lost). Repeat picking a party option — referral still recorded.
-notes: This is the CRITICAL bug Fable 5 caught and we fixed (commit 136ea0b). Turn `party_fork_question` back OFF after testing unless you want the fork live.
-result: [pending]
+### 10. Фикс CR-01 — реферал переживает party-развилку
+шаги: Включить `party_fork_question` = ВКЛ (через БД). Открыть `t.me/<bot>?start=<твой_referrer_id>` со СВЕЖЕГО аккаунта → появляется экран-развилка → выбрать «Полная регистрация» → завершить.
+ожидается: В финальной строке юзера заполнен `referrer_id` (реферал НЕ потерян). Повторить, выбрав party-вариант — реферал всё равно записан.
+заметки: Это КРИТИЧЕСКИЙ баг, который нашёл Fable 5 и мы починили (коммит 136ea0b). После теста верни `party_fork_question` в ВЫКЛ, если не хочешь оставлять развилку включённой.
+результат: [ожидает]
 
-## Summary
+## Итог
 
-total: 10
-passed: 0
-issues: 0
-pending: 10
-skipped: 0
-blocked: 0
+всего: 10
+прошло: 0
+проблемы: 0
+ожидает: 10
+пропущено: 0
+заблокировано: 0
 
-## Gaps
+## Дыры
