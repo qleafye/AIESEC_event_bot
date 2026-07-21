@@ -278,7 +278,8 @@ def test_prompt_empty_party_override_falls_back_to_global(tmp_path):
 def test_party_preset_shape():
     p = reg.REG_PRESETS["party"]
     assert p["label"] == "🎉 Party"
-    assert len(p["on"]) == 6
+    # 6 at Phase-5 close; +reg_q_alumni_status (quick 260721-msh).
+    assert len(p["on"]) == 7
     assert all(k.startswith("reg_q_") for k in p["on"])
     assert "payment_enabled" not in p
 
@@ -677,9 +678,10 @@ def test_should_show_fork_true_when_both_settings_on_no_track_not_registered(tmp
 
 
 def test_reg_flow_entry_count_unchanged_from_phase5_start():
-    # D-09: this plan adds no new REG_FLOW step keys. 42 matches the count recorded in the
-    # 05-02 SUMMARY ("threads participant_type to all 42 internal _prompt call sites").
-    assert len(reg.REG_FLOW) == 42
+    # D-09: Phase 5 itself added no new REG_FLOW step keys — 42 matches the count recorded in
+    # the 05-02 SUMMARY ("threads participant_type to all 42 internal _prompt call sites").
+    # Post-phase additions bump this deliberately: +alumni_status (quick 260721-msh) → 43.
+    assert len(reg.REG_FLOW) == 43
 
 
 def test_party_pick_token_vocabulary_matches_extract_party_track():

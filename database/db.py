@@ -160,6 +160,7 @@ async def init_db():
         await _ensure_column(db, "users", "payment_plan_date", "TEXT")  # планируемая дата оплаты взноса
         await _ensure_column(db, "users", "bed_sharing", "TEXT")   # конфа: готов делить двуспальную кровать
         await _ensure_column(db, "users", "bed_partner", "TEXT")   # конфа: с кем именно (условно)
+        await _ensure_column(db, "users", "alumni_status", "TEXT")  # аламни / айсекер / ни то, ни другое
 
         # Phase 4 (CONS-01/02, D-02): per-user consent audit trail. UNIQUE dedupes
         # re-taps; index supports the per-user lookup.
@@ -225,8 +226,9 @@ async def add_user(data: dict):
                 exp_organizers, exp_content, volunteer,
                 payment_status, payment_option, receipt_file_id, payment_due, paid_at,
                 arrival_date, birth_date, study_field, goal, formats, vk_username,
-                transport, payment_plan_date, bed_sharing, bed_partner, participant_type
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                transport, payment_plan_date, bed_sharing, bed_partner, participant_type,
+                alumni_status
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             ON CONFLICT(telegram_id) DO UPDATE SET
                 username=excluded.username,
                 full_name=excluded.full_name,
@@ -285,7 +287,8 @@ async def add_user(data: dict):
                 payment_plan_date=excluded.payment_plan_date,
                 bed_sharing=excluded.bed_sharing,
                 bed_partner=excluded.bed_partner,
-                participant_type=excluded.participant_type
+                participant_type=excluded.participant_type,
+                alumni_status=excluded.alumni_status
         ''', (
             data['telegram_id'],
             data.get('username'),
@@ -345,6 +348,7 @@ async def add_user(data: dict):
             data.get('bed_sharing'),
             data.get('bed_partner'),
             data.get('participant_type', 'full'),
+            data.get('alumni_status'),
         ))
         await db.commit()
 
@@ -449,6 +453,7 @@ CSV_HEADER_LABELS = {
     "comments": "Доп. комментарии", "city": "Город", "local_committee": "Локальный комитет",
     "position": "Позиция", "department": "Департамент", "aiesec_role": "Роль AIESEC",
     "needs_certificate": "Справка в ВУЗ", "english_level": "Английский",
+    "alumni_status": "Аламни/айсекер",
     "attendance_format": "Формат участия", "informal_day": "Неформальный день",
     "goal": "Цель участия", "formats": "Форматы форума", "is_ambassador_candidate": "Амбассадор",
     "allergies": "Аллергии", "food_pref": "Питание", "arrival": "Приезд",
