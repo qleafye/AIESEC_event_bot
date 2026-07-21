@@ -13,7 +13,7 @@ from aiogram.types import FSInputFile, ReplyKeyboardRemove, InlineKeyboardMarkup
 from aiogram.utils.keyboard import ReplyKeyboardBuilder
 
 from config import config
-from database.db import add_user, get_user, get_setting, set_setting, mark_reg_started, clear_reg_started, set_reg_step, set_user_subscribed, set_user_status, record_user_consent, get_reg_started_track
+from database.db import add_user, get_user, get_setting, set_setting, mark_reg_started, clear_reg_started, set_reg_step, set_user_subscribed, set_user_status, record_user_consent, get_reg_started_track, _csv_safe
 from handlers.states import Registration
 from keyboards.builders import (
     get_main_menu_kb,
@@ -36,7 +36,7 @@ from keyboards.builders import (
     get_course_kb,
     get_yes_no_kb,
 )
-from services.sheets import append_to_sheet
+from services.sheets import append_to_sheet, append_to_named_sheet
 from services.nextcloud import upload_resume, upload_text_resume
 
 router = Router()
@@ -1033,6 +1033,66 @@ async def active_sheet_row(data: dict) -> list:
     headers = await get_sheet_schema()
     values = _sheet_value_map(data)
     return [values.get(h, "-") for h in headers]
+
+
+# --- Phase 5 (D-11/D-12, TRACK-06): party worksheet tab -------------------------------------
+# A deliberately curated column set, NOT a filtered copy of SHEET_COLUMNS: a party guest never
+# has a university/course/study_field/resume, so those columns are omitted entirely rather than
+# always appearing empty (the whole point of the separate tab).
+PARTY_SHEET_COLUMNS = [
+    ("ID Telegram", None, lambda d: d.get("telegram_id") or "-"),
+    ("Username", None, lambda d: d.get("username") or "-"),
+    ("Дата регистрации", None, lambda d: d.get("registration_date") or "-"),
+    ("Статус", None, _status_label),
+    ("ФИО", None, lambda d: d.get("full_name") or "-"),
+    ("Трек", None, lambda d: {
+        "party_overnight": "С ночёвкой", "party_noovernight": "Без ночёвки",
+    }.get(d.get("participant_type"), "-")),
+    ("Телефон", "reg_q_phone", lambda d: d.get("phone") or "-"),
+    ("ВК", "reg_q_vk", lambda d: d.get("vk_username") or "-"),
+    ("Аллергии", "reg_q_allergies", lambda d: d.get("allergies") or "-"),
+    ("Питание", "reg_q_food", lambda d: d.get("food_pref") or "-"),
+    ("Проживание", "reg_q_housing", lambda d: d.get("housing") or "-"),
+    ("Общая кровать", "reg_q_bed_sharing", lambda d: d.get("bed_sharing") or "-"),
+    ("Сосед по кровати", "reg_q_bed_partner", lambda d: d.get("bed_partner") or "-"),
+]
+
+
+async def party_sheet_headers() -> list[str]:
+    """Mirror active_sheet_headers, but every gate is resolved through the tri-state
+    __party override namespace (via the overnight sub-track) rather than the plain global
+    gate — D-03 makes __party a single namespace shared by both sub-tracks, so resolving
+    against "party_overnight" is correct; housing/bed columns simply stay empty for a
+    no-overnight guest's row."""
+    out = []
+    for header, gate, _fn in PARTY_SHEET_COLUMNS:
+        if gate is None or await _is_step_enabled_for_track(gate, "party_overnight"):
+            out.append(header)
+    return out
+
+
+async def party_sheet_row(data: dict) -> list:
+    """Mirror active_sheet_row. Claude's Discretion: no frozen-header snapshot for the party
+    tab (unlike the main sheet's CR-9 sheet_header_schema) — party volume is low enough that
+    live headers are acceptable; this is a deliberate scope choice, not an oversight.
+
+    T-05-06-01: every registrant-supplied cell is passed through database.db._csv_safe (the
+    reviewed formula-injection neutralizer, 260713-jgi) before being returned, matching the
+    same mitigation used for the CSV export path. NOTE: the main sheet's active_sheet_row does
+    NOT currently apply _csv_safe — that gap is out of this plan's scope (see SUMMARY)."""
+    headers = await party_sheet_headers()
+    values = {h: _csv_safe(fn(data)) for h, _g, fn in PARTY_SHEET_COLUMNS}
+    return [values.get(h, "-") for h in headers]
+
+
+PARTY_SHEET_TAB_DEFAULT = "Party"
+
+
+async def append_to_party_sheet(data: list):
+    """D-11: tab name resolved from the admin-configurable party_sheet_tab setting (added in
+    plan 05-03) with a hardcoded fallback — same idiom as services/allowlist.py's DEFAULT_TAB."""
+    tab = await get_setting("party_sheet_tab") or PARTY_SHEET_TAB_DEFAULT
+    await append_to_named_sheet(tab, data)
 
 
 def _esc(value) -> str:
@@ -2184,12 +2244,19 @@ async def finalize_registration(message: types.Message, state: FSMContext, bot: 
         logger.error(f"Failed to set status for {message.from_user.id}: {e}")
 
     # Fire-and-forget the Google Sheet write so the user is NOT blocked on a ~5s network
-    # round-trip (auth + open + append, plus up to 3 retries with sleeps). append_to_sheet
-    # is fail-soft and logs its own errors. Build the row inline (needs current settings),
-    # then hand the network I/O to the background.
+    # round-trip (auth + open + append, plus up to 3 retries with sleeps). append_to_sheet /
+    # append_to_party_sheet are fail-soft and log their own errors. Build the row inline (needs
+    # current settings), then hand the network I/O to the background.
+    #
+    # Phase 5 (D-11/D-12): EXCLUSIVE routing — a party registration goes to the party tab ONLY,
+    # never both. The main-tab path (else branch) is byte-identical to pre-Phase-5 behavior.
     try:
-        _sheet_row = await active_sheet_row(data)
-        asyncio.create_task(append_to_sheet(_sheet_row))
+        if _is_party_track(data.get("participant_type")):
+            _party_row = await party_sheet_row(data)
+            asyncio.create_task(append_to_party_sheet(_party_row))
+        else:
+            _sheet_row = await active_sheet_row(data)
+            asyncio.create_task(append_to_sheet(_sheet_row))
     except Exception as e:
         logger.error(f"Failed to schedule sheet append for {message.from_user.id}: {e}")
 
