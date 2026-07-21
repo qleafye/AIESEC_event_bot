@@ -221,7 +221,9 @@ async def start_payment_step(bot: Bot, telegram_id: int, participant_type: str =
         _idx0, label, price = visible[0]
         key = StorageKey(bot_id=bot.id, chat_id=telegram_id, user_id=telegram_id)
         ctx = FSMContext(storage=_storage, key=key)
-        await _show_payment_details(bot, telegram_id, ctx, label, price)
+        # WR-01: thread the already-resolved track through so a free/single-tariff party
+        # delegate gets approve_text__party, not the global approve_text.
+        await _show_payment_details(bot, telegram_id, ctx, label, price, participant_type=participant_type)
     except Exception as e:
         logger.error(f"Failed to start payment step for {telegram_id}: {e}")
         # CR-01: never strand an approved user. If details failed to send (e.g. a
@@ -255,21 +257,25 @@ async def process_payment_option(callback: types.CallbackQuery, state: FSMContex
     # before a settings edit, could still tap a `pay_option:{i}` that is not currently
     # offered to the caller's CURRENT track. Resolve the track fresh via get_user (never
     # trust anything client-supplied) and reject before any charge/side-effect runs.
-    if tracks is not None:
-        try:
-            user = await get_user(callback.from_user.id)
-        except Exception as e:
-            logger.error(f"process_payment_option: get_user failed for {callback.from_user.id}: {e}")
-            user = None
-        current_track = (user or {}).get("participant_type") or "full"
-        if current_track not in tracks:
-            await callback.answer("Этот вариант недоступен для твоего трека.", show_alert=True)
-            return
+    # WR-01: resolved unconditionally (not only when `tracks is not None`) so the value is
+    # always available to pass into _show_payment_details below — a party delegate picking an
+    # UNTRACKED ("offered to all") free option must still get approve_text__party.
+    try:
+        user = await get_user(callback.from_user.id)
+    except Exception as e:
+        logger.error(f"process_payment_option: get_user failed for {callback.from_user.id}: {e}")
+        user = None
+    current_track = (user or {}).get("participant_type") or "full"
+    if tracks is not None and current_track not in tracks:
+        await callback.answer("Этот вариант недоступен для твоего трека.", show_alert=True)
+        return
     # WR-01: fail-soft like start_payment_step, and guarantee callback.answer() via finally so
     # a mid-flow error never leaves the tapped button spinning.
     try:
         await update_payment_status(callback.from_user.id, "not_paid", payment_option=label)
-        await _show_payment_details(callback.bot, callback.from_user.id, state, label, price)
+        await _show_payment_details(
+            callback.bot, callback.from_user.id, state, label, price, participant_type=current_track
+        )
     except Exception as e:
         logger.error(f"process_payment_option failed for {callback.from_user.id}: {e}")
     finally:
@@ -303,7 +309,10 @@ async def process_pay_later(callback: types.CallbackQuery, state: FSMContext):
         await callback.answer()
 
 
-async def _show_payment_details(bot: Bot, telegram_id: int, state: FSMContext, option_label: str, option_price: int):
+async def _show_payment_details(
+    bot: Bot, telegram_id: int, state: FSMContext, option_label: str, option_price: int,
+    participant_type: str | None = None,
+):
     requisites = await _resolve_requisites(telegram_id)  # per-LC card, else shared
     deadline = await get_setting("payment_deadline")
     penalties = await get_setting("penalty_schedule")
@@ -312,7 +321,9 @@ async def _show_payment_details(bot: Bot, telegram_id: int, state: FSMContext, o
     # through a receipt-upload gate. Land the user on the completion text + menu instead.
     if option_price == 0 and not (requisites and requisites.strip()):
         from handlers.registration import send_completion_and_bonus
-        await send_completion_and_bonus(bot, telegram_id)
+        # WR-01: thread participant_type so a free-tariff or free-option-among-many party
+        # delegate gets approve_text__party instead of always falling back to the global text.
+        await send_completion_and_bonus(bot, telegram_id, participant_type=participant_type)
         await state.clear()
         return
 
