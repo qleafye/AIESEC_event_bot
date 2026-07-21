@@ -351,3 +351,104 @@ def test_filter_menu_kb_has_track_button():
     kb = admin_mod._filter_menu_kb([])
     flat = _flat_callback_data(kb)
     assert "filter_f_participant_type" in flat
+
+
+# ── WR-01 regression: rcpt_confirm resolves participant_type before completion ──
+#
+# rcpt_confirm is the manager "confirm receipt" action — the primary PAID party path (a
+# party delegate who paid, plan 05-05's whole reason for existing). Pre-fix it called
+# send_completion_and_bonus with no track resolution at all, so a paying party delegate
+# always got the full-track approve_text.
+
+def test_rcpt_confirm_resolves_party_track_before_completion(tmp_path, monkeypatch):
+    _admin_ready(tmp_path)
+    uid = 800001
+    asyncio.run(db.add_user({
+        "telegram_id": uid, "full_name": "Party Payer", "registration_date": "2026-07-01",
+        "participant_type": "party_overnight", "payment_status": "receipt_sent",
+    }))
+
+    import services.scheduler as scheduler_mod
+    monkeypatch.setattr(scheduler_mod, "cancel_payment_reminders", lambda user_id: None)
+
+    sent = {}
+
+    async def fake_completion(bot, telegram_id, with_menu=True, participant_type=None):
+        sent["telegram_id"] = telegram_id
+        sent["with_menu"] = with_menu
+        sent["participant_type"] = participant_type
+
+    monkeypatch.setattr("handlers.registration.send_completion_and_bonus", fake_completion)
+
+    async def fake_show_current_receipt_card(target, state):
+        pass
+
+    monkeypatch.setattr(admin_mod, "_show_current_receipt_card", fake_show_current_receipt_card)
+
+    class FakeBot:
+        async def send_message(self, *a, **k):
+            pass
+
+    class FakeCallback:
+        data = f"rcpt_confirm:{uid}"
+        from_user = FakeUser(ADMIN_ID)
+        bot = FakeBot()
+        message = FakeMessage()
+
+        async def answer(self, text=None, show_alert=False):
+            pass
+
+    class FakeState:
+        pass
+
+    asyncio.run(admin_mod.rcpt_confirm(FakeCallback(), FakeState()))
+
+    assert sent["telegram_id"] == uid
+    assert sent["with_menu"] is False
+    assert sent["participant_type"] == "party_overnight"
+
+
+def test_rcpt_confirm_full_track_delegate_gets_none_participant_type(tmp_path, monkeypatch):
+    """A full-track (or untracked) delegate's completion call passes participant_type
+    resolved from the DB row, matching approve_user's pattern exactly."""
+    _admin_ready(tmp_path)
+    uid = 800002
+    asyncio.run(db.add_user({
+        "telegram_id": uid, "full_name": "Full Payer", "registration_date": "2026-07-01",
+        "participant_type": "full", "payment_status": "receipt_sent",
+    }))
+
+    import services.scheduler as scheduler_mod
+    monkeypatch.setattr(scheduler_mod, "cancel_payment_reminders", lambda user_id: None)
+
+    sent = {}
+
+    async def fake_completion(bot, telegram_id, with_menu=True, participant_type=None):
+        sent["participant_type"] = participant_type
+
+    monkeypatch.setattr("handlers.registration.send_completion_and_bonus", fake_completion)
+
+    async def fake_show_current_receipt_card(target, state):
+        pass
+
+    monkeypatch.setattr(admin_mod, "_show_current_receipt_card", fake_show_current_receipt_card)
+
+    class FakeBot:
+        async def send_message(self, *a, **k):
+            pass
+
+    class FakeCallback:
+        data = f"rcpt_confirm:{uid}"
+        from_user = FakeUser(ADMIN_ID)
+        bot = FakeBot()
+        message = FakeMessage()
+
+        async def answer(self, text=None, show_alert=False):
+            pass
+
+    class FakeState:
+        pass
+
+    asyncio.run(admin_mod.rcpt_confirm(FakeCallback(), FakeState()))
+
+    assert sent["participant_type"] == "full"

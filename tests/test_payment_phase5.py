@@ -134,9 +134,10 @@ def test_start_payment_step_single_visible_option_charges_visible_price(tmp_path
 
     captured = {}
 
-    async def fake_show_details(bot, telegram_id, state, option_label, option_price):
+    async def fake_show_details(bot, telegram_id, state, option_label, option_price, participant_type=None):
         captured["label"] = option_label
         captured["price"] = option_price
+        captured["participant_type"] = participant_type
 
     monkeypatch.setattr(pay, "_show_payment_details", fake_show_details)
     pay.init_payment_module(None)
@@ -148,6 +149,9 @@ def test_start_payment_step_single_visible_option_charges_visible_price(tmp_path
 
     assert captured["label"] == "С ночёвкой"
     assert captured["price"] == 1500
+    # WR-01: the resolved track must reach _show_payment_details so a free/single-tariff
+    # party delegate gets approve_text__party, not the global approve_text.
+    assert captured["participant_type"] == "party_overnight"
 
 
 def test_start_payment_step_no_match_routes_to_free_completion(tmp_path, monkeypatch):
@@ -236,9 +240,10 @@ def test_process_payment_option_allows_matching_track(tmp_path, monkeypatch):
     async def fake_update_payment_status(*args, **kwargs):
         pass
 
-    async def fake_show_details(bot, telegram_id, state, label, price):
+    async def fake_show_details(bot, telegram_id, state, label, price, participant_type=None):
         details_called["label"] = label
         details_called["price"] = price
+        details_called["participant_type"] = participant_type
 
     monkeypatch.setattr(pay, "update_payment_status", fake_update_payment_status)
     monkeypatch.setattr(pay, "_show_payment_details", fake_show_details)
@@ -258,13 +263,61 @@ def test_process_payment_option_allows_matching_track(tmp_path, monkeypatch):
 
     asyncio.run(pay.process_payment_option(FakeCallback(), FakeState()))
 
-    assert details_called == {"label": "Только вечеринка", "price": 1500}
+    assert details_called == {
+        "label": "Только вечеринка", "price": 1500, "participant_type": "party_overnight",
+    }
 
 
-def test_process_payment_option_untracked_option_no_eligibility_check(tmp_path, monkeypatch):
-    """An option with tracks=None (offered to all) must not trigger the eligibility
-    re-check at all — no get_user call needed, matches today's behavior for every existing
-    2-field payment_options line."""
+def test_process_payment_option_untracked_option_resolves_track_for_completion_text(tmp_path, monkeypatch):
+    """WR-01: an option with tracks=None (offered to all) still resolves the caller's current
+    track via get_user and threads it into _show_payment_details, so a party delegate picking
+    a free option among several still gets approve_text__party — get_user is now called
+    unconditionally (not gated on `tracks is not None`) precisely so this value is available."""
+    _use_tmp_db(tmp_path)
+    asyncio.run(db.init_db())
+    asyncio.run(db.set_setting("payment_options", "Общий тариф|500"))
+    asyncio.run(db.add_user({
+        "telegram_id": 12346, "full_name": "A B", "registration_date": "2026-07-01",
+        "participant_type": "party_noovernight",
+    }))
+
+    details_called = {}
+
+    async def fake_update_payment_status(*args, **kwargs):
+        pass
+
+    async def fake_show_details(bot, telegram_id, state, label, price, participant_type=None):
+        details_called["label"] = label
+        details_called["price"] = price
+        details_called["participant_type"] = participant_type
+
+    monkeypatch.setattr(pay, "update_payment_status", fake_update_payment_status)
+    monkeypatch.setattr(pay, "_show_payment_details", fake_show_details)
+
+    class FakeCallback:
+        data = "pay_option:0"
+        bot = object()
+
+        class from_user:
+            id = 12346
+
+        async def answer(self, text=None, show_alert=False):
+            pass
+
+    class FakeState:
+        pass
+
+    asyncio.run(pay.process_payment_option(FakeCallback(), FakeState()))
+
+    assert details_called == {
+        "label": "Общий тариф", "price": 500, "participant_type": "party_noovernight",
+    }
+
+
+def test_process_payment_option_untracked_option_no_users_row_defaults_to_full(tmp_path, monkeypatch):
+    """An untracked option tapped by a caller with no users row at all must not crash — the
+    track resolution degrades to 'full', matching get_user's None-safe fallback everywhere
+    else in the codebase (mirrors approve_user's try/except default)."""
     _use_tmp_db(tmp_path)
     asyncio.run(db.init_db())
     asyncio.run(db.set_setting("payment_options", "Общий тариф|500"))
@@ -274,9 +327,10 @@ def test_process_payment_option_untracked_option_no_eligibility_check(tmp_path, 
     async def fake_update_payment_status(*args, **kwargs):
         pass
 
-    async def fake_show_details(bot, telegram_id, state, label, price):
+    async def fake_show_details(bot, telegram_id, state, label, price, participant_type=None):
         details_called["label"] = label
         details_called["price"] = price
+        details_called["participant_type"] = participant_type
 
     monkeypatch.setattr(pay, "update_payment_status", fake_update_payment_status)
     monkeypatch.setattr(pay, "_show_payment_details", fake_show_details)
@@ -296,4 +350,94 @@ def test_process_payment_option_untracked_option_no_eligibility_check(tmp_path, 
 
     asyncio.run(pay.process_payment_option(FakeCallback(), FakeState()))
 
-    assert details_called == {"label": "Общий тариф", "price": 500}
+    assert details_called == {
+        "label": "Общий тариф", "price": 500, "participant_type": "full",
+    }
+
+
+# --- WR-01: _show_payment_details threads participant_type into the free-path completion ----
+
+def test_show_payment_details_free_path_threads_participant_type_to_completion(tmp_path, monkeypatch):
+    """WR-01: _show_payment_details' free-participation branch (price 0, no requisites) must
+    pass participant_type through to send_completion_and_bonus so a party delegate with a
+    free tariff gets approve_text__party, not the global approve_text."""
+    _use_tmp_db(tmp_path)
+    asyncio.run(db.init_db())
+
+    called = {}
+
+    async def fake_completion(bot, telegram_id, participant_type=None, **kwargs):
+        called["participant_type"] = participant_type
+
+    monkeypatch.setattr("handlers.registration.send_completion_and_bonus", fake_completion)
+
+    class FakeBot:
+        id = 1
+
+    class FakeState:
+        async def clear(self):
+            pass
+
+    asyncio.run(pay._show_payment_details(
+        FakeBot(), 55, FakeState(), "Бесплатно", 0, participant_type="party_noovernight"
+    ))
+
+    assert called["participant_type"] == "party_noovernight"
+
+
+def test_show_payment_details_free_path_defaults_participant_type_to_none(tmp_path, monkeypatch):
+    """Byte-identical pre-Phase-5 behavior when the caller doesn't know the track — matches
+    every pre-Phase-5 call site of send_completion_and_bonus."""
+    _use_tmp_db(tmp_path)
+    asyncio.run(db.init_db())
+
+    called = {}
+
+    async def fake_completion(bot, telegram_id, participant_type=None, **kwargs):
+        called["hit"] = True
+        called["participant_type"] = participant_type
+
+    monkeypatch.setattr("handlers.registration.send_completion_and_bonus", fake_completion)
+
+    class FakeBot:
+        id = 1
+
+    class FakeState:
+        async def clear(self):
+            pass
+
+    asyncio.run(pay._show_payment_details(FakeBot(), 56, FakeState(), "Бесплатно", 0))
+
+    assert called["hit"] is True
+    assert called["participant_type"] is None
+
+
+def test_free_tariff_party_delegate_receives_approve_text_party_end_to_end(tmp_path):
+    """End-to-end (a): a party delegate whose single/only tariff is free must receive
+    approve_text__party — not the global approve_text — driven through the REAL (unmocked)
+    _show_payment_details -> send_completion_and_bonus -> _approve_text_for chain."""
+    _use_tmp_db(tmp_path)
+    asyncio.run(db.init_db())
+    asyncio.run(db.set_setting("approve_text", "Глобальный текст"))
+    asyncio.run(db.set_setting("approve_text__party", "Партийный текст"))
+
+    sent = {}
+
+    class FakeBot:
+        id = 1
+
+        async def send_message(self, chat_id, text, **kwargs):
+            sent["text"] = text
+
+    class FakeState:
+        async def clear(self):
+            pass
+
+        async def set_state(self, *a, **k):
+            pass
+
+    asyncio.run(pay._show_payment_details(
+        FakeBot(), 57, FakeState(), "Бесплатно", 0, participant_type="party_overnight"
+    ))
+
+    assert sent["text"] == "Партийный текст"
