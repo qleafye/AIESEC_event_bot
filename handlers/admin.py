@@ -2780,8 +2780,17 @@ async def rcpt_confirm(callback: types.CallbackQuery, state: FSMContext):
         )
         # WR-04: payment-confirm must mirror the non-payment approval path — deliver the
         # configured completion text + registration bonus. Menu already sent above.
+        # WR-01: resolve the track before calling send_completion_and_bonus, mirroring the
+        # pattern in approve_user (registration.py) — this is the primary PAID party path, so
+        # without this a paying party delegate always got the full-track approve_text.
         from handlers.registration import send_completion_and_bonus
-        await send_completion_and_bonus(callback.bot, uid, with_menu=False)
+        try:
+            user_row = await get_user(uid)
+            participant_type = (user_row or {}).get("participant_type") or "full"
+        except Exception as e2:
+            logger.error(f"rcpt_confirm: failed to resolve participant_type for {uid}, defaulting to 'full': {e2}")
+            participant_type = "full"
+        await send_completion_and_bonus(callback.bot, uid, with_menu=False, participant_type=participant_type)
     except Exception as e:
         logger.error(f"Failed to notify user {uid} of payment confirmation: {e}")
     await callback.answer("Оплата подтверждена")
