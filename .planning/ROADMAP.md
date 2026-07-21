@@ -10,7 +10,7 @@ Brownfield extension of a production aiogram 3 + SQLite bot. The milestone adds 
 - [x] **Phase 2: Approval Flow** - Core milestone: moderated application queue, tinder UI, atomic guards, per-form moderation toggles
 - [ ] **Phase 3: Scheduler + Communications + Verification** - Persistent APScheduler, filtered/scheduled broadcasts, dropout reminders, pre-selection gate
 - [ ] **Phase 4: Universal Modules** - Payment flow, consent module, event type/module toggles for conference support
-- [ ] **Phase 5: Participant Tracks (Party Delegates)** - Per-track registration: participant_type, per-track question sets, deep-link entry, per-track approval and pricing
+- [x] **Phase 5: Participant Tracks (Party Delegates)** - Per-track registration: participant_type, per-track question sets, deep-link entry, per-track approval and pricing
 
 ## Phase Details
 
@@ -125,7 +125,7 @@ Plans:
 - [x] 05-05-PLAN.md — Per-track tariffs: optional third track field in payment_options, index-preserving keyboard filter, free fallback (Wave 4)
 
 **Wave 5** *(blocked on Wave 4 completion)*
-- [ ] 05-06-PLAN.md — Party Google Sheets tab: named-worksheet append infrastructure, party column set, exclusive routing, gated startup header (Wave 5)
+- [x] 05-06-PLAN.md — Party Google Sheets tab: named-worksheet append infrastructure, party column set, exclusive routing, gated startup header (Wave 5)
 **UI hint:** yes (Telegram reply/inline keyboards — не веб-фронтенд)
 
 ## Progress
@@ -136,4 +136,4 @@ Plans:
 | 2. Approval Flow | 4/4 | Implemented | 2026-06-26 |
 | 3. Scheduler + Communications + Verification | 0/5 | Planned | - |
 | 4. Universal Modules | 0/5 | Planned | - |
-| 5. Participant Tracks (Party Delegates) | 0/6 | Planned | - |
+| 5. Participant Tracks (Party Delegates) | 6/6 | Implemented | 2026-07-21 |
