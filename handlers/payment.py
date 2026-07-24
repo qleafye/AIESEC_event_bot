@@ -120,6 +120,8 @@ def _parse_options(raw: str) -> list[tuple[str, int, set[str] | None]]:
             label = parts[0].strip() or "Участие"
             try:
                 price = int(parts[1].strip())
+                if price < 0:  # LOW: a negative fee is meaningless — clamp to 0 like a bad parse
+                    price = 0
             except ValueError:
                 price = 0
             tracks: set[str] | None = None

@@ -1052,10 +1052,15 @@ async def get_sheet_schema() -> list[str]:
 
 async def active_sheet_row(data: dict) -> list:
     """Row projected onto the FROZEN sheet schema (CR-9), aligned to the header actually on the
-    sheet. Name-based projection; falls back to live headers when no snapshot is set."""
+    sheet. Name-based projection; falls back to live headers when no snapshot is set.
+
+    LOW (formula-injection parity, T-05-06-01): every projected cell is passed through
+    database.db._csv_safe — the same neutralizer the party path already applies — so a crafted
+    ФИО like «=HYPERLINK(...)» is stored as text on the MAIN tab too, not evaluated as a formula.
+    Neutralizes only STRING cells starting with =,+,-,@,\\t,\\r (ints/None pass through)."""
     headers = await get_sheet_schema()
     values = _sheet_value_map(data)
-    return [values.get(h, "-") for h in headers]
+    return [_csv_safe(values.get(h, "-")) for h in headers]
 
 
 # --- Phase 5 (D-11/D-12, TRACK-06): party worksheet tab -------------------------------------
