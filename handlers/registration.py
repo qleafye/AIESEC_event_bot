@@ -1299,6 +1299,33 @@ def _membership_status_to_bool(status: str) -> bool:
     return status in ("creator", "administrator", "member")
 
 
+def _normalize_channel_ref(raw: str | None) -> str | int | None:
+    """HG-02: contact_tg is stored/displayed as a channel *link* (e.g. https://t.me/foo), but
+    get_chat_member accepts only @username or a numeric chat id. Convert at check time WITHOUT
+    mutating the stored value (it doubles as the user-facing contact link). Returns None for
+    anything not resolvable by username (private invite links, joinchat/+hash, t.me/c/ paths,
+    empty) so the caller skips the check and stays fail-open (D-07)."""
+    if not raw:
+        return None
+    s = raw.strip()
+    if s.lstrip("-").isdigit():  # numeric chat id like -1001234567890
+        return int(s)
+    for pref in ("https://", "http://"):
+        if s.startswith(pref):
+            s = s[len(pref):]
+            break
+    if s.startswith("t.me/"):
+        s = s[len("t.me/"):]
+    elif s.startswith("telegram.me/"):
+        s = s[len("telegram.me/"):]
+    s = s.split("?", 1)[0]  # drop any ?start=... query tail
+    # Private invite links and multi-segment paths cannot be resolved to a public @username.
+    if s.startswith("+") or "/" in s:
+        return None
+    s = s.lstrip("@")
+    return ("@" + s) if s else None
+
+
 async def is_subscribed(bot: Bot, channel, user_id: int) -> bool | None:
     """True/False membership; None on any error (bot not admin / unknown channel) — fail-open (D-07)."""
     try:
@@ -1317,9 +1344,12 @@ async def cmd_start(message: types.Message, state: FSMContext, bot: Bot, command
     logger.info(f"User {user_id} requested /start")
 
     # QW-02: observe-only subscription check — never blocks the user (D-04), never crashes /start (D-07).
+    # HG-02: normalize the stored contact_tg link (t.me/foo) to a @username get_chat_member accepts.
+    # HG-01: set_user_subscribed only persists for an EXISTING row; a first-touch registrant has no
+    # row yet here, so finalize_registration re-runs this persist after add_user.
     try:
-        channel = await get_setting("contact_tg")
-        if channel:
+        channel = _normalize_channel_ref(await get_setting("contact_tg"))
+        if channel is not None:
             result = await is_subscribed(bot, channel, user_id)
             if result is not None:
                 await set_user_subscribed(user_id, result)
@@ -2281,6 +2311,20 @@ async def finalize_registration(message: types.Message, state: FSMContext, bot: 
         await set_user_status(message.from_user.id, status)
     except Exception as e:
         logger.error(f"Failed to set status for {message.from_user.id}: {e}")
+
+    # HG-01: persist the subscription flag NOW. cmd_start ran its check BEFORE this user's row
+    # existed (first /start on a brand-new user = UPDATE 0 rows, silently dropped), so a
+    # first-touch registrant — the majority — would otherwise stay subscribed=NULL forever and
+    # never land in the «не подписаны» broadcast segment. add_user above guarantees the row here.
+    # Fail-soft + fail-open (D-07): a check error never blocks registration completion.
+    try:
+        _sub_channel = _normalize_channel_ref(await get_setting("contact_tg"))
+        if _sub_channel is not None:
+            _sub_result = await is_subscribed(bot, _sub_channel, message.from_user.id)
+            if _sub_result is not None:
+                await set_user_subscribed(message.from_user.id, _sub_result)
+    except Exception as e:
+        logger.warning(f"Subscription persist skipped for {message.from_user.id}: {e}")
 
     # Fire-and-forget the Google Sheet write so the user is NOT blocked on a ~5s network
     # round-trip (auth + open + append, plus up to 3 retries with sleeps). append_to_sheet /
