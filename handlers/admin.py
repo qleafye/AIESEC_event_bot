@@ -12,7 +12,7 @@ from aiogram.filters import Command, StateFilter
 from aiogram.fsm.context import FSMContext
 from aiogram.types import BufferedInputFile, InlineKeyboardMarkup, InlineKeyboardButton, ReplyKeyboardRemove
 from config import config
-from settings_schema import SETTINGS_SCHEMA  # REG-03: event group generated from the registry
+from settings_schema import SETTINGS_SCHEMA, get_setting_typed  # REG-02/REG-03: registry + typed accessor
 from database.db import (
     get_stats,
     get_all_users_ids,
@@ -498,8 +498,10 @@ async def render_settings_text() -> str:
 
     enabled_q = 0
     for _, sk, *_rest in REG_FLOW:
-        v = await get_setting(sk)
-        is_on = (v == "on") if v is not None else (REG_DEFAULTS.get(sk, "on") == "on")
+        # REG-02 (06-04): resolves via the registry's toggle default, byte-identical to the
+        # prior REG_DEFAULTS.get(sk, "on") == "on" fallback (get_setting_typed's toggle
+        # branch is (raw == "on") if raw is not None else (default == "on")).
+        is_on = await get_setting_typed(sk)
         if is_on:
             enabled_q += 1
     lines.append(f"📋 Вопросы: <b>{enabled_q} из {len(REG_FLOW)}</b> включено")
@@ -2094,8 +2096,10 @@ async def cmd_refresh_allowlist(message: types.Message):
 # --- Registration Question Toggles ---
 
 async def _is_question_on(setting_key: str) -> bool:
-    val = await get_setting(setting_key)
-    return (val == "on") if val is not None else (REG_DEFAULTS.get(setting_key, "on") == "on")
+    # REG-02 (06-04): delegates entirely to the registry's typed toggle accessor — byte-
+    # identical to the prior manual (val == "on") if val is not None else REG_DEFAULTS.get(...)
+    # idiom (get_setting_typed's toggle branch reproduces it exactly), single get_setting call.
+    return await get_setting_typed(setting_key)
 
 
 # Phase 5 (D-04): party question tri-state helpers. These are PURE — they operate on the
@@ -2245,8 +2249,9 @@ async def toggle_reg_question(callback: types.CallbackQuery):
 
     setting_key = callback.data.split(":", 1)[1]
 
-    val = await get_setting(setting_key)
-    current_on = (val == "on") if val is not None else (REG_DEFAULTS.get(setting_key, "on") == "on")
+    # REG-02 (06-04): registry-driven resolution, byte-identical to the prior manual
+    # (val == "on") if val is not None else REG_DEFAULTS.get(setting_key, "on") == "on" idiom.
+    current_on = await get_setting_typed(setting_key)
 
     new_val = "off" if current_on else "on"
     await set_setting(setting_key, new_val)

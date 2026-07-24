@@ -197,7 +197,8 @@ def test_parse_setting_photo_file_passthrough():
 
 
 def test_registry_coverage_event():
-    allowed_groups = {"event", "reg", "reg_questions", "pay", "party", "consent", "misc"}
+    # "toggles" added 06-04 (D-12): the feature-switch enum group.
+    allowed_groups = {"event", "reg", "reg_questions", "pay", "party", "consent", "toggles", "misc"}
     allowed_types = {"toggle", "int", "list", "date", "text", "enum", "photo", "file"}
 
     event_keys_seen = set()
