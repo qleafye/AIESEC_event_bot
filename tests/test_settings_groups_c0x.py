@@ -411,3 +411,138 @@ def test_render_snapshot_consent(tmp_path):
     assert edit_cbs == [f"settings_edit:{k}" for k in expected_keys]
     assert "settings_group_noop" in flat
     assert "admin_settings" in flat
+
+
+# ── Phase 6 plan 06-04 (REG-01/REG-02, D-06/D-12): toggle wave — reg_q_* toggles +
+# feature-switch enums registered; REG_DEFAULTS becomes a computed re-export; the three
+# duplicated reg_q on/off read-sites resolve their default through the registry. The
+# 44-key REG_DEFAULTS oracle below is FROZEN (copied verbatim from the pre-migration
+# handlers/registration.py:197-241 literal) so this test file is independent of the
+# migrated derivation — it is the byte-for-byte parity oracle (T-06-12/T-06-13).
+
+_FROZEN_REG_DEFAULTS_ORACLE = {
+    "reg_q_age": "on",
+    "reg_q_vk": "on",
+    "reg_q_email": "off",
+    "reg_q_phone": "off",
+    "reg_q_city": "off",
+    "reg_q_source": "on",
+    "reg_q_lc": "off",
+    "reg_q_position": "off",
+    "reg_q_education": "on",
+    "reg_q_university": "on",
+    "reg_q_course": "on",
+    "reg_q_study_field": "on",
+    "reg_q_specialty": "off",
+    "reg_q_work": "on",
+    "reg_q_work_sphere": "on",
+    "reg_q_skills": "on",
+    "reg_q_expectations": "on",
+    "reg_q_attendance": "off",
+    "reg_q_informal_day": "off",
+    "reg_q_comments": "off",
+    "reg_q_department": "off",
+    "reg_q_aiesec_role": "off",
+    "reg_q_certificate": "off",
+    "reg_q_alumni_status": "off",
+    "reg_q_english": "off",
+    "reg_q_allergies": "off",
+    "reg_q_food": "off",
+    "reg_q_arrival": "off",
+    "reg_q_housing": "off",
+    "reg_q_bed_sharing": "off",
+    "reg_q_bed_partner": "off",
+    "reg_q_transport": "off",
+    "reg_q_payment_date": "off",
+    "reg_q_cc_shop": "off",
+    "reg_q_exp_organizers": "off",
+    "reg_q_exp_content": "off",
+    "reg_q_volunteer": "off",
+    "reg_q_arrival_date": "off",
+    "reg_q_birth_date": "off",
+    "reg_q_goal": "off",
+    "reg_q_formats": "off",
+    "reg_q_ambassador": "off",
+    "reg_q_resume": "off",
+}
+
+# NOTE (deviation, Rule 1): 06-04-PLAN.md's interfaces table labels this a "44-key" oracle,
+# but handlers/registration.py:197-241's actual REG_DEFAULTS literal has 43 keys (verified by
+# direct count of the source dict) — the plan's count label was off-by-one. This assertion
+# pins the VERIFIED source count (43), not the plan's stated count, per the "byte-for-byte
+# matches registration.py:197-241 exactly" acceptance criterion (source is the ground truth).
+assert len(_FROZEN_REG_DEFAULTS_ORACLE) == 43  # sanity — must match the live table (source-verified)
+
+# Feature-switch (enum) defaults verified byte-for-byte from the live call sites
+# (06-04-PLAN.md interfaces table) — DO NOT guess, DO NOT edit without re-checking the
+# call sites (admin.py/registration.py/payment.py/scheduler.py).
+_FROZEN_ENUM_DEFAULTS_ORACLE = {
+    "party_enabled": "off",
+    "party_fork_question": "off",
+    "reg_bonus_enabled": "off",
+    "payment_enabled": "off",
+    "consent_enabled": "off",
+    "payment_reminders_enabled": "on",
+    "edu_conditional": "on",
+    "reg_show_progress": "off",
+    "reg_university_mode": "text",
+    "registration_mode": "short",
+    "pending_notify_mode": "batched",
+    "full_approval": "manual",
+    "short_approval": "auto",
+    "party_approval": "manual",
+}
+
+
+def test_toggle_parse_equivalence_all_keys():
+    for key, default in _FROZEN_REG_DEFAULTS_ORACLE.items():
+        for raw in [None, "on", "off", "", "garbage"]:
+            expected = (raw == "on") if raw is not None else (default == "on")
+            assert _parse_setting(key, raw) == expected, f"mismatch for {key} raw={raw!r}"
+
+
+def test_reg_defaults_parity():
+    from handlers.registration import REG_DEFAULTS
+
+    assert REG_DEFAULTS == _FROZEN_REG_DEFAULTS_ORACLE
+
+
+def test_toggle_keys_coverage():
+    from handlers.registration import REG_DEFAULTS
+
+    toggle_keys_in_schema = {k for k, v in SETTINGS_SCHEMA.items() if v["type"] == "toggle"}
+    assert set(REG_DEFAULTS.keys()) <= toggle_keys_in_schema, (
+        "every REG_DEFAULTS key must exist in SETTINGS_SCHEMA with type toggle"
+    )
+    assert toggle_keys_in_schema <= set(REG_DEFAULTS.keys()), (
+        "every SETTINGS_SCHEMA type-toggle key must be in REG_DEFAULTS"
+    )
+
+
+def test_enum_feature_switch_defaults():
+    for key, default in _FROZEN_ENUM_DEFAULTS_ORACLE.items():
+        assert key in SETTINGS_SCHEMA, f"{key} missing from SETTINGS_SCHEMA"
+        entry = SETTINGS_SCHEMA[key]
+        assert entry["type"] == "enum", f"{key} type {entry['type']!r} != 'enum'"
+        assert entry["default"] == default, f"{key} default {entry['default']!r} != {default!r}"
+
+        # `or`-idiom byte-for-byte (D-15): both None and "" resolve to default; a real
+        # value passes through unchanged.
+        assert _parse_setting(key, "") == default
+        assert _parse_setting(key, None) == default
+        assert _parse_setting(key, "on") == "on"
+
+
+def test_full_registry_coverage():
+    """D-17/WARNING-2: iterate ALL SETTINGS_SCHEMA entries unconditionally — the
+    catch-all coverage gate across every type (text/int/list/date/enum/toggle/photo/file),
+    not just the migrated-so-far groups."""
+    allowed_types = {"toggle", "int", "list", "date", "text", "enum", "photo", "file"}
+    seen_keys = set()
+
+    for key, entry in SETTINGS_SCHEMA.items():
+        assert isinstance(entry["group"], str) and entry["group"], f"{key} has empty group"
+        assert entry["type"] in allowed_types, f"{key} has unknown type {entry['type']!r}"
+        assert key not in seen_keys, f"{key} duplicated in registry"
+        seen_keys.add(key)
+        _parse_setting(key, entry["default"])  # must not raise
