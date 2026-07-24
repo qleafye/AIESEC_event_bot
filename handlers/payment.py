@@ -17,6 +17,7 @@ from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
 
 from config import config
 from database.db import get_setting, get_user, update_payment_status, set_payment_due
+from settings_schema import get_setting_typed  # REG-02 (06-06): payment_enabled gate
 from handlers.states import Registration
 from keyboards.builders import get_main_menu_kb
 
@@ -85,7 +86,7 @@ async def should_offer_receipt_upload(telegram_id: int) -> bool:
     persistent '💳 Оплата' menu button so upload works any time — gated on
     the DB status, not the MemoryStorage FSM, so it survives a bot restart. Free /
     no-requisites participants (nothing to pay) never trip it."""
-    if (await get_setting("payment_enabled") or "off") != "on":
+    if await get_setting_typed("payment_enabled") != "on":  # REG-02: registry-backed
         return False
     user = await get_user(telegram_id)
     if not user:

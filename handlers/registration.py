@@ -14,7 +14,7 @@ from aiogram.utils.keyboard import ReplyKeyboardBuilder
 
 from config import config
 from database.db import add_user, get_user, get_setting, set_setting, mark_reg_started, clear_reg_started, set_reg_step, set_user_subscribed, set_user_status, record_user_consent, get_user_consents, get_reg_started_track, _csv_safe
-from settings_schema import SETTINGS_SCHEMA  # REG-01/D-06 (06-04): REG_DEFAULTS derivation source
+from settings_schema import SETTINGS_SCHEMA, get_setting_typed  # REG-01/D-06 (06-04): REG_DEFAULTS derivation source; get_setting_typed (06-06 gate migration)
 from handlers.states import Registration
 from keyboards.builders import (
     get_main_menu_kb,
@@ -393,9 +393,11 @@ async def _is_step_enabled_for_track(setting_key: str, participant_type: str | N
 
 
 async def _is_module_enabled(key: str) -> bool:
-    """Phase 4 module flag check — None/absent/'off'/anything-but-'on' → False (D-15 fail-safe)."""
-    val = await get_setting(key)
-    return val == "on"
+    """Phase 4 module flag check — None/absent/'off'/anything-but-'on' → False (D-15 fail-safe).
+    # REG-02 (06-06, BLOCKER-2): resolved via the registry — consent_enabled/payment_enabled
+    # both default "off" (06-04), so get_setting_typed returns "off" for None AND "" and
+    # `== "on"` stays False, byte-identical to the old None->False fail-safe."""
+    return await get_setting_typed(key) == "on"
 
 
 async def _get_enabled_steps(data: dict) -> list[str]:
@@ -403,7 +405,7 @@ async def _get_enabled_steps(data: dict) -> list[str]:
     # edu_conditional (default on): skip ВУЗ/курс/специальность when "не учусь". Turn OFF
     # for events (e.g. YL'26) that ask образование as a level, not a Да/Нет, and want those
     # steps always shown.
-    edu_conditional = (await get_setting("edu_conditional") or "on") == "on"
+    edu_conditional = await get_setting_typed("edu_conditional") == "on"  # REG-02: registry-backed
     studying = str(data.get("education_status", "")).startswith("Да")
     participant_type = data.get("participant_type") or "full"  # Phase 5 (D-03/D-04/D-08)
     for step_key, setting_key, *_rest in REG_FLOW:
@@ -547,7 +549,7 @@ async def _ask_step(step_key: str, message: types.Message, state: FSMContext, st
         await state.set_state(Registration.education_status)
     elif step_key == "university":
         # Mode toggle (reg_university_mode): "list" = pick from база вузов, "text" = free input.
-        mode = await get_setting("reg_university_mode") or "text"
+        mode = await get_setting_typed("reg_university_mode")  # REG-02: registry-backed
         if mode == "text":
             await message.answer(f"{p}{await _prompt('university', 'Введи название твоего ВУЗа:', participant_type)}", reply_markup=get_skip_kb())
         else:
@@ -847,10 +849,10 @@ async def _should_show_fork(party_track: str | None, recovered_track: str | None
         return False
     if is_registered:
         return False
-    if (await get_setting("party_fork_question") or "off") != "on":
+    if await get_setting_typed("party_fork_question") != "on":  # REG-02: registry-backed
         return False
     # D-11a: offering a party option while the track is closed would contradict the master gate.
-    if (await get_setting("party_enabled") or "off") != "on":
+    if await get_setting_typed("party_enabled") != "on":  # REG-02: registry-backed
         return False
     return True
 
@@ -859,7 +861,7 @@ async def _progress(step: int, total: int) -> str:
     """Optional «(3/9) » numbering prefix. Off by default (Tatiana: убрать нумерацию);
     organizers can switch it back on with reg_show_progress=on. Returns a trailing space
     so prompts read «{p}{question}» with no stray gap when disabled."""
-    if (await get_setting("reg_show_progress") or "off") == "on":
+    if await get_setting_typed("reg_show_progress") == "on":  # REG-02: registry-backed
         return f"({step}/{total}) "
     return ""
 
@@ -1410,7 +1412,7 @@ async def cmd_start(message: types.Message, state: FSMContext, bot: Bot, command
     # above, never this closed message. Same fail-soft posture as the pre-selection gate: a
     # gate bug must never crash /start.
     try:
-        if party_track and (await get_setting("party_enabled") or "off") != "on":
+        if party_track and await get_setting_typed("party_enabled") != "on":  # REG-02: registry-backed
             closed_text = await get_setting("party_closed_text") or (
                 "Регистрация на вечеринку сейчас закрыта."
             )
@@ -1487,7 +1489,7 @@ async def party_pick(callback: types.CallbackQuery, state: FSMContext):
         await callback.answer("Некорректный выбор.", show_alert=True)
         return
 
-    if chosen_track and (await get_setting("party_enabled") or "off") != "on":
+    if chosen_track and await get_setting_typed("party_enabled") != "on":  # REG-02: registry-backed
         # Render-then-flip window (T-05-04-01): the track closed between render and tap.
         await callback.answer("Регистрация на вечеринку уже закрыта.", show_alert=True)
         return
@@ -1796,7 +1798,9 @@ async def process_full_name(message: types.Message, state: FSMContext, bot: Bot)
 
     await state.update_data(full_name=full_name)
 
-    mode = await get_setting("registration_mode")
+    # REG-02 (06-06): RAW-read site migrated — `!= "full"` branch is provably unaffected by
+    # the resolved default "short" (None/"" both failed this check before too).
+    mode = await get_setting_typed("registration_mode")
     if mode != "full":
         # WR-03: the short form asks no question steps. Required consents were already
         # collected before ФИО (see _start_registration_flow), so finalize now.
@@ -2184,7 +2188,7 @@ async def send_completion_and_bonus(bot: Bot, telegram_id: int, with_menu: bool 
             kwargs["reply_markup"] = await get_main_menu_kb(telegram_id)
         await bot.send_message(telegram_id, complete_text, **kwargs)
 
-        if await get_setting("reg_bonus_enabled") == "on":
+        if await get_setting_typed("reg_bonus_enabled") == "on":  # REG-02: registry-backed
             bonus_caption = await get_setting("reg_bonus_caption") or "\U0001f381 Бонус за регистрацию!"
             bonus_photo = await get_setting("reg_bonus_photo_file_id")
             bonus_doc = await get_setting("reg_bonus_doc_file_id")
@@ -2340,11 +2344,15 @@ async def finalize_registration(message: types.Message, state: FSMContext, bot: 
     # Phase 2 (D-01..D-04): decide approval status from form type + per-form setting, persist it.
     # Считаем статус ДО записи в таблицу, чтобы колонка «Статус» (Таня п.5) заполнилась
     # сразу правильным значением (Новая/Одобрена), а не дефолтом.
-    reg_mode = await get_setting("registration_mode") or "short"
-    full_setting = await get_setting("full_approval") or "manual"
-    short_setting = await get_setting("short_approval") or "auto"
+    # REG-02 (06-06): registry-backed — full_approval/short_approval/registration_mode carry
+    # the SAME defaults ("manual"/"auto"/"short") the old `or "<default>"` idiom applied.
+    reg_mode = await get_setting_typed("registration_mode")
+    full_setting = await get_setting_typed("full_approval")  # BLOCKER-1
+    short_setting = await get_setting_typed("short_approval")
     # Phase 5 (D-13): party tracks resolve status from their own independent setting.
-    party_setting = await get_setting("party_approval")
+    # RAW-read site migrated (06-06): party_approval's registry default ("manual") is
+    # identical to _decide_status's own `party_setting or "manual"` fallback below.
+    party_setting = await get_setting_typed("party_approval")
     status = _decide_status(
         reg_mode, full_setting, short_setting,
         participant_type=data.get("participant_type", "full"), party_setting=party_setting,
@@ -2388,7 +2396,7 @@ async def finalize_registration(message: types.Message, state: FSMContext, bot: 
 
     # Admin notify: always for approved; for pending only when pending_notify_mode='instant' (D-15).
     notify_admins = status == "approved" or (
-        status == "pending" and (await get_setting("pending_notify_mode") or "batched") == "instant"
+        status == "pending" and await get_setting_typed("pending_notify_mode") == "instant"  # REG-02
     )
     if config.ADMIN_IDS and notify_admins:
         safe_name = html.escape(str(data.get("full_name", "-")))
