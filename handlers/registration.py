@@ -13,7 +13,7 @@ from aiogram.types import FSInputFile, ReplyKeyboardRemove, InlineKeyboardMarkup
 from aiogram.utils.keyboard import ReplyKeyboardBuilder
 
 from config import config
-from database.db import add_user, get_user, get_setting, set_setting, mark_reg_started, clear_reg_started, set_reg_step, set_user_subscribed, set_user_status, record_user_consent, get_reg_started_track, _csv_safe
+from database.db import add_user, get_user, get_setting, set_setting, mark_reg_started, clear_reg_started, set_reg_step, set_user_subscribed, set_user_status, record_user_consent, get_user_consents, get_reg_started_track, _csv_safe
 from handlers.states import Registration
 from keyboards.builders import (
     get_main_menu_kb,
@@ -1634,16 +1634,38 @@ async def process_resume_invalid(message: types.Message, state: FSMContext):
 
 # --- Phase 4: date-type step (MOD-02) ---
 
+def _validate_date_range(step_key: str, dt: datetime) -> str | None:
+    """LOW: sanity range check for a parsed date step. Loose bounds — reject only clearly-wrong
+    input (typos, impossible dates), never a plausible real value. Returns a user-facing error
+    message, or None if the date is acceptable."""
+    today = datetime.now()
+    if step_key == "birth_date":
+        if dt > today:
+            return "Дата рождения не может быть в будущем. Проверь и введи ещё раз."
+        if dt.year < today.year - 100 or dt.year > today.year - 10:
+            return "Проверь дату рождения (год выглядит неправдоподобно) и введи ещё раз."
+    elif step_key == "arrival_date":
+        if dt.date() < today.date():
+            return "Дата приезда не может быть в прошлом. Введи корректную дату."
+        if dt.year > today.year + 2:
+            return "Проверь дату приезда (слишком далеко в будущем) и введи ещё раз."
+    return None
+
+
 @router.message(Registration.date_input)
 async def process_date_input(message: types.Message, state: FSMContext, bot: Bot):
     raw = (message.text or "").strip()
     try:
-        datetime.strptime(raw, "%d.%m.%Y")
+        dt = datetime.strptime(raw, "%d.%m.%Y")
     except ValueError:
         await message.answer("Формат даты: ДД.ММ.ГГГГ. Попробуй ещё раз.")
         return
     data = await state.get_data()
     step_key = data.get("_current_date_step", "arrival_date")
+    range_err = _validate_date_range(step_key, dt)
+    if range_err:
+        await message.answer(range_err)
+        return
     await state.update_data(**{step_key: raw})
     await _advance(step_key, message, state, bot)
 
@@ -2298,6 +2320,26 @@ async def finalize_registration(message: types.Message, state: FSMContext, bot: 
                 data["resume_url"] = url
     except Exception as e:  # IN-02: TimeoutError is already a subclass of Exception
         logger.error(f"Nextcloud resume upload failed for {message.from_user.id}: {e}")
+
+    # LOW (consent compliance): consent acceptance is enforced only by FSM step ordering during
+    # the flow — never re-verified at the end. Re-check here as a compliance audit: if consent is
+    # enabled and any required consent has no recorded D-02 acceptance row for this user, log a
+    # warning. We do NOT block — an already-consenting user must never be locked out by a
+    # transient recording hiccup; the recorded rows remain the source of truth, this only
+    # surfaces a gap that should never occur.
+    try:
+        if await _is_module_enabled("consent_enabled"):
+            _required = {k for _lbl, k in await _consent_entries()}
+            if _required:
+                _recorded = set(await get_user_consents(message.from_user.id))
+                _missing = _required - _recorded
+                if _missing:
+                    logger.warning(
+                        f"Consent compliance gap for {message.from_user.id}: missing "
+                        f"{sorted(_missing)} (recorded={sorted(_recorded)}) — proceeding."
+                    )
+    except Exception as e:
+        logger.error(f"Consent re-verify failed for {message.from_user.id}: {e}")
 
     # Phase 5 (D-01): a flow that never saw a party link writes the default explicitly rather
     # than relying on the column default.
