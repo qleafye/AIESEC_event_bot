@@ -54,6 +54,41 @@ def test_me03_reconcile_rearms_pending_broadcast_with_missing_job(tmp_path, monk
     asyncio.run(go())
 
 
+def test_me02_mark_broadcast_sending_claims_once(tmp_path, monkeypatch):
+    """ME-02: the pending→sending claim is atomic — the first caller gets rowcount 1, any
+    second caller (re-fire / double schedule) gets 0 and must bail."""
+    config.DB_PATH = str(tmp_path / "me02.db")
+
+    async def go():
+        await db.init_db()
+        bid = await db.create_scheduled_broadcast("x", None, None, "2026-07-01 14:30:00", created_by=1)
+        assert await db.mark_broadcast_sending(bid) == 1  # first claim wins
+        assert (await db.get_scheduled_broadcast(bid))["status"] == "sending"
+        assert await db.mark_broadcast_sending(bid) == 0  # second claim rejected
+
+    asyncio.run(go())
+
+
+def test_me02_sending_broadcast_not_reconciled(tmp_path, monkeypatch):
+    """A broadcast crashed mid-send (status='sending') must NOT be re-armed at boot — otherwise
+    the whole audience would be blasted again. Only 'pending' rows reconcile."""
+    _isolate(tmp_path, monkeypatch)
+
+    async def go():
+        await db.init_db()
+        past = (datetime.now() - timedelta(days=3)).strftime("%Y-%m-%d %H:%M:%S")
+        bid = await db.create_scheduled_broadcast("mid", None, None, past, created_by=1)
+        await db.mark_broadcast_sending(bid)  # simulate a crash mid-send
+
+        s = await sched.init_scheduler(bot=object())
+        try:
+            assert s.get_job(f"bcast_{bid}") is None  # 'sending' → never re-armed
+        finally:
+            s.shutdown(wait=False)
+
+    asyncio.run(go())
+
+
 def test_me03_reconcile_skips_already_sent(tmp_path, monkeypatch):
     """A non-pending (sent) broadcast must NOT be re-armed."""
     _isolate(tmp_path, monkeypatch)
