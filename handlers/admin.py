@@ -351,13 +351,14 @@ SETTINGS_FIELDS = [
     ("source_options", "📢 Источники", "Отправьте варианты источников, каждый с новой строки"),
     ("reg_complete_text", "✅ После регистрации", "Текст, который участник увидит СРАЗУ после отправки анкеты (например «Поздравляем, заявка принята! Рассмотрим за 2-3 дня»). Поддерживается HTML."),
     ("approve_text", "🎉 После одобрения", "Отдельный текст, который участник увидит, когда менеджер ОДОБРИТ заявку. Поддерживается HTML."),
+    ("approve_text__party", "🎉 После одобрения (Party)", "Текст, который увидит PARTY-делегат при одобрении заявки (переопределяет общий «🎉 После одобрения» только для трека Party). Оставьте пустым или отправьте «-» — party-делегат получит общий текст «🎉 После одобрения». Поддерживается HTML."),
     ("reject_text", "🚫 При отклонении", "Текст, который участник увидит, когда менеджер ОТКЛОНИТ заявку (перед указанной менеджером причиной). Оставьте пустым — стандартный «К сожалению, твоя заявка отклонена.»"),
     ("consent_button_text", "✅ Текст кнопки согласия", "Надпись на кнопке согласия (по умолчанию «Согласен(-на)»)."),
     ("pending_reminder_interval", "🕒 Тайминг батчей заявок", "Как часто бот присылает админам сводку «Заявок в ожидании: N» (режим «Пачкой»).\n\nВ СЕКУНДАХ. Примеры:\n900 = 15 мин\n1800 = 30 мин (по умолчанию)\n3600 = 1 час\n\nМеняется на лету, перезапуск не нужен."),
     # Phase 4: event modularity + consent + payment config (all default empty/off → live flow unchanged)
     ("event_type", "🎭 Тип события", "Напишите одно слово: forum (форум) / conference (конференция) / custom (вручную).\n\nДля forum и conference бот сам включит/выключит модули оплаты и согласий — потом можно поправить кнопками выше."),
     ("consent_list", "📋 Список согласий", "Согласия, которые участник примет в конце анкеты.\n\nКаждое согласие — отдельной строкой в формате:\nВидимое название | короткий_ключ_латиницей\n\nКлюч нужен, чтобы привязать к согласию PDF. Пример (две строки):\nСогласие на обработку данных|data\nПолитика конфиденциальности|policy\n\nЕсли на телефоне Enter отправляет сообщение и несколько строк ввести не получается — раздели согласия точкой с запятой «;» в одну строку:\nСогласие на обработку данных|data; Политика конфиденциальности|policy\n\nПосле сохранения загрузите PDF в разделе «🧾 PDF согласий»."),
-    ("payment_options", "💳 Варианты оплаты", "Варианты участия (билеты/тарифы), каждый — отдельной строкой:\nНазвание | Цена\n\nПример:\nПолный билет|5000\nСтудент|3000\n\nЦена 0 = бесплатно. Если вариант один — участник его не выбирает, сразу видит реквизиты."),
+    ("payment_options", "💳 Варианты оплаты", "Варианты участия (билеты/тарифы), каждый — отдельной строкой:\nНазвание | Цена\n\nПример:\nПолный билет|5000\nСтудент|3000\n\nЦена 0 = бесплатно. Если вариант один — участник его не выбирает, сразу видит реквизиты.\n\nНеобязательное третье поле — фильтр по треку: Название | Цена | треки (треки — через запятую, значения: full, party_overnight, party_noovernight). Без третьего поля тариф виден ВСЕМ трекам. Пример строки только для party:\nВход на вечеринку|1000|party_overnight,party_noovernight"),
     ("payment_requisites", "💰 Реквизиты оплаты", "Общие реквизиты: банк, номер карты, ФИО получателя. Показываются, если для ЛК участника не задана своя карта (см. «💳 Реквизиты по ЛК»). Обычный текст."),
     ("payment_requisites_by_lc", "💳 Реквизиты по ЛК", "Своя карта для каждого ЛК — каждый комитет собирает на свои реквизиты.\n\nКаждый ЛК — отдельной строкой в формате:\nНазвание ЛК | реквизиты\n\nНазвание ЛК должно совпадать с кнопкой в вопросе про ЛК (EG, SPUEF, Moscow, Tyumen, Ufa, Ekaterinburg).\n\nПример:\nMoscow | Сбер 1234 5678 9012 3456, Иван И.\nSPUEF | Тинькофф 9876 5432, Пётр П.\n\nЕсли ЛК участника нет в списке — покажутся общие «💰 Реквизиты оплаты»."),
     ("payment_deadline", "📅 Дедлайн оплаты", "Крайний срок оплаты в формате ДД.ММ.ГГГГ ЧЧ:ММ.\n\nПример: 15.08.2026 23:59\n\nПо этому сроку бот сам пришлёт участнику напоминания за 3 дня и за 1 день."),
@@ -408,7 +409,7 @@ SETTINGS_GROUPS = [
         "payment_deadline", "payment_reminder_text", "payment_overdue_text", "penalty_schedule",
     ]),
     ("🎉 Party", "party", [
-        "party_closed_text", "party_sheet_tab",
+        "party_closed_text", "party_sheet_tab", "approve_text__party",
     ]),
     ("📋 Согласия", "consent", [
         "consent_button_text", "consent_list",
@@ -1210,7 +1211,7 @@ async def settings_receive_file_invalid(message: types.Message):
     await message.answer("Отправьте фото или документ.")
 
 
-HTML_SETTINGS = {"start_text", "reg_complete_text", "approve_text"}
+HTML_SETTINGS = {"start_text", "reg_complete_text", "approve_text", "approve_text__party"}
 
 @router.message(EditSetting.waiting_for_value, is_admin)
 async def settings_edit_value(message: types.Message, state: FSMContext):
@@ -2437,23 +2438,68 @@ def _prompt_steps() -> list[tuple[str, str]]:
     return steps
 
 
+def _prompt_track_switcher_row(active: str) -> list[InlineKeyboardButton]:
+    """Quick 260724-cfn (WR-02b): mirrors _track_switcher_row for the «Тексты вопросов»
+    screen — switches between editing the global (full) prompt overrides and the
+    party-track (__party) prompt overrides. Own callback namespace (reg_prompt_track:)
+    so it never collides with the questions-toggle screen's reg_q_track: switcher."""
+    return [
+        InlineKeyboardButton(text=("• " if active == "full" else "") + "Полный", callback_data="reg_prompt_track:full"),
+        InlineKeyboardButton(text=("• " if active == "party" else "") + "Party", callback_data="reg_prompt_track:party"),
+    ]
+
+
+async def render_prompts_text(track: str = "full") -> str:
+    text = (
+        "✏️ <b>Тексты вопросов</b>\n\nВыбери вопрос и пришли свой текст. ✅ — текст переопределён, "
+        "✏️ — стандартный. Чтобы вернуть стандартный, отправь «-»."
+    )
+    if track == "party":
+        text += (
+            "\n\n<i>Действуют в режиме 🎉 Party. ✏️ — берётся общий текст вопроса, "
+            "✅ — переопределено для party. «-» — сброс к общему.</i>"
+        )
+    return text
+
+
+async def build_prompts_keyboard(track: str = "full"):
+    buttons = [_prompt_track_switcher_row(track)]
+    for step_key, label in _prompt_steps():
+        if track == "party":
+            key = f"reg_prompt_{step_key}__party"
+            callback_data = f"reg_prompt_edit:{step_key}:party"
+        else:
+            key = f"reg_prompt_{step_key}"
+            callback_data = f"reg_prompt_edit:{step_key}"
+        custom = await get_setting(key)
+        mark = "✅" if custom else "✏️"
+        buttons.append([InlineKeyboardButton(text=f"{mark} {label}", callback_data=callback_data)])
+    buttons.append([InlineKeyboardButton(text="← Назад к настройкам", callback_data="admin_settings")])
+    return InlineKeyboardMarkup(inline_keyboard=buttons)
+
+
 @router.callback_query(F.data == "admin_reg_prompts")
 async def admin_reg_prompts(callback: types.CallbackQuery):
     if callback.from_user.id not in config.ADMIN_IDS:
         await callback.answer("Недостаточно прав", show_alert=True)
         return
-    buttons = []
-    for step_key, label in _prompt_steps():
-        custom = await get_setting(f"reg_prompt_{step_key}")
-        mark = "✅" if custom else "✏️"
-        buttons.append([InlineKeyboardButton(text=f"{mark} {label}", callback_data=f"reg_prompt_edit:{step_key}")])
-    buttons.append([InlineKeyboardButton(text="← Назад к настройкам", callback_data="admin_settings")])
-    await callback.message.edit_text(
-        "✏️ <b>Тексты вопросов</b>\n\nВыбери вопрос и пришли свой текст. ✅ — текст переопределён, "
-        "✏️ — стандартный. Чтобы вернуть стандартный, отправь «-».",
-        parse_mode="HTML",
-        reply_markup=InlineKeyboardMarkup(inline_keyboard=buttons),
-    )
+    text = await render_prompts_text("full")
+    await callback.message.edit_text(text, parse_mode="HTML", reply_markup=await build_prompts_keyboard("full"))
+    await callback.answer()
+
+
+@router.callback_query(F.data.startswith("reg_prompt_track:"))
+async def reg_prompt_track_switch(callback: types.CallbackQuery):
+    """Quick 260724-cfn (WR-02b): re-renders the SAME «✏️ Тексты вопросов» message in the
+    requested track context. No FSM state — mirrors reg_q_track_switch."""
+    if callback.from_user.id not in config.ADMIN_IDS:
+        await callback.answer("Недостаточно прав", show_alert=True)
+        return
+    track = callback.data.split(":", 1)[1]
+    if track not in ("full", "party"):
+        track = "full"
+    text = await render_prompts_text(track)
+    await callback.message.edit_text(text, parse_mode="HTML", reply_markup=await build_prompts_keyboard(track))
     await callback.answer()
 
 
@@ -2462,8 +2508,13 @@ async def reg_prompt_edit(callback: types.CallbackQuery, state: FSMContext):
     if callback.from_user.id not in config.ADMIN_IDS:
         await callback.answer("Недостаточно прав", show_alert=True)
         return
-    step_key = callback.data.split(":", 1)[1]
-    key = f"reg_prompt_{step_key}"
+    # Quick 260724-cfn (WR-02b): optional trailing ":party" track suffix. step_keys (full_name
+    # + REG_FLOW) never contain ":", so this split is safe. Any suffix other than the literal
+    # "party" falls back to "full" (closed whitelist, mirrors reg_q_track_switch).
+    parts = callback.data.split(":")
+    step_key = parts[1]
+    track = "party" if len(parts) > 2 and parts[2] == "party" else "full"
+    key = f"reg_prompt_{step_key}__party" if track == "party" else f"reg_prompt_{step_key}"
     current = await get_setting(key)
     text = "Пришли новый текст вопроса."
     if current:
