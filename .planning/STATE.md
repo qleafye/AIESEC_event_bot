@@ -3,15 +3,15 @@ gsd_state_version: 1.0
 milestone: v2
 milestone_name: Registry & Multichannel
 status: executing
-stopped_at: Completed 06-04-PLAN.md
-last_updated: "2026-07-24T13:33:44.270Z"
+stopped_at: Completed 06-05-PLAN.md
+last_updated: "2026-07-24T13:46:29.962Z"
 last_activity: 2026-07-24
 progress:
   total_phases: 1
   completed_phases: 0
   total_plans: 7
-  completed_plans: 4
-  percent: 57
+  completed_plans: 5
+  percent: 71
 ---
 
 # Project State
@@ -26,7 +26,7 @@ See: .planning/PROJECT.md (updated 2026-06-25)
 ## Current Position
 
 Phase: 06 (settings-schema-registry) — EXECUTING
-Plan: 4 of 7
+Plan: 5 of 7
 Status: Ready to execute
 Last activity: 2026-07-24
 
@@ -59,6 +59,7 @@ Last activity: 2026-07-24
 | Phase 06 P01 | 12min | 3 tasks | 3 files |
 | Phase 06 P03 | 14min | 2 tasks | 4 files |
 | Phase 06 P04 | 11min | 2 tasks | 4 files |
+| Phase 06 P05 | 11min | 2 tasks | 2 files |
 
 ## Accumulated Context
 
@@ -99,6 +100,8 @@ Recent decisions affecting current work:
 - [Phase 06]: D-06 (06-04): REG_DEFAULTS derived from SETTINGS_SCHEMA via comprehension (type==toggle filter), name retained for admin.py consumers
 - [Phase 06]: T-06-14 (06-04): registration.py imports settings_schema.SETTINGS_SCHEMA at module top with zero cycle risk; confirmed via import smoke test
 - [Phase 06]: 06-04 deviation: plan's stated 44-key REG_DEFAULTS count corrected to source-verified 43 (handlers/registration.py:197-241)
+- [Phase ?]: [Phase 06] D-12 (06-05): admin toggle button-generation structure (bespoke settings_toggle_*/toggle_* callback_data + text ternaries) left untouched -- only the preceding value reads swapped to get_setting_typed
+- [Phase ?]: [Phase 06] (06-05): render_settings_text's own registration_mode read + the generic multi-key toggle helpers (_toggle_module_setting/_toggle_approval_setting/_toggle_value_setting) intentionally left on the old get_setting(k) or default idiom -- outside this wave's explicit interfaces-list scope, deferred to a later wave if needed
 
 ### Roadmap Evolution
 
@@ -155,8 +158,8 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-07-24T13:33:44.254Z
-Stopped at: Completed 06-04-PLAN.md
+Last session: 2026-07-24T13:46:29.946Z
+Stopped at: Completed 06-05-PLAN.md
 Resume file: None
 
 ## Operator Next Steps
