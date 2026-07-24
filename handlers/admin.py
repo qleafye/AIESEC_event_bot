@@ -2599,10 +2599,19 @@ async def appr_reject_start(callback: types.CallbackQuery, state: FSMContext):
     await callback.answer()
 
 
-@router.message(Approval.reason, is_admin, F.text.in_({"Отмена", "/cancel"}))
+# WR-03: admin.router is first, so appr_reject_reason (the Approval.reason catch-all below)
+# would otherwise SWALLOW any /command typed mid-rejection as the rejection reason — the
+# rejection fires with a garbage reason and the command never runs. Catch «Отмена» AND any
+# «/...» command here first, aborting the rejection cleanly so the admin can re-issue it.
+@router.message(Approval.reason, is_admin, F.text.in_({"Отмена"}) | F.text.startswith("/"))
 async def appr_reject_cancel(message: types.Message, state: FSMContext):
     await state.set_state(None)
-    await message.answer("Отклонение отменено.", reply_markup=ReplyKeyboardRemove())
+    text = (message.text or "").strip()
+    if text not in ("Отмена", "/cancel"):
+        note = "Отклонение отменено (введена команда). При необходимости повторите её."
+    else:
+        note = "Отклонение отменено."
+    await message.answer(note, reply_markup=ReplyKeyboardRemove())
     await _show_current_card(message, state)
 
 
@@ -2680,6 +2689,17 @@ async def appr_all_yes(callback: types.CallbackQuery, state: FSMContext):
         await callback.answer("Недостаточно прав", show_alert=True)
         return
     ids = await approve_all_pending()  # atomic flip first (D-11)
+    # WR-04: a stale confirm dialog re-clicked (buttons never expire) hits approve_all_pending
+    # again — atomic, so it returns [] the second time. Don't run the drain or claim a count;
+    # tell the admin it's already done and refresh the card.
+    if not ids:
+        try:
+            await callback.message.edit_text("Заявки уже обработаны.", reply_markup=build_admin_keyboard())
+        except Exception:
+            pass
+        await callback.answer("Уже обработано")
+        await _show_current_card(callback.message, state)
+        return
     # WR-01: schedule the welcome drain (and status sync) BEFORE the fragile edit_text. Inline
     # buttons never expire, but Telegram rejects editing a message >48h old, and the card may
     # have been deleted — if the edit threw first, the N just-approved users would be left
