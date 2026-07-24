@@ -55,7 +55,7 @@ Future (за пределами v2): Telegram Mini App (WEBAPP-01).
 
 **Plans:** 7 plans
 Plans:
-- [ ] 06-01-PLAN.md — Registry foundation + `event` pilot slice (settings_schema.py machinery + get_setting_typed + event generated view)
+- [x] 06-01-PLAN.md — Registry foundation + `event` pilot slice (settings_schema.py machinery + get_setting_typed + event generated view)
 - [ ] 06-02-PLAN.md — Migrate reg/pay/party/consent text groups to the registry (int/date/list types + render snapshots)
 - [ ] 06-03-PLAN.md — REG-02 consumers (reminders/scheduler/builders) read int/date/list via get_setting_typed
 - [ ] 06-04-PLAN.md — Register reg_q toggles + feature-switch enums, absorb REG_DEFAULTS, wire the 3 reg_q read-sites + full-registry coverage
