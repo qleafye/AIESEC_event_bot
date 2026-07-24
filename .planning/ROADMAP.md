@@ -39,7 +39,7 @@ Future (за пределами v2): Telegram Mini App (WEBAPP-01).
 
 ### 🔨 Активные фазы v2
 
-- [ ] **Phase 6: Settings-schema Registry** — единый `SETTINGS_SCHEMA` реестр как источник метаданных настроек; потребители и админ-UI читают из него; инкрементальная миграция без ломки (REG-01, REG-02, REG-03)
+- [x] **Phase 6: Settings-schema Registry** — единый `SETTINGS_SCHEMA` реестр как источник метаданных настроек; потребители и админ-UI читают из него; инкрементальная миграция без ломки (REG-01, REG-02, REG-03) (completed 2026-07-24)
 
 ### Phase 6: Settings-schema Registry
 **Goal:** Единый `SETTINGS_SCHEMA`-реестр становится источником метаданных (parse-fn, default, label, group, type) для ключей `bot_settings`; существующие потребители и админ-UI читают значения через него — инкрементально, группа-за-группой, без ломки текущего поведения на ~590 живых юзерах
@@ -53,7 +53,7 @@ Future (за пределами v2): Telegram Mini App (WEBAPP-01).
   4. Админ-UI настроек рендерится из реестра (порядок/группы/label/рендер-по-типу) для мигрированных групп; добавление/правка одного ключа требует правки только записи реестра, а не нескольких хендлеров
 **Note:** ТЗ на остальные группы v2 (Bitrix/web/города/гейма/роли) ещё нет — реестр планируется и исполняется отдельно как самодостаточный keystone. Исполнение — после SumMeet (форум 31 июля–2 авг); сейчас только план.
 
-**Plans:** 7 plans
+**Plans:** 7/7 plans complete
 Plans:
 - [x] 06-01-PLAN.md — Registry foundation + `event` pilot slice (settings_schema.py machinery + get_setting_typed + event generated view)
 - [x] 06-02-PLAN.md — Migrate reg/pay/party/consent text groups to the registry (int/date/list types + render snapshots)
@@ -61,7 +61,7 @@ Plans:
 - [x] 06-04-PLAN.md — Register reg_q toggles + feature-switch enums, absorb REG_DEFAULTS, wire the 3 reg_q read-sites + full-registry coverage
 - [x] 06-05-PLAN.md — Wire admin feature-switch reads (render + toggle-button block) to the registry (button structure preserved, D-12)
 - [x] 06-06-PLAN.md — Wire registration/payment/scheduler feature-switch gates to the registry byte-for-byte
-- [ ] 06-07-PLAN.md — Consolidated manual smoke checkpoint incl. mandatory per-toggle-button comparison (D-18)
+- [x] 06-07-PLAN.md — Consolidated manual smoke checkpoint incl. mandatory per-toggle-button comparison (D-18)
 
 ## Progress
 
@@ -72,4 +72,4 @@ Plans:
 | 3. Scheduler + Communications + Verification | v1.0 | 5 | Complete (verified) | 2026-07-24 |
 | 4. Universal Modules | v1.0 | 5 | Complete (verified) | 2026-07-24 |
 | 5. Participant Tracks (Party Delegates) | v1.0 | 6 | Complete (verified; live UAT deferred) | 2026-07-24 |
-| 6. Settings-schema Registry | v2 | 7 | Planning | — |
+| 6. Settings-schema Registry | v2 | 7/7 | Complete   | 2026-07-24 |
