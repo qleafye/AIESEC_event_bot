@@ -92,7 +92,18 @@ _Findings собираются здесь. Severity: 🔴 critical / 🟠 high /
 | P1 MD-02 | 6 | fixed·tested·committed | `f46702c` | dropout-queries исключают non-rejected registered |
 | P5 MEDIUM-01 | 6 | fixed·tested·committed | `33e440f` | `_refresh_party_sheet_header` на toggle/preset (gated on) |
 
-**БЛОК 6 закрыт полностью.** Все MEDIUM (ME-01/02/03/04/05, WR-01/03/04, M-02, MD-02/03, MEDIUM-01, HIGH-01) + все 5 HIGH зафиксированы. Осталось: БЛОК 7 (LOW, опционально).
+**БЛОК 6 закрыт полностью.** Все MEDIUM (ME-01/02/03/04/05, WR-01/03/04, M-02, MD-02/03, MEDIUM-01, HIGH-01) + все 5 HIGH зафиксированы.
+
+### БЛОК 7 (LOW) — user chose "do the LOW pack"
+
+| LOW item | Fix status | Commit | Заметки |
+|----------|-----------|--------|---------|
+| main-tab `_csv_safe` parity (registration.py active_sheet_row) | fixed·tested·committed | `8a9e889` | формула-инъекция на главной вкладке нейтрализована как в party |
+| negative-amount guard (`_parse_options`) | fixed·tested·committed | `8a9e889` | отрицательная цена → 0 |
+| receipt MIME real-check (payment.py) | pending | — | |
+| receipt upload size/rate limit | pending | — | |
+| consent re-verify at finalize | pending | — | |
+| date-range validators | pending | — | |
 
 **Блок 1 detail:** извлёк `_spawn` из `main.py` в `services/background.py` (`spawn`) —
 handlers не могли импортить из `main.py` (циклический `handlers→main`). Провёл ВСЕ
