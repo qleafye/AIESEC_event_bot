@@ -43,9 +43,9 @@ _Findings собираются здесь. Severity: 🔴 critical / 🟠 high /
 - 🟠 **HI-01 — album broadcast task GC-eligible mid-run.** `handlers/admin.py:1540`. `asyncio.create_task(_wait_and_send_album(...))` bypasses project's own `_spawn` helper (main.py:51-61). Task lives suspended on `asyncio.sleep` → weak-ref → can be GC'd before completion → silently drops entire album broadcast, no admin report, leaks `pending_albums[mgid]`. Fix: route through retained-ref `_spawn`. **✅ Fixed (`d91b05a`, Block 1).** (3rd occurrence of the create_task-GC pattern — P1 MD-01, P2 WR-02, P3 HI-01.)
 - 🟡 **ME-04 — empty filter fans out to ALL users.** `database/db.py:817-836`. A broadcast filter that resolves to zero valid clauses matches ALL users instead of failing safe. Real risk: admin builds a filter, it silently degenerates, message blasts entire base. Fix: zero-clause → empty result / explicit confirm. **✅ Fixed (`858b288`, Block 4)** — `count_and_list_filtered` returns `[]` + warns when supplied filters yield no valid clause. ⚠️ highest-impact of P3 findings.
 - 🟡 **ME-05 — pre-selection gate locks out existing approved users.** `handlers/registration.py:1328-1355`. Gate runs BEFORE the already-registered check → toggling pre-selection ON can lock existing approved participants out of their own menu. Fix: check registered/approved before gate. **✅ Fixed (`9453d32`, Block 4)** — `user` fetched before gate; `_already_registered` non-rejected bypasses intake gate; gate still fires for new users.
-- 🟡 **ME-01 — scheduler has no explicit timezone.** `services/scheduler.py:84-91`. Naive datetimes + `tzlocal`: a UTC container fires admin's "14:30" broadcast 3h off Moscow intent. Fix: pin `timezone='Europe/Moscow'`. **Not fixed.**
+- 🟡 **ME-01 — scheduler has no explicit timezone.** `services/scheduler.py:84-91`. Naive datetimes + `tzlocal`: a UTC container fires admin's "14:30" broadcast 3h off Moscow intent. Fix: pin `timezone='Europe/Moscow'`. **✅ Fixed (`f757e64`, Block 6).**
 - 🟡 **ME-02 — mid-send crash re-fires whole broadcast.** `services/scheduler.py:149-183`. Broadcast marked `sent` only after full loop; crash mid-send → re-fires to EVERY recipient (no per-recipient ledger). **Not fixed.**
-- 🟡 **ME-03 — downtime >24h drops date job but leaves status='pending' forever** (no startup reconciliation). `services/scheduler.py:90`. **Not fixed.**
+- 🟡 **ME-03 — downtime >24h drops date job but leaves status='pending' forever** (no startup reconciliation). `services/scheduler.py:90`. **✅ Fixed (`f757e64`, Block 6)** — `reconcile_scheduled_broadcasts()` re-arms pending broadcasts with missing jobs at boot.
 - 🔵 LOW×6 (review) + LOW×3 (security): see 03-REVIEW.md / 03-SECURITY.md. Security M1/M2 = accepted-by-design (pre-selection fail-open on empty list w/ admin alert; username-reassignment inherent to username gate, id-path available).
 
 ### Phase 4
@@ -82,6 +82,8 @@ _Findings собираются здесь. Severity: 🔴 critical / 🟠 high /
 | P3 ME-05 | 4 | fixed·tested·committed | `9453d32` | fetch user до gate; already-registered bypass |
 | P2 WR-01 | 5 | fixed·tested·committed | `7907f9c` | welcome-drain scheduled до edit; edit в try/except |
 | P5 HIGH-01 | 5 | fixed·tested·committed | `382f21c` | preserve-idiom `referrer_id or existing.get(...)` |
+| P3 ME-01 | 6 | fixed·tested·committed | `f757e64` | scheduler `timezone='Europe/Moscow'` |
+| P3 ME-03 | 6 | fixed·tested·committed | `f757e64` | `reconcile_scheduled_broadcasts` на boot |
 
 **Блок 1 detail:** извлёк `_spawn` из `main.py` в `services/background.py` (`spawn`) —
 handlers не могли импортить из `main.py` (циклический `handlers→main`). Провёл ВСЕ
