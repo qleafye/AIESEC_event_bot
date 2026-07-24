@@ -240,3 +240,174 @@ def test_event_render_snapshot(tmp_path):
     assert "settings_group_noop" in flat
     # Back button unchanged.
     assert "admin_settings" in flat
+
+
+# ── Phase 6 plan 06-02 (REG-01/REG-03): reg/pay/party/consent groups migrated into the
+# registry. Parse-equivalence tests prove int/date/list types parse byte-for-byte identical
+# to the pre-migration ad-hoc parse helpers (D-15); render-snapshot tests capture the CURRENT
+# (pre-Task-2) group render/keyboard output so they fail if Task 2's registry-driven
+# generation drifts from it (D-16).
+
+def test_parse_equivalence_int():
+    from services.reminders import _reminder_interval
+
+    for raw in [None, "", "abc", "0", "-5", "900", "1800"]:
+        assert _parse_setting("pending_reminder_interval", raw) == _reminder_interval(raw), (
+            f"mismatch for raw={raw!r}"
+        )
+    # Registry default MUST be 1800 (matches services.reminders.DEFAULT_INTERVAL).
+    assert SETTINGS_SCHEMA["pending_reminder_interval"]["default"] == 1800
+
+
+def test_parse_equivalence_date():
+    from services.scheduler import _parse_schedule_dt
+
+    for raw in [None, "", "garbage", "15.08.2026 23:59"]:
+        assert _parse_setting("payment_deadline", raw) == _parse_schedule_dt(raw), (
+            f"mismatch for raw={raw!r}"
+        )
+
+
+def test_parse_equivalence_list():
+    def _expected_options(raw):
+        # splitlines/strip (registration.py::_get_options) extended with the `;` inline
+        # separator (Telegram Enter=send trap convention already used elsewhere).
+        if raw:
+            items = [
+                segment.strip()
+                for line in raw.splitlines()
+                for segment in line.split(";")
+                if segment.strip()
+            ]
+            if items:
+                return items
+        return []
+
+    for raw in [None, "", "a\nb\n\n c ", "a; b ;c"]:
+        assert _parse_setting("source_options", raw) == _expected_options(raw), (
+            f"mismatch for raw={raw!r}"
+        )
+
+
+def test_registry_coverage_all_text_groups():
+    """Every reg/pay/party/consent key exists in SETTINGS_SCHEMA with the correct group/type
+    (D-04 taxonomy), and its registry `default` parses cleanly through `_parse_setting`
+    without raising. (Source-level "no key in both a literal tuple AND the registry" check is
+    a grep-based Task 2 acceptance criterion, not re-implemented here.)"""
+    expected = {
+        "reg": {
+            "source_options": "list", "reg_complete_text": "text", "approve_text": "text",
+            "reject_text": "text", "pending_reminder_interval": "int", "city_options": "list",
+            "study_field_options": "list", "goal_options": "list", "formats_options": "list",
+            "university_options": "list",
+        },
+        "pay": {
+            "payment_options": "list", "payment_requisites": "text",
+            "payment_requisites_by_lc": "list", "payment_deadline": "date",
+            "payment_reminder_text": "text", "payment_overdue_text": "text",
+            "penalty_schedule": "list",
+        },
+        "party": {
+            "party_closed_text": "text", "party_sheet_tab": "text",
+            "approve_text__party": "text",
+        },
+        "consent": {
+            "consent_button_text": "text", "consent_list": "list",
+        },
+    }
+    for group, keys in expected.items():
+        for key, expected_type in keys.items():
+            assert key in SETTINGS_SCHEMA, f"{key} missing from SETTINGS_SCHEMA"
+            entry = SETTINGS_SCHEMA[key]
+            assert entry["group"] == group, f"{key} group {entry['group']!r} != {group!r}"
+            assert entry["type"] == expected_type, f"{key} type {entry['type']!r} != {expected_type!r}"
+            _parse_setting(key, entry.get("default"))  # must not raise
+
+
+def test_render_snapshot_reg(tmp_path):
+    _admin_ready(tmp_path)
+    text = asyncio.run(admin_mod.render_settings_group_text("reg"))
+    kb = asyncio.run(admin_mod.build_settings_group_keyboard("reg"))
+    flat = _flat_callback_data(kb)
+
+    expected_keys = [
+        "source_options", "reg_complete_text", "approve_text", "reject_text",
+        "pending_reminder_interval", "city_options", "study_field_options",
+        "goal_options", "formats_options", "university_options",
+    ]
+    expected_labels = [
+        "📢 Источники", "✅ После регистрации", "🎉 После одобрения", "🚫 При отклонении",
+        "🕒 Тайминг батчей заявок", "🏙 Города (варианты)", "🎯 Направления обучения (варианты)",
+        "🎯 Цель участия (варианты)", "📋 Форматы форума (варианты)", "🏫 Список ВУЗов",
+    ]
+    # Fresh DB -> every key unconfigured, no display-default fallback for this group.
+    for label in expected_labels:
+        assert f"{label}: <i>— не задано</i>" in text, f"missing/wrong flag for {label}"
+    positions = [text.index(label) for label in expected_labels]
+    assert positions == sorted(positions), "label order drifted"
+
+    edit_cbs = [cd for cd in flat if cd and cd.startswith("settings_edit:")]
+    assert edit_cbs == [f"settings_edit:{k}" for k in expected_keys]
+    assert "settings_group_noop" in flat
+    assert "admin_settings" in flat
+
+
+def test_render_snapshot_pay(tmp_path):
+    _admin_ready(tmp_path)
+    text = asyncio.run(admin_mod.render_settings_group_text("pay"))
+    kb = asyncio.run(admin_mod.build_settings_group_keyboard("pay"))
+    flat = _flat_callback_data(kb)
+
+    expected_keys = [
+        "payment_options", "payment_requisites", "payment_requisites_by_lc",
+        "payment_deadline", "payment_reminder_text", "payment_overdue_text", "penalty_schedule",
+    ]
+    expected_labels = [
+        "💳 Варианты оплаты", "💰 Реквизиты оплаты", "💳 Реквизиты по ЛК",
+        "📅 Дедлайн оплаты", "⏰ Текст напоминания об оплате", "⌛ Текст «оплата просрочена»",
+        "⚠️ Штрафы за отмену",
+    ]
+    for label in expected_labels:
+        assert f"{label}: <i>— не задано</i>" in text, f"missing/wrong flag for {label}"
+    positions = [text.index(label) for label in expected_labels]
+    assert positions == sorted(positions), "label order drifted"
+
+    edit_cbs = [cd for cd in flat if cd and cd.startswith("settings_edit:")]
+    assert edit_cbs == [f"settings_edit:{k}" for k in expected_keys]
+    assert "settings_group_noop" in flat
+    assert "admin_settings" in flat
+
+
+def test_render_snapshot_party(tmp_path):
+    _admin_ready(tmp_path)
+    text = asyncio.run(admin_mod.render_settings_group_text("party"))
+    kb = asyncio.run(admin_mod.build_settings_group_keyboard("party"))
+    flat = _flat_callback_data(kb)
+
+    # party_closed_text/party_sheet_tab carry a display default (_SETTINGS_DISPLAY_DEFAULTS
+    # pre-migration -> registry `default` post-migration, T-06-06) -> «по умолчанию» flag.
+    assert "🎉 Текст «вечеринка закрыта»: <i>по умолчанию</i>" in text
+    assert "📄 Вкладка Google-таблицы (Party): <i>по умолчанию</i>" in text
+    # approve_text__party has no display default -> plain unconfigured flag.
+    assert "🎉 После одобрения (Party): <i>— не задано</i>" in text
+
+    expected_keys = ["party_closed_text", "party_sheet_tab", "approve_text__party"]
+    edit_cbs = [cd for cd in flat if cd and cd.startswith("settings_edit:")]
+    assert edit_cbs == [f"settings_edit:{k}" for k in expected_keys]
+    assert "admin_settings" in flat
+
+
+def test_render_snapshot_consent(tmp_path):
+    _admin_ready(tmp_path)
+    text = asyncio.run(admin_mod.render_settings_group_text("consent"))
+    kb = asyncio.run(admin_mod.build_settings_group_keyboard("consent"))
+    flat = _flat_callback_data(kb)
+
+    assert "✅ Текст кнопки согласия: <i>— не задано</i>" in text
+    assert "📋 Список согласий: <i>— не задано</i>" in text
+
+    expected_keys = ["consent_button_text", "consent_list"]
+    edit_cbs = [cd for cd in flat if cd and cd.startswith("settings_edit:")]
+    assert edit_cbs == [f"settings_edit:{k}" for k in expected_keys]
+    assert "settings_group_noop" in flat
+    assert "admin_settings" in flat
