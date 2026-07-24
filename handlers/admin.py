@@ -467,31 +467,34 @@ async def render_settings_text() -> str:
     mode_label = "📋 Полная" if reg_mode == "full" else "⚡ Краткая"
     lines.append(f"📝 Форма регистрации: <b>{mode_label}</b>")
 
-    bonus_enabled = await get_setting("reg_bonus_enabled") or "off"
+    # REG-02 (06-05): feature-switch reads resolved via the registry's enum default,
+    # byte-identical to the prior `get_setting(k) or "<literal>"` idiom (get_setting_typed's
+    # enum branch is `raw if raw else default`, matching falsy-to-default on empty-string).
+    bonus_enabled = await get_setting_typed("reg_bonus_enabled")
     bonus_label = "✅ Вкл" if bonus_enabled == "on" else "❌ Выкл"
     lines.append(f"🎁 Бонус за регистрацию: <b>{bonus_label}</b>")
 
-    full_appr = await get_setting("full_approval") or "manual"
-    short_appr = await get_setting("short_approval") or "auto"
-    notify_mode = await get_setting("pending_notify_mode") or "batched"
+    full_appr = await get_setting_typed("full_approval")
+    short_appr = await get_setting_typed("short_approval")
+    notify_mode = await get_setting_typed("pending_notify_mode")
     appr_lbl = lambda v: "👮 Ручная" if v == "manual" else "⚡ Авто"
     lines.append(f"✅ Модерация полной формы: <b>{appr_lbl(full_appr)}</b>")
     lines.append(f"✅ Модерация краткой формы: <b>{appr_lbl(short_appr)}</b>")
     notify_lbl = "📨 Сразу" if notify_mode == "instant" else "🕒 Пачкой (напоминалка)"
     lines.append(f"🔔 Уведомление о заявке: <b>{notify_lbl}</b>")
 
-    payment_enabled = await get_setting("payment_enabled") or "off"
-    consent_enabled = await get_setting("consent_enabled") or "off"
+    payment_enabled = await get_setting_typed("payment_enabled")
+    consent_enabled = await get_setting_typed("consent_enabled")
     lines.append(f"💳 Модуль оплаты: <b>{'✅ Вкл' if payment_enabled == 'on' else '❌ Выкл'}</b>")
     lines.append(f"📋 Модуль согласий: <b>{'✅ Вкл' if consent_enabled == 'on' else '❌ Выкл'}</b>")
-    pay_rem_enabled = await get_setting("payment_reminders_enabled") or "on"
+    pay_rem_enabled = await get_setting_typed("payment_reminders_enabled")
     lines.append(f"⏰ Автонапоминания об оплате: <b>{'✅ Вкл' if pay_rem_enabled == 'on' else '❌ Выкл'}</b>")
 
     # Phase 5 (D-13): party settings always read as off/manual when unset — new-capability
     # default-OFF posture (Phase-4 D-15 lineage), independent of full_approval/short_approval.
-    party_enabled = await get_setting("party_enabled") or "off"
-    party_fork_question = await get_setting("party_fork_question") or "off"
-    party_approval = await get_setting("party_approval") or "manual"
+    party_enabled = await get_setting_typed("party_enabled")
+    party_fork_question = await get_setting_typed("party_fork_question")
+    party_approval = await get_setting_typed("party_approval")
     lines.append(f"🎉 Трек вечеринки: <b>{'✅ Вкл' if party_enabled == 'on' else '❌ Выкл'}</b>")
     lines.append(f"🔀 Вопрос-развилка формата: <b>{'✅ Вкл' if party_fork_question == 'on' else '❌ Выкл'}</b>")
     lines.append(f"✅ Модерация вечеринки: <b>{appr_lbl(party_approval)}</b>")
@@ -522,47 +525,49 @@ async def render_settings_text() -> str:
 
 
 async def build_settings_keyboard():
-    reg_mode = await get_setting("registration_mode") or "short"
+    # REG-02 (06-05): feature-switch reads resolved via the registry's enum default,
+    # byte-identical to the prior `get_setting(k) or "<literal>"` idiom — button TEXT
+    # ternaries and callback_data strings are intentionally untouched (D-12).
+    reg_mode = await get_setting_typed("registration_mode")
     toggle_text = "📝 Регистрация: ⚡ Краткая → 📋 Полная" if reg_mode == "short" else "📝 Регистрация: 📋 Полная → ⚡ Краткая"
 
-    bonus_enabled = await get_setting("reg_bonus_enabled") or "off"
+    bonus_enabled = await get_setting_typed("reg_bonus_enabled")
     bonus_toggle_text = "🎁 Бонус: ❌ Выкл → ✅ Вкл" if bonus_enabled == "off" else "🎁 Бонус: ✅ Вкл → ❌ Выкл"
 
-    full_appr = await get_setting("full_approval") or "manual"
-    short_appr = await get_setting("short_approval") or "auto"
-    notify_mode = await get_setting("pending_notify_mode") or "batched"
+    full_appr = await get_setting_typed("full_approval")
+    short_appr = await get_setting_typed("short_approval")
+    notify_mode = await get_setting_typed("pending_notify_mode")
     full_txt = "✅ Полная форма: 👮 Ручная → ⚡ Авто" if full_appr == "manual" else "✅ Полная форма: ⚡ Авто → 👮 Ручная"
     short_txt = "✅ Краткая форма: 👮 Ручная → ⚡ Авто" if short_appr == "manual" else "✅ Краткая форма: ⚡ Авто → 👮 Ручная"
     notify_txt = "🔔 Уведомление: 📨 Сразу → 🕒 Пачкой" if notify_mode == "instant" else "🔔 Уведомление: 🕒 Пачкой → 📨 Сразу"
 
-    payment_enabled = await get_setting("payment_enabled") or "off"
-    consent_enabled = await get_setting("consent_enabled") or "off"
+    payment_enabled = await get_setting_typed("payment_enabled")
+    consent_enabled = await get_setting_typed("consent_enabled")
     payment_toggle_text = "💳 Оплата: ❌ Выкл → ✅ Вкл" if payment_enabled != "on" else "💳 Оплата: ✅ Вкл → ❌ Выкл"
     consent_toggle_text = "📋 Согласия: ❌ Выкл → ✅ Вкл" if consent_enabled != "on" else "📋 Согласия: ✅ Вкл → ❌ Выкл"
-    pay_rem_enabled = await get_setting("payment_reminders_enabled") or "on"
+    pay_rem_enabled = await get_setting_typed("payment_reminders_enabled")
     pay_rem_toggle_text = ("⏰ Автонапоминания оплаты: ✅ Вкл → ❌ Выкл" if pay_rem_enabled == "on"
                            else "⏰ Автонапоминания оплаты: ❌ Выкл → ✅ Вкл")
 
-    uni_mode = await get_setting("reg_university_mode") or "text"
+    uni_mode = await get_setting_typed("reg_university_mode")
     uni_mode_text = ("🏫 ВУЗ: выбор из списка → свободный ввод" if uni_mode == "list"
                      else "🏫 ВУЗ: свободный ввод → выбор из списка")
-    edu_cond = await get_setting("edu_conditional") or "on"
+    edu_cond = await get_setting_typed("edu_conditional")
     edu_cond_text = ("🎓 ВУЗ/курс только у студентов: ✅ Вкл → ❌ Выкл" if edu_cond == "on"
                      else "🎓 ВУЗ/курс только у студентов: ❌ Выкл → ✅ Вкл")
-    show_progress = await get_setting("reg_show_progress") or "off"
+    show_progress = await get_setting_typed("reg_show_progress")
     show_progress_text = ("🔢 Нумерация вопросов: ✅ Вкл → ❌ Выкл" if show_progress == "on"
                           else "🔢 Нумерация вопросов: ❌ Выкл → ✅ Вкл")
 
     # Phase 5 (D-13): party_enabled / party_fork_question default OFF; party_approval
-    # default "manual" — resolved with the `or "off"`/`or "manual"` idiom so an
-    # unconfigured bot always displays the safe default.
-    party_enabled = await get_setting("party_enabled") or "off"
+    # default "manual" — resolved via the registry's enum default (REG-02, 06-05).
+    party_enabled = await get_setting_typed("party_enabled")
     party_toggle_text = ("🎉 Трек вечеринки: ❌ Выкл → ✅ Вкл" if party_enabled != "on"
                          else "🎉 Трек вечеринки: ✅ Вкл → ❌ Выкл")
-    party_fork_question = await get_setting("party_fork_question") or "off"
+    party_fork_question = await get_setting_typed("party_fork_question")
     party_fork_toggle_text = ("🔀 Вопрос-развилка формата: ❌ Выкл → ✅ Вкл" if party_fork_question != "on"
                               else "🔀 Вопрос-развилка формата: ✅ Вкл → ❌ Выкл")
-    party_approval = await get_setting("party_approval") or "manual"
+    party_approval = await get_setting_typed("party_approval")
     party_appr_txt = ("✅ Модерация вечеринки: 👮 Ручная → ⚡ Авто" if party_approval == "manual"
                       else "✅ Модерация вечеринки: ⚡ Авто → 👮 Ручная")
 
@@ -692,7 +697,8 @@ async def toggle_registration_mode(callback: types.CallbackQuery):
         await callback.answer("Недостаточно прав", show_alert=True)
         return
 
-    current = await get_setting("registration_mode") or "short"
+    # REG-02 (06-05): current-value read migrated to the registry; write path unchanged.
+    current = await get_setting_typed("registration_mode")
     new_mode = "full" if current == "short" else "short"
     await set_setting("registration_mode", new_mode)
 
@@ -833,7 +839,8 @@ async def toggle_notify_mode(callback: types.CallbackQuery):
     if callback.from_user.id not in config.ADMIN_IDS:
         await callback.answer("Недостаточно прав", show_alert=True)
         return
-    current = await get_setting("pending_notify_mode") or "batched"
+    # REG-02 (06-05): current-value read migrated to the registry; write path unchanged.
+    current = await get_setting_typed("pending_notify_mode")
     new_val = "batched" if current == "instant" else "instant"
     await set_setting("pending_notify_mode", new_val)
     await callback.answer(f"Уведомление: {'📨 Сразу' if new_val == 'instant' else '🕒 Пачкой'}", show_alert=True)
@@ -847,7 +854,8 @@ async def toggle_bonus(callback: types.CallbackQuery):
         await callback.answer("Недостаточно прав", show_alert=True)
         return
 
-    current = await get_setting("reg_bonus_enabled") or "off"
+    # REG-02 (06-05): current-value read migrated to the registry; write path unchanged.
+    current = await get_setting_typed("reg_bonus_enabled")
     new_val = "on" if current == "off" else "off"
     await set_setting("reg_bonus_enabled", new_val)
 
@@ -2231,7 +2239,8 @@ async def _refresh_party_sheet_header() -> None:
     from handlers.registration import party_sheet_headers, PARTY_SHEET_TAB_DEFAULT
     from services.sheets import ensure_named_sheet_header
     try:
-        if (await get_setting("party_enabled") or "off") != "on":
+        # REG-02 (06-05): gate read migrated to the registry; behavior unchanged.
+        if (await get_setting_typed("party_enabled")) != "on":
             return
         tab = await get_setting("party_sheet_tab") or PARTY_SHEET_TAB_DEFAULT
         headers = await party_sheet_headers()
