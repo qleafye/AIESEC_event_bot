@@ -441,3 +441,48 @@ def test_free_tariff_party_delegate_receives_approve_text_party_end_to_end(tmp_p
     ))
 
     assert sent["text"] == "Партийный текст"
+
+
+# --- BLOCKER-party-payment-reentry: upload_receipt_entry threads the delegate's OWN track ----
+
+def test_upload_receipt_entry_threads_own_track_not_full(tmp_path, monkeypatch):
+    """A party_overnight delegate re-entering payment via the "Оплата" button must be filtered
+    against their OWN track's tariffs, not the "full" default — closes BLOCKER-party-payment-
+    reentry (start_payment_step previously received no participant_type)."""
+    import handlers.user_actions as user_actions
+
+    _use_tmp_db(tmp_path)
+    asyncio.run(db.init_db())
+    asyncio.run(db.add_user({
+        "telegram_id": 777, "full_name": "Party Delegate", "registration_date": "2026-07-24",
+        "participant_type": "party_overnight", "status": "approved", "payment_status": "not_paid",
+    }))
+    asyncio.run(db.set_setting("payment_enabled", "on"))
+    asyncio.run(db.set_setting("payment_requisites", "Сбербанк 1234 5678 9012 3456"))
+    asyncio.run(db.set_setting(
+        "payment_options",
+        "Без ночёвки|1000|party_noovernight\nС ночёвкой|1500|party_overnight",
+    ))
+
+    captured = {}
+
+    async def fake_start_payment_step(bot, telegram_id, participant_type="full"):
+        captured["participant_type"] = participant_type
+
+    monkeypatch.setattr(pay, "start_payment_step", fake_start_payment_step)
+
+    class FakeFromUser:
+        id = 777
+
+    class FakeMessage:
+        from_user = FakeFromUser()
+
+        async def answer(self, *args, **kwargs):
+            pass
+
+    class FakeBot:
+        id = 1
+
+    asyncio.run(user_actions.upload_receipt_entry(FakeMessage(), FakeBot()))
+
+    assert captured["participant_type"] == "party_overnight"
