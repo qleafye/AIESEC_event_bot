@@ -53,6 +53,7 @@ from services.scheduler import (
     cancel_broadcast_job,
 )
 from services.allowlist import refresh_allowlist, allowlist_size
+from services.background import spawn as _spawn
 from handlers.states import Broadcast, EditSetting, Approval, ReceiptReview
 from keyboards.builders import get_cancel_kb, MENU_BUTTONS, get_main_menu_kb
 from handlers.registration import REG_FLOW, REG_DEFAULTS, REG_LABELS, REG_PRESETS, REG_CATEGORIES, SHEET_HEADERS, STATUS_LABELS, _build_sheet_row, active_sheet_headers, set_sheet_schema, _sheet_value_map, approve_user, dropout_step_label, _apply_party_preset
@@ -1537,7 +1538,7 @@ async def process_broadcast(message: types.Message, state: FSMContext, bot: Bot)
         if mgid not in pending_albums:
             pending_albums[mgid] = {"messages": [message]}
             await message.answer(f"Альбом получен. Начинаю рассылку на {len(users_ids)} пользователей...")
-            asyncio.create_task(_wait_and_send_album(mgid, users_ids, bot, state, message.from_user.id))
+            _spawn(_wait_and_send_album(mgid, users_ids, bot, state, message.from_user.id))
         else:
             pending_albums[mgid]["messages"].append(message)
         return
@@ -2100,7 +2101,7 @@ async def _refresh_sheet_header() -> None:
     except Exception as e:
         logger.warning(f"_refresh_sheet_header: could not compute headers: {e}")
         return
-    asyncio.create_task(ensure_sheet_header(headers))
+    _spawn(ensure_sheet_header(headers))
 
 
 @router.callback_query(F.data.startswith("reg_q_toggle:"))
@@ -2574,7 +2575,7 @@ async def appr_approve(callback: types.CallbackQuery, state: FSMContext):
     if won:
         await approve_user(callback.bot, tid)  # welcome exactly once (D-10)
         # Автосинк статуса в таблицу (Таня п.5), fire-and-forget fail-soft.
-        asyncio.create_task(update_status_in_sheet(tid, STATUS_LABELS["approved"]))
+        _spawn(update_status_in_sheet(tid, STATUS_LABELS["approved"]))
         logger.info(f"admin={callback.from_user.id} action=approve user={tid}")
         await callback.answer("Одобрено")
     else:
@@ -2612,7 +2613,7 @@ async def appr_reject_reason(message: types.Message, state: FSMContext):
     reason = message.text or "-"
     ok = await reject_user(tid) if tid is not None else False
     if ok:
-        asyncio.create_task(update_status_in_sheet(tid, STATUS_LABELS["rejected"]))
+        _spawn(update_status_in_sheet(tid, STATUS_LABELS["rejected"]))
         logger.info(f"admin={message.from_user.id} action=reject user={tid} reason={reason!r}")
         try:
             prefix = await get_setting("reject_text") or "К сожалению, твоя заявка отклонена."
@@ -2683,10 +2684,10 @@ async def appr_all_yes(callback: types.CallbackQuery, state: FSMContext):
         f"✅ Одобрено: {len(ids)}. Рассылаю приветствия…",
         reply_markup=build_admin_keyboard(),
     )
-    asyncio.create_task(_welcome_flipped(callback.bot, ids))  # drain sends in background
+    _spawn(_welcome_flipped(callback.bot, ids))  # drain sends in background
     # Массовый автосинк статуса в таблицу (Таня п.5) — один batch, fail-soft.
     if ids:
-        asyncio.create_task(
+        _spawn(
             bulk_update_status_in_sheet({str(t): STATUS_LABELS["approved"] for t in ids})
         )
     await callback.answer()
