@@ -9,9 +9,9 @@ Scope: снять долг конфигурации (единый реестр �
 
 ### Settings-schema Registry (инженерный keystone)
 
-- [ ] **REG-01**: Единый реестр `SETTINGS_SCHEMA` — источник метаданных для каждого ключа `bot_settings` (parse-функция, default, label, group, type: toggle/text/int/photo/file). Один справочник вместо разбросанных по call-site'ам парсеров/дефолтов
-- [ ] **REG-02**: Существующие потребители настроек (`services/reminders.py`, `services/scheduler.py`, `handlers/admin.py`, `keyboards/builders.py`) читают значения через реестр (единая семантика on/off/default), инкрементально, без ломки текущего поведения
-- [ ] **REG-03**: Админ-UI настроек рендерится из реестра (label/group/type), заменяя ручные `SETTINGS_GROUPS`/`SETTINGS_FIELDS` списки — правка одного ключа не требует правок в нескольких местах
+- [x] **REG-01**: Единый реестр `SETTINGS_SCHEMA` — источник метаданных для каждого ключа `bot_settings` (parse-функция, default, label, group, type: toggle/text/int/photo/file). Один справочник вместо разбросанных по call-site'ам парсеров/дефолтов
+- [x] **REG-02**: Существующие потребители настроек (`services/reminders.py`, `services/scheduler.py`, `handlers/admin.py`, `keyboards/builders.py`) читают значения через реестр (единая семантика on/off/default), инкрементально, без ломки текущего поведения
+- [x] **REG-03**: Админ-UI настроек рендерится из реестра (label/group/type), заменяя ручные `SETTINGS_GROUPS`/`SETTINGS_FIELDS` списки — правка одного ключа не требует правок в нескольких местах
 
 ### Bitrix CRM Integration
 
@@ -71,9 +71,9 @@ Scope: снять долг конфигурации (единый реестр �
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| REG-01 | — | Pending |
-| REG-02 | — | Pending |
-| REG-03 | — | Pending |
+| REG-01 | — | Complete |
+| REG-02 | — | Complete |
+| REG-03 | — | Complete |
 | CRM-01 | — | Pending |
 | CRM-02 | — | Pending |
 | WEB-01 | — | Pending |
