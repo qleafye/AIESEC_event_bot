@@ -772,6 +772,65 @@ def test_cr01_fork_persists_referrer_id_immediately(tmp_path):
     asyncio.run(go())
 
 
+class _CapturingMessage(_FakeMessage):
+    """Records every answer/answer_photo text so a test can assert what the user was shown."""
+    def __init__(self, uid, username=None):
+        super().__init__(uid, username)
+        self.texts = []
+
+    async def answer(self, text=None, *a, **k):
+        self.texts.append(text)
+        return None
+
+    async def answer_photo(self, *a, **k):
+        self.texts.append("<photo>")
+        return None
+
+
+def test_me05_registered_user_not_locked_out_by_preselect_gate(tmp_path, monkeypatch):
+    """ME-05: an already-registered (non-rejected) user must reach their menu even with
+    pre-selection ON and a non-empty allowlist that excludes them — the gate is intake-only."""
+    _use_tmp_db(tmp_path)
+    from services import allowlist
+    monkeypatch.setattr(allowlist, "_allowlist", {"someoneelse"})  # non-empty, excludes our user
+
+    async def go():
+        await db.init_db()
+        await db.set_setting("preselect_enabled", "on")
+        await db.set_setting("preselect_fail_text", "SENTINEL_FAIL")
+        await db.set_setting("preselect_no_username_text", "SENTINEL_NOUSER")
+        uid = 710001
+        await db.add_user({"telegram_id": uid, "full_name": "Approved One",
+                           "username": "notallowed", "registration_date": "2026-07-01 10:00:00"})
+        await db.set_user_status(uid, "approved")
+        msg = _CapturingMessage(uid, "notallowed")
+        await reg.cmd_start(msg, _new_state(uid), bot=object(), command=None)
+        # Gate must NOT have fired — no lockout text shown to an existing approved delegate.
+        assert "SENTINEL_FAIL" not in msg.texts
+        assert "SENTINEL_NOUSER" not in msg.texts
+
+    asyncio.run(go())
+
+
+def test_me05_new_user_still_gated_by_preselect(tmp_path, monkeypatch):
+    """Companion: the gate must STILL lock out a brand-new (unregistered) excluded user —
+    the ME-05 bypass must be scoped to already-registered rows only, not a blanket disable."""
+    _use_tmp_db(tmp_path)
+    from services import allowlist
+    monkeypatch.setattr(allowlist, "_allowlist", {"someoneelse"})
+
+    async def go():
+        await db.init_db()
+        await db.set_setting("preselect_enabled", "on")
+        await db.set_setting("preselect_fail_text", "SENTINEL_FAIL")
+        uid = 710002
+        msg = _CapturingMessage(uid, "notallowed")  # no users row → new intake
+        await reg.cmd_start(msg, _new_state(uid), bot=object(), command=None)
+        assert "SENTINEL_FAIL" in msg.texts  # gate fired for the new excluded user
+
+    asyncio.run(go())
+
+
 def test_cr01_referred_user_picks_full_still_lands_with_referrer_id(tmp_path):
     """The explicit "picks full" case CR-01 calls out: a referred user who lands on the fork
     and taps "Полная регистрация" must still finalize with referrer_id attribution intact."""
