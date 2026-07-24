@@ -463,7 +463,9 @@ FILE_FIELDS = [
 async def render_settings_text() -> str:
     lines = ["⚙️ <b>Настройки форума</b>", ""]
 
-    reg_mode = await get_setting("registration_mode") or "short"
+    # REG-02 (06-07): final-coverage sweep — closes the 06-05-flagged boundary; byte-
+    # identical to the prior `get_setting(k) or "<literal>"` idiom (enum falsy->default).
+    reg_mode = await get_setting_typed("registration_mode")
     mode_label = "📋 Полная" if reg_mode == "full" else "⚡ Краткая"
     lines.append(f"📝 Форма регистрации: <b>{mode_label}</b>")
 
@@ -713,7 +715,9 @@ async def _toggle_approval_setting(callback: types.CallbackQuery, key: str, defa
     if callback.from_user.id not in config.ADMIN_IDS:
         await callback.answer("Недостаточно прав", show_alert=True)
         return
-    current = await get_setting(key) or default
+    # REG-02 (06-07): final-coverage sweep — key is always in SETTINGS_SCHEMA (full_approval/
+    # short_approval/party_approval), registry default byte-identical to the `default` param.
+    current = await get_setting_typed(key)
     new_val = "auto" if current == "manual" else "manual"
     await set_setting(key, new_val)
     await callback.answer(f"{title}: {'👮 Ручная' if new_val == 'manual' else '⚡ Авто'}", show_alert=True)
@@ -745,7 +749,9 @@ async def _toggle_module_setting(callback: types.CallbackQuery, key: str, title:
     if callback.from_user.id not in config.ADMIN_IDS:
         await callback.answer("Недостаточно прав", show_alert=True)
         return
-    current = await get_setting(key) or "off"
+    # REG-02 (06-07): final-coverage sweep — key is always in SETTINGS_SCHEMA
+    # (payment_enabled/consent_enabled/party_enabled/party_fork_question), all default "off".
+    current = await get_setting_typed(key)
     new_val = "off" if current == "on" else "on"
     await set_setting(key, new_val)
     label = "✅ Вкл" if new_val == "on" else "❌ Выкл"
@@ -790,7 +796,10 @@ async def _toggle_value_setting(callback, key, val_a, val_b, default, title_a, t
     if callback.from_user.id not in config.ADMIN_IDS:
         await callback.answer("Недостаточно прав", show_alert=True)
         return
-    current = await get_setting(key) or default
+    # REG-02 (06-07): final-coverage sweep — every key routed through this helper
+    # (reg_university_mode/edu_conditional/reg_show_progress/payment_reminders_enabled) is
+    # in SETTINGS_SCHEMA with a registry default byte-identical to the `default` param.
+    current = await get_setting_typed(key)
     new_val = val_b if current == val_a else val_a
     await set_setting(key, new_val)
     await callback.answer(title_a if new_val == val_a else title_b, show_alert=True)
