@@ -270,15 +270,24 @@ def test_toggle_party_approval_is_independent_of_full_and_short(tmp_path):
 
 
 def test_party_closed_text_shows_hardcoded_default_when_unset(tmp_path):
+    """Quick 260724-c0x: the landing screen no longer dumps field values/defaults inline
+    (moved to the «party» group sub-screen, which shows a «по умолчанию» flag, not the
+    literal default text — see req: long values never shown inline)."""
     _admin_ready(tmp_path)
     text = asyncio.run(admin_mod.render_settings_text())
-    assert "Регистрация на вечеринку сейчас закрыта." in text
+    assert "Регистрация на вечеринку сейчас закрыта." not in text
+
+    group_text = asyncio.run(admin_mod.render_settings_group_text("party"))
+    assert "по умолчанию" in group_text
 
 
 def test_party_sheet_tab_shows_default_party_when_unset(tmp_path):
+    """Quick 260724-c0x: same relocation as above — landing has no inline defaults;
+    the party group sub-screen flags the field as «по умолчанию» instead."""
     _admin_ready(tmp_path)
-    text = asyncio.run(admin_mod.render_settings_text())
-    assert "Party" in text
+    group_text = asyncio.run(admin_mod.render_settings_group_text("party"))
+    assert "party_sheet_tab" in admin_mod._settings_group_keys("party")
+    assert "по умолчанию" in group_text
 
 
 def test_party_closed_text_and_sheet_tab_are_settings_edit_fields(tmp_path):
