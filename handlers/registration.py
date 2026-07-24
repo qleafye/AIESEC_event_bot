@@ -14,6 +14,7 @@ from aiogram.utils.keyboard import ReplyKeyboardBuilder
 
 from config import config
 from database.db import add_user, get_user, get_setting, set_setting, mark_reg_started, clear_reg_started, set_reg_step, set_user_subscribed, set_user_status, record_user_consent, get_user_consents, get_reg_started_track, _csv_safe
+from settings_schema import SETTINGS_SCHEMA  # REG-01/D-06 (06-04): REG_DEFAULTS derivation source
 from handlers.states import Registration
 from keyboards.builders import (
     get_main_menu_kb,
@@ -194,50 +195,17 @@ async def _get_options(setting_key: str, defaults: list[str]) -> list[str]:
             return items
     return list(defaults)
 
+# REG-01/D-06 (06-04): REG_DEFAULTS is now DERIVED from settings_schema.SETTINGS_SCHEMA
+# (every registered "toggle"-type entry), not a hand-maintained literal — the registry is
+# the single source of truth for reg_q_* defaults (T-06-12/T-06-13, test_reg_defaults_parity
+# pins byte-for-byte parity against the pre-migration 43-key literal). The NAME is retained
+# unchanged because handlers/admin.py still imports/iterates it (admin.py:59 import, :501,
+# :2097 _is_question_on, :2248, and the preset bulk-write loop at :2336/:2412) — deleting the
+# name would break those call sites for no benefit; only the VALUE's origin changed.
+# settings_schema imports only database.db (one-directional, T-06-14) — importing it here
+# does not create a cycle.
 REG_DEFAULTS = {
-    "reg_q_age": "on",
-    "reg_q_vk": "on",            # ник в ВК (@username) — YL'26
-    "reg_q_email": "off",
-    "reg_q_phone": "off",
-    "reg_q_city": "off",
-    "reg_q_source": "on",
-    "reg_q_lc": "off",
-    "reg_q_position": "off",
-    "reg_q_education": "on",
-    "reg_q_university": "on",
-    "reg_q_course": "on",
-    "reg_q_study_field": "on",   # «Направление обучения» (select) — заменяет специальность
-    "reg_q_specialty": "off",
-    "reg_q_work": "on",
-    "reg_q_work_sphere": "on",
-    "reg_q_skills": "on",
-    "reg_q_expectations": "on",
-    "reg_q_attendance": "off",
-    "reg_q_informal_day": "off",
-    "reg_q_comments": "off",
-    "reg_q_department": "off",
-    "reg_q_aiesec_role": "off",
-    "reg_q_certificate": "off",
-    "reg_q_alumni_status": "off",
-    "reg_q_english": "off",
-    "reg_q_allergies": "off",
-    "reg_q_food": "off",
-    "reg_q_arrival": "off",
-    "reg_q_housing": "off",
-    "reg_q_bed_sharing": "off",
-    "reg_q_bed_partner": "off",
-    "reg_q_transport": "off",
-    "reg_q_payment_date": "off",
-    "reg_q_cc_shop": "off",
-    "reg_q_exp_organizers": "off",
-    "reg_q_exp_content": "off",
-    "reg_q_volunteer": "off",
-    "reg_q_arrival_date": "off",
-    "reg_q_birth_date": "off",
-    "reg_q_goal": "off",
-    "reg_q_formats": "off",
-    "reg_q_ambassador": "off",
-    "reg_q_resume": "off",
+    k: v["default"] for k, v in SETTINGS_SCHEMA.items() if v["type"] == "toggle"
 }
 
 REG_LABELS = {
