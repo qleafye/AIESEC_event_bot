@@ -1469,8 +1469,15 @@ async def cmd_start(message: types.Message, state: FSMContext, bot: Bot, command
         # party_fallback_full call _start_registration_flow with an empty FSM state (this is
         # the first call for the session) and referrer_id/source_tag are silently dropped for
         # EVERY user who lands on the fork screen — including one who picks "full".
+        # HIGH-01: preserve prior attribution. A referred user re-sending a BARE /start
+        # (referrer_id=None) while the fork keyboard is shown must not clobber the referrer
+        # saved by their first (deep-linked) /start. Same preserve idiom _start_registration_flow
+        # uses: fall back to whatever is already in FSM state.
+        _existing = await state.get_data()
         await state.update_data(
-            referrer_id=referrer_id, source=source_tag, _source_from_tag=bool(source_tag)
+            referrer_id=referrer_id or _existing.get("referrer_id"),
+            source=source_tag or _existing.get("source"),
+            _source_from_tag=bool(source_tag) or bool(_existing.get("_source_from_tag")),
         )
         fork_text = await get_setting("party_fork_text") or DEFAULT_PARTY_FORK_TEXT
         await message.answer(fork_text, reply_markup=_party_fork_kb())
