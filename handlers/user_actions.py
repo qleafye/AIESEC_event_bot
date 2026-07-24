@@ -103,7 +103,13 @@ async def upload_receipt_entry(message: types.Message, bot: Bot):
     if not await should_offer_receipt_upload(message.from_user.id):
         await message.answer("Оплатили или оплата не требуется.")
         return
-    await start_payment_step(bot, message.from_user.id)
+    try:
+        user_row = await get_user(message.from_user.id)
+        participant_type = (user_row or {}).get("participant_type") or "full"
+    except Exception as e:
+        logger.error(f"Failed to resolve participant_type for {message.from_user.id}, defaulting to 'full': {e}")
+        participant_type = "full"
+    await start_payment_step(bot, message.from_user.id, participant_type)
 
 
 #ℹ️ Информация о форуме
