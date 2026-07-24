@@ -638,3 +638,104 @@ def test_full_registry_coverage():
         assert key not in seen_keys, f"{key} duplicated in registry"
         seen_keys.add(key)
         _parse_setting(key, entry["default"])  # must not raise
+
+
+# ── Phase 6 plan 07 (final coverage sweep): close the 06-05/06-06-flagged raw-idiom
+# boundary -- render_settings_text's own registration_mode read (:466) and the three
+# generic multi-key toggle helpers (_toggle_approval_setting :716, _toggle_module_setting
+# :748, _toggle_value_setting :793) must resolve their current-value read through
+# get_setting_typed instead of `get_setting(key) or default`. ────────────────────────────
+
+def test_toggle_current_value_equiv_across_generic_helpers(tmp_path):
+    """Value-equivalence: driving each public toggle handler across raw DB inputs
+    (None/empty/each enum option) must produce the exact same NEW value the pre-migration
+    `get_setting(key) or default` idiom would have flipped to. Established as PASS-first
+    (byte-for-byte preserving swap of the read primitive only -- get_setting_typed's enum
+    branch `raw if raw else default` is mathematically identical to `raw or default`),
+    matching the 06-05 precedent for this class of migration."""
+    _admin_ready(tmp_path)
+
+    async def go():
+        cases = [
+            # (handler, key, raw_values, flip_fn(current) -> expected_new_val)
+            (admin_mod.toggle_full_approval, "full_approval", [None, "", "manual", "auto"],
+             lambda cur: "auto" if cur == "manual" else "manual"),
+            (admin_mod.toggle_short_approval, "short_approval", [None, "", "manual", "auto"],
+             lambda cur: "auto" if cur == "manual" else "manual"),
+            (admin_mod.toggle_party_approval, "party_approval", [None, "", "manual", "auto"],
+             lambda cur: "auto" if cur == "manual" else "manual"),
+            (admin_mod.toggle_payment_enabled, "payment_enabled", [None, "", "on", "off"],
+             lambda cur: "off" if cur == "on" else "on"),
+            (admin_mod.toggle_consent_enabled, "consent_enabled", [None, "", "on", "off"],
+             lambda cur: "off" if cur == "on" else "on"),
+            (admin_mod.toggle_party_enabled, "party_enabled", [None, "", "on", "off"],
+             lambda cur: "off" if cur == "on" else "on"),
+            (admin_mod.toggle_party_fork_question, "party_fork_question", [None, "", "on", "off"],
+             lambda cur: "off" if cur == "on" else "on"),
+            (admin_mod.toggle_payment_reminders, "payment_reminders_enabled", [None, "", "on", "off"],
+             lambda cur: "off" if cur == "on" else "on"),
+            (admin_mod.toggle_uni_mode, "reg_university_mode", [None, "", "text", "list"],
+             lambda cur: "text" if cur == "list" else "list"),
+            (admin_mod.toggle_edu_conditional, "edu_conditional", [None, "", "on", "off"],
+             lambda cur: "off" if cur == "on" else "on"),
+            (admin_mod.toggle_show_progress, "reg_show_progress", [None, "", "on", "off"],
+             lambda cur: "off" if cur == "on" else "on"),
+        ]
+        for handler, key, raw_values, flip_fn in cases:
+            default = SETTINGS_SCHEMA[key]["default"]
+            for raw in raw_values:
+                await db.delete_setting(key)
+                if raw is not None:
+                    await db.set_setting(key, raw)
+                cb = FakeCallback("noop")
+                await handler(cb)
+                new_val = await db.get_setting(key)
+                current_oracle = raw or default  # pre-migration idiom: get_setting(key) or default
+                expected_new = flip_fn(current_oracle)
+                assert new_val == expected_new, (
+                    f"{key}: raw={raw!r} -> new_val={new_val!r}, expected {expected_new!r}"
+                )
+    asyncio.run(go())
+
+    # Render's own registration_mode read (:466) must also be byte-equivalent.
+    async def go_render():
+        for raw in [None, "", "full", "short"]:
+            await db.delete_setting("registration_mode")
+            if raw is not None:
+                await db.set_setting("registration_mode", raw)
+            text = await admin_mod.render_settings_text()
+            oracle_mode = raw or "short"
+            expected_label = "📋 Полная" if oracle_mode == "full" else "⚡ Краткая"
+            assert f"📝 Форма регистрации: <b>{expected_label}</b>" in text, (
+                f"render_settings_text registration_mode label mismatch for raw={raw!r}"
+            )
+    asyncio.run(go_render())
+
+
+def test_generic_toggle_helpers_wired_to_registry():
+    """Wiring gate (RED before the migration, GREEN after): render_settings_text's own
+    registration_mode read plus the three generic toggle helpers must call
+    get_setting_typed -- not the raw get_setting(key) or default idiom -- for their
+    current-value read. Source-inspection (inspect.getsource), matching the established
+    pattern for reads embedded in shared/parameterized functions (06-06 precedent)."""
+    import inspect
+
+    render_src = inspect.getsource(admin_mod.render_settings_text)
+    assert 'get_setting_typed("registration_mode")' in render_src, (
+        "render_settings_text's own registration_mode read is not wired to get_setting_typed"
+    )
+
+    appr_src = inspect.getsource(admin_mod._toggle_approval_setting)
+    assert "get_setting_typed(key)" in appr_src, (
+        "_toggle_approval_setting is not wired to get_setting_typed"
+    )
+
+    mod_src = inspect.getsource(admin_mod._toggle_module_setting)
+    assert "get_setting_typed(key)" in mod_src, (
+        "_toggle_module_setting is not wired to get_setting_typed"
+    )
+
+    val_src = inspect.getsource(admin_mod._toggle_value_setting)
+    assert "get_setting_typed(key)" in val_src, (
+        "_toggle_value_setting is not wired to get_setting_typed"
+    )
