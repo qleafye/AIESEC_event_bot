@@ -38,6 +38,7 @@ from keyboards.builders import (
 )
 from services.sheets import append_to_sheet, append_to_named_sheet
 from services.nextcloud import upload_resume, upload_text_resume
+from services.background import spawn as _spawn
 
 router = Router()
 logger = logging.getLogger(__name__)
@@ -2291,10 +2292,10 @@ async def finalize_registration(message: types.Message, state: FSMContext, bot: 
     try:
         if _is_party_track(data.get("participant_type")):
             _party_row = await party_sheet_row(data)
-            asyncio.create_task(append_to_party_sheet(_party_row))
+            _spawn(append_to_party_sheet(_party_row))
         else:
             _sheet_row = await active_sheet_row(data)
-            asyncio.create_task(append_to_sheet(_sheet_row))
+            _spawn(append_to_sheet(_sheet_row))
     except Exception as e:
         logger.error(f"Failed to schedule sheet append for {message.from_user.id}: {e}")
 
