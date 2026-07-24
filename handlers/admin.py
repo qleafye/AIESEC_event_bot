@@ -12,6 +12,7 @@ from aiogram.filters import Command, StateFilter
 from aiogram.fsm.context import FSMContext
 from aiogram.types import BufferedInputFile, InlineKeyboardMarkup, InlineKeyboardButton, ReplyKeyboardRemove
 from config import config
+from settings_schema import SETTINGS_SCHEMA  # REG-03: event group generated from the registry
 from database.db import (
     get_stats,
     get_all_users_ids,
@@ -338,16 +339,21 @@ async def show_admin_source_stats(callback: types.CallbackQuery):
 
 # --- Settings ---
 
-SETTINGS_FIELDS = [
-    ("event_date", "🗓 Дата", "Введите дату форума"),
-    ("event_time", "⌚ Время", "Введите время проведения"),
-    ("event_place_name", "📍 Место", "Введите название площадки"),
-    ("event_place_address", "📫 Адрес", "Введите адрес площадки"),
-    ("contact_person", "👤 Контакт", "Введите юзернейм контактного лица (например @username)"),
-    ("contact_vk", "🔵 VK", "Введите ссылку на группу ВК"),
-    ("contact_tg", "🔹 TG", "Введите ссылку на Telegram-канал"),
-    ("start_text", "💬 Приветствие", "Введите текст приветствия при /start (поддерживается HTML-разметка)"),
-    ("event_name", "🎪 Название меро", "Название мероприятия в родительном падеже — подставляется в вопрос об ожиданиях (например: «конференции RusCo», «форума YouLead», «Годового отчёта»)"),
+# REG-03: the event-group text/enum entries are GENERATED from settings_schema.SETTINGS_SCHEMA
+# (single source of truth, D-13) instead of hand-written literals. Order is pinned explicitly
+# (not a dict-order assumption) so the settings screen stays byte-identical to the
+# pre-registry literal table. Remaining (unmigrated) groups below stay literal tuples — no
+# change — until their own migration wave (coexistence invariant, SC#3).
+_EVENT_FIELD_ORDER = [
+    "event_date", "event_time", "event_place_name", "event_place_address",
+    "contact_person", "contact_vk", "contact_tg", "start_text", "event_name", "event_type",
+]
+_EVENT_FIELDS = [
+    (k, SETTINGS_SCHEMA[k]["label"], SETTINGS_SCHEMA[k]["prompt"])
+    for k in _EVENT_FIELD_ORDER
+]
+
+SETTINGS_FIELDS = _EVENT_FIELDS + [
     ("source_options", "📢 Источники", "Отправьте варианты источников, каждый с новой строки"),
     ("reg_complete_text", "✅ После регистрации", "Текст, который участник увидит СРАЗУ после отправки анкеты (например «Поздравляем, заявка принята! Рассмотрим за 2-3 дня»). Поддерживается HTML."),
     ("approve_text", "🎉 После одобрения", "Отдельный текст, который участник увидит, когда менеджер ОДОБРИТ заявку. Поддерживается HTML."),
@@ -356,7 +362,7 @@ SETTINGS_FIELDS = [
     ("consent_button_text", "✅ Текст кнопки согласия", "Надпись на кнопке согласия (по умолчанию «Согласен(-на)»)."),
     ("pending_reminder_interval", "🕒 Тайминг батчей заявок", "Как часто бот присылает админам сводку «Заявок в ожидании: N» (режим «Пачкой»).\n\nВ СЕКУНДАХ. Примеры:\n900 = 15 мин\n1800 = 30 мин (по умолчанию)\n3600 = 1 час\n\nМеняется на лету, перезапуск не нужен."),
     # Phase 4: event modularity + consent + payment config (all default empty/off → live flow unchanged)
-    ("event_type", "🎭 Тип события", "Напишите одно слово: forum (форум) / conference (конференция) / custom (вручную).\n\nДля forum и conference бот сам включит/выключит модули оплаты и согласий — потом можно поправить кнопками выше."),
+    # NOTE: event_type moved into _EVENT_FIELDS above (REG-03, generated from SETTINGS_SCHEMA).
     ("consent_list", "📋 Список согласий", "Согласия, которые участник примет в конце анкеты.\n\nКаждое согласие — отдельной строкой в формате:\nВидимое название | короткий_ключ_латиницей\n\nКлюч нужен, чтобы привязать к согласию PDF. Пример (две строки):\nСогласие на обработку данных|data\nПолитика конфиденциальности|policy\n\nЕсли на телефоне Enter отправляет сообщение и несколько строк ввести не получается — раздели согласия точкой с запятой «;» в одну строку:\nСогласие на обработку данных|data; Политика конфиденциальности|policy\n\nПосле сохранения загрузите PDF в разделе «🧾 PDF согласий»."),
     ("payment_options", "💳 Варианты оплаты", "Варианты участия (билеты/тарифы), каждый — отдельной строкой:\nНазвание | Цена\n\nПример:\nПолный билет|5000\nСтудент|3000\n\nЦена 0 = бесплатно. Если вариант один — участник его не выбирает, сразу видит реквизиты.\n\nНеобязательное третье поле — фильтр по треку: Название | Цена | треки (треки — через запятую, значения: full, party_overnight, party_noovernight). Без третьего поля тариф виден ВСЕМ трекам. Пример строки только для party:\nВход на вечеринку|1000|party_overnight,party_noovernight"),
     ("payment_requisites", "💰 Реквизиты оплаты", "Общие реквизиты: банк, номер карты, ФИО получателя. Показываются, если для ЛК участника не задана своя карта (см. «💳 Реквизиты по ЛК»). Обычный текст."),
@@ -394,11 +400,18 @@ _SETTINGS_DISPLAY_DEFAULTS = {
 # Quick 260724-c0x: group→keys grouping (NOT a per-key metadata registry) so the settings
 # landing screen can route into per-group sub-screens instead of dumping every field's value
 # inline. Shape mirrors REG_CATEGORIES (handlers/registration.py) — (label, token, [keys]).
+# REG-03: the "event" row's key list is generated from SETTINGS_SCHEMA (registry is the
+# source, D-13) — same pinned _EVENT_FIELD_ORDER used to build _EVENT_FIELDS above, filtered
+# to the text/enum keys (photo/file keys are handled separately by the event branch in
+# render_settings_group_text/build_settings_group_keyboard via PHOTO_FIELDS/FILE_FIELDS,
+# unchanged per D-10).
+_EVENT_GROUP_KEYS = [
+    k for k in _EVENT_FIELD_ORDER
+    if SETTINGS_SCHEMA[k]["type"] in ("text", "enum")
+]
+
 SETTINGS_GROUPS = [
-    ("🎪 Событие/Медиа", "event", [
-        "event_date", "event_time", "event_place_name", "event_place_address",
-        "contact_person", "contact_vk", "contact_tg", "start_text", "event_name", "event_type",
-    ]),
+    ("🎪 Событие/Медиа", "event", _EVENT_GROUP_KEYS),
     ("📝 Регистрация", "reg", [
         "source_options", "reg_complete_text", "approve_text", "reject_text",
         "pending_reminder_interval", "city_options", "study_field_options",
