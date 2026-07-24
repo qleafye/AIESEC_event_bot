@@ -1,4 +1,8 @@
 """Phase 2 admin pure-helper tests: callback parse, card renderer, settings guide."""
+import asyncio
+
+from config import config
+from handlers import admin
 from handlers.admin import (
     _parse_appr,
     _render_application_card,
@@ -47,3 +51,56 @@ def test_settings_guide_lists_keys_and_defaults():
     assert "pending_notify_mode" in out
     assert "full_approval" in out
     assert "(по умолчанию)" in out  # at least one unset key shows its default
+
+
+# ── WR-01: mass-approve welcome drain must run even if the confirm edit throws ─
+
+class _RaisingMessage:
+    async def edit_text(self, *a, **k):
+        raise RuntimeError("Bad Request: message can't be edited (too old)")
+
+
+class _FakeCallbackWR01:
+    def __init__(self, uid):
+        self.from_user = type("U", (), {"id": uid})()
+        self.message = _RaisingMessage()
+        self.bot = object()
+        self.answered = False
+
+    async def answer(self, *a, **k):
+        self.answered = True
+
+
+def test_wr01_welcome_drain_scheduled_despite_edit_failure(monkeypatch):
+    """WR-01: appr_all_yes must schedule _welcome_flipped BEFORE the fragile confirm edit, so a
+    >48h/deleted card whose edit_text raises still delivers welcome/menu to the approved users."""
+    uid = 42
+    monkeypatch.setattr(config, "ADMIN_IDS", [uid])
+    welcomed = []
+
+    async def fake_approve_all_pending():
+        return [1, 2, 3]
+
+    async def fake_welcome_flipped(bot, ids):
+        welcomed.append(list(ids))
+
+    async def fake_bulk_sync(mapping):
+        return None
+
+    monkeypatch.setattr(admin, "approve_all_pending", fake_approve_all_pending)
+    monkeypatch.setattr(admin, "_welcome_flipped", fake_welcome_flipped)
+    monkeypatch.setattr(admin, "bulk_update_status_in_sheet", fake_bulk_sync)
+    monkeypatch.setattr(admin, "build_admin_keyboard", lambda *a, **k: None)
+
+    cb = _FakeCallbackWR01(uid)
+
+    async def go():
+        await admin.appr_all_yes(cb, None)  # edit_text will raise inside
+        pending = [t for t in asyncio.all_tasks() if t is not asyncio.current_task()]
+        if pending:
+            await asyncio.gather(*pending)
+
+    asyncio.run(go())
+
+    assert welcomed == [[1, 2, 3]]  # drain ran despite the edit throwing
+    assert cb.answered  # handler completed (callback.answer reached)
