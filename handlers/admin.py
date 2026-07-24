@@ -390,6 +390,62 @@ _SETTINGS_DISPLAY_DEFAULTS = {
     "party_sheet_tab": "Party",
 }
 
+# Quick 260724-c0x: group→keys grouping (NOT a per-key metadata registry) so the settings
+# landing screen can route into per-group sub-screens instead of dumping every field's value
+# inline. Shape mirrors REG_CATEGORIES (handlers/registration.py) — (label, token, [keys]).
+SETTINGS_GROUPS = [
+    ("🎪 Событие/Медиа", "event", [
+        "event_date", "event_time", "event_place_name", "event_place_address",
+        "contact_person", "contact_vk", "contact_tg", "start_text", "event_name", "event_type",
+    ]),
+    ("📝 Регистрация", "reg", [
+        "source_options", "reg_complete_text", "approve_text", "reject_text",
+        "pending_reminder_interval", "city_options", "study_field_options",
+        "goal_options", "formats_options", "university_options",
+    ]),
+    ("💳 Оплата", "pay", [
+        "payment_options", "payment_requisites", "payment_requisites_by_lc",
+        "payment_deadline", "payment_reminder_text", "payment_overdue_text", "penalty_schedule",
+    ]),
+    ("🎉 Party", "party", [
+        "party_closed_text", "party_sheet_tab",
+    ]),
+    ("📋 Согласия", "consent", [
+        "consent_button_text", "consent_list",
+    ]),
+]
+
+
+def _settings_group_keys(token: str) -> list[str]:
+    """Keys for a given SETTINGS_GROUPS token, including leftover-safety: any SETTINGS_FIELDS
+    key not placed in a declared group lands in the trailing «Прочие»/"misc" group so nothing
+    is ever silently hidden (mirrors _categorized_question_keys leftover handling)."""
+    for _, tok, keys in SETTINGS_GROUPS:
+        if tok == token:
+            return list(keys)
+    if token == "misc":
+        seen = {k for _, __, keys in SETTINGS_GROUPS for k in keys}
+        return [k for k, _, _ in SETTINGS_FIELDS if k not in seen]
+    return []
+
+
+def _settings_group_label(token: str) -> str:
+    for label, tok, _ in SETTINGS_GROUPS:
+        if tok == token:
+            return label
+    if token == "misc":
+        return "📦 Прочие"
+    return token
+
+
+def _settings_nav_groups() -> list[tuple[str, str]]:
+    """(label, token) rows for the landing keyboard nav buttons — declared groups plus a
+    trailing «Прочие» group ONLY if leftover keys exist."""
+    rows = [(label, tok) for label, tok, _ in SETTINGS_GROUPS]
+    if _settings_group_keys("misc"):
+        rows.append(("📦 Прочие", "misc"))
+    return rows
+
 PHOTO_FIELDS = [
     ("program", "📅 Программа", "Отправьте фото программы (можно с подписью)."),
     ("speakers", "🗣 Спикеры", "Отправьте одно фото со всеми спикерами (можно с подписью)."),
@@ -454,31 +510,7 @@ async def render_settings_text() -> str:
     lines.append(f"🔘 Меню: <b>{enabled_m} из {len(MENU_BUTTONS)}</b> кнопок")
     lines.append("")
 
-    for key, label, _ in SETTINGS_FIELDS:
-        value = await get_setting(key)
-        if not value:
-            default = _SETTINGS_DISPLAY_DEFAULTS.get(key)
-            status = f"<i>по умолчанию: {html_module.escape(default)}</i>" if default else "<i>не указано</i>"
-        else:
-            escaped = html_module.escape(value)
-            if len(value) > 60:
-                status = html_module.escape(value[:60]) + "…"
-            else:
-                status = escaped
-        lines.append(f"{label}: {status}")
-
-    lines.append("")
-    for prefix, label, _ in PHOTO_FIELDS:
-        photo = await get_setting(f"{prefix}_photo_file_id")
-        lines.append(f"{label}: {'✅ загружена' if photo else '<i>не загружена</i>'}")
-
-    for prefix, label, _ in FILE_FIELDS:
-        photo = await get_setting(f"{prefix}_photo_file_id")
-        doc = await get_setting(f"{prefix}_doc_file_id")
-        if photo or doc:
-            lines.append(f"{label}: ✅ загружен")
-        else:
-            lines.append(f"{label}: <i>не загружен</i>")
+    lines.append("✏️ Тексты и медиа — по кнопкам групп ниже.")
 
     lines.append("")
     lines.append("<i>Отправьте «-» при редактировании текстовых полей, чтобы скрыть.</i>")
@@ -551,12 +583,8 @@ async def build_settings_keyboard():
         [InlineKeyboardButton(text="✏️ Тексты вопросов", callback_data="admin_reg_prompts")],
         [InlineKeyboardButton(text="🔘 Кнопки меню", callback_data="admin_menu_buttons")],
     ]
-    for key, label, _ in SETTINGS_FIELDS:
-        buttons.append([InlineKeyboardButton(text=f"✏️ {label}", callback_data=f"settings_edit:{key}")])
-    for prefix, label, _ in PHOTO_FIELDS:
-        buttons.append([InlineKeyboardButton(text=f"📷 {label}", callback_data=f"settings_photo:{prefix}")])
-    for prefix, label, _ in FILE_FIELDS:
-        buttons.append([InlineKeyboardButton(text=f"📎 {label}", callback_data=f"settings_file:{prefix}")])
+    for label, token in _settings_nav_groups():
+        buttons.append([InlineKeyboardButton(text=label, callback_data=f"settings_group:{token}")])
     buttons.append([InlineKeyboardButton(text="← Назад", callback_data="settings_back")])
     return InlineKeyboardMarkup(inline_keyboard=buttons)
 
