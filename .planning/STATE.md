@@ -2,15 +2,16 @@
 gsd_state_version: 1.0
 milestone: v2
 milestone_name: Registry & Multichannel
-status: Defining requirements
-stopped_at: Phase 6 context gathered
-last_updated: "2026-07-24T07:50:50.860Z"
-last_activity: 2026-07-24 — Milestone v2 started
+status: executing
+stopped_at: Completed 06-03-PLAN.md
+last_updated: "2026-07-24T13:17:13.394Z"
+last_activity: 2026-07-24
 progress:
   total_phases: 1
   completed_phases: 0
-  total_plans: 0
-  completed_plans: 0
+  total_plans: 7
+  completed_plans: 3
+  percent: 43
 ---
 
 # Project State
@@ -20,14 +21,14 @@ progress:
 See: .planning/PROJECT.md (updated 2026-06-25)
 
 **Core value:** Менеджер DXP может полностью провести регистрацию делегатов через бота — от заявки до одобрения — без ручного учёта в таблицах и без перезапуска кода между событиями.
-**Current focus:** Phase 05 — participant-tracks-party-delegates
+**Current focus:** Phase 06 — settings-schema-registry
 
 ## Current Position
 
-Phase: Not started (defining requirements)
-Plan: —
-Status: Defining requirements
-Last activity: 2026-07-24 — Milestone v2 started
+Phase: 06 (settings-schema-registry) — EXECUTING
+Plan: 3 of 7
+Status: Ready to execute
+Last activity: 2026-07-24
 
 ## Performance Metrics
 
@@ -55,6 +56,8 @@ Last activity: 2026-07-24 — Milestone v2 started
 | Phase 05 P03 | 7min | 3 tasks | 2 files |
 | Phase 05 P05 | 12min | 2 tasks | 3 files |
 | Phase 05 P06 | 11min | 3 tasks | 3 files |
+| Phase 06 P01 | 12min | 3 tasks | 3 files |
+| Phase 06 P03 | 14min | 2 tasks | 4 files |
 
 ## Accumulated Context
 
@@ -86,6 +89,12 @@ Recent decisions affecting current work:
 - [Phase 05]: D-12 (05-06): finalize_registration sheet append is an exclusive if/else on _is_party_track -- party track appends to append_to_party_sheet only, else branch (full delegates) is byte-identical to pre-Phase-5 append_to_sheet; verified by integration tests, not just a grep
 - [Phase 05]: T-05-06-01 (05-06): party_sheet_row applies database.db._csv_safe to every cell (reused, not reimplemented); the main sheet's active_sheet_row does NOT yet apply _csv_safe -- flagged as a pre-existing follow-up gap, out of this plan's scope
 - [Phase 05]: Task 4 (05-06 checkpoint) deferred to a single consolidated end-of-phase human UAT pass per coordinator decision, carrying forward its 10-step live-bot/live-Sheet checklist -- same deferral pattern as 05-03/05-04
+- [Phase 06]: [Phase 06] D-15 (06-01): _parse_setting enum branch is raw if raw else default (falsy->default) not is-not-None, matching the live get_setting(k) or default idiom byte-for-byte on empty-string
+- [Phase 06]: [Phase 06] (06-01): _parse_setting fails soft (returns raw unchanged) for any key not yet in SETTINGS_SCHEMA, enabling safe incremental group-by-group migration
+- [Phase 06]: [Phase 06] (06-01): handlers/admin.py event-group SETTINGS_FIELDS/SETTINGS_GROUPS use an explicit _EVENT_FIELD_ORDER list (not dict-comprehension order) to pin on-screen order independent of registry insertion order
+- [Phase ?]: [Phase 06] T-06-09 (06-03): consumer-level oracle equivalence proven at the call-site (get_setting_typed vs pending_reminder_interval/payment_deadline/source_options oracles), not just registry-internal parse tests
+- [Phase ?]: [Phase 06] (06-03): only payment_deadline migrated in services/scheduler.py -- nudge_scan_minutes/allowlist_refresh_minutes/incomplete_sync_hours/nudge_after_minutes stay on _int_or_default (not yet registry keys)
+- [Phase ?]: [Phase 06] (06-03): pending_reminder_enabled toggle left on old get_setting + _reminder_enabled path, deferred to 06-04 toggle wave
 
 ### Roadmap Evolution
 
@@ -142,9 +151,9 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-07-24T07:50:50.848Z
-Stopped at: Phase 6 context gathered
-Resume file: .planning/phases/06-settings-schema-registry/06-CONTEXT.md
+Last session: 2026-07-24T13:17:13.378Z
+Stopped at: Completed 06-03-PLAN.md
+Resume file: None
 
 ## Operator Next Steps
 
