@@ -423,6 +423,22 @@ def test_rcpt_confirm_resolves_party_track_before_completion(tmp_path, monkeypat
     assert sent["participant_type"] == "party_overnight"
 
 
+# ── Quick 260724-cfn Task 1: approve_text__party editor + payment_options help (WR-02a, WR-05) ──
+
+def test_approve_text_party_is_settings_edit_field_html_and_in_party_group():
+    keys = {k for k, _, _ in admin_mod.SETTINGS_FIELDS}
+    assert "approve_text__party" in keys
+    assert "approve_text__party" in admin_mod.HTML_SETTINGS
+    assert "approve_text__party" in admin_mod._settings_group_keys("party")
+
+
+def test_payment_options_help_describes_track_filter():
+    prompts = {k: prompt for k, _, prompt in admin_mod.SETTINGS_FIELDS}
+    help_text = prompts["payment_options"]
+    assert "party_overnight" in help_text
+    assert "party_noovernight" in help_text
+
+
 def test_rcpt_confirm_full_track_delegate_gets_none_participant_type(tmp_path, monkeypatch):
     """A full-track (or untracked) delegate's completion call passes participant_type
     resolved from the DB row, matching approve_user's pattern exactly."""
