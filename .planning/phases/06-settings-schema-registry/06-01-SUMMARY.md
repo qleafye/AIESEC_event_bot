@@ -35,7 +35,7 @@ patterns-established:
   - "Pattern: registry entry shape `{type, group, label, prompt, default}` (+ optional `options` for enum, `parse` override callable) — future waves (reg/pay/party/consent/toggle) follow this exact shape"
   - "Pattern: _parse_setting type branches lifted VERBATIM from existing pure helpers (int from _int_or_default, date from _parse_schedule_dt, list from _get_options, toggle from _is_question_on) rather than reinvented"
 
-requirements-completed: [REG-01, REG-02, REG-03]
+requirements-completed: []  # REG-01/REG-02/REG-03 are phase-wide requirements spanning all 7 plans (06-01..06-07); this plan is a partial contribution (event-group pilot scaffold only) — NOT marked complete in REQUIREMENTS.md (see Deviations #1). They will be marked complete once the phase's later plans finish the remaining groups/consumers.
 
 # Metrics
 duration: 12min
@@ -89,7 +89,17 @@ _Note: Task 1/2 followed the TDD RED→GREEN cycle (tdd="true"); Task 3 was a pl
 
 ## Deviations from Plan
 
-None - plan executed exactly as written. All three tasks, acceptance criteria, and verification commands matched the plan's `<action>`/`<acceptance_criteria>` blocks without requiring architectural changes or bug fixes.
+**1. [Rule 1 - Bug] Reverted premature `requirements.mark-complete REG-01 REG-02 REG-03`**
+- **Found during:** Post-execution state-update step
+- **Issue:** The plan's own frontmatter lists `requirements: [REG-01, REG-02, REG-03]`, and the standard state-update protocol mechanically marks all frontmatter-listed requirement IDs complete in REQUIREMENTS.md. Checking the sibling plans in this phase (06-02 through 06-07) showed REG-01/REG-02/REG-03 are recurring, phase-wide requirement IDs that later plans (06-02 reg/pay/party/consent groups, 06-03 REG-02 consumers, 06-04 toggle absorption, 06-07 final coverage) also declare against — marking them "Complete" after only plan 1 of 7 would have been factually wrong (e.g. REG-02's consumer migration for services/reminders.py, services/scheduler.py, keyboards/builders.py has not started).
+- **Fix:** Ran `git checkout -- .planning/REQUIREMENTS.md` to discard the incorrect completion marks before the final commit. REQUIREMENTS.md is left untouched by this plan; REG-01/02/03 will be marked complete only once the phase's later plans (through 06-07) actually finish that work.
+- **Files affected:** `.planning/REQUIREMENTS.md` (change made then reverted, net no change)
+- **Verification:** `git diff --stat .planning/REQUIREMENTS.md` shows no diff after the revert.
+
+**2. [Orchestrator instruction] STATE.md and config.json intentionally NOT committed this run**
+- **Context:** The orchestrator's sequential_execution note flagged pre-existing uncommitted changes in `.planning/STATE.md` and `.planning/config.json` (alongside a large batch of unrelated `.planning/` phase-file deletions from an old-milestone cleanup) and explicitly instructed: "Do NOT stage, commit, revert, or clean those."
+- **What happened:** The standard state-update step (`gsd-sdk query state.*`) still ran and updated `.planning/STATE.md` on disk (Current Position, Performance Metrics row, 3 new decisions, Session Continuity) so the file's *content* reflects this plan's completion for whoever picks up the next plan. Per the explicit instruction, this file was left **staged out** of every commit in this session — no commit in this plan includes `.planning/STATE.md` or `.planning/config.json`.
+- **Impact:** `.planning/STATE.md` on disk is ahead of the last commit (by this plan's updates, layered on the prior uncommitted milestone-transition edits already present at session start). The next commit that touches STATE.md (in-scope or by the orchestrator) will need to reconcile/commit both the pre-existing and this plan's edits together.
 
 ## TDD Gate Compliance
 
