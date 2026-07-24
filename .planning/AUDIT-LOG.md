@@ -23,8 +23,8 @@ _Findings собираются здесь. Severity: 🔴 critical / 🟠 high /
 - 🟠 **HG-01 — subscription flag lost on first /start.** `handlers/registration.py:1319-1326` + `database/db.py:637-643`. `set_user_subscribed` (bare `UPDATE users WHERE telegram_id`) runs BEFORE user row exists (before add_user) → updates 0 rows, silently discarded. Flag only ever persists on a later /start by already-registered user. First-touch registrants (majority) stay `subscribed=NULL` forever → never in «не подписаны» segment. Fails open, no user harm. **✅ Fixed (`3d50c25`, Block 3, user chose FIX) — persist re-run in `finalize_registration` after `add_user`.**
 - 🟠 **HG-02 — getChatMember gets t.me URL, not @username.** `handlers/registration.py:1320-1324`. Check targets `contact_tg`, but admin UI (`admin.py:347`) prompts that as a channel link/URL (`https://t.me/...`). `get_chat_member` needs `@username`/chat-id → raises → fail-open → flag never written. For URL config the whole feature is a silent no-op regardless of HG-01. Needs URL→@username normalization. **✅ Fixed (`3d50c25`, Block 3) — `_normalize_channel_ref` converts t.me link→@username at check time; stored display link untouched; private links → fail-open skip.**
 - 🟡 **MD-01 — sheet-append task GC risk.** `registration.py:2294,2297`. `asyncio.create_task` held with no strong ref, contradicts codebase's own `WR-02`/`_spawn` mitigation in `main.py`. Row can be GC'd and lost. **✅ Fixed (`d91b05a`, Block 1) — routed through `services/background.spawn`.**
-- 🟡 **MD-02 — dropout segment can hit fully-registered users.** (reg_started not always cleared / segment query). See 01-REVIEW.md.
-- 🟡 **MD-03 — mark_reg_started resets `started_at` on every restart**, deferring dropout nudges indefinitely. See 01-REVIEW.md.
+- 🟡 **MD-02 — dropout segment can hit fully-registered users.** (reg_started not always cleared / segment query). See 01-REVIEW.md. **✅ Fixed (`f46702c`, Block 6)** — `_INCOMPLETE_NOT_REGISTERED` excludes non-rejected registered users from all dropout queries.
+- 🟡 **MD-03 — mark_reg_started resets `started_at` on every restart**, deferring dropout nudges indefinitely. See 01-REVIEW.md. **✅ Fixed (`f46702c`, Block 6)** — dropped `started_at` from ON CONFLICT UPDATE; original start time preserved.
 - 🔵 LOW×5 (review) + LOW×3 (security): resume upload validates by extension only (vs receipt MIME check) `registration.py:1186`; `/coins` amount unbounded `admin.py:84`; receipt MIME client-declared `payment.py:365`; rest in 01-REVIEW.md / 01-SECURITY.md.
 - ⚠️ **Cross-check note:** verifier marked criterion 5 (subscription) PASS; reviewer found it effectively non-functional (HG-01+HG-02). Reviewer's deeper analysis governs — subscription segment is empty in production. Treat criterion 5 as **built but broken**.
 
@@ -59,7 +59,7 @@ _Findings собираются здесь. Severity: 🔴 critical / 🟠 high /
 ### Phase 5
 
 - 🟠 **HIGH-01 — referral/source attribution lost when fork keyboard shown + bare /start.** `handlers/registration.py:1433-1435`. The prior CR-01 fix reintroduced silent referral loss: fork branch persists deep-link attribution with UNCONDITIONAL `state.update_data(referrer_id=..., source=...)`, and `cmd_start` never clears FSM state first. A referred user re-sending bare `/start` (referrer_id=None) while fork keyboard displayed clobbers saved referrer with None → `add_user` records as non-referred. Precondition: `party_fork_question=on` (NON-default). Fix: use preserve idiom `referrer_id or existing.get("referrer_id")` already used by `_start_registration_flow`. **✅ Fixed (`382f21c`, Block 5)** — fork branch now falls back to existing FSM referrer_id/source/_source_from_tag.
-- 🟡 **MEDIUM-01 — party sheet header never resynced on `__party` toggle** → positional column misalignment (= prior WR-04, still open). `services/sheets.py`. Ties to README hidden-columns gotcha. **Not fixed.**
+- 🟡 **MEDIUM-01 — party sheet header never resynced on `__party` toggle** → positional column misalignment (= prior WR-04, still open). `services/sheets.py`. Ties to README hidden-columns gotcha. **✅ Fixed (`33e440f`, Block 6)** — `_refresh_party_sheet_header()` called from `toggle_party_question` + party `preset_confirm`, gated on `party_enabled='on'`.
 - 🟡 **MEDIUM-02 — party-append `create_task` no strong ref (GC).** `registration.py:2294`. Same create_task-GC pattern (5th phase). **✅ Fixed (`d91b05a`, Block 1).**
 - 🔵 LOW×5 (review) + LOW×2 (security): main-tab `active_sheet_row` skips `_csv_safe` (party path applies it) — crafted ФИО can render as formula on main tab (`registration.py:1104-1105`, acknowledged); carried-forward prior-review WR-02/WR-05/IN-01 (deferred to backlog). See 05-AUDIT-REVIEW.md / 05-SECURITY.md.
 - ✅ **Prior 05-REVIEW.md status:** CR-01, WR-01, WR-03 confirmed RESOLVED (CR-01 fix spawned HIGH-01). WR-02/WR-04/WR-05/IN-01 still OPEN (known-deferred to backlog). Original files preserved; fresh audit in 05-AUDIT-VERIFICATION.md / 05-AUDIT-REVIEW.md.
@@ -88,6 +88,11 @@ _Findings собираются здесь. Severity: 🔴 critical / 🟠 high /
 | P2 WR-03 | 6 | fixed·tested·committed | `86ad557` | cancel-filter ловит любой `/command` mid-rejection |
 | P2 WR-04 | 6 | fixed·tested·committed | `86ad557` | stale mass-approve re-click: no drain, honest msg |
 | P4 M-02 | 6 | fixed·tested·committed | `0cc7686` | position = min(skipped+1, total) в обеих карточках |
+| P1 MD-03 | 6 | fixed·tested·committed | `f46702c` | mark_reg_started не сбрасывает started_at на re-entry |
+| P1 MD-02 | 6 | fixed·tested·committed | `f46702c` | dropout-queries исключают non-rejected registered |
+| P5 MEDIUM-01 | 6 | fixed·tested·committed | `33e440f` | `_refresh_party_sheet_header` на toggle/preset (gated on) |
+
+**БЛОК 6 закрыт полностью.** Все MEDIUM (ME-01/02/03/04/05, WR-01/03/04, M-02, MD-02/03, MEDIUM-01, HIGH-01) + все 5 HIGH зафиксированы. Осталось: БЛОК 7 (LOW, опционально).
 
 **Блок 1 detail:** извлёк `_spawn` из `main.py` в `services/background.py` (`spawn`) —
 handlers не могли импортить из `main.py` (циклический `handlers→main`). Провёл ВСЕ
