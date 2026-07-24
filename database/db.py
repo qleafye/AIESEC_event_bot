@@ -915,14 +915,21 @@ async def get_receipt_pending_count() -> int:
             return int(row[0]) if row and row[0] is not None else 0
 
 
-async def update_payment_status(telegram_id: int, status: str, **kwargs) -> int:
+async def update_payment_status(
+    telegram_id: int, status: str, *, require_status: str | None = None, **kwargs
+) -> int:
     """Transition one user's payment_status; returns cursor.rowcount.
 
     Confirm guard (STRIDE T-04-05-02): status='paid' only flips a row currently in
     'receipt_sent' — a second concurrent confirm matches 0 rows (rowcount=0 is the
-    double-confirm signal the admin handler relies on). Every other status is an
-    unconditional transition (reject reset, receipt upload). Additive UPDATE only —
-    never INSERT OR REPLACE."""
+    double-confirm signal the admin handler relies on).
+
+    Reject guard (H-01): pass require_status='receipt_sent' to add the same conditional
+    WHERE to a not_paid transition — so a stale/already-confirmed card tapped ❌ Отклонить
+    cannot flip a 'paid' row back to 'not_paid' (rowcount=0 signals no-op to the handler).
+    Callers that legitimately reset unconditionally (payment-option pick) omit it.
+
+    Additive UPDATE only — never INSERT OR REPLACE."""
     sets = ["payment_status = ?"]
     params: list = [status]
     extras = dict(kwargs)
@@ -932,11 +939,13 @@ async def update_payment_status(telegram_id: int, status: str, **kwargs) -> int:
         if col in extras:
             sets.append(f"{col} = ?")
             params.append(extras[col])
-    if status == "paid":
-        where = "telegram_id = ? AND payment_status = 'receipt_sent'"
-    else:
-        where = "telegram_id = ?"
+    # status='paid' keeps its historical hard-coded guard unless the caller overrides it.
+    guard = require_status if require_status is not None else ("receipt_sent" if status == "paid" else None)
+    where = "telegram_id = ?"
     params.append(telegram_id)
+    if guard is not None:
+        where += " AND payment_status = ?"
+        params.append(guard)
     async with aiosqlite.connect(config.DB_PATH) as db:
         cursor = await db.execute(
             f"UPDATE users SET {', '.join(sets)} WHERE {where}", params

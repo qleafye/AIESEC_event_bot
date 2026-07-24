@@ -151,3 +151,26 @@ def test_update_payment_status_reject_resets_unconditionally(tmp_path):
     asyncio.run(db.update_payment_status(1, "receipt_sent", receipt_file_id="F1"))
     assert asyncio.run(db.update_payment_status(1, "not_paid")) == 1
     assert asyncio.run(db.get_user(1))["payment_status"] == "not_paid"
+
+
+def test_update_payment_status_reject_guard_blocks_paid_row(tmp_path):
+    """H-01: a guarded reject (require_status='receipt_sent') must NOT un-pay a paid user.
+    Mirrors the stale/already-confirmed card tapped ❌ Отклонить scenario."""
+    _use_tmp_db(tmp_path)
+    asyncio.run(db.init_db())
+    _seed(1)
+    asyncio.run(db.update_payment_status(1, "receipt_sent", receipt_file_id="F1"))
+    assert asyncio.run(db.update_payment_status(1, "paid")) == 1  # confirmed
+    # Stale card ❌: guarded reject sees payment_status='paid' != 'receipt_sent' → no-op.
+    assert asyncio.run(db.update_payment_status(1, "not_paid", require_status="receipt_sent")) == 0
+    assert asyncio.run(db.get_user(1))["payment_status"] == "paid"  # unchanged
+
+
+def test_update_payment_status_reject_guard_allows_receipt_sent_row(tmp_path):
+    """H-01: a guarded reject still fires normally on a genuinely pending (receipt_sent) row."""
+    _use_tmp_db(tmp_path)
+    asyncio.run(db.init_db())
+    _seed(1)
+    asyncio.run(db.update_payment_status(1, "receipt_sent", receipt_file_id="F1"))
+    assert asyncio.run(db.update_payment_status(1, "not_paid", require_status="receipt_sent")) == 1
+    assert asyncio.run(db.get_user(1))["payment_status"] == "not_paid"
