@@ -36,6 +36,22 @@ Scope зафиксирован в `.planning/REQUIREMENTS.md` (15 требова
 
 Future (за пределами v2): Telegram Mini App (WEBAPP-01).
 
+### 🔨 Активные фазы v2
+
+- [ ] **Phase 6: Settings-schema Registry** — единый `SETTINGS_SCHEMA` реестр как источник метаданных настроек; потребители и админ-UI читают из него; инкрементальная миграция без ломки (REG-01, REG-02, REG-03)
+
+### Phase 6: Settings-schema Registry
+**Goal:** Единый `SETTINGS_SCHEMA`-реестр становится источником метаданных (parse-fn, default, label, group, type) для ключей `bot_settings`; существующие потребители и админ-UI читают значения через него — инкрементально, группа-за-группой, без ломки текущего поведения на ~590 живых юзерах
+**Mode:** mvp
+**Depends on:** Nothing (v1.0 отгружен; keystone самодостаточен). Осознанно: `SETTINGS_GROUPS`/флаги задано-не-задано из quick 260724-c0x — временная группировка, которую этот реестр заменяет
+**Requirements:** REG-01, REG-02, REG-03
+**Success Criteria** (what must be TRUE):
+  1. `SETTINGS_SCHEMA` реестр существует: каждый мигрированный ключ `bot_settings` описан как `{type: toggle/text/int/enum/list/date/photo/file, group, label, default, parse}` — один справочник вместо парсеров/дефолтов, разбросанных по call-site'ам. `REG_DEFAULTS` поглощён реестром (не дублируется)
+  2. Реестр — источник истины для парсинга/дефолтов: существующие потребители (`services/reminders.py`, `services/scheduler.py`, `handlers/admin.py`, `keyboards/builders.py`) для мигрированных ключей читают значение через реестр, а семантика on/off/default остаётся байт-в-байт как сейчас (регресс-набор зелёный, поведение не меняется)
+  3. Миграция инкрементальная и не-ломающая: старый (`SETTINGS_GROUPS`/`SETTINGS_FIELDS`) и новый (генерируемый из реестра) рендер сосуществуют; на любом промежуточном шаге бот рабочий, ни одна из ~590 пользовательских записей не теряется, ни одна настройка не сбрасывается
+  4. Админ-UI настроек рендерится из реестра (порядок/группы/label/рендер-по-типу) для мигрированных групп; добавление/правка одного ключа требует правки только записи реестра, а не нескольких хендлеров
+**Note:** ТЗ на остальные группы v2 (Bitrix/web/города/гейма/роли) ещё нет — реестр планируется и исполняется отдельно как самодостаточный keystone. Исполнение — после SumMeet (форум 31 июля–2 авг); сейчас только план.
+
 ## Progress
 
 | Phase | Milestone | Plans | Status | Completed |
@@ -45,3 +61,4 @@ Future (за пределами v2): Telegram Mini App (WEBAPP-01).
 | 3. Scheduler + Communications + Verification | v1.0 | 5 | Complete (verified) | 2026-07-24 |
 | 4. Universal Modules | v1.0 | 5 | Complete (verified) | 2026-07-24 |
 | 5. Participant Tracks (Party Delegates) | v1.0 | 6 | Complete (verified; live UAT deferred) | 2026-07-24 |
+| 6. Settings-schema Registry | v2 | — | Planning | — |
