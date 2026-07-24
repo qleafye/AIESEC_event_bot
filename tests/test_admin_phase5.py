@@ -7,10 +7,18 @@ helper is driven via asyncio.run() and config.DB_PATH points at a tmp_path file.
 """
 import asyncio
 
+from aiogram.fsm.context import FSMContext
+from aiogram.fsm.storage.base import StorageKey
+from aiogram.fsm.storage.memory import MemoryStorage
+
 from config import config
 from database import db
 from handlers import admin as admin_mod
 from handlers.registration import REG_FLOW, REG_PRESETS
+
+
+def _new_state(uid: int) -> FSMContext:
+    return FSMContext(storage=MemoryStorage(), key=StorageKey(bot_id=1, chat_id=uid, user_id=uid))
 
 
 ADMIN_ID = 900001
@@ -421,6 +429,94 @@ def test_rcpt_confirm_resolves_party_track_before_completion(tmp_path, monkeypat
     assert sent["telegram_id"] == uid
     assert sent["with_menu"] is False
     assert sent["participant_type"] == "party_overnight"
+
+
+# ── Quick 260724-cfn Task 1: approve_text__party editor + payment_options help (WR-02a, WR-05) ──
+
+def test_approve_text_party_is_settings_edit_field_html_and_in_party_group():
+    keys = {k for k, _, _ in admin_mod.SETTINGS_FIELDS}
+    assert "approve_text__party" in keys
+    assert "approve_text__party" in admin_mod.HTML_SETTINGS
+    assert "approve_text__party" in admin_mod._settings_group_keys("party")
+
+
+def test_payment_options_help_describes_track_filter():
+    prompts = {k: prompt for k, _, prompt in admin_mod.SETTINGS_FIELDS}
+    help_text = prompts["payment_options"]
+    assert "party_overnight" in help_text
+    assert "party_noovernight" in help_text
+
+
+# ── Quick 260724-cfn Task 2: track switcher on «Тексты вопросов» screen (WR-02b) ──
+
+def test_build_prompts_keyboard_full_emits_unsuffixed_callbacks(tmp_path):
+    _admin_ready(tmp_path)
+    kb = asyncio.run(admin_mod.build_prompts_keyboard("full"))
+    flat = _flat_callback_data(kb)
+    assert "reg_prompt_track:full" in flat
+    assert "reg_prompt_track:party" in flat
+    edit_callbacks = [cd for cd in flat if cd.startswith("reg_prompt_edit:")]
+    assert edit_callbacks  # at least one step present
+    assert all(not cd.endswith(":party") for cd in edit_callbacks)
+
+
+def test_build_prompts_keyboard_party_emits_party_suffixed_callbacks(tmp_path):
+    _admin_ready(tmp_path)
+    kb = asyncio.run(admin_mod.build_prompts_keyboard("party"))
+    flat = _flat_callback_data(kb)
+    assert "reg_prompt_track:full" in flat
+    assert "reg_prompt_track:party" in flat
+    edit_callbacks = [cd for cd in flat if cd.startswith("reg_prompt_edit:")]
+    assert edit_callbacks
+    assert all(cd.endswith(":party") for cd in edit_callbacks)
+
+
+def test_reg_prompt_track_switch_reuses_same_message(tmp_path):
+    _admin_ready(tmp_path)
+    cb = FakeCallback("reg_prompt_track:party")
+    asyncio.run(admin_mod.reg_prompt_track_switch(cb))
+    assert cb.message.edit_calls == 1
+    flat = _flat_callback_data(cb.message.markup)
+    assert any(cd.endswith(":party") for cd in flat if cd.startswith("reg_prompt_edit:"))
+
+
+def test_reg_prompt_track_switch_rejects_non_admin(tmp_path):
+    _admin_ready(tmp_path)
+    cb = FakeCallback("reg_prompt_track:party", user_id=1)
+    asyncio.run(admin_mod.reg_prompt_track_switch(cb))
+    assert cb.message.edit_calls == 0
+    assert cb.answers and cb.answers[0][1] is True
+
+
+def test_reg_prompt_edit_party_suffix_sets_party_setting_key(tmp_path):
+    _admin_ready(tmp_path)
+    cb = FakeCallback("reg_prompt_edit:full_name:party")
+    state = _new_state(ADMIN_ID)
+    asyncio.run(admin_mod.reg_prompt_edit(cb, state))
+    data = asyncio.run(state.get_data())
+    assert data["setting_key"] == "reg_prompt_full_name__party"
+
+
+def test_reg_prompt_edit_no_suffix_sets_global_setting_key(tmp_path):
+    """Regression: the unsuffixed global editor keeps writing reg_prompt_{step} exactly
+    as before — no behavior change for the full-track editor."""
+    _admin_ready(tmp_path)
+    cb = FakeCallback("reg_prompt_edit:full_name")
+    state = _new_state(ADMIN_ID)
+    asyncio.run(admin_mod.reg_prompt_edit(cb, state))
+    data = asyncio.run(state.get_data())
+    assert data["setting_key"] == "reg_prompt_full_name"
+
+
+def test_admin_reg_prompts_renders_full_track_by_default(tmp_path):
+    _admin_ready(tmp_path)
+    cb = FakeCallback("admin_reg_prompts")
+    asyncio.run(admin_mod.admin_reg_prompts(cb))
+    assert cb.message.edit_calls == 1
+    flat = _flat_callback_data(cb.message.markup)
+    edit_callbacks = [cd for cd in flat if cd.startswith("reg_prompt_edit:")]
+    assert edit_callbacks
+    assert all(not cd.endswith(":party") for cd in edit_callbacks)
 
 
 def test_rcpt_confirm_full_track_delegate_gets_none_participant_type(tmp_path, monkeypatch):
