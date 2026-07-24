@@ -8,6 +8,7 @@ file's handlers never fire.
 """
 import html
 import logging
+import time
 
 from aiogram import Bot, F, Router, types
 from aiogram.fsm.context import FSMContext
@@ -362,18 +363,56 @@ async def _show_payment_details(
     await _schedule_deadline_reminders(telegram_id)
 
 
+# LOW (receipt hardening). The bot never downloads or parses a receipt — it stores the
+# Telegram file_id and forwards it to the admin queue — so a spoofed MIME is bounded. Still,
+# accept only an explicit allowlist for documents, cap the size, and rate-limit uploads so a
+# user can't flood the «🧾 Чеки» queue. Telegram's own bot download cap is ~20 MB; a receipt
+# is a scan/screenshot, so 10 MB is comfortably generous.
+_RECEIPT_DOC_MIME_ALLOWLIST = ("application/pdf",)
+_RECEIPT_MAX_BYTES = 10 * 1024 * 1024
+_RECEIPT_MIN_INTERVAL_SEC = 3
+_last_receipt_upload: dict[int, float] = {}
+
+
+def _receipt_too_large(file_size) -> bool:
+    return bool(file_size) and file_size > _RECEIPT_MAX_BYTES
+
+
+def _receipt_rate_limited(user_id: int) -> bool:
+    """True if this user uploaded a (valid) receipt < _RECEIPT_MIN_INTERVAL_SEC ago. Records the
+    timestamp only when NOT limited, so the window runs from the last accepted attempt."""
+    now = time.monotonic()
+    last = _last_receipt_upload.get(user_id)
+    if last is not None and (now - last) < _RECEIPT_MIN_INTERVAL_SEC:
+        return True
+    _last_receipt_upload[user_id] = now
+    return False
+
+
 @router.message(Registration.receipt_upload, F.document)
 async def process_receipt_document(message: types.Message, state: FSMContext):  # IN-03: bot param was unused
-    if message.document.mime_type != "application/pdf":
+    if message.document.mime_type not in _RECEIPT_DOC_MIME_ALLOWLIST:
         await message.answer(
             "❌ Принимается только PDF-документ. Для скриншота используй функцию отправки фото."
         )
+        return
+    if _receipt_too_large(message.document.file_size):
+        await message.answer("❌ Файл слишком большой (максимум 10 МБ). Пришли чек меньшего размера.")
+        return
+    if _receipt_rate_limited(message.from_user.id):
+        await message.answer("⏳ Слишком часто. Подожди пару секунд и попробуй снова.")
         return
     await _finalize_receipt(message, state, message.document.file_id)
 
 
 @router.message(Registration.receipt_upload, F.photo)
 async def process_receipt_photo(message: types.Message, state: FSMContext):  # IN-03: bot param was unused
+    if _receipt_too_large(message.photo[-1].file_size):
+        await message.answer("❌ Изображение слишком большое (максимум 10 МБ). Пришли чек меньшего размера.")
+        return
+    if _receipt_rate_limited(message.from_user.id):
+        await message.answer("⏳ Слишком часто. Подожди пару секунд и попробуй снова.")
+        return
     await _finalize_receipt(message, state, message.photo[-1].file_id)  # highest-res
 
 
