@@ -589,6 +589,70 @@ async def build_settings_keyboard():
     return InlineKeyboardMarkup(inline_keyboard=buttons)
 
 
+async def render_settings_group_text(token: str) -> str:
+    """Quick 260724-c0x: per-group sub-screen — status FLAGS only («задано»/«не задано»/
+    «по умолчанию»), never the raw value inline (that stays behind the existing
+    settings_edit tap-through, unchanged)."""
+    group_label = _settings_group_label(token)
+    lines = [f"⚙️ <b>Настройки → {group_label}</b>", ""]
+
+    field_labels = {k: lbl for k, lbl, _ in SETTINGS_FIELDS}
+    for key in _settings_group_keys(token):
+        label = field_labels.get(key, key)
+        value = await get_setting(key)
+        if value:
+            flag = "✏️ задано"
+        elif key in _SETTINGS_DISPLAY_DEFAULTS:
+            flag = "<i>по умолчанию</i>"
+        else:
+            flag = "<i>— не задано</i>"
+        lines.append(f"{label}: {flag}")
+
+    if token == "event":
+        for prefix, label, _ in PHOTO_FIELDS:
+            photo = await get_setting(f"{prefix}_photo_file_id")
+            lines.append(f"{label}: {'✅ загружена' if photo else '<i>— не задано</i>'}")
+        for prefix, label, _ in FILE_FIELDS:
+            photo = await get_setting(f"{prefix}_photo_file_id")
+            doc = await get_setting(f"{prefix}_doc_file_id")
+            lines.append(f"{label}: {'✅ загружен' if (photo or doc) else '<i>— не задано</i>'}")
+
+    return "\n".join(lines)
+
+
+async def build_settings_group_keyboard(token: str):
+    """Reuses the existing settings_edit/settings_photo/settings_file callbacks unchanged —
+    only the button placement changes. Configured fields first, then a noop section-header
+    button (req #2: collapse unconfigured fields), then unconfigured fields."""
+    field_labels = {k: lbl for k, lbl, _ in SETTINGS_FIELDS}
+    configured: list[InlineKeyboardButton] = []
+    unconfigured: list[InlineKeyboardButton] = []
+
+    for key in _settings_group_keys(token):
+        label = field_labels.get(key, key)
+        btn = InlineKeyboardButton(text=f"✏️ {label}", callback_data=f"settings_edit:{key}")
+        value = await get_setting(key)
+        (configured if value else unconfigured).append(btn)
+
+    if token == "event":
+        for prefix, label, _ in PHOTO_FIELDS:
+            btn = InlineKeyboardButton(text=f"📷 {label}", callback_data=f"settings_photo:{prefix}")
+            photo = await get_setting(f"{prefix}_photo_file_id")
+            (configured if photo else unconfigured).append(btn)
+        for prefix, label, _ in FILE_FIELDS:
+            btn = InlineKeyboardButton(text=f"📎 {label}", callback_data=f"settings_file:{prefix}")
+            photo = await get_setting(f"{prefix}_photo_file_id")
+            doc = await get_setting(f"{prefix}_doc_file_id")
+            (configured if (photo or doc) else unconfigured).append(btn)
+
+    buttons = [[b] for b in configured]
+    if unconfigured:
+        buttons.append([InlineKeyboardButton(text="── не настроено ──", callback_data="settings_group_noop")])
+        buttons.extend([[b] for b in unconfigured])
+    buttons.append([InlineKeyboardButton(text="← Назад к настройкам", callback_data="admin_settings")])
+    return InlineKeyboardMarkup(inline_keyboard=buttons)
+
+
 @router.callback_query(F.data == "admin_settings")
 async def show_admin_settings(callback: types.CallbackQuery):
     if callback.from_user.id not in config.ADMIN_IDS:
@@ -597,6 +661,24 @@ async def show_admin_settings(callback: types.CallbackQuery):
 
     text = await render_settings_text()
     await callback.message.edit_text(text, parse_mode="HTML", reply_markup=await build_settings_keyboard())
+    await callback.answer()
+
+
+@router.callback_query(F.data.startswith("settings_group:"))
+async def show_settings_group(callback: types.CallbackQuery):
+    if callback.from_user.id not in config.ADMIN_IDS:
+        await callback.answer("Недостаточно прав", show_alert=True)
+        return
+
+    token = callback.data.split(":", 1)[1]
+    text = await render_settings_group_text(token)
+    await callback.message.edit_text(text, parse_mode="HTML", reply_markup=await build_settings_group_keyboard(token))
+    await callback.answer()
+
+
+@router.callback_query(F.data == "settings_group_noop")
+async def settings_group_noop(callback: types.CallbackQuery):
+    # Section-header button in the collapsed «не настроено» view — not actionable.
     await callback.answer()
 
 
