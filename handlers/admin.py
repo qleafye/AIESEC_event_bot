@@ -353,48 +353,47 @@ _EVENT_FIELDS = [
     for k in _EVENT_FIELD_ORDER
 ]
 
-SETTINGS_FIELDS = _EVENT_FIELDS + [
-    ("source_options", "📢 Источники", "Отправьте варианты источников, каждый с новой строки"),
-    ("reg_complete_text", "✅ После регистрации", "Текст, который участник увидит СРАЗУ после отправки анкеты (например «Поздравляем, заявка принята! Рассмотрим за 2-3 дня»). Поддерживается HTML."),
-    ("approve_text", "🎉 После одобрения", "Отдельный текст, который участник увидит, когда менеджер ОДОБРИТ заявку. Поддерживается HTML."),
-    ("approve_text__party", "🎉 После одобрения (Party)", "Текст, который увидит PARTY-делегат при одобрении заявки (переопределяет общий «🎉 После одобрения» только для трека Party). Оставьте пустым или отправьте «-» — party-делегат получит общий текст «🎉 После одобрения». Поддерживается HTML."),
-    ("reject_text", "🚫 При отклонении", "Текст, который участник увидит, когда менеджер ОТКЛОНИТ заявку (перед указанной менеджером причиной). Оставьте пустым — стандартный «К сожалению, твоя заявка отклонена.»"),
-    ("consent_button_text", "✅ Текст кнопки согласия", "Надпись на кнопке согласия (по умолчанию «Согласен(-на)»)."),
-    ("pending_reminder_interval", "🕒 Тайминг батчей заявок", "Как часто бот присылает админам сводку «Заявок в ожидании: N» (режим «Пачкой»).\n\nВ СЕКУНДАХ. Примеры:\n900 = 15 мин\n1800 = 30 мин (по умолчанию)\n3600 = 1 час\n\nМеняется на лету, перезапуск не нужен."),
-    # Phase 4: event modularity + consent + payment config (all default empty/off → live flow unchanged)
-    # NOTE: event_type moved into _EVENT_FIELDS above (REG-03, generated from SETTINGS_SCHEMA).
-    ("consent_list", "📋 Список согласий", "Согласия, которые участник примет в конце анкеты.\n\nКаждое согласие — отдельной строкой в формате:\nВидимое название | короткий_ключ_латиницей\n\nКлюч нужен, чтобы привязать к согласию PDF. Пример (две строки):\nСогласие на обработку данных|data\nПолитика конфиденциальности|policy\n\nЕсли на телефоне Enter отправляет сообщение и несколько строк ввести не получается — раздели согласия точкой с запятой «;» в одну строку:\nСогласие на обработку данных|data; Политика конфиденциальности|policy\n\nПосле сохранения загрузите PDF в разделе «🧾 PDF согласий»."),
-    ("payment_options", "💳 Варианты оплаты", "Варианты участия (билеты/тарифы), каждый — отдельной строкой:\nНазвание | Цена\n\nПример:\nПолный билет|5000\nСтудент|3000\n\nЦена 0 = бесплатно. Если вариант один — участник его не выбирает, сразу видит реквизиты.\n\nНеобязательное третье поле — фильтр по треку: Название | Цена | треки (треки — через запятую, значения: full, party_overnight, party_noovernight). Без третьего поля тариф виден ВСЕМ трекам. Пример строки только для party:\nВход на вечеринку|1000|party_overnight,party_noovernight"),
-    ("payment_requisites", "💰 Реквизиты оплаты", "Общие реквизиты: банк, номер карты, ФИО получателя. Показываются, если для ЛК участника не задана своя карта (см. «💳 Реквизиты по ЛК»). Обычный текст."),
-    ("payment_requisites_by_lc", "💳 Реквизиты по ЛК", "Своя карта для каждого ЛК — каждый комитет собирает на свои реквизиты.\n\nКаждый ЛК — отдельной строкой в формате:\nНазвание ЛК | реквизиты\n\nНазвание ЛК должно совпадать с кнопкой в вопросе про ЛК (EG, SPUEF, Moscow, Tyumen, Ufa, Ekaterinburg).\n\nПример:\nMoscow | Сбер 1234 5678 9012 3456, Иван И.\nSPUEF | Тинькофф 9876 5432, Пётр П.\n\nЕсли ЛК участника нет в списке — покажутся общие «💰 Реквизиты оплаты»."),
-    ("payment_deadline", "📅 Дедлайн оплаты", "Крайний срок оплаты в формате ДД.ММ.ГГГГ ЧЧ:ММ.\n\nПример: 15.08.2026 23:59\n\nПо этому сроку бот сам пришлёт участнику напоминания за 3 дня и за 1 день."),
-    ("payment_reminder_text", "⏰ Текст напоминания об оплате", "Текст, который бот шлёт участнику за 3 дня и за 1 день до дедлайна оплаты.\n\nОставьте пустым — будет стандартный текст."),
-    ("payment_overdue_text", "⌛ Текст «оплата просрочена»", "Финальный пинг участнику, когда дедлайн оплаты прошёл, а чек так и не загружен.\n\nОставьте пустым — будет стандартный текст."),
-    ("penalty_schedule", "⚠️ Штрафы за отмену", "Необязательно. Каждая строка: дата | сумма возврата/остатка.\n\nПример:\n01.08.2026|3000\n10.08.2026|0\n\nОставьте пустым (отправьте «-»), если штрафов нет."),
-    # YL'26: configurable option lists (0 хардкода — всё правит админ)
-    ("city_options", "🏙 Города (варианты)", "Города-кнопки для вопроса «Город». Каждый город — на отдельной строке.\n\nКнопка «Другое» добавится сама. Оставьте пустым — будет стандартный список."),
-    ("study_field_options", "🎯 Направления обучения (варианты)", "Варианты-кнопки для вопроса «Направление обучения». Каждый — на отдельной строке.\n\nПусто = стандартный список."),
-    ("goal_options", "🎯 Цель участия (варианты)", "Варианты для вопроса «Цель участия» — участник сможет выбрать несколько. Каждый — на отдельной строке.\n\nПусто = стандартный список."),
-    ("formats_options", "📋 Форматы форума (варианты)", "Варианты для вопроса «Форматы форума» — выбор нескольких. Каждый — на отдельной строке.\n\nПусто = стандартный список."),
-    ("university_options", "🏫 Список ВУЗов", "ВУЗы-кнопки для режима «выбор из базы». Каждый ВУЗ — на отдельной строке.\n\nКнопка «Другое» добавится сама. Пусто = встроенный список."),
-    # NOTE: reg_university_mode и edu_conditional вынесены в кнопки-переключатели (build_settings_keyboard).
-    # PDF согласий грузятся в разделе «🧾 PDF согласий».
-    # Phase 5 (D-11a/D-13): party-track text settings (party_enabled/party_fork_question/
-    # party_approval are toggle buttons in build_settings_keyboard, not here).
-    ("party_closed_text", "🎉 Текст «вечеринка закрыта»",
-     "Текст, который увидит гость по вечеринковой ссылке (?start=party_over / party_noover), "
-     "пока трек выключен (party_enabled = ❌). Показывается вместе с кнопкой «Перейти к полной "
-     "регистрации».\n\nОставьте пустым — будет стандартный текст."),
-    ("party_sheet_tab", "📄 Вкладка Google-таблицы (Party)",
-     "Название вкладки в Google-таблице, куда пишутся вечеринковые заявки (отдельно от основной).\n\n"
-     "Оставьте пустым — будет «Party»."),
+# REG-01/REG-03 (06-02): reg/pay/party/consent groups GENERATED from settings_schema.
+# SETTINGS_SCHEMA (same computed-view splice as the event pilot, D-13) — every text/list/
+# int/date key that used to be a hand-written SETTINGS_FIELDS tuple now lives ONLY in the
+# registry; order is pinned per group (not registry dict-insertion order) so the on-screen
+# order stays byte-identical to the pre-migration literal tables.
+_REG_FIELD_ORDER = [
+    "source_options", "reg_complete_text", "approve_text", "reject_text",
+    "pending_reminder_interval", "city_options", "study_field_options",
+    "goal_options", "formats_options", "university_options",
+]
+_PAY_FIELD_ORDER = [
+    "payment_options", "payment_requisites", "payment_requisites_by_lc",
+    "payment_deadline", "payment_reminder_text", "payment_overdue_text", "penalty_schedule",
+]
+_PARTY_FIELD_ORDER = [
+    "party_closed_text", "party_sheet_tab", "approve_text__party",
+]
+_CONSENT_FIELD_ORDER = [
+    "consent_button_text", "consent_list",
 ]
 
+_REG_FIELDS = [(k, SETTINGS_SCHEMA[k]["label"], SETTINGS_SCHEMA[k]["prompt"]) for k in _REG_FIELD_ORDER]
+_PAY_FIELDS = [(k, SETTINGS_SCHEMA[k]["label"], SETTINGS_SCHEMA[k]["prompt"]) for k in _PAY_FIELD_ORDER]
+_PARTY_FIELDS = [(k, SETTINGS_SCHEMA[k]["label"], SETTINGS_SCHEMA[k]["prompt"]) for k in _PARTY_FIELD_ORDER]
+_CONSENT_FIELDS = [(k, SETTINGS_SCHEMA[k]["label"], SETTINGS_SCHEMA[k]["prompt"]) for k in _CONSENT_FIELD_ORDER]
+
+# NOTE: reg_university_mode и edu_conditional вынесены в кнопки-переключатели (build_settings_keyboard).
+# PDF согласий грузятся в разделе «🧾 PDF согласий».
+# Phase 5 (D-11a/D-13): party-track text settings (party_enabled/party_fork_question/
+# party_approval are toggle buttons in build_settings_keyboard, not here).
+SETTINGS_FIELDS = _EVENT_FIELDS + _REG_FIELDS + _PAY_FIELDS + _PARTY_FIELDS + _CONSENT_FIELDS
+
 # Phase 5 (D-11a): default text shown in render_settings_text when a text setting is unset,
-# so the manager sees what users actually receive today, not a bare "не указано".
+# so the manager sees what users actually receive today, not a bare "не указано". REG-01
+# (06-02): derived from the registry `default` field instead of a hand-written literal dict
+# (T-06-06) — restricted to `type == "text"` entries with a genuinely non-empty default so a
+# functional parse-fallback default (e.g. pending_reminder_interval's int default 1800) is
+# never mistaken for a display default.
 _SETTINGS_DISPLAY_DEFAULTS = {
-    "party_closed_text": "Регистрация на вечеринку сейчас закрыта.",
-    "party_sheet_tab": "Party",
+    k: v["default"] for k, v in SETTINGS_SCHEMA.items()
+    if v["type"] == "text" and v.get("default") not in (None, "")
 }
 
 # Quick 260724-c0x: group→keys grouping (NOT a per-key metadata registry) so the settings
@@ -412,21 +411,10 @@ _EVENT_GROUP_KEYS = [
 
 SETTINGS_GROUPS = [
     ("🎪 Событие/Медиа", "event", _EVENT_GROUP_KEYS),
-    ("📝 Регистрация", "reg", [
-        "source_options", "reg_complete_text", "approve_text", "reject_text",
-        "pending_reminder_interval", "city_options", "study_field_options",
-        "goal_options", "formats_options", "university_options",
-    ]),
-    ("💳 Оплата", "pay", [
-        "payment_options", "payment_requisites", "payment_requisites_by_lc",
-        "payment_deadline", "payment_reminder_text", "payment_overdue_text", "penalty_schedule",
-    ]),
-    ("🎉 Party", "party", [
-        "party_closed_text", "party_sheet_tab", "approve_text__party",
-    ]),
-    ("📋 Согласия", "consent", [
-        "consent_button_text", "consent_list",
-    ]),
+    ("📝 Регистрация", "reg", _REG_FIELD_ORDER),
+    ("💳 Оплата", "pay", _PAY_FIELD_ORDER),
+    ("🎉 Party", "party", _PARTY_FIELD_ORDER),
+    ("📋 Согласия", "consent", _CONSENT_FIELD_ORDER),
 ]
 
 
