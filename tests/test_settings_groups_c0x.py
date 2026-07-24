@@ -160,3 +160,83 @@ def test_settings_group_noop_just_answers(tmp_path):
     asyncio.run(admin_mod.settings_group_noop(cb))
     assert cb.message.edit_calls == 0
     assert cb.answers
+
+
+# ── Phase 6 plan 06-01 (REG-01/02/03): settings_schema registry — event-group pilot ──
+# The five tests below drive the registry module into existence (RED first — settings_schema
+# does not exist yet, this file will fail to collect with ModuleNotFoundError). See
+# .planning/phases/06-settings-schema-registry/06-01-PLAN.md / 06-CONTEXT.md (D-15/D-16/D-17).
+
+from settings_schema import SETTINGS_SCHEMA, _parse_setting, get_setting_typed  # noqa: E402
+
+
+def test_parse_setting_text_passthrough():
+    # Non-empty raw passes through unchanged.
+    assert _parse_setting("start_text", "Привет, форум!") == "Привет, форум!"
+    # None raw resolves to the registry default (None for event text keys).
+    assert _parse_setting("start_text", None) == SETTINGS_SCHEMA["start_text"]["default"]
+
+
+def test_parse_setting_enum_falsy_to_default():
+    default = SETTINGS_SCHEMA["event_type"]["default"]
+    # Non-empty raw passes through unchanged.
+    assert _parse_setting("event_type", "forum") == "forum"
+    # BOTH None AND empty-string resolve to default — byte-for-byte with the live
+    # `get_setting(k) or "<default>"` idiom (D-15/CRITICAL enum contract).
+    assert _parse_setting("event_type", None) == default
+    assert _parse_setting("event_type", "") == default
+
+
+def test_parse_setting_photo_file_passthrough():
+    # photo/file entries are passthrough — the raw file_id is returned unchanged (D-10).
+    assert _parse_setting("program", "AgACAgIAAxkBAAI_fake_photo_id") == "AgACAgIAAxkBAAI_fake_photo_id"
+    assert _parse_setting("reg_bonus", "BQACAgIAAxkBAAI_fake_file_id") == "BQACAgIAAxkBAAI_fake_file_id"
+    # None raw resolves to the registry default (None) for both.
+    assert _parse_setting("program", None) == SETTINGS_SCHEMA["program"]["default"]
+    assert _parse_setting("reg_bonus", None) == SETTINGS_SCHEMA["reg_bonus"]["default"]
+
+
+def test_registry_coverage_event():
+    allowed_groups = {"event", "reg", "reg_questions", "pay", "party", "consent", "misc"}
+    allowed_types = {"toggle", "int", "list", "date", "text", "enum", "photo", "file"}
+
+    event_keys_seen = set()
+    for key, entry in SETTINGS_SCHEMA.items():
+        assert entry["group"] in allowed_groups, f"{key} has unknown group {entry['group']!r}"
+        assert entry["type"] in allowed_types, f"{key} has unknown type {entry['type']!r}"
+        # Registry default must parse cleanly through _parse_setting without raising.
+        _parse_setting(key, entry["default"])
+        if entry["group"] == "event":
+            assert key not in event_keys_seen, f"{key} duplicated in event group"
+            event_keys_seen.add(key)
+
+    expected_event_keys = {
+        "event_date", "event_time", "event_place_name", "event_place_address",
+        "contact_person", "contact_vk", "contact_tg", "start_text", "event_name", "event_type",
+    }
+    assert expected_event_keys <= event_keys_seen
+
+
+def test_event_render_snapshot(tmp_path):
+    _admin_ready(tmp_path)
+
+    text = asyncio.run(admin_mod.render_settings_group_text("event"))
+    kb = asyncio.run(admin_mod.build_settings_group_keyboard("event"))
+    flat = _flat_callback_data(kb)
+
+    # Byte-for-byte render invariant (D-16): the concrete event field labels must still
+    # render exactly as before the registry became the source of this group.
+    for label in [
+        "🗓 Дата", "⌚ Время", "📍 Место", "📫 Адрес", "👤 Контакт",
+        "🔵 VK", "🔹 TG", "💬 Приветствие", "🎪 Название меро", "🎭 Тип события",
+    ]:
+        assert label in text, f"missing event label: {label}"
+
+    # settings_edit/photo/file callbacks stay byte-identical (D-14, no call-site rewrites).
+    assert "settings_edit:event_date" in flat
+    assert any(cd.startswith("settings_photo:") for cd in flat)
+    assert any(cd.startswith("settings_file:") for cd in flat)
+    # Fresh DB -> nothing configured yet -> the unconfigured collapse header must appear.
+    assert "settings_group_noop" in flat
+    # Back button unchanged.
+    assert "admin_settings" in flat
