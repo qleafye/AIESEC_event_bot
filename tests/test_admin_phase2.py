@@ -1,5 +1,8 @@
 """Phase 2 admin pure-helper tests: callback parse, card renderer, settings guide."""
 import asyncio
+import types as _types
+
+from aiogram import F
 
 from config import config
 from handlers import admin
@@ -104,3 +107,67 @@ def test_wr01_welcome_drain_scheduled_despite_edit_failure(monkeypatch):
 
     assert welcomed == [[1, 2, 3]]  # drain ran despite the edit throwing
     assert cb.answered  # handler completed (callback.answer reached)
+
+
+# ── WR-03: a /command typed mid-rejection must abort, not become the reason ────
+
+def test_wr03_reject_cancel_filter_catches_commands_and_cancel():
+    """The appr_reject_cancel filter must match «Отмена» and ANY /command (so the reason
+    catch-all never swallows a command), but not a normal reason line."""
+    filt = F.text.in_({"Отмена"}) | F.text.startswith("/")
+
+    def m(t):
+        return _types.SimpleNamespace(text=t)
+
+    assert filt.resolve(m("/broadcast"))
+    assert filt.resolve(m("/cancel"))
+    assert filt.resolve(m("Отмена"))
+    assert not filt.resolve(m("не подходит по критериям отбора"))
+
+
+# ── WR-04: stale mass-approve confirm re-click must not re-drain / lie ─────────
+
+class _EditMessage:
+    def __init__(self):
+        self.edited = None
+
+    async def edit_text(self, text, **k):
+        self.edited = text
+
+
+class _FakeCallbackWR04:
+    def __init__(self, uid):
+        self.from_user = type("U", (), {"id": uid})()
+        self.message = _EditMessage()
+        self.bot = object()
+        self.answered = None
+
+    async def answer(self, text=None, **k):
+        self.answered = text
+
+
+def test_wr04_stale_reclick_no_drain_and_honest_message(monkeypatch):
+    uid = 42
+    monkeypatch.setattr(config, "ADMIN_IDS", [uid])
+    drained = []
+
+    async def fake_approve_all_pending():
+        return []  # second click on a stale dialog: nothing left to approve
+
+    async def fake_welcome(bot, ids):
+        drained.append(ids)
+
+    async def fake_show(msg, state):
+        return None
+
+    monkeypatch.setattr(admin, "approve_all_pending", fake_approve_all_pending)
+    monkeypatch.setattr(admin, "_welcome_flipped", fake_welcome)
+    monkeypatch.setattr(admin, "build_admin_keyboard", lambda *a, **k: None)
+    monkeypatch.setattr(admin, "_show_current_card", fake_show)
+
+    cb = _FakeCallbackWR04(uid)
+    asyncio.run(admin.appr_all_yes(cb, None))
+
+    assert drained == []  # no welcome drain on the empty re-click
+    assert cb.answered == "Уже обработано"
+    assert cb.message.edited == "Заявки уже обработаны."
