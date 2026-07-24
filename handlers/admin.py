@@ -2680,16 +2680,24 @@ async def appr_all_yes(callback: types.CallbackQuery, state: FSMContext):
         await callback.answer("Недостаточно прав", show_alert=True)
         return
     ids = await approve_all_pending()  # atomic flip first (D-11)
-    await callback.message.edit_text(
-        f"✅ Одобрено: {len(ids)}. Рассылаю приветствия…",
-        reply_markup=build_admin_keyboard(),
-    )
+    # WR-01: schedule the welcome drain (and status sync) BEFORE the fragile edit_text. Inline
+    # buttons never expire, but Telegram rejects editing a message >48h old, and the card may
+    # have been deleted — if the edit threw first, the N just-approved users would be left
+    # `approved` in DB with no welcome/menu/payment requisites (violates D-11 "welcome exactly
+    # once"). Ordering the background sends first makes delivery independent of the edit.
     _spawn(_welcome_flipped(callback.bot, ids))  # drain sends in background
     # Массовый автосинк статуса в таблицу (Таня п.5) — один batch, fail-soft.
     if ids:
         _spawn(
             bulk_update_status_in_sheet({str(t): STATUS_LABELS["approved"] for t in ids})
         )
+    try:
+        await callback.message.edit_text(
+            f"✅ Одобрено: {len(ids)}. Рассылаю приветствия…",
+            reply_markup=build_admin_keyboard(),
+        )
+    except Exception as e:
+        logger.warning(f"appr_all_yes: confirm edit failed (welcome drain already scheduled): {e}")
     await callback.answer()
 
 
