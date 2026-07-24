@@ -3,15 +3,15 @@ gsd_state_version: 1.0
 milestone: v2
 milestone_name: Registry & Multichannel
 status: executing
-stopped_at: Completed 06-05-PLAN.md
-last_updated: "2026-07-24T13:46:29.962Z"
+stopped_at: Completed 06-06-PLAN.md
+last_updated: "2026-07-24T14:11:19.717Z"
 last_activity: 2026-07-24
 progress:
   total_phases: 1
   completed_phases: 0
   total_plans: 7
-  completed_plans: 5
-  percent: 71
+  completed_plans: 6
+  percent: 86
 ---
 
 # Project State
@@ -26,7 +26,7 @@ See: .planning/PROJECT.md (updated 2026-06-25)
 ## Current Position
 
 Phase: 06 (settings-schema-registry) — EXECUTING
-Plan: 5 of 7
+Plan: 6 of 7
 Status: Ready to execute
 Last activity: 2026-07-24
 
@@ -60,6 +60,7 @@ Last activity: 2026-07-24
 | Phase 06 P03 | 14min | 2 tasks | 4 files |
 | Phase 06 P04 | 11min | 2 tasks | 4 files |
 | Phase 06 P05 | 11min | 2 tasks | 2 files |
+| Phase 06 P06 | 22min | 2 tasks | 4 files |
 
 ## Accumulated Context
 
@@ -102,6 +103,8 @@ Recent decisions affecting current work:
 - [Phase 06]: 06-04 deviation: plan's stated 44-key REG_DEFAULTS count corrected to source-verified 43 (handlers/registration.py:197-241)
 - [Phase ?]: [Phase 06] D-12 (06-05): admin toggle button-generation structure (bespoke settings_toggle_*/toggle_* callback_data + text ternaries) left untouched -- only the preceding value reads swapped to get_setting_typed
 - [Phase ?]: [Phase 06] (06-05): render_settings_text's own registration_mode read + the generic multi-key toggle helpers (_toggle_module_setting/_toggle_approval_setting/_toggle_value_setting) intentionally left on the old get_setting(k) or default idiom -- outside this wave's explicit interfaces-list scope, deferred to a later wave if needed
+- [Phase 06]: BLOCKER-1/BLOCKER-2 (06-06): full_approval migrated into finalize_registration's _decide_status feed; _is_module_enabled helper body migrated to get_setting_typed, covering consent_enabled/payment_enabled at all 4 call sites in one change
+- [Phase 06]: Both RAW-read sites (registration_mode in process_full_name, party_approval in finalize_registration) migrated to get_setting_typed after proving branch-level equivalence (registry default matches the site's own None-handling), not left raw
 
 ### Roadmap Evolution
 
@@ -158,8 +161,8 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-07-24T13:46:29.946Z
-Stopped at: Completed 06-05-PLAN.md
+Last session: 2026-07-24T14:11:19.689Z
+Stopped at: Completed 06-06-PLAN.md
 Resume file: None
 
 ## Operator Next Steps

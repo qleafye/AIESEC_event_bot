@@ -60,7 +60,7 @@ Plans:
 - [x] 06-03-PLAN.md — REG-02 consumers (reminders/scheduler/builders) read int/date/list via get_setting_typed
 - [x] 06-04-PLAN.md — Register reg_q toggles + feature-switch enums, absorb REG_DEFAULTS, wire the 3 reg_q read-sites + full-registry coverage
 - [x] 06-05-PLAN.md — Wire admin feature-switch reads (render + toggle-button block) to the registry (button structure preserved, D-12)
-- [ ] 06-06-PLAN.md — Wire registration/payment/scheduler feature-switch gates to the registry byte-for-byte
+- [x] 06-06-PLAN.md — Wire registration/payment/scheduler feature-switch gates to the registry byte-for-byte
 - [ ] 06-07-PLAN.md — Consolidated manual smoke checkpoint incl. mandatory per-toggle-button comparison (D-18)
 
 ## Progress
