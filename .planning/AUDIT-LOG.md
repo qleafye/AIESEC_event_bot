@@ -20,8 +20,8 @@ _Findings собираются здесь. Severity: 🔴 critical / 🟠 high /
 
 ### Phase 1
 
-- 🟠 **HG-01 — subscription flag lost on first /start.** `handlers/registration.py:1319-1326` + `database/db.py:637-643`. `set_user_subscribed` (bare `UPDATE users WHERE telegram_id`) runs BEFORE user row exists (before add_user) → updates 0 rows, silently discarded. Flag only ever persists on a later /start by already-registered user. First-touch registrants (majority) stay `subscribed=NULL` forever → never in «не подписаны» segment. Fails open, no user harm. **Not fixed (touches prod reg flow — needs deliberate change).**
-- 🟠 **HG-02 — getChatMember gets t.me URL, not @username.** `handlers/registration.py:1320-1324`. Check targets `contact_tg`, but admin UI (`admin.py:347`) prompts that as a channel link/URL (`https://t.me/...`). `get_chat_member` needs `@username`/chat-id → raises → fail-open → flag never written. For URL config the whole feature is a silent no-op regardless of HG-01. Needs URL→@username normalization. **Not fixed.**
+- 🟠 **HG-01 — subscription flag lost on first /start.** `handlers/registration.py:1319-1326` + `database/db.py:637-643`. `set_user_subscribed` (bare `UPDATE users WHERE telegram_id`) runs BEFORE user row exists (before add_user) → updates 0 rows, silently discarded. Flag only ever persists on a later /start by already-registered user. First-touch registrants (majority) stay `subscribed=NULL` forever → never in «не подписаны» segment. Fails open, no user harm. **✅ Fixed (`3d50c25`, Block 3, user chose FIX) — persist re-run in `finalize_registration` after `add_user`.**
+- 🟠 **HG-02 — getChatMember gets t.me URL, not @username.** `handlers/registration.py:1320-1324`. Check targets `contact_tg`, but admin UI (`admin.py:347`) prompts that as a channel link/URL (`https://t.me/...`). `get_chat_member` needs `@username`/chat-id → raises → fail-open → flag never written. For URL config the whole feature is a silent no-op regardless of HG-01. Needs URL→@username normalization. **✅ Fixed (`3d50c25`, Block 3) — `_normalize_channel_ref` converts t.me link→@username at check time; stored display link untouched; private links → fail-open skip.**
 - 🟡 **MD-01 — sheet-append task GC risk.** `registration.py:2294,2297`. `asyncio.create_task` held with no strong ref, contradicts codebase's own `WR-02`/`_spawn` mitigation in `main.py`. Row can be GC'd and lost. **✅ Fixed (`d91b05a`, Block 1) — routed through `services/background.spawn`.**
 - 🟡 **MD-02 — dropout segment can hit fully-registered users.** (reg_started not always cleared / segment query). See 01-REVIEW.md.
 - 🟡 **MD-03 — mark_reg_started resets `started_at` on every restart**, deferring dropout nudges indefinitely. See 01-REVIEW.md.
@@ -76,6 +76,8 @@ _Findings собираются здесь. Severity: 🔴 critical / 🟠 high /
 | P4 M-01 | 1 | fixed·tested·committed | `d91b05a` | все 8 handler-`create_task` → `spawn` |
 | P5 MEDIUM-02 | 1 | fixed·tested·committed | `d91b05a` | party-append через `spawn` |
 | P4 H-01 | 2 | fixed·tested·committed | `cbc2bc7` | reject-guard `require_status` + rowcount + disable stale card |
+| P1 HG-01 | 3 | fixed·tested·committed | `3d50c25` | persist в finalize после add_user (user решил: FIX) |
+| P1 HG-02 | 3 | fixed·tested·committed | `3d50c25` | `_normalize_channel_ref` URL→@username at check time |
 
 **Блок 1 detail:** извлёк `_spawn` из `main.py` в `services/background.py` (`spawn`) —
 handlers не могли импортить из `main.py` (циклический `handlers→main`). Провёл ВСЕ
