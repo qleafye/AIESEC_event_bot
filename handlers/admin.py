@@ -2438,23 +2438,68 @@ def _prompt_steps() -> list[tuple[str, str]]:
     return steps
 
 
+def _prompt_track_switcher_row(active: str) -> list[InlineKeyboardButton]:
+    """Quick 260724-cfn (WR-02b): mirrors _track_switcher_row for the «Тексты вопросов»
+    screen — switches between editing the global (full) prompt overrides and the
+    party-track (__party) prompt overrides. Own callback namespace (reg_prompt_track:)
+    so it never collides with the questions-toggle screen's reg_q_track: switcher."""
+    return [
+        InlineKeyboardButton(text=("• " if active == "full" else "") + "Полный", callback_data="reg_prompt_track:full"),
+        InlineKeyboardButton(text=("• " if active == "party" else "") + "Party", callback_data="reg_prompt_track:party"),
+    ]
+
+
+async def render_prompts_text(track: str = "full") -> str:
+    text = (
+        "✏️ <b>Тексты вопросов</b>\n\nВыбери вопрос и пришли свой текст. ✅ — текст переопределён, "
+        "✏️ — стандартный. Чтобы вернуть стандартный, отправь «-»."
+    )
+    if track == "party":
+        text += (
+            "\n\n<i>Действуют в режиме 🎉 Party. ✏️ — берётся общий текст вопроса, "
+            "✅ — переопределено для party. «-» — сброс к общему.</i>"
+        )
+    return text
+
+
+async def build_prompts_keyboard(track: str = "full"):
+    buttons = [_prompt_track_switcher_row(track)]
+    for step_key, label in _prompt_steps():
+        if track == "party":
+            key = f"reg_prompt_{step_key}__party"
+            callback_data = f"reg_prompt_edit:{step_key}:party"
+        else:
+            key = f"reg_prompt_{step_key}"
+            callback_data = f"reg_prompt_edit:{step_key}"
+        custom = await get_setting(key)
+        mark = "✅" if custom else "✏️"
+        buttons.append([InlineKeyboardButton(text=f"{mark} {label}", callback_data=callback_data)])
+    buttons.append([InlineKeyboardButton(text="← Назад к настройкам", callback_data="admin_settings")])
+    return InlineKeyboardMarkup(inline_keyboard=buttons)
+
+
 @router.callback_query(F.data == "admin_reg_prompts")
 async def admin_reg_prompts(callback: types.CallbackQuery):
     if callback.from_user.id not in config.ADMIN_IDS:
         await callback.answer("Недостаточно прав", show_alert=True)
         return
-    buttons = []
-    for step_key, label in _prompt_steps():
-        custom = await get_setting(f"reg_prompt_{step_key}")
-        mark = "✅" if custom else "✏️"
-        buttons.append([InlineKeyboardButton(text=f"{mark} {label}", callback_data=f"reg_prompt_edit:{step_key}")])
-    buttons.append([InlineKeyboardButton(text="← Назад к настройкам", callback_data="admin_settings")])
-    await callback.message.edit_text(
-        "✏️ <b>Тексты вопросов</b>\n\nВыбери вопрос и пришли свой текст. ✅ — текст переопределён, "
-        "✏️ — стандартный. Чтобы вернуть стандартный, отправь «-».",
-        parse_mode="HTML",
-        reply_markup=InlineKeyboardMarkup(inline_keyboard=buttons),
-    )
+    text = await render_prompts_text("full")
+    await callback.message.edit_text(text, parse_mode="HTML", reply_markup=await build_prompts_keyboard("full"))
+    await callback.answer()
+
+
+@router.callback_query(F.data.startswith("reg_prompt_track:"))
+async def reg_prompt_track_switch(callback: types.CallbackQuery):
+    """Quick 260724-cfn (WR-02b): re-renders the SAME «✏️ Тексты вопросов» message in the
+    requested track context. No FSM state — mirrors reg_q_track_switch."""
+    if callback.from_user.id not in config.ADMIN_IDS:
+        await callback.answer("Недостаточно прав", show_alert=True)
+        return
+    track = callback.data.split(":", 1)[1]
+    if track not in ("full", "party"):
+        track = "full"
+    text = await render_prompts_text(track)
+    await callback.message.edit_text(text, parse_mode="HTML", reply_markup=await build_prompts_keyboard(track))
     await callback.answer()
 
 
@@ -2463,8 +2508,13 @@ async def reg_prompt_edit(callback: types.CallbackQuery, state: FSMContext):
     if callback.from_user.id not in config.ADMIN_IDS:
         await callback.answer("Недостаточно прав", show_alert=True)
         return
-    step_key = callback.data.split(":", 1)[1]
-    key = f"reg_prompt_{step_key}"
+    # Quick 260724-cfn (WR-02b): optional trailing ":party" track suffix. step_keys (full_name
+    # + REG_FLOW) never contain ":", so this split is safe. Any suffix other than the literal
+    # "party" falls back to "full" (closed whitelist, mirrors reg_q_track_switch).
+    parts = callback.data.split(":")
+    step_key = parts[1]
+    track = "party" if len(parts) > 2 and parts[2] == "party" else "full"
+    key = f"reg_prompt_{step_key}__party" if track == "party" else f"reg_prompt_{step_key}"
     current = await get_setting(key)
     text = "Пришли новый текст вопроса."
     if current:
