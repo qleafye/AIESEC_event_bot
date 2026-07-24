@@ -20,6 +20,7 @@ from aiogram.exceptions import TelegramRetryAfter
 
 from config import config
 from database.db import get_setting
+from settings_schema import get_setting_typed
 
 logger = logging.getLogger(__name__)
 
@@ -43,7 +44,12 @@ def _int_or_default(raw, default: int) -> int:
 
 
 def _parse_schedule_dt(raw):
-    """Parse admin datetime 'ДД.ММ.ГГГГ ЧЧ:ММ' -> datetime; None on bad input."""
+    """Parse admin datetime 'ДД.ММ.ГГГГ ЧЧ:ММ' -> datetime; None on bad input.
+
+    # REG-02: sweep_payment_overdue no longer calls this directly for payment_deadline
+    # (reads via get_setting_typed instead) — retained as the parse oracle for
+    # tests/test_settings_consumers_phase6.py and tests/test_settings_groups_c0x.py.
+    """
     try:
         return datetime.strptime(raw.strip(), "%d.%m.%Y %H:%M")
     except (TypeError, ValueError, AttributeError):
@@ -296,12 +302,10 @@ async def sweep_payment_overdue():
     a parseable payment_deadline is set and has passed."""
     try:
         import aiosqlite
-        deadline_str = await get_setting("payment_deadline")
-        if not deadline_str:
-            return
-        try:
-            deadline = datetime.strptime(deadline_str.strip(), "%d.%m.%Y %H:%M")
-        except ValueError:
+        # REG-02: read through the registry accessor — byte-identical to the previous
+        # get_setting + _parse_schedule_dt pair (see tests/test_settings_consumers_phase6.py).
+        deadline = await get_setting_typed("payment_deadline")
+        if not deadline:
             return
         if datetime.now() < deadline:
             return

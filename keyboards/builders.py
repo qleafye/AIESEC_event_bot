@@ -2,6 +2,7 @@ from aiogram.types import ReplyKeyboardMarkup, InlineKeyboardMarkup, InlineKeybo
 from aiogram.utils.keyboard import ReplyKeyboardBuilder, InlineKeyboardBuilder
 from config import config
 from database.db import get_setting
+from settings_schema import get_setting_typed
 
 # --- Main Menu ---
 
@@ -55,10 +56,11 @@ DEFAULT_SOURCE_OPTIONS = [
 
 async def get_source_kb() -> ReplyKeyboardMarkup:
     kb = ReplyKeyboardBuilder()
-    custom = await get_setting("source_options")
-    if custom:
-        items = [line.strip() for line in custom.split("\n") if line.strip()]
-    else:
+    # REG-02: read through the registry accessor. The registry's list default is None
+    # (not DEFAULT_SOURCE_OPTIONS), so the empty->DEFAULT_SOURCE_OPTIONS fallback guard is
+    # kept here to preserve exact pre-migration behavior (T-06-11).
+    items = await get_setting_typed("source_options")
+    if not items:
         items = DEFAULT_SOURCE_OPTIONS
     for item in items:
         kb.button(text=item)
