@@ -190,11 +190,17 @@ async def send_scheduled_broadcast(broadcast_id: int):
     Arg is the int id ONLY (picklable) — the Bot comes from the module global."""
     try:
         from database.db import (
-            get_scheduled_broadcast, mark_broadcast_sent,
+            get_scheduled_broadcast, mark_broadcast_sending, mark_broadcast_sent,
             get_all_users_ids, count_and_list_filtered,
         )
         row = await get_scheduled_broadcast(broadcast_id)
         if not row or row.get("status") != "pending":
+            return
+        # ME-02: atomically claim (pending → sending) BEFORE the send loop. If this returns 0
+        # another fire already claimed it (double-schedule race), so bail. A crash mid-send
+        # leaves it 'sending' — never re-fired to the whole audience (the reconciliation only
+        # re-arms 'pending' rows). The unsent tail is forfeited by design; admin re-sends.
+        if not await mark_broadcast_sending(broadcast_id):
             return
 
         filter_spec = row.get("filter_spec")

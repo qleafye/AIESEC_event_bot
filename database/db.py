@@ -753,6 +753,22 @@ async def get_scheduled_broadcast(broadcast_id: int) -> dict | None:
             return dict(row) if row else None
 
 
+async def mark_broadcast_sending(broadcast_id: int) -> int:
+    """ME-02: atomically claim a pending broadcast for sending. Flips 'pending' → 'sending'
+    and returns rowcount: 1 = this caller owns the send, 0 = already claimed/sent/cancelled
+    (double-schedule race or a re-fire). A crash mid-send leaves the row 'sending' — never back
+    to 'pending' — so neither a re-fire nor the ME-03 boot reconciliation (which re-arms only
+    'pending' rows) can blast the whole audience a second time."""
+    async with aiosqlite.connect(config.DB_PATH) as db:
+        cursor = await db.execute(
+            "UPDATE scheduled_broadcasts SET status = 'sending' "
+            "WHERE id = ? AND status = 'pending'",
+            (broadcast_id,),
+        )
+        await db.commit()
+        return cursor.rowcount
+
+
 async def mark_broadcast_sent(broadcast_id: int):
     async with aiosqlite.connect(config.DB_PATH) as db:
         await db.execute(
