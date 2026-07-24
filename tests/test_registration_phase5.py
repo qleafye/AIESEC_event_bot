@@ -831,6 +831,38 @@ def test_me05_new_user_still_gated_by_preselect(tmp_path, monkeypatch):
     asyncio.run(go())
 
 
+def test_high01_bare_restart_on_fork_preserves_referrer(tmp_path):
+    """HIGH-01: a referred user who lands on the fork, then re-sends a BARE /start (no deep-link)
+    while the fork is shown, must keep their original referrer — the second cmd_start must not
+    clobber the saved referrer_id with None."""
+    _use_tmp_db(tmp_path)
+
+    async def go():
+        await db.init_db()
+        await db.set_setting("party_fork_question", "on")
+        await db.set_setting("party_enabled", "on")
+
+        uid = 720001
+        referrer = uid + 1
+        state = _new_state(uid)
+
+        class RefCommand:
+            args = str(referrer)
+
+        class BareCommand:
+            args = None
+
+        # 1st /start via deep link → fork shown, referrer persisted.
+        await reg.cmd_start(_FakeMessage(uid, "ref"), state, bot=object(), command=RefCommand())
+        assert (await state.get_data()).get("referrer_id") == referrer
+
+        # 2nd, bare /start while fork still displayed → must NOT clobber the referrer.
+        await reg.cmd_start(_FakeMessage(uid, "ref"), state, bot=object(), command=BareCommand())
+        assert (await state.get_data()).get("referrer_id") == referrer
+
+    asyncio.run(go())
+
+
 def test_cr01_referred_user_picks_full_still_lands_with_referrer_id(tmp_path):
     """The explicit "picks full" case CR-01 calls out: a referred user who lands on the fork
     and taps "Полная регистрация" must still finalize with referrer_id attribution intact."""
