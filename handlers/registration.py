@@ -1197,6 +1197,16 @@ def _is_allowed_resume(file_name: str | None) -> bool:
     return name.endswith(".pdf") or name.endswith(".docx")
 
 
+# P0 audit T-dw1-01: resume size guard, mirrors handlers.payment._RECEIPT_MAX_BYTES /
+# _receipt_too_large. Replicated locally (not imported) to avoid a cross-module import risk
+# and to keep the caps independently tunable.
+_RESUME_MAX_BYTES = 10 * 1024 * 1024
+
+
+def _resume_too_large(file_size) -> bool:
+    return bool(file_size) and file_size > _RESUME_MAX_BYTES
+
+
 # --- /start ---
 
 async def _start_registration_flow(message: types.Message, state: FSMContext, referrer_id: int | None = None, source_tag: str | None = None, participant_type: str | None = None):
@@ -1605,6 +1615,9 @@ async def process_confirm_edit(message: types.Message, state: FSMContext):
 async def process_resume(message: types.Message, state: FSMContext, bot: Bot):
     if not _is_allowed_resume(message.document.file_name):
         await message.answer("Принимаются только PDF или DOCX. Прикрепи файл ещё раз.")
+        return
+    if _resume_too_large(message.document.file_size):
+        await message.answer("❌ Файл слишком большой (максимум 10 МБ). Прикрепи резюме меньшего размера.")
         return
     # file_id only, no download (D-10). Keep the original file name in FSM (non-persisted,
     # no DB/sheet column) so the Nextcloud upload preserves the real .pdf/.docx extension.
