@@ -10,6 +10,42 @@ logger = logging.getLogger(__name__)
 MAX_RETRIES = 3
 RETRY_DELAYS = [5, 15, 30]
 
+# P0 audit T-dw1-02: bot injection hook for the exhausted-retry admin alert. sheets.py has no
+# bot reference of its own today (services/scheduler.py holds its own via init_scheduler) —
+# main.py wires this in at startup via set_alert_bot(bot).
+_alert_bot = None
+_alert_bot_warned = False
+
+
+def set_alert_bot(bot):
+    global _alert_bot
+    _alert_bot = bot
+
+
+async def _alert_admins_sheet_failure(context: str) -> None:
+    """Fail-soft admin alert fired after a Sheets append exhausts MAX_RETRIES (mirrors
+    services/scheduler.py::allowlist_refresh_job's per-admin send pattern). Wrapped so this can
+    NEVER raise or block the caller's retry loop."""
+    global _alert_bot_warned
+    try:
+        if _alert_bot is None:
+            if not _alert_bot_warned:
+                logger.warning("_alert_admins_sheet_failure: no alert bot set, skipping admin alert")
+                _alert_bot_warned = True
+            return
+        text = (
+            f"⚠️ Google Sheets: не удалось записать строку после {MAX_RETRIES} попыток "
+            f"({context}). SQLite не затронут — синхронизация таблицы отстаёт. "
+            "Проверьте квоту/доступ Google API."
+        )
+        for admin_id in config.ADMIN_IDS:
+            try:
+                await _alert_bot.send_message(admin_id, text)
+            except Exception as e:
+                logger.error(f"Sheets failure alert to {admin_id} failed: {e}")
+    except Exception as e:
+        logger.error(f"_alert_admins_sheet_failure failed: {e}")
+
 
 # Cache the authorized client + worksheet handle: gspread.service_account() re-auths
 # (token fetch) and open_by_key() is a network call, so rebuilding on every append cost
@@ -131,6 +167,7 @@ async def append_to_sheet(data: list):
             await asyncio.sleep(delay)
 
     logger.error(f"Failed to append to Google Sheet after {MAX_RETRIES} attempts for telegram_id={(data[0] if data else '?')!r}")
+    await _alert_admins_sheet_failure(f"основная вкладка, telegram_id={(data[0] if data else '?')!r}")
 
 
 async def ensure_sheet_header(headers: list[str]):
@@ -440,6 +477,7 @@ async def append_to_named_sheet(tab_name: str, data: list):
             await asyncio.sleep(delay)
 
     logger.error(f"Failed to append to tab {tab_name!r} after {MAX_RETRIES} attempts for telegram_id={(data[0] if data else '?')!r}")
+    await _alert_admins_sheet_failure(f"вкладка {tab_name!r}, telegram_id={(data[0] if data else '?')!r}")
 
 
 def _ensure_named_header_sync(tab_name: str, headers: list[str]):
