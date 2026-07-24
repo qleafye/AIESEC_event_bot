@@ -37,3 +37,22 @@ def test_parse_options_clamps_negative_price():
 
 def test_parse_options_keeps_valid_price():
     assert _parse_options("Участие|3000") == [("Участие", 3000, None)]
+
+
+# ── receipt upload hardening: size cap + rate limit ──────────────────────────
+
+def test_receipt_too_large_boundary():
+    from handlers.payment import _receipt_too_large, _RECEIPT_MAX_BYTES
+    assert _receipt_too_large(None) is False
+    assert _receipt_too_large(0) is False
+    assert _receipt_too_large(_RECEIPT_MAX_BYTES) is False       # exactly at cap: allowed
+    assert _receipt_too_large(_RECEIPT_MAX_BYTES + 1) is True    # over cap: rejected
+
+
+def test_receipt_rate_limit_blocks_rapid_second_upload():
+    from handlers import payment
+    payment._last_receipt_upload.clear()
+    uid = 12345
+    assert payment._receipt_rate_limited(uid) is False  # first upload accepted
+    assert payment._receipt_rate_limited(uid) is True   # immediate second blocked
+    assert payment._receipt_rate_limited(99999) is False  # a different user is independent
