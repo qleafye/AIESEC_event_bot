@@ -53,6 +53,14 @@ Future (за пределами v2): Telegram Mini App (WEBAPP-01).
   4. Админ-UI настроек рендерится из реестра (порядок/группы/label/рендер-по-типу) для мигрированных групп; добавление/правка одного ключа требует правки только записи реестра, а не нескольких хендлеров
 **Note:** ТЗ на остальные группы v2 (Bitrix/web/города/гейма/роли) ещё нет — реестр планируется и исполняется отдельно как самодостаточный keystone. Исполнение — после SumMeet (форум 31 июля–2 авг); сейчас только план.
 
+**Plans:** 5 plans
+Plans:
+- [ ] 06-01-PLAN.md — Registry foundation + `event` pilot slice (settings_schema.py machinery + get_setting_typed + event generated view)
+- [ ] 06-02-PLAN.md — Migrate reg/pay/party/consent text groups to the registry (int/date/list types + render snapshots)
+- [ ] 06-03-PLAN.md — REG-02 consumers (reminders/scheduler/builders) read via get_setting_typed
+- [ ] 06-04-PLAN.md — Toggle wave: absorb REG_DEFAULTS + migrate the three on/off read-sites byte-for-byte
+- [ ] 06-05-PLAN.md — Consolidated manual smoke checkpoint (D-18)
+
 ## Progress
 
 | Phase | Milestone | Plans | Status | Completed |
@@ -62,4 +70,4 @@ Future (за пределами v2): Telegram Mini App (WEBAPP-01).
 | 3. Scheduler + Communications + Verification | v1.0 | 5 | Complete (verified) | 2026-07-24 |
 | 4. Universal Modules | v1.0 | 5 | Complete (verified) | 2026-07-24 |
 | 5. Participant Tracks (Party Delegates) | v1.0 | 6 | Complete (verified; live UAT deferred) | 2026-07-24 |
-| 6. Settings-schema Registry | v2 | — | Planning | — |
+| 6. Settings-schema Registry | v2 | 5 | Planning | — |
