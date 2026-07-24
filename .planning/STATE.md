@@ -2,10 +2,10 @@
 gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
-status: verifying
-stopped_at: Completed 05-06-PLAN.md (checkpoint deferred to end-of-phase UAT)
-last_updated: "2026-07-21T00:18:44.526Z"
-last_activity: 2026-07-21
+status: Awaiting next milestone
+stopped_at: Completed quick task 260724-cfn (per-track party admin UI — WR-02/WR-05); pre-SumMeet improve loop closed
+last_updated: "2026-07-24T07:20:20.572Z"
+last_activity: 2026-07-24 — Milestone v1.0 completed and archived
 progress:
   total_phases: 5
   completed_phases: 1
@@ -25,12 +25,10 @@ See: .planning/PROJECT.md (updated 2026-06-25)
 
 ## Current Position
 
-Phase: 05 (participant-tracks-party-delegates) — EXECUTING
-Plan: 6 of 6
-Status: Phase complete — ready for verification
-Last activity: 2026-07-21
-
-Progress: [███░░░░░░░] 25%
+Phase: Milestone v1.0 complete
+Plan: —
+Status: Awaiting next milestone
+Last activity: 2026-07-24 — Milestone v1.0 completed and archived
 
 ## Performance Metrics
 
@@ -148,3 +146,7 @@ None yet.
 Last session: 2026-07-21T00:18:44.507Z
 Stopped at: Completed quick task 260724-cfn (per-track party admin UI — WR-02/WR-05); pre-SumMeet improve loop closed
 Resume file: None
+
+## Operator Next Steps
+
+- Start the next milestone with /gsd-new-milestone
