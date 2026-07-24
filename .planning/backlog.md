@@ -96,6 +96,12 @@ Web App. Не строить фичи на старой структуре — �
 дают ~80% читаемости за малый риск). Реестр (2) — отдельная плановая работа, когда
 будет окно; он же разблокирует Web App и снимает боль навсегда.
 
+**✅ Путь 1 ВЫПОЛНЕН (2026-07-24, quick `260724-c0x`, commits `b3cf8fd`+`8882eb6`):**
+экран разбит на 5 под-экранов по группам (`SETTINGS_GROUPS`, `settings_group:{token}`),
+инлайн-дамп ~40 полей убран, поля показывают флаг задано/не-задано, незаданные свёрнуты.
+~80% читаемости получено за малый риск, как и планировалось. Путь 2 (реестр) и путь 3
+(Web App) — по-прежнему открыты, post-SumMeet plan-работа (см. секцию «РЕШЕНИЕ ПО СЕКВЕНСУ»).
+
 Related: [[admin-config-backlog]] (память), keystone `SETTINGS_SCHEMA`.
 
 ---
@@ -156,18 +162,17 @@ Related: participant_type/deep-link/namespace-override паттерны из Pha
 Deferred findings from `.planning/phases/05-participant-tracks-party-delegates/05-REVIEW.md`.
 CR-01 + WR-01 + WR-03 were fixed in-session; the below were consciously deferred.
 
-- **WR-02** — `approve_text__party` and `reg_prompt_<step>__party` have no admin UI
-  (`admin.py:2305-2343`, `SETTINGS_FIELDS`). Per-track wording (D-05) and per-track
-  approval message (D-15) can currently only be set by writing `bot_settings` directly.
-  Contradicts the "всё через бота" core value. Fix: add `approve_text__party` editor +
-  a `track` switcher on the prompt-text screen, mirroring `reg_q_track_switch`.
-- **WR-04** — party sheet header has no resync hook on `__party` toggle
-  (`registration.py:1061-1094`, `admin.py:2145-2173`). Column-misalignment risk if an
-  admin flips a `reg_q_*__party` override mid-event. Fix: call
-  `ensure_named_sheet_header(tab, await party_sheet_headers())` from `toggle_party_question`
-  and `preset_confirm`'s party branch.
-- **WR-05** — `payment_options` admin help text (`admin.py:359`) not updated for the new
-  `label|price|track1,track2` syntax. Admin has no in-bot way to discover track filtering.
+**✅ Закрыто в pre-SumMeet improve-loop (2026-07-24, см. `.planning/IMPROVE-LOG.md`):**
+- ~~**WR-02**~~ — DONE (quick `260724-cfn`, commits `f61518d`+`2b29037`). `approve_text__party`
+  editor в группе Party + track-свитчер full⇄party на экране «Тексты вопросов»
+  (`reg_prompt_edit:{step}:party` → пишет `reg_prompt_{step}__party`). «Всё через бота» восстановлено.
+- ~~**WR-04**~~ — оказался УЖЕ закрыт до loop (commit `33e440f`, MEDIUM-01, plan 05-06/block6):
+  `_refresh_party_sheet_header()` вызывается из `toggle_party_question` (`admin.py:2303`) и
+  party-ветки `preset_confirm` (`admin.py:2421`). Запись была устаревшей.
+- ~~**WR-05**~~ — DONE (quick `260724-cfn`, commit `f61518d`). Help-текст `payment_options`
+  обновлён под track-синтаксис `label|price|track1,track2` (сверено с `_parse_options`).
+
+**Открыто (низкий приоритет):**
 - **IN-01** — broadcast filter «Трек» picker shows raw codes (`party_overnight`) instead
   of RU labels (`admin.py:1808-1827`). Matches pre-existing raw-picker pattern; low priority.
 - **IN-02** — `mark_reg_started` COALESCE-preserve branch (`db.py:558-565`) unreachable in
