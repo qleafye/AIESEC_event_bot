@@ -2501,7 +2501,10 @@ async def _show_current_card(target: types.Message, state: FSMContext):
         await target.answer("✅ Заявок нет.", reply_markup=build_admin_keyboard())
         return
     current = visible[0]
-    position = total - len(visible) + 1
+    # M-02: position = how many the admin has already skipped + 1 (the shown card is the first
+    # not-yet-skipped pending item). The old total - len(visible) + 1 returned e.g. 51/100 for
+    # the first card whenever a full 50-row batch was unskipped. Cap at total for safety.
+    position = min(len(skipped) + 1, total)
     await target.answer(
         _render_application_card(current, position, total),
         parse_mode="HTML",
@@ -2770,7 +2773,9 @@ async def _show_current_receipt_card(target: types.Message, state: FSMContext):
         await target.answer("✅ Чеков на проверке нет.", reply_markup=build_admin_keyboard())
         return
     current = visible[0]
-    position = total - len(visible) + 1
+    # M-02: position = skipped-so-far + 1 (the shown card is the first not-yet-skipped receipt).
+    # The old total - len(visible) + 1 returned e.g. 51/100 for the first card on a >50 queue.
+    position = min(len(skipped) + 1, total)
     await target.answer(
         _render_receipt_card(current, position, total),
         parse_mode="HTML",
