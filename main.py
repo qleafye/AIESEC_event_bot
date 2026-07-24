@@ -12,6 +12,7 @@ from services.reminders import pending_reminder_loop
 from services.scheduler import init_scheduler
 from services.allowlist import refresh_allowlist
 from services.sheets import ensure_sheet_header
+from services.background import spawn as _spawn
 import services.sheets as sheets_service
 from handlers.registration import active_sheet_headers, set_sheet_schema, party_sheet_headers, PARTY_SHEET_TAB_DEFAULT
 from aiogram.client.default import DefaultBotProperties
@@ -48,17 +49,9 @@ def _configure_logging():
         logging.getLogger(noisy).setLevel(logging.WARNING)
 
 
-# WR-02: the event loop keeps only weak references to tasks — a fire-and-forget
-# create_task() can be garbage-collected mid-run (e.g. pending_reminder_loop, the sole
-# admin-backlog notifier, would silently stop). Hold strong refs until each task completes.
-_background_tasks: set[asyncio.Task] = set()
-
-
-def _spawn(coro) -> asyncio.Task:
-    t = asyncio.create_task(coro)
-    _background_tasks.add(t)
-    t.add_done_callback(_background_tasks.discard)
-    return t
+# WR-02 / audit systemic fix: strong-ref fire-and-forget helper now lives in
+# services.background.spawn (imported above as _spawn) so handlers can share it without a
+# circular import. Keeps GC from dropping suspended background tasks mid-run.
 
 
 async def _maybe_ensure_party_sheet_header():
