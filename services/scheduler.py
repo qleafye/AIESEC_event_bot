@@ -83,6 +83,13 @@ async def init_scheduler(bot):
 
     _scheduler = AsyncIOScheduler(
         jobstores={"default": SQLAlchemyJobStore(url=_JOBSTORE_URL)},
+        # ME-01: pin the scheduler timezone to Europe/Moscow. Admin-entered times ("14:30") are
+        # parsed into NAIVE datetimes and both scheduled targets (broadcast run_date, payment
+        # reminders derived from payment_deadline) are absolute wall-clock times the admin means
+        # in Moscow time — never now()+offset. Without this pin APScheduler localizes naive
+        # run_dates to the container's tzlocal, so a UTC container fires a "14:30" broadcast 3h
+        # off the intended Moscow wall-clock. Pinning makes the naive time fire at 14:30 MSK.
+        timezone="Europe/Moscow",
         # WR-04: 1h grace silently DROPPED any date job (scheduled broadcast / payment
         # reminder) whose run_date passed during >1h of downtime — the job never fired, the
         # broadcast row stayed 'pending' forever, no alert. 24h covers realistic deploy/crash
@@ -118,11 +125,43 @@ async def init_scheduler(bot):
     )
 
     _scheduler.start()
+    # ME-03: re-arm any pending broadcast whose date job was dropped from the jobstore during a
+    # downtime longer than misfire_grace — otherwise it stays 'pending' forever and never fires.
+    await reconcile_scheduled_broadcasts()
     logger.info(
         f"Scheduler started (nudge scan every {scan_minutes}m, "
         f"allowlist refresh every {refresh_minutes}m)"
     )
     return _scheduler
+
+
+async def reconcile_scheduled_broadcasts():
+    """ME-03: on boot, re-schedule any 'pending' scheduled broadcast whose APScheduler date job
+    is missing from the jobstore (dropped because its run_date passed during a downtime longer
+    than misfire_grace_time). Re-adding with the stored past run_date lets APScheduler fire it
+    within the 24h grace; genuinely stale rows (>24h past) still get re-armed and fire on the
+    next tick, converting a silently-lost broadcast into a late one. Fail-soft: never blocks
+    startup. A job that is still present in the store is left untouched (no double-fire)."""
+    try:
+        from database.db import list_pending_broadcasts
+        pending = await list_pending_broadcasts()
+        sched = get_scheduler()
+        recovered = 0
+        for row in pending:
+            bid = row["id"]
+            if sched.get_job(f"bcast_{bid}") is not None:
+                continue  # live job already scheduled — leave it
+            try:
+                run_at = datetime.strptime(row["scheduled_at"].strip(), "%Y-%m-%d %H:%M:%S")
+            except (KeyError, TypeError, ValueError, AttributeError):
+                logger.warning(f"reconcile: broadcast {bid} has unparseable scheduled_at — skipped")
+                continue
+            schedule_broadcast_job(bid, run_at)
+            recovered += 1
+        if recovered:
+            logger.warning(f"Reconciled {recovered} pending broadcast(s) with dropped jobs")
+    except Exception as e:
+        logger.error(f"reconcile_scheduled_broadcasts failed: {e}")
 
 
 # ── SCHED-01: scheduled-broadcast date job ───────────────────────────────────
