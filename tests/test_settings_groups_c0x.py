@@ -534,6 +534,97 @@ def test_enum_feature_switch_defaults():
         assert _parse_setting(key, "on") == "on"
 
 
+# ── Phase 6 plan 06-05 (REG-02, D-12, T-06-19/T-06-20): admin feature-switch READ-SITE
+# regression net. Captures the CURRENT (pre-migration) render_settings_text +
+# build_settings_keyboard output byte-for-byte, over both the all-default (fresh DB) case
+# and a mixed/non-default case, so Task 2's get_setting_typed read-migration cannot drift
+# the landing text or the bespoke toggle-button callback_data/text. These tests PASS
+# against the pre-migration code (regression lock, not RED-first) and MUST still pass,
+# unchanged, after Task 2.
+
+def test_settings_landing_text_snapshot(tmp_path):
+    _admin_ready(tmp_path)
+
+    # ── all-default case (fresh DB, every feature-switch unset) ──
+    text = asyncio.run(admin_mod.render_settings_text())
+
+    assert "📝 Форма регистрации: <b>⚡ Краткая</b>" in text
+    assert "🎁 Бонус за регистрацию: <b>❌ Выкл</b>" in text
+    assert "✅ Модерация полной формы: <b>👮 Ручная</b>" in text
+    assert "✅ Модерация краткой формы: <b>⚡ Авто</b>" in text
+    assert "🔔 Уведомление о заявке: <b>🕒 Пачкой (напоминалка)</b>" in text
+    assert "💳 Модуль оплаты: <b>❌ Выкл</b>" in text
+    assert "📋 Модуль согласий: <b>❌ Выкл</b>" in text
+    assert "⏰ Автонапоминания об оплате: <b>✅ Вкл</b>" in text
+    assert "🎉 Трек вечеринки: <b>❌ Выкл</b>" in text
+    assert "🔀 Вопрос-развилка формата: <b>❌ Выкл</b>" in text
+    assert "✅ Модерация вечеринки: <b>👮 Ручная</b>" in text
+
+    # ── mixed/non-default case: party_enabled="on", full_approval="auto" flips two lines ──
+    asyncio.run(db.set_setting("party_enabled", "on"))
+    asyncio.run(db.set_setting("full_approval", "auto"))
+    text2 = asyncio.run(admin_mod.render_settings_text())
+
+    assert "🎉 Трек вечеринки: <b>✅ Вкл</b>" in text2
+    assert "✅ Модерация полной формы: <b>⚡ Авто</b>" in text2
+    # Untouched lines stay at their default rendering.
+    assert "✅ Модерация краткой формы: <b>⚡ Авто</b>" in text2
+
+
+def test_settings_toggle_button_snapshot(tmp_path):
+    _admin_ready(tmp_path)
+
+    # ── all-default case: exact button texts + callback_data, in position order ──
+    kb = asyncio.run(admin_mod.build_settings_keyboard())
+    flat_buttons = [btn for row in kb.inline_keyboard for btn in row]
+    texts = [btn.text for btn in flat_buttons]
+    cbs = [btn.callback_data for btn in flat_buttons]
+
+    expected_default = [
+        ("📝 Регистрация: ⚡ Краткая → 📋 Полная", "settings_toggle_reg"),
+        ("🎁 Бонус: ❌ Выкл → ✅ Вкл", "settings_toggle_bonus"),
+        ("✅ Полная форма: 👮 Ручная → ⚡ Авто", "settings_toggle_full_approval"),
+        ("✅ Краткая форма: ⚡ Авто → 👮 Ручная", "settings_toggle_short_approval"),
+        ("🔔 Уведомление: 🕒 Пачкой → 📨 Сразу", "settings_toggle_notify"),
+        ("💳 Оплата: ❌ Выкл → ✅ Вкл", "toggle_payment_enabled"),
+        ("⏰ Автонапоминания оплаты: ✅ Вкл → ❌ Выкл", "toggle_payment_reminders"),
+        ("📋 Согласия: ❌ Выкл → ✅ Вкл", "toggle_consent_enabled"),
+        ("🧾 PDF согласий", "admin_consent_pdfs"),
+        ("🏫 ВУЗ: свободный ввод → выбор из списка", "toggle_uni_mode"),
+        ("🎓 ВУЗ/курс только у студентов: ✅ Вкл → ❌ Выкл", "toggle_edu_conditional"),
+        ("🔢 Нумерация вопросов: ❌ Выкл → ✅ Вкл", "toggle_show_progress"),
+        ("🎉 Трек вечеринки: ❌ Выкл → ✅ Вкл", "toggle_party_enabled"),
+        ("🔀 Вопрос-развилка формата: ❌ Выкл → ✅ Вкл", "toggle_party_fork_question"),
+        ("✅ Модерация вечеринки: 👮 Ручная → ⚡ Авто", "settings_toggle_party_approval"),
+        ("🎛 Тип события (пресет)", "admin_event_preset"),
+        ("📋 Вопросы регистрации", "admin_reg_questions"),
+        ("✏️ Тексты вопросов", "admin_reg_prompts"),
+        ("🔘 Кнопки меню", "admin_menu_buttons"),
+    ]
+    for i, (expected_text, expected_cb) in enumerate(expected_default):
+        assert texts[i] == expected_text, f"button {i} text drifted: {texts[i]!r} != {expected_text!r}"
+        assert cbs[i] == expected_cb, f"button {i} callback_data drifted: {cbs[i]!r} != {expected_cb!r}"
+
+    # ── mixed case: party_enabled="on", payment_enabled="on", pending_notify_mode="instant" ──
+    asyncio.run(db.set_setting("party_enabled", "on"))
+    asyncio.run(db.set_setting("payment_enabled", "on"))
+    asyncio.run(db.set_setting("pending_notify_mode", "instant"))
+    kb2 = asyncio.run(admin_mod.build_settings_keyboard())
+    flat_buttons2 = [btn for row in kb2.inline_keyboard for btn in row]
+    texts2 = [btn.text for btn in flat_buttons2]
+    cbs2 = [btn.callback_data for btn in flat_buttons2]
+
+    assert texts2[4] == "🔔 Уведомление: 📨 Сразу → 🕒 Пачкой"
+    assert cbs2[4] == "settings_toggle_notify"
+    assert texts2[5] == "💳 Оплата: ✅ Вкл → ❌ Выкл"
+    assert cbs2[5] == "toggle_payment_enabled"
+    assert texts2[12] == "🎉 Трек вечеринки: ✅ Вкл → ❌ Выкл"
+    assert cbs2[12] == "toggle_party_enabled"
+    # Untouched buttons keep their default text/position.
+    assert texts2[0] == expected_default[0][0]
+    assert cbs2[0] == "settings_toggle_reg"
+
+
 def test_full_registry_coverage():
     """D-17/WARNING-2: iterate ALL SETTINGS_SCHEMA entries unconditionally — the
     catch-all coverage gate across every type (text/int/list/date/enum/toggle/photo/file),
