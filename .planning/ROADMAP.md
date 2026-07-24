@@ -22,13 +22,19 @@ Full detail archived at `.planning/milestones/v1.0-ROADMAP.md`; phase artifacts 
 
 </details>
 
-### 📋 v2 (Planned)
+### 📋 v2 Registry & Multichannel — backlog-mode (started 2026-07-24)
 
-Scope agreed 2026-07-24 — formalize via `/gsd-new-milestone`:
-- Settings-schema registry (SETTINGS_SCHEMA — single metadata registry for ~70 `bot_settings` keys: parse+default+label+group; keystone that unblocks inline-UI and gamification)
-- Bitrix CRM multichannel + web registration channel (driver: Telegram throttling in RU)
-- Gamification (GAME-01..04)
-- Roles (ROLE-01..02)
+Scope зафиксирован в `.planning/REQUIREMENTS.md` (15 требований). Детальные фазы **не строятся**, пока нет точного ТЗ (решение пользователя). Разработка — позже, по группам; реестр можно начинать первым (самодостаточен, разблокирует остальное). Каждой группе — свой `/gsd-plan-phase`, когда появится ТЗ.
+
+Группы (порядок по связности, не жёсткие фазы):
+1. **Settings-schema реестр** (REG-01/02/03) — keystone, стартовать первым
+2. **Bitrix CRM** (CRM-01/02)
+3. **Web-канал регистрации** (WEB-01/02)
+4. **Города** (CITY-01/02)
+5. **Геймификация** (GAME-01..04) — фундамент COIN уже есть
+6. **Роли** (ROLE-01/02) — ⚠️ нужен ТЗ, модель разграничения TBD
+
+Future (за пределами v2): Telegram Mini App (WEBAPP-01).
 
 ## Progress
 
