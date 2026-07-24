@@ -131,6 +131,7 @@ None yet.
 | 260713-jgi | Security B1a — fixed all HTML-injection + CSV-injection criticals from all-phases review. html.escape'd registrant-controlled full_name/username/email/university/source in admin /find,/stats,«Источники» (CR-2/3/4), full_name in user_actions referrals (CR-5), admin event_date/place/captions in info msgs (C-WR-02), consent card admin string (A-WR-03); added `_csv_safe` formula-injection neutralizer (prefix `'` on cells starting =+-@\t\r) to db.export_users_csv (CR-6) + 10-case unit test. 131 tests pass (+10). admin.py uses `html as html_module` — kept distinct from plain `import html` elsewhere | 2026-07-13 | 215db42 | [260713-jgi-security-b1a-html-escape-user-admin-text](./quick/260713-jgi-security-b1a-html-escape-user-admin-text/) |
 | 260721-msh | Новый вопрос регистрации «Аламни/айсекер» (`alumni_status`) — клавиатура Аламни/Айсекер/Ни то, ни другое, спрашивается после телефона, дефолт OFF, входит в пресет 🎉 Party. Колонки в основном и party-листе, строка в карточке модерации, CSV-label, +10 тестов. ⚠️ после деплоя нужна «♻️ Пересобрать таблицу» (колонка вставлена в середину шапки) | 2026-07-21 | dd1aca9 | [260721-msh-add-alumni-status-question](./quick/260721-msh-add-alumni-status-question/) |
 | 260721-fst | Party fork inline buttons renamed «Вечеринка с/без ночёвки» → «Гости с/без ночёвки» (`_party_fork_kb`, handlers/registration.py). callback_data tokens untouched | 2026-07-21 | d69abf4 | — (fast) |
+| 260724-c0x | Админ-UX: экран «⚙️ Настройки форума» разбит на 5 под-экранов по группам (`SETTINGS_GROUPS`, форма как `REG_CATEGORIES` — не реестр) через `settings_group:{token}`; убран инлайн-дамп ~40 полей (обрезка/повторы «не указано»); поля показывают флаг ✏️ задано / — не задано / по умолчанию, незаданные свёрнуты под «── не настроено ──». Все `settings_edit/photo/file/toggle` callback'и байт-в-байт неизменны. 336 тестов pass | 2026-07-24 | 8882eb6 | [260724-c0x-ux](./quick/260724-c0x-ux/) |
 
 ## Deferred Items
 
@@ -142,5 +143,5 @@ None yet.
 ## Session Continuity
 
 Last session: 2026-07-21T00:18:44.507Z
-Stopped at: Completed 05-06-PLAN.md (checkpoint deferred to end-of-phase UAT)
+Stopped at: Completed quick task 260724-c0x (admin settings screen regrouped into sub-screens)
 Resume file: None
