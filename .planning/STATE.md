@@ -3,15 +3,15 @@ gsd_state_version: 1.0
 milestone: v2
 milestone_name: Registry & Multichannel
 status: executing
-stopped_at: Completed 06-03-PLAN.md
-last_updated: "2026-07-24T13:17:13.394Z"
+stopped_at: Completed 06-04-PLAN.md
+last_updated: "2026-07-24T13:33:44.270Z"
 last_activity: 2026-07-24
 progress:
   total_phases: 1
   completed_phases: 0
   total_plans: 7
-  completed_plans: 3
-  percent: 43
+  completed_plans: 4
+  percent: 57
 ---
 
 # Project State
@@ -26,7 +26,7 @@ See: .planning/PROJECT.md (updated 2026-06-25)
 ## Current Position
 
 Phase: 06 (settings-schema-registry) — EXECUTING
-Plan: 3 of 7
+Plan: 4 of 7
 Status: Ready to execute
 Last activity: 2026-07-24
 
@@ -58,6 +58,7 @@ Last activity: 2026-07-24
 | Phase 05 P06 | 11min | 3 tasks | 3 files |
 | Phase 06 P01 | 12min | 3 tasks | 3 files |
 | Phase 06 P03 | 14min | 2 tasks | 4 files |
+| Phase 06 P04 | 11min | 2 tasks | 4 files |
 
 ## Accumulated Context
 
@@ -95,6 +96,9 @@ Recent decisions affecting current work:
 - [Phase ?]: [Phase 06] T-06-09 (06-03): consumer-level oracle equivalence proven at the call-site (get_setting_typed vs pending_reminder_interval/payment_deadline/source_options oracles), not just registry-internal parse tests
 - [Phase ?]: [Phase 06] (06-03): only payment_deadline migrated in services/scheduler.py -- nudge_scan_minutes/allowlist_refresh_minutes/incomplete_sync_hours/nudge_after_minutes stay on _int_or_default (not yet registry keys)
 - [Phase ?]: [Phase 06] (06-03): pending_reminder_enabled toggle left on old get_setting + _reminder_enabled path, deferred to 06-04 toggle wave
+- [Phase 06]: D-06 (06-04): REG_DEFAULTS derived from SETTINGS_SCHEMA via comprehension (type==toggle filter), name retained for admin.py consumers
+- [Phase 06]: T-06-14 (06-04): registration.py imports settings_schema.SETTINGS_SCHEMA at module top with zero cycle risk; confirmed via import smoke test
+- [Phase 06]: 06-04 deviation: plan's stated 44-key REG_DEFAULTS count corrected to source-verified 43 (handlers/registration.py:197-241)
 
 ### Roadmap Evolution
 
@@ -151,8 +155,8 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-07-24T13:17:13.378Z
-Stopped at: Completed 06-03-PLAN.md
+Last session: 2026-07-24T13:33:44.254Z
+Stopped at: Completed 06-04-PLAN.md
 Resume file: None
 
 ## Operator Next Steps
