@@ -8,6 +8,7 @@ import logging
 
 from config import config
 from database.db import get_pending_count, get_setting
+from settings_schema import get_setting_typed
 
 logger = logging.getLogger(__name__)
 
@@ -20,7 +21,12 @@ def _reminder_enabled(raw: str | None) -> bool:
 
 
 def _reminder_interval(raw: str | None) -> int:
-    """Positive int seconds; None/empty/invalid/<=0 -> DEFAULT_INTERVAL."""
+    """Positive int seconds; None/empty/invalid/<=0 -> DEFAULT_INTERVAL.
+
+    # REG-02: pending_reminder_loop no longer calls this directly (reads via
+    # get_setting_typed instead) — retained as the parse oracle for
+    # tests/test_reminders_phase2.py and tests/test_settings_consumers_phase6.py.
+    """
     try:
         value = int(raw)
     except (TypeError, ValueError):
@@ -34,7 +40,9 @@ async def pending_reminder_loop(bot):
     while True:
         interval = DEFAULT_INTERVAL
         try:
-            interval = _reminder_interval(await get_setting("pending_reminder_interval"))
+            # REG-02: read through the registry accessor (byte-identical to
+            # _reminder_interval, see tests/test_settings_consumers_phase6.py).
+            interval = await get_setting_typed("pending_reminder_interval")
             if _reminder_enabled(await get_setting("pending_reminder_enabled")):
                 count = await get_pending_count()
                 if count > 0:
