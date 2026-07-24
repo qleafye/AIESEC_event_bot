@@ -141,3 +141,10 @@ Gate sequence confirmed in git log for this plan:
 2. GREEN gate: `2c9dacd feat(06-04): register toggle+enum entries, derive REG_DEFAULTS, migrate reg_q read-sites` — confirmed passing (104/104 plan-scope tests, 382/382 full suite) after commit.
 
 No REFACTOR commit was needed — no code smell/duplication surfaced after GREEN.
+
+## Self-Check: PASSED
+
+- FOUND: settings_schema.py
+- FOUND: bba466c (test commit)
+- FOUND: 2c9dacd (feat commit)
+- FOUND: a56b2ea (docs/summary commit)
