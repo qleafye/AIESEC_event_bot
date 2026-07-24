@@ -3,15 +3,15 @@ gsd_state_version: 1.0
 milestone: v2
 milestone_name: Registry & Multichannel
 status: executing
-stopped_at: Completed 06-06-PLAN.md
-last_updated: "2026-07-24T14:11:19.717Z"
+stopped_at: Completed 06-07-PLAN.md (Phase 6 complete, 7/7 plans)
+last_updated: "2026-07-24T15:25:02.398Z"
 last_activity: 2026-07-24
 progress:
   total_phases: 1
-  completed_phases: 0
+  completed_phases: 1
   total_plans: 7
-  completed_plans: 6
-  percent: 86
+  completed_plans: 7
+  percent: 100
 ---
 
 # Project State
@@ -26,7 +26,7 @@ See: .planning/PROJECT.md (updated 2026-06-25)
 ## Current Position
 
 Phase: 06 (settings-schema-registry) — EXECUTING
-Plan: 6 of 7
+Plan: 7 of 7
 Status: Ready to execute
 Last activity: 2026-07-24
 
@@ -61,6 +61,7 @@ Last activity: 2026-07-24
 | Phase 06 P04 | 11min | 2 tasks | 4 files |
 | Phase 06 P05 | 11min | 2 tasks | 2 files |
 | Phase 06 P06 | 22min | 2 tasks | 4 files |
+| Phase 06 P07 | 60min | 2 tasks | 3 files |
 
 ## Accumulated Context
 
@@ -105,6 +106,8 @@ Recent decisions affecting current work:
 - [Phase ?]: [Phase 06] (06-05): render_settings_text's own registration_mode read + the generic multi-key toggle helpers (_toggle_module_setting/_toggle_approval_setting/_toggle_value_setting) intentionally left on the old get_setting(k) or default idiom -- outside this wave's explicit interfaces-list scope, deferred to a later wave if needed
 - [Phase 06]: BLOCKER-1/BLOCKER-2 (06-06): full_approval migrated into finalize_registration's _decide_status feed; _is_module_enabled helper body migrated to get_setting_typed, covering consent_enabled/payment_enabled at all 4 call sites in one change
 - [Phase 06]: Both RAW-read sites (registration_mode in process_full_name, party_approval in finalize_registration) migrated to get_setting_typed after proving branch-level equivalence (registry default matches the site's own None-handling), not left raw
+- [Phase ?]: [Phase 06]: 06-07 Decision 1 (orchestrator/user): closed the final 4 raw-idiom read-sites (render_settings_text registration_mode read + _toggle_approval_setting/_toggle_module_setting/_toggle_value_setting) via test-first RED/GREEN migration, closing REG-02 fully
+- [Phase ?]: [Phase 06]: 06-07 Decision 2 (orchestrator/user): deferred the live-bot smoke walk (06-SMOKE-CHECKLIST.md Section 3) to post-SumMeet, same deferred-UAT pattern as Phase 5 (05-03/05-04); automated regression net (397/397) is the pre-forum proof
 
 ### Roadmap Evolution
 
@@ -161,8 +164,8 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-07-24T14:11:19.689Z
-Stopped at: Completed 06-06-PLAN.md
+Last session: 2026-07-24T15:25:02.381Z
+Stopped at: Completed 06-07-PLAN.md (Phase 6 complete, 7/7 plans)
 Resume file: None
 
 ## Operator Next Steps
