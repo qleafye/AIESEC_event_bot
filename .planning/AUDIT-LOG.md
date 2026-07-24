@@ -100,10 +100,12 @@ _Findings собираются здесь. Severity: 🔴 critical / 🟠 high /
 |----------|-----------|--------|---------|
 | main-tab `_csv_safe` parity (registration.py active_sheet_row) | fixed·tested·committed | `8a9e889` | формула-инъекция на главной вкладке нейтрализована как в party |
 | negative-amount guard (`_parse_options`) | fixed·tested·committed | `8a9e889` | отрицательная цена → 0 |
-| receipt MIME real-check (payment.py) | pending | — | |
-| receipt upload size/rate limit | pending | — | |
-| consent re-verify at finalize | pending | — | |
-| date-range validators | pending | — | |
+| receipt MIME real-check (payment.py) | fixed·tested·committed | `db4830d` | MIME-allowlist (pdf) для документов; фото — Telegram гарантирует image |
+| receipt upload size/rate limit | fixed·tested·committed | `db4830d` | 10 MB cap + 3s per-user rate-guard (in-memory) |
+| consent re-verify at finalize | fixed·tested·committed | `1a84981` | non-blocking compliance-audit warning если consent-row отсутствует |
+| date-range validators | fixed·tested·committed | `1a84981` | `_validate_date_range` loose sanity bounds (birth/arrival) |
+
+**БЛОК 7 закрыт полностью** (все 6 LOW). csv_safe+neg-amount [`8a9e889`], receipt hardening [`db4830d`], consent+date [`1a84981`].
 
 **Блок 1 detail:** извлёк `_spawn` из `main.py` в `services/background.py` (`spawn`) —
 handlers не могли импортить из `main.py` (циклический `handlers→main`). Провёл ВСЕ
@@ -162,3 +164,39 @@ _(пусто)_
 Отчёты по фазам: `phases/0N-*/0N-VERIFICATION.md` · `0N-SECURITY.md` · `0N-REVIEW.md` (P4/P5 — свежий аудит в `*-AUDIT-*.md`, прежние файлы сохранены).
 
 **Вердикт: milestone функционально готов и безопасен (0 CRITICAL/HIGH по security). Ни одного блокера. 5 HIGH качества — все recoverable, чинятся вне аудита. Ничего не чинил молча (per инструкции).**
+
+---
+
+## Итоговый отчёт по ФИКСАМ (2026-07-24, ветка `fix/audit-findings`)
+
+**Все блоки 1–7 закрыты. Каждый finding: fixed + regression-tested + atomic commit. Ничего не запушено (per инструкции — жду разрешения).**
+
+### Что починено (все findings аудита)
+
+| Блок | Findings | Commits |
+|------|----------|---------|
+| 1 — systemic GC | MD-01, WR-02, HI-01, M-01, MEDIUM-02 (5 GC findings разом) | `d91b05a` |
+| 2 — деньги | P4 H-01 (receipt-reject atomic guard) | `cbc2bc7` |
+| 3 — subscription | HG-01, HG-02 (**user chose FIX**) | `3d50c25` |
+| 4 — оператор-опасные | ME-04 (filter fan-out), ME-05 (gate lockout) | `858b288`, `9453d32` |
+| 5 — оставшиеся HIGH | WR-01 (drain ordering), HIGH-01 (referrer preserve) | `7907f9c`, `382f21c` |
+| 6 — MEDIUM | ME-01/03 (tz+reconcile), ME-02 (**user chose 'sending'-guard**), WR-03/04, M-02, MD-02/03, MEDIUM-01 | `f757e64`, `d769e20`, `86ad557`, `0cc7686`, `f46702c`, `33e440f` |
+| 7 — LOW (**user chose "do the pack"**) | csv_safe parity, neg-amount clamp, receipt MIME/size/rate, consent re-verify, date-range | `8a9e889`, `db4830d`, `1a84981` |
+
+**Итог: 5/5 HIGH + 12/12 MEDIUM + 6/6 LOW = все findings закрыты.** 20 fix-коммитов + docs-коммиты. pytest: 293 → **327 passed** (0 fail); +34 регресс-теста.
+
+### Решения пользователя (не гадал — спросил)
+- **HG-01/HG-02 (subscription):** FIX (не выпил) — фича имеет живой broadcast-сегмент.
+- **ME-02 (broadcast re-fire):** Opt.2 'sending'-status-guard — без новой схемы БД; unsent tail forfeited by design.
+- **БЛОК 7 (LOW):** делать весь пакет.
+
+### Prod-совместимость
+Все изменения БД — additive (без новых таблиц/колонок; ON CONFLICT правки не трогают существующие ~590 записей). Fail-open логика (subscription, allowlist, pre-selection empty) сохранена — нигде не превратилась в fail-closed. Регресс-тесты на старую схему проходят.
+
+### Что осталось / пропущено
+- **Ничего из findings аудита не пропущено.** Все HIGH/MEDIUM/LOW закрыты.
+- Известные deferred-to-backlog (НЕ входили в scope этого прохода): P5 prior-review WR-02/WR-05/IN-01 (уже в backlog до аудита); LOW-02 (payment_options help omits track field), LOW-03/IN-01 (raw track codes в broadcast picker — info-level). Не трогал — вне списка блоков.
+- `receipt MIME real-check`: реализован как MIME-allowlist + size/rate (не байтовая проверка — бот файл не парсит, download бессмысленен).
+
+### Статус ветки
+`fix/audit-findings` (от `main` @ `3f31ea4`). **НЕ запушено.** Готово к ревью/пушу по твоей команде. Для чистого PR без `.planning/` коммитов — есть `/gsd-pr-branch`.
