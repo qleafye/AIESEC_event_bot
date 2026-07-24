@@ -1,5 +1,10 @@
 """Phase 1 registration pure-helper tests (QW-01 summary, QW-03 resume validation)."""
-from handlers.registration import _build_summary, _is_allowed_resume
+from handlers.registration import (
+    _build_summary,
+    _is_allowed_resume,
+    _resume_too_large,
+    _RESUME_MAX_BYTES,
+)
 
 
 # ── QW-01: summary builder ───────────────────────────────────────────────────
@@ -50,3 +55,25 @@ def test_resume_rejects_empty():
 
 def test_resume_rejects_none():
     assert _is_allowed_resume(None) is False
+
+
+# ── P0 audit T-dw1-01: resume size guard ─────────────────────────────────────
+
+def test_resume_size_none_passes():
+    assert _resume_too_large(None) is False
+
+
+def test_resume_size_zero_passes():
+    assert _resume_too_large(0) is False
+
+
+def test_resume_size_at_limit_passes():
+    assert _resume_too_large(_RESUME_MAX_BYTES) is False
+
+
+def test_resume_size_over_limit_rejected():
+    assert _resume_too_large(_RESUME_MAX_BYTES + 1) is True
+
+
+def test_resume_size_small_passes():
+    assert _resume_too_large(500) is False
