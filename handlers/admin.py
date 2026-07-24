@@ -2772,6 +2772,12 @@ async def rcpt_confirm(callback: types.CallbackQuery, state: FSMContext):
         await callback.answer("Чек уже обработан.")
         await _show_current_receipt_card(callback.message, state)
         return
+    # H-01: disable this card's buttons now that it's confirmed, so scrolling back and
+    # tapping ❌ Отклонить on it can't fire a stale reject (the db guard also blocks it).
+    try:
+        await callback.message.edit_reply_markup(reply_markup=None)
+    except Exception:
+        pass
     from services.scheduler import cancel_payment_reminders
     cancel_payment_reminders(uid)  # cancel BEFORE notifying — no reminder after paid
     try:
@@ -2824,7 +2830,17 @@ async def rcpt_reject_reason(message: types.Message, state: FSMContext):
     data = await state.get_data()
     uid = data.get("rcpt_reject_uid")
     if uid is not None:
-        await update_payment_status(uid, "not_paid")  # reset → user can re-upload
+        # H-01: guard the reset — a stale/already-confirmed card tapped ❌ must NOT flip a
+        # 'paid' user back to 'not_paid'. Only a row still in 'receipt_sent' is rejectable.
+        rows = await update_payment_status(uid, "not_paid", require_status="receipt_sent")
+        if rows == 0:
+            await state.set_state(None)
+            await message.answer(
+                "Чек уже обработан (оплата подтверждена или чек не в очереди) — отклонение пропущено.",
+                reply_markup=ReplyKeyboardRemove(),
+            )
+            await _show_current_receipt_card(message, state)
+            return
         reason_text = (message.text or "").strip()
         user_msg = "❌ Чек отклонён."
         if reason_text and reason_text != "-":
