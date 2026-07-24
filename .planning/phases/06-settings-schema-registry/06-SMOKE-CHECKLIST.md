@@ -1,6 +1,6 @@
 # Phase 6 Plan 7: Final Coverage + Smoke Checklist
 
-**Status:** Automated results recorded. Human smoke section below is UNCHECKED — pending live-bot verification.
+**Status:** Automated results recorded (397/397, including the closed flagged-boundary migration). Flagged-boundary CLOSED (§2). Live smoke (§3) DEFERRED to post-SumMeet per orchestrator/user decision — see §4.
 
 ## 1. Automated Regression Results (Task 1)
 
@@ -18,13 +18,17 @@ Result: **395 passed** in 122.32s (0 failed, 0 skipped).
 
 Both exit 0. No unrelated regression. This matches the state carried forward from 06-06 (395/395) — no drift introduced by this plan (no source files were modified by Task 1; it is a read-only aggregation/checklist task).
 
+**Post-checkpoint addendum (boundary closure, §2):** after the orchestrator/user decision to close the 4 flagged raw-idiom sites, two tests were added to `tests/test_settings_groups_c0x.py` (RED confirmed, then GREEN after migrating `handlers/admin.py`). Final full-suite result: **397 passed** in 146.64s (0 failed, 0 skipped). Import smoke (`python -c "import handlers.admin, main"`) clean.
+
 ## 2. Flagged-Boundary Coverage Sweep (06-05 → 06-06 → 06-07 carry-forward)
 
 06-05's Summary flagged an open question for this plan: does `render_settings_text`'s own `registration_mode` read, plus the generic multi-key toggle helpers `_toggle_module_setting` / `_toggle_approval_setting` / `_toggle_value_setting`, need migration, or are they correctly out of scope? 06-06's Summary restated this as 06-07's one remaining piece of REG-02 scope: "confirm no consumer anywhere still hand-rolls a `get_setting(...) or "<default>"` idiom for a key present in SETTINGS_SCHEMA."
 
 **Sweep performed:** grepped every `await get_setting(` call site (not `get_setting_typed`) across `handlers/admin.py`, `handlers/registration.py`, `handlers/payment.py`, `services/scheduler.py`, `services/reminders.py`, `keyboards/builders.py`, and cross-referenced each key against `settings_schema.SETTINGS_SCHEMA`.
 
-**Finding — genuine gap, NOT closed by this plan (scope decision deferred to orchestrator/user):**
+**UPDATE (orchestrator decision, same session): CLOSED.** The finding below was surfaced to the orchestrator/user as documented; the decision was to close all 4 sites now rather than defer. See "Resolution" at the end of this section for what was actually done.
+
+**Finding — the gap as originally surfaced:**
 
 Four read-sites in `handlers/admin.py` still use the raw `get_setting(key) or "<default>"` idiom for keys that ARE present in `SETTINGS_SCHEMA` (type `toggle`/`enum`, defaults already registered in the 06-04 wave):
 
@@ -45,6 +49,17 @@ Both 06-05 and 06-06 independently treated these as deliberately out-of-scope fo
 - REG-03 (admin-UI renders from registry) — fully met (06-01..06-05).
 
 No other gaps found in the sweep: every other raw `get_setting(...)` call site inspected (text/int/list/photo/file fields, `payment_options`, `consent_list`, `university_options`, `sheet_header_schema`, party per-track overrides, preselect_*, nudge_*, `pending_reminder_enabled`) reads a key that is either (a) not yet in `SETTINGS_SCHEMA` at all (out of this phase's scope by design — e.g. `preselect_enabled`, `nudge_enabled`, `pending_reminder_enabled` were never part of the D-09 toggle set), or (b) a raw text/list/photo/file field for which raw I/O is the intended pattern per D-07 (registry only adds typed parsing for `toggle`/`int`/`enum`/`date` types; text/list/photo/file consumers legitimately keep reading raw where no typed parse is needed).
+
+**Resolution (CLOSED, this session, post-checkpoint):** the orchestrator/user decided to close all 4 flagged sites now rather than defer. Executed test-first:
+
+1. RED — added `test_toggle_current_value_equiv_across_generic_helpers` (value-equivalence, PASS-first per the established 06-05 precedent) and `test_generic_toggle_helpers_wired_to_registry` (source-inspection wiring gate) to `tests/test_settings_groups_c0x.py`. Confirmed RED: the wiring test failed (none of the 4 sites called `get_setting_typed`) before the migration. Commit `a4710e0`.
+2. GREEN — migrated all 4 sites in `handlers/admin.py` to `get_setting_typed`, keeping every button/callback_data/ternary structure untouched (the 3 generic helpers still fan out to 12 toggle buttons unchanged):
+   - `render_settings_text`'s own `registration_mode` read (was `get_setting("registration_mode") or "short"`)
+   - `_toggle_approval_setting` (covers `full_approval`/`short_approval`/`party_approval`)
+   - `_toggle_module_setting` (covers `payment_enabled`/`consent_enabled`/`party_enabled`/`party_fork_question`)
+   - `_toggle_value_setting` (covers `reg_university_mode`/`edu_conditional`/`reg_show_progress`/`payment_reminders_enabled`)
+   Confirmed GREEN: `tests/test_settings_groups_c0x.py` 31/31, full suite 397/397, `python -c "import handlers.admin, main"` clean. Commit `602a611`.
+3. **REG-01/REG-02/REG-03 are now fully closed** — no consumer anywhere in the codebase still hand-rolls a `get_setting(...) or "<default>"` idiom for a key present in `SETTINGS_SCHEMA`. The Section 3.2 per-button smoke table below remains valid/unchanged — these are write-path pre-read-before-flip sites; the button text/callback_data contracts they feed were never touched.
 
 ## 3. Human Smoke Checklist (Task 2 — checkpoint:human-verify)
 
@@ -109,6 +124,10 @@ For EVERY button below: record the button TEXT before and after the deploy (must
 
 ## 4. Sign-off
 
-Result: **PENDING** — awaiting human execution of Section 3 on a real bot instance.
+Result: **Live smoke DEFERRED to post-SumMeet** (orchestrator/user decision, same pattern as Phase 5's deferred live UAT, per 05-06/checkpoint precedent). Execution is pre-forum (SumMeet 31 Jul–2 Aug 2026); the user will walk Section 3 (including the mandatory per-toggle-button comparison table) against the live bot after the forum, with real `bot_settings` data and real admin traffic.
 
-Type "approved" once all Section 3 boxes are checked PASS, or describe the specific drift/regression observed (which step, which field/button, expected vs. actual).
+**Automated regression net is green** (397/397 passing, including the 2 new tests that close the flagged-boundary migration) — this is the full extent of pre-forum automated proof available in an environment with no CI/linter (per CLAUDE.md).
+
+**Boundary resolution:** CLOSED — see §2 "Resolution". All 4 previously-flagged raw-idiom read-sites now resolve via `get_setting_typed`. REG-01/REG-02/REG-03 marked complete in REQUIREMENTS.md as of this plan's completion (06-07 is the final plan of Phase 6 — all 7 plans done).
+
+**Next action for the user:** after SumMeet, walk Section 3 of this checklist (§3.1–§3.8) against the live bot instance and record PASS/FAIL per row, with special attention to the mandatory per-toggle-button before/after comparison table in §3.2 (12 buttons feed through the 3 helpers migrated in this plan's final-coverage close). If any drift is found, file it as a fast-follow fix — the phase is otherwise closed and the automated proofs (parse-equivalence + render snapshot + coverage + consumer wiring, 4 layers) all hold.
