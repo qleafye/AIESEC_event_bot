@@ -862,6 +862,16 @@ async def get_distinct_filter_values(field: str) -> list[str]:
 async def count_and_list_filtered(filters: list[dict]) -> list[int]:
     """Materialize the matched telegram_id list; the count preview is len(...)."""
     where, params = _build_filter_clause(filters)
+    # ME-04: if the caller supplied filter(s) but every one was dropped (non-whitelisted field
+    # / malformed spec), `where` degenerates to empty and the query would fan out to ALL users.
+    # A filtered broadcast must NEVER silently blast the whole base — the "all users" broadcast
+    # has its own dedicated path. Fail safe to an empty audience.
+    if filters and not where:
+        logger.warning(
+            "count_and_list_filtered: %d filter(s) supplied but none produced a valid clause — "
+            "returning empty audience (refusing to fan out to all users)", len(filters)
+        )
+        return []
     async with aiosqlite.connect(config.DB_PATH) as db:
         async with db.execute(
             f"SELECT telegram_id FROM users{where}", params
