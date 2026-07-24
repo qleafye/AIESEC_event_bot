@@ -127,6 +127,9 @@ async def main():
 
     # Phase 3: persistent scheduler (SCHED-01/03) + warm the pre-selection allowlist (VERIF)
     await init_scheduler(bot)
+    # P0 audit T-dw1-02: inject the bot into sheets.py so an exhausted-retry append can alert
+    # admins; must be live before polling starts.
+    sheets_service.set_alert_bot(bot)
     _spawn(refresh_allowlist())
     logger.info("Scheduler + allowlist refresh started")
 
