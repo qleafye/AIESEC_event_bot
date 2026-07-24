@@ -571,7 +571,11 @@ async def mark_reg_started(telegram_id: int, username: str | None, participant_t
             VALUES (?, ?, ?, ?)
             ON CONFLICT(telegram_id) DO UPDATE SET
                 username=excluded.username,
-                started_at=excluded.started_at,
+                -- MD-03: do NOT reset started_at on re-entry. A mid-flow user re-sending /start
+                -- (or advancing a step) must keep the ORIGINAL start time — otherwise every
+                -- restart pushes started_at forward, the nudge cutoff is never crossed, and the
+                -- dropout nudge is deferred indefinitely. A genuinely new attempt after
+                -- completion is a fresh INSERT (the row was cleared), so it gets a fresh time.
                 participant_type=COALESCE(excluded.participant_type, reg_started.participant_type)
         ''', (telegram_id, username, started_at, participant_type))
         await db.commit()
@@ -594,9 +598,23 @@ async def get_reg_started_track(telegram_id: int) -> str | None:
             return row[0] if row else None
 
 
+# MD-02: a reg_started row is DELETEd on completion (finalize_registration), but that clear is
+# fail-soft — a DB hiccup can leave a finished user in reg_started, where the dropout nudge,
+# «Незавершённые» sheet, and broadcast segment would then wrongly treat them as a dropout.
+# Defensively exclude anyone who already holds a NON-rejected users row (genuinely registered).
+# Rejected users are KEPT: D-05a lets them fall through to re-register, so a reg_started row for
+# a rejected user is a real in-progress attempt.
+_INCOMPLETE_NOT_REGISTERED = (
+    "NOT EXISTS (SELECT 1 FROM users u WHERE u.telegram_id = reg_started.telegram_id "
+    "AND (u.status IS NULL OR u.status != 'rejected'))"
+)
+
+
 async def get_incomplete_user_ids() -> list[int]:
     async with aiosqlite.connect(config.DB_PATH) as db:
-        async with db.execute("SELECT telegram_id FROM reg_started") as cursor:
+        async with db.execute(
+            f"SELECT telegram_id FROM reg_started WHERE {_INCOMPLETE_NOT_REGISTERED}"
+        ) as cursor:
             return [row[0] for row in await cursor.fetchall()]
 
 
@@ -607,7 +625,8 @@ async def get_incomplete_rows() -> list[tuple]:
     question they were shown (last_step) are persisted."""
     async with aiosqlite.connect(config.DB_PATH) as db:
         async with db.execute(
-            "SELECT telegram_id, username, started_at, last_step FROM reg_started ORDER BY started_at"
+            "SELECT telegram_id, username, started_at, last_step FROM reg_started "
+            f"WHERE {_INCOMPLETE_NOT_REGISTERED} ORDER BY started_at"
         ) as cursor:
             return [tuple(row) for row in await cursor.fetchall()]
 
@@ -627,7 +646,8 @@ async def get_dropout_step_stats() -> list[tuple]:
     may be NULL for users who dropped before seeing any question."""
     async with aiosqlite.connect(config.DB_PATH) as db:
         async with db.execute(
-            "SELECT last_step, COUNT(*) FROM reg_started GROUP BY last_step ORDER BY COUNT(*) DESC"
+            "SELECT last_step, COUNT(*) FROM reg_started "
+            f"WHERE {_INCOMPLETE_NOT_REGISTERED} GROUP BY last_step ORDER BY COUNT(*) DESC"
         ) as cursor:
             return [tuple(row) for row in await cursor.fetchall()]
 
@@ -801,7 +821,8 @@ async def get_nudge_candidates(cutoff: str) -> list[int]:
     started_at is ISO ('%Y-%m-%d %H:%M:%S') so lexicographic `<` is chronological."""
     async with aiosqlite.connect(config.DB_PATH) as db:
         async with db.execute(
-            "SELECT telegram_id FROM reg_started WHERE started_at < ? AND nudged_at IS NULL",
+            "SELECT telegram_id FROM reg_started "
+            f"WHERE started_at < ? AND nudged_at IS NULL AND {_INCOMPLETE_NOT_REGISTERED}",
             (cutoff,),
         ) as cursor:
             return [row[0] for row in await cursor.fetchall()]
