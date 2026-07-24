@@ -2104,6 +2104,27 @@ async def _refresh_sheet_header() -> None:
     _spawn(ensure_sheet_header(headers))
 
 
+async def _refresh_party_sheet_header() -> None:
+    """MEDIUM-01: resync the party tab's physical header after a party-question toggle/preset so
+    party rows appended afterwards align to the same columns as row 1. party_sheet_row recomputes
+    party_sheet_headers() live per append, so a mid-event __party override otherwise shifts every
+    subsequent row against the once-written startup header — a silent column misalignment.
+    Mirrors _refresh_sheet_header for the main tab. GATED on party_enabled='on' (like the startup
+    _maybe_ensure_party_sheet_header) so toggling a party override while the track is OFF never
+    materializes the tab (D-15). Fail-soft + backgrounded."""
+    from handlers.registration import party_sheet_headers, PARTY_SHEET_TAB_DEFAULT
+    from services.sheets import ensure_named_sheet_header
+    try:
+        if (await get_setting("party_enabled") or "off") != "on":
+            return
+        tab = await get_setting("party_sheet_tab") or PARTY_SHEET_TAB_DEFAULT
+        headers = await party_sheet_headers()
+    except Exception as e:
+        logger.warning(f"_refresh_party_sheet_header: could not compute headers: {e}")
+        return
+    _spawn(ensure_named_sheet_header(tab, headers))
+
+
 @router.callback_query(F.data.startswith("reg_q_toggle:"))
 async def toggle_reg_question(callback: types.CallbackQuery):
     if callback.from_user.id not in config.ADMIN_IDS:
@@ -2169,6 +2190,7 @@ async def toggle_party_question(callback: types.CallbackQuery):
         await set_setting(party_key, new_val)
     label = _party_tri_state_label(new_val)
 
+    await _refresh_party_sheet_header()  # MEDIUM-01: keep the party tab header aligned with the toggle
     await callback.answer(f"{REG_LABELS.get(setting_key, setting_key)} (party): {label}", show_alert=True)
     text = await render_questions_text("party")
     await callback.message.edit_text(text, parse_mode="HTML", reply_markup=await build_questions_keyboard("party"))
@@ -2284,7 +2306,9 @@ async def preset_confirm(callback: types.CallbackQuery):
             text, parse_mode="HTML", reply_markup=await build_questions_keyboard("party")
         )
         # No _refresh_sheet_header(): the party preset changes no global setting, so the main
-        # sheet header cannot have drifted — the party tab owns its own header (plan 05-06).
+        # sheet header cannot have drifted. MEDIUM-01: but the party preset DOES change the
+        # __party question set, so resync the PARTY tab's own header (plan 05-06).
+        await _refresh_party_sheet_header()
         return
     await _apply_event_preset(key)
     await callback.answer(f"Пресет применён: {preset['label']}", show_alert=True)
