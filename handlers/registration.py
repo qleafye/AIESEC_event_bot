@@ -1356,10 +1356,18 @@ async def cmd_start(message: types.Message, state: FSMContext, bot: Bot, command
     except Exception as e:
         logger.warning(f"Subscription check skipped for {user_id}: {e}")
 
+    # ME-05: an already-registered (non-rejected) user must always reach their normal
+    # welcome/menu — the pre-selection gate below is an INTAKE filter for NEW registrants only.
+    # Fetch the user row up front so toggling pre-selection ON can never lock an existing
+    # approved delegate out of their own menu (e.g. they lost their @username, or the allowlist
+    # was rebuilt without them). A rejected user still falls through to re-register (D-05a).
+    user = await get_user(user_id)
+    _already_registered = bool(user) and (user.get("status") or "approved") != "rejected"
+
     # VERIF-01/02: pre-selection gate (D-13, default off → live flow untouched).
     # Fail-soft like the subscription check above: a glitch never crashes /start.
     try:
-        if (await get_setting("preselect_enabled") or "off") == "on":
+        if not _already_registered and (await get_setting("preselect_enabled") or "off") == "on":
             from services.allowlist import is_allowed, allowlist_size, _parse_manual_ids
             if allowlist_size() == 0:
                 # Owner-confirmed fail-open (Open Q2): admit everyone; the refresh job
@@ -1385,7 +1393,7 @@ async def cmd_start(message: types.Message, state: FSMContext, bot: Bot, command
     except Exception as e:
         logger.warning(f"Pre-selection gate skipped for {user_id}: {e}")
 
-    user = await get_user(user_id)
+    # user already fetched above (ME-05 gate bypass); do not re-query.
     args = command.args if command else None
     referrer_id = _extract_referrer_id(args, user_id)
     source_tag = _extract_source_tag(args)
