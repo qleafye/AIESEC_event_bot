@@ -7,3 +7,11 @@ logs/
 __pycache__/
 *.pyc
 .venv/
+.pytest_cache/
+
+# Служебные папки инструментов разработки (не относятся к коду бота)
+.planning/
+.claude/
+.agents/
+.cursor/
+.codex/
