@@ -3141,46 +3141,235 @@ async def rcpt_view(callback: types.CallbackQuery):
 
 
 # ── Phase 2: self-documenting settings command (D-16) ────────────────────────
+# Quick 260726-0bc: the guide used to dump raw bot_settings keys ("pending_notify_mode —
+# instant/batched"). Managers do not read keys — they read screens. It now renders as
+# grouped plain-Russian cards: what the setting does, what it is set to RIGHT NOW in words,
+# and which admin button changes it. `entries` carry the raw key only for the DB read.
 
-APPROVAL_SETTINGS_DOC = [
-    ("registration_mode", "Режим формы регистрации (full/short)", "short"),
-    ("short_approval", "Модерация короткой формы (auto/manual)", "auto"),
-    ("full_approval", "Модерация полной формы (auto/manual)", "manual"),
-    ("reject_text", "Текст пользователю при отклонении заявки", "(стандартный текст)"),
-    ("pending_notify_mode", "Уведомление о новой заявке: instant/batched", "batched"),
-    ("pending_reminder_enabled", "Периодическая напоминалка о заявках (on/off)", "on"),
-    ("pending_reminder_interval", "Интервал напоминалки, сек", "1800"),
-    ("reg_q_resume", "Запрос резюме в полной форме (on/off)", "off"),
-    # Phase 3 — dropout nudge (SCHED-03)
-    ("nudge_enabled", "Авто-напоминание о дорегистрации (on/off)", "on"),
-    ("nudge_after_minutes", "Через сколько минут бездействия слать напоминание", "120"),
-    ("nudge_scan_minutes", "Период сканирования дропаутов, мин (вступает в силу после перезапуска)", "15"),
-    ("nudge_text", "Текст напоминания о дорегистрации", "(стандартный)"),
-    # Phase 3 — pre-selection gate (VERIF-01/02)
-    ("preselect_enabled", "Предотбор по Google-таблице (on/off)", "off"),
-    ("preselect_tab", "Название вкладки со списком отобранных", "Отобранные"),
-    ("preselect_link", "Ссылка для не прошедших отбор", "(нет)"),
-    ("preselect_fail_text", "Текст не прошедшим отбор", "Отбор не пройден."),
-    ("preselect_no_username_text", "Текст пользователю без @username", "(стандартный)"),
-    ("preselect_manual_ids", "Ручной allowlist по telegram_id (CSV)", "(пусто)"),
-    ("allowlist_refresh_minutes", "Период обновления allowlist, мин", "60"),
+_GUIDE_ONOFF = {"on": "✅ включено", "off": "❌ выключено"}
+
+
+def _guide_text_value(raw):
+    """Human 'current value' for free-text settings — managers care whether a custom text is
+    set at all, not about its full body (which can be several screens long)."""
+    if raw is None or not str(raw).strip():
+        return None
+    text = " ".join(str(raw).split())
+    return f"свой текст («{text[:60]}…»)" if len(text) > 60 else f"свой текст («{text}»)"
+
+
+# Each entry: key + label + what it does + how to read its value + where to change it.
+# `values` maps a stored value to a human phrase; missing/unknown values fall through to
+# `default` (shown with the «по умолчанию» marker) or to _guide_text_value for text settings.
+SETTINGS_GUIDE_SECTIONS = [
+    (
+        "📝 Приём заявок",
+        "Какая анкета показывается и нужно ли одобрение менеджера.",
+        [
+            {
+                "key": "registration_mode",
+                "label": "Форма регистрации",
+                "what": "Краткая — бот спрашивает только имя. Полная — вся анкета.",
+                "values": {"short": "⚡ краткая (только имя)", "full": "📋 полная анкета"},
+                "default": "short",
+                "where": "⚙️ Настройки → «📝 Регистрация»",
+            },
+            {
+                "key": "short_approval",
+                "label": "Одобрение для краткой формы",
+                "what": "Авто — участник сразу попадает в меню. Вручную — ждёт менеджера.",
+                "values": {"auto": "автоматически", "manual": "вручную (через «📋 Заявки»)"},
+                "default": "auto",
+                "where": "⚙️ Настройки → «✅ Модерация (краткая форма)»",
+            },
+            {
+                "key": "full_approval",
+                "label": "Одобрение для полной формы",
+                "what": "Авто — участник сразу попадает в меню. Вручную — ждёт менеджера.",
+                "values": {"auto": "автоматически", "manual": "вручную (через «📋 Заявки»)"},
+                "default": "manual",
+                "where": "⚙️ Настройки → «✅ Модерация (полная форма)»",
+            },
+            {
+                "key": "reg_q_resume",
+                "label": "Просить резюме",
+                "what": "Участник прикладывает PDF/DOCX или пишет резюме текстом.",
+                "values": _GUIDE_ONOFF,
+                "default": "off",
+                "where": "⚙️ Настройки → «📋 Вопросы регистрации» → «📄 Резюме»",
+            },
+            {
+                "key": "reject_text",
+                "label": "Текст при отклонении заявки",
+                "what": "Что участник прочитает, если менеджер нажал «❌ Отклонить».",
+                "default": "стандартный «К сожалению, твоя заявка отклонена»",
+                "where": "⚙️ Настройки → «📝 Регистрация» → «🚫 При отклонении»",
+            },
+        ],
+    ),
+    (
+        "🔔 Уведомления менеджерам о заявках",
+        "Как часто бот дёргает вас, когда приходят новые заявки.",
+        [
+            {
+                "key": "pending_notify_mode",
+                "label": "Когда сообщать о новой заявке",
+                "what": "Сразу — сообщение на каждую заявку. Пачкой — одна сводка «Заявок: N».",
+                "values": {"instant": "сразу по каждой заявке", "batched": "пачкой, сводкой"},
+                "default": "batched",
+                "where": "⚙️ Настройки → «🔔 Уведомление о заявке»",
+            },
+            {
+                "key": "pending_reminder_enabled",
+                "label": "Напоминать о нерассмотренных заявках",
+                "what": "Бот периодически пишет, сколько заявок ждёт решения.",
+                "values": _GUIDE_ONOFF,
+                "default": "on",
+                "where": "просите разработчика — кнопки нет",
+            },
+            {
+                "key": "pending_reminder_interval",
+                "label": "Как часто напоминать",
+                "what": "Интервал сводки. 900 = 15 мин, 1800 = 30 мин, 3600 = 1 час.",
+                "default": "1800 (30 минут)",
+                "unit": " сек.",
+                "where": "⚙️ Настройки → «📝 Регистрация» → «🕒 Тайминг батчей заявок»",
+            },
+        ],
+    ),
+    (
+        "⏰ Напоминания тем, кто бросил анкету",
+        "Человек начал регистрацию и не дошёл до конца — бот сам его вернёт.",
+        [
+            {
+                "key": "nudge_enabled",
+                "label": "Догонять брошенные анкеты",
+                "what": "Одно напоминание на человека, повторно бот не пишет.",
+                "values": _GUIDE_ONOFF,
+                "default": "on",
+                "where": "просите разработчика — кнопки нет",
+            },
+            {
+                "key": "nudge_after_minutes",
+                "label": "Через сколько напомнить",
+                "what": "Сколько минут молчания участника ждать до напоминания.",
+                "default": "120 (2 часа)",
+                "unit": " мин.",
+                "where": "меняет разработчик по вашей просьбе",
+            },
+            {
+                "key": "nudge_text",
+                "label": "Текст напоминания",
+                "what": "Что получит человек, бросивший анкету.",
+                "default": "стандартный текст",
+                "where": "меняет разработчик по вашей просьбе",
+            },
+        ],
+    ),
+    (
+        "🎯 Предотбор по Google-таблице",
+        "Пускать в бота только тех, кто уже отобран вручную (список @username в таблице). "
+        "Если таблица недоступна — бот пускает всех и пишет админу, регистрация не встаёт.",
+        [
+            {
+                "key": "preselect_enabled",
+                "label": "Предотбор",
+                "what": "Проверять @username по вкладке с отобранными на входе.",
+                "values": _GUIDE_ONOFF,
+                "default": "off",
+                "where": "просите разработчика — кнопки нет",
+            },
+            {
+                "key": "preselect_tab",
+                "label": "Вкладка со списком отобранных",
+                "what": "Имя вкладки в вашей Google-таблице, где лежат @username.",
+                "default": "Отобранные",
+                "where": "меняет разработчик по вашей просьбе",
+            },
+            {
+                "key": "preselect_fail_text",
+                "label": "Текст не прошедшим отбор",
+                "what": "Что увидит человек, которого нет в списке.",
+                "default": "«Отбор не пройден.»",
+                "where": "меняет разработчик по вашей просьбе",
+            },
+            {
+                "key": "preselect_link",
+                "label": "Ссылка не прошедшим отбор",
+                "what": "Куда отправить человека, если он не в списке (канал, сайт).",
+                "default": "нет",
+                "where": "меняет разработчик по вашей просьбе",
+            },
+        ],
+    ),
 ]
 
+# Every key the guide needs to read from bot_settings (single source for the DB fetch).
+SETTINGS_GUIDE_KEYS = [
+    entry["key"] for _, __, entries in SETTINGS_GUIDE_SECTIONS for entry in entries
+]
 
-def _render_settings_guide(rows: list, current: dict) -> str:
-    out = ["⚙️ <b>Настройки модерации</b>", ""]
-    for key, desc, default in rows:
-        val = current.get(key)
-        shown = val if val is not None else f"{default} (по умолчанию)"
-        out.append(f"<b>{key}</b> — {html_module.escape(desc)}\nТекущее: {html_module.escape(str(shown))}")
-        out.append("")
-    return "\n".join(out).rstrip()
+_GUIDE_CHUNK_LIMIT = 3500  # Telegram hard limit is 4096; leave room for HTML tags
+
+
+def _render_guide_entry(entry: dict, raw) -> str:
+    """One settings card: label, what it does, what it is set to now, where to change it."""
+    values = entry.get("values") or {}
+    if raw is not None and str(raw).strip():
+        stored = str(raw).strip()
+        if values:
+            shown = values.get(stored, stored)
+        else:
+            unit = entry.get("unit")
+            shown = f"{stored}{unit}" if unit and stored.isdigit() else _guide_text_value(raw)
+    else:
+        # Unset key → show what the bot actually does today, in the same human wording.
+        default = entry["default"]
+        shown = f"{values.get(default, default)} — по умолчанию"
+
+    return (
+        f"<b>{html_module.escape(entry['label'])}</b>\n"
+        f"{html_module.escape(entry['what'])}\n"
+        f"Сейчас: <b>{html_module.escape(str(shown))}</b>\n"
+        f"Где менять: {html_module.escape(entry['where'])}"
+    )
+
+
+def _render_settings_guide(sections: list, current: dict) -> list[str]:
+    """Render the guide as a list of Telegram-sized messages (one or more sections each)."""
+    blocks = ["📖 <b>Справка: что где настраивается</b>"]
+    for title, subtitle, entries in sections:
+        block = [f"<b>{html_module.escape(title)}</b>\n{html_module.escape(subtitle)}"]
+        block += [_render_guide_entry(e, current.get(e["key"])) for e in entries]
+        blocks.append("\n\n".join(block).rstrip())
+    blocks.append(
+        "Остальное — кнопками в ⚙️ Настройки форума: тексты, даты, фото, вопросы анкеты, "
+        "оплата, согласия, Party.\nПодробный гайд — файл ADMIN_GUIDE.md, короткая "
+        "версия — ADMIN_CHEATSHEET.md."
+    )
+
+    messages, buf = [], ""
+    for block in blocks:
+        candidate = f"{buf}\n\n{block}" if buf else block
+        if len(candidate) > _GUIDE_CHUNK_LIMIT and buf:
+            messages.append(buf)
+            buf = block
+        else:
+            buf = candidate
+    if buf:
+        messages.append(buf)
+    return messages
+
+
+async def _send_settings_guide(target: types.Message):
+    current = {key: await get_setting(key) for key in SETTINGS_GUIDE_KEYS}
+    for chunk in _render_settings_guide(SETTINGS_GUIDE_SECTIONS, current):
+        await target.answer(chunk, parse_mode="HTML")
 
 
 @router.message(Command("settings_guide"), is_admin)
 async def cmd_settings_guide(message: types.Message):
-    current = {key: await get_setting(key) for key, _, _ in APPROVAL_SETTINGS_DOC}
-    await message.answer(_render_settings_guide(APPROVAL_SETTINGS_DOC, current), parse_mode="HTML")
+    await _send_settings_guide(message)
 
 
 @router.callback_query(F.data == "admin_settings_guide")
@@ -3188,8 +3377,5 @@ async def show_admin_settings_guide(callback: types.CallbackQuery):
     if callback.from_user.id not in config.ADMIN_IDS:
         await callback.answer("Недостаточно прав", show_alert=True)
         return
-    current = {key: await get_setting(key) for key, _, _ in APPROVAL_SETTINGS_DOC}
-    await callback.message.answer(
-        _render_settings_guide(APPROVAL_SETTINGS_DOC, current), parse_mode="HTML"
-    )
+    await _send_settings_guide(callback.message)
     await callback.answer()
