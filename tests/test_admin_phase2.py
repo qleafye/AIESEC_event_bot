@@ -10,7 +10,8 @@ from handlers.admin import (
     _parse_appr,
     _render_application_card,
     _render_settings_guide,
-    APPROVAL_SETTINGS_DOC,
+    SETTINGS_GUIDE_SECTIONS,
+    SETTINGS_GUIDE_KEYS,
 )
 
 
@@ -47,13 +48,27 @@ def test_card_shows_resume_text():
     assert "мой богатый опыт" in out
 
 
-def test_settings_guide_lists_keys_and_defaults():
-    current = {key: None for key, _, _ in APPROVAL_SETTINGS_DOC}
+def test_settings_guide_speaks_russian_not_raw_keys():
+    """Quick 260726-0bc: the guide is read by DXP managers — it must show human labels and
+    the CURRENT value in words, never raw bot_settings keys."""
+    current = {key: None for key in SETTINGS_GUIDE_KEYS}
     current["full_approval"] = "manual"
-    out = _render_settings_guide(APPROVAL_SETTINGS_DOC, current)
-    assert "pending_notify_mode" in out
-    assert "full_approval" in out
-    assert "(по умолчанию)" in out  # at least one unset key shows its default
+    current["pending_notify_mode"] = "instant"
+    chunks = _render_settings_guide(SETTINGS_GUIDE_SECTIONS, current)
+    out = "\n".join(chunks)
+
+    assert "Одобрение для полной формы" in out
+    assert "вручную (через «📋 Заявки»)" in out       # resolved value, not "manual"
+    assert "сразу по каждой заявке" in out            # resolved value, not "instant"
+    assert "по умолчанию" in out                      # unset keys show their default
+    for raw_key in ("pending_notify_mode", "full_approval", "preselect_tab"):
+        assert raw_key not in out
+
+
+def test_settings_guide_chunks_fit_telegram_limit():
+    current = {key: None for key in SETTINGS_GUIDE_KEYS}
+    for chunk in _render_settings_guide(SETTINGS_GUIDE_SECTIONS, current):
+        assert len(chunk) <= 4096
 
 
 # ── WR-01: mass-approve welcome drain must run even if the confirm edit throws ─
