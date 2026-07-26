@@ -353,16 +353,19 @@ async def sync_incomplete_sheet_job():
     try:
         from database.db import get_incomplete_rows
         from services.sheets import sync_named_worksheet
-        from handlers.registration import dropout_step_label
+        from handlers.registration import incomplete_sheet_headers, incomplete_sheet_row
         rows = await get_incomplete_rows()
-        # WR-01: get_incomplete_rows returns 4-tuples (tid, username, started_at, last_step).
-        # Match the admin-triggered export: 4 headers + human-readable step label (not the raw
-        # internal step_key). Without this the 2h auto-sync overwrote the labeled manual export
-        # with a narrower, unlabeled sheet each cycle.
-        headers = ["ID Telegram", "Username", "Начал регистрацию", "Остановился на"]
+        # WR-01: get_incomplete_rows returns 5-tuples (tid, username, started_at, last_step,
+        # partial_data). Quick k4y: both this auto-sync and the admin-triggered export now
+        # build headers/rows through the SAME shared helpers (incomplete_sheet_headers /
+        # incomplete_sheet_row), so they can no longer drift — before this, the 2h auto-sync
+        # overwrote the wider manual export with a narrower, unlabeled sheet each cycle. When
+        # adding columns to the «Незавершённые» tab, edit only the helpers in
+        # handlers/registration.py, not this job.
+        headers = await incomplete_sheet_headers()
         sheet_rows = [
-            (tid, uname, started, dropout_step_label(step))
-            for tid, uname, started, step in rows
+            incomplete_sheet_row(tid, uname, started, step, partial, headers)
+            for tid, uname, started, step, partial in rows
         ]
         await sync_named_worksheet("Незавершённые", headers, sheet_rows)
     except Exception as e:
