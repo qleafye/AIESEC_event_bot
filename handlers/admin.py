@@ -57,7 +57,7 @@ from services.allowlist import refresh_allowlist, allowlist_size
 from services.background import spawn as _spawn
 from handlers.states import Broadcast, EditSetting, Approval, ReceiptReview
 from keyboards.builders import get_cancel_kb, MENU_BUTTONS, get_main_menu_kb
-from handlers.registration import REG_FLOW, REG_DEFAULTS, REG_LABELS, REG_PRESETS, REG_CATEGORIES, SHEET_HEADERS, STATUS_LABELS, _build_sheet_row, active_sheet_headers, set_sheet_schema, _sheet_value_map, approve_user, dropout_step_label, _apply_party_preset
+from handlers.registration import REG_FLOW, REG_DEFAULTS, REG_LABELS, REG_PRESETS, REG_CATEGORIES, SHEET_HEADERS, STATUS_LABELS, _build_sheet_row, active_sheet_headers, set_sheet_schema, _sheet_value_map, approve_user, dropout_step_label, _apply_party_preset, incomplete_sheet_headers, incomplete_sheet_row
 
 router = Router()
 logger = logging.getLogger(__name__)
@@ -1295,11 +1295,15 @@ async def export_incomplete(callback: types.CallbackQuery):
         await callback.answer("Недостаточно прав", show_alert=True)
         return
     await callback.answer("📝 Выгружаю…")
-    rows = await get_incomplete_rows()  # (id, username, started_at, last_step)
-    headers = ["ID Telegram", "Username", "Начал регистрацию", "Остановился на"]
+    rows = await get_incomplete_rows()  # (id, username, started_at, last_step, partial_data)
+    # Quick k4y: headers computed ONCE (Google Sheets quota), rows projected via the shared
+    # helper — services/scheduler.py:sync_incomplete_sheet_job MUST build identical
+    # headers/rows via the same helpers (WR-01 parity), otherwise the 2h auto-sync silently
+    # narrows the tab back down.
+    headers = await incomplete_sheet_headers()
     sheet_rows = [
-        (tid, username, started_at, dropout_step_label(last_step))
-        for tid, username, started_at, last_step in rows
+        incomplete_sheet_row(tid, username, started_at, last_step, partial_data, headers)
+        for tid, username, started_at, last_step, partial_data in rows
     ]
     written = await sync_named_worksheet("Незавершённые", headers, sheet_rows)
 
