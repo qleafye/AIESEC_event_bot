@@ -501,17 +501,22 @@ async def _payment_price_block() -> str:
 
 
 async def _ask_step(step_key: str, message: types.Message, state: FSMContext, step: int, total: int):
-    # Dropout analytics: stamp the question about to be shown. message.chat.id == the user's
-    # id in private chats (holds for both Message and callback.message). Fail-soft.
-    try:
-        await set_reg_step(message.chat.id, step_key)
-    except Exception as e:
-        logger.error(f"set_reg_step failed for {message.chat.id} @ {step_key}: {e}")
-    p = await _progress(step, total)
     # Phase 5 (D-05): resolve the track once, same as _get_enabled_steps, and pass it to
     # every _prompt call below so party-track wording overrides resolve correctly.
     data = await state.get_data()
     participant_type = data.get("participant_type") or "full"
+    # Dropout analytics + quick k4y: stamp the question about to be shown AND snapshot the
+    # already-answered fields (FSM data minus internal `_`-prefixed bookkeeping keys) so the
+    # «Незавершённые» sheet tab can show what the delegate has filled in so far. message.chat.id
+    # == the user's id in private chats (holds for both Message and callback.message). Fail-soft:
+    # any serialization error is logged and never blocks the question from being asked.
+    try:
+        snapshot = {k: v for k, v in data.items() if not k.startswith("_")}
+        partial_json = json.dumps(snapshot, ensure_ascii=False, default=str)
+        await set_reg_step(message.chat.id, step_key, partial_json)
+    except Exception as e:
+        logger.error(f"set_reg_step failed for {message.chat.id} @ {step_key}: {e}")
+    p = await _progress(step, total)
     if step_key == "age":
         await message.answer(f"{p}{await _prompt('age', 'Напиши свой возраст числом:', participant_type)}", reply_markup=get_cancel_kb())
         await state.set_state(Registration.age)
@@ -1030,6 +1035,45 @@ async def active_sheet_row(data: dict) -> list:
     Neutralizes only STRING cells starting with =,+,-,@,\\t,\\r (ints/None pass through)."""
     headers = await get_sheet_schema()
     values = _sheet_value_map(data)
+    return [_csv_safe(values.get(h, "-")) for h in headers]
+
+
+# Quick k4y: base identity/dropout columns for the «Незавершённые» tab, plus the set of
+# system columns (from SHEET_COLUMNS) that make no sense for a not-yet-registered user
+# (no registration date/status/referral details yet) and must be excluded when reusing
+# active_sheet_headers().
+INCOMPLETE_BASE_HEADERS = ["ID Telegram", "Username", "Начал регистрацию", "Остановился на"]
+_INCOMPLETE_EXCLUDED_HEADERS = {"ID Telegram", "Username", "Дата регистрации", "Статус", "Детали"}
+
+
+async def incomplete_sheet_headers() -> list[str]:
+    """Headers for the «Незавершённые» tab: base dropout columns + ФИО + every currently
+    enabled question column. Width follows the active preset, same as the main sheet
+    (active_sheet_headers) — reuses it instead of duplicating the column list. Headers are
+    computed ONCE per export/sync call, not per row (Google Sheets quota)."""
+    active = await active_sheet_headers()
+    rest = [h for h in active if h not in _INCOMPLETE_EXCLUDED_HEADERS]
+    return INCOMPLETE_BASE_HEADERS + rest
+
+
+def incomplete_sheet_row(
+    telegram_id, username, started_at, last_step, partial_json, headers: list[str]
+) -> list:
+    """Row for the «Незавершённые» tab, projected onto `headers` (from
+    incomplete_sheet_headers). Synchronous — every gate is already resolved in `headers`.
+    `partial_json` is the FSM snapshot persisted by _ask_step; missing/None/malformed JSON
+    degrades to an empty snapshot so every question cell renders "-" instead of raising."""
+    try:
+        parsed = json.loads(partial_json) if partial_json else {}
+        if not isinstance(parsed, dict):
+            parsed = {}
+    except Exception:
+        parsed = {}
+    values = _sheet_value_map(parsed)
+    values["ID Telegram"] = telegram_id
+    values["Username"] = username or "-"
+    values["Начал регистрацию"] = started_at or "-"
+    values["Остановился на"] = dropout_step_label(last_step)
     return [_csv_safe(values.get(h, "-")) for h in headers]
 
 

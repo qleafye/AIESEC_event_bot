@@ -78,8 +78,11 @@ def test_migration_is_idempotent(tmp_path):
 
 # ── Task 2: handlers/registration.py projection helpers ─────────────────────
 
-def test_incomplete_sheet_headers_shape():
+def test_incomplete_sheet_headers_shape(tmp_path):
+    _use_tmp(tmp_path)
+
     async def go():
+        await db.init_db()
         from handlers.registration import incomplete_sheet_headers
 
         headers = await incomplete_sheet_headers()
@@ -93,8 +96,11 @@ def test_incomplete_sheet_headers_shape():
     asyncio.run(go())
 
 
-def test_incomplete_sheet_row_projects_answered_fields():
+def test_incomplete_sheet_row_projects_answered_fields(tmp_path):
+    _use_tmp(tmp_path)
+
     async def go():
+        await db.init_db()
         from handlers.registration import incomplete_sheet_headers, incomplete_sheet_row
 
         headers = await incomplete_sheet_headers()
@@ -111,25 +117,34 @@ def test_incomplete_sheet_row_projects_answered_fields():
     asyncio.run(go())
 
 
-def test_incomplete_sheet_row_unanswered_fields_are_dash():
+def test_incomplete_sheet_row_unanswered_fields_are_dash(tmp_path):
+    _use_tmp(tmp_path)
+
     async def go():
+        await db.init_db()
         from handlers.registration import incomplete_sheet_headers, incomplete_sheet_row
 
         headers = await incomplete_sheet_headers()
         partial_json = json.dumps({"full_name": "Иванов И.И."}, ensure_ascii=False)
         row = incomplete_sheet_row(1, "vasya", "2026-07-01 10:00:00", "city", partial_json, headers)
         values = dict(zip(headers, row))
-        # any header beyond the base 4 + ФИО that was not answered must be "-"
+        # any header beyond the base 4 + ФИО that was not answered must be the unanswered
+        # placeholder — "-" itself starts with the CSV-injection prefix "-" so _csv_safe (same
+        # neutralizer active_sheet_row uses) renders it as "'-" (parity, T-05-06-01). "Работает"
+        # is a special yes/no column with no "-" default, so it is excluded here.
         for h in headers[4:]:
-            if h == "ФИО":
+            if h in ("ФИО", "Работает"):
                 continue
-            assert values[h] == "-"
+            assert values[h] == "'-"
 
     asyncio.run(go())
 
 
-def test_incomplete_sheet_row_neutralizes_formula_injection():
+def test_incomplete_sheet_row_neutralizes_formula_injection(tmp_path):
+    _use_tmp(tmp_path)
+
     async def go():
+        await db.init_db()
         from handlers.registration import incomplete_sheet_headers, incomplete_sheet_row
 
         headers = await incomplete_sheet_headers()
@@ -141,20 +156,24 @@ def test_incomplete_sheet_row_neutralizes_formula_injection():
     asyncio.run(go())
 
 
-def test_incomplete_sheet_row_handles_none_and_broken_json():
+def test_incomplete_sheet_row_handles_none_and_broken_json(tmp_path):
+    _use_tmp(tmp_path)
+
     async def go():
+        await db.init_db()
         from handlers.registration import incomplete_sheet_headers, incomplete_sheet_row
 
         headers = await incomplete_sheet_headers()
-        # None partial_json
+        # None partial_json — unanswered default "-" is neutralized to "'-" by _csv_safe
+        # (same as active_sheet_row, "-" is a formula-injection prefix).
         row = incomplete_sheet_row(1, "vasya", "2026-07-01 10:00:00", "city", None, headers)
         assert row  # no exception
         values = dict(zip(headers, row))
-        assert values["ФИО"] == "-"
+        assert values["ФИО"] == "'-"
 
         # broken JSON
         row2 = incomplete_sheet_row(1, "vasya", "2026-07-01 10:00:00", "city", "not json", headers)
         values2 = dict(zip(headers, row2))
-        assert values2["ФИО"] == "-"
+        assert values2["ФИО"] == "'-"
 
     asyncio.run(go())
