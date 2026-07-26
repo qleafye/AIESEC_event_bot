@@ -126,6 +126,11 @@ async def init_db():
         # Dropout analytics: last question shown before the user abandoned (step_key). NULL
         # for rows created before this column existed / before the user saw any question.
         await _ensure_column(db, "reg_started", "last_step", "TEXT")
+        # Quick k4y: JSON snapshot of already-answered registration fields (FSM data at the
+        # moment of the last question). NULL for rows created before this column existed —
+        # no backfill possible, those rows render as "-" on the «Незавершённые» tab. Additive,
+        # idempotent — safe against ~590 live records.
+        await _ensure_column(db, "reg_started", "partial_data", "TEXT")
 
         # Phase 3 (SCHED-01): scheduled-broadcast payload store. APScheduler owns the
         # trigger (data/jobs.sqlite); this row holds the message/filter payload keyed by id.
@@ -620,23 +625,28 @@ async def get_incomplete_user_ids() -> list[int]:
 
 async def get_incomplete_rows() -> list[tuple]:
     """Full dropout rows for the «Незавершённые» sheet tab: (telegram_id, username,
-    started_at, last_step). These users hit /start but never finished — their partial
-    answers live only in the in-memory FSM, so only identity + start time + the last
-    question they were shown (last_step) are persisted."""
+    started_at, last_step, partial_data). These users hit /start but never finished.
+    Quick k4y: partial_data (JSON snapshot of already-answered fields) is now persisted
+    alongside last_step — it is NULL for rows created before that column existed."""
     async with aiosqlite.connect(config.DB_PATH) as db:
         async with db.execute(
-            "SELECT telegram_id, username, started_at, last_step FROM reg_started "
+            "SELECT telegram_id, username, started_at, last_step, partial_data FROM reg_started "
             f"WHERE {_INCOMPLETE_NOT_REGISTERED} ORDER BY started_at"
         ) as cursor:
             return [tuple(row) for row in await cursor.fetchall()]
 
 
-async def set_reg_step(telegram_id: int, step_key: str):
-    """Stamp the question currently shown to a mid-registration user (dropout analytics).
-    No-op if the reg_started row is gone (finished/cleared). Fail-soft at the call site."""
+async def set_reg_step(telegram_id: int, step_key: str, partial_json: str | None = None):
+    """Stamp the question currently shown to a mid-registration user (dropout analytics),
+    and optionally persist a JSON snapshot of already-answered fields (quick k4y). No-op
+    if the reg_started row is gone (finished/cleared). Fail-soft at the call site.
+    COALESCE keeps any previously-stored partial_data intact when called without a
+    snapshot (e.g. the very first question) — it must never be reset to NULL."""
     async with aiosqlite.connect(config.DB_PATH) as db:
         await db.execute(
-            "UPDATE reg_started SET last_step = ? WHERE telegram_id = ?", (step_key, telegram_id)
+            "UPDATE reg_started SET last_step = ?, partial_data = COALESCE(?, partial_data) "
+            "WHERE telegram_id = ?",
+            (step_key, partial_json, telegram_id),
         )
         await db.commit()
 
