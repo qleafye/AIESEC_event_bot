@@ -384,11 +384,27 @@ async def _is_step_enabled_for_track(setting_key: str, participant_type: str | N
     explicit on/off wins, regardless of what the global value is. The `is not None` check
     is load-bearing: collapsing None into a boolean early would make "inherit"
     indistinguishable from "off" and would break the admin tri-state cycle (plan 05-03).
-    Full track (or None) never reads the __party key — byte-identical to _is_step_enabled."""
+    Full track (or None) never reads the __party key — byte-identical to _is_step_enabled.
+
+    Phase 7 (SHORT-01/SHORT-04): the short track reads `{setting_key}__short` the same
+    tri-state way (`is not None`, never truthiness — same load-bearing reason as above, so
+    the admin tri-state cycle for `__short` keys works identically to `__party`). It
+    deliberately does NOT fall through to the global `_is_step_enabled` on key-absence: party
+    is a curated subset of the ALREADY-live full form, so "inherit the global set" is the
+    right default there. Short exists specifically to NOT be the global set — inheriting it
+    would make the promo form equal to the full form again, which is the exact bug this phase
+    fixes, and would silently break SHORT-04 (manager would have to turn off ~14 global
+    toggles by hand). So for short, key-absence means "do not ask this question", full stop.
+    """
     if _is_party_track(participant_type):
         override = await get_setting(f"{setting_key}__party")
         if override is not None:
             return override == "on"
+    elif _is_short_track(participant_type):
+        override = await get_setting(f"{setting_key}__short")
+        if override is not None:
+            return override == "on"
+        return False
     return await _is_step_enabled(setting_key)
 
 
@@ -814,6 +830,44 @@ def _is_party_track(participant_type: str | None) -> bool:
     return participant_type in ("party_overnight", "party_noovernight")
 
 
+# Phase 7 (SHORT-04): short-form track vocabulary.
+SHORT_TRACK = "short"
+
+
+def _is_short_track(participant_type: str | None) -> bool:
+    """Exact-literal predicate for the short-form track — deliberately separate from
+    _is_party_track, never merged into it. `_is_party_track` matches a CLOSED tuple of two
+    literals; extending it to include "short" would leak the short track into the party-only
+    housing/bed_* skip rule (:430), the party wording override in `_prompt`, and the
+    party-first branch of `_decide_status` — all three gate on `_is_party_track` alone. Kept
+    as its own one-line predicate so those three call sites structurally cannot see "short"."""
+    return participant_type == SHORT_TRACK
+
+
+async def _resolve_track(candidate: str | None) -> str:
+    """Phase 7 (SHORT-01/CONTEXT.md): resolves the effective track a fresh/resumed
+    registration should run under, given a candidate track (deep-link arg or a track already
+    recorded in FSM/`reg_started`).
+
+    1. A party track is authoritative no matter what `registration_mode` says — party has
+       its own master gate (`party_enabled`) and deep-link vocabulary; this phase must not
+       touch that.
+    2. Otherwise, `registration_mode == "short"` is a GLOBAL override (user decision,
+       CONTEXT.md: "7-10 августа краткая форма для всех новых заявок, полная недоступна").
+       It wins even over a `candidate` of "full" recovered from a stale `reg_started` row —
+       a delegate who started under the old full form and returns mid-promo gets funneled
+       into the promo track too.
+    3. Otherwise fall back to whatever `candidate` already says, defaulting to "full". This
+       is what makes the promo reversible without stranding in-flight delegates: someone who
+       started under "short" and finishes AFTER the manager flips the toggle back keeps
+       "short" (step 3 sees a non-None candidate and never reaches step 2's mode check)."""
+    if _is_party_track(candidate):
+        return candidate
+    if await get_setting_typed("registration_mode") == SHORT_TRACK:
+        return SHORT_TRACK
+    return candidate or "full"
+
+
 # Fixed 2-entry map — exact-match only (T-05-01-01: no prefix/startswith/regex matching, so
 # no crafted payload can produce a track value outside this closed vocabulary).
 _PARTY_TAG_MAP = {"party_over": "party_overnight", "party_noover": "party_noovernight"}
@@ -1228,7 +1282,12 @@ async def _start_registration_flow(message: types.Message, state: FSMContext, re
     # Phase 5 (D-02): resolve the effective track BEFORE the mark_reg_started write — a fresh
     # deep-link arg wins; otherwise inherit whatever was already recorded in this FSM session
     # (mirrors saved_referrer_id / saved_source_tag one line below).
-    saved_track = participant_type or existing_data.get("participant_type", "full")
+    # Phase 7: routed through _resolve_track so a global `registration_mode == "short"`
+    # promo window can override an inherited "full"/None candidate (see _resolve_track
+    # docstring). Note: `.get("participant_type")` has NO "full" default here on purpose —
+    # _resolve_track's step 3 must see a real None to apply its own "full" fallback,
+    # otherwise step 2 (the global short override) would never fire for a fresh session.
+    saved_track = await _resolve_track(participant_type or existing_data.get("participant_type"))
 
     # SCHED-02: record the dropout row at flow start (fail-soft — never block registration).
     try:
