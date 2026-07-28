@@ -603,6 +603,21 @@ async def get_reg_started_track(telegram_id: int) -> str | None:
             return row[0] if row else None
 
 
+# Phase 7 (07-04, SHORT-06): is there a live abandoned short-track registration right now?
+# Used to gate the «Незавершённые» column merge in handlers.registration.incomplete_sheet_headers
+# on the STATE of reg_started rows rather than on the live registration_mode setting — so a
+# manager reverting the toggle on 2026-08-11 does not make the next 2h auto-sync
+# (services/scheduler.py sync_incomplete_sheet_job) collapse already-answered promo fields
+# back to "-" before the last abandoned promo delegate is cleared or finishes.
+async def has_short_incomplete() -> bool:
+    async with aiosqlite.connect(config.DB_PATH) as db:
+        async with db.execute(
+            "SELECT 1 FROM reg_started WHERE participant_type = 'short' LIMIT 1"
+        ) as cursor:
+            row = await cursor.fetchone()
+            return bool(row)
+
+
 # MD-02: a reg_started row is DELETEd on completion (finalize_registration), but that clear is
 # fail-soft — a DB hiccup can leave a finished user in reg_started, where the dropout nudge,
 # «Незавершённые» sheet, and broadcast segment would then wrongly treat them as a dropout.
