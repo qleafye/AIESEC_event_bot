@@ -1205,6 +1205,54 @@ async def append_to_party_sheet(data: list):
     await append_to_named_sheet(tab, data)
 
 
+# --- Phase 7 (SHORT-02, plan 07-02): short-track worksheet tab ------------------------------
+# Deliberate divergence from RESEARCH.md's own recommendation ("courier columns, not a filter"):
+# for party a curated list is mandatory because __party INHERITS the global question set — a
+# plain filter over SHEET_COLUMNS would produce a ~30-column tab, half of it always empty. The
+# short track (after 07-01) resolves an absent __short key to "not asked" (never inherits the
+# global toggle), so filtering SHEET_COLUMNS by the short gate structurally yields EXACTLY the
+# columns the short form can collect — nothing more. This is also the only way to keep the
+# "configurable track" promise: a manager turns on a 7th `reg_q_*__short` question and the
+# column appears on its own, no code change required.
+SHORT_SHEET_SYSTEM_HEADERS = ["ID Telegram", "Username", "Дата регистрации", "Статус", "ФИО"]
+# «Детали» (referrer) is intentionally excluded — the promo form never collects it.
+
+
+async def short_sheet_headers() -> list[str]:
+    """Filter over SHEET_COLUMNS (not a curated list, see module-level docstring above):
+    system columns from SHORT_SHEET_SYSTEM_HEADERS always included, question columns included
+    only when their `__short` gate resolves to enabled for SHORT_TRACK. Order follows
+    SHEET_COLUMNS (== question order in the form) — never re-sorted."""
+    out = []
+    for header, gate, _fn in SHEET_COLUMNS:
+        if gate is None:
+            if header in SHORT_SHEET_SYSTEM_HEADERS:
+                out.append(header)
+        elif await _is_step_enabled_for_track(gate, SHORT_TRACK):
+            out.append(header)
+    return out
+
+
+async def short_sheet_row(data: dict) -> list:
+    """Mirror party_sheet_row: live headers (no frozen sheet_header_schema snapshot — promo
+    volume is small, same deliberate scope choice as party). Every cell passes through
+    database.db._csv_safe (T-07-04) so a crafted ФИО like «=HYPERLINK(...)» is stored as text,
+    not evaluated as a formula."""
+    headers = await short_sheet_headers()
+    values = _sheet_value_map(data)
+    return [_csv_safe(values.get(h, "-")) for h in headers]
+
+
+SHORT_SHEET_TAB_DEFAULT = "Краткая"
+
+
+async def append_to_short_sheet(data: list):
+    """Same idiom as append_to_party_sheet: tab name resolved from the admin-configurable
+    short_sheet_tab setting with a hardcoded fallback."""
+    tab = await get_setting("short_sheet_tab") or SHORT_SHEET_TAB_DEFAULT
+    await append_to_named_sheet(tab, data)
+
+
 def _esc(value) -> str:
     """Null-coalesce to '-' and HTML-escape free text for the summary message."""
     text = value if (value is not None and str(value) != "") else "-"
