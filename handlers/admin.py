@@ -710,6 +710,10 @@ async def toggle_registration_mode(callback: types.CallbackQuery):
 
     text = await render_settings_text()
     await callback.message.edit_text(text, parse_mode="HTML", reply_markup=await build_settings_keyboard())
+    # Phase 7 (SHORT-03, gate #5): materialize the short tab the moment the manager flips
+    # into "Краткая" — no need to wait for the first registration. Switching back to "Полная"
+    # is a no-op (the gate inside returns early); the tab and its data are never touched.
+    await _refresh_short_sheet_header()
 
 
 async def _toggle_approval_setting(callback: types.CallbackQuery, key: str, default: str, title: str):
@@ -2146,10 +2150,15 @@ def _party_tri_state_advance(raw: str | None) -> str | None:
 
 def _track_switcher_row(active: str) -> list[InlineKeyboardButton]:
     """D-06: first row of the questions keyboard — switches the whole screen between the
-    full-track view (existing 2-state toggles) and the party-track view (tri-state)."""
+    full-track view (existing 2-state toggles) and the party-track view (tri-state).
+
+    Phase 7 (SHORT-03): third button for the short (promo) track. Its own screen is
+    2-state (✅/❌), not tri-state like party — see render_questions_text/
+    build_questions_keyboard for the rationale."""
     return [
         InlineKeyboardButton(text=("• " if active == "full" else "") + "Полный", callback_data="reg_q_track:full"),
         InlineKeyboardButton(text=("• " if active == "party" else "") + "Party", callback_data="reg_q_track:party"),
+        InlineKeyboardButton(text=("• " if active == "short" else "") + "⚡ Краткая", callback_data="reg_q_track:short"),
     ]
 
 
@@ -2175,6 +2184,15 @@ async def render_questions_text(track: str = "full") -> str:
             "<i>Действуют в режиме «🎉 Party». ➕ Наследует — берётся общая настройка, "
             "✅/❌ — переопределено для этого трека.</i>"
         )
+    elif track == "short":
+        # Phase 7 (SHORT-03): 2-state, not tri-state. Absent __short key means "не спрашивается"
+        # (07-01's is-not-None gate resolves absence to False, no fallback to the global toggle) —
+        # visually there is nothing to "inherit", so a third inherit-labelled button would look
+        # identical to "off" and just confuse the manager ("нажимаю, ничего не меняется").
+        lines.append(
+            "<i>Действуют в режиме «⚡ Краткая». По умолчанию вопрос не задаётся — включай "
+            "только нужные.</i>"
+        )
     else:
         lines.append("<i>Действуют в режиме «📋 Полная регистрация». Сгруппированы по типу события.</i>")
     lines.append("")
@@ -2187,6 +2205,9 @@ async def render_questions_text(track: str = "full") -> str:
         if track == "party":
             raw = await get_setting(f"{setting_key}__party")
             status = _party_tri_state_label(raw)
+        elif track == "short":
+            raw = await get_setting(f"{setting_key}__short")
+            status = "✅ Вкл" if raw == "on" else "❌ Выкл"
         else:
             status = "✅" if await _is_question_on(setting_key) else "❌"
         lines.append(f"{status} {label}")
@@ -2206,6 +2227,13 @@ async def build_questions_keyboard(track: str = "full"):
             raw = await get_setting(f"{setting_key}__party")
             toggle_text = f"{_party_tri_state_label(raw)} {label}"
             buttons.append([InlineKeyboardButton(text=toggle_text, callback_data=f"reg_q_ptoggle:{setting_key}")])
+        elif track == "short":
+            # Phase 7 (SHORT-03): read the RAW __short value (never _is_question_on/
+            # get_setting_typed) — only the literal "on" counts as enabled; absence and any
+            # other value both render as ❌ Выкл, matching the 2-state model above.
+            raw = await get_setting(f"{setting_key}__short")
+            toggle_text = f"{'✅ Вкл' if raw == 'on' else '❌ Выкл'} {label}"
+            buttons.append([InlineKeyboardButton(text=toggle_text, callback_data=f"reg_q_stoggle:{setting_key}")])
         else:
             toggle_text = f"{'✅' if await _is_question_on(setting_key) else '❌'} {label}"
             buttons.append([InlineKeyboardButton(text=toggle_text, callback_data=f"reg_q_toggle:{setting_key}")])
@@ -2264,6 +2292,25 @@ async def _refresh_party_sheet_header() -> None:
     _spawn(ensure_named_sheet_header(tab, headers))
 
 
+async def _refresh_short_sheet_header() -> None:
+    """Phase 7 (SHORT-03): resync the short (promo) tab's physical header after a __short
+    question toggle/preset — mirrors _refresh_party_sheet_header exactly. GATED on
+    registration_mode == 'short' (gate #5) so a tap on the short-track questions screen while
+    the manager is still on «Полная» never materializes an empty promo tab. Fail-soft +
+    backgrounded, local import to avoid a circular import (same idiom as the party sibling)."""
+    from handlers.registration import short_sheet_headers, SHORT_SHEET_TAB_DEFAULT
+    from services.sheets import ensure_named_sheet_header
+    try:
+        if (await get_setting_typed("registration_mode")) != "short":
+            return
+        tab = await get_setting("short_sheet_tab") or SHORT_SHEET_TAB_DEFAULT
+        headers = await short_sheet_headers()
+    except Exception as e:
+        logger.warning(f"_refresh_short_sheet_header: could not compute headers: {e}")
+        return
+    _spawn(ensure_named_sheet_header(tab, headers))
+
+
 @router.callback_query(F.data.startswith("reg_q_toggle:"))
 async def toggle_reg_question(callback: types.CallbackQuery):
     if callback.from_user.id not in config.ADMIN_IDS:
@@ -2297,7 +2344,7 @@ async def reg_q_track_switch(callback: types.CallbackQuery):
         await callback.answer("Недостаточно прав", show_alert=True)
         return
     track = callback.data.split(":", 1)[1]
-    if track not in ("full", "party"):
+    if track not in ("full", "party", "short"):
         track = "full"
     text = await render_questions_text(track)
     await callback.message.edit_text(text, parse_mode="HTML", reply_markup=await build_questions_keyboard(track))
@@ -2334,6 +2381,38 @@ async def toggle_party_question(callback: types.CallbackQuery):
     await callback.answer(f"{REG_LABELS.get(setting_key, setting_key)} (party): {label}", show_alert=True)
     text = await render_questions_text("party")
     await callback.message.edit_text(text, parse_mode="HTML", reply_markup=await build_questions_keyboard("party"))
+
+
+@router.callback_query(F.data.startswith("reg_q_stoggle:"))
+async def toggle_short_question(callback: types.CallbackQuery):
+    """Phase 7 (SHORT-03): 2-state toggle (on/off) for the short-track __short override of
+    one question. Deliberately 2-state, not tri-state like toggle_party_question — see
+    render_questions_text's short branch for the rationale (absent __short key already means
+    "off" per 07-01, so a separate "inherit" state would be indistinguishable from "off" and
+    only confuse the manager). delete_setting is never used here — every tap writes an
+    explicit "on"/"off", unlike the party cycle's "back to inherit" step."""
+    if callback.from_user.id not in config.ADMIN_IDS:
+        await callback.answer("Недостаточно прав", show_alert=True)
+        return
+    setting_key = callback.data.split(":", 1)[1]
+    # T-07-09: validate setting_key against REG_FLOW before ever suffixing/writing it — a
+    # crafted "reg_q_stoggle:party_enabled" (or any non-REG_FLOW key) is rejected, never
+    # turned into a bot_settings write.
+    valid_keys = {sk for _, sk, *_ in REG_FLOW}
+    if setting_key not in valid_keys:
+        await callback.answer("Неизвестный вопрос.", show_alert=True)
+        return
+
+    short_key = f"{setting_key}__short"
+    current = await get_setting(short_key)  # None | "on" | "off"
+    new_val = "off" if current == "on" else "on"
+    await set_setting(short_key, new_val)  # always an explicit write, never delete_setting
+    label = "✅ Вкл" if new_val == "on" else "❌ Выкл"
+
+    await _refresh_short_sheet_header()  # keep the short tab header aligned with the toggle
+    await callback.answer(f"{REG_LABELS.get(setting_key, setting_key)} (краткая): {label}", show_alert=True)
+    text = await render_questions_text("short")
+    await callback.message.edit_text(text, parse_mode="HTML", reply_markup=await build_questions_keyboard("short"))
 
 
 @router.callback_query(F.data == "reg_q_noop")
