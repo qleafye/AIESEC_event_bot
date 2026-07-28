@@ -334,7 +334,7 @@ def test_render_snapshot_reg(tmp_path):
     expected_keys = [
         "source_options", "reg_complete_text", "approve_text", "reject_text",
         "pending_reminder_interval", "city_options", "study_field_options",
-        "goal_options", "formats_options", "university_options",
+        "goal_options", "formats_options", "university_options", "short_sheet_tab",
     ]
     expected_labels = [
         "📢 Источники", "✅ После регистрации", "🎉 После одобрения", "🚫 При отклонении",
@@ -344,6 +344,10 @@ def test_render_snapshot_reg(tmp_path):
     # Fresh DB -> every key unconfigured, no display-default fallback for this group.
     for label in expected_labels:
         assert f"{label}: <i>— не задано</i>" in text, f"missing/wrong flag for {label}"
+    # Phase 7 (SHORT-02): short_sheet_tab carries a non-None registry default ("Краткая",
+    # same idiom as party_sheet_tab), so an unconfigured key shows "по умолчанию", not
+    # "не задано" — asserted separately from the not-configured group above.
+    assert "📄 Вкладка Google-таблицы (краткая форма): <i>по умолчанию</i>" in text
     positions = [text.index(label) for label in expected_labels]
     assert positions == sorted(positions), "label order drifted"
 
