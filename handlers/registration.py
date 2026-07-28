@@ -72,10 +72,23 @@ def _decide_status(reg_mode: str, full_setting: str, short_setting: str,
     independent of full_approval/short_approval — this branch never falls through to the
     reg_mode logic below it, and never reads full_setting/short_setting. `party_setting`
     of None (an unconfigured party_approval) resolves to "manual": a party track must be
-    moderated by default, never silently auto-approved (T-05-04-02)."""
+    moderated by default, never silently auto-approved (T-05-04-02).
+
+    Phase 7 (SHORT-05): the short track resolves status from `short_setting` (short_approval)
+    alone, keyed off the persisted `participant_type`, and — crucially — WITHOUT reading
+    `reg_mode` at all. Before this phase the short form was answered in one message, so the
+    gap between flow-start and finalize() (where `reg_mode` is re-read live) was ~0 and the
+    old `reg_mode`-based lookup was harmless. Task 2 turns the short form into a multi-question
+    conversation, so that gap can now span the whole promo window: a delegate who starts the
+    form on 2026-08-10 and finishes after the manager flips `registration_mode` back to "full"
+    on 2026-08-11 would otherwise be moderated by `full_approval` instead of `short_approval` —
+    a direct SHORT-05 violation. Branching on the immutable `participant_type` instead of the
+    live `reg_mode` setting is the same decoupling technique D-13 already used for party."""
     if _is_party_track(participant_type):
         setting = party_setting or "manual"
         return "pending" if setting == "manual" else "approved"
+    if _is_short_track(participant_type):
+        return "pending" if short_setting == "manual" else "approved"
     setting = full_setting if reg_mode == "full" else short_setting
     return "pending" if setting == "manual" else "approved"
 
@@ -1901,15 +1914,20 @@ async def process_full_name(message: types.Message, state: FSMContext, bot: Bot)
 
     await state.update_data(full_name=full_name)
 
-    # REG-02 (06-06): RAW-read site migrated — `!= "full"` branch is provably unaffected by
-    # the resolved default "short" (None/"" both failed this check before too).
-    mode = await get_setting_typed("registration_mode")
-    if mode != "full":
-        # WR-03: the short form asks no question steps. Required consents were already
-        # collected before ФИО (see _start_registration_flow), so finalize now.
-        await finalize_registration(message, state, bot)
-        return
-
+    # Phase 7 (SHORT-04): the old `registration_mode != "full"` early-exit straight to
+    # finalize() is REMOVED. The generic engine below now runs for every track, including
+    # "short" — `_get_enabled_steps` (Task 1) resolves the short track's own `reg_q_*__short`
+    # keys, and with zero such keys set it returns [] exactly like today, so the
+    # "no steps -> finalize" branch four lines down still fires and reproduces the historical
+    # short-form behavior STRUCTURALLY, not via a duplicated special case. Two consequences
+    # that are NOT regressions:
+    # 1. A short form with >=1 enabled question now reaches _advance and shows the
+    #    _build_summary confirmation screen before finalizing, same as the full form — this
+    #    is the whole point of the phase (a real multi-question track, not just ФИО).
+    # 2. `registration_mode` is no longer read here at all. The only place the live mode
+    #    setting affects the question set is `_resolve_track` at flow start (Task 1c) — a
+    #    delegate who already started a track keeps finishing in that track even if the
+    #    manager flips the toggle mid-session.
     data = await state.get_data()
     enabled = await _get_enabled_steps(data)
 
