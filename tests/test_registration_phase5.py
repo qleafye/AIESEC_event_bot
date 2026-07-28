@@ -872,6 +872,13 @@ def test_cr01_referred_user_picks_full_still_lands_with_referrer_id(tmp_path):
         await db.init_db()
         await db.set_setting("party_fork_question", "on")
         await db.set_setting("party_enabled", "on")
+        # Phase 7 (SHORT-01/_resolve_track): registration_mode's registry default is "short",
+        # and _resolve_track now applies that GLOBAL setting even to a party-fork "full" pick
+        # (CONTEXT.md decision — the promo toggle overrides everything except an explicit
+        # party track). This CR-01 test is about referrer_id survival on the "full" branch
+        # specifically, so pin the mode to "full" explicitly rather than relying on the
+        # registry default, which would otherwise route this pick into the short track.
+        await db.set_setting("registration_mode", "full")
 
         uid = 700002
         referrer = uid + 1
