@@ -522,6 +522,12 @@ def test_registration_mode_and_reg_university_mode_equiv(tmp_path):
         reg_mod._get_enabled_steps = fake_get_enabled
         reg_mod._ask_step = fake_ask_step
         try:
+            # Phase 7 (07-01, Task 2): the registration_mode raw-read this loop used to pin was
+            # REMOVED from process_full_name entirely (not just migrated to get_setting_typed) —
+            # the short/full fork now lives structurally in `_get_enabled_steps` (resolved once,
+            # earlier, via `_resolve_track` at flow start), not as a live re-read here. With
+            # `_get_enabled_steps` mocked non-empty, process_full_name must reach `_ask_step`
+            # for EVERY registration_mode raw value — there is no branch left to gate on it.
             for raw in [None, "", "full", "short"]:
                 finalize_calls.clear()
                 ask_calls.clear()
@@ -529,13 +535,8 @@ def test_registration_mode_and_reg_university_mode_equiv(tmp_path):
                 if raw is not None:
                     await set_setting("registration_mode", raw)
                 await reg_mod.process_full_name(_Msg(), _St(), bot=object())
-                oracle_full = raw == "full"  # bare-raw site, no `or` fallback (RAW-read rule)
-                if oracle_full:
-                    assert ask_calls, f"expected full-form branch for raw={raw!r}"
-                    assert not finalize_calls
-                else:
-                    assert finalize_calls, f"expected short-form finalize for raw={raw!r}"
-                    assert not ask_calls
+                assert ask_calls, f"expected _ask_step to run regardless of raw={raw!r}"
+                assert not finalize_calls
         finally:
             reg_mod.finalize_registration = orig_finalize
             reg_mod._get_enabled_steps = orig_get_enabled
@@ -586,13 +587,20 @@ def test_registration_mode_and_reg_university_mode_equiv(tmp_path):
                 assert "Пропустить" not in texts, f"expected list-mode kb for raw={raw!r}"
     asyncio.run(go_university())
 
-    # Wiring (RED before Task 2): both registration_mode read-sites (bare-raw in
-    # process_full_name, `or "short"` in finalize_registration feeding _decide_status) AND
-    # reg_university_mode must resolve via get_setting_typed.
+    # Wiring (RED before Task 2 of 06-06): originally pinned that BOTH registration_mode
+    # read-sites (bare-raw in process_full_name, `or "short"` in finalize_registration feeding
+    # _decide_status) resolved via get_setting_typed. Phase 7 (07-01, Task 2) went one step
+    # further for process_full_name and REMOVED that read-site entirely — the short/full fork
+    # no longer lives there at all (see the "Phase 7" comment above and _resolve_track), so
+    # asserting its continued presence would pin exactly the code this phase intentionally
+    # deleted. finalize_registration's own registration_mode read (feeding _decide_status's
+    # reg_mode param, still used for the full/None branch) is untouched by Phase 7 and keeps
+    # the original assertion.
     process_src = inspect.getsource(reg_mod.process_full_name)
     finalize_src = inspect.getsource(reg_mod.finalize_registration)
-    assert 'get_setting_typed("registration_mode")' in process_src, (
-        "process_full_name does not resolve registration_mode via get_setting_typed"
+    assert 'get_setting_typed("registration_mode")' not in process_src, (
+        "process_full_name should no longer read registration_mode at all (Phase 7, 07-01 Task 2 "
+        "moved the short/full fork to _resolve_track at flow start)"
     )
     assert 'get_setting_typed("registration_mode")' in finalize_src, (
         "finalize_registration does not resolve registration_mode via get_setting_typed"
@@ -705,10 +713,15 @@ def test_pending_notify_mode_gate_equiv(tmp_path):
 
 def test_raw_read_sites_preserved(tmp_path):
     """Both documented RAW-read sites (registration_mode in process_full_name, party_approval
-    in finalize_registration) are migrated to get_setting_typed -- proven safe because, in both
+    in finalize_registration) were migrated to get_setting_typed -- proven safe because, in both
     cases, the registry's enum default is byte-identical to what the downstream branch already
     treats None/absent as (see test_registration_mode_and_reg_university_mode_equiv /
-    test_short_approval_and_party_approval_equiv for the full matrices)."""
+    test_short_approval_and_party_approval_equiv for the full matrices).
+
+    Phase 7 (07-01, Task 2) subsequently REMOVED the registration_mode site from
+    process_full_name entirely (see that test's updated docstring) -- Site 1's equivalence
+    loop below still documents that migrating the RAW read to get_setting_typed would have
+    been branch-safe, it just no longer describes live code in process_full_name."""
     _db_ready(tmp_path)
     import inspect
     import handlers.registration as reg_mod
@@ -738,13 +751,15 @@ def test_raw_read_sites_preserved(tmp_path):
         new_status = reg_mod._decide_status("full", "manual", "auto", "party_overnight", typed)
         assert old_status == new_status, f"party_approval raw-site branch changed for raw={raw!r}"
 
-    # Both sites were provably safe to migrate (not merely "leave raw with a comment") --
-    # pin that decision at the source level.
+    # Site 2 was provably safe to migrate (not merely "leave raw with a comment") -- pin that
+    # decision at the source level. Site 1's equivalent pin was removed here: Phase 7 (07-01,
+    # Task 2) deleted the registration_mode read from process_full_name outright (the short/full
+    # fork moved to _resolve_track at flow start), so asserting its presence would contradict
+    # the currently-correct source.
     process_src = inspect.getsource(reg_mod.process_full_name)
     finalize_src = inspect.getsource(reg_mod.finalize_registration)
-    assert 'get_setting_typed("registration_mode")' in process_src, (
-        "process_full_name should migrate the raw registration_mode read (RAW-read rule: "
-        "downstream branch `!= \"full\"` is unaffected by the resolved default)"
+    assert 'get_setting_typed("registration_mode")' not in process_src, (
+        "process_full_name should no longer read registration_mode at all (Phase 7, 07-01 Task 2)"
     )
     assert 'get_setting_typed("party_approval")' in finalize_src, (
         "finalize_registration should migrate the raw party_approval read (RAW-read rule: "
