@@ -306,6 +306,18 @@ REG_PRESETS = {
             "reg_q_allergies", "reg_q_food",
         ],
     },
+    "short": {
+        "label": "⚡ Акция: 6 вопросов",
+        # Phase 7 (D-07 pattern): NO "payment_enabled" key here either — the promo preset
+        # must never touch the payment module, same reasoning as the party preset above.
+        # preset_apply already tolerates its absence via preset.get("payment_enabled").
+        # Five setting_keys below + ФИО = six questions: ФИО is asked unconditionally by
+        # _ask_full_name and is NOT a REG_FLOW key, so it can never appear in an "on" list —
+        # it is not missing, it just isn't a toggle.
+        "on": [
+            "reg_q_phone", "reg_q_vk", "reg_q_city", "reg_q_education", "reg_q_course",
+        ],
+    },
 }
 
 
@@ -337,6 +349,23 @@ async def _apply_party_preset() -> None:
         if setting_key in _PARTY_PRESET_OVERNIGHT_EXEMPT:
             continue
         await set_setting(f"{setting_key}__party", "on" if setting_key in on_set else "off")
+
+
+async def _apply_short_preset() -> None:
+    """Phase 7 (SHORT-03): bulk-write __short overrides ONLY — mirrors _apply_party_preset's
+    determinism guarantee, targets the __short namespace exclusively. Unlike the party preset,
+    there is no exempt set here: _PARTY_PRESET_OVERNIGHT_EXEMPT exists purely to protect D-08's
+    participant_type == 'party_overnight' skip rule, which is gated on _is_party_track and
+    therefore structurally cannot fire for the short track — every REG_FLOW key gets an
+    explicit on/off write, making a repeated tap fully deterministic.
+
+    This function's ONLY write is to __short-suffixed keys (setting_key + "__short"); it
+    never writes a bare reg_q_* key, never touches __party, and never touches
+    payment_enabled/registration_mode. That isolation means applying the promo preset mid-
+    registration cannot alter a full or party delegate's question set."""
+    on_set = set(REG_PRESETS["short"]["on"])
+    for _step_key, setting_key, *_rest in REG_FLOW:
+        await set_setting(f"{setting_key}__short", "on" if setting_key in on_set else "off")
 
 
 # Display grouping for the admin question-toggle view. Disjoint buckets covering every
