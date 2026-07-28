@@ -13,7 +13,7 @@ from aiogram.types import FSInputFile, ReplyKeyboardRemove, InlineKeyboardMarkup
 from aiogram.utils.keyboard import ReplyKeyboardBuilder
 
 from config import config
-from database.db import add_user, get_user, get_setting, set_setting, mark_reg_started, clear_reg_started, set_reg_step, set_user_subscribed, set_user_status, record_user_consent, get_user_consents, get_reg_started_track, _csv_safe
+from database.db import add_user, get_user, get_setting, set_setting, mark_reg_started, clear_reg_started, set_reg_step, set_user_subscribed, set_user_status, record_user_consent, get_user_consents, get_reg_started_track, has_short_incomplete, _csv_safe
 from settings_schema import SETTINGS_SCHEMA, get_setting_typed  # REG-01/D-06 (06-04): REG_DEFAULTS derivation source; get_setting_typed (06-06 gate migration)
 from handlers.states import Registration
 from keyboards.builders import (
@@ -1146,7 +1146,37 @@ async def incomplete_sheet_headers() -> list[str]:
     """Headers for the «Незавершённые» tab: base dropout columns + ФИО + every currently
     enabled question column. Width follows the active preset, same as the main sheet
     (active_sheet_headers) — reuses it instead of duplicating the column list. Headers are
-    computed ONCE per export/sync call, not per row (Google Sheets quota)."""
+    computed ONCE per export/sync call, not per row (Google Sheets quota).
+
+    Phase 7 (07-04, SHORT-06): during the promo window (or while an abandoned promo
+    registration is still sitting in reg_started) a question can be enabled ONLY in the
+    `__short` namespace while its global toggle stays off — active_sheet_headers() alone would
+    then omit that column and a manager would see "-" instead of the delegate's actual answer.
+    The merge branch below unions the global set with the __short set from SHEET_COLUMNS
+    directly (order preserved, no duplicates).
+
+    The gate is deliberately `registration_mode == "short" OR has_short_incomplete()`, NOT the
+    live registration_mode alone: if only the live mode were checked, reverting the toggle to
+    "full" on 2026-08-11 would make the very next 2h auto-sync (services/scheduler.py
+    sync_incomplete_sheet_job) rewrite the tab with the narrow (non-merged) header set —
+    sync_named_worksheet does a full clear+rewrite (services/sheets.py), so already-answered
+    promo fields (Город, ВК, ...) would collapse to "-" even though reg_started.partial_data
+    still holds them. has_short_incomplete() ties the merge to whether a live abandoned promo
+    row still exists, not to a setting that has already been flipped back — once the last
+    abandoned promo delegate finishes or is cleared (clear_reg_started), the tab narrows back
+    on its own.
+
+    Safe to widen/narrow on every call because sync_named_worksheet fully rewrites the tab
+    (clear + write) rather than appending — unlike the main sheet, there are no previously
+    written rows that could be misaligned by a header-width change.
+    """
+    if await get_setting_typed("registration_mode") == SHORT_TRACK or await has_short_incomplete():
+        out = []
+        for header, gate, _fn in SHEET_COLUMNS:
+            if gate is None or await _is_step_enabled(gate) or await _is_step_enabled_for_track(gate, SHORT_TRACK):
+                out.append(header)
+        rest = [h for h in out if h not in _INCOMPLETE_EXCLUDED_HEADERS]
+        return INCOMPLETE_BASE_HEADERS + rest
     active = await active_sheet_headers()
     rest = [h for h in active if h not in _INCOMPLETE_EXCLUDED_HEADERS]
     return INCOMPLETE_BASE_HEADERS + rest
