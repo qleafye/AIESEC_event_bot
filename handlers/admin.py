@@ -362,6 +362,7 @@ _REG_FIELD_ORDER = [
     "source_options", "reg_complete_text", "approve_text", "reject_text",
     "pending_reminder_interval", "city_options", "study_field_options",
     "goal_options", "formats_options", "university_options",
+    "short_sheet_tab",  # Phase 7 (SHORT-02): краткая-форма вкладка Google-таблицы
 ]
 _PAY_FIELD_ORDER = [
     "payment_options", "payment_requisites", "payment_requisites_by_lc",
