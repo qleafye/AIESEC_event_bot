@@ -1253,6 +1253,24 @@ async def append_to_short_sheet(data: list):
     await append_to_named_sheet(tab, data)
 
 
+def _sheet_dispatch(participant_type: str | None) -> tuple:
+    """(row_builder, appender) for the given track. Pure and synchronous on purpose — it
+    resolves module-level functions by name at call time, which is what makes it testable
+    without running the whole finalize_registration (Nextcloud upload, consent re-check,
+    subscription persist, admin notify all live there and must NOT be dragged into this test).
+
+    Exclusivity is a property of the function, not an optimization: exactly one (row, append)
+    pair comes back for every input — there is nothing to combine, so a delegate's row can
+    never land in more than one tab. Order of checks is load-bearing: party, then short, then
+    the main sheet as the default. A double-write to the main tab would reproduce the exact
+    header-mismatch problem (CONTEXT.md) this whole phase exists to remove."""
+    if _is_party_track(participant_type):
+        return party_sheet_row, append_to_party_sheet
+    if _is_short_track(participant_type):
+        return short_sheet_row, append_to_short_sheet
+    return active_sheet_row, append_to_sheet
+
+
 def _esc(value) -> str:
     """Null-coalesce to '-' and HTML-escape free text for the summary message."""
     text = value if (value is not None and str(value) != "") else "-"
@@ -2551,15 +2569,13 @@ async def finalize_registration(message: types.Message, state: FSMContext, bot: 
     # append_to_party_sheet are fail-soft and log their own errors. Build the row inline (needs
     # current settings), then hand the network I/O to the background.
     #
-    # Phase 5 (D-11/D-12): EXCLUSIVE routing — a party registration goes to the party tab ONLY,
-    # never both. The main-tab path (else branch) is byte-identical to pre-Phase-5 behavior.
+    # Phase 5 (D-11/D-12) / Phase 7 (SHORT-02): EXCLUSIVE routing — a registration goes to
+    # exactly one tab (party / short / main), never more than one. Resolved via _sheet_dispatch
+    # so the exclusivity property is provable by a test that doesn't run this whole function.
     try:
-        if _is_party_track(data.get("participant_type")):
-            _party_row = await party_sheet_row(data)
-            _spawn(append_to_party_sheet(_party_row))
-        else:
-            _sheet_row = await active_sheet_row(data)
-            _spawn(append_to_sheet(_sheet_row))
+        _row_fn, _append_fn = _sheet_dispatch(data.get("participant_type"))
+        _row = await _row_fn(data)
+        _spawn(_append_fn(_row))
     except Exception as e:
         logger.error(f"Failed to schedule sheet append for {message.from_user.id}: {e}")
 
