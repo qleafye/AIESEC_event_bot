@@ -57,7 +57,7 @@ from services.allowlist import refresh_allowlist, allowlist_size
 from services.background import spawn as _spawn
 from handlers.states import Broadcast, EditSetting, Approval, ReceiptReview
 from keyboards.builders import get_cancel_kb, MENU_BUTTONS, get_main_menu_kb
-from handlers.registration import REG_FLOW, REG_DEFAULTS, REG_LABELS, REG_PRESETS, REG_CATEGORIES, SHEET_HEADERS, STATUS_LABELS, _build_sheet_row, active_sheet_headers, set_sheet_schema, _sheet_value_map, approve_user, dropout_step_label, _apply_party_preset, incomplete_sheet_headers, incomplete_sheet_row
+from handlers.registration import REG_FLOW, REG_DEFAULTS, REG_LABELS, REG_PRESETS, REG_CATEGORIES, SHEET_HEADERS, STATUS_LABELS, _build_sheet_row, active_sheet_headers, set_sheet_schema, _sheet_value_map, approve_user, dropout_step_label, _apply_party_preset, _apply_short_preset, incomplete_sheet_headers, incomplete_sheet_row
 
 router = Router()
 logger = logging.getLogger(__name__)
@@ -2485,10 +2485,10 @@ async def preset_apply(callback: types.CallbackQuery):
     if payment_enabled is not None:
         pay = "включится" if payment_enabled == "on" else "выключится"
         pay_line = f" Модуль оплаты <b>{pay}</b>."
-    # D-07: __party keys never overlap the globals a live full-form admin is looking at, so
-    # the party preset does not need the "перезатрёт текущие настройки" warning the
-    # forum/conf presets carry — nothing existing gets overwritten.
-    warn = "" if key == "party" else "\n\n⚠️ Текущие настройки вопросов будут перезаписаны."
+    # D-07: __party/__short keys never overlap the globals a live full-form admin is looking
+    # at, so neither the party nor the short (Phase 7) preset needs the "перезатрёт текущие
+    # настройки" warning the forum/conf presets carry — nothing existing gets overwritten.
+    warn = "" if key in ("party", "short") else "\n\n⚠️ Текущие настройки вопросов будут перезаписаны."
     kb = InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text="✅ Применить", callback_data=f"preset_confirm:{key}")],
         [InlineKeyboardButton(text="← Отмена", callback_data="admin_event_preset")],
@@ -2528,6 +2528,20 @@ async def preset_confirm(callback: types.CallbackQuery):
         # sheet header cannot have drifted. MEDIUM-01: but the party preset DOES change the
         # __party question set, so resync the PARTY tab's own header (plan 05-06).
         await _refresh_party_sheet_header()
+        return
+    if key == "short":
+        # Phase 7 (SHORT-03): route to the isolated __short-only bulk writer, same reasoning
+        # as the party branch above — _apply_event_preset writes GLOBAL reg_q_* keys, which
+        # would erase the live full-delegate question set. The promo preset changes no global
+        # setting, so the MAIN sheet header cannot have drifted — only the SHORT tab's own
+        # header needs a resync.
+        await _apply_short_preset()
+        await callback.answer(f"Пресет применён: {preset['label']}", show_alert=True)
+        text = await render_questions_text("short")
+        await callback.message.edit_text(
+            text, parse_mode="HTML", reply_markup=await build_questions_keyboard("short")
+        )
+        await _refresh_short_sheet_header()
         return
     await _apply_event_preset(key)
     await callback.answer(f"Пресет применён: {preset['label']}", show_alert=True)
@@ -2733,6 +2747,7 @@ def _render_application_card(user: dict, position: int, total: int) -> str:
         track_label = {
             "party_overnight": "🎉 Трек: вечеринка с ночёвкой",
             "party_noovernight": "🎉 Трек: вечеринка без ночёвки",
+            "short": "⚡ Трек: краткая анкета (акция)",
         }.get(track, f"🎉 Трек: {html_module.escape(str(track))}")
         lines.append(track_label)
     edu = esc(user.get("university")) or esc(user.get("education_status"))
