@@ -14,7 +14,8 @@ from services.allowlist import refresh_allowlist
 from services.sheets import ensure_sheet_header
 from services.background import spawn as _spawn
 import services.sheets as sheets_service
-from handlers.registration import active_sheet_headers, set_sheet_schema, party_sheet_headers, PARTY_SHEET_TAB_DEFAULT
+from handlers.registration import active_sheet_headers, set_sheet_schema, party_sheet_headers, PARTY_SHEET_TAB_DEFAULT, short_sheet_headers, SHORT_SHEET_TAB_DEFAULT
+from settings_schema import get_setting_typed
 from aiogram.client.default import DefaultBotProperties
 from aiogram.client.session.aiohttp import AiohttpSession
 from aiogram.enums import ParseMode
@@ -70,6 +71,22 @@ async def _maybe_ensure_party_sheet_header():
         logging.getLogger(__name__).warning(f"Failed to ensure party sheet header (tab={tab!r}): {e}")
 
 
+async def _maybe_ensure_short_sheet_header():
+    """Phase 7 (SHORT-02, plan 07-02): create/sync the short tab's header ONLY when
+    registration_mode is 'short' — same posture as _maybe_ensure_party_sheet_header (D-11):
+    a manager who never flips the promo toggle on must never see an extra tab materialize in
+    the spreadsheet, even if a __short question toggle gets flipped in the meantime. Fail-soft:
+    Sheets being unreachable must never block startup."""
+    if await get_setting_typed("registration_mode") != "short":
+        return
+    tab = await get_setting("short_sheet_tab") or SHORT_SHEET_TAB_DEFAULT
+    try:
+        headers = await short_sheet_headers()
+        await sheets_service.ensure_named_sheet_header(tab, headers)
+    except Exception as e:
+        logging.getLogger(__name__).warning(f"Failed to ensure short sheet header (tab={tab!r}): {e}")
+
+
 async def main():
     _configure_logging()
     logger = logging.getLogger(__name__)
@@ -91,6 +108,9 @@ async def main():
     # Phase 5 (D-11): parallel party-tab header call, gated on party_enabled — see
     # _maybe_ensure_party_sheet_header's docstring. Does not touch the call/order above.
     _spawn(_maybe_ensure_party_sheet_header())
+    # Phase 7 (SHORT-02): parallel short-tab header call, gated on registration_mode=="short" —
+    # see _maybe_ensure_short_sheet_header's docstring. Does not touch the calls/order above.
+    _spawn(_maybe_ensure_short_sheet_header())
 
     default = DefaultBotProperties(parse_mode=ParseMode.HTML)
     
