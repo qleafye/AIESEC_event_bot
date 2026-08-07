@@ -111,16 +111,23 @@ async def main():
             _print_summary(0, 0, 0)
             return
 
-        # Real path — build the Bot exactly like main.py.
+        # Real path — build the Bot exactly like main.py (same failover proxy chain).
         from aiogram import Bot
         from aiogram.client.default import DefaultBotProperties
-        from aiogram.client.session.aiohttp import AiohttpSession
         from aiogram.enums import ParseMode
 
+        from services.proxy_session import FailoverAiohttpSession, build_proxy_chain
+
         default = DefaultBotProperties(parse_mode=ParseMode.HTML)
+        chain = build_proxy_chain(
+            config.PROXY_URL.get_secret_value() if config.PROXY_URL else None,
+            config.PROXY_URL_BACKUP.get_secret_value() if config.PROXY_URL_BACKUP else None,
+        )
+        # No proxy_session.set_alert_bot() call here on purpose — this is a one-shot script,
+        # not a running bot; the module fails soft (one warning, then silent) with no bot set.
         session = (
-            AiohttpSession(proxy=config.PROXY_URL.get_secret_value())
-            if config.PROXY_URL
+            FailoverAiohttpSession(chain, recheck_seconds=config.PROXY_RECHECK_SECONDS)
+            if chain != [None]
             else None
         )
         bot = Bot(
