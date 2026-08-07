@@ -13,9 +13,9 @@ from aiogram.types import FSInputFile, ReplyKeyboardRemove, InlineKeyboardMarkup
 from aiogram.utils.keyboard import ReplyKeyboardBuilder
 
 from config import config
-from database.db import add_user, get_user, get_setting, set_setting, mark_reg_started, clear_reg_started, set_reg_step, set_user_subscribed, set_user_status, record_user_consent, get_user_consents, get_reg_started_track, has_short_incomplete, _csv_safe
+from database.db import add_user, get_user, get_setting, set_setting, mark_reg_started, clear_reg_started, set_reg_step, set_user_subscribed, set_user_status, record_user_consent, get_user_consents, get_reg_started_track, get_reg_started_city, has_short_incomplete, _csv_safe
 from settings_schema import SETTINGS_SCHEMA, get_setting_typed  # REG-01/D-06 (06-04): REG_DEFAULTS derivation source; get_setting_typed (06-06 gate migration)
-from cities import CITIES, normalize_city, is_default_city, city_tab_base, cities_module_on, TAB_SUFFIX  # Phase 07.1 (CITY-01/CITY-02): city registry — _CITY_TAG_MAP + city_row_tab below
+from cities import CITIES, normalize_city, is_default_city, city_tab_base, cities_module_on, TAB_SUFFIX, is_city_enabled, city_label, enabled_cities  # Phase 07.1 (CITY-01/CITY-02/CITY-03): city registry — _CITY_TAG_MAP + city_row_tab + city fork below
 from handlers.states import Registration
 from keyboards.builders import (
     get_main_menu_kb,
@@ -975,6 +975,39 @@ async def _should_show_fork(party_track: str | None, recovered_track: str | None
     return True
 
 
+# Phase 07.1 (CITY-03): second pre-flow screen, modelled on _party_fork_kb /
+# DEFAULT_PARTY_FORK_TEXT above. Order with the party fork is fixed and explicit in
+# cmd_start (07.1-CONTEXT.md): party-closed gate -> welcome -> CITY -> party fork -> start.
+DEFAULT_CITY_FORK_TEXT = "Выбери город мероприятия:"
+
+
+async def _city_fork_kb() -> InlineKeyboardMarkup:
+    """One button per ENABLED city, in CITIES (.env) order — label comes from city_label
+    (admin-editable per-city override), callback_data is a closed `city_pick:{code}` token
+    built from the registry, never from user input."""
+    rows = []
+    for c in await enabled_cities():
+        rows.append([InlineKeyboardButton(text=await city_label(c["code"]), callback_data=f"city_pick:{c['code']}")])
+    return InlineKeyboardMarkup(inline_keyboard=rows)
+
+
+async def _should_show_city_fork(event_city: str | None, is_registered: bool) -> bool:
+    """Pure(ish) gating helper for the city pre-flow screen, mirrors _should_show_fork.
+    ALL conditions below must hold before the screen is shown; when event_city_enabled is
+    "off" (default) this returns False for every combination (ROADMAP: zero extra screens
+    for an ordinary delegate until a manager turns the module on)."""
+    if event_city:
+        return False  # city already authoritative — deep-link or recovered from reg_started
+    if is_registered:
+        return False
+    if not await cities_module_on():
+        return False
+    enabled = await enabled_cities()
+    if len(enabled) < 2:
+        return False  # a single-button screen is pointless; the default resolves on read
+    return True
+
+
 async def _progress(step: int, total: int) -> str:
     """Optional «(3/9) » numbering prefix. Off by default (Tatiana: убрать нумерацию);
     organizers can switch it back on with reg_show_progress=on. Returns a trailing space
@@ -1478,7 +1511,7 @@ def _resume_too_large(file_size) -> bool:
 
 # --- /start ---
 
-async def _start_registration_flow(message: types.Message, state: FSMContext, referrer_id: int | None = None, source_tag: str | None = None, participant_type: str | None = None):
+async def _start_registration_flow(message: types.Message, state: FSMContext, referrer_id: int | None = None, source_tag: str | None = None, participant_type: str | None = None, event_city: str | None = None):
     existing_data = await state.get_data()
     # Phase 5 (D-02): resolve the effective track BEFORE the mark_reg_started write — a fresh
     # deep-link arg wins; otherwise inherit whatever was already recorded in this FSM session
@@ -1489,10 +1522,15 @@ async def _start_registration_flow(message: types.Message, state: FSMContext, re
     # _resolve_track's step 3 must see a real None to apply its own "full" fallback,
     # otherwise step 2 (the global short override) would never fire for a fresh session.
     saved_track = await _resolve_track(participant_type or existing_data.get("participant_type"))
+    # Phase 07.1 (CITY-03): same inherit-from-FSM idiom as saved_track, deliberately WITHOUT a
+    # normalize_city fallback — a delegate whose city was never chosen must stay NULL in
+    # reg_started (07.1-CONTEXT.md: "Обратная совместимость"). Moscow is substituted only on
+    # READ, in cities.normalize_city — never written here.
+    saved_city = event_city or existing_data.get("event_city")
 
     # SCHED-02: record the dropout row at flow start (fail-soft — never block registration).
     try:
-        await mark_reg_started(message.from_user.id, message.from_user.username, saved_track)
+        await mark_reg_started(message.from_user.id, message.from_user.username, saved_track, saved_city)
     except Exception as e:
         logger.error(f"Failed to mark reg_started for {message.from_user.id}: {e}")
 
@@ -1523,6 +1561,10 @@ async def _start_registration_flow(message: types.Message, state: FSMContext, re
     await state.update_data(participant_type=saved_track)
     if track_from_link:
         await state.update_data(_track_from_link=True)
+    # Phase 07.1 (CITY-03): only write event_city into FSM when one is actually known — an
+    # unconditional write would invent a default in a session where no city was ever chosen.
+    if saved_city:
+        await state.update_data(event_city=saved_city)
 
     await message.answer(
         "Отлично, начинаем регистрацию."
