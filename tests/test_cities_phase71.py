@@ -9,6 +9,8 @@ import asyncio
 from config import config
 from database import db
 import cities
+from handlers import registration as reg
+from settings_schema import get_setting_typed
 
 
 def _use_tmp_db(tmp_path):
@@ -232,5 +234,84 @@ def test_no_backfill_null_stays_null_across_repeated_init(tmp_path):
         user = await db.get_user(3)
         assert user["event_city"] is None
         assert cities.normalize_city(user["event_city"]) == "msk"
+
+    asyncio.run(go())
+
+
+# ── Task 3: _extract_event_city deep-link extractor + master toggle ────────────
+
+def test_extract_event_city_known_tokens():
+    assert reg._extract_event_city("city_spb") == "spb"
+    assert reg._extract_event_city("city_msk") == "msk"
+    assert reg._extract_event_city("city_tyumen") == "tyumen"
+
+
+def test_extract_event_city_negative_and_edge_cases():
+    assert reg._extract_event_city(None) is None
+    assert reg._extract_event_city("") is None
+    assert reg._extract_event_city("city_") is None
+    assert reg._extract_event_city("city_spb_extra") is None
+    assert reg._extract_event_city("CITY_SPB") is None
+
+
+def test_extract_event_city_strips_whitespace():
+    assert reg._extract_event_city(" city_spb ") == "spb"
+
+
+def test_mutual_exclusivity_numeric_referrer_id():
+    assert reg._extract_event_city("123456") is None
+    assert reg._extract_referrer_id("123456", 1) == 123456
+
+
+def test_mutual_exclusivity_source_tag():
+    assert reg._extract_event_city("src_vk") is None
+    assert reg._extract_source_tag("src_vk") == "vk"
+
+
+def test_mutual_exclusivity_party_track():
+    assert reg._extract_event_city("party_over") is None
+    assert reg._extract_party_track("party_over") == "party_overnight"
+
+
+def test_mutual_exclusivity_city_token_not_referrer_id():
+    assert reg._extract_referrer_id("city_spb", 1) is None
+
+
+def test_mutual_exclusivity_city_token_not_source_tag():
+    assert reg._extract_source_tag("city_spb") is None
+
+
+def test_mutual_exclusivity_city_token_not_party_track():
+    assert reg._extract_party_track("city_spb") is None
+
+
+def test_event_city_enabled_default_off(tmp_path):
+    _use_tmp_db(tmp_path)
+
+    async def go():
+        await db.init_db()
+        assert await get_setting_typed("event_city_enabled") == "off"
+
+    asyncio.run(go())
+
+
+def test_event_city_enabled_empty_string_resolves_to_off(tmp_path):
+    _use_tmp_db(tmp_path)
+
+    async def go():
+        await db.init_db()
+        await db.set_setting("event_city_enabled", "")
+        assert await get_setting_typed("event_city_enabled") == "off"
+
+    asyncio.run(go())
+
+
+def test_event_city_enabled_can_be_turned_on(tmp_path):
+    _use_tmp_db(tmp_path)
+
+    async def go():
+        await db.init_db()
+        await db.set_setting("event_city_enabled", "on")
+        assert await get_setting_typed("event_city_enabled") == "on"
 
     asyncio.run(go())

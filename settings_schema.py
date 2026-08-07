@@ -444,6 +444,14 @@ SETTINGS_SCHEMA = {
         "type": "enum", "group": "toggles", "label": "✅ Модерация вечеринки",
         "options": ["manual", "auto"], "prompt": None, "default": "manual",
     },
+    # Phase 07.1 (CITY-01): master gate for the city-selection screen/deep-links. Type
+    # "enum" (NOT "toggle" — REG_DEFAULTS/preset auto-overwrite only "toggle"-typed keys,
+    # see handlers/registration.py REG_DEFAULTS + handlers/admin.py preset loop). Default
+    # "off" — deploying this plan changes nothing for anyone; a manager flips it on later.
+    "event_city_enabled": {
+        "type": "enum", "group": "toggles", "label": "🏙 Выбор города мероприятия",
+        "options": ["on", "off"], "prompt": None, "default": "off",
+    },
 }
 
 
