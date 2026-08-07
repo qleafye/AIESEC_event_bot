@@ -15,6 +15,7 @@ from aiogram.utils.keyboard import ReplyKeyboardBuilder
 from config import config
 from database.db import add_user, get_user, get_setting, set_setting, mark_reg_started, clear_reg_started, set_reg_step, set_user_subscribed, set_user_status, record_user_consent, get_user_consents, get_reg_started_track, has_short_incomplete, _csv_safe
 from settings_schema import SETTINGS_SCHEMA, get_setting_typed  # REG-01/D-06 (06-04): REG_DEFAULTS derivation source; get_setting_typed (06-06 gate migration)
+from cities import CITIES  # Phase 07.1 (CITY-01): city registry — _CITY_TAG_MAP below
 from handlers.states import Registration
 from keyboards.builders import (
     get_main_menu_kb,
@@ -922,6 +923,22 @@ def _extract_party_track(command_args: str | None) -> str | None:
     if not command_args:
         return None
     return _PARTY_TAG_MAP.get(command_args.strip())
+
+
+# Phase 07.1 (CITY-01): fixed exact-match map, same construction as _PARTY_TAG_MAP — no
+# startswith/regex, so a crafted deep-link payload can never select a city outside the
+# codes parsed from config.EVENT_CITIES. Keys are "city_{code}"; these tokens do not
+# overlap with the "src_" prefix, ASCII-digit referrer ids, or _PARTY_TAG_MAP's two
+# literal tokens (proven by the mutual-exclusivity test matrix).
+_CITY_TAG_MAP = {f"city_{c['code']}": c["code"] for c in CITIES}
+
+
+def _extract_event_city(command_args: str | None) -> str | None:
+    """Exact-match only — mirrors _extract_party_track's structure and mutual-exclusivity
+    guarantee with _extract_referrer_id / _extract_source_tag / _extract_party_track."""
+    if not command_args:
+        return None
+    return _CITY_TAG_MAP.get(command_args.strip())
 
 
 DEFAULT_PARTY_FORK_TEXT = "Выбери формат участия:"
