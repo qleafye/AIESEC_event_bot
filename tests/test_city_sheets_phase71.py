@@ -271,3 +271,124 @@ def test_finalize_registration_spb_short_track_routes_to_named_short_tab(tmp_pat
     assert tab == "СПб Акция"
     short_headers = asyncio.run(reg.short_sheet_headers())
     assert len(row) == len(short_headers)
+
+
+# ── Task 3: main._maybe_ensure_city_sheet_headers gated startup materialization ─────────────
+
+def _patch_ensure_named(monkeypatch, main_module, raise_on=None):
+    calls = []
+
+    async def fake_ensure(tab_name, headers):
+        if raise_on is not None and tab_name in raise_on:
+            raise RuntimeError("simulated gspread failure")
+        calls.append((tab_name, headers))
+
+    monkeypatch.setattr(main_module.sheets_service, "ensure_named_sheet_header", fake_ensure)
+    return calls
+
+
+def test_maybe_ensure_city_sheet_headers_noop_when_module_off(tmp_path, monkeypatch):
+    _use_tmp_db(tmp_path)
+    import main
+
+    calls = _patch_ensure_named(monkeypatch, main)
+
+    async def go():
+        await db.init_db()
+        await main._maybe_ensure_city_sheet_headers()
+
+    asyncio.run(go())
+    assert calls == []
+
+
+def test_maybe_ensure_city_sheet_headers_creates_only_non_default_main_tabs(tmp_path, monkeypatch):
+    _use_tmp_db(tmp_path)
+    import main
+
+    calls = _patch_ensure_named(monkeypatch, main)
+
+    async def go():
+        await db.init_db()
+        await db.set_setting("event_city_enabled", "on")
+        # registration_mode defaults to "short" (SETTINGS_SCHEMA) -- pin "full" explicitly so
+        # this test isolates the MAIN-tab-only case (party is off by default already).
+        await db.set_setting("registration_mode", "full")
+        await main._maybe_ensure_city_sheet_headers()
+
+    asyncio.run(go())
+    tabs = {tab for tab, _headers in calls}
+    assert tabs == {"СПб", "Тюмень"}
+
+
+def test_maybe_ensure_city_sheet_headers_respects_per_city_disable(tmp_path, monkeypatch):
+    _use_tmp_db(tmp_path)
+    import main
+
+    calls = _patch_ensure_named(monkeypatch, main)
+
+    async def go():
+        await db.init_db()
+        await db.set_setting("event_city_enabled", "on")
+        await db.set_setting("registration_mode", "full")
+        await db.set_setting("city_enabled__tyumen", "off")
+        await main._maybe_ensure_city_sheet_headers()
+
+    asyncio.run(go())
+    tabs = {tab for tab, _headers in calls}
+    assert "Тюмень" not in tabs
+    assert "СПб" in tabs
+
+
+def test_maybe_ensure_city_sheet_headers_party_enabled_adds_party_tab(tmp_path, monkeypatch):
+    _use_tmp_db(tmp_path)
+    import main
+
+    calls = _patch_ensure_named(monkeypatch, main)
+
+    async def go():
+        await db.init_db()
+        await db.set_setting("event_city_enabled", "on")
+        await db.set_setting("party_enabled", "on")
+        await main._maybe_ensure_city_sheet_headers()
+
+    asyncio.run(go())
+    tabs = {tab for tab, _headers in calls}
+    assert "СПб Party" in tabs
+    assert "Тюмень Party" in tabs
+
+
+def test_maybe_ensure_city_sheet_headers_short_mode_adds_short_tab(tmp_path, monkeypatch):
+    _use_tmp_db(tmp_path)
+    import main
+
+    calls = _patch_ensure_named(monkeypatch, main)
+
+    async def go():
+        await db.init_db()
+        await db.set_setting("event_city_enabled", "on")
+        await db.set_setting("registration_mode", "short")
+        await main._maybe_ensure_city_sheet_headers()
+
+    asyncio.run(go())
+    tabs = {tab for tab, _headers in calls}
+    assert "СПб Акция" in tabs
+    assert "Тюмень Акция" in tabs
+
+
+def test_maybe_ensure_city_sheet_headers_fail_soft_per_tab(tmp_path, monkeypatch):
+    """A raising ensure_named_sheet_header for one city's tab must not cancel the others or
+    propagate — startup must never be blocked by Sheets."""
+    _use_tmp_db(tmp_path)
+    import main
+
+    calls = _patch_ensure_named(monkeypatch, main, raise_on={"СПб"})
+
+    async def go():
+        await db.init_db()
+        await db.set_setting("event_city_enabled", "on")
+        await main._maybe_ensure_city_sheet_headers()  # must not raise
+
+    asyncio.run(go())
+    tabs = {tab for tab, _headers in calls}
+    assert "Тюмень" in tabs
+    assert "СПб" not in tabs
