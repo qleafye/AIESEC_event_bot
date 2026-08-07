@@ -16,7 +16,8 @@ from services.background import spawn as _spawn
 import services.sheets as sheets_service
 import services.proxy_session as proxy_session
 from services.proxy_session import FailoverAiohttpSession, build_proxy_chain, mask_proxy_url
-from handlers.registration import active_sheet_headers, set_sheet_schema, party_sheet_headers, PARTY_SHEET_TAB_DEFAULT, short_sheet_headers, SHORT_SHEET_TAB_DEFAULT
+from handlers.registration import active_sheet_headers, set_sheet_schema, party_sheet_headers, PARTY_SHEET_TAB_DEFAULT, short_sheet_headers, SHORT_SHEET_TAB_DEFAULT, get_sheet_schema, city_row_tab
+from cities import enabled_cities, is_default_city
 from settings_schema import get_setting_typed
 from aiogram.client.default import DefaultBotProperties
 from aiogram.enums import ParseMode
@@ -88,6 +89,55 @@ async def _maybe_ensure_short_sheet_header():
         logging.getLogger(__name__).warning(f"Failed to ensure short sheet header (tab={tab!r}): {e}")
 
 
+async def _maybe_ensure_city_sheet_headers():
+    """Phase 07.1 (CITY-02, plan 07.1-02): materialize each ENABLED non-default city's tabs at
+    startup — same D-11/D-15 posture as the two siblings above ("new capability defaults OFF
+    must never appear in the spreadsheet"). Gated on the master `event_city_enabled` toggle
+    first; Moscow is skipped entirely because its tabs are already handled by the three
+    existing calls in main() (byte-identical legacy tab names). Each tab is its own
+    try/except so one city's Sheets failure never cancels the rest, and no exception here can
+    ever block bot startup/polling."""
+    if await get_setting_typed("event_city_enabled") != "on":
+        return
+    logger = logging.getLogger(__name__)
+    for city in await enabled_cities():
+        code = city["code"]
+        if is_default_city(code):
+            continue
+        base = city.get("tab_base") or ""
+        if not base:
+            continue
+
+        # Main tab — always materialized for an enabled non-default city.
+        try:
+            tab = await city_row_tab(code, None)
+            headers = await get_sheet_schema()  # CR-9 frozen snapshot, not live headers
+            await sheets_service.ensure_named_sheet_header(tab, headers)
+        except Exception as e:
+            logger.warning(f"Failed to ensure city sheet header (tab={tab!r}): {e}")
+
+        # Party tab — only while the party track itself is enabled.
+        if await get_setting_typed("party_enabled") == "on":
+            try:
+                tab = await city_row_tab(code, "party_overnight")
+                headers = await party_sheet_headers()
+                await sheets_service.ensure_named_sheet_header(tab, headers)
+            except Exception as e:
+                logger.warning(f"Failed to ensure city sheet header (tab={tab!r}): {e}")
+
+        # Short tab — only while the short/promo track itself is enabled.
+        if await get_setting_typed("registration_mode") == "short":
+            try:
+                tab = await city_row_tab(code, "short")
+                headers = await short_sheet_headers()
+                await sheets_service.ensure_named_sheet_header(tab, headers)
+            except Exception as e:
+                logger.warning(f"Failed to ensure city sheet header (tab={tab!r}): {e}")
+
+        # «{base} Незавершённые» is deliberately NOT created here — plan 07.1-04 writes it via
+        # a full sync_named_worksheet rewrite, created there on-demand once rows exist.
+
+
 async def main():
     _configure_logging()
     logger = logging.getLogger(__name__)
@@ -112,6 +162,9 @@ async def main():
     # Phase 7 (SHORT-02): parallel short-tab header call, gated on registration_mode=="short" —
     # see _maybe_ensure_short_sheet_header's docstring. Does not touch the calls/order above.
     _spawn(_maybe_ensure_short_sheet_header())
+    # Phase 07.1 (CITY-02): parallel per-city tab header call, gated on event_city_enabled —
+    # see _maybe_ensure_city_sheet_headers's docstring. Does not touch the calls/order above.
+    _spawn(_maybe_ensure_city_sheet_headers())
 
     default = DefaultBotProperties(parse_mode=ParseMode.HTML)
     
