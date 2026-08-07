@@ -17,7 +17,51 @@ import time
 from aiogram.client.session.aiohttp import AiohttpSession
 from aiogram.exceptions import TelegramNetworkError
 
+from config import config
+from services.background import spawn
+
 logger = logging.getLogger(__name__)
+
+# Admin-alert hook, one-in-one-out with services/sheets.py's set_alert_bot pattern (P0 audit
+# T-dw1-02): fail-soft, never raises, warns once if no bot was injected (e.g.
+# scripts/backfill_resumes.py, which intentionally never calls set_alert_bot).
+_alert_bot = None
+_alert_bot_warned = False
+# Dedup: only alert once per distinct rotation TARGET, so a single flapping link doesn't
+# spam admins on every retried request.
+_last_alerted_index = None
+
+
+def set_alert_bot(bot) -> None:
+    global _alert_bot
+    _alert_bot = bot
+
+
+async def _alert_admins_proxy_switch(from_masked: str, to_masked: str) -> None:
+    """Fired via services.background.spawn (fire-and-forget) so a slow/failing Telegram
+    send never blocks the retry loop that just switched proxy links. Wrapped so this can
+    NEVER raise into the caller."""
+    global _alert_bot_warned
+    try:
+        if _alert_bot is None:
+            if not _alert_bot_warned:
+                logger.warning(
+                    "_alert_admins_proxy_switch: no alert bot set, skipping admin alert"
+                )
+                _alert_bot_warned = True
+            return
+        text = (
+            f"⚠️ Прокси переключился: {from_masked} → {to_masked}. "
+            "Бот продолжает работать через резервный канал. "
+            "Проверьте основной прокси/туннель."
+        )
+        for admin_id in config.ADMIN_IDS:
+            try:
+                await _alert_bot.send_message(admin_id, text)
+            except Exception as e:
+                logger.error(f"Proxy switch alert to {admin_id} failed: {e}")
+    except Exception as e:
+        logger.error(f"_alert_admins_proxy_switch failed: {e}")
 
 # Matches an optional "scheme://" followed by "user:pass@" (or "user@") right before the
 # host. Only touches the credentials segment -- host/port/path are left untouched.
@@ -99,6 +143,7 @@ class FailoverAiohttpSession(AiohttpSession):
     async def _rotate_from(self, observed_index: int) -> None:
         """Idempotent rotation: if another coroutine already rotated past `observed_index`,
         this is a no-op -- the caller simply retries on the link that's already active."""
+        global _last_alerted_index
         async with self._rotate_lock:
             if self._index != observed_index:
                 return
@@ -106,9 +151,11 @@ class FailoverAiohttpSession(AiohttpSession):
             prev_masked = mask_proxy_url(self._chain[observed_index])
             self._apply(nxt)
             self._switched_at = None if nxt == 0 else self._time_source()
-            logger.warning(
-                "Proxy failover: %s -> %s", prev_masked, mask_proxy_url(self._chain[nxt])
-            )
+            to_masked = mask_proxy_url(self._chain[nxt])
+            logger.warning("Proxy failover: %s -> %s", prev_masked, to_masked)
+            if nxt != _last_alerted_index:
+                _last_alerted_index = nxt
+                spawn(_alert_admins_proxy_switch(prev_masked, to_masked))
 
     async def _maybe_return_to_primary(self) -> None:
         if self._index == 0 or self._recheck_seconds <= 0 or self._switched_at is None:

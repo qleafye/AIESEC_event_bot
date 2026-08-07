@@ -9,6 +9,7 @@ _FakeBot pattern.
 import asyncio
 import logging
 
+import pytest
 from aiogram.client.session.aiohttp import AiohttpSession
 from aiogram.exceptions import TelegramNetworkError
 
@@ -72,6 +73,18 @@ def _reset_alert_state():
     proxy_session.set_alert_bot(None)
     proxy_session._alert_bot_warned = False
     proxy_session._last_alerted_index = None
+
+
+@pytest.fixture(autouse=True)
+def _isolate_proxy_alert_module_state():
+    """`_last_alerted_index`/`_alert_bot`/`_alert_bot_warned` are module-level globals
+    (mirrors services/sheets.py's `_alert_bot` pattern). Without this autouse reset, a
+    rotation in an EARLIER test (e.g. Test 1-4, which never touch the alert bot) leaves
+    `_last_alerted_index` set, silently swallowing the dedup-relevant alert in a LATER test
+    that reuses the same chain order."""
+    _reset_alert_state()
+    yield
+    _reset_alert_state()
 
 
 # ── Test 1: rotate ──────────────────────────────────────────────────────────
