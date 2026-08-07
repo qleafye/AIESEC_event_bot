@@ -14,10 +14,11 @@ from services.allowlist import refresh_allowlist
 from services.sheets import ensure_sheet_header
 from services.background import spawn as _spawn
 import services.sheets as sheets_service
+import services.proxy_session as proxy_session
+from services.proxy_session import FailoverAiohttpSession, build_proxy_chain, mask_proxy_url
 from handlers.registration import active_sheet_headers, set_sheet_schema, party_sheet_headers, PARTY_SHEET_TAB_DEFAULT, short_sheet_headers, SHORT_SHEET_TAB_DEFAULT
 from settings_schema import get_setting_typed
 from aiogram.client.default import DefaultBotProperties
-from aiogram.client.session.aiohttp import AiohttpSession
 from aiogram.enums import ParseMode
 from aiogram.types import ErrorEvent
 
@@ -114,10 +115,18 @@ async def main():
 
     default = DefaultBotProperties(parse_mode=ParseMode.HTML)
     
+    # Failover proxy chain (2026-08-06 incident: a single dead proxy took the whole bot
+    # down). PROXY_URL_BACKUP is optional -- with only PROXY_URL set (or nothing), the
+    # chain collapses to length 1 and FailoverAiohttpSession.make_request delegates straight
+    # to the base class, byte-identical to the old single-proxy behaviour.
+    chain = build_proxy_chain(
+        config.PROXY_URL.get_secret_value() if config.PROXY_URL else None,
+        config.PROXY_URL_BACKUP.get_secret_value() if config.PROXY_URL_BACKUP else None,
+    )
     session = None
-    if config.PROXY_URL:
-        session = AiohttpSession(proxy=config.PROXY_URL.get_secret_value())
-        logger.info("Using configured proxy")
+    if chain != [None]:
+        session = FailoverAiohttpSession(chain, recheck_seconds=config.PROXY_RECHECK_SECONDS)
+        logger.info("Using proxy chain: %s", [mask_proxy_url(link) for link in chain])
 
     bot = Bot(token=config.BOT_TOKEN.get_secret_value(), default=default, session=session)
     dp = Dispatcher(storage=MemoryStorage())
@@ -150,6 +159,9 @@ async def main():
     # P0 audit T-dw1-02: inject the bot into sheets.py so an exhausted-retry append can alert
     # admins; must be live before polling starts.
     sheets_service.set_alert_bot(bot)
+    # Same fail-soft injection for proxy_session's failover-switch admin alert -- must also
+    # be live before polling starts (the very first proxy rotation could happen immediately).
+    proxy_session.set_alert_bot(bot)
     _spawn(refresh_allowlist())
     logger.info("Scheduler + allowlist refresh started")
 
