@@ -1730,6 +1730,7 @@ async def cmd_start(message: types.Message, state: FSMContext, bot: Bot, command
     source_tag = _extract_source_tag(args)
     party_track = _extract_party_track(args)          # Phase 5 (D-10)
     dl_party_track = party_track  # preserved for the fork-suppression check below (D-10)
+    dl_event_city = _extract_event_city(args)          # Phase 07.1 (CITY-03)
     if referrer_id:
         logger.info(f"Deep-link referrer_id={referrer_id} for user {user_id}")
 
@@ -1782,8 +1783,66 @@ async def cmd_start(message: types.Message, state: FSMContext, bot: Bot, command
     except Exception as e:
         logger.error(f"get_reg_started_track failed for {user_id}: {e}")
 
+    # Phase 07.1 (CITY-03): same fail-soft recovery pattern as the track above — a bare
+    # repeat /start (no city deep-link) recovers the city already chosen in this in-flight
+    # registration, so the city screen is not shown twice.
+    recovered_city = None
+    try:
+        if not dl_event_city and not user:
+            recovered_city = await get_reg_started_city(user_id) or None
+    except Exception as e:
+        logger.error(f"get_reg_started_city failed for {user_id}: {e}")
+    effective_city = dl_event_city or recovered_city
+
     logger.info(f"User {user_id} not registered, showing welcome then registration")
     await _send_welcome(message, start_text, start_photo, None, user_id)
+
+    # Phase 07.1 (CITY-03): pre-flow city screen. Fixed order with the party fork
+    # (07.1-CONTEXT.md): party-closed gate -> welcome -> CITY -> party fork -> start. We
+    # reach this point only when there is no existing non-rejected users row (the
+    # early-return above already handled that case), so `is_registered` is always False here.
+    try:
+        show_city = await _should_show_city_fork(effective_city, False)
+    except Exception as e:
+        logger.error(f"city fork gate check failed for {user_id}: {e}")
+        show_city = False
+    if show_city:
+        # Same CR-01/HIGH-01 preserve idiom as the party fork below — persist attribution
+        # (and the party track already known via deep-link/recovery) BEFORE the early return,
+        # so city_pick's later call to _continue_after_city can round-trip it through FSM.
+        _existing = await state.get_data()
+        await state.update_data(
+            referrer_id=referrer_id or _existing.get("referrer_id"),
+            source=source_tag or _existing.get("source"),
+            _source_from_tag=bool(source_tag) or bool(_existing.get("_source_from_tag")),
+            participant_type=party_track or _existing.get("participant_type"),
+        )
+        if dl_party_track:
+            await state.update_data(_track_from_link=True)
+        city_fork_text = await get_setting("city_fork_text") or DEFAULT_CITY_FORK_TEXT
+        await message.answer(city_fork_text, reply_markup=await _city_fork_kb())
+        return  # wait for the tap; city_pick continues the chain with the chosen city
+
+    await _continue_after_city(message, state, effective_city, referrer_id, source_tag, dl_party_track, recovered_track)
+
+
+async def _continue_after_city(
+    message: types.Message,
+    state: FSMContext,
+    event_city: str | None,
+    referrer_id: int | None,
+    source_tag: str | None,
+    dl_party_track: str | None,
+    recovered_track: str | None,
+):
+    """Phase 07.1 (CITY-03): the former tail of cmd_start (party fork gate + flow start),
+    extracted so both a bare cmd_start (city screen skipped/already resolved) and city_pick
+    (after a tap) reach the SAME party-fork-then-start logic. Body is byte-identical to the
+    pre-07.1-03 tail except for the two event_city additions marked below — city travels
+    through party_pick the same way participant_type already does, by round-tripping through
+    FSM state before any early return."""
+    user_id = message.from_user.id
+    party_track = dl_party_track or recovered_track
 
     # Phase 5 (D-10): optional pre-flow fork question, behind party_fork_question (default
     # off). We reach this point only when there is no existing non-rejected users row (the
@@ -1809,13 +1868,23 @@ async def cmd_start(message: types.Message, state: FSMContext, bot: Bot, command
             referrer_id=referrer_id or _existing.get("referrer_id"),
             source=source_tag or _existing.get("source"),
             _source_from_tag=bool(source_tag) or bool(_existing.get("_source_from_tag")),
+            # Phase 07.1 (CITY-03): carry the already-resolved city through the party fork too
+            # — party_pick calls _start_registration_flow WITHOUT a city, so it must be able to
+            # read it back from FSM the same way it already does for participant_type. Mirror
+            # the same preserve idiom for participant_type itself (this is a no-op whenever
+            # dl_party_track/recovered_track are set, since _should_show_fork already returns
+            # False in that case — kept for symmetry so a future caller of this branch can't
+            # silently drop an already-known track the way pre-fix referrer_id/source did).
+            event_city=event_city,
+            participant_type=dl_party_track or recovered_track or _existing.get("participant_type"),
         )
         fork_text = await get_setting("party_fork_text") or DEFAULT_PARTY_FORK_TEXT
         await message.answer(fork_text, reply_markup=_party_fork_kb())
         return  # wait for the tap; the party_pick handler starts the flow with the chosen track
 
     await _start_registration_flow(
-        message, state, referrer_id=referrer_id, source_tag=source_tag, participant_type=party_track
+        message, state, referrer_id=referrer_id, source_tag=source_tag,
+        participant_type=party_track, event_city=event_city,
     )
 
 
@@ -1866,6 +1935,36 @@ async def party_fallback_full(callback: types.CallbackQuery, state: FSMContext):
     # model_copy() preserves the bound _bot private attr, so .answer() still works.
     tap_message = callback.message.model_copy(update={"from_user": callback.from_user})
     await _start_registration_flow(tap_message, state)
+
+
+@router.callback_query(F.data.startswith("city_pick:"))
+async def city_pick(callback: types.CallbackQuery, state: FSMContext):
+    """CITY-03 city-screen tap. The code is checked against the CLOSED CITIES vocabulary
+    (T-071-09: no crafted callback payload can select a city outside the registry) before any
+    action; is_city_enabled is re-checked AFTER render (T-071-10, render-then-flip window —
+    same pattern as party_pick's party_enabled re-check). Continues through the SAME
+    _continue_after_city tail cmd_start uses, so the party fork still fires if applicable and
+    referrer/source attribution (persisted into FSM by cmd_start before showing this screen)
+    is picked back up there, not passed again here."""
+    code = callback.data.split(":", 1)[1]
+    if code not in {c["code"] for c in CITIES}:
+        await callback.answer("Некорректный выбор.", show_alert=True)
+        return
+
+    if not await is_city_enabled(code):
+        await callback.answer("Регистрация на этот город закрыта.", show_alert=True)
+        return
+
+    await callback.answer()
+    try:
+        await callback.message.edit_reply_markup(reply_markup=None)
+    except Exception:
+        pass
+    # callback.message.from_user is the BOT — swap in the tapping user, same fix as party_pick.
+    tap_message = callback.message.model_copy(update={"from_user": callback.from_user})
+    data = await state.get_data()
+    pending_track = data.get("participant_type")
+    await _continue_after_city(tap_message, state, code, None, None, pending_track, None)
 
 
 _CANCEL_CONFIRM_KB = InlineKeyboardMarkup(inline_keyboard=[[
