@@ -184,6 +184,15 @@ async def init_db():
         await _ensure_column(db, "users", "participant_type", "TEXT DEFAULT 'full'")
         await _ensure_column(db, "reg_started", "participant_type", "TEXT")
 
+        # Phase 07.1 migrations (CITY-01) — additive, idempotent; NO backfill. ~590 rows are
+        # accumulated PAST data (only ~100 are live current-event applications); writing
+        # "Москва" into old rows would fabricate a fact in storage. NULL means "registered
+        # before cities existed" and must stay distinguishable from an explicit Moscow pick.
+        # "Москва" is substituted ONLY on read, exclusively via cities.normalize_city — no
+        # reader may write that default back into the DB.
+        await _ensure_column(db, "users", "event_city", "TEXT")
+        await _ensure_column(db, "reg_started", "event_city", "TEXT")
+
         await db.commit()
 
 async def get_setting(key: str) -> str | None:
@@ -232,8 +241,8 @@ async def add_user(data: dict):
                 payment_status, payment_option, receipt_file_id, payment_due, paid_at,
                 arrival_date, birth_date, study_field, goal, formats, vk_username,
                 transport, payment_plan_date, bed_sharing, bed_partner, participant_type,
-                alumni_status
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                alumni_status, event_city
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             ON CONFLICT(telegram_id) DO UPDATE SET
                 username=excluded.username,
                 full_name=excluded.full_name,
@@ -293,7 +302,8 @@ async def add_user(data: dict):
                 bed_sharing=excluded.bed_sharing,
                 bed_partner=excluded.bed_partner,
                 participant_type=excluded.participant_type,
-                alumni_status=excluded.alumni_status
+                alumni_status=excluded.alumni_status,
+                event_city=excluded.event_city
         ''', (
             data['telegram_id'],
             data.get('username'),
@@ -354,6 +364,7 @@ async def add_user(data: dict):
             data.get('bed_partner'),
             data.get('participant_type', 'full'),
             data.get('alumni_status'),
+            data.get('event_city'),
         ))
         await db.commit()
 
@@ -568,12 +579,17 @@ async def get_user_rank(user_id: int) -> int | None:
 
 # ── Phase 1: reg_started dropout tracking (independent of FSM) ────────────────
 
-async def mark_reg_started(telegram_id: int, username: str | None, participant_type: str | None = None):
+async def mark_reg_started(
+    telegram_id: int,
+    username: str | None,
+    participant_type: str | None = None,
+    event_city: str | None = None,
+):
     started_at = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     async with aiosqlite.connect(config.DB_PATH) as db:
         await db.execute('''
-            INSERT INTO reg_started (telegram_id, username, started_at, participant_type)
-            VALUES (?, ?, ?, ?)
+            INSERT INTO reg_started (telegram_id, username, started_at, participant_type, event_city)
+            VALUES (?, ?, ?, ?, ?)
             ON CONFLICT(telegram_id) DO UPDATE SET
                 username=excluded.username,
                 -- MD-03: do NOT reset started_at on re-entry. A mid-flow user re-sending /start
@@ -581,8 +597,11 @@ async def mark_reg_started(telegram_id: int, username: str | None, participant_t
                 -- restart pushes started_at forward, the nudge cutoff is never crossed, and the
                 -- dropout nudge is deferred indefinitely. A genuinely new attempt after
                 -- completion is a fresh INSERT (the row was cleared), so it gets a fresh time.
-                participant_type=COALESCE(excluded.participant_type, reg_started.participant_type)
-        ''', (telegram_id, username, started_at, participant_type))
+                participant_type=COALESCE(excluded.participant_type, reg_started.participant_type),
+                -- Phase 07.1 (CITY-01): same COALESCE semantics as participant_type — a bare
+                -- repeat /start with no city arg must NOT clear an already-chosen city.
+                event_city=COALESCE(excluded.event_city, reg_started.event_city)
+        ''', (telegram_id, username, started_at, participant_type, event_city))
         await db.commit()
 
 
@@ -598,6 +617,17 @@ async def get_reg_started_track(telegram_id: int) -> str | None:
     async with aiosqlite.connect(config.DB_PATH) as db:
         async with db.execute(
             "SELECT participant_type FROM reg_started WHERE telegram_id = ?", (telegram_id,)
+        ) as cursor:
+            row = await cursor.fetchone()
+            return row[0] if row else None
+
+
+# Phase 07.1 (CITY-01): read the event_city recorded at flow start — same read pattern as
+# get_reg_started_track, for restoring an in-progress registration's city choice.
+async def get_reg_started_city(telegram_id: int) -> str | None:
+    async with aiosqlite.connect(config.DB_PATH) as db:
+        async with db.execute(
+            "SELECT event_city FROM reg_started WHERE telegram_id = ?", (telegram_id,)
         ) as cursor:
             row = await cursor.fetchone()
             return row[0] if row else None

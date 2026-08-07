@@ -131,3 +131,106 @@ def test_city_tab_base_override(tmp_path):
         assert await cities.city_tab_base("spb") == "Питер"
 
     asyncio.run(go())
+
+
+# ── Task 2: DB migrations — users.event_city / reg_started.event_city ──────────
+
+def test_init_db_twice_is_idempotent(tmp_path):
+    _use_tmp_db(tmp_path)
+
+    async def go():
+        await db.init_db()
+        await db.init_db()  # must not raise
+
+    asyncio.run(go())
+
+
+def test_add_user_with_event_city_roundtrips(tmp_path):
+    _use_tmp_db(tmp_path)
+
+    async def go():
+        await db.init_db()
+        await db.add_user({
+            "telegram_id": 1,
+            "registration_date": "2026-08-08",
+            "event_city": "spb",
+        })
+        user = await db.get_user(1)
+        assert user["event_city"] == "spb"
+
+    asyncio.run(go())
+
+
+def test_add_user_without_event_city_stores_null(tmp_path):
+    _use_tmp_db(tmp_path)
+
+    async def go():
+        await db.init_db()
+        await db.add_user({
+            "telegram_id": 2,
+            "registration_date": "2026-08-08",
+        })
+        user = await db.get_user(2)
+        assert user["event_city"] is None
+        assert cities.normalize_city(user["event_city"]) == "msk"
+
+    asyncio.run(go())
+
+
+def test_mark_reg_started_coalesce_does_not_wipe_city(tmp_path):
+    _use_tmp_db(tmp_path)
+
+    async def go():
+        await db.init_db()
+        await db.mark_reg_started(10, "u", "full", "spb")
+        await db.mark_reg_started(10, "u", None, None)
+        assert await db.get_reg_started_city(10) == "spb"
+
+    asyncio.run(go())
+
+
+def test_pre_migration_row_reads_event_city_as_none(tmp_path):
+    """A users row inserted via the bare CREATE TABLE schema (before _ensure_column added
+    event_city) must read back as None after the column is added — proving the ADD COLUMN
+    migration doesn't require the row to already have the column."""
+    _use_tmp_db(tmp_path)
+
+    async def go():
+        import aiosqlite
+        # Simulate a pre-migration DB: create the base table without event_city, insert a
+        # row, THEN run init_db() (which additively adds the column).
+        async with aiosqlite.connect(config.DB_PATH) as conn:
+            await conn.execute('''
+                CREATE TABLE users (
+                    telegram_id INTEGER PRIMARY KEY,
+                    username TEXT,
+                    full_name TEXT,
+                    registration_date TEXT
+                )
+            ''')
+            await conn.execute(
+                "INSERT INTO users (telegram_id, username, full_name, registration_date) "
+                "VALUES (?, ?, ?, ?)",
+                (99, "legacy", "Legacy User", "2020-01-01"),
+            )
+            await conn.commit()
+
+        await db.init_db()
+        user = await db.get_user(99)
+        assert user["event_city"] is None
+
+    asyncio.run(go())
+
+
+def test_no_backfill_null_stays_null_across_repeated_init(tmp_path):
+    _use_tmp_db(tmp_path)
+
+    async def go():
+        await db.init_db()
+        await db.add_user({"telegram_id": 3, "registration_date": "2026-08-08"})
+        await db.init_db()  # re-run migrations again
+        user = await db.get_user(3)
+        assert user["event_city"] is None
+        assert cities.normalize_city(user["event_city"]) == "msk"
+
+    asyncio.run(go())
