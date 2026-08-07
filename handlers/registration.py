@@ -2694,10 +2694,17 @@ async def finalize_registration(message: types.Message, state: FSMContext, bot: 
     # Phase 5 (D-11/D-12) / Phase 7 (SHORT-02): EXCLUSIVE routing — a registration goes to
     # exactly one tab (party / short / main), never more than one. Resolved via _sheet_dispatch
     # so the exclusivity property is provable by a test that doesn't run this whole function.
+    # Phase 07.1 (CITY-02): city selects the TAB, track (via _sheet_dispatch) still selects the
+    # COLUMNS — _row_fn/the row itself are unchanged; only the append destination can move to a
+    # non-default city's named tab. Exactly ONE append per registration either way.
     try:
         _row_fn, _append_fn = _sheet_dispatch(data.get("participant_type"))
         _row = await _row_fn(data)
-        _spawn(_append_fn(_row))
+        _tab = await city_row_tab(data.get("event_city"), data.get("participant_type"))
+        if _tab is None:
+            _spawn(_append_fn(_row))
+        else:
+            _spawn(append_to_named_sheet(_tab, _row))
     except Exception as e:
         logger.error(f"Failed to schedule sheet append for {message.from_user.id}: {e}")
 
