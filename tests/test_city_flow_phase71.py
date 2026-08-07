@@ -474,3 +474,118 @@ def test_city_pick_disabled_city_rejected(tmp_path, monkeypatch):
 
     asyncio.run(go())
     assert called == []
+
+
+# ── Task 3: pre-release under-registration through the release + final DB persist ───────────
+
+class _FinalizeFakeUser:
+    def __init__(self, telegram_id, username="tester"):
+        self.id = telegram_id
+        self.username = username
+
+
+class _FinalizeFakeMessage:
+    def __init__(self, telegram_id):
+        self.from_user = _FinalizeFakeUser(telegram_id)
+
+    async def answer(self, *a, **k):
+        return None
+
+
+class _FinalizeFakeState:
+    def __init__(self, data):
+        self._data = data
+
+    async def get_data(self):
+        return dict(self._data)
+
+    async def clear(self):
+        pass
+
+
+def _patch_appenders(monkeypatch):
+    named_calls = []
+    main_calls = []
+
+    async def fake_named(tab_name, data):
+        named_calls.append((tab_name, data))
+
+    async def fake_main(data):
+        main_calls.append(data)
+
+    monkeypatch.setattr(reg, "append_to_named_sheet", fake_named)
+    monkeypatch.setattr(reg, "append_to_sheet", fake_main)
+    return named_calls, main_calls
+
+
+async def _run_finalize_and_drain(message, state, bot):
+    """finalize_registration schedules its sheet append via asyncio.create_task
+    (fire-and-forget) — drain any tasks it spawned so the fake append callback has run
+    before the test asserts on it. Same helper as tests/test_city_sheets_phase71.py."""
+    await reg.finalize_registration(message, state, bot)
+    pending = [t for t in asyncio.all_tasks() if t is not asyncio.current_task()]
+    if pending:
+        await asyncio.gather(*pending)
+
+
+def test_bare_prerelease_row_no_exception_city_not_backfilled(tmp_path):
+    """A registration started BEFORE this plan's release (mark_reg_started with no event_city
+    arg) must survive a post-release bare /start without any exception, and
+    get_reg_started_city must stay None — a bare /start alone never backfills a city."""
+    _use_tmp_db(tmp_path)
+    uid = 820001
+
+    async def go():
+        await db.init_db()
+        await db.mark_reg_started(uid, "u", "full")
+        assert await db.get_reg_started_city(uid) is None
+        state = _new_state(uid)
+        msg = _FakeMessage(uid, "u")
+        await reg.cmd_start(msg, state, bot=object(), command=None)  # must not raise
+        return await db.get_reg_started_city(uid)
+
+    result = asyncio.run(go())
+    assert result is None
+
+
+def test_finalize_registration_no_event_city_key_users_row_null_main_sheet(tmp_path, monkeypatch):
+    """A FSM dict that never saw event_city at all (session survived the deploy without the
+    key) -> users.event_city stays NULL, write routes to the legacy main appender — the
+    default is applied only on read (cities.normalize_city inside city_row_tab), never here."""
+    _use_tmp_db(tmp_path)
+    named_calls, main_calls = _patch_appenders(monkeypatch)
+    uid = 820002
+
+    async def go():
+        await db.init_db()
+        await db.set_setting("event_city_enabled", "on")
+        await db.set_setting("full_approval", "manual")
+        message = _FinalizeFakeMessage(uid)
+        state = _FinalizeFakeState({"full_name": "Pre-Release Delegate"})  # no event_city key
+        await _run_finalize_and_drain(message, state, bot=None)
+        return await db.get_user(uid)
+
+    user = asyncio.run(go())
+    assert user["event_city"] is None
+    assert len(main_calls) == 1
+    assert len(named_calls) == 0
+
+
+def test_finalize_registration_spb_city_persists_on_users_row(tmp_path, monkeypatch):
+    _use_tmp_db(tmp_path)
+    named_calls, main_calls = _patch_appenders(monkeypatch)
+    uid = 820003
+
+    async def go():
+        await db.init_db()
+        await db.set_setting("event_city_enabled", "on")
+        await db.set_setting("full_approval", "manual")
+        message = _FinalizeFakeMessage(uid)
+        state = _FinalizeFakeState({"full_name": "SPb Delegate", "event_city": "spb"})
+        await _run_finalize_and_drain(message, state, bot=None)
+        return await db.get_user(uid)
+
+    user = asyncio.run(go())
+    assert user["event_city"] == "spb"
+    assert len(named_calls) == 1
+    assert len(main_calls) == 0
