@@ -37,6 +37,17 @@ class Settings(BaseSettings):
     # the historical behaviour. Set this so reordering tabs can't redirect the bot's writes.
     GOOGLE_SHEET_TAB: str = ""
 
+    # Event cities (Phase 07.1, CITY-01): format `code|label|tab_base;...`, records separated
+    # by `;`. `tab_base` is optional (empty = the city stays on the LEGACY tabs
+    # GOOGLE_SHEET_TAB / short_sheet_tab / party_sheet_tab / «Незавершённые» — this is why
+    # msk's tab_base is empty: no live-data migration). Значащие дефолты живут прямо в коде
+    # (не только в .env.example) — сервер обязан подняться с тремя городами, даже если .env
+    # ещё не обновлён на момент деплоя.
+    EVENT_CITIES: str = "msk|Москва, 30-31 октября|;spb|Санкт-Петербург, 3 октября|СПб;tyumen|Тюмень, 3 октября|Тюмень"
+    # Code from EVENT_CITIES used when a delegate's event_city is NULL/unknown (see
+    # cities.normalize_city — the single point where "no city on record" resolves to Москва).
+    EVENT_CITY_DEFAULT: str = "msk"
+
     # Nextcloud (self-hosted) resume upload. All empty = feature off (fail-soft, no upload).
     # The share password is NEVER written to DB or sheet — only the resulting share URL is.
     # IN-02: NEXTCLOUD_BASE_URL removed — it was declared but never read (nextcloud.py uses
