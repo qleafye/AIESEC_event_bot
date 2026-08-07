@@ -57,7 +57,8 @@ from services.allowlist import refresh_allowlist, allowlist_size
 from services.background import spawn as _spawn
 from handlers.states import Broadcast, EditSetting, Approval, ReceiptReview
 from keyboards.builders import get_cancel_kb, MENU_BUTTONS, get_main_menu_kb
-from handlers.registration import REG_FLOW, REG_DEFAULTS, REG_LABELS, REG_PRESETS, REG_CATEGORIES, SHEET_HEADERS, STATUS_LABELS, _build_sheet_row, active_sheet_headers, set_sheet_schema, _sheet_value_map, approve_user, dropout_step_label, _apply_party_preset, _apply_short_preset, incomplete_sheet_headers, incomplete_sheet_row
+from handlers.registration import REG_FLOW, REG_DEFAULTS, REG_LABELS, REG_PRESETS, REG_CATEGORIES, SHEET_HEADERS, STATUS_LABELS, _build_sheet_row, active_sheet_headers, set_sheet_schema, _sheet_value_map, approve_user, dropout_step_label, _apply_party_preset, _apply_short_preset, incomplete_sheet_headers, incomplete_sheet_row, city_row_tab
+from cities import CITIES, is_city_enabled, city_label, cities_module_on  # Phase 07.1 (CITY-04): admin city screen
 
 router = Router()
 logger = logging.getLogger(__name__)
@@ -110,6 +111,7 @@ def build_admin_keyboard():
         [InlineKeyboardButton(text="🧹 Убрать дубли из таблицы", callback_data="admin_dedupe_sheet")],
         [InlineKeyboardButton(text="⚙️ Настройки форума", callback_data="admin_settings")],
         [InlineKeyboardButton(text="📖 Справка по настройкам", callback_data="admin_settings_guide")],
+        [InlineKeyboardButton(text="🏙 Города мероприятия", callback_data="admin_cities")],
     ])
 
 
@@ -1332,6 +1334,104 @@ async def export_incomplete(callback: types.CallbackQuery):
         f"✅ Вкладка «Незавершённые» обновлена: <b>{written}</b> записей.{summary}",
         parse_mode="HTML",
     )
+
+
+# ── Phase 07.1 (CITY-04): «🏙 Города мероприятия» admin screen ───────────────
+# Full CRUD (add/remove/rename a city, auto-create tabs) is out of scope (CONTEXT.md) —
+# only the master toggle, per-city enable/disable, and the city label/date are editable
+# here. The city LIST itself is fixed from .env (cities.CITIES), never mutated at runtime.
+
+async def render_cities_text() -> str:
+    module_on = await cities_module_on()
+    module_status = "✅ Вкл" if module_on else "❌ Выкл"
+    lines = [
+        "🏙 <b>Города мероприятия</b>",
+        "",
+        f"Модуль выбора города: {module_status}",
+    ]
+    if not module_on:
+        lines.append(
+            "Пока выключен — экран выбора города делегатам не показывается, "
+            "все заявки идут в основной лист."
+        )
+    lines.append("")
+    for c in CITIES:
+        code = c["code"]
+        enabled = await is_city_enabled(code)
+        label = await city_label(code)
+        tab = await city_row_tab(code, None) or "основной лист"
+        icon = "✅" if enabled else "❌"
+        lines.append(
+            f"{icon} {html_module.escape(label)} — "
+            f"<code>?start=city_{html_module.escape(code)}</code> → {html_module.escape(tab)}"
+        )
+    return "\n".join(lines)
+
+
+async def build_cities_keyboard() -> InlineKeyboardMarkup:
+    module_on = await cities_module_on()
+    master_text = ("🏙 Выбор города: ✅ Вкл → ❌ Выкл" if module_on
+                   else "🏙 Выбор города: ❌ Выкл → ✅ Вкл")
+    buttons = [[InlineKeyboardButton(text=master_text, callback_data="toggle_event_city_enabled")]]
+    for c in CITIES:
+        code = c["code"]
+        enabled = await is_city_enabled(code)
+        label = await city_label(code)
+        icon = "✅" if enabled else "❌"
+        buttons.append([
+            InlineKeyboardButton(text=f"{icon} {label}", callback_data=f"city_toggle:{code}"),
+            InlineKeyboardButton(text="✏️", callback_data=f"settings_edit:city_label__{code}"),
+        ])
+    buttons.append([InlineKeyboardButton(text="◀️ Назад", callback_data="admin_menu")])
+    return InlineKeyboardMarkup(inline_keyboard=buttons)
+
+
+@router.callback_query(F.data == "admin_cities")
+async def show_admin_cities(callback: types.CallbackQuery):
+    if callback.from_user.id not in config.ADMIN_IDS:
+        await callback.answer("Недостаточно прав", show_alert=True)
+        return
+
+    text = await render_cities_text()
+    await callback.message.edit_text(text, parse_mode="HTML", reply_markup=await build_cities_keyboard())
+    await callback.answer()
+
+
+@router.callback_query(F.data == "toggle_event_city_enabled")
+async def toggle_event_city_enabled(callback: types.CallbackQuery):
+    if callback.from_user.id not in config.ADMIN_IDS:
+        await callback.answer("Недостаточно прав", show_alert=True)
+        return
+
+    current = await get_setting_typed("event_city_enabled")
+    new_val = "off" if current == "on" else "on"
+    await set_setting("event_city_enabled", new_val)
+    label = "✅ Вкл" if new_val == "on" else "❌ Выкл"
+    await callback.answer(f"Выбор города: {label}", show_alert=True)
+
+    text = await render_cities_text()
+    await callback.message.edit_text(text, parse_mode="HTML", reply_markup=await build_cities_keyboard())
+
+
+@router.callback_query(F.data.startswith("city_toggle:"))
+async def city_toggle(callback: types.CallbackQuery):
+    if callback.from_user.id not in config.ADMIN_IDS:
+        await callback.answer("Недостаточно прав", show_alert=True)
+        return
+
+    code = callback.data.split(":", 1)[1]
+    if code not in {c["code"] for c in CITIES}:
+        await callback.answer("Неизвестный город", show_alert=True)
+        return
+
+    current = (await get_setting(f"city_enabled__{code}")) or "on"
+    new_val = "off" if current == "on" else "on"
+    await set_setting(f"city_enabled__{code}", new_val)
+    label = "✅ Вкл" if new_val == "on" else "❌ Выкл"
+    await callback.answer(f"{code}: {label}", show_alert=True)
+
+    text = await render_cities_text()
+    await callback.message.edit_text(text, parse_mode="HTML", reply_markup=await build_cities_keyboard())
 
 
 @router.callback_query(F.data == "admin_menu")
