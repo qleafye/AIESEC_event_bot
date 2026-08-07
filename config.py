@@ -5,6 +5,11 @@ from pydantic import SecretStr
 class Settings(BaseSettings):
     BOT_TOKEN: SecretStr
     PROXY_URL: SecretStr | None = None
+    # Backup proxy link (independent egress -- different tunnel/server/channel). If set,
+    # the bot rotates to it on TelegramNetworkError and stays sticky (services/proxy_session.py).
+    PROXY_URL_BACKUP: SecretStr | None = None
+    # Seconds to stay on the backup before retrying the primary proxy link.
+    PROXY_RECHECK_SECONDS: int = 600
     ADMIN_IDS: List[int]
     UNIVERSITIES: List[str] = [
         "ИТМО",
