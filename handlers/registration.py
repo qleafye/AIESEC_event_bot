@@ -15,7 +15,7 @@ from aiogram.utils.keyboard import ReplyKeyboardBuilder
 from config import config
 from database.db import add_user, get_user, get_setting, set_setting, mark_reg_started, clear_reg_started, set_reg_step, set_user_subscribed, set_user_status, record_user_consent, get_user_consents, get_reg_started_track, has_short_incomplete, _csv_safe
 from settings_schema import SETTINGS_SCHEMA, get_setting_typed  # REG-01/D-06 (06-04): REG_DEFAULTS derivation source; get_setting_typed (06-06 gate migration)
-from cities import CITIES  # Phase 07.1 (CITY-01): city registry — _CITY_TAG_MAP below
+from cities import CITIES, normalize_city, is_default_city, city_tab_base, cities_module_on, TAB_SUFFIX  # Phase 07.1 (CITY-01/CITY-02): city registry — _CITY_TAG_MAP + city_row_tab below
 from handlers.states import Registration
 from keyboards.builders import (
     get_main_menu_kb,
@@ -1345,6 +1345,52 @@ def _sheet_dispatch(participant_type: str | None) -> tuple:
     if _is_short_track(participant_type):
         return short_sheet_row, append_to_short_sheet
     return active_sheet_row, append_to_sheet
+
+
+# --- Phase 07.1 (CITY-02, plan 07.1-02): city selects the TAB, track selects the COLUMNS ----
+# _sheet_dispatch above stays the sole source of ROW BUILDER + exclusivity; the three helpers
+# below only resolve a TAB NAME. They must never be merged into _sheet_dispatch's signature.
+def _sheet_kind(participant_type: str | None) -> str:
+    """Pure classification of a track into a tab "kind" for TAB_SUFFIX lookup. Mirrors
+    _sheet_dispatch's own party -> short -> main check order (load-bearing, do not reorder)."""
+    if _is_party_track(participant_type):
+        return "party"
+    if _is_short_track(participant_type):
+        return "short"
+    return "main"
+
+
+async def city_row_tab(event_city: str | None, participant_type: str | None) -> str | None:
+    """Tab name for a non-default city, or None meaning "use the legacy appender from
+    _sheet_dispatch as-is" (Moscow / cities module off / no per-city tab-base override).
+
+    The route deliberately does NOT depend on `is_city_enabled`: a registration submitted
+    while a city was still enabled must keep landing on that city's own tab even if the city
+    gets switched off afterwards (data integrity) — the enabled flag only affects the city-pick
+    screen and startup tab materialization, never write routing."""
+    if not await cities_module_on():
+        return None
+    code = normalize_city(event_city)
+    if is_default_city(code):
+        return None
+    base = await city_tab_base(code)
+    if not base:
+        return None
+    return f"{base}{TAB_SUFFIX[_sheet_kind(participant_type)]}"
+
+
+async def city_incomplete_tab(event_city: str | None) -> str:
+    """Always returns a tab name (never None) — the «Незавершённые» tab always has an
+    address, unlike city_row_tab's legacy-appender escape hatch."""
+    if not await cities_module_on():
+        return "Незавершённые"
+    code = normalize_city(event_city)
+    if is_default_city(code):
+        return "Незавершённые"
+    base = await city_tab_base(code)
+    if not base:
+        return "Незавершённые"
+    return f"{base}{TAB_SUFFIX['incomplete']}"
 
 
 def _esc(value) -> str:
