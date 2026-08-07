@@ -264,3 +264,111 @@ def test_mask_proxy_url_no_credentials_unchanged():
 
 def test_mask_proxy_url_none_is_direct():
     assert mask_proxy_url(None) == "direct"
+
+
+# ── Test 7: masking in log + alert ───────────────────────────────────────────
+
+def test_rotation_alert_and_log_mask_credentials(monkeypatch, caplog):
+    calls = []
+    secret_primary = "socks5://user:secretpass@1.2.3.4:1080"
+    monkeypatch.setattr(AiohttpSession, "make_request", _fake_transport({0}, calls))
+    fake_bot = _FakeBot()
+    proxy_session.set_alert_bot(fake_bot)
+    caplog.set_level(logging.WARNING, logger="services.proxy_session")
+    try:
+        async def go():
+            session = FailoverAiohttpSession([secret_primary, BACKUP])
+            await session.make_request(object(), object())
+            await _drain_background()
+
+        asyncio.run(go())
+    finally:
+        _reset_alert_state()
+
+    assert "secretpass" not in caplog.text
+    assert "***@" in caplog.text
+    assert fake_bot.sent
+    for _chat_id, text in fake_bot.sent:
+        assert "secretpass" not in text
+        assert "***@" in text
+
+
+# ── Test 8: alert is fail-soft ────────────────────────────────────────────────
+
+def test_alert_fail_soft_when_no_bot_set(monkeypatch):
+    calls = []
+    monkeypatch.setattr(AiohttpSession, "make_request", _fake_transport({0}, calls))
+    _reset_alert_state()  # explicit: no alert bot configured (backfill script scenario)
+
+    async def go():
+        session = FailoverAiohttpSession([PRIMARY, BACKUP])
+        result = await session.make_request(object(), object())
+        await _drain_background()
+        return result
+
+    result = asyncio.run(go())
+    assert result == "result-1"
+
+
+def test_alert_fail_soft_when_send_message_raises(monkeypatch):
+    calls = []
+    monkeypatch.setattr(AiohttpSession, "make_request", _fake_transport({0}, calls))
+    fake_bot = _FakeBot(raise_on_send=True)
+    proxy_session.set_alert_bot(fake_bot)
+    try:
+        async def go():
+            session = FailoverAiohttpSession([PRIMARY, BACKUP])
+            result = await session.make_request(object(), object())
+            await _drain_background()
+            return result
+
+        result = asyncio.run(go())
+    finally:
+        _reset_alert_state()
+
+    assert result == "result-1"  # request still succeeds despite send_message raising
+
+
+# ── Test 9: dedup ─────────────────────────────────────────────────────────────
+
+def test_dedup_two_rotations_to_different_links_send_two_alerts(monkeypatch):
+    calls = []
+    THIRD = "http://third:8080"
+    monkeypatch.setattr(AiohttpSession, "make_request", _fake_transport({0, 1}, calls))
+    fake_bot = _FakeBot()
+    proxy_session.set_alert_bot(fake_bot)
+    try:
+        async def go():
+            session = FailoverAiohttpSession([PRIMARY, BACKUP, THIRD])
+            result = await session.make_request(object(), object())
+            await _drain_background()
+            return session, result
+
+        session, result = asyncio.run(go())
+    finally:
+        _reset_alert_state()
+
+    assert result == "result-2"
+    assert len(fake_bot.sent) == 2  # one alert per distinct rotation target
+
+
+def test_dedup_stale_observed_index_sends_no_extra_alert(monkeypatch):
+    calls = []
+    monkeypatch.setattr(AiohttpSession, "make_request", _fake_transport({0}, calls))
+    fake_bot = _FakeBot()
+    proxy_session.set_alert_bot(fake_bot)
+    try:
+        async def go():
+            session = FailoverAiohttpSession([PRIMARY, BACKUP])
+            await session.make_request(object(), object())  # rotates 0 -> 1, one alert
+            await _drain_background()
+            await session._rotate_from(0)  # stale: session is already at index 1
+            await _drain_background()
+            return session
+
+        session = asyncio.run(go())
+    finally:
+        _reset_alert_state()
+
+    assert len(fake_bot.sent) == 1
+    assert session.active_index == 1
