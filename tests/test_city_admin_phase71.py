@@ -48,11 +48,15 @@ class FakeMessage:
         self.text = None
         self.markup = None
         self.edit_calls = 0
+        self.answers_sent = []
 
     async def edit_text(self, text, parse_mode=None, reply_markup=None):
         self.text = text
         self.markup = reply_markup
         self.edit_calls += 1
+
+    async def answer(self, text, parse_mode=None):
+        self.answers_sent.append(text)
 
 
 class FakeCallback:
@@ -161,3 +165,197 @@ def test_render_cities_text_has_deep_link_and_label_escaped(tmp_path):
     text2 = asyncio.run(admin_mod.render_cities_text())
     assert "<b>x</b>" not in text2
     assert "&lt;b&gt;x&lt;/b&gt;" in text2
+
+
+# ── Task 2: «Незавершённые» split per city (manual export + 2h auto-sync parity) ──────────
+
+def test_get_incomplete_rows_with_city_returns_six_tuple(tmp_path):
+    _use_tmp_db(tmp_path)
+    asyncio.run(db.init_db())
+
+    async def go():
+        await db.mark_reg_started(1, "vasya", event_city="spb")
+        rows = await db.get_incomplete_rows_with_city()
+        assert len(rows) == 1
+        row = rows[0]
+        assert len(row) == 6
+        assert row[0] == 1
+        assert row[1] == "vasya"
+        assert row[5] == "spb"
+
+    asyncio.run(go())
+
+
+def test_get_incomplete_rows_unaffected_still_five_tuple(tmp_path):
+    """get_incomplete_rows() itself must stay untouched — existing tests rely on the 5-tuple."""
+    _use_tmp_db(tmp_path)
+    asyncio.run(db.init_db())
+
+    async def go():
+        await db.mark_reg_started(1, "vasya", event_city="spb")
+        rows = await db.get_incomplete_rows()
+        assert len(rows[0]) == 5
+
+    asyncio.run(go())
+
+
+def test_incomplete_city_batches_module_off_collapses_to_single_default_tab(tmp_path):
+    """Regression: with the module off, three dropouts from three different cities must still
+    land in ONE batch on the plain «Незавершённые» tab — today's behavior, byte for byte."""
+    _use_tmp_db(tmp_path)
+
+    async def go():
+        await db.init_db()
+        await db.set_setting("event_city_enabled", "off")
+        await db.mark_reg_started(1, "a", event_city="msk")
+        await db.mark_reg_started(2, "b", event_city="spb")
+        await db.mark_reg_started(3, "c", event_city="tyumen")
+
+        batches = await reg_mod.incomplete_city_batches()
+        assert len(batches) == 1
+        tab, _headers, rows = batches[0]
+        assert tab == "Незавершённые"
+        assert len(rows) == 3
+
+    asyncio.run(go())
+
+
+def test_incomplete_city_batches_module_on_splits_msk_and_spb(tmp_path):
+    _use_tmp_db(tmp_path)
+
+    async def go():
+        await db.init_db()
+        await db.set_setting("event_city_enabled", "on")
+        await db.mark_reg_started(1, "a", event_city="msk")
+        await db.mark_reg_started(2, "b", event_city="spb")
+
+        batches = await reg_mod.incomplete_city_batches()
+        by_tab = {tab: len(rows) for tab, _h, rows in batches}
+        assert by_tab == {"Незавершённые": 1, "СПб Незавершённые": 1}
+
+    asyncio.run(go())
+
+
+def test_incomplete_city_batches_default_tab_present_even_when_empty(tmp_path):
+    """Only spb dropouts exist -> the default («Незавершённые») tab must still be in the
+    result WITH AN EMPTY row list, so the full clear+rewrite keeps wiping Moscow dropouts
+    that have since registered/been cleared. Spb's tab is only included because it has rows."""
+    _use_tmp_db(tmp_path)
+
+    async def go():
+        await db.init_db()
+        await db.set_setting("event_city_enabled", "on")
+        await db.mark_reg_started(2, "b", event_city="spb")
+
+        batches = await reg_mod.incomplete_city_batches()
+        by_tab = {tab: len(rows) for tab, _h, rows in batches}
+        assert len(batches) == 2
+        assert by_tab["Незавершённые"] == 0
+        assert by_tab["СПб Незавершённые"] == 1
+
+    asyncio.run(go())
+
+
+def test_incomplete_city_batches_null_event_city_goes_to_default_tab(tmp_path):
+    _use_tmp_db(tmp_path)
+
+    async def go():
+        await db.init_db()
+        await db.set_setting("event_city_enabled", "on")
+        await db.mark_reg_started(1, "a")  # no event_city -> NULL in reg_started
+
+        batches = await reg_mod.incomplete_city_batches()
+        assert len(batches) == 1
+        tab, _headers, rows = batches[0]
+        assert tab == "Незавершённые"
+        assert len(rows) == 1
+
+    asyncio.run(go())
+
+
+def test_incomplete_city_batches_headers_shared_across_batches(tmp_path):
+    """headers computed exactly once per call (Google Sheets quota) — every batch shares it."""
+    _use_tmp_db(tmp_path)
+
+    async def go():
+        await db.init_db()
+        await db.set_setting("event_city_enabled", "on")
+        await db.mark_reg_started(1, "a", event_city="msk")
+        await db.mark_reg_started(2, "b", event_city="spb")
+
+        batches = await reg_mod.incomplete_city_batches()
+        assert len(batches) == 2
+        headers_list = [h for _t, h, _r in batches]
+        assert headers_list[0] is headers_list[1]
+
+    asyncio.run(go())
+
+
+def test_incomplete_city_batches_empty_non_default_city_tab_never_materialized(tmp_path):
+    """No rows at all anywhere -> only the default tab, never an empty spb/tyumen tab."""
+    _use_tmp_db(tmp_path)
+
+    async def go():
+        await db.init_db()
+        await db.set_setting("event_city_enabled", "on")
+
+        batches = await reg_mod.incomplete_city_batches()
+        assert len(batches) == 1
+        assert batches[0][0] == "Незавершённые"
+
+    asyncio.run(go())
+
+
+def test_export_incomplete_and_scheduler_sync_produce_same_batches(tmp_path, monkeypatch):
+    """WR-01 parity, extended to per-city tabs (CITY-04): manual export and the 2h auto-sync
+    job must write the exact same set of (tab, row_count) pairs from the same DB state."""
+    _admin_ready(tmp_path)
+
+    async def go():
+        await db.set_setting("event_city_enabled", "on")
+        await db.mark_reg_started(1, "a", event_city="msk")
+        await db.mark_reg_started(2, "b", event_city="spb")
+        await db.mark_reg_started(3, "c", event_city="tyumen")
+        await db.mark_reg_started(4, "d", event_city="spb")
+
+        admin_calls = []
+
+        async def _fake_admin_sync(title, headers, rows):
+            admin_calls.append((title, len(rows)))
+            return len(rows)
+
+        monkeypatch.setattr(admin_mod, "sync_named_worksheet", _fake_admin_sync)
+        await admin_mod.export_incomplete(FakeCallback("admin_export_incomplete"))
+
+        import services.scheduler as scheduler_mod
+        import services.sheets as sheets_mod
+        scheduler_calls = []
+
+        async def _fake_sheets_sync(title, headers, rows):
+            scheduler_calls.append((title, len(rows)))
+            return len(rows)
+
+        monkeypatch.setattr(sheets_mod, "sync_named_worksheet", _fake_sheets_sync)
+        await scheduler_mod.sync_incomplete_sheet_job()
+
+        assert set(admin_calls) == set(scheduler_calls)
+        assert len(admin_calls) == len(scheduler_calls) == 3  # msk, spb, tyumen
+
+    asyncio.run(go())
+
+
+def test_export_incomplete_rejects_non_admin(tmp_path):
+    _admin_ready(tmp_path)
+    cb = FakeCallback("admin_export_incomplete", user_id=NON_ADMIN_ID)
+    asyncio.run(admin_mod.export_incomplete(cb))
+    assert cb.answers[-1] == ("Недостаточно прав", True)
+    assert cb.message.answers_sent == []
+
+
+# ── Task 3: documentation must stay in sync with implemented tab names/tokens ─────────────
+
+def test_admin_guide_documents_city_deep_links_and_spb_incomplete_tab():
+    with open("ADMIN_GUIDE.md", "r", encoding="utf-8") as f:
+        text = f.read()
+    assert "?start=city_spb" in text
+    assert "СПб Незавершённые" in text

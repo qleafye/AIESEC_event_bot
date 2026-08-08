@@ -29,7 +29,6 @@ from database.db import (
     get_balance,
     get_non_subscriber_ids,
     get_incomplete_user_ids,
-    get_incomplete_rows,
     get_dropout_step_stats,
     get_pending_users,
     get_pending_count,
@@ -57,7 +56,7 @@ from services.allowlist import refresh_allowlist, allowlist_size
 from services.background import spawn as _spawn
 from handlers.states import Broadcast, EditSetting, Approval, ReceiptReview
 from keyboards.builders import get_cancel_kb, MENU_BUTTONS, get_main_menu_kb
-from handlers.registration import REG_FLOW, REG_DEFAULTS, REG_LABELS, REG_PRESETS, REG_CATEGORIES, SHEET_HEADERS, STATUS_LABELS, _build_sheet_row, active_sheet_headers, set_sheet_schema, _sheet_value_map, approve_user, dropout_step_label, _apply_party_preset, _apply_short_preset, incomplete_sheet_headers, incomplete_sheet_row, city_row_tab
+from handlers.registration import REG_FLOW, REG_DEFAULTS, REG_LABELS, REG_PRESETS, REG_CATEGORIES, SHEET_HEADERS, STATUS_LABELS, _build_sheet_row, active_sheet_headers, set_sheet_schema, _sheet_value_map, approve_user, dropout_step_label, _apply_party_preset, _apply_short_preset, city_row_tab, incomplete_city_batches
 from cities import CITIES, is_city_enabled, city_label, cities_module_on  # Phase 07.1 (CITY-04): admin city screen
 
 router = Router()
@@ -1302,17 +1301,21 @@ async def export_incomplete(callback: types.CallbackQuery):
         await callback.answer("Недостаточно прав", show_alert=True)
         return
     await callback.answer("📝 Выгружаю…")
-    rows = await get_incomplete_rows()  # (id, username, started_at, last_step, partial_data)
-    # Quick k4y: headers computed ONCE (Google Sheets quota), rows projected via the shared
-    # helper — services/scheduler.py:sync_incomplete_sheet_job MUST build identical
-    # headers/rows via the same helpers (WR-01 parity), otherwise the 2h auto-sync silently
-    # narrows the tab back down.
-    headers = await incomplete_sheet_headers()
-    sheet_rows = [
-        incomplete_sheet_row(tid, username, started_at, last_step, partial_data, headers)
-        for tid, username, started_at, last_step, partial_data in rows
-    ]
-    written = await sync_named_worksheet("Незавершённые", headers, sheet_rows)
+    # Phase 07.1 (CITY-04): incomplete_city_batches() is the SINGLE shared helper for both the
+    # manual export and services/scheduler.py:sync_incomplete_sheet_job — headers are computed
+    # once inside it (Google Sheets quota) and both callers MUST stay on this helper (WR-01
+    # parity), otherwise the 2h auto-sync can silently narrow a tab back down.
+    batches = await incomplete_city_batches()
+    total_rows = 0
+    written_lines = []
+    any_negative = False
+    for tab, headers, sheet_rows in batches:
+        written = await sync_named_worksheet(tab, headers, sheet_rows)
+        total_rows += len(sheet_rows)
+        if written < 0:
+            any_negative = True
+        else:
+            written_lines.append(f"«{tab}» — {written}")
 
     # Aggregate: on which question do dropouts stall most? (works even if the sheet write failed)
     stats = await get_dropout_step_stats()
@@ -1323,15 +1326,15 @@ async def export_incomplete(callback: types.CallbackQuery):
     )
     summary = f"\n\n📊 <b>Где отваливаются:</b>\n{top}" if stats else ""
 
-    if written < 0:
+    if any_negative:
         await callback.message.answer(
             "⚠️ Не удалось записать в таблицу (проверь доступ к Google Sheets). "
-            f"Незавершённых регистраций в базе: <b>{len(rows)}</b>.{summary}",
+            f"Незавершённых регистраций в базе: <b>{total_rows}</b>.{summary}",
             parse_mode="HTML",
         )
         return
     await callback.message.answer(
-        f"✅ Вкладка «Незавершённые» обновлена: <b>{written}</b> записей.{summary}",
+        f"✅ Обновлено: {', '.join(written_lines)}.{summary}",
         parse_mode="HTML",
     )
 

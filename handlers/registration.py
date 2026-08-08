@@ -13,7 +13,7 @@ from aiogram.types import FSInputFile, ReplyKeyboardRemove, InlineKeyboardMarkup
 from aiogram.utils.keyboard import ReplyKeyboardBuilder
 
 from config import config
-from database.db import add_user, get_user, get_setting, set_setting, mark_reg_started, clear_reg_started, set_reg_step, set_user_subscribed, set_user_status, record_user_consent, get_user_consents, get_reg_started_track, get_reg_started_city, has_short_incomplete, _csv_safe
+from database.db import add_user, get_user, get_setting, set_setting, mark_reg_started, clear_reg_started, set_reg_step, set_user_subscribed, set_user_status, record_user_consent, get_user_consents, get_reg_started_track, get_reg_started_city, has_short_incomplete, _csv_safe, get_incomplete_rows_with_city
 from settings_schema import SETTINGS_SCHEMA, get_setting_typed  # REG-01/D-06 (06-04): REG_DEFAULTS derivation source; get_setting_typed (06-06 gate migration)
 from cities import CITIES, normalize_city, is_default_city, city_tab_base, cities_module_on, TAB_SUFFIX, is_city_enabled, city_label, enabled_cities  # Phase 07.1 (CITY-01/CITY-02/CITY-03): city registry — _CITY_TAG_MAP + city_row_tab + city fork below
 from handlers.states import Registration
@@ -1424,6 +1424,35 @@ async def city_incomplete_tab(event_city: str | None) -> str:
     if not base:
         return "Незавершённые"
     return f"{base}{TAB_SUFFIX['incomplete']}"
+
+
+async def incomplete_city_batches() -> list[tuple[str, list[str], list[list]]]:
+    """Single point of truth for BOTH the manual «Незавершённые → таблица» export
+    (handlers/admin.py::export_incomplete) and the 2h auto-sync job
+    (services/scheduler.py::sync_incomplete_sheet_job) — Phase 07.1 (CITY-04), extending the
+    WR-01 parity guarantee to per-city tabs.
+
+    Groups rows by the RESOLVED TAB NAME (city_incomplete_tab), not by raw city code: with the
+    cities module off, every row's tab resolves to the single default «Незавершённые» name, so
+    they all collapse into one batch — today's behavior, byte for byte. `headers` is computed
+    exactly ONCE per call (Google Sheets quota) and shared by every batch.
+
+    The default city's tab is always present, even with an empty row list, so a full
+    clear+rewrite (sync_named_worksheet) keeps wiping out dropouts that have since registered
+    or been cleared — the same guarantee get_incomplete_rows()-based callers relied on before
+    this plan. Other cities' tabs are only included when they have at least one row — an empty
+    non-default city tab is never created/wiped by this path."""
+    rows = await get_incomplete_rows_with_city()
+    headers = await incomplete_sheet_headers()
+    default_tab = await city_incomplete_tab(None)
+    batches: dict[str, list[list]] = {default_tab: []}
+    for telegram_id, username, started_at, last_step, partial_data, event_city in rows:
+        tab = await city_incomplete_tab(event_city)
+        batches.setdefault(tab, [])
+        batches[tab].append(
+            incomplete_sheet_row(telegram_id, username, started_at, last_step, partial_data, headers)
+        )
+    return [(tab, headers, sheet_rows) for tab, sheet_rows in batches.items()]
 
 
 def _esc(value) -> str:
