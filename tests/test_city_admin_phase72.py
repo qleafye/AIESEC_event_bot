@@ -287,3 +287,71 @@ def test_appr_all_yes_scoped_does_not_touch_other_cities(tmp_path):
             assert user["status"] == "approved"
 
     asyncio.run(check())
+
+
+# ── Task 3: receipts queue city-scoped, same resolver as applications ───────────────────
+
+def _seed_receipts_three_cities(tmp_path):
+    _admin_ready(tmp_path)
+    asyncio.run(db.set_setting("event_city_enabled", "on"))
+    _seed_city(1, None, status="approved", payment_status="receipt_sent")
+    _seed_city(2, "msk", status="approved", payment_status="receipt_sent")
+    _seed_city(3, "spb", status="approved", payment_status="receipt_sent")
+
+
+def test_show_current_receipt_card_city_scoped_spb(tmp_path):
+    _seed_receipts_three_cities(tmp_path)
+    asyncio.run(cities.set_admin_city(ADMIN_ID, "spb"))
+    state = _new_state(ADMIN_ID)
+    target = FakeMessage()
+    asyncio.run(admin_mod._show_current_receipt_card(target, state))
+    assert "1/1" in target.text
+    spb_label = asyncio.run(cities.city_label("spb"))
+    assert spb_label in target.text
+
+
+def test_show_current_receipt_card_city_scoped_msk_includes_null(tmp_path):
+    _seed_receipts_three_cities(tmp_path)
+    asyncio.run(cities.set_admin_city(ADMIN_ID, "msk"))
+    state = _new_state(ADMIN_ID)
+    target = FakeMessage()
+    asyncio.run(admin_mod._show_current_receipt_card(target, state))
+    assert "1/2" in target.text
+
+
+def test_show_current_receipt_card_module_off_header_byte_identical(tmp_path):
+    _admin_ready(tmp_path)
+    _seed_city(1, "spb", status="approved", payment_status="receipt_sent")
+    state = _new_state(ADMIN_ID)
+    target = FakeMessage()
+    asyncio.run(admin_mod._show_current_receipt_card(target, state))
+    assert target.text.startswith("🧾 <b>Чек 1/1</b>\n")
+    assert "🏙" not in target.text.split("\n")[0]
+
+
+def test_show_current_receipt_card_empty_queue_names_city(tmp_path):
+    _admin_ready(tmp_path)
+    asyncio.run(db.set_setting("event_city_enabled", "on"))
+    _seed_city(1, "msk", status="approved")  # no receipt-pending rows
+    asyncio.run(cities.set_admin_city(ADMIN_ID, "spb"))
+    state = _new_state(ADMIN_ID)
+    target = FakeMessage()
+    asyncio.run(admin_mod._show_current_receipt_card(target, state))
+    assert "Чеков на проверке нет" in target.answers_sent[-1]
+    spb_label = asyncio.run(cities.city_label("spb"))
+    assert spb_label in target.answers_sent[-1]
+
+
+def test_show_current_receipt_card_empty_queue_module_off_byte_identical(tmp_path):
+    _admin_ready(tmp_path)
+    state = _new_state(ADMIN_ID)
+    target = FakeMessage()
+    asyncio.run(admin_mod._show_current_receipt_card(target, state))
+    assert target.answers_sent[-1] == "✅ Чеков на проверке нет."
+
+
+def test_both_moderation_queues_use_the_same_city_resolver():
+    src_apps = inspect.getsource(admin_mod._show_current_card)
+    src_receipts = inspect.getsource(admin_mod._show_current_receipt_card)
+    assert "_admin_city_scope" in src_apps
+    assert "_admin_city_scope" in src_receipts
