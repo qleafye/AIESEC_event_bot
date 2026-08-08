@@ -681,6 +681,18 @@ async def get_incomplete_rows() -> list[tuple]:
             return [tuple(row) for row in await cursor.fetchall()]
 
 
+async def get_incomplete_rows_with_city() -> list[tuple]:
+    """Same rows, filter, and ORDER BY as get_incomplete_rows, plus a sixth field
+    (event_city) so the «Незавершённые» tab can be split per city (Phase 07.1, CITY-04).
+    get_incomplete_rows() itself is UNTOUCHED -- existing tests rely on its 5-tuple shape."""
+    async with aiosqlite.connect(config.DB_PATH) as db:
+        async with db.execute(
+            "SELECT telegram_id, username, started_at, last_step, partial_data, event_city "
+            f"FROM reg_started WHERE {_INCOMPLETE_NOT_REGISTERED} ORDER BY started_at"
+        ) as cursor:
+            return [tuple(row) for row in await cursor.fetchall()]
+
+
 async def set_reg_step(telegram_id: int, step_key: str, partial_json: str | None = None):
     """Stamp the question currently shown to a mid-registration user (dropout analytics),
     and optionally persist a JSON snapshot of already-answered fields (quick k4y). No-op

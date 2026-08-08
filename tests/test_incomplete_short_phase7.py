@@ -171,16 +171,21 @@ def test_incomplete_sheet_row_projects_short_only_field(tmp_path):
     asyncio.run(go())
 
 
-# ── Group 8: consumer parity — both callers still route through incomplete_sheet_headers ──
+# ── Group 8: consumer parity — both callers still route through the shared helper ────────
+#
+# Phase 07.1 (CITY-04): the WR-01 parity guarantee moved one level up. Both callers used to
+# build headers/rows directly via incomplete_sheet_headers/incomplete_sheet_row; now both call
+# incomplete_city_batches() (handlers/registration.py), which computes headers/rows through
+# those same two helpers INSIDE itself, once per call. Asserting the outer call keeps the same
+# intent (both consumers can never drift) without hardcoding the inner implementation detail —
+# see tests/test_city_admin_phase71.py for the batching behavior itself.
 
 def test_admin_export_and_scheduler_sync_both_call_shared_helper():
     import handlers.admin as admin_mod
     import services.scheduler as scheduler_mod
 
     admin_src = inspect.getsource(admin_mod.export_incomplete)
-    assert "incomplete_sheet_headers" in admin_src
-    assert "incomplete_sheet_row" in admin_src
+    assert "incomplete_city_batches" in admin_src
 
     scheduler_src = inspect.getsource(scheduler_mod.sync_incomplete_sheet_job)
-    assert "incomplete_sheet_headers" in scheduler_src
-    assert "incomplete_sheet_row" in scheduler_src
+    assert "incomplete_city_batches" in scheduler_src
