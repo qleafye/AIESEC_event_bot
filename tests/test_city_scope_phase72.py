@@ -195,3 +195,60 @@ def test_receipt_pending_queue_city_scoped(tmp_path):
         db.get_receipt_pending_users(limit=10, city_scope=cities.city_scope("tyumen"))
     )
     assert [r["telegram_id"] for r in rows] == [3]
+
+
+# ── Task 3: get_city_counts() + city-scoped export_users_csv ────────────────────
+
+def test_get_city_counts_returns_raw_event_city_values_including_null_and_garbage(tmp_path):
+    _use_tmp_db(tmp_path)
+    asyncio.run(db.init_db())
+    _seed_city(1, None, status="pending")
+    _seed_city(2, "msk", status="approved")
+    _seed_city(3, "spb", status="pending")
+    _seed_city(4, "garbage", status=None)
+
+    rows = asyncio.run(db.get_city_counts())
+    by_city = {row[0]: row for row in rows}
+
+    assert set(by_city.keys()) == {None, "msk", "spb", "garbage"}
+    # (event_city, total, pending, approved)
+    assert by_city[None] == (None, 1, 1, 0)
+    assert by_city["msk"] == ("msk", 1, 0, 1)
+    assert by_city["spb"] == ("spb", 1, 1, 0)
+    # status IS NULL counts toward total but neither pending nor approved
+    assert by_city["garbage"] == ("garbage", 1, 0, 0)
+
+
+def test_export_users_csv_no_scope_matches_today(tmp_path):
+    _seed_five_cities(tmp_path)
+    headers, rows = asyncio.run(db.export_users_csv())
+    assert len(rows) == 5
+    assert len(headers) > 0
+
+
+def test_export_users_csv_scoped_headers_identical_to_unscoped(tmp_path):
+    _seed_five_cities(tmp_path)
+    headers_unscoped, _ = asyncio.run(db.export_users_csv())
+    headers_scoped, _ = asyncio.run(db.export_users_csv(city_scope=cities.city_scope("spb")))
+    assert headers_unscoped == headers_scoped
+
+
+def test_export_users_csv_spb_scope_only_spb_rows(tmp_path):
+    _seed_five_cities(tmp_path)
+    _, rows = asyncio.run(db.export_users_csv(city_scope=cities.city_scope("spb")))
+    tid_idx = None
+
+    async def get_idx():
+        nonlocal tid_idx
+        headers, _ = await db.export_users_csv()
+        tid_idx = headers.index("ID Telegram")
+
+    asyncio.run(get_idx())
+    assert [r[tid_idx] for r in rows] == [3]
+
+
+def test_export_users_csv_msk_scope_includes_null_event_city_row(tmp_path):
+    _seed_five_cities(tmp_path)
+    headers, rows = asyncio.run(db.export_users_csv(city_scope=cities.city_scope("msk")))
+    tid_idx = headers.index("ID Telegram")
+    assert sorted(r[tid_idx] for r in rows) == [1, 2, 5]  # NULL, msk, garbage
