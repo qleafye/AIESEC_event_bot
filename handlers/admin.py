@@ -57,7 +57,15 @@ from services.background import spawn as _spawn
 from handlers.states import Broadcast, EditSetting, Approval, ReceiptReview
 from keyboards.builders import get_cancel_kb, MENU_BUTTONS, get_main_menu_kb
 from handlers.registration import REG_FLOW, REG_DEFAULTS, REG_LABELS, REG_PRESETS, REG_CATEGORIES, SHEET_HEADERS, STATUS_LABELS, _build_sheet_row, active_sheet_headers, set_sheet_schema, _sheet_value_map, approve_user, dropout_step_label, _apply_party_preset, _apply_short_preset, city_row_tab, incomplete_city_batches
-from cities import CITIES, is_city_enabled, city_label, cities_module_on  # Phase 07.1 (CITY-04): admin city screen
+from cities import (  # Phase 07.1 (CITY-04): admin city screen; Phase 07.2 (CITY-02): admin city switcher + scoping
+    CITIES,
+    is_city_enabled,
+    city_label,
+    cities_module_on,
+    admin_selected_city,
+    set_admin_city,
+    city_scope,
+)
 
 router = Router()
 logger = logging.getLogger(__name__)
@@ -114,6 +122,20 @@ def build_admin_keyboard():
     ])
 
 
+# Phase 07.2 (CITY-02): per-admin city switcher, rendered as a header row over the panel.
+# `build_admin_keyboard()` itself stays SYNCHRONOUS and UNCHANGED — its shape is checked by
+# `tests/test_city_admin_phase71.py::test_build_admin_keyboard_admin_cities_is_last_row_indices_unchanged`
+# and it is called from many sync contexts; the switcher row is added by this async wrapper
+# instead of touching the base builder.
+async def admin_keyboard_for(admin_id: int) -> InlineKeyboardMarkup:
+    code = await admin_selected_city(admin_id)
+    base = build_admin_keyboard()
+    if code is None:  # module off — byte-identical to today, no switcher row
+        return base
+    header = [InlineKeyboardButton(text=f"🏙 Город: {await city_label(code)}", callback_data="admin_city_switch")]
+    return InlineKeyboardMarkup(inline_keyboard=[header] + base.inline_keyboard)
+
+
 async def render_monthly_stats() -> str:
     rows = await get_monthly_registration_stats()
     if not rows:
@@ -146,7 +168,7 @@ async def cmd_admin_help(message: types.Message):
         "/refresh_allowlist - Обновить список отобранных\n"
         "/settings_guide - 📖 Справка по всем настройкам бота"
     )
-    await message.answer(text, parse_mode="HTML", reply_markup=build_admin_keyboard())
+    await message.answer(text, parse_mode="HTML", reply_markup=await admin_keyboard_for(message.from_user.id))
 
 
 @router.message(Command("coins"), is_admin)
@@ -305,7 +327,7 @@ async def show_admin_stats(callback: types.CallbackQuery):
     for i, (uni, count) in enumerate(top_unis, 1):
         text += f"{i}. {html_module.escape(str(uni))} — {count}\n"
 
-    await callback.message.edit_text(text, parse_mode="HTML", reply_markup=build_admin_keyboard())
+    await callback.message.edit_text(text, parse_mode="HTML", reply_markup=await admin_keyboard_for(callback.from_user.id))
     await callback.answer()
 
 
@@ -315,7 +337,7 @@ async def show_admin_monthly_stats(callback: types.CallbackQuery):
         await callback.answer("Недостаточно прав", show_alert=True)
         return
 
-    await callback.message.edit_text(await render_monthly_stats(), parse_mode="HTML", reply_markup=build_admin_keyboard())
+    await callback.message.edit_text(await render_monthly_stats(), parse_mode="HTML", reply_markup=await admin_keyboard_for(callback.from_user.id))
     await callback.answer()
 
 
@@ -334,7 +356,7 @@ async def show_admin_source_stats(callback: types.CallbackQuery):
             lines.append(f"• {html_module.escape(str(source))} — {count}")
         text = "\n".join(lines)
 
-    await callback.message.edit_text(text, parse_mode="HTML", reply_markup=build_admin_keyboard())
+    await callback.message.edit_text(text, parse_mode="HTML", reply_markup=await admin_keyboard_for(callback.from_user.id))
     await callback.answer()
 
 
@@ -987,7 +1009,7 @@ async def sync_sheet(callback: types.CallbackQuery):
             await callback.message.edit_text(
                 "✅ Таблица синхронизирована, пропущенных записей нет.",
                 parse_mode="HTML",
-                reply_markup=build_admin_keyboard(),
+                reply_markup=await admin_keyboard_for(callback.from_user.id),
             )
             return
 
@@ -999,14 +1021,14 @@ async def sync_sheet(callback: types.CallbackQuery):
             f"✅ Синхронизация завершена!\n\n"
             f"Добавлено записей: <b>{count}</b>",
             parse_mode="HTML",
-            reply_markup=build_admin_keyboard(),
+            reply_markup=await admin_keyboard_for(callback.from_user.id),
         )
     except Exception as e:
         logger.error(f"Sheet sync failed: {e}")
         await callback.message.edit_text(
             f"❌ Ошибка синхронизации:\n<code>{html_module.escape(str(e))}</code>",
             parse_mode="HTML",
-            reply_markup=build_admin_keyboard(),
+            reply_markup=await admin_keyboard_for(callback.from_user.id),
         )
 
 
@@ -1031,7 +1053,7 @@ async def rebuild_sheet(callback: types.CallbackQuery):
             await callback.message.edit_text(
                 "❌ Пересборка не выполнена (таблица не настроена или ошибка API). Смотри логи.",
                 parse_mode="HTML",
-                reply_markup=build_admin_keyboard(),
+                reply_markup=await admin_keyboard_for(callback.from_user.id),
             )
             return
         # CR-9: rebuild is the re-sync point — freeze the snapshot to the header just written
@@ -1042,14 +1064,14 @@ async def rebuild_sheet(callback: types.CallbackQuery):
             f"Строк записано: <b>{count}</b>\n"
             f"Колонки выстроены в порядке анкеты, «Статус» с выпадашкой и цветами.",
             parse_mode="HTML",
-            reply_markup=build_admin_keyboard(),
+            reply_markup=await admin_keyboard_for(callback.from_user.id),
         )
     except Exception as e:
         logger.error(f"Sheet rebuild failed: {e}")
         await callback.message.edit_text(
             f"❌ Ошибка пересборки:\n<code>{html_module.escape(str(e))}</code>",
             parse_mode="HTML",
-            reply_markup=build_admin_keyboard(),
+            reply_markup=await admin_keyboard_for(callback.from_user.id),
         )
 
 
@@ -1062,7 +1084,7 @@ async def settings_back_to_admin(callback: types.CallbackQuery):
     await callback.message.edit_text(
         "👮‍♂️ <b>Панель администратора</b>",
         parse_mode="HTML",
-        reply_markup=build_admin_keyboard(),
+        reply_markup=await admin_keyboard_for(callback.from_user.id),
     )
     await callback.answer()
 
@@ -1437,6 +1459,49 @@ async def city_toggle(callback: types.CallbackQuery):
     await callback.message.edit_text(text, parse_mode="HTML", reply_markup=await build_cities_keyboard())
 
 
+@router.callback_query(F.data == "admin_city_switch")
+async def admin_city_switch(callback: types.CallbackQuery):
+    """Phase 07.2 (CITY-02): pick the city the admin panel is currently scoped to. Disabled
+    cities are still listed (their past applications still need moderating), marked ❌."""
+    if callback.from_user.id not in config.ADMIN_IDS:
+        await callback.answer("Недостаточно прав", show_alert=True)
+        return
+    current = await admin_selected_city(callback.from_user.id)
+    buttons = []
+    for c in CITIES:
+        code = c["code"]
+        label = await city_label(code)
+        enabled = await is_city_enabled(code)
+        prefix = "✅ " if code == current else ""
+        suffix = "" if enabled else " ❌"
+        buttons.append([InlineKeyboardButton(text=f"{prefix}{label}{suffix}", callback_data=f"admin_city_pick:{code}")])
+    buttons.append([InlineKeyboardButton(text="◀️ Назад", callback_data="admin_menu")])
+    text = (
+        "🏙 <b>Город админки</b>\n\n"
+        "Фильтруется этим городом: очередь «Заявки», очередь «Чеки», экспорт CSV.\n"
+        "НЕ фильтруется: «Статистика» (сравнение городов), «Незавершённые» (все города сразу)."
+    )
+    await callback.message.edit_text(text, parse_mode="HTML", reply_markup=InlineKeyboardMarkup(inline_keyboard=buttons))
+    await callback.answer()
+
+
+@router.callback_query(F.data.startswith("admin_city_pick:"))
+async def admin_city_pick(callback: types.CallbackQuery):
+    if callback.from_user.id not in config.ADMIN_IDS:
+        await callback.answer("Недостаточно прав", show_alert=True)
+        return
+    code = callback.data.split(":", 1)[1]
+    if not await set_admin_city(callback.from_user.id, code):
+        await callback.answer("Неизвестный город", show_alert=True)
+        return
+    await callback.answer(f"Город: {await city_label(code)}", show_alert=True)
+    await callback.message.edit_text(
+        "👮‍♂️ <b>Панель администратора</b>",
+        parse_mode="HTML",
+        reply_markup=await admin_keyboard_for(callback.from_user.id),
+    )
+
+
 @router.callback_query(F.data == "admin_menu")
 async def admin_menu_root(callback: types.CallbackQuery):
     """Back to the admin panel keyboard (also fixes the previously dead «Отмена» buttons
@@ -1445,7 +1510,7 @@ async def admin_menu_root(callback: types.CallbackQuery):
         await callback.answer("Недостаточно прав", show_alert=True)
         return
     await callback.message.edit_text(
-        "👮‍♂️ <b>Панель администратора</b>", parse_mode="HTML", reply_markup=build_admin_keyboard()
+        "👮‍♂️ <b>Панель администратора</b>", parse_mode="HTML", reply_markup=await admin_keyboard_for(callback.from_user.id)
     )
     await callback.answer()
 
@@ -1486,7 +1551,7 @@ async def dedupe_sheet_run(callback: types.CallbackQuery):
     else:
         text = f"✅ Удалено дублей: <b>{removed}</b>. Оставлены свежие строки."
     logger.info(f"admin={callback.from_user.id} action=dedupe_sheet removed={removed}")
-    await callback.message.edit_text(text, parse_mode="HTML", reply_markup=build_admin_keyboard())
+    await callback.message.edit_text(text, parse_mode="HTML", reply_markup=await admin_keyboard_for(callback.from_user.id))
 
 
 @router.callback_query(F.data == "admin_broadcast")
