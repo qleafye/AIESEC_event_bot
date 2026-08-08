@@ -497,16 +497,37 @@ def _csv_safe(value):
     return value
 
 
-async def export_users_csv():
+async def export_users_csv(*, city_scope=None):
     """Full audit dump — every users column (incl. phone & service fields), with readable
-    RU headers. Unmapped columns keep their raw name so new columns still export."""
+    RU headers. Unmapped columns keep their raw name so new columns still export.
+    `city_scope=None` (default) exports everything, byte-identical to before Phase 07.2."""
+    frag, city_params = _city_clause(city_scope)
+    where = f" WHERE {frag}" if frag else ""
     async with aiosqlite.connect(config.DB_PATH) as db:
-        async with db.execute('SELECT * FROM users') as cursor:
+        async with db.execute(f'SELECT * FROM users{where}', tuple(city_params)) as cursor:
             raw = [description[0] for description in cursor.description]
             rows = await cursor.fetchall()
             headers = [CSV_HEADER_LABELS.get(h, h) for h in raw]
             rows = [tuple(_csv_safe(cell) for cell in row) for row in rows]
             return headers, rows
+
+
+async def get_city_counts() -> list[tuple]:
+    """One row per RAW `event_city` value present in `users` (including NULL and any
+    unknown/garbage code) — `(event_city, total, pending, approved)`. Deliberately returns
+    the raw column, never collapsed: db.py cannot import `cities` (import cycle — cities.py
+    already imports database.db), so folding NULL/garbage into the default city is the
+    CALLER's job via `cities.normalize_city`. The stats screen intentionally does NOT filter
+    by the admin's selected city — it is a city-vs-city comparison, not a scoped view
+    (07.2-CONTEXT.md decision)."""
+    async with aiosqlite.connect(config.DB_PATH) as db:
+        async with db.execute(
+            "SELECT event_city, COUNT(*), "
+            "SUM(CASE WHEN status = 'pending' THEN 1 ELSE 0 END), "
+            "SUM(CASE WHEN status = 'approved' THEN 1 ELSE 0 END) "
+            "FROM users GROUP BY event_city"
+        ) as cursor:
+            return await cursor.fetchall()
 
 
 # ── Phase 1: coins ledger (append-only) ──────────────────────────────────────
