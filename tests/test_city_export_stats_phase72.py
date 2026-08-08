@@ -148,3 +148,104 @@ def test_show_admin_export_rejects_non_admin(tmp_path):
 def test_export_incomplete_calls_batches_helper_without_city_arg():
     src = inspect.getsource(admin_mod.export_incomplete)
     assert "incomplete_city_batches()" in src
+
+
+# ── Task 2: stats screen with a per-city breakdown (row per city + total) ───────────────
+
+def _expected_todays_literal(total, top_unis):
+    import html as html_mod
+    text = (
+        f"📊 <b>Статистика:</b>\n"
+        f"Всего регистраций: {total}\n"
+        f"🏆 <b>Топ-3 ВУЗа:</b>\n"
+    )
+    for i, (uni, count) in enumerate(top_unis, 1):
+        text += f"{i}. {html_mod.escape(str(uni))} — {count}\n"
+    return text
+
+
+def test_render_stats_text_module_off_matches_todays_literal(tmp_path):
+    _admin_ready(tmp_path)
+    _seed_city(1, None)
+    _seed_city(2, "spb")
+    total, top_unis = asyncio.run(db.get_stats())
+    expected = _expected_todays_literal(total, top_unis)
+    actual = asyncio.run(admin_mod.render_stats_text())
+    assert actual == expected
+    assert "По городам" not in actual
+
+
+def test_render_stats_text_module_on_row_per_city_plus_total(tmp_path):
+    _seed_three_cities(tmp_path)
+    text = asyncio.run(admin_mod.render_stats_text())
+    assert "🏙 <b>По городам:</b>" in text
+    for c in cities.CITIES:
+        label = asyncio.run(cities.city_label(c["code"]))
+        assert f"• {label} —" in text
+    assert "• <b>Итого</b> —" in text
+
+    total, _top = asyncio.run(db.get_stats())
+    # sum of "всего N" numbers on city rows (excluding the Итого line) equals get_stats() total
+    import re
+    city_block = text.split("🏙 <b>По городам:</b>")[1]
+    lines = [l for l in city_block.splitlines() if l.strip().startswith("•")]
+    city_lines = [l for l in lines if "Итого" not in l]
+    total_lines = [int(re.search(r"всего (\d+)", l).group(1)) for l in city_lines]
+    assert sum(total_lines) == total
+    itogo_line = [l for l in lines if "Итого" in l][0]
+    assert int(re.search(r"всего (\d+)", itogo_line).group(1)) == total
+
+
+def test_render_stats_text_null_and_unknown_collapse_into_default_city(tmp_path):
+    _admin_ready(tmp_path)
+    asyncio.run(db.set_setting("event_city_enabled", "on"))
+    _seed_city(1, None)
+    _seed_city(2, "__garbage_code__")
+    text = asyncio.run(admin_mod.render_stats_text())
+    default_code = cities.default_city_code()
+    default_label = asyncio.run(cities.city_label(default_code))
+    import re
+    m = re.search(rf"• {re.escape(default_label)} — всего (\d+)", text)
+    assert m is not None
+    assert int(m.group(1)) == 2  # both the NULL row and the garbage-code row collapse here
+
+
+def test_render_stats_text_identical_regardless_of_selected_admin_city(tmp_path):
+    _seed_three_cities(tmp_path)
+    asyncio.run(cities.set_admin_city(ADMIN_ID, "msk"))
+    text_msk = asyncio.run(admin_mod.render_stats_text())
+    asyncio.run(cities.set_admin_city(ADMIN_ID, "spb"))
+    text_spb = asyncio.run(admin_mod.render_stats_text())
+    assert text_msk == text_spb
+
+
+def test_render_stats_text_escapes_city_label(tmp_path):
+    _admin_ready(tmp_path)
+    asyncio.run(db.set_setting("event_city_enabled", "on"))
+    asyncio.run(db.set_setting("city_label__msk", "<script>alert(1)</script>"))
+    _seed_city(1, "msk")
+    text = asyncio.run(admin_mod.render_stats_text())
+    assert "<script>alert(1)</script>" not in text
+    assert "&lt;script&gt;" in text
+
+
+def test_cmd_stats_and_show_admin_stats_delegate_to_render_stats_text(tmp_path):
+    _admin_ready(tmp_path)
+    _seed_city(1, "spb")
+
+    class _FakeAnswerMessage:
+        def __init__(self, uid):
+            self.from_user = FakeUser(uid)
+            self.sent = []
+
+        async def answer(self, text, parse_mode=None):
+            self.sent.append(text)
+
+    msg = _FakeAnswerMessage(ADMIN_ID)
+    asyncio.run(admin_mod.cmd_stats(msg))
+    expected = asyncio.run(admin_mod.render_stats_text())
+    assert msg.sent[-1] == expected
+
+    cb = FakeCallback("admin_stats")
+    asyncio.run(admin_mod.show_admin_stats(cb))
+    assert cb.message.text == expected
