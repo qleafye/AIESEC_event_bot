@@ -155,6 +155,59 @@ async def render_monthly_stats() -> str:
 
     return "\n".join(lines)
 
+
+# Phase 07.2 (CITY-02): shared render for /stats and the «📊 Статистика регистраций» screen —
+# previously cmd_stats and show_admin_stats each built this text independently (duplicated
+# f-strings). The base text (through the top-3-universities loop) is UNCHANGED, character for
+# character, from what both call sites built before this plan.
+#
+# The «По городам» block below is the DELIBERATE EXCEPTION to city scoping (07.2-CONTEXT.md):
+# every other admin surface in this phase filters by the admin's SELECTED city
+# (_admin_city_scope) — this screen does not. The lead needs to compare cities side by side on
+# one screen, not click through each one and add totals by hand. Do not "fix" this into a
+# filtered view.
+async def render_stats_text() -> str:
+    total, top_unis = await get_stats()
+
+    text = (
+        f"📊 <b>Статистика:</b>\n"
+        f"Всего регистраций: {total}\n"
+        f"🏆 <b>Топ-3 ВУЗа:</b>\n"
+    )
+
+    for i, (uni, count) in enumerate(top_unis, 1):
+        text += f"{i}. {html_module.escape(str(uni))} — {count}\n"
+
+    if await cities_module_on():
+        rows = await get_city_counts()
+        # Same collapse the Sheets tabs and _city_clause's default-city branch already use:
+        # NULL / unknown-code rows fold into the default city here, not in the SQL (db.py
+        # cannot import cities.normalize_city — see get_city_counts()'s docstring).
+        per_city = {code: [0, 0, 0] for code in (c["code"] for c in CITIES)}
+        grand_total = grand_pending = grand_approved = 0
+        for raw_city, cnt, pending, approved in rows:
+            cnt = cnt or 0
+            pending = pending or 0
+            approved = approved or 0
+            code = normalize_city(raw_city)
+            bucket = per_city.setdefault(code, [0, 0, 0])
+            bucket[0] += cnt
+            bucket[1] += pending
+            bucket[2] += approved
+            grand_total += cnt
+            grand_pending += pending
+            grand_approved += approved
+
+        text += "\n🏙 <b>По городам:</b>\n"
+        for c in CITIES:
+            t, p, a = per_city[c["code"]]
+            label = html_module.escape(await city_label(c["code"]))
+            text += f"• {label} — всего {t}, на модерации {p}, одобрено {a}\n"
+        text += f"• <b>Итого</b> — всего {grand_total}, на модерации {grand_pending}, одобрено {grand_approved}\n"
+
+    return text
+
+
 @router.message(Command("admin"), is_admin)
 async def cmd_admin_help(message: types.Message):
     text = (
@@ -294,18 +347,7 @@ async def admin_reply_to_question(message: types.Message, bot: Bot):
 
 @router.message(Command("stats"), is_admin)
 async def cmd_stats(message: types.Message):
-    total, top_unis = await get_stats()
-
-    text = (
-        f"📊 <b>Статистика:</b>\n"
-        f"Всего регистраций: {total}\n"
-        f"🏆 <b>Топ-3 ВУЗа:</b>\n"
-    )
-
-    for i, (uni, count) in enumerate(top_unis, 1):
-        text += f"{i}. {html_module.escape(str(uni))} — {count}\n"
-
-    await message.answer(text, parse_mode="HTML")
+    await message.answer(await render_stats_text(), parse_mode="HTML")
 
 
 @router.message(Command("stats_monthly"), is_admin)
@@ -319,16 +361,7 @@ async def show_admin_stats(callback: types.CallbackQuery):
         await callback.answer("Недостаточно прав", show_alert=True)
         return
 
-    total, top_unis = await get_stats()
-    text = (
-        f"📊 <b>Статистика:</b>\n"
-        f"Всего регистраций: {total}\n"
-        f"🏆 <b>Топ-3 ВУЗа:</b>\n"
-    )
-
-    for i, (uni, count) in enumerate(top_unis, 1):
-        text += f"{i}. {html_module.escape(str(uni))} — {count}\n"
-
+    text = await render_stats_text()
     await callback.message.edit_text(text, parse_mode="HTML", reply_markup=await admin_keyboard_for(callback.from_user.id))
     await callback.answer()
 
