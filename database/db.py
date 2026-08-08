@@ -773,35 +773,70 @@ async def reject_user(telegram_id: int) -> bool:
         return cursor.rowcount == 1
 
 
-async def get_pending_users(limit: int = 1, offset: int = 0) -> list[dict]:
+# ── Phase 07.2 Plan 01 (CITY-02): city scope clause builder ──────────────────
+#
+# `cities.py` imports `database.db` (registry accessors need `get_setting`/`set_setting`),
+# so `database/db.py` must NEVER import `cities` — that would be an import cycle. The
+# registry's knowledge (which codes exist, which is the default) is therefore handed to
+# `_city_clause` BY VALUE as the `(code, exclude)` descriptor `cities.city_scope` builds;
+# db.py stays the bottom layer and never learns what a "city" is.
+def _city_clause(scope: tuple[str, tuple[str, ...]] | None) -> tuple[str, list]:
+    """Pure: turn a `cities.city_scope(...)` descriptor into a parameterized SQL fragment
+    (no leading AND/WHERE — callers splice it in). `scope is None` -> `("", [])`, no
+    filtering at all (this is what keeps module-off / no-scope byte-identical to today).
+    Empty `exclude` -> equality (`event_city = ?`); non-empty `exclude` -> the default-city
+    shape (`event_city IS NULL OR event_city NOT IN (?, ...)`), one placeholder per excluded
+    code. City codes never get interpolated into the SQL string — only the ? count does."""
+    if scope is None:
+        return "", []
+    code, exclude = scope
+    if not exclude:
+        return "event_city = ?", [code]
+    placeholders = ", ".join("?" for _ in exclude)
+    return f"(event_city IS NULL OR event_city NOT IN ({placeholders}))", list(exclude)
+
+
+async def get_pending_users(limit: int = 1, offset: int = 0, *, city_scope=None) -> list[dict]:
     """Pending applications, oldest first (registration_date then telegram_id)."""
+    frag, city_params = _city_clause(city_scope)
+    extra = f" AND {frag}" if frag else ""
     async with aiosqlite.connect(config.DB_PATH) as db:
         db.row_factory = aiosqlite.Row
         async with db.execute(
-            "SELECT * FROM users WHERE status = 'pending' "
+            f"SELECT * FROM users WHERE status = 'pending'{extra} "
             "ORDER BY registration_date ASC, telegram_id ASC LIMIT ? OFFSET ?",
-            (limit, offset),
+            (*city_params, limit, offset),
         ) as cursor:
             return [dict(row) for row in await cursor.fetchall()]
 
 
-async def get_pending_count() -> int:
+async def get_pending_count(*, city_scope=None) -> int:
+    frag, city_params = _city_clause(city_scope)
+    extra = f" AND {frag}" if frag else ""
     async with aiosqlite.connect(config.DB_PATH) as db:
         async with db.execute(
-            "SELECT COUNT(*) FROM users WHERE status = 'pending'"
+            f"SELECT COUNT(*) FROM users WHERE status = 'pending'{extra}", tuple(city_params)
         ) as cursor:
             row = await cursor.fetchone()
             return int(row[0]) if row and row[0] is not None else 0
 
 
-async def approve_all_pending() -> list[int]:
+async def approve_all_pending(*, city_scope=None) -> list[int]:
     """Flip every pending row to approved in one atomic statement; return the
     telegram_ids that flipped (each once). IN-07: requires sqlite >= 3.35 for
     RETURNING (bundled in CPython 3.10+, which the project already mandates) —
-    there is no pre-3.35 fallback path in this function."""
+    there is no pre-3.35 fallback path in this function.
+
+    `city_scope` narrows the WHERE of this SAME atomic UPDATE ... RETURNING (not a second
+    query, not a post-filter on the returned ids) — a scoped call structurally cannot flip
+    a row belonging to another city (T-072-03)."""
+    frag, city_params = _city_clause(city_scope)
+    extra = f" AND {frag}" if frag else ""
     async with aiosqlite.connect(config.DB_PATH) as db:
         async with db.execute(
-            "UPDATE users SET status = 'approved' WHERE status = 'pending' RETURNING telegram_id"
+            f"UPDATE users SET status = 'approved' WHERE status = 'pending'{extra} "
+            "RETURNING telegram_id",
+            tuple(city_params),
         ) as cursor:
             rows = await cursor.fetchall()
         await db.commit()
@@ -1008,22 +1043,27 @@ async def get_user_consents(user_id: int) -> list[str]:
 
 # ── Phase 4: payment receipt queue + status (PAY-05, D-10/D-12) ──────────────
 
-async def get_receipt_pending_users(limit: int = 50, offset: int = 0) -> list[dict]:
+async def get_receipt_pending_users(limit: int = 50, offset: int = 0, *, city_scope=None) -> list[dict]:
     """Users awaiting receipt verification, oldest first (tinder queue source)."""
+    frag, city_params = _city_clause(city_scope)
+    extra = f" AND {frag}" if frag else ""
     async with aiosqlite.connect(config.DB_PATH) as db:
         db.row_factory = aiosqlite.Row
         async with db.execute(
             "SELECT telegram_id, full_name, payment_option, receipt_file_id, payment_status "
-            "FROM users WHERE payment_status = 'receipt_sent' ORDER BY rowid LIMIT ? OFFSET ?",
-            (limit, offset),
+            f"FROM users WHERE payment_status = 'receipt_sent'{extra} ORDER BY rowid LIMIT ? OFFSET ?",
+            (*city_params, limit, offset),
         ) as cursor:
             return [dict(row) for row in await cursor.fetchall()]
 
 
-async def get_receipt_pending_count() -> int:
+async def get_receipt_pending_count(*, city_scope=None) -> int:
+    frag, city_params = _city_clause(city_scope)
+    extra = f" AND {frag}" if frag else ""
     async with aiosqlite.connect(config.DB_PATH) as db:
         async with db.execute(
-            "SELECT COUNT(*) FROM users WHERE payment_status = 'receipt_sent'"
+            f"SELECT COUNT(*) FROM users WHERE payment_status = 'receipt_sent'{extra}",
+            tuple(city_params),
         ) as cursor:
             row = await cursor.fetchone()
             return int(row[0]) if row and row[0] is not None else 0

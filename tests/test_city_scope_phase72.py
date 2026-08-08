@@ -189,7 +189,7 @@ def test_receipt_pending_queue_city_scoped(tmp_path):
     ) == 1
     assert asyncio.run(
         db.get_receipt_pending_count(city_scope=cities.city_scope("msk"))
-    ) == 2  # NULL + msk-default collapse (no explicit msk row here, NULL only)
+    ) == 1  # msk-default collapse catches the NULL row (no explicit 'msk' row here)
 
     rows = asyncio.run(
         db.get_receipt_pending_users(limit=10, city_scope=cities.city_scope("tyumen"))
