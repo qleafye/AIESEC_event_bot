@@ -18,7 +18,7 @@ Design (mirrors settings_schema.py's one-directional dependency, D-01):
   resolved default back into storage (no backfill — see CONTEXT.md).
 """
 from config import config
-from database.db import get_setting
+from database.db import get_setting, set_setting
 from settings_schema import get_setting_typed
 
 CITY_SEP = ";"
@@ -157,3 +157,67 @@ async def cities_module_on() -> bool:
     a SETTINGS_SCHEMA-registered enum key (not a dynamic per-city key), so it participates in
     the normal admin toggle rendering."""
     return await get_setting_typed("event_city_enabled") == "on"
+
+
+# ── Phase 07.2 Plan 01 (CITY-02): city scope layer ───────────────────────────
+#
+# Filtering (city_scope) and access control (which cities an admin is ALLOWED to pick) are
+# TWO DIFFERENT LAYERS. This module only builds the former. Phase 8 (staff/capabilities)
+# plugs into the latter — it will narrow the set of codes `set_admin_city` accepts and that
+# `admin_selected_city` may return, WITHOUT touching `city_scope` itself and WITHOUT touching
+# a single SQL query in `database/db.py`. Nothing here binds a manager to a city; any admin
+# may pick any city today (owner decision, 07.2-CONTEXT.md).
+
+ADMIN_CITY_KEY_PREFIX = "admin_city__"
+
+
+def city_scope(code: str | None) -> tuple[str, tuple[str, ...]] | None:
+    """Pure, sync city-scope descriptor for `database.db._city_clause` — no DB access, no
+    await, no knowledge of SQL. `database/db.py` cannot import this module (it would create
+    an import cycle: `cities.py` already imports `database.db`), so the resolved scope is
+    handed to db.py BY VALUE as this `(code, exclude)` tuple, never by importing the registry.
+
+    `code is None` -> `None` ("no scope" — the caller wants every row, unfiltered; this is
+    what makes module-off / "no city chosen" collapse to a byte-identical, unfiltered query).
+
+    Otherwise the code is resolved through `normalize_city` (the SAME collapse the Sheets tabs
+    already use), then:
+      - resolved is the DEFAULT city -> `(resolved, tuple_of_every_other_known_code)`. The
+        default city is deliberately described by EXCLUSION of the other known cities, not by
+        equality, because it must also catch `event_city IS NULL` (never-migrated / pre-cities
+        rows) and any unknown/garbage code — exactly `normalize_city`'s semantics. An equality
+        match on the default code would silently drop every NULL row from "Moscow" and split
+        the admin's view from what the Sheets tab already shows.
+      - resolved is any OTHER known city -> `(resolved, ())` — plain equality, no exclusion.
+    """
+    if code is None:
+        return None
+    resolved = normalize_city(code)
+    if is_default_city(resolved):
+        others = tuple(c["code"] for c in CITIES if c["code"] != resolved)
+        return (resolved, others)
+    return (resolved, ())
+
+
+async def admin_selected_city(admin_id: int) -> str | None:
+    """The one city an admin panel is currently scoped to, or `None` meaning "no scope,
+    show everything" (module off — the SINGLE point where "module disabled" collapses to
+    "nothing is filtered", mirroring `city_row_tab`'s escape hatch). With the module on and
+    no stored choice yet, defaults to the default city code (never raw NULL — a screen must
+    always have something to render)."""
+    if not await cities_module_on():
+        return None
+    raw = await get_setting(f"{ADMIN_CITY_KEY_PREFIX}{int(admin_id)}")
+    return normalize_city(raw)
+
+
+async def set_admin_city(admin_id: int, code: str) -> bool:
+    """Persist an admin's city choice in `bot_settings` (survives bot restarts — FSM does
+    not). `code` must be a member of the closed set `city_codes()` (same guard shape as
+    `handlers.admin.city_toggle`) — an unknown code is rejected and NOTHING is written,
+    returning False. `admin_id` is coerced to `int` so the settings key is never assembled
+    from an arbitrary string."""
+    if code not in city_codes():
+        return False
+    await set_setting(f"{ADMIN_CITY_KEY_PREFIX}{int(admin_id)}", code)
+    return True
