@@ -193,7 +193,8 @@ def test_show_current_card_city_scoped_spb(tmp_path):
     target = FakeMessage()
     asyncio.run(admin_mod._show_current_card(target, state))
     assert "1/2" in target.text
-    assert "СПб" in target.text or "spb" in target.text.lower()
+    spb_label = asyncio.run(cities.city_label("spb"))
+    assert spb_label in target.text
 
 
 def test_show_current_card_city_scoped_msk_includes_null(tmp_path):
@@ -238,7 +239,8 @@ def test_show_current_card_empty_queue_names_city(tmp_path):
     target = FakeMessage()
     asyncio.run(admin_mod._show_current_card(target, state))
     assert "Заявок нет" in target.answers_sent[-1]
-    assert "СПб" in target.answers_sent[-1] or "spb" in target.answers_sent[-1].lower()
+    spb_label = asyncio.run(cities.city_label("spb"))
+    assert spb_label in target.answers_sent[-1]
 
 
 def test_show_current_card_empty_queue_module_off_byte_identical(tmp_path):
@@ -256,7 +258,8 @@ def test_appr_all_confirm_names_city_and_count(tmp_path):
     state = _new_state(ADMIN_ID)
     asyncio.run(admin_mod.appr_all_confirm(cb, state))
     assert "2" in cb.message.text
-    assert "СПб" in cb.message.text or "spb" in cb.message.text.lower()
+    spb_label = asyncio.run(cities.city_label("spb"))
+    assert spb_label in cb.message.text
 
 
 def test_appr_all_confirm_module_off_equals_todays_literal(tmp_path):
