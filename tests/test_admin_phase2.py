@@ -96,7 +96,7 @@ def test_wr01_welcome_drain_scheduled_despite_edit_failure(monkeypatch):
     monkeypatch.setattr(config, "ADMIN_IDS", [uid])
     welcomed = []
 
-    async def fake_approve_all_pending():
+    async def fake_approve_all_pending(*, city_scope=None):
         return [1, 2, 3]
 
     async def fake_welcome_flipped(bot, ids):
@@ -105,10 +105,13 @@ def test_wr01_welcome_drain_scheduled_despite_edit_failure(monkeypatch):
     async def fake_bulk_sync(mapping):
         return None
 
+    async def fake_admin_keyboard_for(admin_id):
+        return None
+
     monkeypatch.setattr(admin, "approve_all_pending", fake_approve_all_pending)
     monkeypatch.setattr(admin, "_welcome_flipped", fake_welcome_flipped)
     monkeypatch.setattr(admin, "bulk_update_status_in_sheet", fake_bulk_sync)
-    monkeypatch.setattr(admin, "build_admin_keyboard", lambda *a, **k: None)
+    monkeypatch.setattr(admin, "admin_keyboard_for", fake_admin_keyboard_for)
 
     cb = _FakeCallbackWR01(uid)
 
@@ -166,7 +169,7 @@ def test_wr04_stale_reclick_no_drain_and_honest_message(monkeypatch):
     monkeypatch.setattr(config, "ADMIN_IDS", [uid])
     drained = []
 
-    async def fake_approve_all_pending():
+    async def fake_approve_all_pending(*, city_scope=None):
         return []  # second click on a stale dialog: nothing left to approve
 
     async def fake_welcome(bot, ids):
@@ -175,9 +178,12 @@ def test_wr04_stale_reclick_no_drain_and_honest_message(monkeypatch):
     async def fake_show(msg, state):
         return None
 
+    async def fake_admin_keyboard_for(admin_id):
+        return None
+
     monkeypatch.setattr(admin, "approve_all_pending", fake_approve_all_pending)
     monkeypatch.setattr(admin, "_welcome_flipped", fake_welcome)
-    monkeypatch.setattr(admin, "build_admin_keyboard", lambda *a, **k: None)
+    monkeypatch.setattr(admin, "admin_keyboard_for", fake_admin_keyboard_for)
     monkeypatch.setattr(admin, "_show_current_card", fake_show)
 
     cb = _FakeCallbackWR04(uid)
