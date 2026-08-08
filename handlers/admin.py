@@ -2885,6 +2885,20 @@ async def menu_buttons_back(callback: types.CallbackQuery):
     await callback.answer()
 
 
+# Phase 07.2 (CITY-02): the ONE resolver both moderation queues (applications + receipts)
+# read the selected city through — no handler calls admin_selected_city/city_scope directly.
+# If a third moderation queue is ever added (gamification, Phase 9), it plugs in here too.
+async def _admin_city_scope(admin_id: int):
+    return city_scope(await admin_selected_city(admin_id))
+
+
+async def _admin_city_label(admin_id: int) -> str | None:
+    code = await admin_selected_city(admin_id)
+    if code is None:
+        return None
+    return await city_label(code)
+
+
 # ── Phase 2: application review queue ("Заявки", tinder UI) ───────────────────
 
 def _parse_appr(data: str) -> tuple[str, int | None]:
@@ -2898,12 +2912,17 @@ def _parse_appr(data: str) -> tuple[str, int | None]:
     return data, None
 
 
-def _render_application_card(user: dict, position: int, total: int) -> str:
-    """HTML card for one pending application; all free-text escaped."""
+def _render_application_card(user: dict, position: int, total: int, city_label_text: str | None = None) -> str:
+    """HTML card for one pending application; all free-text escaped. `city_label_text` (Phase
+    07.2, CITY-02) appends «· 🏙 {label}» to the header when an admin city is selected; None
+    keeps the header byte-identical to the pre-CITY-02 line (module off / no city chosen)."""
     def esc(v):
         return html_module.escape(str(v)) if v not in (None, "", "-") else None
 
-    lines = [f"📋 <b>Заявка {position}/{total}</b>", ""]
+    header = f"📋 <b>Заявка {position}/{total}</b>"
+    if city_label_text is not None:
+        header += f" · 🏙 {html_module.escape(str(city_label_text))}"
+    lines = [header, ""]
     name = esc(user.get("full_name")) or "—"
     uname = esc(user.get("username"))
     lines.append(f"👤 {name}" + (f" ({uname})" if uname else ""))
@@ -2962,19 +2981,26 @@ def _appr_card_kb(tid: int, has_resume: bool, total: int) -> InlineKeyboardMarku
 
 
 async def _show_current_card(target: types.Message, state: FSMContext):
-    """Render the oldest non-skipped pending card (DB-driven, restart-safe)."""
+    """Render the oldest non-skipped pending card (DB-driven, restart-safe). Phase 07.2
+    (CITY-02): city-scoped through _admin_city_scope — the admin id comes from
+    state.key.user_id because `target` may be the bot's own message (callback.message),
+    whose from_user is the bot, not the admin."""
+    admin_id = state.key.user_id
+    scope = await _admin_city_scope(admin_id)
+    label = await _admin_city_label(admin_id)
     skipped = set((await state.get_data()).get("appr_skipped", []))
-    total = await get_pending_count()
+    total = await get_pending_count(city_scope=scope)
     offset = 0
     visible: list[dict] = []
     while not visible and offset < total:
-        batch = await get_pending_users(limit=50, offset=offset)
+        batch = await get_pending_users(limit=50, offset=offset, city_scope=scope)
         if not batch:
             break
         visible = [u for u in batch if u["telegram_id"] not in skipped]
         offset += len(batch)
     if not visible:
-        await target.answer("✅ Заявок нет.", reply_markup=build_admin_keyboard())
+        empty_text = "✅ Заявок нет." if label is None else f"✅ Заявок нет — «{label}»."
+        await target.answer(empty_text, reply_markup=await admin_keyboard_for(admin_id))
         return
     current = visible[0]
     # M-02: position = how many the admin has already skipped + 1 (the shown card is the first
@@ -2982,7 +3008,7 @@ async def _show_current_card(target: types.Message, state: FSMContext):
     # the first card whenever a full 50-row batch was unskipped. Cap at total for safety.
     position = min(len(skipped) + 1, total)
     await target.answer(
-        _render_application_card(current, position, total),
+        _render_application_card(current, position, total, city_label_text=label),
         parse_mode="HTML",
         reply_markup=_appr_card_kb(
             current["telegram_id"],
@@ -3124,7 +3150,12 @@ async def appr_all_confirm(callback: types.CallbackQuery, state: FSMContext):
     if callback.from_user.id not in config.ADMIN_IDS:
         await callback.answer("Недостаточно прав", show_alert=True)
         return
-    total = await get_pending_count()
+    # T-072-07 (Repudiation): the confirmation text must name BOTH the city and the count —
+    # this is an irreversible mass operation, and a global-looking button at 3 cities means
+    # one tap flips a city the admin never chose.
+    scope = await _admin_city_scope(callback.from_user.id)
+    label = await _admin_city_label(callback.from_user.id)
+    total = await get_pending_count(city_scope=scope)
     if total == 0:
         await callback.answer("Заявок нет")
         await _show_current_card(callback.message, state)
@@ -3133,7 +3164,11 @@ async def appr_all_confirm(callback: types.CallbackQuery, state: FSMContext):
         InlineKeyboardButton(text="✅ Да", callback_data="appr_all_yes"),
         InlineKeyboardButton(text="❌ Отмена", callback_data="appr_all_no"),
     ]])
-    await callback.message.edit_text(f"Одобрить все {total} заявок?", reply_markup=kb)
+    text = (
+        f"Одобрить все {total} заявок?" if label is None
+        else f"Одобрить все {total} заявок в городе «{label}»? Заявки других городов не будут затронуты."
+    )
+    await callback.message.edit_text(text, reply_markup=kb)
     await callback.answer()
 
 
@@ -3167,13 +3202,15 @@ async def appr_all_yes(callback: types.CallbackQuery, state: FSMContext):
     if callback.from_user.id not in config.ADMIN_IDS:
         await callback.answer("Недостаточно прав", show_alert=True)
         return
-    ids = await approve_all_pending()  # atomic flip first (D-11)
+    # T-072-03/T-072-07: city condition lives in the WHERE of this SAME atomic
+    # UPDATE ... RETURNING — structurally cannot flip another city's rows.
+    ids = await approve_all_pending(city_scope=await _admin_city_scope(callback.from_user.id))  # atomic flip first (D-11)
     # WR-04: a stale confirm dialog re-clicked (buttons never expire) hits approve_all_pending
     # again — atomic, so it returns [] the second time. Don't run the drain or claim a count;
     # tell the admin it's already done and refresh the card.
     if not ids:
         try:
-            await callback.message.edit_text("Заявки уже обработаны.", reply_markup=build_admin_keyboard())
+            await callback.message.edit_text("Заявки уже обработаны.", reply_markup=await admin_keyboard_for(callback.from_user.id))
         except Exception:
             pass
         await callback.answer("Уже обработано")
@@ -3193,7 +3230,7 @@ async def appr_all_yes(callback: types.CallbackQuery, state: FSMContext):
     try:
         await callback.message.edit_text(
             f"✅ Одобрено: {len(ids)}. Рассылаю приветствия…",
-            reply_markup=build_admin_keyboard(),
+            reply_markup=await admin_keyboard_for(callback.from_user.id),
         )
     except Exception as e:
         logger.warning(f"appr_all_yes: confirm edit failed (welcome drain already scheduled): {e}")
