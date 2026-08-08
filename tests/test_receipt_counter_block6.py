@@ -19,9 +19,17 @@ class _CapTarget:
         self.texts.append(text)
 
 
+class _Key:
+    def __init__(self, user_id):
+        self.user_id = user_id
+
+
 class _State:
-    def __init__(self, data):
+    def __init__(self, data, admin_id=999999):
         self._data = data
+        # Phase 07.2 (CITY-02): _show_current_receipt_card reads the admin id from
+        # state.key.user_id (target.message's from_user is the bot, not the admin).
+        self.key = _Key(admin_id)
 
     async def get_data(self):
         return dict(self._data)
