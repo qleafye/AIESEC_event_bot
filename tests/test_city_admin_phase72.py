@@ -172,3 +172,115 @@ def test_admin_city_pick_rejects_non_admin(tmp_path):
     asyncio.run(admin_mod.admin_city_pick(cb))
     assert cb.answers[-1] == ("Недостаточно прав", True)
     assert asyncio.run(db.get_setting(f"{cities.ADMIN_CITY_KEY_PREFIX}{NON_ADMIN_ID}")) is None
+
+
+# ── Task 2: applications queue city-scoped + safe mass-approve ──────────────────────────
+
+def _seed_pending_three_cities(tmp_path):
+    _admin_ready(tmp_path)
+    asyncio.run(db.set_setting("event_city_enabled", "on"))
+    _seed_city(1, None)
+    _seed_city(2, "msk")
+    _seed_city(3, "spb")
+    _seed_city(4, "spb")
+    _seed_city(5, "tyumen")
+
+
+def test_show_current_card_city_scoped_spb(tmp_path):
+    _seed_pending_three_cities(tmp_path)
+    asyncio.run(cities.set_admin_city(ADMIN_ID, "spb"))
+    state = _new_state(ADMIN_ID)
+    target = FakeMessage()
+    asyncio.run(admin_mod._show_current_card(target, state))
+    assert "1/2" in target.text
+    assert "СПб" in target.text or "spb" in target.text.lower()
+
+
+def test_show_current_card_city_scoped_msk_includes_null(tmp_path):
+    _seed_pending_three_cities(tmp_path)
+    asyncio.run(cities.set_admin_city(ADMIN_ID, "msk"))
+    state = _new_state(ADMIN_ID)
+    target = FakeMessage()
+    asyncio.run(admin_mod._show_current_card(target, state))
+    assert "1/2" in target.text  # NULL + msk
+
+
+def test_render_application_card_header_byte_identical_without_city_label():
+    user = {"telegram_id": 1, "full_name": "X"}
+    text = admin_mod._render_application_card(user, 1, 1)
+    assert text.startswith("📋 <b>Заявка 1/1</b>")
+    assert "🏙" not in text.split("\n")[0]
+
+
+def test_render_application_card_header_has_city_when_label_given():
+    user = {"telegram_id": 1, "full_name": "X"}
+    text = admin_mod._render_application_card(user, 1, 1, city_label_text="СПб")
+    first_line = text.split("\n")[0]
+    assert first_line == "📋 <b>Заявка 1/1</b> · 🏙 СПб"
+
+
+def test_show_current_card_module_off_header_byte_identical(tmp_path):
+    _admin_ready(tmp_path)
+    _seed_city(1, "spb")
+    state = _new_state(ADMIN_ID)
+    target = FakeMessage()
+    asyncio.run(admin_mod._show_current_card(target, state))
+    assert target.text.startswith("📋 <b>Заявка 1/1</b>\n")
+    assert "🏙" not in target.text.split("\n")[0]
+
+
+def test_show_current_card_empty_queue_names_city(tmp_path):
+    _admin_ready(tmp_path)
+    asyncio.run(db.set_setting("event_city_enabled", "on"))
+    _seed_city(1, "msk", status="approved")  # no pending rows at all
+    asyncio.run(cities.set_admin_city(ADMIN_ID, "spb"))
+    state = _new_state(ADMIN_ID)
+    target = FakeMessage()
+    asyncio.run(admin_mod._show_current_card(target, state))
+    assert "Заявок нет" in target.answers_sent[-1]
+    assert "СПб" in target.answers_sent[-1] or "spb" in target.answers_sent[-1].lower()
+
+
+def test_show_current_card_empty_queue_module_off_byte_identical(tmp_path):
+    _admin_ready(tmp_path)
+    state = _new_state(ADMIN_ID)
+    target = FakeMessage()
+    asyncio.run(admin_mod._show_current_card(target, state))
+    assert target.answers_sent[-1] == "✅ Заявок нет."
+
+
+def test_appr_all_confirm_names_city_and_count(tmp_path):
+    _seed_pending_three_cities(tmp_path)
+    asyncio.run(cities.set_admin_city(ADMIN_ID, "spb"))
+    cb = FakeCallback("appr_all")
+    state = _new_state(ADMIN_ID)
+    asyncio.run(admin_mod.appr_all_confirm(cb, state))
+    assert "2" in cb.message.text
+    assert "СПб" in cb.message.text or "spb" in cb.message.text.lower()
+
+
+def test_appr_all_confirm_module_off_equals_todays_literal(tmp_path):
+    _admin_ready(tmp_path)
+    _seed_city(1, "spb")
+    cb = FakeCallback("appr_all")
+    state = _new_state(ADMIN_ID)
+    asyncio.run(admin_mod.appr_all_confirm(cb, state))
+    assert cb.message.text == "Одобрить все 1 заявок?"
+
+
+def test_appr_all_yes_scoped_does_not_touch_other_cities(tmp_path):
+    _seed_pending_three_cities(tmp_path)
+    asyncio.run(cities.set_admin_city(ADMIN_ID, "spb"))
+    cb = FakeCallback("appr_all_yes")
+    state = _new_state(ADMIN_ID)
+    asyncio.run(admin_mod.appr_all_yes(cb, state))
+
+    async def check():
+        for tid in (1, 2, 5):
+            user = await db.get_user(tid)
+            assert user["status"] == "pending"
+        for tid in (3, 4):
+            user = await db.get_user(tid)
+            assert user["status"] == "approved"
+
+    asyncio.run(check())
