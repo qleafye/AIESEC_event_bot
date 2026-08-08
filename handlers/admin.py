@@ -43,6 +43,7 @@ from database.db import (
     get_receipt_pending_users,
     get_receipt_pending_count,
     update_payment_status,
+    get_city_counts,
 )
 from aiogram.exceptions import TelegramRetryAfter
 from services.sheets import get_existing_sheet_ids, append_rows_to_sheet, ensure_sheet_header, sync_named_worksheet, dedupe_sheet_by_id, update_status_in_sheet, bulk_update_status_in_sheet, rebuild_main_sheet
@@ -65,6 +66,7 @@ from cities import (  # Phase 07.1 (CITY-04): admin city screen; Phase 07.2 (CIT
     admin_selected_city,
     set_admin_city,
     city_scope,
+    normalize_city,
 )
 
 router = Router()
@@ -1306,14 +1308,23 @@ async def show_admin_export(callback: types.CallbackQuery):
         await callback.answer("Недостаточно прав", show_alert=True)
         return
 
-    headers, rows = await export_users_csv()
+    # Phase 07.2 (CITY-02): CSV export is SCOPED to the admin's selected city — the opposite
+    # of the (intentionally unscoped) stats screen. Same resolver every other city-scoped
+    # surface uses (_admin_city_scope/_admin_city_label), so module-off collapses to the
+    # exact pre-Phase-07.2 unfiltered export, byte-identical filename and caption.
+    admin_id = callback.from_user.id
+    scope = await _admin_city_scope(admin_id)
+    label = await _admin_city_label(admin_id)
+    headers, rows = await export_users_csv(city_scope=scope)
     output = io.StringIO()
     writer = csv.writer(output, delimiter=';', quotechar='"', quoting=csv.QUOTE_MINIMAL)
     writer.writerow(headers)
     writer.writerows(rows)
     file_bytes = output.getvalue().encode('utf-8-sig')
-    document = BufferedInputFile(file_bytes, filename="users.csv")
-    await callback.message.answer_document(document, caption="База данных пользователей")
+    filename = "users.csv" if scope is None else f"users_{scope[0]}.csv"
+    caption = "База данных пользователей" if scope is None else f"База данных пользователей — {label}"
+    document = BufferedInputFile(file_bytes, filename=filename)
+    await callback.message.answer_document(document, caption=caption)
     await callback.answer()
 
 
@@ -1327,6 +1338,11 @@ async def export_incomplete(callback: types.CallbackQuery):
     # manual export and services/scheduler.py:sync_incomplete_sheet_job — headers are computed
     # once inside it (Google Sheets quota) and both callers MUST stay on this helper (WR-01
     # parity), otherwise the 2h auto-sync can silently narrow a tab back down.
+    # Phase 07.2 (CITY-02): deliberately NOT scoped to the admin's selected city, unlike
+    # show_admin_export above. incomplete_city_batches() writes ALL city tabs in one pass
+    # (sync_named_worksheet = clear+rewrite per tab); narrowing to one city here would leave
+    # every OTHER city's tab holding stale data after this run. This is already a per-city
+    # surface (Phase 07.1, WR-01 parity) — just not filtered by the admin's current selection.
     batches = await incomplete_city_batches()
     total_rows = 0
     written_lines = []
