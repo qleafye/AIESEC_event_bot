@@ -95,3 +95,103 @@ def test_set_admin_city_unknown_code_rejected_and_writes_nothing(tmp_path):
         assert await db.get_setting(f"{cities.ADMIN_CITY_KEY_PREFIX}{ADMIN_ID}") is None
 
     asyncio.run(go())
+
+
+# ── Task 2: database.db._city_clause + city_scope= on the moderation queries ────
+
+def test_city_clause_no_scope_is_empty():
+    assert db._city_clause(None) == ("", [])
+
+
+def test_city_clause_equality_for_non_default_city():
+    assert db._city_clause(("spb", ())) == ("event_city = ?", ["spb"])
+
+
+def test_city_clause_exclusion_for_default_city():
+    assert db._city_clause(("msk", ("spb", "tyumen"))) == (
+        "(event_city IS NULL OR event_city NOT IN (?, ?))",
+        ["spb", "tyumen"],
+    )
+
+
+def _seed_city(telegram_id, event_city, status="pending", payment_status=None):
+    asyncio.run(db.add_user({
+        "telegram_id": telegram_id,
+        "full_name": f"User {telegram_id}",
+        "registration_date": "2026-01-01 09:00:00",
+        "event_city": event_city,
+    }))
+    asyncio.run(db.set_user_status(telegram_id, status))
+    if payment_status is not None:
+        asyncio.run(db.update_payment_status(telegram_id, payment_status))
+
+
+def _seed_five_cities(tmp_path, status="pending"):
+    _use_tmp_db(tmp_path)
+    asyncio.run(db.init_db())
+    _seed_city(1, None, status=status)
+    _seed_city(2, "msk", status=status)
+    _seed_city(3, "spb", status=status)
+    _seed_city(4, "tyumen", status=status)
+    _seed_city(5, "garbage", status=status)
+
+
+def test_get_pending_count_no_scope_matches_today(tmp_path):
+    _seed_five_cities(tmp_path)
+    assert asyncio.run(db.get_pending_count()) == 5
+
+
+def test_get_pending_count_city_scoped(tmp_path):
+    _seed_five_cities(tmp_path)
+    assert asyncio.run(db.get_pending_count(city_scope=cities.city_scope("spb"))) == 1
+    # default city collapses NULL + msk + garbage -> 3
+    assert asyncio.run(db.get_pending_count(city_scope=cities.city_scope("msk"))) == 3
+
+
+def test_get_pending_users_city_scoped_returns_only_that_city(tmp_path):
+    _seed_five_cities(tmp_path)
+    rows = asyncio.run(db.get_pending_users(limit=10, city_scope=cities.city_scope("spb")))
+    assert [r["telegram_id"] for r in rows] == [3]
+
+
+def test_approve_all_pending_blast_radius_does_not_touch_other_cities(tmp_path):
+    _seed_five_cities(tmp_path)
+    flipped = asyncio.run(db.approve_all_pending(city_scope=cities.city_scope("spb")))
+    assert flipped == [3]
+
+    async def check():
+        for tid in (1, 2, 4, 5):
+            user = await db.get_user(tid)
+            assert user["status"] == "pending"
+        user3 = await db.get_user(3)
+        assert user3["status"] == "approved"
+
+    asyncio.run(check())
+
+
+def test_approve_all_pending_no_scope_flips_everyone(tmp_path):
+    _seed_five_cities(tmp_path)
+    flipped = asyncio.run(db.approve_all_pending())
+    assert sorted(flipped) == [1, 2, 3, 4, 5]
+    assert asyncio.run(db.get_pending_count()) == 0
+
+
+def test_receipt_pending_queue_city_scoped(tmp_path):
+    _use_tmp_db(tmp_path)
+    asyncio.run(db.init_db())
+    _seed_city(1, None, status="approved", payment_status="receipt_sent")
+    _seed_city(2, "spb", status="approved", payment_status="receipt_sent")
+    _seed_city(3, "tyumen", status="approved", payment_status="receipt_sent")
+
+    assert asyncio.run(db.get_receipt_pending_count()) == 3
+    assert asyncio.run(
+        db.get_receipt_pending_count(city_scope=cities.city_scope("spb"))
+    ) == 1
+    assert asyncio.run(
+        db.get_receipt_pending_count(city_scope=cities.city_scope("msk"))
+    ) == 2  # NULL + msk-default collapse (no explicit msk row here, NULL only)
+
+    rows = asyncio.run(
+        db.get_receipt_pending_users(limit=10, city_scope=cities.city_scope("tyumen"))
+    )
+    assert [r["telegram_id"] for r in rows] == [3]
