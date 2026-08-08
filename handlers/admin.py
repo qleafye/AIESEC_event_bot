@@ -3250,8 +3250,14 @@ def _parse_rcpt(data: str) -> tuple[str, int | None]:
     return data, None
 
 
-def _render_receipt_card(user: dict, position: int, total: int) -> str:
-    lines = [f"🧾 <b>Чек {position}/{total}</b>", ""]
+def _render_receipt_card(user: dict, position: int, total: int, city_label_text: str | None = None) -> str:
+    """Phase 07.2 (CITY-02): same header-suffix convention as _render_application_card —
+    `city_label_text` appends «· 🏙 {label}» only when an admin city is selected; None keeps
+    the header byte-identical to the pre-CITY-02 line."""
+    header = f"🧾 <b>Чек {position}/{total}</b>"
+    if city_label_text is not None:
+        header += f" · 🏙 {html_module.escape(str(city_label_text))}"
+    lines = [header, ""]
     lines.append(f"👤 {html_module.escape(str(user.get('full_name') or '—'))}")
     lines.append(f"💳 Вариант: {html_module.escape(str(user.get('payment_option') or '—'))}")
     lines.append(f"📎 Чек: {'загружен' if user.get('receipt_file_id') else 'нет'}")
@@ -3272,25 +3278,32 @@ def _rcpt_card_kb(uid: int, has_receipt: bool, total: int) -> InlineKeyboardMark
 
 
 async def _show_current_receipt_card(target: types.Message, state: FSMContext):
+    """Phase 07.2 (CITY-02): the SECOND moderation queue — reads the selected city through the
+    same _admin_city_scope resolver as _show_current_card. If a third queue is ever added it
+    plugs in here too (see the comment anchor next to _admin_city_scope)."""
+    admin_id = state.key.user_id
+    scope = await _admin_city_scope(admin_id)
+    label = await _admin_city_label(admin_id)
     skipped = set((await state.get_data()).get("rcpt_skipped", []))
-    total = await get_receipt_pending_count()
+    total = await get_receipt_pending_count(city_scope=scope)
     offset = 0
     visible: list[dict] = []
     while not visible and offset < total:
-        batch = await get_receipt_pending_users(limit=50, offset=offset)
+        batch = await get_receipt_pending_users(limit=50, offset=offset, city_scope=scope)
         if not batch:
             break
         visible = [u for u in batch if u["telegram_id"] not in skipped]
         offset += len(batch)
     if not visible:
-        await target.answer("✅ Чеков на проверке нет.", reply_markup=build_admin_keyboard())
+        empty_text = "✅ Чеков на проверке нет." if label is None else f"✅ Чеков на проверке нет — «{label}»."
+        await target.answer(empty_text, reply_markup=await admin_keyboard_for(admin_id))
         return
     current = visible[0]
     # M-02: position = skipped-so-far + 1 (the shown card is the first not-yet-skipped receipt).
     # The old total - len(visible) + 1 returned e.g. 51/100 for the first card on a >50 queue.
     position = min(len(skipped) + 1, total)
     await target.answer(
-        _render_receipt_card(current, position, total),
+        _render_receipt_card(current, position, total, city_label_text=label),
         parse_mode="HTML",
         reply_markup=_rcpt_card_kb(current["telegram_id"], bool(current.get("receipt_file_id")), total),
     )
