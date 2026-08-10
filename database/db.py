@@ -1008,7 +1008,14 @@ def _build_filter_clause(filters: list[dict]) -> tuple[str, list]:
             # Must come BEFORE the generic `_FILTER_COLUMNS` branch below, which would emit a
             # plain `event_city = ?` and silently drop every NULL row from the default city.
             if not f.get("value"):
-                continue  # never emit a condition without a value → ME-04 fail-safe downstream
+                # WR-01: НЕ «пропустить». Пропуск снимал условие целиком, и ME-04
+                # (`if filters and not where`) спасал только когда отброшены ВСЕ фильтры.
+                # Спека [{status: approved}, {event_city: ""}] давала `WHERE status = ?`,
+                # т.е. рассылка уходила во все города, хотя сводка называла один. Эмитим
+                # заведомо ложное условие — аудитория гарантированно пуста (fail closed),
+                # что совпадает с наблюдаемым поведением ME-04.
+                clauses.append("0")
+                continue
             frag, city_params = _city_clause((f.get("value"), tuple(f.get("exclude") or ())))
             clauses.append(frag)
             params.extend(city_params)

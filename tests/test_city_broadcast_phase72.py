@@ -71,11 +71,22 @@ def test_event_city_combined_with_other_field_keeps_and_and_bind_order():
     assert params2 == ["spb", "approved"]
 
 
-def test_event_city_empty_value_is_dropped():
-    """Never emit a condition without a value — an empty value must drop the filter, after
-    which count_and_list_filtered's ME-04 fail-safe returns an empty audience."""
-    assert _build_filter_clause([{"field": "event_city", "value": ""}]) == ("", [])
-    assert _build_filter_clause([{"field": "event_city", "value": None}]) == ("", [])
+def test_event_city_empty_value_emits_an_unsatisfiable_condition():
+    """WR-01: пустое значение города НЕ снимает условие (это был fail-open), а эмитит
+    заведомо ложное «0» — аудитория гарантированно пуста."""
+    assert _build_filter_clause([{"field": "event_city", "value": ""}]) == (" WHERE 0", [])
+    assert _build_filter_clause([{"field": "event_city", "value": None}]) == (" WHERE 0", [])
+
+
+def test_event_city_empty_value_does_not_fan_out_when_combined(tmp_path):
+    """WR-01, тот самый сценарий: пустой город рядом с другим фильтром раньше молча
+    вырождался в `WHERE status = ?` — рассылка уходила одобренным ВСЕХ городов."""
+    where, params = _build_filter_clause([
+        {"field": "status", "value": "approved"},
+        {"field": "event_city", "value": ""},
+    ])
+    assert where == " WHERE status = ? AND 0"
+    assert params == ["approved"]
 
 
 def test_event_city_filter_survives_json_round_trip():
@@ -125,6 +136,16 @@ def test_count_and_list_filtered_empty_city_value_returns_empty_audience(tmp_pat
     """Degenerate city filter must NEVER fan out to the whole base (ME-04 fail-safe)."""
     _seed_broadcast_base(tmp_path)
     ids = asyncio.run(db.count_and_list_filtered([{"field": "event_city", "value": ""}]))
+    assert ids == []
+
+
+def test_count_and_list_filtered_empty_city_value_with_other_filter_is_empty(tmp_path):
+    """WR-01 end-to-end: пустой город + непустой фильтр = пустая аудитория, а не «все»."""
+    _seed_broadcast_base(tmp_path)
+    ids = asyncio.run(db.count_and_list_filtered([
+        {"field": "status", "value": "pending"},
+        {"field": "event_city", "value": ""},
+    ]))
     assert ids == []
 
 
