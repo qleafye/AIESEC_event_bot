@@ -137,6 +137,19 @@ def test_show_admin_export_default_city_includes_null(tmp_path):
     assert ids_in_export == {"1", "2"}  # NULL row (1) collapses into default city (msk, 2)
 
 
+def test_show_admin_export_caption_escapes_city_label(tmp_path):
+    """CR-01: `city_label__{code}` — свободный текст, редактируемый из админки, а подпись к
+    документу уходит с глобальным parse_mode=HTML. Неэкранированный «<» ронял бы выгрузку."""
+    _seed_three_cities(tmp_path)
+    asyncio.run(db.set_setting("city_label__spb", "<script>alert(1)</script>"))
+    asyncio.run(cities.set_admin_city(ADMIN_ID, "spb"))
+    cb = FakeCallback("admin_export_csv")
+    asyncio.run(admin_mod.show_admin_export(cb))
+    _document, caption = cb.message.documents[0]
+    assert "<script>alert(1)</script>" not in caption
+    assert "&lt;script&gt;" in caption
+
+
 def test_show_admin_export_rejects_non_admin(tmp_path):
     _admin_ready(tmp_path)
     cb = FakeCallback("admin_export_csv", user_id=NON_ADMIN_ID)
