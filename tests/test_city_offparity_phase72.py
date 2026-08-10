@@ -290,3 +290,50 @@ def test_manager_pending_reminder_stays_global():
     module_src = inspect.getsource(reminders_mod)
     assert "import cities" not in module_src
     assert "from cities" not in module_src
+
+
+# ── Doc-safety: ADMIN_GUIDE.md обязан описывать РЕАЛЬНЫЕ экраны и кнопки ─────────────────
+#
+# Прецедент — tests/test_city_admin_phase71.py::test_admin_guide_documents_city_deep_links...
+# Гайд менеджера — это инструкция к необратимым массовым действиям (T-072-18): если он
+# разъедется с кодом, менеджер нажмёт не то, что прочитал.
+
+def _read(path: str) -> str:
+    with open(path, "r", encoding="utf-8") as f:
+        return f.read()
+
+
+def test_admin_guide_no_longer_promises_city_filters_as_future_work():
+    """Строка «появятся отдельной фазой позже» стала ЛОЖЬЮ после фазы 07.2."""
+    assert "появятся отдельной фазой позже" not in _read("ADMIN_GUIDE.md")
+
+
+def test_admin_guide_documents_the_city_switcher_and_its_scope():
+    guide = _read("ADMIN_GUIDE.md")
+    admin_src = _read("handlers/admin.py")
+    # Экран переключателя, описанный в гайде, существует в коде
+    assert "admin_city_switch" in admin_src
+    assert "🏙 Город:" in guide and "🏙 Город:" in admin_src
+    # Что фильтруется
+    for token in ("📋 Заявки", "🧾 Чеки", "📄 Экспорт CSV", "Одобрить все"):
+        assert token in guide, token
+        assert token in admin_src, token
+    # Фильтр рассылки: подпись в гайде совпадает с подписью кнопки в коде
+    assert "Город мероприятия" in guide
+    assert "🏙 Город мероприятия" in admin_src
+    assert "filter_f_event_city" in admin_src
+
+
+def test_admin_guide_states_what_is_deliberately_not_city_scoped():
+    guide = _read("ADMIN_GUIDE.md")
+    assert "По городам" in guide                    # статистика — сравнение городов
+    assert "Незавершённые" in guide                 # пишет все города за проход
+    # предупреждение «после включения модуля очередь показывает город по умолчанию»
+    assert "заявки не пропали" in guide.lower()
+
+
+def test_readme_mentions_the_per_city_admin_panel_and_its_storage_key():
+    readme = _read("README.md")
+    assert "Погородная админка" in readme
+    assert "admin_city__" in readme
+    assert "admin_city__" in _read("cities.py")
