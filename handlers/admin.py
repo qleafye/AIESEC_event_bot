@@ -2054,6 +2054,11 @@ _FILTER_FIELD_LABELS = {
     "course": "Курс", "study_field": "Направление",
     "position": "Позиция", "attendance_format": "Формат участия",
     "participant_type": "Трек",  # Phase 5 (D-19)
+    # Phase 07.2 (CITY-02). NOT the same thing as "city": "Город" above — that one is the
+    # DELEGATE's own home city (a registration question); this one is the CITY OF THE EVENT.
+    # The two labels sit in the same menu and must stay visually distinguishable on screen —
+    # confusing them is the most expensive mistake this feature can make.
+    "event_city": "Город мероприятия",
 }
 
 # Fields whose value is chosen from a DB-distinct picker (buttons pulled from real data).
@@ -2063,23 +2068,38 @@ _PICKER_FIELDS = {
     "local_committee", "department", "aiesec_role", "education_status",
     "course", "study_field", "position", "attendance_format",
     "participant_type",  # Phase 5 (D-19) — must ALSO be in db._FILTER_COLUMNS or it's dropped
+    # Phase 07.2 (CITY-02) — same двойная регистрация rule: also in db._FILTER_COLUMNS, else
+    # the filter shows on screen and never reaches the SQL. No separate handler needed —
+    # `filter_pick_field` is subscribed to `filter_f_{fld}` across this whole set, computed at
+    # import time. Its values are the ONLY ones not sourced from a DB DISTINCT (see
+    # `_show_value_picker`).
+    "event_city",
 }
 
 # How many value buttons per picker page (long cyrillic values → 1 per row).
 _FILTER_PAGE_SIZE = 8
 
 
-def _value_picker_kb(field: str, options: list[str], page: int) -> InlineKeyboardMarkup:
+def _value_picker_kb(field: str, options: list[str], page: int,
+                     labels: dict | None = None) -> InlineKeyboardMarkup:
     """Paginated value picker. The value itself never goes in callback_data (cyrillic values
     blow past Telegram's 64-byte limit) — buttons carry the option INDEX; the full list lives
-    in FSM state. payment_status shows human labels."""
+    in FSM state. payment_status shows human labels.
+
+    `labels` (Phase 07.2, CITY-02) is an optional {option: display_text} map for fields whose
+    stored value is a machine code — event_city stores "spb", the button must read
+    "Санкт-Петербург…". When omitted, behavior is byte-identical to before.
+    """
     total = len(options)
     pages = max(1, (total + _FILTER_PAGE_SIZE - 1) // _FILTER_PAGE_SIZE)
     page = max(0, min(page, pages - 1))
     start = page * _FILTER_PAGE_SIZE
     rows = []
     for i, v in enumerate(options[start:start + _FILTER_PAGE_SIZE], start=start):
-        label = _PAYMENT_STATUS_LABELS.get(v, v) if field == "payment_status" else v
+        if labels:
+            label = str(labels.get(v, v))
+        else:
+            label = _PAYMENT_STATUS_LABELS.get(v, v) if field == "payment_status" else v
         rows.append([InlineKeyboardButton(text=label[:60], callback_data=f"filter_opt:{i}")])
     nav = []
     if page > 0:
@@ -2110,12 +2130,17 @@ def _filter_summary(filters: list[dict]) -> str:
             parts.append(f"{label} {opl} {val}")
         elif f["field"] == "payment_status":
             parts.append(f"{label} = {_PAYMENT_STATUS_LABELS.get(f.get('value'), val)}")
+        elif f.get("label"):
+            # Phase 07.2 (CITY-02): a filter may carry its own human display text (a city code
+            # is unreadable in the summary). Generic — not a city special case. Escaped like
+            # every other value; the label comes from bot_settings and is admin-editable.
+            parts.append(f"{label} = {html_module.escape(str(f['label']))}")
         else:
             parts.append(f"{label} = {val}")
     return " И ".join(parts)
 
 
-def _filter_menu_kb(filters: list[dict]) -> InlineKeyboardMarkup:
+def _filter_menu_kb(filters: list[dict], *, show_city: bool = False) -> InlineKeyboardMarkup:
     kb = [
         [InlineKeyboardButton(text="Комитет AIESEC", callback_data="filter_f_local_committee"),
          InlineKeyboardButton(text="Департамент", callback_data="filter_f_department")],
@@ -2133,6 +2158,11 @@ def _filter_menu_kb(filters: list[dict]) -> InlineKeyboardMarkup:
          InlineKeyboardButton(text="💰 Оплата", callback_data="filter_f_payment_status")],
         [InlineKeyboardButton(text="🎉 Трек", callback_data="filter_f_participant_type")],
     ]
+    # Phase 07.2 (CITY-02): only with the cities module on. Default False keeps the keyboard
+    # byte-identical to the pre-phase one when the module is off.
+    if show_city:
+        kb.append([InlineKeyboardButton(text="🏙 Город мероприятия",
+                                        callback_data="filter_f_event_city")])
     if filters:
         kb.append([InlineKeyboardButton(text="📊 Показать и отправить", callback_data="filter_count")])
     kb.append([InlineKeyboardButton(text="❌ Отмена", callback_data="broadcast_cancel")])
@@ -2145,7 +2175,11 @@ async def _render_filter_menu(target, filters: list[dict], *, edit: bool):
         f"Текущие условия (AND): {_filter_summary(filters)}\n\n"
         "Добавьте поле фильтра или покажите количество."
     )
-    kb = _filter_menu_kb(filters)
+    # The menu deliberately opens EMPTY — the admin's selected city does NOT pre-fill this
+    # filter (07.2-04 decision). A broadcast has an asymmetric risk: a condition the manager
+    # never set is exactly how a message reaches a third of the base while they believe it
+    # reached everyone. Moderation/export can't fail that way (an empty screen is visible).
+    kb = _filter_menu_kb(filters, show_city=await cities_module_on())
     if edit:
         await target.edit_text(text, reply_markup=kb)
     else:
@@ -2165,13 +2199,26 @@ async def broadcast_filter_start(callback: types.CallbackQuery, state: FSMContex
 
 async def _show_value_picker(callback: types.CallbackQuery, state: FSMContext, field: str, prompt: str):
     """Load distinct DB values for `field`, stash them in FSM, render the paginated picker."""
-    options = await get_distinct_filter_values(field)
+    if field == "event_city":
+        # Phase 07.2 (CITY-02): the ONE field whose values come from the REGISTRY, not from a
+        # DISTINCT over the column. `get_distinct_filter_values` filters out NULLs by
+        # construction — and every application registered before the cities module has
+        # event_city NULL, so the DEFAULT city (where all of them live) would simply not be
+        # offered. A city with zero applications so far would be unofferable too.
+        options = [c["code"] for c in CITIES]
+        labels = {code: await city_label(code) for code in options}
+    else:
+        options = await get_distinct_filter_values(field)
+        labels = None
     if not options:
         await callback.answer("В базе нет значений для этого поля.", show_alert=True)
         return
-    await state.update_data(filter_options=options, filter_page=0)
+    # `filter_option_labels` rides along in FSM so pagination redraws keep the human labels.
+    await state.update_data(filter_options=options, filter_page=0, filter_option_labels=labels)
     await callback.answer()
-    await callback.message.edit_text(prompt, reply_markup=_value_picker_kb(field, options, 0))
+    await callback.message.edit_text(
+        prompt, reply_markup=_value_picker_kb(field, options, 0, labels)
+    )
 
 
 @router.callback_query(F.data.in_({f"filter_f_{fld}" for fld in _PICKER_FIELDS}), Broadcast.filter_field)
@@ -2228,7 +2275,9 @@ async def filter_page_nav(callback: types.CallbackQuery, state: FSMContext):
         return
     await state.update_data(filter_page=page)
     await callback.answer()
-    await callback.message.edit_reply_markup(reply_markup=_value_picker_kb(field, options, page))
+    await callback.message.edit_reply_markup(
+        reply_markup=_value_picker_kb(field, options, page, data.get("filter_option_labels"))
+    )
 
 
 @router.callback_query(F.data.startswith("filter_opt:"), Broadcast.filter_field)
@@ -2251,11 +2300,25 @@ async def filter_pick_value(callback: types.CallbackQuery, state: FSMContext):
     filters = data.get("filters", [])
     if field == "registration_date":
         filters.append({"field": field, "op": data.get("filter_pending_op"), "value": value})
+    elif field == "event_city":
+        # `exclude` is computed by cities.city_scope — the SAME function that scopes both
+        # moderation queues and the CSV export, so "which codes count as this city" has
+        # exactly one definition. It travels inside the filter dict because database/db.py
+        # may not import cities (cycle), and it must survive the JSON round-trip a scheduled
+        # broadcast's spec goes through. `label` renders the summary in human words.
+        labels = data.get("filter_option_labels") or {}
+        scope = city_scope(value)
+        filters.append({
+            "field": field,
+            "value": value,
+            "exclude": list(scope[1]) if scope else [],
+            "label": labels.get(value, value),
+        })
     else:
         filters.append({"field": field, "value": value})
     await state.update_data(
         filters=filters, filter_pending_field=None, filter_pending_op=None,
-        filter_options=[], filter_page=0,
+        filter_options=[], filter_page=0, filter_option_labels=None,
     )
     await callback.answer()
     await _render_filter_menu(callback.message, filters, edit=True)
@@ -2268,7 +2331,8 @@ async def filter_back(callback: types.CallbackQuery, state: FSMContext):
         await callback.answer("Недостаточно прав", show_alert=True)
         return
     data = await state.get_data()
-    await state.update_data(filter_pending_field=None, filter_pending_op=None, filter_options=[], filter_page=0)
+    await state.update_data(filter_pending_field=None, filter_pending_op=None, filter_options=[],
+                            filter_page=0, filter_option_labels=None)
     await callback.answer()
     await _render_filter_menu(callback.message, data.get("filters", []), edit=True)
 
