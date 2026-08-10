@@ -971,6 +971,12 @@ _FILTER_COLUMNS = {
     "local_committee", "department", "aiesec_role", "education_status",
     "course", "study_field", "position", "attendance_format",
     "participant_type",  # Phase 5 (D-19, TRACK-06 SC#8)
+    # Phase 07.2 (CITY-02) — event city as a broadcast-segment filter. MUST also be in
+    # `handlers.admin._PICKER_FIELDS`, otherwise the field is silently dropped and the
+    # manager broadcasts to the wrong segment while the screen says otherwise
+    # (precedent: Phase 5 D-19). Handled by its own branch in `_build_filter_clause`,
+    # not by the generic `{field} = ?` one — see there.
+    "event_city",
 }
 
 
@@ -979,6 +985,16 @@ def _build_filter_clause(filters: list[dict]) -> tuple[str, list]:
 
     Column names come only from `_FILTER_COLUMNS` (or the literal `registration_date`);
     values are NEVER interpolated — they bind as `?`. Non-whitelisted fields are dropped.
+
+    `event_city` is the one field that is NOT a plain equality: the DEFAULT city is described
+    by EXCLUSION of the other known cities, so it also catches `event_city IS NULL` (every
+    application registered before the cities module existed) — same semantics as
+    `cities.normalize_city` and the Sheets tabs. The list of "other known city codes" arrives
+    in the filter dict itself under the `exclude` key, put there by the caller
+    (`handlers/admin.py`, via `cities.city_scope`), because `database/db.py` may NEVER import
+    `cities` — `cities.py` already imports this module, so that would be an import cycle.
+    The `exclude` key must therefore also survive the `json.dumps`/`json.loads` round-trip a
+    scheduled broadcast's filter spec goes through.
     """
     clauses: list[str] = []
     params: list = []
@@ -988,6 +1004,14 @@ def _build_filter_clause(filters: list[dict]) -> tuple[str, list]:
             op = ">=" if f.get("op") == "after" else "<"
             clauses.append(f"registration_date {op} ?")
             params.append(f.get("value"))
+        elif field == "event_city":
+            # Must come BEFORE the generic `_FILTER_COLUMNS` branch below, which would emit a
+            # plain `event_city = ?` and silently drop every NULL row from the default city.
+            if not f.get("value"):
+                continue  # never emit a condition without a value → ME-04 fail-safe downstream
+            frag, city_params = _city_clause((f.get("value"), tuple(f.get("exclude") or ())))
+            clauses.append(frag)
+            params.extend(city_params)
         elif field in _FILTER_COLUMNS:
             clauses.append(f"{field} = ?")
             params.append(f.get("value"))
@@ -996,6 +1020,12 @@ def _build_filter_clause(filters: list[dict]) -> tuple[str, list]:
     return where, params
 
 
+# NOT USABLE FOR `event_city` (Phase 07.2, CITY-02): this function returns raw column values
+# and, by construction (`IS NOT NULL AND TRIM(...) != ''`), drops NULL rows — so the DEFAULT
+# city, under which every pre-cities application still sits as NULL, would simply not appear
+# in the list of offered values, and a city with no applications yet would be unofferable.
+# The source of city values for the picker is the registry (`cities.CITIES`), resolved on the
+# `handlers/admin.py` side; this module cannot import `cities` (import cycle).
 async def get_distinct_filter_values(field: str) -> list[str]:
     """Distinct non-empty values present in the users table for a whitelisted filter column —
     feeds the broadcast value picker (buttons pulled from real data, no free-text typing).
