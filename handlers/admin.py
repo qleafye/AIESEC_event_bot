@@ -1355,7 +1355,14 @@ async def show_admin_export(callback: types.CallbackQuery):
     writer.writerows(rows)
     file_bytes = output.getvalue().encode('utf-8-sig')
     filename = "users.csv" if scope is None else f"users_{scope[0]}.csv"
-    caption = "База данных пользователей" if scope is None else f"База данных пользователей — {label}"
+    # CR-01: the label is an admin-editable free-text setting (`city_label__{code}` in
+    # bot_settings) and the bot runs with DefaultBotProperties(parse_mode=HTML), so a caption
+    # sent without an explicit parse_mode is parsed as HTML. Escape it exactly like
+    # _render_application_card / _render_receipt_card / render_stats_text already do.
+    caption = (
+        "База данных пользователей" if scope is None
+        else f"База данных пользователей — {html_module.escape(str(label))}"
+    )
     document = BufferedInputFile(file_bytes, filename=filename)
     await callback.message.answer_document(document, caption=caption)
     await callback.answer()
@@ -3112,7 +3119,12 @@ async def _show_current_card(target: types.Message, state: FSMContext):
         visible = [u for u in batch if u["telegram_id"] not in skipped]
         offset += len(batch)
     if not visible:
-        empty_text = "✅ Заявок нет." if label is None else f"✅ Заявок нет — «{label}»."
+        # CR-01: admin-editable label + global HTML parse_mode → escape, or an «<» in the
+        # setting makes Telegram reject the message and the empty-queue screen never opens.
+        empty_text = (
+            "✅ Заявок нет." if label is None
+            else f"✅ Заявок нет — «{html_module.escape(str(label))}»."
+        )
         await target.answer(empty_text, reply_markup=await admin_keyboard_for(admin_id))
         return
     current = visible[0]
@@ -3277,9 +3289,14 @@ async def appr_all_confirm(callback: types.CallbackQuery, state: FSMContext):
         InlineKeyboardButton(text="✅ Да", callback_data="appr_all_yes"),
         InlineKeyboardButton(text="❌ Отмена", callback_data="appr_all_no"),
     ]])
+    # CR-01: escape the admin-editable label — this screen is the LAST thing shown before an
+    # irreversible mass approval; a broken parse here means it cannot be opened at all.
     text = (
         f"Одобрить все {total} заявок?" if label is None
-        else f"Одобрить все {total} заявок в городе «{label}»? Заявки других городов не будут затронуты."
+        else (
+            f"Одобрить все {total} заявок в городе «{html_module.escape(str(label))}»? "
+            "Заявки других городов не будут затронуты."
+        )
     )
     await callback.message.edit_text(text, reply_markup=kb)
     await callback.answer()
@@ -3408,7 +3425,11 @@ async def _show_current_receipt_card(target: types.Message, state: FSMContext):
         visible = [u for u in batch if u["telegram_id"] not in skipped]
         offset += len(batch)
     if not visible:
-        empty_text = "✅ Чеков на проверке нет." if label is None else f"✅ Чеков на проверке нет — «{label}»."
+        # CR-01: same escaping as the applications queue above.
+        empty_text = (
+            "✅ Чеков на проверке нет." if label is None
+            else f"✅ Чеков на проверке нет — «{html_module.escape(str(label))}»."
+        )
         await target.answer(empty_text, reply_markup=await admin_keyboard_for(admin_id))
         return
     current = visible[0]

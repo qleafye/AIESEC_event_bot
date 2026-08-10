@@ -251,6 +251,46 @@ def test_show_current_card_empty_queue_module_off_byte_identical(tmp_path):
     assert target.answers_sent[-1] == "✅ Заявок нет."
 
 
+def test_show_current_card_empty_queue_escapes_city_label(tmp_path):
+    """CR-01: метка города редактируется из админки, а сообщение уходит с parse_mode=HTML по
+    умолчанию — без экранирования экран пустой очереди перестал бы открываться вообще."""
+    _admin_ready(tmp_path)
+    asyncio.run(db.set_setting("event_city_enabled", "on"))
+    asyncio.run(db.set_setting("city_label__spb", "<script>alert(1)</script>"))
+    asyncio.run(cities.set_admin_city(ADMIN_ID, "spb"))
+    state = _new_state(ADMIN_ID)
+    target = FakeMessage()
+    asyncio.run(admin_mod._show_current_card(target, state))
+    sent = target.answers_sent[-1]
+    assert "<script>alert(1)</script>" not in sent
+    assert "&lt;script&gt;" in sent
+
+
+def test_show_current_receipt_card_empty_queue_escapes_city_label(tmp_path):
+    _admin_ready(tmp_path)
+    asyncio.run(db.set_setting("event_city_enabled", "on"))
+    asyncio.run(db.set_setting("city_label__spb", "<script>alert(1)</script>"))
+    asyncio.run(cities.set_admin_city(ADMIN_ID, "spb"))
+    state = _new_state(ADMIN_ID)
+    target = FakeMessage()
+    asyncio.run(admin_mod._show_current_receipt_card(target, state))
+    sent = target.answers_sent[-1]
+    assert "<script>alert(1)</script>" not in sent
+    assert "&lt;script&gt;" in sent
+
+
+def test_appr_all_confirm_escapes_city_label(tmp_path):
+    """CR-01 на самом опасном экране: подтверждение необратимого массового одобрения."""
+    _seed_pending_three_cities(tmp_path)
+    asyncio.run(db.set_setting("city_label__spb", "Питер <осн>"))
+    asyncio.run(cities.set_admin_city(ADMIN_ID, "spb"))
+    cb = FakeCallback("appr_all")
+    state = _new_state(ADMIN_ID)
+    asyncio.run(admin_mod.appr_all_confirm(cb, state))
+    assert "Питер <осн>" not in cb.message.text
+    assert "Питер &lt;осн&gt;" in cb.message.text
+
+
 def test_appr_all_confirm_names_city_and_count(tmp_path):
     _seed_pending_three_cities(tmp_path)
     asyncio.run(cities.set_admin_city(ADMIN_ID, "spb"))
