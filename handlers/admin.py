@@ -66,6 +66,7 @@ from cities import (  # Phase 07.1 (CITY-04): admin city screen; Phase 07.2 (CIT
     admin_selected_city,
     set_admin_city,
     city_scope,
+    city_codes,
     normalize_city,
 )
 
@@ -3278,15 +3279,20 @@ async def appr_all_confirm(callback: types.CallbackQuery, state: FSMContext):
     # T-072-07 (Repudiation): the confirmation text must name BOTH the city and the count —
     # this is an irreversible mass operation, and a global-looking button at 3 cities means
     # one tap flips a city the admin never chose.
-    scope = await _admin_city_scope(callback.from_user.id)
-    label = await _admin_city_label(callback.from_user.id)
+    code = await admin_selected_city(callback.from_user.id)  # None = модуль выключен
+    scope = city_scope(code)
+    label = None if code is None else await city_label(code)
     total = await get_pending_count(city_scope=scope)
     if total == 0:
         await callback.answer("Заявок нет")
         await _show_current_card(callback.message, state)
         return
+    # CR-02: «Да» обязана подтверждать ИМЕННО тот город, который назван в тексте выше.
+    # Код города едет в callback_data, и appr_all_yes сверяет его с текущим выбором —
+    # иначе переключение города в соседнем сообщении (выбор живёт в bot_settings и
+    # переживает перезапуск, кнопки не истекают) необратимо одобряет чужую очередь.
     kb = InlineKeyboardMarkup(inline_keyboard=[[
-        InlineKeyboardButton(text="✅ Да", callback_data="appr_all_yes"),
+        InlineKeyboardButton(text="✅ Да", callback_data=f"appr_all_yes:{code or ''}"),
         InlineKeyboardButton(text="❌ Отмена", callback_data="appr_all_no"),
     ]])
     # CR-01: escape the admin-editable label — this screen is the LAST thing shown before an
@@ -3327,14 +3333,31 @@ async def _welcome_flipped(bot, ids: list):
         await asyncio.sleep(0.05)
 
 
-@router.callback_query(F.data == "appr_all_yes")
+@router.callback_query(F.data.startswith("appr_all_yes"))
 async def appr_all_yes(callback: types.CallbackQuery, state: FSMContext):
     if callback.from_user.id not in config.ADMIN_IDS:
         await callback.answer("Недостаточно прав", show_alert=True)
         return
+    # CR-02: массовое одобрение необратимо, поэтому оно fail-closed. Город берётся из
+    # callback_data (тот, что назван в тексте подтверждения), а не из текущего выбора
+    # админа, и должен ему СОВПАДАТЬ. Если админ переключил город после показа диалога —
+    # отказываем и просим подтвердить заново, а не одобряем «то, что выбрано сейчас».
+    # Старая (до CR-02) кнопка без двоеточия даёт confirmed=None: при включённом модуле
+    # это гарантированно не совпадёт с выбранным городом и будет отвергнуто; при
+    # выключенном модуле current тоже None — это и есть путь module-off (скоуп None).
+    raw = callback.data.split(":", 1)[1].strip() if ":" in callback.data else ""
+    confirmed = raw or None
+    current = await admin_selected_city(callback.from_user.id)
+    if confirmed != current:
+        await callback.answer("Город админки изменился — подтвердите заново.", show_alert=True)
+        await _show_current_card(callback.message, state)
+        return
+    if confirmed is not None and confirmed not in city_codes():
+        await callback.answer("Неизвестный город", show_alert=True)
+        return
     # T-072-03/T-072-07: city condition lives in the WHERE of this SAME atomic
     # UPDATE ... RETURNING — structurally cannot flip another city's rows.
-    ids = await approve_all_pending(city_scope=await _admin_city_scope(callback.from_user.id))  # atomic flip first (D-11)
+    ids = await approve_all_pending(city_scope=city_scope(confirmed))  # atomic flip first (D-11)
     # WR-04: a stale confirm dialog re-clicked (buttons never expire) hits approve_all_pending
     # again — atomic, so it returns [] the second time. Don't run the drain or claim a count;
     # tell the admin it's already done and refresh the card.
