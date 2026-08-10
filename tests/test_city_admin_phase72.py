@@ -311,10 +311,29 @@ def test_appr_all_confirm_module_off_equals_todays_literal(tmp_path):
     assert cb.message.text == "Одобрить все 1 заявок?"
 
 
+def test_appr_all_confirm_binds_the_city_into_the_callback_data(tmp_path):
+    """CR-02: кнопка «Да» обязана нести код города, который назван в тексте диалога."""
+    _seed_pending_three_cities(tmp_path)
+    asyncio.run(cities.set_admin_city(ADMIN_ID, "spb"))
+    cb = FakeCallback("appr_all")
+    state = _new_state(ADMIN_ID)
+    asyncio.run(admin_mod.appr_all_confirm(cb, state))
+    assert "appr_all_yes:spb" in _flat_callback_data(cb.message.markup)
+
+
+def test_appr_all_confirm_module_off_binds_empty_city(tmp_path):
+    _admin_ready(tmp_path)
+    _seed_city(1, "spb")
+    cb = FakeCallback("appr_all")
+    state = _new_state(ADMIN_ID)
+    asyncio.run(admin_mod.appr_all_confirm(cb, state))
+    assert "appr_all_yes:" in _flat_callback_data(cb.message.markup)
+
+
 def test_appr_all_yes_scoped_does_not_touch_other_cities(tmp_path):
     _seed_pending_three_cities(tmp_path)
     asyncio.run(cities.set_admin_city(ADMIN_ID, "spb"))
-    cb = FakeCallback("appr_all_yes")
+    cb = FakeCallback("appr_all_yes:spb")
     state = _new_state(ADMIN_ID)
     asyncio.run(admin_mod.appr_all_yes(cb, state))
 
@@ -325,6 +344,63 @@ def test_appr_all_yes_scoped_does_not_touch_other_cities(tmp_path):
         for tid in (3, 4):
             user = await db.get_user(tid)
             assert user["status"] == "approved"
+
+    asyncio.run(check())
+
+
+def test_appr_all_yes_refuses_when_admin_city_changed_after_the_dialog(tmp_path):
+    """CR-02, главный сценарий: диалог показан по Питеру, админ переключился на Москву в
+    другом сообщении и вернулся к старой кнопке. Одобрять НИЧЕГО нельзя."""
+    _seed_pending_three_cities(tmp_path)
+    asyncio.run(cities.set_admin_city(ADMIN_ID, "spb"))
+    cb = FakeCallback("appr_all")
+    state = _new_state(ADMIN_ID)
+    asyncio.run(admin_mod.appr_all_confirm(cb, state))
+    # админ переключил город уже после показа диалога
+    asyncio.run(cities.set_admin_city(ADMIN_ID, "msk"))
+    stale = FakeCallback("appr_all_yes:spb")
+    asyncio.run(admin_mod.appr_all_yes(stale, state))
+    assert stale.answers[0][1] is True
+    assert "изменил" in stale.answers[0][0]
+
+    async def check():
+        for tid in (1, 2, 3, 4, 5):
+            user = await db.get_user(tid)
+            assert user["status"] == "pending", tid
+
+    asyncio.run(check())
+
+
+def test_appr_all_yes_bare_callback_refuses_when_module_on(tmp_path):
+    """CR-02: подтверждение старого формата (без кода города) при включённом модуле не
+    имеет права падать обратно на «текущий выбранный город» — оно отвергается."""
+    _seed_pending_three_cities(tmp_path)
+    asyncio.run(cities.set_admin_city(ADMIN_ID, "spb"))
+    cb = FakeCallback("appr_all_yes")
+    state = _new_state(ADMIN_ID)
+    asyncio.run(admin_mod.appr_all_yes(cb, state))
+    assert cb.answers[0][1] is True
+
+    async def check():
+        for tid in (1, 2, 3, 4, 5):
+            user = await db.get_user(tid)
+            assert user["status"] == "pending", tid
+
+    asyncio.run(check())
+
+
+def test_appr_all_yes_refuses_forged_city_code(tmp_path):
+    _seed_pending_three_cities(tmp_path)
+    asyncio.run(cities.set_admin_city(ADMIN_ID, "spb"))
+    cb = FakeCallback("appr_all_yes:__evil__")
+    state = _new_state(ADMIN_ID)
+    asyncio.run(admin_mod.appr_all_yes(cb, state))
+    assert cb.answers[0][1] is True
+
+    async def check():
+        for tid in (1, 2, 3, 4, 5):
+            user = await db.get_user(tid)
+            assert user["status"] == "pending", tid
 
     asyncio.run(check())
 
