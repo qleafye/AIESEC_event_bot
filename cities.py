@@ -199,6 +199,39 @@ def city_scope(code: str | None) -> tuple[str, tuple[str, ...]] | None:
     return (resolved, ())
 
 
+def refresh_city_filter_spec(spec: list[dict]) -> list[dict] | None:
+    """WR-02: re-resolve every `event_city` filter's `exclude` against the CURRENT registry.
+
+    A scheduled broadcast stores its filter spec as JSON, and the `exclude` list inside it is
+    a SNAPSHOT of "the other known city codes" taken at the moment the manager built the
+    filter. `EVENT_CITIES` is an .env list that is edited between scheduling and sending — a
+    city added afterwards is not in the frozen `exclude`, so the default-city condition
+    (`event_city NOT IN (...)`) stops excluding it and its delegates leak into a broadcast
+    that was addressed to another city.
+
+    Returns a NEW spec with `exclude` recomputed from the live registry, or `None` when an
+    `event_city` filter names a code the registry no longer knows. `None` means "refuse to
+    send" — silently normalizing an unknown code would redirect the whole broadcast to the
+    DEFAULT city (`normalize_city`'s fallback), which is worse than not sending at all.
+
+    Non-`event_city` filters pass through untouched; a spec without city filters is returned
+    unchanged in content.
+    """
+    out: list[dict] = []
+    for f in spec:
+        if not isinstance(f, dict) or f.get("field") != "event_city":
+            out.append(f)
+            continue
+        value = f.get("value")
+        if not value:
+            out.append(f)  # empty value -> db._build_filter_clause fails it closed (WR-01)
+            continue
+        if get_city(value) is None:
+            return None
+        out.append({**f, "exclude": list(city_scope(value)[1])})
+    return out
+
+
 async def admin_selected_city(admin_id: int) -> str | None:
     """The one city an admin panel is currently scoped to, or `None` meaning "no scope,
     show everything" (module off — the SINGLE point where "module disabled" collapses to

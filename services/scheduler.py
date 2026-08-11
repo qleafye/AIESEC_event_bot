@@ -212,7 +212,27 @@ async def send_scheduled_broadcast(broadcast_id: int):
         filter_spec = row.get("filter_spec")
         if filter_spec:
             try:
-                target_ids = await count_and_list_filtered(json.loads(filter_spec))
+                spec = json.loads(filter_spec)
+                # WR-02: the `exclude` list inside an `event_city` filter is a SNAPSHOT of "the
+                # other known city codes" taken when the manager built the filter. EVENT_CITIES
+                # is an .env list edited between scheduling and sending, so a city added after
+                # scheduling is missing from the frozen exclude — the default-city condition
+                # (`event_city NOT IN (...)`) stops excluding it and its delegates leak into a
+                # broadcast addressed to another city. Re-resolve against the LIVE registry at
+                # send time; the stored exclude is only a fallback for pre-WR-02 rows.
+                from cities import refresh_city_filter_spec
+                spec = refresh_city_filter_spec(spec)
+                if spec is None:
+                    # An event_city filter names a code the registry no longer knows. Refuse:
+                    # normalizing it would silently redirect the whole broadcast to the DEFAULT
+                    # city, which is worse than not sending at all.
+                    logger.error(
+                        f"Scheduled broadcast {broadcast_id} targets an unknown event_city — "
+                        "refusing to send (empty audience)"
+                    )
+                    target_ids = []
+                else:
+                    target_ids = await count_and_list_filtered(spec)
             except Exception as e:
                 logger.error(f"Scheduled broadcast {broadcast_id} bad filter_spec: {e}")
                 target_ids = []
