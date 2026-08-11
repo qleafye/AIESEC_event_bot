@@ -3045,6 +3045,30 @@ async def _admin_city_label(admin_id: int) -> str | None:
     return (await _admin_city_view(admin_id))[1]
 
 
+# WR-03: the QUEUE is scoped, but the per-card actions (appr_approve / appr_reject /
+# rcpt_confirm / rcpt_reject) address a row by telegram_id from the callback data and knew
+# nothing about the city. Cards stay in the chat history and inline buttons never expire, so a
+# card rendered for city A and tapped after switching to city B acted OUTSIDE the current
+# scope — breaking the "the panel shows and changes only the selected city" guarantee the
+# ADMIN_GUIDE makes. These are single-record actions (the card shows the name), so one check is
+# enough; unlike CR-02's mass approval, nothing here is redesigned.
+async def _card_out_of_scope(admin_id: int, tid: int | None) -> bool:
+    """True when `tid` does not belong to the admin's currently selected city. Always False
+    with the module off (scope None = «ничего не фильтруется», the pre-CITY-02 path)."""
+    if tid is None:
+        return False
+    scope = await _admin_city_scope(admin_id)
+    if scope is None:
+        return False
+    user = await get_user(tid)
+    # normalize_city collapses NULL/unknown into the default city — the SAME resolver the
+    # queue's SQL scope uses, so «заявка без города» lands in Moscow here too, not «nowhere».
+    return normalize_city((user or {}).get("event_city")) != scope[0]
+
+
+_OUT_OF_SCOPE_ALERT = "Эта заявка из другого города — переключите город."
+
+
 # ── Phase 2: application review queue ("Заявки", tinder UI) ───────────────────
 
 def _parse_appr(data: str) -> tuple[str, int | None]:
@@ -3227,6 +3251,10 @@ async def appr_approve(callback: types.CallbackQuery, state: FSMContext):
         await callback.answer("Недостаточно прав", show_alert=True)
         return
     _, tid = _parse_appr(callback.data)
+    # WR-03: карточка могла быть отрисована для другого города (кнопки не истекают).
+    if await _card_out_of_scope(callback.from_user.id, tid):
+        await callback.answer(_OUT_OF_SCOPE_ALERT, show_alert=True)
+        return
     won = await approve_user_atomic(tid) if tid is not None else False
     if won:
         await approve_user(callback.bot, tid)  # welcome exactly once (D-10)
@@ -3249,6 +3277,10 @@ async def appr_reject_start(callback: types.CallbackQuery, state: FSMContext):
         await callback.answer("Недостаточно прав", show_alert=True)
         return
     _, tid = _parse_appr(callback.data)
+    # WR-03: проверяем ДО запроса причины — иначе менеджер напишет причину впустую.
+    if await _card_out_of_scope(callback.from_user.id, tid):
+        await callback.answer(_OUT_OF_SCOPE_ALERT, show_alert=True)
+        return
     await state.update_data(appr_reject_id=tid)
     await callback.message.answer("Укажи причину отклонения:", reply_markup=get_cancel_kb())
     await state.set_state(Approval.reason)
@@ -3507,6 +3539,10 @@ async def rcpt_confirm(callback: types.CallbackQuery, state: FSMContext):
         await callback.answer("Недостаточно прав", show_alert=True)
         return
     _, uid = _parse_rcpt(callback.data)
+    # WR-03: та же проверка, что и в очереди заявок — карточка чека тоже не истекает.
+    if await _card_out_of_scope(callback.from_user.id, uid):
+        await callback.answer(_OUT_OF_SCOPE_ALERT, show_alert=True)
+        return
     rows = await update_payment_status(uid, "paid") if uid is not None else 0
     if rows == 0:
         # Atomic guard (T-04-05-02): another manager already confirmed.
@@ -3553,6 +3589,10 @@ async def rcpt_reject_start(callback: types.CallbackQuery, state: FSMContext):
         await callback.answer("Недостаточно прав", show_alert=True)
         return
     _, uid = _parse_rcpt(callback.data)
+    # WR-03: проверяем ДО запроса причины.
+    if await _card_out_of_scope(callback.from_user.id, uid):
+        await callback.answer(_OUT_OF_SCOPE_ALERT, show_alert=True)
+        return
     await state.update_data(rcpt_reject_uid=uid)
     await state.set_state(ReceiptReview.reject_reason)
     await callback.message.answer("Укажи причину отклонения (или «-» без объяснений):", reply_markup=get_cancel_kb())
