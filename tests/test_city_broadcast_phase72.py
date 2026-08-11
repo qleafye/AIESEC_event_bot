@@ -419,3 +419,100 @@ def test_filter_f_event_city_is_a_registered_callback():
     to _PICKER_FIELDS is what registers the callback."""
     from handlers import admin as admin_mod
     assert f"filter_f_event_city" in {f"filter_f_{fld}" for fld in admin_mod._PICKER_FIELDS}
+
+
+# ── WR-02: замороженный `exclude` не должен пропустить новый город в старую рассылку ────
+#
+# `exclude` в спеке — это СНИМОК «остальных известных кодов» на момент, когда менеджер собрал
+# фильтр. Список городов живёт в `.env` и правится между планированием и отправкой: город,
+# добавленный после планирования, в замороженный exclude не попадает, условие
+# `event_city NOT IN (...)` перестаёт его исключать, и его делегаты получают «московскую»
+# рассылку. Пересчёт делается в момент ОТПРАВКИ.
+
+def test_refresh_city_filter_spec_recomputes_exclude_from_the_live_registry():
+    import cities
+    default_code = cities.default_city_code()
+    stale = [{"field": "event_city", "value": default_code, "exclude": []}]
+    fresh = cities.refresh_city_filter_spec(stale)
+    assert fresh[0]["exclude"] == list(cities.city_scope(default_code)[1])
+    assert fresh[0]["exclude"], "у города по умолчанию exclude обязан быть непустым"
+    assert stale[0]["exclude"] == [], "исходная спека не должна мутироваться на месте"
+
+
+def test_refresh_city_filter_spec_refuses_a_code_the_registry_no_longer_knows():
+    """None = «не отправлять». Молча нормализовать неизвестный код нельзя: normalize_city
+    свернул бы его в город ПО УМОЛЧАНИЮ и перенаправил всю рассылку туда."""
+    import cities
+    assert cities.refresh_city_filter_spec(
+        [{"field": "event_city", "value": "atlantis"}]
+    ) is None
+
+
+def test_refresh_city_filter_spec_leaves_non_city_filters_untouched():
+    import cities
+    spec = [{"field": "status", "value": "approved"}, {"field": "city", "value": "Москва"}]
+    assert cities.refresh_city_filter_spec(spec) == spec
+
+
+def test_refresh_city_filter_spec_hands_an_empty_value_to_the_wr01_guard():
+    import cities
+    out = cities.refresh_city_filter_spec([{"field": "event_city", "value": ""}])
+    assert _build_filter_clause(out) == (" WHERE 0", [])
+
+
+def test_stale_exclude_leaks_other_cities_until_it_is_refreshed(tmp_path):
+    """Тот самый дефект в цифрах: снимок снят, когда реестр знал только msk и spb; tyumen
+    добавили позже, и «московская» спека забирает тюменцев. После пересчёта — не забирает."""
+    import cities
+    _seed_broadcast_base(tmp_path)
+    default_code = cities.default_city_code()
+    stale = [{"field": "event_city", "value": default_code, "exclude": ["spb"]}]
+    leaked = asyncio.run(db.count_and_list_filtered(json.loads(json.dumps(stale))))
+    assert set(leaked) == {1, 2, 5}  # 5 — тюменец, протёкший через устаревший exclude
+    fresh = cities.refresh_city_filter_spec(json.loads(json.dumps(stale)))
+    assert set(asyncio.run(db.count_and_list_filtered(fresh))) == {1, 2}
+
+
+class _FakeSendBot:
+    def __init__(self):
+        self.sent = []
+
+    async def send_message(self, chat_id, text):
+        self.sent.append(chat_id)
+
+
+def _run_scheduled_broadcast(tmp_path, spec_obj):
+    from services import scheduler as sched_mod
+    _seed_broadcast_base(tmp_path)
+    bid = asyncio.run(db.create_scheduled_broadcast(
+        "привет", None, json.dumps(spec_obj, ensure_ascii=False),
+        "2026-01-01 10:00:00", ADMIN_ID,
+    ))
+    bot = _FakeSendBot()
+    prev = sched_mod._bot
+    sched_mod._bot = bot
+    try:
+        asyncio.run(sched_mod.send_scheduled_broadcast(bid))
+    finally:
+        sched_mod._bot = prev
+    return bot.sent
+
+
+def test_send_scheduled_broadcast_refreshes_the_frozen_city_exclude(tmp_path):
+    """WR-02 end-to-end: отложенная рассылка со СТАРЫМ снимком exclude обязана уйти только
+    в свой город — пересчёт делается в момент отправки, а не берётся из JSON."""
+    import cities
+    default_code = cities.default_city_code()
+    sent = _run_scheduled_broadcast(
+        tmp_path, [{"field": "event_city", "value": default_code, "exclude": ["spb"]}]
+    )
+    assert set(sent) == {1, 2}  # без пересчёта сюда попал бы ещё и tyumen (id 5)
+
+
+def test_send_scheduled_broadcast_refuses_an_unknown_city_code(tmp_path):
+    """Город исчез из реестра между планированием и отправкой — не отправляем никому,
+    вместо того чтобы свернуть его в город по умолчанию."""
+    sent = _run_scheduled_broadcast(
+        tmp_path, [{"field": "event_city", "value": "atlantis", "exclude": []}]
+    )
+    assert sent == []
