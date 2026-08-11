@@ -265,6 +265,52 @@ def test_filter_menu_keyboard_has_no_city_button(tmp_path):
     assert "filter_f_event_city" not in flat
 
 
+class _FilterState:
+    """Минимальный FSMContext-заменитель для конструктора фильтров (get_data/update_data)."""
+
+    def __init__(self, **data):
+        self._data = dict(data)
+
+    async def get_data(self):
+        return dict(self._data)
+
+    def get_data_sync(self):
+        return dict(self._data)
+
+    async def update_data(self, **kwargs):
+        self._data.update(kwargs)
+        return dict(self._data)
+
+    async def set_state(self, state):
+        pass
+
+
+def test_stale_filter_menu_cannot_pick_a_city_after_the_module_is_switched_off(tmp_path):
+    """WR-04: спрятать кнопку — НЕДОСТАТОЧНО.
+
+    `filter_pick_field` подписан на множество, посчитанное из `_PICKER_FIELDS` на импорте, а
+    инлайн-кнопки не истекают. Меню фильтров, нарисованное при ВКЛЮЧЁННОМ модуле, оставалось
+    рабочим после выключения тумблера: пикер выдавал города из реестра, `_build_filter_clause`
+    условие применял — то есть рассылка молча сужалась по городу при выключенном модуле.
+    Отказ обязан жить в хэндлере.
+    """
+    _admin_ready(tmp_path)
+    asyncio.run(db.set_setting("event_city_enabled", "on"))
+    cb = FakeCallback("filter_f_event_city")
+    state = _FilterState(filters=[])
+    asyncio.run(admin_mod._show_value_picker(cb, state, "event_city", "Выберите:"))
+    assert asyncio.run(state.get_data())["filter_options"], "при включённом модуле пикер работает"
+
+    asyncio.run(db.set_setting("event_city_enabled", "off"))
+    stale = FakeCallback("filter_f_event_city")
+    stale_state = _FilterState(filters=[])
+    asyncio.run(admin_mod._show_value_picker(stale, stale_state, "event_city", "Выберите:"))
+    assert stale_state.get_data_sync().get("filter_options") is None
+    assert stale.message.text is None, "устаревшая клавиатура не должна открывать пикер"
+    assert stale.answers and stale.answers[-1][1] is True  # show_alert
+    assert "город" in (stale.answers[-1][0] or "").lower()
+
+
 # ── Зафиксированное решение: периодическое напоминание менеджеру остаётся ГЛОБАЛЬНЫМ ─────
 
 def test_manager_pending_reminder_stays_global():
