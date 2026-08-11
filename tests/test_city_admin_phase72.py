@@ -405,6 +405,98 @@ def test_appr_all_yes_refuses_forged_city_code(tmp_path):
     asyncio.run(check())
 
 
+# ── WR-03: действия на КАРТОЧКЕ тоже обязаны перепроверять город ────────────────────────
+#
+# Очередь сузили, но `appr_approve:{tid}` / `appr_reject:{tid}` / `rcpt_confirm:{uid}` /
+# `rcpt_reject:{uid}` адресуют строку по telegram_id из callback-data. Карточки остаются в
+# истории чата, кнопки не истекают: карточка, отрисованная для города A и нажатая после
+# переключения на город B, выполняла действие ВНЕ текущего скоупа. Действие точечное, поэтому
+# достаточно проверки — поток карточек не переделываем.
+
+def test_card_out_of_scope_detects_a_foreign_city(tmp_path):
+    _seed_pending_three_cities(tmp_path)
+    asyncio.run(cities.set_admin_city(ADMIN_ID, "spb"))
+    assert asyncio.run(admin_mod._card_out_of_scope(ADMIN_ID, 2)) is True   # msk
+    assert asyncio.run(admin_mod._card_out_of_scope(ADMIN_ID, 3)) is False  # spb
+
+
+def test_card_out_of_scope_puts_null_city_rows_in_the_default_city(tmp_path):
+    """Заявка без города читается как город по умолчанию — тот же резолвер, что и в SQL
+    очереди, иначе строка оказалась бы «нигде» и стала неодобряемой."""
+    _seed_pending_three_cities(tmp_path)
+    asyncio.run(cities.set_admin_city(ADMIN_ID, cities.default_city_code()))
+    assert asyncio.run(admin_mod._card_out_of_scope(ADMIN_ID, 1)) is False
+    asyncio.run(cities.set_admin_city(ADMIN_ID, "spb"))
+    assert asyncio.run(admin_mod._card_out_of_scope(ADMIN_ID, 1)) is True
+
+
+def test_card_out_of_scope_is_false_with_the_module_off(tmp_path):
+    _admin_ready(tmp_path)
+    _seed_city(1, "spb")
+    asyncio.run(db.set_setting(f"{cities.ADMIN_CITY_KEY_PREFIX}{ADMIN_ID}", "msk"))
+    assert asyncio.run(admin_mod._card_out_of_scope(ADMIN_ID, 1)) is False
+
+
+def test_appr_approve_refuses_a_card_from_another_city(tmp_path):
+    _seed_pending_three_cities(tmp_path)
+    asyncio.run(cities.set_admin_city(ADMIN_ID, "spb"))
+    cb = FakeCallback("appr_approve:2")  # москвич, карточка из старого экрана
+    state = _new_state(ADMIN_ID)
+    asyncio.run(admin_mod.appr_approve(cb, state))
+    assert cb.answers[-1][1] is True
+    assert "другого города" in cb.answers[-1][0]
+    assert asyncio.run(db.get_user(2))["status"] == "pending"
+
+
+def test_appr_approve_still_works_inside_the_scope(tmp_path):
+    _seed_pending_three_cities(tmp_path)
+    asyncio.run(cities.set_admin_city(ADMIN_ID, "spb"))
+    cb = FakeCallback("appr_approve:3")
+    cb.bot = None
+    state = _new_state(ADMIN_ID)
+    try:
+        asyncio.run(admin_mod.appr_approve(cb, state))
+    except Exception:
+        pass  # приветствие уходит через bot=None — статус к этому моменту уже переключён
+    assert asyncio.run(db.get_user(3))["status"] == "approved"
+
+
+def test_appr_reject_start_refuses_a_card_from_another_city(tmp_path):
+    _seed_pending_three_cities(tmp_path)
+    asyncio.run(cities.set_admin_city(ADMIN_ID, "spb"))
+    cb = FakeCallback("appr_reject:2")
+    state = _new_state(ADMIN_ID)
+    asyncio.run(admin_mod.appr_reject_start(cb, state))
+    assert cb.answers[-1][1] is True
+    assert cb.message.answers_sent == []  # причину даже не спрашиваем
+    assert asyncio.run(state.get_data()).get("appr_reject_id") is None
+
+
+def test_rcpt_confirm_refuses_a_card_from_another_city(tmp_path):
+    _admin_ready(tmp_path)
+    asyncio.run(db.set_setting("event_city_enabled", "on"))
+    _seed_city(2, "msk", status="approved", payment_status="receipt_sent")
+    asyncio.run(cities.set_admin_city(ADMIN_ID, "spb"))
+    cb = FakeCallback("rcpt_confirm:2")
+    state = _new_state(ADMIN_ID)
+    asyncio.run(admin_mod.rcpt_confirm(cb, state))
+    assert cb.answers[-1][1] is True
+    assert asyncio.run(db.get_user(2))["payment_status"] == "receipt_sent"
+
+
+def test_rcpt_reject_start_refuses_a_card_from_another_city(tmp_path):
+    _admin_ready(tmp_path)
+    asyncio.run(db.set_setting("event_city_enabled", "on"))
+    _seed_city(2, "msk", status="approved", payment_status="receipt_sent")
+    asyncio.run(cities.set_admin_city(ADMIN_ID, "spb"))
+    cb = FakeCallback("rcpt_reject:2")
+    state = _new_state(ADMIN_ID)
+    asyncio.run(admin_mod.rcpt_reject_start(cb, state))
+    assert cb.answers[-1][1] is True
+    assert cb.message.answers_sent == []
+    assert asyncio.run(state.get_data()).get("rcpt_reject_uid") is None
+
+
 # ── Task 3: receipts queue city-scoped, same resolver as applications ───────────────────
 
 def _seed_receipts_three_cities(tmp_path):
