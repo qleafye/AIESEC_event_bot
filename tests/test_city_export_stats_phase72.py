@@ -242,6 +242,43 @@ def test_render_stats_text_escapes_city_label(tmp_path):
     assert "&lt;script&gt;" in text
 
 
+def test_render_stats_text_omits_the_city_block_on_an_empty_registry(tmp_path, monkeypatch):
+    """WR-06: с битым EVENT_CITIES (реестр пуст) normalize_city отдаёт литерал "msk", которого
+    в CITIES нет. Раньше блок «🏙 По городам:» рисовался без единой строки города, но с
+    «Итого» — обещанный в ADMIN_GUIDE инвариант «сумма по городам = Всего регистраций»
+    визуально ломался. Показывать в разрезе городов нечего — блока быть не должно."""
+    _admin_ready(tmp_path)
+    asyncio.run(db.set_setting("event_city_enabled", "on"))
+    _seed_city(1, None)
+    _seed_city(2, "spb")
+    monkeypatch.setattr(admin_mod, "CITIES", [])
+    text = asyncio.run(admin_mod.render_stats_text())
+    assert "По городам" not in text
+    assert "Итого" not in text
+    assert text == _expected_todays_literal(*asyncio.run(db.get_stats()))
+
+
+def test_render_stats_text_every_counted_row_lands_in_a_rendered_city_line(tmp_path):
+    """WR-06, вторая половина: при непустом реестре КАЖДАЯ строка попадает в корзину, которая
+    будет отрисована — «висячих» корзин вне цикла рендера не бывает. Отсюда и снятый
+    недостижимый `setdefault`."""
+    import re
+    _admin_ready(tmp_path)
+    asyncio.run(db.set_setting("event_city_enabled", "on"))
+    _seed_city(1, None)
+    _seed_city(2, "__garbage_code__")
+    _seed_city(3, "spb")
+    _seed_city(4, "tyumen")
+    text = asyncio.run(admin_mod.render_stats_text())
+    city_block = text.split("🏙 <b>По городам:</b>")[1]
+    lines = [l for l in city_block.splitlines() if l.strip().startswith("•")]
+    city_lines = [l for l in lines if "Итого" not in l]
+    assert len(city_lines) == len(cities.CITIES)
+    per_line = [int(re.search(r"всего (\d+)", l).group(1)) for l in city_lines]
+    itogo = int(re.search(r"всего (\d+)", [l for l in lines if "Итого" in l][0]).group(1))
+    assert sum(per_line) == itogo == 4
+
+
 def test_cmd_stats_and_show_admin_stats_delegate_to_render_stats_text(tmp_path):
     _admin_ready(tmp_path)
     _seed_city(1, "spb")
