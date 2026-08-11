@@ -2208,6 +2208,15 @@ async def broadcast_filter_start(callback: types.CallbackQuery, state: FSMContex
 async def _show_value_picker(callback: types.CallbackQuery, state: FSMContext, field: str, prompt: str):
     """Load distinct DB values for `field`, stash them in FSM, render the paginated picker."""
     if field == "event_city":
+        # WR-04: гейт живёт В ХЭНДЛЕРЕ, а не только в отрисовке клавиатуры. _render_filter_menu
+        # лишь ПРЯЧЕТ кнопку при выключенном модуле, но `filter_pick_field` подписан на
+        # множество, вычисленное из _PICKER_FIELDS на импорте, а инлайн-кнопки не истекают:
+        # меню фильтров, нарисованное при включённом модуле, после выключения тумблера
+        # оставалось рабочим, и рассылка молча сужалась по городу. Контракт module-off
+        # («фаза не изменила поведение, пока менеджер не включил модуль») требует отказа здесь.
+        if not await cities_module_on():
+            await callback.answer("Модуль городов выключен.", show_alert=True)
+            return
         # Phase 07.2 (CITY-02): the ONE field whose values come from the REGISTRY, not from a
         # DISTINCT over the column. `get_distinct_filter_values` filters out NULLs by
         # construction — and every application registered before the cities module has
