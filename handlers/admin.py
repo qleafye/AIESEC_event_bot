@@ -1344,11 +1344,11 @@ async def show_admin_export(callback: types.CallbackQuery):
 
     # Phase 07.2 (CITY-02): CSV export is SCOPED to the admin's selected city — the opposite
     # of the (intentionally unscoped) stats screen. Same resolver every other city-scoped
-    # surface uses (_admin_city_scope/_admin_city_label), so module-off collapses to the
-    # exact pre-Phase-07.2 unfiltered export, byte-identical filename and caption.
+    # surface uses (_admin_city_view), so module-off collapses to the exact pre-Phase-07.2
+    # unfiltered export, byte-identical filename and caption.
+    # WR-05: ONE read — the filename must never name a different city than the caption.
     admin_id = callback.from_user.id
-    scope = await _admin_city_scope(admin_id)
-    label = await _admin_city_label(admin_id)
+    scope, label = await _admin_city_view(admin_id)
     headers, rows = await export_users_csv(city_scope=scope)
     output = io.StringIO()
     writer = csv.writer(output, delimiter=';', quotechar='"', quoting=csv.QUOTE_MINIMAL)
@@ -3018,15 +3018,31 @@ async def menu_buttons_back(callback: types.CallbackQuery):
 # Phase 07.2 (CITY-02): the ONE resolver both moderation queues (applications + receipts)
 # read the selected city through — no handler calls admin_selected_city/city_scope directly.
 # If a third moderation queue is ever added (gamification, Phase 9), it plugs in here too.
-async def _admin_city_scope(admin_id: int):
-    return city_scope(await admin_selected_city(admin_id))
+#
+# WR-05: a screen must resolve the city ONCE and derive both the scope and the label from that
+# single read. `_admin_city_scope` + `_admin_city_label` called back-to-back are two independent
+# coroutines, each re-reading `admin_city__{id}` (cities_module_on() + get_setting = two more
+# SQLite connections). aiogram processes updates concurrently, so the setting can change between
+# the two awaits — the queue would then be FILTERED by one city and HEADED by another, exactly
+# the confusion the header exists to prevent. Every render-time call site uses this helper.
+async def _admin_city_view(admin_id: int) -> tuple[tuple[str, tuple[str, ...]] | None, str | None]:
+    """(city_scope, label) for one admin, resolved from a SINGLE `admin_selected_city` read.
+    `(None, None)` = no scope (module off) — the unfiltered, pre-CITY-02 behaviour."""
+    code = await admin_selected_city(admin_id)
+    if code is None:
+        return None, None
+    return city_scope(code), await city_label(code)
+
+
+# Thin single-value views over _admin_city_view — kept because "what city is this admin scoped
+# to" is the seam Phase 8 (staff/capabilities) plugs into, and the module-off parity contract
+# asserts on them directly.
+async def _admin_city_scope(admin_id: int) -> tuple[str, tuple[str, ...]] | None:
+    return (await _admin_city_view(admin_id))[0]
 
 
 async def _admin_city_label(admin_id: int) -> str | None:
-    code = await admin_selected_city(admin_id)
-    if code is None:
-        return None
-    return await city_label(code)
+    return (await _admin_city_view(admin_id))[1]
 
 
 # ── Phase 2: application review queue ("Заявки", tinder UI) ───────────────────
@@ -3112,12 +3128,12 @@ def _appr_card_kb(tid: int, has_resume: bool, total: int) -> InlineKeyboardMarku
 
 async def _show_current_card(target: types.Message, state: FSMContext):
     """Render the oldest non-skipped pending card (DB-driven, restart-safe). Phase 07.2
-    (CITY-02): city-scoped through _admin_city_scope — the admin id comes from
-    state.key.user_id because `target` may be the bot's own message (callback.message),
-    whose from_user is the bot, not the admin."""
+    (CITY-02): city-scoped through _admin_city_view (_admin_city_scope's single-read form) —
+    the admin id comes from state.key.user_id because `target` may be the bot's own message
+    (callback.message), whose from_user is the bot, not the admin."""
     admin_id = state.key.user_id
-    scope = await _admin_city_scope(admin_id)
-    label = await _admin_city_label(admin_id)
+    # WR-05: ONE read — the rows shown and the city named in the header must agree.
+    scope, label = await _admin_city_view(admin_id)
     skipped = set((await state.get_data()).get("appr_skipped", []))
     total = await get_pending_count(city_scope=scope)
     offset = 0
@@ -3441,11 +3457,11 @@ def _rcpt_card_kb(uid: int, has_receipt: bool, total: int) -> InlineKeyboardMark
 
 async def _show_current_receipt_card(target: types.Message, state: FSMContext):
     """Phase 07.2 (CITY-02): the SECOND moderation queue — reads the selected city through the
-    same _admin_city_scope resolver as _show_current_card. If a third queue is ever added it
-    plugs in here too (see the comment anchor next to _admin_city_scope)."""
+    same _admin_city_view / _admin_city_scope resolver as _show_current_card. If a third queue
+    is ever added it plugs in here too (see the comment anchor next to _admin_city_view)."""
     admin_id = state.key.user_id
-    scope = await _admin_city_scope(admin_id)
-    label = await _admin_city_label(admin_id)
+    # WR-05: ONE read — the rows shown and the city named in the header must agree.
+    scope, label = await _admin_city_view(admin_id)
     skipped = set((await state.get_data()).get("rcpt_skipped", []))
     total = await get_receipt_pending_count(city_scope=scope)
     offset = 0

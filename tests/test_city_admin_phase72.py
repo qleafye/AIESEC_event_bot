@@ -469,5 +469,84 @@ def test_show_current_receipt_card_empty_queue_module_off_byte_identical(tmp_pat
 def test_both_moderation_queues_use_the_same_city_resolver():
     src_apps = inspect.getsource(admin_mod._show_current_card)
     src_receipts = inspect.getsource(admin_mod._show_current_receipt_card)
-    assert "_admin_city_scope" in src_apps
-    assert "_admin_city_scope" in src_receipts
+    assert "_admin_city_view" in src_apps
+    assert "_admin_city_view" in src_receipts
+
+
+# ── WR-05: город резолвится РОВНО ОДИН РАЗ на отрисовку ─────────────────────────────────
+#
+# `_admin_city_scope` и `_admin_city_label` — две независимые корутины, каждая заново читает
+# `admin_city__{id}` (cities_module_on() + get_setting = ещё два коннекта к SQLite). aiogram
+# обрабатывает апдейты конкурентно, поэтому между двумя await настройка может смениться: тогда
+# выборка идёт по одному городу, а заголовок карточки/имя CSV называет другой — ровно та
+# ошибка, против которой заголовок и вводился.
+
+def _count_city_reads(monkeypatch):
+    calls = []
+    original = admin_mod.admin_selected_city
+
+    async def counting(admin_id):
+        calls.append(admin_id)
+        return await original(admin_id)
+
+    monkeypatch.setattr(admin_mod, "admin_selected_city", counting)
+    return calls
+
+
+def test_admin_city_view_returns_scope_and_label_from_one_read(tmp_path, monkeypatch):
+    _admin_ready(tmp_path)
+    asyncio.run(db.set_setting("event_city_enabled", "on"))
+    asyncio.run(cities.set_admin_city(ADMIN_ID, "spb"))
+    calls = _count_city_reads(monkeypatch)
+    scope, label = asyncio.run(admin_mod._admin_city_view(ADMIN_ID))
+    assert scope == cities.city_scope("spb")
+    assert label == asyncio.run(cities.city_label("spb"))
+    assert len(calls) == 1
+
+
+def test_admin_city_view_module_off_is_no_scope(tmp_path):
+    _admin_ready(tmp_path)
+    asyncio.run(db.set_setting(f"{cities.ADMIN_CITY_KEY_PREFIX}{ADMIN_ID}", "spb"))
+    assert asyncio.run(admin_mod._admin_city_view(ADMIN_ID)) == (None, None)
+
+
+def test_applications_queue_resolves_the_city_once_per_render(tmp_path, monkeypatch):
+    _admin_ready(tmp_path)
+    asyncio.run(db.set_setting("event_city_enabled", "on"))
+    asyncio.run(cities.set_admin_city(ADMIN_ID, "spb"))
+    _seed_city(1, "spb")
+    calls = _count_city_reads(monkeypatch)
+    asyncio.run(admin_mod._show_current_card(FakeMessage(), _new_state(ADMIN_ID)))
+    assert len(calls) == 1
+
+
+def test_receipts_queue_resolves_the_city_once_per_render(tmp_path, monkeypatch):
+    _admin_ready(tmp_path)
+    asyncio.run(db.set_setting("event_city_enabled", "on"))
+    asyncio.run(cities.set_admin_city(ADMIN_ID, "spb"))
+    _seed_city(1, "spb", status="approved", payment_status="receipt_sent")
+    calls = _count_city_reads(monkeypatch)
+    asyncio.run(admin_mod._show_current_receipt_card(FakeMessage(), _new_state(ADMIN_ID)))
+    assert len(calls) == 1
+
+
+def test_csv_export_resolves_the_city_once_per_render(tmp_path, monkeypatch):
+    """Имя файла (`users_{scope[0]}.csv`) и подпись строятся из ОДНОГО чтения — иначе выгрузка
+    может называться одним городом, а содержать другой."""
+    _admin_ready(tmp_path)
+    asyncio.run(db.set_setting("event_city_enabled", "on"))
+    asyncio.run(cities.set_admin_city(ADMIN_ID, "spb"))
+    _seed_city(1, "spb")
+    calls = _count_city_reads(monkeypatch)
+    cb = FakeCallback("admin_export_csv")
+    cb.message.documents = []
+
+    async def answer_document(document, caption=None):
+        cb.message.documents.append((document.filename, caption))
+
+    cb.message.answer_document = answer_document
+    asyncio.run(admin_mod.show_admin_export(cb))
+    assert len(calls) == 1
+    filename, caption = cb.message.documents[-1]
+    assert filename == "users_spb.csv"
+    assert asyncio.run(cities.city_label("spb")) in caption
