@@ -84,9 +84,18 @@ class _FakeCallbackWR01:
         self.message = _RaisingMessage()
         self.bot = object()
         self.answered = False
+        # CR-02 (Phase 07.2): appr_all_yes теперь читает город из callback_data. Форма без
+        # двоеточия = «города не назвали», и при выключенном модуле это штатный путь.
+        self.data = "appr_all_yes"
 
     async def answer(self, *a, **k):
         self.answered = True
+
+
+async def _no_admin_city(admin_id):
+    """Модуль городов выключен — этот файл проверяет порядок drain/edit, а не привязку к
+    городу; так тест остаётся герметичным и не зависит от того, куда смотрит config.DB_PATH."""
+    return None
 
 
 def test_wr01_welcome_drain_scheduled_despite_edit_failure(monkeypatch):
@@ -112,6 +121,7 @@ def test_wr01_welcome_drain_scheduled_despite_edit_failure(monkeypatch):
     monkeypatch.setattr(admin, "_welcome_flipped", fake_welcome_flipped)
     monkeypatch.setattr(admin, "bulk_update_status_in_sheet", fake_bulk_sync)
     monkeypatch.setattr(admin, "admin_keyboard_for", fake_admin_keyboard_for)
+    monkeypatch.setattr(admin, "admin_selected_city", _no_admin_city)
 
     cb = _FakeCallbackWR01(uid)
 
@@ -159,6 +169,7 @@ class _FakeCallbackWR04:
         self.message = _EditMessage()
         self.bot = object()
         self.answered = None
+        self.data = "appr_all_yes"  # CR-02: см. комментарий в _FakeCallbackWR01
 
     async def answer(self, text=None, **k):
         self.answered = text
@@ -185,6 +196,7 @@ def test_wr04_stale_reclick_no_drain_and_honest_message(monkeypatch):
     monkeypatch.setattr(admin, "_welcome_flipped", fake_welcome)
     monkeypatch.setattr(admin, "admin_keyboard_for", fake_admin_keyboard_for)
     monkeypatch.setattr(admin, "_show_current_card", fake_show)
+    monkeypatch.setattr(admin, "admin_selected_city", _no_admin_city)
 
     cb = _FakeCallbackWR04(uid)
     asyncio.run(admin.appr_all_yes(cb, None))
