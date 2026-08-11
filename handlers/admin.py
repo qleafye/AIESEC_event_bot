@@ -179,7 +179,13 @@ async def render_stats_text() -> str:
     for i, (uni, count) in enumerate(top_unis, 1):
         text += f"{i}. {html_module.escape(str(uni))} — {count}\n"
 
-    if await cities_module_on():
+    # WR-06: `and CITIES` — с пустым реестром (битый EVENT_CITIES в .env) `normalize_city`
+    # отдаёт литерал "msk", которого в CITIES нет: цикл рендера не выводил НИ ОДНОЙ строки
+    # города, а счётчики всё равно попадали в «Итого». На экране оставались заголовок
+    # «🏙 По городам:» и одинокая строка «Итого» — обещанный в ADMIN_GUIDE инвариант «сумма по
+    # городам сходится со Всего регистраций» визуально нарушался без единого предупреждения.
+    # Пустой реестр = показывать в разрезе городов нечего, блок не рисуется вовсе.
+    if await cities_module_on() and CITIES:
         rows = await get_city_counts()
         # Same collapse the Sheets tabs and _city_clause's default-city branch already use:
         # NULL / unknown-code rows fold into the default city here, not in the SQL (db.py
@@ -191,7 +197,12 @@ async def render_stats_text() -> str:
             pending = pending or 0
             approved = approved or 0
             code = normalize_city(raw_city)
-            bucket = per_city.setdefault(code, [0, 0, 0])
+            # WR-06: с НЕПУСТЫМ реестром normalize_city возвращает либо код из CITIES, либо
+            # default_city_code(), который сам берётся из CITIES — то есть ключ здесь есть
+            # всегда, и каждая строка попадает в корзину, которая ниже будет ОТРИСОВАНА.
+            # Прежний `per_city.setdefault(code, [0, 0, 0])` был недостижимой веткой и
+            # маскировал этот инвариант, создавая «висячие» корзины вне цикла рендера.
+            bucket = per_city[code]
             bucket[0] += cnt
             bucket[1] += pending
             bucket[2] += approved
