@@ -274,7 +274,38 @@ async def render_stats_text() -> str:
 
 
 @router.message(Command("admin"))
-async def cmd_admin_help(message: types.Message):
+async def cmd_admin_help(message: types.Message, state: FSMContext):
+    caps = await resolve_capabilities(message.from_user.id)
+    rows = _visible_menu_rows(caps)
+
+    if not rows:
+        # D-16 (empty set): a real, currently-enabled role with zero mapped menu rows (e.g.
+        # `game_manager` today — gamification ships in Phase 9) must never see a blank
+        # keyboard; T-08-26 also means this text must not enumerate the sections that DO
+        # exist for other roles.
+        await message.answer("Для твоей роли пока нет доступных разделов. Обратись к администратору.")
+        return
+
+    # D-16: exactly one section available -> open it directly, skipping the one-button menu.
+    # `_pick_auto_open` is the pure decision (unit-tested standalone); it returns None for
+    # everything except a single row whose callback_data is in the closed `_AUTO_OPEN_SECTIONS`
+    # whitelist (screens only, never a destructive action -- T-08-25).
+    auto_open = _pick_auto_open(rows)
+    if auto_open is not None:
+        handler, needs_state = auto_open
+        _, callback_data = rows[0]
+        # T-08-24: this bypasses CapabilityMiddleware by calling the handler directly, which is
+        # safe ONLY because `callback_data` came from `rows[0]` -- a row that already survived
+        # `_visible_menu_rows(caps)` against a capability set freshly resolved two lines above,
+        # never from raw user input. `_MessageAsCallback` doesn't accept an externally supplied
+        # `data` from anywhere else in this function.
+        fake_callback = _MessageAsCallback(message, callback_data)
+        if needs_state:
+            await handler(fake_callback, state)
+        else:
+            await handler(fake_callback)
+        return
+
     text = (
         "👮‍♂️ <b>Панель администратора</b>\n\n"
         "/stats - Статистика регистраций\n"
@@ -3974,3 +4005,75 @@ async def roles_remove(callback: types.CallbackQuery):
     await remove_staff(tid, role)
     text = await render_roles_text()
     await callback.message.edit_text(text, parse_mode="HTML", reply_markup=await build_roles_keyboard())
+
+
+# ── ROLE-01 (D-16): «/admin auto-opens the one available section» ──────────────────────────
+#
+# Placed at file end (not next to `cmd_admin_help`, up near line ~277) because
+# `_AUTO_OPEN_SECTIONS` binds real handler function OBJECTS by name at module-load time -- every
+# name it references (`show_admin_stats`, `show_applications`, ...) must already exist in this
+# module's namespace when this dict literal executes. `cmd_admin_help` itself only needs these
+# names to exist by the time it's CALLED (ordinary Python global lookup), not by the time it's
+# defined, so its own position in the file is unaffected.
+
+class _MessageAsCallback:
+    """D-16: lets `/admin`'s auto-open call an EXISTING callback-query handler (e.g.
+    `show_applications`) while only a `Message` is on hand -- avoids copying the body of every
+    one of the 8 `_AUTO_OPEN_SECTIONS` handlers. `data` is set exactly once, by the caller
+    (`cmd_admin_help`), from a callback_data that already passed `_visible_menu_rows(caps)` on a
+    freshly resolved capability set (T-08-24) -- this class itself has no path for arbitrary
+    user input to reach `data`."""
+
+    def __init__(self, message: types.Message, data: str):
+        self.data = data
+        self.from_user = message.from_user
+        self.message = _MessageAsCallback._EditProxy(message)
+
+    async def answer(self, text=None, show_alert=False):
+        return None  # no real callback_query to acknowledge -- no-op
+
+    class _EditProxy:
+        """Proxies the real `Message` for the handler's `callback.message.*` calls: there is no
+        message to EDIT yet (this is a fresh `/admin`, not a re-render), so `edit_text` becomes
+        a plain `answer` and `edit_reply_markup` is a no-op; everything else (including
+        `answer`/`answer_document`) is delegated straight through."""
+
+        def __init__(self, message: types.Message):
+            self._message = message
+
+        async def edit_text(self, text, parse_mode=None, reply_markup=None):
+            await self._message.answer(text, parse_mode=parse_mode, reply_markup=reply_markup)
+
+        async def edit_reply_markup(self, reply_markup=None):
+            return None
+
+        def __getattr__(self, name):
+            return getattr(self._message, name)
+
+
+# Closed whitelist (T-08-25): only rows that open a SCREEN are eligible for auto-open. Action
+# rows (`admin_export_csv`/`admin_export_incomplete`/`admin_sync_sheet`/`admin_rebuild_sheet`/
+# `admin_dedupe_sheet`) are deliberately absent -- auto-running "♻️ Пересобрать таблицу" off a
+# bare `/admin` would be destructive with no confirmation. Value: (handler, needs_state) --
+# `needs_state` is a fixed flag per handler's own real signature (no `inspect.signature` probing
+# needed, per 08-05-PLAN.md's own guidance).
+_AUTO_OPEN_SECTIONS: dict[str, tuple] = {
+    "admin_stats": (show_admin_stats, False),
+    "admin_monthly_stats": (show_admin_monthly_stats, False),
+    "admin_source_stats": (show_admin_source_stats, False),
+    "admin_applications": (show_applications, True),
+    "admin_receipts": (show_receipts, True),
+    "admin_broadcast": (show_admin_broadcast, True),
+    "admin_settings": (show_admin_settings, False),
+    "admin_settings_guide": (show_admin_settings_guide, False),
+}
+
+
+def _pick_auto_open(rows: list[tuple[str, str]]):
+    """Pure D-16 decision, isolated for unit testing without any capability/DB wiring: exactly
+    one visible row AND its callback_data is in the closed `_AUTO_OPEN_SECTIONS` whitelist ->
+    return that entry; anything else (0 or 2+ rows, or a single ACTION-only row) -> `None`, and
+    the caller falls back to the ordinary menu (possibly a one-button one for the action case)."""
+    if len(rows) != 1:
+        return None
+    return _AUTO_OPEN_SECTIONS.get(rows[0][1])

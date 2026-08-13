@@ -707,3 +707,104 @@ def test_menu_has_no_second_map():
     assert '"admin_applications": "moderate_reg"' not in source
     assert '"admin_broadcast": "broadcast"' not in source
 
+
+# ── 08-05 Task 2 (D-16): /admin auto-opens the one available SCREEN, never an action ────────
+
+def test_pick_auto_open_returns_none_for_action_only_rows():
+    # T-08-25: action rows are never in _AUTO_OPEN_SECTIONS, so a single visible action row
+    # (however it got there) can never trigger auto-open.
+    for cb in ("admin_export_csv", "admin_export_incomplete", "admin_sync_sheet",
+               "admin_rebuild_sheet", "admin_dedupe_sheet"):
+        assert admin_mod._pick_auto_open([("x", cb)]) is None
+
+
+def test_pick_auto_open_returns_none_for_zero_or_multiple_rows():
+    assert admin_mod._pick_auto_open([]) is None
+    assert admin_mod._pick_auto_open([("a", "admin_applications"), ("b", "admin_receipts")]) is None
+
+
+def test_pick_auto_open_returns_the_handler_for_a_single_screen_row():
+    handler, needs_state = admin_mod._pick_auto_open([("x", "admin_applications")])
+    assert handler is admin_mod.show_applications
+    assert needs_state is True
+
+
+# NOTE: `cmd_admin_help` is Command()-filtered, and aiogram's `Command.__call__` hard-requires
+# `isinstance(message, Message)` (verified: `aiogram/filters/command.py`) -- our duck-typed
+# `FakeMessage` double is never an instance of the real class, so `dispatch_message`'s router
+# harness can never route "/admin" to this handler (Command filter returns False before the
+# router even reaches CapabilityMiddleware). The tests below call `cmd_admin_help` directly --
+# the SAME established pattern 08-04-SUMMARY.md documents for every "handler BODY behavior,
+# post-authorization" test in this suite (authorization itself is covered separately, by
+# `test_admin_commands_match_d17_mapping` above and the `cmd:admin` -> ANY_CAPABILITY middleware
+# tests elsewhere in this file).
+
+def test_single_section_autoopens(tmp_path):
+    from handlers.admin_caps import role_caps_key
+
+    _roles_ready(tmp_path)
+    asyncio.run(db.add_staff(MANAGER_ID, "reg_manager", ADMIN_ID))
+    # Isolate this person to exactly ONE menu row (admin_applications) — reg_manager's default
+    # caps (moderate_reg + moderate_receipts) would otherwise show two rows. Registry `list`
+    # values are stored as a raw newline/`;`-separated STRING (settings_schema._parse_setting),
+    # not a Python list -- one capability per line here is exactly one line.
+    asyncio.run(db.set_setting(role_caps_key("reg_manager"), "moderate_reg"))
+
+    message = FakeMessage(text="/admin", user_id=MANAGER_ID, chat_id=MANAGER_ID)
+    state = _fresh_state(MANAGER_ID)
+    asyncio.run(admin_mod.cmd_admin_help(message, state))
+
+    assert message.answers, "expected the auto-opened applications screen to answer"
+    texts = [t for t, _pm, _rm in message.answers]
+    assert not any("Панель администратора" in (t or "") for t in texts)
+
+
+def test_multi_section_shows_menu(tmp_path):
+    _roles_ready(tmp_path)
+    asyncio.run(db.add_staff(MANAGER_ID, "reg_manager", ADMIN_ID))  # default: 2 caps -> 2 rows
+
+    message = FakeMessage(text="/admin", user_id=MANAGER_ID, chat_id=MANAGER_ID)
+    state = _fresh_state(MANAGER_ID)
+    asyncio.run(admin_mod.cmd_admin_help(message, state))
+
+    texts = [t for t, _pm, _rm in message.answers]
+    assert any("Панель администратора" in (t or "") for t in texts)
+
+
+def test_action_only_row_never_autoopens_end_to_end(tmp_path):
+    from handlers.admin_caps import role_caps_key
+
+    _roles_ready(tmp_path)
+    asyncio.run(db.add_staff(MANAGER_ID, "reg_manager", ADMIN_ID))
+    # "settings" maps to 6 menu rows in ADMIN_CAPS (mixed screens + actions) -- there is no
+    # single real capability that isolates to exactly one ACTION row, so this proves the
+    # invariant through the pure decision (_pick_auto_open) already covered above, and here
+    # proves the end-to-end fallback: with MULTIPLE settings-capability rows visible (several
+    # of them actions), /admin never silently runs one of them, it shows the ordinary menu.
+    asyncio.run(db.set_setting(role_caps_key("reg_manager"), "settings"))
+
+    message = FakeMessage(text="/admin", user_id=MANAGER_ID, chat_id=MANAGER_ID)
+    state = _fresh_state(MANAGER_ID)
+    asyncio.run(admin_mod.cmd_admin_help(message, state))
+
+    texts = [t for t, _pm, _rm in message.answers]
+    assert any("Панель администратора" in (t or "") for t in texts)
+    flat_markups = [rm for _t, _pm, rm in message.answers if rm is not None]
+    assert flat_markups, "expected the ordinary menu keyboard to be sent"
+    flat_cb = [b.callback_data for row in flat_markups[0].inline_keyboard for b in row]
+    assert "admin_rebuild_sheet" in flat_cb  # action row IS shown, just never auto-run
+
+
+def test_no_sections_shows_explanatory_message(tmp_path):
+    _roles_ready(tmp_path)
+    # game_manager's default caps (moderate_game only) map to zero _ADMIN_MENU_ROWS today
+    # (gamification ships in Phase 9) -- a real, currently-enabled role with nothing to show.
+    asyncio.run(db.add_staff(GAME_MANAGER_ID, "game_manager", ADMIN_ID))
+
+    message = FakeMessage(text="/admin", user_id=GAME_MANAGER_ID, chat_id=GAME_MANAGER_ID)
+    state = _fresh_state(GAME_MANAGER_ID)
+    asyncio.run(admin_mod.cmd_admin_help(message, state))
+
+    texts = [t for t, _pm, _rm in message.answers]
+    assert any("нет доступных разделов" in (t or "") for t in texts)
+    assert not any("Панель администратора" in (t or "") for t in texts)
