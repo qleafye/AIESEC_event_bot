@@ -58,7 +58,7 @@ from services.scheduler import (
 )
 from services.allowlist import refresh_allowlist, allowlist_size
 from services.background import spawn as _spawn
-from handlers.states import Broadcast, EditSetting, Approval, ReceiptReview
+from handlers.states import Broadcast, EditSetting, Approval, ReceiptReview, StaffAdd
 from handlers.admin_caps import ALL_CAPABILITIES, CAP_LABELS, ROLES, role_caps_key, role_enabled_key
 from keyboards.builders import get_cancel_kb, MENU_BUTTONS, get_main_menu_kb
 from handlers.registration import REG_FLOW, REG_DEFAULTS, REG_LABELS, REG_PRESETS, REG_CATEGORIES, SHEET_HEADERS, STATUS_LABELS, _build_sheet_row, active_sheet_headers, set_sheet_schema, _sheet_value_map, approve_user, dropout_step_label, _apply_party_preset, _apply_short_preset, city_row_tab, incomplete_city_batches
@@ -4049,5 +4049,151 @@ async def toggle_role_enabled(callback: types.CallbackQuery):
     label = "✅ Вкл" if new_val == "on" else "❌ Выкл"
     await callback.answer(f"{ROLES[role]['label']}: {label}", show_alert=True)
 
+    text = await render_roles_text()
+    await callback.message.edit_text(text, parse_mode="HTML", reply_markup=await build_roles_keyboard())
+
+
+_STAFF_INPUT_ERROR = (
+    "Не понял, кого добавить. Пришлите пересланное сообщение от человека, "
+    "@username или числовой id."
+)
+
+
+def _resolve_staff_input(message) -> tuple[int | None, str | None]:
+    """Synchronous, DB-free parse of the admin's "who to add" input (CONVENTIONS.md
+    `_private`-helper unit-testability idiom — mirrors `_parse_coins_amount`).
+
+    Returns (telegram_id, marker_or_error):
+    - (id, None) — resolved directly (forward or numeric id); ready for role assignment.
+    - (None, "@username") — needs an async `get_user_by_username` lookup by the caller
+      (kept out of this function so it stays sync + DB-free, per CONVENTIONS.md).
+    - (None, "<human error text>") — nothing usable; caller shows this text verbatim.
+    """
+    forwarded = getattr(message, "forward_from", None)
+    if forwarded is not None:
+        return forwarded.id, None
+    # Forwarded but the sender hid their account from forwards (Telegram privacy setting):
+    # forward_from is None, but forward_sender_name/forward_date are still set.
+    if getattr(message, "forward_sender_name", None) or getattr(message, "forward_date", None):
+        return None, (
+            "У этого человека скрыт аккаунт при пересылке — попросите его @username или "
+            "числовой id."
+        )
+
+    body = (message.text or "").strip()
+    if not body:
+        return None, _STAFF_INPUT_ERROR
+    if body.startswith("@"):
+        return None, body  # marker: caller resolves via get_user_by_username
+    if body.isascii() and body.isdigit():  # same unicode-digit guard as _parse_coins_amount
+        return int(body), None
+    return None, _STAFF_INPUT_ERROR
+
+
+def _parse_staff_role_callback(data: str) -> tuple[int | None, str | None]:
+    """'roles_addrole:900802:reg_manager' -> (900802, 'reg_manager'); malformed -> (None, None).
+    Same `_parse_*`-style as `_parse_appr` — never raises on crooked callback_data."""
+    parts = data.split(":")
+    if len(parts) != 3:
+        return None, None
+    _, tid_str, role = parts
+    if not (tid_str.isascii() and tid_str.isdigit()):
+        return None, None
+    return int(tid_str), role
+
+
+@router.callback_query(F.data == "roles_add")
+async def roles_add_start(callback: types.CallbackQuery, state: FSMContext):
+    if callback.from_user.id not in config.ADMIN_IDS:
+        await callback.answer("Недостаточно прав", show_alert=True)
+        return
+    text = (
+        "👥 Кого добавить менеджером?\n\n"
+        "Пришлите одним сообщением:\n"
+        "• пересланное сообщение от этого человека,\n"
+        "• его @username,\n"
+        "• или числовой telegram id."
+    )
+    cancel_kb = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="❌ Отмена", callback_data="admin_roles")],
+    ])
+    await callback.message.edit_text(text, reply_markup=cancel_kb)
+    await state.set_state(StaffAdd.waiting_for_person)
+    await callback.answer()
+
+
+@router.message(StaffAdd.waiting_for_person, F.text.in_({"Отмена", "/cancel"}))
+async def roles_add_cancel(message: types.Message, state: FSMContext):
+    await state.clear()
+    text = await render_roles_text()
+    await message.answer(text, parse_mode="HTML", reply_markup=await build_roles_keyboard())
+
+
+@router.message(StaffAdd.waiting_for_person)
+async def roles_add_person(message: types.Message, state: FSMContext):
+    telegram_id, marker = _resolve_staff_input(message)
+    if telegram_id is None and marker is not None and marker.startswith("@"):
+        user = await get_user_by_username(marker)
+        if user is None:
+            await message.answer(
+                f"Пользователь {html_module.escape(marker)} не найден в базе бота — "
+                "попросите числовой id."
+            )
+            return
+        telegram_id = user["telegram_id"]
+        marker = None
+
+    if telegram_id is None:
+        await message.answer(marker or _STAFF_INPUT_ERROR)
+        return
+
+    await state.clear()
+    user = await get_user(telegram_id)
+    display_name = (user.get("full_name") or user.get("username")) if user else None
+    display_name = html_module.escape(str(display_name or telegram_id))
+
+    buttons = [
+        [InlineKeyboardButton(text=meta["label"], callback_data=f"roles_addrole:{telegram_id}:{role}")]
+        for role, meta in ROLES.items()
+    ]
+    buttons.append([InlineKeyboardButton(text="❌ Отмена", callback_data="admin_roles")])
+    await message.answer(
+        f"Кого назначить: {display_name}",
+        parse_mode="HTML",
+        reply_markup=InlineKeyboardMarkup(inline_keyboard=buttons),
+    )
+
+
+@router.callback_query(F.data.startswith("roles_addrole:"))
+async def roles_assign(callback: types.CallbackQuery):
+    if callback.from_user.id not in config.ADMIN_IDS:
+        await callback.answer("Недостаточно прав", show_alert=True)
+        return
+    tid, role = _parse_staff_role_callback(callback.data)
+    if tid is None or role not in ROLES:
+        await callback.answer("Неизвестная роль", show_alert=True)
+        return
+
+    created = await add_staff(tid, role, callback.from_user.id)
+    await callback.answer("Добавлен" if created else "Уже был в этой роли", show_alert=True)
+
+    text = await render_roles_text()
+    await callback.message.edit_text(text, parse_mode="HTML", reply_markup=await build_roles_keyboard())
+
+
+@router.callback_query(F.data.startswith("roles_del:"))
+async def roles_remove(callback: types.CallbackQuery):
+    if callback.from_user.id not in config.ADMIN_IDS:
+        await callback.answer("Недостаточно прав", show_alert=True)
+        return
+    tid, role = _parse_staff_role_callback(callback.data)
+    if tid is None or role not in ROLES:
+        await callback.answer("Неизвестная роль", show_alert=True)
+        return
+    if tid in config.ADMIN_IDS:  # D-12: bootstrap superadmin, never revocable from the bot
+        await callback.answer("Это суперадмин из .env, снять из бота нельзя", show_alert=True)
+        return
+
+    await remove_staff(tid, role)
     text = await render_roles_text()
     await callback.message.edit_text(text, parse_mode="HTML", reply_markup=await build_roles_keyboard())
