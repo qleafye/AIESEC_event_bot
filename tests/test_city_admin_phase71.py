@@ -80,8 +80,11 @@ CITY_CODES = [c["code"] for c in CITIES]  # msk/spb/tyumen from .env defaults
 
 # ── Task 1: «🏙 Города мероприятия» admin screen ──────────────────────────────
 
-def test_build_admin_keyboard_admin_cities_is_last_row_indices_unchanged():
-    kb = admin_mod.build_admin_keyboard()
+def test_build_admin_keyboard_admin_cities_is_last_row_indices_unchanged(tmp_path):
+    # 08-05 (D-15): build_admin_keyboard is now async and capability-filtered — for a bootstrap
+    # admin (ALL_CAPABILITIES), the row set/order is unchanged from the pre-08-05 plain builder.
+    _admin_ready(tmp_path)
+    kb = asyncio.run(admin_mod.build_admin_keyboard(ADMIN_ID))
     rows = kb.inline_keyboard
     assert rows[-1][0].callback_data == "admin_cities"
     expected_first_13 = [

@@ -219,7 +219,8 @@ def test_roles_group_ui_row_is_in_settings_not_in_admin_menu(tmp_path):
     settings_kb = asyncio.run(admin_mod.build_settings_keyboard())
     assert "admin_roles" in _flat_callback_data(settings_kb)
 
-    admin_kb = admin_mod.build_admin_keyboard()
+    # 08-05 (D-15): build_admin_keyboard is now async + capability-filtered.
+    admin_kb = asyncio.run(admin_mod.build_admin_keyboard(ADMIN_ID))
     assert "admin_roles" not in _flat_callback_data(admin_kb)
 
 
@@ -660,3 +661,49 @@ def test_admin_commands_match_d17_mapping():
            for cmd, expected in d17.items()
            if required_capability(command=cmd) != expected]
     assert not bad, bad
+
+
+# ── 08-05 Task 1 (D-15): per-person admin menu — built from the SAME map middleware enforces ──
+
+def test_menu_admin_sees_all_rows(tmp_path):
+    _roles_ready(tmp_path)
+    kb = asyncio.run(admin_mod.build_admin_keyboard(ADMIN_ID))
+    flat = _flat_callback_data(kb)
+    assert flat == [cb for _, cb in admin_mod._ADMIN_MENU_ROWS]
+
+
+def test_menu_reg_manager_sees_only_own_rows(tmp_path):
+    _roles_ready(tmp_path)
+    asyncio.run(db.add_staff(MANAGER_ID, "reg_manager", ADMIN_ID))
+    kb = asyncio.run(admin_mod.build_admin_keyboard(MANAGER_ID))
+    flat = _flat_callback_data(kb)
+    assert "admin_applications" in flat
+    assert "admin_receipts" in flat
+    for forbidden in ("admin_broadcast", "admin_settings", "admin_stats"):
+        assert forbidden not in flat
+
+
+def test_menu_stranger_gets_empty_row_set(tmp_path):
+    _roles_ready(tmp_path)
+    kb = asyncio.run(admin_mod.build_admin_keyboard(STRANGER_ID))
+    assert kb.inline_keyboard == []
+
+
+def test_menu_rows_and_map_stay_in_sync():
+    from handlers.admin_caps import required_capability
+
+    # A new menu row with no ADMIN_CAPS entry would resolve to None here and silently vanish
+    # from every keyboard forever (deny-by-default, D-02) -- this test roars instead.
+    bad = [cb for _, cb in admin_mod._ADMIN_MENU_ROWS if required_capability(callback_data=cb) is None]
+    assert not bad, bad
+
+
+def test_menu_has_no_second_map():
+    # D-01/D-15's "one map" invariant: handlers/admin.py must not hand-roll a parallel
+    # "button -> capability" dict anywhere -- the capability is always resolved live via
+    # required_capability(), never a hardcoded literal pair copied out of ADMIN_CAPS.
+    source = inspect.getsource(admin_mod)
+    assert '"admin_stats": "stats"' not in source
+    assert '"admin_applications": "moderate_reg"' not in source
+    assert '"admin_broadcast": "broadcast"' not in source
+

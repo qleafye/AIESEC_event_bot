@@ -59,7 +59,7 @@ from services.scheduler import (
 from services.allowlist import refresh_allowlist, allowlist_size
 from services.background import spawn as _spawn
 from handlers.states import Broadcast, EditSetting, Approval, ReceiptReview, StaffAdd
-from handlers.admin_caps import ALL_CAPABILITIES, CAP_LABELS, ROLES, role_caps_key, role_enabled_key, CapabilityMiddleware, required_capability, has_capability
+from handlers.admin_caps import ALL_CAPABILITIES, CAP_LABELS, ROLES, role_caps_key, role_enabled_key, CapabilityMiddleware, required_capability, has_capability, resolve_capabilities, ANY_CAPABILITY
 from keyboards.builders import get_cancel_kb, MENU_BUTTONS, get_main_menu_kb
 from handlers.registration import REG_FLOW, REG_DEFAULTS, REG_LABELS, REG_PRESETS, REG_CATEGORIES, SHEET_HEADERS, STATUS_LABELS, _build_sheet_row, active_sheet_headers, set_sheet_schema, _sheet_value_map, approve_user, dropout_step_label, _apply_party_preset, _apply_short_preset, city_row_tab, incomplete_city_batches
 from cities import (  # Phase 07.1 (CITY-04): admin city screen; Phase 07.2 (CITY-02): admin city switcher + scoping
@@ -121,33 +121,71 @@ def _parse_coins_amount(token: str) -> int | None:
     return -value if token[0] == "-" else value
 
 
-def build_admin_keyboard():
+# ROLE-01 (D-15): the ONE list of (text, callback_data) menu rows — same order the plain
+# 14-button panel has always rendered in (13 original rows + Phase 07.2's «Города
+# мероприятия» row, appended last). This is the single source `_visible_menu_rows` filters
+# and `build_admin_keyboard` renders from; there is no second "button -> required right" map
+# anywhere in this file (D-01/D-15 invariant) — the required capability for each row is
+# looked up straight from `ADMIN_CAPS` (via `required_capability`), the exact map
+# `CapabilityMiddleware` enforces on the backend.
+_ADMIN_MENU_ROWS: list[tuple[str, str]] = [
+    ("📊 Статистика регистраций", "admin_stats"),
+    ("🗓 Регистрации по месяцам", "admin_monthly_stats"),
+    ("📈 Источники", "admin_source_stats"),
+    ("📄 Экспорт CSV", "admin_export_csv"),
+    ("📝 Незавершённые → таблица", "admin_export_incomplete"),
+    ("📋 Заявки", "admin_applications"),
+    ("🧾 Чеки", "admin_receipts"),
+    ("📢 Рассылка", "admin_broadcast"),
+    ("🔄 Синхронизация таблицы", "admin_sync_sheet"),
+    ("♻️ Пересобрать таблицу", "admin_rebuild_sheet"),
+    ("🧹 Убрать дубли из таблицы", "admin_dedupe_sheet"),
+    ("⚙️ Настройки форума", "admin_settings"),
+    ("📖 Справка по настройкам", "admin_settings_guide"),
+    ("🏙 Города мероприятия", "admin_cities"),
+]
+
+
+def _visible_menu_rows(caps: set) -> list[tuple[str, str]]:
+    """Pure, synchronous, no I/O (CONVENTIONS.md `_private`-helper idiom) — the unit-testable
+    half of D-15's "menu built from this person's rights". `caps` must already be resolved
+    (the SQLite read happens once, in `build_admin_keyboard`, not per-row here). Hiding a row
+    the caller can't reach is convenience only — `CapabilityMiddleware` (handlers/admin_caps.py)
+    is what actually enforces access on every callback, independently of what this function
+    returns (D-15 requires "AND", never "OR")."""
+    rows = []
+    for text, callback_data in _ADMIN_MENU_ROWS:
+        cap = required_capability(callback_data=callback_data)
+        if cap is None:
+            continue  # deny-by-default (D-02): an unmapped row is never shown either
+        if cap == ANY_CAPABILITY:
+            if caps:
+                rows.append((text, callback_data))
+        elif cap in caps:
+            rows.append((text, callback_data))
+    return rows
+
+
+async def build_admin_keyboard(user_id: int) -> InlineKeyboardMarkup:
+    """ROLE-01 (D-15): the panel built for THIS person — a fresh capability read
+    (`resolve_capabilities`, D-05: no cache) followed by the pure row filter above. Every
+    caller MUST await this now; there is deliberately no synchronous fallback left, so a
+    forgotten `await` fails loudly (a coroutine object is not a valid `reply_markup`) instead
+    of silently showing an unfiltered panel to everyone."""
+    caps = await resolve_capabilities(user_id)
+    rows = _visible_menu_rows(caps)
     return InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="📊 Статистика регистраций", callback_data="admin_stats")],
-        [InlineKeyboardButton(text="🗓 Регистрации по месяцам", callback_data="admin_monthly_stats")],
-        [InlineKeyboardButton(text="📈 Источники", callback_data="admin_source_stats")],
-        [InlineKeyboardButton(text="📄 Экспорт CSV", callback_data="admin_export_csv")],
-        [InlineKeyboardButton(text="📝 Незавершённые → таблица", callback_data="admin_export_incomplete")],
-        [InlineKeyboardButton(text="📋 Заявки", callback_data="admin_applications")],
-        [InlineKeyboardButton(text="🧾 Чеки", callback_data="admin_receipts")],
-        [InlineKeyboardButton(text="📢 Рассылка", callback_data="admin_broadcast")],
-        [InlineKeyboardButton(text="🔄 Синхронизация таблицы", callback_data="admin_sync_sheet")],
-        [InlineKeyboardButton(text="♻️ Пересобрать таблицу", callback_data="admin_rebuild_sheet")],
-        [InlineKeyboardButton(text="🧹 Убрать дубли из таблицы", callback_data="admin_dedupe_sheet")],
-        [InlineKeyboardButton(text="⚙️ Настройки форума", callback_data="admin_settings")],
-        [InlineKeyboardButton(text="📖 Справка по настройкам", callback_data="admin_settings_guide")],
-        [InlineKeyboardButton(text="🏙 Города мероприятия", callback_data="admin_cities")],
+        [InlineKeyboardButton(text=text, callback_data=callback_data)]
+        for text, callback_data in rows
     ])
 
 
 # Phase 07.2 (CITY-02): per-admin city switcher, rendered as a header row over the panel.
-# `build_admin_keyboard()` itself stays SYNCHRONOUS and UNCHANGED — its shape is checked by
-# `tests/test_city_admin_phase71.py::test_build_admin_keyboard_admin_cities_is_last_row_indices_unchanged`
-# and it is called from many sync contexts; the switcher row is added by this async wrapper
-# instead of touching the base builder.
+# `build_admin_keyboard(user_id)` already does the D-15 capability filtering (ROLE-01/08-05);
+# this wrapper only adds the city-switcher header row on top, unchanged from Phase 07.2.
 async def admin_keyboard_for(admin_id: int) -> InlineKeyboardMarkup:
     code = await admin_selected_city(admin_id)
-    base = build_admin_keyboard()
+    base = await build_admin_keyboard(admin_id)
     if code is None:  # module off — byte-identical to today, no switcher row
         return base
     header = [InlineKeyboardButton(text=f"🏙 Город: {await city_label(code)}", callback_data="admin_city_switch")]
