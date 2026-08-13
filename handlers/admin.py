@@ -1244,11 +1244,35 @@ async def sync_sheet(callback: types.CallbackQuery):
 
 
 @router.callback_query(F.data == "admin_rebuild_sheet")
+async def rebuild_sheet_confirm(callback: types.CallbackQuery):
+    """Quick 260813-sdl: пересборка делает sheet.clear() и перезаписывает ВСЕ строки — то есть
+    сносит любые ручные правки менеджеров на листе. До этого она запускалась одним тапом, без
+    вопроса; соседняя destructive-кнопка «🧹 Убрать дубли» подтверждение имела всегда. Гейт
+    зеркалит dedupe: сама работа переехала в admin_rebuild_sheet_go."""
+    kb = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="♻️ Да, пересобрать", callback_data="admin_rebuild_sheet_go")],
+        [InlineKeyboardButton(text="← Отмена", callback_data="admin_menu")],
+    ])
+    await callback.message.edit_text(
+        "♻️ <b>Пересобрать таблицу?</b>\n\n"
+        "Перезапишу на основной вкладке <b>шапку и все строки</b> из базы бота: колонки "
+        "встанут в порядке анкеты, «Статус» получит выпадашку и цвета.\n\n"
+        "⚠️ Лист очищается целиком и заполняется заново. <b>Любые ручные правки и заметки, "
+        "которых нет в базе бота, пропадут безвозвратно.</b> Если менеджеры что-то дописывали "
+        "прямо в таблице — сначала сохраните копию (Файл → Создать копию).",
+        parse_mode="HTML",
+        reply_markup=kb,
+    )
+    await callback.answer()
+
+
+@router.callback_query(F.data == "admin_rebuild_sheet_go")
 async def rebuild_sheet(callback: types.CallbackQuery):
     """Полная пересборка листа данных: перезаписать шапку + ВСЕ строки в текущем порядке
     колонок, применить выпадашку/цвета к «Статус». Выравнивает старые строки после смены
     порядка колонок (Таня п.1/п.5). Внимание: перезаписывает ручные правки на листе."""
     await callback.answer("♻️ Пересборка...")
+    logger.info(f"admin={callback.from_user.id} action=rebuild_sheet start")
     await callback.message.edit_text("♻️ Пересобираю таблицу (перезапись всех строк)…", parse_mode="HTML")
 
     try:
