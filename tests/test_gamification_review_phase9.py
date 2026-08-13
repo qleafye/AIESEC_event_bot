@@ -237,3 +237,177 @@ def test_pagination_uses_get_pending_submissions_limit_offset(tmp_path):
     asyncio.run(admin_mod.show_game_review(callback, state))
     assert "1/3" in callback.message.answers_sent[-1]
 
+
+# ── Task 2: approve (default/custom amount) / reject — atomic claim + credit + notify ──────
+
+def test_grev_approve_default_amount_credits_task_coins(tmp_path):
+    _db_ready(tmp_path)
+    task_id = _seed_task(coins=30)
+    sub_id = _seed_submission(task_id)
+
+    callback = FakeCallback(f"grev_approve:{sub_id}")
+    state = _new_state()
+    asyncio.run(admin_mod.grev_approve(callback, state))
+
+    submission = asyncio.run(db.get_submission(sub_id))
+    assert submission["status"] == "approved"
+    assert submission["coins_awarded"] == 30
+    assert asyncio.run(db.get_balance(DELEGATE_ID)) == 30
+    assert callback.answers[0] == ("Одобрено", False)
+
+
+def test_grev_approve_race_second_tap_does_not_double_credit(tmp_path):
+    _db_ready(tmp_path)
+    task_id = _seed_task(coins=20)
+    sub_id = _seed_submission(task_id)
+    state = _new_state()
+
+    asyncio.run(admin_mod.grev_approve(FakeCallback(f"grev_approve:{sub_id}"), state))
+    second = FakeCallback(f"grev_approve:{sub_id}", user_id=MANAGER2_ID)
+    asyncio.run(admin_mod.grev_approve(second, state))
+
+    assert asyncio.run(db.get_balance(DELEGATE_ID)) == 20  # credited exactly once
+    assert second.answers[0] == ("Уже обработано", False)
+
+
+def test_grev_approve_custom_amount_prompts_and_credits_entered_value(tmp_path):
+    _db_ready(tmp_path)
+    task_id = _seed_task(coins=5)
+    sub_id = _seed_submission(task_id)
+    state = _new_state()
+
+    start_cb = FakeCallback(f"grev_approve_custom:{sub_id}")
+    asyncio.run(admin_mod.grev_approve_custom_start(start_cb, state))
+    assert asyncio.run(state.get_state()) == GameReview.approve_amount
+    assert "5" in start_cb.message.answers_sent[-1]
+
+    amount_msg = FakeMessage(text="45")
+    asyncio.run(admin_mod.grev_approve_amount_step(amount_msg, state))
+
+    submission = asyncio.run(db.get_submission(sub_id))
+    assert submission["coins_awarded"] == 45
+    assert asyncio.run(db.get_balance(DELEGATE_ID)) == 45  # not the task's default (5)
+    assert asyncio.run(state.get_state()) is None
+
+
+def test_grev_approve_custom_amount_rejects_non_positive(tmp_path):
+    _db_ready(tmp_path)
+    task_id = _seed_task(coins=5)
+    sub_id = _seed_submission(task_id)
+    state = _new_state()
+    asyncio.run(admin_mod.grev_approve_custom_start(FakeCallback(f"grev_approve_custom:{sub_id}"), state))
+
+    for bad in ("0", "-5", "abc"):
+        msg = FakeMessage(text=bad)
+        asyncio.run(admin_mod.grev_approve_amount_step(msg, state))
+        assert asyncio.run(state.get_state()) == GameReview.approve_amount
+
+    submission = asyncio.run(db.get_submission(sub_id))
+    assert submission["status"] == "pending"  # claim_submission never called on bad input
+
+
+def test_grev_approve_notifies_delegate_with_amount(tmp_path):
+    _db_ready(tmp_path)
+    task_id = _seed_task(text="Задание Х", coins=30)
+    sub_id = _seed_submission(task_id)
+    state = _new_state()
+    asyncio.run(admin_mod.grev_approve_custom_start(FakeCallback(f"grev_approve_custom:{sub_id}"), state))
+    amount_msg = FakeMessage(text="45")
+    asyncio.run(admin_mod.grev_approve_amount_step(amount_msg, state))
+
+    assert len(amount_msg.bot.sent) == 1
+    chat_id, text = amount_msg.bot.sent[0]
+    assert chat_id == DELEGATE_ID
+    assert "+45🪙" in text
+    assert "Задание Х" in text
+
+
+def test_grev_reject_prompts_reason_and_notifies_with_reason_escaped(tmp_path):
+    _db_ready(tmp_path)
+    task_id = _seed_task(text="Задание <i>Y</i>")
+    sub_id = _seed_submission(task_id)
+    state = _new_state()
+
+    start_cb = FakeCallback(f"grev_reject:{sub_id}")
+    asyncio.run(admin_mod.grev_reject_start(start_cb, state))
+    assert asyncio.run(state.get_state()) == GameReview.reject_reason
+
+    reason_msg = FakeMessage(text="плохо <b>видно</b> хэштег")
+    asyncio.run(admin_mod.grev_reject_reason(reason_msg, state))
+
+    submission = asyncio.run(db.get_submission(sub_id))
+    assert submission["status"] == "rejected"
+    assert submission["reject_reason"] == "плохо <b>видно</b> хэштег"
+    assert len(reason_msg.bot.sent) == 1
+    _chat_id, text = reason_msg.bot.sent[0]
+    assert "&lt;i&gt;Y&lt;/i&gt;" in text
+    assert "&lt;b&gt;видно&lt;/b&gt;" in text
+    assert asyncio.run(state.get_state()) is None
+
+
+def test_grev_reject_without_reason_omits_reason_line(tmp_path):
+    _db_ready(tmp_path)
+    task_id = _seed_task()
+    sub_id = _seed_submission(task_id)
+    state = _new_state()
+    asyncio.run(admin_mod.grev_reject_start(FakeCallback(f"grev_reject:{sub_id}"), state))
+
+    reason_msg = FakeMessage(text="-")
+    asyncio.run(admin_mod.grev_reject_reason(reason_msg, state))
+
+    submission = asyncio.run(db.get_submission(sub_id))
+    assert submission["reject_reason"] is None
+    _chat_id, text = reason_msg.bot.sent[0]
+    assert "Причина" not in text
+
+
+def test_grev_reject_cancel_intercepted_before_catchall(tmp_path):
+    _db_ready(tmp_path)
+    task_id = _seed_task()
+    sub_id = _seed_submission(task_id)
+    state = _new_state()
+    asyncio.run(admin_mod.grev_reject_start(FakeCallback(f"grev_reject:{sub_id}"), state))
+
+    cancel_msg = FakeMessage(text="/broadcast")
+    asyncio.run(admin_mod.grev_step_cancel(cancel_msg, state))
+
+    submission = asyncio.run(db.get_submission(sub_id))
+    assert submission["status"] == "pending"  # claim_submission never called
+    assert asyncio.run(state.get_state()) is None
+
+
+def test_grev_approve_amount_cancel_intercepted_before_catchall(tmp_path):
+    _db_ready(tmp_path)
+    task_id = _seed_task(coins=5)
+    sub_id = _seed_submission(task_id)
+    state = _new_state()
+    asyncio.run(admin_mod.grev_approve_custom_start(FakeCallback(f"grev_approve_custom:{sub_id}"), state))
+
+    cancel_msg = FakeMessage(text="Отмена")
+    asyncio.run(admin_mod.grev_step_cancel(cancel_msg, state))
+
+    submission = asyncio.run(db.get_submission(sub_id))
+    assert submission["status"] == "pending"
+    assert asyncio.run(state.get_state()) is None
+
+
+def test_grev_review_out_of_queue_id_shows_already_processed(tmp_path):
+    _db_ready(tmp_path)
+    task_id = _seed_task(coins=10)
+    sub_id = _seed_submission(task_id)
+    state = _new_state()
+    # First approve wins, flips status to 'approved' (a stale/re-rendered card, not a race).
+    asyncio.run(admin_mod.grev_approve(FakeCallback(f"grev_approve:{sub_id}"), state))
+
+    stale_cb = FakeCallback(f"grev_approve:{sub_id}")
+    asyncio.run(admin_mod.grev_approve(stale_cb, state))
+    assert stale_cb.answers[0] == ("Уже обработано", False)
+    assert asyncio.run(db.get_balance(DELEGATE_ID)) == 10  # no second credit
+
+
+def test_grev_approve_unknown_id_alerts_not_found(tmp_path):
+    _db_ready(tmp_path)
+    state = _new_state()
+    callback = FakeCallback("grev_approve:999999")
+    asyncio.run(admin_mod.grev_approve(callback, state))
+    assert callback.answers[0] == ("Не найдено", True)
