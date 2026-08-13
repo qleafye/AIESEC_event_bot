@@ -808,3 +808,111 @@ def test_no_sections_shows_explanatory_message(tmp_path):
     texts = [t for t, _pm, _rm in message.answers]
     assert any("нет доступных разделов" in (t or "") for t in texts)
     assert not any("Панель администратора" in (t or "") for t in texts)
+
+
+# ── 08-06 Task 1 (D-13): notify_by_capability / capability_holders fan-out ─────────────────
+
+def test_notify_fanout_reaches_capability_holders(tmp_path):
+    from handlers import admin_caps
+
+    _roles_ready(tmp_path)
+    asyncio.run(db.add_staff(MANAGER_ID, "reg_manager", ADMIN_ID))
+    asyncio.run(db.add_staff(GAME_MANAGER_ID, "game_manager", ADMIN_ID))
+
+    bot = FakeBot()
+    sent = asyncio.run(admin_caps.notify_by_capability(bot, "moderate_reg", "hi"))
+    recipients = [chat_id for chat_id, _text in bot.sent]
+
+    assert ADMIN_ID in recipients
+    assert MANAGER_ID in recipients
+    assert GAME_MANAGER_ID not in recipients
+    assert sent == 2
+
+
+def test_notify_fanout_falls_back_to_admins(tmp_path):
+    from handlers import admin_caps
+
+    _roles_ready(tmp_path)
+    # Nobody in `staff` holds moderate_reg at all (staff table is empty) -- fallback (T-08-31)
+    # must still reach the bootstrap admin, never drop the notification.
+    bot = FakeBot()
+    sent = asyncio.run(admin_caps.notify_by_capability(bot, "moderate_reg", "hi"))
+
+    assert [chat_id for chat_id, _t in bot.sent] == [ADMIN_ID]
+    assert sent == 1
+
+
+def test_notify_fanout_deduplicates(tmp_path):
+    from handlers import admin_caps
+    from handlers.admin_caps import role_caps_key
+
+    _roles_ready(tmp_path)
+    # Give game_manager's role_caps an EXTRA "moderate_reg" entry (on top of its default
+    # moderate_game), so a person holding both reg_manager AND game_manager reaches
+    # moderate_reg via two roles at once (D-08) -- must still get exactly one message.
+    asyncio.run(db.set_setting(role_caps_key("game_manager"), "moderate_game\nmoderate_reg"))
+    asyncio.run(db.add_staff(MANAGER_ID, "reg_manager", ADMIN_ID))
+    asyncio.run(db.add_staff(MANAGER_ID, "game_manager", ADMIN_ID))
+
+    bot = FakeBot()
+    sent = asyncio.run(admin_caps.notify_by_capability(bot, "moderate_reg", "hi"))
+
+    recipients = [chat_id for chat_id, _t in bot.sent]
+    assert recipients.count(MANAGER_ID) == 1
+    assert sent == len(recipients)
+
+
+def test_notify_fanout_is_fail_soft(tmp_path):
+    from handlers import admin_caps
+
+    _roles_ready(tmp_path)
+    asyncio.run(db.add_staff(MANAGER_ID, "reg_manager", ADMIN_ID))
+
+    class FlakyBot:
+        def __init__(self):
+            self.sent = []
+
+        async def send_message(self, chat_id, text, parse_mode=None, reply_markup=None):
+            if chat_id == ADMIN_ID:
+                raise RuntimeError("boom")
+            self.sent.append((chat_id, text))
+
+    bot = FlakyBot()
+    sent = asyncio.run(admin_caps.notify_by_capability(bot, "moderate_reg", "hi"))
+
+    # One recipient (ADMIN_ID) raised -- delivery to MANAGER_ID must not be blocked, and the
+    # returned count reflects only the successful send.
+    assert sent == 1
+    assert bot.sent == [(MANAGER_ID, "hi")]
+
+
+def test_notify_skips_disabled_role(tmp_path):
+    from handlers import admin_caps
+
+    _roles_ready(tmp_path)
+    asyncio.run(db.add_staff(MANAGER_ID, "reg_manager", ADMIN_ID))
+    asyncio.run(db.set_setting("role_reg_manager_enabled", "off"))
+
+    bot = FakeBot()
+    sent = asyncio.run(admin_caps.notify_by_capability(bot, "moderate_reg", "hi"))
+
+    recipients = [chat_id for chat_id, _t in bot.sent]
+    assert MANAGER_ID not in recipients
+    assert recipients == [ADMIN_ID]
+    assert sent == 1
+
+
+def test_technical_alert_sites_still_use_admin_ids():
+    repo_root = Path(__file__).resolve().parent.parent
+    for rel_path in ("services/sheets.py", "services/scheduler.py", "services/reminders.py"):
+        source = (repo_root / rel_path).read_text(encoding="utf-8")
+        assert "notify_by_capability" not in source
+        assert source.count("for admin_id in config.ADMIN_IDS") == 1
+
+
+def test_registration_and_payment_route_via_capability():
+    repo_root = Path(__file__).resolve().parent.parent
+    reg_src = (repo_root / "handlers/registration.py").read_text(encoding="utf-8")
+    pay_src = (repo_root / "handlers/payment.py").read_text(encoding="utf-8")
+    assert reg_src.count("notify_by_capability") >= 1
+    assert pay_src.count("notify_by_capability") >= 1

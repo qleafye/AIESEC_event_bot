@@ -15,11 +15,11 @@ from aiogram.fsm.context import FSMContext
 from aiogram.fsm.storage.base import StorageKey
 from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
 
-from config import config
 from database.db import get_setting, get_user, update_payment_status, set_payment_due
 from settings_schema import get_setting_typed  # REG-02 (06-06): payment_enabled gate
 from handlers.states import Registration
 from keyboards.builders import get_main_menu_kb
+from handlers.admin_caps import notify_by_capability  # D-13: fan out by capability, not bare ADMIN_IDS
 
 router = Router()
 logger = logging.getLogger(__name__)
@@ -439,11 +439,7 @@ async def _finalize_receipt(message: types.Message, state: FSMContext, file_id: 
         user = await get_user(telegram_id)
         name = html.escape(str((user or {}).get("full_name") or telegram_id))
         note = f"🧾 <b>Новый чек оплаты</b> от {name}.\nПроверь: /admin → 🧾 Чеки"
-        for admin_id in config.ADMIN_IDS:
-            try:
-                await message.bot.send_message(admin_id, note, parse_mode="HTML")
-            except Exception as e:
-                logger.error(f"Failed to notify admin {admin_id} of receipt from {telegram_id}: {e}")
+        await notify_by_capability(message.bot, "moderate_receipts", note, parse_mode="HTML")  # D-13
     except Exception as e:
         logger.error(f"Receipt admin-notify failed for {telegram_id}: {e}")
 

@@ -21,7 +21,7 @@ from aiogram.dispatcher.event.bases import UNHANDLED
 from aiogram.types import CallbackQuery, Message, TelegramObject
 
 from config import config
-from database.db import get_staff_roles
+from database.db import get_staff_roles, get_staff_ids_by_role
 from settings_schema import get_setting_typed
 
 logger = logging.getLogger(__name__)
@@ -97,6 +97,63 @@ async def resolve_capabilities(telegram_id: int) -> set[str]:
 
 async def has_capability(telegram_id: int, cap: str) -> bool:
     return cap in await resolve_capabilities(telegram_id)
+
+
+# ── D-13: notification fan-out by capability ────────────────────────────────────────────────
+#
+# Three sites (new application/registration.py, new receipt/payment.py, delegate question/
+# user_actions.py) route to whoever HOLDS the relevant capability, not the bare ADMIN_IDS
+# list -- a reg_manager who isn't in config.ADMIN_IDS must still see new applications. Three
+# technical-failure sites (services/sheets.py, services/scheduler.py, services/reminders.py)
+# deliberately keep the old `for admin_id in config.ADMIN_IDS` shape -- D-13 explicitly does
+# NOT route those to capability holders ("менеджер геймы не починит квоту Google API").
+
+async def capability_holders(cap: str) -> list[int]:
+    """Every telegram_id currently entitled to `cap`, order-preserving de-duped (D-08: a
+    person holding two roles that both grant `cap` is listed once). Bootstrap admins (D-12)
+    always come first -- they hold every capability regardless of `staff`/registry state --
+    followed by staff members of each enabled (D-10) role whose role_caps_* includes `cap`.
+    Deliberately mirrors resolve_capabilities()'s own role-iteration shape rather than calling
+    it per-candidate: resolve_capabilities would need every staff id up front to iterate over,
+    which is exactly what this function is computing."""
+    holders: list[int] = []
+    seen: set[int] = set()
+    for admin_id in config.ADMIN_IDS:
+        if admin_id not in seen:
+            holders.append(admin_id)
+            seen.add(admin_id)
+    for role in ROLES:
+        if await get_setting_typed(role_enabled_key(role)) != "on":
+            continue  # D-10: role switched off entirely -> no holders from it
+        role_caps = await get_setting_typed(role_caps_key(role)) or []
+        if cap not in role_caps:
+            continue
+        for uid in await get_staff_ids_by_role(role):
+            if uid not in seen:
+                holders.append(uid)
+                seen.add(uid)
+    return holders
+
+
+async def notify_by_capability(bot, cap: str, text: str, *, parse_mode: str | None = None) -> int:
+    """D-13 fan-out primitive: send `text` to every current holder of `cap`. T-08-31/D-13's
+    single most important property -- a notification must NEVER be silently dropped -- if
+    `capability_holders(cap)` comes back empty (nobody holds the capability, e.g. every
+    reg_manager role is disabled), fall back to `config.ADMIN_IDS`. Per-recipient try/except
+    (fail-soft) matches the shape every existing fan-out site already used, so one broken
+    chat_id never blocks delivery to the rest. Returns the count of successful sends -- the
+    delegate-question call site needs this to pick its reply text."""
+    recipients = await capability_holders(cap)
+    if not recipients:
+        recipients = list(config.ADMIN_IDS)
+    sent = 0
+    for uid in recipients:
+        try:
+            await bot.send_message(uid, text, parse_mode=parse_mode)
+            sent += 1
+        except Exception as e:
+            logger.error("notify_by_capability: failed to notify %s (cap=%s): %s", uid, cap, e)
+    return sent
 
 
 # ── ROLE-01 (D-01/D-02/D-15): the single "event -> required capability" map ─────────────────
