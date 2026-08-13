@@ -4679,6 +4679,163 @@ async def grev_skip(callback: types.CallbackQuery, state: FSMContext):
     await _show_current_submission(callback.message, state)
 
 
+@router.callback_query(F.data.startswith("grev_approve:"))
+async def grev_approve(callback: types.CallbackQuery, state: FSMContext):
+    try:
+        sid = int(callback.data.split(":", 1)[1])
+    except (ValueError, IndexError):
+        await callback.answer("Некорректная сдача", show_alert=True)
+        return
+    submission, task = await _get_submission_and_task(sid)
+    if submission is None or task is None:
+        await callback.answer("Не найдено", show_alert=True)
+        return
+    coins = task["coins"]
+    # T-09-11: add_coins is called ONLY from this branch, after claim_submission's atomic
+    # UPDATE ... WHERE status = 'pending' actually flipped the row — a concurrent second tap
+    # on the same card gets won=False and never reaches add_coins (exactly one credit, ever).
+    won = await claim_submission(sid, callback.from_user.id, "approved", coins_awarded=coins)
+    if won:
+        await add_coins(
+            submission["user_id"], coins,
+            reason=f"Задание: {str(task['text'])[:60]}",
+            changed_by=callback.from_user.id,
+        )
+        try:
+            await callback.bot.send_message(
+                submission["user_id"],
+                f"✅ Задание «{html_module.escape(str(task['text']))}» одобрено! +{coins}🪙",
+                parse_mode="HTML",
+            )
+        except Exception as e:
+            logger.error(f"Failed to notify user {submission['user_id']} of task approval: {e}")
+        await callback.answer("Одобрено")
+    else:
+        await callback.answer("Уже обработано")
+    try:
+        await callback.message.delete()
+    except Exception:
+        pass
+    await _show_current_submission(callback.message, state)
+
+
+@router.callback_query(F.data.startswith("grev_approve_custom:"))
+async def grev_approve_custom_start(callback: types.CallbackQuery, state: FSMContext):
+    try:
+        sid = int(callback.data.split(":", 1)[1])
+    except (ValueError, IndexError):
+        await callback.answer("Некорректная сдача", show_alert=True)
+        return
+    submission, task = await _get_submission_and_task(sid)
+    if submission is None or task is None:
+        await callback.answer("Не найдено", show_alert=True)
+        return
+    await state.update_data(grev_submission_id=sid)
+    await callback.message.answer(
+        f"Сколько монет начислить? (по умолчанию {task['coins']}):",
+        reply_markup=get_cancel_kb(),
+    )
+    await state.set_state(GameReview.approve_amount)
+    await callback.answer()
+
+
+@router.callback_query(F.data.startswith("grev_reject:"))
+async def grev_reject_start(callback: types.CallbackQuery, state: FSMContext):
+    try:
+        sid = int(callback.data.split(":", 1)[1])
+    except (ValueError, IndexError):
+        await callback.answer("Некорректная сдача", show_alert=True)
+        return
+    submission, task = await _get_submission_and_task(sid)
+    if submission is None or task is None:
+        await callback.answer("Не найдено", show_alert=True)
+        return
+    await state.update_data(grev_submission_id=sid)
+    await callback.message.answer("Причина отклонения (или «-», если без причины):", reply_markup=get_cancel_kb())
+    await state.set_state(GameReview.reject_reason)
+    await callback.answer()
+
+
+# WR-03-class guard (mirrors appr_reject_cancel): registered BEFORE the two per-step catch-all
+# handlers below (admin.router: first match wins) so «Отмена»/any stray «/command» typed mid-
+# amount-entry or mid-reason-entry is intercepted here, not swallowed as the amount/reason
+# itself (T-09-14).
+@router.message(GameReview.approve_amount, F.text.in_({"Отмена"}) | F.text.startswith("/"))
+@router.message(GameReview.reject_reason, F.text.in_({"Отмена"}) | F.text.startswith("/"))
+async def grev_step_cancel(message: types.Message, state: FSMContext):
+    await state.set_state(None)
+    text = (message.text or "").strip()
+    if text not in ("Отмена", "/cancel"):
+        note = "Действие отменено (введена команда). При необходимости повторите её."
+    else:
+        note = "Действие отменено."
+    await message.answer(note, reply_markup=ReplyKeyboardRemove())
+    await _show_current_submission(message, state)
+
+
+@router.message(GameReview.approve_amount)
+async def grev_approve_amount_step(message: types.Message, state: FSMContext):
+    amount = _parse_positive_int(message.text)
+    if amount is None:
+        await message.answer("Введите положительное целое число:")
+        return
+    data = await state.get_data()
+    sid = data.get("grev_submission_id")
+    submission, task = await _get_submission_and_task(sid) if sid is not None else (None, None)
+    if submission is None or task is None:
+        await state.set_state(None)
+        await message.answer("Сдача не найдена.", reply_markup=ReplyKeyboardRemove())
+        await _show_current_submission(message, state)
+        return
+    won = await claim_submission(sid, message.from_user.id, "approved", coins_awarded=amount)
+    if won:
+        await add_coins(
+            submission["user_id"], amount,
+            reason=f"Задание: {str(task['text'])[:60]}",
+            changed_by=message.from_user.id,
+        )
+        try:
+            await message.bot.send_message(
+                submission["user_id"],
+                f"✅ Задание «{html_module.escape(str(task['text']))}» одобрено! +{amount}🪙",
+                parse_mode="HTML",
+            )
+        except Exception as e:
+            logger.error(f"Failed to notify user {submission['user_id']} of task approval: {e}")
+        await message.answer("Одобрено.", reply_markup=ReplyKeyboardRemove())
+    else:
+        await message.answer("Уже обработано.", reply_markup=ReplyKeyboardRemove())
+    await state.set_state(None)
+    await _show_current_submission(message, state)
+
+
+@router.message(GameReview.reject_reason)
+async def grev_reject_reason(message: types.Message, state: FSMContext):
+    reason = (message.text or "-").strip()
+    data = await state.get_data()
+    sid = data.get("grev_submission_id")
+    submission, task = await _get_submission_and_task(sid) if sid is not None else (None, None)
+    won = False
+    if sid is not None:
+        won = await claim_submission(
+            sid, message.from_user.id, "rejected",
+            reject_reason=None if reason == "-" else reason,
+        )
+    if won and submission is not None and task is not None:
+        user_msg = f"❌ Задание «{html_module.escape(str(task['text']))}» отклонено."
+        if reason != "-":  # A-02: причина доходит до делегата, только если менеджер её написал
+            user_msg += f"\n\nПричина: {html_module.escape(reason)}"
+        try:
+            await message.bot.send_message(submission["user_id"], user_msg, parse_mode="HTML")
+        except Exception as e:
+            logger.error(f"Failed to notify user {submission['user_id']} of task rejection: {e}")
+        await message.answer("Сдача отклонена.", reply_markup=ReplyKeyboardRemove())
+    else:
+        await message.answer("Уже обработано.", reply_markup=ReplyKeyboardRemove())
+    await state.set_state(None)
+    await _show_current_submission(message, state)
+
+
 # ── ROLE-01 (D-16): «/admin auto-opens the one available section» ──────────────────────────
 #
 # Placed at file end (not next to `cmd_admin_help`, up near line ~277) because
