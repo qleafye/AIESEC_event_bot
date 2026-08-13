@@ -231,6 +231,49 @@ async def init_db():
         await _ensure_column(db, "users", "event_city", "TEXT")
         await _ensure_column(db, "reg_started", "event_city", "TEXT")
 
+        # Phase 9 (GAME-01/02/03): task model + submission queue. Tasks are real rows (not a
+        # serialized list in bot_settings) — D-07/D-06 audience/second-axis extensions land as
+        # one `_ensure_column` later, never a storage rewrite. `deadline_at` is stored in the
+        # same ISO-sortable format as services/scheduler.py's `_fmt_dt` ("%Y-%m-%d %H:%M:%S").
+        await db.execute('''
+            CREATE TABLE IF NOT EXISTS game_tasks (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                text TEXT NOT NULL,
+                category TEXT NOT NULL,
+                coins INTEGER NOT NULL,
+                proof_type TEXT NOT NULL,
+                deadline_at TEXT NOT NULL,
+                created_by INTEGER,
+                created_at TEXT NOT NULL
+            )
+        ''')
+
+        # `content` stores a file_id for photo/pdf proof, raw text for text/link proof — the
+        # project never writes uploaded files to disk (README/CLAUDE.md file_id pattern).
+        await db.execute('''
+            CREATE TABLE IF NOT EXISTS game_submissions (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                task_id INTEGER NOT NULL,
+                user_id INTEGER NOT NULL,
+                content_type TEXT NOT NULL,
+                content TEXT NOT NULL,
+                submitted_at TEXT NOT NULL,
+                status TEXT NOT NULL DEFAULT 'pending',
+                reviewed_by INTEGER,
+                reviewed_at TEXT,
+                coins_awarded INTEGER,
+                reject_reason TEXT
+            )
+        ''')
+        # D-05 as a schema-level invariant, not a Python pre-INSERT check: while a submission
+        # for (task_id, user_id) is anything other than 'rejected', a second INSERT for that
+        # same pair cannot land, even under two concurrent inserts (SQLite raises
+        # IntegrityError, which create_submission below turns into a `None` return — T-09-01).
+        await db.execute(
+            "CREATE UNIQUE INDEX IF NOT EXISTS idx_game_submissions_active "
+            "ON game_submissions(task_id, user_id) WHERE status != 'rejected'"
+        )
+
         await db.commit()
 
 async def get_setting(key: str) -> str | None:
@@ -1338,3 +1381,199 @@ async def get_stuck_questions() -> list[dict]:
         ) as cursor:
             rows = await cursor.fetchall()
             return [dict(row) for row in rows]
+
+
+# ── Phase 9 (GAME-01/02/03): task model + submission queue ──────────────────────────────────
+#
+# GAME_CATEGORIES (D-06) — a single classification axis, no RESULT/INTERACTIVE/NETWORK track
+# and no `participant_type` audience field (D-07); both deferred additions land as one
+# `_ensure_column` later, not a storage rewrite. GAME_PROOF_TYPES (D-01/D-08) — the four
+# confirmation shapes a task can require. Exported here (not duplicated in handlers) so
+# handlers/admin.py and handlers/user_actions.py can never drift on the list of valid values.
+GAME_CATEGORIES = ["Light", "Medium", "Hard", "Referral", "Special"]
+GAME_PROOF_TYPES = ["photo", "pdf", "text", "link"]
+
+
+async def create_task(text: str, category: str, coins: int, proof_type: str,
+                       deadline_at: str, created_by: int | None) -> int:
+    created_at = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    async with aiosqlite.connect(config.DB_PATH) as db:
+        cursor = await db.execute(
+            "INSERT INTO game_tasks (text, category, coins, proof_type, deadline_at, "
+            "created_by, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)",
+            (text, category, coins, proof_type, deadline_at, created_by, created_at),
+        )
+        await db.commit()
+        return cursor.lastrowid
+
+
+async def get_task(task_id: int) -> dict | None:
+    async with aiosqlite.connect(config.DB_PATH) as db:
+        db.row_factory = aiosqlite.Row
+        async with db.execute(
+            "SELECT * FROM game_tasks WHERE id = ?", (task_id,)
+        ) as cursor:
+            row = await cursor.fetchone()
+            return dict(row) if row else None
+
+
+async def list_active_tasks() -> list[dict]:
+    """No deadline filter — A-05 (call 13.08): the deadline is soft, the bot keeps accepting
+    submissions after it expires, so a past-deadline task must stay visible to a delegate or
+    it becomes physically impossible to submit. Sorted by nearest deadline first."""
+    async with aiosqlite.connect(config.DB_PATH) as db:
+        db.row_factory = aiosqlite.Row
+        async with db.execute(
+            "SELECT * FROM game_tasks ORDER BY deadline_at ASC"
+        ) as cursor:
+            return [dict(row) for row in await cursor.fetchall()]
+
+
+async def list_all_tasks() -> list[dict]:
+    async with aiosqlite.connect(config.DB_PATH) as db:
+        db.row_factory = aiosqlite.Row
+        async with db.execute(
+            "SELECT * FROM game_tasks ORDER BY created_at DESC"
+        ) as cursor:
+            return [dict(row) for row in await cursor.fetchall()]
+
+
+async def create_submission(task_id: int, user_id: int, content_type: str, content: str,
+                             submitted_at: str) -> int | None:
+    """Returns the new row's id, or None if `idx_game_submissions_active` rejected a second
+    non-rejected submission for this (task_id, user_id) pair — T-09-01, D-05. The caller
+    (wave 3) treats None as "already submitted", never re-raises."""
+    async with aiosqlite.connect(config.DB_PATH) as db:
+        try:
+            cursor = await db.execute(
+                "INSERT INTO game_submissions (task_id, user_id, content_type, content, "
+                "submitted_at) VALUES (?, ?, ?, ?, ?)",
+                (task_id, user_id, content_type, content, submitted_at),
+            )
+            await db.commit()
+            return cursor.lastrowid
+        except aiosqlite.IntegrityError:
+            return None
+
+
+async def get_submission(submission_id: int) -> dict | None:
+    async with aiosqlite.connect(config.DB_PATH) as db:
+        db.row_factory = aiosqlite.Row
+        async with db.execute(
+            "SELECT * FROM game_submissions WHERE id = ?", (submission_id,)
+        ) as cursor:
+            row = await cursor.fetchone()
+            return dict(row) if row else None
+
+
+async def get_active_submission(task_id: int, user_id: int) -> dict | None:
+    """Most recent non-rejected submission for this pair, or None. Rejected submissions are
+    invisible here on purpose — a fresh resubmission after rejection is a NEW row (D-05)."""
+    async with aiosqlite.connect(config.DB_PATH) as db:
+        db.row_factory = aiosqlite.Row
+        async with db.execute(
+            "SELECT * FROM game_submissions WHERE task_id = ? AND user_id = ? "
+            "AND status != 'rejected' ORDER BY id DESC LIMIT 1",
+            (task_id, user_id),
+        ) as cursor:
+            row = await cursor.fetchone()
+            return dict(row) if row else None
+
+
+async def get_pending_submissions(limit: int = 1, offset: int = 0) -> list[dict]:
+    """Paginated moderation queue (CLAUDE.md: 1000+ submissions must never be one message per
+    row), same LIMIT/OFFSET shape as get_pending_users. Joins game_tasks/users so the card
+    (wave 4) needs zero extra queries — task_deadline_at lets the card flag "after deadline"
+    per the soft-deadline decision (A-05, call 13.08) without a second lookup."""
+    async with aiosqlite.connect(config.DB_PATH) as db:
+        db.row_factory = aiosqlite.Row
+        async with db.execute(
+            "SELECT s.*, t.text AS task_text, t.category AS task_category, "
+            "t.coins AS task_coins, t.proof_type AS task_proof_type, "
+            "t.deadline_at AS task_deadline_at, "
+            "u.full_name AS user_full_name, u.username AS user_username "
+            "FROM game_submissions s "
+            "JOIN game_tasks t ON t.id = s.task_id "
+            "LEFT JOIN users u ON u.telegram_id = s.user_id "
+            "WHERE s.status = 'pending' "
+            "ORDER BY s.submitted_at ASC, s.id ASC LIMIT ? OFFSET ?",
+            (limit, offset),
+        ) as cursor:
+            return [dict(row) for row in await cursor.fetchall()]
+
+
+async def get_pending_submissions_count() -> int:
+    async with aiosqlite.connect(config.DB_PATH) as db:
+        async with db.execute(
+            "SELECT COUNT(*) FROM game_submissions WHERE status = 'pending'"
+        ) as cursor:
+            row = await cursor.fetchone()
+            return int(row[0]) if row and row[0] is not None else 0
+
+
+async def claim_submission(submission_id: int, admin_id: int, status: str, *,
+                            coins_awarded: int | None = None,
+                            reject_reason: str | None = None) -> bool:
+    """Atomic single-row claim (same idiom as approve_user_atomic/claim_question — T-08-27):
+    True iff THIS call flipped the row (rowcount==1); a concurrent second claim on the same
+    submission_id returns False and its coins_awarded/reject_reason never lands (T-09-02).
+    Crediting coins via add_coins is NOT done here — the caller (wave 4) does it as a separate
+    step, only after this returns True, same two-step shape as appr_approve -> approve_user."""
+    reviewed_at = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    async with aiosqlite.connect(config.DB_PATH) as db:
+        cursor = await db.execute(
+            "UPDATE game_submissions SET status = ?, reviewed_by = ?, reviewed_at = ?, "
+            "coins_awarded = ?, reject_reason = ? WHERE id = ? AND status = 'pending'",
+            (status, admin_id, reviewed_at, coins_awarded, reject_reason, submission_id),
+        )
+        await db.commit()
+        return cursor.rowcount == 1
+
+
+async def list_all_submissions() -> list[dict]:
+    """Full submission history (wave 5's "История сдач" sheet/list) — same join shape as
+    get_pending_submissions, no status filter, oldest first."""
+    async with aiosqlite.connect(config.DB_PATH) as db:
+        db.row_factory = aiosqlite.Row
+        async with db.execute(
+            "SELECT s.*, t.text AS task_text, t.category AS task_category, "
+            "t.coins AS task_coins, t.proof_type AS task_proof_type, "
+            "t.deadline_at AS task_deadline_at, "
+            "u.full_name AS user_full_name, u.username AS user_username "
+            "FROM game_submissions s "
+            "JOIN game_tasks t ON t.id = s.task_id "
+            "LEFT JOIN users u ON u.telegram_id = s.user_id "
+            "ORDER BY s.submitted_at ASC"
+        ) as cursor:
+            return [dict(row) for row in await cursor.fetchall()]
+
+
+async def get_game_stats() -> dict:
+    """Four aggregate reads for the stats screen (wave 6): distinct participants, counts by
+    submission status, and an approved-only breakdown by task category."""
+    async with aiosqlite.connect(config.DB_PATH) as db:
+        async with db.execute(
+            "SELECT COUNT(DISTINCT user_id) FROM game_submissions"
+        ) as cursor:
+            row = await cursor.fetchone()
+            participants = int(row[0]) if row and row[0] is not None else 0
+
+        stats = {"participants": participants, "pending": 0, "approved": 0, "rejected": 0}
+        async with db.execute(
+            "SELECT status, COUNT(*) FROM game_submissions GROUP BY status"
+        ) as cursor:
+            for status, count in await cursor.fetchall():
+                if status in stats:
+                    stats[status] = int(count)
+
+        by_category: dict[str, int] = {}
+        async with db.execute(
+            "SELECT t.category, COUNT(*) FROM game_submissions s "
+            "JOIN game_tasks t ON t.id = s.task_id "
+            "WHERE s.status = 'approved' GROUP BY t.category"
+        ) as cursor:
+            for category, count in await cursor.fetchall():
+                by_category[category] = int(count)
+        stats["by_category"] = by_category
+
+        return stats
