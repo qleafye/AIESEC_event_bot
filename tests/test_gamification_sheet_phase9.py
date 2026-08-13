@@ -18,6 +18,7 @@ import asyncio
 from config import config
 from database import db
 from handlers import admin as admin_mod
+from handlers import admin_caps
 
 
 ADMIN_ID = 930901
@@ -57,9 +58,15 @@ class FakeMessage:
     def __init__(self, user_id=ADMIN_ID):
         self.from_user = FakeUser(user_id)
         self.answers_sent = []
+        self.text = None
+        self.markup = None
 
     async def answer(self, text, parse_mode=None, reply_markup=None):
         self.answers_sent.append(text)
+
+    async def edit_text(self, text, parse_mode=None, reply_markup=None):
+        self.text = text
+        self.markup = reply_markup
 
 
 class FakeCallback:
@@ -219,3 +226,57 @@ def test_admin_game_sync_sheet_reports_failure_without_crashing(tmp_path, monkey
         assert "История сдач: 1 строк" in text  # second tab unaffected by the first's failure
 
     asyncio.run(go())
+
+
+# ── Quick 260814-gsg: confirm gate before the destructive tab rewrite ──────────────────────
+#
+# sync_named_worksheet clears both tabs and rewrites them from the DB. The two neighbouring
+# destructive admin rows («♻️ Пересобрать таблицу», «🧹 Убрать дубли») got confirmation screens
+# after the 13.08 sheet incident; this one shipped without one. Found by phase-9 verification.
+
+def test_game_sync_confirm_does_not_touch_the_sheets(monkeypatch):
+    """The tap that used to rewrite both tabs must now only draw a screen."""
+    called = []
+
+    async def _fake_sync(title, headers, rows):
+        called.append(title)
+        return len(rows)
+
+    monkeypatch.setattr(admin_mod, "sync_named_worksheet", _fake_sync)
+
+    callback = FakeCallback("admin_game_sync_sheet")
+
+    async def go():
+        await admin_mod.sync_game_sheets_confirm(callback)
+
+    asyncio.run(go())
+
+    assert called == []  # nothing cleared, nothing written
+    cbs = [b.callback_data for row in callback.message.markup.inline_keyboard for b in row]
+    assert "admin_game_sync_sheet_go" in cbs
+    assert "admin_menu" in cbs  # escape hatch
+
+
+def test_game_sync_confirm_names_what_is_lost():
+    """A confirm screen that doesn't state the actual damage is decoration, not a gate: the only
+    thing a rewrite can destroy is what a manager typed straight into the sheet."""
+    callback = FakeCallback("admin_game_sync_sheet")
+
+    async def go():
+        await admin_mod.sync_game_sheets_confirm(callback)
+
+    asyncio.run(go())
+
+    text = callback.message.text
+    assert "⚠️" in text
+    assert "руками" in text.lower()
+    assert "пропадут" in text.lower()
+    # both tab names must be visible — the manager decides knowing which tabs are wiped
+    assert "Гейма" in text and "История сдач" in text
+
+
+def test_game_sync_go_is_capability_mapped():
+    """An unmapped callback is rejected by the capability gate — the confirm screen would render
+    a dead button. Same capability as the menu row that opens it."""
+    caps = admin_caps.ADMIN_CAPS
+    assert caps["admin_game_sync_sheet_go"] == caps["admin_game_sync_sheet"]
