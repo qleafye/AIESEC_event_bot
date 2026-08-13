@@ -202,3 +202,58 @@ def test_stranger_has_no_capabilities(tmp_path):
 
     caps = asyncio.run(admin_caps.resolve_capabilities(STRANGER_ID))
     assert caps == set()
+
+
+# ── Task 1 (D-18): «Роли и доступы» screen — entry row, render, role toggles ───────────────
+
+def _flat_callback_data(kb):
+    return [btn.callback_data for row in kb.inline_keyboard for btn in row]
+
+
+def test_roles_group_ui_row_is_in_settings_not_in_admin_menu(tmp_path):
+    _roles_ready(tmp_path)
+    settings_kb = asyncio.run(admin_mod.build_settings_keyboard())
+    assert "admin_roles" in _flat_callback_data(settings_kb)
+
+    admin_kb = admin_mod.build_admin_keyboard()
+    assert "admin_roles" not in _flat_callback_data(admin_kb)
+
+
+def test_roles_screen_lists_staff_with_roles(tmp_path):
+    _roles_ready(tmp_path)
+    from handlers.admin_caps import ROLES
+
+    asyncio.run(db.add_staff(MANAGER_ID, "reg_manager", ADMIN_ID))
+    asyncio.run(db.add_staff(GAME_MANAGER_ID, "game_manager", ADMIN_ID))
+    text = asyncio.run(admin_mod.render_roles_text())
+
+    assert str(MANAGER_ID) in text
+    assert str(GAME_MANAGER_ID) in text
+    assert ROLES["reg_manager"]["label"] in text
+    assert ROLES["game_manager"]["label"] in text
+
+
+def test_roles_screen_shows_role_toggle_state(tmp_path):
+    _roles_ready(tmp_path)
+    from handlers.admin_caps import ROLES
+
+    asyncio.run(db.set_setting("role_game_manager_enabled", "off"))
+    text = asyncio.run(admin_mod.render_roles_text())
+    assert f"{ROLES['game_manager']['label']}: <b>❌ Выкл</b>" in text
+
+
+def test_roles_toggle_flips_setting(tmp_path):
+    _roles_ready(tmp_path)
+    from settings_schema import get_setting_typed
+
+    dispatch_callback("roles_toggle:game_manager", ADMIN_ID)
+    assert asyncio.run(get_setting_typed("role_game_manager_enabled")) == "off"
+
+    dispatch_callback("roles_toggle:game_manager", ADMIN_ID)
+    assert asyncio.run(get_setting_typed("role_game_manager_enabled")) == "on"
+
+
+def test_roles_caps_edit_button_uses_generic_settings_edit(tmp_path):
+    _roles_ready(tmp_path)
+    kb = asyncio.run(admin_mod.build_roles_keyboard())
+    assert "settings_edit:role_caps_reg_manager" in _flat_callback_data(kb)

@@ -44,6 +44,9 @@ from database.db import (
     get_receipt_pending_count,
     update_payment_status,
     get_city_counts,
+    list_staff,
+    add_staff,
+    remove_staff,
 )
 from aiogram.exceptions import TelegramRetryAfter
 from services.sheets import get_existing_sheet_ids, append_rows_to_sheet, ensure_sheet_header, sync_named_worksheet, dedupe_sheet_by_id, update_status_in_sheet, bulk_update_status_in_sheet, rebuild_main_sheet
@@ -56,6 +59,7 @@ from services.scheduler import (
 from services.allowlist import refresh_allowlist, allowlist_size
 from services.background import spawn as _spawn
 from handlers.states import Broadcast, EditSetting, Approval, ReceiptReview
+from handlers.admin_caps import ALL_CAPABILITIES, CAP_LABELS, ROLES, role_caps_key, role_enabled_key
 from keyboards.builders import get_cancel_kb, MENU_BUTTONS, get_main_menu_kb
 from handlers.registration import REG_FLOW, REG_DEFAULTS, REG_LABELS, REG_PRESETS, REG_CATEGORIES, SHEET_HEADERS, STATUS_LABELS, _build_sheet_row, active_sheet_headers, set_sheet_schema, _sheet_value_map, approve_user, dropout_step_label, _apply_party_preset, _apply_short_preset, city_row_tab, incomplete_city_batches
 from cities import (  # Phase 07.1 (CITY-04): admin city screen; Phase 07.2 (CITY-02): admin city switcher + scoping
@@ -664,6 +668,7 @@ async def build_settings_keyboard():
         [InlineKeyboardButton(text="📋 Вопросы регистрации", callback_data="admin_reg_questions")],
         [InlineKeyboardButton(text="✏️ Тексты вопросов", callback_data="admin_reg_prompts")],
         [InlineKeyboardButton(text="🔘 Кнопки меню", callback_data="admin_menu_buttons")],
+        [InlineKeyboardButton(text="👥 Роли и доступы", callback_data="admin_roles")],
     ]
     for label, token in _settings_nav_groups():
         buttons.append([InlineKeyboardButton(text=label, callback_data=f"settings_group:{token}")])
@@ -982,7 +987,11 @@ async def settings_edit_start(callback: types.CallbackQuery, state: FSMContext):
 
     key = callback.data.split(":", 1)[1]
     prompts = {k: prompt for k, _, prompt in SETTINGS_FIELDS}
-    prompt = prompts.get(key, "Введите значение")
+    # Phase 8 (ROLE-02): role_caps_<role> etc. ride this generic edit flow but aren't in
+    # SETTINGS_FIELDS (D-18 — kept out of SETTINGS_GROUPS/misc to avoid a second editing
+    # surface, see the roles screen below) — fall back to the registry itself for the prompt
+    # (Phase 6 D-13, registry-as-source) before the last-resort literal.
+    prompt = prompts.get(key) or SETTINGS_SCHEMA.get(key, {}).get("prompt") or "Введите значение"
     current = await get_setting(key)
 
     # Escape both the field description (may contain literal <b>/<code> examples) and the
@@ -3941,3 +3950,104 @@ async def show_admin_settings_guide(callback: types.CallbackQuery):
         return
     await _send_settings_guide(callback.message)
     await callback.answer()
+
+
+# ── Phase 8 (ROLE-02, D-18): роли и доступы ─────────────────────────────────────────────
+# Bespoke settings sub-screen (analog: show_reg_questions/render_questions_text/
+# build_questions_keyboard) — reached from a hardcoded row in build_settings_keyboard, exactly
+# like «📋 Вопросы регистрации». `staff` isn't a SETTINGS_SCHEMA row (D-11), so its CRUD needs
+# real handlers; `role_caps_<role>` list editing rides the existing generic settings_edit flow
+# for free (see settings_edit_start's registry-prompt fallback above).
+
+async def render_roles_text() -> str:
+    lines = ["👥 <b>Роли и доступы</b>", ""]
+    for role, meta in ROLES.items():
+        enabled = await get_setting_typed(role_enabled_key(role))
+        state_label = "✅ Вкл" if enabled == "on" else "❌ Выкл"
+        lines.append(f"{meta['label']}: <b>{state_label}</b>")
+        caps = await get_setting_typed(role_caps_key(role)) or []
+        cap_text = ", ".join(CAP_LABELS.get(c, c) for c in caps) or "—"
+        lines.append(f"　Права: {cap_text}")
+
+    lines.append("")
+    lines.append("<b>Люди</b>")
+    staff = await list_staff()
+    if not staff:
+        lines.append("<i>Пока никто не назначен.</i>")
+    for row in staff:
+        tid = row["telegram_id"]
+        role_label = ROLES.get(row["role"], {}).get("label", row["role"])
+        # Manager isn't necessarily a registered delegate (Task 1 read_first note) — fall back
+        # to the bare id when `users` has no matching row.
+        user = await get_user(tid)
+        name = (user.get("full_name") or user.get("username")) if user else None
+        name = html_module.escape(str(name or tid))
+        lines.append(f"• {name} — {role_label} (добавил {row.get('added_by')}, {row.get('added_at')})")
+
+    lines.append("")
+    admins_text = ", ".join(str(a) for a in config.ADMIN_IDS)
+    lines.append(f"<i>Суперадмины из .env ({admins_text}) имеют все права всегда и не снимаются из бота.</i>")
+    lines.append("⚠️ Право «⚙️ Настройки» включает управление ролями — выдавайте его как равнозначное админскому.")
+    return "\n".join(lines)
+
+
+async def build_roles_keyboard() -> InlineKeyboardMarkup:
+    buttons = []
+    for role, meta in ROLES.items():
+        enabled = await get_setting_typed(role_enabled_key(role))
+        toggle_text = (
+            f"{meta['label']}: ✅ Вкл → ❌ Выкл" if enabled == "on"
+            else f"{meta['label']}: ❌ Выкл → ✅ Вкл"
+        )
+        buttons.append([InlineKeyboardButton(text=toggle_text, callback_data=f"roles_toggle:{role}")])
+        buttons.append([InlineKeyboardButton(
+            text=f"✏️ Права роли: {meta['label']}",
+            callback_data=f"settings_edit:{role_caps_key(role)}",
+        )])
+
+    for row in await list_staff():
+        tid = row["telegram_id"]
+        role = row["role"]
+        role_label = ROLES.get(role, {}).get("label", role)
+        user = await get_user(tid)
+        name = (user.get("full_name") or user.get("username")) if user else None
+        name = str(name or tid)
+        buttons.append([InlineKeyboardButton(
+            text=f"➖ {name} — {role_label}", callback_data=f"roles_del:{tid}:{role}",
+        )])
+
+    buttons.append([InlineKeyboardButton(text="➕ Добавить менеджера", callback_data="roles_add")])
+    buttons.append([InlineKeyboardButton(text="← Назад к настройкам", callback_data="admin_settings")])
+    return InlineKeyboardMarkup(inline_keyboard=buttons)
+
+
+@router.callback_query(F.data == "admin_roles")
+async def show_roles(callback: types.CallbackQuery):
+    if callback.from_user.id not in config.ADMIN_IDS:
+        await callback.answer("Недостаточно прав", show_alert=True)
+        return
+    text = await render_roles_text()
+    await callback.message.edit_text(text, parse_mode="HTML", reply_markup=await build_roles_keyboard())
+    await callback.answer()
+
+
+@router.callback_query(F.data.startswith("roles_toggle:"))
+async def toggle_role_enabled(callback: types.CallbackQuery):
+    if callback.from_user.id not in config.ADMIN_IDS:
+        await callback.answer("Недостаточно прав", show_alert=True)
+        return
+    role = callback.data.split(":", 1)[1]
+    if role not in ROLES:
+        await callback.answer("Неизвестная роль", show_alert=True)
+        return
+
+    # Same body as _toggle_module_setting, but redraws the ROLES screen, not admin_settings.
+    key = role_enabled_key(role)
+    current = await get_setting_typed(key)
+    new_val = "off" if current == "on" else "on"
+    await set_setting(key, new_val)
+    label = "✅ Вкл" if new_val == "on" else "❌ Выкл"
+    await callback.answer(f"{ROLES[role]['label']}: {label}", show_alert=True)
+
+    text = await render_roles_text()
+    await callback.message.edit_text(text, parse_mode="HTML", reply_markup=await build_roles_keyboard())
