@@ -1,8 +1,9 @@
 import html
 import logging
+from datetime import datetime
 from aiogram import Router, F, types, Bot
 from aiogram.filters import Command
-from aiogram.types import FSInputFile
+from aiogram.types import FSInputFile, InlineKeyboardMarkup, InlineKeyboardButton, ReplyKeyboardRemove
 from aiogram.fsm.context import FSMContext
 from database.db import (
     get_user,
@@ -12,6 +13,10 @@ from database.db import (
     get_leaderboard,
     get_user_rank,
     create_question,
+    list_active_tasks,
+    get_task,
+    get_active_submission,
+    create_submission,
 )
 from handlers.admin_caps import notify_by_capability  # D-13: fan out by capability, not bare ADMIN_IDS
 from keyboards.builders import (
@@ -20,7 +25,7 @@ from keyboards.builders import (
     get_info_submenu_kb,
     get_socials_kb
 )
-from handlers.states import Question
+from handlers.states import Question, GameSubmit
 from config import config
 
 router = Router()
@@ -92,6 +97,58 @@ async def show_leaderboard(message: types.Message):
         render_leaderboard(rows, message.from_user.id, rank, balance),
         parse_mode="HTML",
     )
+
+
+# --- Gamification: task list + submission (GAME-01/02, wave 3, 09-03) ---
+
+async def _render_game_task_line(task: dict, active: dict | None) -> tuple[str, bool]:
+    """Renders one task's status line for the delegate list. Returns (line, needs_submit_button)
+    -- needs_submit_button is True only when `active is None` (task not yet claimed by this
+    delegate), matching D-08's «одна сдача на пару» invariant surfaced to the delegate."""
+    category = html.escape(str(task["category"]))
+    text_preview = html.escape(str(task["text"])[:80])
+    try:
+        deadline = datetime.strptime(task["deadline_at"], "%Y-%m-%d %H:%M:%S").strftime("%d.%m.%Y %H:%M")
+    except (TypeError, ValueError):
+        deadline = str(task["deadline_at"] or "—")
+    base = f"{category} · {text_preview} · {task['coins']}🪙 · до {deadline}"
+
+    if active is None:
+        return f"📤 {base}", True
+    if active["status"] == "pending":
+        submitted = active.get("submitted_at") or "—"
+        return f"📤 {base}\n⏳ на проверке, сдано {submitted}", False
+    if active["status"] == "approved":
+        coins_awarded = active.get("coins_awarded")
+        return f"✅ {category} · {text_preview} · одобрено, +{coins_awarded}🪙", False
+    # 'rejected' submissions never come back from get_active_submission (D-05) -- unreachable
+    # in practice, kept as a fail-soft fallback rather than a silent KeyError.
+    return f"📤 {base}", True
+
+
+@router.message(F.text == "🎯 Задания")
+async def show_game_tasks(message: types.Message):
+    if not await ensure_registered(message):
+        return
+
+    tasks = await list_active_tasks()
+    if not tasks:
+        await message.answer("Активных заданий сейчас нет. Загляни попозже!")
+        return
+
+    lines = []
+    buttons = []
+    for task in tasks:
+        active = await get_active_submission(task["id"], message.from_user.id)
+        line, needs_button = await _render_game_task_line(task, active)
+        lines.append(line)
+        if needs_button:
+            buttons.append([InlineKeyboardButton(
+                text="Сдать", callback_data=f"mytask_submit:{task['id']}",
+            )])
+
+    kb = InlineKeyboardMarkup(inline_keyboard=buttons) if buttons else None
+    await message.answer("\n\n".join(lines), parse_mode="HTML", reply_markup=kb)
 
 
 @router.message(F.text == "💳 Оплата")
