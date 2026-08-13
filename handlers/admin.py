@@ -4913,8 +4913,36 @@ def _build_game_history(submissions: list[dict]) -> tuple[list[str], list[list]]
 
 
 @router.callback_query(F.data == "admin_game_sync_sheet")
+async def sync_game_sheets_confirm(callback: types.CallbackQuery):
+    """Quick 260814-gsg (находка верификации фазы 9): синхронизация вкладок геймы делает
+    `sync_named_worksheet` = ПОЛНАЯ очистка листа и перезапись, но запускалась одним тапом.
+    Обе соседние разрушительные кнопки («♻️ Пересобрать таблицу», «🧹 Убрать дубли») получили
+    подтверждение после инцидента 13.08 — эта осталась без него.
+
+    Обе вкладки целиком выводятся из БД, поэтому потерять можно только то, что менеджер дописал
+    руками ПРЯМО в листе (заметки в «Истории сдач» для разбора споров — ровно тот сценарий, ради
+    которого лист и заводился, см. 09-CONTEXT.md). Экран называет это прямым текстом."""
+    kb = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="🔄 Да, пересобрать вкладки", callback_data="admin_game_sync_sheet_go")],
+        [InlineKeyboardButton(text="← Отмена", callback_data="admin_menu")],
+    ])
+    await callback.message.edit_text(
+        "🔄 <b>Пересобрать вкладки геймификации?</b>\n\n"
+        "Заново соберу из базы бота две вкладки: <b>«Гейма»</b> (матрица участники × задания) "
+        "и <b>«История сдач»</b>.\n\n"
+        "⚠️ Обе вкладки очищаются целиком и заполняются заново. <b>Заметки, которые вы писали "
+        "руками прямо в этих листах, пропадут</b> — в базе бота их нет. Остальные вкладки "
+        "таблицы не затрагиваются.",
+        parse_mode="HTML",
+        reply_markup=kb,
+    )
+    await callback.answer()
+
+
+@router.callback_query(F.data == "admin_game_sync_sheet_go")
 async def sync_game_sheets(callback: types.CallbackQuery):
     await callback.answer("🔄 Синхронизация...")
+    logger.info(f"admin={callback.from_user.id} action=game_sync_sheet start")
 
     # list_all_tasks() is created_at DESC (moderation-friendly, newest-first); the matrix wants
     # columns oldest-first (left to right) -- reversed by an explicit sort here, not a new

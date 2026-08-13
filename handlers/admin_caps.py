@@ -337,6 +337,7 @@ ADMIN_CAPS: dict[str, str] = {
     "grev_skip:*": "moderate_game",
     "state:GameReview:*": "moderate_game",
     "admin_game_sync_sheet": "moderate_game",
+    "admin_game_sync_sheet_go": "moderate_game",
     "admin_game_stats": "moderate_game",
 
     # checkin: no keys yet -- Phase 12. Capability already exists in
