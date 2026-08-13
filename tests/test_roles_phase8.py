@@ -1111,3 +1111,189 @@ def test_reply_notifies_other_moderate_reg_holders(tmp_path):
     assert MANAGER_ID in recipients  # holds moderate_reg, not the replier -- gets the notice
     assert ADMIN_ID not in recipients  # the replier never gets a self-notice
     assert STRANGER_ID in recipients  # the delegate still gets the actual answer
+
+
+# ── 08-07 Task 2: registry round-trip the plan's own guide entries (Task 1) describe ───────
+#
+# 08-VALIDATION.md's Requirement -> Test Map names this behavior "-k settings_schema" for
+# ROLE-02, but no earlier phase-8 plan actually shipped a test whose name contains that
+# substring (checked: zero matches before this plan) -- this closes that gap for real,
+# not just by naming a test to satisfy the gate below.
+
+def test_settings_schema_role_caps_and_enabled_round_trip(tmp_path):
+    _roles_ready(tmp_path)
+    from settings_schema import get_setting_typed
+    from handlers.admin_caps import role_caps_key, role_enabled_key
+
+    # Unset -> registry default (D-09), not an empty list or None.
+    assert asyncio.run(get_setting_typed(role_caps_key("reg_manager"))) == [
+        "moderate_reg", "moderate_receipts",
+    ]
+    assert asyncio.run(get_setting_typed(role_enabled_key("reg_manager"))) == "on"
+
+    # A real admin edit through the generic settings_edit flow (";"-separated, the mobile
+    # Enter-sends-message workaround) round-trips through the SAME accessor resolve_capabilities
+    # reads (D-05 no-cache: nothing intervenes between write and read).
+    asyncio.run(db.set_setting(role_caps_key("reg_manager"), "moderate_reg;stats"))
+    asyncio.run(db.set_setting(role_enabled_key("reg_manager"), "off"))
+    assert asyncio.run(get_setting_typed(role_caps_key("reg_manager"))) == ["moderate_reg", "stats"]
+    assert asyncio.run(get_setting_typed(role_enabled_key("reg_manager"))) == "off"
+
+
+# ── 08-07 Task 2: final structural gates — old mechanism absent, new one complete ──────────
+#
+# T-08-35 (08-07-PLAN.md <threat_model>): a gate that reads source text could give a false
+# "green" if a pure comment happens to contain the string it's checking for -- every gate
+# below strips whole-comment lines (stripped first char == "#") BEFORE counting, so an
+# explanatory comment ("the old is_admin filter is gone") can never itself trip or fake-pass
+# a gate.
+
+def _non_comment_source(path):
+    return "\n".join(
+        line for line in path.read_text(encoding="utf-8").splitlines()
+        if line.strip()[:1] != "#"
+    )
+
+
+def test_gate_no_legacy_admin_check_remains():
+    """D-01/D-03/T-08-18: the inline `not in config.ADMIN_IDS` checks and the `is_admin`
+    filter (98 pre-phase call sites combined) are physically gone from handlers/admin.py --
+    the only enforcement point is CapabilityMiddleware."""
+    repo_root = Path(__file__).resolve().parent.parent
+    source = _non_comment_source(repo_root / "handlers" / "admin.py")
+    assert "not in config.ADMIN_IDS" not in source
+    assert not re.search(r"\bis_admin\b", source)
+
+
+def test_gate_single_capability_map():
+    """D-01/D-15: exactly ONE dict maps event -> capability across the codebase -- ADMIN_CAPS
+    in handlers/admin_caps.py. Both middleware (required_capability, called from
+    CapabilityMiddleware) and menu assembly (_visible_menu_rows, via the same
+    required_capability) resolve against it; handlers/admin.py never hand-rolls a second,
+    parallel "button -> capability" dict (test_menu_has_no_second_map already checks 3
+    literal pairs inside admin.py -- this gate is the stronger, whole-`handlers/`-directory
+    version: no other file defines a module-level ADMIN_CAPS, and admin.py's own source never
+    contains the identifier at all outside comments)."""
+    repo_root = Path(__file__).resolve().parent.parent
+    handlers_dir = repo_root / "handlers"
+
+    definitions = [
+        path.name for path in sorted(handlers_dir.glob("*.py"))
+        if re.search(r"^ADMIN_CAPS\s*[:=]", _non_comment_source(path), re.MULTILINE)
+    ]
+    assert definitions == ["admin_caps.py"], (
+        f"ADMIN_CAPS must be defined in exactly one module, found in: {definitions}"
+    )
+
+    admin_source = _non_comment_source(handlers_dir / "admin.py")
+    assert "ADMIN_CAPS" not in admin_source  # never imported/copied by name into admin.py
+    assert "required_capability" in admin_source  # resolves live against the one map instead
+
+    caps_source = _non_comment_source(handlers_dir / "admin_caps.py")
+    assert "ADMIN_CAPS.get(" in caps_source and "ADMIN_CAPS[" in caps_source
+
+
+def test_gate_no_capability_cache():
+    """D-05: no RAM cache in handlers/admin_caps.py -- staff is a local ~5-row table, not a
+    networked source like services/allowlist.py (the explicitly-named anti-pattern this gate
+    guards against reintroducing)."""
+    repo_root = Path(__file__).resolve().parent.parent
+    source = _non_comment_source(repo_root / "handlers" / "admin_caps.py")
+    assert "lru_cache" not in source
+    assert not re.search(r"^_?\w*cache\w*\s*[:=]", source, re.IGNORECASE | re.MULTILINE)
+    assert not re.search(r"^(async def|def)\s+refresh_\w*\(", source, re.MULTILINE)
+
+
+def test_gate_technical_alerts_stay_on_admin_ids():
+    """D-13: the three technical-failure sites deliberately stay ADMIN_IDS-only -- a manager
+    who only holds moderate_game can't fix a Google API quota problem, so routing this alert
+    to them via notify_by_capability would only be noise. Same invariant as 08-06's
+    test_technical_alert_sites_still_use_admin_ids, re-asserted here as one of this plan's own
+    named final gates (08-07-PLAN.md Task 2 <behavior>), with the comment-line filter applied
+    per T-08-35."""
+    repo_root = Path(__file__).resolve().parent.parent
+    for rel_path in ("services/sheets.py", "services/scheduler.py", "services/reminders.py"):
+        source = _non_comment_source(repo_root / rel_path)
+        assert "notify_by_capability" not in source
+        assert source.count("for admin_id in config.ADMIN_IDS") == 1
+
+
+# ── 08-07 Task 2 + 08-SECURITY.md WARNING #1: callback-namespace collision guard ────────────
+#
+# The audit's own recommendation (08-SECURITY.md "Suggested fix" #1): CapabilityMiddleware's
+# _deny returns UNHANDLED for a capability-less caller -- including CallbackQuery events,
+# which were NEVER identity-filtered pre-phase-8 (is_admin only ever wrapped @router.message).
+# No live collision exists today (verified independently below, matching the audit's own
+# finding), but nothing previously stood between a future phase (9 gamification, 12 check-in)
+# adding a sibling-router callback prefix and silently reopening this. This walks the three
+# sibling routers' registered callback_data literals/prefixes and asserts none of them can
+# ever match a key in the admin namespace.
+
+_CALLBACK_LITERAL_RE = re.compile(r'F\.data\s*==\s*"([^"]+)"')
+_CALLBACK_PREFIX_RE = re.compile(r'F\.data\.startswith\("([^"]+)"\)')
+
+
+def _sibling_callback_keys(source):
+    """Same literal/prefix extraction shape as _callback_keys_from_line above, applied to a
+    whole sibling-router file rather than one admin.py decorator line at a time."""
+    keys = []
+    for line in source.splitlines():
+        if line.strip()[:1] == "#":
+            continue
+        keys.extend(_CALLBACK_LITERAL_RE.findall(line))
+        keys.extend(m + "*" for m in _CALLBACK_PREFIX_RE.findall(line))
+    return keys
+
+
+def _keys_collide(key_a, key_b):
+    """Two ADMIN_CAPS-style keys (bare exact string, or "prefix*") collide if some concrete
+    callback_data value could match both -- exact==exact, exact-inside-prefix either
+    direction, or two prefixes where one contains the other."""
+    a_prefix, a_is_prefix = (key_a[:-1], True) if key_a.endswith("*") else (key_a, False)
+    b_prefix, b_is_prefix = (key_b[:-1], True) if key_b.endswith("*") else (key_b, False)
+    if not a_is_prefix and not b_is_prefix:
+        return key_a == key_b
+    if a_is_prefix and not b_is_prefix:
+        return key_b.startswith(a_prefix)
+    if b_is_prefix and not a_is_prefix:
+        return key_a.startswith(b_prefix)
+    return a_prefix.startswith(b_prefix) or b_prefix.startswith(a_prefix)
+
+
+def test_gate_no_callback_namespace_collision_with_admin():
+    from handlers.admin_caps import ADMIN_CAPS
+
+    repo_root = Path(__file__).resolve().parent.parent
+    admin_keys = [k for k in ADMIN_CAPS if not k.startswith(("cmd:", "state:", "special:"))]
+
+    collisions = []
+    for rel_path in ("handlers/payment.py", "handlers/registration.py", "handlers/user_actions.py"):
+        source = (repo_root / rel_path).read_text(encoding="utf-8")
+        for sibling_key in _sibling_callback_keys(source):
+            for admin_key in admin_keys:
+                if _keys_collide(admin_key, sibling_key):
+                    collisions.append((rel_path, sibling_key, admin_key))
+
+    assert not collisions, (
+        "Callback-data collision between the admin namespace and a sibling router -- a "
+        "forged admin-shaped callback_data from a capability-less caller would fall through "
+        f"to this handler (08-SECURITY.md WARNING #1): {collisions}"
+    )
+
+
+def test_gate_validation_map_is_covered():
+    """08-VALIDATION.md's Requirement -> Test Map names 11 -k selectors for phase 8's
+    behaviors; every one of them must resolve to at least one real test function in this
+    module (checked by substring, matching how the map's own Automated Command column is
+    phrased as `-k <name>`)."""
+    expected_names = [
+        "capabilities", "completeness", "middleware_denies", "middleware_allows",
+        "deny_response", "bootstrap_compat", "staff_crud", "settings_schema",
+        "roles_group_ui", "question_claim_race", "notify_fanout",
+    ]
+    all_test_names = [name for name in globals() if name.startswith("test_")]
+    missing = [
+        expected for expected in expected_names
+        if not any(expected in actual for actual in all_test_names)
+    ]
+    assert not missing, f"08-VALIDATION.md map names with no matching test function: {missing}"
