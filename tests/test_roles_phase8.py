@@ -806,9 +806,14 @@ def test_action_only_row_never_autoopens_end_to_end(tmp_path):
 
 def test_no_sections_shows_explanatory_message(tmp_path):
     _roles_ready(tmp_path)
-    # game_manager's default caps (moderate_game only) map to zero _ADMIN_MENU_ROWS today
-    # (gamification ships in Phase 9) -- a real, currently-enabled role with nothing to show.
+    # 09-02 (GAME-01) gave moderate_game a menu row ("📋 Задания"), so game_manager's default
+    # caps no longer map to zero rows -- override role_caps_game_manager to "checkin" (Phase 12,
+    # not built yet -- still zero _ADMIN_MENU_ROWS today) to keep exercising a real,
+    # currently-enabled role with nothing to show.
+    from handlers.admin_caps import role_caps_key
+
     asyncio.run(db.add_staff(GAME_MANAGER_ID, "game_manager", ADMIN_ID))
+    asyncio.run(db.set_setting(role_caps_key("game_manager"), "checkin"))
 
     message = FakeMessage(text="/admin", user_id=GAME_MANAGER_ID, chat_id=GAME_MANAGER_ID)
     state = _fresh_state(GAME_MANAGER_ID)
