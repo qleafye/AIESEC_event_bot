@@ -59,7 +59,7 @@ from services.scheduler import (
 from services.allowlist import refresh_allowlist, allowlist_size
 from services.background import spawn as _spawn
 from handlers.states import Broadcast, EditSetting, Approval, ReceiptReview, StaffAdd
-from handlers.admin_caps import ALL_CAPABILITIES, CAP_LABELS, ROLES, role_caps_key, role_enabled_key, CapabilityMiddleware
+from handlers.admin_caps import ALL_CAPABILITIES, CAP_LABELS, ROLES, role_caps_key, role_enabled_key, CapabilityMiddleware, required_capability, has_capability
 from keyboards.builders import get_cancel_kb, MENU_BUTTONS, get_main_menu_kb
 from handlers.registration import REG_FLOW, REG_DEFAULTS, REG_LABELS, REG_PRESETS, REG_CATEGORIES, SHEET_HEADERS, STATUS_LABELS, _build_sheet_row, active_sheet_headers, set_sheet_schema, _sheet_value_map, approve_user, dropout_step_label, _apply_party_preset, _apply_short_preset, city_row_tab, incomplete_city_batches
 from cities import (  # Phase 07.1 (CITY-04): admin city screen; Phase 07.2 (CITY-02): admin city switcher + scoping
@@ -108,10 +108,6 @@ MONTH_NAMES = {
     "11": "Ноябрь",
     "12": "Декабрь",
 }
-
-def is_admin(message: types.Message):
-    return message.from_user.id in config.ADMIN_IDS
-
 
 def _parse_coins_amount(token: str) -> int | None:
     """Parse a signed coin amount like '+10', '-3', '10'. None on failure."""
@@ -239,7 +235,7 @@ async def render_stats_text() -> str:
     return text
 
 
-@router.message(Command("admin"), is_admin)
+@router.message(Command("admin"))
 async def cmd_admin_help(message: types.Message):
     text = (
         "👮‍♂️ <b>Панель администратора</b>\n\n"
@@ -257,7 +253,7 @@ async def cmd_admin_help(message: types.Message):
     await message.answer(text, parse_mode="HTML", reply_markup=await admin_keyboard_for(message.from_user.id))
 
 
-@router.message(Command("coins"), is_admin)
+@router.message(Command("coins"))
 async def cmd_coins(message: types.Message, bot: Bot):
     args = (message.text or "").split(maxsplit=3)
     hint = "⚠️ Формат: /coins @username +N [причина]"
@@ -287,7 +283,7 @@ async def cmd_coins(message: types.Message, bot: Bot):
         parse_mode="HTML",
     )
 
-@router.message(Command("find"), is_admin)
+@router.message(Command("find"))
 async def cmd_find_user(message: types.Message):
     args = message.text.split()
     if len(args) < 2:
@@ -311,7 +307,7 @@ async def cmd_find_user(message: types.Message):
         await message.answer(f"❌ Пользователь {username} не найден в базе данных.")
 
 
-@router.message(Command("create_link"), is_admin)
+@router.message(Command("create_link"))
 async def cmd_create_link(message: types.Message, bot: Bot):
     args = message.text.split(maxsplit=1)
     if len(args) < 2 or not args[1].strip():
@@ -330,8 +326,14 @@ async def cmd_create_link(message: types.Message, bot: Bot):
 
 
 
-def is_question_reply(message: types.Message) -> bool:
-    if message.from_user.id not in config.ADMIN_IDS:
+async def is_question_reply(message: types.Message) -> bool:
+    # ROLE-01 (D-01): same source of truth the middleware uses (ADMIN_CAPS via
+    # required_capability), applied here for ROUTING, not a second authorization mechanism.
+    # This predicate still matches by message SHAPE (reply to a forwarded question card, with
+    # the 🆔/❓ markers) -- without the identity check below, a delegate's reply to a similarly-
+    # shaped message would also match and get routed into the admin router.
+    cap = required_capability(special="question_reply")
+    if not cap or not await has_capability(message.from_user.id, cap):
         return False
     replied = message.reply_to_message
     if not replied or not replied.text:
@@ -376,22 +378,18 @@ async def admin_reply_to_question(message: types.Message, bot: Bot):
         await message.reply("❌ Не удалось отправить ответ пользователю.")
 
 
-@router.message(Command("stats"), is_admin)
+@router.message(Command("stats"))
 async def cmd_stats(message: types.Message):
     await message.answer(await render_stats_text(), parse_mode="HTML")
 
 
-@router.message(Command("stats_monthly"), is_admin)
+@router.message(Command("stats_monthly"))
 async def cmd_stats_monthly(message: types.Message):
     await message.answer(await render_monthly_stats(), parse_mode="HTML")
 
 
 @router.callback_query(F.data == "admin_stats")
 async def show_admin_stats(callback: types.CallbackQuery):
-    if callback.from_user.id not in config.ADMIN_IDS:
-        await callback.answer("Недостаточно прав", show_alert=True)
-        return
-
     text = await render_stats_text()
     await callback.message.edit_text(text, parse_mode="HTML", reply_markup=await admin_keyboard_for(callback.from_user.id))
     await callback.answer()
@@ -399,20 +397,12 @@ async def show_admin_stats(callback: types.CallbackQuery):
 
 @router.callback_query(F.data == "admin_monthly_stats")
 async def show_admin_monthly_stats(callback: types.CallbackQuery):
-    if callback.from_user.id not in config.ADMIN_IDS:
-        await callback.answer("Недостаточно прав", show_alert=True)
-        return
-
     await callback.message.edit_text(await render_monthly_stats(), parse_mode="HTML", reply_markup=await admin_keyboard_for(callback.from_user.id))
     await callback.answer()
 
 
 @router.callback_query(F.data == "admin_source_stats")
 async def show_admin_source_stats(callback: types.CallbackQuery):
-    if callback.from_user.id not in config.ADMIN_IDS:
-        await callback.answer("Недостаточно прав", show_alert=True)
-        return
-
     rows = await get_source_stats()
     if not rows:
         text = "📈 <b>Источники регистраций</b>\n\nПока нет данных."
@@ -757,10 +747,6 @@ async def build_settings_group_keyboard(token: str):
 
 @router.callback_query(F.data == "admin_settings")
 async def show_admin_settings(callback: types.CallbackQuery):
-    if callback.from_user.id not in config.ADMIN_IDS:
-        await callback.answer("Недостаточно прав", show_alert=True)
-        return
-
     text = await render_settings_text()
     await callback.message.edit_text(text, parse_mode="HTML", reply_markup=await build_settings_keyboard())
     await callback.answer()
@@ -768,10 +754,6 @@ async def show_admin_settings(callback: types.CallbackQuery):
 
 @router.callback_query(F.data.startswith("settings_group:"))
 async def show_settings_group(callback: types.CallbackQuery):
-    if callback.from_user.id not in config.ADMIN_IDS:
-        await callback.answer("Недостаточно прав", show_alert=True)
-        return
-
     token = callback.data.split(":", 1)[1]
     text = await render_settings_group_text(token)
     await callback.message.edit_text(text, parse_mode="HTML", reply_markup=await build_settings_group_keyboard(token))
@@ -786,10 +768,6 @@ async def settings_group_noop(callback: types.CallbackQuery):
 
 @router.callback_query(F.data == "settings_toggle_reg")
 async def toggle_registration_mode(callback: types.CallbackQuery):
-    if callback.from_user.id not in config.ADMIN_IDS:
-        await callback.answer("Недостаточно прав", show_alert=True)
-        return
-
     # REG-02 (06-05): current-value read migrated to the registry; write path unchanged.
     current = await get_setting_typed("registration_mode")
     new_mode = "full" if current == "short" else "short"
@@ -807,9 +785,6 @@ async def toggle_registration_mode(callback: types.CallbackQuery):
 
 
 async def _toggle_approval_setting(callback: types.CallbackQuery, key: str, default: str, title: str):
-    if callback.from_user.id not in config.ADMIN_IDS:
-        await callback.answer("Недостаточно прав", show_alert=True)
-        return
     # REG-02 (06-07): final-coverage sweep — key is always in SETTINGS_SCHEMA (full_approval/
     # short_approval/party_approval), registry default byte-identical to the `default` param.
     current = await get_setting_typed(key)
@@ -841,9 +816,6 @@ async def toggle_party_approval(callback: types.CallbackQuery):
 
 async def _toggle_module_setting(callback: types.CallbackQuery, key: str, title: str):
     """On/off toggle for a Phase 4 module flag (fail-safe default OFF, D-15)."""
-    if callback.from_user.id not in config.ADMIN_IDS:
-        await callback.answer("Недостаточно прав", show_alert=True)
-        return
     # REG-02 (06-07): final-coverage sweep — key is always in SETTINGS_SCHEMA
     # (payment_enabled/consent_enabled/party_enabled/party_fork_question), all default "off".
     current = await get_setting_typed(key)
@@ -888,9 +860,6 @@ async def toggle_payment_reminders(callback: types.CallbackQuery):
 
 async def _toggle_value_setting(callback, key, val_a, val_b, default, title_a, title_b):
     """Generic two-value toggle (e.g. list↔text, on↔off) with a friendly alert."""
-    if callback.from_user.id not in config.ADMIN_IDS:
-        await callback.answer("Недостаточно прав", show_alert=True)
-        return
     # REG-02 (06-07): final-coverage sweep — every key routed through this helper
     # (reg_university_mode/edu_conditional/reg_show_progress/payment_reminders_enabled) is
     # in SETTINGS_SCHEMA with a registry default byte-identical to the `default` param.
@@ -940,9 +909,6 @@ async def _apply_event_type_preset(event_type: str):
 
 @router.callback_query(F.data == "settings_toggle_notify")
 async def toggle_notify_mode(callback: types.CallbackQuery):
-    if callback.from_user.id not in config.ADMIN_IDS:
-        await callback.answer("Недостаточно прав", show_alert=True)
-        return
     # REG-02 (06-05): current-value read migrated to the registry; write path unchanged.
     current = await get_setting_typed("pending_notify_mode")
     new_val = "batched" if current == "instant" else "instant"
@@ -954,10 +920,6 @@ async def toggle_notify_mode(callback: types.CallbackQuery):
 
 @router.callback_query(F.data == "settings_toggle_bonus")
 async def toggle_bonus(callback: types.CallbackQuery):
-    if callback.from_user.id not in config.ADMIN_IDS:
-        await callback.answer("Недостаточно прав", show_alert=True)
-        return
-
     # REG-02 (06-05): current-value read migrated to the registry; write path unchanged.
     current = await get_setting_typed("reg_bonus_enabled")
     new_val = "on" if current == "off" else "off"
@@ -972,10 +934,6 @@ async def toggle_bonus(callback: types.CallbackQuery):
 
 @router.callback_query(F.data.startswith("settings_file:"))
 async def settings_file_start(callback: types.CallbackQuery, state: FSMContext):
-    if callback.from_user.id not in config.ADMIN_IDS:
-        await callback.answer("Недостаточно прав", show_alert=True)
-        return
-
     prefix = callback.data.split(":", 1)[1]
     prompts = {p: (label, prompt) for p, label, prompt in FILE_FIELDS}
     label, prompt = prompts.get(prefix, ("Файл", "Отправьте файл."))
@@ -996,10 +954,6 @@ async def settings_file_start(callback: types.CallbackQuery, state: FSMContext):
 
 @router.callback_query(F.data.startswith("settings_edit:"))
 async def settings_edit_start(callback: types.CallbackQuery, state: FSMContext):
-    if callback.from_user.id not in config.ADMIN_IDS:
-        await callback.answer("Недостаточно прав", show_alert=True)
-        return
-
     key = callback.data.split(":", 1)[1]
     prompts = {k: prompt for k, _, prompt in SETTINGS_FIELDS}
     # Phase 8 (ROLE-02): role_caps_<role> etc. ride this generic edit flow but aren't in
@@ -1027,10 +981,6 @@ async def settings_edit_start(callback: types.CallbackQuery, state: FSMContext):
 
 @router.callback_query(F.data.startswith("settings_photo:"))
 async def settings_photo_start(callback: types.CallbackQuery, state: FSMContext):
-    if callback.from_user.id not in config.ADMIN_IDS:
-        await callback.answer("Недостаточно прав", show_alert=True)
-        return
-
     prefix = callback.data.split(":", 1)[1]
     prompts = {p: (label, prompt) for p, label, prompt in PHOTO_FIELDS}
     label, prompt = prompts.get(prefix, ("Фото", "Отправьте фото."))
@@ -1049,10 +999,6 @@ async def settings_photo_start(callback: types.CallbackQuery, state: FSMContext)
 
 @router.callback_query(F.data == "settings_cancel")
 async def cancel_edit_setting_callback(callback: types.CallbackQuery, state: FSMContext):
-    # WR-01: callbacks aren't covered by the message-level is_admin filter — re-check (D-06).
-    if callback.from_user.id not in config.ADMIN_IDS:
-        await callback.answer("Недостаточно прав", show_alert=True)
-        return
     await state.clear()
     text = await render_settings_text()
     await callback.message.edit_text(text, parse_mode="HTML", reply_markup=await build_settings_keyboard())
@@ -1061,10 +1007,6 @@ async def cancel_edit_setting_callback(callback: types.CallbackQuery, state: FSM
 
 @router.callback_query(F.data == "admin_sync_sheet")
 async def sync_sheet(callback: types.CallbackQuery):
-    if callback.from_user.id not in config.ADMIN_IDS:
-        await callback.answer("Недостаточно прав", show_alert=True)
-        return
-
     await callback.answer("🔄 Синхронизация...")
     await callback.message.edit_text("🔄 Получаю данные из таблицы...", parse_mode="HTML")
 
@@ -1108,10 +1050,6 @@ async def rebuild_sheet(callback: types.CallbackQuery):
     """Полная пересборка листа данных: перезаписать шапку + ВСЕ строки в текущем порядке
     колонок, применить выпадашку/цвета к «Статус». Выравнивает старые строки после смены
     порядка колонок (Таня п.1/п.5). Внимание: перезаписывает ручные правки на листе."""
-    if callback.from_user.id not in config.ADMIN_IDS:
-        await callback.answer("Недостаточно прав", show_alert=True)
-        return
-
     await callback.answer("♻️ Пересборка...")
     await callback.message.edit_text("♻️ Пересобираю таблицу (перезапись всех строк)…", parse_mode="HTML")
 
@@ -1148,10 +1086,6 @@ async def rebuild_sheet(callback: types.CallbackQuery):
 
 @router.callback_query(F.data == "settings_back")
 async def settings_back_to_admin(callback: types.CallbackQuery):
-    if callback.from_user.id not in config.ADMIN_IDS:
-        await callback.answer("Недостаточно прав", show_alert=True)
-        return
-
     await callback.message.edit_text(
         "👮‍♂️ <b>Панель администратора</b>",
         parse_mode="HTML",
@@ -1179,9 +1113,6 @@ def _parse_consent_list(raw: str) -> list[tuple[str, str]]:
 
 @router.callback_query(F.data == "admin_consent_pdfs")
 async def admin_consent_pdfs(callback: types.CallbackQuery):
-    if callback.from_user.id not in config.ADMIN_IDS:
-        await callback.answer("Недостаточно прав", show_alert=True)
-        return
     items = _parse_consent_list(await get_setting("consent_list") or "")
     if not items:
         await callback.answer()
@@ -1217,9 +1148,6 @@ async def admin_consent_pdfs(callback: types.CallbackQuery):
 
 @router.callback_query(F.data.startswith("consent_pdf_set:"))
 async def consent_pdf_set(callback: types.CallbackQuery, state: FSMContext):
-    if callback.from_user.id not in config.ADMIN_IDS:
-        await callback.answer("Недостаточно прав", show_alert=True)
-        return
     key = callback.data.split(":", 1)[1]
     cancel_kb = InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text="❌ Отмена", callback_data="settings_cancel")],
@@ -1244,7 +1172,7 @@ async def cancel_edit_setting(message: types.Message, state: FSMContext):
     await message.answer(text, parse_mode="HTML", reply_markup=await build_settings_keyboard())
 
 
-@router.message(EditSetting.waiting_for_photo, is_admin, F.photo)
+@router.message(EditSetting.waiting_for_photo, F.photo)
 async def settings_receive_photo(message: types.Message, state: FSMContext):
     data = await state.get_data()
     prefix = data.get("photo_setting", "program")
@@ -1263,12 +1191,12 @@ async def settings_receive_photo(message: types.Message, state: FSMContext):
     await message.answer(text, parse_mode="HTML", reply_markup=await build_settings_keyboard())
 
 
-@router.message(EditSetting.waiting_for_photo, is_admin)
+@router.message(EditSetting.waiting_for_photo)
 async def settings_receive_photo_invalid(message: types.Message):
     await message.answer("Отправьте именно фото (не файлом).")
 
 
-@router.message(EditSetting.waiting_for_file, is_admin, F.photo)
+@router.message(EditSetting.waiting_for_file, F.photo)
 async def settings_receive_file_photo(message: types.Message, state: FSMContext):
     data = await state.get_data()
     if data.get("raw_file_key"):
@@ -1291,7 +1219,7 @@ async def settings_receive_file_photo(message: types.Message, state: FSMContext)
     await message.answer(text, parse_mode="HTML", reply_markup=await build_settings_keyboard())
 
 
-@router.message(EditSetting.waiting_for_file, is_admin, F.document)
+@router.message(EditSetting.waiting_for_file, F.document)
 async def settings_receive_file_doc(message: types.Message, state: FSMContext):
     data = await state.get_data()
 
@@ -1325,14 +1253,14 @@ async def settings_receive_file_doc(message: types.Message, state: FSMContext):
     await message.answer(text, parse_mode="HTML", reply_markup=await build_settings_keyboard())
 
 
-@router.message(EditSetting.waiting_for_file, is_admin)
+@router.message(EditSetting.waiting_for_file)
 async def settings_receive_file_invalid(message: types.Message):
     await message.answer("Отправьте фото или документ.")
 
 
 HTML_SETTINGS = {"start_text", "reg_complete_text", "approve_text", "approve_text__party"}
 
-@router.message(EditSetting.waiting_for_value, is_admin)
+@router.message(EditSetting.waiting_for_value)
 async def settings_edit_value(message: types.Message, state: FSMContext):
     data = await state.get_data()
     key = data["setting_key"]
@@ -1373,10 +1301,6 @@ async def settings_edit_value(message: types.Message, state: FSMContext):
 
 @router.callback_query(F.data == "admin_export_csv")
 async def show_admin_export(callback: types.CallbackQuery):
-    if callback.from_user.id not in config.ADMIN_IDS:
-        await callback.answer("Недостаточно прав", show_alert=True)
-        return
-
     # Phase 07.2 (CITY-02): CSV export is SCOPED to the admin's selected city — the opposite
     # of the (intentionally unscoped) stats screen. Same resolver every other city-scoped
     # surface uses (_admin_city_view), so module-off collapses to the exact pre-Phase-07.2
@@ -1406,9 +1330,6 @@ async def show_admin_export(callback: types.CallbackQuery):
 
 @router.callback_query(F.data == "admin_export_incomplete")
 async def export_incomplete(callback: types.CallbackQuery):
-    if callback.from_user.id not in config.ADMIN_IDS:
-        await callback.answer("Недостаточно прав", show_alert=True)
-        return
     await callback.answer("📝 Выгружаю…")
     # Phase 07.1 (CITY-04): incomplete_city_batches() is the SINGLE shared helper for both the
     # manual export and services/scheduler.py:sync_incomplete_sheet_job — headers are computed
@@ -1505,10 +1426,6 @@ async def build_cities_keyboard() -> InlineKeyboardMarkup:
 
 @router.callback_query(F.data == "admin_cities")
 async def show_admin_cities(callback: types.CallbackQuery):
-    if callback.from_user.id not in config.ADMIN_IDS:
-        await callback.answer("Недостаточно прав", show_alert=True)
-        return
-
     text = await render_cities_text()
     await callback.message.edit_text(text, parse_mode="HTML", reply_markup=await build_cities_keyboard())
     await callback.answer()
@@ -1516,10 +1433,6 @@ async def show_admin_cities(callback: types.CallbackQuery):
 
 @router.callback_query(F.data == "toggle_event_city_enabled")
 async def toggle_event_city_enabled(callback: types.CallbackQuery):
-    if callback.from_user.id not in config.ADMIN_IDS:
-        await callback.answer("Недостаточно прав", show_alert=True)
-        return
-
     current = await get_setting_typed("event_city_enabled")
     new_val = "off" if current == "on" else "on"
     await set_setting("event_city_enabled", new_val)
@@ -1532,10 +1445,6 @@ async def toggle_event_city_enabled(callback: types.CallbackQuery):
 
 @router.callback_query(F.data.startswith("city_toggle:"))
 async def city_toggle(callback: types.CallbackQuery):
-    if callback.from_user.id not in config.ADMIN_IDS:
-        await callback.answer("Недостаточно прав", show_alert=True)
-        return
-
     code = callback.data.split(":", 1)[1]
     if code not in {c["code"] for c in CITIES}:
         await callback.answer("Неизвестный город", show_alert=True)
@@ -1555,9 +1464,6 @@ async def city_toggle(callback: types.CallbackQuery):
 async def admin_city_switch(callback: types.CallbackQuery):
     """Phase 07.2 (CITY-02): pick the city the admin panel is currently scoped to. Disabled
     cities are still listed (their past applications still need moderating), marked ❌."""
-    if callback.from_user.id not in config.ADMIN_IDS:
-        await callback.answer("Недостаточно прав", show_alert=True)
-        return
     current = await admin_selected_city(callback.from_user.id)
     buttons = []
     for c in CITIES:
@@ -1579,9 +1485,6 @@ async def admin_city_switch(callback: types.CallbackQuery):
 
 @router.callback_query(F.data.startswith("admin_city_pick:"))
 async def admin_city_pick(callback: types.CallbackQuery):
-    if callback.from_user.id not in config.ADMIN_IDS:
-        await callback.answer("Недостаточно прав", show_alert=True)
-        return
     code = callback.data.split(":", 1)[1]
     if not await set_admin_city(callback.from_user.id, code):
         await callback.answer("Неизвестный город", show_alert=True)
@@ -1598,9 +1501,6 @@ async def admin_city_pick(callback: types.CallbackQuery):
 async def admin_menu_root(callback: types.CallbackQuery):
     """Back to the admin panel keyboard (also fixes the previously dead «Отмена» buttons
     that pointed at admin_menu without a handler)."""
-    if callback.from_user.id not in config.ADMIN_IDS:
-        await callback.answer("Недостаточно прав", show_alert=True)
-        return
     await callback.message.edit_text(
         "👮‍♂️ <b>Панель администратора</b>", parse_mode="HTML", reply_markup=await admin_keyboard_for(callback.from_user.id)
     )
@@ -1609,9 +1509,6 @@ async def admin_menu_root(callback: types.CallbackQuery):
 
 @router.callback_query(F.data == "admin_dedupe_sheet")
 async def dedupe_sheet_confirm(callback: types.CallbackQuery):
-    if callback.from_user.id not in config.ADMIN_IDS:
-        await callback.answer("Недостаточно прав", show_alert=True)
-        return
     kb = InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text="🧹 Да, убрать дубли", callback_data="admin_dedupe_sheet_go")],
         [InlineKeyboardButton(text="← Отмена", callback_data="admin_menu")],
@@ -1630,9 +1527,6 @@ async def dedupe_sheet_confirm(callback: types.CallbackQuery):
 
 @router.callback_query(F.data == "admin_dedupe_sheet_go")
 async def dedupe_sheet_run(callback: types.CallbackQuery):
-    if callback.from_user.id not in config.ADMIN_IDS:
-        await callback.answer("Недостаточно прав", show_alert=True)
-        return
     await callback.answer("🧹 Убираю дубли…")
     logger.info(f"admin={callback.from_user.id} action=dedupe_sheet start")
     removed = await dedupe_sheet_by_id()
@@ -1648,10 +1542,6 @@ async def dedupe_sheet_run(callback: types.CallbackQuery):
 
 @router.callback_query(F.data == "admin_broadcast")
 async def show_admin_broadcast(callback: types.CallbackQuery, state: FSMContext):
-    if callback.from_user.id not in config.ADMIN_IDS:
-        await callback.answer("Недостаточно прав", show_alert=True)
-        return
-
     kb = InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text="📢 Все пользователи", callback_data="broadcast_all")],
         [InlineKeyboardButton(text="📄 По файлу в проекте", callback_data="broadcast_local")],
@@ -1665,7 +1555,7 @@ async def show_admin_broadcast(callback: types.CallbackQuery, state: FSMContext)
     await state.set_state(Broadcast.target_selection)
     await callback.answer()
 
-@router.message(Command("export"), is_admin)
+@router.message(Command("export"))
 async def cmd_export(message: types.Message):
     headers, rows = await export_users_csv()
 
@@ -1680,7 +1570,7 @@ async def cmd_export(message: types.Message):
 
     await message.answer_document(document, caption="База данных пользователей")
 
-@router.message(Command("broadcast"), is_admin)
+@router.message(Command("broadcast"))
 async def cmd_broadcast(message: types.Message, state: FSMContext):
     kb = InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text="📢 Все пользователи", callback_data="broadcast_all")],
@@ -1696,10 +1586,6 @@ async def cmd_broadcast(message: types.Message, state: FSMContext):
 
 @router.callback_query(F.data == "broadcast_all", Broadcast.target_selection)
 async def process_broadcast_all(callback: types.CallbackQuery, state: FSMContext):
-    # WR-01: callbacks aren't covered by the message-level is_admin filter — re-check (D-06).
-    if callback.from_user.id not in config.ADMIN_IDS:
-        await callback.answer("Недостаточно прав", show_alert=True)
-        return
     await callback.answer()
     try:
         await callback.message.delete()
@@ -1714,10 +1600,6 @@ async def process_broadcast_all(callback: types.CallbackQuery, state: FSMContext
 
 @router.callback_query(F.data == "broadcast_local", Broadcast.target_selection)
 async def process_broadcast_local_file(callback: types.CallbackQuery, state: FSMContext):
-    # WR-01: callbacks aren't covered by the message-level is_admin filter — re-check (D-06).
-    if callback.from_user.id not in config.ADMIN_IDS:
-        await callback.answer("Недостаточно прав", show_alert=True)
-        return
     file_path = "data/broadcast_target.txt"
 
     if not os.path.exists(file_path):
@@ -1761,10 +1643,6 @@ async def process_broadcast_local_file(callback: types.CallbackQuery, state: FSM
         await state.clear()
 
 async def _start_segment_broadcast(callback: types.CallbackQuery, state: FSMContext, user_ids: list, prompt: str):
-    # Callbacks are not covered by the message-level is_admin filter — re-check here (D-06 / T-04-03).
-    if callback.from_user.id not in config.ADMIN_IDS:
-        await callback.answer("Недостаточно прав", show_alert=True)
-        return
     user_ids = list(set(user_ids))
     if not user_ids:
         await callback.message.edit_text("В этом сегменте сейчас нет пользователей.")
@@ -1798,9 +1676,6 @@ def _classify_outcome(first_ok: bool, retried_ok) -> tuple[int, int]:
 
 @router.callback_query(F.data == "broadcast_unsubscribed", Broadcast.target_selection)
 async def process_broadcast_unsubscribed(callback: types.CallbackQuery, state: FSMContext):
-    if callback.from_user.id not in config.ADMIN_IDS:
-        await callback.answer("Недостаточно прав", show_alert=True)
-        return
     user_ids = await get_non_subscriber_ids()
     await _start_segment_broadcast(
         callback, state, user_ids,
@@ -1811,9 +1686,6 @@ async def process_broadcast_unsubscribed(callback: types.CallbackQuery, state: F
 
 @router.callback_query(F.data == "broadcast_incomplete", Broadcast.target_selection)
 async def process_broadcast_incomplete(callback: types.CallbackQuery, state: FSMContext):
-    if callback.from_user.id not in config.ADMIN_IDS:
-        await callback.answer("Недостаточно прав", show_alert=True)
-        return
     user_ids = await get_incomplete_user_ids()
     await _start_segment_broadcast(
         callback, state, user_ids,
@@ -1824,10 +1696,6 @@ async def process_broadcast_incomplete(callback: types.CallbackQuery, state: FSM
 
 @router.callback_query(F.data == "broadcast_cancel")
 async def cancel_broadcast_callback(callback: types.CallbackQuery, state: FSMContext):
-    # WR-01: callbacks aren't covered by the message-level is_admin filter — re-check (D-06).
-    if callback.from_user.id not in config.ADMIN_IDS:
-        await callback.answer("Недостаточно прав", show_alert=True)
-        return
     await state.clear()
     await callback.message.edit_text("Рассылка отменена.")
     await callback.answer()
@@ -1919,7 +1787,7 @@ async def _wait_and_send_album(media_group_id: str, users_ids: list, bot: Bot, s
 
     await state.clear()
 
-@router.message(Broadcast.message, is_admin)
+@router.message(Broadcast.message)
 async def process_broadcast(message: types.Message, state: FSMContext, bot: Bot):
     data = await state.get_data()
     target_type = data.get("target_type", "all")
@@ -1980,9 +1848,6 @@ async def process_broadcast(message: types.Message, state: FSMContext, bot: Bot)
 
 @router.callback_query(F.data == "broadcast_schedule", Broadcast.target_selection)
 async def broadcast_schedule_start(callback: types.CallbackQuery, state: FSMContext):
-    if callback.from_user.id not in config.ADMIN_IDS:
-        await callback.answer("Недостаточно прав", show_alert=True)
-        return
     await callback.answer()
     try:
         await callback.message.delete()
@@ -1996,7 +1861,7 @@ async def broadcast_schedule_start(callback: types.CallbackQuery, state: FSMCont
     await state.set_state(Broadcast.schedule_when)
 
 
-@router.message(Broadcast.schedule_when, is_admin)
+@router.message(Broadcast.schedule_when)
 async def broadcast_schedule_when(message: types.Message, state: FSMContext):
     when = _parse_schedule_dt(message.text)
     if when is None:
@@ -2014,7 +1879,7 @@ async def broadcast_schedule_when(message: types.Message, state: FSMContext):
     await state.set_state(Broadcast.schedule_message)
 
 
-@router.message(Broadcast.schedule_message, is_admin)
+@router.message(Broadcast.schedule_message)
 async def broadcast_schedule_message(message: types.Message, state: FSMContext):
     data = await state.get_data()
     when = data.get("schedule_dt")
@@ -2046,7 +1911,7 @@ async def broadcast_schedule_message(message: types.Message, state: FSMContext):
     await state.clear()
 
 
-@router.message(Command("scheduled"), is_admin)
+@router.message(Command("scheduled"))
 async def cmd_scheduled(message: types.Message):
     rows = await list_pending_broadcasts()
     if not rows:
@@ -2067,9 +1932,6 @@ async def cmd_scheduled(message: types.Message):
 
 @router.callback_query(F.data.startswith("sched_cancel_"))
 async def sched_cancel(callback: types.CallbackQuery):
-    if callback.from_user.id not in config.ADMIN_IDS:
-        await callback.answer("Недостаточно прав", show_alert=True)
-        return
     # WR-02: guard the int() parse like _parse_appr/_parse_rcpt do — malformed callback_data
     # (empty suffix) must degrade gracefully, not raise and leave the button spinning.
     try:
@@ -2231,9 +2093,6 @@ async def _render_filter_menu(target, filters: list[dict], *, edit: bool):
 
 @router.callback_query(F.data == "broadcast_filter", Broadcast.target_selection)
 async def broadcast_filter_start(callback: types.CallbackQuery, state: FSMContext):
-    if callback.from_user.id not in config.ADMIN_IDS:
-        await callback.answer("Недостаточно прав", show_alert=True)
-        return
     await state.update_data(filters=[])
     await callback.answer()
     await _render_filter_menu(callback.message, [], edit=True)
@@ -2276,9 +2135,6 @@ async def _show_value_picker(callback: types.CallbackQuery, state: FSMContext, f
 @router.callback_query(F.data.in_({f"filter_f_{fld}" for fld in _PICKER_FIELDS}), Broadcast.filter_field)
 async def filter_pick_field(callback: types.CallbackQuery, state: FSMContext):
     """Every attribute field → a DB-distinct value picker (no free-text typing)."""
-    if callback.from_user.id not in config.ADMIN_IDS:
-        await callback.answer("Недостаточно прав", show_alert=True)
-        return
     field = callback.data[len("filter_f_"):]
     await state.update_data(filter_pending_field=field, filter_pending_op=None)
     await _show_value_picker(callback, state, field, f"Выберите значение — «{_FILTER_FIELD_LABELS.get(field, field)}»:")
@@ -2286,9 +2142,6 @@ async def filter_pick_field(callback: types.CallbackQuery, state: FSMContext):
 
 @router.callback_query(F.data == "filter_f_date", Broadcast.filter_field)
 async def filter_pick_date(callback: types.CallbackQuery, state: FSMContext):
-    if callback.from_user.id not in config.ADMIN_IDS:
-        await callback.answer("Недостаточно прав", show_alert=True)
-        return
     await callback.answer()
     kb = InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text="После", callback_data="filter_d_after"),
@@ -2300,9 +2153,6 @@ async def filter_pick_date(callback: types.CallbackQuery, state: FSMContext):
 
 @router.callback_query(F.data.in_({"filter_d_after", "filter_d_before"}), Broadcast.filter_field)
 async def filter_pick_date_op(callback: types.CallbackQuery, state: FSMContext):
-    if callback.from_user.id not in config.ADMIN_IDS:
-        await callback.answer("Недостаточно прав", show_alert=True)
-        return
     op = "after" if callback.data.endswith("after") else "before"
     await state.update_data(filter_pending_field="registration_date", filter_pending_op=op)
     opl = "после" if op == "after" else "до"
@@ -2311,9 +2161,6 @@ async def filter_pick_date_op(callback: types.CallbackQuery, state: FSMContext):
 
 @router.callback_query(F.data.startswith("filter_optpage:"), Broadcast.filter_field)
 async def filter_page_nav(callback: types.CallbackQuery, state: FSMContext):
-    if callback.from_user.id not in config.ADMIN_IDS:
-        await callback.answer("Недостаточно прав", show_alert=True)
-        return
     data = await state.get_data()
     field = data.get("filter_pending_field")
     options = data.get("filter_options", [])
@@ -2334,9 +2181,6 @@ async def filter_page_nav(callback: types.CallbackQuery, state: FSMContext):
 
 @router.callback_query(F.data.startswith("filter_opt:"), Broadcast.filter_field)
 async def filter_pick_value(callback: types.CallbackQuery, state: FSMContext):
-    if callback.from_user.id not in config.ADMIN_IDS:
-        await callback.answer("Недостаточно прав", show_alert=True)
-        return
     data = await state.get_data()
     field = data.get("filter_pending_field")
     options = data.get("filter_options", [])
@@ -2379,9 +2223,6 @@ async def filter_pick_value(callback: types.CallbackQuery, state: FSMContext):
 @router.callback_query(F.data == "filter_back", Broadcast.filter_field)
 async def filter_back(callback: types.CallbackQuery, state: FSMContext):
     """Abandon the in-progress field pick, return to the filter menu."""
-    if callback.from_user.id not in config.ADMIN_IDS:
-        await callback.answer("Недостаточно прав", show_alert=True)
-        return
     data = await state.get_data()
     await state.update_data(filter_pending_field=None, filter_pending_op=None, filter_options=[],
                             filter_page=0, filter_option_labels=None)
@@ -2391,9 +2232,6 @@ async def filter_back(callback: types.CallbackQuery, state: FSMContext):
 
 @router.callback_query(F.data == "filter_count", Broadcast.filter_field)
 async def filter_count(callback: types.CallbackQuery, state: FSMContext):
-    if callback.from_user.id not in config.ADMIN_IDS:
-        await callback.answer("Недостаточно прав", show_alert=True)
-        return
     data = await state.get_data()
     filters = data.get("filters", [])
     ids = await count_and_list_filtered(filters)
@@ -2412,9 +2250,6 @@ async def filter_count(callback: types.CallbackQuery, state: FSMContext):
 
 @router.callback_query(F.data == "filter_send_now", Broadcast.filter_field)
 async def filter_send_now(callback: types.CallbackQuery, state: FSMContext):
-    if callback.from_user.id not in config.ADMIN_IDS:
-        await callback.answer("Недостаточно прав", show_alert=True)
-        return
     data = await state.get_data()
     filters = data.get("filters", [])
     ids = await count_and_list_filtered(filters)
@@ -2426,9 +2261,6 @@ async def filter_send_now(callback: types.CallbackQuery, state: FSMContext):
 
 @router.callback_query(F.data == "filter_schedule", Broadcast.filter_field)
 async def filter_schedule(callback: types.CallbackQuery, state: FSMContext):
-    if callback.from_user.id not in config.ADMIN_IDS:
-        await callback.answer("Недостаточно прав", show_alert=True)
-        return
     # filters stay in FSM state; the schedule flow reads them as filter_spec
     await callback.answer()
     await callback.message.edit_text(
@@ -2439,7 +2271,7 @@ async def filter_schedule(callback: types.CallbackQuery, state: FSMContext):
 
 # ── Phase 3 (VERIF): manual allowlist refresh ────────────────────────────────
 
-@router.message(Command("refresh_allowlist"), is_admin)
+@router.message(Command("refresh_allowlist"))
 async def cmd_refresh_allowlist(message: types.Message):
     await refresh_allowlist()
     size = allowlist_size()
@@ -2576,10 +2408,6 @@ async def build_questions_keyboard(track: str = "full"):
 
 @router.callback_query(F.data == "admin_reg_questions")
 async def show_reg_questions(callback: types.CallbackQuery):
-    if callback.from_user.id not in config.ADMIN_IDS:
-        await callback.answer("Недостаточно прав", show_alert=True)
-        return
-
     text = await render_questions_text()
     await callback.message.edit_text(text, parse_mode="HTML", reply_markup=await build_questions_keyboard())
     await callback.answer()
@@ -2646,10 +2474,6 @@ async def _refresh_short_sheet_header() -> None:
 
 @router.callback_query(F.data.startswith("reg_q_toggle:"))
 async def toggle_reg_question(callback: types.CallbackQuery):
-    if callback.from_user.id not in config.ADMIN_IDS:
-        await callback.answer("Недостаточно прав", show_alert=True)
-        return
-
     setting_key = callback.data.split(":", 1)[1]
 
     # REG-02 (06-04): registry-driven resolution, byte-identical to the prior manual
@@ -2673,9 +2497,6 @@ async def reg_q_track_switch(callback: types.CallbackQuery):
     """D-06: track switcher row — re-renders the SAME «📋 Вопросы регистрации» message in
     the requested track context. No FSM state — the requested track lives entirely in the
     callback_data of the tapped button."""
-    if callback.from_user.id not in config.ADMIN_IDS:
-        await callback.answer("Недостаточно прав", show_alert=True)
-        return
     track = callback.data.split(":", 1)[1]
     if track not in ("full", "party", "short"):
         track = "full"
@@ -2690,9 +2511,6 @@ async def toggle_party_question(callback: types.CallbackQuery):
     override of one question. Reads/writes the RAW f"{setting_key}__party" value — never
     routes through _is_question_on, which would collapse None and make "inherit"
     indistinguishable from "off". delete_setting is the "back to inherit" primitive."""
-    if callback.from_user.id not in config.ADMIN_IDS:
-        await callback.answer("Недостаточно прав", show_alert=True)
-        return
     setting_key = callback.data.split(":", 1)[1]
     # T-05-03-02: validate setting_key against REG_FLOW before ever suffixing/writing it —
     # an unknown key from a crafted callback is rejected, never turned into a bot_settings write.
@@ -2724,9 +2542,6 @@ async def toggle_short_question(callback: types.CallbackQuery):
     "off" per 07-01, so a separate "inherit" state would be indistinguishable from "off" and
     only confuse the manager). delete_setting is never used here — every tap writes an
     explicit "on"/"off", unlike the party cycle's "back to inherit" step."""
-    if callback.from_user.id not in config.ADMIN_IDS:
-        await callback.answer("Недостаточно прав", show_alert=True)
-        return
     setting_key = callback.data.split(":", 1)[1]
     # T-07-09: validate setting_key against REG_FLOW before ever suffixing/writing it — a
     # crafted "reg_q_stoggle:party_enabled" (or any non-REG_FLOW key) is rejected, never
@@ -2756,10 +2571,6 @@ async def reg_q_noop(callback: types.CallbackQuery):
 
 @router.callback_query(F.data == "reg_q_back")
 async def reg_questions_back(callback: types.CallbackQuery):
-    if callback.from_user.id not in config.ADMIN_IDS:
-        await callback.answer("Недостаточно прав", show_alert=True)
-        return
-
     text = await render_settings_text()
     await callback.message.edit_text(text, parse_mode="HTML", reply_markup=await build_settings_keyboard())
     await callback.answer()
@@ -2780,9 +2591,6 @@ async def _apply_event_preset(preset_key: str) -> None:
 
 @router.callback_query(F.data == "admin_event_preset")
 async def admin_event_preset(callback: types.CallbackQuery):
-    if callback.from_user.id not in config.ADMIN_IDS:
-        await callback.answer("Недостаточно прав", show_alert=True)
-        return
     buttons = [
         [InlineKeyboardButton(text=p["label"], callback_data=f"preset_apply:{key}")]
         for key, p in REG_PRESETS.items()
@@ -2801,9 +2609,6 @@ async def admin_event_preset(callback: types.CallbackQuery):
 
 @router.callback_query(F.data.startswith("preset_apply:"))
 async def preset_apply(callback: types.CallbackQuery):
-    if callback.from_user.id not in config.ADMIN_IDS:
-        await callback.answer("Недостаточно прав", show_alert=True)
-        return
     key = callback.data.split(":", 1)[1]
     preset = REG_PRESETS.get(key)
     if not preset:
@@ -2839,9 +2644,6 @@ async def preset_apply(callback: types.CallbackQuery):
 
 @router.callback_query(F.data.startswith("preset_confirm:"))
 async def preset_confirm(callback: types.CallbackQuery):
-    if callback.from_user.id not in config.ADMIN_IDS:
-        await callback.answer("Недостаточно прав", show_alert=True)
-        return
     key = callback.data.split(":", 1)[1]
     preset = REG_PRESETS.get(key)
     if not preset:
@@ -2935,9 +2737,6 @@ async def build_prompts_keyboard(track: str = "full"):
 
 @router.callback_query(F.data == "admin_reg_prompts")
 async def admin_reg_prompts(callback: types.CallbackQuery):
-    if callback.from_user.id not in config.ADMIN_IDS:
-        await callback.answer("Недостаточно прав", show_alert=True)
-        return
     text = await render_prompts_text("full")
     await callback.message.edit_text(text, parse_mode="HTML", reply_markup=await build_prompts_keyboard("full"))
     await callback.answer()
@@ -2947,9 +2746,6 @@ async def admin_reg_prompts(callback: types.CallbackQuery):
 async def reg_prompt_track_switch(callback: types.CallbackQuery):
     """Quick 260724-cfn (WR-02b): re-renders the SAME «✏️ Тексты вопросов» message in the
     requested track context. No FSM state — mirrors reg_q_track_switch."""
-    if callback.from_user.id not in config.ADMIN_IDS:
-        await callback.answer("Недостаточно прав", show_alert=True)
-        return
     track = callback.data.split(":", 1)[1]
     if track not in ("full", "party"):
         track = "full"
@@ -2960,9 +2756,6 @@ async def reg_prompt_track_switch(callback: types.CallbackQuery):
 
 @router.callback_query(F.data.startswith("reg_prompt_edit:"))
 async def reg_prompt_edit(callback: types.CallbackQuery, state: FSMContext):
-    if callback.from_user.id not in config.ADMIN_IDS:
-        await callback.answer("Недостаточно прав", show_alert=True)
-        return
     # Quick 260724-cfn (WR-02b): optional trailing ":party" track suffix. step_keys (full_name
     # + REG_FLOW) never contain ":", so this split is safe. Any suffix other than the literal
     # "party" falls back to "full" (closed whitelist, mirrors reg_q_track_switch).
@@ -3009,10 +2802,6 @@ async def build_menu_keyboard():
 
 @router.callback_query(F.data == "admin_menu_buttons")
 async def show_menu_buttons(callback: types.CallbackQuery):
-    if callback.from_user.id not in config.ADMIN_IDS:
-        await callback.answer("Недостаточно прав", show_alert=True)
-        return
-
     text = await render_menu_text()
     await callback.message.edit_text(text, parse_mode="HTML", reply_markup=await build_menu_keyboard())
     await callback.answer()
@@ -3020,10 +2809,6 @@ async def show_menu_buttons(callback: types.CallbackQuery):
 
 @router.callback_query(F.data.startswith("menu_toggle:"))
 async def toggle_menu_button(callback: types.CallbackQuery):
-    if callback.from_user.id not in config.ADMIN_IDS:
-        await callback.answer("Недостаточно прав", show_alert=True)
-        return
-
     key = callback.data.split(":", 1)[1]
     val = await get_setting(key)
     current_on = (val == "on") if val is not None else True
@@ -3041,10 +2826,6 @@ async def toggle_menu_button(callback: types.CallbackQuery):
 
 @router.callback_query(F.data == "menu_back")
 async def menu_buttons_back(callback: types.CallbackQuery):
-    if callback.from_user.id not in config.ADMIN_IDS:
-        await callback.answer("Недостаточно прав", show_alert=True)
-        return
-
     text = await render_settings_text()
     await callback.message.edit_text(text, parse_mode="HTML", reply_markup=await build_settings_keyboard())
     await callback.answer()
@@ -3230,9 +3011,6 @@ async def _show_current_card(target: types.Message, state: FSMContext):
 
 @router.callback_query(F.data == "admin_applications")
 async def show_applications(callback: types.CallbackQuery, state: FSMContext):
-    if callback.from_user.id not in config.ADMIN_IDS:
-        await callback.answer("Недостаточно прав", show_alert=True)
-        return
     await state.update_data(appr_skipped=[])  # session-only skip set (D-07)
     await callback.answer()
     await _show_current_card(callback.message, state)
@@ -3240,9 +3018,6 @@ async def show_applications(callback: types.CallbackQuery, state: FSMContext):
 
 @router.callback_query(F.data.startswith("appr_skip:"))
 async def appr_skip(callback: types.CallbackQuery, state: FSMContext):
-    if callback.from_user.id not in config.ADMIN_IDS:
-        await callback.answer("Недостаточно прав", show_alert=True)
-        return
     _, tid = _parse_appr(callback.data)
     data = await state.get_data()
     skipped = list(data.get("appr_skipped", []))
@@ -3259,9 +3034,6 @@ async def appr_skip(callback: types.CallbackQuery, state: FSMContext):
 
 @router.callback_query(F.data.startswith("appr_resume:"))
 async def appr_resume(callback: types.CallbackQuery):
-    if callback.from_user.id not in config.ADMIN_IDS:
-        await callback.answer("Недостаточно прав", show_alert=True)
-        return
     _, tid = _parse_appr(callback.data)
     user = await get_user(tid) if tid is not None else None
     if user and user.get("resume_file_id"):
@@ -3282,9 +3054,6 @@ async def appr_resume(callback: types.CallbackQuery):
 
 @router.callback_query(F.data.startswith("appr_approve:"))
 async def appr_approve(callback: types.CallbackQuery, state: FSMContext):
-    if callback.from_user.id not in config.ADMIN_IDS:
-        await callback.answer("Недостаточно прав", show_alert=True)
-        return
     _, tid = _parse_appr(callback.data)
     # WR-03: карточка могла быть отрисована для другого города (кнопки не истекают).
     if await _card_out_of_scope(callback.from_user.id, tid):
@@ -3308,9 +3077,6 @@ async def appr_approve(callback: types.CallbackQuery, state: FSMContext):
 
 @router.callback_query(F.data.startswith("appr_reject:"))
 async def appr_reject_start(callback: types.CallbackQuery, state: FSMContext):
-    if callback.from_user.id not in config.ADMIN_IDS:
-        await callback.answer("Недостаточно прав", show_alert=True)
-        return
     _, tid = _parse_appr(callback.data)
     # WR-03: проверяем ДО запроса причины — иначе менеджер напишет причину впустую.
     if await _card_out_of_scope(callback.from_user.id, tid):
@@ -3326,7 +3092,7 @@ async def appr_reject_start(callback: types.CallbackQuery, state: FSMContext):
 # would otherwise SWALLOW any /command typed mid-rejection as the rejection reason — the
 # rejection fires with a garbage reason and the command never runs. Catch «Отмена» AND any
 # «/...» command here first, aborting the rejection cleanly so the admin can re-issue it.
-@router.message(Approval.reason, is_admin, F.text.in_({"Отмена"}) | F.text.startswith("/"))
+@router.message(Approval.reason, F.text.in_({"Отмена"}) | F.text.startswith("/"))
 async def appr_reject_cancel(message: types.Message, state: FSMContext):
     await state.set_state(None)
     text = (message.text or "").strip()
@@ -3338,7 +3104,7 @@ async def appr_reject_cancel(message: types.Message, state: FSMContext):
     await _show_current_card(message, state)
 
 
-@router.message(Approval.reason, is_admin)
+@router.message(Approval.reason)
 async def appr_reject_reason(message: types.Message, state: FSMContext):
     data = await state.get_data()
     tid = data.get("appr_reject_id")
@@ -3365,9 +3131,6 @@ async def appr_reject_reason(message: types.Message, state: FSMContext):
 
 @router.callback_query(F.data == "appr_all")
 async def appr_all_confirm(callback: types.CallbackQuery, state: FSMContext):
-    if callback.from_user.id not in config.ADMIN_IDS:
-        await callback.answer("Недостаточно прав", show_alert=True)
-        return
     # T-072-07 (Repudiation): the confirmation text must name BOTH the city and the count —
     # this is an irreversible mass operation, and a global-looking button at 3 cities means
     # one tap flips a city the admin never chose.
@@ -3402,9 +3165,6 @@ async def appr_all_confirm(callback: types.CallbackQuery, state: FSMContext):
 
 @router.callback_query(F.data == "appr_all_no")
 async def appr_all_no(callback: types.CallbackQuery, state: FSMContext):
-    if callback.from_user.id not in config.ADMIN_IDS:
-        await callback.answer("Недостаточно прав", show_alert=True)
-        return
     await callback.answer("Отменено")
     await _show_current_card(callback.message, state)
 
@@ -3427,9 +3187,6 @@ async def _welcome_flipped(bot, ids: list):
 
 @router.callback_query(F.data.startswith("appr_all_yes"))
 async def appr_all_yes(callback: types.CallbackQuery, state: FSMContext):
-    if callback.from_user.id not in config.ADMIN_IDS:
-        await callback.answer("Недостаточно прав", show_alert=True)
-        return
     # CR-02: массовое одобрение необратимо, поэтому оно fail-closed. Город берётся из
     # callback_data (тот, что назван в тексте подтверждения), а не из текущего выбора
     # админа, и должен ему СОВПАДАТЬ. Если админ переключил город после показа диалога —
@@ -3560,9 +3317,6 @@ async def _show_current_receipt_card(target: types.Message, state: FSMContext):
 
 @router.callback_query(F.data == "admin_receipts")
 async def show_receipts(callback: types.CallbackQuery, state: FSMContext):
-    if callback.from_user.id not in config.ADMIN_IDS:
-        await callback.answer("Недостаточно прав", show_alert=True)
-        return
     await state.update_data(rcpt_skipped=[])
     await callback.answer()
     await _show_current_receipt_card(callback.message, state)
@@ -3570,9 +3324,6 @@ async def show_receipts(callback: types.CallbackQuery, state: FSMContext):
 
 @router.callback_query(F.data.startswith("rcpt_confirm:"))
 async def rcpt_confirm(callback: types.CallbackQuery, state: FSMContext):
-    if callback.from_user.id not in config.ADMIN_IDS:
-        await callback.answer("Недостаточно прав", show_alert=True)
-        return
     _, uid = _parse_rcpt(callback.data)
     # WR-03: та же проверка, что и в очереди заявок — карточка чека тоже не истекает.
     if await _card_out_of_scope(callback.from_user.id, uid):
@@ -3620,9 +3371,6 @@ async def rcpt_confirm(callback: types.CallbackQuery, state: FSMContext):
 
 @router.callback_query(F.data.startswith("rcpt_reject:"))
 async def rcpt_reject_start(callback: types.CallbackQuery, state: FSMContext):
-    if callback.from_user.id not in config.ADMIN_IDS:
-        await callback.answer("Недостаточно прав", show_alert=True)
-        return
     _, uid = _parse_rcpt(callback.data)
     # WR-03: проверяем ДО запроса причины.
     if await _card_out_of_scope(callback.from_user.id, uid):
@@ -3634,14 +3382,14 @@ async def rcpt_reject_start(callback: types.CallbackQuery, state: FSMContext):
     await callback.answer()
 
 
-@router.message(ReceiptReview.reject_reason, is_admin, F.text.in_({"Отмена", "/cancel"}))
+@router.message(ReceiptReview.reject_reason, F.text.in_({"Отмена", "/cancel"}))
 async def rcpt_reject_cancel(message: types.Message, state: FSMContext):
     await state.set_state(None)
     await message.answer("Отклонение отменено.", reply_markup=ReplyKeyboardRemove())
     await _show_current_receipt_card(message, state)
 
 
-@router.message(ReceiptReview.reject_reason, is_admin)
+@router.message(ReceiptReview.reject_reason)
 async def rcpt_reject_reason(message: types.Message, state: FSMContext):
     data = await state.get_data()
     uid = data.get("rcpt_reject_uid")
@@ -3673,9 +3421,6 @@ async def rcpt_reject_reason(message: types.Message, state: FSMContext):
 
 @router.callback_query(F.data.startswith("rcpt_skip:"))
 async def rcpt_skip(callback: types.CallbackQuery, state: FSMContext):
-    if callback.from_user.id not in config.ADMIN_IDS:
-        await callback.answer("Недостаточно прав", show_alert=True)
-        return
     _, uid = _parse_rcpt(callback.data)
     data = await state.get_data()
     skipped = list(data.get("rcpt_skipped", []))
@@ -3692,9 +3437,6 @@ async def rcpt_skip(callback: types.CallbackQuery, state: FSMContext):
 
 @router.callback_query(F.data.startswith("rcpt_view:"))
 async def rcpt_view(callback: types.CallbackQuery):
-    if callback.from_user.id not in config.ADMIN_IDS:
-        await callback.answer("Недостаточно прав", show_alert=True)
-        return
     _, uid = _parse_rcpt(callback.data)
     user = await get_user(uid) if uid is not None else None
     if user and user.get("receipt_file_id"):
@@ -3953,16 +3695,13 @@ async def _send_settings_guide(target: types.Message):
         await target.answer(chunk, parse_mode="HTML")
 
 
-@router.message(Command("settings_guide"), is_admin)
+@router.message(Command("settings_guide"))
 async def cmd_settings_guide(message: types.Message):
     await _send_settings_guide(message)
 
 
 @router.callback_query(F.data == "admin_settings_guide")
 async def show_admin_settings_guide(callback: types.CallbackQuery):
-    if callback.from_user.id not in config.ADMIN_IDS:
-        await callback.answer("Недостаточно прав", show_alert=True)
-        return
     await _send_settings_guide(callback.message)
     await callback.answer()
 
@@ -4038,9 +3777,6 @@ async def build_roles_keyboard() -> InlineKeyboardMarkup:
 
 @router.callback_query(F.data == "admin_roles")
 async def show_roles(callback: types.CallbackQuery):
-    if callback.from_user.id not in config.ADMIN_IDS:
-        await callback.answer("Недостаточно прав", show_alert=True)
-        return
     text = await render_roles_text()
     await callback.message.edit_text(text, parse_mode="HTML", reply_markup=await build_roles_keyboard())
     await callback.answer()
@@ -4048,9 +3784,6 @@ async def show_roles(callback: types.CallbackQuery):
 
 @router.callback_query(F.data.startswith("roles_toggle:"))
 async def toggle_role_enabled(callback: types.CallbackQuery):
-    if callback.from_user.id not in config.ADMIN_IDS:
-        await callback.answer("Недостаточно прав", show_alert=True)
-        return
     role = callback.data.split(":", 1)[1]
     if role not in ROLES:
         await callback.answer("Неизвестная роль", show_alert=True)
@@ -4119,9 +3852,6 @@ def _parse_staff_role_callback(data: str) -> tuple[int | None, str | None]:
 
 @router.callback_query(F.data == "roles_add")
 async def roles_add_start(callback: types.CallbackQuery, state: FSMContext):
-    if callback.from_user.id not in config.ADMIN_IDS:
-        await callback.answer("Недостаточно прав", show_alert=True)
-        return
     text = (
         "👥 Кого добавить менеджером?\n\n"
         "Пришлите одним сообщением:\n"
@@ -4181,9 +3911,6 @@ async def roles_add_person(message: types.Message, state: FSMContext):
 
 @router.callback_query(F.data.startswith("roles_addrole:"))
 async def roles_assign(callback: types.CallbackQuery):
-    if callback.from_user.id not in config.ADMIN_IDS:
-        await callback.answer("Недостаточно прав", show_alert=True)
-        return
     tid, role = _parse_staff_role_callback(callback.data)
     if tid is None or role not in ROLES:
         await callback.answer("Неизвестная роль", show_alert=True)
@@ -4198,9 +3925,6 @@ async def roles_assign(callback: types.CallbackQuery):
 
 @router.callback_query(F.data.startswith("roles_del:"))
 async def roles_remove(callback: types.CallbackQuery):
-    if callback.from_user.id not in config.ADMIN_IDS:
-        await callback.answer("Недостаточно прав", show_alert=True)
-        return
     tid, role = _parse_staff_role_callback(callback.data)
     if tid is None or role not in ROLES:
         await callback.answer("Неизвестная роль", show_alert=True)
