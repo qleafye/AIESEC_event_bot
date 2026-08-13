@@ -3751,6 +3751,47 @@ SETTINGS_GUIDE_SECTIONS = [
             },
         ],
     ),
+    (
+        "👥 Роли и доступы",
+        "Кто, кроме суперадминов из .env, имеет доступ к админке, и что именно каждой роли "
+        "можно (подробности — ADMIN_GUIDE.md, §22).",
+        [
+            {
+                "key": "role_reg_manager_enabled",
+                "label": "Роль «Менеджер регистраций»",
+                "what": "Выключенная роль не даёт прав никому из её носителей, но сами люди "
+                        "остаются в списке.",
+                "values": _GUIDE_ONOFF,
+                "default": "on",
+                "where": "⚙️ Настройки → «👥 Роли и доступы»",
+            },
+            {
+                "key": "role_caps_reg_manager",
+                "label": "Права роли «Менеджер регистраций»",
+                "what": "Список прав, по одному на строке (или через «;»): moderate_reg, "
+                        "moderate_receipts, moderate_game, broadcast, settings, stats, checkin.",
+                "default": "moderate_reg, moderate_receipts",
+                "where": "⚙️ Настройки → «👥 Роли и доступы» → «✏️ Права роли: 🛂 Менеджер регистраций»",
+            },
+            {
+                "key": "role_game_manager_enabled",
+                "label": "Роль «Менеджер геймификации»",
+                "what": "Выключенная роль не даёт прав никому из её носителей, но сами люди "
+                        "остаются в списке.",
+                "values": _GUIDE_ONOFF,
+                "default": "on",
+                "where": "⚙️ Настройки → «👥 Роли и доступы»",
+            },
+            {
+                "key": "role_caps_game_manager",
+                "label": "Права роли «Менеджер геймификации»",
+                "what": "Список прав, по одному на строке (или через «;»): moderate_reg, "
+                        "moderate_receipts, moderate_game, broadcast, settings, stats, checkin.",
+                "default": "moderate_game",
+                "where": "⚙️ Настройки → «👥 Роли и доступы» → «✏️ Права роли: 🎮 Менеджер геймификации»",
+            },
+        ],
+    ),
 ]
 
 # Every key the guide needs to read from bot_settings (single source for the DB fetch).
