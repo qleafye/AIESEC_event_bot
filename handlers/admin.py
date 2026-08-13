@@ -51,6 +51,7 @@ from database.db import (
     claim_question,
     set_question_answer,
     get_stuck_questions,
+    list_all_tasks,
 )
 from aiogram.exceptions import TelegramRetryAfter, TelegramForbiddenError, TelegramBadRequest
 from services.sheets import get_existing_sheet_ids, append_rows_to_sheet, ensure_sheet_header, sync_named_worksheet, dedupe_sheet_by_id, update_status_in_sheet, bulk_update_status_in_sheet, rebuild_main_sheet, REFUSED_UNPINNED_TAB
@@ -62,7 +63,7 @@ from services.scheduler import (
 )
 from services.allowlist import refresh_allowlist, allowlist_size
 from services.background import spawn as _spawn
-from handlers.states import Broadcast, EditSetting, Approval, ReceiptReview, StaffAdd
+from handlers.states import Broadcast, EditSetting, Approval, ReceiptReview, StaffAdd, GameTaskCreate
 from handlers.admin_caps import ALL_CAPABILITIES, CAP_LABELS, ROLES, role_caps_key, role_enabled_key, CapabilityMiddleware, required_capability, has_capability, resolve_capabilities, ANY_CAPABILITY, capability_holders
 from keyboards.builders import get_cancel_kb, MENU_BUTTONS, get_main_menu_kb
 from handlers.registration import REG_FLOW, REG_DEFAULTS, REG_LABELS, REG_PRESETS, REG_CATEGORIES, SHEET_HEADERS, STATUS_LABELS, _build_sheet_row, active_sheet_headers, set_sheet_schema, _sheet_value_map, approve_user, dropout_step_label, _apply_party_preset, _apply_short_preset, city_row_tab, incomplete_city_batches
@@ -148,6 +149,7 @@ _ADMIN_MENU_ROWS: list[tuple[str, str]] = [
     ("⚙️ Настройки форума", "admin_settings"),
     ("📖 Справка по настройкам", "admin_settings_guide"),
     ("🏙 Города мероприятия", "admin_cities"),
+    ("📋 Задания", "admin_game_tasks"),
 ]
 
 
@@ -4322,6 +4324,65 @@ async def roles_remove(callback: types.CallbackQuery):
     await remove_staff(tid, role)
     text = await render_roles_text()
     await callback.message.edit_text(text, parse_mode="HTML", reply_markup=await build_roles_keyboard())
+
+
+# ── Phase 9 (GAME-01, D-08, wave 2, 09-02): «📋 Задания» screen + creation wizard ───────────
+#
+# game_manager-only surface (moderate_game, ADMIN_CAPS pre-registered by 09-01). Task list is
+# ~10-20 rows a season (D-08 table), no pagination needed here — unlike the tinder-pattern
+# moderation queue wave 4 will add. T-09-05: task text is shown to every delegate later
+# (wave 3, parse_mode="HTML") — escaped on EVERY render, not just once at creation.
+
+def _game_tasks_list_kb() -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="➕ Новое задание", callback_data="gtnew")],
+    ])
+
+
+async def _render_game_tasks_text() -> str:
+    """Pure-ish (single read) list renderer — the ONE place task rows are formatted, reused by
+    the list screen itself, the post-confirm re-render, and the mid-wizard cancel re-render
+    (`cancel_game_task_create` below), so all three can never drift on format."""
+    tasks = await list_all_tasks()
+    if not tasks:
+        return "Заданий пока нет."
+    lines = ["📋 <b>Задания</b>\n"]
+    for t in tasks:
+        try:
+            deadline = datetime.strptime(t["deadline_at"], "%Y-%m-%d %H:%M:%S").strftime("%d.%m.%Y %H:%M")
+        except (TypeError, ValueError):
+            deadline = str(t["deadline_at"] or "—")
+        preview = html_module.escape(str(t["text"])[:60])
+        category = html_module.escape(str(t["category"]))
+        lines.append(f"«{category}» {preview} · {t['coins']}🪙 · до {deadline}")
+    return "\n".join(lines)
+
+
+@router.callback_query(F.data == "admin_game_tasks")
+async def show_game_tasks(callback: types.CallbackQuery, state: FSMContext):
+    text = await _render_game_tasks_text()
+    await callback.message.answer(text, parse_mode="HTML", reply_markup=_game_tasks_list_kb())
+    await callback.answer()
+
+
+@router.callback_query(F.data == "gtnew")
+async def game_task_new(callback: types.CallbackQuery, state: FSMContext):
+    await state.set_data({})  # explicit clear -- set_state alone does not clear get_data()
+    await callback.message.answer("Введите текст задания:", reply_markup=get_cancel_kb())
+    await state.set_state(GameTaskCreate.text)
+    await callback.answer()
+
+
+# Cancel-mid-wizard, registered BEFORE the per-step handlers below (admin.router: first match
+# wins) so «Отмена»/«/cancel» never falls through into a step handler and gets treated as task
+# text/coins/a deadline string. Mirrors cancel_edit_setting (StateFilter(EditSetting) above).
+@router.message(StateFilter(GameTaskCreate), Command("cancel"))
+@router.message(StateFilter(GameTaskCreate), F.text == "Отмена")
+async def cancel_game_task_create(message: types.Message, state: FSMContext):
+    await state.set_state(None)
+    await message.answer("Создание задания отменено.", reply_markup=ReplyKeyboardRemove())
+    text = await _render_game_tasks_text()
+    await message.answer(text, parse_mode="HTML", reply_markup=_game_tasks_list_kb())
 
 
 # ── ROLE-01 (D-16): «/admin auto-opens the one available section» ──────────────────────────
