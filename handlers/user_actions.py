@@ -11,7 +11,9 @@ from database.db import (
     get_balance,
     get_leaderboard,
     get_user_rank,
+    create_question,
 )
+from handlers.admin_caps import notify_by_capability  # D-13: fan out by capability, not bare ADMIN_IDS
 from keyboards.builders import (
     get_cancel_kb,
     get_main_menu_kb,
@@ -328,29 +330,28 @@ async def process_question(message: types.Message, state: FSMContext, bot: Bot):
     logger.info(f"User {message.from_user.id} sent question: {question_text}")
     user_info = f"@{message.from_user.username}" if message.from_user.username else f"ID: {message.from_user.id}"
 
+    # D-14: the row is created ONCE, before the D-13 fan-out below -- every recipient's copy
+    # of admin_text embeds the SAME question_id, so a reply from any one of them resolves to
+    # the same claim target (08-RESEARCH Pitfall 6). Do not move this call after the fan-out.
+    question_id = await create_question(message.from_user.id, question_text)
+
     admin_text = (
         f"❓ <b>Новый вопрос от {user_info}:</b>\n"
-        f"🆔 <code>{message.from_user.id}</code>\n\n"
+        f"🆔 <code>{message.from_user.id}</code>\n"
+        f"🧾 Вопрос #<code>{question_id}</code>\n\n"
         f"{html.escape(question_text)}\n\n"
         f"<i>↩️ Ответьте reply'ем на это сообщение, чтобы отправить ответ.</i>"
     )
 
-    # Send to all admins
-    sent_count = 0
-    if config.ADMIN_IDS:
-        for admin_id in config.ADMIN_IDS:
-            try:
-                await bot.send_message(admin_id, admin_text, parse_mode="HTML")
-                sent_count += 1
-            except Exception as e:
-                logger.error(f"Failed to send question to admin {admin_id}: {e}")
-                pass
+    # D-13: fan out to every current moderate_reg holder (falls back to config.ADMIN_IDS if
+    # nobody holds it -- T-08-31, never silently dropped).
+    sent_count = await notify_by_capability(bot, "moderate_reg", admin_text, parse_mode="HTML")
 
-        if sent_count > 0:
-            await message.answer("Твой вопрос отправлен!", reply_markup=await get_main_menu_kb(message.from_user.id))
-        else:
-            logger.error(f"Failed to send question from {message.from_user.id} to any admin")
-            await message.answer("Не удалось отправить вопрос, попробуйте позже.", reply_markup=await get_main_menu_kb(message.from_user.id))
+    if sent_count > 0:
+        await message.answer("Твой вопрос отправлен!", reply_markup=await get_main_menu_kb(message.from_user.id))
+    elif config.ADMIN_IDS:
+        logger.error(f"Failed to send question from {message.from_user.id} to any admin")
+        await message.answer("Не удалось отправить вопрос, попробуйте позже.", reply_markup=await get_main_menu_kb(message.from_user.id))
     else:
         logger.warning("No admins configured to receive questions")
         await message.answer("Администраторы не настроены.", reply_markup=await get_main_menu_kb(message.from_user.id))
