@@ -212,6 +212,9 @@ async def main():
     # P0 audit T-dw1-02: inject the bot into sheets.py so an exhausted-retry append can alert
     # admins; must be live before polling starts.
     sheets_service.set_alert_bot(bot)
+    # Quick task 260813: warn admins once per start if GOOGLE_SHEET_TAB is empty (main tab
+    # would resolve by position on first use) — fail-soft, never blocks startup.
+    await sheets_service.warn_if_tab_unconfigured()
     # Same fail-soft injection for proxy_session's failover-switch admin alert -- must also
     # be live before polling starts (the very first proxy rotation could happen immediately).
     proxy_session.set_alert_bot(bot)
