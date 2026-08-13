@@ -746,11 +746,14 @@ def test_single_section_autoopens(tmp_path):
 
     _roles_ready(tmp_path)
     asyncio.run(db.add_staff(MANAGER_ID, "reg_manager", ADMIN_ID))
-    # Isolate this person to exactly ONE menu row (admin_applications) — reg_manager's default
-    # caps (moderate_reg + moderate_receipts) would otherwise show two rows. Registry `list`
-    # values are stored as a raw newline/`;`-separated STRING (settings_schema._parse_setting),
-    # not a Python list -- one capability per line here is exactly one line.
-    asyncio.run(db.set_setting(role_caps_key("reg_manager"), "moderate_reg"))
+    # Isolate this person to exactly ONE menu row (admin_receipts) — reg_manager's default
+    # caps (moderate_reg + moderate_receipts) would otherwise show two rows, and moderate_reg
+    # alone now ALSO maps to two rows (admin_applications + T-08-33's admin_stuck_questions) --
+    # moderate_receipts is the one capability that still maps to exactly one row. Registry
+    # `list` values are stored as a raw newline/`;`-separated STRING
+    # (settings_schema._parse_setting), not a Python list -- one capability per line here is
+    # exactly one line.
+    asyncio.run(db.set_setting(role_caps_key("reg_manager"), "moderate_receipts"))
 
     message = FakeMessage(text="/admin", user_id=MANAGER_ID, chat_id=MANAGER_ID)
     state = _fresh_state(MANAGER_ID)
@@ -1057,6 +1060,7 @@ def test_reply_claims_question_and_sends_once(tmp_path):
     question = asyncio.run(db.get_question(qid))
     assert question["answer_text"] == "Дедлайн 1 сентября"
     assert question["answered_by"] == ADMIN_ID
+    assert question["delivered_at"] is not None  # T-08-33 part D: stamped on success
 
 
 def test_second_replier_is_rejected_with_winner_name(tmp_path):
@@ -1111,6 +1115,177 @@ def test_reply_notifies_other_moderate_reg_holders(tmp_path):
     assert MANAGER_ID in recipients  # holds moderate_reg, not the replier -- gets the notice
     assert ADMIN_ID not in recipients  # the replier never gets a self-notice
     assert STRANGER_ID in recipients  # the delegate still gets the actual answer
+
+
+# ── QUICK T-08-33: distinguish permanent/transient delivery errors (B), let the SAME person
+# retry a failed delivery (C), and detect/list "stuck" (claimed, never delivered) questions
+# via delivered_at rather than answer_text (D). Variant A (releasing the claim on failure) is
+# explicitly NOT implemented -- see 08-06-SUMMARY.md's "Known Limitations" + the backlog spec.
+
+class _RaisingBot(FakeBot):
+    """A FakeBot whose send_message raises a fixed exception `fail_times` times, then behaves
+    like a normal FakeBot -- lets a test drive one claim through a failed attempt followed by
+    a successful retry (or a second person's rejected attempt), all against the SAME bot."""
+
+    def __init__(self, exc, fail_times=1):
+        super().__init__()
+        self._exc = exc
+        self._remaining_fails = fail_times
+
+    async def send_message(self, chat_id, text, parse_mode=None, reply_markup=None):
+        if self._remaining_fails > 0:
+            self._remaining_fails -= 1
+            raise self._exc
+        self.sent.append((chat_id, text))
+
+
+def test_permanent_delivery_error_gives_no_retry_hint(tmp_path):
+    from aiogram.exceptions import TelegramForbiddenError
+
+    _roles_ready(tmp_path)
+    qid = asyncio.run(db.create_question(STRANGER_ID, "Когда дедлайн?"))
+    reply_to = FakeMessage(text=_question_notification_text(qid, STRANGER_ID))
+
+    exc = TelegramForbiddenError(method=None, message="Forbidden: bot was blocked by the user")
+    bot = _RaisingBot(exc)
+    result, event = dispatch_message("Дедлайн 1 сентября", ADMIN_ID, reply_to=reply_to, bot=bot)
+
+    assert result is not UNHANDLED
+    reply_texts = [t for t, _pm, _rm in event.answers]
+    assert any("заблокировал бота" in t for t in reply_texts)
+    assert not any("попробовать ещё раз" in t for t in reply_texts)
+
+    question = asyncio.run(db.get_question(qid))
+    assert question["answered_by"] == ADMIN_ID  # claim NOT released -- variant A rejected
+    assert question["delivered_at"] is None
+
+
+def test_permanent_bad_request_delivery_error_gives_no_retry_hint(tmp_path):
+    from aiogram.exceptions import TelegramBadRequest
+
+    _roles_ready(tmp_path)
+    qid = asyncio.run(db.create_question(STRANGER_ID, "Когда дедлайн?"))
+    reply_to = FakeMessage(text=_question_notification_text(qid, STRANGER_ID))
+
+    exc = TelegramBadRequest(method=None, message="Bad Request: chat not found")
+    bot = _RaisingBot(exc)
+    result, event = dispatch_message("Дедлайн 1 сентября", ADMIN_ID, reply_to=reply_to, bot=bot)
+
+    assert result is not UNHANDLED
+    reply_texts = [t for t, _pm, _rm in event.answers]
+    assert any("недоступен" in t or "заблокировал бота" in t for t in reply_texts)
+    assert not any("попробовать ещё раз" in t for t in reply_texts)
+
+
+def test_transient_delivery_error_suggests_retry(tmp_path):
+    _roles_ready(tmp_path)
+    qid = asyncio.run(db.create_question(STRANGER_ID, "Когда дедлайн?"))
+    reply_to = FakeMessage(text=_question_notification_text(qid, STRANGER_ID))
+
+    bot = _RaisingBot(TimeoutError("network blip"))
+    result, event = dispatch_message("Дедлайн 1 сентября", ADMIN_ID, reply_to=reply_to, bot=bot)
+
+    assert result is not UNHANDLED
+    reply_texts = [t for t, _pm, _rm in event.answers]
+    assert any("попробовать ещё раз" in t for t in reply_texts)
+    assert not any("заблокировал бота" in t for t in reply_texts)
+
+    question = asyncio.run(db.get_question(qid))
+    assert question["answered_by"] == ADMIN_ID
+    assert question["delivered_at"] is None
+
+
+def test_same_person_retry_after_failed_delivery_succeeds(tmp_path):
+    _roles_ready(tmp_path)
+    qid = asyncio.run(db.create_question(STRANGER_ID, "Когда дедлайн?"))
+    text = _question_notification_text(qid, STRANGER_ID)
+
+    bot = _RaisingBot(TimeoutError("network blip"), fail_times=1)
+    dispatch_message("Дедлайн 1 сентября", ADMIN_ID, reply_to=FakeMessage(text=text), bot=bot)
+
+    # Same person, same underlying claim, replying again -- the bot's one scripted failure is
+    # already spent, so this attempt succeeds.
+    result, event = dispatch_message(
+        "Дедлайн 1 сентября (повтор)", ADMIN_ID, reply_to=FakeMessage(text=text), bot=bot
+    )
+
+    assert result is not UNHANDLED
+    reply_texts = [t for t, _pm, _rm in event.answers]
+    assert "✅ Ответ отправлен пользователю." in reply_texts
+    assert any(cid == STRANGER_ID for cid, _t in bot.sent)
+
+    question = asyncio.run(db.get_question(qid))
+    assert question["answered_by"] == ADMIN_ID
+    assert question["delivered_at"] is not None
+    assert question["answer_text"] == "Дедлайн 1 сентября (повтор)"
+
+
+def test_different_manager_still_rejected_after_failed_delivery(tmp_path):
+    _roles_ready(tmp_path)
+    asyncio.run(db.add_staff(MANAGER_ID, "reg_manager", ADMIN_ID))
+    qid = asyncio.run(db.create_question(STRANGER_ID, "Когда дедлайн?"))
+    text = _question_notification_text(qid, STRANGER_ID)
+
+    bot = _RaisingBot(TimeoutError("network blip"), fail_times=1)
+    dispatch_message("Дедлайн 1 сентября", ADMIN_ID, reply_to=FakeMessage(text=text), bot=bot)
+
+    # A DIFFERENT manager (not the claimant) still gets the "already answered" rejection --
+    # only the winner's own retry is allowed through (C's whole point).
+    result, event = dispatch_message(
+        "Дедлайн 2 сентября", MANAGER_ID, reply_to=FakeMessage(text=text), bot=bot
+    )
+
+    assert result is not UNHANDLED
+    reply_texts = [t for t, _pm, _rm in event.answers]
+    assert any("уже ответил(а) Админ" in t for t in reply_texts)
+    assert not any(cid == STRANGER_ID for cid, _t in bot.sent)  # never delivered by either
+
+    question = asyncio.run(db.get_question(qid))
+    assert question["answered_by"] == ADMIN_ID
+    assert question["delivered_at"] is None
+
+
+def test_get_stuck_questions_returns_claimed_undelivered_only(tmp_path):
+    _roles_ready(tmp_path)
+
+    # Never claimed -- must not appear.
+    asyncio.run(db.create_question(STRANGER_ID, "Когда дедлайн?"))
+
+    # Claimed, delivery failed (delivered_at never stamped) -- must appear.
+    stuck_qid = asyncio.run(db.create_question(STRANGER_ID, "Где встреча?"))
+    asyncio.run(db.claim_question(stuck_qid, ADMIN_ID, "Админ"))
+
+    # Claimed AND delivered successfully with an EMPTY answer_text (mirrors a photo/voice/
+    # sticker reply, whose `.text` is None) -- must NOT appear; proves the detector doesn't
+    # fall back to answer_text emptiness (the exact pitfall the backlog spec calls out).
+    delivered_empty_qid = asyncio.run(db.create_question(STRANGER_ID, "Фото площадки?"))
+    asyncio.run(db.claim_question(delivered_empty_qid, ADMIN_ID, "Админ"))
+    asyncio.run(db.set_question_answer(delivered_empty_qid, ""))
+
+    rows = asyncio.run(db.get_stuck_questions())
+    ids = {row["id"] for row in rows}
+
+    assert ids == {stuck_qid}
+
+
+def test_stuck_questions_screen_shows_claimed_undelivered(tmp_path):
+    _roles_ready(tmp_path)
+    qid = asyncio.run(db.create_question(STRANGER_ID, "Когда дедлайн?"))
+    asyncio.run(db.claim_question(qid, ADMIN_ID, "Админ Первый"))
+
+    result, event = dispatch_callback("admin_stuck_questions", ADMIN_ID)
+
+    assert result is not UNHANDLED
+    assert str(STRANGER_ID) in event.message.text
+    assert "Админ Первый" in event.message.text
+
+
+def test_stuck_questions_screen_denied_for_stranger(tmp_path):
+    _roles_ready(tmp_path)
+
+    result, event = dispatch_callback("admin_stuck_questions", STRANGER_ID)
+
+    assert event.answers == []
 
 
 # ── 08-07 Task 2: registry round-trip the plan's own guide entries (Task 1) describe ───────
