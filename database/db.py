@@ -215,6 +215,12 @@ async def init_db():
                 answer_text TEXT
             )
         ''')
+        # T-08-33 (quick task): "delivered" cannot be derived from answer_text -- a
+        # successful reply with no text (photo/voice/sticker) writes "" there too, which is
+        # indistinguishable from "never delivered" if a reader treats an empty string as
+        # falsy. delivered_at is the single unambiguous signal, stamped ONLY on a successful
+        # send to the delegate (set_question_answer below), never on a claim alone.
+        await _ensure_column(db, "delegate_questions", "delivered_at", "TEXT")
 
         # Phase 07.1 migrations (CITY-01) — additive, idempotent; NO backfill. ~590 rows are
         # accumulated PAST data (only ~100 are live current-event applications); writing
@@ -1307,10 +1313,28 @@ async def claim_question(question_id: int, admin_id: int, admin_name: str) -> bo
 
 
 async def set_question_answer(question_id: int, answer_text: str):
-    """Record the answer text after a successful claim + successful delivery to the delegate."""
+    """Record the answer text AND stamp delivered_at together -- this is only ever called
+    after `bot.send_message`/`send_copy` to the delegate has actually SUCCEEDED (T-08-33
+    quick task). delivered_at, not answer_text, is the detector `get_stuck_questions()`
+    relies on -- see the column's comment in init_db for why answer_text alone can't do it."""
     async with aiosqlite.connect(config.DB_PATH) as db:
         await db.execute(
-            "UPDATE delegate_questions SET answer_text = ? WHERE id = ?",
-            (answer_text, question_id),
+            "UPDATE delegate_questions SET answer_text = ?, delivered_at = ? WHERE id = ?",
+            (answer_text, datetime.utcnow().isoformat(), question_id),
         )
         await db.commit()
+
+
+async def get_stuck_questions() -> list[dict]:
+    """T-08-33 quick task, part D: rows that were claimed (answered_by set) but never
+    successfully delivered (delivered_at still NULL) -- the admin "stuck questions" screen.
+    Deliberately does NOT look at answer_text (see set_question_answer's docstring)."""
+    async with aiosqlite.connect(config.DB_PATH) as db:
+        db.row_factory = aiosqlite.Row
+        async with db.execute(
+            "SELECT * FROM delegate_questions "
+            "WHERE answered_by IS NOT NULL AND delivered_at IS NULL "
+            "ORDER BY answered_at ASC"
+        ) as cursor:
+            rows = await cursor.fetchall()
+            return [dict(row) for row in rows]
