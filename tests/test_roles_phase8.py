@@ -43,8 +43,10 @@ def _roles_ready(tmp_path):
 
 
 class FakeUser:
-    def __init__(self, uid):
+    def __init__(self, uid, username=None, full_name=None):
         self.id = uid
+        self.username = username
+        self.full_name = full_name
 
 
 class FakeChat:
@@ -916,3 +918,93 @@ def test_registration_and_payment_route_via_capability():
     pay_src = (repo_root / "handlers/payment.py").read_text(encoding="utf-8")
     assert reg_src.count("notify_by_capability") >= 1
     assert pay_src.count("notify_by_capability") >= 1
+
+
+# ── 08-06 Task 2 (D-13/D-14): delegate_questions row created once, before the fan-out ──────
+
+def _count_questions():
+    import sqlite3
+    conn = sqlite3.connect(config.DB_PATH)
+    try:
+        return conn.execute("SELECT COUNT(*) FROM delegate_questions").fetchone()[0]
+    finally:
+        conn.close()
+
+
+def test_question_row_created_once_before_fanout(tmp_path):
+    from handlers import user_actions as ua_mod
+
+    _roles_ready(tmp_path)
+    asyncio.run(db.add_staff(MANAGER_ID, "reg_manager", ADMIN_ID))
+    asyncio.run(db.add_staff(GAME_MANAGER_ID, "game_manager", ADMIN_ID))  # not moderate_reg
+
+    bot = FakeBot()
+    state = _fresh_state(STRANGER_ID)
+    message = FakeMessage(text="Когда дедлайн?", user_id=STRANGER_ID, chat_id=STRANGER_ID)
+    asyncio.run(ua_mod.process_question(message, state, bot))
+
+    # 3 potential recipients (admin bootstrap + reg_manager + game_manager, minus
+    # game_manager which doesn't hold moderate_reg) -- still exactly ONE question row.
+    assert _count_questions() == 1
+
+
+def test_question_notification_carries_question_id(tmp_path):
+    from handlers import user_actions as ua_mod
+
+    _roles_ready(tmp_path)
+    asyncio.run(db.add_staff(MANAGER_ID, "reg_manager", ADMIN_ID))
+
+    bot = FakeBot()
+    state = _fresh_state(STRANGER_ID)
+    message = FakeMessage(text="Когда дедлайн?", user_id=STRANGER_ID, chat_id=STRANGER_ID)
+    asyncio.run(ua_mod.process_question(message, state, bot))
+
+    assert len(bot.sent) == 2  # ADMIN_ID + MANAGER_ID, both hold moderate_reg
+    numbers = set(re.findall(r"Вопрос #<code>(\d+)</code>", "\n".join(t for _c, t in bot.sent)))
+    assert len(numbers) == 1  # every copy carries the SAME question_id
+
+
+def test_question_claim_race(tmp_path):
+    _roles_ready(tmp_path)
+    qid = asyncio.run(db.create_question(STRANGER_ID, "Когда дедлайн?"))
+
+    first = asyncio.run(db.claim_question(qid, ADMIN_ID, "Админ Первый"))
+    second = asyncio.run(db.claim_question(qid, MANAGER_ID, "Менеджер Второй"))
+
+    assert first is True
+    assert second is False
+    question = asyncio.run(db.get_question(qid))
+    assert question["answered_by_name"] == "Админ Первый"
+    assert question["answered_by"] == ADMIN_ID
+
+
+def test_question_fanout_uses_moderate_reg(tmp_path):
+    from handlers import user_actions as ua_mod
+
+    _roles_ready(tmp_path)
+    asyncio.run(db.add_staff(MANAGER_ID, "reg_manager", ADMIN_ID))
+    asyncio.run(db.add_staff(GAME_MANAGER_ID, "game_manager", ADMIN_ID))
+
+    bot = FakeBot()
+    state = _fresh_state(STRANGER_ID)
+    message = FakeMessage(text="Когда дедлайн?", user_id=STRANGER_ID, chat_id=STRANGER_ID)
+    asyncio.run(ua_mod.process_question(message, state, bot))
+
+    recipients = [chat_id for chat_id, _t in bot.sent]
+    assert ADMIN_ID in recipients
+    assert MANAGER_ID in recipients
+    assert GAME_MANAGER_ID not in recipients
+
+
+def test_question_delegate_reply_text_unchanged_on_success(tmp_path):
+    from handlers import user_actions as ua_mod
+
+    _roles_ready(tmp_path)  # ADMIN_ID (bootstrap) is always a moderate_reg holder
+
+    bot = FakeBot()
+    state = _fresh_state(STRANGER_ID)
+    message = FakeMessage(text="Когда дедлайн?", user_id=STRANGER_ID, chat_id=STRANGER_ID)
+    asyncio.run(ua_mod.process_question(message, state, bot))
+
+    texts = [t for t, _pm, _rm in message.answers]
+    assert "Твой вопрос отправлен!" in texts

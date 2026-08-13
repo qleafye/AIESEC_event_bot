@@ -197,6 +197,25 @@ async def init_db():
         await _ensure_column(db, "users", "participant_type", "TEXT DEFAULT 'full'")
         await _ensure_column(db, "reg_started", "participant_type", "TEXT")
 
+        # Phase 8 (ROLE-01, D-13/D-14): one row per delegate question, created ONCE before
+        # the D-13 fan-out to every moderate_reg holder (not per-recipient) -- the atomic
+        # claim below is keyed by this row's id, never by a recipient's own copy of the
+        # notification (08-RESEARCH Pitfall 6). answered_by_name is captured AT claim time:
+        # the claiming manager isn't guaranteed a `users` row, so a later get_user() lookup
+        # could come back empty.
+        await db.execute('''
+            CREATE TABLE IF NOT EXISTS delegate_questions (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                user_id INTEGER NOT NULL,
+                question_text TEXT NOT NULL,
+                asked_at TEXT NOT NULL,
+                answered_by INTEGER,
+                answered_by_name TEXT,
+                answered_at TEXT,
+                answer_text TEXT
+            )
+        ''')
+
         # Phase 07.1 migrations (CITY-01) — additive, idempotent; NO backfill. ~590 rows are
         # accumulated PAST data (only ~100 are live current-event applications); writing
         # "Москва" into old rows would fabricate a fact in storage. NULL means "registered
@@ -1246,3 +1265,52 @@ async def get_staff_ids_by_role(role: str) -> list[int]:
         ) as cursor:
             rows = await cursor.fetchall()
             return [row[0] for row in rows]
+
+
+# ── Phase 8 (ROLE-01, D-13/D-14): delegate_questions accessors ─────────────────────────────
+
+async def create_question(user_id: int, question_text: str) -> int:
+    """One row per delegate question, created ONCE before the D-13 fan-out (never per
+    recipient -- 08-RESEARCH Pitfall 6). Returns the new row's id, embedded in every fanned-
+    out copy of the notification so any recipient's reply resolves to the same claim target."""
+    async with aiosqlite.connect(config.DB_PATH) as db:
+        cursor = await db.execute(
+            "INSERT INTO delegate_questions (user_id, question_text, asked_at) VALUES (?, ?, ?)",
+            (user_id, question_text, datetime.utcnow().isoformat()),
+        )
+        await db.commit()
+        return cursor.lastrowid
+
+
+async def get_question(question_id: int) -> dict | None:
+    async with aiosqlite.connect(config.DB_PATH) as db:
+        db.row_factory = aiosqlite.Row
+        async with db.execute(
+            "SELECT * FROM delegate_questions WHERE id = ?", (question_id,)
+        ) as cursor:
+            row = await cursor.fetchone()
+            return dict(row) if row else None
+
+
+async def claim_question(question_id: int, admin_id: int, admin_name: str) -> bool:
+    """Atomic single-row claim (D-14, same idiom as approve_user_atomic): True iff THIS call
+    flipped the row (rowcount==1) -- a concurrent second claim on the same question_id
+    returns False, and the loser reads answered_by_name back via get_question()."""
+    async with aiosqlite.connect(config.DB_PATH) as db:
+        cursor = await db.execute(
+            "UPDATE delegate_questions SET answered_by = ?, answered_by_name = ?, "
+            "answered_at = ? WHERE id = ? AND answered_by IS NULL",
+            (admin_id, admin_name, datetime.utcnow().isoformat(), question_id),
+        )
+        await db.commit()
+        return cursor.rowcount == 1
+
+
+async def set_question_answer(question_id: int, answer_text: str):
+    """Record the answer text after a successful claim + successful delivery to the delegate."""
+    async with aiosqlite.connect(config.DB_PATH) as db:
+        await db.execute(
+            "UPDATE delegate_questions SET answer_text = ? WHERE id = ?",
+            (answer_text, question_id),
+        )
+        await db.commit()
