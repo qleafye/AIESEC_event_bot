@@ -4,7 +4,9 @@ from pathlib import Path
 
 from config import config
 from database import db
+from handlers import admin as admin_mod
 from handlers import registration as reg
+from handlers.admin_caps import required_capability
 from handlers.registration import _membership_status_to_bool, is_subscribed, _normalize_channel_ref
 
 ADMIN_PY = Path(__file__).resolve().parent.parent / "handlers" / "admin.py"
@@ -127,16 +129,27 @@ def test_finalize_persists_subscription_for_new_user(tmp_path, monkeypatch):
     assert row["subscribed"] == 1  # flag persisted despite row not existing at cmd_start time
 
 
-# ── broadcast segments exist and are admin-gated ─────────────────────────────
+# ── broadcast segments exist and are capability-gated ────────────────────────
+#
+# Phase 8 / D-01: the old per-body `config.ADMIN_IDS` check is gone (08-04, one-shot
+# migration, D-03) -- the structural guarantee this test protects didn't disappear, its
+# CARRIER changed from a literal inside the handler body to a resolvable ADMIN_CAPS entry,
+# enforced by CapabilityMiddleware before the handler body ever runs.
 
-def test_segment_handlers_present_and_admin_gated():
+def test_segment_handlers_present_and_capability_gated():
     src = ADMIN_PY.read_text(encoding="utf-8")
     assert "broadcast_unsubscribed" in src
     assert "broadcast_incomplete" in src
     assert "get_non_subscriber_ids" in src
     assert "get_incomplete_user_ids" in src
-    # Each segment callback handler must enforce admin authorization.
+
+    # 1) both segment callback handlers are still registered on admin.router (not silently
+    #    dropped by the inline-check removal).
+    names = {h.callback.__name__ for h in admin_mod.router.callback_query.handlers}
     for marker in ("process_broadcast_unsubscribed", "process_broadcast_incomplete"):
-        idx = src.index(f"async def {marker}")
-        body = src[idx: idx + 400]
-        assert "config.ADMIN_IDS" in body, f"{marker} missing admin check"
+        assert marker in names, f"{marker} missing from admin.router"
+
+    # 2) both segment callback_data prefixes resolve to a real capability in the map --
+    #    deny-by-default (D-02) means an unmapped callback would be locked for everyone.
+    assert required_capability(callback_data="broadcast_unsubscribed") == "broadcast"
+    assert required_capability(callback_data="broadcast_incomplete") == "broadcast"
