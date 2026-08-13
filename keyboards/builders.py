@@ -15,6 +15,7 @@ MENU_BUTTONS = [
     ("menu_contacts", "📞 Контакты"),
     ("menu_question", "❓ Задать вопрос"),
     ("menu_coins", "🪙 Мои монеты"),
+    ("menu_game_tasks", "🎯 Задания"),
 ]
 
 async def get_main_menu_kb(telegram_id: int | None = None) -> ReplyKeyboardMarkup:
