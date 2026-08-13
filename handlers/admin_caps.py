@@ -206,6 +206,7 @@ ADMIN_CAPS: dict[str, str] = {
     "appr_reject:*": "moderate_reg",
     "appr_resume:*": "moderate_reg",
     "appr_skip:*": "moderate_reg",
+    "admin_stuck_questions": "moderate_reg",  # T-08-33 quick task, part D: stuck-question list
     "cmd:coins": "moderate_reg",
     "cmd:create_link": "moderate_reg",
     "cmd:find": "moderate_reg",
