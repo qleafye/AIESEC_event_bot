@@ -47,6 +47,9 @@ from database.db import (
     list_staff,
     add_staff,
     remove_staff,
+    get_question,
+    claim_question,
+    set_question_answer,
 )
 from aiogram.exceptions import TelegramRetryAfter
 from services.sheets import get_existing_sheet_ids, append_rows_to_sheet, ensure_sheet_header, sync_named_worksheet, dedupe_sheet_by_id, update_status_in_sheet, bulk_update_status_in_sheet, rebuild_main_sheet
@@ -59,7 +62,7 @@ from services.scheduler import (
 from services.allowlist import refresh_allowlist, allowlist_size
 from services.background import spawn as _spawn
 from handlers.states import Broadcast, EditSetting, Approval, ReceiptReview, StaffAdd
-from handlers.admin_caps import ALL_CAPABILITIES, CAP_LABELS, ROLES, role_caps_key, role_enabled_key, CapabilityMiddleware, required_capability, has_capability, resolve_capabilities, ANY_CAPABILITY
+from handlers.admin_caps import ALL_CAPABILITIES, CAP_LABELS, ROLES, role_caps_key, role_enabled_key, CapabilityMiddleware, required_capability, has_capability, resolve_capabilities, ANY_CAPABILITY, capability_holders
 from keyboards.builders import get_cancel_kb, MENU_BUTTONS, get_main_menu_kb
 from handlers.registration import REG_FLOW, REG_DEFAULTS, REG_LABELS, REG_PRESETS, REG_CATEGORIES, SHEET_HEADERS, STATUS_LABELS, _build_sheet_row, active_sheet_headers, set_sheet_schema, _sheet_value_map, approve_user, dropout_step_label, _apply_party_preset, _apply_short_preset, city_row_tab, incomplete_city_batches
 from cities import (  # Phase 07.1 (CITY-04): admin city screen; Phase 07.2 (CITY-02): admin city switcher + scoping
@@ -410,6 +413,37 @@ async def is_question_reply(message: types.Message) -> bool:
     return "🆔" in replied.text and "❓" in replied.text
 
 
+async def _notify_other_moderate_reg_holders(bot: Bot, admin_name: str, user_id: int, exclude_id: int):
+    """D-13: everyone else who currently holds moderate_reg -- not just config.ADMIN_IDS --
+    learns who answered. Fail-soft/silent per recipient, same shape used before this plan."""
+    safe_admin_name = html_module.escape(admin_name)
+    for other_id in await capability_holders("moderate_reg"):
+        if other_id == exclude_id:
+            continue
+        try:
+            await bot.send_message(
+                other_id,
+                f"✅ {safe_admin_name} ответил(а) на вопрос от пользователя <code>{user_id}</code>.",
+                parse_mode="HTML",
+            )
+        except Exception:
+            pass
+
+
+async def _deliver_question_reply(message: types.Message, bot: Bot, user_id: int, admin_name: str):
+    """Shared delivery: send the reply (text or a copy of the admin's message) to the
+    delegate, ack the replying admin, and fan out «who answered» to other moderate_reg
+    holders. Raises on delivery failure -- callers decide what happens to a claim, if any."""
+    if message.text:
+        reply_text = f"💬 <b>Ответ от организаторов:</b>\n\n{message.html_text}"
+        await bot.send_message(user_id, reply_text, parse_mode="HTML")
+    else:
+        await bot.send_message(user_id, "💬 <b>Ответ от организаторов:</b>", parse_mode="HTML")
+        await message.send_copy(user_id)
+    await message.reply("✅ Ответ отправлен пользователю.")
+    await _notify_other_moderate_reg_holders(bot, admin_name, user_id, message.from_user.id)
+
+
 @router.message(is_question_reply)
 async def admin_reply_to_question(message: types.Message, bot: Bot):
     replied = message.reply_to_message
@@ -418,31 +452,49 @@ async def admin_reply_to_question(message: types.Message, bot: Bot):
         return
 
     user_id = int(match.group(1))
+    admin_name = message.from_user.full_name or message.from_user.username or "Админ"
+
+    # D-14: `replied.text` is the PLAIN rendered text Telegram hands back (HTML markup like
+    # <code> is display-only, carried via separate `entities`, never present in `.text`
+    # itself -- same reason the pre-existing 🆔 regex above has no tag in its pattern) --
+    # match the bare digits after the marker, not the `<code>` wrapper it was SENT with.
+    # Only ASCII digits match (same protection as _parse_coins_amount, via the `[0-9]`
+    # character class). A message without the marker -- sent before this migration, or
+    # referencing a since-purged question row -- falls back to the legacy (no-claim) path so
+    # those older chats keep working (T-08-28).
+    qid_match = re.search(r"Вопрос #([0-9]+)", replied.text)
+    question = await get_question(int(qid_match.group(1))) if qid_match else None
+
+    if question is None:
+        logger.info(
+            "admin_reply_to_question: legacy (no-claim) path, question_id=%s",
+            qid_match.group(1) if qid_match else None,
+        )
+        try:
+            await _deliver_question_reply(message, bot, user_id, admin_name)
+        except Exception as e:
+            logger.error(f"Failed to send reply to user {user_id}: {e}")
+            await message.reply("❌ Не удалось отправить ответ пользователю.")
+        return
+
+    qid = question["id"]
+    claimed = await claim_question(qid, message.from_user.id, admin_name)
+
+    if not claimed:
+        # D-14: second (or later) responder -- the delegate gets NOTHING from this reply,
+        # only the person who tapped it sees who already answered.
+        winner = await get_question(qid)
+        winner_name = (winner or {}).get("answered_by_name") or "коллега"
+        await message.reply(f"⚠️ На этот вопрос уже ответил(а) {winner_name}.")
+        return
 
     try:
-        if message.text:
-            reply_text = f"💬 <b>Ответ от организаторов:</b>\n\n{message.html_text}"
-            await bot.send_message(user_id, reply_text, parse_mode="HTML")
-        else:
-            await bot.send_message(
-                user_id, "💬 <b>Ответ от организаторов:</b>", parse_mode="HTML"
-            )
-            await message.send_copy(user_id)
-        await message.reply("✅ Ответ отправлен пользователю.")
-
-        admin_name = message.from_user.full_name or message.from_user.username or "Админ"
-        for other_admin_id in config.ADMIN_IDS:
-            if other_admin_id == message.from_user.id:
-                continue
-            try:
-                await bot.send_message(
-                    other_admin_id,
-                    f"✅ {admin_name} ответил(а) на вопрос от пользователя <code>{user_id}</code>.",
-                    parse_mode="HTML",
-                )
-            except Exception:
-                pass
+        await _deliver_question_reply(message, bot, user_id, admin_name)
+        await set_question_answer(qid, message.html_text or message.text or "")
     except Exception as e:
+        # T-08-33 (accepted risk): the claim is NOT released here -- releasing it would let a
+        # retry double-send to the delegate. The manager sees an explicit failure and can
+        # follow up out-of-band; documented as a known limitation in 08-06-SUMMARY.md.
         logger.error(f"Failed to send reply to user {user_id}: {e}")
         await message.reply("❌ Не удалось отправить ответ пользователю.")
 
