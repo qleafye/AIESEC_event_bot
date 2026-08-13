@@ -4000,7 +4000,9 @@ async def render_roles_text() -> str:
         enabled = await get_setting_typed(role_enabled_key(role))
         state_label = "✅ Вкл" if enabled == "on" else "❌ Выкл"
         lines.append(f"{meta['label']}: <b>{state_label}</b>")
-        caps = await get_setting_typed(role_caps_key(role)) or []
+        # _known_caps отбрасывает сентинел пустого набора и мусор от старого текстового ввода —
+        # показывать «—» надо ровно тогда, когда реальных прав нет.
+        caps = _known_caps(await get_setting_typed(role_caps_key(role)))
         cap_text = ", ".join(CAP_LABELS.get(c, c) for c in caps) or "—"
         lines.append(f"　Права: {cap_text}")
 
@@ -4037,7 +4039,7 @@ async def build_roles_keyboard() -> InlineKeyboardMarkup:
         buttons.append([InlineKeyboardButton(text=toggle_text, callback_data=f"roles_toggle:{role}")])
         buttons.append([InlineKeyboardButton(
             text=f"✏️ Права роли: {meta['label']}",
-            callback_data=f"settings_edit:{role_caps_key(role)}",
+            callback_data=f"roles_caps:{role}",
         )])
 
     for row in await list_staff():
@@ -4080,6 +4082,109 @@ async def toggle_role_enabled(callback: types.CallbackQuery):
 
     text = await render_roles_text()
     await callback.message.edit_text(text, parse_mode="HTML", reply_markup=await build_roles_keyboard())
+
+
+# ── Права роли: экран с чекбоксами вместо ввода кодов текстом (quick 260813) ───────────────
+#
+# Раньше «✏️ Права роли» вела в generic settings_edit: менеджеру показывали подсказку
+# «moderate_reg, moderate_receipts, moderate_game, broadcast, settings, stats, checkin» и
+# просили НАБРАТЬ нужные коды через «;». Это ровно тот случай, который запрещает главное
+# правило проекта (CLAUDE.md): настройка из фиксированного набора обязана быть кнопками, а
+# кодовые значения человеку показывать нельзя.
+#
+# Хранение не меняется: тот же ключ role_caps_<role>, тот же type:"list" в SETTINGS_SCHEMA —
+# запись идёт «по одному коду на строке», что _parse_setting уже понимает. Значит откат к
+# старому экрану не требует миграции данных.
+#
+# Пустой набор пишется СЕНТИНЕЛОМ, а не пустой строкой: _parse_setting для type:"list"
+# возвращает `default` на falsy raw (settings_schema.py), то есть пустая строка молча вернула
+# бы роли права по умолчанию — противоположность тому, что нажал менеджер. Сентинел не входит
+# в ALL_CAPABILITIES, а resolve_capabilities отбрасывает всё, чего там нет
+# (handlers/admin_caps.py) — на выходе честный нулевой набор прав.
+_CAPS_EMPTY_SENTINEL = "—"
+
+
+def _known_caps(raw_caps) -> list[str]:
+    """Отфильтровать сентинел и любой мусор, оставшийся от прежнего текстового ввода."""
+    return [c for c in (raw_caps or []) if c in ALL_CAPABILITIES]
+
+
+async def render_role_caps_text(role: str) -> str:
+    meta = ROLES[role]
+    caps = _known_caps(await get_setting_typed(role_caps_key(role)))
+    lines = [
+        f"🛂 <b>Права роли: {meta['label']}</b>",
+        "",
+        "Отметьте, что этой роли можно делать. Нажатие сразу сохраняется.",
+        "",
+    ]
+    if caps:
+        lines.append("Сейчас разрешено: " + ", ".join(CAP_LABELS.get(c, c) for c in caps))
+    else:
+        lines.append("Сейчас роль <b>не может ничего</b> — ни одно право не отмечено.")
+    lines.append("")
+    lines.append(
+        "⚠️ «⚙️ Настройки» — это и управление ролями тоже: у кого есть это право, тот может "
+        "выдать права кому угодно, включая себя."
+    )
+    return "\n".join(lines)
+
+
+def build_role_caps_keyboard(role: str, caps: list[str]) -> InlineKeyboardMarkup:
+    buttons = [
+        [InlineKeyboardButton(
+            text=("✅ " if cap in caps else "☐ ") + CAP_LABELS.get(cap, cap),
+            callback_data=f"roles_cap:{role}:{cap}",
+        )]
+        for cap in ALL_CAPABILITIES
+    ]
+    buttons.append([InlineKeyboardButton(text="← К ролям", callback_data="admin_roles")])
+    return InlineKeyboardMarkup(inline_keyboard=buttons)
+
+
+async def _show_role_caps(callback: types.CallbackQuery, role: str):
+    caps = _known_caps(await get_setting_typed(role_caps_key(role)))
+    await callback.message.edit_text(
+        await render_role_caps_text(role),
+        parse_mode="HTML",
+        reply_markup=build_role_caps_keyboard(role, caps),
+    )
+
+
+@router.callback_query(F.data.startswith("roles_caps:"))
+async def show_role_caps(callback: types.CallbackQuery):
+    role = callback.data.split(":", 1)[1]
+    if role not in ROLES:
+        await callback.answer("Неизвестная роль", show_alert=True)
+        return
+    await _show_role_caps(callback, role)
+    await callback.answer()
+
+
+@router.callback_query(F.data.startswith("roles_cap:"))
+async def toggle_role_cap(callback: types.CallbackQuery):
+    parts = callback.data.split(":")
+    if len(parts) != 3:
+        await callback.answer("Неизвестная кнопка", show_alert=True)
+        return
+    _, role, cap = parts
+    if role not in ROLES or cap not in ALL_CAPABILITIES:
+        await callback.answer("Неизвестное право", show_alert=True)
+        return
+
+    caps = _known_caps(await get_setting_typed(role_caps_key(role)))
+    if cap in caps:
+        caps.remove(cap)
+        toast = f"{CAP_LABELS.get(cap, cap)}: снято"
+    else:
+        # Порядок как в ALL_CAPABILITIES, а не «в порядке нажатий» — чтобы строка прав в
+        # render_roles_text не прыгала между перерисовками.
+        caps = [c for c in ALL_CAPABILITIES if c == cap or c in caps]
+        toast = f"{CAP_LABELS.get(cap, cap)}: разрешено"
+
+    await set_setting(role_caps_key(role), "\n".join(caps) if caps else _CAPS_EMPTY_SENTINEL)
+    await callback.answer(toast)
+    await _show_role_caps(callback, role)
 
 
 _STAFF_INPUT_ERROR = (
