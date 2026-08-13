@@ -136,7 +136,9 @@ def test_admin_keyboard_for_is_the_plain_admin_keyboard(tmp_path):
     _admin_ready(tmp_path)
     asyncio.run(db.set_setting(f"{cities.ADMIN_CITY_KEY_PREFIX}{ADMIN_ID}", "spb"))
     scoped = asyncio.run(admin_mod.admin_keyboard_for(ADMIN_ID))
-    plain = admin_mod.build_admin_keyboard()
+    # 08-05 (D-15): build_admin_keyboard is now async + capability-filtered; ADMIN_ID is a
+    # bootstrap admin (ALL_CAPABILITIES) so the row set is unchanged from before 08-05.
+    plain = asyncio.run(admin_mod.build_admin_keyboard(ADMIN_ID))
     assert [[(b.text, b.callback_data) for b in row] for row in scoped.inline_keyboard] == \
            [[(b.text, b.callback_data) for b in row] for row in plain.inline_keyboard]
     flat = [b.callback_data for row in scoped.inline_keyboard for b in row]
