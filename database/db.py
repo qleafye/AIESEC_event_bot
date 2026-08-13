@@ -113,6 +113,19 @@ async def init_db():
         ''')
         await db.execute('CREATE INDEX IF NOT EXISTS idx_coins_user ON coins(user_id)')
 
+        # Phase 8 (ROLE-02, D-11): staff roster -- who holds which role, audited (added_by/
+        # added_at). Composite PRIMARY KEY naturally supports multi-role (D-08, one row per
+        # role held) and rejects a duplicate (telegram_id, role) pair without extra machinery.
+        await db.execute('''
+            CREATE TABLE IF NOT EXISTS staff (
+                telegram_id INTEGER NOT NULL,
+                role TEXT NOT NULL,
+                added_by INTEGER,
+                added_at TEXT NOT NULL,
+                PRIMARY KEY (telegram_id, role)
+            )
+        ''')
+
         # Phase 1: persistent dropout tracking (survives restart, independent of FSM)
         await db.execute('''
             CREATE TABLE IF NOT EXISTS reg_started (
@@ -1175,3 +1188,61 @@ async def set_payment_due(telegram_id: int, payment_due: str) -> None:
             (payment_due, telegram_id),
         )
         await db.commit()
+
+
+# ── Phase 8 (ROLE-02, D-11): staff roster accessors ─────────────────────────────────────
+
+async def add_staff(telegram_id: int, role: str, added_by: int | None) -> bool:
+    """Grant `role` to `telegram_id`. INSERT OR IGNORE against the composite PRIMARY KEY
+    (telegram_id, role) makes re-adding an already-held role a no-op, not a duplicate row.
+    Returns True iff this call actually inserted a new row."""
+    async with aiosqlite.connect(config.DB_PATH) as db:
+        cursor = await db.execute(
+            "INSERT OR IGNORE INTO staff (telegram_id, role, added_by, added_at) VALUES (?, ?, ?, ?)",
+            (telegram_id, role, added_by, datetime.utcnow().isoformat()),
+        )
+        await db.commit()
+        return cursor.rowcount == 1
+
+
+async def remove_staff(telegram_id: int, role: str) -> bool:
+    """Revoke `role` from `telegram_id`. Returns True iff a row was actually removed."""
+    async with aiosqlite.connect(config.DB_PATH) as db:
+        cursor = await db.execute(
+            "DELETE FROM staff WHERE telegram_id = ? AND role = ?",
+            (telegram_id, role),
+        )
+        await db.commit()
+        return cursor.rowcount == 1
+
+
+async def get_staff_roles(telegram_id: int) -> list[str]:
+    """All roles held by one person (empty list if they hold none)."""
+    async with aiosqlite.connect(config.DB_PATH) as db:
+        async with db.execute(
+            "SELECT role FROM staff WHERE telegram_id = ?", (telegram_id,)
+        ) as cursor:
+            rows = await cursor.fetchall()
+            return [row[0] for row in rows]
+
+
+async def list_staff() -> list[dict]:
+    """Full roster, oldest grant first -- feeds the "Роли и доступы" admin screen (08-02)."""
+    async with aiosqlite.connect(config.DB_PATH) as db:
+        db.row_factory = aiosqlite.Row
+        async with db.execute(
+            "SELECT telegram_id, role, added_by, added_at FROM staff ORDER BY added_at"
+        ) as cursor:
+            rows = await cursor.fetchall()
+            return [dict(row) for row in rows]
+
+
+async def get_staff_ids_by_role(role: str) -> list[int]:
+    """Every telegram_id currently holding exactly this role -- feeds notification fan-out
+    (D-13, wired in a later phase-8 plan)."""
+    async with aiosqlite.connect(config.DB_PATH) as db:
+        async with db.execute(
+            "SELECT telegram_id FROM staff WHERE role = ?", (role,)
+        ) as cursor:
+            rows = await cursor.fetchall()
+            return [row[0] for row in rows]
