@@ -96,3 +96,9 @@ class GameReview(StatesGroup):
     # an amount override on approve (A-04: «5 за каждый правильный ответ» tasks need this).
     reject_reason = State()
     approve_amount = State()
+
+class GameSubmit(StatesGroup):
+    # Phase 9 (wave 3, 09-03): delegate-facing submission wizard. Not under moderate_game —
+    # CapabilityMiddleware only sits on admin.router, user_actions.router never sees it, so this
+    # state was not part of 09-01's ADMIN_CAPS interface-first contract.
+    proof = State()   # waiting for confirmation content; task_id carried via state.get_data()
