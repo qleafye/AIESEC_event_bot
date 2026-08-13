@@ -15,6 +15,9 @@ of this plan, and a top-level import would break collection for the WHOLE file. 
 RED failure (AttributeError/ImportError) at this stage is expected and intentional.
 """
 import asyncio
+import inspect
+import re
+from pathlib import Path
 
 from aiogram.dispatcher.event.bases import UNHANDLED
 from aiogram.fsm.context import FSMContext
@@ -24,6 +27,7 @@ from aiogram.fsm.storage.memory import MemoryStorage
 from config import config
 from database import db
 from handlers import admin as admin_mod
+from handlers import states as states_mod
 
 
 ADMIN_ID = 900801
@@ -332,3 +336,167 @@ def test_staff_crud_duplicate_add_is_idempotent(tmp_path):
     staff = asyncio.run(db.list_staff())
     matches = [s for s in staff if s["telegram_id"] == MANAGER_ID and s["role"] == "reg_manager"]
     assert len(matches) == 1
+
+
+# ── Task 1 (D-01/D-02/D-03): completeness of ADMIN_CAPS + required_capability() ────────────
+#
+# The mechanism (08-03-PLAN.md Task 1 <action>, RESEARCH Pitfall 2): a `MagicFilter`'s literal
+# argument (`F.data == "x"` / `.startswith("x")`) has no public accessor -- so instead of
+# tagging every handler with `@flags.cap(...)`, we derive the expected capability KEY from the
+# ACTUAL decorator source text (`inspect.getsource`) and feed it through the real
+# `required_capability()` resolver. This is strictly stronger than a hand-maintained parallel
+# list: it breaks the moment a decorator's literal and ADMIN_CAPS's key genuinely disagree.
+
+# Handlers with no F.data/Command/StateFilter literal to derive a key from -- both audited by
+# hand against handlers/admin.py (08-03-PLAN.md Task 1 <action>, verbatim list):
+#   - admin_reply_to_question: bare predicate filter (`is_question_reply`), no literal at all
+#   - filter_pick_field: `F.data.in_({f"filter_f_{fld}" for fld in _PICKER_FIELDS})` -- a set
+#     COMPREHENSION over an external module-level constant, not string literals
+_UNKEYED_HANDLERS = {
+    "admin_reply_to_question": "special:question_reply",
+    "filter_pick_field": "filter_f_*",
+}
+
+
+def _decorator_lines(func):
+    """Every `@router.` line directly above `func` in its own source (inspect.getsource
+    returns decorators + signature + body for a plain registered function)."""
+    return [line for line in inspect.getsource(func).splitlines() if line.startswith("@router.")]
+
+
+_STATE_GROUP_ATTR_RE = re.compile(r"\b([A-Z]\w+)\.(\w+)\b")
+
+
+def _callback_keys_from_line(line):
+    """`F.data == "X"` -> "X"; `.startswith("X")` -> "X*"; `.in_({"A", "B"})` (string literals,
+    NOT a comprehension -- see filter_pick_field above) -> "A", "B"."""
+    keys = []
+    for m in re.finditer(r'F\.data\s*==\s*"([^"]+)"', line):
+        keys.append(m.group(1))
+    for m in re.finditer(r'F\.data\.startswith\("([^"]+)"\)', line):
+        keys.append(m.group(1) + "*")
+    m = re.search(r"F\.data\.in_\(\{([^}]*)\}\)", line)
+    if m and " for " not in m.group(1):
+        keys.extend(re.findall(r'"([^"]+)"', m.group(1)))
+    return keys
+
+
+def _message_keys_from_line(line):
+    """State reference wins over a command literal on the SAME line (mirrors
+    required_capability()'s own resolution order + the /cancel-mid-wizard case) -- checked
+    first as `StateFilter(Group)`, then as a bare `Group.state_name` positional arg."""
+    m = re.search(r"StateFilter\((\w+)\)", line)
+    if m and hasattr(states_mod, m.group(1)):
+        return [f"state:{m.group(1)}:*"]
+    for group_name, _state_name in _STATE_GROUP_ATTR_RE.findall(line):
+        if hasattr(states_mod, group_name):
+            return [f"state:{group_name}:*"]
+    m = re.search(r'Command\("([^"]+)"\)', line)
+    if m:
+        return [f"cmd:{m.group(1)}"]
+    return []
+
+
+def _keys_from_decorator(line, observer_name):
+    if observer_name == "callback_query":
+        return _callback_keys_from_line(line)
+    return _message_keys_from_line(line)
+
+
+def _keys_for_handler(handler_obj, observer_name):
+    keys = []
+    for line in _decorator_lines(handler_obj.callback):
+        keys.extend(_keys_from_decorator(line, observer_name))
+    return keys
+
+
+def _resolve_key(key):
+    """Feed a derived key back through the REAL required_capability() -- not a second lookup
+    table -- so this test proves ADMIN_CAPS itself is complete, not just internally consistent
+    with a copy of itself."""
+    from handlers.admin_caps import required_capability
+
+    if key.startswith("cmd:"):
+        return required_capability(command=key[len("cmd:"):])
+    if key.startswith("state:"):
+        group = key.split(":")[1]
+        return required_capability(raw_state=f"{group}:probe")
+    if key.startswith("special:"):
+        return required_capability(special=key[len("special:"):])
+    if key.endswith("*"):
+        return required_capability(callback_data=key[:-1] + "x")
+    return required_capability(callback_data=key)
+
+
+def _iter_admin_handlers():
+    for observer_name in ("message", "callback_query"):
+        observer = getattr(admin_mod.router, observer_name)
+        for handler_obj in observer.handlers:
+            yield observer_name, handler_obj
+
+
+def test_completeness_every_admin_handler_resolves_to_a_capability(tmp_path):
+    _roles_ready(tmp_path)
+    missing = []
+    for observer_name, handler_obj in _iter_admin_handlers():
+        name = handler_obj.callback.__name__
+        keys = _keys_for_handler(handler_obj, observer_name)
+        if not keys:
+            assert name in _UNKEYED_HANDLERS, (
+                f"{observer_name}:{name} has no derivable key from its decorator(s) and is "
+                "not in _UNKEYED_HANDLERS -- either add a matching F.data/Command/StateFilter "
+                "literal or register it explicitly."
+            )
+            keys = [_UNKEYED_HANDLERS[name]]
+        for key in keys:
+            if _resolve_key(key) is None:
+                missing.append((observer_name, name, key))
+    assert not missing, f"Handlers whose derived key(s) resolve to no capability: {missing}"
+
+
+def test_completeness_unkeyed_handlers_list_is_exactly_expected(tmp_path):
+    actual_unkeyed = set()
+    for observer_name, handler_obj in _iter_admin_handlers():
+        if not _keys_for_handler(handler_obj, observer_name):
+            actual_unkeyed.add(handler_obj.callback.__name__)
+    assert actual_unkeyed == set(_UNKEYED_HANDLERS)
+
+
+def test_completeness_admin_router_decorators_are_single_line():
+    src_path = Path(admin_mod.__file__)
+    bad = []
+    for lineno, line in enumerate(src_path.read_text(encoding="utf-8").splitlines(), start=1):
+        if line.lstrip().startswith("@router."):
+            if line.count("(") != line.count(")") or not line.rstrip().endswith(")"):
+                bad.append((lineno, line))
+    assert not bad, (
+        "Многострочный декоратор @router.* обнаружен — тест полноты карты прав "
+        f"(tests/test_roles_phase8.py) собирает ключи построчно и перестанет их видеть: {bad}"
+    )
+
+
+def test_required_capability_prefix_match_is_longest_first(tmp_path):
+    _roles_ready(tmp_path)
+    from handlers.admin_caps import required_capability
+
+    assert required_capability(callback_data="settings_edit:foo") == "settings"
+    assert required_capability(callback_data="appr_approve:123") == "moderate_reg"
+    assert required_capability(callback_data="zzz_unknown") is None
+
+
+def test_required_capability_message_order_state_before_command(tmp_path):
+    _roles_ready(tmp_path)
+    from handlers.admin_caps import required_capability
+
+    # /cancel mid-Broadcast-wizard resolves via the state (broadcast), not the absent
+    # "cmd:cancel" -- 08-03-PLAN.md <capability_map> footnote: cmd:cancel is deliberately
+    # absent from ADMIN_CAPS because both real /cancel handlers are StateFilter-gated.
+    assert required_capability(command="cancel", raw_state="Broadcast:message") == "broadcast"
+    assert required_capability(command="cancel") is None
+
+
+def test_every_capability_value_is_known(tmp_path):
+    from handlers.admin_caps import ADMIN_CAPS, ALL_CAPABILITIES, ANY_CAPABILITY
+
+    bad = [k for k, v in ADMIN_CAPS.items() if v != ANY_CAPABILITY and v not in ALL_CAPABILITIES]
+    assert not bad, bad
