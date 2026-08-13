@@ -1,10 +1,8 @@
-"""Phase 1 coins tests: /coins arg parsing, leaderboard rendering, admin-only guard."""
-from pathlib import Path
-
+"""Phase 1 coins tests: /coins arg parsing, leaderboard rendering, capability-gated guard."""
+from handlers import admin as admin_mod
 from handlers.admin import _parse_coins_amount
+from handlers.admin_caps import required_capability
 from handlers.user_actions import render_leaderboard
-
-ADMIN_PY = Path(__file__).resolve().parent.parent / "handlers" / "admin.py"
 
 
 # ── /coins amount parsing ────────────────────────────────────────────────────
@@ -29,14 +27,25 @@ def test_parse_empty():
     assert _parse_coins_amount("") is None
 
 
-# ── /coins is admin-only (structural — authorization not bypassable) ──────────
+# ── /coins is capability-gated (structural — authorization not bypassable) ────
+#
+# Phase 8 / D-01: the old `is_admin` filter is gone (08-04, one-shot migration, D-03) --
+# the structural guarantee this test protects didn't disappear, its CARRIER changed from
+# a literal in the decorator's source text to a resolvable entry in ADMIN_CAPS, enforced
+# by CapabilityMiddleware at dispatch time instead of a per-handler filter argument.
 
-def test_coins_handler_is_admin_guarded():
-    src = ADMIN_PY.read_text(encoding="utf-8")
-    # The /coins handler decorator must include the is_admin filter.
-    assert 'Command("coins")' in src
-    line = next(l for l in src.splitlines() if 'Command("coins")' in l)
-    assert "is_admin" in line
+def test_coins_handler_is_capability_guarded():
+    # 1) the handler is still registered on admin.router (not silently dropped by the
+    #    is_admin removal).
+    names = [
+        h.callback.__name__
+        for h in admin_mod.router.message.handlers
+    ]
+    assert "cmd_coins" in names
+
+    # 2) the command resolves to a real capability in the map -- deny-by-default (D-02)
+    #    means an unmapped command would be locked for everyone, including admins.
+    assert required_capability(command="coins") == "moderate_reg"
 
 
 # ── leaderboard rendering ────────────────────────────────────────────────────

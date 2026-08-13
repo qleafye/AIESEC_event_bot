@@ -15,6 +15,7 @@ import inspect
 from config import config
 from database import db
 from handlers import admin as admin_mod
+from handlers.admin_caps import required_capability
 import cities
 
 
@@ -150,12 +151,16 @@ def test_show_admin_export_caption_escapes_city_label(tmp_path):
     assert "&lt;script&gt;" in caption
 
 
-def test_show_admin_export_rejects_non_admin(tmp_path):
+def test_show_admin_export_is_capability_guarded(tmp_path):
+    # Phase 8 / D-01: the old per-handler `config.ADMIN_IDS` check (and the direct-call test
+    # that exercised it) is gone (08-04, one-shot migration, D-03) -- CapabilityMiddleware is
+    # now the ONLY enforcement point, and it only wraps events dispatched through the real
+    # router, not direct handler calls. The structural guarantee survives with a new carrier:
+    # the handler stays registered, and its callback_data resolves to a real capability.
     _admin_ready(tmp_path)
-    cb = FakeCallback("admin_export_csv", user_id=NON_ADMIN_ID)
-    asyncio.run(admin_mod.show_admin_export(cb))
-    assert cb.answers[-1] == ("Недостаточно прав", True)
-    assert cb.message.documents == []
+    names = {h.callback.__name__ for h in admin_mod.router.callback_query.handlers}
+    assert "show_admin_export" in names
+    assert required_capability(callback_data="admin_export_csv") == "stats"
 
 
 def test_export_incomplete_calls_batches_helper_without_city_arg():

@@ -17,6 +17,7 @@ from aiogram.fsm.storage.memory import MemoryStorage
 from config import config
 from database import db
 from handlers import admin as admin_mod
+from handlers.admin_caps import required_capability
 import cities
 
 
@@ -125,13 +126,19 @@ def test_admin_keyboard_for_module_on_has_city_header_row(tmp_path):
            [ [b.callback_data for b in row] for row in plain.inline_keyboard ]
 
 
-def test_admin_city_switch_screen_lists_all_cities_and_rejects_non_admin(tmp_path):
+def test_admin_city_switch_screen_lists_all_cities_and_is_capability_guarded(tmp_path):
     _admin_ready(tmp_path)
     asyncio.run(db.set_setting("event_city_enabled", "on"))
-    cb = FakeCallback("admin_city_switch", user_id=NON_ADMIN_ID)
-    asyncio.run(admin_mod.admin_city_switch(cb))
-    assert cb.answers[-1] == ("Недостаточно прав", True)
-    assert cb.message.edit_calls == 0
+
+    # Phase 8 / D-01: the old per-handler `config.ADMIN_IDS` check (and the direct-call
+    # rejection this test used to exercise on a non-admin FakeCallback) is gone (08-04,
+    # one-shot migration, D-03) -- CapabilityMiddleware is now the ONLY enforcement point,
+    # and it only wraps events dispatched through the real router, not direct handler calls.
+    # The structural guarantee survives with a new carrier: the handler stays registered,
+    # and its callback_data resolves to a real capability.
+    names = {h.callback.__name__ for h in admin_mod.router.callback_query.handlers}
+    assert "admin_city_switch" in names
+    assert required_capability(callback_data="admin_city_switch") == "moderate_reg"
 
     cb2 = FakeCallback("admin_city_switch")
     asyncio.run(admin_mod.admin_city_switch(cb2))
@@ -165,13 +172,14 @@ def test_admin_city_pick_unknown_code_rejected_no_write(tmp_path):
     assert asyncio.run(db.get_setting(f"{cities.ADMIN_CITY_KEY_PREFIX}{ADMIN_ID}")) is None
 
 
-def test_admin_city_pick_rejects_non_admin(tmp_path):
+def test_admin_city_pick_is_capability_guarded(tmp_path):
+    # Phase 8 / D-01: see test_admin_city_switch_screen_lists_all_cities_and_is_capability_
+    # guarded above.
     _admin_ready(tmp_path)
     asyncio.run(db.set_setting("event_city_enabled", "on"))
-    cb = FakeCallback("admin_city_pick:spb", user_id=NON_ADMIN_ID)
-    asyncio.run(admin_mod.admin_city_pick(cb))
-    assert cb.answers[-1] == ("Недостаточно прав", True)
-    assert asyncio.run(db.get_setting(f"{cities.ADMIN_CITY_KEY_PREFIX}{NON_ADMIN_ID}")) is None
+    names = {h.callback.__name__ for h in admin_mod.router.callback_query.handlers}
+    assert "admin_city_pick" in names
+    assert required_capability(callback_data="admin_city_pick:spb") == "moderate_reg"
 
 
 # ── Task 2: applications queue city-scoped + safe mass-approve ──────────────────────────

@@ -14,6 +14,7 @@ from config import config
 from database import db
 from handlers import admin as admin_mod
 from handlers import registration as reg_mod
+from handlers.admin_caps import required_capability
 from cities import CITIES
 
 
@@ -104,29 +105,32 @@ def test_build_cities_keyboard_contains_toggle_and_per_city_buttons(tmp_path):
     assert len(CITY_CODES) == 3
 
 
-def test_admin_cities_screen_rejects_non_admin(tmp_path):
+def test_admin_cities_screen_is_capability_guarded(tmp_path):
+    # Phase 8 / D-01: the old per-handler `config.ADMIN_IDS` check (and the direct-call test
+    # that exercised it) is gone (08-04, one-shot migration, D-03) -- CapabilityMiddleware is
+    # now the ONLY enforcement point, and it only wraps events dispatched through the real
+    # router, not direct handler calls. The structural guarantee survives with a new carrier:
+    # the handler stays registered, and its callback_data resolves to a real capability.
     _admin_ready(tmp_path)
-    cb = FakeCallback("admin_cities", user_id=NON_ADMIN_ID)
-    asyncio.run(admin_mod.show_admin_cities(cb))
-    assert cb.answers[-1] == ("Недостаточно прав", True)
-    assert cb.message.edit_calls == 0
-    assert asyncio.run(_settings_row_count()) == 0
+    names = {h.callback.__name__ for h in admin_mod.router.callback_query.handlers}
+    assert "show_admin_cities" in names
+    assert required_capability(callback_data="admin_cities") == "settings"
 
 
-def test_toggle_event_city_enabled_rejects_non_admin(tmp_path):
+def test_toggle_event_city_enabled_is_capability_guarded(tmp_path):
+    # Phase 8 / D-01: see test_admin_cities_screen_is_capability_guarded above.
     _admin_ready(tmp_path)
-    cb = FakeCallback("toggle_event_city_enabled", user_id=NON_ADMIN_ID)
-    asyncio.run(admin_mod.toggle_event_city_enabled(cb))
-    assert cb.answers[-1] == ("Недостаточно прав", True)
-    assert asyncio.run(_settings_row_count()) == 0
+    names = {h.callback.__name__ for h in admin_mod.router.callback_query.handlers}
+    assert "toggle_event_city_enabled" in names
+    assert required_capability(callback_data="toggle_event_city_enabled") == "settings"
 
 
-def test_city_toggle_rejects_non_admin(tmp_path):
+def test_city_toggle_is_capability_guarded(tmp_path):
+    # Phase 8 / D-01: see test_admin_cities_screen_is_capability_guarded above.
     _admin_ready(tmp_path)
-    cb = FakeCallback("city_toggle:spb", user_id=NON_ADMIN_ID)
-    asyncio.run(admin_mod.city_toggle(cb))
-    assert cb.answers[-1] == ("Недостаточно прав", True)
-    assert asyncio.run(_settings_row_count()) == 0
+    names = {h.callback.__name__ for h in admin_mod.router.callback_query.handlers}
+    assert "city_toggle" in names
+    assert required_capability(callback_data="city_toggle:spb") == "settings"
 
 
 def test_toggle_event_city_enabled_flips_off_to_on_to_off(tmp_path):
@@ -344,12 +348,12 @@ def test_export_incomplete_and_scheduler_sync_produce_same_batches(tmp_path, mon
     asyncio.run(go())
 
 
-def test_export_incomplete_rejects_non_admin(tmp_path):
+def test_export_incomplete_is_capability_guarded(tmp_path):
+    # Phase 8 / D-01: see test_admin_cities_screen_is_capability_guarded above.
     _admin_ready(tmp_path)
-    cb = FakeCallback("admin_export_incomplete", user_id=NON_ADMIN_ID)
-    asyncio.run(admin_mod.export_incomplete(cb))
-    assert cb.answers[-1] == ("Недостаточно прав", True)
-    assert cb.message.answers_sent == []
+    names = {h.callback.__name__ for h in admin_mod.router.callback_query.handlers}
+    assert "export_incomplete" in names
+    assert required_capability(callback_data="admin_export_incomplete") == "stats"
 
 
 # ── Task 3: documentation must stay in sync with implemented tab names/tokens ─────────────
