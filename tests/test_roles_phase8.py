@@ -257,3 +257,78 @@ def test_roles_caps_edit_button_uses_generic_settings_edit(tmp_path):
     _roles_ready(tmp_path)
     kb = asyncio.run(admin_mod.build_roles_keyboard())
     assert "settings_edit:role_caps_reg_manager" in _flat_callback_data(kb)
+
+
+# ── Task 2 (D-11/D-12/D-18): add/remove a manager — forward / @username / numeric id ───────
+
+def test_staff_crud_add_by_numeric_id(tmp_path):
+    _roles_ready(tmp_path)
+    result, event = dispatch_message(str(MANAGER_ID), ADMIN_ID, raw_state="StaffAdd:waiting_for_person")
+    assert result is not UNHANDLED
+    markup = event.answers[-1][2]
+    cds = [b.callback_data for row in markup.inline_keyboard for b in row]
+    assert f"roles_addrole:{MANAGER_ID}:reg_manager" in cds
+    assert f"roles_addrole:{MANAGER_ID}:game_manager" in cds
+
+
+def test_staff_crud_add_by_username(tmp_path):
+    _roles_ready(tmp_path)
+    asyncio.run(db.add_user({
+        "telegram_id": MANAGER_ID, "username": "@ivan", "full_name": "Ivan Test",
+        "registration_date": "2026-01-01",
+    }))
+    result, event = dispatch_message("@ivan", ADMIN_ID, raw_state="StaffAdd:waiting_for_person")
+    assert result is not UNHANDLED
+    markup = event.answers[-1][2]
+    cds = [b.callback_data for row in markup.inline_keyboard for b in row]
+    assert f"roles_addrole:{MANAGER_ID}:reg_manager" in cds
+
+
+def test_staff_crud_add_by_forward(tmp_path):
+    _roles_ready(tmp_path)
+    state = _fresh_state(ADMIN_ID)
+    event = FakeMessage(text=None, user_id=ADMIN_ID, chat_id=ADMIN_ID)
+    event.forward_from = FakeUser(MANAGER_ID)  # no `users` row needed for forward resolution
+    bot = FakeBot()
+    kwargs = dict(
+        event_from_user=FakeUser(ADMIN_ID), bot=bot,
+        raw_state="StaffAdd:waiting_for_person", state=state, event_update=None,
+    )
+    result = asyncio.run(admin_mod.router.propagate_event("message", event, **kwargs))
+    assert result is not UNHANDLED
+    markup = event.answers[-1][2]
+    cds = [b.callback_data for row in markup.inline_keyboard for b in row]
+    assert f"roles_addrole:{MANAGER_ID}:reg_manager" in cds
+
+
+def test_staff_crud_add_unresolvable_input_is_rejected(tmp_path):
+    _roles_ready(tmp_path)
+    dispatch_message("просто текст", ADMIN_ID, raw_state="StaffAdd:waiting_for_person")
+    assert asyncio.run(db.list_staff()) == []
+
+
+def test_staff_crud_assign_and_remove(tmp_path):
+    _roles_ready(tmp_path)
+    from handlers import admin_caps
+
+    dispatch_callback(f"roles_addrole:{MANAGER_ID}:reg_manager", ADMIN_ID)
+    assert asyncio.run(admin_caps.resolve_capabilities(MANAGER_ID)) == {"moderate_reg", "moderate_receipts"}
+
+    dispatch_callback(f"roles_del:{MANAGER_ID}:reg_manager", ADMIN_ID)
+    assert asyncio.run(admin_caps.resolve_capabilities(MANAGER_ID)) == set()
+
+
+def test_staff_crud_bootstrap_admin_cannot_be_removed(tmp_path):
+    _roles_ready(tmp_path)
+    result, event = dispatch_callback(f"roles_del:{ADMIN_ID}:reg_manager", ADMIN_ID)
+    assert any("суперадмин" in (text or "").lower() for text, _show_alert in event.answers)
+    assert asyncio.run(db.get_staff_roles(ADMIN_ID)) == []  # nothing to remove; ADMIN_IDS untouched
+
+
+def test_staff_crud_duplicate_add_is_idempotent(tmp_path):
+    _roles_ready(tmp_path)
+    dispatch_callback(f"roles_addrole:{MANAGER_ID}:reg_manager", ADMIN_ID)
+    dispatch_callback(f"roles_addrole:{MANAGER_ID}:reg_manager", ADMIN_ID)
+    staff = asyncio.run(db.list_staff())
+    matches = [s for s in staff if s["telegram_id"] == MANAGER_ID and s["role"] == "reg_manager"]
+    assert len(matches) == 1
