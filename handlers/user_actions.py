@@ -151,6 +151,120 @@ async def show_game_tasks(message: types.Message):
     await message.answer("\n\n".join(lines), parse_mode="HTML", reply_markup=kb)
 
 
+_GS_PROOF_PROMPTS = {
+    "photo": "Пришли скриншот/фото:",
+    "pdf": "Пришли файл (PDF):",
+    "text": "Напиши текстом:",
+    "link": "Пришли ссылку:",
+}
+
+_GS_MISMATCH_PROMPTS = {
+    "photo": "Пришли, пожалуйста, скриншот/фото.",
+    "pdf": "Пришли, пожалуйста, файл (PDF).",
+    "text": "Пришли, пожалуйста, текст.",
+    "link": "Пришли, пожалуйста, ссылку.",
+}
+
+
+@router.callback_query(F.data.startswith("mytask_submit:"))
+async def mytask_submit_start(callback: types.CallbackQuery, state: FSMContext):
+    try:
+        task_id = int(callback.data.split(":", 1)[1])
+    except ValueError:
+        await callback.answer("Некорректное задание", show_alert=True)
+        return
+
+    task = await get_task(task_id)
+    if task is None:
+        await callback.answer("Задание не найдено", show_alert=True)
+        return
+
+    # A-05 (созвон 13.08): дедлайн мягкий -- НЕ блокирует сдачу. Единственный оставшийся
+    # серверный гвард на этом пути -- дубль-сдача (T-09-09), проверяется ниже.
+    active = await get_active_submission(task_id, callback.from_user.id)
+    if active is not None:
+        await callback.answer("Уже отправлено, ожидай проверки", show_alert=True)
+        return
+
+    await state.update_data(gs_task_id=task_id)
+
+    prompt = _GS_PROOF_PROMPTS.get(task["proof_type"], "Пришли подтверждение:")
+    try:
+        deadline_passed = (
+            datetime.strptime(task["deadline_at"], "%Y-%m-%d %H:%M:%S") <= datetime.now()
+        )
+    except (TypeError, ValueError):
+        deadline_passed = False
+    if deadline_passed:
+        # Делегат не должен узнавать об этом только из отсутствия коинов -- предупреждаем
+        # прямо в промпте, отправка при этом РАЗРЕШЕНА (A-05, созвон 13.08).
+        prompt = (
+            "⏰ Срок сдачи вышел. Отправить можно, но начислять коины будет решать менеджер.\n\n"
+            + prompt
+        )
+
+    await callback.message.answer(prompt, reply_markup=get_cancel_kb())
+    await state.set_state(GameSubmit.proof)
+    await callback.answer()
+
+
+@router.message(GameSubmit.proof, F.text.in_({"Отмена"}))
+async def cancel_game_submit(message: types.Message, state: FSMContext):
+    await state.set_state(None)
+    await message.answer("Действие отменено.", reply_markup=ReplyKeyboardRemove())
+
+
+@router.message(GameSubmit.proof)
+async def receive_proof(message: types.Message, bot: Bot, state: FSMContext):
+    data = await state.get_data()
+    task_id = data.get("gs_task_id")
+    task = await get_task(task_id)
+    if task is None:
+        # Задание исчезло, пока делегат печатал -- выходим из состояния, не молчим.
+        await state.set_state(None)
+        await message.answer("Это задание больше не доступно.", reply_markup=ReplyKeyboardRemove())
+        return
+
+    proof_type = task["proof_type"]
+    content = None
+    if proof_type == "photo" and message.photo:
+        content = message.photo[-1].file_id
+    elif proof_type == "pdf" and message.document:
+        content = message.document.file_id
+    elif proof_type in ("text", "link") and message.text:
+        content = message.text
+
+    if content is None:
+        await message.answer(_GS_MISMATCH_PROMPTS.get(proof_type, "Пришли, пожалуйста, подтверждение."))
+        return  # остаёмся в GameSubmit.proof, create_submission НЕ вызывается
+
+    submission_id = await create_submission(
+        task_id, message.from_user.id, content_type=proof_type, content=content,
+        submitted_at=datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+    )
+    if submission_id is None:
+        # T-09-01/D-05: гонка -- параллельная сдача той же пары успела раньше. Партиционный
+        # индекс отклонил вставку. Без уведомления менеджеров, без технической ошибки делегату.
+        await state.set_state(None)
+        await message.answer(
+            "Уже отправлено — кто-то опередил на долю секунды. Обнови список заданий.",
+            reply_markup=ReplyKeyboardRemove(),
+        )
+        return
+
+    await state.set_state(None)
+    await message.answer("Принято! Менеджер проверит и начислит монеты.", reply_markup=ReplyKeyboardRemove())
+
+    submitter_name = message.from_user.full_name or str(message.from_user.id)
+    # D-13: fan out to every current moderate_game holder, not a bare loop over ADMIN_IDS.
+    await notify_by_capability(
+        bot, "moderate_game",
+        f"🎮 Новая сдача по заданию «{html.escape(str(task['text'])[:60])}» от "
+        f"{html.escape(str(submitter_name))}",
+        parse_mode="HTML",
+    )
+
+
 @router.message(F.text == "💳 Оплата")
 async def upload_receipt_entry(message: types.Message, bot: Bot):
     """Re-entry into the payment step for a user who deferred (or lost FSM state on a
