@@ -1008,3 +1008,106 @@ def test_question_delegate_reply_text_unchanged_on_success(tmp_path):
 
     texts = [t for t, _pm, _rm in message.answers]
     assert "Твой вопрос отправлен!" in texts
+
+
+# ── 08-06 Task 3 (D-14): atomic claim in admin_reply_to_question ───────────────────────────
+
+def _question_notification_text(qid, delegate_id, question_text="Когда дедлайн?"):
+    """`FakeMessage.text` mirrors real aiogram behaviour: Telegram hands back the PLAIN
+    rendered text for a reply_to_message -- HTML markup (<code>/<b>/<i>) is display-only,
+    carried via `entities`, never present in `.text` itself. So this is the plain-text
+    equivalent of the HTML `admin_text` process_question actually SENDS (post-Task-2):
+    🆔/❓ markers (routing predicate) + the Вопрос #<id> marker (D-14 claim key)."""
+    return (
+        f"❓ Новый вопрос от ID: {delegate_id}:\n"
+        f"🆔 {delegate_id}\n"
+        f"🧾 Вопрос #{qid}\n\n"
+        f"{question_text}\n\n"
+        f"↩️ Ответьте reply'ем на это сообщение, чтобы отправить ответ."
+    )
+
+
+def _legacy_question_notification_text(delegate_id, question_text="Когда дедлайн?"):
+    """Pre-Task-2 shape: no Вопрос #<id> marker at all (plain-text form, see above)."""
+    return (
+        f"❓ Новый вопрос от ID: {delegate_id}:\n"
+        f"🆔 {delegate_id}\n\n"
+        f"{question_text}\n\n"
+        f"↩️ Ответьте reply'ем на это сообщение, чтобы отправить ответ."
+    )
+
+
+def test_reply_claims_question_and_sends_once(tmp_path):
+    _roles_ready(tmp_path)
+    qid = asyncio.run(db.create_question(STRANGER_ID, "Когда дедлайн?"))
+    reply_to = FakeMessage(text=_question_notification_text(qid, STRANGER_ID))
+
+    bot = FakeBot()
+    result, event = dispatch_message(
+        "Дедлайн 1 сентября", ADMIN_ID, reply_to=reply_to, bot=bot
+    )
+
+    assert result is not UNHANDLED
+    assert (STRANGER_ID, "💬 <b>Ответ от организаторов:</b>\n\nДедлайн 1 сентября") in [
+        (cid, t) for cid, t in bot.sent
+    ]
+    reply_texts = [t for t, _pm, _rm in event.answers]
+    assert "✅ Ответ отправлен пользователю." in reply_texts
+
+    question = asyncio.run(db.get_question(qid))
+    assert question["answer_text"] == "Дедлайн 1 сентября"
+    assert question["answered_by"] == ADMIN_ID
+
+
+def test_second_replier_is_rejected_with_winner_name(tmp_path):
+    _roles_ready(tmp_path)
+    asyncio.run(db.add_staff(MANAGER_ID, "reg_manager", ADMIN_ID))
+    qid = asyncio.run(db.create_question(STRANGER_ID, "Когда дедлайн?"))
+    text = _question_notification_text(qid, STRANGER_ID)
+
+    bot = FakeBot()
+    dispatch_message("Дедлайн 1 сентября", ADMIN_ID, reply_to=FakeMessage(text=text), bot=bot)
+    sent_after_first = len(bot.sent)
+
+    result, event = dispatch_message(
+        "Дедлайн 2 сентября", MANAGER_ID, reply_to=FakeMessage(text=text), bot=bot
+    )
+
+    assert result is not UNHANDLED
+    reply_texts = [t for t, _pm, _rm in event.answers]
+    assert any("уже ответил(а) Админ" in t for t in reply_texts)
+    # Second responder's attempt must not reach the delegate at all.
+    assert len(bot.sent) == sent_after_first
+    assert not any(cid == STRANGER_ID and "2 сентября" in t for cid, t in bot.sent)
+
+
+def test_reply_without_question_id_falls_back_to_legacy_path(tmp_path):
+    _roles_ready(tmp_path)
+    reply_to = FakeMessage(text=_legacy_question_notification_text(STRANGER_ID))
+
+    bot = FakeBot()
+    result, event = dispatch_message(
+        "Дедлайн 1 сентября", ADMIN_ID, reply_to=reply_to, bot=bot
+    )
+
+    assert result is not UNHANDLED
+    assert any(cid == STRANGER_ID for cid, _t in bot.sent)
+    reply_texts = [t for t, _pm, _rm in event.answers]
+    assert "✅ Ответ отправлен пользователю." in reply_texts
+    # No question row exists for this notification -- legacy path takes no claim.
+    assert _count_questions() == 0
+
+
+def test_reply_notifies_other_moderate_reg_holders(tmp_path):
+    _roles_ready(tmp_path)
+    asyncio.run(db.add_staff(MANAGER_ID, "reg_manager", ADMIN_ID))
+    qid = asyncio.run(db.create_question(STRANGER_ID, "Когда дедлайн?"))
+    reply_to = FakeMessage(text=_question_notification_text(qid, STRANGER_ID))
+
+    bot = FakeBot()
+    dispatch_message("Дедлайн 1 сентября", ADMIN_ID, reply_to=reply_to, bot=bot)
+
+    recipients = [cid for cid, _t in bot.sent]
+    assert MANAGER_ID in recipients  # holds moderate_reg, not the replier -- gets the notice
+    assert ADMIN_ID not in recipients  # the replier never gets a self-notice
+    assert STRANGER_ID in recipients  # the delegate still gets the actual answer
