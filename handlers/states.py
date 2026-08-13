@@ -74,3 +74,8 @@ class EditSetting(StatesGroup):
     waiting_for_value = State()
     waiting_for_photo = State()
     waiting_for_file = State()
+
+class StaffAdd(StatesGroup):
+    # Phase 8 (ROLE-02, D-18): single-step wizard — one message resolves a person by
+    # forwarded message / @username / numeric id, then role assignment is a callback.
+    waiting_for_person = State()
