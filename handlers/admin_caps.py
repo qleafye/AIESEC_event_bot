@@ -263,6 +263,7 @@ ADMIN_CAPS: dict[str, str] = {
     "admin_reg_prompts": "settings",
     "admin_reg_questions": "settings",
     "admin_rebuild_sheet": "settings",
+    "admin_rebuild_sheet_go": "settings",
     "admin_roles": "settings",
     "admin_settings": "settings",
     "admin_settings_guide": "settings",
