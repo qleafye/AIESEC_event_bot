@@ -265,6 +265,10 @@ ADMIN_CAPS: dict[str, str] = {
     "admin_rebuild_sheet": "settings",
     "admin_rebuild_sheet_go": "settings",
     "admin_roles": "settings",
+    # Экран прав роли с чекбоксами (quick 260813) — «roles_cap:*» не перехватывает
+    # «roles_caps:...»: префикс различается символом на 10-й позиции.
+    "roles_cap:*": "settings",
+    "roles_caps:*": "settings",
     "admin_settings": "settings",
     "admin_settings_guide": "settings",
     "admin_sync_sheet": "settings",

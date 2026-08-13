@@ -260,10 +260,14 @@ def test_roles_toggle_flips_setting(tmp_path):
     assert asyncio.run(get_setting_typed("role_game_manager_enabled")) == "on"
 
 
-def test_roles_caps_edit_button_uses_generic_settings_edit(tmp_path):
+def test_roles_caps_edit_button_opens_the_checkbox_screen(tmp_path):
+    """Было: кнопка вела в generic settings_edit, который просил НАБРАТЬ коды прав текстом.
+    Quick 260813 заменил это экраном с чекбоксами (tests/test_role_caps_buttons_260813.py) —
+    здесь проверяется только то, что старый текстовый путь с экрана ролей больше не доступен."""
     _roles_ready(tmp_path)
-    kb = asyncio.run(admin_mod.build_roles_keyboard())
-    assert "settings_edit:role_caps_reg_manager" in _flat_callback_data(kb)
+    cds = _flat_callback_data(asyncio.run(admin_mod.build_roles_keyboard()))
+    assert "roles_caps:reg_manager" in cds
+    assert "settings_edit:role_caps_reg_manager" not in cds
 
 
 # ── Task 2 (D-11/D-12/D-18): add/remove a manager — forward / @username / numeric id ───────
