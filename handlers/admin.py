@@ -59,7 +59,7 @@ from services.scheduler import (
 from services.allowlist import refresh_allowlist, allowlist_size
 from services.background import spawn as _spawn
 from handlers.states import Broadcast, EditSetting, Approval, ReceiptReview, StaffAdd
-from handlers.admin_caps import ALL_CAPABILITIES, CAP_LABELS, ROLES, role_caps_key, role_enabled_key
+from handlers.admin_caps import ALL_CAPABILITIES, CAP_LABELS, ROLES, role_caps_key, role_enabled_key, CapabilityMiddleware
 from keyboards.builders import get_cancel_kb, MENU_BUTTONS, get_main_menu_kb
 from handlers.registration import REG_FLOW, REG_DEFAULTS, REG_LABELS, REG_PRESETS, REG_CATEGORIES, SHEET_HEADERS, STATUS_LABELS, _build_sheet_row, active_sheet_headers, set_sheet_schema, _sheet_value_map, approve_user, dropout_step_label, _apply_party_preset, _apply_short_preset, city_row_tab, incomplete_city_batches
 from cities import (  # Phase 07.1 (CITY-04): admin city screen; Phase 07.2 (CITY-02): admin city switcher + scoping
@@ -76,6 +76,21 @@ from cities import (  # Phase 07.1 (CITY-04): admin city screen; Phase 07.2 (CIT
 
 router = Router()
 logger = logging.getLogger(__name__)
+
+# ROLE-01 (D-01): the one enforcement point. INNER middleware (`.middleware()` -- deliberately
+# NOT the router's outer-hook variant) -- it only wraps a handler whose OWN filter already
+# matched, so it never touches events belonging to sibling routers (payment/registration/
+# user_actions), regardless of `admin.router` being registered first in main.py. See
+# handlers/admin_caps.py for the map + resolver + the class itself.
+router.callback_query.middleware(CapabilityMiddleware())
+router.message.middleware(CapabilityMiddleware())
+
+# INVARIANT for future phases (Phase 9/12 add handlers to this file): every `@router.*`
+# decorator below MUST fit on ОДНОЙ строкой (a single line). The capability-map completeness
+# test (tests/test_roles_phase8.py) extracts each handler's callback_data/command/state literal
+# straight from the decorator's source TEXT, line by line -- a decorator split across multiple
+# lines leaves its handler with no derivable key, and ADMIN_CAPS's deny-by-default (D-02)
+# silently locks it for everyone until someone notices and fixes the line wrap.
 
 pending_albums = {}
 
