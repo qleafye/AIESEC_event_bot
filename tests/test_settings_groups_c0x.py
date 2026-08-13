@@ -11,6 +11,7 @@ import asyncio
 from config import config
 from database import db
 from handlers import admin as admin_mod
+from handlers.admin_caps import required_capability
 
 
 ADMIN_ID = 900002
@@ -146,12 +147,15 @@ def test_show_settings_group_handler_renders_subscreen(tmp_path):
     assert "settings_edit:payment_options" in flat
 
 
-def test_show_settings_group_rejects_non_admin(tmp_path):
-    _admin_ready(tmp_path)
-    cb = FakeCallback("settings_group:pay", user_id=1)
-    asyncio.run(admin_mod.show_settings_group(cb))
-    assert cb.message.edit_calls == 0
-    assert cb.answers and cb.answers[0][1] is True
+def test_show_settings_group_is_capability_guarded():
+    # Phase 8 / D-01: the old per-handler `config.ADMIN_IDS` check (and the direct-call test
+    # that exercised it) is gone (08-04, one-shot migration, D-03) -- CapabilityMiddleware is
+    # now the ONLY enforcement point, and it only wraps events dispatched through the real
+    # router, not direct handler calls. The structural guarantee survives with a new carrier:
+    # the handler stays registered, and its callback_data resolves to a real capability.
+    names = {h.callback.__name__ for h in admin_mod.router.callback_query.handlers}
+    assert "show_settings_group" in names
+    assert required_capability(callback_data="settings_group:pay") == "settings"
 
 
 def test_settings_group_noop_just_answers(tmp_path):

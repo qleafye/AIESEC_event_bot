@@ -608,3 +608,55 @@ def test_middleware_does_not_touch_foreign_router_events(tmp_path, monkeypatch):
 
     assert result is UNHANDLED
     assert calls == []
+
+
+# ── 08-04 (D-01/D-03): end-to-end proof that removing the old inline ADMIN_IDS mechanism
+# actually lets a non-admin manager reach the handler BODY, not just clear the middleware ──
+#
+# 08-03-SUMMARY.md's closing note to this plan: until the inline `config.ADMIN_IDS` checks
+# were removed from every handler body, a moderate_reg-only manager who cleared
+# CapabilityMiddleware on `admin_applications` still hit `show_applications`'s OWN inline
+# check and got denied from a DIFFERENT code path, with a byte-identical error message --
+# which would make a same-shaped end-to-end test pass for the wrong reason. This test only
+# means anything AFTER 08-04 Task 1 deleted those inline checks.
+
+def test_manager_reaches_handler_body_end_to_end(tmp_path):
+    _roles_ready(tmp_path)
+    asyncio.run(db.add_staff(MANAGER_ID, "reg_manager", ADMIN_ID))
+    assert MANAGER_ID not in config.ADMIN_IDS  # genuinely NOT a bootstrap superadmin
+
+    result, event = dispatch_callback("admin_applications", MANAGER_ID)
+
+    # Middleware let the event through to the real router dispatch.
+    assert result is not UNHANDLED
+    # The handler body itself ran: show_applications -> _show_current_card(callback.message,
+    # state), which always ends in target.answer(...) (empty-queue branch or a rendered
+    # card) -- checked as "a call happened", not the exact card text, so this test doesn't
+    # break on copy edits.
+    assert event.message.answers, "handler body never called .answer on callback.message"
+    # Negative half of the same claim: no surviving inline check silently denied the
+    # manager from inside the handler body with the same "Недостаточно прав" alert.
+    denial_texts = [text for text, _show_alert in event.answers]
+    assert "Недостаточно прав" not in denial_texts
+
+
+# ── 08-04 (D-17): slash commands are protected by the SAME map as callback buttons ─────────
+
+def test_admin_commands_match_d17_mapping():
+    from handlers.admin_caps import required_capability
+
+    d17 = {
+        "find": "moderate_reg",
+        "coins": "moderate_reg",
+        "stats": "stats",
+        "stats_monthly": "stats",
+        "export": "stats",
+        "broadcast": "broadcast",
+        "scheduled": "broadcast",
+        "settings_guide": "settings",
+        "refresh_allowlist": "settings",
+    }
+    bad = [(cmd, required_capability(command=cmd), expected)
+           for cmd, expected in d17.items()
+           if required_capability(command=cmd) != expected]
+    assert not bad, bad

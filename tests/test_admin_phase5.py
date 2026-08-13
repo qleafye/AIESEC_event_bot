@@ -14,6 +14,7 @@ from aiogram.fsm.storage.memory import MemoryStorage
 from config import config
 from database import db
 from handlers import admin as admin_mod
+from handlers.admin_caps import required_capability
 from handlers.registration import REG_FLOW, REG_PRESETS
 
 
@@ -125,12 +126,15 @@ def test_reg_q_track_switch_reuses_same_message(tmp_path):
     assert any(cd.startswith("reg_q_ptoggle:") for cd in flat)
 
 
-def test_reg_q_track_switch_rejects_non_admin(tmp_path):
-    _admin_ready(tmp_path)
-    cb = FakeCallback("reg_q_track:party", user_id=1)
-    asyncio.run(admin_mod.reg_q_track_switch(cb))
-    assert cb.message.edit_calls == 0
-    assert cb.answers and cb.answers[0][1] is True  # show_alert denial
+def test_reg_q_track_switch_is_capability_guarded():
+    # Phase 8 / D-01: the old per-handler `config.ADMIN_IDS` check (and the direct-call test
+    # that exercised it) is gone (08-04, one-shot migration, D-03) -- CapabilityMiddleware is
+    # now the ONLY enforcement point, and it only wraps events dispatched through the real
+    # router, not direct handler calls. The structural guarantee survives with a new carrier:
+    # the handler stays registered, and its callback_data resolves to a real capability.
+    names = {h.callback.__name__ for h in admin_mod.router.callback_query.handlers}
+    assert "reg_q_track_switch" in names
+    assert required_capability(callback_data="reg_q_track:party") == "settings"
 
 
 # ── Task 1: reg_q_ptoggle: tri-state cycle handler (D-04) ─────────────────────
@@ -159,13 +163,14 @@ def test_reg_q_ptoggle_rejects_unknown_setting_key(tmp_path):
     assert cb.answers and cb.answers[0][1] is True
 
 
-def test_reg_q_ptoggle_rejects_non_admin(tmp_path):
-    _admin_ready(tmp_path)
+def test_reg_q_ptoggle_is_capability_guarded():
+    # Phase 8 / D-01: carrier of the structural guarantee moved from a per-handler inline
+    # check to a resolvable ADMIN_CAPS entry (08-04, D-03). See test_reg_q_track_switch_is_
+    # capability_guarded above for the full rationale.
+    names = {h.callback.__name__ for h in admin_mod.router.callback_query.handlers}
+    assert "toggle_party_question" in names
     setting_key = REG_FLOW[0][1]
-    cb = FakeCallback(f"reg_q_ptoggle:{setting_key}", user_id=1)
-    asyncio.run(admin_mod.toggle_party_question(cb))
-    assert asyncio.run(db.get_setting(f"{setting_key}__party")) is None
-    assert cb.answers and cb.answers[0][1] is True
+    assert required_capability(callback_data=f"reg_q_ptoggle:{setting_key}") == "settings"
 
 
 # ── Task 1: 🎉 Party preset button auto-generated + routed correctly (D-07) ───
@@ -480,12 +485,11 @@ def test_reg_prompt_track_switch_reuses_same_message(tmp_path):
     assert any(cd.endswith(":party") for cd in flat if cd.startswith("reg_prompt_edit:"))
 
 
-def test_reg_prompt_track_switch_rejects_non_admin(tmp_path):
-    _admin_ready(tmp_path)
-    cb = FakeCallback("reg_prompt_track:party", user_id=1)
-    asyncio.run(admin_mod.reg_prompt_track_switch(cb))
-    assert cb.message.edit_calls == 0
-    assert cb.answers and cb.answers[0][1] is True
+def test_reg_prompt_track_switch_is_capability_guarded():
+    # Phase 8 / D-01: same migration as test_reg_q_track_switch_is_capability_guarded above.
+    names = {h.callback.__name__ for h in admin_mod.router.callback_query.handlers}
+    assert "reg_prompt_track_switch" in names
+    assert required_capability(callback_data="reg_prompt_track:party") == "settings"
 
 
 def test_reg_prompt_edit_party_suffix_sets_party_setting_key(tmp_path):
