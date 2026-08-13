@@ -50,8 +50,9 @@ from database.db import (
     get_question,
     claim_question,
     set_question_answer,
+    get_stuck_questions,
 )
-from aiogram.exceptions import TelegramRetryAfter
+from aiogram.exceptions import TelegramRetryAfter, TelegramForbiddenError, TelegramBadRequest
 from services.sheets import get_existing_sheet_ids, append_rows_to_sheet, ensure_sheet_header, sync_named_worksheet, dedupe_sheet_by_id, update_status_in_sheet, bulk_update_status_in_sheet, rebuild_main_sheet
 from services.scheduler import (
     _parse_schedule_dt,
@@ -139,6 +140,7 @@ _ADMIN_MENU_ROWS: list[tuple[str, str]] = [
     ("📝 Незавершённые → таблица", "admin_export_incomplete"),
     ("📋 Заявки", "admin_applications"),
     ("🧾 Чеки", "admin_receipts"),
+    ("🔒 Залипшие вопросы", "admin_stuck_questions"),
     ("📢 Рассылка", "admin_broadcast"),
     ("🔄 Синхронизация таблицы", "admin_sync_sheet"),
     ("♻️ Пересобрать таблицу", "admin_rebuild_sheet"),
@@ -444,6 +446,46 @@ async def _deliver_question_reply(message: types.Message, bot: Bot, user_id: int
     await _notify_other_moderate_reg_holders(bot, admin_name, user_id, message.from_user.id)
 
 
+# T-08-33 (quick task), part B: a manager whose delivery attempt fails deserves to know
+# whether trying again could ever work. TelegramForbiddenError (the delegate blocked the
+# bot) and TelegramBadRequest (chat gone/invalid, e.g. a deleted account) are PERMANENT --
+# no retry, by anyone, at any time, can succeed. Everything else (TelegramRetryAfter,
+# TelegramNetworkError, generic timeouts) is TRANSIENT -- a retry is a reasonable next step.
+# Neither branch releases the claim (T-08-33's own accepted-risk text, unchanged): variant A
+# was explicitly rejected by the project owner because releasing reopens the double-send race
+# D-14 exists to close.
+_PERMANENT_DELIVERY_ERRORS = (TelegramForbiddenError, TelegramBadRequest)
+
+
+async def _reply_with_delivery_error(message: types.Message, error: Exception):
+    if isinstance(error, _PERMANENT_DELIVERY_ERRORS):
+        await message.reply(
+            "❌ Доставить ответ невозможно: делегат заблокировал бота или чат недоступен. "
+            "Повтор не поможет — свяжитесь с делегатом другим способом."
+        )
+    else:
+        await message.reply(
+            "❌ Не удалось отправить ответ пользователю (временная ошибка). Можно попробовать ещё раз."
+        )
+
+
+async def _attempt_question_delivery(message: types.Message, bot: Bot, user_id: int, admin_name: str, qid: int):
+    """Deliver + record, shared by the first-claim path and the C-variant same-person retry
+    path below -- both need identical delivery/error-handling behaviour."""
+    try:
+        await _deliver_question_reply(message, bot, user_id, admin_name)
+        # D: delivered_at is stamped here, together with answer_text, ONLY on success --
+        # see set_question_answer's own docstring for why it can't be derived from
+        # answer_text alone.
+        await set_question_answer(qid, message.html_text or message.text or "")
+    except Exception as e:
+        # T-08-33 (accepted risk): the claim is NOT released here -- releasing it would let a
+        # retry double-send to the delegate. The manager sees an explicit failure and can
+        # follow up out-of-band; documented as a known limitation in 08-06-SUMMARY.md.
+        logger.error(f"Failed to send reply to user {user_id}: {e}")
+        await _reply_with_delivery_error(message, e)
+
+
 @router.message(is_question_reply)
 async def admin_reply_to_question(message: types.Message, bot: Bot):
     replied = message.reply_to_message
@@ -474,29 +516,35 @@ async def admin_reply_to_question(message: types.Message, bot: Bot):
             await _deliver_question_reply(message, bot, user_id, admin_name)
         except Exception as e:
             logger.error(f"Failed to send reply to user {user_id}: {e}")
-            await message.reply("❌ Не удалось отправить ответ пользователю.")
+            await _reply_with_delivery_error(message, e)
         return
 
     qid = question["id"]
     claimed = await claim_question(qid, message.from_user.id, admin_name)
 
     if not claimed:
-        # D-14: second (or later) responder -- the delegate gets NOTHING from this reply,
-        # only the person who tapped it sees who already answered.
-        winner = await get_question(qid)
-        winner_name = (winner or {}).get("answered_by_name") or "коллега"
+        # T-08-33, part C: this specific person may already hold the claim from an earlier
+        # attempt that failed to deliver -- `claim_question` only flips a row from
+        # answered_by IS NULL, so a second call from the SAME claimant correctly returns
+        # False here too. Distinguish that from a genuinely different responder: only the
+        # winner, retrying their own failed delivery, gets to try again; anyone else still
+        # sees "already answered by X" and nothing is sent to the delegate. Always re-read
+        # (never reuse the pre-claim `question` snapshot): `claim_question` returning False
+        # means someone's state changed since that read, and this is the one place that
+        # decision hinges on the CURRENT answered_by/delivered_at, not a stale copy.
+        row = await get_question(qid)
+        if (
+            row
+            and row.get("answered_by") == message.from_user.id
+            and not row.get("delivered_at")
+        ):
+            await _attempt_question_delivery(message, bot, user_id, admin_name, qid)
+            return
+        winner_name = (row or {}).get("answered_by_name") or "коллега"
         await message.reply(f"⚠️ На этот вопрос уже ответил(а) {winner_name}.")
         return
 
-    try:
-        await _deliver_question_reply(message, bot, user_id, admin_name)
-        await set_question_answer(qid, message.html_text or message.text or "")
-    except Exception as e:
-        # T-08-33 (accepted risk): the claim is NOT released here -- releasing it would let a
-        # retry double-send to the delegate. The manager sees an explicit failure and can
-        # follow up out-of-band; documented as a known limitation in 08-06-SUMMARY.md.
-        logger.error(f"Failed to send reply to user {user_id}: {e}")
-        await message.reply("❌ Не удалось отправить ответ пользователю.")
+    await _attempt_question_delivery(message, bot, user_id, admin_name, qid)
 
 
 @router.message(Command("stats"))
@@ -533,6 +581,35 @@ async def show_admin_source_stats(callback: types.CallbackQuery):
             lines.append(f"• {html_module.escape(str(source))} — {count}")
         text = "\n".join(lines)
 
+    await callback.message.edit_text(text, parse_mode="HTML", reply_markup=await admin_keyboard_for(callback.from_user.id))
+    await callback.answer()
+
+
+# T-08-33 (quick task), part D: claimed-but-never-delivered delegate questions. Gated by
+# moderate_reg (same capability as the rest of the question-reply flow), not a mass
+# moderation queue like «Заявки»/«Чеки» (CLAUDE.md's pagination constraint targets queues on
+# the order of 1000+ live rows -- a stuck question only ever exists when delivery genuinely
+# failed, expected to be rare) -- a single text screen, same shape as render_stats_text/
+# render_monthly_stats above, not a per-row card UI.
+async def render_stuck_questions_text() -> str:
+    rows = await get_stuck_questions()
+    if not rows:
+        return "🔒 <b>Залипшие вопросы</b>\n\nНет вопросов, захваченных без доставки ответа."
+
+    lines = ["🔒 <b>Залипшие вопросы</b>", "", "Захвачены, но ответ не дошёл до делегата:"]
+    for row in rows:
+        name = html_module.escape(str(row.get("answered_by_name") or "неизвестно"))
+        question_text = html_module.escape(str(row.get("question_text") or ""))
+        lines.append(
+            f"• 🆔 <code>{row['user_id']}</code> — захватил(а) {name}\n"
+            f"  «{question_text}»"
+        )
+    return "\n".join(lines)
+
+
+@router.callback_query(F.data == "admin_stuck_questions")
+async def show_stuck_questions(callback: types.CallbackQuery):
+    text = await render_stuck_questions_text()
     await callback.message.edit_text(text, parse_mode="HTML", reply_markup=await admin_keyboard_for(callback.from_user.id))
     await callback.answer()
 
