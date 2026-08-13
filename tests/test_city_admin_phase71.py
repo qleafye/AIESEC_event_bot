@@ -83,18 +83,22 @@ CITY_CODES = [c["code"] for c in CITIES]  # msk/spb/tyumen from .env defaults
 def test_build_admin_keyboard_admin_cities_is_last_row_indices_unchanged(tmp_path):
     # 08-05 (D-15): build_admin_keyboard is now async and capability-filtered — for a bootstrap
     # admin (ALL_CAPABILITIES), the row set/order is unchanged from the pre-08-05 plain builder.
+    # QUICK T-08-33 (2026-08-13) inserted "admin_stuck_questions" right after "admin_receipts"
+    # -- admin_cities (Phase 07.2) still stays the LAST row, only the first-block length grew
+    # from 13 to 14.
     _admin_ready(tmp_path)
     kb = asyncio.run(admin_mod.build_admin_keyboard(ADMIN_ID))
     rows = kb.inline_keyboard
     assert rows[-1][0].callback_data == "admin_cities"
-    expected_first_13 = [
+    expected_first_14 = [
         "admin_stats", "admin_monthly_stats", "admin_source_stats", "admin_export_csv",
-        "admin_export_incomplete", "admin_applications", "admin_receipts", "admin_broadcast",
+        "admin_export_incomplete", "admin_applications", "admin_receipts",
+        "admin_stuck_questions", "admin_broadcast",
         "admin_sync_sheet", "admin_rebuild_sheet", "admin_dedupe_sheet", "admin_settings",
         "admin_settings_guide",
     ]
-    actual_first_13 = [rows[i][0].callback_data for i in range(13)]
-    assert actual_first_13 == expected_first_13
+    actual_first_14 = [rows[i][0].callback_data for i in range(14)]
+    assert actual_first_14 == expected_first_14
 
 
 def test_build_cities_keyboard_contains_toggle_and_per_city_buttons(tmp_path):
