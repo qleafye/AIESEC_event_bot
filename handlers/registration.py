@@ -41,6 +41,7 @@ from keyboards.builders import (
 from services.sheets import append_to_sheet, append_to_named_sheet
 from services.nextcloud import upload_resume, upload_text_resume
 from services.background import spawn as _spawn
+from handlers.admin_caps import notify_by_capability  # D-13: fan out by capability, not bare ADMIN_IDS
 
 router = Router()
 logger = logging.getLogger(__name__)
@@ -2901,11 +2902,7 @@ async def finalize_registration(message: types.Message, state: FSMContext, bot: 
         if safe_source != "-":
             admin_text += f"\n\U0001f4dd {safe_source}"
 
-        for admin_id in config.ADMIN_IDS:
-            try:
-                await bot.send_message(admin_id, admin_text, parse_mode="HTML")
-            except Exception as e:
-                logger.error(f"Failed to notify admin {admin_id}: {e}")
+        await notify_by_capability(bot, "moderate_reg", admin_text, parse_mode="HTML")  # D-13
 
     await state.clear()
     # Tatiana: «поздравляем»-скрипт приходит сразу после регистрации — всем (и pending, и
