@@ -500,3 +500,111 @@ def test_every_capability_value_is_known(tmp_path):
 
     bad = [k for k, v in ADMIN_CAPS.items() if v != ANY_CAPABILITY and v not in ALL_CAPABILITIES]
     assert not bad, bad
+
+
+# ── Task 2 (D-01/D-04/D-13/T-08-15/T-08-16): CapabilityMiddleware ──────────────────────────
+#
+# Positive paths run through `_run_middleware` (a spy in place of the real handler), NOT
+# `dispatch_callback` -- the inline `config.ADMIN_IDS` checks inside every admin.py handler
+# body are STILL LIVE until 08-04 (D-03: migration happens in one atomic move, not gradually).
+# A real `show_applications` call would deny a non-admin manager from ITS OWN inline check,
+# which would make a "middleware lets the manager through" test pass for the wrong reason.
+# The spy isolates exactly one claim: middleware called the wrapped handler.
+# Negative paths use the real `dispatch_callback` -- denial happens INSIDE the middleware,
+# strictly before the handler (and its inline check) ever run, so the old mechanism cannot
+# interfere with a negative assertion either way.
+
+def _run_middleware(event, data):
+    from handlers.admin_caps import CapabilityMiddleware
+
+    calls = []
+
+    async def _spy(ev, d):
+        calls.append((ev, d))
+        return "SPY_OK"
+
+    middleware = CapabilityMiddleware()
+    result = asyncio.run(middleware(_spy, event, data))
+    return result, calls
+
+
+def test_middleware_allows_capability_holder(tmp_path):
+    _roles_ready(tmp_path)
+    asyncio.run(db.add_staff(MANAGER_ID, "reg_manager", ADMIN_ID))
+    event = FakeCallback("admin_applications", user_id=MANAGER_ID)
+    data = {"event_from_user": FakeUser(MANAGER_ID)}
+
+    result, calls = _run_middleware(event, data)
+
+    assert result == "SPY_OK"
+    assert len(calls) == 1
+    assert event.answers == []
+
+
+def test_middleware_denies_missing_capability_with_alert(tmp_path):
+    _roles_ready(tmp_path)
+    asyncio.run(db.add_staff(GAME_MANAGER_ID, "game_manager", ADMIN_ID))
+
+    result, event = dispatch_callback("admin_applications", GAME_MANAGER_ID)
+
+    assert event.answers == [("Недостаточно прав", True)]
+
+
+def test_deny_response_is_silent_for_stranger(tmp_path):
+    _roles_ready(tmp_path)
+
+    result, event = dispatch_callback("admin_applications", STRANGER_ID)
+
+    assert event.answers == []
+
+
+def test_middleware_denies_unmapped_callback(tmp_path):
+    _roles_ready(tmp_path)
+    from handlers.admin_caps import required_capability
+
+    assert required_capability(callback_data="zzz_totally_unknown") is None
+
+    event = FakeCallback("zzz_totally_unknown", user_id=ADMIN_ID)
+    data = {"event_from_user": FakeUser(ADMIN_ID)}
+    result, calls = _run_middleware(event, data)
+
+    assert calls == []
+
+
+def test_stranger_event_still_propagates(tmp_path):
+    _roles_ready(tmp_path)
+
+    result, event = dispatch_callback("admin_applications", STRANGER_ID)
+
+    assert result is UNHANDLED
+
+
+def test_bootstrap_compat_admin_with_empty_staff_passes_every_key(tmp_path):
+    _roles_ready(tmp_path)
+    from handlers.admin_caps import ADMIN_CAPS
+
+    data = {"event_from_user": FakeUser(ADMIN_ID)}
+    for key in ADMIN_CAPS:
+        probe_data = key[:-1] + "x" if key.endswith("*") else key
+        event = FakeCallback(probe_data, user_id=ADMIN_ID)
+        result, calls = _run_middleware(event, data)
+        assert calls, f"bootstrap admin denied for ADMIN_CAPS key {key!r}"
+
+
+def test_middleware_does_not_touch_foreign_router_events(tmp_path, monkeypatch):
+    _roles_ready(tmp_path)
+    from handlers import admin_caps
+
+    calls = []
+    original = admin_caps.resolve_capabilities
+
+    async def _counting(*args, **kwargs):
+        calls.append(args)
+        return await original(*args, **kwargs)
+
+    monkeypatch.setattr(admin_caps, "resolve_capabilities", _counting)
+
+    result, event = dispatch_callback("pay_option:0", ADMIN_ID)
+
+    assert result is UNHANDLED
+    assert calls == []

@@ -14,9 +14,17 @@ decorator, a module-level results set, or a manual reload-on-demand helper to th
 No import from `handlers.admin` here (would create an import cycle — `handlers/admin.py`
 imports this module, not the other way around).
 """
+import logging
+
+from aiogram import BaseMiddleware
+from aiogram.dispatcher.event.bases import UNHANDLED
+from aiogram.types import CallbackQuery, Message, TelegramObject
+
 from config import config
 from database.db import get_staff_roles
 from settings_schema import get_setting_typed
+
+logger = logging.getLogger(__name__)
 
 # D-06: exactly seven capabilities, in this order. Moderation of applications and receipts
 # is intentionally ONE capability (payments are off on YouLead); gamification is separate;
@@ -285,3 +293,99 @@ def required_capability(*, callback_data: str | None = None, command: str | None
         if best_key is not None:
             return ADMIN_CAPS[best_key]
     return None
+
+
+# ── ROLE-01 (D-01): CapabilityMiddleware — the one enforcement point ────────────────────────
+#
+# T-08-14 (D-04): the exact user-facing copy every one of the (still-live, pre-08-04) 74
+# inline `config.ADMIN_IDS` checks already shows — kept byte-identical so the toast text does
+# not change from the user's point of view when this middleware takes over.
+DENIAL_TEXT = "Недостаточно прав"
+
+
+def _is_question_reply_shape(message: Message) -> bool:
+    """Same reply-shape predicate as handlers.admin.is_question_reply (🆔 + ❓ markers on the
+    replied-to text) -- MINUS that function's own `from_user.id not in config.ADMIN_IDS` gate,
+    which is the OLD access-control mechanism this middleware replaces. The capability decision
+    itself lives entirely in CapabilityMiddleware.__call__ below."""
+    replied = getattr(message, "reply_to_message", None)
+    if not replied or not getattr(replied, "text", None):
+        return False
+    return "🆔" in replied.text and "❓" in replied.text
+
+
+def _is_callback_shaped(event) -> bool:
+    """Duck-typed, not `isinstance(event, CallbackQuery)`: aiogram's own `CallbackQuery` model
+    defines a `data` field and no `text` field (verified: `"data" in CallbackQuery.model_fields`
+    is True, `"text" in CallbackQuery.model_fields` is False; `Message` is the exact mirror).
+    Real Telegram objects satisfy this exactly like `isinstance` would -- the reason to prefer
+    it over `isinstance` is that this project's own dispatch-test harness
+    (`tests/test_roles_phase8.py`, reused from 08-01/08-02) drives plain duck-typed
+    `FakeCallback`/`FakeMessage` doubles through this exact middleware (Pitfall 4: it's the
+    only place in the suite that exercises real `Router.propagate_event`), and those doubles
+    are not `aiogram.types` subclasses -- matching this codebase's established Fake-object
+    convention (CONVENTIONS.md), which every existing admin handler already relies on via
+    plain attribute access, never `isinstance`."""
+    return hasattr(event, "data") and not hasattr(event, "text")
+
+
+async def _deny(event: TelegramObject, user_id: int, user_caps: set, cap: str | None):
+    """D-04: reaction depends on who pressed. A known staff/admin member denied THIS specific
+    capability (tapped a stale button, or a genuinely unmapped key -- T-08-12/D-02) gets the
+    existing toast; a random user is met with silence (log only) so the admin surface's shape
+    is never revealed (T-08-14). Returning `None` here absorbs the event (D-04's "known staff"
+    branch is a final decision); returning `UNHANDLED` for the "no capabilities at all" branch
+    lets the event keep propagating to its real router (T-08-16) -- see 08-03-PLAN.md's own
+    note on why this distinction matters once 08-04 removes the `is_admin` filter."""
+    if user_caps:
+        if _is_callback_shaped(event):
+            await event.answer(DENIAL_TEXT, show_alert=True)
+        else:
+            await event.answer(f"{DENIAL_TEXT}.")
+        return None
+    logger.info("CapabilityMiddleware: denied uid=%s cap=%s (no capabilities held)", user_id, cap)
+    return UNHANDLED
+
+
+class CapabilityMiddleware(BaseMiddleware):
+    """Inner middleware attached to `admin.router`'s own observers (D-01). MUST be registered
+    via `.middleware()` -- deliberately NOT the router's outer-hook variant -- inner middleware
+    only wraps the call of a HandlerObject whose own filter already matched (08-RESEARCH.md
+    Pitfall 1, verified against the installed aiogram 3.24.0 source), so this class never runs
+    for an event that belongs to a sibling router (payment/registration/user_actions)."""
+
+    async def __call__(self, handler, event: TelegramObject, data: dict):
+        user = data.get("event_from_user")
+        if user is None:
+            # No identity at all -- can't be a known staff/admin member either way; fail closed
+            # exactly like the "stranger" branch of _deny (silent, event still propagates).
+            return UNHANDLED
+
+        if _is_callback_shaped(event):
+            cap = required_capability(callback_data=event.data)
+        elif hasattr(event, "text"):
+            # T-08-12 Pitfall 3 order: state (mid-wizard continuation) beats command beats the
+            # bespoke question-reply predicate -- mirrors required_capability()'s own priority
+            # and the /cancel-mid-Broadcast-wizard case documented in the capability_map.
+            raw_state = data.get("raw_state")
+            if raw_state:
+                cap = required_capability(raw_state=raw_state)
+            else:
+                command = _extract_command(event.text)
+                if command is not None:
+                    cap = required_capability(command=command)
+                elif _is_question_reply_shape(event):
+                    cap = required_capability(special="question_reply")
+                else:
+                    cap = None
+        else:
+            cap = None
+
+        user_caps = await resolve_capabilities(user.id)  # D-05: fresh SQLite read every call
+
+        if cap is not None:
+            allowed = bool(user_caps) if cap == ANY_CAPABILITY else cap in user_caps
+            if allowed:
+                return await handler(event, data)
+
+        return await _deny(event, user.id, user_caps, cap)
