@@ -452,6 +452,35 @@ SETTINGS_SCHEMA = {
         "type": "enum", "group": "toggles", "label": "🏙 Выбор города мероприятия",
         "options": ["on", "off"], "prompt": None, "default": "off",
     },
+
+    # Phase 8 (ROLE-02, D-09/D-10): role -> capability matrix + per-role kill switch.
+    # `role_caps_<role>` is `type: "list"` (one capability per line, or `;`-separated —
+    # same idiom as source_options/city_options); the `_parse_setting` list branch already
+    # returns `list(default)` on empty raw, so no new parsing machinery is needed.
+    # `role_<role>_enabled` is `type: "enum"` (NOT "toggle") — byte-identical to
+    # payment_enabled/consent_enabled/party_enabled, so it plugs into the existing generic
+    # `_toggle_module_setting` helper (reads get_setting_typed(key) == "on") with zero
+    # conversion at the call site (see 08-01-PLAN.md Task 2 discretion note).
+    "role_caps_reg_manager": {
+        "type": "list", "group": "roles", "label": "🛂 Права роли: Менеджер регистраций",
+        "prompt": "Права роли, по одному на строке (или через «;»): moderate_reg, "
+                  "moderate_receipts, moderate_game, broadcast, settings, stats, checkin",
+        "default": ["moderate_reg", "moderate_receipts"],
+    },
+    "role_caps_game_manager": {
+        "type": "list", "group": "roles", "label": "🎮 Права роли: Менеджер геймификации",
+        "prompt": "Права роли, по одному на строке (или через «;»): moderate_reg, "
+                  "moderate_receipts, moderate_game, broadcast, settings, stats, checkin",
+        "default": ["moderate_game"],
+    },
+    "role_reg_manager_enabled": {
+        "type": "enum", "group": "roles", "label": "🛂 Роль «Менеджер регистраций»",
+        "options": ["on", "off"], "prompt": None, "default": "on",
+    },
+    "role_game_manager_enabled": {
+        "type": "enum", "group": "roles", "label": "🎮 Роль «Менеджер геймификации»",
+        "options": ["on", "off"], "prompt": None, "default": "on",
+    },
 }
 
 
@@ -510,6 +539,13 @@ def _parse_setting(key, raw):
             return default
 
     if entry_type == "list":
+        # Phase 8 (ROLE-02): a registry `default` may itself be a non-empty list literal
+        # (role_caps_* — see D-09), unlike every pre-phase-8 "list" entry (which used
+        # `default: None`). Real DB reads never hand this branch anything but str|None
+        # (bot_settings.value is TEXT), so this only fires for an already-a-list `raw` --
+        # pass it through unchanged instead of crashing on `.splitlines()`.
+        if isinstance(raw, list):
+            return raw
         # Lifted verbatim from handlers/registration.py::_get_options (splitlines/strip),
         # extended to also accept the `;` inline separator already used elsewhere in the
         # project for the Telegram "Enter = send" mobile trap.
