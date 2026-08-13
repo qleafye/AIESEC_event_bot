@@ -53,7 +53,7 @@ from database.db import (
     get_stuck_questions,
 )
 from aiogram.exceptions import TelegramRetryAfter, TelegramForbiddenError, TelegramBadRequest
-from services.sheets import get_existing_sheet_ids, append_rows_to_sheet, ensure_sheet_header, sync_named_worksheet, dedupe_sheet_by_id, update_status_in_sheet, bulk_update_status_in_sheet, rebuild_main_sheet
+from services.sheets import get_existing_sheet_ids, append_rows_to_sheet, ensure_sheet_header, sync_named_worksheet, dedupe_sheet_by_id, update_status_in_sheet, bulk_update_status_in_sheet, rebuild_main_sheet, REFUSED_UNPINNED_TAB
 from services.scheduler import (
     _parse_schedule_dt,
     _fmt_dt,
@@ -1256,6 +1256,17 @@ async def rebuild_sheet(callback: types.CallbackQuery):
         all_users = await get_all_users_dicts()
         rows = [[_sheet_value_map(u).get(h, "-") for h in headers] for u in all_users]
         count = await rebuild_main_sheet(headers, rows)
+        if count == REFUSED_UNPINNED_TAB:
+            await callback.message.edit_text(
+                "⛔ Пересборка отключена: не задан <code>GOOGLE_SHEET_TAB</code> в .env.\n\n"
+                "Без него основная вкладка определяется по позиции (первая слева), а не по "
+                "имени — пересборка могла бы стереть чужую вкладку, если её переместили. "
+                "Укажите <code>GOOGLE_SHEET_TAB</code> в .env (точное имя основной вкладки) "
+                "и перезапустите бота, чтобы включить пересборку.",
+                parse_mode="HTML",
+                reply_markup=await admin_keyboard_for(callback.from_user.id),
+            )
+            return
         if count < 0:
             await callback.message.edit_text(
                 "❌ Пересборка не выполнена (таблица не настроена или ошибка API). Смотри логи.",
@@ -1728,7 +1739,14 @@ async def dedupe_sheet_run(callback: types.CallbackQuery):
     await callback.answer("🧹 Убираю дубли…")
     logger.info(f"admin={callback.from_user.id} action=dedupe_sheet start")
     removed = await dedupe_sheet_by_id()
-    if removed < 0:
+    if removed == REFUSED_UNPINNED_TAB:
+        text = (
+            "⛔ Убрать дубли нельзя: не задан <code>GOOGLE_SHEET_TAB</code> в .env.\n\n"
+            "Без него основная вкладка определяется по позиции (первая слева), а не по "
+            "имени — удаление строк могло бы задеть чужую вкладку. Укажите "
+            "<code>GOOGLE_SHEET_TAB</code> в .env и перезапустите бота."
+        )
+    elif removed < 0:
         text = "⚠️ Не удалось (проверь доступ к Google Sheets, подробности в логах)."
     elif removed == 0:
         text = "✅ Дублей не найдено — таблица чистая."
