@@ -58,6 +58,7 @@ from database.db import (
     get_pending_submissions,
     get_pending_submissions_count,
     claim_submission,
+    list_all_submissions,
     GAME_CATEGORIES,
     GAME_PROOF_TYPES,
 )
@@ -170,6 +171,7 @@ _ADMIN_MENU_ROWS: list[tuple[str, str]] = [
     ("🏙 Города мероприятия", "admin_cities"),
     ("📋 Задания", "admin_game_tasks"),
     ("🎮 Проверка заданий", "admin_game_review"),
+    ("🔄 Таблица геймы", "admin_game_sync_sheet"),
 ]
 
 
@@ -4834,6 +4836,104 @@ async def grev_reject_reason(message: types.Message, state: FSMContext):
         await message.answer("Уже обработано.", reply_markup=ReplyKeyboardRemove())
     await state.set_state(None)
     await _show_current_submission(message, state)
+
+
+# ── 09-05 (GAME-01..03, D-05): «🔄 Таблица геймы» — full-rebuild sync of two named tabs ──────
+# Deliberately the SAME `sync_named_worksheet` full clear+rewrite already used by
+# `admin_export_incomplete`/the party/incomplete named tabs (services/sheets.py, unmodified by
+# this plan) -- a manual button a manager taps a couple times a day, not a background job
+# (CLAUDE.md: keep the existing stack, no APScheduler for this). TWO independent calls per
+# T-09-16: a failure on one tab must not swallow the other, and must be reported by text, not
+# silently dropped.
+
+_GAME_HISTORY_STATUS_LABELS = {"pending": "Ожидает", "approved": "Одобрено", "rejected": "Отклонено"}
+
+
+def _build_game_matrix(tasks: list[dict], submissions: list[dict]) -> tuple[list[str], list[list]]:
+    """Pure builder for the «Гейма» matrix tab (участники x задания). `tasks` must already be
+    sorted oldest-first (created_at ASC) by the caller -- the earliest-created task lands in the
+    leftmost column. Only participants with at least one submission become a row (CLAUDE.md:
+    1000+ registered users with zero submissions must never turn into 1000+ empty rows)."""
+    headers = ["telegram_id", "ФИО", "Юзернейм"] + [(t["text"] or "")[:40] for t in tasks]
+
+    subs_by_user: dict[int, list[dict]] = {}
+    for s in submissions:
+        subs_by_user.setdefault(s["user_id"], []).append(s)
+
+    rows: list[list] = []
+    for user_id, user_subs in subs_by_user.items():
+        sample = user_subs[-1]
+        row = [user_id, sample.get("user_full_name") or "-", sample.get("user_username") or "-"]
+        for t in tasks:
+            task_subs = [s for s in user_subs if s["task_id"] == t["id"]]
+            if not task_subs:
+                row.append("-")
+                continue
+            # D-05: pick the LATEST attempt for this (task, user) pair by id, not list order --
+            # only that attempt can be the currently-active one (idx_game_submissions_active
+            # guarantees at most one non-rejected row per pair at any time).
+            latest = max(task_subs, key=lambda s: s["id"])
+            if latest["status"] == "approved":
+                row.append(f"✅ {latest.get('coins_awarded')}")
+            elif latest["status"] == "pending":
+                row.append("⏳")
+            else:  # rejected, and (since this IS the latest attempt) no later active submission exists
+                row.append("❌")
+        rows.append(row)
+    return headers, rows
+
+
+def _build_game_history(submissions: list[dict]) -> tuple[list[str], list[list]]:
+    """Pure builder for the «История сдач» audit-log tab -- one row per `list_all_submissions()`
+    row, NO status filter. This is the whole mechanism D-05 asked for: resolving "я сдавал, мне
+    не засчитали" needs every attempt visible, including rejected ones and later resubmissions
+    of the same (task, user) pair."""
+    headers = ["ID сдачи", "Задание", "Категория", "Участник", "Юзернейм", "Тип", "Отправлено",
+               "Статус", "Проверил", "Когда", "Начислено", "Причина отказа"]
+    rows = [
+        [
+            s["id"],
+            (s.get("task_text") or "-")[:60],
+            s.get("task_category") or "-",
+            s.get("user_full_name") or "-",
+            s.get("user_username") or "-",
+            _GAME_PROOF_LABELS.get(s.get("content_type"), s.get("content_type") or "-"),
+            s.get("submitted_at") or "-",
+            _GAME_HISTORY_STATUS_LABELS.get(s.get("status"), s.get("status") or "-"),
+            s.get("reviewed_by") if s.get("reviewed_by") is not None else "-",
+            s.get("reviewed_at") or "-",
+            s.get("coins_awarded") if s.get("coins_awarded") is not None else "-",
+            s.get("reject_reason") or "-",
+        ]
+        for s in submissions
+    ]
+    return headers, rows
+
+
+@router.callback_query(F.data == "admin_game_sync_sheet")
+async def sync_game_sheets(callback: types.CallbackQuery):
+    await callback.answer("🔄 Синхронизация...")
+
+    # list_all_tasks() is created_at DESC (moderation-friendly, newest-first); the matrix wants
+    # columns oldest-first (left to right) -- reversed by an explicit sort here, not a new
+    # db.py accessor, per the plan's own instruction.
+    tasks = sorted(await list_all_tasks(), key=lambda t: t["created_at"])
+    submissions = await list_all_submissions()
+
+    matrix_headers, matrix_rows = _build_game_matrix(tasks, submissions)
+    history_headers, history_rows = _build_game_history(submissions)
+
+    matrix_written = await sync_named_worksheet("Гейма", matrix_headers, matrix_rows)
+    history_written = await sync_named_worksheet("История сдач", history_headers, history_rows)
+
+    matrix_report = f"{matrix_written} строк" if matrix_written >= 0 else "⚠️ ошибка синхронизации (см. лог)"
+    history_report = f"{history_written} строк" if history_written >= 0 else "⚠️ ошибка синхронизации (см. лог)"
+
+    await callback.message.answer(
+        f"✅ Гейма: {matrix_report}.\nИстория сдач: {history_report}.",
+        parse_mode="HTML",
+        reply_markup=await admin_keyboard_for(callback.from_user.id),
+    )
 
 
 # ── ROLE-01 (D-16): «/admin auto-opens the one available section» ──────────────────────────
