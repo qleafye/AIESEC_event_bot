@@ -53,6 +53,11 @@ from database.db import (
     get_stuck_questions,
     list_all_tasks,
     create_task,
+    get_task,
+    get_submission,
+    get_pending_submissions,
+    get_pending_submissions_count,
+    claim_submission,
     GAME_CATEGORIES,
     GAME_PROOF_TYPES,
 )
@@ -66,7 +71,7 @@ from services.scheduler import (
 )
 from services.allowlist import refresh_allowlist, allowlist_size
 from services.background import spawn as _spawn
-from handlers.states import Broadcast, EditSetting, Approval, ReceiptReview, StaffAdd, GameTaskCreate
+from handlers.states import Broadcast, EditSetting, Approval, ReceiptReview, StaffAdd, GameTaskCreate, GameReview
 from handlers.admin_caps import ALL_CAPABILITIES, CAP_LABELS, ROLES, role_caps_key, role_enabled_key, CapabilityMiddleware, required_capability, has_capability, resolve_capabilities, ANY_CAPABILITY, capability_holders
 from keyboards.builders import get_cancel_kb, MENU_BUTTONS, get_main_menu_kb
 from handlers.registration import REG_FLOW, REG_DEFAULTS, REG_LABELS, REG_PRESETS, REG_CATEGORIES, SHEET_HEADERS, STATUS_LABELS, _build_sheet_row, active_sheet_headers, set_sheet_schema, _sheet_value_map, approve_user, dropout_step_label, _apply_party_preset, _apply_short_preset, city_row_tab, incomplete_city_batches
@@ -164,6 +169,7 @@ _ADMIN_MENU_ROWS: list[tuple[str, str]] = [
     ("📖 Справка по настройкам", "admin_settings_guide"),
     ("🏙 Города мероприятия", "admin_cities"),
     ("📋 Задания", "admin_game_tasks"),
+    ("🎮 Проверка заданий", "admin_game_review"),
 ]
 
 
@@ -4538,6 +4544,139 @@ async def game_task_create_cancel(callback: types.CallbackQuery, state: FSMConte
     await callback.answer("Отменено")
     text = await _render_game_tasks_text()
     await callback.message.answer(text, parse_mode="HTML", reply_markup=_game_tasks_list_kb())
+
+
+# ── Phase 9 (GAME-02/03, wave 4, 09-04): «🎮 Проверка заданий» — moderation queue ───────────
+#
+# Same tinder-pattern/pagination as «Заявки»/«Чеки» above (D-01, CLAUDE.md: 1000+ submissions
+# must never be one message per row). `claim_submission` is the atomic single-row UPDATE (same
+# idiom as `approve_user_atomic`/`claim_question`) — `add_coins` is called ONLY from the branch
+# where it returned True, so two managers racing to approve the same card can never both credit
+# coins (T-09-11).
+
+async def _get_submission_and_task(submission_id: int) -> tuple[dict | None, dict | None]:
+    """`get_submission()` (09-01) is a plain, un-joined SELECT on game_submissions — unlike
+    `get_pending_submissions()`, it carries no task_text/task_coins. grev_approve/grev_reject/
+    grev_approve_custom_start act on a submission id straight from callback_data with no task
+    context on hand, so both rows are needed to notify the delegate and credit the right
+    amount. Rule 3 (blocking-issue autofix, not a new db.py accessor): combines the two
+    already-locked 09-01 accessors (`get_submission` + `get_task`) rather than changing
+    `get_submission`'s contract or adding a new one."""
+    submission = await get_submission(submission_id)
+    if submission is None:
+        return None, None
+    task = await get_task(submission["task_id"])
+    return submission, task
+
+
+def _render_submission_card(row: dict, position: int, total: int) -> str:
+    """HTML card for one pending submission; all free-text (task text, submitter name) escaped
+    — T-09-12: this is the FIRST render of delegate-supplied content to a manager."""
+    def esc(v):
+        return html_module.escape(str(v)) if v not in (None, "", "-") else None
+
+    header = f"🎮 <b>Сдача {position}/{total}</b>"
+    lines = [header, "", esc(row.get("task_text")) or "—"]
+    lines.append(f"Категория: {esc(row.get('task_category')) or '—'}")
+    lines.append(f"Предложено: {row.get('task_coins')}🪙")
+    name = esc(row.get("user_full_name")) or "—"
+    uname = esc(row.get("user_username"))
+    lines.append(f"👤 {name}" + (f" ({uname})" if uname else ""))
+    proof_label = _GAME_PROOF_LABELS.get(row.get("task_proof_type"), str(row.get("task_proof_type")))
+    lines.append(f"Тип подтверждения: {proof_label}")
+    content_type = row.get("content_type")
+    if content_type in ("text", "link"):
+        lines.append(f"Содержимое: {esc(row.get('content')) or '—'}")
+    elif content_type in ("photo", "pdf"):
+        lines.append("Содержимое: см. файл ниже")
+    # A-05 (созвон 13.08): дедлайн мягкий, бот сдачу принял — единственный ограничитель здесь
+    # человек. Просрочка нигде не хранится, только вычисляется здесь при каждом рендере.
+    submitted_at = row.get("submitted_at")
+    deadline_at = row.get("task_deadline_at")
+    if submitted_at and deadline_at and str(submitted_at) > str(deadline_at):
+        lines.append(f"⏰ Сдано после дедлайна ({deadline_at}) — решение за вами")
+    return "\n".join(lines)
+
+
+def _submission_card_kb(submission_id: int, coins: int) -> InlineKeyboardMarkup:
+    # NOTE: the plan's own <action> block names this function's second parameter `total`
+    # (copy-pasted from `_appr_card_kb(tid, has_resume, total)`), but the button label needs
+    # the task's coin default, and the plan explicitly drops the "Одобрить все" row that
+    # `total` would have fed — `total` is unused dead weight in that literal spec. Named
+    # `coins` here to match what the button text actually needs (documented in SUMMARY as a
+    # plan-authoring inconsistency, same class as 09-02's grep-count note / 09-03's stale test
+    # name, not a functional deviation).
+    return InlineKeyboardMarkup(inline_keyboard=[
+        [
+            InlineKeyboardButton(text=f"✅ Одобрить {coins}🪙", callback_data=f"grev_approve:{submission_id}"),
+            InlineKeyboardButton(text="✏️ Другая сумма", callback_data=f"grev_approve_custom:{submission_id}"),
+        ],
+        [
+            InlineKeyboardButton(text="❌ Отклонить", callback_data=f"grev_reject:{submission_id}"),
+            InlineKeyboardButton(text="⏭ Пропустить", callback_data=f"grev_skip:{submission_id}"),
+        ],
+    ])
+
+
+async def _show_current_submission(target: types.Message, state: FSMContext):
+    """Render the oldest non-skipped pending submission (DB-driven, restart-safe) — byte-for-
+    byte the same batched-pagination loop as `_show_current_card` (limit=50 per batch, CLAUDE.md:
+    never one query for "all at once")."""
+    admin_id = state.key.user_id
+    skipped = set((await state.get_data()).get("grev_skipped", []))
+    total = await get_pending_submissions_count()
+    offset = 0
+    visible: list[dict] = []
+    while not visible and offset < total:
+        batch = await get_pending_submissions(limit=50, offset=offset)
+        if not batch:
+            break
+        visible = [s for s in batch if s["id"] not in skipped]
+        offset += len(batch)
+    if not visible:
+        await target.answer("Сдач на проверке нет.", reply_markup=await admin_keyboard_for(admin_id))
+        return
+    current = visible[0]
+    position = min(len(skipped) + 1, total)
+    await target.answer(
+        _render_submission_card(current, position, total),
+        parse_mode="HTML",
+        reply_markup=_submission_card_kb(current["id"], current["task_coins"]),
+    )
+    if current.get("content_type") in ("photo", "pdf"):
+        try:
+            if current["content_type"] == "photo":
+                await target.answer_photo(current["content"])
+            else:
+                await target.answer_document(current["content"])
+        except Exception as e:
+            logger.error(f"Failed to resend submission content, submission={current['id']}: {e}")
+
+
+@router.callback_query(F.data == "admin_game_review")
+async def show_game_review(callback: types.CallbackQuery, state: FSMContext):
+    await state.update_data(grev_skipped=[])  # session-only skip set, same as appr_skipped (D-07)
+    await callback.answer()
+    await _show_current_submission(callback.message, state)
+
+
+@router.callback_query(F.data.startswith("grev_skip:"))
+async def grev_skip(callback: types.CallbackQuery, state: FSMContext):
+    try:
+        sid = int(callback.data.split(":", 1)[1])
+    except (ValueError, IndexError):
+        sid = None
+    data = await state.get_data()
+    skipped = list(data.get("grev_skipped", []))
+    if sid is not None and sid not in skipped:
+        skipped.append(sid)
+    await state.update_data(grev_skipped=skipped)
+    try:
+        await callback.message.delete()
+    except Exception:
+        pass
+    await callback.answer("Пропущено")
+    await _show_current_submission(callback.message, state)
 
 
 # ── ROLE-01 (D-16): «/admin auto-opens the one available section» ──────────────────────────

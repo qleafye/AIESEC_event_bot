@@ -85,12 +85,14 @@ def test_build_admin_keyboard_admin_cities_is_last_row_indices_unchanged(tmp_pat
     # admin (ALL_CAPABILITIES), the row set/order is unchanged from the pre-08-05 plain builder.
     # QUICK T-08-33 (2026-08-13) inserted "admin_stuck_questions" right after "admin_receipts"
     # -- the first-block length grew from 13 to 14. 09-02 (GAME-01) appended "admin_game_tasks"
-    # after "admin_cities" -- admin_cities is now second-to-last, admin_game_tasks is last.
+    # after "admin_cities". 09-04 (GAME-02/03) appended "admin_game_review" after that --
+    # admin_cities is now third-to-last, admin_game_tasks second-to-last, admin_game_review last.
     _admin_ready(tmp_path)
     kb = asyncio.run(admin_mod.build_admin_keyboard(ADMIN_ID))
     rows = kb.inline_keyboard
-    assert rows[-1][0].callback_data == "admin_game_tasks"
-    assert rows[-2][0].callback_data == "admin_cities"
+    assert rows[-1][0].callback_data == "admin_game_review"
+    assert rows[-2][0].callback_data == "admin_game_tasks"
+    assert rows[-3][0].callback_data == "admin_cities"
     expected_first_14 = [
         "admin_stats", "admin_monthly_stats", "admin_source_stats", "admin_export_csv",
         "admin_export_incomplete", "admin_applications", "admin_receipts",
