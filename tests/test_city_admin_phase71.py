@@ -86,16 +86,25 @@ def test_build_admin_keyboard_admin_cities_is_last_row_indices_unchanged(tmp_pat
     # QUICK T-08-33 (2026-08-13) inserted "admin_stuck_questions" right after "admin_receipts"
     # -- the first-block length grew from 13 to 14. 09-02 (GAME-01) appended "admin_game_tasks"
     # after "admin_cities". 09-04 (GAME-02/03) appended "admin_game_review" after that. 09-05
-    # (sheet export) appended "admin_game_sync_sheet" after that -- admin_cities is now
-    # fourth-to-last, admin_game_tasks third-to-last, admin_game_review second-to-last,
-    # admin_game_sync_sheet last.
+    # (sheet export) appended "admin_game_sync_sheet" after that. 09-06 (stats screen) appended
+    # "admin_game_stats" last of all -- admin_cities is now fifth-to-last, admin_game_tasks
+    # fourth-to-last, admin_game_review third-to-last, admin_game_sync_sheet second-to-last,
+    # admin_game_stats last.
+    #
+    # NOTE (09-06): this is the FOURTH plan in a row (09-02/09-04/09-05/09-06) to break this
+    # same hard-coded last-row assertion by appending one more menu row. This test is brittle
+    # by construction -- it should be rewritten to assert row PRESENCE/order by scanning for
+    # each known callback_data's position relative to its neighbors (or just asserting set
+    # membership + first-14 block), not by counting negative indices from the end. Left as a
+    # recommendation, not fixed here (out of scope for a stats-screen plan).
     _admin_ready(tmp_path)
     kb = asyncio.run(admin_mod.build_admin_keyboard(ADMIN_ID))
     rows = kb.inline_keyboard
-    assert rows[-1][0].callback_data == "admin_game_sync_sheet"
-    assert rows[-2][0].callback_data == "admin_game_review"
-    assert rows[-3][0].callback_data == "admin_game_tasks"
-    assert rows[-4][0].callback_data == "admin_cities"
+    assert rows[-1][0].callback_data == "admin_game_stats"
+    assert rows[-2][0].callback_data == "admin_game_sync_sheet"
+    assert rows[-3][0].callback_data == "admin_game_review"
+    assert rows[-4][0].callback_data == "admin_game_tasks"
+    assert rows[-5][0].callback_data == "admin_cities"
     expected_first_14 = [
         "admin_stats", "admin_monthly_stats", "admin_source_stats", "admin_export_csv",
         "admin_export_incomplete", "admin_applications", "admin_receipts",

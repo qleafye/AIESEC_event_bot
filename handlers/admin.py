@@ -59,6 +59,7 @@ from database.db import (
     get_pending_submissions_count,
     claim_submission,
     list_all_submissions,
+    get_game_stats,
     GAME_CATEGORIES,
     GAME_PROOF_TYPES,
 )
@@ -172,6 +173,7 @@ _ADMIN_MENU_ROWS: list[tuple[str, str]] = [
     ("📋 Задания", "admin_game_tasks"),
     ("🎮 Проверка заданий", "admin_game_review"),
     ("🔄 Таблица геймы", "admin_game_sync_sheet"),
+    ("📊 Статистика геймы", "admin_game_stats"),
 ]
 
 
@@ -4934,6 +4936,54 @@ async def sync_game_sheets(callback: types.CallbackQuery):
         parse_mode="HTML",
         reply_markup=await admin_keyboard_for(callback.from_user.id),
     )
+
+
+@router.callback_query(F.data == "admin_game_stats")
+async def show_game_stats(callback: types.CallbackQuery):
+    """«📊 Статистика геймы» — the single agregate screen for the gamification manager: who is
+    participating and where each submission stands, plus an approved-only breakdown by
+    category. `get_game_stats()` (09-01) is the ONLY aggregating query behind this screen — the
+    Sheets matrix (09-05) computes its own per-row cells independently and is not reused here,
+    per the plan's own <key_links> contract.
+
+    CLAUDE.md (13.08, «бот для людей, не для прогеров»): an event manager reads this screen, not
+    a developer -- a genuinely empty database (nobody has submitted anything at all yet) must
+    read as a plain sentence, not a table of zeroes that looks broken.
+    """
+    stats = await get_game_stats()
+
+    if stats["participants"] == 0:
+        text = "📊 <b>Статистика геймификации</b>\n\nПока никто ничего не сдавал."
+    else:
+        lines = [
+            "📊 <b>Статистика геймификации</b>",
+            "",
+            f"Участников: {stats['participants']}",
+            f"Сдано на проверке: {stats['pending']}",
+            f"Одобрено: {stats['approved']}",
+            f"Отклонено: {stats['rejected']}",
+            "",
+            "<b>По категориям (одобрено):</b>",
+        ]
+        by_category = stats["by_category"]
+        if not by_category:
+            lines.append("пока нет одобренных сдач")
+        else:
+            # Fixed GAME_CATEGORIES order (Light/Medium/Hard/Referral/Special), not dict
+            # insertion order from SQL -- stable row order on every render, zero-count
+            # categories skipped rather than padding the screen with "0" lines.
+            for cat in GAME_CATEGORIES:
+                count = by_category.get(cat, 0)
+                if count:
+                    lines.append(f"• {cat}: {count}")
+        text = "\n".join(lines)
+
+    await callback.message.answer(
+        text,
+        parse_mode="HTML",
+        reply_markup=await admin_keyboard_for(callback.from_user.id),
+    )
+    await callback.answer()
 
 
 # ── ROLE-01 (D-16): «/admin auto-opens the one available section» ──────────────────────────
