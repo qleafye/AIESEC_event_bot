@@ -317,8 +317,29 @@ ADMIN_CAPS: dict[str, str] = {
     "toggle_show_progress": "settings",
     "toggle_uni_mode": "settings",
 
-    # moderate_game: no keys yet -- the gamification section is Phase 9 (08-CONTEXT domain
-    # boundary). checkin: no keys yet -- Phase 12. Both capabilities already exist in
+    # ── moderate_game (Phase 9) ─────────────────────────────────────────────────────────
+    # 09-01 (interface-first): all 15 future gamification callback/state keys registered
+    # BEFORE any handler exists, so waves 2-6 (09-02..09-06) never touch this file again --
+    # removes the file-conflict risk between the parallel wave-2 plans (09-02 admin /
+    # 09-03 delegate). One capability for all of it (D-domain): @osesska holds exactly
+    # moderate_game, no finer split needed.
+    "admin_game_tasks": "moderate_game",
+    "gtnew": "moderate_game",
+    "gtcat:*": "moderate_game",
+    "gtproof:*": "moderate_game",
+    "gtconfirm": "moderate_game",
+    "gtcancel": "moderate_game",
+    "state:GameTaskCreate:*": "moderate_game",
+    "admin_game_review": "moderate_game",
+    "grev_approve:*": "moderate_game",
+    "grev_approve_custom:*": "moderate_game",
+    "grev_reject:*": "moderate_game",
+    "grev_skip:*": "moderate_game",
+    "state:GameReview:*": "moderate_game",
+    "admin_game_sync_sheet": "moderate_game",
+    "admin_game_stats": "moderate_game",
+
+    # checkin: no keys yet -- Phase 12. Capability already exists in
     # ALL_CAPABILITIES/ROLES so a future phase adds handlers, not registry plumbing.
 }
 

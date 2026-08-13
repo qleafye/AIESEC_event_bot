@@ -79,3 +79,20 @@ class StaffAdd(StatesGroup):
     # Phase 8 (ROLE-02, D-18): single-step wizard — one message resolves a person by
     # forwarded message / @username / numeric id, then role assignment is a callback.
     waiting_for_person = State()
+
+class GameTaskCreate(StatesGroup):
+    # Phase 9 (GAME-01/02/03, wave 2, 09-02): one State per task-creation wizard step.
+    # category/proof_type are driven by inline buttons (not free text), but the state is
+    # still set between steps — same «Отмена посреди визарда» guard every other wizard uses.
+    text = State()
+    category = State()
+    coins = State()
+    proof_type = State()
+    deadline = State()
+    confirm = State()
+
+class GameReview(StatesGroup):
+    # Phase 9 (wave 4, 09-04): moderation — rejection reason (mirrors Approval.reason) and
+    # an amount override on approve (A-04: «5 за каждый правильный ответ» tasks need this).
+    reject_reason = State()
+    approve_amount = State()
