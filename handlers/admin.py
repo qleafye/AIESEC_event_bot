@@ -52,6 +52,9 @@ from database.db import (
     set_question_answer,
     get_stuck_questions,
     list_all_tasks,
+    create_task,
+    GAME_CATEGORIES,
+    GAME_PROOF_TYPES,
 )
 from aiogram.exceptions import TelegramRetryAfter, TelegramForbiddenError, TelegramBadRequest
 from services.sheets import get_existing_sheet_ids, append_rows_to_sheet, ensure_sheet_header, sync_named_worksheet, dedupe_sheet_by_id, update_status_in_sheet, bulk_update_status_in_sheet, rebuild_main_sheet, REFUSED_UNPINNED_TAB
@@ -124,6 +127,17 @@ def _parse_coins_amount(token: str) -> int | None:
         return None
     value = int(body)
     return -value if token[0] == "-" else value
+
+
+def _parse_positive_int(text: str) -> int | None:
+    """No-sign positive-int parser for the game-task coins step (D-08). Unlike
+    `_parse_coins_amount` above (`/coins`'s signed delta, `+N`/`-N`), a task's coin value is
+    never negative and never zero -- `"0"`/`"-5"`/non-digit input all resolve to None."""
+    token = (text or "").strip()
+    if not token or not (token.isascii() and token.isdigit()):
+        return None
+    value = int(token)
+    return value if value > 0 else None
 
 
 # ROLE-01 (D-15): the ONE list of (text, callback_data) menu rows — same order the plain
@@ -4383,6 +4397,147 @@ async def cancel_game_task_create(message: types.Message, state: FSMContext):
     await message.answer("Создание задания отменено.", reply_markup=ReplyKeyboardRemove())
     text = await _render_game_tasks_text()
     await message.answer(text, parse_mode="HTML", reply_markup=_game_tasks_list_kb())
+
+
+# Human-readable labels for GAME_PROOF_TYPES (D-08/CLAUDE.md «для людей, не для прогеров»):
+# the manager taps a labeled button, never types a proof-type code.
+_GAME_PROOF_LABELS = {
+    "photo": "📷 Скриншот/фото",
+    "pdf": "📄 PDF",
+    "text": "✍️ Текст",
+    "link": "🔗 Ссылка",
+}
+
+
+def _game_task_category_kb() -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text=cat, callback_data=f"gtcat:{cat}")] for cat in GAME_CATEGORIES
+    ])
+
+
+def _game_task_proof_kb() -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text=_GAME_PROOF_LABELS[p], callback_data=f"gtproof:{p}")]
+        for p in GAME_PROOF_TYPES
+    ])
+
+
+def _game_task_confirm_kb() -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="✅ Создать", callback_data="gtconfirm")],
+        [InlineKeyboardButton(text="❌ Отмена", callback_data="gtcancel")],
+    ])
+
+
+def _render_game_task_confirm_card(data: dict) -> str:
+    """T-09-05: the task text is shown to every delegate later (wave 3) with
+    `parse_mode="HTML"` -- escaped here too, not just once at the eventual delegate render."""
+    deadline_raw = data.get("gt_deadline")
+    try:
+        deadline_display = datetime.strptime(deadline_raw, "%Y-%m-%d %H:%M:%S").strftime("%d.%m.%Y %H:%M")
+    except (TypeError, ValueError):
+        deadline_display = str(deadline_raw or "—")
+    proof = data.get("gt_proof_type")
+    proof_label = _GAME_PROOF_LABELS.get(proof, str(proof))
+    return (
+        "📋 <b>Проверьте задание</b>\n\n"
+        f"Текст: {html_module.escape(str(data.get('gt_text')))}\n"
+        f"Категория: {html_module.escape(str(data.get('gt_category')))}\n"
+        f"Коины: {data.get('gt_coins')}\n"
+        f"Подтверждение: {proof_label}\n"
+        f"Дедлайн: {deadline_display}"
+    )
+
+
+@router.message(GameTaskCreate.text)
+async def game_task_text_step(message: types.Message, state: FSMContext):
+    text = (message.text or "").strip()
+    if not text:
+        await message.answer("Текст не может быть пустым. Введите текст задания:")
+        return
+    await state.update_data(gt_text=text)
+    await message.answer("Выберите категорию:", reply_markup=_game_task_category_kb())
+    await state.set_state(GameTaskCreate.category)
+
+
+@router.callback_query(F.data.startswith("gtcat:"))
+async def game_task_category_step(callback: types.CallbackQuery, state: FSMContext):
+    cat = callback.data.split(":", 1)[1]
+    if cat not in GAME_CATEGORIES:
+        await callback.answer("Некорректная категория", show_alert=True)
+        return
+    await state.update_data(gt_category=cat)
+    await callback.message.answer("Сколько монет за это задание?", reply_markup=get_cancel_kb())
+    await state.set_state(GameTaskCreate.coins)
+    await callback.answer()
+
+
+@router.message(GameTaskCreate.coins)
+async def game_task_coins_step(message: types.Message, state: FSMContext):
+    value = _parse_positive_int(message.text)
+    if value is None:
+        await message.answer("Введите положительное целое число монет:")
+        return
+    await state.update_data(gt_coins=value)
+    await message.answer("Тип подтверждения:", reply_markup=_game_task_proof_kb())
+    await state.set_state(GameTaskCreate.proof_type)
+
+
+@router.callback_query(F.data.startswith("gtproof:"))
+async def game_task_proof_step(callback: types.CallbackQuery, state: FSMContext):
+    proof = callback.data.split(":", 1)[1]
+    if proof not in GAME_PROOF_TYPES:
+        await callback.answer("Некорректный тип подтверждения", show_alert=True)
+        return
+    await state.update_data(gt_proof_type=proof)
+    await callback.message.answer(
+        "Дедлайн сдачи? Формат ДД.ММ.ГГГГ ЧЧ:ММ (например 25.08.2026 23:59):",
+        reply_markup=get_cancel_kb(),
+    )
+    await state.set_state(GameTaskCreate.deadline)
+    await callback.answer()
+
+
+@router.message(GameTaskCreate.deadline)
+async def game_task_deadline_step(message: types.Message, state: FSMContext):
+    when = _parse_schedule_dt(message.text)
+    if when is None:
+        await message.answer("❌ Не понял дату. Формат: ДД.ММ.ГГГГ ЧЧ:ММ (напр. 01.07.2026 14:30)")
+        return
+    if when <= datetime.now():
+        await message.answer("❌ Это время уже прошло. Введите будущую дату.")
+        return
+    await state.update_data(gt_deadline=_fmt_dt(when))
+    data = await state.get_data()
+    await message.answer(
+        _render_game_task_confirm_card(data), parse_mode="HTML", reply_markup=_game_task_confirm_kb(),
+    )
+    await state.set_state(GameTaskCreate.confirm)
+
+
+@router.callback_query(F.data == "gtconfirm")
+async def game_task_confirm(callback: types.CallbackQuery, state: FSMContext):
+    data = await state.get_data()
+    await create_task(
+        text=data["gt_text"],
+        category=data["gt_category"],
+        coins=data["gt_coins"],
+        proof_type=data["gt_proof_type"],
+        deadline_at=data["gt_deadline"],
+        created_by=callback.from_user.id,
+    )
+    await state.set_state(None)
+    await callback.answer("Задание создано")
+    text = await _render_game_tasks_text()
+    await callback.message.answer(text, parse_mode="HTML", reply_markup=_game_tasks_list_kb())
+
+
+@router.callback_query(F.data == "gtcancel")
+async def game_task_create_cancel(callback: types.CallbackQuery, state: FSMContext):
+    await state.set_state(None)
+    await callback.answer("Отменено")
+    text = await _render_game_tasks_text()
+    await callback.message.answer(text, parse_mode="HTML", reply_markup=_game_tasks_list_kb())
 
 
 # ── ROLE-01 (D-16): «/admin auto-opens the one available section» ──────────────────────────
