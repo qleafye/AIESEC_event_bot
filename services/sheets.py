@@ -1,5 +1,6 @@
 import asyncio
 import logging
+import sqlite3
 import threading
 
 import gspread
@@ -9,6 +10,11 @@ logger = logging.getLogger(__name__)
 
 MAX_RETRIES = 3
 RETRY_DELAYS = [5, 15, 30]
+
+# Quick task 260813: sentinel distinct from the generic "-1 = unconfigured/API error" return
+# used across this module, so callers (handlers/admin.py) can show the admin an ACTIONABLE
+# message ("set GOOGLE_SHEET_TAB") instead of the generic "check logs" failure text.
+REFUSED_UNPINNED_TAB = -2
 
 # P0 audit T-dw1-02: bot injection hook for the exhausted-retry admin alert. sheets.py has no
 # bot reference of its own today (services/scheduler.py holds its own via init_scheduler) —
@@ -22,29 +28,82 @@ def set_alert_bot(bot):
     _alert_bot = bot
 
 
-async def _alert_admins_sheet_failure(context: str) -> None:
-    """Fail-soft admin alert fired after a Sheets append exhausts MAX_RETRIES (mirrors
-    services/scheduler.py::allowlist_refresh_job's per-admin send pattern). Wrapped so this can
-    NEVER raise or block the caller's retry loop."""
+def _tab_explicitly_configured() -> bool:
+    """True only if GOOGLE_SHEET_TAB carries an explicit, non-empty value (after stripping the
+    stray quotes/whitespace some .env parsers leave around it). Checked directly against
+    config, NOT against whatever _sheet happens to be cached right now — so destructive-op
+    refusal (rebuild/dedupe, see REFUSED_UNPINNED_TAB above) and the startup warning below both
+    reflect the CURRENT config, not stale in-process cache state."""
+    tab = (config.GOOGLE_SHEET_TAB or "").strip().strip('"').strip("'").strip()
+    return bool(tab)
+
+
+async def _send_admin_alert(text: str) -> None:
+    """Shared low-level admin broadcast used by every fail-soft Sheets alert in this module
+    (the exhausted-retry alert below, and warn_if_tab_unconfigured's startup warning — quick
+    task 260813, hardening the main-tab resolution incident). NEVER raises — callers rely on
+    that to stay fail-soft themselves."""
     global _alert_bot_warned
     try:
         if _alert_bot is None:
             if not _alert_bot_warned:
-                logger.warning("_alert_admins_sheet_failure: no alert bot set, skipping admin alert")
+                logger.warning("_send_admin_alert: no alert bot set, skipping admin alert")
                 _alert_bot_warned = True
             return
-        text = (
-            f"⚠️ Google Sheets: не удалось записать строку после {MAX_RETRIES} попыток "
-            f"({context}). SQLite не затронут — синхронизация таблицы отстаёт. "
-            "Проверьте квоту/доступ Google API."
-        )
         for admin_id in config.ADMIN_IDS:
             try:
                 await _alert_bot.send_message(admin_id, text)
             except Exception as e:
-                logger.error(f"Sheets failure alert to {admin_id} failed: {e}")
+                logger.error(f"Sheets alert to {admin_id} failed: {e}")
     except Exception as e:
-        logger.error(f"_alert_admins_sheet_failure failed: {e}")
+        logger.error(f"_send_admin_alert failed: {e}")
+
+
+async def _alert_admins_sheet_failure(context: str) -> None:
+    """Fail-soft admin alert fired after a Sheets append exhausts MAX_RETRIES (mirrors
+    services/scheduler.py::allowlist_refresh_job's per-admin send pattern). Wrapped so this can
+    NEVER raise or block the caller's retry loop."""
+    text = (
+        f"⚠️ Google Sheets: не удалось записать строку после {MAX_RETRIES} попыток "
+        f"({context}). SQLite не затронут — синхронизация таблицы отстаёт. "
+        "Проверьте квоту/доступ Google API."
+    )
+    await _send_admin_alert(text)
+
+
+_startup_tab_warning_sent = False
+
+
+async def warn_if_tab_unconfigured() -> None:
+    """Startup check — call once from main.py, right after set_alert_bot(bot). If Sheets sync
+    is active (GOOGLE_SHEET_ID + credentials set) but GOOGLE_SHEET_TAB is empty, the main tab
+    resolves by position on first use (see _get_sheet's pinning comment above) instead of by an
+    admin-confirmed name. Logs loudly and alerts admins ONCE per process start (mirrors
+    _alert_bot_warned's one-shot pattern) — never spams on every write."""
+    global _startup_tab_warning_sent
+    if _startup_tab_warning_sent:
+        return
+    if not config.GOOGLE_SHEET_ID or not config.GOOGLE_CREDENTIALS_FILE:
+        return  # Sheets integration off entirely — nothing to warn about
+    if _tab_explicitly_configured():
+        return
+    _startup_tab_warning_sent = True
+    logger.error(
+        "GOOGLE_SHEET_TAB не задан: основная вкладка резолвится ПО ПОЗИЦИИ (первая слева), "
+        "не по имени. Перетаскивание вкладок местами в Google Sheets молча перенаправит "
+        "запись регистраций на другую вкладку. Укажите GOOGLE_SHEET_TAB в .env. До этого "
+        "«Пересобрать таблицу» и «Убрать дубли из таблицы» отключены."
+    )
+    await _send_admin_alert(
+        "⚠️ Google Sheets: GOOGLE_SHEET_TAB не задан в .env. Основная вкладка регистраций "
+        "определяется по ПОЗИЦИИ (первая слева), а не по имени — перетаскивание вкладок "
+        "местами в интерфейсе Google Sheets молча перенаправит запись данных на другую "
+        "вкладку.\n\n"
+        "Укажите GOOGLE_SHEET_TAB в .env (точное имя текущей основной вкладки) и "
+        "перезапустите бота.\n\n"
+        "Пока это не сделано, «♻️ Пересобрать таблицу» и «🧹 Убрать дубли из таблицы» "
+        "отключены — чтобы случайно не стереть чужую вкладку."
+    )
 
 
 # Cache the authorized client + worksheet handle: gspread.service_account() re-auths
@@ -56,6 +115,60 @@ _sheet = None
 # _get_sheet is a TOCTOU race — two concurrent ops could both build a fresh client. Guard with
 # a threading.Lock (NOT asyncio.Lock, which is single-thread only).
 _sheet_lock = threading.Lock()
+
+# Quick task 260813: real production incident — with GOOGLE_SHEET_TAB empty, the main tab used
+# to resolve by POSITION (sh.sheet1) on every single _get_sheet() call. A manager dragging a
+# tab to the front of the spreadsheet (completely normal in the Sheets UI) silently redirected
+# every registration write into it, and "♻️ Пересобрать таблицу" (rebuild_main_sheet) then
+# cleared and overwrote that unrelated tab. Fix: resolve by position AT MOST ONCE — the title
+# picked that first time is persisted (bot_settings, survives restarts) and every subsequent
+# resolution — including after _reset_sheet_cache() or a process restart — targets that SAME
+# title by name. Reordering tabs afterwards can no longer redirect writes.
+_PINNED_MAIN_TAB_SETTING_KEY = "sheets_main_tab_pinned_title"
+
+
+def _load_pinned_tab_title() -> str | None:
+    """Read the persisted pin from bot_settings via a PLAIN sync sqlite3 connection — NOT
+    aiosqlite/database.db.get_setting. _get_sheet() runs inside asyncio.to_thread (a worker
+    thread, off the asyncio event loop aiosqlite needs), so an async DB call here would have no
+    running loop to attach to. sqlite3.connect() is a stdlib blocking call, safe from any
+    thread; a fresh connection is opened and closed per call (this only runs when the sheet
+    cache is empty — at most once per process per cache-reset, not per write). Fails soft: a
+    missing DB file/table (e.g. _get_sheet() called before init_db() has run once) returns None
+    rather than raising, so the in-memory positional fallback below still works."""
+    try:
+        conn = sqlite3.connect(config.DB_PATH)
+        try:
+            cur = conn.execute(
+                "SELECT value FROM bot_settings WHERE key = ?",
+                (_PINNED_MAIN_TAB_SETTING_KEY,),
+            )
+            row = cur.fetchone()
+            return row[0] if row else None
+        finally:
+            conn.close()
+    except Exception as e:
+        logger.warning(f"_load_pinned_tab_title failed (falling back to unpinned): {e}")
+        return None
+
+
+def _save_pinned_tab_title(title: str) -> None:
+    """Persist the pin. Same sync-sqlite3 rationale as _load_pinned_tab_title. Fail-soft: if
+    this write fails (e.g. table not yet created), the bot keeps working off the in-memory
+    _sheet cache for this process — it just won't survive a restart, which is exactly the
+    pre-fix behaviour, not a regression."""
+    try:
+        conn = sqlite3.connect(config.DB_PATH)
+        try:
+            conn.execute(
+                "INSERT OR REPLACE INTO bot_settings (key, value) VALUES (?, ?)",
+                (_PINNED_MAIN_TAB_SETTING_KEY, title),
+            )
+            conn.commit()
+        finally:
+            conn.close()
+    except Exception as e:
+        logger.warning(f"_save_pinned_tab_title({title!r}) failed: {e}")
 
 
 def _get_sheet():
@@ -70,16 +183,37 @@ def _get_sheet():
         sh = gc.open_by_key(config.GOOGLE_SHEET_ID)
         # Defensively strip stray quotes some .env parsers keep around the value.
         tab = (config.GOOGLE_SHEET_TAB or "").strip().strip('"').strip("'").strip()
-        if not tab:
-            _sheet = sh.sheet1  # historical default: first tab by position
+        if tab:
+            # Target the configured tab by name; auto-create it if the spreadsheet doesn't
+            # have it yet (mirrors the «Незавершённые» tab behaviour) so a fresh work-sheet
+            # doesn't silently drop every write with WorksheetNotFound.
+            try:
+                _sheet = sh.worksheet(tab)
+            except gspread.WorksheetNotFound:
+                _sheet = sh.add_worksheet(title=tab, rows=1000, cols=30)
             return _sheet
-        # Target the configured tab by name; auto-create it if the spreadsheet doesn't
-        # have it yet (mirrors the «Незавершённые» tab behaviour) so a fresh work-sheet
-        # doesn't silently drop every write with WorksheetNotFound.
-        try:
-            _sheet = sh.worksheet(tab)
-        except gspread.WorksheetNotFound:
-            _sheet = sh.add_worksheet(title=tab, rows=1000, cols=30)
+
+        # No explicit tab configured. Never resolve by raw position more than once — first
+        # check whether a previous resolution (this process or an earlier one) already pinned
+        # a title.
+        pinned_title = _load_pinned_tab_title()
+        if pinned_title:
+            try:
+                _sheet = sh.worksheet(pinned_title)
+                return _sheet
+            except gspread.WorksheetNotFound:
+                # The pinned tab was renamed/deleted since we last pinned it. There is no safe
+                # "same tab" target left — fall through and re-pin via position, same as a
+                # first-ever run. Loud, because this is exactly the kind of drift the pin
+                # exists to prevent.
+                logger.warning(
+                    f"Pinned main tab {pinned_title!r} no longer exists on the spreadsheet; "
+                    "re-resolving by position and re-pinning."
+                )
+
+        # Historical default: first tab by position — used ONLY to establish the pin.
+        _sheet = sh.sheet1
+        _save_pinned_tab_title(_sheet.title)
         return _sheet
 
 
@@ -227,9 +361,15 @@ def _dedupe_sheet_sync() -> int:
 
 
 async def dedupe_sheet_by_id() -> int:
-    """Fail-soft wrapper. Returns rows deleted, or -1 if the sheet is unconfigured / API error."""
+    """Fail-soft wrapper. Returns rows deleted, REFUSED_UNPINNED_TAB (-2) if GOOGLE_SHEET_TAB
+    isn't explicitly set (see rebuild_main_sheet's docstring — same reasoning: this permanently
+    DELETES rows on whatever tab _get_sheet() resolves, and an unpinned/positional resolution
+    is not a safe target for a destructive op), or -1 for unconfigured / API error."""
     if not config.GOOGLE_SHEET_ID or not config.GOOGLE_CREDENTIALS_FILE:
         return -1
+    if not _tab_explicitly_configured():
+        logger.warning("dedupe_sheet_by_id refused: GOOGLE_SHEET_TAB not set (positional main tab)")
+        return REFUSED_UNPINNED_TAB
     try:
         return await asyncio.to_thread(_dedupe_sheet_sync)
     except Exception as e:
@@ -408,9 +548,21 @@ async def bulk_update_status_in_sheet(id_to_label: dict[str, str]) -> int:
 
 
 async def rebuild_main_sheet(headers: list[str], rows: list[list]) -> int:
-    """Fail-soft полная пересборка листа данных. Возвращает число строк или -1 при ошибке."""
+    """Fail-soft полная пересборка листа данных. Возвращает число строк, REFUSED_UNPINNED_TAB
+    (-2) если GOOGLE_SHEET_TAB не задан явно, или -1 при ошибке.
+
+    Quick task 260813: this is the operation that CLEARS the resolved worksheet before
+    rewriting it (_rebuild_main_sheet_sync -> sheet.clear()) — the single most destructive
+    Sheets call in this module. When GOOGLE_SHEET_TAB is empty, _get_sheet() resolves the main
+    tab by position-then-pin (see its docstring): the FIRST time it ever ran, it picked
+    whatever tab happened to be sh.sheet1 at that moment. That is not an admin-confirmed
+    target — it is an accident of tab order on some earlier day. Wiping it is refused until an
+    admin explicitly names the tab, at which point _get_sheet() targets it by name unambiguously."""
     if not config.GOOGLE_SHEET_ID or not config.GOOGLE_CREDENTIALS_FILE:
         return -1
+    if not _tab_explicitly_configured():
+        logger.warning("rebuild_main_sheet refused: GOOGLE_SHEET_TAB not set (positional main tab)")
+        return REFUSED_UNPINNED_TAB
     try:
         return await asyncio.to_thread(_rebuild_main_sheet_sync, headers, rows)
     except Exception as e:
