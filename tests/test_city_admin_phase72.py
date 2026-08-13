@@ -104,7 +104,9 @@ def _seed_city(telegram_id, event_city, status="pending", payment_status=None, f
 def test_admin_keyboard_for_module_off_equals_build_admin_keyboard(tmp_path):
     _admin_ready(tmp_path)
     scoped = asyncio.run(admin_mod.admin_keyboard_for(ADMIN_ID))
-    plain = admin_mod.build_admin_keyboard()
+    # 08-05 (D-15): build_admin_keyboard is now async + capability-filtered; ADMIN_ID is a
+    # bootstrap admin (ALL_CAPABILITIES) so the row set is unchanged from before 08-05.
+    plain = asyncio.run(admin_mod.build_admin_keyboard(ADMIN_ID))
     assert len(scoped.inline_keyboard) == len(plain.inline_keyboard)
     for row_a, row_b in zip(scoped.inline_keyboard, plain.inline_keyboard):
         assert [b.text for b in row_a] == [b.text for b in row_b]
@@ -115,7 +117,7 @@ def test_admin_keyboard_for_module_on_has_city_header_row(tmp_path):
     _admin_ready(tmp_path)
     asyncio.run(db.set_setting("event_city_enabled", "on"))
     kb = asyncio.run(admin_mod.admin_keyboard_for(ADMIN_ID))
-    plain = admin_mod.build_admin_keyboard()
+    plain = asyncio.run(admin_mod.build_admin_keyboard(ADMIN_ID))
     assert len(kb.inline_keyboard) == len(plain.inline_keyboard) + 1
     header_row = kb.inline_keyboard[0]
     assert len(header_row) == 1
