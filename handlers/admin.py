@@ -407,6 +407,12 @@ async def cmd_find_user(message: types.Message):
         await message.answer(f"❌ Пользователь {username} не найден в базе данных.")
 
 
+# Метка едет в deep-link как `?start=src_<метка>`, а Telegram разрешает в этом параметре
+# только латиницу, цифры, «_» и «-» (всего 64 символа, из них 4 занимает префикс `src_`).
+# Всё остальное молча ломает ссылку, поэтому проверяем до отправки, а не после.
+_SOURCE_TAG_RE = re.compile(r"^[A-Za-z0-9_-]{1,60}$")
+
+
 @router.message(Command("create_link"))
 async def cmd_create_link(message: types.Message, bot: Bot):
     args = message.text.split(maxsplit=1)
@@ -414,12 +420,28 @@ async def cmd_create_link(message: types.Message, bot: Bot):
         await message.answer("⚠️ Используйте формат: /create_link &lt;название&gt;\nПример: /create_link vk_poster", parse_mode="HTML")
         return
 
-    tag = args[1].strip()
+    raw = args[1].strip()
+    # Реальный случай 14.08: менеджер скопировал формат из справки ВМЕСТЕ с угловыми скобками
+    # («/create_link <инфо ВК>»). Скобки попадали в HTML-ответ неэкранированными, Telegram видел
+    # «<инфо» как открывающий тег и отклонял ВСЁ сообщение — человек не получал ни ссылки, ни
+    # ошибки. Снимаем скобки молча (намерение очевидно), а остальное объясняем словами.
+    tag = raw[1:-1].strip() if raw.startswith("<") and raw.endswith(">") else raw
+
+    if not _SOURCE_TAG_RE.match(tag):
+        await message.answer(
+            "⚠️ Метка подставляется прямо в ссылку, поэтому в ней можно использовать только "
+            "латинские буквы, цифры, «_» и «-» — без пробелов, русских букв и знаков.\n\n"
+            f"Вы прислали: <code>{html_module.escape(raw)}</code>\n"
+            "Например, для афиши во ВКонтакте: <code>/create_link vk_poster</code>",
+            parse_mode="HTML",
+        )
+        return
+
     bot_user = await bot.get_me()
     link = f"https://t.me/{bot_user.username}?start=src_{tag}"
     await message.answer(
-        f"🔗 Ссылка с меткой <b>{tag}</b>:\n\n"
-        f"<code>{link}</code>\n\n"
+        f"🔗 Ссылка с меткой <b>{html_module.escape(tag)}</b>:\n\n"
+        f"<code>{html_module.escape(link)}</code>\n\n"
         f"Регистрации по этой ссылке появятся в разделе «📈 Источники».",
         parse_mode="HTML",
     )
