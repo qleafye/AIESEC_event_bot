@@ -6,6 +6,8 @@ pending count once per configurable interval — never one push per submission.
 import asyncio
 import logging
 
+from aiogram.exceptions import TelegramForbiddenError
+
 from config import config
 from database.db import get_pending_count, get_setting
 from settings_schema import get_setting_typed
@@ -13,6 +15,13 @@ from settings_schema import get_setting_typed
 logger = logging.getLogger(__name__)
 
 DEFAULT_INTERVAL = 1800  # seconds (30 min)
+
+# Admins who blocked the bot. The reminder fires on a fixed interval forever, so an admin
+# who blocks it produces one identical ERROR per tick for as long as the bot runs (observed
+# in production: 67 for a single admin id). Blocking is permanent until the human unblocks,
+# and unblocking restarts nothing on our side — so we note it once, stop trying, and let a
+# bot restart clear the set (the cheap way to re-test whether they unblocked).
+_blocked_admins: set[int] = set()
 
 
 def _reminder_enabled(raw: str | None) -> bool:
@@ -48,8 +57,16 @@ async def pending_reminder_loop(bot):
                 if count > 0:
                     text = f"📋 Заявок в ожидании: {count}. Открой /admin → Заявки."
                     for admin_id in config.ADMIN_IDS:
+                        if admin_id in _blocked_admins:
+                            continue
                         try:
                             await bot.send_message(admin_id, text)
+                        except TelegramForbiddenError as e:
+                            _blocked_admins.add(admin_id)
+                            logger.warning(
+                                f"Pending reminder: admin {admin_id} blocked the bot — "
+                                f"muting reminders for them until restart: {e}"
+                            )
                         except Exception as e:
                             logger.error(f"Pending reminder: failed to notify admin {admin_id}: {e}")
         except Exception as e:

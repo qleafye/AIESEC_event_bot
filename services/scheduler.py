@@ -16,7 +16,7 @@ from datetime import datetime, timedelta
 
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.jobstores.sqlalchemy import SQLAlchemyJobStore
-from aiogram.exceptions import TelegramRetryAfter
+from aiogram.exceptions import TelegramForbiddenError, TelegramRetryAfter
 
 from config import config
 from database.db import get_setting
@@ -172,12 +172,27 @@ async def reconcile_scheduled_broadcasts():
 
 # ── SCHED-01: scheduled-broadcast date job ───────────────────────────────────
 
-async def _safe_send(send_coro_factory, chat_id) -> bool:
+async def _safe_send(send_coro_factory, chat_id, on_permanent_failure=None) -> bool:
     """Run one send with the 429-safe single-retry pattern (D-07/D-08).
-    Returns True if delivered (first try or retry), False on genuine failure."""
+    Returns True if delivered (first try or retry), False on genuine failure.
+
+    `TelegramForbiddenError` (user blocked the bot / deactivated account) is a PERMANENT
+    failure: retrying it later can never succeed. Callers that would otherwise re-queue the
+    same chat_id forever pass `on_permanent_failure` — an async callback run once so they can
+    record the give-up. Without it a blocked user stayed a nudge candidate on every 15-minute
+    scan (observed in production: 2934 + 2064 identical ERROR lines for two chat_ids).
+    Logged at WARNING, not ERROR — it is a fact about the user, not a bot malfunction."""
     try:
         await send_coro_factory(chat_id)
         return True
+    except TelegramForbiddenError as e:
+        logger.warning(f"Scheduled send permanently undeliverable for {chat_id}: {e}")
+        if on_permanent_failure is not None:
+            try:
+                await on_permanent_failure(chat_id)
+            except Exception as e2:
+                logger.error(f"on_permanent_failure hook failed for {chat_id}: {e2}")
+        return False
     except TelegramRetryAfter as e:
         await asyncio.sleep(e.retry_after + 1)
         try:
@@ -401,7 +416,13 @@ async def nudge_incomplete_registrations():
             return
         text = await get_setting("nudge_text") or DEFAULT_NUDGE_TEXT
         for tid in candidates:
-            ok = await _safe_send(lambda cid: _bot.send_message(cid, text), tid)
+            # A blocked user can never receive the nudge, so stamping nudged_at on permanent
+            # failure is what keeps the "exactly once" contract (D-14) from degenerating into
+            # "forever" — the give-up is the one-shot.
+            ok = await _safe_send(
+                lambda cid: _bot.send_message(cid, text), tid,
+                on_permanent_failure=mark_nudged,
+            )
             if ok:
                 await mark_nudged(tid)  # one-shot only after a successful send
             await asyncio.sleep(0.05)
@@ -416,8 +437,16 @@ async def allowlist_refresh_job():
     ON, fire a loud admin alert (fail-open posture, owner-confirmed Open Q2)."""
     try:
         from services.allowlist import refresh_allowlist, allowlist_size
+        # With gating OFF the cached set is never read, so refreshing it buys nothing and
+        # costs a Sheets API call every hour — one that logs a WARNING forever when the
+        # allowlist tab does not exist (the production default: no «Отобранные» tab).
+        # Manual /refresh_allowlist stays available and still refreshes unconditionally.
+        gating_on = (await get_setting("preselect_enabled") or "off") == "on"
+        if not gating_on:
+            logger.debug("Allowlist refresh skipped: preselect gating is off")
+            return
         await refresh_allowlist()
-        if allowlist_size() == 0 and (await get_setting("preselect_enabled") or "off") == "on":
+        if allowlist_size() == 0:
             for admin_id in config.ADMIN_IDS:
                 try:
                     await _bot.send_message(
