@@ -6,9 +6,10 @@ Sheets UI silently redirected every registration write, and "♻️ Пересо
 (rebuild_main_sheet's sheet.clear()) then wiped whatever tab happened to be first.
 
 Fix under test:
-1. Position is used AT MOST ONCE — the resolved title is persisted (bot_settings) and every
-   later resolution (including after _reset_sheet_cache() / a process restart) targets that
-   SAME title by name. Reordering tabs afterwards can no longer redirect writes.
+1. Position is NEVER used (tightened 2026-08-14 after the production audit found «STATISTICS»,
+   a manager-maintained formulas tab, sitting first on the live spreadsheet). An explicit
+   GOOGLE_SHEET_TAB resolves by name; a legacy pin in bot_settings still resolves by name for
+   installs that have one; anything else raises instead of guessing.
 2. rebuild_main_sheet / dedupe_sheet_by_id (the two row-deleting/clearing paths) refuse to run
    and return REFUSED_UNPINNED_TAB until GOOGLE_SHEET_TAB is set explicitly; the admin UI shows
    an actionable message instead of the generic API-error text.
@@ -51,7 +52,8 @@ class _FakeWorksheet:
 
 class _FakeSpreadsheet:
     """Ordered list of worksheets — .sheet1 is whichever is FIRST, mirroring gspread's real
-    positional resolution. reorder() simulates an admin dragging a tab in the Sheets UI."""
+    positional resolution. Kept so the tests can prove position is IGNORED: each case puts a
+    decoy tab first and asserts it is never the one written to."""
 
     def __init__(self, titles):
         self._sheets = {t: _FakeWorksheet(t) for t in titles}
@@ -71,10 +73,6 @@ class _FakeSpreadsheet:
         self._sheets[title] = ws
         self._order.append(title)
         return ws
-
-    def reorder(self, new_first_title):
-        self._order.remove(new_first_title)
-        self._order.insert(0, new_first_title)
 
 
 class _FakeClient:
@@ -115,64 +113,89 @@ def test_get_sheet_explicit_tab_auto_creates_when_missing(tmp_path, monkeypatch)
     assert ws.title == "Новая вкладка"
 
 
-# ── Task 1: empty setting resolves by position ONCE, then stays pinned by name ─────────────
+# ── Task 1 (revised 2026-08-14): unconfigured main tab REFUSES; it never guesses ───────────
+#
+# The original fix let position decide once and then pinned that title. The production audit
+# of 2026-08-14 killed that compromise: the first tab of the live spreadsheet is «STATISTICS»,
+# a manager-maintained formulas sheet, so the single permitted guess would have pinned and then
+# filled the worst possible target. Refusing costs at most one sheet row — the DB is the source
+# of truth and «🔄 Синхронизация таблицы» replays it — so refusal is strictly the cheaper error.
 
-def test_get_sheet_empty_tab_pins_after_first_resolution(tmp_path, monkeypatch):
+
+def _seed_pin(title):
+    """Write a legacy pin straight into bot_settings. Nothing in the code creates pins any
+    more, so a test that needs one has to plant it — which is exactly the real-world case:
+    an install that pinned a title back when the old behaviour was live."""
+    import sqlite3
+
+    conn = sqlite3.connect(config.DB_PATH)
+    try:
+        conn.execute(
+            "INSERT OR REPLACE INTO bot_settings (key, value) VALUES (?, ?)",
+            (sheets._PINNED_MAIN_TAB_SETTING_KEY, title),
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+
+def test_get_sheet_empty_tab_refuses_instead_of_resolving_by_position(tmp_path, monkeypatch):
+    """No GOOGLE_SHEET_TAB and no legacy pin: raise rather than write into whatever tab is
+    first. The refusal must also leave NO pin behind — a guess must not become permanent."""
     _use_tmp_db(tmp_path)
     _reset_module_state()
     asyncio.run(db.init_db())
 
-    fake_ss = _patch_gspread_client(monkeypatch, ["Реги бот", "Party"])
+    _patch_gspread_client(monkeypatch, ["STATISTICS", "Реги бот"])
     monkeypatch.setattr(config, "GOOGLE_SHEET_TAB", "")
 
-    first = sheets._get_sheet()
-    assert first.title == "Реги бот"
+    try:
+        sheets._get_sheet()
+        assert False, "expected _get_sheet() to refuse an unconfigured main tab"
+    except RuntimeError as e:
+        assert "GOOGLE_SHEET_TAB" in str(e)
 
-    # Someone reorders tabs in the Sheets UI — "Party" is now first by position.
-    fake_ss.reorder("Party")
-    sheets._reset_sheet_cache()
-
-    second = sheets._get_sheet()
-    assert second.title == "Реги бот"  # still pinned — NOT the new sh.sheet1
+    assert sheets._load_pinned_tab_title() is None
 
 
-def test_get_sheet_pin_survives_cache_reset_and_fresh_client(tmp_path, monkeypatch):
-    """Simulates a process restart: _reset_sheet_cache() plus a brand-new fake spreadsheet
-    object (as if gspread.service_account()/open_by_key() ran fresh), same DB_PATH. The pin
-    must be read back from bot_settings, not re-derived from the new client's sheet1."""
+def test_get_sheet_legacy_pin_still_wins_over_position(tmp_path, monkeypatch):
+    """Back-compat: an install that pinned a title under the old behaviour keeps resolving to
+    that title by name, across a cache reset and a fresh client, no matter what is first."""
     _use_tmp_db(tmp_path)
     _reset_module_state()
     asyncio.run(db.init_db())
+    _seed_pin("Реги бот")
 
-    _patch_gspread_client(monkeypatch, ["Реги бот", "Party"])
-    monkeypatch.setattr(config, "GOOGLE_SHEET_TAB", "")
-    first = sheets._get_sheet()
-    assert first.title == "Реги бот"
-
-    sheets._reset_sheet_cache()
-    # Fresh spreadsheet object with a DIFFERENT tab first by position.
     _patch_gspread_client(monkeypatch, ["Party", "Реги бот"])
-    second = sheets._get_sheet()
-    assert second.title == "Реги бот"
+    monkeypatch.setattr(config, "GOOGLE_SHEET_TAB", "")
+
+    assert sheets._get_sheet().title == "Реги бот"
+
+    sheets._reset_sheet_cache()
+    # Fresh spreadsheet object, yet another tab first by position.
+    _patch_gspread_client(monkeypatch, ["STATISTICS", "Реги бот", "Party"])
+    assert sheets._get_sheet().title == "Реги бот"
 
 
-def test_get_sheet_repin_when_pinned_tab_deleted(tmp_path, monkeypatch):
-    """The pinned tab was renamed/deleted since the pin was set — there is no safe "same tab"
-    target left, so _get_sheet() falls back to position again and re-pins."""
+def test_get_sheet_refuses_when_pinned_tab_deleted(tmp_path, monkeypatch):
+    """The pinned tab was renamed/deleted: there is no safe "same tab" target left, and the
+    replacement is a human decision — refuse instead of re-guessing by position."""
     _use_tmp_db(tmp_path)
     _reset_module_state()
     asyncio.run(db.init_db())
+    _seed_pin("Реги бот")
 
-    _patch_gspread_client(monkeypatch, ["Реги бот"])
     monkeypatch.setattr(config, "GOOGLE_SHEET_TAB", "")
-    first = sheets._get_sheet()
-    assert first.title == "Реги бот"
-
-    sheets._reset_sheet_cache()
-    # The old pinned tab is gone; a new tab is first by position now.
     _patch_gspread_client(monkeypatch, ["Новая основная"])
-    second = sheets._get_sheet()
-    assert second.title == "Новая основная"
+
+    try:
+        sheets._get_sheet()
+        assert False, "expected _get_sheet() to refuse after the pinned tab disappeared"
+    except RuntimeError as e:
+        assert "GOOGLE_SHEET_TAB" in str(e)
+
+    # The stale pin is left untouched — re-pointing it is the admin's call, not a silent repin.
+    assert sheets._load_pinned_tab_title() == "Реги бот"
 
 
 # ── Task 2: destructive ops refuse to run on a positionally-resolved tab ───────────────────
