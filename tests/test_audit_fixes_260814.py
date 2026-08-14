@@ -166,3 +166,45 @@ def test_allowlist_refresh_runs_when_preselect_on(monkeypatch):
     assert refreshed == [True]
     # gating ON + empty allowlist is the fail-open case that must still shout at admins
     assert [chat_id for chat_id, _ in alerts] == [777]
+
+
+# ── 3. Startup warm-up is gated the same way as the interval job ───────────────────────────
+
+def test_startup_warm_up_skipped_when_preselect_off(monkeypatch):
+    """The interval job alone was not enough: startup called refresh_allowlist() directly, so
+    every restart still produced one WARNING about the missing tab."""
+    import services.allowlist as allowlist
+
+    refreshed = []
+
+    async def fake_refresh():
+        refreshed.append(True)
+
+    async def fake_get_setting(key):
+        return "off" if key == "preselect_enabled" else None
+
+    monkeypatch.setattr(allowlist, "refresh_allowlist", fake_refresh)
+    monkeypatch.setattr(allowlist, "get_setting", fake_get_setting)
+
+    asyncio.run(allowlist.warm_allowlist_if_gating_on())
+
+    assert refreshed == []
+
+
+def test_startup_warm_up_runs_when_preselect_on(monkeypatch):
+    import services.allowlist as allowlist
+
+    refreshed = []
+
+    async def fake_refresh():
+        refreshed.append(True)
+
+    async def fake_get_setting(key):
+        return "on" if key == "preselect_enabled" else None
+
+    monkeypatch.setattr(allowlist, "refresh_allowlist", fake_refresh)
+    monkeypatch.setattr(allowlist, "get_setting", fake_get_setting)
+
+    asyncio.run(allowlist.warm_allowlist_if_gating_on())
+
+    assert refreshed == [True]

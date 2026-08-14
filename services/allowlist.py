@@ -57,3 +57,17 @@ async def refresh_allowlist():
         logger.info(f"Allowlist refreshed: {len(_allowlist)} usernames from tab {tab!r}")
     except Exception as e:
         logger.warning(f"Allowlist refresh failed (keeping previous {len(_allowlist)} entries): {e}")
+
+
+async def warm_allowlist_if_gating_on():
+    """Startup warm-up, gated on pre-selection actually being in use.
+
+    `/start` only reads this cache while gating is ON, so warming it with gating OFF spends a
+    Sheets API call to populate a set nobody reads — and logs a WARNING every single start when
+    the allowlist tab does not exist (the production default: no «Отобранные» tab). The admin
+    command /refresh_allowlist deliberately does NOT go through here: an explicit human request
+    always refreshes."""
+    if (await get_setting("preselect_enabled") or "off") != "on":
+        logger.debug("Allowlist warm-up skipped: preselect gating is off")
+        return
+    await refresh_allowlist()
