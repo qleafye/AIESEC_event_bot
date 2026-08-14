@@ -15,7 +15,7 @@ import re
 import time
 
 from aiogram.client.session.aiohttp import AiohttpSession
-from aiogram.exceptions import TelegramNetworkError
+from aiogram.exceptions import TelegramForbiddenError, TelegramNetworkError
 
 from config import config
 from services.background import spawn
@@ -30,6 +30,10 @@ _alert_bot_warned = False
 # Dedup: only alert once per distinct rotation TARGET, so a single flapping link doesn't
 # spam admins on every retried request.
 _last_alerted_index = None
+# Admins who blocked the bot. Same reasoning as services/reminders.py: a blocked admin can
+# never receive an alert, so retrying on every rotation just prints an identical ERROR. Noted
+# once, then skipped; a restart clears the set and re-tests whether they unblocked.
+_blocked_admins: set[int] = set()
 
 
 def set_alert_bot(bot) -> None:
@@ -56,8 +60,16 @@ async def _alert_admins_proxy_switch(from_masked: str, to_masked: str) -> None:
             "Проверьте основной прокси/туннель."
         )
         for admin_id in config.ADMIN_IDS:
+            if admin_id in _blocked_admins:
+                continue
             try:
                 await _alert_bot.send_message(admin_id, text)
+            except TelegramForbiddenError as e:
+                _blocked_admins.add(admin_id)
+                logger.warning(
+                    f"Proxy switch alert: admin {admin_id} blocked the bot — "
+                    f"muting alerts for them until restart: {e}"
+                )
             except Exception as e:
                 logger.error(f"Proxy switch alert to {admin_id} failed: {e}")
     except Exception as e:

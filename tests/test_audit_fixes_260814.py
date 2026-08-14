@@ -208,3 +208,75 @@ def test_startup_warm_up_runs_when_preselect_on(monkeypatch):
     asyncio.run(allowlist.warm_allowlist_if_gating_on())
 
     assert refreshed == [True]
+
+
+# ── 4. /create_link no longer dies on a copy-pasted placeholder ────────────────────────────
+#
+# Live case 14.08: a manager copied the format straight out of the help text, angle brackets
+# included — «/create_link <инфо ВК>». The label went into an HTML message unescaped, Telegram
+# read «<инфо» as an opening tag and rejected the WHOLE message, so she got no link and no
+# error — just silence. The first quiet day of logs is what surfaced it.
+
+class _FakeMessage:
+    def __init__(self, text):
+        self.text = text
+        self.answers = []
+
+    async def answer(self, text, parse_mode=None, reply_markup=None):
+        self.answers.append(text)
+
+
+class _FakeBotUser:
+    username = "YouLead2026_bot"
+
+
+class _FakeBot:
+    async def get_me(self):
+        return _FakeBotUser()
+
+
+def _run_create_link(text):
+    from handlers.admin import cmd_create_link
+
+    message = _FakeMessage(text)
+    asyncio.run(cmd_create_link(message, _FakeBot()))
+    assert len(message.answers) == 1
+    return message.answers[0]
+
+
+def test_create_link_placeholder_with_brackets_explains_instead_of_dying():
+    reply = _run_create_link("/create_link <инфо ВК>")
+
+    # The angle brackets must come back ESCAPED — an unescaped '<' is what broke the send.
+    assert "&lt;инфо ВК&gt;" in reply
+    assert "<инфо" not in reply
+    # And the reply has to say what to do, not just refuse (CLAUDE.md: ошибка объясняет).
+    assert "vk_poster" in reply
+    assert "?start=src_" not in reply  # no broken link handed out
+
+
+def test_create_link_strips_brackets_around_an_otherwise_valid_tag():
+    """«/create_link <vk_poster>» — the intent is unambiguous, so accept it silently."""
+    reply = _run_create_link("/create_link <vk_poster>")
+
+    assert "?start=src_vk_poster" in reply
+
+
+def test_create_link_rejects_cyrillic_and_spaces_without_brackets():
+    reply = _run_create_link("/create_link инфо ВК")
+
+    assert "?start=src_" not in reply
+    assert "vk_poster" in reply
+
+
+def test_create_link_accepts_a_plain_tag():
+    reply = _run_create_link("/create_link vk_poster")
+
+    assert "https://t.me/YouLead2026_bot?start=src_vk_poster" in reply
+
+
+def test_create_link_rejects_overlong_tag():
+    """`src_` + 60 chars is the 64-char ceiling Telegram allows in a start payload."""
+    reply = _run_create_link("/create_link " + "a" * 61)
+
+    assert "?start=src_" not in reply
