@@ -120,10 +120,16 @@ _sheet_lock = threading.Lock()
 # to resolve by POSITION (sh.sheet1) on every single _get_sheet() call. A manager dragging a
 # tab to the front of the spreadsheet (completely normal in the Sheets UI) silently redirected
 # every registration write into it, and "♻️ Пересобрать таблицу" (rebuild_main_sheet) then
-# cleared and overwrote that unrelated tab. Fix: resolve by position AT MOST ONCE — the title
-# picked that first time is persisted (bot_settings, survives restarts) and every subsequent
-# resolution — including after _reset_sheet_cache() or a process restart — targets that SAME
-# title by name. Reordering tabs afterwards can no longer redirect writes.
+# cleared and overwrote that unrelated tab.
+#
+# The first fix resolved by position AT MOST ONCE and persisted the winning title here. The
+# audit of 2026-08-14 showed why that is still not enough: on the live spreadsheet the first
+# tab is «STATISTICS», a manager-maintained formulas sheet, so the one permitted positional
+# guess would have pinned — and then filled — precisely the wrong tab. Position is no longer
+# consulted at all; an unconfigured main tab is now a refusal (see _get_sheet).
+#
+# This key is therefore READ-ONLY legacy: installs that pinned a title under the old behaviour
+# keep resolving to it, but nothing writes a new pin any more.
 _PINNED_MAIN_TAB_SETTING_KEY = "sheets_main_tab_pinned_title"
 
 
@@ -135,7 +141,7 @@ def _load_pinned_tab_title() -> str | None:
     thread; a fresh connection is opened and closed per call (this only runs when the sheet
     cache is empty — at most once per process per cache-reset, not per write). Fails soft: a
     missing DB file/table (e.g. _get_sheet() called before init_db() has run once) returns None
-    rather than raising, so the in-memory positional fallback below still works."""
+    rather than raising — the caller then refuses, which is the safe direction."""
     try:
         conn = sqlite3.connect(config.DB_PATH)
         try:
@@ -150,25 +156,6 @@ def _load_pinned_tab_title() -> str | None:
     except Exception as e:
         logger.warning(f"_load_pinned_tab_title failed (falling back to unpinned): {e}")
         return None
-
-
-def _save_pinned_tab_title(title: str) -> None:
-    """Persist the pin. Same sync-sqlite3 rationale as _load_pinned_tab_title. Fail-soft: if
-    this write fails (e.g. table not yet created), the bot keeps working off the in-memory
-    _sheet cache for this process — it just won't survive a restart, which is exactly the
-    pre-fix behaviour, not a regression."""
-    try:
-        conn = sqlite3.connect(config.DB_PATH)
-        try:
-            conn.execute(
-                "INSERT OR REPLACE INTO bot_settings (key, value) VALUES (?, ?)",
-                (_PINNED_MAIN_TAB_SETTING_KEY, title),
-            )
-            conn.commit()
-        finally:
-            conn.close()
-    except Exception as e:
-        logger.warning(f"_save_pinned_tab_title({title!r}) failed: {e}")
 
 
 def _get_sheet():
@@ -203,18 +190,26 @@ def _get_sheet():
                 return _sheet
             except gspread.WorksheetNotFound:
                 # The pinned tab was renamed/deleted since we last pinned it. There is no safe
-                # "same tab" target left — fall through and re-pin via position, same as a
-                # first-ever run. Loud, because this is exactly the kind of drift the pin
-                # exists to prevent.
+                # "same tab" target left, and guessing a replacement by position is exactly the
+                # drift the pin exists to prevent — fall through to the refusal below. Loud,
+                # because a human has to say which tab is the right one now.
                 logger.warning(
                     f"Pinned main tab {pinned_title!r} no longer exists on the spreadsheet; "
-                    "re-resolving by position and re-pinning."
+                    "refusing to re-resolve by position."
                 )
 
-        # Historical default: first tab by position — used ONLY to establish the pin.
-        _sheet = sh.sheet1
-        _save_pinned_tab_title(_sheet.title)
-        return _sheet
+        # Nothing configured and nothing pinned: REFUSE rather than guess. Resolving by raw
+        # position used to land here and pin whatever tab happened to be first — on the live
+        # spreadsheet that is «STATISTICS», a manager-maintained formulas tab, and appending
+        # registrations into it destroys their work silently. Every caller of _get_sheet() is
+        # fail-soft (append_to_sheet retries, logs, then alerts admins), so raising costs one
+        # recoverable sheet row — «🔄 Синхронизация таблицы» replays it from the DB, which is
+        # the source of truth — instead of corrupting an unrelated tab beyond repair.
+        raise RuntimeError(
+            "GOOGLE_SHEET_TAB не задан и закреплённой вкладки нет: основная вкладка не "
+            "определена. Бот не угадывает вкладку по позиции — укажите GOOGLE_SHEET_TAB в "
+            ".env (точное имя вкладки регистраций) и перезапустите бота."
+        )
 
 
 def _reset_sheet_cache():
