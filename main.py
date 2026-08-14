@@ -10,7 +10,7 @@ from database.db import init_db, get_setting
 from handlers import registration, user_actions, admin, payment
 from services.reminders import pending_reminder_loop
 from services.scheduler import init_scheduler
-from services.allowlist import refresh_allowlist
+from services.allowlist import warm_allowlist_if_gating_on
 from services.sheets import ensure_sheet_header
 from services.background import spawn as _spawn
 import services.sheets as sheets_service
@@ -233,7 +233,7 @@ async def main():
     # Same fail-soft injection for proxy_session's failover-switch admin alert -- must also
     # be live before polling starts (the very first proxy rotation could happen immediately).
     proxy_session.set_alert_bot(bot)
-    _spawn(refresh_allowlist())
+    _spawn(warm_allowlist_if_gating_on())
     logger.info("Scheduler + allowlist refresh started")
 
     try:
