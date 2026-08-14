@@ -1,13 +1,43 @@
+# Секреты и учётные данные (.env.example — трекается намеренно)
 .env
+.env.local
+.env.*.local
 google_credentials.json
+*.key
+*.pem
+*.p12
+*.pfx
+
+# Данные и дампы
 data/
 *.db
+*.sqlite
+*.sqlite3
+*.sql
+*.dump
+*.bak
+
+# Логи
 bot.log
 logs/
+*.log
+
+# Python
 __pycache__/
 *.pyc
+*.pyo
 .venv/
+venv/
+env/
 .pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# IDE и ОС
+.idea/
+.vscode/
+.DS_Store
+Thumbs.db
 
 # Служебные папки инструментов разработки (не относятся к коду бота)
 .planning/
