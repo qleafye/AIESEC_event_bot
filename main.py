@@ -22,6 +22,7 @@ from settings_schema import get_setting_typed
 from aiogram.client.default import DefaultBotProperties
 from aiogram.enums import ParseMode
 from aiogram.types import ErrorEvent
+from aiogram.exceptions import TelegramBadRequest
 
 def _configure_logging():
     """Full detail → rotating file on a mounted volume (survives container recreate,
@@ -187,8 +188,22 @@ async def main():
     # CR-8: global error handler. Without this, any unhandled exception in a handler is
     # silently dropped (the update just vanishes). Log the exception WITH the offending
     # update so failures are visible, and fail soft (return True = handled).
+    # Two Telegram-side outcomes are normal user behaviour, not bot faults, and carry no
+    # information worth a full update dump: double-tapping a button re-renders an identical
+    # screen ("message is not modified"), and answering a callback after Telegram's ~15-minute
+    # window ("query is too old"). Both were logged as ERROR with the entire update body,
+    # which is what inflated the production log — they are demoted to DEBUG here so the ERROR
+    # level keeps meaning "something actually broke".
+    _BENIGN_TELEGRAM_ERRORS = ("message is not modified", "query is too old")
+
     @dp.errors()
     async def _on_update_error(event: ErrorEvent):
+        message = str(event.exception)
+        if isinstance(event.exception, TelegramBadRequest) and any(
+            marker in message for marker in _BENIGN_TELEGRAM_ERRORS
+        ):
+            logger.debug("Benign Telegram update error: %s", message)
+            return True
         logger.error("Unhandled update error: %s", event.exception, exc_info=event.exception)
         try:
             logger.error("Failing update: %s", event.update.model_dump_json(exclude_none=True))
