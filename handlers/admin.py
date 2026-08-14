@@ -4229,11 +4229,29 @@ def _resolve_staff_input(message) -> tuple[int | None, str | None]:
       (kept out of this function so it stays sync + DB-free, per CONVENTIONS.md).
     - (None, "<human error text>") — nothing usable; caller shows this text verbatim.
     """
+    # Bot API 7.0 (январь 2024) убрал forward_from/forward_date/forward_sender_name из Message
+    # и заменил их одним полем forward_origin. Телеграм больше НЕ присылает старые поля — код,
+    # который смотрел только на них, видел None у любой пересылки, проваливался в разбор текста
+    # и отвечал «Не понял, кого добавить». Тесты этого не ловили: фейковые сообщения ставили
+    # forward_from вручную. Поэтому forward_origin проверяется ПЕРВЫМ.
+    origin = getattr(message, "forward_origin", None)
+    if origin is not None:
+        sender = getattr(origin, "sender_user", None)  # MessageOriginUser — единственный
+        if sender is not None:                          # вариант, где есть настоящий telegram_id
+            return sender.id, None
+        # MessageOriginHiddenUser (приватность «скрывать аккаунт при пересылке»),
+        # MessageOriginChat / MessageOriginChannel (переслали из чата или канала, а не от
+        # человека) — id человека в таких апдейтах отсутствует физически.
+        return None, (
+            "В этой пересылке нет аккаунта человека — либо у него включена приватность "
+            "пересылок, либо сообщение переслано из чата/канала. Попросите его @username "
+            "или числовой id."
+        )
+
+    # Легаси-ветка для старых апдейтов (и для тестов, писавших forward_from напрямую).
     forwarded = getattr(message, "forward_from", None)
     if forwarded is not None:
         return forwarded.id, None
-    # Forwarded but the sender hid their account from forwards (Telegram privacy setting):
-    # forward_from is None, but forward_sender_name/forward_date are still set.
     if getattr(message, "forward_sender_name", None) or getattr(message, "forward_date", None):
         return None, (
             "У этого человека скрыт аккаунт при пересылке — попросите его @username или "
