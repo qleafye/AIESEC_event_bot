@@ -15,7 +15,7 @@ from aiogram.utils.keyboard import ReplyKeyboardBuilder
 from config import config
 from database.db import add_user, get_user, get_setting, set_setting, mark_reg_started, clear_reg_started, set_reg_step, set_user_subscribed, set_user_status, record_user_consent, get_user_consents, get_reg_started_track, get_reg_started_city, has_short_incomplete, _csv_safe, get_incomplete_rows_with_city
 from settings_schema import SETTINGS_SCHEMA, get_setting_typed  # REG-01/D-06 (06-04): REG_DEFAULTS derivation source; get_setting_typed (06-06 gate migration)
-from cities import CITIES, normalize_city, is_default_city, city_tab_base, cities_module_on, TAB_SUFFIX, is_city_enabled, city_label, enabled_cities  # Phase 07.1 (CITY-01/CITY-02/CITY-03): city registry — _CITY_TAG_MAP + city_row_tab + city fork below
+from cities import CITIES, normalize_city, is_default_city, city_tab_base, cities_module_on, is_city_enabled, city_label, enabled_cities, tab_suffix  # Phase 07.1 (CITY-01/CITY-02/CITY-03): city registry — _CITY_TAG_MAP + city_row_tab + city fork below; tab_suffix added quick 260815-3hw (TABS-01/02/03, replaces the raw TAB_SUFFIX import)
 from handlers.states import Registration
 from keyboards.builders import (
     get_main_menu_kb,
@@ -1410,21 +1410,25 @@ async def city_row_tab(event_city: str | None, participant_type: str | None) -> 
     base = await city_tab_base(code)
     if not base:
         return None
-    return f"{base}{TAB_SUFFIX[_sheet_kind(participant_type)]}"
+    return f"{base}{await tab_suffix(_sheet_kind(participant_type))}"
 
 
 async def city_incomplete_tab(event_city: str | None) -> str:
     """Always returns a tab name (never None) — the «Незавершённые» tab always has an
-    address, unlike city_row_tab's legacy-appender escape hatch."""
+    address, unlike city_row_tab's legacy-appender escape hatch.
+
+    Quick 260815-3hw: default tab name resolved from the registry (incomplete_sheet_tab,
+    admin screen «📄 Вкладки таблицы»), same default "Незавершённые" as before."""
+    default_tab = await get_setting_typed("incomplete_sheet_tab")
     if not await cities_module_on():
-        return "Незавершённые"
+        return default_tab
     code = normalize_city(event_city)
     if is_default_city(code):
-        return "Незавершённые"
+        return default_tab
     base = await city_tab_base(code)
     if not base:
-        return "Незавершённые"
-    return f"{base}{TAB_SUFFIX['incomplete']}"
+        return default_tab
+    return f"{base}{await tab_suffix('incomplete')}"
 
 
 async def incomplete_city_batches() -> list[tuple[str, list[str], list[list]]]:

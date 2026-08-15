@@ -134,6 +134,27 @@ async def city_label(code: str) -> str:
     return code
 
 
+async def tab_suffix(kind: str) -> str:
+    """Quick 260815-3hw (TABS-01/02/03): admin-configurable tab-name suffix for a track kind
+    ("short"/"party"/"incomplete"), read from the registry (city_tab_suffix__{kind}) with a
+    fallback to the TAB_SUFFIX literal above. `kind == "main"` is not a registry key (the main
+    tab has no suffix, a city's base name IS its main tab) — returns "" unconditionally, no
+    registry lookup, no normalization.
+
+    Normalization: admin input arrives already `.strip()`-ped (handlers/admin.py::
+    settings_edit_value) — a manager typing «Акция» would otherwise produce «СПбАкция»
+    (base + suffix concatenated with no separator). A non-empty result that doesn't already
+    start with a space gets exactly one leading space added; TAB_SUFFIX's own literals already
+    carry it (" Акция" etc.), so this is a no-op for the un-configured path."""
+    if kind == "main":
+        return ""
+    configured = await get_setting_typed(f"city_tab_suffix__{kind}")
+    value = configured if configured else TAB_SUFFIX.get(kind, "")
+    if value and not value.startswith(" "):
+        value = f" {value}"
+    return value
+
+
 async def city_tab_base(code: str) -> str:
     override = await get_setting(f"city_tab__{code}")
     if override:
