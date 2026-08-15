@@ -68,6 +68,7 @@ from services.sheets import get_existing_sheet_ids, append_rows_to_sheet, ensure
 from services.scheduler import (
     _parse_schedule_dt,
     _fmt_dt,
+    _now_moscow_naive,
     schedule_broadcast_job,
     cancel_broadcast_job,
 )
@@ -2309,7 +2310,9 @@ async def broadcast_schedule_when(message: types.Message, state: FSMContext):
     if when is None:
         await message.answer("❌ Не понял дату. Формат: ДД.ММ.ГГГГ ЧЧ:ММ (напр. 01.07.2026 14:30)")
         return
-    if when <= datetime.now():
+    # TZFIX-260816: admin input is Moscow wall-clock — compare against Moscow, not the
+    # container clock (UTC), or a past-MSK time can slip through as "future" and fire instantly.
+    if when <= _now_moscow_naive():
         await message.answer("❌ Это время уже прошло. Введите будущую дату.")
         return
     await state.update_data(schedule_dt=when)
@@ -4708,7 +4711,9 @@ async def game_task_deadline_step(message: types.Message, state: FSMContext):
     if when is None:
         await message.answer("❌ Не понял дату. Формат: ДД.ММ.ГГГГ ЧЧ:ММ (напр. 01.07.2026 14:30)")
         return
-    if when <= datetime.now():
+    # TZFIX-260816: admin input is Moscow wall-clock — compare against Moscow, not the
+    # container clock (UTC), or a past-MSK time can slip through as "future" and fire instantly.
+    if when <= _now_moscow_naive():
         await message.answer("❌ Это время уже прошло. Введите будущую дату.")
         return
     await state.update_data(gt_deadline=_fmt_dt(when))
