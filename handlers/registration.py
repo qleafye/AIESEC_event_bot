@@ -1,4 +1,5 @@
 import asyncio
+import functools
 import json
 import logging
 import html
@@ -45,6 +46,13 @@ from handlers.admin_caps import notify_by_capability  # D-13: fan out by capabil
 
 router = Router()
 logger = logging.getLogger(__name__)
+
+# Ночное ревью, находка #3: telegram_id, для которых finalize_registration прямо сейчас
+# выполняется. Проверка `uid in ...` и `.add(uid)` в обёртке идут БЕЗ единого await между
+# ними, поэтому в однопоточном asyncio они атомарны — пара get_data()/update_data() поверх
+# FSM такой гарантии не дала бы. Персистентность не нужна и вредна: это гвард живого
+# in-flight вызова, а не состояние; после рестарта ни одного вызова в полёте нет.
+_FINALIZING_USERS: set[int] = set()
 
 DEFAULT_START_TEXT = (
     "Привет! \U0001f44b\n\n"
@@ -2782,6 +2790,41 @@ def _resume_person_name(data) -> str:
     return f"{name}_{uname}"
 
 
+def _single_flight(func):
+    """Re-entrancy guard: не пускать второй параллельный вызов для того же telegram_id.
+
+    Ночное ревью, находка #3. Состояние Registration.confirm живёт до ~20 секунд — внутри
+    финализации идёт загрузка резюме в Nextcloud под asyncio.wait_for(timeout=20), а
+    reply-клавиатура «Всё верно» всё это время у делегата на экране. Второй тап запускал
+    ВТОРОЙ параллельный finalize: две строки в users и два append'а в Google-таблицу.
+
+    Дубликат ничего не пишет делегату (первый вызов сам отправит сообщение о завершении,
+    второе «подождите» было бы шумом) и молча выходит; освобождение — в finally, иначе
+    любое исключение заперло бы делегата навсегда.
+
+    Сделано декоратором, а не try/finally внутри функции, намеренно: тело
+    finalize_registration остаётся нетронутым — ни строки переиндентации, диff читаемый,
+    публичные имя и сигнатура сохранены (functools.wraps), поэтому оба существующих вызова
+    и любой будущий третий проходят через гвард автоматически.
+    """
+
+    @functools.wraps(func)
+    async def wrapper(message: types.Message, state: FSMContext, bot: Bot):
+        uid = message.from_user.id
+        # claim: между проверкой и добавлением нет await → атомарно в однопоточном asyncio
+        if uid in _FINALIZING_USERS:
+            logger.warning(f"Duplicate finalize ignored for {uid} (already in flight)")
+            return None
+        _FINALIZING_USERS.add(uid)
+        try:
+            return await func(message, state, bot)
+        finally:
+            _FINALIZING_USERS.discard(uid)
+
+    return wrapper
+
+
+@_single_flight
 async def finalize_registration(message: types.Message, state: FSMContext, bot: Bot):
     data = await state.get_data()
     data["telegram_id"] = message.from_user.id
@@ -2861,7 +2904,25 @@ async def finalize_registration(message: types.Message, state: FSMContext, bot: 
     # Phase 5 (D-01): a flow that never saw a party link writes the default explicitly rather
     # than relying on the column default.
     data.setdefault("participant_type", "full")
-    await add_user(data)
+    # Ночное ревью, находка #4: единственный неогороженный await во всей финализации.
+    # Падение SQLite («database is locked») уходило в глобальный @dp.errors() (main.py),
+    # который его молча глотал: заявка не сохранена, делегат уверен, что зарегистрировался.
+    # Теперь — ранний выход БЕЗ очистки состояния: FSM остаётся в Registration.confirm
+    # (повторный тап «Всё верно» сработает), reg_started не стирается (регистрация
+    # действительно не завершена, нуджи должны продолжать работать), в таблицу ничего
+    # не едет. Клавиатуру прикладываем заново: one-time клава уже сложилась.
+    try:
+        await add_user(data)
+    except Exception as e:
+        logger.error(f"add_user failed for {message.from_user.id}: {e}")
+        await _safe_answer(
+            message,
+            "Не получилось сохранить заявку — техническая ошибка на нашей стороне. "
+            "Ответы не потерялись: подождите минуту и нажмите «Всё верно» ещё раз. "
+            "Если не выйдет и со второго раза — напишите организаторам.",
+            reply_markup=get_confirm_kb(),
+        )
+        return
     logger.info(
         f"user={message.from_user.id} action=registration_complete "
         f"mode={await get_setting('registration_mode') or 'short'} name={data.get('full_name')!r}"
