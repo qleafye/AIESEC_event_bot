@@ -373,7 +373,9 @@ async def sweep_payment_overdue():
         deadline = await get_setting_typed("payment_deadline")
         if not deadline:
             return
-        if datetime.now() < deadline:
+        # TZFIX-260816: payment_deadline is admin-entered ДД.ММ.ГГГГ ЧЧ:ММ meaning Moscow
+        # wall-clock time, so compare against Moscow wall-clock, not the container clock (UTC).
+        if _now_moscow_naive() < deadline:
             return
         select_where = (
             "payment_status='not_paid' "
@@ -441,6 +443,14 @@ async def nudge_incomplete_registrations():
         if not _nudge_enabled(await get_setting("nudge_enabled")):
             return
         after_minutes = _int_or_default(await get_setting("nudge_after_minutes"), 120)
+        # TZFIX-260816: deliberately NOT _now_moscow_naive() here. This compares against
+        # reg_started.started_at, which the bot itself stamped via datetime.now() on the
+        # container clock — both sides of the comparison are already the container clock, so
+        # the invariant holds as-is. Switching to Moscow would be a REGRESSION: the ~129
+        # already-recorded started_at rows would instantly "age" by 3 hours and nudges would
+        # fire early. This is not the same bug class as scheduler.py:345 / admin.py:2312 /
+        # admin.py:4711 (those compare against human input in Moscow time) — do not "fix" this
+        # by symmetry. See .planning/TZFIX-260816.md.
         cutoff = _nudge_cutoff(datetime.now(), after_minutes)
         candidates = await get_nudge_candidates(cutoff)
         if not candidates:
