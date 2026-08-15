@@ -514,3 +514,234 @@ def test_grep_no_sheet1_attribute_access():
         if in_docstring or stripped.startswith("#"):
             continue
         assert "sh.sheet1" not in line, f"positional resolve reference found: {line!r}"
+
+
+# ═══════════════════════════════════════════════════════════════════════════════════════════
+# Task 3: confirm-gate on an existing tab + main-tab cache reset
+# ═══════════════════════════════════════════════════════════════════════════════════════════
+
+class _FakeUser:
+    def __init__(self, uid):
+        self.id = uid
+
+
+class _FakeSettingsMessage:
+    """Stand-in for aiogram Message -- only the attributes/methods settings_edit_value and
+    the sheets_tab_confirm/cancel handlers actually touch."""
+
+    def __init__(self, uid=ADMIN_ID, text=""):
+        self.from_user = _FakeUser(uid)
+        self.text = text
+        self.html_text = text
+        self.answers = []  # list of (text, kwargs)
+        # For CallbackQuery.message.edit_text usage (confirm/cancel handlers):
+        self.edited_text = None
+        self.edited_markup = None
+
+    async def answer(self, text, parse_mode=None, reply_markup=None):
+        self.answers.append((text, reply_markup))
+
+    async def edit_text(self, text, parse_mode=None, reply_markup=None):
+        self.edited_text = text
+        self.edited_markup = reply_markup
+
+
+class _FakeSettingsCallback:
+    def __init__(self, uid=ADMIN_ID):
+        self.from_user = _FakeUser(uid)
+        self.message = _FakeSettingsMessage(uid)
+        self.answered = []
+
+    async def answer(self, text=None, show_alert=False):
+        self.answered.append((text, show_alert))
+
+
+class _FakeFSMState:
+    """Plain-dict backed FSMContext stand-in (copied convention from
+    tests/test_short_track_phase7.py::_FakeState), extended with set_state/get_state since
+    settings_edit_value's confirm-gate branch calls both."""
+
+    def __init__(self, data=None):
+        self._data = dict(data or {})
+        self._state = None
+
+    async def get_data(self):
+        return dict(self._data)
+
+    async def update_data(self, **kwargs):
+        self._data.update(kwargs)
+
+    async def set_state(self, state):
+        self._state = state
+
+    async def get_state(self):
+        return self._state
+
+    async def clear(self):
+        self._data = {}
+        self._state = None
+
+
+def _edit_setting_state(key):
+    return _FakeFSMState({"setting_key": key})
+
+
+def test_existing_write_tab_shows_confirm_and_does_not_save(tmp_path, monkeypatch):
+    _admin_ready(tmp_path)
+
+    async def fake_probe(title):
+        assert title == "GAMIFICATION бот"
+        return (True, 30)
+
+    monkeypatch.setattr(admin_mod, "tab_row_count", fake_probe)
+
+    message = _FakeSettingsMessage(text="GAMIFICATION бот")
+    state = _edit_setting_state("game_matrix_tab")
+
+    async def go():
+        await admin_mod.settings_edit_value(message, state)
+        return await db.get_setting("game_matrix_tab")
+
+    saved = asyncio.run(go())
+    assert saved is None  # NOT saved yet -- awaiting confirmation
+    assert state._state == admin_mod.EditSetting.waiting_for_tab_confirm
+    pending = asyncio.run(state.get_data())
+    assert pending["pending_tab_key"] == "game_matrix_tab"
+    assert pending["pending_tab_value"] == "GAMIFICATION бот"
+
+    confirm_text = message.answers[-1][0]
+    assert "GAMIFICATION бот" in confirm_text
+    assert "30" in confirm_text
+    assert "перезапис" in confirm_text.lower()
+    assert "пропад" in confirm_text.lower()
+
+
+def test_confirm_saves_pending_value_and_returns_to_sheets_screen(tmp_path, monkeypatch):
+    _admin_ready(tmp_path)
+    state = _FakeFSMState({"pending_tab_key": "game_matrix_tab", "pending_tab_value": "GAMIFICATION бот"})
+    callback = _FakeSettingsCallback()
+
+    async def go():
+        await admin_mod.sheets_tab_confirm_go(callback, state)
+        return await db.get_setting("game_matrix_tab")
+
+    saved = asyncio.run(go())
+    assert saved == "GAMIFICATION бот"
+    assert state._data == {}  # cleared
+    assert "Вкладки таблицы" in callback.message.edited_text
+
+
+def test_cancel_does_not_save_pending_value(tmp_path, monkeypatch):
+    _admin_ready(tmp_path)
+    state = _FakeFSMState({"pending_tab_key": "game_matrix_tab", "pending_tab_value": "GAMIFICATION бот"})
+    callback = _FakeSettingsCallback()
+
+    async def go():
+        await admin_mod.sheets_tab_cancel_go(callback, state)
+        return await db.get_setting("game_matrix_tab")
+
+    saved = asyncio.run(go())
+    assert saved is None
+    assert state._data == {}
+    assert "Вкладки таблицы" in callback.message.edited_text
+
+
+def test_missing_tab_saves_silently_no_confirm_screen(tmp_path, monkeypatch):
+    _admin_ready(tmp_path)
+
+    async def fake_probe(title):
+        return (False, 0)
+
+    monkeypatch.setattr(admin_mod, "tab_row_count", fake_probe)
+
+    message = _FakeSettingsMessage(text="Новая вкладка")
+    state = _edit_setting_state("game_matrix_tab")
+
+    async def go():
+        await admin_mod.settings_edit_value(message, state)
+        return await db.get_setting("game_matrix_tab")
+
+    saved = asyncio.run(go())
+    assert saved == "Новая вкладка"
+    assert len(message.answers) == 1  # the normal post-save settings screen, not a confirm screen
+    assert "перезапис" not in message.answers[0][0].lower()
+
+
+def test_probe_failure_saves_with_warning(tmp_path, monkeypatch):
+    _admin_ready(tmp_path)
+
+    async def fake_probe(title):
+        return None  # Sheets unreachable/unconfigured
+
+    monkeypatch.setattr(admin_mod, "tab_row_count", fake_probe)
+
+    message = _FakeSettingsMessage(text="Какая-то вкладка")
+    state = _edit_setting_state("incomplete_sheet_tab")
+
+    async def go():
+        await admin_mod.settings_edit_value(message, state)
+        return await db.get_setting("incomplete_sheet_tab")
+
+    saved = asyncio.run(go())
+    assert saved == "Какая-то вкладка"
+    text = message.answers[-1][0]
+    assert "проверить вкладку" in text.lower()
+
+
+def test_preselect_and_suffix_keys_never_trigger_the_gate(tmp_path, monkeypatch):
+    """preselect_tab (read-only) and city_tab_suffix__* (not full tab names) must not even
+    call tab_row_count -- calling it would be a wasted/misleading API probe."""
+    _admin_ready(tmp_path)
+
+    def fail_if_called(title):
+        raise AssertionError(f"tab_row_count must not be called for this key (title={title!r})")
+
+    monkeypatch.setattr(admin_mod, "tab_row_count", fail_if_called)
+
+    for key, value in [("preselect_tab", "Мой список"), ("city_tab_suffix__short", "Промо")]:
+        message = _FakeSettingsMessage(text=value)
+        state = _edit_setting_state(key)
+
+        async def go(message=message, state=state, key=key):
+            await admin_mod.settings_edit_value(message, state)
+            return await db.get_setting(key)
+
+        assert asyncio.run(go()) == value
+
+
+def test_saving_main_sheet_tab_resets_sheet_cache_on_all_three_paths(tmp_path, monkeypatch):
+    reset_calls = []
+    monkeypatch.setattr(admin_mod, "_reset_sheet_cache", lambda: reset_calls.append(1))
+
+    async def fake_probe_missing(title):
+        return (False, 0)
+
+    monkeypatch.setattr(admin_mod, "tab_row_count", fake_probe_missing)
+
+    # Path 1: plain save (tab doesn't exist yet).
+    _admin_ready(tmp_path)
+    message = _FakeSettingsMessage(text="Реги бот")
+    state = _edit_setting_state("main_sheet_tab")
+    asyncio.run(admin_mod.settings_edit_value(message, state))
+    assert len(reset_calls) == 1
+
+    # Path 2: "-" clear.
+    message = _FakeSettingsMessage(text="-")
+    state = _edit_setting_state("main_sheet_tab")
+    asyncio.run(admin_mod.settings_edit_value(message, state))
+    assert len(reset_calls) == 2
+
+    # Path 3: save-after-confirm.
+    state = _FakeFSMState({"pending_tab_key": "main_sheet_tab", "pending_tab_value": "Ещё вкладка"})
+    callback = _FakeSettingsCallback()
+    asyncio.run(admin_mod.sheets_tab_confirm_go(callback, state))
+    assert len(reset_calls) == 3
+
+
+def test_sheets_tab_confirm_and_cancel_are_capability_mapped():
+    assert "sheets_tab_confirm" in ADMIN_CAPS
+    assert "sheets_tab_cancel" in ADMIN_CAPS
+    assert ADMIN_CAPS["sheets_tab_confirm"] == "settings"
+    assert ADMIN_CAPS["sheets_tab_cancel"] == "settings"
+    assert required_capability(callback_data="sheets_tab_confirm") == "settings"
+    assert required_capability(callback_data="sheets_tab_cancel") == "settings"
