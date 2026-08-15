@@ -267,10 +267,16 @@ def _get_sheet():
         # fail-soft (append_to_sheet retries, logs, then alerts admins), so raising costs one
         # recoverable sheet row — «🔄 Синхронизация таблицы» replays it from the DB, which is
         # the source of truth — instead of corrupting an unrelated tab beyond repair.
+        # Quick 260815-3hw: this text reaches a HUMAN — sync_sheet (handlers/admin.py) catches
+        # the exception and echoes str(e) into the admin chat — so it must name the button that
+        # fixes it, not the .env variable a manager has no reason to touch (CLAUDE.md: «ошибка
+        # объясняет, что сделать»). Same wording as the startup warning above, deliberately.
         raise RuntimeError(
-            "GOOGLE_SHEET_TAB не задан и закреплённой вкладки нет: основная вкладка не "
-            "определена. Бот не угадывает вкладку по позиции — укажите GOOGLE_SHEET_TAB в "
-            ".env (точное имя вкладки регистраций) и перезапустите бота."
+            "Основная вкладка Google-таблицы не задана: бот не угадывает вкладку по позиции, "
+            "поэтому запись отказывает вместо подмены чужого листа. Задайте вкладку в "
+            "«⚙️ Настройки → 📄 Вкладки таблицы → 📄 Основная (регистрации)» — сработает сразу, "
+            "без перезапуска. Альтернатива для разработчика — GOOGLE_SHEET_TAB в .env "
+            "(нужен перезапуск)."
         )
 
 
