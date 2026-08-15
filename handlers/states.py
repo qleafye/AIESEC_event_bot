@@ -74,6 +74,9 @@ class EditSetting(StatesGroup):
     waiting_for_value = State()
     waiting_for_photo = State()
     waiting_for_file = State()
+    # Quick 260815-3hw (Task 3): confirm-gate before overwriting an EXISTING Google Sheets tab
+    # (name collision on a tab the bot writes to) -- sheets_tab_confirm/sheets_tab_cancel.
+    waiting_for_tab_confirm = State()
 
 class StaffAdd(StatesGroup):
     # Phase 8 (ROLE-02, D-18): single-step wizard — one message resolves a person by

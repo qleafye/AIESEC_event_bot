@@ -299,6 +299,9 @@ ADMIN_CAPS: dict[str, str] = {
     "settings_group:*": "settings",
     "settings_group_noop": "settings",
     "settings_photo:*": "settings",
+    # Quick 260815-3hw (Task 3): confirm-gate on overwriting an existing Google Sheets tab.
+    "sheets_tab_confirm": "settings",
+    "sheets_tab_cancel": "settings",
     "settings_toggle_bonus": "settings",
     "settings_toggle_full_approval": "settings",
     "settings_toggle_notify": "settings",

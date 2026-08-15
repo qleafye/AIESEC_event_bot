@@ -64,7 +64,7 @@ from database.db import (
     GAME_PROOF_TYPES,
 )
 from aiogram.exceptions import TelegramRetryAfter, TelegramForbiddenError, TelegramBadRequest
-from services.sheets import get_existing_sheet_ids, append_rows_to_sheet, ensure_sheet_header, sync_named_worksheet, dedupe_sheet_by_id, update_status_in_sheet, bulk_update_status_in_sheet, rebuild_main_sheet, REFUSED_UNPINNED_TAB
+from services.sheets import get_existing_sheet_ids, append_rows_to_sheet, ensure_sheet_header, sync_named_worksheet, dedupe_sheet_by_id, update_status_in_sheet, bulk_update_status_in_sheet, rebuild_main_sheet, REFUSED_UNPINNED_TAB, _reset_sheet_cache, tab_row_count
 from services.scheduler import (
     _parse_schedule_dt,
     _fmt_dt,
@@ -1553,6 +1553,80 @@ async def settings_receive_file_invalid(message: types.Message):
 
 HTML_SETTINGS = {"start_text", "reg_complete_text", "approve_text", "approve_text__party"}
 
+# Quick 260815-3hw (Task 3): which Google Sheets tab-name keys the bot actually WRITES to, and
+# HOW. "rewrite" = the sync path does ws.clear() + full rewrite (rebuild_main_sheet /
+# sync_named_worksheet); "append" = only new rows are ever added (append_to_named_sheet), never
+# a clear. preselect_tab (read-only — the bot never writes it) and the three
+# city_tab_suffix__* keys (not full tab names, just suffixes) are deliberately ABSENT — the
+# confirm-gate in settings_edit_value only fires for a key present in this dict.
+_SHEET_TAB_WRITE_MODE = {
+    "main_sheet_tab": "rewrite",
+    "incomplete_sheet_tab": "rewrite",
+    "game_matrix_tab": "rewrite",
+    "game_history_tab": "rewrite",
+    "short_sheet_tab": "append",
+    "party_sheet_tab": "append",
+}
+
+
+async def _after_tab_setting_saved(key: str) -> None:
+    """Called after EVERY save/clear of a _SHEET_TAB_WRITE_MODE key (plain save, gated
+    save-after-confirm, and the "-" clear path) — resets the cached MAIN worksheet handle
+    (services.sheets._sheet global) so a renamed main_sheet_tab takes effect on the very next
+    write, no bot restart needed. Named-tab caches (short/party/game/incomplete) need no
+    reset: they're keyed BY NAME (services.sheets._named_sheets), so a new name simply opens a
+    new cache entry — the stale entry under the old name just goes unused, it isn't wrong."""
+    if key == "main_sheet_tab":
+        _reset_sheet_cache()
+
+
+def _tab_confirm_text(key: str, value: str, rows: int) -> str:
+    """Confirm-screen body for an EXISTING tab name — text differs by write mode (CLAUDE.md:
+    a confirmation has to name the actual damage, and for an append-only tab nothing is
+    actually lost)."""
+    label = SETTINGS_SCHEMA.get(key, {}).get("label", key)
+    safe_value = html_module.escape(value)
+    mode = _SHEET_TAB_WRITE_MODE.get(key)
+    if mode == "append":
+        body = (
+            f"Вкладка «{safe_value}» уже существует, в ней {rows} строк.\n\n"
+            "Бот будет дописывать в неё строки заявок, к тому, что там уже есть — ничего не "
+            "сотрётся."
+        )
+    else:
+        body = (
+            f"Вкладка «{safe_value}» уже существует, в ней {rows} строк.\n\n"
+            "Бот будет перезаписывать её целиком при каждой синхронизации — <b>всё, что там "
+            "сейчас есть, пропадёт.</b>"
+        )
+        if key == "main_sheet_tab":
+            body += (
+                "\n\nРегистрации будут дописываться в неё по одной; кнопка «♻️ Пересобрать "
+                "таблицу» очистит её целиком и запишет заново."
+            )
+    return f"⚠️ <b>{html_module.escape(label)}</b>\n\n{body}"
+
+
+def _tab_check_failed_warning(key: str) -> str:
+    """Appended to the post-save confirmation text when tab_row_count() couldn't check the
+    spreadsheet at all (Sheets down/unconfigured) — the value is saved regardless (a settings
+    change must never depend on Sheets being reachable), but the manager needs to know the
+    existing-tab check didn't run."""
+    mode = _SHEET_TAB_WRITE_MODE.get(key)
+    if mode == "append":
+        tail = "если такая вкладка уже есть, бот будет дописывать в неё, ничего не потеряется."
+    else:
+        tail = "если такая вкладка уже есть, при следующей синхронизации она будет перезаписана."
+    return f"\n\n⚠️ Значение сохранено, но проверить вкладку в Google-таблице не удалось — {tail}"
+
+
+def _tab_confirm_keyboard() -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="✅ Да, сохранить это имя", callback_data="sheets_tab_confirm")],
+        [InlineKeyboardButton(text="← Отмена", callback_data="sheets_tab_cancel")],
+    ])
+
+
 @router.message(EditSetting.waiting_for_value)
 async def settings_edit_value(message: types.Message, state: FSMContext):
     data = await state.get_data()
@@ -1562,6 +1636,27 @@ async def settings_edit_value(message: types.Message, state: FSMContext):
         value = (message.html_text or message.text or "").strip()
     else:
         value = (message.text or "").strip()
+
+    # Quick 260815-3hw (Task 3): confirm-gate before silently overwriting an EXISTING Google
+    # Sheets tab — only for keys the bot actually writes to (_SHEET_TAB_WRITE_MODE);
+    # preselect_tab (read-only) and the city_tab_suffix__* keys never reach this branch, and
+    # neither does clearing a value ("-") — there is nothing to protect when unsetting.
+    tab_check_failed = False
+    if key in _SHEET_TAB_WRITE_MODE and value and value != "-":
+        probe = await tab_row_count(value)
+        if probe is None:
+            tab_check_failed = True
+        elif probe[0]:
+            _exists, rows = probe
+            await state.update_data(pending_tab_key=key, pending_tab_value=value)
+            await state.set_state(EditSetting.waiting_for_tab_confirm)
+            await message.answer(
+                _tab_confirm_text(key, value, rows),
+                parse_mode="HTML",
+                reply_markup=_tab_confirm_keyboard(),
+            )
+            return
+        # probe == (False, 0): tab doesn't exist yet — fall through to the normal silent save.
 
     warning = ""
     if value == "-":
@@ -1586,10 +1681,42 @@ async def settings_edit_value(message: types.Message, state: FSMContext):
                     + " совпадают со служебными словами бота и будут недоступны для выбора. "
                     "Переименуйте их."
                 )
+        if tab_check_failed:
+            warning += _tab_check_failed_warning(key)
+
+    if key in _SHEET_TAB_WRITE_MODE:
+        await _after_tab_setting_saved(key)
 
     await state.clear()
     text = await render_settings_text()
     await message.answer(text + warning, parse_mode="HTML", reply_markup=await build_settings_keyboard())
+
+
+@router.callback_query(F.data == "sheets_tab_confirm")
+async def sheets_tab_confirm_go(callback: types.CallbackQuery, state: FSMContext):
+    """Confirmed overwrite of an existing tab name — saves the pending value (mirrors
+    gtconfirm/gtcancel, 09-02: no StateFilter, FSM data is read directly). Returns to the
+    «📄 Вкладки таблицы» screen, not the general settings landing — the manager came from there."""
+    data = await state.get_data()
+    key = data.get("pending_tab_key")
+    value = data.get("pending_tab_value")
+    await state.clear()
+    if key and value is not None:
+        await set_setting(key, value)
+        if key in _SHEET_TAB_WRITE_MODE:
+            await _after_tab_setting_saved(key)
+    text = await render_settings_group_text("sheets")
+    await callback.message.edit_text(text, parse_mode="HTML", reply_markup=await build_settings_group_keyboard("sheets"))
+    await callback.answer("✅ Сохранено")
+
+
+@router.callback_query(F.data == "sheets_tab_cancel")
+async def sheets_tab_cancel_go(callback: types.CallbackQuery, state: FSMContext):
+    """Cancelled overwrite — nothing saved, prior value untouched."""
+    await state.clear()
+    text = await render_settings_group_text("sheets")
+    await callback.message.edit_text(text, parse_mode="HTML", reply_markup=await build_settings_group_keyboard("sheets"))
+    await callback.answer("Отменено")
 
 
 @router.callback_query(F.data == "admin_export_csv")
