@@ -28,12 +28,31 @@ def set_alert_bot(bot):
     _alert_bot = bot
 
 
-def _tab_explicitly_configured() -> bool:
-    """True only if GOOGLE_SHEET_TAB carries an explicit, non-empty value (after stripping the
-    stray quotes/whitespace some .env parsers leave around it). Checked directly against
-    config, NOT against whatever _sheet happens to be cached right now — so destructive-op
-    refusal (rebuild/dedupe, see REFUSED_UNPINNED_TAB above) and the startup warning below both
-    reflect the CURRENT config, not stale in-process cache state."""
+async def _tab_explicitly_configured() -> bool:
+    """True if EITHER bot_settings.main_sheet_tab (an admin naming the tab from «📄 Вкладки
+    таблицы») OR GOOGLE_SHEET_TAB (.env) carries an explicit, non-empty value (after stripping
+    the stray quotes/whitespace some .env parsers leave around GOOGLE_SHEET_TAB). Both are
+    equally explicit human choices — without the bot_settings check, a manager who just named
+    the tab from the admin screen would still hit "⛔ Пересборка отключена: не задан
+    GOOGLE_SHEET_TAB в .env", a dead end for someone who has no reason to touch .env at all.
+
+    Async (quick 260815-3hw, plan-checker correction): all THREE current callers
+    (warn_if_tab_unconfigured/dedupe_sheet_by_id/rebuild_main_sheet) already run on the asyncio
+    event loop, where the non-blocking `await get_setting_typed(...)` (aiosqlite, project
+    convention) is available — unlike `_get_sheet()` itself, which runs inside
+    `asyncio.to_thread` and has no event loop to attach to (that is why `_get_sheet()` uses the
+    separate PLAIN-sync `_load_main_tab_setting()` below, never this function).
+
+    Checked directly against config/bot_settings, NOT against whatever _sheet happens to be
+    cached right now — so destructive-op refusal (rebuild/dedupe, see REFUSED_UNPINNED_TAB
+    above) and the startup warning below both reflect the CURRENT settings, not stale
+    in-process cache state."""
+    from settings_schema import get_setting_typed  # local import: settings_schema has no
+    # reverse dependency on this module, so this is safe, but keeping it local avoids widening
+    # this module's top-level import surface for a single call site.
+    main_tab = await get_setting_typed(_MAIN_TAB_SETTING_KEY)
+    if main_tab:
+        return True
     tab = (config.GOOGLE_SHEET_TAB or "").strip().strip('"').strip("'").strip()
     return bool(tab)
 
@@ -76,33 +95,32 @@ _startup_tab_warning_sent = False
 
 async def warn_if_tab_unconfigured() -> None:
     """Startup check — call once from main.py, right after set_alert_bot(bot). If Sheets sync
-    is active (GOOGLE_SHEET_ID + credentials set) but GOOGLE_SHEET_TAB is empty, the main tab
-    resolves by position on first use (see _get_sheet's pinning comment above) instead of by an
-    admin-confirmed name. Logs loudly and alerts admins ONCE per process start (mirrors
-    _alert_bot_warned's one-shot pattern) — never spams on every write."""
+    is active (GOOGLE_SHEET_ID + credentials set) but neither bot_settings.main_sheet_tab nor
+    GOOGLE_SHEET_TAB names the main tab explicitly, _get_sheet() has nothing to resolve by name
+    and refuses outright (see _get_sheet's docstring — position is never consulted, quick
+    260815-3hw / audit 2026-08-14). Logs loudly and alerts admins ONCE per process start
+    (mirrors _alert_bot_warned's one-shot pattern) — never spams on every write."""
     global _startup_tab_warning_sent
     if _startup_tab_warning_sent:
         return
     if not config.GOOGLE_SHEET_ID or not config.GOOGLE_CREDENTIALS_FILE:
         return  # Sheets integration off entirely — nothing to warn about
-    if _tab_explicitly_configured():
+    if await _tab_explicitly_configured():
         return
     _startup_tab_warning_sent = True
     logger.error(
-        "GOOGLE_SHEET_TAB не задан: основная вкладка резолвится ПО ПОЗИЦИИ (первая слева), "
-        "не по имени. Перетаскивание вкладок местами в Google Sheets молча перенаправит "
-        "запись регистраций на другую вкладку. Укажите GOOGLE_SHEET_TAB в .env. До этого "
-        "«Пересобрать таблицу» и «Убрать дубли из таблицы» отключены."
+        "Основная вкладка Google-таблицы не задана (ни bot_settings.main_sheet_tab, ни "
+        "GOOGLE_SHEET_TAB): запись регистраций отказывает вместо угадывания по позиции. "
+        "Задайте вкладку в «⚙️ Настройки → 📄 Вкладки таблицы → 📄 Основная (регистрации)» — "
+        "сработает без перезапуска."
     )
     await _send_admin_alert(
-        "⚠️ Google Sheets: GOOGLE_SHEET_TAB не задан в .env. Основная вкладка регистраций "
-        "определяется по ПОЗИЦИИ (первая слева), а не по имени — перетаскивание вкладок "
-        "местами в интерфейсе Google Sheets молча перенаправит запись данных на другую "
-        "вкладку.\n\n"
-        "Укажите GOOGLE_SHEET_TAB в .env (точное имя текущей основной вкладки) и "
-        "перезапустите бота.\n\n"
-        "Пока это не сделано, «♻️ Пересобрать таблицу» и «🧹 Убрать дубли из таблицы» "
-        "отключены — чтобы случайно не стереть чужую вкладку."
+        "⚠️ Google Sheets: основная вкладка не задана. Запись регистраций в таблицу не идёт "
+        "(бот не угадывает вкладку по позиции — тихая подмена данных страшнее одной "
+        "отставшей строки, которую догонит «🔄 Синхронизация»).\n\n"
+        "Задайте вкладку в «⚙️ Настройки → 📄 Вкладки таблицы → 📄 Основная (регистрации)» — "
+        "сработает сразу, без перезапуска бота. Альтернатива для разработчика — "
+        "GOOGLE_SHEET_TAB в .env (нужен перезапуск)."
     )
 
 
@@ -131,6 +149,36 @@ _sheet_lock = threading.Lock()
 # This key is therefore READ-ONLY legacy: installs that pinned a title under the old behaviour
 # keep resolving to it, but nothing writes a new pin any more.
 _PINNED_MAIN_TAB_SETTING_KEY = "sheets_main_tab_pinned_title"
+
+# Quick 260815-3hw (TABS-01/02/03): the admin-configurable main tab name (settings_schema
+# "sheets" group, screen «📄 Вкладки таблицы»). This is the FIRST stage of _get_sheet()'s
+# priority chain — an explicit human choice, same standing as GOOGLE_SHEET_TAB (.env), just
+# picked from a button instead of a config file.
+_MAIN_TAB_SETTING_KEY = "main_sheet_tab"
+
+
+def _load_main_tab_setting() -> str | None:
+    """Read bot_settings.main_sheet_tab via a PLAIN sync sqlite3 connection — exact same
+    mechanics as `_load_pinned_tab_title()` below (copy, not a shared helper — see that
+    function's docstring for why aiosqlite cannot be used here: `_get_sheet()` runs inside
+    `asyncio.to_thread`, a worker thread with no running event loop). Value is stripped through
+    the same `.strip().strip('"').strip("'").strip()` chain as the .env value, in case an admin
+    pasted a value with stray surrounding quotes/whitespace from Telegram."""
+    try:
+        conn = sqlite3.connect(config.DB_PATH)
+        try:
+            cur = conn.execute(
+                "SELECT value FROM bot_settings WHERE key = ?",
+                (_MAIN_TAB_SETTING_KEY,),
+            )
+            row = cur.fetchone()
+            raw = row[0] if row else None
+        finally:
+            conn.close()
+    except Exception as e:
+        logger.warning(f"_load_main_tab_setting failed (falling back to unset): {e}")
+        return None
+    return (raw or "").strip().strip('"').strip("'").strip() or None
 
 
 def _load_pinned_tab_title() -> str | None:
@@ -168,7 +216,21 @@ def _get_sheet():
             return _sheet
         gc = gspread.service_account(filename=config.GOOGLE_CREDENTIALS_FILE)
         sh = gc.open_by_key(config.GOOGLE_SHEET_ID)
-        # Defensively strip stray quotes some .env parsers keep around the value.
+
+        # Quick 260815-3hw: priority chain, stage 1 — bot_settings.main_sheet_tab (admin screen
+        # «📄 Вкладки таблицы»). Checked FIRST so a manager who names the tab from the button
+        # overrides a stale/wrong .env value without editing .env or restarting — same
+        # auto-create semantics as the .env stage below.
+        tab = _load_main_tab_setting()
+        if tab:
+            try:
+                _sheet = sh.worksheet(tab)
+            except gspread.WorksheetNotFound:
+                _sheet = sh.add_worksheet(title=tab, rows=1000, cols=30)
+            return _sheet
+
+        # Stage 2 — GOOGLE_SHEET_TAB (.env). Defensively strip stray quotes some .env parsers
+        # keep around the value.
         tab = (config.GOOGLE_SHEET_TAB or "").strip().strip('"').strip("'").strip()
         if tab:
             # Target the configured tab by name; auto-create it if the spreadsheet doesn't
@@ -180,9 +242,9 @@ def _get_sheet():
                 _sheet = sh.add_worksheet(title=tab, rows=1000, cols=30)
             return _sheet
 
-        # No explicit tab configured. Never resolve by raw position more than once — first
-        # check whether a previous resolution (this process or an earlier one) already pinned
-        # a title.
+        # Stage 3 — legacy pin (READ-ONLY, nothing writes a new one). Never resolve by raw
+        # position more than once — check whether a previous resolution (this process or an
+        # earlier one, under the pre-2026-08-14 behaviour) already pinned a title.
         pinned_title = _load_pinned_tab_title()
         if pinned_title:
             try:
@@ -356,14 +418,15 @@ def _dedupe_sheet_sync() -> int:
 
 
 async def dedupe_sheet_by_id() -> int:
-    """Fail-soft wrapper. Returns rows deleted, REFUSED_UNPINNED_TAB (-2) if GOOGLE_SHEET_TAB
-    isn't explicitly set (see rebuild_main_sheet's docstring — same reasoning: this permanently
-    DELETES rows on whatever tab _get_sheet() resolves, and an unpinned/positional resolution
-    is not a safe target for a destructive op), or -1 for unconfigured / API error."""
+    """Fail-soft wrapper. Returns rows deleted, REFUSED_UNPINNED_TAB (-2) if neither
+    bot_settings.main_sheet_tab nor GOOGLE_SHEET_TAB is explicitly set (see rebuild_main_sheet's
+    docstring — same reasoning: this permanently DELETES rows on whatever tab _get_sheet()
+    resolves, and an unconfigured main tab is not a safe target for a destructive op), or -1
+    for unconfigured / API error."""
     if not config.GOOGLE_SHEET_ID or not config.GOOGLE_CREDENTIALS_FILE:
         return -1
-    if not _tab_explicitly_configured():
-        logger.warning("dedupe_sheet_by_id refused: GOOGLE_SHEET_TAB not set (positional main tab)")
+    if not await _tab_explicitly_configured():
+        logger.warning("dedupe_sheet_by_id refused: main tab not set (bot_settings.main_sheet_tab / GOOGLE_SHEET_TAB)")
         return REFUSED_UNPINNED_TAB
     try:
         return await asyncio.to_thread(_dedupe_sheet_sync)
@@ -544,19 +607,20 @@ async def bulk_update_status_in_sheet(id_to_label: dict[str, str]) -> int:
 
 async def rebuild_main_sheet(headers: list[str], rows: list[list]) -> int:
     """Fail-soft полная пересборка листа данных. Возвращает число строк, REFUSED_UNPINNED_TAB
-    (-2) если GOOGLE_SHEET_TAB не задан явно, или -1 при ошибке.
+    (-2) если основная вкладка не задана явно (ни bot_settings.main_sheet_tab, ни
+    GOOGLE_SHEET_TAB), или -1 при ошибке.
 
-    Quick task 260813: this is the operation that CLEARS the resolved worksheet before
-    rewriting it (_rebuild_main_sheet_sync -> sheet.clear()) — the single most destructive
-    Sheets call in this module. When GOOGLE_SHEET_TAB is empty, _get_sheet() resolves the main
-    tab by position-then-pin (see its docstring): the FIRST time it ever ran, it picked
-    whatever tab happened to be sh.sheet1 at that moment. That is not an admin-confirmed
-    target — it is an accident of tab order on some earlier day. Wiping it is refused until an
-    admin explicitly names the tab, at which point _get_sheet() targets it by name unambiguously."""
+    Quick task 260813 (tightened 260815-3hw): this is the operation that CLEARS the resolved
+    worksheet before rewriting it (_rebuild_main_sheet_sync -> sheet.clear()) — the single most
+    destructive Sheets call in this module. Position (sh.sheet1) is NEVER consulted by
+    _get_sheet() (see its docstring — the live spreadsheet's first tab is «STATISTICS», a
+    manager-maintained formulas sheet). Wiping is refused until an admin explicitly names the
+    tab (bot_settings.main_sheet_tab from «📄 Вкладки таблицы», or GOOGLE_SHEET_TAB in .env), at
+    which point _get_sheet() targets it by name unambiguously."""
     if not config.GOOGLE_SHEET_ID or not config.GOOGLE_CREDENTIALS_FILE:
         return -1
-    if not _tab_explicitly_configured():
-        logger.warning("rebuild_main_sheet refused: GOOGLE_SHEET_TAB not set (positional main tab)")
+    if not await _tab_explicitly_configured():
+        logger.warning("rebuild_main_sheet refused: main tab not set (bot_settings.main_sheet_tab / GOOGLE_SHEET_TAB)")
         return REFUSED_UNPINNED_TAB
     try:
         return await asyncio.to_thread(_rebuild_main_sheet_sync, headers, rows)

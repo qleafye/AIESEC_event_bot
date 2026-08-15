@@ -1342,11 +1342,11 @@ async def rebuild_sheet(callback: types.CallbackQuery):
         count = await rebuild_main_sheet(headers, rows)
         if count == REFUSED_UNPINNED_TAB:
             await callback.message.edit_text(
-                "⛔ Пересборка отключена: не задан <code>GOOGLE_SHEET_TAB</code> в .env.\n\n"
-                "Без него основная вкладка определяется по позиции (первая слева), а не по "
-                "имени — пересборка могла бы стереть чужую вкладку, если её переместили. "
-                "Укажите <code>GOOGLE_SHEET_TAB</code> в .env (точное имя основной вкладки) "
-                "и перезапустите бота, чтобы включить пересборку.",
+                "⛔ Пересборка отключена: основная вкладка не задана.\n\n"
+                "Без неё пересборка могла бы задеть не ту вкладку. Укажите вкладку в "
+                "«⚙️ Настройки → 📄 Вкладки таблицы → 📄 Основная (регистрации)» — сработает "
+                "сразу, без перезапуска. Вариант для разработчика — <code>GOOGLE_SHEET_TAB</code> "
+                "в .env (тогда нужен перезапуск).",
                 parse_mode="HTML",
                 reply_markup=await admin_keyboard_for(callback.from_user.id),
             )
@@ -1825,10 +1825,11 @@ async def dedupe_sheet_run(callback: types.CallbackQuery):
     removed = await dedupe_sheet_by_id()
     if removed == REFUSED_UNPINNED_TAB:
         text = (
-            "⛔ Убрать дубли нельзя: не задан <code>GOOGLE_SHEET_TAB</code> в .env.\n\n"
-            "Без него основная вкладка определяется по позиции (первая слева), а не по "
-            "имени — удаление строк могло бы задеть чужую вкладку. Укажите "
-            "<code>GOOGLE_SHEET_TAB</code> в .env и перезапустите бота."
+            "⛔ Убрать дубли нельзя: основная вкладка не задана.\n\n"
+            "Без неё удаление строк могло бы задеть не ту вкладку. Укажите вкладку в "
+            "«⚙️ Настройки → 📄 Вкладки таблицы → 📄 Основная (регистрации)» — сработает сразу, "
+            "без перезапуска. Вариант для разработчика — <code>GOOGLE_SHEET_TAB</code> в .env "
+            "(тогда нужен перезапуск)."
         )
     elif removed < 0:
         text = "⚠️ Не удалось (проверь доступ к Google Sheets, подробности в логах)."
@@ -3800,7 +3801,7 @@ SETTINGS_GUIDE_SECTIONS = [
                 "what": "Куда падают заявки краткой (акционной) формы — отдельная вкладка "
                         "Google-таблицы, основной лист не трогает.",
                 "default": "Краткая",
-                "where": "⚙️ Настройки → «📝 Регистрация»",
+                "where": "⚙️ Настройки → «📄 Вкладки таблицы»",
             },
             {
                 "key": "short_approval",
@@ -3912,7 +3913,7 @@ SETTINGS_GUIDE_SECTIONS = [
                 "label": "Вкладка со списком отобранных",
                 "what": "Имя вкладки в вашей Google-таблице, где лежат @username.",
                 "default": "Отобранные",
-                "where": "меняет разработчик по вашей просьбе",
+                "where": "⚙️ Настройки → «📄 Вкладки таблицы»",
             },
             {
                 "key": "preselect_fail_text",
@@ -4973,15 +4974,22 @@ async def sync_game_sheets_confirm(callback: types.CallbackQuery):
 
     Обе вкладки целиком выводятся из БД, поэтому потерять можно только то, что менеджер дописал
     руками ПРЯМО в листе (заметки в «Истории сдач» для разбора споров — ровно тот сценарий, ради
-    которого лист и заводился, см. 09-CONTEXT.md). Экран называет это прямым текстом."""
+    которого лист и заводился, см. 09-CONTEXT.md). Экран называет это прямым текстом.
+
+    Quick 260815-3hw: имена вкладок теперь читаются из реестра (game_matrix_tab/
+    game_history_tab, экран «⚙️ Настройки → 📄 Вкладки таблицы») — менеджер, переименовавший
+    их кнопкой, должен видеть в подтверждении СВОИ имена, а не старый хардкод «Гейма»/«История
+    сдач» (иначе гейт называет не ту вкладку, что реально перезапишется)."""
+    matrix_tab = await get_setting_typed("game_matrix_tab")
+    history_tab = await get_setting_typed("game_history_tab")
     kb = InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text="🔄 Да, пересобрать вкладки", callback_data="admin_game_sync_sheet_go")],
         [InlineKeyboardButton(text="← Отмена", callback_data="admin_menu")],
     ])
     await callback.message.edit_text(
         "🔄 <b>Пересобрать вкладки геймификации?</b>\n\n"
-        "Заново соберу из базы бота две вкладки: <b>«Гейма»</b> (матрица участники × задания) "
-        "и <b>«История сдач»</b>.\n\n"
+        f"Заново соберу из базы бота две вкладки: <b>«{html_module.escape(matrix_tab)}»</b> "
+        f"(матрица участники × задания) и <b>«{html_module.escape(history_tab)}»</b>.\n\n"
         "⚠️ Обе вкладки очищаются целиком и заполняются заново. <b>Заметки, которые вы писали "
         "руками прямо в этих листах, пропадут</b> — в базе бота их нет. Остальные вкладки "
         "таблицы не затрагиваются.",
@@ -5005,14 +5013,19 @@ async def sync_game_sheets(callback: types.CallbackQuery):
     matrix_headers, matrix_rows = _build_game_matrix(tasks, submissions)
     history_headers, history_rows = _build_game_history(submissions)
 
-    matrix_written = await sync_named_worksheet("Гейма", matrix_headers, matrix_rows)
-    history_written = await sync_named_worksheet("История сдач", history_headers, history_rows)
+    # Quick 260815-3hw: tab names resolved from the registry (game_matrix_tab/game_history_tab)
+    # instead of the literals "Гейма"/"История сдач" — same defaults, admin-renameable.
+    matrix_tab = await get_setting_typed("game_matrix_tab")
+    history_tab = await get_setting_typed("game_history_tab")
+    matrix_written = await sync_named_worksheet(matrix_tab, matrix_headers, matrix_rows)
+    history_written = await sync_named_worksheet(history_tab, history_headers, history_rows)
 
     matrix_report = f"{matrix_written} строк" if matrix_written >= 0 else "⚠️ ошибка синхронизации (см. лог)"
     history_report = f"{history_written} строк" if history_written >= 0 else "⚠️ ошибка синхронизации (см. лог)"
 
     await callback.message.answer(
-        f"✅ Гейма: {matrix_report}.\nИстория сдач: {history_report}.",
+        f"✅ {html_module.escape(matrix_tab)}: {matrix_report}.\n"
+        f"{html_module.escape(history_tab)}: {history_report}.",
         parse_mode="HTML",
         reply_markup=await admin_keyboard_for(callback.from_user.id),
     )
