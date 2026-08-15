@@ -7,3 +7,5 @@ gspread>=6.0,<7.0
 google-auth
 apscheduler==3.11.2
 sqlalchemy>=2.0,<3.0
+# явная база часовых поясов: ZoneInfo(Europe/Moscow) в services/scheduler.py не должен зависеть от системной tzdb в python:3.11-slim
+tzdata
