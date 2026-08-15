@@ -417,6 +417,35 @@ def _is_callback_shaped(event) -> bool:
     return hasattr(event, "data") and not hasattr(event, "text")
 
 
+def _holds(user_caps: set, cap: str) -> bool:
+    """ANY_CAPABILITY means 'any non-empty set'; anything else is exact membership."""
+    return bool(user_caps) if cap == ANY_CAPABILITY else cap in user_caps
+
+
+def _required_caps_for_message(text: str | None, raw_state: str | None) -> list[str | None]:
+    """Every capability that could gate a text message — because a slash-command typed while
+    an FSM wizard is active can be dispatched to EITHER the top-level command handler OR the
+    wizard-state handler depending on aiogram's registration order (first match wins, and the
+    command handlers carry no StateFilter). Returning BOTH requirements and demanding the user
+    clear all of them is fail-safe: it never grants more than the narrowest correct policy for
+    whichever handler actually runs. This closes the escalation where a manager holding only
+    the wizard's capability (e.g. moderate_game inside GameTaskCreate) types a privileged
+    command (/export, /coins) and the middleware waved it through on the STATE's capability
+    while aiogram ran the COMMAND handler.
+
+    Non-command wizard text is gated by the state alone (unchanged); a question-reply-shaped
+    message outside any wizard by the reply predicate (unchanged)."""
+    command = _extract_command(text)
+    if command is not None:
+        caps = [required_capability(command=command)]
+        if raw_state:
+            caps.append(required_capability(raw_state=raw_state))
+        return caps
+    if raw_state:
+        return [required_capability(raw_state=raw_state)]
+    return [None]
+
+
 async def _deny(event: TelegramObject, user_id: int, user_caps: set, cap: str | None):
     """D-04: reaction depends on who pressed. A known staff/admin member denied THIS specific
     capability (tapped a stale button, or a genuinely unmapped key -- T-08-12/D-02) gets the
@@ -450,30 +479,28 @@ class CapabilityMiddleware(BaseMiddleware):
             return UNHANDLED
 
         if _is_callback_shaped(event):
-            cap = required_capability(callback_data=event.data)
+            required = [required_capability(callback_data=event.data)]
         elif hasattr(event, "text"):
-            # T-08-12 Pitfall 3 order: state (mid-wizard continuation) beats command beats the
-            # bespoke question-reply predicate -- mirrors required_capability()'s own priority
-            # and the /cancel-mid-Broadcast-wizard case documented in the capability_map.
+            # A slash-command typed mid-wizard can dispatch to either the command handler or the
+            # state handler (registration order decides) -- so _required_caps_for_message returns
+            # BOTH requirements and the user must clear all of them (fail-safe against the
+            # state-beats-command escalation). Non-command wizard text -> state only.
             raw_state = data.get("raw_state")
-            if raw_state:
-                cap = required_capability(raw_state=raw_state)
-            else:
-                command = _extract_command(event.text)
-                if command is not None:
-                    cap = required_capability(command=command)
-                elif _is_question_reply_shape(event):
-                    cap = required_capability(special="question_reply")
-                else:
-                    cap = None
+            required = _required_caps_for_message(event.text, raw_state)
+            # Question-reply predicate applies only outside any wizard, to non-command text --
+            # preserved from the original resolution order.
+            if not raw_state and _extract_command(event.text) is None:
+                required = [required_capability(special="question_reply")
+                            if _is_question_reply_shape(event) else None]
         else:
-            cap = None
+            required = [None]
 
         user_caps = await resolve_capabilities(user.id)  # D-05: fresh SQLite read every call
 
-        if cap is not None:
-            allowed = bool(user_caps) if cap == ANY_CAPABILITY else cap in user_caps
-            if allowed:
-                return await handler(event, data)
+        # Deny-by-default (D-02): a message/callback whose ONLY signal is an unmapped key (every
+        # entry None) is denied. Otherwise the user must satisfy EVERY applicable capability.
+        applicable = [c for c in required if c is not None]
+        if applicable and all(_holds(user_caps, c) for c in applicable):
+            return await handler(event, data)
 
-        return await _deny(event, user.id, user_caps, cap)
+        return await _deny(event, user.id, user_caps, applicable[0] if applicable else None)

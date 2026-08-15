@@ -1637,6 +1637,20 @@ async def settings_edit_value(message: types.Message, state: FSMContext):
     else:
         value = (message.text or "").strip()
 
+    # Guard: a non-text message (sticker/photo/voice/forwarded media) or a whitespace-only
+    # send yields value == "" here. Storing "" is never a meaningful value — the registry's
+    # text branch would return "" instead of the default (so the settings screen shows
+    # «по умолчанию» while a consumer actually resolves ""), and an empty Google Sheets tab
+    # name breaks the allowlist read and every sync. Clearing a setting is the explicit "-"
+    # sentinel, not an empty send. Reject and stay in the state so the admin can just retype.
+    if not value:
+        await message.answer(
+            "Не понял значение — пришлите его <b>текстом</b> одним сообщением "
+            "(например: <code>Реги бот</code>).\n\nЧтобы очистить настройку, отправьте «-».",
+            parse_mode="HTML",
+        )
+        return
+
     # Quick 260815-3hw (Task 3): confirm-gate before silently overwriting an EXISTING Google
     # Sheets tab — only for keys the bot actually writes to (_SHEET_TAB_WRITE_MODE);
     # preselect_tab (read-only) and the city_tab_suffix__* keys never reach this branch, and
