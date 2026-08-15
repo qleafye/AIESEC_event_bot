@@ -687,29 +687,38 @@ _REG_FIELD_ORDER = [
     "source_options", "reg_complete_text", "approve_text", "reject_text",
     "pending_reminder_interval", "city_options", "study_field_options",
     "goal_options", "formats_options", "university_options",
-    "short_sheet_tab",  # Phase 7 (SHORT-02): краткая-форма вкладка Google-таблицы
 ]
 _PAY_FIELD_ORDER = [
     "payment_options", "payment_requisites", "payment_requisites_by_lc",
     "payment_deadline", "payment_reminder_text", "payment_overdue_text", "penalty_schedule",
 ]
 _PARTY_FIELD_ORDER = [
-    "party_closed_text", "party_sheet_tab", "approve_text__party",
+    "party_closed_text", "approve_text__party",
 ]
 _CONSENT_FIELD_ORDER = [
     "consent_button_text", "consent_list",
+]
+
+# Quick 260815-3hw (TABS-01/02/03): every Google Sheets tab NAME in one group — «📄 Вкладки
+# таблицы». short_sheet_tab/party_sheet_tab moved here from reg/party (physically relocated in
+# settings_schema.py, not duplicated). Order is the on-screen order, not registry insertion order.
+_SHEETS_FIELD_ORDER = [
+    "main_sheet_tab", "short_sheet_tab", "party_sheet_tab", "incomplete_sheet_tab",
+    "game_matrix_tab", "game_history_tab", "preselect_tab",
+    "city_tab_suffix__short", "city_tab_suffix__party", "city_tab_suffix__incomplete",
 ]
 
 _REG_FIELDS = [(k, SETTINGS_SCHEMA[k]["label"], SETTINGS_SCHEMA[k]["prompt"]) for k in _REG_FIELD_ORDER]
 _PAY_FIELDS = [(k, SETTINGS_SCHEMA[k]["label"], SETTINGS_SCHEMA[k]["prompt"]) for k in _PAY_FIELD_ORDER]
 _PARTY_FIELDS = [(k, SETTINGS_SCHEMA[k]["label"], SETTINGS_SCHEMA[k]["prompt"]) for k in _PARTY_FIELD_ORDER]
 _CONSENT_FIELDS = [(k, SETTINGS_SCHEMA[k]["label"], SETTINGS_SCHEMA[k]["prompt"]) for k in _CONSENT_FIELD_ORDER]
+_SHEETS_FIELDS = [(k, SETTINGS_SCHEMA[k]["label"], SETTINGS_SCHEMA[k]["prompt"]) for k in _SHEETS_FIELD_ORDER]
 
 # NOTE: reg_university_mode и edu_conditional вынесены в кнопки-переключатели (build_settings_keyboard).
 # PDF согласий грузятся в разделе «🧾 PDF согласий».
 # Phase 5 (D-11a/D-13): party-track text settings (party_enabled/party_fork_question/
 # party_approval are toggle buttons in build_settings_keyboard, not here).
-SETTINGS_FIELDS = _EVENT_FIELDS + _REG_FIELDS + _PAY_FIELDS + _PARTY_FIELDS + _CONSENT_FIELDS
+SETTINGS_FIELDS = _EVENT_FIELDS + _REG_FIELDS + _PAY_FIELDS + _PARTY_FIELDS + _CONSENT_FIELDS + _SHEETS_FIELDS
 
 # Phase 5 (D-11a): default text shown in render_settings_text when a text setting is unset,
 # so the manager sees what users actually receive today, not a bare "не указано". REG-01
@@ -738,6 +747,9 @@ _EVENT_GROUP_KEYS = [
 SETTINGS_GROUPS = [
     ("🎪 Событие/Медиа", "event", _EVENT_GROUP_KEYS),
     ("📝 Регистрация", "reg", _REG_FIELD_ORDER),
+    # Quick 260815-3hw: placed right after «📝 Регистрация» — a manager looks for tab names
+    # near the registration settings, not buried at the tail of the settings list.
+    ("📄 Вкладки таблицы", "sheets", _SHEETS_FIELD_ORDER),
     ("💳 Оплата", "pay", _PAY_FIELD_ORDER),
     ("🎉 Party", "party", _PARTY_FIELD_ORDER),
     ("📋 Согласия", "consent", _CONSENT_FIELD_ORDER),

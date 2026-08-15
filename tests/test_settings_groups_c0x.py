@@ -203,8 +203,10 @@ def test_parse_setting_photo_file_passthrough():
 def test_registry_coverage_event():
     # "toggles" added 06-04 (D-12): the feature-switch enum group.
     # "roles" added 08-01 (D-09/D-10): role -> capability matrix + per-role kill switch.
+    # "sheets" added quick 260815-3hw: Google Sheets tab names ("📄 Вкладки таблицы" screen).
     allowed_groups = {
-        "event", "reg", "reg_questions", "pay", "party", "consent", "toggles", "roles", "misc",
+        "event", "reg", "reg_questions", "pay", "party", "consent", "toggles", "roles",
+        "sheets", "misc",
     }
     allowed_types = {"toggle", "int", "list", "date", "text", "enum", "photo", "file"}
 
@@ -316,8 +318,9 @@ def test_registry_coverage_all_text_groups():
             "penalty_schedule": "list",
         },
         "party": {
-            "party_closed_text": "text", "party_sheet_tab": "text",
-            "approve_text__party": "text",
+            # party_sheet_tab moved to the "sheets" group (quick 260815-3hw) -- covered by
+            # tests/test_sheet_tabs_settings_260815.py instead.
+            "party_closed_text": "text", "approve_text__party": "text",
         },
         "consent": {
             "consent_button_text": "text", "consent_list": "list",
@@ -341,7 +344,7 @@ def test_render_snapshot_reg(tmp_path):
     expected_keys = [
         "source_options", "reg_complete_text", "approve_text", "reject_text",
         "pending_reminder_interval", "city_options", "study_field_options",
-        "goal_options", "formats_options", "university_options", "short_sheet_tab",
+        "goal_options", "formats_options", "university_options",
     ]
     expected_labels = [
         "📢 Источники", "✅ После регистрации", "🎉 После одобрения", "🚫 При отклонении",
@@ -351,10 +354,8 @@ def test_render_snapshot_reg(tmp_path):
     # Fresh DB -> every key unconfigured, no display-default fallback for this group.
     for label in expected_labels:
         assert f"{label}: <i>— не задано</i>" in text, f"missing/wrong flag for {label}"
-    # Phase 7 (SHORT-02): short_sheet_tab carries a non-None registry default ("Краткая",
-    # same idiom as party_sheet_tab), so an unconfigured key shows "по умолчанию", not
-    # "не задано" — asserted separately from the not-configured group above.
-    assert "📄 Вкладка Google-таблицы (краткая форма): <i>по умолчанию</i>" in text
+    # Quick 260815-3hw: short_sheet_tab moved to the new "sheets" group screen -- no longer
+    # rendered here at all (see tests/test_sheet_tabs_settings_260815.py::test_render_snapshot_sheets).
     positions = [text.index(label) for label in expected_labels]
     assert positions == sorted(positions), "label order drifted"
 
@@ -396,14 +397,14 @@ def test_render_snapshot_party(tmp_path):
     kb = asyncio.run(admin_mod.build_settings_group_keyboard("party"))
     flat = _flat_callback_data(kb)
 
-    # party_closed_text/party_sheet_tab carry a display default (_SETTINGS_DISPLAY_DEFAULTS
-    # pre-migration -> registry `default` post-migration, T-06-06) -> «по умолчанию» flag.
+    # party_closed_text carries a display default (_SETTINGS_DISPLAY_DEFAULTS pre-migration ->
+    # registry `default` post-migration, T-06-06) -> «по умолчанию» flag. party_sheet_tab moved
+    # to the new "sheets" group screen (quick 260815-3hw) -- no longer rendered here.
     assert "🎉 Текст «вечеринка закрыта»: <i>по умолчанию</i>" in text
-    assert "📄 Вкладка Google-таблицы (Party): <i>по умолчанию</i>" in text
     # approve_text__party has no display default -> plain unconfigured flag.
     assert "🎉 После одобрения (Party): <i>— не задано</i>" in text
 
-    expected_keys = ["party_closed_text", "party_sheet_tab", "approve_text__party"]
+    expected_keys = ["party_closed_text", "approve_text__party"]
     edit_cbs = [cd for cd in flat if cd and cd.startswith("settings_edit:")]
     assert edit_cbs == [f"settings_edit:{k}" for k in expected_keys]
     assert "admin_settings" in flat
