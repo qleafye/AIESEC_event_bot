@@ -8,9 +8,13 @@ import asyncio
 import logging
 
 from database.db import get_setting
+from settings_schema import get_setting_typed
 
 logger = logging.getLogger(__name__)
 
+# Quick 260815-3hw: source of truth for this default moved to the registry (preselect_tab,
+# settings_schema.py, "sheets" group) -- kept here only because tests/older callers may still
+# reference the module-level constant; refresh_allowlist below no longer reads it directly.
 DEFAULT_TAB = "Отобранные"
 
 # Module-global cache. Rebuilt wholesale by refresh_allowlist (never mutated in place).
@@ -51,7 +55,7 @@ async def refresh_allowlist():
     global _allowlist
     try:
         from services.sheets import _get_allowlist_rows_sync  # local import avoids circular
-        tab = await get_setting("preselect_tab") or DEFAULT_TAB
+        tab = await get_setting_typed("preselect_tab")
         rows = await asyncio.to_thread(_get_allowlist_rows_sync, tab)
         _allowlist = {_normalize(v) for v in rows[1:] if v and v.strip()}  # skip header
         logger.info(f"Allowlist refreshed: {len(_allowlist)} usernames from tab {tab!r}")
