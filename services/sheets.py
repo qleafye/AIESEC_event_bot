@@ -719,3 +719,44 @@ async def ensure_named_sheet_header(tab_name: str, headers: list[str]):
     except Exception as e:
         _reset_named_sheet_cache(tab_name)
         logger.warning(f"ensure_named_sheet_header({tab_name!r}) failed (skipping): {e}")
+
+
+# --- Quick 260815-3hw (Task 3): existing-tab confirm gate for the admin "📄 Вкладки таблицы" ---
+# screen -- before saving a NEW name for a tab the bot actually WRITES to, warn the manager if
+# that name already names an existing tab with data on it (CLAUDE.md: destructive operations
+# need a confirmation naming the actual damage).
+
+def _tab_row_count_sync(title: str) -> tuple[bool, int]:
+    """Opens the spreadsheet fresh (does NOT touch the cached _sheet/_get_named_sheet handles --
+    this is a read-only probe of an arbitrary title, unrelated to which tab is currently
+    cached) and looks the title up by name. `(False, 0)` if the tab doesn't exist yet;
+    `(True, N)` with N = number of filled rows (header included, one API call via
+    get_all_values()) if it does."""
+    gc = gspread.service_account(filename=config.GOOGLE_CREDENTIALS_FILE)
+    sh = gc.open_by_key(config.GOOGLE_SHEET_ID)
+    try:
+        ws = sh.worksheet(title)
+    except gspread.WorksheetNotFound:
+        return (False, 0)
+    return (True, len(ws.get_all_values()))
+
+
+async def tab_row_count(title: str) -> tuple[bool, int] | None:
+    """Fail-soft probe for the settings_edit_value confirm-gate (handlers/admin.py).
+
+    Return contract (documented here because the three-way split matters — see this module's
+    callers for exactly which UI branch each value drives):
+    - `None` — could not check (Sheets integration off/unconfigured, API error, network
+      failure). The caller must NOT block saving on this: an unreachable Sheets API is not a
+      reason to refuse a settings change (registration must never depend on Sheets being up).
+    - `(False, 0)` — the tab does not exist yet. Nothing to protect, save silently.
+    - `(True, N)` — the tab exists with N rows. This is the only branch that should gate the
+      save behind a confirmation, because N rows of REAL data could be overwritten/appended to.
+    """
+    if not config.GOOGLE_SHEET_ID or not config.GOOGLE_CREDENTIALS_FILE:
+        return None
+    try:
+        return await asyncio.to_thread(_tab_row_count_sync, title)
+    except Exception as e:
+        logger.warning(f"tab_row_count({title!r}) failed (treating as unknown): {e}")
+        return None
