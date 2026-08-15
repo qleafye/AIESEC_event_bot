@@ -296,10 +296,14 @@ def test_party_closed_text_shows_hardcoded_default_when_unset(tmp_path):
 
 def test_party_sheet_tab_shows_default_party_when_unset(tmp_path):
     """Quick 260724-c0x: same relocation as above — landing has no inline defaults;
-    the party group sub-screen flags the field as «по умолчанию» instead."""
+    the group sub-screen flags the field as «по умолчанию» instead.
+
+    Quick 260815-3hw: party_sheet_tab moved from the "party" group screen to the new
+    "sheets" group screen («📄 Вкладки таблицы») — the field itself did not disappear, only
+    its screen changed."""
     _admin_ready(tmp_path)
-    group_text = asyncio.run(admin_mod.render_settings_group_text("party"))
-    assert "party_sheet_tab" in admin_mod._settings_group_keys("party")
+    group_text = asyncio.run(admin_mod.render_settings_group_text("sheets"))
+    assert "party_sheet_tab" in admin_mod._settings_group_keys("sheets")
     assert "по умолчанию" in group_text
 
 
