@@ -13,6 +13,7 @@ import json
 import logging
 import os
 from datetime import datetime, timedelta
+from zoneinfo import ZoneInfo
 
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.jobstores.sqlalchemy import SQLAlchemyJobStore
@@ -25,6 +26,12 @@ from settings_schema import get_setting_typed
 logger = logging.getLogger(__name__)
 
 _JOBSTORE_URL = "sqlite:///data/jobs.sqlite"
+
+# TZFIX-260816: the ONE place the timezone literal is named in the whole codebase. Both the
+# scheduler pin below (init_scheduler) and _now_moscow_naive() read this constant, so they
+# structurally cannot drift apart — that drift (pin=Moscow, checks=container clock/UTC) was
+# exactly the bug this fix closes. See .planning/TZFIX-260816.md.
+MOSCOW_TZ = ZoneInfo("Europe/Moscow")
 
 # Injected once at startup. Job coroutines read these module globals — never receive
 # a Bot as an arg (keeps persisted job args picklable, Pitfall 3).
@@ -61,8 +68,30 @@ def _fmt_dt(dt: datetime) -> str:
     return dt.strftime("%Y-%m-%d %H:%M:%S")
 
 
+def _now_moscow_naive() -> datetime:
+    """TZFIX-260816: naive (tzinfo=None) Moscow wall-clock time.
+
+    Naive because it is compared against naive admin input (`_parse_schedule_dt`) and naive
+    values pulled from settings — the same shape the scheduler pin in `init_scheduler` (MOSCOW_TZ,
+    ~line 98) already expects. The bug this fixes: the container clock (python:3.11-slim, no
+    ENV TZ) runs on UTC, while the scheduler is pinned to Europe/Moscow. A bare `datetime.now()`
+    reads the container's UTC clock, so in the 3-hour window between UTC and MSK wall-clock, a
+    validation that should reject a past broadcast/deadline time instead let it through — and
+    `misfire_grace_time=86400` then fired the stale job immediately to the whole audience.
+
+    Do NOT use this helper where the comparison is against a value the bot itself stamped via
+    `datetime.now()` (see `_nudge_cutoff` — that one stays on the container clock).
+    """
+    return datetime.now(MOSCOW_TZ).replace(tzinfo=None)
+
+
 def _nudge_cutoff(now: datetime, minutes: int) -> str:
-    """now minus `minutes`, ISO-formatted — the started_at threshold for the scan."""
+    """now minus `minutes`, ISO-formatted — the started_at threshold for the scan.
+
+    TZFIX-260816: `now` here is deliberately the container clock — see the call site comment
+    at nudge_incomplete_registrations (scheduler.py:413) for why this must NOT switch to
+    _now_moscow_naive().
+    """
     return (now - timedelta(minutes=minutes)).strftime("%Y-%m-%d %H:%M:%S")
 
 
@@ -95,7 +124,9 @@ async def init_scheduler(bot):
         # in Moscow time — never now()+offset. Without this pin APScheduler localizes naive
         # run_dates to the container's tzlocal, so a UTC container fires a "14:30" broadcast 3h
         # off the intended Moscow wall-clock. Pinning makes the naive time fire at 14:30 MSK.
-        timezone="Europe/Moscow",
+        # TZFIX-260816: same MOSCOW_TZ constant now also feeds _now_moscow_naive() below, so this
+        # pin and the admin-input validations can no longer read the timezone differently.
+        timezone=MOSCOW_TZ,
         # WR-04: 1h grace silently DROPPED any date job (scheduled broadcast / payment
         # reminder) whose run_date passed during >1h of downtime — the job never fired, the
         # broadcast row stayed 'pending' forever, no alert. 24h covers realistic deploy/crash
