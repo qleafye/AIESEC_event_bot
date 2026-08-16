@@ -17,7 +17,7 @@ from zoneinfo import ZoneInfo
 
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.jobstores.sqlalchemy import SQLAlchemyJobStore
-from aiogram.exceptions import TelegramForbiddenError, TelegramRetryAfter
+from aiogram.exceptions import TelegramBadRequest, TelegramForbiddenError, TelegramRetryAfter
 
 from config import config
 from database.db import get_setting
@@ -203,20 +203,37 @@ async def reconcile_scheduled_broadcasts():
 
 # ── SCHED-01: scheduled-broadcast date job ───────────────────────────────────
 
+# Night review 260815 (review/services.md #1): a send that dies with TelegramBadRequest
+# ("chat not found", deleted account) is just as undeliverable as one that dies with
+# TelegramForbiddenError — it only arrives as HTTP 400 instead of 403. Same class of bug the
+# 14.08 quick fix `260813-833` closed in `admin_reply_to_question` (see
+# handlers/admin.py::_PERMANENT_DELIVERY_ERRORS) — the pattern is copied, not reinvented.
+#
+# D-01: the WHOLE of TelegramBadRequest counts as permanent, deliberately. It is a wide class
+# (it also covers "message is too long" / "can't parse entities"), but every caller here sends a
+# FIXED payload to one chat_id: if the 400 came from the text rather than the chat, resending
+# the same text to the same chat fails identically — the retry is useless under either reading.
+# We do NOT sniff `e.message` for "chat not found": that pins us to Telegram's wording, which
+# changes without notice. Transient failures (TelegramRetryAfter, TelegramNetworkError,
+# timeouts) keep their own branches below and are still retried.
+_PERMANENT_SEND_ERRORS = (TelegramForbiddenError, TelegramBadRequest)
+
+
 async def _safe_send(send_coro_factory, chat_id, on_permanent_failure=None) -> bool:
     """Run one send with the 429-safe single-retry pattern (D-07/D-08).
     Returns True if delivered (first try or retry), False on genuine failure.
 
-    `TelegramForbiddenError` (user blocked the bot / deactivated account) is a PERMANENT
-    failure: retrying it later can never succeed. Callers that would otherwise re-queue the
-    same chat_id forever pass `on_permanent_failure` — an async callback run once so they can
-    record the give-up. Without it a blocked user stayed a nudge candidate on every 15-minute
+    `TelegramForbiddenError` (user blocked the bot / deactivated account) and
+    `TelegramBadRequest` (chat unreachable / deleted account — "chat not found" arrives as
+    HTTP 400) are PERMANENT failures: retrying them later can never succeed. Callers that
+    would otherwise re-queue the same chat_id forever pass `on_permanent_failure` — an async
+    callback run once so they can record the give-up. Without it a blocked user stayed a nudge candidate on every 15-minute
     scan (observed in production: 2934 + 2064 identical ERROR lines for two chat_ids).
     Logged at WARNING, not ERROR — it is a fact about the user, not a bot malfunction."""
     try:
         await send_coro_factory(chat_id)
         return True
-    except TelegramForbiddenError as e:
+    except _PERMANENT_SEND_ERRORS as e:
         logger.warning(f"Scheduled send permanently undeliverable for {chat_id}: {e}")
         if on_permanent_failure is not None:
             try:
