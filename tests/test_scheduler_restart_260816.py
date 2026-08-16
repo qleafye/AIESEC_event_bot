@@ -178,3 +178,109 @@ def test_changed_interval_recomputes_schedule(tmp_path, monkeypatch):
             s2.shutdown(wait=False)
 
     asyncio.run(go())
+
+
+# ── #4: a pending broadcast older than the misfire grace must go out late, not vanish ─────
+
+def _stop(s):
+    """Pause before shutting down: `resume()` queued a wakeup via call_soon_threadsafe, and a
+    re-armed job whose run time already passed would otherwise fire while the loop unwinds."""
+    s.pause()
+    s.shutdown(wait=False)
+
+
+def test_stale_pending_broadcast_is_rearmed_into_the_future(tmp_path, monkeypatch):
+    """services.md #4: re-arming a >24h-old row with its own past date fed the executor a run
+    older than `misfire_grace_time`, which drops it (executors/base.py:117-127). The date job
+    disappeared, the row stayed 'pending' forever, and every boot repeated the same silent
+    drop. The docstring promised a LATE send — this makes the promise true."""
+    _isolate(tmp_path, monkeypatch)
+
+    async def go():
+        await db.init_db()
+        stale = sched._fmt_dt(sched._now_moscow_naive() - timedelta(days=3))
+        bid = await db.create_scheduled_broadcast("stale", None, None, stale, created_by=1)
+
+        s = await sched.init_scheduler(bot=object())
+        job = s.get_job(f"bcast_{bid}")
+        now = datetime.now(MOSCOW_TZ)
+        try:
+            assert job is not None, "просроченная pending-рассылка обязана быть ре-армлена"
+            assert job.next_run_time > now, (
+                f"run_date остался в прошлом ({job.next_run_time}) — executor снова дропнет его "
+                f"как misfire, рассылка молча пропадёт"
+            )
+            assert job.next_run_time <= now + timedelta(minutes=10)
+        finally:
+            _stop(s)
+
+    asyncio.run(go())
+
+
+def test_pending_broadcast_inside_grace_keeps_its_original_run_date(tmp_path, monkeypatch):
+    """Within the grace the executor still fires the stored time — do not move it."""
+    _isolate(tmp_path, monkeypatch)
+
+    async def go():
+        await db.init_db()
+        run_at = (sched._now_moscow_naive() - timedelta(hours=1)).replace(microsecond=0)
+        bid = await db.create_scheduled_broadcast(
+            "recent", None, None, sched._fmt_dt(run_at), created_by=1
+        )
+
+        s = await sched.init_scheduler(bot=object())
+        job = s.get_job(f"bcast_{bid}")
+        try:
+            assert job is not None
+            # A naive run_date is localized into the scheduler timezone (MOSCOW_TZ).
+            assert job.next_run_time == run_at.replace(tzinfo=MOSCOW_TZ)
+        finally:
+            _stop(s)
+
+    asyncio.run(go())
+
+
+def test_stale_rearm_does_not_rewrite_the_db_row(tmp_path, monkeypatch):
+    """Экран /scheduled (handlers/admin.py:2373) печатает scheduled_at прямо из БД — менеджер
+    обязан видеть введённое им время, поэтому переносится только run_date джобы."""
+    _isolate(tmp_path, monkeypatch)
+
+    async def go():
+        await db.init_db()
+        stale = sched._fmt_dt(sched._now_moscow_naive() - timedelta(days=3))
+        bid = await db.create_scheduled_broadcast("stale", None, None, stale, created_by=1)
+
+        s = await sched.init_scheduler(bot=object())
+        try:
+            row = await db.get_scheduled_broadcast(bid)
+            assert row["scheduled_at"] == stale
+            assert row["status"] == "pending"
+        finally:
+            _stop(s)
+
+    asyncio.run(go())
+
+
+def test_stale_rearm_is_logged_with_the_original_time(tmp_path, monkeypatch, caplog):
+    """A silently-lost broadcast becoming a late one is a deliberate, loud event."""
+    _isolate(tmp_path, monkeypatch)
+    stale = sched._fmt_dt(sched._now_moscow_naive() - timedelta(days=3))
+
+    async def go():
+        await db.init_db()
+        bid = await db.create_scheduled_broadcast("stale", None, None, stale, created_by=1)
+
+        s = await sched.init_scheduler(bot=object())
+        try:
+            return bid
+        finally:
+            _stop(s)
+
+    with caplog.at_level(logging.WARNING, logger="services.scheduler"):
+        bid = asyncio.run(go())
+
+    warnings = [r.getMessage() for r in caplog.records if r.levelno >= logging.WARNING]
+    # id рассылки И её исходное время — чтобы по логу было видно, что именно уехало и почему.
+    assert any(f"broadcast {bid}" in m and stale in m for m in warnings), (
+        f"перенос просроченной рассылки не залогирован WARNING'ом: {warnings}"
+    )
