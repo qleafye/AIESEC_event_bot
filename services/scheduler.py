@@ -33,6 +33,14 @@ _JOBSTORE_URL = "sqlite:///data/jobs.sqlite"
 # exactly the bug this fix closes. See .planning/TZFIX-260816.md.
 MOSCOW_TZ = ZoneInfo("Europe/Moscow")
 
+# Night review 260816 (review/services.md #2, #4). ONE source for the misfire grace: it feeds
+# both `job_defaults` below and the staleness threshold in reconcile_scheduled_broadcasts(), so
+# the reconciliation cannot drift away from the grace the executor actually enforces.
+_MISFIRE_GRACE_SECONDS = 86400
+# How soon after boot an interval job whose saved run time already passed is caught up. Not
+# "right now": it keeps the first run from colliding with startup (long polling still coming up).
+_BOOT_CATCHUP = timedelta(minutes=2)
+
 # Injected once at startup. Job coroutines read these module globals — never receive
 # a Bot as an arg (keeps persisted job args picklable, Pitfall 3).
 _scheduler: AsyncIOScheduler | None = None
@@ -48,6 +56,18 @@ def _int_or_default(raw, default: int) -> int:
     except (TypeError, ValueError):
         return default
     return value if value > 0 else default
+
+
+def _interval_matches(job, interval: timedelta) -> bool:
+    """True only if `job` is an existing interval job running on exactly `interval`.
+
+    Deliberately duck-typed (getattr, no isinstance against APScheduler classes): the only
+    thing that matters is that the persisted trigger fires on the same period, so its saved
+    `next_run_time` is still meaningful. Anything else — no job, a date trigger, a period the
+    manager has since changed in the settings — is False, and the schedule is recomputed.
+    """
+    trigger = getattr(job, "trigger", None)
+    return bool(getattr(trigger, "interval", None) == interval)
 
 
 def _parse_schedule_dt(raw):
@@ -108,6 +128,51 @@ def get_scheduler() -> AsyncIOScheduler:
     return _scheduler
 
 
+def _add_interval_job(func, job_id: str, interval: timedelta):
+    """Register one interval job, KEEPING the schedule persisted in the jobstore.
+
+    Night review 260816 (review/services.md #2). Why the explicit `next_run_time` is the whole
+    point: `add_job` without it lets `_real_add_job` fill in
+    `trigger.get_next_fire_time(None, now)` (schedulers/base.py:1068-1071), and an
+    `IntervalTrigger` with no `start_date` answers `now + interval`
+    (triggers/interval.py:69). With `replace_existing=True` the store is then rewritten via
+    `update_job` (schedulers/base.py:1075-1080) — so every boot pushed the next run to
+    boot+interval. A bot restarted more often than once a day therefore NEVER ran the 24h
+    `sweep_payment_overdue`: nobody was flipped to 'overdue' and the «неоплатившие» segment
+    stayed empty.
+
+    Rules:
+      * same interval + saved run time still in the future -> reuse it (the fix);
+      * same interval + saved run time already passed / missing -> now + `_BOOT_CATCHUP`.
+        Passing the past time back would be dropped as a misfire for anything older than
+        `misfire_grace_time` (executors/base.py:117-127) — the silent loss we are closing;
+      * no job yet, or the manager changed the interval in the settings -> no explicit
+        `next_run_time` at all, i.e. byte-for-byte the previous behaviour (boot + new
+        interval). A settings change must apply, not be shadowed by an old schedule.
+
+    Requires the scheduler to be started (paused is enough): while it is STATE_STOPPED,
+    `get_job()` only looks at `_pending_jobs` and never reads the jobstore
+    (schedulers/base.py:1012-1016).
+    """
+    kwargs = {}
+    existing = _scheduler.get_job(job_id)
+    if _interval_matches(existing, interval):
+        now = datetime.now(MOSCOW_TZ)
+        saved = getattr(existing, "next_run_time", None)
+        if saved is not None and saved > now:
+            kwargs["next_run_time"] = saved
+        else:
+            kwargs["next_run_time"] = now + _BOOT_CATCHUP
+            logger.info(
+                f"Job {job_id}: saved run time {saved} already passed (downtime) — "
+                f"catching up at {kwargs['next_run_time']}"
+            )
+    _scheduler.add_job(
+        func, "interval", seconds=int(interval.total_seconds()),
+        id=job_id, replace_existing=True, **kwargs,
+    )
+
+
 async def init_scheduler(bot):
     """Build the AsyncIOScheduler with a persistent jobstore, register the interval
     jobs, and start it. Date jobs (scheduled broadcasts) auto-restore from the jobstore
@@ -131,40 +196,38 @@ async def init_scheduler(bot):
         # reminder) whose run_date passed during >1h of downtime — the job never fired, the
         # broadcast row stayed 'pending' forever, no alert. 24h covers realistic deploy/crash
         # windows; send_payment_reminder self-guards on paid/receipt_sent so a late fire is safe.
-        job_defaults={"misfire_grace_time": 86400, "coalesce": True},
+        job_defaults={"misfire_grace_time": _MISFIRE_GRACE_SECONDS, "coalesce": True},
     )
+
+    # Night review 260816 (review/services.md #2): started BEFORE the jobs are registered,
+    # because while the scheduler is STATE_STOPPED `get_job()` only consults `_pending_jobs`
+    # and never opens the jobstore (schedulers/base.py:1012-1016) — the schedule saved by the
+    # previous run would be unreadable, and `_add_interval_job` could not preserve it.
+    # `paused=True` rather than a plain start(): it brings the jobstore up without waking
+    # anything, so there is no window in which an overdue saved job fires a split second
+    # before our add_job rewrites it. resume() happens once the whole schedule is assembled.
+    _scheduler.start(paused=True)
 
     # ── interval jobs (registered fresh each boot; replace_existing avoids dupes) ──
     scan_minutes = _int_or_default(await get_setting("nudge_scan_minutes"), 15)
-    _scheduler.add_job(
-        nudge_incomplete_registrations, "interval",
-        minutes=scan_minutes, id="nudge_scan", replace_existing=True,
-    )
+    _add_interval_job(nudge_incomplete_registrations, "nudge_scan", timedelta(minutes=scan_minutes))
 
     refresh_minutes = _int_or_default(await get_setting("allowlist_refresh_minutes"), 60)
-    _scheduler.add_job(
-        allowlist_refresh_job, "interval",
-        minutes=refresh_minutes, id="allowlist_refresh", replace_existing=True,
-    )
+    _add_interval_job(allowlist_refresh_job, "allowlist_refresh", timedelta(minutes=refresh_minutes))
 
     # PAY-06: daily overdue sweep (no-op until a payment_deadline is set and passes).
-    _scheduler.add_job(
-        sweep_payment_overdue, "interval",
-        hours=24, id="payment_overdue_sweep", replace_existing=True,
-    )
+    _add_interval_job(sweep_payment_overdue, "payment_overdue_sweep", timedelta(hours=24))
 
     # Auto-refresh the «Незавершённые» sheet tab so managers don't have to tap the admin
     # button. Interval in hours (setting incomplete_sync_hours, default 2) — light load.
     sync_hours = _int_or_default(await get_setting("incomplete_sync_hours"), 2)
-    _scheduler.add_job(
-        sync_incomplete_sheet_job, "interval",
-        hours=sync_hours, id="incomplete_sheet_sync", replace_existing=True,
-    )
+    _add_interval_job(sync_incomplete_sheet_job, "incomplete_sheet_sync", timedelta(hours=sync_hours))
 
-    _scheduler.start()
     # ME-03: re-arm any pending broadcast whose date job was dropped from the jobstore during a
     # downtime longer than misfire_grace — otherwise it stays 'pending' forever and never fires.
     await reconcile_scheduled_broadcasts()
+    # Nothing (interval or date) may fire until the whole schedule above is assembled.
+    _scheduler.resume()
     logger.info(
         f"Scheduler started (nudge scan every {scan_minutes}m, "
         f"allowlist refresh every {refresh_minutes}m)"
