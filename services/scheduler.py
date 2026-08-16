@@ -241,12 +241,29 @@ async def reconcile_scheduled_broadcasts():
     than misfire_grace_time). Re-adding with the stored past run_date lets APScheduler fire it
     within the 24h grace; genuinely stale rows (>24h past) still get re-armed and fire on the
     next tick, converting a silently-lost broadcast into a late one. Fail-soft: never blocks
-    startup. A job that is still present in the store is left untouched (no double-fire)."""
+    startup. A job that is still present in the store is left untouched (no double-fire).
+
+    Night review 260816 (review/services.md #4) — HOW that last promise is kept. Handing the
+    executor a run older than `misfire_grace_time` makes it drop the run as a misfire
+    (executors/base.py:117-127) and, a date job having no next run, the job is deleted: the row
+    stayed 'pending' forever and every boot repeated the same silent drop. So a row older than
+    `_MISFIRE_GRACE_SECONDS` is re-armed at now+1min instead — inside the grace, therefore it
+    actually fires. Deliberate blast radius: such a broadcast DOES go out to its whole audience
+    a minute after the restart, late. That is the documented trade — a late send beats a silent
+    loss — and it is logged as a WARNING with the original time.
+
+    The DB row is NOT rewritten: `scheduled_at` keeps what the manager typed, so the /scheduled
+    screen (handlers/admin.py:2373, which prints the column verbatim) shows exactly what it
+    showed before. Follow-up parked outside this fix: an `expired` status plus an admin screen
+    «просроченные рассылки» with «отправить сейчас / отменить» instead of an automatic late send.
+    """
     try:
         from database.db import list_pending_broadcasts
         pending = await list_pending_broadcasts()
         sched = get_scheduler()
         recovered = 0
+        # One "now" for the whole pass, so every row of a boot is measured from the same moment.
+        now = _now_moscow_naive()
         for row in pending:
             bid = row["id"]
             if sched.get_job(f"bcast_{bid}") is not None:
@@ -256,7 +273,16 @@ async def reconcile_scheduled_broadcasts():
             except (KeyError, TypeError, ValueError, AttributeError):
                 logger.warning(f"reconcile: broadcast {bid} has unparseable scheduled_at — skipped")
                 continue
-            schedule_broadcast_job(bid, run_at)
+            if (now - run_at).total_seconds() > _MISFIRE_GRACE_SECONDS:
+                late_at = now + timedelta(minutes=1)
+                logger.warning(
+                    f"reconcile: broadcast {bid} scheduled at {row['scheduled_at']} is older "
+                    f"than the misfire grace — sending late at {_fmt_dt(late_at)} instead of "
+                    f"dropping it silently"
+                )
+                schedule_broadcast_job(bid, late_at)
+            else:
+                schedule_broadcast_job(bid, run_at)
             recovered += 1
         if recovered:
             logger.warning(f"Reconciled {recovered} pending broadcast(s) with dropped jobs")
