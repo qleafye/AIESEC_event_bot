@@ -141,3 +141,121 @@ def test_scheduler_permanent_send_errors_contains_both_classes():
     """Structural gate: check the tuple object itself, not the source text."""
     assert TelegramForbiddenError in scheduler._PERMANENT_SEND_ERRORS
     assert TelegramBadRequest in scheduler._PERMANENT_SEND_ERRORS
+
+
+# ── #15: services/reminders.py::pending_reminder_loop ───────────────────────────────────────
+
+class _StopLoop(Exception):
+    """Sentinel raised from a patched asyncio.sleep to escape the infinite reminder loop
+    after exactly one iteration, without altering services/reminders.py's structure.
+    (`await asyncio.sleep(interval)` sits OUTSIDE the inner try, so it is not swallowed.)"""
+
+
+class _FakeBot:
+    """Records deliveries; raises a preset exception for one designated admin id."""
+
+    def __init__(self, failing_id=None, error=None):
+        self.delivered = []
+        self.failing_id = failing_id
+        self.error = error
+
+    async def send_message(self, chat_id, text, *args, **kwargs):
+        if self.failing_id is not None and chat_id == self.failing_id:
+            raise self.error
+        self.delivered.append(chat_id)
+
+
+def _run_one_reminder_iteration(bot, admin_ids, monkeypatch, tmp_path):
+    """One full pending_reminder_loop iteration against a throwaway DB, then stop."""
+    config.DB_PATH = str(tmp_path / "test_permanent_send_errors_260816.db")
+    asyncio.run(db.init_db())
+
+    import services.reminders as reminders_mod
+
+    monkeypatch.setattr(config, "ADMIN_IDS", admin_ids)
+
+    async def fake_pending_count():
+        return 1
+
+    async def fake_sleep(_seconds):
+        raise _StopLoop()
+
+    orig_count = reminders_mod.get_pending_count
+    orig_sleep = reminders_mod.asyncio.sleep
+    reminders_mod.get_pending_count = fake_pending_count
+    reminders_mod.asyncio.sleep = fake_sleep
+    try:
+        try:
+            asyncio.run(reminders_mod.pending_reminder_loop(bot))
+        except _StopLoop:
+            pass
+        else:
+            raise AssertionError("pending_reminder_loop did not reach the sleep call")
+    finally:
+        reminders_mod.get_pending_count = orig_count
+        reminders_mod.asyncio.sleep = orig_sleep
+
+    return reminders_mod
+
+
+def test_reminder_bad_request_mutes_admin(tmp_path, monkeypatch):
+    """A broken/unreachable admin id must be muted after the FIRST 400, not ERROR forever."""
+    import services.reminders as reminders_mod
+
+    reminders_mod._blocked_admins.clear()
+    try:
+        bot = _FakeBot(failing_id=111, error=_bad_request())
+        _run_one_reminder_iteration(bot, [111], monkeypatch, tmp_path)
+        assert 111 in reminders_mod._blocked_admins, (
+            "TelegramBadRequest did not mute the admin — one identical ERROR every 30 minutes "
+            "forever (review/services.md #15)"
+        )
+    finally:
+        reminders_mod._blocked_admins.clear()
+
+
+def test_reminder_bad_request_does_not_stop_other_admins(tmp_path, monkeypatch):
+    """One admin's permanent failure must not abort the fan-out to the rest."""
+    import services.reminders as reminders_mod
+
+    reminders_mod._blocked_admins.clear()
+    try:
+        bot = _FakeBot(failing_id=111, error=_bad_request())
+        _run_one_reminder_iteration(bot, [111, 222], monkeypatch, tmp_path)
+        assert bot.delivered == [222]
+    finally:
+        reminders_mod._blocked_admins.clear()
+
+
+def test_reminder_forbidden_still_mutes_admin_regression(tmp_path, monkeypatch):
+    """Regression: the pre-existing block-the-bot muting is unchanged."""
+    import services.reminders as reminders_mod
+
+    reminders_mod._blocked_admins.clear()
+    try:
+        bot = _FakeBot(failing_id=333, error=_forbidden())
+        _run_one_reminder_iteration(bot, [333], monkeypatch, tmp_path)
+        assert 333 in reminders_mod._blocked_admins
+    finally:
+        reminders_mod._blocked_admins.clear()
+
+
+def test_reminder_transient_error_does_not_mute_admin(tmp_path, monkeypatch):
+    """A temporary glitch must never silence an admin's reminders for the whole bot run."""
+    import services.reminders as reminders_mod
+
+    reminders_mod._blocked_admins.clear()
+    try:
+        bot = _FakeBot(failing_id=444, error=RuntimeError("network hiccup"))
+        _run_one_reminder_iteration(bot, [444], monkeypatch, tmp_path)
+        assert 444 not in reminders_mod._blocked_admins
+    finally:
+        reminders_mod._blocked_admins.clear()
+
+
+def test_reminders_permanent_send_errors_contains_both_classes():
+    """Structural gate: check the tuple object itself, not the source text."""
+    import services.reminders as reminders_mod
+
+    assert TelegramForbiddenError in reminders_mod._PERMANENT_SEND_ERRORS
+    assert TelegramBadRequest in reminders_mod._PERMANENT_SEND_ERRORS
