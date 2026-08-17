@@ -138,6 +138,24 @@ async def init_db():
         # staff rows, and a single-table SELECT/UPDATE stays simpler than a join.
         await _ensure_column(db, "staff", "city", "TEXT")
 
+        # Phase 14 (CITY-07): city registry moves from `.env` into the DB -- this table is
+        # the source of truth from now on. `cities.seed_cities_if_empty()` fills it once from
+        # the old .env city list on first boot (empty-table check); after that `.env` is never
+        # read again for the city list. `enabled` mirrors the old `bot_settings
+        # city_enabled__{code}` toggle at seed time (old keys are NOT deleted -- read-fallback
+        # kept for backward compat, see `cities.is_city_enabled`). No FOREIGN KEY -- mirrors
+        # every other table in this file, which does not use SQLite FK constraints.
+        await db.execute('''
+            CREATE TABLE IF NOT EXISTS cities (
+                code TEXT PRIMARY KEY,
+                label TEXT NOT NULL,
+                tab_base TEXT,
+                enabled INTEGER DEFAULT 1,
+                sort_order INTEGER,
+                created_at TEXT
+            )
+        ''')
+
         # Phase 1: persistent dropout tracking (survives restart, independent of FSM)
         await db.execute('''
             CREATE TABLE IF NOT EXISTS reg_started (
@@ -1899,3 +1917,95 @@ async def get_game_stats() -> dict:
         stats["by_category"] = by_category
 
         return stats
+
+
+# ── Phase 14 (CITY-07): `cities` table accessors ────────────────────────────────────────────
+#
+# Pure SQL layer only -- this module NEVER imports `cities.py` (that would create an import
+# cycle: `cities.py` already imports `database.db`). Business logic (cache reload, seed-from-
+# .env, transliteration) lives entirely in `cities.py`; this file only stores/reads/counts rows.
+
+async def list_cities_rows() -> list[dict]:
+    """Every city row, ordered the way the registry and every UI screen renders them."""
+    async with aiosqlite.connect(config.DB_PATH) as db:
+        db.row_factory = aiosqlite.Row
+        async with db.execute(
+            "SELECT * FROM cities ORDER BY sort_order ASC, code ASC"
+        ) as cursor:
+            rows = await cursor.fetchall()
+            return [dict(row) for row in rows]
+
+
+async def count_cities() -> int:
+    async with aiosqlite.connect(config.DB_PATH) as db:
+        async with db.execute("SELECT COUNT(*) FROM cities") as cursor:
+            row = await cursor.fetchone()
+            return int(row[0]) if row and row[0] is not None else 0
+
+
+async def insert_city(code: str, label: str, tab_base: str | None, sort_order: int, enabled: int = 1) -> None:
+    async with aiosqlite.connect(config.DB_PATH) as db:
+        await db.execute(
+            "INSERT INTO cities (code, label, tab_base, enabled, sort_order, created_at) "
+            "VALUES (?, ?, ?, ?, ?, ?)",
+            (code, label, tab_base, enabled, sort_order, datetime.now().strftime("%Y-%m-%d %H:%M:%S")),
+        )
+        await db.commit()
+
+
+# Closed whitelist of updatable columns -- column names are NEVER taken from a caller argument
+# (WR-08 discipline, same as `_assert_identifier`): only these four literals ever reach SQL.
+_CITY_UPDATABLE_COLUMNS = ("label", "tab_base", "enabled", "sort_order")
+
+
+async def update_city(
+    code: str, *, label: str | None = None, tab_base: str | None = None,
+    enabled: int | None = None, sort_order: int | None = None,
+) -> bool:
+    """Updates only the passed (non-None) fields. Returns False on an unknown `code` or when
+    no field was passed (nothing to update -- rowcount stays 0)."""
+    fields = {
+        "label": label, "tab_base": tab_base, "enabled": enabled, "sort_order": sort_order,
+    }
+    set_parts = [f"{col} = ?" for col in _CITY_UPDATABLE_COLUMNS if fields[col] is not None]
+    values = [fields[col] for col in _CITY_UPDATABLE_COLUMNS if fields[col] is not None]
+    if not set_parts:
+        return False
+    async with aiosqlite.connect(config.DB_PATH) as db:
+        cursor = await db.execute(
+            f"UPDATE cities SET {', '.join(set_parts)} WHERE code = ?", (*values, code),
+        )
+        await db.commit()
+        return cursor.rowcount == 1
+
+
+async def delete_city_row(code: str) -> bool:
+    """Removes the row. No cascade -- checking "no users/tasks reference this city" is the
+    caller's job (plan 14-07); this accessor only performs the DELETE."""
+    async with aiosqlite.connect(config.DB_PATH) as db:
+        cursor = await db.execute("DELETE FROM cities WHERE code = ?", (code,))
+        await db.commit()
+        return cursor.rowcount == 1
+
+
+async def count_users_by_city(code: str) -> int:
+    """Delegates bound to this `event_city`. NULL rows ("no city on record") are never counted
+    here -- they are not a binding to any specific city, per `cities.normalize_city`'s own
+    read-time-only resolution."""
+    async with aiosqlite.connect(config.DB_PATH) as db:
+        async with db.execute(
+            "SELECT COUNT(*) FROM users WHERE event_city = ?", (code,)
+        ) as cursor:
+            row = await cursor.fetchone()
+            return int(row[0]) if row and row[0] is not None else 0
+
+
+async def count_tasks_by_city(code: str) -> int:
+    """Tasks scoped to this `event_city`. NULL rows ("all cities") are never counted here --
+    same NULL-is-not-a-binding semantics as `count_users_by_city`."""
+    async with aiosqlite.connect(config.DB_PATH) as db:
+        async with db.execute(
+            "SELECT COUNT(*) FROM game_tasks WHERE event_city = ?", (code,)
+        ) as cursor:
+            row = await cursor.fetchone()
+            return int(row[0]) if row and row[0] is not None else 0
