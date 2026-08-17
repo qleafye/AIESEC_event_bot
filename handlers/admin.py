@@ -71,6 +71,9 @@ from database.db import (
     delete_task,
     count_task_submissions,
     count_rejected_submissions,
+    list_manual_coin_entries,
+    count_manual_coin_entries,
+    export_coins_journal_csv,
 )
 from aiogram.exceptions import TelegramRetryAfter, TelegramForbiddenError, TelegramBadRequest
 from services.sheets import get_existing_sheet_ids, append_rows_to_sheet, ensure_sheet_header, sync_named_worksheet, dedupe_sheet_by_id, update_status_in_sheet, bulk_update_status_in_sheet, rebuild_main_sheet, REFUSED_UNPINNED_TAB, _reset_sheet_cache, tab_row_count
@@ -191,6 +194,7 @@ _ADMIN_MENU_ROWS: list[tuple[str, str]] = [
     ("📋 Задания", "admin_game_tasks"),
     ("🎮 Проверка заданий", "admin_game_review"),
     ("🪙 Монеты вручную", "admin_coins_manual"),
+    ("📜 Журнал монет", "admin_coins_journal"),
     ("🔄 Таблица геймы", "admin_game_sync_sheet"),
     ("📊 Статистика геймы", "admin_game_stats"),
 ]
@@ -6038,6 +6042,98 @@ async def coinsman_confirm(callback: types.CallbackQuery, state: FSMContext):
         f"Новый баланс: <b>{balance}</b>.{notify_suffix}",
         parse_mode="HTML",
     )
+
+
+# ── Phase 14 (14-05, GAME-09): «📜 Журнал монет» — paginated screen + full CSV export ────────
+#
+# The screen shows ONLY `source = 'manual'` rows (never task-award credits or pre-Phase-14
+# legacy rows -- Pitfall 6, T-14-25); the CSV button (coinsjrn_csv) exports the FULL journal
+# unfiltered, with the type spelled out in RU (never the raw `source` code). 10 rows per page
+# -- CLAUDE.md: a 1000+-row list must never render in one message (T-14-24).
+
+async def _coins_journal_screen(offset: int = 0) -> tuple[str, InlineKeyboardMarkup]:
+    """«Функция возвращает (text, kb)» idiom (same shape as `_game_tasks_screen`) -- every
+    re-render call site (open + page nav) stays byte-identical in format."""
+    limit = 10
+    total = await count_manual_coin_entries()
+    rows = await list_manual_coin_entries(limit=10, offset=offset)
+
+    lines = ["📜 <b>Журнал монет</b>"]
+    if total == 0:
+        lines.append("")
+        lines.append("Ручных операций пока не было.")
+    else:
+        total_pages = (total + limit - 1) // limit
+        current_page = offset // limit + 1
+        lines.append(f"Страница {current_page} из {total_pages}")
+        lines.append("")
+        for row in rows:
+            try:
+                when = datetime.strptime(row["timestamp"], "%Y-%m-%d %H:%M:%S").strftime("%d.%m.%Y %H:%M")
+            except (TypeError, ValueError):
+                when = str(row.get("timestamp") or "—")
+            recipient = html_module.escape(str(
+                row.get("user_full_name") or row.get("user_username") or row.get("user_id")
+            ))
+            delta = row.get("delta") or 0
+            sign = f"+{delta}" if delta >= 0 else str(delta)
+            reason = html_module.escape(str(row.get("reason") or "—"))
+            changed_by = row.get("changed_by")
+            changer = await _coinsman_display_name(changed_by) if changed_by is not None else "—"
+            lines.append(f"{when} · {recipient} · {sign}🪙 · {reason}")
+            lines.append(f"изменил: {changer}")
+    text = "\n".join(lines)
+
+    buttons: list[list[InlineKeyboardButton]] = []
+    nav_row: list[InlineKeyboardButton] = []
+    if offset > 0:
+        nav_row.append(InlineKeyboardButton(
+            text="← Раньше", callback_data=f"coinsjrn_page:{max(0, offset - limit)}",
+        ))
+    if offset + limit < total:
+        nav_row.append(InlineKeyboardButton(
+            text="Позже →", callback_data=f"coinsjrn_page:{offset + limit}",
+        ))
+    if nav_row:
+        buttons.append(nav_row)
+    buttons.append([InlineKeyboardButton(text="📄 Выгрузить журнал (CSV)", callback_data="coinsjrn_csv")])
+    buttons.append([InlineKeyboardButton(text="← Назад", callback_data="admin_menu")])
+    return text, InlineKeyboardMarkup(inline_keyboard=buttons)
+
+
+@router.callback_query(F.data == "admin_coins_journal")
+async def admin_coins_journal(callback: types.CallbackQuery):
+    text, kb = await _coins_journal_screen(offset=0)
+    await callback.message.answer(text, parse_mode="HTML", reply_markup=kb)
+    await callback.answer()
+
+
+@router.callback_query(F.data.startswith("coinsjrn_page:"))
+async def coinsjrn_page(callback: types.CallbackQuery):
+    raw = callback.data.split(":", 1)[1]
+    try:
+        offset = int(raw)
+    except ValueError:
+        offset = -1
+    if offset < 0:
+        await callback.answer("Некорректная страница", show_alert=True)
+        return
+    text, kb = await _coins_journal_screen(offset=offset)
+    await callback.message.edit_text(text, parse_mode="HTML", reply_markup=kb)
+    await callback.answer()
+
+
+@router.callback_query(F.data == "coinsjrn_csv")
+async def coinsjrn_csv(callback: types.CallbackQuery):
+    headers, rows = await export_coins_journal_csv()
+    output = io.StringIO()
+    writer = csv.writer(output, delimiter=';', quotechar='"', quoting=csv.QUOTE_MINIMAL)
+    writer.writerow(headers)
+    writer.writerows(rows)
+    file_bytes = output.getvalue().encode('utf-8-sig')
+    document = BufferedInputFile(file_bytes, filename="coins_journal.csv")
+    await callback.message.answer_document(document, caption="Журнал монет — все операции")
+    await callback.answer()
 
 
 # ── Phase 9 (GAME-02/03, wave 4, 09-04): «🎮 Проверка заданий» — moderation queue ───────────
