@@ -52,6 +52,7 @@ DEFAULT_SOURCE_OPTIONS = [
     "Университетские каналы",
     "Рассказал друг/знакомый",
     "Узнал от амбассадора",
+    "Узнал от блогера",  # 2026-08-17: Instagram bloggers without direct reg link — track this channel
     "Другое",
 ]
 
