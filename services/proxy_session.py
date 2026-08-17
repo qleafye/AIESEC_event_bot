@@ -14,8 +14,13 @@ import logging
 import re
 import time
 
+import aiohttp
 from aiohttp import ClientTimeout
-from aiogram.client.session.aiohttp import AiohttpSession
+# We already depend on this module's connector plumbing (_connector_type /
+# _connector_init / _setup_proxy_connector via the base class) -- _prepare_connector is
+# the same private helper AiohttpSession.proxy's setter uses internally, reused here to
+# build a throwaway connector for the background primary probe.
+from aiogram.client.session.aiohttp import AiohttpSession, _prepare_connector
 from aiogram.exceptions import TelegramForbiddenError, TelegramNetworkError
 
 from config import config
@@ -153,6 +158,7 @@ class FailoverAiohttpSession(AiohttpSession):
         recheck_seconds: int = 600,
         time_source=time.monotonic,
         connect_timeout: int = 5,
+        sleep_func=None,
         **kwargs,
     ):
         # Deliberately no `proxy=` kwarg here -- the base __init__ then leaves the plain
@@ -164,12 +170,19 @@ class FailoverAiohttpSession(AiohttpSession):
 
         self._chain = list(chain) or [None]
         self._index = 0
+        # Set on every rotation AWAY from primary; kept (though it no longer gates
+        # anything on the live path) so the background probe can report how long the bot
+        # sat on the backup once it finally returns to primary.
         self._switched_at = None
         self._recheck_seconds = recheck_seconds
         self._time_source = time_source
         # Literal default (not read from config here) so the class stays usable from
         # scripts/tests without touching config. <= 0 disables the bound (escape hatch).
         self._connect_timeout = connect_timeout
+        # Testability seam mirroring time_source -- the suite has no pytest-asyncio and
+        # must not sleep for real while exercising the background probe loop.
+        self._sleep = sleep_func or asyncio.sleep
+        self._probe_task: asyncio.Task | None = None
         # Python 3.10+ binds asyncio.Lock to the running loop lazily on first use, so
         # constructing it here (outside a running loop, e.g. at module import time in
         # main.py) is safe.
@@ -219,22 +232,113 @@ class FailoverAiohttpSession(AiohttpSession):
             if nxt != _last_alerted_index:
                 _last_alerted_index = nxt
                 spawn(_alert_admins_proxy_switch(prev_masked, to_masked, cause))
+            self._ensure_probe_task()
 
-    async def _maybe_return_to_primary(self) -> None:
-        if self._index == 0 or self._recheck_seconds <= 0 or self._switched_at is None:
+    def _ensure_probe_task(self) -> None:
+        """Start the background primary-probe loop if one is warranted and not already
+        running. Plain sync method -- called from inside _rotate_from's lock block, must
+        not itself await. No-ops when recheck is disabled, there is only one link, we're
+        already on primary, or a probe task already exists and hasn't finished."""
+        if self._recheck_seconds <= 0 or len(self._chain) == 1 or self._index == 0:
             return
-        if self._time_source() - self._switched_at < self._recheck_seconds:
+        if self._probe_task is not None and not self._probe_task.done():
             return
-        async with self._rotate_lock:
-            # Double-checked: another coroutine may have already returned to primary (or
-            # rotated further) while we were waiting for the lock.
-            if self._index == 0 or self._recheck_seconds <= 0 or self._switched_at is None:
-                return
-            if self._time_source() - self._switched_at < self._recheck_seconds:
-                return
-            self._apply(0)
-            self._switched_at = None
-            logger.info("Proxy recheck: retrying primary %s", mask_proxy_url(self._chain[0]))
+        try:
+            self._probe_task = spawn(self._probe_loop())
+        except RuntimeError:
+            # spawn() needs a running event loop. The probe is purely an optimisation --
+            # it must never break a rotation, so just skip it; the next rotation (or a
+            # future call from within a running loop) will retry.
+            logger.debug("_ensure_probe_task: no running loop, skipping background probe")
+
+    def _probe_timeout(self) -> ClientTimeout:
+        """Bound both connect AND total for the throwaway probe request -- a dead link
+        must cost ~connect_timeout, not the default aiogram total. Extracted as its own
+        method purely so it can be asserted on directly."""
+        return ClientTimeout(
+            total=max(self._connect_timeout * 2, self._connect_timeout + 5),
+            connect=self._connect_timeout,
+            sock_connect=self._connect_timeout,
+        )
+
+    def _probe_connector(self):
+        """Build a throwaway connector for the primary link -- NEVER touches self._session
+        or the live connector, so a probe can run concurrently with live requests on the
+        backup link without any shared mutable state."""
+        primary = self._chain[0]
+        if primary is None:
+            # The snapshot's SSLContext is shared/immutable and safe to reuse across
+            # independent connector instances.
+            return self._direct_connector_type(**dict(self._direct_connector_init))
+        ctype, cinit = _prepare_connector(primary)
+        return ctype(**cinit)
+
+    async def _probe_primary(self) -> bool:
+        """Return True if the primary link carries traffic at all. Telegram answers a bare
+        GET with 404 -- that still proves the link works, so ANY HTTP response counts as
+        alive; only a raised exception (timeout, connection refused, DNS failure, ...)
+        counts as dead."""
+        try:
+            async with aiohttp.ClientSession(connector=self._probe_connector()) as probe:
+                async with probe.get(
+                    "https://api.telegram.org", timeout=self._probe_timeout()
+                ):
+                    return True
+        except Exception:
+            return False
+
+    async def _probe_loop(self) -> None:
+        """Background self-healing loop: while sitting on a backup link, periodically test
+        whether the primary is back and, if so, return to it -- WITHOUT ever spending a
+        live user request on a known-dead link (the prod 17.08 bug this whole design
+        exists to fix).
+
+        TRAP this design has to survive: do NOT cancel this task from close(). The base
+        AiohttpSession.create_session() calls `await self.close()` whenever
+        _should_reset_connector is set, and _apply() sets that flag on EVERY link swap --
+        including the very rotation that starts this loop. A cancel inside close() would
+        kill the probe on its own birth. The loop self-terminates once it returns to
+        primary (the `while self._index != 0` condition), and process exit disposes of it
+        otherwise -- no explicit cancellation is needed or safe here.
+        """
+        while self._index != 0:
+            await self._sleep(self._recheck_seconds)
+            if self._index == 0:
+                # Another path (e.g. a manual apply, or a second loop instance somehow)
+                # already returned to primary while we were sleeping.
+                break
+            try:
+                alive = await self._probe_primary()
+            except Exception:
+                # Never let an unexpected exception silently kill the loop -- a failed
+                # probe just means "not yet", try again next interval. (CancelledError is
+                # a BaseException, not caught here, so the loop stays cancellable.)
+                logger.debug("Proxy probe: primary check raised", exc_info=True)
+                continue
+            if not alive:
+                continue
+            async with self._rotate_lock:
+                if self._index == 0:
+                    break  # already returned via another path
+                since = (
+                    self._time_source() - self._switched_at
+                    if self._switched_at is not None
+                    else None
+                )
+                self._apply(0)
+                self._switched_at = None
+                if since is not None:
+                    logger.info(
+                        "Proxy probe: primary %s is back, returning after %.0fs on backup",
+                        mask_proxy_url(self._chain[0]),
+                        since,
+                    )
+                else:
+                    logger.info(
+                        "Proxy probe: primary %s is back, returning",
+                        mask_proxy_url(self._chain[0]),
+                    )
+            break
 
     def _request_timeout(self, timeout):
         """Wrap `timeout` in a ClientTimeout that bounds connection SETUP (connect/
@@ -261,8 +365,6 @@ class FailoverAiohttpSession(AiohttpSession):
             # with pre-failover code when only PROXY_URL, or nothing, is set) other than
             # the connect bound applied above.
             return await super().make_request(bot, method, timeout=effective)
-
-        await self._maybe_return_to_primary()
 
         first_error = None
         attempts = 0
