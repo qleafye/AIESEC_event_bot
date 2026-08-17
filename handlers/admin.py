@@ -4604,13 +4604,23 @@ async def appr_all_confirm(callback: types.CallbackQuery, state: FSMContext):
     ]])
     # CR-01: escape the admin-editable label — this screen is the LAST thing shown before an
     # irreversible mass approval; a broken parse here means it cannot be opened at all.
-    text = (
-        f"Одобрить все {total} заявок?" if label is None
-        else (
+    # Phase 09.3 (CITY-08, T-093-10): THREE branches now, not two — `label` is non-None both
+    # for a real city AND for ALL_CITIES mode (city_label("*") -> ALL_CITIES_LABEL, plan 01),
+    # so a plain `label is None` ternary would silently print the per-city phrasing on a
+    # cross-city mass approval. The ALL_CITIES branch must honestly say "по всем городам" —
+    # this IS the irreversible-scope disclosure T-093-10/T-093-11 rely on.
+    if label is None:
+        text = f"Одобрить все {total} заявок?"
+    elif label == ALL_CITIES_LABEL:
+        text = (
+            f"Одобрить все {total} заявок по всем городам? "
+            "Будут затронуты заявки всех городов."
+        )
+    else:
+        text = (
             f"Одобрить все {total} заявок в городе «{html_module.escape(str(label))}»? "
             "Заявки других городов не будут затронуты."
         )
-    )
     await callback.message.edit_text(text, reply_markup=kb)
     await callback.answer()
 
@@ -4653,7 +4663,12 @@ async def appr_all_yes(callback: types.CallbackQuery, state: FSMContext):
         await callback.answer("Город админки изменился — подтвердите заново.", show_alert=True)
         await _show_current_card(callback.message, state)
         return
-    if confirmed is not None and confirmed not in city_codes():
+    # Phase 09.3 (CITY-08, Pitfall 1 / T-093-10): "*" is the ALL_CITIES marker, not a member
+    # of the closed city registry — without this exception every confirmed ALL_CITIES mass
+    # approval would hit "Неизвестный город" here even though the roundtrip check above just
+    # passed. `city_scope(confirmed)` below already resolves "*" to None (no filter, plan 01);
+    # only THIS membership guard needed the extra branch.
+    if confirmed is not None and confirmed != ALL_CITIES and confirmed not in city_codes():
         await callback.answer("Неизвестный город", show_alert=True)
         return
     # T-072-03/T-072-07: city condition lives in the WHERE of this SAME atomic
