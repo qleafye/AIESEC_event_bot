@@ -21,8 +21,12 @@ from aiogram.dispatcher.event.bases import UNHANDLED
 from aiogram.types import CallbackQuery, Message, TelegramObject
 
 from config import config
-from database.db import get_staff_roles, get_staff_ids_by_role
+from database.db import get_staff_roles, get_staff_ids_by_role, get_staff_city
 from settings_schema import get_setting_typed
+# Phase 09.2 (D): city filter for capability_holders/notify_by_capability. cities.py imports
+# only config/database.db/settings_schema (see cities.py's own module docstring) -- it never
+# imports handlers.*, so importing it here from handlers/admin_caps.py cannot form a cycle.
+from cities import cities_module_on, normalize_city
 
 logger = logging.getLogger(__name__)
 
@@ -108,14 +112,32 @@ async def has_capability(telegram_id: int, cap: str) -> bool:
 # deliberately keep the old `for admin_id in config.ADMIN_IDS` shape -- D-13 explicitly does
 # NOT route those to capability holders ("менеджер геймы не починит квоту Google API").
 
-async def capability_holders(cap: str) -> list[int]:
+async def capability_holders(cap: str, *, city: str | None = None) -> list[int]:
     """Every telegram_id currently entitled to `cap`, order-preserving de-duped (D-08: a
     person holding two roles that both grant `cap` is listed once). Bootstrap admins (D-12)
     always come first -- they hold every capability regardless of `staff`/registry state --
     followed by staff members of each enabled (D-10) role whose role_caps_* includes `cap`.
     Deliberately mirrors resolve_capabilities()'s own role-iteration shape rather than calling
     it per-candidate: resolve_capabilities would need every staff id up front to iterate over,
-    which is exactly what this function is computing."""
+    which is exactly what this function is computing.
+
+    Phase 09.2 (D, CITY-06): `city` is an OPTIONAL narrowing applied AFTER the list above is
+    built -- it never changes who is a holder, only who among the holders is addressed this
+    time. `city=None`, or the cities module being off, means "no filter", byte-identical to
+    the pre-09.2 return value (regression contract). With a real `city`, `normalize_city` is
+    applied to BOTH sides of the comparison (the requested city and each holder's
+    `get_staff_city` binding) so a stray label/garbage binding still resolves to a known code
+    the same way `admin_selected_city` does. A superadmin (`config.ADMIN_IDS`) is always kept
+    regardless of binding (D-12); a holder with no binding at all (`get_staff_city` empty) is
+    also always kept -- "all cities" is the pre-09.1 default for everyone (09.1 C).
+
+    Two-layer fallback (RESEARCH Pitfall 4) -- both live INSIDE this primitive, not at a call
+    site: (a) nobody holds `cap` at all -> `notify_by_capability` falls back to
+    `config.ADMIN_IDS` (existing, below); (b) somebody holds `cap` but the city filter leaves
+    NOBODY -> this function falls back to the unfiltered `holders` list, right here. Layer (b)
+    must live here rather than in the caller, or `notify_by_capability`'s returned
+    `sent_count` (the delegate-question UX branch depends on it) would stop reflecting reality
+    the moment a filtered list goes empty."""
     holders: list[int] = []
     seen: set[int] = set()
     for admin_id in config.ADMIN_IDS:
@@ -132,18 +154,37 @@ async def capability_holders(cap: str) -> list[int]:
             if uid not in seen:
                 holders.append(uid)
                 seen.add(uid)
-    return holders
+    if city is None or not await cities_module_on():
+        return holders
+    target = normalize_city(city)
+    filtered: list[int] = []
+    for uid in holders:
+        if uid in config.ADMIN_IDS:  # D-12: superadmins never filtered out
+            filtered.append(uid)
+            continue
+        bound = await get_staff_city(uid)
+        if not bound or normalize_city(bound) == target:
+            filtered.append(uid)
+    if not filtered:
+        return holders  # layer (b): city filter emptied the list -> never drop the message
+    return filtered
 
 
-async def notify_by_capability(bot, cap: str, text: str, *, parse_mode: str | None = None) -> int:
+async def notify_by_capability(
+    bot, cap: str, text: str, *, parse_mode: str | None = None, city: str | None = None
+) -> int:
     """D-13 fan-out primitive: send `text` to every current holder of `cap`. T-08-31/D-13's
     single most important property -- a notification must NEVER be silently dropped -- if
     `capability_holders(cap)` comes back empty (nobody holds the capability, e.g. every
     reg_manager role is disabled), fall back to `config.ADMIN_IDS`. Per-recipient try/except
     (fail-soft) matches the shape every existing fan-out site already used, so one broken
     chat_id never blocks delivery to the rest. Returns the count of successful sends -- the
-    delegate-question call site needs this to pick its reply text."""
-    recipients = await capability_holders(cap)
+    delegate-question call site needs this to pick its reply text.
+
+    Phase 09.2 (D, CITY-06): `city` is passed straight through to `capability_holders` -- see
+    its docstring for the narrowing + fallback contract. Default `None` keeps every existing
+    call site (payment.py, and any other caller not yet updated) byte-identical."""
+    recipients = await capability_holders(cap, city=city)
     if not recipients:
         recipients = list(config.ADMIN_IDS)
     sent = 0
