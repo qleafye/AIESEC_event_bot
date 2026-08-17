@@ -10,6 +10,7 @@ import asyncio
 import logging
 
 import pytest
+from aiohttp import ClientTimeout
 from aiogram.client.session.aiohttp import AiohttpSession
 from aiogram.exceptions import TelegramNetworkError
 
@@ -48,6 +49,18 @@ def _fake_transport(dead_indexes, calls):
         if idx in dead_indexes:
             raise TelegramNetworkError(method=method, message="simulated")
         return f"result-{idx}"
+
+    return fake
+
+
+def _timeout_capturing_transport(captured):
+    """Records the `timeout` kwarg it was called with (one entry per call) and returns a
+    sentinel result -- used to assert what FailoverAiohttpSession.make_request forwards to
+    the base class, independent of the dead/alive routing that _fake_transport tests."""
+
+    async def fake(self, bot, method, timeout=None):
+        captured.append(timeout)
+        return "result"
 
     return fake
 
@@ -385,3 +398,92 @@ def test_dedup_stale_observed_index_sends_no_extra_alert(monkeypatch):
 
     assert len(fake_bot.sent) == 1
     assert session.active_index == 1
+
+
+# ── Test 10: PROXY_CONNECT_TIMEOUT bounds connection setup ─────────────────────
+
+def test_explicit_timeout_forwarded_as_client_timeout_with_connect_bound(monkeypatch):
+    captured = []
+    monkeypatch.setattr(AiohttpSession, "make_request", _timeout_capturing_transport(captured))
+
+    async def go():
+        session = FailoverAiohttpSession([PRIMARY, BACKUP], connect_timeout=5)
+        await session.make_request(object(), object(), timeout=90)
+
+    asyncio.run(go())
+
+    assert len(captured) == 1
+    ct = captured[0]
+    assert isinstance(ct, ClientTimeout)
+    assert ct.total == 90
+    assert ct.connect == 5
+    assert ct.sock_connect == 5
+
+
+def test_none_timeout_forwarded_as_client_timeout_using_session_default(monkeypatch):
+    captured = []
+    monkeypatch.setattr(AiohttpSession, "make_request", _timeout_capturing_transport(captured))
+
+    async def go():
+        session = FailoverAiohttpSession([PRIMARY, BACKUP], connect_timeout=5)
+        await session.make_request(object(), object(), timeout=None)
+        return session
+
+    session = asyncio.run(go())
+
+    ct = captured[0]
+    assert isinstance(ct, ClientTimeout)
+    assert ct.total == session.timeout
+    assert ct.connect == 5
+    assert ct.sock_connect == 5
+
+
+def test_single_link_parity_branch_also_gets_connect_bound(monkeypatch):
+    captured = []
+    monkeypatch.setattr(AiohttpSession, "make_request", _timeout_capturing_transport(captured))
+
+    async def go():
+        session = FailoverAiohttpSession([PRIMARY], connect_timeout=5)
+        await session.make_request(object(), object(), timeout=90)
+
+    asyncio.run(go())
+
+    ct = captured[0]
+    assert isinstance(ct, ClientTimeout)
+    assert ct.total == 90
+    assert ct.connect == 5
+    assert ct.sock_connect == 5
+
+
+def test_connect_timeout_zero_forwards_original_value_untouched(monkeypatch):
+    captured = []
+    monkeypatch.setattr(AiohttpSession, "make_request", _timeout_capturing_transport(captured))
+
+    async def go():
+        session = FailoverAiohttpSession([PRIMARY, BACKUP], connect_timeout=0)
+        await session.make_request(object(), object(), timeout=90)
+
+    asyncio.run(go())
+
+    assert captured[0] == 90  # untouched -- no ClientTimeout wrap
+
+
+def test_connect_timeout_negative_forwards_original_value_untouched(monkeypatch):
+    captured = []
+    monkeypatch.setattr(AiohttpSession, "make_request", _timeout_capturing_transport(captured))
+
+    async def go():
+        session = FailoverAiohttpSession([PRIMARY, BACKUP], connect_timeout=-1)
+        await session.make_request(object(), object(), timeout=None)
+
+    asyncio.run(go())
+
+    assert captured[0] is None  # untouched -- no ClientTimeout wrap
+
+
+def test_session_timeout_stays_numeric_for_dispatcher_arithmetic():
+    """Guards aiogram dispatcher.py:216: `int(bot.session.timeout + polling_timeout)`.
+    Assigning a ClientTimeout to self.timeout anywhere would crash long polling at
+    startup -- this is an import/construction-level smoke check, not a make_request test."""
+    session = FailoverAiohttpSession([PRIMARY, BACKUP], connect_timeout=5)
+    assert isinstance(int(session.timeout + 30), int)
