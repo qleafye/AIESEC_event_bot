@@ -427,6 +427,12 @@ ADMIN_CAPS: dict[str, str] = {
     "coinsman_cancel": "moderate_game",
     "state:CoinsManual:*": "moderate_game",
 
+    # Phase 14 (14-05, GAME-09): «📜 Журнал монет» — paginated read screen + CSV export,
+    # registered in the SAME commit as the handlers (09-01 convention).
+    "admin_coins_journal": "moderate_game",
+    "coinsjrn_page:*": "moderate_game",
+    "coinsjrn_csv": "moderate_game",
+
     # checkin: no keys yet -- Phase 12. Capability already exists in
     # ALL_CAPABILITIES/ROLES so a future phase adds handlers, not registry plumbing.
 }
