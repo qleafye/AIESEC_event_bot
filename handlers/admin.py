@@ -47,6 +47,8 @@ from database.db import (
     list_staff,
     add_staff,
     remove_staff,
+    get_staff_city,
+    set_staff_city,
     get_question,
     claim_question,
     set_question_answer,
@@ -1915,7 +1917,20 @@ async def city_toggle(callback: types.CallbackQuery):
 @router.callback_query(F.data == "admin_city_switch")
 async def admin_city_switch(callback: types.CallbackQuery):
     """Phase 07.2 (CITY-02): pick the city the admin panel is currently scoped to. Disabled
-    cities are still listed (their past applications still need moderating), marked ❌."""
+    cities are still listed (their past applications still need moderating), marked ❌.
+
+    Phase 09.1 (C, ROLE-03): a manager bound to a city (`get_staff_city`) can't switch at
+    all — the picker is never shown, only an alert naming their city. Bootstrap superadmins
+    (`config.ADMIN_IDS`, D-12) are never restricted."""
+    is_superadmin = callback.from_user.id in config.ADMIN_IDS
+    bound = None if is_superadmin else await get_staff_city(callback.from_user.id)
+    if bound:
+        await callback.answer(
+            f"Ваш город — {await city_label(bound)}, менять может суперадмин",
+            show_alert=True,
+        )
+        return
+
     current = await admin_selected_city(callback.from_user.id)
     buttons = []
     for c in CITIES:
@@ -4233,6 +4248,7 @@ async def render_roles_text() -> str:
     staff = await list_staff()
     if not staff:
         lines.append("<i>Пока никто не назначен.</i>")
+    show_city = await cities_module_on()  # Phase 09.1 (C, ROLE-03)
     for row in staff:
         tid = row["telegram_id"]
         role_label = ROLES.get(row["role"], {}).get("label", row["role"])
@@ -4241,7 +4257,12 @@ async def render_roles_text() -> str:
         user = await get_user(tid)
         name = (user.get("full_name") or user.get("username")) if user else None
         name = html_module.escape(str(name or tid))
-        lines.append(f"• {name} — {role_label} (добавил {row.get('added_by')}, {row.get('added_at')})")
+        line = f"• {name} — {role_label} (добавил {row.get('added_by')}, {row.get('added_at')})"
+        if show_city:
+            city = row.get("city")
+            city_text = await city_label(city) if city else "🌍 Все города"
+            line += f" · 🏙 {city_text}"
+        lines.append(line)
 
     lines.append("")
     admins_text = ", ".join(str(a) for a in config.ADMIN_IDS)
@@ -4264,6 +4285,7 @@ async def build_roles_keyboard() -> InlineKeyboardMarkup:
             callback_data=f"roles_caps:{role}",
         )])
 
+    show_city = await cities_module_on()  # Phase 09.1 (C, ROLE-03)
     for row in await list_staff():
         tid = row["telegram_id"]
         role = row["role"]
@@ -4271,9 +4293,16 @@ async def build_roles_keyboard() -> InlineKeyboardMarkup:
         user = await get_user(tid)
         name = (user.get("full_name") or user.get("username")) if user else None
         name = str(name or tid)
-        buttons.append([InlineKeyboardButton(
+        row_buttons = [InlineKeyboardButton(
             text=f"➖ {name} — {role_label}", callback_data=f"roles_del:{tid}:{role}",
-        )])
+        )]
+        if show_city:
+            city = row.get("city")
+            city_text = await city_label(city) if city else "🌍 Все города"
+            row_buttons.append(InlineKeyboardButton(
+                text=f"🏙 {city_text}", callback_data=f"roles_city:{tid}",
+            ))
+        buttons.append(row_buttons)
 
     buttons.append([InlineKeyboardButton(text="➕ Добавить менеджера", callback_data="roles_add")])
     buttons.append([InlineKeyboardButton(text="← Назад к настройкам", callback_data="admin_settings")])
@@ -4476,6 +4505,66 @@ def _parse_staff_role_callback(data: str) -> tuple[int | None, str | None]:
     return int(tid_str), role
 
 
+# ── Phase 09.1 (C, ROLE-03): manager <-> city binding step ─────────────────────────────────
+
+async def _roles_city_kb(tid: int) -> InlineKeyboardMarkup:
+    """«🌍 Все города» + one row per known city (disabled ones marked ❌, same suffix shape as
+    `admin_city_switch`), plus a cancel-back-to-roles row. Shown after assigning a role (the
+    add-manager flow) and from the per-person «🏙» edit button on the roles screen."""
+    buttons = [[InlineKeyboardButton(text="🌍 Все города", callback_data=f"roles_city_pick:{tid}:all")]]
+    for c in CITIES:
+        code = c["code"]
+        label = await city_label(code)
+        enabled = await is_city_enabled(code)
+        suffix = "" if enabled else " ❌"
+        buttons.append([InlineKeyboardButton(
+            text=f"{label}{suffix}", callback_data=f"roles_city_pick:{tid}:{code}",
+        )])
+    buttons.append([InlineKeyboardButton(text="❌ Отмена", callback_data="admin_roles")])
+    return InlineKeyboardMarkup(inline_keyboard=buttons)
+
+
+@router.callback_query(F.data.startswith("roles_city:"))
+async def roles_city_start(callback: types.CallbackQuery):
+    if not await cities_module_on():
+        await callback.answer()
+        return
+    parts = callback.data.split(":")
+    if len(parts) != 2 or not (parts[1].isascii() and parts[1].isdigit()):
+        await callback.answer("Неизвестная кнопка", show_alert=True)
+        return
+    tid = int(parts[1])
+    text = (
+        "🏙 Из какого города этот менеджер? Он будет видеть заявки, чеки и гейму "
+        "только своего города."
+    )
+    await callback.message.edit_text(text, reply_markup=await _roles_city_kb(tid))
+    await callback.answer()
+
+
+@router.callback_query(F.data.startswith("roles_city_pick:"))
+async def roles_city_pick(callback: types.CallbackQuery):
+    parts = callback.data.split(":")
+    if len(parts) != 3 or not (parts[1].isascii() and parts[1].isdigit()):
+        await callback.answer("Неизвестная кнопка", show_alert=True)
+        return
+    tid = int(parts[1])
+    code = parts[2]
+    if code == "all":
+        await set_staff_city(tid, None)
+        toast = "Город: все города"
+    elif code in city_codes():
+        await set_staff_city(tid, code)
+        toast = f"Город: {await city_label(code)}"
+    else:
+        await callback.answer("Неизвестный город", show_alert=True)
+        return
+
+    await callback.answer(toast, show_alert=True)
+    text = await render_roles_text()
+    await callback.message.edit_text(text, parse_mode="HTML", reply_markup=await build_roles_keyboard())
+
+
 @router.callback_query(F.data == "roles_add")
 async def roles_add_start(callback: types.CallbackQuery, state: FSMContext):
     text = (
@@ -4544,6 +4633,14 @@ async def roles_assign(callback: types.CallbackQuery):
 
     created = await add_staff(tid, role, callback.from_user.id)
     await callback.answer("Добавлен" if created else "Уже был в этой роли", show_alert=True)
+
+    if await cities_module_on():  # Phase 09.1 (C, ROLE-03): city step right after assignment
+        text = (
+            "🏙 Из какого города этот менеджер? Он будет видеть заявки, чеки и гейму "
+            "только своего города."
+        )
+        await callback.message.edit_text(text, reply_markup=await _roles_city_kb(tid))
+        return
 
     text = await render_roles_text()
     await callback.message.edit_text(text, parse_mode="HTML", reply_markup=await build_roles_keyboard())
