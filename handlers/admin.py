@@ -983,6 +983,11 @@ async def render_settings_group_text(token: str) -> str:
     lines = [f"⚙️ <b>Настройки → {group_label}</b>", ""]
 
     field_labels = {k: lbl for k, lbl, _ in SETTINGS_FIELDS}
+    # Phase 09.2 (C, CITY-05): compact «🏙 N» override-count marker, only when the cities
+    # module is on — module off = byte-identical to today's text (CONTEXT C). The full list
+    # of city names lives on the per-key editor screen (settings_city:{key}), not here — this
+    # screen deliberately never shows raw values inline (quick 260724-c0x contract).
+    city_module_on = await cities_module_on()
     for key in _settings_group_keys(token):
         label = field_labels.get(key, key)
         value = await get_setting(key)
@@ -992,7 +997,12 @@ async def render_settings_group_text(token: str) -> str:
             flag = "<i>по умолчанию</i>"
         else:
             flag = "<i>— не задано</i>"
-        lines.append(f"{label}: {flag}")
+        city_suffix = ""
+        if city_module_on and is_per_city(key):
+            codes = await city_override_codes(key)
+            if codes:
+                city_suffix = f" · 🏙 {len(codes)}"
+        lines.append(f"{label}: {flag}{city_suffix}")
 
     if token == "event":
         for prefix, label, _ in PHOTO_FIELDS:
