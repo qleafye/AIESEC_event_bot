@@ -1320,13 +1320,17 @@ async def get_user_consents(user_id: int) -> list[str]:
 # ── Phase 4: payment receipt queue + status (PAY-05, D-10/D-12) ──────────────
 
 async def get_receipt_pending_users(limit: int = 50, offset: int = 0, *, city_scope=None) -> list[dict]:
-    """Users awaiting receipt verification, oldest first (tinder queue source)."""
+    """Users awaiting receipt verification, oldest first (tinder queue source).
+
+    Phase 09.3 (09.3-02, CITY-08): `event_city` added to the SELECT list — the ALL_CITIES
+    receipt card needs to name each row's own city, which requires the raw column on the row
+    (previously not selected; the scope filter used it via WHERE without returning it)."""
     frag, city_params = _city_clause(city_scope)
     extra = f" AND {frag}" if frag else ""
     async with aiosqlite.connect(config.DB_PATH) as db:
         db.row_factory = aiosqlite.Row
         async with db.execute(
-            "SELECT telegram_id, full_name, payment_option, receipt_file_id, payment_status "
+            "SELECT telegram_id, full_name, payment_option, receipt_file_id, payment_status, event_city "
             f"FROM users WHERE payment_status = 'receipt_sent'{extra} ORDER BY rowid LIMIT ? OFFSET ?",
             (*city_params, limit, offset),
         ) as cursor:

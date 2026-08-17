@@ -4432,8 +4432,15 @@ async def _show_current_card(target: types.Message, state: FSMContext):
     # not-yet-skipped pending item). The old total - len(visible) + 1 returned e.g. 51/100 for
     # the first card whenever a full 50-row batch was unskipped. Cap at total for safety.
     position = min(len(skipped) + 1, total)
+    # Phase 09.3 (09.3-02, CITY-08): in ALL_CITIES mode the queue holds every city at once — one
+    # shared "🌍 Все города" header on every card would tell the manager nothing about WHICH
+    # delegate they're approving. Resolve the CARD's own city instead of the header label, only
+    # in this one mode; the normal city-selected/module-off cases pass `label` through unchanged.
+    card_label = label
+    if label == ALL_CITIES_LABEL:
+        card_label = await city_label(normalize_city(current.get("event_city")))
     await target.answer(
-        _render_application_card(current, position, total, city_label_text=label),
+        _render_application_card(current, position, total, city_label_text=card_label),
         parse_mode="HTML",
         reply_markup=_appr_card_kb(
             current["telegram_id"],
@@ -4742,8 +4749,13 @@ async def _show_current_receipt_card(target: types.Message, state: FSMContext):
     # M-02: position = skipped-so-far + 1 (the shown card is the first not-yet-skipped receipt).
     # The old total - len(visible) + 1 returned e.g. 51/100 for the first card on a >50 queue.
     position = min(len(skipped) + 1, total)
+    # Phase 09.3 (09.3-02, CITY-08): same per-card resolve as the applications queue above — in
+    # ALL_CITIES mode the shared header label would misname every card but its own delegate.
+    card_label = label
+    if label == ALL_CITIES_LABEL:
+        card_label = await city_label(normalize_city(current.get("event_city")))
     await target.answer(
-        _render_receipt_card(current, position, total, city_label_text=label),
+        _render_receipt_card(current, position, total, city_label_text=card_label),
         parse_mode="HTML",
         reply_markup=_rcpt_card_kb(current["telegram_id"], bool(current.get("receipt_file_id")), total),
     )
