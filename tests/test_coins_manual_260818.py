@@ -19,7 +19,7 @@ from config import config
 from database import db
 from handlers import admin as admin_mod
 from handlers.admin_caps import required_capability
-from handlers.states import GameReview
+from handlers.states import CoinsManual, GameReview
 from settings_schema import SETTINGS_SCHEMA
 
 
@@ -268,3 +268,104 @@ def test_coins_manual_notify_text_registry_key():
     for placeholder in ("{delta}", "{reason}", "{balance}"):
         assert placeholder in entry["default"]
     assert "coins_manual_notify_text" in admin_mod._GAME_FIELD_ORDER
+
+
+# ═══════════════════════════════════════════════════════════════════════════════════════════
+# Task 2: button entry «🪙 Монеты вручную» — person resolution, card, sign, amount
+# ═══════════════════════════════════════════════════════════════════════════════════════════
+
+def test_menu_row_visible_for_moderate_game_hidden_for_moderate_reg(tmp_path):
+    _db_ready(tmp_path)
+    row = ("🪙 Монеты вручную", "admin_coins_manual")
+    assert row in admin_mod._ADMIN_MENU_ROWS
+    assert row in admin_mod._visible_menu_rows({"moderate_game"})
+    assert row not in admin_mod._visible_menu_rows({"moderate_reg"})
+
+
+def test_admin_coins_manual_sets_person_state_and_prompts(tmp_path):
+    _db_ready(tmp_path)
+    callback = FakeCallback("admin_coins_manual")
+    state = _new_state()
+    asyncio.run(admin_mod.admin_coins_manual(callback, state))
+    assert asyncio.run(state.get_state()) == CoinsManual.person
+    prompt = callback.message.answers_sent[-1]
+    assert "@username" in prompt or "перешл" in prompt.lower()
+
+
+def test_coinsman_person_step_forward_shows_card_with_balance_and_sign_buttons(tmp_path):
+    _db_ready(tmp_path)
+    _seed_delegate()
+    asyncio.run(db.add_coins(DELEGATE_ID, 7, reason="стартовый баланс", changed_by=ADMIN_ID, source="manual"))
+    state = _new_state()
+    asyncio.run(state.set_state(CoinsManual.person))
+    msg = FakeMessage(text="перешлите это", forward_origin=FakeForwardOrigin(DELEGATE_ID))
+    asyncio.run(admin_mod.coinsman_person_step(msg, state))
+
+    card = msg.answers_sent[-1]
+    assert "Дельгат Тестов" in card
+    assert "7" in card  # current balance shown
+    kb = msg.answer_markups[-1]
+    flat = [btn.callback_data for row in kb.inline_keyboard for btn in row]
+    assert "coinsman_sign:plus" in flat
+    assert "coinsman_sign:minus" in flat
+    data = asyncio.run(state.get_data())
+    assert data.get("cm_user_id") == DELEGATE_ID
+
+
+def test_coinsman_person_step_unknown_username_stays_on_step(tmp_path):
+    _db_ready(tmp_path)
+    state = _new_state()
+    asyncio.run(state.set_state(CoinsManual.person))
+    msg = FakeMessage(text="@ghost_user")
+    asyncio.run(admin_mod.coinsman_person_step(msg, state))
+    assert "не нашёл" in msg.answers_sent[-1].lower()
+    assert asyncio.run(state.get_state()) == CoinsManual.person
+    data = asyncio.run(state.get_data())
+    assert data.get("cm_user_id") is None
+
+
+def test_coinsman_sign_step_moves_to_amount_state(tmp_path):
+    _db_ready(tmp_path)
+    _seed_delegate()
+    state = _new_state()
+    asyncio.run(state.update_data(cm_user_id=DELEGATE_ID))
+    asyncio.run(state.set_state(CoinsManual.person))
+    callback = FakeCallback("coinsman_sign:plus")
+    asyncio.run(admin_mod.coinsman_sign_step(callback, state))
+    assert asyncio.run(state.get_state()) == CoinsManual.amount
+    data = asyncio.run(state.get_data())
+    assert data.get("cm_sign") == "plus"
+
+
+def test_coinsman_amount_step_rejects_garbage_and_zero(tmp_path):
+    _db_ready(tmp_path)
+    state = _new_state()
+    asyncio.run(state.update_data(cm_user_id=DELEGATE_ID, cm_sign="plus"))
+    asyncio.run(state.set_state(CoinsManual.amount))
+
+    for bad in ("abc", "0"):
+        msg = FakeMessage(text=bad)
+        asyncio.run(admin_mod.coinsman_amount_step(msg, state))
+        assert asyncio.run(state.get_state()) == CoinsManual.amount
+        assert (asyncio.run(state.get_data())).get("cm_delta") is None
+
+
+def test_coinsman_amount_step_accepts_number_and_moves_to_reason_signed(tmp_path):
+    _db_ready(tmp_path)
+    state = _new_state()
+    asyncio.run(state.update_data(cm_user_id=DELEGATE_ID, cm_sign="minus"))
+    asyncio.run(state.set_state(CoinsManual.amount))
+    msg = FakeMessage(text="3")
+    asyncio.run(admin_mod.coinsman_amount_step(msg, state))
+    assert asyncio.run(state.get_state()) == CoinsManual.reason
+    data = asyncio.run(state.get_data())
+    assert data.get("cm_delta") == -3  # sign applied (minus)
+
+
+def test_coinsman_new_keys_resolve_to_moderate_game(tmp_path):
+    _db_ready(tmp_path)
+    assert required_capability(callback_data="admin_coins_manual") == "moderate_game"
+    assert required_capability(callback_data="coinsman_sign:plus") == "moderate_game"
+    assert required_capability(callback_data="coinsman_confirm") == "moderate_game"
+    assert required_capability(callback_data="coinsman_cancel") == "moderate_game"
+    assert required_capability(raw_state="CoinsManual:person") == "moderate_game"
