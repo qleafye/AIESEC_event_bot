@@ -318,6 +318,13 @@ ADMIN_CAPS: dict[str, str] = {
     "cmd:settings_guide": "settings",
     "consent_pdf_set:*": "settings",
     "menu_back": "settings",
+    # menu_city* (Phase 09.2-06, CITY-05): per-city «🔘 Кнопки главного меню» sub-flow,
+    # same shape/right as settings_city*/roles_city* above.
+    "menu_city": "settings",
+    "menu_city_clear:*": "settings",
+    "menu_city_clear_go:*": "settings",
+    "menu_city_pick:*": "settings",
+    "menu_city_toggle:*": "settings",
     "menu_toggle:*": "settings",
     "preset_apply:*": "settings",
     "preset_confirm:*": "settings",
