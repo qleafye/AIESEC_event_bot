@@ -721,6 +721,7 @@ _GAME_FIELD_ORDER = [
     "game_proof_prompt_photo", "game_proof_prompt_pdf", "game_proof_prompt_text",
     "game_proof_prompt_link", "game_proof_prompt_any", "game_proof_done_hint",
     "game_proof_done_button", "game_proof_empty_hint", "game_submit_accepted_text",
+    "game_resubmit_limit",
 ]
 
 # Quick 260815-3hw (TABS-01/02/03): every Google Sheets tab NAME in one group — «📄 Вкладки

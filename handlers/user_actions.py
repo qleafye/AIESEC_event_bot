@@ -20,6 +20,7 @@ from database.db import (
     create_submission,
     add_submission_part,
     parse_proof_types,
+    count_rejected_submissions,
 )
 from handlers.admin_caps import notify_by_capability  # D-13: fan out by capability, not bare ADMIN_IDS
 from cities import (
@@ -161,11 +162,22 @@ async def show_game_tasks(message: types.Message):
         lines.append(line)
         if needs_button:
             buttons.append([InlineKeyboardButton(
-                text="Сдать", callback_data=f"mytask_submit:{task['id']}",
+                text=_submit_button_label(task), callback_data=f"mytask_submit:{task['id']}",
             )])
 
     kb = InlineKeyboardMarkup(inline_keyboard=buttons) if buttons else None
     await message.answer("\n\n".join(lines), parse_mode="HTML", reply_markup=kb)
+
+
+# Phase 14 (GAME-08): delegate-facing submit-button label — several tasks used to share the
+# identical literal "Сдать", making the keyboard ambiguous when more than one was open at
+# once. Pure/sync (no I/O) -- text-only, never HTML-escaped because this is a button label,
+# not parse_mode="HTML" body text.
+def _submit_button_label(task: dict) -> str:
+    name = str(task["text"])
+    if len(name) > 40:
+        name = name[:40] + "…"
+    return f"📤 Сдать: {name}"
 
 
 # Phase 09.1 (A): the flow's texts live in settings_schema (group "game"), not literals here
@@ -267,6 +279,34 @@ async def mytask_submit_start(callback: types.CallbackQuery, state: FSMContext):
     if active is not None:
         await callback.answer("Уже отправлено, ожидай проверки", show_alert=True)
         return
+
+    # T-14-01 (GAME-08, Pitfall 3): a delegate may already have the OLD task-list message
+    # open with the old "Сдать" button when the manager archives the task -- Telegram never
+    # retroactively disables an already-sent inline keyboard. The gate belongs HERE, not only
+    # in the list-render filter (list_active_tasks already excludes archived tasks from the
+    # CURRENT render, but that does nothing for a stale message already on the delegate's
+    # screen).
+    if task.get("archived_at"):
+        await callback.answer(
+            "Это задание убрали в архив — сдать его больше нельзя. Загляни в «🎯 Мои "
+            "задания», там актуальный список.",
+            show_alert=True,
+        )
+        return
+
+    # T-14-03 (GAME-10): resubmit limit, counted server-side on every entry into this
+    # handler (not cached in FSM/keyboard state) -- a limit=0/None both mean "no limit",
+    # byte-identical to pre-phase behavior (regression guard).
+    limit = await get_setting_typed("game_resubmit_limit")
+    if limit:
+        rejected_count = await count_rejected_submissions(task_id, callback.from_user.id)
+        if rejected_count >= limit:
+            await callback.answer(
+                f"Лимит попыток по этому заданию исчерпан ({limit}). Если считаешь, что "
+                "это ошибка — напиши менеджеру через «❓ Задать вопрос».",
+                show_alert=True,
+            )
+            return
 
     await state.update_data(gs_task_id=task_id, gs_parts=[])
 

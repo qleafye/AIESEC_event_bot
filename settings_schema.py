@@ -672,6 +672,20 @@ SETTINGS_SCHEMA = {
         "default": "Принято! Менеджер проверит и начислит монеты.",
     },
 
+    # Phase 14 (GAME-10): resubmit-limit after rejection, int precedent =
+    # pending_reminder_interval above.
+    "game_resubmit_limit": {
+        "type": "int", "group": "game", "label": "🔁 Лимит перезаливов после отклонения",
+        "prompt": (
+            "Сколько раз делегат может переотправить сдачу после отклонения по ОДНОМУ "
+            "заданию. Счёт ведётся по паре «задание + делегат».\n\n"
+            "Примеры:\n0 = без лимита (по умолчанию)\n"
+            "2 = после двух отклонений бот попросит делегата написать менеджеру\n\n"
+            "Меняется на лету, перезапуск не нужен."
+        ),
+        "default": 0,
+    },
+
     # ── Phase 09.2 (B): group "menu" — тумблеры кнопок главного меню ────────────────────
     # Source of these 9 keys/labels: keyboards/builders.py::MENU_BUTTONS (copied byte-for-
     # byte, emoji included). Deliberately `type: "enum"`, options ["on", "off"], NOT
