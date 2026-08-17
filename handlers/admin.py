@@ -3641,6 +3641,146 @@ async def menu_city_list(callback: types.CallbackQuery):
     await callback.answer()
 
 
+async def _menu_city_text(code: str) -> str:
+    label = await city_label(code)
+    lines = [f"🔘 <b>Кнопки меню — {html_module.escape(label)}</b>", ""]
+    for key, text in MENU_BUTTONS:
+        is_on = await get_setting_typed_for_city(key, code) == "on"
+        override_key = per_city_key(key, code)
+        own = bool(override_key and await get_setting(override_key))
+        status = "✅" if is_on else "❌"
+        mark = " <i>(своё)</i>" if own else ""
+        lines.append(f"{status} {text}{mark}")
+    return "\n".join(lines)
+
+
+async def _menu_city_kb(code: str) -> InlineKeyboardMarkup:
+    buttons: list[list[InlineKeyboardButton]] = []
+    for key, text in MENU_BUTTONS:
+        is_on = await get_setting_typed_for_city(key, code) == "on"
+        toggle_text = f"{'✅' if is_on else '❌'} {text}"
+        buttons.append([InlineKeyboardButton(text=toggle_text, callback_data=f"menu_city_toggle:{code}:{key}")])
+    if await _menu_city_has_override(code):
+        buttons.append([InlineKeyboardButton(text="↩️ Как везде", callback_data=f"menu_city_clear:{code}")])
+    buttons.append([InlineKeyboardButton(text="← Назад", callback_data="menu_city")])
+    return InlineKeyboardMarkup(inline_keyboard=buttons)
+
+
+@router.callback_query(F.data.startswith("menu_city_pick:"))
+async def menu_city_pick(callback: types.CallbackQuery):
+    code = callback.data.split(":", 1)[1]
+    if not await cities_module_on():
+        await callback.answer("Города выключены", show_alert=True)
+        return
+    if code not in city_codes():
+        await callback.answer("Неизвестный город", show_alert=True)
+        return
+    # RESEARCH Pitfall 6 / T-092-19: server-side re-check, not just a hidden button.
+    visible = await _per_city_visible_codes(callback.from_user.id)
+    if code not in visible:
+        await callback.answer("Этот город правит суперадмин", show_alert=True)
+        return
+    text = await _menu_city_text(code)
+    kb = await _menu_city_kb(code)
+    await callback.message.edit_text(text, parse_mode="HTML", reply_markup=kb)
+    await callback.answer()
+
+
+@router.callback_query(F.data.startswith("menu_city_toggle:"))
+async def menu_city_toggle(callback: types.CallbackQuery):
+    rest = callback.data.split(":", 1)[1]
+    if ":" not in rest:
+        await callback.answer("Неизвестная кнопка", show_alert=True)
+        return
+    code, key = rest.split(":", 1)
+    if not await cities_module_on():
+        await callback.answer("Города выключены", show_alert=True)
+        return
+    if key not in {k for k, _ in MENU_BUTTONS}:
+        await callback.answer("Неизвестная кнопка", show_alert=True)
+        return
+    composed = per_city_key(key, code)
+    if composed is None:
+        await callback.answer("Неизвестный город", show_alert=True)
+        return
+    visible = await _per_city_visible_codes(callback.from_user.id)
+    if code not in visible:
+        await callback.answer("Этот город правит суперадмин", show_alert=True)
+        return
+
+    current_on = await get_setting_typed_for_city(key, code) == "on"
+    new_val = "off" if current_on else "on"
+    await set_setting(composed, new_val)
+
+    label = dict(MENU_BUTTONS).get(key, key)
+    city_txt = await city_label(code)
+    status = "✅ Вкл" if new_val == "on" else "❌ Выкл"
+    await callback.answer(f"{label} — {city_txt}: {status}", show_alert=True)
+
+    text = await _menu_city_text(code)
+    kb = await _menu_city_kb(code)
+    await callback.message.edit_text(text, parse_mode="HTML", reply_markup=kb)
+
+
+@router.callback_query(F.data.startswith("menu_city_clear:"))
+async def menu_city_clear(callback: types.CallbackQuery):
+    code = callback.data.split(":", 1)[1]
+    if not await cities_module_on():
+        await callback.answer("Города выключены", show_alert=True)
+        return
+    if code not in city_codes():
+        await callback.answer("Неизвестный город", show_alert=True)
+        return
+    visible = await _per_city_visible_codes(callback.from_user.id)
+    if code not in visible:
+        await callback.answer("Этот город правит суперадмин", show_alert=True)
+        return
+
+    override_count = 0
+    for key, _ in MENU_BUTTONS:
+        override_key = per_city_key(key, code)
+        if override_key and await get_setting(override_key):
+            override_count += 1
+
+    city_txt = await city_label(code)
+    text = (
+        f"Город {html_module.escape(city_txt)} снова будет показывать общий набор кнопок;\n"
+        f"свои настройки {override_count} кнопок пропадут."
+    )
+    kb = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="✅ Да, как везде", callback_data=f"menu_city_clear_go:{code}")],
+        [InlineKeyboardButton(text="← Отмена", callback_data=f"menu_city_pick:{code}")],
+    ])
+    await callback.message.edit_text(text, parse_mode="HTML", reply_markup=kb)
+    await callback.answer()
+
+
+@router.callback_query(F.data.startswith("menu_city_clear_go:"))
+async def menu_city_clear_go(callback: types.CallbackQuery):
+    code = callback.data.split(":", 1)[1]
+    if not await cities_module_on():
+        await callback.answer("Города выключены", show_alert=True)
+        return
+    if code not in city_codes():
+        await callback.answer("Неизвестный город", show_alert=True)
+        return
+    visible = await _per_city_visible_codes(callback.from_user.id)
+    if code not in visible:
+        await callback.answer("Этот город правит суперадмин", show_alert=True)
+        return
+
+    # Idempotent -- deleting an already-absent key is a no-op, safe to repeat.
+    for key, _ in MENU_BUTTONS:
+        override_key = per_city_key(key, code)
+        if override_key:
+            await delete_setting(override_key)
+
+    city_txt = await city_label(code)
+    await callback.answer(f"Готово: {city_txt} — как везде", show_alert=True)
+    text, kb = await _menu_city_list_screen(callback.from_user.id)
+    await callback.message.edit_text(text, parse_mode="HTML", reply_markup=kb)
+
+
 # Phase 07.2 (CITY-02): the ONE resolver both moderation queues (applications + receipts)
 # read the selected city through — no handler calls admin_selected_city/city_scope directly.
 # If a third moderation queue is ever added (gamification, Phase 9), it plugs in here too.
