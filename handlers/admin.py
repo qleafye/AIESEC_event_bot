@@ -1472,8 +1472,28 @@ async def rebuild_sheet(callback: types.CallbackQuery):
     try:
         headers = await active_sheet_headers()  # only enabled columns
         all_users = await get_all_users_dicts()
-        rows = [[_sheet_value_map(u).get(h, "-") for h in headers] for u in all_users]
+        # UAT 17.08 (fast): the rebuild used to dump EVERY user into the main tab regardless of
+        # city, so after one «Пересобрать» the main tab held СПб/Тюмень rows too while live
+        # appends kept routing them to their own tabs -- the sheets drifted apart. Route each
+        # row through the SAME resolver the live append uses (city_row_tab: default city / module
+        # off -> None -> main tab; other city -> its named tab) and full-refresh every touched
+        # city tab alongside the main one. Module off => city_row_tab is always None => byte-
+        # identical to the old behaviour.
+        main_rows: list[list] = []
+        city_rows: dict[str, list[list]] = {}
+        for u in all_users:
+            row = [_sheet_value_map(u).get(h, "-") for h in headers]
+            tab = await city_row_tab(u.get("event_city"), u.get("participant_type"))
+            if tab is None:
+                main_rows.append(row)
+            else:
+                city_rows.setdefault(tab, []).append(row)
+        rows = main_rows
         count = await rebuild_main_sheet(headers, rows)
+        city_synced: list[tuple[str, int]] = []
+        if count >= 0:
+            for tab, trows in city_rows.items():
+                city_synced.append((tab, await sync_named_worksheet(tab, headers, trows)))
         if count == REFUSED_UNPINNED_TAB:
             await callback.message.edit_text(
                 "⛔ Пересборка отключена: основная вкладка не задана.\n\n"
@@ -1495,9 +1515,14 @@ async def rebuild_sheet(callback: types.CallbackQuery):
         # CR-9: rebuild is the re-sync point — freeze the snapshot to the header just written
         # so subsequent registrations align to the rebuilt physical header.
         await set_sheet_schema(headers)
+        city_line = ""
+        if city_synced:
+            parts = [f"{html_module.escape(t)}: <b>{n if n >= 0 else '❌'}</b>" for t, n in city_synced]
+            city_line = "Городские вкладки: " + ", ".join(parts) + "\n"
         await callback.message.edit_text(
             f"✅ Таблица пересобрана!\n\n"
-            f"Строк записано: <b>{count}</b>\n"
+            f"Строк записано (основная): <b>{count}</b>\n"
+            f"{city_line}"
             f"Колонки выстроены в порядке анкеты, «Статус» с выпадашкой и цветами.",
             parse_mode="HTML",
             reply_markup=await admin_keyboard_for(callback.from_user.id),
