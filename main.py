@@ -179,8 +179,16 @@ async def main():
     )
     session = None
     if chain != [None]:
-        session = FailoverAiohttpSession(chain, recheck_seconds=config.PROXY_RECHECK_SECONDS)
-        logger.info("Using proxy chain: %s", [mask_proxy_url(link) for link in chain])
+        session = FailoverAiohttpSession(
+            chain,
+            recheck_seconds=config.PROXY_RECHECK_SECONDS,
+            connect_timeout=config.PROXY_CONNECT_TIMEOUT,
+        )
+        logger.info(
+            "Using proxy chain: %s (connect_timeout=%s)",
+            [mask_proxy_url(link) for link in chain],
+            config.PROXY_CONNECT_TIMEOUT,
+        )
 
     bot = Bot(token=config.BOT_TOKEN.get_secret_value(), default=default, session=session)
     dp = Dispatcher(storage=MemoryStorage())

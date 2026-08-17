@@ -10,6 +10,10 @@ class Settings(BaseSettings):
     PROXY_URL_BACKUP: SecretStr | None = None
     # Seconds to stay on the backup before retrying the primary proxy link.
     PROXY_RECHECK_SECONDS: int = 600
+    # Bounds connection SETUP only (TCP/SOCKS handshake), not the response wait -- a dead
+    # link now costs this many seconds instead of the full request timeout (20-90s). 0
+    # disables the bound (escape hatch back to unbounded connect).
+    PROXY_CONNECT_TIMEOUT: int = 5
     ADMIN_IDS: List[int]
     UNIVERSITIES: List[str] = [
         "ИТМО",

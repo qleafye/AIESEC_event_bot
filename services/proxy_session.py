@@ -14,6 +14,7 @@ import logging
 import re
 import time
 
+from aiohttp import ClientTimeout
 from aiogram.client.session.aiohttp import AiohttpSession
 from aiogram.exceptions import TelegramForbiddenError, TelegramNetworkError
 
@@ -113,7 +114,14 @@ class FailoverAiohttpSession(AiohttpSession):
     "no proxy" link) on TelegramNetworkError, staying sticky on whichever link last worked,
     and periodically retrying the primary link."""
 
-    def __init__(self, chain, recheck_seconds: int = 600, time_source=time.monotonic, **kwargs):
+    def __init__(
+        self,
+        chain,
+        recheck_seconds: int = 600,
+        time_source=time.monotonic,
+        connect_timeout: int = 5,
+        **kwargs,
+    ):
         # Deliberately no `proxy=` kwarg here -- the base __init__ then leaves the plain
         # TCPConnector/certifi-ssl setup untouched, which we snapshot below as the "direct"
         # link. This is the only way to get back to a proxy-less connector later.
@@ -126,6 +134,9 @@ class FailoverAiohttpSession(AiohttpSession):
         self._switched_at = None
         self._recheck_seconds = recheck_seconds
         self._time_source = time_source
+        # Literal default (not read from config here) so the class stays usable from
+        # scripts/tests without touching config. <= 0 disables the bound (escape hatch).
+        self._connect_timeout = connect_timeout
         # Python 3.10+ binds asyncio.Lock to the running loop lazily on first use, so
         # constructing it here (outside a running loop, e.g. at module import time in
         # main.py) is safe.
@@ -185,11 +196,31 @@ class FailoverAiohttpSession(AiohttpSession):
             self._switched_at = None
             logger.info("Proxy recheck: retrying primary %s", mask_proxy_url(self._chain[0]))
 
+    def _request_timeout(self, timeout):
+        """Wrap `timeout` in a ClientTimeout that bounds connection SETUP (connect/
+        sock_connect) without changing the total response-wait budget. Pure-ish: reads
+        only self._connect_timeout/self.timeout, no side effects.
+
+        NOTE: never assign the result to self.timeout -- aiogram dispatcher.py:216 does
+        `int(bot.session.timeout + polling_timeout)`, which requires self.timeout to stay
+        numeric. This helper only ever returns a per-call value passed as make_request's
+        `timeout=` kwarg.
+        """
+        if not self._connect_timeout or self._connect_timeout <= 0:
+            return timeout
+        total = self.timeout if timeout is None else timeout
+        return ClientTimeout(
+            total=total, connect=self._connect_timeout, sock_connect=self._connect_timeout
+        )
+
     async def make_request(self, bot, method, timeout=None):
+        effective = self._request_timeout(timeout)
+
         if len(self._chain) == 1:
             # Zero behavioural difference from the base class with a single link (parity
-            # with pre-failover code when only PROXY_URL, or nothing, is set).
-            return await super().make_request(bot, method, timeout=timeout)
+            # with pre-failover code when only PROXY_URL, or nothing, is set) other than
+            # the connect bound applied above.
+            return await super().make_request(bot, method, timeout=effective)
 
         await self._maybe_return_to_primary()
 
@@ -198,7 +229,7 @@ class FailoverAiohttpSession(AiohttpSession):
         while True:
             current = self._index
             try:
-                return await super().make_request(bot, method, timeout=timeout)
+                return await super().make_request(bot, method, timeout=effective)
             except TelegramNetworkError as e:
                 if first_error is None:
                     first_error = e
