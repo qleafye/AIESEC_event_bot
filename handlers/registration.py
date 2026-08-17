@@ -951,7 +951,7 @@ def _is_short_track(participant_type: str | None) -> bool:
     return participant_type == SHORT_TRACK
 
 
-async def _resolve_track(candidate: str | None) -> str:
+async def _resolve_track(candidate: str | None, city_code: str | None = None) -> str:
     """Phase 7 (SHORT-01/CONTEXT.md): resolves the effective track a fresh/resumed
     registration should run under, given a candidate track (deep-link arg or a track already
     recorded in FSM/`reg_started`).
@@ -967,10 +967,18 @@ async def _resolve_track(candidate: str | None) -> str:
     3. Otherwise fall back to whatever `candidate` already says, defaulting to "full". This
        is what makes the promo reversible without stranding in-flight delegates: someone who
        started under "short" and finishes AFTER the manager flips the toggle back keeps
-       "short" (step 3 sees a non-None candidate and never reaches step 2's mode check)."""
+       "short" (step 3 sees a non-None candidate and never reaches step 2's mode check).
+
+    Phase 09.2-04 (CITY-04/CONTEXT B): step 2 now reads `registration_mode` through
+    `cities.get_setting_typed_for_city`, so a manager can flip the short/full toggle for one
+    city without affecting every other city — `city_code=None` (the default) collapses to
+    the exact global read this function always used. The caller resolves the city, not this
+    function (RESEARCH Pitfall 3) — by the time `_resolve_track` runs, the delegate's city is
+    already known by construction (07.1: welcome -> CITY -> track fork), so re-deriving it
+    here would risk a second resolution disagreeing with the caller's own."""
     if _is_party_track(candidate):
         return candidate
-    if await get_setting_typed("registration_mode") == SHORT_TRACK:
+    if await get_setting_typed_for_city("registration_mode", city_code) == SHORT_TRACK:
         return SHORT_TRACK
     return candidate or "full"
 
@@ -1055,6 +1063,11 @@ async def _city_fork_kb() -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(inline_keyboard=rows)
 
 
+# Phase 09.2-04 (CITY-04): проверено RESEARCH Pitfall 2 — гейт не зависит от
+# registration_mode и не должен; заметка P2 «при краткой форме нет выбора города»
+# воспроизводится только конфигурацией (event_city_enabled=off или <2 включённых городов),
+# не кодовой зависимостью от режима формы. Поведение закреплено регрессионным тестом
+# test_city_fork_shown_for_short_mode (tests/test_content_percity_consumers.py).
 async def _should_show_city_fork(event_city: str | None, is_registered: bool) -> bool:
     """Pure(ish) gating helper for the city pre-flow screen, mirrors _should_show_fork.
     ALL conditions below must hold before the screen is shown; when event_city_enabled is
@@ -1610,6 +1623,16 @@ def _resume_too_large(file_size) -> bool:
 
 async def _start_registration_flow(message: types.Message, state: FSMContext, referrer_id: int | None = None, source_tag: str | None = None, participant_type: str | None = None, event_city: str | None = None):
     existing_data = await state.get_data()
+    # Phase 07.1 (CITY-03): same inherit-from-FSM idiom as saved_track below, deliberately
+    # WITHOUT a normalize_city fallback — a delegate whose city was never chosen must stay
+    # NULL in reg_started (07.1-CONTEXT.md: "Обратная совместимость"). Moscow is substituted
+    # only on READ, in cities.normalize_city — never written here.
+    # Phase 09.2-04 (CITY-04/RESEARCH Pitfall 3): computed BEFORE saved_track (moved up from
+    # its original position below) so it can be passed into _resolve_track as a parameter —
+    # the delegate's city is always already known by this point (07.1 fixes the screen order
+    # welcome -> CITY -> track fork -> start), so re-deriving it a second time inside
+    # _resolve_track would risk the two resolutions disagreeing.
+    saved_city = event_city or existing_data.get("event_city")
     # Phase 5 (D-02): resolve the effective track BEFORE the mark_reg_started write — a fresh
     # deep-link arg wins; otherwise inherit whatever was already recorded in this FSM session
     # (mirrors saved_referrer_id / saved_source_tag one line below).
@@ -1618,12 +1641,7 @@ async def _start_registration_flow(message: types.Message, state: FSMContext, re
     # docstring). Note: `.get("participant_type")` has NO "full" default here on purpose —
     # _resolve_track's step 3 must see a real None to apply its own "full" fallback,
     # otherwise step 2 (the global short override) would never fire for a fresh session.
-    saved_track = await _resolve_track(participant_type or existing_data.get("participant_type"))
-    # Phase 07.1 (CITY-03): same inherit-from-FSM idiom as saved_track, deliberately WITHOUT a
-    # normalize_city fallback — a delegate whose city was never chosen must stay NULL in
-    # reg_started (07.1-CONTEXT.md: "Обратная совместимость"). Moscow is substituted only on
-    # READ, in cities.normalize_city — never written here.
-    saved_city = event_city or existing_data.get("event_city")
+    saved_track = await _resolve_track(participant_type or existing_data.get("participant_type"), saved_city)
 
     # SCHED-02: record the dropout row at flow start (fail-soft — never block registration).
     try:

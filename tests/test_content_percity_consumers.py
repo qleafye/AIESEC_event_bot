@@ -672,3 +672,75 @@ def test_approve_text_for_signature_and_callers_unchanged():
     ]
 
 
+# ── Plan 04 Task 3: registration_mode per city + city-fork regression guard ────────────────
+
+def test_resolve_track_no_city_code_behaves_as_today(tmp_path):
+    _db_ready(tmp_path, name="test_reg04_resolve_track_default.db")
+    asyncio.run(db.set_setting("registration_mode", "short"))
+    assert asyncio.run(reg_mod._resolve_track(None)) == "short"
+    assert asyncio.run(reg_mod._resolve_track("full")) == "short"
+    assert asyncio.run(reg_mod._resolve_track("party_overnight")) == "party_overnight"
+
+
+def test_resolve_track_city_override_short_for_one_city_full_globally(tmp_path):
+    _db_ready(tmp_path, name="test_reg04_resolve_track_spb_short.db")
+    _enable_cities()
+    asyncio.run(db.set_setting("registration_mode", "full"))
+    _set_override("registration_mode", "spb", "short")
+
+    assert asyncio.run(reg_mod._resolve_track(None, "spb")) == "short"
+    assert asyncio.run(reg_mod._resolve_track(None, "msk")) == "full"
+
+
+def test_resolve_track_city_override_full_for_one_city_short_globally(tmp_path):
+    _db_ready(tmp_path, name="test_reg04_resolve_track_spb_full.db")
+    _enable_cities()
+    asyncio.run(db.set_setting("registration_mode", "short"))
+    _set_override("registration_mode", "spb", "full")
+
+    assert asyncio.run(reg_mod._resolve_track(None, "spb")) == "full"
+    assert asyncio.run(reg_mod._resolve_track(None, "msk")) == "short"
+
+
+def test_resolve_track_unknown_city_falls_back_to_global(tmp_path):
+    _db_ready(tmp_path, name="test_reg04_resolve_track_none_city.db")
+    _enable_cities()
+    asyncio.run(db.set_setting("registration_mode", "short"))
+    _set_override("registration_mode", "spb", "full")
+    assert asyncio.run(reg_mod._resolve_track(None, None)) == "short"
+
+
+def test_resolve_track_module_off_ignores_city_override(tmp_path):
+    _db_ready(tmp_path, name="test_reg04_resolve_track_offparity.db")
+    # event_city_enabled left OFF.
+    asyncio.run(db.set_setting("registration_mode", "full"))
+    _set_override("registration_mode", "spb", "short")
+    assert asyncio.run(reg_mod._resolve_track(None, "spb")) == "full"
+
+
+def test_party_track_still_authoritative_over_any_city_registration_mode(tmp_path):
+    _db_ready(tmp_path, name="test_reg04_resolve_track_party.db")
+    _enable_cities()
+    asyncio.run(db.set_setting("registration_mode", "full"))
+    _set_override("registration_mode", "spb", "short")
+    assert asyncio.run(reg_mod._resolve_track("party_overnight", "spb")) == "party_overnight"
+
+
+def test_start_registration_flow_computes_city_before_track():
+    src = inspect.getsource(reg_mod._start_registration_flow)
+    assert src.index("saved_city =") < src.index("saved_track =")
+
+
+def test_city_fork_shown_for_short_mode(tmp_path):
+    """RESEARCH Pitfall 2 / P2 note regression guard: the city pre-flow screen must still
+    appear even when registration_mode == "short" -- the gate has (and must keep having) no
+    dependency on registration_mode at all."""
+    _db_ready(tmp_path, name="test_reg04_city_fork_short.db")
+    _enable_cities()  # default CITIES config carries 3 enabled cities (>= 2 required)
+    asyncio.run(db.set_setting("registration_mode", "short"))
+    assert asyncio.run(reg_mod._should_show_city_fork(None, False)) is True
+
+
+def test_should_show_city_fork_has_no_registration_mode_dependency():
+    src = inspect.getsource(reg_mod._should_show_city_fork)
+    assert "registration_mode" not in src
