@@ -19,7 +19,7 @@ Design (mirrors settings_schema.py's one-directional dependency, D-01):
 """
 from config import config
 from database.db import get_setting, set_setting, get_staff_city
-from settings_schema import get_setting_typed
+from settings_schema import SETTINGS_SCHEMA, _parse_setting, get_setting_typed
 
 CITY_SEP = ";"
 FIELD_SEP = "|"
@@ -293,3 +293,94 @@ async def set_admin_city(admin_id: int, code: str) -> bool:
             return False
     await set_setting(f"{ADMIN_CITY_KEY_PREFIX}{int(admin_id)}", code)
     return True
+
+
+# ── Phase 09.2 (A): per-city переопределение настроек ────────────────────────────────
+#
+# Обобщение уже существующей семьи "override-ключ на город" (`city_label__{code}`,
+# `city_enabled__{code}`, `city_tab__{code}`, `admin_city__{admin_id}`) на ЛЮБОЙ ключ
+# `SETTINGS_SCHEMA`, помеченный `"per_city": True` — реестр остаётся единственным
+# источником правды о том, что можно переопределить по городу (CONTEXT A).
+#
+# Литерал `city` в разделителе — не случайность: он нужен, чтобы городской override не
+# столкнулся с трековыми суффиксами `__short`/`__party`, которые уже живут в реестре
+# (`approve_text__party`, `city_tab_suffix__short`). `approve_text__city__spb` и
+# `approve_text__party` — два разных, не пересекающихся ключа.
+
+PER_CITY_SEP = "__city__"
+
+
+def per_city_key(key: str, code: str) -> str | None:
+    """ЕДИНСТВЕННАЯ точка сборки ключа per-city переопределения — и для чтения, и для
+    записи. Возвращает `None`, если `code` не входит в закрытое множество `city_codes()`
+    (T-092-01/V5: код города только из реестра, никогда произвольная строка). Любой
+    писатель (админ-UI, планы 09.2-05/06) обязан ходить через эту функцию и отказывать на
+    `None` — собрать ключ строкой напрямую запрещено."""
+    if code not in city_codes():
+        return None
+    return f"{key}{PER_CITY_SEP}{code}"
+
+
+def is_per_city(key: str) -> bool:
+    """Реестр — источник правды: ключ переопределяем по городу тогда и только тогда,
+    когда несёт `SETTINGS_SCHEMA[key]["per_city"] is True`."""
+    return bool(SETTINGS_SCHEMA.get(key, {}).get("per_city"))
+
+
+async def get_setting_for_city(key: str, city_code: str | None) -> str | None:
+    """Резолвер с фолбэком на глобальное значение (CONTEXT A). Модуль городов выключен,
+    ИЛИ `key` не `per_city`, ИЛИ `city_code is None` (город делегата ещё не известен) ->
+    возвращается РОВНО `get_setting(key)` — байт-в-байт сегодняшнее поведение, тот же
+    контракт "module off -> collapse to plain read", что у `admin_selected_city`
+    (T-092-02: переопределение физически не может протечь, пока модуль выключен — все три
+    ранних выхода читают глобальный ключ ДО первого обращения к городскому ключу)."""
+    if not is_per_city(key):
+        return await get_setting(key)
+    if city_code is None:
+        return await get_setting(key)
+    if not await cities_module_on():
+        return await get_setting(key)
+    code = normalize_city(city_code)
+    override_key = per_city_key(key, code)
+    if override_key:
+        raw = await get_setting(override_key)
+        if raw:  # пустая строка = "переопределения нет" (CONTEXT A), не NULL и не ""
+            return raw
+    return await get_setting(key)
+
+
+async def get_setting_typed_for_city(key: str, city_code: str | None):
+    """Типизированный вариант `get_setting_for_city`: та же лестница ранних выходов, но
+    фолбэк — `get_setting_typed(key)`, а найденный override пропускается через
+    `_parse_setting(key, raw)` с БАЗОВЫМ ключом (метаданные типа лежат у базового ключа
+    реестра, не у составного `{key}__city__{code}`)."""
+    if not is_per_city(key):
+        return await get_setting_typed(key)
+    if city_code is None:
+        return await get_setting_typed(key)
+    if not await cities_module_on():
+        return await get_setting_typed(key)
+    code = normalize_city(city_code)
+    override_key = per_city_key(key, code)
+    if override_key:
+        raw = await get_setting(override_key)
+        if raw:
+            return _parse_setting(key, raw)
+    return await get_setting_typed(key)
+
+
+async def city_override_codes(key: str) -> list[str]:
+    """Коды городов (в порядке `CITIES`), у которых есть непустое переопределение `key`.
+    `[]`, если `key` не `per_city` или модуль городов выключен. Используется админ-UI для
+    пометок "✅ своё" / "— как везде" и строки "Переопределено для: …"."""
+    if not is_per_city(key):
+        return []
+    if not await cities_module_on():
+        return []
+    out: list[str] = []
+    for c in CITIES:
+        code = c["code"]
+        override_key = per_city_key(key, code)
+        if override_key and await get_setting(override_key):
+            out.append(code)
+    return out
