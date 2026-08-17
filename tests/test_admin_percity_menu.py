@@ -197,3 +197,194 @@ def test_admin_caps_cover_menu_city_prefixes():
         ]
     )
 
+
+# ══════════════════════════════════════════════════════════════════════════════════════════
+# Task 2: per-city набор кнопок — тумблеры и сброс с подтверждением
+# ══════════════════════════════════════════════════════════════════════════════════════════
+
+def test_menu_city_pick_shows_effective_values_and_own_mark(tmp_path):
+    _admin_ready(tmp_path)
+    _enable_cities()
+    asyncio.run(db.set_setting(cities.per_city_key("menu_coins", "spb"), "off"))
+
+    cb = FakeCallback("menu_city_pick:spb")
+    asyncio.run(admin_mod.menu_city_pick(cb))
+    text = cb.message.text
+    coins_label = dict(MENU_BUTTONS)["menu_coins"]
+    coins_line = [ln for ln in text.splitlines() if coins_label in ln][0]
+    assert coins_line.startswith("❌")
+    assert "(своё)" in coins_line
+    other_label = dict(MENU_BUTTONS)["menu_referral"]
+    other_line = [ln for ln in text.splitlines() if other_label in ln][0]
+    assert other_line.startswith("✅")
+    assert "(своё)" not in other_line
+
+
+def test_menu_city_pick_unknown_code_refused(tmp_path):
+    _admin_ready(tmp_path)
+    _enable_cities()
+    cb = FakeCallback("menu_city_pick:nowhere")
+    asyncio.run(admin_mod.menu_city_pick(cb))
+    assert cb.message.edit_calls == 0
+    assert cb.answers[-1][1] is True
+
+
+def test_menu_city_toggle_round_trip_does_not_touch_global_key(tmp_path):
+    _admin_ready(tmp_path)
+    _enable_cities()
+
+    cb = FakeCallback("menu_city_toggle:spb:menu_coins")
+    asyncio.run(admin_mod.menu_city_toggle(cb))
+
+    assert asyncio.run(db.get_setting("menu_coins")) is None  # global untouched
+    assert asyncio.run(db.get_setting(cities.per_city_key("menu_coins", "spb"))) == "off"
+
+    # Toggling again flips back to "on".
+    cb2 = FakeCallback("menu_city_toggle:spb:menu_coins")
+    asyncio.run(admin_mod.menu_city_toggle(cb2))
+    assert asyncio.run(db.get_setting(cities.per_city_key("menu_coins", "spb"))) == "on"
+    assert asyncio.run(db.get_setting("menu_coins")) is None
+
+
+def test_menu_city_toggle_unknown_key_refused(tmp_path):
+    _admin_ready(tmp_path)
+    _enable_cities()
+    cb = FakeCallback("menu_city_toggle:spb:not_a_menu_key")
+    asyncio.run(admin_mod.menu_city_toggle(cb))
+    assert cb.message.edit_calls == 0
+    assert asyncio.run(db.get_setting(cities.per_city_key("not_a_menu_key", "spb") or "n/a")) is None
+
+
+def test_menu_city_toggle_unknown_city_refused(tmp_path):
+    _admin_ready(tmp_path)
+    _enable_cities()
+    cb = FakeCallback("menu_city_toggle:nowhere:menu_coins")
+    asyncio.run(admin_mod.menu_city_toggle(cb))
+    assert cb.message.edit_calls == 0
+    assert asyncio.run(db.get_setting("menu_coins__city__nowhere")) is None
+
+
+def test_menu_city_toggle_bound_manager_refused_on_other_city(tmp_path):
+    _admin_ready(tmp_path)
+    _enable_cities()
+    asyncio.run(db.add_staff(MANAGER_ID, "reg_manager", ADMIN_ID))
+    asyncio.run(db.set_staff_city(MANAGER_ID, "spb"))
+    asyncio.run(db.set_setting(role_enabled_key("reg_manager"), "on"))
+    asyncio.run(db.set_setting(role_caps_key("reg_manager"), "moderate_reg;moderate_receipts;settings"))
+
+    cb = FakeCallback("menu_city_toggle:tyumen:menu_coins", user_id=MANAGER_ID)
+    asyncio.run(admin_mod.menu_city_toggle(cb))
+    assert cb.message.edit_calls == 0
+    assert asyncio.run(db.get_setting(cities.per_city_key("menu_coins", "tyumen"))) is None
+
+    # Own city still works.
+    own_cb = FakeCallback("menu_city_toggle:spb:menu_coins", user_id=MANAGER_ID)
+    asyncio.run(admin_mod.menu_city_toggle(own_cb))
+    assert asyncio.run(db.get_setting(cities.per_city_key("menu_coins", "spb"))) == "off"
+
+
+def test_menu_city_clear_confirm_names_override_count(tmp_path):
+    _admin_ready(tmp_path)
+    _enable_cities()
+    asyncio.run(db.set_setting(cities.per_city_key("menu_coins", "spb"), "off"))
+    asyncio.run(db.set_setting(cities.per_city_key("menu_info", "spb"), "off"))
+
+    cb = FakeCallback("menu_city_clear:spb")
+    asyncio.run(admin_mod.menu_city_clear(cb))
+    assert "2" in cb.message.text
+    assert "Санкт-Петербург" in cb.message.text
+    callbacks = _kb_callbacks(cb.message.markup)
+    assert "menu_city_clear_go:spb" in callbacks
+
+
+def test_menu_city_clear_go_deletes_all_nine_keys_and_returns_to_list(tmp_path):
+    _admin_ready(tmp_path)
+    _enable_cities()
+    for key, _ in MENU_BUTTONS:
+        asyncio.run(db.set_setting(cities.per_city_key(key, "spb"), "off"))
+
+    cb = FakeCallback("menu_city_clear_go:spb")
+    asyncio.run(admin_mod.menu_city_clear_go(cb))
+
+    async def _check():
+        for key, _ in MENU_BUTTONS:
+            assert await db.get_setting(cities.per_city_key(key, "spb")) is None
+
+    asyncio.run(_check())
+    # Returned to the city list screen (has menu_city_pick rows), not the per-city editor.
+    assert any(c and c.startswith("menu_city_pick:") for c in _kb_callbacks(cb.message.markup))
+
+
+def test_menu_city_clear_go_idempotent_on_no_overrides(tmp_path):
+    _admin_ready(tmp_path)
+    _enable_cities()
+    cb = FakeCallback("menu_city_clear_go:spb")
+    asyncio.run(admin_mod.menu_city_clear_go(cb))  # must not raise
+    assert cb.message.edit_calls == 1
+
+
+def test_menu_city_clear_go_bound_manager_refused_on_other_city(tmp_path):
+    _admin_ready(tmp_path)
+    _enable_cities()
+    asyncio.run(db.add_staff(MANAGER_ID, "reg_manager", ADMIN_ID))
+    asyncio.run(db.set_staff_city(MANAGER_ID, "spb"))
+    asyncio.run(db.set_setting(role_enabled_key("reg_manager"), "on"))
+    asyncio.run(db.set_setting(role_caps_key("reg_manager"), "moderate_reg;moderate_receipts;settings"))
+    asyncio.run(db.set_setting(cities.per_city_key("menu_coins", "tyumen"), "off"))
+
+    cb = FakeCallback("menu_city_clear_go:tyumen", user_id=MANAGER_ID)
+    asyncio.run(admin_mod.menu_city_clear_go(cb))
+    assert cb.message.edit_calls == 0
+    assert asyncio.run(db.get_setting(cities.per_city_key("menu_coins", "tyumen"))) == "off"
+
+
+def test_menu_city_kb_hides_reset_row_without_overrides(tmp_path):
+    _admin_ready(tmp_path)
+    _enable_cities()
+    kb = asyncio.run(admin_mod._menu_city_kb("spb"))
+    assert "menu_city_clear:spb" not in _kb_callbacks(kb)
+
+
+def test_menu_city_kb_shows_reset_row_with_override(tmp_path):
+    _admin_ready(tmp_path)
+    _enable_cities()
+    asyncio.run(db.set_setting(cities.per_city_key("menu_coins", "spb"), "off"))
+    kb = asyncio.run(admin_mod._menu_city_kb("spb"))
+    assert "menu_city_clear:spb" in _kb_callbacks(kb)
+
+
+def test_delegate_of_the_city_sees_the_overridden_menu_end_to_end(tmp_path):
+    """Full round-trip through the actual delegate-facing consumer (keyboards.builders)."""
+    _admin_ready(tmp_path)
+    _enable_cities()
+    asyncio.run(db.add_user({
+        "telegram_id": SPB_DELEGATE_ID,
+        "full_name": "SPb Delegate",
+        "registration_date": "2026-08-17 00:00:00",
+        "event_city": "spb",
+    }))
+    asyncio.run(db.add_user({
+        "telegram_id": MSK_DELEGATE_ID,
+        "full_name": "Msk Delegate",
+        "registration_date": "2026-08-17 00:00:00",
+        "event_city": "msk",
+    }))
+    coins_label = dict(MENU_BUTTONS)["menu_coins"]
+
+    kb_before = asyncio.run(get_main_menu_kb(SPB_DELEGATE_ID))
+    assert coins_label in [b.text for row in kb_before.keyboard for b in row]
+
+    # Turn the button off for spb through the actual handler.
+    cb = FakeCallback("menu_city_toggle:spb:menu_coins")
+    asyncio.run(admin_mod.menu_city_toggle(cb))
+
+    kb_spb = asyncio.run(get_main_menu_kb(SPB_DELEGATE_ID))
+    assert coins_label not in [b.text for row in kb_spb.keyboard for b in row]
+    kb_msk = asyncio.run(get_main_menu_kb(MSK_DELEGATE_ID))
+    assert coins_label in [b.text for row in kb_msk.keyboard for b in row]
+
+    # Reset -- spb delegate gets the button back.
+    clear_cb = FakeCallback("menu_city_clear_go:spb")
+    asyncio.run(admin_mod.menu_city_clear_go(clear_cb))
+    kb_spb_after = asyncio.run(get_main_menu_kb(SPB_DELEGATE_ID))
+    assert coins_label in [b.text for row in kb_spb_after.keyboard for b in row]
