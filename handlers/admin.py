@@ -380,6 +380,7 @@ async def cmd_coins(message: types.Message, bot: Bot):
 
     reason = args[3] if len(args) > 3 else None  # optional free text (D-13)
     await add_coins(user["telegram_id"], amount, reason=reason, changed_by=message.from_user.id)
+    _request_game_resync()  # Phase 09.1 (D, GAME-07): a coin edit is one of the 3 debounced triggers
     balance = await get_balance(user["telegram_id"])
 
     safe_username = html_module.escape(str(user.get("username") or args[1]))
@@ -4944,6 +4945,7 @@ async def game_task_confirm(callback: types.CallbackQuery, state: FSMContext):
         created_by=callback.from_user.id,
         event_city=data.get("gt_event_city"),
     )
+    _request_game_resync()  # Phase 09.1 (D, GAME-07): a new task is one of the 3 debounced triggers
     await state.set_state(None)
     await callback.answer("Задание создано")
     text = await _render_game_tasks_text()
@@ -5188,6 +5190,10 @@ async def grev_approve(callback: types.CallbackQuery, state: FSMContext):
             reason=f"Задание: {str(task['text'])[:60]}",
             changed_by=callback.from_user.id,
         )
+        # Phase 09.1 (D, GAME-07): a moderator decision is one of the 3 debounced triggers --
+        # only in the branch where claim_submission actually won the race (T-091-15/20-in-a-
+        # row-collapse-to-one still holds: this fires once per real decision, not per tap).
+        _request_game_resync()
         try:
             await callback.bot.send_message(
                 submission["user_id"],
@@ -5281,6 +5287,7 @@ async def grev_approve_amount_step(message: types.Message, state: FSMContext):
             reason=f"Задание: {str(task['text'])[:60]}",
             changed_by=message.from_user.id,
         )
+        _request_game_resync()  # Phase 09.1 (D, GAME-07): same trigger as grev_approve
         try:
             await message.bot.send_message(
                 submission["user_id"],
@@ -5308,6 +5315,10 @@ async def grev_reject_reason(message: types.Message, state: FSMContext):
             sid, message.from_user.id, "rejected",
             reject_reason=None if reason == "-" else reason,
         )
+    if won:
+        # Phase 09.1 (D, GAME-07): a moderator decision is one of the 3 debounced triggers --
+        # only when claim_submission actually won the race, same rule as grev_approve.
+        _request_game_resync()
     if won and submission is not None and task is not None:
         user_msg = f"❌ Задание «{html_module.escape(str(task['text']))}» отклонено."
         if reason != "-":  # A-02: причина доходит до делегата, только если менеджер её написал
@@ -5404,6 +5415,32 @@ def _build_game_history(submissions: list[dict]) -> tuple[list[str], list[list]]
     return headers, rows
 
 
+def _last_sync_phrase(raw: str | None, now: "datetime") -> str:
+    """Phase 09.1 (D, GAME-07): pure formatter for the "обновлено N мин назад" line on the
+    sync-confirm screen. `raw` is whatever `bot_settings.game_sheet_last_synced_at` currently
+    holds (written by rebuild_game_sheets on a fully-successful rebuild) -- None/empty/
+    unparsable (never actually written by this bot, but a human could delete/corrupt the
+    bot_settings row directly) all degrade to "ещё не обновлялось" rather than raising."""
+    if not raw:
+        return "ещё не обновлялось"
+    try:
+        synced = datetime.strptime(raw, "%Y-%m-%d %H:%M:%S")
+    except (ValueError, TypeError):
+        return "ещё не обновлялось"
+    delta = now - synced
+    minutes = delta.total_seconds() / 60
+    if minutes < 0:
+        minutes = 0
+    if minutes < 1:
+        return "обновлено только что"
+    if minutes < 60:
+        return f"обновлено {int(minutes)} мин назад"
+    hours = minutes / 60
+    if hours < 24:
+        return f"обновлено {int(hours)} ч назад"
+    return f"обновлено {synced.strftime('%d.%m в %H:%M')}"
+
+
 @router.callback_query(F.data == "admin_game_sync_sheet")
 async def sync_game_sheets_confirm(callback: types.CallbackQuery):
     """Quick 260814-gsg (находка верификации фазы 9): синхронизация вкладок геймы делает
@@ -5418,9 +5455,16 @@ async def sync_game_sheets_confirm(callback: types.CallbackQuery):
     Quick 260815-3hw: имена вкладок теперь читаются из реестра (game_matrix_tab/
     game_history_tab, экран «⚙️ Настройки → 📄 Вкладки таблицы») — менеджер, переименовавший
     их кнопкой, должен видеть в подтверждении СВОИ имена, а не старый хардкод «Гейма»/«История
-    сдач» (иначе гейт называет не ту вкладку, что реально перезапишется)."""
+    сдач» (иначе гейт называет не ту вкладку, что реально перезапишется).
+
+    Phase 09.1 (D, GAME-07): вкладки теперь пересобираются и сами (фоновый дебаунс), поэтому
+    экран честно говорит, когда это было в последний раз -- game_sheet_last_synced_at это
+    служебный ключ bot_settings, не заведённый в SETTINGS_SCHEMA (менеджер его не редактирует,
+    реестр — только для человеко-редактируемых текстов)."""
     matrix_tab = await get_setting_typed("game_matrix_tab")
     history_tab = await get_setting_typed("game_history_tab")
+    raw_synced_at = await get_setting("game_sheet_last_synced_at")
+    sync_phrase = _last_sync_phrase(raw_synced_at, _now_moscow_naive())
     kb = InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text="🔄 Да, пересобрать вкладки", callback_data="admin_game_sync_sheet_go")],
         [InlineKeyboardButton(text="← Отмена", callback_data="admin_menu")],
@@ -5429,6 +5473,7 @@ async def sync_game_sheets_confirm(callback: types.CallbackQuery):
         "🔄 <b>Пересобрать вкладки геймификации?</b>\n\n"
         f"Заново соберу из базы бота две вкладки: <b>«{html_module.escape(matrix_tab)}»</b> "
         f"(матрица участники × задания) и <b>«{html_module.escape(history_tab)}»</b>.\n\n"
+        f"Вкладки уже обновляются сами после каждого задания/решения/правки монет — {sync_phrase}.\n\n"
         "⚠️ Обе вкладки очищаются целиком и заполняются заново. <b>Заметки, которые вы писали "
         "руками прямо в этих листах, пропадут</b> — в базе бота их нет. Остальные вкладки "
         "таблицы не затрагиваются.",

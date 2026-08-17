@@ -354,3 +354,148 @@ def test_button_rebuild_bypasses_the_debounce(tmp_path, monkeypatch):
     assert callback.message.answers_sent  # report rendered immediately, no sleep involved
 
 
+# ── Task 2: five hook points request a resync ───────────────────────────────────────────────
+
+def test_game_task_confirm_requests_a_resync(tmp_path, monkeypatch):
+    _db_ready(tmp_path)
+    calls = []
+    monkeypatch.setattr(admin_mod, "_request_game_resync", lambda *a, **k: calls.append(1))
+
+    state = _new_state()
+    asyncio.run(state.update_data(
+        gt_text="Задание", gt_category="Light", gt_coins=10, gt_proof_type="text",
+        gt_deadline="2026-08-25 23:59:00",
+    ))
+    callback = FakeCallback("gtconfirm")
+    asyncio.run(admin_mod.game_task_confirm(callback, state))
+
+    assert calls == [1]
+
+
+def test_grev_approve_requests_a_resync_only_when_won(tmp_path, monkeypatch):
+    _db_ready(tmp_path)
+    calls = []
+    monkeypatch.setattr(admin_mod, "_request_game_resync", lambda *a, **k: calls.append(1))
+
+    task_id = _seed_task(coins=20)
+    sub_id = _seed_submission(task_id)
+    state = _new_state()
+
+    first = FakeCallback(f"grev_approve:{sub_id}")
+    asyncio.run(admin_mod.grev_approve(first, state))
+    assert calls == [1]
+
+    # a losing race (already-processed submission) must NOT request another resync
+    second = FakeCallback(f"grev_approve:{sub_id}", user_id=930953)
+    asyncio.run(admin_mod.grev_approve(second, state))
+    assert calls == [1]
+
+
+def test_grev_approve_amount_step_requests_a_resync_only_when_won(tmp_path, monkeypatch):
+    _db_ready(tmp_path)
+    calls = []
+    monkeypatch.setattr(admin_mod, "_request_game_resync", lambda *a, **k: calls.append(1))
+
+    task_id = _seed_task(coins=5)
+    sub_id = _seed_submission(task_id)
+    state = _new_state()
+    asyncio.run(admin_mod.grev_approve_custom_start(FakeCallback(f"grev_approve_custom:{sub_id}"), state))
+
+    amount_msg = FakeMessage(text="45")
+    asyncio.run(admin_mod.grev_approve_amount_step(amount_msg, state))
+    assert calls == [1]
+
+
+def test_grev_reject_reason_requests_a_resync_only_when_won(tmp_path, monkeypatch):
+    _db_ready(tmp_path)
+    calls = []
+    monkeypatch.setattr(admin_mod, "_request_game_resync", lambda *a, **k: calls.append(1))
+
+    task_id = _seed_task()
+    sub_id = _seed_submission(task_id)
+    state = _new_state()
+    asyncio.run(admin_mod.grev_reject_start(FakeCallback(f"grev_reject:{sub_id}"), state))
+
+    reason_msg = FakeMessage(text="-")
+    asyncio.run(admin_mod.grev_reject_reason(reason_msg, state))
+    assert calls == [1]
+
+
+def test_cmd_coins_requests_a_resync_only_after_add_coins(tmp_path, monkeypatch):
+    _db_ready(tmp_path)
+    calls = []
+    monkeypatch.setattr(admin_mod, "_request_game_resync", lambda *a, **k: calls.append(1))
+
+    asyncio.run(db.add_user({
+        "telegram_id": DELEGATE_ID, "full_name": "Дельгат", "username": "@delegate1",
+        "registration_date": "2026-08-01",
+    }))
+
+    hint_msg = FakeMessage(text="/coins")
+    asyncio.run(admin_mod.cmd_coins(hint_msg, hint_msg.bot))
+    assert calls == []  # malformed command -> add_coins never called -> no resync
+
+    coins_msg = FakeMessage(text="/coins @delegate1 +10 бонус")
+    asyncio.run(admin_mod.cmd_coins(coins_msg, coins_msg.bot))
+    assert calls == [1]
+
+
+# ── Task 2: sync_game_sheets_confirm's "обновлено N мин назад" phrase ──────────────────────
+
+def test_last_sync_phrase_none_or_empty_or_unparsable_is_never_synced():
+    now = datetime(2026, 8, 17, 12, 0, 0)
+    assert admin_mod._last_sync_phrase(None, now) == "ещё не обновлялось"
+    assert admin_mod._last_sync_phrase("", now) == "ещё не обновлялось"
+    assert admin_mod._last_sync_phrase("garbage", now) == "ещё не обновлялось"
+
+
+def test_last_sync_phrase_just_now():
+    now = datetime(2026, 8, 17, 12, 0, 0)
+    raw = (now - timedelta(seconds=30)).strftime("%Y-%m-%d %H:%M:%S")
+    assert admin_mod._last_sync_phrase(raw, now) == "обновлено только что"
+
+
+def test_last_sync_phrase_minutes():
+    now = datetime(2026, 8, 17, 12, 0, 0)
+    raw = (now - timedelta(minutes=5)).strftime("%Y-%m-%d %H:%M:%S")
+    assert admin_mod._last_sync_phrase(raw, now) == "обновлено 5 мин назад"
+
+
+def test_last_sync_phrase_hours():
+    now = datetime(2026, 8, 17, 12, 0, 0)
+    raw = (now - timedelta(hours=3)).strftime("%Y-%m-%d %H:%M:%S")
+    assert admin_mod._last_sync_phrase(raw, now) == "обновлено 3 ч назад"
+
+
+def test_last_sync_phrase_days_falls_back_to_a_date():
+    now = datetime(2026, 8, 17, 12, 0, 0)
+    raw = (now - timedelta(days=2)).strftime("%Y-%m-%d %H:%M:%S")
+    phrase = admin_mod._last_sync_phrase(raw, now)
+    assert phrase.startswith("обновлено ")
+    assert "15.08" in phrase
+
+
+def test_sync_game_sheets_confirm_shows_never_synced_by_default(tmp_path):
+    _db_ready(tmp_path)
+    callback = FakeCallback("admin_game_sync_sheet")
+    asyncio.run(admin_mod.sync_game_sheets_confirm(callback))
+    assert "ещё не обновлялось" in callback.message.text
+
+
+def test_sync_game_sheets_confirm_shows_minutes_after_a_rebuild(tmp_path, monkeypatch):
+    _db_ready(tmp_path)
+
+    async def _fake_sync(title, headers, rows):
+        return len(rows)
+
+    monkeypatch.setattr(admin_mod, "sync_named_worksheet", _fake_sync)
+
+    async def go():
+        await admin_mod.rebuild_game_sheets()
+        callback = FakeCallback("admin_game_sync_sheet")
+        await admin_mod.sync_game_sheets_confirm(callback)
+        return callback
+
+    callback = asyncio.run(go())
+    assert "обновлено" in callback.message.text
+    assert "ещё не обновлялось" not in callback.message.text
