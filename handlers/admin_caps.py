@@ -340,6 +340,12 @@ ADMIN_CAPS: dict[str, str] = {
     "roles_toggle:*": "settings",
     "settings_back": "settings",
     "settings_cancel": "settings",
+    # Phase 09.2 (C, CITY-05): «🏙 Для города…» per-setting override sub-flow — same right
+    # as every other settings_* screen, never a separate capability.
+    "settings_city:*": "settings",
+    "settings_city_clear:*": "settings",
+    "settings_city_clear_go:*": "settings",
+    "settings_city_pick:*": "settings",
     "settings_edit:*": "settings",
     "settings_file:*": "settings",
     "settings_group:*": "settings",

@@ -94,6 +94,12 @@ from cities import (  # Phase 07.1 (CITY-04): admin city screen; Phase 07.2 (CIT
     city_codes,
     normalize_city,
     enabled_cities,  # Phase 09.1 (B): "Кому задание?" wizard step
+    is_per_city,  # Phase 09.2 (C, CITY-05): «🏙 Для города…» per-setting override sub-flow
+    per_city_key,
+    city_override_codes,
+    get_setting_for_city,
+    get_setting_typed_for_city,
+    PER_CITY_SEP,
 )
 
 router = Router()
@@ -936,6 +942,13 @@ async def build_settings_keyboard():
 
     buttons = [
         [InlineKeyboardButton(text=toggle_text, callback_data="settings_toggle_reg")],
+    ]
+    # Phase 09.2 (C, CITY-05): registration_mode has no settings_edit:{key} screen of its
+    # own (it's a landing toggle, not a SETTINGS_FIELDS text entry) — this is its only entry
+    # point into the shared per-city screen. Cities module off -> no new button (CONTEXT C).
+    if await cities_module_on():
+        buttons.append([InlineKeyboardButton(text="🏙 Форма по городам", callback_data="settings_city:registration_mode")])
+    buttons += [
         [InlineKeyboardButton(text=bonus_toggle_text, callback_data="settings_toggle_bonus")],
         [InlineKeyboardButton(text=full_txt, callback_data="settings_toggle_full_approval")],
         [InlineKeyboardButton(text=short_txt, callback_data="settings_toggle_short_approval")],
@@ -1233,6 +1246,85 @@ async def settings_file_start(callback: types.CallbackQuery, state: FSMContext):
     await callback.answer()
 
 
+# ── Phase 09.2 (C, CITY-05): «🏙 Для города…» per-setting override sub-flow ────────────────
+#
+# One reusable screen for every per_city-flagged SETTINGS_SCHEMA key (text or enum) — reached
+# from the editor (settings_edit_start below) and from the landing's «🏙 Форма по городам»
+# shortcut for registration_mode, which has no settings_edit screen of its own. Mirrors the
+# admin_city_switch/_roles_city_kb idiom (RESEARCH Pattern 3): city LABELS only, never codes.
+
+async def _per_city_visible_codes(admin_id: int) -> list[str]:
+    """Which city codes this admin may see/edit here — a RIGHT, not a filter (Phase 07.2
+    terminology). Superadmins (config.ADMIN_IDS) see every city; a manager bound to a city
+    (get_staff_city) sees exactly that one; an unbound manager sees all. This shapes the
+    keyboard only — every write handler below (settings_city_pick / settings_city_clear_go)
+    re-checks membership itself before writing anything (RESEARCH Pitfall 6: a hidden button
+    is not access control)."""
+    if admin_id in config.ADMIN_IDS:
+        return city_codes()
+    bound = await get_staff_city(admin_id)
+    if bound:
+        return [normalize_city(bound)]
+    return city_codes()
+
+
+async def _per_city_screen(key: str, admin_id: int) -> tuple[str, InlineKeyboardMarkup]:
+    """Text + keyboard for the city-picker screen of one per_city key. No city codes appear
+    anywhere in the rendered text or button labels — only city_label() names (CLAUDE.md
+    «бот для людей»)."""
+    label = SETTINGS_SCHEMA.get(key, {}).get("label", key)
+    global_value = await get_setting(key)
+    if global_value:
+        preview = html_module.escape(global_value[:60])
+        if len(global_value) > 60:
+            preview += "…"
+        global_line = f"Общее значение:\n<b>{preview}</b>"
+    else:
+        global_line = "Общее значение: <i>по умолчанию</i>"
+
+    override_codes = await city_override_codes(key)
+    lines = [f"🏙 <b>{html_module.escape(label)} — по городам</b>", "", global_line]
+    if override_codes:
+        names = ", ".join([await city_label(c) for c in override_codes])
+        lines.append(f"Переопределено для: {names}")
+    lines.append("")
+    lines.append("Тап по городу — задать своё значение для него.")
+
+    buttons: list[list[InlineKeyboardButton]] = []
+    visible = await _per_city_visible_codes(admin_id)
+    for c in CITIES:
+        code = c["code"]
+        if code not in visible:
+            continue
+        has_override = code in override_codes
+        city_txt = await city_label(code)
+        enabled = await is_city_enabled(code)
+        mark = "✅" if has_override else "—"
+        suffix = "" if enabled else " ❌"
+        row = [InlineKeyboardButton(
+            text=f"{mark} {city_txt}{suffix}",
+            callback_data=f"settings_city_pick:{key}:{code}",
+        )]
+        if has_override:
+            row.append(InlineKeyboardButton(text="↩️", callback_data=f"settings_city_clear:{key}:{code}"))
+        buttons.append(row)
+    buttons.append([InlineKeyboardButton(text="← Назад", callback_data=f"settings_edit:{key}")])
+    return "\n".join(lines), InlineKeyboardMarkup(inline_keyboard=buttons)
+
+
+@router.callback_query(F.data.startswith("settings_city:"))
+async def settings_city_list(callback: types.CallbackQuery):
+    key = callback.data.split(":", 1)[1]
+    # Fail-closed (T-092-14/RESEARCH Pattern 2): module off or a non-per_city key never
+    # renders a screen, even if someone forges the callback_data directly.
+    if not await cities_module_on() or not is_per_city(key):
+        await callback.answer("Города выключены", show_alert=True)
+        return
+    text, kb = await _per_city_screen(key, callback.from_user.id)
+    await callback.message.edit_text(text, parse_mode="HTML", reply_markup=kb)
+    await callback.answer()
+
+
 @router.callback_query(F.data.startswith("settings_edit:"))
 async def settings_edit_start(callback: types.CallbackQuery, state: FSMContext):
     key = callback.data.split(":", 1)[1]
@@ -1251,9 +1343,18 @@ async def settings_edit_start(callback: types.CallbackQuery, state: FSMContext):
         text = f"Сейчас задано:\n<b>{html_module.escape(current)}</b>\n\n{text}"
     text += "\n\n<i>Пришлите новое значение сообщением. Чтобы очистить поле — отправьте «-».</i>"
 
-    cancel_kb = InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="❌ Отмена", callback_data="settings_cancel")],
-    ])
+    # Phase 09.2 (C, CITY-05): per-city override entry point — only when the cities module
+    # is on AND this key is flagged per_city in the registry. Module off / non-per_city key
+    # -> zero new buttons, zero new text, byte-identical to today (CONTEXT C).
+    rows: list[list[InlineKeyboardButton]] = []
+    if await cities_module_on() and is_per_city(key):
+        rows.append([InlineKeyboardButton(text="🏙 Для города…", callback_data=f"settings_city:{key}")])
+        override_codes = await city_override_codes(key)
+        if override_codes:
+            names = ", ".join([await city_label(c) for c in override_codes])
+            text += f"\n\nПереопределено для: {names}"
+    rows.append([InlineKeyboardButton(text="❌ Отмена", callback_data="settings_cancel")])
+    cancel_kb = InlineKeyboardMarkup(inline_keyboard=rows)
     await callback.message.edit_text(text, parse_mode="HTML", reply_markup=cancel_kb)
     await state.set_state(EditSetting.waiting_for_value)
     await state.update_data(setting_key=key)
