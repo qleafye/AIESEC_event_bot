@@ -394,7 +394,7 @@ SETTINGS_SCHEMA = {
 
 | Группа | Состояния |
 |--------|-----------|
-| Registration | `admin_rereg` → `full_name` → динамический поток из включённых вопросов |
+| Registration | `full_name` → динамический поток из включённых вопросов (перерегистрация админа — инлайн-кнопка `admin_rereg`, не состояние) |
 | Question | `waiting_for_question` |
 | Broadcast | `target_selection` → фильтры → `message` → (отправка / планирование) |
 | EditSetting | `waiting_for_value`, `waiting_for_photo`, `waiting_for_file` |
