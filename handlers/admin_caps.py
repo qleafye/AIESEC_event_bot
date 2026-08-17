@@ -215,9 +215,20 @@ async def notify_by_capability(
 ANY_CAPABILITY = "*"
 
 ADMIN_CAPS: dict[str, str] = {
-    # ── "*" (any capability at all) -- the two admin-panel entry points ────────────────────
+    # ── "*" (any capability at all) -- navigational entry points ───────────────────────────
     "admin_menu": ANY_CAPABILITY,
     "cmd:admin": ANY_CAPABILITY,
+    # admin_city_switch/admin_city_pick:* (Phase 07.2, CITY-02) used to require the closest
+    # single moderation capability, back when the header only scoped the moderation queues.
+    # Phase 09.3 (CITY-08) makes the header the SOLE context for data screens AND settings AND
+    # menu buttons -- a manager holding only "settings" (no moderate_reg) must still be able to
+    # pick a city, or 09.3's own premise ("шапка задаёт контекст всему") breaks for them. This is
+    # a navigational entry point, not a write right: the actual write is re-checked downstream
+    # (`set_admin_city` refuses a bound manager outright, and every settings/menu write handler
+    # re-checks `_per_city_visible_codes`) -- widening this to ANY_CAPABILITY does not widen who
+    # can actually change anything.
+    "admin_city_pick:*": ANY_CAPABILITY,
+    "admin_city_switch": ANY_CAPABILITY,
 
     # ── stats ────────────────────────────────────────────────────────────────────────────
     "admin_export_csv": "stats",
@@ -230,14 +241,7 @@ ADMIN_CAPS: dict[str, str] = {
     "cmd:stats_monthly": "stats",
 
     # ── moderate_reg ─────────────────────────────────────────────────────────────────────
-    # admin_city_switch/admin_city_pick:* (Phase 07.2, CITY-02) aren't in 08-CONTEXT's D-17
-    # command list or 08-RESEARCH's worked capability_map example -- both predate the cities
-    # module. They scope the SAME moderation queues (applications/receipts) that
-    # `_admin_city_view`'s own comment flags as "the seam Phase 8 plugs into" -- moderate_reg
-    # is the closest single capability (D-01's map has no "any of A or B" value shape).
     "admin_applications": "moderate_reg",
-    "admin_city_pick:*": "moderate_reg",
-    "admin_city_switch": "moderate_reg",
     "appr_all": "moderate_reg",
     "appr_all_no": "moderate_reg",
     # appr_all_yes (CR-02) is matched via F.data.startswith("appr_all_yes"), not "==" -- the
