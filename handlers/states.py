@@ -114,3 +114,14 @@ class CoinsManual(StatesGroup):
     person = State()  # waiting for a forwarded message / @username to resolve the recipient
     amount = State()  # waiting for the coin amount (sign already picked via coinsman_sign:*)
     reason = State()  # waiting for the mandatory reason text
+
+class CityForm(StatesGroup):
+    # Phase 14 (14-07, CITY-07): city registry wizard — lives under `settings`
+    # (registered in handlers/admin_caps.py, "state:CityForm:*"). Add-wizard is two steps
+    # (label -> tab base); the two edit flows are one field each. The city CODE is never a
+    # state itself — on add it's generated server-side (cities.make_city_code); on edit it's
+    # carried in state.get_data()["city_code"], set by the callback that opened the step.
+    add_label = State()  # waiting for the new city's human-facing label
+    add_tab = State()    # waiting for the new city's sheet-tab base name (or "—")
+    edit_label = State()  # waiting for a replacement label for an existing city
+    edit_tab = State()    # waiting for a replacement tab base for an existing city
