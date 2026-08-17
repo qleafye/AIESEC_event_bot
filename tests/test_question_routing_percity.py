@@ -13,6 +13,11 @@ Task 3: `handlers/registration.py::finalize_registration` passes `data.get("even
     through the same primitive for the new-application notification.
 """
 import asyncio
+import inspect
+
+from aiogram.fsm.context import FSMContext
+from aiogram.fsm.storage.base import StorageKey
+from aiogram.fsm.storage.memory import MemoryStorage
 
 from config import config
 from database import db
@@ -38,8 +43,55 @@ class FakeBot:
         self.sent.append((chat_id, text))
 
 
+class FakeUser:
+    def __init__(self, uid, username=None):
+        self.id = uid
+        self.username = username
+
+
+class FakeChat:
+    def __init__(self, cid):
+        self.id = cid
+
+
+class FakeMessage:
+    """Minimal stand-in for the aiogram Message `process_question` receives."""
+
+    def __init__(self, text=None, user_id=None, username=None):
+        self.text = text
+        self.from_user = FakeUser(user_id, username=username)
+        self.chat = FakeChat(user_id)
+        self.answers = []
+
+    async def answer(self, text, parse_mode=None, reply_markup=None):
+        self.answers.append((text, parse_mode, reply_markup))
+
+
+def _fresh_state(user_id):
+    storage = MemoryStorage()
+    key = StorageKey(bot_id=1, chat_id=user_id, user_id=user_id)
+    return FSMContext(storage=storage, key=key)
+
+
 def _enable_cities():
     asyncio.run(db.set_setting("event_city_enabled", "on"))
+
+
+def _add_delegate(telegram_id, event_city):
+    asyncio.run(db.add_user({
+        "telegram_id": telegram_id,
+        "event_city": event_city,
+        "registration_date": "2026-08-17 00:00:00",
+    }))
+
+
+def _count_questions():
+    import sqlite3
+    conn = sqlite3.connect(config.DB_PATH)
+    try:
+        return conn.execute("SELECT COUNT(*) FROM delegate_questions").fetchone()[0]
+    finally:
+        conn.close()
 
 
 # ── Task 1: capability_holders/notify_by_capability city kwarg ─────────────────────────────
@@ -160,3 +212,109 @@ def test_notify_by_capability_recipient_order_keeps_superadmins_first(tmp_path):
 
     holders = asyncio.run(admin_caps.capability_holders("moderate_reg", city="spb"))
     assert holders[0] == ADMIN_ID
+
+
+# ── Task 2: delegate question -> process_question resolves + passes the delegate's city ────
+
+def test_process_question_module_off_recipients_match_capability_holders(tmp_path):
+    from handlers import admin_caps
+    from handlers import user_actions as ua_mod
+
+    _roles_ready(tmp_path)
+    # event_city_enabled left off.
+    asyncio.run(db.add_staff(MSK_MANAGER_ID, "reg_manager", ADMIN_ID))
+    _add_delegate(DELEGATE_ID, "spb")
+
+    bot = FakeBot()
+    state = _fresh_state(DELEGATE_ID)
+    message = FakeMessage(text="Когда дедлайн?", user_id=DELEGATE_ID)
+    asyncio.run(ua_mod.process_question(message, state, bot))
+
+    recipients = [chat_id for chat_id, _t in bot.sent]
+    expected = asyncio.run(admin_caps.capability_holders("moderate_reg"))
+    assert recipients == expected
+
+
+def test_process_question_routes_to_delegate_city_manager(tmp_path):
+    from handlers import user_actions as ua_mod
+
+    _roles_ready(tmp_path)
+    _enable_cities()
+    asyncio.run(db.add_staff(SPB_MANAGER_ID, "reg_manager", ADMIN_ID))
+    asyncio.run(db.set_staff_city(SPB_MANAGER_ID, "spb"))
+    asyncio.run(db.add_staff(MSK_MANAGER_ID, "reg_manager", ADMIN_ID))
+    asyncio.run(db.set_staff_city(MSK_MANAGER_ID, "msk"))
+    asyncio.run(db.add_staff(UNBOUND_MANAGER_ID, "reg_manager", ADMIN_ID))
+    _add_delegate(DELEGATE_ID, "spb")
+
+    bot = FakeBot()
+    state = _fresh_state(DELEGATE_ID)
+    message = FakeMessage(text="Когда дедлайн?", user_id=DELEGATE_ID)
+    asyncio.run(ua_mod.process_question(message, state, bot))
+
+    recipients = [chat_id for chat_id, _t in bot.sent]
+    assert ADMIN_ID in recipients
+    assert SPB_MANAGER_ID in recipients
+    assert UNBOUND_MANAGER_ID in recipients
+    assert MSK_MANAGER_ID not in recipients
+
+
+def test_process_question_no_event_city_normalizes_to_default(tmp_path):
+    from handlers import user_actions as ua_mod
+
+    _roles_ready(tmp_path)
+    _enable_cities()
+    asyncio.run(db.add_staff(MSK_MANAGER_ID, "reg_manager", ADMIN_ID))
+    asyncio.run(db.set_staff_city(MSK_MANAGER_ID, "msk"))  # msk is the configured default
+    _add_delegate(DELEGATE_ID, None)
+
+    bot = FakeBot()
+    state = _fresh_state(DELEGATE_ID)
+    message = FakeMessage(text="Когда дедлайн?", user_id=DELEGATE_ID)
+    asyncio.run(ua_mod.process_question(message, state, bot))
+
+    recipients = [chat_id for chat_id, _t in bot.sent]
+    assert MSK_MANAGER_ID in recipients  # NULL event_city -> default city -> msk manager sees it
+
+
+def test_process_question_still_creates_exactly_one_question_row(tmp_path):
+    from handlers import user_actions as ua_mod
+
+    _roles_ready(tmp_path)
+    _enable_cities()
+    asyncio.run(db.add_staff(SPB_MANAGER_ID, "reg_manager", ADMIN_ID))
+    asyncio.run(db.set_staff_city(SPB_MANAGER_ID, "spb"))
+    _add_delegate(DELEGATE_ID, "spb")
+
+    bot = FakeBot()
+    state = _fresh_state(DELEGATE_ID)
+    message = FakeMessage(text="Когда дедлайн?", user_id=DELEGATE_ID)
+    asyncio.run(ua_mod.process_question(message, state, bot))
+
+    assert _count_questions() == 1
+
+
+def test_process_question_sent_count_reply_branch_unchanged(tmp_path):
+    """D-14/UX contract: sent_count > 0 still yields the "sent" confirmation text."""
+    from handlers import user_actions as ua_mod
+
+    _roles_ready(tmp_path)
+    _enable_cities()
+    _add_delegate(DELEGATE_ID, "spb")
+
+    bot = FakeBot()
+    state = _fresh_state(DELEGATE_ID)
+    message = FakeMessage(text="Когда дедлайн?", user_id=DELEGATE_ID)
+    asyncio.run(ua_mod.process_question(message, state, bot))
+
+    assert message.answers
+    assert "отправлен" in message.answers[0][0]
+
+
+def test_process_question_source_has_city_kwarg_and_correct_order():
+    from handlers import user_actions as ua_mod
+
+    s = inspect.getsource(ua_mod.process_question)
+    assert "city=" in s
+    assert "normalize_city" in s
+    assert s.index("create_question") < s.index("notify_by_capability")
