@@ -78,6 +78,7 @@ from services.scheduler import (
 )
 from services.allowlist import refresh_allowlist, allowlist_size
 from services.background import spawn as _spawn
+from services.game_sync import request_resync as _request_game_resync, set_rebuild as _set_game_rebuild
 from handlers.states import Broadcast, EditSetting, Approval, ReceiptReview, StaffAdd, GameTaskCreate, GameReview
 from handlers.admin_caps import ALL_CAPABILITIES, CAP_LABELS, ROLES, role_caps_key, role_enabled_key, CapabilityMiddleware, required_capability, has_capability, resolve_capabilities, ANY_CAPABILITY, capability_holders
 from keyboards.builders import get_cancel_kb, MENU_BUTTONS, get_main_menu_kb
@@ -5437,11 +5438,14 @@ async def sync_game_sheets_confirm(callback: types.CallbackQuery):
     await callback.answer()
 
 
-@router.callback_query(F.data == "admin_game_sync_sheet_go")
-async def sync_game_sheets(callback: types.CallbackQuery):
-    await callback.answer("🔄 Синхронизация...")
-    logger.info(f"admin={callback.from_user.id} action=game_sync_sheet start")
-
+async def rebuild_game_sheets() -> tuple[int, int]:
+    """Phase 09.1 (D, GAME-07): the ONE place that actually rebuilds the two gamification
+    sheet tabs — shared by the "🔄 Да, пересобрать вкладки" button (sync_game_sheets below,
+    which calls this directly, bypassing the debounce -- CONTEXT.md D's "пересобрать сейчас"
+    escape hatch) and services.game_sync's debounced background resync (registered via
+    set_rebuild() at the bottom of this module). No callback/keyboard args -- the button's
+    own handler renders the report from the returned pair, the background caller only needs
+    the pair to decide whether to warn superadmins."""
     # list_all_tasks() is created_at DESC (moderation-friendly, newest-first); the matrix wants
     # columns oldest-first (left to right) -- reversed by an explicit sort here, not a new
     # db.py accessor, per the plan's own instruction.
@@ -5458,6 +5462,24 @@ async def sync_game_sheets(callback: types.CallbackQuery):
     matrix_written = await sync_named_worksheet(matrix_tab, matrix_headers, matrix_rows)
     history_written = await sync_named_worksheet(history_tab, history_headers, history_rows)
 
+    # T-091-17: the "обновлено N мин назад" timestamp must never lie about a partially-failed
+    # sync -- only written when BOTH tabs actually wrote successfully. game_sheet_last_synced_at
+    # is a service key, not a SETTINGS_SCHEMA entry (see sync_game_sheets_confirm's comment).
+    if matrix_written >= 0 and history_written >= 0:
+        await set_setting("game_sheet_last_synced_at", _now_moscow_naive().strftime("%Y-%m-%d %H:%M:%S"))
+
+    return matrix_written, history_written
+
+
+@router.callback_query(F.data == "admin_game_sync_sheet_go")
+async def sync_game_sheets(callback: types.CallbackQuery):
+    await callback.answer("🔄 Синхронизация...")
+    logger.info(f"admin={callback.from_user.id} action=game_sync_sheet start")
+
+    matrix_written, history_written = await rebuild_game_sheets()
+
+    matrix_tab = await get_setting_typed("game_matrix_tab")
+    history_tab = await get_setting_typed("game_history_tab")
     matrix_report = f"{matrix_written} строк" if matrix_written >= 0 else "⚠️ ошибка синхронизации (см. лог)"
     history_report = f"{history_written} строк" if history_written >= 0 else "⚠️ ошибка синхронизации (см. лог)"
 
@@ -5467,6 +5489,12 @@ async def sync_game_sheets(callback: types.CallbackQuery):
         parse_mode="HTML",
         reply_markup=await admin_keyboard_for(callback.from_user.id),
     )
+
+
+# Phase 09.1 (D, GAME-07): register the shared rebuild with the debounced background resync
+# helper. Inversion-of-control instead of moving the sheet-builder code into services/ --
+# services.game_sync must not import handlers.* (import-cycle guard).
+_set_game_rebuild(rebuild_game_sheets)
 
 
 @router.callback_query(F.data == "admin_game_stats")
