@@ -208,6 +208,9 @@ def test_registry_coverage_event():
     allowed_groups = {
         "event", "reg", "reg_questions", "pay", "party", "consent", "toggles", "roles",
         "sheets", "game", "misc",
+        # "menu" added Phase 09.2 (B): тумблеры кнопок главного меню, экран «🔘 Кнопки
+        # главного меню»
+        "menu",
     }
     allowed_types = {"toggle", "int", "list", "date", "text", "enum", "photo", "file"}
 
