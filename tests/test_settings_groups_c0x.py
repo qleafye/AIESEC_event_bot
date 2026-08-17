@@ -211,6 +211,9 @@ def test_registry_coverage_event():
         # "menu" added Phase 09.2 (B): тумблеры кнопок главного меню, экран «🔘 Кнопки
         # главного меню»
         "menu",
+        # "system" added Phase 14 (CFG-01): proxy timings that used to live only in .env,
+        # экран «🔧 Система».
+        "system",
     }
     allowed_types = {"toggle", "int", "list", "date", "text", "enum", "photo", "file"}
 

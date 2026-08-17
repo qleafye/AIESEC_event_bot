@@ -9,10 +9,16 @@ class Settings(BaseSettings):
     # the bot rotates to it on TelegramNetworkError and stays sticky (services/proxy_session.py).
     PROXY_URL_BACKUP: SecretStr | None = None
     # Seconds to stay on the backup before retrying the primary proxy link.
+    # DEPRECATED as a day-to-day setting (Phase 14, CFG-01): read ONCE at startup to seed
+    # bot_settings.proxy_recheck_seconds (main.py::seed_proxy_settings_from_env); day-to-day
+    # editing is from the bot — «⚙️ Настройки → 🔧 Система» (needs a restart to take effect,
+    # FailoverAiohttpSession only reads the registry value once, at construction time).
     PROXY_RECHECK_SECONDS: int = 600
     # Bounds connection SETUP only (TCP/SOCKS handshake), not the response wait -- a dead
     # link now costs this many seconds instead of the full request timeout (20-90s). 0
     # disables the bound (escape hatch back to unbounded connect).
+    # DEPRECATED as a day-to-day setting (Phase 14, CFG-01): same one-time seed story as
+    # PROXY_RECHECK_SECONDS above -> bot_settings.proxy_connect_timeout.
     PROXY_CONNECT_TIMEOUT: int = 5
     ADMIN_IDS: List[int]
     UNIVERSITIES: List[str] = [
