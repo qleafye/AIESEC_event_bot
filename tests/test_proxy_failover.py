@@ -487,3 +487,115 @@ def test_session_timeout_stays_numeric_for_dispatcher_arithmetic():
     startup -- this is an import/construction-level smoke check, not a make_request test."""
     session = FailoverAiohttpSession([PRIMARY, BACKUP], connect_timeout=5)
     assert isinstance(int(session.timeout + 30), int)
+
+
+# ── Test 11: failover cause logging ─────────────────────────────────────────
+
+def test_warning_line_names_the_underlying_network_error(monkeypatch, caplog):
+    calls = []
+
+    async def fake(self, bot, method, timeout=None):
+        idx = self._index
+        calls.append(idx)
+        if idx == 0:
+            raise TelegramNetworkError(method=method, message="tunnel closed")
+        return f"result-{idx}"
+
+    monkeypatch.setattr(AiohttpSession, "make_request", fake)
+    caplog.set_level(logging.WARNING, logger="services.proxy_session")
+
+    async def go():
+        session = FailoverAiohttpSession([PRIMARY, BACKUP])
+        await session.make_request(object(), object())
+        await _drain_background()
+
+    asyncio.run(go())
+
+    assert "cause: TelegramNetworkError" in caplog.text
+    assert "tunnel closed" in caplog.text
+
+
+def test_admin_alert_carries_the_same_cause_on_its_own_line(monkeypatch):
+    calls = []
+
+    async def fake(self, bot, method, timeout=None):
+        idx = self._index
+        calls.append(idx)
+        if idx == 0:
+            raise TelegramNetworkError(method=method, message="tunnel closed")
+        return f"result-{idx}"
+
+    monkeypatch.setattr(AiohttpSession, "make_request", fake)
+    fake_bot = _FakeBot()
+    proxy_session.set_alert_bot(fake_bot)
+    try:
+        async def go():
+            session = FailoverAiohttpSession([PRIMARY, BACKUP])
+            await session.make_request(object(), object())
+            await _drain_background()
+
+        asyncio.run(go())
+    finally:
+        _reset_alert_state()
+
+    assert fake_bot.sent
+    _chat_id, text = fake_bot.sent[0]
+    assert "Причина:" in text
+    assert "tunnel closed" in text
+
+
+def test_failover_cause_scrubs_credentials_from_log_and_alert(monkeypatch, caplog):
+    calls = []
+
+    async def fake(self, bot, method, timeout=None):
+        idx = self._index
+        calls.append(idx)
+        if idx == 0:
+            raise TelegramNetworkError(
+                method=method,
+                message=(
+                    "ClientProxyConnectionError: Cannot connect to "
+                    "socks5://user:secretpass@1.2.3.4:1080"
+                ),
+            )
+        return f"result-{idx}"
+
+    monkeypatch.setattr(AiohttpSession, "make_request", fake)
+    fake_bot = _FakeBot()
+    proxy_session.set_alert_bot(fake_bot)
+    caplog.set_level(logging.WARNING, logger="services.proxy_session")
+    try:
+        async def go():
+            session = FailoverAiohttpSession([PRIMARY, BACKUP])
+            await session.make_request(object(), object())
+            await _drain_background()
+
+        asyncio.run(go())
+    finally:
+        _reset_alert_state()
+
+    assert "secretpass" not in caplog.text
+    assert "***@" in caplog.text
+    assert fake_bot.sent
+    for _chat_id, text in fake_bot.sent:
+        assert "secretpass" not in text
+        assert "***@" in text
+
+
+def test_rotate_from_with_no_error_argument_logs_unknown_cause(caplog):
+    """Direct call with observed_index matching the CURRENT index (no live request
+    involved) -- this is the "no error object available" path, e.g. a caller other than
+    make_request's except branch. Distinct from the stale-observed-index dedup test below,
+    which exercises the early-return no-op branch instead."""
+    caplog.set_level(logging.WARNING, logger="services.proxy_session")
+
+    async def go():
+        session = FailoverAiohttpSession([PRIMARY, BACKUP])
+        await session._rotate_from(0)  # observed_index == current index (0) -> rotates
+        await _drain_background()
+        return session
+
+    session = asyncio.run(go())
+
+    assert "cause: unknown" in caplog.text
+    assert session.active_index == 1
