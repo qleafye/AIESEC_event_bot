@@ -74,6 +74,10 @@ from database.db import (
     list_manual_coin_entries,
     count_manual_coin_entries,
     export_coins_journal_csv,
+    # Phase 14 (14-07, CITY-07): cities table writes + delete-safety counters
+    update_city,
+    count_users_by_city,
+    count_tasks_by_city,
 )
 from aiogram.exceptions import TelegramRetryAfter, TelegramForbiddenError, TelegramBadRequest
 from services.sheets import get_existing_sheet_ids, append_rows_to_sheet, ensure_sheet_header, sync_named_worksheet, dedupe_sheet_by_id, update_status_in_sheet, bulk_update_status_in_sheet, rebuild_main_sheet, REFUSED_UNPINNED_TAB, _reset_sheet_cache, tab_row_count
@@ -108,6 +112,10 @@ from cities import (  # Phase 07.1 (CITY-04): admin city screen; Phase 07.2 (CIT
     get_setting_for_city,
     get_setting_typed_for_city,
     PER_CITY_SEP,
+    # Phase 14 (14-07, CITY-07): full CRUD screen — cache read/reload + registry default
+    all_cities,
+    reload_cities,
+    default_city_code,
 )
 
 router = Router()
@@ -2174,14 +2182,45 @@ async def export_incomplete(callback: types.CallbackQuery):
     )
 
 
-# ── Phase 07.1 (CITY-04): «🏙 Города мероприятия» admin screen ───────────────
-# Full CRUD (add/remove/rename a city, auto-create tabs) is out of scope (CONTEXT.md) —
-# only the master toggle, per-city enable/disable, and the city label/date are editable
-# here. The city LIST itself is fixed from .env (cities.CITIES), never mutated at runtime.
+# ── Phase 07.1 (CITY-04) / Phase 14 (14-07, CITY-07): «🏙 Города» admin screen ───────────────
+# Phase 14-07 closes CITY-07 fully: add/rename/tab-base/default/delete are now all in-bot, no
+# `.env` restart round-trip. The city list itself lives in the `cities` table (cities.py cache,
+# `all_cities()`); a manager never types or sees a raw city CODE — only the human-facing label
+# and the deep-link it produces (T-14-34).
+
+
+async def _cities_screen_allowed(user_id: int) -> bool:
+    """T-14-32: the registry is shared across every city, so only a manager NOT bound to a
+    single city (a bootstrap superadmin, or a manager whose `staff.city` binding is empty) may
+    write to it. Called from `show_admin_cities` AND every writing handler below — the gate
+    belongs in the handler, not only the keyboard, because an old inline keyboard from before a
+    binding existed lives forever in a chat."""
+    if user_id in config.ADMIN_IDS:
+        return True
+    bound = await get_staff_city(user_id)
+    return not bound
+
+
+async def _deny_cities_screen(callback: types.CallbackQuery) -> None:
+    bound = await get_staff_city(callback.from_user.id)
+    await callback.answer(
+        f"Этот экран — для менеджера всех городов. Ваш город: {await city_label(bound)}",
+        show_alert=True,
+    )
+
+
+async def _deny_cities_screen_message(message: types.Message) -> None:
+    bound = await get_staff_city(message.from_user.id)
+    await message.answer(
+        f"Этот экран — для менеджера всех городов. Ваш город: {await city_label(bound)}"
+    )
+
 
 async def render_cities_text() -> str:
     module_on = await cities_module_on()
     module_status = "✅ Вкл" if module_on else "❌ Выкл"
+    cities = all_cities()
+    default_code = default_city_code()
     lines = [
         "🏙 <b>Города мероприятия</b>",
         "",
@@ -2193,15 +2232,26 @@ async def render_cities_text() -> str:
             "все заявки идут в основной лист."
         )
     lines.append("")
-    for c in CITIES:
+    any_hidden_delete = False
+    for c in cities:
         code = c["code"]
         enabled = await is_city_enabled(code)
         label = await city_label(code)
         tab = await city_row_tab(code, None) or "основной лист"
-        icon = "✅" if enabled else "❌"
+        icon = "✅" if enabled else "⛔"
+        star = " ⭐" if code == default_code else ""
         lines.append(
-            f"{icon} {html_module.escape(label)} — "
+            f"{icon} {html_module.escape(label)}{star} — "
             f"<code>?start=city_{html_module.escape(code)}</code> → {html_module.escape(tab)}"
+        )
+        if await count_users_by_city(code) > 0 or await count_tasks_by_city(code) > 0:
+            any_hidden_delete = True
+    lines.append("")
+    lines.append("⭐ — город по умолчанию: в него попадают заявки без выбранного города.")
+    if any_hidden_delete:
+        lines.append(
+            "🗑 У городов, где уже есть делегаты или задания, удаления нет — такой город можно "
+            "только выключить (⛔): он исчезнет из выбора, а собранные заявки останутся на месте."
         )
     return "\n".join(lines)
 
@@ -2211,21 +2261,34 @@ async def build_cities_keyboard() -> InlineKeyboardMarkup:
     master_text = ("🏙 Выбор города: ✅ Вкл → ❌ Выкл" if module_on
                    else "🏙 Выбор города: ❌ Выкл → ✅ Вкл")
     buttons = [[InlineKeyboardButton(text=master_text, callback_data="toggle_event_city_enabled")]]
-    for c in CITIES:
+    cities = all_cities()
+    default_code = default_city_code()
+    for c in cities:
         code = c["code"]
         enabled = await is_city_enabled(code)
         label = await city_label(code)
-        icon = "✅" if enabled else "❌"
-        buttons.append([
-            InlineKeyboardButton(text=f"{icon} {label}", callback_data=f"city_toggle:{code}"),
-            InlineKeyboardButton(text="✏️", callback_data=f"settings_edit:city_label__{code}"),
-        ])
+        icon = "✅" if enabled else "⛔"
+        row1 = [InlineKeyboardButton(text=f"{icon} {label}", callback_data=f"city_toggle:{code}")]
+        if code != default_code:
+            row1.append(InlineKeyboardButton(text="⭐", callback_data=f"city_default:{code}"))
+        buttons.append(row1)
+        row2 = [
+            InlineKeyboardButton(text="✏️ Переименовать", callback_data=f"city_rename:{code}"),
+            InlineKeyboardButton(text="📄 База вкладки", callback_data=f"city_tab:{code}"),
+        ]
+        if await count_users_by_city(code) == 0 and await count_tasks_by_city(code) == 0:
+            row2.append(InlineKeyboardButton(text="🗑", callback_data=f"city_del:{code}"))
+        buttons.append(row2)
+    buttons.append([InlineKeyboardButton(text="➕ Добавить город", callback_data="city_add")])
     buttons.append([InlineKeyboardButton(text="◀️ Назад", callback_data="admin_menu")])
     return InlineKeyboardMarkup(inline_keyboard=buttons)
 
 
 @router.callback_query(F.data == "admin_cities")
 async def show_admin_cities(callback: types.CallbackQuery):
+    if not await _cities_screen_allowed(callback.from_user.id):
+        await _deny_cities_screen(callback)
+        return
     text = await render_cities_text()
     await callback.message.edit_text(text, parse_mode="HTML", reply_markup=await build_cities_keyboard())
     await callback.answer()
@@ -2245,16 +2308,44 @@ async def toggle_event_city_enabled(callback: types.CallbackQuery):
 
 @router.callback_query(F.data.startswith("city_toggle:"))
 async def city_toggle(callback: types.CallbackQuery):
+    if not await _cities_screen_allowed(callback.from_user.id):
+        await _deny_cities_screen(callback)
+        return
     code = callback.data.split(":", 1)[1]
-    if code not in {c["code"] for c in CITIES}:
+    if code not in {c["code"] for c in all_cities()}:
         await callback.answer("Неизвестный город", show_alert=True)
         return
 
-    current = (await get_setting(f"city_enabled__{code}")) or "on"
-    new_val = "off" if current == "on" else "on"
-    await set_setting(f"city_enabled__{code}", new_val)
-    label = "✅ Вкл" if new_val == "on" else "❌ Выкл"
-    await callback.answer(f"{code}: {label}", show_alert=True)
+    current = await is_city_enabled(code)
+    new_val = 0 if current else 1
+    await update_city(code, enabled=new_val)
+    # Легаси-ключ (Phase 07.1) имеет приоритет в is_city_enabled — если его не убрать,
+    # тумблер перестанет менять фактическое поведение после первого же переключения.
+    await delete_setting(f"city_enabled__{code}")
+    await reload_cities()
+    label_text = "✅ Вкл" if new_val else "⛔ Выкл"
+    await callback.answer(f"{await city_label(code)}: {label_text}", show_alert=True)
+
+    text = await render_cities_text()
+    await callback.message.edit_text(text, parse_mode="HTML", reply_markup=await build_cities_keyboard())
+
+
+@router.callback_query(F.data.startswith("city_default:"))
+async def city_default(callback: types.CallbackQuery):
+    if not await _cities_screen_allowed(callback.from_user.id):
+        await _deny_cities_screen(callback)
+        return
+    code = callback.data.split(":", 1)[1]
+    cities = all_cities()
+    if code not in {c["code"] for c in cities}:
+        await callback.answer("Неизвестный город", show_alert=True)
+        return
+    await update_city(code, sort_order=0)
+    others = [c["code"] for c in cities if c["code"] != code]
+    for i, other_code in enumerate(others, start=1):
+        await update_city(other_code, sort_order=i)
+    await reload_cities()
+    await callback.answer(f"Город по умолчанию: {await city_label(code)}", show_alert=True)
 
     text = await render_cities_text()
     await callback.message.edit_text(text, parse_mode="HTML", reply_markup=await build_cities_keyboard())
