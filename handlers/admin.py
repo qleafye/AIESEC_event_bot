@@ -679,7 +679,8 @@ async def show_stuck_questions(callback: types.CallbackQuery):
 # change — until their own migration wave (coexistence invariant, SC#3).
 _EVENT_FIELD_ORDER = [
     "event_date", "event_time", "event_place_name", "event_place_address",
-    "contact_person", "contact_vk", "contact_tg", "start_text", "event_name", "event_type",
+    "contact_person", "contact_vk", "contact_tg", "start_text", "start_text_registered",
+    "event_name", "event_type",
 ]
 _EVENT_FIELDS = [
     (k, SETTINGS_SCHEMA[k]["label"], SETTINGS_SCHEMA[k]["prompt"])
@@ -1573,7 +1574,7 @@ async def settings_receive_file_invalid(message: types.Message):
     await message.answer("Отправьте фото или документ.")
 
 
-HTML_SETTINGS = {"start_text", "reg_complete_text", "approve_text", "approve_text__party"}
+HTML_SETTINGS = {"start_text", "start_text_registered", "reg_complete_text", "approve_text", "approve_text__party"}
 
 # Quick 260815-3hw (Task 3): which Google Sheets tab-name keys the bot actually WRITES to, and
 # HOW. "rewrite" = the sync path does ws.clear() + full rewrite (rebuild_main_sheet /
