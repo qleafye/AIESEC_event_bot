@@ -356,3 +356,81 @@ def test_bound_manager_refused_on_other_city_clear_go(tmp_path):
     resolved = asyncio.run(cities.get_setting_for_city("start_text", "tyumen"))
     assert resolved == "Тюменский текст"  # untouched
 
+
+# ══════════════════════════════════════════════════════════════════════════════════════════
+# Task 3: group-screen «🏙 N» summary + full synthetic bound-manager scenario
+# ══════════════════════════════════════════════════════════════════════════════════════════
+
+def test_group_text_byte_identical_when_module_off(tmp_path):
+    _admin_ready(tmp_path)
+    text_off = asyncio.run(admin_mod.render_settings_group_text("event"))
+    assert "🏙" not in text_off
+
+
+def test_group_text_shows_override_count_mark(tmp_path):
+    _admin_ready(tmp_path)
+    _enable_cities()
+    text_before = asyncio.run(admin_mod.render_settings_group_text("event"))
+    start_line_before = [ln for ln in text_before.splitlines() if ln.startswith("💬 Приветствие")][0]
+    assert "🏙" not in start_line_before
+
+    asyncio.run(db.set_setting(cities.per_city_key("start_text", "spb"), "Питерский текст"))
+    text_after = asyncio.run(admin_mod.render_settings_group_text("event"))
+    start_line_after = [ln for ln in text_after.splitlines() if ln.startswith("💬 Приветствие")][0]
+    assert "🏙 1" in start_line_after
+
+    asyncio.run(db.set_setting(cities.per_city_key("start_text", "tyumen"), "Тюменский текст"))
+    text_after2 = asyncio.run(admin_mod.render_settings_group_text("event"))
+    start_line_after2 = [ln for ln in text_after2.splitlines() if ln.startswith("💬 Приветствие")][0]
+    assert "🏙 2" in start_line_after2
+
+
+def test_group_text_flags_unchanged_alongside_mark(tmp_path):
+    _admin_ready(tmp_path)
+    _enable_cities()
+    asyncio.run(db.set_setting("start_text", "Общий текст"))
+    asyncio.run(db.set_setting(cities.per_city_key("start_text", "spb"), "Питерский текст"))
+    text = asyncio.run(admin_mod.render_settings_group_text("event"))
+    line = [ln for ln in text.splitlines() if ln.startswith("💬 Приветствие")][0]
+    assert "✏️ задано" in line
+    assert "🏙 1" in line
+
+
+def test_render_settings_group_text_uses_registry_helpers():
+    import inspect
+    src = inspect.getsource(admin_mod.render_settings_group_text)
+    assert "city_override_codes" in src and "cities_module_on" in src
+
+
+def test_bound_manager_full_scenario_sees_only_own_city(tmp_path):
+    _admin_ready(tmp_path)
+    _enable_cities()
+    asyncio.run(db.add_staff(MANAGER_ID, "reg_manager", ADMIN_ID))
+    asyncio.run(db.set_staff_city(MANAGER_ID, "spb"))
+    asyncio.run(db.set_setting(role_enabled_key("reg_manager"), "on"))
+    asyncio.run(db.set_setting(role_caps_key("reg_manager"), "moderate_reg;moderate_receipts;settings"))
+
+    codes = asyncio.run(admin_mod._per_city_visible_codes(MANAGER_ID))
+    assert codes == ["spb"]
+
+    cb = FakeCallback("settings_city:start_text", user_id=MANAGER_ID)
+    asyncio.run(admin_mod.settings_city_list(cb))
+    button_texts = _flat_button_texts(cb.message.markup)
+    city_rows = [t for t in button_texts if t not in ("← Назад",)]
+    spb_label = asyncio.run(cities.city_label("spb"))
+    assert any(spb_label in t for t in city_rows)
+    msk_label = asyncio.run(cities.city_label("msk"))
+    assert not any(msk_label in t for t in city_rows)
+
+    # Own city: succeeds.
+    own_cb = FakeCallback("settings_city_pick:start_text:spb", user_id=MANAGER_ID)
+    own_state = FakeState()
+    asyncio.run(admin_mod.settings_city_pick(own_cb, own_state))
+    assert own_state.data.get("setting_key") == cities.per_city_key("start_text", "spb")
+
+    # Other city: refused, nothing written.
+    other_cb = FakeCallback("settings_city_pick:start_text:msk", user_id=MANAGER_ID)
+    other_state = FakeState()
+    asyncio.run(admin_mod.settings_city_pick(other_cb, other_state))
+    assert other_cb.answers and other_cb.answers[0][1] is True
+    assert other_state.data == {}
