@@ -4989,6 +4989,13 @@ async def _get_submission_and_task(submission_id: int) -> tuple[dict | None, dic
 _CARD_PART_MAX = 500
 _CARD_MAX = 3800
 
+# CR-02 (09.1-REVIEW.md): sendMediaGroup accepts 2-10 items -- 11+ raises and used to drop the
+# whole group silently. MEDIA_GROUP_MAX chunks the resend; _MEDIA_CAPTION_MAX (Telegram's own
+# caption limit is 1024) truncates a caption with a margin, since captions come straight from
+# unvalidated delegate input.
+MEDIA_GROUP_MAX = 10
+_MEDIA_CAPTION_MAX = 1000
+
 
 def _render_submission_card(row: dict, position: int, total: int, parts: list[dict] | None = None,
                              city_labels: tuple[str, str] | None = None) -> str:
@@ -5137,6 +5144,7 @@ async def _show_current_submission(target: types.Message, state: FSMContext):
     # rejects a one-element media group) -- byte-identical to the pre-09.1 legacy path, which
     # is exactly why the old review-phase9 tests stay green without being touched.
     bot = getattr(target, "bot", None)
+    resend_failures = 0
     i = 0
     while i < len(parts):
         part = parts[i]
@@ -5147,27 +5155,44 @@ async def _show_current_submission(target: types.Message, state: FSMContext):
             while j < len(parts) and parts[j].get("kind") == "photo":
                 group.append(parts[j])
                 j += 1
-            try:
-                if len(group) == 1 or bot is None:
-                    for p in group:
-                        await target.answer_photo(p["content"])
-                else:
-                    media = [
-                        types.InputMediaPhoto(media=p["content"], caption=p.get("caption") or None)
-                        for p in group
-                    ]
-                    await bot.send_media_group(admin_id, media=media)
-            except Exception as e:
-                logger.error(f"Failed to resend submission content, submission={current['id']}: {e}")
+            # CR-02: chunk to MEDIA_GROUP_MAX -- sendMediaGroup accepts 2-10 items, 11+ raises
+            # and previously silently dropped the whole group. Each chunk's failure is
+            # independent: chunk 3 failing must not swallow chunks already shown.
+            for chunk_start in range(0, len(group), MEDIA_GROUP_MAX):
+                chunk = group[chunk_start:chunk_start + MEDIA_GROUP_MAX]
+                try:
+                    if len(chunk) == 1 or bot is None:
+                        for p in chunk:
+                            await target.answer_photo(p["content"])
+                    else:
+                        media = [
+                            types.InputMediaPhoto(
+                                media=p["content"],
+                                caption=(p.get("caption") or None) and p["caption"][:_MEDIA_CAPTION_MAX],
+                            )
+                            for p in chunk
+                        ]
+                        await bot.send_media_group(admin_id, media=media)
+                except Exception as e:
+                    logger.error(f"Failed to resend submission content, submission={current['id']}: {e}")
+                    resend_failures += 1
             i = j
         elif kind == "document":
             try:
                 await target.answer_document(part["content"])
             except Exception as e:
                 logger.error(f"Failed to resend submission content, submission={current['id']}: {e}")
+                resend_failures += 1
             i += 1
         else:
             i += 1
+    if resend_failures:
+        # CR-02: one visible warning per render, not one per failed chunk -- the moderator
+        # must know evidence was hidden, without getting spammed.
+        try:
+            await target.answer("⚠️ Часть вложений показать не удалось — см. лог сервера.")
+        except Exception as e:
+            logger.error(f"submission attachment warning send failed, submission={current['id']}: {e}")
 
 
 @router.callback_query(F.data == "admin_game_review")
