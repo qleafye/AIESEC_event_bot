@@ -16,7 +16,7 @@ from aiogram.utils.keyboard import ReplyKeyboardBuilder
 from config import config
 from database.db import add_user, get_user, get_setting, set_setting, mark_reg_started, clear_reg_started, set_reg_step, set_user_subscribed, set_user_status, record_user_consent, get_user_consents, get_reg_started_track, get_reg_started_city, has_short_incomplete, _csv_safe, get_incomplete_rows_with_city
 from settings_schema import SETTINGS_SCHEMA, get_setting_typed  # REG-01/D-06 (06-04): REG_DEFAULTS derivation source; get_setting_typed (06-06 gate migration)
-from cities import CITIES, normalize_city, is_default_city, city_tab_base, cities_module_on, is_city_enabled, city_label, enabled_cities, tab_suffix  # Phase 07.1 (CITY-01/CITY-02/CITY-03): city registry — _CITY_TAG_MAP + city_row_tab + city fork below; tab_suffix added quick 260815-3hw (TABS-01/02/03, replaces the raw TAB_SUFFIX import)
+from cities import CITIES, normalize_city, is_default_city, city_tab_base, cities_module_on, is_city_enabled, city_label, enabled_cities, tab_suffix, get_setting_for_city, get_setting_typed_for_city  # Phase 07.1 (CITY-01/CITY-02/CITY-03): city registry — _CITY_TAG_MAP + city_row_tab + city fork below; tab_suffix added quick 260815-3hw (TABS-01/02/03, replaces the raw TAB_SUFFIX import); get_setting_for_city/get_setting_typed_for_city added Phase 09.2-04 (CITY-04): per-city text/mode resolver
 from handlers.states import Registration
 from keyboards.builders import (
     get_main_menu_kb,
@@ -1840,7 +1840,22 @@ async def cmd_start(message: types.Message, state: FSMContext, bot: Bot, command
         # UAT 17.08: a returning delegate gets its OWN text, never the newcomer's start_text
         # (which reads "заявка займёт 5-7 минут…" and made testers think registration reset).
         logger.info(f"User {user_id} already registered")
-        registered_text = await get_setting("start_text_registered") or DEFAULT_START_REGISTERED_TEXT
+        # Phase 09.2-04 (CITY-04/CONTEXT B): registered delegate's welcome-back text resolves
+        # by their own event_city — reuse the `user` row already fetched above (ME-05), no
+        # second get_user call. Each step is its own try/except: a city-resolve glitch must
+        # never cost the delegate their welcome-back message (falls back to the global text).
+        _registered_city = None
+        try:
+            if await cities_module_on():
+                _registered_city = normalize_city(user.get("event_city"))
+        except Exception as e:
+            logger.error(f"per-city city resolve for start_text_registered failed for {user_id}: {e}")
+            _registered_city = None
+        try:
+            registered_text = await get_setting_for_city("start_text_registered", _registered_city) or DEFAULT_START_REGISTERED_TEXT
+        except Exception as e:
+            logger.error(f"per-city start_text_registered resolve failed for {user_id}: {e}")
+            registered_text = await get_setting("start_text_registered") or DEFAULT_START_REGISTERED_TEXT
         await _send_welcome(message, registered_text, start_photo, await get_main_menu_kb(user_id), user_id)
 
         if user_id in config.ADMIN_IDS:
@@ -1896,6 +1911,16 @@ async def cmd_start(message: types.Message, state: FSMContext, bot: Bot, command
     except Exception as e:
         logger.error(f"get_reg_started_city failed for {user_id}: {e}")
     effective_city = dl_event_city or recovered_city
+
+    # Phase 09.2-04 (CITY-04/CONTEXT A/B): before the city screen, an unknown city correctly
+    # keeps the global start_text (that IS the right answer — CONTEXT A). Once the city is
+    # already known (deep-link or recovered from an in-flight reg_started row), the newcomer
+    # should see their own city's welcome text before ever reaching the city-fork screen.
+    if effective_city:
+        try:
+            start_text = await get_setting_for_city("start_text", effective_city) or DEFAULT_START_TEXT
+        except Exception as e:
+            logger.error(f"per-city start_text resolve failed for {user_id}: {e}")
 
     logger.info(f"User {user_id} not registered, showing welcome then registration")
     await _send_welcome(message, start_text, start_photo, None, user_id)
@@ -3047,7 +3072,14 @@ async def finalize_registration(message: types.Message, state: FSMContext, bot: 
     await state.clear()
     # Tatiana: «поздравляем»-скрипт приходит сразу после регистрации — всем (и pending, и
     # approved). Approve/reject досылают свои отдельные скрипты позже.
-    submitted = await get_setting("reg_complete_text") or DEFAULT_REG_COMPLETE_TEXT
+    # Phase 09.2-04 (CITY-04/CONTEXT B): resolved by the delegate's own event_city;
+    # data.get("event_city") is already read a few lines above (city_row_tab) in this SAME
+    # function on every track (short/full/party), no extra get_user call needed.
+    try:
+        submitted = await get_setting_for_city("reg_complete_text", data.get("event_city")) or DEFAULT_REG_COMPLETE_TEXT
+    except Exception as e:
+        logger.error(f"get_setting_for_city(reg_complete_text) failed for {message.from_user.id}: {e}")
+        submitted = await get_setting("reg_complete_text") or DEFAULT_REG_COMPLETE_TEXT
     try:
         await message.answer(submitted, reply_markup=ReplyKeyboardRemove(), parse_mode="HTML")
     except Exception:

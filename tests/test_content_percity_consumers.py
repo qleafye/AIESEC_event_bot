@@ -12,14 +12,36 @@ Task 2: `handlers/user_actions.py::show_contacts`/`show_info_menu`/`info_date`/`
     resolve the delegate's city once per screen and read their text keys through
     `cities.get_setting_for_city`; `show_program`/`show_speakers` stay untouched (RESEARCH
     Pitfall 1 -- their captions are not SETTINGS_SCHEMA keys).
+
+Phase 09.2 Plan 04 (CITY-04, CONTEXT B) — the registration-path texts + registration_mode,
+appended below (Plan 03's file per the plan's own file-scope, `tests/test_reg_percity_texts.py`
+was folded into this consumers file instead of a new file — orchestrator instruction, keeps
+"one consumers test file" as the single source for decision-B coverage):
+
+Task 1 (below, "Plan 04 Task 1"): `handlers/registration.py::cmd_start` resolves
+    `start_text`/`start_text_registered` by the delegate's own city; `finalize_registration`
+    resolves `reg_complete_text` the same way.
+Task 2 (below, "Plan 04 Task 2"): `handlers/registration.py::_approve_text_for` grows an
+    optional `city_code` param -- `approve_text__party` stays global, only the base
+    `approve_text` composes with a city override; `send_completion_and_bonus` resolves the
+    delegate's city once.
+Task 3 (below, "Plan 04 Task 3"): `handlers/registration.py::_resolve_track` grows an
+    optional `city_code` param for `registration_mode`; `_should_show_city_fork` is
+    unchanged and its independence from `registration_mode` is locked by a regression test
+    (RESEARCH Pitfall 2).
 """
 import asyncio
 import inspect
+
+from aiogram.fsm.context import FSMContext
+from aiogram.fsm.storage.base import StorageKey
+from aiogram.fsm.storage.memory import MemoryStorage
 
 from config import config
 from database import db
 from cities import per_city_key
 from handlers import user_actions as ua_mod
+from handlers import registration as reg_mod
 from keyboards.builders import get_main_menu_kb, MENU_BUTTONS
 
 ADMIN_ID = 920901
@@ -311,3 +333,246 @@ def test_city_resolve_failure_falls_back_to_global_for_contacts(tmp_path, monkey
     asyncio.run(ua_mod.show_contacts(msg))
     assert "@global_manager" in msg.answers[0][0]
     assert "@spb_manager" not in msg.answers[0][0]
+
+
+# ═══════════════════════════════════════════════════════════════════════════════════════════
+# Phase 09.2 Plan 04 (CITY-04) — registration.py: welcome/complete/approve texts + form mode
+# ═══════════════════════════════════════════════════════════════════════════════════════════
+
+REG_MSK_ID = 920910
+REG_SPB_ID = 920911
+REG_NEWCOMER_ID = 920912
+REG_NEWCOMER2_ID = 920913
+REG_RETURNING_NO_CITY_ID = 920914
+
+
+class _RegUser:
+    def __init__(self, uid):
+        self.id = uid
+        self.username = "testuser"
+        self.full_name = "Test User"
+
+
+class _RegChat:
+    def __init__(self, cid):
+        self.id = cid
+
+
+class _RegMessage:
+    """Copied from tests/test_uat1708_hotfixes.py::_KBCapturingMessage — captures every
+    (text, reply_markup) sent via .answer()/.answer_photo()."""
+
+    def __init__(self, text, uid):
+        self.text = text
+        self.from_user = _RegUser(uid)
+        self.chat = _RegChat(uid)
+        self.sent = []
+
+    async def answer(self, text=None, reply_markup=None, parse_mode=None, *a, **k):
+        self.sent.append((text, reply_markup))
+
+    async def answer_photo(self, photo, caption=None, reply_markup=None, parse_mode=None, *a, **k):
+        self.sent.append((caption, reply_markup))
+
+
+class RegFakeCommand:
+    def __init__(self, args=None):
+        self.args = args
+
+
+def _new_reg_state(uid: int) -> FSMContext:
+    return FSMContext(storage=MemoryStorage(), key=StorageKey(bot_id=1, chat_id=uid, user_id=uid))
+
+
+def _reg_register_delegate(uid, event_city=None, status="approved"):
+    asyncio.run(db.add_user({
+        "telegram_id": uid,
+        "full_name": f"Delegate {uid}",
+        "registration_date": "2026-08-17 00:00:00",
+        "event_city": event_city,
+    }))
+    asyncio.run(db.set_user_status(uid, status))
+
+
+# ── Plan 04 Task 1: welcome/registered/reg_complete texts resolve by delegate city ─────────
+
+def test_registered_delegate_start_text_registered_city_override(tmp_path):
+    _db_ready(tmp_path, name="test_reg04_registered_override.db")
+    _enable_cities()
+    _reg_register_delegate(REG_SPB_ID, event_city="spb")
+    _reg_register_delegate(MSK_DELEGATE_ID, event_city="msk")
+    asyncio.run(db.set_setting("start_text_registered", "Общий текст для вернувшихся"))
+    _set_override("start_text_registered", "spb", "СПб текст для вернувшихся")
+
+    spb_msg = _RegMessage("/start", REG_SPB_ID)
+    asyncio.run(reg_mod.cmd_start(spb_msg, _new_reg_state(REG_SPB_ID), bot=object(), command=None))
+    assert spb_msg.sent[0][0] == "СПб текст для вернувшихся"
+
+    msk_msg = _RegMessage("/start", MSK_DELEGATE_ID)
+    asyncio.run(reg_mod.cmd_start(msk_msg, _new_reg_state(MSK_DELEGATE_ID), bot=object(), command=None))
+    assert msk_msg.sent[0][0] == "Общий текст для вернувшихся"
+
+
+def test_registered_delegate_without_event_city_defaults_without_crash(tmp_path):
+    _db_ready(tmp_path, name="test_reg04_registered_no_city.db")
+    _enable_cities()
+    _reg_register_delegate(REG_RETURNING_NO_CITY_ID, event_city=None)
+    asyncio.run(db.set_setting("start_text_registered", "Общий текст для вернувшихся"))
+
+    msg = _RegMessage("/start", REG_RETURNING_NO_CITY_ID)
+    asyncio.run(reg_mod.cmd_start(msg, _new_reg_state(REG_RETURNING_NO_CITY_ID), bot=object(), command=None))
+    assert msg.sent  # did not raise
+    assert msg.sent[0][0] == "Общий текст для вернувшихся"
+
+
+def test_newcomer_unknown_city_gets_global_start_text(tmp_path):
+    """CONTEXT A: before the city fork screen is even reached, an unresolved city must NOT
+    invent a per-city text -- the global start_text is the correct answer."""
+    _db_ready(tmp_path, name="test_reg04_newcomer_unknown_city.db")
+    _enable_cities()
+    asyncio.run(db.set_setting("start_text", "Общий текст новичку"))
+    _set_override("start_text", "spb", "СПб текст новичку")
+
+    msg = _RegMessage("/start", REG_NEWCOMER_ID)
+    asyncio.run(reg_mod.cmd_start(msg, _new_reg_state(REG_NEWCOMER_ID), bot=object(), command=None))
+    assert msg.sent[0][0] == "Общий текст новичку"
+
+
+def test_newcomer_deep_link_city_gets_city_start_text(tmp_path):
+    _db_ready(tmp_path, name="test_reg04_newcomer_deep_link.db")
+    _enable_cities()
+    asyncio.run(db.set_setting("start_text", "Общий текст новичку"))
+    _set_override("start_text", "spb", "СПб текст новичку")
+
+    msg = _RegMessage("/start", REG_NEWCOMER_ID)
+    asyncio.run(reg_mod.cmd_start(msg, _new_reg_state(REG_NEWCOMER_ID), bot=object(), command=RegFakeCommand("city_spb")))
+    assert msg.sent[0][0] == "СПб текст новичку"
+
+
+def test_newcomer_recovered_city_gets_city_start_text(tmp_path):
+    """Second /start (bare, no deep-link) after a first /start already recorded the city
+    into reg_started -- the recovered city must drive the welcome text, same as a fresh
+    deep-link (RESEARCH: recovered_city and dl_event_city are equally authoritative)."""
+    _db_ready(tmp_path, name="test_reg04_newcomer_recovered.db")
+    _enable_cities()
+    asyncio.run(db.set_setting("start_text", "Общий текст новичку"))
+    _set_override("start_text", "spb", "СПб текст новичку")
+    asyncio.run(db.mark_reg_started(REG_NEWCOMER2_ID, "someuser", None, "spb"))
+
+    msg = _RegMessage("/start", REG_NEWCOMER2_ID)
+    asyncio.run(reg_mod.cmd_start(msg, _new_reg_state(REG_NEWCOMER2_ID), bot=object(), command=None))
+    assert msg.sent[0][0] == "СПб текст новичку"
+
+
+def test_percity_welcome_texts_module_off_parity(tmp_path):
+    """Module OFF: overrides written for both keys must be invisible -- registered AND
+    newcomer branches both fall back to the plain global reads, byte-identical to today."""
+    _db_ready(tmp_path, name="test_reg04_offparity.db")
+    # event_city_enabled left at its default OFF.
+    _reg_register_delegate(REG_SPB_ID, event_city="spb")
+    asyncio.run(db.set_setting("start_text_registered", "Общий текст для вернувшихся"))
+    _set_override("start_text_registered", "spb", "СПб текст для вернувшихся")
+    asyncio.run(db.set_setting("start_text", "Общий текст новичку"))
+    _set_override("start_text", "spb", "СПб текст новичку")
+
+    reg_msg = _RegMessage("/start", REG_SPB_ID)
+    asyncio.run(reg_mod.cmd_start(reg_msg, _new_reg_state(REG_SPB_ID), bot=object(), command=None))
+    assert reg_msg.sent[0][0] == "Общий текст для вернувшихся"
+
+    new_msg = _RegMessage("/start", REG_NEWCOMER_ID)
+    asyncio.run(reg_mod.cmd_start(new_msg, _new_reg_state(REG_NEWCOMER_ID), bot=object(), command=RegFakeCommand("city_spb")))
+    assert new_msg.sent[0][0] == "Общий текст новичку"
+
+
+def test_start_texts_fall_back_to_default_constants_when_unset(tmp_path):
+    _db_ready(tmp_path, name="test_reg04_defaults.db")
+    _enable_cities()
+    msg = _RegMessage("/start", REG_NEWCOMER_ID)
+    asyncio.run(reg_mod.cmd_start(msg, _new_reg_state(REG_NEWCOMER_ID), bot=object(), command=None))
+    assert msg.sent[0][0] == reg_mod.DEFAULT_START_TEXT
+
+
+class _RegFSMFakeUser:
+    def __init__(self, uid, username=None):
+        self.id = uid
+        self.username = username
+
+
+class _RegFSMFakeChat:
+    def __init__(self, cid):
+        self.id = cid
+
+
+class _RegFinalizeMessage:
+    def __init__(self, uid):
+        self.from_user = _RegFSMFakeUser(uid, "test")
+        self.chat = _RegFSMFakeChat(uid)
+        self.answers = []
+
+    async def answer(self, text, parse_mode=None, reply_markup=None):
+        self.answers.append((text, parse_mode, reply_markup))
+
+
+class _RegFinalizeBot:
+    def __init__(self):
+        self.sent = []
+
+    async def send_message(self, chat_id, text, parse_mode=None, reply_markup=None):
+        self.sent.append((chat_id, text))
+
+
+def _finalize_with_city(uid, event_city, monkeypatch, reg_complete_override=None):
+    async def _fake_row(data):
+        return []
+
+    async def _fake_append(row):
+        return None
+
+    monkeypatch.setattr(reg_mod, "_sheet_dispatch", lambda *_a, **_kw: (_fake_row, _fake_append))
+    monkeypatch.setattr(reg_mod, "_spawn", lambda coro: coro.close())
+
+    bot = _RegFinalizeBot()
+    state = _new_reg_state(uid)
+    data = {"full_name": "Тест Тестов", "username": "@test", "participant_type": "full"}
+    if event_city is not None:
+        data["event_city"] = event_city
+    asyncio.run(state.update_data(**data))
+    message = _RegFinalizeMessage(uid)
+    asyncio.run(reg_mod.finalize_registration(message, state, bot))
+    return message
+
+
+def test_reg_complete_text_resolves_by_delegate_city(tmp_path, monkeypatch):
+    _db_ready(tmp_path, name="test_reg04_complete_override.db")
+    _enable_cities()
+    asyncio.run(db.set_setting("start_text", "irrelevant"))
+    asyncio.run(db.set_setting("reg_complete_text", "Общий текст «заявка принята»"))
+    _set_override("reg_complete_text", "spb", "СПб текст «заявка принята»")
+
+    message = _finalize_with_city(920920, "spb", monkeypatch)
+    assert message.answers[0][0] == "СПб текст «заявка принята»"
+
+
+def test_reg_complete_text_no_override_falls_back_to_global(tmp_path, monkeypatch):
+    _db_ready(tmp_path, name="test_reg04_complete_no_override.db")
+    _enable_cities()
+    asyncio.run(db.set_setting("reg_complete_text", "Общий текст «заявка принята»"))
+    # No override written for msk.
+    message = _finalize_with_city(920921, "msk", monkeypatch)
+    assert message.answers[0][0] == "Общий текст «заявка принята»"
+
+
+def test_reg_complete_text_module_off_parity(tmp_path, monkeypatch):
+    _db_ready(tmp_path, name="test_reg04_complete_offparity.db")
+    # event_city_enabled left OFF.
+    asyncio.run(db.set_setting("reg_complete_text", "Общий текст «заявка принята»"))
+    _set_override("reg_complete_text", "spb", "СПб текст «заявка принята»")
+    message = _finalize_with_city(920922, "spb", monkeypatch)
+    assert message.answers[0][0] == "Общий текст «заявка принята»"
+
+
+def test_registration_texts_use_resolver():
+    assert "get_setting_for_city" in inspect.getsource(reg_mod.cmd_start)
+    assert 'get_setting_for_city("reg_complete_text"' in inspect.getsource(reg_mod.finalize_registration)
+
+
