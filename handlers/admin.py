@@ -4883,13 +4883,20 @@ async def _get_submission_and_task(submission_id: int) -> tuple[dict | None, dic
     return submission, task
 
 
-def _render_submission_card(row: dict, position: int, total: int, parts: list[dict] | None = None) -> str:
+def _render_submission_card(row: dict, position: int, total: int, parts: list[dict] | None = None,
+                             city_labels: tuple[str, str] | None = None) -> str:
     """HTML card for one pending submission; all free-text (task text, submitter name) escaped
     — T-09-12: this is the FIRST render of delegate-supplied content to a manager.
 
     Phase 09.1 (A): `parts` defaults to None so every pre-existing call site/test keeps the
     single content_type/content rendering byte-for-byte. Pass `parts` (from
-    `get_submission_parts_or_legacy`) to render every part of a free-form submission instead."""
+    `get_submission_parts_or_legacy`) to render every part of a free-form submission instead.
+
+    Phase 09.1 (B): `city_labels` (delegate_label, task_label) defaults to None so this stays
+    byte-identical when the cities module is off. This function is synchronous and cannot
+    itself call cities_module_on()/city_label() -- the caller (_show_current_submission)
+    resolves both labels ONCE and hands them down, same "resolve once" shape the confirm
+    card uses for gt_city_step_shown."""
     def esc(v):
         return html_module.escape(str(v)) if v not in (None, "", "-") else None
 
@@ -4900,6 +4907,10 @@ def _render_submission_card(row: dict, position: int, total: int, parts: list[di
     name = esc(row.get("user_full_name")) or "—"
     uname = esc(row.get("user_username"))
     lines.append(f"👤 {name}" + (f" ({uname})" if uname else ""))
+    if city_labels is not None:
+        delegate_label, task_label = city_labels
+        lines.append(f"🏙 Город делегата: {esc(delegate_label) or '—'}")
+        lines.append(f"🎯 Кому задание: {esc(task_label) or '—'}")
     proof_label = _proof_types_label(row.get("task_proof_type"))
     lines.append(f"Тип подтверждения: {proof_label}")
     if parts is None:
@@ -4956,12 +4967,17 @@ async def _show_current_submission(target: types.Message, state: FSMContext):
     byte the same batched-pagination loop as `_show_current_card` (limit=50 per batch, CLAUDE.md:
     never one query for "all at once")."""
     admin_id = state.key.user_id
+    # Phase 09.1 (B, T-091-06): scope resolved from the CALLING admin's id via the same
+    # resolver the applications/receipts queues use -- never from callback_data. Module off
+    # -> scope is None -> get_pending_submissions_count/get_pending_submissions behave exactly
+    # as before 09.1.
+    scope = await _admin_city_scope(admin_id)
     skipped = set((await state.get_data()).get("grev_skipped", []))
-    total = await get_pending_submissions_count()
+    total = await get_pending_submissions_count(city_scope=scope)
     offset = 0
     visible: list[dict] = []
     while not visible and offset < total:
-        batch = await get_pending_submissions(limit=50, offset=offset)
+        batch = await get_pending_submissions(limit=50, offset=offset, city_scope=scope)
         if not batch:
             break
         visible = [s for s in batch if s["id"] not in skipped]
@@ -4975,8 +4991,15 @@ async def _show_current_submission(target: types.Message, state: FSMContext):
     # parts_or_legacy synthesizes exactly one part from content/content_type unless content is
     # itself empty (submission-призрак), so this stays a strict superset of the old behavior.
     parts = await get_submission_parts_or_legacy(current)
+    # Phase 09.1 (B): city_labels stays None (no new lines) unless the module is on.
+    city_labels = None
+    if await cities_module_on():
+        delegate_label = await city_label(normalize_city(current.get("user_event_city")))
+        task_code = current.get("task_event_city")
+        task_label = await city_label(task_code) if task_code else "🌍 Все города"
+        city_labels = (delegate_label, task_label)
     await target.answer(
-        _render_submission_card(current, position, total, parts),
+        _render_submission_card(current, position, total, parts, city_labels),
         parse_mode="HTML",
         reply_markup=_submission_card_kb(current["id"], current["task_coins"]),
     )
@@ -5217,8 +5240,15 @@ def _build_game_matrix(tasks: list[dict], submissions: list[dict]) -> tuple[list
     """Pure builder for the «Гейма» matrix tab (участники x задания). `tasks` must already be
     sorted oldest-first (created_at ASC) by the caller -- the earliest-created task lands in the
     leftmost column. Only participants with at least one submission become a row (CLAUDE.md:
-    1000+ registered users with zero submissions must never turn into 1000+ empty rows)."""
-    headers = ["telegram_id", "ФИО", "Юзернейм"] + [(t["text"] or "")[:40] for t in tasks]
+    1000+ registered users with zero submissions must never turn into 1000+ empty rows).
+
+    Phase 09.1 (B, CONTEXT.md "Уточнение (ночь 17→18.08…)"): this tab is NOT cut by the
+    viewing admin's city_scope -- it is rebuilt by a background debounce (plan 09.1-04) with no
+    admin identity, and `sync_named_worksheet` clears the whole sheet on every rebuild, so a
+    partial rebuild would erase other cities' rows. "Уважает city_scope" is implemented here as
+    a "Город" COLUMN (filterable in Sheets itself), not a row filter -- only the LIVE «🎮
+    Проверка заданий» queue above is actually scoped."""
+    headers = ["telegram_id", "ФИО", "Город", "Юзернейм"] + [(t["text"] or "")[:40] for t in tasks]
 
     subs_by_user: dict[int, list[dict]] = {}
     for s in submissions:
@@ -5227,7 +5257,8 @@ def _build_game_matrix(tasks: list[dict], submissions: list[dict]) -> tuple[list
     rows: list[list] = []
     for user_id, user_subs in subs_by_user.items():
         sample = user_subs[-1]
-        row = [user_id, sample.get("user_full_name") or "-", sample.get("user_username") or "-"]
+        row = [user_id, sample.get("user_full_name") or "-", sample.get("user_event_city") or "-",
+               sample.get("user_username") or "-"]
         for t in tasks:
             task_subs = [s for s in user_subs if s["task_id"] == t["id"]]
             if not task_subs:
@@ -5252,7 +5283,7 @@ def _build_game_history(submissions: list[dict]) -> tuple[list[str], list[list]]
     row, NO status filter. This is the whole mechanism D-05 asked for: resolving "я сдавал, мне
     не засчитали" needs every attempt visible, including rejected ones and later resubmissions
     of the same (task, user) pair."""
-    headers = ["ID сдачи", "Задание", "Категория", "Участник", "Юзернейм", "Тип", "Отправлено",
+    headers = ["ID сдачи", "Задание", "Категория", "Участник", "Город", "Юзернейм", "Тип", "Отправлено",
                "Статус", "Проверил", "Когда", "Начислено", "Причина отказа"]
     rows = [
         [
@@ -5260,6 +5291,7 @@ def _build_game_history(submissions: list[dict]) -> tuple[list[str], list[list]]
             (s.get("task_text") or "-")[:60],
             s.get("task_category") or "-",
             s.get("user_full_name") or "-",
+            s.get("user_event_city") or "-",
             s.get("user_username") or "-",
             _GAME_PROOF_LABELS.get(s.get("content_type"), s.get("content_type") or "-"),
             s.get("submitted_at") or "-",

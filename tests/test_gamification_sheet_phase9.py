@@ -89,7 +89,10 @@ def test_build_game_matrix_headers_are_participants_plus_one_column_per_task():
         _task(2, text=long_text, created_at="2026-08-05 10:00:00"),
     ]
     headers, rows = admin_mod._build_game_matrix(tasks, [])
-    assert headers == ["telegram_id", "ФИО", "Юзернейм", "Задание А", long_text[:40]]
+    # Phase 09.1 (B, CONTEXT.md "Уточнение…"): "Город" column, second, right after "ФИО" --
+    # the matrix tab is a whole-event export (no per-admin city_scope), so this is the ONLY
+    # way it "respects" city_scope: a filter available in the sheet itself, not a row cut.
+    assert headers == ["telegram_id", "ФИО", "Город", "Юзернейм", "Задание А", long_text[:40]]
     assert rows == []
 
 
@@ -112,11 +115,13 @@ def test_build_game_matrix_cell_reflects_latest_active_submission_status():
     headers, rows = admin_mod._build_game_matrix(tasks, submissions)
     by_uid = {r[0]: r for r in rows}
 
-    assert by_uid[101][3:] == ["✅ 30", "-"]
-    assert by_uid[102][3:] == ["⏳", "-"]
-    assert by_uid[103][3:] == ["❌", "-"]
-    assert by_uid[104][3:] == ["-", "✅ 15"]
-    assert by_uid[105][3:] == ["✅ 25", "-"]  # resubmission after rejection wins, not "❌"
+    # index 4+: task cells (0=telegram_id, 1=ФИО, 2=Город, 3=Юзернейм)
+    assert by_uid[101][4:] == ["✅ 30", "-"]
+    assert by_uid[102][4:] == ["⏳", "-"]
+    assert by_uid[103][4:] == ["❌", "-"]
+    assert by_uid[104][4:] == ["-", "✅ 15"]
+    assert by_uid[105][4:] == ["✅ 25", "-"]  # resubmission after rejection wins, not "❌"
+    assert by_uid[101][2] == "-"  # no user_event_city on the hand-built fixture -> "-"
 
 
 def test_build_game_matrix_rows_only_participants_with_at_least_one_submission():
@@ -146,18 +151,20 @@ def test_build_game_history_rows_include_every_submission_including_rejected():
                     reviewed_by=ADMIN_ID, reviewed_at="2026-08-12 09:05:00"),
     ]
     headers, rows = admin_mod._build_game_history(submissions)
-    assert headers == ["ID сдачи", "Задание", "Категория", "Участник", "Юзернейм", "Тип",
+    # Phase 09.1 (B): "Город" column added after "Участник" (same placement as the matrix tab).
+    assert headers == ["ID сдачи", "Задание", "Категория", "Участник", "Город", "Юзернейм", "Тип",
                         "Отправлено", "Статус", "Проверил", "Когда", "Начислено",
                         "Причина отказа"]
     assert len(rows) == 4  # every submission is its own row, including the rejected one
     ids = [r[0] for r in rows]
     assert ids == [1, 2, 3, 4]
+    assert rows[0][4] == "-"  # no user_event_city on the hand-built fixture -> "-"
     rejected_row = rows[2]
-    assert rejected_row[7] == "Отклонено"
-    assert rejected_row[11] == "не тот скрин"
+    assert rejected_row[8] == "Отклонено"
+    assert rejected_row[12] == "не тот скрин"
     approved_row = rows[1]
-    assert approved_row[7] == "Одобрено"
-    assert approved_row[10] == 30
+    assert approved_row[8] == "Одобрено"
+    assert approved_row[11] == 30
 
 
 # ── Task 1: admin_game_sync_sheet handler — two independent writes ─────────────────────────

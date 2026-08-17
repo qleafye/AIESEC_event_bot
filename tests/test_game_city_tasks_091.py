@@ -388,3 +388,102 @@ def test_module_off_show_game_tasks_calls_list_active_tasks_without_kwargs(tmp_p
     message = FakeMessage(user_id=DELEGATE_ID)
     asyncio.run(ua_mod.show_game_tasks(message))
     assert calls == [((), {})]
+
+
+# ── Task 3: moderation-queue city scope + card city lines + sheet "Город" column ────────────
+
+def _seed_pending_two_cities(tmp_path):
+    _db_ready(tmp_path)
+    asyncio.run(db.set_setting("event_city_enabled", "on"))
+    config.ADMIN_IDS = [ADMIN_ID]
+    task_id = asyncio.run(db.create_task("t", "Light", 10, "text", "2099-01-01 00:00:00", None))
+    _seed_submission(task_id, 201, "spb")
+    _seed_submission(task_id, 202, "spb")
+    _seed_submission(task_id, 203, "msk")
+    return task_id
+
+
+def test_show_current_submission_city_scoped_spb_excludes_msk(tmp_path):
+    _seed_pending_two_cities(tmp_path)
+    asyncio.run(cities.set_admin_city(ADMIN_ID, "spb"))
+    state = _new_state(ADMIN_ID)
+    target = FakeMessage()
+    asyncio.run(admin_mod._show_current_submission(target, state))
+    assert "1/2" in target.answers_sent[-1]  # only the 2 spb submissions are in scope
+
+
+def test_show_current_submission_module_off_sees_everything(tmp_path):
+    _db_ready(tmp_path)
+    task_id = asyncio.run(db.create_task("t", "Light", 10, "text", "2099-01-01 00:00:00", None))
+    config.ADMIN_IDS = [ADMIN_ID]
+    _seed_submission(task_id, 201, "spb")
+    _seed_submission(task_id, 202, "msk")
+    state = _new_state(ADMIN_ID)
+    target = FakeMessage()
+    asyncio.run(admin_mod._show_current_submission(target, state))
+    assert "1/2" in target.answers_sent[-1]  # module off -- unfiltered, same as pre-09.1
+
+
+def test_show_current_submission_card_prints_both_cities_when_module_on(tmp_path):
+    task_id = _seed_pending_two_cities(tmp_path)
+    asyncio.run(cities.set_admin_city(ADMIN_ID, "spb"))
+    state = _new_state(ADMIN_ID)
+    target = FakeMessage()
+    asyncio.run(admin_mod._show_current_submission(target, state))
+    card_text = target.answers_sent[-1]
+    assert "🏙 Город делегата:" in card_text
+    assert "🎯 Кому задание:" in card_text
+    assert "Все города" in card_text  # this task has event_city=None
+
+
+def test_show_current_submission_card_no_city_lines_when_module_off(tmp_path):
+    _db_ready(tmp_path)
+    task_id = asyncio.run(db.create_task("t", "Light", 10, "text", "2099-01-01 00:00:00", None))
+    config.ADMIN_IDS = [ADMIN_ID]
+    _seed_submission(task_id, 201, "spb")
+    state = _new_state(ADMIN_ID)
+    target = FakeMessage()
+    asyncio.run(admin_mod._show_current_submission(target, state))
+    card_text = target.answers_sent[-1]
+    assert "🏙 Город делегата:" not in card_text
+    assert "🎯 Кому задание:" not in card_text
+
+
+def test_render_submission_card_city_labels_none_is_byte_identical():
+    """Regression: the pre-09.1 call shape (no city_labels arg) renders no new lines."""
+    row = {
+        "task_text": "t", "task_category": "Light", "task_coins": 10,
+        "user_full_name": "X", "user_username": None, "task_proof_type": "text",
+        "content_type": "text", "content": "готово",
+    }
+    text = admin_mod._render_submission_card(row, 1, 1)
+    assert "🏙" not in text
+    assert "🎯" not in text
+
+
+def test_render_submission_card_with_city_labels():
+    row = {
+        "task_text": "t", "task_category": "Light", "task_coins": 10,
+        "user_full_name": "X", "user_username": None, "task_proof_type": "text",
+        "content_type": "text", "content": "готово",
+    }
+    text = admin_mod._render_submission_card(row, 1, 1, city_labels=("Санкт-Петербург", "🌍 Все города"))
+    assert "🏙 Город делегата: Санкт-Петербург" in text
+    assert "🎯 Кому задание: 🌍 Все города" in text
+
+
+def test_sync_game_sheets_matrix_and_history_carry_city_column(tmp_path):
+    """End-to-end: list_all_submissions() (Task 1) feeds straight into the "Город" column
+    (Task 3) without the sync handler itself needing any change."""
+    _db_ready(tmp_path)
+    config.ADMIN_IDS = [ADMIN_ID]
+    task_id = asyncio.run(db.create_task("t", "Light", 10, "text", "2099-01-01 00:00:00", None))
+    _seed_submission(task_id, 201, "spb")
+    tasks = asyncio.run(db.list_all_tasks())
+    submissions = asyncio.run(db.list_all_submissions())
+    m_headers, m_rows = admin_mod._build_game_matrix(tasks, submissions)
+    h_headers, h_rows = admin_mod._build_game_history(submissions)
+    assert m_headers[:3] == ["telegram_id", "ФИО", "Город"]
+    assert m_rows[0][2] == "spb"
+    assert h_headers[:5] == ["ID сдачи", "Задание", "Категория", "Участник", "Город"]
+    assert h_rows[0][4] == "spb"
