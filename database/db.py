@@ -112,6 +112,11 @@ async def init_db():
             )
         ''')
         await db.execute('CREATE INDEX IF NOT EXISTS idx_coins_user ON coins(user_id)')
+        # Phase 14 (GAME-09): 'manual' | 'task' | NULL = легаси/система -- distinguishes a
+        # manager's hand-edit from a task-award credit at the DATA level (not by parsing the
+        # `reason` string prefix, which is fragile -- 14-RESEARCH.md Pitfall 6). Every existing
+        # add_coins call site keeps writing NULL until this plan's own call sites pass source=.
+        await _ensure_column(db, "coins", "source", "TEXT")
 
         # Phase 8 (ROLE-02, D-11): staff roster -- who holds which role, audited (added_by/
         # added_at). Composite PRIMARY KEY naturally supports multi-role (D-08, one row per
@@ -648,13 +653,18 @@ async def get_city_counts() -> list[tuple]:
 
 # ── Phase 1: coins ledger (append-only) ──────────────────────────────────────
 
-async def add_coins(user_id: int, delta: int, reason: str | None = None, changed_by: int | None = None):
-    """Append a ledger row. Never UPDATE — balance is the derived SUM(delta)."""
+async def add_coins(user_id: int, delta: int, reason: str | None = None, changed_by: int | None = None,
+                     source: str | None = None):
+    """Append a ledger row. Never UPDATE — balance is the derived SUM(delta).
+
+    Phase 14 (GAME-09): `source` distinguishes a manual manager edit ('manual') from a
+    task-award credit ('task') at the data level. Default None preserves every pre-existing
+    call site's behavior byte-for-byte (NULL = legacy/system, per Pitfall 6 in 14-RESEARCH.md)."""
     timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     async with aiosqlite.connect(config.DB_PATH) as db:
         await db.execute(
-            "INSERT INTO coins (user_id, delta, reason, changed_by, timestamp) VALUES (?, ?, ?, ?, ?)",
-            (user_id, delta, reason, changed_by, timestamp),
+            "INSERT INTO coins (user_id, delta, reason, changed_by, timestamp, source) VALUES (?, ?, ?, ?, ?, ?)",
+            (user_id, delta, reason, changed_by, timestamp, source),
         )
         await db.commit()
 
