@@ -12,6 +12,10 @@ tests/test_city_admin_phase72.py / tests/test_city_all_mode_093.py.
 """
 import asyncio
 
+from aiogram.fsm.context import FSMContext
+from aiogram.fsm.storage.base import StorageKey
+from aiogram.fsm.storage.memory import MemoryStorage
+
 from config import config
 from database import db
 from handlers import admin as admin_mod
@@ -39,9 +43,36 @@ def _all_cities_mode(tmp_path):
     assert ok is True
 
 
+def _new_state(uid: int) -> FSMContext:
+    return FSMContext(storage=MemoryStorage(), key=StorageKey(bot_id=1, chat_id=uid, user_id=uid))
+
+
 class FakeUser:
     def __init__(self, uid):
         self.id = uid
+
+
+class FakeMessage:
+    """Same double as tests/test_city_admin_phase72.py — captures both edit_text (callback
+    re-render) and answer (new-message target)."""
+
+    def __init__(self):
+        self.text = None
+        self.markup = None
+        self.edit_calls = 0
+        self.answers_sent = []
+        self.answer_markups = []
+
+    async def edit_text(self, text, parse_mode=None, reply_markup=None):
+        self.text = text
+        self.markup = reply_markup
+        self.edit_calls += 1
+
+    async def answer(self, text, parse_mode=None, reply_markup=None):
+        self.answers_sent.append(text)
+        self.answer_markups.append(reply_markup)
+        self.text = text
+        self.markup = reply_markup
 
 
 class FakeExportMessage:
@@ -74,6 +105,16 @@ def _seed_application(telegram_id, event_city, status="pending", full_name=None)
         "event_city": event_city,
     }))
     asyncio.run(db.set_user_status(telegram_id, status))
+
+
+def _seed_receipt(telegram_id, event_city, full_name=None):
+    asyncio.run(db.add_user({
+        "telegram_id": telegram_id,
+        "full_name": full_name or f"User {telegram_id}",
+        "registration_date": f"2026-01-01 09:{telegram_id % 60:02d}:00",
+        "event_city": event_city,
+    }))
+    asyncio.run(db.update_payment_status(telegram_id, "receipt_sent", receipt_file_id=f"F{telegram_id}"))
 
 
 def _seed_task(text="Пост со скрином", category="Light", coins=30, proof_type="text",
@@ -188,3 +229,126 @@ def test_show_admin_export_module_off_caption_byte_identical(tmp_path):
     document, caption = cb.message.documents[0]
     assert document.filename == "users.csv"
     assert caption == "База данных пользователей"
+
+
+# ── Task 2: applications queue — card names the DELEGATE's own city in ALL_CITIES mode ─────
+
+def test_show_current_card_all_cities_each_card_names_its_own_delegate_city(tmp_path):
+    _all_cities_mode(tmp_path)
+    _seed_application(1, "msk", full_name="Moscow Delegate")
+    _seed_application(2, "spb", full_name="Piter Delegate")
+    state = _new_state(ADMIN_ID)
+    target1 = FakeMessage()
+    asyncio.run(admin_mod._show_current_card(target1, state))
+    assert "· 🏙 Москва" in target1.text
+    assert cities.ALL_CITIES_LABEL not in target1.text
+    # skip the first card, the second (other city) must be named correctly too
+    asyncio.run(state.update_data(appr_skipped=[1]))
+    target2 = FakeMessage()
+    asyncio.run(admin_mod._show_current_card(target2, state))
+    assert "· 🏙 Санкт-Петербург" in target2.text
+    assert cities.ALL_CITIES_LABEL not in target2.text
+
+
+def test_show_current_card_all_cities_null_city_uses_default(tmp_path):
+    _all_cities_mode(tmp_path)
+    _seed_application(1, None)
+    state = _new_state(ADMIN_ID)
+    target = FakeMessage()
+    asyncio.run(admin_mod._show_current_card(target, state))
+    default_label = asyncio.run(cities.city_label(cities.default_city_code()))
+    assert f"· 🏙 {default_label}" in target.text
+
+
+def test_show_current_card_selected_city_still_uses_header_label(tmp_path):
+    """Regression: a real selected city must still pass `label` straight through unchanged."""
+    _admin_ready(tmp_path)
+    asyncio.run(db.set_setting("event_city_enabled", "on"))
+    asyncio.run(cities.set_admin_city(ADMIN_ID, "spb"))
+    _seed_application(1, "spb", full_name="Piter Delegate")
+    state = _new_state(ADMIN_ID)
+    target = FakeMessage()
+    asyncio.run(admin_mod._show_current_card(target, state))
+    assert "· 🏙 Санкт-Петербург" in target.text
+
+
+def test_show_current_card_module_off_header_byte_identical(tmp_path):
+    _admin_ready(tmp_path)
+    _seed_application(1, "spb")
+    state = _new_state(ADMIN_ID)
+    target = FakeMessage()
+    asyncio.run(admin_mod._show_current_card(target, state))
+    assert "🏙" not in target.text.split("\n")[0]
+
+
+def test_show_current_card_all_cities_empty_queue_names_mode(tmp_path):
+    _all_cities_mode(tmp_path)
+    state = _new_state(ADMIN_ID)
+    target = FakeMessage()
+    asyncio.run(admin_mod._show_current_card(target, state))
+    assert target.answers_sent == ["✅ Заявок нет — «🌍 Все города»."]
+
+
+# ── Task 2: receipts queue — same contract as applications queue ───────────────────────────
+
+def test_show_current_receipt_card_all_cities_each_card_names_its_own_delegate_city(tmp_path):
+    _all_cities_mode(tmp_path)
+    _seed_receipt(1, "msk", full_name="Moscow Delegate")
+    _seed_receipt(2, "spb", full_name="Piter Delegate")
+    state = _new_state(ADMIN_ID)
+    target1 = FakeMessage()
+    asyncio.run(admin_mod._show_current_receipt_card(target1, state))
+    assert "· 🏙 Москва" in target1.text
+    assert cities.ALL_CITIES_LABEL not in target1.text
+    asyncio.run(state.update_data(rcpt_skipped=[1]))
+    target2 = FakeMessage()
+    asyncio.run(admin_mod._show_current_receipt_card(target2, state))
+    assert "· 🏙 Санкт-Петербург" in target2.text
+    assert cities.ALL_CITIES_LABEL not in target2.text
+
+
+def test_show_current_receipt_card_selected_city_still_uses_header_label(tmp_path):
+    _admin_ready(tmp_path)
+    asyncio.run(db.set_setting("event_city_enabled", "on"))
+    asyncio.run(cities.set_admin_city(ADMIN_ID, "spb"))
+    _seed_receipt(1, "spb", full_name="Piter Delegate")
+    state = _new_state(ADMIN_ID)
+    target = FakeMessage()
+    asyncio.run(admin_mod._show_current_receipt_card(target, state))
+    assert "· 🏙 Санкт-Петербург" in target.text
+
+
+def test_show_current_receipt_card_module_off_header_byte_identical(tmp_path):
+    _admin_ready(tmp_path)
+    _seed_receipt(1, "spb")
+    state = _new_state(ADMIN_ID)
+    target = FakeMessage()
+    asyncio.run(admin_mod._show_current_receipt_card(target, state))
+    assert "🏙" not in target.text.split("\n")[0]
+
+
+def test_show_current_receipt_card_all_cities_empty_queue_names_mode(tmp_path):
+    _all_cities_mode(tmp_path)
+    state = _new_state(ADMIN_ID)
+    target = FakeMessage()
+    asyncio.run(admin_mod._show_current_receipt_card(target, state))
+    assert target.answers_sent == ["✅ Чеков на проверке нет — «🌍 Все города»."]
+
+
+# ── Task 2: gamification review queue («🎮 Проверка») — unfiltered in ALL_CITIES mode ───────
+
+def test_show_current_submission_all_cities_shows_every_city(tmp_path):
+    _all_cities_mode(tmp_path)
+    task_id = _seed_task()
+    sid_msk = _seed_submission(task_id, 201, "msk", submitted_at="2026-08-14 10:00:00")
+    _seed_submission(task_id, 202, "spb", submitted_at="2026-08-14 10:01:00")
+    state = _new_state(ADMIN_ID)
+
+    target1 = FakeMessage()
+    asyncio.run(admin_mod._show_current_submission(target1, state))
+    assert "Delegate 201" in target1.answers_sent[0]
+
+    asyncio.run(state.update_data(grev_skipped=[sid_msk]))
+    target2 = FakeMessage()
+    asyncio.run(admin_mod._show_current_submission(target2, state))
+    assert "Delegate 202" in target2.answers_sent[0]
