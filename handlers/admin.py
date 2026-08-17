@@ -4297,7 +4297,11 @@ async def render_roles_text() -> str:
     return "\n".join(lines)
 
 
-async def build_roles_keyboard() -> InlineKeyboardMarkup:
+async def build_roles_keyboard(viewer_id: int | None = None) -> InlineKeyboardMarkup:
+    """`viewer_id=None` (default, back-compat for existing call sites/tests) = always show the
+    🏙 city-edit button. WR-02 (09.1-REVIEW.md): the real enforcement lives in the
+    `roles_city_start`/`roles_city_pick` handler gates below — this is only UX (CLAUDE.md: не
+    показывать кнопку, которая заведомо откажет)."""
     buttons = []
     for role, meta in ROLES.items():
         enabled = await get_setting_typed(role_enabled_key(role))
@@ -4322,7 +4326,7 @@ async def build_roles_keyboard() -> InlineKeyboardMarkup:
         row_buttons = [InlineKeyboardButton(
             text=f"➖ {name} — {role_label}", callback_data=f"roles_del:{tid}:{role}",
         )]
-        if show_city:
+        if show_city and (viewer_id is None or viewer_id in config.ADMIN_IDS):
             city = row.get("city")
             city_text = await city_label(city) if city else "🌍 Все города"
             row_buttons.append(InlineKeyboardButton(
@@ -4338,7 +4342,8 @@ async def build_roles_keyboard() -> InlineKeyboardMarkup:
 @router.callback_query(F.data == "admin_roles")
 async def show_roles(callback: types.CallbackQuery):
     text = await render_roles_text()
-    await callback.message.edit_text(text, parse_mode="HTML", reply_markup=await build_roles_keyboard())
+    kb = await build_roles_keyboard(callback.from_user.id)
+    await callback.message.edit_text(text, parse_mode="HTML", reply_markup=kb)
     await callback.answer()
 
 
@@ -4358,7 +4363,8 @@ async def toggle_role_enabled(callback: types.CallbackQuery):
     await callback.answer(f"{ROLES[role]['label']}: {label}", show_alert=True)
 
     text = await render_roles_text()
-    await callback.message.edit_text(text, parse_mode="HTML", reply_markup=await build_roles_keyboard())
+    kb = await build_roles_keyboard(callback.from_user.id)
+    await callback.message.edit_text(text, parse_mode="HTML", reply_markup=kb)
 
 
 # ── Права роли: экран с чекбоксами вместо ввода кодов текстом (quick 260813) ───────────────
@@ -4550,10 +4556,20 @@ async def _roles_city_kb(tid: int) -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(inline_keyboard=buttons)
 
 
+_CITY_BINDING_SUPERADMIN_ONLY_ALERT = "Привязку к городу меняет только суперадмин"
+
+
 @router.callback_query(F.data.startswith("roles_city:"))
 async def roles_city_start(callback: types.CallbackQuery):
     if not await cities_module_on():
         await callback.answer()
+        return
+    # WR-02 (09.1-REVIEW.md): admin_city_switch already promises the human "менять может
+    # суперадмин" -- this handler is the entry point that opens the picker, so the gate goes
+    # here first (before rendering a screen that would refuse anyway, per CLAUDE.md).
+    is_superadmin = callback.from_user.id in config.ADMIN_IDS
+    if not is_superadmin:
+        await callback.answer(_CITY_BINDING_SUPERADMIN_ONLY_ALERT, show_alert=True)
         return
     parts = callback.data.split(":")
     if len(parts) != 2 or not (parts[1].isascii() and parts[1].isdigit()):
@@ -4570,6 +4586,15 @@ async def roles_city_start(callback: types.CallbackQuery):
 
 @router.callback_query(F.data.startswith("roles_city_pick:"))
 async def roles_city_pick(callback: types.CallbackQuery):
+    # WR-02 (09.1-REVIEW.md): the guarantee admin_city_switch makes the human ("менять может
+    # суперадмин") was enforced only in cities.py's own set_admin_city/admin_selected_city --
+    # this handler itself was gated by nothing but the `settings` capability, so any holder of
+    # that capability could rebind ANY person's city, including their own, and thereby unlock
+    # every other city's queues. Positive-form idiom, byte-identical to admin_city_switch:1927.
+    is_superadmin = callback.from_user.id in config.ADMIN_IDS
+    if not is_superadmin:
+        await callback.answer(_CITY_BINDING_SUPERADMIN_ONLY_ALERT, show_alert=True)
+        return
     parts = callback.data.split(":")
     if len(parts) != 3 or not (parts[1].isascii() and parts[1].isdigit()):
         await callback.answer("Неизвестная кнопка", show_alert=True)
@@ -4577,18 +4602,26 @@ async def roles_city_pick(callback: types.CallbackQuery):
     tid = int(parts[1])
     code = parts[2]
     if code == "all":
-        await set_staff_city(tid, None)
+        ok = await set_staff_city(tid, None)
         toast = "Город: все города"
     elif code in city_codes():
-        await set_staff_city(tid, code)
+        ok = await set_staff_city(tid, code)
         toast = f"Город: {await city_label(code)}"
     else:
         await callback.answer("Неизвестный город", show_alert=True)
         return
 
+    # WR-02: set_staff_city returns False when there is no staff row for tid (person removed
+    # meanwhile / never staff) -- the handler used to discard the return value and toast
+    # success anyway, lying to the human about a permission change actually happening.
+    if not ok:
+        await callback.answer("Этого менеджера уже нет в списке — обновите экран", show_alert=True)
+        return
+
     await callback.answer(toast, show_alert=True)
     text = await render_roles_text()
-    await callback.message.edit_text(text, parse_mode="HTML", reply_markup=await build_roles_keyboard())
+    kb = await build_roles_keyboard(callback.from_user.id)
+    await callback.message.edit_text(text, parse_mode="HTML", reply_markup=kb)
 
 
 @router.callback_query(F.data == "roles_add")
@@ -4612,7 +4645,8 @@ async def roles_add_start(callback: types.CallbackQuery, state: FSMContext):
 async def roles_add_cancel(message: types.Message, state: FSMContext):
     await state.clear()
     text = await render_roles_text()
-    await message.answer(text, parse_mode="HTML", reply_markup=await build_roles_keyboard())
+    kb = await build_roles_keyboard(message.from_user.id)
+    await message.answer(text, parse_mode="HTML", reply_markup=kb)
 
 
 @router.message(StaffAdd.waiting_for_person)
@@ -4660,7 +4694,10 @@ async def roles_assign(callback: types.CallbackQuery):
     created = await add_staff(tid, role, callback.from_user.id)
     await callback.answer("Добавлен" if created else "Уже был в этой роли", show_alert=True)
 
-    if await cities_module_on():  # Phase 09.1 (C, ROLE-03): city step right after assignment
+    # WR-02: same superadmin-only gate as roles_city_start/roles_city_pick -- a non-superadmin
+    # settings holder lands straight on the roster instead of a picker that would refuse them.
+    is_superadmin = callback.from_user.id in config.ADMIN_IDS
+    if is_superadmin and await cities_module_on():  # Phase 09.1 (C, ROLE-03): city step
         text = (
             "🏙 Из какого города этот менеджер? Он будет видеть заявки, чеки и гейму "
             "только своего города."
@@ -4669,7 +4706,8 @@ async def roles_assign(callback: types.CallbackQuery):
         return
 
     text = await render_roles_text()
-    await callback.message.edit_text(text, parse_mode="HTML", reply_markup=await build_roles_keyboard())
+    kb = await build_roles_keyboard(callback.from_user.id)
+    await callback.message.edit_text(text, parse_mode="HTML", reply_markup=kb)
 
 
 @router.callback_query(F.data.startswith("roles_del:"))
@@ -4684,7 +4722,8 @@ async def roles_remove(callback: types.CallbackQuery):
 
     await remove_staff(tid, role)
     text = await render_roles_text()
-    await callback.message.edit_text(text, parse_mode="HTML", reply_markup=await build_roles_keyboard())
+    kb = await build_roles_keyboard(callback.from_user.id)
+    await callback.message.edit_text(text, parse_mode="HTML", reply_markup=kb)
 
 
 # ── Phase 9 (GAME-01, D-08, wave 2, 09-02): «📋 Задания» screen + creation wizard ───────────
