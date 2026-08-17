@@ -400,6 +400,12 @@ def required_capability(*, callback_data: str | None = None, command: str | None
 # not change from the user's point of view when this middleware takes over.
 DENIAL_TEXT = "Недостаточно прав"
 
+# UAT 17.08 (quick-260817-hvy, Task 1): human-facing copy for the emergency wizard-close path
+# below — a manager whose capability got revoked mid-wizard is told exactly what to do next.
+WIZARD_REVOKED_TEXT = (
+    "Доступ к этому разделу отозван — мастер закрыт. Отправьте /admin, чтобы открыть меню."
+)
+
 
 def _is_question_reply_shape(message: Message) -> bool:
     """Same reply-shape predicate as handlers.admin.is_question_reply (🆔 + ❓ markers on the
@@ -474,6 +480,22 @@ async def _deny(event: TelegramObject, user_id: int, user_caps: set, cap: str | 
     return UNHANDLED
 
 
+async def _close_stale_wizard(data: dict) -> bool:
+    """Сбрасывает FSM-стейт мастера, право на который у человека забрали. True — стейт
+    действительно сброшен (значит, можно честно сказать «мастер закрыт»); False —
+    FSMContext в data не пришёл или сброс не удался, тогда вызывающий обязан свалиться
+    в обычный _deny и ничего не обещать."""
+    fsm = data.get("state")
+    if fsm is None:
+        return False
+    try:
+        await fsm.clear()
+        return True
+    except Exception as e:
+        logger.warning("CapabilityMiddleware: failed to clear stale wizard state: %s", e)
+        return False
+
+
 class CapabilityMiddleware(BaseMiddleware):
     """Inner middleware attached to `admin.router`'s own observers (D-01). MUST be registered
     via `.middleware()` -- deliberately NOT the router's outer-hook variant -- inner middleware
@@ -488,8 +510,11 @@ class CapabilityMiddleware(BaseMiddleware):
             # exactly like the "stranger" branch of _deny (silent, event still propagates).
             return UNHANDLED
 
+        raw_state = None
         if _is_callback_shaped(event):
             required = [required_capability(callback_data=event.data)]
+            # Callback's raw_state stays None deliberately -- the emergency wizard-close path
+            # below is intentionally not extended to callbacks (see comment there).
         elif hasattr(event, "text"):
             # A slash-command typed mid-wizard can dispatch to either the command handler or the
             # state handler (registration order decides) -- so _required_caps_for_message returns
@@ -506,6 +531,26 @@ class CapabilityMiddleware(BaseMiddleware):
             required = [None]
 
         user_caps = await resolve_capabilities(user.id)  # D-05: fresh SQLite read every call
+
+        # UAT 17.08: право на мастер отозвали, пока человек был внутри мастера. Тогда
+        # _required_caps_for_message требует и cap команды, И cap стейта -> заперты даже /admin
+        # и /cancel, выхода нет до рестарта бота. Стейт здесь уже мёртвый: держателем этого
+        # права человек не является, ни один шаг мастера ему всё равно не отработает. Закрываем
+        # мастер и объясняем, что делать. НИЧЕГО не пропускаем: событие всё равно не доходит до
+        # обработчика, поэтому эскалация «команда исполняется на праве стейта» (аудит 260816)
+        # не открывается — на следующем сообщении raw_state уже пуст и работают обычные правила.
+        if raw_state is not None:
+            state_cap = required_capability(raw_state=raw_state)
+            if state_cap is not None and not _holds(user_caps, state_cap):
+                if await _close_stale_wizard(data):
+                    if user_caps:
+                        await event.answer(WIZARD_REVOKED_TEXT)
+                        return None
+                    logger.info(
+                        "CapabilityMiddleware: cleared stale wizard state=%s for uid=%s (no capabilities held)",
+                        raw_state, user.id,
+                    )
+                    return UNHANDLED
 
         # Deny-by-default (D-02): a message/callback whose ONLY signal is an unmapped key (every
         # entry None) is denied. Otherwise the user must satisfy EVERY applicable capability.
