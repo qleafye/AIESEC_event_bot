@@ -14,6 +14,8 @@ Task 3: `handlers/registration.py::finalize_registration` passes `data.get("even
 """
 import asyncio
 import inspect
+import re
+from pathlib import Path
 
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.storage.base import StorageKey
@@ -318,3 +320,62 @@ def test_process_question_source_has_city_kwarg_and_correct_order():
     assert "city=" in s
     assert "normalize_city" in s
     assert s.index("create_question") < s.index("notify_by_capability")
+
+
+# ── Task 3: new-application notification -> same filter ────────────────────────────────────
+
+def test_finalize_registration_source_passes_event_city():
+    from handlers import registration as reg_mod
+
+    s = inspect.getsource(reg_mod.finalize_registration)
+    assert "notify_by_capability" in s
+    assert 'city=data.get("event_city")' in s
+
+
+def test_both_fanout_sites_pass_city_kwarg():
+    repo_root = Path(__file__).resolve().parent.parent
+    reg_src = (repo_root / "handlers/registration.py").read_text(encoding="utf-8")
+    ua_src = (repo_root / "handlers/user_actions.py").read_text(encoding="utf-8")
+    combined = reg_src + "\n" + ua_src
+    calls_with_city = len(re.findall(r"notify_by_capability\([^)]*city=", combined))
+    assert calls_with_city == 2
+
+
+def test_new_application_notification_routes_to_delegate_city_manager(tmp_path, monkeypatch):
+    from handlers import registration as reg_mod
+
+    _roles_ready(tmp_path)
+    _enable_cities()
+    asyncio.run(db.set_setting("pending_notify_mode", "instant"))  # REG-02: notify on pending too
+    asyncio.run(db.add_staff(SPB_MANAGER_ID, "reg_manager", ADMIN_ID))
+    asyncio.run(db.set_staff_city(SPB_MANAGER_ID, "spb"))
+    asyncio.run(db.add_staff(MSK_MANAGER_ID, "reg_manager", ADMIN_ID))
+    asyncio.run(db.set_staff_city(MSK_MANAGER_ID, "msk"))
+    asyncio.run(db.add_staff(UNBOUND_MANAGER_ID, "reg_manager", ADMIN_ID))
+
+    async def _fake_row(data):
+        return []
+
+    async def _fake_append(row):
+        return None
+
+    monkeypatch.setattr(reg_mod, "_sheet_dispatch", lambda *_a, **_kw: (_fake_row, _fake_append))
+    monkeypatch.setattr(reg_mod, "_spawn", lambda coro: coro.close())
+
+    bot = FakeBot()
+    state = _fresh_state(DELEGATE_ID)
+    asyncio.run(state.update_data(
+        full_name="Тест Тестов",
+        username="@test",
+        event_city="spb",
+        participant_type="full",
+    ))
+    message = FakeMessage(text="irrelevant", user_id=DELEGATE_ID)
+
+    asyncio.run(reg_mod.finalize_registration(message, state, bot))
+
+    recipients = [chat_id for chat_id, text in bot.sent if "Новая регистрация" in text]
+    assert ADMIN_ID in recipients
+    assert SPB_MANAGER_ID in recipients
+    assert UNBOUND_MANAGER_ID in recipients
+    assert MSK_MANAGER_ID not in recipients
