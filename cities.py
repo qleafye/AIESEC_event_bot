@@ -18,7 +18,7 @@ Design (mirrors settings_schema.py's one-directional dependency, D-01):
   resolved default back into storage (no backfill — see CONTEXT.md).
 """
 from config import config
-from database.db import get_setting, set_setting
+from database.db import get_setting, set_setting, get_staff_city
 from settings_schema import get_setting_typed
 
 CITY_SEP = ";"
@@ -258,9 +258,18 @@ async def admin_selected_city(admin_id: int) -> str | None:
     show everything" (module off — the SINGLE point where "module disabled" collapses to
     "nothing is filtered", mirroring `city_row_tab`'s escape hatch). With the module on and
     no stored choice yet, defaults to the default city code (never raw NULL — a screen must
-    always have something to render)."""
+    always have something to render).
+
+    Phase 09.1 (C, ROLE-03): a manager bound to a city (`database.db.get_staff_city`, and not
+    a bootstrap superadmin) always returns their bound city, ignoring any value previously
+    saved to `bot_settings` for them — a choice made before the binding existed (or before it
+    was set) must not silently keep acting once the person is locked to a city."""
     if not await cities_module_on():
         return None
+    if admin_id not in config.ADMIN_IDS:  # D-12: bootstrap superadmins stay unrestricted
+        bound = await get_staff_city(admin_id)
+        if bound:
+            return normalize_city(bound)
     raw = await get_setting(f"{ADMIN_CITY_KEY_PREFIX}{int(admin_id)}")
     return normalize_city(raw)
 
@@ -270,8 +279,17 @@ async def set_admin_city(admin_id: int, code: str) -> bool:
     not). `code` must be a member of the closed set `city_codes()` (same guard shape as
     `handlers.admin.city_toggle`) — an unknown code is rejected and NOTHING is written,
     returning False. `admin_id` is coerced to `int` so the settings key is never assembled
-    from an arbitrary string."""
+    from an arbitrary string.
+
+    Phase 09.1 (C, ROLE-03): this is the "right", not just the "filter" (07.2's own comment
+    above already earmarks this exact seam) -- a manager bound to a city (`get_staff_city`)
+    can only ever pick THEIR city; a bootstrap superadmin (`config.ADMIN_IDS`, D-12) or an
+    unbound manager (`city IS NULL`) keeps today's unrestricted behavior."""
     if code not in city_codes():
         return False
+    if admin_id not in config.ADMIN_IDS:
+        bound = await get_staff_city(admin_id)
+        if bound and normalize_city(code) != normalize_city(bound):
+            return False
     await set_setting(f"{ADMIN_CITY_KEY_PREFIX}{int(admin_id)}", code)
     return True

@@ -125,6 +125,13 @@ async def init_db():
                 PRIMARY KEY (telegram_id, role)
             )
         ''')
+        # Phase 09.1 (C, ROLE-03): manager <-> city binding. NULL = all cities (same semantics
+        # as every other event_city column) -- every pre-existing row keeps working unchanged.
+        # Binding is by telegram_id alone (one city regardless of how many roles a person
+        # holds), so the value is duplicated across every (telegram_id, role) row for that
+        # person rather than normalized into a separate table -- there are at most a few dozen
+        # staff rows, and a single-table SELECT/UPDATE stays simpler than a join.
+        await _ensure_column(db, "staff", "city", "TEXT")
 
         # Phase 1: persistent dropout tracking (survives restart, independent of FSM)
         await db.execute('''
@@ -1328,14 +1335,44 @@ async def get_staff_roles(telegram_id: int) -> list[str]:
 
 
 async def list_staff() -> list[dict]:
-    """Full roster, oldest grant first -- feeds the "Роли и доступы" admin screen (08-02)."""
+    """Full roster, oldest grant first -- feeds the "Роли и доступы" admin screen (08-02).
+    `city` (Phase 09.1, C) is NULL for every pre-existing row -- "all cities", byte-identical
+    to today's behavior for anyone who never gets a binding."""
     async with aiosqlite.connect(config.DB_PATH) as db:
         db.row_factory = aiosqlite.Row
         async with db.execute(
-            "SELECT telegram_id, role, added_by, added_at FROM staff ORDER BY added_at"
+            "SELECT telegram_id, role, added_by, added_at, city FROM staff ORDER BY added_at"
         ) as cursor:
             rows = await cursor.fetchall()
             return [dict(row) for row in rows]
+
+
+# ── Phase 09.1 (C, ROLE-03): manager <-> city binding accessors ────────────────────────────
+
+async def get_staff_city(telegram_id: int) -> str | None:
+    """The city bound to this person, or None (unbound -- "all cities", same as every
+    pre-09.1 record). Binding is per-person, not per-role -- any one of their role-rows
+    carrying a non-NULL city is enough to answer (set_staff_city keeps them all in sync)."""
+    async with aiosqlite.connect(config.DB_PATH) as db:
+        async with db.execute(
+            "SELECT city FROM staff WHERE telegram_id = ? AND city IS NOT NULL LIMIT 1",
+            (telegram_id,),
+        ) as cursor:
+            row = await cursor.fetchone()
+            return row[0] if row else None
+
+
+async def set_staff_city(telegram_id: int, city: str | None) -> bool:
+    """Bind (or clear, when `city` is None) this person's city across EVERY role-row they
+    hold in one statement -- the binding is by telegram_id alone (CONTEXT.md C), not by
+    (telegram_id, role). Returns True iff at least one row existed to update; a person with
+    no staff row at all gets False and nothing is written."""
+    async with aiosqlite.connect(config.DB_PATH) as db:
+        cursor = await db.execute(
+            "UPDATE staff SET city = ? WHERE telegram_id = ?", (city, telegram_id)
+        )
+        await db.commit()
+        return cursor.rowcount > 0
 
 
 async def get_staff_ids_by_role(role: str) -> list[int]:
