@@ -17,7 +17,7 @@ import services.sheets as sheets_service
 import services.proxy_session as proxy_session
 from services.proxy_session import FailoverAiohttpSession, build_proxy_chain, mask_proxy_url
 from handlers.registration import active_sheet_headers, set_sheet_schema, party_sheet_headers, PARTY_SHEET_TAB_DEFAULT, short_sheet_headers, SHORT_SHEET_TAB_DEFAULT, get_sheet_schema, city_row_tab
-from cities import enabled_cities, is_default_city
+from cities import enabled_cities, is_default_city, seed_cities_if_empty, reload_cities
 from settings_schema import get_setting_typed, SETTINGS_SCHEMA
 from aiogram.client.default import DefaultBotProperties
 from aiogram.enums import ParseMode
@@ -200,6 +200,14 @@ async def main():
     
     # Init DB
     await init_db()
+
+    # Phase 14 (CITY-07): one-time .env -> `cities` table seed, then load the in-memory cache
+    # from the DB. MUST run before active_sheet_headers()/_maybe_ensure_city_sheet_headers()
+    # below -- that function already reads cities.enabled_cities(), so the cache must be
+    # populated first. `await`, not `_spawn` -- unlike the header-ensure calls, nothing may
+    # read the cities cache before it reflects the DB.
+    await seed_cities_if_empty()
+    await reload_cities()
 
     # Phase 14 (CFG-01): one-time GOOGLE_SHEET_TAB -> bot_settings.main_sheet_tab migration.
     # MUST run before active_sheet_headers() below — otherwise the very first header resolve
