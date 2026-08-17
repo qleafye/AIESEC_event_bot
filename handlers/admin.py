@@ -4983,6 +4983,13 @@ async def _get_submission_and_task(submission_id: int) -> tuple[dict | None, dic
     return submission, task
 
 
+# CR-01 (09.1-REVIEW.md): hard ceilings so a submission card can never blow past Telegram's
+# sendMessage limit (4096 chars). _CARD_PART_MAX truncates one rendered part; _CARD_MAX
+# truncates the whole assembled card as a last-resort backstop.
+_CARD_PART_MAX = 500
+_CARD_MAX = 3800
+
+
 def _render_submission_card(row: dict, position: int, total: int, parts: list[dict] | None = None,
                              city_labels: tuple[str, str] | None = None) -> str:
     """HTML card for one pending submission; all free-text (task text, submitter name) escaped
@@ -5026,7 +5033,13 @@ def _render_submission_card(row: dict, position: int, total: int, parts: list[di
         for part in parts:
             caption = esc(part.get("caption"))
             if part.get("kind") in ("text", "link"):
-                lines.append(f"• {esc(part.get('content')) or '—'}")
+                # CR-01 «Важно 1»: truncate the RAW content, escape after -- slicing an
+                # already-escaped string can split an HTML entity in half (&amp; -> &am) and
+                # reproduce the exact parse_mode="HTML" failure this truncation defends against.
+                raw = str(part.get("content") or "")
+                if len(raw) > _CARD_PART_MAX:
+                    raw = raw[:_CARD_PART_MAX] + "…"
+                lines.append(f"• {esc(raw) or '—'}")
             else:
                 # T-09-12/backward-compat: same "см. файл ниже" wording the pre-09.1 single-
                 # content_type render used (tests/test_gamification_review_phase9.py asserts
@@ -5098,11 +5111,26 @@ async def _show_current_submission(target: types.Message, state: FSMContext):
         task_code = current.get("task_event_city")
         task_label = await city_label(task_code) if task_code else "🌍 Все города"
         city_labels = (delegate_label, task_label)
-    await target.answer(
-        _render_submission_card(current, position, total, parts, city_labels),
-        parse_mode="HTML",
-        reply_markup=_submission_card_kb(current["id"], current["task_coins"]),
-    )
+    card = _render_submission_card(current, position, total, parts, city_labels)
+    if len(card) > _CARD_MAX:
+        # CR-01 «Важно 2»: a hard slice can leave a truncated HTML entity tail (the only tag
+        # in the card is <b> at position 0, well before any slice point at _CARD_MAX chars).
+        card = re.sub(r"&[a-zA-Z#0-9]*$", "", card[:_CARD_MAX]) + "\n…(обрезано)"
+    try:
+        await target.answer(
+            card,
+            parse_mode="HTML",
+            reply_markup=_submission_card_kb(current["id"], current["task_coins"]),
+        )
+    except Exception as e:
+        logger.error(f"submission card render failed, submission={current['id']}: {e}")
+        try:
+            await target.answer(
+                f"🎮 Сдача {position}/{total} — содержимое слишком длинное, показать не смог.",
+                reply_markup=_submission_card_kb(current["id"], current["task_coins"]),
+            )
+        except Exception as e2:
+            logger.error(f"submission card fallback send failed, submission={current['id']}: {e2}")
     # Модератор видит все части пачкой: consecutive photo parts group into ONE
     # send_media_group, each document part resends individually, text/link parts are already
     # in the card body above. A single photo still goes through answer_photo (Telegram
