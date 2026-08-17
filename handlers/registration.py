@@ -3036,7 +3036,13 @@ async def finalize_registration(message: types.Message, state: FSMContext, bot: 
         if safe_source != "-":
             admin_text += f"\n\U0001f4dd {safe_source}"
 
-        await notify_by_capability(bot, "moderate_reg", admin_text, parse_mode="HTML")  # D-13
+        # Phase 09.2 (D): заявка из города уходит менеджерам этого города; None = город не
+        # выбран → сегодняшний глобальный фан-аут; фолбэк «после фильтра пусто → все» живёт
+        # внутри capability_holders (не дублируется здесь). Grep-проверка (09.2-02 Task 3):
+        # data.get("event_city") уже читается строкой выше (city_row_tab, line ~3008) в ЭТОЙ
+        # ЖЕ функции — доступен на всех треках (short/full/party идут через один и тот же
+        # finalize_registration), отдельного get_user не требуется.
+        await notify_by_capability(bot, "moderate_reg", admin_text, parse_mode="HTML", city=data.get("event_city"))  # D-13
 
     await state.clear()
     # Tatiana: «поздравляем»-скрипт приходит сразу после регистрации — всем (и pending, и
