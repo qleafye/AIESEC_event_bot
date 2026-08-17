@@ -442,3 +442,130 @@ def test_gtarchive_cancel_button_returns_to_tasks_screen_without_db_change():
     # structural check, not a new handler (matches rebuild_sheet_confirm's own cancel button
     # pointing at admin_menu).
     assert required_capability(callback_data="admin_game_tasks") == "moderate_game"
+
+
+# ── Plan 03 Task 3: archive markers (card/matrix/history) + «попытка K из N» ────────────────
+
+def _card_row(**overrides):
+    row = {
+        "task_text": "Задание", "task_category": "Light", "task_coins": 20,
+        "user_full_name": "Тест", "user_username": None,
+        "task_proof_type": "photo", "content_type": "photo", "content": "x",
+        "submitted_at": None, "task_deadline_at": None, "task_archived_at": None,
+    }
+    row.update(overrides)
+    return row
+
+
+def test_render_submission_card_marks_archived_task():
+    archived_text = admin_mod._render_submission_card(_card_row(task_archived_at="2026-08-18 10:00:00"), 1, 1)
+    assert "🗄 Задание в архиве" in archived_text
+
+    active_text = admin_mod._render_submission_card(_card_row(), 1, 1)
+    assert "🗄 Задание в архиве" not in active_text
+
+
+def test_render_submission_card_attempt_line_only_when_passed():
+    with_attempt = admin_mod._render_submission_card(_card_row(), 1, 1, attempt=(3, 3))
+    assert "🔁 Попытка 3 из 3" in with_attempt
+
+    without_attempt = admin_mod._render_submission_card(_card_row(), 1, 1)
+    assert "Попытка" not in without_attempt
+
+
+def test_archived_task_pending_submission_stays_in_review_queue(tmp_path):
+    _db_ready(tmp_path)
+    task_id = _mk_task(text="архивное, но не решено")
+    asyncio.run(db.create_submission(task_id, DELEGATE_ID, "text", "готово", "2026-08-20 10:00:00"))
+    asyncio.run(db.archive_task(task_id))
+
+    pending = asyncio.run(db.get_pending_submissions(limit=50, offset=0))
+    assert len(pending) == 1
+    assert pending[0]["task_archived_at"] is not None
+
+
+def test_build_game_matrix_prefixes_archived_task_header_before_truncation():
+    long_text = "А" * 60
+    tasks = [
+        {"id": 1, "text": "Активное", "created_at": "2026-08-01 10:00:00", "archived_at": None},
+        {"id": 2, "text": long_text, "created_at": "2026-08-02 10:00:00", "archived_at": "2026-08-10 10:00:00"},
+    ]
+    headers, _rows = admin_mod._build_game_matrix(tasks, [])
+    assert headers[4] == "Активное"
+    assert headers[5] == ("🗄 " + long_text)[:40]
+    assert headers[5].startswith("🗄 ")
+
+
+def test_build_game_history_prefixes_archived_submission_task_label():
+    submissions = [
+        {
+            "id": 1, "task_id": 1, "user_id": DELEGATE_ID, "content_type": "text",
+            "submitted_at": "2026-08-10 10:00:00", "status": "pending",
+            "reviewed_by": None, "reviewed_at": None, "coins_awarded": None, "reject_reason": None,
+            "task_text": "Задание", "task_category": "Light",
+            "user_full_name": "Тест", "user_username": "t", "user_event_city": None,
+            "task_archived_at": "2026-08-15 10:00:00",
+        },
+    ]
+    _headers, rows = admin_mod._build_game_history(submissions)
+    assert rows[0][1] == "🗄 Задание"
+
+
+def test_rebuild_game_sheets_drops_deleted_task_keeps_archived_marked(tmp_path, monkeypatch):
+    _db_ready(tmp_path)
+    kept_id = _mk_task(text="архивное осталось")
+    _reject_submission(kept_id, DELEGATE_ID)
+    asyncio.run(db.archive_task(kept_id))
+
+    deleted_id = _mk_task(text="удалённое пропало")
+    # delete_task requires zero submissions -- delete right after creation, before rebuild.
+    assert asyncio.run(db.delete_task(deleted_id)) is True
+
+    written = {}
+
+    async def _fake_sync(title, headers, rows):
+        written[title] = (headers, rows)
+        return len(rows)
+
+    monkeypatch.setattr(admin_mod, "sync_named_worksheet", _fake_sync)
+
+    asyncio.run(admin_mod.rebuild_game_sheets())
+
+    matrix_tab = asyncio.run(settings_schema.get_setting_typed("game_matrix_tab"))
+    history_tab = asyncio.run(settings_schema.get_setting_typed("game_history_tab"))
+    matrix_headers, _matrix_rows = written[matrix_tab]
+    _history_headers, history_rows = written[history_tab]
+
+    assert not any("удалённое" in h for h in matrix_headers)
+    assert any(h.startswith("🗄 ") and "архивное" in h for h in matrix_headers)
+    assert all("удалённое" not in row[1] for row in history_rows)
+    assert any(row[1] == "🗄 архивное осталось" for row in history_rows)
+
+
+def test_attempt_resolved_in_show_current_submission_with_limit(tmp_path):
+    _db_ready(tmp_path)
+    task_id = _mk_task(text="лимитное")
+    asyncio.run(db.set_setting("game_resubmit_limit", "3"))
+    _reject_submission(task_id, DELEGATE_ID)
+    _reject_submission(task_id, DELEGATE_ID)
+    asyncio.run(db.create_submission(task_id, DELEGATE_ID, "text", "финальная попытка", "2026-08-20 10:00:00"))
+
+    state = _new_state(uid=ADMIN_ID)
+    message = FakeMessage(user_id=ADMIN_ID)
+    asyncio.run(admin_mod._show_current_submission(message, state))
+
+    card_text = message.answers[0][0]
+    assert "🔁 Попытка 3 из 3" in card_text
+
+
+def test_attempt_line_absent_when_limit_is_zero(tmp_path):
+    _db_ready(tmp_path)
+    task_id = _mk_task(text="без лимита")
+    asyncio.run(db.create_submission(task_id, DELEGATE_ID, "text", "готово", "2026-08-20 10:00:00"))
+
+    state = _new_state(uid=ADMIN_ID)
+    message = FakeMessage(user_id=ADMIN_ID)
+    asyncio.run(admin_mod._show_current_submission(message, state))
+
+    card_text = message.answers[0][0]
+    assert "Попытка" not in card_text

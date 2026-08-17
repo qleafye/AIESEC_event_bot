@@ -5798,7 +5798,8 @@ _MEDIA_CAPTION_MAX = 1000
 
 
 def _render_submission_card(row: dict, position: int, total: int, parts: list[dict] | None = None,
-                             city_labels: tuple[str, str] | None = None) -> str:
+                             city_labels: tuple[str, str] | None = None,
+                             attempt: tuple[int, int] | None = None) -> str:
     """HTML card for one pending submission; all free-text (task text, submitter name) escaped
     — T-09-12: this is the FIRST render of delegate-supplied content to a manager.
 
@@ -5810,7 +5811,12 @@ def _render_submission_card(row: dict, position: int, total: int, parts: list[di
     byte-identical when the cities module is off. This function is synchronous and cannot
     itself call cities_module_on()/city_label() -- the caller (_show_current_submission)
     resolves both labels ONCE and hands them down, same "resolve once" shape the confirm
-    card uses for gt_city_step_shown."""
+    card uses for gt_city_step_shown.
+
+    Phase 14 (14-03, GAME-10): `attempt` (K, N) defaults to None so this stays byte-identical
+    when `game_resubmit_limit` is unset/0 -- this function is SYNCHRONOUS and cannot itself
+    read the registry or count rejected submissions, same "resolve once, caller hands down"
+    shape as `city_labels` -- the caller (`_show_current_submission`) does the async resolve."""
     def esc(v):
         return html_module.escape(str(v)) if v not in (None, "", "-") else None
 
@@ -5853,6 +5859,15 @@ def _render_submission_card(row: dict, position: int, total: int, parts: list[di
                 # this literal string and is NOT modified by this plan).
                 tail = f" ({caption})" if caption else ""
                 lines.append(f"• см. файл ниже{tail}")
+    # Phase 14 (14-03, GAME-08): task_archived_at is exposed on the queue rows by plan 14-01.
+    # The submission itself is untouched by the archive — the manager still has to decide it.
+    if row.get("task_archived_at"):
+        lines.append("🗄 Задание в архиве — сдачу всё равно нужно решить")
+    # Phase 14 (14-03, GAME-10): resolved once by the caller (limit==0/None -> attempt stays
+    # None -> this line never appears, byte-identical to pre-phase behavior).
+    if attempt is not None:
+        k, n = attempt
+        lines.append(f"🔁 Попытка {k} из {n}")
     # A-05 (созвон 13.08): дедлайн мягкий, бот сдачу принял — единственный ограничитель здесь
     # человек. Просрочка нигде не хранится, только вычисляется здесь при каждом рендере.
     submitted_at = row.get("submitted_at")
@@ -5918,7 +5933,15 @@ async def _show_current_submission(target: types.Message, state: FSMContext):
         task_code = current.get("task_event_city")
         task_label = await city_label(task_code) if task_code else "🌍 Все города"
         city_labels = (delegate_label, task_label)
-    card = _render_submission_card(current, position, total, parts, city_labels)
+    # Phase 14 (14-03, GAME-10): «попытка K из N» -- resolved ONCE here (the card renderer is
+    # synchronous), same shape as city_labels above. limit==0/None (falsy) -> attempt stays
+    # None -> _render_submission_card renders byte-identical to pre-phase.
+    attempt = None
+    limit = await get_setting_typed("game_resubmit_limit")
+    if limit:
+        rejected = await count_rejected_submissions(current["task_id"], current["user_id"])
+        attempt = (rejected + 1, limit)
+    card = _render_submission_card(current, position, total, parts, city_labels, attempt)
     if len(card) > _CARD_MAX:
         # CR-01 «Важно 2»: a hard slice can leave a truncated HTML entity tail (the only tag
         # in the card is <b> at position 0, well before any slice point at _CARD_MAX chars).
@@ -6228,7 +6251,13 @@ def _build_game_matrix(tasks: list[dict], submissions: list[dict]) -> tuple[list
     partial rebuild would erase other cities' rows. "Уважает city_scope" is implemented here as
     a "Город" COLUMN (filterable in Sheets itself), not a row filter -- only the LIVE «🎮
     Проверка заданий» queue above is actually scoped."""
-    headers = ["telegram_id", "ФИО", "Город", "Юзернейм"] + [(t["text"] or "")[:40] for t in tasks]
+    # Phase 14 (14-03, GAME-08): archived tasks stay in the matrix with a «🗄 » column-header
+    # prefix — added BEFORE the 40-char truncation so the marker can never be sliced off.
+    def _matrix_col_header(t: dict) -> str:
+        prefix = "🗄 " if t.get("archived_at") else ""
+        return (prefix + (t["text"] or ""))[:40]
+
+    headers = ["telegram_id", "ФИО", "Город", "Юзернейм"] + [_matrix_col_header(t) for t in tasks]
 
     subs_by_user: dict[int, list[dict]] = {}
     for s in submissions:
@@ -6265,10 +6294,17 @@ def _build_game_history(submissions: list[dict]) -> tuple[list[str], list[list]]
     of the same (task, user) pair."""
     headers = ["ID сдачи", "Задание", "Категория", "Участник", "Город", "Юзернейм", "Тип", "Отправлено",
                "Статус", "Проверил", "Когда", "Начислено", "Причина отказа"]
+
+    # Phase 14 (14-03, GAME-08): same «🗄 » prefix idiom as _build_game_matrix's column header
+    # — added BEFORE the 60-char truncation.
+    def _history_task_label(s: dict) -> str:
+        prefix = "🗄 " if s.get("task_archived_at") else ""
+        return (prefix + (s.get("task_text") or "-"))[:60]
+
     rows = [
         [
             s["id"],
-            (s.get("task_text") or "-")[:60],
+            _history_task_label(s),
             s.get("task_category") or "-",
             s.get("user_full_name") or "-",
             s.get("user_event_city") or "-",
@@ -6365,6 +6401,10 @@ async def rebuild_game_sheets() -> tuple[int, int]:
     # list_all_tasks() is created_at DESC (moderation-friendly, newest-first); the matrix wants
     # columns oldest-first (left to right) -- reversed by an explicit sort here, not a new
     # db.py accessor, per the plan's own instruction.
+    # Phase 14 (14-03, GAME-08): list_all_tasks()/list_all_submissions() are DELIBERATELY
+    # unfiltered by archive status -- archived tasks stay in both tabs (marked «🗄 » by the
+    # builders above), deleted tasks vanish on their own because they no longer exist in
+    # either table. Do NOT add an archived_at filter here.
     tasks = sorted(await list_all_tasks(), key=lambda t: t["created_at"])
     submissions = await list_all_submissions()
 
