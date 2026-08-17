@@ -18,9 +18,11 @@ import asyncio
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.storage.base import StorageKey
 from aiogram.fsm.storage.memory import MemoryStorage
+from aiogram.types import InlineKeyboardMarkup
 
 from config import config
 from database import db
+import cities
 from handlers import admin as admin_mod
 from handlers import registration as reg_mod
 from handlers.admin_caps import CapabilityMiddleware, required_capability
@@ -29,6 +31,7 @@ from handlers.admin_caps import CapabilityMiddleware, required_capability
 ADMIN_ID = 940801
 MANAGER_ID = 940802     # holds moderate_game only (game_manager)
 STRANGER_ID = 940803    # holds no role, not a superadmin
+MANAGER_SPB_ID = 940804  # bound to spb, NOT in config.ADMIN_IDS
 
 
 def _ready(tmp_path, dbname="test_uat1708_hotfixes.db"):
@@ -382,3 +385,180 @@ def test_start_text_registered_key_in_registry_and_admin_screen():
     assert "start_text_registered" in admin_mod._settings_group_keys("event")
     assert "start_text_registered" in admin_mod._EVENT_FIELD_ORDER
     assert "start_text_registered" in admin_mod.HTML_SETTINGS
+
+
+# ═══════════════════════════════════════════════════════════════════════════════════════════
+# UAT-03: city-bound game manager can only create tasks for own city
+# ═══════════════════════════════════════════════════════════════════════════════════════════
+
+class _GTUser:
+    def __init__(self, uid):
+        self.id = uid
+
+
+class _GTMessage:
+    def __init__(self, uid=ADMIN_ID):
+        self.from_user = _GTUser(uid)
+        self.sent = []
+        self.state_set = None
+
+    async def answer(self, text, reply_markup=None, parse_mode=None):
+        self.sent.append((text, reply_markup))
+
+
+class _GTCallback:
+    def __init__(self, data, uid=ADMIN_ID):
+        self.data = data
+        self.from_user = _GTUser(uid)
+        self.message = _GTMessage(uid)
+        self.answers = []
+
+    async def answer(self, text=None, show_alert=False):
+        self.answers.append((text, show_alert))
+
+
+def _flat_callback_data(kb: InlineKeyboardMarkup) -> list[str]:
+    return [btn.callback_data for row in kb.inline_keyboard for btn in row if btn.callback_data]
+
+
+def _bind_manager_to_spb(tmp_path):
+    _ready(tmp_path)
+    asyncio.run(db.set_setting("event_city_enabled", "on"))
+    asyncio.run(db.add_staff(MANAGER_SPB_ID, "game_manager", ADMIN_ID))
+    asyncio.run(db.set_staff_city(MANAGER_SPB_ID, "spb"))
+
+
+def test_bound_task_city_superadmin_always_none(tmp_path):
+    _bind_manager_to_spb(tmp_path)
+    asyncio.run(db.set_staff_city(ADMIN_ID, "spb"))  # even if a staff row + city exists
+    assert asyncio.run(admin_mod._bound_task_city(ADMIN_ID)) is None
+
+
+def test_bound_task_city_unbound_manager_none(tmp_path):
+    _bind_manager_to_spb(tmp_path)
+    unbound_id = 940805
+    asyncio.run(db.add_staff(unbound_id, "game_manager", ADMIN_ID))
+    assert asyncio.run(admin_mod._bound_task_city(unbound_id)) is None
+
+
+def test_bound_task_city_bound_manager_returns_city(tmp_path):
+    _bind_manager_to_spb(tmp_path)
+    assert asyncio.run(admin_mod._bound_task_city(MANAGER_SPB_ID)) == "spb"
+
+
+def test_game_task_proof_done_bound_manager_skips_city_step(tmp_path):
+    _bind_manager_to_spb(tmp_path)
+    state = _new_state(MANAGER_SPB_ID)
+    asyncio.run(state.update_data(gt_proof_types=[]))
+    cb = _GTCallback("gtproof_done", MANAGER_SPB_ID)
+
+    asyncio.run(admin_mod.game_task_proof_done(cb, state))
+
+    data = asyncio.run(state.get_data())
+    assert data.get("gt_event_city") == "spb"
+    assert data.get("gt_city_step_shown") is True
+    assert data.get("gt_event_city_label") == asyncio.run(cities.city_label("spb"))
+    assert asyncio.run(state.get_state()) == "GameTaskCreate:deadline"
+    # "Кому задание?" screen must not have been shown
+    assert not any("Кому задание" in (t or "") for t, _ in cb.message.sent)
+
+
+def test_render_confirm_card_shows_kому_line_for_bound_manager(tmp_path):
+    _bind_manager_to_spb(tmp_path)
+    state = _new_state(MANAGER_SPB_ID)
+    asyncio.run(state.update_data(gt_proof_types=[]))
+    cb = _GTCallback("gtproof_done", MANAGER_SPB_ID)
+    asyncio.run(admin_mod.game_task_proof_done(cb, state))
+    data = asyncio.run(state.get_data())
+    data.update({"gt_text": "t", "gt_category": "Light", "gt_coins": 10, "gt_deadline": "2099-01-01 00:00:00"})
+    card = admin_mod._render_game_task_confirm_card(data)
+    assert "Кому:" in card
+
+
+def test_game_task_city_step_bound_manager_rejects_other_city(tmp_path):
+    _bind_manager_to_spb(tmp_path)
+    state = _new_state(MANAGER_SPB_ID)
+    asyncio.run(state.update_data(gt_event_city="spb", gt_event_city_label="Санкт-Петербург"))
+    cb = _GTCallback("gttcity:msk", MANAGER_SPB_ID)
+
+    asyncio.run(admin_mod.game_task_city_step(cb, state))
+
+    assert cb.answers
+    text, alert = cb.answers[-1]
+    assert alert is True
+    assert "только для вашего города" in text
+    data = asyncio.run(state.get_data())
+    assert data.get("gt_event_city") == "spb"
+
+
+def test_game_task_city_step_bound_manager_rejects_all(tmp_path):
+    """Bound to the DEFAULT city specifically: normalize_city('all') would otherwise collapse
+    to the default city and slip through the naive 'normalize_city(code) != bound' check."""
+    tmp = tmp_path
+    _ready(tmp)
+    asyncio.run(db.set_setting("event_city_enabled", "on"))
+    default_code = cities.default_city_code()
+    asyncio.run(db.add_staff(MANAGER_SPB_ID, "game_manager", ADMIN_ID))
+    asyncio.run(db.set_staff_city(MANAGER_SPB_ID, default_code))
+
+    state = _new_state(MANAGER_SPB_ID)
+    asyncio.run(state.update_data(gt_event_city=default_code, gt_event_city_label="X"))
+    cb = _GTCallback("gttcity:all", MANAGER_SPB_ID)
+
+    asyncio.run(admin_mod.game_task_city_step(cb, state))
+
+    assert cb.answers
+    text, alert = cb.answers[-1]
+    assert alert is True
+    assert "только для вашего города" in text
+
+
+def test_game_task_city_step_bound_manager_own_city_passes(tmp_path):
+    _bind_manager_to_spb(tmp_path)
+    state = _new_state(MANAGER_SPB_ID)
+    asyncio.run(state.update_data())
+    cb = _GTCallback("gttcity:spb", MANAGER_SPB_ID)
+
+    asyncio.run(admin_mod.game_task_city_step(cb, state))
+
+    assert asyncio.run(state.get_state()) == "GameTaskCreate:deadline"
+    data = asyncio.run(state.get_data())
+    assert data.get("gt_event_city") == "spb"
+
+
+def test_game_task_city_step_superadmin_unrestricted(tmp_path):
+    _bind_manager_to_spb(tmp_path)
+    state = _new_state(ADMIN_ID)
+    cb = _GTCallback("gttcity:msk", ADMIN_ID)
+
+    asyncio.run(admin_mod.game_task_city_step(cb, state))
+
+    assert asyncio.run(state.get_state()) == "GameTaskCreate:deadline"
+    data = asyncio.run(state.get_data())
+    assert data.get("gt_event_city") == "msk"
+
+
+def test_game_task_proof_done_module_off_byte_identical_path(tmp_path):
+    """Module off entirely -- gate lives only in the module-on branch, path stays untouched."""
+    _ready(tmp_path)
+    asyncio.run(db.add_staff(MANAGER_SPB_ID, "game_manager", ADMIN_ID))
+    asyncio.run(db.set_staff_city(MANAGER_SPB_ID, "spb"))
+    # event_city_enabled never set -- module off
+    state = _new_state(MANAGER_SPB_ID)
+    asyncio.run(state.update_data(gt_proof_types=[]))
+    cb = _GTCallback("gtproof_done", MANAGER_SPB_ID)
+
+    asyncio.run(admin_mod.game_task_proof_done(cb, state))
+
+    data = asyncio.run(state.get_data())
+    assert data.get("gt_event_city") is None
+    assert data.get("gt_city_step_shown") is False
+    assert asyncio.run(state.get_state()) == "GameTaskCreate:deadline"
+
+
+def test_gate_no_legacy_admin_check_remains_in_bound_task_city():
+    with open("handlers/admin.py", encoding="utf-8") as f:
+        lines = f.readlines()
+    code_lines = [ln for ln in lines if not ln.strip().startswith("#")]
+    joined = "".join(code_lines)
+    assert "not in config.ADMIN_IDS" not in joined
