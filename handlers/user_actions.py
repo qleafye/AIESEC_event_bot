@@ -1,3 +1,4 @@
+import asyncio
 import html
 import logging
 from datetime import datetime
@@ -17,6 +18,8 @@ from database.db import (
     get_task,
     get_active_submission,
     create_submission,
+    add_submission_part,
+    parse_proof_types,
 )
 from handlers.admin_caps import notify_by_capability  # D-13: fan out by capability, not bare ADMIN_IDS
 from keyboards.builders import (
@@ -26,6 +29,8 @@ from keyboards.builders import (
     get_socials_kb
 )
 from handlers.states import Question, GameSubmit
+from settings_schema import get_setting_typed  # Phase 09.1 (A): flow texts live in the registry
+from services.background import spawn as _spawn
 from config import config
 
 router = Router()
@@ -151,19 +156,66 @@ async def show_game_tasks(message: types.Message):
     await message.answer("\n\n".join(lines), parse_mode="HTML", reply_markup=kb)
 
 
-_GS_PROOF_PROMPTS = {
-    "photo": "Пришли скриншот/фото:",
-    "pdf": "Пришли файл (PDF):",
-    "text": "Напиши текстом:",
-    "link": "Пришли ссылку:",
-}
+# Phase 09.1 (A): the flow's texts live in settings_schema (group "game"), not literals here
+# -- the old per-type prompt/mismatch literal dicts are gone. proof_type is no longer a
+# validator, only a hint baked into the prompt (_build_proof_prompt below).
 
-_GS_MISMATCH_PROMPTS = {
-    "photo": "Пришли, пожалуйста, скриншот/фото.",
-    "pdf": "Пришли, пожалуйста, файл (PDF).",
-    "text": "Пришли, пожалуйста, текст.",
-    "link": "Пришли, пожалуйста, ссылку.",
-}
+_LEGACY_CONTENT_TYPE = {"photo": "photo", "document": "pdf", "text": "text", "link": "link"}
+
+# module dict, same "first message wins, spawn one debounced ack" shape as
+# handlers/admin.py::pending_albums / _wait_and_send_album -- keyed by media_group_id only
+# (Telegram media_group_id is unique enough in practice, same assumption the broadcast idiom
+# already makes). ONLY collects an ack here -- never finalizes the submission (no timeout).
+_gs_pending_albums: dict[str, bool] = {}
+
+
+async def _game_done_kb() -> InlineKeyboardMarkup:
+    button_text = await get_setting_typed("game_proof_done_button")
+    return InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text=button_text, callback_data="gs_done")]
+    ])
+
+
+async def _build_proof_prompt(task: dict) -> str:
+    codes = parse_proof_types(task.get("proof_type"))
+    if len(codes) == 1:
+        body = await get_setting_typed(f"game_proof_prompt_{codes[0]}")
+    else:
+        body = await get_setting_typed("game_proof_prompt_any")
+        if len(codes) > 1:
+            for code in codes:
+                body += f"\n• {await get_setting_typed(f'game_proof_prompt_{code}')}"
+    hint = await get_setting_typed("game_proof_done_hint")
+    return body + "\n\n" + hint
+
+
+def _classify_part(message: types.Message) -> tuple[str | None, str | None, str | None]:
+    """(kind, content, caption) for one incoming message, or (None, None, None) for anything
+    the free-form flow doesn't recognize (voice/video/sticker/etc -- a soft refusal, state
+    stays put)."""
+    if message.photo:
+        return "photo", message.photo[-1].file_id, getattr(message, "caption", None)
+    if message.document:
+        return "document", message.document.file_id, getattr(message, "caption", None)
+    if message.text:
+        text = message.text
+        if text.strip().lower().startswith(("http://", "https://")):
+            return "link", text, None
+        return "text", text, None
+    return None, None, None
+
+
+async def _ack_album(media_group_id: str, bot: Bot, chat_id: int, state: FSMContext):
+    await asyncio.sleep(0.8)  # collection window ONLY -- the finalize gate is still «✅ Готово»
+    _gs_pending_albums.pop(media_group_id, None)
+    data = await state.get_data()
+    parts = data.get("gs_parts", [])
+    try:
+        await bot.send_message(
+            chat_id, f"Принял, частей: {len(parts)}", reply_markup=await _game_done_kb(),
+        )
+    except Exception:
+        pass
 
 
 @router.callback_query(F.data.startswith("mytask_submit:"))
@@ -186,9 +238,9 @@ async def mytask_submit_start(callback: types.CallbackQuery, state: FSMContext):
         await callback.answer("Уже отправлено, ожидай проверки", show_alert=True)
         return
 
-    await state.update_data(gs_task_id=task_id)
+    await state.update_data(gs_task_id=task_id, gs_parts=[])
 
-    prompt = _GS_PROOF_PROMPTS.get(task["proof_type"], "Пришли подтверждение:")
+    prompt = await _build_proof_prompt(task)
     try:
         deadline_passed = (
             datetime.strptime(task["deadline_at"], "%Y-%m-%d %H:%M:%S") <= datetime.now()
@@ -204,58 +256,94 @@ async def mytask_submit_start(callback: types.CallbackQuery, state: FSMContext):
         )
 
     await callback.message.answer(prompt, reply_markup=get_cancel_kb())
+    # T-091 (CONTEXT.md A): «✅ Готово» must be available from the very first message, or the
+    # empty-submission hint can never be reached before anything is sent.
+    await callback.message.answer(
+        await get_setting_typed("game_proof_done_hint"), reply_markup=await _game_done_kb(),
+    )
     await state.set_state(GameSubmit.proof)
     await callback.answer()
 
 
 @router.message(GameSubmit.proof, F.text.in_({"Отмена"}))
 async def cancel_game_submit(message: types.Message, state: FSMContext):
+    await state.update_data(gs_parts=[])
     await state.set_state(None)
     await message.answer("Действие отменено.", reply_markup=ReplyKeyboardRemove())
 
 
 @router.message(GameSubmit.proof)
 async def receive_proof(message: types.Message, bot: Bot, state: FSMContext):
+    kind, content, caption = _classify_part(message)
+    if kind is None:
+        await message.answer("Не понял, пришли фото, документ, текст или ссылку.")
+        return  # остаёмся в GameSubmit.proof, часть НЕ добавлена
+
+    data = await state.get_data()
+    parts = list(data.get("gs_parts", []))
+    parts.append({"kind": kind, "content": content, "caption": caption})
+    await state.update_data(gs_parts=parts)
+
+    mgid = message.media_group_id
+    if mgid:
+        if mgid not in _gs_pending_albums:
+            _gs_pending_albums[mgid] = True
+            _spawn(_ack_album(mgid, bot, message.from_user.id, state))
+        return  # ack приходит одним сообщением после сборки альбома, не на каждое фото
+
+    await message.answer(f"Принял, частей: {len(parts)}", reply_markup=await _game_done_kb())
+
+
+@router.callback_query(F.data == "gs_done", GameSubmit.proof)
+async def finalize_game_submission(callback: types.CallbackQuery, bot: Bot, state: FSMContext):
+    """T-091-01: task_id comes ONLY from state (gs_task_id), never from callback_data --
+    can't be tampered with to finalize under a different task."""
     data = await state.get_data()
     task_id = data.get("gs_task_id")
-    task = await get_task(task_id)
-    if task is None:
-        # Задание исчезло, пока делегат печатал -- выходим из состояния, не молчим.
-        await state.set_state(None)
-        await message.answer("Это задание больше не доступно.", reply_markup=ReplyKeyboardRemove())
+    parts = data.get("gs_parts", [])
+
+    if not parts:
+        # CONTEXT.md A: the ONE server-side validation -- state is NOT reset, delegate can
+        # keep sending parts.
+        await callback.answer(await get_setting_typed("game_proof_empty_hint"), show_alert=True)
         return
 
-    proof_type = task["proof_type"]
-    content = None
-    if proof_type == "photo" and message.photo:
-        content = message.photo[-1].file_id
-    elif proof_type == "pdf" and message.document:
-        content = message.document.file_id
-    elif proof_type in ("text", "link") and message.text:
-        content = message.text
+    task = await get_task(task_id)
+    if task is None:
+        # Задание исчезло, пока делегат собирал сдачу -- выходим из состояния, не молчим.
+        await state.set_state(None)
+        await callback.answer()
+        await callback.message.answer("Это задание больше не доступно.", reply_markup=ReplyKeyboardRemove())
+        return
 
-    if content is None:
-        await message.answer(_GS_MISMATCH_PROMPTS.get(proof_type, "Пришли, пожалуйста, подтверждение."))
-        return  # остаёмся в GameSubmit.proof, create_submission НЕ вызывается
-
+    first = parts[0]
     submission_id = await create_submission(
-        task_id, message.from_user.id, content_type=proof_type, content=content,
+        task_id, callback.from_user.id,
+        content_type=_LEGACY_CONTENT_TYPE.get(first["kind"], "text"),
+        content=first.get("content") or "",
         submitted_at=datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
     )
     if submission_id is None:
         # T-09-01/D-05: гонка -- параллельная сдача той же пары успела раньше. Партиционный
         # индекс отклонил вставку. Без уведомления менеджеров, без технической ошибки делегату.
         await state.set_state(None)
-        await message.answer(
+        await callback.answer()
+        await callback.message.answer(
             "Уже отправлено — кто-то опередил на долю секунды. Обнови список заданий.",
             reply_markup=ReplyKeyboardRemove(),
         )
         return
 
-    await state.set_state(None)
-    await message.answer("Принято! Менеджер проверит и начислит монеты.", reply_markup=ReplyKeyboardRemove())
+    for i, part in enumerate(parts):
+        await add_submission_part(submission_id, i, part["kind"], part.get("content"), part.get("caption"))
 
-    submitter_name = message.from_user.full_name or str(message.from_user.id)
+    await state.set_state(None)
+    await callback.answer()
+    await callback.message.answer(
+        await get_setting_typed("game_submit_accepted_text"), reply_markup=ReplyKeyboardRemove(),
+    )
+
+    submitter_name = callback.from_user.full_name or str(callback.from_user.id)
     # D-13: fan out to every current moderate_game holder, not a bare loop over ADMIN_IDS.
     await notify_by_capability(
         bot, "moderate_game",
