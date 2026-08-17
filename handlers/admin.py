@@ -66,6 +66,11 @@ from database.db import (
     GAME_PROOF_TYPES,
     parse_proof_types,
     get_submission_parts_or_legacy,
+    archive_task,
+    unarchive_task,
+    delete_task,
+    count_task_submissions,
+    count_rejected_submissions,
 )
 from aiogram.exceptions import TelegramRetryAfter, TelegramForbiddenError, TelegramBadRequest
 from services.sheets import get_existing_sheet_ids, append_rows_to_sheet, ensure_sheet_header, sync_named_worksheet, dedupe_sheet_by_id, update_status_in_sheet, bulk_update_status_in_sheet, rebuild_main_sheet, REFUSED_UNPINNED_TAB, _reset_sheet_cache, tab_row_count
@@ -5230,36 +5235,143 @@ async def roles_remove(callback: types.CallbackQuery):
 # moderation queue wave 4 will add. T-09-05: task text is shown to every delegate later
 # (wave 3, parse_mode="HTML") — escaped on EVERY render, not just once at creation.
 
-def _game_tasks_list_kb() -> InlineKeyboardMarkup:
-    return InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="➕ Новое задание", callback_data="gtnew")],
-    ])
+def _game_task_line(t: dict) -> str:
+    """Byte-identical row format shared by both the active-tasks screen and the archive
+    screen — the ONE place a task row is rendered (Task 1, 14-03: replaces the old
+    `_render_game_tasks_text`'s inline loop body)."""
+    try:
+        deadline = datetime.strptime(t["deadline_at"], "%Y-%m-%d %H:%M:%S").strftime("%d.%m.%Y %H:%M")
+    except (TypeError, ValueError):
+        deadline = str(t["deadline_at"] or "—")
+    preview = html_module.escape(str(t["text"])[:60])
+    category = html_module.escape(str(t["category"]))
+    return f"«{category}» {preview} · {t['coins']}🪙 · до {deadline}"
 
 
-async def _render_game_tasks_text() -> str:
-    """Pure-ish (single read) list renderer — the ONE place task rows are formatted, reused by
-    the list screen itself, the post-confirm re-render, and the mid-wizard cancel re-render
-    (`cancel_game_task_create` below), so all three can never drift on format."""
-    tasks = await list_all_tasks()
-    if not tasks:
-        return "Заданий пока нет."
-    lines = ["📋 <b>Задания</b>\n"]
-    for t in tasks:
-        try:
-            deadline = datetime.strptime(t["deadline_at"], "%Y-%m-%d %H:%M:%S").strftime("%d.%m.%Y %H:%M")
-        except (TypeError, ValueError):
-            deadline = str(t["deadline_at"] or "—")
-        preview = html_module.escape(str(t["text"])[:60])
-        category = html_module.escape(str(t["category"]))
-        lines.append(f"«{category}» {preview} · {t['coins']}🪙 · до {deadline}")
-    return "\n".join(lines)
+async def _game_tasks_screen() -> tuple[str, InlineKeyboardMarkup]:
+    """«Функция возвращает (text, kb)» idiom (same shape as `_per_city_screen`) — replaces the
+    old two-function pair (Phase 9's list-text renderer + its keyboard builder) so the four
+    existing re-render call sites (`show_game_tasks`, `cancel_game_task_create`,
+    `game_task_confirm`, `game_task_create_cancel`) can never drift on format.
+    Task 1 (14-03, GAME-08).
+
+    Only ACTIVE tasks are listed here — archived tasks live on the separate «🗄 Архив» screen
+    (`_game_archive_screen`). Per task: «🗄 В архив» always, «🗑 Удалить» only if the task has
+    zero submissions of any status (T-14-11/T-14-12: the SQL-level gate in `delete_task` is the
+    real defense, this is only the UX hint of when the button is even offered)."""
+    all_tasks = await list_all_tasks()
+    active = [t for t in all_tasks if not t.get("archived_at")]
+    archived_count = sum(1 for t in all_tasks if t.get("archived_at"))
+
+    buttons: list[list[InlineKeyboardButton]] = []
+    hidden_delete = False
+    for t in active:
+        name = str(t["text"])[:20]
+        row = [InlineKeyboardButton(text=f"🗄 В архив: {name}", callback_data=f"gtarchive:{t['id']}")]
+        if await count_task_submissions(t["id"]) == 0:
+            row.append(InlineKeyboardButton(text="🗑 Удалить", callback_data=f"gtdelete:{t['id']}"))
+        else:
+            hidden_delete = True
+        buttons.append(row)
+
+    if not active:
+        text = "Заданий пока нет."
+    else:
+        lines = ["📋 <b>Задания</b>\n"] + [_game_task_line(t) for t in active]
+        if hidden_delete:
+            lines.append(
+                "\n🗑 У заданий со сдачами удаления нет — по ним уже есть история. Такое "
+                "задание можно только убрать в архив."
+            )
+        if archived_count:
+            lines.append(f"\n🗄 В архиве: {archived_count}")
+        text = "\n".join(lines)
+
+    buttons.append([InlineKeyboardButton(text="➕ Новое задание", callback_data="gtnew")])
+    if archived_count:
+        buttons.append([InlineKeyboardButton(
+            text=f"🗄 Архив ({archived_count})", callback_data="admin_game_archive",
+        )])
+    return text, InlineKeyboardMarkup(inline_keyboard=buttons)
+
+
+async def _game_archive_screen() -> tuple[str, InlineKeyboardMarkup]:
+    """«🗄 Архив» screen: archived tasks + «↩️ Вернуть» per row. Return-from-archive is a SAFE
+    operation (CONTEXT.md decision A) — no confirm step, unlike archive/delete. Task 1
+    (14-03, GAME-08)."""
+    all_tasks = await list_all_tasks()
+    archived = [t for t in all_tasks if t.get("archived_at")]
+
+    if not archived:
+        text = "Архив пуст."
+    else:
+        lines = ["🗄 <b>Архив</b>\n"]
+        for t in archived:
+            try:
+                archived_at = datetime.strptime(t["archived_at"], "%Y-%m-%d %H:%M:%S").strftime("%d.%m.%Y")
+            except (TypeError, ValueError):
+                archived_at = str(t["archived_at"] or "—")
+            lines.append(f"{_game_task_line(t)} · 🗄 в архиве с {archived_at}")
+        text = "\n".join(lines)
+
+    buttons = [
+        [InlineKeyboardButton(
+            text=f"↩️ Вернуть: {str(t['text'])[:20]}", callback_data=f"gtunarchive:{t['id']}",
+        )]
+        for t in archived
+    ]
+    buttons.append([InlineKeyboardButton(text="← К заданиям", callback_data="admin_game_tasks")])
+    return text, InlineKeyboardMarkup(inline_keyboard=buttons)
 
 
 @router.callback_query(F.data == "admin_game_tasks")
 async def show_game_tasks(callback: types.CallbackQuery, state: FSMContext):
-    text = await _render_game_tasks_text()
-    await callback.message.answer(text, parse_mode="HTML", reply_markup=_game_tasks_list_kb())
+    text, kb = await _game_tasks_screen()
+    await callback.message.answer(text, parse_mode="HTML", reply_markup=kb)
     await callback.answer()
+
+
+@router.callback_query(F.data == "admin_game_archive")
+async def show_game_archive(callback: types.CallbackQuery):
+    text, kb = await _game_archive_screen()
+    await callback.message.edit_text(text, parse_mode="HTML", reply_markup=kb)
+    await callback.answer()
+
+
+@router.callback_query(F.data.startswith("gtarchive_go:"))
+async def game_task_archive_go(callback: types.CallbackQuery):
+    """Real DB write for the archive action — only reachable via the `gtarchive:<id>` confirm
+    screen (Task 2, 14-03). Re-renders the tasks screen on BOTH branches (T-14-11-adjacent:
+    the button could fire from a stale confirm message after another manager already acted)."""
+    try:
+        task_id = int(callback.data.split(":", 1)[1])
+    except ValueError:
+        await callback.answer("Некорректное задание", show_alert=True)
+        return
+    if await archive_task(task_id):
+        _request_game_resync()  # Phase 09.1 (D, GAME-07): archive is a debounced resync trigger
+        await callback.answer("Задание убрано в архив")
+    else:
+        await callback.answer("Задание уже в архиве", show_alert=True)
+    text, kb = await _game_tasks_screen()
+    await callback.message.edit_text(text, parse_mode="HTML", reply_markup=kb)
+
+
+@router.callback_query(F.data.startswith("gtunarchive:"))
+async def game_task_unarchive(callback: types.CallbackQuery):
+    """Simple flip, no confirm step (CONTEXT.md: return-from-archive is safe)."""
+    try:
+        task_id = int(callback.data.split(":", 1)[1])
+    except ValueError:
+        await callback.answer("Некорректное задание", show_alert=True)
+        return
+    if await unarchive_task(task_id):
+        _request_game_resync()
+        await callback.answer("Задание возвращено")
+    else:
+        await callback.answer("Задание уже активно", show_alert=True)
+    text, kb = await _game_archive_screen()
+    await callback.message.edit_text(text, parse_mode="HTML", reply_markup=kb)
 
 
 @router.callback_query(F.data == "gtnew")
@@ -5278,8 +5390,8 @@ async def game_task_new(callback: types.CallbackQuery, state: FSMContext):
 async def cancel_game_task_create(message: types.Message, state: FSMContext):
     await state.set_state(None)
     await message.answer("Создание задания отменено.", reply_markup=ReplyKeyboardRemove())
-    text = await _render_game_tasks_text()
-    await message.answer(text, parse_mode="HTML", reply_markup=_game_tasks_list_kb())
+    text, kb = await _game_tasks_screen()
+    await message.answer(text, parse_mode="HTML", reply_markup=kb)
 
 
 # Human-readable labels for GAME_PROOF_TYPES (D-08/CLAUDE.md «для людей, не для прогеров»):
@@ -5548,16 +5660,16 @@ async def game_task_confirm(callback: types.CallbackQuery, state: FSMContext):
     _request_game_resync()  # Phase 09.1 (D, GAME-07): a new task is one of the 3 debounced triggers
     await state.set_state(None)
     await callback.answer("Задание создано")
-    text = await _render_game_tasks_text()
-    await callback.message.answer(text, parse_mode="HTML", reply_markup=_game_tasks_list_kb())
+    text, kb = await _game_tasks_screen()
+    await callback.message.answer(text, parse_mode="HTML", reply_markup=kb)
 
 
 @router.callback_query(F.data == "gtcancel")
 async def game_task_create_cancel(callback: types.CallbackQuery, state: FSMContext):
     await state.set_state(None)
     await callback.answer("Отменено")
-    text = await _render_game_tasks_text()
-    await callback.message.answer(text, parse_mode="HTML", reply_markup=_game_tasks_list_kb())
+    text, kb = await _game_tasks_screen()
+    await callback.message.answer(text, parse_mode="HTML", reply_markup=kb)
 
 
 # ── Phase 9 (GAME-02/03, wave 4, 09-04): «🎮 Проверка заданий» — moderation queue ───────────
