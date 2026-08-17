@@ -90,6 +90,7 @@ from cities import (  # Phase 07.1 (CITY-04): admin city screen; Phase 07.2 (CIT
     city_scope,
     city_codes,
     normalize_city,
+    enabled_cities,  # Phase 09.1 (B): "Кому задание?" wizard step
 )
 
 router = Router()
@@ -4664,6 +4665,16 @@ def _game_task_proof_kb(selected: set[str]) -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(inline_keyboard=rows)
 
 
+async def _game_task_city_kb() -> InlineKeyboardMarkup:
+    """Phase 09.1 (B): "Кому задание?" step, only shown when the cities module is on
+    (game_task_proof_done below). Same loop shape as registration.py::_city_fork_kb --
+    "🌍 Все города" first, then one button per await enabled_cities()."""
+    rows = [[InlineKeyboardButton(text="🌍 Все города", callback_data="gttcity:all")]]
+    for c in await enabled_cities():
+        rows.append([InlineKeyboardButton(text=await city_label(c["code"]), callback_data=f"gttcity:{c['code']}")])
+    return InlineKeyboardMarkup(inline_keyboard=rows)
+
+
 def _game_task_confirm_kb() -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text="✅ Создать", callback_data="gtconfirm")],
@@ -4680,12 +4691,22 @@ def _render_game_task_confirm_card(data: dict) -> str:
     except (TypeError, ValueError):
         deadline_display = str(deadline_raw or "—")
     proof_label = _proof_types_label(data.get("gt_proof_type"))
+    # Phase 09.1 (B): the "Кому:" line only appears when the city step was actually shown
+    # (gt_city_step_shown, set in game_task_proof_done below) -- this function is synchronous
+    # and cannot itself call cities_module_on(), so the caller resolves that once and hands
+    # the result down via state data, same "resolve once, derive everything from it" shape
+    # as _admin_city_view.
+    city_line = ""
+    if data.get("gt_city_step_shown"):
+        city_label_text = data.get("gt_event_city_label") or "🌍 Все города"
+        city_line = f"Кому: {html_module.escape(str(city_label_text))}\n"
     return (
         "📋 <b>Проверьте задание</b>\n\n"
         f"Текст: {html_module.escape(str(data.get('gt_text')))}\n"
         f"Категория: {html_module.escape(str(data.get('gt_category')))}\n"
         f"Коины: {data.get('gt_coins')}\n"
         f"Подтверждение: {proof_label}\n"
+        f"{city_line}"
         f"Дедлайн: {deadline_display}"
     )
 
@@ -4750,18 +4771,47 @@ async def game_task_proof_step(callback: types.CallbackQuery, state: FSMContext)
     await callback.answer()
 
 
-@router.callback_query(F.data == "gtproof_done")
-async def game_task_proof_done(callback: types.CallbackQuery, state: FSMContext):
-    """CONTEXT.md A: an empty selection is legal here -- no not-empty guard, unlike
-    registration.py's process_multi_done."""
-    data = await state.get_data()
-    codes = [p for p in GAME_PROOF_TYPES if p in set(data.get("gt_proof_types", []))]
-    await state.update_data(gt_proof_type=",".join(codes))
-    await callback.message.answer(
+async def _game_task_deadline_prompt(target, state: FSMContext):
+    """Shared by game_task_proof_done (module off) and game_task_city_step (module on) --
+    same prompt/state either way, CONTEXT.md B: "выключен → шаг пропущен... ни одной новой
+    кнопки"."""
+    await target.answer(
         "Дедлайн сдачи? Формат ДД.ММ.ГГГГ ЧЧ:ММ (например 25.08.2026 23:59):",
         reply_markup=get_cancel_kb(),
     )
     await state.set_state(GameTaskCreate.deadline)
+
+
+@router.callback_query(F.data == "gtproof_done")
+async def game_task_proof_done(callback: types.CallbackQuery, state: FSMContext):
+    """CONTEXT.md A: an empty selection is legal here -- no not-empty guard, unlike
+    registration.py's process_multi_done. Phase 09.1 (B): gated "Кому задание?" step --
+    module off means zero new buttons/steps, straight to the pre-09.1 deadline prompt."""
+    data = await state.get_data()
+    codes = [p for p in GAME_PROOF_TYPES if p in set(data.get("gt_proof_types", []))]
+    await state.update_data(gt_proof_type=",".join(codes))
+    if not await cities_module_on():
+        await state.update_data(gt_event_city=None, gt_city_step_shown=False)
+        await _game_task_deadline_prompt(callback.message, state)
+        await callback.answer()
+        return
+    await state.update_data(gt_city_step_shown=True)
+    await callback.message.answer("Кому задание?", reply_markup=await _game_task_city_kb())
+    await state.set_state(GameTaskCreate.city)
+    await callback.answer()
+
+
+@router.callback_query(F.data.startswith("gttcity:"))
+async def game_task_city_step(callback: types.CallbackQuery, state: FSMContext):
+    code = callback.data.split(":", 1)[1]
+    if code == "all":
+        await state.update_data(gt_event_city=None, gt_event_city_label=None)
+    else:
+        if code not in city_codes():
+            await callback.answer("Неизвестный город", show_alert=True)
+            return
+        await state.update_data(gt_event_city=code, gt_event_city_label=await city_label(code))
+    await _game_task_deadline_prompt(callback.message, state)
     await callback.answer()
 
 
@@ -4794,6 +4844,7 @@ async def game_task_confirm(callback: types.CallbackQuery, state: FSMContext):
         proof_type=data["gt_proof_type"],
         deadline_at=data["gt_deadline"],
         created_by=callback.from_user.id,
+        event_city=data.get("gt_event_city"),
     )
     await state.set_state(None)
     await callback.answer("Задание создано")

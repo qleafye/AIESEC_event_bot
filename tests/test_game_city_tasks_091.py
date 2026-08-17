@@ -11,9 +11,61 @@ tests/test_city_scope_phase72.py / tests/test_gamification_data_phase9.py.
 """
 import asyncio
 
+from aiogram.fsm.context import FSMContext
+from aiogram.fsm.storage.base import StorageKey
+from aiogram.fsm.storage.memory import MemoryStorage
+
 from config import config
 from database import db
 import cities
+from handlers import admin as admin_mod
+from handlers import user_actions as ua_mod
+from handlers.states import GameTaskCreate
+
+
+ADMIN_ID = 940901
+DELEGATE_ID = 940902
+
+
+def _new_state(uid: int = ADMIN_ID) -> FSMContext:
+    return FSMContext(storage=MemoryStorage(), key=StorageKey(bot_id=1, chat_id=uid, user_id=uid))
+
+
+class FakeUser:
+    def __init__(self, uid):
+        self.id = uid
+
+
+class FakeMessage:
+    def __init__(self, text=None, user_id=DELEGATE_ID):
+        self.text = text
+        self.from_user = FakeUser(user_id)
+        self.markup = None
+        self.answers_sent = []
+        self.answer_markups = []
+        self.answers = []  # (text, parse_mode, markup) tuples -- user_actions.py convention
+
+    async def answer(self, text, parse_mode=None, reply_markup=None):
+        self.answers_sent.append(text)
+        self.answer_markups.append(reply_markup)
+        self.answers.append((text, parse_mode, reply_markup))
+        self.text = text
+        self.markup = reply_markup
+
+
+class FakeCallback:
+    def __init__(self, data, user_id=ADMIN_ID):
+        self.data = data
+        self.from_user = FakeUser(user_id)
+        self.message = FakeMessage()
+        self.answers = []
+
+    async def answer(self, text=None, show_alert=False):
+        self.answers.append((text, show_alert))
+
+
+def _flat_callback_data(kb):
+    return [btn.callback_data for row in kb.inline_keyboard for btn in row]
 
 
 def _db_ready(tmp_path):
@@ -150,3 +202,189 @@ def test_get_pending_submissions_no_scope_matches_today(tmp_path):
     _seed_submission(task_id, 102, "msk")
     rows = asyncio.run(db.get_pending_submissions(limit=50, offset=0))
     assert len(rows) == 2
+
+
+# ── Task 2: "Кому задание?" wizard step + delegate-facing task-list filter ──────────────────
+
+def _drive_to_city_step(state, *, text="t", category="Light", coins="10", proof="photo"):
+    asyncio.run(admin_mod.game_task_text_step(FakeMessage(text=text), state))
+    asyncio.run(admin_mod.game_task_category_step(FakeCallback(f"gtcat:{category}"), state))
+    asyncio.run(admin_mod.game_task_coins_step(FakeMessage(text=coins), state))
+    if proof is not None:
+        asyncio.run(admin_mod.game_task_proof_step(FakeCallback(f"gtproof:{proof}"), state))
+    callback = FakeCallback("gtproof_done")
+    asyncio.run(admin_mod.game_task_proof_done(callback, state))
+    return callback
+
+
+def test_module_off_wizard_skips_city_step_entirely(tmp_path):
+    _db_ready(tmp_path)
+    state = _new_state()
+    asyncio.run(state.set_state(GameTaskCreate.text))
+    callback = _drive_to_city_step(state)
+    # straight to the deadline prompt -- no city keyboard sent at all
+    assert asyncio.run(state.get_state()) == GameTaskCreate.deadline
+    assert "Кому" not in callback.message.answers_sent[-1]
+    data = asyncio.run(state.get_data())
+    assert data.get("gt_event_city") is None
+    assert data.get("gt_city_step_shown") is False
+
+
+def test_module_on_wizard_shows_city_step_with_all_and_enabled_cities(tmp_path):
+    _db_ready(tmp_path)
+    asyncio.run(db.set_setting("event_city_enabled", "on"))
+    state = _new_state()
+    asyncio.run(state.set_state(GameTaskCreate.text))
+    callback = _drive_to_city_step(state)
+    assert asyncio.run(state.get_state()) == GameTaskCreate.city
+    kb = callback.message.answer_markups[-1]
+    codes = _flat_callback_data(kb)
+    assert codes[0] == "gttcity:all"
+    assert set(codes[1:]) == {f"gttcity:{c}" for c in cities.city_codes()}
+
+
+def test_gttcity_all_sets_null_event_city(tmp_path):
+    _db_ready(tmp_path)
+    asyncio.run(db.set_setting("event_city_enabled", "on"))
+    state = _new_state()
+    asyncio.run(state.set_state(GameTaskCreate.text))
+    _drive_to_city_step(state)
+    callback = FakeCallback("gttcity:all")
+    asyncio.run(admin_mod.game_task_city_step(callback, state))
+    assert asyncio.run(state.get_state()) == GameTaskCreate.deadline
+    assert asyncio.run(state.get_data())["gt_event_city"] is None
+
+
+def test_gttcity_known_code_sets_city(tmp_path):
+    _db_ready(tmp_path)
+    asyncio.run(db.set_setting("event_city_enabled", "on"))
+    state = _new_state()
+    asyncio.run(state.set_state(GameTaskCreate.text))
+    _drive_to_city_step(state)
+    callback = FakeCallback("gttcity:spb")
+    asyncio.run(admin_mod.game_task_city_step(callback, state))
+    assert asyncio.run(state.get_state()) == GameTaskCreate.deadline
+    assert asyncio.run(state.get_data())["gt_event_city"] == "spb"
+
+
+def test_gttcity_unknown_code_alerts_and_keeps_state(tmp_path):
+    _db_ready(tmp_path)
+    asyncio.run(db.set_setting("event_city_enabled", "on"))
+    state = _new_state()
+    asyncio.run(state.set_state(GameTaskCreate.text))
+    _drive_to_city_step(state)
+    callback = FakeCallback("gttcity:bogus")
+    asyncio.run(admin_mod.game_task_city_step(callback, state))
+    assert callback.answers == [("Неизвестный город", True)]
+    assert asyncio.run(state.get_state()) == GameTaskCreate.city  # unchanged
+
+
+def _drive_full_wizard_with_city(state, gttcity="gttcity:spb"):
+    _drive_to_city_step(state)
+    asyncio.run(admin_mod.game_task_city_step(FakeCallback(gttcity), state))
+    deadline_message = FakeMessage(text="25.08.2099 23:59")
+    asyncio.run(admin_mod.game_task_deadline_step(deadline_message, state))
+    return deadline_message
+
+
+def test_confirm_card_prints_komu_line_only_when_module_on(tmp_path):
+    _db_ready(tmp_path)
+    asyncio.run(db.set_setting("event_city_enabled", "on"))
+    state = _new_state()
+    asyncio.run(state.set_state(GameTaskCreate.text))
+    message = _drive_full_wizard_with_city(state, "gttcity:spb")
+    card_text = message.answers_sent[-1]
+    assert "Кому:" in card_text
+    assert "Санкт-Петербург" in card_text or "СПб" in card_text or "spb" in card_text.lower()
+
+
+def test_confirm_card_all_cities_label(tmp_path):
+    _db_ready(tmp_path)
+    asyncio.run(db.set_setting("event_city_enabled", "on"))
+    state = _new_state()
+    asyncio.run(state.set_state(GameTaskCreate.text))
+    message = _drive_full_wizard_with_city(state, "gttcity:all")
+    card_text = message.answers_sent[-1]
+    assert "Кому: 🌍 Все города" in card_text
+
+
+def test_confirm_card_no_komu_line_when_module_off(tmp_path):
+    _db_ready(tmp_path)
+    state = _new_state()
+    asyncio.run(state.set_state(GameTaskCreate.text))
+    callback = _drive_to_city_step(state)  # goes straight to deadline (module off)
+    deadline_message = FakeMessage(text="25.08.2099 23:59")
+    asyncio.run(admin_mod.game_task_deadline_step(deadline_message, state))
+    card_text = deadline_message.answers_sent[-1]
+    assert "Кому:" not in card_text
+
+
+def test_game_task_confirm_passes_event_city_to_create_task(tmp_path):
+    _db_ready(tmp_path)
+    asyncio.run(db.set_setting("event_city_enabled", "on"))
+    state = _new_state()
+    asyncio.run(state.set_state(GameTaskCreate.text))
+    _drive_full_wizard_with_city(state, "gttcity:spb")
+    callback = FakeCallback("gtconfirm")
+    asyncio.run(admin_mod.game_task_confirm(callback, state))
+    tasks = asyncio.run(db.list_all_tasks())
+    assert tasks[0]["event_city"] == "spb"
+
+
+def _seed_delegate(uid, event_city):
+    asyncio.run(db.add_user({
+        "telegram_id": uid,
+        "full_name": f"Delegate {uid}",
+        "registration_date": "2026-08-01",
+        "event_city": event_city,
+    }))
+    import sqlite3
+    conn = sqlite3.connect(config.DB_PATH)
+    conn.execute("UPDATE users SET status = 'approved' WHERE telegram_id = ?", (uid,))
+    conn.commit()
+    conn.close()
+
+
+def test_delegate_sees_own_city_and_null_not_other_city(tmp_path):
+    _db_ready(tmp_path)
+    asyncio.run(db.set_setting("event_city_enabled", "on"))
+    _seed_delegate(DELEGATE_ID, "spb")
+    asyncio.run(db.create_task("all", "Light", 10, "text", "2099-01-01 00:00:00", None))
+    asyncio.run(db.create_task("spb", "Light", 10, "text", "2099-01-01 00:00:00", None, event_city="spb"))
+    asyncio.run(db.create_task("msk", "Light", 10, "text", "2099-01-01 00:00:00", None, event_city="msk"))
+    message = FakeMessage(user_id=DELEGATE_ID)
+    asyncio.run(ua_mod.show_game_tasks(message))
+    text = message.answers[-1][0]
+    assert "all" in text and "spb" in text and "msk" not in text
+
+
+def test_delegate_without_city_sees_default_city_and_null(tmp_path):
+    _db_ready(tmp_path)
+    asyncio.run(db.set_setting("event_city_enabled", "on"))
+    _seed_delegate(DELEGATE_ID, None)
+    asyncio.run(db.create_task("all", "Light", 10, "text", "2099-01-01 00:00:00", None))
+    asyncio.run(db.create_task("msk", "Light", 10, "text", "2099-01-01 00:00:00", None, event_city="msk"))
+    asyncio.run(db.create_task("spb", "Light", 10, "text", "2099-01-01 00:00:00", None, event_city="spb"))
+    message = FakeMessage(user_id=DELEGATE_ID)
+    asyncio.run(ua_mod.show_game_tasks(message))
+    text = message.answers[-1][0]
+    assert "all" in text and "msk" in text and "spb" not in text
+
+
+def test_module_off_show_game_tasks_calls_list_active_tasks_without_kwargs(tmp_path, monkeypatch):
+    """Module off -> byte-identical to pre-09.1: no city_scope kwarg is ever passed."""
+    _db_ready(tmp_path)
+    _seed_delegate(DELEGATE_ID, "spb")
+    asyncio.run(db.create_task("t", "Light", 10, "text", "2099-01-01 00:00:00", None))
+
+    calls = []
+    real = db.list_active_tasks
+
+    async def spy(*args, **kwargs):
+        calls.append((args, kwargs))
+        return await real(*args, **kwargs)
+
+    monkeypatch.setattr(ua_mod, "list_active_tasks", spy)
+    message = FakeMessage(user_id=DELEGATE_ID)
+    asyncio.run(ua_mod.show_game_tasks(message))
+    assert calls == [((), {})]
