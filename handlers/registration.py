@@ -60,6 +60,13 @@ DEFAULT_START_TEXT = (
     "Настройте текст приветствия через /admin → Настройки → Приветствие."
 )
 
+# UAT 17.08: вернувшемуся участнику нельзя показывать текст для новичков («заявка займёт
+# 5-7 минут…») — тестировщики решили, что регистрация сбросилась. Настраивается ключом
+# start_text_registered (/admin → Настройки → Событие/Медиа).
+DEFAULT_START_REGISTERED_TEXT = (
+    "С возвращением! Ты уже зарегистрирован(а) — всё нужное в меню ниже \U0001f447"
+)
+
 # Tatiana: «поздравляем» теперь приходит СРАЗУ после регистрации (раньше — только после
 # одобрения). reg_complete_text = пост-регистрационный скрипт; approve_text = отдельный
 # скрипт после одобрения заявки. Оба правятся в /admin → Настройки.
@@ -1830,8 +1837,11 @@ async def cmd_start(message: types.Message, state: FSMContext, bot: Bot, command
 
     if user and (user.get("status") or "approved") != "rejected":
         # D-05a: a rejected user falls through to re-register; others see the welcome menu.
+        # UAT 17.08: a returning delegate gets its OWN text, never the newcomer's start_text
+        # (which reads "заявка займёт 5-7 минут…" and made testers think registration reset).
         logger.info(f"User {user_id} already registered")
-        await _send_welcome(message, start_text, start_photo, await get_main_menu_kb(user_id), user_id)
+        registered_text = await get_setting("start_text_registered") or DEFAULT_START_REGISTERED_TEXT
+        await _send_welcome(message, registered_text, start_photo, await get_main_menu_kb(user_id), user_id)
 
         if user_id in config.ADMIN_IDS:
             # quick-260817-4pj: inline button, NOT a second reply-keyboard + FSM state — a
