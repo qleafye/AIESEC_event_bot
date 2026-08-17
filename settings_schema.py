@@ -671,6 +671,69 @@ SETTINGS_SCHEMA = {
         "prompt": "Что увидит делегат сразу после успешной финализации сдачи.",
         "default": "Принято! Менеджер проверит и начислит монеты.",
     },
+
+    # ── Phase 09.2 (B): group "menu" — тумблеры кнопок главного меню ────────────────────
+    # Source of these 9 keys/labels: keyboards/builders.py::MENU_BUTTONS (copied byte-for-
+    # byte, emoji included). Deliberately `type: "enum"`, options ["on", "off"], NOT
+    # `type: "toggle"`. Reason: `REG_DEFAULTS` is derived from SETTINGS_SCHEMA by filtering
+    # `type == "toggle"` (handlers/registration.py:237-239), and `_apply_event_preset`
+    # (handlers/admin.py:3061-3069) unconditionally sweeps EVERY REG_DEFAULTS key on every
+    # tap of an event-type preset (forum/conference/custom), writing "on"/"off" to each.
+    # If menu_* were "toggle"-typed, tapping any preset in the admin UI would silently
+    # force every menu button off (none of them match a reg_q_* preset name). This is the
+    # SAME established workaround already used by payment_enabled/consent_enabled/
+    # role_reg_manager_enabled/event_city_enabled — all documented "NOT toggle" for the
+    # exact same reason.
+    # `per_city: True` — Phase 09.2 (A): kept as an editable, per-city-overridable setting,
+    # same mechanism as any other per_city key. Consumers (get_main_menu_kb, the admin
+    # "🔘 Кнопки главного меню" screen) are NOT migrated in this plan — they stay on raw
+    # get_setting reads until plans 09.2-03/09.2-06; registry and raw reads coexist by
+    # design during incremental migration (Phase 6 invariant).
+    "menu_referral": {
+        "type": "enum", "group": "menu", "label": "🔗 Моя реферальная ссылка",
+        "options": ["on", "off"], "prompt": None, "default": "on",
+        "per_city": True,
+    },
+    "menu_invites": {
+        "type": "enum", "group": "menu", "label": "👥 Мои приглашённые",
+        "options": ["on", "off"], "prompt": None, "default": "on",
+        "per_city": True,
+    },
+    "menu_info": {
+        "type": "enum", "group": "menu", "label": "ℹ️ Информация о форуме",
+        "options": ["on", "off"], "prompt": None, "default": "on",
+        "per_city": True,
+    },
+    "menu_program": {
+        "type": "enum", "group": "menu", "label": "📅 Программа форума",
+        "options": ["on", "off"], "prompt": None, "default": "on",
+        "per_city": True,
+    },
+    "menu_speakers": {
+        "type": "enum", "group": "menu", "label": "🗣 Спикеры",
+        "options": ["on", "off"], "prompt": None, "default": "on",
+        "per_city": True,
+    },
+    "menu_contacts": {
+        "type": "enum", "group": "menu", "label": "📞 Контакты",
+        "options": ["on", "off"], "prompt": None, "default": "on",
+        "per_city": True,
+    },
+    "menu_question": {
+        "type": "enum", "group": "menu", "label": "❓ Задать вопрос",
+        "options": ["on", "off"], "prompt": None, "default": "on",
+        "per_city": True,
+    },
+    "menu_coins": {
+        "type": "enum", "group": "menu", "label": "🪙 Мои монеты",
+        "options": ["on", "off"], "prompt": None, "default": "on",
+        "per_city": True,
+    },
+    "menu_game_tasks": {
+        "type": "enum", "group": "menu", "label": "🎯 Задания",
+        "options": ["on", "off"], "prompt": None, "default": "on",
+        "per_city": True,
+    },
 }
 
 
