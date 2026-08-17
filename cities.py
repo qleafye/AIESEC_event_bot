@@ -226,6 +226,11 @@ async def is_city_enabled(code: str) -> bool:
 
 
 async def city_label(code: str) -> str:
+    """Phase 09.3 (CITY-08): `ALL_CITIES` ("*") is not a city — its label is the fixed
+    `ALL_CITIES_LABEL` constant, never read from `bot_settings`. A manager cannot override the
+    "all cities" mode's display text via `city_label__*` (there is no such city to name)."""
+    if code == ALL_CITIES:
+        return ALL_CITIES_LABEL
     override = await get_setting(f"city_label__{code}")
     if override:
         return override
@@ -290,6 +295,17 @@ async def cities_module_on() -> bool:
 # a single SQL query in `database/db.py`. Nothing here binds a manager to a city; any admin
 # may pick any city today (owner decision, 07.2-CONTEXT.md).
 
+# Phase 09.3 (CITY-08): a THIRD state for "which city is admin panel scoped to", alongside
+# `None` (module off) and a real city code. `ALL_CITIES = "*"` means "module ON, admin
+# explicitly chose no filter" — data screens see the same unfiltered result as module-off
+# (`city_scope(ALL_CITIES) -> None`), but callers that render a LABEL must never conflate the
+# two: `None` still means ONLY "module disabled" everywhere in this file, `ALL_CITIES` means
+# "module enabled, scoped to everything". Never let `"*"` reach `normalize_city` — a known
+# city code passes through unchanged, but `"*"` is not a known code, so `normalize_city("*")`
+# would silently resolve it to `default_city_code()`, turning "all cities" into "only Moscow".
+ALL_CITIES = "*"
+ALL_CITIES_LABEL = "🌍 Все города"
+
 ADMIN_CITY_KEY_PREFIX = "admin_city__"
 
 
@@ -302,6 +318,13 @@ def city_scope(code: str | None) -> tuple[str, tuple[str, ...]] | None:
     `code is None` -> `None` ("no scope" — the caller wants every row, unfiltered; this is
     what makes module-off / "no city chosen" collapse to a byte-identical, unfiltered query).
 
+    `code == ALL_CITIES` ("*") -> also `None` (Phase 09.3, CITY-08) — same unfiltered SQL
+    result as module-off, but this branch MUST come before `normalize_city` runs: the module
+    is ON and the admin explicitly chose "all cities", which is a different reason for the
+    same result than module-off. `normalize_city("*")` would resolve to the DEFAULT city
+    (`get_city("*")` is None -> `default_city_code()`), silently turning "all cities" into
+    "only Moscow" — this early return exists specifically to prevent that collapse.
+
     Otherwise the code is resolved through `normalize_city` (the SAME collapse the Sheets tabs
     already use), then:
       - resolved is the DEFAULT city -> `(resolved, tuple_of_every_other_known_code)`. The
@@ -313,6 +336,8 @@ def city_scope(code: str | None) -> tuple[str, tuple[str, ...]] | None:
       - resolved is any OTHER known city -> `(resolved, ())` — plain equality, no exclusion.
     """
     if code is None:
+        return None
+    if code == ALL_CITIES:
         return None
     resolved = normalize_city(code)
     if is_default_city(resolved):
@@ -372,6 +397,8 @@ async def admin_selected_city(admin_id: int) -> str | None:
         if bound:
             return normalize_city(bound)
     raw = await get_setting(f"{ADMIN_CITY_KEY_PREFIX}{int(admin_id)}")
+    if raw == ALL_CITIES:
+        return ALL_CITIES
     return normalize_city(raw)
 
 
@@ -385,11 +412,19 @@ async def set_admin_city(admin_id: int, code: str) -> bool:
     Phase 09.1 (C, ROLE-03): this is the "right", not just the "filter" (07.2's own comment
     above already earmarks this exact seam) -- a manager bound to a city (`get_staff_city`)
     can only ever pick THEIR city; a bootstrap superadmin (`config.ADMIN_IDS`, D-12) or an
-    unbound manager (`city IS NULL`) keeps today's unrestricted behavior."""
-    if code not in city_codes():
+    unbound manager (`city IS NULL`) keeps today's unrestricted behavior.
+
+    Phase 09.3 (CITY-08, T-093-01): a manager bound to a city is refused `ALL_CITIES`
+    outright, not just "narrowed to their city" — without this explicit branch,
+    `normalize_city(ALL_CITIES) != normalize_city(bound)` would compare `default_city_code()`
+    against the bound city, and a manager bound to the DEFAULT city would silently pass the
+    check and be allowed to write `"*"` into `bot_settings`."""
+    if code != ALL_CITIES and code not in city_codes():
         return False
     if admin_id not in config.ADMIN_IDS:
         bound = await get_staff_city(admin_id)
+        if bound and code == ALL_CITIES:
+            return False
         if bound and normalize_city(code) != normalize_city(bound):
             return False
     await set_setting(f"{ADMIN_CITY_KEY_PREFIX}{int(admin_id)}", code)
