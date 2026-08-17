@@ -1,8 +1,12 @@
+import logging
 from aiogram.types import ReplyKeyboardMarkup, InlineKeyboardMarkup, InlineKeyboardButton
 from aiogram.utils.keyboard import ReplyKeyboardBuilder, InlineKeyboardBuilder
 from config import config
-from database.db import get_setting
+from database.db import get_user
 from settings_schema import get_setting_typed
+from cities import get_setting_typed_for_city, cities_module_on, normalize_city
+
+logger = logging.getLogger(__name__)
 
 # --- Main Menu ---
 
@@ -19,11 +23,30 @@ MENU_BUTTONS = [
 ]
 
 async def get_main_menu_kb(telegram_id: int | None = None) -> ReplyKeyboardMarkup:
+    # Phase 09.2 (B): resolve the delegate's city ONCE, before the button loop -- module off
+    # (or no telegram_id, e.g. the two legacy tests that call get_main_menu_kb() bare) means
+    # get_user is never even called, so there is not a single extra DB read over today.
+    # A resolve failure (bad row, exception) must not break the menu -- buttons matter more
+    # than the city, so it fails soft to code=None (global values), same idiom as
+    # handlers/user_actions.py::show_game_tasks.
+    code = None
+    try:
+        if telegram_id is not None and await cities_module_on():
+            user = await get_user(telegram_id)
+            code = normalize_city(user.get("event_city") if user else None)
+    except Exception as e:
+        logger.error(f"get_main_menu_kb: city resolve failed for {telegram_id}: {e}")
+        code = None
+
     kb = ReplyKeyboardBuilder()
     for key, text in MENU_BUTTONS:
-        val = await get_setting(key)
-        # IN-02: button shown when the setting is unset (default on) or explicitly "on".
-        if val is None or val == "on":
+        # menu_* is a registry `enum` key (options ["on","off"], default "on") -- the enum
+        # branch of `_parse_setting` is `raw if raw else default`, so an unset/empty stored
+        # value resolves to "on" exactly like the old `val is None or val == "on"` idiom;
+        # any other stored value (including junk) resolves to itself and fails the `== "on"`
+        # check, hiding the button exactly as before.
+        val = await get_setting_typed_for_city(key, code)
+        if val == "on":
             kb.button(text=text)
     # Persistent "upload receipt" entry — only while the user still owes one.
     # Lazy import avoids a circular import (payment imports get_main_menu_kb); fail-soft.
