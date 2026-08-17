@@ -140,7 +140,7 @@ async def init_db():
 
         # Phase 14 (CITY-07): city registry moves from `.env` into the DB -- this table is
         # the source of truth from now on. `cities.seed_cities_if_empty()` fills it once from
-        # `config.EVENT_CITIES` on first boot (empty-table check); after that `.env` is never
+        # the old .env city list on first boot (empty-table check); after that `.env` is never
         # read again for the city list. `enabled` mirrors the old `bot_settings
         # city_enabled__{code}` toggle at seed time (old keys are NOT deleted -- read-fallback
         # kept for backward compat, see `cities.is_city_enabled`). No FOREIGN KEY -- mirrors

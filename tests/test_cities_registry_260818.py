@@ -261,3 +261,118 @@ def test_set_cities_for_test_mutates_same_object():
     finally:
         restore()
     assert before_id == after_id
+
+
+# ── Task 3: deep-link without a stale dict, startup wiring, structural sweep ────────────────
+
+def test_deep_link_resolves_for_a_city_added_after_start_pitfall_1(tmp_path):
+    """14-RESEARCH.md Pitfall 1: `_city_tag_map()` must be recomputed on every call, not
+    frozen at import time -- otherwise a city added from the bot never resolves its own
+    deep-link token, silently falling back to the ordinary city-picker screen."""
+    from handlers import registration as reg
+
+    _db_ready(tmp_path)
+    restore = _snapshot_cities()
+    try:
+        asyncio.run(db.insert_city("spb", "Санкт-Петербург", "СПб", 0))
+        asyncio.run(cities.reload_cities())
+        assert reg._extract_event_city("city_spb") == "spb"  # pre-existing token still works
+
+        # Add a city AFTER the process is already up -- this is the scenario Pitfall 1 warns
+        # about: a module dict frozen at import time would never see it.
+        asyncio.run(db.insert_city("nsk", "Новосибирск", "", 1))
+        asyncio.run(cities.reload_cities())
+        assert reg._extract_event_city("city_nsk") == "nsk"
+        assert reg._extract_event_city("city_spb") == "spb"  # old token unaffected by the add
+
+        # Malformed/near-miss tokens never resolve (T-14-27: exact match only, no startswith).
+        assert reg._extract_event_city("city_") is None
+        assert reg._extract_event_city("CITY_NSK") is None
+        assert reg._extract_event_city("city_nsk_extra") is None
+    finally:
+        restore()
+
+
+def test_reload_visible_to_all_readers_pitfall_2(tmp_path):
+    """14-RESEARCH.md Pitfall 2: a structural sweep across every reader of `CITIES` -- the
+    admin/registration aliases, `city_codes()`, `city_scope()`'s exclude list,
+    `refresh_city_filter_spec()`, and the delegate city-picker keyboard must all see a newly
+    inserted city right after `reload_cities()`, with zero call-site changes."""
+    from handlers import admin as admin_mod
+    from handlers import registration as reg
+
+    _db_ready(tmp_path)
+    restore = _snapshot_cities()
+    try:
+        asyncio.run(db.insert_city("msk", "Москва", "", 0))
+        asyncio.run(db.insert_city("nsk", "Новосибирск", "", 1))
+        asyncio.run(cities.reload_cities())
+
+        assert "nsk" in cities.city_codes()
+        assert "nsk" in {c["code"] for c in admin_mod.CITIES}
+        assert "nsk" in {c["code"] for c in reg.CITIES}
+
+        default_scope = cities.city_scope("msk")
+        assert default_scope is not None
+        assert "nsk" in default_scope[1]  # default city's exclude list picks up the new code
+
+        spec = [{"field": "event_city", "value": "msk", "exclude": []}]
+        refreshed = cities.refresh_city_filter_spec(spec)
+        assert refreshed is not None
+        assert "nsk" in refreshed[0]["exclude"]
+
+        kb = asyncio.run(reg._city_fork_kb())
+        picked_codes = [
+            btn.callback_data.split(":", 1)[1]
+            for row in kb.inline_keyboard for btn in row
+        ]
+        assert "nsk" in picked_codes
+    finally:
+        restore()
+
+
+def test_admin_and_registration_CITIES_are_the_same_object_as_cache():
+    """Structural contract against future regression: `from cities import CITIES` in both
+    god-files must alias the SAME list object cities.py mutates in place."""
+    from handlers import admin as admin_mod
+    from handlers import registration as reg
+
+    assert admin_mod.CITIES is cities.CITIES
+    assert reg.CITIES is cities.CITIES
+
+
+def test_no_module_besides_cities_reads_config_EVENT_CITIES():
+    """Structural sentry (mirrors test_gate_no_legacy_admin_check_remains's shape): after this
+    plan, `config.EVENT_CITIES` (the actual .env read) may only appear in `cities.py` --
+    the cold fallback value + the one-time `seed_cities_if_empty()` seed. Matches the literal
+    attribute-access pattern (`config.EVENT_CITIES`), not a bare substring search, because two
+    OTHER files (`handlers/admin.py`, `services/scheduler.py`, both out of this plan's file
+    ownership per 14-CONTEXT.md's wave split) carry pre-existing PROSE comments that merely
+    name "EVENT_CITIES" as historical context from Phase 07.1/07.2 -- those are not reads and
+    are not this plan's regression to fix."""
+    root = pathlib.Path(__file__).resolve().parents[1]
+    allowed = {root / "cities.py"}
+    offenders = []
+    for path in root.rglob("*.py"):
+        parts = path.relative_to(root).parts
+        if parts[0] in {"tests", ".venv", "__pycache__"} or ".venv" in parts:
+            continue
+        if path in allowed:
+            continue
+        text = path.read_text(encoding="utf-8")
+        if "config.EVENT_CITIES" in text:
+            offenders.append(str(path.relative_to(root)))
+    assert offenders == []
+
+
+def test_main_py_seeds_and_reloads_cities_before_header_materialization():
+    """Structural: `main.py::main()` must call `seed_cities_if_empty()` and `reload_cities()`
+    (in that relative position) BEFORE `_maybe_ensure_city_sheet_headers()` is spawned -- that
+    function already reads `cities.enabled_cities()`, so the cache must be populated first."""
+    root = pathlib.Path(__file__).resolve().parents[1]
+    src = root.joinpath("main.py").read_text(encoding="utf-8")
+    seed_pos = src.index("seed_cities_if_empty")
+    reload_pos = src.index("reload_cities")
+    headers_pos = src.index("_maybe_ensure_city_sheet_headers")
+    assert seed_pos < headers_pos
+    assert reload_pos < headers_pos
