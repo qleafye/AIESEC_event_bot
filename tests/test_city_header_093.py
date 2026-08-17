@@ -44,11 +44,20 @@ class FakeMessage:
         self.text = None
         self.markup = None
         self.edit_calls = 0
+        self.answers_sent = []
+        self.answer_markups = []
 
     async def edit_text(self, text, parse_mode=None, reply_markup=None):
         self.text = text
         self.markup = reply_markup
         self.edit_calls += 1
+
+    async def answer(self, text, parse_mode=None, reply_markup=None):
+        # appr_all_yes's roundtrip-mismatch branch re-renders the card via _show_current_card
+        # (target.answer, not edit_text) -- same dual-purpose FakeMessage shape as
+        # tests/test_city_admin_phase72.py.
+        self.answers_sent.append(text)
+        self.answer_markups.append(reply_markup)
 
 
 class FakeCallback:
@@ -56,6 +65,7 @@ class FakeCallback:
         self.data = data
         self.from_user = FakeUser(uid)
         self.message = FakeMessage()
+        self.bot = None  # appr_all_yes reads callback.bot for the background welcome drain
         self.answered_texts = []
         self.answered_alerts = []
 
@@ -145,6 +155,127 @@ def test_admin_city_pick_all_cities_rejected_for_bound_manager_forged_callback(t
     assert cb.answered_alerts and cb.answered_alerts[-1] is True
     assert "Неизвестный город" in (cb.answered_texts[-1] or "")
     assert asyncio.run(cities.admin_selected_city(MANAGER_ID)) == "spb"
+
+
+# ── Task 2 (T-093-10/T-093-11): «Одобрить все» in ALL_CITIES mode ──────────────────────────
+
+def _seed_pending(tid, event_city, status="pending"):
+    asyncio.run(db.add_user({
+        "telegram_id": tid,
+        "full_name": f"User {tid}",
+        "registration_date": f"2026-01-01 09:{tid:02d}:00",
+        "event_city": event_city,
+    }))
+    asyncio.run(db.set_user_status(tid, status))
+
+
+def _seed_three_pending_two_cities(tmp_path):
+    _admin_ready(tmp_path)
+    _seed_pending(1, "spb")
+    _seed_pending(2, "spb")
+    _seed_pending(3, "msk")
+
+
+def test_appr_all_confirm_all_cities_names_scope_and_count(tmp_path):
+    _seed_three_pending_two_cities(tmp_path)
+    asyncio.run(cities.set_admin_city(ADMIN_ID, cities.ALL_CITIES))
+    cb = FakeCallback("appr_all", ADMIN_ID)
+    state = _fresh_state(ADMIN_ID)
+    asyncio.run(admin_mod.appr_all_confirm(cb, state))
+    assert "по всем городам" in cb.message.text
+    assert "3" in cb.message.text
+    flat = [b.callback_data for row in cb.message.markup.inline_keyboard for b in row]
+    assert f"appr_all_yes:{cities.ALL_CITIES}" in flat
+
+
+def test_appr_all_confirm_real_city_unaffected_by_the_new_branch(tmp_path):
+    """Регресс: третья ветка (ALL_CITIES) не задевает вторую -- реальный город остаётся
+    байт-в-байт тем же текстом, что и до этого плана."""
+    _seed_three_pending_two_cities(tmp_path)
+    asyncio.run(cities.set_admin_city(ADMIN_ID, "spb"))
+    cb = FakeCallback("appr_all", ADMIN_ID)
+    state = _fresh_state(ADMIN_ID)
+    asyncio.run(admin_mod.appr_all_confirm(cb, state))
+    assert "по всем городам" not in cb.message.text
+    assert "Заявки других городов не будут затронуты." in cb.message.text
+
+
+def test_appr_all_yes_all_cities_approves_both_cities(tmp_path):
+    _seed_three_pending_two_cities(tmp_path)
+    asyncio.run(cities.set_admin_city(ADMIN_ID, cities.ALL_CITIES))
+    cb = FakeCallback(f"appr_all_yes:{cities.ALL_CITIES}", ADMIN_ID)
+    state = _fresh_state(ADMIN_ID)
+    asyncio.run(admin_mod.appr_all_yes(cb, state))
+
+    async def check():
+        for tid in (1, 2, 3):
+            user = await db.get_user(tid)
+            assert user["status"] == "approved", tid
+
+    asyncio.run(check())
+
+
+def test_appr_all_yes_context_mismatch_confirmed_all_but_header_now_city(tmp_path):
+    _seed_three_pending_two_cities(tmp_path)
+    asyncio.run(cities.set_admin_city(ADMIN_ID, cities.ALL_CITIES))
+    cb = FakeCallback("appr_all", ADMIN_ID)
+    state = _fresh_state(ADMIN_ID)
+    asyncio.run(admin_mod.appr_all_confirm(cb, state))
+    asyncio.run(cities.set_admin_city(ADMIN_ID, "spb"))  # шапка переключена уже после диалога
+    stale = FakeCallback(f"appr_all_yes:{cities.ALL_CITIES}", ADMIN_ID)
+    asyncio.run(admin_mod.appr_all_yes(stale, state))
+    assert stale.answered_alerts and stale.answered_alerts[-1] is True
+    assert "изменил" in (stale.answered_texts[-1] or "")
+
+    async def check():
+        for tid in (1, 2, 3):
+            user = await db.get_user(tid)
+            assert user["status"] == "pending", tid
+
+    asyncio.run(check())
+
+
+def test_appr_all_yes_context_mismatch_confirmed_city_but_header_now_all(tmp_path):
+    _seed_three_pending_two_cities(tmp_path)
+    asyncio.run(cities.set_admin_city(ADMIN_ID, "spb"))
+    cb = FakeCallback("appr_all", ADMIN_ID)
+    state = _fresh_state(ADMIN_ID)
+    asyncio.run(admin_mod.appr_all_confirm(cb, state))
+    asyncio.run(cities.set_admin_city(ADMIN_ID, cities.ALL_CITIES))  # симметричный случай
+    stale = FakeCallback("appr_all_yes:spb", ADMIN_ID)
+    asyncio.run(admin_mod.appr_all_yes(stale, state))
+    assert stale.answered_alerts and stale.answered_alerts[-1] is True
+    assert "изменил" in (stale.answered_texts[-1] or "")
+
+    async def check():
+        for tid in (1, 2, 3):
+            user = await db.get_user(tid)
+            assert user["status"] == "pending", tid
+
+    asyncio.run(check())
+
+
+def test_appr_all_yes_forged_unknown_code_still_rejected_when_header_is_all_cities(tmp_path):
+    """Behavior bullet: a forged `appr_all_yes:<нет_такого_кода>` is still rejected when the
+    header is ALL_CITIES. It hits the SAME roundtrip-mismatch branch a forged code always hits
+    (confirmed="__evil__" != current="*", exactly parallel to
+    tests/test_city_admin_phase72.py::test_appr_all_yes_refuses_forged_city_code) -- the
+    membership guard's own ALL_CITIES exception (Pitfall 1) is a distinct, narrower claim,
+    covered directly by the two context-mismatch tests above (confirmed==current=="*" with a
+    real `city_codes()` value on the other side)."""
+    _seed_three_pending_two_cities(tmp_path)
+    asyncio.run(cities.set_admin_city(ADMIN_ID, cities.ALL_CITIES))
+    cb = FakeCallback("appr_all_yes:__evil__", ADMIN_ID)
+    state = _fresh_state(ADMIN_ID)
+    asyncio.run(admin_mod.appr_all_yes(cb, state))
+    assert cb.answered_alerts and cb.answered_alerts[-1] is True
+
+    async def check():
+        for tid in (1, 2, 3):
+            user = await db.get_user(tid)
+            assert user["status"] == "pending", tid
+
+    asyncio.run(check())
 
 
 # ── admin_keyboard_for header label (behavior bullet: button caption) ───────────────────────
