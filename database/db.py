@@ -724,6 +724,71 @@ async def get_user_rank(user_id: int) -> int | None:
         return greater + 1
 
 
+# ── Phase 14 (14-05, GAME-09): «📜 Журнал монет» — manual-ops screen + full CSV export ──────
+#
+# `source = 'manual'` is the ONLY filter that decides what lands on the SCREEN (never a
+# text-prefix match on `reason` -- Pitfall 6, closed by 14-04's `coins.source` column). `source = 'task'`
+# and `source IS NULL` (legacy, pre-Phase-14 rows) never appear on the paginated screen; the
+# CSV export is unfiltered and labels every source human-readably instead.
+
+_COIN_JOURNAL_SELECT = (
+    "SELECT c.*, u.full_name AS user_full_name, u.username AS user_username, "
+    "u.event_city AS user_event_city "
+    "FROM coins c LEFT JOIN users u ON u.telegram_id = c.user_id"
+)
+
+
+async def list_manual_coin_entries(limit: int = 10, offset: int = 0) -> list[dict]:
+    """Paginated «📜 Журнал монет» screen feed -- same LIMIT/OFFSET + LEFT JOIN shape as
+    `get_pending_submissions` (CLAUDE.md: 1000+ rows must never render in one message).
+    ONLY `source = 'manual'` rows -- task-award credits and pre-Phase-14 legacy rows are
+    deliberately excluded from the screen (they still show up in the CSV export below)."""
+    async with aiosqlite.connect(config.DB_PATH) as db:
+        db.row_factory = aiosqlite.Row
+        async with db.execute(
+            f"{_COIN_JOURNAL_SELECT} WHERE c.source = 'manual' ORDER BY c.id DESC LIMIT ? OFFSET ?",
+            (limit, offset),
+        ) as cursor:
+            return [dict(row) for row in await cursor.fetchall()]
+
+
+async def count_manual_coin_entries() -> int:
+    """Same WHERE as `list_manual_coin_entries` -- drives the «Страница K из N» label."""
+    async with aiosqlite.connect(config.DB_PATH) as db:
+        async with db.execute(
+            "SELECT COUNT(*) FROM coins WHERE source = 'manual'"
+        ) as cursor:
+            row = await cursor.fetchone()
+            return int(row[0]) if row and row[0] is not None else 0
+
+
+_COIN_SOURCE_CSV_LABELS = {"manual": "Вручную", "task": "За задание", None: "До обновления"}
+
+
+async def export_coins_journal_csv() -> tuple[list[str], list[tuple]]:
+    """Full журнал dump -- ALL rows regardless of `source` (manual + task + legacy NULL),
+    unlike the paginated screen above. `_csv_safe` on every cell (T-14-23, CWE-1236); the raw
+    `source` code is never written to the file -- only its RU label via
+    `_COIN_SOURCE_CSV_LABELS` (same principle as `_PAYMENT_STATUS_LABELS`)."""
+    headers = [
+        "ID", "Когда", "Кому (ID)", "Кому (ФИО)", "Юзернейм", "Город", "Сколько", "Тип",
+        "Причина", "Кто изменил (ID)",
+    ]
+    async with aiosqlite.connect(config.DB_PATH) as db:
+        db.row_factory = aiosqlite.Row
+        async with db.execute(f"{_COIN_JOURNAL_SELECT} ORDER BY c.id DESC") as cursor:
+            rows = [dict(row) for row in await cursor.fetchall()]
+    out_rows = []
+    for row in rows:
+        type_label = _COIN_SOURCE_CSV_LABELS.get(row.get("source"), str(row.get("source")))
+        out_rows.append(tuple(_csv_safe(cell) for cell in (
+            row.get("id"), row.get("timestamp"), row.get("user_id"), row.get("user_full_name"),
+            row.get("user_username"), row.get("user_event_city"), row.get("delta"), type_label,
+            row.get("reason"), row.get("changed_by"),
+        )))
+    return headers, out_rows
+
+
 # ── Phase 1: reg_started dropout tracking (independent of FSM) ────────────────
 
 async def mark_reg_started(
