@@ -42,7 +42,9 @@ def set_alert_bot(bot) -> None:
     _alert_bot = bot
 
 
-async def _alert_admins_proxy_switch(from_masked: str, to_masked: str) -> None:
+async def _alert_admins_proxy_switch(
+    from_masked: str, to_masked: str, cause: str = "unknown"
+) -> None:
     """Fired via services.background.spawn (fire-and-forget) so a slow/failing Telegram
     send never blocks the retry loop that just switched proxy links. Wrapped so this can
     NEVER raise into the caller."""
@@ -60,6 +62,11 @@ async def _alert_admins_proxy_switch(from_masked: str, to_masked: str) -> None:
             "Бот продолжает работать через резервный канал. "
             "Проверьте основной прокси/туннель."
         )
+        # A manager should not read «Причина: unknown» -- only append when we actually
+        # have a diagnostic cause (e.g. _rotate_from(observed_index) called with no error,
+        # like the stale-index dedup path).
+        if cause != "unknown":
+            text += f"\nПричина: {cause}"
         for admin_id in config.ADMIN_IDS:
             if admin_id in _blocked_admins:
                 continue
@@ -88,6 +95,32 @@ def mask_proxy_url(value) -> str:
         return "direct"
     s = value if isinstance(value, str) else str(value)
     return _CRED_RE.sub(lambda m: (m.group(1) or "") + "***@", s)
+
+
+# Unlike _CRED_RE (anchored to the START of a standalone URL), an aiohttp/network error
+# message embeds the proxy URL MID-STRING (e.g. "Cannot connect to socks5://user:pass@...").
+# This one is unanchored and requires a literal "user:pass@" pair, so plain hosts like
+# "https://api.telegram.org" are left untouched.
+_CAUSE_CRED_RE = re.compile(r"[^\s/@]+:[^\s/@]*@")
+
+
+def _scrub_credentials(text: str) -> str:
+    """Replace any embedded "user:pass@" credential pair with "***@". Pure function."""
+    return _CAUSE_CRED_RE.sub("***@", text)
+
+
+def _describe_error(error) -> str:
+    """Render a short, credential-scrubbed description of the exception that triggered a
+    proxy failover, for the WARNING log line and the admin alert. `None` -> "unknown"
+    (keeps `_rotate_from(observed_index)` called with no error argument meaningful).
+    Truncated to 200 chars -- aiohttp connection errors can be paragraph-length and this
+    string goes into a Telegram message."""
+    if error is None:
+        return "unknown"
+    text = _scrub_credentials(f"{type(error).__name__}: {error}")
+    if len(text) > 200:
+        text = text[:200] + "…"
+    return text
 
 
 def build_proxy_chain(*values) -> list:
@@ -163,10 +196,15 @@ class FailoverAiohttpSession(AiohttpSession):
     def active_proxy(self) -> str:
         return mask_proxy_url(self._chain[self._index])
 
-    async def _rotate_from(self, observed_index: int) -> None:
+    async def _rotate_from(self, observed_index: int, error=None) -> None:
         """Idempotent rotation: if another coroutine already rotated past `observed_index`,
-        this is a no-op -- the caller simply retries on the link that's already active."""
+        this is a no-op -- the caller simply retries on the link that's already active.
+
+        `error` is the TelegramNetworkError that triggered the rotation (None keeps the
+        existing stale-index dedup test's direct `_rotate_from(0)` call meaningful, logging
+        `cause: unknown`)."""
         global _last_alerted_index
+        cause = _describe_error(error)
         async with self._rotate_lock:
             if self._index != observed_index:
                 return
@@ -175,10 +213,12 @@ class FailoverAiohttpSession(AiohttpSession):
             self._apply(nxt)
             self._switched_at = None if nxt == 0 else self._time_source()
             to_masked = mask_proxy_url(self._chain[nxt])
-            logger.warning("Proxy failover: %s -> %s", prev_masked, to_masked)
+            logger.warning(
+                "Proxy failover: %s -> %s (cause: %s)", prev_masked, to_masked, cause
+            )
             if nxt != _last_alerted_index:
                 _last_alerted_index = nxt
-                spawn(_alert_admins_proxy_switch(prev_masked, to_masked))
+                spawn(_alert_admins_proxy_switch(prev_masked, to_masked, cause))
 
     async def _maybe_return_to_primary(self) -> None:
         if self._index == 0 or self._recheck_seconds <= 0 or self._switched_at is None:
@@ -238,4 +278,4 @@ class FailoverAiohttpSession(AiohttpSession):
                     # Full circle, nothing alive -- surface the ORIGINAL error so
                     # dp.start_polling's existing backoff/retry logic is unaffected.
                     raise first_error
-                await self._rotate_from(current)
+                await self._rotate_from(current, e)
