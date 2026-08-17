@@ -1677,6 +1677,151 @@ async def settings_receive_file_invalid(message: types.Message):
 
 HTML_SETTINGS = {"start_text", "start_text_registered", "reg_complete_text", "approve_text", "approve_text__party"}
 
+
+def _base_setting_key(key: str) -> str:
+    """Phase 09.2 (C, CITY-05): strips a `{key}__city__{code}` composite key down to the
+    base registry key — used ONLY for the HTML_SETTINGS membership check in
+    settings_edit_value, so per-city text saves get the same HTML parsing as the global
+    save. `_SHEET_TAB_WRITE_MODE`/`_options` branches deliberately stay on the raw key
+    (guarded by test_no_per_city_key_in_sheet_tab_write_mode_or_options_suffix)."""
+    return key.split(PER_CITY_SEP)[0]
+
+
+def _enum_human_label(key: str, value: str) -> str:
+    """Human-readable alert text for a per-city enum toggle (CLAUDE.md: no raw values in
+    admin-facing alerts)."""
+    if key == "registration_mode":
+        return {"short": "⚡ Краткая", "full": "📋 Полная"}.get(value, value)
+    if value == "on":
+        return "✅ Вкл"
+    if value == "off":
+        return "❌ Выкл"
+    return value
+
+
+@router.callback_query(F.data.startswith("settings_city_pick:"))
+async def settings_city_pick(callback: types.CallbackQuery, state: FSMContext):
+    rest = callback.data.split(":", 1)[1]
+    if ":" not in rest:
+        await callback.answer("Неизвестная кнопка", show_alert=True)
+        return
+    key, code = rest.rsplit(":", 1)
+    if not await cities_module_on() or not is_per_city(key):
+        await callback.answer("Города выключены", show_alert=True)
+        return
+    composed = per_city_key(key, code)
+    if composed is None:
+        await callback.answer("Неизвестный город", show_alert=True)
+        return
+    # RESEARCH Pitfall 6 / T-092-16: server-side re-check, not just a hidden button.
+    visible = await _per_city_visible_codes(callback.from_user.id)
+    if code not in visible:
+        await callback.answer("Этот город правит суперадмин", show_alert=True)
+        return
+
+    entry = SETTINGS_SCHEMA.get(key, {})
+    entry_type = entry.get("type")
+    city_txt = await city_label(code)
+
+    if entry_type == "text":
+        current = await get_setting(composed)
+        prompt = entry.get("prompt") or "Введите значение"
+        text = f"🏙 Город: {html_module.escape(city_txt)}\n\n"
+        if current:
+            text += f"Сейчас у города:\n<b>{html_module.escape(current)}</b>\n\n"
+        else:
+            text += "Сейчас у города: <i>как везде</i>\n\n"
+        text += html_module.escape(prompt)
+        text += "\n\n<i>Пришлите новое значение сообщением. Чтобы очистить поле — отправьте «-».</i>"
+        rows: list[list[InlineKeyboardButton]] = []
+        if current:
+            rows.append([InlineKeyboardButton(text="↩️ Как везде", callback_data=f"settings_city_clear:{key}:{code}")])
+        rows.append([InlineKeyboardButton(text="❌ Отмена", callback_data=f"settings_city:{key}")])
+        await callback.message.edit_text(text, parse_mode="HTML", reply_markup=InlineKeyboardMarkup(inline_keyboard=rows))
+        await state.set_state(EditSetting.waiting_for_value)
+        await state.update_data(setting_key=composed, per_city_base=key)
+        await callback.answer()
+        return
+
+    if entry_type == "enum":
+        options = entry.get("options") or []
+        if len(options) != 2:
+            await callback.answer("Пока не поддерживается", show_alert=True)
+            return
+        current_eff = await get_setting_typed_for_city(key, code)
+        new_val = options[1] if current_eff == options[0] else options[0]
+        await set_setting(composed, new_val)
+        human = _enum_human_label(key, new_val)
+        label = entry.get("label", key)
+        await callback.answer(f"{label} для {city_txt}: {human}", show_alert=True)
+        text, kb = await _per_city_screen(key, callback.from_user.id)
+        await callback.message.edit_text(text, parse_mode="HTML", reply_markup=kb)
+        return
+
+    # Fail-closed for any other type (photo/file/int/date/list) — never silently no-op.
+    await callback.answer("Пока не поддерживается", show_alert=True)
+
+
+@router.callback_query(F.data.startswith("settings_city_clear:"))
+async def settings_city_clear(callback: types.CallbackQuery):
+    rest = callback.data.split(":", 1)[1]
+    if ":" not in rest:
+        await callback.answer("Неизвестная кнопка", show_alert=True)
+        return
+    key, code = rest.rsplit(":", 1)
+    if not await cities_module_on() or not is_per_city(key):
+        await callback.answer("Города выключены", show_alert=True)
+        return
+    composed = per_city_key(key, code)
+    if composed is None:
+        await callback.answer("Неизвестный город", show_alert=True)
+        return
+    visible = await _per_city_visible_codes(callback.from_user.id)
+    if code not in visible:
+        await callback.answer("Этот город правит суперадмин", show_alert=True)
+        return
+
+    city_txt = await city_label(code)
+    global_value = await get_setting(key)
+    preview = f"<i>{html_module.escape(global_value[:200])}</i>" if global_value else "<i>по умолчанию</i>"
+    text = (
+        f"Город {html_module.escape(city_txt)} снова будет использовать общее значение:\n"
+        f"{preview}\n\nСвой текст города будет удалён."
+    )
+    kb = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="✅ Да, как везде", callback_data=f"settings_city_clear_go:{key}:{code}")],
+        [InlineKeyboardButton(text="← Отмена", callback_data=f"settings_city:{key}")],
+    ])
+    await callback.message.edit_text(text, parse_mode="HTML", reply_markup=kb)
+    await callback.answer()
+
+
+@router.callback_query(F.data.startswith("settings_city_clear_go:"))
+async def settings_city_clear_go(callback: types.CallbackQuery):
+    rest = callback.data.split(":", 1)[1]
+    if ":" not in rest:
+        await callback.answer("Неизвестная кнопка", show_alert=True)
+        return
+    key, code = rest.rsplit(":", 1)
+    if not await cities_module_on() or not is_per_city(key):
+        await callback.answer("Города выключены", show_alert=True)
+        return
+    composed = per_city_key(key, code)
+    if composed is None:
+        await callback.answer("Неизвестный город", show_alert=True)
+        return
+    visible = await _per_city_visible_codes(callback.from_user.id)
+    if code not in visible:
+        await callback.answer("Этот город правит суперадмин", show_alert=True)
+        return
+
+    # Idempotent — deleting an already-absent key is a no-op, safe to repeat.
+    await delete_setting(composed)
+    city_txt = await city_label(code)
+    await callback.answer(f"Готово: {city_txt} — как везде", show_alert=True)
+    text, kb = await _per_city_screen(key, callback.from_user.id)
+    await callback.message.edit_text(text, parse_mode="HTML", reply_markup=kb)
+
 # Quick 260815-3hw (Task 3): which Google Sheets tab-name keys the bot actually WRITES to, and
 # HOW. "rewrite" = the sync path does ws.clear() + full rewrite (rebuild_main_sheet /
 # sync_named_worksheet); "append" = only new rows are ever added (append_to_named_sheet), never
@@ -1756,7 +1901,10 @@ async def settings_edit_value(message: types.Message, state: FSMContext):
     data = await state.get_data()
     key = data["setting_key"]
 
-    if key in HTML_SETTINGS:
+    # Phase 09.2 (C, CITY-05): a per-city composite key (`{base}__city__{code}`) gets the
+    # SAME HTML-parsing treatment as its base key — the check is against the base, not the
+    # raw composite (which is never itself a HTML_SETTINGS member).
+    if _base_setting_key(key) in HTML_SETTINGS:
         value = (message.html_text or message.text or "").strip()
     else:
         value = (message.text or "").strip()
@@ -1825,7 +1973,15 @@ async def settings_edit_value(message: types.Message, state: FSMContext):
     if key in _SHEET_TAB_WRITE_MODE:
         await _after_tab_setting_saved(key)
 
+    per_city_base = data.get("per_city_base")
     await state.clear()
+    if per_city_base:
+        # Phase 09.2 (C, CITY-05): a per-city save/clear returns to the city list of that
+        # key, not the general settings landing (RESEARCH Pattern 3 — reuse the FSM, but
+        # keep the caller on the screen they actually came from).
+        text, kb = await _per_city_screen(per_city_base, message.from_user.id)
+        await message.answer(text + warning, parse_mode="HTML", reply_markup=kb)
+        return
     text = await render_settings_text()
     await message.answer(text + warning, parse_mode="HTML", reply_markup=await build_settings_keyboard())
 
