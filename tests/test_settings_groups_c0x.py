@@ -204,9 +204,10 @@ def test_registry_coverage_event():
     # "toggles" added 06-04 (D-12): the feature-switch enum group.
     # "roles" added 08-01 (D-09/D-10): role -> capability matrix + per-role kill switch.
     # "sheets" added quick 260815-3hw: Google Sheets tab names ("📄 Вкладки таблицы" screen).
+    # "game" added Phase 09.1 (A): free-form submission flow texts ("🎮 Геймификация" screen).
     allowed_groups = {
         "event", "reg", "reg_questions", "pay", "party", "consent", "toggles", "roles",
-        "sheets", "misc",
+        "sheets", "game", "misc",
     }
     allowed_types = {"toggle", "int", "list", "date", "text", "enum", "photo", "file"}
 
