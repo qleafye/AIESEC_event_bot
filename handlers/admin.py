@@ -5374,6 +5374,94 @@ async def game_task_unarchive(callback: types.CallbackQuery):
     await callback.message.edit_text(text, parse_mode="HTML", reply_markup=kb)
 
 
+# ── Task 2 (14-03, GAME-08): two-step confirm gates for archive/delete ──────────────────────
+# Same "confirm-text callback -> *_go execute callback" split as `rebuild_sheet_confirm` ->
+# `admin_rebuild_sheet_go` and `dedupe_sheet_confirm` -> `admin_dedupe_sheet_go` (both above,
+# same file). Real DB writes live ONLY in the `_go` handlers — T-14-12: the confirm screen
+# itself must never touch the database.
+
+@router.callback_query(F.data.startswith("gtarchive:"))
+async def game_task_archive_confirm(callback: types.CallbackQuery):
+    try:
+        task_id = int(callback.data.split(":", 1)[1])
+    except ValueError:
+        await callback.answer("Некорректное задание", show_alert=True)
+        return
+    task = await get_task(task_id)
+    if task is None:
+        await callback.answer("Задание не найдено", show_alert=True)
+        return
+    name = html_module.escape(str(task["text"])[:60])
+    kb = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="🗄 Да, в архив", callback_data=f"gtarchive_go:{task_id}")],
+        [InlineKeyboardButton(text="← Отмена", callback_data="admin_game_tasks")],
+    ])
+    await callback.message.edit_text(
+        f"🗄 <b>Убрать задание в архив?</b>\n\n«{name}»\n\n"
+        "Задание пропадёт у делегатов и его больше нельзя будет сдать; уже сделанные сдачи и "
+        "начисленные монеты сохранятся; непроверенные сдачи останутся в «🎮 Проверка». Вернуть "
+        "можно в любой момент из «🗄 Архив».",
+        parse_mode="HTML",
+        reply_markup=kb,
+    )
+    await callback.answer()
+
+
+@router.callback_query(F.data.startswith("gtdelete:"))
+async def game_task_delete_confirm(callback: types.CallbackQuery):
+    try:
+        task_id = int(callback.data.split(":", 1)[1])
+    except ValueError:
+        await callback.answer("Некорректное задание", show_alert=True)
+        return
+    task = await get_task(task_id)
+    if task is None:
+        await callback.answer("Задание не найдено", show_alert=True)
+        return
+    # T-14-12: re-check right here -- the button on the tasks screen could have been rendered
+    # before a delegate's submission landed (same race class as the gate inside delete_task's
+    # own SQL, defense in depth: this alert is the friendly early exit, the SQL NOT EXISTS
+    # clause in delete_task is the one that actually cannot be bypassed).
+    if await count_task_submissions(task_id) > 0:
+        await callback.answer("У задания появились сдачи — теперь можно только в архив", show_alert=True)
+        text, kb = await _game_tasks_screen()
+        await callback.message.edit_text(text, parse_mode="HTML", reply_markup=kb)
+        return
+    name = html_module.escape(str(task["text"])[:60])
+    kb = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="🗑 Да, удалить", callback_data=f"gtdelete_go:{task_id}")],
+        [InlineKeyboardButton(text="← Отмена", callback_data="admin_game_tasks")],
+    ])
+    await callback.message.edit_text(
+        f"🗑 <b>Удалить задание?</b>\n\n«{name}»\n\n"
+        "Задание удалится безвозвратно: оно исчезнет из бота и из вкладок «Гейма»/«История "
+        "сдач» при следующей пересборке. Это возможно только потому, что по нему нет ни одной "
+        "сдачи.",
+        parse_mode="HTML",
+        reply_markup=kb,
+    )
+    await callback.answer()
+
+
+@router.callback_query(F.data.startswith("gtdelete_go:"))
+async def game_task_delete_go(callback: types.CallbackQuery):
+    try:
+        task_id = int(callback.data.split(":", 1)[1])
+    except ValueError:
+        await callback.answer("Некорректное задание", show_alert=True)
+        return
+    if await delete_task(task_id):
+        _request_game_resync()
+        await callback.answer("Задание удалено")
+    else:
+        # delete_task's own SQL-level NOT EXISTS gate refused -- a submission landed between
+        # the confirm screen and this tap (T-14-12). No exception, no crash, same friendly text
+        # as the pre-check in game_task_delete_confirm above.
+        await callback.answer("У задания появились сдачи — теперь можно только в архив", show_alert=True)
+    text, kb = await _game_tasks_screen()
+    await callback.message.edit_text(text, parse_mode="HTML", reply_markup=kb)
+
+
 @router.callback_query(F.data == "gtnew")
 async def game_task_new(callback: types.CallbackQuery, state: FSMContext):
     await state.set_data({})  # explicit clear -- set_state alone does not clear get_data()
