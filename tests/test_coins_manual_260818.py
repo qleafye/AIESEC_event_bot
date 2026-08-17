@@ -70,6 +70,7 @@ class FakeMessage:
         self.answers_sent = []
         self.answer_markups = []
         self.answer_parse_modes = []
+        self.documents = []
 
     async def answer(self, text, parse_mode=None, reply_markup=None):
         self.answers_sent.append(text)
@@ -81,6 +82,9 @@ class FakeMessage:
         self.text = text
         self.answers_sent.append(text)
         self.answer_markups.append(reply_markup)
+
+    async def answer_document(self, document, caption=None):
+        self.documents.append(document)
 
     async def delete(self):
         self.deleted = True
@@ -540,3 +544,146 @@ def test_coinsman_end_to_end_forward_minus_amount_reason_confirm(tmp_path):
     assert chat_id == DELEGATE_ID
     assert "-3" in text or "−3" in text
     assert "за нарушение" in text
+
+
+# ═══════════════════════════════════════════════════════════════════════════════════════════
+# 14-05 Task 1: list_manual_coin_entries / count_manual_coin_entries / export_coins_journal_csv
+# ═══════════════════════════════════════════════════════════════════════════════════════════
+
+def test_list_manual_coin_entries_returns_freshest_manual_rows_with_recipient_fields(tmp_path):
+    _db_ready(tmp_path)
+    _seed_delegate()
+    asyncio.run(db.add_coins(DELEGATE_ID, 1, reason="r1", changed_by=ADMIN_ID, source="manual"))
+    asyncio.run(db.add_coins(DELEGATE_ID, 2, reason="r2", changed_by=ADMIN_ID, source="manual"))
+    asyncio.run(db.add_coins(DELEGATE_ID, 3, reason="r3", changed_by=ADMIN_ID, source="manual"))
+    rows = asyncio.run(db.list_manual_coin_entries(limit=2, offset=0))
+    assert len(rows) == 2
+    assert rows[0]["reason"] == "r3"  # id DESC -- newest first
+    assert rows[1]["reason"] == "r2"
+    assert rows[0]["user_full_name"] == "Дельгат Тестов"
+    assert rows[0]["user_username"] == "@delegate1"
+
+
+def test_list_and_count_manual_coin_entries_exclude_task_and_legacy_rows(tmp_path):
+    _db_ready(tmp_path)
+    _seed_delegate()
+    asyncio.run(db.add_coins(DELEGATE_ID, 5, reason="ручное", changed_by=ADMIN_ID, source="manual"))
+    asyncio.run(db.add_coins(DELEGATE_ID, 30, reason="за задание", changed_by=ADMIN_ID, source="task"))
+    asyncio.run(db.add_coins(DELEGATE_ID, 10, reason="легаси", changed_by=ADMIN_ID))  # source=None
+    rows = asyncio.run(db.list_manual_coin_entries(limit=10, offset=0))
+    assert len(rows) == 1
+    assert rows[0]["reason"] == "ручное"
+    assert asyncio.run(db.count_manual_coin_entries()) == 1
+
+
+def test_list_manual_coin_entries_offset_paginates(tmp_path):
+    _db_ready(tmp_path)
+    _seed_delegate()
+    for i in range(3):
+        asyncio.run(db.add_coins(DELEGATE_ID, 1, reason=f"m{i}", changed_by=ADMIN_ID, source="manual"))
+    page1 = asyncio.run(db.list_manual_coin_entries(limit=2, offset=0))
+    page2 = asyncio.run(db.list_manual_coin_entries(limit=2, offset=2))
+    assert [r["reason"] for r in page1] == ["m2", "m1"]
+    assert [r["reason"] for r in page2] == ["m0"]
+
+
+def test_export_coins_journal_csv_includes_manual_task_and_legacy_rows(tmp_path):
+    _db_ready(tmp_path)
+    _seed_delegate()
+    asyncio.run(db.add_coins(DELEGATE_ID, 5, reason="ручное", changed_by=ADMIN_ID, source="manual"))
+    asyncio.run(db.add_coins(DELEGATE_ID, 30, reason="за задание", changed_by=ADMIN_ID, source="task"))
+    asyncio.run(db.add_coins(DELEGATE_ID, 10, reason="легаси", changed_by=ADMIN_ID))
+    headers, rows = asyncio.run(db.export_coins_journal_csv())
+    assert headers == [
+        "ID", "Когда", "Кому (ID)", "Кому (ФИО)", "Юзернейм", "Город", "Сколько", "Тип",
+        "Причина", "Кто изменил (ID)",
+    ]
+    assert len(rows) == 3
+    type_col = headers.index("Тип")
+    reason_col = headers.index("Причина")
+    types_by_reason = {r[reason_col]: r[type_col] for r in rows}
+    assert types_by_reason["ручное"] == "Вручную"
+    assert types_by_reason["за задание"] == "За задание"
+    assert types_by_reason["легаси"] == "До обновления"
+
+
+def test_export_coins_journal_csv_neutralizes_formula_injection_in_reason(tmp_path):
+    _db_ready(tmp_path)
+    _seed_delegate()
+    for bad_reason in ("=cmd()", "+1", "-1", "@SUM(1)"):
+        asyncio.run(db.add_coins(DELEGATE_ID, 1, reason=bad_reason, changed_by=ADMIN_ID, source="manual"))
+    headers, rows = asyncio.run(db.export_coins_journal_csv())
+    reason_col = headers.index("Причина")
+    reasons = [r[reason_col] for r in rows]
+    for bad_reason in ("=cmd()", "+1", "-1", "@SUM(1)"):
+        assert ("'" + bad_reason) in reasons
+
+
+# ═══════════════════════════════════════════════════════════════════════════════════════════
+# 14-05 Task 2: «📜 Журнал монет» screen — pagination + CSV export button
+# ═══════════════════════════════════════════════════════════════════════════════════════════
+
+def test_coins_journal_menu_row_visible_for_moderate_game_hidden_for_moderate_reg(tmp_path):
+    _db_ready(tmp_path)
+    row = ("📜 Журнал монет", "admin_coins_journal")
+    assert row in admin_mod._ADMIN_MENU_ROWS
+    assert row in admin_mod._visible_menu_rows({"moderate_game"})
+    assert row not in admin_mod._visible_menu_rows({"moderate_reg"})
+
+
+def test_coins_journal_screen_paginates_ten_per_page_with_nav_buttons(tmp_path):
+    _db_ready(tmp_path)
+    _seed_delegate()
+    for i in range(15):
+        asyncio.run(db.add_coins(DELEGATE_ID, 1, reason=f"m{i}", changed_by=ADMIN_ID, source="manual"))
+
+    text, kb = asyncio.run(admin_mod._coins_journal_screen(offset=0))
+    assert "Страница 1 из 2" in text
+    flat = [btn.callback_data for row in kb.inline_keyboard for btn in row]
+    assert any(cd.startswith("coinsjrn_page:") for cd in flat)  # "Позже →" present
+    assert not any(cd == "coinsjrn_page:-10" for cd in flat)  # no "← Раньше" on page 1
+
+    text2, kb2 = asyncio.run(admin_mod._coins_journal_screen(offset=10))
+    assert "Страница 2 из 2" in text2
+    flat2 = [btn.callback_data for row in kb2.inline_keyboard for btn in row]
+    assert "coinsjrn_page:0" in flat2  # "← Раньше" back to page 1
+    assert not any(cd.startswith("coinsjrn_page:20") for cd in flat2)  # no "Позже →" on last page
+
+
+def test_coins_journal_screen_row_shows_recipient_amount_reason_changer_no_raw_source(tmp_path):
+    _db_ready(tmp_path)
+    _seed_delegate()
+    asyncio.run(db.add_coins(DELEGATE_ID, 5, reason="за помощь", changed_by=ADMIN_ID, source="manual"))
+    text, _ = asyncio.run(admin_mod._coins_journal_screen(offset=0))
+    assert "Дельгат Тестов" in text
+    assert "+5" in text
+    assert "за помощь" in text
+    assert str(ADMIN_ID) in text
+    assert "manual" not in text
+    assert "source" not in text
+
+
+def test_coins_journal_screen_empty_shows_placeholder_and_csv_button(tmp_path):
+    _db_ready(tmp_path)
+    text, kb = asyncio.run(admin_mod._coins_journal_screen(offset=0))
+    assert "Ручных операций пока не было." in text
+    flat = [btn.callback_data for row in kb.inline_keyboard for btn in row]
+    assert "coinsjrn_csv" in flat
+
+
+def test_coinsjrn_csv_sends_document_with_content(tmp_path):
+    _db_ready(tmp_path)
+    _seed_delegate()
+    asyncio.run(db.add_coins(DELEGATE_ID, 5, reason="за помощь", changed_by=ADMIN_ID, source="manual"))
+    callback = FakeCallback("coinsjrn_csv")
+    asyncio.run(admin_mod.coinsjrn_csv(callback))
+    assert callback.message.documents, "no document sent"
+    document = callback.message.documents[-1]
+    assert document.data  # BufferedInputFile has non-empty bytes
+
+
+def test_coinsjrn_new_keys_resolve_to_moderate_game(tmp_path):
+    _db_ready(tmp_path)
+    assert required_capability(callback_data="admin_coins_journal") == "moderate_game"
+    assert required_capability(callback_data="coinsjrn_page:10") == "moderate_game"
+    assert required_capability(callback_data="coinsjrn_csv") == "moderate_game"
