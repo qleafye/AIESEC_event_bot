@@ -166,7 +166,7 @@ async def _schedule_deadline_reminders(telegram_id: int):
         return
     try:
         from datetime import datetime, timedelta
-        from services.scheduler import schedule_payment_reminder
+        from services.scheduler import schedule_payment_reminder, _now_moscow_naive
         deadline = datetime.strptime(deadline_str.strip(), "%d.%m.%Y %H:%M")
         # WR-03: persist payment_due so a user who defers straight from the multi-option picker
         # (never picking an option → payment_option stays NULL) is still caught by the overdue
@@ -175,7 +175,10 @@ async def _schedule_deadline_reminders(telegram_id: int):
             await set_payment_due(telegram_id, deadline_str.strip())
         except Exception as e:
             logger.error(f"Failed to persist payment_due for {telegram_id}: {e}")
-        now = datetime.now()
+        # TZFIX-260817 (A-9): payment_deadline приходит от менеджера в московских часах, а
+        # часы контейнера — UTC; на 3-часовой разнице напоминание уезжало в прошлое, и
+        # misfire_grace_time стрелял им немедленно (см. остальные точки TZFIX-260816).
+        now = _now_moscow_naive()
         minus3d = deadline - timedelta(days=3)
         minus1d = deadline - timedelta(days=1)
         if minus3d > now:
