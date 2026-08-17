@@ -15,7 +15,12 @@ pytest-asyncio в этом окружении нет — каждый async-хе
 config.DB_PATH указывает на файл в tmp_path; та же конвенция, что в
 tests/test_city_offparity_phase72.py.
 """
+import asyncio
+
+from config import config
+from database import db
 import settings_schema as s
+import cities
 
 
 # ── Task 1: состав per_city-ключей реестра ──────────────────────────────────────────
@@ -104,3 +109,189 @@ def test_menu_keys_not_in_reg_defaults():
     from keyboards.builders import MENU_BUTTONS
 
     assert not (set(REG_DEFAULTS) & {k for k, _ in MENU_BUTTONS})
+
+
+# ── Task 3: резолвер cities.get_setting_for_city / get_setting_typed_for_city ──────
+
+def _db_ready(tmp_path, name):
+    """Свежая база. `event_city_enabled` НЕ выставляется, если явно не сказано иначе —
+    так тест ловит и случайное изменение дефолта тумблера."""
+    config.DB_PATH = str(tmp_path / name)
+    asyncio.run(db.init_db())
+
+
+def test_per_city_key_builder_closed_set():
+    code = cities.city_codes()[0]
+    assert cities.per_city_key("start_text", code) == f"start_text__city__{code}"
+    assert cities.per_city_key("start_text", "zzz-not-a-real-city") is None
+
+
+def test_is_per_city():
+    assert cities.is_per_city("start_text") is True
+    assert cities.is_per_city("event_name") is False
+    assert cities.is_per_city("нетТакого") is False
+
+
+def test_get_setting_for_city_calls_cities_module_on_and_normalize_city():
+    import inspect
+
+    src = inspect.getsource(cities.get_setting_for_city)
+    assert "cities_module_on" in src
+    assert "normalize_city" in src
+
+
+def test_resolver_module_off_is_byte_identical_to_get_setting(tmp_path):
+    """Свежая база, event_city_enabled НЕ выставляется вовсе — переопределения для ВСЕХ
+    городов записаны, но резолвер обязан вернуть только глобальное значение (T-092-02)."""
+    _db_ready(tmp_path, "test_percity_offparity.db")
+
+    async def scenario():
+        await db.set_setting("start_text", "Глобальный текст")
+        for code in cities.city_codes():
+            await db.set_setting(cities.per_city_key("start_text", code), f"Текст для {code}")
+        for code in list(cities.city_codes()) + [None, "unknown-code"]:
+            resolved = await cities.get_setting_for_city("start_text", code)
+            direct = await db.get_setting("start_text")
+            assert resolved == direct == "Глобальный текст"
+
+    asyncio.run(scenario())
+
+
+def test_resolver_non_per_city_key_ignores_override_even_when_module_on(tmp_path):
+    _db_ready(tmp_path, "test_percity_nonflagged.db")
+
+    async def scenario():
+        await db.set_setting("event_city_enabled", "on")
+        await db.set_setting("event_name", "Глобальное название")
+        code = cities.city_codes()[0]
+        await db.set_setting(f"event_name__city__{code}", "Городское название")
+        resolved = await cities.get_setting_for_city("event_name", code)
+        assert resolved == "Глобальное название"
+
+    asyncio.run(scenario())
+
+
+def test_resolver_city_code_none_returns_global(tmp_path):
+    _db_ready(tmp_path, "test_percity_none_city.db")
+
+    async def scenario():
+        await db.set_setting("event_city_enabled", "on")
+        await db.set_setting("start_text", "Глобальный текст")
+        resolved = await cities.get_setting_for_city("start_text", None)
+        assert resolved == "Глобальный текст"
+
+    asyncio.run(scenario())
+
+
+def test_resolver_unknown_city_code_normalizes_to_default(tmp_path):
+    _db_ready(tmp_path, "test_percity_unknown_city.db")
+
+    async def scenario():
+        await db.set_setting("event_city_enabled", "on")
+        default_code = cities.default_city_code()
+        await db.set_setting("start_text", "Глобальный текст")
+        await db.set_setting(
+            cities.per_city_key("start_text", default_code), "Текст города по умолчанию",
+        )
+        resolved = await cities.get_setting_for_city("start_text", "totally-unknown-code")
+        assert resolved == "Текст города по умолчанию"
+
+    asyncio.run(scenario())
+
+
+def test_resolver_override_present_returns_override(tmp_path):
+    _db_ready(tmp_path, "test_percity_override_present.db")
+
+    async def scenario():
+        await db.set_setting("event_city_enabled", "on")
+        code = cities.city_codes()[0]
+        await db.set_setting("start_text", "Глобальный текст")
+        await db.set_setting(cities.per_city_key("start_text", code), "Городской текст")
+        resolved = await cities.get_setting_for_city("start_text", code)
+        assert resolved == "Городской текст"
+
+    asyncio.run(scenario())
+
+
+def test_resolver_empty_or_deleted_override_falls_back_to_global(tmp_path):
+    _db_ready(tmp_path, "test_percity_empty_override.db")
+
+    async def scenario():
+        await db.set_setting("event_city_enabled", "on")
+        code = cities.city_codes()[0]
+        await db.set_setting("start_text", "Глобальный текст")
+        key = cities.per_city_key("start_text", code)
+
+        await db.set_setting(key, "")
+        resolved = await cities.get_setting_for_city("start_text", code)
+        assert resolved == "Глобальный текст"
+
+        await db.set_setting(key, "Городской текст")
+        resolved = await cities.get_setting_for_city("start_text", code)
+        assert resolved == "Городской текст"
+
+        await db.delete_setting(key)
+        resolved = await cities.get_setting_for_city("start_text", code)
+        assert resolved == "Глобальный текст"
+
+    asyncio.run(scenario())
+
+
+def test_typed_resolver_registration_mode(tmp_path):
+    _db_ready(tmp_path, "test_percity_typed_regmode.db")
+
+    async def scenario():
+        await db.set_setting("event_city_enabled", "on")
+        code = cities.city_codes()[0]
+        await db.set_setting(cities.per_city_key("registration_mode", code), "full")
+        resolved = await cities.get_setting_typed_for_city("registration_mode", code)
+        assert resolved == "full"
+
+        other_code = cities.city_codes()[-1]
+        resolved_other = await cities.get_setting_typed_for_city("registration_mode", other_code)
+        expected_global = await s.get_setting_typed("registration_mode")
+        assert resolved_other == expected_global
+
+    asyncio.run(scenario())
+
+
+def test_typed_resolver_menu_toggle(tmp_path):
+    _db_ready(tmp_path, "test_percity_typed_menu.db")
+
+    async def scenario():
+        await db.set_setting("event_city_enabled", "on")
+        code = cities.city_codes()[0]
+        await db.set_setting(cities.per_city_key("menu_info", code), "off")
+        resolved = await cities.get_setting_typed_for_city("menu_info", code)
+        assert resolved == "off"
+
+        other_code = cities.city_codes()[-1]
+        resolved_other = await cities.get_setting_typed_for_city("menu_info", other_code)
+        assert resolved_other == "on"
+
+    asyncio.run(scenario())
+
+
+def test_city_override_codes(tmp_path):
+    _db_ready(tmp_path, "test_percity_override_codes.db")
+
+    async def scenario():
+        # Module off -> empty list even with overrides already written.
+        first = cities.city_codes()[0]
+        await db.set_setting(f"start_text__city__{first}", "Городской текст")
+        assert await cities.city_override_codes("start_text") == []
+
+        await db.set_setting("event_city_enabled", "on")
+        assert await cities.city_override_codes("start_text") == [first]
+
+        last = cities.city_codes()[-1]
+        await db.set_setting(f"start_text__city__{last}", "Другой городской текст")
+        result = await cities.city_override_codes("start_text")
+        # Order follows CITIES, only non-empty overrides included.
+        expected_order = [c for c in cities.city_codes() if c in (first, last)]
+        assert result == expected_order
+
+        # Non-per_city key -> always empty.
+        assert await cities.city_override_codes("event_name") == []
+
+    asyncio.run(scenario())
