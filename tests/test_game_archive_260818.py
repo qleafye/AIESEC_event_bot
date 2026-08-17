@@ -5,6 +5,10 @@
 delegate submit-button label, and the two server-side gates (archived task, exhausted
 resubmit limit) in `mytask_submit_start`.
 
+Phase 14 Plan 03 (GAME-08/GAME-10) appends: the manager-facing «📋 Задания» actions
+(«🗄 В архив»/«🗑 Удалить»), the «🗄 Архив» screen + «↩️ Вернуть», the two-step confirm gates,
+and the moderation-card/sheet-tab archive markers + «попытка K из N».
+
 pytest-asyncio is unavailable in this env — every async helper is driven via asyncio.run()
 and config.DB_PATH points at a tmp_path file, same convention as
 tests/test_game_city_tasks_091.py / tests/test_gamification_data_phase9.py.
@@ -19,6 +23,8 @@ from config import config
 from database import db
 import settings_schema
 from handlers import user_actions as ua_mod
+from handlers import admin as admin_mod
+from handlers.admin_caps import required_capability
 
 
 ADMIN_ID = 940911
@@ -42,11 +48,21 @@ class FakeUser:
 class FakeMessage:
     def __init__(self, text=None, user_id=DELEGATE_ID):
         self.text = text
+        self.markup = None
         self.from_user = FakeUser(user_id)
         self.answers = []
+        self.edit_calls = 0
 
     async def answer(self, text=None, parse_mode=None, reply_markup=None):
         self.answers.append((text, parse_mode, reply_markup))
+        self.text = text
+        self.markup = reply_markup
+
+    async def edit_text(self, text=None, parse_mode=None, reply_markup=None):
+        self.answers.append((text, parse_mode, reply_markup))
+        self.text = text
+        self.markup = reply_markup
+        self.edit_calls += 1
 
 
 class FakeCallback:
@@ -58,6 +74,14 @@ class FakeCallback:
 
     async def answer(self, text=None, show_alert=False):
         self.answers.append((text, show_alert))
+
+
+def _flat_callback_data(kb):
+    return [btn.callback_data for row in kb.inline_keyboard for btn in row]
+
+
+def _flat_texts(kb):
+    return [btn.text for row in kb.inline_keyboard for btn in row]
 
 
 def _mk_task(**overrides):
@@ -248,3 +272,75 @@ def test_game_resubmit_limit_registered_in_schema_and_admin_field_order():
     assert settings_schema.SETTINGS_SCHEMA["game_resubmit_limit"]["group"] == "game"
     assert settings_schema.SETTINGS_SCHEMA["game_resubmit_limit"]["default"] == 0
     assert "game_resubmit_limit" in admin_mod._GAME_FIELD_ORDER
+
+
+# ── Plan 03 Task 1: «📋 Задания» actions + «🗄 Архив» + return-from-archive + caps ────────────
+
+def test_tasks_screen_has_archive_button_and_delete_only_without_submissions(tmp_path):
+    _db_ready(tmp_path)
+    no_subs = _mk_task(text="no submissions")
+    with_subs = _mk_task(text="has submissions")
+    _reject_submission(with_subs, DELEGATE_ID)
+
+    text, kb = asyncio.run(admin_mod._game_tasks_screen())
+    data = _flat_callback_data(kb)
+
+    assert f"gtarchive:{no_subs}" in data
+    assert f"gtdelete:{no_subs}" in data
+    assert f"gtarchive:{with_subs}" in data
+    assert f"gtdelete:{with_subs}" not in data
+    assert "можно только убрать в архив" in text
+
+
+def test_gtarchive_go_archives_task_and_moves_it_to_archive_screen(tmp_path):
+    _db_ready(tmp_path)
+    task_id = _mk_task(text="уйдёт в архив")
+
+    callback = FakeCallback(f"gtarchive_go:{task_id}", user_id=ADMIN_ID)
+    asyncio.run(admin_mod.game_task_archive_go(callback))
+
+    task = asyncio.run(db.get_task(task_id))
+    assert task["archived_at"] is not None
+
+    tasks_text, _ = asyncio.run(admin_mod._game_tasks_screen())
+    assert "уйдёт в архив" not in tasks_text
+
+    archive_text, archive_kb = asyncio.run(admin_mod._game_archive_screen())
+    assert "уйдёт в архив" in archive_text
+    assert f"gtunarchive:{task_id}" in _flat_callback_data(archive_kb)
+
+
+def test_gtunarchive_returns_task_to_active_without_confirm_step(tmp_path):
+    _db_ready(tmp_path)
+    task_id = _mk_task(text="вернётся")
+    asyncio.run(db.archive_task(task_id))
+
+    callback = FakeCallback(f"gtunarchive:{task_id}", user_id=ADMIN_ID)
+    asyncio.run(admin_mod.game_task_unarchive(callback))
+
+    task = asyncio.run(db.get_task(task_id))
+    assert task["archived_at"] is None
+
+    active_texts = {t["text"] for t in asyncio.run(db.list_active_tasks())}
+    assert "вернётся" in active_texts
+
+
+def test_archive_and_unarchive_trigger_resync(tmp_path, monkeypatch):
+    _db_ready(tmp_path)
+    task_id = _mk_task()
+    calls = []
+    monkeypatch.setattr(admin_mod, "_request_game_resync", lambda: calls.append("go"))
+
+    asyncio.run(admin_mod.game_task_archive_go(FakeCallback(f"gtarchive_go:{task_id}", user_id=ADMIN_ID)))
+    assert calls == ["go"]
+
+    asyncio.run(admin_mod.game_task_unarchive(FakeCallback(f"gtunarchive:{task_id}", user_id=ADMIN_ID)))
+    assert calls == ["go", "go"]
+
+
+def test_new_game_archive_callbacks_are_capability_mapped_to_moderate_game():
+    for cb_data in (
+        "admin_game_archive", "gtarchive:5", "gtarchive_go:5", "gtunarchive:5",
+        "gtdelete:5", "gtdelete_go:5",
+    ):
+        assert required_capability(callback_data=cb_data) == "moderate_game"

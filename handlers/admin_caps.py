@@ -406,6 +406,17 @@ ADMIN_CAPS: dict[str, str] = {
     "admin_game_sync_sheet": "moderate_game",
     "admin_game_sync_sheet_go": "moderate_game",
     "admin_game_stats": "moderate_game",
+    # Phase 14 (14-03, GAME-08): task archive/delete screen — registered in the SAME commit
+    # as the handlers (09-01 convention). WARNING: "gtdelete:*" does NOT cover
+    # "gtdelete_go:*" (prefix match is on "gtdelete:", the char right after "gtdelete" in
+    # "gtdelete_go" is "_", not ":") — same precedent as roles_cap:*/roles_caps:*, both keys
+    # are required, not just the shorter one.
+    "admin_game_archive": "moderate_game",
+    "gtarchive:*": "moderate_game",
+    "gtarchive_go:*": "moderate_game",
+    "gtunarchive:*": "moderate_game",
+    "gtdelete:*": "moderate_game",
+    "gtdelete_go:*": "moderate_game",
 
     # checkin: no keys yet -- Phase 12. Capability already exists in
     # ALL_CAPABILITIES/ROLES so a future phase adds handlers, not registry plumbing.
