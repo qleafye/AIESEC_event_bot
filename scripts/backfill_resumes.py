@@ -126,7 +126,11 @@ async def main():
         # No proxy_session.set_alert_bot() call here on purpose — this is a one-shot script,
         # not a running bot; the module fails soft (one warning, then silent) with no bot set.
         session = (
-            FailoverAiohttpSession(chain, recheck_seconds=config.PROXY_RECHECK_SECONDS)
+            FailoverAiohttpSession(
+                chain,
+                recheck_seconds=config.PROXY_RECHECK_SECONDS,
+                connect_timeout=config.PROXY_CONNECT_TIMEOUT,
+            )
             if chain != [None]
             else None
         )

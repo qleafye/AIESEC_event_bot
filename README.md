@@ -169,6 +169,7 @@ ADMIN_IDS=[12345678, 87654321]
 PROXY_URL=socks5://user:pass@host:port   # если Telegram API заблокирован
 PROXY_URL_BACKUP=socks5://user:pass@host2:port  # резервный канал (см. описание ниже)
 PROXY_RECHECK_SECONDS=600                 # сколько секунд сидеть на резерве до попытки вернуться на основной
+PROXY_CONNECT_TIMEOUT=5                   # сколько секунд ждать установки соединения с прокси (0 = без ограничения)
 DB_PATH=data/forum.db
 LOG_LEVEL=INFO                            # DEBUG | INFO | WARNING | ERROR
 
