@@ -255,7 +255,10 @@ async def admin_keyboard_for(admin_id: int) -> InlineKeyboardMarkup:
     base = await build_admin_keyboard(admin_id)
     if code is None:  # module off — byte-identical to today, no switcher row
         return base
-    header = [InlineKeyboardButton(text=f"🏙 Город: {await city_label(code)}", callback_data="admin_city_switch")]
+    # Phase 09.3 (CITY-08): «Все города» mode gets its own label (no "🏙 Город: " prefix) —
+    # the button text ITSELF is ALL_CITIES_LABEL, not the label glued after the usual prefix.
+    label_text = ALL_CITIES_LABEL if code == ALL_CITIES else f"🏙 Город: {await city_label(code)}"
+    header = [InlineKeyboardButton(text=label_text, callback_data="admin_city_switch")]
     return InlineKeyboardMarkup(inline_keyboard=[header] + base.inline_keyboard)
 
 
@@ -2621,6 +2624,11 @@ async def admin_city_switch(callback: types.CallbackQuery):
     Phase 09.1 (C, ROLE-03): a manager bound to a city (`get_staff_city`) can't switch at
     all — the picker is never shown, only an alert naming their city. Bootstrap superadmins
     (`config.ADMIN_IDS`, D-12) are never restricted."""
+    # Phase 09.3 (CITY-08): the bound-manager lock above is the ONLY gate this screen needs --
+    # it already computes is_superadmin/bound and returns early for anyone with a locked city,
+    # so everyone who reaches the code below (superadmin or an unbound manager) is exactly who
+    # is allowed to see the "🌍 Все города" row too. No separate capability check needed here;
+    # ADMIN_CAPS/CapabilityMiddleware already gated entry to this handler at ANY_CAPABILITY.
     is_superadmin = callback.from_user.id in config.ADMIN_IDS
     bound = None if is_superadmin else await get_staff_city(callback.from_user.id)
     if bound:
@@ -2631,7 +2639,10 @@ async def admin_city_switch(callback: types.CallbackQuery):
         return
 
     current = await admin_selected_city(callback.from_user.id)
-    buttons = []
+    all_prefix = "✅ " if current == ALL_CITIES else ""
+    buttons = [
+        [InlineKeyboardButton(text=f"{all_prefix}{ALL_CITIES_LABEL}", callback_data=f"admin_city_pick:{ALL_CITIES}")],
+    ]
     for c in CITIES:
         code = c["code"]
         label = await city_label(code)
@@ -2642,8 +2653,8 @@ async def admin_city_switch(callback: types.CallbackQuery):
     buttons.append([InlineKeyboardButton(text="◀️ Назад", callback_data="admin_menu")])
     text = (
         "🏙 <b>Город админки</b>\n\n"
-        "Фильтруется этим городом: очередь «Заявки», очередь «Чеки», экспорт CSV.\n"
-        "НЕ фильтруется: «Статистика» (сравнение городов), «Незавершённые» (все города сразу)."
+        "Всё в админке — про выбранный город: заявки, чеки, выгрузка, гейма, тексты и кнопки меню.\n"
+        "«🌍 Все города» — данные без фильтра и общие тексты (то, что видят города без своего значения)."
     )
     await callback.message.edit_text(text, parse_mode="HTML", reply_markup=InlineKeyboardMarkup(inline_keyboard=buttons))
     await callback.answer()

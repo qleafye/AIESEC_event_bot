@@ -17,7 +17,7 @@ from aiogram.fsm.storage.memory import MemoryStorage
 from config import config
 from database import db
 from handlers import admin as admin_mod
-from handlers.admin_caps import required_capability
+from handlers.admin_caps import ANY_CAPABILITY, required_capability
 import cities
 
 
@@ -140,7 +140,9 @@ def test_admin_city_switch_screen_lists_all_cities_and_is_capability_guarded(tmp
     # and its callback_data resolves to a real capability.
     names = {h.callback.__name__ for h in admin_mod.router.callback_query.handlers}
     assert "admin_city_switch" in names
-    assert required_capability(callback_data="admin_city_switch") == "moderate_reg"
+    # Phase 09.3 (CITY-08, Pitfall 2): widened moderate_reg -> ANY_CAPABILITY -- the header is
+    # now the sole context for settings/menu editing too, not just moderation queues.
+    assert required_capability(callback_data="admin_city_switch") == ANY_CAPABILITY
 
     cb2 = FakeCallback("admin_city_switch")
     asyncio.run(admin_mod.admin_city_switch(cb2))
@@ -181,7 +183,9 @@ def test_admin_city_pick_is_capability_guarded(tmp_path):
     asyncio.run(db.set_setting("event_city_enabled", "on"))
     names = {h.callback.__name__ for h in admin_mod.router.callback_query.handlers}
     assert "admin_city_pick" in names
-    assert required_capability(callback_data="admin_city_pick:spb") == "moderate_reg"
+    # Phase 09.3 (CITY-08, Pitfall 2): widened moderate_reg -> ANY_CAPABILITY (see the sibling
+    # test above for admin_city_switch).
+    assert required_capability(callback_data="admin_city_pick:spb") == ANY_CAPABILITY
 
 
 # ── Task 2: applications queue city-scoped + safe mass-approve ──────────────────────────
