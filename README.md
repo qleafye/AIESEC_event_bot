@@ -50,6 +50,7 @@ Telegram** — без разработчика, без правки кода, б
   - [Настройки: SETTINGS_SCHEMA](#настройки-settings_schema)
   - [База данных](#база-данных)
   - [Планировщик и фоновые задачи](#планировщик-и-фоновые-задачи)
+  - [Оплата и синхронизация с таблицей](#оплата-и-синхронизация-с-таблицей)
   - [Порядок обработки сообщений](#порядок-обработки-сообщений)
   - [FSM](#fsm)
 - [Тесты](#тесты)
@@ -58,28 +59,21 @@ Telegram** — без разработчика, без правки кода, б
 
 ## Путь заявки
 
-```mermaid
-flowchart TD
-    A["/start<br/>deep-link: город / метка кампании / реферал"] --> B{"Предотбор<br/>включён?"}
-    B -- "нет" --> D
-    B -- "да" --> C{"@username<br/>в allowlist?"}
-    C -- "нет" --> R["Отказ с текстом<br/>из настроек"]
-    C -- "да" --> D["Анкета: динамический набор вопросов<br/>трек, город, согласия"]
-    D --> E[("SQLite<br/>users, reg_started")]
-    E --> F["Google Sheets<br/>строка заявки, статус, ссылка на резюме"]
-    E --> G{"Модерация"}
-    G -- "вручную" --> H["Очередь в /admin<br/>одобрить / отклонить / пропустить"]
-    G -- "авто" --> I
-    H --> I["status = approved"]
-    I --> J{"Модуль оплаты<br/>включён?"}
-    J -- "да" --> K["Тариф → реквизиты → чек<br/>автонапоминания T-3 / T-1"]
-    K --> L["Проверка чека менеджером"]
-    J -- "нет" --> M
-    L --> M["Меню участника:<br/>коины, рейтинг, вопросы организаторам"]
-```
+Бизнес-процесс в дорожках BPMN: три участника, две развилки по настройкам события
+(предотбор, оплата) и три точки решения — модерация ботом или менеджером, карточка заявки,
+карточка чека. Всё в дорожке «Бот» происходит без участия людей.
 
-Параллельно работают фоновые процессы: догон брошенных анкет, напоминания об оплате,
-сводка админам по заявкам в ожидании, обновление кэша предотбора.
+![Путь заявки: BPMN с дорожками Делегат / Бот / Менеджер](docs/diagrams/application-flow-bpmn.svg)
+
+Схема — обычный SVG, собирается скриптом
+[`docs/diagrams/gen_application_flow_bpmn.py`](docs/diagrams/gen_application_flow_bpmn.py)
+(mermaid не умеет настоящие дорожки — направление внутри `subgraph` игнорируется, как только
+рёбра пересекают границы лейнов). ER-схема БД и sequence-диаграмма оплаты — ниже в
+[Архитектуре](#архитектура), они в mermaid и рендерятся GitHub'ом напрямую.
+
+Параллельно с процессом крутятся четыре фоновых цикла: догон брошенных анкет, напоминания
+об оплате, сводка админам по заявкам в ожидании, обновление кэша предотбора — см.
+[Планировщик](#планировщик-и-фоновые-задачи).
 
 ---
 
@@ -115,7 +109,7 @@ flowchart TD
 | Конфигурация | pydantic-settings + `.env` |
 | Google Sheets | [gspread](https://docs.gspread.org/) + сервисный аккаунт |
 | Файлы | Telegram `file_id` + Nextcloud (WebDAV) для резюме |
-| Тесты | pytest, ~400 тестов без обращений к внешним сервисам |
+| Тесты | pytest, ~1000 тестов без обращений к внешним сервисам |
 | Деплой | Docker + docker-compose |
 
 ---
@@ -370,6 +364,123 @@ SETTINGS_SCHEMA = {
 (`ALTER TABLE ... ADD COLUMN` с проверкой существования). Никаких деструктивных миграций
 на живой базе.
 
+ER-схема (связи логические — SQLite-таблицы без `FOREIGN KEY`, целостность держит код;
+показаны ключевые поля, у `users` ~60 колонок анкеты опущены):
+
+```mermaid
+erDiagram
+    users {
+        int telegram_id PK
+        text username
+        text full_name
+        text status "pending | approved | rejected"
+        text participant_type "full | short | party_overnight | party_noovernight"
+        text event_city
+        text payment_status "not_paid | receipt_sent | paid | overdue"
+        text payment_option
+        text receipt_file_id
+        text payment_due
+        text paid_at
+        text resume_file_id
+        text resume_url "ссылка Nextcloud"
+        int referrer_id "users.telegram_id"
+        text source "метка кампании"
+    }
+    reg_started {
+        int telegram_id PK
+        text started_at
+        text last_step
+        text nudged_at
+        text participant_type
+    }
+    user_consents {
+        int id PK
+        int user_id
+        text consent_key
+        text accepted_at
+    }
+    coins {
+        int id PK
+        int user_id
+        int delta "append-only, баланс = SUM"
+        text reason
+        int changed_by
+        text timestamp
+    }
+    delegate_questions {
+        int id PK
+        int user_id
+        text question_text
+        text asked_at
+        int answered_by
+        text answered_at
+        text answer_text
+        text delivered_at
+    }
+    staff {
+        int telegram_id PK
+        text role PK
+        text city "NULL = все города"
+        int added_by
+        text added_at
+    }
+    scheduled_broadcasts {
+        int id PK
+        text text
+        text photo_file_id
+        text filter_spec "JSON AND-фильтров"
+        text scheduled_at
+        text status "pending | sending | sent | cancelled"
+        int created_by
+    }
+    game_tasks {
+        int id PK
+        text text
+        text category
+        int coins
+        text proof_type
+        text deadline_at
+        text event_city
+    }
+    game_submissions {
+        int id PK
+        int task_id
+        int user_id
+        text status "pending | approved | rejected"
+        int reviewed_by
+        int coins_awarded
+    }
+    game_submission_parts {
+        int id PK
+        int submission_id
+        int ord
+        text kind
+        text content
+    }
+    bot_settings {
+        text key PK
+        text value "все настройки админки"
+    }
+
+    users ||--o| reg_started : "начал анкету"
+    users ||--o{ user_consents : "принял"
+    users ||--o{ coins : "леджер"
+    users ||--o{ delegate_questions : "задал"
+    users |o--o{ users : "пригласил (referrer_id)"
+    staff |o--o{ delegate_questions : "ответил"
+    staff |o--o{ scheduled_broadcasts : "создал"
+    staff |o--o{ game_submissions : "проверил"
+    users ||--o{ game_submissions : "сдал"
+    game_tasks ||--o{ game_submissions : "по заданию"
+    game_submissions ||--o{ game_submission_parts : "части (альбом)"
+```
+
+Три инварианта, которые схема защищает на уровне данных: `coins` — только `INSERT`
+(баланс всегда воспроизводим из истории); `staff` — составной PK допускает несколько
+ролей у одного человека без отдельной таблицы; `delegate_questions.answered_by`
+захватывается атомарным `UPDATE ... WHERE answered_by IS NULL` — двое менеджеров не
+ответят на один вопрос.
+
 ### Планировщик и фоновые задачи
 
 `main.py` при старте поднимает:
@@ -385,6 +496,67 @@ SETTINGS_SCHEMA = {
 
 Фоновые задачи запускаются через `services/background.spawn`, который держит strong-ref,
 иначе GC может убить приостановленную корутину.
+
+### Оплата и синхронизация с таблицей
+
+Отрезок процесса, где раньше всё ломалось: внешний API (Google Sheets) стоял на
+критическом пути регистрации, и любой сбой квоты/сети ронял анкету делегата. Сейчас
+источник истины — SQLite, а таблица — производная: пишется в фоне, с повторами, и её
+недоступность делегат не замечает.
+
+```mermaid
+sequenceDiagram
+    autonumber
+    actor U as Делегат
+    participant B as Бот (aiogram)
+    participant DB as SQLite
+    participant S as APScheduler (jobs.sqlite)
+    participant G as Google Sheets
+    actor M as Менеджер
+
+    U->>B: «Всё верно» (сводка анкеты)
+    B->>DB: INSERT users (status=pending), DELETE reg_started
+    par фон, делегат не ждёт
+        B-)G: append строки заявки
+        Note over B,G: до 3 попыток (5/15/30 с),<br/>после 3-й — алерт менеджерам,<br/>SQLite не затронут, догоняется<br/>кнопкой «Синхронизация»
+    and
+        B->>M: карточка заявки (кто имеет moderate_reg)
+    end
+
+    M->>B: одобрить
+    B->>DB: UPDATE status=approved (атомарно, WHERE status=pending)
+    B-)G: статус «Одобрена» в строке (фон)
+    B->>U: поздравление + тарифы
+
+    U->>B: тариф
+    B->>DB: payment_option, payment_due
+    B->>S: date-джобы T-3 / T-1 до дедлайна
+    B->>U: реквизиты, «пришли чек»
+
+    U->>B: чек (PDF / фото)
+    B->>DB: payment_status=receipt_sent, receipt_file_id
+    B->>M: «новый чек» (кто имеет moderate_receipts)
+    B->>U: «чек получен, менеджер проверит»
+
+    alt чек верный
+        M->>B: подтвердить
+        B->>DB: UPDATE payment_status=paid<br/>WHERE status=receipt_sent
+        Note over B,DB: rowcount=0 → «уже обработан»:<br/>двое менеджеров не подтвердят<br/>один чек дважды
+        B->>S: отменить джобы T-3 / T-1
+        B->>U: оплата подтверждена
+    else чек отклонён
+        M->>B: отклонить (+причина)
+        B->>DB: payment_status=not_paid
+        B->>U: причина, «загрузи чек ещё раз»
+    end
+
+    S-->>B: (если оплаты нет) T-3, T-1: напоминание
+    S-->>U: напоминание об оплате
+    Note over S,U: джоба сама проверяет статус —<br/>после paid молчит, даже если<br/>отмена не успела
+```
+
+Файл чека не скачивается: в БД лежит Telegram `file_id`, менеджеру бот пересылает его по
+запросу. Так же устроены резюме — см. [Nextcloud](#хранение-резюме-nextcloud).
 
 ### Порядок обработки сообщений
 
@@ -422,6 +594,6 @@ FSM-хранилище — `MemoryStorage`: при перезапуске нез
 python -m pytest tests/ -q
 ```
 
-~400 тестов: чистые хелперы (парсинг настроек, рендеры карточек и клавиатур), миграции БД,
+~1000 тестов (997 зелёных на 17.08.2026): чистые хелперы (парсинг настроек, рендеры карточек и клавиатур), миграции БД,
 фильтры рассылок, планировщик, Sheets-хелперы, Nextcloud, CSV-инъекции. Внешние сервисы
 (Telegram, Google, Nextcloud) не дёргаются — используются фейки.
