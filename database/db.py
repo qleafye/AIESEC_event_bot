@@ -258,6 +258,10 @@ async def init_db():
         # as users.event_city (07.1/07.2). No backfill -- every pre-existing task keeps
         # meaning "all cities", which is exactly what it already behaved as.
         await _ensure_column(db, "game_tasks", "event_city", "TEXT")
+        # Phase 14 (GAME-08): NULL = active, non-NULL timestamp = archived (delegate never
+        # sees/can-submit it; manager can still see it in a separate "🗄 Архив" section and
+        # return it). Additive only — no existing game_tasks row changes meaning.
+        await _ensure_column(db, "game_tasks", "archived_at", "TEXT")
 
         # `content` stores a file_id for photo/pdf proof, raw text for text/link proof — the
         # project never writes uploaded files to disk (README/CLAUDE.md file_id pattern).
@@ -1518,18 +1522,28 @@ async def list_active_tasks(*, city_scope=None, include_null: bool = True) -> li
     Phase 09.1 (B): `city_scope=None` (default) -> byte-identical to pre-09.1 (all tasks,
     no filter). `include_null=True` by default -- a task's NULL event_city means "all
     cities" (CONTEXT.md B), and the equality branch of `_city_clause` does NOT catch NULL on
-    its own, so it must be asked for explicitly here."""
+    its own, so it must be asked for explicitly here.
+    Phase 14 (GAME-08): always excludes archived tasks (archived_at IS NOT NULL) — a
+    delegate must never see or be able to submit to an archived task, regardless of
+    city_scope. The base `archived_at IS NULL` clause is unconditional; the city fragment
+    (if any) is appended via AND."""
     frag, city_params = _city_clause(city_scope, "event_city", include_null=include_null)
-    extra = f" WHERE {frag}" if frag else ""
+    extra = f" AND {frag}" if frag else ""
     async with aiosqlite.connect(config.DB_PATH) as db:
         db.row_factory = aiosqlite.Row
         async with db.execute(
-            f"SELECT * FROM game_tasks{extra} ORDER BY deadline_at ASC", tuple(city_params)
+            f"SELECT * FROM game_tasks WHERE archived_at IS NULL{extra} "
+            "ORDER BY deadline_at ASC",
+            tuple(city_params),
         ) as cursor:
             return [dict(row) for row in await cursor.fetchall()]
 
 
 async def list_all_tasks(*, city_scope=None, include_null: bool = True) -> list[dict]:
+    """Phase 14 (GAME-08): deliberately NOT filtered by archived_at — the manager screen
+    ("🎯 Задания" + "🗄 Архив") splits active/archived in the RENDERING layer, and the
+    gamification sheet rebuild wants both (archived tasks stay in the sheet with a marker).
+    Do NOT add an archived_at filter here; that belongs to list_active_tasks only."""
     frag, city_params = _city_clause(city_scope, "event_city", include_null=include_null)
     extra = f" WHERE {frag}" if frag else ""
     async with aiosqlite.connect(config.DB_PATH) as db:
@@ -1580,6 +1594,74 @@ async def get_active_submission(task_id: int, user_id: int) -> dict | None:
         ) as cursor:
             row = await cursor.fetchone()
             return dict(row) if row else None
+
+
+# ── Phase 14 (GAME-08/GAME-10): archive/delete + submission counters ─────────────────────
+# Same connect/row_factory-free/single-statement idiom as claim_submission's rowcount==1
+# atomic-flip contract — no read-then-write race window.
+
+async def archive_task(task_id: int) -> bool:
+    """True iff THIS call archived the task (rowcount == 1) — a no-op on an already-archived
+    task returns False, same idiom as claim_submission."""
+    archived_at = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    async with aiosqlite.connect(config.DB_PATH) as db:
+        cursor = await db.execute(
+            "UPDATE game_tasks SET archived_at = ? WHERE id = ? AND archived_at IS NULL",
+            (archived_at, task_id),
+        )
+        await db.commit()
+        return cursor.rowcount == 1
+
+
+async def unarchive_task(task_id: int) -> bool:
+    """Mirror of archive_task — True iff THIS call returned the task to active."""
+    async with aiosqlite.connect(config.DB_PATH) as db:
+        cursor = await db.execute(
+            "UPDATE game_tasks SET archived_at = NULL WHERE id = ? AND archived_at IS NOT NULL",
+            (task_id,),
+        )
+        await db.commit()
+        return cursor.rowcount == 1
+
+
+async def count_task_submissions(task_id: int) -> int:
+    """ALL statuses, including rejected — a rejected submission is still history, a task
+    with one attached can never be hard-deleted (delete_task's own NOT EXISTS gate relies on
+    this being non-zero for any submission at all, not just non-rejected ones)."""
+    async with aiosqlite.connect(config.DB_PATH) as db:
+        async with db.execute(
+            "SELECT COUNT(*) FROM game_submissions WHERE task_id = ?", (task_id,)
+        ) as cursor:
+            row = await cursor.fetchone()
+            return int(row[0]) if row and row[0] is not None else 0
+
+
+async def delete_task(task_id: int) -> bool:
+    """Hard delete — True iff the row existed AND had zero submissions of any status. The
+    "no submissions" gate lives INSIDE the single DELETE statement (NOT EXISTS), not as a
+    separate Python read-then-decide step — T-14-02: a manager deleting a task the same
+    second a delegate submits to it must never silently drop that submission's parent row."""
+    async with aiosqlite.connect(config.DB_PATH) as db:
+        cursor = await db.execute(
+            "DELETE FROM game_tasks WHERE id = ? AND NOT EXISTS "
+            "(SELECT 1 FROM game_submissions WHERE task_id = game_tasks.id)",
+            (task_id,),
+        )
+        await db.commit()
+        return cursor.rowcount == 1
+
+
+async def count_rejected_submissions(task_id: int, user_id: int) -> int:
+    """Rejected-only count for one (task, user) pair — GAME-10's resubmit-limit gate. Model
+    is get_active_submission's WHERE shape, COUNT instead of a single row."""
+    async with aiosqlite.connect(config.DB_PATH) as db:
+        async with db.execute(
+            "SELECT COUNT(*) FROM game_submissions WHERE task_id = ? AND user_id = ? "
+            "AND status = 'rejected'",
+            (task_id, user_id),
+        ) as cursor:
+            row = await cursor.fetchone()
+            return int(row[0]) if row and row[0] is not None else 0
 
 
 # ── Phase 09.1 (A): game_submission_parts accessors ──────────────────────────────────────
@@ -1642,6 +1724,7 @@ async def get_pending_submissions(limit: int = 1, offset: int = 0, *, city_scope
             "SELECT s.*, t.text AS task_text, t.category AS task_category, "
             "t.coins AS task_coins, t.proof_type AS task_proof_type, "
             "t.deadline_at AS task_deadline_at, t.event_city AS task_event_city, "
+            "t.archived_at AS task_archived_at, "
             "u.full_name AS user_full_name, u.username AS user_username, "
             "u.event_city AS user_event_city "
             "FROM game_submissions s "
@@ -1701,6 +1784,7 @@ async def list_all_submissions() -> list[dict]:
             "SELECT s.*, t.text AS task_text, t.category AS task_category, "
             "t.coins AS task_coins, t.proof_type AS task_proof_type, "
             "t.deadline_at AS task_deadline_at, t.event_city AS task_event_city, "
+            "t.archived_at AS task_archived_at, "
             "u.full_name AS user_full_name, u.username AS user_username, "
             "u.event_city AS user_event_city "
             "FROM game_submissions s "

@@ -1,0 +1,250 @@
+"""Phase 14 Plan 01 (GAME-08, GAME-10) — task archive/delete data layer + resubmit limit.
+
+`game_tasks.archived_at` (NULL = active), archive/unarchive/delete/count accessors,
+`count_rejected_submissions`, `task_archived_at` exposed on the submission queues, the
+delegate submit-button label, and the two server-side gates (archived task, exhausted
+resubmit limit) in `mytask_submit_start`.
+
+pytest-asyncio is unavailable in this env — every async helper is driven via asyncio.run()
+and config.DB_PATH points at a tmp_path file, same convention as
+tests/test_game_city_tasks_091.py / tests/test_gamification_data_phase9.py.
+"""
+import asyncio
+
+from aiogram.fsm.context import FSMContext
+from aiogram.fsm.storage.base import StorageKey
+from aiogram.fsm.storage.memory import MemoryStorage
+
+from config import config
+from database import db
+import settings_schema
+from handlers import user_actions as ua_mod
+
+
+ADMIN_ID = 940911
+DELEGATE_ID = 940912
+
+
+def _db_ready(tmp_path):
+    config.DB_PATH = str(tmp_path / "test_game_archive_260818.db")
+    asyncio.run(db.init_db())
+
+
+def _new_state(uid: int = DELEGATE_ID) -> FSMContext:
+    return FSMContext(storage=MemoryStorage(), key=StorageKey(bot_id=1, chat_id=uid, user_id=uid))
+
+
+class FakeUser:
+    def __init__(self, uid):
+        self.id = uid
+
+
+class FakeMessage:
+    def __init__(self, text=None, user_id=DELEGATE_ID):
+        self.text = text
+        self.from_user = FakeUser(user_id)
+        self.answers = []
+
+    async def answer(self, text=None, parse_mode=None, reply_markup=None):
+        self.answers.append((text, parse_mode, reply_markup))
+
+
+class FakeCallback:
+    def __init__(self, data, user_id=DELEGATE_ID):
+        self.data = data
+        self.from_user = FakeUser(user_id)
+        self.message = FakeMessage()
+        self.answers = []
+
+    async def answer(self, text=None, show_alert=False):
+        self.answers.append((text, show_alert))
+
+
+def _mk_task(**overrides):
+    kwargs = dict(
+        text="Задание", category="Light", coins=10, proof_type="text",
+        deadline_at="2099-01-01 00:00:00", created_by=None,
+    )
+    kwargs.update(overrides)
+    return asyncio.run(db.create_task(**kwargs))
+
+
+def _reject_submission(task_id, user_id):
+    """Creates a submission and rejects it, returns the submission id. Since the unique
+    index only guards non-rejected rows (idx_game_submissions_active), a fresh call can be
+    made repeatedly for the same (task, user) pair."""
+    sub_id = asyncio.run(db.create_submission(
+        task_id, user_id, "text", "готово", "2026-08-20 10:00:00",
+    ))
+    asyncio.run(db.claim_submission(sub_id, ADMIN_ID, "rejected", reject_reason="не то"))
+    return sub_id
+
+
+# ── Task 1: archive/delete data layer + submission counters ─────────────────────────────────
+
+def test_archived_at_column_migrated_and_idempotent(tmp_path):
+    _db_ready(tmp_path)
+    # Idempotency: a second init_db() must not raise (ALTER TABLE guarded by _column_exists).
+    asyncio.run(db.init_db())
+
+    async def _columns():
+        import aiosqlite
+        async with aiosqlite.connect(config.DB_PATH) as conn:
+            async with conn.execute("PRAGMA table_info(game_tasks)") as cursor:
+                return [row[1] for row in await cursor.fetchall()]
+
+    columns = asyncio.run(_columns())
+    assert "archived_at" in columns
+
+
+def test_list_active_tasks_excludes_archived_list_all_includes(tmp_path):
+    _db_ready(tmp_path)
+    active_id = _mk_task(text="active")
+    archived_id = _mk_task(text="archived")
+    asyncio.run(db.archive_task(archived_id))
+
+    active_texts = {t["text"] for t in asyncio.run(db.list_active_tasks())}
+    all_texts = {t["text"] for t in asyncio.run(db.list_all_tasks())}
+    assert active_texts == {"active"}
+    assert all_texts == {"active", "archived"}
+
+
+def test_archive_task_and_unarchive_task_toggle(tmp_path):
+    _db_ready(tmp_path)
+    task_id = _mk_task()
+
+    assert asyncio.run(db.archive_task(task_id)) is True
+    assert asyncio.run(db.archive_task(task_id)) is False  # already archived
+    task = asyncio.run(db.get_task(task_id))
+    assert task["archived_at"] is not None
+
+    assert asyncio.run(db.unarchive_task(task_id)) is True
+    assert asyncio.run(db.unarchive_task(task_id)) is False  # already active
+    task = asyncio.run(db.get_task(task_id))
+    assert task["archived_at"] is None
+
+
+def test_delete_task_refused_with_submissions_allowed_without(tmp_path):
+    _db_ready(tmp_path)
+    with_sub = _mk_task(text="has submissions")
+    _reject_submission(with_sub, DELEGATE_ID)
+    without_sub = _mk_task(text="no submissions")
+
+    assert asyncio.run(db.delete_task(with_sub)) is False
+    assert asyncio.run(db.get_task(with_sub)) is not None  # row still there
+
+    assert asyncio.run(db.delete_task(without_sub)) is True
+    assert asyncio.run(db.get_task(without_sub)) is None
+
+
+def test_count_task_submissions_and_count_rejected_submissions(tmp_path):
+    _db_ready(tmp_path)
+    task_id = _mk_task()
+    other_user = DELEGATE_ID + 1
+    _reject_submission(task_id, DELEGATE_ID)
+    _reject_submission(task_id, DELEGATE_ID)
+    _reject_submission(task_id, other_user)
+
+    assert asyncio.run(db.count_task_submissions(task_id)) == 3
+    assert asyncio.run(db.count_rejected_submissions(task_id, DELEGATE_ID)) == 2
+    assert asyncio.run(db.count_rejected_submissions(task_id, other_user)) == 1
+    assert asyncio.run(db.count_rejected_submissions(task_id, DELEGATE_ID + 999)) == 0
+
+
+def test_pending_and_all_submissions_expose_task_archived_at(tmp_path):
+    _db_ready(tmp_path)
+    task_id = _mk_task()
+    asyncio.run(db.create_submission(task_id, DELEGATE_ID, "text", "готово", "2026-08-20 10:00:00"))
+    asyncio.run(db.archive_task(task_id))
+
+    pending = asyncio.run(db.get_pending_submissions(limit=50, offset=0))
+    assert pending[0]["task_archived_at"] is not None
+
+    all_subs = asyncio.run(db.list_all_submissions())
+    assert all_subs[0]["task_archived_at"] is not None
+
+
+# ── Task 2: registry key + delegate-side label/gates ─────────────────────────────────────────
+
+def test_submit_button_label_short_and_truncated():
+    short = ua_mod._submit_button_label({"text": "Короткое"})
+    assert short == "📤 Сдать: Короткое"
+
+    long_name = "Очень длинное название задания, которое точно длиннее сорока символов подряд"
+    label = ua_mod._submit_button_label({"text": long_name})
+    assert label.startswith("📤 Сдать: ")
+    body = label[len("📤 Сдать: "):]
+    assert body.endswith("…")
+    assert len(body) == 41  # 40 chars + ellipsis
+
+
+def test_mytask_submit_start_archived_task_blocks_with_alert(tmp_path):
+    _db_ready(tmp_path)
+    task_id = _mk_task()
+    asyncio.run(db.archive_task(task_id))
+
+    state = _new_state()
+    callback = FakeCallback(f"mytask_submit:{task_id}")
+    asyncio.run(ua_mod.mytask_submit_start(callback, state))
+
+    assert callback.answers, "expected an alert answer"
+    text, show_alert = callback.answers[-1]
+    assert show_alert is True
+    assert "архив" in text.lower()
+    assert asyncio.run(state.get_state()) is None  # submission flow NOT entered
+
+
+def test_mytask_submit_start_resubmit_limit_blocks_at_limit(tmp_path):
+    _db_ready(tmp_path)
+    task_id = _mk_task()
+    asyncio.run(db.set_setting("game_resubmit_limit", "2"))
+    _reject_submission(task_id, DELEGATE_ID)
+    _reject_submission(task_id, DELEGATE_ID)
+
+    state = _new_state()
+    callback = FakeCallback(f"mytask_submit:{task_id}")
+    asyncio.run(ua_mod.mytask_submit_start(callback, state))
+
+    assert callback.answers
+    text, show_alert = callback.answers[-1]
+    assert show_alert is True
+    assert "лимит" in text.lower()
+    assert "2" in text
+    assert asyncio.run(state.get_state()) is None
+
+
+def test_mytask_submit_start_resubmit_limit_allows_below_limit(tmp_path):
+    _db_ready(tmp_path)
+    task_id = _mk_task()
+    asyncio.run(db.set_setting("game_resubmit_limit", "2"))
+    _reject_submission(task_id, DELEGATE_ID)
+
+    state = _new_state()
+    callback = FakeCallback(f"mytask_submit:{task_id}")
+    asyncio.run(ua_mod.mytask_submit_start(callback, state))
+
+    data = asyncio.run(state.get_data())
+    assert data.get("gs_task_id") == task_id  # submission flow WAS entered
+
+
+def test_mytask_submit_start_default_limit_zero_means_no_limit(tmp_path):
+    _db_ready(tmp_path)
+    task_id = _mk_task()
+    # game_resubmit_limit not set -> default 0 -> regression: behaves exactly like pre-phase
+    for _ in range(5):
+        _reject_submission(task_id, DELEGATE_ID)
+
+    state = _new_state()
+    callback = FakeCallback(f"mytask_submit:{task_id}")
+    asyncio.run(ua_mod.mytask_submit_start(callback, state))
+
+    data = asyncio.run(state.get_data())
+    assert data.get("gs_task_id") == task_id
+
+
+def test_game_resubmit_limit_registered_in_schema_and_admin_field_order():
+    from handlers import admin as admin_mod
+    assert settings_schema.SETTINGS_SCHEMA["game_resubmit_limit"]["type"] == "int"
+    assert settings_schema.SETTINGS_SCHEMA["game_resubmit_limit"]["group"] == "game"
+    assert settings_schema.SETTINGS_SCHEMA["game_resubmit_limit"]["default"] == 0
+    assert "game_resubmit_limit" in admin_mod._GAME_FIELD_ORDER
