@@ -1834,13 +1834,16 @@ async def cmd_start(message: types.Message, state: FSMContext, bot: Bot, command
         await _send_welcome(message, start_text, start_photo, await get_main_menu_kb(user_id), user_id)
 
         if user_id in config.ADMIN_IDS:
-            kb = ReplyKeyboardBuilder()
-            kb.button(text="\U0001f504 Пройти регистрацию заново")
+            # quick-260817-4pj: inline button, NOT a second reply-keyboard + FSM state — a
+            # second ReplyKeyboardMarkup here would overwrite the main menu just sent above,
+            # and the old admin-rereg FSM state swallowed the admin's first tap on ANY menu button.
+            kb = InlineKeyboardMarkup(inline_keyboard=[[
+                InlineKeyboardButton(text="\U0001f504 Пройти регистрацию заново", callback_data="admin_rereg")
+            ]])
             await message.answer(
                 "Вы админ — можете пройти регистрацию заново для теста.",
-                reply_markup=kb.as_markup(resize_keyboard=True, one_time_keyboard=True),
+                reply_markup=kb,
             )
-            await state.set_state(Registration.admin_rereg)
         return
 
     # Phase 5 (D-11a): master toggle. Placed AFTER the already-registered branch above so it
@@ -2008,6 +2011,28 @@ async def party_pick(callback: types.CallbackQuery, state: FSMContext):
     # party_fallback_full (T-05-01 deviation), so mark_reg_started records the right id.
     tap_message = callback.message.model_copy(update={"from_user": callback.from_user})
     await _start_registration_flow(tap_message, state, participant_type=chosen_track)
+
+
+@router.callback_query(F.data == "admin_rereg")
+async def admin_rereg(callback: types.CallbackQuery, state: FSMContext):
+    """quick-260817-4pj: admin-only re-registration entry point, replaces the old
+    admin-rereg reply-keyboard FSM flow. registration.router is NOT covered by
+    CapabilityMiddleware (it only sits on admin.router), so the ADMIN_IDS check below is the
+    sole guard — anyone who guessed this callback_data could otherwise reset their own FSM and
+    start a registration (T-4pj-01)."""
+    if callback.from_user.id not in config.ADMIN_IDS:
+        await callback.answer("Недостаточно прав", show_alert=True)
+        return
+    await callback.answer()
+    await state.clear()
+    try:
+        await callback.message.edit_reply_markup(reply_markup=None)
+    except Exception:
+        pass
+    # callback.message.from_user is the BOT — swap in the tapping admin, same fix as
+    # party_fallback_full, so mark_reg_started records the tapping admin's id (T-4pj-02).
+    tap_message = callback.message.model_copy(update={"from_user": callback.from_user})
+    await _start_registration_flow(tap_message, state)
 
 
 @router.callback_query(F.data == "party_fallback_full")
@@ -2305,20 +2330,6 @@ async def process_consent_ignore(message: types.Message):
     # SC#2: consent cannot be skipped via text — only the consent button advances.
     btn_text = await get_setting("consent_button_text") or "Согласен(-на)"
     await message.answer(f"Нажми кнопку «{btn_text}» для продолжения.")
-
-
-# --- Admin re-registration ---
-
-@router.message(Registration.admin_rereg, F.text == "\U0001f504 Пройти регистрацию заново")
-async def process_admin_rereg(message: types.Message, state: FSMContext):
-    await state.clear()
-    await _start_registration_flow(message, state)
-
-
-@router.message(Registration.admin_rereg)
-async def process_admin_rereg_skip(message: types.Message, state: FSMContext):
-    await state.clear()
-    await message.answer("Ок, остаёмся.", reply_markup=await get_main_menu_kb(message.from_user.id))
 
 
 

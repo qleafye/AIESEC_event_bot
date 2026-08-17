@@ -1,7 +1,6 @@
 from aiogram.fsm.state import StatesGroup, State
 
 class Registration(StatesGroup):
-    admin_rereg = State()
     full_name = State()
     age = State()
     email = State()
