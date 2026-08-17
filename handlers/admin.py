@@ -2877,6 +2877,20 @@ async def broadcast_filter_start(callback: types.CallbackQuery, state: FSMContex
     await state.set_state(Broadcast.filter_field)
 
 
+# Phase 14 (CFG-02, IN-01): human RU labels for the «Трек» filter picker's buttons. The
+# callback_data / value stored in FSM (and in the resulting filter, sent to the DB query) is
+# still the raw code — this dict ONLY changes what the button text says. Deliberately separate
+# from `_render_application_card`'s own `track_label` dict a few hundred lines down: that one
+# renders a pending-application card and its literals are pinned by existing tests — not
+# touched here.
+_TRACK_LABELS = {
+    "full": "Полный",
+    "party_overnight": "🎉 Вечеринка с ночёвкой",
+    "party_noovernight": "🎉 Вечеринка без ночёвки",
+    "short": "⚡ Краткая анкета (акция)",
+}
+
+
 async def _show_value_picker(callback: types.CallbackQuery, state: FSMContext, field: str, prompt: str):
     """Load distinct DB values for `field`, stash them in FSM, render the paginated picker."""
     if field == "event_city":
@@ -2896,6 +2910,12 @@ async def _show_value_picker(callback: types.CallbackQuery, state: FSMContext, f
         # offered. A city with zero applications so far would be unofferable too.
         options = [c["code"] for c in CITIES]
         labels = {code: await city_label(code) for code in options}
+    elif field == "participant_type":
+        # Phase 14 (CFG-02, IN-01): RU labels instead of raw codes (party_noovernight etc.);
+        # fail-soft for a value not in _TRACK_LABELS — falls back to the raw code as the label
+        # (dict.get default), never crashes the picker.
+        options = await get_distinct_filter_values(field)
+        labels = {code: _TRACK_LABELS.get(code, code) for code in options}
     else:
         options = await get_distinct_filter_values(field)
         labels = None
