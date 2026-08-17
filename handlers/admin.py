@@ -3364,6 +3364,30 @@ async def _card_out_of_scope(admin_id: int, tid: int | None) -> bool:
 _OUT_OF_SCOPE_ALERT = "Эта заявка из другого города — переключите город."
 
 
+# CR-03 (09.1-REVIEW.md): the submission-level twin of `_card_out_of_scope` above. The QUEUE
+# (`get_pending_submissions(city_scope=...)`) was already scoped by the DELEGATE's city — this
+# checks the same thing for the per-card DECISION handlers (grev_approve /
+# grev_approve_custom_start / grev_reject_start), which used to act on `submission_id` from
+# callback_data with zero city check and credit coins / notify the delegate regardless. Checks
+# the SUBMITTER's city, not the task's city (a task can be city-scoped or "all cities" — WR-06
+# covers that at submit time; here we only care whether the DELEGATE is inside the admin's
+# current scope, exactly the resolver `get_pending_submissions` itself uses).
+async def _submission_out_of_scope(admin_id: int, submission: dict | None) -> bool:
+    """True when the submission's delegate is outside the admin's currently selected city.
+    Always False with the module off (scope None = «ничего не фильтруется», same parity
+    contract as `_card_out_of_scope`)."""
+    if submission is None:
+        return False
+    scope = await _admin_city_scope(admin_id)
+    if scope is None:
+        return False
+    user = await get_user(submission["user_id"])
+    return normalize_city((user or {}).get("event_city")) != scope[0]
+
+
+_SUBMISSION_OUT_OF_SCOPE_ALERT = "Эта сдача из другого города — переключите город."
+
+
 # ── Phase 2: application review queue ("Заявки", tinder UI) ───────────────────
 
 def _parse_appr(data: str) -> tuple[str, int | None]:
@@ -5202,6 +5226,11 @@ async def show_game_review(callback: types.CallbackQuery, state: FSMContext):
     await _show_current_submission(callback.message, state)
 
 
+# CR-03 (09.1-REVIEW.md): deliberately NOT gated by `_submission_out_of_scope`. This handler
+# writes only to the caller's own FSM `grev_skipped` list and re-renders the caller's own
+# queue -- no DB row, no coins, no delegate notification. The queue itself is already scoped
+# by `city_scope` (get_pending_submissions), so another city's id cannot even appear in it;
+# "hiding" a foreign id in one's own skip set costs nothing.
 @router.callback_query(F.data.startswith("grev_skip:"))
 async def grev_skip(callback: types.CallbackQuery, state: FSMContext):
     try:
@@ -5231,6 +5260,9 @@ async def grev_approve(callback: types.CallbackQuery, state: FSMContext):
     submission, task = await _get_submission_and_task(sid)
     if submission is None or task is None:
         await callback.answer("Не найдено", show_alert=True)
+        return
+    if await _submission_out_of_scope(callback.from_user.id, submission):
+        await callback.answer(_SUBMISSION_OUT_OF_SCOPE_ALERT, show_alert=True)
         return
     coins = task["coins"]
     # T-09-11: add_coins is called ONLY from this branch, after claim_submission's atomic
@@ -5276,6 +5308,9 @@ async def grev_approve_custom_start(callback: types.CallbackQuery, state: FSMCon
     if submission is None or task is None:
         await callback.answer("Не найдено", show_alert=True)
         return
+    if await _submission_out_of_scope(callback.from_user.id, submission):
+        await callback.answer(_SUBMISSION_OUT_OF_SCOPE_ALERT, show_alert=True)
+        return
     await state.update_data(grev_submission_id=sid)
     await callback.message.answer(
         f"Сколько монет начислить? (по умолчанию {task['coins']}):",
@@ -5295,6 +5330,9 @@ async def grev_reject_start(callback: types.CallbackQuery, state: FSMContext):
     submission, task = await _get_submission_and_task(sid)
     if submission is None or task is None:
         await callback.answer("Не найдено", show_alert=True)
+        return
+    if await _submission_out_of_scope(callback.from_user.id, submission):
+        await callback.answer(_SUBMISSION_OUT_OF_SCOPE_ALERT, show_alert=True)
         return
     await state.update_data(grev_submission_id=sid)
     await callback.message.answer("Причина отклонения (или «-», если без причины):", reply_markup=get_cancel_kb())
@@ -5319,6 +5357,10 @@ async def grev_step_cancel(message: types.Message, state: FSMContext):
     await _show_current_submission(message, state)
 
 
+# CR-03: `grev_approve_amount_step` / `grev_reject_reason` (below) do NOT get a second
+# `_submission_out_of_scope` gate. `grev_submission_id` in state is set ONLY inside the two
+# already-gated starting handlers (`grev_approve_custom_start`/`grev_reject_start`) -- there is
+# no way to reach this state with an out-of-scope id already loaded.
 @router.message(GameReview.approve_amount)
 async def grev_approve_amount_step(message: types.Message, state: FSMContext):
     amount = _parse_positive_int(message.text)
