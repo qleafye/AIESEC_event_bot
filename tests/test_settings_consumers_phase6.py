@@ -81,6 +81,22 @@ def test_source_kb_unchanged(tmp_path):
     assert _flat_button_texts(kb_custom) == ["a", "b"]
 
 
+def test_source_kb_default_includes_blogger_before_other(tmp_path):
+    """2026-08-17: «Узнал от блогера» is a stock source option (Instagram bloggers post
+    without a direct reg link, so this is the only way to attribute those registrations).
+    It must be present by default and «Другое» must stay last."""
+    _db_ready(tmp_path)
+    from keyboards.builders import get_source_kb, DEFAULT_SOURCE_OPTIONS
+
+    assert "Узнал от блогера" in DEFAULT_SOURCE_OPTIONS
+    assert DEFAULT_SOURCE_OPTIONS[-1] == "Другое"
+    assert DEFAULT_SOURCE_OPTIONS.index("Узнал от блогера") < DEFAULT_SOURCE_OPTIONS.index("Другое")
+
+    asyncio.run(delete_setting("source_options"))
+    texts = _flat_button_texts(asyncio.run(get_source_kb()))
+    assert "Узнал от блогера" in texts and texts[-1] == "Другое"
+
+
 # ── Consumer wiring: pending_reminder_loop must resolve the interval via get_setting_typed ──
 
 class _StopLoop(Exception):
