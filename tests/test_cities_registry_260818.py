@@ -129,3 +129,135 @@ def test_db_py_never_imports_cities_module():
     src = pathlib.Path(__file__).resolve().parents[1].joinpath("database", "db.py").read_text(encoding="utf-8")
     assert "import cities" not in src
     assert "from cities" not in src
+
+
+# ── Task 2: cache, seed-from-.env, reload with in-place mutation, code generator ────────────
+
+def _snapshot_cities():
+    """Save + return a restorer for the module-level CITIES cache, so Task 2 tests don't leak
+    state into Task 3/other test files that run in the same pytest session."""
+    saved = list(cities.CITIES)
+
+    def _restore():
+        cities.set_cities_for_test(saved)
+
+    return _restore
+
+
+def test_seed_cities_if_empty_creates_rows_then_noop_on_second_call(tmp_path):
+    _db_ready(tmp_path)
+    restore = _snapshot_cities()
+    try:
+        first = asyncio.run(cities.seed_cities_if_empty())
+        second = asyncio.run(cities.seed_cities_if_empty())
+        rows = asyncio.run(db.list_cities_rows())
+    finally:
+        restore()
+    expected = cities.parse_cities(config.EVENT_CITIES)
+    assert first == len(expected)
+    assert second == 0
+    assert {r["code"] for r in rows} == {c["code"] for c in expected}
+
+
+def test_seed_migrates_old_enabled_toggle_without_deleting_the_key(tmp_path):
+    _db_ready(tmp_path)
+    restore = _snapshot_cities()
+    try:
+        expected = cities.parse_cities(config.EVENT_CITIES)
+        off_code = expected[-1]["code"]
+        asyncio.run(db.set_setting(f"city_enabled__{off_code}", "off"))
+        asyncio.run(cities.seed_cities_if_empty())
+        rows = {r["code"]: r for r in asyncio.run(db.list_cities_rows())}
+        still_set = asyncio.run(db.get_setting(f"city_enabled__{off_code}"))
+    finally:
+        restore()
+    assert rows[off_code]["enabled"] == 0
+    assert still_set == "off"  # old key is NOT deleted
+
+
+def test_reload_cities_mutates_same_object_and_reflects_db(tmp_path):
+    _db_ready(tmp_path)
+    restore = _snapshot_cities()
+    try:
+        before_id = id(cities.CITIES)
+        asyncio.run(db.insert_city("nsk", "Новосибирск", "", 0))
+        result = asyncio.run(cities.reload_cities())
+        after_id = id(cities.CITIES)
+        codes = cities.city_codes()
+    finally:
+        restore()
+    assert before_id == after_id
+    assert result is cities.CITIES
+    assert codes == ["nsk"]
+
+
+def test_reload_cities_on_empty_table_does_not_clear_cache(tmp_path):
+    _db_ready(tmp_path)
+    restore = _snapshot_cities()
+    try:
+        cities.set_cities_for_test([{"code": "msk", "label": "Москва", "tab_base": "", "enabled": 1, "sort_order": 0}])
+        result = asyncio.run(cities.reload_cities())
+        # `result` aliases the live CITIES object (reload_cities returns it by reference on
+        # the empty-rows path) -- snapshot its content NOW, before `restore()` mutates the
+        # same object back in the `finally` below.
+        result_snapshot = list(result)
+        codes = cities.city_codes()
+    finally:
+        restore()
+    assert codes == ["msk"]
+    assert result_snapshot == [{"code": "msk", "label": "Москва", "tab_base": "", "enabled": 1, "sort_order": 0}]
+
+
+def test_default_city_code_first_by_sort_order_and_emergency_fallback():
+    restore = _snapshot_cities()
+    try:
+        cities.set_cities_for_test([
+            {"code": "spb", "label": "СПб", "tab_base": "", "enabled": 1, "sort_order": 0},
+            {"code": "tmn", "label": "Тюмень", "tab_base": "", "enabled": 1, "sort_order": 1},
+        ])
+        first = cities.default_city_code()
+        cities.set_cities_for_test([])
+        empty = cities.default_city_code()
+    finally:
+        restore()
+    assert first == "spb"
+    assert empty == "msk"
+
+
+def test_is_city_enabled_column_is_source_of_truth_override_key_wins(tmp_path):
+    _db_ready(tmp_path)
+    restore = _snapshot_cities()
+    try:
+        cities.set_cities_for_test([
+            {"code": "spb", "label": "СПб", "tab_base": "", "enabled": 0, "sort_order": 0},
+        ])
+        from_column = asyncio.run(cities.is_city_enabled("spb"))
+        asyncio.run(db.set_setting("city_enabled__spb", "on"))
+        from_override = asyncio.run(cities.is_city_enabled("spb"))
+    finally:
+        restore()
+    assert from_column is False
+    assert from_override is True
+
+
+def test_make_city_code_translit_and_collision_suffixes():
+    code = cities.make_city_code("Нижний Новгород", existing=set())
+    assert code == "nizhniy_novgorod"
+    assert code.isascii() and code.replace("_", "").isalnum() and len(code) <= 16
+
+    first = cities.make_city_code("Тест", existing=set())
+    second = cities.make_city_code("Тест", existing={first})
+    third = cities.make_city_code("Тест", existing={first, second})
+    assert second == f"{first}_2"
+    assert third == f"{first}_3"
+
+
+def test_set_cities_for_test_mutates_same_object():
+    restore = _snapshot_cities()
+    try:
+        before_id = id(cities.CITIES)
+        cities.set_cities_for_test([{"code": "x", "label": "X", "tab_base": "", "enabled": 1, "sort_order": 0}])
+        after_id = id(cities.CITIES)
+    finally:
+        restore()
+    assert before_id == after_id
