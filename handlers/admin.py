@@ -77,6 +77,7 @@ from database.db import (
     # Phase 14 (14-07, CITY-07): cities table writes + delete-safety counters
     update_city,
     insert_city,
+    delete_city_row,
     count_users_by_city,
     count_tasks_by_city,
 )
@@ -2523,6 +2524,86 @@ async def city_edit_tab_step(message: types.Message, state: FSMContext):
     await message.answer("✅ База вкладки обновлена.", reply_markup=ReplyKeyboardRemove())
     text = await render_cities_text()
     await message.answer(text, parse_mode="HTML", reply_markup=await build_cities_keyboard())
+
+
+# ── Phase 14 (14-07, CITY-07): удаление города — три независимые серверные проверки (T-14-35):
+# кнопка в клавиатуре (build_cities_keyboard), это подтверждение, и исполнение (city_delete_go).
+
+@router.callback_query(F.data.startswith("city_del:"))
+async def city_delete_confirm(callback: types.CallbackQuery):
+    if not await _cities_screen_allowed(callback.from_user.id):
+        await _deny_cities_screen(callback)
+        return
+    code = callback.data.split(":", 1)[1]
+    if code not in {c["code"] for c in all_cities()}:
+        await callback.answer("Неизвестный город", show_alert=True)
+        return
+    users_n = await count_users_by_city(code)
+    tasks_n = await count_tasks_by_city(code)
+    if users_n > 0 or tasks_n > 0:
+        await callback.answer(
+            f"На этом городе уже есть делегаты ({users_n}) или задания ({tasks_n}) — его можно "
+            "только выключить (⛔), тогда он пропадёт из выбора, а собранные заявки останутся "
+            "на месте",
+            show_alert=True,
+        )
+        text = await render_cities_text()
+        await callback.message.edit_text(text, parse_mode="HTML", reply_markup=await build_cities_keyboard())
+        return
+    if code == default_city_code():
+        await callback.answer(
+            "Это город по умолчанию: в него попадают заявки без выбранного города. Сначала "
+            "назначьте другой город ⭐, потом удаляйте",
+            show_alert=True,
+        )
+        return
+    label = await city_label(code)
+    kb = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="🗑 Да, удалить", callback_data=f"city_del_go:{code}")],
+        [InlineKeyboardButton(text="← Отмена", callback_data="admin_cities")],
+    ])
+    await callback.message.edit_text(
+        f"🗑 <b>Удалить город «{html_module.escape(label)}»?</b>\n\n"
+        "Город пропадёт из выбора у делегатов и из фильтров рассылок; его ссылка-приглашение "
+        "перестанет работать. Вкладка таблицы и её строки НЕ удаляются. Вернуть можно только "
+        "заведя город заново.",
+        parse_mode="HTML",
+        reply_markup=kb,
+    )
+    await callback.answer()
+
+
+@router.callback_query(F.data.startswith("city_del_go:"))
+async def city_delete_go(callback: types.CallbackQuery):
+    if not await _cities_screen_allowed(callback.from_user.id):
+        await _deny_cities_screen(callback)
+        return
+    code = callback.data.split(":", 1)[1]
+    users_n = await count_users_by_city(code)
+    tasks_n = await count_tasks_by_city(code)
+    if users_n > 0 or tasks_n > 0:
+        await callback.answer(
+            "На этом городе уже есть делегаты/задания — его можно только выключить (⛔)",
+            show_alert=True,
+        )
+        text = await render_cities_text()
+        await callback.message.edit_text(text, parse_mode="HTML", reply_markup=await build_cities_keyboard())
+        return
+    if code == default_city_code():
+        await callback.answer(
+            "Это город по умолчанию — сначала назначьте другой город ⭐, потом удаляйте",
+            show_alert=True,
+        )
+        return
+    # Никаких каскадных удалений: только строка реестра. Легаси-ключи city_*__{code} в
+    # bot_settings НЕ трогаются — заведение города с тем же кодом заново подхватит их.
+    if await delete_city_row(code):
+        await reload_cities()
+        await callback.answer("Город удалён", show_alert=True)
+    else:
+        await callback.answer("Город уже удалён", show_alert=True)
+    text = await render_cities_text()
+    await callback.message.edit_text(text, parse_mode="HTML", reply_markup=await build_cities_keyboard())
 
 
 @router.callback_query(F.data == "admin_city_switch")

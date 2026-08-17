@@ -748,3 +748,109 @@ def test_wizard_texts_never_mention_tab_base_or_code_literals(tmp_path):
     for t in texts:
         assert "tab_base" not in t
         assert "код города" not in t.lower()
+
+
+# ── Task 3: delete with server-side triple-check ─────────────────────────────────────────────
+
+def test_city_del_shows_confirmation_and_db_unchanged(tmp_path):
+    _db_ready(tmp_path)
+    config.ADMIN_IDS = [ADMIN_ID]
+    restore = _snapshot_cities()
+    try:
+        _seed_cities_db([("msk", "Москва", "", 0), ("kzn", "Казань", "", 1)])
+        before = asyncio.run(db.count_cities())
+        callback = FakeCallback("city_del:kzn")
+        asyncio.run(admin_mod.city_delete_confirm(callback))
+        after = asyncio.run(db.count_cities())
+        text = callback.message.answers_sent[-1]
+        kb = callback.message.answer_markups[-1]
+        flat = [btn.callback_data for row in kb.inline_keyboard for btn in row]
+    finally:
+        restore()
+    assert before == after
+    assert "Казань" in text
+    assert "city_del_go:kzn" in flat
+
+
+def test_city_del_refuses_when_delegate_appeared_between_show_and_click(tmp_path):
+    _db_ready(tmp_path)
+    config.ADMIN_IDS = [ADMIN_ID]
+    restore = _snapshot_cities()
+    try:
+        _seed_cities_db([("msk", "Москва", "", 0), ("kzn", "Казань", "", 1)])
+        asyncio.run(db.add_user({"telegram_id": 5, "event_city": "kzn", "registration_date": "2026-08-01"}))
+        before = asyncio.run(db.count_cities())
+        callback = FakeCallback("city_del:kzn")
+        asyncio.run(admin_mod.city_delete_confirm(callback))
+        after = asyncio.run(db.count_cities())
+    finally:
+        restore()
+    assert before == after
+    assert callback.answers[-1][1] is True
+    assert "выключить" in callback.answers[-1][0]
+
+
+def test_city_del_go_deletes_reloads_and_removes_from_city_codes(tmp_path):
+    _db_ready(tmp_path)
+    config.ADMIN_IDS = [ADMIN_ID]
+    restore = _snapshot_cities()
+    try:
+        _seed_cities_db([("msk", "Москва", "", 0), ("kzn", "Казань", "", 1)])
+        callback = FakeCallback("city_del_go:kzn")
+        asyncio.run(admin_mod.city_delete_go(callback))
+        codes_after = cities.city_codes()
+        kb = callback.message.answer_markups[-1]
+        flat = [btn.callback_data for row in kb.inline_keyboard for btn in row]
+    finally:
+        restore()
+    assert "kzn" not in codes_after
+    assert not any(cd and cd.endswith(":kzn") for cd in flat)
+
+
+def test_city_del_forbidden_for_default_city(tmp_path):
+    _db_ready(tmp_path)
+    config.ADMIN_IDS = [ADMIN_ID]
+    restore = _snapshot_cities()
+    try:
+        _seed_cities_db([("msk", "Москва", "", 0)])
+        before = asyncio.run(db.count_cities())
+        callback = FakeCallback("city_del:msk")
+        asyncio.run(admin_mod.city_delete_confirm(callback))
+        after = asyncio.run(db.count_cities())
+    finally:
+        restore()
+    assert before == after
+    assert callback.answers[-1][1] is True
+    assert "по умолчанию" in callback.answers[-1][0]
+
+
+def test_city_del_go_deep_link_no_longer_resolves_after_deletion(tmp_path):
+    _db_ready(tmp_path)
+    config.ADMIN_IDS = [ADMIN_ID]
+    restore = _snapshot_cities()
+    try:
+        _seed_cities_db([("msk", "Москва", "", 0), ("kzn", "Казань", "", 1)])
+        from handlers import registration as reg
+        assert reg._extract_event_city("city_kzn") == "kzn"
+        callback = FakeCallback("city_del_go:kzn")
+        asyncio.run(admin_mod.city_delete_go(callback))
+        resolved_after = reg._extract_event_city("city_kzn")
+    finally:
+        restore()
+    assert resolved_after is None
+
+
+def test_city_del_go_double_tap_second_time_says_already_deleted(tmp_path):
+    _db_ready(tmp_path)
+    config.ADMIN_IDS = [ADMIN_ID]
+    restore = _snapshot_cities()
+    try:
+        _seed_cities_db([("msk", "Москва", "", 0), ("kzn", "Казань", "", 1)])
+        first = FakeCallback("city_del_go:kzn")
+        asyncio.run(admin_mod.city_delete_go(first))
+        second = FakeCallback("city_del_go:kzn")
+        asyncio.run(admin_mod.city_delete_go(second))
+    finally:
+        restore()
+    assert first.answers[-1] == ("Город удалён", True)
+    assert second.answers[-1] == ("Город уже удалён", True)
