@@ -247,6 +247,10 @@ async def init_db():
                 created_at TEXT NOT NULL
             )
         ''')
+        # Phase 09.1 (B, CONTEXT.md "Задания по городам"): NULL = all cities, same semantics
+        # as users.event_city (07.1/07.2). No backfill -- every pre-existing task keeps
+        # meaning "all cities", which is exactly what it already behaved as.
+        await _ensure_column(db, "game_tasks", "event_city", "TEXT")
 
         # `content` stores a file_id for photo/pdf proof, raw text for text/link proof — the
         # project never writes uploaded files to disk (README/CLAUDE.md file_id pattern).
@@ -902,20 +906,29 @@ async def reject_user(telegram_id: int) -> bool:
 # registry's knowledge (which codes exist, which is the default) is therefore handed to
 # `_city_clause` BY VALUE as the `(code, exclude)` descriptor `cities.city_scope` builds;
 # db.py stays the bottom layer and never learns what a "city" is.
-def _city_clause(scope: tuple[str, tuple[str, ...]] | None) -> tuple[str, list]:
+def _city_clause(scope: tuple[str, tuple[str, ...]] | None, column: str = "event_city", *,
+                  include_null: bool = False) -> tuple[str, list]:
     """Pure: turn a `cities.city_scope(...)` descriptor into a parameterized SQL fragment
     (no leading AND/WHERE — callers splice it in). `scope is None` -> `("", [])`, no
     filtering at all (this is what keeps module-off / no-scope byte-identical to today).
-    Empty `exclude` -> equality (`event_city = ?`); non-empty `exclude` -> the default-city
-    shape (`event_city IS NULL OR event_city NOT IN (?, ...)`), one placeholder per excluded
-    code. City codes never get interpolated into the SQL string — only the ? count does."""
+    Empty `exclude` -> equality (`event_city = ?`, or `(col IS NULL OR col = ?)` when
+    `include_null=True` — Phase 09.1 (B): a task's NULL means "all cities", so a delegate's
+    own-city fetch must catch NULL even though their own city is the equality branch);
+    non-empty `exclude` -> the default-city shape (`event_city IS NULL OR event_city NOT IN
+    (?, ...)`), one placeholder per excluded code (already catches NULL, `include_null` is a
+    no-op here). `column` lets callers qualify the column for a JOIN (e.g. "t.event_city",
+    "u.event_city") — it is ALWAYS one of this file's own literal call-site strings, never
+    user/callback-derived (T-091-08); city codes never get interpolated into the SQL string,
+    only the ? count does."""
     if scope is None:
         return "", []
     code, exclude = scope
     if not exclude:
-        return "event_city = ?", [code]
+        if include_null:
+            return f"({column} IS NULL OR {column} = ?)", [code]
+        return f"{column} = ?", [code]
     placeholders = ", ".join("?" for _ in exclude)
-    return f"(event_city IS NULL OR event_city NOT IN ({placeholders}))", list(exclude)
+    return f"({column} IS NULL OR {column} NOT IN ({placeholders}))", list(exclude)
 
 
 async def get_pending_users(limit: int = 1, offset: int = 0, *, city_scope=None) -> list[dict]:
@@ -1434,13 +1447,18 @@ def parse_proof_types(raw: str | None) -> list[str]:
 
 
 async def create_task(text: str, category: str, coins: int, proof_type: str,
-                       deadline_at: str, created_by: int | None) -> int:
+                       deadline_at: str, created_by: int | None, *,
+                       event_city: str | None = None) -> int:
+    """`event_city` is kwarg-only (Phase 09.1 B) so every existing positional call site
+    (including pre-09.1 tests) stays valid and keeps creating a NULL-city ("all cities")
+    task unless a caller opts in."""
     created_at = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     async with aiosqlite.connect(config.DB_PATH) as db:
         cursor = await db.execute(
             "INSERT INTO game_tasks (text, category, coins, proof_type, deadline_at, "
-            "created_by, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)",
-            (text, category, coins, proof_type, deadline_at, created_by, created_at),
+            "created_by, created_at, event_city) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+            (text, category, coins, proof_type, deadline_at, created_by, created_at,
+             event_city),
         )
         await db.commit()
         return cursor.lastrowid
@@ -1456,23 +1474,31 @@ async def get_task(task_id: int) -> dict | None:
             return dict(row) if row else None
 
 
-async def list_active_tasks() -> list[dict]:
+async def list_active_tasks(*, city_scope=None, include_null: bool = True) -> list[dict]:
     """No deadline filter — A-05 (call 13.08): the deadline is soft, the bot keeps accepting
     submissions after it expires, so a past-deadline task must stay visible to a delegate or
-    it becomes physically impossible to submit. Sorted by nearest deadline first."""
+    it becomes physically impossible to submit. Sorted by nearest deadline first.
+    Phase 09.1 (B): `city_scope=None` (default) -> byte-identical to pre-09.1 (all tasks,
+    no filter). `include_null=True` by default -- a task's NULL event_city means "all
+    cities" (CONTEXT.md B), and the equality branch of `_city_clause` does NOT catch NULL on
+    its own, so it must be asked for explicitly here."""
+    frag, city_params = _city_clause(city_scope, "event_city", include_null=include_null)
+    extra = f" WHERE {frag}" if frag else ""
     async with aiosqlite.connect(config.DB_PATH) as db:
         db.row_factory = aiosqlite.Row
         async with db.execute(
-            "SELECT * FROM game_tasks ORDER BY deadline_at ASC"
+            f"SELECT * FROM game_tasks{extra} ORDER BY deadline_at ASC", tuple(city_params)
         ) as cursor:
             return [dict(row) for row in await cursor.fetchall()]
 
 
-async def list_all_tasks() -> list[dict]:
+async def list_all_tasks(*, city_scope=None, include_null: bool = True) -> list[dict]:
+    frag, city_params = _city_clause(city_scope, "event_city", include_null=include_null)
+    extra = f" WHERE {frag}" if frag else ""
     async with aiosqlite.connect(config.DB_PATH) as db:
         db.row_factory = aiosqlite.Row
         async with db.execute(
-            "SELECT * FROM game_tasks ORDER BY created_at DESC"
+            f"SELECT * FROM game_tasks{extra} ORDER BY created_at DESC", tuple(city_params)
         ) as cursor:
             return [dict(row) for row in await cursor.fetchall()]
 
@@ -1558,32 +1584,49 @@ async def get_submission_parts_or_legacy(submission: dict) -> list[dict]:
     return [{"ord": 0, "kind": kind, "content": content, "caption": None}]
 
 
-async def get_pending_submissions(limit: int = 1, offset: int = 0) -> list[dict]:
+async def get_pending_submissions(limit: int = 1, offset: int = 0, *, city_scope=None) -> list[dict]:
     """Paginated moderation queue (CLAUDE.md: 1000+ submissions must never be one message per
     row), same LIMIT/OFFSET shape as get_pending_users. Joins game_tasks/users so the card
     (wave 4) needs zero extra queries — task_deadline_at lets the card flag "after deadline"
-    per the soft-deadline decision (A-05, call 13.08) without a second lookup."""
+    per the soft-deadline decision (A-05, call 13.08) without a second lookup.
+    Phase 09.1 (B): `city_scope` filters by u.event_city (the DELEGATE's city, same pattern
+    as the applications/receipts queues in 07.2), NOT the task's city — a manager scoped to
+    spb must see spb delegates' submissions regardless of which city the task itself was
+    addressed to. No `include_null` -- for the default city, NULL already lands via the
+    exclusion-shape branch of `_city_clause`, exactly like get_pending_users; passing
+    include_null here would also surface delegates with no city to every non-default-city
+    manager, which is not what CONTEXT.md's "тот же паттерн, что заявки/чеки в 07.2" asks
+    for."""
+    frag, city_params = _city_clause(city_scope, "u.event_city")
+    extra = f" AND {frag}" if frag else ""
     async with aiosqlite.connect(config.DB_PATH) as db:
         db.row_factory = aiosqlite.Row
         async with db.execute(
             "SELECT s.*, t.text AS task_text, t.category AS task_category, "
             "t.coins AS task_coins, t.proof_type AS task_proof_type, "
-            "t.deadline_at AS task_deadline_at, "
-            "u.full_name AS user_full_name, u.username AS user_username "
+            "t.deadline_at AS task_deadline_at, t.event_city AS task_event_city, "
+            "u.full_name AS user_full_name, u.username AS user_username, "
+            "u.event_city AS user_event_city "
             "FROM game_submissions s "
             "JOIN game_tasks t ON t.id = s.task_id "
             "LEFT JOIN users u ON u.telegram_id = s.user_id "
-            "WHERE s.status = 'pending' "
+            f"WHERE s.status = 'pending'{extra} "
             "ORDER BY s.submitted_at ASC, s.id ASC LIMIT ? OFFSET ?",
-            (limit, offset),
+            (*city_params, limit, offset),
         ) as cursor:
             return [dict(row) for row in await cursor.fetchall()]
 
 
-async def get_pending_submissions_count() -> int:
+async def get_pending_submissions_count(*, city_scope=None) -> int:
+    frag, city_params = _city_clause(city_scope, "u.event_city")
+    extra = f" AND {frag}" if frag else ""
     async with aiosqlite.connect(config.DB_PATH) as db:
+        db.row_factory = aiosqlite.Row
         async with db.execute(
-            "SELECT COUNT(*) FROM game_submissions WHERE status = 'pending'"
+            "SELECT COUNT(*) FROM game_submissions s "
+            "LEFT JOIN users u ON u.telegram_id = s.user_id "
+            f"WHERE s.status = 'pending'{extra}",
+            tuple(city_params),
         ) as cursor:
             row = await cursor.fetchone()
             return int(row[0]) if row and row[0] is not None else 0
@@ -1610,14 +1653,19 @@ async def claim_submission(submission_id: int, admin_id: int, status: str, *,
 
 async def list_all_submissions() -> list[dict]:
     """Full submission history (wave 5's "История сдач" sheet/list) — same join shape as
-    get_pending_submissions, no status filter, oldest first."""
+    get_pending_submissions, no status filter, oldest first. No `city_scope` here — Phase
+    09.1 (B, CONTEXT.md "Уточнение (ночь 17→18.08…)"): the sheet tabs are whole-event
+    exports rebuilt by a background debounce with no admin identity, unlike the live queue
+    above; `user_event_city` is exposed so the sheet builder can add a "Город" COLUMN
+    instead of filtering rows."""
     async with aiosqlite.connect(config.DB_PATH) as db:
         db.row_factory = aiosqlite.Row
         async with db.execute(
             "SELECT s.*, t.text AS task_text, t.category AS task_category, "
             "t.coins AS task_coins, t.proof_type AS task_proof_type, "
-            "t.deadline_at AS task_deadline_at, "
-            "u.full_name AS user_full_name, u.username AS user_username "
+            "t.deadline_at AS task_deadline_at, t.event_city AS task_event_city, "
+            "u.full_name AS user_full_name, u.username AS user_username, "
+            "u.event_city AS user_event_city "
             "FROM game_submissions s "
             "JOIN game_tasks t ON t.id = s.task_id "
             "LEFT JOIN users u ON u.telegram_id = s.user_id "
