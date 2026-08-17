@@ -174,3 +174,67 @@ def test_set_admin_city_unknown_code_still_rejected():
         return await cities.set_admin_city(ADMIN_ID, "нет_такого_кода")
 
     assert asyncio.run(go()) is False
+
+
+# ── Task 2: get_setting_for_city / get_setting_typed_for_city / per_city_key /
+#            city_override_codes в режиме «все города» ─────────────────────────────────────
+
+def test_get_setting_for_city_all_cities_returns_global_not_default_city_override(tmp_path):
+    _admin_ready(tmp_path, "test_city_all_mode_resolver_str.db")
+
+    async def go():
+        await db.set_setting("event_city_enabled", "on")
+        default_code = cities.default_city_code()
+        await db.set_setting("start_text", "Общий текст")
+        await db.set_setting(
+            cities.per_city_key("start_text", default_code), "Текст города по умолчанию",
+        )
+        return await cities.get_setting_for_city("start_text", cities.ALL_CITIES)
+
+    assert asyncio.run(go()) == "Общий текст"
+
+
+def test_get_setting_typed_for_city_all_cities_returns_global_not_default_city_override(tmp_path):
+    _admin_ready(tmp_path, "test_city_all_mode_resolver_typed.db")
+
+    async def go():
+        await db.set_setting("event_city_enabled", "on")
+        default_code = cities.default_city_code()
+        await db.set_setting(cities.per_city_key("registration_mode", default_code), "full")
+        return await cities.get_setting_typed_for_city("registration_mode", cities.ALL_CITIES)
+
+    resolved = asyncio.run(go())
+
+    async def expected():
+        import settings_schema as s
+        return await s.get_setting_typed("registration_mode")
+
+    assert resolved == asyncio.run(expected())
+
+
+def test_per_city_key_all_cities_returns_none():
+    assert cities.per_city_key("start_text", cities.ALL_CITIES) is None
+
+
+def test_city_override_codes_never_contains_all_cities(tmp_path):
+    _admin_ready(tmp_path, "test_city_all_mode_override_codes.db")
+
+    async def go():
+        await db.set_setting("event_city_enabled", "on")
+        for code in cities.city_codes():
+            await db.set_setting(cities.per_city_key("start_text", code), f"Текст {code}")
+        return await cities.city_override_codes("start_text")
+
+    result = asyncio.run(go())
+    assert cities.ALL_CITIES not in result
+    assert set(result) == set(cities.city_codes())
+
+
+def test_broadcast_event_city_filter_options_never_offer_all_cities():
+    """Защитный тест: источник опций поля `event_city` в фильтре рассылки — сам реестр
+    городов (`cities.city_codes()`/`cities.all_cities()`), не литеральный список. Маркер
+    "все города" физически не может попасть в `refresh_city_filter_spec`, где
+    `city_scope(value)[1]` упал бы на `None` (`city_scope("*")` не возвращает кортеж)."""
+    options = [c["code"] for c in cities.all_cities()]
+    assert cities.ALL_CITIES not in options
+    assert cities.ALL_CITIES not in cities.city_codes()

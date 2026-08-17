@@ -469,10 +469,19 @@ async def get_setting_for_city(key: str, city_code: str | None) -> str | None:
     возвращается РОВНО `get_setting(key)` — байт-в-байт сегодняшнее поведение, тот же
     контракт "module off -> collapse to plain read", что у `admin_selected_city`
     (T-092-02: переопределение физически не может протечь, пока модуль выключен — все три
-    ранних выхода читают глобальный ключ ДО первого обращения к городскому ключу)."""
+    ранних выхода читают глобальный ключ ДО первого обращения к городскому ключу).
+
+    Phase 09.3 (CITY-08, T-093-03): маркер `ALL_CITIES` ("*", «все города» в шапке админки) —
+    тоже ранний выход на общее значение, ДО нормализации кода города. Итог совпадает с
+    `city_code is None` (оба отдают общее значение), но причина другая: `None` значит "город
+    делегата ещё не известен", `"*"` значит "модуль включён, админ явно выбрал без фильтра".
+    Без этой ветки нормализация схлопнула бы маркер в город по умолчанию, и «все города»
+    тихо отдавали бы переопределение Москвы вместо общего текста."""
     if not is_per_city(key):
         return await get_setting(key)
     if city_code is None:
+        return await get_setting(key)
+    if city_code == ALL_CITIES:
         return await get_setting(key)
     if not await cities_module_on():
         return await get_setting(key)
@@ -489,10 +498,15 @@ async def get_setting_typed_for_city(key: str, city_code: str | None):
     """Типизированный вариант `get_setting_for_city`: та же лестница ранних выходов, но
     фолбэк — `get_setting_typed(key)`, а найденный override пропускается через
     `_parse_setting(key, raw)` с БАЗОВЫМ ключом (метаданные типа лежат у базового ключа
-    реестра, не у составного `{key}__city__{code}`)."""
+    реестра, не у составного `{key}__city__{code}`).
+
+    Phase 09.3 (CITY-08, T-093-03): третье состояние — `"*"` = общее значение, `None` = город
+    делегата ещё не известен; результат один, причины разные (см. `get_setting_for_city`)."""
     if not is_per_city(key):
         return await get_setting_typed(key)
     if city_code is None:
+        return await get_setting_typed(key)
+    if city_code == ALL_CITIES:
         return await get_setting_typed(key)
     if not await cities_module_on():
         return await get_setting_typed(key)
