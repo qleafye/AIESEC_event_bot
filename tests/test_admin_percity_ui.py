@@ -204,3 +204,155 @@ def test_superadmin_sees_all_cities_in_picker(tmp_path):
     assert set(codes) == set(cities.city_codes())
 
 
+# ══════════════════════════════════════════════════════════════════════════════════════════
+# Task 2: write/clear round-trip, enum toggle, unknown code, bound-manager gate
+# ══════════════════════════════════════════════════════════════════════════════════════════
+
+def test_settings_city_pick_text_key_opens_composite_fsm(tmp_path):
+    _admin_ready(tmp_path)
+    _enable_cities()
+    cb = FakeCallback("settings_city_pick:start_text:spb")
+    state = FakeState()
+    asyncio.run(admin_mod.settings_city_pick(cb, state))
+
+    assert state.data.get("setting_key") == cities.per_city_key("start_text", "spb")
+    assert state.data.get("per_city_base") == "start_text"
+
+
+def test_text_roundtrip_write_read_clear_does_not_touch_global(tmp_path):
+    _admin_ready(tmp_path)
+    _enable_cities()
+    asyncio.run(db.set_setting("start_text", "Глобальный текст"))
+
+    pick_cb = FakeCallback("settings_city_pick:start_text:spb")
+    state = FakeState()
+    asyncio.run(admin_mod.settings_city_pick(pick_cb, state))
+
+    class FakeMsgIn:
+        def __init__(self, text, user_id=ADMIN_ID):
+            self.text = text
+            self.html_text = text
+            self.from_user = FakeUser(user_id)
+
+        async def answer(self, *a, **kw):
+            pass
+
+    msg = FakeMsgIn("Питерский текст")
+    asyncio.run(admin_mod.settings_edit_value(msg, state))
+
+    assert asyncio.run(db.get_setting("start_text")) == "Глобальный текст"
+    resolved = asyncio.run(cities.get_setting_for_city("start_text", "spb"))
+    assert resolved == "Питерский текст"
+    # After save the screen returns to the city list, not the landing.
+    assert state.data == {} and state.state is None
+
+    # Clear via "-" — composite key deleted, global untouched.
+    pick_cb2 = FakeCallback("settings_city_pick:start_text:spb")
+    state2 = FakeState()
+    asyncio.run(admin_mod.settings_city_pick(pick_cb2, state2))
+    msg_clear = FakeMsgIn("-")
+    asyncio.run(admin_mod.settings_edit_value(msg_clear, state2))
+
+    assert asyncio.run(db.get_setting("start_text")) == "Глобальный текст"
+    resolved_after = asyncio.run(cities.get_setting_for_city("start_text", "spb"))
+    assert resolved_after == "Глобальный текст"
+
+
+def test_html_settings_branch_checked_against_base_key():
+    import inspect
+    src = inspect.getsource(admin_mod.settings_edit_value)
+    assert "_base_setting_key(key) in HTML_SETTINGS" in src
+
+
+def test_no_per_city_key_in_sheet_tab_write_mode_or_options_suffix():
+    per_city_keys = [
+        k for k, v in __import__("settings_schema").SETTINGS_SCHEMA.items() if v.get("per_city")
+    ]
+    for k in per_city_keys:
+        assert k not in admin_mod._SHEET_TAB_WRITE_MODE, k
+        assert not k.endswith("_options"), k
+
+
+def test_enum_pick_toggles_city_value_and_realerts(tmp_path):
+    _admin_ready(tmp_path)
+    _enable_cities()
+    cb = FakeCallback("settings_city_pick:registration_mode:spb")
+    state = FakeState()
+    asyncio.run(admin_mod.settings_city_pick(cb, state))
+
+    resolved = asyncio.run(cities.get_setting_typed_for_city("registration_mode", "spb"))
+    assert resolved == "full"  # default is "short" -> flips to the other option
+    assert cb.message.edit_calls == 1
+    assert cb.answers and cb.answers[-1][1] is True
+
+
+def test_unknown_city_code_refused(tmp_path):
+    _admin_ready(tmp_path)
+    _enable_cities()
+    cb = FakeCallback("settings_city_pick:start_text:atlantis")
+    state = FakeState()
+    asyncio.run(admin_mod.settings_city_pick(cb, state))
+
+    assert cb.answers and cb.answers[0][1] is True
+    assert state.data == {}
+    assert asyncio.run(db.get_setting(cities.per_city_key("start_text", "atlantis") or "x")) is None
+
+
+def test_settings_city_clear_confirm_then_go(tmp_path):
+    _admin_ready(tmp_path)
+    _enable_cities()
+    asyncio.run(db.set_setting(cities.per_city_key("start_text", "spb"), "Питерский текст"))
+
+    confirm_cb = FakeCallback("settings_city_clear:start_text:spb")
+    asyncio.run(admin_mod.settings_city_clear(confirm_cb))
+    # Confirm screen previews the GLOBAL value the city is about to fall back to (unset here
+    # -> "по умолчанию"), not the override being removed — and names the consequence.
+    assert "по умолчанию" in confirm_cb.message.text
+    assert "будет удалён" in confirm_cb.message.text
+
+    go_cb = FakeCallback("settings_city_clear_go:start_text:spb")
+    asyncio.run(admin_mod.settings_city_clear_go(go_cb))
+
+    resolved = asyncio.run(cities.get_setting_for_city("start_text", "spb"))
+    assert resolved is None or resolved == ""
+
+    # Idempotent second clear.
+    go_cb2 = FakeCallback("settings_city_clear_go:start_text:spb")
+    asyncio.run(admin_mod.settings_city_clear_go(go_cb2))
+    assert go_cb2.answers and go_cb2.answers[0][1] is True
+
+
+def test_bound_manager_refused_on_other_city_pick(tmp_path):
+    _admin_ready(tmp_path)
+    _enable_cities()
+    asyncio.run(db.add_staff(MANAGER_ID, "reg_manager", ADMIN_ID))
+    asyncio.run(db.set_staff_city(MANAGER_ID, "spb"))
+    asyncio.run(db.set_setting(role_enabled_key("reg_manager"), "on"))
+    asyncio.run(db.set_setting(role_caps_key("reg_manager"), "moderate_reg;moderate_receipts;settings"))
+
+    cb = FakeCallback("settings_city_pick:start_text:tyumen", user_id=MANAGER_ID)
+    state = FakeState()
+    asyncio.run(admin_mod.settings_city_pick(cb, state))
+
+    assert cb.answers and cb.answers[0][1] is True
+    assert state.data == {}
+    resolved = asyncio.run(cities.get_setting_for_city("start_text", "tyumen"))
+    assert resolved is None or resolved == ""
+
+
+def test_bound_manager_refused_on_other_city_clear_go(tmp_path):
+    _admin_ready(tmp_path)
+    _enable_cities()
+    asyncio.run(db.add_staff(MANAGER_ID, "reg_manager", ADMIN_ID))
+    asyncio.run(db.set_staff_city(MANAGER_ID, "spb"))
+    asyncio.run(db.set_setting(role_enabled_key("reg_manager"), "on"))
+    asyncio.run(db.set_setting(role_caps_key("reg_manager"), "moderate_reg;moderate_receipts;settings"))
+    asyncio.run(db.set_setting(cities.per_city_key("start_text", "tyumen"), "Тюменский текст"))
+
+    cb = FakeCallback("settings_city_clear_go:start_text:tyumen", user_id=MANAGER_ID)
+    asyncio.run(admin_mod.settings_city_clear_go(cb))
+
+    assert cb.answers and cb.answers[0][1] is True
+    resolved = asyncio.run(cities.get_setting_for_city("start_text", "tyumen"))
+    assert resolved == "Тюменский текст"  # untouched
+
