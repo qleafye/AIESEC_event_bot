@@ -22,6 +22,7 @@ from database.db import (
     parse_proof_types,
 )
 from handlers.admin_caps import notify_by_capability  # D-13: fan out by capability, not bare ADMIN_IDS
+from cities import cities_module_on, normalize_city, city_scope  # Phase 09.1 (B): show_game_tasks city filter
 from keyboards.builders import (
     get_cancel_kb,
     get_main_menu_kb,
@@ -136,7 +137,15 @@ async def show_game_tasks(message: types.Message):
     if not await ensure_registered(message):
         return
 
-    tasks = await list_active_tasks()
+    # Phase 09.1 (B): module off -> byte-identical to pre-09.1 (list_active_tasks() with no
+    # kwargs). One resolve on one screen (get_user + normalize_city + city_scope), mirrors
+    # _admin_city_view resolving ONE scope from ONE read, not two independent awaits.
+    if await cities_module_on():
+        user = await get_user(message.from_user.id)
+        code = normalize_city(user.get("event_city") if user else None)
+        tasks = await list_active_tasks(city_scope=city_scope(code))
+    else:
+        tasks = await list_active_tasks()
     if not tasks:
         await message.answer("Активных заданий сейчас нет. Загляни попозже!")
         return
