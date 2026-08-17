@@ -82,14 +82,39 @@ def test_slash_command_in_wizard_requires_command_capability(tmp_path):
 
 
 def test_slash_command_coins_in_editsetting_denied_for_settings_holder(tmp_path):
-    """CRITICAL sibling: /coins (needs moderate_reg) typed inside EditSetting.waiting_for_value.
-    A settings-only holder must not mint coins via the state's `settings` cap."""
+    """CRITICAL sibling: /coins typed inside EditSetting.waiting_for_value. A settings-ONLY
+    holder must not mint coins via the state's `settings` cap -- the escalation-through-state
+    regression this test guards against is independent of which capability /coins itself
+    requires (GAME-09 repointed /coins from moderate_reg to moderate_game; the CRITICAL fix
+    being tested here is unrelated to that repoint and must survive it unweakened).
+
+    GAME_MANAGER_ID is no longer usable as the "denied" subject: after the GAME-09 repoint it
+    holds moderate_game, which /coins now itself requires, and it never held `settings` (any
+    denial for it would be a false-negative for the escalation this test exists to catch).
+    A genuine settings-ONLY holder is built via a role_caps_ override (same idiom as
+    test_roles_phase8.py:793) instead."""
     _ready(tmp_path)
-    asyncio.run(db.add_staff(GAME_MANAGER_ID, "game_manager", ADMIN_ID))  # holds moderate_game only
-    event = _FakeMsg("/coins 123 500", GAME_MANAGER_ID)
-    data = {"event_from_user": _FakeUser(GAME_MANAGER_ID), "raw_state": "EditSetting:waiting_for_value"}
+    from handlers.admin_caps import role_caps_key
+    SETTINGS_ONLY_ID = 900805
+    asyncio.run(db.add_staff(SETTINGS_ONLY_ID, "reg_manager", ADMIN_ID))
+    asyncio.run(db.set_setting(role_caps_key("reg_manager"), "settings"))  # settings ONLY
+    event = _FakeMsg("/coins 123 500", SETTINGS_ONLY_ID)
+    data = {"event_from_user": _FakeUser(SETTINGS_ONLY_ID), "raw_state": "EditSetting:waiting_for_value"}
     result, calls = _run_middleware(event, data)
     assert calls == []
+
+
+def test_slash_command_coins_allowed_for_moderate_game_holder(tmp_path):
+    """Mirror assert (GAME-09): a moderate_game holder is now genuinely GRANTED /coins outside
+    any wizard state -- the repoint from moderate_reg is a real capability change, not just a
+    renamed literal in the map, and this positive control would fail if the map edit were
+    reverted or if some other gate still silently blocked moderate_game holders."""
+    _ready(tmp_path)
+    asyncio.run(db.add_staff(GAME_MANAGER_ID, "game_manager", ADMIN_ID))  # holds moderate_game only
+    event = _FakeMsg("/coins 123 +5 за помощь", GAME_MANAGER_ID)
+    data = {"event_from_user": _FakeUser(GAME_MANAGER_ID), "raw_state": None}
+    result, calls = _run_middleware(event, data)
+    assert calls == [event]
 
 
 def test_plain_wizard_text_still_allowed_on_state_cap(tmp_path):

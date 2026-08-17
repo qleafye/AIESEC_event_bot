@@ -363,7 +363,7 @@ async def cmd_admin_help(message: types.Message, state: FSMContext):
         "/export - Скачать базу пользователей (CSV)\n"
         "/broadcast - Рассылка сообщения всем\n"
         "/find @username - Найти пользователя по юзернейму\n"
-        "/coins @username +N [причина] - Начислить/списать монеты\n"
+        "/coins @username +N причина - Начислить/списать монеты\n"
         "/scheduled - Запланированные рассылки\n"
         "/refresh_allowlist - Обновить список отобранных\n"
         "/settings_guide - 📖 Справка по всем настройкам бота"
@@ -371,11 +371,44 @@ async def cmd_admin_help(message: types.Message, state: FSMContext):
     await message.answer(text, parse_mode="HTML", reply_markup=await admin_keyboard_for(message.from_user.id))
 
 
+# Phase 14 (GAME-09): shared by the button wizard (coinsman_confirm) and /coins -- one place
+# builds the delegate-facing notification text, so the two paths can never drift on wording.
+# `.replace` per placeholder (not `.format`): a manager-edited template may carry a stray `{`/`}`
+# and `.format` would raise on that, breaking the notification entirely. `{delta}` always carries
+# an explicit sign (f"{delta:+d}") since the same template covers both credit and debit (CONTEXT.md
+# B). `{reason}` (free text from a human) is HTML-escaped -- the bot sends with parse_mode="HTML".
+async def _notify_manual_coins(bot: Bot, user_id: int, delta: int, reason: str, balance: int) -> bool:
+    """Returns True on successful delivery, False on any failure (delegate blocked the bot,
+    etc.) -- logged, never raised. The ledger write already happened before this is called
+    (T-14-20): a failed notification must never be the reason an operation looks undone."""
+    template = await get_setting_typed("coins_manual_notify_text")
+    if not template:
+        template = SETTINGS_SCHEMA["coins_manual_notify_text"]["default"]
+    text = (
+        str(template)
+        .replace("{delta}", f"{delta:+d}")
+        .replace("{reason}", html_module.escape(str(reason)))
+        .replace("{balance}", str(balance))
+    )
+    try:
+        await bot.send_message(user_id, text, parse_mode="HTML")
+        return True
+    except Exception as e:
+        logger.warning(f"Failed to notify user {user_id} of manual coins change: {e}", exc_info=True)
+        return False
+
+
 @router.message(Command("coins"))
 async def cmd_coins(message: types.Message, bot: Bot):
     args = (message.text or "").split(maxsplit=3)
-    hint = "⚠️ Формат: /coins @username +N [причина]"
-    if len(args) < 3:
+    # GAME-09: причина обязательна на обоих путях -- «журнал монет должен отвечать на вопрос
+    # «кто, кому, за что»» (owner, CONTEXT.md B). Quick path stays for people used to it, but
+    # follows the same rule as the button wizard.
+    hint = (
+        "⚠️ Формат: /coins @username +N причина — причину нужно указать: журнал монет "
+        "должен отвечать на вопрос «кто, кому, за что»."
+    )
+    if len(args) < 4 or not args[3].strip():
         await message.answer(hint)
         return
 
@@ -389,16 +422,18 @@ async def cmd_coins(message: types.Message, bot: Bot):
         await message.answer(hint)
         return
 
-    reason = args[3] if len(args) > 3 else None  # optional free text (D-13)
-    await add_coins(user["telegram_id"], amount, reason=reason, changed_by=message.from_user.id)
+    reason = args[3]
+    await add_coins(user["telegram_id"], amount, reason=reason, changed_by=message.from_user.id, source="manual")
     _request_game_resync()  # Phase 09.1 (D, GAME-07): a coin edit is one of the 3 debounced triggers
     balance = await get_balance(user["telegram_id"])
 
     safe_username = html_module.escape(str(user.get("username") or args[1]))
     sign = "начислено" if amount >= 0 else "списано"
+    notified = await _notify_manual_coins(bot, user["telegram_id"], amount, reason, balance)
+    notify_suffix = "" if notified else " (делегат не получил уведомление)"
     await message.answer(
         f"🪙 {sign} {abs(amount)} монет(ы) для {safe_username}.\n"
-        f"Новый баланс: <b>{balance}</b>.",
+        f"Новый баланс: <b>{balance}</b>.{notify_suffix}",
         parse_mode="HTML",
     )
 
@@ -726,7 +761,7 @@ _GAME_FIELD_ORDER = [
     "game_proof_prompt_photo", "game_proof_prompt_pdf", "game_proof_prompt_text",
     "game_proof_prompt_link", "game_proof_prompt_any", "game_proof_done_hint",
     "game_proof_done_button", "game_proof_empty_hint", "game_submit_accepted_text",
-    "game_resubmit_limit",
+    "game_resubmit_limit", "coins_manual_notify_text",
 ]
 
 # Phase 14 (CFG-01): group «🔧 Система» — proxy timings that used to live only in .env.
@@ -6098,6 +6133,7 @@ async def grev_approve(callback: types.CallbackQuery, state: FSMContext):
             submission["user_id"], coins,
             reason=f"Задание: {str(task['text'])[:60]}",
             changed_by=callback.from_user.id,
+            source="task",
         )
         # Phase 09.1 (D, GAME-07): a moderator decision is one of the 3 debounced triggers --
         # only in the branch where claim_submission actually won the race (T-091-15/20-in-a-
@@ -6205,6 +6241,7 @@ async def grev_approve_amount_step(message: types.Message, state: FSMContext):
             submission["user_id"], amount,
             reason=f"Задание: {str(task['text'])[:60]}",
             changed_by=message.from_user.id,
+            source="task",
         )
         _request_game_resync()  # Phase 09.1 (D, GAME-07): same trigger as grev_approve
         try:
