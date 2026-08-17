@@ -90,6 +90,7 @@ class GameTaskCreate(StatesGroup):
     category = State()
     coins = State()
     proof_type = State()
+    city = State()  # Phase 09.1 (B, GAME-06): "Кому задание?" — only when cities module is on
     deadline = State()
     confirm = State()
 
