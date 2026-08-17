@@ -700,6 +700,15 @@ _CONSENT_FIELD_ORDER = [
     "consent_button_text", "consent_list",
 ]
 
+# Phase 09.1 (A): every editable text in the free-form submission flow, one group
+# «🎮 Геймификация» — promo prompts by type, the general/multi-type fallback, the
+# "жми Готово" hint, the button's own label, the empty-submission hint, and the accepted text.
+_GAME_FIELD_ORDER = [
+    "game_proof_prompt_photo", "game_proof_prompt_pdf", "game_proof_prompt_text",
+    "game_proof_prompt_link", "game_proof_prompt_any", "game_proof_done_hint",
+    "game_proof_done_button", "game_proof_empty_hint", "game_submit_accepted_text",
+]
+
 # Quick 260815-3hw (TABS-01/02/03): every Google Sheets tab NAME in one group — «📄 Вкладки
 # таблицы». short_sheet_tab/party_sheet_tab moved here from reg/party (physically relocated in
 # settings_schema.py, not duplicated). Order is the on-screen order, not registry insertion order.
@@ -714,12 +723,16 @@ _PAY_FIELDS = [(k, SETTINGS_SCHEMA[k]["label"], SETTINGS_SCHEMA[k]["prompt"]) fo
 _PARTY_FIELDS = [(k, SETTINGS_SCHEMA[k]["label"], SETTINGS_SCHEMA[k]["prompt"]) for k in _PARTY_FIELD_ORDER]
 _CONSENT_FIELDS = [(k, SETTINGS_SCHEMA[k]["label"], SETTINGS_SCHEMA[k]["prompt"]) for k in _CONSENT_FIELD_ORDER]
 _SHEETS_FIELDS = [(k, SETTINGS_SCHEMA[k]["label"], SETTINGS_SCHEMA[k]["prompt"]) for k in _SHEETS_FIELD_ORDER]
+_GAME_FIELDS = [(k, SETTINGS_SCHEMA[k]["label"], SETTINGS_SCHEMA[k]["prompt"]) for k in _GAME_FIELD_ORDER]
 
 # NOTE: reg_university_mode и edu_conditional вынесены в кнопки-переключатели (build_settings_keyboard).
 # PDF согласий грузятся в разделе «🧾 PDF согласий».
 # Phase 5 (D-11a/D-13): party-track text settings (party_enabled/party_fork_question/
 # party_approval are toggle buttons in build_settings_keyboard, not here).
-SETTINGS_FIELDS = _EVENT_FIELDS + _REG_FIELDS + _PAY_FIELDS + _PARTY_FIELDS + _CONSENT_FIELDS + _SHEETS_FIELDS
+SETTINGS_FIELDS = (
+    _EVENT_FIELDS + _REG_FIELDS + _PAY_FIELDS + _PARTY_FIELDS + _CONSENT_FIELDS
+    + _SHEETS_FIELDS + _GAME_FIELDS
+)
 
 # Phase 5 (D-11a): default text shown in render_settings_text when a text setting is unset,
 # so the manager sees what users actually receive today, not a bare "не указано". REG-01
@@ -754,6 +767,7 @@ SETTINGS_GROUPS = [
     ("💳 Оплата", "pay", _PAY_FIELD_ORDER),
     ("🎉 Party", "party", _PARTY_FIELD_ORDER),
     ("📋 Согласия", "consent", _CONSENT_FIELD_ORDER),
+    ("🎮 Геймификация", "game", _GAME_FIELD_ORDER),
 ]
 
 
