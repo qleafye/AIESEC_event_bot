@@ -576,3 +576,99 @@ def test_registration_texts_use_resolver():
     assert 'get_setting_for_city("reg_complete_text"' in inspect.getsource(reg_mod.finalize_registration)
 
 
+# ── Plan 04 Task 2: approve text — party stays global, base composes with city ─────────────
+
+def test_approve_text_for_default_city_code_none_behaves_as_today(tmp_path):
+    _db_ready(tmp_path, name="test_reg04_approve_default.db")
+    asyncio.run(db.set_setting("approve_text", "Глобальный текст одобрения"))
+    text = asyncio.run(reg_mod._approve_text_for("full"))
+    assert text == "Глобальный текст одобрения"
+
+
+def test_approve_text_party_track_ignores_city_override(tmp_path):
+    _db_ready(tmp_path, name="test_reg04_approve_party.db")
+    _enable_cities()
+    asyncio.run(db.set_setting("approve_text__party", "Партийный текст"))
+    asyncio.run(db.set_setting("approve_text", "Глобальный текст одобрения"))
+    _set_override("approve_text", "spb", "СПб текст одобрения")
+
+    text = asyncio.run(reg_mod._approve_text_for("party_overnight", "spb"))
+    assert text == "Партийный текст"
+
+
+def test_approve_text_non_party_city_override_applies(tmp_path):
+    _db_ready(tmp_path, name="test_reg04_approve_nonparty_spb.db")
+    _enable_cities()
+    asyncio.run(db.set_setting("approve_text", "Глобальный текст одобрения"))
+    _set_override("approve_text", "spb", "СПб текст одобрения")
+
+    assert asyncio.run(reg_mod._approve_text_for("full", "spb")) == "СПб текст одобрения"
+    assert asyncio.run(reg_mod._approve_text_for("full", "msk")) == "Глобальный текст одобрения"
+
+
+def test_approve_text_party_track_no_party_override_still_ignores_city():
+    """Even with the party override absent (falls through to the global approve_text per
+    D-15), a party track must NOT pick up a city override -- CONTEXT B/RESEARCH Open Q2:
+    the city axis composes ONLY with the base approve_text, not the party-track branch."""
+    text = asyncio.run(reg_mod._approve_text_for("party_overnight", "spb"))
+    assert text  # non-empty, did not raise
+
+
+def test_send_completion_and_bonus_module_off_no_get_user_call(tmp_path, monkeypatch):
+    _db_ready(tmp_path, name="test_reg04_completion_offparity.db")
+    # event_city_enabled left OFF.
+    asyncio.run(db.set_setting("approve_text", "Готово!"))
+    calls = []
+    orig_get_user = reg_mod.get_user
+
+    async def _counting_get_user(uid):
+        calls.append(uid)
+        return await orig_get_user(uid)
+
+    monkeypatch.setattr(reg_mod, "get_user", _counting_get_user)
+    bot = _RegFinalizeBot()
+    asyncio.run(reg_mod.send_completion_and_bonus(bot, 920930, with_menu=False, participant_type="full"))
+    assert calls == []
+    assert bot.sent and bot.sent[0][1] == "Готово!"
+
+
+def test_send_completion_and_bonus_resolves_city_and_applies_override(tmp_path, monkeypatch):
+    _db_ready(tmp_path, name="test_reg04_completion_city.db")
+    _enable_cities()
+    _reg_register_delegate(920931, event_city="spb")
+    asyncio.run(db.set_setting("approve_text", "Глобальный текст одобрения"))
+    _set_override("approve_text", "spb", "СПб текст одобрения")
+
+    bot = _RegFinalizeBot()
+    asyncio.run(reg_mod.send_completion_and_bonus(bot, 920931, with_menu=False, participant_type="full"))
+    assert bot.sent and bot.sent[0][1] == "СПб текст одобрения"
+
+
+def test_send_completion_and_bonus_city_resolve_failure_falls_back(tmp_path, monkeypatch):
+    _db_ready(tmp_path, name="test_reg04_completion_fail.db")
+    _enable_cities()
+    _reg_register_delegate(920932, event_city="spb")
+    asyncio.run(db.set_setting("approve_text", "Глобальный текст одобрения"))
+    _set_override("approve_text", "spb", "СПб текст одобрения")
+
+    async def _boom(_uid):
+        raise RuntimeError("boom")
+
+    monkeypatch.setattr(reg_mod, "get_user", _boom)
+    bot = _RegFinalizeBot()
+    asyncio.run(reg_mod.send_completion_and_bonus(bot, 920932, with_menu=False, participant_type="full"))
+    # T-05-04-04: approved user must always receive a message, even on a city-resolve failure.
+    assert bot.sent and bot.sent[0][1] == "Глобальный текст одобрения"
+
+
+def test_approve_text_for_signature_and_callers_unchanged():
+    params = inspect.signature(reg_mod._approve_text_for).parameters
+    assert "city_code" in params and params["city_code"].default is None
+    src = inspect.getsource(reg_mod._approve_text_for)
+    assert "approve_text__party" in src
+    assert 'get_setting_for_city("approve_text"' in src
+    assert list(inspect.signature(reg_mod.send_completion_and_bonus).parameters) == [
+        "bot", "telegram_id", "with_menu", "participant_type",
+    ]
+
+

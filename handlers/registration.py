@@ -2744,17 +2744,25 @@ async def process_volunteer(message: types.Message, state: FSMContext, bot: Bot)
 
 # --- Finalize ---
 
-async def _approve_text_for(participant_type: str | None) -> str:
-    """D-15: per-track approval message. Party tracks check approve_text__party FIRST
-    (truthy wins — an accidentally-empty override falls back rather than sending a blank
-    message, same posture as _prompt's D-05 wording resolution); otherwise (or when the
-    override is absent/empty) fall through to the existing global approve_text resolution,
-    reusing the same DEFAULT_APPROVE_TEXT constant so there is only one copy of the default."""
+async def _approve_text_for(participant_type: str | None, city_code: str | None = None) -> str:
+    """D-15: per-track approval message. Resolution order:
+    (1) party track and `approve_text__party` non-empty (truthy wins — an accidentally-empty
+        override falls back rather than sending a blank message, same posture as _prompt's
+        D-05 wording resolution) -> that text, WITHOUT any per-city layer. Phase 09.2-04
+        (RESEARCH Open Question 2): composing a THIRD axis (track x city) on top of the
+        existing party override was explicitly deferred — `approve_text__party` carries no
+        `per_city` flag in SETTINGS_SCHEMA, a party delegate never gets a per-city approve
+        text, only the global-vs-party split that already existed before this phase.
+    (2) otherwise (non-party track, or an absent/empty party override) -> the BASE
+        `approve_text` resolved through `cities.get_setting_for_city`, so a non-party
+        delegate's city can override the global script.
+    (3) otherwise -> DEFAULT_APPROVE_TEXT, reusing the same constant so there is only one
+        copy of the default."""
     if _is_party_track(participant_type):
         override = await get_setting("approve_text__party")
         if override:
             return override
-    return await get_setting("approve_text") or DEFAULT_APPROVE_TEXT
+    return await get_setting_for_city("approve_text", city_code) or DEFAULT_APPROVE_TEXT
 
 
 async def send_completion_and_bonus(bot: Bot, telegram_id: int, with_menu: bool = True,
@@ -2766,9 +2774,23 @@ async def send_completion_and_bonus(bot: Bot, telegram_id: int, with_menu: bool 
     Phase 5 (D-15): `participant_type` defaults to None so every pre-Phase-5 call site keeps
     compiling and behaving identically — only callers that know the track pass it explicitly.
     Text resolution is delegated entirely to _approve_text_for; no direct approve_text read
-    remains in this function."""
+    remains in this function.
+    Phase 09.2-04 (CITY-04): resolves the delegate's event_city ONCE, only when the cities
+    module is on — this function receives only a chat id (no FSM data, unlike D-15's
+    approve_user which already has a resolved user row for participant_type), so get_user is
+    the only way to learn the city. Kept module-gated so an all-cities-off deployment adds
+    zero extra DB reads to the approval path. A resolve failure falls back to city_code=None
+    (global approve_text) — the approval message must still go out (T-05-04-04)."""
+    city_code = None
     try:
-        complete_text = await _approve_text_for(participant_type)
+        if await cities_module_on():
+            user_row = await get_user(telegram_id)
+            city_code = normalize_city(user_row.get("event_city") if user_row else None)
+    except Exception as e:
+        logger.error(f"per-city resolve for approve text failed for {telegram_id}: {e}")
+        city_code = None
+    try:
+        complete_text = await _approve_text_for(participant_type, city_code)
         kwargs = {"parse_mode": "HTML"}
         if with_menu:
             kwargs["reply_markup"] = await get_main_menu_kb(telegram_id)
