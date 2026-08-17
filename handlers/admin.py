@@ -62,6 +62,8 @@ from database.db import (
     get_game_stats,
     GAME_CATEGORIES,
     GAME_PROOF_TYPES,
+    parse_proof_types,
+    get_submission_parts_or_legacy,
 )
 from aiogram.exceptions import TelegramRetryAfter, TelegramForbiddenError, TelegramBadRequest
 from services.sheets import get_existing_sheet_ids, append_rows_to_sheet, ensure_sheet_header, sync_named_worksheet, dedupe_sheet_by_id, update_status_in_sheet, bulk_update_status_in_sheet, rebuild_main_sheet, REFUSED_UNPINNED_TAB, _reset_sheet_cache, tab_row_count
@@ -4636,11 +4638,30 @@ def _game_task_category_kb() -> InlineKeyboardMarkup:
     ])
 
 
-def _game_task_proof_kb() -> InlineKeyboardMarkup:
-    return InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text=_GAME_PROOF_LABELS[p], callback_data=f"gtproof:{p}")]
+def _proof_types_label(raw: str | None) -> str:
+    """Phase 09.1 (A): proof_type is now possibly-multiple/possibly-empty (D-01, "можно
+    несколько или ни одного") -- shared by the wizard confirm card and the moderation card."""
+    codes = parse_proof_types(raw)
+    if not codes:
+        return "не важно"
+    return " + ".join(_GAME_PROOF_LABELS[c] for c in codes)
+
+
+def _game_task_proof_kb(selected: set[str]) -> InlineKeyboardMarkup:
+    """Checkbox toggle keyboard (Phase 09.1 A, same shape as registration.py::_multi_kb) --
+    an empty selection is legal (CONTEXT.md: «можно несколько или ни одного»), so unlike
+    _multi_kb's own «Готово» there is no not-empty guard on the done callback below.
+    `gtproof:{p}` callback_data name is UNCHANGED (already registered under moderate_game
+    in the capability map) -- only its handler's behavior (toggle, not advance) changes."""
+    rows = [
+        [InlineKeyboardButton(
+            text=f"{'✅ ' if p in selected else '▫️ '}{_GAME_PROOF_LABELS[p]}",
+            callback_data=f"gtproof:{p}",
+        )]
         for p in GAME_PROOF_TYPES
-    ])
+    ]
+    rows.append([InlineKeyboardButton(text="Готово", callback_data="gtproof_done")])
+    return InlineKeyboardMarkup(inline_keyboard=rows)
 
 
 def _game_task_confirm_kb() -> InlineKeyboardMarkup:
@@ -4658,8 +4679,7 @@ def _render_game_task_confirm_card(data: dict) -> str:
         deadline_display = datetime.strptime(deadline_raw, "%Y-%m-%d %H:%M:%S").strftime("%d.%m.%Y %H:%M")
     except (TypeError, ValueError):
         deadline_display = str(deadline_raw or "—")
-    proof = data.get("gt_proof_type")
-    proof_label = _GAME_PROOF_LABELS.get(proof, str(proof))
+    proof_label = _proof_types_label(data.get("gt_proof_type"))
     return (
         "📋 <b>Проверьте задание</b>\n\n"
         f"Текст: {html_module.escape(str(data.get('gt_text')))}\n"
@@ -4699,18 +4719,44 @@ async def game_task_coins_step(message: types.Message, state: FSMContext):
     if value is None:
         await message.answer("Введите положительное целое число монет:")
         return
-    await state.update_data(gt_coins=value)
-    await message.answer("Тип подтверждения:", reply_markup=_game_task_proof_kb())
+    await state.update_data(gt_coins=value, gt_proof_types=[])
+    await message.answer(
+        "Что должен прислать делегат? Отметьте сколько угодно типов (или ни одного):",
+        reply_markup=_game_task_proof_kb(set()),
+    )
     await state.set_state(GameTaskCreate.proof_type)
 
 
 @router.callback_query(F.data.startswith("gtproof:"))
 async def game_task_proof_step(callback: types.CallbackQuery, state: FSMContext):
+    """Phase 09.1 (A): a TOGGLE now, not an advance-to-next-step -- selection accumulates in
+    `gt_proof_types` (state data), GameTaskCreate.proof_type itself is unchanged until
+    «Готово» (gtproof_done below)."""
     proof = callback.data.split(":", 1)[1]
     if proof not in GAME_PROOF_TYPES:
         await callback.answer("Некорректный тип подтверждения", show_alert=True)
         return
-    await state.update_data(gt_proof_type=proof)
+    data = await state.get_data()
+    selected = set(data.get("gt_proof_types", []))
+    if proof in selected:
+        selected.discard(proof)
+    else:
+        selected.add(proof)
+    await state.update_data(gt_proof_types=sorted(selected))
+    try:
+        await callback.message.edit_reply_markup(reply_markup=_game_task_proof_kb(selected))
+    except Exception:
+        pass
+    await callback.answer()
+
+
+@router.callback_query(F.data == "gtproof_done")
+async def game_task_proof_done(callback: types.CallbackQuery, state: FSMContext):
+    """CONTEXT.md A: an empty selection is legal here -- no not-empty guard, unlike
+    registration.py's process_multi_done."""
+    data = await state.get_data()
+    codes = [p for p in GAME_PROOF_TYPES if p in set(data.get("gt_proof_types", []))]
+    await state.update_data(gt_proof_type=",".join(codes))
     await callback.message.answer(
         "Дедлайн сдачи? Формат ДД.ММ.ГГГГ ЧЧ:ММ (например 25.08.2026 23:59):",
         reply_markup=get_cancel_kb(),
@@ -4786,9 +4832,13 @@ async def _get_submission_and_task(submission_id: int) -> tuple[dict | None, dic
     return submission, task
 
 
-def _render_submission_card(row: dict, position: int, total: int) -> str:
+def _render_submission_card(row: dict, position: int, total: int, parts: list[dict] | None = None) -> str:
     """HTML card for one pending submission; all free-text (task text, submitter name) escaped
-    — T-09-12: this is the FIRST render of delegate-supplied content to a manager."""
+    — T-09-12: this is the FIRST render of delegate-supplied content to a manager.
+
+    Phase 09.1 (A): `parts` defaults to None so every pre-existing call site/test keeps the
+    single content_type/content rendering byte-for-byte. Pass `parts` (from
+    `get_submission_parts_or_legacy`) to render every part of a free-form submission instead."""
     def esc(v):
         return html_module.escape(str(v)) if v not in (None, "", "-") else None
 
@@ -4799,13 +4849,28 @@ def _render_submission_card(row: dict, position: int, total: int) -> str:
     name = esc(row.get("user_full_name")) or "—"
     uname = esc(row.get("user_username"))
     lines.append(f"👤 {name}" + (f" ({uname})" if uname else ""))
-    proof_label = _GAME_PROOF_LABELS.get(row.get("task_proof_type"), str(row.get("task_proof_type")))
+    proof_label = _proof_types_label(row.get("task_proof_type"))
     lines.append(f"Тип подтверждения: {proof_label}")
-    content_type = row.get("content_type")
-    if content_type in ("text", "link"):
-        lines.append(f"Содержимое: {esc(row.get('content')) or '—'}")
-    elif content_type in ("photo", "pdf"):
-        lines.append("Содержимое: см. файл ниже")
+    if parts is None:
+        content_type = row.get("content_type")
+        if content_type in ("text", "link"):
+            lines.append(f"Содержимое: {esc(row.get('content')) or '—'}")
+        elif content_type in ("photo", "pdf"):
+            lines.append("Содержимое: см. файл ниже")
+    elif not parts:
+        lines.append("Содержимое: —")
+    else:
+        lines.append("Содержимое:")
+        for part in parts:
+            caption = esc(part.get("caption"))
+            if part.get("kind") in ("text", "link"):
+                lines.append(f"• {esc(part.get('content')) or '—'}")
+            else:
+                # T-09-12/backward-compat: same "см. файл ниже" wording the pre-09.1 single-
+                # content_type render used (tests/test_gamification_review_phase9.py asserts
+                # this literal string and is NOT modified by this plan).
+                tail = f" ({caption})" if caption else ""
+                lines.append(f"• см. файл ниже{tail}")
     # A-05 (созвон 13.08): дедлайн мягкий, бот сдачу принял — единственный ограничитель здесь
     # человек. Просрочка нигде не хранится, только вычисляется здесь при каждом рендере.
     submitted_at = row.get("submitted_at")
@@ -4855,19 +4920,52 @@ async def _show_current_submission(target: types.Message, state: FSMContext):
         return
     current = visible[0]
     position = min(len(skipped) + 1, total)
+    # Phase 09.1 (A): parts=[] for a pre-migration row is impossible here -- get_submission_
+    # parts_or_legacy synthesizes exactly one part from content/content_type unless content is
+    # itself empty (submission-призрак), so this stays a strict superset of the old behavior.
+    parts = await get_submission_parts_or_legacy(current)
     await target.answer(
-        _render_submission_card(current, position, total),
+        _render_submission_card(current, position, total, parts),
         parse_mode="HTML",
         reply_markup=_submission_card_kb(current["id"], current["task_coins"]),
     )
-    if current.get("content_type") in ("photo", "pdf"):
-        try:
-            if current["content_type"] == "photo":
-                await target.answer_photo(current["content"])
-            else:
-                await target.answer_document(current["content"])
-        except Exception as e:
-            logger.error(f"Failed to resend submission content, submission={current['id']}: {e}")
+    # Модератор видит все части пачкой: consecutive photo parts group into ONE
+    # send_media_group, each document part resends individually, text/link parts are already
+    # in the card body above. A single photo still goes through answer_photo (Telegram
+    # rejects a one-element media group) -- byte-identical to the pre-09.1 legacy path, which
+    # is exactly why the old review-phase9 tests stay green without being touched.
+    bot = getattr(target, "bot", None)
+    i = 0
+    while i < len(parts):
+        part = parts[i]
+        kind = part.get("kind")
+        if kind == "photo":
+            group = [part]
+            j = i + 1
+            while j < len(parts) and parts[j].get("kind") == "photo":
+                group.append(parts[j])
+                j += 1
+            try:
+                if len(group) == 1 or bot is None:
+                    for p in group:
+                        await target.answer_photo(p["content"])
+                else:
+                    media = [
+                        types.InputMediaPhoto(media=p["content"], caption=p.get("caption") or None)
+                        for p in group
+                    ]
+                    await bot.send_media_group(admin_id, media=media)
+            except Exception as e:
+                logger.error(f"Failed to resend submission content, submission={current['id']}: {e}")
+            i = j
+        elif kind == "document":
+            try:
+                await target.answer_document(part["content"])
+            except Exception as e:
+                logger.error(f"Failed to resend submission content, submission={current['id']}: {e}")
+            i += 1
+        else:
+            i += 1
 
 
 @router.callback_query(F.data == "admin_game_review")

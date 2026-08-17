@@ -323,3 +323,189 @@ def test_t2_no_finalizing_sleep_only_album_ack_sleep():
     assert "asyncio.sleep" not in finalize_src
     receive_src = inspect.getsource(ua_mod.receive_proof)
     assert "asyncio.sleep" not in receive_src
+
+
+# ── Task 3: manager checkboxes + moderator sees all parts pooled ─────────────────────────
+
+import handlers.admin as admin_mod
+from handlers.states import GameTaskCreate
+
+_T3_MANAGER_ID = 940801
+_T3_DELEGATE_ID = 940802
+
+
+class _T3FakeUser:
+    def __init__(self, uid):
+        self.id = uid
+
+
+class _T3FakeBot:
+    def __init__(self, media_group_raises=False):
+        self.sent = []
+        self.media_groups = []
+        self._media_group_raises = media_group_raises
+
+    async def send_media_group(self, chat_id, media):
+        if self._media_group_raises:
+            raise RuntimeError("boom")
+        self.media_groups.append((chat_id, media))
+
+    async def send_message(self, chat_id, text, parse_mode=None, reply_markup=None):
+        self.sent.append((chat_id, text))
+
+
+class _T3FakeMessage:
+    def __init__(self, user_id=_T3_MANAGER_ID, bot=None):
+        self.from_user = _T3FakeUser(user_id)
+        self.bot = bot
+        self.answers_sent = []
+        self.answer_markups = []
+        self.photos_sent = []
+        self.documents_sent = []
+
+    async def answer(self, text, parse_mode=None, reply_markup=None):
+        self.answers_sent.append(text)
+        self.answer_markups.append(reply_markup)
+
+    async def answer_photo(self, photo):
+        self.photos_sent.append(photo)
+
+    async def answer_document(self, document):
+        self.documents_sent.append(document)
+
+
+class _T3FakeCallback:
+    def __init__(self, data, user_id=_T3_MANAGER_ID, bot=None):
+        self.data = data
+        self.from_user = _T3FakeUser(user_id)
+        self.bot = bot if bot is not None else _T3FakeBot()
+        self.message = _T3FakeMessage(user_id=user_id, bot=self.bot)
+        self.answers = []
+
+    async def answer(self, text=None, show_alert=False):
+        self.answers.append((text, show_alert))
+
+
+def _t3_db_ready(tmp_path):
+    config.DB_PATH = str(tmp_path / "test_game_free_proof_091_t3.db")
+    asyncio.run(db.init_db())
+    config.ADMIN_IDS = [_T3_MANAGER_ID]
+
+
+def _t3_new_state(uid=_T3_MANAGER_ID) -> FSMContext:
+    return FSMContext(storage=MemoryStorage(), key=StorageKey(bot_id=1, chat_id=uid, user_id=uid))
+
+
+def test_t3_proof_types_label_helper():
+    assert admin_mod._proof_types_label("photo,text") == "📷 Скриншот/фото + ✍️ Текст"
+    assert admin_mod._proof_types_label("") == "не важно"
+    assert admin_mod._proof_types_label(None) == "не важно"
+
+
+def test_t3_task_created_with_two_types_stores_comma_joined_and_roundtrips(tmp_path):
+    _t3_db_ready(tmp_path)
+    task_id = asyncio.run(db.create_task(
+        "t", "Light", 20, "photo,text", "2099-01-01 00:00:00", _T3_MANAGER_ID,
+    ))
+    task = asyncio.run(db.get_task(task_id))
+    assert task["proof_type"] == "photo,text"
+    assert db.parse_proof_types(task["proof_type"]) == ["photo", "text"]
+
+
+def test_t3_render_submission_card_default_parts_none_unchanged():
+    """Existing call sites/tests that never pass `parts` keep the pre-09.1 rendering."""
+    row = {
+        "task_text": "Задание", "task_category": "Light", "task_coins": 20,
+        "user_full_name": "Тест", "user_username": None,
+        "task_proof_type": "photo", "content_type": "photo", "content": "x",
+        "submitted_at": None, "task_deadline_at": None,
+    }
+    text = admin_mod._render_submission_card(row, 1, 1)
+    assert "см. файл ниже" in text
+
+
+def test_t3_moderation_card_batches_two_photos_and_shows_text_part(tmp_path):
+    _t3_db_ready(tmp_path)
+    task_id = asyncio.run(db.create_task(
+        "Задание", "Light", 20, "photo,text", "2099-01-01 00:00:00", _T3_MANAGER_ID,
+    ))
+    sub_id = asyncio.run(db.create_submission(task_id, _T3_DELEGATE_ID, "photo", "p1", "2026-08-20 10:00:00"))
+    asyncio.run(db.add_submission_part(sub_id, 0, "photo", "p1", None))
+    asyncio.run(db.add_submission_part(sub_id, 1, "photo", "p2", "второе фото"))
+    asyncio.run(db.add_submission_part(sub_id, 2, "text", "готово, всё сделал", None))
+
+    bot = _T3FakeBot()
+    message = _T3FakeMessage(bot=bot)
+    state = _t3_new_state()
+    asyncio.run(admin_mod._show_current_submission(message, state))
+
+    card_text = message.answers_sent[-1]
+    assert "готово, всё сделал" in card_text
+    assert card_text.count("см. файл ниже") == 2  # one line per photo part
+
+    assert len(bot.media_groups) == 1
+    _chat_id, media = bot.media_groups[0]
+    assert len(media) == 2
+    assert message.photos_sent == []  # both photos went through the batched media group
+    assert message.documents_sent == []
+
+
+def test_t3_moderation_card_single_photo_still_uses_answer_photo(tmp_path):
+    _t3_db_ready(tmp_path)
+    task_id = asyncio.run(db.create_task(
+        "Задание", "Light", 20, "photo", "2099-01-01 00:00:00", _T3_MANAGER_ID,
+    ))
+    sub_id = asyncio.run(db.create_submission(task_id, _T3_DELEGATE_ID, "photo", "only_one", "2026-08-20 10:00:00"))
+    asyncio.run(db.add_submission_part(sub_id, 0, "photo", "only_one", None))
+
+    bot = _T3FakeBot()
+    message = _T3FakeMessage(bot=bot)
+    state = _t3_new_state()
+    asyncio.run(admin_mod._show_current_submission(message, state))
+
+    assert message.photos_sent == ["only_one"]
+    assert bot.media_groups == []
+
+
+def test_t3_moderation_card_document_part_resent_via_answer_document(tmp_path):
+    _t3_db_ready(tmp_path)
+    task_id = asyncio.run(db.create_task(
+        "Задание", "Light", 20, "pdf", "2099-01-01 00:00:00", _T3_MANAGER_ID,
+    ))
+    sub_id = asyncio.run(db.create_submission(task_id, _T3_DELEGATE_ID, "pdf", "doc1", "2026-08-20 10:00:00"))
+    asyncio.run(db.add_submission_part(sub_id, 0, "document", "doc1", None))
+
+    bot = _T3FakeBot()
+    message = _T3FakeMessage(bot=bot)
+    state = _t3_new_state()
+    asyncio.run(admin_mod._show_current_submission(message, state))
+
+    assert message.documents_sent == ["doc1"]
+
+
+def test_t3_moderation_card_survives_broken_file_id_logs_and_continues(tmp_path):
+    """T-behavior: a stale file_id on resend must not crash the queue -- exception caught,
+    logged, the card text itself (already sent before the resend attempt) stays delivered."""
+    _t3_db_ready(tmp_path)
+    task_id = asyncio.run(db.create_task(
+        "Задание", "Light", 20, "photo,text", "2099-01-01 00:00:00", _T3_MANAGER_ID,
+    ))
+    sub_id = asyncio.run(db.create_submission(task_id, _T3_DELEGATE_ID, "photo", "bad_id", "2026-08-20 10:00:00"))
+    asyncio.run(db.add_submission_part(sub_id, 0, "photo", "bad_id", None))
+    asyncio.run(db.add_submission_part(sub_id, 1, "text", "текст всё равно есть", None))
+
+    class _BoomMessage(_T3FakeMessage):
+        async def answer_photo(self, photo):
+            raise RuntimeError("stale file_id")
+
+    bot = _T3FakeBot()
+    message = _BoomMessage(bot=bot)
+    state = _t3_new_state()
+    asyncio.run(admin_mod._show_current_submission(message, state))  # must not raise
+
+    assert message.answers_sent  # the card text itself was sent
+
+
+def test_t3_gtproof_done_registered_under_moderate_game():
+    from handlers.admin_caps import required_capability
+    assert required_capability(callback_data="gtproof_done") == "moderate_game"
