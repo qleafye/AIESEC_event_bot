@@ -724,6 +724,9 @@ _GAME_FIELD_ORDER = [
     "game_resubmit_limit",
 ]
 
+# Phase 14 (CFG-01): group «🔧 Система» — proxy timings that used to live only in .env.
+_SYSTEM_FIELD_ORDER = ["proxy_recheck_seconds", "proxy_connect_timeout"]
+
 # Quick 260815-3hw (TABS-01/02/03): every Google Sheets tab NAME in one group — «📄 Вкладки
 # таблицы». short_sheet_tab/party_sheet_tab moved here from reg/party (physically relocated in
 # settings_schema.py, not duplicated). Order is the on-screen order, not registry insertion order.
@@ -739,6 +742,7 @@ _PARTY_FIELDS = [(k, SETTINGS_SCHEMA[k]["label"], SETTINGS_SCHEMA[k]["prompt"]) 
 _CONSENT_FIELDS = [(k, SETTINGS_SCHEMA[k]["label"], SETTINGS_SCHEMA[k]["prompt"]) for k in _CONSENT_FIELD_ORDER]
 _SHEETS_FIELDS = [(k, SETTINGS_SCHEMA[k]["label"], SETTINGS_SCHEMA[k]["prompt"]) for k in _SHEETS_FIELD_ORDER]
 _GAME_FIELDS = [(k, SETTINGS_SCHEMA[k]["label"], SETTINGS_SCHEMA[k]["prompt"]) for k in _GAME_FIELD_ORDER]
+_SYSTEM_FIELDS = [(k, SETTINGS_SCHEMA[k]["label"], SETTINGS_SCHEMA[k]["prompt"]) for k in _SYSTEM_FIELD_ORDER]
 
 # NOTE: reg_university_mode и edu_conditional вынесены в кнопки-переключатели (build_settings_keyboard).
 # PDF согласий грузятся в разделе «🧾 PDF согласий».
@@ -746,7 +750,7 @@ _GAME_FIELDS = [(k, SETTINGS_SCHEMA[k]["label"], SETTINGS_SCHEMA[k]["prompt"]) f
 # party_approval are toggle buttons in build_settings_keyboard, not here).
 SETTINGS_FIELDS = (
     _EVENT_FIELDS + _REG_FIELDS + _PAY_FIELDS + _PARTY_FIELDS + _CONSENT_FIELDS
-    + _SHEETS_FIELDS + _GAME_FIELDS
+    + _SHEETS_FIELDS + _GAME_FIELDS + _SYSTEM_FIELDS
 )
 
 # Phase 5 (D-11a): default text shown in render_settings_text when a text setting is unset,
@@ -783,6 +787,7 @@ SETTINGS_GROUPS = [
     ("🎉 Party", "party", _PARTY_FIELD_ORDER),
     ("📋 Согласия", "consent", _CONSENT_FIELD_ORDER),
     ("🎮 Геймификация", "game", _GAME_FIELD_ORDER),
+    ("🔧 Система", "system", _SYSTEM_FIELD_ORDER),
 ]
 
 
