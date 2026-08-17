@@ -18,7 +18,7 @@ import services.proxy_session as proxy_session
 from services.proxy_session import FailoverAiohttpSession, build_proxy_chain, mask_proxy_url
 from handlers.registration import active_sheet_headers, set_sheet_schema, party_sheet_headers, PARTY_SHEET_TAB_DEFAULT, short_sheet_headers, SHORT_SHEET_TAB_DEFAULT, get_sheet_schema, city_row_tab
 from cities import enabled_cities, is_default_city
-from settings_schema import get_setting_typed
+from settings_schema import get_setting_typed, SETTINGS_SCHEMA
 from aiogram.client.default import DefaultBotProperties
 from aiogram.enums import ParseMode
 from aiogram.types import ErrorEvent
@@ -164,6 +164,35 @@ async def seed_main_sheet_tab_from_env() -> bool:
     return True
 
 
+async def seed_proxy_settings_from_env() -> None:
+    """Phase 14 (CFG-01): PROXY_RECHECK_SECONDS/PROXY_CONNECT_TIMEOUT (.env) move to the
+    registry (group «🔧 Система») so a manager can change them without a redeploy — but
+    FailoverAiohttpSession still reads both values only once, at process start (see
+    services/proxy_session.py), so a registry edit needs a restart to take effect (honestly
+    stated in both settings' prompts). Same one-time, non-destructive seed idiom as
+    seed_main_sheet_tab_from_env: only writes when bot_settings has no row yet AND the .env
+    value differs from the registry default — never overwrites a manager's own edit, and a
+    server whose .env still matches the shipped default writes nothing at all."""
+    logger = logging.getLogger(__name__)
+    pairs = (
+        ("proxy_recheck_seconds", config.PROXY_RECHECK_SECONDS),
+        ("proxy_connect_timeout", config.PROXY_CONNECT_TIMEOUT),
+    )
+    for key, env_value in pairs:
+        existing = await get_setting(key)
+        if (existing or "").strip():
+            continue
+        if env_value == SETTINGS_SCHEMA[key]["default"]:
+            continue
+        await set_setting(key, str(env_value))
+        logger.warning(
+            "PROXY_* в .env устарел (Phase 14, CFG-01): %s=%r один раз перенесено в "
+            "bot_settings.%s. Дальше меняйте из «⚙️ Настройки → 🔧 Система» в боте (нужен "
+            "перезапуск, чтобы значение применилось).",
+            key, env_value, key,
+        )
+
+
 async def main():
     _configure_logging()
     logger = logging.getLogger(__name__)
@@ -177,6 +206,7 @@ async def main():
     # would fall through to services/sheets.py stage 2 (reading .env directly) instead of
     # seeing the seeded registry value.
     await seed_main_sheet_tab_from_env()
+    await seed_proxy_settings_from_env()
 
     # Ensure the Google Sheet has a column-name header row (fail-soft, off-thread).
     # Only the enabled-question columns — set the event type/preset before delegates register.
@@ -210,15 +240,27 @@ async def main():
     )
     session = None
     if chain != [None]:
+        # Phase 14 (CFG-01): both timings now come from the registry (seeded once from .env
+        # above by seed_proxy_settings_from_env) — read here via get_setting_typed, not
+        # config.PROXY_*, and fail-soft to the registry default on a None/empty value so a
+        # broken bot_settings row can never prevent the bot from starting.
+        recheck_seconds = await get_setting_typed("proxy_recheck_seconds")
+        if recheck_seconds is None:
+            recheck_seconds = SETTINGS_SCHEMA["proxy_recheck_seconds"]["default"]
+        connect_timeout = await get_setting_typed("proxy_connect_timeout")
+        if connect_timeout is None:
+            connect_timeout = SETTINGS_SCHEMA["proxy_connect_timeout"]["default"]
+        recheck_seconds = int(recheck_seconds)
+        connect_timeout = int(connect_timeout)
         session = FailoverAiohttpSession(
             chain,
-            recheck_seconds=config.PROXY_RECHECK_SECONDS,
-            connect_timeout=config.PROXY_CONNECT_TIMEOUT,
+            recheck_seconds=recheck_seconds,
+            connect_timeout=connect_timeout,
         )
         logger.info(
             "Using proxy chain: %s (connect_timeout=%s)",
             [mask_proxy_url(link) for link in chain],
-            config.PROXY_CONNECT_TIMEOUT,
+            connect_timeout,
         )
 
     bot = Bot(token=config.BOT_TOKEN.get_secret_value(), default=default, session=session)
