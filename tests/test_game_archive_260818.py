@@ -344,3 +344,101 @@ def test_new_game_archive_callbacks_are_capability_mapped_to_moderate_game():
         "gtdelete:5", "gtdelete_go:5",
     ):
         assert required_capability(callback_data=cb_data) == "moderate_game"
+
+
+# ── Plan 03 Task 2: two-step confirm gates for archive/delete ───────────────────────────────
+
+def test_gtarchive_confirm_does_not_touch_db_and_names_consequences(tmp_path):
+    _db_ready(tmp_path)
+    task_id = _mk_task(text="Собрать команду")
+
+    callback = FakeCallback(f"gtarchive:{task_id}", user_id=ADMIN_ID)
+    asyncio.run(admin_mod.game_task_archive_confirm(callback))
+
+    task = asyncio.run(db.get_task(task_id))
+    assert task["archived_at"] is None  # confirm screen -- no DB write yet
+
+    text = callback.message.text
+    assert "Собрать команду" in text
+    assert "сдачи и начисленные монеты сохранятся" in text
+    data = _flat_callback_data(callback.message.markup)
+    assert f"gtarchive_go:{task_id}" in data
+    assert "admin_game_tasks" in data  # cancel button
+
+
+def test_gtdelete_confirm_does_not_touch_db_and_says_bezvozvratno(tmp_path):
+    _db_ready(tmp_path)
+    task_id = _mk_task(text="Удалить меня")
+
+    callback = FakeCallback(f"gtdelete:{task_id}", user_id=ADMIN_ID)
+    asyncio.run(admin_mod.game_task_delete_confirm(callback))
+
+    assert asyncio.run(db.get_task(task_id)) is not None  # still there -- no DB write yet
+    text = callback.message.text
+    assert "Удалить меня" in text
+    assert "безвозвратно" in text
+    data = _flat_callback_data(callback.message.markup)
+    assert f"gtdelete_go:{task_id}" in data
+    assert "admin_game_tasks" in data  # cancel button
+
+
+def test_gtdelete_go_deletes_task_without_submissions(tmp_path):
+    _db_ready(tmp_path)
+    task_id = _mk_task(text="без сдач")
+
+    callback = FakeCallback(f"gtdelete_go:{task_id}", user_id=ADMIN_ID)
+    asyncio.run(admin_mod.game_task_delete_go(callback))
+
+    assert asyncio.run(db.get_task(task_id)) is None
+    text, show_alert = callback.answers[-1]
+    assert text == "Задание удалено"
+
+
+def test_gtdelete_go_refuses_when_submission_appeared_after_confirm_shown(tmp_path):
+    _db_ready(tmp_path)
+    task_id = _mk_task(text="гонка")
+    # A submission lands AFTER the (hypothetical) confirm screen was shown, BEFORE the tap.
+    _reject_submission(task_id, DELEGATE_ID)
+
+    callback = FakeCallback(f"gtdelete_go:{task_id}", user_id=ADMIN_ID)
+    asyncio.run(admin_mod.game_task_delete_go(callback))
+
+    assert asyncio.run(db.get_task(task_id)) is not None  # NOT deleted
+    text, show_alert = callback.answers[-1]
+    assert show_alert is True
+    assert "теперь можно только в архив" in text
+
+
+def test_gtdelete_confirm_refuses_and_alerts_when_submission_appeared(tmp_path):
+    _db_ready(tmp_path)
+    task_id = _mk_task(text="гонка на подтверждении")
+    _reject_submission(task_id, DELEGATE_ID)
+
+    callback = FakeCallback(f"gtdelete:{task_id}", user_id=ADMIN_ID)
+    asyncio.run(admin_mod.game_task_delete_confirm(callback))
+
+    assert asyncio.run(db.get_task(task_id)) is not None
+    text, show_alert = callback.answers[-1]
+    assert show_alert is True
+    assert "теперь можно только в архив" in text
+
+
+def test_gtdelete_go_triggers_resync_and_rerenders_tasks_screen(tmp_path, monkeypatch):
+    _db_ready(tmp_path)
+    task_id = _mk_task(text="уйдёт совсем")
+    calls = []
+    monkeypatch.setattr(admin_mod, "_request_game_resync", lambda: calls.append("go"))
+
+    callback = FakeCallback(f"gtdelete_go:{task_id}", user_id=ADMIN_ID)
+    asyncio.run(admin_mod.game_task_delete_go(callback))
+
+    assert calls == ["go"]
+    assert callback.message.edit_calls == 1
+    assert "уйдёт совсем" not in callback.message.text
+
+
+def test_gtarchive_cancel_button_returns_to_tasks_screen_without_db_change():
+    # Cancel just points at the already-registered admin_game_tasks callback_data -- a
+    # structural check, not a new handler (matches rebuild_sheet_confirm's own cancel button
+    # pointing at admin_menu).
+    assert required_capability(callback_data="admin_game_tasks") == "moderate_game"
