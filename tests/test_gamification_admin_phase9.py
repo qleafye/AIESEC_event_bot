@@ -160,10 +160,15 @@ def test_cancel_mid_wizard_clears_state_and_shows_list(tmp_path):
 
 def _drive_to_confirm(state, *, text="Пост со скрином #знакомство", category="Light",
                        coins="30", proof="photo", deadline="25.08.2026 23:59"):
+    """Phase 09.1 (A): the proof-type step is now checkboxes -- tap `gtproof:{proof}` to
+    toggle it on, then `gtproof_done` to advance (empty selection is legal there too, callers
+    that want the OLD single-type contract still pass exactly one `proof` code)."""
     asyncio.run(admin_mod.game_task_text_step(FakeMessage(text=text), state))
     asyncio.run(admin_mod.game_task_category_step(FakeCallback(f"gtcat:{category}"), state))
     asyncio.run(admin_mod.game_task_coins_step(FakeMessage(text=coins), state))
-    asyncio.run(admin_mod.game_task_proof_step(FakeCallback(f"gtproof:{proof}"), state))
+    if proof is not None:
+        asyncio.run(admin_mod.game_task_proof_step(FakeCallback(f"gtproof:{proof}"), state))
+    asyncio.run(admin_mod.game_task_proof_done(FakeCallback("gtproof_done"), state))
     deadline_message = FakeMessage(text=deadline)
     asyncio.run(admin_mod.game_task_deadline_step(deadline_message, state))
     return deadline_message
@@ -206,11 +211,65 @@ def test_game_task_coins_step_rejects_non_positive_and_non_numeric(tmp_path):
     assert asyncio.run(state.get_data())["gt_coins"] == 30
 
 
-def test_game_task_proof_type_buttons_cover_all_four(tmp_path):
+def test_game_task_proof_type_checkboxes_cover_all_four_plus_done(tmp_path):
     _db_ready(tmp_path)
-    kb = admin_mod._game_task_proof_kb()
-    assert _flat_callback_data(kb) == [f"gtproof:{p}" for p in GAME_PROOF_TYPES]
-    assert len(_flat_callback_data(kb)) == 4
+    kb = admin_mod._game_task_proof_kb(set())
+    assert _flat_callback_data(kb) == [f"gtproof:{p}" for p in GAME_PROOF_TYPES] + ["gtproof_done"]
+    assert len(_flat_callback_data(kb)) == 5
+    assert all(t.startswith("▫️ ") for t in _flat_texts(kb)[:4])  # unchecked by default
+
+
+def test_game_task_proof_step_toggles_selection_and_stays_on_step(tmp_path):
+    _db_ready(tmp_path)
+    state = _new_state()
+    asyncio.run(state.set_state(GameTaskCreate.proof_type))
+    asyncio.run(state.update_data(gt_proof_types=[]))
+
+    asyncio.run(admin_mod.game_task_proof_step(FakeCallback("gtproof:photo"), state))
+    assert asyncio.run(state.get_data())["gt_proof_types"] == ["photo"]
+    assert asyncio.run(state.get_state()) == GameTaskCreate.proof_type  # toggle, not advance
+
+    asyncio.run(admin_mod.game_task_proof_step(FakeCallback("gtproof:text"), state))
+    assert sorted(asyncio.run(state.get_data())["gt_proof_types"]) == ["photo", "text"]
+
+    # tapping the same code again toggles it back off
+    asyncio.run(admin_mod.game_task_proof_step(FakeCallback("gtproof:photo"), state))
+    assert asyncio.run(state.get_data())["gt_proof_types"] == ["text"]
+
+
+def test_game_task_proof_step_rejects_unknown_code(tmp_path):
+    _db_ready(tmp_path)
+    state = _new_state()
+    asyncio.run(state.set_state(GameTaskCreate.proof_type))
+    callback = FakeCallback("gtproof:bogus")
+    asyncio.run(admin_mod.game_task_proof_step(callback, state))
+    assert callback.answers == [("Некорректный тип подтверждения", True)]
+
+
+def test_game_task_proof_done_stores_comma_joined_and_advances_to_deadline(tmp_path):
+    _db_ready(tmp_path)
+    state = _new_state()
+    asyncio.run(state.set_state(GameTaskCreate.proof_type))
+    asyncio.run(admin_mod.game_task_proof_step(FakeCallback("gtproof:text"), state))
+    asyncio.run(admin_mod.game_task_proof_step(FakeCallback("gtproof:photo"), state))
+
+    callback = FakeCallback("gtproof_done")
+    asyncio.run(admin_mod.game_task_proof_done(callback, state))
+    assert asyncio.run(state.get_data())["gt_proof_type"] == "photo,text"  # GAME_PROOF_TYPES order
+    assert asyncio.run(state.get_state()) == GameTaskCreate.deadline
+
+
+def test_game_task_proof_done_allows_empty_selection(tmp_path):
+    """CONTEXT.md A: «можно несколько или ни одного» — no not-empty guard on gtproof_done."""
+    _db_ready(tmp_path)
+    state = _new_state()
+    asyncio.run(state.set_state(GameTaskCreate.proof_type))
+    asyncio.run(state.update_data(gt_proof_types=[]))
+    callback = FakeCallback("gtproof_done")
+    asyncio.run(admin_mod.game_task_proof_done(callback, state))
+    assert callback.answers == [(None, False)]  # plain answer, no alert
+    assert asyncio.run(state.get_data())["gt_proof_type"] == ""
+    assert asyncio.run(state.get_state()) == GameTaskCreate.deadline
 
 
 def test_game_task_deadline_step_rejects_unparseable_and_past_dates(tmp_path):

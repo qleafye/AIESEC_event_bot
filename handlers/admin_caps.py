@@ -330,6 +330,9 @@ ADMIN_CAPS: dict[str, str] = {
     "gtnew": "moderate_game",
     "gtcat:*": "moderate_game",
     "gtproof:*": "moderate_game",
+    # Phase 09.1 (A): «Готово» on the proof-type checkbox step -- new callback, not part of
+    # 09-01's original 15-key interface-first set (the checkbox step itself is new).
+    "gtproof_done": "moderate_game",
     "gtconfirm": "moderate_game",
     "gtcancel": "moderate_game",
     "state:GameTaskCreate:*": "moderate_game",
