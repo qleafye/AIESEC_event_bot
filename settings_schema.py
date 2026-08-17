@@ -35,38 +35,52 @@ from database.db import get_setting
 # SETTINGS_GROUPS "event" row (handlers/admin.py:398-401) — later consumers rely on this
 # insertion order being preserved (dict iteration order) when filtering by group/type.
 SETTINGS_SCHEMA = {
+    # Phase 09.2 (A): the per_city flag below means this value can be overridden
+    # per event-city. Override storage key is `{key}__city__{code}` (the registry key +
+    # `cities.PER_CITY_SEP` + a code from `cities.city_codes()`); the resolver is
+    # `cities.get_setting_for_city`/`get_setting_typed_for_city`. Absence of the flag means
+    # this setting stays global-only — SETTINGS_SCHEMA is the single source of truth for
+    # what can be overridden by city (CONTEXT A); nothing else may decide this.
     "event_date": {
         "type": "text", "group": "event", "label": "🗓 Дата",
         "prompt": "Введите дату форума", "default": None,
+        "per_city": True,
     },
     "event_time": {
         "type": "text", "group": "event", "label": "⌚ Время",
         "prompt": "Введите время проведения", "default": None,
+        "per_city": True,
     },
     "event_place_name": {
         "type": "text", "group": "event", "label": "📍 Место",
         "prompt": "Введите название площадки", "default": None,
+        "per_city": True,
     },
     "event_place_address": {
         "type": "text", "group": "event", "label": "📫 Адрес",
         "prompt": "Введите адрес площадки", "default": None,
+        "per_city": True,
     },
     "contact_person": {
         "type": "text", "group": "event", "label": "👤 Контакт",
         "prompt": "Введите юзернейм контактного лица (например @username)", "default": None,
+        "per_city": True,
     },
     "contact_vk": {
         "type": "text", "group": "event", "label": "🔵 VK",
         "prompt": "Введите ссылку на группу ВК", "default": None,
+        "per_city": True,
     },
     "contact_tg": {
         "type": "text", "group": "event", "label": "🔹 TG",
         "prompt": "Введите ссылку на Telegram-канал", "default": None,
+        "per_city": True,
     },
     "start_text": {
         "type": "text", "group": "event", "label": "💬 Приветствие",
         "prompt": "Введите текст приветствия при /start (поддерживается HTML-разметка)",
         "default": None,
+        "per_city": True,
     },
     "start_text_registered": {
         "type": "text", "group": "event", "label": "🔁 Приветствие вернувшимся",
@@ -77,6 +91,7 @@ SETTINGS_SCHEMA = {
             "правится отдельно, полем «💬 Приветствие»."
         ),
         "default": None,
+        "per_city": True,
     },
     "event_name": {
         "type": "text", "group": "event", "label": "🎪 Название меро",
@@ -137,7 +152,12 @@ SETTINGS_SCHEMA = {
             "«Поздравляем, заявка принята! Рассмотрим за 2-3 дня»). Поддерживается HTML."
         ),
         "default": None,
+        "per_city": True,
     },
+    # Phase 09.2 (B, Q2 resolution): city override applies ONLY to this base `approve_text`.
+    # `approve_text__party` below stays global — composing a THIRD axis (track x city) on
+    # top of the existing track override was explicitly punted by CONTEXT.md/RESEARCH.md
+    # Open Question 2; a party delegate never gets a per-city approve text in this wave.
     "approve_text": {
         "type": "text", "group": "reg", "label": "🎉 После одобрения",
         "prompt": (
@@ -145,6 +165,7 @@ SETTINGS_SCHEMA = {
             "Поддерживается HTML."
         ),
         "default": None,
+        "per_city": True,
     },
     "reject_text": {
         "type": "text", "group": "reg", "label": "🚫 При отклонении",
@@ -388,6 +409,10 @@ SETTINGS_SCHEMA = {
         ),
         "default": "Регистрация на вечеринку сейчас закрыта.",
     },
+    # Phase 09.2 (B, Q2 resolution): deliberately NO "per_city" flag here. City override
+    # composes with the base `approve_text` only, not with this party-track variant — a
+    # party delegate's approve text is decided purely by track (party vs global), never by
+    # city, in this wave. See the comment above the base `approve_text` entry.
     "approve_text__party": {
         "type": "text", "group": "party", "label": "🎉 После одобрения (Party)",
         "prompt": (
@@ -518,6 +543,7 @@ SETTINGS_SCHEMA = {
     "registration_mode": {
         "type": "enum", "group": "toggles", "label": "📝 Форма регистрации",
         "options": ["short", "full"], "prompt": None, "default": "short",
+        "per_city": True,
     },
     "pending_notify_mode": {
         "type": "enum", "group": "toggles", "label": "🔔 Уведомление о заявке",
