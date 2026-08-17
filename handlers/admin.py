@@ -5958,6 +5958,88 @@ async def coinsman_amount_step(message: types.Message, state: FSMContext):
     await message.answer("За что? Напишите причину коротко, например: за помощь на стенде.")
 
 
+def _coinsman_confirm_kb() -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="✅ Подтвердить", callback_data="coinsman_confirm")],
+        [InlineKeyboardButton(text="← Отмена", callback_data="coinsman_cancel")],
+    ])
+
+
+async def _coinsman_display_name(user_id: int) -> str:
+    """Shared by the confirm card and the final report -- same fallback shape as
+    roles_add_person's display_name (full_name -> username -> bare id), HTML-escaped."""
+    user = await get_user(user_id)
+    name = (user.get("full_name") or user.get("username")) if user else None
+    return html_module.escape(str(name or user_id))
+
+
+def _render_coinsman_confirm_card(recipient_name: str, delta: int, reason: str) -> str:
+    """T-14-19: `reason` is a human-typed free text that will also be shown to the delegate
+    with parse_mode="HTML" (_notify_manual_coins) -- escaped here too, not just once at the
+    eventual delegate render (same double-escape-site precedent as
+    _render_game_task_confirm_card's task text)."""
+    return (
+        "🪙 <b>Подтвердите операцию</b>\n\n"
+        f"Кому: {recipient_name}\n"
+        f"Сумма: {delta:+d} монет(ы)\n"
+        f"Причина: {html_module.escape(reason)}\n\n"
+        "Делегат получит сообщение с суммой, причиной и новым балансом."
+    )
+
+
+@router.message(CoinsManual.reason)
+async def coinsman_reason_step(message: types.Message, state: FSMContext):
+    raw_reason = message.text or ""
+    if not raw_reason.strip():
+        await message.answer(
+            "Причина обязательна: журнал монет должен отвечать на вопрос «кто, кому, за что». "
+            "Напишите коротко, например: за помощь на стенде."
+        )
+        return
+    await state.update_data(cm_reason=raw_reason)  # raw text, not trimmed (Task 3 action note)
+    data = await state.get_data()
+    name = await _coinsman_display_name(data.get("cm_user_id"))
+    await message.answer(
+        _render_coinsman_confirm_card(name, data.get("cm_delta"), raw_reason),
+        parse_mode="HTML",
+        reply_markup=_coinsman_confirm_kb(),
+    )
+
+
+@router.callback_query(F.data == "coinsman_confirm")
+async def coinsman_confirm(callback: types.CallbackQuery, state: FSMContext):
+    data = await state.get_data()
+    user_id = data.get("cm_user_id")
+    delta = data.get("cm_delta")
+    reason = data.get("cm_reason")
+    # T-14-18: a stale confirm screen (state already cleared by an earlier tap, or an
+    # abandoned/cancelled wizard) must not write a second ledger row -- same class of guard as
+    # the archive/delete race gate (14-01/14-03).
+    if user_id is None or delta is None or not reason:
+        await callback.answer("Операция уже завершена или отменена", show_alert=True)
+        return
+
+    # Порядок важен (Task 3 action note): запись в журнал СНАЧАЛА, уведомление -- потом. Сбой
+    # уведомления (делегат заблокировал бота, T-14-20) не должен быть причиной, по которой
+    # операция выглядит несостоявшейся.
+    await add_coins(user_id, delta, reason=reason, changed_by=callback.from_user.id, source="manual")
+    await state.set_state(None)
+    await state.set_data({})
+    _request_game_resync()  # Phase 09.1 (D, GAME-07): a coin edit is one of the 3 debounced triggers
+    balance = await get_balance(user_id)
+    notified = await _notify_manual_coins(callback.bot, user_id, delta, reason, balance)
+    notify_suffix = "" if notified else " (делегат не получил уведомление)"
+
+    name = await _coinsman_display_name(user_id)
+    sign_word = "начислено" if delta >= 0 else "списано"
+    await callback.answer("Готово")
+    await callback.message.answer(
+        f"🪙 {sign_word} {abs(delta)} монет(ы) для {name}.\n"
+        f"Новый баланс: <b>{balance}</b>.{notify_suffix}",
+        parse_mode="HTML",
+    )
+
+
 # ── Phase 9 (GAME-02/03, wave 4, 09-04): «🎮 Проверка заданий» — moderation queue ───────────
 #
 # Same tinder-pattern/pagination as «Заявки»/«Чеки» above (D-01, CLAUDE.md: 1000+ submissions

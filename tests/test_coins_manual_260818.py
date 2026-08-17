@@ -369,3 +369,174 @@ def test_coinsman_new_keys_resolve_to_moderate_game(tmp_path):
     assert required_capability(callback_data="coinsman_confirm") == "moderate_game"
     assert required_capability(callback_data="coinsman_cancel") == "moderate_game"
     assert required_capability(raw_state="CoinsManual:person") == "moderate_game"
+
+
+# ═══════════════════════════════════════════════════════════════════════════════════════════
+# Task 3: reason, confirm screen, ledger write, notification, resync
+# ═══════════════════════════════════════════════════════════════════════════════════════════
+
+def test_coinsman_reason_step_empty_stays_on_step_and_writes_nothing(tmp_path):
+    _db_ready(tmp_path)
+    _seed_delegate()
+    state = _new_state()
+    asyncio.run(state.update_data(cm_user_id=DELEGATE_ID, cm_sign="plus", cm_delta=5))
+    asyncio.run(state.set_state(CoinsManual.reason))
+    msg = FakeMessage(text="   ")
+    asyncio.run(admin_mod.coinsman_reason_step(msg, state))
+    assert "причина обязательна" in msg.answers_sent[-1].lower()
+    assert asyncio.run(state.get_state()) == CoinsManual.reason
+    assert _coin_rows() == []
+
+
+def test_coinsman_reason_step_shows_confirm_screen(tmp_path):
+    _db_ready(tmp_path)
+    _seed_delegate()
+    state = _new_state()
+    asyncio.run(state.update_data(cm_user_id=DELEGATE_ID, cm_sign="minus", cm_delta=-3))
+    asyncio.run(state.set_state(CoinsManual.reason))
+    msg = FakeMessage(text="за нарушение")
+    asyncio.run(admin_mod.coinsman_reason_step(msg, state))
+
+    card = msg.answers_sent[-1]
+    assert "Дельгат Тестов" in card
+    assert "-3" in card or "−3" in card
+    assert "за нарушение" in card
+    kb = msg.answer_markups[-1]
+    flat = [btn.callback_data for row in kb.inline_keyboard for btn in row]
+    assert "coinsman_confirm" in flat
+    assert "coinsman_cancel" in flat
+    data = asyncio.run(state.get_data())
+    assert data.get("cm_reason") == "за нарушение"
+
+
+def test_coinsman_confirm_writes_exactly_one_row_with_source_manual(tmp_path):
+    _db_ready(tmp_path)
+    _seed_delegate()
+    state = _new_state()
+    asyncio.run(state.update_data(cm_user_id=DELEGATE_ID, cm_sign="plus", cm_delta=5, cm_reason="за помощь"))
+    asyncio.run(state.set_state(CoinsManual.reason))
+    callback = FakeCallback("coinsman_confirm", user_id=ADMIN_ID)
+    asyncio.run(admin_mod.coinsman_confirm(callback, state))
+
+    rows = _coin_rows()
+    assert len(rows) == 1
+    assert rows[0]["delta"] == 5
+    assert rows[0]["reason"] == "за помощь"
+    assert rows[0]["changed_by"] == ADMIN_ID
+    assert rows[0]["source"] == "manual"
+    assert asyncio.run(state.get_state()) is None
+
+
+def test_coinsman_confirm_repeated_tap_does_not_double_write(tmp_path):
+    _db_ready(tmp_path)
+    _seed_delegate()
+    state = _new_state()
+    asyncio.run(state.update_data(cm_user_id=DELEGATE_ID, cm_sign="plus", cm_delta=5, cm_reason="за помощь"))
+    asyncio.run(state.set_state(CoinsManual.reason))
+    first = FakeCallback("coinsman_confirm", user_id=ADMIN_ID)
+    asyncio.run(admin_mod.coinsman_confirm(first, state))
+
+    second = FakeCallback("coinsman_confirm", user_id=ADMIN_ID)
+    asyncio.run(admin_mod.coinsman_confirm(second, state))
+
+    assert len(_coin_rows()) == 1  # exactly one row -- state was already cleared
+    assert second.answers == [("Операция уже завершена или отменена", True)]
+
+
+def test_coinsman_confirm_notifies_delegate_after_ledger_write(tmp_path):
+    _db_ready(tmp_path)
+    _seed_delegate()
+    state = _new_state()
+    asyncio.run(state.update_data(cm_user_id=DELEGATE_ID, cm_sign="plus", cm_delta=5, cm_reason="за помощь"))
+    asyncio.run(state.set_state(CoinsManual.reason))
+    callback = FakeCallback("coinsman_confirm", user_id=ADMIN_ID)
+    asyncio.run(admin_mod.coinsman_confirm(callback, state))
+
+    assert len(_coin_rows()) == 1  # ledger write happened
+    assert callback.bot.sent, "delegate was not notified"
+    chat_id, text = callback.bot.sent[-1]
+    assert chat_id == DELEGATE_ID
+    assert "+5" in text
+    assert "за помощь" in text
+
+
+def test_coinsman_confirm_blocked_bot_keeps_row_and_flags_manager(tmp_path):
+    _db_ready(tmp_path)
+    _seed_delegate()
+    state = _new_state()
+    asyncio.run(state.update_data(cm_user_id=DELEGATE_ID, cm_sign="plus", cm_delta=5, cm_reason="за помощь"))
+    asyncio.run(state.set_state(CoinsManual.reason))
+    failing_bot = FakeBot(fail=True)
+    callback = FakeCallback("coinsman_confirm", user_id=ADMIN_ID, bot=failing_bot)
+    asyncio.run(admin_mod.coinsman_confirm(callback, state))
+
+    assert len(_coin_rows()) == 1  # ledger write NOT rolled back
+    assert "не получил уведомление" in callback.message.answers_sent[-1]
+
+
+def test_coinsman_confirm_triggers_game_resync(tmp_path, monkeypatch):
+    _db_ready(tmp_path)
+    _seed_delegate()
+    resync_calls = []
+    monkeypatch.setattr(admin_mod, "_request_game_resync", lambda *a, **k: resync_calls.append(1))
+    state = _new_state()
+    asyncio.run(state.update_data(cm_user_id=DELEGATE_ID, cm_sign="plus", cm_delta=5, cm_reason="за помощь"))
+    asyncio.run(state.set_state(CoinsManual.reason))
+    callback = FakeCallback("coinsman_confirm", user_id=ADMIN_ID)
+    asyncio.run(admin_mod.coinsman_confirm(callback, state))
+    assert resync_calls == [1]
+
+
+def test_coinsman_confirm_with_no_state_data_alerts_and_writes_nothing(tmp_path):
+    """A stale/expired confirm screen (state already cleared) must not record anything."""
+    _db_ready(tmp_path)
+    _seed_delegate()
+    state = _new_state()
+    callback = FakeCallback("coinsman_confirm", user_id=ADMIN_ID)
+    asyncio.run(admin_mod.coinsman_confirm(callback, state))
+    assert _coin_rows() == []
+    assert callback.answers == [("Операция уже завершена или отменена", True)]
+
+
+def test_coinsman_end_to_end_forward_minus_amount_reason_confirm(tmp_path):
+    """Сквозной сценарий: пересланное сообщение -> ➖ Списать -> 3 -> «за нарушение» ->
+    подтверждение -> баланс уменьшился на 3, уведомление ушло."""
+    _db_ready(tmp_path)
+    _seed_delegate()
+    asyncio.run(db.add_coins(DELEGATE_ID, 10, reason="стартовый баланс", changed_by=ADMIN_ID, source="manual"))
+    state = _new_state()
+
+    # 1) admin_coins_manual
+    open_cb = FakeCallback("admin_coins_manual")
+    asyncio.run(admin_mod.admin_coins_manual(open_cb, state))
+    assert asyncio.run(state.get_state()) == CoinsManual.person
+
+    # 2) forward message resolves the delegate
+    person_msg = FakeMessage(forward_origin=FakeForwardOrigin(DELEGATE_ID))
+    asyncio.run(admin_mod.coinsman_person_step(person_msg, state))
+
+    # 3) ➖ Списать
+    sign_cb = FakeCallback("coinsman_sign:minus")
+    asyncio.run(admin_mod.coinsman_sign_step(sign_cb, state))
+    assert asyncio.run(state.get_state()) == CoinsManual.amount
+
+    # 4) сумма 3
+    amount_msg = FakeMessage(text="3")
+    asyncio.run(admin_mod.coinsman_amount_step(amount_msg, state))
+    assert asyncio.run(state.get_state()) == CoinsManual.reason
+
+    # 5) причина
+    reason_msg = FakeMessage(text="за нарушение")
+    asyncio.run(admin_mod.coinsman_reason_step(reason_msg, state))
+
+    # 6) подтверждение
+    confirm_bot = FakeBot()
+    confirm_cb = FakeCallback("coinsman_confirm", bot=confirm_bot)
+    asyncio.run(admin_mod.coinsman_confirm(confirm_cb, state))
+
+    assert asyncio.run(db.get_balance(DELEGATE_ID)) == 7  # 10 - 3
+    assert confirm_bot.sent, "delegate was not notified"
+    chat_id, text = confirm_bot.sent[-1]
+    assert chat_id == DELEGATE_ID
+    assert "-3" in text or "−3" in text
+    assert "за нарушение" in text

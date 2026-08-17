@@ -97,14 +97,19 @@ def test_build_admin_keyboard_admin_cities_is_last_row_indices_unchanged(tmp_pat
     # each known callback_data's position relative to its neighbors (or just asserting set
     # membership + first-14 block), not by counting negative indices from the end. Left as a
     # recommendation, not fixed here (out of scope for a stats-screen plan).
+    #
+    # NOTE (14-04, GAME-09): fifth plan to break it -- «🪙 Монеты вручную» (admin_coins_manual)
+    # inserted right after admin_game_review, before admin_game_sync_sheet (CONTEXT.md B places
+    # it "рядом с остальными строками геймы"). Every index below shifted by one.
     _admin_ready(tmp_path)
     kb = asyncio.run(admin_mod.build_admin_keyboard(ADMIN_ID))
     rows = kb.inline_keyboard
     assert rows[-1][0].callback_data == "admin_game_stats"
     assert rows[-2][0].callback_data == "admin_game_sync_sheet"
-    assert rows[-3][0].callback_data == "admin_game_review"
-    assert rows[-4][0].callback_data == "admin_game_tasks"
-    assert rows[-5][0].callback_data == "admin_cities"
+    assert rows[-3][0].callback_data == "admin_coins_manual"
+    assert rows[-4][0].callback_data == "admin_game_review"
+    assert rows[-5][0].callback_data == "admin_game_tasks"
+    assert rows[-6][0].callback_data == "admin_cities"
     expected_first_14 = [
         "admin_stats", "admin_monthly_stats", "admin_source_stats", "admin_export_csv",
         "admin_export_incomplete", "admin_applications", "admin_receipts",

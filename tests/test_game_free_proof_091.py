@@ -94,10 +94,11 @@ def test_init_db_twice_is_idempotent(tmp_path):
 
 def test_game_settings_schema_has_nine_keys_in_game_group():
     # Phase 14 (GAME-10) added a 10th key, "game_resubmit_limit" -- count bumped from the
-    # original 09.1-Wave-1 baseline of 9. Test name kept for git-blame continuity.
+    # original 09.1-Wave-1 baseline of 9. Phase 14 (14-04, GAME-09) added an 11th key,
+    # "coins_manual_notify_text". Test name kept for git-blame continuity.
     import settings_schema as s
     keys = [k for k, v in s.SETTINGS_SCHEMA.items() if v["group"] == "game"]
-    assert len(keys) == 10
+    assert len(keys) == 11
     for k in keys:
         assert s.SETTINGS_SCHEMA[k]["default"] not in (None, "")
 
