@@ -107,6 +107,8 @@ from cities import (  # Phase 07.1 (CITY-04): admin city screen; Phase 07.2 (CIT
     city_scope,
     city_codes,
     normalize_city,
+    ALL_CITIES,  # Phase 09.3 (09.3-02, CITY-08): third _admin_city_view state, «все города»
+    ALL_CITIES_LABEL,  # single source of truth for the label — never redefined in this file
     enabled_cities,  # Phase 09.1 (B): "Кому задание?" wizard step
     is_per_city,  # Phase 09.2 (C, CITY-05): «🏙 Для города…» per-setting override sub-flow
     per_city_key,
@@ -2125,13 +2127,18 @@ async def show_admin_export(callback: types.CallbackQuery):
     writer.writerow(headers)
     writer.writerows(rows)
     file_bytes = output.getvalue().encode('utf-8-sig')
+    # Filename stays keyed on `scope` (there is no single city code in ALL_CITIES mode — scope
+    # is None there too, same as module-off).
     filename = "users.csv" if scope is None else f"users_{scope[0]}.csv"
     # CR-01: the label is an admin-editable free-text setting (`city_label__{code}` in
     # bot_settings) and the bot runs with DefaultBotProperties(parse_mode=HTML), so a caption
     # sent without an explicit parse_mode is parsed as HTML. Escape it exactly like
     # _render_application_card / _render_receipt_card / render_stats_text already do.
+    # Phase 09.3 (09.3-02, CITY-08): switched from `scope is None` to `label is None` — module
+    # off still has no label (byte-identical caption); ALL_CITIES mode now has a non-None
+    # label (ALL_CITIES_LABEL) even though scope is also None, so the caption names the mode.
     caption = (
-        "База данных пользователей" if scope is None
+        "База данных пользователей" if label is None
         else f"База данных пользователей — {html_module.escape(str(label))}"
     )
     document = BufferedInputFile(file_bytes, filename=filename)
@@ -4235,10 +4242,21 @@ async def menu_city_clear_go(callback: types.CallbackQuery):
 # the confusion the header exists to prevent. Every render-time call site uses this helper.
 async def _admin_city_view(admin_id: int) -> tuple[tuple[str, tuple[str, ...]] | None, str | None]:
     """(city_scope, label) for one admin, resolved from a SINGLE `admin_selected_city` read.
-    `(None, None)` = no scope (module off) — the unfiltered, pre-CITY-02 behaviour."""
+    Three states now (Phase 09.3, CITY-08):
+    - `(None, None)` = no scope (module off) — the unfiltered, pre-CITY-02 behaviour.
+    - `(None, ALL_CITIES_LABEL)` = module on, admin explicitly chose «Все города» — the SAME
+      unfiltered SQL scope as module-off, but the label is NOT None. Every existing call site
+      that branches on `label is None` to mean "module off, no city text" now gets a real
+      (non-None) label for this mode instead — it will NOT crash or raise, but it WILL print
+      the wrong copy (or the raw "*" literal, pre-this-fix) unless that branch is re-read and,
+      where the text differs by mode, given a third branch. Re-check every `label is None`
+      ternary you touch downstream of this function.
+    - a real city code returns its own scoped tuple + label, unchanged."""
     code = await admin_selected_city(admin_id)
     if code is None:
         return None, None
+    if code == ALL_CITIES:
+        return None, await city_label(code)
     return city_scope(code), await city_label(code)
 
 
