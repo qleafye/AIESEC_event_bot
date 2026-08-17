@@ -553,3 +553,198 @@ def test_new_city_callbacks_resolve_to_settings_capability():
                 "city_del:kzn", "city_del_go:kzn"):
         assert required_capability(callback_data=key) == "settings"
     assert required_capability(raw_state="CityForm:add_label") == "settings"
+
+
+# ── Task 2: add wizard + rename / tab-base edit ──────────────────────────────────────────────
+
+from handlers.states import CityForm
+
+
+def test_city_add_starts_wizard_at_add_label(tmp_path):
+    _db_ready(tmp_path)
+    config.ADMIN_IDS = [ADMIN_ID]
+    restore = _snapshot_cities()
+    try:
+        _seed_cities_db([("msk", "Москва", "", 0)])
+        callback = FakeCallback("city_add")
+        state = _new_state()
+        asyncio.run(admin_mod.city_add(callback, state))
+        reached_state = asyncio.run(state.get_state())
+    finally:
+        restore()
+    assert reached_state == CityForm.add_label
+
+
+def test_city_add_label_step_moves_to_add_tab(tmp_path):
+    _db_ready(tmp_path)
+    config.ADMIN_IDS = [ADMIN_ID]
+    restore = _snapshot_cities()
+    try:
+        _seed_cities_db([("msk", "Москва", "", 0)])
+        state = _new_state()
+        asyncio.run(state.set_state(CityForm.add_label))
+        msg = FakeMessage(text="Казань, 14 ноября")
+        asyncio.run(admin_mod.city_add_label_step(msg, state))
+        reached_state = asyncio.run(state.get_state())
+        prompt = msg.answers_sent[-1]
+    finally:
+        restore()
+    assert reached_state == CityForm.add_tab
+    assert "Enter" in prompt or "—" in prompt
+
+
+def test_city_add_tab_step_dash_creates_empty_tab_base_and_generates_hidden_code(tmp_path):
+    _db_ready(tmp_path)
+    config.ADMIN_IDS = [ADMIN_ID]
+    restore = _snapshot_cities()
+    try:
+        _seed_cities_db([("msk", "Москва", "", 0)])
+        state = _new_state()
+        asyncio.run(state.update_data(city_new_label="Казань, 14 ноября"))
+        asyncio.run(state.set_state(CityForm.add_tab))
+        msg = FakeMessage(text="—")
+        asyncio.run(admin_mod.city_add_tab_step(msg, state))
+        rows = asyncio.run(db.list_cities_rows())
+        confirmation = msg.answers_sent[0]
+    finally:
+        restore()
+    new_row = [r for r in rows if r["label"] == "Казань, 14 ноября"][0]
+    assert new_row["tab_base"] == ""
+    assert new_row["code"] not in ("Казань, 14 ноября",)  # never the raw label
+    assert new_row["code"] == "kazan"[:16] or new_row["code"].startswith("kazan")
+    assert new_row["code"] not in confirmation  # code never shown to the human
+
+
+def test_city_add_tab_step_text_sets_tab_base_and_wires_end_to_end(tmp_path):
+    _db_ready(tmp_path)
+    config.ADMIN_IDS = [ADMIN_ID]
+    restore = _snapshot_cities()
+    try:
+        _seed_cities_db([("msk", "Москва", "", 0)])
+        state = _new_state()
+        asyncio.run(state.update_data(city_new_label="СПб"))
+        asyncio.run(state.set_state(CityForm.add_tab))
+        msg = FakeMessage(text="СПб")
+        asyncio.run(admin_mod.city_add_tab_step(msg, state))
+        codes_after = cities.city_codes()
+        new_code = [c for c in cities.all_cities() if c["label"] == "СПб"][0]["code"]
+        from handlers import registration as reg
+        resolved = reg._extract_event_city(f"city_{new_code}")
+    finally:
+        restore()
+    assert new_code in codes_after
+    assert resolved == new_code
+
+
+def test_city_add_label_collision_gets_suffix_both_cities_created(tmp_path):
+    _db_ready(tmp_path)
+    config.ADMIN_IDS = [ADMIN_ID]
+    restore = _snapshot_cities()
+    try:
+        _seed_cities_db([("msk", "Москва", "", 0)])
+        for _ in range(2):
+            state = _new_state()
+            asyncio.run(state.update_data(city_new_label="Тест"))
+            asyncio.run(state.set_state(CityForm.add_tab))
+            msg = FakeMessage(text="—")
+            asyncio.run(admin_mod.city_add_tab_step(msg, state))
+        rows = [r for r in asyncio.run(db.list_cities_rows()) if r["label"] == "Тест"]
+    finally:
+        restore()
+    assert len(rows) == 2
+    assert rows[0]["code"] != rows[1]["code"]
+
+
+def test_city_add_reload_cities_called_new_city_resolves_deep_link(tmp_path):
+    _db_ready(tmp_path)
+    config.ADMIN_IDS = [ADMIN_ID]
+    restore = _snapshot_cities()
+    try:
+        _seed_cities_db([("msk", "Москва", "", 0)])
+        state = _new_state()
+        asyncio.run(state.update_data(city_new_label="Новосибирск"))
+        asyncio.run(state.set_state(CityForm.add_tab))
+        msg = FakeMessage(text="—")
+        asyncio.run(admin_mod.city_add_tab_step(msg, state))
+        from handlers import registration as reg
+        new_code = [c for c in cities.all_cities() if c["label"] == "Новосибирск"][0]["code"]
+        resolved = reg._extract_event_city(f"city_{new_code}")
+        codes_after = cities.city_codes()
+    finally:
+        restore()
+    assert resolved == new_code
+    assert new_code in codes_after
+
+
+def test_city_rename_and_tab_edit_update_column_and_delete_legacy_override(tmp_path):
+    _db_ready(tmp_path)
+    config.ADMIN_IDS = [ADMIN_ID]
+    restore = _snapshot_cities()
+    try:
+        _seed_cities_db([("msk", "Москва", "", 0), ("kzn", "Казань", "", 1)])
+        asyncio.run(db.set_setting("city_label__kzn", "старая подпись"))
+        asyncio.run(db.set_setting("city_tab__kzn", "СтараяВкладка"))
+
+        rename_cb = FakeCallback("city_rename:kzn")
+        rename_state = _new_state()
+        asyncio.run(admin_mod.city_rename_start(rename_cb, rename_state))
+        assert asyncio.run(rename_state.get_state()) == CityForm.edit_label
+        label_msg = FakeMessage(text="Казань (новая)")
+        asyncio.run(admin_mod.city_edit_label_step(label_msg, rename_state))
+
+        tab_cb = FakeCallback("city_tab:kzn")
+        tab_state = _new_state()
+        asyncio.run(admin_mod.city_tab_start(tab_cb, tab_state))
+        assert asyncio.run(tab_state.get_state()) == CityForm.edit_tab
+        assert "переносит только новые" in tab_cb.message.answers_sent[-1]
+        tab_msg = FakeMessage(text="НоваяВкладка")
+        asyncio.run(admin_mod.city_edit_tab_step(tab_msg, tab_state))
+
+        row = {r["code"]: r for r in asyncio.run(db.list_cities_rows())}["kzn"]
+        legacy_label = asyncio.run(db.get_setting("city_label__kzn"))
+        legacy_tab = asyncio.run(db.get_setting("city_tab__kzn"))
+    finally:
+        restore()
+    assert row["label"] == "Казань (новая)"
+    assert row["tab_base"] == "НоваяВкладка"
+    assert legacy_label is None
+    assert legacy_tab is None
+
+
+def test_city_form_cancel_writes_nothing(tmp_path):
+    _db_ready(tmp_path)
+    config.ADMIN_IDS = [ADMIN_ID]
+    restore = _snapshot_cities()
+    try:
+        _seed_cities_db([("msk", "Москва", "", 0)])
+        before = asyncio.run(db.count_cities())
+        state = _new_state()
+        asyncio.run(state.update_data(city_new_label="Отменённый город"))
+        asyncio.run(state.set_state(CityForm.add_tab))
+        msg = FakeMessage(text="Отмена")
+        asyncio.run(admin_mod.cancel_city_form(msg, state))
+        after = asyncio.run(db.count_cities())
+        reached_state = asyncio.run(state.get_state())
+    finally:
+        restore()
+    assert before == after
+    assert reached_state is None
+
+
+def test_wizard_texts_never_mention_tab_base_or_code_literals(tmp_path):
+    _db_ready(tmp_path)
+    config.ADMIN_IDS = [ADMIN_ID]
+    restore = _snapshot_cities()
+    try:
+        _seed_cities_db([("msk", "Москва", "", 0)])
+        add_cb = FakeCallback("city_add")
+        add_state = _new_state()
+        asyncio.run(admin_mod.city_add(add_cb, add_state))
+        label_msg = FakeMessage(text="Тестоград")
+        asyncio.run(admin_mod.city_add_label_step(label_msg, add_state))
+        texts = add_cb.message.answers_sent + label_msg.answers_sent
+    finally:
+        restore()
+    for t in texts:
+        assert "tab_base" not in t
+        assert "код города" not in t.lower()

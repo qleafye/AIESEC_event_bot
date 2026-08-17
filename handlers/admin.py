@@ -76,6 +76,7 @@ from database.db import (
     export_coins_journal_csv,
     # Phase 14 (14-07, CITY-07): cities table writes + delete-safety counters
     update_city,
+    insert_city,
     count_users_by_city,
     count_tasks_by_city,
 )
@@ -91,7 +92,7 @@ from services.scheduler import (
 from services.allowlist import refresh_allowlist, allowlist_size
 from services.background import spawn as _spawn
 from services.game_sync import request_resync as _request_game_resync, set_rebuild as _set_game_rebuild
-from handlers.states import Broadcast, EditSetting, Approval, ReceiptReview, StaffAdd, GameTaskCreate, GameReview, CoinsManual
+from handlers.states import Broadcast, EditSetting, Approval, ReceiptReview, StaffAdd, GameTaskCreate, GameReview, CoinsManual, CityForm
 from handlers.admin_caps import ALL_CAPABILITIES, CAP_LABELS, ROLES, role_caps_key, role_enabled_key, CapabilityMiddleware, required_capability, has_capability, resolve_capabilities, ANY_CAPABILITY, capability_holders
 from keyboards.builders import get_cancel_kb, MENU_BUTTONS, get_main_menu_kb
 from handlers.registration import REG_FLOW, REG_DEFAULTS, REG_LABELS, REG_PRESETS, REG_CATEGORIES, SHEET_HEADERS, STATUS_LABELS, _build_sheet_row, active_sheet_headers, set_sheet_schema, _sheet_value_map, approve_user, dropout_step_label, _apply_party_preset, _apply_short_preset, city_row_tab, incomplete_city_batches
@@ -116,6 +117,7 @@ from cities import (  # Phase 07.1 (CITY-04): admin city screen; Phase 07.2 (CIT
     all_cities,
     reload_cities,
     default_city_code,
+    make_city_code,
 )
 
 router = Router()
@@ -2349,6 +2351,178 @@ async def city_default(callback: types.CallbackQuery):
 
     text = await render_cities_text()
     await callback.message.edit_text(text, parse_mode="HTML", reply_markup=await build_cities_keyboard())
+
+
+# ── Phase 14 (14-07, CITY-07): «➕ Добавить город» wizard + rename / tab-base edit ───────────
+#
+# The city CODE is NEVER human input — `city_add`'s add_tab step is the only call site of
+# `make_city_code()` in this file. A manager only ever types a LABEL and a tab-base string.
+
+def _dash_or_text(raw: str | None) -> str:
+    """«—»/empty input -> "" (same tab as the main city); anything else -> `.strip()`ped
+    text. Shared by the add-wizard's add_tab step and the edit_tab step so both accept the
+    same «Enter/«—»» escape hatch the plan's copy promises."""
+    text = (raw or "").strip()
+    if not text or text == "—":
+        return ""
+    return text
+
+
+@router.callback_query(F.data == "city_add")
+async def city_add(callback: types.CallbackQuery, state: FSMContext):
+    if not await _cities_screen_allowed(callback.from_user.id):
+        await _deny_cities_screen(callback)
+        return
+    await state.set_data({})
+    await callback.message.answer(
+        "Как называется город? Напишите подпись, которую увидят делегаты — например: "
+        "Казань, 14 ноября.",
+        reply_markup=get_cancel_kb(),
+    )
+    await state.set_state(CityForm.add_label)
+    await callback.answer()
+
+
+# Cancel-mid-wizard, registered BEFORE the per-step handlers below (admin.router: first match
+# wins) — same shape as cancel_game_task_create/cancel_edit_setting.
+@router.message(StateFilter(CityForm), Command("cancel"))
+@router.message(StateFilter(CityForm), F.text == "Отмена")
+async def cancel_city_form(message: types.Message, state: FSMContext):
+    await state.set_state(None)
+    await message.answer("Отменено.", reply_markup=ReplyKeyboardRemove())
+    text = await render_cities_text()
+    await message.answer(text, parse_mode="HTML", reply_markup=await build_cities_keyboard())
+
+
+@router.message(CityForm.add_label)
+async def city_add_label_step(message: types.Message, state: FSMContext):
+    if not await _cities_screen_allowed(message.from_user.id):
+        await _deny_cities_screen_message(message)
+        return
+    label = (message.text or "").strip()
+    if not label:
+        await message.answer("Подпись не может быть пустой. Как называется город?")
+        return
+    await state.update_data(city_new_label=label)
+    await message.answer(
+        "На какую вкладку таблицы писать заявки этого города? Напишите базу имени вкладки — "
+        "например: Казань. Если писать в ту же вкладку, что и основной город, пришлите «—» "
+        "(или Enter).",
+        reply_markup=get_cancel_kb(),
+    )
+    await state.set_state(CityForm.add_tab)
+
+
+async def _materialize_new_city_tabs() -> None:
+    """T-14-38: Sheets failure must never block the screen — this runs fire-and-forget
+    (`_spawn`) with its own try/except, mirroring main.py's startup materialization. Local
+    import only: `main.py` imports `handlers.*`, so a module-level `from main import ...`
+    here would create an import cycle."""
+    try:
+        from main import _maybe_ensure_city_sheet_headers
+        await _maybe_ensure_city_sheet_headers()
+    except Exception as e:
+        logger.warning("Не удалось материализовать вкладки нового города: %s", e)
+
+
+@router.message(CityForm.add_tab)
+async def city_add_tab_step(message: types.Message, state: FSMContext):
+    if not await _cities_screen_allowed(message.from_user.id):
+        await _deny_cities_screen_message(message)
+        return
+    data = await state.get_data()
+    label = data.get("city_new_label", "")
+    tab_base = _dash_or_text(message.text)
+    existing = {c["code"] for c in all_cities()}
+    code = make_city_code(label, existing=existing)
+    sort_order = max((c.get("sort_order") or 0) for c in all_cities()) + 1 if existing else 1
+    await insert_city(code, label, tab_base, sort_order, enabled=1)
+    await reload_cities()
+    _spawn(_materialize_new_city_tabs())
+
+    await state.set_state(None)
+    await message.answer(f"✅ Город добавлен: {label}", reply_markup=ReplyKeyboardRemove())
+    text = await render_cities_text()
+    await message.answer(text, parse_mode="HTML", reply_markup=await build_cities_keyboard())
+
+
+@router.callback_query(F.data.startswith("city_rename:"))
+async def city_rename_start(callback: types.CallbackQuery, state: FSMContext):
+    if not await _cities_screen_allowed(callback.from_user.id):
+        await _deny_cities_screen(callback)
+        return
+    code = callback.data.split(":", 1)[1]
+    if code not in {c["code"] for c in all_cities()}:
+        await callback.answer("Неизвестный город", show_alert=True)
+        return
+    await state.set_data({"city_code": code})
+    label = await city_label(code)
+    await callback.message.answer(
+        f"Как теперь называть город «{label}»? Напишите новую подпись.",
+        reply_markup=get_cancel_kb(),
+    )
+    await state.set_state(CityForm.edit_label)
+    await callback.answer()
+
+
+@router.callback_query(F.data.startswith("city_tab:"))
+async def city_tab_start(callback: types.CallbackQuery, state: FSMContext):
+    if not await _cities_screen_allowed(callback.from_user.id):
+        await _deny_cities_screen(callback)
+        return
+    code = callback.data.split(":", 1)[1]
+    if code not in {c["code"] for c in all_cities()}:
+        await callback.answer("Неизвестный город", show_alert=True)
+        return
+    await state.set_data({"city_code": code})
+    label = await city_label(code)
+    await callback.message.answer(
+        f"На какую вкладку писать заявки города «{label}»? Напишите базу имени вкладки, или "
+        "«—» — писать в ту же вкладку, что и основной город.\n\n"
+        "⚠️ Уже собранные заявки останутся в старой вкладке — бот переносит только новые.",
+        reply_markup=get_cancel_kb(),
+    )
+    await state.set_state(CityForm.edit_tab)
+    await callback.answer()
+
+
+@router.message(CityForm.edit_label)
+async def city_edit_label_step(message: types.Message, state: FSMContext):
+    if not await _cities_screen_allowed(message.from_user.id):
+        await _deny_cities_screen_message(message)
+        return
+    data = await state.get_data()
+    code = data.get("city_code")
+    label = (message.text or "").strip()
+    if not label:
+        await message.answer("Подпись не может быть пустой. Как теперь называть город?")
+        return
+    await update_city(code, label=label)
+    await delete_setting(f"city_label__{code}")  # легаси-override иначе продолжит перекрывать колонку
+    await reload_cities()
+
+    await state.set_state(None)
+    await message.answer(f"✅ Подпись обновлена: {label}", reply_markup=ReplyKeyboardRemove())
+    text = await render_cities_text()
+    await message.answer(text, parse_mode="HTML", reply_markup=await build_cities_keyboard())
+
+
+@router.message(CityForm.edit_tab)
+async def city_edit_tab_step(message: types.Message, state: FSMContext):
+    if not await _cities_screen_allowed(message.from_user.id):
+        await _deny_cities_screen_message(message)
+        return
+    data = await state.get_data()
+    code = data.get("city_code")
+    tab_base = _dash_or_text(message.text)
+    await update_city(code, tab_base=tab_base)
+    await delete_setting(f"city_tab__{code}")  # легаси-override иначе продолжит перекрывать колонку
+    await reload_cities()
+
+    await state.set_state(None)
+    await message.answer("✅ База вкладки обновлена.", reply_markup=ReplyKeyboardRemove())
+    text = await render_cities_text()
+    await message.answer(text, parse_mode="HTML", reply_markup=await build_cities_keyboard())
 
 
 @router.callback_query(F.data == "admin_city_switch")
