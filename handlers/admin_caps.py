@@ -291,6 +291,11 @@ ADMIN_CAPS: dict[str, str] = {
     "roles_add": "settings",
     "roles_addrole:*": "settings",
     "roles_del:*": "settings",
+    # Phase 09.1 (C, ROLE-03): manager <-> city binding. "roles_city:*" does not swallow
+    # "roles_city_pick:*" -- the prefixes diverge at the char right after "roles_city"
+    # (":" vs "_"), same shape already documented for "roles_cap:*"/"roles_caps:*" above.
+    "roles_city:*": "settings",
+    "roles_city_pick:*": "settings",
     "roles_toggle:*": "settings",
     "settings_back": "settings",
     "settings_cancel": "settings",
