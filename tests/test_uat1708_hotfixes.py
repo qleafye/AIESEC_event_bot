@@ -21,6 +21,8 @@ from aiogram.fsm.storage.memory import MemoryStorage
 
 from config import config
 from database import db
+from handlers import admin as admin_mod
+from handlers import registration as reg_mod
 from handlers.admin_caps import CapabilityMiddleware, required_capability
 
 
@@ -250,3 +252,133 @@ def test_no_state_in_data_behaves_as_before(tmp_path):
 
     assert calls == []
     assert event.answers == ["Недостаточно прав."]
+
+
+# ═══════════════════════════════════════════════════════════════════════════════════════════
+# UAT-02: separate /start greeting for already-registered delegates
+# ═══════════════════════════════════════════════════════════════════════════════════════════
+
+class _KBUser:
+    def __init__(self, uid):
+        self.id = uid
+        self.username = "testuser"
+        self.full_name = "Test User"
+
+
+class _KBChat:
+    def __init__(self, cid):
+        self.id = cid
+
+
+class _KBCapturingMessage:
+    """Copied from tests/test_admin_rereg_260817.py -- captures every (text, reply_markup)
+    sent via .answer()/.answer_photo()."""
+
+    def __init__(self, text, uid):
+        self.text = text
+        self.from_user = _KBUser(uid)
+        self.chat = _KBChat(uid)
+        self.sent = []
+
+    async def answer(self, text=None, reply_markup=None, parse_mode=None, *a, **k):
+        self.sent.append((text, reply_markup))
+
+    async def answer_photo(self, photo, caption=None, reply_markup=None, parse_mode=None, *a, **k):
+        self.sent.append((caption, reply_markup))
+
+    def model_copy(self, update=None):
+        new = _KBCapturingMessage(self.text, self.from_user.id)
+        new.sent = self.sent
+        if update and "from_user" in update:
+            new.from_user = update["from_user"]
+        return new
+
+
+def _register_approved_user(uid, status="approved"):
+    asyncio.run(db.add_user({
+        "telegram_id": uid, "full_name": "Возвращённый Делегат",
+        "registration_date": "2026-08-01",
+    }))
+    asyncio.run(db.set_user_status(uid, status))
+
+
+RETURNING_UID = 940901  # NOT in config.ADMIN_IDS
+
+
+def test_returning_delegate_unset_key_gets_default_registered_text(tmp_path):
+    _ready(tmp_path)
+    _register_approved_user(RETURNING_UID)
+
+    message = _KBCapturingMessage("/start", RETURNING_UID)
+    state = _new_state(RETURNING_UID)
+    asyncio.run(reg_mod.cmd_start(message, state, bot=object(), command=None))
+
+    assert message.sent
+    sent_text = message.sent[0][0]
+    assert sent_text == reg_mod.DEFAULT_START_REGISTERED_TEXT
+    assert reg_mod.DEFAULT_START_TEXT not in sent_text
+    assert "5-7 минут" not in sent_text
+
+
+def test_returning_delegate_gets_registered_default_even_if_start_text_customized(tmp_path):
+    """This is the exact UAT-02 bug: start_text set, start_text_registered NOT set -- the
+    returning delegate must still see the RETURNING default, not the customized newcomer text."""
+    _ready(tmp_path)
+    _register_approved_user(RETURNING_UID)
+    asyncio.run(db.set_setting("start_text", "Заявка займёт 5-7 минут, заполни анкету!"))
+
+    message = _KBCapturingMessage("/start", RETURNING_UID)
+    state = _new_state(RETURNING_UID)
+    asyncio.run(reg_mod.cmd_start(message, state, bot=object(), command=None))
+
+    sent_text = message.sent[0][0]
+    assert sent_text == reg_mod.DEFAULT_START_REGISTERED_TEXT
+    assert "5-7 минут" not in sent_text
+
+
+def test_returning_delegate_custom_registered_text_sent_verbatim(tmp_path):
+    _ready(tmp_path)
+    _register_approved_user(RETURNING_UID)
+    asyncio.run(db.set_setting("start_text_registered", "Рады снова видеть, чемпион!"))
+
+    message = _KBCapturingMessage("/start", RETURNING_UID)
+    state = _new_state(RETURNING_UID)
+    asyncio.run(reg_mod.cmd_start(message, state, bot=object(), command=None))
+
+    assert message.sent[0][0] == "Рады снова видеть, чемпион!"
+
+
+def test_returning_delegate_cleared_key_falls_back_to_default(tmp_path):
+    _ready(tmp_path)
+    _register_approved_user(RETURNING_UID)
+    asyncio.run(db.set_setting("start_text_registered", "temp"))
+    asyncio.run(db.delete_setting("start_text_registered"))
+
+    message = _KBCapturingMessage("/start", RETURNING_UID)
+    state = _new_state(RETURNING_UID)
+    asyncio.run(reg_mod.cmd_start(message, state, bot=object(), command=None))
+
+    assert message.sent[0][0] == reg_mod.DEFAULT_START_REGISTERED_TEXT
+
+
+def test_newcomer_path_unaffected_gets_start_text(tmp_path):
+    _ready(tmp_path)
+    # no user row at all -- newcomer path
+    message = _KBCapturingMessage("/start", 940999)
+    state = _new_state(940999)
+    asyncio.run(reg_mod.cmd_start(message, state, bot=object(), command=None))
+
+    assert message.sent
+    sent_text = message.sent[0][0]
+    assert sent_text == reg_mod.DEFAULT_START_TEXT
+
+
+def test_start_text_registered_key_in_registry_and_admin_screen():
+    from settings_schema import SETTINGS_SCHEMA
+    assert "start_text_registered" in SETTINGS_SCHEMA
+    assert SETTINGS_SCHEMA["start_text_registered"]["type"] == "text"
+    assert SETTINGS_SCHEMA["start_text_registered"]["group"] == "event"
+
+    assert "start_text_registered" in admin_mod._settings_group_keys("event")
+    assert "start_text_registered" in admin_mod._EVENT_FIELD_ORDER
+    assert "start_text_registered" in admin_mod.HTML_SETTINGS
