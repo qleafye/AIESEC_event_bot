@@ -246,6 +246,18 @@ async def mytask_submit_start(callback: types.CallbackQuery, state: FSMContext):
         await callback.answer("Задание не найдено", show_alert=True)
         return
 
+    # WR-06 (09.1-REVIEW.md): show_game_tasks filters the LIST by city, but this handler used
+    # to resolve the task purely from callback_data with no city check -- same class as CR-03,
+    # one layer down. cities_module_on() first so an off module stays byte-identical to
+    # pre-09.1; task.get("event_city") second so an "all cities" task never triggers a check
+    # at all. normalize_city on BOTH sides -- a delegate without a city reads as the default
+    # city, same rule show_game_tasks already uses.
+    if await cities_module_on() and task.get("event_city"):
+        user = await get_user(callback.from_user.id)
+        if normalize_city(user.get("event_city") if user else None) != normalize_city(task["event_city"]):
+            await callback.answer("Это задание для другого города", show_alert=True)
+            return
+
     # A-05 (созвон 13.08): дедлайн мягкий -- НЕ блокирует сдачу. Единственный оставшийся
     # серверный гвард на этом пути -- дубль-сдача (T-09-09), проверяется ниже.
     active = await get_active_submission(task_id, callback.from_user.id)
