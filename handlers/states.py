@@ -105,3 +105,12 @@ class GameSubmit(StatesGroup):
     # CapabilityMiddleware only sits on admin.router, user_actions.router never sees it, so this
     # state was not part of 09-01's ADMIN_CAPS interface-first contract.
     proof = State()   # waiting for confirmation content; task_id carried via state.get_data()
+
+class CoinsManual(StatesGroup):
+    # Phase 14 (14-04, GAME-09): «🪙 Монеты вручную» button wizard — lives under moderate_game
+    # (registered in handlers/admin_caps.py, "state:CoinsManual:*"), same as GameTaskCreate. The
+    # confirm step is a callback (coinsman_confirm) reading state.get_data() directly, not a
+    # fourth State — same shape GameTaskCreate.confirm's own confirm callback (gtconfirm) uses.
+    person = State()  # waiting for a forwarded message / @username to resolve the recipient
+    amount = State()  # waiting for the coin amount (sign already picked via coinsman_sign:*)
+    reason = State()  # waiting for the mandatory reason text

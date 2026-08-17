@@ -84,7 +84,7 @@ from services.scheduler import (
 from services.allowlist import refresh_allowlist, allowlist_size
 from services.background import spawn as _spawn
 from services.game_sync import request_resync as _request_game_resync, set_rebuild as _set_game_rebuild
-from handlers.states import Broadcast, EditSetting, Approval, ReceiptReview, StaffAdd, GameTaskCreate, GameReview
+from handlers.states import Broadcast, EditSetting, Approval, ReceiptReview, StaffAdd, GameTaskCreate, GameReview, CoinsManual
 from handlers.admin_caps import ALL_CAPABILITIES, CAP_LABELS, ROLES, role_caps_key, role_enabled_key, CapabilityMiddleware, required_capability, has_capability, resolve_capabilities, ANY_CAPABILITY, capability_holders
 from keyboards.builders import get_cancel_kb, MENU_BUTTONS, get_main_menu_kb
 from handlers.registration import REG_FLOW, REG_DEFAULTS, REG_LABELS, REG_PRESETS, REG_CATEGORIES, SHEET_HEADERS, STATUS_LABELS, _build_sheet_row, active_sheet_headers, set_sheet_schema, _sheet_value_map, approve_user, dropout_step_label, _apply_party_preset, _apply_short_preset, city_row_tab, incomplete_city_batches
@@ -190,6 +190,7 @@ _ADMIN_MENU_ROWS: list[tuple[str, str]] = [
     ("🏙 Города мероприятия", "admin_cities"),
     ("📋 Задания", "admin_game_tasks"),
     ("🎮 Проверка заданий", "admin_game_review"),
+    ("🪙 Монеты вручную", "admin_coins_manual"),
     ("🔄 Таблица геймы", "admin_game_sync_sheet"),
     ("📊 Статистика геймы", "admin_game_stats"),
 ]
@@ -5818,6 +5819,143 @@ async def game_task_create_cancel(callback: types.CallbackQuery, state: FSMConte
     await callback.answer("Отменено")
     text, kb = await _game_tasks_screen()
     await callback.message.answer(text, parse_mode="HTML", reply_markup=kb)
+
+
+# ── Phase 14 (14-04, GAME-09): «🪙 Монеты вручную» — button wizard, «для людей» (CLAUDE.md):
+# forward/@username person lookup (reuses _resolve_staff_input/roles_add_person's pattern
+# verbatim, not a second parser), a card with the current balance, sign, amount (Task 2), then
+# reason + confirm + ledger write + notification (Task 3). Lives entirely under moderate_game
+# (handlers/admin_caps.py) -- T-14-16 (GAME-09's own threat register): monetary right, not
+# registration-queue right.
+
+def _coinsman_person_kb() -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="➕ Начислить", callback_data="coinsman_sign:plus")],
+        [InlineKeyboardButton(text="➖ Списать", callback_data="coinsman_sign:minus")],
+        [InlineKeyboardButton(text="← Отмена", callback_data="coinsman_cancel")],
+    ])
+
+
+async def _coinsman_card_text(user: dict, balance: int) -> str:
+    """Card shown right after the person resolves -- ФИО, @username, город (only when the
+    cities module is on -- same `cities_module_on()` gate roles screen's own city line uses),
+    current balance. City resolution is best-effort: a manager may not be registered as a
+    delegate themselves (same fallback shape as roles_add_person's display_name)."""
+    tid = user.get("telegram_id")
+    name = html_module.escape(str(user.get("full_name") or user.get("username") or tid))
+    lines = [f"🪙 <b>{name}</b>"]
+    username = user.get("username")
+    if username:
+        lines.append(html_module.escape(str(username)))
+    if await cities_module_on():
+        code = normalize_city(user.get("event_city"))
+        lines.append(f"🏙 {html_module.escape(await city_label(code))}")
+    lines.append(f"Текущий баланс: {balance}🪙")
+    lines.append("")
+    lines.append("Начисляем или списываем?")
+    return "\n".join(lines)
+
+
+@router.callback_query(F.data == "admin_coins_manual")
+async def admin_coins_manual(callback: types.CallbackQuery, state: FSMContext):
+    await state.set_data({})  # explicit clear -- set_state alone does not clear get_data()
+    await state.set_state(CoinsManual.person)
+    await callback.message.answer(
+        "Кому меняем баланс? Перешлите сюда любое сообщение этого человека или пришлите его "
+        "@username.",
+        reply_markup=get_cancel_kb(),
+    )
+    await callback.answer()
+
+
+# Cancel-mid-wizard, registered BEFORE the per-step handlers below (admin.router: first match
+# wins) -- same WR-03-class guard as cancel_game_task_create/grev_step_cancel: «Отмена»/
+# «/cancel» must never fall through into a step handler and get treated as a username/amount/
+# reason. No ledger write happens on cancel at any step (T-14-18's sibling: cancel is always
+# safe, only coinsman_confirm below ever calls add_coins).
+@router.message(StateFilter(CoinsManual), Command("cancel"))
+@router.message(StateFilter(CoinsManual), F.text == "Отмена")
+async def coinsman_cancel_text(message: types.Message, state: FSMContext):
+    await state.set_state(None)
+    await message.answer("Отменено.", reply_markup=ReplyKeyboardRemove())
+    text, kb = await _game_tasks_screen()
+    await message.answer(text, parse_mode="HTML", reply_markup=kb)
+
+
+@router.callback_query(F.data == "coinsman_cancel")
+async def coinsman_cancel_cb(callback: types.CallbackQuery, state: FSMContext):
+    await state.set_state(None)
+    await callback.answer("Отменено")
+    text, kb = await _game_tasks_screen()
+    await callback.message.answer(text, parse_mode="HTML", reply_markup=kb)
+
+
+@router.message(CoinsManual.person)
+async def coinsman_person_step(message: types.Message, state: FSMContext):
+    telegram_id, marker = _resolve_staff_input(message)
+    if telegram_id is None and marker is not None and marker.startswith("@"):
+        user = await get_user_by_username(marker)
+        if user is None:
+            await message.answer(
+                f"Не нашёл {html_module.escape(marker)} среди зарегистрированных. Пришлите "
+                "@username или перешлите его сообщение."
+            )
+            return  # T-14-17-adjacent: stay on the step, nothing recorded yet
+        telegram_id = user["telegram_id"]
+        marker = None
+
+    if telegram_id is None:
+        await message.answer(marker or _STAFF_INPUT_ERROR)
+        return
+
+    user = await get_user(telegram_id)
+    if user is None:
+        await message.answer(
+            "Не нашёл такого человека среди зарегистрированных. Пришлите @username или "
+            "перешлите его сообщение."
+        )
+        return
+
+    await state.update_data(cm_user_id=telegram_id)
+    balance = await get_balance(telegram_id)
+    await message.answer(
+        await _coinsman_card_text(user, balance), parse_mode="HTML",
+        reply_markup=_coinsman_person_kb(),
+    )
+
+
+@router.callback_query(F.data.startswith("coinsman_sign:"))
+async def coinsman_sign_step(callback: types.CallbackQuery, state: FSMContext):
+    sign = callback.data.split(":", 1)[1]
+    if sign not in ("plus", "minus"):
+        await callback.answer("Неизвестная кнопка", show_alert=True)
+        return
+    data = await state.get_data()
+    if data.get("cm_user_id") is None:
+        # Stale card from an earlier/abandoned wizard run -- nothing to charge.
+        await callback.answer("Сначала укажите получателя", show_alert=True)
+        return
+    await state.update_data(cm_sign=sign)
+    await state.set_state(CoinsManual.amount)
+    await callback.message.answer("Сколько монет? Пришлите число, например 5.", reply_markup=get_cancel_kb())
+    await callback.answer()
+
+
+@router.message(CoinsManual.amount)
+async def coinsman_amount_step(message: types.Message, state: FSMContext):
+    # Reuses _parse_coins_amount (not a second parser) -- only the sign is taken from it is
+    # discarded, the sign was already picked via coinsman_sign:*; garbage/zero -> re-ask.
+    parsed = _parse_coins_amount(message.text)
+    if parsed is None or parsed == 0:
+        await message.answer("Не понял число. Пришлите количество монет, например 5:")
+        return
+    value = abs(parsed)
+    data = await state.get_data()
+    sign = data.get("cm_sign")
+    delta = value if sign == "plus" else -value
+    await state.update_data(cm_delta=delta)
+    await state.set_state(CoinsManual.reason)
+    await message.answer("За что? Напишите причину коротко, например: за помощь на стенде.")
 
 
 # ── Phase 9 (GAME-02/03, wave 4, 09-04): «🎮 Проверка заданий» — moderation queue ───────────
