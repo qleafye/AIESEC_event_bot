@@ -65,6 +65,49 @@ def _timeout_capturing_transport(captured):
     return fake
 
 
+class _ProbeSession(FailoverAiohttpSession):
+    """Test subclass that overrides _probe_primary to pop scripted results from a list
+    instead of touching the network. A scripted result may be an Exception INSTANCE, which
+    this override raises (exercising _probe_loop's own try/except around _probe_primary).
+
+    `probed_event`, if given, is `.set()` synchronously right as each attempt starts --
+    lets a test do `await evt.wait(); evt.clear()` in a loop for deterministic
+    "N attempts have started" synchronization instead of blind asyncio.sleep(0) pumping.
+    """
+
+    def __init__(self, *args, probe_results=None, probed_event=None, **kwargs):
+        self._probe_results = list(probe_results or [])
+        self._probed_event = probed_event
+        super().__init__(*args, **kwargs)
+
+    async def _probe_primary(self) -> bool:
+        result = self._probe_results.pop(0) if self._probe_results else False
+        if self._probed_event is not None:
+            self._probed_event.set()
+        if isinstance(result, Exception):
+            raise result
+        return result
+
+
+class _FakeSleep:
+    """Records requested delays and returns (near-)immediately -- used as sleep_func so
+    _probe_loop's `await self._sleep(recheck_seconds)` doesn't actually block the test.
+
+    Still does a real `asyncio.sleep(0)` checkpoint: none of the fakes in this module
+    (this sleep, _ProbeSession._probe_primary) touch real I/O, so without an explicit
+    checkpoint the probe loop would spin as a tight, never-yielding loop once its scripted
+    results run out (`_probe_primary` -> False forever) and would starve the test's own
+    coroutine instead of interleaving with it.
+    """
+
+    def __init__(self):
+        self.delays: list[float] = []
+
+    async def __call__(self, seconds: float) -> None:
+        self.delays.append(seconds)
+        await asyncio.sleep(0)
+
+
 class _FakeBot:
     def __init__(self, raise_on_send=False):
         self.sent = []
@@ -77,9 +120,20 @@ class _FakeBot:
 
 
 async def _drain_background():
+    """Await all fire-and-forget background tasks spawned by the test (admin alert sends).
+
+    The background primary-probe loop (_probe_loop) is long-lived by design -- it only
+    exits once it returns to primary -- so gathering it unconditionally would hang the
+    whole test. Cancel any pending probe-loop tasks first (identified by coroutine
+    __qualname__, since they're not otherwise distinguishable from alert tasks), then
+    gather everything else normally.
+    """
     pending = [t for t in asyncio.all_tasks() if t is not asyncio.current_task()]
+    for t in pending:
+        if getattr(t.get_coro(), "__qualname__", "").endswith("_probe_loop"):
+            t.cancel()
     if pending:
-        await asyncio.gather(*pending)
+        await asyncio.gather(*pending, return_exceptions=True)
 
 
 def _reset_alert_state():
@@ -187,9 +241,13 @@ def test_sticky_after_rotation_second_request_stays_on_backup(monkeypatch):
     assert session.active_index == 1
 
 
-# ── Test 4: recheck ──────────────────────────────────────────────────────────
+# ── Test 4: recheck moved off the live path (background probe) ─────────────────
 
-def test_recheck_after_interval_retries_primary_first(monkeypatch):
+def test_live_requests_never_probe_primary_after_recheck_interval(monkeypatch):
+    """INVERTS the old (pre-background-probe) assertion on purpose. Prod 17.08: a live
+    request must never be spent testing a known-dead primary link -- return-to-primary now
+    happens EXCLUSIVELY via the background probe (see the Test 12 block below), never on
+    the live request path, no matter how much simulated time has passed."""
     calls = []
     monkeypatch.setattr(AiohttpSession, "make_request", _fake_transport({0}, calls))
     clock = _Clock()
@@ -199,19 +257,21 @@ def test_recheck_after_interval_retries_primary_first(monkeypatch):
             [PRIMARY, BACKUP], recheck_seconds=600, time_source=clock
         )
         await session.make_request(object(), object())  # rotates to backup
-        clock.advance(601)
+        clock.advance(601)  # past recheck_seconds -- irrelevant now, no live-path gate
         calls.clear()
         result = await session.make_request(object(), object())
         return session, result
 
     session, result = asyncio.run(go())
 
-    assert calls[0] == 0  # first transport call of the second request probes primary
-    assert result == "result-1"  # primary still dead -> falls through to backup
+    assert calls == [1]  # straight to backup -- primary never touched on the live path
+    assert result == "result-1"
     assert session.active_index == 1
 
 
 def test_recheck_before_interval_stays_sticky(monkeypatch):
+    """Still valid post-background-probe: with no time advanced at all, the live request
+    goes straight to backup regardless of whether a probe is separately running."""
     calls = []
     monkeypatch.setattr(AiohttpSession, "make_request", _fake_transport({0}, calls))
     clock = _Clock()
@@ -228,7 +288,7 @@ def test_recheck_before_interval_stays_sticky(monkeypatch):
 
     session, result = asyncio.run(go())
 
-    assert calls == [1]  # no primary probe yet
+    assert calls == [1]  # no primary probe on the live path
     assert result == "result-1"
 
 
@@ -599,3 +659,147 @@ def test_rotate_from_with_no_error_argument_logs_unknown_cause(caplog):
 
     assert "cause: unknown" in caplog.text
     assert session.active_index == 1
+
+
+# ── Test 12: background probe returns to primary, never on a live request ──────
+
+def test_probe_loop_returns_to_primary_only_after_probe_succeeds(monkeypatch):
+    calls = []
+    monkeypatch.setattr(AiohttpSession, "make_request", _fake_transport({0}, calls))
+    fake_sleep = _FakeSleep()
+
+    async def go():
+        session = _ProbeSession(
+            [PRIMARY, BACKUP],
+            recheck_seconds=600,
+            sleep_func=fake_sleep,
+            probe_results=[False, False, True],
+        )
+        await session.make_request(object(), object())  # rotates to backup, starts probe
+        # Deterministic: the task self-terminates the moment it returns to primary.
+        await session._probe_task
+        return session
+
+    session = asyncio.run(go())
+
+    assert session.active_index == 0
+    assert fake_sleep.delays == [600, 600, 600]  # one sleep per probe attempt
+
+
+def test_probe_loop_keeps_retrying_while_probe_fails_or_raises(monkeypatch):
+    calls = []
+    monkeypatch.setattr(AiohttpSession, "make_request", _fake_transport({0}, calls))
+    fake_sleep = _FakeSleep()
+    probed = asyncio.Event()
+
+    async def go():
+        session = _ProbeSession(
+            [PRIMARY, BACKUP],
+            recheck_seconds=600,
+            sleep_func=fake_sleep,
+            probe_results=[False, RuntimeError("boom"), False],
+            probed_event=probed,
+        )
+        await session.make_request(object(), object())  # rotates to backup, starts probe
+        for _ in range(3):
+            await probed.wait()
+            probed.clear()
+        # One more scheduling slot so the loop processes the 3rd result and loops back.
+        await asyncio.sleep(0)
+        return session
+
+    session = asyncio.run(go())
+
+    assert session.active_index == 1  # stayed on backup -- probe never succeeded
+    assert len(fake_sleep.delays) >= 3  # kept retrying past both False and the exception
+
+
+def test_interleaved_live_requests_stay_on_backup_while_probe_keeps_failing(monkeypatch):
+    """Live requests and a concurrently-running (always-failing) background probe must
+    never interact: every live request still goes straight to the backup index."""
+    calls = []
+    monkeypatch.setattr(AiohttpSession, "make_request", _fake_transport({0}, calls))
+    fake_sleep = _FakeSleep()
+    probed = asyncio.Event()
+
+    async def go():
+        session = _ProbeSession(
+            [PRIMARY, BACKUP],
+            recheck_seconds=600,
+            sleep_func=fake_sleep,
+            probe_results=[False, False],
+            probed_event=probed,
+        )
+        await session.make_request(object(), object())  # rotates to backup, starts probe
+        calls.clear()
+        for _ in range(2):
+            await probed.wait()
+            probed.clear()
+            await session.make_request(object(), object())
+        return session
+
+    session = asyncio.run(go())
+
+    assert calls == [1, 1]  # every live request during the probe window hit backup only
+    assert session.active_index == 1
+
+
+def test_recheck_seconds_zero_starts_no_background_probe(monkeypatch):
+    calls = []
+    monkeypatch.setattr(AiohttpSession, "make_request", _fake_transport({0}, calls))
+
+    async def go():
+        session = FailoverAiohttpSession([PRIMARY, BACKUP], recheck_seconds=0)
+        await session.make_request(object(), object())  # rotates to backup
+        return session
+
+    session = asyncio.run(go())
+
+    assert session._probe_task is None
+    assert session.active_index == 1  # stays on backup indefinitely -- parity w/ before
+
+
+def test_single_link_chain_never_starts_a_probe(monkeypatch):
+    calls = []
+    monkeypatch.setattr(AiohttpSession, "make_request", _fake_transport({0}, calls))
+
+    async def go():
+        session = FailoverAiohttpSession([PRIMARY])
+        try:
+            await session.make_request(object(), object())
+        except TelegramNetworkError:
+            pass
+        return session
+
+    session = asyncio.run(go())
+
+    assert session._probe_task is None
+
+
+def test_ensure_probe_task_twice_yields_the_same_task(monkeypatch):
+    calls = []
+    monkeypatch.setattr(AiohttpSession, "make_request", _fake_transport({0}, calls))
+
+    async def go():
+        session = FailoverAiohttpSession([PRIMARY, BACKUP], recheck_seconds=600)
+        await session.make_request(object(), object())  # rotates to backup, starts probe
+        first_task = session._probe_task
+        session._ensure_probe_task()
+        second_task = session._probe_task
+        await _drain_background()
+        return first_task, second_task
+
+    first_task, second_task = asyncio.run(go())
+
+    assert first_task is not None
+    assert first_task is second_task  # never two concurrent loops
+
+
+def test_probe_timeout_uses_connect_timeout_for_connect_and_sock_connect():
+    session = FailoverAiohttpSession([PRIMARY, BACKUP], connect_timeout=5)
+    ct = session._probe_timeout()
+
+    assert isinstance(ct, ClientTimeout)
+    assert ct.connect == 5
+    assert ct.sock_connect == 5
+    assert ct.total >= ct.connect  # bounded -- a dead link costs ~5s, not the full 90s
