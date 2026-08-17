@@ -6,7 +6,7 @@ from logging.handlers import RotatingFileHandler
 from aiogram import Bot, Dispatcher
 from aiogram.fsm.storage.memory import MemoryStorage
 from config import config
-from database.db import init_db, get_setting
+from database.db import init_db, get_setting, set_setting
 from handlers import registration, user_actions, admin, payment
 from services.reminders import pending_reminder_loop
 from services.scheduler import init_scheduler
@@ -139,6 +139,31 @@ async def _maybe_ensure_city_sheet_headers():
         # a full sync_named_worksheet rewrite, created there on-demand once rows exist.
 
 
+async def seed_main_sheet_tab_from_env() -> bool:
+    """Phase 14 (CFG-01): GOOGLE_SHEET_TAB (.env) is DEPRECATED as a day-to-day setting — it is
+    read exactly ONCE at startup to seed bot_settings.main_sheet_tab, then ignored forever.
+    Idempotent by design (T-14-06): if a manager has already picked a tab from «⚙️ Настройки →
+    📄 Вкладки таблицы», this function must NOT overwrite it — otherwise every container
+    restart would silently revert the manager's own choice back to whatever .env still says.
+    Must run AFTER init_db() and BEFORE the first active_sheet_headers() resolve (services/sheets.py
+    stage 2 still reads config.GOOGLE_SHEET_TAB as a safety-net fallback — leave that chain
+    intact, this is only the one-time migration write)."""
+    value = (config.GOOGLE_SHEET_TAB or "").strip().strip('"').strip("'").strip()
+    if not value:
+        return False
+    existing = (await get_setting("main_sheet_tab")) or ""
+    if existing.strip():
+        return False
+    await set_setting("main_sheet_tab", value)
+    logging.getLogger(__name__).warning(
+        "GOOGLE_SHEET_TAB в .env устарел (Phase 14, CFG-01): значение %r один раз перенесено в "
+        "bot_settings.main_sheet_tab. Дальше меняйте вкладку из «⚙️ Настройки → 📄 Вкладки "
+        "таблицы» в боте — .env для этого больше не читается.",
+        value,
+    )
+    return True
+
+
 async def main():
     _configure_logging()
     logger = logging.getLogger(__name__)
@@ -146,6 +171,12 @@ async def main():
     
     # Init DB
     await init_db()
+
+    # Phase 14 (CFG-01): one-time GOOGLE_SHEET_TAB -> bot_settings.main_sheet_tab migration.
+    # MUST run before active_sheet_headers() below — otherwise the very first header resolve
+    # would fall through to services/sheets.py stage 2 (reading .env directly) instead of
+    # seeing the seeded registry value.
+    await seed_main_sheet_tab_from_env()
 
     # Ensure the Google Sheet has a column-name header row (fail-soft, off-thread).
     # Only the enabled-question columns — set the event type/preset before delegates register.
