@@ -641,6 +641,19 @@ async def process_question(message: types.Message, state: FSMContext, bot: Bot):
     # the same claim target (08-RESEARCH Pitfall 6). Do not move this call after the fan-out.
     question_id = await create_question(message.from_user.id, question_text)
 
+    # Phase 09.2 (D, CITY-06): resolve the delegate's city ONCE, same idiom as
+    # show_game_tasks (cities_module_on -> get_user -> normalize_city). Fail-soft: a resolve
+    # error must never eat the question, so any exception here falls back to city=None
+    # (today's global fan-out), same shape as the fail-soft gates in cmd_start.
+    city = None
+    if await cities_module_on():
+        try:
+            _q_user = await get_user(message.from_user.id)
+            city = normalize_city(_q_user.get("event_city") if _q_user else None)
+        except Exception as e:
+            logger.error(f"Failed to resolve city for question from {message.from_user.id}: {e}")
+            city = None
+
     admin_text = (
         f"❓ <b>Новый вопрос от {user_info}:</b>\n"
         f"🆔 <code>{message.from_user.id}</code>\n"
@@ -650,8 +663,10 @@ async def process_question(message: types.Message, state: FSMContext, bot: Bot):
     )
 
     # D-13: fan out to every current moderate_reg holder (falls back to config.ADMIN_IDS if
-    # nobody holds it -- T-08-31, never silently dropped).
-    sent_count = await notify_by_capability(bot, "moderate_reg", admin_text, parse_mode="HTML")
+    # nobody holds it -- T-08-31, never silently dropped). Phase 09.2 (D): city narrows the
+    # fan-out to the delegate's city (None = today's global fan-out); the "filter emptied the
+    # list" fallback lives inside notify_by_capability/capability_holders, not here.
+    sent_count = await notify_by_capability(bot, "moderate_reg", admin_text, parse_mode="HTML", city=city)
 
     if sent_count > 0:
         await message.answer("Твой вопрос отправлен!", reply_markup=await get_main_menu_kb(message.from_user.id))
