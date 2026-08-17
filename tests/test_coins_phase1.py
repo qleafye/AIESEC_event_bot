@@ -45,7 +45,9 @@ def test_coins_handler_is_capability_guarded():
 
     # 2) the command resolves to a real capability in the map -- deny-by-default (D-02)
     #    means an unmapped command would be locked for everyone, including admins.
-    assert required_capability(command="coins") == "moderate_reg"
+    # Phase 14 (14-04, GAME-09): repointed off the applications-queue right -- coins are
+    # geyma's territory now.
+    assert required_capability(command="coins") == "moderate_game"
 
 
 # ── leaderboard rendering ────────────────────────────────────────────────────

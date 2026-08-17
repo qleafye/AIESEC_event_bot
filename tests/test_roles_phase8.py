@@ -654,7 +654,7 @@ def test_admin_commands_match_d17_mapping():
 
     d17 = {
         "find": "moderate_reg",
-        "coins": "moderate_reg",
+        "coins": "moderate_game",  # перевешено GAME-09 (Phase 14): монеты — территория геймы
         "stats": "stats",
         "stats_monthly": "stats",
         "export": "stats",

@@ -248,7 +248,6 @@ ADMIN_CAPS: dict[str, str] = {
     "appr_resume:*": "moderate_reg",
     "appr_skip:*": "moderate_reg",
     "admin_stuck_questions": "moderate_reg",  # T-08-33 quick task, part D: stuck-question list
-    "cmd:coins": "moderate_reg",
     "cmd:create_link": "moderate_reg",
     "cmd:find": "moderate_reg",
     "special:question_reply": "moderate_reg",
@@ -417,6 +416,16 @@ ADMIN_CAPS: dict[str, str] = {
     "gtunarchive:*": "moderate_game",
     "gtdelete:*": "moderate_game",
     "gtdelete_go:*": "moderate_game",
+
+    # Phase 14 (14-04, GAME-09): monetary right, not registration-queue right -- coins are
+    # geyma's territory, not the applications queue's. Physically relocated out of the
+    # applications-moderation block above (this is the single "cmd:coins" entry, not a dupe).
+    "cmd:coins": "moderate_game",
+    "admin_coins_manual": "moderate_game",
+    "coinsman_sign:*": "moderate_game",
+    "coinsman_confirm": "moderate_game",
+    "coinsman_cancel": "moderate_game",
+    "state:CoinsManual:*": "moderate_game",
 
     # checkin: no keys yet -- Phase 12. Capability already exists in
     # ALL_CAPABILITIES/ROLES so a future phase adds handlers, not registry plumbing.
