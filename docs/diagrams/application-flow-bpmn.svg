@@ -1,0 +1,152 @@
+<svg xmlns='http://www.w3.org/2000/svg' width='900' height='1600' viewBox='0 0 900 1600' font-family='-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif' font-size='12'>
+<defs>
+<marker id='arr' viewBox='0 0 10 10' refX='9' refY='5' markerWidth='8' markerHeight='8' orient='auto-start-reverse'><path d='M0,0 L10,5 L0,10 z' fill='#374151'/></marker>
+<style>
+ .lane{fill:#f9fafb;stroke:#9ca3af;stroke-width:1}
+ .lane2{fill:#f3f4f6}
+ .hdr{fill:#e5e7eb;stroke:#9ca3af}
+ .task{fill:#ffffff;stroke:#374151;stroke-width:1.2}
+ .bot{fill:#eef2ff;stroke:#4338ca;stroke-width:1.2}
+ .gw{fill:#ffffff;stroke:#b45309;stroke-width:1.4}
+ .ev{fill:#ffffff;stroke:#111827;stroke-width:1.4}
+ .end{fill:#ffffff;stroke:#111827;stroke-width:3}
+ .db{fill:#eef2ff;stroke:#4338ca;stroke-width:1.2}
+ .bg{fill:#f5f3ff;stroke:#7c3aed;stroke-width:1.2;stroke-dasharray:5 3}
+ .e{fill:none;stroke:#374151;stroke-width:1.3;marker-end:url(#arr)}
+ .ed{fill:none;stroke:#7c3aed;stroke-width:1.3;stroke-dasharray:5 3;marker-end:url(#arr)}
+ .t{fill:#111827;text-anchor:middle;dominant-baseline:middle}
+ .h{fill:#111827;text-anchor:middle;dominant-baseline:middle;font-weight:600;font-size:14px}
+ .lbl{fill:#374151;font-size:11px;text-anchor:middle;dominant-baseline:middle}
+ .lblbg{fill:#ffffff;stroke:none}
+ .note{fill:#4b5563;font-size:11px}
+</style></defs>
+<rect x='0' y='0' width='900' height='1600' fill='#ffffff'/>
+<rect class='lane' x='40' y='40' width='260' height='1560'/>
+<rect class='hdr' x='40' y='0' width='260' height='40'/>
+<text class='h' x='170.0' y='20'>Делегат</text>
+<rect class='lane lane2' x='300' y='40' width='380' height='1560'/>
+<rect class='hdr' x='300' y='0' width='380' height='40'/>
+<text class='h' x='490.0' y='20'>Бот</text>
+<rect class='lane' x='680' y='40' width='220' height='1560'/>
+<rect class='hdr' x='680' y='0' width='220' height='40'/>
+<text class='h' x='790.0' y='20'>Менеджер</text>
+<rect class='hdr' x='0' y='0' width='40' height='1600'/>
+<text class='h' transform='translate(20,800.0) rotate(-90)'>Путь заявки: от /start до подтверждённой оплаты</text>
+<rect class='ev' x='70.0' y='48.0' width='200' height='44' rx='20'/>
+<text class='t' x='170' y='62.5'>/start по deep-link:</text>
+<text class='t' x='170' y='77.5'>город · метка кампании · реферал</text>
+<polygon class='gw' points='430,125 460,155 430,185 400,155'/>
+<rect class='lblbg' x='398.2' y='140' width='63.6' height='30' opacity='0.92'/>
+<text class='t' x='430' y='147.5'>Предотбор</text>
+<text class='t' x='430' y='162.5'>включён?</text>
+<polygon class='gw' points='430,210 460,240 430,270 400,240'/>
+<rect class='lblbg' x='388.6' y='225' width='82.80000000000001' height='30' opacity='0.92'/>
+<text class='t' x='430' y='232.5'>@username</text>
+<text class='t' x='430' y='247.5'>в allowlist?</text>
+<rect class='bot' x='330.0' y='303.0' width='200' height='44' rx='6'/>
+<text class='t' x='430' y='317.5'>Собирает шаги REG_FLOW из</text>
+<text class='t' x='430' y='332.5'>включённых вопросов и трека</text>
+<rect class='task' x='70.0' y='388.0' width='200' height='44' rx='6'/>
+<text class='t' x='170' y='402.5'>Отвечает на вопросы анкеты</text>
+<text class='t' x='170' y='417.5'>трек · город · согласия · резюме</text>
+<rect class='task' x='70.0' y='473.0' width='200' height='44' rx='6'/>
+<text class='t' x='170' y='495.0'>Подтверждает сводку ответов</text>
+<path class='db' d='M340.0,478.0 a90.0,7 0 0 1 180,0 v34 a90.0,7 0 0 1 -180,0 z'/><ellipse class='db' cx='430' cy='478.0' rx='90.0' ry='7'/>
+<text class='t' x='430' y='493.5'>SQLite</text>
+<text class='t' x='430' y='508.5'>users · reg_started · consents</text>
+<polygon class='gw' points='430,550 460,580 430,610 400,580'/>
+<rect class='lblbg' x='398.2' y='565' width='63.6' height='30' opacity='0.92'/>
+<text class='t' x='430' y='572.5'>Модерация</text>
+<text class='t' x='430' y='587.5'>вручную?</text>
+<rect class='bg' x='505.0' y='558.0' width='170' height='44' rx='6'/>
+<text class='t' x='590' y='572.5'>Фон: строка → Google Sheets</text>
+<text class='t' x='590' y='587.5'>3 повтора 5/15/30 с, алерт</text>
+<rect class='bot' x='505.0' y='643.0' width='170' height='44' rx='6'/>
+<text class='t' x='590' y='657.5'>Уведомляет менеджеров</text>
+<text class='t' x='590' y='672.5'>с правом moderate_reg</text>
+<polygon class='gw' points='790,718 822,750 790,782 758,750'/>
+<rect class='lblbg' x='723.0' y='735' width='134.0' height='30' opacity='0.92'/>
+<text class='t' x='790' y='742.5'>Карточка заявки:</text>
+<text class='t' x='790' y='757.5'>одобрить / отклонить</text>
+<rect class='end' x='80.0' y='730.0' width='180' height='40' rx='20'/>
+<text class='t' x='170' y='742.5'>Отказ / отклонение</text>
+<text class='t' x='170' y='757.5'>с причиной</text>
+<rect class='bot' x='330.0' y='813.0' width='200' height='44' rx='6'/>
+<text class='t' x='430' y='827.5'>status = approved</text>
+<text class='t' x='430' y='842.5'>+ статус в таблице (фон)</text>
+<polygon class='gw' points='430,890 460,920 430,950 400,920'/>
+<rect class='lblbg' x='398.2' y='905' width='63.6' height='30' opacity='0.92'/>
+<text class='t' x='430' y='912.5'>Оплата</text>
+<text class='t' x='430' y='927.5'>включена?</text>
+<rect class='task' x='70.0' y='983.0' width='200' height='44' rx='6'/>
+<text class='t' x='170' y='1005.0'>Выбирает тариф</text>
+<rect class='bot' x='330.0' y='1068.0' width='200' height='44' rx='6'/>
+<text class='t' x='430' y='1082.5'>Реквизиты + напоминания</text>
+<text class='t' x='430' y='1097.5'>T-3 / T-1 (APScheduler)</text>
+<rect class='task' x='70.0' y='1153.0' width='200' height='44' rx='6'/>
+<text class='t' x='170' y='1175.0'>Загружает чек (PDF / фото)</text>
+<rect class='bot' x='320.0' y='1238.0' width='220' height='44' rx='6'/>
+<text class='t' x='430' y='1252.5'>payment_status = receipt_sent</text>
+<text class='t' x='430' y='1267.5'>пинг менеджерам moderate_receipts</text>
+<polygon class='gw' points='790,1228 822,1260 790,1292 758,1260'/>
+<rect class='lblbg' x='726.2' y='1245' width='127.60000000000001' height='30' opacity='0.92'/>
+<text class='t' x='790' y='1252.5'>Карточка чека:</text>
+<text class='t' x='790' y='1267.5'>подтвердить / откл.</text>
+<rect class='bot' x='330.0' y='1408.0' width='200' height='44' rx='6'/>
+<text class='t' x='430' y='1422.5'>payment_status = paid</text>
+<text class='t' x='430' y='1437.5'>напоминания T-3/T-1 отменены</text>
+<rect class='end' x='70.0' y='1493.0' width='200' height='44' rx='20'/>
+<text class='t' x='170' y='1507.5'>Участник: меню, коины,</text>
+<text class='t' x='170' y='1522.5'>рейтинг, вопросы организаторам</text>
+<path class='e' d='M270,70 L430,70 L430,125'/>
+<path class='e' d='M430,185 L430,210'/>
+<rect class='lblbg' x='419.5' y='189.5' width='21.0' height='16'/>
+<text class='lbl' x='430.0' y='197.5'>да</text>
+<path class='e' d='M400,155 L320,155 L320,325 L330,325'/>
+<rect class='lblbg' x='306.25' y='190' width='27.5' height='16'/>
+<text class='lbl' x='320' y='198'>нет</text>
+<path class='e' d='M430,270 L430,303'/>
+<rect class='lblbg' x='419.5' y='278.5' width='21.0' height='16'/>
+<text class='lbl' x='430.0' y='286.5'>да</text>
+<path class='e' d='M400,240 L60,240 L60,750 L80,750'/>
+<rect class='lblbg' x='101.25' y='222' width='27.5' height='16'/>
+<text class='lbl' x='115' y='230'>нет</text>
+<path class='e' d='M430,347 L430,410 L270,410'/>
+<path class='e' d='M170,432 L170,473'/>
+<path class='e' d='M270,495 L340,495'/>
+<path class='e' d='M430,519 L430,550'/>
+<path class='ed' d='M520,495 L590,495 L590,558'/>
+<path class='e' d='M460,580 L480,580 L480,665 L505,665'/>
+<rect class='lblbg' x='469.5' y='614' width='21.0' height='16'/>
+<text class='lbl' x='480' y='622'>да</text>
+<path class='e' d='M675,665 L790,665 L790,718'/>
+<path class='e' d='M430,610 L430,813'/>
+<rect class='lblbg' x='431.0' y='657' width='34.0' height='16'/>
+<text class='lbl' x='448' y='665'>авто</text>
+<path class='e' d='M758,750 L260,750'/>
+<rect class='lblbg' x='636.75' y='730' width='66.5' height='16'/>
+<text class='lbl' x='670' y='738'>отклонить</text>
+<path class='e' d='M790,782 L790,835 L530,835'/>
+<rect class='lblbg' x='800.0' y='797' width='60.0' height='16'/>
+<text class='lbl' x='830' y='805'>одобрить</text>
+<path class='e' d='M430,857 L430,890'/>
+<path class='e' d='M400,920 L60,920 L60,1515 L70,1515'/>
+<rect class='lblbg' x='101.25' y='902' width='27.5' height='16'/>
+<text class='lbl' x='115' y='910'>нет</text>
+<path class='e' d='M430,950 L430,1005 L270,1005'/>
+<rect class='lblbg' x='437.5' y='964' width='21.0' height='16'/>
+<text class='lbl' x='448' y='972'>да</text>
+<path class='e' d='M170,1027 L170,1090 L330,1090'/>
+<path class='e' d='M430,1112 L430,1175 L270,1175'/>
+<path class='e' d='M170,1197 L170,1260 L320,1260'/>
+<path class='e' d='M540,1260 L758,1260'/>
+<path class='e' d='M790,1292 L790,1345 L75,1345 L75,1175 L70,1175'/>
+<rect class='lblbg' x='555.0' y='1325' width='170' height='16'/>
+<text class='lbl' x='640' y='1333'>отклонён — загрузить снова</text>
+<path class='e' d='M822,1260 L860,1260 L860,1430 L530,1430'/>
+<rect class='lblbg' x='780.25' y='1410' width='79.5' height='16'/>
+<text class='lbl' x='820' y='1418'>подтвердить</text>
+<path class='e' d='M430,1452 L430,1515 L270,1515'/>
+<text class='note' x='310' y='1560'>Ромб — развилка (гейт по настройке или решение менеджера); синие — автоматика бота;</text>
+<text class='note' x='310' y='1576'>пунктир — фоновая задача, делегат её не ждёт; жирный контур — конец процесса.</text>
+</svg>
