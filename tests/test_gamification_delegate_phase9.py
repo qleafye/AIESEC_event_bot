@@ -62,11 +62,15 @@ class FakeUser:
 
 
 class FakeMessage:
-    def __init__(self, text=None, user_id=DELEGATE_ID, photo=None, document=None):
+    def __init__(self, text=None, user_id=DELEGATE_ID, photo=None, document=None,
+                 caption=None, media_group_id=None, voice=None):
         self.text = text
         self.from_user = FakeUser(user_id)
         self.photo = photo
         self.document = document
+        self.caption = caption
+        self.media_group_id = media_group_id
+        self.voice = voice
         self.answers = []
 
     async def answer(self, text, parse_mode=None, reply_markup=None):
@@ -245,9 +249,22 @@ def test_mytask_submit_past_deadline_still_opens_with_warning(tmp_path):
     state, callback = _start_submission(task_id)
     assert callback.answers == [(None, False)]  # plain callback.answer(), not an alert
     assert asyncio.run(state.get_state()) == GameSubmit.proof
-    prompt, _pm, _rm = callback.message.answers[-1]
+    prompt, _pm, _rm = callback.message.answers[-2]  # -1 is the «Готово» tail message
     assert prompt.startswith("⏰ Срок сдачи вышел.")
     assert "менеджер" in prompt.lower()
+
+
+# Phase 09.1 (A) rewrite note: the strict single-shot proof_type validation this section used
+# to test is GONE by design (delegate must be able to send ANY combination of parts, finalize
+# only by «✅ Готово» -- see 09.1-CONTEXT.md). These tests are rewritten to the new
+# accumulate-then-finalize contract; the new file tests/test_game_free_proof_091.py carries the
+# exhaustive behavior matrix (empty/album/multi-part), this file keeps the delegate-facing
+# smoke coverage in place.
+
+def _gs_done(state, uid=DELEGATE_ID) -> "FakeCallback":
+    callback = FakeCallback("gs_done", user_id=uid)
+    asyncio.run(ua_mod.finalize_game_submission(callback, FakeBot(), state))
+    return callback
 
 
 def test_mytask_submit_prompts_matching_proof_type(tmp_path):
@@ -259,14 +276,33 @@ def test_mytask_submit_prompts_matching_proof_type(tmp_path):
         "text": "Напиши текстом:",
         "link": "Пришли ссылку:",
     }
-    for proof_type, expected_tail in expectations.items():
+    for proof_type, expected_head in expectations.items():
         task_id = _seed_task(proof_type=proof_type, deadline_at="2026-12-31 23:59:00")
         _state, callback = _start_submission(task_id)
-        prompt, _pm, _rm = callback.message.answers[-1]
-        assert prompt == expected_tail
+        prompt, _pm, _rm = callback.message.answers[-2]  # 2nd-to-last: the prompt itself
+        assert prompt.startswith(expected_head)
+        assert "Готово" in prompt  # game_proof_done_hint always appended
+        tail, _pm2, kb = callback.message.answers[-1]  # last: the «Готово» button message
+        assert kb is not None
 
 
-def test_submit_photo_extracts_file_id_and_creates_submission(tmp_path):
+def test_mytask_submit_multi_type_prompt_lists_each_and_stays_generic_for_none(tmp_path):
+    _db_ready(tmp_path)
+    _seed_delegate()
+    task_id = _seed_task(proof_type="photo,text", deadline_at="2026-12-31 23:59:00")
+    _state, callback = _start_submission(task_id)
+    prompt, _pm, _rm = callback.message.answers[-2]
+    assert prompt.startswith("Пришли подтверждение:")
+    assert "Пришли скриншот/фото:" in prompt
+    assert "Напиши текстом:" in prompt
+
+    task_id2 = _seed_task(proof_type="", deadline_at="2026-12-31 23:59:00")
+    _state2, callback2 = _start_submission(task_id2)
+    prompt2, _pm2, _rm2 = callback2.message.answers[-2]
+    assert prompt2.startswith("Пришли подтверждение:")
+
+
+def test_submit_photo_accumulates_then_done_creates_submission_and_part(tmp_path):
     _db_ready(tmp_path)
     _seed_delegate()
     task_id = _seed_task(proof_type="photo", deadline_at="2026-12-31 23:59:00")
@@ -274,26 +310,66 @@ def test_submit_photo_extracts_file_id_and_creates_submission(tmp_path):
 
     message = FakeMessage(photo=[FakePhotoSize("small_id"), FakePhotoSize("big_id")])
     asyncio.run(ua_mod.receive_proof(message, FakeBot(), state))
+    assert asyncio.run(state.get_state()) == GameSubmit.proof  # not finalized yet
+    assert asyncio.run(db.list_all_submissions()) == []  # no timeout-driven insert
 
+    callback = _gs_done(state)
     assert asyncio.run(state.get_state()) is None
     submissions = asyncio.run(db.list_all_submissions())
     assert len(submissions) == 1
     assert submissions[0]["content"] == "big_id"
     assert submissions[0]["content_type"] == "photo"
-    assert "Принято!" in message.answers[-1][0]
+    parts = asyncio.run(db.list_submission_parts(submissions[0]["id"]))
+    assert [p["kind"] for p in parts] == ["photo"]
+    assert "Принято!" in callback.message.answers[-1][0]
 
 
-def test_submit_wrong_content_type_is_rereprompted(tmp_path):
+def test_submit_photo_plus_text_lands_as_two_parts(tmp_path):
     _db_ready(tmp_path)
     _seed_delegate()
     task_id = _seed_task(proof_type="photo", deadline_at="2026-12-31 23:59:00")
     state, _callback = _start_submission(task_id)
 
-    message = FakeMessage(text="вот мой скрин, честно")
+    asyncio.run(ua_mod.receive_proof(
+        FakeMessage(photo=[FakePhotoSize("only_id")]), FakeBot(), state,
+    ))
+    asyncio.run(ua_mod.receive_proof(
+        FakeMessage(text="вот мой скрин, честно"), FakeBot(), state,
+    ))
+
+    _gs_done(state)
+    submissions = asyncio.run(db.list_all_submissions())
+    assert len(submissions) == 1
+    parts = asyncio.run(db.list_submission_parts(submissions[0]["id"]))
+    assert [p["kind"] for p in parts] == ["photo", "text"]
+
+
+def test_submit_unsupported_content_is_soft_rejected_state_stays(tmp_path):
+    _db_ready(tmp_path)
+    _seed_delegate()
+    task_id = _seed_task(proof_type="photo", deadline_at="2026-12-31 23:59:00")
+    state, _callback = _start_submission(task_id)
+
+    message = FakeMessage(voice=object())  # neither photo, document, nor text
     asyncio.run(ua_mod.receive_proof(message, FakeBot(), state))
 
     assert asyncio.run(state.get_state()) == GameSubmit.proof  # stays put
-    assert "скриншот/фото" in message.answers[-1][0]
+    assert asyncio.run(db.list_all_submissions()) == []
+    data = asyncio.run(state.get_data())
+    assert data.get("gs_parts") == []
+
+
+def test_gs_done_on_empty_parts_shows_hint_and_keeps_state(tmp_path):
+    _db_ready(tmp_path)
+    _seed_delegate()
+    task_id = _seed_task(proof_type="text", deadline_at="2026-12-31 23:59:00")
+    state, _callback = _start_submission(task_id)
+
+    callback = _gs_done(state)
+    assert callback.answers == [
+        ("Сначала пришли хотя бы одну часть — фото, файл, текст или ссылку.", True)
+    ]
+    assert asyncio.run(state.get_state()) == GameSubmit.proof
     assert asyncio.run(db.list_all_submissions()) == []
 
 
@@ -303,9 +379,10 @@ def test_submit_success_notifies_moderate_game_via_capability_fanout(tmp_path):
     task_id = _seed_task(text="Знакомство", proof_type="text", deadline_at="2026-12-31 23:59:00")
     state, _callback = _start_submission(task_id)
 
+    asyncio.run(ua_mod.receive_proof(FakeMessage(text="Вот мой пост #знакомство"), FakeBot(), state))
     bot = FakeBot()
-    message = FakeMessage(text="Вот мой пост #знакомство")
-    asyncio.run(ua_mod.receive_proof(message, bot, state))
+    callback = FakeCallback("gs_done")
+    asyncio.run(ua_mod.finalize_game_submission(callback, bot, state))
 
     assert len(bot.sent) == 1  # ADMIN_ID is the sole moderate_game fallback recipient
     chat_id, text = bot.sent[0]
@@ -319,28 +396,34 @@ def test_submit_duplicate_race_returns_none_shows_already_submitted(tmp_path):
     _seed_delegate()
     task_id = _seed_task(proof_type="text", deadline_at="2026-12-31 23:59:00")
     state, _callback = _start_submission(task_id)
+    asyncio.run(ua_mod.receive_proof(FakeMessage(text="моя попытка"), FakeBot(), state))
 
     # Simulate a second device winning the race: a non-rejected submission lands for this
-    # pair BETWEEN mytask_submit_start's own check and receive_proof actually inserting.
+    # pair BETWEEN mytask_submit_start's own check and finalize_game_submission actually
+    # inserting.
     asyncio.run(db.create_submission(task_id, DELEGATE_ID, "text", "raced in first", "2026-08-14 10:00:00"))
 
     bot = FakeBot()
-    message = FakeMessage(text="моя попытка")
-    asyncio.run(ua_mod.receive_proof(message, bot, state))
+    callback = FakeCallback("gs_done")
+    asyncio.run(ua_mod.finalize_game_submission(callback, bot, state))
 
     assert asyncio.run(state.get_state()) is None
-    assert "Уже отправлено" in message.answers[-1][0]
+    assert "Уже отправлено" in callback.message.answers[-1][0]
     assert bot.sent == []  # no manager notification on a lost race
 
 
-def test_cancel_game_submit_clears_state(tmp_path):
+def test_cancel_game_submit_clears_state_and_parts(tmp_path):
     _db_ready(tmp_path)
     _seed_delegate()
     task_id = _seed_task(deadline_at="2026-12-31 23:59:00")
     state, _callback = _start_submission(task_id)
+    asyncio.run(ua_mod.receive_proof(FakeMessage(text="почти сдал"), FakeBot(), state))
 
     message = FakeMessage(text="Отмена")
     asyncio.run(ua_mod.cancel_game_submit(message, state))
 
     assert asyncio.run(state.get_state()) is None
     assert "отменено" in message.answers[-1][0].lower()
+    data = asyncio.run(state.get_data())
+    assert data.get("gs_parts") == []
+    assert asyncio.run(db.list_all_submissions()) == []
