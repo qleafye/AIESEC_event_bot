@@ -274,6 +274,26 @@ async def init_db():
             "ON game_submissions(task_id, user_id) WHERE status != 'rejected'"
         )
 
+        # Phase 09.1 (A): free-form multi-part submissions. `game_submissions.content`/
+        # `content_type` stay NOT NULL for backward compatibility -- old rows are read as
+        # ONE implicit part (get_submission_parts_or_legacy), never migrated into this table.
+        # No FOREIGN KEY -- mirrors game_submissions.task_id being a bare INTEGER, the project
+        # does not use SQLite FK constraints anywhere else.
+        await db.execute('''
+            CREATE TABLE IF NOT EXISTS game_submission_parts (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                submission_id INTEGER NOT NULL,
+                ord INTEGER NOT NULL,
+                kind TEXT NOT NULL,
+                content TEXT,
+                caption TEXT
+            )
+        ''')
+        await db.execute(
+            "CREATE INDEX IF NOT EXISTS idx_game_submission_parts_sub "
+            "ON game_submission_parts(submission_id, ord)"
+        )
+
         await db.commit()
 
 async def get_setting(key: str) -> str | None:
@@ -1393,6 +1413,25 @@ async def get_stuck_questions() -> list[dict]:
 GAME_CATEGORIES = ["Light", "Medium", "Hard", "Referral", "Special"]
 GAME_PROOF_TYPES = ["photo", "pdf", "text", "link"]
 
+# Phase 09.1 (A): the free-form submission's part storage kind vocabulary -- distinct from
+# GAME_PROOF_TYPES ("pdf" narrows to "document": any file type is accepted now, not only PDF).
+GAME_PART_KINDS = ["photo", "document", "text", "link"]
+
+# Legacy single-column content_type -> new part `kind`, used ONLY by
+# get_submission_parts_or_legacy to synthesize one part from a pre-migration row.
+_LEGACY_KIND_MAP = {"photo": "photo", "pdf": "document", "text": "text", "link": "link"}
+
+
+def parse_proof_types(raw: str | None) -> list[str]:
+    """The ONE place that owns the storage format for a task's (possibly multiple)
+    proof_type: a comma-separated string in the existing `game_tasks.proof_type` column
+    (no migration needed -- a single old value parses as a one-element list). Unknown codes
+    are dropped; order follows GAME_PROOF_TYPES, not the order codes appear in `raw`."""
+    if not raw:
+        return []
+    codes = {segment.strip() for segment in raw.split(",") if segment.strip()}
+    return [p for p in GAME_PROOF_TYPES if p in codes]
+
 
 async def create_task(text: str, category: str, coins: int, proof_type: str,
                        deadline_at: str, created_by: int | None) -> int:
@@ -1478,6 +1517,45 @@ async def get_active_submission(task_id: int, user_id: int) -> dict | None:
         ) as cursor:
             row = await cursor.fetchone()
             return dict(row) if row else None
+
+
+# ── Phase 09.1 (A): game_submission_parts accessors ──────────────────────────────────────
+
+async def add_submission_part(submission_id: int, ord: int, kind: str, content: str | None,
+                               caption: str | None = None) -> int:
+    async with aiosqlite.connect(config.DB_PATH) as db:
+        cursor = await db.execute(
+            "INSERT INTO game_submission_parts (submission_id, ord, kind, content, caption) "
+            "VALUES (?, ?, ?, ?, ?)",
+            (submission_id, ord, kind, content, caption),
+        )
+        await db.commit()
+        return cursor.lastrowid
+
+
+async def list_submission_parts(submission_id: int) -> list[dict]:
+    async with aiosqlite.connect(config.DB_PATH) as db:
+        db.row_factory = aiosqlite.Row
+        async with db.execute(
+            "SELECT * FROM game_submission_parts WHERE submission_id = ? "
+            "ORDER BY ord ASC, id ASC",
+            (submission_id,),
+        ) as cursor:
+            return [dict(row) for row in await cursor.fetchall()]
+
+
+async def get_submission_parts_or_legacy(submission: dict) -> list[dict]:
+    """Backward-compat read: a pre-migration submission has no game_submission_parts rows --
+    synthesize exactly one part from its legacy content/content_type columns. A submission
+    with real parts rows ignores the legacy columns entirely (CONTEXT.md A)."""
+    parts = await list_submission_parts(submission["id"])
+    if parts:
+        return parts
+    content = submission.get("content")
+    if not content:
+        return []
+    kind = _LEGACY_KIND_MAP.get(submission.get("content_type"), "text")
+    return [{"ord": 0, "kind": kind, "content": content, "caption": None}]
 
 
 async def get_pending_submissions(limit: int = 1, offset: int = 0) -> list[dict]:
