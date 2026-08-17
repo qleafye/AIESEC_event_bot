@@ -376,3 +376,180 @@ def test_main_py_seeds_and_reloads_cities_before_header_materialization():
     headers_pos = src.index("_maybe_ensure_city_sheet_headers")
     assert seed_pos < headers_pos
     assert reload_pos < headers_pos
+
+
+# ═══════════════════════════════════════════════════════════════════════════════════════════
+# Plan 14-07 (CITY-07): «🏙 Города» admin CRUD screen — add/rename/tab-base/default/delete
+# ═══════════════════════════════════════════════════════════════════════════════════════════
+
+from aiogram.fsm.context import FSMContext
+from aiogram.fsm.storage.base import StorageKey
+from aiogram.fsm.storage.memory import MemoryStorage
+
+from handlers import admin as admin_mod
+from handlers.admin_caps import required_capability
+
+ADMIN_ID = 941101
+MANAGER_ID = 941102
+
+
+def _new_state(uid=ADMIN_ID) -> FSMContext:
+    return FSMContext(storage=MemoryStorage(), key=StorageKey(bot_id=1, chat_id=uid, user_id=uid))
+
+
+class FakeUser:
+    def __init__(self, uid):
+        self.id = uid
+
+
+class FakeBot:
+    async def send_message(self, *a, **k):
+        pass
+
+
+class FakeMessage:
+    def __init__(self, text=None, user_id=ADMIN_ID):
+        self.text = text
+        self.from_user = FakeUser(user_id)
+        self.bot = FakeBot()
+        self.answers_sent = []
+        self.answer_markups = []
+
+    async def answer(self, text, parse_mode=None, reply_markup=None):
+        self.answers_sent.append(text)
+        self.answer_markups.append(reply_markup)
+        self.text = text
+
+    async def edit_text(self, text, parse_mode=None, reply_markup=None):
+        self.text = text
+        self.answers_sent.append(text)
+        self.answer_markups.append(reply_markup)
+
+
+class FakeCallback:
+    def __init__(self, data, user_id=ADMIN_ID):
+        self.data = data
+        self.from_user = FakeUser(user_id)
+        self.message = FakeMessage(user_id=user_id)
+        self.answers = []
+
+    async def answer(self, text=None, show_alert=False):
+        self.answers.append((text, show_alert))
+
+
+def _seed_cities_db(rows):
+    """rows: list of (code, label, tab_base, sort_order[, enabled])."""
+    async def _run():
+        for r in rows:
+            code, label, tab_base, sort_order = r[0], r[1], r[2], r[3]
+            enabled = r[4] if len(r) > 4 else 1
+            await db.insert_city(code, label, tab_base, sort_order, enabled)
+        await cities.reload_cities()
+
+    asyncio.run(_run())
+
+
+def _bind_manager_to_city(uid, code):
+    async def _run():
+        await db.add_staff(uid, "reg_manager", ADMIN_ID)
+        await db.set_staff_city(uid, code)
+
+    asyncio.run(_run())
+
+
+# ── Task 1: screen reads DB, access gate, enable/disable writes the column ──────────────────
+
+def test_screen_shows_city_from_db_after_insert_and_reload(tmp_path):
+    _db_ready(tmp_path)
+    config.ADMIN_IDS = [ADMIN_ID]
+    restore = _snapshot_cities()
+    try:
+        _seed_cities_db([("msk", "Москва", "", 0), ("kzn", "Казань, 14 ноября", "", 1)])
+        text = asyncio.run(admin_mod.render_cities_text())
+        kb = asyncio.run(admin_mod.build_cities_keyboard())
+        flat = [btn.callback_data for row in kb.inline_keyboard for btn in row]
+    finally:
+        restore()
+    assert "Казань, 14 ноября" in text
+    assert "city_toggle:kzn" in flat
+
+
+def test_keyboard_rows_rename_tab_toggle_default_and_delete_only_when_safe(tmp_path):
+    _db_ready(tmp_path)
+    config.ADMIN_IDS = [ADMIN_ID]
+    restore = _snapshot_cities()
+    try:
+        _seed_cities_db([("msk", "Москва", "", 0), ("kzn", "Казань", "", 1)])
+        asyncio.run(db.add_user({"telegram_id": 1, "event_city": "kzn", "registration_date": "2026-08-01"}))
+        kb = asyncio.run(admin_mod.build_cities_keyboard())
+        flat = [btn.callback_data for row in kb.inline_keyboard for btn in row]
+    finally:
+        restore()
+    assert "city_rename:msk" in flat and "city_rename:kzn" in flat
+    assert "city_tab:msk" in flat and "city_tab:kzn" in flat
+    assert "city_default:kzn" in flat  # msk IS default -> no ⭐ button for msk itself
+    assert "city_default:msk" not in flat
+    assert "city_del:msk" in flat  # no users/tasks on msk -> deletable
+    assert "city_del:kzn" not in flat  # kzn has a bound delegate -> not deletable
+
+
+def test_city_toggle_writes_enabled_column_deletes_legacy_key_and_reloads(tmp_path):
+    _db_ready(tmp_path)
+    config.ADMIN_IDS = [ADMIN_ID]
+    restore = _snapshot_cities()
+    try:
+        _seed_cities_db([("msk", "Москва", "", 0), ("kzn", "Казань", "", 1)])
+        asyncio.run(db.set_setting("city_enabled__kzn", "on"))  # legacy key present
+        callback = FakeCallback("city_toggle:kzn")
+        asyncio.run(admin_mod.city_toggle(callback))
+        legacy_after = asyncio.run(db.get_setting("city_enabled__kzn"))
+        enabled_after = asyncio.run(cities.is_city_enabled("kzn"))
+        rows = {r["code"]: r for r in asyncio.run(db.list_cities_rows())}
+    finally:
+        restore()
+    assert legacy_after is None  # legacy key removed
+    assert rows["kzn"]["enabled"] == 0  # column flipped off
+    assert enabled_after is False  # cache reflects it, not just the DB row
+
+
+def test_cities_screen_denied_for_manager_bound_to_one_city(tmp_path):
+    _db_ready(tmp_path)
+    config.ADMIN_IDS = [ADMIN_ID]
+    restore = _snapshot_cities()
+    try:
+        _seed_cities_db([("msk", "Москва", "", 0), ("kzn", "Казань", "", 1)])
+        _bind_manager_to_city(MANAGER_ID, "kzn")
+        callback = FakeCallback("admin_cities", user_id=MANAGER_ID)
+        asyncio.run(admin_mod.show_admin_cities(callback))
+        toggle_cb = FakeCallback("city_toggle:msk", user_id=MANAGER_ID)
+        asyncio.run(admin_mod.city_toggle(toggle_cb))
+        rows_after = {r["code"]: r for r in asyncio.run(db.list_cities_rows())}
+    finally:
+        restore()
+    assert callback.answers[-1][1] is True  # show_alert
+    assert "Казань" in callback.answers[-1][0]
+    assert callback.message.answers_sent == []  # screen never rendered
+    assert toggle_cb.answers[-1][1] is True
+    assert rows_after["msk"]["enabled"] == 1  # write refused, DB untouched
+
+
+def test_cities_screen_allowed_for_superadmin_and_unbound_manager(tmp_path):
+    _db_ready(tmp_path)
+    config.ADMIN_IDS = [ADMIN_ID]
+    restore = _snapshot_cities()
+    try:
+        _seed_cities_db([("msk", "Москва", "", 0)])
+        allowed_super = asyncio.run(admin_mod._cities_screen_allowed(ADMIN_ID))
+        asyncio.run(db.add_staff(MANAGER_ID, "reg_manager", ADMIN_ID))  # unbound (city stays NULL)
+        allowed_unbound = asyncio.run(admin_mod._cities_screen_allowed(MANAGER_ID))
+    finally:
+        restore()
+    assert allowed_super is True
+    assert allowed_unbound is True
+
+
+def test_new_city_callbacks_resolve_to_settings_capability():
+    for key in ("city_add", "city_rename:kzn", "city_tab:kzn", "city_default:kzn",
+                "city_del:kzn", "city_del_go:kzn"):
+        assert required_capability(callback_data=key) == "settings"
+    assert required_capability(raw_state="CityForm:add_label") == "settings"

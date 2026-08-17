@@ -16,6 +16,7 @@ from handlers import admin as admin_mod
 from handlers import registration as reg_mod
 from handlers.admin_caps import required_capability
 from cities import CITIES
+import cities as cities_mod
 
 
 ADMIN_ID = 900101
@@ -127,13 +128,16 @@ def test_build_admin_keyboard_admin_cities_is_last_row_indices_unchanged(tmp_pat
 
 
 def test_build_cities_keyboard_contains_toggle_and_per_city_buttons(tmp_path):
+    # Phase 14-07: the old single «✏️» -> settings_edit:city_label__{code} button was replaced
+    # by the full CRUD row (rename / tab base / ⭐ default / 🗑 delete-when-safe).
     _admin_ready(tmp_path)
     kb = asyncio.run(admin_mod.build_cities_keyboard())
     flat = _flat_callback_data(kb)
     assert "toggle_event_city_enabled" in flat
     for code in CITY_CODES:
         assert f"city_toggle:{code}" in flat
-        assert f"settings_edit:city_label__{code}" in flat
+        assert f"city_rename:{code}" in flat
+        assert f"city_tab:{code}" in flat
     assert len(CITY_CODES) == 3
 
 
@@ -174,12 +178,23 @@ def test_toggle_event_city_enabled_flips_off_to_on_to_off(tmp_path):
 
 
 def test_city_toggle_spb_flips_default_on_to_off_to_on(tmp_path):
+    # Phase 14-07: city_toggle now writes the `cities.enabled` column (+ deletes the legacy
+    # bot_settings key), not the key itself -- seed the registry row first, same as production
+    # startup wiring (cities.seed_cities_if_empty() + reload_cities()) does before any write.
+    # Snapshot/restore the process-global CITIES cache (in-place mutation, 14-06 discipline) so
+    # this test's reload_cities() call never leaks into other test files in the same session.
     _admin_ready(tmp_path)
-    # default (no bot_settings row) resolves to "on" — cities.is_city_enabled
-    asyncio.run(admin_mod.city_toggle(FakeCallback("city_toggle:spb")))
-    assert asyncio.run(db.get_setting("city_enabled__spb")) == "off"
-    asyncio.run(admin_mod.city_toggle(FakeCallback("city_toggle:spb")))
-    assert asyncio.run(db.get_setting("city_enabled__spb")) == "on"
+    saved = list(cities_mod.CITIES)
+    try:
+        asyncio.run(cities_mod.seed_cities_if_empty())
+        asyncio.run(cities_mod.reload_cities())
+        asyncio.run(admin_mod.city_toggle(FakeCallback("city_toggle:spb")))
+        assert asyncio.run(cities_mod.is_city_enabled("spb")) is False
+        assert asyncio.run(db.get_setting("city_enabled__spb")) is None  # legacy key never written
+        asyncio.run(admin_mod.city_toggle(FakeCallback("city_toggle:spb")))
+        assert asyncio.run(cities_mod.is_city_enabled("spb")) is True
+    finally:
+        cities_mod.set_cities_for_test(saved)
 
 
 def test_city_toggle_unknown_code_rejected_no_write(tmp_path):
