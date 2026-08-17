@@ -39,6 +39,10 @@ class Settings(BaseSettings):
     GOOGLE_CREDENTIALS_FILE: str = "google_credentials.json"
     # Target data tab by NAME (e.g. "реги бот"). Empty = first tab by position (.sheet1),
     # the historical behaviour. Set this so reordering tabs can't redirect the bot's writes.
+    # DEPRECATED (Phase 14, CFG-01): read ONCE at startup to seed bot_settings.main_sheet_tab
+    # (main.py::seed_main_sheet_tab_from_env); day-to-day editing is from the bot — «⚙️
+    # Настройки → 📄 Вкладки таблицы». Field stays here (not removed) as a safety net for the
+    # 4-stage resolve chain in services/sheets.py in case bot_settings ever gets wiped.
     GOOGLE_SHEET_TAB: str = ""
 
     # Event cities (Phase 07.1, CITY-01): format `code|label|tab_base;...`, records separated
