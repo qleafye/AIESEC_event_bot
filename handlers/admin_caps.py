@@ -295,6 +295,17 @@ ADMIN_CAPS: dict[str, str] = {
     # they predate 08-RESEARCH's worked capability_map example, same as the city-scoping keys
     # filed under moderate_reg above.
     "admin_cities": "settings",
+    # Phase 14 (14-07, CITY-07): full CRUD screen — add/rename/tab-base/default/delete,
+    # registered in the SAME commit as the handlers (09-01 convention). "city_del:*" does NOT
+    # cover "city_del_go:*" — same prefix-divergence precedent as "gtdelete:*"/"gtdelete_go:*"
+    # a few blocks up: both keys are required, not just the shorter one.
+    "city_add": "settings",
+    "city_rename:*": "settings",
+    "city_tab:*": "settings",
+    "city_default:*": "settings",
+    "city_del:*": "settings",
+    "city_del_go:*": "settings",
+    "state:CityForm:*": "settings",
     "admin_consent_pdfs": "settings",
     "admin_dedupe_sheet": "settings",
     "admin_dedupe_sheet_go": "settings",
