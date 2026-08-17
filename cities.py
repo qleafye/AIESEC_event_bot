@@ -17,9 +17,17 @@ Design (mirrors settings_schema.py's one-directional dependency, D-01):
   becomes "Москва". Nothing else may hardcode that fallback, and nothing may write the
   resolved default back into storage (no backfill — see CONTEXT.md).
 """
+import logging
+import re
+
 from config import config
-from database.db import get_setting, set_setting, get_staff_city
+from database.db import (
+    get_setting, set_setting, get_staff_city,
+    list_cities_rows, count_cities, insert_city,
+)
 from settings_schema import SETTINGS_SCHEMA, _parse_setting, get_setting_typed
+
+logger = logging.getLogger(__name__)
 
 CITY_SEP = ";"
 FIELD_SEP = "|"
@@ -63,8 +71,93 @@ def parse_cities(raw: str) -> list[dict]:
     return result
 
 
-# Computed once at import time — same pattern as SETTINGS_SCHEMA being a module-level dict.
+# Phase 14 (CITY-07): this is now a COLD fallback value, computed once at import time, NOT
+# the source of truth. The source of truth is the `cities` table; `reload_cities()` below
+# overwrites this same list's CONTENTS at startup (main.py, right after `seed_cities_if_empty`)
+# and after every admin edit. Keeping the .env-derived value here (rather than starting from
+# `[]`) is deliberate fail-soft: a process that boots with the DB unreachable still has a
+# city list instead of none, and every existing test that reads CITIES before any reload
+# keeps working unchanged (Pattern 3, 14-RESEARCH.md).
 CITIES = parse_cities(config.EVENT_CITIES)
+
+
+async def reload_cities() -> list[dict]:
+    """Refreshes `CITIES` from the `cities` table. MUTATES THE SAME LIST OBJECT IN PLACE —
+    `CITIES = fresh` is FORBIDDEN here: `handlers/admin.py` and `handlers/registration.py`
+    both do `from cities import CITIES`, binding their own module-level name to this exact
+    list object at import time. A rebind would leave both of those aliases pointing at a
+    now-stale, disconnected list forever (14-RESEARCH.md Pattern 3 / Pitfall 2) — every
+    reader of `CITIES` by name would silently stop seeing new/edited/deleted cities.
+
+    An EMPTY `list_cities_rows()` result is treated as "don't touch the cache", not "clear
+    it" — a transiently unreachable/mid-migration DB must never zero out every known city for
+    every reader at once (T-14-30, Denial of Service disposition in the plan's threat model).
+    """
+    rows = await list_cities_rows()
+    if not rows:
+        return CITIES
+    fresh = [
+        {
+            "code": row["code"],
+            "label": row["label"],
+            "tab_base": row["tab_base"] or "",
+            "enabled": int(row["enabled"]) if row["enabled"] is not None else 1,
+            "sort_order": row["sort_order"],
+        }
+        for row in rows
+    ]
+    # Mutate in place — see the docstring above. Never `CITIES = fresh`.
+    CITIES.clear()
+    CITIES.extend(fresh)
+    return CITIES
+
+
+def all_cities() -> list[dict]:
+    """Sync read of the current cache — a COPY, so a caller mutating the returned list can
+    never corrupt the shared cache object that `reload_cities()` mutates in place."""
+    return list(CITIES)
+
+
+def set_cities_for_test(rows: list[dict]) -> None:
+    """Test-only cache mutation, same in-place discipline as `reload_cities()` (never
+    `CITIES = rows`). Deliberately NOT `monkeypatch.setattr(cities, "CITIES", ...)`:
+    monkeypatch would rebind the module attribute, which is exactly the aliasing hazard this
+    module exists to prevent — a test using monkeypatch could pass locally while masking a
+    real `reload_cities()` regression that only breaks the `from cities import CITIES`
+    aliases in `handlers/admin.py`/`handlers/registration.py`."""
+    CITIES.clear()
+    CITIES.extend(rows)
+
+
+async def seed_cities_if_empty() -> int:
+    """One-time migration off `.env`: if the `cities` table already has rows, this is a
+    no-op (returns 0) — `.env`'s `EVENT_CITIES` is never read again after the first
+    successful seed. On an empty table, parses `config.EVENT_CITIES` (today's format) and
+    inserts one row per city:
+    - `sort_order`: the `config.EVENT_CITY_DEFAULT` city gets 0 (so it sorts first, becoming
+      `default_city_code()`'s answer byte-for-byte); every other city keeps its relative
+      order from the `.env` string, numbered from 1.
+    - `enabled`: migrated from the OLD toggle key `city_enabled__{code}` in `bot_settings`
+      (`"off"` -> 0, anything else -> 1) — the old key is NOT deleted, `is_city_enabled` keeps
+      reading it as a higher-priority override until plan 14-07's screen retires it.
+    Returns the number of cities seeded.
+    """
+    if await count_cities() > 0:
+        return 0
+    parsed = parse_cities(config.EVENT_CITIES)
+    codes: list[str] = []
+    counter = 1
+    for city in parsed:
+        code = city["code"]
+        sort_order = 0 if code == config.EVENT_CITY_DEFAULT else counter
+        if code != config.EVENT_CITY_DEFAULT:
+            counter += 1
+        raw_enabled = await get_setting(f"city_enabled__{code}")
+        enabled = 0 if raw_enabled == "off" else 1
+        await insert_city(code, city["label"], city["tab_base"], sort_order, enabled)
+        codes.append(code)
+    logger.warning("cities seeded from .env: %s", codes)
+    return len(codes)
 
 
 def city_codes() -> list[str]:
@@ -119,9 +212,17 @@ TAB_SUFFIX = {
 
 
 async def is_city_enabled(code: str) -> bool:
-    """A city is enabled by default (bot_settings absent = "on") — switched off point-wise
-    from the admin panel (plan 04)."""
-    return (await get_setting(f"city_enabled__{code}") or "on") == "on"
+    """Phase 14 (CITY-07): the `cities.enabled` column is now the source of truth, but an
+    EXPLICIT old-style `city_enabled__{code}` key in `bot_settings` still wins when present —
+    backward compat with today's toggle until plan 14-07's screen migrates writes onto the
+    column directly. Absent both -> True (a city with no record either way is enabled)."""
+    override = await get_setting(f"city_enabled__{code}")
+    if override is not None:
+        return override == "on"
+    city = get_city(code)
+    if city is not None and "enabled" in city:
+        return bool(city["enabled"])
+    return True
 
 
 async def city_label(code: str) -> str:
@@ -384,3 +485,44 @@ async def city_override_codes(key: str) -> list[str]:
         if override_key and await get_setting(override_key):
             out.append(code)
     return out
+
+
+# ── Phase 14 (CITY-07): server-side city-code generation ────────────────────────────────────
+#
+# The code is ALWAYS generated here, never accepted as raw human input (T-14-31, V5 input
+# validation) — a manager typing a city name only ever produces the LABEL; this function turns
+# it into a closed-alphabet [a-z0-9_] code, ≤ 16 chars, with collision suffixes. No external
+# transliteration library (CONTEXT.md locked decision) — a small RU->latin dict is enough.
+
+_TRANSLIT_MAP = {
+    "а": "a", "б": "b", "в": "v", "г": "g", "д": "d", "е": "e", "ё": "e", "ж": "zh",
+    "з": "z", "и": "i", "й": "y", "к": "k", "л": "l", "м": "m", "н": "n", "о": "o",
+    "п": "p", "р": "r", "с": "s", "т": "t", "у": "u", "ф": "f", "х": "h", "ц": "ts",
+    "ч": "ch", "ш": "sh", "щ": "sch", "ъ": "", "ы": "y", "ь": "", "э": "e", "ю": "yu",
+    "я": "ya",
+}
+
+_NON_CODE_CHAR_RE = re.compile(r"[^a-z0-9]+")
+
+
+def make_city_code(label: str, existing: set[str] | list[str]) -> str:
+    """Pure, sync, closed-alphabet code generator. Lower-cases the label, transliterates
+    Cyrillic letters via `_TRANSLIT_MAP` (untranslated characters, e.g. already-Latin text,
+    pass through unchanged), replaces any run of non-`[a-z0-9]` characters with a single "_",
+    strips leading/trailing "_", truncates to `_MAX_CODE_LEN` (16). An all-punctuation/empty
+    label collapses to the literal "city". On a collision with `existing`, appends "_2", "_3",
+    ... (the base is re-truncated each time so the suffixed code never exceeds 16 chars)."""
+    existing_set = set(existing)
+    lowered = label.strip().lower()
+    translit = "".join(_TRANSLIT_MAP.get(ch, ch) for ch in lowered)
+    collapsed = _NON_CODE_CHAR_RE.sub("_", translit).strip("_")
+    code = (collapsed[:_MAX_CODE_LEN].rstrip("_")) or "city"
+    if code not in existing_set:
+        return code
+    suffix_n = 2
+    while True:
+        suffix = f"_{suffix_n}"
+        candidate = code[: _MAX_CODE_LEN - len(suffix)].rstrip("_") + suffix
+        if candidate not in existing_set:
+            return candidate
+        suffix_n += 1
