@@ -4828,6 +4828,20 @@ def _game_task_proof_kb(selected: set[str]) -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(inline_keyboard=rows)
 
 
+async def _bound_task_city(admin_id: int) -> str | None:
+    """Город, к которому привязан создатель задания, или None = «не привязан, ограничений
+    нет». Суперадмин из config.ADMIN_IDS не ограничен никогда (D-12 фазы 8) — форма
+    проверки положительная (structural test test_gate_no_legacy_admin_check_remains
+    запрещает в этом файле обратную форму отрицания в кавычках "config.ADMIN_IDS").
+    Идиома совпадает с admin_city_switch (:1927): после 09.1 (C) город менеджера —
+    ПРАВО, а не фильтр экрана."""
+    is_superadmin = admin_id in config.ADMIN_IDS
+    if is_superadmin:
+        return None
+    bound = await get_staff_city(admin_id)
+    return normalize_city(bound) if bound else None
+
+
 async def _game_task_city_kb() -> InlineKeyboardMarkup:
     """Phase 09.1 (B): "Кому задание?" step, only shown when the cities module is on
     (game_task_proof_done below). Same loop shape as registration.py::_city_fork_kb --
@@ -4958,6 +4972,20 @@ async def game_task_proof_done(callback: types.CallbackQuery, state: FSMContext)
         await _game_task_deadline_prompt(callback.message, state)
         await callback.answer()
         return
+    bound = await _bound_task_city(callback.from_user.id)
+    if bound:
+        # CLAUDE.md: не показываем экран, который заведомо откажет. У привязанного менеджера
+        # выбор ровно один, поэтому вопрос не задаётся — город проставляется сам, а строка
+        # «Кому:» в карточке подтверждения (gt_city_step_shown) остаётся на месте, чтобы
+        # человек видел, кому уйдёт задание.
+        await state.update_data(
+            gt_event_city=bound,
+            gt_event_city_label=await city_label(bound),
+            gt_city_step_shown=True,
+        )
+        await _game_task_deadline_prompt(callback.message, state)
+        await callback.answer()
+        return
     await state.update_data(gt_city_step_shown=True)
     await callback.message.answer("Кому задание?", reply_markup=await _game_task_city_kb())
     await state.set_state(GameTaskCreate.city)
@@ -4966,7 +4994,19 @@ async def game_task_proof_done(callback: types.CallbackQuery, state: FSMContext)
 
 @router.callback_query(F.data.startswith("gttcity:"))
 async def game_task_city_step(callback: types.CallbackQuery, state: FSMContext):
+    bound = await _bound_task_city(callback.from_user.id)
     code = callback.data.split(":", 1)[1]
+    if bound and (code == "all" or normalize_city(code) != bound):
+        # Кнопка из истории чата не истекает: экран «Кому задание?» мог быть отрисован до
+        # того, как менеджера привязали к городу. «all» проверяется ОТДЕЛЬНОЙ веткой, а не
+        # через normalize_city: неизвестный код normalize_city схлопывает в город по
+        # умолчанию, поэтому у менеджера, привязанного к дефолтному городу, «all» иначе
+        # прошло бы как «свой город» и создало задание всем городам сразу.
+        await callback.answer(
+            f"Задание можно создать только для вашего города — {await city_label(bound)}",
+            show_alert=True,
+        )
+        return
     if code == "all":
         await state.update_data(gt_event_city=None, gt_event_city_label=None)
     else:
