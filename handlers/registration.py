@@ -16,7 +16,7 @@ from aiogram.utils.keyboard import ReplyKeyboardBuilder
 from config import config
 from database.db import add_user, get_user, get_setting, set_setting, mark_reg_started, clear_reg_started, set_reg_step, set_user_subscribed, set_user_status, record_user_consent, get_user_consents, get_reg_started_track, get_reg_started_city, has_short_incomplete, _csv_safe, get_incomplete_rows_with_city
 from settings_schema import SETTINGS_SCHEMA, get_setting_typed  # REG-01/D-06 (06-04): REG_DEFAULTS derivation source; get_setting_typed (06-06 gate migration)
-from cities import CITIES, normalize_city, is_default_city, city_tab_base, cities_module_on, is_city_enabled, city_label, enabled_cities, tab_suffix, get_setting_for_city, get_setting_typed_for_city  # Phase 07.1 (CITY-01/CITY-02/CITY-03): city registry — _CITY_TAG_MAP + city_row_tab + city fork below; tab_suffix added quick 260815-3hw (TABS-01/02/03, replaces the raw TAB_SUFFIX import); get_setting_for_city/get_setting_typed_for_city added Phase 09.2-04 (CITY-04): per-city text/mode resolver
+from cities import CITIES, all_cities, normalize_city, is_default_city, city_tab_base, cities_module_on, is_city_enabled, city_label, enabled_cities, tab_suffix, get_setting_for_city, get_setting_typed_for_city  # Phase 07.1 (CITY-01/CITY-02/CITY-03): city registry — _city_tag_map() + city_row_tab + city fork below; tab_suffix added quick 260815-3hw (TABS-01/02/03, replaces the raw TAB_SUFFIX import); get_setting_for_city/get_setting_typed_for_city added Phase 09.2-04 (CITY-04): per-city text/mode resolver; all_cities added Phase 14 (CITY-07)
 from handlers.states import Registration
 from keyboards.builders import (
     get_main_menu_kb,
@@ -999,10 +999,18 @@ def _extract_party_track(command_args: str | None) -> str | None:
 
 # Phase 07.1 (CITY-01): fixed exact-match map, same construction as _PARTY_TAG_MAP — no
 # startswith/regex, so a crafted deep-link payload can never select a city outside the
-# codes parsed from config.EVENT_CITIES. Keys are "city_{code}"; these tokens do not
+# codes currently known to the registry. Keys are "city_{code}"; these tokens do not
 # overlap with the "src_" prefix, ASCII-digit referrer ids, or _PARTY_TAG_MAP's two
 # literal tokens (proven by the mutual-exclusivity test matrix).
-_CITY_TAG_MAP = {f"city_{c['code']}": c["code"] for c in CITIES}
+#
+# Phase 14 (CITY-07, Pitfall 1): this used to be a module dict computed ONCE at import time
+# from `CITIES` — a city added later from the bot got a deep-link token that never resolved,
+# because the dict was never rebuilt on `reload_cities()`. It is now a function, recomputed
+# from `all_cities()` on every call. `/start` happens far less often than the dict would be
+# read, so paying the tiny recompute cost here removes the whole staleness class instead of
+# wiring a callback from cities.py back into this module.
+def _city_tag_map() -> dict[str, str]:
+    return {f"city_{c['code']}": c["code"] for c in all_cities()}
 
 
 def _extract_event_city(command_args: str | None) -> str | None:
@@ -1010,7 +1018,7 @@ def _extract_event_city(command_args: str | None) -> str | None:
     guarantee with _extract_referrer_id / _extract_source_tag / _extract_party_track."""
     if not command_args:
         return None
-    return _CITY_TAG_MAP.get(command_args.strip())
+    return _city_tag_map().get(command_args.strip())
 
 
 DEFAULT_PARTY_FORK_TEXT = "Выбери формат участия:"
