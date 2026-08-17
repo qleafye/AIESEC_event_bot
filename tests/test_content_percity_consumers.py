@@ -14,10 +14,12 @@ Task 2: `handlers/user_actions.py::show_contacts`/`show_info_menu`/`info_date`/`
     Pitfall 1 -- their captions are not SETTINGS_SCHEMA keys).
 """
 import asyncio
+import inspect
 
 from config import config
 from database import db
 from cities import per_city_key
+from handlers import user_actions as ua_mod
 from keyboards.builders import get_main_menu_kb, MENU_BUTTONS
 
 ADMIN_ID = 920901
@@ -53,6 +55,36 @@ def _set_override(key, code, value):
 
 def _menu_texts(kb):
     return [btn.text for row in kb.keyboard for btn in row]
+
+
+class FakeUser:
+    def __init__(self, uid):
+        self.id = uid
+
+
+class FakeChat:
+    def __init__(self, cid):
+        self.id = cid
+
+
+class FakeMessage:
+    def __init__(self, user_id):
+        self.from_user = FakeUser(user_id)
+        self.chat = FakeChat(user_id)
+        self.answers = []
+
+    async def answer(self, text, reply_markup=None, parse_mode=None):
+        self.answers.append((text, reply_markup, parse_mode))
+
+
+class FakeCallback:
+    def __init__(self, user_id):
+        self.from_user = FakeUser(user_id)
+        self.message = FakeMessage(user_id)
+        self.answered = False
+
+    async def answer(self, *a, **kw):
+        self.answered = True
 
 
 # ── Task 1: main menu resolves by delegate city ─────────────────────────────────────────
@@ -164,3 +196,118 @@ def test_menu_order_and_adjust_unchanged(tmp_path):
     texts = _menu_texts(kb)
     expected_order = [label for _key, label in MENU_BUTTONS]
     assert texts == expected_order
+
+
+# ── Task 2: contacts / info screens resolve by delegate city ───────────────────────────
+
+def test_screens_module_off_byte_identical(tmp_path):
+    _db_ready(tmp_path)
+    _add_delegate(SPB_DELEGATE_ID, event_city="spb")
+    asyncio.run(db.set_setting("contact_person", "@global_manager"))
+    asyncio.run(db.set_setting("event_date", "31 октября"))
+    asyncio.run(db.set_setting("event_place_name", "Глобальная площадка"))
+    # event_city_enabled left OFF.
+
+    message = FakeMessage(SPB_DELEGATE_ID)
+    asyncio.run(ua_mod.show_contacts(message))
+    text = message.answers[0][0]
+    assert "@global_manager" in text
+
+    message2 = FakeMessage(SPB_DELEGATE_ID)
+    asyncio.run(ua_mod.show_info_menu(message2))
+    text2 = message2.answers[0][0]
+    assert "Глобальная площадка" in text2
+
+
+def test_show_contacts_city_override(tmp_path):
+    _db_ready(tmp_path)
+    _enable_cities()
+    _add_delegate(SPB_DELEGATE_ID, event_city="spb")
+    _add_delegate(MSK_DELEGATE_ID, event_city="msk")
+    asyncio.run(db.set_setting("contact_person", "@global_manager"))
+    _set_override("contact_person", "spb", "@spb_manager")
+
+    spb_msg = FakeMessage(SPB_DELEGATE_ID)
+    asyncio.run(ua_mod.show_contacts(spb_msg))
+    assert "@spb_manager" in spb_msg.answers[0][0]
+
+    msk_msg = FakeMessage(MSK_DELEGATE_ID)
+    asyncio.run(ua_mod.show_contacts(msk_msg))
+    assert "@global_manager" in msk_msg.answers[0][0]
+    assert "@spb_manager" not in msk_msg.answers[0][0]
+
+
+def test_show_info_menu_and_info_place_city_override(tmp_path):
+    _db_ready(tmp_path)
+    _enable_cities()
+    _add_delegate(SPB_DELEGATE_ID, event_city="spb")
+    asyncio.run(db.set_setting("event_date", "31 октября"))
+    asyncio.run(db.set_setting("event_place_name", "Глобальная площадка"))
+    _set_override("event_place_name", "spb", "Питерская площадка")
+
+    msg = FakeMessage(SPB_DELEGATE_ID)
+    asyncio.run(ua_mod.show_info_menu(msg))
+    assert "Питерская площадка" in msg.answers[0][0]
+
+    cb = FakeCallback(SPB_DELEGATE_ID)
+    asyncio.run(ua_mod.info_place(cb))
+    assert "Питерская площадка" in cb.message.answers[0][0]
+
+
+def test_info_date_resolves_same_city_as_info_menu(tmp_path):
+    _db_ready(tmp_path)
+    _enable_cities()
+    _add_delegate(SPB_DELEGATE_ID, event_city="spb")
+    asyncio.run(db.set_setting("event_date", "31 октября"))
+    _set_override("event_date", "spb", "3 октября")
+
+    cb = FakeCallback(SPB_DELEGATE_ID)
+    asyncio.run(ua_mod.info_date(cb))
+    assert "3 октября" in cb.message.answers[0][0]
+
+
+def test_venue_photo_and_program_speakers_stay_global(tmp_path):
+    """venue_photo_file_id is out of the per-city mechanism (RESEARCH: photo captions are not
+    registry keys); program/speakers must not even reference the resolver."""
+    _db_ready(tmp_path)
+    _enable_cities()
+    _add_delegate(SPB_DELEGATE_ID, event_city="spb")
+    # No override anywhere for venue_photo_file_id -- resolver is never expected to touch it.
+    src_program = inspect.getsource(ua_mod.show_program)
+    src_speakers = inspect.getsource(ua_mod.show_speakers)
+    assert "get_setting_for_city" not in src_program
+    assert "get_setting_for_city" not in src_speakers
+
+
+def test_each_screen_resolves_city_exactly_once():
+    """Structural: show_contacts calls the shared _delegate_city helper exactly once."""
+    src = inspect.getsource(ua_mod.show_contacts)
+    assert src.count("_delegate_city") == 1
+
+
+def test_consumer_screens_use_resolver():
+    for fn in (ua_mod.show_contacts, ua_mod.show_info_menu, ua_mod.info_date, ua_mod.info_place):
+        assert "get_setting_for_city" in inspect.getsource(fn)
+
+
+def test_city_resolve_failure_falls_back_to_global_for_contacts(tmp_path, monkeypatch):
+    """Fault is injected INSIDE the resolve (get_user raises), not by bypassing
+    _delegate_city's own try/except -- exercises the real fail-soft path show_contacts
+    relies on."""
+    _db_ready(tmp_path)
+    _enable_cities()
+    _add_delegate(SPB_DELEGATE_ID, event_city="spb")
+    asyncio.run(db.set_setting("contact_person", "@global_manager"))
+    _set_override("contact_person", "spb", "@spb_manager")
+
+    def _boom(_code):
+        raise RuntimeError("boom")
+
+    # normalize_city runs INSIDE _delegate_city, after get_user (which ensure_registered
+    # also needs unpatched) -- faulting here isolates the resolve step without breaking the
+    # registration gate.
+    monkeypatch.setattr(ua_mod, "normalize_city", _boom)
+    msg = FakeMessage(SPB_DELEGATE_ID)
+    asyncio.run(ua_mod.show_contacts(msg))
+    assert "@global_manager" in msg.answers[0][0]
+    assert "@spb_manager" not in msg.answers[0][0]

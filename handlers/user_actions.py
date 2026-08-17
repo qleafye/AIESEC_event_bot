@@ -22,7 +22,10 @@ from database.db import (
     parse_proof_types,
 )
 from handlers.admin_caps import notify_by_capability  # D-13: fan out by capability, not bare ADMIN_IDS
-from cities import cities_module_on, normalize_city, city_scope  # Phase 09.1 (B): show_game_tasks city filter
+from cities import (
+    cities_module_on, normalize_city, city_scope,  # Phase 09.1 (B): show_game_tasks city filter
+    get_setting_for_city,  # Phase 09.2 (B): contacts/info screens resolve by delegate city
+)
 from keyboards.builders import (
     get_cancel_kb,
     get_main_menu_kb,
@@ -420,6 +423,21 @@ async def upload_receipt_entry(message: types.Message, bot: Bot):
     await start_payment_step(bot, message.from_user.id, participant_type)
 
 
+# Phase 09.2 (B): shared делегат-city resolve for the four info/contacts screens below --
+# same idiom as show_game_tasks (09.1 B), pulled into one helper because now FOUR screens
+# read it instead of one. Module off, or any resolve failure (bad row, exception), fails
+# soft to None -- a screen must never break because a city couldn't be resolved.
+async def _delegate_city(telegram_id: int) -> str | None:
+    try:
+        if not await cities_module_on():
+            return None
+        user = await get_user(telegram_id)
+        return normalize_city(user.get("event_city") if user else None)
+    except Exception as e:
+        logger.error(f"_delegate_city failed for {telegram_id}: {e}")
+        return None
+
+
 #ℹ️ Информация о форуме
 @router.message(F.text == "ℹ️ Информация о форуме")
 async def show_info_menu(message: types.Message):
@@ -428,9 +446,10 @@ async def show_info_menu(message: types.Message):
 
     logger.info(f"User {message.from_user.id} requested Info menu")
 
-    event_date = await get_setting("event_date")
-    event_time = await get_setting("event_time")
-    place_name = await get_setting("event_place_name")
+    code = await _delegate_city(message.from_user.id)
+    event_date = await get_setting_for_city("event_date", code)
+    event_time = await get_setting_for_city("event_time", code)
+    place_name = await get_setting_for_city("event_place_name", code)
 
     if event_date and place_name:
         text = "<b>Информация о мероприятии</b>\n\n"
@@ -447,8 +466,9 @@ async def show_info_menu(message: types.Message):
 
 @router.callback_query(F.data == "info_date")
 async def info_date(callback: types.CallbackQuery):
-    event_date = await get_setting("event_date")
-    event_time = await get_setting("event_time")
+    code = await _delegate_city(callback.from_user.id)
+    event_date = await get_setting_for_city("event_date", code)
+    event_time = await get_setting_for_city("event_time", code)
     if event_date:
         text = f"🗓 Форум пройдет <b>{html.escape(event_date)}</b>!"
         if event_time:
@@ -460,13 +480,17 @@ async def info_date(callback: types.CallbackQuery):
 
 @router.callback_query(F.data == "info_place")
 async def info_place(callback: types.CallbackQuery):
-    place_name = await get_setting("event_place_name")
-    place_address = await get_setting("event_place_address")
+    code = await _delegate_city(callback.from_user.id)
+    place_name = await get_setting_for_city("event_place_name", code)
+    place_address = await get_setting_for_city("event_place_address", code)
     if place_name:
         text = f"<b>Наша площадка — {html.escape(place_name)}!</b> 🚀"
         if place_address:
             text += f"\n\n📍 <b>Адрес:</b> {html.escape(place_address)}"
 
+        # Phase 09.2: venue_photo_file_id is out of the per-city mechanism (RESEARCH
+        # Pitfall 1 — photo/file fields are never independently editable registry text,
+        # same reasoning that keeps program_photo_file_id/speakers_photo_file_id global).
         venue_photo = await get_setting("venue_photo_file_id")
         if venue_photo:
             try:
@@ -489,6 +513,9 @@ async def info_place(callback: types.CallbackQuery):
     await callback.answer()
 
 
+# Phase 09.2: подписи program_caption/speakers_caption не ключи SETTINGS_SCHEMA (пишутся
+# как побочный эффект загрузки фото) — их пер-городной вариант отложен, см.
+# 09.2-RESEARCH Pitfall 1.
 # 📅 Программа форума
 @router.message(F.text == "📅 Программа форума")
 async def show_program(message: types.Message):
@@ -543,9 +570,10 @@ async def show_contacts(message: types.Message):
 
     logger.info(f"User {message.from_user.id} requested Contacts")
 
-    contact_person = await get_setting("contact_person")
-    contact_vk = await get_setting("contact_vk")
-    contact_tg = await get_setting("contact_tg")
+    code = await _delegate_city(message.from_user.id)
+    contact_person = await get_setting_for_city("contact_person", code)
+    contact_vk = await get_setting_for_city("contact_vk", code)
+    contact_tg = await get_setting_for_city("contact_tg", code)
 
     if not contact_person and not contact_vk and not contact_tg:
         await message.answer("Контакты пока не указаны. Обратитесь к организаторам.")
