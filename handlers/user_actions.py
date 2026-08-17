@@ -177,6 +177,12 @@ _LEGACY_CONTENT_TYPE = {"photo": "photo", "document": "pdf", "text": "text", "li
 # already makes). ONLY collects an ack here -- never finalizes the submission (no timeout).
 _gs_pending_albums: dict[str, bool] = {}
 
+# CR-01 (09.1-REVIEW.md): 20 parts x 500 chars in the card is well under Telegram's 4096
+# sendMessage limit, and caps MemoryStorage growth -- a delegate (malicious or not) can no
+# longer jam the moderation queue by attaching unlimited parts of unlimited length.
+MAX_PARTS = 20
+MAX_TEXT_PART = 1000
+
 
 async def _game_done_kb() -> InlineKeyboardMarkup:
     button_text = await get_setting_typed("game_proof_done_button")
@@ -290,6 +296,26 @@ async def receive_proof(message: types.Message, bot: Bot, state: FSMContext):
 
     data = await state.get_data()
     parts = list(data.get("gs_parts", []))
+
+    if len(parts) >= MAX_PARTS:
+        # CR-01: part NOT added, state NOT reset -- delegate stays in GameSubmit.proof and can
+        # still press «✅ Готово». Dedup within one album: an album can carry up to 10 parts
+        # that would each hit this branch and produce 10 identical hints.
+        mgid = message.media_group_id
+        if mgid and mgid == data.get("gs_overflow_mgid"):
+            return
+        await message.answer(
+            f"Больше {MAX_PARTS} частей в одну сдачу не влезет — нажми «✅ Готово», "
+            "менеджер уже увидит присланное.",
+            reply_markup=await _game_done_kb(),
+        )
+        if mgid:
+            await state.update_data(gs_overflow_mgid=mgid)
+        return
+
+    if kind in ("text", "link") and content and len(content) > MAX_TEXT_PART:
+        content = content[:MAX_TEXT_PART]
+
     parts.append({"kind": kind, "content": content, "caption": caption})
     await state.update_data(gs_parts=parts)
 
