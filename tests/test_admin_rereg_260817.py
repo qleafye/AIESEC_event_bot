@@ -1,9 +1,10 @@
 """Quick 260817-4pj regression tests.
 
-Covers the fix that replaced the admin re-registration reply-keyboard + FSM state
-(`Registration.admin_rereg`) with an inline button (`callback_data="admin_rereg"`) so a
-second ReplyKeyboardMarkup no longer overwrites the just-sent main menu, and the admin's
-first tap on any menu button is no longer swallowed by a stray FSM state.
+Covers the fix that replaced the admin re-registration reply-keyboard + the old
+admin-rereg FSM state (removed from the Registration states group) with an inline button
+(`callback_data="admin_rereg"`) so a second ReplyKeyboardMarkup no longer overwrites the
+just-sent main menu, and the admin's first tap on any menu button is no longer swallowed
+by a stray FSM state.
 
 Style matches tests/test_registration_phase5.py (direct handler calls, real FSMContext over
 MemoryStorage, config.DB_PATH pointed at tmp_path) — pytest-asyncio is unavailable in this env.
