@@ -324,6 +324,14 @@ ADMIN_CAPS: dict[str, str] = {
     # «roles_caps:...»: префикс различается символом на 10-й позиции.
     "roles_cap:*": "settings",
     "roles_caps:*": "settings",
+    # Phase 07.3 (02, RET-01): «🔄 Новый сезон» wizard. `settings` here is necessary but NOT
+    # sufficient — the real gate is `callback.from_user.id in config.ADMIN_IDS`, re-checked
+    # inside every handler (season_reset_start/season_reset_go/season_reset_passphrase_step),
+    # same posture as roles_city_start/roles_city_pick above. Registered interface-first, in
+    # the SAME commit as the handlers (09-01 convention).
+    "admin_season_reset": "settings",
+    "season_reset_go": "settings",
+    "state:SeasonReset:*": "settings",
     "admin_settings": "settings",
     "admin_settings_guide": "settings",
     "admin_sync_sheet": "settings",
