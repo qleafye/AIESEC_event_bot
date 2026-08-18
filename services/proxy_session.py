@@ -13,6 +13,7 @@ import asyncio
 import logging
 import re
 import time
+from dataclasses import dataclass
 
 import aiohttp
 from aiohttp import ClientTimeout
@@ -21,6 +22,7 @@ from aiohttp import ClientTimeout
 # the same private helper AiohttpSession.proxy's setter uses internally, reused here to
 # build a throwaway connector for the background primary probe.
 from aiogram.client.session.aiohttp import AiohttpSession, _prepare_connector
+from aiogram.client.telegram import TelegramAPIServer
 from aiogram.exceptions import TelegramForbiddenError, TelegramNetworkError
 
 from config import config
@@ -93,11 +95,28 @@ async def _alert_admins_proxy_switch(
 _CRED_RE = re.compile(r"^(\w+://)?[^/@]*@")
 
 
+@dataclass(frozen=True)
+class ApiLink:
+    """A chain link that carries NO proxy but talks to a different Bot API host -- e.g. a
+    Cloudflare Worker reverse-proxying api.telegram.org on the owner's own domain (2026-08-18:
+    aeza went dark at the hoster and the bot was left with a single live path). Config
+    spelling: `api:https://tg.example.com`. Direct connector + TelegramAPIServer.from_base;
+    the Worker is reachable from RU without any tunnel, so this is a third path that shares
+    no infrastructure with either VPS."""
+
+    base: str
+
+
+API_LINK_PREFIX = "api:"
+
+
 def mask_proxy_url(value) -> str:
-    """Mask credentials in a proxy URL for logs/alerts. `None` -> "direct" (no proxy).
-    Pure function, no network/side effects."""
+    """Mask credentials in a proxy URL for logs/alerts. `None` -> "direct" (no proxy),
+    ApiLink -> "direct→<base>". Pure function, no network/side effects."""
     if value is None:
         return "direct"
+    if isinstance(value, ApiLink):
+        return f"direct→{value.base}"
     s = value if isinstance(value, str) else str(value)
     return _CRED_RE.sub(lambda m: (m.group(1) or "") + "***@", s)
 
@@ -131,9 +150,10 @@ def _describe_error(error) -> str:
 def build_proxy_chain(*values) -> list:
     """Build an ordered, deduplicated proxy chain from raw config values (already-unwrapped
     strings or None -- SecretStr.get_secret_value() is the caller's job). Order = priority
-    (first = primary). "direct"/"none" (any case) become an explicit None (no-proxy) link.
-    Empty/falsy values are dropped. An entirely empty result becomes a single [None] link
-    (direct connection), matching today's "no PROXY_URL set" behaviour."""
+    (first = primary). "direct"/"none" (any case) become an explicit None (no-proxy) link;
+    "api:https://host" becomes an ApiLink (no proxy, alternative Bot API base URL). Empty/
+    falsy values are dropped. An entirely empty result becomes a single [None] link (direct
+    connection), matching today's "no PROXY_URL set" behaviour."""
     chain: list = []
     for v in values:
         if v is None:
@@ -141,7 +161,15 @@ def build_proxy_chain(*values) -> list:
         s = v.strip() if isinstance(v, str) else str(v).strip()
         if not s:
             continue
-        item = None if s.lower() in ("direct", "none") else s
+        if s.lower() in ("direct", "none"):
+            item = None
+        elif s.lower().startswith(API_LINK_PREFIX):
+            base = s[len(API_LINK_PREFIX):].strip().rstrip("/")
+            if not base:
+                continue
+            item = ApiLink(base)
+        else:
+            item = s
         if item not in chain:
             chain.append(item)
     return chain or [None]
@@ -167,6 +195,9 @@ class FailoverAiohttpSession(AiohttpSession):
         super().__init__(**kwargs)
         self._direct_connector_type = self._connector_type
         self._direct_connector_init = dict(self._connector_init)
+        # Base-class `api` (PRODUCTION unless the caller passed one). ApiLink links swap
+        # self.api per link; every other link restores this.
+        self._default_api = self.api
 
         self._chain = list(chain) or [None]
         self._index = 0
@@ -191,7 +222,7 @@ class FailoverAiohttpSession(AiohttpSession):
 
     def _apply(self, index: int) -> None:
         target = self._chain[index]
-        if target is None:
+        if target is None or isinstance(target, ApiLink):
             # Restore the pristine direct (no-proxy) connector snapshot.
             self._connector_type = self._direct_connector_type
             self._connector_init = dict(self._direct_connector_init)
@@ -199,6 +230,13 @@ class FailoverAiohttpSession(AiohttpSession):
             self._should_reset_connector = True
         else:
             self.proxy = target  # base class setter: _setup_proxy_connector + reset flag
+        # Bot API host follows the link: the base class reads self.api on every request
+        # (api_url) and file download (file_url), so swapping it here is all that's needed.
+        self.api = (
+            TelegramAPIServer.from_base(target.base)
+            if isinstance(target, ApiLink)
+            else self._default_api
+        )
         self._index = index
 
     @property
@@ -266,12 +304,23 @@ class FailoverAiohttpSession(AiohttpSession):
         or the live connector, so a probe can run concurrently with live requests on the
         backup link without any shared mutable state."""
         primary = self._chain[0]
-        if primary is None:
+        if primary is None or isinstance(primary, ApiLink):
             # The snapshot's SSLContext is shared/immutable and safe to reuse across
             # independent connector instances.
             return self._direct_connector_type(**dict(self._direct_connector_init))
         ctype, cinit = _prepare_connector(primary)
         return ctype(**cinit)
+
+    def _probe_url(self) -> str:
+        """Host to hit when probing the primary link: its own API base for an ApiLink,
+        the session's default Bot API host (api.telegram.org) otherwise."""
+        primary = self._chain[0]
+        if isinstance(primary, ApiLink):
+            return primary.base
+        # TelegramAPIServer.base is "https://host/bot{token}/{method}"; the probe hits the
+        # bare host (Telegram answers 404, which still proves the link carries traffic).
+        base = self._default_api.base
+        return base.split("/bot{token}", 1)[0]
 
     async def _probe_primary(self) -> bool:
         """Return True if the primary link carries traffic at all. Telegram answers a bare
@@ -280,9 +329,7 @@ class FailoverAiohttpSession(AiohttpSession):
         counts as dead."""
         try:
             async with aiohttp.ClientSession(connector=self._probe_connector()) as probe:
-                async with probe.get(
-                    "https://api.telegram.org", timeout=self._probe_timeout()
-                ):
+                async with probe.get(self._probe_url(), timeout=self._probe_timeout()):
                     return True
         except Exception:
             return False
