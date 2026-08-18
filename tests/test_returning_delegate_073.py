@@ -298,3 +298,165 @@ def test_cmd_start_new_user_parity(tmp_path):
         assert any(t and "Отлично, начинаем регистрацию." in t for t in _texts(msg))
 
     asyncio.run(go())
+
+
+# ── Task 2: rereg_start callback, _city_fork_then_continue, _prior_answers ──────────────────
+
+def test_rereg_start_rejects_non_returning(tmp_path):
+    _use_tmp_db(tmp_path)
+
+    async def go():
+        await db.init_db()
+        await db.set_setting("event_season", "YL'26")
+        await _register(UID, "delegate", status="approved", season="YL'26")
+
+        state = _new_state(UID)
+        callback = _FakeCallback("rereg_start", UID, "delegate")
+        await reg.rereg_start(callback, state)
+
+        assert len(callback.answers) == 1
+        text, show_alert = callback.answers[0]
+        assert "Ты уже зарегистрирован(а) на этот сезон" in text
+        assert show_alert is True
+        assert await state.get_data() == {}
+        assert await state.get_state() is None
+
+    asyncio.run(go())
+
+
+def test_rereg_start_rejects_unknown_user(tmp_path):
+    _use_tmp_db(tmp_path)
+
+    async def go():
+        await db.init_db()
+
+        state = _new_state(OTHER_UID)
+        callback = _FakeCallback("rereg_start", OTHER_UID, "ghost")
+        await reg.rereg_start(callback, state)
+
+        assert len(callback.answers) == 1
+        text, show_alert = callback.answers[0]
+        assert "Ты уже зарегистрирован(а) на этот сезон" in text
+        assert show_alert is True
+        assert await state.get_data() == {}
+
+    asyncio.run(go())
+
+
+def test_rereg_start_snapshots_own_row_only(tmp_path):
+    _use_tmp_db(tmp_path)
+    a_id, b_id = UID, OTHER_UID
+
+    async def go():
+        await db.init_db()
+        await _register(a_id, "alice", status="rejected", season=None, full_name="Алиса Алисова")
+        await _register(b_id, "bob", status="rejected", season=None, full_name="Борис Борисов")
+
+        state = _new_state(a_id)
+        callback = _FakeCallback("rereg_start", a_id, "alice")
+        await reg.rereg_start(callback, state)
+
+        data = await state.get_data()
+        prior = data.get("_prior_answers")
+        assert prior is not None
+        assert prior.get("full_name") == "Алиса Алисова"
+        assert prior.get("telegram_id") == a_id
+
+    asyncio.run(go())
+
+
+def test_rereg_start_shows_city_fork(tmp_path):
+    _use_tmp_db(tmp_path)
+    saved = list(cities_mod.CITIES)
+
+    async def go():
+        await db.init_db()
+        await db.set_setting("event_city_enabled", "on")
+        cities_mod.set_cities_for_test([
+            {"code": "msk", "label": "Москва", "tab_base": "", "enabled": 1, "sort_order": 0},
+            {"code": "spb", "label": "СПб", "tab_base": "", "enabled": 1, "sort_order": 1},
+        ])
+        await _register(UID, "delegate", status="rejected", season=None, event_city="msk")
+
+        state = _new_state(UID)
+        callback = _FakeCallback("rereg_start", UID, "delegate")
+        await reg.rereg_start(callback, state)
+
+        texts = _texts(callback.message)
+        city_fork_text = await db.get_setting("city_fork_text") or reg.DEFAULT_CITY_FORK_TEXT
+        assert any(t == city_fork_text for t in texts)
+
+        data = await state.get_data()
+        assert data.get("event_city") is None
+
+    try:
+        asyncio.run(go())
+    finally:
+        cities_mod.set_cities_for_test(saved)
+
+
+def test_rereg_start_city_module_off_no_city_screen(tmp_path):
+    _use_tmp_db(tmp_path)
+
+    async def go():
+        await db.init_db()
+        await _register(UID, "delegate", status="rejected", season=None)
+
+        state = _new_state(UID)
+        callback = _FakeCallback("rereg_start", UID, "delegate")
+        await reg.rereg_start(callback, state)
+
+        assert await state.get_state() == Registration.full_name.state
+        texts = _texts(callback.message)
+        assert any(t and "Отлично, начинаем регистрацию." in t for t in texts)
+
+    asyncio.run(go())
+
+
+def test_prior_answers_survives_state_clear(tmp_path):
+    _use_tmp_db(tmp_path)
+
+    async def go():
+        await db.init_db()
+        prior = {"telegram_id": UID, "full_name": "Прошлый Прошлов"}
+        state = _new_state(UID)
+        await state.update_data(_prior_answers=prior)
+
+        msg = _KBCapturingMessage(UID, "delegate")
+        await reg._start_registration_flow(msg, state)
+
+        data = await state.get_data()
+        assert data.get("_prior_answers") == prior
+
+    asyncio.run(go())
+
+
+def test_prior_answers_not_in_incomplete_snapshot(tmp_path, monkeypatch):
+    _use_tmp_db(tmp_path)
+
+    async def go():
+        await db.init_db()
+        await db.set_setting("consent_enabled", "on")
+
+        recorded = []
+        real_set_reg_step = reg.set_reg_step
+
+        async def spy(chat_id, step_key, partial_json=None):
+            recorded.append(partial_json)
+            return await real_set_reg_step(chat_id, step_key, partial_json)
+
+        monkeypatch.setattr(reg, "set_reg_step", spy)
+
+        state = _new_state(UID)
+        await state.update_data(_prior_answers={"telegram_id": UID, "full_name": "X"})
+
+        msg = _KBCapturingMessage(UID, "delegate")
+        await reg._start_registration_flow(msg, state)
+
+        assert recorded  # at least one snapshot call happened (the first consent step)
+        for partial_json in recorded:
+            if partial_json is None:
+                continue
+            assert "_prior_answers" not in partial_json
+
+    asyncio.run(go())
