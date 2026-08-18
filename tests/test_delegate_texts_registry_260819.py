@@ -14,6 +14,10 @@ import pytest
 
 from config import config
 from database import db
+# handlers.admin импортируется ПЕРВЫМ намеренно: admin_settings в одиночку не импортируется
+# (цикл admin <-> admin_settings, та же идиома, что в tests/test_settings_groups_c0x.py).
+from handlers import admin as _admin_mod  # noqa: F401
+from handlers import admin_settings
 from handlers import game_labels
 from handlers import user_actions as ua_mod
 from settings_schema import SETTINGS_SCHEMA
@@ -100,6 +104,12 @@ def _default(key):
 
 _PRE_MIGRATION_LITERALS = {
     "pending_gate_text": "⏳ Твоя заявка на рассмотрении. Доступ откроется после одобрения.",
+    "game_proof_type_label_photo": "📷 Скриншот/фото",
+    "game_proof_type_label_pdf": "📄 PDF",
+    "game_proof_type_label_text": "✍️ Текст",
+    "game_proof_type_label_link": "🔗 Ссылка",
+    "game_proof_type_unspecified_text": "не важно",
+    "game_task_overdue_hint_text": "⏰ Срок вышел — отправить можно, монеты решит менеджер",
     "leaderboard_header_text": "🏆 <b>Рейтинг по монетам</b>",
     "leaderboard_empty_text": "Пока ни у кого нет монет.",
     "leaderboard_rank_line_text": "Твоё место: <b>{rank}</b> · баланс: <b>{balance}</b>",
@@ -121,12 +131,10 @@ def test_registry_default_is_byte_identical_to_pre_migration_literal(key, litera
 
 @pytest.mark.parametrize("key", sorted(_PRE_MIGRATION_LITERALS))
 def test_every_new_key_is_a_text_entry_in_a_declared_group(key):
-    import handlers.admin_settings as a
-
     entry = SETTINGS_SCHEMA[key]
     assert entry["type"] == "text"
     assert entry["prompt"]  # менеджер видит человеческое объяснение, а не пустоту
-    grouped = [k for _, __, keys in a.SETTINGS_GROUPS for k in keys]
+    grouped = [k for _, __, keys in admin_settings.SETTINGS_GROUPS for k in keys]
     assert key in grouped, f"{key} не попал ни в одну группу настроек"
 
 
@@ -275,3 +283,73 @@ def test_referral_list_header_uses_registry_default_then_setting(tmp_path):
     message = FakeMessage()
     asyncio.run(ua_mod.my_referrals(message, FakeBot()))
     assert message.answers_sent[0].startswith("Ты позвал 1 чел.:")
+
+
+# ── RU-подписи типов подтверждения (game_labels.proof_types_label) ───────────────────────
+
+def test_proof_type_labels_use_registry_defaults(tmp_path):
+    _db_ready(tmp_path)
+    assert asyncio.run(game_labels.proof_types_label("photo")) == _default(
+        "game_proof_type_label_photo")
+    assert asyncio.run(game_labels.proof_types_label("pdf")) == _default(
+        "game_proof_type_label_pdf")
+    assert asyncio.run(game_labels.proof_types_label("text")) == _default(
+        "game_proof_type_label_text")
+    assert asyncio.run(game_labels.proof_types_label("link")) == _default(
+        "game_proof_type_label_link")
+    assert asyncio.run(game_labels.proof_types_label("")) == _default(
+        "game_proof_type_unspecified_text")
+
+
+def test_proof_type_label_setting_overrides_default(tmp_path):
+    _db_ready(tmp_path)
+    asyncio.run(db.set_setting("game_proof_type_label_photo", "📸 Фотка"))
+    assert asyncio.run(game_labels.proof_types_label("photo")) == "📸 Фотка"
+
+
+def test_proof_type_unspecified_setting_overrides_default(tmp_path):
+    _db_ready(tmp_path)
+    asyncio.run(db.set_setting("game_proof_type_unspecified_text", "что угодно"))
+    assert asyncio.run(game_labels.proof_types_label(None)) == "что угодно"
+
+
+def test_proof_types_multi_keeps_canonical_order_with_overrides(tmp_path):
+    _db_ready(tmp_path)
+    asyncio.run(db.set_setting("game_proof_type_label_photo", "Фото"))
+    asyncio.run(db.set_setting("game_proof_type_label_text", "Текст"))
+    # Порядок — GAME_PROOF_TYPES, не порядок ввода (контракт 16-01 не ослаблен).
+    assert asyncio.run(game_labels.proof_types_label("text,photo")) == "Фото + Текст"
+
+
+# ── Карточка задания: подсказка «срок вышел» ─────────────────────────────────────────────
+
+def test_task_card_overdue_hint_uses_registry_default(tmp_path):
+    _db_ready(tmp_path)
+    _seed_delegate()
+    task_id = _mk_task(title="Просрочено", deadline_at="2020-01-01 00:00:00")
+    task = asyncio.run(db.get_task(task_id))
+
+    text = asyncio.run(ua_mod._render_task_card_text(task, "новое", None))
+    assert _default("game_task_overdue_hint_text") in text
+
+
+def test_task_card_overdue_hint_setting_overrides_default(tmp_path):
+    _db_ready(tmp_path)
+    _seed_delegate()
+    task_id = _mk_task(title="Просрочено", deadline_at="2020-01-01 00:00:00")
+    task = asyncio.run(db.get_task(task_id))
+    asyncio.run(db.set_setting("game_task_overdue_hint_text", "Дедлайн прошёл, но сдать можно"))
+
+    text = asyncio.run(ua_mod._render_task_card_text(task, "новое", None))
+    assert "Дедлайн прошёл, но сдать можно" in text
+    assert _default("game_task_overdue_hint_text") not in text
+
+
+def test_task_card_not_overdue_has_no_hint(tmp_path):
+    _db_ready(tmp_path)
+    _seed_delegate()
+    task_id = _mk_task(title="Ещё в сроке")
+    task = asyncio.run(db.get_task(task_id))
+
+    text = asyncio.run(ua_mod._render_task_card_text(task, "новое", None))
+    assert _default("game_task_overdue_hint_text") not in text
