@@ -17,6 +17,7 @@ from config import config
 from database import db
 import cities
 from handlers import admin as admin_mod
+from handlers import admin_cities  # Phase 13 (13-05): cities/season screens moved here
 from handlers import admin_gamification
 from handlers.admin_caps import ADMIN_CAPS, ANY_CAPABILITY, required_capability, role_caps_key
 
@@ -84,7 +85,7 @@ def _first_row_button(cb) -> InlineKeyboardButton:
 def test_admin_city_switch_all_cities_row_first_for_superadmin(tmp_path):
     _admin_ready(tmp_path)
     cb = FakeCallback("admin_city_switch", ADMIN_ID)
-    asyncio.run(admin_mod.admin_city_switch(cb))
+    asyncio.run(admin_cities.admin_city_switch(cb))
     btn = _first_row_button(cb)
     assert btn.text == cities.ALL_CITIES_LABEL
     assert btn.callback_data == f"admin_city_pick:{cities.ALL_CITIES}"
@@ -94,7 +95,7 @@ def test_admin_city_switch_all_cities_row_checked_when_current_is_all(tmp_path):
     _admin_ready(tmp_path)
     asyncio.run(cities.set_admin_city(ADMIN_ID, cities.ALL_CITIES))
     cb = FakeCallback("admin_city_switch", ADMIN_ID)
-    asyncio.run(admin_mod.admin_city_switch(cb))
+    asyncio.run(admin_cities.admin_city_switch(cb))
     rows = cb.message.markup.inline_keyboard
     assert rows[0][0].text == f"✅ {cities.ALL_CITIES_LABEL}"
     # ни одна городская кнопка не отмечена (последняя строка -- «◀️ Назад», её тоже пропускаем)
@@ -106,7 +107,7 @@ def test_admin_city_switch_all_cities_row_for_unbound_manager(tmp_path):
     _admin_ready(tmp_path)
     asyncio.run(db.add_staff(MANAGER_ID, "reg_manager", ADMIN_ID))
     cb = FakeCallback("admin_city_switch", MANAGER_ID)
-    asyncio.run(admin_mod.admin_city_switch(cb))
+    asyncio.run(admin_cities.admin_city_switch(cb))
     btn = _first_row_button(cb)
     assert btn.text == cities.ALL_CITIES_LABEL
 
@@ -119,7 +120,7 @@ def test_admin_city_switch_bound_manager_never_sees_all_cities_option(tmp_path):
     asyncio.run(db.add_staff(MANAGER_ID, "reg_manager", ADMIN_ID))
     asyncio.run(db.set_staff_city(MANAGER_ID, "spb"))
     cb = FakeCallback("admin_city_switch", MANAGER_ID)
-    asyncio.run(admin_mod.admin_city_switch(cb))
+    asyncio.run(admin_cities.admin_city_switch(cb))
     assert cb.message.edit_calls == 0
     assert all(cities.ALL_CITIES_LABEL not in (t or "") for t in cb.answered_texts)
 
@@ -127,7 +128,7 @@ def test_admin_city_switch_bound_manager_never_sees_all_cities_option(tmp_path):
 def test_admin_city_switch_text_matches_context_a_no_old_phrases(tmp_path):
     _admin_ready(tmp_path)
     cb = FakeCallback("admin_city_switch", ADMIN_ID)
-    asyncio.run(admin_mod.admin_city_switch(cb))
+    asyncio.run(admin_cities.admin_city_switch(cb))
     text = cb.message.text
     assert "Город админки" in text
     assert "НЕ фильтруется" not in text
@@ -140,7 +141,7 @@ def test_admin_city_switch_text_matches_context_a_no_old_phrases(tmp_path):
 def test_admin_city_pick_all_cities_for_superadmin(tmp_path):
     _admin_ready(tmp_path)
     cb = FakeCallback(f"admin_city_pick:{cities.ALL_CITIES}", ADMIN_ID)
-    asyncio.run(admin_mod.admin_city_pick(cb))
+    asyncio.run(admin_cities.admin_city_pick(cb))
     assert cb.answered_alerts and cb.answered_alerts[-1] is True
     assert cb.answered_texts[-1] == f"Город: {cities.ALL_CITIES_LABEL}"
     assert cb.message.edit_calls == 1
@@ -152,7 +153,7 @@ def test_admin_city_pick_all_cities_rejected_for_bound_manager_forged_callback(t
     asyncio.run(db.add_staff(MANAGER_ID, "reg_manager", ADMIN_ID))
     asyncio.run(db.set_staff_city(MANAGER_ID, "spb"))
     cb = FakeCallback(f"admin_city_pick:{cities.ALL_CITIES}", MANAGER_ID)
-    asyncio.run(admin_mod.admin_city_pick(cb))
+    asyncio.run(admin_cities.admin_city_pick(cb))
     assert cb.answered_alerts and cb.answered_alerts[-1] is True
     assert "Неизвестный город" in (cb.answered_texts[-1] or "")
     assert asyncio.run(cities.admin_selected_city(MANAGER_ID)) == "spb"

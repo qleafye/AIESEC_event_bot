@@ -19,6 +19,7 @@ from config import config
 from database import db
 import cities
 from handlers import admin as admin_mod
+from handlers import admin_cities  # Phase 13 (13-05): cities/season screens moved here
 from handlers import admin_roles
 from handlers.admin_caps import required_capability
 
@@ -349,7 +350,7 @@ def test_admin_city_switch_bound_manager_gets_alert_not_picker(tmp_path):
     asyncio.run(db.set_staff_city(MANAGER_ID, "spb"))
 
     cb = FakeCallback("admin_city_switch", MANAGER_ID)
-    asyncio.run(admin_mod.admin_city_switch(cb))
+    asyncio.run(admin_cities.admin_city_switch(cb))
     assert cb.message.edit_calls == 0
     assert cb.answered_alerts and cb.answered_alerts[-1] is True
     assert "менять может суперадмин" in (cb.answered_texts[-1] or "")
@@ -362,7 +363,7 @@ def test_admin_city_switch_superadmin_opens_picker(tmp_path):
     asyncio.run(db.set_staff_city(ADMIN_ID, "spb"))
 
     cb = FakeCallback("admin_city_switch", ADMIN_ID)
-    asyncio.run(admin_mod.admin_city_switch(cb))
+    asyncio.run(admin_cities.admin_city_switch(cb))
     assert cb.message.edit_calls == 1
 
 
@@ -372,7 +373,7 @@ def test_admin_city_switch_unbound_manager_opens_picker(tmp_path):
     asyncio.run(db.add_staff(MANAGER_ID, "reg_manager", ADMIN_ID))
 
     cb = FakeCallback("admin_city_switch", MANAGER_ID)
-    asyncio.run(admin_mod.admin_city_switch(cb))
+    asyncio.run(admin_cities.admin_city_switch(cb))
     assert cb.message.edit_calls == 1
 
 
@@ -383,7 +384,7 @@ def test_admin_city_pick_bound_manager_other_code_rejected(tmp_path):
     asyncio.run(db.set_staff_city(MANAGER_ID, "spb"))
 
     cb = FakeCallback("admin_city_pick:tyumen", MANAGER_ID)
-    asyncio.run(admin_mod.admin_city_pick(cb))
+    asyncio.run(admin_cities.admin_city_pick(cb))
     assert cb.answered_alerts and cb.answered_alerts[-1] is True
     assert "Неизвестный город" in (cb.answered_texts[-1] or "")
     assert asyncio.run(cities.admin_selected_city(MANAGER_ID)) == "spb"

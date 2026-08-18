@@ -27,6 +27,7 @@ import gspread
 from config import config
 from database import db
 from handlers import admin as admin_mod
+from handlers import admin_cities  # Phase 13 (13-05): cities/season screens moved here
 import services.sheets as sheets
 
 
@@ -370,7 +371,7 @@ def test_dedupe_sheet_run_handler_shows_actionable_message_when_unpinned(tmp_pat
     callback = _FakeCallback(ADMIN_ID)
 
     async def go():
-        await admin_mod.dedupe_sheet_run(callback)
+        await admin_cities.dedupe_sheet_run(callback)
 
     asyncio.run(go())
     assert "GOOGLE_SHEET_TAB" in callback.message.text

@@ -18,6 +18,7 @@ from config import config
 from database import db
 from handlers import admin as admin_mod
 from handlers import admin_core  # Phase 13 (13-04): _admin_city_view moved here
+from handlers import admin_cities  # Phase 13 (13-05): admin_city_switch/pick moved here
 from handlers.admin_caps import ANY_CAPABILITY, required_capability
 import cities
 
@@ -146,7 +147,7 @@ def test_admin_city_switch_screen_lists_all_cities_and_is_capability_guarded(tmp
     assert required_capability(callback_data="admin_city_switch") == ANY_CAPABILITY
 
     cb2 = FakeCallback("admin_city_switch")
-    asyncio.run(admin_mod.admin_city_switch(cb2))
+    asyncio.run(admin_cities.admin_city_switch(cb2))
     assert cb2.message.edit_calls == 1
     flat = _flat_callback_data(cb2.message.markup)
     for code in cities.city_codes():
@@ -158,7 +159,7 @@ def test_admin_city_pick_valid_code_sets_and_rerenders(tmp_path):
     _admin_ready(tmp_path)
     asyncio.run(db.set_setting("event_city_enabled", "on"))
     cb = FakeCallback("admin_city_pick:spb")
-    asyncio.run(admin_mod.admin_city_pick(cb))
+    asyncio.run(admin_cities.admin_city_pick(cb))
     assert asyncio.run(db.get_setting(f"{cities.ADMIN_CITY_KEY_PREFIX}{ADMIN_ID}")) == "spb"
     assert asyncio.run(cities.admin_selected_city(ADMIN_ID)) == "spb"
     assert cb.message.edit_calls == 1
@@ -171,7 +172,7 @@ def test_admin_city_pick_unknown_code_rejected_no_write(tmp_path):
     _admin_ready(tmp_path)
     asyncio.run(db.set_setting("event_city_enabled", "on"))
     cb = FakeCallback("admin_city_pick:__evil__")
-    asyncio.run(admin_mod.admin_city_pick(cb))
+    asyncio.run(admin_cities.admin_city_pick(cb))
     assert cb.answers[-1] == ("Неизвестный город", True)
     assert cb.message.edit_calls == 0
     assert asyncio.run(db.get_setting(f"{cities.ADMIN_CITY_KEY_PREFIX}{ADMIN_ID}")) is None

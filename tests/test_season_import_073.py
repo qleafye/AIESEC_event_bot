@@ -20,6 +20,7 @@ from config import config
 from database import db
 from database.db import bulk_insert_users_if_absent
 from handlers import admin as admin_mod
+from handlers import admin_cities  # Phase 13 (13-05): cities/season screens moved here
 from handlers.admin_caps import ADMIN_CAPS
 from handlers.states import SeasonImport
 
@@ -271,7 +272,7 @@ def test_import_rejects_oversized_file(tmp_path):
     msg = _FakeMessage(ADMIN_ID, document=doc)
     bot = _FakeBot(b"")
 
-    asyncio.run(admin_mod.season_import_file_step(msg, state, bot))
+    asyncio.run(admin_cities.season_import_file_step(msg, state, bot))
 
     assert any("20 МБ" in (t or "") for t, _ in msg.sent)
     assert bot.downloaded_file_ids == []  # guard runs BEFORE bot.download
@@ -285,7 +286,7 @@ def test_import_rejects_non_sqlite(tmp_path):
     msg = _FakeMessage(ADMIN_ID, document=_FakeDocument())
     bot = _FakeBot(_make_garbage_bytes())
 
-    asyncio.run(admin_mod.season_import_file_step(msg, state, bot))
+    asyncio.run(admin_cities.season_import_file_step(msg, state, bot))
 
     assert any("не похоже на базу бота" in (t or "") for t, _ in msg.sent)
     assert asyncio.run(state.get_state()) == SeasonImport.waiting_file.state
@@ -300,7 +301,7 @@ def test_import_rejects_db_without_users(tmp_path):
     msg = _FakeMessage(ADMIN_ID, document=_FakeDocument())
     bot = _FakeBot(content)
 
-    asyncio.run(admin_mod.season_import_file_step(msg, state, bot))
+    asyncio.run(admin_cities.season_import_file_step(msg, state, bot))
 
     assert any("таблицы делегатов" in (t or "") for t, _ in msg.sent)
 
@@ -316,7 +317,7 @@ def test_import_counts_found_and_existing(tmp_path):
     bot = _FakeBot(content)
     total_before, _ = asyncio.run(db.get_stats())
 
-    asyncio.run(admin_mod.season_import_file_step(msg, state, bot))
+    asyncio.run(admin_cities.season_import_file_step(msg, state, bot))
 
     text = msg.sent[-1][0]
     assert "5" in text and "2" in text and "3" in text
@@ -337,7 +338,7 @@ def test_import_tempfile_removed(tmp_path):
     old_tempdir = tempfile.tempdir
     tempfile.tempdir = str(scratch_dir)
     try:
-        asyncio.run(admin_mod.season_import_file_step(msg, state, bot))
+        asyncio.run(admin_cities.season_import_file_step(msg, state, bot))
     finally:
         tempfile.tempdir = old_tempdir
 
@@ -351,7 +352,7 @@ def test_import_empty_file(tmp_path):
     msg = _FakeMessage(ADMIN_ID, document=_FakeDocument())
     bot = _FakeBot(content)
 
-    asyncio.run(admin_mod.season_import_file_step(msg, state, bot))
+    asyncio.run(admin_cities.season_import_file_step(msg, state, bot))
 
     assert any("импортировать нечего" in (t or "") for t, _ in msg.sent)
     assert asyncio.run(state.get_state()) is None
@@ -363,7 +364,7 @@ def test_import_non_document_message(tmp_path):
     asyncio.run(state.set_state(SeasonImport.waiting_file))
     msg = _FakeMessage(ADMIN_ID, text="hello")
 
-    asyncio.run(admin_mod.season_import_file_invalid(msg))
+    asyncio.run(admin_cities.season_import_file_invalid(msg))
 
     assert any("документом" in (t or "") for t, _ in msg.sent)
 
@@ -384,7 +385,7 @@ def test_import_name_rejects_empty(tmp_path):
     state = _naming_state()
     msg = _FakeMessage(ADMIN_ID, text="   ")
 
-    asyncio.run(admin_mod.season_import_name_step(msg, state))
+    asyncio.run(admin_cities.season_import_name_step(msg, state))
 
     assert asyncio.run(state.get_state()) == SeasonImport.naming.state
     assert "import_season" not in asyncio.run(state.get_data())
@@ -396,7 +397,7 @@ def test_import_name_rejects_current_season(tmp_path):
     state = _naming_state()
     msg = _FakeMessage(ADMIN_ID, text="YL'26")
 
-    asyncio.run(admin_mod.season_import_name_step(msg, state))
+    asyncio.run(admin_cities.season_import_name_step(msg, state))
 
     assert any("текущего сезона" in (t or "") for t, _ in msg.sent)
     assert not any(kb is not None for _, kb in msg.sent)  # no confirm keyboard shown
@@ -407,7 +408,7 @@ def test_import_confirm_shows_numbers(tmp_path):
     state = _naming_state(found=5, existing=2)
     msg = _FakeMessage(ADMIN_ID, text="YL'25")
 
-    asyncio.run(admin_mod.season_import_name_step(msg, state))
+    asyncio.run(admin_cities.season_import_name_step(msg, state))
 
     text, kb = msg.sent[-1]
     assert "3" in text and "YL" in text
@@ -433,7 +434,7 @@ def test_import_go_inserts_only_absent(tmp_path):
     state = _go_state(rows)
     cb = _FakeCallback("season_import_go", ADMIN_ID)
 
-    asyncio.run(admin_mod.season_import_go(cb, state))
+    asyncio.run(admin_cities.season_import_go(cb, state))
 
     assert _snapshot_row(1) == before
     assert _snapshot_row(2) is not None
@@ -445,7 +446,7 @@ def test_import_go_sets_season_on_imported(tmp_path):
     state = _go_state(rows, season="YL'25")
     cb = _FakeCallback("season_import_go", ADMIN_ID)
 
-    asyncio.run(admin_mod.season_import_go(cb, state))
+    asyncio.run(admin_cities.season_import_go(cb, state))
 
     assert _snapshot_row(3)["season"] == "YL'25"
     assert _snapshot_row(4)["season"] == "YL'25"
@@ -458,7 +459,7 @@ def test_import_go_does_not_switch_event_season(tmp_path):
     state = _go_state(rows, season="YL'25")
     cb = _FakeCallback("season_import_go", ADMIN_ID)
 
-    asyncio.run(admin_mod.season_import_go(cb, state))
+    asyncio.run(admin_cities.season_import_go(cb, state))
 
     assert asyncio.run(db.get_setting("event_season")) == "YL'26"
 
@@ -469,7 +470,7 @@ def test_import_go_no_payments_no_referrals(tmp_path):
     state = _go_state(rows)
     cb = _FakeCallback("season_import_go", ADMIN_ID)
 
-    asyncio.run(admin_mod.season_import_go(cb, state))
+    asyncio.run(admin_cities.season_import_go(cb, state))
 
     row = _snapshot_row(6)
     assert row["payment_status"] != "paid"
@@ -483,7 +484,7 @@ def test_import_go_stale_state(tmp_path):
     state = _new_state(ADMIN_ID)  # no import_rows/import_season set
     cb = _FakeCallback("season_import_go", ADMIN_ID)
 
-    asyncio.run(admin_mod.season_import_go(cb, state))
+    asyncio.run(admin_cities.season_import_go(cb, state))
 
     assert cb.answers and cb.answers[0][1] is True  # show_alert
     total, _ = asyncio.run(db.get_stats())
@@ -496,7 +497,7 @@ def test_import_go_clears_state(tmp_path):
     state = _go_state(rows)
     cb = _FakeCallback("season_import_go", ADMIN_ID)
 
-    asyncio.run(admin_mod.season_import_go(cb, state))
+    asyncio.run(admin_cities.season_import_go(cb, state))
 
     assert asyncio.run(state.get_state()) is None
     assert "import_rows" not in asyncio.run(state.get_data())
@@ -509,7 +510,7 @@ def test_import_go_logs_admin_id(tmp_path, caplog):
     cb = _FakeCallback("season_import_go", ADMIN_ID)
 
     with caplog.at_level("WARNING"):
-        asyncio.run(admin_mod.season_import_go(cb, state))
+        asyncio.run(admin_cities.season_import_go(cb, state))
 
     log_text = "\n".join(r.message for r in caplog.records)
     assert str(ADMIN_ID) in log_text
