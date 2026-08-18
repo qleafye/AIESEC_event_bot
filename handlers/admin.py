@@ -894,14 +894,36 @@ FILE_FIELDS = [
 ]
 
 
-async def render_settings_text() -> str:
-    lines = ["⚙️ <b>Настройки форума</b>", ""]
+# Phase 09.3 (04, CITY-09): admin_id=None means "no header context" — reserved for tests
+# and call sites where the admin is unknown; every production call site MUST pass the real
+# admin id (structural test: tests/test_regmode_header_093.py asserts no empty-parens call
+# of render_settings_text()/build_settings_keyboard() remains in this file).
+async def render_settings_text(admin_id: int | None = None) -> str:
+    # Phase 09.3 (04, CITY-09): WR-05 — resolve the header ONCE for this whole render call.
+    # `admin_id is None` (tests, unknown-caller sites) and `header_code in (None, ALL_CITIES)`
+    # (module off / no choice yet / explicit «все города») all collapse to the SAME branch
+    # below — byte-identical to pre-phase output (CONTEXT D module-off parity).
+    header_code = await admin_selected_city(admin_id) if admin_id is not None else None
+    per_city_ctx = bool(header_code and header_code != ALL_CITIES)
 
-    # REG-02 (06-07): final-coverage sweep — closes the 06-05-flagged boundary; byte-
-    # identical to the prior `get_setting(k) or "<literal>"` idiom (enum falsy->default).
-    reg_mode = await get_setting_typed("registration_mode")
-    mode_label = "📋 Полная" if reg_mode == "full" else "⚡ Краткая"
-    lines.append(f"📝 Форма регистрации: <b>{mode_label}</b>")
+    lines = []
+    if per_city_ctx:
+        lines.append(f"🏙 {html_module.escape(await city_label(header_code))}")
+    lines += ["⚙️ <b>Настройки форума</b>", ""]
+
+    if per_city_ctx:
+        # T-093-13: composed key comes ONLY from cities.per_city_key (closed-set guard).
+        reg_mode = await get_setting_typed_for_city("registration_mode", header_code)
+        mode_label = "📋 Полная" if reg_mode == "full" else "⚡ Краткая"
+        own_key = per_city_key("registration_mode", header_code)
+        own_mark = " — своё" if (own_key and await get_setting(own_key)) else " — как везде"
+        lines.append(f"📝 Форма регистрации: <b>{mode_label}</b>{own_mark}")
+    else:
+        # REG-02 (06-07): final-coverage sweep — closes the 06-05-flagged boundary; byte-
+        # identical to the prior `get_setting(k) or "<literal>"` idiom (enum falsy->default).
+        reg_mode = await get_setting_typed("registration_mode")
+        mode_label = "📋 Полная" if reg_mode == "full" else "⚡ Краткая"
+        lines.append(f"📝 Форма регистрации: <b>{mode_label}</b>")
 
     # REG-02 (06-05): feature-switch reads resolved via the registry's enum default,
     # byte-identical to the prior `get_setting(k) or "<literal>"` idiom (get_setting_typed's
@@ -947,8 +969,14 @@ async def render_settings_text() -> str:
 
     enabled_m = 0
     for key, _ in MENU_BUTTONS:
-        v = await get_setting(key)
-        if (v == "on") if v is not None else True:
+        if per_city_ctx:
+            # Effective per-city resolver (fallback to global) — CONTEXT B: the counter at
+            # the header's city must reflect what that city's delegates actually see.
+            is_on = await get_setting_typed_for_city(key, header_code) == "on"
+        else:
+            v = await get_setting(key)
+            is_on = (v == "on") if v is not None else True
+        if is_on:
             enabled_m += 1
     lines.append(f"🔘 Меню: <b>{enabled_m} из {len(MENU_BUTTONS)}</b> кнопок")
     lines.append("")
@@ -960,11 +988,21 @@ async def render_settings_text() -> str:
     return "\n".join(lines)
 
 
-async def build_settings_keyboard():
+# Phase 09.3 (04, CITY-09): admin_id=None means "no header context" — see the comment
+# above render_settings_text (same contract, same structural test).
+async def build_settings_keyboard(admin_id: int | None = None):
+    # Phase 09.3 (04, CITY-09): WR-05 — single header read for this render call, same
+    # contract as render_settings_text above.
+    header_code = await admin_selected_city(admin_id) if admin_id is not None else None
+    per_city_ctx = bool(header_code and header_code != ALL_CITIES)
+
     # REG-02 (06-05): feature-switch reads resolved via the registry's enum default,
     # byte-identical to the prior `get_setting(k) or "<literal>"` idiom — button TEXT
     # ternaries and callback_data strings are intentionally untouched (D-12).
-    reg_mode = await get_setting_typed("registration_mode")
+    if per_city_ctx:
+        reg_mode = await get_setting_typed_for_city("registration_mode", header_code)
+    else:
+        reg_mode = await get_setting_typed("registration_mode")
     toggle_text = "📝 Регистрация: ⚡ Краткая → 📋 Полная" if reg_mode == "short" else "📝 Регистрация: 📋 Полная → ⚡ Краткая"
 
     bonus_enabled = await get_setting_typed("reg_bonus_enabled")
@@ -1010,11 +1048,16 @@ async def build_settings_keyboard():
     buttons = [
         [InlineKeyboardButton(text=toggle_text, callback_data="settings_toggle_reg")],
     ]
-    # Phase 09.2 (C, CITY-05): registration_mode has no settings_edit:{key} screen of its
-    # own (it's a landing toggle, not a SETTINGS_FIELDS text entry) — this is its only entry
-    # point into the shared per-city screen. Cities module off -> no new button (CONTEXT C).
-    if await cities_module_on():
-        buttons.append([InlineKeyboardButton(text="🏙 Форма по городам", callback_data="settings_city:registration_mode")])
+    # Phase 09.3 (04, CITY-09): registration_mode has no settings_edit:{key} screen of its
+    # own (it's a landing toggle, not a SETTINGS_FIELDS text entry) — the header toggle above
+    # IS its per-city editor now; the old picker shortcut («🏙 Форма по городам», entering
+    # the per-key city picker screen) is gone. Reset row only when the header's city has an
+    # own override to reset (mirrors settings_city_pick's "↩️" — never shown with nothing to
+    # undo).
+    if per_city_ctx:
+        own_key = per_city_key("registration_mode", header_code)
+        if own_key and await get_setting(own_key):
+            buttons.append([InlineKeyboardButton(text="↩️ Как везде", callback_data="settings_regmode_reset")])
     buttons += [
         [InlineKeyboardButton(text=bonus_toggle_text, callback_data="settings_toggle_bonus")],
         [InlineKeyboardButton(text=full_txt, callback_data="settings_toggle_full_approval")],
@@ -1118,8 +1161,8 @@ async def build_settings_group_keyboard(token: str):
 
 @router.callback_query(F.data == "admin_settings")
 async def show_admin_settings(callback: types.CallbackQuery):
-    text = await render_settings_text()
-    await callback.message.edit_text(text, parse_mode="HTML", reply_markup=await build_settings_keyboard())
+    text = await render_settings_text(callback.from_user.id)
+    await callback.message.edit_text(text, parse_mode="HTML", reply_markup=await build_settings_keyboard(callback.from_user.id))
     await callback.answer()
 
 
@@ -1139,20 +1182,110 @@ async def settings_group_noop(callback: types.CallbackQuery):
 
 @router.callback_query(F.data == "settings_toggle_reg")
 async def toggle_registration_mode(callback: types.CallbackQuery):
-    # REG-02 (06-05): current-value read migrated to the registry; write path unchanged.
-    current = await get_setting_typed("registration_mode")
-    new_mode = "full" if current == "short" else "short"
-    await set_setting("registration_mode", new_mode)
+    # Phase 09.3 (04, CITY-09): WR-05 — single header read for this handler.
+    admin_id = callback.from_user.id
+    header_code = await admin_selected_city(admin_id)
+    if header_code and header_code != ALL_CITIES:
+        # T-093-12: re-check the RIGHT in the handler, not just via a hidden button.
+        visible = await _per_city_visible_codes(admin_id)
+        if header_code not in visible:
+            await callback.answer("Этот город правит суперадмин", show_alert=True)
+            return
+        # T-093-13: composed key comes ONLY from cities.per_city_key.
+        composed = per_city_key("registration_mode", header_code)
+        if composed is None:
+            await callback.answer("Неизвестный город", show_alert=True)
+            return
+        current = await get_setting_typed_for_city("registration_mode", header_code)
+        new_mode = "full" if current == "short" else "short"
+        await set_setting(composed, new_mode)
+        city_txt = await city_label(header_code)
+        human = _enum_human_label("registration_mode", new_mode)
+        await callback.answer(f"Форма регистрации для {city_txt}: {human}", show_alert=True)
+    else:
+        # REG-02 (06-05): current-value read migrated to the registry; write path unchanged.
+        current = await get_setting_typed("registration_mode")
+        new_mode = "full" if current == "short" else "short"
+        await set_setting("registration_mode", new_mode)
+        label = "📋 Полная" if new_mode == "full" else "⚡ Краткая"
+        await callback.answer(f"Форма регистрации: {label}", show_alert=True)
 
-    label = "📋 Полная" if new_mode == "full" else "⚡ Краткая"
-    await callback.answer(f"Форма регистрации: {label}", show_alert=True)
-
-    text = await render_settings_text()
-    await callback.message.edit_text(text, parse_mode="HTML", reply_markup=await build_settings_keyboard())
+    text = await render_settings_text(admin_id)
+    await callback.message.edit_text(text, parse_mode="HTML", reply_markup=await build_settings_keyboard(admin_id))
     # Phase 7 (SHORT-03, gate #5): materialize the short tab the moment the manager flips
     # into "Краткая" — no need to wait for the first registration. Switching back to "Полная"
     # is a no-op (the gate inside returns early); the tab and its data are never touched.
+    # Materializing the tab is a property of the EVENT ("Акция"), not the city — always run,
+    # even when this toggle just wrote a per-city override.
     await _refresh_short_sheet_header()
+
+
+@router.callback_query(F.data == "settings_regmode_reset")
+async def settings_regmode_reset(callback: types.CallbackQuery):
+    """Confirm screen for «↩️ Как везде» on the header-scoped registration-mode toggle —
+    two-step confirm gate idiom (settings_city_clear/settings_city_clear_go analog)."""
+    admin_id = callback.from_user.id
+    header_code = await admin_selected_city(admin_id)
+    if not header_code or header_code == ALL_CITIES:
+        await callback.answer("Нет своего значения для сброса", show_alert=True)
+        return
+    visible = await _per_city_visible_codes(admin_id)
+    if header_code not in visible:
+        await callback.answer("Этот город правит суперадмин", show_alert=True)
+        return
+    composed = per_city_key("registration_mode", header_code)
+    if composed is None or not await get_setting(composed):
+        await callback.answer("Нет своего значения для сброса", show_alert=True)
+        return
+
+    city_txt = await city_label(header_code)
+    global_value = await get_setting_typed("registration_mode")
+    global_human = _enum_human_label("registration_mode", global_value)
+    text = (
+        f"Город {html_module.escape(city_txt)} снова будет использовать общую форму "
+        f"регистрации:\n<b>{global_human}</b>\n\nСвоя форма регистрации города будет удалена."
+    )
+    kb = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="✅ Да, как везде", callback_data=f"settings_regmode_reset_go:{header_code}")],
+        [InlineKeyboardButton(text="← Отмена", callback_data="admin_settings")],
+    ])
+    await callback.message.edit_text(text, parse_mode="HTML", reply_markup=kb)
+    await callback.answer()
+
+
+@router.callback_query(F.data.startswith("settings_regmode_reset_go:"))
+async def settings_regmode_reset_go(callback: types.CallbackQuery):
+    admin_id = callback.from_user.id
+    code = callback.data.split(":", 1)[1]
+
+    # T-093-13: composed key comes ONLY from cities.per_city_key — refuse on an unknown code
+    # before touching rights or freshness (mirrors settings_city_clear_go's own guard order).
+    composed = per_city_key("registration_mode", code)
+    if composed is None:
+        await callback.answer("Неизвестный город", show_alert=True)
+        return
+    # T-093-12: RIGHT check against the code carried in callback_data (not just the current
+    # header) — this is what catches a bound manager's forged confirmation for another city,
+    # since the freshness check below alone could never distinguish "forged" from "stale"
+    # (a bound manager's OWN header can never actually become another city).
+    visible = await _per_city_visible_codes(admin_id)
+    if code not in visible:
+        await callback.answer("Этот город правит суперадмин", show_alert=True)
+        return
+    # T-093-14: freshness — the confirm screen named the header's city; if the header moved
+    # on since, refuse and make the admin re-open the confirm screen for the NEW city.
+    current = await admin_selected_city(admin_id)
+    if code != current:
+        await callback.answer("Город админки изменился — подтвердите заново.", show_alert=True)
+        text = await render_settings_text(admin_id)
+        await callback.message.edit_text(text, parse_mode="HTML", reply_markup=await build_settings_keyboard(admin_id))
+        return
+
+    await delete_setting(composed)  # idempotent — safe if already absent
+    city_txt = await city_label(code)
+    await callback.answer(f"Готово: {city_txt} — как везде", show_alert=True)
+    text = await render_settings_text(admin_id)
+    await callback.message.edit_text(text, parse_mode="HTML", reply_markup=await build_settings_keyboard(admin_id))
 
 
 async def _toggle_approval_setting(callback: types.CallbackQuery, key: str, default: str, title: str):
@@ -1162,8 +1295,8 @@ async def _toggle_approval_setting(callback: types.CallbackQuery, key: str, defa
     new_val = "auto" if current == "manual" else "manual"
     await set_setting(key, new_val)
     await callback.answer(f"{title}: {'👮 Ручная' if new_val == 'manual' else '⚡ Авто'}", show_alert=True)
-    text = await render_settings_text()
-    await callback.message.edit_text(text, parse_mode="HTML", reply_markup=await build_settings_keyboard())
+    text = await render_settings_text(callback.from_user.id)
+    await callback.message.edit_text(text, parse_mode="HTML", reply_markup=await build_settings_keyboard(callback.from_user.id))
 
 
 @router.callback_query(F.data == "settings_toggle_full_approval")
@@ -1194,8 +1327,8 @@ async def _toggle_module_setting(callback: types.CallbackQuery, key: str, title:
     await set_setting(key, new_val)
     label = "✅ Вкл" if new_val == "on" else "❌ Выкл"
     await callback.answer(f"{title}: {label}", show_alert=True)
-    text = await render_settings_text()
-    await callback.message.edit_text(text, parse_mode="HTML", reply_markup=await build_settings_keyboard())
+    text = await render_settings_text(callback.from_user.id)
+    await callback.message.edit_text(text, parse_mode="HTML", reply_markup=await build_settings_keyboard(callback.from_user.id))
 
 
 @router.callback_query(F.data == "toggle_payment_enabled")
@@ -1238,8 +1371,8 @@ async def _toggle_value_setting(callback, key, val_a, val_b, default, title_a, t
     new_val = val_b if current == val_a else val_a
     await set_setting(key, new_val)
     await callback.answer(title_a if new_val == val_a else title_b, show_alert=True)
-    text = await render_settings_text()
-    await callback.message.edit_text(text, parse_mode="HTML", reply_markup=await build_settings_keyboard())
+    text = await render_settings_text(callback.from_user.id)
+    await callback.message.edit_text(text, parse_mode="HTML", reply_markup=await build_settings_keyboard(callback.from_user.id))
 
 
 @router.callback_query(F.data == "toggle_uni_mode")
@@ -1285,8 +1418,8 @@ async def toggle_notify_mode(callback: types.CallbackQuery):
     new_val = "batched" if current == "instant" else "instant"
     await set_setting("pending_notify_mode", new_val)
     await callback.answer(f"Уведомление: {'📨 Сразу' if new_val == 'instant' else '🕒 Пачкой'}", show_alert=True)
-    text = await render_settings_text()
-    await callback.message.edit_text(text, parse_mode="HTML", reply_markup=await build_settings_keyboard())
+    text = await render_settings_text(callback.from_user.id)
+    await callback.message.edit_text(text, parse_mode="HTML", reply_markup=await build_settings_keyboard(callback.from_user.id))
 
 
 @router.callback_query(F.data == "settings_toggle_bonus")
@@ -1299,8 +1432,8 @@ async def toggle_bonus(callback: types.CallbackQuery):
     label = "✅ Вкл" if new_val == "on" else "❌ Выкл"
     await callback.answer(f"Бонус за регистрацию: {label}", show_alert=True)
 
-    text = await render_settings_text()
-    await callback.message.edit_text(text, parse_mode="HTML", reply_markup=await build_settings_keyboard())
+    text = await render_settings_text(callback.from_user.id)
+    await callback.message.edit_text(text, parse_mode="HTML", reply_markup=await build_settings_keyboard(callback.from_user.id))
 
 
 @router.callback_query(F.data.startswith("settings_file:"))
@@ -1459,8 +1592,8 @@ async def settings_photo_start(callback: types.CallbackQuery, state: FSMContext)
 @router.callback_query(F.data == "settings_cancel")
 async def cancel_edit_setting_callback(callback: types.CallbackQuery, state: FSMContext):
     await state.clear()
-    text = await render_settings_text()
-    await callback.message.edit_text(text, parse_mode="HTML", reply_markup=await build_settings_keyboard())
+    text = await render_settings_text(callback.from_user.id)
+    await callback.message.edit_text(text, parse_mode="HTML", reply_markup=await build_settings_keyboard(callback.from_user.id))
     await callback.answer()
 
 
@@ -1687,8 +1820,8 @@ async def consent_pdf_set(callback: types.CallbackQuery, state: FSMContext):
 @router.message(StateFilter(EditSetting), F.text == "Отмена")
 async def cancel_edit_setting(message: types.Message, state: FSMContext):
     await state.clear()
-    text = await render_settings_text()
-    await message.answer(text, parse_mode="HTML", reply_markup=await build_settings_keyboard())
+    text = await render_settings_text(message.from_user.id)
+    await message.answer(text, parse_mode="HTML", reply_markup=await build_settings_keyboard(message.from_user.id))
 
 
 @router.message(EditSetting.waiting_for_photo, F.photo)
@@ -1706,8 +1839,8 @@ async def settings_receive_photo(message: types.Message, state: FSMContext):
 
     await state.clear()
     await message.answer("✅ Фото обновлено!")
-    text = await render_settings_text()
-    await message.answer(text, parse_mode="HTML", reply_markup=await build_settings_keyboard())
+    text = await render_settings_text(message.from_user.id)
+    await message.answer(text, parse_mode="HTML", reply_markup=await build_settings_keyboard(message.from_user.id))
 
 
 @router.message(EditSetting.waiting_for_photo)
@@ -1734,8 +1867,8 @@ async def settings_receive_file_photo(message: types.Message, state: FSMContext)
 
     await state.clear()
     await message.answer("✅ Файл обновлён!")
-    text = await render_settings_text()
-    await message.answer(text, parse_mode="HTML", reply_markup=await build_settings_keyboard())
+    text = await render_settings_text(message.from_user.id)
+    await message.answer(text, parse_mode="HTML", reply_markup=await build_settings_keyboard(message.from_user.id))
 
 
 @router.message(EditSetting.waiting_for_file, F.document)
@@ -1751,8 +1884,8 @@ async def settings_receive_file_doc(message: types.Message, state: FSMContext):
         await set_setting(raw_key, message.document.file_id)
         await state.clear()
         await message.answer("✅ PDF согласия сохранён!")
-        text = await render_settings_text()
-        await message.answer(text, parse_mode="HTML", reply_markup=await build_settings_keyboard())
+        text = await render_settings_text(message.from_user.id)
+        await message.answer(text, parse_mode="HTML", reply_markup=await build_settings_keyboard(message.from_user.id))
         return
 
     prefix = data.get("file_setting", "reg_bonus")
@@ -1768,8 +1901,8 @@ async def settings_receive_file_doc(message: types.Message, state: FSMContext):
 
     await state.clear()
     await message.answer("✅ Файл обновлён!")
-    text = await render_settings_text()
-    await message.answer(text, parse_mode="HTML", reply_markup=await build_settings_keyboard())
+    text = await render_settings_text(message.from_user.id)
+    await message.answer(text, parse_mode="HTML", reply_markup=await build_settings_keyboard(message.from_user.id))
 
 
 @router.message(EditSetting.waiting_for_file)
@@ -2084,8 +2217,8 @@ async def settings_edit_value(message: types.Message, state: FSMContext):
         text, kb = await _per_city_screen(per_city_base, message.from_user.id)
         await message.answer(text + warning, parse_mode="HTML", reply_markup=kb)
         return
-    text = await render_settings_text()
-    await message.answer(text + warning, parse_mode="HTML", reply_markup=await build_settings_keyboard())
+    text = await render_settings_text(message.from_user.id)
+    await message.answer(text + warning, parse_mode="HTML", reply_markup=await build_settings_keyboard(message.from_user.id))
 
 
 @router.callback_query(F.data == "sheets_tab_confirm")
@@ -3778,8 +3911,8 @@ async def reg_q_noop(callback: types.CallbackQuery):
 
 @router.callback_query(F.data == "reg_q_back")
 async def reg_questions_back(callback: types.CallbackQuery):
-    text = await render_settings_text()
-    await callback.message.edit_text(text, parse_mode="HTML", reply_markup=await build_settings_keyboard())
+    text = await render_settings_text(callback.from_user.id)
+    await callback.message.edit_text(text, parse_mode="HTML", reply_markup=await build_settings_keyboard(callback.from_user.id))
     await callback.answer()
 
 
@@ -4039,8 +4172,8 @@ async def toggle_menu_button(callback: types.CallbackQuery):
 
 @router.callback_query(F.data == "menu_back")
 async def menu_buttons_back(callback: types.CallbackQuery):
-    text = await render_settings_text()
-    await callback.message.edit_text(text, parse_mode="HTML", reply_markup=await build_settings_keyboard())
+    text = await render_settings_text(callback.from_user.id)
+    await callback.message.edit_text(text, parse_mode="HTML", reply_markup=await build_settings_keyboard(callback.from_user.id))
     await callback.answer()
 
 
