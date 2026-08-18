@@ -27,6 +27,8 @@ from aiogram.fsm.storage.memory import MemoryStorage
 from config import config
 from database import db
 from handlers import admin as admin_mod
+from handlers import admin_settings  # Phase 13 (13-06): settings moved out of admin.py
+from handlers import admin_moderation  # Phase 13 (13-06): moderation moved out of admin.py
 from handlers import admin_roles  # Phase 13 (13-04): render_roles_text/build_roles_keyboard moved here
 from handlers import states as states_mod
 
@@ -219,7 +221,7 @@ def _flat_callback_data(kb):
 
 def test_roles_group_ui_row_is_in_settings_not_in_admin_menu(tmp_path):
     _roles_ready(tmp_path)
-    settings_kb = asyncio.run(admin_mod.build_settings_keyboard())
+    settings_kb = asyncio.run(admin_settings.build_settings_keyboard())
     assert "admin_roles" in _flat_callback_data(settings_kb)
 
     # 08-05 (D-15): build_admin_keyboard is now async + capability-filtered.
@@ -749,7 +751,7 @@ def test_pick_auto_open_returns_none_for_zero_or_multiple_rows():
 
 def test_pick_auto_open_returns_the_handler_for_a_single_screen_row():
     handler, needs_state = admin_mod._pick_auto_open([("x", "admin_applications")])
-    assert handler is admin_mod.show_applications
+    assert handler is admin_moderation.show_applications
     assert needs_state is True
 
 

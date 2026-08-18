@@ -33,6 +33,8 @@ from aiogram.fsm.storage.memory import MemoryStorage
 from config import config
 from database import db
 from handlers import admin as admin_mod
+from handlers import admin_moderation  # Phase 13 (13-06): moderation moved out of admin.py
+from handlers import admin_settings  # Phase 13 (13-06): settings moved out of admin.py
 from handlers import admin_broadcasts  # Phase 13 (13-05): broadcast handlers moved here
 from services import reminders as reminders_mod
 import cities
@@ -169,7 +171,7 @@ def test_applications_queue_shows_the_oldest_row_regardless_of_its_city(tmp_path
     _seed_mixed_cities(tmp_path)
     state = _new_state(ADMIN_ID)
     target = FakeMessage()
-    asyncio.run(admin_mod._show_current_card(target, state))
+    asyncio.run(admin_moderation._show_current_card(target, state))
     # 5 заявок всех городов в счётчике, первой показана самая ранняя (питерская)
     assert target.text.startswith("📋 <b>Заявка 1/5</b>\n")
     assert "Питерская Первая" in target.text
@@ -184,7 +186,7 @@ def test_receipts_queue_header_has_no_city_marker(tmp_path):
           status="approved", payment_status="receipt_sent")
     state = _new_state(ADMIN_ID)
     target = FakeMessage()
-    asyncio.run(admin_mod._show_current_receipt_card(target, state))
+    asyncio.run(admin_moderation._show_current_receipt_card(target, state))
     assert target.text.startswith("🧾 <b>Чек 1/2</b>\n")
     assert "🏙" not in target.text.split("\n")[0]
 
@@ -193,10 +195,10 @@ def test_empty_queues_keep_the_pre_phase_literals(tmp_path):
     _admin_ready(tmp_path)
     state = _new_state(ADMIN_ID)
     apps = FakeMessage()
-    asyncio.run(admin_mod._show_current_card(apps, state))
+    asyncio.run(admin_moderation._show_current_card(apps, state))
     assert apps.answers_sent[-1] == "✅ Заявок нет."
     receipts = FakeMessage()
-    asyncio.run(admin_mod._show_current_receipt_card(receipts, state))
+    asyncio.run(admin_moderation._show_current_receipt_card(receipts, state))
     assert receipts.answers_sent[-1] == "✅ Чеков на проверке нет."
 
 
@@ -209,7 +211,7 @@ def test_appr_all_confirm_text_equals_the_pre_phase_literal(tmp_path):
     total = asyncio.run(db.get_pending_count())
     cb = FakeCallback("appr_all")
     state = _new_state(ADMIN_ID)
-    asyncio.run(admin_mod.appr_all_confirm(cb, state))
+    asyncio.run(admin_moderation.appr_all_confirm(cb, state))
     assert cb.message.text == f"Одобрить все {total} заявок?"
 
 
@@ -217,7 +219,7 @@ def test_appr_all_yes_approves_every_city(tmp_path):
     _seed_mixed_cities(tmp_path)
     cb = FakeCallback("appr_all_yes")
     state = _new_state(ADMIN_ID)
-    asyncio.run(admin_mod.appr_all_yes(cb, state))
+    asyncio.run(admin_moderation.appr_all_yes(cb, state))
 
     async def check():
         for tid in (1, 2, 3, 4, 5):
@@ -234,7 +236,7 @@ def test_csv_export_filename_and_caption_are_the_pre_phase_literals(tmp_path):
     _seed_mixed_cities(tmp_path)
     asyncio.run(db.set_setting(f"{cities.ADMIN_CITY_KEY_PREFIX}{ADMIN_ID}", "spb"))
     cb = FakeCallback("admin_export_csv")
-    asyncio.run(admin_mod.show_admin_export(cb))
+    asyncio.run(admin_settings.show_admin_export(cb))
     document, caption = cb.message.documents[0]
     assert document.filename == "users.csv"
     assert caption == "База данных пользователей"
