@@ -1085,12 +1085,23 @@ async def build_settings_keyboard(admin_id: int | None = None):
     return InlineKeyboardMarkup(inline_keyboard=buttons)
 
 
-async def render_settings_group_text(token: str) -> str:
+async def render_settings_group_text(token: str, admin_id: int | None = None) -> str:
     """Quick 260724-c0x: per-group sub-screen — status FLAGS only («задано»/«не задано»/
     «по умолчанию»), never the raw value inline (that stays behind the existing
-    settings_edit tap-through, unchanged)."""
+    settings_edit tap-through, unchanged).
+
+    Phase 09.3 (05, CITY-09): WR-05 — resolve the header ONCE for this whole render call.
+    `admin_id is None` (tests, unknown-caller sites) and `header_code in (None, ALL_CITIES)`
+    (module off / explicit «все города») all collapse to the SAME branch below —
+    byte-identical to pre-phase output (CONTEXT D module-off parity)."""
+    header_code = await admin_selected_city(admin_id) if admin_id is not None else None
+    per_city_ctx = bool(header_code and header_code != ALL_CITIES)
+
     group_label = _settings_group_label(token)
-    lines = [f"⚙️ <b>Настройки → {group_label}</b>", ""]
+    lines = []
+    if per_city_ctx:
+        lines.append(f"🏙 {html_module.escape(await city_label(header_code))}")
+    lines += [f"⚙️ <b>Настройки → {group_label}</b>", ""]
 
     field_labels = {k: lbl for k, lbl, _ in SETTINGS_FIELDS}
     # Phase 09.2 (C, CITY-05): compact «🏙 N» override-count marker, only when the cities
@@ -1100,6 +1111,24 @@ async def render_settings_group_text(token: str) -> str:
     city_module_on = await cities_module_on()
     for key in _settings_group_keys(token):
         label = field_labels.get(key, key)
+        if per_city_ctx and is_per_city(key):
+            # Phase 09.3 (05, CITY-09, CONTEXT B): flag relative to the header's city —
+            # «✏️ своё» if the city has its own value, else «как везде · {общее}» using the
+            # SAME ladder as the global branch below (no duplicated wording rules).
+            own_key = per_city_key(key, header_code)
+            if own_key and await get_setting(own_key):
+                flag = "✏️ своё"
+            else:
+                value = await get_setting(key)
+                if value:
+                    common = "задано"
+                elif key in _SETTINGS_DISPLAY_DEFAULTS:
+                    common = "по умолчанию"
+                else:
+                    common = "не задано"
+                flag = f"как везде · {common}"
+            lines.append(f"{label}: {flag}")
+            continue
         value = await get_setting(key)
         if value:
             flag = "✏️ задано"
@@ -1126,10 +1155,18 @@ async def render_settings_group_text(token: str) -> str:
     return "\n".join(lines)
 
 
-async def build_settings_group_keyboard(token: str):
+async def build_settings_group_keyboard(token: str, admin_id: int | None = None):
     """Reuses the existing settings_edit/settings_photo/settings_file callbacks unchanged —
     only the button placement changes. Configured fields first, then a noop section-header
-    button (req #2: collapse unconfigured fields), then unconfigured fields."""
+    button (req #2: collapse unconfigured fields), then unconfigured fields.
+
+    Phase 09.3 (05, CITY-09): WR-05 — resolve the header ONCE, same contract as
+    render_settings_group_text above (kept as a second read here, not shared across the two
+    functions, since they're independent render calls per call site — matches the
+    render_settings_text/build_settings_keyboard precedent from plan 04)."""
+    header_code = await admin_selected_city(admin_id) if admin_id is not None else None
+    per_city_ctx = bool(header_code and header_code != ALL_CITIES)
+
     field_labels = {k: lbl for k, lbl, _ in SETTINGS_FIELDS}
     configured: list[InlineKeyboardButton] = []
     unconfigured: list[InlineKeyboardButton] = []
@@ -1137,7 +1174,15 @@ async def build_settings_group_keyboard(token: str):
     for key in _settings_group_keys(token):
         label = field_labels.get(key, key)
         btn = InlineKeyboardButton(text=f"✏️ {label}", callback_data=f"settings_edit:{key}")
-        value = await get_setting(key)
+        if per_city_ctx and is_per_city(key):
+            # CONTEXT B: «настроено» = effective value at the header's city (своё, иначе
+            # общее) — a key with only a city override must land in «настроено», not the
+            # collapsed «не настроено» section.
+            own_key = per_city_key(key, header_code)
+            own_value = await get_setting(own_key) if own_key else None
+            value = own_value or await get_setting(key)
+        else:
+            value = await get_setting(key)
         (configured if value else unconfigured).append(btn)
 
     if token == "event":
@@ -1169,8 +1214,8 @@ async def show_admin_settings(callback: types.CallbackQuery):
 @router.callback_query(F.data.startswith("settings_group:"))
 async def show_settings_group(callback: types.CallbackQuery):
     token = callback.data.split(":", 1)[1]
-    text = await render_settings_group_text(token)
-    await callback.message.edit_text(text, parse_mode="HTML", reply_markup=await build_settings_group_keyboard(token))
+    text = await render_settings_group_text(token, callback.from_user.id)
+    await callback.message.edit_text(text, parse_mode="HTML", reply_markup=await build_settings_group_keyboard(token, callback.from_user.id))
     await callback.answer()
 
 
@@ -2234,8 +2279,8 @@ async def sheets_tab_confirm_go(callback: types.CallbackQuery, state: FSMContext
         await set_setting(key, value)
         if key in _SHEET_TAB_WRITE_MODE:
             await _after_tab_setting_saved(key)
-    text = await render_settings_group_text("sheets")
-    await callback.message.edit_text(text, parse_mode="HTML", reply_markup=await build_settings_group_keyboard("sheets"))
+    text = await render_settings_group_text("sheets", callback.from_user.id)
+    await callback.message.edit_text(text, parse_mode="HTML", reply_markup=await build_settings_group_keyboard("sheets", callback.from_user.id))
     await callback.answer("✅ Сохранено")
 
 
@@ -2243,8 +2288,8 @@ async def sheets_tab_confirm_go(callback: types.CallbackQuery, state: FSMContext
 async def sheets_tab_cancel_go(callback: types.CallbackQuery, state: FSMContext):
     """Cancelled overwrite — nothing saved, prior value untouched."""
     await state.clear()
-    text = await render_settings_group_text("sheets")
-    await callback.message.edit_text(text, parse_mode="HTML", reply_markup=await build_settings_group_keyboard("sheets"))
+    text = await render_settings_group_text("sheets", callback.from_user.id)
+    await callback.message.edit_text(text, parse_mode="HTML", reply_markup=await build_settings_group_keyboard("sheets", callback.from_user.id))
     await callback.answer("Отменено")
 
 
