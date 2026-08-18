@@ -59,6 +59,10 @@ from database.db import (
     task_title,
     update_task_title,
     update_task_photo,
+    archive_task,
+    unarchive_task,
+    delete_task,
+    count_task_submissions,
     get_submission,
     get_pending_submissions,
     get_pending_submissions_count,
@@ -5234,6 +5238,19 @@ async def roles_remove(callback: types.CallbackQuery):
 # moderation queue wave 4 will add. T-09-05: task text is shown to every delegate later
 # (wave 3, parse_mode="HTML") — escaped on EVERY render, not just once at creation.
 
+def _game_task_line(t: dict) -> str:
+    """Byte-identical row format shared by both the active-tasks screen and the archive
+    screen — the ONE place a task row is rendered. Quick 260819-gtl (CONTEXT.md decisions
+    1/3): shows task_title() (fallback for NULL-title legacy tasks), not a raw text preview."""
+    try:
+        deadline = datetime.strptime(t["deadline_at"], "%Y-%m-%d %H:%M:%S").strftime("%d.%m.%Y %H:%M")
+    except (TypeError, ValueError):
+        deadline = str(t["deadline_at"] or "—")
+    title = html_module.escape(task_title(t))
+    category = html_module.escape(str(t["category"]))
+    return f"«{category}» {title} · {t['coins']}🪙 · до {deadline}"
+
+
 async def _game_tasks_screen() -> tuple[str, InlineKeyboardMarkup]:
     """Single read of `list_all_tasks()` feeds both the list text and its keyboard, reused by
     the list screen itself, the post-confirm re-render, and the mid-wizard cancel re-render
@@ -5242,27 +5259,76 @@ async def _game_tasks_screen() -> tuple[str, InlineKeyboardMarkup]:
     Quick 260819-gtl (CONTEXT.md decisions 1/3): rows show task_title() (fallback for
     NULL-title legacy tasks), not a raw text preview. Each task also gets its own
     «✏️ Правка: <title>» row — own row (not squeezed into another button) so the label is
-    never Telegram-client-truncated mid-word."""
-    tasks = await list_all_tasks()
+    never Telegram-client-truncated mid-word.
+
+    Hotfix (GAME-08): only ACTIVE tasks are listed here — archived tasks live on the
+    separate «🗄 Архив» screen (`_game_archive_screen`). Per task, below the existing
+    «✏️ Правка» row: «🗄 В архив» always, «🗑 Удалить» only if the task has zero submissions
+    of any status (the SQL-level gate in `delete_task` is the real defense, this is only the
+    UX hint of when the button is even offered)."""
+    all_tasks = await list_all_tasks()
+    tasks = [t for t in all_tasks if not t.get("archived_at")]
+    archived_count = sum(1 for t in all_tasks if t.get("archived_at"))
+
+    hidden_delete = False
+    buttons: list[list[InlineKeyboardButton]] = []
+    for t in tasks:
+        buttons.append([InlineKeyboardButton(
+            text=f"✏️ Правка: {task_title(t)[:20]}", callback_data=f"gtedit:{t['id']}",
+        )])
+        action_row = [InlineKeyboardButton(text="🗄 В архив", callback_data=f"gtarchive:{t['id']}")]
+        if await count_task_submissions(t["id"]) == 0:
+            action_row.append(InlineKeyboardButton(text="🗑 Удалить", callback_data=f"gtdelete:{t['id']}"))
+        else:
+            hidden_delete = True
+        buttons.append(action_row)
+
     if not tasks:
         text = "Заданий пока нет."
     else:
-        lines = ["📋 <b>Задания</b>\n"]
-        for t in tasks:
+        lines = ["📋 <b>Задания</b>\n"] + [_game_task_line(t) for t in tasks]
+        if hidden_delete:
+            lines.append(
+                "\n🗑 У заданий со сдачами удаления нет — по ним уже есть история. Такое "
+                "задание можно только убрать в архив."
+            )
+        if archived_count:
+            lines.append(f"\n🗄 В архиве: {archived_count}")
+        text = "\n".join(lines)
+
+    buttons.append([InlineKeyboardButton(text="➕ Новое задание", callback_data="gtnew")])
+    if archived_count:
+        buttons.append([InlineKeyboardButton(
+            text=f"🗄 Архив ({archived_count})", callback_data="admin_game_archive",
+        )])
+    return text, InlineKeyboardMarkup(inline_keyboard=buttons)
+
+
+async def _game_archive_screen() -> tuple[str, InlineKeyboardMarkup]:
+    """«🗄 Архив» screen: archived tasks + «↩️ Вернуть» per row. Return-from-archive is a SAFE
+    operation (no confirm step), unlike archive/delete."""
+    all_tasks = await list_all_tasks()
+    archived = [t for t in all_tasks if t.get("archived_at")]
+
+    if not archived:
+        text = "Архив пуст."
+    else:
+        lines = ["🗄 <b>Архив</b>\n"]
+        for t in archived:
             try:
-                deadline = datetime.strptime(t["deadline_at"], "%Y-%m-%d %H:%M:%S").strftime("%d.%m.%Y %H:%M")
+                archived_at = datetime.strptime(t["archived_at"], "%Y-%m-%d %H:%M:%S").strftime("%d.%m.%Y")
             except (TypeError, ValueError):
-                deadline = str(t["deadline_at"] or "—")
-            title = html_module.escape(task_title(t))
-            category = html_module.escape(str(t["category"]))
-            lines.append(f"«{category}» {title} · {t['coins']}🪙 · до {deadline}")
+                archived_at = str(t["archived_at"] or "—")
+            lines.append(f"{_game_task_line(t)} · 🗄 в архиве с {archived_at}")
         text = "\n".join(lines)
 
     buttons = [
-        [InlineKeyboardButton(text=f"✏️ Правка: {task_title(t)[:20]}", callback_data=f"gtedit:{t['id']}")]
-        for t in tasks
+        [InlineKeyboardButton(
+            text=f"↩️ Вернуть: {task_title(t)[:20]}", callback_data=f"gtunarchive:{t['id']}",
+        )]
+        for t in archived
     ]
-    buttons.append([InlineKeyboardButton(text="➕ Новое задание", callback_data="gtnew")])
+    buttons.append([InlineKeyboardButton(text="← К заданиям", callback_data="admin_game_tasks")])
     return text, InlineKeyboardMarkup(inline_keyboard=buttons)
 
 
@@ -5271,6 +5337,137 @@ async def show_game_tasks(callback: types.CallbackQuery, state: FSMContext):
     text, kb = await _game_tasks_screen()
     await callback.message.answer(text, parse_mode="HTML", reply_markup=kb)
     await callback.answer()
+
+
+@router.callback_query(F.data == "admin_game_archive")
+async def show_game_archive(callback: types.CallbackQuery):
+    text, kb = await _game_archive_screen()
+    await callback.message.edit_text(text, parse_mode="HTML", reply_markup=kb)
+    await callback.answer()
+
+
+@router.callback_query(F.data.startswith("gtarchive_go:"))
+async def game_task_archive_go(callback: types.CallbackQuery):
+    """Real DB write for the archive action — only reachable via the `gtarchive:<id>` confirm
+    screen. Re-renders the tasks screen on BOTH branches — the button could fire from a stale
+    confirm message after another manager already acted."""
+    try:
+        task_id = int(callback.data.split(":", 1)[1])
+    except ValueError:
+        await callback.answer("Некорректное задание", show_alert=True)
+        return
+    if await archive_task(task_id):
+        _request_game_resync()  # Phase 09.1 (D, GAME-07): archive is a debounced resync trigger
+        await callback.answer("Задание убрано в архив")
+    else:
+        await callback.answer("Задание уже в архиве", show_alert=True)
+    text, kb = await _game_tasks_screen()
+    await callback.message.edit_text(text, parse_mode="HTML", reply_markup=kb)
+
+
+@router.callback_query(F.data.startswith("gtunarchive:"))
+async def game_task_unarchive(callback: types.CallbackQuery):
+    """Simple flip, no confirm step (return-from-archive is safe)."""
+    try:
+        task_id = int(callback.data.split(":", 1)[1])
+    except ValueError:
+        await callback.answer("Некорректное задание", show_alert=True)
+        return
+    if await unarchive_task(task_id):
+        _request_game_resync()
+        await callback.answer("Задание возвращено")
+    else:
+        await callback.answer("Задание уже активно", show_alert=True)
+    text, kb = await _game_archive_screen()
+    await callback.message.edit_text(text, parse_mode="HTML", reply_markup=kb)
+
+
+# ── Hotfix (GAME-08): two-step confirm gates for archive/delete ─────────────────────────────
+# Same "confirm-text callback -> *_go execute callback" split as `rebuild_sheet_confirm` ->
+# `admin_rebuild_sheet_go` and `dedupe_sheet_confirm` -> `admin_dedupe_sheet_go` (both in this
+# file). Real DB writes live ONLY in the `_go` handlers — the confirm screen itself must never
+# touch the database.
+
+@router.callback_query(F.data.startswith("gtarchive:"))
+async def game_task_archive_confirm(callback: types.CallbackQuery):
+    try:
+        task_id = int(callback.data.split(":", 1)[1])
+    except ValueError:
+        await callback.answer("Некорректное задание", show_alert=True)
+        return
+    task = await get_task(task_id)
+    if task is None:
+        await callback.answer("Задание не найдено", show_alert=True)
+        return
+    name = html_module.escape(task_title(task))
+    kb = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="🗄 Да, в архив", callback_data=f"gtarchive_go:{task_id}")],
+        [InlineKeyboardButton(text="← Отмена", callback_data="admin_game_tasks")],
+    ])
+    await callback.message.edit_text(
+        f"🗄 <b>Убрать задание в архив?</b>\n\n«{name}»\n\n"
+        "Задание пропадёт у делегатов и его больше нельзя будет сдать; уже сделанные сдачи и "
+        "начисленные монеты сохранятся; непроверенные сдачи останутся в «🎮 Проверка». Вернуть "
+        "можно в любой момент из «🗄 Архив».",
+        parse_mode="HTML",
+        reply_markup=kb,
+    )
+    await callback.answer()
+
+
+@router.callback_query(F.data.startswith("gtdelete:"))
+async def game_task_delete_confirm(callback: types.CallbackQuery):
+    try:
+        task_id = int(callback.data.split(":", 1)[1])
+    except ValueError:
+        await callback.answer("Некорректное задание", show_alert=True)
+        return
+    task = await get_task(task_id)
+    if task is None:
+        await callback.answer("Задание не найдено", show_alert=True)
+        return
+    # Re-check right here -- the button on the tasks screen could have been rendered before a
+    # delegate's submission landed (same race class as the gate inside delete_task's own SQL,
+    # defense in depth: this alert is the friendly early exit, the SQL NOT EXISTS clause in
+    # delete_task is the one that actually cannot be bypassed).
+    if await count_task_submissions(task_id) > 0:
+        await callback.answer("У задания появились сдачи — теперь можно только в архив", show_alert=True)
+        text, kb = await _game_tasks_screen()
+        await callback.message.edit_text(text, parse_mode="HTML", reply_markup=kb)
+        return
+    name = html_module.escape(task_title(task))
+    kb = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="🗑 Да, удалить", callback_data=f"gtdelete_go:{task_id}")],
+        [InlineKeyboardButton(text="← Отмена", callback_data="admin_game_tasks")],
+    ])
+    await callback.message.edit_text(
+        f"🗑 <b>Удалить задание?</b>\n\n«{name}»\n\n"
+        "Задание удалится безвозвратно: оно исчезнет из бота и из вкладок «Гейма»/«История "
+        "сдач» при следующей пересборке. Это возможно только потому, что по нему нет ни одной "
+        "сдачи.",
+        parse_mode="HTML",
+        reply_markup=kb,
+    )
+    await callback.answer()
+
+
+@router.callback_query(F.data.startswith("gtdelete_go:"))
+async def game_task_delete_go(callback: types.CallbackQuery):
+    try:
+        task_id = int(callback.data.split(":", 1)[1])
+    except ValueError:
+        await callback.answer("Некорректное задание", show_alert=True)
+        return
+    if await delete_task(task_id):
+        _request_game_resync()
+        await callback.answer("Задание удалено")
+    else:
+        # delete_task's own SQL-level NOT EXISTS gate refused -- a submission landed between
+        # the confirm screen and this tap. No exception, no crash, same friendly text as the
+        # pre-check in game_task_delete_confirm above.
+        await callback.answer("У задания появились сдачи — теперь можно только в архив", show_alert=True)
+    text, kb = await _game_tasks_screen()
+    await callback.message.edit_text(text, parse_mode="HTML", reply_markup=kb)
 
 
 @router.callback_query(F.data == "gtnew")
@@ -5883,6 +6080,10 @@ def _render_submission_card(row: dict, position: int, total: int, parts: list[di
                 # this literal string and is NOT modified by this plan).
                 tail = f" ({caption})" if caption else ""
                 lines.append(f"• см. файл ниже{tail}")
+    # Hotfix (GAME-08): task_archived_at is exposed on the queue rows by db.py's join. The
+    # submission itself is untouched by the archive — the manager still has to decide it.
+    if row.get("task_archived_at"):
+        lines.append("🗄 Задание в архиве — сдачу всё равно нужно решить")
     # A-05 (созвон 13.08): дедлайн мягкий, бот сдачу принял — единственный ограничитель здесь
     # человек. Просрочка нигде не хранится, только вычисляется здесь при каждом рендере.
     submitted_at = row.get("submitted_at")
@@ -6259,7 +6460,13 @@ def _build_game_matrix(tasks: list[dict], submissions: list[dict]) -> tuple[list
     a "Город" COLUMN (filterable in Sheets itself), not a row filter -- only the LIVE «🎮
     Проверка заданий» queue above is actually scoped."""
     # Quick 260819-gtl (CONTEXT.md decision 8): column uses task_title(), same fallback.
-    headers = ["telegram_id", "ФИО", "Город", "Юзернейм"] + [task_title(t)[:40] for t in tasks]
+    # Hotfix (GAME-08): archived tasks stay in the matrix with a «🗄 » column-header prefix —
+    # added BEFORE the 40-char truncation so the marker can never be sliced off.
+    def _matrix_col_header(t: dict) -> str:
+        prefix = "🗄 " if t.get("archived_at") else ""
+        return (prefix + task_title(t))[:40]
+
+    headers = ["telegram_id", "ФИО", "Город", "Юзернейм"] + [_matrix_col_header(t) for t in tasks]
 
     subs_by_user: dict[int, list[dict]] = {}
     for s in submissions:
@@ -6297,9 +6504,12 @@ def _build_game_history(submissions: list[dict]) -> tuple[list[str], list[list]]
     headers = ["ID сдачи", "Задание", "Категория", "Участник", "Город", "Юзернейм", "Тип", "Отправлено",
                "Статус", "Проверил", "Когда", "Начислено", "Причина отказа"]
     # Quick 260819-gtl (CONTEXT.md decision 8): column uses task_title(), same fallback.
+    # Hotfix (GAME-08): same «🗄 » prefix idiom as _build_game_matrix's column header — added
+    # BEFORE the 60-char truncation.
     def _history_task_label(s: dict) -> str:
         title = task_title({"title": s.get("task_title"), "text": s.get("task_text")})
-        return title[:60]
+        prefix = "🗄 " if s.get("task_archived_at") else ""
+        return (prefix + title)[:60]
 
     rows = [
         [
@@ -6401,6 +6611,10 @@ async def rebuild_game_sheets() -> tuple[int, int]:
     # list_all_tasks() is created_at DESC (moderation-friendly, newest-first); the matrix wants
     # columns oldest-first (left to right) -- reversed by an explicit sort here, not a new
     # db.py accessor, per the plan's own instruction.
+    # Hotfix (GAME-08): list_all_tasks()/list_all_submissions() are DELIBERATELY unfiltered by
+    # archive status -- archived tasks stay in both tabs (marked «🗄 » by the builders above),
+    # deleted tasks vanish on their own because they no longer exist in either table. Do NOT
+    # add an archived_at filter here.
     tasks = sorted(await list_all_tasks(), key=lambda t: t["created_at"])
     submissions = await list_all_submissions()
 
