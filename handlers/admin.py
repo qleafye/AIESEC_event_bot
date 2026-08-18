@@ -731,6 +731,8 @@ _GAME_FIELD_ORDER = [
     "game_proof_prompt_link", "game_proof_prompt_any", "game_proof_done_hint",
     "game_proof_done_button", "game_proof_empty_hint", "game_submit_accepted_text",
     "game_resubmit_limit", "coins_manual_notify_text",
+    # Quick 260819-gtl (CONTEXT.md decision 8): title/photo wizard step prompts.
+    "game_task_title_prompt", "game_task_photo_prompt",
 ]
 
 # Phase 14 (CFG-01): group «🔧 Система» — proxy timings that used to live only in .env.
