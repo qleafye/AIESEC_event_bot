@@ -99,7 +99,7 @@ def test_game_settings_schema_has_nine_keys_in_game_group():
     # "game_task_photo_prompt") -- 13. Test name kept for git-blame continuity.
     import settings_schema as s
     keys = [k for k, v in s.SETTINGS_SCHEMA.items() if v["group"] == "game"]
-    assert len(keys) == 13
+    assert len(keys) == 25  # +12 ключей 16-01 (RU-категории, тексты списка/карточки/баланса)
     for k in keys:
         assert s.SETTINGS_SCHEMA[k]["default"] not in (None, "")
 
