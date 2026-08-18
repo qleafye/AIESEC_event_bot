@@ -42,6 +42,7 @@ from database import db
 from cities import per_city_key
 from handlers import user_actions as ua_mod
 from handlers import registration as reg_mod
+from handlers import reg_schema as reg_schema_mod
 from keyboards.builders import get_main_menu_kb, MENU_BUTTONS
 
 ADMIN_ID = 920901
@@ -619,13 +620,15 @@ def test_send_completion_and_bonus_module_off_no_get_user_call(tmp_path, monkeyp
     # event_city_enabled left OFF.
     asyncio.run(db.set_setting("approve_text", "Готово!"))
     calls = []
-    orig_get_user = reg_mod.get_user
+    orig_get_user = reg_schema_mod.get_user
 
     async def _counting_get_user(uid):
         calls.append(uid)
         return await orig_get_user(uid)
 
-    monkeypatch.setattr(reg_mod, "get_user", _counting_get_user)
+    # 13-02 (REFAC-02): patch where send_completion_and_bonus actually resolves get_user
+    # (handlers/reg_schema.py), same reasoning as the city-resolve-failure test below.
+    monkeypatch.setattr(reg_schema_mod, "get_user", _counting_get_user)
     bot = _RegFinalizeBot()
     asyncio.run(reg_mod.send_completion_and_bonus(bot, 920930, with_menu=False, participant_type="full"))
     assert calls == []
@@ -654,7 +657,10 @@ def test_send_completion_and_bonus_city_resolve_failure_falls_back(tmp_path, mon
     async def _boom(_uid):
         raise RuntimeError("boom")
 
-    monkeypatch.setattr(reg_mod, "get_user", _boom)
+    # 13-02 (REFAC-02): send_completion_and_bonus now lives in handlers/reg_schema.py, so its
+    # internal `await get_user(...)` call resolves via reg_schema's own module globals, not
+    # registration.py's -- patch the function where it is actually defined.
+    monkeypatch.setattr(reg_schema_mod, "get_user", _boom)
     bot = _RegFinalizeBot()
     asyncio.run(reg_mod.send_completion_and_bonus(bot, 920932, with_menu=False, participant_type="full"))
     # T-05-04-04: approved user must always receive a message, even on a city-resolve failure.

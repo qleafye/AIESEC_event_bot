@@ -15,7 +15,7 @@ from config import config
 from database import db
 from handlers import admin as admin_mod
 from handlers.admin_caps import required_capability
-from handlers.registration import REG_FLOW, REG_PRESETS
+from handlers.reg_schema import REG_FLOW, REG_PRESETS
 
 
 def _new_state(uid: int) -> FSMContext:
@@ -222,7 +222,7 @@ def test_preset_confirm_party_leaves_global_reg_q_untouched(tmp_path):
     """D-07: applying the party preset must never write a bare reg_q_* global key. WR-03:
     the overnight-only trio (housing/bed_sharing/bed_partner) is exempt from the explicit
     on/off __party write — it stays at inherit so D-08's skip rule keeps governing it."""
-    from handlers.registration import _PARTY_PRESET_OVERNIGHT_EXEMPT
+    from handlers.reg_schema import _PARTY_PRESET_OVERNIGHT_EXEMPT
     _admin_ready(tmp_path)
     cb = FakeCallback("preset_confirm:party")
     asyncio.run(admin_mod.preset_confirm(cb))

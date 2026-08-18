@@ -522,13 +522,13 @@ def test_toggle_parse_equivalence_all_keys():
 
 
 def test_reg_defaults_parity():
-    from handlers.registration import REG_DEFAULTS
+    from handlers.reg_schema import REG_DEFAULTS
 
     assert REG_DEFAULTS == _FROZEN_REG_DEFAULTS_ORACLE
 
 
 def test_toggle_keys_coverage():
-    from handlers.registration import REG_DEFAULTS
+    from handlers.reg_schema import REG_DEFAULTS
 
     toggle_keys_in_schema = {k for k, v in SETTINGS_SCHEMA.items() if v["type"] == "toggle"}
     assert set(REG_DEFAULTS.keys()) <= toggle_keys_in_schema, (
