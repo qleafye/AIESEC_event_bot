@@ -41,6 +41,8 @@ class Registration(StatesGroup):
     confirm = State()
     # Phase 4 (CONS-02 / PAY-02/03): consent + payment steps
     consent_pending = State()   # waiting for «Принимаю» callback on a consent card
+    # Phase 07.3 (04, RET-02): ждём тап ✅ Оставить / ✏️ Изменить на экране прошлого ответа.
+    recall_pending = State()
     date_input = State()        # waiting for a ДД.ММ.ГГГГ date-type step answer
     receipt_upload = State()    # waiting for PDF document or photo receipt
     payment_option = State()    # IN-01: intentionally never set — process_payment_option runs
