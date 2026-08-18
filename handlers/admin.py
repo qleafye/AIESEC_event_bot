@@ -56,6 +56,9 @@ from database.db import (
     list_all_tasks,
     create_task,
     get_task,
+    task_title,
+    update_task_title,
+    update_task_photo,
     get_submission,
     get_pending_submissions,
     get_pending_submissions_count,
@@ -79,7 +82,7 @@ from services.scheduler import (
 from services.allowlist import refresh_allowlist, allowlist_size
 from services.background import spawn as _spawn
 from services.game_sync import request_resync as _request_game_resync, set_rebuild as _set_game_rebuild
-from handlers.states import Broadcast, EditSetting, Approval, ReceiptReview, StaffAdd, GameTaskCreate, GameReview
+from handlers.states import Broadcast, EditSetting, Approval, ReceiptReview, StaffAdd, GameTaskCreate, GameTaskEdit, GameReview
 from handlers.admin_caps import ALL_CAPABILITIES, CAP_LABELS, ROLES, role_caps_key, role_enabled_key, CapabilityMiddleware, required_capability, has_capability, resolve_capabilities, ANY_CAPABILITY, capability_holders
 from keyboards.builders import get_cancel_kb, MENU_BUTTONS, get_main_menu_kb
 from handlers.registration import REG_FLOW, REG_DEFAULTS, REG_LABELS, REG_PRESETS, REG_CATEGORIES, SHEET_HEADERS, STATUS_LABELS, _build_sheet_row, active_sheet_headers, set_sheet_schema, _sheet_value_map, approve_user, dropout_step_label, _apply_party_preset, _apply_short_preset, city_row_tab, incomplete_city_batches
@@ -721,6 +724,8 @@ _GAME_FIELD_ORDER = [
     "game_proof_prompt_photo", "game_proof_prompt_pdf", "game_proof_prompt_text",
     "game_proof_prompt_link", "game_proof_prompt_any", "game_proof_done_hint",
     "game_proof_done_button", "game_proof_empty_hint", "game_submit_accepted_text",
+    # Quick 260819-gtl (CONTEXT.md decision 8): title/photo wizard step prompts.
+    "game_task_title_prompt", "game_task_photo_prompt",
 ]
 
 # Quick 260815-3hw (TABS-01/02/03): every Google Sheets tab NAME in one group — «📄 Вкладки
@@ -5229,44 +5234,61 @@ async def roles_remove(callback: types.CallbackQuery):
 # moderation queue wave 4 will add. T-09-05: task text is shown to every delegate later
 # (wave 3, parse_mode="HTML") — escaped on EVERY render, not just once at creation.
 
-def _game_tasks_list_kb() -> InlineKeyboardMarkup:
-    return InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="➕ Новое задание", callback_data="gtnew")],
-    ])
-
-
-async def _render_game_tasks_text() -> str:
-    """Pure-ish (single read) list renderer — the ONE place task rows are formatted, reused by
+async def _game_tasks_screen() -> tuple[str, InlineKeyboardMarkup]:
+    """Single read of `list_all_tasks()` feeds both the list text and its keyboard, reused by
     the list screen itself, the post-confirm re-render, and the mid-wizard cancel re-render
-    (`cancel_game_task_create` below), so all three can never drift on format."""
+    (`cancel_game_task_create` below), so all four call sites can never drift on format.
+
+    Quick 260819-gtl (CONTEXT.md decisions 1/3): rows show task_title() (fallback for
+    NULL-title legacy tasks), not a raw text preview. Each task also gets its own
+    «✏️ Правка: <title>» row — own row (not squeezed into another button) so the label is
+    never Telegram-client-truncated mid-word."""
     tasks = await list_all_tasks()
     if not tasks:
-        return "Заданий пока нет."
-    lines = ["📋 <b>Задания</b>\n"]
-    for t in tasks:
-        try:
-            deadline = datetime.strptime(t["deadline_at"], "%Y-%m-%d %H:%M:%S").strftime("%d.%m.%Y %H:%M")
-        except (TypeError, ValueError):
-            deadline = str(t["deadline_at"] or "—")
-        preview = html_module.escape(str(t["text"])[:60])
-        category = html_module.escape(str(t["category"]))
-        lines.append(f"«{category}» {preview} · {t['coins']}🪙 · до {deadline}")
-    return "\n".join(lines)
+        text = "Заданий пока нет."
+    else:
+        lines = ["📋 <b>Задания</b>\n"]
+        for t in tasks:
+            try:
+                deadline = datetime.strptime(t["deadline_at"], "%Y-%m-%d %H:%M:%S").strftime("%d.%m.%Y %H:%M")
+            except (TypeError, ValueError):
+                deadline = str(t["deadline_at"] or "—")
+            title = html_module.escape(task_title(t))
+            category = html_module.escape(str(t["category"]))
+            lines.append(f"«{category}» {title} · {t['coins']}🪙 · до {deadline}")
+        text = "\n".join(lines)
+
+    buttons = [
+        [InlineKeyboardButton(text=f"✏️ Правка: {task_title(t)[:20]}", callback_data=f"gtedit:{t['id']}")]
+        for t in tasks
+    ]
+    buttons.append([InlineKeyboardButton(text="➕ Новое задание", callback_data="gtnew")])
+    return text, InlineKeyboardMarkup(inline_keyboard=buttons)
 
 
 @router.callback_query(F.data == "admin_game_tasks")
 async def show_game_tasks(callback: types.CallbackQuery, state: FSMContext):
-    text = await _render_game_tasks_text()
-    await callback.message.answer(text, parse_mode="HTML", reply_markup=_game_tasks_list_kb())
+    text, kb = await _game_tasks_screen()
+    await callback.message.answer(text, parse_mode="HTML", reply_markup=kb)
     await callback.answer()
 
 
 @router.callback_query(F.data == "gtnew")
 async def game_task_new(callback: types.CallbackQuery, state: FSMContext):
     await state.set_data({})  # explicit clear -- set_state alone does not clear get_data()
-    await callback.message.answer("Введите текст задания:", reply_markup=get_cancel_kb())
-    await state.set_state(GameTaskCreate.text)
+    # Quick 260819-gtl (CONTEXT.md decision 1): title is now the FIRST wizard step.
+    prompt = await get_setting_typed("game_task_title_prompt")
+    await callback.message.answer(prompt, reply_markup=get_cancel_kb())
+    await state.set_state(GameTaskCreate.title)
     await callback.answer()
+
+
+def _normalize_task_title(raw: str) -> str:
+    """Shared by the creation wizard's title step and the point-edit «✏️ Название» flow
+    (CONTEXT.md decision 1): collapses any run of whitespace (including a literal newline --
+    "перенос → пробел") into a single space, strips, truncates to 60 chars. Returns "" for an
+    all-whitespace input -- the caller re-prompts on that, this never raises."""
+    return " ".join(raw.split())[:60]
 
 
 # Cancel-mid-wizard, registered BEFORE the per-step handlers below (admin.router: first match
@@ -5277,8 +5299,19 @@ async def game_task_new(callback: types.CallbackQuery, state: FSMContext):
 async def cancel_game_task_create(message: types.Message, state: FSMContext):
     await state.set_state(None)
     await message.answer("Создание задания отменено.", reply_markup=ReplyKeyboardRemove())
-    text = await _render_game_tasks_text()
-    await message.answer(text, parse_mode="HTML", reply_markup=_game_tasks_list_kb())
+    text, kb = await _game_tasks_screen()
+    await message.answer(text, parse_mode="HTML", reply_markup=kb)
+
+
+@router.message(GameTaskCreate.title)
+async def game_task_title_step(message: types.Message, state: FSMContext):
+    title = _normalize_task_title((message.text or "").strip())
+    if not title:
+        await message.answer("Название не может быть пустым. Введите название задания:")
+        return
+    await state.update_data(gt_title=title)
+    await message.answer("Введите текст задания:", reply_markup=get_cancel_kb())
+    await state.set_state(GameTaskCreate.text)
 
 
 # Human-readable labels for GAME_PROOF_TYPES (D-08/CLAUDE.md «для людей, не для прогеров»):
@@ -5372,15 +5405,26 @@ def _render_game_task_confirm_card(data: dict) -> str:
     if data.get("gt_city_step_shown"):
         city_label_text = data.get("gt_event_city_label") or "🌍 Все города"
         city_line = f"Кому: {html_module.escape(str(city_label_text))}\n"
+    # Quick 260819-gtl (CONTEXT.md decision 7): preview shows the title first (same field the
+    # delegate list/card render), plus whether a cover photo is attached.
+    photo_line = "📷 Фото: приложено\n" if data.get("gt_photo_file_id") else ""
     return (
         "📋 <b>Проверьте задание</b>\n\n"
+        f"Название: {html_module.escape(str(data.get('gt_title')))}\n"
         f"Текст: {html_module.escape(str(data.get('gt_text')))}\n"
         f"Категория: {html_module.escape(str(data.get('gt_category')))}\n"
         f"Коины: {data.get('gt_coins')}\n"
         f"Подтверждение: {proof_label}\n"
         f"{city_line}"
+        f"{photo_line}"
         f"Дедлайн: {deadline_display}"
     )
+
+
+def _game_task_photo_kb() -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="⏭ Пропустить", callback_data="gtphoto_skip")],
+    ])
 
 
 @router.message(GameTaskCreate.text)
@@ -5390,8 +5434,33 @@ async def game_task_text_step(message: types.Message, state: FSMContext):
         await message.answer("Текст не может быть пустым. Введите текст задания:")
         return
     await state.update_data(gt_text=text)
+    # Quick 260819-gtl (CONTEXT.md decision 4): photo step right after the description.
+    prompt = await get_setting_typed("game_task_photo_prompt")
+    await message.answer(prompt, reply_markup=_game_task_photo_kb())
+    await state.set_state(GameTaskCreate.photo)
+
+
+@router.message(GameTaskCreate.photo, F.photo)
+async def game_task_photo_step(message: types.Message, state: FSMContext):
+    file_id = message.photo[-1].file_id
+    await state.update_data(gt_photo_file_id=file_id)
     await message.answer("Выберите категорию:", reply_markup=_game_task_category_kb())
     await state.set_state(GameTaskCreate.category)
+
+
+@router.callback_query(F.data == "gtphoto_skip")
+async def game_task_photo_skip(callback: types.CallbackQuery, state: FSMContext):
+    await state.update_data(gt_photo_file_id=None)
+    await callback.message.answer("Выберите категорию:", reply_markup=_game_task_category_kb())
+    await state.set_state(GameTaskCreate.category)
+    await callback.answer()
+
+
+@router.message(GameTaskCreate.photo)
+async def game_task_photo_step_invalid(message: types.Message, state: FSMContext):
+    prompt = await get_setting_typed("game_task_photo_prompt")
+    await message.answer(f"Не понял, пришли фото или нажми «⏭ Пропустить».\n\n{prompt}",
+                          reply_markup=_game_task_photo_kb())
 
 
 @router.callback_query(F.data.startswith("gtcat:"))
@@ -5526,9 +5595,17 @@ async def game_task_deadline_step(message: types.Message, state: FSMContext):
         return
     await state.update_data(gt_deadline=_fmt_dt(when))
     data = await state.get_data()
-    await message.answer(
-        _render_game_task_confirm_card(data), parse_mode="HTML", reply_markup=_game_task_confirm_kb(),
-    )
+    card_text = _render_game_task_confirm_card(data)
+    photo_id = data.get("gt_photo_file_id")
+    if photo_id:
+        # Quick 260819-gtl (CONTEXT.md decision 7): "с фото если есть" -- caption has a real
+        # 1024-char Telegram ceiling, unlike a plain message (4096).
+        caption = card_text if len(card_text) <= 1024 else card_text[:1021] + "…"
+        await message.answer_photo(
+            photo_id, caption=caption, parse_mode="HTML", reply_markup=_game_task_confirm_kb(),
+        )
+    else:
+        await message.answer(card_text, parse_mode="HTML", reply_markup=_game_task_confirm_kb())
     await state.set_state(GameTaskCreate.confirm)
 
 
@@ -5543,20 +5620,170 @@ async def game_task_confirm(callback: types.CallbackQuery, state: FSMContext):
         deadline_at=data["gt_deadline"],
         created_by=callback.from_user.id,
         event_city=data.get("gt_event_city"),
+        title=data.get("gt_title"),
+        photo_file_id=data.get("gt_photo_file_id"),
     )
     _request_game_resync()  # Phase 09.1 (D, GAME-07): a new task is one of the 3 debounced triggers
     await state.set_state(None)
     await callback.answer("Задание создано")
-    text = await _render_game_tasks_text()
-    await callback.message.answer(text, parse_mode="HTML", reply_markup=_game_tasks_list_kb())
+    text, kb = await _game_tasks_screen()
+    await callback.message.answer(text, parse_mode="HTML", reply_markup=kb)
 
 
 @router.callback_query(F.data == "gtcancel")
 async def game_task_create_cancel(callback: types.CallbackQuery, state: FSMContext):
     await state.set_state(None)
     await callback.answer("Отменено")
-    text = await _render_game_tasks_text()
-    await callback.message.answer(text, parse_mode="HTML", reply_markup=_game_tasks_list_kb())
+    text, kb = await _game_tasks_screen()
+    await callback.message.answer(text, parse_mode="HTML", reply_markup=kb)
+
+
+# ── Quick 260819-gtl (CONTEXT.md decisions 1/4): point-edit of an EXISTING task's title/
+# photo — «✏️ Правка» button on the active-tasks screen. Not the GameTaskCreate wizard reused:
+# this edits ONE field at a time via the small GameTaskEdit StatesGroup, no multi-step flow.
+# Photo replace/remove is non-destructive (CONTEXT.md: no confirm step), unlike archive/delete.
+
+def _task_edit_text(task: dict) -> str:
+    title = html_module.escape(task_title(task))
+    photo_line = "📷 Фото: есть" if task.get("photo_file_id") else "📷 Фото: нет"
+    return f"✏️ <b>{title}</b>\n\n{photo_line}"
+
+
+def _task_edit_kb(task: dict) -> InlineKeyboardMarkup:
+    rows = [[InlineKeyboardButton(text="✏️ Название", callback_data=f"gtedittitle:{task['id']}")]]
+    if task.get("photo_file_id"):
+        rows.append([InlineKeyboardButton(text="📷 Заменить фото", callback_data=f"gteditphoto:{task['id']}")])
+        rows.append([InlineKeyboardButton(text="🗑 Убрать фото", callback_data=f"gtremovephoto:{task['id']}")])
+    else:
+        rows.append([InlineKeyboardButton(text="📷 Добавить фото", callback_data=f"gteditphoto:{task['id']}")])
+    rows.append([InlineKeyboardButton(text="← К заданиям", callback_data="admin_game_tasks")])
+    return InlineKeyboardMarkup(inline_keyboard=rows)
+
+
+@router.callback_query(F.data.startswith("gtedit:"))
+async def game_task_edit_screen(callback: types.CallbackQuery, state: FSMContext):
+    try:
+        task_id = int(callback.data.split(":", 1)[1])
+    except ValueError:
+        await callback.answer("Некорректное задание", show_alert=True)
+        return
+    task = await get_task(task_id)
+    if task is None:
+        await callback.answer("Задание не найдено", show_alert=True)
+        return
+    await state.set_state(None)
+    await callback.message.edit_text(
+        _task_edit_text(task), parse_mode="HTML", reply_markup=_task_edit_kb(task),
+    )
+    await callback.answer()
+
+
+@router.callback_query(F.data.startswith("gtedittitle:"))
+async def game_task_edittitle_start(callback: types.CallbackQuery, state: FSMContext):
+    try:
+        task_id = int(callback.data.split(":", 1)[1])
+    except ValueError:
+        await callback.answer("Некорректное задание", show_alert=True)
+        return
+    task = await get_task(task_id)
+    if task is None:
+        await callback.answer("Задание не найдено", show_alert=True)
+        return
+    await state.set_data({"gte_task_id": task_id})
+    prompt = await get_setting_typed("game_task_title_prompt")
+    await callback.message.answer(prompt, reply_markup=get_cancel_kb())
+    await state.set_state(GameTaskEdit.title)
+    await callback.answer()
+
+
+@router.callback_query(F.data.startswith("gteditphoto:"))
+async def game_task_editphoto_start(callback: types.CallbackQuery, state: FSMContext):
+    try:
+        task_id = int(callback.data.split(":", 1)[1])
+    except ValueError:
+        await callback.answer("Некорректное задание", show_alert=True)
+        return
+    task = await get_task(task_id)
+    if task is None:
+        await callback.answer("Задание не найдено", show_alert=True)
+        return
+    await state.set_data({"gte_task_id": task_id})
+    prompt = await get_setting_typed("game_task_photo_prompt")
+    await callback.message.answer(prompt, reply_markup=get_cancel_kb())
+    await state.set_state(GameTaskEdit.photo)
+    await callback.answer()
+
+
+@router.callback_query(F.data.startswith("gtremovephoto:"))
+async def game_task_removephoto(callback: types.CallbackQuery):
+    try:
+        task_id = int(callback.data.split(":", 1)[1])
+    except ValueError:
+        await callback.answer("Некорректное задание", show_alert=True)
+        return
+    task = await get_task(task_id)
+    if task is None:
+        await callback.answer("Задание не найдено", show_alert=True)
+        return
+    await update_task_photo(task_id, None)
+    _request_game_resync()
+    await callback.answer("Фото убрано")
+    task = await get_task(task_id)
+    await callback.message.edit_text(
+        _task_edit_text(task), parse_mode="HTML", reply_markup=_task_edit_kb(task),
+    )
+
+
+# Cancel-mid-edit, registered BEFORE the per-step handlers below (same "first match wins"
+# precedent as cancel_game_task_create above).
+@router.message(StateFilter(GameTaskEdit), Command("cancel"))
+@router.message(StateFilter(GameTaskEdit), F.text == "Отмена")
+async def cancel_game_task_edit(message: types.Message, state: FSMContext):
+    await state.set_state(None)
+    await message.answer("Правка отменена.", reply_markup=ReplyKeyboardRemove())
+    text, kb = await _game_tasks_screen()
+    await message.answer(text, parse_mode="HTML", reply_markup=kb)
+
+
+@router.message(GameTaskEdit.title)
+async def game_task_edittitle_step(message: types.Message, state: FSMContext):
+    data = await state.get_data()
+    task_id = data.get("gte_task_id")
+    title = _normalize_task_title((message.text or "").strip())
+    if not title:
+        await message.answer("Название не может быть пустым. Введите название задания:")
+        return
+    if not await update_task_title(task_id, title):
+        await message.answer("Задание не найдено — возможно, его уже удалили.")
+        await state.set_state(None)
+        return
+    _request_game_resync()
+    await state.set_state(None)
+    await message.answer(f"Название обновлено: «{html_module.escape(title)}»", parse_mode="HTML")
+    text, kb = await _game_tasks_screen()
+    await message.answer(text, parse_mode="HTML", reply_markup=kb)
+
+
+@router.message(GameTaskEdit.photo, F.photo)
+async def game_task_editphoto_step(message: types.Message, state: FSMContext):
+    data = await state.get_data()
+    task_id = data.get("gte_task_id")
+    file_id = message.photo[-1].file_id
+    if not await update_task_photo(task_id, file_id):
+        await message.answer("Задание не найдено — возможно, его уже удалили.")
+        await state.set_state(None)
+        return
+    _request_game_resync()
+    await state.set_state(None)
+    await message.answer("Фото обновлено.", reply_markup=ReplyKeyboardRemove())
+    text, kb = await _game_tasks_screen()
+    await message.answer(text, parse_mode="HTML", reply_markup=kb)
+
+
+@router.message(GameTaskEdit.photo)
+async def game_task_editphoto_invalid(message: types.Message, state: FSMContext):
+    prompt = await get_setting_typed("game_task_photo_prompt")
+    await message.answer(f"Не понял, пришли фото.\n\n{prompt}")
 
 
 # ── Phase 9 (GAME-02/03, wave 4, 09-04): «🎮 Проверка заданий» — moderation queue ───────────
@@ -5614,7 +5841,11 @@ def _render_submission_card(row: dict, position: int, total: int, parts: list[di
         return html_module.escape(str(v)) if v not in (None, "", "-") else None
 
     header = f"🎮 <b>Сдача {position}/{total}</b>"
-    lines = [header, "", esc(row.get("task_text")) or "—"]
+    # Quick 260819-gtl (CONTEXT.md decision 6): "Задание: <title>" line, not a raw text
+    # preview -- task photo is deliberately NOT duplicated here (the submission's own parts
+    # are what the manager needs to see).
+    title = task_title({"title": row.get("task_title"), "text": row.get("task_text")})
+    lines = [header, "", f"Задание: {esc(title) or '—'}"]
     lines.append(f"Категория: {esc(row.get('task_category')) or '—'}")
     lines.append(f"Предложено: {row.get('task_coins')}🪙")
     name = esc(row.get("user_full_name")) or "—"
@@ -6027,7 +6258,8 @@ def _build_game_matrix(tasks: list[dict], submissions: list[dict]) -> tuple[list
     partial rebuild would erase other cities' rows. "Уважает city_scope" is implemented here as
     a "Город" COLUMN (filterable in Sheets itself), not a row filter -- only the LIVE «🎮
     Проверка заданий» queue above is actually scoped."""
-    headers = ["telegram_id", "ФИО", "Город", "Юзернейм"] + [(t["text"] or "")[:40] for t in tasks]
+    # Quick 260819-gtl (CONTEXT.md decision 8): column uses task_title(), same fallback.
+    headers = ["telegram_id", "ФИО", "Город", "Юзернейм"] + [task_title(t)[:40] for t in tasks]
 
     subs_by_user: dict[int, list[dict]] = {}
     for s in submissions:
@@ -6064,10 +6296,15 @@ def _build_game_history(submissions: list[dict]) -> tuple[list[str], list[list]]
     of the same (task, user) pair."""
     headers = ["ID сдачи", "Задание", "Категория", "Участник", "Город", "Юзернейм", "Тип", "Отправлено",
                "Статус", "Проверил", "Когда", "Начислено", "Причина отказа"]
+    # Quick 260819-gtl (CONTEXT.md decision 8): column uses task_title(), same fallback.
+    def _history_task_label(s: dict) -> str:
+        title = task_title({"title": s.get("task_title"), "text": s.get("task_text")})
+        return title[:60]
+
     rows = [
         [
             s["id"],
-            (s.get("task_text") or "-")[:60],
+            _history_task_label(s),
             s.get("task_category") or "-",
             s.get("user_full_name") or "-",
             s.get("user_event_city") or "-",
