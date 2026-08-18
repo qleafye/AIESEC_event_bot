@@ -355,7 +355,8 @@ def test_no_module_besides_cities_reads_config_EVENT_CITIES():
     offenders = []
     for path in root.rglob("*.py"):
         parts = path.relative_to(root).parts
-        if parts[0] in {"tests", ".venv", "__pycache__"} or ".venv" in parts:
+        # `.claude/worktrees/*` — параллельные рабочие копии агентов: те же файлы второй раз.
+        if parts[0] in {"tests", ".venv", "__pycache__", ".claude"} or ".venv" in parts:
             continue
         if path in allowed:
             continue
