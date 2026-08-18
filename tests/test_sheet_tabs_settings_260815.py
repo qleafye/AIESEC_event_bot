@@ -22,6 +22,7 @@ import gspread
 from config import config
 from database import db
 from handlers import admin as admin_mod
+from handlers import admin_gamification
 from handlers.admin_caps import ADMIN_CAPS, required_capability
 from settings_schema import SETTINGS_SCHEMA, _parse_setting
 import services.sheets as sheets
@@ -342,7 +343,7 @@ def test_sync_game_sheets_uses_registry_tab_names_by_default(tmp_path, monkeypat
         calls.append(title)
         return len(rows)
 
-    monkeypatch.setattr(admin_mod, "sync_named_worksheet", _fake_sync)
+    monkeypatch.setattr(admin_gamification, "sync_named_worksheet", _fake_sync)
 
     class _FakeUser:
         def __init__(self, uid):
@@ -366,7 +367,7 @@ def test_sync_game_sheets_uses_registry_tab_names_by_default(tmp_path, monkeypat
     callback = _FakeCallback()
 
     async def go():
-        await admin_mod.sync_game_sheets(callback)
+        await admin_gamification.sync_game_sheets(callback)
 
     asyncio.run(go())
     assert calls == ["Гейма", "История сдач"]
@@ -401,7 +402,7 @@ def test_sync_game_sheets_confirm_shows_renamed_tabs(tmp_path, monkeypatch):
     callback = _FakeCallback()
 
     async def go():
-        await admin_mod.sync_game_sheets_confirm(callback)
+        await admin_gamification.sync_game_sheets_confirm(callback)
 
     asyncio.run(go())
     assert "GAMIFICATION бот" in callback.message.text

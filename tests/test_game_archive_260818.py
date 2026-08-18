@@ -24,6 +24,7 @@ from database import db
 import settings_schema
 from handlers import user_actions as ua_mod
 from handlers import admin as admin_mod
+from handlers import admin_gamification
 from handlers.admin_caps import required_capability
 
 
@@ -282,7 +283,7 @@ def test_tasks_screen_has_archive_button_and_delete_only_without_submissions(tmp
     with_subs = _mk_task(text="has submissions")
     _reject_submission(with_subs, DELEGATE_ID)
 
-    text, kb = asyncio.run(admin_mod._game_tasks_screen())
+    text, kb = asyncio.run(admin_gamification._game_tasks_screen())
     data = _flat_callback_data(kb)
 
     assert f"gtarchive:{no_subs}" in data
@@ -297,15 +298,15 @@ def test_gtarchive_go_archives_task_and_moves_it_to_archive_screen(tmp_path):
     task_id = _mk_task(text="уйдёт в архив")
 
     callback = FakeCallback(f"gtarchive_go:{task_id}", user_id=ADMIN_ID)
-    asyncio.run(admin_mod.game_task_archive_go(callback))
+    asyncio.run(admin_gamification.game_task_archive_go(callback))
 
     task = asyncio.run(db.get_task(task_id))
     assert task["archived_at"] is not None
 
-    tasks_text, _ = asyncio.run(admin_mod._game_tasks_screen())
+    tasks_text, _ = asyncio.run(admin_gamification._game_tasks_screen())
     assert "уйдёт в архив" not in tasks_text
 
-    archive_text, archive_kb = asyncio.run(admin_mod._game_archive_screen())
+    archive_text, archive_kb = asyncio.run(admin_gamification._game_archive_screen())
     assert "уйдёт в архив" in archive_text
     assert f"gtunarchive:{task_id}" in _flat_callback_data(archive_kb)
 
@@ -316,7 +317,7 @@ def test_gtunarchive_returns_task_to_active_without_confirm_step(tmp_path):
     asyncio.run(db.archive_task(task_id))
 
     callback = FakeCallback(f"gtunarchive:{task_id}", user_id=ADMIN_ID)
-    asyncio.run(admin_mod.game_task_unarchive(callback))
+    asyncio.run(admin_gamification.game_task_unarchive(callback))
 
     task = asyncio.run(db.get_task(task_id))
     assert task["archived_at"] is None
@@ -329,12 +330,12 @@ def test_archive_and_unarchive_trigger_resync(tmp_path, monkeypatch):
     _db_ready(tmp_path)
     task_id = _mk_task()
     calls = []
-    monkeypatch.setattr(admin_mod, "_request_game_resync", lambda: calls.append("go"))
+    monkeypatch.setattr(admin_gamification, "_request_game_resync", lambda: calls.append("go"))
 
-    asyncio.run(admin_mod.game_task_archive_go(FakeCallback(f"gtarchive_go:{task_id}", user_id=ADMIN_ID)))
+    asyncio.run(admin_gamification.game_task_archive_go(FakeCallback(f"gtarchive_go:{task_id}", user_id=ADMIN_ID)))
     assert calls == ["go"]
 
-    asyncio.run(admin_mod.game_task_unarchive(FakeCallback(f"gtunarchive:{task_id}", user_id=ADMIN_ID)))
+    asyncio.run(admin_gamification.game_task_unarchive(FakeCallback(f"gtunarchive:{task_id}", user_id=ADMIN_ID)))
     assert calls == ["go", "go"]
 
 
@@ -353,7 +354,7 @@ def test_gtarchive_confirm_does_not_touch_db_and_names_consequences(tmp_path):
     task_id = _mk_task(text="Собрать команду")
 
     callback = FakeCallback(f"gtarchive:{task_id}", user_id=ADMIN_ID)
-    asyncio.run(admin_mod.game_task_archive_confirm(callback))
+    asyncio.run(admin_gamification.game_task_archive_confirm(callback))
 
     task = asyncio.run(db.get_task(task_id))
     assert task["archived_at"] is None  # confirm screen -- no DB write yet
@@ -371,7 +372,7 @@ def test_gtdelete_confirm_does_not_touch_db_and_says_bezvozvratno(tmp_path):
     task_id = _mk_task(text="Удалить меня")
 
     callback = FakeCallback(f"gtdelete:{task_id}", user_id=ADMIN_ID)
-    asyncio.run(admin_mod.game_task_delete_confirm(callback))
+    asyncio.run(admin_gamification.game_task_delete_confirm(callback))
 
     assert asyncio.run(db.get_task(task_id)) is not None  # still there -- no DB write yet
     text = callback.message.text
@@ -387,7 +388,7 @@ def test_gtdelete_go_deletes_task_without_submissions(tmp_path):
     task_id = _mk_task(text="без сдач")
 
     callback = FakeCallback(f"gtdelete_go:{task_id}", user_id=ADMIN_ID)
-    asyncio.run(admin_mod.game_task_delete_go(callback))
+    asyncio.run(admin_gamification.game_task_delete_go(callback))
 
     assert asyncio.run(db.get_task(task_id)) is None
     text, show_alert = callback.answers[-1]
@@ -401,7 +402,7 @@ def test_gtdelete_go_refuses_when_submission_appeared_after_confirm_shown(tmp_pa
     _reject_submission(task_id, DELEGATE_ID)
 
     callback = FakeCallback(f"gtdelete_go:{task_id}", user_id=ADMIN_ID)
-    asyncio.run(admin_mod.game_task_delete_go(callback))
+    asyncio.run(admin_gamification.game_task_delete_go(callback))
 
     assert asyncio.run(db.get_task(task_id)) is not None  # NOT deleted
     text, show_alert = callback.answers[-1]
@@ -415,7 +416,7 @@ def test_gtdelete_confirm_refuses_and_alerts_when_submission_appeared(tmp_path):
     _reject_submission(task_id, DELEGATE_ID)
 
     callback = FakeCallback(f"gtdelete:{task_id}", user_id=ADMIN_ID)
-    asyncio.run(admin_mod.game_task_delete_confirm(callback))
+    asyncio.run(admin_gamification.game_task_delete_confirm(callback))
 
     assert asyncio.run(db.get_task(task_id)) is not None
     text, show_alert = callback.answers[-1]
@@ -427,10 +428,10 @@ def test_gtdelete_go_triggers_resync_and_rerenders_tasks_screen(tmp_path, monkey
     _db_ready(tmp_path)
     task_id = _mk_task(text="уйдёт совсем")
     calls = []
-    monkeypatch.setattr(admin_mod, "_request_game_resync", lambda: calls.append("go"))
+    monkeypatch.setattr(admin_gamification, "_request_game_resync", lambda: calls.append("go"))
 
     callback = FakeCallback(f"gtdelete_go:{task_id}", user_id=ADMIN_ID)
-    asyncio.run(admin_mod.game_task_delete_go(callback))
+    asyncio.run(admin_gamification.game_task_delete_go(callback))
 
     assert calls == ["go"]
     assert callback.message.edit_calls == 1
@@ -458,18 +459,18 @@ def _card_row(**overrides):
 
 
 def test_render_submission_card_marks_archived_task():
-    archived_text = admin_mod._render_submission_card(_card_row(task_archived_at="2026-08-18 10:00:00"), 1, 1)
+    archived_text = admin_gamification._render_submission_card(_card_row(task_archived_at="2026-08-18 10:00:00"), 1, 1)
     assert "🗄 Задание в архиве" in archived_text
 
-    active_text = admin_mod._render_submission_card(_card_row(), 1, 1)
+    active_text = admin_gamification._render_submission_card(_card_row(), 1, 1)
     assert "🗄 Задание в архиве" not in active_text
 
 
 def test_render_submission_card_attempt_line_only_when_passed():
-    with_attempt = admin_mod._render_submission_card(_card_row(), 1, 1, attempt=(3, 3))
+    with_attempt = admin_gamification._render_submission_card(_card_row(), 1, 1, attempt=(3, 3))
     assert "🔁 Попытка 3 из 3" in with_attempt
 
-    without_attempt = admin_mod._render_submission_card(_card_row(), 1, 1)
+    without_attempt = admin_gamification._render_submission_card(_card_row(), 1, 1)
     assert "Попытка" not in without_attempt
 
 
@@ -490,7 +491,7 @@ def test_build_game_matrix_prefixes_archived_task_header_before_truncation():
         {"id": 1, "text": "Активное", "created_at": "2026-08-01 10:00:00", "archived_at": None},
         {"id": 2, "text": long_text, "created_at": "2026-08-02 10:00:00", "archived_at": "2026-08-10 10:00:00"},
     ]
-    headers, _rows = admin_mod._build_game_matrix(tasks, [])
+    headers, _rows = admin_gamification._build_game_matrix(tasks, [])
     assert headers[4] == "Активное"
     assert headers[5] == ("🗄 " + long_text)[:40]
     assert headers[5].startswith("🗄 ")
@@ -507,7 +508,7 @@ def test_build_game_history_prefixes_archived_submission_task_label():
             "task_archived_at": "2026-08-15 10:00:00",
         },
     ]
-    _headers, rows = admin_mod._build_game_history(submissions)
+    _headers, rows = admin_gamification._build_game_history(submissions)
     assert rows[0][1] == "🗄 Задание"
 
 
@@ -527,9 +528,9 @@ def test_rebuild_game_sheets_drops_deleted_task_keeps_archived_marked(tmp_path, 
         written[title] = (headers, rows)
         return len(rows)
 
-    monkeypatch.setattr(admin_mod, "sync_named_worksheet", _fake_sync)
+    monkeypatch.setattr(admin_gamification, "sync_named_worksheet", _fake_sync)
 
-    asyncio.run(admin_mod.rebuild_game_sheets())
+    asyncio.run(admin_gamification.rebuild_game_sheets())
 
     matrix_tab = asyncio.run(settings_schema.get_setting_typed("game_matrix_tab"))
     history_tab = asyncio.run(settings_schema.get_setting_typed("game_history_tab"))
@@ -552,7 +553,7 @@ def test_attempt_resolved_in_show_current_submission_with_limit(tmp_path):
 
     state = _new_state(uid=ADMIN_ID)
     message = FakeMessage(user_id=ADMIN_ID)
-    asyncio.run(admin_mod._show_current_submission(message, state))
+    asyncio.run(admin_gamification._show_current_submission(message, state))
 
     card_text = message.answers[0][0]
     assert "🔁 Попытка 3 из 3" in card_text
@@ -565,7 +566,7 @@ def test_attempt_line_absent_when_limit_is_zero(tmp_path):
 
     state = _new_state(uid=ADMIN_ID)
     message = FakeMessage(user_id=ADMIN_ID)
-    asyncio.run(admin_mod._show_current_submission(message, state))
+    asyncio.run(admin_gamification._show_current_submission(message, state))
 
     card_text = message.answers[0][0]
     assert "Попытка" not in card_text

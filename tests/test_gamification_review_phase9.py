@@ -17,7 +17,7 @@ from aiogram.fsm.storage.memory import MemoryStorage
 
 from config import config
 from database import db
-from handlers import admin as admin_mod
+from handlers import admin_gamification  # Phase 13 (13-04): grev_*/show_game_review moved here
 from handlers.admin_caps import required_capability
 from handlers.states import GameReview
 
@@ -118,7 +118,7 @@ def test_admin_game_review_empty_queue_shows_no_pending_text(tmp_path):
     _db_ready(tmp_path)
     callback = FakeCallback("admin_game_review")
     state = _new_state()
-    asyncio.run(admin_mod.show_game_review(callback, state))
+    asyncio.run(admin_gamification.show_game_review(callback, state))
     assert callback.message.answers_sent[-1] == "Сдач на проверке нет."
 
 
@@ -131,7 +131,7 @@ def test_show_current_submission_card_renders_task_and_submitter_and_content_typ
 
     callback = FakeCallback("admin_game_review")
     state = _new_state()
-    asyncio.run(admin_mod.show_game_review(callback, state))
+    asyncio.run(admin_gamification.show_game_review(callback, state))
 
     text = callback.message.answers_sent[-1]
     assert "&lt;b&gt;тест&lt;/b&gt;" in text  # task text escaped
@@ -157,7 +157,7 @@ def test_show_current_submission_card_photo_resends_file_separately(tmp_path):
 
     callback = FakeCallback("admin_game_review")
     state = _new_state()
-    asyncio.run(admin_mod.show_game_review(callback, state))
+    asyncio.run(admin_gamification.show_game_review(callback, state))
 
     text = callback.message.answers_sent[-1]
     assert "file_abc123" not in text
@@ -172,7 +172,7 @@ def test_show_current_submission_card_pdf_resends_document_separately(tmp_path):
 
     callback = FakeCallback("admin_game_review")
     state = _new_state()
-    asyncio.run(admin_mod.show_game_review(callback, state))
+    asyncio.run(admin_gamification.show_game_review(callback, state))
 
     assert callback.message.documents_sent == ["doc_xyz"]
 
@@ -184,7 +184,7 @@ def test_late_submission_card_shows_deadline_warning(tmp_path):
 
     callback = FakeCallback("admin_game_review")
     state = _new_state()
-    asyncio.run(admin_mod.show_game_review(callback, state))
+    asyncio.run(admin_gamification.show_game_review(callback, state))
     text = callback.message.answers_sent[-1]
     assert "после дедлайна" in text
     assert "2026-08-10 23:59:00" in text
@@ -197,7 +197,7 @@ def test_on_time_submission_card_has_no_deadline_warning(tmp_path):
 
     callback = FakeCallback("admin_game_review")
     state = _new_state()
-    asyncio.run(admin_mod.show_game_review(callback, state))
+    asyncio.run(admin_gamification.show_game_review(callback, state))
     text = callback.message.answers_sent[-1]
     assert "после дедлайна" not in text
 
@@ -210,18 +210,18 @@ def test_grev_skip_advances_to_next_and_is_session_only(tmp_path):
 
     callback = FakeCallback("admin_game_review")
     state = _new_state()
-    asyncio.run(admin_mod.show_game_review(callback, state))
+    asyncio.run(admin_gamification.show_game_review(callback, state))
     assert "первая" in callback.message.answers_sent[-1]
 
     skip_cb = FakeCallback(f"grev_skip:{sub1}")
-    asyncio.run(admin_mod.grev_skip(skip_cb, state))
+    asyncio.run(admin_gamification.grev_skip(skip_cb, state))
     assert skip_cb.message.deleted
     assert "вторая" in skip_cb.message.answers_sent[-1]
     assert asyncio.run(state.get_data())["grev_skipped"] == [sub1]
 
     # Reopening the screen resets the skip set (same as appr_skipped / D-07).
     reopen_cb = FakeCallback("admin_game_review")
-    asyncio.run(admin_mod.show_game_review(reopen_cb, state))
+    asyncio.run(admin_gamification.show_game_review(reopen_cb, state))
     assert "первая" in reopen_cb.message.answers_sent[-1]
 
 
@@ -234,7 +234,7 @@ def test_pagination_uses_get_pending_submissions_limit_offset(tmp_path):
 
     callback = FakeCallback("admin_game_review")
     state = _new_state()
-    asyncio.run(admin_mod.show_game_review(callback, state))
+    asyncio.run(admin_gamification.show_game_review(callback, state))
     assert "1/3" in callback.message.answers_sent[-1]
 
 
@@ -247,7 +247,7 @@ def test_grev_approve_default_amount_credits_task_coins(tmp_path):
 
     callback = FakeCallback(f"grev_approve:{sub_id}")
     state = _new_state()
-    asyncio.run(admin_mod.grev_approve(callback, state))
+    asyncio.run(admin_gamification.grev_approve(callback, state))
 
     submission = asyncio.run(db.get_submission(sub_id))
     assert submission["status"] == "approved"
@@ -262,9 +262,9 @@ def test_grev_approve_race_second_tap_does_not_double_credit(tmp_path):
     sub_id = _seed_submission(task_id)
     state = _new_state()
 
-    asyncio.run(admin_mod.grev_approve(FakeCallback(f"grev_approve:{sub_id}"), state))
+    asyncio.run(admin_gamification.grev_approve(FakeCallback(f"grev_approve:{sub_id}"), state))
     second = FakeCallback(f"grev_approve:{sub_id}", user_id=MANAGER2_ID)
-    asyncio.run(admin_mod.grev_approve(second, state))
+    asyncio.run(admin_gamification.grev_approve(second, state))
 
     assert asyncio.run(db.get_balance(DELEGATE_ID)) == 20  # credited exactly once
     assert second.answers[0] == ("Уже обработано", False)
@@ -277,12 +277,12 @@ def test_grev_approve_custom_amount_prompts_and_credits_entered_value(tmp_path):
     state = _new_state()
 
     start_cb = FakeCallback(f"grev_approve_custom:{sub_id}")
-    asyncio.run(admin_mod.grev_approve_custom_start(start_cb, state))
+    asyncio.run(admin_gamification.grev_approve_custom_start(start_cb, state))
     assert asyncio.run(state.get_state()) == GameReview.approve_amount
     assert "5" in start_cb.message.answers_sent[-1]
 
     amount_msg = FakeMessage(text="45")
-    asyncio.run(admin_mod.grev_approve_amount_step(amount_msg, state))
+    asyncio.run(admin_gamification.grev_approve_amount_step(amount_msg, state))
 
     submission = asyncio.run(db.get_submission(sub_id))
     assert submission["coins_awarded"] == 45
@@ -295,11 +295,11 @@ def test_grev_approve_custom_amount_rejects_non_positive(tmp_path):
     task_id = _seed_task(coins=5)
     sub_id = _seed_submission(task_id)
     state = _new_state()
-    asyncio.run(admin_mod.grev_approve_custom_start(FakeCallback(f"grev_approve_custom:{sub_id}"), state))
+    asyncio.run(admin_gamification.grev_approve_custom_start(FakeCallback(f"grev_approve_custom:{sub_id}"), state))
 
     for bad in ("0", "-5", "abc"):
         msg = FakeMessage(text=bad)
-        asyncio.run(admin_mod.grev_approve_amount_step(msg, state))
+        asyncio.run(admin_gamification.grev_approve_amount_step(msg, state))
         assert asyncio.run(state.get_state()) == GameReview.approve_amount
 
     submission = asyncio.run(db.get_submission(sub_id))
@@ -311,9 +311,9 @@ def test_grev_approve_notifies_delegate_with_amount(tmp_path):
     task_id = _seed_task(text="Задание Х", coins=30)
     sub_id = _seed_submission(task_id)
     state = _new_state()
-    asyncio.run(admin_mod.grev_approve_custom_start(FakeCallback(f"grev_approve_custom:{sub_id}"), state))
+    asyncio.run(admin_gamification.grev_approve_custom_start(FakeCallback(f"grev_approve_custom:{sub_id}"), state))
     amount_msg = FakeMessage(text="45")
-    asyncio.run(admin_mod.grev_approve_amount_step(amount_msg, state))
+    asyncio.run(admin_gamification.grev_approve_amount_step(amount_msg, state))
 
     assert len(amount_msg.bot.sent) == 1
     chat_id, text = amount_msg.bot.sent[0]
@@ -329,11 +329,11 @@ def test_grev_reject_prompts_reason_and_notifies_with_reason_escaped(tmp_path):
     state = _new_state()
 
     start_cb = FakeCallback(f"grev_reject:{sub_id}")
-    asyncio.run(admin_mod.grev_reject_start(start_cb, state))
+    asyncio.run(admin_gamification.grev_reject_start(start_cb, state))
     assert asyncio.run(state.get_state()) == GameReview.reject_reason
 
     reason_msg = FakeMessage(text="плохо <b>видно</b> хэштег")
-    asyncio.run(admin_mod.grev_reject_reason(reason_msg, state))
+    asyncio.run(admin_gamification.grev_reject_reason(reason_msg, state))
 
     submission = asyncio.run(db.get_submission(sub_id))
     assert submission["status"] == "rejected"
@@ -350,10 +350,10 @@ def test_grev_reject_without_reason_omits_reason_line(tmp_path):
     task_id = _seed_task()
     sub_id = _seed_submission(task_id)
     state = _new_state()
-    asyncio.run(admin_mod.grev_reject_start(FakeCallback(f"grev_reject:{sub_id}"), state))
+    asyncio.run(admin_gamification.grev_reject_start(FakeCallback(f"grev_reject:{sub_id}"), state))
 
     reason_msg = FakeMessage(text="-")
-    asyncio.run(admin_mod.grev_reject_reason(reason_msg, state))
+    asyncio.run(admin_gamification.grev_reject_reason(reason_msg, state))
 
     submission = asyncio.run(db.get_submission(sub_id))
     assert submission["reject_reason"] is None
@@ -366,10 +366,10 @@ def test_grev_reject_cancel_intercepted_before_catchall(tmp_path):
     task_id = _seed_task()
     sub_id = _seed_submission(task_id)
     state = _new_state()
-    asyncio.run(admin_mod.grev_reject_start(FakeCallback(f"grev_reject:{sub_id}"), state))
+    asyncio.run(admin_gamification.grev_reject_start(FakeCallback(f"grev_reject:{sub_id}"), state))
 
     cancel_msg = FakeMessage(text="/broadcast")
-    asyncio.run(admin_mod.grev_step_cancel(cancel_msg, state))
+    asyncio.run(admin_gamification.grev_step_cancel(cancel_msg, state))
 
     submission = asyncio.run(db.get_submission(sub_id))
     assert submission["status"] == "pending"  # claim_submission never called
@@ -381,10 +381,10 @@ def test_grev_approve_amount_cancel_intercepted_before_catchall(tmp_path):
     task_id = _seed_task(coins=5)
     sub_id = _seed_submission(task_id)
     state = _new_state()
-    asyncio.run(admin_mod.grev_approve_custom_start(FakeCallback(f"grev_approve_custom:{sub_id}"), state))
+    asyncio.run(admin_gamification.grev_approve_custom_start(FakeCallback(f"grev_approve_custom:{sub_id}"), state))
 
     cancel_msg = FakeMessage(text="Отмена")
-    asyncio.run(admin_mod.grev_step_cancel(cancel_msg, state))
+    asyncio.run(admin_gamification.grev_step_cancel(cancel_msg, state))
 
     submission = asyncio.run(db.get_submission(sub_id))
     assert submission["status"] == "pending"
@@ -397,10 +397,10 @@ def test_grev_review_out_of_queue_id_shows_already_processed(tmp_path):
     sub_id = _seed_submission(task_id)
     state = _new_state()
     # First approve wins, flips status to 'approved' (a stale/re-rendered card, not a race).
-    asyncio.run(admin_mod.grev_approve(FakeCallback(f"grev_approve:{sub_id}"), state))
+    asyncio.run(admin_gamification.grev_approve(FakeCallback(f"grev_approve:{sub_id}"), state))
 
     stale_cb = FakeCallback(f"grev_approve:{sub_id}")
-    asyncio.run(admin_mod.grev_approve(stale_cb, state))
+    asyncio.run(admin_gamification.grev_approve(stale_cb, state))
     assert stale_cb.answers[0] == ("Уже обработано", False)
     assert asyncio.run(db.get_balance(DELEGATE_ID)) == 10  # no second credit
 
@@ -409,5 +409,5 @@ def test_grev_approve_unknown_id_alerts_not_found(tmp_path):
     _db_ready(tmp_path)
     state = _new_state()
     callback = FakeCallback("grev_approve:999999")
-    asyncio.run(admin_mod.grev_approve(callback, state))
+    asyncio.run(admin_gamification.grev_approve(callback, state))
     assert callback.answers[0] == ("Не найдено", True)

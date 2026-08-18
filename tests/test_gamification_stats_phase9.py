@@ -15,6 +15,7 @@ import asyncio
 from config import config
 from database import db
 from handlers import admin as admin_mod
+from handlers import admin_gamification
 from handlers.admin_caps import required_capability
 
 
@@ -147,7 +148,7 @@ def test_show_game_stats_renders_all_fields(tmp_path):
         await db.claim_submission(s3, ADMIN_ID, "rejected", reject_reason="дубль")
 
         callback = FakeCallback("admin_game_stats")
-        await admin_mod.show_game_stats(callback)
+        await admin_gamification.show_game_stats(callback)
 
         text = callback.message.answers_sent[-1]
         assert "Участников: 2" in text
@@ -170,7 +171,7 @@ def test_show_game_stats_by_category_empty_when_no_approvals_yet(tmp_path):
         await db.create_submission(t1, DELEGATE_A, "text", "a", "2026-08-14 10:00:00")  # pending
 
         callback = FakeCallback("admin_game_stats")
-        await admin_mod.show_game_stats(callback)
+        await admin_gamification.show_game_stats(callback)
 
         text = callback.message.answers_sent[-1]
         assert "Участников: 1" in text
@@ -189,7 +190,7 @@ def test_show_game_stats_handles_zero_submissions_without_division_by_zero(tmp_p
 
     async def go():
         callback = FakeCallback("admin_game_stats")
-        await admin_mod.show_game_stats(callback)  # must not raise
+        await admin_gamification.show_game_stats(callback)  # must not raise
 
         text = callback.message.answers_sent[-1]
         assert "Пока никто ничего не сдавал" in text

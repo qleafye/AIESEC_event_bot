@@ -21,6 +21,7 @@ from aiogram.fsm.storage.memory import MemoryStorage
 from config import config
 from database import db
 import handlers.admin as admin_mod
+from handlers import admin_gamification
 from handlers import user_actions as ua_mod
 from handlers.states import GameSubmit
 
@@ -277,12 +278,12 @@ def test_show_current_submission_two_long_text_parts_fit_card_limit(tmp_path):
 
     message = _T3FakeMessage(bot=_T3FakeBot())
     state = _t3_new_state()
-    asyncio.run(admin_mod._show_current_submission(message, state))
+    asyncio.run(admin_gamification._show_current_submission(message, state))
 
     card_text = message.answers_sent[0]
     assert len(card_text) <= 4096
     for line in card_text.splitlines():
-        assert len(line) <= admin_mod._CARD_PART_MAX + 3  # +1 for the '• ', +1 for '…', margin
+        assert len(line) <= admin_gamification._CARD_PART_MAX + 3  # +1 for the '• ', +1 for '…', margin
     assert "…" in card_text
     assert "grev_approve:" in _callback_datas(message.answer_markups[0])[0]
 
@@ -296,7 +297,7 @@ def test_show_current_submission_twenty_parts_hits_card_ceiling(tmp_path):
 
     message = _T3FakeMessage(bot=_T3FakeBot())
     state = _t3_new_state()
-    asyncio.run(admin_mod._show_current_submission(message, state))
+    asyncio.run(admin_gamification._show_current_submission(message, state))
 
     card_text = message.answers_sent[0]
     assert len(card_text) <= 4096
@@ -319,7 +320,7 @@ def test_show_current_submission_card_send_failure_falls_back_with_keyboard(tmp_
 
     message = _FailingHtmlMessage(bot=_T3FakeBot())
     state = _t3_new_state()
-    asyncio.run(admin_mod._show_current_submission(message, state))  # must not raise
+    asyncio.run(admin_gamification._show_current_submission(message, state))  # must not raise
 
     assert len(message.answers_sent) == 1  # only the fallback text made it through
     datas = _callback_datas(message.answer_markups[-1])
@@ -339,7 +340,7 @@ def test_show_current_submission_twelve_photos_chunk_into_ten_and_two(tmp_path):
     bot = _T3FakeBot()
     message = _T3FakeMessage(bot=bot)
     state = _t3_new_state()
-    asyncio.run(admin_mod._show_current_submission(message, state))
+    asyncio.run(admin_gamification._show_current_submission(message, state))
 
     assert len(bot.media_groups) == 2
     assert [len(m) for _c, m in bot.media_groups] == [10, 2]
@@ -356,7 +357,7 @@ def test_show_current_submission_eleven_photos_tail_uses_answer_photo(tmp_path):
     bot = _T3FakeBot()
     message = _T3FakeMessage(bot=bot)
     state = _t3_new_state()
-    asyncio.run(admin_mod._show_current_submission(message, state))
+    asyncio.run(admin_gamification._show_current_submission(message, state))
 
     assert len(bot.media_groups) == 1
     assert len(bot.media_groups[0][1]) == 10
@@ -376,12 +377,12 @@ def test_show_current_submission_long_caption_truncated(tmp_path):
     bot = _T3FakeBot()
     message = _T3FakeMessage(bot=bot)
     state = _t3_new_state()
-    asyncio.run(admin_mod._show_current_submission(message, state))
+    asyncio.run(admin_gamification._show_current_submission(message, state))
 
     _chat_id, media = bot.media_groups[0]
     for item in media:
         if item.caption is not None:
-            assert len(item.caption) <= admin_mod._MEDIA_CAPTION_MAX
+            assert len(item.caption) <= admin_gamification._MEDIA_CAPTION_MAX
 
 
 def test_show_current_submission_resend_failure_visible_to_moderator(tmp_path):
@@ -394,7 +395,7 @@ def test_show_current_submission_resend_failure_visible_to_moderator(tmp_path):
     bot = _T3FakeBot(media_group_raises=True)
     message = _T3FakeMessage(bot=bot)
     state = _t3_new_state()
-    asyncio.run(admin_mod._show_current_submission(message, state))  # must not raise
+    asyncio.run(admin_gamification._show_current_submission(message, state))  # must not raise
 
     # Card is sent FIRST regardless of what happens to attachments afterward.
     assert "Задание" in message.answers_sent[0] or "Сдача" in message.answers_sent[0]
