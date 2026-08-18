@@ -124,6 +124,12 @@ _GAME_FIELD_ORDER = [
     "game_resubmit_limit", "coins_manual_notify_text",
     # Quick 260819-gtl (CONTEXT.md decision 8): title/photo wizard step prompts.
     "game_task_title_prompt", "game_task_photo_prompt",
+    # Phase 16 (16-01, GAME-UI-01): RU-категории + тексты редизайна «🎯 Задания»/«🪙 Баланс».
+    "game_category_label_light", "game_category_label_medium", "game_category_label_hard",
+    "game_category_label_referral", "game_category_label_special",
+    "game_task_list_empty", "game_task_list_page_label", "game_task_detail_status_label",
+    "balance_screen_header", "balance_history_empty",
+    "balance_source_manual_label", "balance_source_task_label",
 ]
 
 # Phase 14 (CFG-01): group «🔧 Система» — proxy timings that used to live only in .env.
