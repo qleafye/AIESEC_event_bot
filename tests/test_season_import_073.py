@@ -21,8 +21,7 @@ from database import db
 from database.db import bulk_insert_users_if_absent
 from handlers import admin as admin_mod
 from handlers.admin_caps import ADMIN_CAPS
-# NOTE: `from handlers.states import SeasonImport` is added by Task 2, once the class exists —
-# importing it here before then would break collection of this whole file's Task 1 tests.
+from handlers.states import SeasonImport
 
 ADMIN_ID = 900401
 OTHER_ID = 900402
@@ -255,3 +254,115 @@ def test_bulk_insert_no_side_effects(tmp_path):
 
     assert inserted == 1
     assert before_coins == after_coins == 0
+
+
+# ── Task 2: приём файла — гварды, read-only чтение, цифры ───────────────────────────────────
+
+def test_import_caps_registered():
+    assert ADMIN_CAPS["admin_season_import"] == "settings"
+    assert ADMIN_CAPS["season_import_go"] == "settings"
+    assert ADMIN_CAPS["state:SeasonImport:*"] == "settings"
+
+
+def test_import_rejects_oversized_file(tmp_path):
+    _db_ready(tmp_path)
+    state = _new_state(ADMIN_ID)
+    doc = _FakeDocument(file_size=21 * 1024 * 1024)
+    msg = _FakeMessage(ADMIN_ID, document=doc)
+    bot = _FakeBot(b"")
+
+    asyncio.run(admin_mod.season_import_file_step(msg, state, bot))
+
+    assert any("20 МБ" in (t or "") for t, _ in msg.sent)
+    assert bot.downloaded_file_ids == []  # guard runs BEFORE bot.download
+
+
+def test_import_rejects_non_sqlite(tmp_path):
+    _db_ready(tmp_path)
+    _seed_user(1)
+    state = _new_state(ADMIN_ID)
+    asyncio.run(state.set_state(SeasonImport.waiting_file))
+    msg = _FakeMessage(ADMIN_ID, document=_FakeDocument())
+    bot = _FakeBot(_make_garbage_bytes())
+
+    asyncio.run(admin_mod.season_import_file_step(msg, state, bot))
+
+    assert any("не похоже на базу бота" in (t or "") for t, _ in msg.sent)
+    assert asyncio.run(state.get_state()) == SeasonImport.waiting_file.state
+    total, _ = asyncio.run(db.get_stats())
+    assert total == 1
+
+
+def test_import_rejects_db_without_users(tmp_path):
+    _db_ready(tmp_path)
+    content = _make_foreign_db(tmp_path, [{"id": 1}], table="other_table")
+    state = _new_state(ADMIN_ID)
+    msg = _FakeMessage(ADMIN_ID, document=_FakeDocument())
+    bot = _FakeBot(content)
+
+    asyncio.run(admin_mod.season_import_file_step(msg, state, bot))
+
+    assert any("таблицы делегатов" in (t or "") for t, _ in msg.sent)
+
+
+def test_import_counts_found_and_existing(tmp_path):
+    _db_ready(tmp_path)
+    _seed_user(101)
+    _seed_user(102)
+    rows = [{"telegram_id": tid, "full_name": f"F{tid}"} for tid in [101, 102, 103, 104, 105]]
+    content = _make_foreign_db(tmp_path, rows)
+    state = _new_state(ADMIN_ID)
+    msg = _FakeMessage(ADMIN_ID, document=_FakeDocument())
+    bot = _FakeBot(content)
+    total_before, _ = asyncio.run(db.get_stats())
+
+    asyncio.run(admin_mod.season_import_file_step(msg, state, bot))
+
+    text = msg.sent[-1][0]
+    assert "5" in text and "2" in text and "3" in text
+    assert asyncio.run(state.get_state()) == SeasonImport.naming.state
+    total_after, _ = asyncio.run(db.get_stats())
+    assert total_after == total_before
+
+
+def test_import_tempfile_removed(tmp_path):
+    _db_ready(tmp_path)
+    content = _make_foreign_db(tmp_path, [{"telegram_id": 500, "full_name": "A"}])
+    state = _new_state(ADMIN_ID)
+    msg = _FakeMessage(ADMIN_ID, document=_FakeDocument())
+    bot = _FakeBot(content)
+
+    scratch_dir = tmp_path / "scratch_tmp"
+    scratch_dir.mkdir()
+    old_tempdir = tempfile.tempdir
+    tempfile.tempdir = str(scratch_dir)
+    try:
+        asyncio.run(admin_mod.season_import_file_step(msg, state, bot))
+    finally:
+        tempfile.tempdir = old_tempdir
+
+    assert list(scratch_dir.iterdir()) == []
+
+
+def test_import_empty_file(tmp_path):
+    _db_ready(tmp_path)
+    content = _make_foreign_db(tmp_path, [])
+    state = _new_state(ADMIN_ID)
+    msg = _FakeMessage(ADMIN_ID, document=_FakeDocument())
+    bot = _FakeBot(content)
+
+    asyncio.run(admin_mod.season_import_file_step(msg, state, bot))
+
+    assert any("импортировать нечего" in (t or "") for t, _ in msg.sent)
+    assert asyncio.run(state.get_state()) is None
+
+
+def test_import_non_document_message(tmp_path):
+    _db_ready(tmp_path)
+    state = _new_state(ADMIN_ID)
+    asyncio.run(state.set_state(SeasonImport.waiting_file))
+    msg = _FakeMessage(ADMIN_ID, text="hello")
+
+    asyncio.run(admin_mod.season_import_file_invalid(msg))
+
+    assert any("документом" in (t or "") for t, _ in msg.sent)
