@@ -390,15 +390,28 @@ def test_render_snapshot_pay(tmp_path):
     expected_keys = [
         "payment_options", "payment_requisites", "payment_requisites_by_lc",
         "payment_deadline", "payment_reminder_text", "payment_overdue_text", "penalty_schedule",
+        # Phase 17.1 (17.1-02): делегатские экраны платёжного потока — в хвосте группы.
+        "payment_option_picker_header_text", "payment_details_template_text",
+        "payment_pay_later_text", "payment_pay_later_menu_hint_text",
+        "payment_receipt_received_text",
     ]
     expected_labels = [
         "💳 Варианты оплаты", "💰 Реквизиты оплаты", "💳 Реквизиты по ЛК",
         "📅 Дедлайн оплаты", "⏰ Текст напоминания об оплате", "⌛ Текст «оплата просрочена»",
         "⚠️ Штрафы за отмену",
     ]
+    # Phase 17.1 (17.1-02): у новых ключей есть дефолт в реестре -> флаг «по умолчанию»
+    # (текст делегату уходит, просто стандартный), а не «— не задано».
+    defaulted_labels = [
+        "💳 Выбор варианта: заголовок", "💰 Экран оплаты: шаблон",
+        "⏭ «Оплачу позже»: ответ", "⏭ «Оплачу позже»: подсказка про меню",
+        "✅ Чек получен: подтверждение",
+    ]
     for label in expected_labels:
         assert f"{label}: <i>— не задано</i>" in text, f"missing/wrong flag for {label}"
-    positions = [text.index(label) for label in expected_labels]
+    for label in defaulted_labels:
+        assert f"{label}: <i>по умолчанию</i>" in text, f"missing/wrong flag for {label}"
+    positions = [text.index(label) for label in expected_labels + defaulted_labels]
     assert positions == sorted(positions), "label order drifted"
 
     edit_cbs = [cd for cd in flat if cd and cd.startswith("settings_edit:")]

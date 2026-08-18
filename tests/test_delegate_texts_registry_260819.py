@@ -1,5 +1,5 @@
-"""Phase 17.1 (17.1-01) — делегатские тексты гейма/баланса/рейтинга/рефералки переехали из
-литералов в SETTINGS_SCHEMA. Два вида проверок на каждую поверхность:
+"""Phase 17.1 (17.1-01, 17.1-02) — делегатские тексты гейма/баланса/рейтинга/рефералки, а
+затем recall/возвращения и платёжного потока переехали из литералов в SETTINGS_SCHEMA. Два вида проверок на каждую поверхность:
 
 1) «дефолт байт-в-байт» — `SETTINGS_SCHEMA[key]["default"]` равен ровно тому литералу, который
    стоял в коде до миграции (эмодзи, переносы, HTML — как было; изменений поведения нет);
@@ -11,6 +11,9 @@ tests/test_game_ui16_delegate_260820.py (pytest-asyncio в этом окруже
 import asyncio
 
 import pytest
+from aiogram.fsm.context import FSMContext
+from aiogram.fsm.storage.base import StorageKey
+from aiogram.fsm.storage.memory import MemoryStorage
 
 from config import config
 from database import db
@@ -19,7 +22,10 @@ from database import db
 from handlers import admin as _admin_mod  # noqa: F401
 from handlers import admin_settings
 from handlers import game_labels
+from handlers import payment as pay_mod
+from handlers import registration as reg_mod
 from handlers import user_actions as ua_mod
+from handlers.states import Registration
 from settings_schema import SETTINGS_SCHEMA
 
 
@@ -121,6 +127,27 @@ _PRE_MIGRATION_LITERALS = {
     "referral_list_empty_text": (
         "Пока никто не зарегистрировался по твоей ссылке.\n\nПоделись ей с друзьями:\n{link}"
     ),
+    # 17.1-02: recall/возвращение (registration.py) + платёжный поток (payment.py).
+    "start_returning_cta_text": (
+        "Хочешь участвовать снова? Обновим анкету — прошлые ответы предложу оставить."
+    ),
+    "recall_resume_prompt_text": (
+        "У нас есть твоё резюме с прошлой регистрации. Оставить его или прислать новое?"
+    ),
+    "recall_generic_prompt_text": (
+        "<b>{label}</b>\n\nПрошлый ответ: <b>{display}</b>\n\nОставить или изменить?"
+    ),
+    "payment_option_picker_header_text": "💳 Выбери вариант участия:",
+    # Прежний экран собирался как "\n".join(parts) с условными блоками; шаблон воспроизводит
+    # тот же рендер: условные блоки приходят УЖЕ с завершающим "\n\n" (или пустые). Полная
+    # байт-идентичность рендера — test_payment_details_default_template_renders_byte_identical_to_legacy.
+    "payment_details_template_text": (
+        "💰 <b>Оплата участия</b>\n\nВариант: {option}\nСумма: {amount} ₽\n\n"
+        "{requisites}{deadline}{penalties}📎 Загрузи чек оплаты (PDF-документ или скриншот)."
+    ),
+    "payment_pay_later_text": "Ок! Оплатишь позже.",
+    "payment_pay_later_menu_hint_text": "Кнопка «💳 Оплата» будет в меню, пока чек не отправлен.",
+    "payment_receipt_received_text": "✅ Чек получен! Менеджер проверит его в ближайшее время.",
 }
 
 
@@ -353,3 +380,323 @@ def test_task_card_not_overdue_has_no_hint(tmp_path):
 
     text = asyncio.run(ua_mod._render_task_card_text(task, "новое", None))
     assert _default("game_task_overdue_hint_text") not in text
+
+
+# ═══════════════════════════════════════════════════════════════════════════════════════════
+# 17.1-02: recall/возвращение (handlers/registration.py) + платёжный поток (handlers/payment.py)
+# ═══════════════════════════════════════════════════════════════════════════════════════════
+
+RETURNING_ID = 941201
+
+
+def _new_state(uid: int) -> FSMContext:
+    return FSMContext(storage=MemoryStorage(), key=StorageKey(bot_id=1, chat_id=uid, user_id=uid))
+
+
+class _KBCapturingMessage:
+    """(text, reply_markup, parse_mode) от answer/answer_photo — как в
+    tests/test_returning_delegate_073.py (cmd_start шлёт баннер через _send_welcome)."""
+
+    def __init__(self, uid, username=None):
+        self.from_user = FakeUser(uid)
+        self.from_user.username = username
+        self.chat = type("Chat", (), {"id": uid})()
+        self.sent = []
+        self.bot = None
+
+    async def answer(self, text=None, reply_markup=None, parse_mode=None, *a, **k):
+        self.sent.append((text, reply_markup, parse_mode))
+
+    async def answer_photo(self, *a, caption=None, reply_markup=None, parse_mode=None, **k):
+        self.sent.append((caption, reply_markup, parse_mode))
+
+    async def edit_reply_markup(self, reply_markup=None):
+        return None
+
+    def model_copy(self, update=None):
+        new = _KBCapturingMessage(self.from_user.id, self.from_user.username)
+        new.sent = self.sent
+        if update and "from_user" in update:
+            new.from_user = update["from_user"]
+        return new
+
+    def texts(self):
+        return [t for (t, _, _) in self.sent]
+
+
+class _SendCapturingBot:
+    id = 1
+
+    def __init__(self):
+        self.sent = []  # (chat_id, text)
+
+    async def send_message(self, chat_id, text, parse_mode=None, reply_markup=None, **kwargs):
+        self.sent.append((chat_id, text))
+
+
+class _FakeState:
+    def __init__(self):
+        self.state = None
+        self.cleared = False
+
+    async def set_state(self, state):
+        self.state = state
+
+    async def clear(self):
+        self.cleared = True
+
+
+# ── _ask_step_or_recall: развилка «прошлое резюме» ───────────────────────────────────────
+
+def _recall_resume(msg_uid=RETURNING_ID):
+    msg = _KBCapturingMessage(msg_uid)
+    state = _new_state(msg_uid)
+    asyncio.run(state.update_data(participant_type="full",
+                                  _prior_answers={"resume_url": "https://cloud/x.pdf"}))
+    asyncio.run(reg_mod._ask_step_or_recall("resume", msg, state, 4, 9))
+    return msg, state
+
+
+def test_recall_resume_prompt_uses_registry_default(tmp_path):
+    _db_ready(tmp_path)
+    msg, state = _recall_resume()
+    assert msg.texts() == [_default("recall_resume_prompt_text")]
+    assert asyncio.run(state.get_state()) == Registration.recall_pending.state
+
+
+def test_recall_resume_prompt_setting_overrides_default(tmp_path):
+    _db_ready(tmp_path)
+    asyncio.run(db.set_setting("recall_resume_prompt_text", "Резюме уже у нас. Оставим?"))
+    msg, _state = _recall_resume()
+    assert msg.texts() == ["Резюме уже у нас. Оставим?"]
+
+
+def test_recall_resume_prompt_keeps_progress_prefix(tmp_path):
+    _db_ready(tmp_path)
+    asyncio.run(db.set_setting("reg_show_progress", "on"))
+    msg, _state = _recall_resume()
+    assert msg.texts() == [f"(4/9) {_default('recall_resume_prompt_text')}"]
+
+
+# ── _ask_step_or_recall: общий экран «Прошлый ответ» ────────────────────────────────────
+
+def _recall_generic(value="МГУ", msg_uid=RETURNING_ID):
+    msg = _KBCapturingMessage(msg_uid)
+    state = _new_state(msg_uid)
+    asyncio.run(state.update_data(participant_type="full", _prior_answers={"university": value}))
+    asyncio.run(reg_mod._ask_step_or_recall("university", msg, state, 3, 9))
+    return msg, state
+
+
+def test_recall_generic_prompt_uses_registry_default(tmp_path):
+    _db_ready(tmp_path)
+    msg, state = _recall_generic()
+    label = reg_mod.dropout_step_label("university")
+    expected = (_default("recall_generic_prompt_text")
+                .replace("{label}", label).replace("{display}", "МГУ"))
+    assert msg.texts() == [expected]
+    assert asyncio.run(state.get_state()) == Registration.recall_pending.state
+
+
+def test_recall_generic_prompt_setting_overrides_default(tmp_path):
+    _db_ready(tmp_path)
+    asyncio.run(db.set_setting(
+        "recall_generic_prompt_text", "{label} — раньше ты отвечал(а): {display}. Оставим?"))
+    msg, _state = _recall_generic()
+    label = reg_mod.dropout_step_label("university")
+    assert msg.texts() == [f"{label} — раньше ты отвечал(а): МГУ. Оставим?"]
+
+
+def test_recall_generic_prompt_still_escapes_prior_value(tmp_path):
+    # T-073-04-02 не ослаблен: значение из строки users экранируется до подстановки.
+    _db_ready(tmp_path)
+    msg, _state = _recall_generic(value="<b>x</b>")
+    assert "<b>x</b>" not in msg.texts()[0]
+    assert "&lt;b&gt;x&lt;/b&gt;" in msg.texts()[0]
+
+
+def test_recall_generic_prompt_tolerates_stray_braces(tmp_path):
+    # .replace, не .format: посторонние {} в тексте менеджера не роняют экран.
+    _db_ready(tmp_path)
+    asyncio.run(db.set_setting("recall_generic_prompt_text", "{label}: {display} {не плейсхолдер}"))
+    msg, _state = _recall_generic()
+    assert msg.texts()[0].endswith("МГУ {не плейсхолдер}")
+
+
+# ── cmd_start: CTA «Хочешь участвовать снова?» под баннером прошлого сезона ─────────────
+
+def _returning_start(uid=RETURNING_ID):
+    asyncio.run(db.set_setting("event_season", "YL'26"))
+    asyncio.run(db.add_user({
+        "telegram_id": uid, "full_name": "Прошлый Делегат", "username": "old_delegate",
+        "registration_date": "2025-08-01 10:00:00", "season": "YL'25",
+    }))
+    asyncio.run(db.set_user_status(uid, "approved"))
+    msg = _KBCapturingMessage(uid, "old_delegate")
+    asyncio.run(reg_mod.cmd_start(msg, _new_state(uid), bot=object(), command=None))
+    return msg
+
+
+def _cta_message(msg):
+    hits = [(t, rm) for (t, rm, _) in msg.sent
+            if rm is not None and hasattr(rm, "inline_keyboard")
+            and any(b.callback_data == "rereg_start" for row in rm.inline_keyboard for b in row)]
+    assert len(hits) == 1
+    return hits[0][0]
+
+
+def test_start_returning_cta_uses_registry_default(tmp_path):
+    _db_ready(tmp_path)
+    msg = _returning_start()
+    assert _cta_message(msg) == _default("start_returning_cta_text")
+
+
+def test_start_returning_cta_setting_overrides_default(tmp_path):
+    _db_ready(tmp_path)
+    asyncio.run(db.set_setting("start_returning_cta_text", "Снова с нами? Жми кнопку 👇"))
+    msg = _returning_start()
+    assert _cta_message(msg) == "Снова с нами? Жми кнопку 👇"
+
+
+# ── payment.start_payment_step: заголовок выбора варианта ───────────────────────────────
+
+def _picker(uid=RETURNING_ID):
+    asyncio.run(db.set_setting("payment_options", "Стандарт|3000\nВИП|5000"))
+    bot = _SendCapturingBot()
+    asyncio.run(pay_mod.start_payment_step(bot, uid, "full"))
+    assert len(bot.sent) == 1
+    return bot.sent[0][1]
+
+
+def test_payment_picker_header_uses_registry_default(tmp_path):
+    _db_ready(tmp_path)
+    assert _picker() == _default("payment_option_picker_header_text")
+
+
+def test_payment_picker_header_setting_overrides_default_and_keeps_requisites(tmp_path):
+    _db_ready(tmp_path)
+    asyncio.run(db.set_setting("payment_option_picker_header_text", "Какой билет берём?"))
+    asyncio.run(db.set_setting("payment_requisites", "Сбер 1234"))
+    assert _picker() == "Какой билет берём?\n\n📋 Реквизиты:\nСбер 1234"
+
+
+# ── payment._show_payment_details: шаблон экрана оплаты ─────────────────────────────────
+
+def _details(label="Стандарт", price=3000, uid=RETURNING_ID):
+    bot = _SendCapturingBot()
+    state = _FakeState()
+    asyncio.run(pay_mod._show_payment_details(bot, uid, state, label, price))
+    assert len(bot.sent) == 1
+    assert state.state == Registration.receipt_upload
+    return bot.sent[0][1]
+
+
+def _legacy_details_render(option_label, option_price, requisites, deadline, penalties):
+    """Дословный прежний рендер _show_payment_details ("\\n".join(parts) с условными блоками)
+    — эталон байт-идентичности для дефолтного шаблона."""
+    import html
+    parts = [
+        "💰 <b>Оплата участия</b>\n",
+        f"Вариант: {html.escape(option_label)}",
+        f"Сумма: {option_price} ₽\n",
+    ]
+    block = pay_mod._format_requisites_block(requisites)
+    if block:
+        parts.append(block + "\n")
+    if deadline:
+        parts.append(f"📅 Дедлайн: {html.escape(deadline)}\n")
+    if penalties and penalties.strip():
+        lines = []
+        for line in penalties.strip().splitlines():
+            if "|" in line:
+                date_part, amount = line.split("|", 1)
+                lines.append(f"• до {html.escape(date_part.strip())} — остаток {html.escape(amount.strip())} ₽")
+        if lines:
+            parts.append("⚠️ Штрафы за отмену:\n" + "\n".join(lines) + "\n")
+    parts.append("📎 Загрузи чек оплаты (PDF-документ или скриншот).")
+    return "\n".join(parts)
+
+
+@pytest.mark.parametrize("requisites,deadline,penalties", [
+    ("Сбер 1234 & Тинькофф", None, None),
+    ("Сбер 1234", "15.08.2099 23:59", None),
+    ("Сбер 1234", "15.08.2099 23:59", "01.08.2099|3000\n10.08.2099|0"),
+    ("Сбер 1234", None, "01.08.2099|3000"),
+    ("Сбер 1234", "15.08.2099 23:59", "строка без разделителя"),
+])
+def test_payment_details_default_template_renders_byte_identical_to_legacy(
+        tmp_path, requisites, deadline, penalties):
+    _db_ready(tmp_path)
+    asyncio.run(db.set_setting("payment_requisites", requisites))
+    if deadline:
+        asyncio.run(db.set_setting("payment_deadline", deadline))
+    if penalties:
+        asyncio.run(db.set_setting("penalty_schedule", penalties))
+    text = _details("Стандарт <VIP>", 3000)
+    assert text == _legacy_details_render("Стандарт <VIP>", 3000, requisites, deadline, penalties)
+
+
+def test_payment_details_template_setting_overrides_default(tmp_path):
+    _db_ready(tmp_path)
+    asyncio.run(db.set_setting("payment_requisites", "Сбер 1234"))
+    asyncio.run(db.set_setting(
+        "payment_details_template_text",
+        "К оплате {amount} ₽ за «{option}».\n{requisites}Жду чек {и не плейсхолдер}!"))
+    text = _details("Стандарт", 3000)
+    assert text == "К оплате 3000 ₽ за «Стандарт».\n📋 Реквизиты:\nСбер 1234\n\nЖду чек {и не плейсхолдер}!"
+
+
+def test_payment_details_missing_blocks_render_empty_in_custom_template(tmp_path):
+    _db_ready(tmp_path)
+    asyncio.run(db.set_setting("payment_requisites", "Сбер 1234"))
+    asyncio.run(db.set_setting(
+        "payment_details_template_text", "[{deadline}][{penalties}]{option}"))
+    assert _details("Стандарт", 3000) == "[][]Стандарт"
+
+
+# ── payment.process_pay_later: «Ок! Оплатишь позже.» + подсказка про меню ───────────────
+
+def _pay_later(uid=RETURNING_ID):
+    _seed_delegate(uid)
+    cb = FakeCallback("pay_later", user_id=uid)
+    asyncio.run(pay_mod.process_pay_later(cb, _FakeState()))
+    assert len(cb.message.answers_sent) == 1
+    return cb.message.answers_sent[0]
+
+
+def test_pay_later_uses_registry_defaults(tmp_path):
+    _db_ready(tmp_path)
+    assert _pay_later() == (
+        f"{_default('payment_pay_later_text')}\n\n{_default('payment_pay_later_menu_hint_text')}"
+    )
+
+
+def test_pay_later_settings_override_defaults_and_keep_requisites_between(tmp_path):
+    _db_ready(tmp_path)
+    asyncio.run(db.set_setting("payment_requisites", "Сбер 1234"))
+    asyncio.run(db.set_setting("payment_pay_later_text", "Хорошо, без спешки."))
+    asyncio.run(db.set_setting("payment_pay_later_menu_hint_text", "Оплата — в меню внизу."))
+    assert _pay_later() == "Хорошо, без спешки.\n\n📋 Реквизиты:\nСбер 1234\n\nОплата — в меню внизу."
+
+
+# ── payment._finalize_receipt: «✅ Чек получен!» ─────────────────────────────────────────
+
+def _finalize(uid=RETURNING_ID):
+    _seed_delegate(uid)
+    msg = FakeMessage(user_id=uid)
+    msg.bot = None  # notify_by_capability fail-soft: ошибка нотификации не ломает ответ делегату
+    asyncio.run(pay_mod._finalize_receipt(msg, _FakeState(), "file123"))
+    return msg.answers_sent
+
+
+def test_receipt_received_uses_registry_default(tmp_path):
+    _db_ready(tmp_path)
+    assert _finalize() == [_default("payment_receipt_received_text")]
+    user = asyncio.run(db.get_user(RETURNING_ID))
+    assert user["payment_status"] == "receipt_sent"
+
+
+def test_receipt_received_setting_overrides_default(tmp_path):
+    _db_ready(tmp_path)
+    asyncio.run(db.set_setting("payment_receipt_received_text", "Чек у нас, спасибо! 🙏"))
+    assert _finalize() == ["Чек у нас, спасибо! 🙏"]
