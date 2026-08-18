@@ -169,18 +169,18 @@ def test_show_game_tasks_marks_active_submission_status(tmp_path):
 
     assert parse_mode == "HTML"
     assert "Открытое задание" in text
-    # Quick 260819-gtl (CONTEXT.md decision 3): "N. <статус-эмодзи> <title> · ..." -- the
-    # status marker sits right before the title, not before a separate "на проверке" phrase.
-    assert "⏳ Задание на проверке" in text and "на проверке, сдано" in text
+    # Phase 16 (16-01, GAME-UI-01): "N. <статус-эмодзи> <b>title</b>" / tail line -- the
+    # status marker sits right before the bold title, tail line carries the status phrase.
+    assert "⏳ <b>Задание на проверке</b>" in text and "на проверке (сдано" in text
     assert "Одобренное задание" in text and "✅" in text and "+25🪙" in text
 
-    # Quick 260819-gtl (CONTEXT.md decision 5): the list button now opens the task CARD
-    # ("mytask:{id}"), not the submission wizard directly ("mytask_submit:{id}" is the card's
-    # OWN "📤 Сдать" button target now).
+    # Quick 260819-gtl (CONTEXT.md decision 5) + Phase 16 (16-01, CONTEXT.md rename): the list
+    # button opens the task CARD ("gtask_open:{id}"), not the submission wizard directly
+    # ("mytask_submit:{id}" is the card's OWN "📤 Сдать" button target now).
     button_data = _flat_kb_data(markup)
-    assert f"mytask:{open_task_id}" in button_data
-    assert f"mytask:{pending_task_id}" not in button_data
-    assert f"mytask:{approved_task_id}" not in button_data
+    assert f"gtask_open:{open_task_id}" in button_data
+    assert f"gtask_open:{pending_task_id}" not in button_data
+    assert f"gtask_open:{approved_task_id}" not in button_data
 
 
 def test_show_game_tasks_excludes_past_deadline(tmp_path):

@@ -405,7 +405,8 @@ def test_delegate_list_line_uses_title_and_numbering(tmp_path):
     asyncio.run(ua_mod.show_game_tasks(message))
     text, parse_mode, markup = message.answers_sent[-1], message.answer_parse_modes[-1], message.answer_markups[-1]
     assert text.startswith("1. 📤")
-    assert "2. 📤 Второе задание" in text
+    # Phase 16 (16-01, GAME-UI-01): title now wrapped in <b> (list-line format rewrite).
+    assert "2. 📤 <b>Второе задание</b>" in text
     assert parse_mode == "HTML"
 
 
