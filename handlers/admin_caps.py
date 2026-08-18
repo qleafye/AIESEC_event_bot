@@ -333,7 +333,8 @@ ADMIN_CAPS: dict[str, str] = {
     "consent_pdf_set:*": "settings",
     "menu_back": "settings",
     # menu_city* (Phase 09.2-06, CITY-05): per-city «🔘 Кнопки главного меню» sub-flow,
-    # same shape/right as settings_city*/roles_city* above.
+    # same shape/right as roles_city* above (09.3-06 folded the settings-editor analog of
+    # this family into settings_edit_city*/settings_reset_city* below).
     "menu_city": "settings",
     "menu_city_clear:*": "settings",
     "menu_city_clear_go:*": "settings",
@@ -361,13 +362,13 @@ ADMIN_CAPS: dict[str, str] = {
     "roles_toggle:*": "settings",
     "settings_back": "settings",
     "settings_cancel": "settings",
-    # Phase 09.2 (C, CITY-05): «🏙 Для города…» per-setting override sub-flow — same right
-    # as every other settings_* screen, never a separate capability.
-    "settings_city:*": "settings",
-    "settings_city_clear:*": "settings",
-    "settings_city_clear_go:*": "settings",
-    "settings_city_pick:*": "settings",
     "settings_edit:*": "settings",
+    # Phase 09.3 (06, CITY-09): header-scoped per-key editor — «✏️ Изменить для {город}»/
+    # «↩️ Как везде» replace 09.2-05's four-entry per-city picker family (deleted from this
+    # dict); same right as every other settings_* screen, never a separate capability.
+    "settings_edit_city:*": "settings",
+    "settings_reset_city:*": "settings",
+    "settings_reset_city_go:*": "settings",
     "settings_file:*": "settings",
     "settings_group:*": "settings",
     "settings_group_noop": "settings",
