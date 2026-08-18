@@ -2,7 +2,8 @@
 
 TEST-VALUE-260815.md's "КЛЮЧЕВОЙ ФАКТ": every existing admin/registration test calls a
 handler FUNCTION directly, never through the Dispatcher — router registration order, decorator
-filters, and middleware attachment are covered by NOTHING. This file closes that gap.
+filters, and middleware attachment are covered by NOTHING. This file closes that gap with two
+independent nets:
 
 Task 1 — a golden order+filter snapshot of all FOUR routers (admin, payment, registration,
 user_actions), walked in the SAME include order main.py uses. Reuses the exact key-derivation
@@ -10,9 +11,11 @@ helpers proven in tests/test_roles_phase8.py (`_decorator_lines`/`_keys_from_dec
 `_keys_for_handler`) so the snapshot travels with a handler across a file move — only order,
 handler name, and derived filter keys are captured, never line numbers or module paths.
 
-(Task 2's Dispatcher feed_update smoke test is appended to this same file by the next commit;
-the M1 `is_question_reply` capability-gate regression test lives in its own file,
-test_question_reply_gate_260816.py, per the plan's file mapping.)
+Task 2(a) — a feed_update smoke test that builds the REAL Dispatcher (identical include order)
+and drives genuine aiogram Update objects through it, proving cross-router first-match routing
+(the exact property every direct-call test bypasses). Task 2(b), the M1 `is_question_reply`
+capability-gate regression test, lives in its own file (test_question_reply_gate_260816.py) per
+the plan's file mapping.
 
 Drift note (2026-08-18): the plan was authored 2026-08-15 against a smaller admin.py/
 registration.py; Phases 14/09.3/7.3 added handlers since (season_*, coinsman_*, city_*,
@@ -20,12 +23,25 @@ settings_edit_city*, menu_reset_city*, rereg_start, recall_*, ...). The golden s
 was captured by RUNNING the enumeration helper against CURRENT HEAD (0a76d7e), not transcribed
 from the plan — it is authoritative for today's code, not the plan's stale example.
 """
-from tests.test_roles_phase8 import _keys_for_handler
+import asyncio
+import time
+from contextlib import contextmanager
+
+from aiogram import Bot, Dispatcher
+from aiogram.dispatcher.event.bases import UNHANDLED
+from aiogram.fsm.storage.memory import MemoryStorage
+from aiogram.types import CallbackQuery, Chat, Message, Update, User
+
+from tests.test_roles_phase8 import _keys_for_handler, _roles_ready
 
 from handlers import admin as admin_mod
 from handlers import payment as payment_mod
 from handlers import registration as registration_mod
 from handlers import user_actions as user_actions_mod
+from handlers.states import Broadcast
+
+ADMIN_ID = 900801
+STRANGER_ID = 900804
 
 # main.py:304-308 — the exact wiring order this whole plan protects. A correct split keeps
 # this list byte-for-byte identical (one shared router object per god-file); ANY reorder is a
@@ -388,3 +404,120 @@ def test_snapshot_total_handler_count_is_292():
     without touching this file's golden text (impossible for a normal edit, but this guards
     against a golden-string typo slipping past review) is caught by count alone."""
     assert len(GOLDEN_SNAPSHOT) == 292
+
+
+# ── Task 2(a): Dispatcher feed_update smoke — cross-router first-match routing ─────────────
+#
+# Every existing test (including the harness in test_roles_phase8.py) dispatches through a
+# SINGLE router's own `propagate_event` — never through the actual Dispatcher chain main.py
+# builds. This is the one place in the suite that proves an Update reaches its intended handler
+# THROUGH the real 4-router chain (admin -> payment -> registration -> user_actions), not by
+# calling the handler function directly and not by calling one router in isolation.
+
+_DISPATCHER_CACHE: dict = {}
+
+
+def _full_dispatcher():
+    """Built ONCE per test session (module-level singleton routers can only be `include_router`-
+    ed into one Dispatcher) with the EXACT include order from main.py:304-308."""
+    if "dp" not in _DISPATCHER_CACHE:
+        dp = Dispatcher(storage=MemoryStorage())
+        payment_mod.init_payment_module(dp.storage)
+        dp.include_router(admin_mod.router)
+        dp.include_router(payment_mod.router)
+        dp.include_router(registration_mod.router)
+        dp.include_router(user_actions_mod.router)
+        _DISPATCHER_CACHE["dp"] = dp
+    return _DISPATCHER_CACHE["dp"]
+
+
+def _make_message_update(update_id, text, user_id, chat_id=None):
+    chat_id = chat_id if chat_id is not None else user_id
+    user = User(id=user_id, is_bot=False, first_name="Test")
+    chat = Chat(id=chat_id, type="private")
+    msg = Message(message_id=update_id, date=int(time.time()), chat=chat, from_user=user, text=text)
+    return Update(update_id=update_id, message=msg)
+
+
+def _make_callback_update(update_id, data, user_id, chat_id=None):
+    chat_id = chat_id if chat_id is not None else user_id
+    user = User(id=user_id, is_bot=False, first_name="Test")
+    chat = Chat(id=chat_id, type="private")
+    msg = Message(message_id=update_id, date=int(time.time()), chat=chat, from_user=user, text="stub")
+    cb = CallbackQuery(id=str(update_id), from_user=user, chat_instance="test", data=data, message=msg)
+    return Update(update_id=update_id, callback_query=cb)
+
+
+@contextmanager
+def _spied(router_module, observer_name, func_name):
+    """Replaces a HandlerObject's `.callback` in place (looked up fresh by aiogram's Observer
+    on every trigger — see aiogram.dispatcher.event.telegram.TelegramEventObserver.trigger) with
+    a recording spy, so the REAL router/filter/middleware chain runs unmodified up to the exact
+    point the intended handler's body would start; the body itself never executes (no network,
+    no DB side effects), which is exactly what a routing-only smoke test needs."""
+    observer = getattr(router_module.router, observer_name)
+    handler_obj = next(h for h in observer.handlers if h.callback.__name__ == func_name)
+    original = handler_obj.callback
+    calls = []
+
+    async def _spy(*args, **kwargs):
+        calls.append((args, kwargs))
+
+    handler_obj.callback = _spy
+    try:
+        yield calls
+    finally:
+        handler_obj.callback = original
+
+
+def test_feed_update_smoke_cross_router_first_match(tmp_path):
+    _roles_ready(tmp_path)
+    dp = _full_dispatcher()
+    bot = Bot(token="123456:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA")
+    try:
+        # admin.router: callback -- admin_stats is the FIRST callback_query handler registered,
+        # proving the admin router (included first) claims its own callback correctly.
+        with _spied(admin_mod, "callback_query", "show_admin_stats") as calls:
+            result = asyncio.run(dp.feed_update(bot, _make_callback_update(1, "admin_stats", ADMIN_ID)))
+            assert result is not UNHANDLED
+            assert len(calls) == 1
+
+        # admin.router: command -- /admin.
+        with _spied(admin_mod, "message", "cmd_admin_help") as calls:
+            result = asyncio.run(dp.feed_update(bot, _make_message_update(2, "/admin", ADMIN_ID)))
+            assert result is not UNHANDLED
+            assert len(calls) == 1
+
+        # admin.router: callback with a startswith() filter -- appr_approve:1.
+        with _spied(admin_mod, "callback_query", "appr_approve") as calls:
+            result = asyncio.run(dp.feed_update(bot, _make_callback_update(3, "appr_approve:1", ADMIN_ID)))
+            assert result is not UNHANDLED
+            assert len(calls) == 1
+
+        # admin.router: state-gated message -- inside the Broadcast wizard, free text must
+        # resolve to process_broadcast (not fall through to a sibling router).
+        fsm = dp.fsm.resolve_context(bot, chat_id=ADMIN_ID, user_id=ADMIN_ID)
+        asyncio.run(fsm.set_state(Broadcast.message))
+        try:
+            with _spied(admin_mod, "message", "process_broadcast") as calls:
+                result = asyncio.run(dp.feed_update(bot, _make_message_update(4, "Всем привет", ADMIN_ID)))
+                assert result is not UNHANDLED
+                assert len(calls) == 1
+        finally:
+            asyncio.run(fsm.clear())
+
+        # registration.router: /start -- admin.router (included first, no Command("start")
+        # handler) and payment.router (no matching filter either) must NOT intercept it.
+        with _spied(registration_mod, "message", "cmd_start") as calls:
+            result = asyncio.run(dp.feed_update(bot, _make_message_update(5, "/start", STRANGER_ID)))
+            assert result is not UNHANDLED
+            assert len(calls) == 1
+
+        # user_actions.router: a plain delegate callback -- last router in the chain, proves the
+        # event survives three routers' worth of non-matches before reaching its handler.
+        with _spied(user_actions_mod, "callback_query", "info_date") as calls:
+            result = asyncio.run(dp.feed_update(bot, _make_callback_update(6, "info_date", STRANGER_ID)))
+            assert result is not UNHANDLED
+            assert len(calls) == 1
+    finally:
+        asyncio.run(bot.session.close())
