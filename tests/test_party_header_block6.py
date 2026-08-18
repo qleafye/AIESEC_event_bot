@@ -1,12 +1,14 @@
 """Block 6 MEDIUM-01: the party tab header must resync on a party-question toggle/preset — but
 only while the party track is enabled (D-15: toggling an override with the track OFF must never
-materialize the tab). Drives admin._refresh_party_sheet_header directly.
+materialize the tab). Drives admin_reg_config._refresh_party_sheet_header directly (Phase 13,
+13-05: moved from handlers/admin.py).
 """
 import asyncio
 
 from config import config
 from database import db
 from handlers import admin
+from handlers import admin_reg_config  # Phase 13 (13-05): _refresh_party_sheet_header moved here
 import services.sheets as sheets
 
 
@@ -30,7 +32,7 @@ def test_medium01_resync_when_party_enabled(tmp_path, monkeypatch):
     async def go():
         await db.init_db()
         await db.set_setting("party_enabled", "on")
-        await admin._refresh_party_sheet_header()
+        await admin_reg_config._refresh_party_sheet_header()
         await _drain()()
 
     asyncio.run(go())
@@ -52,7 +54,7 @@ def test_medium01_no_resync_when_party_disabled(tmp_path, monkeypatch):
     async def go():
         await db.init_db()
         # party_enabled unset → off by default
-        await admin._refresh_party_sheet_header()
+        await admin_reg_config._refresh_party_sheet_header()
         await _drain()()
 
     asyncio.run(go())

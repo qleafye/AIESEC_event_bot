@@ -78,6 +78,7 @@ def test_proxy_settings_prompts_mention_restart():
 
 def test_proxy_settings_wired_into_admin_system_group():
     from handlers import admin as admin_mod
+    from handlers import admin_broadcasts  # Phase 13 (13-05): broadcast handlers moved here
 
     keys = {k for k, _, _ in admin_mod.SETTINGS_FIELDS}
     assert "proxy_recheck_seconds" in keys
@@ -118,6 +119,7 @@ def test_seed_proxy_settings_from_env_noop_when_env_matches_default(tmp_path):
 
 def test_settings_group_misc_does_not_swallow_system_keys():
     from handlers import admin as admin_mod
+    from handlers import admin_broadcasts  # Phase 13 (13-05): broadcast handlers moved here
 
     misc_keys = admin_mod._settings_group_keys("misc")
     assert "proxy_recheck_seconds" not in misc_keys
@@ -182,14 +184,16 @@ def _btn_datas(kb):
 
 def test_track_labels_cover_every_track_and_are_not_the_raw_code():
     from handlers import admin as admin_mod
+    from handlers import admin_broadcasts  # Phase 13 (13-05): broadcast handlers moved here
 
     for code in ("full", "party_overnight", "party_noovernight", "short"):
-        assert code in admin_mod._TRACK_LABELS
-        assert admin_mod._TRACK_LABELS[code] != code
+        assert code in admin_broadcasts._TRACK_LABELS
+        assert admin_broadcasts._TRACK_LABELS[code] != code
 
 
 def test_show_value_picker_participant_type_shows_labels_codes_in_callback(tmp_path):
     from handlers import admin as admin_mod
+    from handlers import admin_broadcasts  # Phase 13 (13-05): broadcast handlers moved here
 
     _db_ready(tmp_path, name="test_config_audit_260818_track.db")
     asyncio.run(db.add_user({
@@ -203,7 +207,7 @@ def test_show_value_picker_participant_type_shows_labels_codes_in_callback(tmp_p
 
     cb = _FakeCallback("filter_f_participant_type")
     state = _FakeState()
-    asyncio.run(admin_mod._show_value_picker(cb, state, "participant_type", "Выберите:"))
+    asyncio.run(admin_broadcasts._show_value_picker(cb, state, "participant_type", "Выберите:"))
 
     texts = _btn_texts(cb.message.markup)
     datas = _btn_datas(cb.message.markup)
@@ -222,6 +226,7 @@ def test_show_value_picker_participant_type_shows_labels_codes_in_callback(tmp_p
 
 def test_show_value_picker_participant_type_unknown_value_is_fail_soft(tmp_path):
     from handlers import admin as admin_mod
+    from handlers import admin_broadcasts  # Phase 13 (13-05): broadcast handlers moved here
 
     _db_ready(tmp_path, name="test_config_audit_260818_track_unknown.db")
     asyncio.run(db.add_user({
@@ -232,7 +237,7 @@ def test_show_value_picker_participant_type_unknown_value_is_fail_soft(tmp_path)
     cb = _FakeCallback("filter_f_participant_type")
     state = _FakeState()
     # Must not raise — an unrecognised code falls back to itself as the label.
-    asyncio.run(admin_mod._show_value_picker(cb, state, "participant_type", "Выберите:"))
+    asyncio.run(admin_broadcasts._show_value_picker(cb, state, "participant_type", "Выберите:"))
     texts = _btn_texts(cb.message.markup)
     assert "some_future_track" in texts
 
