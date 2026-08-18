@@ -128,25 +128,26 @@ def test_moscow_literal_declared_exactly_once():
 def test_broadcast_schedule_rejects_time_inside_utc_msk_window(tmp_path):
     _db_ready(tmp_path)
     from handlers import admin as admin_mod
+    from handlers import admin_broadcasts  # Phase 13 (13-05): broadcast handlers moved here
     from handlers.states import Broadcast
 
     state = _new_state()
     asyncio.run(state.set_state(Broadcast.schedule_when))
 
-    orig = admin_mod._now_moscow_naive
-    admin_mod._now_moscow_naive = lambda: datetime(2026, 7, 1, 14, 0)
+    orig = admin_broadcasts._now_moscow_naive
+    admin_broadcasts._now_moscow_naive = lambda: datetime(2026, 7, 1, 14, 0)
     try:
         past = FakeMessage(text="01.07.2026 12:30")
-        asyncio.run(admin_mod.broadcast_schedule_when(past, state))
+        asyncio.run(admin_broadcasts.broadcast_schedule_when(past, state))
         assert asyncio.run(state.get_state()) == Broadcast.schedule_when, "must stay on schedule_when"
         assert "прошло" in past.answers_sent[-1].lower()
         assert asyncio.run(state.get_data()).get("schedule_dt") is None
 
         future = FakeMessage(text="01.07.2026 15:00")
-        asyncio.run(admin_mod.broadcast_schedule_when(future, state))
+        asyncio.run(admin_broadcasts.broadcast_schedule_when(future, state))
         assert asyncio.run(state.get_state()) == Broadcast.schedule_message
     finally:
-        admin_mod._now_moscow_naive = orig
+        admin_broadcasts._now_moscow_naive = orig
 
 
 def test_game_task_deadline_rejects_time_inside_utc_msk_window(tmp_path):

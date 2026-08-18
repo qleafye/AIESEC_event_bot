@@ -14,6 +14,8 @@ from aiogram.fsm.storage.memory import MemoryStorage
 from config import config
 from database import db
 from handlers import admin as admin_mod
+from handlers import admin_reg_config  # Phase 13 (13-05): reg-question/menu-button config moved here
+from handlers import admin_broadcasts  # Phase 13 (13-05): broadcast handlers moved here
 from handlers.admin_caps import required_capability
 from handlers.reg_schema import REG_FLOW, REG_PRESETS
 
@@ -73,22 +75,22 @@ def _flat_callback_data(kb):
 # ── Task 1: pure tri-state helpers (D-04) ─────────────────────────────────────
 
 def test_party_tri_state_advance_cycle():
-    assert admin_mod._party_tri_state_advance(None) == "on"
-    assert admin_mod._party_tri_state_advance("on") == "off"
-    assert admin_mod._party_tri_state_advance("off") is None
+    assert admin_reg_config._party_tri_state_advance(None) == "on"
+    assert admin_reg_config._party_tri_state_advance("on") == "off"
+    assert admin_reg_config._party_tri_state_advance("off") is None
 
 
 def test_party_tri_state_label():
-    assert admin_mod._party_tri_state_label(None) == "➕ Наследует"
-    assert admin_mod._party_tri_state_label("on") == "✅ Вкл"
-    assert admin_mod._party_tri_state_label("off") == "❌ Выкл"
+    assert admin_reg_config._party_tri_state_label(None) == "➕ Наследует"
+    assert admin_reg_config._party_tri_state_label("on") == "✅ Вкл"
+    assert admin_reg_config._party_tri_state_label("off") == "❌ Выкл"
 
 
 # ── Task 1: build_questions_keyboard track param ──────────────────────────────
 
 def test_full_track_keyboard_emits_reg_q_toggle(tmp_path):
     _admin_ready(tmp_path)
-    kb = asyncio.run(admin_mod.build_questions_keyboard("full"))
+    kb = asyncio.run(admin_reg_config.build_questions_keyboard("full"))
     flat = _flat_callback_data(kb)
     assert any(cd.startswith("reg_q_toggle:") for cd in flat)
     assert not any(cd.startswith("reg_q_ptoggle:") for cd in flat)
@@ -98,7 +100,7 @@ def test_full_track_keyboard_emits_reg_q_toggle(tmp_path):
 
 def test_party_track_keyboard_emits_reg_q_ptoggle(tmp_path):
     _admin_ready(tmp_path)
-    kb = asyncio.run(admin_mod.build_questions_keyboard("party"))
+    kb = asyncio.run(admin_reg_config.build_questions_keyboard("party"))
     flat = _flat_callback_data(kb)
     assert any(cd.startswith("reg_q_ptoggle:") for cd in flat)
     assert not any(cd.startswith("reg_q_toggle:") for cd in flat)
@@ -110,7 +112,7 @@ def test_party_track_text_shows_tri_state_labels(tmp_path):
     _admin_ready(tmp_path)
     setting_key = REG_FLOW[0][1]
     asyncio.run(db.set_setting(f"{setting_key}__party", "on"))
-    text = asyncio.run(admin_mod.render_questions_text("party"))
+    text = asyncio.run(admin_reg_config.render_questions_text("party"))
     assert "✅ Вкл" in text or "➕ Наследует" in text  # at least one tri-state marker present
 
 
@@ -119,7 +121,7 @@ def test_party_track_text_shows_tri_state_labels(tmp_path):
 def test_reg_q_track_switch_reuses_same_message(tmp_path):
     _admin_ready(tmp_path)
     cb = FakeCallback("reg_q_track:party")
-    asyncio.run(admin_mod.reg_q_track_switch(cb))
+    asyncio.run(admin_reg_config.reg_q_track_switch(cb))
     assert cb.message.edit_calls == 1
     assert "Party" in cb.message.text or "🎉" in cb.message.text
     flat = _flat_callback_data(cb.message.markup)
@@ -144,13 +146,13 @@ def test_reg_q_ptoggle_cycles_inherit_on_off_inherit(tmp_path):
     setting_key = REG_FLOW[0][1]
     party_key = f"{setting_key}__party"
 
-    asyncio.run(admin_mod.toggle_party_question(FakeCallback(f"reg_q_ptoggle:{setting_key}")))
+    asyncio.run(admin_reg_config.toggle_party_question(FakeCallback(f"reg_q_ptoggle:{setting_key}")))
     assert asyncio.run(db.get_setting(party_key)) == "on"
 
-    asyncio.run(admin_mod.toggle_party_question(FakeCallback(f"reg_q_ptoggle:{setting_key}")))
+    asyncio.run(admin_reg_config.toggle_party_question(FakeCallback(f"reg_q_ptoggle:{setting_key}")))
     assert asyncio.run(db.get_setting(party_key)) == "off"
 
-    asyncio.run(admin_mod.toggle_party_question(FakeCallback(f"reg_q_ptoggle:{setting_key}")))
+    asyncio.run(admin_reg_config.toggle_party_question(FakeCallback(f"reg_q_ptoggle:{setting_key}")))
     assert asyncio.run(db.get_setting(party_key)) is None  # back to inherit (key absent)
 
 
@@ -158,7 +160,7 @@ def test_reg_q_ptoggle_rejects_unknown_setting_key(tmp_path):
     """T-05-03-02: an unvalidated setting_key must never reach set_setting/delete_setting."""
     _admin_ready(tmp_path)
     cb = FakeCallback("reg_q_ptoggle:not_a_real_step; DROP TABLE users")
-    asyncio.run(admin_mod.toggle_party_question(cb))
+    asyncio.run(admin_reg_config.toggle_party_question(cb))
     assert asyncio.run(db.get_setting("not_a_real_step; DROP TABLE users__party")) is None
     assert cb.answers and cb.answers[0][1] is True
 
@@ -178,7 +180,7 @@ def test_reg_q_ptoggle_is_capability_guarded():
 def test_preset_keyboard_has_party_button(tmp_path):
     _admin_ready(tmp_path)
     cb = FakeCallback("admin_event_preset")
-    asyncio.run(admin_mod.admin_event_preset(cb))
+    asyncio.run(admin_reg_config.admin_event_preset(cb))
     flat = _flat_callback_data(cb.message.markup)
     assert "preset_apply:party" in flat
 
@@ -186,7 +188,7 @@ def test_preset_keyboard_has_party_button(tmp_path):
 def test_preset_apply_party_no_keyerror_and_no_raw_settings_key(tmp_path):
     _admin_ready(tmp_path)
     cb = FakeCallback("preset_apply:party")
-    asyncio.run(admin_mod.preset_apply(cb))  # must not raise (D-07 KeyError fix)
+    asyncio.run(admin_reg_config.preset_apply(cb))  # must not raise (D-07 KeyError fix)
     assert cb.message.text is not None
     assert "reg_q_" not in cb.message.text  # only human labels, never raw setting keys
 
@@ -196,7 +198,7 @@ def test_preset_apply_forum_still_shows_payment_line(tmp_path):
     surfacing the "Модуль оплаты ..." sentence."""
     _admin_ready(tmp_path)
     cb = FakeCallback("preset_apply:forum")
-    asyncio.run(admin_mod.preset_apply(cb))
+    asyncio.run(admin_reg_config.preset_apply(cb))
     assert "Модуль оплаты" in cb.message.text
 
 
@@ -210,11 +212,11 @@ def test_preset_confirm_party_routes_to_apply_party_preset(tmp_path, monkeypatch
     async def fake_event(key):
         calls["event"] += 1
 
-    monkeypatch.setattr(admin_mod, "_apply_party_preset", fake_party)
-    monkeypatch.setattr(admin_mod, "_apply_event_preset", fake_event)
+    monkeypatch.setattr(admin_reg_config, "_apply_party_preset", fake_party)
+    monkeypatch.setattr(admin_reg_config, "_apply_event_preset", fake_event)
 
     cb = FakeCallback("preset_confirm:party")
-    asyncio.run(admin_mod.preset_confirm(cb))
+    asyncio.run(admin_reg_config.preset_confirm(cb))
     assert calls == {"party": 1, "event": 0}
 
 
@@ -225,7 +227,7 @@ def test_preset_confirm_party_leaves_global_reg_q_untouched(tmp_path):
     from handlers.reg_schema import _PARTY_PRESET_OVERNIGHT_EXEMPT
     _admin_ready(tmp_path)
     cb = FakeCallback("preset_confirm:party")
-    asyncio.run(admin_mod.preset_confirm(cb))
+    asyncio.run(admin_reg_config.preset_confirm(cb))
     for _step_key, setting_key, *_rest in REG_FLOW:
         assert asyncio.run(db.get_setting(setting_key)) is None
         if setting_key in _PARTY_PRESET_OVERNIGHT_EXEMPT:
@@ -239,7 +241,7 @@ def test_preset_confirm_forum_still_applies_globally(tmp_path):
     """Regression: forum/conf presets keep writing GLOBAL reg_q_* keys unchanged."""
     _admin_ready(tmp_path)
     cb = FakeCallback("preset_confirm:forum")
-    asyncio.run(admin_mod.preset_confirm(cb))
+    asyncio.run(admin_reg_config.preset_confirm(cb))
     on_set = set(REG_PRESETS["forum"]["on"])
     for key in on_set:
         assert asyncio.run(db.get_setting(key)) == "on"
@@ -350,8 +352,8 @@ def test_card_escapes_unrecognised_track_value():
 
 def test_filter_columns_and_picker_fields_whitelist_participant_type():
     assert "participant_type" in db._FILTER_COLUMNS
-    assert "participant_type" in admin_mod._PICKER_FIELDS
-    assert admin_mod._FILTER_FIELD_LABELS["participant_type"] == "Трек"
+    assert "participant_type" in admin_broadcasts._PICKER_FIELDS
+    assert admin_broadcasts._FILTER_FIELD_LABELS["participant_type"] == "Трек"
 
 
 def test_filter_clause_accepts_participant_type():
@@ -380,7 +382,7 @@ def test_get_distinct_filter_values_returns_all_tracks(tmp_path):
 
 
 def test_filter_menu_kb_has_track_button():
-    kb = admin_mod._filter_menu_kb([])
+    kb = admin_broadcasts._filter_menu_kb([])
     flat = _flat_callback_data(kb)
     assert "filter_f_participant_type" in flat
 
@@ -460,7 +462,7 @@ def test_payment_options_help_describes_track_filter():
 
 def test_build_prompts_keyboard_full_emits_unsuffixed_callbacks(tmp_path):
     _admin_ready(tmp_path)
-    kb = asyncio.run(admin_mod.build_prompts_keyboard("full"))
+    kb = asyncio.run(admin_reg_config.build_prompts_keyboard("full"))
     flat = _flat_callback_data(kb)
     assert "reg_prompt_track:full" in flat
     assert "reg_prompt_track:party" in flat
@@ -471,7 +473,7 @@ def test_build_prompts_keyboard_full_emits_unsuffixed_callbacks(tmp_path):
 
 def test_build_prompts_keyboard_party_emits_party_suffixed_callbacks(tmp_path):
     _admin_ready(tmp_path)
-    kb = asyncio.run(admin_mod.build_prompts_keyboard("party"))
+    kb = asyncio.run(admin_reg_config.build_prompts_keyboard("party"))
     flat = _flat_callback_data(kb)
     assert "reg_prompt_track:full" in flat
     assert "reg_prompt_track:party" in flat
@@ -483,7 +485,7 @@ def test_build_prompts_keyboard_party_emits_party_suffixed_callbacks(tmp_path):
 def test_reg_prompt_track_switch_reuses_same_message(tmp_path):
     _admin_ready(tmp_path)
     cb = FakeCallback("reg_prompt_track:party")
-    asyncio.run(admin_mod.reg_prompt_track_switch(cb))
+    asyncio.run(admin_reg_config.reg_prompt_track_switch(cb))
     assert cb.message.edit_calls == 1
     flat = _flat_callback_data(cb.message.markup)
     assert any(cd.endswith(":party") for cd in flat if cd.startswith("reg_prompt_edit:"))
@@ -500,7 +502,7 @@ def test_reg_prompt_edit_party_suffix_sets_party_setting_key(tmp_path):
     _admin_ready(tmp_path)
     cb = FakeCallback("reg_prompt_edit:full_name:party")
     state = _new_state(ADMIN_ID)
-    asyncio.run(admin_mod.reg_prompt_edit(cb, state))
+    asyncio.run(admin_reg_config.reg_prompt_edit(cb, state))
     data = asyncio.run(state.get_data())
     assert data["setting_key"] == "reg_prompt_full_name__party"
 
@@ -511,7 +513,7 @@ def test_reg_prompt_edit_no_suffix_sets_global_setting_key(tmp_path):
     _admin_ready(tmp_path)
     cb = FakeCallback("reg_prompt_edit:full_name")
     state = _new_state(ADMIN_ID)
-    asyncio.run(admin_mod.reg_prompt_edit(cb, state))
+    asyncio.run(admin_reg_config.reg_prompt_edit(cb, state))
     data = asyncio.run(state.get_data())
     assert data["setting_key"] == "reg_prompt_full_name"
 
@@ -519,7 +521,7 @@ def test_reg_prompt_edit_no_suffix_sets_global_setting_key(tmp_path):
 def test_admin_reg_prompts_renders_full_track_by_default(tmp_path):
     _admin_ready(tmp_path)
     cb = FakeCallback("admin_reg_prompts")
-    asyncio.run(admin_mod.admin_reg_prompts(cb))
+    asyncio.run(admin_reg_config.admin_reg_prompts(cb))
     assert cb.message.edit_calls == 1
     flat = _flat_callback_data(cb.message.markup)
     edit_callbacks = [cd for cd in flat if cd.startswith("reg_prompt_edit:")]

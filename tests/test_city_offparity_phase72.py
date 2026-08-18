@@ -33,6 +33,7 @@ from aiogram.fsm.storage.memory import MemoryStorage
 from config import config
 from database import db
 from handlers import admin as admin_mod
+from handlers import admin_broadcasts  # Phase 13 (13-05): broadcast handlers moved here
 from services import reminders as reminders_mod
 import cities
 
@@ -260,8 +261,8 @@ def test_filter_menu_keyboard_has_no_city_button(tmp_path):
     _admin_ready(tmp_path)
     filters = [{"field": "status", "value": "approved"}]
     target = FakeMessage()
-    asyncio.run(admin_mod._render_filter_menu(target, filters, edit=True))
-    expected = admin_mod._filter_menu_kb(filters)
+    asyncio.run(admin_broadcasts._render_filter_menu(target, filters, edit=True))
+    expected = admin_broadcasts._filter_menu_kb(filters)
     assert [[(b.text, b.callback_data) for b in row] for row in target.markup.inline_keyboard] == \
            [[(b.text, b.callback_data) for b in row] for row in expected.inline_keyboard]
     flat = [b.callback_data for row in target.markup.inline_keyboard for b in row]
@@ -301,13 +302,13 @@ def test_stale_filter_menu_cannot_pick_a_city_after_the_module_is_switched_off(t
     asyncio.run(db.set_setting("event_city_enabled", "on"))
     cb = FakeCallback("filter_f_event_city")
     state = _FilterState(filters=[])
-    asyncio.run(admin_mod._show_value_picker(cb, state, "event_city", "Выберите:"))
+    asyncio.run(admin_broadcasts._show_value_picker(cb, state, "event_city", "Выберите:"))
     assert asyncio.run(state.get_data())["filter_options"], "при включённом модуле пикер работает"
 
     asyncio.run(db.set_setting("event_city_enabled", "off"))
     stale = FakeCallback("filter_f_event_city")
     stale_state = _FilterState(filters=[])
-    asyncio.run(admin_mod._show_value_picker(stale, stale_state, "event_city", "Выберите:"))
+    asyncio.run(admin_broadcasts._show_value_picker(stale, stale_state, "event_city", "Выберите:"))
     assert stale_state.get_data_sync().get("filter_options") is None
     assert stale.message.text is None, "устаревшая клавиатура не должна открывать пикер"
     assert stale.answers and stale.answers[-1][1] is True  # show_alert

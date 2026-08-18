@@ -42,6 +42,7 @@ from config import config
 from database import db
 from settings_schema import SETTINGS_SCHEMA
 from handlers import admin as admin_mod
+from handlers import admin_reg_config  # Phase 13 (13-05): reg-question/menu-button config moved here
 from handlers import admin_caps
 from handlers import registration as reg_mod
 from handlers import user_actions as ua_mod
@@ -410,7 +411,7 @@ def test_admin_screens_have_no_percity_rows_when_module_off(tmp_path):
 
     # menu-buttons screen -- no «🏙 Кнопки по городу» row (Phase 09.3-07: the entry point
     # itself is gone, not just hidden -- there is no handler left to forge a callback into).
-    kb = asyncio.run(admin_mod.build_menu_keyboard())
+    kb = asyncio.run(admin_reg_config.build_menu_keyboard())
     assert not any(c and c.startswith("menu_city") for c in _flat_callback_data(kb))
     assert not any("🏙" in t for t in _flat_texts(kb))
 
@@ -510,10 +511,10 @@ def test_menu_buttons_screen_module_off_admin_id_parity(tmp_path):
     _db_ready(tmp_path)
     _seed_overrides()
 
-    text_none = asyncio.run(admin_mod.render_menu_text())
-    text_admin = asyncio.run(admin_mod.render_menu_text(ADMIN_ID))
+    text_none = asyncio.run(admin_reg_config.render_menu_text())
+    text_admin = asyncio.run(admin_reg_config.render_menu_text(ADMIN_ID))
     assert text_admin == text_none
 
-    kb_none = asyncio.run(admin_mod.build_menu_keyboard())
-    kb_admin = asyncio.run(admin_mod.build_menu_keyboard(ADMIN_ID))
+    kb_none = asyncio.run(admin_reg_config.build_menu_keyboard())
+    kb_admin = asyncio.run(admin_reg_config.build_menu_keyboard(ADMIN_ID))
     assert _flat_callback_data(kb_admin) == _flat_callback_data(kb_none)
