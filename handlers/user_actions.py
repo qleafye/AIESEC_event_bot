@@ -68,7 +68,8 @@ async def ensure_registered(message: types.Message) -> bool:
     if allowed:
         return True
     if kind == "pending":
-        await message.answer("⏳ Твоя заявка на рассмотрении. Доступ откроется после одобрения.")
+        # Phase 17.1 (17.1-01): текст гейта — в реестре (сосед reject_text ниже уже был там).
+        await message.answer(await get_setting_typed("pending_gate_text"))
     else:  # rejected
         await message.answer(
             await get_setting("reject_text") or "К сожалению, твоя заявка отклонена.",
@@ -78,17 +79,27 @@ async def ensure_registered(message: types.Message) -> bool:
 
 # --- Coins (COIN-03) ---
 
-def render_leaderboard(rows: list, requester_id: int, requester_rank, requester_balance: int) -> str:
-    lines = ["🏆 <b>Рейтинг по монетам</b>", ""]
+async def render_leaderboard(rows: list, requester_id: int, requester_rank, requester_balance: int) -> str:
+    """Phase 17.1 (17.1-01): заголовок/пустой экран/строка «твоё место» — из реестра
+    (`leaderboard_*`), поэтому функция стала async, как соседние `_balance_screen`/
+    `_render_task_card_text`. Рендер прежний байт-в-байт: дефолт `leaderboard_rank_line_text`
+    использует только {rank} и {balance}; {total} доступен менеджеру дополнительно (то же
+    «сколько всего человек в рейтинге», что и в `balance_screen_header`)."""
+    lines = [await get_setting_typed("leaderboard_header_text"), ""]
     if not rows:
-        lines.append("Пока ни у кого нет монет.")
+        lines.append(await get_setting_typed("leaderboard_empty_text"))
     else:
         for i, row in enumerate(rows, start=1):
             name = row.get("full_name") or row.get("username") or str(row.get("user_id"))
             lines.append(f"{i}. {html.escape(str(name))} — {row.get('balance', 0)}")
     lines.append("")
     rank_text = requester_rank if requester_rank is not None else "—"
-    lines.append(f"Твоё место: <b>{rank_text}</b> · баланс: <b>{requester_balance}</b>")
+    # Same scale-acceptable idiom as _balance_screen (CLAUDE.md: 1000-1500 человек за сезон).
+    total = len(await get_leaderboard(10_000))
+    rank_line_tpl = await get_setting_typed("leaderboard_rank_line_text")
+    lines.append(rank_line_tpl.format(
+        rank=rank_text, balance=requester_balance, total=total or "—",
+    ))
     return "\n".join(lines)
 
 
@@ -151,7 +162,7 @@ async def _balance_history_screen(user_id: int, offset: int = 0) -> tuple[str, I
     limit = 10
     total = await count_coin_entries_for_user(user_id)
     rows = await list_coin_entries_for_user(user_id, limit=limit, offset=offset)
-    lines = ["📜 <b>История монет</b>"]
+    lines = [await get_setting_typed("balance_history_header_text")]
     if total == 0:
         lines.append("")
         lines.append(await get_setting_typed("balance_history_empty"))
@@ -211,7 +222,7 @@ async def gbal_top(callback: types.CallbackQuery):
     rows = await get_leaderboard(10)
     rank = await get_user_rank(callback.from_user.id)
     balance = await get_balance(callback.from_user.id)
-    text = render_leaderboard(rows, callback.from_user.id, rank, balance)
+    text = await render_leaderboard(rows, callback.from_user.id, rank, balance)
     kb = InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text="◀️ Баланс", callback_data="gbal_back")],
     ])
@@ -234,7 +245,7 @@ async def show_leaderboard(message: types.Message):
     rank = await get_user_rank(message.from_user.id)
     balance = await get_balance(message.from_user.id)
     await message.answer(
-        render_leaderboard(rows, message.from_user.id, rank, balance),
+        await render_leaderboard(rows, message.from_user.id, rank, balance),
         parse_mode="HTML",
     )
 
@@ -980,10 +991,9 @@ async def my_referral_link(message: types.Message, bot: Bot):
 
     bot_user = await bot.get_me()
     referral_link = f"https://t.me/{bot_user.username}?start={message.from_user.id}"
-    await message.answer(
-        "Отправь эту ссылку друзьям, чтобы пригласить их на форум!\n\n"
-        f"{referral_link}"
-    )
+    # Phase 17.1 (17.1-01): текст из реестра, ссылка подставляется в {link}.
+    tpl = await get_setting_typed("referral_link_prompt_text")
+    await message.answer(tpl.format(link=referral_link))
 
 
 @router.message(F.text == "👥 Мои приглашённые")
@@ -996,15 +1006,16 @@ async def my_referrals(message: types.Message, bot: Bot):
     if not referrals:
         bot_user = await bot.get_me()
         referral_link = f"https://t.me/{bot_user.username}?start={message.from_user.id}"
-        await message.answer(
-            "Пока никто не зарегистрировался по твоей ссылке.\n\n"
-            f"Поделись ей с друзьями:\n{referral_link}"
-        )
+        empty_tpl = await get_setting_typed("referral_list_empty_text")
+        await message.answer(empty_tpl.format(link=referral_link))
         return
 
     names = "\n".join(f"• {html.escape(str(name))}" for name in referrals)
+    # Phase 17.1 (17.1-01): заголовок из реестра; сам список имён строится ботом (не текст,
+    # который менеджер может испортить) и приклеивается через тот же «\n\n», что и раньше.
+    header_tpl = await get_setting_typed("referral_list_header_text")
     await message.answer(
-        f"👥 <b>Твои приглашённые ({len(referrals)}):</b>\n\n{names}",
+        f"{header_tpl.format(count=len(referrals))}\n\n{names}",
         parse_mode="HTML",
     )
 
