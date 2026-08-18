@@ -19,6 +19,7 @@ from config import config
 from database import db
 import cities
 from handlers import admin as admin_mod
+from handlers import admin_gamification
 from handlers import user_actions as ua_mod
 from handlers.states import GameTaskCreate
 
@@ -207,13 +208,13 @@ def test_get_pending_submissions_no_scope_matches_today(tmp_path):
 # ── Task 2: "Кому задание?" wizard step + delegate-facing task-list filter ──────────────────
 
 def _drive_to_city_step(state, *, text="t", category="Light", coins="10", proof="photo"):
-    asyncio.run(admin_mod.game_task_text_step(FakeMessage(text=text), state))
-    asyncio.run(admin_mod.game_task_category_step(FakeCallback(f"gtcat:{category}"), state))
-    asyncio.run(admin_mod.game_task_coins_step(FakeMessage(text=coins), state))
+    asyncio.run(admin_gamification.game_task_text_step(FakeMessage(text=text), state))
+    asyncio.run(admin_gamification.game_task_category_step(FakeCallback(f"gtcat:{category}"), state))
+    asyncio.run(admin_gamification.game_task_coins_step(FakeMessage(text=coins), state))
     if proof is not None:
-        asyncio.run(admin_mod.game_task_proof_step(FakeCallback(f"gtproof:{proof}"), state))
+        asyncio.run(admin_gamification.game_task_proof_step(FakeCallback(f"gtproof:{proof}"), state))
     callback = FakeCallback("gtproof_done")
-    asyncio.run(admin_mod.game_task_proof_done(callback, state))
+    asyncio.run(admin_gamification.game_task_proof_done(callback, state))
     return callback
 
 
@@ -250,7 +251,7 @@ def test_gttcity_all_sets_null_event_city(tmp_path):
     asyncio.run(state.set_state(GameTaskCreate.text))
     _drive_to_city_step(state)
     callback = FakeCallback("gttcity:all")
-    asyncio.run(admin_mod.game_task_city_step(callback, state))
+    asyncio.run(admin_gamification.game_task_city_step(callback, state))
     assert asyncio.run(state.get_state()) == GameTaskCreate.deadline
     assert asyncio.run(state.get_data())["gt_event_city"] is None
 
@@ -262,7 +263,7 @@ def test_gttcity_known_code_sets_city(tmp_path):
     asyncio.run(state.set_state(GameTaskCreate.text))
     _drive_to_city_step(state)
     callback = FakeCallback("gttcity:spb")
-    asyncio.run(admin_mod.game_task_city_step(callback, state))
+    asyncio.run(admin_gamification.game_task_city_step(callback, state))
     assert asyncio.run(state.get_state()) == GameTaskCreate.deadline
     assert asyncio.run(state.get_data())["gt_event_city"] == "spb"
 
@@ -274,16 +275,16 @@ def test_gttcity_unknown_code_alerts_and_keeps_state(tmp_path):
     asyncio.run(state.set_state(GameTaskCreate.text))
     _drive_to_city_step(state)
     callback = FakeCallback("gttcity:bogus")
-    asyncio.run(admin_mod.game_task_city_step(callback, state))
+    asyncio.run(admin_gamification.game_task_city_step(callback, state))
     assert callback.answers == [("Неизвестный город", True)]
     assert asyncio.run(state.get_state()) == GameTaskCreate.city  # unchanged
 
 
 def _drive_full_wizard_with_city(state, gttcity="gttcity:spb"):
     _drive_to_city_step(state)
-    asyncio.run(admin_mod.game_task_city_step(FakeCallback(gttcity), state))
+    asyncio.run(admin_gamification.game_task_city_step(FakeCallback(gttcity), state))
     deadline_message = FakeMessage(text="25.08.2099 23:59")
-    asyncio.run(admin_mod.game_task_deadline_step(deadline_message, state))
+    asyncio.run(admin_gamification.game_task_deadline_step(deadline_message, state))
     return deadline_message
 
 
@@ -314,7 +315,7 @@ def test_confirm_card_no_komu_line_when_module_off(tmp_path):
     asyncio.run(state.set_state(GameTaskCreate.text))
     callback = _drive_to_city_step(state)  # goes straight to deadline (module off)
     deadline_message = FakeMessage(text="25.08.2099 23:59")
-    asyncio.run(admin_mod.game_task_deadline_step(deadline_message, state))
+    asyncio.run(admin_gamification.game_task_deadline_step(deadline_message, state))
     card_text = deadline_message.answers_sent[-1]
     assert "Кому:" not in card_text
 
@@ -326,7 +327,7 @@ def test_game_task_confirm_passes_event_city_to_create_task(tmp_path):
     asyncio.run(state.set_state(GameTaskCreate.text))
     _drive_full_wizard_with_city(state, "gttcity:spb")
     callback = FakeCallback("gtconfirm")
-    asyncio.run(admin_mod.game_task_confirm(callback, state))
+    asyncio.run(admin_gamification.game_task_confirm(callback, state))
     tasks = asyncio.run(db.list_all_tasks())
     assert tasks[0]["event_city"] == "spb"
 
@@ -408,7 +409,7 @@ def test_show_current_submission_city_scoped_spb_excludes_msk(tmp_path):
     asyncio.run(cities.set_admin_city(ADMIN_ID, "spb"))
     state = _new_state(ADMIN_ID)
     target = FakeMessage()
-    asyncio.run(admin_mod._show_current_submission(target, state))
+    asyncio.run(admin_gamification._show_current_submission(target, state))
     assert "1/2" in target.answers_sent[-1]  # only the 2 spb submissions are in scope
 
 
@@ -420,7 +421,7 @@ def test_show_current_submission_module_off_sees_everything(tmp_path):
     _seed_submission(task_id, 202, "msk")
     state = _new_state(ADMIN_ID)
     target = FakeMessage()
-    asyncio.run(admin_mod._show_current_submission(target, state))
+    asyncio.run(admin_gamification._show_current_submission(target, state))
     assert "1/2" in target.answers_sent[-1]  # module off -- unfiltered, same as pre-09.1
 
 
@@ -429,7 +430,7 @@ def test_show_current_submission_card_prints_both_cities_when_module_on(tmp_path
     asyncio.run(cities.set_admin_city(ADMIN_ID, "spb"))
     state = _new_state(ADMIN_ID)
     target = FakeMessage()
-    asyncio.run(admin_mod._show_current_submission(target, state))
+    asyncio.run(admin_gamification._show_current_submission(target, state))
     card_text = target.answers_sent[-1]
     assert "🏙 Город делегата:" in card_text
     assert "🎯 Кому задание:" in card_text
@@ -443,7 +444,7 @@ def test_show_current_submission_card_no_city_lines_when_module_off(tmp_path):
     _seed_submission(task_id, 201, "spb")
     state = _new_state(ADMIN_ID)
     target = FakeMessage()
-    asyncio.run(admin_mod._show_current_submission(target, state))
+    asyncio.run(admin_gamification._show_current_submission(target, state))
     card_text = target.answers_sent[-1]
     assert "🏙 Город делегата:" not in card_text
     assert "🎯 Кому задание:" not in card_text
@@ -456,7 +457,7 @@ def test_render_submission_card_city_labels_none_is_byte_identical():
         "user_full_name": "X", "user_username": None, "task_proof_type": "text",
         "content_type": "text", "content": "готово",
     }
-    text = admin_mod._render_submission_card(row, 1, 1)
+    text = admin_gamification._render_submission_card(row, 1, 1)
     assert "🏙" not in text
     assert "🎯" not in text
 
@@ -467,7 +468,7 @@ def test_render_submission_card_with_city_labels():
         "user_full_name": "X", "user_username": None, "task_proof_type": "text",
         "content_type": "text", "content": "готово",
     }
-    text = admin_mod._render_submission_card(row, 1, 1, city_labels=("Санкт-Петербург", "🌍 Все города"))
+    text = admin_gamification._render_submission_card(row, 1, 1, city_labels=("Санкт-Петербург", "🌍 Все города"))
     assert "🏙 Город делегата: Санкт-Петербург" in text
     assert "🎯 Кому задание: 🌍 Все города" in text
 
@@ -481,8 +482,8 @@ def test_sync_game_sheets_matrix_and_history_carry_city_column(tmp_path):
     _seed_submission(task_id, 201, "spb")
     tasks = asyncio.run(db.list_all_tasks())
     submissions = asyncio.run(db.list_all_submissions())
-    m_headers, m_rows = admin_mod._build_game_matrix(tasks, submissions)
-    h_headers, h_rows = admin_mod._build_game_history(submissions)
+    m_headers, m_rows = admin_gamification._build_game_matrix(tasks, submissions)
+    h_headers, h_rows = admin_gamification._build_game_history(submissions)
     assert m_headers[:3] == ["telegram_id", "ФИО", "Город"]
     assert m_rows[0][2] == "spb"
     assert h_headers[:5] == ["ID сдачи", "Задание", "Категория", "Участник", "Город"]

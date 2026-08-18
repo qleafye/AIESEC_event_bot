@@ -24,6 +24,7 @@ tests/test_city_admin_phase72.py и tests/test_city_export_stats_phase72.py.
 """
 import asyncio
 import inspect
+from pathlib import Path
 
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.storage.base import StorageKey
@@ -357,8 +358,15 @@ def test_admin_guide_no_longer_promises_city_filters_as_future_work():
 
 
 def test_admin_guide_documents_the_city_switcher_and_its_scope():
+    # Phase 13 (13-04, REFAC-01): handlers/admin.py is being split into seam modules
+    # (admin_core.py, admin_gamification.py, admin_roles.py, ...) that share the admin.router --
+    # the UI strings this doc-safety test cross-checks can now live in any of them (e.g.
+    # "🏙 Город:" moved to admin_core.py's admin_keyboard_for), so "the code" means every
+    # handlers/admin*.py file concatenated, not just the aggregator.
     guide = _read("ADMIN_GUIDE.md")
-    admin_src = _read("handlers/admin.py")
+    admin_src = "".join(
+        _read(str(p)) for p in sorted(Path("handlers").glob("admin*.py"))
+    )
     # Экран переключателя, описанный в гайде, существует в коде
     assert "admin_city_switch" in admin_src
     assert "🏙 Город:" in guide and "🏙 Город:" in admin_src

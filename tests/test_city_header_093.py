@@ -17,6 +17,7 @@ from config import config
 from database import db
 import cities
 from handlers import admin as admin_mod
+from handlers import admin_gamification
 from handlers.admin_caps import ADMIN_CAPS, ANY_CAPABILITY, required_capability, role_caps_key
 
 
@@ -441,7 +442,7 @@ def test_manager_with_zero_capability_denied_admin_city_pick(tmp_path):
 def test_game_task_city_kb_marks_header_city_with_checkmark(tmp_path):
     _admin_ready(tmp_path)
     asyncio.run(cities.set_admin_city(ADMIN_ID, "spb"))
-    kb = asyncio.run(admin_mod._game_task_city_kb(ADMIN_ID))
+    kb = asyncio.run(admin_gamification._game_task_city_kb(ADMIN_ID))
     rows = kb.inline_keyboard
     # первая строка -- «🌍 Все города», без галочки (ALL_CITIES не совпадает ни с одним кодом)
     assert rows[0][0].text == "🌍 Все города"
@@ -453,7 +454,7 @@ def test_game_task_city_kb_marks_header_city_with_checkmark(tmp_path):
 def test_game_task_city_kb_no_checkmark_in_all_cities_mode(tmp_path):
     _admin_ready(tmp_path)
     asyncio.run(cities.set_admin_city(ADMIN_ID, cities.ALL_CITIES))
-    kb = asyncio.run(admin_mod._game_task_city_kb(ADMIN_ID))
+    kb = asyncio.run(admin_gamification._game_task_city_kb(ADMIN_ID))
     for row in kb.inline_keyboard[1:]:
         assert not row[0].text.startswith("✅ ")
 
@@ -466,7 +467,7 @@ def test_game_task_city_kb_prefill_is_a_highlight_not_a_lock(tmp_path):
     state = _fresh_state(ADMIN_ID)
     asyncio.run(state.set_state(admin_mod.GameTaskCreate.city))
     cb = FakeCallback("gttcity:msk", ADMIN_ID)
-    asyncio.run(admin_mod.game_task_city_step(cb, state))
+    asyncio.run(admin_gamification.game_task_city_step(cb, state))
     assert asyncio.run(state.get_state()) == admin_mod.GameTaskCreate.deadline
     assert asyncio.run(state.get_data())["gt_event_city"] == "msk"
 
@@ -481,7 +482,7 @@ def test_game_task_proof_done_sends_header_aware_keyboard(tmp_path):
     state = _fresh_state(ADMIN_ID)
     asyncio.run(state.set_state(admin_mod.GameTaskCreate.text))
     cb = FakeCallback("gtproof_done", ADMIN_ID)
-    asyncio.run(admin_mod.game_task_proof_done(cb, state))
+    asyncio.run(admin_gamification.game_task_proof_done(cb, state))
     kb = cb.message.answer_markups[-1]
     texts = [b.text for row in kb.inline_keyboard for b in row]
     assert any(t.startswith("✅ ") for t in texts)
@@ -498,7 +499,7 @@ def test_game_task_city_kb_module_off_step_not_shown(tmp_path):
     state = _fresh_state(ADMIN_ID)
     asyncio.run(state.set_state(admin_mod.GameTaskCreate.text))
     cb = FakeCallback("gtproof_done", ADMIN_ID)
-    asyncio.run(admin_mod.game_task_proof_done(cb, state))
+    asyncio.run(admin_gamification.game_task_proof_done(cb, state))
     assert asyncio.run(state.get_state()) == admin_mod.GameTaskCreate.deadline
     # прямиком дедлайн-промпт -- экран «Кому задание?» не отправлялся вообще
     assert "Кому" not in cb.message.answers_sent[-1]

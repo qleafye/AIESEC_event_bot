@@ -17,6 +17,7 @@ from aiogram.fsm.storage.memory import MemoryStorage
 from config import config
 from database import db
 from handlers import admin as admin_mod
+from handlers import admin_core  # Phase 13 (13-04): _admin_city_view moved here
 from handlers.admin_caps import ANY_CAPABILITY, required_capability
 import cities
 
@@ -588,14 +589,17 @@ def test_both_moderation_queues_use_the_same_city_resolver():
 # ошибка, против которой заголовок и вводился.
 
 def _count_city_reads(monkeypatch):
+    # Phase 13 (13-04): _admin_city_view (the sole caller) moved to handlers/admin_core.py --
+    # its own `admin_selected_city` call resolves via admin_core's module globals, not
+    # handlers.admin's, so the patch target follows the function to its real home.
     calls = []
-    original = admin_mod.admin_selected_city
+    original = admin_core.admin_selected_city
 
     async def counting(admin_id):
         calls.append(admin_id)
         return await original(admin_id)
 
-    monkeypatch.setattr(admin_mod, "admin_selected_city", counting)
+    monkeypatch.setattr(admin_core, "admin_selected_city", counting)
     return calls
 
 

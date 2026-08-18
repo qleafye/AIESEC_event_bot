@@ -20,6 +20,7 @@ from config import config
 from database import db
 from database.db import GAME_CATEGORIES, GAME_PROOF_TYPES
 from handlers import admin as admin_mod
+from handlers import admin_gamification
 from handlers.admin_caps import required_capability
 from handlers.states import GameTaskCreate
 
@@ -110,7 +111,7 @@ def test_admin_game_tasks_empty_state_shows_create_button(tmp_path):
     _db_ready(tmp_path)
     callback = FakeCallback("admin_game_tasks")
     state = _new_state()
-    asyncio.run(admin_mod.show_game_tasks(callback, state))
+    asyncio.run(admin_gamification.show_game_tasks(callback, state))
     assert callback.message.answers_sent[-1] == "Заданий пока нет."
     assert "gtnew" in _flat_callback_data(callback.message.answer_markups[-1])
 
@@ -121,7 +122,7 @@ def test_admin_game_tasks_lists_existing_tasks_newest_first(tmp_path):
     asyncio.run(_seed_task_at("Второе задание", "Medium", 30, "photo", "2026-08-25 23:59:00", "2026-08-13 09:05:00"))
     callback = FakeCallback("admin_game_tasks")
     state = _new_state()
-    asyncio.run(admin_mod.show_game_tasks(callback, state))
+    asyncio.run(admin_gamification.show_game_tasks(callback, state))
     text = callback.message.answers_sent[-1]
     first_pos = text.index("Первое задание")
     second_pos = text.index("Второе задание")
@@ -133,7 +134,7 @@ def test_gtnew_prompts_for_text_and_sets_state(tmp_path):
     _db_ready(tmp_path)
     callback = FakeCallback("gtnew")
     state = _new_state()
-    asyncio.run(admin_mod.game_task_new(callback, state))
+    asyncio.run(admin_gamification.game_task_new(callback, state))
     assert asyncio.run(state.get_state()) == GameTaskCreate.text
     assert callback.message.answers_sent[-1] == "Введите текст задания:"
 
@@ -151,7 +152,7 @@ def test_cancel_mid_wizard_clears_state_and_shows_list(tmp_path):
     state = _new_state()
     asyncio.run(state.set_state(GameTaskCreate.text))
     message = FakeMessage(text="Отмена")
-    asyncio.run(admin_mod.cancel_game_task_create(message, state))
+    asyncio.run(admin_gamification.cancel_game_task_create(message, state))
     assert asyncio.run(state.get_state()) is None
     assert "Заданий пока нет." in message.answers_sent[-1]
 
@@ -163,14 +164,14 @@ def _drive_to_confirm(state, *, text="Пост со скрином #знаком
     """Phase 09.1 (A): the proof-type step is now checkboxes -- tap `gtproof:{proof}` to
     toggle it on, then `gtproof_done` to advance (empty selection is legal there too, callers
     that want the OLD single-type contract still pass exactly one `proof` code)."""
-    asyncio.run(admin_mod.game_task_text_step(FakeMessage(text=text), state))
-    asyncio.run(admin_mod.game_task_category_step(FakeCallback(f"gtcat:{category}"), state))
-    asyncio.run(admin_mod.game_task_coins_step(FakeMessage(text=coins), state))
+    asyncio.run(admin_gamification.game_task_text_step(FakeMessage(text=text), state))
+    asyncio.run(admin_gamification.game_task_category_step(FakeCallback(f"gtcat:{category}"), state))
+    asyncio.run(admin_gamification.game_task_coins_step(FakeMessage(text=coins), state))
     if proof is not None:
-        asyncio.run(admin_mod.game_task_proof_step(FakeCallback(f"gtproof:{proof}"), state))
-    asyncio.run(admin_mod.game_task_proof_done(FakeCallback("gtproof_done"), state))
+        asyncio.run(admin_gamification.game_task_proof_step(FakeCallback(f"gtproof:{proof}"), state))
+    asyncio.run(admin_gamification.game_task_proof_done(FakeCallback("gtproof_done"), state))
     deadline_message = FakeMessage(text=deadline)
-    asyncio.run(admin_mod.game_task_deadline_step(deadline_message, state))
+    asyncio.run(admin_gamification.game_task_deadline_step(deadline_message, state))
     return deadline_message
 
 
@@ -179,19 +180,19 @@ def test_game_task_text_step_rejects_empty_and_advances_on_nonempty(tmp_path):
     state = _new_state()
     asyncio.run(state.set_state(GameTaskCreate.text))
     message = FakeMessage(text="   ")
-    asyncio.run(admin_mod.game_task_text_step(message, state))
+    asyncio.run(admin_gamification.game_task_text_step(message, state))
     assert asyncio.run(state.get_state()) == GameTaskCreate.text  # stays on the same step
     assert "пуст" in message.answers_sent[-1].lower()
 
     message2 = FakeMessage(text="Реальный текст задания")
-    asyncio.run(admin_mod.game_task_text_step(message2, state))
+    asyncio.run(admin_gamification.game_task_text_step(message2, state))
     assert asyncio.run(state.get_state()) == GameTaskCreate.category
     assert asyncio.run(state.get_data())["gt_text"] == "Реальный текст задания"
 
 
 def test_game_task_category_buttons_cover_all_five(tmp_path):
     _db_ready(tmp_path)
-    kb = admin_mod._game_task_category_kb()
+    kb = admin_gamification._game_task_category_kb()
     assert _flat_callback_data(kb) == [f"gtcat:{c}" for c in GAME_CATEGORIES]
     assert len(_flat_callback_data(kb)) == 5
 
@@ -202,18 +203,18 @@ def test_game_task_coins_step_rejects_non_positive_and_non_numeric(tmp_path):
     asyncio.run(state.set_state(GameTaskCreate.coins))
     for bad in ("0", "-5", "abc"):
         message = FakeMessage(text=bad)
-        asyncio.run(admin_mod.game_task_coins_step(message, state))
+        asyncio.run(admin_gamification.game_task_coins_step(message, state))
         assert asyncio.run(state.get_state()) == GameTaskCreate.coins
 
     good = FakeMessage(text="30")
-    asyncio.run(admin_mod.game_task_coins_step(good, state))
+    asyncio.run(admin_gamification.game_task_coins_step(good, state))
     assert asyncio.run(state.get_state()) == GameTaskCreate.proof_type
     assert asyncio.run(state.get_data())["gt_coins"] == 30
 
 
 def test_game_task_proof_type_checkboxes_cover_all_four_plus_done(tmp_path):
     _db_ready(tmp_path)
-    kb = admin_mod._game_task_proof_kb(set())
+    kb = admin_gamification._game_task_proof_kb(set())
     assert _flat_callback_data(kb) == [f"gtproof:{p}" for p in GAME_PROOF_TYPES] + ["gtproof_done"]
     assert len(_flat_callback_data(kb)) == 5
     assert all(t.startswith("▫️ ") for t in _flat_texts(kb)[:4])  # unchecked by default
@@ -225,15 +226,15 @@ def test_game_task_proof_step_toggles_selection_and_stays_on_step(tmp_path):
     asyncio.run(state.set_state(GameTaskCreate.proof_type))
     asyncio.run(state.update_data(gt_proof_types=[]))
 
-    asyncio.run(admin_mod.game_task_proof_step(FakeCallback("gtproof:photo"), state))
+    asyncio.run(admin_gamification.game_task_proof_step(FakeCallback("gtproof:photo"), state))
     assert asyncio.run(state.get_data())["gt_proof_types"] == ["photo"]
     assert asyncio.run(state.get_state()) == GameTaskCreate.proof_type  # toggle, not advance
 
-    asyncio.run(admin_mod.game_task_proof_step(FakeCallback("gtproof:text"), state))
+    asyncio.run(admin_gamification.game_task_proof_step(FakeCallback("gtproof:text"), state))
     assert sorted(asyncio.run(state.get_data())["gt_proof_types"]) == ["photo", "text"]
 
     # tapping the same code again toggles it back off
-    asyncio.run(admin_mod.game_task_proof_step(FakeCallback("gtproof:photo"), state))
+    asyncio.run(admin_gamification.game_task_proof_step(FakeCallback("gtproof:photo"), state))
     assert asyncio.run(state.get_data())["gt_proof_types"] == ["text"]
 
 
@@ -242,7 +243,7 @@ def test_game_task_proof_step_rejects_unknown_code(tmp_path):
     state = _new_state()
     asyncio.run(state.set_state(GameTaskCreate.proof_type))
     callback = FakeCallback("gtproof:bogus")
-    asyncio.run(admin_mod.game_task_proof_step(callback, state))
+    asyncio.run(admin_gamification.game_task_proof_step(callback, state))
     assert callback.answers == [("Некорректный тип подтверждения", True)]
 
 
@@ -250,11 +251,11 @@ def test_game_task_proof_done_stores_comma_joined_and_advances_to_deadline(tmp_p
     _db_ready(tmp_path)
     state = _new_state()
     asyncio.run(state.set_state(GameTaskCreate.proof_type))
-    asyncio.run(admin_mod.game_task_proof_step(FakeCallback("gtproof:text"), state))
-    asyncio.run(admin_mod.game_task_proof_step(FakeCallback("gtproof:photo"), state))
+    asyncio.run(admin_gamification.game_task_proof_step(FakeCallback("gtproof:text"), state))
+    asyncio.run(admin_gamification.game_task_proof_step(FakeCallback("gtproof:photo"), state))
 
     callback = FakeCallback("gtproof_done")
-    asyncio.run(admin_mod.game_task_proof_done(callback, state))
+    asyncio.run(admin_gamification.game_task_proof_done(callback, state))
     assert asyncio.run(state.get_data())["gt_proof_type"] == "photo,text"  # GAME_PROOF_TYPES order
     assert asyncio.run(state.get_state()) == GameTaskCreate.deadline
 
@@ -266,7 +267,7 @@ def test_game_task_proof_done_allows_empty_selection(tmp_path):
     asyncio.run(state.set_state(GameTaskCreate.proof_type))
     asyncio.run(state.update_data(gt_proof_types=[]))
     callback = FakeCallback("gtproof_done")
-    asyncio.run(admin_mod.game_task_proof_done(callback, state))
+    asyncio.run(admin_gamification.game_task_proof_done(callback, state))
     assert callback.answers == [(None, False)]  # plain answer, no alert
     assert asyncio.run(state.get_data())["gt_proof_type"] == ""
     assert asyncio.run(state.get_state()) == GameTaskCreate.deadline
@@ -278,17 +279,17 @@ def test_game_task_deadline_step_rejects_unparseable_and_past_dates(tmp_path):
     asyncio.run(state.set_state(GameTaskCreate.deadline))
 
     bad = FakeMessage(text="не дата")
-    asyncio.run(admin_mod.game_task_deadline_step(bad, state))
+    asyncio.run(admin_gamification.game_task_deadline_step(bad, state))
     assert asyncio.run(state.get_state()) == GameTaskCreate.deadline
     assert "не понял" in bad.answers_sent[-1].lower()
 
     past = FakeMessage(text="01.01.2020 10:00")
-    asyncio.run(admin_mod.game_task_deadline_step(past, state))
+    asyncio.run(admin_gamification.game_task_deadline_step(past, state))
     assert asyncio.run(state.get_state()) == GameTaskCreate.deadline
     assert "прошло" in past.answers_sent[-1].lower()
 
     future = FakeMessage(text="25.08.2099 23:59")
-    asyncio.run(admin_mod.game_task_deadline_step(future, state))
+    asyncio.run(admin_gamification.game_task_deadline_step(future, state))
     assert asyncio.run(state.get_state()) == GameTaskCreate.confirm
 
 
@@ -298,7 +299,7 @@ def test_game_task_confirm_creates_task_via_create_task(tmp_path):
     asyncio.run(state.set_state(GameTaskCreate.text))
     _drive_to_confirm(state)
     callback = FakeCallback("gtconfirm")
-    asyncio.run(admin_mod.game_task_confirm(callback, state))
+    asyncio.run(admin_gamification.game_task_confirm(callback, state))
 
     tasks = asyncio.run(db.list_all_tasks())
     assert len(tasks) == 1
@@ -327,7 +328,7 @@ def test_gtcancel_clears_state_without_creating_task(tmp_path):
     asyncio.run(state.set_state(GameTaskCreate.text))
     _drive_to_confirm(state)
     callback = FakeCallback("gtcancel")
-    asyncio.run(admin_mod.game_task_create_cancel(callback, state))
+    asyncio.run(admin_gamification.game_task_create_cancel(callback, state))
 
     assert asyncio.run(db.list_all_tasks()) == []
     assert asyncio.run(state.get_state()) is None

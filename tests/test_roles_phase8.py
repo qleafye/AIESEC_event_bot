@@ -27,6 +27,7 @@ from aiogram.fsm.storage.memory import MemoryStorage
 from config import config
 from database import db
 from handlers import admin as admin_mod
+from handlers import admin_roles  # Phase 13 (13-04): render_roles_text/build_roles_keyboard moved here
 from handlers import states as states_mod
 
 
@@ -232,7 +233,7 @@ def test_roles_screen_lists_staff_with_roles(tmp_path):
 
     asyncio.run(db.add_staff(MANAGER_ID, "reg_manager", ADMIN_ID))
     asyncio.run(db.add_staff(GAME_MANAGER_ID, "game_manager", ADMIN_ID))
-    text = asyncio.run(admin_mod.render_roles_text())
+    text = asyncio.run(admin_roles.render_roles_text())
 
     assert str(MANAGER_ID) in text
     assert str(GAME_MANAGER_ID) in text
@@ -245,7 +246,7 @@ def test_roles_screen_shows_role_toggle_state(tmp_path):
     from handlers.admin_caps import ROLES
 
     asyncio.run(db.set_setting("role_game_manager_enabled", "off"))
-    text = asyncio.run(admin_mod.render_roles_text())
+    text = asyncio.run(admin_roles.render_roles_text())
     assert f"{ROLES['game_manager']['label']}: <b>❌ Выкл</b>" in text
 
 
@@ -265,7 +266,7 @@ def test_roles_caps_edit_button_opens_the_checkbox_screen(tmp_path):
     Quick 260813 заменил это экраном с чекбоксами (tests/test_role_caps_buttons_260813.py) —
     здесь проверяется только то, что старый текстовый путь с экрана ролей больше не доступен."""
     _roles_ready(tmp_path)
-    cds = _flat_callback_data(asyncio.run(admin_mod.build_roles_keyboard()))
+    cds = _flat_callback_data(asyncio.run(admin_roles.build_roles_keyboard()))
     assert "roles_caps:reg_manager" in cds
     assert "settings_edit:role_caps_reg_manager" not in cds
 

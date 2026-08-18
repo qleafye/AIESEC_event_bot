@@ -22,7 +22,7 @@ from aiogram.types import (
     User,
 )
 
-from handlers.admin import _resolve_staff_input
+from handlers.admin_roles import _resolve_staff_input  # Phase 13 (13-04): moved here
 
 
 def _msg(**kwargs) -> Message:

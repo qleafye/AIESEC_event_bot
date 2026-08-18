@@ -331,6 +331,7 @@ def test_t2_no_finalizing_sleep_only_album_ack_sleep():
 # ── Task 3: manager checkboxes + moderator sees all parts pooled ─────────────────────────
 
 import handlers.admin as admin_mod
+from handlers import admin_gamification
 from handlers.states import GameTaskCreate
 
 _T3_MANAGER_ID = 940801
@@ -400,9 +401,9 @@ def _t3_new_state(uid=_T3_MANAGER_ID) -> FSMContext:
 
 
 def test_t3_proof_types_label_helper():
-    assert admin_mod._proof_types_label("photo,text") == "📷 Скриншот/фото + ✍️ Текст"
-    assert admin_mod._proof_types_label("") == "не важно"
-    assert admin_mod._proof_types_label(None) == "не важно"
+    assert admin_gamification._proof_types_label("photo,text") == "📷 Скриншот/фото + ✍️ Текст"
+    assert admin_gamification._proof_types_label("") == "не важно"
+    assert admin_gamification._proof_types_label(None) == "не важно"
 
 
 def test_t3_task_created_with_two_types_stores_comma_joined_and_roundtrips(tmp_path):
@@ -423,7 +424,7 @@ def test_t3_render_submission_card_default_parts_none_unchanged():
         "task_proof_type": "photo", "content_type": "photo", "content": "x",
         "submitted_at": None, "task_deadline_at": None,
     }
-    text = admin_mod._render_submission_card(row, 1, 1)
+    text = admin_gamification._render_submission_card(row, 1, 1)
     assert "см. файл ниже" in text
 
 
@@ -440,7 +441,7 @@ def test_t3_moderation_card_batches_two_photos_and_shows_text_part(tmp_path):
     bot = _T3FakeBot()
     message = _T3FakeMessage(bot=bot)
     state = _t3_new_state()
-    asyncio.run(admin_mod._show_current_submission(message, state))
+    asyncio.run(admin_gamification._show_current_submission(message, state))
 
     card_text = message.answers_sent[-1]
     assert "готово, всё сделал" in card_text
@@ -464,7 +465,7 @@ def test_t3_moderation_card_single_photo_still_uses_answer_photo(tmp_path):
     bot = _T3FakeBot()
     message = _T3FakeMessage(bot=bot)
     state = _t3_new_state()
-    asyncio.run(admin_mod._show_current_submission(message, state))
+    asyncio.run(admin_gamification._show_current_submission(message, state))
 
     assert message.photos_sent == ["only_one"]
     assert bot.media_groups == []
@@ -481,7 +482,7 @@ def test_t3_moderation_card_document_part_resent_via_answer_document(tmp_path):
     bot = _T3FakeBot()
     message = _T3FakeMessage(bot=bot)
     state = _t3_new_state()
-    asyncio.run(admin_mod._show_current_submission(message, state))
+    asyncio.run(admin_gamification._show_current_submission(message, state))
 
     assert message.documents_sent == ["doc1"]
 
@@ -504,7 +505,7 @@ def test_t3_moderation_card_survives_broken_file_id_logs_and_continues(tmp_path)
     bot = _T3FakeBot()
     message = _BoomMessage(bot=bot)
     state = _t3_new_state()
-    asyncio.run(admin_mod._show_current_submission(message, state))  # must not raise
+    asyncio.run(admin_gamification._show_current_submission(message, state))  # must not raise
 
     assert message.answers_sent  # the card text itself was sent
 

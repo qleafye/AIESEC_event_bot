@@ -19,6 +19,7 @@ from aiogram.fsm.storage.memory import MemoryStorage
 from config import config
 from database import db
 from handlers import admin as admin_mod
+from handlers import admin_gamification
 import cities
 
 
@@ -345,10 +346,10 @@ def test_show_current_submission_all_cities_shows_every_city(tmp_path):
     state = _new_state(ADMIN_ID)
 
     target1 = FakeMessage()
-    asyncio.run(admin_mod._show_current_submission(target1, state))
+    asyncio.run(admin_gamification._show_current_submission(target1, state))
     assert "Delegate 201" in target1.answers_sent[0]
 
     asyncio.run(state.update_data(grev_skipped=[sid_msk]))
     target2 = FakeMessage()
-    asyncio.run(admin_mod._show_current_submission(target2, state))
+    asyncio.run(admin_gamification._show_current_submission(target2, state))
     assert "Delegate 202" in target2.answers_sent[0]
