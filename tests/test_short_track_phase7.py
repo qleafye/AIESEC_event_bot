@@ -13,6 +13,10 @@ import asyncio
 from config import config
 from database import db
 from handlers import registration as reg
+# Phase 13 REFAC (13-03): process_full_name moved to handlers/reg_steps.py -- imported
+# separately since it decorates the SAME shared reg.router but resolves its own
+# finalize_registration/_get_enabled_steps calls via reg_steps's own module globals.
+from handlers import reg_steps
 
 
 def _use_tmp_db(tmp_path):
@@ -77,7 +81,7 @@ def test_process_full_name_short_zero_keys_finalizes_without_asking(tmp_path, mo
     async def fake_ask_step(*a, **k):
         ask_calls.append((a, k))
 
-    monkeypatch.setattr(reg, "finalize_registration", fake_finalize)
+    monkeypatch.setattr(reg_steps, "finalize_registration", fake_finalize)
     monkeypatch.setattr(reg, "_ask_step", fake_ask_step)
 
     message = _FakeMessage(600001, "Иванов Иван")
@@ -86,7 +90,7 @@ def test_process_full_name_short_zero_keys_finalizes_without_asking(tmp_path, mo
     async def go():
         await db.init_db()
         await db.set_setting("registration_mode", "short")
-        await reg.process_full_name(message, state, bot=None)
+        await reg_steps.process_full_name(message, state, bot=None)
 
     asyncio.run(go())
 
