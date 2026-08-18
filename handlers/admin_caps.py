@@ -332,6 +332,12 @@ ADMIN_CAPS: dict[str, str] = {
     "admin_season_reset": "settings",
     "season_reset_go": "settings",
     "state:SeasonReset:*": "settings",
+    # Phase 07.3 (06, RET-04): «📥 Импорт прошлого события» wizard. Available to any `settings`
+    # holder (CONTEXT D — unlike «Новый сезон», not superadmin-only): the action is additive,
+    # existing records are never changed, and it's logged with the admin's id.
+    "admin_season_import": "settings",
+    "season_import_go": "settings",
+    "state:SeasonImport:*": "settings",
     "admin_settings": "settings",
     "admin_settings_guide": "settings",
     "admin_sync_sheet": "settings",

@@ -6,6 +6,8 @@ import json
 import logging
 import os
 import re
+import sqlite3
+import tempfile
 from datetime import datetime
 from aiogram import Router, F, types, Bot
 from aiogram.filters import Command, StateFilter
@@ -85,6 +87,9 @@ from database.db import (
     mark_season_ended,
     # Phase 07.3 (05, RET-03): менеджерские поверхности повторного делегата
     get_returning_count,
+    # Phase 07.3 (06, RET-04): импорт делегатов прошлого события
+    bulk_insert_users_if_absent,
+    count_existing_telegram_ids,
 )
 from aiogram.exceptions import TelegramRetryAfter, TelegramForbiddenError, TelegramBadRequest
 from services.sheets import get_existing_sheet_ids, append_rows_to_sheet, ensure_sheet_header, sync_named_worksheet, dedupe_sheet_by_id, update_status_in_sheet, bulk_update_status_in_sheet, rebuild_main_sheet, REFUSED_UNPINNED_TAB, _reset_sheet_cache, tab_row_count
@@ -98,7 +103,7 @@ from services.scheduler import (
 from services.allowlist import refresh_allowlist, allowlist_size
 from services.background import spawn as _spawn
 from services.game_sync import request_resync as _request_game_resync, set_rebuild as _set_game_rebuild
-from handlers.states import Broadcast, EditSetting, Approval, ReceiptReview, StaffAdd, GameTaskCreate, GameReview, CoinsManual, CityForm, SeasonReset
+from handlers.states import Broadcast, EditSetting, Approval, ReceiptReview, StaffAdd, GameTaskCreate, GameReview, CoinsManual, CityForm, SeasonReset, SeasonImport
 from handlers.admin_caps import ALL_CAPABILITIES, CAP_LABELS, ROLES, role_caps_key, role_enabled_key, CapabilityMiddleware, required_capability, has_capability, resolve_capabilities, ANY_CAPABILITY, capability_holders
 from keyboards.builders import get_cancel_kb, MENU_BUTTONS, get_main_menu_kb
 from handlers.registration import REG_FLOW, REG_DEFAULTS, REG_LABELS, REG_PRESETS, REG_CATEGORIES, SHEET_HEADERS, STATUS_LABELS, _build_sheet_row, active_sheet_headers, set_sheet_schema, _sheet_value_map, approve_user, dropout_step_label, _apply_party_preset, _apply_short_preset, city_row_tab, incomplete_city_batches
@@ -1219,6 +1224,11 @@ async def build_settings_group_keyboard(token: str, admin_id: int | None = None)
         # because a stale inline keyboard rendered before rights changed lives in the chat
         # forever (same reasoning as roles_city_start's own inline re-check).
         buttons.append([InlineKeyboardButton(text="🔄 Новый сезон", callback_data="admin_season_reset")])
+    if token == "event":
+        # Phase 07.3 (06, RET-04): visible to EVERYONE who reaches this screen — unlike «Новый
+        # сезон», import is not superadmin-only (CONTEXT D); the gate is the `settings`
+        # capability that already got them here.
+        buttons.append([InlineKeyboardButton(text="📥 Импорт прошлого события", callback_data="admin_season_import")])
     buttons.append([InlineKeyboardButton(text="← Назад к настройкам", callback_data="admin_settings")])
     return InlineKeyboardMarkup(inline_keyboard=buttons)
 
@@ -2964,6 +2974,125 @@ async def season_reset_passphrase_step(message: types.Message, state: FSMContext
         reply_markup=ReplyKeyboardRemove(),
     )
     await state.set_state(None)
+
+
+# ── Phase 07.3 (06, RET-04): «📥 Импорт прошлого события» wizard ─────────────────────────────
+# T-073-06-01 (Tampering): the uploaded file is opened read-only, in ITS OWN sqlite3 connection
+# — never config.DB_PATH, never the live DB's async driver. T-073-06-03 (DoS): the 20 MB guard runs BEFORE
+# bot.download; the temp file is always removed in `finally` (T-073-06-05, Information
+# Disclosure — nothing from a past event's personal data touches disk after this handler
+# returns). T-073-06-02 (column-name injection) is mitigated inside
+# database.db.bulk_insert_users_if_absent itself, not here.
+
+_IMPORT_MAX_BYTES = 20 * 1024 * 1024
+
+
+@router.callback_query(F.data == "admin_season_import")
+async def season_import_start(callback: types.CallbackQuery, state: FSMContext):
+    await state.set_data({})
+    await callback.message.answer(
+        "📥 <b>Импорт прошлого события</b>\n\n"
+        "Пришли файл базы старого бота — я прочитаю из него делегатов и добавлю тех, кого "
+        "ещё нет.\n\n"
+        "Монеты, оплаты и рефералы не переносятся, существующие записи не меняются. Файл "
+        "после импорта не храню.\n\n"
+        "Размер — до 20 МБ.",
+        parse_mode="HTML",
+        reply_markup=get_cancel_kb(),
+    )
+    await state.set_state(SeasonImport.waiting_file)
+    await callback.answer()
+
+
+# Cancel-mid-wizard, registered BEFORE the per-step handlers below (admin.router: first match
+# wins) — same shape as cancel_city_form/cancel_season_reset.
+@router.message(StateFilter(SeasonImport), Command("cancel"))
+@router.message(StateFilter(SeasonImport), F.text == "Отмена")
+async def cancel_season_import(message: types.Message, state: FSMContext):
+    await state.set_state(None)
+    await message.answer("Отменено. Ничего не импортировано.", reply_markup=ReplyKeyboardRemove())
+
+
+@router.message(SeasonImport.waiting_file, F.document)
+async def season_import_file_step(message: types.Message, state: FSMContext, bot: Bot):
+    if (message.document.file_size or 0) > _IMPORT_MAX_BYTES:
+        await message.answer("Файл больше 20 МБ — столько я принять не могу.")
+        return
+
+    tmp_path = None
+    con = None
+    try:
+        buf = await bot.download(message.document.file_id)
+        buf.seek(0)
+        content = buf.read()
+
+        with tempfile.NamedTemporaryFile(delete=False, suffix=".db") as tmp:
+            tmp.write(content)
+            tmp_path = tmp.name
+
+        try:
+            # T-073-06-01: read-only, own connection — physically cannot write to the file.
+            con = sqlite3.connect(f"file:{tmp_path}?mode=ro", uri=True)
+            con.row_factory = sqlite3.Row
+            table_check = con.execute(
+                "SELECT name FROM sqlite_master WHERE type='table' AND name='users'"
+            ).fetchone()
+            if not table_check:
+                await message.answer("В этом файле нет таблицы делегатов. Похоже, это база другого приложения.")
+                return
+            raw_rows = con.execute("SELECT * FROM users").fetchall()
+        except sqlite3.DatabaseError:
+            await message.answer(
+                "Это не похоже на базу бота: не удалось её прочитать. Пришли файл базы "
+                "старого бота (обычно называется forum.db)."
+            )
+            return
+
+        rows = []
+        for r in raw_rows:
+            d = dict(r)
+            try:
+                tg_id = int(d.get("telegram_id"))
+            except (TypeError, ValueError):
+                continue
+            if not tg_id:
+                continue
+            d["telegram_id"] = tg_id  # normalize to int — matches count_existing_telegram_ids
+            rows.append(d)
+
+        found = len(rows)
+        if found == 0:
+            await message.answer("В файле нет делегатов — импортировать нечего.")
+            await state.set_state(None)
+            return
+
+        ids = [r["telegram_id"] for r in rows]
+        existing = await count_existing_telegram_ids(ids)
+
+        await state.update_data(import_rows=rows, import_found=found, import_existing=existing)
+        await message.answer(
+            f"📥 <b>Файл прочитан</b>\n\n"
+            f"Найдено делегатов: <b>{found}</b>\n"
+            f"Из них уже есть в базе: <b>{existing}</b> — их пропущу\n"
+            f"Будет добавлено: <b>{found - existing}</b>\n\n"
+            "Напиши название сезона для импортируемых — например: YL'25",
+            parse_mode="HTML",
+            reply_markup=get_cancel_kb(),
+        )
+        await state.set_state(SeasonImport.naming)
+    finally:
+        if con is not None:
+            con.close()
+        if tmp_path is not None:
+            try:
+                os.unlink(tmp_path)
+            except Exception as e:
+                logger.warning(f"season_import_file_step: не удалось удалить временный файл {tmp_path}: {e}")
+
+
+@router.message(SeasonImport.waiting_file)
+async def season_import_file_invalid(message: types.Message):
+    await message.answer("Пришли файл базы документом (не фото и не архив).")
 
 
 @router.callback_query(F.data == "admin_city_switch")
