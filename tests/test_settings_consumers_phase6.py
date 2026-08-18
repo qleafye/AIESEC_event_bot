@@ -410,6 +410,7 @@ def test_payment_reminders_gate_equiv(tmp_path):
 def test_reg_bonus_enabled_equiv(tmp_path):
     _db_ready(tmp_path)
     import handlers.registration as reg_mod
+    import handlers.reg_schema as reg_schema_mod  # 13-02 (REFAC-02): send_completion_and_bonus lives here now
 
     sent = []
 
@@ -442,16 +443,16 @@ def test_reg_bonus_enabled_equiv(tmp_path):
         calls.append(key)
         return "off"
 
-    had_attr = hasattr(reg_mod, "get_setting_typed")
-    orig = getattr(reg_mod, "get_setting_typed", None)
-    reg_mod.get_setting_typed = fake_typed
+    had_attr = hasattr(reg_schema_mod, "get_setting_typed")
+    orig = getattr(reg_schema_mod, "get_setting_typed", None)
+    reg_schema_mod.get_setting_typed = fake_typed
     try:
         asyncio.run(reg_mod.send_completion_and_bonus(_FakeBot2(), 820001, with_menu=False))
     finally:
         if had_attr:
-            reg_mod.get_setting_typed = orig
+            reg_schema_mod.get_setting_typed = orig
         else:
-            del reg_mod.get_setting_typed
+            del reg_schema_mod.get_setting_typed
     assert "reg_bonus_enabled" in calls, (
         "send_completion_and_bonus did not resolve reg_bonus_enabled via get_setting_typed"
     )
@@ -460,6 +461,7 @@ def test_reg_bonus_enabled_equiv(tmp_path):
 def test_is_module_enabled_gate_equiv(tmp_path):
     _db_ready(tmp_path)
     import handlers.registration as reg_mod
+    import handlers.reg_schema as reg_schema_mod  # 13-02 (REFAC-02): _is_module_enabled lives here now
 
     async def go():
         for key in ("payment_enabled", "consent_enabled"):
@@ -480,17 +482,17 @@ def test_is_module_enabled_gate_equiv(tmp_path):
         calls.append(key)
         return "off"
 
-    had_attr = hasattr(reg_mod, "get_setting_typed")
-    orig = getattr(reg_mod, "get_setting_typed", None)
-    reg_mod.get_setting_typed = fake_typed
+    had_attr = hasattr(reg_schema_mod, "get_setting_typed")
+    orig = getattr(reg_schema_mod, "get_setting_typed", None)
+    reg_schema_mod.get_setting_typed = fake_typed
     try:
         asyncio.run(reg_mod._is_module_enabled("payment_enabled"))
         asyncio.run(reg_mod._is_module_enabled("consent_enabled"))
     finally:
         if had_attr:
-            reg_mod.get_setting_typed = orig
+            reg_schema_mod.get_setting_typed = orig
         else:
-            del reg_mod.get_setting_typed
+            del reg_schema_mod.get_setting_typed
     assert calls == ["payment_enabled", "consent_enabled"], (
         f"_is_module_enabled did not resolve both keys via get_setting_typed, got calls={calls!r}"
     )

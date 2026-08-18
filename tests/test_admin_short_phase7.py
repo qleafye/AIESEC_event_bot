@@ -13,7 +13,7 @@ from config import config
 from database import db
 from handlers import admin as admin_mod
 from handlers.admin_caps import required_capability
-from handlers.registration import REG_FLOW, REG_PRESETS, _apply_short_preset
+from handlers.reg_schema import REG_FLOW, REG_PRESETS, _apply_short_preset
 
 
 ADMIN_ID = 900002
