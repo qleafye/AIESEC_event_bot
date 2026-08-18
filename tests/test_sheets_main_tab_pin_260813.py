@@ -27,6 +27,7 @@ import gspread
 from config import config
 from database import db
 from handlers import admin as admin_mod
+from handlers import admin_settings  # Phase 13 (13-06): settings moved out of admin.py
 from handlers import admin_cities  # Phase 13 (13-05): cities/season screens moved here
 import services.sheets as sheets
 
@@ -321,13 +322,13 @@ def test_rebuild_sheet_handler_shows_actionable_message_when_unpinned(tmp_path, 
     async def fake_users():
         return []
 
-    monkeypatch.setattr(admin_mod, "active_sheet_headers", fake_headers)
-    monkeypatch.setattr(admin_mod, "get_all_users_dicts", fake_users)
+    monkeypatch.setattr(admin_settings, "active_sheet_headers", fake_headers)
+    monkeypatch.setattr(admin_settings, "get_all_users_dicts", fake_users)
 
     callback = _FakeCallback(ADMIN_ID)
 
     async def go():
-        await admin_mod.rebuild_sheet(callback)
+        await admin_settings.rebuild_sheet(callback)
 
     asyncio.run(go())
     assert "GOOGLE_SHEET_TAB" in callback.message.text
@@ -347,14 +348,14 @@ def test_rebuild_sheet_handler_succeeds_when_named(tmp_path, monkeypatch):
     async def fake_rebuild(headers, rows):
         return 0
 
-    monkeypatch.setattr(admin_mod, "active_sheet_headers", fake_headers)
-    monkeypatch.setattr(admin_mod, "get_all_users_dicts", fake_users)
-    monkeypatch.setattr(admin_mod, "rebuild_main_sheet", fake_rebuild)
+    monkeypatch.setattr(admin_settings, "active_sheet_headers", fake_headers)
+    monkeypatch.setattr(admin_settings, "get_all_users_dicts", fake_users)
+    monkeypatch.setattr(admin_settings, "rebuild_main_sheet", fake_rebuild)
 
     callback = _FakeCallback(ADMIN_ID)
 
     async def go():
-        await admin_mod.rebuild_sheet(callback)
+        await admin_settings.rebuild_sheet(callback)
 
     asyncio.run(go())
     assert "GOOGLE_SHEET_TAB" not in callback.message.text

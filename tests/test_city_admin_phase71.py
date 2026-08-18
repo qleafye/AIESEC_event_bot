@@ -13,6 +13,7 @@ import aiosqlite
 from config import config
 from database import db
 from handlers import admin as admin_mod
+from handlers import admin_settings  # Phase 13 (13-06): settings moved out of admin.py
 from handlers import admin_cities  # Phase 13 (13-05): cities/season screens moved here
 from handlers import registration as reg_mod
 from handlers.admin_caps import required_capability
@@ -376,8 +377,8 @@ def test_export_incomplete_and_scheduler_sync_produce_same_batches(tmp_path, mon
             admin_calls.append((title, len(rows)))
             return len(rows)
 
-        monkeypatch.setattr(admin_mod, "sync_named_worksheet", _fake_admin_sync)
-        await admin_mod.export_incomplete(FakeCallback("admin_export_incomplete"))
+        monkeypatch.setattr(admin_settings, "sync_named_worksheet", _fake_admin_sync)
+        await admin_settings.export_incomplete(FakeCallback("admin_export_incomplete"))
 
         import services.scheduler as scheduler_mod
         import services.sheets as sheets_mod

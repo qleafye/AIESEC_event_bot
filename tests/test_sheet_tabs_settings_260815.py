@@ -21,7 +21,7 @@ import gspread
 
 from config import config
 from database import db
-from handlers import admin as admin_mod
+from handlers import admin_settings  # Phase 13 (13-06): settings moved out of admin.py
 from handlers import admin_gamification
 from handlers.admin_caps import ADMIN_CAPS, required_capability
 from settings_schema import SETTINGS_SCHEMA, _parse_setting
@@ -89,8 +89,8 @@ def test_sheets_group_keys_all_present_with_frozen_defaults():
 
 
 def test_settings_group_keys_sheets_matches_field_order():
-    assert admin_mod._settings_group_keys("sheets") == admin_mod._SHEETS_FIELD_ORDER
-    assert admin_mod._SHEETS_FIELD_ORDER == [
+    assert admin_settings._settings_group_keys("sheets") == admin_settings._SHEETS_FIELD_ORDER
+    assert admin_settings._SHEETS_FIELD_ORDER == [
         "main_sheet_tab", "short_sheet_tab", "party_sheet_tab", "incomplete_sheet_tab",
         "game_matrix_tab", "game_history_tab", "preselect_tab",
         "city_tab_suffix__short", "city_tab_suffix__party", "city_tab_suffix__incomplete",
@@ -98,28 +98,28 @@ def test_settings_group_keys_sheets_matches_field_order():
 
 
 def test_short_and_party_sheet_tab_moved_out_of_old_groups():
-    assert "short_sheet_tab" not in admin_mod._settings_group_keys("reg")
-    assert "party_sheet_tab" not in admin_mod._settings_group_keys("party")
+    assert "short_sheet_tab" not in admin_settings._settings_group_keys("reg")
+    assert "party_sheet_tab" not in admin_settings._settings_group_keys("party")
     # Both still reachable by the manager -- just on the new screen now, not vanished.
-    assert "short_sheet_tab" in admin_mod._settings_group_keys("sheets")
-    assert "party_sheet_tab" in admin_mod._settings_group_keys("sheets")
+    assert "short_sheet_tab" in admin_settings._settings_group_keys("sheets")
+    assert "party_sheet_tab" in admin_settings._settings_group_keys("sheets")
     # Leftover-safety net stays empty -- nothing silently fell into "Прочие".
-    assert admin_mod._settings_group_keys("misc") == []
+    assert admin_settings._settings_group_keys("misc") == []
 
 
 def test_settings_keyboard_has_sheets_group_nav_button():
-    kb = asyncio.run(admin_mod.build_settings_keyboard())
+    kb = asyncio.run(admin_settings.build_settings_keyboard())
     flat = _flat_callback_data(kb)
     assert "settings_group:sheets" in flat
 
 
 def test_render_snapshot_sheets(tmp_path):
     _admin_ready(tmp_path)
-    text = asyncio.run(admin_mod.render_settings_group_text("sheets"))
-    kb = asyncio.run(admin_mod.build_settings_group_keyboard("sheets"))
+    text = asyncio.run(admin_settings.render_settings_group_text("sheets"))
+    kb = asyncio.run(admin_settings.build_settings_group_keyboard("sheets"))
     flat = _flat_callback_data(kb)
 
-    expected_keys = admin_mod._SHEETS_FIELD_ORDER
+    expected_keys = admin_settings._SHEETS_FIELD_ORDER
     edit_cbs = [cd for cd in flat if cd and cd.startswith("settings_edit:")]
     assert edit_cbs == [f"settings_edit:{k}" for k in expected_keys]
 
@@ -142,7 +142,7 @@ def test_settings_edit_wildcard_covers_all_sheets_keys():
     this without failing a test (grep is the plan's own acceptance check, this is the codified
     version)."""
     assert required_capability(callback_data="settings_group:sheets") == "settings"
-    for key in admin_mod._SHEETS_FIELD_ORDER:
+    for key in admin_settings._SHEETS_FIELD_ORDER:
         assert required_capability(callback_data=f"settings_edit:{key}") == "settings"
 
 
@@ -594,18 +594,18 @@ def test_existing_write_tab_shows_confirm_and_does_not_save(tmp_path, monkeypatc
         assert title == "GAMIFICATION бот"
         return (True, 30)
 
-    monkeypatch.setattr(admin_mod, "tab_row_count", fake_probe)
+    monkeypatch.setattr(admin_settings, "tab_row_count", fake_probe)
 
     message = _FakeSettingsMessage(text="GAMIFICATION бот")
     state = _edit_setting_state("game_matrix_tab")
 
     async def go():
-        await admin_mod.settings_edit_value(message, state)
+        await admin_settings.settings_edit_value(message, state)
         return await db.get_setting("game_matrix_tab")
 
     saved = asyncio.run(go())
     assert saved is None  # NOT saved yet -- awaiting confirmation
-    assert state._state == admin_mod.EditSetting.waiting_for_tab_confirm
+    assert state._state == admin_settings.EditSetting.waiting_for_tab_confirm
     pending = asyncio.run(state.get_data())
     assert pending["pending_tab_key"] == "game_matrix_tab"
     assert pending["pending_tab_value"] == "GAMIFICATION бот"
@@ -623,7 +623,7 @@ def test_confirm_saves_pending_value_and_returns_to_sheets_screen(tmp_path, monk
     callback = _FakeSettingsCallback()
 
     async def go():
-        await admin_mod.sheets_tab_confirm_go(callback, state)
+        await admin_settings.sheets_tab_confirm_go(callback, state)
         return await db.get_setting("game_matrix_tab")
 
     saved = asyncio.run(go())
@@ -638,7 +638,7 @@ def test_cancel_does_not_save_pending_value(tmp_path, monkeypatch):
     callback = _FakeSettingsCallback()
 
     async def go():
-        await admin_mod.sheets_tab_cancel_go(callback, state)
+        await admin_settings.sheets_tab_cancel_go(callback, state)
         return await db.get_setting("game_matrix_tab")
 
     saved = asyncio.run(go())
@@ -653,13 +653,13 @@ def test_missing_tab_saves_silently_no_confirm_screen(tmp_path, monkeypatch):
     async def fake_probe(title):
         return (False, 0)
 
-    monkeypatch.setattr(admin_mod, "tab_row_count", fake_probe)
+    monkeypatch.setattr(admin_settings, "tab_row_count", fake_probe)
 
     message = _FakeSettingsMessage(text="Новая вкладка")
     state = _edit_setting_state("game_matrix_tab")
 
     async def go():
-        await admin_mod.settings_edit_value(message, state)
+        await admin_settings.settings_edit_value(message, state)
         return await db.get_setting("game_matrix_tab")
 
     saved = asyncio.run(go())
@@ -674,13 +674,13 @@ def test_probe_failure_saves_with_warning(tmp_path, monkeypatch):
     async def fake_probe(title):
         return None  # Sheets unreachable/unconfigured
 
-    monkeypatch.setattr(admin_mod, "tab_row_count", fake_probe)
+    monkeypatch.setattr(admin_settings, "tab_row_count", fake_probe)
 
     message = _FakeSettingsMessage(text="Какая-то вкладка")
     state = _edit_setting_state("incomplete_sheet_tab")
 
     async def go():
-        await admin_mod.settings_edit_value(message, state)
+        await admin_settings.settings_edit_value(message, state)
         return await db.get_setting("incomplete_sheet_tab")
 
     saved = asyncio.run(go())
@@ -697,14 +697,14 @@ def test_preselect_and_suffix_keys_never_trigger_the_gate(tmp_path, monkeypatch)
     def fail_if_called(title):
         raise AssertionError(f"tab_row_count must not be called for this key (title={title!r})")
 
-    monkeypatch.setattr(admin_mod, "tab_row_count", fail_if_called)
+    monkeypatch.setattr(admin_settings, "tab_row_count", fail_if_called)
 
     for key, value in [("preselect_tab", "Мой список"), ("city_tab_suffix__short", "Промо")]:
         message = _FakeSettingsMessage(text=value)
         state = _edit_setting_state(key)
 
         async def go(message=message, state=state, key=key):
-            await admin_mod.settings_edit_value(message, state)
+            await admin_settings.settings_edit_value(message, state)
             return await db.get_setting(key)
 
         assert asyncio.run(go()) == value
@@ -712,30 +712,30 @@ def test_preselect_and_suffix_keys_never_trigger_the_gate(tmp_path, monkeypatch)
 
 def test_saving_main_sheet_tab_resets_sheet_cache_on_all_three_paths(tmp_path, monkeypatch):
     reset_calls = []
-    monkeypatch.setattr(admin_mod, "_reset_sheet_cache", lambda: reset_calls.append(1))
+    monkeypatch.setattr(admin_settings, "_reset_sheet_cache", lambda: reset_calls.append(1))
 
     async def fake_probe_missing(title):
         return (False, 0)
 
-    monkeypatch.setattr(admin_mod, "tab_row_count", fake_probe_missing)
+    monkeypatch.setattr(admin_settings, "tab_row_count", fake_probe_missing)
 
     # Path 1: plain save (tab doesn't exist yet).
     _admin_ready(tmp_path)
     message = _FakeSettingsMessage(text="Реги бот")
     state = _edit_setting_state("main_sheet_tab")
-    asyncio.run(admin_mod.settings_edit_value(message, state))
+    asyncio.run(admin_settings.settings_edit_value(message, state))
     assert len(reset_calls) == 1
 
     # Path 2: "-" clear.
     message = _FakeSettingsMessage(text="-")
     state = _edit_setting_state("main_sheet_tab")
-    asyncio.run(admin_mod.settings_edit_value(message, state))
+    asyncio.run(admin_settings.settings_edit_value(message, state))
     assert len(reset_calls) == 2
 
     # Path 3: save-after-confirm.
     state = _FakeFSMState({"pending_tab_key": "main_sheet_tab", "pending_tab_value": "Ещё вкладка"})
     callback = _FakeSettingsCallback()
-    asyncio.run(admin_mod.sheets_tab_confirm_go(callback, state))
+    asyncio.run(admin_settings.sheets_tab_confirm_go(callback, state))
     assert len(reset_calls) == 3
 
 

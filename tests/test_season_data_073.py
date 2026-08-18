@@ -14,6 +14,7 @@ import asyncio
 from config import config
 from database import db
 from handlers import admin
+from handlers import admin_settings  # Phase 13 (13-06): settings moved out of admin.py
 from settings_schema import SETTINGS_SCHEMA
 
 
@@ -114,10 +115,10 @@ def test_registry_has_season_keys():
 
 
 def test_registry_new_keys_on_event_screen():
-    assert "event_season" in admin._EVENT_GROUP_KEYS
-    assert "start_text_returning" in admin._EVENT_GROUP_KEYS
-    assert "start_text_returning" in admin.HTML_SETTINGS
-    assert "event_season" not in admin.HTML_SETTINGS
+    assert "event_season" in admin_settings._EVENT_GROUP_KEYS
+    assert "start_text_returning" in admin_settings._EVENT_GROUP_KEYS
+    assert "start_text_returning" in admin_settings.HTML_SETTINGS
+    assert "event_season" not in admin_settings.HTML_SETTINGS
 
 
 def test_registry_event_order_unchanged_for_old_keys():
@@ -127,7 +128,7 @@ def test_registry_event_order_unchanged_for_old_keys():
         "event_name", "event_type",
     ]
     new_keys = {"event_season", "start_text_returning"}
-    filtered = [k for k in admin._EVENT_FIELD_ORDER if k not in new_keys]
+    filtered = [k for k in admin_settings._EVENT_FIELD_ORDER if k not in new_keys]
     assert filtered == old_order_literal
 
 

@@ -19,6 +19,7 @@ import asyncio
 from config import config
 from database import db
 from handlers import admin as admin_mod
+from handlers import admin_settings  # Phase 13 (13-06): settings moved out of admin.py
 from handlers.admin_caps import CapabilityMiddleware, required_capability
 
 
@@ -193,7 +194,7 @@ def test_non_text_message_does_not_store_empty_tab_name(tmp_path):
     state = _FakeFSMState({"setting_key": "main_sheet_tab"})
 
     async def go():
-        await admin_mod.settings_edit_value(message, state)
+        await admin_settings.settings_edit_value(message, state)
         return await db.get_setting("main_sheet_tab")
 
     saved = asyncio.run(go())
@@ -210,7 +211,7 @@ def test_whitespace_only_value_rejected(tmp_path):
     state = _FakeFSMState({"setting_key": "event_place_name"})
 
     async def go():
-        await admin_mod.settings_edit_value(message, state)
+        await admin_settings.settings_edit_value(message, state)
         return await db.get_setting("event_place_name")
 
     saved = asyncio.run(go())
@@ -225,7 +226,7 @@ def test_normal_text_value_still_saves(tmp_path):
     state = _FakeFSMState({"setting_key": "event_place_name"})
 
     async def go():
-        await admin_mod.settings_edit_value(message, state)
+        await admin_settings.settings_edit_value(message, state)
         return await db.get_setting("event_place_name")
 
     saved = asyncio.run(go())

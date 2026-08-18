@@ -42,6 +42,7 @@ from config import config
 from database import db
 from settings_schema import SETTINGS_SCHEMA
 from handlers import admin as admin_mod
+from handlers import admin_settings  # Phase 13 (13-06): settings moved out of admin.py
 from handlers import admin_reg_config  # Phase 13 (13-05): reg-question/menu-button config moved here
 from handlers import admin_caps
 from handlers import registration as reg_mod
@@ -405,7 +406,7 @@ def test_admin_screens_have_no_percity_rows_when_module_off(tmp_path):
             continue
         cb = FakeAdminCallback(f"settings_edit:{key}")
         state = FakeAdminState()
-        asyncio.run(admin_mod.settings_edit_start(cb, state))
+        asyncio.run(admin_settings.settings_edit_start(cb, state))
         assert not any(d and d.startswith("settings_city:") for d in _flat_callback_data(cb.message.markup)), key
         assert "🏙" not in cb.message.text, key
 
@@ -416,7 +417,7 @@ def test_admin_screens_have_no_percity_rows_when_module_off(tmp_path):
     assert not any("🏙" in t for t in _flat_texts(kb))
 
     # settings landing -- no «🏙 Форма по городам» shortcut.
-    landing_kb = asyncio.run(admin_mod.build_settings_keyboard())
+    landing_kb = asyncio.run(admin_settings.build_settings_keyboard())
     assert "settings_city:registration_mode" not in _flat_callback_data(landing_kb)
     assert not any("🏙" in t for t in _flat_texts(landing_kb))
 
@@ -426,7 +427,7 @@ def test_admin_screens_have_no_percity_rows_when_module_off(tmp_path):
     # this phase's per_city mechanism) -- so the check must target the marker's exact
     # " · 🏙 {N}" shape, not bare 🏙 presence.
     for token in ("event", "reg"):
-        text = asyncio.run(admin_mod.render_settings_group_text(token))
+        text = asyncio.run(admin_settings.render_settings_group_text(token))
         assert " · 🏙" not in text, token
 
     # Phase 09.3 (05, CITY-09): group screen now resolves the header, but module off ->
@@ -434,11 +435,11 @@ def test_admin_screens_have_no_percity_rows_when_module_off(tmp_path):
     # must produce the SAME text as the admin_id=None call above, not just the same absence
     # of the "🏙 N" marker.
     for token in ("event", "reg"):
-        text_none = asyncio.run(admin_mod.render_settings_group_text(token))
-        text_admin = asyncio.run(admin_mod.render_settings_group_text(token, ADMIN_ID))
+        text_none = asyncio.run(admin_settings.render_settings_group_text(token))
+        text_admin = asyncio.run(admin_settings.render_settings_group_text(token, ADMIN_ID))
         assert text_admin == text_none, token
-        kb_none = asyncio.run(admin_mod.build_settings_group_keyboard(token))
-        kb_admin = asyncio.run(admin_mod.build_settings_group_keyboard(token, ADMIN_ID))
+        kb_none = asyncio.run(admin_settings.build_settings_group_keyboard(token))
+        kb_admin = asyncio.run(admin_settings.build_settings_group_keyboard(token, ADMIN_ID))
         # Phase 07.3 (02, RET-01): «🔄 Новый сезон» is a LEGITIMATE, orthogonal exception to
         # this per-city-header parity guard -- it depends on admin_id being a real superadmin
         # (config.ADMIN_IDS), not on the cities module/header state this guard protects. ADMIN_ID
@@ -457,12 +458,12 @@ def test_settings_landing_screen_module_off_admin_id_parity(tmp_path):
     _db_ready(tmp_path)
     _seed_overrides()
 
-    text_none = asyncio.run(admin_mod.render_settings_text())
-    text_admin = asyncio.run(admin_mod.render_settings_text(ADMIN_ID))
+    text_none = asyncio.run(admin_settings.render_settings_text())
+    text_admin = asyncio.run(admin_settings.render_settings_text(ADMIN_ID))
     assert text_admin == text_none
 
-    kb_none = asyncio.run(admin_mod.build_settings_keyboard())
-    kb_admin = asyncio.run(admin_mod.build_settings_keyboard(ADMIN_ID))
+    kb_none = asyncio.run(admin_settings.build_settings_keyboard())
+    kb_admin = asyncio.run(admin_settings.build_settings_keyboard(ADMIN_ID))
     assert _flat_callback_data(kb_admin) == _flat_callback_data(kb_none)
 
 
@@ -476,11 +477,11 @@ def test_settings_group_screen_module_off_admin_id_parity_all_groups(tmp_path):
     tokens = {meta.get("group") for meta in SETTINGS_SCHEMA.values() if meta.get("group")}
     assert tokens, "реестр без групп -- этот тест молча проверял бы пустоту"
     for token in tokens:
-        text_none = asyncio.run(admin_mod.render_settings_group_text(token))
-        text_admin = asyncio.run(admin_mod.render_settings_group_text(token, ADMIN_ID))
+        text_none = asyncio.run(admin_settings.render_settings_group_text(token))
+        text_admin = asyncio.run(admin_settings.render_settings_group_text(token, ADMIN_ID))
         assert text_admin == text_none, token
-        kb_none = asyncio.run(admin_mod.build_settings_group_keyboard(token))
-        kb_admin = asyncio.run(admin_mod.build_settings_group_keyboard(token, ADMIN_ID))
+        kb_none = asyncio.run(admin_settings.build_settings_group_keyboard(token))
+        kb_admin = asyncio.run(admin_settings.build_settings_group_keyboard(token, ADMIN_ID))
         # Phase 07.3 (02, RET-01): see the "event" group block above -- «🔄 Новый сезон» is a
         # legitimate superadmin-only exception to this guard, not a header-parity regression.
         admin_codes = [c for c in _flat_callback_data(kb_admin) if c != "admin_season_reset"]
@@ -501,8 +502,8 @@ def test_settings_editor_screen_module_off_caller_parity(tmp_path):
             continue
         cb_admin = FakeAdminCallback(f"settings_edit:{key}", user_id=ADMIN_ID)
         cb_manager = FakeAdminCallback(f"settings_edit:{key}", user_id=SPB_MANAGER_ID)
-        asyncio.run(admin_mod.settings_edit_start(cb_admin, FakeAdminState()))
-        asyncio.run(admin_mod.settings_edit_start(cb_manager, FakeAdminState()))
+        asyncio.run(admin_settings.settings_edit_start(cb_admin, FakeAdminState()))
+        asyncio.run(admin_settings.settings_edit_start(cb_manager, FakeAdminState()))
         assert cb_admin.message.text == cb_manager.message.text, key
         assert _flat_callback_data(cb_admin.message.markup) == _flat_callback_data(cb_manager.message.markup), key
 

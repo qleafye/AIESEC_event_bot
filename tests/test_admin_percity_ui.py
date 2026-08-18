@@ -16,6 +16,7 @@ import asyncio
 from config import config
 from database import db
 from handlers import admin as admin_mod
+from handlers import admin_settings  # Phase 13 (13-06): settings moved out of admin.py
 from handlers.admin_caps import required_capability, role_caps_key, role_enabled_key
 import cities
 
@@ -134,7 +135,7 @@ def test_module_off_editor_has_only_cancel_button(tmp_path):
     # cities module left at its "off" default -> byte-identical to before the phase.
     cb = FakeCallback("settings_edit:start_text")
     state = FakeState()
-    asyncio.run(admin_mod.settings_edit_start(cb, state))
+    asyncio.run(admin_settings.settings_edit_start(cb, state))
 
     data = _flat_callback_data(cb.message.markup)
     assert data == ["settings_cancel"]
@@ -151,7 +152,7 @@ def test_all_cities_header_editor_has_no_edit_city_button_but_keeps_override_sum
 
     cb = FakeCallback("settings_edit:start_text")
     state = FakeState()
-    asyncio.run(admin_mod.settings_edit_start(cb, state))
+    asyncio.run(admin_settings.settings_edit_start(cb, state))
 
     data = _flat_callback_data(cb.message.markup)
     assert not any(d and d.startswith("settings_edit_city:") for d in data)
@@ -172,7 +173,7 @@ def test_module_on_non_per_city_key_editor_marked_global_only(tmp_path):
 
     cb = FakeCallback("settings_edit:event_name")
     state = FakeState()
-    asyncio.run(admin_mod.settings_edit_start(cb, state))
+    asyncio.run(admin_settings.settings_edit_start(cb, state))
 
     data = _flat_callback_data(cb.message.markup)
     assert not any(d and d.startswith("settings_edit_city:") for d in data)
@@ -190,12 +191,12 @@ def test_landing_never_shows_percity_picker_button_for_registration_mode(tmp_pat
     per-city through the admin-panel header toggle (tests/test_regmode_header_093.py), never
     through this editor, module on or off, with or without a header selected."""
     _admin_ready(tmp_path)
-    kb_off = asyncio.run(admin_mod.build_settings_keyboard())
+    kb_off = asyncio.run(admin_settings.build_settings_keyboard())
     assert "settings_city:registration_mode" not in _flat_callback_data(kb_off)
     assert "settings_edit_city:registration_mode" not in _flat_callback_data(kb_off)
 
     _enable_cities()
-    kb_on = asyncio.run(admin_mod.build_settings_keyboard())
+    kb_on = asyncio.run(admin_settings.build_settings_keyboard())
     assert "settings_city:registration_mode" not in _flat_callback_data(kb_on)
     assert "settings_edit_city:registration_mode" not in _flat_callback_data(kb_on)
 
@@ -203,7 +204,7 @@ def test_landing_never_shows_percity_picker_button_for_registration_mode(tmp_pat
 def test_superadmin_visible_codes_cover_all_cities(tmp_path):
     _admin_ready(tmp_path)
     _enable_cities()
-    codes = asyncio.run(admin_mod._per_city_visible_codes(ADMIN_ID))
+    codes = asyncio.run(admin_settings._per_city_visible_codes(ADMIN_ID))
     assert set(codes) == set(cities.city_codes())
 
 
@@ -219,7 +220,7 @@ def test_own_city_editor_shows_own_value_and_reset_button(tmp_path):
 
     cb = FakeCallback("settings_edit:start_text")
     state = FakeState()
-    asyncio.run(admin_mod.settings_edit_start(cb, state))
+    asyncio.run(admin_settings.settings_edit_start(cb, state))
 
     spb_label = asyncio.run(cities.city_label("spb"))
     assert cb.message.text.splitlines()[0] == f"🏙 {spb_label}"
@@ -240,7 +241,7 @@ def test_own_city_editor_shows_as_everywhere_when_no_own_value(tmp_path):
 
     cb = FakeCallback("settings_edit:start_text")
     state = FakeState()
-    asyncio.run(admin_mod.settings_edit_start(cb, state))
+    asyncio.run(admin_settings.settings_edit_start(cb, state))
 
     assert "Как везде. Общий текст:" in cb.message.text
     assert "Общий текст" in cb.message.text
@@ -258,7 +259,7 @@ def test_own_city_editor_does_not_start_fsm(tmp_path):
 
     cb = FakeCallback("settings_edit:start_text")
     state = FakeState()
-    asyncio.run(admin_mod.settings_edit_start(cb, state))
+    asyncio.run(admin_settings.settings_edit_start(cb, state))
 
     assert state.state is None
     assert state.data == {}
@@ -271,7 +272,7 @@ def test_own_city_editor_module_on_but_no_override_shows_default_line(tmp_path):
 
     cb = FakeCallback("settings_edit:start_text")
     state = FakeState()
-    asyncio.run(admin_mod.settings_edit_start(cb, state))
+    asyncio.run(admin_settings.settings_edit_start(cb, state))
 
     assert "по умолчанию" in cb.message.text
 
@@ -287,7 +288,7 @@ def test_settings_edit_city_opens_composite_fsm(tmp_path):
 
     cb = FakeCallback("settings_edit_city:start_text")
     state = FakeState()
-    asyncio.run(admin_mod.settings_edit_city(cb, state))
+    asyncio.run(admin_settings.settings_edit_city(cb, state))
 
     assert state.data.get("setting_key") == cities.per_city_key("start_text", "spb")
     assert state.data.get("per_city_base") == "start_text"
@@ -300,7 +301,7 @@ def test_settings_edit_city_fails_closed_when_module_off(tmp_path):
     _admin_ready(tmp_path)
     cb = FakeCallback("settings_edit_city:start_text")
     state = FakeState()
-    asyncio.run(admin_mod.settings_edit_city(cb, state))
+    asyncio.run(admin_settings.settings_edit_city(cb, state))
 
     assert cb.message.edit_calls == 0
     assert cb.answers and cb.answers[0][1] is True
@@ -313,7 +314,7 @@ def test_settings_edit_city_fails_closed_for_non_per_city_key(tmp_path):
     asyncio.run(cities.set_admin_city(ADMIN_ID, "spb"))
     cb = FakeCallback("settings_edit_city:event_name")
     state = FakeState()
-    asyncio.run(admin_mod.settings_edit_city(cb, state))
+    asyncio.run(admin_settings.settings_edit_city(cb, state))
 
     assert cb.message.edit_calls == 0
     assert cb.answers and cb.answers[0][1] is True
@@ -326,7 +327,7 @@ def test_settings_edit_city_refuses_when_header_is_all_cities(tmp_path):
     asyncio.run(cities.set_admin_city(ADMIN_ID, cities.ALL_CITIES))
     cb = FakeCallback("settings_edit_city:start_text")
     state = FakeState()
-    asyncio.run(admin_mod.settings_edit_city(cb, state))
+    asyncio.run(admin_settings.settings_edit_city(cb, state))
 
     assert cb.message.edit_calls == 0
     assert cb.answers and cb.answers[0][1] is True
@@ -343,11 +344,11 @@ def test_settings_edit_city_refused_when_not_visible_defense_in_depth(tmp_path, 
 
     async def _empty_visible(admin_id):
         return []
-    monkeypatch.setattr(admin_mod, "_per_city_visible_codes", _empty_visible)
+    monkeypatch.setattr(admin_settings, "_per_city_visible_codes", _empty_visible)
 
     cb = FakeCallback("settings_edit_city:start_text")
     state = FakeState()
-    asyncio.run(admin_mod.settings_edit_city(cb, state))
+    asyncio.run(admin_settings.settings_edit_city(cb, state))
 
     assert cb.message.edit_calls == 0
     assert cb.answers and cb.answers[0][1] is True
@@ -361,7 +362,7 @@ def test_bound_manager_can_edit_only_own_city_via_header(tmp_path):
 
     cb = FakeCallback("settings_edit_city:start_text", user_id=MANAGER_ID)
     state = FakeState()
-    asyncio.run(admin_mod.settings_edit_city(cb, state))
+    asyncio.run(admin_settings.settings_edit_city(cb, state))
 
     assert state.data.get("setting_key") == cities.per_city_key("start_text", "spb")
     assert state.data.get("per_city_base") == "start_text"
@@ -379,10 +380,10 @@ def test_text_roundtrip_write_read_clear_via_header_does_not_touch_global(tmp_pa
 
     edit_cb = FakeCallback("settings_edit_city:start_text")
     state = FakeState()
-    asyncio.run(admin_mod.settings_edit_city(edit_cb, state))
+    asyncio.run(admin_settings.settings_edit_city(edit_cb, state))
 
     msg = FakeMsgIn("Питерский текст")
-    asyncio.run(admin_mod.settings_edit_value(msg, state))
+    asyncio.run(admin_settings.settings_edit_value(msg, state))
 
     assert asyncio.run(db.get_setting("start_text")) == "Глобальный текст"
     resolved = asyncio.run(cities.get_setting_for_city("start_text", "spb"))
@@ -393,9 +394,9 @@ def test_text_roundtrip_write_read_clear_via_header_does_not_touch_global(tmp_pa
     # Clear via "-" — composite key deleted, global untouched, still returns to the editor.
     edit_cb2 = FakeCallback("settings_edit_city:start_text")
     state2 = FakeState()
-    asyncio.run(admin_mod.settings_edit_city(edit_cb2, state2))
+    asyncio.run(admin_settings.settings_edit_city(edit_cb2, state2))
     msg_clear = FakeMsgIn("-")
-    asyncio.run(admin_mod.settings_edit_value(msg_clear, state2))
+    asyncio.run(admin_settings.settings_edit_value(msg_clear, state2))
 
     assert asyncio.run(db.get_setting("start_text")) == "Глобальный текст"
     resolved_after = asyncio.run(cities.get_setting_for_city("start_text", "spb"))
@@ -404,7 +405,7 @@ def test_text_roundtrip_write_read_clear_via_header_does_not_touch_global(tmp_pa
 
 def test_html_settings_branch_checked_against_base_key():
     import inspect
-    src = inspect.getsource(admin_mod.settings_edit_value)
+    src = inspect.getsource(admin_settings.settings_edit_value)
     assert "_base_setting_key(key) in HTML_SETTINGS" in src
 
 
@@ -413,7 +414,7 @@ def test_no_per_city_key_in_sheet_tab_write_mode_or_options_suffix():
         k for k, v in __import__("settings_schema").SETTINGS_SCHEMA.items() if v.get("per_city")
     ]
     for k in per_city_keys:
-        assert k not in admin_mod._SHEET_TAB_WRITE_MODE, k
+        assert k not in admin_settings._SHEET_TAB_WRITE_MODE, k
         assert not k.endswith("_options"), k
 
 
@@ -427,7 +428,7 @@ def test_reset_confirm_refuses_when_no_own_value(tmp_path):
     asyncio.run(cities.set_admin_city(ADMIN_ID, "spb"))
 
     cb = FakeCallback("settings_reset_city:start_text")
-    asyncio.run(admin_mod.settings_reset_city(cb))
+    asyncio.run(admin_settings.settings_reset_city(cb))
 
     assert cb.message.edit_calls == 0
     assert cb.answers and cb.answers[0][1] is True
@@ -440,14 +441,14 @@ def test_reset_confirm_then_go_returns_to_editor_view(tmp_path):
     asyncio.run(db.set_setting(cities.per_city_key("start_text", "spb"), "Питерский текст"))
 
     confirm_cb = FakeCallback("settings_reset_city:start_text")
-    asyncio.run(admin_mod.settings_reset_city(confirm_cb))
+    asyncio.run(admin_settings.settings_reset_city(confirm_cb))
     # Confirm screen previews the GLOBAL text the city is about to fall back to (unset here
     # -> "по умолчанию"), not the override being removed — and names the consequence.
     assert "по умолчанию" in confirm_cb.message.text
     assert "будет удалён" in confirm_cb.message.text
 
     go_cb = FakeCallback("settings_reset_city_go:start_text:spb")
-    asyncio.run(admin_mod.settings_reset_city_go(go_cb))
+    asyncio.run(admin_settings.settings_reset_city_go(go_cb))
 
     resolved = asyncio.run(cities.get_setting_for_city("start_text", "spb"))
     assert resolved is None or resolved == ""
@@ -455,7 +456,7 @@ def test_reset_confirm_then_go_returns_to_editor_view(tmp_path):
 
     # Idempotent second go.
     go_cb2 = FakeCallback("settings_reset_city_go:start_text:spb")
-    asyncio.run(admin_mod.settings_reset_city_go(go_cb2))
+    asyncio.run(admin_settings.settings_reset_city_go(go_cb2))
     assert go_cb2.answers and go_cb2.answers[0][1] is True
 
 
@@ -463,7 +464,7 @@ def test_reset_go_unknown_city_code_refused(tmp_path):
     _admin_ready(tmp_path)
     _enable_cities()
     cb = FakeCallback("settings_reset_city_go:start_text:atlantis")
-    asyncio.run(admin_mod.settings_reset_city_go(cb))
+    asyncio.run(admin_settings.settings_reset_city_go(cb))
 
     assert cb.answers and cb.answers[0][1] is True
     assert cb.message.edit_calls == 0
@@ -478,13 +479,13 @@ def test_reset_go_freshness_check_refuses_after_header_changed(tmp_path):
     asyncio.run(db.set_setting(cities.per_city_key("start_text", "spb"), "Питерский текст"))
 
     confirm_cb = FakeCallback("settings_reset_city:start_text")
-    asyncio.run(admin_mod.settings_reset_city(confirm_cb))
+    asyncio.run(admin_settings.settings_reset_city(confirm_cb))
 
     # Header moves on before the manager taps "Да, как везде".
     asyncio.run(cities.set_admin_city(ADMIN_ID, "msk"))
 
     go_cb = FakeCallback("settings_reset_city_go:start_text:spb")
-    asyncio.run(admin_mod.settings_reset_city_go(go_cb))
+    asyncio.run(admin_settings.settings_reset_city_go(go_cb))
 
     assert go_cb.answers and go_cb.answers[0][0] == "Город админки изменился — подтвердите заново."
     resolved = asyncio.run(cities.get_setting_for_city("start_text", "spb"))
@@ -498,7 +499,7 @@ def test_bound_manager_refused_reset_go_on_forged_other_city(tmp_path):
     asyncio.run(db.set_setting(cities.per_city_key("start_text", "tyumen"), "Тюменский текст"))
 
     cb = FakeCallback("settings_reset_city_go:start_text:tyumen", user_id=MANAGER_ID)
-    asyncio.run(admin_mod.settings_reset_city_go(cb))
+    asyncio.run(admin_settings.settings_reset_city_go(cb))
 
     assert cb.answers and cb.answers[0][1] is True
     resolved = asyncio.run(cities.get_setting_for_city("start_text", "tyumen"))
@@ -514,7 +515,7 @@ def test_bound_manager_refused_reset_go_on_forged_other_city(tmp_path):
 
 def test_group_text_byte_identical_when_module_off(tmp_path):
     _admin_ready(tmp_path)
-    text_off = asyncio.run(admin_mod.render_settings_group_text("event", ADMIN_ID))
+    text_off = asyncio.run(admin_settings.render_settings_group_text("event", ADMIN_ID))
     assert "🏙" not in text_off
 
 
@@ -522,17 +523,17 @@ def test_group_text_shows_override_count_mark_in_all_cities_mode(tmp_path):
     _admin_ready(tmp_path)
     _enable_cities()
     asyncio.run(cities.set_admin_city(ADMIN_ID, cities.ALL_CITIES))
-    text_before = asyncio.run(admin_mod.render_settings_group_text("event", ADMIN_ID))
+    text_before = asyncio.run(admin_settings.render_settings_group_text("event", ADMIN_ID))
     start_line_before = [ln for ln in text_before.splitlines() if ln.startswith("💬 Приветствие")][0]
     assert "🏙" not in start_line_before
 
     asyncio.run(db.set_setting(cities.per_city_key("start_text", "spb"), "Питерский текст"))
-    text_after = asyncio.run(admin_mod.render_settings_group_text("event", ADMIN_ID))
+    text_after = asyncio.run(admin_settings.render_settings_group_text("event", ADMIN_ID))
     start_line_after = [ln for ln in text_after.splitlines() if ln.startswith("💬 Приветствие")][0]
     assert "🏙 1" in start_line_after
 
     asyncio.run(db.set_setting(cities.per_city_key("start_text", "tyumen"), "Тюменский текст"))
-    text_after2 = asyncio.run(admin_mod.render_settings_group_text("event", ADMIN_ID))
+    text_after2 = asyncio.run(admin_settings.render_settings_group_text("event", ADMIN_ID))
     start_line_after2 = [ln for ln in text_after2.splitlines() if ln.startswith("💬 Приветствие")][0]
     assert "🏙 2" in start_line_after2
 
@@ -543,7 +544,7 @@ def test_group_text_flags_unchanged_alongside_mark_in_all_cities_mode(tmp_path):
     asyncio.run(cities.set_admin_city(ADMIN_ID, cities.ALL_CITIES))
     asyncio.run(db.set_setting("start_text", "Общий текст"))
     asyncio.run(db.set_setting(cities.per_city_key("start_text", "spb"), "Питерский текст"))
-    text = asyncio.run(admin_mod.render_settings_group_text("event", ADMIN_ID))
+    text = asyncio.run(admin_settings.render_settings_group_text("event", ADMIN_ID))
     line = [ln for ln in text.splitlines() if ln.startswith("💬 Приветствие")][0]
     assert "✏️ задано" in line
     assert "🏙 1" in line
@@ -551,7 +552,7 @@ def test_group_text_flags_unchanged_alongside_mark_in_all_cities_mode(tmp_path):
 
 def test_render_settings_group_text_uses_registry_helpers():
     import inspect
-    src = inspect.getsource(admin_mod.render_settings_group_text)
+    src = inspect.getsource(admin_settings.render_settings_group_text)
     assert "city_override_codes" in src and "cities_module_on" in src
 
 
@@ -561,7 +562,7 @@ def test_group_text_header_first_line_at_city(tmp_path):
     _admin_ready(tmp_path)
     _enable_cities()
     asyncio.run(cities.set_admin_city(ADMIN_ID, "spb"))
-    text = asyncio.run(admin_mod.render_settings_group_text("event", ADMIN_ID))
+    text = asyncio.run(admin_settings.render_settings_group_text("event", ADMIN_ID))
     spb_label = asyncio.run(cities.city_label("spb"))
     assert text.splitlines()[0] == f"🏙 {spb_label}"
 
@@ -572,7 +573,7 @@ def test_group_text_own_mark_when_city_has_override(tmp_path):
     asyncio.run(cities.set_admin_city(ADMIN_ID, "spb"))
     asyncio.run(db.set_setting(cities.per_city_key("start_text", "spb"), "Питерский текст"))
 
-    text = asyncio.run(admin_mod.render_settings_group_text("event", ADMIN_ID))
+    text = asyncio.run(admin_settings.render_settings_group_text("event", ADMIN_ID))
     line = [ln for ln in text.splitlines() if ln.startswith("💬 Приветствие")][0]
     assert "✏️ своё" in line
     assert "🏙" not in line  # no override-count suffix on the header-scoped row
@@ -584,7 +585,7 @@ def test_group_text_as_everywhere_word_when_no_own_and_global_set(tmp_path):
     asyncio.run(cities.set_admin_city(ADMIN_ID, "spb"))
     asyncio.run(db.set_setting("start_text", "Общий текст"))
 
-    text = asyncio.run(admin_mod.render_settings_group_text("event", ADMIN_ID))
+    text = asyncio.run(admin_settings.render_settings_group_text("event", ADMIN_ID))
     line = [ln for ln in text.splitlines() if ln.startswith("💬 Приветствие")][0]
     assert "как везде" in line
     assert "задано" in line
@@ -598,9 +599,9 @@ def test_group_text_as_everywhere_default_word_when_no_own_and_no_global(tmp_pat
     # No real per_city key ships with a display default (_SETTINGS_DISPLAY_DEFAULTS) today --
     # exercise the ladder's third rung directly, same as _SETTINGS_DISPLAY_DEFAULTS's own
     # dict shape (registry-derived, not hardcoded here).
-    monkeypatch.setitem(admin_mod._SETTINGS_DISPLAY_DEFAULTS, "start_text", "Текст по умолчанию")
+    monkeypatch.setitem(admin_settings._SETTINGS_DISPLAY_DEFAULTS, "start_text", "Текст по умолчанию")
 
-    text = asyncio.run(admin_mod.render_settings_group_text("event", ADMIN_ID))
+    text = asyncio.run(admin_settings.render_settings_group_text("event", ADMIN_ID))
     line = [ln for ln in text.splitlines() if ln.startswith("💬 Приветствие")][0]
     assert "как везде" in line
     assert "по умолчанию" in line
@@ -612,7 +613,7 @@ def test_group_text_non_per_city_key_shows_plain_global_flag_at_header_city(tmp_
     asyncio.run(cities.set_admin_city(ADMIN_ID, "spb"))
     asyncio.run(db.set_setting("event_name", "Форум"))
 
-    text = asyncio.run(admin_mod.render_settings_group_text("event", ADMIN_ID))
+    text = asyncio.run(admin_settings.render_settings_group_text("event", ADMIN_ID))
     line = [ln for ln in text.splitlines() if ln.startswith("🎪 Название меро")][0]
     assert "✏️ задано" in line
     assert "своё" not in line and "как везде" not in line
@@ -624,7 +625,7 @@ def test_group_keyboard_marks_city_only_override_as_configured(tmp_path):
     asyncio.run(cities.set_admin_city(ADMIN_ID, "spb"))
     asyncio.run(db.set_setting(cities.per_city_key("start_text", "spb"), "Питерский текст"))
 
-    kb = asyncio.run(admin_mod.build_settings_group_keyboard("event", ADMIN_ID))
+    kb = asyncio.run(admin_settings.build_settings_group_keyboard("event", ADMIN_ID))
     rows_before_noop = []
     for row in kb.inline_keyboard:
         if any(b.callback_data == "settings_group_noop" for b in row):
@@ -638,12 +639,12 @@ def test_group_text_and_keyboard_module_off_byte_identical_to_admin_id_none(tmp_
     """admin_id passed but the cities module is off -> byte-identical to the admin_id=None
     call (module-off collapses admin_selected_city to None regardless of who's asking)."""
     _admin_ready(tmp_path)
-    text_none = asyncio.run(admin_mod.render_settings_group_text("event"))
-    text_id = asyncio.run(admin_mod.render_settings_group_text("event", ADMIN_ID))
+    text_none = asyncio.run(admin_settings.render_settings_group_text("event"))
+    text_id = asyncio.run(admin_settings.render_settings_group_text("event", ADMIN_ID))
     assert text_none == text_id
 
-    kb_none = asyncio.run(admin_mod.build_settings_group_keyboard("event"))
-    kb_id = asyncio.run(admin_mod.build_settings_group_keyboard("event", ADMIN_ID))
+    kb_none = asyncio.run(admin_settings.build_settings_group_keyboard("event"))
+    kb_id = asyncio.run(admin_settings.build_settings_group_keyboard("event", ADMIN_ID))
     # Phase 07.3 (02, RET-01): «🔄 Новый сезон» is a legitimate superadmin-only exception to
     # this per-city-header parity guard (ADMIN_ID here IS a superadmin, config.ADMIN_IDS) --
     # it depends on admin identity, not on the cities-module/header state this guard protects.
@@ -661,12 +662,12 @@ def test_bound_manager_full_scenario_sees_only_own_city(tmp_path):
     _enable_cities()
     _add_bound_manager(MANAGER_ID, "spb")
 
-    codes = asyncio.run(admin_mod._per_city_visible_codes(MANAGER_ID))
+    codes = asyncio.run(admin_settings._per_city_visible_codes(MANAGER_ID))
     assert codes == ["spb"]
 
     cb = FakeCallback("settings_edit:start_text", user_id=MANAGER_ID)
     state = FakeState()
-    asyncio.run(admin_mod.settings_edit_start(cb, state))
+    asyncio.run(admin_settings.settings_edit_start(cb, state))
     spb_label = asyncio.run(cities.city_label("spb"))
     msk_label = asyncio.run(cities.city_label("msk"))
     assert cb.message.text.splitlines()[0] == f"🏙 {spb_label}"
@@ -675,14 +676,14 @@ def test_bound_manager_full_scenario_sees_only_own_city(tmp_path):
     # Own city: editing succeeds.
     own_cb = FakeCallback("settings_edit_city:start_text", user_id=MANAGER_ID)
     own_state = FakeState()
-    asyncio.run(admin_mod.settings_edit_city(own_cb, own_state))
+    asyncio.run(admin_settings.settings_edit_city(own_cb, own_state))
     assert own_state.data.get("setting_key") == cities.per_city_key("start_text", "spb")
 
     # Forged reset for another city: refused, nothing written (settings_reset_city_go is the
     # only surviving callback that still carries an explicit city code).
     asyncio.run(db.set_setting(cities.per_city_key("start_text", "msk"), "Московский текст"))
     other_cb = FakeCallback("settings_reset_city_go:start_text:msk", user_id=MANAGER_ID)
-    asyncio.run(admin_mod.settings_reset_city_go(other_cb))
+    asyncio.run(admin_settings.settings_reset_city_go(other_cb))
     assert other_cb.answers and other_cb.answers[0][1] is True
     resolved = asyncio.run(cities.get_setting_for_city("start_text", "msk"))
     assert resolved == "Московский текст"  # untouched
