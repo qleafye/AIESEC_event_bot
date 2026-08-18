@@ -438,7 +438,12 @@ def test_admin_screens_have_no_percity_rows_when_module_off(tmp_path):
         assert text_admin == text_none, token
         kb_none = asyncio.run(admin_mod.build_settings_group_keyboard(token))
         kb_admin = asyncio.run(admin_mod.build_settings_group_keyboard(token, ADMIN_ID))
-        assert _flat_callback_data(kb_admin) == _flat_callback_data(kb_none), token
+        # Phase 07.3 (02, RET-01): «🔄 Новый сезон» is a LEGITIMATE, orthogonal exception to
+        # this per-city-header parity guard -- it depends on admin_id being a real superadmin
+        # (config.ADMIN_IDS), not on the cities module/header state this guard protects. ADMIN_ID
+        # in this file IS a superadmin, so filter the one expected extra button before comparing.
+        admin_codes = [c for c in _flat_callback_data(kb_admin) if c != "admin_season_reset"]
+        assert admin_codes == _flat_callback_data(kb_none), token
 
 
 # ── Phase 09.3 (07, CITY-09): admin_id-vs-None parity, extended to EVERY admin-surface the
@@ -475,7 +480,10 @@ def test_settings_group_screen_module_off_admin_id_parity_all_groups(tmp_path):
         assert text_admin == text_none, token
         kb_none = asyncio.run(admin_mod.build_settings_group_keyboard(token))
         kb_admin = asyncio.run(admin_mod.build_settings_group_keyboard(token, ADMIN_ID))
-        assert _flat_callback_data(kb_admin) == _flat_callback_data(kb_none), token
+        # Phase 07.3 (02, RET-01): see the "event" group block above -- «🔄 Новый сезон» is a
+        # legitimate superadmin-only exception to this guard, not a header-parity regression.
+        admin_codes = [c for c in _flat_callback_data(kb_admin) if c != "admin_season_reset"]
+        assert admin_codes == _flat_callback_data(kb_none), token
 
 
 def test_settings_editor_screen_module_off_caller_parity(tmp_path):
