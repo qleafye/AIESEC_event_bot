@@ -179,3 +179,231 @@ def test_season_reset_cancel(tmp_path):
 
     asyncio.run(go())
 
+
+# ── Task 2: название → цифры → кодовая фраза → выполнение ───────────────────────────────────
+
+async def _seed_users(n_current: int, n_past: int, old_season: str | None):
+    for i in range(n_current):
+        await db.add_user({
+            "telegram_id": 1000 + i, "full_name": f"Current {i}",
+            "registration_date": "2026-08-18 10:00:00", "season": old_season,
+        })
+    for i in range(n_past):
+        await db.add_user({
+            "telegram_id": 2000 + i, "full_name": f"Past {i}",
+            "registration_date": "2026-08-18 10:00:00", "season": "OLD-SEASON-XYZ",
+        })
+
+
+def test_name_step_rejects_empty(tmp_path):
+    _db_ready(tmp_path)
+
+    async def go():
+        state = _new_state(ADMIN_ID)
+        await state.set_state(SeasonReset.naming)
+        await state.update_data(season_old="")
+
+        message = _FakeMessage(ADMIN_ID, "   ")
+        await admin_mod.season_reset_name_step(message, state)
+
+        assert await state.get_state() == SeasonReset.naming.state
+        data = await state.get_data()
+        assert "season_new" not in data
+        assert len(message.sent) == 1
+        assert "пуст" in message.sent[0][0].lower()
+
+    asyncio.run(go())
+
+
+def test_confirm_screen_shows_counts(tmp_path):
+    _db_ready(tmp_path)
+
+    async def go():
+        await db.set_setting("event_season", "YL'25")
+        await _seed_users(n_current=3, n_past=1, old_season="YL'25")
+
+        state = _new_state(ADMIN_ID)
+        await state.set_state(SeasonReset.naming)
+        await state.update_data(season_old="YL'25")
+
+        message = _FakeMessage(ADMIN_ID, "YL'26")
+        await admin_mod.season_reset_name_step(message, state)
+
+        assert await state.get_state() == SeasonReset.naming.state
+        assert (await state.get_data())["season_new"] == "YL'26"
+        assert len(message.sent) == 1
+        text, markup = message.sent[0]
+        assert "3" in text
+        codes = _flat_callback_data(markup)
+        assert "season_reset_go" in codes
+        assert "settings_group:event" in codes
+
+    asyncio.run(go())
+
+
+def test_passphrase_prompt_uses_old_season(tmp_path):
+    _db_ready(tmp_path)
+
+    async def go():
+        await db.set_setting("event_season", "YL'26")
+        state = _new_state(ADMIN_ID)
+        await state.set_state(SeasonReset.naming)
+        await state.update_data(season_old="YL'26", season_new="YL'27")
+
+        callback = _FakeCallback("season_reset_go", ADMIN_ID)
+        await admin_mod.season_reset_go(callback, state)
+
+        assert await state.get_state() == SeasonReset.passphrase.state
+        assert len(callback.message.sent) == 1
+        text, _ = callback.message.sent[0]
+        # html_module.escape'нутый апостроф — тот же контракт, что и у city_delete_confirm.
+        assert "YL&#x27;26" in text
+        assert (await state.get_data())["season_phrase"] == "YL'26"
+
+    asyncio.run(go())
+
+
+def test_passphrase_prompt_literal_when_no_old_season(tmp_path):
+    _db_ready(tmp_path)
+
+    async def go():
+        state = _new_state(ADMIN_ID)
+        await state.set_state(SeasonReset.naming)
+        await state.update_data(season_old="", season_new="YL'26")
+
+        callback = _FakeCallback("season_reset_go", ADMIN_ID)
+        await admin_mod.season_reset_go(callback, state)
+
+        text, _ = callback.message.sent[0]
+        assert "НОВЫЙ СЕЗОН" in text
+        assert (await state.get_data())["season_phrase"] == "НОВЫЙ СЕЗОН"
+
+    asyncio.run(go())
+
+
+def test_wrong_passphrase_changes_nothing(tmp_path):
+    _db_ready(tmp_path)
+
+    async def go():
+        await db.set_setting("event_season", "YL'25")
+        await _seed_users(n_current=2, n_past=1, old_season="YL'25")
+
+        state = _new_state(ADMIN_ID)
+        await state.set_state(SeasonReset.passphrase)
+        await state.update_data(season_old="YL'25", season_new="YL'26", season_phrase="YL'25")
+
+        message = _FakeMessage(ADMIN_ID, "неверная фраза")
+        await admin_mod.season_reset_passphrase_step(message, state)
+
+        assert "Фраза не совпала" in message.sent[0][0]
+        assert await state.get_state() is None
+        assert await db.get_setting("event_season") == "YL'25"
+
+        u_current = await db.get_user(1000)
+        u_past = await db.get_user(2000)
+        assert u_current["season"] == "YL'25"
+        assert u_past["season"] == "OLD-SEASON-XYZ"
+
+    asyncio.run(go())
+
+
+def test_correct_passphrase_marks_and_switches(tmp_path):
+    _db_ready(tmp_path)
+
+    async def go():
+        await db.set_setting("event_season", "YL'25")
+        await db.add_user({
+            "telegram_id": 3001, "full_name": "Null season",
+            "registration_date": "2026-08-18 10:00:00", "season": None,
+            "status": "approved", "payment_status": "not_paid",
+        })
+        await db.add_user({
+            "telegram_id": 3002, "full_name": "Current YL25",
+            "registration_date": "2026-08-18 10:00:00", "season": "YL'25",
+            "status": "approved", "payment_status": "paid",
+        })
+        await db.add_user({
+            "telegram_id": 3003, "full_name": "Already past",
+            "registration_date": "2026-08-18 10:00:00", "season": "OLD-SEASON-XYZ",
+            "status": "approved", "payment_status": "not_paid",
+        })
+
+        state = _new_state(ADMIN_ID)
+        await state.set_state(SeasonReset.passphrase)
+        await state.update_data(season_old="YL'25", season_new="YL'26", season_phrase="YL'25")
+
+        message = _FakeMessage(ADMIN_ID, "YL'25")
+        await admin_mod.season_reset_passphrase_step(message, state)
+
+        assert await state.get_state() is None
+        assert "Новый сезон" in message.sent[0][0]
+        assert await db.get_setting("event_season") == "YL'26"
+
+        u_null = await db.get_user(3001)
+        u_current = await db.get_user(3002)
+        u_past = await db.get_user(3003)
+        assert u_null["season"] == "YL'25"
+        assert u_current["season"] == "YL'25"
+        assert u_past["season"] == "OLD-SEASON-XYZ"
+        # status/payment_status untouched by mark_season_ended (T-073-02-04 disposition).
+        assert u_null["status"] == "approved"
+        assert u_current["payment_status"] == "paid"
+
+    asyncio.run(go())
+
+
+def test_go_denies_non_superadmin(tmp_path):
+    _db_ready(tmp_path)
+
+    async def go():
+        await db.set_setting("event_season", "YL'25")
+        state = _new_state(OTHER_ID)
+        await state.set_state(SeasonReset.naming)
+        await state.update_data(season_old="YL'25", season_new="YL'26")
+
+        callback = _FakeCallback("season_reset_go", OTHER_ID)
+        await admin_mod.season_reset_go(callback, state)
+
+        assert callback.answers[0][1] is True
+        assert await state.get_state() == SeasonReset.naming.state
+        assert await db.get_setting("event_season") == "YL'25"
+        assert callback.message.sent == []
+
+    asyncio.run(go())
+
+
+def test_passphrase_step_denies_non_superadmin(tmp_path):
+    _db_ready(tmp_path)
+
+    async def go():
+        await db.set_setting("event_season", "YL'25")
+        state = _new_state(OTHER_ID)
+        await state.set_state(SeasonReset.passphrase)
+        await state.update_data(season_old="YL'25", season_new="YL'26", season_phrase="YL'25")
+
+        message = _FakeMessage(OTHER_ID, "YL'25")
+        await admin_mod.season_reset_passphrase_step(message, state)
+
+        assert await db.get_setting("event_season") == "YL'25"
+        assert "суперадмин" in message.sent[0][0].lower()
+
+    asyncio.run(go())
+
+
+def test_stale_screen_without_state_data(tmp_path):
+    _db_ready(tmp_path)
+
+    async def go():
+        await db.set_setting("event_season", "YL'25")
+        state = _new_state(ADMIN_ID)  # no set_state, no update_data — truly empty
+
+        callback = _FakeCallback("season_reset_go", ADMIN_ID)
+        await admin_mod.season_reset_go(callback, state)
+
+        assert callback.answers[0][1] is True
+        assert "устарел" in callback.answers[0][0].lower()
+        assert await state.get_state() is None
+        assert await db.get_setting("event_season") == "YL'25"
+
+    asyncio.run(go())
+

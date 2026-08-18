@@ -644,8 +644,12 @@ def test_group_text_and_keyboard_module_off_byte_identical_to_admin_id_none(tmp_
 
     kb_none = asyncio.run(admin_mod.build_settings_group_keyboard("event"))
     kb_id = asyncio.run(admin_mod.build_settings_group_keyboard("event", ADMIN_ID))
-    assert [b.callback_data for row in kb_none.inline_keyboard for b in row] == \
-        [b.callback_data for row in kb_id.inline_keyboard for b in row]
+    # Phase 07.3 (02, RET-01): «🔄 Новый сезон» is a legitimate superadmin-only exception to
+    # this per-city-header parity guard (ADMIN_ID here IS a superadmin, config.ADMIN_IDS) --
+    # it depends on admin identity, not on the cities-module/header state this guard protects.
+    id_codes = [b.callback_data for row in kb_id.inline_keyboard for b in row
+                if b.callback_data != "admin_season_reset"]
+    assert [b.callback_data for row in kb_none.inline_keyboard for b in row] == id_codes
 
 
 def test_bound_manager_full_scenario_sees_only_own_city(tmp_path):

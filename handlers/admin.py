@@ -80,6 +80,9 @@ from database.db import (
     delete_city_row,
     count_users_by_city,
     count_tasks_by_city,
+    # Phase 07.3 (02, RET-01): «🔄 Новый сезон» wizard accessors (plan 01)
+    count_current_season_users,
+    mark_season_ended,
 )
 from aiogram.exceptions import TelegramRetryAfter, TelegramForbiddenError, TelegramBadRequest
 from services.sheets import get_existing_sheet_ids, append_rows_to_sheet, ensure_sheet_header, sync_named_worksheet, dedupe_sheet_by_id, update_status_in_sheet, bulk_update_status_in_sheet, rebuild_main_sheet, REFUSED_UNPINNED_TAB, _reset_sheet_cache, tab_row_count
@@ -2832,7 +2835,10 @@ async def city_delete_go(callback: types.CallbackQuery):
 
 @router.callback_query(F.data == "admin_season_reset")
 async def season_reset_start(callback: types.CallbackQuery, state: FSMContext):
-    if callback.from_user.id not in config.ADMIN_IDS:
+    # Positive-form idiom (byte-identical to roles_city_start/admin_city_switch) — D-01/T-08-18's
+    # structural gate forbids a bare "not in config.ADMIN_IDS" anywhere in this file.
+    is_superadmin = callback.from_user.id in config.ADMIN_IDS
+    if not is_superadmin:
         await callback.answer("Новый сезон может начать только суперадмин.", show_alert=True)
         return
     await state.set_data({})
@@ -2857,6 +2863,100 @@ async def season_reset_start(callback: types.CallbackQuery, state: FSMContext):
 async def cancel_season_reset(message: types.Message, state: FSMContext):
     await state.set_state(None)
     await message.answer("Отменено. Сезон не менялся.", reply_markup=ReplyKeyboardRemove())
+
+
+@router.message(SeasonReset.naming)
+async def season_reset_name_step(message: types.Message, state: FSMContext):
+    # T-073-02-01: the gate belongs in the handler, not only the button that opened it — a
+    # message can arrive at any moment after the wizard was entered.
+    is_superadmin = message.from_user.id in config.ADMIN_IDS
+    if not is_superadmin:
+        await message.answer("Новый сезон может начать только суперадмин.")
+        return
+    new = (message.text or "").strip()
+    if not new:
+        await message.answer("Название сезона не может быть пустым. Напиши, например: YL'26")
+        return
+    if len(new) > 64:
+        await message.answer("Слишком длинно. Уложись в 64 символа.")
+        return
+    await state.update_data(season_new=new)
+    data = await state.get_data()
+    old = data.get("season_old") or ""
+    n = await count_current_season_users(old or None)
+    kb = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="➡️ Продолжить", callback_data="season_reset_go")],
+        [InlineKeyboardButton(text="← Отмена", callback_data="settings_group:event")],
+    ])
+    # State stays SeasonReset.naming — the next step is a tap (season_reset_go), not text; a
+    # repeated text message here just re-renders this same screen with the new name.
+    await message.answer(
+        f"🔄 <b>Начать сезон «{html_module.escape(new)}»?</b>\n\n"
+        f"• {n} делегатов текущего сезона станут «прошлыми»\n"
+        "• статусы, монеты и чеки не трогаем, база не чистится\n"
+        "• они смогут обновить анкету по /start\n\n"
+        "Продолжить?",
+        parse_mode="HTML",
+        reply_markup=kb,
+    )
+
+
+@router.callback_query(F.data == "season_reset_go")
+async def season_reset_go(callback: types.CallbackQuery, state: FSMContext):
+    # T-073-02-01: re-checked again, T-073-02-05: re-checked against a possibly-stale screen.
+    is_superadmin = callback.from_user.id in config.ADMIN_IDS
+    if not is_superadmin:
+        await callback.answer("Новый сезон может начать только суперадмин.", show_alert=True)
+        return
+    data = await state.get_data()
+    new = data.get("season_new")
+    if not new:
+        await callback.answer("Экран устарел, начни заново", show_alert=True)
+        await state.set_state(None)
+        return
+    old = data.get("season_old") or ""
+    phrase = old if old else "НОВЫЙ СЕЗОН"
+    await state.update_data(season_phrase=phrase)
+    await callback.message.answer(
+        f"Чтобы подтвердить, напиши: <code>{html_module.escape(phrase)}</code>",
+        parse_mode="HTML",
+        reply_markup=get_cancel_kb(),
+    )
+    await state.set_state(SeasonReset.passphrase)
+    await callback.answer()
+
+
+@router.message(SeasonReset.passphrase)
+async def season_reset_passphrase_step(message: types.Message, state: FSMContext):
+    # T-073-02-01: re-checked a third time — this is the step that actually executes the write.
+    is_superadmin = message.from_user.id in config.ADMIN_IDS
+    if not is_superadmin:
+        await message.answer("Новый сезон может начать только суперадмин.")
+        return
+    data = await state.get_data()
+    phrase = (data.get("season_phrase") or "").strip()
+    typed = (message.text or "").strip()
+    if typed != phrase:
+        await message.answer("Фраза не совпала, ничего не сделано.")
+        await state.set_state(None)
+        return
+    old = data.get("season_old") or ""
+    new = data.get("season_new") or ""
+    # Order matters (T-073-02-02): mark old-season rows FIRST, while event_season still reads
+    # as the old value, then flip event_season last — makes the switch atomic from a delegate's
+    # point of view.
+    affected = await mark_season_ended(old or None)
+    await set_setting("event_season", new)
+    logger.warning(
+        f"SEASON RESET by admin {message.from_user.id}: '{old}' -> '{new}', marked {affected} users"
+    )
+    await message.answer(
+        f"✅ Новый сезон: <b>{html_module.escape(new)}</b>\nПрошлыми отмечены: {affected}\n\n"
+        "Статусы, монеты и чеки не тронуты.",
+        parse_mode="HTML",
+        reply_markup=ReplyKeyboardRemove(),
+    )
+    await state.set_state(None)
 
 
 @router.callback_query(F.data == "admin_city_switch")
