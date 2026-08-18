@@ -83,6 +83,8 @@ from database.db import (
     # Phase 07.3 (02, RET-01): «🔄 Новый сезон» wizard accessors (plan 01)
     count_current_season_users,
     mark_season_ended,
+    # Phase 07.3 (05, RET-03): менеджерские поверхности повторного делегата
+    get_returning_count,
 )
 from aiogram.exceptions import TelegramRetryAfter, TelegramForbiddenError, TelegramBadRequest
 from services.sheets import get_existing_sheet_ids, append_rows_to_sheet, ensure_sheet_header, sync_named_worksheet, dedupe_sheet_by_id, update_status_in_sheet, bulk_update_status_in_sheet, rebuild_main_sheet, REFUSED_UNPINNED_TAB, _reset_sheet_cache, tab_row_count
@@ -304,6 +306,11 @@ async def render_stats_text() -> str:
 
     for i, (uni, count) in enumerate(top_unis, 1):
         text += f"{i}. {html_module.escape(str(uni))} — {count}\n"
+
+    # Phase 07.3 (05, RET-03): счётчик повторных делегатов — глобальный, без городского
+    # разреза (CONTEXT.md блок C: «одна строка»), поэтому строка идёт ДО опционального блока
+    # «🏙 По городам», а не внутри if await cities_module_on().
+    text += f"🔁 Повторных: {await get_returning_count()}\n"
 
     # WR-06: `and CITIES` — с пустым реестром (битый EVENT_CITIES в .env) `normalize_city`
     # отдаёт литерал "msk", которого в CITIES нет: цикл рендера не выводил НИ ОДНОЙ строки
@@ -4662,6 +4669,17 @@ def _render_application_card(user: dict, position: int, total: int, city_label_t
             "short": "⚡ Трек: краткая анкета (акция)",
         }.get(track, f"🎉 Трек: {html_module.escape(str(track))}")
         lines.append(track_label)
+    # Phase 07.3 (05, RET-03): prev_season — сырая строка из БД, пришедшая изначально из
+    # текстовой настройки event_season (см. threat T-073-05-01) — обязана пройти то же
+    # экранирование, что и неопознанный track выше. Служебный литерал "legacy" (плана 01/04,
+    # означает «регистрация до эпохи сезонов») менеджеру не показываем текстом — CLAUDE.md
+    # запрещает показывать коды человеку (T-073-05-02).
+    prev_season_raw = (user.get("prev_season") or "").strip()
+    if prev_season_raw:
+        if prev_season_raw == "legacy":
+            lines.append("🔁 Повторный: был(а) на прошлом событии")
+        else:
+            lines.append(f"🔁 Повторный: был(а) в {html_module.escape(prev_season_raw)}")
     edu = esc(user.get("university")) or esc(user.get("education_status"))
     if edu:
         course = esc(user.get("course"))
