@@ -380,6 +380,11 @@ class FakeAdminState:
     async def update_data(self, **kwargs):
         self.data.update(kwargs)
 
+    async def clear(self):
+        # Phase 09.3 (06, CITY-09): settings_edit_start now defensively clears any stale FSM
+        # data before (re)setting it (a real aiogram FSMContext always has this method).
+        self.data = {}
+
 
 def _flat_callback_data(kb):
     return [b.callback_data for row in kb.inline_keyboard for b in row]
