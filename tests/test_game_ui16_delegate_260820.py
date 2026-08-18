@@ -8,7 +8,7 @@ from config import config
 from database import db
 from handlers import game_labels
 from handlers import user_actions as ua_mod
-from settings_schema import get_setting_typed
+from settings_schema import SETTINGS_SCHEMA, get_setting_typed
 
 
 ADMIN_ID = 931101
@@ -363,7 +363,10 @@ def test_gbal_top_shows_leaderboard(tmp_path):
     asyncio.run(db.add_coins(DELEGATE_ID, 5, source="manual"))
     callback = FakeCallback("gbal_top", user_id=DELEGATE_ID)
     asyncio.run(ua_mod.gbal_top(callback))
-    assert "Рейтинг по монетам" in callback.message.text_edited
+    # Phase 17.1 (17.1-01): заголовок рейтинга переехал в реестр -- сверяем с дефолтом
+    # реестра, а не с литералом (байт-идентичность дефолта сторожит
+    # tests/test_delegate_texts_registry_260819.py).
+    assert SETTINGS_SCHEMA["leaderboard_header_text"]["default"] in callback.message.text_edited
     assert "gbal_back" in _flat_kb_data(callback.message.edit_markup)
 
 

@@ -100,6 +100,9 @@ _EVENT_FIELDS = [
 # order stays byte-identical to the pre-migration literal tables.
 _REG_FIELD_ORDER = [
     "source_options", "reg_complete_text", "approve_text", "reject_text",
+    # Phase 17.1 (17.1-01): гейт «заявка на рассмотрении» — рядом с reject_text, обе ветки
+    # одного `_gate_decision` теперь редактируются в одном месте.
+    "pending_gate_text",
     "pending_reminder_interval", "city_options", "study_field_options",
     "goal_options", "formats_options", "university_options",
 ]
@@ -130,6 +133,11 @@ _GAME_FIELD_ORDER = [
     "game_task_list_empty", "game_task_list_page_label", "game_task_detail_status_label",
     "balance_screen_header", "balance_history_empty",
     "balance_source_manual_label", "balance_source_task_label",
+    # Phase 17.1 (17.1-01): «🏆 Рейтинг», «📜 История монет» и рефералка — хвост делегатских
+    # текстов монетного блока, доехавший до реестра.
+    "leaderboard_header_text", "leaderboard_rank_line_text", "leaderboard_empty_text",
+    "balance_history_header_text",
+    "referral_link_prompt_text", "referral_list_header_text", "referral_list_empty_text",
 ]
 
 # Phase 14 (CFG-01): group «🔧 Система» — proxy timings that used to live only in .env.

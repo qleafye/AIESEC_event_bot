@@ -351,16 +351,24 @@ def test_render_snapshot_reg(tmp_path):
 
     expected_keys = [
         "source_options", "reg_complete_text", "approve_text", "reject_text",
+        "pending_gate_text",
         "pending_reminder_interval", "city_options", "study_field_options",
         "goal_options", "formats_options", "university_options",
     ]
     expected_labels = [
         "📢 Источники", "✅ После регистрации", "🎉 После одобрения", "🚫 При отклонении",
+        "⏳ Заявка на рассмотрении",
         "🕒 Тайминг батчей заявок", "🏙 Города (варианты)", "🎯 Направления обучения (варианты)",
         "🎯 Цель участия (варианты)", "📋 Форматы форума (варианты)", "🏫 Список ВУЗов",
     ]
-    # Fresh DB -> every key unconfigured, no display-default fallback for this group.
+    # Fresh DB -> nothing configured. Phase 17.1 (17.1-01): «⏳ Заявка на рассмотрении» —
+    # первый ключ этой группы с непустым дефолтом в реестре, поэтому у него флаг
+    # «по умолчанию» (менеджер видит: текст участнику уходит, просто стандартный), а не
+    # «— не задано». У остальных ключей группы дефолта нет — флаг прежний.
+    assert "⏳ Заявка на рассмотрении: <i>по умолчанию</i>" in text
     for label in expected_labels:
+        if label == "⏳ Заявка на рассмотрении":
+            continue
         assert f"{label}: <i>— не задано</i>" in text, f"missing/wrong flag for {label}"
     # Quick 260815-3hw: short_sheet_tab moved to the new "sheets" group screen -- no longer
     # rendered here at all (see tests/test_sheet_tabs_settings_260815.py::test_render_snapshot_sheets).
