@@ -502,6 +502,12 @@ def test_registration_mode_and_reg_university_mode_equiv(tmp_path):
     _db_ready(tmp_path)
     import inspect
     import handlers.registration as reg_mod
+    # Phase 13 REFAC (13-03): process_full_name moved to handlers/reg_steps.py -- its own
+    # calls to finalize_registration/_get_enabled_steps resolve via reg_steps's OWN module
+    # globals (bound at import time), not reg_mod's, so patch targets follow the function's
+    # real home. _ask_step stays patched on reg_mod: it's called from _ask_step_or_recall,
+    # which still lives in handlers/registration.py (unmoved engine helper).
+    import handlers.reg_steps as reg_steps_mod
 
     class _Msg:
         def __init__(self, text="Иван Иванов"):
@@ -533,11 +539,11 @@ def test_registration_mode_and_reg_university_mode_equiv(tmp_path):
         async def fake_ask_step(step_key, message, state, step, total):
             ask_calls.append(step_key)
 
-        orig_finalize = reg_mod.finalize_registration
-        orig_get_enabled = reg_mod._get_enabled_steps
+        orig_finalize = reg_steps_mod.finalize_registration
+        orig_get_enabled = reg_steps_mod._get_enabled_steps
         orig_ask_step = reg_mod._ask_step
-        reg_mod.finalize_registration = fake_finalize
-        reg_mod._get_enabled_steps = fake_get_enabled
+        reg_steps_mod.finalize_registration = fake_finalize
+        reg_steps_mod._get_enabled_steps = fake_get_enabled
         reg_mod._ask_step = fake_ask_step
         try:
             # Phase 7 (07-01, Task 2): the registration_mode raw-read this loop used to pin was
@@ -552,12 +558,12 @@ def test_registration_mode_and_reg_university_mode_equiv(tmp_path):
                 await delete_setting("registration_mode")
                 if raw is not None:
                     await set_setting("registration_mode", raw)
-                await reg_mod.process_full_name(_Msg(), _St(), bot=object())
+                await reg_steps_mod.process_full_name(_Msg(), _St(), bot=object())
                 assert ask_calls, f"expected _ask_step to run regardless of raw={raw!r}"
                 assert not finalize_calls
         finally:
-            reg_mod.finalize_registration = orig_finalize
-            reg_mod._get_enabled_steps = orig_get_enabled
+            reg_steps_mod.finalize_registration = orig_finalize
+            reg_steps_mod._get_enabled_steps = orig_get_enabled
             reg_mod._ask_step = orig_ask_step
     asyncio.run(go_full_name())
 
@@ -614,7 +620,7 @@ def test_registration_mode_and_reg_university_mode_equiv(tmp_path):
     # deleted. finalize_registration's own registration_mode read (feeding _decide_status's
     # reg_mode param, still used for the full/None branch) is untouched by Phase 7 and keeps
     # the original assertion.
-    process_src = inspect.getsource(reg_mod.process_full_name)
+    process_src = inspect.getsource(reg_steps_mod.process_full_name)
     finalize_src = inspect.getsource(reg_mod.finalize_registration)
     assert 'get_setting_typed("registration_mode")' not in process_src, (
         "process_full_name should no longer read registration_mode at all (Phase 7, 07-01 Task 2 "
@@ -743,6 +749,8 @@ def test_raw_read_sites_preserved(tmp_path):
     _db_ready(tmp_path)
     import inspect
     import handlers.registration as reg_mod
+    # Phase 13 REFAC (13-03): process_full_name moved to handlers/reg_steps.py.
+    import handlers.reg_steps as reg_steps_mod
     from settings_schema import get_setting_typed
 
     # Site 1: registration_mode raw read (process_full_name) -- branch is `mode != "full"`.
@@ -774,7 +782,7 @@ def test_raw_read_sites_preserved(tmp_path):
     # Task 2) deleted the registration_mode read from process_full_name outright (the short/full
     # fork moved to _resolve_track at flow start), so asserting its presence would contradict
     # the currently-correct source.
-    process_src = inspect.getsource(reg_mod.process_full_name)
+    process_src = inspect.getsource(reg_steps_mod.process_full_name)
     finalize_src = inspect.getsource(reg_mod.finalize_registration)
     assert 'get_setting_typed("registration_mode")' not in process_src, (
         "process_full_name should no longer read registration_mode at all (Phase 7, 07-01 Task 2)"
