@@ -585,6 +585,61 @@ async def get_stats():
     return total, top_universities
 
 
+# Phase 07.3 (A): season accessors. No side effects (no Sheets, no notifications, no coins) —
+# callers (plans 02/04/05) own the ordering of "mark, then set_setting" and any fan-out.
+
+async def count_current_season_users(old_season: str | None) -> int:
+    """Delegates counted as "current season" for the «Новый сезон» confirmation screen:
+    season IS NULL (never season-stamped) OR season == old_season (the season about to end).
+    Rows with a DIFFERENT non-empty season are already past and must not be recounted."""
+    async with aiosqlite.connect(config.DB_PATH) as db:
+        async with db.execute(
+            "SELECT COUNT(*) FROM users WHERE season IS NULL OR season = ?",
+            (old_season,),
+        ) as cursor:
+            row = await cursor.fetchone()
+            return int(row[0]) if row and row[0] is not None else 0
+
+
+async def mark_season_ended(old_season: str | None) -> int:
+    """Bulk-stamps every current-season row as past. CONTEXT A: if old_season is empty, the
+    literal 'legacy' is used instead (there is no real season name to stamp rows with). Touches
+    ONLY the season column — never bot_settings (the caller sets the new event_season), never
+    status/coins/receipts/payment. Returns cursor.rowcount (affected row count)."""
+    stamp = old_season if old_season else "legacy"
+    async with aiosqlite.connect(config.DB_PATH) as db:
+        cursor = await db.execute(
+            "UPDATE users SET season = ? WHERE season IS NULL OR season = ?",
+            (stamp, old_season),
+        )
+        await db.commit()
+        return cursor.rowcount
+
+
+async def get_returning_count() -> int:
+    """Delegates with a non-empty prev_season — set only by a returning-delegate
+    re-registration (plan 04), never by a fresh add_user of a new delegate."""
+    async with aiosqlite.connect(config.DB_PATH) as db:
+        async with db.execute(
+            "SELECT COUNT(*) FROM users WHERE prev_season IS NOT NULL AND TRIM(prev_season) != ''"
+        ) as cursor:
+            row = await cursor.fetchone()
+            return int(row[0]) if row and row[0] is not None else 0
+
+
+async def reset_payment_for_new_season(telegram_id: int) -> None:
+    """CONTEXT B: a new season means a new payment cycle. add_user deliberately never touches
+    payment columns (WR-06), so a returning delegate's payment state must be reset explicitly
+    by the caller (plan 04's finalize_registration) — this accessor is that single point."""
+    async with aiosqlite.connect(config.DB_PATH) as db:
+        await db.execute(
+            "UPDATE users SET payment_status = 'not_paid', payment_option = NULL, "
+            "receipt_file_id = NULL, payment_due = NULL, paid_at = NULL WHERE telegram_id = ?",
+            (telegram_id,),
+        )
+        await db.commit()
+
+
 async def get_monthly_registration_stats():
     async with aiosqlite.connect(config.DB_PATH) as db:
         async with db.execute('''
