@@ -939,6 +939,30 @@ async def _ask_step_or_recall(step_key: str, message: types.Message, state: FSMC
     prior value all fall straight through to the real _ask_step, byte-for-byte unchanged."""
     data = await state.get_data()
     prior = data.get("_prior_answers") or {}
+    if prior and step_key == "resume":
+        # Task 2 / Pitfall 3: resume gets its OWN carve-out, checked before the generic
+        # RECALLABLE_STEPS gate ("resume" is deliberately excluded from that set) -- a raw
+        # file_id/URL is meaningless to a human, so this screen never shows the prior value,
+        # only the fact that one exists (T-073-04-02).
+        has_prior_resume = any(
+            prior.get(col) not in (None, "", "-")
+            for col in ("resume_file_id", "resume_text", "resume_url")
+        )
+        if has_prior_resume:
+            await _stamp_reg_step(step_key, message, data)
+            p = await _progress(step, total)
+            text = (
+                f"{p}У нас есть твоё резюме с прошлой регистрации. "
+                "Оставить его или прислать новое?"
+            )
+            kb = InlineKeyboardMarkup(inline_keyboard=[[
+                InlineKeyboardButton(text="📎 Оставить прошлое резюме", callback_data="recall_keep:resume"),
+                InlineKeyboardButton(text="📤 Загрузить новое", callback_data="recall_change:resume"),
+            ]])
+            await _safe_answer(message, text, reply_markup=kb)
+            await state.update_data(_recall_step=step_key, _reg_step=step, _reg_total=total)
+            await state.set_state(Registration.recall_pending)
+            return
     if prior and step_key in RECALLABLE_STEPS:
         value = prior.get(STEP_TO_COLUMN[step_key])
         if value not in (None, "", "-"):
@@ -956,6 +980,53 @@ async def _ask_step_or_recall(step_key: str, message: types.Message, state: FSMC
             await state.set_state(Registration.recall_pending)
             return
     await _ask_step(step_key, message, state, step, total)
+
+
+@router.callback_query(F.data.startswith("recall_keep:"), Registration.recall_pending)
+async def recall_keep(callback: types.CallbackQuery, state: FSMContext, bot: Bot):
+    """T-073-04-01/Pitfall 2: add_user overwrites every non-COALESCE column unconditionally --
+    "Оставить" MUST write the old value back into FSM data (except resume, a true no-op backed
+    by add_user's own COALESCE), or the delegate's confirmed answer is silently lost."""
+    step_key = callback.data.split(":", 1)[1]
+    data = await state.get_data()
+    # T-073-04-04: stale tap on a scrolled-up recall card -- same guard shape
+    # process_consent_accept uses for the analogous consent-card problem.
+    if not _consent_key_matches(step_key, data.get("_recall_step")):
+        await callback.answer()
+        return
+    await callback.answer("✅ Оставили")
+    try:
+        await callback.message.edit_reply_markup(reply_markup=None)
+    except Exception:
+        pass
+    if step_key != "resume":
+        column = STEP_TO_COLUMN[step_key]
+        prior = data.get("_prior_answers") or {}
+        value = prior.get(column)
+        await state.update_data(**{column: value})
+    # else: resume_file_id/resume_text/resume_url are left untouched in `data` -- add_user's
+    # COALESCE (database/db.py) preserves whatever the prior row already had.
+    tap_message = callback.message.model_copy(update={"from_user": callback.from_user})
+    await _advance(step_key, tap_message, state, bot)
+
+
+@router.callback_query(F.data.startswith("recall_change:"), Registration.recall_pending)
+async def recall_change(callback: types.CallbackQuery, state: FSMContext):
+    step_key = callback.data.split(":", 1)[1]
+    data = await state.get_data()
+    if not _consent_key_matches(step_key, data.get("_recall_step")):
+        await callback.answer()
+        return
+    await callback.answer()
+    try:
+        await callback.message.edit_reply_markup(reply_markup=None)
+    except Exception:
+        pass
+    tap_message = callback.message.model_copy(update={"from_user": callback.from_user})
+    # Direct call to the REAL _ask_step, never the wrapper -- routing this through
+    # _ask_step_or_recall would show the recall screen again for the very step the delegate
+    # just chose to change, looping forever.
+    await _ask_step(step_key, tap_message, state, data.get("_reg_step", 1), data.get("_reg_total", 1))
 
 
 @router.message(Registration.recall_pending)
