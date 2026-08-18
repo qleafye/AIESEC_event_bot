@@ -93,9 +93,11 @@ def test_init_db_twice_is_idempotent(tmp_path):
 
 
 def test_game_settings_schema_has_nine_keys_in_game_group():
+    # Quick 260819-gtl added two more keys ("game_task_title_prompt", "game_task_photo_prompt")
+    # -- 11. Test name kept for git-blame continuity.
     import settings_schema as s
     keys = [k for k, v in s.SETTINGS_SCHEMA.items() if v["group"] == "game"]
-    assert len(keys) == 9
+    assert len(keys) == 11
     for k in keys:
         assert s.SETTINGS_SCHEMA[k]["default"] not in (None, "")
 
