@@ -187,14 +187,18 @@ def test_settings_city_list_header_shows_global_or_default(tmp_path):
     assert "по умолчанию" in cb.message.text
 
 
-def test_landing_shows_percity_button_only_when_module_on(tmp_path):
+def test_landing_never_shows_percity_picker_button_for_registration_mode(tmp_path):
+    """Phase 09.3-04 (CITY-09): the picker shortcut («🏙 Форма по городам» ->
+    settings_city:registration_mode) is gone permanently -- registration_mode is now edited
+    per-city through the admin-panel header toggle (tests/test_regmode_header_093.py), never
+    through this picker, module on or off, with or without a header selected."""
     _admin_ready(tmp_path)
     kb_off = asyncio.run(admin_mod.build_settings_keyboard())
     assert "settings_city:registration_mode" not in _flat_callback_data(kb_off)
 
     _enable_cities()
     kb_on = asyncio.run(admin_mod.build_settings_keyboard())
-    assert "settings_city:registration_mode" in _flat_callback_data(kb_on)
+    assert "settings_city:registration_mode" not in _flat_callback_data(kb_on)
 
 
 def test_superadmin_sees_all_cities_in_picker(tmp_path):

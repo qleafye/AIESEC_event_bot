@@ -372,6 +372,12 @@ ADMIN_CAPS: dict[str, str] = {
     "settings_group:*": "settings",
     "settings_group_noop": "settings",
     "settings_photo:*": "settings",
+    # Phase 09.3 (04, CITY-09): header-scoped registration-mode reset — same right as every
+    # other settings_* screen, never a separate capability. "settings_regmode_reset" does not
+    # swallow "settings_regmode_reset_go:*" (exact-match vs prefix, same shape already
+    # documented for "roles_cap:*"/"roles_caps:*" above).
+    "settings_regmode_reset": "settings",
+    "settings_regmode_reset_go:*": "settings",
     # Quick 260815-3hw (Task 3): confirm-gate on overwriting an existing Google Sheets tab.
     "sheets_tab_confirm": "settings",
     "sheets_tab_cancel": "settings",
