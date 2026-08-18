@@ -426,3 +426,15 @@ def test_admin_screens_have_no_percity_rows_when_module_off(tmp_path):
     for token in ("event", "reg"):
         text = asyncio.run(admin_mod.render_settings_group_text(token))
         assert " · 🏙" not in text, token
+
+    # Phase 09.3 (05, CITY-09): group screen now resolves the header, but module off ->
+    # admin_selected_city collapses to None regardless of who's asking -- an admin_id call
+    # must produce the SAME text as the admin_id=None call above, not just the same absence
+    # of the "🏙 N" marker.
+    for token in ("event", "reg"):
+        text_none = asyncio.run(admin_mod.render_settings_group_text(token))
+        text_admin = asyncio.run(admin_mod.render_settings_group_text(token, ADMIN_ID))
+        assert text_admin == text_none, token
+        kb_none = asyncio.run(admin_mod.build_settings_group_keyboard(token))
+        kb_admin = asyncio.run(admin_mod.build_settings_group_keyboard(token, ADMIN_ID))
+        assert _flat_callback_data(kb_admin) == _flat_callback_data(kb_none), token
