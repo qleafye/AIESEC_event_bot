@@ -712,10 +712,9 @@ async def _ask_step_or_recall(step_key: str, message: types.Message, state: FSMC
         if has_prior_resume:
             await _stamp_reg_step(step_key, message, data)
             p = await _progress(step, total)
-            text = (
-                f"{p}У нас есть твоё резюме с прошлой регистрации. "
-                "Оставить его или прислать новое?"
-            )
+            # Phase 17.1 (17.1-02): текст развилки — из реестра (recall_resume_prompt_text);
+            # префикс прогресса по-прежнему приклеивает бот.
+            text = f"{p}{await get_setting_typed('recall_resume_prompt_text')}"
             kb = InlineKeyboardMarkup(inline_keyboard=[[
                 InlineKeyboardButton(text="📎 Оставить прошлое резюме", callback_data="recall_keep:resume"),
                 InlineKeyboardButton(text="📤 Загрузить новое", callback_data="recall_change:resume"),
@@ -731,7 +730,10 @@ async def _ask_step_or_recall(step_key: str, message: types.Message, state: FSMC
             p = await _progress(step, total)
             label = dropout_step_label(step_key)
             display = _recall_display(step_key, value)
-            text = f"{p}<b>{label}</b>\n\nПрошлый ответ: <b>{display}</b>\n\nОставить или изменить?"
+            # Phase 17.1 (17.1-02): экран «прошлый ответ» — из реестра. Подстановка цепочкой
+            # .replace, не .format: текст менеджера может содержать посторонние {}.
+            tpl = await get_setting_typed("recall_generic_prompt_text")
+            text = p + tpl.replace("{label}", str(label)).replace("{display}", str(display))
             kb = InlineKeyboardMarkup(inline_keyboard=[[
                 InlineKeyboardButton(text="✅ Оставить", callback_data=f"recall_keep:{step_key}"),
                 InlineKeyboardButton(text="✏️ Изменить", callback_data=f"recall_change:{step_key}"),
@@ -1651,8 +1653,9 @@ async def cmd_start(message: types.Message, state: FSMContext, bot: Bot, command
         kb = InlineKeyboardMarkup(inline_keyboard=[[
             InlineKeyboardButton(text="\U0001f680 Обновить анкету", callback_data="rereg_start")
         ]])
+        # Phase 17.1 (17.1-02): CTA под баннером — из реестра, как и сам баннер выше.
         await message.answer(
-            "Хочешь участвовать снова? Обновим анкету — прошлые ответы предложу оставить.",
+            await get_setting_typed("start_returning_cta_text"),
             reply_markup=kb,
         )
         # The tap on rereg_start arrives as a SEPARATE update, after this /start's local

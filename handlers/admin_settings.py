@@ -86,6 +86,9 @@ _EVENT_FIELD_ORDER = [
     "event_date", "event_time", "event_place_name", "event_place_address",
     "contact_person", "contact_vk", "contact_tg", "start_text", "start_text_registered",
     "start_text_returning",
+    # Phase 17.1 (17.1-02): recall/возвращение — CTA под баннером прошлого сезона и два
+    # экрана «прошлый ответ» анкеты, рядом со start_text_returning (то же «возвращение»).
+    "start_returning_cta_text", "recall_resume_prompt_text", "recall_generic_prompt_text",
     "event_name", "event_season", "event_type",
 ]
 _EVENT_FIELDS = [
@@ -109,6 +112,12 @@ _REG_FIELD_ORDER = [
 _PAY_FIELD_ORDER = [
     "payment_options", "payment_requisites", "payment_requisites_by_lc",
     "payment_deadline", "payment_reminder_text", "payment_overdue_text", "penalty_schedule",
+    # Phase 17.1 (17.1-02): делегатские экраны платёжного потока (handlers/payment.py) —
+    # в порядке, в котором делегат их видит: выбор варианта → экран оплаты → «оплачу позже»
+    # → «чек получен».
+    "payment_option_picker_header_text", "payment_details_template_text",
+    "payment_pay_later_text", "payment_pay_later_menu_hint_text",
+    "payment_receipt_received_text",
 ]
 _PARTY_FIELD_ORDER = [
     "party_closed_text", "approve_text__party",
