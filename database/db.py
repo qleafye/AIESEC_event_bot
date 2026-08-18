@@ -261,6 +261,14 @@ async def init_db():
         await _ensure_column(db, "users", "event_city", "TEXT")
         await _ensure_column(db, "reg_started", "event_city", "TEXT")
 
+        # Phase 07.3 (A): season as a data entity — additive, idempotent; NO backfill/DEFAULT.
+        # NULL means "registered before seasons existed" (same discipline as event_city above).
+        # season: written by add_user on every registration (overwritten unconditionally).
+        # prev_season: set only on a returning-delegate re-registration (plan 04) — the season
+        # the delegate was previously registered under, shown on the moderation card (plan 05).
+        await _ensure_column(db, "users", "season", "TEXT")
+        await _ensure_column(db, "users", "prev_season", "TEXT")
+
         # Phase 9 (GAME-01/02/03): task model + submission queue. Tasks are real rows (not a
         # serialized list in bot_settings) — D-07/D-06 audience/second-axis extensions land as
         # one `_ensure_column` later, never a storage rewrite. `deadline_at` is stored in the
@@ -380,8 +388,8 @@ async def add_user(data: dict):
                 payment_status, payment_option, receipt_file_id, payment_due, paid_at,
                 arrival_date, birth_date, study_field, goal, formats, vk_username,
                 transport, payment_plan_date, bed_sharing, bed_partner, participant_type,
-                alumni_status, event_city
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                alumni_status, event_city, season, prev_season
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             ON CONFLICT(telegram_id) DO UPDATE SET
                 username=excluded.username,
                 full_name=excluded.full_name,
@@ -442,7 +450,12 @@ async def add_user(data: dict):
                 bed_partner=excluded.bed_partner,
                 participant_type=excluded.participant_type,
                 alumni_status=excluded.alumni_status,
-                event_city=excluded.event_city
+                event_city=excluded.event_city,
+                -- Phase 07.3 (A): unconditional overwrite (not COALESCE) — a new registration
+                -- always writes the CURRENT event_season; prev_season is only ever non-NULL when
+                -- the caller (plan 04's finalize_registration) explicitly passes it.
+                season=excluded.season,
+                prev_season=excluded.prev_season
         ''', (
             data['telegram_id'],
             data.get('username'),
@@ -504,6 +517,8 @@ async def add_user(data: dict):
             data.get('participant_type', 'full'),
             data.get('alumni_status'),
             data.get('event_city'),
+            data.get('season'),
+            data.get('prev_season'),
         ))
         await db.commit()
 
