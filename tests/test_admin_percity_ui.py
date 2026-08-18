@@ -362,39 +362,44 @@ def test_bound_manager_refused_on_other_city_clear_go(tmp_path):
 
 
 # ══════════════════════════════════════════════════════════════════════════════════════════
-# Task 3: group-screen «🏙 N» summary + full synthetic bound-manager scenario
+# Task 3 / Phase 09.3-05 (CITY-09): group screen relative to the header — «🏙 N» summary now
+# lives in «все города» mode only; header = city switches the per-row flag to «своё»/«как
+# везде» instead. Same invariants as before the header model, just re-pointed at the mode
+# where they actually apply (see plan 05's Task 2 read_first).
 # ══════════════════════════════════════════════════════════════════════════════════════════
 
 def test_group_text_byte_identical_when_module_off(tmp_path):
     _admin_ready(tmp_path)
-    text_off = asyncio.run(admin_mod.render_settings_group_text("event"))
+    text_off = asyncio.run(admin_mod.render_settings_group_text("event", ADMIN_ID))
     assert "🏙" not in text_off
 
 
-def test_group_text_shows_override_count_mark(tmp_path):
+def test_group_text_shows_override_count_mark_in_all_cities_mode(tmp_path):
     _admin_ready(tmp_path)
     _enable_cities()
-    text_before = asyncio.run(admin_mod.render_settings_group_text("event"))
+    asyncio.run(cities.set_admin_city(ADMIN_ID, cities.ALL_CITIES))
+    text_before = asyncio.run(admin_mod.render_settings_group_text("event", ADMIN_ID))
     start_line_before = [ln for ln in text_before.splitlines() if ln.startswith("💬 Приветствие")][0]
     assert "🏙" not in start_line_before
 
     asyncio.run(db.set_setting(cities.per_city_key("start_text", "spb"), "Питерский текст"))
-    text_after = asyncio.run(admin_mod.render_settings_group_text("event"))
+    text_after = asyncio.run(admin_mod.render_settings_group_text("event", ADMIN_ID))
     start_line_after = [ln for ln in text_after.splitlines() if ln.startswith("💬 Приветствие")][0]
     assert "🏙 1" in start_line_after
 
     asyncio.run(db.set_setting(cities.per_city_key("start_text", "tyumen"), "Тюменский текст"))
-    text_after2 = asyncio.run(admin_mod.render_settings_group_text("event"))
+    text_after2 = asyncio.run(admin_mod.render_settings_group_text("event", ADMIN_ID))
     start_line_after2 = [ln for ln in text_after2.splitlines() if ln.startswith("💬 Приветствие")][0]
     assert "🏙 2" in start_line_after2
 
 
-def test_group_text_flags_unchanged_alongside_mark(tmp_path):
+def test_group_text_flags_unchanged_alongside_mark_in_all_cities_mode(tmp_path):
     _admin_ready(tmp_path)
     _enable_cities()
+    asyncio.run(cities.set_admin_city(ADMIN_ID, cities.ALL_CITIES))
     asyncio.run(db.set_setting("start_text", "Общий текст"))
     asyncio.run(db.set_setting(cities.per_city_key("start_text", "spb"), "Питерский текст"))
-    text = asyncio.run(admin_mod.render_settings_group_text("event"))
+    text = asyncio.run(admin_mod.render_settings_group_text("event", ADMIN_ID))
     line = [ln for ln in text.splitlines() if ln.startswith("💬 Приветствие")][0]
     assert "✏️ задано" in line
     assert "🏙 1" in line
@@ -404,6 +409,99 @@ def test_render_settings_group_text_uses_registry_helpers():
     import inspect
     src = inspect.getsource(admin_mod.render_settings_group_text)
     assert "city_override_codes" in src and "cities_module_on" in src
+
+
+# ── Новые случаи (план 05, CONTEXT B): экран группы относительно шапки = город ─────────────
+
+def test_group_text_header_first_line_at_city(tmp_path):
+    _admin_ready(tmp_path)
+    _enable_cities()
+    asyncio.run(cities.set_admin_city(ADMIN_ID, "spb"))
+    text = asyncio.run(admin_mod.render_settings_group_text("event", ADMIN_ID))
+    spb_label = asyncio.run(cities.city_label("spb"))
+    assert text.splitlines()[0] == f"🏙 {spb_label}"
+
+
+def test_group_text_own_mark_when_city_has_override(tmp_path):
+    _admin_ready(tmp_path)
+    _enable_cities()
+    asyncio.run(cities.set_admin_city(ADMIN_ID, "spb"))
+    asyncio.run(db.set_setting(cities.per_city_key("start_text", "spb"), "Питерский текст"))
+
+    text = asyncio.run(admin_mod.render_settings_group_text("event", ADMIN_ID))
+    line = [ln for ln in text.splitlines() if ln.startswith("💬 Приветствие")][0]
+    assert "✏️ своё" in line
+    assert "🏙" not in line  # no override-count suffix on the header-scoped row
+
+
+def test_group_text_as_everywhere_word_when_no_own_and_global_set(tmp_path):
+    _admin_ready(tmp_path)
+    _enable_cities()
+    asyncio.run(cities.set_admin_city(ADMIN_ID, "spb"))
+    asyncio.run(db.set_setting("start_text", "Общий текст"))
+
+    text = asyncio.run(admin_mod.render_settings_group_text("event", ADMIN_ID))
+    line = [ln for ln in text.splitlines() if ln.startswith("💬 Приветствие")][0]
+    assert "как везде" in line
+    assert "задано" in line
+    assert "✏️ своё" not in line
+
+
+def test_group_text_as_everywhere_default_word_when_no_own_and_no_global(tmp_path, monkeypatch):
+    _admin_ready(tmp_path)
+    _enable_cities()
+    asyncio.run(cities.set_admin_city(ADMIN_ID, "spb"))
+    # No real per_city key ships with a display default (_SETTINGS_DISPLAY_DEFAULTS) today --
+    # exercise the ladder's third rung directly, same as _SETTINGS_DISPLAY_DEFAULTS's own
+    # dict shape (registry-derived, not hardcoded here).
+    monkeypatch.setitem(admin_mod._SETTINGS_DISPLAY_DEFAULTS, "start_text", "Текст по умолчанию")
+
+    text = asyncio.run(admin_mod.render_settings_group_text("event", ADMIN_ID))
+    line = [ln for ln in text.splitlines() if ln.startswith("💬 Приветствие")][0]
+    assert "как везде" in line
+    assert "по умолчанию" in line
+
+
+def test_group_text_non_per_city_key_shows_plain_global_flag_at_header_city(tmp_path):
+    _admin_ready(tmp_path)
+    _enable_cities()
+    asyncio.run(cities.set_admin_city(ADMIN_ID, "spb"))
+    asyncio.run(db.set_setting("event_name", "Форум"))
+
+    text = asyncio.run(admin_mod.render_settings_group_text("event", ADMIN_ID))
+    line = [ln for ln in text.splitlines() if ln.startswith("🎪 Название меро")][0]
+    assert "✏️ задано" in line
+    assert "своё" not in line and "как везде" not in line
+
+
+def test_group_keyboard_marks_city_only_override_as_configured(tmp_path):
+    _admin_ready(tmp_path)
+    _enable_cities()
+    asyncio.run(cities.set_admin_city(ADMIN_ID, "spb"))
+    asyncio.run(db.set_setting(cities.per_city_key("start_text", "spb"), "Питерский текст"))
+
+    kb = asyncio.run(admin_mod.build_settings_group_keyboard("event", ADMIN_ID))
+    rows_before_noop = []
+    for row in kb.inline_keyboard:
+        if any(b.callback_data == "settings_group_noop" for b in row):
+            break
+        rows_before_noop.append(row)
+    configured_texts = [b.text for row in rows_before_noop for b in row]
+    assert any("Приветствие" in t for t in configured_texts)
+
+
+def test_group_text_and_keyboard_module_off_byte_identical_to_admin_id_none(tmp_path):
+    """admin_id passed but the cities module is off -> byte-identical to the admin_id=None
+    call (module-off collapses admin_selected_city to None regardless of who's asking)."""
+    _admin_ready(tmp_path)
+    text_none = asyncio.run(admin_mod.render_settings_group_text("event"))
+    text_id = asyncio.run(admin_mod.render_settings_group_text("event", ADMIN_ID))
+    assert text_none == text_id
+
+    kb_none = asyncio.run(admin_mod.build_settings_group_keyboard("event"))
+    kb_id = asyncio.run(admin_mod.build_settings_group_keyboard("event", ADMIN_ID))
+    assert [b.callback_data for row in kb_none.inline_keyboard for b in row] == \
+        [b.callback_data for row in kb_id.inline_keyboard for b in row]
 
 
 def test_bound_manager_full_scenario_sees_only_own_city(tmp_path):
