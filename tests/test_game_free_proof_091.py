@@ -99,7 +99,9 @@ def test_game_settings_schema_has_nine_keys_in_game_group():
     # "game_task_photo_prompt") -- 13. Test name kept for git-blame continuity.
     import settings_schema as s
     keys = [k for k, v in s.SETTINGS_SCHEMA.items() if v["group"] == "game"]
-    assert len(keys) == 25  # +12 ключей 16-01 (RU-категории, тексты списка/карточки/баланса)
+    # Phase 17.1 (17.1-01): +7 ключей хвоста монетного блока -- рейтинг (3), заголовок
+    # истории (1), рефералка (3).
+    assert len(keys) == 32  # +12 ключей 16-01 (RU-категории, тексты списка/карточки/баланса)
     for k in keys:
         assert s.SETTINGS_SCHEMA[k]["default"] not in (None, "")
 
