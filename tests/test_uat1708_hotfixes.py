@@ -24,6 +24,7 @@ from config import config
 from database import db
 import cities
 from handlers import admin as admin_mod
+from handlers import admin_settings  # Phase 13 (13-06): settings moved out of admin.py
 from handlers import admin_gamification
 from handlers import registration as reg_mod
 from handlers.admin_caps import CapabilityMiddleware, required_capability
@@ -383,9 +384,9 @@ def test_start_text_registered_key_in_registry_and_admin_screen():
     assert SETTINGS_SCHEMA["start_text_registered"]["type"] == "text"
     assert SETTINGS_SCHEMA["start_text_registered"]["group"] == "event"
 
-    assert "start_text_registered" in admin_mod._settings_group_keys("event")
-    assert "start_text_registered" in admin_mod._EVENT_FIELD_ORDER
-    assert "start_text_registered" in admin_mod.HTML_SETTINGS
+    assert "start_text_registered" in admin_settings._settings_group_keys("event")
+    assert "start_text_registered" in admin_settings._EVENT_FIELD_ORDER
+    assert "start_text_registered" in admin_settings.HTML_SETTINGS
 
 
 # ═══════════════════════════════════════════════════════════════════════════════════════════

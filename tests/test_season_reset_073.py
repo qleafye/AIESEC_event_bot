@@ -21,6 +21,7 @@ from aiogram.types import InlineKeyboardMarkup, ReplyKeyboardRemove
 from config import config
 from database import db
 from handlers import admin as admin_mod
+from handlers import admin_settings  # Phase 13 (13-06): settings moved out of admin.py
 from handlers import admin_cities  # Phase 13 (13-05): cities/season screens moved here
 from handlers.admin_caps import ADMIN_CAPS
 from handlers.states import SeasonReset
@@ -105,10 +106,10 @@ def test_season_reset_caps_registered():
 def test_season_reset_button_hidden_for_non_superadmin(tmp_path):
     _db_ready(tmp_path)
 
-    kb = asyncio.run(admin_mod.build_settings_group_keyboard("event", admin_id=OTHER_ID))
+    kb = asyncio.run(admin_settings.build_settings_group_keyboard("event", admin_id=OTHER_ID))
     assert "admin_season_reset" not in _flat_callback_data(kb)
 
-    kb_admin = asyncio.run(admin_mod.build_settings_group_keyboard("event", admin_id=ADMIN_ID))
+    kb_admin = asyncio.run(admin_settings.build_settings_group_keyboard("event", admin_id=ADMIN_ID))
     codes = _flat_callback_data(kb_admin)
     assert codes.count("admin_season_reset") == 1
 
@@ -116,7 +117,7 @@ def test_season_reset_button_hidden_for_non_superadmin(tmp_path):
 def test_season_reset_button_absent_without_admin_id(tmp_path):
     _db_ready(tmp_path)
     # Backward compatibility with old call sites that never pass admin_id at all.
-    kb = asyncio.run(admin_mod.build_settings_group_keyboard("event"))
+    kb = asyncio.run(admin_settings.build_settings_group_keyboard("event"))
     assert "admin_season_reset" not in _flat_callback_data(kb)
 
 

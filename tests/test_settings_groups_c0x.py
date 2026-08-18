@@ -11,6 +11,7 @@ import asyncio
 from config import config
 from database import db
 from handlers import admin as admin_mod
+from handlers import admin_settings  # Phase 13 (13-06): settings moved out of admin.py
 from handlers.admin_caps import required_capability
 
 
@@ -58,9 +59,9 @@ def _flat_callback_data(kb):
 # ── Task 1: coverage — every SETTINGS_FIELDS key lands in exactly one group (or leftover) ──
 
 def test_settings_groups_cover_every_field_key():
-    grouped_keys = [k for _, __, keys in admin_mod.SETTINGS_GROUPS for k in keys]
-    all_keys = [k for k, _, _ in admin_mod.SETTINGS_FIELDS]
-    leftover = admin_mod._settings_group_keys("misc")
+    grouped_keys = [k for _, __, keys in admin_settings.SETTINGS_GROUPS for k in keys]
+    all_keys = [k for k, _, _ in admin_settings.SETTINGS_FIELDS]
+    leftover = admin_settings._settings_group_keys("misc")
 
     # No duplicates within declared groups.
     assert len(grouped_keys) == len(set(grouped_keys))
@@ -80,7 +81,7 @@ def test_landing_text_has_no_inline_value_dump(tmp_path):
     long_value = "x" * 200
     asyncio.run(db.set_setting("start_text", long_value))
 
-    text = asyncio.run(admin_mod.render_settings_text())
+    text = asyncio.run(admin_settings.render_settings_text())
 
     assert ("x" * 61) not in text
     assert "…" not in text
@@ -88,7 +89,7 @@ def test_landing_text_has_no_inline_value_dump(tmp_path):
 
 def test_landing_keyboard_emits_group_nav_not_per_field(tmp_path):
     _admin_ready(tmp_path)
-    kb = asyncio.run(admin_mod.build_settings_keyboard())
+    kb = asyncio.run(admin_settings.build_settings_keyboard())
     flat = _flat_callback_data(kb)
 
     assert any(cd.startswith("settings_group:") for cd in flat)
@@ -108,8 +109,8 @@ def test_group_pay_shows_configured_and_unconfigured_flags(tmp_path):
     _admin_ready(tmp_path)
     asyncio.run(db.set_setting("payment_options", "Полный билет|5000"))
 
-    text = asyncio.run(admin_mod.render_settings_group_text("pay"))
-    kb = asyncio.run(admin_mod.build_settings_group_keyboard("pay"))
+    text = asyncio.run(admin_settings.render_settings_group_text("pay"))
+    kb = asyncio.run(admin_settings.build_settings_group_keyboard("pay"))
     flat = _flat_callback_data(kb)
 
     assert "✏️ задано" in text
@@ -120,7 +121,7 @@ def test_group_pay_shows_configured_and_unconfigured_flags(tmp_path):
 
 def test_group_event_contains_photo_and_file_callbacks(tmp_path):
     _admin_ready(tmp_path)
-    kb = asyncio.run(admin_mod.build_settings_group_keyboard("event"))
+    kb = asyncio.run(admin_settings.build_settings_group_keyboard("event"))
     flat = _flat_callback_data(kb)
 
     assert any(cd.startswith("settings_photo:") for cd in flat)
@@ -131,7 +132,7 @@ def test_group_event_contains_photo_and_file_callbacks(tmp_path):
 def test_group_keyboard_collapses_unconfigured_under_noop_header(tmp_path):
     _admin_ready(tmp_path)
     # pay group has 7 keys, none set -> all unconfigured -> noop header must appear.
-    kb = asyncio.run(admin_mod.build_settings_group_keyboard("pay"))
+    kb = asyncio.run(admin_settings.build_settings_group_keyboard("pay"))
     flat = _flat_callback_data(kb)
     assert "settings_group_noop" in flat
 
@@ -139,7 +140,7 @@ def test_group_keyboard_collapses_unconfigured_under_noop_header(tmp_path):
 def test_show_settings_group_handler_renders_subscreen(tmp_path):
     _admin_ready(tmp_path)
     cb = FakeCallback("settings_group:pay")
-    asyncio.run(admin_mod.show_settings_group(cb))
+    asyncio.run(admin_settings.show_settings_group(cb))
 
     assert cb.message.edit_calls == 1
     assert "Оплата" in cb.message.text
@@ -161,7 +162,7 @@ def test_show_settings_group_is_capability_guarded():
 def test_settings_group_noop_just_answers(tmp_path):
     _admin_ready(tmp_path)
     cb = FakeCallback("settings_group_noop")
-    asyncio.run(admin_mod.settings_group_noop(cb))
+    asyncio.run(admin_settings.settings_group_noop(cb))
     assert cb.message.edit_calls == 0
     assert cb.answers
 
@@ -237,8 +238,8 @@ def test_registry_coverage_event():
 def test_event_render_snapshot(tmp_path):
     _admin_ready(tmp_path)
 
-    text = asyncio.run(admin_mod.render_settings_group_text("event"))
-    kb = asyncio.run(admin_mod.build_settings_group_keyboard("event"))
+    text = asyncio.run(admin_settings.render_settings_group_text("event"))
+    kb = asyncio.run(admin_settings.build_settings_group_keyboard("event"))
     flat = _flat_callback_data(kb)
 
     # Byte-for-byte render invariant (D-16): the concrete event field labels must still
@@ -344,8 +345,8 @@ def test_registry_coverage_all_text_groups():
 
 def test_render_snapshot_reg(tmp_path):
     _admin_ready(tmp_path)
-    text = asyncio.run(admin_mod.render_settings_group_text("reg"))
-    kb = asyncio.run(admin_mod.build_settings_group_keyboard("reg"))
+    text = asyncio.run(admin_settings.render_settings_group_text("reg"))
+    kb = asyncio.run(admin_settings.build_settings_group_keyboard("reg"))
     flat = _flat_callback_data(kb)
 
     expected_keys = [
@@ -374,8 +375,8 @@ def test_render_snapshot_reg(tmp_path):
 
 def test_render_snapshot_pay(tmp_path):
     _admin_ready(tmp_path)
-    text = asyncio.run(admin_mod.render_settings_group_text("pay"))
-    kb = asyncio.run(admin_mod.build_settings_group_keyboard("pay"))
+    text = asyncio.run(admin_settings.render_settings_group_text("pay"))
+    kb = asyncio.run(admin_settings.build_settings_group_keyboard("pay"))
     flat = _flat_callback_data(kb)
 
     expected_keys = [
@@ -400,8 +401,8 @@ def test_render_snapshot_pay(tmp_path):
 
 def test_render_snapshot_party(tmp_path):
     _admin_ready(tmp_path)
-    text = asyncio.run(admin_mod.render_settings_group_text("party"))
-    kb = asyncio.run(admin_mod.build_settings_group_keyboard("party"))
+    text = asyncio.run(admin_settings.render_settings_group_text("party"))
+    kb = asyncio.run(admin_settings.build_settings_group_keyboard("party"))
     flat = _flat_callback_data(kb)
 
     # party_closed_text carries a display default (_SETTINGS_DISPLAY_DEFAULTS pre-migration ->
@@ -419,8 +420,8 @@ def test_render_snapshot_party(tmp_path):
 
 def test_render_snapshot_consent(tmp_path):
     _admin_ready(tmp_path)
-    text = asyncio.run(admin_mod.render_settings_group_text("consent"))
-    kb = asyncio.run(admin_mod.build_settings_group_keyboard("consent"))
+    text = asyncio.run(admin_settings.render_settings_group_text("consent"))
+    kb = asyncio.run(admin_settings.build_settings_group_keyboard("consent"))
     flat = _flat_callback_data(kb)
 
     assert "✅ Текст кнопки согласия: <i>— не задано</i>" in text
@@ -565,7 +566,7 @@ def test_settings_landing_text_snapshot(tmp_path):
     _admin_ready(tmp_path)
 
     # ── all-default case (fresh DB, every feature-switch unset) ──
-    text = asyncio.run(admin_mod.render_settings_text())
+    text = asyncio.run(admin_settings.render_settings_text())
 
     assert "📝 Форма регистрации: <b>⚡ Краткая</b>" in text
     assert "🎁 Бонус за регистрацию: <b>❌ Выкл</b>" in text
@@ -582,7 +583,7 @@ def test_settings_landing_text_snapshot(tmp_path):
     # ── mixed/non-default case: party_enabled="on", full_approval="auto" flips two lines ──
     asyncio.run(db.set_setting("party_enabled", "on"))
     asyncio.run(db.set_setting("full_approval", "auto"))
-    text2 = asyncio.run(admin_mod.render_settings_text())
+    text2 = asyncio.run(admin_settings.render_settings_text())
 
     assert "🎉 Трек вечеринки: <b>✅ Вкл</b>" in text2
     assert "✅ Модерация полной формы: <b>⚡ Авто</b>" in text2
@@ -594,7 +595,7 @@ def test_settings_toggle_button_snapshot(tmp_path):
     _admin_ready(tmp_path)
 
     # ── all-default case: exact button texts + callback_data, in position order ──
-    kb = asyncio.run(admin_mod.build_settings_keyboard())
+    kb = asyncio.run(admin_settings.build_settings_keyboard())
     flat_buttons = [btn for row in kb.inline_keyboard for btn in row]
     texts = [btn.text for btn in flat_buttons]
     cbs = [btn.callback_data for btn in flat_buttons]
@@ -628,7 +629,7 @@ def test_settings_toggle_button_snapshot(tmp_path):
     asyncio.run(db.set_setting("party_enabled", "on"))
     asyncio.run(db.set_setting("payment_enabled", "on"))
     asyncio.run(db.set_setting("pending_notify_mode", "instant"))
-    kb2 = asyncio.run(admin_mod.build_settings_keyboard())
+    kb2 = asyncio.run(admin_settings.build_settings_keyboard())
     flat_buttons2 = [btn for row in kb2.inline_keyboard for btn in row]
     texts2 = [btn.text for btn in flat_buttons2]
     cbs2 = [btn.callback_data for btn in flat_buttons2]
@@ -677,27 +678,27 @@ def test_toggle_current_value_equiv_across_generic_helpers(tmp_path):
     async def go():
         cases = [
             # (handler, key, raw_values, flip_fn(current) -> expected_new_val)
-            (admin_mod.toggle_full_approval, "full_approval", [None, "", "manual", "auto"],
+            (admin_settings.toggle_full_approval, "full_approval", [None, "", "manual", "auto"],
              lambda cur: "auto" if cur == "manual" else "manual"),
-            (admin_mod.toggle_short_approval, "short_approval", [None, "", "manual", "auto"],
+            (admin_settings.toggle_short_approval, "short_approval", [None, "", "manual", "auto"],
              lambda cur: "auto" if cur == "manual" else "manual"),
-            (admin_mod.toggle_party_approval, "party_approval", [None, "", "manual", "auto"],
+            (admin_settings.toggle_party_approval, "party_approval", [None, "", "manual", "auto"],
              lambda cur: "auto" if cur == "manual" else "manual"),
-            (admin_mod.toggle_payment_enabled, "payment_enabled", [None, "", "on", "off"],
+            (admin_settings.toggle_payment_enabled, "payment_enabled", [None, "", "on", "off"],
              lambda cur: "off" if cur == "on" else "on"),
-            (admin_mod.toggle_consent_enabled, "consent_enabled", [None, "", "on", "off"],
+            (admin_settings.toggle_consent_enabled, "consent_enabled", [None, "", "on", "off"],
              lambda cur: "off" if cur == "on" else "on"),
-            (admin_mod.toggle_party_enabled, "party_enabled", [None, "", "on", "off"],
+            (admin_settings.toggle_party_enabled, "party_enabled", [None, "", "on", "off"],
              lambda cur: "off" if cur == "on" else "on"),
-            (admin_mod.toggle_party_fork_question, "party_fork_question", [None, "", "on", "off"],
+            (admin_settings.toggle_party_fork_question, "party_fork_question", [None, "", "on", "off"],
              lambda cur: "off" if cur == "on" else "on"),
-            (admin_mod.toggle_payment_reminders, "payment_reminders_enabled", [None, "", "on", "off"],
+            (admin_settings.toggle_payment_reminders, "payment_reminders_enabled", [None, "", "on", "off"],
              lambda cur: "off" if cur == "on" else "on"),
-            (admin_mod.toggle_uni_mode, "reg_university_mode", [None, "", "text", "list"],
+            (admin_settings.toggle_uni_mode, "reg_university_mode", [None, "", "text", "list"],
              lambda cur: "text" if cur == "list" else "list"),
-            (admin_mod.toggle_edu_conditional, "edu_conditional", [None, "", "on", "off"],
+            (admin_settings.toggle_edu_conditional, "edu_conditional", [None, "", "on", "off"],
              lambda cur: "off" if cur == "on" else "on"),
-            (admin_mod.toggle_show_progress, "reg_show_progress", [None, "", "on", "off"],
+            (admin_settings.toggle_show_progress, "reg_show_progress", [None, "", "on", "off"],
              lambda cur: "off" if cur == "on" else "on"),
         ]
         for handler, key, raw_values, flip_fn in cases:
@@ -722,7 +723,7 @@ def test_toggle_current_value_equiv_across_generic_helpers(tmp_path):
             await db.delete_setting("registration_mode")
             if raw is not None:
                 await db.set_setting("registration_mode", raw)
-            text = await admin_mod.render_settings_text()
+            text = await admin_settings.render_settings_text()
             oracle_mode = raw or "short"
             expected_label = "📋 Полная" if oracle_mode == "full" else "⚡ Краткая"
             assert f"📝 Форма регистрации: <b>{expected_label}</b>" in text, (
@@ -739,22 +740,22 @@ def test_generic_toggle_helpers_wired_to_registry():
     pattern for reads embedded in shared/parameterized functions (06-06 precedent)."""
     import inspect
 
-    render_src = inspect.getsource(admin_mod.render_settings_text)
+    render_src = inspect.getsource(admin_settings.render_settings_text)
     assert 'get_setting_typed("registration_mode")' in render_src, (
         "render_settings_text's own registration_mode read is not wired to get_setting_typed"
     )
 
-    appr_src = inspect.getsource(admin_mod._toggle_approval_setting)
+    appr_src = inspect.getsource(admin_settings._toggle_approval_setting)
     assert "get_setting_typed(key)" in appr_src, (
         "_toggle_approval_setting is not wired to get_setting_typed"
     )
 
-    mod_src = inspect.getsource(admin_mod._toggle_module_setting)
+    mod_src = inspect.getsource(admin_settings._toggle_module_setting)
     assert "get_setting_typed(key)" in mod_src, (
         "_toggle_module_setting is not wired to get_setting_typed"
     )
 
-    val_src = inspect.getsource(admin_mod._toggle_value_setting)
+    val_src = inspect.getsource(admin_settings._toggle_value_setting)
     assert "get_setting_typed(key)" in val_src, (
         "_toggle_value_setting is not wired to get_setting_typed"
     )

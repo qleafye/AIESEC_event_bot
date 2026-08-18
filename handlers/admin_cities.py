@@ -58,7 +58,8 @@ from cities import (
 )
 from handlers.reg_schema import city_row_tab
 from handlers.admin_core import admin_keyboard_for
-from handlers.admin import router, render_settings_group_text, build_settings_group_keyboard
+from handlers.admin import router
+from handlers.admin_settings import render_settings_group_text, build_settings_group_keyboard  # Phase 13 (13-06): settings moved out of admin.py
 
 logger = logging.getLogger(__name__)
 

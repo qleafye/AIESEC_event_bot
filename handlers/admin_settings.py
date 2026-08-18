@@ -1,0 +1,1751 @@
+"""Phase 13 (13-06, REFAC-01): settings seam.
+
+`admin.py` (contiguous slice, originally lines 685-2358) moved byte-for-byte onto the SAME
+shared `admin.router` (13-02..13-05 shared-router seam-import technique) — the settings landing/
+group screens, every toggle_*/settings_toggle_* feature switch, the EditSetting wizard (photo/
+file/text/tab-confirm), consent-PDF handlers, sheets sync/rebuild, and CSV exports. Not split
+further into a second `admin_sheets.py`: the sync/rebuild and export/sheets-tab handlers are not
+mutually contiguous in the original file (sync/rebuild sits before the EditSetting message
+handlers, export/sheets-tab sits after) — a two-file split would require two separate
+seam-import insertion points to keep the 13-01 snapshot's registration order, which is not a
+clean single-position seam. Kept as one file; see 13-06-SUMMARY.md's Known Gap for the
+line-count consequence (same class as 13-04's admin_gamification.py / 13-05's admin_cities.py).
+"""
+import csv
+import io
+import html as html_module
+import logging
+
+from aiogram import F, types
+from aiogram.filters import Command, StateFilter
+from aiogram.fsm.context import FSMContext
+from aiogram.types import BufferedInputFile, InlineKeyboardButton, InlineKeyboardMarkup
+
+from config import config
+from settings_schema import SETTINGS_SCHEMA, get_setting_typed
+from database.db import (
+    get_all_users_dicts,
+    export_users_csv,
+    get_setting,
+    set_setting,
+    delete_setting,
+    get_dropout_step_stats,
+    get_staff_city,
+)
+from services.sheets import (
+    get_existing_sheet_ids,
+    append_rows_to_sheet,
+    ensure_sheet_header,
+    sync_named_worksheet,
+    rebuild_main_sheet,
+    REFUSED_UNPINNED_TAB,
+    _reset_sheet_cache,
+    tab_row_count,
+)
+from handlers.states import EditSetting
+from keyboards.builders import MENU_BUTTONS
+from handlers.reg_schema import (
+    REG_FLOW,
+    active_sheet_headers,
+    set_sheet_schema,
+    _sheet_value_map,
+    dropout_step_label,
+    city_row_tab,
+    incomplete_city_batches,
+)
+from cities import (
+    city_label,
+    cities_module_on,
+    admin_selected_city,
+    city_codes,
+    normalize_city,
+    ALL_CITIES,
+    is_per_city,
+    per_city_key,
+    city_override_codes,
+    get_setting_typed_for_city,
+    PER_CITY_SEP,
+)
+from handlers.admin_core import admin_keyboard_for, _admin_city_view
+from handlers.admin import router
+
+logger = logging.getLogger(__name__)
+
+# INVARIANT (13-01 cap-test, extended by 13-04 to scan every handlers/admin*.py file): every
+# `@router.*` decorator below MUST fit on ONE line.
+
+
+# --- Settings ---
+
+# REG-03: the event-group text/enum entries are GENERATED from settings_schema.SETTINGS_SCHEMA
+# (single source of truth, D-13) instead of hand-written literals. Order is pinned explicitly
+# (not a dict-order assumption) so the settings screen stays byte-identical to the
+# pre-registry literal table. Remaining (unmigrated) groups below stay literal tuples — no
+# change — until their own migration wave (coexistence invariant, SC#3).
+_EVENT_FIELD_ORDER = [
+    "event_date", "event_time", "event_place_name", "event_place_address",
+    "contact_person", "contact_vk", "contact_tg", "start_text", "start_text_registered",
+    "start_text_returning",
+    "event_name", "event_season", "event_type",
+]
+_EVENT_FIELDS = [
+    (k, SETTINGS_SCHEMA[k]["label"], SETTINGS_SCHEMA[k]["prompt"])
+    for k in _EVENT_FIELD_ORDER
+]
+
+# REG-01/REG-03 (06-02): reg/pay/party/consent groups GENERATED from settings_schema.
+# SETTINGS_SCHEMA (same computed-view splice as the event pilot, D-13) — every text/list/
+# int/date key that used to be a hand-written SETTINGS_FIELDS tuple now lives ONLY in the
+# registry; order is pinned per group (not registry dict-insertion order) so the on-screen
+# order stays byte-identical to the pre-migration literal tables.
+_REG_FIELD_ORDER = [
+    "source_options", "reg_complete_text", "approve_text", "reject_text",
+    "pending_reminder_interval", "city_options", "study_field_options",
+    "goal_options", "formats_options", "university_options",
+]
+_PAY_FIELD_ORDER = [
+    "payment_options", "payment_requisites", "payment_requisites_by_lc",
+    "payment_deadline", "payment_reminder_text", "payment_overdue_text", "penalty_schedule",
+]
+_PARTY_FIELD_ORDER = [
+    "party_closed_text", "approve_text__party",
+]
+_CONSENT_FIELD_ORDER = [
+    "consent_button_text", "consent_list",
+]
+
+# Phase 09.1 (A): every editable text in the free-form submission flow, one group
+# «🎮 Геймификация» — promo prompts by type, the general/multi-type fallback, the
+# "жми Готово" hint, the button's own label, the empty-submission hint, and the accepted text.
+_GAME_FIELD_ORDER = [
+    "game_proof_prompt_photo", "game_proof_prompt_pdf", "game_proof_prompt_text",
+    "game_proof_prompt_link", "game_proof_prompt_any", "game_proof_done_hint",
+    "game_proof_done_button", "game_proof_empty_hint", "game_submit_accepted_text",
+    "game_resubmit_limit", "coins_manual_notify_text",
+    # Quick 260819-gtl (CONTEXT.md decision 8): title/photo wizard step prompts.
+    "game_task_title_prompt", "game_task_photo_prompt",
+]
+
+# Phase 14 (CFG-01): group «🔧 Система» — proxy timings that used to live only in .env.
+_SYSTEM_FIELD_ORDER = ["proxy_recheck_seconds", "proxy_connect_timeout"]
+
+# Quick 260815-3hw (TABS-01/02/03): every Google Sheets tab NAME in one group — «📄 Вкладки
+# таблицы». short_sheet_tab/party_sheet_tab moved here from reg/party (physically relocated in
+# settings_schema.py, not duplicated). Order is the on-screen order, not registry insertion order.
+_SHEETS_FIELD_ORDER = [
+    "main_sheet_tab", "short_sheet_tab", "party_sheet_tab", "incomplete_sheet_tab",
+    "game_matrix_tab", "game_history_tab", "preselect_tab",
+    "city_tab_suffix__short", "city_tab_suffix__party", "city_tab_suffix__incomplete",
+]
+
+_REG_FIELDS = [(k, SETTINGS_SCHEMA[k]["label"], SETTINGS_SCHEMA[k]["prompt"]) for k in _REG_FIELD_ORDER]
+_PAY_FIELDS = [(k, SETTINGS_SCHEMA[k]["label"], SETTINGS_SCHEMA[k]["prompt"]) for k in _PAY_FIELD_ORDER]
+_PARTY_FIELDS = [(k, SETTINGS_SCHEMA[k]["label"], SETTINGS_SCHEMA[k]["prompt"]) for k in _PARTY_FIELD_ORDER]
+_CONSENT_FIELDS = [(k, SETTINGS_SCHEMA[k]["label"], SETTINGS_SCHEMA[k]["prompt"]) for k in _CONSENT_FIELD_ORDER]
+_SHEETS_FIELDS = [(k, SETTINGS_SCHEMA[k]["label"], SETTINGS_SCHEMA[k]["prompt"]) for k in _SHEETS_FIELD_ORDER]
+_GAME_FIELDS = [(k, SETTINGS_SCHEMA[k]["label"], SETTINGS_SCHEMA[k]["prompt"]) for k in _GAME_FIELD_ORDER]
+_SYSTEM_FIELDS = [(k, SETTINGS_SCHEMA[k]["label"], SETTINGS_SCHEMA[k]["prompt"]) for k in _SYSTEM_FIELD_ORDER]
+
+# NOTE: reg_university_mode и edu_conditional вынесены в кнопки-переключатели (build_settings_keyboard).
+# PDF согласий грузятся в разделе «🧾 PDF согласий».
+# Phase 5 (D-11a/D-13): party-track text settings (party_enabled/party_fork_question/
+# party_approval are toggle buttons in build_settings_keyboard, not here).
+SETTINGS_FIELDS = (
+    _EVENT_FIELDS + _REG_FIELDS + _PAY_FIELDS + _PARTY_FIELDS + _CONSENT_FIELDS
+    + _SHEETS_FIELDS + _GAME_FIELDS + _SYSTEM_FIELDS
+)
+
+# Phase 5 (D-11a): default text shown in render_settings_text when a text setting is unset,
+# so the manager sees what users actually receive today, not a bare "не указано". REG-01
+# (06-02): derived from the registry `default` field instead of a hand-written literal dict
+# (T-06-06) — restricted to `type == "text"` entries with a genuinely non-empty default so a
+# functional parse-fallback default (e.g. pending_reminder_interval's int default 1800) is
+# never mistaken for a display default.
+_SETTINGS_DISPLAY_DEFAULTS = {
+    k: v["default"] for k, v in SETTINGS_SCHEMA.items()
+    if v["type"] == "text" and v.get("default") not in (None, "")
+}
+
+# Quick 260724-c0x: group→keys grouping (NOT a per-key metadata registry) so the settings
+# landing screen can route into per-group sub-screens instead of dumping every field's value
+# inline. Shape mirrors REG_CATEGORIES (handlers/registration.py) — (label, token, [keys]).
+# REG-03: the "event" row's key list is generated from SETTINGS_SCHEMA (registry is the
+# source, D-13) — same pinned _EVENT_FIELD_ORDER used to build _EVENT_FIELDS above, filtered
+# to the text/enum keys (photo/file keys are handled separately by the event branch in
+# render_settings_group_text/build_settings_group_keyboard via PHOTO_FIELDS/FILE_FIELDS,
+# unchanged per D-10).
+_EVENT_GROUP_KEYS = [
+    k for k in _EVENT_FIELD_ORDER
+    if SETTINGS_SCHEMA[k]["type"] in ("text", "enum")
+]
+
+SETTINGS_GROUPS = [
+    ("🎪 Событие/Медиа", "event", _EVENT_GROUP_KEYS),
+    ("📝 Регистрация", "reg", _REG_FIELD_ORDER),
+    # Quick 260815-3hw: placed right after «📝 Регистрация» — a manager looks for tab names
+    # near the registration settings, not buried at the tail of the settings list.
+    ("📄 Вкладки таблицы", "sheets", _SHEETS_FIELD_ORDER),
+    ("💳 Оплата", "pay", _PAY_FIELD_ORDER),
+    ("🎉 Party", "party", _PARTY_FIELD_ORDER),
+    ("📋 Согласия", "consent", _CONSENT_FIELD_ORDER),
+    ("🎮 Геймификация", "game", _GAME_FIELD_ORDER),
+    ("🔧 Система", "system", _SYSTEM_FIELD_ORDER),
+]
+
+
+def _settings_group_keys(token: str) -> list[str]:
+    """Keys for a given SETTINGS_GROUPS token, including leftover-safety: any SETTINGS_FIELDS
+    key not placed in a declared group lands in the trailing «Прочие»/"misc" group so nothing
+    is ever silently hidden (mirrors _categorized_question_keys leftover handling)."""
+    for _, tok, keys in SETTINGS_GROUPS:
+        if tok == token:
+            return list(keys)
+    if token == "misc":
+        seen = {k for _, __, keys in SETTINGS_GROUPS for k in keys}
+        return [k for k, _, _ in SETTINGS_FIELDS if k not in seen]
+    return []
+
+
+def _settings_group_label(token: str) -> str:
+    for label, tok, _ in SETTINGS_GROUPS:
+        if tok == token:
+            return label
+    if token == "misc":
+        return "📦 Прочие"
+    return token
+
+
+def _settings_nav_groups() -> list[tuple[str, str]]:
+    """(label, token) rows for the landing keyboard nav buttons — declared groups plus a
+    trailing «Прочие» group ONLY if leftover keys exist."""
+    rows = [(label, tok) for label, tok, _ in SETTINGS_GROUPS]
+    if _settings_group_keys("misc"):
+        rows.append(("📦 Прочие", "misc"))
+    return rows
+
+PHOTO_FIELDS = [
+    ("program", "📅 Программа", "Отправьте фото программы (можно с подписью)."),
+    ("speakers", "🗣 Спикеры", "Отправьте одно фото со всеми спикерами (можно с подписью)."),
+    ("start", "💬 Фото приветствия", "Отправьте фото для приветственного сообщения (/start)."),
+    ("venue", "🏢 Площадка", "Отправьте фото площадки (можно с подписью)."),
+]
+
+FILE_FIELDS = [
+    ("reg_bonus", "🎁 Бонус за регистрацию", "Отправьте файл или фото бонуса (можно с подписью)."),
+]
+
+
+# Phase 09.3 (04, CITY-09): admin_id=None means "no header context" — reserved for tests
+# and call sites where the admin is unknown; every production call site MUST pass the real
+# admin id (structural test: tests/test_regmode_header_093.py asserts no empty-parens call
+# of render_settings_text()/build_settings_keyboard() remains in this file).
+async def render_settings_text(admin_id: int | None = None) -> str:
+    # Phase 09.3 (04, CITY-09): WR-05 — resolve the header ONCE for this whole render call.
+    # `admin_id is None` (tests, unknown-caller sites) and `header_code in (None, ALL_CITIES)`
+    # (module off / no choice yet / explicit «все города») all collapse to the SAME branch
+    # below — byte-identical to pre-phase output (CONTEXT D module-off parity).
+    header_code = await admin_selected_city(admin_id) if admin_id is not None else None
+    per_city_ctx = bool(header_code and header_code != ALL_CITIES)
+
+    lines = []
+    if per_city_ctx:
+        lines.append(f"🏙 {html_module.escape(await city_label(header_code))}")
+    lines += ["⚙️ <b>Настройки форума</b>", ""]
+
+    if per_city_ctx:
+        # T-093-13: composed key comes ONLY from cities.per_city_key (closed-set guard).
+        reg_mode = await get_setting_typed_for_city("registration_mode", header_code)
+        mode_label = "📋 Полная" if reg_mode == "full" else "⚡ Краткая"
+        own_key = per_city_key("registration_mode", header_code)
+        own_mark = " — своё" if (own_key and await get_setting(own_key)) else " — как везде"
+        lines.append(f"📝 Форма регистрации: <b>{mode_label}</b>{own_mark}")
+    else:
+        # REG-02 (06-07): final-coverage sweep — closes the 06-05-flagged boundary; byte-
+        # identical to the prior `get_setting(k) or "<literal>"` idiom (enum falsy->default).
+        reg_mode = await get_setting_typed("registration_mode")
+        mode_label = "📋 Полная" if reg_mode == "full" else "⚡ Краткая"
+        lines.append(f"📝 Форма регистрации: <b>{mode_label}</b>")
+
+    # REG-02 (06-05): feature-switch reads resolved via the registry's enum default,
+    # byte-identical to the prior `get_setting(k) or "<literal>"` idiom (get_setting_typed's
+    # enum branch is `raw if raw else default`, matching falsy-to-default on empty-string).
+    bonus_enabled = await get_setting_typed("reg_bonus_enabled")
+    bonus_label = "✅ Вкл" if bonus_enabled == "on" else "❌ Выкл"
+    lines.append(f"🎁 Бонус за регистрацию: <b>{bonus_label}</b>")
+
+    full_appr = await get_setting_typed("full_approval")
+    short_appr = await get_setting_typed("short_approval")
+    notify_mode = await get_setting_typed("pending_notify_mode")
+    appr_lbl = lambda v: "👮 Ручная" if v == "manual" else "⚡ Авто"
+    lines.append(f"✅ Модерация полной формы: <b>{appr_lbl(full_appr)}</b>")
+    lines.append(f"✅ Модерация краткой формы: <b>{appr_lbl(short_appr)}</b>")
+    notify_lbl = "📨 Сразу" if notify_mode == "instant" else "🕒 Пачкой (напоминалка)"
+    lines.append(f"🔔 Уведомление о заявке: <b>{notify_lbl}</b>")
+
+    payment_enabled = await get_setting_typed("payment_enabled")
+    consent_enabled = await get_setting_typed("consent_enabled")
+    lines.append(f"💳 Модуль оплаты: <b>{'✅ Вкл' if payment_enabled == 'on' else '❌ Выкл'}</b>")
+    lines.append(f"📋 Модуль согласий: <b>{'✅ Вкл' if consent_enabled == 'on' else '❌ Выкл'}</b>")
+    pay_rem_enabled = await get_setting_typed("payment_reminders_enabled")
+    lines.append(f"⏰ Автонапоминания об оплате: <b>{'✅ Вкл' if pay_rem_enabled == 'on' else '❌ Выкл'}</b>")
+
+    # Phase 5 (D-13): party settings always read as off/manual when unset — new-capability
+    # default-OFF posture (Phase-4 D-15 lineage), independent of full_approval/short_approval.
+    party_enabled = await get_setting_typed("party_enabled")
+    party_fork_question = await get_setting_typed("party_fork_question")
+    party_approval = await get_setting_typed("party_approval")
+    lines.append(f"🎉 Трек вечеринки: <b>{'✅ Вкл' if party_enabled == 'on' else '❌ Выкл'}</b>")
+    lines.append(f"🔀 Вопрос-развилка формата: <b>{'✅ Вкл' if party_fork_question == 'on' else '❌ Выкл'}</b>")
+    lines.append(f"✅ Модерация вечеринки: <b>{appr_lbl(party_approval)}</b>")
+
+    enabled_q = 0
+    for _, sk, *_rest in REG_FLOW:
+        # REG-02 (06-04): resolves via the registry's toggle default, byte-identical to the
+        # prior REG_DEFAULTS.get(sk, "on") == "on" fallback (get_setting_typed's toggle
+        # branch is (raw == "on") if raw is not None else (default == "on")).
+        is_on = await get_setting_typed(sk)
+        if is_on:
+            enabled_q += 1
+    lines.append(f"📋 Вопросы: <b>{enabled_q} из {len(REG_FLOW)}</b> включено")
+
+    enabled_m = 0
+    for key, _ in MENU_BUTTONS:
+        if per_city_ctx:
+            # Effective per-city resolver (fallback to global) — CONTEXT B: the counter at
+            # the header's city must reflect what that city's delegates actually see.
+            is_on = await get_setting_typed_for_city(key, header_code) == "on"
+        else:
+            v = await get_setting(key)
+            is_on = (v == "on") if v is not None else True
+        if is_on:
+            enabled_m += 1
+    lines.append(f"🔘 Меню: <b>{enabled_m} из {len(MENU_BUTTONS)}</b> кнопок")
+    lines.append("")
+
+    lines.append("✏️ Тексты и медиа — по кнопкам групп ниже.")
+
+    lines.append("")
+    lines.append("<i>Отправьте «-» при редактировании текстовых полей, чтобы скрыть.</i>")
+    return "\n".join(lines)
+
+
+# Phase 09.3 (04, CITY-09): admin_id=None means "no header context" — see the comment
+# above render_settings_text (same contract, same structural test).
+async def build_settings_keyboard(admin_id: int | None = None):
+    # Phase 09.3 (04, CITY-09): WR-05 — single header read for this render call, same
+    # contract as render_settings_text above.
+    header_code = await admin_selected_city(admin_id) if admin_id is not None else None
+    per_city_ctx = bool(header_code and header_code != ALL_CITIES)
+
+    # REG-02 (06-05): feature-switch reads resolved via the registry's enum default,
+    # byte-identical to the prior `get_setting(k) or "<literal>"` idiom — button TEXT
+    # ternaries and callback_data strings are intentionally untouched (D-12).
+    if per_city_ctx:
+        reg_mode = await get_setting_typed_for_city("registration_mode", header_code)
+    else:
+        reg_mode = await get_setting_typed("registration_mode")
+    toggle_text = "📝 Регистрация: ⚡ Краткая → 📋 Полная" if reg_mode == "short" else "📝 Регистрация: 📋 Полная → ⚡ Краткая"
+
+    bonus_enabled = await get_setting_typed("reg_bonus_enabled")
+    bonus_toggle_text = "🎁 Бонус: ❌ Выкл → ✅ Вкл" if bonus_enabled == "off" else "🎁 Бонус: ✅ Вкл → ❌ Выкл"
+
+    full_appr = await get_setting_typed("full_approval")
+    short_appr = await get_setting_typed("short_approval")
+    notify_mode = await get_setting_typed("pending_notify_mode")
+    full_txt = "✅ Полная форма: 👮 Ручная → ⚡ Авто" if full_appr == "manual" else "✅ Полная форма: ⚡ Авто → 👮 Ручная"
+    short_txt = "✅ Краткая форма: 👮 Ручная → ⚡ Авто" if short_appr == "manual" else "✅ Краткая форма: ⚡ Авто → 👮 Ручная"
+    notify_txt = "🔔 Уведомление: 📨 Сразу → 🕒 Пачкой" if notify_mode == "instant" else "🔔 Уведомление: 🕒 Пачкой → 📨 Сразу"
+
+    payment_enabled = await get_setting_typed("payment_enabled")
+    consent_enabled = await get_setting_typed("consent_enabled")
+    payment_toggle_text = "💳 Оплата: ❌ Выкл → ✅ Вкл" if payment_enabled != "on" else "💳 Оплата: ✅ Вкл → ❌ Выкл"
+    consent_toggle_text = "📋 Согласия: ❌ Выкл → ✅ Вкл" if consent_enabled != "on" else "📋 Согласия: ✅ Вкл → ❌ Выкл"
+    pay_rem_enabled = await get_setting_typed("payment_reminders_enabled")
+    pay_rem_toggle_text = ("⏰ Автонапоминания оплаты: ✅ Вкл → ❌ Выкл" if pay_rem_enabled == "on"
+                           else "⏰ Автонапоминания оплаты: ❌ Выкл → ✅ Вкл")
+
+    uni_mode = await get_setting_typed("reg_university_mode")
+    uni_mode_text = ("🏫 ВУЗ: выбор из списка → свободный ввод" if uni_mode == "list"
+                     else "🏫 ВУЗ: свободный ввод → выбор из списка")
+    edu_cond = await get_setting_typed("edu_conditional")
+    edu_cond_text = ("🎓 ВУЗ/курс только у студентов: ✅ Вкл → ❌ Выкл" if edu_cond == "on"
+                     else "🎓 ВУЗ/курс только у студентов: ❌ Выкл → ✅ Вкл")
+    show_progress = await get_setting_typed("reg_show_progress")
+    show_progress_text = ("🔢 Нумерация вопросов: ✅ Вкл → ❌ Выкл" if show_progress == "on"
+                          else "🔢 Нумерация вопросов: ❌ Выкл → ✅ Вкл")
+
+    # Phase 5 (D-13): party_enabled / party_fork_question default OFF; party_approval
+    # default "manual" — resolved via the registry's enum default (REG-02, 06-05).
+    party_enabled = await get_setting_typed("party_enabled")
+    party_toggle_text = ("🎉 Трек вечеринки: ❌ Выкл → ✅ Вкл" if party_enabled != "on"
+                         else "🎉 Трек вечеринки: ✅ Вкл → ❌ Выкл")
+    party_fork_question = await get_setting_typed("party_fork_question")
+    party_fork_toggle_text = ("🔀 Вопрос-развилка формата: ❌ Выкл → ✅ Вкл" if party_fork_question != "on"
+                              else "🔀 Вопрос-развилка формата: ✅ Вкл → ❌ Выкл")
+    party_approval = await get_setting_typed("party_approval")
+    party_appr_txt = ("✅ Модерация вечеринки: 👮 Ручная → ⚡ Авто" if party_approval == "manual"
+                      else "✅ Модерация вечеринки: ⚡ Авто → 👮 Ручная")
+
+    buttons = [
+        [InlineKeyboardButton(text=toggle_text, callback_data="settings_toggle_reg")],
+    ]
+    # Phase 09.3 (04, CITY-09): registration_mode has no settings_edit:{key} screen of its
+    # own (it's a landing toggle, not a SETTINGS_FIELDS text entry) — the header toggle above
+    # IS its per-city editor now; the old picker shortcut («🏙 Форма по городам», entering
+    # the per-key city picker screen) is gone. Reset row only when the header's city has an
+    # own override to reset (same "↩️ Как везде only when something to undo" idiom the
+    # header-scoped per-key editor uses below — never shown with nothing to undo).
+    if per_city_ctx:
+        own_key = per_city_key("registration_mode", header_code)
+        if own_key and await get_setting(own_key):
+            buttons.append([InlineKeyboardButton(text="↩️ Как везде", callback_data="settings_regmode_reset")])
+    buttons += [
+        [InlineKeyboardButton(text=bonus_toggle_text, callback_data="settings_toggle_bonus")],
+        [InlineKeyboardButton(text=full_txt, callback_data="settings_toggle_full_approval")],
+        [InlineKeyboardButton(text=short_txt, callback_data="settings_toggle_short_approval")],
+        [InlineKeyboardButton(text=notify_txt, callback_data="settings_toggle_notify")],
+        [InlineKeyboardButton(text=payment_toggle_text, callback_data="toggle_payment_enabled")],
+        [InlineKeyboardButton(text=pay_rem_toggle_text, callback_data="toggle_payment_reminders")],
+        [InlineKeyboardButton(text=consent_toggle_text, callback_data="toggle_consent_enabled")],
+        [InlineKeyboardButton(text="🧾 PDF согласий", callback_data="admin_consent_pdfs")],
+        [InlineKeyboardButton(text=uni_mode_text, callback_data="toggle_uni_mode")],
+        [InlineKeyboardButton(text=edu_cond_text, callback_data="toggle_edu_conditional")],
+        [InlineKeyboardButton(text=show_progress_text, callback_data="toggle_show_progress")],
+        [InlineKeyboardButton(text=party_toggle_text, callback_data="toggle_party_enabled")],
+        [InlineKeyboardButton(text=party_fork_toggle_text, callback_data="toggle_party_fork_question")],
+        [InlineKeyboardButton(text=party_appr_txt, callback_data="settings_toggle_party_approval")],
+        [InlineKeyboardButton(text="🎛 Тип события (пресет)", callback_data="admin_event_preset")],
+        [InlineKeyboardButton(text="📋 Вопросы регистрации", callback_data="admin_reg_questions")],
+        [InlineKeyboardButton(text="✏️ Тексты вопросов", callback_data="admin_reg_prompts")],
+        [InlineKeyboardButton(text="🔘 Кнопки меню", callback_data="admin_menu_buttons")],
+        [InlineKeyboardButton(text="👥 Роли и доступы", callback_data="admin_roles")],
+    ]
+    for label, token in _settings_nav_groups():
+        buttons.append([InlineKeyboardButton(text=label, callback_data=f"settings_group:{token}")])
+    buttons.append([InlineKeyboardButton(text="← Назад", callback_data="settings_back")])
+    return InlineKeyboardMarkup(inline_keyboard=buttons)
+
+
+async def render_settings_group_text(token: str, admin_id: int | None = None) -> str:
+    """Quick 260724-c0x: per-group sub-screen — status FLAGS only («задано»/«не задано»/
+    «по умолчанию»), never the raw value inline (that stays behind the existing
+    settings_edit tap-through, unchanged).
+
+    Phase 09.3 (05, CITY-09): WR-05 — resolve the header ONCE for this whole render call.
+    `admin_id is None` (tests, unknown-caller sites) and `header_code in (None, ALL_CITIES)`
+    (module off / explicit «все города») all collapse to the SAME branch below —
+    byte-identical to pre-phase output (CONTEXT D module-off parity)."""
+    header_code = await admin_selected_city(admin_id) if admin_id is not None else None
+    per_city_ctx = bool(header_code and header_code != ALL_CITIES)
+
+    group_label = _settings_group_label(token)
+    lines = []
+    if per_city_ctx:
+        lines.append(f"🏙 {html_module.escape(await city_label(header_code))}")
+    lines += [f"⚙️ <b>Настройки → {group_label}</b>", ""]
+
+    field_labels = {k: lbl for k, lbl, _ in SETTINGS_FIELDS}
+    # Phase 09.2 (C, CITY-05): compact «🏙 N» override-count marker, only when the cities
+    # module is on — module off = byte-identical to today's text (CONTEXT C). The full list
+    # of city names lives on the per-key editor screen (settings_edit callback family), not
+    # here — this screen deliberately never shows raw values inline (quick 260724-c0x contract).
+    city_module_on = await cities_module_on()
+    for key in _settings_group_keys(token):
+        label = field_labels.get(key, key)
+        if per_city_ctx and is_per_city(key):
+            # Phase 09.3 (05, CITY-09, CONTEXT B): flag relative to the header's city —
+            # «✏️ своё» if the city has its own value, else «как везде · {общее}» using the
+            # SAME ladder as the global branch below (no duplicated wording rules).
+            own_key = per_city_key(key, header_code)
+            if own_key and await get_setting(own_key):
+                flag = "✏️ своё"
+            else:
+                value = await get_setting(key)
+                if value:
+                    common = "задано"
+                elif key in _SETTINGS_DISPLAY_DEFAULTS:
+                    common = "по умолчанию"
+                else:
+                    common = "не задано"
+                flag = f"как везде · {common}"
+            lines.append(f"{label}: {flag}")
+            continue
+        value = await get_setting(key)
+        if value:
+            flag = "✏️ задано"
+        elif key in _SETTINGS_DISPLAY_DEFAULTS:
+            flag = "<i>по умолчанию</i>"
+        else:
+            flag = "<i>— не задано</i>"
+        city_suffix = ""
+        if city_module_on and is_per_city(key):
+            codes = await city_override_codes(key)
+            if codes:
+                city_suffix = f" · 🏙 {len(codes)}"
+        lines.append(f"{label}: {flag}{city_suffix}")
+
+    if token == "event":
+        for prefix, label, _ in PHOTO_FIELDS:
+            photo = await get_setting(f"{prefix}_photo_file_id")
+            lines.append(f"{label}: {'✅ загружена' if photo else '<i>— не задано</i>'}")
+        for prefix, label, _ in FILE_FIELDS:
+            photo = await get_setting(f"{prefix}_photo_file_id")
+            doc = await get_setting(f"{prefix}_doc_file_id")
+            lines.append(f"{label}: {'✅ загружен' if (photo or doc) else '<i>— не задано</i>'}")
+
+    return "\n".join(lines)
+
+
+async def build_settings_group_keyboard(token: str, admin_id: int | None = None):
+    """Reuses the existing settings_edit/settings_photo/settings_file callbacks unchanged —
+    only the button placement changes. Configured fields first, then a noop section-header
+    button (req #2: collapse unconfigured fields), then unconfigured fields.
+
+    Phase 09.3 (05, CITY-09): WR-05 — resolve the header ONCE, same contract as
+    render_settings_group_text above (kept as a second read here, not shared across the two
+    functions, since they're independent render calls per call site — matches the
+    render_settings_text/build_settings_keyboard precedent from plan 04)."""
+    header_code = await admin_selected_city(admin_id) if admin_id is not None else None
+    per_city_ctx = bool(header_code and header_code != ALL_CITIES)
+
+    field_labels = {k: lbl for k, lbl, _ in SETTINGS_FIELDS}
+    configured: list[InlineKeyboardButton] = []
+    unconfigured: list[InlineKeyboardButton] = []
+
+    for key in _settings_group_keys(token):
+        label = field_labels.get(key, key)
+        btn = InlineKeyboardButton(text=f"✏️ {label}", callback_data=f"settings_edit:{key}")
+        if per_city_ctx and is_per_city(key):
+            # CONTEXT B: «настроено» = effective value at the header's city (своё, иначе
+            # общее) — a key with only a city override must land in «настроено», not the
+            # collapsed «не настроено» section.
+            own_key = per_city_key(key, header_code)
+            own_value = await get_setting(own_key) if own_key else None
+            value = own_value or await get_setting(key)
+        else:
+            value = await get_setting(key)
+        (configured if value else unconfigured).append(btn)
+
+    if token == "event":
+        for prefix, label, _ in PHOTO_FIELDS:
+            btn = InlineKeyboardButton(text=f"📷 {label}", callback_data=f"settings_photo:{prefix}")
+            photo = await get_setting(f"{prefix}_photo_file_id")
+            (configured if photo else unconfigured).append(btn)
+        for prefix, label, _ in FILE_FIELDS:
+            btn = InlineKeyboardButton(text=f"📎 {label}", callback_data=f"settings_file:{prefix}")
+            photo = await get_setting(f"{prefix}_photo_file_id")
+            doc = await get_setting(f"{prefix}_doc_file_id")
+            (configured if (photo or doc) else unconfigured).append(btn)
+
+    buttons = [[b] for b in configured]
+    if unconfigured:
+        buttons.append([InlineKeyboardButton(text="── не настроено ──", callback_data="settings_group_noop")])
+        buttons.extend([[b] for b in unconfigured])
+    if token == "event" and admin_id is not None and admin_id in config.ADMIN_IDS:
+        # Phase 07.3 (02, RET-01, T-073-02-01): capability `settings` already gates this whole
+        # screen, but «Новый сезон» is stricter — superadmin only. Hiding the button from a
+        # non-superadmin `settings` holder is "bot for people" UX (CLAUDE.md), NOT the real
+        # gate — the real gate is the ADMIN_IDS re-check inside every wizard handler below,
+        # because a stale inline keyboard rendered before rights changed lives in the chat
+        # forever (same reasoning as roles_city_start's own inline re-check).
+        buttons.append([InlineKeyboardButton(text="🔄 Новый сезон", callback_data="admin_season_reset")])
+    if token == "event":
+        # Phase 07.3 (06, RET-04): visible to EVERYONE who reaches this screen — unlike «Новый
+        # сезон», import is not superadmin-only (CONTEXT D); the gate is the `settings`
+        # capability that already got them here.
+        buttons.append([InlineKeyboardButton(text="📥 Импорт прошлого события", callback_data="admin_season_import")])
+    buttons.append([InlineKeyboardButton(text="← Назад к настройкам", callback_data="admin_settings")])
+    return InlineKeyboardMarkup(inline_keyboard=buttons)
+
+
+@router.callback_query(F.data == "admin_settings")
+async def show_admin_settings(callback: types.CallbackQuery):
+    text = await render_settings_text(callback.from_user.id)
+    await callback.message.edit_text(text, parse_mode="HTML", reply_markup=await build_settings_keyboard(callback.from_user.id))
+    await callback.answer()
+
+
+@router.callback_query(F.data.startswith("settings_group:"))
+async def show_settings_group(callback: types.CallbackQuery):
+    token = callback.data.split(":", 1)[1]
+    text = await render_settings_group_text(token, callback.from_user.id)
+    await callback.message.edit_text(text, parse_mode="HTML", reply_markup=await build_settings_group_keyboard(token, callback.from_user.id))
+    await callback.answer()
+
+
+@router.callback_query(F.data == "settings_group_noop")
+async def settings_group_noop(callback: types.CallbackQuery):
+    # Section-header button in the collapsed «не настроено» view — not actionable.
+    await callback.answer()
+
+
+@router.callback_query(F.data == "settings_toggle_reg")
+async def toggle_registration_mode(callback: types.CallbackQuery):
+    # Phase 09.3 (04, CITY-09): WR-05 — single header read for this handler.
+    admin_id = callback.from_user.id
+    header_code = await admin_selected_city(admin_id)
+    if header_code and header_code != ALL_CITIES:
+        # T-093-12: re-check the RIGHT in the handler, not just via a hidden button.
+        visible = await _per_city_visible_codes(admin_id)
+        if header_code not in visible:
+            await callback.answer("Этот город правит суперадмин", show_alert=True)
+            return
+        # T-093-13: composed key comes ONLY from cities.per_city_key.
+        composed = per_city_key("registration_mode", header_code)
+        if composed is None:
+            await callback.answer("Неизвестный город", show_alert=True)
+            return
+        current = await get_setting_typed_for_city("registration_mode", header_code)
+        new_mode = "full" if current == "short" else "short"
+        await set_setting(composed, new_mode)
+        city_txt = await city_label(header_code)
+        human = _enum_human_label("registration_mode", new_mode)
+        await callback.answer(f"Форма регистрации для {city_txt}: {human}", show_alert=True)
+    else:
+        # REG-02 (06-05): current-value read migrated to the registry; write path unchanged.
+        current = await get_setting_typed("registration_mode")
+        new_mode = "full" if current == "short" else "short"
+        await set_setting("registration_mode", new_mode)
+        label = "📋 Полная" if new_mode == "full" else "⚡ Краткая"
+        await callback.answer(f"Форма регистрации: {label}", show_alert=True)
+
+    text = await render_settings_text(admin_id)
+    await callback.message.edit_text(text, parse_mode="HTML", reply_markup=await build_settings_keyboard(admin_id))
+    # Phase 7 (SHORT-03, gate #5): materialize the short tab the moment the manager flips
+    # into "Краткая" — no need to wait for the first registration. Switching back to "Полная"
+    # is a no-op (the gate inside returns early); the tab and its data are never touched.
+    # Materializing the tab is a property of the EVENT ("Акция"), not the city — always run,
+    # even when this toggle just wrote a per-city override.
+    # Phase 13 (13-05): _refresh_short_sheet_header moved to admin_reg_config.py; local import
+    # (same idiom _refresh_party_sheet_header/_refresh_short_sheet_header themselves use for
+    # handlers.registration) avoids triggering admin_reg_config's own back-import of this
+    # module before admin.py has finished defining the names admin_reg_config imports back.
+    from handlers.admin_reg_config import _refresh_short_sheet_header
+    await _refresh_short_sheet_header()
+
+
+@router.callback_query(F.data == "settings_regmode_reset")
+async def settings_regmode_reset(callback: types.CallbackQuery):
+    """Confirm screen for «↩️ Как везде» on the header-scoped registration-mode toggle —
+    same two-step confirm gate idiom as the header-scoped per-key editor's own reset pair
+    below (settings_reset_city/settings_reset_city_go)."""
+    admin_id = callback.from_user.id
+    header_code = await admin_selected_city(admin_id)
+    if not header_code or header_code == ALL_CITIES:
+        await callback.answer("Нет своего значения для сброса", show_alert=True)
+        return
+    visible = await _per_city_visible_codes(admin_id)
+    if header_code not in visible:
+        await callback.answer("Этот город правит суперадмин", show_alert=True)
+        return
+    composed = per_city_key("registration_mode", header_code)
+    if composed is None or not await get_setting(composed):
+        await callback.answer("Нет своего значения для сброса", show_alert=True)
+        return
+
+    city_txt = await city_label(header_code)
+    global_value = await get_setting_typed("registration_mode")
+    global_human = _enum_human_label("registration_mode", global_value)
+    text = (
+        f"Город {html_module.escape(city_txt)} снова будет использовать общую форму "
+        f"регистрации:\n<b>{global_human}</b>\n\nСвоя форма регистрации города будет удалена."
+    )
+    kb = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="✅ Да, как везде", callback_data=f"settings_regmode_reset_go:{header_code}")],
+        [InlineKeyboardButton(text="← Отмена", callback_data="admin_settings")],
+    ])
+    await callback.message.edit_text(text, parse_mode="HTML", reply_markup=kb)
+    await callback.answer()
+
+
+@router.callback_query(F.data.startswith("settings_regmode_reset_go:"))
+async def settings_regmode_reset_go(callback: types.CallbackQuery):
+    admin_id = callback.from_user.id
+    code = callback.data.split(":", 1)[1]
+
+    # T-093-13: composed key comes ONLY from cities.per_city_key — refuse on an unknown code
+    # before touching rights or freshness (mirrors settings_reset_city_go's own guard order).
+    composed = per_city_key("registration_mode", code)
+    if composed is None:
+        await callback.answer("Неизвестный город", show_alert=True)
+        return
+    # T-093-12: RIGHT check against the code carried in callback_data (not just the current
+    # header) — this is what catches a bound manager's forged confirmation for another city,
+    # since the freshness check below alone could never distinguish "forged" from "stale"
+    # (a bound manager's OWN header can never actually become another city).
+    visible = await _per_city_visible_codes(admin_id)
+    if code not in visible:
+        await callback.answer("Этот город правит суперадмин", show_alert=True)
+        return
+    # T-093-14: freshness — the confirm screen named the header's city; if the header moved
+    # on since, refuse and make the admin re-open the confirm screen for the NEW city.
+    current = await admin_selected_city(admin_id)
+    if code != current:
+        await callback.answer("Город админки изменился — подтвердите заново.", show_alert=True)
+        text = await render_settings_text(admin_id)
+        await callback.message.edit_text(text, parse_mode="HTML", reply_markup=await build_settings_keyboard(admin_id))
+        return
+
+    await delete_setting(composed)  # idempotent — safe if already absent
+    city_txt = await city_label(code)
+    await callback.answer(f"Готово: {city_txt} — как везде", show_alert=True)
+    text = await render_settings_text(admin_id)
+    await callback.message.edit_text(text, parse_mode="HTML", reply_markup=await build_settings_keyboard(admin_id))
+
+
+async def _toggle_approval_setting(callback: types.CallbackQuery, key: str, default: str, title: str):
+    # REG-02 (06-07): final-coverage sweep — key is always in SETTINGS_SCHEMA (full_approval/
+    # short_approval/party_approval), registry default byte-identical to the `default` param.
+    current = await get_setting_typed(key)
+    new_val = "auto" if current == "manual" else "manual"
+    await set_setting(key, new_val)
+    await callback.answer(f"{title}: {'👮 Ручная' if new_val == 'manual' else '⚡ Авто'}", show_alert=True)
+    text = await render_settings_text(callback.from_user.id)
+    await callback.message.edit_text(text, parse_mode="HTML", reply_markup=await build_settings_keyboard(callback.from_user.id))
+
+
+@router.callback_query(F.data == "settings_toggle_full_approval")
+async def toggle_full_approval(callback: types.CallbackQuery):
+    await _toggle_approval_setting(callback, "full_approval", "manual", "Модерация полной формы")
+
+
+@router.callback_query(F.data == "settings_toggle_short_approval")
+async def toggle_short_approval(callback: types.CallbackQuery):
+    await _toggle_approval_setting(callback, "short_approval", "auto", "Модерация краткой формы")
+
+
+@router.callback_query(F.data == "settings_toggle_party_approval")
+async def toggle_party_approval(callback: types.CallbackQuery):
+    # D-13: independent setting — never reads/writes/derives from full_approval or
+    # short_approval, no fallback chain between them.
+    await _toggle_approval_setting(callback, "party_approval", "manual", "Модерация вечеринки")
+
+
+# ── Phase 4: module on/off toggles (payment, consent) + event-type preset ────
+
+async def _toggle_module_setting(callback: types.CallbackQuery, key: str, title: str):
+    """On/off toggle for a Phase 4 module flag (fail-safe default OFF, D-15)."""
+    # REG-02 (06-07): final-coverage sweep — key is always in SETTINGS_SCHEMA
+    # (payment_enabled/consent_enabled/party_enabled/party_fork_question), all default "off".
+    current = await get_setting_typed(key)
+    new_val = "off" if current == "on" else "on"
+    await set_setting(key, new_val)
+    label = "✅ Вкл" if new_val == "on" else "❌ Выкл"
+    await callback.answer(f"{title}: {label}", show_alert=True)
+    text = await render_settings_text(callback.from_user.id)
+    await callback.message.edit_text(text, parse_mode="HTML", reply_markup=await build_settings_keyboard(callback.from_user.id))
+
+
+@router.callback_query(F.data == "toggle_payment_enabled")
+async def toggle_payment_enabled(callback: types.CallbackQuery):
+    await _toggle_module_setting(callback, "payment_enabled", "💳 Оплата")
+
+
+@router.callback_query(F.data == "toggle_consent_enabled")
+async def toggle_consent_enabled(callback: types.CallbackQuery):
+    await _toggle_module_setting(callback, "consent_enabled", "📋 Согласия")
+
+
+@router.callback_query(F.data == "toggle_party_enabled")
+async def toggle_party_enabled(callback: types.CallbackQuery):
+    # D-11a master gate: default OFF (fail-safe, Phase-4 D-15 lineage).
+    await _toggle_module_setting(callback, "party_enabled", "🎉 Трек вечеринки")
+
+
+@router.callback_query(F.data == "toggle_party_fork_question")
+async def toggle_party_fork_question(callback: types.CallbackQuery):
+    # D-10: default OFF — an ordinary delegate sees no extra screen until an admin opts in.
+    await _toggle_module_setting(callback, "party_fork_question", "🔀 Вопрос-развилка формата")
+
+
+@router.callback_query(F.data == "toggle_payment_reminders")
+async def toggle_payment_reminders(callback: types.CallbackQuery):
+    # Default ON — preserves prior behaviour (reminders fired whenever a deadline was set).
+    await _toggle_value_setting(
+        callback, "payment_reminders_enabled", "on", "off", "on",
+        "⏰ Автонапоминания об оплате включены", "⏰ Автонапоминания об оплате выключены",
+    )
+
+
+async def _toggle_value_setting(callback, key, val_a, val_b, default, title_a, title_b):
+    """Generic two-value toggle (e.g. list↔text, on↔off) with a friendly alert."""
+    # REG-02 (06-07): final-coverage sweep — every key routed through this helper
+    # (reg_university_mode/edu_conditional/reg_show_progress/payment_reminders_enabled) is
+    # in SETTINGS_SCHEMA with a registry default byte-identical to the `default` param.
+    current = await get_setting_typed(key)
+    new_val = val_b if current == val_a else val_a
+    await set_setting(key, new_val)
+    await callback.answer(title_a if new_val == val_a else title_b, show_alert=True)
+    text = await render_settings_text(callback.from_user.id)
+    await callback.message.edit_text(text, parse_mode="HTML", reply_markup=await build_settings_keyboard(callback.from_user.id))
+
+
+@router.callback_query(F.data == "toggle_uni_mode")
+async def toggle_uni_mode(callback: types.CallbackQuery):
+    await _toggle_value_setting(
+        callback, "reg_university_mode", "list", "text", "text",
+        "🏫 ВУЗ: выбор из списка", "🏫 ВУЗ: свободный ввод",
+    )
+
+
+@router.callback_query(F.data == "toggle_edu_conditional")
+async def toggle_edu_conditional(callback: types.CallbackQuery):
+    await _toggle_value_setting(
+        callback, "edu_conditional", "on", "off", "on",
+        "🎓 ВУЗ/курс спрашиваются только у студентов", "🎓 ВУЗ/курс спрашиваются у всех",
+    )
+
+
+@router.callback_query(F.data == "toggle_show_progress")
+async def toggle_show_progress(callback: types.CallbackQuery):
+    await _toggle_value_setting(
+        callback, "reg_show_progress", "on", "off", "off",
+        "🔢 Нумерация вопросов включена", "🔢 Нумерация вопросов выключена",
+    )
+
+
+async def _apply_event_type_preset(event_type: str):
+    """D-05: event type presets module flags; each is still manually overridable after.
+    conference → payment+consent ON; forum → both OFF; custom → no change."""
+    if event_type == "conference":
+        await set_setting("payment_enabled", "on")
+        await set_setting("consent_enabled", "on")
+    elif event_type == "forum":
+        await set_setting("payment_enabled", "off")
+        await set_setting("consent_enabled", "off")
+    # "custom" → no change (manual control)
+
+
+@router.callback_query(F.data == "settings_toggle_notify")
+async def toggle_notify_mode(callback: types.CallbackQuery):
+    # REG-02 (06-05): current-value read migrated to the registry; write path unchanged.
+    current = await get_setting_typed("pending_notify_mode")
+    new_val = "batched" if current == "instant" else "instant"
+    await set_setting("pending_notify_mode", new_val)
+    await callback.answer(f"Уведомление: {'📨 Сразу' if new_val == 'instant' else '🕒 Пачкой'}", show_alert=True)
+    text = await render_settings_text(callback.from_user.id)
+    await callback.message.edit_text(text, parse_mode="HTML", reply_markup=await build_settings_keyboard(callback.from_user.id))
+
+
+@router.callback_query(F.data == "settings_toggle_bonus")
+async def toggle_bonus(callback: types.CallbackQuery):
+    # REG-02 (06-05): current-value read migrated to the registry; write path unchanged.
+    current = await get_setting_typed("reg_bonus_enabled")
+    new_val = "on" if current == "off" else "off"
+    await set_setting("reg_bonus_enabled", new_val)
+
+    label = "✅ Вкл" if new_val == "on" else "❌ Выкл"
+    await callback.answer(f"Бонус за регистрацию: {label}", show_alert=True)
+
+    text = await render_settings_text(callback.from_user.id)
+    await callback.message.edit_text(text, parse_mode="HTML", reply_markup=await build_settings_keyboard(callback.from_user.id))
+
+
+@router.callback_query(F.data.startswith("settings_file:"))
+async def settings_file_start(callback: types.CallbackQuery, state: FSMContext):
+    prefix = callback.data.split(":", 1)[1]
+    prompts = {p: (label, prompt) for p, label, prompt in FILE_FIELDS}
+    label, prompt = prompts.get(prefix, ("Файл", "Отправьте файл."))
+
+    photo = await get_setting(f"{prefix}_photo_file_id")
+    doc = await get_setting(f"{prefix}_doc_file_id")
+    status = "✅ загружен" if (photo or doc) else "<i>не загружен</i>"
+    text = f"{label}: {status}\n\n{prompt}"
+
+    cancel_kb = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="❌ Отмена", callback_data="settings_cancel")],
+    ])
+    await callback.message.edit_text(text, parse_mode="HTML", reply_markup=cancel_kb)
+    await state.set_state(EditSetting.waiting_for_file)
+    await state.update_data(file_setting=prefix)
+    await callback.answer()
+
+
+# ── Phase 09.2 (C, CITY-05): «🏙 Для города…» per-setting override sub-flow ────────────────
+#
+# One reusable screen for every per_city-flagged SETTINGS_SCHEMA key (text or enum) — reached
+# from the editor (settings_edit_start below) and from the landing's «🏙 Форма по городам»
+# shortcut for registration_mode, which has no settings_edit screen of its own. Mirrors the
+# admin_city_switch/_roles_city_kb idiom (RESEARCH Pattern 3): city LABELS only, never codes.
+
+async def _per_city_visible_codes(admin_id: int) -> list[str]:
+    """Which city codes this admin may edit — a RIGHT, not a filter (Phase 07.2 terminology).
+    Phase 09.3 (06, CITY-09): the only caller-facing question this answers now is "can this
+    admin edit the city currently sitting in the header" (membership test), not "which cities
+    should a picker list" — there is no picker left. Superadmins (config.ADMIN_IDS) see every
+    city; a manager bound to a city (get_staff_city) sees exactly that one; an unbound manager
+    sees all. This shapes the keyboard only — every write handler below (settings_edit_city /
+    settings_reset_city_go) re-checks membership itself before writing anything (RESEARCH
+    Pitfall 6: a hidden button is not access control)."""
+    if admin_id in config.ADMIN_IDS:
+        return city_codes()
+    bound = await get_staff_city(admin_id)
+    if bound:
+        return [normalize_city(bound)]
+    return city_codes()
+
+
+async def _settings_edit_screen(key: str, header_code: str | None) -> tuple[str, InlineKeyboardMarkup]:
+    """Phase 09.3 (06, CITY-09): single render helper for the per-key editor, relative to an
+    ALREADY-RESOLVED header code (WR-05 — every caller resolves `admin_selected_city()` once
+    and passes the result in here; this helper never calls it a second time). Reused by
+    `settings_edit_start`, the `per_city_base` return path in `settings_edit_value`, and the
+    reset confirm/go handlers below — one screen shape per branch, no separate picker screen.
+
+    Three branches (CONTEXT B):
+    (1) header is a real city AND `key` is per_city -> the city's OWN value or «как везде» +
+        «✏️ Изменить для {город}» / «↩️ Как везде» (reset row only when an own value exists).
+        No FSM is implied by this screen alone — the caller decides (branch (1) never starts
+        one from here; only `settings_edit_city` does, on an explicit tap).
+    (2) header is a real city AND `key` is NOT per_city -> today's prompt screen plus a
+        global-only note (see the literal marker string in the branch below); the key is
+        edited globally.
+    (3) header is `None`/`ALL_CITIES` (module off or «все города») -> today's prompt screen,
+        byte-identical to before the phase, minus the removed «🏙 Для города…» row."""
+    prompts = {k: prompt for k, _, prompt in SETTINGS_FIELDS}
+    # Phase 8 (ROLE-02): role_caps_<role> etc. ride this generic edit flow but aren't in
+    # SETTINGS_FIELDS (D-18) — fall back to the registry itself for the prompt (Phase 6
+    # D-13, registry-as-source) before the last-resort literal.
+    prompt = prompts.get(key) or SETTINGS_SCHEMA.get(key, {}).get("prompt") or "Введите значение"
+    per_city_ctx = bool(header_code and header_code != ALL_CITIES)
+
+    if per_city_ctx and is_per_city(key):
+        city_label_txt = await city_label(header_code)
+        composed = per_city_key(key, header_code)
+        own_value = await get_setting(composed) if composed else None
+        lines = [f"🏙 {html_module.escape(city_label_txt)}"]
+        if own_value:
+            lines.append(f"Своё значение: <b>{html_module.escape(own_value)}</b>")
+        else:
+            global_value = await get_setting(key)
+            global_txt = f"<b>{html_module.escape(global_value)}</b>" if global_value else "<i>по умолчанию</i>"
+            lines.append(f"Как везде. Общий текст: {global_txt}")
+
+        rows: list[list[InlineKeyboardButton]] = [
+            [InlineKeyboardButton(
+                text=f"✏️ Изменить для {city_label_txt}",
+                callback_data=f"settings_edit_city:{key}",
+            )],
+        ]
+        if own_value:
+            rows.append([InlineKeyboardButton(text="↩️ Как везде", callback_data=f"settings_reset_city:{key}")])
+        rows.append([InlineKeyboardButton(text="❌ Отмена", callback_data="settings_cancel")])
+        return "\n".join(lines), InlineKeyboardMarkup(inline_keyboard=rows)
+
+    # Branches (2)/(3): today's prompt screen — escape both the field description (may
+    # contain literal <b>/<code> examples) and the current value (admin may have stored raw
+    # HTML) — otherwise parse_mode=HTML breaks.
+    current = await get_setting(key)
+    text = f"{html_module.escape(prompt)}"
+    if current:
+        text = f"Сейчас задано:\n<b>{html_module.escape(current)}</b>\n\n{text}"
+    text += "\n\n<i>Пришлите новое значение сообщением. Чтобы очистить поле — отправьте «-».</i>"
+
+    if per_city_ctx:
+        # Branch (2): real city header, but the key is not per_city — правится глобально,
+        # marked so the manager never mistakes this for a city-scoped edit.
+        text = (
+            f"🏙 {html_module.escape(await city_label(header_code))}\n"
+            f"Общая настройка (одна на все города)\n\n{text}"
+        )
+    elif is_per_city(key) and await cities_module_on():
+        # Branch (3), city module on (header None only when module off — see
+        # admin_selected_city — or explicit «все города»): keep the override summary, drop
+        # the removed «🏙 Для города…» entry point (CONTEXT B).
+        override_codes = await city_override_codes(key)
+        if override_codes:
+            names = ", ".join([await city_label(c) for c in override_codes])
+            text += f"\n\nПереопределено для: {names}"
+
+    rows = [[InlineKeyboardButton(text="❌ Отмена", callback_data="settings_cancel")]]
+    return text, InlineKeyboardMarkup(inline_keyboard=rows)
+
+
+@router.callback_query(F.data.startswith("settings_edit:"))
+async def settings_edit_start(callback: types.CallbackQuery, state: FSMContext):
+    key = callback.data.split(":", 1)[1]
+    admin_id = callback.from_user.id
+    # Phase 09.3 (06, CITY-09): WR-05 — single header read for this handler, passed into the
+    # shared render helper so it never re-resolves the header itself.
+    header_code = await admin_selected_city(admin_id)
+    text, cancel_kb = await _settings_edit_screen(key, header_code)
+    await callback.message.edit_text(text, parse_mode="HTML", reply_markup=cancel_kb)
+
+    # Branch (1) (header = real city AND key is per_city) never starts the FSM from here —
+    # «✏️ Изменить для …» (settings_edit_city below) is the only entry point that may start
+    # it, otherwise a stray text message sent while just LOOKING at the screen would silently
+    # overwrite the global value. state.clear() is defensive: re-entering this screen (e.g.
+    # via the «❌ Отмена» button on the per-city input screen) must never leave a stale FSM
+    # state pointing at the wrong composite key.
+    own_city_context = bool(header_code and header_code != ALL_CITIES and is_per_city(key))
+    await state.clear()
+    if not own_city_context:
+        await state.set_state(EditSetting.waiting_for_value)
+        await state.update_data(setting_key=key)
+    await callback.answer()
+
+
+@router.callback_query(F.data.startswith("settings_edit_city:"))
+async def settings_edit_city(callback: types.CallbackQuery, state: FSMContext):
+    """Phase 09.3 (06, CITY-09): «✏️ Изменить для {город}» — the ONLY entry point that starts
+    `EditSetting.waiting_for_value` for a per-city composite key; reuses 09.2-05's per-city
+    text-entry mechanics verbatim (same FSM keys, same composed-key primitive), just reached
+    from the header-aware editor screen instead of the deleted separate city picker."""
+    key = callback.data.split(":", 1)[1]
+    admin_id = callback.from_user.id
+    # Fail-closed (RESEARCH Pattern 2): module off or a non-per_city key never starts an
+    # edit, even if someone forges the callback_data directly.
+    if not await cities_module_on() or not is_per_city(key):
+        await callback.answer("Города выключены", show_alert=True)
+        return
+    header_code = await admin_selected_city(admin_id)
+    if not header_code or header_code == ALL_CITIES:
+        await callback.answer("Сначала выберите город в шапке", show_alert=True)
+        return
+    # T-093-19/21: RIGHT re-checked here, not just via a hidden button.
+    visible = await _per_city_visible_codes(admin_id)
+    if header_code not in visible:
+        await callback.answer("Этот город правит суперадмин", show_alert=True)
+        return
+    # T-093-20: composed key comes ONLY from cities.per_city_key.
+    composed = per_city_key(key, header_code)
+    if composed is None:
+        await callback.answer("Неизвестный город", show_alert=True)
+        return
+
+    entry = SETTINGS_SCHEMA.get(key, {})
+    prompts = {k: prompt for k, _, prompt in SETTINGS_FIELDS}
+    prompt = prompts.get(key) or entry.get("prompt") or "Введите значение"
+    current = await get_setting(composed)
+    city_txt = await city_label(header_code)
+    text = f"🏙 {html_module.escape(city_txt)}\n\n"
+    if current:
+        text += f"Сейчас у города:\n<b>{html_module.escape(current)}</b>\n\n"
+    else:
+        text += "Сейчас у города: <i>как везде</i>\n\n"
+    text += html_module.escape(prompt)
+    text += "\n\n<i>Пришлите новое значение сообщением. Чтобы очистить поле — отправьте «-».</i>"
+
+    rows: list[list[InlineKeyboardButton]] = []
+    if current:
+        rows.append([InlineKeyboardButton(text="↩️ Как везде", callback_data=f"settings_reset_city:{key}")])
+    rows.append([InlineKeyboardButton(text="❌ Отмена", callback_data=f"settings_edit:{key}")])
+    await callback.message.edit_text(text, parse_mode="HTML", reply_markup=InlineKeyboardMarkup(inline_keyboard=rows))
+    await state.set_state(EditSetting.waiting_for_value)
+    await state.update_data(setting_key=composed, per_city_base=key)
+    await callback.answer()
+
+
+@router.callback_query(F.data.startswith("settings_reset_city:"))
+async def settings_reset_city(callback: types.CallbackQuery):
+    """Confirm screen for «↩️ Как везде» on the header-scoped per-key editor — same two-step
+    confirm gate idiom as `settings_regmode_reset` above (09.2-05 lineage: names the value
+    the city is about to fall back to before deleting anything)."""
+    key = callback.data.split(":", 1)[1]
+    admin_id = callback.from_user.id
+    if not await cities_module_on() or not is_per_city(key):
+        await callback.answer("Города выключены", show_alert=True)
+        return
+    header_code = await admin_selected_city(admin_id)
+    if not header_code or header_code == ALL_CITIES:
+        await callback.answer("Нет своего значения для сброса", show_alert=True)
+        return
+    visible = await _per_city_visible_codes(admin_id)
+    if header_code not in visible:
+        await callback.answer("Этот город правит суперадмин", show_alert=True)
+        return
+    composed = per_city_key(key, header_code)
+    if composed is None or not await get_setting(composed):
+        await callback.answer("Нет своего значения для сброса", show_alert=True)
+        return
+
+    city_txt = html_module.escape(await city_label(header_code))
+    global_value = await get_setting(key)
+    preview = f"<b>{html_module.escape(global_value)}</b>" if global_value else "<i>по умолчанию</i>"
+    text = (
+        f"Город {city_txt} снова будет использовать общий текст:\n{preview}\n\n"
+        "Свой текст города будет удалён."
+    )
+    kb = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="✅ Да, как везде", callback_data=f"settings_reset_city_go:{key}:{header_code}")],
+        [InlineKeyboardButton(text="← Отмена", callback_data=f"settings_edit:{key}")],
+    ])
+    await callback.message.edit_text(text, parse_mode="HTML", reply_markup=kb)
+    await callback.answer()
+
+
+@router.callback_query(F.data.startswith("settings_reset_city_go:"))
+async def settings_reset_city_go(callback: types.CallbackQuery):
+    rest = callback.data.split(":", 1)[1]
+    if ":" not in rest:
+        await callback.answer("Неизвестная кнопка", show_alert=True)
+        return
+    key, code = rest.rsplit(":", 1)
+    admin_id = callback.from_user.id
+    if not await cities_module_on() or not is_per_city(key):
+        await callback.answer("Города выключены", show_alert=True)
+        return
+    # T-093-20: composed key comes ONLY from cities.per_city_key — refuse on an unknown code
+    # before touching rights or freshness (same guard order as settings_regmode_reset_go above).
+    composed = per_city_key(key, code)
+    if composed is None:
+        await callback.answer("Неизвестный город", show_alert=True)
+        return
+    # T-093-19: RIGHT check against the code carried in callback_data (not just the current
+    # header) — this is what catches a bound manager's forged confirmation for another city,
+    # since the freshness check below alone could never distinguish "forged" from "stale"
+    # (a bound manager's OWN header can never actually become another city).
+    visible = await _per_city_visible_codes(admin_id)
+    if code not in visible:
+        await callback.answer("Этот город правит суперадмин", show_alert=True)
+        return
+    # T-093-22: freshness — the confirm screen named the header's city; if the header moved
+    # on since, refuse and re-render the editor for the NEW header instead of deleting.
+    current = await admin_selected_city(admin_id)
+    if code != current:
+        await callback.answer("Город админки изменился — подтвердите заново.", show_alert=True)
+        text, kb = await _settings_edit_screen(key, current)
+        await callback.message.edit_text(text, parse_mode="HTML", reply_markup=kb)
+        return
+
+    await delete_setting(composed)  # idempotent — safe if already absent
+    city_txt = await city_label(code)
+    await callback.answer(f"Готово: {city_txt} — как везде", show_alert=True)
+    text, kb = await _settings_edit_screen(key, current)
+    await callback.message.edit_text(text, parse_mode="HTML", reply_markup=kb)
+
+
+@router.callback_query(F.data.startswith("settings_photo:"))
+async def settings_photo_start(callback: types.CallbackQuery, state: FSMContext):
+    prefix = callback.data.split(":", 1)[1]
+    prompts = {p: (label, prompt) for p, label, prompt in PHOTO_FIELDS}
+    label, prompt = prompts.get(prefix, ("Фото", "Отправьте фото."))
+
+    current = await get_setting(f"{prefix}_photo_file_id")
+    text = f"{label}: {'✅ загружена' if current else '<i>не загружена</i>'}\n\n{prompt}"
+
+    cancel_kb = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="❌ Отмена", callback_data="settings_cancel")],
+    ])
+    await callback.message.edit_text(text, parse_mode="HTML", reply_markup=cancel_kb)
+    await state.set_state(EditSetting.waiting_for_photo)
+    await state.update_data(photo_setting=prefix)
+    await callback.answer()
+
+
+@router.callback_query(F.data == "settings_cancel")
+async def cancel_edit_setting_callback(callback: types.CallbackQuery, state: FSMContext):
+    await state.clear()
+    text = await render_settings_text(callback.from_user.id)
+    await callback.message.edit_text(text, parse_mode="HTML", reply_markup=await build_settings_keyboard(callback.from_user.id))
+    await callback.answer()
+
+
+@router.callback_query(F.data == "admin_sync_sheet")
+async def sync_sheet(callback: types.CallbackQuery):
+    await callback.answer("🔄 Синхронизация...")
+    await callback.message.edit_text("🔄 Получаю данные из таблицы...", parse_mode="HTML")
+
+    try:
+        headers = await active_sheet_headers()  # only enabled columns
+        await ensure_sheet_header(headers)  # шапка таблицы, если её ещё нет
+        existing_ids = await get_existing_sheet_ids()
+        all_users = await get_all_users_dicts()
+
+        missing = [u for u in all_users if u["telegram_id"] not in existing_ids]
+
+        if not missing:
+            await callback.message.edit_text(
+                "✅ Таблица синхронизирована, пропущенных записей нет.",
+                parse_mode="HTML",
+                reply_markup=await admin_keyboard_for(callback.from_user.id),
+            )
+            return
+
+        # Align each row to the active header order so columns match the sheet exactly.
+        rows = [[_sheet_value_map(u).get(h, "-") for h in headers] for u in missing]
+        count = await append_rows_to_sheet(rows)
+
+        await callback.message.edit_text(
+            f"✅ Синхронизация завершена!\n\n"
+            f"Добавлено записей: <b>{count}</b>",
+            parse_mode="HTML",
+            reply_markup=await admin_keyboard_for(callback.from_user.id),
+        )
+    except Exception as e:
+        logger.error(f"Sheet sync failed: {e}")
+        await callback.message.edit_text(
+            f"❌ Ошибка синхронизации:\n<code>{html_module.escape(str(e))}</code>",
+            parse_mode="HTML",
+            reply_markup=await admin_keyboard_for(callback.from_user.id),
+        )
+
+
+@router.callback_query(F.data == "admin_rebuild_sheet")
+async def rebuild_sheet_confirm(callback: types.CallbackQuery):
+    """Quick 260813-sdl: пересборка делает sheet.clear() и перезаписывает ВСЕ строки — то есть
+    сносит любые ручные правки менеджеров на листе. До этого она запускалась одним тапом, без
+    вопроса; соседняя destructive-кнопка «🧹 Убрать дубли» подтверждение имела всегда. Гейт
+    зеркалит dedupe: сама работа переехала в admin_rebuild_sheet_go."""
+    kb = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="♻️ Да, пересобрать", callback_data="admin_rebuild_sheet_go")],
+        [InlineKeyboardButton(text="← Отмена", callback_data="admin_menu")],
+    ])
+    await callback.message.edit_text(
+        "♻️ <b>Пересобрать таблицу?</b>\n\n"
+        "Перезапишу на основной вкладке <b>шапку и все строки</b> из базы бота: колонки "
+        "встанут в порядке анкеты, «Статус» получит выпадашку и цвета.\n\n"
+        "⚠️ Лист очищается целиком и заполняется заново. <b>Любые ручные правки и заметки, "
+        "которых нет в базе бота, пропадут безвозвратно.</b> Если менеджеры что-то дописывали "
+        "прямо в таблице — сначала сохраните копию (Файл → Создать копию).",
+        parse_mode="HTML",
+        reply_markup=kb,
+    )
+    await callback.answer()
+
+
+@router.callback_query(F.data == "admin_rebuild_sheet_go")
+async def rebuild_sheet(callback: types.CallbackQuery):
+    """Полная пересборка листа данных: перезаписать шапку + ВСЕ строки в текущем порядке
+    колонок, применить выпадашку/цвета к «Статус». Выравнивает старые строки после смены
+    порядка колонок (Таня п.1/п.5). Внимание: перезаписывает ручные правки на листе."""
+    await callback.answer("♻️ Пересборка...")
+    logger.info(f"admin={callback.from_user.id} action=rebuild_sheet start")
+    await callback.message.edit_text("♻️ Пересобираю таблицу (перезапись всех строк)…", parse_mode="HTML")
+
+    try:
+        headers = await active_sheet_headers()  # only enabled columns
+        all_users = await get_all_users_dicts()
+        # UAT 17.08 (fast): the rebuild used to dump EVERY user into the main tab regardless of
+        # city, so after one «Пересобрать» the main tab held СПб/Тюмень rows too while live
+        # appends kept routing them to their own tabs -- the sheets drifted apart. Route each
+        # row through the SAME resolver the live append uses (city_row_tab: default city / module
+        # off -> None -> main tab; other city -> its named tab) and full-refresh every touched
+        # city tab alongside the main one. Module off => city_row_tab is always None => byte-
+        # identical to the old behaviour.
+        main_rows: list[list] = []
+        city_rows: dict[str, list[list]] = {}
+        for u in all_users:
+            row = [_sheet_value_map(u).get(h, "-") for h in headers]
+            tab = await city_row_tab(u.get("event_city"), u.get("participant_type"))
+            if tab is None:
+                main_rows.append(row)
+            else:
+                city_rows.setdefault(tab, []).append(row)
+        rows = main_rows
+        count = await rebuild_main_sheet(headers, rows)
+        city_synced: list[tuple[str, int]] = []
+        if count >= 0:
+            for tab, trows in city_rows.items():
+                city_synced.append((tab, await sync_named_worksheet(tab, headers, trows)))
+        if count == REFUSED_UNPINNED_TAB:
+            await callback.message.edit_text(
+                "⛔ Пересборка отключена: основная вкладка не задана.\n\n"
+                "Без неё пересборка могла бы задеть не ту вкладку. Укажите вкладку в "
+                "«⚙️ Настройки → 📄 Вкладки таблицы → 📄 Основная (регистрации)» — сработает "
+                "сразу, без перезапуска. Вариант для разработчика — <code>GOOGLE_SHEET_TAB</code> "
+                "в .env (тогда нужен перезапуск).",
+                parse_mode="HTML",
+                reply_markup=await admin_keyboard_for(callback.from_user.id),
+            )
+            return
+        if count < 0:
+            await callback.message.edit_text(
+                "❌ Пересборка не выполнена (таблица не настроена или ошибка API). Смотри логи.",
+                parse_mode="HTML",
+                reply_markup=await admin_keyboard_for(callback.from_user.id),
+            )
+            return
+        # CR-9: rebuild is the re-sync point — freeze the snapshot to the header just written
+        # so subsequent registrations align to the rebuilt physical header.
+        await set_sheet_schema(headers)
+        city_line = ""
+        if city_synced:
+            parts = [f"{html_module.escape(t)}: <b>{n if n >= 0 else '❌'}</b>" for t, n in city_synced]
+            city_line = "Городские вкладки: " + ", ".join(parts) + "\n"
+        await callback.message.edit_text(
+            f"✅ Таблица пересобрана!\n\n"
+            f"Строк записано (основная): <b>{count}</b>\n"
+            f"{city_line}"
+            f"Колонки выстроены в порядке анкеты, «Статус» с выпадашкой и цветами.",
+            parse_mode="HTML",
+            reply_markup=await admin_keyboard_for(callback.from_user.id),
+        )
+    except Exception as e:
+        logger.error(f"Sheet rebuild failed: {e}")
+        await callback.message.edit_text(
+            f"❌ Ошибка пересборки:\n<code>{html_module.escape(str(e))}</code>",
+            parse_mode="HTML",
+            reply_markup=await admin_keyboard_for(callback.from_user.id),
+        )
+
+
+@router.callback_query(F.data == "settings_back")
+async def settings_back_to_admin(callback: types.CallbackQuery):
+    await callback.message.edit_text(
+        "👮‍♂️ <b>Панель администратора</b>",
+        parse_mode="HTML",
+        reply_markup=await admin_keyboard_for(callback.from_user.id),
+    )
+    await callback.answer()
+
+
+def _parse_consent_list(raw: str) -> list[tuple[str, str]]:
+    """consent_list ('Название|ключ' per line) → [(label, key)]."""
+    items = []
+    # ';' works as a separator too — see _consent_entries in registration.py: the
+    # Telegram Enter=send trap can split multi-line input, so admins may enter all
+    # consents on one line joined by ';'. Existing newline data still parses.
+    for line in (raw or "").replace(";", "\n").strip().splitlines():
+        line = line.strip()
+        if not line or "|" not in line:
+            continue
+        label, key = line.split("|", 1)
+        key = key.strip()
+        if key:
+            items.append((label.strip() or key, key))
+    return items
+
+
+@router.callback_query(F.data == "admin_consent_pdfs")
+async def admin_consent_pdfs(callback: types.CallbackQuery):
+    items = _parse_consent_list(await get_setting("consent_list") or "")
+    if not items:
+        await callback.answer()
+        await callback.message.edit_text(
+            "🧾 <b>PDF согласий</b>\n\n"
+            "Здесь пусто, потому что ещё не задан список согласий.\n\n"
+            "<b>Что сделать:</b>\n"
+            "1. Зайди в «📋 Список согласий» и добавь согласия (каждое строкой "
+            "<i>Название|ключ</i>).\n"
+            "2. Вернись сюда — у каждого согласия появится кнопка для загрузки PDF.",
+            parse_mode="HTML",
+            reply_markup=InlineKeyboardMarkup(inline_keyboard=[
+                [InlineKeyboardButton(text="📋 К списку согласий", callback_data="settings_edit:consent_list")],
+                [InlineKeyboardButton(text="← Назад", callback_data="admin_settings")],
+            ]),
+        )
+        return
+    buttons = []
+    for label, key in items:
+        has_pdf = bool(await get_setting(f"consent_pdf_{key}"))
+        mark = "✅" if has_pdf else "📎"
+        buttons.append([InlineKeyboardButton(text=f"{mark} {label}", callback_data=f"consent_pdf_set:{key}")])
+    buttons.append([InlineKeyboardButton(text="← Назад", callback_data="admin_settings")])
+    await callback.message.edit_text(
+        "🧾 <b>PDF согласий</b>\n\n"
+        "Нажми на согласие и пришли PDF-файл — участник увидит его прикреплённым к этому согласию.\n\n"
+        "✅ — PDF уже загружен · 📎 — ещё нет.",
+        parse_mode="HTML",
+        reply_markup=InlineKeyboardMarkup(inline_keyboard=buttons),
+    )
+    await callback.answer()
+
+
+@router.callback_query(F.data.startswith("consent_pdf_set:"))
+async def consent_pdf_set(callback: types.CallbackQuery, state: FSMContext):
+    key = callback.data.split(":", 1)[1]
+    cancel_kb = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="❌ Отмена", callback_data="settings_cancel")],
+    ])
+    await callback.message.edit_text(
+        "📎 Пришли сюда <b>PDF-файл</b> этого согласия одним сообщением "
+        "(перетащи файл или прикрепи через скрепку).\n\n"
+        "Просто фото или ссылка не подойдут — нужен именно PDF-документ.",
+        parse_mode="HTML",
+        reply_markup=cancel_kb,
+    )
+    await state.set_state(EditSetting.waiting_for_file)
+    await state.update_data(raw_file_key=f"consent_pdf_{key}")
+    await callback.answer()
+
+
+@router.message(StateFilter(EditSetting), Command("cancel"))
+@router.message(StateFilter(EditSetting), F.text == "Отмена")
+async def cancel_edit_setting(message: types.Message, state: FSMContext):
+    await state.clear()
+    text = await render_settings_text(message.from_user.id)
+    await message.answer(text, parse_mode="HTML", reply_markup=await build_settings_keyboard(message.from_user.id))
+
+
+@router.message(EditSetting.waiting_for_photo, F.photo)
+async def settings_receive_photo(message: types.Message, state: FSMContext):
+    data = await state.get_data()
+    prefix = data.get("photo_setting", "program")
+
+    file_id = message.photo[-1].file_id
+    await set_setting(f"{prefix}_photo_file_id", file_id)
+
+    if message.caption:
+        await set_setting(f"{prefix}_caption", message.html_text)
+    else:
+        await delete_setting(f"{prefix}_caption")
+
+    await state.clear()
+    await message.answer("✅ Фото обновлено!")
+    text = await render_settings_text(message.from_user.id)
+    await message.answer(text, parse_mode="HTML", reply_markup=await build_settings_keyboard(message.from_user.id))
+
+
+@router.message(EditSetting.waiting_for_photo)
+async def settings_receive_photo_invalid(message: types.Message):
+    await message.answer("Отправьте именно фото (не файлом).")
+
+
+@router.message(EditSetting.waiting_for_file, F.photo)
+async def settings_receive_file_photo(message: types.Message, state: FSMContext):
+    data = await state.get_data()
+    if data.get("raw_file_key"):
+        await message.answer("Согласие принимается только PDF-документом, не фото.")
+        return
+    prefix = data.get("file_setting", "reg_bonus")
+
+    file_id = message.photo[-1].file_id
+    await set_setting(f"{prefix}_photo_file_id", file_id)
+    await delete_setting(f"{prefix}_doc_file_id")
+
+    if message.caption:
+        await set_setting(f"{prefix}_caption", message.html_text)
+    else:
+        await delete_setting(f"{prefix}_caption")
+
+    await state.clear()
+    await message.answer("✅ Файл обновлён!")
+    text = await render_settings_text(message.from_user.id)
+    await message.answer(text, parse_mode="HTML", reply_markup=await build_settings_keyboard(message.from_user.id))
+
+
+@router.message(EditSetting.waiting_for_file, F.document)
+async def settings_receive_file_doc(message: types.Message, state: FSMContext):
+    data = await state.get_data()
+
+    # Consent PDF: store the document file_id directly into an arbitrary settings key.
+    raw_key = data.get("raw_file_key")
+    if raw_key:
+        if (message.document.mime_type or "") != "application/pdf":
+            await message.answer("Принимается только PDF-документ. Пришли PDF.")
+            return
+        await set_setting(raw_key, message.document.file_id)
+        await state.clear()
+        await message.answer("✅ PDF согласия сохранён!")
+        text = await render_settings_text(message.from_user.id)
+        await message.answer(text, parse_mode="HTML", reply_markup=await build_settings_keyboard(message.from_user.id))
+        return
+
+    prefix = data.get("file_setting", "reg_bonus")
+
+    file_id = message.document.file_id
+    await set_setting(f"{prefix}_doc_file_id", file_id)
+    await delete_setting(f"{prefix}_photo_file_id")
+
+    if message.caption:
+        await set_setting(f"{prefix}_caption", message.html_text)
+    else:
+        await delete_setting(f"{prefix}_caption")
+
+    await state.clear()
+    await message.answer("✅ Файл обновлён!")
+    text = await render_settings_text(message.from_user.id)
+    await message.answer(text, parse_mode="HTML", reply_markup=await build_settings_keyboard(message.from_user.id))
+
+
+@router.message(EditSetting.waiting_for_file)
+async def settings_receive_file_invalid(message: types.Message):
+    await message.answer("Отправьте фото или документ.")
+
+
+HTML_SETTINGS = {"start_text", "start_text_registered", "start_text_returning", "reg_complete_text", "approve_text", "approve_text__party"}
+
+
+def _base_setting_key(key: str) -> str:
+    """Phase 09.2 (C, CITY-05): strips a `{key}__city__{code}` composite key down to the
+    base registry key — used ONLY for the HTML_SETTINGS membership check in
+    settings_edit_value, so per-city text saves get the same HTML parsing as the global
+    save. `_SHEET_TAB_WRITE_MODE`/`_options` branches deliberately stay on the raw key
+    (guarded by test_no_per_city_key_in_sheet_tab_write_mode_or_options_suffix)."""
+    return key.split(PER_CITY_SEP)[0]
+
+
+def _enum_human_label(key: str, value: str) -> str:
+    """Human-readable alert text for a per-city enum toggle (CLAUDE.md: no raw values in
+    admin-facing alerts)."""
+    if key == "registration_mode":
+        return {"short": "⚡ Краткая", "full": "📋 Полная"}.get(value, value)
+    if value == "on":
+        return "✅ Вкл"
+    if value == "off":
+        return "❌ Выкл"
+    return value
+
+
+# Quick 260815-3hw (Task 3): which Google Sheets tab-name keys the bot actually WRITES to, and
+# HOW. "rewrite" = the sync path does ws.clear() + full rewrite (rebuild_main_sheet /
+# sync_named_worksheet); "append" = only new rows are ever added (append_to_named_sheet), never
+# a clear. preselect_tab (read-only — the bot never writes it) and the three
+# city_tab_suffix__* keys (not full tab names, just suffixes) are deliberately ABSENT — the
+# confirm-gate in settings_edit_value only fires for a key present in this dict.
+_SHEET_TAB_WRITE_MODE = {
+    "main_sheet_tab": "rewrite",
+    "incomplete_sheet_tab": "rewrite",
+    "game_matrix_tab": "rewrite",
+    "game_history_tab": "rewrite",
+    "short_sheet_tab": "append",
+    "party_sheet_tab": "append",
+}
+
+
+async def _after_tab_setting_saved(key: str) -> None:
+    """Called after EVERY save/clear of a _SHEET_TAB_WRITE_MODE key (plain save, gated
+    save-after-confirm, and the "-" clear path) — resets the cached MAIN worksheet handle
+    (services.sheets._sheet global) so a renamed main_sheet_tab takes effect on the very next
+    write, no bot restart needed. Named-tab caches (short/party/game/incomplete) need no
+    reset: they're keyed BY NAME (services.sheets._named_sheets), so a new name simply opens a
+    new cache entry — the stale entry under the old name just goes unused, it isn't wrong."""
+    if key == "main_sheet_tab":
+        _reset_sheet_cache()
+
+
+def _tab_confirm_text(key: str, value: str, rows: int) -> str:
+    """Confirm-screen body for an EXISTING tab name — text differs by write mode (CLAUDE.md:
+    a confirmation has to name the actual damage, and for an append-only tab nothing is
+    actually lost)."""
+    label = SETTINGS_SCHEMA.get(key, {}).get("label", key)
+    safe_value = html_module.escape(value)
+    mode = _SHEET_TAB_WRITE_MODE.get(key)
+    if mode == "append":
+        body = (
+            f"Вкладка «{safe_value}» уже существует, в ней {rows} строк.\n\n"
+            "Бот будет дописывать в неё строки заявок, к тому, что там уже есть — ничего не "
+            "сотрётся."
+        )
+    else:
+        body = (
+            f"Вкладка «{safe_value}» уже существует, в ней {rows} строк.\n\n"
+            "Бот будет перезаписывать её целиком при каждой синхронизации — <b>всё, что там "
+            "сейчас есть, пропадёт.</b>"
+        )
+        if key == "main_sheet_tab":
+            body += (
+                "\n\nРегистрации будут дописываться в неё по одной; кнопка «♻️ Пересобрать "
+                "таблицу» очистит её целиком и запишет заново."
+            )
+    return f"⚠️ <b>{html_module.escape(label)}</b>\n\n{body}"
+
+
+def _tab_check_failed_warning(key: str) -> str:
+    """Appended to the post-save confirmation text when tab_row_count() couldn't check the
+    spreadsheet at all (Sheets down/unconfigured) — the value is saved regardless (a settings
+    change must never depend on Sheets being reachable), but the manager needs to know the
+    existing-tab check didn't run."""
+    mode = _SHEET_TAB_WRITE_MODE.get(key)
+    if mode == "append":
+        tail = "если такая вкладка уже есть, бот будет дописывать в неё, ничего не потеряется."
+    else:
+        tail = "если такая вкладка уже есть, при следующей синхронизации она будет перезаписана."
+    return f"\n\n⚠️ Значение сохранено, но проверить вкладку в Google-таблице не удалось — {tail}"
+
+
+def _tab_confirm_keyboard() -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="✅ Да, сохранить это имя", callback_data="sheets_tab_confirm")],
+        [InlineKeyboardButton(text="← Отмена", callback_data="sheets_tab_cancel")],
+    ])
+
+
+@router.message(EditSetting.waiting_for_value)
+async def settings_edit_value(message: types.Message, state: FSMContext):
+    data = await state.get_data()
+    key = data["setting_key"]
+
+    # Phase 09.2 (C, CITY-05): a per-city composite key (`{base}__city__{code}`) gets the
+    # SAME HTML-parsing treatment as its base key — the check is against the base, not the
+    # raw composite (which is never itself a HTML_SETTINGS member).
+    if _base_setting_key(key) in HTML_SETTINGS:
+        value = (message.html_text or message.text or "").strip()
+    else:
+        value = (message.text or "").strip()
+
+    # Guard: a non-text message (sticker/photo/voice/forwarded media) or a whitespace-only
+    # send yields value == "" here. Storing "" is never a meaningful value — the registry's
+    # text branch would return "" instead of the default (so the settings screen shows
+    # «по умолчанию» while a consumer actually resolves ""), and an empty Google Sheets tab
+    # name breaks the allowlist read and every sync. Clearing a setting is the explicit "-"
+    # sentinel, not an empty send. Reject and stay in the state so the admin can just retype.
+    if not value:
+        await message.answer(
+            "Не понял значение — пришлите его <b>текстом</b> одним сообщением "
+            "(например: <code>Реги бот</code>).\n\nЧтобы очистить настройку, отправьте «-».",
+            parse_mode="HTML",
+        )
+        return
+
+    # Quick 260815-3hw (Task 3): confirm-gate before silently overwriting an EXISTING Google
+    # Sheets tab — only for keys the bot actually writes to (_SHEET_TAB_WRITE_MODE);
+    # preselect_tab (read-only) and the city_tab_suffix__* keys never reach this branch, and
+    # neither does clearing a value ("-") — there is nothing to protect when unsetting.
+    tab_check_failed = False
+    if key in _SHEET_TAB_WRITE_MODE and value and value != "-":
+        probe = await tab_row_count(value)
+        if probe is None:
+            tab_check_failed = True
+        elif probe[0]:
+            _exists, rows = probe
+            await state.update_data(pending_tab_key=key, pending_tab_value=value)
+            await state.set_state(EditSetting.waiting_for_tab_confirm)
+            await message.answer(
+                _tab_confirm_text(key, value, rows),
+                parse_mode="HTML",
+                reply_markup=_tab_confirm_keyboard(),
+            )
+            return
+        # probe == (False, 0): tab doesn't exist yet — fall through to the normal silent save.
+
+    warning = ""
+    if value == "-":
+        await delete_setting(key)
+    else:
+        await set_setting(key, value)
+        # Phase 4 (D-05): saving event_type applies the module-toggle preset.
+        if key == "event_type":
+            await _apply_event_type_preset(value.strip().lower())
+        # WR-02: "Отмена"/"Другое"/"Пропустить" are reserved control words in the registration
+        # flow — an option list whose line equals one becomes unreachable (it triggers cancel /
+        # "type your own" instead of being recorded). Warn the admin (the value is still saved).
+        if key.endswith("_options"):
+            reserved = {"отмена", "другое", "пропустить"}
+            clashes = sorted({
+                ln.strip() for ln in value.splitlines() if ln.strip().lower() in reserved
+            })
+            if clashes:
+                warning = (
+                    "\n\n⚠️ Внимание: варианты "
+                    + ", ".join(f"«{html_module.escape(c)}»" for c in clashes)
+                    + " совпадают со служебными словами бота и будут недоступны для выбора. "
+                    "Переименуйте их."
+                )
+        if tab_check_failed:
+            warning += _tab_check_failed_warning(key)
+
+    if key in _SHEET_TAB_WRITE_MODE:
+        await _after_tab_setting_saved(key)
+
+    per_city_base = data.get("per_city_base")
+    await state.clear()
+    if per_city_base:
+        # Phase 09.3 (06, CITY-09): a per-city save/clear returns to the SAME header-aware
+        # editor screen, not the general settings landing (RESEARCH Pattern 3 lineage — reuse
+        # the FSM, but keep the caller on the screen they actually came from).
+        header_code = await admin_selected_city(message.from_user.id)
+        text, kb = await _settings_edit_screen(per_city_base, header_code)
+        await message.answer(text + warning, parse_mode="HTML", reply_markup=kb)
+        return
+    text = await render_settings_text(message.from_user.id)
+    await message.answer(text + warning, parse_mode="HTML", reply_markup=await build_settings_keyboard(message.from_user.id))
+
+
+@router.callback_query(F.data == "sheets_tab_confirm")
+async def sheets_tab_confirm_go(callback: types.CallbackQuery, state: FSMContext):
+    """Confirmed overwrite of an existing tab name — saves the pending value (mirrors
+    gtconfirm/gtcancel, 09-02: no StateFilter, FSM data is read directly). Returns to the
+    «📄 Вкладки таблицы» screen, not the general settings landing — the manager came from there."""
+    data = await state.get_data()
+    key = data.get("pending_tab_key")
+    value = data.get("pending_tab_value")
+    await state.clear()
+    if key and value is not None:
+        await set_setting(key, value)
+        if key in _SHEET_TAB_WRITE_MODE:
+            await _after_tab_setting_saved(key)
+    text = await render_settings_group_text("sheets", callback.from_user.id)
+    await callback.message.edit_text(text, parse_mode="HTML", reply_markup=await build_settings_group_keyboard("sheets", callback.from_user.id))
+    await callback.answer("✅ Сохранено")
+
+
+@router.callback_query(F.data == "sheets_tab_cancel")
+async def sheets_tab_cancel_go(callback: types.CallbackQuery, state: FSMContext):
+    """Cancelled overwrite — nothing saved, prior value untouched."""
+    await state.clear()
+    text = await render_settings_group_text("sheets", callback.from_user.id)
+    await callback.message.edit_text(text, parse_mode="HTML", reply_markup=await build_settings_group_keyboard("sheets", callback.from_user.id))
+    await callback.answer("Отменено")
+
+
+@router.callback_query(F.data == "admin_export_csv")
+async def show_admin_export(callback: types.CallbackQuery):
+    # Phase 07.2 (CITY-02): CSV export is SCOPED to the admin's selected city — the opposite
+    # of the (intentionally unscoped) stats screen. Same resolver every other city-scoped
+    # surface uses (_admin_city_view), so module-off collapses to the exact pre-Phase-07.2
+    # unfiltered export, byte-identical filename and caption.
+    # WR-05: ONE read — the filename must never name a different city than the caption.
+    admin_id = callback.from_user.id
+    scope, label = await _admin_city_view(admin_id)
+    headers, rows = await export_users_csv(city_scope=scope)
+    output = io.StringIO()
+    writer = csv.writer(output, delimiter=';', quotechar='"', quoting=csv.QUOTE_MINIMAL)
+    writer.writerow(headers)
+    writer.writerows(rows)
+    file_bytes = output.getvalue().encode('utf-8-sig')
+    # Filename stays keyed on `scope` (there is no single city code in ALL_CITIES mode — scope
+    # is None there too, same as module-off).
+    filename = "users.csv" if scope is None else f"users_{scope[0]}.csv"
+    # CR-01: the label is an admin-editable free-text setting (`city_label__{code}` in
+    # bot_settings) and the bot runs with DefaultBotProperties(parse_mode=HTML), so a caption
+    # sent without an explicit parse_mode is parsed as HTML. Escape it exactly like
+    # _render_application_card / _render_receipt_card / render_stats_text already do.
+    # Phase 09.3 (09.3-02, CITY-08): switched from `scope is None` to `label is None` — module
+    # off still has no label (byte-identical caption); ALL_CITIES mode now has a non-None
+    # label (ALL_CITIES_LABEL) even though scope is also None, so the caption names the mode.
+    caption = (
+        "База данных пользователей" if label is None
+        else f"База данных пользователей — {html_module.escape(str(label))}"
+    )
+    document = BufferedInputFile(file_bytes, filename=filename)
+    await callback.message.answer_document(document, caption=caption)
+    await callback.answer()
+
+
+@router.callback_query(F.data == "admin_export_incomplete")
+async def export_incomplete(callback: types.CallbackQuery):
+    await callback.answer("📝 Выгружаю…")
+    # Phase 07.1 (CITY-04): incomplete_city_batches() is the SINGLE shared helper for both the
+    # manual export and services/scheduler.py:sync_incomplete_sheet_job — headers are computed
+    # once inside it (Google Sheets quota) and both callers MUST stay on this helper (WR-01
+    # parity), otherwise the 2h auto-sync can silently narrow a tab back down.
+    # Phase 07.2 (CITY-02): deliberately NOT scoped to the admin's selected city, unlike
+    # show_admin_export above. incomplete_city_batches() writes ALL city tabs in one pass
+    # (sync_named_worksheet = clear+rewrite per tab); narrowing to one city here would leave
+    # every OTHER city's tab holding stale data after this run. This is already a per-city
+    # surface (Phase 07.1, WR-01 parity) — just not filtered by the admin's current selection.
+    batches = await incomplete_city_batches()
+    total_rows = 0
+    written_lines = []
+    any_negative = False
+    for tab, headers, sheet_rows in batches:
+        written = await sync_named_worksheet(tab, headers, sheet_rows)
+        total_rows += len(sheet_rows)
+        if written < 0:
+            any_negative = True
+        else:
+            written_lines.append(f"«{tab}» — {written}")
+
+    # Aggregate: on which question do dropouts stall most? (works even if the sheet write failed)
+    stats = await get_dropout_step_stats()
+    total = sum(c for _s, c in stats) or 1
+    top = "\n".join(
+        f"• {dropout_step_label(step)} — <b>{cnt}</b> ({round(cnt * 100 / total)}%)"
+        for step, cnt in stats[:8]
+    )
+    summary = f"\n\n📊 <b>Где отваливаются:</b>\n{top}" if stats else ""
+
+    if any_negative:
+        await callback.message.answer(
+            "⚠️ Не удалось записать в таблицу (проверь доступ к Google Sheets). "
+            f"Незавершённых регистраций в базе: <b>{total_rows}</b>.{summary}",
+            parse_mode="HTML",
+        )
+        return
+    await callback.message.answer(
+        f"✅ Обновлено: {', '.join(written_lines)}.{summary}",
+        parse_mode="HTML",
+    )
+

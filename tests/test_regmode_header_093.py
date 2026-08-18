@@ -21,6 +21,7 @@ from pathlib import Path
 from config import config
 from database import db
 from handlers import admin as admin_mod
+from handlers import admin_settings  # Phase 13 (13-06): settings moved out of admin.py
 from handlers.admin_caps import required_capability
 import cities
 
@@ -106,12 +107,12 @@ def test_render_and_build_accept_admin_id_kwarg_module_off_byte_identical(tmp_pa
     OFF, must produce byte-identical output -- module-off collapses admin_selected_city to
     None regardless of who's asking."""
     _admin_ready(tmp_path)
-    text_none = asyncio.run(admin_mod.render_settings_text())
-    text_id = asyncio.run(admin_mod.render_settings_text(ADMIN_ID))
+    text_none = asyncio.run(admin_settings.render_settings_text())
+    text_id = asyncio.run(admin_settings.render_settings_text(ADMIN_ID))
     assert text_none == text_id
 
-    kb_none = asyncio.run(admin_mod.build_settings_keyboard())
-    kb_id = asyncio.run(admin_mod.build_settings_keyboard(ADMIN_ID))
+    kb_none = asyncio.run(admin_settings.build_settings_keyboard())
+    kb_id = asyncio.run(admin_settings.build_settings_keyboard(ADMIN_ID))
     assert _flat_callback_data(kb_none) == _flat_callback_data(kb_id)
     assert _flat_button_texts(kb_none) == _flat_button_texts(kb_id)
 
@@ -125,12 +126,12 @@ def test_landing_shows_header_city_first_line_and_as_everywhere_mark(tmp_path):
     _enable_cities()
     asyncio.run(cities.set_admin_city(ADMIN_ID, "spb"))
 
-    text = asyncio.run(admin_mod.render_settings_text(ADMIN_ID))
+    text = asyncio.run(admin_settings.render_settings_text(ADMIN_ID))
     spb_label = asyncio.run(cities.city_label("spb"))
     assert text.splitlines()[0] == f"🏙 {spb_label}"
     assert "📝 Форма регистрации: <b>⚡ Краткая</b> — как везде" in text
 
-    kb = asyncio.run(admin_mod.build_settings_keyboard(ADMIN_ID))
+    kb = asyncio.run(admin_settings.build_settings_keyboard(ADMIN_ID))
     assert "settings_regmode_reset" not in _flat_callback_data(kb)
     # picker shortcut is gone entirely, not just conditionally hidden.
     assert not any(d and d.startswith("settings_city:") for d in _flat_callback_data(kb))
@@ -142,7 +143,7 @@ def test_toggle_at_header_city_writes_composite_key_not_global(tmp_path):
     asyncio.run(cities.set_admin_city(ADMIN_ID, "spb"))
 
     cb = FakeCallback("settings_toggle_reg", user_id=ADMIN_ID)
-    asyncio.run(admin_mod.toggle_registration_mode(cb))
+    asyncio.run(admin_settings.toggle_registration_mode(cb))
 
     assert asyncio.run(db.get_setting("registration_mode__city__spb")) == "full"
     assert asyncio.run(db.get_setting("registration_mode")) is None  # global untouched
@@ -165,7 +166,7 @@ def test_toggle_at_all_cities_writes_global_key_unchanged_from_before_phase(tmp_
     asyncio.run(cities.set_admin_city(ADMIN_ID, cities.ALL_CITIES))
 
     cb = FakeCallback("settings_toggle_reg", user_id=ADMIN_ID)
-    asyncio.run(admin_mod.toggle_registration_mode(cb))
+    asyncio.run(admin_settings.toggle_registration_mode(cb))
 
     assert asyncio.run(db.get_setting("registration_mode")) == "full"
     assert asyncio.run(db.get_setting("registration_mode__city__msk")) is None
@@ -179,7 +180,7 @@ def test_toggle_at_all_cities_writes_global_key_unchanged_from_before_phase(tmp_
 def test_toggle_module_off_byte_identical_to_before_phase(tmp_path):
     _admin_ready(tmp_path)
     cb = FakeCallback("settings_toggle_reg", user_id=ADMIN_ID)
-    asyncio.run(admin_mod.toggle_registration_mode(cb))
+    asyncio.run(admin_settings.toggle_registration_mode(cb))
 
     assert asyncio.run(db.get_setting("registration_mode")) == "full"
     text = cb.message.text
@@ -195,7 +196,7 @@ def test_reset_confirm_screen_names_city_and_global_value(tmp_path):
     asyncio.run(cities.set_admin_city(ADMIN_ID, "spb"))
 
     cb = FakeCallback("settings_regmode_reset", user_id=ADMIN_ID)
-    asyncio.run(admin_mod.settings_regmode_reset(cb))
+    asyncio.run(admin_settings.settings_regmode_reset(cb))
 
     text = cb.message.text
     spb_label = asyncio.run(cities.city_label("spb"))
@@ -211,7 +212,7 @@ def test_reset_confirm_refuses_when_no_own_value(tmp_path):
     asyncio.run(cities.set_admin_city(ADMIN_ID, "spb"))
 
     cb = FakeCallback("settings_regmode_reset", user_id=ADMIN_ID)
-    asyncio.run(admin_mod.settings_regmode_reset(cb))
+    asyncio.run(admin_settings.settings_regmode_reset(cb))
 
     assert cb.message.edit_calls == 0
     assert cb.answers and cb.answers[0][1] is True
@@ -224,13 +225,13 @@ def test_reset_go_deletes_override_and_is_idempotent(tmp_path):
     asyncio.run(cities.set_admin_city(ADMIN_ID, "spb"))
 
     cb1 = FakeCallback("settings_regmode_reset_go:spb", user_id=ADMIN_ID)
-    asyncio.run(admin_mod.settings_regmode_reset_go(cb1))
+    asyncio.run(admin_settings.settings_regmode_reset_go(cb1))
     assert asyncio.run(db.get_setting("registration_mode__city__spb")) is None
     assert cb1.answers and cb1.answers[0][1] is True
 
     # repeat -- idempotent, no error, still gone.
     cb2 = FakeCallback("settings_regmode_reset_go:spb", user_id=ADMIN_ID)
-    asyncio.run(admin_mod.settings_regmode_reset_go(cb2))
+    asyncio.run(admin_settings.settings_regmode_reset_go(cb2))
     assert asyncio.run(db.get_setting("registration_mode__city__spb")) is None
 
 
@@ -246,7 +247,7 @@ def test_reset_go_context_mismatch_refuses_and_deletes_nothing(tmp_path):
     asyncio.run(cities.set_admin_city(ADMIN_ID, "msk"))
 
     cb = FakeCallback("settings_regmode_reset_go:spb", user_id=ADMIN_ID)
-    asyncio.run(admin_mod.settings_regmode_reset_go(cb))
+    asyncio.run(admin_settings.settings_regmode_reset_go(cb))
 
     assert cb.answers and cb.answers[0] == ("Город админки изменился — подтвердите заново.", True)
     assert asyncio.run(db.get_setting("registration_mode__city__spb")) == "full"
@@ -265,7 +266,7 @@ def test_bound_manager_forged_reset_go_for_other_city_refused(tmp_path):
     asyncio.run(db.set_setting("registration_mode__city__spb", "full"))
 
     cb = FakeCallback("settings_regmode_reset_go:spb", user_id=MSK_MANAGER_ID)
-    asyncio.run(admin_mod.settings_regmode_reset_go(cb))
+    asyncio.run(admin_settings.settings_regmode_reset_go(cb))
 
     assert cb.answers and cb.answers[0] == ("Этот город правит суперадмин", True)
     assert asyncio.run(db.get_setting("registration_mode__city__spb")) == "full"  # untouched
@@ -284,7 +285,7 @@ def test_bound_manager_forged_toggle_only_ever_touches_own_city(tmp_path):
     asyncio.run(db.set_setting(f"{cities.ADMIN_CITY_KEY_PREFIX}{MSK_MANAGER_ID}", "spb"))
 
     cb = FakeCallback("settings_toggle_reg", user_id=MSK_MANAGER_ID)
-    asyncio.run(admin_mod.toggle_registration_mode(cb))
+    asyncio.run(admin_settings.toggle_registration_mode(cb))
 
     assert asyncio.run(db.get_setting("registration_mode__city__msk")) == "full"
     assert asyncio.run(db.get_setting("registration_mode__city__spb")) is None
@@ -296,18 +297,18 @@ def test_menu_counter_uses_effective_percity_values_at_header(tmp_path):
     asyncio.run(cities.set_admin_city(ADMIN_ID, "spb"))
     total = len(admin_mod.MENU_BUTTONS)
 
-    text_default = asyncio.run(admin_mod.render_settings_text(ADMIN_ID))
+    text_default = asyncio.run(admin_settings.render_settings_text(ADMIN_ID))
     assert f"🔘 Меню: <b>{total} из {total}</b> кнопок" in text_default  # all default "on"
 
     off_key = admin_mod.MENU_BUTTONS[0][0]
     asyncio.run(db.set_setting(cities.per_city_key(off_key, "spb"), "off"))
-    text_after = asyncio.run(admin_mod.render_settings_text(ADMIN_ID))
+    text_after = asyncio.run(admin_settings.render_settings_text(ADMIN_ID))
     assert f"🔘 Меню: <b>{total - 1} из {total}</b> кнопок" in text_after
 
     # a msk override must NOT affect the spb-headed counter.
     on_key2 = admin_mod.MENU_BUTTONS[1][0]
     asyncio.run(db.set_setting(cities.per_city_key(on_key2, "msk"), "off"))
-    text_still = asyncio.run(admin_mod.render_settings_text(ADMIN_ID))
+    text_still = asyncio.run(admin_settings.render_settings_text(ADMIN_ID))
     assert f"🔘 Меню: <b>{total - 1} из {total}</b> кнопок" in text_still
 
 
@@ -325,10 +326,10 @@ def test_module_off_landing_and_toggle_byte_identical_no_percity_surface(tmp_pat
     in tests/test_content_percity_offparity.py; this is the plan-local companion."""
     _admin_ready(tmp_path)
     # event_city_enabled intentionally left unset (neither "on" nor "off").
-    text = asyncio.run(admin_mod.render_settings_text(ADMIN_ID))
+    text = asyncio.run(admin_settings.render_settings_text(ADMIN_ID))
     assert not text.startswith("🏙")
     assert "— своё" not in text and "— как везде" not in text
 
-    kb = asyncio.run(admin_mod.build_settings_keyboard(ADMIN_ID))
+    kb = asyncio.run(admin_settings.build_settings_keyboard(ADMIN_ID))
     assert "settings_regmode_reset" not in _flat_callback_data(kb)
     assert not any(d and d.startswith("settings_city:") for d in _flat_callback_data(kb))

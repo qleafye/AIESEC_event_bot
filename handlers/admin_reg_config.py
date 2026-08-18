@@ -37,7 +37,8 @@ from cities import (
     get_setting_typed_for_city,
     per_city_key,
 )
-from handlers.admin import router, render_settings_text, build_settings_keyboard, _per_city_visible_codes
+from handlers.admin import router
+from handlers.admin_settings import render_settings_text, build_settings_keyboard, _per_city_visible_codes  # Phase 13 (13-06): settings moved out of admin.py
 
 logger = logging.getLogger(__name__)
 
