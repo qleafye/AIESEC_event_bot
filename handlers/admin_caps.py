@@ -332,14 +332,14 @@ ADMIN_CAPS: dict[str, str] = {
     "cmd:settings_guide": "settings",
     "consent_pdf_set:*": "settings",
     "menu_back": "settings",
-    # menu_city* (Phase 09.2-06, CITY-05): per-city «🔘 Кнопки главного меню» sub-flow,
-    # same shape/right as roles_city* above (09.3-06 folded the settings-editor analog of
-    # this family into settings_edit_city*/settings_reset_city* below).
-    "menu_city": "settings",
-    "menu_city_clear:*": "settings",
-    "menu_city_clear_go:*": "settings",
-    "menu_city_pick:*": "settings",
-    "menu_city_toggle:*": "settings",
+    # Phase 09.3 (07, CITY-09): header-scoped «🔘 Кнопки главного меню» — «↩️ Все как везде»
+    # replaces 09.2-06's five-entry per-city picker family (deleted from this dict entirely,
+    # same closure shape as settings_edit_city*/settings_reset_city* above); same right as
+    # every other menu_* screen, never a separate capability. Exact-key resolution
+    # (required_capability checks `callback_data in ADMIN_CAPS` before any prefix scan) means
+    # "menu_reset_city" is never swallowed by the "menu_reset_city_go:*" prefix below it.
+    "menu_reset_city": "settings",
+    "menu_reset_city_go:*": "settings",
     "menu_toggle:*": "settings",
     "preset_apply:*": "settings",
     "preset_confirm:*": "settings",

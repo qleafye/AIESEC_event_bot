@@ -4181,56 +4181,115 @@ async def reg_prompt_edit(callback: types.CallbackQuery, state: FSMContext):
 
 
 # --- Menu Button Toggles ---
+#
+# Phase 09.3 (07, CITY-09): header-aware, single screen. Folds in 09.2-06's separate
+# per-city entry point and its whole picker sub-flow (list screen, per-city text/keyboard
+# builders, pick/toggle/clear/clear-go handlers — all deleted) — mirrors the exact merge
+# shape 09.3-06 already applied to the per-key settings editor (_settings_edit_screen): one
+# render helper branching on an ALREADY-RESOLVED header (WR-05), no separate picker screen.
+# The has-override helper below is kept (still needed by the merged keyboard's «↩️ Все как
+# везде» row).
 
-async def render_menu_text() -> str:
+async def render_menu_text(admin_id: int | None = None) -> str:
+    """Header = real city -> title names the city, every row shows the city's EFFECTIVE
+    value (`get_setting_typed_for_city`) plus a «(своё)»/«(как везде)» mark. Header = None
+    (module off, or no admin_id passed) / ALL_CITIES («все города») -> today's global
+    screen, byte-identical (09.2-06: menu_* is a registry `enum` key, options ["on","off"],
+    default "on" — the enum branch of `_parse_setting` is `raw if raw else default`, so
+    None/"" -> "on", any other value (including "off"/garbage) -> not "on", matching the
+    pre-registry `val is None or val == "on"` idiom)."""
+    header_code = await admin_selected_city(admin_id) if admin_id is not None else None
+    if header_code and header_code != ALL_CITIES:
+        city_txt = await city_label(header_code)
+        lines = [f"🔘 <b>Кнопки главного меню — {html_module.escape(city_txt)}</b>", ""]
+        for key, text in MENU_BUTTONS:
+            is_on = await get_setting_typed_for_city(key, header_code) == "on"
+            override_key = per_city_key(key, header_code)
+            own = bool(override_key and await get_setting(override_key))
+            status = "✅" if is_on else "❌"
+            mark = " <i>(своё)</i>" if own else " <i>(как везде)</i>"
+            lines.append(f"{status} {text}{mark}")
+        return "\n".join(lines)
+
     lines = ["🔘 <b>Кнопки главного меню</b>", ""]
     for key, text in MENU_BUTTONS:
-        # Phase 09.2-06: menu_* is a registry `enum` key (options ["on","off"], default
-        # "on", Phase 09.2-01 migration) -- the enum branch of `_parse_setting` is
-        # `raw if raw else default`, so None/"" -> "on", any other value (including "off"
-        # and garbage) -> not "on", byte-identical to the old
-        # `val is None or val == "on"` idiom this replaces.
         is_on = await get_setting_typed(key) == "on"
         status = "✅" if is_on else "❌"
         lines.append(f"{status} {text}")
     return "\n".join(lines)
 
 
-async def build_menu_keyboard():
+async def build_menu_keyboard(admin_id: int | None = None):
+    """Same header-aware branch as `render_menu_text` (WR-05: this function resolves the
+    header itself, ONCE — every caller below passes its own already-known `admin_id`, never
+    a pre-resolved code, matching the settings-group-screen precedent)."""
+    header_code = await admin_selected_city(admin_id) if admin_id is not None else None
+    per_city_ctx = bool(header_code and header_code != ALL_CITIES)
+
     buttons = []
     for key, text in MENU_BUTTONS:
-        is_on = await get_setting_typed(key) == "on"
+        if per_city_ctx:
+            is_on = await get_setting_typed_for_city(key, header_code) == "on"
+        else:
+            is_on = await get_setting_typed(key) == "on"
         toggle_text = f"{'✅' if is_on else '❌'} {text}"
         buttons.append([InlineKeyboardButton(text=toggle_text, callback_data=f"menu_toggle:{key}")])
-    # Phase 09.2-06 (CITY-05): entry into the per-city menu-buttons sub-flow -- only when
-    # the cities module is on (CONTEXT C: module off -> zero new rows, byte-identical).
-    if await cities_module_on():
-        buttons.append([InlineKeyboardButton(text="🏙 Кнопки по городу", callback_data="menu_city")])
+
+    if per_city_ctx and await _menu_city_has_override(header_code):
+        buttons.append([InlineKeyboardButton(text="↩️ Все как везде", callback_data="menu_reset_city")])
+
     buttons.append([InlineKeyboardButton(text="← Назад к настройкам", callback_data="menu_back")])
     return InlineKeyboardMarkup(inline_keyboard=buttons)
 
 
 @router.callback_query(F.data == "admin_menu_buttons")
 async def show_menu_buttons(callback: types.CallbackQuery):
-    text = await render_menu_text()
-    await callback.message.edit_text(text, parse_mode="HTML", reply_markup=await build_menu_keyboard())
+    admin_id = callback.from_user.id
+    text = await render_menu_text(admin_id)
+    await callback.message.edit_text(text, parse_mode="HTML", reply_markup=await build_menu_keyboard(admin_id))
     await callback.answer()
 
 
 @router.callback_query(F.data.startswith("menu_toggle:"))
 async def toggle_menu_button(callback: types.CallbackQuery):
     key = callback.data.split(":", 1)[1]
-    current_on = await get_setting_typed(key) == "on"
+    admin_id = callback.from_user.id
+    # WR-05: single header read for this handler; both the write branch and the redraw
+    # below reuse `admin_id`, never a second `admin_selected_city` call.
+    header_code = await admin_selected_city(admin_id)
+    per_city_ctx = bool(header_code and header_code != ALL_CITIES)
 
-    new_val = "off" if current_on else "on"
-    await set_setting(key, new_val)
+    if per_city_ctx:
+        # T-093-24: RIGHT re-checked here, not just via a hidden button.
+        visible = await _per_city_visible_codes(admin_id)
+        if header_code not in visible:
+            await callback.answer("Этот город правит суперадмин", show_alert=True)
+            return
+        if key not in {k for k, _ in MENU_BUTTONS}:
+            await callback.answer("Неизвестная кнопка", show_alert=True)
+            return
+        # T-093-25: composed key comes ONLY from cities.per_city_key.
+        composed = per_city_key(key, header_code)
+        if composed is None:
+            await callback.answer("Неизвестный город", show_alert=True)
+            return
+        current_on = await get_setting_typed_for_city(key, header_code) == "on"
+        new_val = "off" if current_on else "on"
+        await set_setting(composed, new_val)
+        label = dict(MENU_BUTTONS).get(key, key)
+        city_txt = await city_label(header_code)
+        status = "✅ Вкл" if new_val == "on" else "❌ Выкл"
+        await callback.answer(f"{label} — {city_txt}: {status}", show_alert=True)
+    else:
+        current_on = await get_setting_typed(key) == "on"
+        new_val = "off" if current_on else "on"
+        await set_setting(key, new_val)
+        label = dict(MENU_BUTTONS).get(key, key)
+        status = "✅ Вкл" if new_val == "on" else "❌ Выкл"
+        await callback.answer(f"{label}: {status}", show_alert=True)
 
-    label = dict(MENU_BUTTONS).get(key, key)
-    status = "✅ Вкл" if new_val == "on" else "❌ Выкл"
-    await callback.answer(f"{label}: {status}", show_alert=True)
-
-    text = await render_menu_text()
-    await callback.message.edit_text(text, parse_mode="HTML", reply_markup=await build_menu_keyboard())
+    text = await render_menu_text(admin_id)
+    await callback.message.edit_text(text, parse_mode="HTML", reply_markup=await build_menu_keyboard(admin_id))
 
 
 @router.callback_query(F.data == "menu_back")
@@ -4240,17 +4299,9 @@ async def menu_buttons_back(callback: types.CallbackQuery):
     await callback.answer()
 
 
-# ── Phase 09.2-06 (C, CITY-05): «🏙 Кнопки по городу» -- per-city menu-buttons sub-flow ─────
-#
-# Mirrors 09.2-05's per-city sub-flow idiom (RESEARCH Pattern 3, since folded into the
-# header-scoped settings editor by 09.3-06), but renders all 9 MENU_BUTTONS at once per city
-# (a single screen, not a per-key editor) since
-# that is what the global «🔘 Кнопки главного меню» screen already does. Fully parallel to
-# the global menu_toggle/menu_back path above -- nothing here is called by it and it calls
-# nothing in it, so a module-off bot never executes a single line of this section.
-
 async def _menu_city_has_override(code: str) -> bool:
-    """True if the city has at least one of the 9 menu_* keys overridden."""
+    """True if the city has at least one of the 9 menu_* keys overridden. Still needed by
+    the merged keyboard's «↩️ Все как везде» row (09.2-06 lineage, kept verbatim)."""
     for key, _ in MENU_BUTTONS:
         override_key = per_city_key(key, code)
         if override_key and await get_setting(override_key):
@@ -4258,172 +4309,71 @@ async def _menu_city_has_override(code: str) -> bool:
     return False
 
 
-async def _menu_city_list_screen(admin_id: int) -> tuple[str, InlineKeyboardMarkup]:
-    """City list for the menu-buttons sub-flow: human label only (no codes, CLAUDE.md), a
-    «✅ своё» / «— как везде» override marker, and a « ❌» suffix for a disabled city.
-    Visibility is the same RIGHT as the settings per-city flow (`_per_city_visible_codes`)
-    -- a manager bound to a city sees only that city."""
-    lines = [
-        "🏙 <b>Кнопки главного меню — по городам</b>", "",
-        "Тап по городу — свой набор кнопок для него.",
-    ]
-    buttons: list[list[InlineKeyboardButton]] = []
+@router.callback_query(F.data == "menu_reset_city")
+async def menu_reset_city(callback: types.CallbackQuery):
+    """Confirm screen for «↩️ Все как везде» on the header-scoped menu-buttons screen — same
+    two-step confirm gate idiom as `settings_reset_city`/09.2-06's now-deleted per-city
+    reset confirm screen: names the number of buttons about to lose their own setting
+    before deleting anything."""
+    admin_id = callback.from_user.id
+    if not await cities_module_on():
+        await callback.answer("Города выключены", show_alert=True)
+        return
+    header_code = await admin_selected_city(admin_id)
+    if not header_code or header_code == ALL_CITIES:
+        await callback.answer("Нет своих настроек для сброса", show_alert=True)
+        return
     visible = await _per_city_visible_codes(admin_id)
-    for c in CITIES:
-        code = c["code"]
-        if code not in visible:
-            continue
-        has_override = await _menu_city_has_override(code)
-        city_txt = await city_label(code)
-        enabled = await is_city_enabled(code)
-        mark = "✅ своё" if has_override else "— как везде"
-        suffix = "" if enabled else " ❌"
-        buttons.append([InlineKeyboardButton(
-            text=f"{city_txt}{suffix} — {mark}",
-            callback_data=f"menu_city_pick:{code}",
-        )])
-    buttons.append([InlineKeyboardButton(text="← Назад", callback_data="admin_menu_buttons")])
-    return "\n".join(lines), InlineKeyboardMarkup(inline_keyboard=buttons)
-
-
-@router.callback_query(F.data == "menu_city")
-async def menu_city_list(callback: types.CallbackQuery):
-    # Fail-closed (T-092-21/RESEARCH Pattern 2): module off never renders this screen, even
-    # if the callback_data is forged directly.
-    if not await cities_module_on():
-        await callback.answer("Города выключены", show_alert=True)
-        return
-    text, kb = await _menu_city_list_screen(callback.from_user.id)
-    await callback.message.edit_text(text, parse_mode="HTML", reply_markup=kb)
-    await callback.answer()
-
-
-async def _menu_city_text(code: str) -> str:
-    label = await city_label(code)
-    lines = [f"🔘 <b>Кнопки меню — {html_module.escape(label)}</b>", ""]
-    for key, text in MENU_BUTTONS:
-        is_on = await get_setting_typed_for_city(key, code) == "on"
-        override_key = per_city_key(key, code)
-        own = bool(override_key and await get_setting(override_key))
-        status = "✅" if is_on else "❌"
-        mark = " <i>(своё)</i>" if own else ""
-        lines.append(f"{status} {text}{mark}")
-    return "\n".join(lines)
-
-
-async def _menu_city_kb(code: str) -> InlineKeyboardMarkup:
-    buttons: list[list[InlineKeyboardButton]] = []
-    for key, text in MENU_BUTTONS:
-        is_on = await get_setting_typed_for_city(key, code) == "on"
-        toggle_text = f"{'✅' if is_on else '❌'} {text}"
-        buttons.append([InlineKeyboardButton(text=toggle_text, callback_data=f"menu_city_toggle:{code}:{key}")])
-    if await _menu_city_has_override(code):
-        buttons.append([InlineKeyboardButton(text="↩️ Как везде", callback_data=f"menu_city_clear:{code}")])
-    buttons.append([InlineKeyboardButton(text="← Назад", callback_data="menu_city")])
-    return InlineKeyboardMarkup(inline_keyboard=buttons)
-
-
-@router.callback_query(F.data.startswith("menu_city_pick:"))
-async def menu_city_pick(callback: types.CallbackQuery):
-    code = callback.data.split(":", 1)[1]
-    if not await cities_module_on():
-        await callback.answer("Города выключены", show_alert=True)
-        return
-    if code not in city_codes():
-        await callback.answer("Неизвестный город", show_alert=True)
-        return
-    # RESEARCH Pitfall 6 / T-092-19: server-side re-check, not just a hidden button.
-    visible = await _per_city_visible_codes(callback.from_user.id)
-    if code not in visible:
-        await callback.answer("Этот город правит суперадмин", show_alert=True)
-        return
-    text = await _menu_city_text(code)
-    kb = await _menu_city_kb(code)
-    await callback.message.edit_text(text, parse_mode="HTML", reply_markup=kb)
-    await callback.answer()
-
-
-@router.callback_query(F.data.startswith("menu_city_toggle:"))
-async def menu_city_toggle(callback: types.CallbackQuery):
-    rest = callback.data.split(":", 1)[1]
-    if ":" not in rest:
-        await callback.answer("Неизвестная кнопка", show_alert=True)
-        return
-    code, key = rest.split(":", 1)
-    if not await cities_module_on():
-        await callback.answer("Города выключены", show_alert=True)
-        return
-    if key not in {k for k, _ in MENU_BUTTONS}:
-        await callback.answer("Неизвестная кнопка", show_alert=True)
-        return
-    composed = per_city_key(key, code)
-    if composed is None:
-        await callback.answer("Неизвестный город", show_alert=True)
-        return
-    visible = await _per_city_visible_codes(callback.from_user.id)
-    if code not in visible:
-        await callback.answer("Этот город правит суперадмин", show_alert=True)
-        return
-
-    current_on = await get_setting_typed_for_city(key, code) == "on"
-    new_val = "off" if current_on else "on"
-    await set_setting(composed, new_val)
-
-    label = dict(MENU_BUTTONS).get(key, key)
-    city_txt = await city_label(code)
-    status = "✅ Вкл" if new_val == "on" else "❌ Выкл"
-    await callback.answer(f"{label} — {city_txt}: {status}", show_alert=True)
-
-    text = await _menu_city_text(code)
-    kb = await _menu_city_kb(code)
-    await callback.message.edit_text(text, parse_mode="HTML", reply_markup=kb)
-
-
-@router.callback_query(F.data.startswith("menu_city_clear:"))
-async def menu_city_clear(callback: types.CallbackQuery):
-    code = callback.data.split(":", 1)[1]
-    if not await cities_module_on():
-        await callback.answer("Города выключены", show_alert=True)
-        return
-    if code not in city_codes():
-        await callback.answer("Неизвестный город", show_alert=True)
-        return
-    visible = await _per_city_visible_codes(callback.from_user.id)
-    if code not in visible:
+    if header_code not in visible:
         await callback.answer("Этот город правит суперадмин", show_alert=True)
         return
 
     override_count = 0
     for key, _ in MENU_BUTTONS:
-        override_key = per_city_key(key, code)
+        override_key = per_city_key(key, header_code)
         if override_key and await get_setting(override_key):
             override_count += 1
+    if override_count == 0:
+        await callback.answer("Нет своих настроек для сброса", show_alert=True)
+        return
 
-    city_txt = await city_label(code)
+    city_txt = await city_label(header_code)
     text = (
         f"Город {html_module.escape(city_txt)} снова будет показывать общий набор кнопок;\n"
         f"свои настройки {override_count} кнопок пропадут."
     )
     kb = InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="✅ Да, как везде", callback_data=f"menu_city_clear_go:{code}")],
-        [InlineKeyboardButton(text="← Отмена", callback_data=f"menu_city_pick:{code}")],
+        [InlineKeyboardButton(text="✅ Да, как везде", callback_data=f"menu_reset_city_go:{header_code}")],
+        [InlineKeyboardButton(text="← Отмена", callback_data="admin_menu_buttons")],
     ])
     await callback.message.edit_text(text, parse_mode="HTML", reply_markup=kb)
     await callback.answer()
 
 
-@router.callback_query(F.data.startswith("menu_city_clear_go:"))
-async def menu_city_clear_go(callback: types.CallbackQuery):
+@router.callback_query(F.data.startswith("menu_reset_city_go:"))
+async def menu_reset_city_go(callback: types.CallbackQuery):
     code = callback.data.split(":", 1)[1]
+    admin_id = callback.from_user.id
     if not await cities_module_on():
         await callback.answer("Города выключены", show_alert=True)
         return
     if code not in city_codes():
         await callback.answer("Неизвестный город", show_alert=True)
         return
-    visible = await _per_city_visible_codes(callback.from_user.id)
+    # T-093-24: RIGHT check against the code carried in callback_data (not just the current
+    # header) — catches a bound manager's forged confirmation for another city, same
+    # ordering as `settings_reset_city_go` (right check before freshness).
+    visible = await _per_city_visible_codes(admin_id)
     if code not in visible:
         await callback.answer("Этот город правит суперадмин", show_alert=True)
+        return
+    # T-093-26: freshness — the confirm screen named the header's city; if the header moved
+    # on since, refuse and re-render the menu screen for the NEW header instead of deleting.
+    current = await admin_selected_city(admin_id)
+    if code != current:
+        await callback.answer("Город админки изменился — подтвердите заново.", show_alert=True)
+        text = await render_menu_text(admin_id)
+        await callback.message.edit_text(text, parse_mode="HTML", reply_markup=await build_menu_keyboard(admin_id))
         return
 
     # Idempotent -- deleting an already-absent key is a no-op, safe to repeat.
@@ -4434,8 +4384,8 @@ async def menu_city_clear_go(callback: types.CallbackQuery):
 
     city_txt = await city_label(code)
     await callback.answer(f"Готово: {city_txt} — как везде", show_alert=True)
-    text, kb = await _menu_city_list_screen(callback.from_user.id)
-    await callback.message.edit_text(text, parse_mode="HTML", reply_markup=kb)
+    text = await render_menu_text(admin_id)
+    await callback.message.edit_text(text, parse_mode="HTML", reply_markup=await build_menu_keyboard(admin_id))
 
 
 # Phase 07.2 (CITY-02): the ONE resolver both moderation queues (applications + receipts)
