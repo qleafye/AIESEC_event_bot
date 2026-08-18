@@ -366,3 +366,151 @@ def test_import_non_document_message(tmp_path):
     asyncio.run(admin_mod.season_import_file_invalid(msg))
 
     assert any("документом" in (t or "") for t, _ in msg.sent)
+
+
+# ── Task 3: название сезона, подтверждение и выполнение импорта ─────────────────────────────
+
+def _naming_state(found=5, existing=2, rows=None):
+    state = _new_state(ADMIN_ID)
+    if rows is None:
+        rows = [{"telegram_id": 200 + i, "full_name": f"F{i}"} for i in range(found)]
+    asyncio.run(state.set_data({"import_rows": rows, "import_found": found, "import_existing": existing}))
+    asyncio.run(state.set_state(SeasonImport.naming))
+    return state
+
+
+def test_import_name_rejects_empty(tmp_path):
+    _db_ready(tmp_path)
+    state = _naming_state()
+    msg = _FakeMessage(ADMIN_ID, text="   ")
+
+    asyncio.run(admin_mod.season_import_name_step(msg, state))
+
+    assert asyncio.run(state.get_state()) == SeasonImport.naming.state
+    assert "import_season" not in asyncio.run(state.get_data())
+
+
+def test_import_name_rejects_current_season(tmp_path):
+    _db_ready(tmp_path)
+    asyncio.run(db.set_setting("event_season", "YL'26"))
+    state = _naming_state()
+    msg = _FakeMessage(ADMIN_ID, text="YL'26")
+
+    asyncio.run(admin_mod.season_import_name_step(msg, state))
+
+    assert any("текущего сезона" in (t or "") for t, _ in msg.sent)
+    assert not any(kb is not None for _, kb in msg.sent)  # no confirm keyboard shown
+
+
+def test_import_confirm_shows_numbers(tmp_path):
+    _db_ready(tmp_path)
+    state = _naming_state(found=5, existing=2)
+    msg = _FakeMessage(ADMIN_ID, text="YL'25")
+
+    asyncio.run(admin_mod.season_import_name_step(msg, state))
+
+    text, kb = msg.sent[-1]
+    assert "3" in text and "YL" in text
+    codes = [btn.callback_data for row in kb.inline_keyboard for btn in row]
+    assert "season_import_go" in codes
+    assert "settings_group:event" in codes
+
+
+def _go_state(rows, season="YL'25"):
+    state = _new_state(ADMIN_ID)
+    asyncio.run(state.set_data({"import_rows": rows, "import_season": season}))
+    return state
+
+
+def test_import_go_inserts_only_absent(tmp_path):
+    _db_ready(tmp_path)
+    _seed_user(1, full_name="Existing")
+    before = _snapshot_row(1)
+    rows = [
+        {"telegram_id": 1, "full_name": "Should not overwrite"},
+        {"telegram_id": 2, "full_name": "New Two"},
+    ]
+    state = _go_state(rows)
+    cb = _FakeCallback("season_import_go", ADMIN_ID)
+
+    asyncio.run(admin_mod.season_import_go(cb, state))
+
+    assert _snapshot_row(1) == before
+    assert _snapshot_row(2) is not None
+
+
+def test_import_go_sets_season_on_imported(tmp_path):
+    _db_ready(tmp_path)
+    rows = [{"telegram_id": 3}, {"telegram_id": 4}]
+    state = _go_state(rows, season="YL'25")
+    cb = _FakeCallback("season_import_go", ADMIN_ID)
+
+    asyncio.run(admin_mod.season_import_go(cb, state))
+
+    assert _snapshot_row(3)["season"] == "YL'25"
+    assert _snapshot_row(4)["season"] == "YL'25"
+
+
+def test_import_go_does_not_switch_event_season(tmp_path):
+    _db_ready(tmp_path)
+    asyncio.run(db.set_setting("event_season", "YL'26"))
+    rows = [{"telegram_id": 5}]
+    state = _go_state(rows, season="YL'25")
+    cb = _FakeCallback("season_import_go", ADMIN_ID)
+
+    asyncio.run(admin_mod.season_import_go(cb, state))
+
+    assert asyncio.run(db.get_setting("event_season")) == "YL'26"
+
+
+def test_import_go_no_payments_no_referrals(tmp_path):
+    _db_ready(tmp_path)
+    rows = [{"telegram_id": 6, "payment_status": "paid", "referrer_id": 99, "paid_at": "x"}]
+    state = _go_state(rows)
+    cb = _FakeCallback("season_import_go", ADMIN_ID)
+
+    asyncio.run(admin_mod.season_import_go(cb, state))
+
+    row = _snapshot_row(6)
+    assert row["payment_status"] != "paid"
+    assert row["paid_at"] is None
+    assert row["receipt_file_id"] is None
+    assert row["referrer_id"] is None
+
+
+def test_import_go_stale_state(tmp_path):
+    _db_ready(tmp_path)
+    state = _new_state(ADMIN_ID)  # no import_rows/import_season set
+    cb = _FakeCallback("season_import_go", ADMIN_ID)
+
+    asyncio.run(admin_mod.season_import_go(cb, state))
+
+    assert cb.answers and cb.answers[0][1] is True  # show_alert
+    total, _ = asyncio.run(db.get_stats())
+    assert total == 0
+
+
+def test_import_go_clears_state(tmp_path):
+    _db_ready(tmp_path)
+    rows = [{"telegram_id": 7}]
+    state = _go_state(rows)
+    cb = _FakeCallback("season_import_go", ADMIN_ID)
+
+    asyncio.run(admin_mod.season_import_go(cb, state))
+
+    assert asyncio.run(state.get_state()) is None
+    assert "import_rows" not in asyncio.run(state.get_data())
+
+
+def test_import_go_logs_admin_id(tmp_path, caplog):
+    _db_ready(tmp_path)
+    rows = [{"telegram_id": 8}]
+    state = _go_state(rows)
+    cb = _FakeCallback("season_import_go", ADMIN_ID)
+
+    with caplog.at_level("WARNING"):
+        asyncio.run(admin_mod.season_import_go(cb, state))
+
+    log_text = "\n".join(r.message for r in caplog.records)
+    assert str(ADMIN_ID) in log_text
+    assert "inserted=1" in log_text
