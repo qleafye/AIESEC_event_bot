@@ -18,6 +18,7 @@ import asyncio
 from config import config
 from database import db
 from handlers import admin as admin_mod
+from handlers import admin_gamification
 from handlers import admin_caps
 
 
@@ -88,7 +89,7 @@ def test_build_game_matrix_headers_are_participants_plus_one_column_per_task():
         _task(1, text="Задание А", created_at="2026-08-01 10:00:00"),
         _task(2, text=long_text, created_at="2026-08-05 10:00:00"),
     ]
-    headers, rows = admin_mod._build_game_matrix(tasks, [])
+    headers, rows = admin_gamification._build_game_matrix(tasks, [])
     # Phase 09.1 (B, CONTEXT.md "Уточнение…"): "Город" column, second, right after "ФИО" --
     # the matrix tab is a whole-event export (no per-admin city_scope), so this is the ONLY
     # way it "respects" city_scope: a filter available in the sheet itself, not a row cut.
@@ -112,7 +113,7 @@ def test_build_game_matrix_cell_reflects_latest_active_submission_status():
         _submission(20, task_id=1, user_id=105, status="rejected", reject_reason="не то"),
         _submission(21, task_id=1, user_id=105, status="approved", coins_awarded=25),
     ]
-    headers, rows = admin_mod._build_game_matrix(tasks, submissions)
+    headers, rows = admin_gamification._build_game_matrix(tasks, submissions)
     by_uid = {r[0]: r for r in rows}
 
     # index 4+: task cells (0=telegram_id, 1=ФИО, 2=Город, 3=Юзернейм)
@@ -132,7 +133,7 @@ def test_build_game_matrix_rows_only_participants_with_at_least_one_submission()
         _submission(9, task_id=1, user_id=201, status="rejected"),
         _submission(11, task_id=1, user_id=202, status="pending"),
     ]
-    headers, rows = admin_mod._build_game_matrix(tasks, submissions)
+    headers, rows = admin_gamification._build_game_matrix(tasks, submissions)
     uids = [r[0] for r in rows]
     assert sorted(uids) == [201, 202]
     assert 999 not in uids  # a hypothetical 1000-user base never leaks empty rows in here
@@ -150,7 +151,7 @@ def test_build_game_history_rows_include_every_submission_including_rejected():
         _submission(4, task_id=1, user_id=103, status="approved", coins_awarded=30,
                     reviewed_by=ADMIN_ID, reviewed_at="2026-08-12 09:05:00"),
     ]
-    headers, rows = admin_mod._build_game_history(submissions)
+    headers, rows = admin_gamification._build_game_history(submissions)
     # Phase 09.1 (B): "Город" column added after "Участник" (same placement as the matrix tab).
     assert headers == ["ID сдачи", "Задание", "Категория", "Участник", "Город", "Юзернейм", "Тип",
                         "Отправлено", "Статус", "Проверил", "Когда", "Начислено",
@@ -186,10 +187,10 @@ def test_admin_game_sync_sheet_reports_row_counts_on_success(tmp_path, monkeypat
             calls.append((title, headers, len(rows)))
             return len(rows)
 
-        monkeypatch.setattr(admin_mod, "sync_named_worksheet", _fake_sync)
+        monkeypatch.setattr(admin_gamification, "sync_named_worksheet", _fake_sync)
 
         callback = FakeCallback("admin_game_sync_sheet")
-        await admin_mod.sync_game_sheets(callback)
+        await admin_gamification.sync_game_sheets(callback)
 
         titles = [c[0] for c in calls]
         assert titles == ["Гейма", "История сдач"]
@@ -220,10 +221,10 @@ def test_admin_game_sync_sheet_reports_failure_without_crashing(tmp_path, monkey
                 return -1  # simulate one tab failing
             return len(rows)
 
-        monkeypatch.setattr(admin_mod, "sync_named_worksheet", _fake_sync)
+        monkeypatch.setattr(admin_gamification, "sync_named_worksheet", _fake_sync)
 
         callback = FakeCallback("admin_game_sync_sheet")
-        await admin_mod.sync_game_sheets(callback)  # must not raise
+        await admin_gamification.sync_game_sheets(callback)  # must not raise
 
         # both tabs were still attempted -- one failure does not cancel the other call.
         assert calls == ["Гейма", "История сдач"]
@@ -249,12 +250,12 @@ def test_game_sync_confirm_does_not_touch_the_sheets(monkeypatch):
         called.append(title)
         return len(rows)
 
-    monkeypatch.setattr(admin_mod, "sync_named_worksheet", _fake_sync)
+    monkeypatch.setattr(admin_gamification, "sync_named_worksheet", _fake_sync)
 
     callback = FakeCallback("admin_game_sync_sheet")
 
     async def go():
-        await admin_mod.sync_game_sheets_confirm(callback)
+        await admin_gamification.sync_game_sheets_confirm(callback)
 
     asyncio.run(go())
 
@@ -270,7 +271,7 @@ def test_game_sync_confirm_names_what_is_lost():
     callback = FakeCallback("admin_game_sync_sheet")
 
     async def go():
-        await admin_mod.sync_game_sheets_confirm(callback)
+        await admin_gamification.sync_game_sheets_confirm(callback)
 
     asyncio.run(go())
 

@@ -151,25 +151,25 @@ def test_broadcast_schedule_rejects_time_inside_utc_msk_window(tmp_path):
 
 def test_game_task_deadline_rejects_time_inside_utc_msk_window(tmp_path):
     _db_ready(tmp_path)
-    from handlers import admin as admin_mod
+    from handlers import admin_gamification  # Phase 13 (13-04): game_task_deadline_step moved here
     from handlers.states import GameTaskCreate
 
     state = _new_state()
     asyncio.run(state.set_state(GameTaskCreate.deadline))
 
-    orig = admin_mod._now_moscow_naive
-    admin_mod._now_moscow_naive = lambda: datetime(2026, 7, 1, 14, 0)
+    orig = admin_gamification._now_moscow_naive
+    admin_gamification._now_moscow_naive = lambda: datetime(2026, 7, 1, 14, 0)
     try:
         past = FakeMessage(text="01.07.2026 12:30")
-        asyncio.run(admin_mod.game_task_deadline_step(past, state))
+        asyncio.run(admin_gamification.game_task_deadline_step(past, state))
         assert asyncio.run(state.get_state()) == GameTaskCreate.deadline, "must stay on deadline step"
         assert "прошло" in past.answers_sent[-1].lower()
 
         future = FakeMessage(text="01.07.2026 15:00")
-        asyncio.run(admin_mod.game_task_deadline_step(future, state))
+        asyncio.run(admin_gamification.game_task_deadline_step(future, state))
         assert asyncio.run(state.get_state()) == GameTaskCreate.confirm
     finally:
-        admin_mod._now_moscow_naive = orig
+        admin_gamification._now_moscow_naive = orig
 
 
 def test_payment_sweep_uses_moscow_wall_clock(tmp_path):

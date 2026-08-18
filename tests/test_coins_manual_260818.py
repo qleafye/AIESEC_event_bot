@@ -18,6 +18,7 @@ from aiogram.fsm.storage.memory import MemoryStorage
 from config import config
 from database import db
 from handlers import admin as admin_mod
+from handlers import admin_gamification
 from handlers.admin_caps import required_capability
 from handlers.states import CoinsManual, GameReview
 from settings_schema import SETTINGS_SCHEMA
@@ -176,7 +177,7 @@ def test_grev_approve_default_amount_writes_source_task(tmp_path):
     sub_id = _seed_submission(task_id)
     callback = FakeCallback(f"grev_approve:{sub_id}")
     state = _new_state()
-    asyncio.run(admin_mod.grev_approve(callback, state))
+    asyncio.run(admin_gamification.grev_approve(callback, state))
     rows = _coin_rows()
     assert rows[-1]["source"] == "task"
 
@@ -188,10 +189,10 @@ def test_grev_approve_custom_amount_writes_source_task(tmp_path):
     sub_id = _seed_submission(task_id)
     state = _new_state()
     start_cb = FakeCallback(f"grev_approve_custom:{sub_id}")
-    asyncio.run(admin_mod.grev_approve_custom_start(start_cb, state))
+    asyncio.run(admin_gamification.grev_approve_custom_start(start_cb, state))
     assert asyncio.run(state.get_state()) == GameReview.approve_amount
     amount_msg = FakeMessage(text="45")
-    asyncio.run(admin_mod.grev_approve_amount_step(amount_msg, state))
+    asyncio.run(admin_gamification.grev_approve_amount_step(amount_msg, state))
     rows = _coin_rows()
     assert rows[-1]["source"] == "task"
 
@@ -290,7 +291,7 @@ def test_admin_coins_manual_sets_person_state_and_prompts(tmp_path):
     _db_ready(tmp_path)
     callback = FakeCallback("admin_coins_manual")
     state = _new_state()
-    asyncio.run(admin_mod.admin_coins_manual(callback, state))
+    asyncio.run(admin_gamification.admin_coins_manual(callback, state))
     assert asyncio.run(state.get_state()) == CoinsManual.person
     prompt = callback.message.answers_sent[-1]
     assert "@username" in prompt or "перешл" in prompt.lower()
@@ -303,7 +304,7 @@ def test_coinsman_person_step_forward_shows_card_with_balance_and_sign_buttons(t
     state = _new_state()
     asyncio.run(state.set_state(CoinsManual.person))
     msg = FakeMessage(text="перешлите это", forward_origin=FakeForwardOrigin(DELEGATE_ID))
-    asyncio.run(admin_mod.coinsman_person_step(msg, state))
+    asyncio.run(admin_gamification.coinsman_person_step(msg, state))
 
     card = msg.answers_sent[-1]
     assert "Дельгат Тестов" in card
@@ -321,7 +322,7 @@ def test_coinsman_person_step_unknown_username_stays_on_step(tmp_path):
     state = _new_state()
     asyncio.run(state.set_state(CoinsManual.person))
     msg = FakeMessage(text="@ghost_user")
-    asyncio.run(admin_mod.coinsman_person_step(msg, state))
+    asyncio.run(admin_gamification.coinsman_person_step(msg, state))
     assert "не нашёл" in msg.answers_sent[-1].lower()
     assert asyncio.run(state.get_state()) == CoinsManual.person
     data = asyncio.run(state.get_data())
@@ -335,7 +336,7 @@ def test_coinsman_sign_step_moves_to_amount_state(tmp_path):
     asyncio.run(state.update_data(cm_user_id=DELEGATE_ID))
     asyncio.run(state.set_state(CoinsManual.person))
     callback = FakeCallback("coinsman_sign:plus")
-    asyncio.run(admin_mod.coinsman_sign_step(callback, state))
+    asyncio.run(admin_gamification.coinsman_sign_step(callback, state))
     assert asyncio.run(state.get_state()) == CoinsManual.amount
     data = asyncio.run(state.get_data())
     assert data.get("cm_sign") == "plus"
@@ -349,7 +350,7 @@ def test_coinsman_amount_step_rejects_garbage_and_zero(tmp_path):
 
     for bad in ("abc", "0"):
         msg = FakeMessage(text=bad)
-        asyncio.run(admin_mod.coinsman_amount_step(msg, state))
+        asyncio.run(admin_gamification.coinsman_amount_step(msg, state))
         assert asyncio.run(state.get_state()) == CoinsManual.amount
         assert (asyncio.run(state.get_data())).get("cm_delta") is None
 
@@ -360,7 +361,7 @@ def test_coinsman_amount_step_accepts_number_and_moves_to_reason_signed(tmp_path
     asyncio.run(state.update_data(cm_user_id=DELEGATE_ID, cm_sign="minus"))
     asyncio.run(state.set_state(CoinsManual.amount))
     msg = FakeMessage(text="3")
-    asyncio.run(admin_mod.coinsman_amount_step(msg, state))
+    asyncio.run(admin_gamification.coinsman_amount_step(msg, state))
     assert asyncio.run(state.get_state()) == CoinsManual.reason
     data = asyncio.run(state.get_data())
     assert data.get("cm_delta") == -3  # sign applied (minus)
@@ -386,7 +387,7 @@ def test_coinsman_reason_step_empty_stays_on_step_and_writes_nothing(tmp_path):
     asyncio.run(state.update_data(cm_user_id=DELEGATE_ID, cm_sign="plus", cm_delta=5))
     asyncio.run(state.set_state(CoinsManual.reason))
     msg = FakeMessage(text="   ")
-    asyncio.run(admin_mod.coinsman_reason_step(msg, state))
+    asyncio.run(admin_gamification.coinsman_reason_step(msg, state))
     assert "причина обязательна" in msg.answers_sent[-1].lower()
     assert asyncio.run(state.get_state()) == CoinsManual.reason
     assert _coin_rows() == []
@@ -399,7 +400,7 @@ def test_coinsman_reason_step_shows_confirm_screen(tmp_path):
     asyncio.run(state.update_data(cm_user_id=DELEGATE_ID, cm_sign="minus", cm_delta=-3))
     asyncio.run(state.set_state(CoinsManual.reason))
     msg = FakeMessage(text="за нарушение")
-    asyncio.run(admin_mod.coinsman_reason_step(msg, state))
+    asyncio.run(admin_gamification.coinsman_reason_step(msg, state))
 
     card = msg.answers_sent[-1]
     assert "Дельгат Тестов" in card
@@ -420,7 +421,7 @@ def test_coinsman_confirm_writes_exactly_one_row_with_source_manual(tmp_path):
     asyncio.run(state.update_data(cm_user_id=DELEGATE_ID, cm_sign="plus", cm_delta=5, cm_reason="за помощь"))
     asyncio.run(state.set_state(CoinsManual.reason))
     callback = FakeCallback("coinsman_confirm", user_id=ADMIN_ID)
-    asyncio.run(admin_mod.coinsman_confirm(callback, state))
+    asyncio.run(admin_gamification.coinsman_confirm(callback, state))
 
     rows = _coin_rows()
     assert len(rows) == 1
@@ -438,10 +439,10 @@ def test_coinsman_confirm_repeated_tap_does_not_double_write(tmp_path):
     asyncio.run(state.update_data(cm_user_id=DELEGATE_ID, cm_sign="plus", cm_delta=5, cm_reason="за помощь"))
     asyncio.run(state.set_state(CoinsManual.reason))
     first = FakeCallback("coinsman_confirm", user_id=ADMIN_ID)
-    asyncio.run(admin_mod.coinsman_confirm(first, state))
+    asyncio.run(admin_gamification.coinsman_confirm(first, state))
 
     second = FakeCallback("coinsman_confirm", user_id=ADMIN_ID)
-    asyncio.run(admin_mod.coinsman_confirm(second, state))
+    asyncio.run(admin_gamification.coinsman_confirm(second, state))
 
     assert len(_coin_rows()) == 1  # exactly one row -- state was already cleared
     assert second.answers == [("Операция уже завершена или отменена", True)]
@@ -454,7 +455,7 @@ def test_coinsman_confirm_notifies_delegate_after_ledger_write(tmp_path):
     asyncio.run(state.update_data(cm_user_id=DELEGATE_ID, cm_sign="plus", cm_delta=5, cm_reason="за помощь"))
     asyncio.run(state.set_state(CoinsManual.reason))
     callback = FakeCallback("coinsman_confirm", user_id=ADMIN_ID)
-    asyncio.run(admin_mod.coinsman_confirm(callback, state))
+    asyncio.run(admin_gamification.coinsman_confirm(callback, state))
 
     assert len(_coin_rows()) == 1  # ledger write happened
     assert callback.bot.sent, "delegate was not notified"
@@ -472,7 +473,7 @@ def test_coinsman_confirm_blocked_bot_keeps_row_and_flags_manager(tmp_path):
     asyncio.run(state.set_state(CoinsManual.reason))
     failing_bot = FakeBot(fail=True)
     callback = FakeCallback("coinsman_confirm", user_id=ADMIN_ID, bot=failing_bot)
-    asyncio.run(admin_mod.coinsman_confirm(callback, state))
+    asyncio.run(admin_gamification.coinsman_confirm(callback, state))
 
     assert len(_coin_rows()) == 1  # ledger write NOT rolled back
     assert "не получил уведомление" in callback.message.answers_sent[-1]
@@ -482,12 +483,12 @@ def test_coinsman_confirm_triggers_game_resync(tmp_path, monkeypatch):
     _db_ready(tmp_path)
     _seed_delegate()
     resync_calls = []
-    monkeypatch.setattr(admin_mod, "_request_game_resync", lambda *a, **k: resync_calls.append(1))
+    monkeypatch.setattr(admin_gamification, "_request_game_resync", lambda *a, **k: resync_calls.append(1))
     state = _new_state()
     asyncio.run(state.update_data(cm_user_id=DELEGATE_ID, cm_sign="plus", cm_delta=5, cm_reason="за помощь"))
     asyncio.run(state.set_state(CoinsManual.reason))
     callback = FakeCallback("coinsman_confirm", user_id=ADMIN_ID)
-    asyncio.run(admin_mod.coinsman_confirm(callback, state))
+    asyncio.run(admin_gamification.coinsman_confirm(callback, state))
     assert resync_calls == [1]
 
 
@@ -497,7 +498,7 @@ def test_coinsman_confirm_with_no_state_data_alerts_and_writes_nothing(tmp_path)
     _seed_delegate()
     state = _new_state()
     callback = FakeCallback("coinsman_confirm", user_id=ADMIN_ID)
-    asyncio.run(admin_mod.coinsman_confirm(callback, state))
+    asyncio.run(admin_gamification.coinsman_confirm(callback, state))
     assert _coin_rows() == []
     assert callback.answers == [("Операция уже завершена или отменена", True)]
 
@@ -512,31 +513,31 @@ def test_coinsman_end_to_end_forward_minus_amount_reason_confirm(tmp_path):
 
     # 1) admin_coins_manual
     open_cb = FakeCallback("admin_coins_manual")
-    asyncio.run(admin_mod.admin_coins_manual(open_cb, state))
+    asyncio.run(admin_gamification.admin_coins_manual(open_cb, state))
     assert asyncio.run(state.get_state()) == CoinsManual.person
 
     # 2) forward message resolves the delegate
     person_msg = FakeMessage(forward_origin=FakeForwardOrigin(DELEGATE_ID))
-    asyncio.run(admin_mod.coinsman_person_step(person_msg, state))
+    asyncio.run(admin_gamification.coinsman_person_step(person_msg, state))
 
     # 3) ➖ Списать
     sign_cb = FakeCallback("coinsman_sign:minus")
-    asyncio.run(admin_mod.coinsman_sign_step(sign_cb, state))
+    asyncio.run(admin_gamification.coinsman_sign_step(sign_cb, state))
     assert asyncio.run(state.get_state()) == CoinsManual.amount
 
     # 4) сумма 3
     amount_msg = FakeMessage(text="3")
-    asyncio.run(admin_mod.coinsman_amount_step(amount_msg, state))
+    asyncio.run(admin_gamification.coinsman_amount_step(amount_msg, state))
     assert asyncio.run(state.get_state()) == CoinsManual.reason
 
     # 5) причина
     reason_msg = FakeMessage(text="за нарушение")
-    asyncio.run(admin_mod.coinsman_reason_step(reason_msg, state))
+    asyncio.run(admin_gamification.coinsman_reason_step(reason_msg, state))
 
     # 6) подтверждение
     confirm_bot = FakeBot()
     confirm_cb = FakeCallback("coinsman_confirm", bot=confirm_bot)
-    asyncio.run(admin_mod.coinsman_confirm(confirm_cb, state))
+    asyncio.run(admin_gamification.coinsman_confirm(confirm_cb, state))
 
     assert asyncio.run(db.get_balance(DELEGATE_ID)) == 7  # 10 - 3
     assert confirm_bot.sent, "delegate was not notified"
@@ -637,13 +638,13 @@ def test_coins_journal_screen_paginates_ten_per_page_with_nav_buttons(tmp_path):
     for i in range(15):
         asyncio.run(db.add_coins(DELEGATE_ID, 1, reason=f"m{i}", changed_by=ADMIN_ID, source="manual"))
 
-    text, kb = asyncio.run(admin_mod._coins_journal_screen(offset=0))
+    text, kb = asyncio.run(admin_gamification._coins_journal_screen(offset=0))
     assert "Страница 1 из 2" in text
     flat = [btn.callback_data for row in kb.inline_keyboard for btn in row]
     assert any(cd.startswith("coinsjrn_page:") for cd in flat)  # "Позже →" present
     assert not any(cd == "coinsjrn_page:-10" for cd in flat)  # no "← Раньше" on page 1
 
-    text2, kb2 = asyncio.run(admin_mod._coins_journal_screen(offset=10))
+    text2, kb2 = asyncio.run(admin_gamification._coins_journal_screen(offset=10))
     assert "Страница 2 из 2" in text2
     flat2 = [btn.callback_data for row in kb2.inline_keyboard for btn in row]
     assert "coinsjrn_page:0" in flat2  # "← Раньше" back to page 1
@@ -654,7 +655,7 @@ def test_coins_journal_screen_row_shows_recipient_amount_reason_changer_no_raw_s
     _db_ready(tmp_path)
     _seed_delegate()
     asyncio.run(db.add_coins(DELEGATE_ID, 5, reason="за помощь", changed_by=ADMIN_ID, source="manual"))
-    text, _ = asyncio.run(admin_mod._coins_journal_screen(offset=0))
+    text, _ = asyncio.run(admin_gamification._coins_journal_screen(offset=0))
     assert "Дельгат Тестов" in text
     assert "+5" in text
     assert "за помощь" in text
@@ -665,7 +666,7 @@ def test_coins_journal_screen_row_shows_recipient_amount_reason_changer_no_raw_s
 
 def test_coins_journal_screen_empty_shows_placeholder_and_csv_button(tmp_path):
     _db_ready(tmp_path)
-    text, kb = asyncio.run(admin_mod._coins_journal_screen(offset=0))
+    text, kb = asyncio.run(admin_gamification._coins_journal_screen(offset=0))
     assert "Ручных операций пока не было." in text
     flat = [btn.callback_data for row in kb.inline_keyboard for btn in row]
     assert "coinsjrn_csv" in flat
@@ -676,7 +677,7 @@ def test_coinsjrn_csv_sends_document_with_content(tmp_path):
     _seed_delegate()
     asyncio.run(db.add_coins(DELEGATE_ID, 5, reason="за помощь", changed_by=ADMIN_ID, source="manual"))
     callback = FakeCallback("coinsjrn_csv")
-    asyncio.run(admin_mod.coinsjrn_csv(callback))
+    asyncio.run(admin_gamification.coinsjrn_csv(callback))
     assert callback.message.documents, "no document sent"
     document = callback.message.documents[-1]
     assert document.data  # BufferedInputFile has non-empty bytes

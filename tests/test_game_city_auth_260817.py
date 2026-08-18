@@ -21,6 +21,8 @@ from config import config
 from database import db
 import cities
 from handlers import admin as admin_mod
+from handlers import admin_gamification
+from handlers import admin_roles
 from handlers import user_actions as ua_mod
 
 
@@ -185,7 +187,7 @@ def test_grev_approve_out_of_scope_alerts_no_coins_status_stays_pending(tmp_path
 
     state = _new_state(MANAGER_SPB_ID)
     cb = FakeCallback(f"grev_approve:{sid}", MANAGER_SPB_ID)
-    asyncio.run(admin_mod.grev_approve(cb, state))
+    asyncio.run(admin_gamification.grev_approve(cb, state))
 
     assert cb.answers[-1] == ("Эта сдача из другого города — переключите город.", True)
     assert asyncio.run(db.get_balance(DELEGATE_MSK_ID)) == 0
@@ -205,7 +207,7 @@ def test_grev_approve_in_scope_still_credits_coins_and_notifies(tmp_path):
 
     state = _new_state(MANAGER_SPB_ID)
     cb = FakeCallback(f"grev_approve:{sid}", MANAGER_SPB_ID)
-    asyncio.run(admin_mod.grev_approve(cb, state))
+    asyncio.run(admin_gamification.grev_approve(cb, state))
 
     assert asyncio.run(db.get_balance(DELEGATE_SPB_ID)) == 30
     submission = asyncio.run(db.get_submission(sid))
@@ -223,7 +225,7 @@ def test_grev_approve_custom_start_out_of_scope_alerts_and_sets_no_fsm_state(tmp
 
     state = _new_state(MANAGER_SPB_ID)
     cb = FakeCallback(f"grev_approve_custom:{sid}", MANAGER_SPB_ID)
-    asyncio.run(admin_mod.grev_approve_custom_start(cb, state))
+    asyncio.run(admin_gamification.grev_approve_custom_start(cb, state))
 
     assert cb.answers[-1] == ("Эта сдача из другого города — переключите город.", True)
     assert asyncio.run(state.get_state()) is None
@@ -240,7 +242,7 @@ def test_grev_reject_start_out_of_scope_alerts_and_sets_no_fsm_state(tmp_path):
 
     state = _new_state(MANAGER_SPB_ID)
     cb = FakeCallback(f"grev_reject:{sid}", MANAGER_SPB_ID)
-    asyncio.run(admin_mod.grev_reject_start(cb, state))
+    asyncio.run(admin_gamification.grev_reject_start(cb, state))
 
     assert cb.answers[-1] == ("Эта сдача из другого города — переключите город.", True)
     assert asyncio.run(state.get_state()) is None
@@ -256,7 +258,7 @@ def test_grev_approve_superadmin_scoped_via_header_choice_rejects_other_city(tmp
 
     state = _new_state(ADMIN_ID)
     cb = FakeCallback(f"grev_approve:{sid}", ADMIN_ID)
-    asyncio.run(admin_mod.grev_approve(cb, state))
+    asyncio.run(admin_gamification.grev_approve(cb, state))
 
     assert cb.answers[-1] == ("Эта сдача из другого города — переключите город.", True)
     assert asyncio.run(db.get_balance(DELEGATE_MSK_ID)) == 0
@@ -273,7 +275,7 @@ def test_roles_city_pick_non_superadmin_alerts_and_writes_nothing(tmp_path):
     asyncio.run(db.add_staff(MANAGER_SPB_ID, "reg_manager", ADMIN_ID))
 
     cb = FakeCallback(f"roles_city_pick:{MANAGER_SPB_ID}:spb", STRANGER_ID)
-    asyncio.run(admin_mod.roles_city_pick(cb))
+    asyncio.run(admin_roles.roles_city_pick(cb))
 
     assert cb.answered_alerts and cb.answered_alerts[-1] is True
     assert "суперадмин" in (cb.answered_texts[-1] or "")
@@ -287,7 +289,7 @@ def test_roles_city_start_non_superadmin_alerts_no_picker(tmp_path):
     asyncio.run(db.add_staff(MANAGER_SPB_ID, "reg_manager", ADMIN_ID))
 
     cb = FakeCallback(f"roles_city:{MANAGER_SPB_ID}", STRANGER_ID)
-    asyncio.run(admin_mod.roles_city_start(cb))
+    asyncio.run(admin_roles.roles_city_start(cb))
 
     assert cb.message.edit_calls == 0
     assert cb.answered_alerts and cb.answered_alerts[-1] is True
@@ -300,7 +302,7 @@ def test_roles_city_pick_superadmin_still_works_as_before(tmp_path):
     asyncio.run(db.add_staff(MANAGER_SPB_ID, "reg_manager", ADMIN_ID))
 
     cb = FakeCallback(f"roles_city_pick:{MANAGER_SPB_ID}:spb", ADMIN_ID)
-    asyncio.run(admin_mod.roles_city_pick(cb))
+    asyncio.run(admin_roles.roles_city_pick(cb))
 
     assert asyncio.run(db.get_staff_city(MANAGER_SPB_ID)) == "spb"
     assert cb.answered_alerts and cb.answered_alerts[-1] is True
@@ -315,7 +317,7 @@ def test_roles_city_pick_set_staff_city_false_shows_honest_alert_no_lie(tmp_path
     assert asyncio.run(db.get_staff_city(MANAGER_SPB_ID)) is None
 
     cb = FakeCallback(f"roles_city_pick:{MANAGER_SPB_ID}:spb", ADMIN_ID)
-    asyncio.run(admin_mod.roles_city_pick(cb))
+    asyncio.run(admin_roles.roles_city_pick(cb))
 
     assert cb.answered_alerts and cb.answered_alerts[-1] is True
     assert "уже нет в списке" in (cb.answered_texts[-1] or "")
@@ -327,7 +329,7 @@ def test_build_roles_keyboard_hides_city_button_for_non_superadmin_viewer(tmp_pa
     asyncio.run(db.set_setting("event_city_enabled", "on"))
     asyncio.run(db.add_staff(MANAGER_SPB_ID, "reg_manager", ADMIN_ID))
 
-    kb = asyncio.run(admin_mod.build_roles_keyboard(viewer_id=STRANGER_ID))
+    kb = asyncio.run(admin_roles.build_roles_keyboard(viewer_id=STRANGER_ID))
     assert not any(cd.startswith("roles_city:") for cd in _kb_callback_data(kb))
 
 
@@ -336,7 +338,7 @@ def test_build_roles_keyboard_shows_city_button_for_superadmin_viewer(tmp_path):
     asyncio.run(db.set_setting("event_city_enabled", "on"))
     asyncio.run(db.add_staff(MANAGER_SPB_ID, "reg_manager", ADMIN_ID))
 
-    kb = asyncio.run(admin_mod.build_roles_keyboard(viewer_id=ADMIN_ID))
+    kb = asyncio.run(admin_roles.build_roles_keyboard(viewer_id=ADMIN_ID))
     assert f"roles_city:{MANAGER_SPB_ID}" in _kb_callback_data(kb)
 
 
@@ -346,7 +348,7 @@ def test_build_roles_keyboard_default_viewer_id_none_still_shows_button(tmp_path
     asyncio.run(db.set_setting("event_city_enabled", "on"))
     asyncio.run(db.add_staff(MANAGER_SPB_ID, "reg_manager", ADMIN_ID))
 
-    kb = asyncio.run(admin_mod.build_roles_keyboard())
+    kb = asyncio.run(admin_roles.build_roles_keyboard())
     assert f"roles_city:{MANAGER_SPB_ID}" in _kb_callback_data(kb)
 
 
@@ -355,7 +357,7 @@ def test_roles_assign_city_step_shown_only_to_superadmin(tmp_path):
     asyncio.run(db.set_setting("event_city_enabled", "on"))
 
     cb = FakeCallback(f"roles_addrole:{MANAGER_SPB_ID}:reg_manager", STRANGER_ID)
-    asyncio.run(admin_mod.roles_assign(cb))
+    asyncio.run(admin_roles.roles_assign(cb))
 
     assert cb.message.edit_calls == 1
     cds = _kb_callback_data(cb.message.markup)
@@ -367,7 +369,7 @@ def test_roles_assign_city_step_shown_to_superadmin(tmp_path):
     asyncio.run(db.set_setting("event_city_enabled", "on"))
 
     cb = FakeCallback(f"roles_addrole:{MANAGER_SPB_ID}:reg_manager", ADMIN_ID)
-    asyncio.run(admin_mod.roles_assign(cb))
+    asyncio.run(admin_roles.roles_assign(cb))
 
     assert cb.message.edit_calls == 1
     cds = _kb_callback_data(cb.message.markup)

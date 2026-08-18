@@ -14,6 +14,7 @@ from database import db
 from database.db import set_setting
 from settings_schema import get_setting_typed
 from handlers import admin as admin_mod
+from handlers import admin_roles
 from handlers import admin_caps
 from handlers.admin_caps import ALL_CAPABILITIES, role_caps_key
 
@@ -65,7 +66,7 @@ def test_caps_screen_shows_a_checkbox_per_capability(tmp_path):
 
     async def go():
         await set_setting(role_caps_key(ROLE), "moderate_reg")
-        await admin_mod.show_role_caps(callback)
+        await admin_roles.show_role_caps(callback)
 
     asyncio.run(go())
 
@@ -83,9 +84,9 @@ def test_toggle_adds_and_removes_capability(tmp_path):
 
     async def go():
         await set_setting(role_caps_key(ROLE), "moderate_reg")
-        await admin_mod.toggle_role_cap(_FakeCallback(f"roles_cap:{ROLE}:broadcast"))
+        await admin_roles.toggle_role_cap(_FakeCallback(f"roles_cap:{ROLE}:broadcast"))
         after_add = await get_setting_typed(role_caps_key(ROLE))
-        await admin_mod.toggle_role_cap(_FakeCallback(f"roles_cap:{ROLE}:moderate_reg"))
+        await admin_roles.toggle_role_cap(_FakeCallback(f"roles_cap:{ROLE}:moderate_reg"))
         after_remove = await get_setting_typed(role_caps_key(ROLE))
         return after_add, after_remove
 
@@ -101,7 +102,7 @@ def test_toggle_keeps_declaration_order(tmp_path):
 
     async def go():
         await set_setting(role_caps_key(ROLE), "stats")
-        await admin_mod.toggle_role_cap(_FakeCallback(f"roles_cap:{ROLE}:moderate_reg"))
+        await admin_roles.toggle_role_cap(_FakeCallback(f"roles_cap:{ROLE}:moderate_reg"))
         return await get_setting_typed(role_caps_key(ROLE))
 
     assert asyncio.run(go()) == ["moderate_reg", "stats"]
@@ -115,9 +116,9 @@ def test_unchecking_everything_really_means_no_rights(tmp_path):
 
     async def go():
         await set_setting(role_caps_key(ROLE), "moderate_reg")
-        await admin_mod.toggle_role_cap(_FakeCallback(f"roles_cap:{ROLE}:moderate_reg"))
+        await admin_roles.toggle_role_cap(_FakeCallback(f"roles_cap:{ROLE}:moderate_reg"))
         raw = await get_setting_typed(role_caps_key(ROLE))
-        return raw, admin_mod._known_caps(raw)
+        return raw, admin_roles._known_caps(raw)
 
     raw, known = asyncio.run(go())
     assert known == []
@@ -131,7 +132,7 @@ def test_caps_screen_survives_garbage_from_the_old_text_input(tmp_path):
 
     async def go():
         await set_setting(role_caps_key(ROLE), "moderate_reg\nмодерация чеков\n;;")
-        await admin_mod.show_role_caps(callback)
+        await admin_roles.show_role_caps(callback)
 
     asyncio.run(go())
     labels = _labels(callback.message.markup)
@@ -145,8 +146,8 @@ def test_unknown_role_and_capability_are_rejected(tmp_path):
     bad_cap = _FakeCallback(f"roles_cap:{ROLE}:take_over_the_world")
 
     async def go():
-        await admin_mod.show_role_caps(bad_role)
-        await admin_mod.toggle_role_cap(bad_cap)
+        await admin_roles.show_role_caps(bad_role)
+        await admin_roles.toggle_role_cap(bad_cap)
 
     asyncio.run(go())
     assert bad_role.message.text is None
@@ -159,7 +160,7 @@ def test_roles_screen_points_at_the_button_screen_not_the_text_editor(tmp_path):
     _ready(tmp_path)
 
     async def go():
-        return await admin_mod.build_roles_keyboard()
+        return await admin_roles.build_roles_keyboard()
 
     callbacks = _callbacks(asyncio.run(go()))
     assert f"roles_caps:{ROLE}" in callbacks

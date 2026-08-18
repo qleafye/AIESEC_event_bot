@@ -9,6 +9,8 @@ from handlers import admin
 from handlers.admin import (
     _parse_appr,
     _render_application_card,
+)
+from handlers.admin_roles import (  # Phase 13 (13-04): settings-guide moved here
     _render_settings_guide,
     SETTINGS_GUIDE_SECTIONS,
     SETTINGS_GUIDE_KEYS,

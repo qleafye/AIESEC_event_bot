@@ -19,6 +19,7 @@ from config import config
 from database import db
 import cities
 from handlers import admin as admin_mod
+from handlers import admin_roles
 from handlers.admin_caps import required_capability
 
 
@@ -247,7 +248,7 @@ def _kb_callback_data(kb: InlineKeyboardMarkup) -> list[str]:
 def test_roles_keyboard_has_no_city_buttons_when_module_off(tmp_path):
     _admin_ready(tmp_path)
     asyncio.run(db.add_staff(MANAGER_ID, "reg_manager", ADMIN_ID))
-    kb = asyncio.run(admin_mod.build_roles_keyboard())
+    kb = asyncio.run(admin_roles.build_roles_keyboard())
     assert not any(cd.startswith("roles_city") for cd in _kb_callback_data(kb))
 
 
@@ -255,14 +256,14 @@ def test_roles_keyboard_has_city_edit_button_per_person_when_module_on(tmp_path)
     _admin_ready(tmp_path)
     asyncio.run(db.set_setting("event_city_enabled", "on"))
     asyncio.run(db.add_staff(MANAGER_ID, "reg_manager", ADMIN_ID))
-    kb = asyncio.run(admin_mod.build_roles_keyboard())
+    kb = asyncio.run(admin_roles.build_roles_keyboard())
     assert f"roles_city:{MANAGER_ID}" in _kb_callback_data(kb)
 
 
 def test_roles_assign_module_off_redraws_roles_immediately(tmp_path):
     _admin_ready(tmp_path)
     cb = FakeCallback(f"roles_addrole:{MANAGER_ID}:reg_manager", ADMIN_ID)
-    asyncio.run(admin_mod.roles_assign(cb))
+    asyncio.run(admin_roles.roles_assign(cb))
     assert cb.message.edit_calls == 1
     assert "Роли и доступы" in cb.message.text
     assert asyncio.run(db.get_staff_roles(MANAGER_ID)) == ["reg_manager"]
@@ -272,7 +273,7 @@ def test_roles_assign_module_on_shows_city_step(tmp_path):
     _admin_ready(tmp_path)
     asyncio.run(db.set_setting("event_city_enabled", "on"))
     cb = FakeCallback(f"roles_addrole:{MANAGER_ID}:reg_manager", ADMIN_ID)
-    asyncio.run(admin_mod.roles_assign(cb))
+    asyncio.run(admin_roles.roles_assign(cb))
     assert asyncio.run(db.get_staff_roles(MANAGER_ID)) == ["reg_manager"]
     assert cb.message.edit_calls == 1
     cds = _kb_callback_data(cb.message.markup)
@@ -287,7 +288,7 @@ def test_roles_city_pick_all_clears_city(tmp_path):
     asyncio.run(db.set_staff_city(MANAGER_ID, "spb"))
 
     cb = FakeCallback(f"roles_city_pick:{MANAGER_ID}:all", ADMIN_ID)
-    asyncio.run(admin_mod.roles_city_pick(cb))
+    asyncio.run(admin_roles.roles_city_pick(cb))
     assert asyncio.run(db.get_staff_city(MANAGER_ID)) is None
     assert cb.message.edit_calls == 1
 
@@ -298,7 +299,7 @@ def test_roles_city_pick_known_code_sets_city(tmp_path):
     asyncio.run(db.add_staff(MANAGER_ID, "reg_manager", ADMIN_ID))
 
     cb = FakeCallback(f"roles_city_pick:{MANAGER_ID}:spb", ADMIN_ID)
-    asyncio.run(admin_mod.roles_city_pick(cb))
+    asyncio.run(admin_roles.roles_city_pick(cb))
     assert asyncio.run(db.get_staff_city(MANAGER_ID)) == "spb"
 
 
@@ -308,7 +309,7 @@ def test_roles_city_pick_unknown_code_alerts_and_writes_nothing(tmp_path):
     asyncio.run(db.add_staff(MANAGER_ID, "reg_manager", ADMIN_ID))
 
     cb = FakeCallback(f"roles_city_pick:{MANAGER_ID}:nowhere", ADMIN_ID)
-    asyncio.run(admin_mod.roles_city_pick(cb))
+    asyncio.run(admin_roles.roles_city_pick(cb))
     assert asyncio.run(db.get_staff_city(MANAGER_ID)) is None
     assert cb.answered_alerts and cb.answered_alerts[-1] is True
 
@@ -317,7 +318,7 @@ def test_roles_city_start_gated_off_when_module_off(tmp_path):
     _admin_ready(tmp_path)
     asyncio.run(db.add_staff(MANAGER_ID, "reg_manager", ADMIN_ID))
     cb = FakeCallback(f"roles_city:{MANAGER_ID}", ADMIN_ID)
-    asyncio.run(admin_mod.roles_city_start(cb))
+    asyncio.run(admin_roles.roles_city_start(cb))
     assert cb.message.edit_calls == 0
 
 
@@ -326,7 +327,7 @@ def test_roles_city_start_shows_picker_when_module_on(tmp_path):
     asyncio.run(db.set_setting("event_city_enabled", "on"))
     asyncio.run(db.add_staff(MANAGER_ID, "reg_manager", ADMIN_ID))
     cb = FakeCallback(f"roles_city:{MANAGER_ID}", ADMIN_ID)
-    asyncio.run(admin_mod.roles_city_start(cb))
+    asyncio.run(admin_roles.roles_city_start(cb))
     assert cb.message.edit_calls == 1
     cds = _kb_callback_data(cb.message.markup)
     assert f"roles_city_pick:{MANAGER_ID}:all" in cds
@@ -337,7 +338,7 @@ def test_render_roles_text_shows_city_when_module_on(tmp_path):
     asyncio.run(db.set_setting("event_city_enabled", "on"))
     asyncio.run(db.add_staff(MANAGER_ID, "reg_manager", ADMIN_ID))
     asyncio.run(db.set_staff_city(MANAGER_ID, "spb"))
-    text = asyncio.run(admin_mod.render_roles_text())
+    text = asyncio.run(admin_roles.render_roles_text())
     assert "Санкт-Петербург" in text or "СПб" in text or "spb" in text.lower()
 
 
