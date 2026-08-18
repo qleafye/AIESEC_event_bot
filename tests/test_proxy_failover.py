@@ -803,3 +803,61 @@ def test_probe_timeout_uses_connect_timeout_for_connect_and_sock_connect():
     assert ct.connect == 5
     assert ct.sock_connect == 5
     assert ct.total >= ct.connect  # bounded -- a dead link costs ~5s, not the full 90s
+
+
+# ── ApiLink: «api:https://host» = без прокси, другой хост Bot API (Cloudflare Worker) ──
+
+WORKER = "https://tg.example.com"
+
+
+def test_build_proxy_chain_api_prefix_becomes_api_link():
+    chain = build_proxy_chain(PRIMARY, "api:" + WORKER + "/")
+    assert chain == [PRIMARY, proxy_session.ApiLink(WORKER)]
+    # Case-insensitive prefix, trailing slash stripped, duplicates collapsed.
+    assert build_proxy_chain("API:" + WORKER, "api:" + WORKER + "/") == [
+        proxy_session.ApiLink(WORKER)
+    ]
+    # Empty base is dropped like an empty value.
+    assert build_proxy_chain("api:", PRIMARY) == [PRIMARY]
+
+
+def test_mask_proxy_url_api_link_is_direct_arrow_base():
+    assert mask_proxy_url(proxy_session.ApiLink(WORKER)) == "direct→" + WORKER
+
+
+def test_api_link_session_uses_worker_base_and_direct_connector():
+    session = FailoverAiohttpSession([proxy_session.ApiLink(WORKER), PRIMARY])
+    assert session.api.api_url("T", "getMe") == WORKER + "/botT/getMe"
+    assert session.api.file_url("T", "a/b") == WORKER + "/file/botT/a/b"
+    assert session._proxy is None
+    # Probe of an ApiLink primary targets the Worker, not api.telegram.org.
+    assert session._probe_url() == WORKER
+
+
+def test_default_chain_probe_url_is_telegram():
+    session = FailoverAiohttpSession([PRIMARY, BACKUP])
+    assert session._probe_url() == "https://api.telegram.org"
+    assert session.api.api_url("T", "getMe") == "https://api.telegram.org/botT/getMe"
+
+
+def test_rotation_to_api_link_swaps_api_and_back(monkeypatch):
+    calls = []
+    monkeypatch.setattr(AiohttpSession, "make_request", _fake_transport({0}, calls))
+
+    async def go():
+        session = FailoverAiohttpSession([PRIMARY, proxy_session.ApiLink(WORKER)])
+        before = session.api.api_url("T", "getMe")
+        await session.make_request(object(), object())
+        after = session.api.api_url("T", "getMe")
+        proxy_after = session._proxy
+        session._apply(0)
+        restored = session.api.api_url("T", "getMe")
+        await _drain_background()
+        return before, after, proxy_after, restored, session._proxy
+
+    before, after, proxy_after, restored, proxy_restored = asyncio.run(go())
+    assert before == "https://api.telegram.org/botT/getMe"
+    assert after == WORKER + "/botT/getMe"
+    assert proxy_after is None
+    assert restored == "https://api.telegram.org/botT/getMe"
+    assert proxy_restored == PRIMARY
