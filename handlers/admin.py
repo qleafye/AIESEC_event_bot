@@ -3095,6 +3095,71 @@ async def season_import_file_invalid(message: types.Message):
     await message.answer("Пришли файл базы документом (не фото и не архив).")
 
 
+@router.message(SeasonImport.naming)
+async def season_import_name_step(message: types.Message, state: FSMContext):
+    label = (message.text or "").strip()
+    if not label:
+        await message.answer("Название сезона не может быть пустым. Напиши, например: YL'25")
+        return
+    if len(label) > 64:
+        await message.answer("Слишком длинно. Уложись в 64 символа.")
+        return
+
+    current_season = (await get_setting("event_season") or "").strip()
+    if label == current_season:
+        # CONTEXT A's "прошлый делегат" formula depends on season != event_season — importing
+        # into the CURRENT season would make imported rows indistinguishable from live ones.
+        await message.answer(
+            "Это название текущего сезона — импортированные делегаты тогда будут считаться "
+            "участниками ТЕКУЩЕГО события. Напиши название прошлого сезона."
+        )
+        return
+
+    await state.update_data(import_season=label)
+    data = await state.get_data()
+    found = data.get("import_found", 0)
+    existing = data.get("import_existing", 0)
+    to_add = found - existing
+    kb = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="📥 Да, импортировать", callback_data="season_import_go")],
+        [InlineKeyboardButton(text="← Отмена", callback_data="settings_group:event")],
+    ])
+    await message.answer(
+        f"📥 <b>Добавить {to_add} делегатов сезона «{html_module.escape(label)}»?</b>\n\n"
+        "Статусы возьму из файла. Монеты, оплаты и рефералы не переносятся, существующие "
+        "записи не меняются.",
+        parse_mode="HTML",
+        reply_markup=kb,
+    )
+
+
+@router.callback_query(F.data == "season_import_go")
+async def season_import_go(callback: types.CallbackQuery, state: FSMContext):
+    data = await state.get_data()
+    rows = data.get("import_rows")
+    season_label = data.get("import_season")
+    if not rows or not season_label:
+        # T-073-06-05-adjacent form-recheck-at-execute (same posture as city_delete_go): a
+        # stale screen (e.g. after a restart, or a second tap) must not silently no-op-insert.
+        await callback.answer("Экран устарел, начни импорт заново", show_alert=True)
+        await state.set_state(None)
+        return
+
+    inserted = await bulk_insert_users_if_absent(rows, season_label)
+    logger.warning(
+        f"SEASON IMPORT by admin {callback.from_user.id}: season='{season_label}', "
+        f"rows={len(rows)}, inserted={inserted}"
+    )
+    await callback.message.answer(
+        f"✅ Импортировано: {inserted}\nПропущено (уже были): {len(rows) - inserted}"
+    )
+    await state.set_state(None)
+    await state.set_data({})  # T-073-06-05: don't keep a past event's rows in memory longer than needed
+    text = await render_settings_group_text("event", callback.from_user.id)
+    await callback.message.answer(text, parse_mode="HTML", reply_markup=await build_settings_group_keyboard("event", callback.from_user.id))
+    await callback.answer()
+
+
 @router.callback_query(F.data == "admin_city_switch")
 async def admin_city_switch(callback: types.CallbackQuery):
     """Phase 07.2 (CITY-02): pick the city the admin panel is currently scoped to. Disabled
