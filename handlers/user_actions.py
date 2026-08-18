@@ -21,6 +21,7 @@ from database.db import (
     add_submission_part,
     parse_proof_types,
     count_rejected_submissions,
+    task_title,
 )
 from handlers.admin_caps import notify_by_capability  # D-13: fan out by capability, not bare ADMIN_IDS
 from cities import (
@@ -111,73 +112,176 @@ async def show_leaderboard(message: types.Message):
 
 # --- Gamification: task list + submission (GAME-01/02, wave 3, 09-03) ---
 
-async def _render_game_task_line(task: dict, active: dict | None) -> tuple[str, bool]:
+def _game_task_deadline_short(task: dict) -> tuple[str, bool]:
+    """(dd.mm display, is_overdue) — shared by the list line, the button label truncation
+    logic below (via task_title), and the card. Quick 260819-gtl: the list line now shows a
+    short dd.mm date (CONTEXT.md decision 3), not the full dd.mm.yyyy hh:mm the pre-existing
+    card/prompt strings still use elsewhere in this file."""
+    try:
+        dt = datetime.strptime(task["deadline_at"], "%Y-%m-%d %H:%M:%S")
+        return dt.strftime("%d.%m"), dt <= datetime.now()
+    except (TypeError, ValueError):
+        return str(task["deadline_at"] or "—"), False
+
+
+async def _render_game_task_line(index: int, task: dict, active: dict | None) -> tuple[str, bool]:
     """Renders one task's status line for the delegate list. Returns (line, needs_submit_button)
     -- needs_submit_button is True only when `active is None` (task not yet claimed by this
-    delegate), matching D-08's «одна сдача на пару» invariant surfaced to the delegate."""
-    category = html.escape(str(task["category"]))
-    text_preview = html.escape(str(task["text"])[:80])
-    try:
-        deadline = datetime.strptime(task["deadline_at"], "%Y-%m-%d %H:%M:%S").strftime("%d.%m.%Y %H:%M")
-    except (TypeError, ValueError):
-        deadline = str(task["deadline_at"] or "—")
-    base = f"{category} · {text_preview} · {task['coins']}🪙 · до {deadline}"
+    delegate), matching D-08's «одна сдача на пару» invariant surfaced to the delegate.
+
+    Quick 260819-gtl (CONTEXT.md decision 3): title, not a raw description preview -- the
+    description is shown only on the task CARD (`_render_task_card_text` below), never in the
+    list. Format: "N. <статус-эмодзи> <title>[ ⏰] · <coins>🪙 · до <дд.мм>" (or the pending/
+    approved variant of the tail). `index` is the delegate-facing 1-based row number."""
+    title = html.escape(task_title(task))
+    deadline, overdue = _game_task_deadline_short(task)
+    overdue_mark = " ⏰" if overdue else ""
 
     if active is None:
-        return f"📤 {base}", True
+        return f"{index}. 📤 {title}{overdue_mark} · {task['coins']}🪙 · до {deadline}", True
     if active["status"] == "pending":
         submitted = active.get("submitted_at") or "—"
-        return f"📤 {base}\n⏳ на проверке, сдано {submitted}", False
+        return f"{index}. ⏳ {title} · на проверке, сдано {submitted}", False
     if active["status"] == "approved":
         coins_awarded = active.get("coins_awarded")
-        return f"✅ {category} · {text_preview} · одобрено, +{coins_awarded}🪙", False
+        return f"{index}. ✅ {title} · одобрено, +{coins_awarded}🪙", False
     # 'rejected' submissions never come back from get_active_submission (D-05) -- unreachable
     # in practice, kept as a fail-soft fallback rather than a silent KeyError.
-    return f"📤 {base}", True
+    return f"{index}. 📤 {title}{overdue_mark} · {task['coins']}🪙 · до {deadline}", True
+
+
+async def _game_task_list_screen(user_id: int) -> tuple[str | None, InlineKeyboardMarkup | None]:
+    """Shared by `show_game_tasks` (new message) and `mytask_back` (edit_text back from a
+    photo-less card) -- (None, None) means "no active tasks", same "no tasks" gate both call
+    sites already needed. Quick 260819-gtl extraction, byte-identical resolve logic to the
+    pre-existing inline body of show_game_tasks (Phase 09.1 B)."""
+    if await cities_module_on():
+        user = await get_user(user_id)
+        code = normalize_city(user.get("event_city") if user else None)
+        tasks = await list_active_tasks(city_scope=city_scope(code))
+    else:
+        tasks = await list_active_tasks()
+    if not tasks:
+        return None, None
+
+    lines = []
+    buttons = []
+    for i, task in enumerate(tasks, start=1):
+        active = await get_active_submission(task["id"], user_id)
+        line, needs_button = await _render_game_task_line(i, task, active)
+        lines.append(line)
+        if needs_button:
+            buttons.append([InlineKeyboardButton(
+                text=_submit_button_label(task), callback_data=f"mytask:{task['id']}",
+            )])
+
+    kb = InlineKeyboardMarkup(inline_keyboard=buttons) if buttons else None
+    return "\n\n".join(lines), kb
 
 
 @router.message(F.text == "🎯 Задания")
 async def show_game_tasks(message: types.Message):
     if not await ensure_registered(message):
         return
-
-    # Phase 09.1 (B): module off -> byte-identical to pre-09.1 (list_active_tasks() with no
-    # kwargs). One resolve on one screen (get_user + normalize_city + city_scope), mirrors
-    # _admin_city_view resolving ONE scope from ONE read, not two independent awaits.
-    if await cities_module_on():
-        user = await get_user(message.from_user.id)
-        code = normalize_city(user.get("event_city") if user else None)
-        tasks = await list_active_tasks(city_scope=city_scope(code))
-    else:
-        tasks = await list_active_tasks()
-    if not tasks:
+    text, kb = await _game_task_list_screen(message.from_user.id)
+    if text is None:
         await message.answer("Активных заданий сейчас нет. Загляни попозже!")
         return
-
-    lines = []
-    buttons = []
-    for task in tasks:
-        active = await get_active_submission(task["id"], message.from_user.id)
-        line, needs_button = await _render_game_task_line(task, active)
-        lines.append(line)
-        if needs_button:
-            buttons.append([InlineKeyboardButton(
-                text=_submit_button_label(task), callback_data=f"mytask_submit:{task['id']}",
-            )])
-
-    kb = InlineKeyboardMarkup(inline_keyboard=buttons) if buttons else None
-    await message.answer("\n\n".join(lines), parse_mode="HTML", reply_markup=kb)
+    await message.answer(text, parse_mode="HTML", reply_markup=kb)
 
 
 # Phase 14 (GAME-08): delegate-facing submit-button label — several tasks used to share the
 # identical literal "Сдать", making the keyboard ambiguous when more than one was open at
 # once. Pure/sync (no I/O) -- text-only, never HTML-escaped because this is a button label,
 # not parse_mode="HTML" body text.
+# Quick 260819-gtl (CONTEXT.md decision 3): "📤 <title>" (обрезка 30), title not raw text.
 def _submit_button_label(task: dict) -> str:
-    name = str(task["text"])
-    if len(name) > 40:
-        name = name[:40] + "…"
-    return f"📤 Сдать: {name}"
+    name = task_title(task)
+    if len(name) > 30:
+        name = name[:30] + "…"
+    return f"📤 {name}"
+
+
+def _render_task_card_text(task: dict) -> str:
+    """Quick 260819-gtl (CONTEXT.md decision 5): the task CARD shown when a delegate taps a
+    task's button on the list -- title + full description (unlike the list line, which never
+    shows the description). Caller truncates the RESULT for a photo caption's 1024-char limit
+    (this function itself targets the no-photo/plain-message path, no ceiling of its own)."""
+    title = html.escape(task_title(task))
+    category = html.escape(str(task["category"]))
+    deadline, overdue = _game_task_deadline_short(task)
+    lines = [f"<b>{title}</b>", f"{category} · {task['coins']}🪙 · до {deadline}"]
+    if overdue:
+        # A-05 (созвон 13.08): дословно как в текущем mytask_submit_start -- дедлайн мягкий,
+        # сдача разрешена, решение по коинам остаётся за менеджером.
+        lines.append("⏰ Срок вышел — отправить можно, монеты решит менеджер")
+    lines.append("")
+    lines.append(html.escape(str(task["text"])))
+    return "\n".join(lines)
+
+
+def _game_task_card_kb(task_id: int) -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="📤 Сдать", callback_data=f"mytask_submit:{task_id}")],
+        [InlineKeyboardButton(text="◀️ Назад", callback_data="mytask_back")],
+    ])
+
+
+@router.callback_query(F.data.startswith("mytask:"))
+async def mytask_open(callback: types.CallbackQuery):
+    """Quick 260819-gtl (CONTEXT.md decision 5): opens the task card. Photo present ->
+    send_photo as a SEPARATE message (edit_text can never turn a text message into a photo
+    message) -- the list message keeps its own keyboard untouched. No photo -> edit_text turns
+    THIS message (the list) into the card in place, zero new messages in the chat."""
+    try:
+        task_id = int(callback.data.split(":", 1)[1])
+    except ValueError:
+        await callback.answer("Некорректное задание", show_alert=True)
+        return
+    task = await get_task(task_id)
+    if task is None or task.get("archived_at"):
+        # Same wording as mytask_submit_start's own archived-task alert (T-14-01 precedent) --
+        # a stale list message can still carry a button for a task removed since it was sent.
+        await callback.answer(
+            "Это задание убрали в архив — сдать его больше нельзя. Загляни в «🎯 Задания», "
+            "там актуальный список.",
+            show_alert=True,
+        )
+        return
+
+    card_text = _render_task_card_text(task)
+    card_kb = _game_task_card_kb(task_id)
+    photo_id = task.get("photo_file_id")
+    if photo_id:
+        caption = card_text if len(card_text) <= 1024 else card_text[:1021] + "…"
+        await callback.message.answer_photo(
+            photo_id, caption=caption, parse_mode="HTML", reply_markup=card_kb,
+        )
+    else:
+        await callback.message.edit_text(card_text, parse_mode="HTML", reply_markup=card_kb)
+    await callback.answer()
+
+
+@router.callback_query(F.data == "mytask_back")
+async def mytask_back(callback: types.CallbackQuery):
+    """Quick 260819-gtl (CONTEXT.md decision 5): a photo card is its own message -- "back" just
+    removes it (the list message underneath, untouched, still carries its own keyboard, "это
+    ок" per CONTEXT.md). A no-photo card IS the (edited) list message -- "back" re-renders the
+    list into the SAME message via edit_text."""
+    if callback.message.photo:
+        try:
+            await callback.message.delete()
+        except Exception:
+            pass
+        await callback.answer()
+        return
+    text, kb = await _game_task_list_screen(callback.from_user.id)
+    if text is None:
+        await callback.message.edit_text("Активных заданий сейчас нет. Загляни попозже!")
+        await callback.answer()
+        return
+    await callback.message.edit_text(text, parse_mode="HTML", reply_markup=kb)
+    await callback.answer()
 
 
 # Phase 09.1 (A): the flow's texts live in settings_schema (group "game"), not literals here
