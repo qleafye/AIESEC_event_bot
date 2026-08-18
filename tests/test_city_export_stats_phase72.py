@@ -170,8 +170,15 @@ def test_export_incomplete_calls_batches_helper_without_city_arg():
 
 # ── Task 2: stats screen with a per-city breakdown (row per city + total) ───────────────
 
-def _expected_todays_literal(total, top_unis):
+def _expected_todays_literal(total, top_unis, returning=None):
+    # Phase 07.3 (05, RET-03): render_stats_text() gained an unconditional «🔁 Повторных: N»
+    # line after the top-3-ВУЗа loop (CONTEXT C — global counter, not city-scoped). Callers
+    # that don't seed prev_season pass returning=None and get the live db.get_returning_count()
+    # value (0 in this file's fixtures), keeping the literal in sync with real behavior instead
+    # of hardcoding a now-stale assumption.
     import html as html_mod
+    if returning is None:
+        returning = asyncio.run(db.get_returning_count())
     text = (
         f"📊 <b>Статистика:</b>\n"
         f"Всего регистраций: {total}\n"
@@ -179,6 +186,7 @@ def _expected_todays_literal(total, top_unis):
     )
     for i, (uni, count) in enumerate(top_unis, 1):
         text += f"{i}. {html_mod.escape(str(uni))} — {count}\n"
+    text += f"🔁 Повторных: {returning}\n"
     return text
 
 
