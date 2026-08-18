@@ -24,6 +24,7 @@ from database.db import (
     task_title,
 )
 from handlers.admin_caps import notify_by_capability  # D-13: fan out by capability, not bare ADMIN_IDS
+from handlers.game_labels import category_label, proof_types_label  # Phase 16 (16-01): single RU-label source
 from cities import (
     cities_module_on, normalize_city, city_scope,  # Phase 09.1 (B): show_game_tasks city filter
     get_setting_for_city,  # Phase 09.2 (B): contacts/info screens resolve by delegate city
@@ -112,6 +113,9 @@ async def show_leaderboard(message: types.Message):
 
 # --- Gamification: task list + submission (GAME-01/02, wave 3, 09-03) ---
 
+PAGE_SIZE = 6  # Phase 16 (16-01): delegate task-list page size (CONTEXT.md "5-6 заданий на страницу")
+
+
 def _game_task_deadline_short(task: dict) -> tuple[str, bool]:
     """(dd.mm display, is_overdue) — shared by the list line, the button label truncation
     logic below (via task_title), and the card. Quick 260819-gtl: the list line now shows a
@@ -124,37 +128,66 @@ def _game_task_deadline_short(task: dict) -> tuple[str, bool]:
         return str(task["deadline_at"] or "—"), False
 
 
-async def _render_game_task_line(index: int, task: dict, active: dict | None) -> tuple[str, bool]:
-    """Renders one task's status line for the delegate list. Returns (line, needs_submit_button)
-    -- needs_submit_button is True only when `active is None` (task not yet claimed by this
-    delegate), matching D-08's «одна сдача на пару» invariant surfaced to the delegate.
+async def _render_game_task_line(
+    index: int, task: dict, active: dict | None, user_id: int,
+) -> tuple[str, bool]:
+    """Renders one task's TWO-line status entry for the delegate list ("N. <emoji> <b>title</b>"
+    / tail line). Returns (line, needs_submit_button) -- needs_submit_button is True only when
+    the task is genuinely open for a fresh submission (not claimed, not over the resubmit
+    limit), matching D-08's «одна сдача на пару» invariant surfaced to the delegate.
 
-    Quick 260819-gtl (CONTEXT.md decision 3): title, not a raw description preview -- the
-    description is shown only on the task CARD (`_render_task_card_text` below), never in the
-    list. Format: "N. <статус-эмодзи> <title>[ ⏰] · <coins>🪙 · до <дд.мм>" (or the pending/
-    approved variant of the tail). `index` is the delegate-facing 1-based row number."""
+    Phase 16 (16-01, GAME-UI-01): RU category via `game_labels.category_label`; a terminal
+    "❌ отклонено (попытка K из N)" state (no submit button) when `game_resubmit_limit` is set
+    and the delegate has exhausted it -- checked BEFORE the `active is None` branch since a
+    terminal task also has `active is None` (rejected submissions never come back from
+    `get_active_submission`, D-05)."""
     title = html.escape(task_title(task))
+    category = await category_label(task["category"])
     deadline, overdue = _game_task_deadline_short(task)
     overdue_mark = " ⏰" if overdue else ""
 
+    limit = await get_setting_typed("game_resubmit_limit")
+    if limit:
+        rejected = await count_rejected_submissions(task["id"], user_id)
+        if active is None and rejected >= limit:
+            return (
+                f"{index}. ❌ <b>{title}</b>\n"
+                f"отклонено (попытка {rejected} из {limit})"
+            ), False
+
     if active is None:
-        return f"{index}. 📤 {title}{overdue_mark} · {task['coins']}🪙 · до {deadline}", True
+        tail = f"{category} · {task['coins']}🪙 · до {deadline}"
+        if overdue:
+            tail += " — срок вышел, сдать ещё можно"
+        return f"{index}. 📤 <b>{title}</b>{overdue_mark}\n{tail}", True
     if active["status"] == "pending":
-        submitted = active.get("submitted_at") or "—"
-        return f"{index}. ⏳ {title} · на проверке, сдано {submitted}", False
+        when = active.get("submitted_at") or "—"
+        try:
+            when = datetime.strptime(when, "%Y-%m-%d %H:%M:%S").strftime("%d.%m %H:%M")
+        except (TypeError, ValueError):
+            pass
+        return f"{index}. ⏳ <b>{title}</b>\nна проверке (сдано {when})", False
     if active["status"] == "approved":
         coins_awarded = active.get("coins_awarded")
-        return f"{index}. ✅ {title} · одобрено, +{coins_awarded}🪙", False
+        return f"{index}. ✅ <b>{title}</b>\nпринято (+{coins_awarded}🪙)", False
     # 'rejected' submissions never come back from get_active_submission (D-05) -- unreachable
     # in practice, kept as a fail-soft fallback rather than a silent KeyError.
-    return f"{index}. 📤 {title}{overdue_mark} · {task['coins']}🪙 · до {deadline}", True
+    tail = f"{category} · {task['coins']}🪙 · до {deadline}"
+    if overdue:
+        tail += " — срок вышел, сдать ещё можно"
+    return f"{index}. 📤 <b>{title}</b>{overdue_mark}\n{tail}", True
 
 
-async def _game_task_list_screen(user_id: int) -> tuple[str | None, InlineKeyboardMarkup | None]:
-    """Shared by `show_game_tasks` (new message) and `mytask_back` (edit_text back from a
-    photo-less card) -- (None, None) means "no active tasks", same "no tasks" gate both call
-    sites already needed. Quick 260819-gtl extraction, byte-identical resolve logic to the
-    pre-existing inline body of show_game_tasks (Phase 09.1 B)."""
+async def _game_task_list_screen(
+    user_id: int, page: int = 0,
+) -> tuple[str, InlineKeyboardMarkup | None]:
+    """Shared by `show_game_tasks` (new message), `mytask_back`/`gtasks_page` (edit_text back
+    from a card or a page-nav tap) -- always returns a text (registry `game_task_list_empty`
+    when there are no active tasks) + kb (None only when there are no buttons to show).
+
+    Phase 16 (16-01, GAME-UI-01): paginated at `PAGE_SIZE`, numbering is GLOBAL across pages
+    (continues from `page*PAGE_SIZE + 1`), a page-nav row ("‹" / "N / M" no-op / "›") is added
+    only when there's more than one page."""
     if await cities_module_on():
         user = await get_user(user_id)
         code = normalize_city(user.get("event_city") if user else None)
@@ -162,18 +195,36 @@ async def _game_task_list_screen(user_id: int) -> tuple[str | None, InlineKeyboa
     else:
         tasks = await list_active_tasks()
     if not tasks:
-        return None, None
+        return await get_setting_typed("game_task_list_empty"), None
+
+    total_pages = max(1, -(-len(tasks) // PAGE_SIZE))
+    page = max(0, min(page, total_pages - 1))
+    page_tasks = tasks[page * PAGE_SIZE:(page + 1) * PAGE_SIZE]
 
     lines = []
+    if total_pages > 1:
+        page_label = await get_setting_typed("game_task_list_page_label")
+        lines.append(page_label.format(page=page + 1, total=total_pages))
+
     buttons = []
-    for i, task in enumerate(tasks, start=1):
+    for offset, task in enumerate(page_tasks):
+        i = page * PAGE_SIZE + offset + 1
         active = await get_active_submission(task["id"], user_id)
-        line, needs_button = await _render_game_task_line(i, task, active)
+        line, needs_button = await _render_game_task_line(i, task, active, user_id)
         lines.append(line)
         if needs_button:
             buttons.append([InlineKeyboardButton(
-                text=_submit_button_label(task), callback_data=f"mytask:{task['id']}",
+                text=_submit_button_label(task), callback_data=f"gtask_open:{task['id']}",
             )])
+
+    if total_pages > 1:
+        nav_row = []
+        if page > 0:
+            nav_row.append(InlineKeyboardButton(text="‹", callback_data=f"gtasks_page:{page - 1}"))
+        nav_row.append(InlineKeyboardButton(text=f"{page + 1} / {total_pages}", callback_data="gtasks_noop"))
+        if page < total_pages - 1:
+            nav_row.append(InlineKeyboardButton(text="›", callback_data=f"gtasks_page:{page + 1}"))
+        buttons.append(nav_row)
 
     kb = InlineKeyboardMarkup(inline_keyboard=buttons) if buttons else None
     return "\n\n".join(lines), kb
@@ -183,10 +234,7 @@ async def _game_task_list_screen(user_id: int) -> tuple[str | None, InlineKeyboa
 async def show_game_tasks(message: types.Message):
     if not await ensure_registered(message):
         return
-    text, kb = await _game_task_list_screen(message.from_user.id)
-    if text is None:
-        await message.answer("Активных заданий сейчас нет. Загляни попозже!")
-        return
+    text, kb = await _game_task_list_screen(message.from_user.id, page=0)
     await message.answer(text, parse_mode="HTML", reply_markup=kb)
 
 
@@ -202,37 +250,56 @@ def _submit_button_label(task: dict) -> str:
     return f"📤 {name}"
 
 
-def _render_task_card_text(task: dict) -> str:
-    """Quick 260819-gtl (CONTEXT.md decision 5): the task CARD shown when a delegate taps a
-    task's button on the list -- title + full description (unlike the list line, which never
-    shows the description). Caller truncates the RESULT for a photo caption's 1024-char limit
-    (this function itself targets the no-photo/plain-message path, no ceiling of its own)."""
+async def _render_task_card_text(task: dict, status_line: str, attempt: int | None) -> str:
+    """Phase 16 (16-01, GAME-UI-01): the task CARD shown when a delegate taps a task's button
+    on the list -- title, RU category/coins/deadline, a composed status/attempt line, a
+    proof-type hint, and the full description in a `<blockquote expandable>` (HTML-escaped
+    BEFORE wrapping -- T-16-01-03). Caller truncates the RESULT for a photo caption's 1024-char
+    limit (this function itself targets the no-photo/plain-message path, no ceiling of its
+    own). `attempt` is accepted for interface parity with the caller (pre-composed into
+    `status_line` already, not re-derived here)."""
     title = html.escape(task_title(task))
-    category = html.escape(str(task["category"]))
+    category = await category_label(task["category"])
     deadline, overdue = _game_task_deadline_short(task)
     lines = [f"<b>{title}</b>", f"{category} · {task['coins']}🪙 · до {deadline}"]
     if overdue:
         # A-05 (созвон 13.08): дословно как в текущем mytask_submit_start -- дедлайн мягкий,
         # сдача разрешена, решение по коинам остаётся за менеджером.
         lines.append("⏰ Срок вышел — отправить можно, монеты решит менеджер")
+    status_label = await get_setting_typed("game_task_detail_status_label")
+    lines.append(status_label.format(status=status_line))
+    lines.append(f"Нужно прислать: {await proof_types_label(task.get('proof_type'))}")
     lines.append("")
-    lines.append(html.escape(str(task["text"])))
+    lines.append(f"<blockquote expandable>{html.escape(str(task['text']))}</blockquote>")
     return "\n".join(lines)
 
 
-def _game_task_card_kb(task_id: int) -> InlineKeyboardMarkup:
+def _game_task_card_kb(task_id: int, can_submit: bool) -> InlineKeyboardMarkup:
+    """Phase 16 (16-01): «◀️ Назад» now targets `gtasks_back:0` (CONTEXT.md rename, page
+    threading from list to card not implemented this plan -- `mytask_back` parses generically
+    so a future plan can build `gtasks_back:N` for N>0 without another rename). `can_submit`
+    False (stale-pending re-tap, T-16-01-02) drops the "📤 Сдать" row entirely."""
+    if can_submit:
+        return InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(text="📤 Сдать", callback_data=f"mytask_submit:{task_id}")],
+            [InlineKeyboardButton(text="◀️ Назад", callback_data="gtasks_back:0")],
+        ])
     return InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="📤 Сдать", callback_data=f"mytask_submit:{task_id}")],
-        [InlineKeyboardButton(text="◀️ Назад", callback_data="mytask_back")],
+        [InlineKeyboardButton(text="◀️ Назад", callback_data="gtasks_back:0")],
     ])
 
 
-@router.callback_query(F.data.startswith("mytask:"))
+@router.callback_query(F.data.startswith("gtask_open:"))
 async def mytask_open(callback: types.CallbackQuery):
-    """Quick 260819-gtl (CONTEXT.md decision 5): opens the task card. Photo present ->
-    send_photo as a SEPARATE message (edit_text can never turn a text message into a photo
-    message) -- the list message keeps its own keyboard untouched. No photo -> edit_text turns
-    THIS message (the list) into the card in place, zero new messages in the chat."""
+    """Quick 260819-gtl (CONTEXT.md decision 5) + Phase 16 (16-01, CONTEXT.md `<specifics>`
+    rename `mytask:` -> `gtask_open:`): opens the task card. Photo present -> send_photo as a
+    SEPARATE message (edit_text can never turn a text message into a photo message) -- the list
+    message keeps its own keyboard untouched. No photo -> edit_text turns THIS message (the
+    list) into the card in place, zero new messages in the chat.
+
+    T-16-01-02: re-reads `get_task`/`get_active_submission` on every tap -- never trusts what
+    a stale button implies about current state (a "pending" active submission collapses the
+    card to a submit-less "на проверке" variant, closing the stale-tap race)."""
     try:
         task_id = int(callback.data.split(":", 1)[1])
     except ValueError:
@@ -249,8 +316,20 @@ async def mytask_open(callback: types.CallbackQuery):
         )
         return
 
-    card_text = _render_task_card_text(task)
-    card_kb = _game_task_card_kb(task_id)
+    active = await get_active_submission(task_id, callback.from_user.id)
+    if active is not None and active["status"] == "pending":
+        status_line = "на проверке"
+        can_submit = False
+        attempt = None
+    else:
+        limit = await get_setting_typed("game_resubmit_limit")
+        rejected = await count_rejected_submissions(task_id, callback.from_user.id) if limit else 0
+        status_line = f"новое · попытка {rejected} из {limit}" if limit and rejected else "новое"
+        can_submit = True
+        attempt = rejected
+
+    card_text = await _render_task_card_text(task, status_line, attempt)
+    card_kb = _game_task_card_kb(task_id, can_submit)
     photo_id = task.get("photo_file_id")
     if photo_id:
         caption = card_text if len(card_text) <= 1024 else card_text[:1021] + "…"
@@ -262,12 +341,14 @@ async def mytask_open(callback: types.CallbackQuery):
     await callback.answer()
 
 
-@router.callback_query(F.data == "mytask_back")
+@router.callback_query(F.data.startswith("gtasks_back:"))
 async def mytask_back(callback: types.CallbackQuery):
-    """Quick 260819-gtl (CONTEXT.md decision 5): a photo card is its own message -- "back" just
+    """Quick 260819-gtl (CONTEXT.md decision 5) + Phase 16 (16-01, CONTEXT.md `<specifics>`
+    rename `mytask_back` -> `gtasks_back:N`): a photo card is its own message -- "back" just
     removes it (the list message underneath, untouched, still carries its own keyboard, "это
     ок" per CONTEXT.md). A no-photo card IS the (edited) list message -- "back" re-renders the
-    list into the SAME message via edit_text."""
+    list into the SAME message via edit_text, at the page parsed from callback_data (default 0
+    on parse failure, T-16-01-01)."""
     if callback.message.photo:
         try:
             await callback.message.delete()
@@ -275,12 +356,32 @@ async def mytask_back(callback: types.CallbackQuery):
             pass
         await callback.answer()
         return
-    text, kb = await _game_task_list_screen(callback.from_user.id)
-    if text is None:
-        await callback.message.edit_text("Активных заданий сейчас нет. Загляни попозже!")
-        await callback.answer()
-        return
+    try:
+        page = int(callback.data.split(":", 1)[1])
+    except (ValueError, IndexError):
+        page = 0
+    text, kb = await _game_task_list_screen(callback.from_user.id, page=page)
     await callback.message.edit_text(text, parse_mode="HTML", reply_markup=kb)
+    await callback.answer()
+
+
+@router.callback_query(F.data.startswith("gtasks_page:"))
+async def gtasks_page(callback: types.CallbackQuery):
+    """Phase 16 (16-01): list pagination -- edits the SAME message (T-16-01-01: page parsed
+    with a try/except, clamped server-side inside `_game_task_list_screen`, never trusts the
+    client-supplied page number as-is)."""
+    try:
+        page = int(callback.data.split(":", 1)[1])
+    except (ValueError, IndexError):
+        page = 0
+    text, kb = await _game_task_list_screen(callback.from_user.id, page=page)
+    await callback.message.edit_text(text, parse_mode="HTML", reply_markup=kb)
+    await callback.answer()
+
+
+@router.callback_query(F.data == "gtasks_noop")
+async def gtasks_noop(callback: types.CallbackQuery):
+    """Phase 16 (16-01): the non-functional "N / M" page-indicator button in the nav row."""
     await callback.answer()
 
 
