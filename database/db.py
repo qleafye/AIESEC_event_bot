@@ -258,6 +258,11 @@ async def init_db():
         # as users.event_city (07.1/07.2). No backfill -- every pre-existing task keeps
         # meaning "all cities", which is exactly what it already behaved as.
         await _ensure_column(db, "game_tasks", "event_city", "TEXT")
+        # Quick 260819-gtl (CONTEXT.md decisions 1/4): title/photo cover, additive. NULL title
+        # means "created before this quick task" -- rendered via task_title()'s fallback (first
+        # line of `text`, <=40 chars) everywhere a task is shown, never backfilled in the DB.
+        await _ensure_column(db, "game_tasks", "title", "TEXT")
+        await _ensure_column(db, "game_tasks", "photo_file_id", "TEXT")
 
         # `content` stores a file_id for photo/pdf proof, raw text for text/link proof — the
         # project never writes uploaded files to disk (README/CLAUDE.md file_id pattern).
@@ -1485,20 +1490,65 @@ def parse_proof_types(raw: str | None) -> list[str]:
 
 async def create_task(text: str, category: str, coins: int, proof_type: str,
                        deadline_at: str, created_by: int | None, *,
-                       event_city: str | None = None) -> int:
+                       event_city: str | None = None, title: str | None = None,
+                       photo_file_id: str | None = None) -> int:
     """`event_city` is kwarg-only (Phase 09.1 B) so every existing positional call site
     (including pre-09.1 tests) stays valid and keeps creating a NULL-city ("all cities")
-    task unless a caller opts in."""
+    task unless a caller opts in. `title`/`photo_file_id` (quick 260819-gtl) are kwarg-only
+    for the same reason -- every pre-existing call site keeps creating a NULL-title/NULL-photo
+    task (rendered via task_title()'s fallback) unless a caller opts in."""
     created_at = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     async with aiosqlite.connect(config.DB_PATH) as db:
         cursor = await db.execute(
             "INSERT INTO game_tasks (text, category, coins, proof_type, deadline_at, "
-            "created_by, created_at, event_city) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+            "created_by, created_at, event_city, title, photo_file_id) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
             (text, category, coins, proof_type, deadline_at, created_by, created_at,
-             event_city),
+             event_city, title, photo_file_id),
         )
         await db.commit()
         return cursor.lastrowid
+
+
+def task_title(task: dict) -> str:
+    """The ONE place that owns a task's display title (quick 260819-gtl, CONTEXT.md decision
+    2): `task["title"]` when set, else a fallback derived from `task["text"]` -- the first
+    line, truncated to 40 chars with a trailing "…" if it was cut. Accepts either a real
+    `game_tasks` row (keys `title`/`text`) or a synthesized dict with those two keys (e.g. a
+    `game_submissions` JOIN row remapped to `title`=task_title/`text`=task_text by the
+    caller) -- never touches the DB itself, never backfills NULL titles."""
+    title = str(task.get("title") or "").strip()
+    if title:
+        return title
+    text = str(task.get("text") or "")
+    first_line = text.splitlines()[0] if text else ""
+    if len(first_line) > 40:
+        return first_line[:40] + "…"
+    return first_line
+
+
+async def update_task_title(task_id: int, title: str) -> bool:
+    """True iff the task existed. `title` must already be validated/truncated by the caller
+    (handlers/admin.py's wizard-shared validator) -- this is a plain write, no business rules
+    live here (same division of labor as create_task)."""
+    async with aiosqlite.connect(config.DB_PATH) as db:
+        cursor = await db.execute(
+            "UPDATE game_tasks SET title = ? WHERE id = ?", (title, task_id),
+        )
+        await db.commit()
+        return cursor.rowcount == 1
+
+
+async def update_task_photo(task_id: int, photo_file_id: str | None) -> bool:
+    """Sets or clears (photo_file_id=None) the task's cover photo. True iff the task existed.
+    Replace/remove is treated as the SAME non-destructive write (no confirm step, CONTEXT.md
+    decision 4)."""
+    async with aiosqlite.connect(config.DB_PATH) as db:
+        cursor = await db.execute(
+            "UPDATE game_tasks SET photo_file_id = ? WHERE id = ?", (photo_file_id, task_id),
+        )
+        await db.commit()
+        return cursor.rowcount == 1
 
 
 async def get_task(task_id: int) -> dict | None:
@@ -1639,7 +1689,8 @@ async def get_pending_submissions(limit: int = 1, offset: int = 0, *, city_scope
     async with aiosqlite.connect(config.DB_PATH) as db:
         db.row_factory = aiosqlite.Row
         async with db.execute(
-            "SELECT s.*, t.text AS task_text, t.category AS task_category, "
+            "SELECT s.*, t.text AS task_text, t.title AS task_title, "
+            "t.category AS task_category, "
             "t.coins AS task_coins, t.proof_type AS task_proof_type, "
             "t.deadline_at AS task_deadline_at, t.event_city AS task_event_city, "
             "u.full_name AS user_full_name, u.username AS user_username, "
@@ -1698,7 +1749,8 @@ async def list_all_submissions() -> list[dict]:
     async with aiosqlite.connect(config.DB_PATH) as db:
         db.row_factory = aiosqlite.Row
         async with db.execute(
-            "SELECT s.*, t.text AS task_text, t.category AS task_category, "
+            "SELECT s.*, t.text AS task_text, t.title AS task_title, "
+            "t.category AS task_category, "
             "t.coins AS task_coins, t.proof_type AS task_proof_type, "
             "t.deadline_at AS task_deadline_at, t.event_city AS task_event_city, "
             "u.full_name AS user_full_name, u.username AS user_username, "
