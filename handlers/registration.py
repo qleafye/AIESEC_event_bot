@@ -43,6 +43,22 @@ from services.sheets import append_to_sheet, append_to_named_sheet
 from services.nextcloud import upload_resume, upload_text_resume
 from services.background import spawn as _spawn
 from handlers.admin_caps import notify_by_capability  # D-13: fan out by capability, not bare ADMIN_IDS
+# Phase 13 REFAC (13-02, REFAC-02): shared registration data registries + sheet-schema
+# plumbing extracted to handlers/reg_schema.py (router-free) so handlers/admin.py no longer
+# reaches into this handler module. Re-imported here since registration.py's own step-flow,
+# sheet builders and finalize/approve path still use every one of these names internally.
+from handlers.reg_schema import (
+    REG_FLOW, _STEP_TO_SETTING, dropout_step_label,
+    REG_DEFAULTS, REG_LABELS, REG_PRESETS, _PARTY_PRESET_OVERNIGHT_EXEMPT,
+    _apply_party_preset, _apply_short_preset, REG_CATEGORIES,
+    _is_party_track, SHORT_TRACK, _is_short_track,
+    _sheet_details, STATUS_LABELS, _status_label,
+    SHEET_COLUMNS, SHEET_HEADERS, _build_sheet_row, _sheet_value_map,
+    _is_step_enabled, active_sheet_headers, set_sheet_schema,
+    _sheet_kind, city_row_tab, incomplete_city_batches,
+    DEFAULT_APPROVE_TEXT, _is_module_enabled, _approve_text_for,
+    send_completion_and_bonus, approve_user,
+)
 
 router = Router()
 logger = logging.getLogger(__name__)
@@ -87,7 +103,7 @@ DEFAULT_REG_COMPLETE_TEXT = (
     "Следи за обновлениями, впереди много интересного.\n\n"
     "Если у тебя возникнут вопросы — не стесняйся задавать их нам!"
 )
-DEFAULT_APPROVE_TEXT = "Твоя заявка одобрена! Добро пожаловать 🎉"
+# DEFAULT_APPROVE_TEXT moved to handlers/reg_schema.py (13-02, REFAC-02).
 
 # --- Approval status decision (Phase 2, D-01..D-03) ---
 
@@ -123,64 +139,13 @@ def _decide_status(reg_mode: str, full_setting: str, short_setting: str,
 
 # --- Registration Flow Engine ---
 
-# Phase 4 (D-07): each entry is (step_key, setting_key, type). type is "text" (default
-# free-text handler), "date" (ДД.ММ.ГГГГ validation), or "consent" (injected dynamically,
-# never declared statically here). Iteration sites star-unpack the type so 2-tuples would
-# still work during any incremental migration.
-REG_FLOW = [
-    # YL'26 launch order (Tatiana). Consent + ФИО run before this list (see
-    # _start_registration_flow). Order here IS the ask order for the enabled steps.
-    ("age", "reg_q_age", "text"),
-    ("phone", "reg_q_phone", "text"),
-    ("alumni_status", "reg_q_alumni_status", "text"),  # аламни / айсекер / ни то, ни другое
-    ("vk", "reg_q_vk", "text"),
-    ("city", "reg_q_city", "text"),
-    ("education_status", "reg_q_education", "text"),
-    ("course", "reg_q_course", "text"),
-    ("university", "reg_q_university", "text"),
-    ("study_field", "reg_q_study_field", "select"),
-    ("goal", "reg_q_goal", "multi"),
-    ("formats", "reg_q_formats", "multi"),
-    ("expectations", "reg_q_expectations", "text"),
-    ("source", "reg_q_source", "text"),
-    ("ambassador", "reg_q_ambassador", "ambassador"),
-    ("resume", "reg_q_resume", "text"),
-    # Remaining steps — default OFF, kept for other events (RusCo/Summit).
-    ("email", "reg_q_email", "text"),
-    ("local_committee", "reg_q_lc", "text"),
-    ("position", "reg_q_position", "text"),
-    ("specialty", "reg_q_specialty", "text"),
-    ("work_status", "reg_q_work", "text"),
-    ("work_sphere", "reg_q_work_sphere", "text"),
-    ("missing_skills", "reg_q_skills", "text"),
-    ("attendance_format", "reg_q_attendance", "text"),
-    ("informal_day", "reg_q_informal_day", "text"),
-    ("comments", "reg_q_comments", "text"),
-    ("department", "reg_q_department", "text"),
-    ("aiesec_role", "reg_q_aiesec_role", "text"),
-    ("needs_certificate", "reg_q_certificate", "text"),
-    ("english_level", "reg_q_english", "text"),
-    ("allergies", "reg_q_allergies", "text"),
-    ("food_pref", "reg_q_food", "text"),
-    ("arrival", "reg_q_arrival", "text"),
-    ("housing", "reg_q_housing", "text"),
-    ("bed_sharing", "reg_q_bed_sharing", "text"),   # конфа: делить двуспальную кровать?
-    ("bed_partner", "reg_q_bed_partner", "text"),   # конфа: с кем (условно на «Да»)
-    ("transport", "reg_q_transport", "text"),
-    ("cc_shop", "reg_q_cc_shop", "text"),
-    ("exp_organizers", "reg_q_exp_organizers", "text"),
-    ("exp_content", "reg_q_exp_content", "text"),
-    ("volunteer", "reg_q_volunteer", "text"),
-    ("arrival_date", "reg_q_arrival_date", "date"),
-    ("birth_date", "reg_q_birth_date", "date"),
-    ("payment_plan_date", "reg_q_payment_date", "date"),
-]
+# REG_FLOW moved to handlers/reg_schema.py (13-02, REFAC-02); imported above. Kept here as
+# the single source REG_STEP_TYPES/STEP_TO_COLUMN/RECALLABLE_STEPS below derive from.
 
 # Map step_key → type for O(1) dispatch in _ask_step (consent:* keys handled separately).
 REG_STEP_TYPES = {step_key: step_type for step_key, _sk, step_type in REG_FLOW}
 
-# step_key → its reg_q_* setting key, for resolving human labels in dropout analytics.
-_STEP_TO_SETTING = {step_key: setting_key for step_key, setting_key, _t in REG_FLOW}
+# _STEP_TO_SETTING moved to handlers/reg_schema.py alongside dropout_step_label (13-02).
 
 # Phase 07.3 (04, RET-02): step_key -> users column name. EXPLICIT map, not derived from
 # step_key identity (RESEARCH's own anti-pattern warning) -- most REG_FLOW keys match their
@@ -194,21 +159,7 @@ STEP_TO_COLUMN["vk"] = "vk_username"
 STEP_TO_COLUMN["ambassador"] = "is_ambassador_candidate"
 RECALLABLE_STEPS = {k for k in STEP_TO_COLUMN if k != "resume"}
 
-
-def dropout_step_label(step_key: str | None) -> str:
-    """Human label for a persisted last_step (dropout analytics). Handles the special
-    pre-flow steps (ФИО / consent) and falls back to the raw key if unmapped."""
-    if not step_key:
-        return "— (не начал отвечать)"
-    if step_key == "full_name":
-        return "🪪 ФИО"
-    if step_key.startswith("consent:"):
-        return "📋 Согласие"
-    setting_key = _STEP_TO_SETTING.get(step_key)
-    if setting_key:
-        # REG_LABELS is defined below but only read at call time, so the forward ref is fine.
-        return REG_LABELS.get(setting_key, step_key)
-    return step_key
+# dropout_step_label moved to handlers/reg_schema.py (13-02, REFAC-02); imported above.
 
 # Configurable single-select steps: step_key → (options_setting_key, default options).
 # Options edited in admin as newline text (reuse source_options pattern). "Другое" appended.
@@ -248,190 +199,9 @@ async def _get_options(setting_key: str, defaults: list[str]) -> list[str]:
             return items
     return list(defaults)
 
-# REG-01/D-06 (06-04): REG_DEFAULTS is now DERIVED from settings_schema.SETTINGS_SCHEMA
-# (every registered "toggle"-type entry), not a hand-maintained literal — the registry is
-# the single source of truth for reg_q_* defaults (T-06-12/T-06-13, test_reg_defaults_parity
-# pins byte-for-byte parity against the pre-migration 43-key literal). The NAME is retained
-# unchanged because handlers/admin.py still imports/iterates it (admin.py:59 import, :501,
-# :2097 _is_question_on, :2248, and the preset bulk-write loop at :2336/:2412) — deleting the
-# name would break those call sites for no benefit; only the VALUE's origin changed.
-# settings_schema imports only database.db (one-directional, T-06-14) — importing it here
-# does not create a cycle.
-REG_DEFAULTS = {
-    k: v["default"] for k, v in SETTINGS_SCHEMA.items() if v["type"] == "toggle"
-}
-
-REG_LABELS = {
-    "reg_q_age": "\U0001f382 Возраст",
-    "reg_q_vk": "\U0001f535 ВК",
-    "reg_q_email": "\U0001f4e7 Email",
-    "reg_q_phone": "\U0001f4f1 Телефон",
-    "reg_q_city": "\U0001f3d9 Город",
-    "reg_q_source": "\U0001f4e2 Источник",
-    "reg_q_lc": "\U0001f3e2 Лок. комитет",
-    "reg_q_position": "\U0001f454 Позиция",
-    "reg_q_education": "\U0001f393 Образование",
-    "reg_q_university": "\U0001f3eb ВУЗ",
-    "reg_q_course": "\U0001f4d6 Курс",
-    "reg_q_specialty": "\U0001f4dd Специальность",
-    "reg_q_work": "\U0001f4bc Работа",
-    "reg_q_work_sphere": "\U0001f3ed Сфера работы",
-    "reg_q_skills": "\U0001f4a1 Навыки",
-    "reg_q_expectations": "\U0001f4ac Ожидания (общие)",
-    "reg_q_informal_day": "\U0001f3d5 Неформальный день",
-    "reg_q_attendance": "\U0001f4cd Формат",
-    "reg_q_comments": "\U0001f4ac Доп. комментарии",
-    "reg_q_department": "🏢 Департамент",
-    "reg_q_aiesec_role": "🎖 Позиция AIESEC",
-    "reg_q_certificate": "📄 Справка в ВУЗ",
-    "reg_q_alumni_status": "🎓 Аламни/айсекер",
-    "reg_q_english": "🇬🇧 Англ. язык",
-    "reg_q_allergies": "🤧 Аллергии",
-    "reg_q_food": "🥗 Питание",
-    "reg_q_arrival": "🚌 Приезд",
-    "reg_q_housing": "🏠 Проживание",
-    "reg_q_bed_sharing": "🛏 Общая кровать",
-    "reg_q_bed_partner": "🛏 Сосед по кровати",
-    "reg_q_transport": "🚗 Трансфер",
-    "reg_q_payment_date": "💳 Дата оплаты",
-    "reg_q_cc_shop": "🛍 CC-shop",
-    "reg_q_exp_organizers": "💬 Ожидания: организация",
-    "reg_q_exp_content": "💬 Ожидания: контент",
-    "reg_q_volunteer": "🙋 Волонтёр",
-    "reg_q_arrival_date": "📅 Дата приезда",
-    "reg_q_birth_date": "🎂 Дата рождения",
-    "reg_q_study_field": "🎯 Направление обучения",
-    "reg_q_goal": "🎯 Цель участия",
-    "reg_q_formats": "📋 Форматы форума",
-    "reg_q_ambassador": "🧡 Амбассадор",
-    "reg_q_resume": "\U0001f4c4 Резюме",
-}
-
-# --- Event-type presets (admin one-tap bulk toggle) ---
-# A preset lists the reg_q_* keys to turn ON (everything else in REG_DEFAULTS is turned
-# OFF) plus the payment module flag. Applying a preset is an explicit admin action that
-# writes the same settings the per-question toggles write — it changes NOTHING until
-# tapped, so live bots keep their current flow. Extra questions can still be flipped on
-# individually afterwards (see REG_CATEGORIES «➕ Экстра»).
-REG_PRESETS = {
-    "forum": {
-        "label": "🏛 Форум (YouLead)",
-        "payment_enabled": "off",
-        "on": [
-            "reg_q_age", "reg_q_vk", "reg_q_source", "reg_q_education",
-            "reg_q_university", "reg_q_course", "reg_q_study_field", "reg_q_work",
-            "reg_q_work_sphere", "reg_q_skills", "reg_q_expectations",
-        ],
-    },
-    "conf": {
-        "label": "🎤 Конференция (RusCo)",
-        "payment_enabled": "on",
-        "on": [
-            "reg_q_age", "reg_q_vk", "reg_q_phone", "reg_q_lc", "reg_q_work",
-            "reg_q_department", "reg_q_aiesec_role", "reg_q_english", "reg_q_allergies",
-            "reg_q_food", "reg_q_arrival", "reg_q_bed_sharing", "reg_q_bed_partner",
-            "reg_q_transport", "reg_q_payment_date",
-            "reg_q_cc_shop", "reg_q_exp_organizers", "reg_q_volunteer",
-        ],
-    },
-    "party": {
-        "label": "🎉 Party",
-        # Phase 5 (D-07): NO "payment_enabled" key here — the party preset must never touch
-        # the payment module (party pricing is D-16/D-17 in plan 05-05, a separate concern).
-        # setting_key spellings (not step_keys) — the shared confirm dialog in admin.py
-        # renders REG_LABELS.get(k, k) for k in preset["on"], and REG_LABELS is keyed by
-        # reg_q_*; matches the "forum"/"conf" entries above.
-        "on": [
-            "reg_q_age", "reg_q_phone", "reg_q_alumni_status", "reg_q_vk", "reg_q_city",
-            "reg_q_allergies", "reg_q_food",
-        ],
-    },
-    "short": {
-        "label": "⚡ Акция: 6 вопросов",
-        # Phase 7 (D-07 pattern): NO "payment_enabled" key here either — the promo preset
-        # must never touch the payment module, same reasoning as the party preset above.
-        # preset_apply already tolerates its absence via preset.get("payment_enabled").
-        # Five setting_keys below + ФИО = six questions: ФИО is asked unconditionally by
-        # _ask_full_name and is NOT a REG_FLOW key, so it can never appear in an "on" list —
-        # it is not missing, it just isn't a toggle.
-        "on": [
-            "reg_q_phone", "reg_q_vk", "reg_q_city", "reg_q_education", "reg_q_course",
-        ],
-    },
-}
-
-
-# WR-03: the D-08 overnight-only questions are excluded from _apply_party_preset's blanket
-# on/off pass. They are governed by the participant_type == 'party_overnight' skip rule in
-# _get_enabled_steps, not by the preset — writing an explicit __party=off override for them
-# would force them off even in a conf-style deployment where they are enabled globally,
-# defeating D-08 entirely. Left at inherit (no __party key written) so that rule keeps
-# working exactly as it does for any other config that never touched the preset.
-_PARTY_PRESET_OVERNIGHT_EXEMPT = {"reg_q_housing", "reg_q_bed_sharing", "reg_q_bed_partner"}
-
-
-async def _apply_party_preset() -> None:
-    """D-07: bulk-write __party overrides ONLY — mirrors _apply_event_preset's
-    determinism guarantee (handlers/admin.py:2040-2048) but targets the __party
-    namespace exclusively. Every REG_FLOW step EXCEPT the D-08 overnight-only trio
-    (_PARTY_PRESET_OVERNIGHT_EXEMPT, WR-03) gets an explicit on/off __party key, so
-    re-tapping the preset is deterministic regardless of prior manual overrides. Matches
-    on setting_key, consistent with the "on" list spelling above — matching on step_key
-    while the list holds setting_keys would silently write "off" for every question.
-
-    This function's ONLY write is to __party-suffixed keys (setting_key + "__party");
-    it never writes a bare reg_q_* key, never touches payment_enabled/party_enabled/
-    party_approval/party_fork_question, and never calls delete_setting. That isolation
-    is the entire point of D-07: applying the party preset while a full delegate is
-    mid-registration cannot alter that delegate's question set (T-05-02-01)."""
-    on_set = set(REG_PRESETS["party"]["on"])
-    for _step_key, setting_key, *_rest in REG_FLOW:
-        if setting_key in _PARTY_PRESET_OVERNIGHT_EXEMPT:
-            continue
-        await set_setting(f"{setting_key}__party", "on" if setting_key in on_set else "off")
-
-
-async def _apply_short_preset() -> None:
-    """Phase 7 (SHORT-03): bulk-write __short overrides ONLY — mirrors _apply_party_preset's
-    determinism guarantee, targets the __short namespace exclusively. Unlike the party preset,
-    there is no exempt set here: _PARTY_PRESET_OVERNIGHT_EXEMPT exists purely to protect D-08's
-    participant_type == 'party_overnight' skip rule, which is gated on _is_party_track and
-    therefore structurally cannot fire for the short track — every REG_FLOW key gets an
-    explicit on/off write, making a repeated tap fully deterministic.
-
-    This function's ONLY write is to __short-suffixed keys (setting_key + "__short"); it
-    never writes a bare reg_q_* key, never touches __party, and never touches
-    payment_enabled/registration_mode. That isolation means applying the promo preset mid-
-    registration cannot alter a full or party delegate's question set."""
-    on_set = set(REG_PRESETS["short"]["on"])
-    for _step_key, setting_key, *_rest in REG_FLOW:
-        await set_setting(f"{setting_key}__short", "on" if setting_key in on_set else "off")
-
-
-# Display grouping for the admin question-toggle view. Disjoint buckets covering every
-# REG_FLOW key exactly once — purely cosmetic (helps the manager find a question), does
-# not affect which questions are asked (that is REG_DEFAULTS + per-key settings).
-REG_CATEGORIES = [
-    ("👥 Общие", ["reg_q_age", "reg_q_vk", "reg_q_work"]),
-    ("🏛 Форум", [
-        "reg_q_education", "reg_q_course", "reg_q_university", "reg_q_study_field",
-        "reg_q_expectations", "reg_q_source", "reg_q_work_sphere", "reg_q_skills",
-    ]),
-    ("🎤 Конфа", [
-        "reg_q_phone", "reg_q_lc", "reg_q_department", "reg_q_aiesec_role",
-        "reg_q_alumni_status",
-        "reg_q_english", "reg_q_allergies", "reg_q_food", "reg_q_arrival",
-        "reg_q_bed_sharing", "reg_q_bed_partner",
-        "reg_q_transport", "reg_q_cc_shop", "reg_q_exp_organizers", "reg_q_volunteer",
-        "reg_q_payment_date",
-    ]),
-    ("➕ Экстра", [
-        "reg_q_city", "reg_q_goal", "reg_q_formats", "reg_q_ambassador", "reg_q_resume",
-        "reg_q_email", "reg_q_position", "reg_q_specialty", "reg_q_attendance",
-        "reg_q_informal_day", "reg_q_comments", "reg_q_certificate", "reg_q_housing",
-        "reg_q_exp_content", "reg_q_arrival_date", "reg_q_birth_date",
-    ]),
-]
+# REG_DEFAULTS, REG_LABELS, REG_PRESETS, _PARTY_PRESET_OVERNIGHT_EXEMPT, _apply_party_preset,
+# _apply_short_preset, REG_CATEGORIES moved to handlers/reg_schema.py (13-02, REFAC-02);
+# imported above.
 
 
 async def _prompt(step_key: str, default: str, participant_type: str | None = None) -> str:
@@ -452,11 +222,7 @@ async def _prompt(step_key: str, default: str, participant_type: str | None = No
     return await get_setting(f"reg_prompt_{step_key}") or default
 
 
-async def _is_step_enabled(setting_key: str) -> bool:
-    val = await get_setting(setting_key)
-    if val is None:
-        return REG_DEFAULTS.get(setting_key, "on") == "on"
-    return val == "on"
+# _is_step_enabled moved to handlers/reg_schema.py (13-02, REFAC-02); imported above.
 
 
 async def _is_step_enabled_for_track(setting_key: str, participant_type: str | None) -> bool:
@@ -490,12 +256,7 @@ async def _is_step_enabled_for_track(setting_key: str, participant_type: str | N
     return await _is_step_enabled(setting_key)
 
 
-async def _is_module_enabled(key: str) -> bool:
-    """Phase 4 module flag check — None/absent/'off'/anything-but-'on' → False (D-15 fail-safe).
-    # REG-02 (06-06, BLOCKER-2): resolved via the registry — consent_enabled/payment_enabled
-    # both default "off" (06-04), so get_setting_typed returns "off" for None AND "" and
-    # `== "on"` stays False, byte-identical to the old None->False fail-safe."""
-    return await get_setting_typed(key) == "on"
+# _is_module_enabled moved to handlers/reg_schema.py (13-02, REFAC-02); imported above.
 
 
 async def _get_enabled_steps(data: dict) -> list[str]:
@@ -1077,24 +838,8 @@ def _extract_source_tag(command_args: str | None) -> str | None:
     return None
 
 
-# Phase 5 (TRACK-01/03): participant track vocabulary + deep-link parsing (D-10).
-def _is_party_track(participant_type: str | None) -> bool:
-    """The single predicate every later Phase 5 plan imports; do not duplicate elsewhere."""
-    return participant_type in ("party_overnight", "party_noovernight")
-
-
-# Phase 7 (SHORT-04): short-form track vocabulary.
-SHORT_TRACK = "short"
-
-
-def _is_short_track(participant_type: str | None) -> bool:
-    """Exact-literal predicate for the short-form track — deliberately separate from
-    _is_party_track, never merged into it. `_is_party_track` matches a CLOSED tuple of two
-    literals; extending it to include "short" would leak the short track into the party-only
-    housing/bed_* skip rule (:430), the party wording override in `_prompt`, and the
-    party-first branch of `_decide_status` — all three gate on `_is_party_track` alone. Kept
-    as its own one-line predicate so those three call sites structurally cannot see "short"."""
-    return participant_type == SHORT_TRACK
+# _is_party_track, SHORT_TRACK, _is_short_track moved to handlers/reg_schema.py
+# (13-02, REFAC-02); imported above. Deep-link parsing below is unaffected.
 
 
 async def _resolve_track(candidate: str | None, city_code: str | None = None) -> str:
@@ -1272,119 +1017,9 @@ def _multi_kb(step_key: str, options: list[str], selected: set[int]):
     return InlineKeyboardMarkup(inline_keyboard=rows)
 
 
-def _sheet_details(data: dict) -> str:
-    parts = []
-    if data.get("referrer_id"):
-        parts.append(f"Referrer ID: {data['referrer_id']}")
-    return " | ".join(parts) if parts else "-"
-
-
-# status код БД → человеческий ярлык в колонке «Статус» (Таня, п.5). «Новая» = ещё не
-# смотрели (pending), «Одобрена»/«Отклонена» — после решения менеджера. Совпадает со
-# списком значений выпадашки в services.sheets.STATUS_LABELS.
-STATUS_LABELS = {"pending": "Новая", "approved": "Одобрена", "rejected": "Отклонена"}
-
-
-def _status_label(data: dict) -> str:
-    return STATUS_LABELS.get(data.get("status") or "pending", "Новая")
-
-
-# Google Sheet columns: (header, gate_setting_or_None, value_fn). gate=None → always
-# written (identity/system columns). gate=reg_q_* → column appears only when that question
-# is enabled, so the sheet width tracks the active preset instead of always being 44 wide.
-# Порядок = порядок вопросов в анкете (REG_FLOW), Таня п.1: сначала системные колонки
-# (ID/Username/Дата/Статус/ФИО/Детали), затем вопросы ровно в том порядке, в каком их
-# задаёт бот. При изменении порядка старые строки на листе разъедутся (шапка правится
-# in place, данные — нет) — пользуйся admin «♻️ Пересобрать таблицу» для выравнивания.
-SHEET_COLUMNS = [
-    # --- системные (всегда) ---
-    ("ID Telegram", None, lambda d: d.get("telegram_id") or "-"),
-    ("Username", None, lambda d: d.get("username") or "-"),
-    ("Дата регистрации", None, lambda d: d.get("registration_date") or "-"),
-    ("Статус", None, _status_label),
-    ("ФИО", None, lambda d: d.get("full_name") or "-"),
-    ("Детали", None, _sheet_details),
-    # --- вопросы в порядке REG_FLOW ---
-    ("Телефон", "reg_q_phone", lambda d: d.get("phone") or "-"),
-    ("Аламни/айсекер", "reg_q_alumni_status", lambda d: d.get("alumni_status") or "-"),
-    ("ВК", "reg_q_vk", lambda d: d.get("vk_username") or "-"),
-    ("Город", "reg_q_city", lambda d: d.get("city") or "-"),
-    ("Образование", "reg_q_education", lambda d: d.get("education_status") or "-"),
-    ("Курс", "reg_q_course", lambda d: d.get("course") or "-"),
-    ("ВУЗ", "reg_q_university", lambda d: d.get("university") or "-"),
-    ("Направление обучения", "reg_q_study_field", lambda d: d.get("study_field") or "-"),
-    ("Цель участия", "reg_q_goal", lambda d: d.get("goal") or "-"),
-    ("Форматы форума", "reg_q_formats", lambda d: d.get("formats") or "-"),
-    ("Ожидания", "reg_q_expectations", lambda d: d.get("expectations") or "-"),
-    ("Ожидания (AR)", "reg_q_expectations", lambda d: d.get("expectations_ar") or "-"),
-    ("Источник", "reg_q_source", lambda d: d.get("source") or "-"),
-    ("Амбассадор", "reg_q_ambassador", lambda d: "Да" if d.get("is_ambassador_candidate") else "-"),
-    ("Резюме (текст)", "reg_q_resume", lambda d: d.get("resume_text") or "-"),
-    ("Резюме (ссылка)", "reg_q_resume", lambda d: d.get("resume_url") or "-"),
-    ("Email", "reg_q_email", lambda d: d.get("email") or "-"),
-    ("Локальный комитет", "reg_q_lc", lambda d: d.get("local_committee") or "-"),
-    ("Позиция", "reg_q_position", lambda d: d.get("position") or "-"),
-    ("Специальность", "reg_q_specialty", lambda d: d.get("specialty") or "-"),
-    ("Работает", "reg_q_work", lambda d: "Yes" if d.get("work_status") else "No"),
-    ("Сфера работы", "reg_q_work_sphere", lambda d: d.get("work_sphere") or "-"),
-    ("Не хватает навыков", "reg_q_skills", lambda d: d.get("missing_skills") or "-"),
-    ("Формат участия", "reg_q_attendance", lambda d: d.get("attendance_format") or "-"),
-    ("Неформальный день", "reg_q_informal_day", lambda d: d.get("informal_day") or "-"),
-    ("Комментарии", "reg_q_comments", lambda d: d.get("comments") or "-"),
-    ("Департамент", "reg_q_department", lambda d: d.get("department") or "-"),
-    ("Роль AIESEC", "reg_q_aiesec_role", lambda d: d.get("aiesec_role") or "-"),
-    ("Справка в ВУЗ", "reg_q_certificate", lambda d: d.get("needs_certificate") or "-"),
-    ("Английский", "reg_q_english", lambda d: d.get("english_level") or "-"),
-    ("Аллергии", "reg_q_allergies", lambda d: d.get("allergies") or "-"),
-    ("Питание", "reg_q_food", lambda d: d.get("food_pref") or "-"),
-    ("Приезд", "reg_q_arrival", lambda d: d.get("arrival") or "-"),
-    ("Проживание", "reg_q_housing", lambda d: d.get("housing") or "-"),
-    ("Общая кровать", "reg_q_bed_sharing", lambda d: d.get("bed_sharing") or "-"),
-    ("Сосед по кровати", "reg_q_bed_partner", lambda d: d.get("bed_partner") or "-"),
-    ("Трансфер", "reg_q_transport", lambda d: d.get("transport") or "-"),
-    ("CC-shop", "reg_q_cc_shop", lambda d: d.get("cc_shop") or "-"),
-    ("Ожидания от орг", "reg_q_exp_organizers", lambda d: d.get("exp_organizers") or "-"),
-    ("Ожидания от контента", "reg_q_exp_content", lambda d: d.get("exp_content") or "-"),
-    ("Волонтёр", "reg_q_volunteer", lambda d: d.get("volunteer") or "-"),
-    ("Дата приезда", "reg_q_arrival_date", lambda d: d.get("arrival_date") or "-"),
-    ("Дата рождения", "reg_q_birth_date", lambda d: d.get("birth_date") or "-"),
-    ("Дата план. оплаты", "reg_q_payment_date", lambda d: d.get("payment_plan_date") or "-"),
-]
-
-# Full static header list (all columns) — kept for reference/tests. Live sync uses the
-# dynamic active_sheet_headers() below.
-SHEET_HEADERS = [h for h, _g, _f in SHEET_COLUMNS]
-
-
-def _build_sheet_row(data: dict) -> list:
-    """Full-width row (every column) — reference/tests. Live path uses active_sheet_row()."""
-    return [fn(data) for _h, _g, fn in SHEET_COLUMNS]
-
-
-def _sheet_value_map(data: dict) -> dict:
-    return {h: fn(data) for h, _g, fn in SHEET_COLUMNS}
-
-
-async def active_sheet_headers() -> list[str]:
-    """Headers for only the columns whose gating question is enabled (system columns
-    always included). The sheet width follows the active preset. NOTE: this reflects the
-    CURRENT toggles — set the event type before delegates register (the physical header row
-    is created once by ensure_sheet_header and is not rewritten if toggles change later)."""
-    out = []
-    for header, gate, _fn in SHEET_COLUMNS:
-        if gate is None or await _is_step_enabled(gate):
-            out.append(header)
-    return out
-
-
-async def set_sheet_schema(headers: list[str]) -> None:
-    """CR-9: persist the header snapshot so appended rows stay aligned to the PHYSICAL header
-    written to the sheet, even if question toggles change mid-event. Fail-soft — a bot_settings
-    hiccup must never block startup or a rebuild."""
-    try:
-        await set_setting("sheet_header_schema", json.dumps(headers, ensure_ascii=False))
-    except Exception:
-        logger.warning("Failed to persist sheet_header_schema", exc_info=True)
+# _sheet_details, STATUS_LABELS, _status_label, SHEET_COLUMNS, SHEET_HEADERS,
+# _build_sheet_row, _sheet_value_map, active_sheet_headers, set_sheet_schema moved to
+# handlers/reg_schema.py (13-02, REFAC-02); imported above.
 
 
 async def get_sheet_schema() -> list[str]:
@@ -1612,35 +1247,10 @@ def _sheet_dispatch(participant_type: str | None) -> tuple:
 
 
 # --- Phase 07.1 (CITY-02, plan 07.1-02): city selects the TAB, track selects the COLUMNS ----
-# _sheet_dispatch above stays the sole source of ROW BUILDER + exclusivity; the three helpers
-# below only resolve a TAB NAME. They must never be merged into _sheet_dispatch's signature.
-def _sheet_kind(participant_type: str | None) -> str:
-    """Pure classification of a track into a tab "kind" for TAB_SUFFIX lookup. Mirrors
-    _sheet_dispatch's own party -> short -> main check order (load-bearing, do not reorder)."""
-    if _is_party_track(participant_type):
-        return "party"
-    if _is_short_track(participant_type):
-        return "short"
-    return "main"
-
-
-async def city_row_tab(event_city: str | None, participant_type: str | None) -> str | None:
-    """Tab name for a non-default city, or None meaning "use the legacy appender from
-    _sheet_dispatch as-is" (Moscow / cities module off / no per-city tab-base override).
-
-    The route deliberately does NOT depend on `is_city_enabled`: a registration submitted
-    while a city was still enabled must keep landing on that city's own tab even if the city
-    gets switched off afterwards (data integrity) — the enabled flag only affects the city-pick
-    screen and startup tab materialization, never write routing."""
-    if not await cities_module_on():
-        return None
-    code = normalize_city(event_city)
-    if is_default_city(code):
-        return None
-    base = await city_tab_base(code)
-    if not base:
-        return None
-    return f"{base}{await tab_suffix(_sheet_kind(participant_type))}"
+# _sheet_dispatch above stays the sole source of ROW BUILDER + exclusivity. _sheet_kind and
+# city_row_tab (TAB NAME resolvers) moved to handlers/reg_schema.py (13-02, REFAC-02); imported
+# above. city_incomplete_tab below is the third such helper and stays here (registration-flow
+# internal, wired into incomplete_sheet_headers's _is_step_enabled_for_track dependency).
 
 
 async def city_incomplete_tab(event_city: str | None) -> str:
@@ -1661,33 +1271,10 @@ async def city_incomplete_tab(event_city: str | None) -> str:
     return f"{base}{await tab_suffix('incomplete')}"
 
 
-async def incomplete_city_batches() -> list[tuple[str, list[str], list[list]]]:
-    """Single point of truth for BOTH the manual «Незавершённые → таблица» export
-    (handlers/admin.py::export_incomplete) and the 2h auto-sync job
-    (services/scheduler.py::sync_incomplete_sheet_job) — Phase 07.1 (CITY-04), extending the
-    WR-01 parity guarantee to per-city tabs.
-
-    Groups rows by the RESOLVED TAB NAME (city_incomplete_tab), not by raw city code: with the
-    cities module off, every row's tab resolves to the single default «Незавершённые» name, so
-    they all collapse into one batch — today's behavior, byte for byte. `headers` is computed
-    exactly ONCE per call (Google Sheets quota) and shared by every batch.
-
-    The default city's tab is always present, even with an empty row list, so a full
-    clear+rewrite (sync_named_worksheet) keeps wiping out dropouts that have since registered
-    or been cleared — the same guarantee get_incomplete_rows()-based callers relied on before
-    this plan. Other cities' tabs are only included when they have at least one row — an empty
-    non-default city tab is never created/wiped by this path."""
-    rows = await get_incomplete_rows_with_city()
-    headers = await incomplete_sheet_headers()
-    default_tab = await city_incomplete_tab(None)
-    batches: dict[str, list[list]] = {default_tab: []}
-    for telegram_id, username, started_at, last_step, partial_data, event_city in rows:
-        tab = await city_incomplete_tab(event_city)
-        batches.setdefault(tab, [])
-        batches[tab].append(
-            incomplete_sheet_row(telegram_id, username, started_at, last_step, partial_data, headers)
-        )
-    return [(tab, headers, sheet_rows) for tab, sheet_rows in batches.items()]
+# incomplete_city_batches moved to handlers/reg_schema.py (13-02, REFAC-02); imported above.
+# It local-imports incomplete_sheet_headers/city_incomplete_tab/incomplete_sheet_row from
+# this module at call time (same function-body-local-import pattern approve_user already
+# used) since those three stay here, wired into the per-track FSM gate.
 
 
 def _esc(value) -> str:
@@ -3053,103 +2640,8 @@ async def process_volunteer(message: types.Message, state: FSMContext, bot: Bot)
 
 # --- Finalize ---
 
-async def _approve_text_for(participant_type: str | None, city_code: str | None = None) -> str:
-    """D-15: per-track approval message. Resolution order:
-    (1) party track and `approve_text__party` non-empty (truthy wins — an accidentally-empty
-        override falls back rather than sending a blank message, same posture as _prompt's
-        D-05 wording resolution) -> that text, WITHOUT any per-city layer. Phase 09.2-04
-        (RESEARCH Open Question 2): composing a THIRD axis (track x city) on top of the
-        existing party override was explicitly deferred — `approve_text__party` carries no
-        `per_city` flag in SETTINGS_SCHEMA, a party delegate never gets a per-city approve
-        text, only the global-vs-party split that already existed before this phase.
-    (2) otherwise (non-party track, or an absent/empty party override) -> the BASE
-        `approve_text` resolved through `cities.get_setting_for_city`, so a non-party
-        delegate's city can override the global script.
-    (3) otherwise -> DEFAULT_APPROVE_TEXT, reusing the same constant so there is only one
-        copy of the default."""
-    if _is_party_track(participant_type):
-        override = await get_setting("approve_text__party")
-        if override:
-            return override
-    return await get_setting_for_city("approve_text", city_code) or DEFAULT_APPROVE_TEXT
-
-
-async def send_completion_and_bonus(bot: Bot, telegram_id: int, with_menu: bool = True,
-                                     participant_type: str | None = None):
-    """Deliver approve_text (post-approval script) + the configured registration bonus.
-    Reused by the non-payment approval path, the free/single payment path (handlers.payment),
-    and the admin receipt-confirm path (handlers.admin). Fail-soft: a blocked/unknown user
-    never raises. `with_menu=False` skips the main-menu keyboard when the caller already sent it.
-    Phase 5 (D-15): `participant_type` defaults to None so every pre-Phase-5 call site keeps
-    compiling and behaving identically — only callers that know the track pass it explicitly.
-    Text resolution is delegated entirely to _approve_text_for; no direct approve_text read
-    remains in this function.
-    Phase 09.2-04 (CITY-04): resolves the delegate's event_city ONCE, only when the cities
-    module is on — this function receives only a chat id (no FSM data, unlike D-15's
-    approve_user which already has a resolved user row for participant_type), so get_user is
-    the only way to learn the city. Kept module-gated so an all-cities-off deployment adds
-    zero extra DB reads to the approval path. A resolve failure falls back to city_code=None
-    (global approve_text) — the approval message must still go out (T-05-04-04)."""
-    city_code = None
-    try:
-        if await cities_module_on():
-            user_row = await get_user(telegram_id)
-            city_code = normalize_city(user_row.get("event_city") if user_row else None)
-    except Exception as e:
-        logger.error(f"per-city resolve for approve text failed for {telegram_id}: {e}")
-        city_code = None
-    try:
-        complete_text = await _approve_text_for(participant_type, city_code)
-        kwargs = {"parse_mode": "HTML"}
-        if with_menu:
-            kwargs["reply_markup"] = await get_main_menu_kb(telegram_id)
-        await bot.send_message(telegram_id, complete_text, **kwargs)
-
-        if await get_setting_typed("reg_bonus_enabled") == "on":  # REG-02: registry-backed
-            bonus_caption = await get_setting("reg_bonus_caption") or "\U0001f381 Бонус за регистрацию!"
-            bonus_photo = await get_setting("reg_bonus_photo_file_id")
-            bonus_doc = await get_setting("reg_bonus_doc_file_id")
-            if bonus_doc:
-                await bot.send_document(telegram_id, bonus_doc, caption=bonus_caption, parse_mode="HTML")
-            elif bonus_photo:
-                await bot.send_photo(telegram_id, bonus_photo, caption=bonus_caption, parse_mode="HTML")
-    except Exception as e:
-        logger.error(f"Failed to send completion/bonus to {telegram_id}: {e}")
-
-
-async def approve_user(bot: Bot, telegram_id: int):
-    """Send the post-approval welcome (complete text + main menu + bonus) to a user
-    by chat id. Reused by the auto-approve path here and the manager manual-approve
-    path (admin.py). Fail-soft: a blocked/unknown user never raises."""
-    logger.info(f"user={telegram_id} action=approve_welcome")
-    # Phase 5 (D-15): resolve the track ONCE, here, at the top — BEFORE the module-gate
-    # branch below (which checks the payment setting and returns early). approve_user
-    # receives only a chat id (no FSM data), so get_user() is the only way to learn the
-    # track. Plan 05-05 Task 2 consumes this same resolved value to pass participant_type
-    # into start_payment_step and must not add a second get_user call. Wrapped so a lookup
-    # failure degrades to "full" rather than blocking the approval — an approved user must
-    # always receive a message (T-05-04-04).
-    try:
-        user_row = await get_user(telegram_id)
-        participant_type = (user_row or {}).get("participant_type") or "full"
-    except Exception as e:
-        logger.error(f"Failed to resolve participant_type for {telegram_id}, defaulting to 'full': {e}")
-        participant_type = "full"
-    try:
-        # Phase 4 (D-09): payment module gates the welcome. When ON, the payment flow owns
-        # all messaging (its own option/requisites/receipt path); the completion text + bonus
-        # land after the manager confirms the receipt (admin rcpt_confirm) or immediately for
-        # a free/single option. When OFF, behaviour is byte-identical to before.
-        if await _is_module_enabled("payment_enabled"):
-            from handlers.payment import start_payment_step  # local import avoids circular
-            # Phase 5 (05-05): reuse the SAME participant_type resolved once above (D-15's
-            # ordering guard) — no second get_user call.
-            await start_payment_step(bot, telegram_id, participant_type)
-            return
-
-        await send_completion_and_bonus(bot, telegram_id, participant_type=participant_type)
-    except Exception as e:
-        logger.error(f"Failed to send approval welcome to {telegram_id}: {e}")
+# DEFAULT_APPROVE_TEXT, _is_module_enabled, _approve_text_for, send_completion_and_bonus,
+# approve_user moved to handlers/reg_schema.py (13-02, REFAC-02); imported above.
 
 
 def _resume_person_name(data) -> str:
