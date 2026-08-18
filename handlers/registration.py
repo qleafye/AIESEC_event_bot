@@ -67,6 +67,17 @@ DEFAULT_START_REGISTERED_TEXT = (
     "С возвращением! Ты уже зарегистрирован(а) — всё нужное в меню ниже \U0001f447"
 )
 
+# Phase 07.3 (RET-02): a delegate whose row belongs to a PAST season (or who was rejected) is
+# neither a newcomer nor a currently-registered delegate — cmd_start's already-registered
+# branch below would otherwise dead-end them (rejected today falls through silently into a
+# fresh registration; a past-season pending/approved row hits a hard `return`). `{season}` is
+# substituted with the delegate's own past-season label via str.replace, never `.format()` —
+# an admin-authored registry text may contain other braces that `.format()` would choke on.
+DEFAULT_START_RETURNING_TEXT = (
+    "С возвращением! Ты уже был(а) с нами на {season}. Давай обновим анкету — "
+    "большинство ответов уже заполнено, останется только подтвердить \U0001f447"
+)
+
 # Tatiana: «поздравляем» теперь приходит СРАЗУ после регистрации (раньше — только после
 # одобрения). reg_complete_text = пост-регистрационный скрипт; approve_text = отдельный
 # скрипт после одобрения заявки. Оба правятся в /admin → Настройки.
@@ -1669,6 +1680,12 @@ async def _start_registration_flow(message: types.Message, state: FSMContext, re
     # fork REG_FLOW step key can express "skip it, the track is already authoritative" the
     # same way the existing source skip rule does.
     track_from_link = bool(participant_type) or existing_data.get("_track_from_link", False)
+    # Phase 07.3 (RET-02): rereg_start snapshots the tapping delegate's OWN prior row into FSM
+    # BEFORE calling this function (never inside it — T-073-03-02 keeps the row lookup pinned to
+    # the tapper's own id). Same preserve-through-clear idiom as saved_referrer_id/saved_city
+    # above/below — this is the only mechanism in this file for carrying a value across
+    # state.clear(), no second one is invented.
+    saved_prior = existing_data.get("_prior_answers")
 
     await state.clear()
     if saved_referrer_id:
@@ -1688,6 +1705,12 @@ async def _start_registration_flow(message: types.Message, state: FSMContext, re
     # unconditional write would invent a default in a session where no city was ever chosen.
     if saved_city:
         await state.update_data(event_city=saved_city)
+    # Phase 07.3 (RET-02): re-apply the prior-answers snapshot AFTER clear, same position as
+    # the other saved_x blocks above. T-073-03-03: the leading `_` keeps this key OUT of
+    # _ask_step's «Незавершённые» snapshot (which filters `not k.startswith("_")`) — a past
+    # season's personal data must never ride along into the incomplete-registrations sheet.
+    if saved_prior:
+        await state.update_data(_prior_answers=saved_prior)
 
     await message.answer(
         "Отлично, начинаем регистрацию."
@@ -1790,6 +1813,28 @@ async def is_subscribed(bot: Bot, channel, user_id: int) -> bool | None:
         return None
 
 
+def _is_returning_row(user: dict | None, event_season: str | None) -> bool:
+    """Phase 07.3 (RET-02/CONTEXT A): "прошлый делегат" = has a users row AND (status is
+    'rejected' OR their row's `season` is set and differs from the currently configured
+    `event_season`). Pure function (no await) — testable as a case table without a DB, and
+    reusable as-is by `rereg_start`'s self-guard below (T-073-03-01).
+
+    While `event_season` is unset (CONTEXT A: "фаза ведёт себя как сегодня"), only rejected
+    rows are "returning" — parity with today's behaviour for every other row. A row with
+    `season IS NULL` (pre-season legacy data) is never "returning" on this predicate alone;
+    plan 02's "Новый сезон" button is what later stamps it with a season label.
+    """
+    if not user:
+        return False
+    status = user.get("status") or "approved"
+    if status == "rejected":
+        return True
+    season = user.get("season")
+    if event_season and season and season != event_season:
+        return True
+    return False
+
+
 # bot is placed BEFORE the defaulted `command` param (a non-default arg after a default is a SyntaxError);
 # aiogram injects by name so position is purely a syntax constraint.
 @router.message(Command("start"), StateFilter("*"))
@@ -1860,6 +1905,47 @@ async def cmd_start(message: types.Message, state: FSMContext, bot: Bot, command
     start_text = await get_setting("start_text") or DEFAULT_START_TEXT
     start_photo = await get_setting("start_photo_file_id")
     logger.info(f"Settings: start_text={start_text[:80]!r}, start_photo={start_photo!r}")
+
+    # Phase 07.3 (RET-02): a "прошлый делегат" (rejected, or a PAST season's pending/approved
+    # row) must never dead-end at /start — hand them the returning banner + rereg_start button
+    # instead of falling into the already-registered branch below (which return()s without a
+    # path forward) or silently dropping into a fresh registration (rejected's old behaviour).
+    # Placed BEFORE the already-registered branch so it intercepts BOTH cases (CONTEXT B).
+    # Fail-soft like every other lookup in this function: a resolve glitch degrades to "not
+    # returning", never crashes /start (T-073-03-04).
+    try:
+        event_season = await get_setting("event_season")
+        is_returning = _is_returning_row(user, event_season)
+    except Exception as e:
+        logger.error(f"returning-delegate predicate failed for {user_id}: {e}")
+        is_returning = False
+    if is_returning:
+        prev_label = (user.get("season") or "").strip() or "прошлом событии"
+        returning_text = await get_setting("start_text_returning") or DEFAULT_START_RETURNING_TEXT
+        # T-073-03-05: str.replace, NOT .format() — an admin-authored text may contain other
+        # unrelated {} that .format() would raise on.
+        returning_text = returning_text.replace("{season}", prev_label)
+        await _send_welcome(message, returning_text, start_photo, await get_main_menu_kb(user_id), user_id)
+        kb = InlineKeyboardMarkup(inline_keyboard=[[
+            InlineKeyboardButton(text="\U0001f680 Обновить анкету", callback_data="rereg_start")
+        ]])
+        await message.answer(
+            "Хочешь участвовать снова? Обновим анкету — прошлые ответы предложу оставить.",
+            reply_markup=kb,
+        )
+        # The tap on rereg_start arrives as a SEPARATE update, after this /start's local
+        # variables (referrer_id/source_tag/party_track/dl_event_city) are gone — preserve
+        # whatever this deep-link carried into FSM now, same idiom as the city-fork early
+        # return below, so the campaign/referral/city attribution is not lost.
+        if referrer_id:
+            await state.update_data(referrer_id=referrer_id)
+        if source_tag:
+            await state.update_data(source=source_tag, _source_from_tag=True)
+        if party_track:
+            await state.update_data(participant_type=party_track, _track_from_link=True)
+        if dl_event_city:
+            await state.update_data(event_city=dl_event_city)
+        return
 
     if user and (user.get("status") or "approved") != "rejected":
         # D-05a: a rejected user falls through to re-register; others see the welcome menu.
@@ -1951,6 +2037,32 @@ async def cmd_start(message: types.Message, state: FSMContext, bot: Bot, command
     logger.info(f"User {user_id} not registered, showing welcome then registration")
     await _send_welcome(message, start_text, start_photo, None, user_id)
 
+    await _city_fork_then_continue(message, state, effective_city, referrer_id, source_tag, dl_party_track, recovered_track)
+
+
+async def _city_fork_then_continue(
+    message: types.Message,
+    state: FSMContext,
+    effective_city: str | None,
+    referrer_id: int | None,
+    source_tag: str | None,
+    dl_party_track: str | None,
+    recovered_track: str | None,
+):
+    """Phase 07.3 (RET-02): the former tail of cmd_start (city-fork screen or straight to
+    _continue_after_city), extracted the same way 07.1 extracted _continue_after_city — so both
+    a bare cmd_start AND rereg_start (a returning delegate's tap on "Обновить анкету") reach the
+    SAME city/track-fork logic. `is_registered` stays hardcoded False in the _should_show_city_fork
+    call below: a returning delegate is asked for city and track exactly like a newcomer
+    (CONTEXT B: "переспрашиваем всегда"), never skipped just because they used to have one.
+
+    `dl_party_track or recovered_track` below is algebraically the same value cmd_start's own
+    local `party_track` held at this point pre-extraction (dl_party_track only ever diverges
+    from party_track via the party-gate's fail-soft except-branch, which returns before reaching
+    this tail) — kept as an expression rather than a third parameter so this function's
+    signature stays exactly what plan 04 is told to expect.
+    """
+    user_id = message.from_user.id
     # Phase 07.1 (CITY-03): pre-flow city screen. Fixed order with the party fork
     # (07.1-CONTEXT.md): party-closed gate -> welcome -> CITY -> party fork -> start. We
     # reach this point only when there is no existing non-rejected users row (the
@@ -1969,7 +2081,7 @@ async def cmd_start(message: types.Message, state: FSMContext, bot: Bot, command
             referrer_id=referrer_id or _existing.get("referrer_id"),
             source=source_tag or _existing.get("source"),
             _source_from_tag=bool(source_tag) or bool(_existing.get("_source_from_tag")),
-            participant_type=party_track or _existing.get("participant_type"),
+            participant_type=(dl_party_track or recovered_track) or _existing.get("participant_type"),
         )
         if dl_party_track:
             await state.update_data(_track_from_link=True)
@@ -2094,6 +2206,42 @@ async def admin_rereg(callback: types.CallbackQuery, state: FSMContext):
     # party_fallback_full, so mark_reg_started records the tapping admin's id (T-4pj-02).
     tap_message = callback.message.model_copy(update={"from_user": callback.from_user})
     await _start_registration_flow(tap_message, state)
+
+
+@router.callback_query(F.data == "rereg_start")
+async def rereg_start(callback: types.CallbackQuery, state: FSMContext):
+    """Phase 07.3 (RET-02/T-073-03-01): registration.router is NOT covered by
+    CapabilityMiddleware (only admin.router is) — same posture as admin_rereg above. Anyone who
+    guessed this callback_data could otherwise reset a returning delegate's own FSM without
+    actually being a returning delegate, so this handler re-verifies the TAPPER (never anything
+    from the callback payload) against `_is_returning_row` before doing anything else."""
+    user = await get_user(callback.from_user.id)
+    event_season = await get_setting("event_season")
+    if not _is_returning_row(user, event_season):
+        await callback.answer("Ты уже зарегистрирован(а) на этот сезон", show_alert=True)
+        return
+    await callback.answer()
+    try:
+        await callback.message.edit_reply_markup(reply_markup=None)
+    except Exception:
+        pass
+    # T-073-03-02: the snapshot is taken ONLY from the tapping user's OWN row, fetched above by
+    # callback.from_user.id — never from any callback/deep-link parameter, so a crafted
+    # callback_data can never pull someone else's prior answers into this session.
+    await state.update_data(_prior_answers=dict(user))
+    # callback.message.from_user is the BOT, not the tapping delegate — same fix as admin_rereg
+    # above (T-4pj-02), so mark_reg_started/attribution downstream records the tapper's own id.
+    tap_message = callback.message.model_copy(update={"from_user": callback.from_user})
+    data = await state.get_data()
+    await _city_fork_then_continue(
+        tap_message,
+        state,
+        data.get("event_city"),
+        data.get("referrer_id"),
+        data.get("source"),
+        data.get("participant_type") if data.get("_track_from_link") else None,
+        None,
+    )
 
 
 @router.callback_query(F.data == "party_fallback_full")
