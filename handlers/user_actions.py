@@ -380,6 +380,20 @@ async def mytask_submit_start(callback: types.CallbackQuery, state: FSMContext):
         await callback.answer("Уже отправлено, ожидай проверки", show_alert=True)
         return
 
+    # Hotfix (GAME-08): a delegate may already have the OLD task-list message open with the
+    # old "📤 Сдать" button when the manager archives the task -- Telegram never retroactively
+    # disables an already-sent inline keyboard. The gate belongs HERE, not only in the
+    # list-render filter (list_active_tasks already excludes archived tasks from the CURRENT
+    # render, but that does nothing for a stale message already on the delegate's screen).
+    # Same wording as mytask_open's own archived-task alert.
+    if task.get("archived_at"):
+        await callback.answer(
+            "Это задание убрали в архив — сдать его больше нельзя. Загляни в «🎯 Задания», "
+            "там актуальный список.",
+            show_alert=True,
+        )
+        return
+
     await state.update_data(gs_task_id=task_id, gs_parts=[])
 
     prompt = await _build_proof_prompt(task)
