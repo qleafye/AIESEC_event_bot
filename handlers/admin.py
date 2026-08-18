@@ -747,7 +747,8 @@ async def show_stuck_questions(callback: types.CallbackQuery):
 _EVENT_FIELD_ORDER = [
     "event_date", "event_time", "event_place_name", "event_place_address",
     "contact_person", "contact_vk", "contact_tg", "start_text", "start_text_registered",
-    "event_name", "event_type",
+    "start_text_returning",
+    "event_name", "event_season", "event_type",
 ]
 _EVENT_FIELDS = [
     (k, SETTINGS_SCHEMA[k]["label"], SETTINGS_SCHEMA[k]["prompt"])
@@ -2095,7 +2096,7 @@ async def settings_receive_file_invalid(message: types.Message):
     await message.answer("Отправьте фото или документ.")
 
 
-HTML_SETTINGS = {"start_text", "start_text_registered", "reg_complete_text", "approve_text", "approve_text__party"}
+HTML_SETTINGS = {"start_text", "start_text_registered", "start_text_returning", "reg_complete_text", "approve_text", "approve_text__party"}
 
 
 def _base_setting_key(key: str) -> str:
