@@ -640,6 +640,94 @@ async def reset_payment_for_new_season(telegram_id: int) -> None:
         await db.commit()
 
 
+# Phase 07.3 (06, RET-04): import of a past event's forum.db. Columns a foreign file must
+# never be allowed to seed — payment/coins/referral are explicitly out of scope (CONTEXT D),
+# and season/prev_season are always set by THIS function's own `season` argument, never by a
+# column value copied verbatim from the imported file.
+IMPORT_EXCLUDED_COLUMNS = {
+    "payment_status", "payment_option", "receipt_file_id", "payment_due", "paid_at",
+    "referrer_id", "season", "prev_season",
+}
+
+
+async def bulk_insert_users_if_absent(rows: list[dict], season: str) -> int:
+    """Inserts ONLY telegram_ids absent from the LIVE users table. `INSERT OR IGNORE` (not
+    add_user's `ON CONFLICT DO UPDATE`) is the exact mechanism that guarantees an existing row
+    is never touched in any column — a conflict on the PK is silently dropped.
+
+    No side effects: no Sheets sync, no notifications, no coins, no mark_reg_started. That is
+    the entire reason this isn't just add_user() called in a loop (07.3-PATTERNS.md).
+
+    T-073-06-02: the column list written into the INSERT is the intersection of (a) the union
+    of keys across all `rows`, minus IMPORT_EXCLUDED_COLUMNS, (b) columns that actually exist
+    on the LIVE `users` table (via `_column_exists` — reused, not reinvented), and (c) the
+    `^[A-Za-z_][A-Za-z0-9_]*$` identifier shape (`_IDENTIFIER_RE`, reused from `_assert_identifier`)
+    as a second, independent barrier. A column name from a foreign file can never reach the SQL
+    string unless it clears BOTH checks — values are always bound via `?` placeholders.
+    """
+    if not rows:
+        return 0
+
+    async with aiosqlite.connect(config.DB_PATH) as db:
+        candidate_cols: set[str] = set()
+        for row in rows:
+            candidate_cols.update(row.keys())
+        candidate_cols -= IMPORT_EXCLUDED_COLUMNS
+
+        columns: list[str] = []
+        for col in candidate_cols:
+            if not _IDENTIFIER_RE.fullmatch(col or ""):
+                continue
+            if await _column_exists(db, "users", col):
+                columns.append(col)
+
+        if "telegram_id" not in columns:
+            # Nothing to match imported rows against — refuse rather than guess.
+            return 0
+
+        columns.append("season")
+        col_list = ", ".join(columns)
+        placeholders = ", ".join("?" for _ in columns)
+
+        values: list[tuple] = []
+        for row in rows:
+            raw_id = row.get("telegram_id")
+            try:
+                tg_id = int(raw_id)
+            except (TypeError, ValueError):
+                continue
+            if not tg_id:
+                continue
+            row_values = []
+            for col in columns:
+                if col == "season":
+                    row_values.append(season)
+                elif col == "telegram_id":
+                    row_values.append(tg_id)
+                else:
+                    # CONTEXT D: fields map by matching column name; a column absent from
+                    # THIS row (even though present in another row of the batch) is NULL.
+                    row_values.append(row.get(col))
+            values.append(tuple(row_values))
+
+        if not values:
+            return 0
+
+        async with db.execute("SELECT COUNT(*) FROM users") as cursor:
+            before = (await cursor.fetchone())[0]
+
+        await db.executemany(
+            f"INSERT OR IGNORE INTO users ({col_list}) VALUES ({placeholders})",
+            values,
+        )
+
+        async with db.execute("SELECT COUNT(*) FROM users") as cursor:
+            after = (await cursor.fetchone())[0]
+
+        await db.commit()
+        return after - before
+
+
 async def get_monthly_registration_stats():
     async with aiosqlite.connect(config.DB_PATH) as db:
         async with db.execute('''
