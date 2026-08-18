@@ -388,6 +388,7 @@ from aiogram.fsm.storage.base import StorageKey
 from aiogram.fsm.storage.memory import MemoryStorage
 
 from handlers import admin as admin_mod
+from handlers import admin_cities  # Phase 13 (13-05): cities screen/CRUD/season moved here
 from handlers.admin_caps import required_capability
 
 ADMIN_ID = 941101
@@ -466,8 +467,8 @@ def test_screen_shows_city_from_db_after_insert_and_reload(tmp_path):
     restore = _snapshot_cities()
     try:
         _seed_cities_db([("msk", "Москва", "", 0), ("kzn", "Казань, 14 ноября", "", 1)])
-        text = asyncio.run(admin_mod.render_cities_text())
-        kb = asyncio.run(admin_mod.build_cities_keyboard())
+        text = asyncio.run(admin_cities.render_cities_text())
+        kb = asyncio.run(admin_cities.build_cities_keyboard())
         flat = [btn.callback_data for row in kb.inline_keyboard for btn in row]
     finally:
         restore()
@@ -482,7 +483,7 @@ def test_keyboard_rows_rename_tab_toggle_default_and_delete_only_when_safe(tmp_p
     try:
         _seed_cities_db([("msk", "Москва", "", 0), ("kzn", "Казань", "", 1)])
         asyncio.run(db.add_user({"telegram_id": 1, "event_city": "kzn", "registration_date": "2026-08-01"}))
-        kb = asyncio.run(admin_mod.build_cities_keyboard())
+        kb = asyncio.run(admin_cities.build_cities_keyboard())
         flat = [btn.callback_data for row in kb.inline_keyboard for btn in row]
     finally:
         restore()
@@ -502,7 +503,7 @@ def test_city_toggle_writes_enabled_column_deletes_legacy_key_and_reloads(tmp_pa
         _seed_cities_db([("msk", "Москва", "", 0), ("kzn", "Казань", "", 1)])
         asyncio.run(db.set_setting("city_enabled__kzn", "on"))  # legacy key present
         callback = FakeCallback("city_toggle:kzn")
-        asyncio.run(admin_mod.city_toggle(callback))
+        asyncio.run(admin_cities.city_toggle(callback))
         legacy_after = asyncio.run(db.get_setting("city_enabled__kzn"))
         enabled_after = asyncio.run(cities.is_city_enabled("kzn"))
         rows = {r["code"]: r for r in asyncio.run(db.list_cities_rows())}
@@ -521,9 +522,9 @@ def test_cities_screen_denied_for_manager_bound_to_one_city(tmp_path):
         _seed_cities_db([("msk", "Москва", "", 0), ("kzn", "Казань", "", 1)])
         _bind_manager_to_city(MANAGER_ID, "kzn")
         callback = FakeCallback("admin_cities", user_id=MANAGER_ID)
-        asyncio.run(admin_mod.show_admin_cities(callback))
+        asyncio.run(admin_cities.show_admin_cities(callback))
         toggle_cb = FakeCallback("city_toggle:msk", user_id=MANAGER_ID)
-        asyncio.run(admin_mod.city_toggle(toggle_cb))
+        asyncio.run(admin_cities.city_toggle(toggle_cb))
         rows_after = {r["code"]: r for r in asyncio.run(db.list_cities_rows())}
     finally:
         restore()
@@ -540,9 +541,9 @@ def test_cities_screen_allowed_for_superadmin_and_unbound_manager(tmp_path):
     restore = _snapshot_cities()
     try:
         _seed_cities_db([("msk", "Москва", "", 0)])
-        allowed_super = asyncio.run(admin_mod._cities_screen_allowed(ADMIN_ID))
+        allowed_super = asyncio.run(admin_cities._cities_screen_allowed(ADMIN_ID))
         asyncio.run(db.add_staff(MANAGER_ID, "reg_manager", ADMIN_ID))  # unbound (city stays NULL)
-        allowed_unbound = asyncio.run(admin_mod._cities_screen_allowed(MANAGER_ID))
+        allowed_unbound = asyncio.run(admin_cities._cities_screen_allowed(MANAGER_ID))
     finally:
         restore()
     assert allowed_super is True
@@ -569,7 +570,7 @@ def test_city_add_starts_wizard_at_add_label(tmp_path):
         _seed_cities_db([("msk", "Москва", "", 0)])
         callback = FakeCallback("city_add")
         state = _new_state()
-        asyncio.run(admin_mod.city_add(callback, state))
+        asyncio.run(admin_cities.city_add(callback, state))
         reached_state = asyncio.run(state.get_state())
     finally:
         restore()
@@ -585,7 +586,7 @@ def test_city_add_label_step_moves_to_add_tab(tmp_path):
         state = _new_state()
         asyncio.run(state.set_state(CityForm.add_label))
         msg = FakeMessage(text="Казань, 14 ноября")
-        asyncio.run(admin_mod.city_add_label_step(msg, state))
+        asyncio.run(admin_cities.city_add_label_step(msg, state))
         reached_state = asyncio.run(state.get_state())
         prompt = msg.answers_sent[-1]
     finally:
@@ -604,7 +605,7 @@ def test_city_add_tab_step_dash_creates_empty_tab_base_and_generates_hidden_code
         asyncio.run(state.update_data(city_new_label="Казань, 14 ноября"))
         asyncio.run(state.set_state(CityForm.add_tab))
         msg = FakeMessage(text="—")
-        asyncio.run(admin_mod.city_add_tab_step(msg, state))
+        asyncio.run(admin_cities.city_add_tab_step(msg, state))
         rows = asyncio.run(db.list_cities_rows())
         confirmation = msg.answers_sent[0]
     finally:
@@ -626,7 +627,7 @@ def test_city_add_tab_step_text_sets_tab_base_and_wires_end_to_end(tmp_path):
         asyncio.run(state.update_data(city_new_label="СПб"))
         asyncio.run(state.set_state(CityForm.add_tab))
         msg = FakeMessage(text="СПб")
-        asyncio.run(admin_mod.city_add_tab_step(msg, state))
+        asyncio.run(admin_cities.city_add_tab_step(msg, state))
         codes_after = cities.city_codes()
         new_code = [c for c in cities.all_cities() if c["label"] == "СПб"][0]["code"]
         from handlers import registration as reg
@@ -648,7 +649,7 @@ def test_city_add_label_collision_gets_suffix_both_cities_created(tmp_path):
             asyncio.run(state.update_data(city_new_label="Тест"))
             asyncio.run(state.set_state(CityForm.add_tab))
             msg = FakeMessage(text="—")
-            asyncio.run(admin_mod.city_add_tab_step(msg, state))
+            asyncio.run(admin_cities.city_add_tab_step(msg, state))
         rows = [r for r in asyncio.run(db.list_cities_rows()) if r["label"] == "Тест"]
     finally:
         restore()
@@ -666,7 +667,7 @@ def test_city_add_reload_cities_called_new_city_resolves_deep_link(tmp_path):
         asyncio.run(state.update_data(city_new_label="Новосибирск"))
         asyncio.run(state.set_state(CityForm.add_tab))
         msg = FakeMessage(text="—")
-        asyncio.run(admin_mod.city_add_tab_step(msg, state))
+        asyncio.run(admin_cities.city_add_tab_step(msg, state))
         from handlers import registration as reg
         new_code = [c for c in cities.all_cities() if c["label"] == "Новосибирск"][0]["code"]
         resolved = reg._extract_event_city(f"city_{new_code}")
@@ -688,18 +689,18 @@ def test_city_rename_and_tab_edit_update_column_and_delete_legacy_override(tmp_p
 
         rename_cb = FakeCallback("city_rename:kzn")
         rename_state = _new_state()
-        asyncio.run(admin_mod.city_rename_start(rename_cb, rename_state))
+        asyncio.run(admin_cities.city_rename_start(rename_cb, rename_state))
         assert asyncio.run(rename_state.get_state()) == CityForm.edit_label
         label_msg = FakeMessage(text="Казань (новая)")
-        asyncio.run(admin_mod.city_edit_label_step(label_msg, rename_state))
+        asyncio.run(admin_cities.city_edit_label_step(label_msg, rename_state))
 
         tab_cb = FakeCallback("city_tab:kzn")
         tab_state = _new_state()
-        asyncio.run(admin_mod.city_tab_start(tab_cb, tab_state))
+        asyncio.run(admin_cities.city_tab_start(tab_cb, tab_state))
         assert asyncio.run(tab_state.get_state()) == CityForm.edit_tab
         assert "переносит только новые" in tab_cb.message.answers_sent[-1]
         tab_msg = FakeMessage(text="НоваяВкладка")
-        asyncio.run(admin_mod.city_edit_tab_step(tab_msg, tab_state))
+        asyncio.run(admin_cities.city_edit_tab_step(tab_msg, tab_state))
 
         row = {r["code"]: r for r in asyncio.run(db.list_cities_rows())}["kzn"]
         legacy_label = asyncio.run(db.get_setting("city_label__kzn"))
@@ -723,7 +724,7 @@ def test_city_form_cancel_writes_nothing(tmp_path):
         asyncio.run(state.update_data(city_new_label="Отменённый город"))
         asyncio.run(state.set_state(CityForm.add_tab))
         msg = FakeMessage(text="Отмена")
-        asyncio.run(admin_mod.cancel_city_form(msg, state))
+        asyncio.run(admin_cities.cancel_city_form(msg, state))
         after = asyncio.run(db.count_cities())
         reached_state = asyncio.run(state.get_state())
     finally:
@@ -740,9 +741,9 @@ def test_wizard_texts_never_mention_tab_base_or_code_literals(tmp_path):
         _seed_cities_db([("msk", "Москва", "", 0)])
         add_cb = FakeCallback("city_add")
         add_state = _new_state()
-        asyncio.run(admin_mod.city_add(add_cb, add_state))
+        asyncio.run(admin_cities.city_add(add_cb, add_state))
         label_msg = FakeMessage(text="Тестоград")
-        asyncio.run(admin_mod.city_add_label_step(label_msg, add_state))
+        asyncio.run(admin_cities.city_add_label_step(label_msg, add_state))
         texts = add_cb.message.answers_sent + label_msg.answers_sent
     finally:
         restore()
@@ -761,7 +762,7 @@ def test_city_del_shows_confirmation_and_db_unchanged(tmp_path):
         _seed_cities_db([("msk", "Москва", "", 0), ("kzn", "Казань", "", 1)])
         before = asyncio.run(db.count_cities())
         callback = FakeCallback("city_del:kzn")
-        asyncio.run(admin_mod.city_delete_confirm(callback))
+        asyncio.run(admin_cities.city_delete_confirm(callback))
         after = asyncio.run(db.count_cities())
         text = callback.message.answers_sent[-1]
         kb = callback.message.answer_markups[-1]
@@ -782,7 +783,7 @@ def test_city_del_refuses_when_delegate_appeared_between_show_and_click(tmp_path
         asyncio.run(db.add_user({"telegram_id": 5, "event_city": "kzn", "registration_date": "2026-08-01"}))
         before = asyncio.run(db.count_cities())
         callback = FakeCallback("city_del:kzn")
-        asyncio.run(admin_mod.city_delete_confirm(callback))
+        asyncio.run(admin_cities.city_delete_confirm(callback))
         after = asyncio.run(db.count_cities())
     finally:
         restore()
@@ -798,7 +799,7 @@ def test_city_del_go_deletes_reloads_and_removes_from_city_codes(tmp_path):
     try:
         _seed_cities_db([("msk", "Москва", "", 0), ("kzn", "Казань", "", 1)])
         callback = FakeCallback("city_del_go:kzn")
-        asyncio.run(admin_mod.city_delete_go(callback))
+        asyncio.run(admin_cities.city_delete_go(callback))
         codes_after = cities.city_codes()
         kb = callback.message.answer_markups[-1]
         flat = [btn.callback_data for row in kb.inline_keyboard for btn in row]
@@ -816,7 +817,7 @@ def test_city_del_forbidden_for_default_city(tmp_path):
         _seed_cities_db([("msk", "Москва", "", 0)])
         before = asyncio.run(db.count_cities())
         callback = FakeCallback("city_del:msk")
-        asyncio.run(admin_mod.city_delete_confirm(callback))
+        asyncio.run(admin_cities.city_delete_confirm(callback))
         after = asyncio.run(db.count_cities())
     finally:
         restore()
@@ -834,7 +835,7 @@ def test_city_del_go_deep_link_no_longer_resolves_after_deletion(tmp_path):
         from handlers import registration as reg
         assert reg._extract_event_city("city_kzn") == "kzn"
         callback = FakeCallback("city_del_go:kzn")
-        asyncio.run(admin_mod.city_delete_go(callback))
+        asyncio.run(admin_cities.city_delete_go(callback))
         resolved_after = reg._extract_event_city("city_kzn")
     finally:
         restore()
@@ -848,9 +849,9 @@ def test_city_del_go_double_tap_second_time_says_already_deleted(tmp_path):
     try:
         _seed_cities_db([("msk", "Москва", "", 0), ("kzn", "Казань", "", 1)])
         first = FakeCallback("city_del_go:kzn")
-        asyncio.run(admin_mod.city_delete_go(first))
+        asyncio.run(admin_cities.city_delete_go(first))
         second = FakeCallback("city_del_go:kzn")
-        asyncio.run(admin_mod.city_delete_go(second))
+        asyncio.run(admin_cities.city_delete_go(second))
     finally:
         restore()
     assert first.answers[-1] == ("Город удалён", True)

@@ -13,6 +13,7 @@ import aiosqlite
 from config import config
 from database import db
 from handlers import admin as admin_mod
+from handlers import admin_cities  # Phase 13 (13-05): cities/season screens moved here
 from handlers import registration as reg_mod
 from handlers.admin_caps import required_capability
 from cities import CITIES
@@ -131,7 +132,7 @@ def test_build_cities_keyboard_contains_toggle_and_per_city_buttons(tmp_path):
     # Phase 14-07: the old single «✏️» -> settings_edit:city_label__{code} button was replaced
     # by the full CRUD row (rename / tab base / ⭐ default / 🗑 delete-when-safe).
     _admin_ready(tmp_path)
-    kb = asyncio.run(admin_mod.build_cities_keyboard())
+    kb = asyncio.run(admin_cities.build_cities_keyboard())
     flat = _flat_callback_data(kb)
     assert "toggle_event_city_enabled" in flat
     for code in CITY_CODES:
@@ -171,9 +172,9 @@ def test_city_toggle_is_capability_guarded(tmp_path):
 
 def test_toggle_event_city_enabled_flips_off_to_on_to_off(tmp_path):
     _admin_ready(tmp_path)
-    asyncio.run(admin_mod.toggle_event_city_enabled(FakeCallback("toggle_event_city_enabled")))
+    asyncio.run(admin_cities.toggle_event_city_enabled(FakeCallback("toggle_event_city_enabled")))
     assert asyncio.run(db.get_setting("event_city_enabled")) == "on"
-    asyncio.run(admin_mod.toggle_event_city_enabled(FakeCallback("toggle_event_city_enabled")))
+    asyncio.run(admin_cities.toggle_event_city_enabled(FakeCallback("toggle_event_city_enabled")))
     assert asyncio.run(db.get_setting("event_city_enabled")) == "off"
 
 
@@ -188,10 +189,10 @@ def test_city_toggle_spb_flips_default_on_to_off_to_on(tmp_path):
     try:
         asyncio.run(cities_mod.seed_cities_if_empty())
         asyncio.run(cities_mod.reload_cities())
-        asyncio.run(admin_mod.city_toggle(FakeCallback("city_toggle:spb")))
+        asyncio.run(admin_cities.city_toggle(FakeCallback("city_toggle:spb")))
         assert asyncio.run(cities_mod.is_city_enabled("spb")) is False
         assert asyncio.run(db.get_setting("city_enabled__spb")) is None  # legacy key never written
-        asyncio.run(admin_mod.city_toggle(FakeCallback("city_toggle:spb")))
+        asyncio.run(admin_cities.city_toggle(FakeCallback("city_toggle:spb")))
         assert asyncio.run(cities_mod.is_city_enabled("spb")) is True
     finally:
         cities_mod.set_cities_for_test(saved)
@@ -200,20 +201,20 @@ def test_city_toggle_spb_flips_default_on_to_off_to_on(tmp_path):
 def test_city_toggle_unknown_code_rejected_no_write(tmp_path):
     _admin_ready(tmp_path)
     cb = FakeCallback("city_toggle:atlantis")
-    asyncio.run(admin_mod.city_toggle(cb))
+    asyncio.run(admin_cities.city_toggle(cb))
     assert cb.answers[-1][1] is True  # show_alert
     assert asyncio.run(_settings_row_count()) == 0
 
 
 def test_render_cities_text_has_deep_link_and_label_escaped(tmp_path):
     _admin_ready(tmp_path)
-    text = asyncio.run(admin_mod.render_cities_text())
+    text = asyncio.run(admin_cities.render_cities_text())
     assert "?start=city_spb" in text
     spb_label = asyncio.run(db.get_setting("city_label__spb"))
     assert spb_label is None  # unset -> falls back to .env label, not asserted verbatim here
 
     asyncio.run(db.set_setting("city_label__spb", "<b>x</b>"))
-    text2 = asyncio.run(admin_mod.render_cities_text())
+    text2 = asyncio.run(admin_cities.render_cities_text())
     assert "<b>x</b>" not in text2
     assert "&lt;b&gt;x&lt;/b&gt;" in text2
 

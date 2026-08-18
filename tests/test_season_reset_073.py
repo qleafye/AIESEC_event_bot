@@ -21,6 +21,7 @@ from aiogram.types import InlineKeyboardMarkup, ReplyKeyboardRemove
 from config import config
 from database import db
 from handlers import admin as admin_mod
+from handlers import admin_cities  # Phase 13 (13-05): cities/season screens moved here
 from handlers.admin_caps import ADMIN_CAPS
 from handlers.states import SeasonReset
 
@@ -125,7 +126,7 @@ def test_season_reset_start_denies_non_superadmin(tmp_path):
     async def go():
         state = _new_state(OTHER_ID)
         callback = _FakeCallback("admin_season_reset", OTHER_ID)
-        await admin_mod.season_reset_start(callback, state)
+        await admin_cities.season_reset_start(callback, state)
 
         assert len(callback.answers) == 1
         text, show_alert = callback.answers[0]
@@ -144,7 +145,7 @@ def test_season_reset_start_sets_naming_state(tmp_path):
         await db.set_setting("event_season", "YL'25")
         state = _new_state(ADMIN_ID)
         callback = _FakeCallback("admin_season_reset", ADMIN_ID)
-        await admin_mod.season_reset_start(callback, state)
+        await admin_cities.season_reset_start(callback, state)
 
         assert await state.get_state() == SeasonReset.naming.state
         data = await state.get_data()
@@ -168,7 +169,7 @@ def test_season_reset_cancel(tmp_path):
         await state.update_data(season_old="YL'25", season_new="YL'26", season_phrase="YL'25")
 
         message = _FakeMessage(ADMIN_ID, "Отмена")
-        await admin_mod.cancel_season_reset(message, state)
+        await admin_cities.cancel_season_reset(message, state)
 
         assert await state.get_state() is None
         assert len(message.sent) == 1
@@ -204,7 +205,7 @@ def test_name_step_rejects_empty(tmp_path):
         await state.update_data(season_old="")
 
         message = _FakeMessage(ADMIN_ID, "   ")
-        await admin_mod.season_reset_name_step(message, state)
+        await admin_cities.season_reset_name_step(message, state)
 
         assert await state.get_state() == SeasonReset.naming.state
         data = await state.get_data()
@@ -227,7 +228,7 @@ def test_confirm_screen_shows_counts(tmp_path):
         await state.update_data(season_old="YL'25")
 
         message = _FakeMessage(ADMIN_ID, "YL'26")
-        await admin_mod.season_reset_name_step(message, state)
+        await admin_cities.season_reset_name_step(message, state)
 
         assert await state.get_state() == SeasonReset.naming.state
         assert (await state.get_data())["season_new"] == "YL'26"
@@ -251,7 +252,7 @@ def test_passphrase_prompt_uses_old_season(tmp_path):
         await state.update_data(season_old="YL'26", season_new="YL'27")
 
         callback = _FakeCallback("season_reset_go", ADMIN_ID)
-        await admin_mod.season_reset_go(callback, state)
+        await admin_cities.season_reset_go(callback, state)
 
         assert await state.get_state() == SeasonReset.passphrase.state
         assert len(callback.message.sent) == 1
@@ -272,7 +273,7 @@ def test_passphrase_prompt_literal_when_no_old_season(tmp_path):
         await state.update_data(season_old="", season_new="YL'26")
 
         callback = _FakeCallback("season_reset_go", ADMIN_ID)
-        await admin_mod.season_reset_go(callback, state)
+        await admin_cities.season_reset_go(callback, state)
 
         text, _ = callback.message.sent[0]
         assert "НОВЫЙ СЕЗОН" in text
@@ -293,7 +294,7 @@ def test_wrong_passphrase_changes_nothing(tmp_path):
         await state.update_data(season_old="YL'25", season_new="YL'26", season_phrase="YL'25")
 
         message = _FakeMessage(ADMIN_ID, "неверная фраза")
-        await admin_mod.season_reset_passphrase_step(message, state)
+        await admin_cities.season_reset_passphrase_step(message, state)
 
         assert "Фраза не совпала" in message.sent[0][0]
         assert await state.get_state() is None
@@ -333,7 +334,7 @@ def test_correct_passphrase_marks_and_switches(tmp_path):
         await state.update_data(season_old="YL'25", season_new="YL'26", season_phrase="YL'25")
 
         message = _FakeMessage(ADMIN_ID, "YL'25")
-        await admin_mod.season_reset_passphrase_step(message, state)
+        await admin_cities.season_reset_passphrase_step(message, state)
 
         assert await state.get_state() is None
         assert "Новый сезон" in message.sent[0][0]
@@ -362,7 +363,7 @@ def test_go_denies_non_superadmin(tmp_path):
         await state.update_data(season_old="YL'25", season_new="YL'26")
 
         callback = _FakeCallback("season_reset_go", OTHER_ID)
-        await admin_mod.season_reset_go(callback, state)
+        await admin_cities.season_reset_go(callback, state)
 
         assert callback.answers[0][1] is True
         assert await state.get_state() == SeasonReset.naming.state
@@ -382,7 +383,7 @@ def test_passphrase_step_denies_non_superadmin(tmp_path):
         await state.update_data(season_old="YL'25", season_new="YL'26", season_phrase="YL'25")
 
         message = _FakeMessage(OTHER_ID, "YL'25")
-        await admin_mod.season_reset_passphrase_step(message, state)
+        await admin_cities.season_reset_passphrase_step(message, state)
 
         assert await db.get_setting("event_season") == "YL'25"
         assert "суперадмин" in message.sent[0][0].lower()
@@ -398,7 +399,7 @@ def test_stale_screen_without_state_data(tmp_path):
         state = _new_state(ADMIN_ID)  # no set_state, no update_data — truly empty
 
         callback = _FakeCallback("season_reset_go", ADMIN_ID)
-        await admin_mod.season_reset_go(callback, state)
+        await admin_cities.season_reset_go(callback, state)
 
         assert callback.answers[0][1] is True
         assert "устарел" in callback.answers[0][0].lower()
