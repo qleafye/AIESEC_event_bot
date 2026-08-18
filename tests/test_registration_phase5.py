@@ -13,6 +13,8 @@ from aiogram.fsm.storage.memory import MemoryStorage
 from config import config
 from database import db
 from handlers import registration as reg
+# Phase 13 REFAC (13-03): party_pick moved to handlers/reg_flow.py.
+from handlers import reg_flow
 
 
 def _use_tmp_db(tmp_path):
@@ -889,7 +891,7 @@ def test_cr01_referred_user_picks_full_still_lands_with_referrer_id(tmp_path):
 
         await reg.cmd_start(_FakeMessage(uid, "referred2"), state, bot=object(), command=FakeCommand())
 
-        await reg.party_pick(_FakeCallback("party_pick:full", uid, "referred2"), state)
+        await reg_flow.party_pick(_FakeCallback("party_pick:full", uid, "referred2"), state)
 
         final_data = await state.get_data()
         assert final_data.get("referrer_id") == referrer
@@ -929,7 +931,7 @@ def test_cr01_source_tagged_user_picks_party_track_still_lands_with_source(tmp_p
         assert data_after_fork.get("source") == "vk"
         assert data_after_fork.get("_source_from_tag") is True
 
-        await reg.party_pick(_FakeCallback("party_pick:party_over", uid, "tagged"), state)
+        await reg_flow.party_pick(_FakeCallback("party_pick:party_over", uid, "tagged"), state)
 
         final_data = await state.get_data()
         assert final_data.get("source") == "vk"

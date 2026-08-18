@@ -10,7 +10,9 @@ from datetime import datetime, timedelta
 from config import config
 from database import db
 from handlers import registration as reg
-from handlers.registration import _validate_date_range
+# Phase 13 REFAC (13-03): _validate_date_range moved to handlers/reg_flow.py alongside
+# process_date_input, its sole caller.
+from handlers.reg_flow import _validate_date_range
 from handlers.payment import _parse_options
 
 
