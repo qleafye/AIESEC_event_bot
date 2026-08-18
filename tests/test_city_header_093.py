@@ -434,3 +434,71 @@ def test_manager_with_zero_capability_denied_admin_city_pick(tmp_path):
     assert event.answers == []
     # deny happened BEFORE the handler body -- no write to bot_settings for this admin.
     assert asyncio.run(db.get_setting(f"{cities.ADMIN_CITY_KEY_PREFIX}{STAFF_ID}")) is None
+
+
+# ── Task 3 (CITY-08): «Кому задание?» wizard highlights the header's city, not locks it ─────
+
+def test_game_task_city_kb_marks_header_city_with_checkmark(tmp_path):
+    _admin_ready(tmp_path)
+    asyncio.run(cities.set_admin_city(ADMIN_ID, "spb"))
+    kb = asyncio.run(admin_mod._game_task_city_kb(ADMIN_ID))
+    rows = kb.inline_keyboard
+    # первая строка -- «🌍 Все города», без галочки (ALL_CITIES не совпадает ни с одним кодом)
+    assert rows[0][0].text == "🌍 Все города"
+    marked = [row[0] for row in rows[1:] if row[0].text.startswith("✅ ")]
+    assert len(marked) == 1
+    assert marked[0].callback_data == "gttcity:spb"
+
+
+def test_game_task_city_kb_no_checkmark_in_all_cities_mode(tmp_path):
+    _admin_ready(tmp_path)
+    asyncio.run(cities.set_admin_city(ADMIN_ID, cities.ALL_CITIES))
+    kb = asyncio.run(admin_mod._game_task_city_kb(ADMIN_ID))
+    for row in kb.inline_keyboard[1:]:
+        assert not row[0].text.startswith("✅ ")
+
+
+def test_game_task_city_kb_prefill_is_a_highlight_not_a_lock(tmp_path):
+    """Behavior bullet: выбор остаётся свободным -- тап по НЕ-подсвеченному городу проходит и
+    создаёт задание для него (подсветка Питера не мешает выбрать Москву)."""
+    _admin_ready(tmp_path)
+    asyncio.run(cities.set_admin_city(ADMIN_ID, "spb"))
+    state = _fresh_state(ADMIN_ID)
+    asyncio.run(state.set_state(admin_mod.GameTaskCreate.city))
+    cb = FakeCallback("gttcity:msk", ADMIN_ID)
+    asyncio.run(admin_mod.game_task_city_step(cb, state))
+    assert asyncio.run(state.get_state()) == admin_mod.GameTaskCreate.deadline
+    assert asyncio.run(state.get_data())["gt_event_city"] == "msk"
+
+
+def test_game_task_proof_done_sends_header_aware_keyboard(tmp_path):
+    """End-to-end: the ACTUAL «Кому задание?» screen (not just the keyboard builder in
+    isolation) carries the highlight -- this is the exact wiring `game_task_proof_done` was
+    patched to thread `callback.from_user.id` through (acceptance criteria: exactly one call
+    site besides the declaration)."""
+    _admin_ready(tmp_path)
+    asyncio.run(cities.set_admin_city(ADMIN_ID, "spb"))
+    state = _fresh_state(ADMIN_ID)
+    asyncio.run(state.set_state(admin_mod.GameTaskCreate.text))
+    cb = FakeCallback("gtproof_done", ADMIN_ID)
+    asyncio.run(admin_mod.game_task_proof_done(cb, state))
+    kb = cb.message.answer_markups[-1]
+    texts = [b.text for row in kb.inline_keyboard for b in row]
+    assert any(t.startswith("✅ ") for t in texts)
+
+
+def test_game_task_city_kb_module_off_step_not_shown(tmp_path):
+    """Regрессия (behavior bullet): выключенный модуль городов -- шаг выбора не показывается
+    вообще, независимо от шапки. Уже покрыто test_game_city_tasks_091.py, дублируем один раз
+    здесь на новую сигнатуру функции, чтобы сигнатурный рефакторинг не мог тихо это сломать."""
+    config.DB_PATH = str(tmp_path / "test_city_header_093_task3_off.db")
+    asyncio.run(db.init_db())
+    config.ADMIN_IDS = [ADMIN_ID]
+    # event_city_enabled намеренно не включён
+    state = _fresh_state(ADMIN_ID)
+    asyncio.run(state.set_state(admin_mod.GameTaskCreate.text))
+    cb = FakeCallback("gtproof_done", ADMIN_ID)
+    asyncio.run(admin_mod.game_task_proof_done(cb, state))
+    assert asyncio.run(state.get_state()) == admin_mod.GameTaskCreate.deadline
+    # прямиком дедлайн-промпт -- экран «Кому задание?» не отправлялся вообще
+    assert "Кому" not in cb.message.answers_sent[-1]
