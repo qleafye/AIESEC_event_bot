@@ -133,8 +133,12 @@ _GAME_FIELD_ORDER = [
     "game_task_list_empty", "game_task_list_page_label", "game_task_detail_status_label",
     "balance_screen_header", "balance_history_empty",
     "balance_source_manual_label", "balance_source_task_label",
-    # Phase 17.1 (17.1-01): «🏆 Рейтинг», «📜 История монет» и рефералка — хвост делегатских
+    # Phase 17.1 (17.1-01): RU-подписи типов подтверждения + подсказка «срок вышел» рядом с
+    # RU-категориями выше; «🏆 Рейтинг», «📜 История монет» и рефералка — хвост делегатских
     # текстов монетного блока, доехавший до реестра.
+    "game_proof_type_label_photo", "game_proof_type_label_pdf",
+    "game_proof_type_label_text", "game_proof_type_label_link",
+    "game_proof_type_unspecified_text", "game_task_overdue_hint_text",
     "leaderboard_header_text", "leaderboard_rank_line_text", "leaderboard_empty_text",
     "balance_history_header_text",
     "referral_link_prompt_text", "referral_list_header_text", "referral_list_empty_text",

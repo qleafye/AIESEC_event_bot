@@ -402,9 +402,9 @@ async def _render_task_card_text(task: dict, status_line: str, attempt: int | No
     deadline, overdue = _game_task_deadline_short(task)
     lines = [f"<b>{title}</b>", f"{category} · {task['coins']}🪙 · до {deadline}"]
     if overdue:
-        # A-05 (созвон 13.08): дословно как в текущем mytask_submit_start -- дедлайн мягкий,
-        # сдача разрешена, решение по коинам остаётся за менеджером.
-        lines.append("⏰ Срок вышел — отправить можно, монеты решит менеджер")
+        # A-05 (созвон 13.08): дедлайн мягкий, сдача разрешена, решение по коинам остаётся за
+        # менеджером. Phase 17.1 (17.1-01): сама формулировка — в реестре.
+        lines.append(await get_setting_typed("game_task_overdue_hint_text"))
     status_label = await get_setting_typed("game_task_detail_status_label")
     lines.append(status_label.format(status=status_line))
     lines.append(f"Нужно прислать: {await proof_types_label(task.get('proof_type'))}")
