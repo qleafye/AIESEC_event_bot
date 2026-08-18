@@ -19,6 +19,8 @@ from aiogram.fsm.storage.memory import MemoryStorage
 from config import config
 from database import db
 from handlers import admin as admin_mod
+from handlers import admin_moderation  # Phase 13 (13-06): moderation moved out of admin.py
+from handlers import admin_settings  # Phase 13 (13-06): settings moved out of admin.py
 from handlers import admin_gamification
 import cities
 
@@ -201,7 +203,7 @@ def test_show_admin_export_all_cities_filename_unchanged_caption_names_mode(tmp_
     _seed_application(1, "msk")
     _seed_application(2, "spb")
     cb = FakeCallback("admin_export_csv")
-    asyncio.run(admin_mod.show_admin_export(cb))
+    asyncio.run(admin_settings.show_admin_export(cb))
     assert len(cb.message.documents) == 1
     document, caption = cb.message.documents[0]
     assert document.filename == "users.csv"
@@ -214,7 +216,7 @@ def test_show_admin_export_all_cities_rows_are_unfiltered(tmp_path):
     _seed_application(2, "spb")
     _seed_application(3, None)
     cb = FakeCallback("admin_export_csv")
-    asyncio.run(admin_mod.show_admin_export(cb))
+    asyncio.run(admin_settings.show_admin_export(cb))
     document, _caption = cb.message.documents[0]
     body = document.data.decode("utf-8-sig")
     # All three seeded telegram_ids show up somewhere in the CSV body (no city filter applied).
@@ -226,7 +228,7 @@ def test_show_admin_export_module_off_caption_byte_identical(tmp_path):
     _admin_ready(tmp_path)
     _seed_application(1, "spb")
     cb = FakeCallback("admin_export_csv")
-    asyncio.run(admin_mod.show_admin_export(cb))
+    asyncio.run(admin_settings.show_admin_export(cb))
     document, caption = cb.message.documents[0]
     assert document.filename == "users.csv"
     assert caption == "База данных пользователей"
@@ -240,13 +242,13 @@ def test_show_current_card_all_cities_each_card_names_its_own_delegate_city(tmp_
     _seed_application(2, "spb", full_name="Piter Delegate")
     state = _new_state(ADMIN_ID)
     target1 = FakeMessage()
-    asyncio.run(admin_mod._show_current_card(target1, state))
+    asyncio.run(admin_moderation._show_current_card(target1, state))
     assert "· 🏙 Москва" in target1.text
     assert cities.ALL_CITIES_LABEL not in target1.text
     # skip the first card, the second (other city) must be named correctly too
     asyncio.run(state.update_data(appr_skipped=[1]))
     target2 = FakeMessage()
-    asyncio.run(admin_mod._show_current_card(target2, state))
+    asyncio.run(admin_moderation._show_current_card(target2, state))
     assert "· 🏙 Санкт-Петербург" in target2.text
     assert cities.ALL_CITIES_LABEL not in target2.text
 
@@ -256,7 +258,7 @@ def test_show_current_card_all_cities_null_city_uses_default(tmp_path):
     _seed_application(1, None)
     state = _new_state(ADMIN_ID)
     target = FakeMessage()
-    asyncio.run(admin_mod._show_current_card(target, state))
+    asyncio.run(admin_moderation._show_current_card(target, state))
     default_label = asyncio.run(cities.city_label(cities.default_city_code()))
     assert f"· 🏙 {default_label}" in target.text
 
@@ -269,7 +271,7 @@ def test_show_current_card_selected_city_still_uses_header_label(tmp_path):
     _seed_application(1, "spb", full_name="Piter Delegate")
     state = _new_state(ADMIN_ID)
     target = FakeMessage()
-    asyncio.run(admin_mod._show_current_card(target, state))
+    asyncio.run(admin_moderation._show_current_card(target, state))
     assert "· 🏙 Санкт-Петербург" in target.text
 
 
@@ -278,7 +280,7 @@ def test_show_current_card_module_off_header_byte_identical(tmp_path):
     _seed_application(1, "spb")
     state = _new_state(ADMIN_ID)
     target = FakeMessage()
-    asyncio.run(admin_mod._show_current_card(target, state))
+    asyncio.run(admin_moderation._show_current_card(target, state))
     assert "🏙" not in target.text.split("\n")[0]
 
 
@@ -286,7 +288,7 @@ def test_show_current_card_all_cities_empty_queue_names_mode(tmp_path):
     _all_cities_mode(tmp_path)
     state = _new_state(ADMIN_ID)
     target = FakeMessage()
-    asyncio.run(admin_mod._show_current_card(target, state))
+    asyncio.run(admin_moderation._show_current_card(target, state))
     assert target.answers_sent == ["✅ Заявок нет — «🌍 Все города»."]
 
 
@@ -298,12 +300,12 @@ def test_show_current_receipt_card_all_cities_each_card_names_its_own_delegate_c
     _seed_receipt(2, "spb", full_name="Piter Delegate")
     state = _new_state(ADMIN_ID)
     target1 = FakeMessage()
-    asyncio.run(admin_mod._show_current_receipt_card(target1, state))
+    asyncio.run(admin_moderation._show_current_receipt_card(target1, state))
     assert "· 🏙 Москва" in target1.text
     assert cities.ALL_CITIES_LABEL not in target1.text
     asyncio.run(state.update_data(rcpt_skipped=[1]))
     target2 = FakeMessage()
-    asyncio.run(admin_mod._show_current_receipt_card(target2, state))
+    asyncio.run(admin_moderation._show_current_receipt_card(target2, state))
     assert "· 🏙 Санкт-Петербург" in target2.text
     assert cities.ALL_CITIES_LABEL not in target2.text
 
@@ -315,7 +317,7 @@ def test_show_current_receipt_card_selected_city_still_uses_header_label(tmp_pat
     _seed_receipt(1, "spb", full_name="Piter Delegate")
     state = _new_state(ADMIN_ID)
     target = FakeMessage()
-    asyncio.run(admin_mod._show_current_receipt_card(target, state))
+    asyncio.run(admin_moderation._show_current_receipt_card(target, state))
     assert "· 🏙 Санкт-Петербург" in target.text
 
 
@@ -324,7 +326,7 @@ def test_show_current_receipt_card_module_off_header_byte_identical(tmp_path):
     _seed_receipt(1, "spb")
     state = _new_state(ADMIN_ID)
     target = FakeMessage()
-    asyncio.run(admin_mod._show_current_receipt_card(target, state))
+    asyncio.run(admin_moderation._show_current_receipt_card(target, state))
     assert "🏙" not in target.text.split("\n")[0]
 
 
@@ -332,7 +334,7 @@ def test_show_current_receipt_card_all_cities_empty_queue_names_mode(tmp_path):
     _all_cities_mode(tmp_path)
     state = _new_state(ADMIN_ID)
     target = FakeMessage()
-    asyncio.run(admin_mod._show_current_receipt_card(target, state))
+    asyncio.run(admin_moderation._show_current_receipt_card(target, state))
     assert target.answers_sent == ["✅ Чеков на проверке нет — «🌍 Все города»."]
 
 

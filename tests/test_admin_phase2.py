@@ -6,7 +6,8 @@ from aiogram import F
 
 from config import config
 from handlers import admin
-from handlers.admin import (
+from handlers import admin_moderation
+from handlers.admin_moderation import (  # Phase 13 (13-06): moderation moved here
     _parse_appr,
     _render_application_card,
 )
@@ -119,16 +120,16 @@ def test_wr01_welcome_drain_scheduled_despite_edit_failure(monkeypatch):
     async def fake_admin_keyboard_for(admin_id):
         return None
 
-    monkeypatch.setattr(admin, "approve_all_pending", fake_approve_all_pending)
-    monkeypatch.setattr(admin, "_welcome_flipped", fake_welcome_flipped)
-    monkeypatch.setattr(admin, "bulk_update_status_in_sheet", fake_bulk_sync)
-    monkeypatch.setattr(admin, "admin_keyboard_for", fake_admin_keyboard_for)
-    monkeypatch.setattr(admin, "admin_selected_city", _no_admin_city)
+    monkeypatch.setattr(admin_moderation, "approve_all_pending", fake_approve_all_pending)
+    monkeypatch.setattr(admin_moderation, "_welcome_flipped", fake_welcome_flipped)
+    monkeypatch.setattr(admin_moderation, "bulk_update_status_in_sheet", fake_bulk_sync)
+    monkeypatch.setattr(admin_moderation, "admin_keyboard_for", fake_admin_keyboard_for)
+    monkeypatch.setattr(admin_moderation, "admin_selected_city", _no_admin_city)
 
     cb = _FakeCallbackWR01(uid)
 
     async def go():
-        await admin.appr_all_yes(cb, None)  # edit_text will raise inside
+        await admin_moderation.appr_all_yes(cb, None)  # edit_text will raise inside
         pending = [t for t in asyncio.all_tasks() if t is not asyncio.current_task()]
         if pending:
             await asyncio.gather(*pending)
@@ -194,14 +195,14 @@ def test_wr04_stale_reclick_no_drain_and_honest_message(monkeypatch):
     async def fake_admin_keyboard_for(admin_id):
         return None
 
-    monkeypatch.setattr(admin, "approve_all_pending", fake_approve_all_pending)
-    monkeypatch.setattr(admin, "_welcome_flipped", fake_welcome)
-    monkeypatch.setattr(admin, "admin_keyboard_for", fake_admin_keyboard_for)
-    monkeypatch.setattr(admin, "_show_current_card", fake_show)
-    monkeypatch.setattr(admin, "admin_selected_city", _no_admin_city)
+    monkeypatch.setattr(admin_moderation, "approve_all_pending", fake_approve_all_pending)
+    monkeypatch.setattr(admin_moderation, "_welcome_flipped", fake_welcome)
+    monkeypatch.setattr(admin_moderation, "admin_keyboard_for", fake_admin_keyboard_for)
+    monkeypatch.setattr(admin_moderation, "_show_current_card", fake_show)
+    monkeypatch.setattr(admin_moderation, "admin_selected_city", _no_admin_city)
 
     cb = _FakeCallbackWR04(uid)
-    asyncio.run(admin.appr_all_yes(cb, None))
+    asyncio.run(admin_moderation.appr_all_yes(cb, None))
 
     assert drained == []  # no welcome drain on the empty re-click
     assert cb.answered == "Уже обработано"

@@ -9,6 +9,7 @@ import asyncio
 from config import config
 from database import db
 from handlers import admin
+from handlers import admin_moderation  # Phase 13 (13-06): moderation moved out of admin.py
 
 
 class _CapTarget:
@@ -48,7 +49,7 @@ def test_m02_first_receipt_card_shows_position_one_on_large_queue(tmp_path):
 
         target = _CapTarget()
         state = _State({"rcpt_skipped": []})
-        await admin._show_current_receipt_card(target, state)
+        await admin_moderation._show_current_receipt_card(target, state)
         return target.texts
 
     texts = asyncio.run(go())

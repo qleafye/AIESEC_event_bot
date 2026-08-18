@@ -17,6 +17,7 @@ from config import config
 from database import db
 import cities
 from handlers import admin as admin_mod
+from handlers import admin_moderation  # Phase 13 (13-06): moderation moved out of admin.py
 from handlers import admin_cities  # Phase 13 (13-05): cities/season screens moved here
 from handlers import admin_gamification
 from handlers.admin_caps import ADMIN_CAPS, ANY_CAPABILITY, required_capability, role_caps_key
@@ -183,7 +184,7 @@ def test_appr_all_confirm_all_cities_names_scope_and_count(tmp_path):
     asyncio.run(cities.set_admin_city(ADMIN_ID, cities.ALL_CITIES))
     cb = FakeCallback("appr_all", ADMIN_ID)
     state = _fresh_state(ADMIN_ID)
-    asyncio.run(admin_mod.appr_all_confirm(cb, state))
+    asyncio.run(admin_moderation.appr_all_confirm(cb, state))
     assert "по всем городам" in cb.message.text
     assert "3" in cb.message.text
     flat = [b.callback_data for row in cb.message.markup.inline_keyboard for b in row]
@@ -197,7 +198,7 @@ def test_appr_all_confirm_real_city_unaffected_by_the_new_branch(tmp_path):
     asyncio.run(cities.set_admin_city(ADMIN_ID, "spb"))
     cb = FakeCallback("appr_all", ADMIN_ID)
     state = _fresh_state(ADMIN_ID)
-    asyncio.run(admin_mod.appr_all_confirm(cb, state))
+    asyncio.run(admin_moderation.appr_all_confirm(cb, state))
     assert "по всем городам" not in cb.message.text
     assert "Заявки других городов не будут затронуты." in cb.message.text
 
@@ -207,7 +208,7 @@ def test_appr_all_yes_all_cities_approves_both_cities(tmp_path):
     asyncio.run(cities.set_admin_city(ADMIN_ID, cities.ALL_CITIES))
     cb = FakeCallback(f"appr_all_yes:{cities.ALL_CITIES}", ADMIN_ID)
     state = _fresh_state(ADMIN_ID)
-    asyncio.run(admin_mod.appr_all_yes(cb, state))
+    asyncio.run(admin_moderation.appr_all_yes(cb, state))
 
     async def check():
         for tid in (1, 2, 3):
@@ -222,10 +223,10 @@ def test_appr_all_yes_context_mismatch_confirmed_all_but_header_now_city(tmp_pat
     asyncio.run(cities.set_admin_city(ADMIN_ID, cities.ALL_CITIES))
     cb = FakeCallback("appr_all", ADMIN_ID)
     state = _fresh_state(ADMIN_ID)
-    asyncio.run(admin_mod.appr_all_confirm(cb, state))
+    asyncio.run(admin_moderation.appr_all_confirm(cb, state))
     asyncio.run(cities.set_admin_city(ADMIN_ID, "spb"))  # шапка переключена уже после диалога
     stale = FakeCallback(f"appr_all_yes:{cities.ALL_CITIES}", ADMIN_ID)
-    asyncio.run(admin_mod.appr_all_yes(stale, state))
+    asyncio.run(admin_moderation.appr_all_yes(stale, state))
     assert stale.answered_alerts and stale.answered_alerts[-1] is True
     assert "изменил" in (stale.answered_texts[-1] or "")
 
@@ -242,10 +243,10 @@ def test_appr_all_yes_context_mismatch_confirmed_city_but_header_now_all(tmp_pat
     asyncio.run(cities.set_admin_city(ADMIN_ID, "spb"))
     cb = FakeCallback("appr_all", ADMIN_ID)
     state = _fresh_state(ADMIN_ID)
-    asyncio.run(admin_mod.appr_all_confirm(cb, state))
+    asyncio.run(admin_moderation.appr_all_confirm(cb, state))
     asyncio.run(cities.set_admin_city(ADMIN_ID, cities.ALL_CITIES))  # симметричный случай
     stale = FakeCallback("appr_all_yes:spb", ADMIN_ID)
-    asyncio.run(admin_mod.appr_all_yes(stale, state))
+    asyncio.run(admin_moderation.appr_all_yes(stale, state))
     assert stale.answered_alerts and stale.answered_alerts[-1] is True
     assert "изменил" in (stale.answered_texts[-1] or "")
 
@@ -269,7 +270,7 @@ def test_appr_all_yes_forged_unknown_code_still_rejected_when_header_is_all_citi
     asyncio.run(cities.set_admin_city(ADMIN_ID, cities.ALL_CITIES))
     cb = FakeCallback("appr_all_yes:__evil__", ADMIN_ID)
     state = _fresh_state(ADMIN_ID)
-    asyncio.run(admin_mod.appr_all_yes(cb, state))
+    asyncio.run(admin_moderation.appr_all_yes(cb, state))
     assert cb.answered_alerts and cb.answered_alerts[-1] is True
 
     async def check():

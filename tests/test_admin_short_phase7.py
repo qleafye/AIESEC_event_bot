@@ -12,6 +12,7 @@ import aiosqlite
 from config import config
 from database import db
 from handlers import admin as admin_mod
+from handlers import admin_moderation  # Phase 13 (13-06): moderation moved out of admin.py
 from handlers import admin_reg_config  # Phase 13 (13-05): reg-question/menu-button config moved here
 from handlers.admin_caps import required_capability
 from handlers.reg_schema import REG_FLOW, REG_PRESETS, _apply_short_preset
@@ -291,13 +292,13 @@ def test_toggle_short_question_materializes_tab_when_mode_short(tmp_path, monkey
 
 def test_card_shows_short_track_line():
     u = {"telegram_id": 1, "full_name": "Иван", "participant_type": "short"}
-    out = admin_mod._render_application_card(u, 1, 1)
+    out = admin_moderation._render_application_card(u, 1, 1)
     assert "⚡ Трек: краткая анкета (акция)" in out
 
 
 def test_card_byte_identical_for_full_track_short_regression():
     u = {"telegram_id": 1, "full_name": "Иван", "participant_type": "full"}
-    out = admin_mod._render_application_card(u, 1, 1)
+    out = admin_moderation._render_application_card(u, 1, 1)
     assert "Трек" not in out
 
 
@@ -305,6 +306,6 @@ def test_card_escapes_unrecognised_track_value_still_holds():
     """Regression T-05-03-03: adding the "short" branch must not disturb the HTML-escape
     fallback for any other unrecognised participant_type value."""
     u = {"telegram_id": 1, "full_name": "Иван", "participant_type": "<b>hack</b>"}
-    out = admin_mod._render_application_card(u, 1, 1)
+    out = admin_moderation._render_application_card(u, 1, 1)
     assert "<b>hack</b>" not in out
     assert "&lt;b&gt;hack" in out
