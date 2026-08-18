@@ -93,6 +93,17 @@ def _build_snapshot_lines():
 # handlers/registration.py 3461 lines) by running _build_snapshot_lines() once against the
 # unrefactored code. 292 handlers total across all four routers. Any reorder, dropped handler,
 # or changed filter literal changes this list and fails the assert below — that IS the point.
+#
+# Drift note (2026-08-19, Phase 16-01, GAME-UI-01): 5 handlers appended (307 -> 312),
+# re-captured by RUNNING `_build_snapshot_lines()` against HEAD after this plan's changes --
+# diffed against the prior 307-line snapshot to confirm every OTHER pre-existing line stayed
+# byte-for-byte identical in the same relative order (pure appends + 2 in-place key renames,
+# no reorders): user_actions.router gained `gbal_history`/`gbal_top`/`gbal_back` (new «🪙
+# Баланс» screen: history pagination / top-10 leaderboard / back-to-summary) and
+# `gtasks_page`/`gtasks_noop` (new list-pagination nav row). `mytask_open`/`mytask_back` are
+# NOT new handlers -- only their decorator filter literal changed (CONTEXT.md `<specifics>`
+# rename `mytask:` -> `gtask_open:`, `mytask_back` -> `gtasks_back:N`), so their derived "keys"
+# column changed in place at the SAME position, not appended as a new line.
 GOLDEN_SNAPSHOT = """
 admin|message|cmd_admin_help|cmd:admin
 admin|message|cmd_coins|cmd:coins
@@ -395,8 +406,13 @@ user_actions|message|my_referrals|
 user_actions|message|ask_organizer_start|
 user_actions|message|cancel_question|state:Question:*
 user_actions|message|process_question|state:Question:*
-user_actions|callback_query|mytask_open|mytask:*
-user_actions|callback_query|mytask_back|mytask_back
+user_actions|callback_query|gbal_history|gbal_history:*
+user_actions|callback_query|gbal_top|gbal_top
+user_actions|callback_query|gbal_back|gbal_back
+user_actions|callback_query|mytask_open|gtask_open:*
+user_actions|callback_query|mytask_back|gtasks_back:*
+user_actions|callback_query|gtasks_page|gtasks_page:*
+user_actions|callback_query|gtasks_noop|gtasks_noop
 user_actions|callback_query|mytask_submit_start|mytask_submit:*
 user_actions|callback_query|finalize_game_submission|gs_done
 user_actions|callback_query|info_date|info_date
@@ -430,7 +446,7 @@ def test_snapshot_total_handler_count_is_292():
     """Second, independent invariant besides content — a handler silently added/removed
     without touching this file's golden text (impossible for a normal edit, but this guards
     against a golden-string typo slipping past review) is caught by count alone."""
-    assert len(GOLDEN_SNAPSHOT) == 307
+    assert len(GOLDEN_SNAPSHOT) == 312
 
 
 # ── Task 2(a): Dispatcher feed_update smoke — cross-router first-match routing ─────────────

@@ -22,6 +22,8 @@ from database.db import (
     parse_proof_types,
     count_rejected_submissions,
     task_title,
+    list_coin_entries_for_user,
+    count_coin_entries_for_user,
 )
 from handlers.admin_caps import notify_by_capability  # D-13: fan out by capability, not bare ADMIN_IDS
 from handlers.game_labels import category_label, proof_types_label  # Phase 16 (16-01): single RU-label source
@@ -90,12 +92,138 @@ def render_leaderboard(rows: list, requester_id: int, requester_rank, requester_
     return "\n".join(lines)
 
 
+def _format_coin_entry_line(row: dict, manual_label: str, task_label: str) -> str:
+    """`"{dd.mm} {sign}{delta}🪙 — {reason or source label}"` — shared by the balance summary
+    (last 5) and the paginated «📜 История» screen. `reason` wins when set; otherwise falls
+    back to the RU source label (manual/task), or a plain "—" for NULL/legacy rows."""
+    try:
+        when = datetime.strptime(row["timestamp"], "%Y-%m-%d %H:%M:%S").strftime("%d.%m")
+    except (TypeError, ValueError):
+        when = str(row.get("timestamp") or "—")
+    delta = row.get("delta") or 0
+    sign = f"+{delta}" if delta >= 0 else str(delta)
+    reason = row.get("reason")
+    if reason:
+        label = html.escape(str(reason))
+    elif row.get("source") == "manual":
+        label = manual_label
+    elif row.get("source") == "task":
+        label = task_label
+    else:
+        label = "—"
+    return f"{when} {sign}{delta}🪙 — {label}"
+
+
+async def _balance_screen(user_id: int) -> tuple[str, InlineKeyboardMarkup]:
+    """Phase 16 (16-01, GAME-UI-01): «🪙 Баланс» summary -- header (balance/rank/total) + up
+    to 5 most recent operations, «📜 История»/«🏆 Рейтинг» buttons. This IS the entry screen
+    (reached from the reply-keyboard button), so no «◀️» row, unlike its two sub-screens."""
+    balance = await get_balance(user_id)
+    rank = await get_user_rank(user_id)
+    total = len(await get_leaderboard(10_000))  # scale-acceptable per CLAUDE.md (1000-1500/season)
+    header_tpl = await get_setting_typed("balance_screen_header")
+    header = header_tpl.format(
+        balance=balance,
+        rank=rank if rank is not None else "—",
+        total=total or "—",
+    )
+    rows = await list_coin_entries_for_user(user_id, limit=5, offset=0)
+    lines = [header, ""]
+    if not rows:
+        lines.append(await get_setting_typed("balance_history_empty"))
+    else:
+        manual_label = await get_setting_typed("balance_source_manual_label")
+        task_label = await get_setting_typed("balance_source_task_label")
+        for row in rows:
+            lines.append(_format_coin_entry_line(row, manual_label, task_label))
+    text = "\n".join(lines)
+    kb = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="📜 История", callback_data="gbal_history:0")],
+        [InlineKeyboardButton(text="🏆 Рейтинг", callback_data="gbal_top")],
+    ])
+    return text, kb
+
+
+async def _balance_history_screen(user_id: int, offset: int = 0) -> tuple[str, InlineKeyboardMarkup]:
+    """Same LIMIT/OFFSET + «Страница K из N» + «← Раньше»/«Позже →» idiom as
+    `admin_gamification._coins_journal_screen`, scoped to one user_id via
+    `list_coin_entries_for_user`/`count_coin_entries_for_user`."""
+    limit = 10
+    total = await count_coin_entries_for_user(user_id)
+    rows = await list_coin_entries_for_user(user_id, limit=limit, offset=offset)
+    lines = ["📜 <b>История монет</b>"]
+    if total == 0:
+        lines.append("")
+        lines.append(await get_setting_typed("balance_history_empty"))
+    else:
+        total_pages = (total + limit - 1) // limit
+        current_page = offset // limit + 1
+        lines.append(f"Страница {current_page} из {total_pages}")
+        lines.append("")
+        manual_label = await get_setting_typed("balance_source_manual_label")
+        task_label = await get_setting_typed("balance_source_task_label")
+        for row in rows:
+            lines.append(_format_coin_entry_line(row, manual_label, task_label))
+    text = "\n".join(lines)
+
+    buttons: list[list[InlineKeyboardButton]] = []
+    nav_row: list[InlineKeyboardButton] = []
+    if offset > 0:
+        nav_row.append(InlineKeyboardButton(
+            text="← Раньше", callback_data=f"gbal_history:{max(0, offset - limit)}",
+        ))
+    if offset + limit < total:
+        nav_row.append(InlineKeyboardButton(
+            text="Позже →", callback_data=f"gbal_history:{offset + limit}",
+        ))
+    if nav_row:
+        buttons.append(nav_row)
+    buttons.append([InlineKeyboardButton(text="◀️ Баланс", callback_data="gbal_back")])
+    return text, InlineKeyboardMarkup(inline_keyboard=buttons)
+
+
 @router.message(F.text == "🪙 Мои монеты")
 async def show_my_coins(message: types.Message):
     if not await ensure_registered(message):
         return
-    balance = await get_balance(message.from_user.id)
-    await message.answer(f"🪙 Твой баланс: <b>{balance}</b> монет(ы)", parse_mode="HTML")
+    text, kb = await _balance_screen(message.from_user.id)
+    await message.answer(text, parse_mode="HTML", reply_markup=kb)
+
+
+@router.callback_query(F.data.startswith("gbal_history:"))
+async def gbal_history(callback: types.CallbackQuery):
+    """T-16-01-01: offset parsed with a try/except, clamped to >= 0 server-side (the deeper
+    "beyond total" clamp lives inside `_balance_history_screen`'s own нав-row logic, same
+    idiom as `coinsjrn_page`)."""
+    try:
+        offset = int(callback.data.split(":", 1)[1])
+    except (ValueError, IndexError):
+        offset = 0
+    if offset < 0:
+        offset = 0
+    text, kb = await _balance_history_screen(callback.from_user.id, offset=offset)
+    await callback.message.edit_text(text, parse_mode="HTML", reply_markup=kb)
+    await callback.answer()
+
+
+@router.callback_query(F.data == "gbal_top")
+async def gbal_top(callback: types.CallbackQuery):
+    rows = await get_leaderboard(10)
+    rank = await get_user_rank(callback.from_user.id)
+    balance = await get_balance(callback.from_user.id)
+    text = render_leaderboard(rows, callback.from_user.id, rank, balance)
+    kb = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="◀️ Баланс", callback_data="gbal_back")],
+    ])
+    await callback.message.edit_text(text, parse_mode="HTML", reply_markup=kb)
+    await callback.answer()
+
+
+@router.callback_query(F.data == "gbal_back")
+async def gbal_back(callback: types.CallbackQuery):
+    text, kb = await _balance_screen(callback.from_user.id)
+    await callback.message.edit_text(text, parse_mode="HTML", reply_markup=kb)
+    await callback.answer()
 
 
 @router.message(Command("рейтинг", "rating", "leaderboard"))
