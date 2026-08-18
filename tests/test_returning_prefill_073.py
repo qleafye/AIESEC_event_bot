@@ -273,3 +273,228 @@ def test_consents_never_recalled(tmp_path):
     asyncio.run(go())
 
 
+# ── Task 2: recall_keep / recall_change / resume carve-out ─────────────────────────────────
+
+def test_keep_writes_value_into_fsm(tmp_path):
+    _use_tmp_db(tmp_path)
+
+    async def go():
+        await db.init_db()
+        state = _new_state(UID)
+        await state.update_data(
+            participant_type="full", _prior_answers={"university": "МГУ"},
+            _recall_step="university", _reg_step=3, _reg_total=9,
+        )
+        await state.set_state(Registration.recall_pending)
+        callback = _FakeCallback("recall_keep:university", UID, "delegate")
+
+        await reg.recall_keep(callback, state, bot=object())
+
+        data = await state.get_data()
+        assert data.get("university") == "МГУ"
+        assert data.get("_reg_step", 0) >= 3
+
+    asyncio.run(go())
+
+
+def test_keep_maps_aliased_columns(tmp_path):
+    _use_tmp_db(tmp_path)
+
+    async def go():
+        await db.init_db()
+        state = _new_state(UID)
+        await state.update_data(
+            participant_type="full",
+            _prior_answers={"vk_username": "@old_vk"},
+            _recall_step="vk", _reg_step=1, _reg_total=5,
+        )
+        await state.set_state(Registration.recall_pending)
+        callback = _FakeCallback("recall_keep:vk", UID, "delegate")
+        await reg.recall_keep(callback, state, bot=object())
+
+        data = await state.get_data()
+        assert data.get("vk_username") == "@old_vk"
+        assert "vk" not in data
+
+    async def go2():
+        state = _new_state(UID)
+        await state.update_data(
+            participant_type="full",
+            _prior_answers={"is_ambassador_candidate": 1},
+            _recall_step="ambassador", _reg_step=1, _reg_total=5,
+        )
+        await state.set_state(Registration.recall_pending)
+        callback = _FakeCallback("recall_keep:ambassador", UID, "delegate")
+        await reg.recall_keep(callback, state, bot=object())
+
+        data = await state.get_data()
+        assert data.get("is_ambassador_candidate") == 1
+        assert "ambassador" not in data
+
+    asyncio.run(go())
+    asyncio.run(go2())
+
+
+def test_keep_value_reaches_db(tmp_path):
+    _use_tmp_db(tmp_path)
+
+    async def go():
+        await db.init_db()
+        state = _new_state(UID)
+        await state.update_data(
+            full_name="Тест Тестов", participant_type="full",
+            _prior_answers={"university": "МГУ", "course": "3"},
+            _recall_step="university", _reg_step=1, _reg_total=2,
+        )
+        await state.set_state(Registration.recall_pending)
+        c1 = _FakeCallback("recall_keep:university", UID, "delegate")
+        await reg.recall_keep(c1, state, bot=object())
+
+        await state.update_data(_recall_step="course")
+        await state.set_state(Registration.recall_pending)
+        c2 = _FakeCallback("recall_keep:course", UID, "delegate")
+        await reg.recall_keep(c2, state, bot=object())
+
+        msg = _KBCapturingMessage(UID, "delegate")
+        await reg.finalize_registration(msg, state, bot=object())
+
+        row = await db.get_user(UID)
+        assert row["university"] == "МГУ"
+        assert row["course"] == "3"
+
+    asyncio.run(go())
+
+
+def test_change_asks_real_question(tmp_path):
+    _use_tmp_db(tmp_path)
+
+    async def go():
+        await db.init_db()
+        state = _new_state(UID)
+        await state.update_data(
+            participant_type="full", _prior_answers={"university": "МГУ"},
+            _recall_step="university", _reg_step=1, _reg_total=5,
+        )
+        await state.set_state(Registration.recall_pending)
+        callback = _FakeCallback("recall_change:university", UID, "delegate")
+        await reg.recall_change(callback, state)
+
+        assert await state.get_state() == Registration.university.state
+        texts = _texts(callback.message)
+        assert not any(t and "Прошлый ответ" in t for t in texts)
+
+    asyncio.run(go())
+
+
+def test_stale_recall_tap_ignored(tmp_path):
+    _use_tmp_db(tmp_path)
+
+    async def go():
+        await db.init_db()
+        state = _new_state(UID)
+        await state.update_data(
+            participant_type="full", _prior_answers={"age": 20, "university": "МГУ"},
+            _recall_step="university", _reg_step=1, _reg_total=5,
+        )
+        await state.set_state(Registration.recall_pending)
+        callback = _FakeCallback("recall_keep:age", UID, "delegate")
+        await reg.recall_keep(callback, state, bot=object())
+
+        data = await state.get_data()
+        assert "age" not in data
+        assert await state.get_state() == Registration.recall_pending.state
+
+    asyncio.run(go())
+
+
+def test_resume_keep_is_noop(tmp_path):
+    _use_tmp_db(tmp_path)
+
+    async def go():
+        await db.init_db()
+        # Seed a real prior DB row with resume_file_id="AAA" -- add_user's own COALESCE
+        # (database/db.py) is what actually preserves it; "keep" must leave `data` untouched.
+        await _register(UID, "delegate", status="rejected", resume_file_id="AAA")
+        msg = _KBCapturingMessage(UID, "delegate")
+        state = _new_state(UID)
+        await state.update_data(
+            participant_type="full", full_name="Тест Тестов",
+            _prior_answers={"resume_file_id": "AAA"},
+        )
+        await reg._ask_step_or_recall("resume", msg, state, 14, 14)
+
+        inline = _inline_kb_msgs(msg)
+        assert len(inline) == 1
+        assert any("Оставить прошлое резюме" in (btn.text or "")
+                    for row in inline[0][1].inline_keyboard for btn in row)
+        assert await state.get_state() == Registration.recall_pending.state
+
+        callback = _FakeCallback("recall_keep:resume", UID, "delegate")
+        await reg.recall_keep(callback, state, bot=object())
+
+        data = await state.get_data()
+        assert not any(k.startswith("resume_") for k in data)
+
+        fmsg = _KBCapturingMessage(UID, "delegate")
+        await reg.finalize_registration(fmsg, state, bot=object())
+        row = await db.get_user(UID)
+        assert row["resume_file_id"] == "AAA"
+
+    asyncio.run(go())
+
+
+def test_resume_screen_hides_file_id(tmp_path):
+    _use_tmp_db(tmp_path)
+
+    async def go():
+        await db.init_db()
+        msg = _KBCapturingMessage(UID, "delegate")
+        state = _new_state(UID)
+        await state.update_data(participant_type="full", _prior_answers={"resume_file_id": "AAA"})
+        await reg._ask_step_or_recall("resume", msg, state, 1, 1)
+
+        texts = _texts(msg)
+        assert not any(t and "AAA" in t for t in texts)
+
+    asyncio.run(go())
+
+
+def test_resume_change_asks_upload(tmp_path):
+    _use_tmp_db(tmp_path)
+
+    async def go():
+        await db.init_db()
+        state = _new_state(UID)
+        await state.update_data(
+            participant_type="full", _prior_answers={"resume_file_id": "AAA"},
+            _recall_step="resume", _reg_step=1, _reg_total=1,
+        )
+        await state.set_state(Registration.recall_pending)
+        callback = _FakeCallback("recall_change:resume", UID, "delegate")
+        await reg.recall_change(callback, state)
+
+        assert await state.get_state() == Registration.resume.state
+        texts = _texts(callback.message)
+        assert any(t and "PDF" in t for t in texts)
+
+    asyncio.run(go())
+
+
+def test_resume_no_prior_asks_normally(tmp_path):
+    _use_tmp_db(tmp_path)
+
+    async def go():
+        await db.init_db()
+        msg = _KBCapturingMessage(UID, "delegate")
+        state = _new_state(UID)
+        await state.update_data(participant_type="full")
+        await reg._ask_step_or_recall("resume", msg, state, 1, 1)
+
+        texts = _texts(msg)
+        assert any(t and "PDF" in t for t in texts)
+        assert not any(t and "Оставить прошлое резюме" in t for t in texts)
+        assert await state.get_state() == Registration.resume.state
+
+    asyncio.run(go())
+
+
