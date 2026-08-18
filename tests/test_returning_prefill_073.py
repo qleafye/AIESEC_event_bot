@@ -498,3 +498,152 @@ def test_resume_no_prior_asks_normally(tmp_path):
     asyncio.run(go())
 
 
+# ── Task 3: finalize_registration season / prev_season / payment reset ─────────────────────
+
+def _minimal_finalize_state(uid, **extra):
+    state = _new_state(uid)
+    return state
+
+
+async def _run_finalize(uid, data_updates):
+    state = _new_state(uid)
+    await state.update_data(full_name="Тест Тестов", **data_updates)
+    msg = _KBCapturingMessage(uid, "delegate")
+    await reg.finalize_registration(msg, state, bot=object())
+    return await db.get_user(uid)
+
+
+def test_finalize_writes_current_season(tmp_path):
+    _use_tmp_db(tmp_path)
+
+    async def go():
+        await db.init_db()
+        await db.set_setting("event_season", "YL'26")
+        row = await _run_finalize(UID, {})
+        assert row["season"] == "YL'26"
+
+    asyncio.run(go())
+
+
+def test_finalize_new_delegate_no_prev_season(tmp_path):
+    _use_tmp_db(tmp_path)
+
+    async def go():
+        await db.init_db()
+        await db.set_setting("event_season", "YL'26")
+        row = await _run_finalize(UID, {})
+        assert row["prev_season"] is None
+
+    asyncio.run(go())
+
+
+def test_finalize_returning_sets_prev_season(tmp_path):
+    _use_tmp_db(tmp_path)
+
+    async def go():
+        await db.init_db()
+        await db.set_setting("event_season", "YL'26")
+        row = await _run_finalize(UID, {"_prior_answers": {"season": "YL'25"}})
+        assert row["prev_season"] == "YL'25"
+
+    asyncio.run(go())
+
+
+def test_finalize_returning_legacy_prev_season(tmp_path):
+    _use_tmp_db(tmp_path)
+
+    async def go():
+        await db.init_db()
+        await db.set_setting("event_season", "YL'26")
+        row = await _run_finalize(UID, {"_prior_answers": {"season": None}})
+        assert row["prev_season"] == "legacy"
+
+    asyncio.run(go())
+
+
+def test_finalize_resets_payment_on_new_season(tmp_path):
+    _use_tmp_db(tmp_path)
+
+    async def go():
+        await db.init_db()
+        await db.set_setting("event_season", "YL'26")
+        await _register(UID, "delegate", status="approved", season="YL'25")
+        await db.update_payment_status(UID, "receipt_sent")
+        await db.update_payment_status(UID, "paid", payment_option="full")
+
+        row = await _run_finalize(UID, {"_prior_answers": {"season": "YL'25"}})
+
+        assert row["payment_status"] == "not_paid"
+        assert row["payment_option"] is None
+        assert row["payment_due"] is None
+        assert row["paid_at"] is None
+
+    asyncio.run(go())
+
+
+def test_finalize_keeps_payment_same_season(tmp_path):
+    _use_tmp_db(tmp_path)
+
+    async def go():
+        await db.init_db()
+        await db.set_setting("event_season", "YL'26")
+        await _register(UID, "delegate", status="rejected", season="YL'26")
+        await db.update_payment_status(UID, "receipt_sent")
+        await db.update_payment_status(UID, "paid", payment_option="full")
+
+        row = await _run_finalize(UID, {"_prior_answers": {"season": "YL'26"}})
+
+        assert row["payment_status"] == "paid"
+
+    asyncio.run(go())
+
+
+def test_finalize_no_season_configured(tmp_path):
+    _use_tmp_db(tmp_path)
+
+    async def go():
+        await db.init_db()
+        await _register(UID, "delegate", status="approved", season="YL'25")
+        await db.update_payment_status(UID, "receipt_sent")
+        await db.update_payment_status(UID, "paid", payment_option="full")
+
+        row = await _run_finalize(UID, {"_prior_answers": {"season": "YL'25"}})
+
+        assert row["season"] is None
+        assert row["payment_status"] == "paid"
+
+    asyncio.run(go())
+
+
+def test_finalize_does_not_inherit_referrer(tmp_path):
+    _use_tmp_db(tmp_path)
+
+    async def go():
+        await db.init_db()
+        await db.set_setting("event_season", "YL'26")
+        row = await _run_finalize(UID, {"_prior_answers": {"season": "YL'25", "referrer_id": 777}})
+        assert row.get("referrer_id") != 777
+
+    asyncio.run(go())
+
+
+def test_finalize_season_resolve_failure_is_soft(tmp_path, monkeypatch):
+    _use_tmp_db(tmp_path)
+
+    async def go():
+        await db.init_db()
+
+        real_get_setting = reg.get_setting
+
+        async def boom(key, *a, **k):
+            if key == "event_season":
+                raise RuntimeError("boom")
+            return await real_get_setting(key, *a, **k)
+
+        monkeypatch.setattr(reg, "get_setting", boom)
+
+        row = await _run_finalize(UID, {})
+        assert row is not None
+        assert row["season"] is None
+
+    asyncio.run(go())
