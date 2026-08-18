@@ -138,3 +138,11 @@ class SeasonReset(StatesGroup):
                            # numbers-confirm screen is shown (a tap, not text, advances further)
     passphrase = State()  # waiting for the typed confirmation phrase (old season name, or
                            # "НОВЫЙ СЕЗОН" literal if there was no old season)
+
+class SeasonImport(StatesGroup):
+    # Phase 07.3 (06, RET-04): «📥 Импорт прошлого события» wizard — lives under `settings`
+    # (registered in handlers/admin_caps.py, "state:SeasonImport:*"). No third confirm State —
+    # same CoinsManual/CityForm precedent: the confirm step is a callback reading
+    # state.get_data() (season_import_go), not a State.
+    waiting_file = State()  # waiting for a document (the foreign forum.db)
+    naming = State()        # waiting for the season name to stamp imported rows with

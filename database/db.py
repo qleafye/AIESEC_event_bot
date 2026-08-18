@@ -650,6 +650,24 @@ IMPORT_EXCLUDED_COLUMNS = {
 }
 
 
+async def count_existing_telegram_ids(ids: list[int]) -> int:
+    """How many of `ids` already have a row in the LIVE users table — batched at 500 values per
+    query (SQLite's default `SQLITE_MAX_VARIABLE_NUMBER`-safe chunk size for `IN (...)`)."""
+    if not ids:
+        return 0
+    total = 0
+    async with aiosqlite.connect(config.DB_PATH) as db:
+        for i in range(0, len(ids), 500):
+            batch = ids[i:i + 500]
+            placeholders = ", ".join("?" for _ in batch)
+            async with db.execute(
+                f"SELECT COUNT(*) FROM users WHERE telegram_id IN ({placeholders})", batch
+            ) as cursor:
+                row = await cursor.fetchone()
+                total += int(row[0]) if row and row[0] is not None else 0
+    return total
+
+
 async def bulk_insert_users_if_absent(rows: list[dict], season: str) -> int:
     """Inserts ONLY telegram_ids absent from the LIVE users table. `INSERT OR IGNORE` (not
     add_user's `ON CONFLICT DO UPDATE`) is the exact mechanism that guarantees an existing row
