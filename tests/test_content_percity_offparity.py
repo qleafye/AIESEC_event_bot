@@ -408,15 +408,11 @@ def test_admin_screens_have_no_percity_rows_when_module_off(tmp_path):
         assert not any(d and d.startswith("settings_city:") for d in _flat_callback_data(cb.message.markup)), key
         assert "🏙" not in cb.message.text, key
 
-    # menu-buttons screen -- no «🏙 Кнопки по городу» row.
+    # menu-buttons screen -- no «🏙 Кнопки по городу» row (Phase 09.3-07: the entry point
+    # itself is gone, not just hidden -- there is no handler left to forge a callback into).
     kb = asyncio.run(admin_mod.build_menu_keyboard())
-    assert "menu_city" not in _flat_callback_data(kb)
+    assert not any(c and c.startswith("menu_city") for c in _flat_callback_data(kb))
     assert not any("🏙" in t for t in _flat_texts(kb))
-
-    menu_cb = FakeAdminCallback("menu_city")
-    asyncio.run(admin_mod.menu_city_list(menu_cb))
-    assert menu_cb.message.edit_calls == 0
-    assert menu_cb.answers and menu_cb.answers[0][1] is True
 
     # settings landing -- no «🏙 Форма по городам» shortcut.
     landing_kb = asyncio.run(admin_mod.build_settings_keyboard())
@@ -443,3 +439,73 @@ def test_admin_screens_have_no_percity_rows_when_module_off(tmp_path):
         kb_none = asyncio.run(admin_mod.build_settings_group_keyboard(token))
         kb_admin = asyncio.run(admin_mod.build_settings_group_keyboard(token, ADMIN_ID))
         assert _flat_callback_data(kb_admin) == _flat_callback_data(kb_none), token
+
+
+# ── Phase 09.3 (07, CITY-09): admin_id-vs-None parity, extended to EVERY admin-surface the
+# whole phase (04-07) made header-aware -- module off collapses `admin_selected_city` to
+# None regardless of who is asking, so passing a real admin_id must never change a single
+# byte of output on any of these four screens. Each surface is called BOTH without an
+# admin_id AND with one, asserting the two calls agree.
+
+def test_settings_landing_screen_module_off_admin_id_parity(tmp_path):
+    _db_ready(tmp_path)
+    _seed_overrides()
+
+    text_none = asyncio.run(admin_mod.render_settings_text())
+    text_admin = asyncio.run(admin_mod.render_settings_text(ADMIN_ID))
+    assert text_admin == text_none
+
+    kb_none = asyncio.run(admin_mod.build_settings_keyboard())
+    kb_admin = asyncio.run(admin_mod.build_settings_keyboard(ADMIN_ID))
+    assert _flat_callback_data(kb_admin) == _flat_callback_data(kb_none)
+
+
+def test_settings_group_screen_module_off_admin_id_parity_all_groups(tmp_path):
+    """Same check as the group-screen block above, but walks EVERY group token in the
+    registry (not just "event"/"reg") -- a future group with its own per_city keys
+    automatically falls under this guard."""
+    _db_ready(tmp_path)
+    _seed_overrides()
+
+    tokens = {meta.get("group") for meta in SETTINGS_SCHEMA.values() if meta.get("group")}
+    assert tokens, "реестр без групп -- этот тест молча проверял бы пустоту"
+    for token in tokens:
+        text_none = asyncio.run(admin_mod.render_settings_group_text(token))
+        text_admin = asyncio.run(admin_mod.render_settings_group_text(token, ADMIN_ID))
+        assert text_admin == text_none, token
+        kb_none = asyncio.run(admin_mod.build_settings_group_keyboard(token))
+        kb_admin = asyncio.run(admin_mod.build_settings_group_keyboard(token, ADMIN_ID))
+        assert _flat_callback_data(kb_admin) == _flat_callback_data(kb_none), token
+
+
+def test_settings_editor_screen_module_off_caller_parity(tmp_path):
+    """settings_edit_start takes no admin_id parameter directly -- it derives the header from
+    `callback.from_user.id` internally. Parity here means TWO DIFFERENT callers (one of them
+    a staff id with a city binding recorded, module still off) see byte-identical screens."""
+    _db_ready(tmp_path)
+    asyncio.run(db.add_staff(SPB_MANAGER_ID, "reg_manager", ADMIN_ID))
+    asyncio.run(db.set_staff_city(SPB_MANAGER_ID, "spb"))
+    _seed_overrides()
+
+    for key in _per_city_key_sentinel_set():
+        if SETTINGS_SCHEMA.get(key, {}).get("type") != "text":
+            continue
+        cb_admin = FakeAdminCallback(f"settings_edit:{key}", user_id=ADMIN_ID)
+        cb_manager = FakeAdminCallback(f"settings_edit:{key}", user_id=SPB_MANAGER_ID)
+        asyncio.run(admin_mod.settings_edit_start(cb_admin, FakeAdminState()))
+        asyncio.run(admin_mod.settings_edit_start(cb_manager, FakeAdminState()))
+        assert cb_admin.message.text == cb_manager.message.text, key
+        assert _flat_callback_data(cb_admin.message.markup) == _flat_callback_data(cb_manager.message.markup), key
+
+
+def test_menu_buttons_screen_module_off_admin_id_parity(tmp_path):
+    _db_ready(tmp_path)
+    _seed_overrides()
+
+    text_none = asyncio.run(admin_mod.render_menu_text())
+    text_admin = asyncio.run(admin_mod.render_menu_text(ADMIN_ID))
+    assert text_admin == text_none
+
+    kb_none = asyncio.run(admin_mod.build_menu_keyboard())
+    kb_admin = asyncio.run(admin_mod.build_menu_keyboard(ADMIN_ID))
+    assert _flat_callback_data(kb_admin) == _flat_callback_data(kb_none)
