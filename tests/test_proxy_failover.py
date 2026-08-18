@@ -861,3 +861,33 @@ def test_rotation_to_api_link_swaps_api_and_back(monkeypatch):
     assert proxy_after is None
     assert restored == "https://api.telegram.org/botT/getMe"
     assert proxy_restored == PRIMARY
+
+
+# ── Несколько линков в одном значении (PROXY_URL_BACKUP=a, b) ─────────────────
+
+def test_build_proxy_chain_splits_commas_and_whitespace_into_links():
+    chain = build_proxy_chain(PRIMARY, "http://u:p@second:1, api:" + WORKER + " direct")
+    assert chain == [PRIMARY, "http://u:p@second:1", proxy_session.ApiLink(WORKER), None]
+
+
+def test_build_proxy_chain_split_dedups_across_values():
+    assert build_proxy_chain(PRIMARY, PRIMARY + ",  " + BACKUP + ",,") == [PRIMARY, BACKUP]
+
+
+def test_three_link_chain_rotates_to_third_when_first_two_dead(monkeypatch):
+    calls = []
+    monkeypatch.setattr(AiohttpSession, "make_request", _fake_transport({0, 1}, calls))
+
+    async def go():
+        session = FailoverAiohttpSession(
+            build_proxy_chain(PRIMARY, BACKUP + ", api:" + WORKER)
+        )
+        result = await session.make_request(object(), object())
+        await _drain_background()
+        return session, result
+
+    session, result = asyncio.run(go())
+    assert result == "result-2"
+    assert calls == [0, 1, 2]
+    assert session.active_index == 2
+    assert session.api.api_url("T", "getMe") == WORKER + "/botT/getMe"

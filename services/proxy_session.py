@@ -108,6 +108,9 @@ class ApiLink:
 
 
 API_LINK_PREFIX = "api:"
+# One config value may carry several links: "http://a:1, api:https://tg.example.com".
+# Commas and whitespace never appear unescaped inside a proxy URL, so both are safe separators.
+_LINK_SPLIT_RE = re.compile(r"[,\s]+")
 
 
 def mask_proxy_url(value) -> str:
@@ -150,15 +153,22 @@ def _describe_error(error) -> str:
 def build_proxy_chain(*values) -> list:
     """Build an ordered, deduplicated proxy chain from raw config values (already-unwrapped
     strings or None -- SecretStr.get_secret_value() is the caller's job). Order = priority
-    (first = primary). "direct"/"none" (any case) become an explicit None (no-proxy) link;
-    "api:https://host" becomes an ApiLink (no proxy, alternative Bot API base URL). Empty/
-    falsy values are dropped. An entirely empty result becomes a single [None] link (direct
-    connection), matching today's "no PROXY_URL set" behaviour."""
+    (first = primary). Each value may itself hold SEVERAL links separated by commas and/or
+    whitespace (so PROXY_URL_BACKUP can list a second and third fallback -- 2026-08-18: two
+    slots were not enough once a Cloudflare Worker joined two VPS as a third path).
+    "direct"/"none" (any case) become an explicit None (no-proxy) link; "api:https://host"
+    becomes an ApiLink (no proxy, alternative Bot API base URL). Empty/falsy values are
+    dropped. An entirely empty result becomes a single [None] link (direct connection),
+    matching today's "no PROXY_URL set" behaviour."""
     chain: list = []
+    parts: list = []
     for v in values:
         if v is None:
             continue
-        s = v.strip() if isinstance(v, str) else str(v).strip()
+        raw = v if isinstance(v, str) else str(v)
+        parts.extend(_LINK_SPLIT_RE.split(raw))
+    for s in parts:
+        s = s.strip()
         if not s:
             continue
         if s.lower() in ("direct", "none"):
