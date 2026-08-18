@@ -469,13 +469,27 @@ def test_completeness_unkeyed_handlers_list_is_exactly_expected(tmp_path):
     assert actual_unkeyed == set(_UNKEYED_HANDLERS)
 
 
+def _admin_module_files():
+    """Phase 13 (13-04, REFAC-01): handlers/admin.py is being split into seam modules
+    (admin_core.py, admin_gamification.py, admin_roles.py, ...) that all decorate the SAME
+    shared `admin.router`. Both file-scanning invariants below must see every one of those
+    files, not just the original god-file, or a wrapped decorator/second-map introduced in a
+    seam file would silently escape the guard. `admin_caps.py` is excluded -- it IS the one
+    real map (ADMIN_CAPS) `test_menu_has_no_second_map` guards against being duplicated, so it
+    legitimately contains the literal pairs the other files must never hand-roll."""
+    return sorted(
+        p for p in Path(admin_mod.__file__).parent.glob("admin*.py")
+        if p.name != "admin_caps.py"
+    )
+
+
 def test_completeness_admin_router_decorators_are_single_line():
-    src_path = Path(admin_mod.__file__)
     bad = []
-    for lineno, line in enumerate(src_path.read_text(encoding="utf-8").splitlines(), start=1):
-        if line.lstrip().startswith("@router."):
-            if line.count("(") != line.count(")") or not line.rstrip().endswith(")"):
-                bad.append((lineno, line))
+    for src_path in _admin_module_files():
+        for lineno, line in enumerate(src_path.read_text(encoding="utf-8").splitlines(), start=1):
+            if line.lstrip().startswith("@router."):
+                if line.count("(") != line.count(")") or not line.rstrip().endswith(")"):
+                    bad.append((src_path.name, lineno, line))
     assert not bad, (
         "Многострочный декоратор @router.* обнаружен — тест полноты карты прав "
         f"(tests/test_roles_phase8.py) собирает ключи построчно и перестанет их видеть: {bad}"
@@ -705,13 +719,16 @@ def test_menu_rows_and_map_stay_in_sync():
 
 
 def test_menu_has_no_second_map():
-    # D-01/D-15's "one map" invariant: handlers/admin.py must not hand-roll a parallel
+    # D-01/D-15's "one map" invariant: handlers/admin*.py must not hand-roll a parallel
     # "button -> capability" dict anywhere -- the capability is always resolved live via
-    # required_capability(), never a hardcoded literal pair copied out of ADMIN_CAPS.
-    source = inspect.getsource(admin_mod)
-    assert '"admin_stats": "stats"' not in source
-    assert '"admin_applications": "moderate_reg"' not in source
-    assert '"admin_broadcast": "broadcast"' not in source
+    # required_capability(), never a hardcoded literal pair copied out of ADMIN_CAPS. Phase 13
+    # (13-04): scans every admin seam file, not just the aggregator, for the same reason
+    # _admin_module_files() exists above.
+    for src_path in _admin_module_files():
+        source = src_path.read_text(encoding="utf-8")
+        assert '"admin_stats": "stats"' not in source, src_path.name
+        assert '"admin_applications": "moderate_reg"' not in source, src_path.name
+        assert '"admin_broadcast": "broadcast"' not in source, src_path.name
 
 
 # ── 08-05 Task 2 (D-16): /admin auto-opens the one available SCREEN, never an action ────────
