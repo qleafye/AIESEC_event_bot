@@ -209,7 +209,8 @@ async def start_payment_step(bot: Bot, telegram_id: int, participant_type: str =
                 [InlineKeyboardButton(text=f"{label} — {price} ₽", callback_data=f"pay_option:{i}")]
                 for i, label, price in visible
             ] + [[_PAY_LATER_BTN]])
-            text = "💳 Выбери вариант участия:"
+            # Phase 17.1 (17.1-02): заголовок — из реестра; блок реквизитов клеит бот.
+            text = await get_setting_typed("payment_option_picker_header_text")
             block = _format_requisites_block(await _resolve_requisites(telegram_id))
             if block:
                 text += f"\n\n{block}"
@@ -300,11 +301,13 @@ async def process_pay_later(callback: types.CallbackQuery, state: FSMContext):
         # Deferring is exactly when reminders matter — schedule T-3/T-1 so a forgetful
         # not_paid user still gets pinged (the whole point of this change).
         await _schedule_deadline_reminders(callback.from_user.id)
-        parts = ["Ок! Оплатишь позже."]
+        # Phase 17.1 (17.1-02): обе реплики — из реестра; блок реквизитов между ними по-прежнему
+        # собирает бот, склейка через "\n\n" прежняя.
+        parts = [await get_setting_typed("payment_pay_later_text")]
         block = _format_requisites_block(await _resolve_requisites(callback.from_user.id))
         if block:
             parts.append(block)
-        parts.append("Кнопка «💳 Оплата» будет в меню, пока чек не отправлен.")
+        parts.append(await get_setting_typed("payment_pay_later_menu_hint_text"))
         await callback.message.answer(
             "\n\n".join(parts),
             parse_mode="HTML",
@@ -334,16 +337,16 @@ async def _show_payment_details(
         await state.clear()
         return
 
-    parts = [
-        "💰 <b>Оплата участия</b>\n",
-        f"Вариант: {html.escape(option_label)}",
-        f"Сумма: {option_price} ₽\n",
-    ]
+    # Phase 17.1 (17.1-02): каркас экрана — шаблон из реестра (payment_details_template_text);
+    # условные блоки (реквизиты / дедлайн / штрафы) по-прежнему собирает бот и подставляет
+    # в {requisites}/{deadline}/{penalties} УЖЕ с завершающей пустой строкой ("\n\n") — или
+    # пустой строкой, если блока нет. Так дефолт шаблона рендерится байт-в-байт как прежний
+    # "\n".join(parts). Подстановка цепочкой .replace, не .format (посторонние {} в тексте
+    # менеджера не должны ронять экран оплаты).
     block = _format_requisites_block(requisites)  # WR-05: shared resolve/escape/format
-    if block:
-        parts.append(block + "\n")
-    if deadline:
-        parts.append(f"📅 Дедлайн: {html.escape(deadline)}\n")
+    requisites_block = f"{block}\n\n" if block else ""
+    deadline_block = f"📅 Дедлайн: {html.escape(deadline)}\n\n" if deadline else ""
+    penalties_block = ""
     if penalties and penalties.strip():
         lines = []
         for line in penalties.strip().splitlines():
@@ -352,15 +355,22 @@ async def _show_payment_details(
                 # CR-01: escape the admin-entered penalty fields too.
                 lines.append(f"• до {html.escape(date_part.strip())} — остаток {html.escape(amount.strip())} ₽")
         if lines:
-            parts.append("⚠️ Штрафы за отмену:\n" + "\n".join(lines) + "\n")
-    parts.append("📎 Загрузи чек оплаты (PDF-документ или скриншот).")
+            penalties_block = "⚠️ Штрафы за отмену:\n" + "\n".join(lines) + "\n\n"
+    tpl = await get_setting_typed("payment_details_template_text")
+    text = (
+        tpl.replace("{option}", html.escape(option_label))
+        .replace("{amount}", str(option_price))
+        .replace("{requisites}", requisites_block)
+        .replace("{deadline}", deadline_block)
+        .replace("{penalties}", penalties_block)
+    )
 
     # CR-01: set state BEFORE the send so a transient send failure does not leave the
     # user approved-but-stateless. start_payment_step's except still delivers a fallback
     # menu for the single/free path; the multi-option path re-raises to the callback.
     await state.set_state(Registration.receipt_upload)
     await bot.send_message(
-        telegram_id, "\n".join(parts), parse_mode="HTML",
+        telegram_id, text, parse_mode="HTML",
         reply_markup=InlineKeyboardMarkup(inline_keyboard=[[_PAY_LATER_BTN]]),
     )
     # User now owes payment — schedule deadline reminders up front (not at receipt upload).
@@ -452,6 +462,7 @@ async def _finalize_receipt(message: types.Message, state: FSMContext, file_id: 
     # would suppress them anyway. cancel_payment_reminders runs when admin marks paid.
 
     await state.clear()
+    # Phase 17.1 (17.1-02): подтверждение — из реестра.
     await message.answer(
-        "✅ Чек получен! Менеджер проверит его в ближайшее время.", parse_mode="HTML"
+        await get_setting_typed("payment_receipt_received_text"), parse_mode="HTML"
     )

@@ -127,7 +127,11 @@ def test_registry_event_order_unchanged_for_old_keys():
         "contact_person", "contact_vk", "contact_tg", "start_text", "start_text_registered",
         "event_name", "event_type",
     ]
-    new_keys = {"event_season", "start_text_returning"}
+    new_keys = {
+        "event_season", "start_text_returning",
+        # Phase 17.1 (17.1-02): recall/возвращение — рядом со start_text_returning.
+        "start_returning_cta_text", "recall_resume_prompt_text", "recall_generic_prompt_text",
+    }
     filtered = [k for k in admin_settings._EVENT_FIELD_ORDER if k not in new_keys]
     assert filtered == old_order_literal
 
