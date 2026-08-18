@@ -1680,6 +1680,12 @@ async def _start_registration_flow(message: types.Message, state: FSMContext, re
     # fork REG_FLOW step key can express "skip it, the track is already authoritative" the
     # same way the existing source skip rule does.
     track_from_link = bool(participant_type) or existing_data.get("_track_from_link", False)
+    # Phase 07.3 (RET-02): rereg_start snapshots the tapping delegate's OWN prior row into FSM
+    # BEFORE calling this function (never inside it — T-073-03-02 keeps the row lookup pinned to
+    # the tapper's own id). Same preserve-through-clear idiom as saved_referrer_id/saved_city
+    # above/below — this is the only mechanism in this file for carrying a value across
+    # state.clear(), no second one is invented.
+    saved_prior = existing_data.get("_prior_answers")
 
     await state.clear()
     if saved_referrer_id:
@@ -1699,6 +1705,12 @@ async def _start_registration_flow(message: types.Message, state: FSMContext, re
     # unconditional write would invent a default in a session where no city was ever chosen.
     if saved_city:
         await state.update_data(event_city=saved_city)
+    # Phase 07.3 (RET-02): re-apply the prior-answers snapshot AFTER clear, same position as
+    # the other saved_x blocks above. T-073-03-03: the leading `_` keeps this key OUT of
+    # _ask_step's «Незавершённые» snapshot (which filters `not k.startswith("_")`) — a past
+    # season's personal data must never ride along into the incomplete-registrations sheet.
+    if saved_prior:
+        await state.update_data(_prior_answers=saved_prior)
 
     await message.answer(
         "Отлично, начинаем регистрацию."
@@ -2025,6 +2037,32 @@ async def cmd_start(message: types.Message, state: FSMContext, bot: Bot, command
     logger.info(f"User {user_id} not registered, showing welcome then registration")
     await _send_welcome(message, start_text, start_photo, None, user_id)
 
+    await _city_fork_then_continue(message, state, effective_city, referrer_id, source_tag, dl_party_track, recovered_track)
+
+
+async def _city_fork_then_continue(
+    message: types.Message,
+    state: FSMContext,
+    effective_city: str | None,
+    referrer_id: int | None,
+    source_tag: str | None,
+    dl_party_track: str | None,
+    recovered_track: str | None,
+):
+    """Phase 07.3 (RET-02): the former tail of cmd_start (city-fork screen or straight to
+    _continue_after_city), extracted the same way 07.1 extracted _continue_after_city — so both
+    a bare cmd_start AND rereg_start (a returning delegate's tap on "Обновить анкету") reach the
+    SAME city/track-fork logic. `is_registered` stays hardcoded False in the _should_show_city_fork
+    call below: a returning delegate is asked for city and track exactly like a newcomer
+    (CONTEXT B: "переспрашиваем всегда"), never skipped just because they used to have one.
+
+    `dl_party_track or recovered_track` below is algebraically the same value cmd_start's own
+    local `party_track` held at this point pre-extraction (dl_party_track only ever diverges
+    from party_track via the party-gate's fail-soft except-branch, which returns before reaching
+    this tail) — kept as an expression rather than a third parameter so this function's
+    signature stays exactly what plan 04 is told to expect.
+    """
+    user_id = message.from_user.id
     # Phase 07.1 (CITY-03): pre-flow city screen. Fixed order with the party fork
     # (07.1-CONTEXT.md): party-closed gate -> welcome -> CITY -> party fork -> start. We
     # reach this point only when there is no existing non-rejected users row (the
@@ -2043,7 +2081,7 @@ async def cmd_start(message: types.Message, state: FSMContext, bot: Bot, command
             referrer_id=referrer_id or _existing.get("referrer_id"),
             source=source_tag or _existing.get("source"),
             _source_from_tag=bool(source_tag) or bool(_existing.get("_source_from_tag")),
-            participant_type=party_track or _existing.get("participant_type"),
+            participant_type=(dl_party_track or recovered_track) or _existing.get("participant_type"),
         )
         if dl_party_track:
             await state.update_data(_track_from_link=True)
@@ -2168,6 +2206,42 @@ async def admin_rereg(callback: types.CallbackQuery, state: FSMContext):
     # party_fallback_full, so mark_reg_started records the tapping admin's id (T-4pj-02).
     tap_message = callback.message.model_copy(update={"from_user": callback.from_user})
     await _start_registration_flow(tap_message, state)
+
+
+@router.callback_query(F.data == "rereg_start")
+async def rereg_start(callback: types.CallbackQuery, state: FSMContext):
+    """Phase 07.3 (RET-02/T-073-03-01): registration.router is NOT covered by
+    CapabilityMiddleware (only admin.router is) — same posture as admin_rereg above. Anyone who
+    guessed this callback_data could otherwise reset a returning delegate's own FSM without
+    actually being a returning delegate, so this handler re-verifies the TAPPER (never anything
+    from the callback payload) against `_is_returning_row` before doing anything else."""
+    user = await get_user(callback.from_user.id)
+    event_season = await get_setting("event_season")
+    if not _is_returning_row(user, event_season):
+        await callback.answer("Ты уже зарегистрирован(а) на этот сезон", show_alert=True)
+        return
+    await callback.answer()
+    try:
+        await callback.message.edit_reply_markup(reply_markup=None)
+    except Exception:
+        pass
+    # T-073-03-02: the snapshot is taken ONLY from the tapping user's OWN row, fetched above by
+    # callback.from_user.id — never from any callback/deep-link parameter, so a crafted
+    # callback_data can never pull someone else's prior answers into this session.
+    await state.update_data(_prior_answers=dict(user))
+    # callback.message.from_user is the BOT, not the tapping delegate — same fix as admin_rereg
+    # above (T-4pj-02), so mark_reg_started/attribution downstream records the tapper's own id.
+    tap_message = callback.message.model_copy(update={"from_user": callback.from_user})
+    data = await state.get_data()
+    await _city_fork_then_continue(
+        tap_message,
+        state,
+        data.get("event_city"),
+        data.get("referrer_id"),
+        data.get("source"),
+        data.get("participant_type") if data.get("_track_from_link") else None,
+        None,
+    )
 
 
 @router.callback_query(F.data == "party_fallback_full")
