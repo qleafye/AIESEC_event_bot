@@ -67,6 +67,17 @@ DEFAULT_START_REGISTERED_TEXT = (
     "С возвращением! Ты уже зарегистрирован(а) — всё нужное в меню ниже \U0001f447"
 )
 
+# Phase 07.3 (RET-02): a delegate whose row belongs to a PAST season (or who was rejected) is
+# neither a newcomer nor a currently-registered delegate — cmd_start's already-registered
+# branch below would otherwise dead-end them (rejected today falls through silently into a
+# fresh registration; a past-season pending/approved row hits a hard `return`). `{season}` is
+# substituted with the delegate's own past-season label via str.replace, never `.format()` —
+# an admin-authored registry text may contain other braces that `.format()` would choke on.
+DEFAULT_START_RETURNING_TEXT = (
+    "С возвращением! Ты уже был(а) с нами на {season}. Давай обновим анкету — "
+    "большинство ответов уже заполнено, останется только подтвердить \U0001f447"
+)
+
 # Tatiana: «поздравляем» теперь приходит СРАЗУ после регистрации (раньше — только после
 # одобрения). reg_complete_text = пост-регистрационный скрипт; approve_text = отдельный
 # скрипт после одобрения заявки. Оба правятся в /admin → Настройки.
@@ -1790,6 +1801,28 @@ async def is_subscribed(bot: Bot, channel, user_id: int) -> bool | None:
         return None
 
 
+def _is_returning_row(user: dict | None, event_season: str | None) -> bool:
+    """Phase 07.3 (RET-02/CONTEXT A): "прошлый делегат" = has a users row AND (status is
+    'rejected' OR their row's `season` is set and differs from the currently configured
+    `event_season`). Pure function (no await) — testable as a case table without a DB, and
+    reusable as-is by `rereg_start`'s self-guard below (T-073-03-01).
+
+    While `event_season` is unset (CONTEXT A: "фаза ведёт себя как сегодня"), only rejected
+    rows are "returning" — parity with today's behaviour for every other row. A row with
+    `season IS NULL` (pre-season legacy data) is never "returning" on this predicate alone;
+    plan 02's "Новый сезон" button is what later stamps it with a season label.
+    """
+    if not user:
+        return False
+    status = user.get("status") or "approved"
+    if status == "rejected":
+        return True
+    season = user.get("season")
+    if event_season and season and season != event_season:
+        return True
+    return False
+
+
 # bot is placed BEFORE the defaulted `command` param (a non-default arg after a default is a SyntaxError);
 # aiogram injects by name so position is purely a syntax constraint.
 @router.message(Command("start"), StateFilter("*"))
@@ -1860,6 +1893,47 @@ async def cmd_start(message: types.Message, state: FSMContext, bot: Bot, command
     start_text = await get_setting("start_text") or DEFAULT_START_TEXT
     start_photo = await get_setting("start_photo_file_id")
     logger.info(f"Settings: start_text={start_text[:80]!r}, start_photo={start_photo!r}")
+
+    # Phase 07.3 (RET-02): a "прошлый делегат" (rejected, or a PAST season's pending/approved
+    # row) must never dead-end at /start — hand them the returning banner + rereg_start button
+    # instead of falling into the already-registered branch below (which return()s without a
+    # path forward) or silently dropping into a fresh registration (rejected's old behaviour).
+    # Placed BEFORE the already-registered branch so it intercepts BOTH cases (CONTEXT B).
+    # Fail-soft like every other lookup in this function: a resolve glitch degrades to "not
+    # returning", never crashes /start (T-073-03-04).
+    try:
+        event_season = await get_setting("event_season")
+        is_returning = _is_returning_row(user, event_season)
+    except Exception as e:
+        logger.error(f"returning-delegate predicate failed for {user_id}: {e}")
+        is_returning = False
+    if is_returning:
+        prev_label = (user.get("season") or "").strip() or "прошлом событии"
+        returning_text = await get_setting("start_text_returning") or DEFAULT_START_RETURNING_TEXT
+        # T-073-03-05: str.replace, NOT .format() — an admin-authored text may contain other
+        # unrelated {} that .format() would raise on.
+        returning_text = returning_text.replace("{season}", prev_label)
+        await _send_welcome(message, returning_text, start_photo, await get_main_menu_kb(user_id), user_id)
+        kb = InlineKeyboardMarkup(inline_keyboard=[[
+            InlineKeyboardButton(text="\U0001f680 Обновить анкету", callback_data="rereg_start")
+        ]])
+        await message.answer(
+            "Хочешь участвовать снова? Обновим анкету — прошлые ответы предложу оставить.",
+            reply_markup=kb,
+        )
+        # The tap on rereg_start arrives as a SEPARATE update, after this /start's local
+        # variables (referrer_id/source_tag/party_track/dl_event_city) are gone — preserve
+        # whatever this deep-link carried into FSM now, same idiom as the city-fork early
+        # return below, so the campaign/referral/city attribution is not lost.
+        if referrer_id:
+            await state.update_data(referrer_id=referrer_id)
+        if source_tag:
+            await state.update_data(source=source_tag, _source_from_tag=True)
+        if party_track:
+            await state.update_data(participant_type=party_track, _track_from_link=True)
+        if dl_event_city:
+            await state.update_data(event_city=dl_event_city)
+        return
 
     if user and (user.get("status") or "approved") != "rejected":
         # D-05a: a rejected user falls through to re-register; others see the welcome menu.
