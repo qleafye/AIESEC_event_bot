@@ -221,17 +221,19 @@ def _btn_texts(kb):
 
 def test_filter_menu_kb_without_show_city_is_unchanged():
     from handlers import admin as admin_mod
-    kb = admin_mod._filter_menu_kb([])
+    from handlers import admin_broadcasts  # Phase 13 (13-05): broadcast handlers moved here
+    kb = admin_broadcasts._filter_menu_kb([])
     assert "filter_f_event_city" not in _cb_datas(kb)
 
 
 def test_filter_menu_kb_show_city_adds_exactly_one_row():
     from handlers import admin as admin_mod
+    from handlers import admin_broadcasts  # Phase 13 (13-05): broadcast handlers moved here
     assert (
-        len(admin_mod._filter_menu_kb([], show_city=True).inline_keyboard)
-        == len(admin_mod._filter_menu_kb([]).inline_keyboard) + 1
+        len(admin_broadcasts._filter_menu_kb([], show_city=True).inline_keyboard)
+        == len(admin_broadcasts._filter_menu_kb([]).inline_keyboard) + 1
     )
-    kb = admin_mod._filter_menu_kb([], show_city=True)
+    kb = admin_broadcasts._filter_menu_kb([], show_city=True)
     assert "filter_f_event_city" in _cb_datas(kb)
     city_btn = [b for row in kb.inline_keyboard for b in row
                 if b.callback_data == "filter_f_event_city"][0]
@@ -242,25 +244,28 @@ def test_filter_menu_kb_show_city_adds_exactly_one_row():
 
 def test_filter_menu_kb_city_row_precedes_show_and_send():
     from handlers import admin as admin_mod
-    kb = admin_mod._filter_menu_kb([{"field": "status", "value": "approved"}], show_city=True)
+    from handlers import admin_broadcasts  # Phase 13 (13-05): broadcast handlers moved here
+    kb = admin_broadcasts._filter_menu_kb([{"field": "status", "value": "approved"}], show_city=True)
     datas = _cb_datas(kb)
     assert datas.index("filter_f_event_city") < datas.index("filter_count")
 
 
 def test_render_filter_menu_hides_city_button_when_module_off(tmp_path):
     from handlers import admin as admin_mod
+    from handlers import admin_broadcasts  # Phase 13 (13-05): broadcast handlers moved here
     _admin_ready(tmp_path)
     msg = FakeMessage()
-    asyncio.run(admin_mod._render_filter_menu(msg, [], edit=True))
+    asyncio.run(admin_broadcasts._render_filter_menu(msg, [], edit=True))
     assert "filter_f_event_city" not in _cb_datas(msg.markup)
 
 
 def test_render_filter_menu_shows_city_button_when_module_on(tmp_path):
     from handlers import admin as admin_mod
+    from handlers import admin_broadcasts  # Phase 13 (13-05): broadcast handlers moved here
     _admin_ready(tmp_path)
     asyncio.run(db.set_setting("event_city_enabled", "on"))
     msg = FakeMessage()
-    asyncio.run(admin_mod._render_filter_menu(msg, [], edit=True))
+    asyncio.run(admin_broadcasts._render_filter_menu(msg, [], edit=True))
     assert "filter_f_event_city" in _cb_datas(msg.markup)
 
 
@@ -270,11 +275,12 @@ def test_event_city_picker_options_come_from_registry_not_db(tmp_path):
     entirely (its rows are NULL)."""
     import cities
     from handlers import admin as admin_mod
+    from handlers import admin_broadcasts  # Phase 13 (13-05): broadcast handlers moved here
     _admin_ready(tmp_path)
     asyncio.run(db.set_setting("event_city_enabled", "on"))
     cb = FakeCallback("filter_f_event_city")
     state = FakeState()
-    asyncio.run(admin_mod._show_value_picker(cb, state, "event_city", "Выберите:"))
+    asyncio.run(admin_broadcasts._show_value_picker(cb, state, "event_city", "Выберите:"))
     data = asyncio.run(state.get_data())
     assert data["filter_options"] == [c["code"] for c in cities.CITIES]
     assert "spb" in data["filter_options"]
@@ -283,11 +289,12 @@ def test_event_city_picker_options_come_from_registry_not_db(tmp_path):
 def test_event_city_picker_buttons_show_labels_not_codes(tmp_path):
     import cities
     from handlers import admin as admin_mod
+    from handlers import admin_broadcasts  # Phase 13 (13-05): broadcast handlers moved here
     _admin_ready(tmp_path)
     asyncio.run(db.set_setting("event_city_enabled", "on"))
     cb = FakeCallback("filter_f_event_city")
     state = FakeState()
-    asyncio.run(admin_mod._show_value_picker(cb, state, "event_city", "Выберите:"))
+    asyncio.run(admin_broadcasts._show_value_picker(cb, state, "event_city", "Выберите:"))
     texts = _btn_texts(cb.message.markup)
     spb_label = asyncio.run(cities.city_label("spb"))
     assert spb_label[:60] in texts
@@ -299,14 +306,15 @@ def test_event_city_picker_labels_survive_pagination(tmp_path):
     raw codes on page 2."""
     import cities
     from handlers import admin as admin_mod
+    from handlers import admin_broadcasts  # Phase 13 (13-05): broadcast handlers moved here
     _admin_ready(tmp_path)
     asyncio.run(db.set_setting("event_city_enabled", "on"))
     cb = FakeCallback("filter_f_event_city")
     state = FakeState()
-    asyncio.run(admin_mod._show_value_picker(cb, state, "event_city", "Выберите:"))
+    asyncio.run(admin_broadcasts._show_value_picker(cb, state, "event_city", "Выберите:"))
     asyncio.run(state.update_data(filter_pending_field="event_city"))
     nav = FakeCallback("filter_optpage:0")
-    asyncio.run(admin_mod.filter_page_nav(nav, state))
+    asyncio.run(admin_broadcasts.filter_page_nav(nav, state))
     texts = _btn_texts(nav.message.markup)
     spb_label = asyncio.run(cities.city_label("spb"))
     assert spb_label[:60] in texts
@@ -316,15 +324,16 @@ def test_event_city_picker_labels_survive_pagination(tmp_path):
 def _pick_city(tmp_path, code):
     import cities
     from handlers import admin as admin_mod
+    from handlers import admin_broadcasts  # Phase 13 (13-05): broadcast handlers moved here
     _admin_ready(tmp_path)
     asyncio.run(db.set_setting("event_city_enabled", "on"))
     cb = FakeCallback("filter_f_event_city")
     state = FakeState()
-    asyncio.run(admin_mod._show_value_picker(cb, state, "event_city", "Выберите:"))
+    asyncio.run(admin_broadcasts._show_value_picker(cb, state, "event_city", "Выберите:"))
     asyncio.run(state.update_data(filter_pending_field="event_city", filters=[]))
     options = (asyncio.run(state.get_data()))["filter_options"]
     pick = FakeCallback(f"filter_opt:{options.index(code)}")
-    asyncio.run(admin_mod.filter_pick_value(pick, state))
+    asyncio.run(admin_broadcasts.filter_pick_value(pick, state))
     return (asyncio.run(state.get_data()))["filters"]
 
 
@@ -359,8 +368,9 @@ def test_picked_city_filter_produces_expected_sql(tmp_path):
 def test_filter_summary_shows_city_label_not_code(tmp_path):
     import cities
     from handlers import admin as admin_mod
+    from handlers import admin_broadcasts  # Phase 13 (13-05): broadcast handlers moved here
     filters = _pick_city(tmp_path, "spb")
-    summary = admin_mod._filter_summary(filters)
+    summary = admin_broadcasts._filter_summary(filters)
     spb_label = asyncio.run(cities.city_label("spb"))
     assert "Город мероприятия" in summary
     assert spb_label in summary
@@ -369,8 +379,9 @@ def test_filter_summary_shows_city_label_not_code(tmp_path):
 
 def test_filter_summary_unchanged_for_fields_without_label():
     from handlers import admin as admin_mod
-    assert admin_mod._filter_summary([{"field": "city", "value": "Москва"}]) == "Город = Москва"
-    assert admin_mod._filter_summary(
+    from handlers import admin_broadcasts  # Phase 13 (13-05): broadcast handlers moved here
+    assert admin_broadcasts._filter_summary([{"field": "city", "value": "Москва"}]) == "Город = Москва"
+    assert admin_broadcasts._filter_summary(
         [{"field": "payment_status", "value": "paid"}]
     ) == "Оплата = Оплатил"
 
@@ -381,12 +392,13 @@ def test_broadcast_filter_menu_opens_empty_even_with_selected_city(tmp_path):
     while believing they sent to everyone."""
     import cities
     from handlers import admin as admin_mod
+    from handlers import admin_broadcasts  # Phase 13 (13-05): broadcast handlers moved here
     _admin_ready(tmp_path)
     asyncio.run(db.set_setting("event_city_enabled", "on"))
     asyncio.run(cities.set_admin_city(ADMIN_ID, "spb"))
     cb = FakeCallback("broadcast_filter")
     state = FakeState()
-    asyncio.run(admin_mod.broadcast_filter_start(cb, state))
+    asyncio.run(admin_broadcasts.broadcast_filter_start(cb, state))
     assert (asyncio.run(state.get_data()))["filters"] == []
     assert "Фильтры пока не выбраны" in cb.message.text
 
@@ -395,30 +407,34 @@ def test_broadcast_filter_menu_opens_empty_even_with_selected_city(tmp_path):
 
 def test_every_picker_field_is_a_whitelisted_filter_column():
     from handlers import admin as admin_mod
-    assert sorted(admin_mod._PICKER_FIELDS - db._FILTER_COLUMNS) == []
+    from handlers import admin_broadcasts  # Phase 13 (13-05): broadcast handlers moved here
+    assert sorted(admin_broadcasts._PICKER_FIELDS - db._FILTER_COLUMNS) == []
 
 
 def test_every_filter_menu_button_maps_to_a_picker_field():
     from handlers import admin as admin_mod
-    kb = admin_mod._filter_menu_kb([], show_city=True)
+    from handlers import admin_broadcasts  # Phase 13 (13-05): broadcast handlers moved here
+    kb = admin_broadcasts._filter_menu_kb([], show_city=True)
     fields = [d[len("filter_f_"):] for d in _cb_datas(kb)
               if d and d.startswith("filter_f_") and d != "filter_f_date"]
     assert fields, "filter menu produced no field buttons"
-    assert sorted(set(fields) - admin_mod._PICKER_FIELDS) == []
+    assert sorted(set(fields) - admin_broadcasts._PICKER_FIELDS) == []
 
 
 def test_event_city_registered_in_both_sets():
     from handlers import admin as admin_mod
-    assert "event_city" in admin_mod._PICKER_FIELDS
+    from handlers import admin_broadcasts  # Phase 13 (13-05): broadcast handlers moved here
+    assert "event_city" in admin_broadcasts._PICKER_FIELDS
     assert "event_city" in db._FILTER_COLUMNS
-    assert admin_mod._FILTER_FIELD_LABELS["event_city"] == "Город мероприятия"
+    assert admin_broadcasts._FILTER_FIELD_LABELS["event_city"] == "Город мероприятия"
 
 
 def test_filter_f_event_city_is_a_registered_callback():
     """`filter_pick_field` is subscribed to the set computed at import time — adding the code
     to _PICKER_FIELDS is what registers the callback."""
     from handlers import admin as admin_mod
-    assert f"filter_f_event_city" in {f"filter_f_{fld}" for fld in admin_mod._PICKER_FIELDS}
+    from handlers import admin_broadcasts  # Phase 13 (13-05): broadcast handlers moved here
+    assert f"filter_f_event_city" in {f"filter_f_{fld}" for fld in admin_broadcasts._PICKER_FIELDS}
 
 
 # ── WR-02: замороженный `exclude` не должен пропустить новый город в старую рассылку ────

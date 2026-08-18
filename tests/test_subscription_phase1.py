@@ -10,6 +10,11 @@ from handlers.admin_caps import required_capability
 from handlers.registration import _membership_status_to_bool, is_subscribed, _normalize_channel_ref
 
 ADMIN_PY = Path(__file__).resolve().parent.parent / "handlers" / "admin.py"
+# Phase 13 (13-05): broadcast_unsubscribed/incomplete now live in handlers/admin_broadcasts.py,
+# not admin.py itself -- same file-glob widening the 13-04 cap-test/doc-safety fixes already
+# established (test_roles_phase8.py, test_city_offparity_phase72.py) for a source-text scan
+# whose literal physically relocated to a seam file.
+ADMIN_DIR = ADMIN_PY.parent
 
 
 # ── membership status mapping ────────────────────────────────────────────────
@@ -137,7 +142,10 @@ def test_finalize_persists_subscription_for_new_user(tmp_path, monkeypatch):
 # enforced by CapabilityMiddleware before the handler body ever runs.
 
 def test_segment_handlers_present_and_capability_gated():
-    src = ADMIN_PY.read_text(encoding="utf-8")
+    src = "".join(
+        p.read_text(encoding="utf-8")
+        for p in sorted(ADMIN_DIR.glob("admin*.py"))
+    )
     assert "broadcast_unsubscribed" in src
     assert "broadcast_incomplete" in src
     assert "get_non_subscriber_ids" in src
