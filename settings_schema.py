@@ -672,6 +672,26 @@ SETTINGS_SCHEMA = {
         "default": "Принято! Менеджер проверит и начислит монеты.",
     },
 
+    # Quick 260819-gtl (CONTEXT.md decision 8): title/photo wizard step prompts — new keys,
+    # same group "game". Old tasks (title IS NULL) fall back to task_title()'s auto-derived
+    # first line, never these prompts (prompts are shown only while CREATING/editing a task).
+    "game_task_title_prompt": {
+        "type": "text", "group": "game", "label": "🎮 Промпт: название задания",
+        "prompt": (
+            "Первый шаг визарда создания задания — просит короткое название (1–60 символов, "
+            "переносы строк заменяются на пробел)."
+        ),
+        "default": "Название задания (коротко, до 60 символов):",
+    },
+    "game_task_photo_prompt": {
+        "type": "text", "group": "game", "label": "🎮 Промпт: фото-обложка задания",
+        "prompt": (
+            "Шаг визарда после описания задания — просит фото-обложку или пропуск. "
+            "Показывается и при создании, и при замене фото у существующего задания."
+        ),
+        "default": "📷 Пришли фото-обложку или нажми ⏭ Пропустить.",
+    },
+
     # ── Phase 09.2 (B): group "menu" — тумблеры кнопок главного меню ────────────────────
     # Source of these 9 keys/labels: keyboards/builders.py::MENU_BUTTONS (copied byte-for-
     # byte, emoji included). Deliberately `type: "enum"`, options ["on", "off"], NOT
