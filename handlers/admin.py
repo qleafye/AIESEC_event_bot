@@ -6005,13 +6005,21 @@ async def _bound_task_city(admin_id: int) -> str | None:
     return normalize_city(bound) if bound else None
 
 
-async def _game_task_city_kb() -> InlineKeyboardMarkup:
+async def _game_task_city_kb(admin_id: int) -> InlineKeyboardMarkup:
     """Phase 09.1 (B): "Кому задание?" step, only shown when the cities module is on
     (game_task_proof_done below). Same loop shape as registration.py::_city_fork_kb --
-    "🌍 Все города" first, then one button per await enabled_cities()."""
+    "🌍 Все города" first, then one button per await enabled_cities().
+
+    Phase 09.3 (CITY-08): the header's city is only HIGHLIGHTED (✅ prefix), never a lock --
+    the actual gating for a bound manager stays entirely in _bound_task_city/
+    game_task_city_step, untouched by this plan. header_code is read ONCE (WR-05); when the
+    header is ALL_CITIES no city row matches it (compared against a real code, never the "*"
+    marker) -- no separate branch needed, this falls out of the equality check for free."""
+    header_code = await admin_selected_city(admin_id)
     rows = [[InlineKeyboardButton(text="🌍 Все города", callback_data="gttcity:all")]]
     for c in await enabled_cities():
-        rows.append([InlineKeyboardButton(text=await city_label(c["code"]), callback_data=f"gttcity:{c['code']}")])
+        prefix = "✅ " if c["code"] == header_code else ""
+        rows.append([InlineKeyboardButton(text=f"{prefix}{await city_label(c['code'])}", callback_data=f"gttcity:{c['code']}")])
     return InlineKeyboardMarkup(inline_keyboard=rows)
 
 
@@ -6150,7 +6158,7 @@ async def game_task_proof_done(callback: types.CallbackQuery, state: FSMContext)
         await callback.answer()
         return
     await state.update_data(gt_city_step_shown=True)
-    await callback.message.answer("Кому задание?", reply_markup=await _game_task_city_kb())
+    await callback.message.answer("Кому задание?", reply_markup=await _game_task_city_kb(callback.from_user.id))
     await state.set_state(GameTaskCreate.city)
     await callback.answer()
 
