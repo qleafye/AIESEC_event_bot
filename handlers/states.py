@@ -86,13 +86,26 @@ class GameTaskCreate(StatesGroup):
     # Phase 9 (GAME-01/02/03, wave 2, 09-02): one State per task-creation wizard step.
     # category/proof_type are driven by inline buttons (not free text), but the state is
     # still set between steps — same «Отмена посреди визарда» guard every other wizard uses.
+    # Quick 260819-gtl (CONTEXT.md decision 1/4): `title` is now the FIRST step (before
+    # `text`); `photo` is a new optional step right after `text` ("⏭ Пропустить" skips it).
+    title = State()
     text = State()
+    photo = State()
     category = State()
     coins = State()
     proof_type = State()
     city = State()  # Phase 09.1 (B, GAME-06): "Кому задание?" — only when cities module is on
     deadline = State()
     confirm = State()
+
+class GameTaskEdit(StatesGroup):
+    # Quick 260819-gtl (CONTEXT.md decisions 1/4): point-edit of an EXISTING task's
+    # title/photo — своя маленькая StatesGroup, не GameTaskCreate переиспользован, т.к.
+    # правит ОДНО поле за раз (без многошагового визарда) и нуждается в собственном
+    # «state:GameTaskEdit:*» ADMIN_CAPS-ключе (moderate_game). Task id — через
+    # state.get_data() ("gte_task_id"), тот же приём, что GameSubmit.proof для "gs_task_id".
+    title = State()
+    photo = State()
 
 class GameReview(StatesGroup):
     # Phase 9 (wave 4, 09-04): moderation — rejection reason (mirrors Approval.reason) and
