@@ -93,7 +93,7 @@ from services.scheduler import (
 from services.allowlist import refresh_allowlist, allowlist_size
 from services.background import spawn as _spawn
 from services.game_sync import request_resync as _request_game_resync, set_rebuild as _set_game_rebuild
-from handlers.states import Broadcast, EditSetting, Approval, ReceiptReview, StaffAdd, GameTaskCreate, GameReview, CoinsManual, CityForm
+from handlers.states import Broadcast, EditSetting, Approval, ReceiptReview, StaffAdd, GameTaskCreate, GameReview, CoinsManual, CityForm, SeasonReset
 from handlers.admin_caps import ALL_CAPABILITIES, CAP_LABELS, ROLES, role_caps_key, role_enabled_key, CapabilityMiddleware, required_capability, has_capability, resolve_capabilities, ANY_CAPABILITY, capability_holders
 from keyboards.builders import get_cancel_kb, MENU_BUTTONS, get_main_menu_kb
 from handlers.registration import REG_FLOW, REG_DEFAULTS, REG_LABELS, REG_PRESETS, REG_CATEGORIES, SHEET_HEADERS, STATUS_LABELS, _build_sheet_row, active_sheet_headers, set_sheet_schema, _sheet_value_map, approve_user, dropout_step_label, _apply_party_preset, _apply_short_preset, city_row_tab, incomplete_city_batches
@@ -1201,6 +1201,14 @@ async def build_settings_group_keyboard(token: str, admin_id: int | None = None)
     if unconfigured:
         buttons.append([InlineKeyboardButton(text="── не настроено ──", callback_data="settings_group_noop")])
         buttons.extend([[b] for b in unconfigured])
+    if token == "event" and admin_id is not None and admin_id in config.ADMIN_IDS:
+        # Phase 07.3 (02, RET-01, T-073-02-01): capability `settings` already gates this whole
+        # screen, but «Новый сезон» is stricter — superadmin only. Hiding the button from a
+        # non-superadmin `settings` holder is "bot for people" UX (CLAUDE.md), NOT the real
+        # gate — the real gate is the ADMIN_IDS re-check inside every wizard handler below,
+        # because a stale inline keyboard rendered before rights changed lives in the chat
+        # forever (same reasoning as roles_city_start's own inline re-check).
+        buttons.append([InlineKeyboardButton(text="🔄 Новый сезон", callback_data="admin_season_reset")])
     buttons.append([InlineKeyboardButton(text="← Назад к настройкам", callback_data="admin_settings")])
     return InlineKeyboardMarkup(inline_keyboard=buttons)
 
@@ -2811,6 +2819,44 @@ async def city_delete_go(callback: types.CallbackQuery):
         await callback.answer("Город уже удалён", show_alert=True)
     text = await render_cities_text()
     await callback.message.edit_text(text, parse_mode="HTML", reply_markup=await build_cities_keyboard())
+
+
+# ── Phase 07.3 (02, RET-01): «🔄 Новый сезон» wizard ──────────────────────────────────────────
+# T-073-02-01 (Elevation of Privilege): the `settings` capability entry (admin_caps.py) gets a
+# holder INTO this screen, but every single handler below re-checks `config.ADMIN_IDS` itself —
+# a stale inline keyboard rendered before someone's rights changed lives in the chat forever
+# (same posture as roles_city_start/roles_city_pick). T-073-02-02/03 (Tampering/Repudiation):
+# a two-tap numbers confirm PLUS a typed passphrase (the old season's exact name, or the literal
+# "НОВЫЙ СЕЗОН" if there was none) gate the actual bulk UPDATE, and the action is logged with
+# the admin's id before the reply is sent.
+
+@router.callback_query(F.data == "admin_season_reset")
+async def season_reset_start(callback: types.CallbackQuery, state: FSMContext):
+    if callback.from_user.id not in config.ADMIN_IDS:
+        await callback.answer("Новый сезон может начать только суперадмин.", show_alert=True)
+        return
+    await state.set_data({})
+    old = (await get_setting("event_season") or "").strip()
+    await state.update_data(season_old=old)
+    old_label = html_module.escape(old) if old else "не задан"
+    await callback.message.answer(
+        f"🔄 <b>Новый сезон</b>\n\nСейчас сезон: <b>{old_label}</b>.\n\n"
+        "Напиши название нового сезона — им будут помечаться все новые регистрации.\n"
+        "Например: YL'26",
+        parse_mode="HTML",
+        reply_markup=get_cancel_kb(),
+    )
+    await state.set_state(SeasonReset.naming)
+    await callback.answer()
+
+
+# Cancel-mid-wizard, registered BEFORE the per-step handlers below (admin.router: first match
+# wins) — same shape as cancel_city_form/cancel_game_task_create.
+@router.message(StateFilter(SeasonReset), Command("cancel"))
+@router.message(StateFilter(SeasonReset), F.text == "Отмена")
+async def cancel_season_reset(message: types.Message, state: FSMContext):
+    await state.set_state(None)
+    await message.answer("Отменено. Сезон не менялся.", reply_markup=ReplyKeyboardRemove())
 
 
 @router.callback_query(F.data == "admin_city_switch")
