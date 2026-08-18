@@ -182,6 +182,18 @@ REG_STEP_TYPES = {step_key: step_type for step_key, _sk, step_type in REG_FLOW}
 # step_key → its reg_q_* setting key, for resolving human labels in dropout analytics.
 _STEP_TO_SETTING = {step_key: setting_key for step_key, setting_key, _t in REG_FLOW}
 
+# Phase 07.3 (04, RET-02): step_key -> users column name. EXPLICIT map, not derived from
+# step_key identity (RESEARCH's own anti-pattern warning) -- most REG_FLOW keys match their
+# column 1:1, but "vk" writes vk_username and "ambassador" writes is_ambassador_candidate
+# (registration.py process_vk / process_ambassador_yesno). "resume" stays in the map as an
+# identity entry (three real columns: resume_file_id/resume_text/resume_url) but is excluded
+# from RECALLABLE_STEPS -- it gets its own carve-out branch in _ask_step_or_recall/recall_keep
+# because showing a raw file_id to a human is meaningless (RESEARCH Pitfall 3).
+STEP_TO_COLUMN = {step_key: step_key for step_key, _sk, _t in REG_FLOW}
+STEP_TO_COLUMN["vk"] = "vk_username"
+STEP_TO_COLUMN["ambassador"] = "is_ambassador_candidate"
+RECALLABLE_STEPS = {k for k in STEP_TO_COLUMN if k != "resume"}
+
 
 def dropout_step_label(step_key: str | None) -> str:
     """Human label for a persisted last_step (dropout analytics). Handles the special
@@ -634,22 +646,41 @@ async def _safe_answer(message: types.Message, text: str, **kwargs):
         return None
 
 
-async def _ask_step(step_key: str, message: types.Message, state: FSMContext, step: int, total: int):
-    # Phase 5 (D-05): resolve the track once, same as _get_enabled_steps, and pass it to
-    # every _prompt call below so party-track wording overrides resolve correctly.
-    data = await state.get_data()
-    participant_type = data.get("participant_type") or "full"
-    # Dropout analytics + quick k4y: stamp the question about to be shown AND snapshot the
-    # already-answered fields (FSM data minus internal `_`-prefixed bookkeeping keys) so the
-    # «Незавершённые» sheet tab can show what the delegate has filled in so far. message.chat.id
-    # == the user's id in private chats (holds for both Message and callback.message). Fail-soft:
-    # any serialization error is logged and never blocks the question from being asked.
+async def _stamp_reg_step(step_key: str, message: types.Message, data: dict) -> None:
+    """Dropout analytics + quick k4y: stamp the question about to be shown AND snapshot the
+    already-answered fields (FSM data minus internal `_`-prefixed bookkeeping keys) so the
+    «Незавершённые» sheet tab can show what the delegate has filled in so far. message.chat.id
+    == the user's id in private chats (holds for both Message and callback.message). Fail-soft:
+    any serialization error is logged and never blocks the question from being asked.
+
+    Phase 07.3 (04): extracted verbatim from _ask_step's head so _ask_step_or_recall's recall
+    screen can stamp the same way -- otherwise «Незавершённые» would lose track of where a
+    returning delegate stopped."""
     try:
         snapshot = {k: v for k, v in data.items() if not k.startswith("_")}
         partial_json = json.dumps(snapshot, ensure_ascii=False, default=str)
         await set_reg_step(message.chat.id, step_key, partial_json)
     except Exception as e:
         logger.error(f"set_reg_step failed for {message.chat.id} @ {step_key}: {e}")
+
+
+def _recall_display(step_key: str, value) -> str:
+    """Human-readable rendering of a prior answer for the recall screen. Booleans (Python
+    True/False, or SQLite's int 0/1 -- aiosqlite returns is_ambassador_candidate as an int,
+    not a bool, since SQLite has no native boolean type) render as «Да»/«Нет»; everything else
+    is str()'d. The result is HTML-escaped here (not by the caller) -- the value came out of
+    the users row and is about to land inside an HTML message (T-073-04-02)."""
+    if isinstance(value, bool) or (isinstance(value, int) and value in (0, 1)):
+        return "Да" if value else "Нет"
+    return html.escape(str(value))
+
+
+async def _ask_step(step_key: str, message: types.Message, state: FSMContext, step: int, total: int):
+    # Phase 5 (D-05): resolve the track once, same as _get_enabled_steps, and pass it to
+    # every _prompt call below so party-track wording overrides resolve correctly.
+    data = await state.get_data()
+    participant_type = data.get("participant_type") or "full"
+    await _stamp_reg_step(step_key, message, data)
     p = await _progress(step, total)
     if step_key == "age":
         await _safe_answer(message, f"{p}{await _prompt('age', 'Напиши свой возраст числом:', participant_type)}", reply_markup=get_cancel_kb())
@@ -893,11 +924,44 @@ async def _advance(after_step: str, message: types.Message, state: FSMContext, b
         # progress numbers (e.g. "12/9"). Re-derive and re-persist from the live enabled count.
         total = len(enabled)
         await state.update_data(_reg_step=step, _reg_total=total)
-        await _ask_step(enabled[next_idx], message, state, step, total)
+        await _ask_step_or_recall(enabled[next_idx], message, state, step, total)
     else:
         # QW-01: show a summary + confirm keyboard before finalizing the full form (D-01).
         await _safe_answer(message, _build_summary(data), reply_markup=get_confirm_kb(), parse_mode="HTML")
         await state.set_state(Registration.confirm)
+
+
+async def _ask_step_or_recall(step_key: str, message: types.Message, state: FSMContext, step: int, total: int):
+    """Phase 07.3 (04, RET-02): the single seam in front of all 4 _ask_step call sites
+    (RESEARCH Pattern 1). A returning delegate's non-empty prior answer for a recallable step
+    is shown as a «Прошлый ответ ... Оставить/Изменить» screen instead of asking the question
+    again; a newcomer (no _prior_answers), a step excluded from RECALLABLE_STEPS, or an empty
+    prior value all fall straight through to the real _ask_step, byte-for-byte unchanged."""
+    data = await state.get_data()
+    prior = data.get("_prior_answers") or {}
+    if prior and step_key in RECALLABLE_STEPS:
+        value = prior.get(STEP_TO_COLUMN[step_key])
+        if value not in (None, "", "-"):
+            await _stamp_reg_step(step_key, message, data)
+            p = await _progress(step, total)
+            label = dropout_step_label(step_key)
+            display = _recall_display(step_key, value)
+            text = f"{p}<b>{label}</b>\n\nПрошлый ответ: <b>{display}</b>\n\nОставить или изменить?"
+            kb = InlineKeyboardMarkup(inline_keyboard=[[
+                InlineKeyboardButton(text="✅ Оставить", callback_data=f"recall_keep:{step_key}"),
+                InlineKeyboardButton(text="✏️ Изменить", callback_data=f"recall_change:{step_key}"),
+            ]])
+            await _safe_answer(message, text, reply_markup=kb, parse_mode="HTML")
+            await state.update_data(_recall_step=step_key, _reg_step=step, _reg_total=total)
+            await state.set_state(Registration.recall_pending)
+            return
+    await _ask_step(step_key, message, state, step, total)
+
+
+@router.message(Registration.recall_pending)
+async def process_recall_ignore(message: types.Message):
+    # Same shape as process_consent_ignore -- the recall screen is only advanced by a tap.
+    await message.answer("Нажми «✅ Оставить» или «✏️ Изменить».")
 
 
 # --- Helpers ---
@@ -1721,7 +1785,7 @@ async def _start_registration_flow(message: types.Message, state: FSMContext, re
     consent_steps = await _get_consent_steps()
     if consent_steps:
         await state.update_data(_consent_queue=consent_steps, _consent_i=0)
-        await _ask_step(consent_steps[0], message, state, 1, len(consent_steps))
+        await _ask_step_or_recall(consent_steps[0], message, state, 1, len(consent_steps))
     else:
         await _ask_full_name(message, state)
 
@@ -2529,7 +2593,7 @@ async def process_consent_accept(callback: types.CallbackQuery, state: FSMContex
     i = data.get("_consent_i", 0) + 1
     if i < len(queue):
         await state.update_data(_consent_i=i)
-        await _ask_step(queue[i], callback.message, state, i + 1, len(queue))
+        await _ask_step_or_recall(queue[i], callback.message, state, i + 1, len(queue))
     else:
         await _ask_full_name(callback.message, state)
 
@@ -2576,7 +2640,7 @@ async def process_full_name(message: types.Message, state: FSMContext, bot: Bot)
 
     total = len(enabled)
     await state.update_data(_reg_step=1, _reg_total=total)
-    await _ask_step(enabled[0], message, state, 1, total)
+    await _ask_step_or_recall(enabled[0], message, state, 1, total)
 
 
 # --- Extended Question Handlers ---
