@@ -988,6 +988,32 @@ async def export_coins_journal_csv() -> tuple[list[str], list[tuple]]:
     return headers, out_rows
 
 
+# Phase 16 (16-01, GAME-UI-01): per-user paginated coin history — «🪙 Баланс» screen's «📜
+# История». Unlike `list_manual_coin_entries` (filters `source = 'manual'` GLOBALLY, for the
+# manager's journal), these scope to ONE user_id and include ALL sources (manual/task/legacy
+# NULL) — a delegate's own history must show task-award credits too, not just manual edits.
+
+async def list_coin_entries_for_user(user_id: int, limit: int = 5, offset: int = 0) -> list[dict]:
+    """Newest-first (`ORDER BY id DESC`), same LIMIT/OFFSET idiom as `list_manual_coin_entries`."""
+    async with aiosqlite.connect(config.DB_PATH) as db:
+        db.row_factory = aiosqlite.Row
+        async with db.execute(
+            "SELECT * FROM coins WHERE user_id = ? ORDER BY id DESC LIMIT ? OFFSET ?",
+            (user_id, limit, offset),
+        ) as cursor:
+            return [dict(row) for row in await cursor.fetchall()]
+
+
+async def count_coin_entries_for_user(user_id: int) -> int:
+    """Total row count for one user_id — drives the «📜 История» screen's «Страница K из N»."""
+    async with aiosqlite.connect(config.DB_PATH) as db:
+        async with db.execute(
+            "SELECT COUNT(*) FROM coins WHERE user_id = ?", (user_id,)
+        ) as cursor:
+            row = await cursor.fetchone()
+            return int(row[0]) if row and row[0] is not None else 0
+
+
 # ── Phase 1: reg_started dropout tracking (independent of FSM) ────────────────
 
 async def mark_reg_started(
