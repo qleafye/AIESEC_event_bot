@@ -192,15 +192,17 @@ def test_pending_and_all_submissions_expose_task_archived_at(tmp_path):
 # ── Task 2: registry key + delegate-side label/gates ─────────────────────────────────────────
 
 def test_submit_button_label_short_and_truncated():
+    # Quick 260819-gtl (CONTEXT.md decision 3): "📤 <title>" (обрезка 30), title not raw text.
     short = ua_mod._submit_button_label({"text": "Короткое"})
-    assert short == "📤 Сдать: Короткое"
+    assert short == "📤 Короткое"
 
     long_name = "Очень длинное название задания, которое точно длиннее сорока символов подряд"
     label = ua_mod._submit_button_label({"text": long_name})
-    assert label.startswith("📤 Сдать: ")
-    body = label[len("📤 Сдать: "):]
+    assert label.startswith("📤 ")
+    body = label[len("📤 "):]
     assert body.endswith("…")
-    assert len(body) == 41  # 40 chars + ellipsis
+    assert len(body) == 31  # 30 chars + ellipsis
+    assert body[:30] == long_name[:30]
 
 
 def test_mytask_submit_start_archived_task_blocks_with_alert(tmp_path):

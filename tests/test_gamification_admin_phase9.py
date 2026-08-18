@@ -131,12 +131,13 @@ def test_admin_game_tasks_lists_existing_tasks_newest_first(tmp_path):
 
 
 def test_gtnew_prompts_for_text_and_sets_state(tmp_path):
+    # Quick 260819-gtl (CONTEXT.md decision 1): title is now the FIRST wizard step.
     _db_ready(tmp_path)
     callback = FakeCallback("gtnew")
     state = _new_state()
     asyncio.run(admin_gamification.game_task_new(callback, state))
-    assert asyncio.run(state.get_state()) == GameTaskCreate.text
-    assert callback.message.answers_sent[-1] == "Введите текст задания:"
+    assert asyncio.run(state.get_state()) == GameTaskCreate.title
+    assert callback.message.answers_sent[-1] == "Название задания (коротко, до 60 символов):"
 
 
 def test_menu_row_admin_game_tasks_appears_for_game_manager_only(tmp_path):
@@ -186,7 +187,8 @@ def test_game_task_text_step_rejects_empty_and_advances_on_nonempty(tmp_path):
 
     message2 = FakeMessage(text="Реальный текст задания")
     asyncio.run(admin_gamification.game_task_text_step(message2, state))
-    assert asyncio.run(state.get_state()) == GameTaskCreate.category
+    # Quick 260819-gtl (CONTEXT.md decision 4): photo step now sits right after description.
+    assert asyncio.run(state.get_state()) == GameTaskCreate.photo
     assert asyncio.run(state.get_data())["gt_text"] == "Реальный текст задания"
 
 

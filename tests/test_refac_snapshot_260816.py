@@ -22,6 +22,18 @@ registration.py; Phases 14/09.3/7.3 added handlers since (season_*, coinsman_*, 
 settings_edit_city*, menu_reset_city*, rereg_start, recall_*, ...). The golden snapshot below
 was captured by RUNNING the enumeration helper against CURRENT HEAD (0a76d7e), not transcribed
 from the plan — it is authoritative for today's code, not the plan's stale example.
+
+Drift note (2026-08-19, quick 260819-gtl, task title + cover photo): 15 handlers appended
+(292 -> 307), re-captured by RUNNING `_build_snapshot_lines()` against HEAD after the quick
+task's changes -- diffed against the prior 292-line snapshot to confirm every pre-existing
+line stayed byte-for-byte identical in the same relative order (pure appends, no reorders):
+admin.router gained `game_task_title_step`/`game_task_photo_step`/`game_task_photo_step_invalid`
+(GameTaskCreate wizard's new title-first/photo steps), `cancel_game_task_edit`/
+`game_task_edittitle_step`/`game_task_editphoto_step`/`game_task_editphoto_invalid`
+(new GameTaskEdit point-edit flow), `game_task_photo_skip`/`game_task_edit_screen`/
+`game_task_edittitle_start`/`game_task_editphoto_start`/`game_task_removephoto` (new
+moderate_game callbacks); user_actions.router gained `mytask_open`/`mytask_back` (the new
+delegate task-card open/back-navigation flow).
 """
 import asyncio
 import time
@@ -130,9 +142,17 @@ admin|message|roles_add_cancel|state:StaffAdd:*
 admin|message|roles_add_person|state:StaffAdd:*
 admin|message|cancel_game_task_create|state:GameTaskCreate:*,state:GameTaskCreate:*
 admin|message|cancel_game_task_create|state:GameTaskCreate:*,state:GameTaskCreate:*
+admin|message|game_task_title_step|state:GameTaskCreate:*
 admin|message|game_task_text_step|state:GameTaskCreate:*
+admin|message|game_task_photo_step|state:GameTaskCreate:*
+admin|message|game_task_photo_step_invalid|state:GameTaskCreate:*
 admin|message|game_task_coins_step|state:GameTaskCreate:*
 admin|message|game_task_deadline_step|state:GameTaskCreate:*
+admin|message|cancel_game_task_edit|state:GameTaskEdit:*,state:GameTaskEdit:*
+admin|message|cancel_game_task_edit|state:GameTaskEdit:*,state:GameTaskEdit:*
+admin|message|game_task_edittitle_step|state:GameTaskEdit:*
+admin|message|game_task_editphoto_step|state:GameTaskEdit:*
+admin|message|game_task_editphoto_invalid|state:GameTaskEdit:*
 admin|message|coinsman_cancel_text|state:CoinsManual:*,state:CoinsManual:*
 admin|message|coinsman_cancel_text|state:CoinsManual:*,state:CoinsManual:*
 admin|message|coinsman_person_step|state:CoinsManual:*
@@ -267,12 +287,17 @@ admin|callback_query|game_task_archive_confirm|gtarchive:*
 admin|callback_query|game_task_delete_confirm|gtdelete:*
 admin|callback_query|game_task_delete_go|gtdelete_go:*
 admin|callback_query|game_task_new|gtnew
+admin|callback_query|game_task_photo_skip|gtphoto_skip
 admin|callback_query|game_task_category_step|gtcat:*
 admin|callback_query|game_task_proof_step|gtproof:*
 admin|callback_query|game_task_proof_done|gtproof_done
 admin|callback_query|game_task_city_step|gttcity:*
 admin|callback_query|game_task_confirm|gtconfirm
 admin|callback_query|game_task_create_cancel|gtcancel
+admin|callback_query|game_task_edit_screen|gtedit:*
+admin|callback_query|game_task_edittitle_start|gtedittitle:*
+admin|callback_query|game_task_editphoto_start|gteditphoto:*
+admin|callback_query|game_task_removephoto|gtremovephoto:*
 admin|callback_query|admin_coins_manual|admin_coins_manual
 admin|callback_query|coinsman_cancel_cb|coinsman_cancel
 admin|callback_query|coinsman_sign_step|coinsman_sign:*
@@ -370,6 +395,8 @@ user_actions|message|my_referrals|
 user_actions|message|ask_organizer_start|
 user_actions|message|cancel_question|state:Question:*
 user_actions|message|process_question|state:Question:*
+user_actions|callback_query|mytask_open|mytask:*
+user_actions|callback_query|mytask_back|mytask_back
 user_actions|callback_query|mytask_submit_start|mytask_submit:*
 user_actions|callback_query|finalize_game_submission|gs_done
 user_actions|callback_query|info_date|info_date
@@ -403,7 +430,7 @@ def test_snapshot_total_handler_count_is_292():
     """Second, independent invariant besides content — a handler silently added/removed
     without touching this file's golden text (impossible for a normal edit, but this guards
     against a golden-string typo slipping past review) is caught by count alone."""
-    assert len(GOLDEN_SNAPSHOT) == 292
+    assert len(GOLDEN_SNAPSHOT) == 307
 
 
 # ── Task 2(a): Dispatcher feed_update smoke — cross-router first-match routing ─────────────
