@@ -101,6 +101,29 @@ SETTINGS_SCHEMA = {
         ),
         "default": None,
     },
+    # Phase 07.3 (A): event_season is deliberately NOT per_city — a season is one entity
+    # shared across all cities of an event, not scoped per city like start_text_registered.
+    "event_season": {
+        "type": "text", "group": "event", "label": "🎉 Сезон события",
+        "prompt": (
+            "Название текущего сезона — им помечаются все новые регистрации.\n\n"
+            "Например: YL'26 · SumMeet'26 · RusCo'27\n\n"
+            "Пока не задано — бот работает как раньше: прошлыми считаются только "
+            "отклонённые заявки."
+        ),
+        "default": None,
+    },
+    # Phase 07.3 (A): start_text_returning is also NOT per_city — a global banner for
+    # returning delegates, unlike per-city start_text_registered.
+    "start_text_returning": {
+        "type": "text", "group": "event", "label": "🔄 Приветствие делегату прошлого сезона",
+        "prompt": (
+            "Текст для того, кто уже был с нами на прошлом событии и снова нажал /start "
+            "(поддерживается HTML). Подстановка {season} даст название его прошлого "
+            "сезона.\n\nЕсли не задать — бот пришлёт текст по умолчанию."
+        ),
+        "default": None,
+    },
     "event_type": {
         "type": "enum", "group": "event", "label": "🎭 Тип события",
         "options": ["forum", "conference", "custom"],
