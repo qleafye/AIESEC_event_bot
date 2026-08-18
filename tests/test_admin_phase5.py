@@ -14,6 +14,8 @@ from aiogram.fsm.storage.memory import MemoryStorage
 from config import config
 from database import db
 from handlers import admin as admin_mod
+from handlers import admin_moderation  # Phase 13 (13-06): moderation moved out of admin.py
+from handlers import admin_settings  # Phase 13 (13-06): settings moved out of admin.py
 from handlers import admin_reg_config  # Phase 13 (13-05): reg-question/menu-button config moved here
 from handlers import admin_broadcasts  # Phase 13 (13-05): broadcast handlers moved here
 from handlers.admin_caps import required_capability
@@ -260,15 +262,15 @@ def test_party_settings_resolve_to_safe_defaults_when_unset(tmp_path):
 def test_toggle_party_enabled_flips_off_to_on(tmp_path):
     _admin_ready(tmp_path)
     cb = FakeCallback("toggle_party_enabled")
-    asyncio.run(admin_mod.toggle_party_enabled(cb))
+    asyncio.run(admin_settings.toggle_party_enabled(cb))
     assert asyncio.run(db.get_setting("party_enabled")) == "on"
-    asyncio.run(admin_mod.toggle_party_enabled(FakeCallback("toggle_party_enabled")))
+    asyncio.run(admin_settings.toggle_party_enabled(FakeCallback("toggle_party_enabled")))
     assert asyncio.run(db.get_setting("party_enabled")) == "off"
 
 
 def test_toggle_party_fork_question_flips_off_to_on(tmp_path):
     _admin_ready(tmp_path)
-    asyncio.run(admin_mod.toggle_party_fork_question(FakeCallback("toggle_party_fork_question")))
+    asyncio.run(admin_settings.toggle_party_fork_question(FakeCallback("toggle_party_fork_question")))
     assert asyncio.run(db.get_setting("party_fork_question")) == "on"
 
 
@@ -277,7 +279,7 @@ def test_toggle_party_approval_is_independent_of_full_and_short(tmp_path):
     _admin_ready(tmp_path)
     asyncio.run(db.set_setting("full_approval", "auto"))
     asyncio.run(db.set_setting("short_approval", "auto"))
-    asyncio.run(admin_mod.toggle_party_approval(FakeCallback("settings_toggle_party_approval")))
+    asyncio.run(admin_settings.toggle_party_approval(FakeCallback("settings_toggle_party_approval")))
     assert asyncio.run(db.get_setting("party_approval")) == "auto"
     # full/short untouched by the party toggle
     assert asyncio.run(db.get_setting("full_approval")) == "auto"
@@ -289,10 +291,10 @@ def test_party_closed_text_shows_hardcoded_default_when_unset(tmp_path):
     (moved to the «party» group sub-screen, which shows a «по умолчанию» flag, not the
     literal default text — see req: long values never shown inline)."""
     _admin_ready(tmp_path)
-    text = asyncio.run(admin_mod.render_settings_text())
+    text = asyncio.run(admin_settings.render_settings_text())
     assert "Регистрация на вечеринку сейчас закрыта." not in text
 
-    group_text = asyncio.run(admin_mod.render_settings_group_text("party"))
+    group_text = asyncio.run(admin_settings.render_settings_group_text("party"))
     assert "по умолчанию" in group_text
 
 
@@ -304,13 +306,13 @@ def test_party_sheet_tab_shows_default_party_when_unset(tmp_path):
     "sheets" group screen («📄 Вкладки таблицы») — the field itself did not disappear, only
     its screen changed."""
     _admin_ready(tmp_path)
-    group_text = asyncio.run(admin_mod.render_settings_group_text("sheets"))
-    assert "party_sheet_tab" in admin_mod._settings_group_keys("sheets")
+    group_text = asyncio.run(admin_settings.render_settings_group_text("sheets"))
+    assert "party_sheet_tab" in admin_settings._settings_group_keys("sheets")
     assert "по умолчанию" in group_text
 
 
 def test_party_closed_text_and_sheet_tab_are_settings_edit_fields(tmp_path):
-    keys = {k for k, _, _ in admin_mod.SETTINGS_FIELDS}
+    keys = {k for k, _, _ in admin_settings.SETTINGS_FIELDS}
     assert "party_closed_text" in keys
     assert "party_sheet_tab" in keys
 
@@ -319,31 +321,31 @@ def test_party_closed_text_and_sheet_tab_are_settings_edit_fields(tmp_path):
 
 def test_card_byte_identical_for_full_track():
     u = {"telegram_id": 1, "full_name": "Иван", "participant_type": "full"}
-    out = admin_mod._render_application_card(u, 1, 1)
+    out = admin_moderation._render_application_card(u, 1, 1)
     assert "Трек" not in out
 
 
 def test_card_byte_identical_when_participant_type_missing():
     u = {"telegram_id": 1, "full_name": "Иван"}
-    out = admin_mod._render_application_card(u, 1, 1)
+    out = admin_moderation._render_application_card(u, 1, 1)
     assert "Трек" not in out
 
 
 def test_card_shows_overnight_track_line():
     u = {"telegram_id": 1, "full_name": "Иван", "participant_type": "party_overnight"}
-    out = admin_mod._render_application_card(u, 1, 1)
+    out = admin_moderation._render_application_card(u, 1, 1)
     assert "🎉 Трек: вечеринка с ночёвкой" in out
 
 
 def test_card_shows_noovernight_track_line():
     u = {"telegram_id": 1, "full_name": "Иван", "participant_type": "party_noovernight"}
-    out = admin_mod._render_application_card(u, 1, 1)
+    out = admin_moderation._render_application_card(u, 1, 1)
     assert "🎉 Трек: вечеринка без ночёвки" in out
 
 
 def test_card_escapes_unrecognised_track_value():
     u = {"telegram_id": 1, "full_name": "Иван", "participant_type": "<b>hack</b>"}
-    out = admin_mod._render_application_card(u, 1, 1)
+    out = admin_moderation._render_application_card(u, 1, 1)
     assert "<b>hack</b>" not in out
     assert "&lt;b&gt;hack" in out
 
@@ -417,7 +419,7 @@ def test_rcpt_confirm_resolves_party_track_before_completion(tmp_path, monkeypat
     async def fake_show_current_receipt_card(target, state):
         pass
 
-    monkeypatch.setattr(admin_mod, "_show_current_receipt_card", fake_show_current_receipt_card)
+    monkeypatch.setattr(admin_moderation, "_show_current_receipt_card", fake_show_current_receipt_card)
 
     class FakeBot:
         async def send_message(self, *a, **k):
@@ -435,7 +437,7 @@ def test_rcpt_confirm_resolves_party_track_before_completion(tmp_path, monkeypat
     class FakeState:
         pass
 
-    asyncio.run(admin_mod.rcpt_confirm(FakeCallback(), FakeState()))
+    asyncio.run(admin_moderation.rcpt_confirm(FakeCallback(), FakeState()))
 
     assert sent["telegram_id"] == uid
     assert sent["with_menu"] is False
@@ -445,14 +447,14 @@ def test_rcpt_confirm_resolves_party_track_before_completion(tmp_path, monkeypat
 # ── Quick 260724-cfn Task 1: approve_text__party editor + payment_options help (WR-02a, WR-05) ──
 
 def test_approve_text_party_is_settings_edit_field_html_and_in_party_group():
-    keys = {k for k, _, _ in admin_mod.SETTINGS_FIELDS}
+    keys = {k for k, _, _ in admin_settings.SETTINGS_FIELDS}
     assert "approve_text__party" in keys
-    assert "approve_text__party" in admin_mod.HTML_SETTINGS
-    assert "approve_text__party" in admin_mod._settings_group_keys("party")
+    assert "approve_text__party" in admin_settings.HTML_SETTINGS
+    assert "approve_text__party" in admin_settings._settings_group_keys("party")
 
 
 def test_payment_options_help_describes_track_filter():
-    prompts = {k: prompt for k, _, prompt in admin_mod.SETTINGS_FIELDS}
+    prompts = {k: prompt for k, _, prompt in admin_settings.SETTINGS_FIELDS}
     help_text = prompts["payment_options"]
     assert "party_overnight" in help_text
     assert "party_noovernight" in help_text
@@ -552,7 +554,7 @@ def test_rcpt_confirm_full_track_delegate_gets_none_participant_type(tmp_path, m
     async def fake_show_current_receipt_card(target, state):
         pass
 
-    monkeypatch.setattr(admin_mod, "_show_current_receipt_card", fake_show_current_receipt_card)
+    monkeypatch.setattr(admin_moderation, "_show_current_receipt_card", fake_show_current_receipt_card)
 
     class FakeBot:
         async def send_message(self, *a, **k):
@@ -570,6 +572,6 @@ def test_rcpt_confirm_full_track_delegate_gets_none_participant_type(tmp_path, m
     class FakeState:
         pass
 
-    asyncio.run(admin_mod.rcpt_confirm(FakeCallback(), FakeState()))
+    asyncio.run(admin_moderation.rcpt_confirm(FakeCallback(), FakeState()))
 
     assert sent["participant_type"] == "full"

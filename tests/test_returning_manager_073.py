@@ -18,6 +18,7 @@ from pathlib import Path
 from config import config
 from database import db
 from handlers import admin as admin_mod
+from handlers import admin_moderation  # Phase 13 (13-06): moderation moved out of admin.py
 
 
 def _db_ready(tmp_path):
@@ -41,13 +42,13 @@ def test_card_shows_repeat_badge():
     # No apostrophe in the fixture value — html.escape (correctly, T-073-05-01) turns "'"
     # into "&#x27;", which would make a literal "YL'25" substring check misleading here.
     user = {"full_name": "Иван", "prev_season": "YL26"}
-    out = admin_mod._render_application_card(user, 1, 1)
+    out = admin_moderation._render_application_card(user, 1, 1)
     assert "🔁 Повторный: был(а) в YL26" in out
 
 
 def test_card_legacy_badge_is_human():
     user = {"full_name": "Иван", "prev_season": "legacy"}
-    out = admin_mod._render_application_card(user, 1, 1)
+    out = admin_moderation._render_application_card(user, 1, 1)
     assert "🔁 Повторный: был(а) на прошлом событии" in out
     assert "legacy" not in out
 
@@ -56,15 +57,15 @@ def test_card_no_badge_for_newcomer():
     baseline = {"full_name": "Иван"}
     with_none = {"full_name": "Иван", "prev_season": None}
     with_empty = {"full_name": "Иван", "prev_season": ""}
-    expected = admin_mod._render_application_card(baseline, 1, 1)
+    expected = admin_moderation._render_application_card(baseline, 1, 1)
     assert "Повторный" not in expected
-    assert admin_mod._render_application_card(with_none, 1, 1) == expected
-    assert admin_mod._render_application_card(with_empty, 1, 1) == expected
+    assert admin_moderation._render_application_card(with_none, 1, 1) == expected
+    assert admin_moderation._render_application_card(with_empty, 1, 1) == expected
 
 
 def test_card_escapes_prev_season():
     user = {"full_name": "Иван", "prev_season": "<b>x</b>"}
-    out = admin_mod._render_application_card(user, 1, 1)
+    out = admin_moderation._render_application_card(user, 1, 1)
     assert "<b>x</b>" not in out
     assert "&lt;b&gt;x&lt;/b&gt;" in out
 
@@ -75,7 +76,7 @@ def test_card_badge_after_track_line():
         "participant_type": "party_overnight",
         "prev_season": "YL26",
     }
-    out = admin_mod._render_application_card(user, 1, 1)
+    out = admin_moderation._render_application_card(user, 1, 1)
     track_pos = out.index("🎉 Трек: вечеринка с ночёвкой")
     badge_pos = out.index("🔁 Повторный: был(а) в YL26")
     assert track_pos < badge_pos
