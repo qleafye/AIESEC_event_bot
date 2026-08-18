@@ -125,3 +125,14 @@ class CityForm(StatesGroup):
     add_tab = State()    # waiting for the new city's sheet-tab base name (or "—")
     edit_label = State()  # waiting for a replacement label for an existing city
     edit_tab = State()    # waiting for a replacement tab base for an existing city
+
+class SeasonReset(StatesGroup):
+    # Phase 07.3 (02, RET-01): «🔄 Новый сезон» wizard — lives under `settings`, but is
+    # ADDITIONALLY gated to superadmin (`config.ADMIN_IDS`) inside every handler, same shape
+    # as roles_city_start's re-check. Confirm-with-numbers stays a callback reading
+    # state.get_data() (season_reset_go), not a third State — same CoinsManual precedent
+    # CityForm above already documents.
+    naming = State()      # waiting for the new season's name; also re-rendered after the
+                           # numbers-confirm screen is shown (a tap, not text, advances further)
+    passphrase = State()  # waiting for the typed confirmation phrase (old season name, or
+                           # "НОВЫЙ СЕЗОН" literal if there was no old season)
