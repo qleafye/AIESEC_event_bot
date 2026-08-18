@@ -20,13 +20,16 @@ _CATEGORY_KEY: dict[str, str] = {
     "Special": "game_category_label_special",
 }
 
-# Verbatim copy of handlers/admin_gamification.py's _GAME_PROOF_LABELS (byte-identical output
-# requirement, see 16-01-PLAN.md Task 1 <behavior>).
-PROOF_TYPE_LABELS: dict[str, str] = {
-    "photo": "📷 Скриншот/фото",
-    "pdf": "📄 PDF",
-    "text": "✍️ Текст",
-    "link": "🔗 Ссылка",
+# Phase 17.1 (17.1-01): подписи типов подтверждения переехали из литералов в реестр —
+# зеркало _CATEGORY_KEY выше (code (GAME_PROOF_TYPES) -> имя ключа game_proof_type_label_*).
+# Дефолты в SETTINGS_SCHEMA байт-в-байт равны прежнему словарю PROOF_TYPE_LABELS, который
+# сам был дословной копией handlers/admin_gamification.py::_GAME_PROOF_LABELS (админская
+# копия остаётся литеральной до 16-03 — он репойнтит её сюда).
+_PROOF_TYPE_KEY: dict[str, str] = {
+    "photo": "game_proof_type_label_photo",
+    "pdf": "game_proof_type_label_pdf",
+    "text": "game_proof_type_label_text",
+    "link": "game_proof_type_label_link",
 }
 
 
@@ -39,10 +42,12 @@ async def category_label(code: str) -> str:
 
 
 async def proof_types_label(raw: str | None) -> str:
-    """Пустой список типов -> «не важно»; иначе RU-подписи через « + », в порядке
-    GAME_PROOF_TYPES (не порядке ввода) — byte-identical к admin_gamification.py's
-    _proof_types_label для того же входа (обобщение, не изменение поведения)."""
+    """Пустой список типов -> `game_proof_type_unspecified_text` («не важно» по умолчанию);
+    иначе RU-подписи через « + », в порядке GAME_PROOF_TYPES (не порядке ввода) —
+    byte-identical к admin_gamification.py's _proof_types_label для того же входа, пока
+    менеджер не переопределил подписи в настройках."""
     codes = parse_proof_types(raw)
     if not codes:
-        return "не важно"
-    return " + ".join(PROOF_TYPE_LABELS[c] for c in codes)
+        return await get_setting_typed("game_proof_type_unspecified_text")
+    labels = [await get_setting_typed(_PROOF_TYPE_KEY[c]) for c in codes]
+    return " + ".join(labels)

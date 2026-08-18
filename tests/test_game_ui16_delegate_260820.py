@@ -113,12 +113,17 @@ def test_category_label_unknown_code_fails_soft(tmp_path):
 
 def test_proof_types_label_none_is_not_important(tmp_path):
     _db_ready(tmp_path)
-    assert asyncio.run(game_labels.proof_types_label(None)) == "не важно"
+    assert asyncio.run(game_labels.proof_types_label(None)) == (
+        SETTINGS_SCHEMA["game_proof_type_unspecified_text"]["default"]
+    )
 
 
 def test_proof_types_label_multi_follows_fixed_order(tmp_path):
     _db_ready(tmp_path)
-    assert asyncio.run(game_labels.proof_types_label("text,photo")) == "📷 Скриншот/фото + ✍️ Текст"
+    assert asyncio.run(game_labels.proof_types_label("text,photo")) == (
+        f'{SETTINGS_SCHEMA["game_proof_type_label_photo"]["default"]} + '
+        f'{SETTINGS_SCHEMA["game_proof_type_label_text"]["default"]}'
+    )
 
 
 # ── Task 1: list_coin_entries_for_user / count_coin_entries_for_user ───────────────────────
@@ -252,7 +257,11 @@ def test_mytask_open_no_photo_new_status(tmp_path):
     assert "<blockquote expandable>" in text
     assert "&lt;опасное&gt;" in text  # escaped BEFORE wrapping (T-16-01-03)
     assert "Статус: новое" in text
-    assert "Нужно прислать: 📷 Скриншот/фото + ✍️ Текст" in text
+    assert (
+        "Нужно прислать: "
+        f'{SETTINGS_SCHEMA["game_proof_type_label_photo"]["default"]} + '
+        f'{SETTINGS_SCHEMA["game_proof_type_label_text"]["default"]}'
+    ) in text
     kb_texts = _flat_kb_texts(callback.message.edit_markup)
     assert "📤 Сдать" in kb_texts and "◀️ Назад" in kb_texts
     kb_data = _flat_kb_data(callback.message.edit_markup)

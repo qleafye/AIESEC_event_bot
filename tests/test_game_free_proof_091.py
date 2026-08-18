@@ -101,7 +101,8 @@ def test_game_settings_schema_has_nine_keys_in_game_group():
     keys = [k for k, v in s.SETTINGS_SCHEMA.items() if v["group"] == "game"]
     # Phase 17.1 (17.1-01): +7 ключей хвоста монетного блока -- рейтинг (3), заголовок
     # истории (1), рефералка (3).
-    assert len(keys) == 32  # +12 ключей 16-01 (RU-категории, тексты списка/карточки/баланса)
+    # +6 ключей 17.1-01: RU-подписи типов подтверждения (5) + подсказка «срок вышел» (1).
+    assert len(keys) == 38  # +12 ключей 16-01 (RU-категории, тексты списка/карточки/баланса)
     for k in keys:
         assert s.SETTINGS_SCHEMA[k]["default"] not in (None, "")
 
