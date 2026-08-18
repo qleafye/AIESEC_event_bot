@@ -13,6 +13,8 @@ from aiogram.fsm.storage.memory import MemoryStorage
 from config import config
 from database import db
 from handlers import registration as reg
+# Phase 13 REFAC (13-03): city_pick/party_pick moved to handlers/reg_flow.py.
+from handlers import reg_flow
 
 
 def _use_tmp_db(tmp_path):
@@ -310,7 +312,7 @@ def test_collision_party_link_then_city_pick_track_authoritative(tmp_path):
         codes_after_start = [c for m in msg.markups for c in _callback_datas(m)]
 
         cb = _FakeCallback("city_pick:spb", uid, "u")
-        await reg.city_pick(cb, state)
+        await reg_flow.city_pick(cb, state)
         data = await state.get_data()
         return codes_after_start, cb.message.markups if hasattr(cb.message, "markups") else None, data
 
@@ -337,7 +339,7 @@ def test_collision_city_link_then_manual_party_pick_city_preserved(tmp_path):
         await reg.cmd_start(msg, state, bot=object(), command=FakeCommand("city_spb"))
         city_codes = [c for m in msg.markups for c in _callback_datas(m) if c.startswith("city_pick:")]
 
-        await reg.party_pick(_FakeCallback("party_pick:party_over", uid, "u"), state)
+        await reg_flow.party_pick(_FakeCallback("party_pick:party_over", uid, "u"), state)
         data = await state.get_data()
         return city_codes, data
 
@@ -363,9 +365,9 @@ def test_collision_bare_start_city_then_party_then_full(tmp_path):
         await reg.cmd_start(msg, state, bot=object(), command=None)  # bare -> city screen
 
         cb = _FakeCallback("city_pick:spb", uid, "u")
-        await reg.city_pick(cb, state)  # -> party fork (track unknown)
+        await reg_flow.city_pick(cb, state)  # -> party fork (track unknown)
 
-        await reg.party_pick(_FakeCallback("party_pick:full", uid, "u"), state)
+        await reg_flow.party_pick(_FakeCallback("party_pick:full", uid, "u"), state)
         data = await state.get_data()
         return data
 
@@ -385,7 +387,7 @@ def test_attribution_survives_city_pick_referrer(tmp_path):
         state = _new_state(uid)
         msg = _FakeMessage(uid, "u")
         await reg.cmd_start(msg, state, bot=object(), command=FakeCommand(str(referrer)))
-        await reg.city_pick(_FakeCallback("city_pick:spb", uid, "u"), state)
+        await reg_flow.city_pick(_FakeCallback("city_pick:spb", uid, "u"), state)
         data = await state.get_data()
         return data
 
@@ -403,7 +405,7 @@ def test_attribution_survives_city_pick_source_tag(tmp_path):
         state = _new_state(uid)
         msg = _FakeMessage(uid, "u")
         await reg.cmd_start(msg, state, bot=object(), command=FakeCommand("src_vk"))
-        await reg.city_pick(_FakeCallback("city_pick:spb", uid, "u"), state)
+        await reg_flow.city_pick(_FakeCallback("city_pick:spb", uid, "u"), state)
         data = await state.get_data()
         return data
 
@@ -433,7 +435,7 @@ def test_underreg_through_release_city_screen_shown_track_recovered(tmp_path):
         city_codes = [c for m in msg.markups for c in _callback_datas(m) if c.startswith("city_pick:")]
 
         cb = _FakeCallback("city_pick:spb", uid, "u")
-        await reg.city_pick(cb, state)
+        await reg_flow.city_pick(cb, state)
         data = await state.get_data()
         return city_codes, data
 
@@ -453,7 +455,7 @@ def test_city_pick_unknown_code_rejected(tmp_path, monkeypatch):
         await db.init_db()
         await db.set_setting("event_city_enabled", "on")
         state = _new_state(uid)
-        await reg.city_pick(_FakeCallback("city_pick:atlantis", uid, "u"), state)
+        await reg_flow.city_pick(_FakeCallback("city_pick:atlantis", uid, "u"), state)
 
     asyncio.run(go())
     assert called == []
@@ -470,7 +472,7 @@ def test_city_pick_disabled_city_rejected(tmp_path, monkeypatch):
         await db.set_setting("event_city_enabled", "on")
         await db.set_setting("city_enabled__tyumen", "off")
         state = _new_state(uid)
-        await reg.city_pick(_FakeCallback("city_pick:tyumen", uid, "u"), state)
+        await reg_flow.city_pick(_FakeCallback("city_pick:tyumen", uid, "u"), state)
 
     asyncio.run(go())
     assert called == []

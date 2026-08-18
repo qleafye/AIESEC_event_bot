@@ -21,6 +21,8 @@ import cities as cities_mod
 from config import config
 from database import db
 from handlers import registration as reg
+# Phase 13 REFAC (13-03): rereg_start moved to handlers/reg_flow.py.
+from handlers import reg_flow
 from handlers.states import Registration
 
 UID = 800001
@@ -312,7 +314,7 @@ def test_rereg_start_rejects_non_returning(tmp_path):
 
         state = _new_state(UID)
         callback = _FakeCallback("rereg_start", UID, "delegate")
-        await reg.rereg_start(callback, state)
+        await reg_flow.rereg_start(callback, state)
 
         assert len(callback.answers) == 1
         text, show_alert = callback.answers[0]
@@ -332,7 +334,7 @@ def test_rereg_start_rejects_unknown_user(tmp_path):
 
         state = _new_state(OTHER_UID)
         callback = _FakeCallback("rereg_start", OTHER_UID, "ghost")
-        await reg.rereg_start(callback, state)
+        await reg_flow.rereg_start(callback, state)
 
         assert len(callback.answers) == 1
         text, show_alert = callback.answers[0]
@@ -354,7 +356,7 @@ def test_rereg_start_snapshots_own_row_only(tmp_path):
 
         state = _new_state(a_id)
         callback = _FakeCallback("rereg_start", a_id, "alice")
-        await reg.rereg_start(callback, state)
+        await reg_flow.rereg_start(callback, state)
 
         data = await state.get_data()
         prior = data.get("_prior_answers")
@@ -380,7 +382,7 @@ def test_rereg_start_shows_city_fork(tmp_path):
 
         state = _new_state(UID)
         callback = _FakeCallback("rereg_start", UID, "delegate")
-        await reg.rereg_start(callback, state)
+        await reg_flow.rereg_start(callback, state)
 
         texts = _texts(callback.message)
         city_fork_text = await db.get_setting("city_fork_text") or reg.DEFAULT_CITY_FORK_TEXT
@@ -404,7 +406,7 @@ def test_rereg_start_city_module_off_no_city_screen(tmp_path):
 
         state = _new_state(UID)
         callback = _FakeCallback("rereg_start", UID, "delegate")
-        await reg.rereg_start(callback, state)
+        await reg_flow.rereg_start(callback, state)
 
         assert await state.get_state() == Registration.full_name.state
         texts = _texts(callback.message)

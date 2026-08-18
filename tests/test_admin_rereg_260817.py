@@ -19,6 +19,8 @@ from aiogram.types import InlineKeyboardMarkup, ReplyKeyboardMarkup
 from config import config
 from database import db
 from handlers import registration as reg
+# Phase 13 REFAC (13-03): admin_rereg moved to handlers/reg_flow.py.
+from handlers import reg_flow
 from handlers.states import Registration
 
 ADMIN_ID = 900001
@@ -138,14 +140,16 @@ def test_admin_rereg_callback_rejects_non_admin(tmp_path, monkeypatch):
     async def fake_start_registration_flow(*a, **k):
         calls.append((a, k))
 
-    monkeypatch.setattr(reg, "_start_registration_flow", fake_start_registration_flow)
+    # admin_rereg (reg_flow.py) resolves _start_registration_flow via reg_flow's own module
+    # globals (bound at import time from handlers.registration), not reg's.
+    monkeypatch.setattr(reg_flow, "_start_registration_flow", fake_start_registration_flow)
 
     async def go():
         await db.init_db()
         state = _new_state(OTHER_ID)
         callback = _FakeCallback("admin_rereg", OTHER_ID, "notadmin")
 
-        await reg.admin_rereg(callback, state)
+        await reg_flow.admin_rereg(callback, state)
 
         assert len(callback.answers) == 1
         text, show_alert = callback.answers[0]
@@ -180,7 +184,7 @@ def test_admin_rereg_callback_starts_flow_as_tapping_admin(tmp_path, monkeypatch
         state = _new_state(ADMIN_ID)
         callback = _FakeCallback("admin_rereg", ADMIN_ID, "admintester")
 
-        await reg.admin_rereg(callback, state)
+        await reg_flow.admin_rereg(callback, state)
 
         # Authorized -> callback.answer() with no alert (just closes the "loading" spinner).
         assert len(callback.answers) == 1
