@@ -14,7 +14,7 @@ from aiogram.types import FSInputFile, ReplyKeyboardRemove, InlineKeyboardMarkup
 from aiogram.utils.keyboard import ReplyKeyboardBuilder
 
 from config import config
-from database.db import add_user, get_user, get_setting, set_setting, mark_reg_started, clear_reg_started, set_reg_step, set_user_subscribed, set_user_status, record_user_consent, get_user_consents, get_reg_started_track, get_reg_started_city, has_short_incomplete, _csv_safe, get_incomplete_rows_with_city
+from database.db import add_user, get_user, get_setting, set_setting, mark_reg_started, clear_reg_started, set_reg_step, set_user_subscribed, set_user_status, record_user_consent, get_user_consents, get_reg_started_track, get_reg_started_city, has_short_incomplete, _csv_safe, get_incomplete_rows_with_city, reset_payment_for_new_season
 from settings_schema import SETTINGS_SCHEMA, get_setting_typed  # REG-01/D-06 (06-04): REG_DEFAULTS derivation source; get_setting_typed (06-06 gate migration)
 from cities import CITIES, all_cities, normalize_city, is_default_city, city_tab_base, cities_module_on, is_city_enabled, city_label, enabled_cities, tab_suffix, get_setting_for_city, get_setting_typed_for_city  # Phase 07.1 (CITY-01/CITY-02/CITY-03): city registry — _city_tag_map() + city_row_tab + city fork below; tab_suffix added quick 260815-3hw (TABS-01/02/03, replaces the raw TAB_SUFFIX import); get_setting_for_city/get_setting_typed_for_city added Phase 09.2-04 (CITY-04): per-city text/mode resolver; all_cities added Phase 14 (CITY-07)
 from handlers.states import Registration
@@ -3234,6 +3234,34 @@ async def finalize_registration(message: types.Message, state: FSMContext, bot: 
     data.setdefault("resume_text", None)
     data.setdefault("resume_url", None)
 
+    # Phase 07.3 (04, RET-01/RET-02): resolve season/prev_season BEFORE add_user, in its own
+    # fail-soft try/except -- a season-resolve error must never lose an already-collected
+    # application (T-073-04-07). `prior` (the returning delegate's snapshot from plan 03,
+    # empty for a first-time delegate) is read once here and reused after add_user below for
+    # the payment-reset decision.
+    prior = data.get("_prior_answers") or {}
+    season = None
+    try:
+        season = (await get_setting("event_season") or "").strip() or None
+        data["season"] = season
+        if prior:
+            # CONTEXT B: a genuinely returning delegate always gets a prev_season, even when
+            # their prior row predates the season concept ("legacy" -- same literal
+            # mark_season_ended uses, per plan 01's D-03; never shown raw to a manager, plan 05
+            # translates it). A first-time delegate (prior empty) leaves prev_season unset --
+            # data.get('prev_season') rides through add_user as None like any other never-set
+            # column.
+            data["prev_season"] = (prior.get("season") or "").strip() or "legacy"
+    except Exception as e:
+        logger.error(f"Season resolve failed for {message.from_user.id}: {e}")
+        season = None
+        data["season"] = None
+    # T-073-04-?? / RESEARCH: referrer_id is deliberately NEVER read from `prior` -- it is not
+    # in STEP_TO_COLUMN and `data['referrer_id']` only ever comes from THIS session's deep-link
+    # (cmd_start/_start_registration_flow). A returning delegate's past referral is not carried
+    # forward; no code change is needed here, this comment plus a dedicated test pin the
+    # invariant so a future edit can't silently start reading `prior.get('referrer_id')`.
+
     # WK6/16c: resume (file OR text) → Nextcloud WebDAV PUT + deep-link into the manual folder
     # share, captured BEFORE add_user so the URL is persisted in DB and lands in the sheet row.
     # File is named "<ФИО>_<username|id>.<ext>"; text resume is uploaded as a "<...>.txt" file.
@@ -3300,6 +3328,20 @@ async def finalize_registration(message: types.Message, state: FSMContext, bot: 
             reply_markup=get_confirm_kb(),
         )
         return
+
+    # Phase 07.3 (04, RET-02/WR-06): payment reset lives in its own try/except AFTER add_user
+    # succeeds -- add_user itself never touches payment columns (WR-06), so "anketa first,
+    # reset second" gives a correct result no matter which of the two operations would fail.
+    # Condition is deliberately narrower than "any returning delegate": only fires when the
+    # delegate is ACTUALLY entering a new season (CONTEXT B: «новый сезон = новая оплата»). A
+    # rejected delegate re-applying within the SAME season keeps their existing payment state
+    # (the WR-06 invariant payment columns are excluded from add_user's ON CONFLICT for).
+    if prior and season and (prior.get("season") or "").strip() != season:
+        try:
+            await reset_payment_for_new_season(message.from_user.id)
+        except Exception as e:
+            logger.error(f"reset_payment_for_new_season failed for {message.from_user.id}: {e}")
+
     logger.info(
         f"user={message.from_user.id} action=registration_complete "
         f"mode={await get_setting('registration_mode') or 'short'} name={data.get('full_name')!r}"
