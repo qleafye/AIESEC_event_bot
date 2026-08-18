@@ -709,6 +709,26 @@ SETTINGS_SCHEMA = {
         "default": 0,
     },
 
+    # Quick 260819-gtl (CONTEXT.md decision 8): title/photo wizard step prompts — new keys,
+    # same group "game". Old tasks (title IS NULL) fall back to task_title()'s auto-derived
+    # first line, never these prompts (prompts are shown only while CREATING/editing a task).
+    "game_task_title_prompt": {
+        "type": "text", "group": "game", "label": "🎮 Промпт: название задания",
+        "prompt": (
+            "Первый шаг визарда создания задания — просит короткое название (1–60 символов, "
+            "переносы строк заменяются на пробел)."
+        ),
+        "default": "Название задания (коротко, до 60 символов):",
+    },
+    "game_task_photo_prompt": {
+        "type": "text", "group": "game", "label": "🎮 Промпт: фото-обложка задания",
+        "prompt": (
+            "Шаг визарда после описания задания — просит фото-обложку или пропуск. "
+            "Показывается и при создании, и при замене фото у существующего задания."
+        ),
+        "default": "📷 Пришли фото-обложку или нажми ⏭ Пропустить.",
+    },
+
     # Phase 14 (GAME-09): текст уведомления делегату после ручного начисления/списания монет
     # (кнопочный визард «🪙 Монеты вручную» и /coins). Нейтрален к знаку -- тем же текстом
     # сообщается и о списании. `.replace` подстановка (не `.format`) -- см. _notify_manual_coins.

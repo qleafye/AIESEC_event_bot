@@ -453,6 +453,15 @@ ADMIN_CAPS: dict[str, str] = {
     "gtdelete:*": "moderate_game",
     "gtdelete_go:*": "moderate_game",
 
+    # Quick 260819-gtl (title + cover photo): wizard's new photo-skip step, plus the
+    # point-edit («✏️ Правка») screen on an existing task -- title/photo replace/remove.
+    "gtphoto_skip": "moderate_game",
+    "gtedit:*": "moderate_game",
+    "gtedittitle:*": "moderate_game",
+    "gteditphoto:*": "moderate_game",
+    "gtremovephoto:*": "moderate_game",
+    "state:GameTaskEdit:*": "moderate_game",
+
     # Phase 14 (14-04, GAME-09): monetary right, not registration-queue right -- coins are
     # geyma's territory, not the applications queue's. Physically relocated out of the
     # applications-moderation block above (this is the single "cmd:coins" entry, not a dupe).
