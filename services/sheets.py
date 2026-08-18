@@ -534,14 +534,56 @@ def _apply_status_formatting_sync(sheet, num_rows: int):
     sheet.spreadsheet.batch_update({"requests": requests})
 
 
-def _update_status_in_sheet_sync(telegram_id: int, label: str) -> bool:
-    """Найти строку по col1==telegram_id и записать label в колонку «Статус». False если
-    колонки/строки нет."""
-    sheet = _get_sheet()
+def _status_sheet_kind(participant_type: str | None) -> str:
+    """Pure classification mirroring handlers/registration.py::_sheet_kind byte-for-byte
+    (party -> short -> main, same order, load-bearing there too). Duplicated here rather than
+    imported: handlers.registration imports services.sheets at module top level (append_to_sheet
+    / append_to_named_sheet), so importing it back — even lazily inside a function — would pull
+    the entire registration FSM/router module into a lower-layer service module just to reuse a
+    three-line predicate. If handlers/registration.py::_sheet_kind's track vocabulary ever
+    changes, mirror the change here too (quick 260819-sst)."""
+    if participant_type in ("party_overnight", "party_noovernight"):
+        return "party"
+    if participant_type == "short":
+        return "short"
+    return "main"
+
+
+async def _resolve_status_tab(telegram_id: int) -> str | None:
+    """Resolve the worksheet a delegate's row actually lives on, mirroring the tab the LIVE
+    append used (handlers/registration.py::city_row_tab + _sheet_kind) — Approve/Reject/«Одобрить
+    все» used to only ever look at the main worksheet (_get_sheet()), so a delegate routed to a
+    city tab (СПб/Тюмень, short/party sub-tabs) never got their «Статус» cell updated at all
+    (quick 260819-sst, owner report).
+
+    Returns `None` when the row belongs on the main sheet (module off, default/Moscow city,
+    unknown user, or no per-city tab-base configured) — same "use the legacy appender" contract
+    as city_row_tab itself. Async and run BEFORE the asyncio.to_thread hop below: get_user
+    (aiosqlite) and the cities.py helpers (get_setting_typed) need a running event loop, which
+    the sync worker thread does not have."""
+    from cities import cities_module_on, city_tab_base, is_default_city, normalize_city, tab_suffix
+    from database.db import get_user
+
+    user = await get_user(telegram_id)
+    if not user:
+        return None
+    if not await cities_module_on():
+        return None
+    code = normalize_city(user.get("event_city"))
+    if is_default_city(code):
+        return None
+    base = await city_tab_base(code)
+    if not base:
+        return None
+    return f"{base}{await tab_suffix(_status_sheet_kind(user.get('participant_type')))}"
+
+
+def _update_status_in_row_range(sheet, target: str, label: str) -> bool:
+    """Shared row scan for a single (sheet, telegram_id) pair — find col1==target and write
+    label into the «Статус» column. False if the status column or the row isn't on this sheet."""
     status_col = _status_col_index(sheet)  # 0-based
     if status_col < 0:
         return False
-    target = str(telegram_id)
     col1 = sheet.col_values(1)
     for row_idx, val in enumerate(col1[1:], start=2):  # skip header
         if (val or "").strip() == target:
@@ -550,23 +592,92 @@ def _update_status_in_sheet_sync(telegram_id: int, label: str) -> bool:
     return False
 
 
-def _bulk_update_status_sync(id_to_label: dict[str, str]) -> int:
-    """Один проход: прочитать col1, записать статусы для всех telegram_id из mapping
-    одним batch_update (quota-friendly для массового одобрения). 0 если колонки нет."""
-    sheet = _get_sheet()
+def _update_status_in_sheet_sync(telegram_id: int, label: str, tab_name: str | None) -> bool:
+    """Write label into the «Статус» column, targeting the resolved city tab first (tab_name,
+    resolved async by the caller via _resolve_status_tab) and falling back to the main sheet if
+    the row isn't there — either because tab_name is None (Moscow/legacy/module-off routing) or
+    because the row predates per-city routing and still lives on the main sheet. False (with a
+    WARNING) if the row isn't found anywhere."""
+    target = str(telegram_id)
+    if tab_name:
+        try:
+            named_sheet = _get_named_sheet(tab_name)
+            if _update_status_in_row_range(named_sheet, target, label):
+                return True
+        except Exception as e:
+            logger.warning(
+                f"_update_status_in_sheet_sync: tab {tab_name!r} lookup failed for "
+                f"telegram_id={telegram_id}, falling back to main sheet: {e}"
+            )
+
+    if _update_status_in_row_range(_get_sheet(), target, label):
+        return True
+
+    logger.warning(
+        f"update_status_in_sheet: telegram_id={telegram_id} not found on tab {tab_name!r} "
+        "or the main sheet"
+    )
+    return False
+
+
+def _bulk_update_status_row_range(sheet, wanted: set[str], id_to_label: dict[str, str]) -> tuple[int, set[str]]:
+    """Shared batch_update pass for one worksheet: writes every id in `wanted` that's found on
+    this sheet's col1, one batch_update for the whole sheet. Returns (updated_count, found_ids)."""
     status_col = _status_col_index(sheet)  # 0-based
     if status_col < 0:
-        return 0
+        return 0, set()
     col1 = sheet.col_values(1)
     updates = []
+    found: set[str] = set()
     for row_idx, val in enumerate(col1[1:], start=2):  # skip header
         key = (val or "").strip()
-        if key in id_to_label:
+        if key in wanted:
             a1 = gspread.utils.rowcol_to_a1(row_idx, status_col + 1)
             updates.append({"range": a1, "values": [[id_to_label[key]]]})
+            found.add(key)
     if updates:
         sheet.batch_update(updates)
-    return len(updates)
+    return len(updates), found
+
+
+def _bulk_update_status_sync(id_to_label: dict[str, str], tab_by_id: dict[str, str | None]) -> int:
+    """Groups ids by their resolved tab (tab_by_id, resolved async by the caller via
+    _resolve_status_tab) and does ONE batch_update per tab (quota-friendly for mass-approve
+    across several cities at once) — mirrors _update_status_in_sheet_sync's per-tab-then-main
+    fallback, just batched. Ids whose resolved (non-main) tab doesn't have their row fall back to
+    a second batch_update pass on the main sheet (legacy rows written before city routing
+    existed). A tab lookup failure (network/API) is logged and skipped rather than aborting the
+    whole batch — one bad city tab must not zero out status sync for every other city.
+    Returns the total number of cells updated."""
+    groups: dict[str, list[str]] = {}
+    for key in id_to_label:
+        groups.setdefault(tab_by_id.get(key) or "", []).append(key)
+
+    total = 0
+    fallback_ids: set[str] = set()
+    for tab_name, ids in groups.items():
+        wanted = set(ids)
+        try:
+            sheet = _get_named_sheet(tab_name) if tab_name else _get_sheet()
+            updated, found = _bulk_update_status_row_range(sheet, wanted, id_to_label)
+            total += updated
+            missing = wanted - found
+        except Exception as e:
+            logger.warning(f"_bulk_update_status_sync: tab {tab_name!r} failed, deferring to main-sheet fallback: {e}")
+            missing = wanted
+        if missing and tab_name:  # non-main tab only — main was already the attempt above
+            fallback_ids |= missing
+        elif missing:
+            for key in missing:
+                logger.warning(f"bulk_update_status_in_sheet: telegram_id={key} not found on the main sheet")
+
+    if fallback_ids:
+        updated, found = _bulk_update_status_row_range(_get_sheet(), fallback_ids, id_to_label)
+        total += updated
+        for key in fallback_ids - found:
+            logger.warning(f"bulk_update_status_in_sheet: telegram_id={key} not found on any resolved tab or the main sheet")
+
+    return total
 
 
 def _rebuild_main_sheet_sync(headers: list[str], rows: list[list]) -> int:
@@ -587,11 +698,16 @@ def _rebuild_main_sheet_sync(headers: list[str], rows: list[list]) -> int:
 
 
 async def update_status_in_sheet(telegram_id: int, label: str) -> bool:
-    """Fail-soft автосинк статуса заявки в таблицу. True если ячейка обновлена."""
+    """Fail-soft автосинк статуса заявки в таблицу. True если ячейка обновлена.
+
+    Quick 260819-sst: resolves the delegate's city tab (_resolve_status_tab, same routing as
+    the live append) BEFORE the asyncio.to_thread hop — get_user/city_tab_base/tab_suffix need
+    a running event loop, which the sync worker thread does not have."""
     if not config.GOOGLE_SHEET_ID or not config.GOOGLE_CREDENTIALS_FILE:
         return False
     try:
-        return await asyncio.to_thread(_update_status_in_sheet_sync, telegram_id, label)
+        tab_name = await _resolve_status_tab(telegram_id)
+        return await asyncio.to_thread(_update_status_in_sheet_sync, telegram_id, label, tab_name)
     except Exception as e:
         _reset_sheet_cache()
         logger.warning(f"update_status_in_sheet({telegram_id}) failed: {e}")
@@ -600,11 +716,22 @@ async def update_status_in_sheet(telegram_id: int, label: str) -> bool:
 
 async def bulk_update_status_in_sheet(id_to_label: dict[str, str]) -> int:
     """Fail-soft массовый автосинк статусов (одобрить все). Возвращает число обновлённых
-    ячеек или -1 при ошибке."""
+    ячеек или -1 при ошибке.
+
+    Quick 260819-sst: resolves every id's city tab (_resolve_status_tab) up front, then groups
+    by tab for a single batch_update per tab — same reasoning as update_status_in_sheet above."""
     if not id_to_label or not config.GOOGLE_SHEET_ID or not config.GOOGLE_CREDENTIALS_FILE:
         return -1
     try:
-        return await asyncio.to_thread(_bulk_update_status_sync, id_to_label)
+        tab_by_id: dict[str, str | None] = {}
+        for key in id_to_label:
+            try:
+                tid = int(key)
+            except (TypeError, ValueError):
+                tab_by_id[key] = None
+                continue
+            tab_by_id[key] = await _resolve_status_tab(tid)
+        return await asyncio.to_thread(_bulk_update_status_sync, id_to_label, tab_by_id)
     except Exception as e:
         _reset_sheet_cache()
         logger.warning(f"bulk_update_status_in_sheet failed: {e}")
