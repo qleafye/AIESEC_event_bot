@@ -182,9 +182,10 @@ def test_incomplete_sheet_row_projects_short_only_field(tmp_path):
 
 def test_admin_export_and_scheduler_sync_both_call_shared_helper():
     import handlers.admin as admin_mod
+    import handlers.admin_settings as admin_settings  # Phase 13 (13-06): settings moved out of admin.py
     import services.scheduler as scheduler_mod
 
-    admin_src = inspect.getsource(admin_mod.export_incomplete)
+    admin_src = inspect.getsource(admin_settings.export_incomplete)
     assert "incomplete_city_batches" in admin_src
 
     scheduler_src = inspect.getsource(scheduler_mod.sync_incomplete_sheet_job)

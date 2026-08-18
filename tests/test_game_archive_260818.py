@@ -271,10 +271,11 @@ def test_mytask_submit_start_default_limit_zero_means_no_limit(tmp_path):
 
 def test_game_resubmit_limit_registered_in_schema_and_admin_field_order():
     from handlers import admin as admin_mod
+    from handlers import admin_settings  # Phase 13 (13-06): settings moved out of admin.py
     assert settings_schema.SETTINGS_SCHEMA["game_resubmit_limit"]["type"] == "int"
     assert settings_schema.SETTINGS_SCHEMA["game_resubmit_limit"]["group"] == "game"
     assert settings_schema.SETTINGS_SCHEMA["game_resubmit_limit"]["default"] == 0
-    assert "game_resubmit_limit" in admin_mod._GAME_FIELD_ORDER
+    assert "game_resubmit_limit" in admin_settings._GAME_FIELD_ORDER
 
 
 # ── Plan 03 Task 1: «📋 Задания» actions + «🗄 Архив» + return-from-archive + caps ────────────

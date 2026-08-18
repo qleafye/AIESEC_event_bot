@@ -15,6 +15,7 @@ import inspect
 from config import config
 from database import db
 from handlers import admin as admin_mod
+from handlers import admin_settings  # Phase 13 (13-06): settings moved out of admin.py
 from handlers.admin_caps import required_capability
 import cities
 
@@ -91,7 +92,7 @@ def test_show_admin_export_module_off_byte_identical_filename_caption(tmp_path):
     _admin_ready(tmp_path)
     _seed_city(1, "spb")
     cb = FakeCallback("admin_export_csv")
-    asyncio.run(admin_mod.show_admin_export(cb))
+    asyncio.run(admin_settings.show_admin_export(cb))
     assert len(cb.message.documents) == 1
     document, caption = cb.message.documents[0]
     assert document.filename == "users.csv"
@@ -102,7 +103,7 @@ def test_show_admin_export_scoped_spb_filename_and_rows(tmp_path):
     _seed_three_cities(tmp_path)
     asyncio.run(cities.set_admin_city(ADMIN_ID, "spb"))
     cb = FakeCallback("admin_export_csv")
-    asyncio.run(admin_mod.show_admin_export(cb))
+    asyncio.run(admin_settings.show_admin_export(cb))
     document, caption = cb.message.documents[0]
     assert document.filename == "users_spb.csv"
     spb_label = asyncio.run(cities.city_label("spb"))
@@ -127,7 +128,7 @@ def test_show_admin_export_default_city_includes_null(tmp_path):
     _seed_three_cities(tmp_path)
     asyncio.run(cities.set_admin_city(ADMIN_ID, "msk"))
     cb = FakeCallback("admin_export_csv")
-    asyncio.run(admin_mod.show_admin_export(cb))
+    asyncio.run(admin_settings.show_admin_export(cb))
     document, _caption = cb.message.documents[0]
     import csv as csv_mod
     import io as io_mod
@@ -145,7 +146,7 @@ def test_show_admin_export_caption_escapes_city_label(tmp_path):
     asyncio.run(db.set_setting("city_label__spb", "<script>alert(1)</script>"))
     asyncio.run(cities.set_admin_city(ADMIN_ID, "spb"))
     cb = FakeCallback("admin_export_csv")
-    asyncio.run(admin_mod.show_admin_export(cb))
+    asyncio.run(admin_settings.show_admin_export(cb))
     _document, caption = cb.message.documents[0]
     assert "<script>alert(1)</script>" not in caption
     assert "&lt;script&gt;" in caption
@@ -164,7 +165,7 @@ def test_show_admin_export_is_capability_guarded(tmp_path):
 
 
 def test_export_incomplete_calls_batches_helper_without_city_arg():
-    src = inspect.getsource(admin_mod.export_incomplete)
+    src = inspect.getsource(admin_settings.export_incomplete)
     assert "incomplete_city_batches()" in src
 
 

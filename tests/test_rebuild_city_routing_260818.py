@@ -11,6 +11,7 @@ Handler called directly (established idiom, see test_rebuild_confirm_260813_sdl.
 import asyncio
 
 from handlers import admin as admin_mod
+from handlers import admin_settings  # Phase 13 (13-06): settings moved out of admin.py
 from tests.test_rebuild_confirm_260813_sdl import _FakeCallback, ADMIN_ID
 
 
@@ -47,14 +48,14 @@ def _wire(monkeypatch, route):
     async def fake_kb(uid):
         return None
 
-    monkeypatch.setattr(admin_mod, "active_sheet_headers", fake_headers)
-    monkeypatch.setattr(admin_mod, "get_all_users_dicts", fake_users)
-    monkeypatch.setattr(admin_mod, "rebuild_main_sheet", fake_rebuild)
-    monkeypatch.setattr(admin_mod, "sync_named_worksheet", fake_sync)
-    monkeypatch.setattr(admin_mod, "set_sheet_schema", fake_schema)
-    monkeypatch.setattr(admin_mod, "admin_keyboard_for", fake_kb)
-    monkeypatch.setattr(admin_mod, "_sheet_value_map", lambda u: {"ID": u["telegram_id"]})
-    monkeypatch.setattr(admin_mod, "city_row_tab", route)
+    monkeypatch.setattr(admin_settings, "active_sheet_headers", fake_headers)
+    monkeypatch.setattr(admin_settings, "get_all_users_dicts", fake_users)
+    monkeypatch.setattr(admin_settings, "rebuild_main_sheet", fake_rebuild)
+    monkeypatch.setattr(admin_settings, "sync_named_worksheet", fake_sync)
+    monkeypatch.setattr(admin_settings, "set_sheet_schema", fake_schema)
+    monkeypatch.setattr(admin_settings, "admin_keyboard_for", fake_kb)
+    monkeypatch.setattr(admin_settings, "_sheet_value_map", lambda u: {"ID": u["telegram_id"]})
+    monkeypatch.setattr(admin_settings, "city_row_tab", route)
     return main_calls, named_calls
 
 
@@ -64,7 +65,7 @@ def test_rebuild_routes_rows_by_city_when_module_on(monkeypatch):
 
     main_calls, named_calls = _wire(monkeypatch, route)
     cb = _FakeCallback(ADMIN_ID)
-    asyncio.run(admin_mod.rebuild_sheet(cb))
+    asyncio.run(admin_settings.rebuild_sheet(cb))
 
     assert main_calls == [[[1], [2]]]  # msk + NULL city only
     assert sorted(named_calls) == [("СПб", [[3], [4]]), ("Тюмень", [[5]])]
@@ -78,7 +79,7 @@ def test_rebuild_module_off_is_old_behaviour(monkeypatch):
 
     main_calls, named_calls = _wire(monkeypatch, route)
     cb = _FakeCallback(ADMIN_ID)
-    asyncio.run(admin_mod.rebuild_sheet(cb))
+    asyncio.run(admin_settings.rebuild_sheet(cb))
 
     assert main_calls == [[[1], [2], [3], [4], [5]]]
     assert named_calls == []
@@ -94,7 +95,7 @@ def test_rebuild_refused_main_does_not_touch_city_tabs(monkeypatch):
     async def refused(headers, rows):
         return admin_mod.REFUSED_UNPINNED_TAB
 
-    monkeypatch.setattr(admin_mod, "rebuild_main_sheet", refused)
+    monkeypatch.setattr(admin_settings, "rebuild_main_sheet", refused)
     cb = _FakeCallback(ADMIN_ID)
-    asyncio.run(admin_mod.rebuild_sheet(cb))
+    asyncio.run(admin_settings.rebuild_sheet(cb))
     assert named_calls == []  # main refused -> nothing else is wiped either
