@@ -409,3 +409,47 @@ def test_stale_screen_without_state_data(tmp_path):
 
     asyncio.run(go())
 
+
+
+# ── UAT 19.08: напоминание про Google-таблицу при смене сезона ─────────────────────────────
+
+def _assert_sheet_reminder(text: str):
+    from settings_schema import SETTINGS_SCHEMA
+    assert "таблиц" in text.lower()
+    assert "Настройки" in text
+    # реальный лейбл настройки вкладки, а не код ключа
+    assert SETTINGS_SCHEMA["main_sheet_tab"]["label"] in text
+    assert "main_sheet_tab" not in text
+
+
+def test_confirm_screen_reminds_about_sheet(tmp_path):
+    _db_ready(tmp_path)
+
+    async def go():
+        await db.set_setting("event_season", "YL'25")
+        state = _new_state(ADMIN_ID)
+        await state.set_state(SeasonReset.naming)
+        await state.update_data(season_old="YL'25")
+        message = _FakeMessage(ADMIN_ID, "YL'26")
+        await admin_cities.season_reset_name_step(message, state)
+        text, _markup = message.sent[0]
+        _assert_sheet_reminder(text)
+
+    asyncio.run(go())
+
+
+def test_final_screen_reminds_about_sheet(tmp_path):
+    _db_ready(tmp_path)
+
+    async def go():
+        await db.set_setting("event_season", "YL'25")
+        state = _new_state(ADMIN_ID)
+        await state.set_state(SeasonReset.passphrase)
+        await state.update_data(season_old="YL'25", season_new="YL'26", season_phrase="YL'25")
+        message = _FakeMessage(ADMIN_ID, "YL'25")
+        await admin_cities.season_reset_passphrase_step(message, state)
+        text, _markup = message.sent[0]
+        assert "Новый сезон" in text
+        _assert_sheet_reminder(text)
+
+    asyncio.run(go())

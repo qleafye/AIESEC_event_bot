@@ -22,7 +22,7 @@ from aiogram.fsm.context import FSMContext
 from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup, ReplyKeyboardRemove
 
 from config import config
-from settings_schema import get_setting_typed
+from settings_schema import get_setting_typed, SETTINGS_SCHEMA
 from database.db import (
     get_setting,
     set_setting,
@@ -493,6 +493,18 @@ async def city_delete_go(callback: types.CallbackQuery):
 # "НОВЫЙ СЕЗОН" if there was none) gate the actual bulk UPDATE, and the action is logged with
 # the admin's id before the reply is sent.
 
+def _season_sheet_reminder() -> str:
+    """UAT 19.08: при смене сезона менеджер должен завести новую Google-таблицу/вкладки и
+    переключить бота на них — иначе новые регистрации поедут в прошлогоднюю таблицу.
+    Лейбл настройки берём из реестра, чтобы подсказка не разъехалась с экраном настроек."""
+    tab_label = SETTINGS_SCHEMA["main_sheet_tab"]["label"]
+    return (
+        "📄 <b>Не забудь про таблицу:</b> создай новую Google-таблицу (или новые вкладки) под "
+        "новый сезон и обнови название вкладки в боте: "
+        f"⚙️ Настройки → 📄 Вкладки таблицы → «{html_module.escape(tab_label)}»."
+    )
+
+
 @router.callback_query(F.data == "admin_season_reset")
 async def season_reset_start(callback: types.CallbackQuery, state: FSMContext):
     # Positive-form idiom (byte-identical to roles_city_start/admin_city_switch) — D-01/T-08-18's
@@ -555,6 +567,7 @@ async def season_reset_name_step(message: types.Message, state: FSMContext):
         f"• {n} делегатов текущего сезона станут «прошлыми»\n"
         "• статусы, монеты и чеки не трогаем, база не чистится\n"
         "• они смогут обновить анкету по /start\n\n"
+        f"{_season_sheet_reminder()}\n\n"
         "Продолжить?",
         parse_mode="HTML",
         reply_markup=kb,
@@ -612,7 +625,8 @@ async def season_reset_passphrase_step(message: types.Message, state: FSMContext
     )
     await message.answer(
         f"✅ Новый сезон: <b>{html_module.escape(new)}</b>\nПрошлыми отмечены: {affected}\n\n"
-        "Статусы, монеты и чеки не тронуты.",
+        "Статусы, монеты и чеки не тронуты.\n\n"
+        f"{_season_sheet_reminder()}",
         parse_mode="HTML",
         reply_markup=ReplyKeyboardRemove(),
     )
