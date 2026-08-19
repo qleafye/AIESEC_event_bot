@@ -41,3 +41,12 @@ def test_dockerfile_runs_as_non_root_fixed_uid():
     # USER must come before CMD and after the COPY of sources
     assert body.index("USER appuser") < body.index('CMD ["python", "main.py"]')
     assert any(ln.startswith("COPY --chown=appuser:appuser . .") for ln in body)
+
+
+def test_dockerfile_has_heartbeat_healthcheck():
+    """Quick 260819: HEALTHCHECK по heartbeat-файлу (services/heartbeat.py), не `pgrep`/`true`."""
+    df = (ROOT / "Dockerfile").read_text(encoding="utf-8")
+    hc = [ln for ln in df.splitlines() if ln.startswith("HEALTHCHECK")]
+    assert len(hc) == 1
+    assert "python -m services.heartbeat --check" in hc[0]
+    assert "HEALTHCHECK NONE" not in df
