@@ -43,6 +43,7 @@ from services.sheets import (
     tab_row_count,
 )
 from handlers.states import EditSetting
+from handlers.settings_validation import validate_setting_value
 from keyboards.builders import MENU_BUTTONS
 from handlers.reg_schema import (
     REG_FLOW,
@@ -1715,6 +1716,15 @@ async def settings_edit_value(message: types.Message, state: FSMContext):
         if code != await admin_selected_city(admin_id):
             await state.clear()
             await message.answer("Город админки изменился — начните правку заново.")
+            return
+
+    # Quick 260819: type-aware validation (int / enum) BEFORE any write — see
+    # handlers/settings_validation.py. On failure nothing is written and the FSM stays in
+    # waiting_for_value so the admin just retypes. "-" (reset) bypasses validation.
+    if value != "-":
+        value, error = validate_setting_value(key, value)
+        if error:
+            await message.answer(error, parse_mode="HTML")
             return
 
     # Quick 260815-3hw (Task 3): confirm-gate before silently overwriting an EXISTING Google
