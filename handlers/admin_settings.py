@@ -62,6 +62,7 @@ from cities import (
     ALL_CITIES,
     is_per_city,
     per_city_key,
+    split_per_city_key,
     city_override_codes,
     get_setting_typed_for_city,
     PER_CITY_SEP,
@@ -705,6 +706,13 @@ async def settings_regmode_reset(callback: types.CallbackQuery):
 async def settings_regmode_reset_go(callback: types.CallbackQuery):
     admin_id = callback.from_user.id
     code = callback.data.split(":", 1)[1]
+    # Fail-closed (RESEARCH Pattern 2 / review WR-02): module off never deletes a per-city
+    # override, even on a forged callback — the same explicit local guard every sibling
+    # reset/edit write handler has (settings_reset_city_go, menu_reset_city_go), instead of
+    # relying implicitly on admin_selected_city() returning None when the module is off.
+    if not await cities_module_on():
+        await callback.answer("Города выключены", show_alert=True)
+        return
 
     # T-093-13: composed key comes ONLY from cities.per_city_key — refuse on an unknown code
     # before touching rights or freshness (mirrors settings_reset_city_go's own guard order).
@@ -1641,6 +1649,29 @@ async def settings_edit_value(message: types.Message, state: FSMContext):
             parse_mode="HTML",
         )
         return
+
+    # Review 09.3 WR-01 (TOCTOU): for a per-city composite key the RIGHT to write is
+    # re-checked HERE, at write time — not only in settings_edit_city at FSM-entry time. The
+    # composed key sat in FSM data while the admin typed; meanwhile their city binding may
+    # have changed or they may have moved the header. Same guard order as
+    # settings_reset_city_go: known code -> module on -> right -> freshness; on any failure
+    # nothing is written and the FSM is cleared (fail-closed). Non-per-city keys are untouched.
+    if PER_CITY_SEP in key:
+        parsed = split_per_city_key(key)
+        admin_id = message.from_user.id
+        if parsed is None or not await cities_module_on():
+            await state.clear()
+            await message.answer("Города выключены — правка отменена.")
+            return
+        _base, code = parsed
+        if code not in await _per_city_visible_codes(admin_id):
+            await state.clear()
+            await message.answer("Этот город правит суперадмин — правка отменена.")
+            return
+        if code != await admin_selected_city(admin_id):
+            await state.clear()
+            await message.answer("Город админки изменился — начните правку заново.")
+            return
 
     # Quick 260815-3hw (Task 3): confirm-gate before silently overwriting an EXISTING Google
     # Sheets tab — only for keys the bot actually writes to (_SHEET_TAB_WRITE_MODE);
