@@ -26,7 +26,10 @@ from database.db import (
     count_coin_entries_for_user,
 )
 from handlers.admin_caps import notify_by_capability  # D-13: fan out by capability, not bare ADMIN_IDS
-from handlers.game_labels import category_label, proof_types_label  # Phase 16 (16-01): single RU-label source
+from handlers.game_labels import (  # Phase 16 (16-01): single RU-label source; 16-03: shared card render
+    category_label, proof_types_label,
+    render_task_card_text as _render_task_card_text, task_deadline_short as _game_task_deadline_short,
+)
 from handlers.game_submit_counter import (  # Phase 16 (16-02): editable submission counter (Экран 3)
     game_counter_text as _game_counter_text, game_counter_kb as _game_counter_kb, edit_counter as _edit_counter,
 )
@@ -258,16 +261,8 @@ async def show_leaderboard(message: types.Message):
 PAGE_SIZE = 6  # Phase 16 (16-01): delegate task-list page size (CONTEXT.md "5-6 заданий на страницу")
 
 
-def _game_task_deadline_short(task: dict) -> tuple[str, bool]:
-    """(dd.mm display, is_overdue) — shared by the list line, the button label truncation
-    logic below (via task_title), and the card. Quick 260819-gtl: the list line now shows a
-    short dd.mm date (CONTEXT.md decision 3), not the full dd.mm.yyyy hh:mm the pre-existing
-    card/prompt strings still use elsewhere in this file."""
-    try:
-        dt = datetime.strptime(task["deadline_at"], "%Y-%m-%d %H:%M:%S")
-        return dt.strftime("%d.%m"), dt <= datetime.now()
-    except (TypeError, ValueError):
-        return str(task["deadline_at"] or "—"), False
+# `_game_task_deadline_short` -> handlers/game_labels.py::task_deadline_short (16-03), imported
+# above under the old name so every existing call site/test keeps working unchanged.
 
 
 async def _render_game_task_line(
@@ -392,28 +387,9 @@ def _submit_button_label(task: dict) -> str:
     return f"📤 {name}"
 
 
-async def _render_task_card_text(task: dict, status_line: str, attempt: int | None) -> str:
-    """Phase 16 (16-01, GAME-UI-01): the task CARD shown when a delegate taps a task's button
-    on the list -- title, RU category/coins/deadline, a composed status/attempt line, a
-    proof-type hint, and the full description in a `<blockquote expandable>` (HTML-escaped
-    BEFORE wrapping -- T-16-01-03). Caller truncates the RESULT for a photo caption's 1024-char
-    limit (this function itself targets the no-photo/plain-message path, no ceiling of its
-    own). `attempt` is accepted for interface parity with the caller (pre-composed into
-    `status_line` already, not re-derived here)."""
-    title = html.escape(task_title(task))
-    category = await category_label(task["category"])
-    deadline, overdue = _game_task_deadline_short(task)
-    lines = [f"<b>{title}</b>", f"{category} · {task['coins']}🪙 · до {deadline}"]
-    if overdue:
-        # A-05 (созвон 13.08): дедлайн мягкий, сдача разрешена, решение по коинам остаётся за
-        # менеджером. Phase 17.1 (17.1-01): сама формулировка — в реестре.
-        lines.append(await get_setting_typed("game_task_overdue_hint_text"))
-    status_label = await get_setting_typed("game_task_detail_status_label")
-    lines.append(status_label.format(status=status_line))
-    lines.append(f"Нужно прислать: {await proof_types_label(task.get('proof_type'))}")
-    lines.append("")
-    lines.append(f"<blockquote expandable>{html.escape(str(task['text']))}</blockquote>")
-    return "\n".join(lines)
+# `_render_task_card_text` -> handlers/game_labels.py::render_task_card_text (16-03, GAME-UI-03):
+# the manager's «👁 Как видит делегат» / wizard preview render the SAME card via the same
+# function -- imported above under the old name (tests call `ua_mod._render_task_card_text`).
 
 
 def _game_task_card_kb(task_id: int, can_submit: bool) -> InlineKeyboardMarkup:

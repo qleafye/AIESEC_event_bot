@@ -1,6 +1,9 @@
 """Phase 13 (13-04, REFAC-01): gamification-admin seam.
 
-Task creation/archive/delete wizard ("📋 Задания" + GameTaskCreate wizard), the "🪙 Монеты
+Task creation/archive/delete wizard ("🎯 Задания" + GameTaskCreate wizard; Phase 16 (16-03):
+the NEW point-edit/preset/preview/«✏️ Изменить» handlers live in handlers/admin_game_tasks.py,
+imported right after this module in admin.py's seam list -- this file was at its size
+ceiling), the "🪙 Монеты
 вручную" manual-coins wizard (coinsman_*) + "📜 Журнал монет" (coinsjrn_*), submission review
 (grev_*, GameReview wizard), Sheets sync ("🔄 Таблица геймы") and the "📊 Статистика геймы"
 screen — everything gated by moderate_game (ADMIN_CAPS, pre-registered 09-01). Decorates the
@@ -78,6 +81,13 @@ from services.game_sheets import describe_plan, game_tab_plan, rows_for_entry
 from services.scheduler import _fmt_dt, _now_moscow_naive, _parse_schedule_dt
 from services.game_sync import request_resync as _request_game_resync, set_rebuild as _set_game_rebuild
 from handlers.states import CoinsManual, GameReview, GameTaskCreate, GameTaskEdit
+from handlers.game_labels import category_label  # Phase 16 (16-01/16-03): RU labels, one source
+from handlers.game_task_wizard import (  # Phase 16 (16-03): pure wizard helpers (no router) -- shared
+    _DEADLINE_PAST, _PROMPT_CATEGORY, _PROMPT_COINS, _PROMPT_COINS_INVALID, _PROMPT_DEADLINE,  # noqa: F401
+    _PROMPT_TEXT, _PROMPT_TEXT_EMPTY, _finish_deadline_step, _game_task_confirm_kb,  # noqa: F401
+    _game_task_deadline_preset_kb, _render_game_task_confirm_card, _resolve_deadline_preset,  # noqa: F401
+    _show_wizard_preview, _wizard_return_to_preview,  # noqa: F401
+)
 from cities import (
     admin_selected_city,
     cities_module_on,
@@ -110,106 +120,128 @@ logger = logging.getLogger(__name__)
 # moderation queue wave 4 will add. T-09-05: task text is shown to every delegate later
 # (wave 3, parse_mode="HTML") — escaped on EVERY render, not just once at creation.
 
-def _game_task_line(t: dict) -> str:
-    """Byte-identical row format shared by both the active-tasks screen and the archive
-    screen — the ONE place a task row is rendered (Task 1, 14-03: replaces the old
-    `_render_game_tasks_text`'s inline loop body)."""
+def _game_task_deadline_display(t: dict) -> str:
+    """dd.mm HH:MM (sketch, Экран 6) -- season lives inside one year, the year is noise for a
+    manager scanning 10-20 rows; the full date is still on the edit card's prompt."""
     try:
-        deadline = datetime.strptime(t["deadline_at"], "%Y-%m-%d %H:%M:%S").strftime("%d.%m.%Y %H:%M")
+        return datetime.strptime(t["deadline_at"], "%Y-%m-%d %H:%M:%S").strftime("%d.%m %H:%M")
     except (TypeError, ValueError):
-        deadline = str(t["deadline_at"] or "—")
-    # Quick 260819-gtl (CONTEXT.md decision 3): title (with the same first-line fallback the
-    # delegate's own list uses), not a raw text preview.
+        return str(t["deadline_at"] or "—")
+
+
+async def _game_task_line(t: dict, index: int) -> str:
+    """The ONE place a manager-side task row is rendered (shared by the active list and the
+    archive). Phase 16 (16-03, GAME-UI-03): numbered two-line shape (mirrors the delegate list
+    of 16-01, minus the per-row status emoji -- the manager sees archived/active as screens,
+    not per row), RU category via game_labels.category_label -- the raw code never reaches a
+    human (CONTEXT.md «кодов человеку не показываем»). Number is the ONLY link between a text
+    row and its «№N» action buttons (Telegram can't attach a button to a paragraph)."""
     title = html_module.escape(task_title(t))
-    category = html_module.escape(str(t["category"]))
-    return f"«{category}» {title} · {t['coins']}🪙 · до {deadline}"
+    category = html_module.escape(await category_label(str(t["category"])))
+    return (
+        f"{index}. <b>{title}</b>\n"
+        f"{category} · {t['coins']}🪙 · до {_game_task_deadline_display(t)}"
+    )
+
+
+def _game_tasks_toggle_row(active_count: int, archived_count: int) -> list[InlineKeyboardButton]:
+    """«Активные (N) | Архив (M)» -- both callback_data values are the pre-existing screen
+    entries (admin_game_tasks / admin_game_archive), tapping the side you're already on just
+    re-renders the same screen (Telegram has no disabled-button API)."""
+    return [
+        InlineKeyboardButton(text=f"Активные ({active_count})", callback_data="admin_game_tasks"),
+        InlineKeyboardButton(text=f"Архив ({archived_count})", callback_data="admin_game_archive"),
+    ]
 
 
 async def _game_tasks_screen() -> tuple[str, InlineKeyboardMarkup]:
-    """«Функция возвращает (text, kb)» idiom (same shape as this file's other render-helper
-    functions) — replaces the old two-function pair (Phase 9's list-text renderer + its
-    keyboard builder) so the four
-    existing re-render call sites (`show_game_tasks`, `cancel_game_task_create`,
-    `game_task_confirm`, `game_task_create_cancel`) can never drift on format.
-    Task 1 (14-03, GAME-08).
+    """«Функция возвращает (text, kb)» idiom -- the four re-render call sites
+    (`show_game_tasks`, `cancel_game_task_create`, `game_task_confirm`,
+    `game_task_create_cancel`) can never drift on format. Task 1 (14-03, GAME-08).
 
-    Only ACTIVE tasks are listed here — archived tasks live on the separate «🗄 Архив» screen
-    (`_game_archive_screen`). Per task: «🗄 В архив» always, «🗑 Удалить» only if the task has
-    zero submissions of any status (T-14-11/T-14-12: the SQL-level gate in `delete_task` is the
-    real defense, this is only the UX hint of when the button is even offered)."""
+    Phase 16 (16-03, GAME-UI-03): numbered rows + a toggle row on top + one action row PER
+    task «🗄 №N В архив / ✏️ №N / 🗑 №N» (delete only with zero submissions -- T-14-11/T-14-12:
+    the SQL-level gate in `delete_task` is the real defense, this is only the UX hint)."""
     all_tasks = await list_all_tasks()
     active = [t for t in all_tasks if not t.get("archived_at")]
     archived_count = sum(1 for t in all_tasks if t.get("archived_at"))
 
     buttons: list[list[InlineKeyboardButton]] = []
+    if all_tasks:
+        buttons.append(_game_tasks_toggle_row(len(active), archived_count))
     hidden_delete = False
-    for t in active:
-        name = task_title(t)[:20]
-        row = [InlineKeyboardButton(text=f"🗄 В архив: {name}", callback_data=f"gtarchive:{t['id']}")]
+    lines = []
+    for n, t in enumerate(active, start=1):
+        lines.append(await _game_task_line(t, n))
+        row = [
+            InlineKeyboardButton(text=f"🗄 №{n} В архив", callback_data=f"gtarchive:{t['id']}"),
+            InlineKeyboardButton(text=f"✏️ №{n}", callback_data=f"gtedit:{t['id']}"),
+        ]
         if await count_task_submissions(t["id"]) == 0:
-            row.append(InlineKeyboardButton(text="🗑 Удалить", callback_data=f"gtdelete:{t['id']}"))
+            row.append(InlineKeyboardButton(text=f"🗑 №{n}", callback_data=f"gtdelete:{t['id']}"))
         else:
             hidden_delete = True
         buttons.append(row)
-        # Quick 260819-gtl (CONTEXT.md decisions 1/4): point-edit entry per active task --
-        # own row (not squeezed into the archive/delete row above) so the label never gets
-        # ellipsis-truncated by Telegram's client-side per-button width limit.
-        buttons.append([InlineKeyboardButton(text=f"✏️ Правка: {name}", callback_data=f"gtedit:{t['id']}")])
 
     if not active:
         text = "Заданий пока нет."
+        if archived_count:
+            text += f"\n\n🗄 В архиве: {archived_count}"
     else:
-        lines = ["📋 <b>Задания</b>\n"] + [_game_task_line(t) for t in active]
+        parts = ["🎯 <b>Задания</b>", "\n\n".join(lines)]
         if hidden_delete:
-            lines.append(
-                "\n🗑 У заданий со сдачами удаления нет — по ним уже есть история. Такое "
+            parts.append(
+                "🗑 У заданий со сдачами удаления нет — по ним уже есть история. Такое "
                 "задание можно только убрать в архив."
             )
         if archived_count:
-            lines.append(f"\n🗄 В архиве: {archived_count}")
-        text = "\n".join(lines)
+            parts.append(f"🗄 В архиве: {archived_count}")
+        text = "\n\n".join(parts)
 
     buttons.append([InlineKeyboardButton(text="➕ Новое задание", callback_data="gtnew")])
-    if archived_count:
-        buttons.append([InlineKeyboardButton(
-            text=f"🗄 Архив ({archived_count})", callback_data="admin_game_archive",
-        )])
     return text, InlineKeyboardMarkup(inline_keyboard=buttons)
 
 
 async def _game_archive_screen() -> tuple[str, InlineKeyboardMarkup]:
-    """«🗄 Архив» screen: archived tasks + «↩️ Вернуть» per row. Return-from-archive is a SAFE
-    operation (CONTEXT.md decision A) — no confirm step, unlike archive/delete. Task 1
-    (14-03, GAME-08)."""
+    """«Архив» side of the toggle: numbered archived rows + «↩️ №N Вернуть» per row.
+    Return-from-archive is a SAFE operation (CONTEXT.md decision A) -- no confirm step,
+    unlike archive/delete. Task 1 (14-03, GAME-08); Phase 16 (16-03): toggle + numbering."""
     all_tasks = await list_all_tasks()
     archived = [t for t in all_tasks if t.get("archived_at")]
+    active_count = len(all_tasks) - len(archived)
+
+    lines = []
+    buttons: list[list[InlineKeyboardButton]] = []
+    if all_tasks:
+        buttons.append(_game_tasks_toggle_row(active_count, len(archived)))
+    for n, t in enumerate(archived, start=1):
+        try:
+            archived_at = datetime.strptime(t["archived_at"], "%Y-%m-%d %H:%M:%S").strftime("%d.%m")
+        except (TypeError, ValueError):
+            archived_at = str(t["archived_at"] or "—")
+        lines.append(f"{await _game_task_line(t, n)} · в архиве с {archived_at}")
+        buttons.append([InlineKeyboardButton(text=f"↩️ №{n} Вернуть", callback_data=f"gtunarchive:{t['id']}")])
 
     if not archived:
         text = "Архив пуст."
     else:
-        lines = ["🗄 <b>Архив</b>\n"]
-        for t in archived:
-            try:
-                archived_at = datetime.strptime(t["archived_at"], "%Y-%m-%d %H:%M:%S").strftime("%d.%m.%Y")
-            except (TypeError, ValueError):
-                archived_at = str(t["archived_at"] or "—")
-            lines.append(f"{_game_task_line(t)} · 🗄 в архиве с {archived_at}")
-        text = "\n".join(lines)
-
-    buttons = [
-        [InlineKeyboardButton(
-            text=f"↩️ Вернуть: {task_title(t)[:20]}", callback_data=f"gtunarchive:{t['id']}",
-        )]
-        for t in archived
-    ]
-    buttons.append([InlineKeyboardButton(text="← К заданиям", callback_data="admin_game_tasks")])
+        text = "🗄 <b>Задания · Архив</b>\n\n" + "\n\n".join(lines)
+    if not all_tasks:
+        buttons.append([InlineKeyboardButton(text="← К заданиям", callback_data="admin_game_tasks")])
     return text, InlineKeyboardMarkup(inline_keyboard=buttons)
 
 
 @router.callback_query(F.data == "admin_game_tasks")
 async def show_game_tasks(callback: types.CallbackQuery, state: FSMContext):
+    """Phase 16 (16-03): edits IN PLACE (symmetric with show_game_archive) -- reachable from
+    the toggle row, «← К заданиям», the confirm screens' «← Отмена» AND the admin menu; one
+    live message per screen. Fail-soft fallback to a fresh message when the source cannot be
+    edited (a photo message, an already-deleted one)."""
     text, kb = await _game_tasks_screen()
-    await callback.message.answer(text, parse_mode="HTML", reply_markup=kb)
+    try:
+        await callback.message.edit_text(text, parse_mode="HTML", reply_markup=kb)
+    except Exception:
+        await callback.message.answer(text, parse_mode="HTML", reply_markup=kb)
     await callback.answer()
 
 
@@ -381,7 +413,9 @@ async def game_task_title_step(message: types.Message, state: FSMContext):
         await message.answer("Название не может быть пустым. Введите название задания:")
         return
     await state.update_data(gt_title=title)
-    await message.answer("Введите текст задания:", reply_markup=get_cancel_kb())
+    if await _wizard_return_to_preview(message, state):
+        return
+    await message.answer(_PROMPT_TEXT, reply_markup=get_cancel_kb())
     await state.set_state(GameTaskCreate.text)
 
 
@@ -395,9 +429,12 @@ _GAME_PROOF_LABELS = {
 }
 
 
-def _game_task_category_kb() -> InlineKeyboardMarkup:
+async def _game_task_category_kb() -> InlineKeyboardMarkup:
+    """Phase 16 (16-03): button TEXT is the RU label (game_labels.category_label), the
+    callback_data stays the raw code (`gtcat:{cat}`) -- DB storage format unchanged."""
     return InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text=cat, callback_data=f"gtcat:{cat}")] for cat in GAME_CATEGORIES
+        [InlineKeyboardButton(text=await category_label(cat), callback_data=f"gtcat:{cat}")]
+        for cat in GAME_CATEGORIES
     ])
 
 
@@ -459,47 +496,6 @@ async def _game_task_city_kb(admin_id: int) -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(inline_keyboard=rows)
 
 
-def _game_task_confirm_kb() -> InlineKeyboardMarkup:
-    return InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="✅ Создать", callback_data="gtconfirm")],
-        [InlineKeyboardButton(text="❌ Отмена", callback_data="gtcancel")],
-    ])
-
-
-def _render_game_task_confirm_card(data: dict) -> str:
-    """T-09-05: the task text is shown to every delegate later (wave 3) with
-    `parse_mode="HTML"` -- escaped here too, not just once at the eventual delegate render."""
-    deadline_raw = data.get("gt_deadline")
-    try:
-        deadline_display = datetime.strptime(deadline_raw, "%Y-%m-%d %H:%M:%S").strftime("%d.%m.%Y %H:%M")
-    except (TypeError, ValueError):
-        deadline_display = str(deadline_raw or "—")
-    proof_label = _proof_types_label(data.get("gt_proof_type"))
-    # Phase 09.1 (B): the "Кому:" line only appears when the city step was actually shown
-    # (gt_city_step_shown, set in game_task_proof_done below) -- this function is synchronous
-    # and cannot itself call cities_module_on(), so the caller resolves that once and hands
-    # the result down via state data, same "resolve once, derive everything from it" shape
-    # as _admin_city_view.
-    city_line = ""
-    if data.get("gt_city_step_shown"):
-        city_label_text = data.get("gt_event_city_label") or "🌍 Все города"
-        city_line = f"Кому: {html_module.escape(str(city_label_text))}\n"
-    # Quick 260819-gtl (CONTEXT.md decision 7): preview shows the title first (same field the
-    # delegate list/card render), plus whether a cover photo is attached.
-    photo_line = "📷 Фото: приложено\n" if data.get("gt_photo_file_id") else ""
-    return (
-        "📋 <b>Проверьте задание</b>\n\n"
-        f"Название: {html_module.escape(str(data.get('gt_title')))}\n"
-        f"Текст: {html_module.escape(str(data.get('gt_text')))}\n"
-        f"Категория: {html_module.escape(str(data.get('gt_category')))}\n"
-        f"Коины: {data.get('gt_coins')}\n"
-        f"Подтверждение: {proof_label}\n"
-        f"{city_line}"
-        f"{photo_line}"
-        f"Дедлайн: {deadline_display}"
-    )
-
-
 def _game_task_photo_kb() -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text="⏭ Пропустить", callback_data="gtphoto_skip")],
@@ -510,9 +506,11 @@ def _game_task_photo_kb() -> InlineKeyboardMarkup:
 async def game_task_text_step(message: types.Message, state: FSMContext):
     text = (message.text or "").strip()
     if not text:
-        await message.answer("Текст не может быть пустым. Введите текст задания:")
+        await message.answer(_PROMPT_TEXT_EMPTY)
         return
     await state.update_data(gt_text=text)
+    if await _wizard_return_to_preview(message, state):
+        return
     # Quick 260819-gtl (CONTEXT.md decision 4): photo step right after the description.
     prompt = await get_setting_typed("game_task_photo_prompt")
     await message.answer(prompt, reply_markup=_game_task_photo_kb())
@@ -523,14 +521,19 @@ async def game_task_text_step(message: types.Message, state: FSMContext):
 async def game_task_photo_step(message: types.Message, state: FSMContext):
     file_id = message.photo[-1].file_id
     await state.update_data(gt_photo_file_id=file_id)
-    await message.answer("Выберите категорию:", reply_markup=_game_task_category_kb())
+    if await _wizard_return_to_preview(message, state):
+        return
+    await message.answer(_PROMPT_CATEGORY, reply_markup=await _game_task_category_kb())
     await state.set_state(GameTaskCreate.category)
 
 
 @router.callback_query(F.data == "gtphoto_skip")
 async def game_task_photo_skip(callback: types.CallbackQuery, state: FSMContext):
     await state.update_data(gt_photo_file_id=None)
-    await callback.message.answer("Выберите категорию:", reply_markup=_game_task_category_kb())
+    if await _wizard_return_to_preview(callback.message, state):
+        await callback.answer()
+        return
+    await callback.message.answer(_PROMPT_CATEGORY, reply_markup=await _game_task_category_kb())
     await state.set_state(GameTaskCreate.category)
     await callback.answer()
 
@@ -549,7 +552,10 @@ async def game_task_category_step(callback: types.CallbackQuery, state: FSMConte
         await callback.answer("Некорректная категория", show_alert=True)
         return
     await state.update_data(gt_category=cat)
-    await callback.message.answer("Сколько монет за это задание?", reply_markup=get_cancel_kb())
+    if await _wizard_return_to_preview(callback.message, state):
+        await callback.answer()
+        return
+    await callback.message.answer(_PROMPT_COINS, reply_markup=get_cancel_kb())
     await state.set_state(GameTaskCreate.coins)
     await callback.answer()
 
@@ -558,9 +564,12 @@ async def game_task_category_step(callback: types.CallbackQuery, state: FSMConte
 async def game_task_coins_step(message: types.Message, state: FSMContext):
     value = _parse_positive_int(message.text)
     if value is None:
-        await message.answer("Введите положительное целое число монет:")
+        await message.answer(_PROMPT_COINS_INVALID)
         return
-    await state.update_data(gt_coins=value, gt_proof_types=[])
+    await state.update_data(gt_coins=value)
+    if await _wizard_return_to_preview(message, state):
+        return
+    await state.update_data(gt_proof_types=[])
     await message.answer(
         "Что должен прислать делегат? Отметьте сколько угодно типов (или ни одного):",
         reply_markup=_game_task_proof_kb(set()),
@@ -592,12 +601,13 @@ async def game_task_proof_step(callback: types.CallbackQuery, state: FSMContext)
 
 
 async def _game_task_deadline_prompt(target, state: FSMContext):
-    """Shared by game_task_proof_done (module off) and game_task_city_step (module on) --
-    same prompt/state either way, CONTEXT.md B: "выключен → шаг пропущен... ни одной новой
-    кнопки"."""
+    """Shared by game_task_proof_done (module off), game_task_city_step (module on) and the
+    final-step «✏️ Изменить → 📅 Дедлайн» re-entry -- same prompt/state either way. Phase 16
+    (16-03): ONE message -- the prompt carries the inline preset keyboard (сегодня 23:59 / +3 /
+    +7 / своя дата / отмена); the reply «Отмена» keyboard from the earlier free-text steps is
+    still on screen, and typed «Отмена»/`/cancel` keep working via cancel_game_task_create."""
     await target.answer(
-        "Дедлайн сдачи? Формат ДД.ММ.ГГГГ ЧЧ:ММ (например 25.08.2026 23:59):",
-        reply_markup=get_cancel_kb(),
+        _PROMPT_DEADLINE, reply_markup=_game_task_deadline_preset_kb("gtdeadline", "gtcancel"),
     )
     await state.set_state(GameTaskCreate.deadline)
 
@@ -670,22 +680,9 @@ async def game_task_deadline_step(message: types.Message, state: FSMContext):
     # TZFIX-260816: admin input is Moscow wall-clock — compare against Moscow, not the
     # container clock (UTC), or a past-MSK time can slip through as "future" and fire instantly.
     if when <= _now_moscow_naive():
-        await message.answer("❌ Это время уже прошло. Введите будущую дату.")
+        await message.answer(_DEADLINE_PAST)
         return
-    await state.update_data(gt_deadline=_fmt_dt(when))
-    data = await state.get_data()
-    card_text = _render_game_task_confirm_card(data)
-    photo_id = data.get("gt_photo_file_id")
-    if photo_id:
-        # Quick 260819-gtl (CONTEXT.md decision 7): "с фото если есть" -- caption has a real
-        # 1024-char Telegram ceiling, unlike a plain message (4096).
-        caption = card_text if len(card_text) <= 1024 else card_text[:1021] + "…"
-        await message.answer_photo(
-            photo_id, caption=caption, parse_mode="HTML", reply_markup=_game_task_confirm_kb(),
-        )
-    else:
-        await message.answer(card_text, parse_mode="HTML", reply_markup=_game_task_confirm_kb())
-    await state.set_state(GameTaskCreate.confirm)
+    await _finish_deadline_step(message, state, when)
 
 
 @router.callback_query(F.data == "gtconfirm")
@@ -722,21 +719,52 @@ async def game_task_create_cancel(callback: types.CallbackQuery, state: FSMConte
 # this edits ONE field at a time via the small GameTaskEdit StatesGroup, no multi-step flow.
 # Photo replace/remove is non-destructive (CONTEXT.md: no confirm step), unlike archive/delete.
 
-def _task_edit_text(task: dict) -> str:
+async def _task_edit_screen(task: dict) -> tuple[str, InlineKeyboardMarkup]:
+    """Point-edit card (Phase 16, 16-03, Экран 6): a compact summary of the task + EVERY
+    action -- name / description / coins / deadline / photo (add|replace + remove), archive
+    or return, delete (only with zero submissions, T-14-12 hint), «👁 Как видит делегат»
+    (the delegate's own card render), back to the list. Archive/delete buttons point at the
+    EXISTING confirm-gated callbacks (`gtarchive:`/`gtdelete:` -> *_go), return at the
+    existing no-confirm `gtunarchive:`; the point-edit callbacks are non-destructive and
+    need no confirm (quick 260819-gtl precedent)."""
+    task_id = task["id"]
     title = html_module.escape(task_title(task))
-    photo_line = "📷 Фото: есть" if task.get("photo_file_id") else "📷 Фото: нет"
-    return f"✏️ <b>{title}</b>\n\n{photo_line}"
+    category = html_module.escape(await category_label(str(task["category"])))
+    submissions = await count_task_submissions(task_id)
+    lines = [
+        f"✏️ <b>{title}</b>",
+        f"{category} · {task['coins']}🪙 · до {_game_task_deadline_display(task)}",
+        f"Обложка: {'есть' if task.get('photo_file_id') else 'нет'}",
+        f"Сдач: {submissions}",
+    ]
+    if task.get("archived_at"):
+        lines.append("В архиве — делегаты его не видят.")
+    text = "\n".join(lines)
 
-
-def _task_edit_kb(task: dict) -> InlineKeyboardMarkup:
-    rows = [[InlineKeyboardButton(text="✏️ Название", callback_data=f"gtedittitle:{task['id']}")]]
+    rows = [
+        [InlineKeyboardButton(text="✏️ Название", callback_data=f"gtedittitle:{task_id}")],
+        [InlineKeyboardButton(text="✏️ Описание", callback_data=f"gteditdesc:{task_id}")],
+        [
+            InlineKeyboardButton(text="💰 Монеты", callback_data=f"gteditcoins:{task_id}"),
+            InlineKeyboardButton(text="📅 Дедлайн", callback_data=f"gteditdeadline:{task_id}"),
+        ],
+    ]
     if task.get("photo_file_id"):
-        rows.append([InlineKeyboardButton(text="📷 Заменить фото", callback_data=f"gteditphoto:{task['id']}")])
-        rows.append([InlineKeyboardButton(text="🗑 Убрать фото", callback_data=f"gtremovephoto:{task['id']}")])
+        rows.append([
+            InlineKeyboardButton(text="📷 Заменить фото", callback_data=f"gteditphoto:{task_id}"),
+            InlineKeyboardButton(text="🗑 Убрать фото", callback_data=f"gtremovephoto:{task_id}"),
+        ])
     else:
-        rows.append([InlineKeyboardButton(text="📷 Добавить фото", callback_data=f"gteditphoto:{task['id']}")])
+        rows.append([InlineKeyboardButton(text="📷 Добавить фото", callback_data=f"gteditphoto:{task_id}")])
+    if task.get("archived_at"):
+        rows.append([InlineKeyboardButton(text="↩️ Вернуть", callback_data=f"gtunarchive:{task_id}")])
+    else:
+        rows.append([InlineKeyboardButton(text="🗄 В архив", callback_data=f"gtarchive:{task_id}")])
+    if submissions == 0:
+        rows.append([InlineKeyboardButton(text="🗑 Удалить", callback_data=f"gtdelete:{task_id}")])
+    rows.append([InlineKeyboardButton(text="👁 Как видит делегат", callback_data=f"gtpreview:{task_id}")])
     rows.append([InlineKeyboardButton(text="← К заданиям", callback_data="admin_game_tasks")])
-    return InlineKeyboardMarkup(inline_keyboard=rows)
+    return text, InlineKeyboardMarkup(inline_keyboard=rows)
 
 
 @router.callback_query(F.data.startswith("gtedit:"))
@@ -751,9 +779,8 @@ async def game_task_edit_screen(callback: types.CallbackQuery, state: FSMContext
         await callback.answer("Задание не найдено", show_alert=True)
         return
     await state.set_state(None)
-    await callback.message.edit_text(
-        _task_edit_text(task), parse_mode="HTML", reply_markup=_task_edit_kb(task),
-    )
+    text, kb = await _task_edit_screen(task)
+    await callback.message.edit_text(text, parse_mode="HTML", reply_markup=kb)
     await callback.answer()
 
 
@@ -808,9 +835,8 @@ async def game_task_removephoto(callback: types.CallbackQuery):
     _request_game_resync()
     await callback.answer("Фото убрано")
     task = await get_task(task_id)
-    await callback.message.edit_text(
-        _task_edit_text(task), parse_mode="HTML", reply_markup=_task_edit_kb(task),
-    )
+    text, kb = await _task_edit_screen(task)
+    await callback.message.edit_text(text, parse_mode="HTML", reply_markup=kb)
 
 
 # Cancel-mid-edit, registered BEFORE the per-step handlers below (same "first match wins"
@@ -838,8 +864,11 @@ async def game_task_edittitle_step(message: types.Message, state: FSMContext):
         return
     _request_game_resync()
     await state.set_state(None)
-    await message.answer(f"Название обновлено: «{html_module.escape(title)}»", parse_mode="HTML")
-    text, kb = await _game_tasks_screen()
+    await message.answer(
+        f"Название обновлено: «{html_module.escape(title)}»", parse_mode="HTML",
+        reply_markup=ReplyKeyboardRemove(),
+    )
+    text, kb = await _task_edit_screen(await get_task(task_id))
     await message.answer(text, parse_mode="HTML", reply_markup=kb)
 
 
@@ -855,7 +884,7 @@ async def game_task_editphoto_step(message: types.Message, state: FSMContext):
     _request_game_resync()
     await state.set_state(None)
     await message.answer("Фото обновлено.", reply_markup=ReplyKeyboardRemove())
-    text, kb = await _game_tasks_screen()
+    text, kb = await _task_edit_screen(await get_task(task_id))
     await message.answer(text, parse_mode="HTML", reply_markup=kb)
 
 

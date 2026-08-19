@@ -147,6 +147,8 @@ _GAME_FIELD_ORDER = [
     "game_resubmit_limit", "coins_manual_notify_text",
     # Quick 260819-gtl (CONTEXT.md decision 8): title/photo wizard step prompts.
     "game_task_title_prompt", "game_task_photo_prompt",
+    # Phase 16 (16-03, GAME-UI-03): превью «как видит делегат» + финальный шаг визарда.
+    "game_task_preview_intro", "game_wizard_preview_title", "game_wizard_publish_btn",
     # Phase 16 (16-01, GAME-UI-01): RU-категории + тексты редизайна «🎯 Задания»/«🪙 Баланс».
     "game_category_label_light", "game_category_label_medium", "game_category_label_hard",
     "game_category_label_referral", "game_category_label_special",
@@ -1509,6 +1511,7 @@ HTML_SETTINGS = {
     "payment_receipt_received_text",
     "leaderboard_header_text", "leaderboard_rank_line_text",
     "balance_history_header_text", "referral_list_header_text",
+    "game_wizard_preview_title",  # Phase 16 (16-03): заголовок превью финального шага визарда
     "program_empty_text", "speakers_empty_text", "contacts_empty_text",
     "ask_question_prompt_text", "ask_question_sent_text",
 }

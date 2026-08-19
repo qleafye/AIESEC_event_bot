@@ -112,8 +112,9 @@ def test_admin_game_tasks_empty_state_shows_create_button(tmp_path):
     callback = FakeCallback("admin_game_tasks")
     state = _new_state()
     asyncio.run(admin_gamification.show_game_tasks(callback, state))
-    assert callback.message.answers_sent[-1] == "Заданий пока нет."
-    assert "gtnew" in _flat_callback_data(callback.message.answer_markups[-1])
+    # Phase 16 (16-03): the screen is edited IN PLACE (one live message), not re-sent.
+    assert callback.message.text == "Заданий пока нет."
+    assert "gtnew" in _flat_callback_data(callback.message.markup)
 
 
 def test_admin_game_tasks_lists_existing_tasks_newest_first(tmp_path):
@@ -123,11 +124,11 @@ def test_admin_game_tasks_lists_existing_tasks_newest_first(tmp_path):
     callback = FakeCallback("admin_game_tasks")
     state = _new_state()
     asyncio.run(admin_gamification.show_game_tasks(callback, state))
-    text = callback.message.answers_sent[-1]
+    text = callback.message.text  # Phase 16 (16-03): edited in place
     first_pos = text.index("Первое задание")
     second_pos = text.index("Второе задание")
     assert second_pos < first_pos  # list_all_tasks() orders newest (created LAST) first
-    assert "gtnew" in _flat_callback_data(callback.message.answer_markups[-1])
+    assert "gtnew" in _flat_callback_data(callback.message.markup)
 
 
 def test_gtnew_prompts_for_text_and_sets_state(tmp_path):
@@ -142,10 +143,11 @@ def test_gtnew_prompts_for_text_and_sets_state(tmp_path):
 
 def test_menu_row_admin_game_tasks_appears_for_game_manager_only(tmp_path):
     _db_ready(tmp_path)
+    # Phase 16 (16-03): «📋 Задания» -> «🎯 Задания» (same label as the delegate's section).
     rows = admin_mod._visible_menu_rows({"moderate_game"})
-    assert ("📋 Задания", "admin_game_tasks") in rows
+    assert ("🎯 Задания", "admin_game_tasks") in rows
     rows_reg = admin_mod._visible_menu_rows({"moderate_reg"})
-    assert ("📋 Задания", "admin_game_tasks") not in rows_reg
+    assert ("🎯 Задания", "admin_game_tasks") not in rows_reg
 
 
 def test_cancel_mid_wizard_clears_state_and_shows_list(tmp_path):
@@ -194,7 +196,7 @@ def test_game_task_text_step_rejects_empty_and_advances_on_nonempty(tmp_path):
 
 def test_game_task_category_buttons_cover_all_five(tmp_path):
     _db_ready(tmp_path)
-    kb = admin_gamification._game_task_category_kb()
+    kb = asyncio.run(admin_gamification._game_task_category_kb())  # 16-03: async (RU labels)
     assert _flat_callback_data(kb) == [f"gtcat:{c}" for c in GAME_CATEGORIES]
     assert len(_flat_callback_data(kb)) == 5
 
