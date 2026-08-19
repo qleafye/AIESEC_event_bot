@@ -172,6 +172,7 @@ _SHEETS_FIELD_ORDER = [
     "main_sheet_tab", "short_sheet_tab", "party_sheet_tab", "incomplete_sheet_tab",
     "game_matrix_tab", "game_history_tab", "preselect_tab",
     "city_tab_suffix__short", "city_tab_suffix__party", "city_tab_suffix__incomplete",
+    "city_tab_suffix__game", "city_tab_suffix__game_history",
 ]
 
 _REG_FIELDS = [(k, SETTINGS_SCHEMA[k]["label"], SETTINGS_SCHEMA[k]["prompt"]) for k in _REG_FIELD_ORDER]
@@ -1535,9 +1536,10 @@ def _enum_human_label(key: str, value: str) -> str:
 # Quick 260815-3hw (Task 3): which Google Sheets tab-name keys the bot actually WRITES to, and
 # HOW. "rewrite" = the sync path does ws.clear() + full rewrite (rebuild_main_sheet /
 # sync_named_worksheet); "append" = only new rows are ever added (append_to_named_sheet), never
-# a clear. preselect_tab (read-only — the bot never writes it) and the three
-# city_tab_suffix__* keys (not full tab names, just suffixes) are deliberately ABSENT — the
-# confirm-gate in settings_edit_value only fires for a key present in this dict.
+# a clear. preselect_tab (read-only — the bot never writes it) and the five
+# city_tab_suffix__* keys (not full tab names, just suffixes — incl. the per-city gamification
+# suffixes __game/__game_history) are deliberately ABSENT — the confirm-gate in
+# settings_edit_value only fires for a key present in this dict.
 _SHEET_TAB_WRITE_MODE = {
     "main_sheet_tab": "rewrite",
     "incomplete_sheet_tab": "rewrite",

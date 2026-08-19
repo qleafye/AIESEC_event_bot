@@ -72,6 +72,9 @@ _FROZEN_OLD_HARDCODE_DEFAULTS = {
     "city_tab_suffix__short": " Акция",
     "city_tab_suffix__party": " Party",
     "city_tab_suffix__incomplete": " Незавершённые",
+    # Quick GAME-CITY-TABS: per-city gamification tab suffixes (services/game_sheets.py).
+    "city_tab_suffix__game": " Гейма",
+    "city_tab_suffix__game_history": " История сдач",
 }
 
 
@@ -94,6 +97,7 @@ def test_settings_group_keys_sheets_matches_field_order():
         "main_sheet_tab", "short_sheet_tab", "party_sheet_tab", "incomplete_sheet_tab",
         "game_matrix_tab", "game_history_tab", "preselect_tab",
         "city_tab_suffix__short", "city_tab_suffix__party", "city_tab_suffix__incomplete",
+        "city_tab_suffix__game", "city_tab_suffix__game_history",
     ]
 
 

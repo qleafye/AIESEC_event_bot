@@ -208,6 +208,11 @@ TAB_SUFFIX = {
     "short": " Акция",
     "party": " Party",
     "incomplete": " Незавершённые",
+    # Quick GAME-CITY-TABS: per-city gamification tabs («СПб Гейма» / «СПб История сдач») —
+    # same base+suffix convention as the registration tabs, registry keys
+    # city_tab_suffix__game / city_tab_suffix__game_history (services/game_sheets.py).
+    "game": " Гейма",
+    "game_history": " История сдач",
 }
 
 
@@ -242,8 +247,8 @@ async def city_label(code: str) -> str:
 
 async def tab_suffix(kind: str) -> str:
     """Quick 260815-3hw (TABS-01/02/03): admin-configurable tab-name suffix for a track kind
-    ("short"/"party"/"incomplete"), read from the registry (city_tab_suffix__{kind}) with a
-    fallback to the TAB_SUFFIX literal above. `kind == "main"` is not a registry key (the main
+    ("short"/"party"/"incomplete"/"game"/"game_history"), read from the registry
+    (city_tab_suffix__{kind}) with a fallback to the TAB_SUFFIX literal above. `kind == "main"` is not a registry key (the main
     tab has no suffix, a city's base name IS its main tab) — returns "" unconditionally, no
     registry lookup, no normalization.
 
