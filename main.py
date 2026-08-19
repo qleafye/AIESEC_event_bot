@@ -13,6 +13,7 @@ from services.scheduler import init_scheduler
 from services.allowlist import warm_allowlist_if_gating_on
 from services.sheets import ensure_sheet_header
 from services.background import spawn as _spawn, cancel_all as cancel_background_tasks
+from services.heartbeat import PollingHeartbeatMiddleware, heartbeat_loop, clear_heartbeat
 import services.sheets as sheets_service
 import services.proxy_session as proxy_session
 from services.proxy_session import FailoverAiohttpSession, build_proxy_chain, mask_proxy_url
@@ -349,6 +350,10 @@ async def main():
 
     bot = Bot(token=config.BOT_TOKEN.get_secret_value(), default=default, session=session)
     dp = Dispatcher(storage=MemoryStorage())
+    # Docker HEALTHCHECK: session-middleware отмечает каждый успешный getUpdates, фоновая
+    # задача ниже пишет heartbeat-файл только пока эти отметки свежие — т.е. файл отражает
+    # живость поллинга, а не event loop. Семантика целиком — в services/heartbeat.py.
+    bot.session.middleware(PollingHeartbeatMiddleware())
 
     # CR-8: global error handler. Without this, any unhandled exception in a handler is
     # silently dropped (the update just vanishes). Fails soft (return True = handled). The
@@ -379,12 +384,16 @@ async def main():
     # be live before polling starts (the very first proxy rotation could happen immediately).
     proxy_session.set_alert_bot(bot)
     _spawn(warm_allowlist_if_gating_on())
-    logger.info("Scheduler + allowlist refresh started")
+    _spawn(heartbeat_loop())
+    logger.info("Scheduler + allowlist refresh + heartbeat started")
 
     try:
         await dp.start_polling(bot)
         logger.info("Bot started polling")
     finally:
+        # Heartbeat: поллинг закончился (любой причиной) — контейнер не должен выглядеть
+        # здоровым до истечения возраста файла.
+        clear_heartbeat()
         # WR-03: graceful shutdown — the SQLAlchemyJobStore holds an open engine to
         # data/jobs.sqlite and the bot session holds connector sockets. Don't rely on
         # interpreter teardown (fragile under SIGTERM restarts / test imports).
