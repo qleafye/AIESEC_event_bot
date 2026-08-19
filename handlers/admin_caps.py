@@ -410,6 +410,7 @@ ADMIN_CAPS: dict[str, str] = {
     "toggle_party_enabled": "settings",
     "toggle_party_fork_question": "settings",
     "toggle_payment_enabled": "settings",
+    "toggle_preselect_enabled": "settings",
     "toggle_payment_reminders": "settings",
     "toggle_show_progress": "settings",
     "toggle_uni_mode": "settings",
