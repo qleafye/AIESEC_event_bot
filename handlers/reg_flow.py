@@ -90,7 +90,19 @@ async def admin_rereg(callback: types.CallbackQuery, state: FSMContext):
     # callback.message.from_user is the BOT — swap in the tapping admin, same fix as
     # party_fallback_full, so mark_reg_started records the tapping admin's id (T-4pj-02).
     tap_message = callback.message.model_copy(update={"from_user": callback.from_user})
-    await _start_registration_flow(tap_message, state)
+    # UAT 19.08: раньше admin_rereg шёл сразу в _start_registration_flow, минуя форк города
+    # (при включённых городах админ не мог выбрать город при переереге). Идём тем же путём,
+    # что и rereg_start ниже: город → форк вечеринки → старт анкеты.
+    data = await state.get_data()
+    await _city_fork_then_continue(
+        tap_message,
+        state,
+        data.get("event_city"),
+        data.get("referrer_id"),
+        data.get("source"),
+        data.get("participant_type") if data.get("_track_from_link") else None,
+        None,
+    )
 
 
 @router.callback_query(F.data == "rereg_start")
