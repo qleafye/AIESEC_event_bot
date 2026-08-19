@@ -1937,19 +1937,26 @@ async def _continue_after_city(
 # approve_user moved to handlers/reg_schema.py (13-02, REFAC-02); imported above.
 
 
-def _resume_person_name(data) -> str:
-    """Build the human-readable resume filename stem: "<ФИО>_<username|telegram_id>".
+def _resume_file_stem(data, now: datetime | None = None) -> str:
+    """Unique resume filename stem: "<ФИО>_<username>_<telegram_id>_<YYYYMMDD-HHMMSS>"
+    (username is "@name" or "-" in finalize; "@" stripped, "-"/empty dropped so the id is
+    never doubled). Kept RAW here (cyrillic preserved) — sanitised later by _safe_name.
 
-    username in finalize is either "@name" or "-" (never None); a leading "@" is stripped
-    and "-"/empty falls back to the telegram_id. Sanitization (unicode-safe) is done later
-    by services.nextcloud._safe_name, so kept RAW here (cyrillic preserved).
-    Example: full_name="Иван Петров", username="@qleafye" → "Иван Петров_qleafye".
+    Nextcloud WebDAV PUT overwrites silently. Two delegates with the same display name — or
+    one delegate re-submitting — used to replace each other's file while the stored link
+    kept looking valid (pointing at someone else's CV). telegram_id + timestamp make every
+    upload land in its own file; sanitisation is still done by services.nextcloud._safe_name
+    (keeps [\\w.-], so digits/underscores/hyphen survive).
     """
     name = (data.get("full_name") or "").strip()
     uname = (data.get("username") or "").strip().lstrip("@")
-    if not uname or uname == "-":
-        uname = str(data.get("telegram_id"))
-    return f"{name}_{uname}"
+    tid = str(data.get("telegram_id"))
+    ts = (now or datetime.now()).strftime("%Y%m%d-%H%M%S")
+    parts = [name]
+    if uname and uname != "-" and uname != tid:
+        parts.append(uname)
+    parts += [tid, ts]
+    return "_".join(parts)
 
 
 def _single_flight(func):
@@ -2049,20 +2056,21 @@ async def finalize_registration(message: types.Message, state: FSMContext, bot: 
 
     # WK6/16c: resume (file OR text) → Nextcloud WebDAV PUT + deep-link into the manual folder
     # share, captured BEFORE add_user so the URL is persisted in DB and lands in the sheet row.
-    # File is named "<ФИО>_<username|id>.<ext>"; text resume is uploaded as a "<...>.txt" file.
+    # File is named "<ФИО>_<username>_<telegram_id>_<ts>.<ext>" (unique per upload — WebDAV
+    # PUT overwrites silently); text resume is uploaded as a "<...>.txt" file.
     # Fully fail-soft: bounded by a 20s wait_for, upload_* never raise, and any timeout/error
     # leaves resume_url None so registration always completes even if Nextcloud is down.
     try:
         if data.get("resume_file_id"):
             ext = os.path.splitext(data.get("resume_file_name") or "")[1]
-            fname = f"{_resume_person_name(data)}{ext}"
+            fname = f"{_resume_file_stem(data)}{ext}"
             url = await asyncio.wait_for(
                 upload_resume(bot, data["resume_file_id"], fname), timeout=20
             )
             if url:
                 data["resume_url"] = url
         elif data.get("resume_text"):
-            fname = f"{_resume_person_name(data)}.txt"
+            fname = f"{_resume_file_stem(data)}.txt"
             url = await asyncio.wait_for(
                 upload_text_resume(data["resume_text"], fname), timeout=20
             )
