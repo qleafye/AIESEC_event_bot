@@ -486,6 +486,8 @@ ADMIN_CAPS: dict[str, str] = {
     "coinsman_sign:*": "moderate_game",
     "coinsman_confirm": "moderate_game",
     "coinsman_cancel": "moderate_game",
+    # Phase 16 (16-04, GAME-UI-03): quick-pick сумм на шаге CoinsManual.amount.
+    "coinsman_amount:*": "moderate_game",
     "state:CoinsManual:*": "moderate_game",
 
     # Phase 14 (14-05, GAME-09): «📜 Журнал монет» — paginated read screen + CSV export,
