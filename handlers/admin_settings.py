@@ -116,6 +116,8 @@ _REG_FIELD_ORDER = [
     # Phase 17.1 (17.1-03, schema-completeness): экран выбора города при /start и тексты
     # гейта предотбора — читались из bot_settings, но менеджер их в UI не видел.
     "city_fork_text", "preselect_no_username_text", "preselect_fail_text", "preselect_link",
+    # Quick 260819 (schema-completeness): догонялка брошенных анкет (порог и текст).
+    "nudge_after_minutes", "nudge_text",
 ]
 _PAY_FIELD_ORDER = [
     "payment_options", "payment_requisites", "payment_requisites_by_lc",
@@ -170,7 +172,11 @@ _GAME_FIELD_ORDER = [
 ]
 
 # Phase 14 (CFG-01): group «🔧 Система» — proxy timings that used to live only in .env.
-_SYSTEM_FIELD_ORDER = ["proxy_recheck_seconds", "proxy_connect_timeout"]
+_SYSTEM_FIELD_ORDER = [
+    "proxy_recheck_seconds", "proxy_connect_timeout",
+    # Quick 260819 (schema-completeness): интервалы фоновых джоб (после перезапуска).
+    "nudge_scan_minutes", "allowlist_refresh_minutes", "incomplete_sync_hours",
+]
 
 # Quick 260815-3hw (TABS-01/02/03): every Google Sheets tab NAME in one group — «📄 Вкладки
 # таблицы». short_sheet_tab/party_sheet_tab moved here from reg/party (physically relocated in
@@ -344,6 +350,10 @@ async def render_settings_text(admin_id: int | None = None) -> str:
     # Предотбор по Google-таблице (VERIF-01/02): enum on/off, дефолт "off" из реестра.
     preselect_enabled = await get_setting_typed("preselect_enabled")
     lines.append(f"🎯 Предотбор по таблице: <b>{'✅ Вкл' if preselect_enabled == 'on' else '❌ Выкл'}</b>")
+    pending_rem = await get_setting_typed("pending_reminder_enabled")
+    nudge_on = await get_setting_typed("nudge_enabled")
+    lines.append(f"📋 Сводка о заявках в ожидании: <b>{'✅ Вкл' if pending_rem == 'on' else '❌ Выкл'}</b>")
+    lines.append(f"⏰ Догонялка брошенных анкет: <b>{'✅ Вкл' if nudge_on == 'on' else '❌ Выкл'}</b>")
 
     enabled_q = 0
     for _, sk, *_rest in REG_FLOW:
@@ -435,6 +445,12 @@ async def build_settings_keyboard(admin_id: int | None = None):
     preselect_enabled = await get_setting_typed("preselect_enabled")
     preselect_toggle_text = ("🎯 Предотбор по таблице: ❌ Выкл → ✅ Вкл" if preselect_enabled != "on"
                              else "🎯 Предотбор по таблице: ✅ Вкл → ❌ Выкл")
+    pending_rem = await get_setting_typed("pending_reminder_enabled")
+    pending_rem_text = ("📋 Сводка о заявках: ✅ Вкл → ❌ Выкл" if pending_rem == "on"
+                        else "📋 Сводка о заявках: ❌ Выкл → ✅ Вкл")
+    nudge_on = await get_setting_typed("nudge_enabled")
+    nudge_toggle_text = ("⏰ Догонялка анкет: ✅ Вкл → ❌ Выкл" if nudge_on == "on"
+                         else "⏰ Догонялка анкет: ❌ Выкл → ✅ Вкл")
 
     buttons = [
         [InlineKeyboardButton(text=toggle_text, callback_data="settings_toggle_reg")],
@@ -465,6 +481,8 @@ async def build_settings_keyboard(admin_id: int | None = None):
         [InlineKeyboardButton(text=party_fork_toggle_text, callback_data="toggle_party_fork_question")],
         [InlineKeyboardButton(text=party_appr_txt, callback_data="settings_toggle_party_approval")],
         [InlineKeyboardButton(text=preselect_toggle_text, callback_data="toggle_preselect_enabled")],
+        [InlineKeyboardButton(text=pending_rem_text, callback_data="toggle_pending_reminder")],
+        [InlineKeyboardButton(text=nudge_toggle_text, callback_data="toggle_nudge_enabled")],
         [InlineKeyboardButton(text="🎛 Тип события (пресет)", callback_data="admin_event_preset")],
         [InlineKeyboardButton(text="📋 Вопросы регистрации", callback_data="admin_reg_questions")],
         [InlineKeyboardButton(text="✏️ Тексты вопросов", callback_data="admin_reg_prompts")],
@@ -821,6 +839,18 @@ async def toggle_preselect_enabled(callback: types.CallbackQuery):
     # Гейт предотбора по Google-таблице: enum on/off, дефолт OFF — без таблицы новичок
     # регистрируется как обычно. Тот же generic-хелпер, что и у соседей-модулей.
     await _toggle_module_setting(callback, "preselect_enabled", "🎯 Предотбор по таблице")
+
+
+@router.callback_query(F.data == "toggle_pending_reminder")
+async def toggle_pending_reminder(callback: types.CallbackQuery):
+    # Сводка «Заявок в ожидании: N» админам (services/reminders.py): enum on/off, дефолт ON.
+    await _toggle_module_setting(callback, "pending_reminder_enabled", "📋 Сводка о заявках")
+
+
+@router.callback_query(F.data == "toggle_nudge_enabled")
+async def toggle_nudge_enabled(callback: types.CallbackQuery):
+    # Догонялка брошенных анкет (services/scheduler.py): enum on/off, дефолт ON.
+    await _toggle_module_setting(callback, "nudge_enabled", "⏰ Догонялка анкет")
 
 
 @router.callback_query(F.data == "toggle_payment_reminders")
