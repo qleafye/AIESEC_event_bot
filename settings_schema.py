@@ -342,6 +342,56 @@ SETTINGS_SCHEMA = {
         ),
         "default": None,
     },
+    # Phase 17.1 (17.1-03, schema-completeness): ключи, которые handlers/registration.py
+    # давно читал из bot_settings, но которых не было в реестре — менеджер их не видел в UI и
+    # мог поменять только через разработчика. Дефолты байт-в-байт равны прежним литералам /
+    # DEFAULT_CITY_FORK_TEXT (registration.py теперь берёт константу отсюда). Поведение чтения
+    # не меняется: `get_setting(k) or DEFAULT` -> get_setting_typed(k) (текст: None -> дефолт;
+    # «-» в админке удаляет ключ, пустую строку Telegram прислать не даёт).
+    "city_fork_text": {
+        "type": "text", "group": "reg", "label": "🏙 Выбор города: вопрос",
+        "prompt": (
+            "Экран выбора города мероприятия при /start (когда включён «🏙 Выбор города "
+            "мероприятия» и городов больше одного) — текст над кнопками городов."
+        ),
+        "default": "Выбери город мероприятия:",
+    },
+    # Предотбор (VERIF-01/02): тексты гейта по списку отобранных. Консьюмер html.escape'ит их
+    # перед отправкой (как и раньше) — поэтому НЕ в HTML_SETTINGS и без «Поддерживается HTML».
+    "preselect_no_username_text": {
+        "type": "text", "group": "reg", "label": "🎯 Предотбор: нет @username",
+        "prompt": (
+            "Что видит человек без @username при включённом предотборе (проверить его по "
+            "списку отобранных нельзя). Обычный текст, без разметки."
+        ),
+        "default": (
+            "Чтобы продолжить, задайте @username в настройках Telegram и снова отправьте /start."
+        ),
+    },
+    "preselect_fail_text": {
+        "type": "text", "group": "reg", "label": "🎯 Предотбор: не прошёл",
+        "prompt": (
+            "Что видит человек, которого нет в списке отобранных (вкладка «🎯 Отобранные»). "
+            "Ниже бот добавит ссылку из «🎯 Предотбор: ссылка», если она задана. Обычный "
+            "текст, без разметки."
+        ),
+        "default": "Отбор не пройден.",
+    },
+    "preselect_link": {
+        "type": "text", "group": "reg", "label": "🎯 Предотбор: ссылка",
+        "prompt": (
+            "Куда отправить не прошедшего отбор — ссылка на канал/сайт (например "
+            "https://t.me/aiesec_ru). Пусто — без ссылки, только текст."
+        ),
+        "default": None,
+    },
+    # НЕ в реестре намеренно (служебные значения bot_settings, менеджеру их не редактировать):
+    #   sheet_header_schema  — снимок заголовков вкладки регистраций, пишет reg_schema.py при
+    #                          смене состава вопросов (JSON, читает registration.py при синке);
+    #   preselect_manual_ids — ручные исключения предотбора по telegram_id (задаются
+    #                          разработчиком/командой, а не в «⚙️ Настройки»);
+    #   start_photo_file_id  — file_id, который пишет фото-визард настроек (регистрируется
+    #                          через префикс "start" типа photo выше, а не отдельным ключом).
     # ── Quick 260815-3hw: "sheets" group ("📄 Вкладки таблицы") ─────────────────────────
     # CLAUDE.md «бот для людей» — все имена вкладок Google-таблицы (раньше размазанные
     # между .env, хардкодом в коде и парой уже-реестровых ключей) собраны в одну группу,
@@ -598,6 +648,19 @@ SETTINGS_SCHEMA = {
         "default": None,
     },
 
+    # Phase 17.1 (17.1-03, schema-completeness): развилка формата при /start
+    # (party_fork_question=on) — читалась из bot_settings, но в реестре не была. Дефолт
+    # байт-в-байт равен прежнему DEFAULT_PARTY_FORK_TEXT (registration.py берёт его отсюда).
+    "party_fork_text": {
+        "type": "text", "group": "party", "label": "🔀 Развилка формата: вопрос",
+        "prompt": (
+            "Экран выбора формата участия при /start (когда включены «🎉 Трек вечеринки» и "
+            "«🔀 Вопрос-развилка формата») — текст над кнопками «Полная регистрация» / "
+            "«🎉 Гости с ночёвкой» / «🎉 Гости без ночёвки»."
+        ),
+        "default": "Выбери формат участия:",
+    },
+
     # ── REG-01/REG-03 (06-02): "consent" group ("📋 Согласия") ──────────────────────────
     "consent_button_text": {
         "type": "text", "group": "consent", "label": "✅ Текст кнопки согласия",
@@ -741,6 +804,15 @@ SETTINGS_SCHEMA = {
     # "off" — deploying this plan changes nothing for anyone; a manager flips it on later.
     "event_city_enabled": {
         "type": "enum", "group": "toggles", "label": "🏙 Выбор города мероприятия",
+        "options": ["on", "off"], "prompt": None, "default": "off",
+    },
+    # Phase 17.1 (17.1-03, schema-completeness): гейт предотбора по Google-таблице
+    # (VERIF-01/02). Тип "enum" on/off, НЕ "toggle" — по той же причине, что и
+    # event_city_enabled выше (toggle-тип зарезервирован за reg_q_* и переписывается пресетом).
+    # Дефолт "off" = прежний `get_setting("preselect_enabled") or "off"`. Кнопки-переключателя
+    # на лендинге настроек пока нет (см. «🎯 Предотбор» в справке /settings_guide).
+    "preselect_enabled": {
+        "type": "enum", "group": "toggles", "label": "🎯 Предотбор по таблице",
         "options": ["on", "off"], "prompt": None, "default": "off",
     },
 

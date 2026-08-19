@@ -354,20 +354,32 @@ def test_render_snapshot_reg(tmp_path):
         "pending_gate_text",
         "pending_reminder_interval", "city_options", "study_field_options",
         "goal_options", "formats_options", "university_options",
+        # Phase 17.1 (17.1-03, schema-completeness): экран выбора города при /start и
+        # тексты гейта предотбора — в хвосте группы.
+        "city_fork_text", "preselect_no_username_text", "preselect_fail_text", "preselect_link",
     ]
     expected_labels = [
         "📢 Источники", "✅ После регистрации", "🎉 После одобрения", "🚫 При отклонении",
         "⏳ Заявка на рассмотрении",
         "🕒 Тайминг батчей заявок", "🏙 Города (варианты)", "🎯 Направления обучения (варианты)",
         "🎯 Цель участия (варианты)", "📋 Форматы форума (варианты)", "🏫 Список ВУЗов",
+        "🏙 Выбор города: вопрос", "🎯 Предотбор: нет @username", "🎯 Предотбор: не прошёл",
+        "🎯 Предотбор: ссылка",
     ]
     # Fresh DB -> nothing configured. Phase 17.1 (17.1-01): «⏳ Заявка на рассмотрении» —
     # первый ключ этой группы с непустым дефолтом в реестре, поэтому у него флаг
     # «по умолчанию» (менеджер видит: текст участнику уходит, просто стандартный), а не
     # «— не задано». У остальных ключей группы дефолта нет — флаг прежний.
-    assert "⏳ Заявка на рассмотрении: <i>по умолчанию</i>" in text
+    # Phase 17.1 (17.1-03): у трёх новых текстов есть дефолт (тот же флаг «по умолчанию»);
+    # «🎯 Предотбор: ссылка» дефолта не имеет — «— не задано».
+    defaulted_labels = {
+        "⏳ Заявка на рассмотрении", "🏙 Выбор города: вопрос",
+        "🎯 Предотбор: нет @username", "🎯 Предотбор: не прошёл",
+    }
+    for label in defaulted_labels:
+        assert f"{label}: <i>по умолчанию</i>" in text, f"missing/wrong flag for {label}"
     for label in expected_labels:
-        if label == "⏳ Заявка на рассмотрении":
+        if label in defaulted_labels:
             continue
         assert f"{label}: <i>— не задано</i>" in text, f"missing/wrong flag for {label}"
     # Quick 260815-3hw: short_sheet_tab moved to the new "sheets" group screen -- no longer
@@ -432,8 +444,11 @@ def test_render_snapshot_party(tmp_path):
     assert "🎉 Текст «вечеринка закрыта»: <i>по умолчанию</i>" in text
     # approve_text__party has no display default -> plain unconfigured flag.
     assert "🎉 После одобрения (Party): <i>— не задано</i>" in text
+    # Phase 17.1 (17.1-03, schema-completeness): party_fork_text carries the old
+    # DEFAULT_PARTY_FORK_TEXT literal as its registry default -> «по умолчанию».
+    assert "🔀 Развилка формата: вопрос: <i>по умолчанию</i>" in text
 
-    expected_keys = ["party_closed_text", "approve_text__party"]
+    expected_keys = ["party_closed_text", "approve_text__party", "party_fork_text"]
     edit_cbs = [cd for cd in flat if cd and cd.startswith("settings_edit:")]
     assert edit_cbs == [f"settings_edit:{k}" for k in expected_keys]
     assert "admin_settings" in flat

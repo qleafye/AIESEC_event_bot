@@ -914,7 +914,9 @@ def _extract_event_city(command_args: str | None) -> str | None:
     return _city_tag_map().get(command_args.strip())
 
 
-DEFAULT_PARTY_FORK_TEXT = "Выбери формат участия:"
+# Phase 17.1 (17.1-03): дефолт живёт в реестре (party_fork_text, группа «🎉 Party»); константа
+# оставлена для тестов/читателей и указывает на единственный источник правды.
+DEFAULT_PARTY_FORK_TEXT = SETTINGS_SCHEMA["party_fork_text"]["default"]
 
 
 def _party_fork_kb() -> InlineKeyboardMarkup:
@@ -951,7 +953,8 @@ async def _should_show_fork(party_track: str | None, recovered_track: str | None
 # Phase 07.1 (CITY-03): second pre-flow screen, modelled on _party_fork_kb /
 # DEFAULT_PARTY_FORK_TEXT above. Order with the party fork is fixed and explicit in
 # cmd_start (07.1-CONTEXT.md): party-closed gate -> welcome -> CITY -> party fork -> start.
-DEFAULT_CITY_FORK_TEXT = "Выбери город мероприятия:"
+# Phase 17.1 (17.1-03): дефолт живёт в реестре (city_fork_text, группа «📝 Регистрация»).
+DEFAULT_CITY_FORK_TEXT = SETTINGS_SCHEMA["city_fork_text"]["default"]
 
 
 async def _city_fork_kb() -> InlineKeyboardMarkup:
@@ -1590,7 +1593,10 @@ async def cmd_start(message: types.Message, state: FSMContext, bot: Bot, command
     # VERIF-01/02: pre-selection gate (D-13, default off → live flow untouched).
     # Fail-soft like the subscription check above: a glitch never crashes /start.
     try:
-        if not _already_registered and (await get_setting("preselect_enabled") or "off") == "on":
+        # Phase 17.1 (17.1-03): ключи предотбора — в реестре; get_setting_typed даёт тот же
+        # результат, что прежний `get_setting(k) or <литерал>` (enum: falsy -> "off"; text:
+        # None -> дефолт).
+        if not _already_registered and await get_setting_typed("preselect_enabled") == "on":
             from services.allowlist import is_allowed, allowlist_size, _parse_manual_ids
             if allowlist_size() == 0:
                 # Owner-confirmed fail-open (Open Q2): admit everyone; the refresh job
@@ -1600,14 +1606,12 @@ async def cmd_start(message: types.Message, state: FSMContext, bot: Bot, command
                 manual_ids = _parse_manual_ids(await get_setting("preselect_manual_ids"))
                 uname = message.from_user.username
                 if uname is None and user_id not in manual_ids:
-                    prompt = await get_setting("preselect_no_username_text") or (
-                        "Чтобы продолжить, задайте @username в настройках Telegram и снова отправьте /start."
-                    )
+                    prompt = await get_setting_typed("preselect_no_username_text")
                     await message.answer(html.escape(prompt))
                     return
                 if uname is not None and not is_allowed(uname) and user_id not in manual_ids:
-                    fail = await get_setting("preselect_fail_text") or "Отбор не пройден."
-                    link = await get_setting("preselect_link")
+                    fail = await get_setting_typed("preselect_fail_text")
+                    link = await get_setting_typed("preselect_link")
                     text = html.escape(fail)
                     if link:
                         text += "\n" + html.escape(link)
@@ -1810,7 +1814,7 @@ async def _city_fork_then_continue(
         )
         if dl_party_track:
             await state.update_data(_track_from_link=True)
-        city_fork_text = await get_setting("city_fork_text") or DEFAULT_CITY_FORK_TEXT
+        city_fork_text = await get_setting_typed("city_fork_text")  # Phase 17.1 (17.1-03): реестр
         await message.answer(city_fork_text, reply_markup=await _city_fork_kb())
         return  # wait for the tap; city_pick continues the chain with the chosen city
 
@@ -1869,7 +1873,7 @@ async def _continue_after_city(
             event_city=event_city,
             participant_type=dl_party_track or recovered_track or _existing.get("participant_type"),
         )
-        fork_text = await get_setting("party_fork_text") or DEFAULT_PARTY_FORK_TEXT
+        fork_text = await get_setting_typed("party_fork_text")  # Phase 17.1 (17.1-03): реестр
         await message.answer(fork_text, reply_markup=_party_fork_kb())
         return  # wait for the tap; the party_pick handler starts the flow with the chosen track
 

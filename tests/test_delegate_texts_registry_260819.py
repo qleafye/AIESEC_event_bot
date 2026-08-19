@@ -28,6 +28,7 @@ from handlers import registration as reg_mod
 from handlers import user_actions as ua_mod
 from handlers.states import Registration
 from settings_schema import SETTINGS_SCHEMA
+from tests.test_registration_phase5 import _CapturingMessage as _RegCapturingMessage
 
 
 ADMIN_ID = 941101
@@ -155,6 +156,13 @@ _PRE_MIGRATION_LITERALS = {
     "contacts_empty_text": "Контакты пока не указаны. Обратитесь к организаторам.",
     "ask_question_prompt_text": "Напиши свой вопрос, и мы передадим его организаторам.",
     "ask_question_sent_text": "Твой вопрос отправлен!",
+    # 17.1-03 (schema-completeness): читались из bot_settings, но не были объявлены в реестре.
+    "city_fork_text": "Выбери город мероприятия:",
+    "party_fork_text": "Выбери формат участия:",
+    "preselect_no_username_text": (
+        "Чтобы продолжить, задайте @username в настройках Telegram и снова отправьте /start."
+    ),
+    "preselect_fail_text": "Отбор не пройден.",
 }
 
 
@@ -843,3 +851,189 @@ def test_html_promise_in_prompt_matches_html_settings():
         f"расхождение: только в prompt {sorted(promised - admin_settings.HTML_SETTINGS)}, "
         f"только в HTML_SETTINGS {sorted(admin_settings.HTML_SETTINGS - promised)}"
     )
+
+
+# ── 17.1-03 (schema-completeness): city_fork / party_fork / preselect_* ─────────────────
+
+def _start(uid, username=None):
+    """cmd_start новичка без deep-link (bot=object(): до отправки медиа/меню дело не доходит
+    на развилках и гейте предотбора; та же идиома, что в tests/test_registration_phase5.py)."""
+    msg = _RegCapturingMessage(uid, username)
+    asyncio.run(reg_mod.cmd_start(msg, _new_state(uid), bot=object(), command=None))
+    return msg.texts
+
+
+def test_preselect_link_and_enabled_are_declared_with_neighbours_semantics():
+    link = SETTINGS_SCHEMA["preselect_link"]
+    assert link["type"] == "text" and link["group"] == "reg" and link["default"] is None
+    enabled = SETTINGS_SCHEMA["preselect_enabled"]
+    # enum on/off, НЕ toggle — как event_city_enabled (toggle-тип зарезервирован за reg_q_*).
+    assert enabled["type"] == "enum" and enabled["group"] == "toggles"
+    assert enabled["options"] == ["on", "off"] and enabled["default"] == "off"
+
+
+def test_fork_default_constants_point_at_registry():
+    assert reg_mod.DEFAULT_CITY_FORK_TEXT == _default("city_fork_text")
+    assert reg_mod.DEFAULT_PARTY_FORK_TEXT == _default("party_fork_text")
+
+
+def test_city_fork_uses_registry_default_then_setting(tmp_path):
+    _db_ready(tmp_path)
+    asyncio.run(db.set_setting("event_city_enabled", "on"))
+
+    assert _default("city_fork_text") in _start(DELEGATE_ID + 10, "newbie")
+
+    asyncio.run(db.set_setting("city_fork_text", "В каком городе едешь на форум? 🏙"))
+    texts = _start(DELEGATE_ID + 11, "newbie2")
+    assert "В каком городе едешь на форум? 🏙" in texts
+    assert _default("city_fork_text") not in texts
+
+
+def test_party_fork_uses_registry_default_then_setting(tmp_path):
+    _db_ready(tmp_path)
+    asyncio.run(db.set_setting("party_enabled", "on"))
+    asyncio.run(db.set_setting("party_fork_question", "on"))
+
+    assert _default("party_fork_text") in _start(DELEGATE_ID + 20, "newbie")
+
+    asyncio.run(db.set_setting("party_fork_text", "Как участвуешь — весь форум или только вечеринка? 🎉"))
+    texts = _start(DELEGATE_ID + 21, "newbie2")
+    assert "Как участвуешь — весь форум или только вечеринка? 🎉" in texts
+    assert _default("party_fork_text") not in texts
+
+
+def _preselect_on(monkeypatch):
+    from services import allowlist
+    monkeypatch.setattr(allowlist, "_allowlist", {"chosen_one"})  # непустой, «нас» там нет
+    asyncio.run(db.set_setting("preselect_enabled", "on"))
+
+
+def test_preselect_fail_uses_registry_default_then_setting_and_link(tmp_path, monkeypatch):
+    _db_ready(tmp_path)
+    _preselect_on(monkeypatch)
+
+    assert _start(DELEGATE_ID + 30, "not_chosen") == [_default("preselect_fail_text")]
+
+    asyncio.run(db.set_setting("preselect_fail_text", "Тебя нет в списке отобранных 😔"))
+    asyncio.run(db.set_setting("preselect_link", "https://t.me/aiesec_ru"))
+    assert _start(DELEGATE_ID + 31, "not_chosen") == [
+        "Тебя нет в списке отобранных 😔\nhttps://t.me/aiesec_ru"
+    ]
+
+
+def test_preselect_no_username_uses_registry_default_then_setting(tmp_path, monkeypatch):
+    _db_ready(tmp_path)
+    _preselect_on(monkeypatch)
+
+    assert _start(DELEGATE_ID + 40, None) == [_default("preselect_no_username_text")]
+
+    asyncio.run(db.set_setting("preselect_no_username_text", "Поставь @username и жми /start ещё раз"))
+    assert _start(DELEGATE_ID + 41, None) == ["Поставь @username и жми /start ещё раз"]
+
+
+def test_preselect_texts_stay_escaped_not_html(tmp_path, monkeypatch):
+    """Консьюмер html.escape'ит тексты предотбора (как и до реестра) — поэтому они НЕ в
+    HTML_SETTINGS и prompt не обещает HTML."""
+    _db_ready(tmp_path)
+    _preselect_on(monkeypatch)
+    asyncio.run(db.set_setting("preselect_fail_text", "<b>Нет</b> & точка"))
+    assert _start(DELEGATE_ID + 50, "not_chosen") == ["&lt;b&gt;Нет&lt;/b&gt; &amp; точка"]
+    for key in ("preselect_no_username_text", "preselect_fail_text", "preselect_link"):
+        assert key not in admin_settings.HTML_SETTINGS
+
+
+def test_preselect_enabled_default_off_keeps_gate_closed(tmp_path, monkeypatch):
+    _db_ready(tmp_path)
+    from services import allowlist
+    monkeypatch.setattr(allowlist, "_allowlist", {"chosen_one"})
+    # preselect_enabled не задан -> enum-дефолт "off" -> гейт не срабатывает, новичок идёт
+    # дальше (получает приветствие, а не «Отбор не пройден.»).
+    texts = _start(DELEGATE_ID + 60, "not_chosen")
+    assert _default("preselect_fail_text") not in texts
+
+
+# ── 17.1-03: полнота реестра — каждый литеральный ключ bot_settings в коде объявлен ──────
+
+# Служебные значения bot_settings, которые НАМЕРЕННО не в SETTINGS_SCHEMA (менеджеру их не
+# редактировать) — см. комментарий у блока предотбора в settings_schema.py.
+_SERVICE_KEYS = {
+    "sheet_header_schema",        # снимок заголовков вкладки регистраций (JSON, пишет reg_schema)
+    "preselect_manual_ids",       # ручные исключения предотбора по telegram_id
+    "start_photo_file_id",        # file_id фото-визарда (префикс "start" типа photo в реестре)
+    "game_sheet_last_synced_at",  # метка времени последнего синка матрицы геймы (состояние)
+}
+
+# 17.1-03: вне скоупа, см. журнал — читаются в services/scheduler.py и services/reminders.py,
+# в реестре не объявлены (менеджеру сейчас недоступны, в справке /settings_guide помечены
+# «меняет разработчик»). Заводить в реестр — отдельным решением, не в этом плане.
+_OUT_OF_SCOPE_KEYS = {
+    "allowlist_refresh_minutes", "incomplete_sync_hours",
+    "nudge_enabled", "nudge_after_minutes", "nudge_scan_minutes", "nudge_text",
+    "pending_reminder_enabled",
+}
+
+_MEDIA_SUFFIXES = ("_photo_file_id", "_doc_file_id", "_caption")
+
+
+def _is_registry_media_derivative(key: str) -> bool:
+    """`{prefix}_photo_file_id` / `{prefix}_doc_file_id` / `{prefix}_caption` — реальные строки
+    bot_settings, которые пишет фото/файл-визард; в реестре зарегистрирован сам префикс
+    (тип photo/file, D-10), а не производные ключи."""
+    for suffix in _MEDIA_SUFFIXES:
+        if key.endswith(suffix):
+            prefix = key[: -len(suffix)]
+            entry = SETTINGS_SCHEMA.get(prefix)
+            return bool(entry) and entry["type"] in ("photo", "file")
+    return False
+
+
+def _literal_setting_keys_in_source() -> dict[str, set[str]]:
+    """Все литеральные ключи `get_setting("…")` / `get_setting_typed("…")` /
+    `get_setting_for_city("…")` / `get_setting_typed_for_city("…")` в handlers/*.py и
+    services/*.py. Динамические/составные ключи (переменная, f-string) регуляркой не
+    матчатся — у них после скобки нет кавычки — и намеренно не проверяются."""
+    import glob
+    import os
+    import re
+
+    root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    pattern = re.compile(
+        r"""\bget_setting(?:_typed)?(?:_for_city)?\(\s*(["'])([A-Za-z0-9_]+)\1"""
+    )
+    found: dict[str, set[str]] = {}
+    files = glob.glob(os.path.join(root, "handlers", "*.py")) + glob.glob(
+        os.path.join(root, "services", "*.py")
+    )
+    assert files, "handlers/*.py и services/*.py не найдены — тест смотрит не туда"
+    for path in files:
+        with open(path, encoding="utf-8") as f:
+            src = f.read()
+        for m in pattern.finditer(src):
+            found.setdefault(m.group(2), set()).add(os.path.relpath(path, root))
+    return found
+
+
+def test_every_literal_setting_key_in_code_is_declared_or_allowlisted():
+    found = _literal_setting_keys_in_source()
+    assert len(found) >= 100, f"нашли всего {len(found)} ключей — регулярка сломалась?"
+    undeclared = {
+        key: sorted(files) for key, files in found.items()
+        if key not in SETTINGS_SCHEMA
+        and key not in _SERVICE_KEYS
+        and key not in _OUT_OF_SCOPE_KEYS
+        and not _is_registry_media_derivative(key)
+    }
+    assert not undeclared, (
+        "ключи bot_settings читаются в коде, но не объявлены в SETTINGS_SCHEMA "
+        f"(менеджер их не увидит): {undeclared}"
+    )
+    # Ключи 17.1-03 действительно читаются кодом (иначе объявление в реестре — мёртвый груз).
+    for key in ("city_fork_text", "party_fork_text", "preselect_enabled",
+                "preselect_no_username_text", "preselect_fail_text", "preselect_link"):
+        assert key in found, f"{key} больше нигде не читается"
+
+
+def test_allowlists_do_not_hide_keys_that_are_now_declared():
+    """Allow-list'ы — не мусорка: если ключ доехал до реестра, его надо оттуда убрать."""
+    stale = (_SERVICE_KEYS | _OUT_OF_SCOPE_KEYS) & set(SETTINGS_SCHEMA)
+    assert not stale, f"уже в реестре, убрать из allow-list: {sorted(stale)}"
