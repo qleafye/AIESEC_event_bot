@@ -89,6 +89,10 @@ _EVENT_FIELD_ORDER = [
     # Phase 17.1 (17.1-02): recall/возвращение — CTA под баннером прошлого сезона и два
     # экрана «прошлый ответ» анкеты, рядом со start_text_returning (то же «возвращение»).
     "start_returning_cta_text", "recall_resume_prompt_text", "recall_generic_prompt_text",
+    # Phase 17.1 (17.1-03): empty-state'ы «📅 Программа»/«🗣 Спикеры»/«📞 Контакты» и оба
+    # экрана «❓ Задать вопрос» — тексты информационных кнопок меню, рядом с медиа/контактами.
+    "program_empty_text", "speakers_empty_text", "contacts_empty_text",
+    "ask_question_prompt_text", "ask_question_sent_text",
     "event_name", "event_season", "event_type",
 ]
 _EVENT_FIELDS = [
@@ -1481,7 +1485,25 @@ async def settings_receive_file_invalid(message: types.Message):
     await message.answer("Отправьте фото или документ.")
 
 
-HTML_SETTINGS = {"start_text", "start_text_registered", "start_text_returning", "reg_complete_text", "approve_text", "approve_text__party"}
+HTML_SETTINGS = {
+    "start_text", "start_text_registered", "start_text_returning", "reg_complete_text",
+    "approve_text", "approve_text__party",
+    # Phase 17.1 (17.1-03): единая политика для текстовых ключей 17.1 — если prompt обещает
+    # менеджеру «Поддерживается HTML», ввод берётся из message.html_text (жирный/курсив из
+    # Telegram сохраняются, «<»/«&» экранируются сами), как у соседей выше. Ключи, которые
+    # консьюмер дополнительно html.escape'ит (preselect_*) или шлёт с parse_mode=None,
+    # сюда НЕ входят. Инвариант «prompt говорит HTML <=> ключ здесь» сторожит
+    # tests/test_delegate_texts_registry_260819.py::test_html_promise_in_prompt_matches_html_settings.
+    "pending_gate_text",
+    "start_returning_cta_text", "recall_generic_prompt_text",
+    "payment_option_picker_header_text", "payment_details_template_text",
+    "payment_pay_later_text", "payment_pay_later_menu_hint_text",
+    "payment_receipt_received_text",
+    "leaderboard_header_text", "leaderboard_rank_line_text",
+    "balance_history_header_text", "referral_list_header_text",
+    "program_empty_text", "speakers_empty_text", "contacts_empty_text",
+    "ask_question_prompt_text", "ask_question_sent_text",
+}
 
 
 def _base_setting_key(key: str) -> str:

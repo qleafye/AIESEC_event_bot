@@ -131,6 +131,9 @@ def test_registry_event_order_unchanged_for_old_keys():
         "event_season", "start_text_returning",
         # Phase 17.1 (17.1-02): recall/возвращение — рядом со start_text_returning.
         "start_returning_cta_text", "recall_resume_prompt_text", "recall_generic_prompt_text",
+        # Phase 17.1 (17.1-03): empty-state'ы медиа/контактов и «❓ Задать вопрос».
+        "program_empty_text", "speakers_empty_text", "contacts_empty_text",
+        "ask_question_prompt_text", "ask_question_sent_text",
     }
     filtered = [k for k in admin_settings._EVENT_FIELD_ORDER if k not in new_keys]
     assert filtered == old_order_literal

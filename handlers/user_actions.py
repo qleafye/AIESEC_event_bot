@@ -924,7 +924,8 @@ async def show_program(message: types.Message):
         photo = FSInputFile("resources/program.jpg")
         await message.answer_photo(photo, caption=program_caption, parse_mode="HTML")
     except Exception:
-        await message.answer("Программа форума ещё не загружена.")
+        # Phase 17.1 (17.1-03): empty-state из реестра.
+        await message.answer(await get_setting_typed("program_empty_text"))
 
 # 🗣 Спикеры
 @router.message(F.text == "🗣 Спикеры")
@@ -945,7 +946,8 @@ async def show_speakers(message: types.Message):
         except Exception:
             pass
 
-    await message.answer("Список спикеров формируется и скоро появится здесь.")
+    # Phase 17.1 (17.1-03): empty-state из реестра.
+    await message.answer(await get_setting_typed("speakers_empty_text"))
 
 # 📞 Контакты
 @router.message(F.text == "📞 Контакты")
@@ -961,7 +963,8 @@ async def show_contacts(message: types.Message):
     contact_tg = await get_setting_for_city("contact_tg", code)
 
     if not contact_person and not contact_vk and not contact_tg:
-        await message.answer("Контакты пока не указаны. Обратитесь к организаторам.")
+        # Phase 17.1 (17.1-03): empty-state из реестра.
+        await message.answer(await get_setting_typed("contacts_empty_text"))
         return
 
     parts = []
@@ -1027,8 +1030,9 @@ async def ask_organizer_start(message: types.Message, state: FSMContext):
         return
 
     logger.info(f"User {message.from_user.id} wants to ask a question")
+    # Phase 17.1 (17.1-03): приглашение из реестра.
     await message.answer(
-        "Напиши свой вопрос, и мы передадим его организаторам.",
+        await get_setting_typed("ask_question_prompt_text"),
         reply_markup=get_cancel_kb()
     )
     await state.set_state(Question.waiting_for_question)
@@ -1082,7 +1086,11 @@ async def process_question(message: types.Message, state: FSMContext, bot: Bot):
     sent_count = await notify_by_capability(bot, "moderate_reg", admin_text, parse_mode="HTML", city=city)
 
     if sent_count > 0:
-        await message.answer("Твой вопрос отправлен!", reply_markup=await get_main_menu_kb(message.from_user.id))
+        # Phase 17.1 (17.1-03): подтверждение из реестра.
+        await message.answer(
+            await get_setting_typed("ask_question_sent_text"),
+            reply_markup=await get_main_menu_kb(message.from_user.id),
+        )
     elif config.ADMIN_IDS:
         logger.error(f"Failed to send question from {message.from_user.id} to any admin")
         await message.answer("Не удалось отправить вопрос, попробуйте позже.", reply_markup=await get_main_menu_kb(message.from_user.id))
