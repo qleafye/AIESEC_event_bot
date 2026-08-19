@@ -2,8 +2,9 @@
 
 Task creation/archive/delete wizard ("🎯 Задания" + GameTaskCreate wizard; Phase 16 (16-03):
 the NEW point-edit/preset/preview/«✏️ Изменить» handlers live in handlers/admin_game_tasks.py,
-imported right after this module in admin.py's seam list -- this file was at its size
-ceiling), the "🪙 Монеты
+imported at the TAIL of this module (see the last lines) -- this file was at its size
+ceiling; Phase 16 (16-04): pure renders/keyboards of the moderation card, manual coins and
+stats bars live in handlers/game_review_render.py, no router), the "🪙 Монеты
 вручную" manual-coins wizard (coinsman_*) + "📜 Журнал монет" (coinsjrn_*), submission review
 (grev_*, GameReview wizard), Sheets sync ("🔄 Таблица геймы") and the "📊 Статистика геймы"
 screen — everything gated by moderate_game (ADMIN_CAPS, pre-registered 09-01). Decorates the
@@ -68,7 +69,6 @@ from database.db import (
     list_all_submissions,
     list_all_tasks,
     list_manual_coin_entries,
-    parse_proof_types,
     set_setting,
     task_title,
     unarchive_task,
@@ -82,6 +82,12 @@ from services.scheduler import _fmt_dt, _now_moscow_naive, _parse_schedule_dt
 from services.game_sync import request_resync as _request_game_resync, set_rebuild as _set_game_rebuild
 from handlers.states import CoinsManual, GameReview, GameTaskCreate, GameTaskEdit
 from handlers.game_labels import category_label  # Phase 16 (16-01/16-03): RU labels, one source
+from handlers.game_labels import proof_types_label as _registry_proof_types_label
+from handlers.game_review_render import (  # Phase 16 (16-04): pure renders/keyboards (no router) -- shared
+    _CARD_MAX, _CARD_PART_MAX, _GAME_PROOF_LABELS, _MEDIA_CAPTION_MAX, MEDIA_GROUP_MAX,  # noqa: F401
+    _coinsman_amount_kb, _coinsman_confirm_kb, _coinsman_person_kb, _proof_types_label,  # noqa: F401
+    _render_coinsman_confirm_card, _render_submission_card, _submission_card_kb,  # noqa: F401
+)
 from handlers.game_task_wizard import (  # Phase 16 (16-03): pure wizard helpers (no router) -- shared
     _DEADLINE_PAST, _PROMPT_CATEGORY, _PROMPT_COINS, _PROMPT_COINS_INVALID, _PROMPT_DEADLINE,  # noqa: F401
     _PROMPT_TEXT, _PROMPT_TEXT_EMPTY, _finish_deadline_step, _game_task_confirm_kb,  # noqa: F401
@@ -428,16 +434,6 @@ async def game_task_title_step(message: types.Message, state: FSMContext):
     await state.set_state(GameTaskCreate.text)
 
 
-# Human-readable labels for GAME_PROOF_TYPES (D-08/CLAUDE.md «для людей, не для прогеров»):
-# the manager taps a labeled button, never types a proof-type code.
-_GAME_PROOF_LABELS = {
-    "photo": "📷 Скриншот/фото",
-    "pdf": "📄 PDF",
-    "text": "✍️ Текст",
-    "link": "🔗 Ссылка",
-}
-
-
 async def _game_task_category_kb() -> InlineKeyboardMarkup:
     """Phase 16 (16-03): button TEXT is the RU label (game_labels.category_label), the
     callback_data stays the raw code (`gtcat:{cat}`) -- DB storage format unchanged."""
@@ -445,15 +441,6 @@ async def _game_task_category_kb() -> InlineKeyboardMarkup:
         [InlineKeyboardButton(text=await category_label(cat), callback_data=f"gtcat:{cat}")]
         for cat in GAME_CATEGORIES
     ])
-
-
-def _proof_types_label(raw: str | None) -> str:
-    """Phase 09.1 (A): proof_type is now possibly-multiple/possibly-empty (D-01, "можно
-    несколько или ни одного") -- shared by the wizard confirm card and the moderation card."""
-    codes = parse_proof_types(raw)
-    if not codes:
-        return "не важно"
-    return " + ".join(_GAME_PROOF_LABELS[c] for c in codes)
 
 
 def _game_task_proof_kb(selected: set[str]) -> InlineKeyboardMarkup:
@@ -912,14 +899,6 @@ async def game_task_editphoto_invalid(message: types.Message, state: FSMContext)
 # (handlers/admin_caps.py) -- T-14-16 (GAME-09's own threat register): monetary right, not
 # registration-queue right.
 
-def _coinsman_person_kb() -> InlineKeyboardMarkup:
-    return InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="➕ Начислить", callback_data="coinsman_sign:plus")],
-        [InlineKeyboardButton(text="➖ Списать", callback_data="coinsman_sign:minus")],
-        [InlineKeyboardButton(text="← Отмена", callback_data="coinsman_cancel")],
-    ])
-
-
 async def _coinsman_card_text(user: dict, balance: int) -> str:
     """Card shown right after the person resolves -- ФИО, @username, город (only when the
     cities module is on -- same `cities_module_on()` gate roles screen's own city line uses),
@@ -1022,6 +1001,11 @@ async def coinsman_sign_step(callback: types.CallbackQuery, state: FSMContext):
     await state.update_data(cm_sign=sign)
     await state.set_state(CoinsManual.amount)
     await callback.message.answer("Сколько монет? Пришлите число, например 5.", reply_markup=get_cancel_kb())
+    # Phase 16 (16-04, Экран 8): quick-pick сумм из реестра -- ВТОРЫМ сообщением (reply-«Отмена»
+    # и inline-клавиатура не живут в одном сообщении); пустой список пресетов -> без второго.
+    quick_kb = await _coinsman_amount_kb(sign)
+    if quick_kb.inline_keyboard:
+        await callback.message.answer("Или выберите сумму:", reply_markup=quick_kb)
     await callback.answer()
 
 
@@ -1042,11 +1026,29 @@ async def coinsman_amount_step(message: types.Message, state: FSMContext):
     await message.answer("За что? Напишите причину коротко, например: за помощь на стенде.")
 
 
-def _coinsman_confirm_kb() -> InlineKeyboardMarkup:
-    return InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="✅ Подтвердить", callback_data="coinsman_confirm")],
-        [InlineKeyboardButton(text="← Отмена", callback_data="coinsman_cancel")],
-    ])
+@router.callback_query(F.data.startswith("coinsman_amount:"), CoinsManual.amount)
+async def coinsman_amount_step_pick(callback: types.CallbackQuery, state: FSMContext):
+    """Phase 16 (16-04): quick-pick сумма -- тот же результат, что напечатанное число
+    (cm_delta со знаком из cm_sign, переход в CoinsManual.reason). Значение из callback_data
+    проверяется как положительное целое; знак берётся ТОЛЬКО из уже выбранного cm_sign
+    (T-16-04-02: это ярлык ввода, а не новый путь записи -- add_coins по-прежнему только из
+    coinsman_confirm после причины и подтверждения)."""
+    raw = callback.data.split(":", 1)[1]
+    value = int(raw) if raw.isdigit() else 0
+    if value <= 0:
+        await callback.answer("Неизвестная кнопка", show_alert=True)
+        return
+    data = await state.get_data()
+    sign = data.get("cm_sign")
+    if data.get("cm_user_id") is None or sign not in ("plus", "minus"):
+        # Стейл-кнопка от прежнего/брошенного визарда -- как в coinsman_sign_step.
+        await callback.answer("Сначала укажите получателя и действие", show_alert=True)
+        return
+    delta = value if sign == "plus" else -value
+    await state.update_data(cm_delta=delta)
+    await state.set_state(CoinsManual.reason)
+    await callback.message.answer("За что? Напишите причину коротко, например: за помощь на стенде.")
+    await callback.answer()
 
 
 async def _coinsman_display_name(user_id: int) -> str:
@@ -1055,20 +1057,6 @@ async def _coinsman_display_name(user_id: int) -> str:
     user = await get_user(user_id)
     name = (user.get("full_name") or user.get("username")) if user else None
     return html_module.escape(str(name or user_id))
-
-
-def _render_coinsman_confirm_card(recipient_name: str, delta: int, reason: str) -> str:
-    """T-14-19: `reason` is a human-typed free text that will also be shown to the delegate
-    with parse_mode="HTML" (_notify_manual_coins) -- escaped here too, not just once at the
-    eventual delegate render (same double-escape-site precedent as
-    _render_game_task_confirm_card's task text)."""
-    return (
-        "🪙 <b>Подтвердите операцию</b>\n\n"
-        f"Кому: {recipient_name}\n"
-        f"Сумма: {delta:+d} монет(ы)\n"
-        f"Причина: {html_module.escape(reason)}\n\n"
-        "Делегат получит сообщение с суммой, причиной и новым балансом."
-    )
 
 
 @router.message(CoinsManual.reason)
@@ -1082,9 +1070,20 @@ async def coinsman_reason_step(message: types.Message, state: FSMContext):
         return
     await state.update_data(cm_reason=raw_reason)  # raw text, not trimmed (Task 3 action note)
     data = await state.get_data()
-    name = await _coinsman_display_name(data.get("cm_user_id"))
+    user_id = data.get("cm_user_id")
+    name = await _coinsman_display_name(user_id)
+    # Phase 16 (16-04, Экран 8): «было -> станет» и город резолвятся ОДИН раз здесь и уходят в
+    # синхронный рендер (тот же приём, что _coinsman_card_text шагом раньше).
+    balance_before = await get_balance(user_id)
+    city_label_text = None
+    if await cities_module_on():
+        recipient = await get_user(user_id)
+        city_label_text = await city_label(normalize_city((recipient or {}).get("event_city")))
     await message.answer(
-        _render_coinsman_confirm_card(name, data.get("cm_delta"), raw_reason),
+        _render_coinsman_confirm_card(
+            name, data.get("cm_delta"), raw_reason,
+            balance_before=balance_before, city_label_text=city_label_text,
+        ),
         parse_mode="HTML",
         reply_markup=_coinsman_confirm_kb(),
     )
@@ -1239,124 +1238,6 @@ async def _get_submission_and_task(submission_id: int) -> tuple[dict | None, dic
     return submission, task
 
 
-# CR-01 (09.1-REVIEW.md): hard ceilings so a submission card can never blow past Telegram's
-# sendMessage limit (4096 chars). _CARD_PART_MAX truncates one rendered part; _CARD_MAX
-# truncates the whole assembled card as a last-resort backstop.
-_CARD_PART_MAX = 500
-_CARD_MAX = 3800
-
-# CR-02 (09.1-REVIEW.md): sendMediaGroup accepts 2-10 items -- 11+ raises and used to drop the
-# whole group silently. MEDIA_GROUP_MAX chunks the resend; _MEDIA_CAPTION_MAX (Telegram's own
-# caption limit is 1024) truncates a caption with a margin, since captions come straight from
-# unvalidated delegate input.
-MEDIA_GROUP_MAX = 10
-_MEDIA_CAPTION_MAX = 1000
-
-
-def _render_submission_card(row: dict, position: int, total: int, parts: list[dict] | None = None,
-                             city_labels: tuple[str, str] | None = None,
-                             attempt: tuple[int, int] | None = None) -> str:
-    """HTML card for one pending submission; all free-text (task text, submitter name) escaped
-    — T-09-12: this is the FIRST render of delegate-supplied content to a manager.
-
-    Phase 09.1 (A): `parts` defaults to None so every pre-existing call site/test keeps the
-    single content_type/content rendering byte-for-byte. Pass `parts` (from
-    `get_submission_parts_or_legacy`) to render every part of a free-form submission instead.
-
-    Phase 09.1 (B): `city_labels` (delegate_label, task_label) defaults to None so this stays
-    byte-identical when the cities module is off. This function is synchronous and cannot
-    itself call cities_module_on()/city_label() -- the caller (_show_current_submission)
-    resolves both labels ONCE and hands them down, same "resolve once" shape the confirm
-    card uses for gt_city_step_shown.
-
-    Phase 14 (14-03, GAME-10): `attempt` (K, N) defaults to None so this stays byte-identical
-    when `game_resubmit_limit` is unset/0 -- this function is SYNCHRONOUS and cannot itself
-    read the registry or count rejected submissions, same "resolve once, caller hands down"
-    shape as `city_labels` -- the caller (`_show_current_submission`) does the async resolve."""
-    def esc(v):
-        return html_module.escape(str(v)) if v not in (None, "", "-") else None
-
-    header = f"🎮 <b>Сдача {position}/{total}</b>"
-    # Quick 260819-gtl (CONTEXT.md decision 6): "Задание: <title>" line, not a raw text
-    # preview -- task photo is deliberately NOT duplicated here (the submission's own parts
-    # are what the manager needs to see).
-    title = task_title({"title": row.get("task_title"), "text": row.get("task_text")})
-    lines = [header, "", f"Задание: {esc(title) or '—'}"]
-    lines.append(f"Категория: {esc(row.get('task_category')) or '—'}")
-    lines.append(f"Предложено: {row.get('task_coins')}🪙")
-    name = esc(row.get("user_full_name")) or "—"
-    uname = esc(row.get("user_username"))
-    lines.append(f"👤 {name}" + (f" ({uname})" if uname else ""))
-    if city_labels is not None:
-        delegate_label, task_label = city_labels
-        lines.append(f"🏙 Город делегата: {esc(delegate_label) or '—'}")
-        lines.append(f"🎯 Кому задание: {esc(task_label) or '—'}")
-    proof_label = _proof_types_label(row.get("task_proof_type"))
-    lines.append(f"Тип подтверждения: {proof_label}")
-    if parts is None:
-        content_type = row.get("content_type")
-        if content_type in ("text", "link"):
-            lines.append(f"Содержимое: {esc(row.get('content')) or '—'}")
-        elif content_type in ("photo", "pdf"):
-            lines.append("Содержимое: см. файл ниже")
-    elif not parts:
-        lines.append("Содержимое: —")
-    else:
-        lines.append("Содержимое:")
-        for part in parts:
-            caption = esc(part.get("caption"))
-            if part.get("kind") in ("text", "link"):
-                # CR-01 «Важно 1»: truncate the RAW content, escape after -- slicing an
-                # already-escaped string can split an HTML entity in half (&amp; -> &am) and
-                # reproduce the exact parse_mode="HTML" failure this truncation defends against.
-                raw = str(part.get("content") or "")
-                if len(raw) > _CARD_PART_MAX:
-                    raw = raw[:_CARD_PART_MAX] + "…"
-                lines.append(f"• {esc(raw) or '—'}")
-            else:
-                # T-09-12/backward-compat: same "см. файл ниже" wording the pre-09.1 single-
-                # content_type render used (tests/test_gamification_review_phase9.py asserts
-                # this literal string and is NOT modified by this plan).
-                tail = f" ({caption})" if caption else ""
-                lines.append(f"• см. файл ниже{tail}")
-    # Phase 14 (14-03, GAME-08): task_archived_at is exposed on the queue rows by plan 14-01.
-    # The submission itself is untouched by the archive — the manager still has to decide it.
-    if row.get("task_archived_at"):
-        lines.append("🗄 Задание в архиве — сдачу всё равно нужно решить")
-    # Phase 14 (14-03, GAME-10): resolved once by the caller (limit==0/None -> attempt stays
-    # None -> this line never appears, byte-identical to pre-phase behavior).
-    if attempt is not None:
-        k, n = attempt
-        lines.append(f"🔁 Попытка {k} из {n}")
-    # A-05 (созвон 13.08): дедлайн мягкий, бот сдачу принял — единственный ограничитель здесь
-    # человек. Просрочка нигде не хранится, только вычисляется здесь при каждом рендере.
-    submitted_at = row.get("submitted_at")
-    deadline_at = row.get("task_deadline_at")
-    if submitted_at and deadline_at and str(submitted_at) > str(deadline_at):
-        lines.append(f"⏰ Сдано после дедлайна ({deadline_at}) — решение за вами")
-    return "\n".join(lines)
-
-
-def _submission_card_kb(submission_id: int, coins: int) -> InlineKeyboardMarkup:
-    # NOTE: the plan's own <action> block names this function's second parameter `total`
-    # (copy-pasted from `_appr_card_kb(tid, has_resume, total)`), but the button label needs
-    # the task's coin default, and the plan explicitly drops the "Одобрить все" row that
-    # `total` would have fed — `total` is unused dead weight in that literal spec. Named
-    # `coins` here to match what the button text actually needs (documented in SUMMARY as a
-    # plan-authoring inconsistency, same class as 09-02's grep-count note / 09-03's stale test
-    # name, not a functional deviation).
-    return InlineKeyboardMarkup(inline_keyboard=[
-        [
-            InlineKeyboardButton(text=f"✅ Одобрить {coins}🪙", callback_data=f"grev_approve:{submission_id}"),
-            InlineKeyboardButton(text="✏️ Другая сумма", callback_data=f"grev_approve_custom:{submission_id}"),
-        ],
-        [
-            InlineKeyboardButton(text="❌ Отклонить", callback_data=f"grev_reject:{submission_id}"),
-            InlineKeyboardButton(text="⏭ Пропустить", callback_data=f"grev_skip:{submission_id}"),
-        ],
-    ])
-
-
 async def _show_current_submission(target: types.Message, state: FSMContext):
     """Render the oldest non-skipped pending submission (DB-driven, restart-safe) — byte-for-
     byte the same batched-pagination loop as `_show_current_card` (limit=50 per batch, CLAUDE.md:
@@ -1401,7 +1282,16 @@ async def _show_current_submission(target: types.Message, state: FSMContext):
     if limit:
         rejected = await count_rejected_submissions(current["task_id"], current["user_id"])
         attempt = (rejected + 1, limit)
-    card = _render_submission_card(current, position, total, parts, city_labels, attempt)
+    # Phase 16 (16-04, Экран 5): RU-категория и подпись типов подтверждения -- из реестра
+    # (game_labels), «Осталось: N» -- из позиции; всё резолвится здесь, рендер синхронный.
+    category_label_text = await category_label(current["task_category"])
+    proof_label_text = await _registry_proof_types_label(current.get("task_proof_type"))
+    remaining = total - position
+    card = _render_submission_card(
+        current, position, total, parts, city_labels, attempt,
+        category_label_text=category_label_text, remaining=remaining,
+        proof_label_text=proof_label_text,
+    )
     if len(card) > _CARD_MAX:
         # CR-01 «Важно 2»: a hard slice can leave a truncated HTML entity tail (the only tag
         # in the card is <b> at position 0, well before any slice point at _CARD_MAX chars).
@@ -1997,3 +1887,13 @@ async def show_game_stats(callback: types.CallbackQuery):
         reply_markup=await admin_keyboard_for(callback.from_user.id),
     )
     await callback.answer()
+
+
+# ── Seam chain (16-03/16-04): handlers/admin_game_tasks.py decorates the same admin.router and
+# depends one-way on this module (`_ag.<attr>` at call time). It is imported HERE, as the very
+# last statement, so its handlers always register after every handler above -- regardless of
+# whether handlers.admin or handlers.admin_gamification was imported first (admin.py's seam
+# list re-enters while this module is half-initialised; an import from there would register
+# admin_game_tasks' handlers BEFORE ours in that order and break first-match for the shared
+# GameTaskEdit cancel guard). Golden snapshot: tests/test_refac_snapshot_260816.py.
+from handlers import admin_game_tasks  # noqa: E402,F401
