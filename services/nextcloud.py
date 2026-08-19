@@ -14,6 +14,7 @@ No password is ever read, logged, or returned by this module — only the deep-l
 """
 import logging
 import re
+import ssl
 from urllib.parse import quote
 
 import aiohttp
@@ -34,13 +35,30 @@ def _safe_name(filename: str) -> str:
     return base
 
 
+def _ssl_arg():
+    """Value for aiohttp's ``ssl=`` on the WebDAV PUT.
+
+    - NEXTCLOUD_VERIFY_TLS=false → ``False`` (verification off; explicit, conscious opt-out).
+    - NEXTCLOUD_CA_BUNDLE set → an SSLContext trusting that PEM (self-signed / private CA),
+      verification stays ON.
+    - otherwise → ``None`` = aiohttp default (system trust store, verification on).
+    Plain http:// URLs ignore this entirely.
+    """
+    if not config.NEXTCLOUD_VERIFY_TLS:
+        return False
+    bundle = (config.NEXTCLOUD_CA_BUNDLE or "").strip()
+    if bundle:
+        return ssl.create_default_context(cafile=bundle)
+    return None
+
+
 async def _put_bytes(content: bytes, remote_name: str) -> bool:
     """WebDAV PUT raw bytes to {WEBDAV_URL}/{folder}/{remote_name}. Returns True on
     2xx-ish success, False (with an error log) otherwise. Assumes config is present —
     callers guard for that. Never raises to the caller under normal aiohttp errors is
     NOT guaranteed here; the public entrypoints wrap this in try/except."""
     folder = config.NEXTCLOUD_FOLDER.strip("/")
-    ssl_arg = None if config.NEXTCLOUD_VERIFY_TLS else False
+    ssl_arg = _ssl_arg()
     auth = aiohttp.BasicAuth(
         config.NEXTCLOUD_USER,
         config.NEXTCLOUD_APP_PASS.get_secret_value() if config.NEXTCLOUD_APP_PASS else "",

@@ -291,7 +291,8 @@ NEXTCLOUD_APP_PASS=
 NEXTCLOUD_FOLDER=resumes
 NEXTCLOUD_PUBLIC_URL=https://cloud.example.org
 NEXTCLOUD_FOLDER_SHARE_TOKEN=             # токен XXXX из публичной ссылки /s/XXXX
-NEXTCLOUD_VERIFY_TLS=false                # true, если сертификат доверенный
+NEXTCLOUD_VERIFY_TLS=true                 # по умолчанию true; false — только осознанно
+NEXTCLOUD_CA_BUNDLE=                      # PEM self-signed сертификата/CA, чтобы не выключать проверку
 ```
 
 `ADMIN_IDS` — JSON-список. `GOOGLE_SHEET_TAB` стоит задавать явно: иначе бот пишет в
