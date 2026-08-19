@@ -1,5 +1,6 @@
 """Phase 09.1 (D, GAME-07): debounced background resync of the gamification sheet tabs
-(«Гейма» matrix + «История сдач»).
+(«Гейма» matrix + «История сдач», plus the per-city pairs when the cities module is on —
+services/game_sheets.py).
 
 CONTEXT.md D (locked): a manager should not have to remember the "🔄 Таблица геймы" button
 for the tabs to stay fresh. Every significant event (task created, moderator decision,
@@ -82,10 +83,11 @@ async def _run_after(delay: float) -> None:
             _failure_warned = True
         return
 
+    # Quick GAME-CITY-TABS: rebuild_game_sheets returns one row count per tab (2 with the
+    # cities module off, 2 + 2 per enabled city with it on) -- any -1 means a failed tab.
     ok = True
-    if isinstance(result, tuple) and len(result) == 2:
-        matrix_written, history_written = result
-        ok = matrix_written >= 0 and history_written >= 0
+    if isinstance(result, tuple) and result:
+        ok = all(written >= 0 for written in result)
 
     if not ok:
         if not _failure_warned:

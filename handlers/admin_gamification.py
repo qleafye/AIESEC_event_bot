@@ -74,6 +74,7 @@ from database.db import (
 )
 from keyboards.builders import get_cancel_kb
 from services.sheets import sync_named_worksheet
+from services.game_sheets import describe_plan, game_tab_plan, rows_for_entry
 from services.scheduler import _fmt_dt, _now_moscow_naive, _parse_schedule_dt
 from services.game_sync import request_resync as _request_game_resync, set_rebuild as _set_game_rebuild
 from handlers.states import CoinsManual, GameReview, GameTaskCreate, GameTaskEdit
@@ -1792,20 +1793,37 @@ async def sync_game_sheets_confirm(callback: types.CallbackQuery):
     экран честно говорит, когда это было в последний раз -- game_sheet_last_synced_at это
     служебный ключ bot_settings, не заведённый в SETTINGS_SCHEMA (менеджер его не редактирует,
     реестр — только для человеко-редактируемых текстов)."""
-    matrix_tab = await get_setting_typed("game_matrix_tab")
-    history_tab = await get_setting_typed("game_history_tab")
+    # Quick GAME-CITY-TABS: with the cities module on, the rebuild also writes a matrix +
+    # history pair per enabled city («СПб Гейма» / «СПб История сдач») — the screen lists
+    # every tab that will be wiped. A manager bound to one city (Phase 09.3) sees the shared
+    # tabs + THEIR city's pair (staff city binding, Phase 8/09.1 -- not admin_selected_city,
+    # whose "no choice yet" default would hide the other cities from an unbound superadmin);
+    # the button itself always rebuilds everything (cheap, and one code path for the button
+    # and the background autosync).
+    plan = await game_tab_plan()
+    only_city = None
+    if callback.from_user.id not in config.ADMIN_IDS:  # D-12: bootstrap superadmins see everything
+        bound = await get_staff_city(callback.from_user.id)
+        if bound:
+            only_city = normalize_city(bound)
+    tab_lines = describe_plan(plan, only_city=only_city)
+    has_city_tabs = any(e["city"] for e in plan)
     raw_synced_at = await get_setting("game_sheet_last_synced_at")
     sync_phrase = _last_sync_phrase(raw_synced_at, _now_moscow_naive())
     kb = InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text="🔄 Да, пересобрать вкладки", callback_data="admin_game_sync_sheet_go")],
         [InlineKeyboardButton(text="← Отмена", callback_data="admin_menu")],
     ])
+    intro = "Заново соберу из базы бота вкладки:" if has_city_tabs else "Заново соберу из базы бота две вкладки:"
+    others_note = ""
+    if only_city is not None and any(e["city"] and e["city"] != only_city for e in plan):
+        others_note = "Вкладки других городов пересоберутся тоже — из той же базы.\n\n"
     await callback.message.edit_text(
         "🔄 <b>Пересобрать вкладки геймификации?</b>\n\n"
-        f"Заново соберу из базы бота две вкладки: <b>«{html_module.escape(matrix_tab)}»</b> "
-        f"(матрица участники × задания) и <b>«{html_module.escape(history_tab)}»</b>.\n\n"
+        f"{intro}\n" + "\n".join(f"• {line}" for line in tab_lines) + "\n\n"
+        f"{others_note}"
         f"Вкладки уже обновляются сами после каждого задания/решения/правки монет — {sync_phrase}.\n\n"
-        "⚠️ Обе вкладки очищаются целиком и заполняются заново. <b>Заметки, которые вы писали "
+        "⚠️ Эти вкладки очищаются целиком и заполняются заново. <b>Заметки, которые вы писали "
         "руками прямо в этих листах, пропадут</b> — в базе бота их нет. Остальные вкладки "
         "таблицы не затрагиваются.",
         parse_mode="HTML",
@@ -1814,14 +1832,19 @@ async def sync_game_sheets_confirm(callback: types.CallbackQuery):
     await callback.answer()
 
 
-async def rebuild_game_sheets() -> tuple[int, int]:
-    """Phase 09.1 (D, GAME-07): the ONE place that actually rebuilds the two gamification
-    sheet tabs — shared by the "🔄 Да, пересобрать вкладки" button (sync_game_sheets below,
-    which calls this directly, bypassing the debounce -- CONTEXT.md D's "пересобрать сейчас"
-    escape hatch) and services.game_sync's debounced background resync (registered via
-    set_rebuild() at the bottom of this module). No callback/keyboard args -- the button's
-    own handler renders the report from the returned pair, the background caller only needs
-    the pair to decide whether to warn superadmins."""
+async def rebuild_game_sheets_detailed() -> list[dict]:
+    """Phase 09.1 (D, GAME-07): the ONE place that actually rebuilds the gamification sheet
+    tabs — shared by the "🔄 Да, пересобрать вкладки" button (sync_game_sheets below, which
+    calls this directly, bypassing the debounce -- CONTEXT.md D's "пересобрать сейчас" escape
+    hatch) and services.game_sync's debounced background resync (registered via set_rebuild()
+    at the bottom of this module, through the tuple-returning wrapper rebuild_game_sheets).
+
+    Quick GAME-CITY-TABS: the tab list comes from services.game_sheets.game_tab_plan() —
+    the two whole-event tabs first, then (cities module ON) a matrix + history pair per
+    enabled city, built from the same two DB reads filtered per city (delegate's city for
+    submissions, task's city / NULL="all" for the matrix columns). Returns one dict per plan
+    entry with `written` (rows written, -1 on failure) added. Every tab is written
+    independently — one tab's failure never skips the rest (T-09-16)."""
     # list_all_tasks() is created_at DESC (moderation-friendly, newest-first); the matrix wants
     # columns oldest-first (left to right) -- reversed by an explicit sort here, not a new
     # db.py accessor, per the plan's own instruction.
@@ -1832,23 +1855,34 @@ async def rebuild_game_sheets() -> tuple[int, int]:
     tasks = sorted(await list_all_tasks(), key=lambda t: t["created_at"])
     submissions = await list_all_submissions()
 
-    matrix_headers, matrix_rows = _build_game_matrix(tasks, submissions)
-    history_headers, history_rows = _build_game_history(submissions)
-
-    # Quick 260815-3hw: tab names resolved from the registry (game_matrix_tab/game_history_tab)
-    # instead of the literals "Гейма"/"История сдач" — same defaults, admin-renameable.
-    matrix_tab = await get_setting_typed("game_matrix_tab")
-    history_tab = await get_setting_typed("game_history_tab")
-    matrix_written = await sync_named_worksheet(matrix_tab, matrix_headers, matrix_rows)
-    history_written = await sync_named_worksheet(history_tab, history_headers, history_rows)
+    results: list[dict] = []
+    for entry in await game_tab_plan():
+        entry_tasks, entry_subs = rows_for_entry(entry, tasks, submissions)
+        if entry["kind"] == "matrix":
+            headers, rows = _build_game_matrix(entry_tasks, entry_subs)
+        else:
+            headers, rows = _build_game_history(entry_subs)
+        try:
+            written = await sync_named_worksheet(entry["tab"], headers, rows)
+        except Exception as e:  # sync_named_worksheet is already fail-soft; belt and braces
+            logger.error(f"rebuild_game_sheets: tab {entry['tab']!r} failed: {e}")
+            written = -1
+        results.append({**entry, "written": written})
 
     # T-091-17: the "обновлено N мин назад" timestamp must never lie about a partially-failed
-    # sync -- only written when BOTH tabs actually wrote successfully. game_sheet_last_synced_at
+    # sync -- only written when EVERY tab actually wrote successfully. game_sheet_last_synced_at
     # is a service key, not a SETTINGS_SCHEMA entry (see sync_game_sheets_confirm's comment).
-    if matrix_written >= 0 and history_written >= 0:
+    if all(r["written"] >= 0 for r in results):
         await set_setting("game_sheet_last_synced_at", _now_moscow_naive().strftime("%Y-%m-%d %H:%M:%S"))
 
-    return matrix_written, history_written
+    return results
+
+
+async def rebuild_game_sheets() -> tuple[int, ...]:
+    """Row counts per tab in game_tab_plan() order (whole-event matrix, whole-event history,
+    then each city's pair) — -1 for a failed tab. Cities module OFF -> exactly a 2-tuple, the
+    shape services.game_sync and the pre-cities callers already understand."""
+    return tuple(r["written"] for r in await rebuild_game_sheets_detailed())
 
 
 @router.callback_query(F.data == "admin_game_sync_sheet_go")
@@ -1856,16 +1890,16 @@ async def sync_game_sheets(callback: types.CallbackQuery):
     await callback.answer("🔄 Синхронизация...")
     logger.info(f"admin={callback.from_user.id} action=game_sync_sheet start")
 
-    matrix_written, history_written = await rebuild_game_sheets()
+    results = await rebuild_game_sheets_detailed()
 
-    matrix_tab = await get_setting_typed("game_matrix_tab")
-    history_tab = await get_setting_typed("game_history_tab")
-    matrix_report = f"{matrix_written} строк" if matrix_written >= 0 else "⚠️ ошибка синхронизации (см. лог)"
-    history_report = f"{history_written} строк" if history_written >= 0 else "⚠️ ошибка синхронизации (см. лог)"
-
+    lines = []
+    for r in results:
+        report = f"{r['written']} строк" if r["written"] >= 0 else "⚠️ ошибка синхронизации (см. лог)"
+        lines.append(f"{html_module.escape(r['tab'])}: {report}.")
+    failed = sum(1 for r in results if r["written"] < 0)
+    head = "✅ " if not failed else "⚠️ "
     await callback.message.answer(
-        f"✅ {html_module.escape(matrix_tab)}: {matrix_report}.\n"
-        f"{html_module.escape(history_tab)}: {history_report}.",
+        head + "\n".join(lines),
         parse_mode="HTML",
         reply_markup=await admin_keyboard_for(callback.from_user.id),
     )
