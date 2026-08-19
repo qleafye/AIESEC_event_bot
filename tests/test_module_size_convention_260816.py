@@ -52,10 +52,11 @@ KNOWN_OVERAGES: dict[str, tuple[int, str]] = {
         "(Phase 14/16)",
     ),
     "admin_settings.py": (
-        1840,
+        1870,
         "настройки+инструменты таблицы+выгрузки -- блоки не смежны в исходном "
         "god-файле, разрез на два файла потребовал бы двух точек шва-импорта "
-        "(см. 13-06-SUMMARY.md, Known Gap)",
+        "(см. 13-06-SUMMARY.md, Known Gap); +31 строка -- перепроверка прав "
+        "на per-city запись в settings_edit_value (ревью 09.3)",
     ),
     "admin_cities.py": (
         960,
