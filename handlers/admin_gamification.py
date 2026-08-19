@@ -238,17 +238,26 @@ async def show_game_tasks(callback: types.CallbackQuery, state: FSMContext):
     live message per screen. Fail-soft fallback to a fresh message when the source cannot be
     edited (a photo message, an already-deleted one)."""
     text, kb = await _game_tasks_screen()
-    try:
-        await callback.message.edit_text(text, parse_mode="HTML", reply_markup=kb)
-    except Exception:
-        await callback.message.answer(text, parse_mode="HTML", reply_markup=kb)
+    await _edit_or_send_screen(callback.message, text, kb)
     await callback.answer()
+
+
+async def _edit_or_send_screen(message: types.Message, text: str, kb: InlineKeyboardMarkup):
+    """edit_text first; a «message is not modified» refusal (the toggle side you're already
+    on) is silently fine; any other failure (photo message, deleted) falls back to a new
+    message -- never a spinner, never a duplicate on a harmless re-tap."""
+    try:
+        await message.edit_text(text, parse_mode="HTML", reply_markup=kb)
+    except Exception as e:
+        if "not modified" in str(e).lower():
+            return
+        await message.answer(text, parse_mode="HTML", reply_markup=kb)
 
 
 @router.callback_query(F.data == "admin_game_archive")
 async def show_game_archive(callback: types.CallbackQuery):
     text, kb = await _game_archive_screen()
-    await callback.message.edit_text(text, parse_mode="HTML", reply_markup=kb)
+    await _edit_or_send_screen(callback.message, text, kb)
     await callback.answer()
 
 
