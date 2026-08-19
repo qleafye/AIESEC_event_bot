@@ -800,3 +800,8 @@ def _pick_auto_open(rows: list[tuple[str, str]]):
 # `router` object, never a second Router() instance. main.py is unaffected: it still includes
 # `admin.router` by reference, unaware any handler now physically lives in a seam file.
 from handlers import admin_gamification  # noqa: E402
+# Phase 16 (16-03, GAME-UI-03): manager task-management seam (point-edit card actions,
+# deadline presets, wizard «✏️ Изменить», «👁 Как видит делегат») -- imported right AFTER
+# admin_gamification (one-way dependency on its render helpers), so its handlers are pure
+# appends to the golden snapshot order.
+from handlers import admin_game_tasks  # noqa: E402

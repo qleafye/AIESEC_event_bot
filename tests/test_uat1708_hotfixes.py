@@ -473,7 +473,7 @@ def test_render_confirm_card_shows_kому_line_for_bound_manager(tmp_path):
     asyncio.run(admin_gamification.game_task_proof_done(cb, state))
     data = asyncio.run(state.get_data())
     data.update({"gt_text": "t", "gt_category": "Light", "gt_coins": 10, "gt_deadline": "2099-01-01 00:00:00"})
-    card = admin_gamification._render_game_task_confirm_card(data)
+    card = asyncio.run(admin_gamification._render_game_task_confirm_card(data))  # 16-03: async preview
     assert "Кому:" in card
 
 
