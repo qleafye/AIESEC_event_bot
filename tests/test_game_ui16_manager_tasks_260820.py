@@ -398,3 +398,390 @@ def test_preview_intro_registry_key_in_game_group():
     assert entry["default"].startswith("👁")
     from handlers import admin_settings
     assert "game_task_preview_intro" in admin_settings._GAME_FIELD_ORDER
+
+
+# ═══════════════════════════════════════════════════════════════════════════════════════════
+# Task 3: визард — RU-категории на кнопках, дедлайн-пресеты (создание + точечная правка)
+# ═══════════════════════════════════════════════════════════════════════════════════════════
+
+from database.db import GAME_CATEGORIES  # noqa: E402
+from handlers import game_task_wizard  # noqa: E402
+from services.scheduler import _now_moscow_naive  # noqa: E402
+
+
+def _drive_to_deadline(state, title="Задание", text="Текст задания", photo=None, coins="30"):
+    """gtnew -> title -> text -> photo/skip -> category -> coins -> proof done (module off) ->
+    deadline prompt. Returns the callback whose message got the deadline prompt."""
+    asyncio.run(admin_gamification.game_task_new(FakeCallback("gtnew"), state))
+    asyncio.run(admin_gamification.game_task_title_step(FakeMessage(text=title), state))
+    asyncio.run(admin_gamification.game_task_text_step(FakeMessage(text=text), state))
+    if photo:
+        asyncio.run(admin_gamification.game_task_photo_step(FakeMessage(photo=[FakePhotoSize(photo)]), state))
+    else:
+        asyncio.run(admin_gamification.game_task_photo_skip(FakeCallback("gtphoto_skip"), state))
+    asyncio.run(admin_gamification.game_task_category_step(FakeCallback("gtcat:Light"), state))
+    asyncio.run(admin_gamification.game_task_coins_step(FakeMessage(text=coins), state))
+    asyncio.run(admin_gamification.game_task_proof_step(FakeCallback("gtproof:photo"), state))
+    cb = FakeCallback("gtproof_done")
+    asyncio.run(admin_gamification.game_task_proof_done(cb, state))
+    assert asyncio.run(state.get_state()) == GameTaskCreate.deadline
+    return cb
+
+
+def test_category_kb_shows_ru_labels_keeps_raw_codes(tmp_path):
+    _db_ready(tmp_path)
+    kb = asyncio.run(admin_gamification._game_task_category_kb())
+    assert _flat_callback_data(kb) == [f"gtcat:{c}" for c in GAME_CATEGORIES]
+    texts = _flat_texts(kb)
+    assert "Лёгкое" in texts and "Среднее" in texts and "Сложное" in texts
+    assert not any(t in GAME_CATEGORIES for t in texts)  # ни одного сырого кода на кнопке
+
+
+def test_photo_skip_sends_ru_category_keyboard(tmp_path):
+    _db_ready(tmp_path)
+    state = _new_state()
+    asyncio.run(state.set_state(GameTaskCreate.photo))
+    cb = FakeCallback("gtphoto_skip")
+    asyncio.run(admin_gamification.game_task_photo_skip(cb, state))
+    assert "Лёгкое" in _flat_texts(cb.message.answer_markups[-1])
+
+
+def test_deadline_prompt_carries_preset_keyboard(tmp_path):
+    _db_ready(tmp_path)
+    state = _new_state()
+    cb = _drive_to_deadline(state)
+    kb = cb.message.answer_markups[-1]
+    data = _flat_callback_data(kb)
+    assert data[:3] == ["gtdeadline_preset:today", "gtdeadline_preset:plus3", "gtdeadline_preset:plus7"]
+    assert "gtdeadline_custom" in data
+    assert "gtcancel" in data  # «❌ Отмена» — уже зарегистрированный callback
+    texts = _flat_texts(kb)
+    assert "Сегодня 23:59" in texts and "+3 дня" in texts and "+7 дней" in texts
+
+
+def test_resolve_deadline_preset_values():
+    now = _now_moscow_naive()
+    today = game_task_wizard._resolve_deadline_preset("today")
+    assert (today.hour, today.minute, today.second) == (23, 59, 0)
+    assert today.date() == now.date()
+    assert game_task_wizard._resolve_deadline_preset("plus3") == today + timedelta(days=3)
+    assert game_task_wizard._resolve_deadline_preset("plus7") == today + timedelta(days=7)
+    assert game_task_wizard._resolve_deadline_preset("bogus") is None
+
+
+def test_wizard_preset_plus3_stores_deadline_and_shows_preview(tmp_path):
+    _db_ready(tmp_path)
+    state = _new_state()
+    _drive_to_deadline(state)
+    cb = FakeCallback("gtdeadline_preset:plus3")
+    asyncio.run(admin_game_tasks.game_task_deadline_preset(cb, state))
+    expected = game_task_wizard._resolve_deadline_preset("plus3")
+    assert asyncio.run(state.get_data())["gt_deadline"] == expected.strftime("%Y-%m-%d %H:%M:%S")
+    assert asyncio.run(state.get_state()) == GameTaskCreate.confirm
+    assert "Так увидит делегат" in cb.message.answers_sent[-1]
+
+
+def test_wizard_preset_past_time_is_rejected_like_manual(tmp_path, monkeypatch):
+    _db_ready(tmp_path)
+    state = _new_state()
+    _drive_to_deadline(state)
+    # «сегодня 23:59» уже прошло -- эмулируем поздний вечер: резолвер вернёт прошедшее время
+    monkeypatch.setattr(admin_game_tasks, "_resolve_deadline_preset",
+                        lambda code: _now_moscow_naive() - timedelta(minutes=1))
+    cb = FakeCallback("gtdeadline_preset:today")
+    asyncio.run(admin_game_tasks.game_task_deadline_preset(cb, state))
+    assert asyncio.run(state.get_state()) == GameTaskCreate.deadline
+    assert cb.answers[-1][1] is True and "прошло" in cb.answers[-1][0]
+    assert "gt_deadline" not in asyncio.run(state.get_data())
+
+
+def test_wizard_preset_unknown_code_is_alert(tmp_path):
+    _db_ready(tmp_path)
+    state = _new_state()
+    _drive_to_deadline(state)
+    cb = FakeCallback("gtdeadline_preset:bogus")
+    asyncio.run(admin_game_tasks.game_task_deadline_preset(cb, state))
+    assert cb.answers[-1][1] is True
+    assert asyncio.run(state.get_state()) == GameTaskCreate.deadline
+
+
+def test_wizard_preset_outside_deadline_step_is_ignored_with_alert(tmp_path):
+    _db_ready(tmp_path)
+    state = _new_state()  # no state at all -- stale button after a restart
+    cb = FakeCallback("gtdeadline_preset:plus7")
+    asyncio.run(admin_game_tasks.game_task_deadline_preset(cb, state))
+    assert cb.answers[-1][1] is True
+    assert cb.message.answers_sent == []
+
+
+def test_wizard_custom_date_button_is_informational_only(tmp_path):
+    _db_ready(tmp_path)
+    cb = FakeCallback("gtdeadline_custom")
+    asyncio.run(admin_game_tasks.game_task_deadline_custom(cb))
+    assert cb.answers == [("Введите дату текстом ниже", False)]
+
+
+def test_typed_deadline_still_works_after_refactor(tmp_path):
+    _db_ready(tmp_path)
+    state = _new_state()
+    _drive_to_deadline(state)
+    msg = FakeMessage(text="25.08.2099 23:59")
+    asyncio.run(admin_gamification.game_task_deadline_step(msg, state))
+    assert asyncio.run(state.get_data())["gt_deadline"] == "2099-08-25 23:59:00"
+    assert asyncio.run(state.get_state()) == GameTaskCreate.confirm
+
+
+# ── точечная правка дедлайна: пресет и текст, без карточки подтверждения ────────────────────
+
+def test_gteditdeadline_start_sends_edit_prefixed_preset_kb(tmp_path):
+    _db_ready(tmp_path)
+    task_id = _mk_task(title="Дедлайн")
+    state = _new_state()
+    cb = FakeCallback(f"gteditdeadline:{task_id}")
+    asyncio.run(admin_game_tasks.game_task_editdeadline_start(cb, state))
+    assert asyncio.run(state.get_state()) == GameTaskEdit.deadline
+    data = _flat_callback_data(cb.message.answer_markups[-1])
+    assert "gteditdeadline_preset:today" in data and "gteditdeadline_custom" in data
+    assert f"gtedit:{task_id}" in data  # «❌ Отмена» возвращает в карточку правки
+
+
+def test_gteditdeadline_preset_writes_directly_and_rerenders_card(tmp_path, monkeypatch):
+    _db_ready(tmp_path)
+    calls = []
+    monkeypatch.setattr(admin_game_tasks, "_request_game_resync", lambda *a, **k: calls.append(1))
+    task_id = _mk_task(title="Дедлайн", deadline_at="2099-01-01 00:00:00")
+    state = _new_state()
+    asyncio.run(admin_game_tasks.game_task_editdeadline_start(FakeCallback(f"gteditdeadline:{task_id}"), state))
+    cb = FakeCallback("gteditdeadline_preset:plus7")
+    asyncio.run(admin_game_tasks.game_task_editdeadline_preset(cb, state))
+    expected = game_task_wizard._resolve_deadline_preset("plus7").strftime("%Y-%m-%d %H:%M:%S")
+    assert asyncio.run(db.get_task(task_id))["deadline_at"] == expected
+    assert asyncio.run(state.get_state()) is None
+    assert calls == [1]
+    # NO confirm card: the prompt message itself becomes the edit card again
+    assert cb.message.edit_calls == 1
+    assert "📅 Дедлайн" in _flat_texts(cb.message.edit_markup)
+
+
+def test_gteditdeadline_typed_validates_and_writes(tmp_path):
+    _db_ready(tmp_path)
+    task_id = _mk_task(title="Дедлайн", deadline_at="2099-01-01 00:00:00")
+    state = _new_state()
+    asyncio.run(admin_game_tasks.game_task_editdeadline_start(FakeCallback(f"gteditdeadline:{task_id}"), state))
+
+    bad = FakeMessage(text="вчера")
+    asyncio.run(admin_game_tasks.game_task_editdeadline_step(bad, state))
+    assert asyncio.run(state.get_state()) == GameTaskEdit.deadline
+
+    past = FakeMessage(text="01.01.2020 10:00")
+    asyncio.run(admin_game_tasks.game_task_editdeadline_step(past, state))
+    assert asyncio.run(state.get_state()) == GameTaskEdit.deadline
+    assert asyncio.run(db.get_task(task_id))["deadline_at"] == "2099-01-01 00:00:00"
+
+    ok = FakeMessage(text="02.02.2099 12:00")
+    asyncio.run(admin_game_tasks.game_task_editdeadline_step(ok, state))
+    assert asyncio.run(state.get_state()) is None
+    assert asyncio.run(db.get_task(task_id))["deadline_at"] == "2099-02-02 12:00:00"
+    assert "📅 Дедлайн" in _flat_texts(ok.answer_markups[-1])
+
+
+def test_gteditdeadline_preset_without_open_edit_is_alert(tmp_path):
+    _db_ready(tmp_path)
+    cb = FakeCallback("gteditdeadline_preset:today")
+    asyncio.run(admin_game_tasks.game_task_editdeadline_preset(cb, _new_state()))
+    assert cb.answers[-1][1] is True
+    assert cb.message.edit_calls == 0
+
+
+# ═══════════════════════════════════════════════════════════════════════════════════════════
+# Task 4: финальный шаг визарда — превью «как увидит делегат» + «✅ Опубликовать» + «✏️ Изменить»
+# ═══════════════════════════════════════════════════════════════════════════════════════════
+
+def _drive_to_preview(state, **kw):
+    _drive_to_deadline(state, **kw)
+    msg = FakeMessage(text="25.08.2099 23:59")
+    asyncio.run(admin_gamification.game_task_deadline_step(msg, state))
+    assert asyncio.run(state.get_state()) == GameTaskCreate.confirm
+    return msg
+
+
+def test_final_step_is_delegate_preview_with_publish_button(tmp_path):
+    _db_ready(tmp_path)
+    state = _new_state()
+    msg = _drive_to_preview(state, title="Знакомство", text="Пост со скрином #знакомство")
+    card = msg.answers_sent[-1]
+    assert card.startswith(settings_schema.SETTINGS_SCHEMA["game_wizard_preview_title"]["default"])
+    assert "Так увидит делегат" in card
+    assert "Проверьте задание" not in card
+    # ровно тот же рендер, что у делегата
+    data = asyncio.run(state.get_data())
+    task_like = game_task_wizard._wizard_task_like(data)
+    assert asyncio.run(game_labels.render_task_card_text(task_like, "новое", None)) in card
+    assert "<b>Знакомство</b>" in card
+    assert "Лёгкое · 30🪙 · до 25.08" in card
+    assert "<blockquote expandable>Пост со скрином #знакомство</blockquote>" in card
+    kb = msg.answer_markups[-1]
+    texts = _flat_texts(kb)
+    assert texts[0] == "✅ Опубликовать"
+    assert "✅ Создать" not in texts
+    assert "✏️ Изменить" in texts and "❌ Отмена" in texts
+    assert _flat_callback_data(kb) == ["gtconfirm", "gtwiz_edit_menu", "gtcancel"]
+
+
+def test_final_step_with_photo_sends_photo_with_caption(tmp_path):
+    _db_ready(tmp_path)
+    state = _new_state()
+    msg = _drive_to_preview(state, title="С обложкой", photo="cover1")
+    assert msg.answer_photo_calls, "превью с обложкой уходит фото с подписью"
+    photo, caption, parse_mode, kb = msg.answer_photo_calls[-1]
+    assert photo == "cover1" and parse_mode == "HTML"
+    assert "Так увидит делегат" in caption and "С обложкой" in caption
+    assert "gtconfirm" in _flat_callback_data(kb)
+
+
+def test_final_step_kому_line_when_city_step_shown(tmp_path):
+    _db_ready(tmp_path)
+    state = _new_state()
+    _drive_to_deadline(state)
+    asyncio.run(state.update_data(gt_city_step_shown=True, gt_event_city_label=None))
+    msg = FakeMessage(text="25.08.2099 23:59")
+    asyncio.run(admin_gamification.game_task_deadline_step(msg, state))
+    assert "Кому: 🌍 Все города" in msg.answers_sent[-1]
+
+
+def test_publish_creates_task_exactly_as_before(tmp_path):
+    _db_ready(tmp_path)
+    state = _new_state()
+    _drive_to_preview(state, title="Публикуем", text="Описание")
+    asyncio.run(admin_gamification.game_task_confirm(FakeCallback("gtconfirm"), state))
+    tasks = asyncio.run(db.list_all_tasks())
+    assert len(tasks) == 1
+    assert tasks[0]["title"] == "Публикуем"
+    assert tasks[0]["text"] == "Описание"
+    assert tasks[0]["category"] == "Light"
+    assert tasks[0]["coins"] == 30
+    assert tasks[0]["deadline_at"] == "2099-08-25 23:59:00"
+    assert asyncio.run(state.get_state()) is None
+
+
+def test_edit_menu_swaps_keyboard_and_back_restores(tmp_path):
+    _db_ready(tmp_path)
+    state = _new_state()
+    _drive_to_preview(state)
+    cb = FakeCallback("gtwiz_edit_menu")
+    asyncio.run(admin_game_tasks.game_task_wizard_edit_menu(cb, state))
+    menu = cb.message.markup_edits[-1]
+    data = _flat_callback_data(menu)
+    for field in ("title", "text", "category", "coins", "deadline", "photo"):
+        assert f"gtwiz_edit:{field}" in data
+    assert "gtwiz_back" in data
+    texts = _flat_texts(menu)
+    assert "📝 Название" in texts and "📄 Описание" in texts and "💰 Монеты" in texts
+    assert "📅 Дедлайн" in texts and "📷 Фото" in texts
+    # state stays parked at confirm -- nothing typed yet
+    assert asyncio.run(state.get_state()) == GameTaskCreate.confirm
+
+    back = FakeCallback("gtwiz_back")
+    asyncio.run(admin_game_tasks.game_task_wizard_back(back, state))
+    assert _flat_callback_data(back.message.markup_edits[-1]) == ["gtconfirm", "gtwiz_edit_menu", "gtcancel"]
+
+
+def test_edit_title_from_preview_returns_to_updated_preview(tmp_path):
+    _db_ready(tmp_path)
+    state = _new_state()
+    _drive_to_preview(state, title="Старое имя", text="Описание")
+    cb = FakeCallback("gtwiz_edit:title")
+    asyncio.run(admin_game_tasks.game_task_wizard_edit_field(cb, state))
+    assert asyncio.run(state.get_state()) == GameTaskCreate.title
+    assert cb.message.answers_sent[-1] == settings_schema.SETTINGS_SCHEMA["game_task_title_prompt"]["default"]
+
+    msg = FakeMessage(text="Новое имя")
+    asyncio.run(admin_gamification.game_task_title_step(msg, state))
+    # НЕ шаг «текст», а сразу превью с новым названием и прежними данными
+    assert asyncio.run(state.get_state()) == GameTaskCreate.confirm
+    card = msg.answers_sent[-1]
+    assert "<b>Новое имя</b>" in card and "Так увидит делегат" in card
+    data = asyncio.run(state.get_data())
+    assert data["gt_title"] == "Новое имя"
+    assert data["gt_text"] == "Описание"
+    assert data["gt_deadline"] == "2099-08-25 23:59:00"
+    assert data.get("gt_wiz_edit") is False
+
+
+def test_edit_coins_from_preview_keeps_proof_types(tmp_path):
+    _db_ready(tmp_path)
+    state = _new_state()
+    _drive_to_preview(state)
+    asyncio.run(admin_game_tasks.game_task_wizard_edit_field(FakeCallback("gtwiz_edit:coins"), state))
+    assert asyncio.run(state.get_state()) == GameTaskCreate.coins
+    msg = FakeMessage(text="55")
+    asyncio.run(admin_gamification.game_task_coins_step(msg, state))
+    assert asyncio.run(state.get_state()) == GameTaskCreate.confirm
+    data = asyncio.run(state.get_data())
+    assert data["gt_coins"] == 55
+    assert data["gt_proof_type"] == "photo"  # выбор типов подтверждения не сброшен
+    assert "55🪙" in msg.answers_sent[-1]
+
+
+def test_edit_category_and_text_and_photo_from_preview(tmp_path):
+    _db_ready(tmp_path)
+    state = _new_state()
+    _drive_to_preview(state, text="Старый текст")
+
+    asyncio.run(admin_game_tasks.game_task_wizard_edit_field(FakeCallback("gtwiz_edit:category"), state))
+    assert asyncio.run(state.get_state()) == GameTaskCreate.category
+    cb = FakeCallback("gtcat:Hard")
+    asyncio.run(admin_gamification.game_task_category_step(cb, state))
+    assert asyncio.run(state.get_state()) == GameTaskCreate.confirm
+    assert "Сложное" in cb.message.answers_sent[-1]
+
+    asyncio.run(admin_game_tasks.game_task_wizard_edit_field(FakeCallback("gtwiz_edit:text"), state))
+    msg = FakeMessage(text="Новый текст")
+    asyncio.run(admin_gamification.game_task_text_step(msg, state))
+    assert asyncio.run(state.get_state()) == GameTaskCreate.confirm
+    assert "<blockquote expandable>Новый текст</blockquote>" in msg.answers_sent[-1]
+
+    asyncio.run(admin_game_tasks.game_task_wizard_edit_field(FakeCallback("gtwiz_edit:photo"), state))
+    assert asyncio.run(state.get_state()) == GameTaskCreate.photo
+    pm = FakeMessage(photo=[FakePhotoSize("cover2")])
+    asyncio.run(admin_gamification.game_task_photo_step(pm, state))
+    assert asyncio.run(state.get_state()) == GameTaskCreate.confirm
+    assert pm.answer_photo_calls and pm.answer_photo_calls[-1][0] == "cover2"
+
+
+def test_edit_deadline_from_preview_uses_preset_and_returns(tmp_path):
+    _db_ready(tmp_path)
+    state = _new_state()
+    _drive_to_preview(state)
+    asyncio.run(admin_game_tasks.game_task_wizard_edit_field(FakeCallback("gtwiz_edit:deadline"), state))
+    assert asyncio.run(state.get_state()) == GameTaskCreate.deadline
+    cb = FakeCallback("gtdeadline_preset:plus7")
+    asyncio.run(admin_game_tasks.game_task_deadline_preset(cb, state))
+    assert asyncio.run(state.get_state()) == GameTaskCreate.confirm
+    expected = game_task_wizard._resolve_deadline_preset("plus7").strftime("%Y-%m-%d %H:%M:%S")
+    assert asyncio.run(state.get_data())["gt_deadline"] == expected
+
+
+def test_edit_menu_without_draft_is_alert(tmp_path):
+    _db_ready(tmp_path)
+    cb = FakeCallback("gtwiz_edit_menu")
+    asyncio.run(admin_game_tasks.game_task_wizard_edit_menu(cb, _new_state()))
+    assert cb.answers[-1][1] is True
+    assert cb.message.markup_edits == []
+
+
+def test_wizard_registry_keys_and_html_policy():
+    for key in ("game_wizard_preview_title", "game_wizard_publish_btn"):
+        assert settings_schema.SETTINGS_SCHEMA[key]["group"] == "game"
+    from handlers import admin_settings
+    assert "game_wizard_preview_title" in admin_settings.HTML_SETTINGS
+    assert "game_wizard_publish_btn" not in admin_settings.HTML_SETTINGS
+    assert "game_wizard_preview_title" in admin_settings._GAME_FIELD_ORDER
+    assert "game_wizard_publish_btn" in admin_settings._GAME_FIELD_ORDER
+
+
+def test_no_dead_confirm_card_left_behind():
+    import inspect
+    src = inspect.getsource(admin_gamification) + inspect.getsource(game_task_wizard)
+    assert "Проверьте задание" not in src
+    assert "✅ Создать" not in src
