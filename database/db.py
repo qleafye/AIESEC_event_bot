@@ -1854,6 +1854,40 @@ async def update_task_photo(task_id: int, photo_file_id: str | None) -> bool:
         return cursor.rowcount == 1
 
 
+# Phase 16 (16-03, GAME-UI-03): the remaining point-edit accessors -- same plain-UPDATE /
+# rowcount idiom as update_task_title/update_task_photo above; validation (non-empty text,
+# positive coins, "%Y-%m-%d %H:%M:%S" deadline string) is the caller's job.
+async def update_task_text(task_id: int, text: str) -> bool:
+    """True iff the task existed."""
+    async with aiosqlite.connect(config.DB_PATH) as db:
+        cursor = await db.execute(
+            "UPDATE game_tasks SET text = ? WHERE id = ?", (text, task_id),
+        )
+        await db.commit()
+        return cursor.rowcount == 1
+
+
+async def update_task_coins(task_id: int, coins: int) -> bool:
+    """True iff the task existed."""
+    async with aiosqlite.connect(config.DB_PATH) as db:
+        cursor = await db.execute(
+            "UPDATE game_tasks SET coins = ? WHERE id = ?", (coins, task_id),
+        )
+        await db.commit()
+        return cursor.rowcount == 1
+
+
+async def update_task_deadline(task_id: int, deadline_at: str) -> bool:
+    """True iff the task existed. `deadline_at` is the already-formatted
+    "%Y-%m-%d %H:%M:%S" string (same format create_task stores)."""
+    async with aiosqlite.connect(config.DB_PATH) as db:
+        cursor = await db.execute(
+            "UPDATE game_tasks SET deadline_at = ? WHERE id = ?", (deadline_at, task_id),
+        )
+        await db.commit()
+        return cursor.rowcount == 1
+
+
 async def get_task(task_id: int) -> dict | None:
     async with aiosqlite.connect(config.DB_PATH) as db:
         db.row_factory = aiosqlite.Row
