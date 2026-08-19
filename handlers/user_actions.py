@@ -4,7 +4,7 @@ import logging
 from datetime import datetime
 from aiogram import Router, F, types, Bot
 from aiogram.filters import Command
-from aiogram.types import FSInputFile, InlineKeyboardMarkup, InlineKeyboardButton, ReplyKeyboardRemove
+from aiogram.types import FSInputFile, InlineKeyboardMarkup, InlineKeyboardButton
 from aiogram.fsm.context import FSMContext
 from database.db import (
     get_user,
@@ -684,7 +684,7 @@ async def mytask_submit_start(callback: types.CallbackQuery, state: FSMContext):
 async def cancel_game_submit(message: types.Message, state: FSMContext):
     await state.update_data(gs_parts=[])
     await state.set_state(None)
-    await message.answer("Действие отменено.", reply_markup=ReplyKeyboardRemove())
+    await message.answer("Действие отменено.", reply_markup=await get_main_menu_kb(message.from_user.id))
 
 
 @router.message(GameSubmit.proof)
@@ -748,7 +748,10 @@ async def finalize_game_submission(callback: types.CallbackQuery, bot: Bot, stat
         # Задание исчезло, пока делегат собирал сдачу -- выходим из состояния, не молчим.
         await state.set_state(None)
         await callback.answer()
-        await callback.message.answer("Это задание больше не доступно.", reply_markup=ReplyKeyboardRemove())
+        await callback.message.answer(
+            "Это задание больше не доступно.",
+            reply_markup=await get_main_menu_kb(callback.from_user.id),
+        )
         return
 
     first = parts[0]
@@ -765,7 +768,7 @@ async def finalize_game_submission(callback: types.CallbackQuery, bot: Bot, stat
         await callback.answer()
         await callback.message.answer(
             "Уже отправлено — кто-то опередил на долю секунды. Обнови список заданий.",
-            reply_markup=ReplyKeyboardRemove(),
+            reply_markup=await get_main_menu_kb(callback.from_user.id),
         )
         return
 
@@ -775,7 +778,8 @@ async def finalize_game_submission(callback: types.CallbackQuery, bot: Bot, stat
     await state.set_state(None)
     await callback.answer()
     await callback.message.answer(
-        await get_setting_typed("game_submit_accepted_text"), reply_markup=ReplyKeyboardRemove(),
+        await get_setting_typed("game_submit_accepted_text"),
+        reply_markup=await get_main_menu_kb(callback.from_user.id),
     )
 
     submitter_name = callback.from_user.full_name or str(callback.from_user.id)
