@@ -1,0 +1,58 @@
+# Build context для `docker build .` — всё, что здесь перечислено, НЕ попадает в образ.
+# Docker не читает .gitignore: без этого файла `COPY . .` затаскивал в слои .git, .venv,
+# локальные data/ и logs/, а главное — .env и google_credentials.json (из слоя образа
+# удаление из контейнера их уже не стирает).
+
+# Секреты и учётные данные (.env.example трекается и нужен как документация)
+.env
+.env.*
+!.env.example
+google_credentials.json
+*.key
+*.pem
+*.p12
+*.pfx
+
+# Git и служебные папки инструментов разработки
+.git
+.gitignore
+.planning
+.claude
+.agents
+.cursor
+.codex
+.idea
+.vscode
+.github
+
+# Виртуальные окружения и кэши Python
+.venv
+venv
+env
+__pycache__
+*.pyc
+*.pyo
+.pytest_cache
+.mypy_cache
+.ruff_cache
+
+# Данные, логи, дампы — живут на volume'ах, не в образе
+data
+logs
+backups
+*.db
+*.sqlite
+*.sqlite3
+*.sql
+*.dump
+*.bak
+*.log
+
+# Не нужно в рантайме
+tests
+sketches
+docs
+docker-compose.yml
+docker-compose.override.yml
+Dockerfile
+.dockerignore
