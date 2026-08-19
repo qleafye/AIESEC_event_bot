@@ -87,6 +87,7 @@ from handlers.game_review_render import (  # Phase 16 (16-04): pure renders/keyb
     _CARD_MAX, _CARD_PART_MAX, _GAME_PROOF_LABELS, _MEDIA_CAPTION_MAX, MEDIA_GROUP_MAX,  # noqa: F401
     _coinsman_amount_kb, _coinsman_confirm_kb, _coinsman_person_kb, _proof_types_label,  # noqa: F401
     _render_coinsman_confirm_card, _render_submission_card, _submission_card_kb,  # noqa: F401
+    render_category_bars,
 )
 from handlers.game_task_wizard import (  # Phase 16 (16-03): pure wizard helpers (no router) -- shared
     _DEADLINE_PAST, _PROMPT_CATEGORY, _PROMPT_COINS, _PROMPT_COINS_INVALID, _PROMPT_DEADLINE,  # noqa: F401
@@ -1861,24 +1862,17 @@ async def show_game_stats(callback: types.CallbackQuery):
         lines = [
             "📊 <b>Статистика геймификации</b>",
             "",
-            f"Участников: {stats['participants']}",
-            f"Сдано на проверке: {stats['pending']}",
-            f"Одобрено: {stats['approved']}",
-            f"Отклонено: {stats['rejected']}",
+            f"👥 Участников: {stats['participants']}",
+            f"⏳ На проверке: {stats['pending']}",
+            f"✅ Одобрено: {stats['approved']}",
+            f"❌ Отклонено: {stats['rejected']}",
             "",
             "<b>По категориям (одобрено):</b>",
         ]
-        by_category = stats["by_category"]
-        if not by_category:
-            lines.append("пока нет одобренных сдач")
-        else:
-            # Fixed GAME_CATEGORIES order (Light/Medium/Hard/Referral/Special), not dict
-            # insertion order from SQL -- stable row order on every render, zero-count
-            # categories skipped rather than padding the screen with "0" lines.
-            for cat in GAME_CATEGORIES:
-                count = by_category.get(cat, 0)
-                if count:
-                    lines.append(f"• {cat}: {count}")
+        # Phase 16 (16-04, Экран 9): unicode-полосы по RU-категориям в одном <pre> --
+        # фиксированный порядок GAME_CATEGORIES, нулевые категории пропущены (как раньше).
+        bars = await render_category_bars(stats["by_category"])
+        lines.append(bars or "пока нет одобренных сдач")
         text = "\n".join(lines)
 
     await callback.message.answer(
