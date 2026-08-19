@@ -17,8 +17,9 @@ import html as html_module
 
 from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
 
-from database.db import parse_proof_types, task_title
+from database.db import GAME_CATEGORIES, parse_proof_types, task_title
 from settings_schema import get_setting_typed
+from handlers.game_labels import category_label
 
 # ── Подписи типов подтверждения (синхронная копия) ──────────────────────────────────────────
 # Human-readable labels for GAME_PROOF_TYPES (D-08/CLAUDE.md «для людей, не для прогеров»):
@@ -240,3 +241,30 @@ def _render_coinsman_confirm_card(recipient_name: str, delta: int, reason: str, 
         "Делегат получит сообщение с суммой, причиной и новым балансом."
     )
 
+# ── Экран 9: полосы статистики ──────────────────────────────────────────────────────────────
+
+_BAR_WIDTH = 10
+_BAR_LABEL_WIDTH = 8
+
+
+async def render_category_bars(by_category: dict[str, int]) -> str:
+    """«Лёгкое   ▇▇▇▇▇▇▇▇▇▇ 30» — по строке на ненулевую категорию в фиксированном порядке
+    GAME_CATEGORIES (не порядке SQL), RU-подпись из реестра, полоса из 10 блоков, масштаб —
+    относительно максимума (максимум = полная полоса), минимум 1 блок у любой ненулевой
+    категории, чтобы маленькая не сливалась с нулём. Результат — внутри ОДНОГО <pre> (моношрифт,
+    чтобы блоки не съезжали). Пустой by_category — пустая строка (вызывающий рисует
+    плейсхолдер сам)."""
+    rows = [(cat, by_category.get(cat, 0)) for cat in GAME_CATEGORIES if by_category.get(cat, 0)]
+    if not rows:
+        return ""
+    max_count = max(count for _, count in rows)
+    labels = [html_module.escape(await category_label(cat)) for cat, _ in rows]
+    # Ширина колонки подписей — не меньше _BAR_LABEL_WIDTH и не меньше самой длинной подписи
+    # («Реферальное» — 11), иначе полосы уезжают вправо и моношрифт теряет смысл.
+    width = max(_BAR_LABEL_WIDTH, *(len(l) for l in labels))
+    lines = []
+    for (cat, count), label in zip(rows, labels):
+        filled = max(1, round(_BAR_WIDTH * count / max_count))
+        bar = "▇" * filled + "░" * (_BAR_WIDTH - filled)
+        lines.append(f"{label:<{width}} {bar} {count}")
+    return "<pre>" + "\n".join(lines) + "</pre>"

@@ -152,10 +152,14 @@ def test_show_game_stats_renders_all_fields(tmp_path):
 
         text = callback.message.answers_sent[-1]
         assert "Участников: 2" in text
-        assert "Сдано на проверке: 1" in text
+        # Phase 16 (16-04): «⏳ На проверке» (скетч Экран 9), было «Сдано на проверке».
+        assert "На проверке: 1" in text
         assert "Одобрено: 1" in text
         assert "Отклонено: 1" in text
-        assert "Light: 1" in text  # approved-only category breakdown
+        # Phase 16 (16-04): approved-only category breakdown -- RU-подпись + unicode-полоса
+        # внутри <pre>, не «• Light: 1».
+        assert "<pre>" in text and "Лёгкое" in text and "▇" in text
+        assert "Light" not in text
         assert "Medium" not in text  # pending Medium submission excluded from by_category
         assert "Hard" not in text  # rejected Hard submission excluded from by_category
         assert callback.answers  # callback.answer() was called
