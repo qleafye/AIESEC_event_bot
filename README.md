@@ -253,6 +253,23 @@ docker-compose logs -f bot
 Compose подхватывает `.env`, монтирует `data/` (БД и job store), `logs/`, `resources/`
 (фото) и `google_credentials.json`.
 
+Бот в контейнере работает **не от root**: пользователь `appuser` с фиксированным UID/GID
+1000. Смонтированные `data/` и `logs/` должны быть доступны этому UID на запись, а
+`google_credentials.json` — на чтение. Если папки создавались раньше от root (первый запуск
+старого образа), один раз на сервере:
+
+```bash
+mkdir -p data logs
+sudo chown -R 1000:1000 data logs
+chmod 644 google_credentials.json   # или chown 1000 google_credentials.json
+```
+
+Симптом, что это не сделано: контейнер падает на старте с `PermissionError` /
+`sqlite3.OperationalError: unable to open database file`.
+
+В образ попадает только код: `.dockerignore` отсекает `.git`, `.venv`, `data/`, `logs/`,
+`.env*` (кроме `.env.example`), `google_credentials.json`, `*.pem`, `tests/`.
+
 ### Логи
 
 `logs/bot.log` — ротация 10 МБ × 5 файлов, уровень задаётся `LOG_LEVEL`. В stdout
