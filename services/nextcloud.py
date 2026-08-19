@@ -52,6 +52,10 @@ def _ssl_arg():
     return None
 
 
+def _resume_max_bytes() -> int:
+    return int(config.RESUME_MAX_MB) * 1024 * 1024
+
+
 async def _put_bytes(content: bytes, remote_name: str) -> bool:
     """WebDAV PUT raw bytes to {WEBDAV_URL}/{folder}/{remote_name}. Returns True on
     2xx-ish success, False (with an error log) otherwise. Assumes config is present —
@@ -102,7 +106,20 @@ async def upload_resume(bot, file_id: str, filename: str) -> str | None:
             )
             return None
 
-        buf = await bot.download(file_id)
+        # Size guard BEFORE pulling bytes: getFile is a cheap metadata call and tells us the
+        # size; Bot API refuses downloads over 20 MB anyway, and we don't want to buffer a
+        # surprise-large file in memory. Over the cap → fail-soft None (registration keeps
+        # the file_id, only the Nextcloud link is missing), with a WARNING so it's visible.
+        tg_file = await bot.get_file(file_id)
+        max_bytes = _resume_max_bytes()
+        size = getattr(tg_file, "file_size", None)
+        if size is not None and size > max_bytes:
+            logger.warning(
+                "nextcloud upload_resume skipped: file %s is %d bytes > RESUME_MAX_MB=%d MB",
+                file_id, size, config.RESUME_MAX_MB,
+            )
+            return None
+        buf = await bot.download_file(tg_file.file_path)
         buf.seek(0)
         content = buf.read()
 
