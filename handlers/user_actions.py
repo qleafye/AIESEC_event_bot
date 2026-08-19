@@ -547,13 +547,6 @@ MAX_PARTS = 20
 MAX_TEXT_PART = 1000
 
 
-async def _game_done_kb() -> InlineKeyboardMarkup:
-    button_text = await get_setting_typed("game_proof_done_button")
-    return InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text=button_text, callback_data="gs_done")]
-    ])
-
-
 async def _build_proof_prompt(task: dict) -> str:
     codes = parse_proof_types(task.get("proof_type"))
     if len(codes) == 1:
@@ -587,13 +580,7 @@ async def _ack_album(media_group_id: str, bot: Bot, chat_id: int, state: FSMCont
     await asyncio.sleep(0.8)  # collection window ONLY -- the finalize gate is still «✅ Готово»
     _gs_pending_albums.pop(media_group_id, None)
     data = await state.get_data()
-    parts = data.get("gs_parts", [])
-    try:
-        await bot.send_message(
-            chat_id, f"Принял, частей: {len(parts)}", reply_markup=await _game_done_kb(),
-        )
-    except Exception:
-        pass
+    await _edit_counter(bot, data, list(data.get("gs_parts", [])))
 
 
 @router.callback_query(F.data.startswith("mytask_submit:"))
@@ -675,18 +662,27 @@ async def mytask_submit_start(callback: types.CallbackQuery, state: FSMContext):
 
     await callback.message.answer(prompt, reply_markup=get_cancel_kb())
     # T-091 (CONTEXT.md A): «✅ Готово» must be available from the very first message, or the
-    # empty-submission hint can never be reached before anything is sent.
-    await callback.message.answer(
-        await get_setting_typed("game_proof_done_hint"), reply_markup=await _game_done_kb(),
+    # empty-submission hint can never be reached before anything is sent. Phase 16 (16-02):
+    # that message IS the counter -- sent once here, edited in place on every part after.
+    sent = await callback.message.answer(
+        await _game_counter_text([]), reply_markup=await _game_counter_kb([]),
+    )
+    await state.update_data(
+        gs_counter_msg_id=getattr(sent, "message_id", None),
+        gs_counter_chat_id=callback.from_user.id,
     )
     await state.set_state(GameSubmit.proof)
     await callback.answer()
 
 
-@router.message(GameSubmit.proof, F.text.in_({"Отмена"}))
-async def cancel_game_submit(message: types.Message, state: FSMContext):
+async def _do_cancel_submit(state: FSMContext) -> None:
     await state.update_data(gs_parts=[])
     await state.set_state(None)
+
+
+@router.message(GameSubmit.proof, F.text.in_({"Отмена"}))
+async def cancel_game_submit(message: types.Message, state: FSMContext):
+    await _do_cancel_submit(state)
     await message.answer("Действие отменено.", reply_markup=await get_main_menu_kb(message.from_user.id))
 
 
@@ -710,7 +706,7 @@ async def receive_proof(message: types.Message, bot: Bot, state: FSMContext):
         await message.answer(
             f"Больше {MAX_PARTS} частей в одну сдачу не влезет — нажми «✅ Готово», "
             "менеджер уже увидит присланное.",
-            reply_markup=await _game_done_kb(),
+            reply_markup=await _game_counter_kb([]),  # «Готово»/«Отмена» под рукой, без «Убрать»
         )
         if mgid:
             await state.update_data(gs_overflow_mgid=mgid)
@@ -729,7 +725,7 @@ async def receive_proof(message: types.Message, bot: Bot, state: FSMContext):
             _spawn(_ack_album(mgid, bot, message.from_user.id, state))
         return  # ack приходит одним сообщением после сборки альбома, не на каждое фото
 
-    await message.answer(f"Принял, частей: {len(parts)}", reply_markup=await _game_done_kb())
+    await _edit_counter(bot, data, parts)  # одно служебное сообщение, не новое на каждую часть
 
 
 @router.callback_query(F.data == "gs_done", GameSubmit.proof)
@@ -792,6 +788,41 @@ async def finalize_game_submission(callback: types.CallbackQuery, bot: Bot, stat
         f"🎮 Новая сдача по заданию «{html.escape(str(task['text'])[:60])}» от "
         f"{html.escape(str(submitter_name))}",
         parse_mode="HTML",
+    )
+
+
+@router.callback_query(F.data == "gs_remove_last", GameSubmit.proof)
+async def gs_remove_last(callback: types.CallbackQuery, state: FSMContext):
+    """Убирает последнюю часть ЧЕРНОВИКА (FSM gs_parts) -- в БД на этом этапе ещё ничего нет
+    (game_submission_parts пишет только finalize_game_submission). T-16-02-01: пусто -> alert."""
+    data = await state.get_data()
+    parts = list(data.get("gs_parts", []))
+    if not parts:
+        await callback.answer("Уже пусто", show_alert=True)
+        return
+    parts.pop()
+    await state.update_data(gs_parts=parts)
+    try:
+        # Кнопка живёт на самом счётчике -- callback.message и есть редактируемое сообщение.
+        await callback.message.edit_text(
+            await _game_counter_text(parts), reply_markup=await _game_counter_kb(parts),
+        )
+    except Exception:
+        pass
+    await callback.answer()
+
+
+@router.callback_query(F.data == "gs_cancel", GameSubmit.proof)
+async def gs_cancel(callback: types.CallbackQuery, state: FSMContext):
+    await _do_cancel_submit(state)
+    try:
+        await callback.message.edit_text("Сдача отменена, части не сохранены.")
+    except Exception:
+        pass
+    await callback.answer()
+    # Reply-клавиатуру «Отмена» edit'ом не убрать -- главное меню новым сообщением (UAT-fix c79cd6f).
+    await callback.message.answer(
+        "Действие отменено.", reply_markup=await get_main_menu_kb(callback.from_user.id),
     )
 
 
