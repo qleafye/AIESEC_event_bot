@@ -26,7 +26,7 @@ import aiosqlite
 
 from config import config
 from database.db import init_db
-from handlers.registration import _resume_person_name
+from handlers.registration import _resume_file_stem
 from services.nextcloud import upload_resume, upload_text_resume
 
 logger = logging.getLogger(__name__)
@@ -150,7 +150,7 @@ async def main():
                         "username": username,
                         "telegram_id": telegram_id,
                     }
-                    name = _resume_person_name(data)
+                    name = _resume_file_stem(data)
 
                     if resume_file_id:
                         # Derive the original extension. get_file can 400 if the file was
