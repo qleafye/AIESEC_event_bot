@@ -1,7 +1,7 @@
 import logging
 import os
 import re
-from datetime import datetime
+from datetime import datetime, timedelta
 
 import aiosqlite
 from config import config
@@ -269,6 +269,21 @@ async def init_db():
                 created_at TEXT
             )
         ''')
+        # Review 260817 §B2 (п.10): per-recipient checkpoint of a scheduled broadcast. One row per
+        # (broadcast, chat) written right after each send attempt — ok or failed — so a send that
+        # dies mid-loop can be resumed from where it stopped instead of forfeiting the tail.
+        # `sending_since` marks WHEN the row was claimed: the boot reconciliation only reclaims
+        # 'sending' rows older than that threshold (see reclaim_stale_sending).
+        await db.execute('''
+            CREATE TABLE IF NOT EXISTS scheduled_broadcast_deliveries (
+                broadcast_id INTEGER NOT NULL,
+                chat_id INTEGER NOT NULL,
+                status TEXT NOT NULL,
+                sent_at TEXT,
+                PRIMARY KEY (broadcast_id, chat_id)
+            )
+        ''')
+        await _ensure_column(db, "scheduled_broadcasts", "sending_since", "TEXT")
 
         # Phase 4 migrations (additive, idempotent — safe against ~590 live users)
         await _ensure_column(db, "users", "payment_status", "TEXT DEFAULT 'not_paid'")
@@ -1408,14 +1423,18 @@ async def get_scheduled_broadcast(broadcast_id: int) -> dict | None:
 async def mark_broadcast_sending(broadcast_id: int) -> int:
     """ME-02: atomically claim a pending broadcast for sending. Flips 'pending' → 'sending'
     and returns rowcount: 1 = this caller owns the send, 0 = already claimed/sent/cancelled
-    (double-schedule race or a re-fire). A crash mid-send leaves the row 'sending' — never back
-    to 'pending' — so neither a re-fire nor the ME-03 boot reconciliation (which re-arms only
-    'pending' rows) can blast the whole audience a second time."""
+    (double-schedule race or a re-fire). A crash mid-send leaves the row 'sending'; a re-fire
+    in the same process is still rejected here. Recovery is NOT by re-claiming 'sending' —
+    it is the boot-time reclaim_stale_sending(), which flips a long-stuck 'sending' row back to
+    'pending' so it is re-armed; the send loop then skips every chat already recorded in
+    scheduled_broadcast_deliveries, so the re-run reaches only the unsent tail (review 260817
+    §B2). `sending_since` is stamped here so that staleness can be measured."""
+    now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     async with _connect() as db:
         cursor = await db.execute(
-            "UPDATE scheduled_broadcasts SET status = 'sending' "
+            "UPDATE scheduled_broadcasts SET status = 'sending', sending_since = ? "
             "WHERE id = ? AND status = 'pending'",
-            (broadcast_id,),
+            (now, broadcast_id),
         )
         await db.commit()
         return cursor.rowcount
@@ -1427,6 +1446,89 @@ async def mark_broadcast_sent(broadcast_id: int):
             "UPDATE scheduled_broadcasts SET status = 'sent' WHERE id = ?", (broadcast_id,)
         )
         await db.commit()
+
+
+async def reclaim_stale_sending(max_age_minutes: int) -> list[int]:
+    """Review 260817 §B2: flip 'sending' rows claimed more than `max_age_minutes` ago back to
+    'pending' so reconcile_scheduled_broadcasts() re-arms them. Returns the reclaimed ids.
+
+    Safe to re-run only because send_scheduled_broadcast() skips chats already present in
+    scheduled_broadcast_deliveries — the re-run reaches the unsent tail, not the whole audience.
+    Rows with NULL `sending_since` (claimed by a build older than this column) are deliberately
+    left alone: they have no delivery log, so a re-run WOULD blast everyone a second time."""
+    cutoff = (datetime.now() - timedelta(minutes=max_age_minutes)).strftime("%Y-%m-%d %H:%M:%S")
+    async with _connect() as db:
+        async with db.execute(
+            "SELECT id FROM scheduled_broadcasts "
+            "WHERE status = 'sending' AND sending_since IS NOT NULL AND sending_since < ?",
+            (cutoff,),
+        ) as cursor:
+            ids = [r[0] for r in await cursor.fetchall()]
+        if ids:
+            await db.execute(
+                "UPDATE scheduled_broadcasts SET status = 'pending' "
+                "WHERE status = 'sending' AND sending_since IS NOT NULL AND sending_since < ?",
+                (cutoff,),
+            )
+            await db.commit()
+        return ids
+
+
+async def list_delivered_chat_ids(broadcast_id: int) -> set[int]:
+    """Chats already handled for this broadcast — both 'ok' and 'failed'. Failed ones are
+    included on purpose: a blocked/deactivated chat must not be hammered again on every
+    resume; the admin sees the failed count in the log and re-sends by hand if needed."""
+    async with _connect() as db:
+        async with db.execute(
+            "SELECT chat_id FROM scheduled_broadcast_deliveries WHERE broadcast_id = ?",
+            (broadcast_id,),
+        ) as cursor:
+            return {r[0] for r in await cursor.fetchall()}
+
+
+async def mark_delivery(broadcast_id: int, chat_id: int, ok: bool):
+    """Checkpoint one send attempt. INSERT OR REPLACE so a retry after a crash that landed
+    between the send and this write just overwrites the row."""
+    now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    async with _connect() as db:
+        await db.execute(
+            "INSERT OR REPLACE INTO scheduled_broadcast_deliveries "
+            "(broadcast_id, chat_id, status, sent_at) VALUES (?, ?, ?, ?)",
+            (broadcast_id, chat_id, "ok" if ok else "failed", now),
+        )
+        await db.commit()
+
+
+async def count_deliveries(broadcast_id: int) -> tuple[int, int]:
+    """(ok, failed) for the /scheduled progress line of a row that is still 'sending'."""
+    async with _connect() as db:
+        async with db.execute(
+            "SELECT "
+            "SUM(CASE WHEN status = 'ok' THEN 1 ELSE 0 END), "
+            "SUM(CASE WHEN status = 'failed' THEN 1 ELSE 0 END) "
+            "FROM scheduled_broadcast_deliveries WHERE broadcast_id = ?",
+            (broadcast_id,),
+        ) as cursor:
+            row = await cursor.fetchone()
+            return int(row[0] or 0), int(row[1] or 0)
+
+
+async def cleanup_deliveries(broadcast_id: int):
+    """Drop the checkpoint rows once the broadcast is 'sent' — they only matter for resume."""
+    async with _connect() as db:
+        await db.execute(
+            "DELETE FROM scheduled_broadcast_deliveries WHERE broadcast_id = ?", (broadcast_id,)
+        )
+        await db.commit()
+
+
+async def list_sending_broadcasts() -> list[dict]:
+    async with _connect() as db:
+        db.row_factory = aiosqlite.Row
+        async with db.execute(
+            "SELECT * FROM scheduled_broadcasts WHERE status = 'sending' ORDER BY scheduled_at"
+        ) as cursor:
+            return [dict(row) for row in await cursor.fetchall()]
 
 
 async def list_pending_broadcasts() -> list[dict]:
