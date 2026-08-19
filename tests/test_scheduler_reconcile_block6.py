@@ -69,20 +69,23 @@ def test_me02_mark_broadcast_sending_claims_once(tmp_path, monkeypatch):
     asyncio.run(go())
 
 
-def test_me02_sending_broadcast_not_reconciled(tmp_path, monkeypatch):
-    """A broadcast crashed mid-send (status='sending') must NOT be re-armed at boot — otherwise
-    the whole audience would be blasted again. Only 'pending' rows reconcile."""
+def test_me02_fresh_sending_broadcast_not_reconciled(tmp_path, monkeypatch):
+    """A broadcast claimed 'sending' just now is presumed to be a live send (rolling restart,
+    sibling process) and is NOT re-armed at boot. Review 260817 §B2 changed the rule for STALE
+    'sending' rows — those are reclaimed and resumed per recipient; see
+    tests/test_broadcast_checkpointing_260819.py. Here: fresh claim → untouched."""
     _isolate(tmp_path, monkeypatch)
 
     async def go():
         await db.init_db()
         past = (datetime.now() - timedelta(days=3)).strftime("%Y-%m-%d %H:%M:%S")
         bid = await db.create_scheduled_broadcast("mid", None, None, past, created_by=1)
-        await db.mark_broadcast_sending(bid)  # simulate a crash mid-send
+        await db.mark_broadcast_sending(bid)  # claimed seconds ago → still "live"
 
         s = await sched.init_scheduler(bot=object())
         try:
-            assert s.get_job(f"bcast_{bid}") is None  # 'sending' → never re-armed
+            assert s.get_job(f"bcast_{bid}") is None  # fresh 'sending' → not re-armed
+            assert (await db.get_scheduled_broadcast(bid))["status"] == "sending"
         finally:
             s.shutdown(wait=False)
 
