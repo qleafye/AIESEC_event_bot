@@ -40,6 +40,12 @@ _MISFIRE_GRACE_SECONDS = 86400
 # How soon after boot an interval job whose saved run time already passed is caught up. Not
 # "right now": it keeps the first run from colliding with startup (long polling still coming up).
 _BOOT_CATCHUP = timedelta(minutes=2)
+# Review 260817 §B2 (п.10): a 'sending' broadcast row older than this is treated as a crashed
+# send and reclaimed at boot (reconcile_scheduled_broadcasts → db.reclaim_stale_sending). The
+# re-run is idempotent per recipient (scheduled_broadcast_deliveries), so the threshold only
+# guards against reclaiming a send that is genuinely still running in a sibling process
+# (rolling restart), not against double delivery.
+_STALE_SENDING_MINUTES = 10
 
 # Injected once at startup. Job coroutines read these module globals — never receive
 # a Bot as an arg (keeps persisted job args picklable, Pitfall 3).
@@ -258,7 +264,20 @@ async def reconcile_scheduled_broadcasts():
     «просроченные рассылки» with «отправить сейчас / отменить» instead of an automatic late send.
     """
     try:
-        from database.db import list_pending_broadcasts
+        from database.db import list_pending_broadcasts, reclaim_stale_sending
+        # Review 260817 §B2: a row stuck in 'sending' is a send that died mid-loop. Flip it
+        # back to 'pending' so the same path below re-arms it; send_scheduled_broadcast skips
+        # every chat already checkpointed in scheduled_broadcast_deliveries, so only the unsent
+        # tail goes out. Fail-soft on its own so a DB hiccup here cannot block the pending pass.
+        try:
+            reclaimed = await reclaim_stale_sending(_STALE_SENDING_MINUTES)
+            if reclaimed:
+                logger.warning(
+                    f"reconcile: reclaimed {len(reclaimed)} broadcast(s) stuck in 'sending' "
+                    f"for >{_STALE_SENDING_MINUTES}m — resuming the unsent tail: {reclaimed}"
+                )
+        except Exception as e:
+            logger.error(f"reconcile: reclaim_stale_sending failed: {e}")
         pending = await list_pending_broadcasts()
         sched = get_scheduler()
         recovered = 0
@@ -350,14 +369,17 @@ async def send_scheduled_broadcast(broadcast_id: int):
         from database.db import (
             get_scheduled_broadcast, mark_broadcast_sending, mark_broadcast_sent,
             get_all_users_ids, count_and_list_filtered,
+            list_delivered_chat_ids, mark_delivery, cleanup_deliveries,
         )
         row = await get_scheduled_broadcast(broadcast_id)
         if not row or row.get("status") != "pending":
             return
         # ME-02: atomically claim (pending → sending) BEFORE the send loop. If this returns 0
         # another fire already claimed it (double-schedule race), so bail. A crash mid-send
-        # leaves it 'sending' — never re-fired to the whole audience (the reconciliation only
-        # re-arms 'pending' rows). The unsent tail is forfeited by design; admin re-sends.
+        # leaves it 'sending'; the boot reconciliation reclaims such rows (review 260817 §B2)
+        # and this function runs again — idempotently, because every attempt is checkpointed
+        # per recipient below and already-handled chats are skipped. The unsent tail is no
+        # longer forfeited: it is resumed after the restart.
         if not await mark_broadcast_sending(broadcast_id):
             return
 
@@ -393,17 +415,37 @@ async def send_scheduled_broadcast(broadcast_id: int):
 
         text = row.get("text")
         photo = row.get("photo_file_id")
+        # Checkpoint log from a previous (crashed) run: ok AND failed chats are skipped — a
+        # failed one is a blocked/deactivated chat, re-hammering it on every resume is pointless.
+        already = await list_delivered_chat_ids(broadcast_id)
+        sent = skipped = failed = 0
         for chat_id in target_ids:
+            if chat_id in already:
+                skipped += 1
+                continue
             if photo:
-                await _safe_send(
+                ok = await _safe_send(
                     lambda cid: _bot.send_photo(cid, photo, caption=text), chat_id
                 )
             else:
-                await _safe_send(lambda cid: _bot.send_message(cid, text), chat_id)
+                ok = await _safe_send(lambda cid: _bot.send_message(cid, text), chat_id)
+            await mark_delivery(broadcast_id, chat_id, bool(ok))
+            if ok:
+                sent += 1
+            else:
+                failed += 1
             await asyncio.sleep(0.05)
 
         await mark_broadcast_sent(broadcast_id)
-        logger.info(f"Scheduled broadcast {broadcast_id} sent to {len(target_ids)} users")
+        logger.info(
+            f"Scheduled broadcast {broadcast_id} done: sent {sent}, "
+            f"skipped {skipped} (already), failed {failed} of {len(target_ids)}"
+        )
+        # The checkpoint rows only matter for resume; drop them once the row is 'sent'.
+        try:
+            await cleanup_deliveries(broadcast_id)
+        except Exception as e:
+            logger.warning(f"cleanup_deliveries({broadcast_id}): {e}")
     except Exception as e:
         logger.error(f"send_scheduled_broadcast({broadcast_id}) failed: {e}")
 

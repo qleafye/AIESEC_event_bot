@@ -640,7 +640,8 @@ SETTINGS_SCHEMA = {
 | `bot_settings` | key-value: все настройки из админки |
 | `coins` | Append-only леджер: `delta`, `reason`, `changed_by`, `timestamp`. Баланс = `SUM(delta)`, `UPDATE` не используется |
 | `reg_started` | Персистентный трекинг начатых анкет: `started_at`, `last_step`, `nudged_at`, `participant_type` |
-| `scheduled_broadcasts` | Payload отложенной рассылки (текст, фото, фильтр, статус). Триггером владеет APScheduler |
+| `scheduled_broadcasts` | Payload отложенной рассылки (текст, фото, фильтр, статус, `sending_since`). Триггером владеет APScheduler |
+| `scheduled_broadcast_deliveries` | Чекпоинт по получателям отложенной рассылки: `(broadcast_id, chat_id)` → `ok` / `failed`. Рассылка, оборванная рестартом, на буте доставляется дальше с того же места (старые `sending` реклеймятся), уже получившие — не дублируются; после `sent` строки удаляются |
 | `user_consents` | Аудит принятых согласий, `UNIQUE(user_id, consent_key)` |
 | `staff` | Менеджеры, добавленные из бота: `telegram_id`, `role`, `added_by`, `added_at`, композитный PK `(telegram_id, role)`. Состав прав роли и тумблер «роль выключена» живут в `bot_settings` (`role_caps_<role>`, `role_<role>_enabled`), не здесь. Не путать с `ADMIN_IDS` — суперадминами из `.env`, см. ниже |
 | `delegate_questions` | Вопросы делегатов организаторам + атомарный захват ответа: `id`, `user_id`, `question_text`, `asked_at`, `answered_by`, `answered_by_name`, `answered_at`, `answer_text`. Второй менеджер, попытавшийся ответить на уже отвеченный вопрос, видит имя первого |
@@ -716,7 +717,14 @@ erDiagram
         text filter_spec "JSON AND-фильтров"
         text scheduled_at
         text status "pending | sending | sent | cancelled"
+        text sending_since
         int created_by
+    }
+    scheduled_broadcast_deliveries {
+        int broadcast_id PK
+        int chat_id PK
+        text status "ok | failed"
+        text sent_at
     }
     game_tasks {
         int id PK
@@ -754,6 +762,7 @@ erDiagram
     users |o--o{ users : "пригласил (referrer_id)"
     staff |o--o{ delegate_questions : "ответил"
     staff |o--o{ scheduled_broadcasts : "создал"
+    scheduled_broadcasts ||--o{ scheduled_broadcast_deliveries : "чекпоинт по получателям"
     staff |o--o{ game_submissions : "проверил"
     users ||--o{ game_submissions : "сдал"
     game_tasks ||--o{ game_submissions : "по заданию"
