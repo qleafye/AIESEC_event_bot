@@ -142,6 +142,8 @@ _GAME_FIELD_ORDER = [
     "game_proof_prompt_photo", "game_proof_prompt_pdf", "game_proof_prompt_text",
     "game_proof_prompt_link", "game_proof_prompt_any", "game_proof_done_hint",
     "game_proof_done_button", "game_proof_empty_hint", "game_submit_accepted_text",
+    # Phase 16 (16-02, GAME-UI-02): счётчик сдачи (Экран 3) -- рядом с остальными текстами сдачи.
+    "game_proof_collected_template", "game_proof_remove_last_button",
     "game_resubmit_limit", "coins_manual_notify_text",
     # Quick 260819-gtl (CONTEXT.md decision 8): title/photo wizard step prompts.
     "game_task_title_prompt", "game_task_photo_prompt",
