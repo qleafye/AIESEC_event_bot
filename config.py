@@ -88,6 +88,10 @@ class Settings(BaseSettings):
     # Token XXXX from the ONE manual public folder-share link /s/XXXX (folder `resumes`).
     NEXTCLOUD_FOLDER_SHARE_TOKEN: str = ""
 
+    # Heartbeat-файл для Docker HEALTHCHECK (services/heartbeat.py). Пусто = системный temp
+    # (/tmp/aiesec-bot-heartbeat в контейнере): volume не нужен, доступен UID 1000.
+    HEARTBEAT_PATH: str = ""
+
     # IN-06: pydantic v2 idiom (was the deprecated inner `class Config`).
     # extra="ignore" tolerates undeclared .env keys (e.g. legacy flags) — don't crash boot.
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")
