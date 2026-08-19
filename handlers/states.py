@@ -108,6 +108,11 @@ class GameTaskEdit(StatesGroup):
     # ("gte_task_id"), same idiom GameSubmit.proof uses for "gs_task_id".
     title = State()
     photo = State()
+    # Phase 16 (16-03, GAME-UI-03): the remaining editable fields -- description / coins /
+    # deadline, one field per state, same one-shot shape as title/photo above.
+    text = State()
+    coins = State()
+    deadline = State()
 
 class GameReview(StatesGroup):
     # Phase 9 (wave 4, 09-04): moderation — rejection reason (mirrors Approval.reason) and
