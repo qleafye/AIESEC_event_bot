@@ -142,6 +142,14 @@ def _build_snapshot_lines():
 # seam-import chain change (admin_game_tasks is now imported from admin_gamification's tail,
 # not from admin.py -- makes the order identical for every module import order) add or
 # reorder no handler.
+# Drift note (2026-08-19, quick 260819, preselect landing toggle): 1 handler inserted (330 -> 331),
+# re-captured by RUNNING `_build_snapshot_lines()` against HEAD and diffed against the prior
+# 330-line snapshot -- every pre-existing line byte-for-byte identical, no reorders, no key
+# changes. The ONE new line is `toggle_preselect_enabled` («🎯 Предотбор по таблице» on/off
+# button of the «⚙️ Настройки» landing), registered in admin_settings.py right after
+# `toggle_party_fork_question` -- an in-place insertion among the sibling module toggles; its
+# filter literal is unique (F.data == "toggle_preselect_enabled"), so first-match semantics of
+# every neighbour are unaffected.
 GOLDEN_SNAPSHOT = """
 admin|message|cmd_admin_help|cmd:admin
 admin|message|cmd_coins|cmd:coins
@@ -231,6 +239,7 @@ admin|callback_query|toggle_payment_enabled|toggle_payment_enabled
 admin|callback_query|toggle_consent_enabled|toggle_consent_enabled
 admin|callback_query|toggle_party_enabled|toggle_party_enabled
 admin|callback_query|toggle_party_fork_question|toggle_party_fork_question
+admin|callback_query|toggle_preselect_enabled|toggle_preselect_enabled
 admin|callback_query|toggle_payment_reminders|toggle_payment_reminders
 admin|callback_query|toggle_uni_mode|toggle_uni_mode
 admin|callback_query|toggle_edu_conditional|toggle_edu_conditional
@@ -502,7 +511,7 @@ def test_snapshot_total_handler_count_is_292():
     """Second, independent invariant besides content — a handler silently added/removed
     without touching this file's golden text (impossible for a normal edit, but this guards
     against a golden-string typo slipping past review) is caught by count alone."""
-    assert len(GOLDEN_SNAPSHOT) == 330  # 16-04: +1 coinsman_amount_step_pick (16-03: +15 admin_game_tasks)
+    assert len(GOLDEN_SNAPSHOT) == 331  # quick 260819: +1 toggle_preselect_enabled (16-04: +1 coinsman_amount_step_pick)
 
 
 # ── Task 2(a): Dispatcher feed_update smoke — cross-router first-match routing ─────────────

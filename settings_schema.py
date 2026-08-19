@@ -828,8 +828,8 @@ SETTINGS_SCHEMA = {
     # Phase 17.1 (17.1-03, schema-completeness): гейт предотбора по Google-таблице
     # (VERIF-01/02). Тип "enum" on/off, НЕ "toggle" — по той же причине, что и
     # event_city_enabled выше (toggle-тип зарезервирован за reg_q_* и переписывается пресетом).
-    # Дефолт "off" = прежний `get_setting("preselect_enabled") or "off"`. Кнопки-переключателя
-    # на лендинге настроек пока нет (см. «🎯 Предотбор» в справке /settings_guide).
+    # Дефолт "off" = прежний `get_setting("preselect_enabled") or "off"`. Кнопка-переключатель
+    # на лендинге настроек — `toggle_preselect_enabled` (handlers/admin_settings.py).
     "preselect_enabled": {
         "type": "enum", "group": "toggles", "label": "🎯 Предотбор по таблице",
         "options": ["on", "off"], "prompt": None, "default": "off",
