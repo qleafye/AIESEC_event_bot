@@ -341,6 +341,9 @@ async def render_settings_text(admin_id: int | None = None) -> str:
     lines.append(f"🎉 Трек вечеринки: <b>{'✅ Вкл' if party_enabled == 'on' else '❌ Выкл'}</b>")
     lines.append(f"🔀 Вопрос-развилка формата: <b>{'✅ Вкл' if party_fork_question == 'on' else '❌ Выкл'}</b>")
     lines.append(f"✅ Модерация вечеринки: <b>{appr_lbl(party_approval)}</b>")
+    # Предотбор по Google-таблице (VERIF-01/02): enum on/off, дефолт "off" из реестра.
+    preselect_enabled = await get_setting_typed("preselect_enabled")
+    lines.append(f"🎯 Предотбор по таблице: <b>{'✅ Вкл' if preselect_enabled == 'on' else '❌ Выкл'}</b>")
 
     enabled_q = 0
     for _, sk, *_rest in REG_FLOW:
@@ -429,6 +432,9 @@ async def build_settings_keyboard(admin_id: int | None = None):
     party_approval = await get_setting_typed("party_approval")
     party_appr_txt = ("✅ Модерация вечеринки: 👮 Ручная → ⚡ Авто" if party_approval == "manual"
                       else "✅ Модерация вечеринки: ⚡ Авто → 👮 Ручная")
+    preselect_enabled = await get_setting_typed("preselect_enabled")
+    preselect_toggle_text = ("🎯 Предотбор по таблице: ❌ Выкл → ✅ Вкл" if preselect_enabled != "on"
+                             else "🎯 Предотбор по таблице: ✅ Вкл → ❌ Выкл")
 
     buttons = [
         [InlineKeyboardButton(text=toggle_text, callback_data="settings_toggle_reg")],
@@ -458,6 +464,7 @@ async def build_settings_keyboard(admin_id: int | None = None):
         [InlineKeyboardButton(text=party_toggle_text, callback_data="toggle_party_enabled")],
         [InlineKeyboardButton(text=party_fork_toggle_text, callback_data="toggle_party_fork_question")],
         [InlineKeyboardButton(text=party_appr_txt, callback_data="settings_toggle_party_approval")],
+        [InlineKeyboardButton(text=preselect_toggle_text, callback_data="toggle_preselect_enabled")],
         [InlineKeyboardButton(text="🎛 Тип события (пресет)", callback_data="admin_event_preset")],
         [InlineKeyboardButton(text="📋 Вопросы регистрации", callback_data="admin_reg_questions")],
         [InlineKeyboardButton(text="✏️ Тексты вопросов", callback_data="admin_reg_prompts")],
@@ -807,6 +814,13 @@ async def toggle_party_enabled(callback: types.CallbackQuery):
 async def toggle_party_fork_question(callback: types.CallbackQuery):
     # D-10: default OFF — an ordinary delegate sees no extra screen until an admin opts in.
     await _toggle_module_setting(callback, "party_fork_question", "🔀 Вопрос-развилка формата")
+
+
+@router.callback_query(F.data == "toggle_preselect_enabled")
+async def toggle_preselect_enabled(callback: types.CallbackQuery):
+    # Гейт предотбора по Google-таблице: enum on/off, дефолт OFF — без таблицы новичок
+    # регистрируется как обычно. Тот же generic-хелпер, что и у соседей-модулей.
+    await _toggle_module_setting(callback, "preselect_enabled", "🎯 Предотбор по таблице")
 
 
 @router.callback_query(F.data == "toggle_payment_reminders")

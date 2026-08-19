@@ -615,6 +615,7 @@ def test_settings_landing_text_snapshot(tmp_path):
     assert "🎉 Трек вечеринки: <b>❌ Выкл</b>" in text
     assert "🔀 Вопрос-развилка формата: <b>❌ Выкл</b>" in text
     assert "✅ Модерация вечеринки: <b>👮 Ручная</b>" in text
+    assert "🎯 Предотбор по таблице: <b>❌ Выкл</b>" in text
 
     # ── mixed/non-default case: party_enabled="on", full_approval="auto" flips two lines ──
     asyncio.run(db.set_setting("party_enabled", "on"))
@@ -652,6 +653,7 @@ def test_settings_toggle_button_snapshot(tmp_path):
         ("🎉 Трек вечеринки: ❌ Выкл → ✅ Вкл", "toggle_party_enabled"),
         ("🔀 Вопрос-развилка формата: ❌ Выкл → ✅ Вкл", "toggle_party_fork_question"),
         ("✅ Модерация вечеринки: 👮 Ручная → ⚡ Авто", "settings_toggle_party_approval"),
+        ("🎯 Предотбор по таблице: ❌ Выкл → ✅ Вкл", "toggle_preselect_enabled"),
         ("🎛 Тип события (пресет)", "admin_event_preset"),
         ("📋 Вопросы регистрации", "admin_reg_questions"),
         ("✏️ Тексты вопросов", "admin_reg_prompts"),
@@ -679,6 +681,27 @@ def test_settings_toggle_button_snapshot(tmp_path):
     # Untouched buttons keep their default text/position.
     assert texts2[0] == expected_default[0][0]
     assert cbs2[0] == "settings_toggle_reg"
+
+
+def test_toggle_preselect_enabled_flips_and_rerenders_landing(tmp_path):
+    """Quick 260819: «🎯 Предотбор по таблице» — кнопка-переключатель на лендинге настроек.
+    Тап переключает preselect_enabled off -> on -> off (дефолт из реестра = off), перерисовывает
+    текст и клавиатуру лендинга, и тап защищён capability `settings`."""
+    _admin_ready(tmp_path)
+    assert required_capability(callback_data="toggle_preselect_enabled") == "settings"
+
+    cb = FakeCallback("toggle_preselect_enabled")
+    asyncio.run(admin_settings.toggle_preselect_enabled(cb))
+    assert asyncio.run(db.get_setting("preselect_enabled")) == "on"
+    assert cb.message.edit_calls == 1
+    assert "🎯 Предотбор по таблице: <b>✅ Вкл</b>" in cb.message.text
+    assert "🎯 Предотбор по таблице: ✅ Вкл → ❌ Выкл" in [b.text for r in cb.message.markup.inline_keyboard for b in r]
+    assert cb.answers and cb.answers[0][0] == "🎯 Предотбор по таблице: ✅ Вкл"
+
+    cb2 = FakeCallback("toggle_preselect_enabled")
+    asyncio.run(admin_settings.toggle_preselect_enabled(cb2))
+    assert asyncio.run(db.get_setting("preselect_enabled")) == "off"
+    assert "🎯 Предотбор по таблице: <b>❌ Выкл</b>" in cb2.message.text
 
 
 def test_full_registry_coverage():
@@ -727,6 +750,8 @@ def test_toggle_current_value_equiv_across_generic_helpers(tmp_path):
             (admin_settings.toggle_party_enabled, "party_enabled", [None, "", "on", "off"],
              lambda cur: "off" if cur == "on" else "on"),
             (admin_settings.toggle_party_fork_question, "party_fork_question", [None, "", "on", "off"],
+             lambda cur: "off" if cur == "on" else "on"),
+            (admin_settings.toggle_preselect_enabled, "preselect_enabled", [None, "", "on", "off"],
              lambda cur: "off" if cur == "on" else "on"),
             (admin_settings.toggle_payment_reminders, "payment_reminders_enabled", [None, "", "on", "off"],
              lambda cur: "off" if cur == "on" else "on"),
