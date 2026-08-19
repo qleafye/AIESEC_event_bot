@@ -145,6 +145,8 @@ _GAME_FIELD_ORDER = [
     # Phase 16 (16-02, GAME-UI-02): счётчик сдачи (Экран 3) -- рядом с остальными текстами сдачи.
     "game_proof_collected_template", "game_proof_remove_last_button",
     "game_resubmit_limit", "coins_manual_notify_text",
+    # Phase 16 (16-04, GAME-UI-03): quick-pick сумм ручных монет -- рядом с текстом уведомления.
+    "coins_manual_amount_presets",
     # Quick 260819-gtl (CONTEXT.md decision 8): title/photo wizard step prompts.
     "game_task_title_prompt", "game_task_photo_prompt",
     # Phase 16 (16-03, GAME-UI-03): превью «как видит делегат» + финальный шаг визарда.

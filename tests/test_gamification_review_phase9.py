@@ -135,7 +135,9 @@ def test_show_current_submission_card_renders_task_and_submitter_and_content_typ
 
     text = callback.message.answers_sent[-1]
     assert "&lt;b&gt;тест&lt;/b&gt;" in text  # task text escaped
-    assert "Light" in text
+    # Phase 16 (16-04): категория на карточке -- RU-подписью из реестра (дефолт «Лёгкое»),
+    # сырой код «Light» менеджеру больше не показывается.
+    assert "Лёгкое" in text and "Light" not in text
     assert "30🪙" in text
     assert "Дельгат Тестов" in text and "delegate1" in text
     assert "https://example.com/post" in text  # link content visible in the card

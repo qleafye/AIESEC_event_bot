@@ -129,6 +129,19 @@ def _build_snapshot_lines():
 # `game_task_wizard_edit_menu`/`game_task_wizard_back`/`game_task_wizard_edit_field` (final-step
 # «✏️ Изменить» field menu). handlers/game_task_wizard.py (extracted pure helpers) and the
 # admin_gamification.py rewrites (list/archive/edit-card/confirm-kb) add or reorder no handler.
+#
+# Drift note (2026-08-20, Phase 16-04, GAME-UI-03): 1 handler inserted (329 -> 330),
+# re-captured by RUNNING `_build_snapshot_lines()` against HEAD and diffed against the prior
+# 329-line snapshot -- every pre-existing line byte-for-byte identical, no reorders, no key
+# changes. The ONE new line is `coinsman_amount_step_pick` (`coinsman_amount:*`, the quick-pick
+# amount buttons of «🪙 Монеты вручную»), registered in admin_gamification.py right after
+# `coinsman_amount_step` -- i.e. it lands at its registration position between
+# `coinsman_sign_step` and `coinsman_confirm` (an in-place insertion, not a tail append; its
+# filter literal is unique, so first-match semantics of every neighbour are unaffected).
+# handlers/game_review_render.py (extracted pure renders/keyboards, no router) and the
+# seam-import chain change (admin_game_tasks is now imported from admin_gamification's tail,
+# not from admin.py -- makes the order identical for every module import order) add or
+# reorder no handler.
 GOLDEN_SNAPSHOT = """
 admin|message|cmd_admin_help|cmd:admin
 admin|message|cmd_coins|cmd:coins
@@ -340,6 +353,7 @@ admin|callback_query|game_task_removephoto|gtremovephoto:*
 admin|callback_query|admin_coins_manual|admin_coins_manual
 admin|callback_query|coinsman_cancel_cb|coinsman_cancel
 admin|callback_query|coinsman_sign_step|coinsman_sign:*
+admin|callback_query|coinsman_amount_step_pick|coinsman_amount:*
 admin|callback_query|coinsman_confirm|coinsman_confirm
 admin|callback_query|admin_coins_journal|admin_coins_journal
 admin|callback_query|coinsjrn_page|coinsjrn_page:*
@@ -488,7 +502,7 @@ def test_snapshot_total_handler_count_is_292():
     """Second, independent invariant besides content — a handler silently added/removed
     without touching this file's golden text (impossible for a normal edit, but this guards
     against a golden-string typo slipping past review) is caught by count alone."""
-    assert len(GOLDEN_SNAPSHOT) == 329  # 16-03: +15 handlers of handlers/admin_game_tasks.py
+    assert len(GOLDEN_SNAPSHOT) == 330  # 16-04: +1 coinsman_amount_step_pick (16-03: +15 admin_game_tasks)
 
 
 # ── Task 2(a): Dispatcher feed_update smoke — cross-router first-match routing ─────────────

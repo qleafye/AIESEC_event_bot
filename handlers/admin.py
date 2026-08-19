@@ -800,8 +800,11 @@ def _pick_auto_open(rows: list[tuple[str, str]]):
 # `router` object, never a second Router() instance. main.py is unaffected: it still includes
 # `admin.router` by reference, unaware any handler now physically lives in a seam file.
 from handlers import admin_gamification  # noqa: E402
-# Phase 16 (16-03, GAME-UI-03): manager task-management seam (point-edit card actions,
-# deadline presets, wizard «✏️ Изменить», «👁 Как видит делегат») -- imported right AFTER
-# admin_gamification (one-way dependency on its render helpers), so its handlers are pure
-# appends to the golden snapshot order.
-from handlers import admin_game_tasks  # noqa: E402
+# Phase 16 (16-03, GAME-UI-03): the manager task-management seam handlers/admin_game_tasks.py
+# (point-edit card actions, deadline presets, wizard «✏️ Изменить», «👁 Как видит делегат»)
+# is imported at the TAIL of admin_gamification.py, not here (16-04): a `from handlers import
+# admin_gamification` that runs BEFORE this module (~20 test files do that) re-enters this
+# seam list while admin_gamification is still half-initialised -- importing admin_game_tasks
+# from here at that moment registered its 15 handlers BEFORE admin_gamification's own
+# (cancel_game_task_edit would then lose first-match to game_task_editdesc_step). Chaining the
+# import off admin_gamification's last line makes the order identical for every import order.
