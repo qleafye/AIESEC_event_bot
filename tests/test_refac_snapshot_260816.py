@@ -113,6 +113,22 @@ def _build_snapshot_lines():
 # «❌ Отмена» on the counter message), both GameSubmit.proof-gated, registered right after
 # `finalize_game_submission` (gs_done) so the gs_* group stays contiguous. `_game_done_kb` was
 # never a router handler -- its removal changes no line.
+#
+# Drift note (2026-08-20, Phase 16-03, GAME-UI-03): 15 handlers appended (314 -> 329),
+# re-captured by RUNNING `_build_snapshot_lines()` against HEAD after this plan's changes and
+# diffed against the prior 314-line snapshot -- every pre-existing line byte-for-byte identical
+# in the same relative order, no reorders, no key changes (pure appends). All 15 live in the
+# NEW seam module handlers/admin_game_tasks.py (imported in admin.py right after
+# admin_gamification, so they land last among admin.router's handlers): message observers
+# `game_task_editdesc_step`/`game_task_editcoins_step`/`game_task_editdeadline_step`
+# (GameTaskEdit text/coins/deadline point-edits); callback observers
+# `game_task_editdesc_start`/`game_task_editcoins_start`/`game_task_editdeadline_start`/
+# `game_task_editdeadline_preset`/`game_task_editdeadline_custom` (point-edit entries +
+# deadline presets), `game_task_preview`/`game_task_preview_close` («👁 Как видит делегат»),
+# `game_task_deadline_preset`/`game_task_deadline_custom` (wizard deadline presets),
+# `game_task_wizard_edit_menu`/`game_task_wizard_back`/`game_task_wizard_edit_field` (final-step
+# «✏️ Изменить» field menu). handlers/game_task_wizard.py (extracted pure helpers) and the
+# admin_gamification.py rewrites (list/archive/edit-card/confirm-kb) add or reorder no handler.
 GOLDEN_SNAPSHOT = """
 admin|message|cmd_admin_help|cmd:admin
 admin|message|cmd_coins|cmd:coins
@@ -182,6 +198,9 @@ admin|message|grev_step_cancel|state:GameReview:*,state:GameReview:*
 admin|message|grev_step_cancel|state:GameReview:*,state:GameReview:*
 admin|message|grev_approve_amount_step|state:GameReview:*
 admin|message|grev_reject_reason|state:GameReview:*
+admin|message|game_task_editdesc_step|state:GameTaskEdit:*
+admin|message|game_task_editcoins_step|state:GameTaskEdit:*
+admin|message|game_task_editdeadline_step|state:GameTaskEdit:*
 admin|callback_query|show_admin_stats|admin_stats
 admin|callback_query|show_admin_monthly_stats|admin_monthly_stats
 admin|callback_query|show_admin_source_stats|admin_source_stats
@@ -333,6 +352,18 @@ admin|callback_query|grev_reject_start|grev_reject:*
 admin|callback_query|sync_game_sheets_confirm|admin_game_sync_sheet
 admin|callback_query|sync_game_sheets|admin_game_sync_sheet_go
 admin|callback_query|show_game_stats|admin_game_stats
+admin|callback_query|game_task_editdesc_start|gteditdesc:*
+admin|callback_query|game_task_editcoins_start|gteditcoins:*
+admin|callback_query|game_task_editdeadline_start|gteditdeadline:*
+admin|callback_query|game_task_editdeadline_preset|gteditdeadline_preset:*
+admin|callback_query|game_task_editdeadline_custom|gteditdeadline_custom
+admin|callback_query|game_task_preview|gtpreview:*
+admin|callback_query|game_task_preview_close|gtpreview_close
+admin|callback_query|game_task_deadline_preset|gtdeadline_preset:*
+admin|callback_query|game_task_deadline_custom|gtdeadline_custom
+admin|callback_query|game_task_wizard_edit_menu|gtwiz_edit_menu
+admin|callback_query|game_task_wizard_back|gtwiz_back
+admin|callback_query|game_task_wizard_edit_field|gtwiz_edit:*
 payment|message|process_receipt_document|state:Registration:*
 payment|message|process_receipt_photo|state:Registration:*
 payment|message|process_receipt_invalid|state:Registration:*
@@ -457,7 +488,7 @@ def test_snapshot_total_handler_count_is_292():
     """Second, independent invariant besides content — a handler silently added/removed
     without touching this file's golden text (impossible for a normal edit, but this guards
     against a golden-string typo slipping past review) is caught by count alone."""
-    assert len(GOLDEN_SNAPSHOT) == 314  # 16-02: +gs_remove_last, +gs_cancel
+    assert len(GOLDEN_SNAPSHOT) == 329  # 16-03: +15 handlers of handlers/admin_game_tasks.py
 
 
 # ── Task 2(a): Dispatcher feed_update smoke — cross-router first-match routing ─────────────
