@@ -25,7 +25,7 @@ import os
 import aiosqlite
 
 from config import config
-from database.db import init_db
+from database.db import _connect, init_db
 from handlers.registration import _resume_file_stem
 from services.nextcloud import upload_resume, upload_text_resume
 
@@ -92,7 +92,7 @@ async def main():
 
     limit = args.limit if args.limit and args.limit > 0 else 0
 
-    async with aiosqlite.connect(config.DB_PATH) as db:
+    async with _connect() as db:
         candidates = await select_pending_resumes(db)
         if limit:
             candidates = candidates[:limit]

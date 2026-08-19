@@ -8,6 +8,10 @@ from config import config
 
 logger = logging.getLogger(__name__)
 
+# Same busy timeout as database.db._connect(): these worker-thread reads share the file
+# with the async writers, and a concurrent commit must make them wait, not fail.
+_DB_BUSY_TIMEOUT_S = 5.0
+
 MAX_RETRIES = 3
 RETRY_DELAYS = [5, 15, 30]
 
@@ -165,7 +169,7 @@ def _load_main_tab_setting() -> str | None:
     the same `.strip().strip('"').strip("'").strip()` chain as the .env value, in case an admin
     pasted a value with stray surrounding quotes/whitespace from Telegram."""
     try:
-        conn = sqlite3.connect(config.DB_PATH)
+        conn = sqlite3.connect(config.DB_PATH, timeout=_DB_BUSY_TIMEOUT_S)
         try:
             cur = conn.execute(
                 "SELECT value FROM bot_settings WHERE key = ?",
@@ -191,7 +195,7 @@ def _load_pinned_tab_title() -> str | None:
     missing DB file/table (e.g. _get_sheet() called before init_db() has run once) returns None
     rather than raising — the caller then refuses, which is the safe direction."""
     try:
-        conn = sqlite3.connect(config.DB_PATH)
+        conn = sqlite3.connect(config.DB_PATH, timeout=_DB_BUSY_TIMEOUT_S)
         try:
             cur = conn.execute(
                 "SELECT value FROM bot_settings WHERE key = ?",

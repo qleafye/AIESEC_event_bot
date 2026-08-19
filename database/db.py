@@ -34,8 +34,38 @@ async def _ensure_column(db: aiosqlite.Connection, table_name: str, column_name:
     if not await _column_exists(db, table_name, column_name):
         await db.execute(f"ALTER TABLE {table_name} ADD COLUMN {column_name} {definition}")
 
+# Every connection goes through here so the busy handler is set in ONE place. Without it a
+# writer holding the lock makes a concurrent reader/writer fail immediately with
+# "database is locked"; with it SQLite retries for up to this long. aiosqlite hands
+# `timeout` to sqlite3.connect(), which installs it via sqlite3_busy_timeout — the value is
+# visible as PRAGMA busy_timeout on the connection. The file itself runs in WAL mode (set
+# once, persistently, in init_db) so readers never block the single writer.
+DB_BUSY_TIMEOUT_MS = 5000
+
+
+def _connect() -> aiosqlite.Connection:
+    """Open the bot DB with the standard busy timeout. Use as `async with _connect() as db:`."""
+    return aiosqlite.connect(config.DB_PATH, timeout=DB_BUSY_TIMEOUT_MS / 1000)
+
+
+async def _enable_wal(db: aiosqlite.Connection) -> str:
+    """Switch the DB file to WAL journaling (persistent across connections/restarts).
+
+    WAL lets readers proceed while one writer commits — the long-polling bot, the reminder
+    loop, the scheduler and the Sheets worker thread all touch the same file. Returns the
+    resulting journal mode ('wal' for a file DB; ':memory:' / tmp DBs report 'memory').
+    """
+    async with db.execute("PRAGMA journal_mode=WAL") as cursor:
+        row = await cursor.fetchone()
+    mode = (row[0] if row else "").lower()
+    if mode != "wal":
+        logger.warning("SQLite journal_mode is %r (expected 'wal') for %s", mode, config.DB_PATH)
+    return mode
+
+
 async def init_db():
-    async with aiosqlite.connect(config.DB_PATH) as db:
+    async with _connect() as db:
+        await _enable_wal(db)
         await db.execute('''
             CREATE TABLE IF NOT EXISTS users (
                 telegram_id INTEGER PRIMARY KEY,
@@ -348,7 +378,7 @@ async def init_db():
         await db.commit()
 
 async def get_setting(key: str) -> str | None:
-    async with aiosqlite.connect(config.DB_PATH) as db:
+    async with _connect() as db:
         async with db.execute(
             "SELECT value FROM bot_settings WHERE key = ?", (key,)
         ) as cursor:
@@ -357,7 +387,7 @@ async def get_setting(key: str) -> str | None:
 
 
 async def set_setting(key: str, value: str):
-    async with aiosqlite.connect(config.DB_PATH) as db:
+    async with _connect() as db:
         await db.execute(
             "INSERT OR REPLACE INTO bot_settings (key, value) VALUES (?, ?)",
             (key, value),
@@ -366,13 +396,13 @@ async def set_setting(key: str, value: str):
 
 
 async def delete_setting(key: str):
-    async with aiosqlite.connect(config.DB_PATH) as db:
+    async with _connect() as db:
         await db.execute("DELETE FROM bot_settings WHERE key = ?", (key,))
         await db.commit()
 
 
 async def add_user(data: dict):
-    async with aiosqlite.connect(config.DB_PATH) as db:
+    async with _connect() as db:
         # ON CONFLICT DO UPDATE (not INSERT OR REPLACE): REPLACE is DELETE+INSERT and would
         # wipe columns absent from this list (e.g. status) on re-registration. status is
         # owned by the approval flow + migration default only — never touched here.
@@ -528,7 +558,7 @@ async def add_user(data: dict):
         await db.commit()
 
 async def get_user(telegram_id: int):
-    async with aiosqlite.connect(config.DB_PATH) as db:
+    async with _connect() as db:
         db.row_factory = aiosqlite.Row
         async with db.execute('SELECT * FROM users WHERE telegram_id = ?', (telegram_id,)) as cursor:
             row = await cursor.fetchone()
@@ -539,7 +569,7 @@ async def get_user(telegram_id: int):
             return None
 
 async def get_user_by_username(username: str):
-    async with aiosqlite.connect(config.DB_PATH) as db:
+    async with _connect() as db:
         db.row_factory = aiosqlite.Row
         if not username.startswith('@'):
             username = f"@{username}"
@@ -551,7 +581,7 @@ async def get_user_by_username(username: str):
             return None
 
 async def get_referrals(telegram_id: int) -> list[str]:
-    async with aiosqlite.connect(config.DB_PATH) as db:
+    async with _connect() as db:
         async with db.execute(
             # IN-04: coalesce NULL full_name so the referral list never renders "• None".
             "SELECT COALESCE(NULLIF(full_name, ''), 'Без имени') FROM users WHERE referrer_id = ?",
@@ -561,19 +591,19 @@ async def get_referrals(telegram_id: int) -> list[str]:
 
 
 async def get_all_users_ids():
-    async with aiosqlite.connect(config.DB_PATH) as db:
+    async with _connect() as db:
         async with db.execute('SELECT telegram_id FROM users') as cursor:
             return [row[0] for row in await cursor.fetchall()]
 
 
 async def get_all_users_dicts() -> list[dict]:
-    async with aiosqlite.connect(config.DB_PATH) as db:
+    async with _connect() as db:
         db.row_factory = aiosqlite.Row
         async with db.execute('SELECT * FROM users ORDER BY registration_date') as cursor:
             return [dict(row) for row in await cursor.fetchall()]
 
 async def get_stats():
-    async with aiosqlite.connect(config.DB_PATH) as db:
+    async with _connect() as db:
         async with db.execute('SELECT COUNT(*) FROM users') as cursor:
             total = (await cursor.fetchone())[0]
 
@@ -597,7 +627,7 @@ async def count_current_season_users(old_season: str | None) -> int:
     """Delegates counted as "current season" for the «Новый сезон» confirmation screen:
     season IS NULL (never season-stamped) OR season == old_season (the season about to end).
     Rows with a DIFFERENT non-empty season are already past and must not be recounted."""
-    async with aiosqlite.connect(config.DB_PATH) as db:
+    async with _connect() as db:
         async with db.execute(
             "SELECT COUNT(*) FROM users WHERE season IS NULL OR season = ?",
             (old_season,),
@@ -612,7 +642,7 @@ async def mark_season_ended(old_season: str | None) -> int:
     ONLY the season column — never bot_settings (the caller sets the new event_season), never
     status/coins/receipts/payment. Returns cursor.rowcount (affected row count)."""
     stamp = old_season if old_season else "legacy"
-    async with aiosqlite.connect(config.DB_PATH) as db:
+    async with _connect() as db:
         cursor = await db.execute(
             "UPDATE users SET season = ? WHERE season IS NULL OR season = ?",
             (stamp, old_season),
@@ -624,7 +654,7 @@ async def mark_season_ended(old_season: str | None) -> int:
 async def get_returning_count() -> int:
     """Delegates with a non-empty prev_season — set only by a returning-delegate
     re-registration (plan 04), never by a fresh add_user of a new delegate."""
-    async with aiosqlite.connect(config.DB_PATH) as db:
+    async with _connect() as db:
         async with db.execute(
             "SELECT COUNT(*) FROM users WHERE prev_season IS NOT NULL AND TRIM(prev_season) != ''"
         ) as cursor:
@@ -636,7 +666,7 @@ async def reset_payment_for_new_season(telegram_id: int) -> None:
     """CONTEXT B: a new season means a new payment cycle. add_user deliberately never touches
     payment columns (WR-06), so a returning delegate's payment state must be reset explicitly
     by the caller (plan 04's finalize_registration) — this accessor is that single point."""
-    async with aiosqlite.connect(config.DB_PATH) as db:
+    async with _connect() as db:
         await db.execute(
             "UPDATE users SET payment_status = 'not_paid', payment_option = NULL, "
             "receipt_file_id = NULL, payment_due = NULL, paid_at = NULL WHERE telegram_id = ?",
@@ -661,7 +691,7 @@ async def count_existing_telegram_ids(ids: list[int]) -> int:
     if not ids:
         return 0
     total = 0
-    async with aiosqlite.connect(config.DB_PATH) as db:
+    async with _connect() as db:
         for i in range(0, len(ids), 500):
             batch = ids[i:i + 500]
             placeholders = ", ".join("?" for _ in batch)
@@ -691,7 +721,7 @@ async def bulk_insert_users_if_absent(rows: list[dict], season: str) -> int:
     if not rows:
         return 0
 
-    async with aiosqlite.connect(config.DB_PATH) as db:
+    async with _connect() as db:
         candidate_cols: set[str] = set()
         for row in rows:
             candidate_cols.update(row.keys())
@@ -752,7 +782,7 @@ async def bulk_insert_users_if_absent(rows: list[dict], season: str) -> int:
 
 
 async def get_monthly_registration_stats():
-    async with aiosqlite.connect(config.DB_PATH) as db:
+    async with _connect() as db:
         async with db.execute('''
             SELECT substr(registration_date, 1, 7) as month, COUNT(*) as cnt
             FROM users
@@ -763,7 +793,7 @@ async def get_monthly_registration_stats():
             return await cursor.fetchall()
 
 async def get_source_stats():
-    async with aiosqlite.connect(config.DB_PATH) as db:
+    async with _connect() as db:
         async with db.execute('''
             SELECT source, COUNT(*) as cnt
             FROM users
@@ -823,7 +853,7 @@ async def export_users_csv(*, city_scope=None):
     `city_scope=None` (default) exports everything, byte-identical to before Phase 07.2."""
     frag, city_params = _city_clause(city_scope)
     where = f" WHERE {frag}" if frag else ""
-    async with aiosqlite.connect(config.DB_PATH) as db:
+    async with _connect() as db:
         async with db.execute(f'SELECT * FROM users{where}', tuple(city_params)) as cursor:
             raw = [description[0] for description in cursor.description]
             rows = await cursor.fetchall()
@@ -840,7 +870,7 @@ async def get_city_counts() -> list[tuple]:
     CALLER's job via `cities.normalize_city`. The stats screen intentionally does NOT filter
     by the admin's selected city — it is a city-vs-city comparison, not a scoped view
     (07.2-CONTEXT.md decision)."""
-    async with aiosqlite.connect(config.DB_PATH) as db:
+    async with _connect() as db:
         async with db.execute(
             "SELECT event_city, COUNT(*), "
             "SUM(CASE WHEN status = 'pending' THEN 1 ELSE 0 END), "
@@ -860,7 +890,7 @@ async def add_coins(user_id: int, delta: int, reason: str | None = None, changed
     task-award credit ('task') at the data level. Default None preserves every pre-existing
     call site's behavior byte-for-byte (NULL = legacy/system, per Pitfall 6 in 14-RESEARCH.md)."""
     timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-    async with aiosqlite.connect(config.DB_PATH) as db:
+    async with _connect() as db:
         await db.execute(
             "INSERT INTO coins (user_id, delta, reason, changed_by, timestamp, source) VALUES (?, ?, ?, ?, ?, ?)",
             (user_id, delta, reason, changed_by, timestamp, source),
@@ -869,7 +899,7 @@ async def add_coins(user_id: int, delta: int, reason: str | None = None, changed
 
 
 async def get_balance(user_id: int) -> int:
-    async with aiosqlite.connect(config.DB_PATH) as db:
+    async with _connect() as db:
         async with db.execute(
             "SELECT COALESCE(SUM(delta), 0) FROM coins WHERE user_id = ?", (user_id,)
         ) as cursor:
@@ -879,7 +909,7 @@ async def get_balance(user_id: int) -> int:
 
 async def get_leaderboard(limit: int = 10) -> list[dict]:
     """Top users by summed balance, joined to users for display name."""
-    async with aiosqlite.connect(config.DB_PATH) as db:
+    async with _connect() as db:
         db.row_factory = aiosqlite.Row
         async with db.execute('''
             SELECT c.user_id AS user_id,
@@ -897,7 +927,7 @@ async def get_leaderboard(limit: int = 10) -> list[dict]:
 
 async def get_user_rank(user_id: int) -> int | None:
     """1-based rank by summed balance; None if the user has no ledger rows."""
-    async with aiosqlite.connect(config.DB_PATH) as db:
+    async with _connect() as db:
         async with db.execute(
             "SELECT COALESCE(SUM(delta), 0) FROM coins WHERE user_id = ?", (user_id,)
         ) as cursor:
@@ -942,7 +972,7 @@ async def list_manual_coin_entries(limit: int = 10, offset: int = 0) -> list[dic
     `get_pending_submissions` (CLAUDE.md: 1000+ rows must never render in one message).
     ONLY `source = 'manual'` rows -- task-award credits and pre-Phase-14 legacy rows are
     deliberately excluded from the screen (they still show up in the CSV export below)."""
-    async with aiosqlite.connect(config.DB_PATH) as db:
+    async with _connect() as db:
         db.row_factory = aiosqlite.Row
         async with db.execute(
             f"{_COIN_JOURNAL_SELECT} WHERE c.source = 'manual' ORDER BY c.id DESC LIMIT ? OFFSET ?",
@@ -953,7 +983,7 @@ async def list_manual_coin_entries(limit: int = 10, offset: int = 0) -> list[dic
 
 async def count_manual_coin_entries() -> int:
     """Same WHERE as `list_manual_coin_entries` -- drives the «Страница K из N» label."""
-    async with aiosqlite.connect(config.DB_PATH) as db:
+    async with _connect() as db:
         async with db.execute(
             "SELECT COUNT(*) FROM coins WHERE source = 'manual'"
         ) as cursor:
@@ -973,7 +1003,7 @@ async def export_coins_journal_csv() -> tuple[list[str], list[tuple]]:
         "ID", "Когда", "Кому (ID)", "Кому (ФИО)", "Юзернейм", "Город", "Сколько", "Тип",
         "Причина", "Кто изменил (ID)",
     ]
-    async with aiosqlite.connect(config.DB_PATH) as db:
+    async with _connect() as db:
         db.row_factory = aiosqlite.Row
         async with db.execute(f"{_COIN_JOURNAL_SELECT} ORDER BY c.id DESC") as cursor:
             rows = [dict(row) for row in await cursor.fetchall()]
@@ -995,7 +1025,7 @@ async def export_coins_journal_csv() -> tuple[list[str], list[tuple]]:
 
 async def list_coin_entries_for_user(user_id: int, limit: int = 5, offset: int = 0) -> list[dict]:
     """Newest-first (`ORDER BY id DESC`), same LIMIT/OFFSET idiom as `list_manual_coin_entries`."""
-    async with aiosqlite.connect(config.DB_PATH) as db:
+    async with _connect() as db:
         db.row_factory = aiosqlite.Row
         async with db.execute(
             "SELECT * FROM coins WHERE user_id = ? ORDER BY id DESC LIMIT ? OFFSET ?",
@@ -1006,7 +1036,7 @@ async def list_coin_entries_for_user(user_id: int, limit: int = 5, offset: int =
 
 async def count_coin_entries_for_user(user_id: int) -> int:
     """Total row count for one user_id — drives the «📜 История» screen's «Страница K из N»."""
-    async with aiosqlite.connect(config.DB_PATH) as db:
+    async with _connect() as db:
         async with db.execute(
             "SELECT COUNT(*) FROM coins WHERE user_id = ?", (user_id,)
         ) as cursor:
@@ -1023,7 +1053,7 @@ async def mark_reg_started(
     event_city: str | None = None,
 ):
     started_at = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-    async with aiosqlite.connect(config.DB_PATH) as db:
+    async with _connect() as db:
         await db.execute('''
             INSERT INTO reg_started (telegram_id, username, started_at, participant_type, event_city)
             VALUES (?, ?, ?, ?, ?)
@@ -1043,7 +1073,7 @@ async def mark_reg_started(
 
 
 async def clear_reg_started(telegram_id: int):
-    async with aiosqlite.connect(config.DB_PATH) as db:
+    async with _connect() as db:
         await db.execute("DELETE FROM reg_started WHERE telegram_id = ?", (telegram_id,))
         await db.commit()
 
@@ -1051,7 +1081,7 @@ async def clear_reg_started(telegram_id: int):
 # Phase 5 (D-02): read the track recorded at flow start, before finalize_registration clears
 # the reg_started row — the source of truth for a bare repeat /start mid-flow.
 async def get_reg_started_track(telegram_id: int) -> str | None:
-    async with aiosqlite.connect(config.DB_PATH) as db:
+    async with _connect() as db:
         async with db.execute(
             "SELECT participant_type FROM reg_started WHERE telegram_id = ?", (telegram_id,)
         ) as cursor:
@@ -1062,7 +1092,7 @@ async def get_reg_started_track(telegram_id: int) -> str | None:
 # Phase 07.1 (CITY-01): read the event_city recorded at flow start — same read pattern as
 # get_reg_started_track, for restoring an in-progress registration's city choice.
 async def get_reg_started_city(telegram_id: int) -> str | None:
-    async with aiosqlite.connect(config.DB_PATH) as db:
+    async with _connect() as db:
         async with db.execute(
             "SELECT event_city FROM reg_started WHERE telegram_id = ?", (telegram_id,)
         ) as cursor:
@@ -1077,7 +1107,7 @@ async def get_reg_started_city(telegram_id: int) -> str | None:
 # (services/scheduler.py sync_incomplete_sheet_job) collapse already-answered promo fields
 # back to "-" before the last abandoned promo delegate is cleared or finishes.
 async def has_short_incomplete() -> bool:
-    async with aiosqlite.connect(config.DB_PATH) as db:
+    async with _connect() as db:
         async with db.execute(
             "SELECT 1 FROM reg_started WHERE participant_type = 'short' LIMIT 1"
         ) as cursor:
@@ -1098,7 +1128,7 @@ _INCOMPLETE_NOT_REGISTERED = (
 
 
 async def get_incomplete_user_ids() -> list[int]:
-    async with aiosqlite.connect(config.DB_PATH) as db:
+    async with _connect() as db:
         async with db.execute(
             f"SELECT telegram_id FROM reg_started WHERE {_INCOMPLETE_NOT_REGISTERED}"
         ) as cursor:
@@ -1110,7 +1140,7 @@ async def get_incomplete_rows() -> list[tuple]:
     started_at, last_step, partial_data). These users hit /start but never finished.
     Quick k4y: partial_data (JSON snapshot of already-answered fields) is now persisted
     alongside last_step — it is NULL for rows created before that column existed."""
-    async with aiosqlite.connect(config.DB_PATH) as db:
+    async with _connect() as db:
         async with db.execute(
             "SELECT telegram_id, username, started_at, last_step, partial_data FROM reg_started "
             f"WHERE {_INCOMPLETE_NOT_REGISTERED} ORDER BY started_at"
@@ -1122,7 +1152,7 @@ async def get_incomplete_rows_with_city() -> list[tuple]:
     """Same rows, filter, and ORDER BY as get_incomplete_rows, plus a sixth field
     (event_city) so the «Незавершённые» tab can be split per city (Phase 07.1, CITY-04).
     get_incomplete_rows() itself is UNTOUCHED -- existing tests rely on its 5-tuple shape."""
-    async with aiosqlite.connect(config.DB_PATH) as db:
+    async with _connect() as db:
         async with db.execute(
             "SELECT telegram_id, username, started_at, last_step, partial_data, event_city "
             f"FROM reg_started WHERE {_INCOMPLETE_NOT_REGISTERED} ORDER BY started_at"
@@ -1136,7 +1166,7 @@ async def set_reg_step(telegram_id: int, step_key: str, partial_json: str | None
     if the reg_started row is gone (finished/cleared). Fail-soft at the call site.
     COALESCE keeps any previously-stored partial_data intact when called without a
     snapshot (e.g. the very first question) — it must never be reset to NULL."""
-    async with aiosqlite.connect(config.DB_PATH) as db:
+    async with _connect() as db:
         await db.execute(
             "UPDATE reg_started SET last_step = ?, partial_data = COALESCE(?, partial_data) "
             "WHERE telegram_id = ?",
@@ -1148,7 +1178,7 @@ async def set_reg_step(telegram_id: int, step_key: str, partial_json: str | None
 async def get_dropout_step_stats() -> list[tuple]:
     """(last_step, count) over all incomplete registrations, most-abandoned first. last_step
     may be NULL for users who dropped before seeing any question."""
-    async with aiosqlite.connect(config.DB_PATH) as db:
+    async with _connect() as db:
         async with db.execute(
             "SELECT last_step, COUNT(*) FROM reg_started "
             f"WHERE {_INCOMPLETE_NOT_REGISTERED} GROUP BY last_step ORDER BY COUNT(*) DESC"
@@ -1159,7 +1189,7 @@ async def get_dropout_step_stats() -> list[tuple]:
 # ── Phase 1: subscription flag ───────────────────────────────────────────────
 
 async def set_user_subscribed(telegram_id: int, subscribed: bool):
-    async with aiosqlite.connect(config.DB_PATH) as db:
+    async with _connect() as db:
         await db.execute(
             "UPDATE users SET subscribed = ? WHERE telegram_id = ?",
             (1 if subscribed else 0, telegram_id),
@@ -1168,7 +1198,7 @@ async def set_user_subscribed(telegram_id: int, subscribed: bool):
 
 
 async def get_non_subscriber_ids() -> list[int]:
-    async with aiosqlite.connect(config.DB_PATH) as db:
+    async with _connect() as db:
         async with db.execute(
             "SELECT telegram_id FROM users WHERE subscribed = 0"
         ) as cursor:
@@ -1179,7 +1209,7 @@ async def get_non_subscriber_ids() -> list[int]:
 
 async def set_user_status(telegram_id: int, status: str):
     """Set one user's approval status. Used after add_user to land pending/approved."""
-    async with aiosqlite.connect(config.DB_PATH) as db:
+    async with _connect() as db:
         await db.execute(
             "UPDATE users SET status = ? WHERE telegram_id = ?",
             (status, telegram_id),
@@ -1190,7 +1220,7 @@ async def set_user_status(telegram_id: int, status: str):
 async def approve_user_atomic(telegram_id: int) -> bool:
     """Atomically approve one pending user. True iff this call flipped the row
     (rowcount==1) — a concurrent second approve returns False (no double approval)."""
-    async with aiosqlite.connect(config.DB_PATH) as db:
+    async with _connect() as db:
         cursor = await db.execute(
             "UPDATE users SET status = 'approved' WHERE telegram_id = ? AND status = 'pending'",
             (telegram_id,),
@@ -1201,7 +1231,7 @@ async def approve_user_atomic(telegram_id: int) -> bool:
 
 async def reject_user(telegram_id: int) -> bool:
     """Atomically reject one pending user. True iff one row flipped."""
-    async with aiosqlite.connect(config.DB_PATH) as db:
+    async with _connect() as db:
         cursor = await db.execute(
             "UPDATE users SET status = 'rejected' WHERE telegram_id = ? AND status = 'pending'",
             (telegram_id,),
@@ -1246,7 +1276,7 @@ async def get_pending_users(limit: int = 1, offset: int = 0, *, city_scope=None)
     """Pending applications, oldest first (registration_date then telegram_id)."""
     frag, city_params = _city_clause(city_scope)
     extra = f" AND {frag}" if frag else ""
-    async with aiosqlite.connect(config.DB_PATH) as db:
+    async with _connect() as db:
         db.row_factory = aiosqlite.Row
         async with db.execute(
             f"SELECT * FROM users WHERE status = 'pending'{extra} "
@@ -1259,7 +1289,7 @@ async def get_pending_users(limit: int = 1, offset: int = 0, *, city_scope=None)
 async def get_pending_count(*, city_scope=None) -> int:
     frag, city_params = _city_clause(city_scope)
     extra = f" AND {frag}" if frag else ""
-    async with aiosqlite.connect(config.DB_PATH) as db:
+    async with _connect() as db:
         async with db.execute(
             f"SELECT COUNT(*) FROM users WHERE status = 'pending'{extra}", tuple(city_params)
         ) as cursor:
@@ -1278,7 +1308,7 @@ async def approve_all_pending(*, city_scope=None) -> list[int]:
     a row belonging to another city (T-072-03)."""
     frag, city_params = _city_clause(city_scope)
     extra = f" AND {frag}" if frag else ""
-    async with aiosqlite.connect(config.DB_PATH) as db:
+    async with _connect() as db:
         async with db.execute(
             f"UPDATE users SET status = 'approved' WHERE status = 'pending'{extra} "
             "RETURNING telegram_id",
@@ -1300,7 +1330,7 @@ async def create_scheduled_broadcast(
 ) -> int:
     """Insert a pending scheduled broadcast; return its new id (the job's only arg)."""
     created_at = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-    async with aiosqlite.connect(config.DB_PATH) as db:
+    async with _connect() as db:
         cursor = await db.execute(
             "INSERT INTO scheduled_broadcasts "
             "(text, photo_file_id, filter_spec, scheduled_at, status, created_by, created_at) "
@@ -1312,7 +1342,7 @@ async def create_scheduled_broadcast(
 
 
 async def get_scheduled_broadcast(broadcast_id: int) -> dict | None:
-    async with aiosqlite.connect(config.DB_PATH) as db:
+    async with _connect() as db:
         db.row_factory = aiosqlite.Row
         async with db.execute(
             "SELECT * FROM scheduled_broadcasts WHERE id = ?", (broadcast_id,)
@@ -1327,7 +1357,7 @@ async def mark_broadcast_sending(broadcast_id: int) -> int:
     (double-schedule race or a re-fire). A crash mid-send leaves the row 'sending' — never back
     to 'pending' — so neither a re-fire nor the ME-03 boot reconciliation (which re-arms only
     'pending' rows) can blast the whole audience a second time."""
-    async with aiosqlite.connect(config.DB_PATH) as db:
+    async with _connect() as db:
         cursor = await db.execute(
             "UPDATE scheduled_broadcasts SET status = 'sending' "
             "WHERE id = ? AND status = 'pending'",
@@ -1338,7 +1368,7 @@ async def mark_broadcast_sending(broadcast_id: int) -> int:
 
 
 async def mark_broadcast_sent(broadcast_id: int):
-    async with aiosqlite.connect(config.DB_PATH) as db:
+    async with _connect() as db:
         await db.execute(
             "UPDATE scheduled_broadcasts SET status = 'sent' WHERE id = ?", (broadcast_id,)
         )
@@ -1346,7 +1376,7 @@ async def mark_broadcast_sent(broadcast_id: int):
 
 
 async def list_pending_broadcasts() -> list[dict]:
-    async with aiosqlite.connect(config.DB_PATH) as db:
+    async with _connect() as db:
         db.row_factory = aiosqlite.Row
         async with db.execute(
             "SELECT * FROM scheduled_broadcasts WHERE status = 'pending' ORDER BY scheduled_at"
@@ -1355,7 +1385,7 @@ async def list_pending_broadcasts() -> list[dict]:
 
 
 async def cancel_scheduled_broadcast(broadcast_id: int):
-    async with aiosqlite.connect(config.DB_PATH) as db:
+    async with _connect() as db:
         await db.execute(
             "UPDATE scheduled_broadcasts SET status = 'cancelled' WHERE id = ?", (broadcast_id,)
         )
@@ -1367,7 +1397,7 @@ async def cancel_scheduled_broadcast(broadcast_id: int):
 async def get_nudge_candidates(cutoff: str) -> list[int]:
     """Incomplete registrations older than cutoff that were never nudged.
     started_at is ISO ('%Y-%m-%d %H:%M:%S') so lexicographic `<` is chronological."""
-    async with aiosqlite.connect(config.DB_PATH) as db:
+    async with _connect() as db:
         async with db.execute(
             "SELECT telegram_id FROM reg_started "
             f"WHERE started_at < ? AND nudged_at IS NULL AND {_INCOMPLETE_NOT_REGISTERED}",
@@ -1379,7 +1409,7 @@ async def get_nudge_candidates(cutoff: str) -> list[int]:
 async def mark_nudged(telegram_id: int):
     """Stamp nudged_at so a user is never nudged twice (one-shot dedup, D-14)."""
     nudged_at = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-    async with aiosqlite.connect(config.DB_PATH) as db:
+    async with _connect() as db:
         await db.execute(
             "UPDATE reg_started SET nudged_at = ? WHERE telegram_id = ?",
             (nudged_at, telegram_id),
@@ -1475,7 +1505,7 @@ async def get_distinct_filter_values(field: str) -> list[str]:
         )
     else:
         return []
-    async with aiosqlite.connect(config.DB_PATH) as db:
+    async with _connect() as db:
         async with db.execute(sql) as cursor:
             rows = await cursor.fetchall()
     return [str(r[0]) for r in rows if r[0] is not None and str(r[0]).strip()]
@@ -1494,7 +1524,7 @@ async def count_and_list_filtered(filters: list[dict]) -> list[int]:
             "returning empty audience (refusing to fan out to all users)", len(filters)
         )
         return []
-    async with aiosqlite.connect(config.DB_PATH) as db:
+    async with _connect() as db:
         async with db.execute(
             f"SELECT telegram_id FROM users{where}", params
         ) as cursor:
@@ -1506,7 +1536,7 @@ async def count_and_list_filtered(filters: list[dict]) -> list[int]:
 async def record_user_consent(user_id: int, consent_key: str):
     """Idempotent consent write — re-tapping «Принимаю» never raises (INSERT OR IGNORE)."""
     accepted_at = datetime.now().isoformat()
-    async with aiosqlite.connect(config.DB_PATH) as db:
+    async with _connect() as db:
         await db.execute(
             "INSERT OR IGNORE INTO user_consents (user_id, consent_key, accepted_at) "
             "VALUES (?, ?, ?)",
@@ -1516,7 +1546,7 @@ async def record_user_consent(user_id: int, consent_key: str):
 
 
 async def get_user_consents(user_id: int) -> list[str]:
-    async with aiosqlite.connect(config.DB_PATH) as db:
+    async with _connect() as db:
         async with db.execute(
             "SELECT consent_key FROM user_consents WHERE user_id = ? ORDER BY accepted_at",
             (user_id,),
@@ -1534,7 +1564,7 @@ async def get_receipt_pending_users(limit: int = 50, offset: int = 0, *, city_sc
     (previously not selected; the scope filter used it via WHERE without returning it)."""
     frag, city_params = _city_clause(city_scope)
     extra = f" AND {frag}" if frag else ""
-    async with aiosqlite.connect(config.DB_PATH) as db:
+    async with _connect() as db:
         db.row_factory = aiosqlite.Row
         async with db.execute(
             "SELECT telegram_id, full_name, payment_option, receipt_file_id, payment_status, event_city "
@@ -1547,7 +1577,7 @@ async def get_receipt_pending_users(limit: int = 50, offset: int = 0, *, city_sc
 async def get_receipt_pending_count(*, city_scope=None) -> int:
     frag, city_params = _city_clause(city_scope)
     extra = f" AND {frag}" if frag else ""
-    async with aiosqlite.connect(config.DB_PATH) as db:
+    async with _connect() as db:
         async with db.execute(
             f"SELECT COUNT(*) FROM users WHERE payment_status = 'receipt_sent'{extra}",
             tuple(city_params),
@@ -1587,7 +1617,7 @@ async def update_payment_status(
     if guard is not None:
         where += " AND payment_status = ?"
         params.append(guard)
-    async with aiosqlite.connect(config.DB_PATH) as db:
+    async with _connect() as db:
         cursor = await db.execute(
             f"UPDATE users SET {', '.join(sets)} WHERE {where}", params
         )
@@ -1598,7 +1628,7 @@ async def update_payment_status(
 async def set_payment_due(telegram_id: int, payment_due: str) -> None:
     """WR-03: persist the deadline a user owes payment by, WITHOUT touching payment_status.
     Lets the overdue sweep catch users who deferred from the option picker (payment_option NULL)."""
-    async with aiosqlite.connect(config.DB_PATH) as db:
+    async with _connect() as db:
         await db.execute(
             "UPDATE users SET payment_due = ? WHERE telegram_id = ?",
             (payment_due, telegram_id),
@@ -1612,7 +1642,7 @@ async def add_staff(telegram_id: int, role: str, added_by: int | None) -> bool:
     """Grant `role` to `telegram_id`. INSERT OR IGNORE against the composite PRIMARY KEY
     (telegram_id, role) makes re-adding an already-held role a no-op, not a duplicate row.
     Returns True iff this call actually inserted a new row."""
-    async with aiosqlite.connect(config.DB_PATH) as db:
+    async with _connect() as db:
         cursor = await db.execute(
             "INSERT OR IGNORE INTO staff (telegram_id, role, added_by, added_at) VALUES (?, ?, ?, ?)",
             (telegram_id, role, added_by, datetime.utcnow().isoformat()),
@@ -1623,7 +1653,7 @@ async def add_staff(telegram_id: int, role: str, added_by: int | None) -> bool:
 
 async def remove_staff(telegram_id: int, role: str) -> bool:
     """Revoke `role` from `telegram_id`. Returns True iff a row was actually removed."""
-    async with aiosqlite.connect(config.DB_PATH) as db:
+    async with _connect() as db:
         cursor = await db.execute(
             "DELETE FROM staff WHERE telegram_id = ? AND role = ?",
             (telegram_id, role),
@@ -1634,7 +1664,7 @@ async def remove_staff(telegram_id: int, role: str) -> bool:
 
 async def get_staff_roles(telegram_id: int) -> list[str]:
     """All roles held by one person (empty list if they hold none)."""
-    async with aiosqlite.connect(config.DB_PATH) as db:
+    async with _connect() as db:
         async with db.execute(
             "SELECT role FROM staff WHERE telegram_id = ?", (telegram_id,)
         ) as cursor:
@@ -1646,7 +1676,7 @@ async def list_staff() -> list[dict]:
     """Full roster, oldest grant first -- feeds the "Роли и доступы" admin screen (08-02).
     `city` (Phase 09.1, C) is NULL for every pre-existing row -- "all cities", byte-identical
     to today's behavior for anyone who never gets a binding."""
-    async with aiosqlite.connect(config.DB_PATH) as db:
+    async with _connect() as db:
         db.row_factory = aiosqlite.Row
         async with db.execute(
             "SELECT telegram_id, role, added_by, added_at, city FROM staff ORDER BY added_at"
@@ -1661,7 +1691,7 @@ async def get_staff_city(telegram_id: int) -> str | None:
     """The city bound to this person, or None (unbound -- "all cities", same as every
     pre-09.1 record). Binding is per-person, not per-role -- any one of their role-rows
     carrying a non-NULL city is enough to answer (set_staff_city keeps them all in sync)."""
-    async with aiosqlite.connect(config.DB_PATH) as db:
+    async with _connect() as db:
         async with db.execute(
             "SELECT city FROM staff WHERE telegram_id = ? AND city IS NOT NULL LIMIT 1",
             (telegram_id,),
@@ -1675,7 +1705,7 @@ async def set_staff_city(telegram_id: int, city: str | None) -> bool:
     hold in one statement -- the binding is by telegram_id alone (CONTEXT.md C), not by
     (telegram_id, role). Returns True iff at least one row existed to update; a person with
     no staff row at all gets False and nothing is written."""
-    async with aiosqlite.connect(config.DB_PATH) as db:
+    async with _connect() as db:
         cursor = await db.execute(
             "UPDATE staff SET city = ? WHERE telegram_id = ?", (city, telegram_id)
         )
@@ -1686,7 +1716,7 @@ async def set_staff_city(telegram_id: int, city: str | None) -> bool:
 async def get_staff_ids_by_role(role: str) -> list[int]:
     """Every telegram_id currently holding exactly this role -- feeds notification fan-out
     (D-13, wired in a later phase-8 plan)."""
-    async with aiosqlite.connect(config.DB_PATH) as db:
+    async with _connect() as db:
         async with db.execute(
             "SELECT telegram_id FROM staff WHERE role = ?", (role,)
         ) as cursor:
@@ -1700,7 +1730,7 @@ async def create_question(user_id: int, question_text: str) -> int:
     """One row per delegate question, created ONCE before the D-13 fan-out (never per
     recipient -- 08-RESEARCH Pitfall 6). Returns the new row's id, embedded in every fanned-
     out copy of the notification so any recipient's reply resolves to the same claim target."""
-    async with aiosqlite.connect(config.DB_PATH) as db:
+    async with _connect() as db:
         cursor = await db.execute(
             "INSERT INTO delegate_questions (user_id, question_text, asked_at) VALUES (?, ?, ?)",
             (user_id, question_text, datetime.utcnow().isoformat()),
@@ -1710,7 +1740,7 @@ async def create_question(user_id: int, question_text: str) -> int:
 
 
 async def get_question(question_id: int) -> dict | None:
-    async with aiosqlite.connect(config.DB_PATH) as db:
+    async with _connect() as db:
         db.row_factory = aiosqlite.Row
         async with db.execute(
             "SELECT * FROM delegate_questions WHERE id = ?", (question_id,)
@@ -1723,7 +1753,7 @@ async def claim_question(question_id: int, admin_id: int, admin_name: str) -> bo
     """Atomic single-row claim (D-14, same idiom as approve_user_atomic): True iff THIS call
     flipped the row (rowcount==1) -- a concurrent second claim on the same question_id
     returns False, and the loser reads answered_by_name back via get_question()."""
-    async with aiosqlite.connect(config.DB_PATH) as db:
+    async with _connect() as db:
         cursor = await db.execute(
             "UPDATE delegate_questions SET answered_by = ?, answered_by_name = ?, "
             "answered_at = ? WHERE id = ? AND answered_by IS NULL",
@@ -1738,7 +1768,7 @@ async def set_question_answer(question_id: int, answer_text: str):
     after `bot.send_message`/`send_copy` to the delegate has actually SUCCEEDED (T-08-33
     quick task). delivered_at, not answer_text, is the detector `get_stuck_questions()`
     relies on -- see the column's comment in init_db for why answer_text alone can't do it."""
-    async with aiosqlite.connect(config.DB_PATH) as db:
+    async with _connect() as db:
         await db.execute(
             "UPDATE delegate_questions SET answer_text = ?, delivered_at = ? WHERE id = ?",
             (answer_text, datetime.utcnow().isoformat(), question_id),
@@ -1750,7 +1780,7 @@ async def get_stuck_questions() -> list[dict]:
     """T-08-33 quick task, part D: rows that were claimed (answered_by set) but never
     successfully delivered (delivered_at still NULL) -- the admin "stuck questions" screen.
     Deliberately does NOT look at answer_text (see set_question_answer's docstring)."""
-    async with aiosqlite.connect(config.DB_PATH) as db:
+    async with _connect() as db:
         db.row_factory = aiosqlite.Row
         async with db.execute(
             "SELECT * FROM delegate_questions "
@@ -1801,7 +1831,7 @@ async def create_task(text: str, category: str, coins: int, proof_type: str,
     for the same reason -- every pre-existing call site keeps creating a NULL-title/NULL-photo
     task (rendered via task_title()'s fallback) unless a caller opts in."""
     created_at = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-    async with aiosqlite.connect(config.DB_PATH) as db:
+    async with _connect() as db:
         cursor = await db.execute(
             "INSERT INTO game_tasks (text, category, coins, proof_type, deadline_at, "
             "created_by, created_at, event_city, title, photo_file_id) "
@@ -1834,7 +1864,7 @@ async def update_task_title(task_id: int, title: str) -> bool:
     """True iff the task existed. `title` must already be validated/truncated by the caller
     (handlers/admin_gamification.py's wizard-shared validator) -- this is a plain write, no
     business rules live here (same division of labor as create_task)."""
-    async with aiosqlite.connect(config.DB_PATH) as db:
+    async with _connect() as db:
         cursor = await db.execute(
             "UPDATE game_tasks SET title = ? WHERE id = ?", (title, task_id),
         )
@@ -1846,7 +1876,7 @@ async def update_task_photo(task_id: int, photo_file_id: str | None) -> bool:
     """Sets or clears (photo_file_id=None) the task's cover photo. True iff the task existed.
     Not a "resettable to NULL only if not-NULL" idiom like archive/unarchive -- CONTEXT.md
     decision 4 treats replace/remove as the SAME non-destructive write (no confirm step)."""
-    async with aiosqlite.connect(config.DB_PATH) as db:
+    async with _connect() as db:
         cursor = await db.execute(
             "UPDATE game_tasks SET photo_file_id = ? WHERE id = ?", (photo_file_id, task_id),
         )
@@ -1859,7 +1889,7 @@ async def update_task_photo(task_id: int, photo_file_id: str | None) -> bool:
 # positive coins, "%Y-%m-%d %H:%M:%S" deadline string) is the caller's job.
 async def update_task_text(task_id: int, text: str) -> bool:
     """True iff the task existed."""
-    async with aiosqlite.connect(config.DB_PATH) as db:
+    async with _connect() as db:
         cursor = await db.execute(
             "UPDATE game_tasks SET text = ? WHERE id = ?", (text, task_id),
         )
@@ -1869,7 +1899,7 @@ async def update_task_text(task_id: int, text: str) -> bool:
 
 async def update_task_coins(task_id: int, coins: int) -> bool:
     """True iff the task existed."""
-    async with aiosqlite.connect(config.DB_PATH) as db:
+    async with _connect() as db:
         cursor = await db.execute(
             "UPDATE game_tasks SET coins = ? WHERE id = ?", (coins, task_id),
         )
@@ -1880,7 +1910,7 @@ async def update_task_coins(task_id: int, coins: int) -> bool:
 async def update_task_deadline(task_id: int, deadline_at: str) -> bool:
     """True iff the task existed. `deadline_at` is the already-formatted
     "%Y-%m-%d %H:%M:%S" string (same format create_task stores)."""
-    async with aiosqlite.connect(config.DB_PATH) as db:
+    async with _connect() as db:
         cursor = await db.execute(
             "UPDATE game_tasks SET deadline_at = ? WHERE id = ?", (deadline_at, task_id),
         )
@@ -1889,7 +1919,7 @@ async def update_task_deadline(task_id: int, deadline_at: str) -> bool:
 
 
 async def get_task(task_id: int) -> dict | None:
-    async with aiosqlite.connect(config.DB_PATH) as db:
+    async with _connect() as db:
         db.row_factory = aiosqlite.Row
         async with db.execute(
             "SELECT * FROM game_tasks WHERE id = ?", (task_id,)
@@ -1912,7 +1942,7 @@ async def list_active_tasks(*, city_scope=None, include_null: bool = True) -> li
     (if any) is appended via AND."""
     frag, city_params = _city_clause(city_scope, "event_city", include_null=include_null)
     extra = f" AND {frag}" if frag else ""
-    async with aiosqlite.connect(config.DB_PATH) as db:
+    async with _connect() as db:
         db.row_factory = aiosqlite.Row
         async with db.execute(
             f"SELECT * FROM game_tasks WHERE archived_at IS NULL{extra} "
@@ -1929,7 +1959,7 @@ async def list_all_tasks(*, city_scope=None, include_null: bool = True) -> list[
     Do NOT add an archived_at filter here; that belongs to list_active_tasks only."""
     frag, city_params = _city_clause(city_scope, "event_city", include_null=include_null)
     extra = f" WHERE {frag}" if frag else ""
-    async with aiosqlite.connect(config.DB_PATH) as db:
+    async with _connect() as db:
         db.row_factory = aiosqlite.Row
         async with db.execute(
             f"SELECT * FROM game_tasks{extra} ORDER BY created_at DESC", tuple(city_params)
@@ -1942,7 +1972,7 @@ async def create_submission(task_id: int, user_id: int, content_type: str, conte
     """Returns the new row's id, or None if `idx_game_submissions_active` rejected a second
     non-rejected submission for this (task_id, user_id) pair — T-09-01, D-05. The caller
     (wave 3) treats None as "already submitted", never re-raises."""
-    async with aiosqlite.connect(config.DB_PATH) as db:
+    async with _connect() as db:
         try:
             cursor = await db.execute(
                 "INSERT INTO game_submissions (task_id, user_id, content_type, content, "
@@ -1956,7 +1986,7 @@ async def create_submission(task_id: int, user_id: int, content_type: str, conte
 
 
 async def get_submission(submission_id: int) -> dict | None:
-    async with aiosqlite.connect(config.DB_PATH) as db:
+    async with _connect() as db:
         db.row_factory = aiosqlite.Row
         async with db.execute(
             "SELECT * FROM game_submissions WHERE id = ?", (submission_id,)
@@ -1968,7 +1998,7 @@ async def get_submission(submission_id: int) -> dict | None:
 async def get_active_submission(task_id: int, user_id: int) -> dict | None:
     """Most recent non-rejected submission for this pair, or None. Rejected submissions are
     invisible here on purpose — a fresh resubmission after rejection is a NEW row (D-05)."""
-    async with aiosqlite.connect(config.DB_PATH) as db:
+    async with _connect() as db:
         db.row_factory = aiosqlite.Row
         async with db.execute(
             "SELECT * FROM game_submissions WHERE task_id = ? AND user_id = ? "
@@ -1987,7 +2017,7 @@ async def archive_task(task_id: int) -> bool:
     """True iff THIS call archived the task (rowcount == 1) — a no-op on an already-archived
     task returns False, same idiom as claim_submission."""
     archived_at = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-    async with aiosqlite.connect(config.DB_PATH) as db:
+    async with _connect() as db:
         cursor = await db.execute(
             "UPDATE game_tasks SET archived_at = ? WHERE id = ? AND archived_at IS NULL",
             (archived_at, task_id),
@@ -1998,7 +2028,7 @@ async def archive_task(task_id: int) -> bool:
 
 async def unarchive_task(task_id: int) -> bool:
     """Mirror of archive_task — True iff THIS call returned the task to active."""
-    async with aiosqlite.connect(config.DB_PATH) as db:
+    async with _connect() as db:
         cursor = await db.execute(
             "UPDATE game_tasks SET archived_at = NULL WHERE id = ? AND archived_at IS NOT NULL",
             (task_id,),
@@ -2011,7 +2041,7 @@ async def count_task_submissions(task_id: int) -> int:
     """ALL statuses, including rejected — a rejected submission is still history, a task
     with one attached can never be hard-deleted (delete_task's own NOT EXISTS gate relies on
     this being non-zero for any submission at all, not just non-rejected ones)."""
-    async with aiosqlite.connect(config.DB_PATH) as db:
+    async with _connect() as db:
         async with db.execute(
             "SELECT COUNT(*) FROM game_submissions WHERE task_id = ?", (task_id,)
         ) as cursor:
@@ -2024,7 +2054,7 @@ async def delete_task(task_id: int) -> bool:
     "no submissions" gate lives INSIDE the single DELETE statement (NOT EXISTS), not as a
     separate Python read-then-decide step — T-14-02: a manager deleting a task the same
     second a delegate submits to it must never silently drop that submission's parent row."""
-    async with aiosqlite.connect(config.DB_PATH) as db:
+    async with _connect() as db:
         cursor = await db.execute(
             "DELETE FROM game_tasks WHERE id = ? AND NOT EXISTS "
             "(SELECT 1 FROM game_submissions WHERE task_id = game_tasks.id)",
@@ -2037,7 +2067,7 @@ async def delete_task(task_id: int) -> bool:
 async def count_rejected_submissions(task_id: int, user_id: int) -> int:
     """Rejected-only count for one (task, user) pair — GAME-10's resubmit-limit gate. Model
     is get_active_submission's WHERE shape, COUNT instead of a single row."""
-    async with aiosqlite.connect(config.DB_PATH) as db:
+    async with _connect() as db:
         async with db.execute(
             "SELECT COUNT(*) FROM game_submissions WHERE task_id = ? AND user_id = ? "
             "AND status = 'rejected'",
@@ -2051,7 +2081,7 @@ async def count_rejected_submissions(task_id: int, user_id: int) -> int:
 
 async def add_submission_part(submission_id: int, ord: int, kind: str, content: str | None,
                                caption: str | None = None) -> int:
-    async with aiosqlite.connect(config.DB_PATH) as db:
+    async with _connect() as db:
         cursor = await db.execute(
             "INSERT INTO game_submission_parts (submission_id, ord, kind, content, caption) "
             "VALUES (?, ?, ?, ?, ?)",
@@ -2062,7 +2092,7 @@ async def add_submission_part(submission_id: int, ord: int, kind: str, content: 
 
 
 async def list_submission_parts(submission_id: int) -> list[dict]:
-    async with aiosqlite.connect(config.DB_PATH) as db:
+    async with _connect() as db:
         db.row_factory = aiosqlite.Row
         async with db.execute(
             "SELECT * FROM game_submission_parts WHERE submission_id = ? "
@@ -2101,7 +2131,7 @@ async def get_pending_submissions(limit: int = 1, offset: int = 0, *, city_scope
     for."""
     frag, city_params = _city_clause(city_scope, "u.event_city")
     extra = f" AND {frag}" if frag else ""
-    async with aiosqlite.connect(config.DB_PATH) as db:
+    async with _connect() as db:
         db.row_factory = aiosqlite.Row
         async with db.execute(
             "SELECT s.*, t.text AS task_text, t.title AS task_title, "
@@ -2124,7 +2154,7 @@ async def get_pending_submissions(limit: int = 1, offset: int = 0, *, city_scope
 async def get_pending_submissions_count(*, city_scope=None) -> int:
     frag, city_params = _city_clause(city_scope, "u.event_city")
     extra = f" AND {frag}" if frag else ""
-    async with aiosqlite.connect(config.DB_PATH) as db:
+    async with _connect() as db:
         db.row_factory = aiosqlite.Row
         async with db.execute(
             "SELECT COUNT(*) FROM game_submissions s "
@@ -2145,7 +2175,7 @@ async def claim_submission(submission_id: int, admin_id: int, status: str, *,
     Crediting coins via add_coins is NOT done here — the caller (wave 4) does it as a separate
     step, only after this returns True, same two-step shape as appr_approve -> approve_user."""
     reviewed_at = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-    async with aiosqlite.connect(config.DB_PATH) as db:
+    async with _connect() as db:
         cursor = await db.execute(
             "UPDATE game_submissions SET status = ?, reviewed_by = ?, reviewed_at = ?, "
             "coins_awarded = ?, reject_reason = ? WHERE id = ? AND status = 'pending'",
@@ -2162,7 +2192,7 @@ async def list_all_submissions() -> list[dict]:
     exports rebuilt by a background debounce with no admin identity, unlike the live queue
     above; `user_event_city` is exposed so the sheet builder can add a "Город" COLUMN
     instead of filtering rows."""
-    async with aiosqlite.connect(config.DB_PATH) as db:
+    async with _connect() as db:
         db.row_factory = aiosqlite.Row
         async with db.execute(
             "SELECT s.*, t.text AS task_text, t.title AS task_title, "
@@ -2183,7 +2213,7 @@ async def list_all_submissions() -> list[dict]:
 async def get_game_stats() -> dict:
     """Four aggregate reads for the stats screen (wave 6): distinct participants, counts by
     submission status, and an approved-only breakdown by task category."""
-    async with aiosqlite.connect(config.DB_PATH) as db:
+    async with _connect() as db:
         async with db.execute(
             "SELECT COUNT(DISTINCT user_id) FROM game_submissions"
         ) as cursor:
@@ -2219,7 +2249,7 @@ async def get_game_stats() -> dict:
 
 async def list_cities_rows() -> list[dict]:
     """Every city row, ordered the way the registry and every UI screen renders them."""
-    async with aiosqlite.connect(config.DB_PATH) as db:
+    async with _connect() as db:
         db.row_factory = aiosqlite.Row
         async with db.execute(
             "SELECT * FROM cities ORDER BY sort_order ASC, code ASC"
@@ -2229,14 +2259,14 @@ async def list_cities_rows() -> list[dict]:
 
 
 async def count_cities() -> int:
-    async with aiosqlite.connect(config.DB_PATH) as db:
+    async with _connect() as db:
         async with db.execute("SELECT COUNT(*) FROM cities") as cursor:
             row = await cursor.fetchone()
             return int(row[0]) if row and row[0] is not None else 0
 
 
 async def insert_city(code: str, label: str, tab_base: str | None, sort_order: int, enabled: int = 1) -> None:
-    async with aiosqlite.connect(config.DB_PATH) as db:
+    async with _connect() as db:
         await db.execute(
             "INSERT INTO cities (code, label, tab_base, enabled, sort_order, created_at) "
             "VALUES (?, ?, ?, ?, ?, ?)",
@@ -2263,7 +2293,7 @@ async def update_city(
     values = [fields[col] for col in _CITY_UPDATABLE_COLUMNS if fields[col] is not None]
     if not set_parts:
         return False
-    async with aiosqlite.connect(config.DB_PATH) as db:
+    async with _connect() as db:
         cursor = await db.execute(
             f"UPDATE cities SET {', '.join(set_parts)} WHERE code = ?", (*values, code),
         )
@@ -2274,7 +2304,7 @@ async def update_city(
 async def delete_city_row(code: str) -> bool:
     """Removes the row. No cascade -- checking "no users/tasks reference this city" is the
     caller's job (plan 14-07); this accessor only performs the DELETE."""
-    async with aiosqlite.connect(config.DB_PATH) as db:
+    async with _connect() as db:
         cursor = await db.execute("DELETE FROM cities WHERE code = ?", (code,))
         await db.commit()
         return cursor.rowcount == 1
@@ -2284,7 +2314,7 @@ async def count_users_by_city(code: str) -> int:
     """Delegates bound to this `event_city`. NULL rows ("no city on record") are never counted
     here -- they are not a binding to any specific city, per `cities.normalize_city`'s own
     read-time-only resolution."""
-    async with aiosqlite.connect(config.DB_PATH) as db:
+    async with _connect() as db:
         async with db.execute(
             "SELECT COUNT(*) FROM users WHERE event_city = ?", (code,)
         ) as cursor:
@@ -2295,7 +2325,7 @@ async def count_users_by_city(code: str) -> int:
 async def count_tasks_by_city(code: str) -> int:
     """Tasks scoped to this `event_city`. NULL rows ("all cities") are never counted here --
     same NULL-is-not-a-binding semantics as `count_users_by_city`."""
-    async with aiosqlite.connect(config.DB_PATH) as db:
+    async with _connect() as db:
         async with db.execute(
             "SELECT COUNT(*) FROM game_tasks WHERE event_city = ?", (code,)
         ) as cursor:
