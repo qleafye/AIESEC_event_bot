@@ -383,6 +383,48 @@ def test_coinsman_amount_callback_resolves_to_moderate_game(tmp_path):
     assert required_capability(callback_data="coinsman_amount:5") == "moderate_game"
 
 
+class _KbMessage(FakeMessage):
+    """FakeMessage + edit_reply_markup (учёт снятия inline-клавиатуры)."""
+    def __init__(self, *a, fail=False, **kw):
+        super().__init__(*a, **kw)
+        self.markup_edits = []
+        self._fail = fail
+
+    async def edit_reply_markup(self, reply_markup=None):
+        if self._fail:
+            raise RuntimeError("message is not modified")
+        self.markup_edits.append(reply_markup)
+
+
+def test_coinsman_amount_stale_answers_and_drops_keyboard(tmp_path):
+    """Quick 260819: тап по «Или выберите сумму:» ВНЕ CoinsManual.amount (сумма уже введена
+    текстом / визард закрыт) -- catch-all отвечает без alert, убирает клавиатуру, стейт не
+    трогает, монеты не пишет."""
+    _db_ready(tmp_path)
+    callback = FakeCallback("coinsman_amount:10")
+    callback.message = _KbMessage()
+    asyncio.run(admin_gamification.coinsman_amount_stale(callback))
+    assert callback.answers == [("Выбор суммы уже закрыт", False)]
+    assert callback.message.markup_edits == [None]
+    assert callback.message.answers_sent == []
+    assert asyncio.run(db.get_balance(DELEGATE_ID)) == 0
+
+
+def test_coinsman_amount_stale_is_fail_soft_when_markup_edit_fails(tmp_path):
+    _db_ready(tmp_path)
+    callback = FakeCallback("coinsman_amount:10")
+    callback.message = _KbMessage(fail=True)
+    asyncio.run(admin_gamification.coinsman_amount_stale(callback))  # не падает
+    assert callback.answers == [("Выбор суммы уже закрыт", False)]
+
+
+def test_coinsman_amount_stale_registered_after_state_gated_pick():
+    """Порядок регистрации = first-match: state-гейтнутый pick ДО catch-all, иначе catch-all
+    перехватит легитимный тап в CoinsManual.amount."""
+    names = [h.callback.__name__ for h in admin_gamification.router.callback_query.handlers]
+    assert names.index("coinsman_amount_step_pick") < names.index("coinsman_amount_stale")
+
+
 # ═══════════════════════════════════════════════════════════════════════════════════════════
 # Task 2: «📊 Статистика геймы» — unicode-полосы по RU-категориям
 # ═══════════════════════════════════════════════════════════════════════════════════════════

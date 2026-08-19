@@ -150,6 +150,14 @@ def _build_snapshot_lines():
 # `toggle_party_fork_question` -- an in-place insertion among the sibling module toggles; its
 # filter literal is unique (F.data == "toggle_preselect_enabled"), so first-match semantics of
 # every neighbour are unaffected.
+# Drift note (2026-08-19, quick 260819, coinsman quick-pick catch-all): 1 handler inserted
+# (331 -> 332), re-captured by RUNNING `_build_snapshot_lines()` against HEAD and diffed against
+# the prior 331-line snapshot -- every pre-existing line byte-for-byte identical, no reorders,
+# no key changes. The ONE new line is `coinsman_amount_stale` (`coinsman_amount:*`, NO state
+# filter), registered in admin_gamification.py right AFTER `coinsman_amount_step_pick` -- the
+# order matters: first-match gives the CoinsManual.amount-gated handler precedence, and the
+# catch-all only takes taps outside that state (stale «Или выберите сумму:» keyboard), so no
+# neighbour's semantics change.
 GOLDEN_SNAPSHOT = """
 admin|message|cmd_admin_help|cmd:admin
 admin|message|cmd_coins|cmd:coins
@@ -363,6 +371,7 @@ admin|callback_query|admin_coins_manual|admin_coins_manual
 admin|callback_query|coinsman_cancel_cb|coinsman_cancel
 admin|callback_query|coinsman_sign_step|coinsman_sign:*
 admin|callback_query|coinsman_amount_step_pick|coinsman_amount:*
+admin|callback_query|coinsman_amount_stale|coinsman_amount:*
 admin|callback_query|coinsman_confirm|coinsman_confirm
 admin|callback_query|admin_coins_journal|admin_coins_journal
 admin|callback_query|coinsjrn_page|coinsjrn_page:*
@@ -511,7 +520,7 @@ def test_snapshot_total_handler_count_is_292():
     """Second, independent invariant besides content — a handler silently added/removed
     without touching this file's golden text (impossible for a normal edit, but this guards
     against a golden-string typo slipping past review) is caught by count alone."""
-    assert len(GOLDEN_SNAPSHOT) == 331  # quick 260819: +1 toggle_preselect_enabled (16-04: +1 coinsman_amount_step_pick)
+    assert len(GOLDEN_SNAPSHOT) == 332  # quick 260819: +1 toggle_preselect_enabled, +1 coinsman_amount_stale
 
 
 # ── Task 2(a): Dispatcher feed_update smoke — cross-router first-match routing ─────────────

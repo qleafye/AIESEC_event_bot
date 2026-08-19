@@ -1048,8 +1048,28 @@ async def coinsman_amount_step_pick(callback: types.CallbackQuery, state: FSMCon
     delta = value if sign == "plus" else -value
     await state.update_data(cm_delta=delta)
     await state.set_state(CoinsManual.reason)
+    await _coinsman_drop_quick_kb(callback)
     await callback.message.answer("За что? Напишите причину коротко, например: за помощь на стенде.")
     await callback.answer()
+
+
+async def _coinsman_drop_quick_kb(callback: types.CallbackQuery) -> None:
+    """Убрать клавиатуру «Или выберите сумму:» -- fail-soft (старое сообщение, нет прав,
+    уже без клавиатуры): это косметика, а не шаг визарда."""
+    try:
+        await callback.message.edit_reply_markup(reply_markup=None)
+    except Exception:
+        pass
+
+
+@router.callback_query(F.data.startswith("coinsman_amount:"))
+async def coinsman_amount_stale(callback: types.CallbackQuery):
+    """Catch-all для quick-pick сумм ВНЕ состояния CoinsManual.amount (регистрируется ПОСЛЕ
+    основного -- first-match): сумма уже введена текстом / визард завершён или отменён, а
+    сообщение с кнопками осталось. Без этого тап висит спиннером. Ничего не пишем и состояние
+    не трогаем -- только отвечаем и убираем клавиатуру."""
+    await callback.answer("Выбор суммы уже закрыт", show_alert=False)
+    await _coinsman_drop_quick_kb(callback)
 
 
 async def _coinsman_display_name(user_id: int) -> str:
