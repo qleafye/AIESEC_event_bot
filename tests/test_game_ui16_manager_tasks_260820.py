@@ -540,7 +540,10 @@ def test_gteditdeadline_start_sends_edit_prefixed_preset_kb(tmp_path):
     cb = FakeCallback(f"gteditdeadline:{task_id}")
     asyncio.run(admin_game_tasks.game_task_editdeadline_start(cb, state))
     assert asyncio.run(state.get_state()) == GameTaskEdit.deadline
-    data = _flat_callback_data(cb.message.answer_markups[-1])
+    # карточка правки сама становится промптом (одно живое сообщение), не новое сообщение
+    assert cb.message.edit_calls == 1 and cb.message.answers_sent == []
+    assert "Дедлайн" in cb.message.text_edited
+    data = _flat_callback_data(cb.message.edit_markup)
     assert "gteditdeadline_preset:today" in data and "gteditdeadline_custom" in data
     assert f"gtedit:{task_id}" in data  # «❌ Отмена» возвращает в карточку правки
 
@@ -767,7 +770,50 @@ def test_edit_menu_without_draft_is_alert(tmp_path):
     cb = FakeCallback("gtwiz_edit_menu")
     asyncio.run(admin_game_tasks.game_task_wizard_edit_menu(cb, _new_state()))
     assert cb.answers[-1][1] is True
+    assert "начните" in cb.answers[-1][0]
     assert cb.message.markup_edits == []
+
+
+def test_edit_menu_mid_step_tells_to_finish_current_step(tmp_path):
+    _db_ready(tmp_path)
+    state = _new_state()
+    _drive_to_preview(state)
+    asyncio.run(admin_game_tasks.game_task_wizard_edit_field(FakeCallback("gtwiz_edit:title"), state))
+    cb = FakeCallback("gtwiz_edit:coins")  # второй тап по старому меню, пока ждём название
+    asyncio.run(admin_game_tasks.game_task_wizard_edit_field(cb, state))
+    assert cb.answers[-1][1] is True and "текущий шаг" in cb.answers[-1][0]
+    assert asyncio.run(state.get_state()) == GameTaskCreate.title
+
+
+def test_toggle_retap_not_modified_is_silent(tmp_path):
+    """Тап по стороне тумблера, на которой уже стоишь: Telegram отвечает «message is not
+    modified» — это не ошибка и не повод слать дубликат экрана."""
+    _db_ready(tmp_path)
+    _mk_task(title="Задание")
+
+    class NotModifiedMessage(FakeMessage):
+        async def edit_text(self, text, parse_mode=None, reply_markup=None):
+            self.edit_calls += 1
+            raise RuntimeError("Bad Request: message is not modified")
+
+    cb = FakeCallback("admin_game_tasks", message=NotModifiedMessage())
+    asyncio.run(admin_gamification.show_game_tasks(cb, _new_state()))
+    assert cb.message.edit_calls == 1
+    assert cb.message.answers_sent == []
+    assert cb.answers  # callback closed, no spinner
+
+
+def test_screen_edit_other_failure_falls_back_to_new_message(tmp_path):
+    _db_ready(tmp_path)
+    _mk_task(title="Задание")
+
+    class PhotoMessage(FakeMessage):
+        async def edit_text(self, text, parse_mode=None, reply_markup=None):
+            raise RuntimeError("Bad Request: there is no text in the message to edit")
+
+    cb = FakeCallback("admin_game_archive", message=PhotoMessage())
+    asyncio.run(admin_gamification.show_game_archive(cb))
+    assert len(cb.message.answers_sent) == 1
 
 
 def test_wizard_registry_keys_and_html_policy():
