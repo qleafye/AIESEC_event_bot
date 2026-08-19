@@ -20,14 +20,14 @@ from datetime import datetime
 from aiogram import Bot, F, types
 from aiogram.filters import StateFilter
 from aiogram.fsm.context import FSMContext
-from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton, ReplyKeyboardRemove
+from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
 
 from config import config
 from database.db import get_user, get_setting, record_user_consent
 from settings_schema import get_setting_typed
 from cities import CITIES, is_city_enabled
 from handlers.states import Registration
-from keyboards.builders import get_cancel_kb
+from keyboards.builders import get_cancel_kb, get_main_menu_kb
 from handlers.registration import (
     router,
     _PARTY_TAG_MAP, MULTI_CONFIG,
@@ -202,9 +202,12 @@ async def cancel_registration_confirm(callback: types.CallbackQuery, state: FSMC
         await callback.message.edit_reply_markup(reply_markup=None)
     except Exception:
         pass
+    # UAT 19.08: при отмене повторной регистрации (rereg) у делегата есть строка в БД и
+    # главное меню ему положено; новичку меню тоже не мешает — кнопки упираются в
+    # ensure_registered («сначала /start»). Раньше ReplyKeyboardRemove оставлял без меню.
     await callback.message.answer(
         "Регистрация отменена. Чтобы начать заново, отправь /start.",
-        reply_markup=ReplyKeyboardRemove(),
+        reply_markup=await get_main_menu_kb(callback.from_user.id),
     )
     await callback.answer()
 
