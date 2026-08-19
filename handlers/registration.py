@@ -2190,10 +2190,14 @@ async def finalize_registration(message: types.Message, state: FSMContext, bot: 
     except Exception as e:
         logger.error(f"get_setting_for_city(reg_complete_text) failed for {message.from_user.id}: {e}")
         submitted = await get_setting("reg_complete_text") or DEFAULT_REG_COMPLETE_TEXT
+    # UAT 19.08: раньше здесь был ReplyKeyboardRemove — pending-делегат оставался без меню
+    # до следующего /start (а /start ему меню показывает). Возвращаем главное меню сразу:
+    # тапы по кнопкам до одобрения упираются в pending-гейт ensure_registered.
+    menu_kb = await get_main_menu_kb(message.from_user.id)
     try:
-        await message.answer(submitted, reply_markup=ReplyKeyboardRemove(), parse_mode="HTML")
+        await message.answer(submitted, reply_markup=menu_kb, parse_mode="HTML")
     except Exception:
-        await message.answer(submitted, reply_markup=ReplyKeyboardRemove())
+        await message.answer(submitted, reply_markup=menu_kb)
     if status == "approved":
         await approve_user(bot, message.from_user.id)
 
