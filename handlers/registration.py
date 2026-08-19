@@ -157,6 +157,10 @@ REG_STEP_TYPES = {step_key: step_type for step_key, _sk, step_type in REG_FLOW}
 STEP_TO_COLUMN = {step_key: step_key for step_key, _sk, _t in REG_FLOW}
 STEP_TO_COLUMN["vk"] = "vk_username"
 STEP_TO_COLUMN["ambassador"] = "is_ambassador_candidate"
+# UAT 19.08: ФИО спрашивается ВНЕ REG_FLOW (_ask_full_name, до движка шагов), поэтому в
+# карте его не было и recall_keep/recall_change для него не работали. Колонка совпадает с
+# ключом; сам recall-экран для ФИО рисует _ask_full_name (не _ask_step_or_recall).
+STEP_TO_COLUMN["full_name"] = "full_name"
 RECALLABLE_STEPS = {k for k in STEP_TO_COLUMN if k != "resume"}
 
 # dropout_step_label moved to handlers/reg_schema.py (13-02, REFAC-02); imported above.
@@ -726,23 +730,31 @@ async def _ask_step_or_recall(step_key: str, message: types.Message, state: FSMC
     if prior and step_key in RECALLABLE_STEPS:
         value = prior.get(STEP_TO_COLUMN[step_key])
         if value not in (None, "", "-"):
-            await _stamp_reg_step(step_key, message, data)
-            p = await _progress(step, total)
-            label = dropout_step_label(step_key)
-            display = _recall_display(step_key, value)
-            # Phase 17.1 (17.1-02): экран «прошлый ответ» — из реестра. Подстановка цепочкой
-            # .replace, не .format: текст менеджера может содержать посторонние {}.
-            tpl = await get_setting_typed("recall_generic_prompt_text")
-            text = p + tpl.replace("{label}", str(label)).replace("{display}", str(display))
-            kb = InlineKeyboardMarkup(inline_keyboard=[[
-                InlineKeyboardButton(text="✅ Оставить", callback_data=f"recall_keep:{step_key}"),
-                InlineKeyboardButton(text="✏️ Изменить", callback_data=f"recall_change:{step_key}"),
-            ]])
-            await _safe_answer(message, text, reply_markup=kb, parse_mode="HTML")
-            await state.update_data(_recall_step=step_key, _reg_step=step, _reg_total=total)
-            await state.set_state(Registration.recall_pending)
+            await _show_recall_screen(step_key, value, message, state, data, step, total)
             return
     await _ask_step(step_key, message, state, step, total)
+
+
+async def _show_recall_screen(step_key: str, value, message: types.Message, state: FSMContext,
+                              data: dict, step: int, total: int):
+    """Экран «Прошлый ответ … ✅ Оставить / ✏️ Изменить» для одного шага. Вынесен из
+    _ask_step_or_recall (UAT 19.08), чтобы тот же экран показывать и для ФИО, которое
+    спрашивается вне движка шагов (_ask_full_name). step=0 -> без префикса прогресса."""
+    await _stamp_reg_step(step_key, message, data)
+    p = await _progress(step, total) if step else ""
+    label = dropout_step_label(step_key)
+    display = _recall_display(step_key, value)
+    # Phase 17.1 (17.1-02): экран «прошлый ответ» — из реестра. Подстановка цепочкой
+    # .replace, не .format: текст менеджера может содержать посторонние {}.
+    tpl = await get_setting_typed("recall_generic_prompt_text")
+    text = p + tpl.replace("{label}", str(label)).replace("{display}", str(display))
+    kb = InlineKeyboardMarkup(inline_keyboard=[[
+        InlineKeyboardButton(text="✅ Оставить", callback_data=f"recall_keep:{step_key}"),
+        InlineKeyboardButton(text="✏️ Изменить", callback_data=f"recall_change:{step_key}"),
+    ]])
+    await _safe_answer(message, text, reply_markup=kb, parse_mode="HTML")
+    await state.update_data(_recall_step=step_key, _reg_step=step, _reg_total=total)
+    await state.set_state(Registration.recall_pending)
 
 
 @router.callback_query(F.data.startswith("recall_keep:"), Registration.recall_pending)
@@ -770,6 +782,10 @@ async def recall_keep(callback: types.CallbackQuery, state: FSMContext, bot: Bot
     # else: resume_file_id/resume_text/resume_url are left untouched in `data` -- add_user's
     # COALESCE (database/db.py) preserves whatever the prior row already had.
     tap_message = callback.message.model_copy(update={"from_user": callback.from_user})
+    if step_key == "full_name":
+        # ФИО стоит ДО движка шагов: продолжаем так же, как process_full_name после ввода.
+        await _after_full_name(tap_message, state, bot)
+        return
     await _advance(step_key, tap_message, state, bot)
 
 
@@ -786,6 +802,9 @@ async def recall_change(callback: types.CallbackQuery, state: FSMContext):
     except Exception:
         pass
     tap_message = callback.message.model_copy(update={"from_user": callback.from_user})
+    if step_key == "full_name":
+        await _ask_full_name_plain(tap_message, state)  # прямой вопрос, без recall-экрана
+        return
     # Direct call to the REAL _ask_step, never the wrapper -- routing this through
     # _ask_step_or_recall would show the recall screen again for the very step the delegate
     # just chose to change, looping forever.
@@ -1454,12 +1473,41 @@ async def _start_registration_flow(message: types.Message, state: FSMContext, re
 
 
 async def _ask_full_name(message: types.Message, state: FSMContext):
+    """UAT 19.08: у вернувшегося делегата с сохранённым ФИО — экран «Прошлый ответ …
+    Оставить/Изменить», как у остальных полей (решение владельца: «ФИО — оставить»).
+    Новичок / пустое прошлое ФИО — сразу вопрос."""
+    data = await state.get_data()
+    prior = data.get("_prior_answers") or {}
+    value = prior.get("full_name") if prior else None
+    if value not in (None, "", "-"):
+        await _show_recall_screen("full_name", value, message, state, data, 0, 0)
+        return
+    await _ask_full_name_plain(message, state)
+
+
+async def _ask_full_name_plain(message: types.Message, state: FSMContext):
     try:
         await set_reg_step(message.chat.id, "full_name")  # dropout analytics
     except Exception as e:
         logger.error(f"set_reg_step failed for {message.chat.id} @ full_name: {e}")
     await message.answer(await _prompt("full_name", "Напиши свои ФИО (Фамилия Имя Отчество):"), reply_markup=get_cancel_kb())
     await state.set_state(Registration.full_name)
+
+
+async def _after_full_name(message: types.Message, state: FSMContext, bot: Bot):
+    """Продолжение после ФИО (введённого или оставленного прошлого): список включённых
+    шагов трека -> первый вопрос, либо сразу финализация. Общий хвост для
+    reg_steps.process_full_name и recall_keep:full_name."""
+    data = await state.get_data()
+    enabled = await _get_enabled_steps(data)
+
+    if not enabled:
+        await finalize_registration(message, state, bot)
+        return
+
+    total = len(enabled)
+    await state.update_data(_reg_step=1, _reg_total=total)
+    await _ask_step_or_recall(enabled[0], message, state, 1, total)
 
 
 async def _send_welcome(message: types.Message, text: str, photo_file_id: str | None, kb, user_id: int):
