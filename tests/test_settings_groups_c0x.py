@@ -357,6 +357,8 @@ def test_render_snapshot_reg(tmp_path):
         # Phase 17.1 (17.1-03, schema-completeness): экран выбора города при /start и
         # тексты гейта предотбора — в хвосте группы.
         "city_fork_text", "preselect_no_username_text", "preselect_fail_text", "preselect_link",
+        # Quick 260819 (schema-completeness): догонялка брошенных анкет — в хвосте группы.
+        "nudge_after_minutes", "nudge_text",
     ]
     expected_labels = [
         "📢 Источники", "✅ После регистрации", "🎉 После одобрения", "🚫 При отклонении",
@@ -365,6 +367,7 @@ def test_render_snapshot_reg(tmp_path):
         "🎯 Цель участия (варианты)", "📋 Форматы форума (варианты)", "🏫 Список ВУЗов",
         "🏙 Выбор города: вопрос", "🎯 Предотбор: нет @username", "🎯 Предотбор: не прошёл",
         "🎯 Предотбор: ссылка",
+        "⏰ Догонялка: через сколько минут", "⏰ Догонялка: текст напоминания",
     ]
     # Fresh DB -> nothing configured. Phase 17.1 (17.1-01): «⏳ Заявка на рассмотрении» —
     # первый ключ этой группы с непустым дефолтом в реестре, поэтому у него флаг
@@ -372,9 +375,13 @@ def test_render_snapshot_reg(tmp_path):
     # «— не задано». У остальных ключей группы дефолта нет — флаг прежний.
     # Phase 17.1 (17.1-03): у трёх новых текстов есть дефолт (тот же флаг «по умолчанию»);
     # «🎯 Предотбор: ссылка» дефолта не имеет — «— не задано».
+    # Quick 260819: «⏰ Догонялка: текст напоминания» -- текст с дефолтом (флаг «по умолчанию»);
+    # «⏰ Догонялка: через сколько минут» -- int, как pending_reminder_interval: функциональный
+    # parse-дефолт НЕ показывается как display-дефолт (_SETTINGS_DISPLAY_DEFAULTS только text).
     defaulted_labels = {
         "⏳ Заявка на рассмотрении", "🏙 Выбор города: вопрос",
         "🎯 Предотбор: нет @username", "🎯 Предотбор: не прошёл",
+        "⏰ Догонялка: текст напоминания",
     }
     for label in defaulted_labels:
         assert f"{label}: <i>по умолчанию</i>" in text, f"missing/wrong flag for {label}"
@@ -616,6 +623,8 @@ def test_settings_landing_text_snapshot(tmp_path):
     assert "🔀 Вопрос-развилка формата: <b>❌ Выкл</b>" in text
     assert "✅ Модерация вечеринки: <b>👮 Ручная</b>" in text
     assert "🎯 Предотбор по таблице: <b>❌ Выкл</b>" in text
+    assert "📋 Сводка о заявках в ожидании: <b>✅ Вкл</b>" in text
+    assert "⏰ Догонялка брошенных анкет: <b>✅ Вкл</b>" in text
 
     # ── mixed/non-default case: party_enabled="on", full_approval="auto" flips two lines ──
     asyncio.run(db.set_setting("party_enabled", "on"))
@@ -654,6 +663,8 @@ def test_settings_toggle_button_snapshot(tmp_path):
         ("🔀 Вопрос-развилка формата: ❌ Выкл → ✅ Вкл", "toggle_party_fork_question"),
         ("✅ Модерация вечеринки: 👮 Ручная → ⚡ Авто", "settings_toggle_party_approval"),
         ("🎯 Предотбор по таблице: ❌ Выкл → ✅ Вкл", "toggle_preselect_enabled"),
+        ("📋 Сводка о заявках: ✅ Вкл → ❌ Выкл", "toggle_pending_reminder"),
+        ("⏰ Догонялка анкет: ✅ Вкл → ❌ Выкл", "toggle_nudge_enabled"),
         ("🎛 Тип события (пресет)", "admin_event_preset"),
         ("📋 Вопросы регистрации", "admin_reg_questions"),
         ("✏️ Тексты вопросов", "admin_reg_prompts"),
@@ -704,6 +715,55 @@ def test_toggle_preselect_enabled_flips_and_rerenders_landing(tmp_path):
     assert "🎯 Предотбор по таблице: <b>❌ Выкл</b>" in cb2.message.text
 
 
+def test_scheduler_and_reminder_keys_declared_with_code_defaults(tmp_path):
+    """Quick 260819: ключи services/scheduler.py / services/reminders.py объявлены в реестре,
+    дефолты байт-в-байт равны прежним литералам кода (`_int_or_default(..., N)`,
+    `!= "off"`, DEFAULT_NUDGE_TEXT), генерический UI рендерит int/text как у соседей, а
+    on/off — тумблеры на лендинге (дефолт ON: тап выключает)."""
+    from services import scheduler as sched
+    _admin_ready(tmp_path)
+    expected = {
+        "nudge_after_minutes": ("int", "reg", 120),
+        "nudge_text": ("text", "reg", sched.DEFAULT_NUDGE_TEXT),
+        "nudge_scan_minutes": ("int", "system", 15),
+        "allowlist_refresh_minutes": ("int", "system", 60),
+        "incomplete_sync_hours": ("int", "system", 2),
+        "nudge_enabled": ("enum", "toggles", "on"),
+        "pending_reminder_enabled": ("enum", "toggles", "on"),
+    }
+    for key, (typ, group, default) in expected.items():
+        entry = SETTINGS_SCHEMA[key]
+        assert (entry["type"], entry["group"], entry["default"]) == (typ, group, default), key
+        assert _parse_setting(key, None) == default
+        if typ != "text":  # text-ветка -- passthrough ("" остаётся ""), как у соседей
+            assert _parse_setting(key, "") == default
+    # int-ветка generic-парсера: мусор -> дефолт (та же терпимость, что _int_or_default)
+    assert _parse_setting("nudge_scan_minutes", "abc") == 15
+    assert _parse_setting("incomplete_sync_hours", "3") == 3
+    assert sched._int_or_default("abc", 15) == 15
+    # группы: system рендерит три новых int-поля, reg -- два поля догонялки
+    assert admin_settings._settings_group_keys("system")[-3:] == [
+        "nudge_scan_minutes", "allowlist_refresh_minutes", "incomplete_sync_hours"]
+    assert admin_settings._settings_group_keys("reg")[-2:] == ["nudge_after_minutes", "nudge_text"]
+    text = asyncio.run(admin_settings.render_settings_group_text("system"))
+    # int без значения в БД -- «— не задано» (как proxy_*: parse-дефолт не display-дефолт)
+    assert "⏱ Догонялка: как часто проверять: <i>— не задано</i>" in text
+    kb = asyncio.run(admin_settings.build_settings_group_keyboard("system"))
+    assert "settings_edit:incomplete_sync_hours" in _flat_callback_data(kb)
+    # тумблеры: дефолт ON -> первый тап выключает; чтение консьюмеров (`!= "off"`) не меняется
+    from services import reminders
+    cb = FakeCallback("toggle_pending_reminder")
+    asyncio.run(admin_settings.toggle_pending_reminder(cb))
+    assert asyncio.run(db.get_setting("pending_reminder_enabled")) == "off"
+    assert reminders._reminder_enabled(asyncio.run(db.get_setting("pending_reminder_enabled"))) is False
+    cb2 = FakeCallback("toggle_nudge_enabled")
+    asyncio.run(admin_settings.toggle_nudge_enabled(cb2))
+    assert asyncio.run(db.get_setting("nudge_enabled")) == "off"
+    assert sched._nudge_enabled(asyncio.run(db.get_setting("nudge_enabled"))) is False
+    assert required_capability(callback_data="toggle_pending_reminder") == "settings"
+    assert required_capability(callback_data="toggle_nudge_enabled") == "settings"
+
+
 def test_full_registry_coverage():
     """D-17/WARNING-2: iterate ALL SETTINGS_SCHEMA entries unconditionally — the
     catch-all coverage gate across every type (text/int/list/date/enum/toggle/photo/file),
@@ -752,6 +812,10 @@ def test_toggle_current_value_equiv_across_generic_helpers(tmp_path):
             (admin_settings.toggle_party_fork_question, "party_fork_question", [None, "", "on", "off"],
              lambda cur: "off" if cur == "on" else "on"),
             (admin_settings.toggle_preselect_enabled, "preselect_enabled", [None, "", "on", "off"],
+             lambda cur: "off" if cur == "on" else "on"),
+            (admin_settings.toggle_pending_reminder, "pending_reminder_enabled", [None, "", "on", "off"],
+             lambda cur: "off" if cur == "on" else "on"),
+            (admin_settings.toggle_nudge_enabled, "nudge_enabled", [None, "", "on", "off"],
              lambda cur: "off" if cur == "on" else "on"),
             (admin_settings.toggle_payment_reminders, "payment_reminders_enabled", [None, "", "on", "off"],
              lambda cur: "off" if cur == "on" else "on"),

@@ -963,14 +963,11 @@ _SERVICE_KEYS = {
     "game_sheet_last_synced_at",  # метка времени последнего синка матрицы геймы (состояние)
 }
 
-# 17.1-03: вне скоупа, см. журнал — читаются в services/scheduler.py и services/reminders.py,
-# в реестре не объявлены (менеджеру сейчас недоступны, в справке /settings_guide помечены
-# «меняет разработчик»). Заводить в реестр — отдельным решением, не в этом плане.
-_OUT_OF_SCOPE_KEYS = {
-    "allowlist_refresh_minutes", "incomplete_sync_hours",
-    "nudge_enabled", "nudge_after_minutes", "nudge_scan_minutes", "nudge_text",
-    "pending_reminder_enabled",
-}
+# 17.1-03 держал тут allow-list «вне скоупа» (nudge_*/allowlist_refresh_minutes/
+# incomplete_sync_hours/pending_reminder_enabled из services/scheduler.py и services/reminders.py).
+# Quick 260819: все они объявлены в SETTINGS_SCHEMA (reg/system/toggles) — список пуст и
+# оставлен как место для будущих сознательных исключений (страж ниже не даст ему «протухнуть»).
+_OUT_OF_SCOPE_KEYS: set[str] = set()
 
 _MEDIA_SUFFIXES = ("_photo_file_id", "_doc_file_id", "_caption")
 
