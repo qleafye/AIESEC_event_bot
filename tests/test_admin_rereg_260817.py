@@ -197,3 +197,29 @@ def test_admin_rereg_callback_starts_flow_as_tapping_admin(tmp_path, monkeypatch
         assert await state.get_state() == Registration.full_name.state
 
     asyncio.run(go())
+
+
+# ── UAT 19.08: admin_rereg идёт через форк города, как rereg_start ─────────────────────
+
+def test_admin_rereg_shows_city_fork_when_cities_enabled(tmp_path, monkeypatch):
+    _use_tmp_db(tmp_path)
+    monkeypatch.setattr(config, "ADMIN_IDS", [ADMIN_ID])
+
+    async def go():
+        await db.init_db()
+        await db.set_setting("event_city_enabled", "on")  # 3 города по умолчанию -> форк
+        await _register_approved_admin(ADMIN_ID)
+
+        state = _new_state(ADMIN_ID)
+        callback = _FakeCallback("admin_rereg", ADMIN_ID, "admintester")
+        await reg_flow.admin_rereg(callback, state)
+
+        # Не первый вопрос анкеты, а экран выбора города с inline-кнопками городов.
+        assert await state.get_state() is None
+        assert callback.message.sent, "экран форка города не отправлен"
+        _text, markup = callback.message.sent[-1]
+        assert isinstance(markup, InlineKeyboardMarkup)
+        callbacks = [b.callback_data for row in markup.inline_keyboard for b in row]
+        assert any(c.startswith("city_pick:") for c in callbacks), callbacks
+
+    asyncio.run(go())
