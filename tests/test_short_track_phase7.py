@@ -81,7 +81,9 @@ def test_process_full_name_short_zero_keys_finalizes_without_asking(tmp_path, mo
     async def fake_ask_step(*a, **k):
         ask_calls.append((a, k))
 
-    monkeypatch.setattr(reg_steps, "finalize_registration", fake_finalize)
+    # UAT 19.08: хвост process_full_name вынесен в registration._after_full_name (общий с
+    # recall_keep:full_name), finalize_registration теперь берётся оттуда.
+    monkeypatch.setattr(reg, "finalize_registration", fake_finalize)
     monkeypatch.setattr(reg, "_ask_step", fake_ask_step)
 
     message = _FakeMessage(600001, "Иванов Иван")

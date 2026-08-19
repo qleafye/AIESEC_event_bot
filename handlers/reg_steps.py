@@ -18,7 +18,7 @@ from handlers.states import Registration
 from keyboards.builders import get_cancel_kb
 from handlers.registration import (
     router,
-    _get_enabled_steps, _ask_step_or_recall, finalize_registration,
+    _get_enabled_steps, _ask_step_or_recall, finalize_registration, _after_full_name,
     _advance, _parse_age,
 )
 
@@ -47,16 +47,7 @@ async def process_full_name(message: types.Message, state: FSMContext, bot: Bot)
     #    setting affects the question set is `_resolve_track` at flow start (Task 1c) — a
     #    delegate who already started a track keeps finishing in that track even if the
     #    manager flips the toggle mid-session.
-    data = await state.get_data()
-    enabled = await _get_enabled_steps(data)
-
-    if not enabled:
-        await finalize_registration(message, state, bot)
-        return
-
-    total = len(enabled)
-    await state.update_data(_reg_step=1, _reg_total=total)
-    await _ask_step_or_recall(enabled[0], message, state, 1, total)
+    await _after_full_name(message, state, bot)
 
 
 # --- Extended Question Handlers ---

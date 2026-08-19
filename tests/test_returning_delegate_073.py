@@ -408,9 +408,13 @@ def test_rereg_start_city_module_off_no_city_screen(tmp_path):
         callback = _FakeCallback("rereg_start", UID, "delegate")
         await reg_flow.rereg_start(callback, state)
 
-        assert await state.get_state() == Registration.full_name.state
+        # UAT 19.08: ФИО у вернувшегося теперь recallable — вместо прямого вопроса экран
+        # «Прошлый ответ … Оставить/Изменить» (сути теста не меняет: экрана города нет).
+        assert await state.get_state() == Registration.recall_pending.state
         texts = _texts(callback.message)
         assert any(t and "Отлично, начинаем регистрацию." in t for t in texts)
+        assert any(t and "Прошлый ответ" in t and "Тест Тестов" in t for t in texts)
+        assert not any(t and "город" in t.lower() and "выбери" in t.lower() for t in texts)
 
     asyncio.run(go())
 
