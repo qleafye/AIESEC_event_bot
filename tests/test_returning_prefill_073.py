@@ -647,3 +647,84 @@ def test_finalize_season_resolve_failure_is_soft(tmp_path, monkeypatch):
         assert row["season"] is None
 
     asyncio.run(go())
+
+
+# ── UAT 19.08: ФИО тоже recallable («ФИО — оставить») ─────────────────────────────────────
+
+def test_full_name_recall_screen_for_returning(tmp_path):
+    _use_tmp_db(tmp_path)
+
+    async def go():
+        await db.init_db()
+        msg = _KBCapturingMessage(UID, "delegate")
+        state = _new_state(UID)
+        await state.update_data(participant_type="full", _prior_answers={"full_name": "Иванов Иван"})
+        await reg._ask_full_name(msg, state)
+
+        texts = _texts(msg)
+        assert any(t and "Прошлый ответ" in t and "Иванов Иван" in t and "ФИО" in t for t in texts)
+        inline = _inline_kb_msgs(msg)
+        assert len(inline) == 1
+        assert _callback_datas(inline[0][1]) == ["recall_keep:full_name", "recall_change:full_name"]
+        assert await state.get_state() == Registration.recall_pending.state
+
+    asyncio.run(go())
+
+
+def test_full_name_newcomer_asks_directly(tmp_path):
+    _use_tmp_db(tmp_path)
+
+    async def go():
+        await db.init_db()
+        msg = _KBCapturingMessage(UID, "delegate")
+        state = _new_state(UID)
+        await reg._ask_full_name(msg, state)
+        assert await state.get_state() == Registration.full_name.state
+        assert not any(t and "Прошлый ответ" in t for t in _texts(msg))
+
+    asyncio.run(go())
+
+
+def test_full_name_keep_writes_fsm_and_continues_to_first_step(tmp_path):
+    _use_tmp_db(tmp_path)
+
+    async def go():
+        await db.init_db()
+        # хотя бы один включённый вопрос трека -> после «Оставить» должен пойти первый шаг
+        await db.set_setting("reg_q_age", "on")
+        state = _new_state(UID)
+        await state.update_data(
+            participant_type="full", _prior_answers={"full_name": "Иванов Иван"},
+            _recall_step="full_name", _reg_step=0, _reg_total=0,
+        )
+        await state.set_state(Registration.recall_pending)
+        callback = _FakeCallback("recall_keep:full_name", UID, "delegate")
+        await reg.recall_keep(callback, state, bot=object())
+
+        data = await state.get_data()
+        assert data.get("full_name") == "Иванов Иван"
+        # ушли с recall-экрана ФИО на первый вопрос трека (возраст), как после ввода ФИО
+        assert await state.get_state() == Registration.age.state
+        assert data.get("_reg_step") == 1
+
+    asyncio.run(go())
+
+
+def test_full_name_change_asks_plain_question(tmp_path):
+    _use_tmp_db(tmp_path)
+
+    async def go():
+        await db.init_db()
+        state = _new_state(UID)
+        await state.update_data(
+            participant_type="full", _prior_answers={"full_name": "Иванов Иван"},
+            _recall_step="full_name", _reg_step=0, _reg_total=0,
+        )
+        await state.set_state(Registration.recall_pending)
+        callback = _FakeCallback("recall_change:full_name", UID, "delegate")
+        await reg.recall_change(callback, state)
+
+        assert await state.get_state() == Registration.full_name.state
+        assert not any(t and "Прошлый ответ" in t for t in _texts(callback.message))
+
+    asyncio.run(go())
