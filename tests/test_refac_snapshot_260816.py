@@ -158,6 +158,14 @@ def _build_snapshot_lines():
 # order matters: first-match gives the CoinsManual.amount-gated handler precedence, and the
 # catch-all only takes taps outside that state (stale «Или выберите сумму:» keyboard), so no
 # neighbour's semantics change.
+# Drift note (2026-08-19, quick 260819, scheduler/reminder keys in registry): 2 handlers
+# inserted (332 -> 334), re-captured by RUNNING `_build_snapshot_lines()` against HEAD and
+# diffed against the prior 332-line snapshot -- every pre-existing line byte-for-byte
+# identical, no reorders, no key changes. The two new lines are `toggle_pending_reminder`
+# («📋 Сводка о заявках») and `toggle_nudge_enabled` («⏰ Догонялка анкет»), the landing on/off
+# buttons for pending_reminder_enabled / nudge_enabled (now declared enum in SETTINGS_SCHEMA),
+# registered in admin_settings.py right after `toggle_preselect_enabled` -- in-place insertion
+# among the sibling module toggles; both filter literals are unique.
 GOLDEN_SNAPSHOT = """
 admin|message|cmd_admin_help|cmd:admin
 admin|message|cmd_coins|cmd:coins
@@ -248,6 +256,8 @@ admin|callback_query|toggle_consent_enabled|toggle_consent_enabled
 admin|callback_query|toggle_party_enabled|toggle_party_enabled
 admin|callback_query|toggle_party_fork_question|toggle_party_fork_question
 admin|callback_query|toggle_preselect_enabled|toggle_preselect_enabled
+admin|callback_query|toggle_pending_reminder|toggle_pending_reminder
+admin|callback_query|toggle_nudge_enabled|toggle_nudge_enabled
 admin|callback_query|toggle_payment_reminders|toggle_payment_reminders
 admin|callback_query|toggle_uni_mode|toggle_uni_mode
 admin|callback_query|toggle_edu_conditional|toggle_edu_conditional
@@ -520,7 +530,7 @@ def test_snapshot_total_handler_count_is_292():
     """Second, independent invariant besides content — a handler silently added/removed
     without touching this file's golden text (impossible for a normal edit, but this guards
     against a golden-string typo slipping past review) is caught by count alone."""
-    assert len(GOLDEN_SNAPSHOT) == 332  # quick 260819: +1 toggle_preselect_enabled, +1 coinsman_amount_stale
+    assert len(GOLDEN_SNAPSHOT) == 334  # quick 260819: +toggle_preselect_enabled, +coinsman_amount_stale, +toggle_pending_reminder/+toggle_nudge_enabled
 
 
 # ── Task 2(a): Dispatcher feed_update smoke — cross-router first-match routing ─────────────

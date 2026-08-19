@@ -407,11 +407,13 @@ ADMIN_CAPS: dict[str, str] = {
     "toggle_consent_enabled": "settings",
     "toggle_edu_conditional": "settings",
     "toggle_event_city_enabled": "settings",
+    "toggle_nudge_enabled": "settings",
     "toggle_party_enabled": "settings",
     "toggle_party_fork_question": "settings",
     "toggle_payment_enabled": "settings",
     "toggle_preselect_enabled": "settings",
     "toggle_payment_reminders": "settings",
+    "toggle_pending_reminder": "settings",
     "toggle_show_progress": "settings",
     "toggle_uni_mode": "settings",
 
