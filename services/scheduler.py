@@ -473,7 +473,7 @@ async def sweep_payment_overdue():
     users backfilled to 'not_paid' (who never picked an option) are NOT swept. No-op until
     a parseable payment_deadline is set and has passed."""
     try:
-        import aiosqlite
+        from database.db import _connect
         # REG-02: read through the registry accessor — byte-identical to the previous
         # get_setting + _parse_schedule_dt pair (see tests/test_settings_consumers_phase6.py).
         deadline = await get_setting_typed("payment_deadline")
@@ -487,7 +487,7 @@ async def sweep_payment_overdue():
             "payment_status='not_paid' "
             "AND (payment_option IS NOT NULL OR payment_due IS NOT NULL)"
         )
-        async with aiosqlite.connect(config.DB_PATH) as db:
+        async with _connect() as db:
             cursor = await db.execute(
                 f"SELECT telegram_id FROM users WHERE {select_where}"
             )
