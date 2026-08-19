@@ -1,5 +1,6 @@
-"""Phase 17.1 (17.1-01, 17.1-02) — делегатские тексты гейма/баланса/рейтинга/рефералки, а
-затем recall/возвращения и платёжного потока переехали из литералов в SETTINGS_SCHEMA. Два вида проверок на каждую поверхность:
+"""Phase 17.1 (17.1-01, 17.1-02, 17.1-03) — делегатские тексты гейма/баланса/рейтинга/рефералки,
+затем recall/возвращения и платёжного потока, затем empty-state'ы медиа/контактов и «❓ Задать
+вопрос» переехали из литералов в SETTINGS_SCHEMA. Два вида проверок на каждую поверхность:
 
 1) «дефолт байт-в-байт» — `SETTINGS_SCHEMA[key]["default"]` равен ровно тому литералу, который
    стоял в коде до миграции (эмодзи, переносы, HTML — как было; изменений поведения нет);
@@ -148,6 +149,12 @@ _PRE_MIGRATION_LITERALS = {
     "payment_pay_later_text": "Ок! Оплатишь позже.",
     "payment_pay_later_menu_hint_text": "Кнопка «💳 Оплата» будет в меню, пока чек не отправлен.",
     "payment_receipt_received_text": "✅ Чек получен! Менеджер проверит его в ближайшее время.",
+    # 17.1-03: empty-state'ы информационных кнопок меню + «❓ Задать вопрос» (user_actions.py).
+    "program_empty_text": "Программа форума ещё не загружена.",
+    "speakers_empty_text": "Список спикеров формируется и скоро появится здесь.",
+    "contacts_empty_text": "Контакты пока не указаны. Обратитесь к организаторам.",
+    "ask_question_prompt_text": "Напиши свой вопрос, и мы передадим его организаторам.",
+    "ask_question_sent_text": "Твой вопрос отправлен!",
 }
 
 
@@ -700,3 +707,139 @@ def test_receipt_received_setting_overrides_default(tmp_path):
     _db_ready(tmp_path)
     asyncio.run(db.set_setting("payment_receipt_received_text", "Чек у нас, спасибо! 🙏"))
     assert _finalize() == ["Чек у нас, спасибо! 🙏"]
+
+
+# ── 17.1-03: empty-state'ы «📅 Программа»/«🗣 Спикеры»/«📞 Контакты» ────────────────────
+
+class _PhotoFailMessage(FakeMessage):
+    """answer_photo падает — как у живого бота, когда ни file_id в настройках, ни
+    resources/program.jpg на диске нет (именно тогда делегат видит empty-state)."""
+
+    async def answer_photo(self, photo, caption=None, parse_mode=None, reply_markup=None):
+        raise RuntimeError("no photo")
+
+
+def test_program_empty_state_uses_registry_default_then_setting(tmp_path):
+    _db_ready(tmp_path)
+    _seed_delegate()
+
+    message = _PhotoFailMessage(text="📅 Программа форума")
+    asyncio.run(ua_mod.show_program(message))
+    assert message.answers_sent == [_default("program_empty_text")]
+
+    asyncio.run(db.set_setting("program_empty_text", "Программу выложим за неделю до форума 📅"))
+    message = _PhotoFailMessage(text="📅 Программа форума")
+    asyncio.run(ua_mod.show_program(message))
+    assert message.answers_sent == ["Программу выложим за неделю до форума 📅"]
+
+
+def test_program_photo_present_never_shows_empty_state(tmp_path):
+    _db_ready(tmp_path)
+    _seed_delegate()
+    asyncio.run(db.set_setting("program_photo_file_id", "AgACAgIAAxkBAAI"))
+    asyncio.run(db.set_setting("program_caption", "Программа дня 1"))
+
+    message = FakeMessage(text="📅 Программа форума")
+    asyncio.run(ua_mod.show_program(message))
+    assert message.answers_sent == ["Программа дня 1"]
+
+
+def test_speakers_empty_state_uses_registry_default_then_setting(tmp_path):
+    _db_ready(tmp_path)
+    _seed_delegate()
+
+    message = FakeMessage(text="🗣 Спикеры")
+    asyncio.run(ua_mod.show_speakers(message))
+    assert message.answers_sent == [_default("speakers_empty_text")]
+
+    asyncio.run(db.set_setting("speakers_empty_text", "Спикеров объявим в канале 🎤"))
+    message = FakeMessage(text="🗣 Спикеры")
+    asyncio.run(ua_mod.show_speakers(message))
+    assert message.answers_sent == ["Спикеров объявим в канале 🎤"]
+
+
+def test_contacts_empty_state_uses_registry_default_then_setting(tmp_path):
+    _db_ready(tmp_path)
+    _seed_delegate()
+
+    message = FakeMessage(text="📞 Контакты")
+    asyncio.run(ua_mod.show_contacts(message))
+    assert message.answers_sent == [_default("contacts_empty_text")]
+
+    asyncio.run(db.set_setting("contacts_empty_text", "Пиши в @aiesec_help — ответим 🙌"))
+    message = FakeMessage(text="📞 Контакты")
+    asyncio.run(ua_mod.show_contacts(message))
+    assert message.answers_sent == ["Пиши в @aiesec_help — ответим 🙌"]
+
+
+def test_contacts_present_never_shows_empty_state(tmp_path):
+    _db_ready(tmp_path)
+    _seed_delegate()
+    asyncio.run(db.set_setting("contact_person", "@org_lead"))
+
+    message = FakeMessage(text="📞 Контакты")
+    asyncio.run(ua_mod.show_contacts(message))
+    assert message.answers_sent == ["По всем вопросам пиши сюда: @org_lead"]
+
+
+# ── 17.1-03: «❓ Задать вопрос» — приглашение и подтверждение ────────────────────────────
+
+def test_ask_question_prompt_uses_registry_default_then_setting(tmp_path):
+    _db_ready(tmp_path)
+    _seed_delegate()
+
+    message = FakeMessage(text="❓ Задать вопрос")
+    state = _new_state(DELEGATE_ID)
+    asyncio.run(ua_mod.ask_organizer_start(message, state))
+    assert message.answers_sent == [_default("ask_question_prompt_text")]
+    assert asyncio.run(state.get_state()) == "Question:waiting_for_question"
+
+    asyncio.run(db.set_setting("ask_question_prompt_text", "Спрашивай — оргкомитет на связи ✍️"))
+    message = FakeMessage(text="❓ Задать вопрос")
+    asyncio.run(ua_mod.ask_organizer_start(message, _new_state(DELEGATE_ID)))
+    assert message.answers_sent == ["Спрашивай — оргкомитет на связи ✍️"]
+
+
+def _send_question(monkeypatch, text="Где парковка?"):
+    """process_question с подменённым fan-out менеджерам (1 получатель) — проверяем только
+    ответ делегату; сам fan-out покрыт tests/test_roles_phase8.py."""
+    async def _fake_notify(bot, cap, admin_text, parse_mode=None, city=None):
+        return 1
+
+    monkeypatch.setattr(ua_mod, "notify_by_capability", _fake_notify)
+    message = FakeMessage(text=text)
+    state = _new_state(DELEGATE_ID)
+    asyncio.run(state.set_state("Question:waiting_for_question"))
+    asyncio.run(ua_mod.process_question(message, state, FakeBot()))
+    assert asyncio.run(state.get_state()) is None
+    return message.answers_sent
+
+
+def test_ask_question_sent_uses_registry_default(tmp_path, monkeypatch):
+    _db_ready(tmp_path)
+    _seed_delegate()
+    assert _send_question(monkeypatch) == [_default("ask_question_sent_text")]
+
+
+def test_ask_question_sent_setting_overrides_default(tmp_path, monkeypatch):
+    _db_ready(tmp_path)
+    _seed_delegate()
+    asyncio.run(db.set_setting("ask_question_sent_text", "Принято! Ответим в течение дня 💬"))
+    assert _send_question(monkeypatch) == ["Принято! Ответим в течение дня 💬"]
+
+
+# ── 17.1-03: HTML_SETTINGS <=> «Поддерживается HTML» в prompt ─────────────────────────────
+
+def test_html_promise_in_prompt_matches_html_settings():
+    """Единая политика 17.1: если prompt обещает менеджеру HTML, ввод из админки должен
+    браться из message.html_text (жирный/курсив Telegram сохраняются, «<»/«&» экранируются
+    сами) — т.е. ключ обязан быть в HTML_SETTINGS. И наоборот: ключ в HTML_SETTINGS без
+    обещания в prompt — менеджер не знает, что разметка поддерживается."""
+    promised = {
+        key for key, entry in SETTINGS_SCHEMA.items()
+        if entry.get("prompt") and "html" in entry["prompt"].lower()
+    }
+    assert promised == admin_settings.HTML_SETTINGS, (
+        f"расхождение: только в prompt {sorted(promised - admin_settings.HTML_SETTINGS)}, "
+        f"только в HTML_SETTINGS {sorted(admin_settings.HTML_SETTINGS - promised)}"
+    )
