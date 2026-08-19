@@ -49,3 +49,6 @@ Thumbs.db
 .agents/
 .cursor/
 .codex/
+
+# Контекст ассистента — локальный, не часть проекта
+CLAUDE.md
