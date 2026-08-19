@@ -21,6 +21,7 @@ keyboards) stay in admin_gamification.py and are imported here one-way -- never 
 Cancel-mid-edit is `cancel_game_task_edit` (admin_gamification.py, StateFilter(GameTaskEdit)),
 registered BEFORE the step handlers below -- «Отмена»/`/cancel` never reach a step handler.
 """
+import html as html_module
 import logging
 
 from aiogram import F, types
@@ -30,6 +31,7 @@ from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup, ReplyKeybo
 from settings_schema import get_setting_typed
 from database.db import (
     get_task,
+    task_title,
     update_task_coins,
     update_task_deadline,
     update_task_text,
@@ -156,12 +158,17 @@ async def game_task_editdeadline_start(callback: types.CallbackQuery, state: FSM
         return
     await state.set_data({"gte_task_id": task_id})
     prompt = (
+        f"📅 <b>{html_module.escape(task_title(task))}</b>\n\n"
         "Новый дедлайн — выберите готовый вариант кнопкой или введите дату текстом в формате "
         "ДД.ММ.ГГГГ ЧЧ:ММ (например 25.08.2026 23:59):"
     )
-    await callback.message.answer(
-        prompt, reply_markup=_game_task_deadline_preset_kb("gteditdeadline", f"gtedit:{task_id}"),
-    )
+    # The edit card itself becomes the prompt (one live message); a preset tap edits it back
+    # into the card, «❌ Отмена» (= gtedit:<id>) restores it, a typed date re-sends the card.
+    kb = _game_task_deadline_preset_kb("gteditdeadline", f"gtedit:{task_id}")
+    try:
+        await callback.message.edit_text(prompt, parse_mode="HTML", reply_markup=kb)
+    except Exception:
+        await callback.message.answer(prompt, parse_mode="HTML", reply_markup=kb)
     await state.set_state(GameTaskEdit.deadline)
     await callback.answer()
 
@@ -279,6 +286,10 @@ async def game_task_deadline_preset(callback: types.CallbackQuery, state: FSMCon
     if when <= _now_moscow_naive():
         await callback.answer("Это время уже прошло — выберите другой вариант", show_alert=True)
         return
+    try:
+        await callback.message.edit_reply_markup(reply_markup=None)
+    except Exception:
+        pass
     await _finish_deadline_step(callback.message, state, when)
     await callback.answer()
 
@@ -310,9 +321,19 @@ def _wizard_edit_menu_kb() -> InlineKeyboardMarkup:
 
 
 async def _wizard_preview_alive(callback: types.CallbackQuery, state: FSMContext) -> bool:
-    if await state.get_state() == GameTaskCreate.confirm.state:
+    """The preview's buttons only make sense while the draft is parked at `confirm`. Mid-step
+    (a field re-entry already in progress) and no-draft (restart, cancelled) get different,
+    honest alerts -- the manager is told what to do, not just «нельзя»."""
+    current = await state.get_state()
+    if current == GameTaskCreate.confirm.state:
         return True
-    await callback.answer("Черновик не найден — начните создание заново", show_alert=True)
+    if current and current.startswith("GameTaskCreate:"):
+        await callback.answer(
+            "Сначала завершите текущий шаг — ответьте на вопрос выше или нажмите «Отмена»",
+            show_alert=True,
+        )
+    else:
+        await callback.answer("Черновик не найден — начните создание заново", show_alert=True)
     return False
 
 
