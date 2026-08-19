@@ -104,6 +104,15 @@ def _build_snapshot_lines():
 # NOT new handlers -- only their decorator filter literal changed (CONTEXT.md `<specifics>`
 # rename `mytask:` -> `gtask_open:`, `mytask_back` -> `gtasks_back:N`), so their derived "keys"
 # column changed in place at the SAME position, not appended as a new line.
+#
+# Drift note (2026-08-20, Phase 16-02, GAME-UI-02): 2 handlers appended (312 -> 314),
+# re-captured by RUNNING `_build_snapshot_lines()` against HEAD after this plan's changes and
+# diffed against the prior 312-line snapshot -- every pre-existing line byte-for-byte identical
+# in the same relative order, no reorders, no key changes: user_actions.router gained
+# `gs_remove_last` («🗑 Убрать последнее» -- pop of the FSM draft) and `gs_cancel` (inline
+# «❌ Отмена» on the counter message), both GameSubmit.proof-gated, registered right after
+# `finalize_game_submission` (gs_done) so the gs_* group stays contiguous. `_game_done_kb` was
+# never a router handler -- its removal changes no line.
 GOLDEN_SNAPSHOT = """
 admin|message|cmd_admin_help|cmd:admin
 admin|message|cmd_coins|cmd:coins
@@ -415,6 +424,8 @@ user_actions|callback_query|gtasks_page|gtasks_page:*
 user_actions|callback_query|gtasks_noop|gtasks_noop
 user_actions|callback_query|mytask_submit_start|mytask_submit:*
 user_actions|callback_query|finalize_game_submission|gs_done
+user_actions|callback_query|gs_remove_last|gs_remove_last
+user_actions|callback_query|gs_cancel|gs_cancel
 user_actions|callback_query|info_date|info_date
 user_actions|callback_query|info_place|info_place
 """.strip("\n").splitlines()
@@ -446,7 +457,7 @@ def test_snapshot_total_handler_count_is_292():
     """Second, independent invariant besides content — a handler silently added/removed
     without touching this file's golden text (impossible for a normal edit, but this guards
     against a golden-string typo slipping past review) is caught by count alone."""
-    assert len(GOLDEN_SNAPSHOT) == 312
+    assert len(GOLDEN_SNAPSHOT) == 314  # 16-02: +gs_remove_last, +gs_cancel
 
 
 # ── Task 2(a): Dispatcher feed_update smoke — cross-router first-match routing ─────────────
