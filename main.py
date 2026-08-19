@@ -12,7 +12,7 @@ from services.reminders import pending_reminder_loop
 from services.scheduler import init_scheduler
 from services.allowlist import warm_allowlist_if_gating_on
 from services.sheets import ensure_sheet_header
-from services.background import spawn as _spawn
+from services.background import spawn as _spawn, cancel_all as cancel_background_tasks
 import services.sheets as sheets_service
 import services.proxy_session as proxy_session
 from services.proxy_session import FailoverAiohttpSession, build_proxy_chain, mask_proxy_url
@@ -393,6 +393,15 @@ async def main():
             get_scheduler().shutdown(wait=False)
         except Exception:
             logger.warning("Scheduler shutdown failed", exc_info=True)
+        # Background tasks (reminder loop, allowlist warm-up, sheet drains, album/welcome
+        # sends) hold the bot and make Telegram/Sheets calls; cancel and drain them BEFORE
+        # the session closes, otherwise they die mid-call on a closed ClientSession.
+        try:
+            cancelled = await cancel_background_tasks()
+            if cancelled:
+                logger.info("Cancelled %d background task(s) on shutdown", cancelled)
+        except Exception:
+            logger.warning("Background task cancellation failed", exc_info=True)
         try:
             await bot.session.close()
         except Exception:
