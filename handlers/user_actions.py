@@ -27,6 +27,9 @@ from database.db import (
 )
 from handlers.admin_caps import notify_by_capability  # D-13: fan out by capability, not bare ADMIN_IDS
 from handlers.game_labels import category_label, proof_types_label  # Phase 16 (16-01): single RU-label source
+from handlers.game_submit_counter import (  # Phase 16 (16-02): editable submission counter (Экран 3)
+    game_counter_text as _game_counter_text, game_counter_kb as _game_counter_kb, edit_counter as _edit_counter,
+)
 from cities import (
     cities_module_on, normalize_city, city_scope,  # Phase 09.1 (B): show_game_tasks city filter
     get_setting_for_city,  # Phase 09.2 (B): contacts/info screens resolve by delegate city
