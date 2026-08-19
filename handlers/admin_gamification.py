@@ -687,6 +687,8 @@ async def game_task_deadline_step(message: types.Message, state: FSMContext):
 
 @router.callback_query(F.data == "gtconfirm")
 async def game_task_confirm(callback: types.CallbackQuery, state: FSMContext):
+    """«✅ Опубликовать» on the final preview (Phase 16, 16-03, Экран 7) -- the callback stayed
+    `gtconfirm`, the write below and its ADMIN_CAPS entry are unchanged from Phase 9."""
     data = await state.get_data()
     await create_task(
         text=data["gt_text"],
