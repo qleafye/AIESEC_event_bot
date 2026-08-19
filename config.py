@@ -71,9 +71,13 @@ class Settings(BaseSettings):
     NEXTCLOUD_APP_PASS: SecretStr | None = None
     NEXTCLOUD_FOLDER: str = "resumes"
     NEXTCLOUD_SHARE_PASSWORD: SecretStr | None = None  # kept for compat; code no longer reads it
-    # Self-signed-cert deployment → default False (ssl verification off). If you move to a
-    # trusted cert (Let's Encrypt), set NEXTCLOUD_VERIFY_TLS=true for MITM protection.
-    NEXTCLOUD_VERIFY_TLS: bool = False
+    # TLS verification for the WebDAV PUT (each PUT carries Basic Auth with the app-password,
+    # and the resume bytes). Default True — insecure transport is an explicit opt-out, not the
+    # shipped mode. Self-signed Nextcloud → point NEXTCLOUD_CA_BUNDLE at its CA/cert (PEM) and
+    # keep verification on; NEXTCLOUD_VERIFY_TLS=false only as a conscious escape hatch.
+    # Plain http:// inside a docker network ignores both (no TLS to verify).
+    NEXTCLOUD_VERIFY_TLS: bool = True
+    NEXTCLOUD_CA_BUNDLE: str | None = None  # path to PEM file (CA or the server cert itself)
     # Public address used to build deep-links, e.g. "https://91.223.28.229:8443".
     NEXTCLOUD_PUBLIC_URL: str = ""
     # Token XXXX from the ONE manual public folder-share link /s/XXXX (folder `resumes`).
