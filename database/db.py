@@ -63,6 +63,56 @@ async def _enable_wal(db: aiosqlite.Connection) -> str:
     return mode
 
 
+# name -> (table, columns). Kept as a module-level table so tests can assert the exact set
+# exists after init_db() and so "what is indexed and why" is readable in one place. The DDL
+# is derived (CREATE INDEX IF NOT EXISTS name ON table(cols)); columns are verified to exist
+# first so a pre-migration DB shape never makes startup fail on an index.
+_HOT_PATH_INDEXES: dict[str, tuple[str, tuple[str, ...]]] = {
+    # get_pending_users / get_pending_count / approve_all_pending: moderation queue —
+    # WHERE status='pending' [AND event_city ...] ORDER BY registration_date
+    "idx_users_status_city_regdate": ("users", ("status", "event_city", "registration_date")),
+    # get_receipt_pending_users / _count + scheduler overdue sweep: WHERE payment_status = ...
+    "idx_users_payment_status": ("users", ("payment_status",)),
+    # get_referrals: WHERE referrer_id = ?
+    "idx_users_referrer": ("users", ("referrer_id",)),
+    # get_non_subscriber_ids (broadcast exclusion): WHERE subscribed = 0
+    "idx_users_subscribed": ("users", ("subscribed",)),
+    # reconcile on restart: WHERE status='pending' ORDER BY scheduled_at
+    "idx_scheduled_broadcasts_status_at": ("scheduled_broadcasts", ("status", "scheduled_at")),
+    # incomplete-registration listings: ORDER BY started_at
+    "idx_reg_started_started_at": ("reg_started", ("started_at",)),
+    # dropout-nudge scan: WHERE started_at < ? AND nudged_at IS NULL
+    "idx_reg_started_nudge": ("reg_started", ("nudged_at", "started_at")),
+    # game submission queue: WHERE s.status='pending' ORDER BY s.submitted_at, s.id
+    "idx_game_submissions_status_at": ("game_submissions", ("status", "submitted_at")),
+}
+
+
+async def _ensure_hot_path_indexes(db: aiosqlite.Connection) -> list[str]:
+    """CREATE INDEX IF NOT EXISTS for every entry of _HOT_PATH_INDEXES whose columns exist.
+    Returns the names created/confirmed. Idempotent, additive, safe on the live DB — SQLite
+    builds a missing index in place on first start after upgrade (sub-second at 1-2k rows)."""
+    created: list[str] = []
+    for name, (table, cols) in _HOT_PATH_INDEXES.items():
+        _assert_identifier(name)
+        _assert_identifier(table)
+        for c in cols:
+            _assert_identifier(c)
+        present = True
+        for c in cols:
+            if not await _column_exists(db, table, c):
+                present = False
+                break
+        if not present:
+            logger.debug("skip index %s: %s(%s) not fully present", name, table, ", ".join(cols))
+            continue
+        await db.execute(
+            f"CREATE INDEX IF NOT EXISTS {name} ON {table}({', '.join(cols)})"
+        )
+        created.append(name)
+    return created
+
+
 async def init_db():
     async with _connect() as db:
         await _enable_wal(db)
@@ -374,6 +424,10 @@ async def init_db():
             "CREATE INDEX IF NOT EXISTS idx_game_submission_parts_sub "
             "ON game_submission_parts(submission_id, ord)"
         )
+
+        # Indexes under the hot admin/scheduler queries. Each one mirrors a real WHERE/ORDER BY
+        # in this module (see the comments in _HOT_PATH_INDEXES); nothing speculative.
+        await _ensure_hot_path_indexes(db)
 
         await db.commit()
 
