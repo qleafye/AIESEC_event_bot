@@ -112,6 +112,9 @@ _REG_FIELD_ORDER = [
     "pending_gate_text",
     "pending_reminder_interval", "city_options", "study_field_options",
     "goal_options", "formats_options", "university_options",
+    # Phase 17.1 (17.1-03, schema-completeness): экран выбора города при /start и тексты
+    # гейта предотбора — читались из bot_settings, но менеджер их в UI не видел.
+    "city_fork_text", "preselect_no_username_text", "preselect_fail_text", "preselect_link",
 ]
 _PAY_FIELD_ORDER = [
     "payment_options", "payment_requisites", "payment_requisites_by_lc",
@@ -125,6 +128,8 @@ _PAY_FIELD_ORDER = [
 ]
 _PARTY_FIELD_ORDER = [
     "party_closed_text", "approve_text__party",
+    # Phase 17.1 (17.1-03, schema-completeness): вопрос развилки формата при /start.
+    "party_fork_text",
 ]
 _CONSENT_FIELD_ORDER = [
     "consent_button_text", "consent_list",
