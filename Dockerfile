@@ -20,8 +20,11 @@ RUN mkdir -p /app/data /app/logs && chown -R appuser:appuser /app/data /app/logs
 
 USER appuser
 
-# HEALTHCHECK намеренно отсутствует: PID 1 контейнера — сам бот (long polling), поэтому
-# «процесс жив» == «контейнер запущен», а проверять это healthcheck'ом бессмысленно.
-# Осмысленная проверка требует heartbeat-файла из цикла поллинга — отдельная задача.
+# HEALTHCHECK по heartbeat-файлу (services/heartbeat.py): PID 1 — сам бот, так что «процесс
+# жив» Docker видит и без проверки; проверяем живость long polling'а. Бот пишет файл в /tmp
+# раз в 30 с, пока getUpdates отвечает; --check даёт exit 1, если файлу > 120 с или его нет.
+# Docker unhealthy-контейнер сам не перезапускает (restart: always — про выход процесса),
+# статус — диагностика: docker inspect --format '{{.State.Health.Status}}' <container>.
+HEALTHCHECK --interval=60s --timeout=5s --start-period=60s --retries=3 CMD python -m services.heartbeat --check
 
 CMD ["python", "main.py"]

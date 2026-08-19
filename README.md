@@ -329,6 +329,11 @@ grep 'admin=.* action=' logs/bot.log | tail -50
    в `.env` менять не нужно).
 8. **CI.** `.github/workflows/tests.yml` гоняет тесты на push/PR в `main`; секретов не
    требует.
+9. **Healthcheck.** Образ содержит `HEALTHCHECK` по heartbeat-файлу: бот пишет его, пока
+   long polling реально получает ответы `getUpdates`. Смотреть:
+   `docker inspect --format '{{.State.Health.Status}}' <container>` (`starting` первую
+   минуту, потом `healthy`; `unhealthy` = поллинг не отвечает > 2–3 мин). Docker при этом
+   сам контейнер не перезапускает — это диагностика, `restart: always` работает как раньше.
 
 ---
 
