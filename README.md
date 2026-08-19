@@ -747,8 +747,14 @@ FSM-хранилище — `MemoryStorage`: при перезапуске нез
 ## Тесты
 
 ```bash
+pip install -r requirements-dev.txt
 python -m pytest tests/ -q
 ```
+
+Конфигурация — `pytest.ini` (`testpaths = tests`; тесты вызывают `asyncio.run()` сами,
+pytest-asyncio не нужен). Для импорта `config` нужны `BOT_TOKEN` и `ADMIN_IDS` — либо в `.env`
+с фиктивными значениями, либо переменными окружения. CI: `.github/workflows/tests.yml`
+гоняет весь набор на push/PR в `main` под Python 3.11 и 3.12.
 
 ~1370 тестов: чистые хелперы (парсинг настроек, рендеры карточек и клавиатур), миграции БД,
 фильтры рассылок, планировщик, Sheets-хелперы, Nextcloud, CSV-инъекции. Внешние сервисы
