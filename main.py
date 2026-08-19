@@ -192,6 +192,82 @@ async def seed_proxy_settings_from_env() -> None:
             key, env_value, key,
         )
 
+# Two Telegram-side outcomes are normal user behaviour, not bot faults: double-tapping a
+# button re-renders an identical screen ("message is not modified"), and answering a
+# callback after Telegram's ~15-minute window ("query is too old"). Both used to be logged
+# at ERROR with the whole update body, which is what inflated the production log — they are
+# demoted to DEBUG so ERROR keeps meaning "something actually broke".
+_BENIGN_TELEGRAM_ERRORS = ("message is not modified", "query is too old")
+
+_UPDATE_EVENT_ATTRS = (
+    "message", "edited_message", "callback_query", "inline_query", "my_chat_member",
+    "chat_member", "chat_join_request", "pre_checkout_query", "channel_post",
+)
+
+
+def _update_identity(update) -> dict:
+    """Pick out the *identifiers* of a failing update — never its content.
+
+    The log file lives on a host volume (`./logs:/app/logs`, rotated but persistent) and a
+    registration bot's updates carry PII: full name, phone, e-mail, questionnaire answers,
+    resume/receipt file_ids, free-text messages. Logging `update.model_dump_json()` put all
+    of that on disk for every unhandled error. What is actually needed to debug is the update
+    id, who sent it and where — plus the exception itself (logged with traceback).
+    """
+    ident = {"update_id": getattr(update, "update_id", None), "event": None}
+    user = chat = None
+    for attr in _UPDATE_EVENT_ATTRS:
+        obj = getattr(update, attr, None)
+        if obj is None:
+            continue
+        ident["event"] = attr
+        user = getattr(obj, "from_user", None)
+        chat = getattr(obj, "chat", None)
+        if chat is None:  # callback_query carries the chat via its .message
+            chat = getattr(getattr(obj, "message", None), "chat", None)
+        break
+    ident["telegram_user_id"] = getattr(user, "id", None)
+    ident["chat_id"] = getattr(chat, "id", None)
+    return ident
+
+
+async def on_update_error(event: ErrorEvent) -> bool:
+    """Global aiogram error handler (registered via ``dp.errors()`` in ``main``).
+
+    Logs the exception class with traceback and only the *identity* of the failing update
+    (update_id / event type / telegram_user_id / chat_id / handler name when aiogram exposes
+    it). Never serialises the update body — that is PII on a persistent volume.
+    """
+    logger = logging.getLogger(__name__)
+    message = str(event.exception)
+    if isinstance(event.exception, TelegramBadRequest) and any(
+        marker in message for marker in _BENIGN_TELEGRAM_ERRORS
+    ):
+        logger.debug("Benign Telegram update error: %s", message)
+        return True
+    try:
+        ident = _update_identity(event.update)
+    except Exception:
+        ident = {}
+    handler_name = None
+    try:  # best effort: aiogram may expose the raising handler on the event's context
+        h = getattr(event, "handler", None)
+        cb = getattr(h, "callback", None) if h is not None else None
+        handler_name = getattr(cb, "__qualname__", None)
+    except Exception:
+        handler_name = None
+    logger.error(
+        "Unhandled update error: %s (update_id=%s event=%s telegram_user_id=%s chat_id=%s handler=%s)",
+        type(event.exception).__name__,
+        ident.get("update_id"),
+        ident.get("event"),
+        ident.get("telegram_user_id"),
+        ident.get("chat_id"),
+        handler_name,
+        exc_info=event.exception,
+    )
+    return True
+
 
 async def main():
     _configure_logging()
@@ -275,30 +351,10 @@ async def main():
     dp = Dispatcher(storage=MemoryStorage())
 
     # CR-8: global error handler. Without this, any unhandled exception in a handler is
-    # silently dropped (the update just vanishes). Log the exception WITH the offending
-    # update so failures are visible, and fail soft (return True = handled).
-    # Two Telegram-side outcomes are normal user behaviour, not bot faults, and carry no
-    # information worth a full update dump: double-tapping a button re-renders an identical
-    # screen ("message is not modified"), and answering a callback after Telegram's ~15-minute
-    # window ("query is too old"). Both were logged as ERROR with the entire update body,
-    # which is what inflated the production log — they are demoted to DEBUG here so the ERROR
-    # level keeps meaning "something actually broke".
-    _BENIGN_TELEGRAM_ERRORS = ("message is not modified", "query is too old")
-
-    @dp.errors()
-    async def _on_update_error(event: ErrorEvent):
-        message = str(event.exception)
-        if isinstance(event.exception, TelegramBadRequest) and any(
-            marker in message for marker in _BENIGN_TELEGRAM_ERRORS
-        ):
-            logger.debug("Benign Telegram update error: %s", message)
-            return True
-        logger.error("Unhandled update error: %s", event.exception, exc_info=event.exception)
-        try:
-            logger.error("Failing update: %s", event.update.model_dump_json(exclude_none=True))
-        except Exception:
-            pass
-        return True
+    # silently dropped (the update just vanishes). Fails soft (return True = handled). The
+    # body is module-level `on_update_error` so it is unit-testable — it logs identifiers only,
+    # never the update payload (PII on a persistent log volume).
+    dp.errors()(on_update_error)
 
     # Register routers
     payment.init_payment_module(dp.storage)  # out-of-handler FSMContext for free/single-option path
