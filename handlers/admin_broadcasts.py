@@ -30,6 +30,8 @@ from database.db import (
     export_users_csv,
     create_scheduled_broadcast,
     list_pending_broadcasts,
+    list_sending_broadcasts,
+    count_deliveries,
     cancel_scheduled_broadcast,
     count_and_list_filtered,
     get_distinct_filter_values,
@@ -430,9 +432,21 @@ async def broadcast_schedule_message(message: types.Message, state: FSMContext):
 @router.message(Command("scheduled"))
 async def cmd_scheduled(message: types.Message):
     rows = await list_pending_broadcasts()
-    if not rows:
+    # Review 260817 §B2: a broadcast that is mid-send (or died mid-send and waits for the boot
+    # reclaim) is shown too, with its per-recipient checkpoint count — otherwise the manager
+    # sees nothing and re-creates it by hand while the original is still going out.
+    sending = await list_sending_broadcasts()
+    if not rows and not sending:
         await message.answer("Нет запланированных рассылок.")
         return
+    for row in sending:
+        ok, failed = await count_deliveries(row["id"])
+        preview = re.sub(r"<[^>]+>", "", row.get("text") or "(фото)")[:60]
+        tail = f", не доставлено {failed}" if failed else ""
+        await message.answer(
+            f"#{row['id']} — {row['scheduled_at']}\n{html_module.escape(preview)}\n"
+            f"⏳ Отправляется: доставлено {ok}{tail}"
+        )
     for row in rows:
         # IN-02: row["text"] was stored as HTML (message.html_text at schedule time). Strip the
         # tags for a clean plain-text preview instead of escaping them into visible &lt;b&gt; noise.
