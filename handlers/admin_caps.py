@@ -461,6 +461,22 @@ ADMIN_CAPS: dict[str, str] = {
     "gteditphoto:*": "moderate_game",
     "gtremovephoto:*": "moderate_game",
     "state:GameTaskEdit:*": "moderate_game",
+    # Phase 16 (16-03, GAME-UI-03): the rest of the point-edit card (description / coins /
+    # deadline + «👁 Как видит делегат»), the wizard's deadline presets and its final-step
+    # «✏️ Изменить» field menu. NOTE the same prefix gotcha as gtdelete:*/gtdelete_go:* --
+    # "gteditdeadline:*" does NOT cover "gteditdeadline_preset:*", both are listed.
+    "gteditdesc:*": "moderate_game",
+    "gteditcoins:*": "moderate_game",
+    "gteditdeadline:*": "moderate_game",
+    "gteditdeadline_preset:*": "moderate_game",
+    "gteditdeadline_custom": "moderate_game",
+    "gtdeadline_preset:*": "moderate_game",
+    "gtdeadline_custom": "moderate_game",
+    "gtpreview:*": "moderate_game",
+    "gtpreview_close": "moderate_game",
+    "gtwiz_edit_menu": "moderate_game",
+    "gtwiz_edit:*": "moderate_game",
+    "gtwiz_back": "moderate_game",
 
     # Phase 14 (14-04, GAME-09): monetary right, not registration-queue right -- coins are
     # geyma's territory, not the applications queue's. Physically relocated out of the
