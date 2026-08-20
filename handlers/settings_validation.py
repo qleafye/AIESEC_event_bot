@@ -18,8 +18,22 @@ admin_settings.py упирается в потолок test_module_size_conventi
 
 Сброс («-») и пустое значение валидатор не видит — их обрабатывает сам хендлер раньше.
 """
+import re
+
 from cities import PER_CITY_SEP
 from settings_schema import SETTINGS_SCHEMA
+
+# Quick 260820-rms: одиночная команда — `/slovo` или `/slovo@YouLead_bot`, без пробелов и без
+# продолжения. Ровно то, что телеграм отправляет по тапу на подсказку команды; ровно то, чем
+# 20.08 затёрли source_options и approve_text (в обоих оказалось «/start»). Текст, который
+# просто НАЧИНАЕТСЯ со слэша, но содержит пробел или ещё что-то («/start — так мы называем…»),
+# остаётся нормальным значением: отбиваем узкий случай, а не всё подряд.
+_COMMAND_RE = re.compile(r"/[A-Za-z0-9_]{1,32}(@[A-Za-z0-9_]{1,32})?\Z")
+
+
+def is_command_like(value: str | None) -> bool:
+    """Похоже ли присланное на команду боту, а не на значение настройки."""
+    return bool(value) and bool(_COMMAND_RE.fullmatch(value.strip()))
 
 
 def validate_setting_value(key: str, value: str) -> tuple[str | None, str | None]:

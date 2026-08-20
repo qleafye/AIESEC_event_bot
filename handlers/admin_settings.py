@@ -43,7 +43,7 @@ from services.sheets import (
     tab_row_count,
 )
 from handlers.states import EditSetting
-from handlers.settings_validation import validate_setting_value
+from handlers.settings_validation import validate_setting_value, is_command_like
 from keyboards.builders import MENU_BUTTONS
 from handlers.reg_schema import (
     REG_FLOW,
@@ -1033,9 +1033,25 @@ async def _settings_edit_screen(key: str, header_code: str | None) -> tuple[str,
     # HTML) — otherwise parse_mode=HTML breaks.
     current = await get_setting(key)
     text = f"{html_module.escape(prompt)}"
-    if current:
+    # Quick 260820-rms: списочные настройки (источники, города, варианты мультивыбора)
+    # ЗАМЕНЯЮТСЯ целиком, а выглядят на экране как обычный текст — менеджер дважды присылал
+    # один новый пункт и стирал весь список (17.08 source_options схлопнулся в «Узнал от
+    # блогера», 20.08 — в «/start»). Показываем текущий список по пунктам и говорим про
+    # замену прямым текстом. Кнопка «добавить один пункт» — отдельной задачей.
+    is_list = SETTINGS_SCHEMA.get(_base_setting_key(key), {}).get("type") == "list"
+    if current and is_list:
+        items = [seg.strip() for line in current.splitlines() for seg in line.split(";") if seg.strip()]
+        listed = "\n".join(f"• {html_module.escape(i)}" for i in items)
+        text = f"Сейчас в списке ({len(items)}):\n{listed}\n\n{text}"
+    elif current:
         text = f"Сейчас задано:\n<b>{html_module.escape(current)}</b>\n\n{text}"
-    text += "\n\n<i>Пришлите новое значение сообщением. Чтобы очистить поле — отправьте «-».</i>"
+    if is_list:
+        text += (
+            "\n\n<i>⚠️ Пришлите ВЕСЬ список целиком — новое сообщение заменит его полностью, "
+            "а не добавит пункт. Чтобы очистить поле — отправьте «-».</i>"
+        )
+    else:
+        text += "\n\n<i>Пришлите новое значение сообщением. Чтобы очистить поле — отправьте «-».</i>"
 
     if per_city_ctx:
         # Branch (2): real city header, but the key is not per_city — правится глобально,
@@ -1695,6 +1711,20 @@ async def settings_edit_value(message: types.Message, state: FSMContext):
         )
         return
 
+    # Quick 260820-rms: команда — не значение. Админский роутер подключён ПЕРВЫМ (main.py),
+    # поэтому /start, отправленный внутри правки настройки, до cmd_start не доходит и молча
+    # ложится в bot_settings. 20.08 так были затёрты source_options и approve_text: делегаты
+    # вместо списка источников получили одну кнопку «/start». Остаёмся в состоянии — менеджеру
+    # достаточно набрать значение ещё раз.
+    if is_command_like(value):
+        await message.answer(
+            f"<code>{html_module.escape(value)}</code> — это команда, а не значение настройки, "
+            "сохранять её не стал.\n\nПришлите значение текстом, "
+            "«-» — сбросить настройку, «❌ Отмена» — выйти без изменений.",
+            parse_mode="HTML",
+        )
+        return
+
     # Review 09.3 WR-01 (TOCTOU): for a per-city composite key the RIGHT to write is
     # re-checked HERE, at write time — not only in settings_edit_city at FSM-entry time. The
     # composed key sat in FSM data while the admin typed; meanwhile their city binding may
@@ -1747,6 +1777,11 @@ async def settings_edit_value(message: types.Message, state: FSMContext):
             )
             return
         # probe == (False, 0): tab doesn't exist yet — fall through to the normal silent save.
+
+    # Quick 260820-rms: вторая половина аудита правок — db.set_setting пишет ЧТО изменилось,
+    # эта строка пишет КТО. Без неё разбор «кто положил /start в источники» упирается в пустой
+    # лог (20.08 именно так и вышло).
+    logger.info(f"admin {message.from_user.id} правит настройку {key}")
 
     warning = ""
     if value == "-":
