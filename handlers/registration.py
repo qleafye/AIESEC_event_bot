@@ -1782,10 +1782,22 @@ async def cmd_start(message: types.Message, state: FSMContext, bot: Bot, command
     # Phase 5 (D-02): a bare repeat /start (no deep-link arg) recovers the track from the
     # still-open reg_started row written by the first /start — only for a user who has no
     # users row yet (an already-registered user returned above and never reaches this line).
+    # Quick 260820-rms: окно восстановления. «Тот же самый /start посреди анкеты» и «человек
+    # вернулся через две недели» — разные ситуации, а строка reg_started у них одна и та же:
+    # она живёт до конца регистрации и никем не чистится. Без окна вторая ситуация молча
+    # наследовала прежний город, и `_should_show_city_fork` больше НИКОГДА не показывал экран
+    # выбора города (выход на непустом `effective_city`). Читается той же fail-soft лесенкой,
+    # что и всё остальное в /start: сбой резолва настройки не должен стоить делегату входа.
+    try:
+        resume_ttl_hours = await get_setting_typed("reg_resume_ttl_hours")
+    except Exception as e:
+        logger.error(f"reg_resume_ttl_hours resolve failed for {user_id}: {e}")
+        resume_ttl_hours = SETTINGS_SCHEMA["reg_resume_ttl_hours"]["default"]
+
     recovered_track = None
     try:
         if not party_track and not user:
-            recovered_track = await get_reg_started_track(user_id) or None
+            recovered_track = await get_reg_started_track(user_id, resume_ttl_hours) or None
             party_track = recovered_track
     except Exception as e:
         logger.error(f"get_reg_started_track failed for {user_id}: {e}")
@@ -1796,7 +1808,7 @@ async def cmd_start(message: types.Message, state: FSMContext, bot: Bot, command
     recovered_city = None
     try:
         if not dl_event_city and not user:
-            recovered_city = await get_reg_started_city(user_id) or None
+            recovered_city = await get_reg_started_city(user_id, resume_ttl_hours) or None
     except Exception as e:
         logger.error(f"get_reg_started_city failed for {user_id}: {e}")
     effective_city = dl_event_city or recovered_city

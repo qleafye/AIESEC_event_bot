@@ -1147,24 +1147,59 @@ async def clear_reg_started(telegram_id: int):
         await db.commit()
 
 
+def _reg_started_cutoff(max_age_hours: int | None) -> str | None:
+    """Нижняя граница `started_at` для восстановления брошенной анкеты, в том же формате и по
+    тем же часам, которыми `mark_reg_started` эту колонку пишет (`datetime.now()`, локальное
+    время процесса). Специально НЕ `datetime('now')` на стороне SQLite: тот считает в UTC, и
+    на сервере в любой не-UTC зоне отсечка уехала бы на несколько часов. `None`/непозитивное
+    значение — «без ограничения», прежнее поведение."""
+    if not max_age_hours or max_age_hours <= 0:
+        return None
+    return (datetime.now() - timedelta(hours=max_age_hours)).strftime("%Y-%m-%d %H:%M:%S")
+
+
 # Phase 5 (D-02): read the track recorded at flow start, before finalize_registration clears
 # the reg_started row — the source of truth for a bare repeat /start mid-flow.
-async def get_reg_started_track(telegram_id: int) -> str | None:
+#
+# Quick 260820-rms: `max_age_hours` — окно, в котором строка ещё считается «той же самой
+# анкетой». Строка `reg_started` живёт до конца регистрации и никем не чистится (её читают
+# «Незавершённые» и dropout-напоминания), поэтому без окна возврат делегата через две недели
+# молча наследовал старый трек и старый город — экран выбора города при этом не показывался
+# вовсе (`registration._should_show_city_fork` выходит на непустом городе).
+async def get_reg_started_track(telegram_id: int, max_age_hours: int | None = None) -> str | None:
+    cutoff = _reg_started_cutoff(max_age_hours)
     async with _connect() as db:
-        async with db.execute(
-            "SELECT participant_type FROM reg_started WHERE telegram_id = ?", (telegram_id,)
-        ) as cursor:
+        if cutoff is None:
+            query, params = (
+                "SELECT participant_type FROM reg_started WHERE telegram_id = ?",
+                (telegram_id,),
+            )
+        else:
+            query, params = (
+                "SELECT participant_type FROM reg_started WHERE telegram_id = ? AND started_at >= ?",
+                (telegram_id, cutoff),
+            )
+        async with db.execute(query, params) as cursor:
             row = await cursor.fetchone()
             return row[0] if row else None
 
 
 # Phase 07.1 (CITY-01): read the event_city recorded at flow start — same read pattern as
 # get_reg_started_track, for restoring an in-progress registration's city choice.
-async def get_reg_started_city(telegram_id: int) -> str | None:
+async def get_reg_started_city(telegram_id: int, max_age_hours: int | None = None) -> str | None:
+    cutoff = _reg_started_cutoff(max_age_hours)
     async with _connect() as db:
-        async with db.execute(
-            "SELECT event_city FROM reg_started WHERE telegram_id = ?", (telegram_id,)
-        ) as cursor:
+        if cutoff is None:
+            query, params = (
+                "SELECT event_city FROM reg_started WHERE telegram_id = ?",
+                (telegram_id,),
+            )
+        else:
+            query, params = (
+                "SELECT event_city FROM reg_started WHERE telegram_id = ? AND started_at >= ?",
+                (telegram_id, cutoff),
+            )
+        async with db.execute(query, params) as cursor:
             row = await cursor.fetchone()
             return row[0] if row else None
 
