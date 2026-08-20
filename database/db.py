@@ -456,6 +456,13 @@ async def get_setting(key: str) -> str | None:
 
 
 async def set_setting(key: str, value: str):
+    # Quick 260820-rms: единственная точка записи настроек — единственное место, где можно
+    # дёшево получить аудит правок. 20.08 в source_options и approve_text прилетело «/start»,
+    # и установить, кто и когда это сделал, было нечем: в логе не было ни строки. Значение
+    # режем — это конфиг, а не персональные данные, но длинные тексты приветствия в логе не
+    # нужны.
+    preview = value if value is None or len(value) <= 60 else value[:60] + "…"
+    logger.info(f"setting {key} <- {preview!r}")
     async with _connect() as db:
         await db.execute(
             "INSERT OR REPLACE INTO bot_settings (key, value) VALUES (?, ?)",
@@ -465,6 +472,7 @@ async def set_setting(key: str, value: str):
 
 
 async def delete_setting(key: str):
+    logger.info(f"setting {key} <- (сброшено)")  # Quick 260820-rms: та же линия аудита
     async with _connect() as db:
         await db.execute("DELETE FROM bot_settings WHERE key = ?", (key,))
         await db.commit()
