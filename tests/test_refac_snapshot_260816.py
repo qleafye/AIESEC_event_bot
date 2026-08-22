@@ -177,6 +177,11 @@ def _build_snapshot_lines():
 # («➕ Добавить пункт»), `settings_list_del_pick` («🗑 Удалить пункт» picker),
 # `settings_list_rm_go` (tap on an item) and `settings_list_replace_start` («✏️ Заменить список
 # целиком»). Filter literals are unique prefixes (settings_list_del: vs settings_list_rm:).
+# Drift note (2026-08-22, quick: дайджест сдач геймы): 1 handler inserted (339 -> 340 после слияния с «➕ пункт»),
+# re-captured by RUNNING `_build_snapshot_lines()` and diffed against the prior snapshot --
+# pure insertion, no reorders. The new line is `toggle_game_submit_notify` (тумблер
+# «каждую сдачу отдельно / пачкой» на экране «🎮 Геймификация»), registered in
+# admin_gamification.py right after `show_game_review`; the filter literal is unique.
 GOLDEN_SNAPSHOT = """
 admin|message|cmd_admin_help|cmd:admin
 admin|message|cmd_coins|cmd:coins
@@ -403,6 +408,7 @@ admin|callback_query|admin_coins_journal|admin_coins_journal
 admin|callback_query|coinsjrn_page|coinsjrn_page:*
 admin|callback_query|coinsjrn_csv|coinsjrn_csv
 admin|callback_query|show_game_review|admin_game_review
+admin|callback_query|toggle_game_submit_notify|toggle_game_submit_notify
 admin|callback_query|grev_skip|grev_skip:*
 admin|callback_query|grev_approve|grev_approve:*
 admin|callback_query|grev_approve_custom_start|grev_approve_custom:*
@@ -546,7 +552,7 @@ def test_snapshot_total_handler_count_is_292():
     """Second, independent invariant besides content — a handler silently added/removed
     without touching this file's golden text (impossible for a normal edit, but this guards
     against a golden-string typo slipping past review) is caught by count alone."""
-    assert len(GOLDEN_SNAPSHOT) == 339  # quick 260819: +toggle_preselect_enabled, +coinsman_amount_stale, +toggle_pending_reminder/+toggle_nudge_enabled; quick 260822: +5 settings_list_*
+    assert len(GOLDEN_SNAPSHOT) == 340  # quick 260819: +toggle_preselect_enabled, +coinsman_amount_stale, +toggle_pending_reminder/+toggle_nudge_enabled; quick 260822: +5 settings_list_*, +toggle_game_submit_notify
 
 
 # ── Task 2(a): Dispatcher feed_update smoke — cross-router first-match routing ─────────────

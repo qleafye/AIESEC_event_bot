@@ -339,6 +339,7 @@ ADMIN_CAPS: dict[str, str] = {
     "season_import_go": "settings",
     "state:SeasonImport:*": "settings",
     "admin_settings": "settings",
+    "toggle_game_submit_notify": "settings",  # Quick 260822: тумблер дайджеста сдач (экран 🎮)
     "admin_settings_guide": "settings",
     "admin_sync_sheet": "settings",
     "city_toggle:*": "settings",
