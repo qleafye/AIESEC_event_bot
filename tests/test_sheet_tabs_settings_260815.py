@@ -98,6 +98,7 @@ def test_settings_group_keys_sheets_matches_field_order():
         "game_matrix_tab", "game_history_tab", "preselect_tab",
         "city_tab_suffix__short", "city_tab_suffix__party", "city_tab_suffix__incomplete",
         "city_tab_suffix__game", "city_tab_suffix__game_history",
+        "polls_sheet_tab",
     ]
 
 

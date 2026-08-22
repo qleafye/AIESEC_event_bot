@@ -95,6 +95,8 @@ _EVENT_FIELD_ORDER = [
     # экрана «❓ Задать вопрос» — тексты информационных кнопок меню, рядом с медиа/контактами.
     "program_empty_text", "speakers_empty_text", "contacts_empty_text",
     "ask_question_prompt_text", "ask_question_sent_text",
+    # Опросы: вступление перед опросом — делегатский текст, рядом с другими текстами меню.
+    "poll_intro_text",
     "event_name", "event_season", "event_type",
 ]
 _EVENT_FIELDS = [
@@ -187,6 +189,7 @@ _SHEETS_FIELD_ORDER = [
     "game_matrix_tab", "game_history_tab", "preselect_tab",
     "city_tab_suffix__short", "city_tab_suffix__party", "city_tab_suffix__incomplete",
     "city_tab_suffix__game", "city_tab_suffix__game_history",
+    "polls_sheet_tab",  # опросы: вкладка выгрузки результатов
 ]
 
 _REG_FIELDS = [(k, SETTINGS_SCHEMA[k]["label"], SETTINGS_SCHEMA[k]["prompt"]) for k in _REG_FIELD_ORDER]
@@ -1576,6 +1579,7 @@ HTML_SETTINGS = {
     # сюда НЕ входят. Инвариант «prompt говорит HTML <=> ключ здесь» сторожит
     # tests/test_delegate_texts_registry_260819.py::test_html_promise_in_prompt_matches_html_settings.
     "pending_gate_text",
+    "poll_intro_text",  # опросы: вступление шлётся send_message с parse_mode=HTML (default бота)
     "start_returning_cta_text", "recall_generic_prompt_text",
     "payment_option_picker_header_text", "payment_details_template_text",
     "payment_pay_later_text", "payment_pay_later_menu_hint_text",
