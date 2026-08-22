@@ -1459,6 +1459,52 @@ SETTINGS_SCHEMA = {
         "options": ["on", "off"], "prompt": None, "default": "on",
         "per_city": True,
     },
+
+    # ── Phase 15 (15-02, D-19): экран «📊 Дашборд» — тумблеры блоков веб-дашборда. Только
+    # чекбоксы фиксированного набора (CLAUDE.md «бот для людей» — кодовые значения ключей
+    # менеджеру не показываем, текстовый ввод не просим). Own group "dashboard" — эти ключи
+    # намеренно НЕ добавлены в handlers.admin_settings.SETTINGS_FIELDS/SETTINGS_GROUPS: у них
+    # свой отдельный экран (handlers/admin_dashboard.py), попадание в «Прочие» дало бы вторую
+    # конкурирующую поверхность правки (тот же принцип, что применён к role_caps_* в Phase 8).
+    # per_city не ставим — дашборд один на стек (D-04).
+    #
+    # Дефолты "on" у всех блоков, КРОМЕ dashboard_block_game — "off". Глобального тумблера
+    # самого модуля геймификации в реестре нет (есть только per_city пункт меню
+    # menu_game_tasks), поэтому D-12 «гейма показывается только при включённом модуле»
+    # реализуется этим явным менеджерским тумблером плюс проверкой наличия данных на стороне
+    # дашборда — а не выдуманным новым флагом модуля.
+    "dashboard_block_funnel": {
+        "type": "enum", "group": "dashboard", "label": "🪜 Воронка",
+        "options": ["on", "off"], "prompt": None, "default": "on",
+    },
+    "dashboard_block_dynamics": {
+        "type": "enum", "group": "dashboard", "label": "📈 Динамика по дням",
+        "options": ["on", "off"], "prompt": None, "default": "on",
+    },
+    "dashboard_block_universities": {
+        "type": "enum", "group": "dashboard", "label": "🏫 ВУЗы",
+        "options": ["on", "off"], "prompt": None, "default": "on",
+    },
+    "dashboard_block_sources": {
+        "type": "enum", "group": "dashboard", "label": "📢 Источники",
+        "options": ["on", "off"], "prompt": None, "default": "on",
+    },
+    "dashboard_block_courses": {
+        "type": "enum", "group": "dashboard", "label": "📖 Курсы",
+        "options": ["on", "off"], "prompt": None, "default": "on",
+    },
+    "dashboard_block_study_fields": {
+        "type": "enum", "group": "dashboard", "label": "🎯 Направления",
+        "options": ["on", "off"], "prompt": None, "default": "on",
+    },
+    "dashboard_block_dropout": {
+        "type": "enum", "group": "dashboard", "label": "🚪 Где бросают",
+        "options": ["on", "off"], "prompt": None, "default": "on",
+    },
+    "dashboard_block_game": {
+        "type": "enum", "group": "dashboard", "label": "🎮 Гейма",
+        "options": ["on", "off"], "prompt": None, "default": "off",
+    },
 }
 
 
