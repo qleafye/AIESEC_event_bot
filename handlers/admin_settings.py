@@ -44,6 +44,7 @@ from services.sheets import (
 )
 from handlers.states import EditSetting
 from handlers.settings_validation import validate_setting_value, is_command_like
+from services.game_digest import game_submit_notify_button_text  # Quick 260822: тумблер дайджеста сдач
 from keyboards.builders import MENU_BUTTONS
 from handlers.reg_schema import (
     REG_FLOW,
@@ -148,7 +149,7 @@ _GAME_FIELD_ORDER = [
     "game_proof_done_button", "game_proof_empty_hint", "game_submit_accepted_text",
     # Phase 16 (16-02, GAME-UI-02): счётчик сдачи (Экран 3) -- рядом с остальными текстами сдачи.
     "game_proof_collected_template", "game_proof_remove_last_button",
-    "game_resubmit_limit", "coins_manual_notify_text",
+    "game_resubmit_limit", "game_submit_digest_minutes", "coins_manual_notify_text",
     # Phase 16 (16-04, GAME-UI-03): quick-pick сумм ручных монет -- рядом с текстом уведомления.
     "coins_manual_amount_presets",
     # Quick 260819-gtl (CONTEXT.md decision 8): title/photo wizard step prompts.
@@ -611,6 +612,8 @@ async def build_settings_group_keyboard(token: str, admin_id: int | None = None)
     if unconfigured:
         buttons.append([InlineKeyboardButton(text="── не настроено ──", callback_data="settings_group_noop")])
         buttons.extend([[b] for b in unconfigured])
+    if token == "game":  # Quick 260822: режим уведомлений о сдачах — тумблер, не ввод кода
+        buttons.append([InlineKeyboardButton(text=await game_submit_notify_button_text(), callback_data="toggle_game_submit_notify")])
     if token == "event" and admin_id is not None and admin_id in config.ADMIN_IDS:
         # Phase 07.3 (02, RET-01, T-073-02-01): capability `settings` already gates this whole
         # screen, but «Новый сезон» is stricter — superadmin only. Hiding the button from a
