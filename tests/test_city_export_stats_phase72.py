@@ -302,11 +302,13 @@ def test_cmd_stats_and_show_admin_stats_delegate_to_render_stats_text(tmp_path):
             self.from_user = FakeUser(uid)
             self.sent = []
 
-        async def answer(self, text, parse_mode=None):
+        async def answer(self, text, parse_mode=None, reply_markup=None):
             self.sent.append(text)
 
     msg = _FakeAnswerMessage(ADMIN_ID)
     asyncio.run(admin_mod.cmd_stats(msg))
+    # ADMIN_ID is a superadmin (config.ADMIN_IDS) -- Phase 15 (D-10/D-12) never narrows a
+    # superadmin's own screen, so passing their real id still matches the admin_id=None text.
     expected = asyncio.run(admin_mod.render_stats_text())
     assert msg.sent[-1] == expected
 

@@ -78,8 +78,10 @@ KNOWN_OVERAGES: dict[str, tuple[int, str]] = {
         "роли + settings-guide (13-04)",
     ),
     "admin.py": (
-        840,
-        "сам агрегатор-ядро после 13-06, уже на границе GUIDELINE",
+        900,
+        "сам агрегатор-ядро после 13-06, уже на границе GUIDELINE; +52 строки (Phase 15, "
+        "STAT-03/D-10/D-18) -- городской скоуп render_stats_text по привязке staff.city + "
+        "кнопка «🌐 Открыть дашборд» (_stats_keyboard_for)",
     ),
     "user_actions.py": (
         1140,
