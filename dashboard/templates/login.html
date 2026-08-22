@@ -1,20 +1,17 @@
-<!doctype html>
-<html lang="ru">
-<head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Вход — дашборд статистики</title>
-</head>
-<body>
-  <p>Вход для организаторов по Telegram.</p>
-  {% if public_url and bot_username %}
-  <script async src="https://telegram.org/js/telegram-widget.js?22"
-    data-telegram-login="{{ bot_username }}"
-    data-size="large"
-    data-auth-url="{{ public_url }}/auth/callback"
-    data-request-access="write"></script>
-  {% else %}
-  <p>Вход временно недоступен — не задан адрес дашборда или бот.</p>
-  {% endif %}
-</body>
-</html>
+{% extends "base.html" %}
+{% block title %}Вход — дашборд статистики{% endblock %}
+{% block body %}
+  <div class="centered-card">
+    <h1>Вход для организаторов</h1>
+    <p>Войдите через Telegram, чтобы увидеть статистику мероприятия.</p>
+    {% if public_url and bot_username %}
+    <script async src="https://telegram.org/js/telegram-widget.js?22"
+      data-telegram-login="{{ bot_username }}"
+      data-size="large"
+      data-auth-url="{{ public_url }}/auth/callback"
+      data-request-access="write"></script>
+    {% else %}
+    <p>Вход временно недоступен — не задан адрес дашборда или бот этого стека.</p>
+    {% endif %}
+  </div>
+{% endblock %}
