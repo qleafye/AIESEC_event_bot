@@ -166,6 +166,17 @@ def _build_snapshot_lines():
 # buttons for pending_reminder_enabled / nudge_enabled (now declared enum in SETTINGS_SCHEMA),
 # registered in admin_settings.py right after `toggle_preselect_enabled` -- in-place insertion
 # among the sibling module toggles; both filter literals are unique.
+# Drift note (2026-08-22, quick 260822, списочные настройки по пунктам): 5 handlers inserted
+# (334 -> 339), re-captured by RUNNING `_build_snapshot_lines()` against HEAD and diffed
+# against the prior 334-line snapshot -- every pre-existing line byte-for-byte identical, no
+# reorders, no key changes. All five live in the NEW seam module handlers/admin_settings_lists.py
+# (imported as the last statement of admin_settings.py, so they land right after its last
+# handler, before admin_cities): message observer `settings_list_add_item`
+# (EditSetting.waiting_for_list_item -- a NEW state, so `settings_edit_value` on
+# waiting_for_value is unaffected) and callback observers `settings_list_add_start`
+# («➕ Добавить пункт»), `settings_list_del_pick` («🗑 Удалить пункт» picker),
+# `settings_list_rm_go` (tap on an item) and `settings_list_replace_start` («✏️ Заменить список
+# целиком»). Filter literals are unique prefixes (settings_list_del: vs settings_list_rm:).
 GOLDEN_SNAPSHOT = """
 admin|message|cmd_admin_help|cmd:admin
 admin|message|cmd_coins|cmd:coins
@@ -182,6 +193,7 @@ admin|message|settings_receive_file_photo|state:EditSetting:*
 admin|message|settings_receive_file_doc|state:EditSetting:*
 admin|message|settings_receive_file_invalid|state:EditSetting:*
 admin|message|settings_edit_value|state:EditSetting:*
+admin|message|settings_list_add_item|state:EditSetting:*
 admin|message|cancel_city_form|state:CityForm:*,state:CityForm:*
 admin|message|cancel_city_form|state:CityForm:*,state:CityForm:*
 admin|message|city_add_label_step|state:CityForm:*
@@ -281,6 +293,10 @@ admin|callback_query|sheets_tab_confirm_go|sheets_tab_confirm
 admin|callback_query|sheets_tab_cancel_go|sheets_tab_cancel
 admin|callback_query|show_admin_export|admin_export_csv
 admin|callback_query|export_incomplete|admin_export_incomplete
+admin|callback_query|settings_list_add_start|settings_list_add:*
+admin|callback_query|settings_list_del_pick|settings_list_del:*
+admin|callback_query|settings_list_rm_go|settings_list_rm:*
+admin|callback_query|settings_list_replace_start|settings_list_replace:*
 admin|callback_query|show_admin_cities|admin_cities
 admin|callback_query|toggle_event_city_enabled|toggle_event_city_enabled
 admin|callback_query|city_toggle|city_toggle:*
@@ -530,7 +546,7 @@ def test_snapshot_total_handler_count_is_292():
     """Second, independent invariant besides content — a handler silently added/removed
     without touching this file's golden text (impossible for a normal edit, but this guards
     against a golden-string typo slipping past review) is caught by count alone."""
-    assert len(GOLDEN_SNAPSHOT) == 334  # quick 260819: +toggle_preselect_enabled, +coinsman_amount_stale, +toggle_pending_reminder/+toggle_nudge_enabled
+    assert len(GOLDEN_SNAPSHOT) == 339  # quick 260819: +toggle_preselect_enabled, +coinsman_amount_stale, +toggle_pending_reminder/+toggle_nudge_enabled; quick 260822: +5 settings_list_*
 
 
 # ── Task 2(a): Dispatcher feed_update smoke — cross-router first-match routing ─────────────

@@ -28,6 +28,7 @@ ROOT = Path(__file__).resolve().parent.parent
 
 SEAMS = [
     "admin_settings",
+    "admin_settings_lists",
     "admin_cities",
     "admin_broadcasts",
     "admin_reg_config",

@@ -78,6 +78,9 @@ class EditSetting(StatesGroup):
     # Quick 260815-3hw (Task 3): confirm-gate before overwriting an EXISTING Google Sheets tab
     # (name collision on a tab the bot writes to) -- sheets_tab_confirm/sheets_tab_cancel.
     waiting_for_tab_confirm = State()
+    # Quick 260822: «➕ Добавить пункт» списочной настройки -- одно сообщение = один пункт
+    # (handlers/admin_settings_lists.py).
+    waiting_for_list_item = State()
 
 class StaffAdd(StatesGroup):
     # Phase 8 (ROLE-02, D-18): single-step wizard — one message resolves a person by
