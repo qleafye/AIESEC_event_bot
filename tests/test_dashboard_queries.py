@@ -19,13 +19,17 @@ from settings_schema import SETTINGS_SCHEMA
 
 from dashboard import db as dash_db
 from dashboard.queries import (
+    ALLOWED_BREAKDOWNS,
     Scope,
     _SETTING_DEFAULTS,
+    breakdown,
+    city_comparison,
     city_options,
     daily_registrations,
     dashboard_flags,
     dropout_steps,
     funnel,
+    game_block,
     kpi_row,
     season_options,
 )
@@ -40,7 +44,10 @@ def _use_tmp_db(tmp_path, name="dashboard_queries.db") -> str:
     return path
 
 
-async def _seed_async(cities=None, settings=None, users=None, reg_events=None, reg_started=None):
+async def _seed_async(
+    cities=None, settings=None, users=None, reg_events=None, reg_started=None,
+    game_tasks=None, game_submissions=None,
+):
     async with bot_db._connect() as conn:
         for code, label, enabled, sort_order in cities or []:
             await conn.execute(
@@ -71,6 +78,18 @@ async def _seed_async(cities=None, settings=None, users=None, reg_events=None, r
             placeholders = ", ".join("?" for _ in row)
             await conn.execute(
                 f"INSERT INTO reg_started ({cols}) VALUES ({placeholders})", tuple(row.values())
+            )
+        for row in game_tasks or []:
+            cols = ", ".join(row.keys())
+            placeholders = ", ".join("?" for _ in row)
+            await conn.execute(
+                f"INSERT INTO game_tasks ({cols}) VALUES ({placeholders})", tuple(row.values())
+            )
+        for row in game_submissions or []:
+            cols = ", ".join(row.keys())
+            placeholders = ", ".join("?" for _ in row)
+            await conn.execute(
+                f"INSERT INTO game_submissions ({cols}) VALUES ({placeholders})", tuple(row.values())
             )
         await conn.commit()
 
@@ -293,6 +312,151 @@ def test_city_options_empty_when_module_off_then_lists_enabled(tmp_path):
     with dash_db.read_conn(path) as conn:
         options = city_options(conn)
     assert options == [{"code": "msk", "label": "Москва"}]  # spb выключен (enabled=0)
+
+
+# ── breakdown (T-15-03-02) ───────────────────────────────────────────────────────────────
+
+def test_breakdown_rejects_unknown_column():
+    class _FakeConn:  # breakdown must raise before touching the connection at all
+        def execute(self, *a, **k):
+            raise AssertionError("must not query the DB for an unknown column")
+
+    try:
+        breakdown(_FakeConn(), "full_name", scope=Scope())
+    except ValueError:
+        pass
+    else:
+        raise AssertionError("expected ValueError for a column outside ALLOWED_BREAKDOWNS")
+
+
+def test_breakdown_counts_by_allowed_column_and_respects_scope(tmp_path):
+    path = _use_tmp_db(tmp_path)
+    _seed(
+        cities=[("msk", "Москва", 1, 0), ("spb", "СПб", 1, 1)],
+        settings={"event_city_enabled": "on"},
+        users=[
+            {"telegram_id": 1, "source": "vk", "event_city": "msk"},
+            {"telegram_id": 2, "source": "vk", "event_city": "msk"},
+            {"telegram_id": 3, "source": "instagram", "event_city": "spb"},
+            {"telegram_id": 4, "source": None, "event_city": "spb"},
+        ],
+    )
+    with dash_db.read_conn(path) as conn:
+        by_source = dict(breakdown(conn, "source", scope=Scope()))
+        by_source_spb = dict(breakdown(conn, "source", scope=Scope(city="spb")))
+    assert by_source == {"vk": 2, "instagram": 1}  # NULL отброшен, не превращён в 0
+    assert by_source_spb == {"instagram": 1}
+
+
+def test_breakdown_payment_option_gated_by_payment_enabled(tmp_path):
+    path = _use_tmp_db(tmp_path)
+    _seed(users=[{"telegram_id": 1, "payment_option": "full"}])
+    with dash_db.read_conn(path) as conn:
+        assert breakdown(conn, "payment_option", scope=Scope()) == []
+
+    _seed(settings={"payment_enabled": "on"})
+    with dash_db.read_conn(path) as conn:
+        assert breakdown(conn, "payment_option", scope=Scope()) == [("full", 1)]
+
+
+def test_breakdown_event_city_gated_by_event_city_enabled(tmp_path):
+    path = _use_tmp_db(tmp_path)
+    _seed(cities=[("msk", "Москва", 1, 0)], users=[{"telegram_id": 1, "event_city": "msk"}])
+    with dash_db.read_conn(path) as conn:
+        assert breakdown(conn, "event_city", scope=Scope()) == []
+
+    _seed(settings={"event_city_enabled": "on"})
+    with dash_db.read_conn(path) as conn:
+        assert breakdown(conn, "event_city", scope=Scope()) == [("msk", 1)]
+
+
+def test_allowed_breakdowns_is_the_only_gate_for_column_names():
+    for column in ALLOWED_BREAKDOWNS:
+        assert isinstance(column, str) and column.isidentifier()
+
+
+# ── city_comparison (D-10/D-15) ──────────────────────────────────────────────────────────
+
+def test_city_comparison_one_row_per_city_null_folds_into_default(tmp_path):
+    path = _use_tmp_db(tmp_path)
+    _seed(
+        cities=[("msk", "Москва", 1, 0), ("spb", "СПб", 1, 1)],
+        users=[
+            {"telegram_id": 1, "event_city": None, "status": "pending"},
+            {"telegram_id": 2, "event_city": "spb", "status": "approved"},
+        ],
+    )
+    with dash_db.read_conn(path) as conn:
+        rows = {row["code"]: row for row in city_comparison(conn, Scope())}
+    assert rows["msk"]["total"] == 1
+    assert rows["msk"]["pending"] == 1
+    assert rows["spb"]["total"] == 1
+    assert rows["spb"]["approved"] == 1
+
+
+# ── game_block (D-12) ────────────────────────────────────────────────────────────────────
+
+def test_game_block_none_when_toggle_off(tmp_path):
+    path = _use_tmp_db(tmp_path)
+    _seed(game_tasks=[{
+        "id": 1, "text": "t", "category": "photo", "coins": 10, "proof_type": "photo",
+        "deadline_at": "2026-09-01 00:00:00", "created_at": "2026-08-01 00:00:00",
+    }], game_submissions=[{
+        "task_id": 1, "user_id": 1, "content_type": "photo", "content": "file123",
+        "submitted_at": "2026-08-02 00:00:00", "status": "approved",
+    }])
+    with dash_db.read_conn(path) as conn:
+        assert game_block(conn, Scope()) is None  # dashboard_block_game default "off"
+
+
+def test_game_block_none_when_toggle_on_but_no_submissions(tmp_path):
+    path = _use_tmp_db(tmp_path)
+    _seed(settings={"dashboard_block_game": "on"})
+    with dash_db.read_conn(path) as conn:
+        assert game_block(conn, Scope()) is None
+
+
+def test_game_block_matches_get_game_stats_on_same_fixture(tmp_path):
+    path = _use_tmp_db(tmp_path)
+    _seed(
+        settings={"dashboard_block_game": "on"},
+        game_tasks=[
+            {"id": 1, "text": "t1", "category": "photo", "coins": 10, "proof_type": "photo",
+             "deadline_at": "2026-09-01 00:00:00", "created_at": "2026-08-01 00:00:00"},
+            {"id": 2, "text": "t2", "category": "video", "coins": 20, "proof_type": "video",
+             "deadline_at": "2026-09-01 00:00:00", "created_at": "2026-08-01 00:00:00"},
+        ],
+        game_submissions=[
+            {"task_id": 1, "user_id": 1, "content_type": "photo", "content": "a",
+             "submitted_at": "2026-08-02 00:00:00", "status": "approved"},
+            {"task_id": 2, "user_id": 1, "content_type": "video", "content": "b",
+             "submitted_at": "2026-08-02 00:00:00", "status": "pending"},
+            {"task_id": 1, "user_id": 2, "content_type": "photo", "content": "c",
+             "submitted_at": "2026-08-02 00:00:00", "status": "rejected"},
+        ],
+    )
+    reference = asyncio.run(bot_db.get_game_stats())
+    with dash_db.read_conn(path) as conn:
+        dashboard_stats = game_block(conn, Scope())
+    assert dashboard_stats == reference
+
+
+# ── T-15-03-03 (D-17): нет ПД в исходнике модуля ─────────────────────────────────────────
+
+_PII_TOKENS = ("full_name", "phone", "email", "vk_username", "resume")
+
+
+def test_queries_module_never_selects_pii_columns():
+    """Сканирует ВЕСЬ файл, КРОМЕ `_STEP_LABELS`/`_step_label` — те намеренно оперируют
+    step_key дропаута анкеты («email», «phone», «resume», «full_name» — это ключи словаря
+    подписей и специальный step_key, а не колонки в SELECT), см. модульный докстринг
+    `dashboard/queries.py`."""
+    text = DASHBOARD_QUERIES_FILE.read_text(encoding="utf-8")
+    start = text.index("_STEP_LABELS = {")
+    end = text.index("\ndef dropout_steps", start)
+    scanned = text[:start] + text[end:]
+    offenders = [token for token in _PII_TOKENS if token in scanned]
+    assert not offenders, f"dashboard/queries.py must never touch PII columns: {offenders}"
 
 
 # ── T-15-03-02: значения только через ?-параметры ────────────────────────────────────────
