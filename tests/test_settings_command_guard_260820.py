@@ -162,10 +162,12 @@ def _screen(tmp_path, key, preset=None):
     return text
 
 
-def test_list_screen_warns_about_full_replacement(tmp_path):
+def test_list_screen_points_to_item_buttons(tmp_path):
+    """Quick 260822: предупреждение «ВЕСЬ список» переехало на экран «✏️ Заменить список
+    целиком» (tests/test_settings_list_items_260822.py); сам экран списка — про кнопки."""
     text = _screen(tmp_path, LIST_KEY, preset=SOURCE_LIST)
-    assert "ВЕСЬ список" in text
-    assert "заменит" in text
+    assert "кнопками" in text
+    assert "Заменить список целиком" in text
 
 
 def test_list_screen_shows_items_one_per_line(tmp_path):
