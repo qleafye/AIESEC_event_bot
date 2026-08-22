@@ -190,6 +190,15 @@ def _build_snapshot_lines():
 # admin_settings.py -> lands right after the settings block, before admin_cities);
 # registration.router gained `consent_renew_accept` (seam handlers/reg_consent.py, imported
 # after reg_steps -> last in registration.router).
+#
+# Drift note (2026-08-22, Phase 15-02, D-19 dashboard settings screen): 2 handlers appended
+# (362 -> 364), re-captured by RUNNING `_build_snapshot_lines()` against HEAD and diffed
+# against the prior 362-line snapshot -- every pre-existing line byte-for-byte identical in
+# the same relative order, pure appends, no reorders. The two new lines are
+# `open_dashboard_settings` (`admin_dashboard_settings`, opens «📊 Дашборд») and
+# `toggle_dashboard_block` (`dash_block:*`, flips one of the eight block toggles), both in the
+# NEW seam module handlers/admin_dashboard.py, imported at the tail of admin_settings.py right
+# after admin_settings_lists -> land last among admin.router's handlers.
 GOLDEN_SNAPSHOT = """
 admin|message|cmd_admin_help|cmd:admin
 admin|message|cmd_coins|cmd:coins
@@ -316,6 +325,8 @@ admin|callback_query|settings_list_add_start|settings_list_add:*
 admin|callback_query|settings_list_del_pick|settings_list_del:*
 admin|callback_query|settings_list_rm_go|settings_list_rm:*
 admin|callback_query|settings_list_replace_start|settings_list_replace:*
+admin|callback_query|open_dashboard_settings|admin_dashboard_settings
+admin|callback_query|toggle_dashboard_block|dash_block:*
 admin|callback_query|show_admin_cities|admin_cities
 admin|callback_query|toggle_event_city_enabled|toggle_event_city_enabled
 admin|callback_query|city_toggle|city_toggle:*
@@ -587,7 +598,7 @@ def test_snapshot_total_handler_count_is_292():
     # poll_wizard_cancel = два декоратора) в хвост admin.message, 15 callback (список/карточка
     # admin_polls + мастер admin_poll_wizard) в хвост admin.callback_query; чистый аппенд,
     # перепроверен прогоном _build_snapshot_lines() и diff'ом с прежним 334-строчным снапшотом.
-    assert len(GOLDEN_SNAPSHOT) == 362  # quick 260819: +toggle_preselect_enabled, +coinsman_amount_stale, +toggle_pending_reminder/+toggle_nudge_enabled; quick 260822: +5 settings_list_*, +toggle_game_submit_notify, +toggle_consent_recollect, +consent_renew_accept; опросы 260822: +20 (342 -> 362 после слияния)
+    assert len(GOLDEN_SNAPSHOT) == 364  # quick 260819: +toggle_preselect_enabled, +coinsman_amount_stale, +toggle_pending_reminder/+toggle_nudge_enabled; quick 260822: +5 settings_list_*, +toggle_game_submit_notify, +toggle_consent_recollect, +consent_renew_accept; опросы 260822: +20 (342 -> 362 после слияния); Phase 15-02: +2 open_dashboard_settings/toggle_dashboard_block (362 -> 364)
 
 
 # ── Task 2(a): Dispatcher feed_update smoke — cross-router first-match routing ─────────────

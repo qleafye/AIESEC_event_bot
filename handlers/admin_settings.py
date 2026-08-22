@@ -493,6 +493,7 @@ async def build_settings_keyboard(admin_id: int | None = None):
         [InlineKeyboardButton(text="✏️ Тексты вопросов", callback_data="admin_reg_prompts")],
         [InlineKeyboardButton(text="🔘 Кнопки меню", callback_data="admin_menu_buttons")],
         [InlineKeyboardButton(text="👥 Роли и доступы", callback_data="admin_roles")],
+        [InlineKeyboardButton(text="📊 Дашборд", callback_data="admin_dashboard_settings")],
     ]
     for label, token in _settings_nav_groups():
         buttons.append([InlineKeyboardButton(text=label, callback_data=f"settings_group:{token}")])
@@ -1959,4 +1960,10 @@ from handlers.admin_consent import consent_group_extra_lines, consent_group_extr
 # module import order (same device as admin_gamification -> admin_game_tasks). Golden
 # snapshot: tests/test_refac_snapshot_260816.py.
 from handlers import admin_settings_lists  # noqa: E402,F401
+
+# ── Seam chain (Phase 15, 15-02): handlers/admin_dashboard.py (экран «📊 Дашборд» — тумблеры
+# блоков веб-дашборда) decorates the same admin.router. Imported LAST, after
+# admin_settings_lists, so its two handlers land right after every handler above at any module
+# import order. Golden snapshot: tests/test_refac_snapshot_260816.py.
+from handlers import admin_dashboard  # noqa: E402,F401
 
