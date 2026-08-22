@@ -215,6 +215,9 @@ def test_registry_coverage_event():
         # "system" added Phase 14 (CFG-01): proxy timings that used to live only in .env,
         # экран «🔧 Система».
         "system",
+        # "dashboard" added Phase 15 (15-02, D-19): восемь тумблеров блоков веб-дашборда,
+        # свой экран «📊 Дашборд» (handlers/admin_dashboard.py) — вне SETTINGS_FIELDS.
+        "dashboard",
     }
     allowed_types = {"toggle", "int", "list", "date", "text", "enum", "photo", "file"}
 
