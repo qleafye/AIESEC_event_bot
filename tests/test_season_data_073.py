@@ -134,6 +134,8 @@ def test_registry_event_order_unchanged_for_old_keys():
         # Phase 17.1 (17.1-03): empty-state'ы медиа/контактов и «❓ Задать вопрос».
         "program_empty_text", "speakers_empty_text", "contacts_empty_text",
         "ask_question_prompt_text", "ask_question_sent_text",
+        # Опросы (22.08): вступительный текст перед опросом -- в группе «событие».
+        "poll_intro_text",
     }
     filtered = [k for k in admin_settings._EVENT_FIELD_ORDER if k not in new_keys]
     assert filtered == old_order_literal

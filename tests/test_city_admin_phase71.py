@@ -118,15 +118,17 @@ def test_build_admin_keyboard_admin_cities_is_last_row_indices_unchanged(tmp_pat
     assert rows[-5][0].callback_data == "admin_game_review"
     assert rows[-6][0].callback_data == "admin_game_tasks"
     assert rows[-7][0].callback_data == "admin_cities"
-    expected_first_14 = [
+    # NOTE (feat/polls, 22.08): seventh break -- «📊 Опросы» (admin_polls) inserted right after
+    # «📢 Рассылка» (admin_broadcast); the prefix grew 14 -> 15.
+    expected_first_15 = [
         "admin_stats", "admin_monthly_stats", "admin_source_stats", "admin_export_csv",
         "admin_export_incomplete", "admin_applications", "admin_receipts",
-        "admin_stuck_questions", "admin_broadcast",
+        "admin_stuck_questions", "admin_broadcast", "admin_polls",
         "admin_sync_sheet", "admin_rebuild_sheet", "admin_dedupe_sheet", "admin_settings",
         "admin_settings_guide",
     ]
-    actual_first_14 = [rows[i][0].callback_data for i in range(14)]
-    assert actual_first_14 == expected_first_14
+    actual_first_15 = [rows[i][0].callback_data for i in range(15)]
+    assert actual_first_15 == expected_first_15
 
 
 def test_build_cities_keyboard_contains_toggle_and_per_city_buttons(tmp_path):
