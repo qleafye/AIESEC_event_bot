@@ -27,7 +27,7 @@ legacy literal tables in handlers/admin.py holds throughout the incremental migr
 """
 from datetime import datetime
 
-from database.db import get_setting
+from database.db import get_setting, DEFAULT_CONSENT_VERSION
 
 # REG-01: event-group entries — labels/prompts copied byte-for-byte from the pre-migration
 # literal SETTINGS_FIELDS/PHOTO_FIELDS/FILE_FIELDS tables (handlers/admin.py) so the render
@@ -741,6 +741,28 @@ SETTINGS_SCHEMA = {
         ),
         "default": None,
     },
+    # Quick 260822 (версионирование согласий): какую редакцию текста/PDF подписывает
+    # делегат. Пишется в аудит-таблицу при каждой подписи (database.db.record_user_consent);
+    # менеджер поднимает её руками, когда правит consent_list или перезаливает PDF.
+    "consent_version": {
+        "type": "text", "group": "consent", "label": "🔖 Версия согласия",
+        "prompt": (
+            "Метка редакции согласия — например 2026-08 или v2. Меняйте её при правке "
+            "текста или PDF согласия: так в заявке видно, кто подписал старую редакцию."
+        ),
+        "default": DEFAULT_CONSENT_VERSION,
+    },
+    "consent_recollect_text": {
+        "type": "text", "group": "consent", "label": "🔁 Текст просьбы пересогласиться",
+        "prompt": (
+            "Сообщение делегату перед повторным показом согласия, когда редакция "
+            "изменилась (показывается, если включено «Просить пересогласие»)."
+        ),
+        "default": (
+            "Мы обновили текст согласия на обработку данных. Пожалуйста, прочитайте "
+            "его ещё раз и подтвердите."
+        ),
+    },
 
     # ── REG-01/REG-02 (06-04, D-06/D-12): "reg_questions" group — every reg_q_* toggle.
     # Labels copied byte-for-byte from handlers/registration.py::REG_LABELS (cannot import
@@ -835,6 +857,12 @@ SETTINGS_SCHEMA = {
     "nudge_enabled": {
         "type": "enum", "group": "toggles", "label": "⏰ Догонялка брошенных анкет",
         "options": ["on", "off"], "prompt": None, "default": "on",
+    },
+    # Quick 260822: гейт пересогласия. Дефолт OFF — поведение /start для уже
+    # зарегистрированных не меняется, пока менеджер не включит тумблер в «📋 Согласия».
+    "consent_recollect_enabled": {
+        "type": "enum", "group": "toggles", "label": "🔁 Просить пересогласие при новой редакции",
+        "options": ["on", "off"], "prompt": None, "default": "off",
     },
     "edu_conditional": {
         "type": "enum", "group": "toggles", "label": "🎓 Условный вопрос об образовании",
