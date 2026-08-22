@@ -20,6 +20,7 @@ docker-сети `edge`. Самый внешний слой приложения 
 from __future__ import annotations
 
 import logging
+from dataclasses import replace
 from pathlib import Path
 from typing import Optional
 
@@ -31,11 +32,23 @@ from starlette.middleware.sessions import SessionMiddleware
 from uvicorn.middleware.proxy_headers import ProxyHeadersMiddleware
 
 from dashboard import queries
-from dashboard.access import has_stats, viewer_scope
+from dashboard.access import has_stats, staff_city, viewer_scope
 from dashboard.auth import session_middleware_kwargs, verify_login_payload
 from dashboard.config import DashboardConfig, load_config
 from dashboard.db import read_conn
 from dashboard.notify import notify_access_request
+
+# D-14: разрезы (сверх городов/тарифа, у которых своя логика показа) — фиксированный порядок
+# страницы (источник, вуз, курс, направление, трек), связь колонки/тумблера/подписи. `None`
+# в toggle_key означает «разрез не гасится тумблером» (трек в D-19 не заведён).
+_BREAKDOWN_CUTS: tuple[tuple[str, str, "str | None"], ...] = (
+    ("source", "Источник", "dashboard_block_sources"),
+    ("university", "ВУЗ", "dashboard_block_universities"),
+    ("course", "Курс", "dashboard_block_courses"),
+    ("study_field", "Направление обучения", "dashboard_block_study_fields"),
+    ("participant_type", "Трек", None),
+    ("payment_option", "Тариф", None),  # гасится payment_enabled внутри queries.breakdown
+)
 
 logger = logging.getLogger(__name__)
 
@@ -46,20 +59,118 @@ STATIC_DIR = BASE_DIR / "static"
 templates = Jinja2Templates(directory=str(TEMPLATES_DIR))
 
 
+def _bar_rows(rows: list[tuple[str, int]]) -> list[dict]:
+    """Пары (подпись, число) → готовые для рендера строки с процентом ширины бара
+    относительно максимума в наборе (T-15-05-02: значения экранируются самим Jinja2 при
+    рендере, здесь только числа)."""
+    if not rows:
+        return []
+    top = max(count for _, count in rows) or 1
+    return [
+        {"label": label, "count": count, "pct": round(count / top * 100, 1)}
+        for label, count in rows
+    ]
+
+
+def _funnel_display(rows: "list[tuple[str, int]] | None") -> "dict | None":
+    """`None` — блок выключен тумблером (D-19: блока нет вовсе). Иначе — ширина бара каждой
+    ступени относительно ПЕРВОЙ ступени (классическая воронка, не относительно максимума —
+    ступени монотонно убывают), плюс `has_data`, чтобы шаблон мог показать заглушку «пока
+    нет данных» вместо нулевой графики."""
+    if rows is None:
+        return None
+    baseline = rows[0][1] if rows else 0
+    has_data = any(count for _, count in rows)
+    steps = [
+        {
+            "label": label,
+            "count": count,
+            "pct": round(count / baseline * 100, 1) if baseline else 0,
+        }
+        for label, count in rows
+    ]
+    return {"steps": steps, "has_data": has_data}
+
+
+def _city_label(conn, code: "str | None") -> "str | None":
+    if not code:
+        return None
+    row = conn.execute("SELECT label FROM cities WHERE code = ?", (code,)).fetchone()
+    return row["label"] if row is not None else code
+
+
 def build_page_context(conn, cfg: DashboardConfig, scope: queries.Scope, viewer: dict) -> dict:
-    """Собирает весь контекст страницы одним вызовом, чтобы шаблон сам не звал БД (D-16:
-    считаем на лету на каждый запрос, без кэша). Task 3 разворачивает это до полного набора
-    блоков (воронка/динамика/разрезы/«где бросают»/гейма) — здесь уже готовы `event_name` и
-    флаги тумблеров, которыми Task 3 управляет видимостью блоков."""
+    """Собирает ВЕСЬ контекст страницы одним вызовом — шаблон сам не зовёт БД (D-16: на лету
+    на каждый запрос, без кэша). Каждый блок гасится своим тумблером `dashboard_block_*`
+    (D-19: выключен — блока нет вовсе, а не пустая карточка) — сама заглушка «пока нет
+    данных» для включённого, но пустого блока рисуется в шаблоне по `has_data`/пустому списку.
+    """
     flags = queries.dashboard_flags(conn)
+
+    funnel_rows = queries.funnel(conn, scope) if flags.get("dashboard_block_funnel") == "on" else None
+    daily_rows = (
+        queries.daily_registrations(conn, scope)
+        if flags.get("dashboard_block_dynamics") == "on"
+        else None
+    )
+    dropout_rows = (
+        queries.dropout_steps(conn, scope) if flags.get("dashboard_block_dropout") == "on" else None
+    )
+
+    city_options = queries.city_options(conn)
+    bound_city_code = viewer.get("bound_city")
+    # D-15: свитчер городов — только когда модуль городов включён И зритель не привязан к
+    # своему городу (у привязанного менеджера — статичная подпись, без выбора, D-10).
+    show_city_switcher = bool(city_options) and not bound_city_code
+    city_cut = None
+    if city_options and scope.city is None:
+        # «Все города» — сравнение городов рядом (семантика render_stats_text), а не разрез
+        # одного из них.
+        city_cut = queries.city_comparison(conn, scope)
+
+    cuts: list[dict] = []
+    for column, title, toggle_key in _BREAKDOWN_CUTS:
+        if toggle_key is not None and flags.get(toggle_key) != "on":
+            continue
+        if column == "payment_option" and flags.get("payment_enabled") != "on":
+            continue  # тариф — только при оплате (D-14), тумблера у него нет
+        rows = queries.breakdown(conn, column, scope=scope, limit=10)
+        cuts.append({"title": title, "rows": _bar_rows(rows), "has_data": bool(rows)})
+
+    game_stats = queries.game_block(conn, scope) if flags.get("dashboard_block_game") == "on" else None
+
+    daily_chart = None
+    if daily_rows is not None and daily_rows:
+        # NB: ключ НЕ "values" — у dict есть одноимённый встроенный метод, и Jinja2 сначала
+        # пробует getattr (тогда `daily_chart.values` вернёт bound-метод, а не список).
+        daily_chart = {
+            "labels": [day for day, _ in daily_rows],
+            "counts": [count for _, count in daily_rows],
+        }
+
     return {
         "event_name": flags.get("event_name"),
-        "event_season": flags.get("event_season"),
-        "flags": flags,
+        "event_season": scope.season or flags.get("event_season"),
         "viewer": viewer,
         "scope": scope,
-        "city_options": queries.city_options(conn),
+        "city_options": city_options,
+        "show_city_switcher": show_city_switcher,
+        "bound_city_label": _city_label(conn, bound_city_code),
         "season_options": queries.season_options(conn),
+        "kpi": queries.kpi_row(conn, scope),
+        "funnel": _funnel_display(funnel_rows),
+        "dynamics_enabled": daily_rows is not None,
+        "daily_chart": daily_chart,
+        "city_cut": (
+            {"rows": city_cut} if city_cut is not None else None
+        ),
+        "cuts": cuts,
+        "dropout": (
+            {"rows": _bar_rows(dropout_rows), "has_data": bool(dropout_rows)}
+            if dropout_rows is not None
+            else None
+        ),
+        "game": game_stats,
     }
 
 
@@ -144,10 +255,15 @@ def _build_asgi_app(cfg: DashboardConfig) -> FastAPI:
                     request, "no_access.html", {}, status_code=403
                 )
 
-            scope = viewer_scope(conn, telegram_id, cfg.admin_ids, city)
+            # D-13: сезон резолвится отдельно от города — viewer_scope закрывает только
+            # городскую ось (D-10), season из query подставляется поверх её результата.
+            scope = replace(viewer_scope(conn, telegram_id, cfg.admin_ids, city), season=season)
+            # D-10: привязка к городу — источник правды для «свитчер показывать или нет»,
+            # а НЕ просто scope.city (тот совпадает со своим городом и у привязанного, и у
+            # свободного зрителя, выбравшего конкретный город из списка).
             viewer = {
                 "telegram_id": telegram_id,
-                "bound_city": scope.city if scope.city else None,
+                "bound_city": staff_city(conn, telegram_id),
             }
             context = build_page_context(conn, cfg, scope, viewer)
 
