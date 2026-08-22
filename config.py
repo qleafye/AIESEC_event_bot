@@ -92,6 +92,12 @@ class Settings(BaseSettings):
     # (/tmp/aiesec-bot-heartbeat в контейнере): volume не нужен, доступен UID 1000.
     HEARTBEAT_PATH: str = ""
 
+    # Phase 15 (D-05/D-18): per-stack bootstrap — публичный адрес дашборда этого стека
+    # (напр. https://yl26.alekseev.info). Пусто = кнопка «🌐 Открыть дашборд» на экране
+    # 📊 Статистика скрыта. Живёт в .env, не в bot_settings — это адрес самого стека, не
+    # настройка, которую менеджер меняет из бота.
+    DASHBOARD_PUBLIC_URL: str = ""
+
     # IN-06: pydantic v2 idiom (was the deprecated inner `class Config`).
     # extra="ignore" tolerates undeclared .env keys (e.g. legacy flags) — don't crash boot.
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")

@@ -225,16 +225,39 @@ async def render_monthly_stats() -> str:
 # f-strings). The base text (through the top-3-universities loop) is UNCHANGED, character for
 # character, from what both call sites built before this plan.
 #
-# The «По городам» block below is the DELIBERATE EXCEPTION to city scoping (07.2-CONTEXT.md):
-# every other admin surface in this phase filters by the admin's SELECTED city
-# (_admin_city_scope) — this screen does not. The lead needs to compare cities side by side on
-# one screen, not click through each one and add totals by hand. Do not "fix" this into a
-# filtered view.
-async def render_stats_text() -> str:
-    total, top_unis = await get_stats()
+# The «По городам» block below is a DELIBERATE EXCEPTION to city scoping (07.2-CONTEXT.md) in
+# one very specific sense: `_admin_city_scope` — the admin's own UI toggle in the shapka,
+# changeable per-session — never filters THIS screen. That part still holds and is regression-
+# tested (test_render_stats_text_identical_regardless_of_selected_admin_city).
+#
+# Phase 15 (D-10, owner decision 22.08) narrows the SAME screen by a DIFFERENT axis: the
+# manager's BOUND city (`staff.city`, set once by an admin assigning them, not chosen by the
+# viewer). `admin_id=None` (both call sites below always pass a real id; None only remains for
+# the pre-Phase-15 test callers) reproduces the exact byte-identical unscoped text. A bound
+# manager sees ONE city row (their own) and narrowed totals/ВУЗы; a superadmin
+# (`config.ADMIN_IDS`) is NEVER narrowed even if they happen to carry a binding — same D-12
+# convention `capability_holders` already applies. Do not resurrect this as an
+# `_admin_city_scope` read — that would silently let the shapka toggle leak into this screen.
+async def render_stats_text(admin_id: int | None = None) -> str:
+    city_scope_val = None
+    own_city_code = None
+    own_city_label = None
+    if admin_id is not None and await cities_module_on():
+        # D-12 convention (mirrors capability_holders in admin_caps.py): a superadmin's own
+        # screen is never narrowed, even if they happen to also carry a staff.city binding.
+        is_superadmin = admin_id in config.ADMIN_IDS
+        if not is_superadmin:
+            bound_city = await get_staff_city(admin_id)
+            if bound_city:
+                own_city_code = normalize_city(bound_city)
+                city_scope_val = city_scope(bound_city)
+                own_city_label = html_module.escape(await city_label(own_city_code))
 
+    total, top_unis = await get_stats(city_scope=city_scope_val)
+
+    header_suffix = f" — {own_city_label}" if own_city_label else ""
     text = (
-        f"📊 <b>Статистика:</b>\n"
+        f"📊 <b>Статистика{header_suffix}:</b>\n"
         f"Всего регистраций: {total}\n"
         f"🏆 <b>Топ-3 ВУЗа:</b>\n"
     )
@@ -242,10 +265,25 @@ async def render_stats_text() -> str:
     for i, (uni, count) in enumerate(top_unis, 1):
         text += f"{i}. {html_module.escape(str(uni))} — {count}\n"
 
-    # Phase 07.3 (05, RET-03): счётчик повторных делегатов — глобальный, без городского
-    # разреза (CONTEXT.md блок C: «одна строка»), поэтому строка идёт ДО опционального блока
-    # «🏙 По городам», а не внутри if await cities_module_on().
-    text += f"🔁 Повторных: {await get_returning_count()}\n"
+    # Phase 07.3 (05, RET-03): счётчик повторных делегатов — глобальный (без городского
+    # разреза) в НЕсуженном режиме; в суженном режиме (D-10) считается по тому же city_scope.
+    text += f"🔁 Повторных: {await get_returning_count(city_scope=city_scope_val)}\n"
+
+    if own_city_code is not None:
+        # D-10 scoped mode: ровно ОДНА строка города (привязка менеджера), без «Итого» — она
+        # дублировала бы единственную строку. get_city_counts() остаётся нефильтрованным
+        # (небольшой датасет) — коллапс NULL/неизвестного кода в дефолтный город делается
+        # здесь же, тем же способом, что и в нессуженной ветке ниже.
+        rows = await get_city_counts()
+        t = p = a = 0
+        for raw_city, cnt, pending, approved in rows:
+            if normalize_city(raw_city) == own_city_code:
+                t += cnt or 0
+                p += pending or 0
+                a += approved or 0
+        text += "\n🏙 <b>По городам:</b>\n"
+        text += f"• {own_city_label} — всего {t}, на модерации {p}, одобрено {a}\n"
+        return text
 
     # WR-06: `and CITIES` — с пустым реестром (битый EVENT_CITIES в .env) `normalize_city`
     # отдаёт литерал "msk", которого в CITIES нет: цикл рендера не выводил НИ ОДНОЙ строки
@@ -286,6 +324,19 @@ async def render_stats_text() -> str:
         text += f"• <b>Итого</b> — всего {grand_total}, на модерации {grand_pending}, одобрено {grand_approved}\n"
 
     return text
+
+
+# Phase 15 (D-18): kept adjacent to render_stats_text — the ONE keyboard both cmd_stats and
+# show_admin_stats attach. Prepends the dashboard-entry button (own row, first) on top of the
+# ordinary capability-filtered admin panel whenever a public URL is configured (bootstrap-only,
+# config.DASHBOARD_PUBLIC_URL — never a bot_settings key, D-05). No new callback_data is
+# introduced (it's a `url=` button), so ADMIN_CAPS needs no new entry.
+async def _stats_keyboard_for(user_id: int) -> InlineKeyboardMarkup:
+    base = await admin_keyboard_for(user_id)
+    if not config.DASHBOARD_PUBLIC_URL:
+        return base
+    dashboard_row = [InlineKeyboardButton(text="🌐 Открыть дашборд", url=config.DASHBOARD_PUBLIC_URL)]
+    return InlineKeyboardMarkup(inline_keyboard=[dashboard_row] + base.inline_keyboard)
 
 
 @router.message(Command("admin"))
@@ -617,7 +668,11 @@ async def admin_reply_to_question(message: types.Message, bot: Bot):
 
 @router.message(Command("stats"))
 async def cmd_stats(message: types.Message):
-    await message.answer(await render_stats_text(), parse_mode="HTML")
+    admin_id = message.from_user.id
+    await message.answer(
+        await render_stats_text(admin_id), parse_mode="HTML",
+        reply_markup=await _stats_keyboard_for(admin_id),
+    )
 
 
 @router.message(Command("stats_monthly"))
@@ -627,8 +682,9 @@ async def cmd_stats_monthly(message: types.Message):
 
 @router.callback_query(F.data == "admin_stats")
 async def show_admin_stats(callback: types.CallbackQuery):
-    text = await render_stats_text()
-    await callback.message.edit_text(text, parse_mode="HTML", reply_markup=await admin_keyboard_for(callback.from_user.id))
+    admin_id = callback.from_user.id
+    text = await render_stats_text(admin_id)
+    await callback.message.edit_text(text, parse_mode="HTML", reply_markup=await _stats_keyboard_for(admin_id))
     await callback.answer()
 
 
