@@ -6,8 +6,15 @@
 """
 from __future__ import annotations
 
+import logging
 import os
 from dataclasses import dataclass
+
+logger = logging.getLogger(__name__)
+
+# D-03 (пересмотр 22.08): подсеть docker-сети `edge`, в которой живёт контейнер cloudflared —
+# единственный возможный источник запроса к origin (порты наружу не публикуются, план 15-06).
+DEFAULT_TRUSTED_PROXIES = "172.31.0.0/16"
 
 
 def _parse_admin_ids(raw: str) -> tuple[int, ...]:
@@ -40,6 +47,7 @@ class DashboardConfig:
     admin_ids: tuple[int, ...]
     proxy_url: str | None
     event_city_default: str
+    trusted_proxies: str
 
 
 def load_config(env: dict | None = None) -> DashboardConfig:
@@ -54,6 +62,13 @@ def load_config(env: dict | None = None) -> DashboardConfig:
             "cookie-сессии предсказуема. Сгенерируйте случайную строку, например: "
             "python -c \"import secrets; print(secrets.token_hex(32))\""
         )
+    trusted_proxies = source.get("DASHBOARD_TRUSTED_PROXIES", DEFAULT_TRUSTED_PROXIES) or DEFAULT_TRUSTED_PROXIES
+    if trusted_proxies.strip() == "*":
+        logger.warning(
+            "DASHBOARD_TRUSTED_PROXIES=* — доверяем заголовкам X-Forwarded-Proto/-For от "
+            "кого угодно. Так можно, только если снаружи к порту 8000 нет доступа."
+        )
+
     return DashboardConfig(
         db_path=source.get("DASHBOARD_DB_PATH", "data/forum.db"),
         public_url=source.get("DASHBOARD_PUBLIC_URL", ""),
@@ -63,4 +78,5 @@ def load_config(env: dict | None = None) -> DashboardConfig:
         admin_ids=_parse_admin_ids(source.get("ADMIN_IDS", "")),
         proxy_url=source.get("PROXY_URL") or None,
         event_city_default=source.get("EVENT_CITY_DEFAULT", "msk"),
+        trusted_proxies=trusted_proxies,
     )
