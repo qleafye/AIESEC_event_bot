@@ -46,6 +46,7 @@ _ADMIN_MENU_ROWS: list[tuple[str, str]] = [
     ("🧾 Чеки", "admin_receipts"),
     ("🔒 Залипшие вопросы", "admin_stuck_questions"),
     ("📢 Рассылка", "admin_broadcast"),
+    ("📊 Опросы", "admin_polls"),  # рядом с рассылками: та же аудитория, то же право
     ("🔄 Синхронизация таблицы", "admin_sync_sheet"),
     ("♻️ Пересобрать таблицу", "admin_rebuild_sheet"),
     ("🧹 Убрать дубли из таблицы", "admin_dedupe_sheet"),
