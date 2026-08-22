@@ -14,7 +14,7 @@ from aiogram.types import FSInputFile, ReplyKeyboardRemove, InlineKeyboardMarkup
 from aiogram.utils.keyboard import ReplyKeyboardBuilder
 
 from config import config
-from database.db import add_user, get_user, get_setting, set_setting, mark_reg_started, clear_reg_started, set_reg_step, set_user_subscribed, set_user_status, record_user_consent, get_user_consents, get_reg_started_track, get_reg_started_city, has_short_incomplete, _csv_safe, get_incomplete_rows_with_city, reset_payment_for_new_season
+from database.db import add_user, get_user, get_setting, set_setting, mark_reg_started, clear_reg_started, set_reg_step, set_user_subscribed, set_user_status, record_user_consent, get_user_consents, get_reg_started_track, get_reg_started_city, has_short_incomplete, _csv_safe, get_incomplete_rows_with_city, reset_payment_for_new_season, record_reg_event  # Phase 15 (STAT-03, D-06): funnel event log
 from settings_schema import SETTINGS_SCHEMA, get_setting_typed  # REG-01/D-06 (06-04): REG_DEFAULTS derivation source; get_setting_typed (06-06 gate migration)
 from cities import CITIES, all_cities, normalize_city, is_default_city, city_tab_base, cities_module_on, is_city_enabled, city_label, enabled_cities, tab_suffix, get_setting_for_city, get_setting_typed_for_city  # Phase 07.1 (CITY-01/CITY-02/CITY-03): city registry — _city_tag_map() + city_row_tab + city fork below; tab_suffix added quick 260815-3hw (TABS-01/02/03, replaces the raw TAB_SUFFIX import); get_setting_for_city/get_setting_typed_for_city added Phase 09.2-04 (CITY-04): per-city text/mode resolver; all_cities added Phase 14 (CITY-07)
 from handlers.states import Registration
@@ -1414,6 +1414,14 @@ async def _start_registration_flow(message: types.Message, state: FSMContext, re
     except Exception as e:
         logger.error(f"Failed to mark reg_started for {message.from_user.id}: {e}")
 
+    # Phase 15 (STAT-03, D-06): funnel log -- same city as mark_reg_started above, own
+    # try/except (fail-soft, order-independent from the write above).
+    try:
+        _season = await get_setting_typed("event_season") or None
+        await record_reg_event(message.from_user.id, "form_started", event_city=saved_city, season=_season)
+    except Exception as e:
+        logger.warning(f"record_reg_event(form_started) failed for {message.from_user.id}: {e}")
+
     saved_referrer_id = referrer_id or existing_data.get("referrer_id")
     saved_source_tag = source_tag or existing_data.get("source")
     # A src_ deep-link tag is authoritative: skip the «Источник» question so the delegate's
@@ -1616,6 +1624,16 @@ def _is_returning_row(user: dict | None, event_season: str | None) -> bool:
 async def cmd_start(message: types.Message, state: FSMContext, bot: Bot, command: CommandObject | None = None):
     user_id = message.from_user.id
     logger.info(f"User {user_id} requested /start")
+
+    # Phase 15 (STAT-03, D-06): funnel log -- top of the funnel, BEFORE every other gate
+    # below (subscription check, pre-selection) so a Nextcloud/subscription/allowlist hiccup
+    # can never suppress it. Own try/except, fail-soft -- a log write must never block /start.
+    # City is not yet known at this point (dl_event_city is resolved further down) -- None.
+    try:
+        _season = await get_setting_typed("event_season") or None
+        await record_reg_event(user_id, "start", season=_season)
+    except Exception as e:
+        logger.warning(f"record_reg_event(start) failed for {user_id}: {e}")
 
     # QW-02: observe-only subscription check — never blocks the user (D-04), never crashes /start (D-07).
     # HG-02: normalize the stored contact_tg link (t.me/foo) to a @username get_chat_member accepts.
@@ -2152,6 +2170,16 @@ async def finalize_registration(message: types.Message, state: FSMContext, bot: 
         f"user={message.from_user.id} action=registration_complete "
         f"mode={await get_setting('registration_mode') or 'short'} name={data.get('full_name')!r}"
     )
+
+    # Phase 15 (STAT-03, D-06): funnel log -- AFTER add_user succeeded above, so a failed
+    # save never logs a phantom completion. Own try/except, fail-soft.
+    try:
+        await record_reg_event(
+            message.from_user.id, "form_completed",
+            event_city=data.get("event_city"), season=season,
+        )
+    except Exception as e:
+        logger.error(f"record_reg_event(form_completed) failed for {message.from_user.id}: {e}")
 
     # SCHED-02: registration finished — drop the dropout row (fail-soft).
     try:
