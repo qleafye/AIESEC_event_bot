@@ -477,6 +477,23 @@ async def init_db():
             "ON game_submit_digest_queue(sent_at, city)"
         )
 
+        # Phase 15 (STAT-03, D-06): append-only registration-funnel event log -- the top of
+        # the funnel (start / form_started / form_completed) is otherwise physically
+        # unrecoverable from `reg_started` (a keyed UPSERT, not a log). No UNIQUE: every call
+        # is a genuine new row, repeats are expected (a delegate can /start many times).
+        # Index supports the daily-funnel query (GROUP BY substr(ts, 1, 10), filtered by event).
+        await db.execute('''
+            CREATE TABLE IF NOT EXISTS reg_events (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                telegram_id INTEGER NOT NULL,
+                event TEXT NOT NULL,
+                event_city TEXT,
+                season TEXT,
+                ts TEXT NOT NULL
+            )
+        ''')
+        await db.execute('CREATE INDEX IF NOT EXISTS idx_reg_events_event_ts ON reg_events(event, ts)')
+
         # Indexes under the hot admin/scheduler queries. Each one mirrors a real WHERE/ORDER BY
         # in this module (see the comments in _HOT_PATH_INDEXES); nothing speculative.
         await _ensure_hot_path_indexes(db)
@@ -716,19 +733,25 @@ async def get_all_users_dicts() -> list[dict]:
         async with db.execute('SELECT * FROM users ORDER BY registration_date') as cursor:
             return [dict(row) for row in await cursor.fetchall()]
 
-async def get_stats():
+async def get_stats(*, city_scope: tuple | None = None):
+    """`city_scope=None` (default) is byte-identical to the pre-Phase-15 query and result --
+    this is the parity contract Phase 07.2's stats tests depend on (D-10 city-scoping must
+    never touch the unscoped call)."""
+    frag, city_params = _city_clause(city_scope)
+    total_extra = f" WHERE {frag}" if frag else ""
+    uni_extra = f" AND {frag}" if frag else ""
     async with _connect() as db:
-        async with db.execute('SELECT COUNT(*) FROM users') as cursor:
+        async with db.execute(f'SELECT COUNT(*) FROM users{total_extra}', tuple(city_params)) as cursor:
             total = (await cursor.fetchone())[0]
 
-        async with db.execute('''
+        async with db.execute(f'''
             SELECT university, COUNT(*) as cnt
             FROM users
-            WHERE university IS NOT NULL AND TRIM(university) != '' AND university != '-'
+            WHERE university IS NOT NULL AND TRIM(university) != '' AND university != '-'{uni_extra}
             GROUP BY university
             ORDER BY cnt DESC
             LIMIT 3
-        ''') as cursor:
+        ''', tuple(city_params)) as cursor:
             top_universities = await cursor.fetchall()
 
     return total, top_universities
@@ -765,12 +788,16 @@ async def mark_season_ended(old_season: str | None) -> int:
         return cursor.rowcount
 
 
-async def get_returning_count() -> int:
+async def get_returning_count(*, city_scope: tuple | None = None) -> int:
     """Delegates with a non-empty prev_season — set only by a returning-delegate
-    re-registration (plan 04), never by a fresh add_user of a new delegate."""
+    re-registration (plan 04), never by a fresh add_user of a new delegate.
+    `city_scope=None` (default) is byte-identical to the pre-Phase-15 query/result."""
+    frag, city_params = _city_clause(city_scope)
+    extra = f" AND {frag}" if frag else ""
     async with _connect() as db:
         async with db.execute(
-            "SELECT COUNT(*) FROM users WHERE prev_season IS NOT NULL AND TRIM(prev_season) != ''"
+            f"SELECT COUNT(*) FROM users WHERE prev_season IS NOT NULL AND TRIM(prev_season) != ''{extra}",
+            tuple(city_params),
         ) as cursor:
             row = await cursor.fetchone()
             return int(row[0]) if row and row[0] is not None else 0
@@ -1189,6 +1216,40 @@ async def mark_reg_started(
 async def clear_reg_started(telegram_id: int):
     async with _connect() as db:
         await db.execute("DELETE FROM reg_started WHERE telegram_id = ?", (telegram_id,))
+        await db.commit()
+
+
+# ── Phase 15 (STAT-03, D-06): append-only registration-funnel event log ──────
+# Deliberately separate from reg_started above -- reg_started is a keyed UPSERT (one row per
+# telegram_id, overwritten on every re-entry), so the moment a delegate re-/start's or the
+# recovery flow re-fires, the ORIGINAL "when did the funnel start" fact is gone. This table
+# never overwrites: every call is a new row, so the dashboard's top-of-funnel counts survive
+# any number of re-entries per person.
+REG_EVENT_KINDS = ("start", "form_started", "form_completed")
+
+
+async def record_reg_event(
+    telegram_id: int,
+    event: str,
+    *,
+    event_city: str | None = None,
+    season: str | None = None,
+) -> None:
+    """Append-only funnel write (D-06). `ts` uses the SAME format as mark_reg_started's
+    started_at (not .isoformat()) so the dashboard's daily grouping via substr(ts, 1, 10)
+    needs no parsing. `event` outside REG_EVENT_KINDS is still written -- a caller's typo must
+    never silently drop a funnel row -- but logged at WARNING so it doesn't go unnoticed."""
+    if event not in REG_EVENT_KINDS:
+        logger.warning(
+            "record_reg_event: unexpected event kind %r for telegram_id=%s", event, telegram_id
+        )
+    ts = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    async with _connect() as db:
+        await db.execute(
+            "INSERT INTO reg_events (telegram_id, event, event_city, season, ts) "
+            "VALUES (?, ?, ?, ?, ?)",
+            (telegram_id, event, event_city, season, ts),
+        )
         await db.commit()
 
 
