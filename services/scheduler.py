@@ -236,6 +236,8 @@ async def init_scheduler(bot):
     # импорт — game_digest сам импортирует этот модуль.
     from services.game_digest import rearm_pending_digests
     await rearm_pending_digests()
+    # Опросы: та же реконсиляция для отложенных/недосланных опросов (poll_{id} date jobs).
+    await reconcile_scheduled_polls()
     # Nothing (interval or date) may fire until the whole schedule above is assembled.
     _scheduler.resume()
     logger.info(
@@ -467,6 +469,74 @@ def cancel_broadcast_job(broadcast_id: int):
         get_scheduler().remove_job(f"bcast_{broadcast_id}")
     except Exception as e:
         logger.warning(f"cancel_broadcast_job({broadcast_id}): {e}")
+
+
+# ── Опросы: отложенная отправка (зеркало scheduled broadcasts) ───────────────────────────────
+
+async def send_scheduled_poll(poll_id: int):
+    """Date-job target: рассылает опрос его аудитории. Аргумент — только int (picklable),
+    бот — из модульного глобала. Клейм/чекпоинт/идемпотентность — внутри deliver_poll."""
+    try:
+        from services.polls import deliver_poll
+        await deliver_poll(_bot, poll_id)
+    except Exception as e:
+        logger.error(f"send_scheduled_poll({poll_id}) failed: {e}")
+
+
+def schedule_poll_job(poll_id: int, run_at: datetime):
+    get_scheduler().add_job(
+        send_scheduled_poll, "date",
+        run_date=run_at, args=[poll_id],
+        id=f"poll_{poll_id}", replace_existing=True,
+    )
+
+
+def cancel_poll_job(poll_id: int):
+    try:
+        get_scheduler().remove_job(f"poll_{poll_id}")
+    except Exception as e:
+        logger.warning(f"cancel_poll_job({poll_id}): {e}")
+
+
+async def reconcile_scheduled_polls():
+    """На буте: 'sending' старше порога → обратно в 'scheduled' (крах посреди рассылки),
+    затем каждому 'scheduled' без живой джобы ставится джоба заново. Просроченные дальше
+    misfire-грейса уходят через минуту (поздно лучше, чем никогда — та же сделка, что у
+    рассылок). Fail-soft: никогда не блокирует старт."""
+    try:
+        from database.db import list_polls, reclaim_stale_sending_polls
+        try:
+            reclaimed = await reclaim_stale_sending_polls(_STALE_SENDING_MINUTES)
+            if reclaimed:
+                logger.warning(f"reconcile: reclaimed poll(s) stuck in 'sending': {reclaimed}")
+        except Exception as e:
+            logger.error(f"reconcile: reclaim_stale_sending_polls failed: {e}")
+        sched = get_scheduler()
+        now = _now_moscow_naive()
+        recovered = 0
+        for row in await list_polls(statuses=("scheduled",)):
+            pid = row["id"]
+            if sched.get_job(f"poll_{pid}") is not None:
+                continue
+            try:
+                run_at = datetime.strptime((row.get("scheduled_at") or "").strip(), "%Y-%m-%d %H:%M:%S")
+            except ValueError:
+                logger.warning(f"reconcile: poll {pid} has unparseable scheduled_at — skipped")
+                continue
+            if (now - run_at).total_seconds() > _MISFIRE_GRACE_SECONDS:
+                late_at = now + timedelta(minutes=1)
+                logger.warning(
+                    f"reconcile: poll {pid} scheduled at {row['scheduled_at']} is older than the "
+                    f"misfire grace — sending late at {_fmt_dt(late_at)}"
+                )
+                schedule_poll_job(pid, late_at)
+            else:
+                schedule_poll_job(pid, run_at)
+            recovered += 1
+        if recovered:
+            logger.warning(f"Reconciled {recovered} scheduled poll(s) with dropped jobs")
+    except Exception as e:
+        logger.error(f"reconcile_scheduled_polls failed: {e}")
 
 
 # ── PAY-06: payment-deadline reminders (D-13) ────────────────────────────────
