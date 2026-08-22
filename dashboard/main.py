@@ -220,7 +220,7 @@ def _build_asgi_app(cfg: DashboardConfig) -> FastAPI:
                 status_code=400,
             )
         # D-09: в сессию — ТОЛЬКО telegram_id (плюс имя/username для приветствия). Набор прав
-        # не кэшируется — каждый защищённый маршрут пересверяет his_stats заново.
+        # не кэшируется — каждый защищённый маршрут пересверяет has_stats заново.
         request.session["telegram_id"] = telegram_id
         request.session["username"] = request.query_params.get("username")
         request.session["first_name"] = request.query_params.get("first_name")
