@@ -353,3 +353,111 @@ def dropout_steps(conn, scope: Scope) -> list[tuple[str, int]]:
         tuple(city_params),
     ).fetchall()
     return [(_step_label(row["last_step"]), row["cnt"]) for row in rows]
+
+
+# ── разрезы (D-14) ───────────────────────────────────────────────────────────────────────
+# Имя колонки НИКОГДА не приходит из запроса пользователя невалидированным (T-15-03-02):
+# `column` попадает в f-строку SQL только после проверки `in ALLOWED_BREAKDOWNS` — тот же
+# паттерн белого списка идентификаторов, что `database.db._assert_identifier` использует
+# для DDL-миграций. Значения (город/сезон/лимит) — всегда `?`-параметры.
+ALLOWED_BREAKDOWNS = (
+    "event_city", "source", "university", "course", "study_field",
+    "participant_type", "payment_option",
+)
+
+
+def breakdown(conn, column: str, *, scope: Scope, limit: int | None = None) -> list[tuple[str, int]]:
+    if column not in ALLOWED_BREAKDOWNS:
+        raise ValueError(f"Unknown breakdown column: {column!r}")
+
+    flags = dashboard_flags(conn)
+    if column == "payment_option" and flags.get("payment_enabled") != "on":
+        return []
+    if column == "event_city" and flags.get("event_city_enabled") != "on":
+        return []
+
+    parts, params = _scope_sql(conn, scope)
+    parts = parts + [f"{column} IS NOT NULL", f"TRIM({column}) != ''", f"{column} != '-'"]
+    sql = (
+        f"SELECT {column} AS value, COUNT(*) AS cnt FROM users"
+        f"{_where(parts)} GROUP BY {column} ORDER BY cnt DESC"
+    )
+    if limit:
+        sql += " LIMIT ?"
+        params = params + (limit,)
+    rows = conn.execute(sql, params).fetchall()
+    return [(row["value"], row["cnt"]) for row in rows]
+
+
+# ── сравнение городов (D-10/D-15) ────────────────────────────────────────────────────────
+
+def city_comparison(conn, scope: Scope) -> list[dict]:
+    """Строка на КАЖДЫЙ известный город — режим «все города». `scope.city` игнорируется
+    (сравнение по определению не сужено на один город); `scope.season` применяется. NULL и
+    незнакомые коды сворачиваются в город по умолчанию (та же логика, что и
+    `render_stats_text`, но здесь — на уровне Python, не SQL, чтобы не плодить одну и ту же
+    ветку исключения для каждой строки таблицы)."""
+    season_frag, season_params = _season_sql(conn, scope.season)
+    season_parts = [season_frag] if season_frag else []
+
+    rows = conn.execute(
+        "SELECT code, label FROM cities ORDER BY sort_order ASC, code ASC"
+    ).fetchall()
+
+    result: list[dict] = []
+    for row in rows:
+        code = row["code"]
+        city_frag, city_params = _city_fragment(conn, code)
+        parts = season_parts + [city_frag]
+        params = tuple(season_params) + tuple(city_params)
+        total = _scalar(conn, f"SELECT COUNT(*) FROM users{_where(parts)}", params) or 0
+        pending = _scalar(
+            conn, f"SELECT COUNT(*) FROM users{_where(parts + ['status = ?'])}",
+            params + ("pending",),
+        ) or 0
+        approved = _scalar(
+            conn, f"SELECT COUNT(*) FROM users{_where(parts + ['status = ?'])}",
+            params + ("approved",),
+        ) or 0
+        result.append({
+            "code": code, "label": row["label"],
+            "total": total, "pending": pending, "approved": approved,
+        })
+    return result
+
+
+# ── гейма (D-12) ─────────────────────────────────────────────────────────────────────────
+
+def game_block(conn, scope: Scope) -> dict | None:
+    """`None`, если тумблер `dashboard_block_game` выключен ИЛИ в `game_submissions` нет ни
+    одной строки (D-12: «включён» = тумблер + наличие данных — глобального флага модуля
+    геймификации в реестре нет). Числа — по образцу `database.db.get_game_stats` (не
+    переписаны «на глазок», сверены с ним тестом на одной фикстуре). Без сужения по
+    городу/сезону: `game_submissions` не хранит ни то, ни другое, ровно как `get_game_stats`
+    в боте."""
+    flags = dashboard_flags(conn)
+    if flags.get("dashboard_block_game") != "on":
+        return None
+
+    participants = _scalar(conn, "SELECT COUNT(DISTINCT user_id) FROM game_submissions") or 0
+    if participants == 0:
+        return None
+
+    stats = {"participants": participants, "pending": 0, "approved": 0, "rejected": 0}
+    rows = conn.execute(
+        "SELECT status, COUNT(*) AS cnt FROM game_submissions GROUP BY status"
+    ).fetchall()
+    for row in rows:
+        if row["status"] in stats:
+            stats[row["status"]] = row["cnt"]
+
+    by_category: dict[str, int] = {}
+    rows = conn.execute(
+        "SELECT t.category AS category, COUNT(*) AS cnt FROM game_submissions s "
+        "JOIN game_tasks t ON t.id = s.task_id "
+        "WHERE s.status = 'approved' GROUP BY t.category"
+    ).fetchall()
+    for row in rows:
+        by_category[row["category"]] = row["cnt"]
+    stats["by_category"] = by_category
+    return stats
