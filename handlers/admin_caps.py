@@ -384,6 +384,13 @@ ADMIN_CAPS: dict[str, str] = {
     "settings_reset_city:*": "settings",
     "settings_reset_city_go:*": "settings",
     "settings_file:*": "settings",
+    # Quick 260822: списочные настройки по пунктам (handlers/admin_settings_lists.py) —
+    # ➕ добавить / 🗑 выбрать пункт / 🗑 убрать выбранный / ✏️ заменить целиком. Тот же
+    # «settings», что у settings_edit:*; prefix-ключи не пересекаются (del vs rm vs replace).
+    "settings_list_add:*": "settings",
+    "settings_list_del:*": "settings",
+    "settings_list_rm:*": "settings",
+    "settings_list_replace:*": "settings",
     "settings_group:*": "settings",
     "settings_group_noop": "settings",
     "settings_photo:*": "settings",

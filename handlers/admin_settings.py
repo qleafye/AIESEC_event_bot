@@ -1004,6 +1004,10 @@ async def _settings_edit_screen(key: str, header_code: str | None) -> tuple[str,
     # D-13, registry-as-source) before the last-resort literal.
     prompt = prompts.get(key) or SETTINGS_SCHEMA.get(key, {}).get("prompt") or "Введите значение"
     per_city_ctx = bool(header_code and header_code != ALL_CITIES)
+    # Quick 260822: списочный ключ правится по пунктам (handlers/admin_settings_lists.py) —
+    # кнопки ➕/🗑/✏️ вместо ввода, FSM с этого экрана не стартует (см. settings_edit_start).
+    entry = SETTINGS_SCHEMA.get(_base_setting_key(key), {})
+    is_list, label = entry.get("type") == "list", entry.get("label", key)
 
     if per_city_ctx and is_per_city(key):
         city_label_txt = await city_label(header_code)
@@ -1023,6 +1027,8 @@ async def _settings_edit_screen(key: str, header_code: str | None) -> tuple[str,
                 callback_data=f"settings_edit_city:{key}",
             )],
         ]
+        if is_list:
+            rows = admin_settings_lists.list_edit_rows(key)
         if own_value:
             rows.append([InlineKeyboardButton(text="↩️ Как везде", callback_data=f"settings_reset_city:{key}")])
         rows.append([InlineKeyboardButton(text="❌ Отмена", callback_data="settings_cancel")])
@@ -1033,24 +1039,21 @@ async def _settings_edit_screen(key: str, header_code: str | None) -> tuple[str,
     # HTML) — otherwise parse_mode=HTML breaks.
     current = await get_setting(key)
     text = f"{html_module.escape(prompt)}"
-    # Quick 260820-rms: списочные настройки (источники, города, варианты мультивыбора)
-    # ЗАМЕНЯЮТСЯ целиком, а выглядят на экране как обычный текст — менеджер дважды присылал
-    # один новый пункт и стирал весь список (17.08 source_options схлопнулся в «Узнал от
-    # блогера», 20.08 — в «/start»). Показываем текущий список по пунктам и говорим про
-    # замену прямым текстом. Кнопка «добавить один пункт» — отдельной задачей.
-    is_list = SETTINGS_SCHEMA.get(_base_setting_key(key), {}).get("type") == "list"
-    if current and is_list:
-        items = [seg.strip() for line in current.splitlines() for seg in line.split(";") if seg.strip()]
-        listed = "\n".join(f"• {html_module.escape(i)}" for i in items)
-        text = f"Сейчас в списке ({len(items)}):\n{listed}\n\n{text}"
+    # Quick 260820-rms / 260822: списочные настройки (источники, города, варианты
+    # мультивыбора) дважды схлопывались в один пункт — менеджер присылал один пункт, а
+    # сообщение заменяло весь список. Теперь список показан по пунктам, а правка — кнопками:
+    # «➕ Добавить пункт» / «🗑 Удалить пункт» / «✏️ Заменить список целиком».
+    if is_list:
+        items = admin_settings_lists.split_list_items(current)
+        listed = "\n".join(f"• {html_module.escape(i)}" for i in items) or "<i>пусто</i>"
+        text = (
+            f"{html_module.escape(label)}\n\nСейчас в списке ({len(items)}):\n{listed}"
+            "\n\n<i>Добавьте или уберите один пункт кнопками ниже. Переписать всё сразу — "
+            "«✏️ Заменить список целиком».</i>"
+        )
     elif current:
         text = f"Сейчас задано:\n<b>{html_module.escape(current)}</b>\n\n{text}"
-    if is_list:
-        text += (
-            "\n\n<i>⚠️ Пришлите ВЕСЬ список целиком — новое сообщение заменит его полностью, "
-            "а не добавит пункт. Чтобы очистить поле — отправьте «-».</i>"
-        )
-    else:
+    if not is_list:
         text += "\n\n<i>Пришлите новое значение сообщением. Чтобы очистить поле — отправьте «-».</i>"
 
     if per_city_ctx:
@@ -1069,7 +1072,8 @@ async def _settings_edit_screen(key: str, header_code: str | None) -> tuple[str,
             names = ", ".join([await city_label(c) for c in override_codes])
             text += f"\n\nПереопределено для: {names}"
 
-    rows = [[InlineKeyboardButton(text="❌ Отмена", callback_data="settings_cancel")]]
+    rows = admin_settings_lists.list_edit_rows(key) if is_list else []
+    rows.append([InlineKeyboardButton(text="❌ Отмена", callback_data="settings_cancel")])
     return text, InlineKeyboardMarkup(inline_keyboard=rows)
 
 
@@ -1089,9 +1093,12 @@ async def settings_edit_start(callback: types.CallbackQuery, state: FSMContext):
     # overwrite the global value. state.clear() is defensive: re-entering this screen (e.g.
     # via the «❌ Отмена» button on the per-city input screen) must never leave a stale FSM
     # state pointing at the wrong composite key.
+    # Quick 260822: a list key never starts the FSM from here either — input begins only
+    # from its own buttons (admin_settings_lists), so a stray message can't replace the list.
     own_city_context = bool(header_code and header_code != ALL_CITIES and is_per_city(key))
+    is_list = SETTINGS_SCHEMA.get(key, {}).get("type") == "list"
     await state.clear()
-    if not own_city_context:
+    if not own_city_context and not is_list:
         await state.set_state(EditSetting.waiting_for_value)
         await state.update_data(setting_key=key)
     await callback.answer()
@@ -1931,4 +1938,12 @@ async def export_incomplete(callback: types.CallbackQuery):
         f"✅ Обновлено: {', '.join(written_lines)}.{summary}",
         parse_mode="HTML",
     )
+
+
+# ── Seam chain (quick 260822): handlers/admin_settings_lists.py (списочные настройки по
+# пунктам) decorates the same admin.router and depends one-way on this module. Imported HERE,
+# as the very last statement, so its handlers register right after every handler above at any
+# module import order (same device as admin_gamification -> admin_game_tasks). Golden
+# snapshot: tests/test_refac_snapshot_260816.py.
+from handlers import admin_settings_lists  # noqa: E402,F401
 
