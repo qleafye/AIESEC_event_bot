@@ -1,3 +1,4 @@
+import json
 import logging
 import os
 import re
@@ -439,6 +440,55 @@ async def init_db():
             "CREATE INDEX IF NOT EXISTS idx_game_submission_parts_sub "
             "ON game_submission_parts(submission_id, ord)"
         )
+
+        # Опросы (native Telegram polls). `polls` — сам опрос и его аудитория (audience_json —
+        # тот же filter_spec, что у рассылок; [] = все). `poll_messages` — по строке на
+        # ДОСТАВЛЕННЫЙ чат: бот шлёт каждому делегату ОТДЕЛЬНЫЙ Telegram-опрос со своим
+        # telegram_poll_id, поэтому это одновременно (а) карта «ответ → наш опрос», (б) список
+        # message_id для stop_poll и (в) чекпоинт доставки для дошлёта после рестарта (как
+        # scheduled_broadcast_deliveries). `totals_json` — последние счётчики из update `poll`
+        # (единственный источник итогов для анонимных опросов). `poll_answers` — по человеку,
+        # только для неанонимных (Telegram не присылает poll_answer по анонимным).
+        await db.execute('''
+            CREATE TABLE IF NOT EXISTS polls (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                question TEXT NOT NULL,
+                options_json TEXT NOT NULL,
+                is_anonymous INTEGER NOT NULL DEFAULT 0,
+                allows_multiple INTEGER NOT NULL DEFAULT 0,
+                created_by INTEGER,
+                created_at TEXT,
+                city TEXT,
+                audience_json TEXT,
+                status TEXT NOT NULL DEFAULT 'scheduled',
+                scheduled_at TEXT,
+                sending_since TEXT,
+                closed_at TEXT
+            )
+        ''')
+        await db.execute('''
+            CREATE TABLE IF NOT EXISTS poll_messages (
+                poll_id INTEGER NOT NULL,
+                chat_id INTEGER NOT NULL,
+                telegram_poll_id TEXT,
+                message_id INTEGER,
+                status TEXT NOT NULL DEFAULT 'ok',
+                totals_json TEXT,
+                PRIMARY KEY (poll_id, chat_id)
+            )
+        ''')
+        await db.execute(
+            "CREATE INDEX IF NOT EXISTS idx_poll_messages_tg ON poll_messages(telegram_poll_id)"
+        )
+        await db.execute('''
+            CREATE TABLE IF NOT EXISTS poll_answers (
+                poll_id INTEGER NOT NULL,
+                user_id INTEGER NOT NULL,
+                option_ids_json TEXT NOT NULL,
+                answered_at TEXT,
+                UNIQUE (poll_id, user_id)
+            )
+        ''')
 
         # Indexes under the hot admin/scheduler queries. Each one mirrors a real WHERE/ORDER BY
         # in this module (see the comments in _HOT_PATH_INDEXES); nothing speculative.
@@ -2530,3 +2580,295 @@ async def count_tasks_by_city(code: str) -> int:
         ) as cursor:
             row = await cursor.fetchone()
             return int(row[0]) if row and row[0] is not None else 0
+
+
+# ── Опросы (native Telegram polls) ───────────────────────────────────────────────────────────
+#
+# Статусы `polls.status`: 'scheduled' (ждёт джобу / отправку) → 'sending' (клейм, идёт цикл
+# send_poll) → 'open' (разослан, принимает ответы) → 'closed' (stop_poll разослан). Удаление —
+# физическое (delete_poll): вместе с poll_messages и poll_answers.
+
+POLL_STATUS_LABELS = {
+    "scheduled": "🕒 Запланирован",
+    "sending": "⏳ Отправляется",
+    "open": "🟢 Открыт",
+    "closed": "⏹ Закрыт",
+}
+
+
+def _now_str() -> str:
+    return datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+
+
+async def create_poll(
+    question: str,
+    options: list[str],
+    *,
+    is_anonymous: bool,
+    allows_multiple: bool,
+    created_by: int,
+    city: str | None,
+    audience: list[dict] | None,
+    scheduled_at: str,
+) -> int:
+    """Новый опрос в статусе 'scheduled'. `audience` — filter_spec рассылок ([]/None = все)."""
+    async with _connect() as db:
+        cursor = await db.execute(
+            "INSERT INTO polls (question, options_json, is_anonymous, allows_multiple, created_by, "
+            "created_at, city, audience_json, status, scheduled_at) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'scheduled', ?)",
+            (
+                question, json.dumps(list(options), ensure_ascii=False),
+                1 if is_anonymous else 0, 1 if allows_multiple else 0,
+                created_by, _now_str(), city,
+                json.dumps(audience or [], ensure_ascii=False), scheduled_at,
+            ),
+        )
+        await db.commit()
+        return cursor.lastrowid
+
+
+def _poll_row(row) -> dict:
+    d = dict(row)
+    try:
+        d["options"] = json.loads(d.get("options_json") or "[]")
+    except (TypeError, ValueError):
+        d["options"] = []
+    try:
+        d["audience"] = json.loads(d.get("audience_json") or "[]")
+    except (TypeError, ValueError):
+        d["audience"] = []
+    return d
+
+
+async def get_poll(poll_id: int) -> dict | None:
+    async with _connect() as db:
+        db.row_factory = aiosqlite.Row
+        async with db.execute("SELECT * FROM polls WHERE id = ?", (poll_id,)) as cursor:
+            row = await cursor.fetchone()
+            return _poll_row(row) if row else None
+
+
+async def list_polls(*, statuses: tuple[str, ...] | None = None, city_scope=None) -> list[dict]:
+    """Опросы, новые сверху. `city_scope` — (code, exclude) из cities.city_scope: опрос попадает
+    в список, если адресован этому городу или всем городам (city IS NULL)."""
+    where, params = [], []
+    if statuses:
+        where.append(f"status IN ({', '.join('?' * len(statuses))})")
+        params.extend(statuses)
+    if city_scope:
+        where.append("(city IS NULL OR city = ?)")
+        params.append(city_scope[0])
+    clause = f" WHERE {' AND '.join(where)}" if where else ""
+    async with _connect() as db:
+        db.row_factory = aiosqlite.Row
+        async with db.execute(f"SELECT * FROM polls{clause} ORDER BY id DESC", params) as cursor:
+            return [_poll_row(r) for r in await cursor.fetchall()]
+
+
+async def claim_poll_sending(poll_id: int) -> int:
+    """Атомарный клейм 'scheduled' → 'sending' (как mark_broadcast_sending). 0 = уже занят."""
+    async with _connect() as db:
+        cursor = await db.execute(
+            "UPDATE polls SET status = 'sending', sending_since = ? "
+            "WHERE id = ? AND status = 'scheduled'",
+            (_now_str(), poll_id),
+        )
+        await db.commit()
+        return cursor.rowcount
+
+
+async def reclaim_stale_sending_polls(max_age_minutes: int) -> list[int]:
+    """Опросы, застрявшие в 'sending' дольше порога (крах посреди рассылки) → 'scheduled',
+    чтобы реконсиляция на буте дослала хвост. Повтор безопасен: deliver пропускает чаты,
+    уже записанные в poll_messages."""
+    cutoff = (datetime.now() - timedelta(minutes=max_age_minutes)).strftime("%Y-%m-%d %H:%M:%S")
+    async with _connect() as db:
+        async with db.execute(
+            "SELECT id FROM polls WHERE status = 'sending' AND sending_since IS NOT NULL "
+            "AND sending_since < ?",
+            (cutoff,),
+        ) as cursor:
+            ids = [r[0] for r in await cursor.fetchall()]
+        if ids:
+            await db.execute(
+                f"UPDATE polls SET status = 'scheduled' WHERE id IN ({', '.join('?' * len(ids))})",
+                ids,
+            )
+            await db.commit()
+        return ids
+
+
+async def set_poll_status(poll_id: int, status: str):
+    async with _connect() as db:
+        if status == "closed":
+            await db.execute(
+                "UPDATE polls SET status = ?, closed_at = ? WHERE id = ?",
+                (status, _now_str(), poll_id),
+            )
+        else:
+            await db.execute("UPDATE polls SET status = ? WHERE id = ?", (status, poll_id))
+        await db.commit()
+
+
+async def delete_poll(poll_id: int):
+    async with _connect() as db:
+        await db.execute("DELETE FROM poll_answers WHERE poll_id = ?", (poll_id,))
+        await db.execute("DELETE FROM poll_messages WHERE poll_id = ?", (poll_id,))
+        await db.execute("DELETE FROM polls WHERE id = ?", (poll_id,))
+        await db.commit()
+
+
+async def record_poll_message(
+    poll_id: int, chat_id: int, telegram_poll_id: str | None, message_id: int | None, ok: bool
+):
+    """Чекпоинт одной попытки send_poll (ok | failed) — INSERT OR REPLACE, как mark_delivery."""
+    async with _connect() as db:
+        await db.execute(
+            "INSERT OR REPLACE INTO poll_messages "
+            "(poll_id, chat_id, telegram_poll_id, message_id, status) VALUES (?, ?, ?, ?, ?)",
+            (poll_id, chat_id, telegram_poll_id, message_id, "ok" if ok else "failed"),
+        )
+        await db.commit()
+
+
+async def list_poll_sent_chat_ids(poll_id: int) -> set[int]:
+    """Чаты, уже обработанные (ok И failed) — дошлёт после рестарта их пропускает."""
+    async with _connect() as db:
+        async with db.execute(
+            "SELECT chat_id FROM poll_messages WHERE poll_id = ?", (poll_id,)
+        ) as cursor:
+            return {r[0] for r in await cursor.fetchall()}
+
+
+async def list_poll_messages(poll_id: int) -> list[dict]:
+    """Только доставленные (есть message_id) — цели для stop_poll и источник totals_json."""
+    async with _connect() as db:
+        db.row_factory = aiosqlite.Row
+        async with db.execute(
+            "SELECT poll_id, chat_id, telegram_poll_id, message_id, totals_json FROM poll_messages "
+            "WHERE poll_id = ? AND status = 'ok' AND message_id IS NOT NULL",
+            (poll_id,),
+        ) as cursor:
+            return [dict(r) for r in await cursor.fetchall()]
+
+
+async def count_poll_deliveries(poll_id: int) -> tuple[int, int]:
+    async with _connect() as db:
+        async with db.execute(
+            "SELECT SUM(CASE WHEN status = 'ok' THEN 1 ELSE 0 END), "
+            "SUM(CASE WHEN status = 'failed' THEN 1 ELSE 0 END) "
+            "FROM poll_messages WHERE poll_id = ?",
+            (poll_id,),
+        ) as cursor:
+            row = await cursor.fetchone()
+            return int(row[0] or 0), int(row[1] or 0)
+
+
+async def get_poll_id_by_telegram_poll(telegram_poll_id: str) -> int | None:
+    async with _connect() as db:
+        async with db.execute(
+            "SELECT poll_id FROM poll_messages WHERE telegram_poll_id = ?", (telegram_poll_id,)
+        ) as cursor:
+            row = await cursor.fetchone()
+            return int(row[0]) if row else None
+
+
+async def set_poll_message_totals(telegram_poll_id: str, totals: dict) -> bool:
+    """Последние счётчики Telegram-опроса ({"total": N, "options": [n0, n1, ...]}) из update
+    `poll`. True — строка найдена (это наш опрос)."""
+    async with _connect() as db:
+        cursor = await db.execute(
+            "UPDATE poll_messages SET totals_json = ? WHERE telegram_poll_id = ?",
+            (json.dumps(totals, ensure_ascii=False), telegram_poll_id),
+        )
+        await db.commit()
+        return cursor.rowcount > 0
+
+
+async def upsert_poll_answer(poll_id: int, user_id: int, option_ids: list[int]):
+    """Ответ делегата (перезаписывает прошлый). Пустой список = отзыв голоса — строка удаляется."""
+    async with _connect() as db:
+        if not option_ids:
+            await db.execute(
+                "DELETE FROM poll_answers WHERE poll_id = ? AND user_id = ?", (poll_id, user_id)
+            )
+        else:
+            await db.execute(
+                "INSERT INTO poll_answers (poll_id, user_id, option_ids_json, answered_at) "
+                "VALUES (?, ?, ?, ?) ON CONFLICT(poll_id, user_id) DO UPDATE SET "
+                "option_ids_json = excluded.option_ids_json, answered_at = excluded.answered_at",
+                (poll_id, user_id, json.dumps(sorted(int(i) for i in option_ids)), _now_str()),
+            )
+        await db.commit()
+
+
+async def list_poll_answers(poll_id: int) -> list[dict]:
+    """Ответы с данными делегата (ФИО/username/город) — для экрана и выгрузки. `option_ids` —
+    уже распарсенный список индексов."""
+    async with _connect() as db:
+        db.row_factory = aiosqlite.Row
+        async with db.execute(
+            "SELECT a.user_id, a.option_ids_json, a.answered_at, "
+            "u.full_name, u.username, u.event_city "
+            "FROM poll_answers a LEFT JOIN users u ON u.telegram_id = a.user_id "
+            "WHERE a.poll_id = ? ORDER BY a.answered_at, a.user_id",
+            (poll_id,),
+        ) as cursor:
+            out = []
+            for r in await cursor.fetchall():
+                d = dict(r)
+                try:
+                    d["option_ids"] = [int(i) for i in json.loads(d.pop("option_ids_json") or "[]")]
+                except (TypeError, ValueError):
+                    d["option_ids"] = []
+                out.append(d)
+            return out
+
+
+async def count_poll_respondents(poll_id: int) -> int:
+    async with _connect() as db:
+        async with db.execute(
+            "SELECT COUNT(*) FROM poll_answers WHERE poll_id = ?", (poll_id,)
+        ) as cursor:
+            row = await cursor.fetchone()
+            return int(row[0]) if row else 0
+
+
+async def get_poll_results(poll_id: int) -> dict | None:
+    """Итоги без aiogram — для экрана админки, выгрузки и будущего дашборда.
+
+    {"poll": row, "counts": [n per option], "respondents": N, "delivered": N, "failed": N,
+     "source": "answers" | "totals"}.
+    Неанонимный опрос считается по poll_answers (есть «кто»). Анонимный — суммой totals_json
+    всех poll_messages (каждому делегату уходит свой Telegram-опрос; Telegram присылает только
+    счётчики, не людей), respondents = сумма total_voter_count."""
+    poll = await get_poll(poll_id)
+    if poll is None:
+        return None
+    n_opts = len(poll["options"])
+    counts = [0] * n_opts
+    delivered, failed = await count_poll_deliveries(poll_id)
+    if poll["is_anonymous"]:
+        respondents = 0
+        for msg in await list_poll_messages(poll_id):
+            try:
+                totals = json.loads(msg.get("totals_json") or "{}")
+            except (TypeError, ValueError):
+                continue
+            respondents += int(totals.get("total") or 0)
+            for i, n in enumerate((totals.get("options") or [])[:n_opts]):
+                counts[i] += int(n or 0)
+        source = "totals"
+    else:
+        answers = await list_poll_answers(poll_id)
+        respondents = len(answers)
+        for a in answers:
+            for i in a["option_ids"]:
+                if 0 <= i < n_opts:
+                    counts[i] += 1
+        source = "answers"
+    return {
+        "poll": poll, "counts": counts, "respondents": respondents,
+        "delivered": delivered, "failed": failed, "source": source,
+    }
