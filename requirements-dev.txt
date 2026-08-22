@@ -1,3 +1,13 @@
 # Инструменты разработки (тесты). Рантайм-зависимости — requirements.txt.
 # Тесты используют asyncio.run() напрямую — pytest-asyncio не нужен.
 pytest>=7.1.3,<9
+
+# Phase 15 (STAT-01): tests/test_dashboard_*.py импортируют dashboard.* — CI ставит именно
+# этот файл. Пины продублированы из dashboard/requirements.txt (не `-r dashboard/requirements.txt`
+# — вложенный `-r` из этого файла ловит кодировочный баг pip на Windows-машинах разработки),
+# два образа (бот/дашборд) всё равно собираются раздельно.
+fastapi>=0.115,<0.142
+uvicorn[standard]>=0.34,<0.53
+jinja2>=3.1,<4.0
+itsdangerous>=2.2,<3.0
+httpx[socks]>=0.28,<0.29
