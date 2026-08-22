@@ -46,6 +46,7 @@ from keyboards.builders import (
 from handlers.states import Question, GameSubmit
 from settings_schema import get_setting_typed  # Phase 09.1 (A): flow texts live in the registry
 from services.background import spawn as _spawn
+from services.game_digest import notify_submission as notify_game_submission  # Quick 260822
 from config import config
 
 router = Router()
@@ -759,11 +760,10 @@ async def finalize_game_submission(callback: types.CallbackQuery, bot: Bot, stat
 
     submitter_name = callback.from_user.full_name or str(callback.from_user.id)
     # D-13: fan out to every current moderate_game holder, not a bare loop over ADMIN_IDS.
-    await notify_by_capability(
-        bot, "moderate_game",
-        f"🎮 Новая сдача по заданию «{html.escape(str(task['text'])[:60])}» от "
-        f"{html.escape(str(submitter_name))}",
-        parse_mode="HTML",
+    # Quick 260822: режим (каждую / дайджест) и город делегата — в services/game_digest.py.
+    await notify_game_submission(
+        bot, submission_id=submission_id, user_id=callback.from_user.id, task_id=task_id,
+        task_text=task["text"], submitter_name=submitter_name,
     )
 
 
