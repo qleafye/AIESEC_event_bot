@@ -1396,6 +1396,20 @@ async def show_game_review(callback: types.CallbackQuery, state: FSMContext):
     await _show_current_submission(callback.message, state)
 
 
+@router.callback_query(F.data == "toggle_game_submit_notify")
+async def toggle_game_submit_notify(callback: types.CallbackQuery):
+    """Quick 260822: тумблер «каждую сдачу отдельно» / «пачкой (дайджест)» на экране
+    «⚙️ Настройки → 🎮 Геймификация». Enum без текстового ввода кода (CLAUDE.md)."""
+    from handlers.admin_settings import build_settings_group_keyboard, render_settings_group_text
+    from services.game_digest import notify_mode_label
+    current = await get_setting_typed("game_submit_notify_mode")
+    new_mode = "digest" if current != "digest" else "each"
+    await set_setting("game_submit_notify_mode", new_mode)
+    await callback.answer(f"📥 Сдачи менеджеру: {notify_mode_label(new_mode)}", show_alert=True)
+    text = await render_settings_group_text("game", callback.from_user.id)
+    await callback.message.edit_text(text, parse_mode="HTML", reply_markup=await build_settings_group_keyboard("game", callback.from_user.id))
+
+
 # CR-03 (09.1-REVIEW.md): deliberately NOT gated by `_submission_out_of_scope`. This handler
 # writes only to the caller's own FSM `grev_skipped` list and re-renders the caller's own
 # queue -- no DB row, no coins, no delegate notification. The queue itself is already scoped
