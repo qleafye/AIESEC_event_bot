@@ -238,6 +238,11 @@ admin|message|grev_reject_reason|state:GameReview:*
 admin|message|game_task_editdesc_step|state:GameTaskEdit:*
 admin|message|game_task_editcoins_step|state:GameTaskEdit:*
 admin|message|game_task_editdeadline_step|state:GameTaskEdit:*
+admin|message|poll_wizard_cancel|state:PollCreate:*,state:PollCreate:*
+admin|message|poll_wizard_cancel|state:PollCreate:*,state:PollCreate:*
+admin|message|poll_question_step|state:PollCreate:*
+admin|message|poll_options_step|state:PollCreate:*
+admin|message|poll_schedule_when|state:PollCreate:*
 admin|callback_query|show_admin_stats|admin_stats
 admin|callback_query|show_admin_monthly_stats|admin_monthly_stats
 admin|callback_query|show_admin_source_stats|admin_source_stats
@@ -406,6 +411,21 @@ admin|callback_query|game_task_deadline_custom|gtdeadline_custom
 admin|callback_query|game_task_wizard_edit_menu|gtwiz_edit_menu
 admin|callback_query|game_task_wizard_back|gtwiz_back
 admin|callback_query|game_task_wizard_edit_field|gtwiz_edit:*
+admin|callback_query|show_admin_polls|admin_polls
+admin|callback_query|show_admin_polls_closed|admin_polls_closed
+admin|callback_query|show_poll_card|poll_card:*
+admin|callback_query|poll_close_action|poll_close:*
+admin|callback_query|poll_export_action|poll_export:*
+admin|callback_query|poll_delete_confirm|poll_del:*
+admin|callback_query|poll_delete_go|poll_del_go:*
+admin|callback_query|poll_new|poll_new
+admin|callback_query|poll_cancel_callback|poll_cancel
+admin|callback_query|poll_options_done|poll_opts_done
+admin|callback_query|poll_toggle_setting|poll_tg_anon,poll_tg_multi
+admin|callback_query|poll_settings_next|poll_settings_next
+admin|callback_query|poll_audience_pick|poll_aud:*
+admin|callback_query|poll_send_now|poll_send_now
+admin|callback_query|poll_schedule_start|poll_schedule
 payment|message|process_receipt_document|state:Registration:*
 payment|message|process_receipt_photo|state:Registration:*
 payment|message|process_receipt_invalid|state:Registration:*
@@ -530,7 +550,12 @@ def test_snapshot_total_handler_count_is_292():
     """Second, independent invariant besides content — a handler silently added/removed
     without touching this file's golden text (impossible for a normal edit, but this guards
     against a golden-string typo slipping past review) is caught by count alone."""
-    assert len(GOLDEN_SNAPSHOT) == 334  # quick 260819: +toggle_preselect_enabled, +coinsman_amount_stale, +toggle_pending_reminder/+toggle_nudge_enabled
+    # quick 260819: +toggle_preselect_enabled, +coinsman_amount_stale, +toggle_pending_reminder/
+    # +toggle_nudge_enabled. Опросы (260822): +20 — 5 message (мастер PollCreate, две строки
+    # poll_wizard_cancel = два декоратора) в хвост admin.message, 15 callback (список/карточка
+    # admin_polls + мастер admin_poll_wizard) в хвост admin.callback_query; чистый аппенд,
+    # перепроверен прогоном _build_snapshot_lines() и diff'ом с прежним 334-строчным снапшотом.
+    assert len(GOLDEN_SNAPSHOT) == 354
 
 
 # ── Task 2(a): Dispatcher feed_update smoke — cross-router first-match routing ─────────────

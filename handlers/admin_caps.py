@@ -292,6 +292,25 @@ ADMIN_CAPS: dict[str, str] = {
     "filter_send_now": "broadcast",
     "sched_cancel_*": "broadcast",
     "state:Broadcast:*": "broadcast",
+    # «📊 Опросы» (handlers/admin_polls.py + admin_poll_wizard.py) — то же право, что и
+    # рассылки: опрос уходит той же аудитории тем же каналом. Без нового capability.
+    "admin_polls": "broadcast",
+    "admin_polls_closed": "broadcast",
+    "poll_new": "broadcast",
+    "poll_opts_done": "broadcast",
+    "poll_tg_anon": "broadcast",
+    "poll_tg_multi": "broadcast",
+    "poll_settings_next": "broadcast",
+    "poll_aud:*": "broadcast",
+    "poll_send_now": "broadcast",
+    "poll_schedule": "broadcast",
+    "poll_cancel": "broadcast",
+    "poll_card:*": "broadcast",
+    "poll_close:*": "broadcast",
+    "poll_export:*": "broadcast",
+    "poll_del:*": "broadcast",
+    "poll_del_go:*": "broadcast",
+    "state:PollCreate:*": "broadcast",
 
     # ── settings ─────────────────────────────────────────────────────────────────────────
     # admin_cities/toggle_event_city_enabled/city_toggle:* (Phase 07.2, CITY-02/CITY-04) are
