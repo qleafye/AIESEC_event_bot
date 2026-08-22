@@ -166,6 +166,14 @@ def _build_snapshot_lines():
 # buttons for pending_reminder_enabled / nudge_enabled (now declared enum in SETTINGS_SCHEMA),
 # registered in admin_settings.py right after `toggle_preselect_enabled` -- in-place insertion
 # among the sibling module toggles; both filter literals are unique.
+#
+# Drift note (2026-08-22, quick consent-versioning): 2 handlers added (334 -> 336), re-captured
+# by RUNNING `_build_snapshot_lines()` and diffed against the prior 334-line snapshot -- every
+# pre-existing line byte-for-byte identical in the same relative order. admin.router gained
+# `toggle_consent_recollect` (seam handlers/admin_consent.py, imported at the tail of
+# admin_settings.py -> lands right after the settings block, before admin_cities);
+# registration.router gained `consent_renew_accept` (seam handlers/reg_consent.py, imported
+# after reg_steps -> last in registration.router).
 GOLDEN_SNAPSHOT = """
 admin|message|cmd_admin_help|cmd:admin
 admin|message|cmd_coins|cmd:coins
@@ -281,6 +289,7 @@ admin|callback_query|sheets_tab_confirm_go|sheets_tab_confirm
 admin|callback_query|sheets_tab_cancel_go|sheets_tab_cancel
 admin|callback_query|show_admin_export|admin_export_csv
 admin|callback_query|export_incomplete|admin_export_incomplete
+admin|callback_query|toggle_consent_recollect|toggle_consent_recollect
 admin|callback_query|show_admin_cities|admin_cities
 admin|callback_query|toggle_event_city_enabled|toggle_event_city_enabled
 admin|callback_query|city_toggle|city_toggle:*
@@ -473,6 +482,7 @@ registration|callback_query|cancel_registration_dismiss|reg_cancel_no
 registration|callback_query|process_multi_toggle|regmulti:*
 registration|callback_query|process_multi_done|regmulti_done:*
 registration|callback_query|process_consent_accept|consent_accept:*
+registration|callback_query|consent_renew_accept|consent_renew:*
 user_actions|message|show_my_coins|
 user_actions|message|show_leaderboard|
 user_actions|message|show_game_tasks|
@@ -530,7 +540,7 @@ def test_snapshot_total_handler_count_is_292():
     """Second, independent invariant besides content — a handler silently added/removed
     without touching this file's golden text (impossible for a normal edit, but this guards
     against a golden-string typo slipping past review) is caught by count alone."""
-    assert len(GOLDEN_SNAPSHOT) == 334  # quick 260819: +toggle_preselect_enabled, +coinsman_amount_stale, +toggle_pending_reminder/+toggle_nudge_enabled
+    assert len(GOLDEN_SNAPSHOT) == 336  # quick 260819: +toggle_preselect_enabled, +coinsman_amount_stale, +toggle_pending_reminder/+toggle_nudge_enabled
 
 
 # ── Task 2(a): Dispatcher feed_update smoke — cross-router first-match routing ─────────────
