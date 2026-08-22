@@ -232,6 +232,10 @@ async def init_scheduler(bot):
     # ME-03: re-arm any pending broadcast whose date job was dropped from the jobstore during a
     # downtime longer than misfire_grace — otherwise it stays 'pending' forever and never fires.
     await reconcile_scheduled_broadcasts()
+    # Quick 260822: дослать накопленные дайджесты сдач (services/game_digest.py). Ленивый
+    # импорт — game_digest сам импортирует этот модуль.
+    from services.game_digest import rearm_pending_digests
+    await rearm_pending_digests()
     # Nothing (interval or date) may fire until the whole schedule above is assembled.
     _scheduler.resume()
     logger.info(
