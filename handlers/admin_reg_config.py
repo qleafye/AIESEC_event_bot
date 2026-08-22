@@ -38,6 +38,7 @@ from cities import (
     per_city_key,
 )
 from handlers.admin import router
+from handlers.admin_consent import remind_consent_purposes_if_widened, remind_consent_purposes_after_preset
 from handlers.admin_settings import render_settings_text, build_settings_keyboard, _per_city_visible_codes  # Phase 13 (13-06): settings moved out of admin.py
 
 logger = logging.getLogger(__name__)
@@ -250,6 +251,8 @@ async def toggle_reg_question(callback: types.CallbackQuery):
     text = await render_questions_text()
     await callback.message.edit_text(text, parse_mode="HTML", reply_markup=await build_questions_keyboard())
     await _refresh_sheet_header()  # keep the sheet header in sync with enabled questions
+    # Quick 260822: включение резюме = передача файлов в Nextcloud — напоминание о целях.
+    await remind_consent_purposes_if_widened(callback.message, setting_key, new_val)
 
 
 @router.callback_query(F.data.startswith("reg_q_track:"))
@@ -443,6 +446,9 @@ async def preset_confirm(callback: types.CallbackQuery):
     text = await render_questions_text()
     await callback.message.edit_text(text, parse_mode="HTML", reply_markup=await build_questions_keyboard())
     await _refresh_sheet_header()  # preset flips many questions → resync the sheet header
+    # Quick 260822: пресет меняет состав обработки (оплата, резюме) — менеджеру напоминание
+    # сверить текст согласия с новыми целями.
+    await remind_consent_purposes_after_preset(callback.message, preset["label"])
 
 
 # --- Editable question prompts (YL'26: per-event wording, 0 хардкода) ---

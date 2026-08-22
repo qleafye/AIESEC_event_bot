@@ -137,7 +137,7 @@ _PARTY_FIELD_ORDER = [
     "party_fork_text",
 ]
 _CONSENT_FIELD_ORDER = [
-    "consent_button_text", "consent_list",
+    "consent_button_text", "consent_list", "consent_version", "consent_recollect_text",
 ]
 
 # Phase 09.1 (A): every editable text in the free-form submission flow, one group
@@ -555,6 +555,7 @@ async def render_settings_group_text(token: str, admin_id: int | None = None) ->
                 city_suffix = f" · 🏙 {len(codes)}"
         lines.append(f"{label}: {flag}{city_suffix}")
 
+    if token == "consent": lines += await consent_group_extra_lines()  # quick 260822 (шов admin_consent)
     if token == "event":
         for prefix, label, _ in PHOTO_FIELDS:
             photo = await get_setting(f"{prefix}_photo_file_id")
@@ -627,6 +628,7 @@ async def build_settings_group_keyboard(token: str, admin_id: int | None = None)
         # сезон», import is not superadmin-only (CONTEXT D); the gate is the `settings`
         # capability that already got them here.
         buttons.append([InlineKeyboardButton(text="📥 Импорт прошлого события", callback_data="admin_season_import")])
+    if token == "consent": buttons += consent_group_extra_buttons()  # quick 260822 (шов admin_consent)
     buttons.append([InlineKeyboardButton(text="← Назад к настройкам", callback_data="admin_settings")])
     return InlineKeyboardMarkup(inline_keyboard=buttons)
 
@@ -814,6 +816,7 @@ async def _toggle_module_setting(callback: types.CallbackQuery, key: str, title:
     await callback.answer(f"{title}: {label}", show_alert=True)
     text = await render_settings_text(callback.from_user.id)
     await callback.message.edit_text(text, parse_mode="HTML", reply_markup=await build_settings_keyboard(callback.from_user.id))
+    await remind_consent_purposes_if_widened(callback.message, key, new_val)
 
 
 @router.callback_query(F.data == "toggle_payment_enabled")
@@ -1801,6 +1804,7 @@ async def settings_edit_value(message: types.Message, state: FSMContext):
         # Phase 4 (D-05): saving event_type applies the module-toggle preset.
         if key == "event_type":
             await _apply_event_type_preset(value.strip().lower())
+            await remind_consent_purposes_after_preset(message, value.strip())
         # WR-02: "Отмена"/"Другое"/"Пропустить" are reserved control words in the registration
         # flow — an option list whose line equals one becomes unreachable (it triggers cancel /
         # "type your own" instead of being recorded). Warn the admin (the value is still saved).
@@ -1942,6 +1946,8 @@ async def export_incomplete(callback: types.CallbackQuery):
         parse_mode="HTML",
     )
 
+
+from handlers.admin_consent import consent_group_extra_lines, consent_group_extra_buttons, remind_consent_purposes_if_widened, remind_consent_purposes_after_preset  # noqa: E402  -- quick 260822: шов согласий (версия/пересогласие/напоминание о целях)
 
 # ── Seam chain (quick 260822): handlers/admin_settings_lists.py (списочные настройки по
 # пунктам) decorates the same admin.router and depends one-way on this module. Imported HERE,

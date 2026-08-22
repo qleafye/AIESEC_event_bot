@@ -34,6 +34,17 @@ async def _ensure_column(db: aiosqlite.Connection, table_name: str, column_name:
     if not await _column_exists(db, table_name, column_name):
         await db.execute(f"ALTER TABLE {table_name} ADD COLUMN {column_name} {definition}")
 
+_USER_CONSENTS_DDL = '''
+    CREATE TABLE IF NOT EXISTS user_consents (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        user_id INTEGER NOT NULL,
+        consent_key TEXT NOT NULL,
+        accepted_at TEXT NOT NULL,
+        consent_version TEXT,
+        UNIQUE(user_id, consent_key, consent_version)
+    )
+'''
+
 # Every connection goes through here so the busy handler is set in ONE place. Without it a
 # writer holding the lock makes a concurrent reader/writer fail immediately with
 # "database is locked"; with it SQLite retries for up to this long. aiosqlite hands
@@ -307,15 +318,21 @@ async def init_db():
 
         # Phase 4 (CONS-01/02, D-02): per-user consent audit trail. UNIQUE dedupes
         # re-taps; index supports the per-user lookup.
-        await db.execute('''
-            CREATE TABLE IF NOT EXISTS user_consents (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                user_id INTEGER NOT NULL,
-                consent_key TEXT NOT NULL,
-                accepted_at TEXT NOT NULL,
-                UNIQUE(user_id, consent_key)
+        # Quick 260822 (версионирование согласий): колонка consent_version — какую редакцию
+        # текста подписал делегат. Старые строки остаются NULL («до версионирования»).
+        # UNIQUE расширен версией: пересогласие новой редакции — НОВАЯ строка, старая не
+        # затирается (иначе нечем доказать, что именно подписал делегат раньше). Инлайновый
+        # UNIQUE в SQLite не меняется через ALTER — существующая таблица пересобирается один
+        # раз (копия строк 1:1, id сохраняются), признак «старая схема» = нет колонки.
+        await db.execute(_USER_CONSENTS_DDL)
+        if not await _column_exists(db, "user_consents", "consent_version"):
+            await db.execute("ALTER TABLE user_consents RENAME TO user_consents_v1")
+            await db.execute(_USER_CONSENTS_DDL)
+            await db.execute(
+                "INSERT INTO user_consents (id, user_id, consent_key, accepted_at) "
+                "SELECT id, user_id, consent_key, accepted_at FROM user_consents_v1"
             )
-        ''')
+            await db.execute("DROP TABLE user_consents_v1")
         await db.execute('CREATE INDEX IF NOT EXISTS idx_consents_user ON user_consents(user_id)')
 
         # Phase 5 migrations (TRACK-01, D-01/D-02) — additive, idempotent, safe against ~590 live users
@@ -1752,14 +1769,30 @@ async def count_and_list_filtered(filters: list[dict]) -> list[int]:
 
 # ── Phase 4: consent acceptances (CONS-01/02, D-02) ──────────────────────────
 
-async def record_user_consent(user_id: int, consent_key: str):
-    """Idempotent consent write — re-tapping «Принимаю» never raises (INSERT OR IGNORE)."""
+# Quick 260822: дефолт редакции согласия. Единственный источник — settings_schema берёт
+# его отсюда для ключа consent_version (db.py не может импортировать реестр: цикл).
+DEFAULT_CONSENT_VERSION = "1"
+
+
+async def current_consent_version() -> str:
+    """Текущая редакция согласия (настройка consent_version; пусто -> DEFAULT_CONSENT_VERSION)."""
+    raw = await get_setting("consent_version")
+    return (raw or "").strip() or DEFAULT_CONSENT_VERSION
+
+
+async def record_user_consent(user_id: int, consent_key: str, consent_version: str | None = None):
+    """Idempotent consent write — re-tapping «Принимаю» never raises (INSERT OR IGNORE).
+    Quick 260822: пишет редакцию согласия на момент подписи (по умолчанию — текущая
+    consent_version); повтор того же (user, key, version) дедупится, новая редакция — новая
+    строка."""
     accepted_at = datetime.now().isoformat()
+    if consent_version is None:
+        consent_version = await current_consent_version()
     async with _connect() as db:
         await db.execute(
-            "INSERT OR IGNORE INTO user_consents (user_id, consent_key, accepted_at) "
-            "VALUES (?, ?, ?)",
-            (user_id, consent_key, accepted_at),
+            "INSERT OR IGNORE INTO user_consents (user_id, consent_key, accepted_at, consent_version) "
+            "VALUES (?, ?, ?, ?)",
+            (user_id, consent_key, accepted_at, consent_version),
         )
         await db.commit()
 
@@ -1771,6 +1804,17 @@ async def get_user_consents(user_id: int) -> list[str]:
             (user_id,),
         ) as cursor:
             return [row[0] for row in await cursor.fetchall()]
+
+
+async def get_user_consent_versions(user_id: int) -> list[tuple[str, str | None]]:
+    """Quick 260822: все подписи делегата как [(consent_key, consent_version)] в порядке
+    записи; NULL-версия = строка до версионирования."""
+    async with _connect() as db:
+        async with db.execute(
+            "SELECT consent_key, consent_version FROM user_consents WHERE user_id = ? ORDER BY id",
+            (user_id,),
+        ) as cursor:
+            return [(row[0], row[1]) for row in await cursor.fetchall()]
 
 
 # ── Phase 4: payment receipt queue + status (PAY-05, D-10/D-12) ──────────────

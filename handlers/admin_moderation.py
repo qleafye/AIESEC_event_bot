@@ -30,6 +30,7 @@ from database.db import (
 )
 from services.sheets import update_status_in_sheet, bulk_update_status_in_sheet
 from services.background import spawn as _spawn
+from services.consent import consent_card_line
 from handlers.states import Approval, ReceiptReview
 from keyboards.builders import get_cancel_kb, get_main_menu_kb
 from handlers.reg_schema import STATUS_LABELS, approve_user
@@ -56,7 +57,7 @@ def _parse_appr(data: str) -> tuple[str, int | None]:
     return data, None
 
 
-def _render_application_card(user: dict, position: int, total: int, city_label_text: str | None = None) -> str:
+def _render_application_card(user: dict, position: int, total: int, city_label_text: str | None = None, consent_line: str | None = None) -> str:
     """HTML card for one pending application; all free-text escaped. `city_label_text` (Phase
     07.2, CITY-02) appends «· 🏙 {label}» to the header when an admin city is selected; None
     keeps the header byte-identical to the pre-CITY-02 line (module off / no city chosen)."""
@@ -116,6 +117,10 @@ def _render_application_card(user: dict, position: int, total: int, city_label_t
         lines.append(f"📎 Резюме (текст): {preview}")
     else:
         lines.append("📎 Резюме: нет")
+    # Quick 260822: одна строка «Согласие: v…» (+ маркер старой редакции) — готовый текст
+    # от services.consent.consent_card_line; None = подписей нет (модуль выключен/legacy).
+    if consent_line:
+        lines.append(consent_line)
     return "\n".join(lines)
 
 
@@ -175,7 +180,10 @@ async def _show_current_card(target: types.Message, state: FSMContext):
     if label == ALL_CITIES_LABEL:
         card_label = await city_label(normalize_city(current.get("event_city")))
     await target.answer(
-        _render_application_card(current, position, total, city_label_text=card_label),
+        _render_application_card(
+            current, position, total, city_label_text=card_label,
+            consent_line=await consent_card_line(current["telegram_id"]),
+        ),
         parse_mode="HTML",
         reply_markup=_appr_card_kb(
             current["telegram_id"],
