@@ -1,13 +1,228 @@
-<!doctype html>
-<html lang="ru">
-<head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>{{ event_name or "Дашборд статистики" }}</title>
-</head>
-<body>
-  <h1>{{ event_name or "Дашборд статистики" }}</h1>
-  <p>Страница дашборда собирается в следующей задаче плана (Task 3) — здесь только каркас,
-  подтверждающий, что маршрут работает после успешной проверки доступа.</p>
-</body>
-</html>
+{% extends "base.html" %}
+{% block title %}{{ event_name or "Дашборд статистики" }}{% endblock %}
+{% block body %}
+
+  <header class="site-header">
+    <h1>{{ event_name or "Дашборд статистики" }}</h1>
+    {% if event_season %}<div class="subtitle">Сезон {{ event_season }}</div>{% endif %}
+
+    {% if show_city_switcher %}
+    <div class="switchers">
+      <a class="switch-link{% if not scope.city %} active{% endif %}"
+         href="?{% if scope.season %}season={{ scope.season }}{% endif %}">Все города</a>
+      {% for city in city_options %}
+      <a class="switch-link{% if scope.city == city.code %} active{% endif %}"
+         href="?city={{ city.code }}{% if scope.season %}&season={{ scope.season }}{% endif %}">{{ city.label }}</a>
+      {% endfor %}
+    </div>
+    {% elif viewer.bound_city %}
+    <div class="bound-city-note">Ваш город: {{ bound_city_label }}</div>
+    {% endif %}
+
+    {% if season_options|length > 1 %}
+    <div class="switchers">
+      {% for season in season_options %}
+      <a class="switch-link{% if (scope.season and scope.season == season.value) or (not scope.season and season.current) %} active{% endif %}"
+         href="?{% if scope.city %}city={{ scope.city }}&{% endif %}season={{ season.value }}">{{ season.label }}</a>
+      {% endfor %}
+    </div>
+    {% endif %}
+
+    <div class="updated-note">
+      Данные на момент открытия страницы.
+      {% if kpi.tracking_since %}Отслеживаем с {{ kpi.tracking_since }}.{% endif %}
+    </div>
+  </header>
+
+  {# KPI-строка (D-14) #}
+  <section class="block">
+    <div class="kpi-grid">
+      <div class="kpi">
+        <div class="num">{{ kpi.total }}</div>
+        <div class="lbl">Всего заявок</div>
+      </div>
+      <div class="kpi">
+        <div class="num">{{ kpi.today }}</div>
+        <div class="lbl">Сегодня</div>
+      </div>
+      <div class="kpi">
+        <div class="num">{{ kpi.week }}</div>
+        <div class="lbl">За 7 дней</div>
+        {% if kpi.week_delta > 0 %}
+        <div class="delta up">▲ {{ kpi.week_delta }} к прошлой неделе</div>
+        {% elif kpi.week_delta < 0 %}
+        <div class="delta down">▼ {{ -kpi.week_delta }} к прошлой неделе</div>
+        {% else %}
+        <div class="delta">без изменений к прошлой неделе</div>
+        {% endif %}
+      </div>
+      <div class="kpi">
+        <div class="num">{% if kpi.conversion is none %}—{% else %}{{ kpi.conversion }}%{% endif %}</div>
+        <div class="lbl">Конверсия старт → заявка</div>
+      </div>
+    </div>
+  </section>
+
+  {# Воронка (D-07/D-08) #}
+  {% if funnel %}
+  <section class="block">
+    <h2 class="block-title">Воронка регистрации</h2>
+    <div class="card">
+      {% if funnel.has_data %}
+      <div class="funnel">
+        {% for step in funnel.steps %}
+        <div class="funnel-step">
+          <div class="n">{{ step.count }}</div>
+          <div class="l">{{ step.label }}</div>
+          <div class="funnel-bar"><i style="width:{{ step.pct }}%"></i></div>
+        </div>
+        {% endfor %}
+      </div>
+      {% else %}
+      <p class="empty-note">Пока нет данных.</p>
+      {% endif %}
+    </div>
+  </section>
+  {% endif %}
+
+  {# Динамика по дням (D-14) #}
+  {% if dynamics_enabled %}
+  <section class="block">
+    <h2 class="block-title">Динамика регистраций</h2>
+    <div class="card">
+      {% if daily_chart %}
+      <div class="chart-wrap">
+        <canvas id="daily-chart"
+                data-labels="{{ daily_chart.labels | tojson }}"
+                data-values="{{ daily_chart.counts | tojson }}"></canvas>
+      </div>
+      {% else %}
+      <p class="empty-note">Пока нет данных.</p>
+      {% endif %}
+    </div>
+  </section>
+  {% endif %}
+
+  {# Разрезы (D-14) #}
+  {% if city_cut or cuts %}
+  <section class="block">
+    <h2 class="block-title">Разрезы</h2>
+    <div class="cuts-grid">
+
+      {% if city_cut %}
+      <div class="card">
+        <p class="cut-title">Города</p>
+        {% if city_cut.rows %}
+        <table class="responsive">
+          <thead><tr><th>Город</th><th class="num">Всего</th><th class="num">На модерации</th><th class="num">Одобрено</th></tr></thead>
+          <tbody>
+            {% for row in city_cut.rows %}
+            <tr>
+              <td data-label="Город">{{ row.label }}</td>
+              <td class="num" data-label="Всего">{{ row.total }}</td>
+              <td class="num" data-label="На модерации">{{ row.pending }}</td>
+              <td class="num" data-label="Одобрено">{{ row.approved }}</td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+        {% else %}
+        <p class="empty-note">Пока нет данных.</p>
+        {% endif %}
+      </div>
+      {% endif %}
+
+      {% for cut in cuts %}
+      <div class="card">
+        <p class="cut-title">{{ cut.title }}</p>
+        {% if cut.has_data %}
+        {% for row in cut.rows %}
+        <div class="bar-row">
+          <span class="label">{{ row.label }}</span>
+          <span class="track"><span class="fill" style="width:{{ row.pct }}%"></span></span>
+          <span class="val">{{ row.count }}</span>
+        </div>
+        {% endfor %}
+        {% else %}
+        <p class="empty-note">Пока нет данных.</p>
+        {% endif %}
+      </div>
+      {% endfor %}
+
+    </div>
+  </section>
+  {% endif %}
+
+  {# «Где бросают» (D-07) #}
+  {% if dropout %}
+  <section class="block">
+    <h2 class="block-title">Где бросают</h2>
+    <div class="card">
+      {% if dropout.has_data %}
+      {% for row in dropout.rows %}
+      <div class="bar-row">
+        <span class="label">{{ row.label }}</span>
+        <span class="track"><span class="fill" style="width:{{ row.pct }}%"></span></span>
+        <span class="val">{{ row.count }}</span>
+      </div>
+      {% endfor %}
+      {% else %}
+      <p class="empty-note">Пока нет данных.</p>
+      {% endif %}
+    </div>
+  </section>
+  {% endif %}
+
+  {# Гейма (D-12) #}
+  {% if game %}
+  <section class="block">
+    <h2 class="block-title">Геймификация</h2>
+    <div class="card">
+      <div class="kpi-grid">
+        <div class="kpi"><div class="num">{{ game.participants }}</div><div class="lbl">Участников</div></div>
+        <div class="kpi"><div class="num">{{ game.pending }}</div><div class="lbl">На проверке</div></div>
+        <div class="kpi"><div class="num">{{ game.approved }}</div><div class="lbl">Одобрено</div></div>
+        <div class="kpi"><div class="num">{{ game.rejected }}</div><div class="lbl">Отклонено</div></div>
+      </div>
+      {% if game.by_category %}
+      <table class="responsive" style="margin-top:14px;">
+        <thead><tr><th>Категория</th><th class="num">Одобрено</th></tr></thead>
+        <tbody>
+          {% for category, count in game.by_category.items() %}
+          <tr>
+            <td data-label="Категория">{{ category }}</td>
+            <td class="num" data-label="Одобрено">{{ count }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+      {% endif %}
+    </div>
+  </section>
+  {% endif %}
+
+  <script src="/static/vendor/chart.umd.min.js"></script>
+  <script>
+    (function () {
+      var canvas = document.getElementById("daily-chart");
+      if (!canvas || typeof Chart === "undefined") { return; }
+      var labels = JSON.parse(canvas.getAttribute("data-labels") || "[]");
+      var values = JSON.parse(canvas.getAttribute("data-values") || "[]");
+      // Цвет — из CSS-токена --accent, а не захардкожен здесь: дизайн-фаза красит один файл.
+      var accent = getComputedStyle(document.documentElement).getPropertyValue("--accent").trim() || "currentColor";
+      new Chart(canvas, {
+        type: "line",
+        data: {
+          labels: labels,
+          datasets: [{ data: values, borderColor: accent, tension: 0.2, pointRadius: 2 }]
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          plugins: { legend: { display: false } },
+          scales: { y: { beginAtZero: true } }
+        }
+      });
+    })();
+  </script>
+{% endblock %}
