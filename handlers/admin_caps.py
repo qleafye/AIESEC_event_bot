@@ -330,6 +330,9 @@ ADMIN_CAPS: dict[str, str] = {
     "city_del_go:*": "settings",
     "state:CityForm:*": "settings",
     "admin_consent_pdfs": "settings",
+    # Экран «📊 Дашборд» (Phase 15, 15-02, D-19) — тумблеры блоков веб-дашборда.
+    "admin_dashboard_settings": "settings",
+    "dash_block:*": "settings",
     "admin_dedupe_sheet": "settings",
     "admin_dedupe_sheet_go": "settings",
     "admin_event_preset": "settings",
