@@ -167,3 +167,15 @@ class SeasonImport(StatesGroup):
     # state.get_data() (season_import_go), not a State.
     waiting_file = State()  # waiting for a document (the foreign forum.db)
     naming = State()        # waiting for the season name to stamp imported rows with
+
+
+class PollCreate(StatesGroup):
+    # «📊 Опросы» → «➕ Новый опрос» (handlers/admin_poll_wizard.py), право `broadcast`
+    # ("state:PollCreate:*" в handlers/admin_caps.py). Тумблеры/аудитория/подтверждение —
+    # кнопки, но стейт между шагами стоит: тот же guard «Отмена посреди мастера».
+    question = State()       # текст вопроса (≤300 символов)
+    options = State()        # варианты по одному сообщением (или через «;»), 2–10, ≤100 символов
+    settings = State()       # тумблеры «анонимный» / «несколько вариантов»
+    audience = State()       # кому: все / одобренные / город / трек
+    confirm = State()        # превью прислано, ждём «отправить сейчас» / «запланировать»
+    schedule_when = State()  # дата-время ДД.ММ.ГГГГ ЧЧ:ММ
