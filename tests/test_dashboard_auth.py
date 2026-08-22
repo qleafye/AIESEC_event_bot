@@ -325,3 +325,214 @@ def test_access_module_has_no_cache_decorator_or_proxy_headers():
     assert "lru_cache" not in text
     assert "CF-Connecting-IP" not in text
     assert "X-Forwarded" not in text
+
+
+# ═══════════════════════════════════════════════════════════════════════════════════════
+# Task 3 — dashboard.notify: уведомление суперадминам о запросе доступа с антиспамом (D-11)
+# ═══════════════════════════════════════════════════════════════════════════════════════
+
+from datetime import date  # noqa: E402
+
+from dashboard import notify as notify_module  # noqa: E402
+from dashboard.notify import _seen_today, notify_access_request  # noqa: E402
+
+
+class _FakeResponse:
+    def __init__(self, status_code=200):
+        self.status_code = status_code
+
+
+class _FakeHttpxClient:
+    """Заменяет `httpx.Client` целиком (monkeypatch на `dashboard.notify.httpx.Client`) —
+    без реальной сети, без MockTransport, чтобы тест не тянул знание внутренностей httpx."""
+    instances: list["_FakeHttpxClient"] = []
+    raise_on_post = False
+    fail_admin_ids: set[int] = set()
+
+    def __init__(self, *, proxy=None, timeout=None):
+        self.proxy = proxy
+        self.timeout = timeout
+        self.calls: list[tuple[str, dict]] = []
+        _FakeHttpxClient.instances.append(self)
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, exc_type, exc, tb):
+        return False
+
+    def post(self, url, json=None):
+        if _FakeHttpxClient.raise_on_post:
+            raise RuntimeError("simulated network failure")
+        self.calls.append((url, json))
+        if json is not None and json.get("chat_id") in _FakeHttpxClient.fail_admin_ids:
+            return _FakeResponse(500)
+        return _FakeResponse(200)
+
+
+@pytest.fixture(autouse=True)
+def _reset_notify_state(monkeypatch):
+    notify_module._last_notified.clear()
+    _FakeHttpxClient.instances = []
+    _FakeHttpxClient.raise_on_post = False
+    _FakeHttpxClient.fail_admin_ids = set()
+    monkeypatch.setattr(notify_module.httpx, "Client", _FakeHttpxClient)
+    yield
+    notify_module._last_notified.clear()
+
+
+class _Cfg:
+    def __init__(self, admin_ids=(111, 222), proxy_url=None, bot_token="123:abc"):
+        self.admin_ids = admin_ids
+        self.proxy_url = proxy_url
+        self.bot_token = bot_token
+
+
+# ── _seen_today: без сети ────────────────────────────────────────────────────────────────
+
+def test_seen_today_false_first_time_then_true_same_day():
+    today = date(2026, 8, 22)
+    assert _seen_today(900802, today) is False
+    assert _seen_today(900802, today) is True
+
+
+def test_seen_today_resets_on_new_day():
+    assert _seen_today(900802, date(2026, 8, 22)) is False
+    assert _seen_today(900802, date(2026, 8, 22)) is True
+    assert _seen_today(900802, date(2026, 8, 23)) is False
+
+
+# ── notify_access_request: доставка и антиспам ──────────────────────────────────────────
+
+def test_first_request_sends_one_message_per_admin():
+    cfg = _Cfg(admin_ids=(111, 222, 333))
+    result = notify_access_request(
+        cfg, telegram_id=900802, username="delegate", first_name="Лена",
+        today=date(2026, 8, 22),
+    )
+    assert result is True
+    assert len(_FakeHttpxClient.instances) == 1
+    assert len(_FakeHttpxClient.instances[0].calls) == 3
+
+
+def test_repeat_same_day_sends_nothing():
+    cfg = _Cfg()
+    notify_access_request(
+        cfg, telegram_id=900802, username="delegate", first_name="Лена",
+        today=date(2026, 8, 22),
+    )
+    result = notify_access_request(
+        cfg, telegram_id=900802, username="delegate", first_name="Лена",
+        today=date(2026, 8, 22),
+    )
+    assert result is False
+    assert len(_FakeHttpxClient.instances) == 1  # клиент вообще не создавался второй раз
+
+
+def test_next_day_sends_again():
+    cfg = _Cfg()
+    notify_access_request(
+        cfg, telegram_id=900802, username="delegate", first_name="Лена",
+        today=date(2026, 8, 22),
+    )
+    result = notify_access_request(
+        cfg, telegram_id=900802, username="delegate", first_name="Лена",
+        today=date(2026, 8, 23),
+    )
+    assert result is True
+    assert len(_FakeHttpxClient.instances) == 2
+
+
+def test_different_people_are_independent_for_antispam():
+    cfg = _Cfg()
+    notify_access_request(
+        cfg, telegram_id=1, username="a", first_name="A", today=date(2026, 8, 22)
+    )
+    result = notify_access_request(
+        cfg, telegram_id=2, username="b", first_name="B", today=date(2026, 8, 22)
+    )
+    assert result is True
+
+
+def test_network_failure_returns_false_without_raising():
+    _FakeHttpxClient.raise_on_post = True
+    cfg = _Cfg()
+    result = notify_access_request(
+        cfg, telegram_id=900802, username="delegate", first_name="Лена",
+        today=date(2026, 8, 22),
+    )
+    assert result is False
+
+
+def test_partial_failure_still_returns_true_if_one_admin_reached():
+    cfg = _Cfg(admin_ids=(111, 222))
+    _FakeHttpxClient.fail_admin_ids = {111}
+    result = notify_access_request(
+        cfg, telegram_id=900802, username="delegate", first_name="Лена",
+        today=date(2026, 8, 22),
+    )
+    assert result is True
+
+
+def test_empty_admin_ids_returns_false_and_sends_nothing():
+    cfg = _Cfg(admin_ids=())
+    result = notify_access_request(
+        cfg, telegram_id=900802, username="delegate", first_name="Лена",
+        today=date(2026, 8, 22),
+    )
+    assert result is False
+    assert _FakeHttpxClient.instances == []
+
+
+def test_client_created_with_configured_proxy():
+    cfg = _Cfg(proxy_url="socks5://127.0.0.1:1080")
+    notify_access_request(
+        cfg, telegram_id=900802, username="delegate", first_name="Лена",
+        today=date(2026, 8, 22),
+    )
+    assert _FakeHttpxClient.instances[0].proxy == "socks5://127.0.0.1:1080"
+
+
+def test_client_created_without_proxy_when_unset():
+    cfg = _Cfg(proxy_url=None)
+    notify_access_request(
+        cfg, telegram_id=900802, username="delegate", first_name="Лена",
+        today=date(2026, 8, 22),
+    )
+    assert _FakeHttpxClient.instances[0].proxy is None
+
+
+# ── содержимое сообщения ─────────────────────────────────────────────────────────────────
+
+def test_message_body_has_no_delegate_pii_and_no_bot_token():
+    cfg = _Cfg(bot_token="999999:super-secret-token")
+    notify_access_request(
+        cfg, telegram_id=900802, username="delegate_user", first_name="Лена",
+        today=date(2026, 8, 22),
+    )
+    url, payload = _FakeHttpxClient.instances[0].calls[0]
+    # Токен уходит только в URL sendMessage (штатно для Bot API), но не дублируется в текст
+    # сообщения и не появляется в логах этого модуля.
+    assert "999999:super-secret-token" in url
+    assert "999999:super-secret-token" not in payload["text"]
+
+
+def test_message_has_button_to_existing_roles_screen():
+    cfg = _Cfg()
+    notify_access_request(
+        cfg, telegram_id=900802, username="delegate", first_name="Лена",
+        today=date(2026, 8, 22),
+    )
+    _, payload = _FakeHttpxClient.instances[0].calls[0]
+    buttons = payload["reply_markup"]["inline_keyboard"][0]
+    assert buttons[0]["callback_data"] == "admin_roles"
+
+
+# ── греп-сторож: антиспам не по заголовкам прокси, дашборд не пишет в БД ────────────────
+
+def test_notify_module_has_no_proxy_headers_or_db_writes():
+    text = NOTIFY_FILE.read_text(encoding="utf-8")
+    assert "CF-Connecting-IP" not in text
+    assert "X-Forwarded" not in text
+    for verb in ("INSERT", "UPDATE", "DELETE"):
+        assert verb not in text
