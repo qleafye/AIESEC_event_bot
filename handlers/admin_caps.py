@@ -405,6 +405,7 @@ ADMIN_CAPS: dict[str, str] = {
     "state:EditSetting:*": "settings",
     "state:StaffAdd:*": "settings",
     "toggle_consent_enabled": "settings",
+    "toggle_consent_recollect": "settings",
     "toggle_edu_conditional": "settings",
     "toggle_event_city_enabled": "settings",
     "toggle_nudge_enabled": "settings",

@@ -470,7 +470,8 @@ def test_render_snapshot_consent(tmp_path):
     assert "✅ Текст кнопки согласия: <i>— не задано</i>" in text
     assert "📋 Список согласий: <i>— не задано</i>" in text
 
-    expected_keys = ["consent_button_text", "consent_list"]
+    # quick 260822: +consent_version / +consent_recollect_text (версионирование согласий)
+    expected_keys = ["consent_button_text", "consent_list", "consent_version", "consent_recollect_text"]
     edit_cbs = [cd for cd in flat if cd and cd.startswith("settings_edit:")]
     assert edit_cbs == [f"settings_edit:{k}" for k in expected_keys]
     assert "settings_group_noop" in flat

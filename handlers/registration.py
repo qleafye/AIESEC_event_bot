@@ -1746,6 +1746,7 @@ async def cmd_start(message: types.Message, state: FSMContext, bot: Bot, command
             logger.error(f"per-city start_text_registered resolve failed for {user_id}: {e}")
             registered_text = await get_setting("start_text_registered") or DEFAULT_START_REGISTERED_TEXT
         await _send_welcome(message, registered_text, start_photo, await get_main_menu_kb(user_id), user_id)
+        await maybe_offer_consent_recollect(message, user_id)  # quick 260822: гейт пересогласия (дефолт off)
 
         if user_id in config.ADMIN_IDS:
             # quick-260817-4pj: inline button, NOT a second reply-keyboard + FSM state — a
@@ -2277,3 +2278,4 @@ async def finalize_registration(message: types.Message, state: FSMContext, bot: 
 # exact original handler registration order.
 from handlers import reg_flow  # noqa: E402
 from handlers import reg_steps  # noqa: E402
+from handlers.reg_consent import maybe_offer_consent_recollect  # noqa: E402  -- quick 260822: пересогласие новой редакции
