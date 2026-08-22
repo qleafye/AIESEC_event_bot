@@ -38,6 +38,10 @@ SEAMS = [
     "admin_game_tasks",
     "reg_flow",
     "reg_steps",
+    # quick 260822: согласия -- версия/пересогласие (шов admin_settings) и делегатский
+    # пересбор (шов registration)
+    "admin_consent",
+    "reg_consent",
 ]
 
 # Отпечаток: имя колбэка каждого хендлера каждого observer'а всех четырёх роутеров,
