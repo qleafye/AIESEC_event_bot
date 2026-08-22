@@ -36,6 +36,8 @@ SEAMS = [
     "admin_roles",
     "admin_gamification",
     "admin_game_tasks",
+    "admin_polls",
+    "admin_poll_wizard",
     "reg_flow",
     "reg_steps",
     # quick 260822: согласия -- версия/пересогласие (шов admin_settings) и делегатский

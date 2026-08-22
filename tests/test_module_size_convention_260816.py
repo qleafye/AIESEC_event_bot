@@ -52,7 +52,8 @@ KNOWN_OVERAGES: dict[str, tuple[int, str]] = {
         "(Phase 14/16)",
     ),
     "admin_settings.py": (
-        1960,
+        1975,
+        "(+2 строки 22.08: poll_intro_text/polls_sheet_tab в _*_FIELD_ORDER и HTML_SETTINGS после слияния «➕ пункт» + согласий + опросов; новые экраны живут в швах admin_settings_lists/admin_consent) "
         "настройки+инструменты таблицы+выгрузки -- блоки не смежны в исходном "
         "god-файле, разрез на два файла потребовал бы двух точек шва-импорта "
         "(см. 13-06-SUMMARY.md, Known Gap); +31 строка -- перепроверка прав "
