@@ -1274,6 +1274,26 @@ SETTINGS_SCHEMA = {
         ),
         "default": "5,10,20",
     },
+    # Quick 260822: уведомления менеджеру о сдачах — каждую отдельно или дайджестом по окну
+    # тишины. Enum без текстового ввода: на экране «🎮 Геймификация» это тумблер
+    # (handlers/admin_gamification.py::toggle_game_submit_notify), ключ в _GAME_FIELD_ORDER
+    # НЕ входит — менеджер не должен печатать код варианта. Подписи вариантов — рядом, в
+    # GAME_SUBMIT_NOTIFY_MODE_LABELS (единственный источник для тумблера и алерта).
+    "game_submit_notify_mode": {
+        "type": "enum", "group": "game", "label": "📥 Уведомления о сдачах",
+        "options": ["each", "digest"],
+        "prompt": None,
+        "default": "each",
+    },
+    "game_submit_digest_minutes": {
+        "type": "int", "group": "game", "label": "📥 Дайджест сдач: окно тишины (мин)",
+        "prompt": (
+            "Через сколько минут тишины слать сводку о новых сдачах, например 15.\n\n"
+            "Работает только в режиме «Пачкой (дайджест)»: каждая новая сдача откладывает "
+            "отправку ещё на столько минут, сводка уходит, когда поток стихает."
+        ),
+        "default": 15,
+    },
 
     # ── Phase 14 (CFG-01): group "system" — тайминги прокси переехали из .env. Оба значения
     # читаются ОДИН раз в конструкторе FailoverAiohttpSession (services/proxy_session.py) —
@@ -1393,6 +1413,14 @@ SETTINGS_SCHEMA = {
         "options": ["on", "off"], "prompt": None, "default": "on",
         "per_city": True,
     },
+}
+
+
+# Quick 260822: человеческие подписи режимов game_submit_notify_mode (CLAUDE.md: коды
+# capability/enum менеджеру не показываем). Ключи = options выше.
+GAME_SUBMIT_NOTIFY_MODE_LABELS = {
+    "each": "Каждую сдачу отдельно",
+    "digest": "Пачкой (дайджест)",
 }
 
 

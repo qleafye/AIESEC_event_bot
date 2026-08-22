@@ -440,6 +440,26 @@ async def init_db():
             "ON game_submission_parts(submission_id, ord)"
         )
 
+        # Quick 260822: очередь сдач для дайджеста менеджерам (режим game_submit_notify_mode =
+        # digest). FSM — MemoryStorage, поэтому накопленное живёт в БД и дошлётся после
+        # рестарта (services/game_digest.py::rearm_pending_digests). city NULL = «без города»
+        # (модуль городов выключен) — одна общая джоба game_digest:all.
+        await db.execute('''
+            CREATE TABLE IF NOT EXISTS game_submit_digest_queue (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                submission_id INTEGER NOT NULL,
+                user_id INTEGER NOT NULL,
+                task_id INTEGER NOT NULL,
+                city TEXT,
+                created_at TEXT NOT NULL,
+                sent_at TEXT
+            )
+        ''')
+        await db.execute(
+            "CREATE INDEX IF NOT EXISTS idx_game_submit_digest_unsent "
+            "ON game_submit_digest_queue(sent_at, city)"
+        )
+
         # Indexes under the hot admin/scheduler queries. Each one mirrors a real WHERE/ORDER BY
         # in this module (see the comments in _HOT_PATH_INDEXES); nothing speculative.
         await _ensure_hot_path_indexes(db)
@@ -2192,6 +2212,50 @@ async def get_submission(submission_id: int) -> dict | None:
         ) as cursor:
             row = await cursor.fetchone()
             return dict(row) if row else None
+
+
+# ── Quick 260822: очередь дайджеста сдач ────────────────────────────────────────────────────
+
+async def enqueue_game_digest(submission_id: int, user_id: int, task_id: int,
+                              city: str | None, created_at: str) -> int:
+    async with _connect() as db:
+        cursor = await db.execute(
+            "INSERT INTO game_submit_digest_queue (submission_id, user_id, task_id, city, "
+            "created_at) VALUES (?, ?, ?, ?, ?)",
+            (submission_id, user_id, task_id, city, created_at),
+        )
+        await db.commit()
+        return cursor.lastrowid
+
+
+async def list_unsent_game_digest(city: str | None = None, *, all_cities: bool = False) -> list[dict]:
+    """Неотправленные строки очереди. `all_cities=True` — вся очередь (для ре-арма на старте);
+    иначе строго по `city` (None = строки без города, НЕ «все»)."""
+    where = "sent_at IS NULL"
+    params: tuple = ()
+    if not all_cities:
+        if city is None:
+            where += " AND city IS NULL"
+        else:
+            where += " AND city = ?"
+            params = (city,)
+    async with _connect() as db:
+        db.row_factory = aiosqlite.Row
+        async with db.execute(
+            f"SELECT * FROM game_submit_digest_queue WHERE {where} ORDER BY id", params
+        ) as cursor:
+            return [dict(row) for row in await cursor.fetchall()]
+
+
+async def mark_game_digest_sent(ids: list[int], sent_at: str) -> None:
+    if not ids:
+        return
+    async with _connect() as db:
+        await db.executemany(
+            "UPDATE game_submit_digest_queue SET sent_at = ? WHERE id = ?",
+            [(sent_at, i) for i in ids],
+        )
+        await db.commit()
 
 
 async def get_active_submission(task_id: int, user_id: int) -> dict | None:
