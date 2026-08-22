@@ -1,14 +1,19 @@
 """Phase 15 Plan 04 (STAT-02): подпись Login Widget, сессия, права и антиспам дашборда.
 
 Task 1 — `dashboard.auth`: HMAC-подпись Login Widget, параметры сессионной cookie, адрес
-клиента за Cloudflare. Дальнейшие блоки (Task 2 — `dashboard.access`, Task 3 —
-`dashboard.notify`) дописываются в этот же файл теми же задачами плана.
+клиента за Cloudflare. Task 2 — `dashboard.access`: пересверка права `stats` и городской
+скоуп. Task 3 (дописывается позже) — `dashboard.notify`.
 """
+import asyncio
 import hashlib
 import hmac
 import inspect
+from pathlib import Path
 
 import pytest
+
+from config import config as bot_config
+from database import db as bot_db
 
 from dashboard.auth import (
     SESSION_COOKIE,
@@ -18,6 +23,10 @@ from dashboard.auth import (
     verify_login_payload,
 )
 from dashboard.config import load_config
+from dashboard import db as dash_db
+
+ACCESS_FILE = Path(__file__).resolve().parent.parent / "dashboard" / "access.py"
+NOTIFY_FILE = Path(__file__).resolve().parent.parent / "dashboard" / "notify.py"
 
 BOT_TOKEN = "123456:ABCDEF-testtoken"
 
@@ -155,3 +164,164 @@ def test_client_ip_falls_back_to_x_forwarded_for():
 
 def test_client_ip_none_without_either_header():
     assert client_ip({}) is None
+
+
+# ═══════════════════════════════════════════════════════════════════════════════════════
+# Task 2 — dashboard.access: пересверка права stats и городской скоуп (D-09/D-10)
+# ═══════════════════════════════════════════════════════════════════════════════════════
+
+from dashboard.access import (  # noqa: E402
+    ALL_CAPABILITIES,
+    _ROLE_DEFAULT_CAPS,
+    has_stats,
+    resolve_capabilities,
+    staff_city,
+    viewer_scope,
+)
+
+ADMIN_IDS = (12345678,)
+
+
+def _seed_access_db(tmp_path, name="access.db", staff=(), settings=None) -> str:
+    """`staff` — список `(telegram_id, role, city)`; `settings` — словарь ключ->значение
+    `bot_settings`. Пишет через `database.db` (aiosqlite), читает дашборд через
+    `dashboard.db.read_conn` (sqlite3, mode=ro) — то же разделение, что в
+    tests/test_dashboard_queries.py."""
+    path = str(tmp_path / name)
+    bot_config.DB_PATH = path
+    asyncio.run(bot_db.init_db())
+
+    async def _fill():
+        for telegram_id, role, city in staff:
+            await bot_db.add_staff(telegram_id, role, added_by=None)
+            if city is not None:
+                await bot_db.set_staff_city(telegram_id, city)
+        for key, value in (settings or {}).items():
+            await bot_db.set_setting(key, value)
+
+    asyncio.run(_fill())
+    return path
+
+
+# ── resolve_capabilities / has_stats ────────────────────────────────────────────────────
+
+def test_superadmin_gets_stats_even_with_empty_staff(tmp_path):
+    path = _seed_access_db(tmp_path)
+    with dash_db.read_conn(path) as conn:
+        assert has_stats(conn, ADMIN_IDS[0], ADMIN_IDS) is True
+        assert resolve_capabilities(conn, ADMIN_IDS[0], ADMIN_IDS) == set(ALL_CAPABILITIES)
+
+
+def test_manager_with_stats_in_role_caps_gets_it(tmp_path):
+    path = _seed_access_db(
+        tmp_path,
+        staff=[(900802, "reg_manager", None)],
+        settings={"role_caps_reg_manager": "moderate_reg\nstats"},
+    )
+    with dash_db.read_conn(path) as conn:
+        assert has_stats(conn, 900802, ADMIN_IDS) is True
+
+
+def test_manager_without_stats_in_role_caps_denied(tmp_path):
+    path = _seed_access_db(
+        tmp_path,
+        staff=[(900802, "reg_manager", None)],
+        settings={"role_caps_reg_manager": "moderate_reg"},
+    )
+    with dash_db.read_conn(path) as conn:
+        assert has_stats(conn, 900802, ADMIN_IDS) is False
+
+
+def test_role_disabled_denies_all_its_caps(tmp_path):
+    path = _seed_access_db(
+        tmp_path,
+        staff=[(900802, "reg_manager", None)],
+        settings={
+            "role_caps_reg_manager": "moderate_reg\nstats",
+            "role_reg_manager_enabled": "off",
+        },
+    )
+    with dash_db.read_conn(path) as conn:
+        assert has_stats(conn, 900802, ADMIN_IDS) is False
+
+
+def test_no_cache_role_caps_change_takes_effect_immediately(tmp_path):
+    path = _seed_access_db(
+        tmp_path,
+        staff=[(900802, "reg_manager", None)],
+        settings={"role_caps_reg_manager": "moderate_reg\nstats"},
+    )
+    with dash_db.read_conn(path) as conn:
+        assert has_stats(conn, 900802, ADMIN_IDS) is True
+
+    asyncio.run(bot_db.set_setting("role_caps_reg_manager", "moderate_reg"))
+
+    with dash_db.read_conn(path) as conn:
+        assert has_stats(conn, 900802, ADMIN_IDS) is False
+
+
+def test_garbage_capability_value_never_grants_access(tmp_path):
+    path = _seed_access_db(
+        tmp_path,
+        staff=[(900802, "reg_manager", None)],
+        settings={"role_caps_reg_manager": "not_a_real_capability"},
+    )
+    with dash_db.read_conn(path) as conn:
+        caps = resolve_capabilities(conn, 900802, ADMIN_IDS)
+        assert caps == set()
+
+
+def test_unknown_role_name_in_staff_grants_nothing(tmp_path):
+    path = _seed_access_db(tmp_path, staff=[(900802, "some_retired_role", None)])
+    with dash_db.read_conn(path) as conn:
+        assert resolve_capabilities(conn, 900802, ADMIN_IDS) == set()
+
+
+# ── viewer_scope / staff_city (D-10) ────────────────────────────────────────────────────
+
+def test_bound_manager_ignores_requested_city(tmp_path):
+    path = _seed_access_db(tmp_path, staff=[(900802, "reg_manager", "spb")])
+    with dash_db.read_conn(path) as conn:
+        assert staff_city(conn, 900802) == "spb"
+        scope = viewer_scope(conn, 900802, ADMIN_IDS, requested_city="msk")
+        assert scope.city == "spb"
+
+
+def test_unbound_manager_respects_requested_city(tmp_path):
+    path = _seed_access_db(tmp_path, staff=[(900802, "reg_manager", None)])
+    with dash_db.read_conn(path) as conn:
+        assert staff_city(conn, 900802) is None
+        scope = viewer_scope(conn, 900802, ADMIN_IDS, requested_city="msk")
+        assert scope.city == "msk"
+
+
+def test_unbound_manager_with_no_requested_city_sees_all(tmp_path):
+    path = _seed_access_db(tmp_path, staff=[(900802, "reg_manager", None)])
+    with dash_db.read_conn(path) as conn:
+        scope = viewer_scope(conn, 900802, ADMIN_IDS, requested_city=None)
+        assert scope.city is None
+
+
+# ── сторож дрейфа модели прав от бота ────────────────────────────────────────────────────
+
+def test_all_capabilities_matches_bot_capability_model():
+    from handlers.admin_caps import ALL_CAPABILITIES as BOT_CAPS
+
+    assert list(ALL_CAPABILITIES) == list(BOT_CAPS)
+
+
+def test_role_default_caps_matches_settings_schema():
+    from settings_schema import SETTINGS_SCHEMA
+
+    for role, caps in _ROLE_DEFAULT_CAPS.items():
+        key = f"role_caps_{role}"
+        assert SETTINGS_SCHEMA[key]["default"] == caps
+
+
+# ── греп-сторожи (T-15-04-04/06) ─────────────────────────────────────────────────────────
+
+def test_access_module_has_no_cache_decorator_or_proxy_headers():
+    text = ACCESS_FILE.read_text(encoding="utf-8")
+    assert "lru_cache" not in text
+    assert "CF-Connecting-IP" not in text
+    assert "X-Forwarded" not in text
