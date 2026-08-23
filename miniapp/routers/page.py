@@ -129,6 +129,8 @@ def me(request: Request, p: Principal = Depends(principal)) -> dict:
         is_delegate = delegate_denial(conn, p) is None
         theme_settings = {key: read_setting(conn, key) for key in web_theme.THEME_KEYS.values()}
         assets = {name: read_setting(conn, key) for name, key in web_theme.ASSET_KEYS.items()}
+        onboarding_text = read_setting(conn, "miniapp_onboarding_text") or ""
+        onboarding_cta = read_setting(conn, "miniapp_onboarding_cta") or ""
     resolved = web_theme.resolve_theme(theme_settings)
     return {
         "telegram_id": p.telegram_id,
@@ -145,5 +147,10 @@ def me(request: Request, p: Principal = Depends(principal)) -> dict:
         # Оформление (D-03/D-04/D-08/D-15/D-16) — новые поля, старые выше НЕ переименованы.
         "theme_preset": resolved["preset"],
         "playful_tone": resolved["playful_tone"] == "on",
+        # Хаб (план 19.1-04, D-09): бренд-паттерн hero (только motion "full" + разрешение
+        # пресета/кастома) и тексты приветственного экрана — 0 хардкода в hub.js.
+        "pattern_enabled": resolved["pattern_enabled"] == "on",
+        "onboarding_text": onboarding_text,
+        "onboarding_cta": onboarding_cta,
         **assets,
     }
