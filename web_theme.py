@@ -78,6 +78,20 @@ FONT_STACKS: dict[str, tuple[str, str]] = {
 
 _HEX6 = re.compile(r"^#[0-9A-Fa-f]{6}$")
 
+# Ассеты оформления (D-08/D-15/D-16) — «имя поля ответа /app/api/me» -> «ключ реестра».
+# Единственное место, где перечислены эти ключи: `page.py` читает их для /app/api/me,
+# `files.py` строит из них же allow-list `can_read_file` — список не переписывается дважды.
+ASSET_KEYS: dict[str, str] = {
+    "cover_file_id": "miniapp_cover",
+    "cover_dark_file_id": "miniapp_cover_dark",
+    "logo_dark_file_id": "miniapp_logo_dark",
+    "sticker_empty_file_id": "miniapp_sticker_empty",
+    "sticker_success_file_id": "miniapp_sticker_success",
+    "sticker_error_file_id": "miniapp_sticker_error",
+    "sticker_top1_file_id": "miniapp_sticker_top1",
+    "coin_icon_file_id": "miniapp_coin_icon",
+}
+
 # Тёмная поверхность Mini App (tokens.css `:root[data-theme="dark"] --surface`) — фон, против
 # которого осветляется бренд-акцент/вторичный цвет под контраст ≥4.5:1 (D-07).
 DARK_SURFACE = "#1C1F25"

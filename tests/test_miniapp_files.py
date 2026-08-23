@@ -174,6 +174,21 @@ def test_task_cover_and_logo_open_for_any_delegate(client, files_api):
     assert _get(client, OTHER_ID, COVER_ID).status_code == 403  # архив — обложка больше не общая
 
 
+def test_theme_asset_open_for_any_delegate(client, files_api):
+    """Phase 19.1-02 (D-08/D-15/D-16/T-19.1-06): ассеты оформления (обложка/стикеры/иконка
+    монеты/лого тёмной темы) — allow-list через `web_theme.ASSET_KEYS`, доступны любому
+    принципалу как публичная графика мероприятия."""
+    STICKER_ID = "AgACAgIAAxkBAAIstickerEmpty01"
+    _set("miniapp_sticker_empty", STICKER_ID)
+    assert _get(client, OTHER_ID, STICKER_ID).status_code == 200
+
+
+def test_unset_theme_asset_slot_stays_forbidden(client, files_api):
+    """Пустой слот (менеджер не загрузил ассет) — file_id всё равно неизвестен, 403."""
+    resp = _get(client, OTHER_ID, "AgACAgIAAxkBAAInotUploadedYet1")
+    assert resp.status_code == 403
+
+
 def test_no_auth_is_401(client, files_api):
     assert client.get(f"/app/api/file/{FILE_ID}").status_code == 401
 
