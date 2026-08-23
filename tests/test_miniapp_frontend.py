@@ -459,3 +459,42 @@ def test_review_and_bar_css_classes_exist_on_tokens():
         assert cls in css, cls
     bars = css[css.index(".bar-track"):]
     assert "var(--accent)" in bars and "var(--surface-alt)" in bars
+
+
+# ── экраны заданий менеджера (план 19-06): admin_tasks.js / task_edit.js ────────────────
+
+ADMIN_TASK_SCREENS = ["admin_tasks.js", "task_edit.js"]
+
+
+@pytest.mark.parametrize("name", ADMIN_TASK_SCREENS)
+def test_admin_task_screen_exports_render_without_innerhtml_or_colors(name):
+    path = SCREENS_DIR / name
+    assert path.is_file(), f"экран {name} не создан"
+    text = _js_without_comments(path)
+    assert re.search(r"export\s+async\s+function\s+render\s*\(root,\s*params,\s*ctx\)", text), name
+    assert "innerHTML" not in text and "document.write" not in text
+    assert not _HEX_OR_RGB_COLOR.findall(text), f"литеральный цвет в {name}"
+    assert "https://" not in text and "http://" not in text, f"внешний URL в {name}"
+
+
+def test_admin_tasks_screen_toggle_rows_and_new_button():
+    text = _js_without_comments(SCREENS_DIR / "admin_tasks.js")
+    # Тумблер — два состояния, переключение без перезагрузки: флаг archived в query.
+    assert "Активные" in text and "Архив" in text
+    assert "archived=${archived ? 1 : 0}" in text
+    assert "location.reload" not in text
+    # Строки: номер, счётчики, переход в карточку; «➕ Новое задание» -> #/task-edit/new.
+    assert "№${item.number}" in text
+    assert "item.pending" in text and "item.approved" in text
+    assert "#/task-edit/${item.id}" in text and '"#/task-edit/new"' in text
+    assert "Показать ещё" in text and "offset" in text
+    assert "empty_text" in text                       # пустое состояние — текстом с сервера
+    assert "item.category_label" in text and '"Light"' not in text  # подписи готовые, кодов нет
+
+
+def test_admin_tasks_css_classes_exist_on_tokens():
+    css = (MINIAPP_STATIC / "app.css").read_text(encoding="utf-8")
+    for cls in (".toggle", ".toggle-btn", ".admin-task-row", ".task-actions", ".choice-grid", ".confirm-box", ".wizard-step"):
+        assert cls in css, cls
+    toggles = css[css.index(".toggle"):]
+    assert "var(--accent)" in toggles and "var(--border)" in toggles
