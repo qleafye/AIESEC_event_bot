@@ -93,7 +93,7 @@
   GET  /app/api/admin/coins/presets -> {presets[int], delta_max, reason_max} — из
                                        coins_manual_amount_presets, мусор отброшен, пусто -> дефолт
   Менеджер (план 19-07, `require_cap("settings")` + section settings):
-  GET  /app/api/admin/settings     -> {items[{key, label, value, group, group_label}]} — ТОЛЬКО белый
+  GET  /app/api/admin/settings     -> [{key, label, value, group_label}] — ТОЛЬКО белый
                                        список EDITABLE_KEYS (все on/off-тумблеры miniapp_* и группы game
                                        из SETTINGS_SCHEMA); key — идентификатор для POST, человеку не
                                        показывается
@@ -125,6 +125,7 @@ from miniapp.routers import (
     page,
     profile,
     review,
+    settings,
     stats,
     submissions,
     tasks,
@@ -141,6 +142,7 @@ ALL_ROUTERS = [
     stats.router,
     admin_tasks.router,
     coins_admin.router,
+    settings.router,
 ]
 
 __all__ = ["ALL_ROUTERS"]
