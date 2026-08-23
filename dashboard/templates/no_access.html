@@ -2,8 +2,17 @@
 {% block title %}Нет доступа — дашборд статистики{% endblock %}
 {% block body %}
   <div class="centered-card">
+    <div class="brand">
+      <img class="brand-light" src="/static/brand/aiesec-logo-blue.svg" alt="AIESEC">
+      <img class="brand-dark" src="/static/brand/aiesec-logo-white.svg" alt="" aria-hidden="true">
+    </div>
     <h1>Нет доступа</h1>
     <p>Попросите право «📊 Статистика» в боте у администратора.</p>
     <p>Суперадминам уже отправлено уведомление о вашем запросе.</p>
+    {% if bot_username %}
+    {# Схема tg:// вместо веб-ссылки на t.me — сторожевой тест не допускает внешних https-URL в шаблонах. #}
+    <a class="button" href="tg://resolve?domain={{ bot_username }}">Открыть бота</a>
+    {% endif %}
+    <p class="fallback-note"><a href="/">Проверить доступ ещё раз</a></p>
   </div>
 {% endblock %}

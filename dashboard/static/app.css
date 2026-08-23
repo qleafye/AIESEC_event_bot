@@ -1,6 +1,7 @@
-/* Phase 15 Plan 05 Task 2 (D-15): раскладка и компоненты дашборда — исключительно через
-   var(--…) из tokens.css. Ни одного захардкоженного цвета (сторожевой тест грепает по
-   hex-кодам и rgb-функции в этом файле и в templates/).
+/* Раскладка и компоненты дашборда — исключительно через var(--…) из tokens.css. Ни одного
+   захардкоженного цвета (сторожевой тест грепает hex-коды и rgb-функции в этом файле и в
+   templates/). Стиль — minimalist/BlueBook: плоские карточки 1px бордер + микротень, без
+   градиентов и паттернов на карточках с данными.
 
    Базовая раскладка — одна колонка (телефон), от 900px — сетка (D-15: страница читаема на
    телефоне без горизонтальной прокрутки). */
@@ -12,77 +13,192 @@ html { -webkit-text-size-adjust: 100%; }
 body {
   background: var(--bg);
   color: var(--text);
-  font-family: var(--font-ui);
+  font-family: var(--font-body);
   margin: 0;
-  padding: var(--gap);
-  font-size: 14px;
+  padding: var(--sp-4);
+  font-size: 15px;
   line-height: 1.5;
+  min-height: 100dvh;
+  -webkit-font-smoothing: antialiased;
+}
+
+@media (min-width: 900px) {
+  body { font-size: 14px; padding: var(--sp-6) var(--sp-5); }
 }
 
 .wrap { max-width: 1200px; margin: 0 auto; }
 
-a { color: var(--accent); }
+h1, h2, h3 {
+  font-family: var(--font-heading);
+  text-wrap: balance;
+}
+
+a {
+  color: var(--accent-text);
+  text-underline-offset: 2px;
+}
+
+a, button {
+  touch-action: manipulation;
+  -webkit-tap-highlight-color: transparent;
+}
+
+:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+  border: 0;
+}
 
 /* ── Header ─────────────────────────────────────────────────────────────────────────── */
 
 .site-header {
   background: var(--surface);
   border: 1px solid var(--border);
+  border-top: 3px solid var(--secondary);   /* единственный декоративный штрих — подкраска мероприятия */
   border-radius: var(--radius);
-  padding: 16px;
+  box-shadow: var(--shadow-card);
+  padding: var(--sp-4);
   margin-bottom: var(--gap);
 }
 
-.site-header h1 { margin: 0 0 4px; font-size: 19px; }
+@media (min-width: 900px) {
+  .site-header { padding: var(--sp-5) var(--sp-6); }
+}
 
-.site-header .subtitle { color: var(--text-muted); font-size: 12.5px; }
+.brand-row {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  gap: var(--sp-4);
+  align-items: center;
+}
+
+.brand { display: inline-flex; align-items: center; }
+
+.brand img { height: 28px; width: auto; display: block; }
+
+/* Wordmark нельзя перекрашивать (BlueBook) — два файла, переключение через media. */
+.brand .brand-dark { display: none; }
+
+@media (prefers-color-scheme: dark) {
+  .brand .brand-light { display: none; }
+  .brand .brand-dark { display: block; }
+}
+
+.event-logo-slot { min-width: 0; min-height: 28px; }   /* слот под лого мероприятия, Phase 19 */
+
+.event-logo-slot:empty { min-width: 28px; }
+
+.site-header h1 {
+  margin: 0;
+  font-size: 24px;
+  font-weight: 800;
+  line-height: 1.2;
+  letter-spacing: -0.01em;
+  color: var(--accent-text);
+}
+
+@media (min-width: 900px) {
+  .site-header h1 { font-size: 28px; }
+}
+
+.site-header .subtitle {
+  color: var(--text-muted);
+  font-size: 13px;
+  margin-top: var(--sp-1);
+}
 
 .switchers {
   display: flex;
-  gap: 6px;
+  align-items: center;
+  gap: var(--sp-2);
   flex-wrap: wrap;
-  margin-top: 12px;
+  margin-top: var(--sp-3);
+}
+
+.switchers-label {
+  font-size: 12px;
+  color: var(--text-muted);
+  font-weight: 700;
+  margin-right: var(--sp-1);
 }
 
 .switch-link {
-  display: inline-block;
+  display: inline-flex;
+  align-items: center;
+  gap: var(--sp-2);
+  min-height: 36px;
+  padding: 8px 14px;
   border: 1px solid var(--border);
-  border-radius: 20px;
-  padding: 4px 12px;
-  font-size: 12.5px;
+  border-radius: var(--radius-pill);
+  font-size: 13px;
   color: var(--text-muted);
   background: var(--surface-alt);
   text-decoration: none;
+  transition:
+    background-color var(--dur) var(--ease),
+    border-color var(--dur) var(--ease),
+    color var(--dur) var(--ease);
 }
 
-.switch-link.active {
+@media (hover: hover) {
+  .switch-link:hover {
+    border-color: var(--border-strong);
+    color: var(--text);
+  }
+}
+
+.switch-link:active { border-color: var(--border-strong); }
+
+/* Активный — белое на синем (BlueBook), плюс aria-current для AT. */
+.switch-link.active,
+.switch-link[aria-current="page"] {
+  background: var(--accent);
   border-color: var(--accent);
-  color: var(--accent);
-  background: var(--accent-soft);
-  font-weight: 600;
+  color: var(--on-accent);
+  font-weight: 700;
 }
 
 .bound-city-note {
   display: inline-block;
-  font-size: 12.5px;
+  font-size: 13px;
   color: var(--text-muted);
-  margin-top: 12px;
+  margin-top: var(--sp-3);
 }
 
 .updated-note {
   font-size: 12px;
   color: var(--text-muted);
-  margin-top: 10px;
+  margin-top: var(--sp-3);
+  padding-top: var(--sp-3);
+  border-top: 1px solid var(--border);
 }
 
 /* ── Blocks ─────────────────────────────────────────────────────────────────────────── */
 
-.block { margin-bottom: 28px; }
+.block { margin-bottom: var(--block-gap); }
 
 .block-title {
-  font-size: 13px;
-  font-weight: 600;
-  margin: 0 0 10px;
+  font-size: 16px;
+  font-weight: 700;
+  margin: 0 0 var(--sp-3);
+  color: var(--text);
+}
+
+.cut-title {
+  font-size: 14px;
+  font-weight: 700;
+  margin: 0 0 var(--sp-3);
   color: var(--text);
 }
 
@@ -90,13 +206,19 @@ a { color: var(--accent); }
   background: var(--surface);
   border: 1px solid var(--border);
   border-radius: var(--radius);
-  padding: 16px;
+  box-shadow: var(--shadow-card);
+  padding: var(--sp-4);
+}
+
+@media (min-width: 900px) {
+  .card { padding: var(--sp-5); }
 }
 
 .empty-note {
-  color: var(--text-faint);
-  font-size: 12.5px;
-  padding: 6px 0;
+  color: var(--text-muted);
+  font-size: 13px;
+  margin: 0;
+  padding: var(--sp-2) 0;
 }
 
 /* ── KPI tiles ──────────────────────────────────────────────────────────────────────── */
@@ -104,63 +226,110 @@ a { color: var(--accent); }
 .kpi-grid {
   display: grid;
   grid-template-columns: repeat(2, 1fr);
-  gap: 12px;
+  gap: var(--sp-3);
 }
 
 @media (min-width: 900px) {
-  .kpi-grid { grid-template-columns: repeat(4, 1fr); }
+  .kpi-grid { grid-template-columns: repeat(4, 1fr); gap: var(--gap); }
 }
 
 .kpi {
   background: var(--surface);
   border: 1px solid var(--border);
   border-radius: var(--radius);
-  padding: 14px;
+  box-shadow: var(--shadow-card);
+  padding: var(--sp-4);
+  min-width: 0;
 }
 
-.kpi .num { font-size: 26px; font-weight: 700; line-height: 1.1; }
-.kpi .lbl { font-size: 12px; color: var(--text-muted); margin-top: 2px; }
-.kpi .delta { font-size: 11px; margin-top: 4px; }
-.kpi .delta.up { color: var(--accent); }
-.kpi .delta.down { color: var(--text-faint); }
+.kpi.primary { border-left: 3px solid var(--accent); }
+
+/* KPI-числа — Lato 700, пропорциональные цифры (dataviz: не tabular). */
+.kpi .num {
+  font-family: var(--font-body);
+  font-size: 28px;
+  font-weight: 700;
+  line-height: 1.1;
+  letter-spacing: -0.01em;
+}
+
+.kpi .lbl { font-size: 12.5px; color: var(--text-muted); margin-top: var(--sp-1); }
+
+.kpi .delta { font-size: 12px; margin-top: var(--sp-1); color: var(--text-muted); }
+.kpi .delta.up { color: var(--success-text); font-weight: 700; }
+.kpi .delta.down { color: var(--text-muted); }
+
+/* Вложенный ряд (геймификация): один hero-ряд на страницу — тайлы тише. */
+.kpi-grid.secondary .kpi {
+  background: var(--surface-alt);
+  border: none;
+  box-shadow: none;
+  padding: var(--sp-3) var(--sp-4);
+}
+
+.kpi-grid.secondary .kpi .num { font-size: 20px; }
 
 /* ── Funnel ─────────────────────────────────────────────────────────────────────────── */
 
 .funnel {
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: var(--sp-2);
 }
 
 @media (min-width: 900px) {
-  .funnel { flex-direction: row; align-items: stretch; }
+  .funnel { flex-direction: row; align-items: stretch; gap: var(--sp-3); }
 }
 
 .funnel-step {
   flex: 1;
+  min-width: 0;
   background: var(--surface-alt);
   border: 1px solid var(--border);
-  border-radius: var(--radius);
-  padding: 12px;
+  border-radius: var(--radius-sm);
+  padding: var(--sp-3);
   text-align: center;
 }
 
-.funnel-step .n { font-size: 22px; font-weight: 700; }
-.funnel-step .l { font-size: 11.5px; color: var(--text-muted); margin-top: 2px; }
+.funnel-step .n {
+  font-size: 22px;
+  font-weight: 700;
+  line-height: 1.1;
+}
+
+.funnel-step .l { font-size: 12px; color: var(--text-muted); margin-top: var(--sp-1); }
+
+.funnel-step .pct { font-size: 12px; color: var(--text-muted); margin-top: 2px; }
 
 .funnel-bar {
-  height: 6px;
-  background: var(--border);
-  border-radius: 3px;
-  margin-top: 8px;
+  height: 8px;
+  background: var(--chart-track);
+  border-radius: var(--radius-sm);
+  margin-top: var(--sp-2);
   overflow: hidden;
 }
 
-.funnel-bar > i { display: block; height: 100%; background: var(--accent); }
+.funnel-bar > span {
+  display: block;
+  height: 100%;
+  background: var(--chart-1);
+  border-radius: inherit;
+}
 
 /* ── Dynamics chart ─────────────────────────────────────────────────────────────────── */
 
-.chart-wrap { position: relative; height: 220px; }
+.chart-wrap { position: relative; height: 240px; }
+
+.chart-table { margin-top: var(--sp-3); font-size: 13px; }
+
+.chart-table summary {
+  cursor: pointer;
+  color: var(--accent-text);
+  font-weight: 700;
+  padding: var(--sp-1) 0;
+}
+
+.chart-table table { margin-top: var(--sp-2); max-width: 360px; }
 
 /* ── Horizontal-bar cuts ────────────────────────────────────────────────────────────── */
 
@@ -177,13 +346,15 @@ a { color: var(--accent); }
 .bar-row {
   display: flex;
   align-items: center;
-  gap: 8px;
-  margin-bottom: 7px;
-  font-size: 12px;
+  flex-wrap: wrap;
+  gap: var(--sp-2);
+  margin-bottom: var(--sp-2);
+  font-size: 13px;
 }
 
 .bar-row .label {
   flex: 0 0 42%;
+  min-width: 0;
   color: var(--text-muted);
   overflow: hidden;
   text-overflow: ellipsis;
@@ -192,75 +363,158 @@ a { color: var(--accent); }
 
 .bar-row .track {
   flex: 1;
-  height: 14px;
-  background: var(--surface-alt);
-  border-radius: 2px;
+  min-width: 80px;
+  height: 12px;
+  background: var(--chart-track);
+  border-radius: var(--radius-sm);
   overflow: hidden;
 }
 
-.bar-row .fill { display: block; height: 100%; background: var(--accent); }
+/* Серия данных — --chart-1, не UI-акцент (dataviz: цвет следует за сущностью). */
+.bar-row .fill {
+  display: block;
+  height: 100%;
+  background: var(--chart-1);
+  border-radius: inherit;
+}
 
 .bar-row .val {
-  flex: 0 0 40px;
+  flex: 0 0 64px;
   text-align: right;
   color: var(--text);
+  font-weight: 700;
   font-variant-numeric: tabular-nums;
 }
 
-/* ── Table (schlopывается на телефоне в «подпись — значение») ────────────────────────── */
+@media (max-width: 640px) {
+  .bar-row .label {
+    flex-basis: 100%;
+    white-space: normal;
+    overflow: visible;
+  }
+}
 
-table { width: 100%; border-collapse: collapse; font-size: 12.5px; }
+/* ── Table (складывается на телефоне в «подпись — значение») ─────────────────────────── */
 
-th, td { text-align: left; padding: 7px 10px; border-bottom: 1px solid var(--border); }
+.table-wrap { overflow-x: auto; }
+
+.kpi-grid + .table-wrap { margin-top: var(--gap); }
+
+table { width: 100%; border-collapse: collapse; font-size: 13px; }
+
+th, td {
+  text-align: left;
+  padding: var(--sp-2) var(--sp-3);
+  border-bottom: 1px solid var(--border);
+}
 
 th {
   color: var(--text-muted);
-  font-weight: 600;
-  font-size: 11px;
+  font-weight: 700;
+  font-size: 11.5px;
   text-transform: uppercase;
-  letter-spacing: .03em;
+  letter-spacing: .06em;
 }
 
-td.num { text-align: right; font-variant-numeric: tabular-nums; }
+td.num, th.num { text-align: right; }
+
+td.num { font-variant-numeric: tabular-nums; }
 
 tr:last-child td { border-bottom: none; }
+
+@media (hover: hover) {
+  tbody tr:hover td { background: var(--surface-alt); }
+}
 
 @media (max-width: 640px) {
   table.responsive thead { display: none; }
 
   table.responsive tr {
     display: block;
-    margin-bottom: 10px;
+    margin-bottom: var(--sp-3);
     border-bottom: 1px solid var(--border);
-    padding-bottom: 6px;
+    padding-bottom: var(--sp-2);
   }
 
   table.responsive td {
     display: flex;
     justify-content: space-between;
+    gap: var(--sp-3);
     border-bottom: none;
-    padding: 4px 0;
+    padding: var(--sp-1) 0;
   }
 
   table.responsive td::before {
     content: attr(data-label);
     color: var(--text-muted);
-    font-size: 11px;
+    font-size: 12px;
     text-transform: uppercase;
-    letter-spacing: .03em;
+    letter-spacing: .06em;
   }
+}
+
+/* ── Button ─────────────────────────────────────────────────────────────────────────── */
+
+.button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 44px;
+  padding: 0 var(--sp-5);
+  border: 1px solid var(--accent);
+  border-radius: var(--radius-sm);
+  background: var(--accent);
+  color: var(--on-accent);
+  font-family: var(--font-body);
+  font-size: 14px;
+  font-weight: 700;
+  text-decoration: none;
+  transition: background-color var(--dur) var(--ease), border-color var(--dur) var(--ease);
+}
+
+@media (hover: hover) {
+  .button:hover { background: var(--accent-text); border-color: var(--accent-text); }
 }
 
 /* ── Login / no-access screens ─────────────────────────────────────────────────────── */
 
 .centered-card {
-  max-width: 420px;
-  margin: 15vh auto 0;
+  max-width: 440px;
+  margin: 12vh auto 0;
   background: var(--surface);
   border: 1px solid var(--border);
-  border-radius: var(--radius);
-  padding: 24px;
+  border-top: 3px solid var(--secondary);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-card);
+  padding: var(--sp-6);
   text-align: center;
 }
 
-.centered-card p { color: var(--text-muted); font-size: 13px; }
+.centered-card .brand { justify-content: center; margin-bottom: var(--sp-4); }
+
+.centered-card h1 {
+  font-size: 22px;
+  font-weight: 800;
+  color: var(--accent-text);
+  margin: 0 0 var(--sp-3);
+}
+
+.centered-card p { color: var(--text-muted); font-size: 14px; margin: var(--sp-2) 0; }
+
+.centered-card .button { margin-top: var(--sp-3); }
+
+.centered-card .fallback-note {
+  font-size: 13px;
+  margin-top: var(--sp-4);
+  padding-top: var(--sp-3);
+  border-top: 1px solid var(--border);
+}
+
+/* ── Reduced motion ─────────────────────────────────────────────────────────────────── */
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    transition-duration: 0ms !important;
+    animation: none !important;
+  }
+}

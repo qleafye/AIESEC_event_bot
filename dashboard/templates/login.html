@@ -2,6 +2,10 @@
 {% block title %}Вход — дашборд статистики{% endblock %}
 {% block body %}
   <div class="centered-card">
+    <div class="brand">
+      <img class="brand-light" src="/static/brand/aiesec-logo-blue.svg" alt="AIESEC">
+      <img class="brand-dark" src="/static/brand/aiesec-logo-white.svg" alt="" aria-hidden="true">
+    </div>
     <h1>Вход для организаторов</h1>
     <p>Войдите через Telegram, чтобы увидеть статистику мероприятия.</p>
     {% if public_url and bot_username %}
@@ -10,6 +14,8 @@
       data-size="large"
       data-auth-url="{{ public_url }}/auth/callback"
       data-request-access="write"></script>
+    <p class="fallback-note">Не видно кнопки входа? Telegram может быть ограничен в вашей сети —
+      откройте страницу через VPN или попросите ссылку у администратора.</p>
     {% else %}
     <p>Вход временно недоступен — не задан адрес дашборда или бот этого стека.</p>
     {% endif %}

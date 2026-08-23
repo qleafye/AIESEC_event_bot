@@ -59,6 +59,17 @@ STATIC_DIR = BASE_DIR / "static"
 templates = Jinja2Templates(directory=str(TEMPLATES_DIR))
 
 
+def _thousands(value) -> str:
+    """`1284` → `1 284` (ru-RU: разряды через пробел, без «12.9K» — менеджеру нужна точная
+    цифра). Не-числа (`None`, `—`, строки) возвращаются как есть."""
+    if isinstance(value, bool) or not isinstance(value, int):
+        return value
+    return "{:,}".format(value).replace(",", " ")
+
+
+templates.env.filters["thousands"] = _thousands
+
+
 def _bar_rows(rows: list[tuple[str, int]]) -> list[dict]:
     """Пары (подпись, число) → готовые для рендера строки с процентом ширины бара
     относительно максимума в наборе (T-15-05-02: значения экранируются самим Jinja2 при
@@ -252,7 +263,10 @@ def _build_asgi_app(cfg: DashboardConfig) -> FastAPI:
                     first_name=request.session.get("first_name"),
                 )
                 return templates.TemplateResponse(
-                    request, "no_access.html", {}, status_code=403
+                    request,
+                    "no_access.html",
+                    {"bot_username": cfg.bot_username},
+                    status_code=403,
                 )
 
             # D-13: сезон резолвится отдельно от города — viewer_scope закрывает только
