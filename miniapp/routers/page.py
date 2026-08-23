@@ -20,6 +20,7 @@ data-атрибутах `<body>` (фронт-ядро читает их без �
 """
 from __future__ import annotations
 
+import json
 import re
 from pathlib import Path
 
@@ -28,6 +29,7 @@ from fastapi.responses import HTMLResponse, Response
 from fastapi.templating import Jinja2Templates
 
 from dashboard.db import read_conn
+from settings_schema import SETTINGS_SCHEMA
 
 from miniapp.deps import SECTIONS, Principal, delegate_denial, principal, read_setting
 
@@ -61,9 +63,15 @@ def deep_link(bot_username: str | None) -> str:
     return f"https://t.me/{bot_username}?start=app" if bot_username else ""
 
 
+def section_labels() -> dict[str, str]:
+    """Подписи вкладок навигации — из label чекбоксов реестра (0 хардкода в JS)."""
+    return {s: SETTINGS_SCHEMA[f"miniapp_section_{s}"]["label"] for s in SECTIONS}
+
+
 def _shell_context(request: Request, conn) -> dict:
     cfg = request.app.state.cfg
     return {
+        "section_labels": json.dumps(section_labels(), ensure_ascii=False),
         "event_name": read_setting(conn, "event_name"),
         "bot_username": cfg.bot_username,
         "deep_link": deep_link(cfg.bot_username),
@@ -84,6 +92,7 @@ def render_disabled_page(request: Request) -> HTMLResponse:
         context = {
             "event_name": None, "bot_username": cfg.bot_username,
             "deep_link": deep_link(cfg.bot_username), "logo_file_id": None, "sections": [],
+            "section_labels": "{}",
             "texts": {name: "" for name in STATE_TEXT_KEYS},
         }
     context["disabled_text"] = (
