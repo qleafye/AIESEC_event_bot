@@ -3,29 +3,45 @@
 {% block body %}
 
   <header class="site-header">
-    <h1>{{ event_name or "Дашборд статистики" }}</h1>
-    {% if event_season %}<div class="subtitle">Сезон {{ event_season }}</div>{% endif %}
+    <div class="brand-row">
+      <a class="brand" href="/" aria-label="AIESEC — на главную">
+        <img class="brand-light" src="/static/brand/aiesec-logo-blue.svg" alt="AIESEC">
+        <img class="brand-dark" src="/static/brand/aiesec-logo-white.svg" alt="" aria-hidden="true">
+      </a>
+      <div class="title-block">
+        <h1>{{ event_name or "Дашборд статистики" }}</h1>
+        {% if event_season %}<div class="subtitle">Сезон {{ event_season }}</div>{% endif %}
+      </div>
+      {# Слот под лого мероприятия — заполняется из «🎨 Оформление» (Phase 19). #}
+      <div class="event-logo-slot"></div>
+    </div>
 
     {% if show_city_switcher %}
-    <div class="switchers">
+    <nav class="switchers" aria-label="Город">
+      <span class="switchers-label">Город:</span>
       <a class="switch-link{% if not scope.city %} active{% endif %}"
+         {% if not scope.city %}aria-current="page"{% endif %}
          href="?{% if scope.season %}season={{ scope.season }}{% endif %}">Все города</a>
       {% for city in city_options %}
       <a class="switch-link{% if scope.city == city.code %} active{% endif %}"
+         {% if scope.city == city.code %}aria-current="page"{% endif %}
          href="?city={{ city.code }}{% if scope.season %}&season={{ scope.season }}{% endif %}">{{ city.label }}</a>
       {% endfor %}
-    </div>
+    </nav>
     {% elif viewer.bound_city %}
     <div class="bound-city-note">Ваш город: {{ bound_city_label }}</div>
     {% endif %}
 
     {% if season_options|length > 1 %}
-    <div class="switchers">
+    <nav class="switchers" aria-label="Сезон">
+      <span class="switchers-label">Сезон:</span>
       {% for season in season_options %}
-      <a class="switch-link{% if (scope.season and scope.season == season.value) or (not scope.season and season.current) %} active{% endif %}"
+      {% set is_active = (scope.season and scope.season == season.value) or (not scope.season and season.current) %}
+      <a class="switch-link{% if is_active %} active{% endif %}"
+         {% if is_active %}aria-current="page"{% endif %}
          href="?{% if scope.city %}city={{ scope.city }}&{% endif %}season={{ season.value }}">{{ season.label }}</a>
       {% endfor %}
-    </div>
+    </nav>
     {% endif %}
 
     <div class="updated-note">
@@ -36,28 +52,29 @@
 
   {# KPI-строка (D-14) #}
   <section class="block">
+    <h2 class="visually-hidden">Ключевые показатели</h2>
     <div class="kpi-grid">
-      <div class="kpi">
-        <div class="num">{{ kpi.total }}</div>
+      <div class="kpi primary">
+        <div class="num">{{ kpi.total | thousands }}</div>
         <div class="lbl">Всего заявок</div>
       </div>
       <div class="kpi">
-        <div class="num">{{ kpi.today }}</div>
+        <div class="num">{{ kpi.today | thousands }}</div>
         <div class="lbl">Сегодня</div>
       </div>
       <div class="kpi">
-        <div class="num">{{ kpi.week }}</div>
+        <div class="num">{{ kpi.week | thousands }}</div>
         <div class="lbl">За 7 дней</div>
         {% if kpi.week_delta > 0 %}
-        <div class="delta up">▲ {{ kpi.week_delta }} к прошлой неделе</div>
+        <div class="delta up"><span aria-hidden="true">▲</span> <span class="visually-hidden">рост на</span>{{ kpi.week_delta | thousands }} к прошлой неделе</div>
         {% elif kpi.week_delta < 0 %}
-        <div class="delta down">▼ {{ -kpi.week_delta }} к прошлой неделе</div>
+        <div class="delta down"><span aria-hidden="true">▼</span> <span class="visually-hidden">снижение на</span>{{ (-kpi.week_delta) | thousands }} к прошлой неделе</div>
         {% else %}
         <div class="delta">без изменений к прошлой неделе</div>
         {% endif %}
       </div>
       <div class="kpi">
-        <div class="num">{% if kpi.conversion is none %}—{% else %}{{ kpi.conversion }}%{% endif %}</div>
+        <div class="num">{% if kpi.conversion is none %}<span title="Появится, когда бот начнёт отслеживать входы">—</span>{% else %}{{ kpi.conversion }}%{% endif %}</div>
         <div class="lbl">Конверсия старт → заявка</div>
       </div>
     </div>
@@ -72,14 +89,15 @@
       <div class="funnel">
         {% for step in funnel.steps %}
         <div class="funnel-step">
-          <div class="n">{{ step.count }}</div>
+          <div class="n">{{ step.count | thousands }}</div>
           <div class="l">{{ step.label }}</div>
-          <div class="funnel-bar"><i style="width:{{ step.pct }}%"></i></div>
+          <div class="pct">{{ step.pct }}% от зашедших</div>
+          <div class="funnel-bar" aria-hidden="true"><span style="width:{{ step.pct }}%"></span></div>
         </div>
         {% endfor %}
       </div>
       {% else %}
-      <p class="empty-note">Пока нет данных.</p>
+      <p class="empty-note">Появится после первых входов в бота — воронка строится по событиям регистрации.</p>
       {% endif %}
     </div>
   </section>
@@ -93,11 +111,26 @@
       {% if daily_chart %}
       <div class="chart-wrap">
         <canvas id="daily-chart"
+                role="img"
+                aria-label="Регистрации по дням: {{ daily_chart.labels[0] }} — {{ daily_chart.labels[-1] }}, заявок в день"
                 data-labels="{{ daily_chart.labels | tojson }}"
-                data-values="{{ daily_chart.counts | tojson }}"></canvas>
+                data-values="{{ daily_chart.counts | tojson }}">График не загрузился — значения по дням в таблице ниже.</canvas>
       </div>
+      <p class="empty-note" id="daily-chart-fallback" hidden>График не загрузился — значения по дням в таблице ниже.</p>
+      <noscript><p class="empty-note">График не загрузился — значения по дням в таблице ниже.</p></noscript>
+      <details class="chart-table">
+        <summary>Таблица</summary>
+        <table>
+          <thead><tr><th>Дата</th><th class="num">Заявок</th></tr></thead>
+          <tbody>
+            {% for label in daily_chart.labels %}
+            <tr><td>{{ label }}</td><td class="num">{{ daily_chart.counts[loop.index0] | thousands }}</td></tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </details>
       {% else %}
-      <p class="empty-note">Пока нет данных.</p>
+      <p class="empty-note">Появится после первой заявки — график строится по дате регистрации.</p>
       {% endif %}
     </div>
   </section>
@@ -111,40 +144,42 @@
 
       {% if city_cut %}
       <div class="card">
-        <p class="cut-title">Города</p>
+        <h3 class="cut-title">Города</h3>
         {% if city_cut.rows %}
+        <div class="table-wrap">
         <table class="responsive">
           <thead><tr><th>Город</th><th class="num">Всего</th><th class="num">На модерации</th><th class="num">Одобрено</th></tr></thead>
           <tbody>
             {% for row in city_cut.rows %}
             <tr>
               <td data-label="Город">{{ row.label }}</td>
-              <td class="num" data-label="Всего">{{ row.total }}</td>
-              <td class="num" data-label="На модерации">{{ row.pending }}</td>
-              <td class="num" data-label="Одобрено">{{ row.approved }}</td>
+              <td class="num" data-label="Всего">{{ row.total | thousands }}</td>
+              <td class="num" data-label="На модерации">{{ row.pending | thousands }}</td>
+              <td class="num" data-label="Одобрено">{{ row.approved | thousands }}</td>
             </tr>
             {% endfor %}
           </tbody>
         </table>
+        </div>
         {% else %}
-        <p class="empty-note">Пока нет данных.</p>
+        <p class="empty-note">Пока ни одной заявки в этом сезоне.</p>
         {% endif %}
       </div>
       {% endif %}
 
       {% for cut in cuts %}
       <div class="card">
-        <p class="cut-title">{{ cut.title }}</p>
+        <h3 class="cut-title">{{ cut.title }}</h3>
         {% if cut.has_data %}
         {% for row in cut.rows %}
         <div class="bar-row">
-          <span class="label">{{ row.label }}</span>
-          <span class="track"><span class="fill" style="width:{{ row.pct }}%"></span></span>
-          <span class="val">{{ row.count }}</span>
+          <span class="label" title="{{ row.label }}">{{ row.label }}</span>
+          <span class="track" aria-hidden="true"><span class="fill" style="width:{{ row.pct }}%"></span></span>
+          <span class="val">{{ row.count | thousands }}</span>
         </div>
         {% endfor %}
         {% else %}
-        <p class="empty-note">Пока нет данных.</p>
+        <p class="empty-note">Появится, когда делегаты ответят на этот вопрос анкеты — проверьте, что он включён в форме регистрации.</p>
         {% endif %}
       </div>
       {% endfor %}
@@ -161,13 +196,13 @@
       {% if dropout.has_data %}
       {% for row in dropout.rows %}
       <div class="bar-row">
-        <span class="label">{{ row.label }}</span>
-        <span class="track"><span class="fill" style="width:{{ row.pct }}%"></span></span>
-        <span class="val">{{ row.count }}</span>
+        <span class="label" title="{{ row.label }}">{{ row.label }}</span>
+        <span class="track" aria-hidden="true"><span class="fill" style="width:{{ row.pct }}%"></span></span>
+        <span class="val">{{ row.count | thousands }}</span>
       </div>
       {% endfor %}
       {% else %}
-      <p class="empty-note">Пока нет данных.</p>
+      <p class="empty-note">Пока никто не бросил анкету на полпути — здесь появятся вопросы, на которых делегаты останавливаются.</p>
       {% endif %}
     </div>
   </section>
@@ -178,51 +213,116 @@
   <section class="block">
     <h2 class="block-title">Геймификация</h2>
     <div class="card">
-      <div class="kpi-grid">
-        <div class="kpi"><div class="num">{{ game.participants }}</div><div class="lbl">Участников</div></div>
-        <div class="kpi"><div class="num">{{ game.pending }}</div><div class="lbl">На проверке</div></div>
-        <div class="kpi"><div class="num">{{ game.approved }}</div><div class="lbl">Одобрено</div></div>
-        <div class="kpi"><div class="num">{{ game.rejected }}</div><div class="lbl">Отклонено</div></div>
+      <div class="kpi-grid secondary">
+        <div class="kpi"><div class="num">{{ game.participants | thousands }}</div><div class="lbl">Участников</div></div>
+        <div class="kpi"><div class="num">{{ game.pending | thousands }}</div><div class="lbl">На проверке</div></div>
+        <div class="kpi"><div class="num">{{ game.approved | thousands }}</div><div class="lbl">Одобрено</div></div>
+        <div class="kpi"><div class="num">{{ game.rejected | thousands }}</div><div class="lbl">Отклонено</div></div>
       </div>
       {% if game.by_category %}
-      <table class="responsive" style="margin-top:14px;">
+      <div class="table-wrap">
+      <table class="responsive">
         <thead><tr><th>Категория</th><th class="num">Одобрено</th></tr></thead>
         <tbody>
           {% for category, count in game.by_category.items() %}
           <tr>
             <td data-label="Категория">{{ category }}</td>
-            <td class="num" data-label="Одобрено">{{ count }}</td>
+            <td class="num" data-label="Одобрено">{{ count | thousands }}</td>
           </tr>
           {% endfor %}
         </tbody>
       </table>
+      </div>
       {% endif %}
     </div>
   </section>
   {% endif %}
 
+  {% if daily_chart %}
   <script src="/static/vendor/chart.umd.min.js"></script>
   <script>
     (function () {
       var canvas = document.getElementById("daily-chart");
-      if (!canvas || typeof Chart === "undefined") { return; }
+      if (!canvas) { return; }
+      if (typeof Chart === "undefined") {
+        var fallback = document.getElementById("daily-chart-fallback");
+        if (fallback) { fallback.hidden = false; }
+        canvas.parentNode.hidden = true;
+        return;
+      }
       var labels = JSON.parse(canvas.getAttribute("data-labels") || "[]");
       var values = JSON.parse(canvas.getAttribute("data-values") || "[]");
-      // Цвет — из CSS-токена --accent, а не захардкожен здесь: дизайн-фаза красит один файл.
-      var accent = getComputedStyle(document.documentElement).getPropertyValue("--accent").trim() || "currentColor";
+      // Все цвета/шрифты — из CSS-токенов (tokens.css), здесь ничего не захардкожено:
+      // серия — --chart-1 (не UI-акцент), сетка/тики — chrome графиков.
+      var css = getComputedStyle(document.documentElement);
+      var v = function (name, fallbackValue) {
+        return css.getPropertyValue(name).trim() || fallbackValue || "currentColor";
+      };
+      var reduceMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+
+      Chart.defaults.font.family = v("--font-body", "sans-serif");
+      Chart.defaults.font.size = 12;
+      Chart.defaults.color = v("--chart-tick");
+
       new Chart(canvas, {
         type: "line",
         data: {
           labels: labels,
-          datasets: [{ data: values, borderColor: accent, tension: 0.2, pointRadius: 2 }]
+          datasets: [{
+            data: values,
+            borderColor: v("--chart-1"),
+            borderWidth: 2,
+            tension: 0,
+            fill: true,
+            backgroundColor: v("--chart-1-wash", "transparent"),
+            pointRadius: 2,
+            pointHitRadius: 12,
+            pointHoverRadius: 5,
+            pointBackgroundColor: v("--chart-1"),
+            pointHoverBorderColor: v("--surface"),
+            pointHoverBorderWidth: 2
+          }]
         },
         options: {
           responsive: true,
           maintainAspectRatio: false,
-          plugins: { legend: { display: false } },
-          scales: { y: { beginAtZero: true } }
+          locale: "ru-RU",
+          animation: reduceMotion ? false : undefined,
+          interaction: { mode: "index", intersect: false },
+          layout: { padding: { top: 8, right: 12 } },
+          plugins: {
+            legend: { display: false },
+            tooltip: {
+              backgroundColor: v("--surface"),
+              titleColor: v("--text-muted"),
+              bodyColor: v("--text"),
+              bodyFont: { weight: "700", size: 13 },
+              borderColor: v("--border"),
+              borderWidth: 1,
+              cornerRadius: 4,
+              padding: 8,
+              displayColors: false,
+              callbacks: {
+                label: function (ctx) { return ctx.parsed.y + " заявок"; }
+              }
+            }
+          },
+          scales: {
+            x: {
+              grid: { display: false },
+              border: { color: v("--chart-grid") },
+              ticks: { maxRotation: 0, autoSkip: true, maxTicksLimit: 8, color: v("--chart-tick") }
+            },
+            y: {
+              beginAtZero: true,
+              grid: { color: v("--chart-grid"), drawTicks: false },
+              border: { display: false },
+              ticks: { precision: 0, maxTicksLimit: 5, padding: 6, color: v("--chart-tick") }
+            }
+          }
         }
       });
     })();
   </script>
+  {% endif %}
 {% endblock %}
