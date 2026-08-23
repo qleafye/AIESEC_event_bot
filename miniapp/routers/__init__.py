@@ -39,8 +39,20 @@
                                        413 too_large (> 20 МБ); 502 {"reason":"telegram_unavailable"}
   GET  /app/api/file/{file_id}     -> байты файла (прокси getFile; `principal`; владелец части ИЛИ
                                        moderate_game в пределах города ИЛИ обложка/лого); 403/404
-  Менеджер (планы 19-05..19-07): /app/api/review/next, POST /app/api/review/{sid}/approve|reject,
-      /app/api/stats/game, /app/api/admin/tasks*, /app/api/admin/coins*, /app/api/admin/settings
+  Менеджер (план 19-05, `require_cap("moderate_game")` + section review):
+  GET  /app/api/review/next?offset  -> {submission{id,task_id,user_id,submitted_at},
+                                       task{id,title,text,category,category_label,coins,proof_label,deadline_at},
+                                       delegate{name,username,city}, parts[{kind,content,caption}],
+                                       attempt{k,n}|null, after_deadline, archived_task,
+                                       remaining, offset, position}
+                                       либо {empty: true, remaining, offset}; «⏭» = offset+1 на клиенте
+  POST /app/api/review/{sid}/approve {coins?} -> {ok: true, status, coins} | {ok: false, reason: "already"}
+                                       coins: 1..100000, дефолт task.coins; 400 bad_coins; 404 not_found
+                                       403 {"reason":"out_of_scope","text"} — сдача из чужого города
+  POST /app/api/review/{sid}/reject {reason} -> {ok: true, status} | {ok: false, reason: "already"}
+                                       400 reason_required (причина обязательна); монет не начисляет
+  Менеджер (планы 19-05..19-07): /app/api/stats/game, /app/api/admin/tasks*, /app/api/admin/coins*,
+      /app/api/admin/settings
 
 Коды ошибок — всегда JSON-тело с полем `reason`:
   401 {"reason": "no_auth"}        — ни initData, ни cookie
@@ -58,7 +70,7 @@
 """
 from __future__ import annotations
 
-from miniapp.routers import coins, files, page, profile, submissions, tasks
+from miniapp.routers import coins, files, page, profile, review, submissions, tasks
 
 ALL_ROUTERS = [
     page.router,
@@ -67,6 +79,7 @@ ALL_ROUTERS = [
     coins.router,
     submissions.router,
     files.router,
+    review.router,
 ]
 
 __all__ = ["ALL_ROUTERS"]
