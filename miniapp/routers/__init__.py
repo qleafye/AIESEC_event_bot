@@ -51,8 +51,10 @@
                                        403 {"reason":"out_of_scope","text"} — сдача из чужого города
   POST /app/api/review/{sid}/reject {reason} -> {ok: true, status} | {ok: false, reason: "already"}
                                        400 reason_required (причина обязательна); монет не начисляет
-  Менеджер (планы 19-05..19-07): /app/api/stats/game, /app/api/admin/tasks*, /app/api/admin/coins*,
-      /app/api/admin/settings
+  GET  /app/api/stats/game         -> {participants, submissions{pending,approved,rejected},
+                                       by_category[{code,label,count}]} — только агрегаты, без ПД;
+                                       `moderate_game` + section stats; числа = get_game_stats()
+  Менеджер (планы 19-06..19-07): /app/api/admin/tasks*, /app/api/admin/coins*, /app/api/admin/settings
 
 Коды ошибок — всегда JSON-тело с полем `reason`:
   401 {"reason": "no_auth"}        — ни initData, ни cookie
@@ -70,7 +72,7 @@
 """
 from __future__ import annotations
 
-from miniapp.routers import coins, files, page, profile, review, submissions, tasks
+from miniapp.routers import coins, files, page, profile, review, stats, submissions, tasks
 
 ALL_ROUTERS = [
     page.router,
@@ -80,6 +82,7 @@ ALL_ROUTERS = [
     submissions.router,
     files.router,
     review.router,
+    stats.router,
 ]
 
 __all__ = ["ALL_ROUTERS"]
