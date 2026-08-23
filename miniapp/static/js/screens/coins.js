@@ -1,5 +1,11 @@
-// «Монеты» (зеркало экрана «🪙 Мои монеты» бота): баланс, место в рейтинге, история операций
-// постранично с «Показать ещё» (D-07). Подписи источников приходят из API (реестр).
+// «Монеты» (зеркало экрана «🪙 Мои монеты» бота): крупный баланс (Display-роль, tabular-nums,
+// иконка coin), докручиваемый через motion.js::countUp (D-17), история операций плоскими
+// строками (дата+причина слева, дельта справа) постранично с «Показать ещё» (D-07). Подписи
+// источников приходят из API (реестр).
+
+import { flatRow, sectionTitle, emptyState } from "../ui.js";
+import { icon } from "../icons.js";
+import { countUp } from "../motion.js";
 
 const PAGE = 25;
 
@@ -11,24 +17,23 @@ function shortDate(value) {
 
 function entryRow(h, item) {
   const delta = item.delta >= 0 ? `+${item.delta}` : String(item.delta);
-  return h("div", { class: "row" },
-    h("div", {},
-      h("div", { text: item.reason || item.source_label }),
-      h("div", { class: "faint", text: shortDate(item.created_at) }),
-    ),
-    h("span", { class: `delta ${item.delta >= 0 ? "plus" : "minus"}`, text: delta }),
-  );
+  return flatRow(h, {
+    title: item.reason || item.source_label,
+    meta: shortDate(item.created_at),
+    trailing: h("span", { class: `delta ${item.delta >= 0 ? "plus" : "minus"}` }, delta),
+  });
 }
 
 export async function render(root, params, ctx) {
-  const { h, api, navigate } = ctx;
+  const { h, api, navigate, me } = ctx;
   const bal = await api("/coins/balance");
 
+  const balanceValue = h("span", { class: "stat-value", text: "0" });
   root.append(
     h("h1", { text: "Монеты" }),
     h("div", { class: "stats" },
       h("div", { class: "card stat" },
-        h("div", { class: "stat-value", text: String(bal.balance) }),
+        h("div", { class: "balance-big" }, icon("coin"), balanceValue),
         h("div", { class: "faint", text: "баланс" }),
       ),
       h("div", { class: "card stat clickable", onClick: () => navigate("#/leaderboard") },
@@ -36,10 +41,11 @@ export async function render(root, params, ctx) {
         h("div", { class: "faint", text: bal.participants ? `место из ${bal.participants}` : "место" }),
       ),
     ),
-    h("h2", { text: "История" }),
   );
+  countUp(balanceValue, 0, bal.balance || 0);
 
-  const list = h("div", { class: "card list-card" });
+  root.append(sectionTitle(h, "История"));
+  const list = h("div", { class: "flat-list" });
   const foot = h("div", { class: "list-foot" });
   root.append(list, foot);
 
@@ -51,7 +57,14 @@ export async function render(root, params, ctx) {
     offset += page.items.length;
     foot.replaceChildren();
     if (page.total === 0) {
-      list.append(h("div", { class: "empty", text: page.empty_text || "" }));
+      list.replaceChildren(emptyState(h, {
+        me,
+        text: page.empty_text || "",
+        action: h("button", {
+          class: "btn secondary", type: "button", text: "Обновить",
+          onClick: () => { offset = 0; load(); },
+        }),
+      }));
       return;
     }
     if (offset < page.total) {
