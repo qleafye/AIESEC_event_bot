@@ -1,8 +1,23 @@
-// Карточка задания (зеркало карточки бота: game_labels.render_task_card_text) — обложка
-// (если есть photo_file_id; /app/api/file/{id} появится в плане 19-04, до него картинка
-// молча прячется по onerror), заголовок, категория · монеты · дедлайн, подсказка про
-// просроченный срок, строка статуса, «Нужно прислать», описание. MainButton «Сдать» ->
-// #/submit/{id} (экран сдачи — план 19-04; до него ядро покажет «Раздел пока недоступен»).
+// Карточка задания (editorial-минимал, D-11 hero-исключение — карточка с обложкой остаётся
+// карточкой): обложка во всю ширину сверху (если есть photo_file_id; деградирует молча при
+// ошибке загрузки), заголовок Heading-роли, мета «категория · монеты · дедлайн», чипы типов
+// доказательства с иконками (image/file-text/link/pen-line), просроченный срок — иконкой +
+// словом, строка статуса, «Нужно прислать», описание. MainButton «Сдать» -> #/submit/{id}.
+
+import { icon } from "../icons.js";
+
+const PROOF_ICON = { photo: "image", pdf: "file-text", text: "pen-line", link: "link" };
+const PROOF_ORDER = ["photo", "pdf", "text", "link"];
+
+function proofChips(h, raw) {
+  if (!raw) return null;
+  const codes = new Set(String(raw).split(",").map((s) => s.trim()).filter(Boolean));
+  const present = PROOF_ORDER.filter((code) => codes.has(code));
+  if (!present.length) return null;
+  return h("div", { class: "proof-chips" },
+    ...present.map((code) => h("span", { class: "chip proof" }, icon(PROOF_ICON[code]))),
+  );
+}
 
 export async function render(root, params, ctx) {
   const { h, api, navigate, setMainButton } = ctx;
@@ -20,9 +35,13 @@ export async function render(root, params, ctx) {
   }
   card.append(
     h("h1", { text: task.title }),
-    h("p", { class: "muted", text: [task.category_label, `${task.coins} монет`, `до ${task.deadline_short}`].join(" · ") }),
+    h("p", { class: "label-role", text: [task.category_label, `${task.coins} монет`, `до ${task.deadline_short}`].join(" · ") }),
   );
-  if (task.overdue && task.overdue_hint) card.append(h("p", { class: "chip warn", text: task.overdue_hint }));
+  const chips = proofChips(h, task.proof_type);
+  if (chips) card.append(chips);
+  if (task.overdue && task.overdue_hint) {
+    card.append(h("p", { class: "flat-row-warn" }, icon("alert-triangle"), h("span", { text: ` ${task.overdue_hint}` })));
+  }
   card.append(
     h("div", { class: "row" },
       h("span", { class: "muted", text: "Статус" }),
