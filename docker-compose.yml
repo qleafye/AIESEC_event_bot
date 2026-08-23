@@ -17,3 +17,36 @@ services:
       options:
         max-size: "10m"
         max-file: "3"
+
+  # Дашборд статистики (Phase 15, D-04): sidecar того же стека, читает ту же БД только
+  # на чтение. Портов наружу нет — снаружи до него дотягивается только cloudflared
+  # (стек tunnel/) по имени сервиса внутри общей внешней сети `edge`:
+  #   CF Zero Trust public hostname  yl26.<домен>  →  http://yl26-dashboard:8000
+  # Имя сервиса намеренно НЕ `dashboard`: на сервере уже есть чужой проект с таким именем,
+  # а в общей сети `edge` короткое имя занял бы первый поднятый стек. Схема —
+  # `<меро><год>-dashboard`, как и у поддоменов (D-02). Сервис `bot` в `edge` не входит.
+  yl26-dashboard:
+    build:
+      context: .
+      dockerfile: dashboard/Dockerfile
+    container_name: youlead26-dashboard
+    restart: always
+    env_file:
+      - .env
+    volumes:
+      - ./data:/app/data:ro
+    networks:
+      - default
+      - edge
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+networks:
+  # Создаётся один раз на сервер руками (подсеть фиксирована — на неё настроен
+  # DASHBOARD_TRUSTED_PROXIES):  docker network create --subnet 172.31.0.0/16 edge
+  edge:
+    external: true
+    name: edge
