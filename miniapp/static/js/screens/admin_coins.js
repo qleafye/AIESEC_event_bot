@@ -190,7 +190,7 @@ export async function render(root, params, ctx) {
       buttons.push(h("button", { class: "btn secondary", type: "button", text: `−${n}`, onClick: () => pick(-n) }));
     }
 
-    holder.replaceChildren(
+    holder.replaceChildren(...[
       h("article", { class: "card recipient-card" },
         h("div", { class: "title", text: user.name }),
         h("div", { class: "muted", text: [user.username, user.city].filter(Boolean).join(" · ") || "—" }),
@@ -209,7 +209,7 @@ export async function render(root, params, ctx) {
         h("button", { class: "btn", type: "button", text: "Далее →", onClick: toConfirm }),
         h("button", { class: "btn ghost", type: "button", text: "Отмена", onClick: () => holder.replaceChildren() }),
       ),
-    );
+    ].filter(Boolean));
   }
 
   // ── подтверждение: «Кому · сколько · за что» — только потом отправка ──

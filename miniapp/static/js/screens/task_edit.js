@@ -263,7 +263,7 @@ export async function render(root, params, ctx) {
         onClick: () => toggle(deleteConfirm),
       });
 
-      holder.replaceChildren(
+      holder.replaceChildren(...[
         h("h1", { text: card.title }),
         card.archived ? h("p", { class: "chip", text: "🗄 В архиве — делегаты его не видят" }) : null,
         preview(card, card.photo_file_id),
@@ -291,7 +291,7 @@ export async function render(root, params, ctx) {
           deleteConfirm,
           h("button", { class: "btn ghost", type: "button", text: "← К заданиям", onClick: () => navigate("#/admin-tasks") }),
         ),
-      );
+      ].filter(Boolean));
       setMainButton(null);
     }
 
