@@ -1,0 +1,53 @@
+"""Phase 19 (D-01): постановка побочных эффектов Mini App в `miniapp_outbox`.
+
+Веб-процесс пишет в БД только то, что делегат/менеджер сделал; всё, что требует бота
+(уведомление менеджерам о сдаче, уведомление делегату о проверке, дайджест, Sheets-ребилд),
+ставится сюда и подбирается джобой бота at-least-once (план 19-08).
+
+Контракт видов событий (payload — JSON-словарь; сторожевой тест сверяет этот список):
+
+    submission_created   {submission_id, user_id, task_id, task_text, submitter_name}
+    submission_reviewed  {submission_id, user_id, status, coins}
+    task_changed         {task_id}
+    coins_manual         {user_id, delta}
+
+Монеты через outbox НЕ ходят никогда: их начисляет сам `miniapp` в связке
+`claim_submission -> add_coins` (план 19-05); `coins_manual` — только уведомление делегату.
+
+Fail-soft: таблицу создаёт `database.db.init_db` (схемой владеет ТОЛЬКО бот, здесь
+миграций нет и быть не может). Если бот ещё старой версии и таблицы нет — `enqueue`
+логирует предупреждение и возвращает None: сама сдача уже сохранена, уведомление догонит
+после обновления бота.
+"""
+from __future__ import annotations
+
+import logging
+from datetime import datetime
+
+import aiosqlite
+
+from database.db import enqueue_miniapp_outbox
+
+logger = logging.getLogger(__name__)
+
+OUTBOX_KINDS = frozenset({
+    "submission_created",
+    "submission_reviewed",
+    "task_changed",
+    "coins_manual",
+})
+
+
+async def enqueue(kind: str, payload: dict) -> int | None:
+    """`id` новой строки или None (таблицы нет / БД недоступна — залогировано)."""
+    if kind not in OUTBOX_KINDS:
+        raise ValueError(f"unknown miniapp outbox kind: {kind!r}")
+    created_at = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    try:
+        return await enqueue_miniapp_outbox(kind, dict(payload), created_at)
+    except aiosqlite.Error as exc:
+        logger.warning("miniapp outbox: событие %s не поставлено (%s)", kind, exc)
+        return None
+
+
+__all__ = ["OUTBOX_KINDS", "enqueue"]
