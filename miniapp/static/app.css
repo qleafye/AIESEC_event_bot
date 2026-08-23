@@ -336,3 +336,50 @@ a { color: var(--accent-text); }
 .bar-track { flex: 1; height: 14px; border-radius: var(--radius-pill); background: var(--surface-alt); overflow: hidden; }
 .bar-fill { height: 100%; border-radius: var(--radius-pill); background: var(--accent); transition: width var(--dur) var(--ease); }
 .bar-count { flex: 0 0 2.5em; text-align: right; font-weight: 700; }
+
+/* ── задания менеджера: тумблер «Активные | Архив» + строки ────────────────────────── */
+.toggle {
+  display: flex;
+  gap: 0;
+  margin-bottom: var(--sp-3);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-pill);
+  overflow: hidden;
+  background: var(--surface);
+}
+.toggle .toggle-btn {
+  flex: 1;
+  margin: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  color: var(--text-muted);
+}
+.toggle .toggle-btn + .toggle-btn { margin-top: 0; border-left: 1px solid var(--border); }
+.toggle .toggle-btn.active { background: var(--accent); color: var(--accent-contrast, var(--surface)); }
+.admin-task-row .task-number { flex: none; color: var(--text-faint); font-weight: 700; }
+.admin-task-row.archived { opacity: .75; border-style: dashed; }
+.admin-task-row .task-foot { margin-top: var(--sp-1); align-items: center; }
+
+/* ── карточка задания: превью, действия, шаги визарда, подтверждения ──────────────── */
+.task-preview .cover { width: 100%; border-radius: var(--radius-sm); margin-bottom: var(--sp-3); display: block; }
+.task-preview .card-text { white-space: pre-wrap; overflow-wrap: anywhere; }
+.task-preview blockquote { margin: var(--sp-2) 0 0; padding-left: var(--sp-3); border-left: 3px solid var(--border); color: var(--text-muted); }
+.task-actions { display: flex; flex-direction: column; gap: var(--sp-2); margin-top: var(--sp-3); }
+.task-actions .btn + .btn { margin-top: 0; }
+.task-actions .field { margin: var(--sp-1) 0; padding: var(--sp-3); border: 1px solid var(--border); border-radius: var(--radius); background: var(--surface); }
+.task-actions .field .btn { margin-top: var(--sp-2); }
+.choice-grid { display: flex; flex-direction: column; gap: var(--sp-2); }
+.choice-grid .btn + .btn { margin-top: 0; }
+.choice-grid .btn.chosen { outline: 2px solid var(--accent); outline-offset: 1px; }
+.confirm-box {
+  padding: var(--sp-3);
+  border: 1px solid var(--warn);
+  border-radius: var(--radius);
+  background: var(--surface);
+  margin: var(--sp-2) 0;
+}
+.confirm-box p { margin: 0 0 var(--sp-2); }
+.confirm-box .btn + .btn { margin-top: var(--sp-2); }
+.wizard-step { margin-bottom: var(--sp-3); }
+.wizard-step .step-label { font-size: 13px; color: var(--text-muted); margin-bottom: var(--sp-1); }
