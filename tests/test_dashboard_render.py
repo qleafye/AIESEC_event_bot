@@ -184,8 +184,8 @@ def test_no_hardcoded_colors_outside_tokens_css():
 
 _ALLOWED_EXTERNAL_HOSTS = (
     "telegram.org/js/telegram-widget.js",  # Login Widget — единственный внешний скрипт
-    "fonts.googleapis.com",                # шрифты бренда Lato + Raleway (решение владельца)
-    "fonts.gstatic.com",
+    # Шрифты бренда (Lato + Raleway) вшиты локально с Phase 19.1 (D-14) — fonts.googleapis.com
+    # и fonts.gstatic.com больше не в allow-list.
 )
 
 

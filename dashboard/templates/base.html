@@ -6,11 +6,8 @@
   <meta name="color-scheme" content="light dark">
   <title>{% block title %}{{ event_name or "Дашборд статистики" }}{% endblock %}</title>
   <link rel="icon" href="/static/brand/aiesec-human-blue.svg" type="image/svg+xml">
-  {# Шрифты бренда (BlueBook: Lato + Raleway) — Google Fonts, display=swap: до загрузки
-     текст рисуется системным стеком, страница никогда не ждёт шрифт. #}
-  <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Lato:wght@400;700&family=Raleway:wght@700;800&display=swap">
+  {# Шрифты бренда (BlueBook: Lato + Raleway) — вшиты локально (D-14: RU-троттлинг Google
+     Fonts + CSP font-src 'self'), подключение через @font-face в /static/app.css. #}
   <link rel="stylesheet" href="/static/tokens.css">
   <link rel="stylesheet" href="/static/app.css">
 </head>
