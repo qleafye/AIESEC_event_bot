@@ -781,6 +781,38 @@ async def get_user_by_username(username: str):
                 return dict(row)
             return None
 
+def _escape_like(q: str) -> str:
+    """`%`, `_` и сам `\\` во вводе — буквально, не подстановочно (ESCAPE '\\' в запросе)."""
+    return q.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+
+
+async def search_users_by_name(q: str, limit: int = 20, *, city_scope=None) -> list[dict]:
+    """Phase 19 (19-07): поиск получателя монет по части имени (без учёта регистра) для
+    Mini App. `city_scope` — дескриптор `cities.city_scope(...)` (как у
+    `get_pending_submissions`): привязанный менеджер видит только делегатов своего города.
+    Отдаёт только опознавательный минимум — telegram_id, full_name, username, event_city;
+    ПД (телефон, e-mail, вуз) сюда не попадают (T-19-47). Пустой запрос -> пусто."""
+    needle = (q or "").strip()
+    if not needle:
+        return []
+    frag, city_params = _city_clause(city_scope)
+    extra = f" AND {frag}" if frag else ""
+    # SQLite COLLATE NOCASE сворачивает регистр только ASCII a-z/A-Z — кириллица (например,
+    # «Иван» -> «иван») через неё не находится. Регистронезависимость даём вручную питоновским
+    # `str.lower()` через пользовательскую SQL-функцию.
+    pattern = f"%{_escape_like(needle)}%".lower()
+    async with _connect() as db:
+        await db.create_function("py_lower", 1, lambda s: (s or "").lower())
+        db.row_factory = aiosqlite.Row
+        async with db.execute(
+            "SELECT telegram_id, full_name, username, event_city FROM users "
+            f"WHERE py_lower(full_name) LIKE ? ESCAPE '\\'{extra} "
+            "ORDER BY py_lower(full_name), telegram_id LIMIT ?",
+            (pattern, *city_params, max(1, int(limit))),
+        ) as cursor:
+            return [dict(row) for row in await cursor.fetchall()]
+
+
 async def get_referrals(telegram_id: int) -> list[str]:
     async with _connect() as db:
         async with db.execute(

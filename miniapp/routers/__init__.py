@@ -78,7 +78,28 @@
   POST /app/api/admin/tasks/{id}/archive | /unarchive -> {ok, changed, archived}
   DELETE /app/api/admin/tasks/{id}  -> {ok, deleted}; 409 {"reason":"has_submissions","text"}
   Каждая мутация -> outbox task_changed {task_id}.
-  Менеджер (план 19-07): /app/api/admin/coins*, /app/api/admin/settings
+  Менеджер (план 19-07, `require_cap("moderate_game")` + section coins; городской скоуп на
+  поиске и начислении — 403 {"reason":"out_of_scope","text"}):
+  GET  /app/api/admin/users/search?q= -> [{telegram_id, name, username, city, balance}]; q < 2 символов
+                                       -> []; «@username» — точно, число — telegram_id, иначе часть
+                                       имени (<= 20); ПД (телефон, e-mail, вуз) не отдаются
+  POST /app/api/admin/coins {user_id, delta, reason} -> {ok, user_id, name, delta, balance}
+                                       delta != 0, |delta| <= 100000 (400 bad_delta); reason обязателен
+                                       (400 reason_required); 404 not_found; add_coins(source="manual",
+                                       changed_by=менеджер) + outbox coins_manual {user_id, delta}
+  GET  /app/api/admin/coins?offset&limit -> {items[{id,when,user_id,recipient,delta,reason,changed_by,
+                                       changed_by_name,source_label}], total, offset, limit, empty_text};
+                                       только source='manual', limit <= 50
+  GET  /app/api/admin/coins/presets -> {presets[int], delta_max, reason_max} — из
+                                       coins_manual_amount_presets, мусор отброшен, пусто -> дефолт
+  Менеджер (план 19-07, `require_cap("settings")` + section settings):
+  GET  /app/api/admin/settings     -> {items[{key, label, value, group, group_label}]} — ТОЛЬКО белый
+                                       список EDITABLE_KEYS (все on/off-тумблеры miniapp_* и группы game
+                                       из SETTINGS_SCHEMA); key — идентификатор для POST, человеку не
+                                       показывается
+  POST /app/api/admin/settings {key, value} -> тот же список после записи
+                                       403 {"reason":"not_editable"} — ключ вне белого списка
+                                       400 {"reason":"bad_value","text"} — value не "on"/"off"
 
 Коды ошибок — всегда JSON-тело с полем `reason`:
   401 {"reason": "no_auth"}        — ни initData, ни cookie
@@ -96,7 +117,18 @@
 """
 from __future__ import annotations
 
-from miniapp.routers import admin_tasks, coins, files, page, profile, review, stats, submissions, tasks
+from miniapp.routers import (
+    admin_tasks,
+    coins,
+    coins_admin,
+    files,
+    page,
+    profile,
+    review,
+    stats,
+    submissions,
+    tasks,
+)
 
 ALL_ROUTERS = [
     page.router,
@@ -108,6 +140,7 @@ ALL_ROUTERS = [
     review.router,
     stats.router,
     admin_tasks.router,
+    coins_admin.router,
 ]
 
 __all__ = ["ALL_ROUTERS"]
