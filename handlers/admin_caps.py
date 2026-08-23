@@ -333,6 +333,17 @@ ADMIN_CAPS: dict[str, str] = {
     # Экран «📊 Дашборд» (Phase 15, 15-02, D-19) — тумблеры блоков веб-дашборда.
     "admin_dashboard_settings": "settings",
     "dash_block:*": "settings",
+    # Экран «🎨 Оформление» Mini App (Phase 19, 19-08, D-06) — тумблеры, чекбоксы разделов,
+    # правка акцента/лого. handlers/admin_miniapp.py.
+    "admin_miniapp_settings": "settings",
+    "miniapp_toggle_enabled": "settings",
+    "miniapp_toggle_staff_only": "settings",
+    "miniapp_section:*": "settings",
+    "miniapp_edit_accent": "settings",
+    "miniapp_edit_logo": "settings",
+    "miniapp_remove_logo": "settings",
+    "miniapp_cancel_edit": "settings",
+    "state:MiniAppTheme:*": "settings",
     "admin_dedupe_sheet": "settings",
     "admin_dedupe_sheet_go": "settings",
     "admin_event_preset": "settings",
