@@ -1,27 +1,38 @@
-// Карточка задания менеджера — один экран на два режима (экраны 6 и 7 скетча Phase 16).
+// Карточка задания менеджера — один экран на два режима (экраны 6 и 7 скетча Phase 16,
+// editorial-минимал 19.1-06).
 //
-// «Правка» (#/task-edit/{id}): превью карточки делегата (card_text с сервера + обложка через
-// /app/api/file/{id}) и отдельные действия — «✏️ Название», «✏️ Описание», «💰 Монеты»,
-// «📅 Дедлайн» (пресеты кнопками + своя дата с примером), «📷 Фото» (загрузка через
-// /uploads, затем PATCH с photo_file_id + part_token), «🗄 В архив» / «↩️ Вернуть»,
-// «🗑 Удалить». Каждая правка — одно поле, один PATCH. Архив и удаление — двухшаговое
-// подтверждение с текстом, что именно произойдёт; удаление недоступно при can_delete=false
-// с объяснением причины (а не молча).
+// «Правка» (#/task-edit/{id}): превью карточки делегата — та же вёрстка, что у card.js (план
+// 19.1-05): обложка во всю ширину, заголовок, Label-роль меты, чипы типа подтверждения,
+// описание. Точечные правки — плоский список (D-11, ui.js::flatRow): «подпись — значение —
+// карандаш», тап открывает панель с одним полем и кнопкой сохранения (один PATCH на поле).
+// Обложка (загрузка через /uploads, затем PATCH с photo_file_id + part_token), «В архив» /
+// «Вернуть», «Удалить» — отдельные действия ниже списка. Каждая правка — одно поле, один
+// PATCH. Архив и удаление — двухшаговое подтверждение с текстом, что именно произойдёт;
+// удаление недоступно при can_delete=false с объяснением причины (а не молча).
 //
 // «Создание» (#/task-edit/new): те же поля пошагово; категория, типы подтверждения, город и
-// пресеты дедлайна — кнопки/чекбоксы с подписями из GET /admin/tasks/options (фронт кодов
-// не знает и человеку их не показывает); последний шаг — превью и «✅ Опубликовать».
+// пресеты дедлайна — кнопки/чекбоксы сеткой с подписями из GET /admin/tasks/options (фронт
+// кодов не знает и человеку их не показывает); последний шаг — превью и «Опубликовать».
 //
 // Ошибки сервера показываются человеческим текстом из payload.text, не кодом ответа.
 
-const ENTITIES = { "&lt;": "<", "&gt;": ">", "&quot;": '"', "&#x27;": "'", "&#39;": "'", "&amp;": "&" };
+import { flatRow } from "../ui.js";
+import { icon } from "../icons.js";
+import { haptic } from "../motion.js";
 
-// card_text приходит в разметке сообщения Telegram (<b>, <blockquote>); в DOM он идёт
-// только через textContent: теги снимаем, сущности возвращаем в символы.
-function plainCardText(cardText) {
-  return String(cardText || "")
-    .replace(/<[^>]+>/g, "")
-    .replace(/&(lt|gt|quot|amp|#x27|#39);/g, (m) => ENTITIES[m] || m);
+// Иконка по типу подтверждения — та же карта, что у card.js (план 19.1-05): технический
+// код -> имя иконки, не человеческая подпись (подписи по-прежнему только с сервера).
+const PROOF_ICON = { photo: "image", pdf: "file-text", text: "pen-line", link: "link" };
+const PROOF_ORDER = ["photo", "pdf", "text", "link"];
+
+function proofChips(h, raw) {
+  if (!raw) return null;
+  const codes = new Set(String(raw).split(",").map((s) => s.trim()).filter(Boolean));
+  const present = PROOF_ORDER.filter((code) => codes.has(code));
+  if (!present.length) return null;
+  return h("div", { class: "proof-chips" },
+    ...present.map((code) => h("span", { class: "chip proof" }, icon(PROOF_ICON[code]))),
+  );
 }
 
 function fileUrl(fileId) {
@@ -50,11 +61,7 @@ export async function render(root, params, ctx) {
     notice.className = `chip ${kind || "accent"}${text ? "" : " hidden"}`;
   }
 
-  function haptic(kind) {
-    if (tg && tg.HapticFeedback) tg.HapticFeedback.notificationOccurred(kind || "success");
-  }
-
-  // ── превью карточки (общее для двух режимов) ──
+  // ── превью (та же вёрстка, что у карточки делегата, план 19.1-05) ──
   function preview(card, photoFileId) {
     const box = h("article", { class: "card task-preview" });
     if (photoFileId) {
@@ -62,9 +69,14 @@ export async function render(root, params, ctx) {
       img.addEventListener("error", () => img.remove());
       box.append(img);
     }
-    box.append(h("p", { class: "faint", text: "👁 Так увидит делегат" }));
-    box.append(h("div", { class: "card-text", text: plainCardText(card.card_text) }));
+    box.append(h("p", { class: "faint" }, icon("user"), h("span", { text: " Так увидит делегат" })));
+    if (card.title) box.append(h("h1", { text: card.title }));
+    const metaParts = [card.category_label, card.coins != null ? `${card.coins} монет` : null, card.deadline_display ? `до ${card.deadline_display}` : null].filter(Boolean);
+    if (metaParts.length) box.append(h("p", { class: "label-role", text: metaParts.join(" · ") }));
+    const chips = proofChips(h, card.proof_type);
+    if (chips) box.append(chips);
     if (card.city_label) box.append(h("p", { class: "muted", text: `Кому: ${card.city_label}` }));
+    if (card.text) box.append(h("div", { class: "pre", text: card.text }));
     return box;
   }
 
@@ -95,7 +107,7 @@ export async function render(root, params, ctx) {
       h("div", { class: "field" },
         h("label", { text: `Своя дата — ДД.ММ.ГГГГ ЧЧ:ММ, например ${example}` }),
         custom,
-        h("button", { class: "btn", type: "button", text: "📅 Поставить", onClick: () => onPick(custom.value.trim()) }),
+        h("button", { class: "btn", type: "button", text: "Поставить", onClick: () => onPick(custom.value.trim()) }),
       ),
     );
   }
@@ -155,22 +167,22 @@ export async function render(root, params, ctx) {
         if (wasHidden) box.classList.remove("hidden");
       }
 
-      // ✏️ Название
+      // Название
       const titleInput = h("input", { class: "input", type: "text", maxlength: "60" });
       titleInput.value = card.title;
       const titleBox = panel("Название (до 60 символов)", titleInput, "Сохранить", () => patch({ title: titleInput.value }, "Название обновлено."));
 
-      // ✏️ Описание
+      // Описание
       const textArea = h("textarea", { class: "input", rows: "5" });
       textArea.value = card.text;
       const textBox = panel("Описание — что нужно сделать", textArea, "Сохранить", () => patch({ text: textArea.value }, "Описание обновлено."));
 
-      // 💰 Монеты
+      // Монеты
       const coinsInput = h("input", { class: "input", type: "number", min: "1", step: "1", inputmode: "numeric" });
       coinsInput.value = String(card.coins);
-      const coinsBox = panel("Сколько монет за задание? Например 10", coinsInput, "Сохранить", () => patch({ coins: Number(coinsInput.value) }, `Монеты обновлены: ${coinsInput.value}🪙`));
+      const coinsBox = panel("Сколько монет за задание? Например 10", coinsInput, "Сохранить", () => patch({ coins: Number(coinsInput.value) }, `Монеты обновлены: ${coinsInput.value}.`));
 
-      // 📅 Дедлайн — пресеты + своя дата
+      // Дедлайн — пресеты + своя дата
       const deadlineBox = h("div", { class: "field hidden" }, h("label", { text: `Сейчас: до ${card.deadline_display}` }));
       async function openDeadline() {
         toggle(deadlineBox);
@@ -182,7 +194,7 @@ export async function render(root, params, ctx) {
         );
       }
 
-      // 📷 Фото
+      // Обложка
       const fileInput = h("input", { type: "file", accept: "image/*", class: "hidden" });
       fileInput.addEventListener("change", async () => {
         const file = (fileInput.files || [])[0];
@@ -200,10 +212,19 @@ export async function render(root, params, ctx) {
         }
       });
 
-      // 🗄 В архив — двухшаговое подтверждение с описанием последствий
+      // Плоский список точечных правок (D-11): подпись — значение — карандаш.
+      const pointsList = h("div", { class: "flat-list" },
+        flatRow(h, { title: "Название", meta: card.title, trailing: icon("pen-line"), onClick: () => toggle(titleBox) }),
+        flatRow(h, { title: "Описание", meta: card.text, trailing: icon("pen-line"), onClick: () => toggle(textBox) }),
+        flatRow(h, { title: "Монеты", meta: `${card.coins} монет`, trailing: icon("pen-line"), onClick: () => toggle(coinsBox) }),
+        flatRow(h, { title: "Дедлайн", meta: `до ${card.deadline_display}`, trailing: icon("pen-line"), onClick: openDeadline }),
+        flatRow(h, { title: "Обложка", meta: card.photo_file_id ? "Загружена" : "Не добавлена", trailing: icon("image"), onClick: () => fileInput.click() }),
+      );
+
+      // В архив — двухшаговое подтверждение с описанием последствий
       const archiveConfirm = h("div", { class: "confirm-box hidden" },
         h("p", { text: "Задание уйдёт в архив: делегаты перестанут его видеть и сдавать. Уже присланные сдачи останутся на проверке. Вернуть можно в любой момент." }),
-        h("button", { class: "btn danger", type: "button", text: "🗄 Да, в архив", onClick: async () => {
+        h("button", { class: "btn danger", type: "button", text: "Да, в архив", onClick: async () => {
           if (busy) return;
           busy = true;
           try {
@@ -219,7 +240,7 @@ export async function render(root, params, ctx) {
         h("button", { class: "btn ghost", type: "button", text: "Отмена", onClick: () => archiveConfirm.classList.add("hidden") }),
       );
 
-      // ↩️ Вернуть — безопасная операция, без подтверждения (как в боте)
+      // Вернуть — безопасная операция, без подтверждения (как в боте)
       async function unarchive() {
         if (busy) return;
         busy = true;
@@ -234,10 +255,10 @@ export async function render(root, params, ctx) {
         } finally { busy = false; }
       }
 
-      // 🗑 Удалить — двухшаговое подтверждение; недоступно при сдачах с объяснением
+      // Удалить — двухшаговое подтверждение; недоступно при сдачах с объяснением
       const deleteConfirm = h("div", { class: "confirm-box hidden" },
         h("p", { text: "Задание будет удалено навсегда — восстановить его не получится. Сдач у него нет, поэтому ничего больше не пропадёт." }),
-        h("button", { class: "btn danger", type: "button", text: "🗑 Да, удалить", onClick: async () => {
+        h("button", { class: "btn danger", type: "button", text: "Да, удалить", onClick: async () => {
           if (busy) return;
           busy = true;
           try {
@@ -258,33 +279,22 @@ export async function render(root, params, ctx) {
       panels.push(titleBox, textBox, coinsBox, deadlineBox, archiveConfirm, deleteConfirm);
 
       const deleteBtn = h("button", {
-        class: "btn secondary", type: "button", text: "🗑 Удалить",
+        class: "btn secondary", type: "button",
         disabled: !card.can_delete,
         onClick: () => toggle(deleteConfirm),
-      });
+      }, icon("trash-2"), h("span", { text: " Удалить" }));
 
       holder.replaceChildren(...[
         h("h1", { text: card.title }),
-        card.archived ? h("p", { class: "chip", text: "🗄 В архиве — делегаты его не видят" }) : null,
+        card.archived ? h("p", { class: "chip" }, icon("archive"), h("span", { text: " В архиве — делегаты его не видят" })) : null,
         preview(card, card.photo_file_id),
         h("p", { class: "muted", text: `Сдач: ${card.submissions_count}` }),
+        pointsList,
+        titleBox, textBox, coinsBox, deadlineBox, fileInput,
         h("div", { class: "task-actions" },
-          h("button", { class: "btn secondary", type: "button", text: "✏️ Название", onClick: () => toggle(titleBox) }),
-          titleBox,
-          h("button", { class: "btn secondary", type: "button", text: "✏️ Описание", onClick: () => toggle(textBox) }),
-          textBox,
-          h("button", { class: "btn secondary", type: "button", text: "💰 Монеты", onClick: () => toggle(coinsBox) }),
-          coinsBox,
-          h("button", { class: "btn secondary", type: "button", text: "📅 Дедлайн", onClick: openDeadline }),
-          deadlineBox,
-          h("button", { class: "btn secondary", type: "button", text: card.photo_file_id ? "📷 Заменить фото" : "📷 Добавить фото", onClick: () => fileInput.click() }),
-          fileInput,
-          card.photo_file_id
-            ? h("button", { class: "btn ghost", type: "button", text: "🗑 Убрать фото", onClick: () => patch({ remove_photo: true }, "Обложка убрана.") })
-            : null,
           card.archived
-            ? h("button", { class: "btn secondary", type: "button", text: "↩️ Вернуть из архива", onClick: unarchive })
-            : h("button", { class: "btn secondary", type: "button", text: "🗄 В архив", onClick: () => toggle(archiveConfirm) }),
+            ? h("button", { class: "btn secondary", type: "button", onClick: unarchive }, icon("rotate-ccw"), h("span", { text: " Вернуть из архива" }))
+            : h("button", { class: "btn secondary", type: "button", onClick: () => toggle(archiveConfirm) }, icon("archive"), h("span", { text: " В архив" })),
           archiveConfirm,
           deleteBtn,
           card.can_delete ? null : h("p", { class: "faint", text: card.cannot_delete_text || "У задания есть сдачи — удалить нельзя, только в архив." }),
@@ -299,7 +309,7 @@ export async function render(root, params, ctx) {
   }
 
   // ════════════════════════════════════════════════════════════════════════════════════
-  // Режим «создание»: шаги по одному, выбор — кнопками, текст — только название/описание/сумма
+  // Режим «создание»: шаги по одному, выбор — сеткой кнопок, текст — только название/описание/сумма
   // ════════════════════════════════════════════════════════════════════════════════════
   async function renderCreate() {
     let options;
@@ -324,7 +334,7 @@ export async function render(root, params, ctx) {
 
     function step(label, ...children) {
       return h("div", { class: "wizard-step" },
-        h("p", { class: "step-label", text: `Шаг ${stepIndex + 1} из ${steps.length} · ${label}` }),
+        h("p", { class: "label-role", text: `Шаг ${stepIndex + 1} из ${steps.length} · ${label}` }),
         children,
       );
     }
@@ -332,8 +342,8 @@ export async function render(root, params, ctx) {
       return h("div", { class: "task-actions" },
         h("button", { class: "btn", type: "button", text: nextText || "Далее →", onClick: onNext }),
         stepIndex > 0
-          ? h("button", { class: "btn ghost", type: "button", text: "◀️ Назад", onClick: () => { stepIndex -= 1; say(""); draw(); } })
-          : h("button", { class: "btn ghost", type: "button", text: "❌ Отмена", onClick: () => navigate("#/admin-tasks") }),
+          ? h("button", { class: "btn ghost", type: "button", text: "Назад", onClick: () => { stepIndex -= 1; say(""); draw(); } })
+          : h("button", { class: "btn ghost", type: "button", text: "Отмена", onClick: () => navigate("#/admin-tasks") }),
       );
     }
     function next() { stepIndex += 1; say(""); draw(); }
@@ -395,7 +405,7 @@ export async function render(root, params, ctx) {
             draft.coins = v; next();
           }));
       } else if (name === "city") {
-        const choices = [{ code: "all", label: "🌍 Все города" }, ...options.cities];
+        const choices = [{ code: "all", label: "Все города" }, ...options.cities];
         body = step("Кому задание?",
           h("div", { class: "choice-grid" },
             choices.map((c) => h("button", {
@@ -437,26 +447,29 @@ export async function render(root, params, ctx) {
           } finally { busy = false; }
         });
         body = step("Обложка (необязательно)",
-          draft.photo_file_id ? preview({ card_text: "", city_label: null }, draft.photo_file_id) : null,
+          draft.photo_file_id ? preview({}, draft.photo_file_id) : null,
           h("div", { class: "task-actions" },
-            h("button", { class: "btn secondary", type: "button", text: draft.photo_file_id ? "📷 Заменить фото" : "📷 Добавить фото", onClick: () => fileInput.click() }),
+            h("button", { class: "btn secondary", type: "button", onClick: () => fileInput.click() }, icon("image"), h("span", { text: draft.photo_file_id ? " Заменить фото" : " Добавить фото" })),
             fileInput,
-            draft.photo_file_id ? h("button", { class: "btn ghost", type: "button", text: "🗑 Убрать фото", onClick: () => { draft.photo_file_id = null; draft.part_token = null; draw(); } }) : null,
+            draft.photo_file_id ? h("button", { class: "btn ghost", type: "button", onClick: () => { draft.photo_file_id = null; draft.part_token = null; draw(); } }, icon("x"), h("span", { text: " Убрать фото" })) : null,
           ),
-          navRow(next, draft.photo_file_id ? "Далее →" : "⏭ Без фото"));
+          navRow(next, draft.photo_file_id ? "Далее →" : "Без фото"));
       } else {
-        // Превью перед публикацией — из черновика, теми же подписями, что выбрал менеджер.
-        const lines = [
-          draft.title,
-          `${labels.category} · ${draft.coins}🪙 · до ${labels.deadline}`,
-          `Нужно прислать: ${labels.proof || "не важно"}`,
-          "",
-          draft.text,
-        ].join("\n");
+        // Превью перед публикацией — из черновика, теми же подписями, что выбрал менеджер;
+        // та же вёрстка, что у карточки делегата (preview()).
+        const previewData = {
+          title: draft.title,
+          category_label: labels.category,
+          coins: draft.coins,
+          deadline_display: labels.deadline,
+          proof_type: draft.proof_types.join(","),
+          text: draft.text,
+          city_label: labels.city || null,
+        };
         const publish = async () => {
           if (busy) return;
           busy = true;
-          setMainButton("✅ Опубликовать", publish, { disabled: true });
+          setMainButton("Опубликовать", publish, { disabled: true });
           try {
             const res = await api("/admin/tasks", { method: "POST", body: {
               title: draft.title, text: draft.text, category: draft.category, coins: draft.coins,
@@ -469,18 +482,18 @@ export async function render(root, params, ctx) {
             navigate(`#/task-edit/${res.id}`);
           } catch (err) {
             busy = false;
-            setMainButton("✅ Опубликовать", publish);
+            setMainButton("Опубликовать", publish);
             if (!isAuthError(err)) say(errorText(err, "Не удалось опубликовать — проверьте поля и попробуйте ещё раз."), "warn");
           }
         };
         body = step("Проверьте и опубликуйте",
-          preview({ card_text: lines, city_label: labels.city || null }, draft.photo_file_id),
+          preview(previewData, draft.photo_file_id),
           h("div", { class: "task-actions" },
-            h("button", { class: "btn", type: "button", text: "✅ Опубликовать", onClick: publish }),
-            h("button", { class: "btn ghost", type: "button", text: "◀️ Назад", onClick: () => { stepIndex -= 1; say(""); draw(); } }),
-            h("button", { class: "btn ghost", type: "button", text: "❌ Отмена", onClick: () => navigate("#/admin-tasks") }),
+            h("button", { class: "btn", type: "button", onClick: publish }, icon("check"), h("span", { text: " Опубликовать" })),
+            h("button", { class: "btn ghost", type: "button", text: "Назад", onClick: () => { stepIndex -= 1; say(""); draw(); } }),
+            h("button", { class: "btn ghost", type: "button", text: "Отмена", onClick: () => navigate("#/admin-tasks") }),
           ));
-        setMainButton("✅ Опубликовать", publish);
+        setMainButton("Опубликовать", publish);
       }
 
       holder.replaceChildren(h("h1", { text: "Новое задание" }), body);
