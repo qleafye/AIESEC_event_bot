@@ -34,6 +34,7 @@
                                        403 {"reason":"bad_part_token"}; 404 task_not_found
                                        409 {"reason":"already_submitted"|"resubmit_limit"}
   Общий (план 19-04): dependency `upload_actor` (одобренный делегат ИЛИ moderate_game), без section:
+  GET  /app/api/uploads/limits     -> {max_bytes, photo_max_bytes, max_parts, max_text, too_large_text, empty_hint}
   POST /app/api/uploads  multipart `file` -> {kind: photo|document, content: file_id, part_token}
                                        413 too_large (> 20 МБ); 502 {"reason":"telegram_unavailable"}
   GET  /app/api/file/{file_id}     -> байты файла (прокси getFile; `principal`; владелец части ИЛИ
@@ -57,7 +58,7 @@
 """
 from __future__ import annotations
 
-from miniapp.routers import coins, page, profile, submissions, tasks
+from miniapp.routers import coins, files, page, profile, submissions, tasks
 
 ALL_ROUTERS = [
     page.router,
@@ -65,6 +66,7 @@ ALL_ROUTERS = [
     profile.router,
     coins.router,
     submissions.router,
+    files.router,
 ]
 
 __all__ = ["ALL_ROUTERS"]
