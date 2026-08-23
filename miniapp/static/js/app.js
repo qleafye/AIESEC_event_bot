@@ -1,0 +1,343 @@
+// Ядро Mini App: bootstrap Telegram WebApp SDK, hash-роутер по таблице ROUTES, навигация
+// по правам и экраны состояний. Экраны приложения живут в screens/*.js и подгружаются
+// лениво; каждый модуль экспортирует render(root, params, ctx) и НИЧЕГО не правит здесь.
+//
+// Контракт экранного модуля:
+//   export async function render(root, params, ctx)
+//     root   — элемент #screen (уже очищен);
+//     params — параметры маршрута ({ id } и т.п.);
+//     ctx    — { me, tg, h, esc, api, setMainButton, navigate, showState }.
+//   Необязательно: export function unmount() — при уходе с экрана.
+//
+// Весь текст из БД/реестра в DOM идёт через textContent (помощник h()) — innerHTML с
+// интерполяцией запрещён (сторожевой тест, T-19-07).
+
+import { api, ApiError, esc, setAuthErrorHandler } from "./api.js";
+
+const tg = window.Telegram && window.Telegram.WebApp;
+const root = document.documentElement;
+const body = document.body;
+const ds = body.dataset;
+const screenEl = document.getElementById("screen");
+const navEl = document.getElementById("nav");
+
+// ── таблица маршрутов (один в один с планом фазы; {id} — параметр) ──────────────────────
+export const ROUTES = [
+  ["#/tasks", "screens/tasks.js"],
+  ["#/task/{id}", "screens/card.js"],
+  ["#/profile", "screens/profile.js"],
+  ["#/coins", "screens/coins.js"],
+  ["#/leaderboard", "screens/leaderboard.js"],
+  ["#/submit/{id}", "screens/submit.js"],
+  ["#/review", "screens/review.js"],
+  ["#/stats", "screens/stats.js"],
+  ["#/admin-tasks", "screens/admin_tasks.js"],
+  ["#/task-edit/new", "screens/task_edit.js"],
+  ["#/task-edit/{id}", "screens/task_edit.js"],
+  ["#/admin-coins", "screens/admin_coins.js"],
+  ["#/settings", "screens/settings.js"],
+];
+
+// Навигация: вкладка показывается, если раздел включён чекбоксом (miniapp_section_*) И
+// человек имеет к нему доступ: делегатские — при is_delegate, менеджерские — по caps.
+const NAV = [
+  { hash: "#/tasks", section: "tasks", delegate: true },
+  { hash: "#/coins", section: "coins", delegate: true },
+  { hash: "#/leaderboard", section: "leaderboard", delegate: true },
+  { hash: "#/profile", section: "profile", delegate: true },
+  { hash: "#/review", section: "review", cap: "moderate_game" },
+  { hash: "#/admin-tasks", section: "admin_tasks", cap: "moderate_game" },
+  { hash: "#/admin-coins", section: "coins", cap: "moderate_game", staffOnly: true },
+  { hash: "#/stats", section: "stats", cap: "stats" },
+  { hash: "#/settings", section: "settings", cap: "settings" },
+];
+
+const compiled = ROUTES.map(([pattern, module]) => {
+  const names = [];
+  const source = pattern
+    .slice(1)
+    .replace(/[.*+?^$()|[\]\\]/g, "\\$&")
+    .replace(/\{(\w+)\}/g, (_, name) => {
+      names.push(name);
+      return "([^/]+)";
+    });
+  return { regex: new RegExp(`^${source}$`), module, names };
+});
+
+// ── DOM-помощник: h(tag, attrs, ...children) — текст только через textContent ────────────
+export function h(tag, attrs, ...children) {
+  const el = document.createElement(tag);
+  if (attrs) {
+    for (const [key, value] of Object.entries(attrs)) {
+      if (value == null || value === false) continue;
+      if (key === "class") el.className = value;
+      else if (key === "text") el.textContent = value;
+      else if (key.startsWith("on") && typeof value === "function") {
+        el.addEventListener(key.slice(2).toLowerCase(), value);
+      } else el.setAttribute(key, value === true ? "" : String(value));
+    }
+  }
+  for (const child of children.flat()) {
+    if (child == null || child === false) continue;
+    el.append(child instanceof Node ? child : document.createTextNode(String(child)));
+  }
+  return el;
+}
+
+function clear(el) {
+  el.replaceChildren();
+}
+
+// ── Telegram SDK bootstrap ───────────────────────────────────────────────────────────────
+function applySafeArea() {
+  if (!tg) return;
+  const inset = tg.contentSafeAreaInset || {};
+  const safe = tg.safeAreaInset || {};
+  root.style.setProperty("--tg-safe-top", `${(inset.top || 0) + (safe.top || 0)}px`);
+  root.style.setProperty("--tg-safe-bottom", `${(inset.bottom || 0) + (safe.bottom || 0)}px`);
+}
+
+function applyTheme() {
+  if (!tg || tg.colorScheme !== "dark") return;
+  const params = tg.themeParams || {};
+  // Только bg/text из themeParams (D-02); остальные токены — из tokens.css.
+  if (params.bg_color) root.style.setProperty("--bg", params.bg_color);
+  if (params.text_color) root.style.setProperty("--text", params.text_color);
+}
+
+function bootstrapTelegram() {
+  if (!tg) return;
+  try {
+    tg.ready();
+    tg.expand();
+    if (typeof tg.disableVerticalSwipes === "function") tg.disableVerticalSwipes();
+  } catch (_) { /* старый клиент без части методов — не критично */ }
+  applyTheme();
+  applySafeArea();
+  if (tg.onEvent) {
+    tg.onEvent("themeChanged", applyTheme);
+    tg.onEvent("contentSafeAreaChanged", applySafeArea);
+    tg.onEvent("safeAreaChanged", applySafeArea);
+  }
+  if (tg.BackButton) tg.BackButton.onClick(() => history.back());
+}
+
+// ── MainButton: принадлежит текущему экрану ─────────────────────────────────────────────
+let mainButtonHandler = null;
+
+function setMainButton(text, onClick, options = {}) {
+  if (!tg || !tg.MainButton) return;
+  const button = tg.MainButton;
+  if (mainButtonHandler) button.offClick(mainButtonHandler);
+  mainButtonHandler = null;
+  if (!text || !onClick) {
+    button.hide();
+    return;
+  }
+  mainButtonHandler = onClick;
+  button.setText(text);
+  button.onClick(onClick);
+  if (options.disabled) button.disable(); else button.enable();
+  button.show();
+}
+
+function updateBackButton(hash) {
+  if (!tg || !tg.BackButton) return;
+  const isHome = !hash || hash === "#/" || hash === homeHash();
+  if (isHome) tg.BackButton.hide(); else tg.BackButton.show();
+}
+
+// ── экраны состояний ─────────────────────────────────────────────────────────────────────
+const STATE_ICONS = { "open-in-bot": "🤖", expired: "⏳", "no-access": "⛔", disabled: "🚧", missing: "🧩" };
+const STATE_TITLES = {
+  "open-in-bot": "Откройте через бота",
+  expired: "Сессия истекла",
+  "no-access": "Нет доступа",
+  disabled: "Приложение выключено",
+  missing: "Раздел пока недоступен",
+};
+
+let terminal = false; // после терминального экрана роутер больше не рисует экраны
+
+export function showState(state, detail) {
+  setMainButton(null);
+  clear(navEl);
+  const card = h("section", { class: "state", "data-state": state },
+    h("div", { class: "icon", text: STATE_ICONS[state] || "ℹ️" }),
+    h("h1", { text: STATE_TITLES[state] || "" }),
+  );
+
+  if (state === "open-in-bot") {
+    card.append(h("p", { text: ds.openInBotText }));
+    const actions = h("div", { class: "actions" });
+    if (ds.deepLink) {
+      actions.append(h("a", { class: "btn", href: ds.deepLink, text: "Открыть в Telegram" }));
+    }
+    // Запасной вход менеджера (D-05): Login Widget дашборда. Показывается всегда — браузер
+    // не знает, кто перед ним. Адрес относительный и не берётся из данных (T-19-75).
+    // /auth/callback вернёт на корень дашборда (/), а не в /app — об этом подсказка.
+    actions.append(h("a", { class: "btn secondary", href: "/login", text: ds.loginButton }));
+    card.append(actions);
+    card.append(h("p", { class: "hint", text: ds.loginHint }));
+    terminal = true;
+  } else if (state === "expired") {
+    card.append(h("p", { text: ds.sessionExpiredText }));
+    if (tg) {
+      card.append(h("div", { class: "actions" },
+        h("button", { class: "btn", type: "button", text: "Закрыть", onClick: () => tg.close() }),
+      ));
+    }
+    terminal = true;
+  } else if (state === "no-access") {
+    card.append(h("p", { text: ds.noAccessText }));
+    if (detail) card.append(h("p", { class: "faint", text: detail }));
+    card.append(h("div", { class: "actions" },
+      h("a", { class: "btn ghost", href: homeHash(), text: "На главную" }),
+    ));
+  } else if (state === "disabled") {
+    card.append(h("p", { text: ds.disabledText }));
+    terminal = true;
+  } else if (state === "missing") {
+    card.append(h("p", { text: "Этот экран ещё не подключён. Всё то же самое есть в боте." }));
+    card.append(h("div", { class: "actions" },
+      h("a", { class: "btn ghost", href: homeHash(), text: "На главную" }),
+    ));
+  }
+
+  clear(screenEl);
+  screenEl.append(card);
+}
+
+// ── навигация ────────────────────────────────────────────────────────────────────────────
+let me = null;
+let sectionLabels = {};
+
+function visibleNav() {
+  if (!me) return [];
+  return NAV.filter((item) => {
+    if (!me.sections || !me.sections[item.section]) return false;
+    if (item.delegate) return Boolean(me.is_delegate);
+    if (item.staffOnly && me.is_delegate) return false;
+    return Array.isArray(me.caps) && me.caps.includes(item.cap);
+  });
+}
+
+function homeHash() {
+  const items = visibleNav();
+  return items.length ? items[0].hash : "#/";
+}
+
+function renderNav(activeHash) {
+  clear(navEl);
+  for (const item of visibleNav()) {
+    const active = activeHash === item.hash || activeHash.startsWith(`${item.hash}/`);
+    navEl.append(h("a", {
+      href: item.hash,
+      class: active ? "active" : null,
+      text: sectionLabels[item.section] || item.section,
+    }));
+  }
+}
+
+// ── роутер ───────────────────────────────────────────────────────────────────────────────
+let current = null; // { module, unmount }
+
+function match(hash) {
+  const path = (hash || "").replace(/^#/, "") || "/";
+  for (const route of compiled) {
+    const found = route.regex.exec(path);
+    if (!found) continue;
+    const params = {};
+    route.names.forEach((name, i) => { params[name] = decodeURIComponent(found[i + 1]); });
+    return { module: route.module, params };
+  }
+  return null;
+}
+
+function navigate(hash) {
+  location.hash = hash;
+}
+
+async function route() {
+  if (terminal) return;
+  let hash = location.hash;
+  if (!hash || hash === "#/" || hash === "#") {
+    hash = homeHash();
+    if (hash === "#/") {
+      renderNav("");
+      showState("no-access");
+      return;
+    }
+    location.replace(hash);
+    return;
+  }
+
+  const target = match(hash);
+  renderNav(hash);
+  updateBackButton(hash);
+  setMainButton(null);
+  if (current && typeof current.unmount === "function") {
+    try { current.unmount(); } catch (_) { /* экран сам виноват */ }
+  }
+  current = null;
+
+  if (!target) {
+    showState("missing");
+    return;
+  }
+
+  clear(screenEl);
+  screenEl.append(h("div", { class: "loading", text: "Загрузка…" }));
+
+  let mod;
+  try {
+    mod = await import(`./${target.module}`);
+  } catch (_) {
+    // Файл экрана ещё не положен (планы фазы добавляют их постепенно) — не белый лист.
+    showState("missing");
+    return;
+  }
+  if (location.hash !== hash) return; // пока грузили — ушли дальше
+  if (!mod || typeof mod.render !== "function") {
+    showState("missing");
+    return;
+  }
+  current = { module: target.module, unmount: mod.unmount };
+  clear(screenEl);
+  try {
+    await mod.render(screenEl, target.params, { me, tg, h, esc, setMainButton, navigate, showState, api });
+  } catch (err) {
+    if (err instanceof ApiError) return; // api() уже показал экран состояния (если нужно)
+    clear(screenEl);
+    screenEl.append(h("div", { class: "error-inline", text: "Не получилось открыть экран. Попробуйте ещё раз." }));
+  }
+}
+
+// ── старт ────────────────────────────────────────────────────────────────────────────────
+async function start() {
+  bootstrapTelegram();
+  setAuthErrorHandler((state, payload) => {
+    const detail = payload && payload.kind ? `(${payload.kind})` : null;
+    showState(state, state === "no-access" ? detail : null);
+  });
+  try {
+    sectionLabels = JSON.parse(ds.sectionLabels || "{}");
+  } catch (_) {
+    sectionLabels = {};
+  }
+
+  // Без initData всё равно спрашиваем /me: у менеджера в браузере может быть cookie
+  // дашборда. 401 no_auth приведёт на «Откройте через бота» через обработчик api().
+  try {
+    me = await api("/me");
+  } catch (err) {
+    if (!(err instanceof ApiError) || err.status >= 500 && err.reason !== "miniapp_off") {
+      showState("no-access", "Сервер не ответил — попробуйте позже");
+    }
+    return;
+  }
+  window.addEventListener("hashchange", route);
+  await route();
+}
+
+start();
