@@ -391,6 +391,16 @@ async def main():
     _spawn(heartbeat_loop())
     logger.info("Scheduler + allowlist refresh + heartbeat started")
 
+    # Phase 19 (08, D-10/T-19-52): chat menu button reflects miniapp_enabled at startup too —
+    # without this, a toggle flip made while the bot was down would only take effect on the
+    # NEXT admin visit to the settings screen, not on restart. Fail-soft: unreachable Telegram
+    # must not block startup.
+    try:
+        from handlers.admin_miniapp import sync_chat_menu_button
+        await sync_chat_menu_button(bot)
+    except Exception:
+        logger.warning("sync_chat_menu_button failed at startup", exc_info=True)
+
     try:
         await dp.start_polling(bot)
         logger.info("Bot started polling")

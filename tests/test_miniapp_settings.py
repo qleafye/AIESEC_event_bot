@@ -79,12 +79,24 @@ class FakeMessage:
         self.edit_calls += 1
 
 
+class FakeBot:
+    def __init__(self, fail=False):
+        self.fail = fail
+        self.menu_button_calls = []
+
+    async def set_chat_menu_button(self, menu_button=None):
+        if self.fail:
+            raise RuntimeError("Telegram unreachable")
+        self.menu_button_calls.append(menu_button)
+
+
 class FakeCallback:
-    def __init__(self, data, user_id=ADMIN_ID, message=None):
+    def __init__(self, data, user_id=ADMIN_ID, message=None, bot=None):
         self.data = data
         self.from_user = FakeUser(user_id)
         self.message = message if message is not None else FakeMessage(user_id=user_id)
         self.answers = []
+        self.bot = bot if bot is not None else FakeBot()
 
     async def answer(self, text=None, show_alert=False):
         self.answers.append((text, show_alert))
@@ -177,6 +189,59 @@ def test_toggle_enabled_flips_only_its_own_key(tmp_path):
     assert asyncio.run(get_setting_typed("miniapp_staff_only")) == "off"
     assert callback.message.edit_calls == 1
     assert callback.answers
+
+
+def test_toggle_enabled_syncs_chat_menu_button_to_webapp(tmp_path):
+    _admin_ready(tmp_path)
+    callback = FakeCallback("miniapp_toggle_enabled")
+    asyncio.run(admin_miniapp.toggle_miniapp_enabled(callback))
+    assert len(callback.bot.menu_button_calls) == 1
+    from aiogram.types import MenuButtonWebApp
+    assert isinstance(callback.bot.menu_button_calls[0], MenuButtonWebApp)
+    assert callback.bot.menu_button_calls[0].web_app.url.endswith("/app")
+
+
+def test_toggle_enabled_off_syncs_chat_menu_button_to_default(tmp_path):
+    _admin_ready(tmp_path)
+    asyncio.run(db.set_setting("miniapp_enabled", "on"))
+    callback = FakeCallback("miniapp_toggle_enabled")
+    asyncio.run(admin_miniapp.toggle_miniapp_enabled(callback))
+    from aiogram.types import MenuButtonDefault
+    assert isinstance(callback.bot.menu_button_calls[0], MenuButtonDefault)
+
+
+def test_toggle_enabled_fail_soft_when_telegram_unreachable(tmp_path):
+    _admin_ready(tmp_path)
+    callback = FakeCallback("miniapp_toggle_enabled", bot=FakeBot(fail=True))
+    asyncio.run(admin_miniapp.toggle_miniapp_enabled(callback))
+    # setting still flips even though the chat menu button call failed
+    assert asyncio.run(get_setting_typed("miniapp_enabled")) == "on"
+    assert callback.answers
+    assert "следующем запуске" in callback.answers[0][0]
+
+
+def test_sync_chat_menu_button_direct_on_and_off(tmp_path):
+    _admin_ready(tmp_path)
+    bot = FakeBot()
+    asyncio.run(db.set_setting("miniapp_enabled", "on"))
+    asyncio.run(admin_miniapp.sync_chat_menu_button(bot))
+    from aiogram.types import MenuButtonWebApp
+    assert isinstance(bot.menu_button_calls[-1], MenuButtonWebApp)
+
+    asyncio.run(db.set_setting("miniapp_enabled", "off"))
+    asyncio.run(admin_miniapp.sync_chat_menu_button(bot))
+    from aiogram.types import MenuButtonDefault
+    assert isinstance(bot.menu_button_calls[-1], MenuButtonDefault)
+
+
+def test_sync_chat_menu_button_empty_url_forces_default(tmp_path):
+    _admin_ready(tmp_path)
+    asyncio.run(db.set_setting("miniapp_enabled", "on"))
+    config.DASHBOARD_PUBLIC_URL = ""
+    bot = FakeBot()
+    asyncio.run(admin_miniapp.sync_chat_menu_button(bot))
+    from aiogram.types import MenuButtonDefault
+    assert isinstance(bot.menu_button_calls[-1], MenuButtonDefault)
 
 
 def test_toggle_staff_only_flips_only_its_own_key(tmp_path):

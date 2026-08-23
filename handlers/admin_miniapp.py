@@ -15,17 +15,26 @@
 `sync_chat_menu_button` — план 19-08, задача 2, тот же файл.
 """
 import html as html_module
+import logging
 import re
 
 from aiogram import F, types
 from aiogram.fsm.context import FSMContext
-from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
+from aiogram.types import (
+    InlineKeyboardButton,
+    InlineKeyboardMarkup,
+    MenuButtonDefault,
+    MenuButtonWebApp,
+    WebAppInfo,
+)
 
 from config import config
 from database.db import set_setting, delete_setting
 from settings_schema import SETTINGS_SCHEMA, get_setting_typed
 from handlers.admin import router
 from handlers.states import MiniAppTheme
+
+logger = logging.getLogger(__name__)
 
 # Порядок разделов на экране (D-06): зеркало восьми экранов делегата/менеджера фазы 19.
 SECTION_KEYS = [
@@ -112,6 +121,28 @@ async def build_miniapp_settings_keyboard() -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(inline_keyboard=buttons)
 
 
+async def sync_chat_menu_button(bot) -> None:
+    """Phase 19 (08, D-10/T-19-52): the ONE function that sets the chat menu button, called
+    from TWO places — `main.py` at startup and `toggle_miniapp_enabled` below, right after the
+    setting is written. Without a single shared function called from both, the toggle would
+    only take visible effect on the NEXT bot restart, breaking the "выключение тумблера
+    убирает точки входа сразу" success criterion. Fail-soft is the CALLER's job (both call
+    sites wrap this in try/except) — an unreachable Telegram must never break the settings
+    screen or block startup."""
+    enabled = await get_setting_typed("miniapp_enabled") == "on"
+    url = config.DASHBOARD_PUBLIC_URL
+    if enabled and url:
+        button_text = await get_setting_typed("miniapp_open_button")
+        await bot.set_chat_menu_button(
+            menu_button=MenuButtonWebApp(
+                text=button_text,
+                web_app=WebAppInfo(url=url.rstrip("/") + "/app"),
+            ),
+        )
+    else:
+        await bot.set_chat_menu_button(menu_button=MenuButtonDefault())
+
+
 async def _rerender(callback: types.CallbackQuery):
     await callback.message.edit_text(
         await render_miniapp_settings_text(),
@@ -138,7 +169,15 @@ async def toggle_miniapp_enabled(callback: types.CallbackQuery):
     current = await get_setting_typed("miniapp_enabled")
     new_val = "off" if current == "on" else "on"
     await set_setting("miniapp_enabled", new_val)
-    await callback.answer("Приложение: " + ("включено" if new_val == "on" else "выключено"))
+    toast = "Приложение: " + ("включено" if new_val == "on" else "выключено")
+    # T-19-52: kept in sync with the toggle immediately, not only at next restart. Fail-soft —
+    # an unreachable Telegram must not break this screen, only delay the chat menu button.
+    try:
+        await sync_chat_menu_button(callback.bot)
+    except Exception:
+        logger.warning("sync_chat_menu_button failed after toggle", exc_info=True)
+        toast += " — кнопка меню обновится при следующем запуске"
+    await callback.answer(toast)
     await _rerender(callback)
 
 

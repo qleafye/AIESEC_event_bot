@@ -20,6 +20,11 @@ MENU_BUTTONS = [
     ("menu_question", "❓ Задать вопрос"),
     ("menu_coins", "🪙 Мои монеты"),
     ("menu_game_tasks", "🎯 Задания"),
+    # Phase 19 (D-10): текстовая reply-кнопка «📱 Приложение» — НЕ web_app-кнопка (Pitfall 1:
+    # KeyboardButton(web_app=...) даёт simple web view без initData, делегат не
+    # аутентифицируется). Хендлер `handlers/user_actions.py::open_miniapp_button` отвечает
+    # сообщением с inline web_app-кнопкой; там initData полный.
+    ("menu_miniapp", "📱 Приложение"),
 ]
 
 async def get_main_menu_kb(telegram_id: int | None = None) -> ReplyKeyboardMarkup:
@@ -38,6 +43,16 @@ async def get_main_menu_kb(telegram_id: int | None = None) -> ReplyKeyboardMarku
         logger.error(f"get_main_menu_kb: city resolve failed for {telegram_id}: {e}")
         code = None
 
+    # Phase 19 (D-10, WR-05): miniapp_enabled resolved ONCE before the loop (same idiom as the
+    # city code above) -- a single extra DB read per menu render, not one per button. Fail-soft:
+    # a read failure means "no button", never a broken menu.
+    miniapp_on = False
+    try:
+        miniapp_on = await get_setting_typed("miniapp_enabled") == "on"
+    except Exception as e:
+        logger.error(f"get_main_menu_kb: miniapp_enabled resolve failed: {e}")
+        miniapp_on = False
+
     kb = ReplyKeyboardBuilder()
     for key, text in MENU_BUTTONS:
         # menu_* is a registry `enum` key (options ["on","off"], default "on") -- the enum
@@ -47,6 +62,12 @@ async def get_main_menu_kb(telegram_id: int | None = None) -> ReplyKeyboardMarku
         # check, hiding the button exactly as before.
         val = await get_setting_typed_for_city(key, code)
         if val == "on":
+            # Phase 19 (D-10, T-19-54): menu_miniapp needs TWO extra gates on top of the
+            # ordinary menu toggle — the app itself must be enabled, and a public URL must be
+            # configured (empty URL means no entry points exist at all, Pitfall 10). Every
+            # other button is untouched by this branch.
+            if key == "menu_miniapp" and not (miniapp_on and config.DASHBOARD_PUBLIC_URL):
+                continue
             kb.button(text=text)
     # Persistent "upload receipt" entry — only while the user still owes one.
     # Lazy import avoids a circular import (payment imports get_main_menu_kb); fail-soft.
