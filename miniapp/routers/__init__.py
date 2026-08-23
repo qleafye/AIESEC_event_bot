@@ -54,7 +54,31 @@
   GET  /app/api/stats/game         -> {participants, submissions{pending,approved,rejected},
                                        by_category[{code,label,count}]} — только агрегаты, без ПД;
                                        `moderate_game` + section stats; числа = get_game_stats()
-  Менеджер (планы 19-06..19-07): /app/api/admin/tasks*, /app/api/admin/coins*, /app/api/admin/settings
+  Менеджер (план 19-06, `require_cap("moderate_game")` + section admin_tasks; городской скоуп
+  на чтении и на каждой мутации — 403 {"reason":"out_of_scope","text"}):
+  GET  /app/api/admin/tasks/options -> {categories[{code,label}], proof_types[{code,label}],
+                                       deadline_presets[{code,label}], deadline_example, cities[{code,label}],
+                                       city_choice, bound_city_label, title_max, text_max}
+  GET  /app/api/admin/tasks?archived=0|1&offset&limit -> {items[{id,number,title,category,category_label,
+                                       coins,deadline_at,deadline_short,overdue,archived,pending,approved,
+                                       has_photo}], total, active_count, archived_count, archived, offset,
+                                       limit, empty_text}; limit <= 50
+  GET  /app/api/admin/tasks/{id}   -> карточка: все поля + category_label, proof_label, city_label,
+                                       deadline_display, card_text (render_task_card_text), photo_file_id,
+                                       submissions_count, can_delete, cannot_delete_text; 404 not_found
+  PATCH /app/api/admin/tasks/{id} {title | text | coins | deadline_at | photo_file_id(+part_token)
+                                       | remove_photo: true} -> {ok, field, task}; РОВНО одно поле
+                                       400 one_field/title_empty/text_empty/bad_coins/bad_deadline/
+                                       deadline_past/not_a_photo (все с `text`); 403 bad_part_token
+                                       deadline_at: пресет today|plus3|plus7 ИЛИ ДД.ММ.ГГГГ ЧЧ:ММ
+  POST /app/api/admin/tasks {title, text, category, coins, proof_types[], deadline_at, event_city?,
+                                       photo_file_id?, part_token?} -> 201 {ok, id, task}
+                                       400 bad_category/bad_proof_type/bad_city (+ поля выше)
+                                       привязанный менеджер: event_city игнорируется, ставится его город
+  POST /app/api/admin/tasks/{id}/archive | /unarchive -> {ok, changed, archived}
+  DELETE /app/api/admin/tasks/{id}  -> {ok, deleted}; 409 {"reason":"has_submissions","text"}
+  Каждая мутация -> outbox task_changed {task_id}.
+  Менеджер (план 19-07): /app/api/admin/coins*, /app/api/admin/settings
 
 Коды ошибок — всегда JSON-тело с полем `reason`:
   401 {"reason": "no_auth"}        — ни initData, ни cookie
@@ -72,7 +96,7 @@
 """
 from __future__ import annotations
 
-from miniapp.routers import coins, files, page, profile, review, stats, submissions, tasks
+from miniapp.routers import admin_tasks, coins, files, page, profile, review, stats, submissions, tasks
 
 ALL_ROUTERS = [
     page.router,
@@ -83,6 +107,7 @@ ALL_ROUTERS = [
     files.router,
     review.router,
     stats.router,
+    admin_tasks.router,
 ]
 
 __all__ = ["ALL_ROUTERS"]
