@@ -179,3 +179,13 @@ class PollCreate(StatesGroup):
     audience = State()       # кому: все / одобренные / город / трек
     confirm = State()        # превью прислано, ждём «отправить сейчас» / «запланировать»
     schedule_when = State()  # дата-время ДД.ММ.ГГГГ ЧЧ:ММ
+
+
+class MiniAppTheme(StatesGroup):
+    # Phase 19 (08, D-06): экран «🎨 Оформление» Mini App (handlers/admin_miniapp.py), право
+    # `settings` ("state:MiniAppTheme:*" в handlers/admin_caps.py). Своя маленькая группа, а
+    # не переиспользование EditSetting -- та же причина, что у GameTaskEdit: у экрана свой
+    # экран возврата (карточка «🎨 Оформление», не общий лендинг настроек), и оба поля правятся
+    # по одному за раз без общего wizard'а.
+    accent = State()  # HEX-цвет акцента, текстом
+    logo = State()    # логотип мероприятия, фото
