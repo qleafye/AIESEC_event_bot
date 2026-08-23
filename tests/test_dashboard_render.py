@@ -357,6 +357,22 @@ def test_all_seven_blocks_present_when_toggles_on(tmp_path):
     assert "Геймификация" in text
 
 
+def test_daily_chart_data_attributes_are_parseable_json(tmp_path):
+    """tojson не экранирует двойные кавычки — в атрибуте с `"` строки-даты рвали JSON
+    и график молча не рисовался. Атрибуты в одинарных кавычках, внутри — валидный JSON."""
+    import json as _json
+    db_path = _use_tmp_db(tmp_path)
+    _seed_full_fixture(db_path)
+    client = _stats_manager_client(db_path)
+    text = client.get("/").text
+    m = re.search(r"data-labels='([^']*)'\s+data-values='([^']*)'", text)
+    assert m, "canvas data-labels/data-values not found in single-quoted form"
+    labels = _json.loads(m.group(1))
+    values = _json.loads(m.group(2))
+    assert labels and len(labels) == len(values)
+    assert labels[0] == "2026-08-01"
+
+
 @pytest.mark.parametrize(
     "toggle_key, marker",
     [
