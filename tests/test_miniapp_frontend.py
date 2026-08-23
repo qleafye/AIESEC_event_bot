@@ -169,3 +169,125 @@ def test_theme_css_garbage_accent_falls_back_to_default(tmp_path):
         resp = client.get("/app/theme.css")
         assert resp.status_code == 200, bad
         assert resp.text == ":root { --accent: #037EF3; --secondary: #037EF3; }\n", bad
+
+
+# ── фронт-ядро: таблица маршрутов (план 19-02, <route_table>) ───────────────────────────
+
+EXPECTED_ROUTES = {
+    "#/tasks": "screens/tasks.js",
+    "#/task/{id}": "screens/card.js",
+    "#/profile": "screens/profile.js",
+    "#/coins": "screens/coins.js",
+    "#/leaderboard": "screens/leaderboard.js",
+    "#/submit/{id}": "screens/submit.js",
+    "#/review": "screens/review.js",
+    "#/stats": "screens/stats.js",
+    "#/admin-tasks": "screens/admin_tasks.js",
+    "#/task-edit/{id}": "screens/task_edit.js",
+    "#/task-edit/new": "screens/task_edit.js",
+    "#/admin-coins": "screens/admin_coins.js",
+    "#/settings": "screens/settings.js",
+}
+_ROUTE_ROW = re.compile(r'\[\s*"(#/[^"]+)"\s*,\s*"(screens/[^"]+\.js)"\s*\]')
+
+
+def _routes_from_app_js() -> dict[str, str]:
+    text = APP_JS.read_text(encoding="utf-8")
+    block = text[text.index("export const ROUTES"):]
+    block = block[:block.index("];")]
+    return dict(_ROUTE_ROW.findall(block))
+
+
+def test_route_table_matches_phase_plan_exactly():
+    routes = _routes_from_app_js()
+    assert routes == EXPECTED_ROUTES
+    assert len(routes) == 13
+    assert set(routes.values()) == set(EXPECTED_ROUTES.values())  # 12 модулей, task_edit — 2 маршрута
+
+
+def test_every_screen_module_is_registered_in_routes():
+    """Встречная проверка: недостижимых экранов быть не может. Каталог заполняют планы
+    19-03..19-07 — каждый новый файл обязан появиться в ROUTES."""
+    registered = {Path(m).name for m in _routes_from_app_js().values()}
+    existing = {p.name for p in SCREENS_DIR.glob("*.js")} if SCREENS_DIR.is_dir() else set()
+    unregistered = existing - registered
+    assert not unregistered, f"экраны без маршрута в app.js: {sorted(unregistered)}"
+
+
+def test_route_modules_are_lazily_imported():
+    text = APP_JS.read_text(encoding="utf-8")
+    assert "await import(" in text
+    assert not re.search(r'^import .* from "\./screens/', text, re.M), "экраны только через import()"
+
+
+# ── фронт-ядро: экраны состояний и D-05 ─────────────────────────────────────────────────
+
+def test_open_in_bot_screen_has_deep_link_login_button_and_hint():
+    text = APP_JS.read_text(encoding="utf-8")
+    block = text[text.index('state === "open-in-bot"'):text.index('state === "expired"')]
+    assert "ds.deepLink" in block          # deep-link на бота из data-атрибута шаблона
+    assert 'href: "/login"' in block       # относительный адрес, не из данных (T-19-75)
+    assert "ds.loginButton" in block and "ds.loginHint" in block  # подписи из реестра
+    html = APP_HTML.read_text(encoding="utf-8")
+    for attr in ("data-deep-link", "data-login-button", "data-login-hint", "data-open-in-bot-text",
+                 "data-session-expired-text", "data-no-access-text", "data-disabled-text"):
+        assert attr in html
+
+
+def test_shell_passes_registry_texts_for_state_screens(tmp_path):
+    db_path = _use_tmp_db(tmp_path, "miniapp_front_texts.db")
+    _standard_seed()
+    _set("miniapp_login_button", "Войти как организатор")
+    _set("miniapp_login_hint", "После входа вернитесь на /app")
+    resp = _client(db_path).get("/app")
+    assert 'data-login-button="Войти как организатор"' in resp.text
+    assert 'data-login-hint="После входа вернитесь на /app"' in resp.text
+    assert "Это приложение открывается из бота" in resp.text  # дефолт miniapp_open_in_bot_text
+    assert "Сессия истекла" in resp.text
+    assert 'data-section-labels=' in resp.text and "Рейтинг" in resp.text
+
+
+def test_expired_screen_closes_webapp():
+    text = APP_JS.read_text(encoding="utf-8")
+    block = text[text.index('state === "expired"'):text.index('state === "no-access"')]
+    assert "ds.sessionExpiredText" in block
+    assert "tg.close()" in block
+
+
+def test_missing_screen_module_does_not_break_app():
+    text = APP_JS.read_text(encoding="utf-8")
+    block = text[text.index("await import("):]
+    assert 'showState("missing")' in block[:400]
+
+
+# ── api.js: ветки ошибок, без ретраев, без innerHTML ────────────────────────────────────
+
+def test_api_js_handles_all_error_branches_without_retry():
+    text = API_JS.read_text(encoding="utf-8")
+    assert "X-Telegram-Init-Data" in text
+    assert '"X-Requested-With": "fetch"' in text
+    assert 'credentials: "same-origin"' in text
+    assert 'reason === "bad_initdata"' in text
+    assert '"expired"' in text and '"open-in-bot"' in text
+    assert "response.status === 403" in text and '"no-access"' in text
+    assert "response.status === 503" in text and 'reason === "miniapp_off"' in text
+    assert "retry" not in text.lower()
+    # 401 — терминально: бросаем, не зовём api() повторно.
+    branch = text[text.index("response.status === 401"):]
+    assert "api(" not in branch.split("throw new ApiError")[0]
+    assert "export function esc" in text
+
+
+_JS_COMMENT = re.compile(r"/\*.*?\*/|^\s*//.*$|(?<=[;{}])\s*//.*$", re.S | re.M)
+
+
+def _js_without_comments(path: Path) -> str:
+    return _JS_COMMENT.sub("", path.read_text(encoding="utf-8"))
+
+
+def test_no_innerhtml_with_interpolation_in_core():
+    pattern = re.compile(r"innerHTML\s*\+?=\s*(`|[^;]*\+)")
+    for path in (API_JS, APP_JS, *(SCREENS_DIR.glob("*.js") if SCREENS_DIR.is_dir() else ())):
+        text = _js_without_comments(path)
+        assert not pattern.search(text), f"innerHTML с интерполяцией в {path.name}"
+        assert "innerHTML" not in text, f"innerHTML в {path.name} — только textContent/esc()"
