@@ -1,6 +1,9 @@
-// Профиль делегата — только просмотр (D-08): строки «подпись: значение» по REG_LABELS,
-// статус заявки и оплаты, кнопка «Изменить — в боте» (deep-link на перерегистрацию через
-// Telegram.WebApp.openTelegramLink; вне Telegram — обычная ссылка).
+// Профиль делегата — только просмотр (D-08): строки «подпись — значение» по REG_LABELS (подпись
+// Label-роли, значение Body-роли) на общей плоской поверхности, статус заявки и оплаты, кнопка
+// «Изменить — в боте» (deep-link на перерегистрацию через Telegram.WebApp.openTelegramLink; вне
+// Telegram — обычная ссылка).
+
+import { icon } from "../icons.js";
 
 export async function render(root, params, ctx) {
   const { h, api, tg } = ctx;
@@ -19,13 +22,13 @@ export async function render(root, params, ctx) {
     ),
   );
 
-  const fields = h("div", { class: "card" });
+  const fields = h("div", { class: "flat-list" });
   if (!me.fields.length) {
-    fields.append(h("div", { class: "empty", text: "Анкета пока пустая." }));
+    fields.replaceChildren(h("div", { class: "empty", text: "Анкета пока пустая." }));
   }
   for (const f of me.fields) {
     fields.append(h("div", { class: "field-row" },
-      h("div", { class: "faint", text: f.label }),
+      h("div", { class: "label-role", text: f.label }),
       h("div", { class: "pre", text: f.value }),
     ));
   }
@@ -38,7 +41,9 @@ export async function render(root, params, ctx) {
         tg.openTelegramLink(me.edit_deeplink);
       }
     };
-    actions.append(h("a", { class: "btn secondary", href: me.edit_deeplink, text: "Изменить — в боте", onClick: open }));
+    actions.append(h("a", { class: "btn secondary", href: me.edit_deeplink, onClick: open },
+      icon("pen-line"), h("span", { text: "Изменить — в боте" }),
+    ));
     if (me.edit_hint) actions.append(h("p", { class: "faint center", text: me.edit_hint }));
   }
 
