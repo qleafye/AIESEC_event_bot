@@ -100,6 +100,22 @@ def _extract_file_id(kind: str, result: dict) -> str | None:
     return doc.get("file_id") if isinstance(doc, dict) else None
 
 
+# ── GET /app/api/uploads/limits ──────────────────────────────────────────────────────────
+
+@router.get("/app/api/uploads/limits")
+async def upload_limits(actor: UploadActor = Depends(upload_actor)) -> dict:
+    """Потолки и тексты для экрана сдачи — фронт не хранит ни чисел, ни текстов: проверка
+    `file.size` ДО отправки показывает `miniapp_upload_too_large_text` из реестра."""
+    return {
+        "max_bytes": MAX_UPLOAD_BYTES,
+        "photo_max_bytes": PHOTO_MAX_BYTES,
+        "max_parts": MAX_PARTS,
+        "max_text": MAX_TEXT_PART,
+        "too_large_text": await get_setting_typed("miniapp_upload_too_large_text"),
+        "empty_hint": await get_setting_typed("game_proof_empty_hint"),
+    }
+
+
 # ── POST /app/api/uploads ────────────────────────────────────────────────────────────────
 
 @router.post("/app/api/uploads")

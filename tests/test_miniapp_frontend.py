@@ -372,3 +372,31 @@ def test_show_more_pagination_in_lists():
         assert "Показать ещё" in text and "offset" in text, name
     text = _js_without_comments(SCREENS_DIR / "leaderboard.js")
     assert "limit=50" in text and "board.me" in text
+
+
+# ── экран сдачи (план 19-04): submit.js ─────────────────────────────────────────────────
+
+def test_submit_screen_exports_render_and_checks_size_before_upload():
+    path = SCREENS_DIR / "submit.js"
+    assert path.is_file(), "экран submit.js не создан"
+    text = _js_without_comments(path)
+    assert re.search(r"export\s+async\s+function\s+render\s*\(root,\s*params,\s*ctx\)", text)
+    assert "innerHTML" not in text and "document.write" not in text
+    assert not _HEX_OR_RGB_COLOR.findall(text)
+    # Префиксы ссылок в isLink() — не URL; всё остальное с протоколом запрещено.
+    stripped = text.replace('"http://"', "").replace('"https://"', "")
+    assert "https://" not in stripped and "http://" not in stripped
+    # Проверка размера ДО отправки — раньше первого вызова /uploads, текст из реестра.
+    size_check = text.index("file.size > limits.max_bytes")
+    assert size_check < text.index('api("/uploads", {')
+    assert "too_large_text" in text
+    assert "1024 * 1024" not in text and "20971520" not in text  # числа лимитов не хардкодятся
+    # Счётчик частей, «Убрать последнее», «Готово» -> одиночный POST /submissions.
+    assert "📸" in text and "📄" in text and "✍️" in text
+    assert "Убрать последнее" in text
+    assert 'setMainButton("Готово"' in text
+    assert 'api("/submissions", {' in text and text.count('api("/submissions"') == 1
+    assert "empty_hint" in text              # пустая отправка — подсказка, не сброс
+    assert "err.status === 409" in text      # «Уже отправлено»
+    assert 'navigate("#/tasks")' in text
+

@@ -2597,6 +2597,31 @@ async def list_submission_parts(submission_id: int) -> list[dict]:
             return [dict(row) for row in await cursor.fetchall()]
 
 
+async def find_submissions_by_file_id(file_id: str) -> list[dict]:
+    """Phase 19 (T-19-20): сдачи, в которых встречается этот `file_id` — как часть
+    (`game_submission_parts.content`) или как legacy-контент первой части
+    (`game_submissions.content`). `[{id, user_id, status}]` без дублей."""
+    async with _connect() as db:
+        db.row_factory = aiosqlite.Row
+        async with db.execute(
+            "SELECT DISTINCT s.id, s.user_id, s.status FROM game_submissions s "
+            "LEFT JOIN game_submission_parts p ON p.submission_id = s.id "
+            "WHERE s.content = ? OR p.content = ?",
+            (file_id, file_id),
+        ) as cursor:
+            return [dict(row) for row in await cursor.fetchall()]
+
+
+async def is_active_task_cover(file_id: str) -> bool:
+    """Phase 19: `file_id` — обложка неархивного задания (её видят все делегаты)."""
+    async with _connect() as db:
+        async with db.execute(
+            "SELECT 1 FROM game_tasks WHERE photo_file_id = ? AND archived_at IS NULL LIMIT 1",
+            (file_id,),
+        ) as cursor:
+            return await cursor.fetchone() is not None
+
+
 async def get_submission_parts_or_legacy(submission: dict) -> list[dict]:
     """Backward-compat read: a pre-migration submission has no game_submission_parts rows --
     synthesize exactly one part from its legacy content/content_type columns. A submission
