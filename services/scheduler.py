@@ -229,6 +229,11 @@ async def init_scheduler(bot):
     sync_hours = _int_or_default(await get_setting("incomplete_sync_hours"), 2)
     _add_interval_job(sync_incomplete_sheet_job, "incomplete_sheet_sync", timedelta(hours=sync_hours))
 
+    # Phase 19 (08, D-01/Pattern 7): разбор miniapp_outbox — побочные эффекты записи из
+    # Mini App (уведомление менеджерам о сдаче, пересборка вкладок геймы). 30с — короче
+    # остальных интервалов намеренно: делегат ждёт быстрой реакции менеджеров.
+    _add_interval_job(miniapp_outbox_drain_job, "miniapp_outbox_drain", timedelta(seconds=30))
+
     # ME-03: re-arm any pending broadcast whose date job was dropped from the jobstore during a
     # downtime longer than misfire_grace — otherwise it stays 'pending' forever and never fires.
     await reconcile_scheduled_broadcasts()
@@ -655,6 +660,21 @@ async def sync_incomplete_sheet_job():
             await sync_named_worksheet(tab, headers, sheet_rows)
     except Exception as e:
         logger.error(f"sync_incomplete_sheet_job failed: {e}")
+
+
+async def miniapp_outbox_drain_job():
+    """Interval-job target (no args, picklable — Pitfall 3: a job function must never close
+    over a Bot). Delegates to services/miniapp_outbox.py::drain(bot), reading the injected
+    bot from THIS module's own global — same shape as sweep_payment_overdue/
+    nudge_incomplete_registrations above. Lazy import: services.miniapp_outbox imports
+    services.game_digest, which imports this module at ITS top level (`from services import
+    scheduler as _sched`) — importing it at OUR top level would run that import mid-module,
+    before `_bot`/`_scheduler` exist yet."""
+    try:
+        from services.miniapp_outbox import drain
+        await drain(_bot)
+    except Exception as e:
+        logger.error(f"miniapp_outbox_drain_job failed: {e}")
 
 
 async def nudge_incomplete_registrations():
