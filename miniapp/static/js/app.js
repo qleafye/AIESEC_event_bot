@@ -13,6 +13,7 @@
 // интерполяцией запрещён (сторожевой тест, T-19-07).
 
 import { api, ApiError, esc, setAuthErrorHandler } from "./api.js";
+import { applyMotionTier } from "./motion.js";
 
 const tg = window.Telegram && window.Telegram.WebApp;
 const root = document.documentElement;
@@ -98,14 +99,22 @@ function applySafeArea() {
 }
 
 function applyTheme() {
-  if (!tg || tg.colorScheme !== "dark") return;
-  const params = tg.themeParams || {};
-  // Только bg/text из themeParams (D-02); остальные токены — из tokens.css.
-  if (params.bg_color) root.style.setProperty("--bg", params.bg_color);
-  if (params.text_color) root.style.setProperty("--text", params.text_color);
+  if (!tg) return;
+  if (tg.colorScheme === "dark") {
+    root.dataset.theme = "dark";
+    const params = tg.themeParams || {};
+    // Только bg/text из themeParams (D-02); остальные токены — из :root[data-theme="dark"].
+    if (params.bg_color) root.style.setProperty("--bg", params.bg_color);
+    if (params.text_color) root.style.setProperty("--text", params.text_color);
+  } else {
+    delete root.dataset.theme;
+    root.style.removeProperty("--bg");
+    root.style.removeProperty("--text");
+  }
 }
 
 function bootstrapTelegram() {
+  applyMotionTier(); // до первой отрисовки (D-17); работает и без tg (браузерный fallback D-05)
   if (!tg) return;
   try {
     tg.ready();
