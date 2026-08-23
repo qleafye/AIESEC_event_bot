@@ -128,22 +128,19 @@ a, button {
 
 .event-logo-slot:empty { min-width: 28px; }
 
+/* Display-роль (UI-SPEC §Typography): clamp вместо точки-перелома на 900px. */
 .site-header h1 {
   margin: 0;
-  font-size: 24px;
+  font-size: clamp(28px, 3.2vw, 40px);
   font-weight: 800;
-  line-height: 1.2;
-  letter-spacing: -0.01em;
+  line-height: 1.05;
+  letter-spacing: -0.02em;
+  font-variant-numeric: tabular-nums;
   color: var(--accent-text);
-}
-
-@media (min-width: 900px) {
-  .site-header h1 { font-size: 28px; }
 }
 
 .site-header .subtitle {
   color: var(--text-muted);
-  font-size: 13px;
   margin-top: var(--sp-1);
 }
 
@@ -157,8 +154,10 @@ a, button {
 
 .switchers-label {
   font-size: 12px;
-  color: var(--text-muted);
   font-weight: 700;
+  letter-spacing: .08em;
+  line-height: 1.3;
+  color: var(--text-muted);
   margin-right: var(--sp-1);
 }
 
@@ -167,7 +166,7 @@ a, button {
   align-items: center;
   gap: var(--sp-2);
   min-height: 36px;
-  padding: 8px 14px;
+  padding: var(--sp-2) var(--sp-4);
   border: 1px solid var(--border);
   border-radius: var(--radius-pill);
   font-size: 13px;
@@ -200,13 +199,15 @@ a, button {
 
 .bound-city-note {
   display: inline-block;
-  font-size: 13px;
   color: var(--text-muted);
   margin-top: var(--sp-3);
 }
 
 .updated-note {
   font-size: 12px;
+  font-weight: 700;
+  letter-spacing: .08em;
+  line-height: 1.3;
   color: var(--text-muted);
   margin-top: var(--sp-3);
   padding-top: var(--sp-3);
@@ -215,20 +216,36 @@ a, button {
 
 /* ── Blocks ─────────────────────────────────────────────────────────────────────────── */
 
-.block { margin-bottom: var(--block-gap); }
+/* padding-top — editorial-воздух между секциями (D-01) поверх --block-gap, без нового токена. */
+.block {
+  margin-bottom: var(--block-gap);
+  padding-top: var(--sp-2);
+}
 
 .block-title {
-  font-size: 16px;
-  font-weight: 700;
+  font-size: 18px;
+  font-weight: 800;
+  line-height: 1.2;
+  letter-spacing: -0.01em;
   margin: 0 0 var(--sp-3);
   color: var(--text);
 }
 
+@media (min-width: 900px) {
+  .block-title { font-size: 20px; }
+}
+
 .cut-title {
-  font-size: 14px;
-  font-weight: 700;
+  font-size: 16px;
+  font-weight: 800;
+  line-height: 1.2;
+  letter-spacing: -0.01em;
   margin: 0 0 var(--sp-3);
   color: var(--text);
+}
+
+@media (min-width: 900px) {
+  .cut-title { font-size: 18px; }
 }
 
 .card {
@@ -245,7 +262,6 @@ a, button {
 
 .empty-note {
   color: var(--text-muted);
-  font-size: 13px;
   margin: 0;
   padding: var(--sp-2) 0;
 }
@@ -273,16 +289,25 @@ a, button {
 
 .kpi.primary { border-left: 3px solid var(--accent); }
 
-/* KPI-числа — Lato 700, пропорциональные цифры (dataviz: не tabular). */
+/* Display-роль (UI-SPEC §Typography, 19.1-03): Raleway 800 tabular-nums — отступление от
+   более раннего dataviz-аудита (Lato 700 пропорциональные), явно затребовано этим планом. */
 .kpi .num {
-  font-family: var(--font-body);
-  font-size: 28px;
-  font-weight: 700;
-  line-height: 1.1;
-  letter-spacing: -0.01em;
+  font-family: var(--font-heading);
+  font-size: clamp(28px, 3.2vw, 40px);
+  font-weight: 800;
+  line-height: 1.05;
+  letter-spacing: -0.02em;
+  font-variant-numeric: tabular-nums;
 }
 
-.kpi .lbl { font-size: 12.5px; color: var(--text-muted); margin-top: var(--sp-1); }
+.kpi .lbl {
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: .08em;
+  line-height: 1.3;
+  color: var(--text-muted);
+  margin-top: var(--sp-1);
+}
 
 .kpi .delta { font-size: 12px; margin-top: var(--sp-1); color: var(--text-muted); }
 .kpi .delta.up { color: var(--success-text); font-weight: 700; }
@@ -324,11 +349,25 @@ a, button {
   font-size: 22px;
   font-weight: 700;
   line-height: 1.1;
+  font-variant-numeric: tabular-nums;
 }
 
-.funnel-step .l { font-size: 12px; color: var(--text-muted); margin-top: var(--sp-1); }
+.funnel-step .l {
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: .08em;
+  line-height: 1.3;
+  color: var(--text-muted);
+  margin-top: var(--sp-1);
+}
 
-.funnel-step .pct { font-size: 12px; color: var(--text-muted); margin-top: 2px; }
+.funnel-step .pct {
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: .08em;
+  line-height: 1.3;
+  color: var(--text-muted);
+}
 
 .funnel-bar {
   height: 8px;
@@ -384,6 +423,10 @@ a, button {
 .bar-row .label {
   flex: 0 0 42%;
   min-width: 0;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: .08em;
+  line-height: 1.3;
   color: var(--text-muted);
   overflow: hidden;
   text-overflow: ellipsis;
@@ -440,9 +483,10 @@ th, td {
 th {
   color: var(--text-muted);
   font-weight: 700;
-  font-size: 11.5px;
+  font-size: 12px;
+  line-height: 1.3;
   text-transform: uppercase;
-  letter-spacing: .06em;
+  letter-spacing: .08em;
 }
 
 td.num, th.num { text-align: right; }
@@ -477,8 +521,10 @@ tr:last-child td { border-bottom: none; }
     content: attr(data-label);
     color: var(--text-muted);
     font-size: 12px;
+    font-weight: 700;
+    line-height: 1.3;
     text-transform: uppercase;
-    letter-spacing: .06em;
+    letter-spacing: .08em;
   }
 }
 
@@ -522,18 +568,27 @@ tr:last-child td { border-bottom: none; }
 .centered-card .brand { justify-content: center; margin-bottom: var(--sp-4); }
 
 .centered-card h1 {
-  font-size: 22px;
+  font-size: 18px;
   font-weight: 800;
+  line-height: 1.2;
+  letter-spacing: -0.01em;
   color: var(--accent-text);
   margin: 0 0 var(--sp-3);
 }
 
-.centered-card p { color: var(--text-muted); font-size: 14px; margin: var(--sp-2) 0; }
+@media (min-width: 900px) {
+  .centered-card h1 { font-size: 20px; }
+}
+
+.centered-card p { color: var(--text-muted); margin: var(--sp-2) 0; }
 
 .centered-card .button { margin-top: var(--sp-3); }
 
 .centered-card .fallback-note {
-  font-size: 13px;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: .08em;
+  line-height: 1.3;
   margin-top: var(--sp-4);
   padding-top: var(--sp-3);
   border-top: 1px solid var(--border);
