@@ -228,7 +228,35 @@ def test_daily_registrations_groups_by_day_ascending(tmp_path):
     ])
     with dash_db.read_conn(path) as conn:
         rows = daily_registrations(conn, Scope())
-    assert rows == [("2026-08-01", 2), ("2026-08-02", 1)]
+    assert rows[:2] == [("2026-08-01", 2), ("2026-08-02", 1)]
+    # Хвост до сегодняшнего дня — нули (календарь плотный, см. ниже).
+    assert all(cnt == 0 for _, cnt in rows[2:])
+    assert rows[-1][0] == datetime.now().strftime("%Y-%m-%d")
+
+
+def test_daily_registrations_fills_gaps_with_zero_days(tmp_path):
+    """Дни без заявок между первым и последним — нулями, а не пропуском: иначе линия
+    графика соединяет соседние «непустые» дни и скрывает провалы темпа."""
+    path = _use_tmp_db(tmp_path)
+    now = datetime.now()
+    d0 = (now - timedelta(days=4)).strftime("%Y-%m-%d")
+    d4 = now.strftime("%Y-%m-%d")
+    _seed(users=[
+        {"telegram_id": 1, "registration_date": f"{d0} 10:00:00"},
+        {"telegram_id": 2, "registration_date": f"{d4} 09:00:00"},
+        {"telegram_id": 3, "registration_date": f"{d4} 11:00:00"},
+    ])
+    with dash_db.read_conn(path) as conn:
+        rows = daily_registrations(conn, Scope())
+    assert len(rows) == 5
+    assert rows[0] == (d0, 1)
+    assert rows[1:4] == [
+        ((now - timedelta(days=k)).strftime("%Y-%m-%d"), 0) for k in (3, 2, 1)
+    ]
+    assert rows[4] == (d4, 2)
+    # Пустая выборка — пустой список, без «календаря из нулей».
+    with dash_db.read_conn(path) as conn:
+        assert daily_registrations(conn, Scope(season="NoSuchSeason")) == []
 
 
 # ── dropout_steps ────────────────────────────────────────────────────────────────────────

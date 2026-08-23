@@ -263,6 +263,9 @@ def funnel(conn, scope: Scope) -> list[tuple[str, int]]:
 # ── динамика по дням (D-14) ──────────────────────────────────────────────────────────────
 
 def daily_registrations(conn, scope: Scope) -> list[tuple[str, int]]:
+    """Плотный календарь: от первого дня с заявкой до последнего из (последний день с
+    заявкой, сегодня) — дни без заявок отдаются нулями. Без этого линия графика
+    «перепрыгивает» дыры и врёт о темпе (dataviz #7). Пусто — пустой список."""
     parts, params = _scope_sql(conn, scope)
     date_parts = parts + ["registration_date IS NOT NULL", "TRIM(registration_date) != ''"]
     rows = conn.execute(
@@ -270,7 +273,32 @@ def daily_registrations(conn, scope: Scope) -> list[tuple[str, int]]:
         f"{_where(date_parts)} GROUP BY day ORDER BY day ASC",
         params,
     ).fetchall()
-    return [(row["day"], row["cnt"]) for row in rows]
+    sparse = [(row["day"], row["cnt"]) for row in rows]
+    return _fill_missing_days(sparse)
+
+
+def _fill_missing_days(sparse: list[tuple[str, int]]) -> list[tuple[str, int]]:
+    if not sparse:
+        return []
+    counts: dict[str, int] = {}
+    for day, cnt in sparse:
+        try:
+            datetime.strptime(day, "%Y-%m-%d")
+        except ValueError:
+            # Битая дата в строке users — не роняем весь график, просто не ставим её на ось.
+            continue
+        counts[day] = counts.get(day, 0) + cnt
+    if not counts:
+        return sparse
+    first = datetime.strptime(min(counts), "%Y-%m-%d").date()
+    last = max(datetime.strptime(max(counts), "%Y-%m-%d").date(), datetime.now().date())
+    result: list[tuple[str, int]] = []
+    cursor = first
+    while cursor <= last:
+        key = cursor.strftime("%Y-%m-%d")
+        result.append((key, counts.get(key, 0)))
+        cursor += timedelta(days=1)
+    return result
 
 
 # ── «где бросают» (D-07) ─────────────────────────────────────────────────────────────────
