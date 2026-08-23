@@ -383,3 +383,12 @@ a { color: var(--accent-text); }
 .confirm-box .btn + .btn { margin-top: var(--sp-2); }
 .wizard-step { margin-bottom: var(--sp-3); }
 .wizard-step .step-label { font-size: 13px; color: var(--text-muted); margin-bottom: var(--sp-1); }
+
+/* ── монеты вручную (план 19-07, экран 8): карточка получателя, результаты поиска ─────── */
+.search-result { display: flex; justify-content: space-between; align-items: center; gap: var(--sp-3); margin-bottom: var(--sp-2); }
+.recipient-card .title { font-size: 17px; }
+
+/* ── настройки-лайт (план 19-07): список чекбоксов и отдельный блок опасных тумблеров ─── */
+.check-row { cursor: pointer; }
+.check-row:active { background: var(--surface-alt); }
+.danger-settings { border-color: var(--warn); }
