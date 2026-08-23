@@ -48,6 +48,9 @@ TELEGRAM_SDK_URL = "https://telegram.org/js/telegram-web-app.js?63"
 # Как в tests/test_dashboard_render.py: #rrggbb/#rgb или rgb(/rgba( — вне tokens.css запрещено.
 _HEX_OR_RGB_COLOR = re.compile(r"#[0-9a-fA-F]{3,8}\b|rgba?\(")
 _URL = re.compile(r"https?://[^\s\"'`>)]+")
+# XML-неймспейс SVG (D-13, icons.js/document.createElementNS) — константа спецификации DOM,
+# никогда не фетчится сетью; не считается «внешним URL» для этого сторожа.
+_ALLOWED_NON_FETCH_URLS = {"http://www.w3.org/2000/svg"}
 
 
 def _frontend_files():
@@ -80,6 +83,8 @@ def test_only_external_url_is_telegram_web_app_sdk():
     found = set()
     for path in _frontend_files():
         for url in _URL.findall(path.read_text(encoding="utf-8")):
+            if url in _ALLOWED_NON_FETCH_URLS:
+                continue
             found.add(url)
             assert url == TELEGRAM_SDK_URL, f"unexpected external URL in {path.relative_to(ROOT)}: {url}"
     assert found == {TELEGRAM_SDK_URL}

@@ -73,6 +73,18 @@ a { color: var(--accent-text); }
 .muted { color: var(--text-muted); }
 .faint { color: var(--text-faint); font-size: 12px; }
 
+/* ── иконки (D-13): SVG из js/icons.js, размер из шрифта, цвет — от родителя.
+   stroke="currentColor" в icons.js уже подхватывает вычисленный color родителя, поэтому
+   активному состоянию навигации (например .nav a.active) достаточно менять только color —
+   собственного stroke иконка нигде в CSS не получает. */
+.icon {
+  width: 1em;
+  height: 1em;
+  flex: none;
+  display: inline-block;
+  vertical-align: -0.125em;
+}
+
 /* ── шапка ── */
 .app-header {
   display: flex;
