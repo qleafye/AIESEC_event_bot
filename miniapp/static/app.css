@@ -399,7 +399,7 @@ a { color: var(--accent-text); }
   color: var(--text-muted);
 }
 .toggle .toggle-btn + .toggle-btn { margin-top: 0; border-left: 1px solid var(--border); }
-.toggle .toggle-btn.active { background: var(--accent); color: var(--accent-contrast, var(--surface)); }
+.toggle .toggle-btn.active { background: var(--accent); color: var(--on-accent); }
 .admin-task-row .task-number { flex: none; color: var(--text-faint); font-weight: 700; }
 .admin-task-row.archived { opacity: .75; border-style: dashed; }
 .admin-task-row .task-foot { margin-top: var(--sp-1); align-items: center; }
