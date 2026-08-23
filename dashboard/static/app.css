@@ -6,6 +6,36 @@
    Базовая раскладка — одна колонка (телефон), от 900px — сетка (D-15: страница читаема на
    телефоне без горизонтальной прокрутки). */
 
+/* ── шрифты бренда (D-14): кириллица+латиница, сабсет pyftsubset, только локальные пути ── */
+@font-face {
+  font-family: "Lato";
+  src: url("/static/fonts/lato-400.woff2") format("woff2");
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: "Lato";
+  src: url("/static/fonts/lato-700.woff2") format("woff2");
+  font-weight: 700;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: "Raleway";
+  src: url("/static/fonts/raleway-800.woff2") format("woff2");
+  font-weight: 800;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: "Raleway";
+  src: url("/static/fonts/raleway-800italic.woff2") format("woff2");
+  font-weight: 800;
+  font-style: italic;
+  font-display: swap;
+}
+
 * { box-sizing: border-box; }
 
 html { -webkit-text-size-adjust: 100%; }

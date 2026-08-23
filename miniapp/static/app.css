@@ -1,10 +1,41 @@
 /* Компоненты Mini App — исключительно через var(--…) из tokens.css (побайтная копия токенов
    дашборда). Ни одного литерального цвета: сторожевой тест грепает hex-коды и rgb-функции
-   во всех css кроме tokens.css и в шаблонах. Шрифты — только стеки из токенов (системный
-   fallback внутри), внешних загрузок нет: CSP font-src 'self'.
+   во всех css кроме tokens.css и в шаблонах. Шрифты — self-host woff2 ниже (@font-face),
+   системный fallback внутри var(--font-*) на случай не загруженного файла; внешних загрузок
+   нет: CSP font-src 'self'.
 
    Раскладка — одна колонка под экран телефона внутри Telegram; шапка Telegram сверху
    компенсируется отступом --tg-safe-top (ядро ставит его из contentSafeAreaInset). */
+
+/* ── шрифты бренда (D-14): кириллица+латиница, сабсет pyftsubset, только локальные пути ── */
+@font-face {
+  font-family: "Lato";
+  src: url("/app/static/fonts/lato-400.woff2") format("woff2");
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: "Lato";
+  src: url("/app/static/fonts/lato-700.woff2") format("woff2");
+  font-weight: 700;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: "Raleway";
+  src: url("/app/static/fonts/raleway-800.woff2") format("woff2");
+  font-weight: 800;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: "Raleway";
+  src: url("/app/static/fonts/raleway-800italic.woff2") format("woff2");
+  font-weight: 800;
+  font-style: italic;
+  font-display: swap;
+}
 
 * { box-sizing: border-box; }
 
