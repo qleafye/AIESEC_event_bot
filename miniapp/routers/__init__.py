@@ -47,11 +47,13 @@
 """
 from __future__ import annotations
 
-from miniapp.routers import page, profile
+from miniapp.routers import coins, page, profile, tasks
 
 ALL_ROUTERS = [
     page.router,
+    tasks.router,
     profile.router,
+    coins.router,
 ]
 
 __all__ = ["ALL_ROUTERS"]
