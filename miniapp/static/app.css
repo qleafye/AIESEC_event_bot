@@ -527,12 +527,48 @@ body[data-nav="hub"] #nav { display: none; }
 .check-row:active { background: var(--surface-alt); }
 .danger-settings { border-color: var(--warn); }
 
-/* ── motion (план 19.1-04, D-17): живой паттерн hero — дрейф/пульсация прозрачности,
-   низкая амплитуда. Включён ТОЛЬКО на motion "full" И когда пресет/кастом разрешил паттерн
-   (класс body.pattern-enabled, ставит app.js из /app/api/me pattern_enabled). Сам элемент
-   .hero-pattern появляется в разметке хаба (план 19.1-04, задача 3) — здесь только гейтинг,
-   на micro/off и без разрешения пресета — неподвижное пятно (правило само по себе безвредно
-   без .hero, которого пока нет в вёрстке). */
+/* ── хаб делегата и менеджера (план 19.1-04, D-09/D-10 вариант C) ─────────────────────── */
+.hero {
+  position: relative;
+  overflow: hidden;
+  background: var(--accent);
+  color: var(--on-accent);
+  border-radius: var(--radius-lg);
+  /* Заявленное UI-SPEC исключение из 4px-шага: top-heavy отступ hero (nav.html:61). */
+  padding: var(--sp-4) var(--sp-4) var(--sp-3);
+  margin-bottom: var(--sp-4);
+}
+.hero.hero-flat {
+  background: var(--surface);
+  color: var(--text);
+  border: 1px solid var(--border);
+}
+.hero .big {
+  font-family: var(--font-heading);
+  font-weight: 800;
+  font-size: clamp(28px, 3.2vw, 40px);
+  line-height: 1.05;
+  letter-spacing: -0.02em;
+  font-variant-numeric: tabular-nums;
+}
+.hero.hero-flat .big { color: var(--accent-text); }
+.hero .lbl { margin-top: var(--sp-1); font-size: 12px; opacity: .85; }
+.hero.hero-flat .lbl { color: var(--text-muted); opacity: 1; }
+.hero .rank {
+  position: absolute;
+  top: var(--sp-4);
+  right: var(--sp-4);
+  background: var(--secondary);
+  color: var(--on-accent);
+  font-family: var(--font-heading);
+  font-weight: 800;
+  font-size: 13px;
+  padding: var(--sp-1) var(--sp-2);
+  border-radius: var(--radius-pill);
+}
+/* Живой паттерн hero (D-17): дрейф/пульсация прозрачности, низкая амплитуда — только на
+   motion "full" И когда пресет/кастом разрешил паттерн (body.pattern-enabled, из /app/api/me
+   pattern_enabled). На micro/off и без разрешения пресета — неподвижное пятно. */
 .hero-pattern {
   position: absolute;
   inset: -20% -20% auto auto;
@@ -549,4 +585,60 @@ body[data-nav="hub"] #nav { display: none; }
 @keyframes hero-pattern-drift {
   0%, 100% { opacity: .1; transform: translateY(0); }
   50% { opacity: .2; transform: translateY(-6px); }
+}
+
+.tiles {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--sp-3);
+  margin-bottom: var(--sp-4);
+}
+.tile {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--sp-1);
+  min-height: var(--tap-min);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  padding: var(--sp-3);
+  text-align: left;
+  color: var(--text);
+  font: inherit;
+  cursor: pointer;
+  transition: background var(--dur) var(--ease), border-color var(--dur) var(--ease);
+}
+.tile:active { background: var(--surface-alt); }
+.tile .icon { width: 20px; height: 20px; color: var(--text-muted); }
+.tile b { font-family: var(--font-heading); font-weight: 800; font-size: 15px; }
+.tile small { color: var(--text-faint); font-size: 12px; }
+
+.sec {
+  margin-bottom: var(--sp-2);
+  color: var(--text-faint);
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+}
+
+/* Одноразовый привет-экран (D-09): обложка пресета + текст + кнопка, оба текста из реестра. */
+.onboarding {
+  padding-top: var(--sp-6);
+  text-align: center;
+}
+.onboarding-cover {
+  display: block;
+  width: 100%;
+  max-height: 260px;
+  margin-bottom: var(--sp-4);
+  border-radius: var(--radius-lg);
+  background: var(--surface-alt);
+  object-fit: cover;
+}
+.onboarding-text {
+  margin-bottom: var(--sp-4);
+  color: var(--text);
+  font-size: 15px;
 }

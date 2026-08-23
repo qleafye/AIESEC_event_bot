@@ -32,6 +32,7 @@ body.dataset.nav = NAV_LAYOUT;
 
 // ── таблица маршрутов (один в один с планом фазы; {id} — параметр) ──────────────────────
 export const ROUTES = [
+  ["#/hub", "screens/hub.js"],
   ["#/tasks", "screens/tasks.js"],
   ["#/task/{id}", "screens/card.js"],
   ["#/profile", "screens/profile.js"],
@@ -475,6 +476,8 @@ async function start() {
     }
     return;
   }
+  // Бренд-паттерн hero (D-17/D-04): класс на <body>, CSS сам гейтит motion "full" внутри.
+  body.classList.toggle("pattern-enabled", Boolean(me.pattern_enabled));
   window.addEventListener("hashchange", route);
   await route();
 }
