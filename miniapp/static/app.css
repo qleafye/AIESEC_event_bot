@@ -508,6 +508,7 @@ a.flat-row:active, button.flat-row:active { background: var(--surface-alt); }
 
 .stats { display: grid; grid-template-columns: 1fr 1fr; gap: var(--sp-3); margin-bottom: var(--sp-3); }
 .stat { text-align: center; margin-bottom: 0; }
+.stat .icon { width: 20px; height: 20px; color: var(--text-muted); margin-bottom: var(--sp-1); }
 .stat-value { font-family: var(--font-heading); font-weight: 800; font-size: 28px; color: var(--accent-text); font-variant-numeric: tabular-nums; }
 .balance-big {
   display: flex;
@@ -646,15 +647,22 @@ a.flat-row:active, button.flat-row:active { background: var(--surface-alt); }
   border-radius: var(--radius-sm);
 }
 .review-actions { display: flex; flex-direction: column; gap: var(--sp-2); }
-.review-actions .btn + .btn { margin-top: 0; }
-.review-actions .field { margin: var(--sp-1) 0; padding: var(--sp-3); border: 1px solid var(--border); border-radius: var(--radius); background: var(--surface); }
-.review-actions .field .btn { margin-top: var(--sp-2); }
+.review-actions-row { display: flex; gap: var(--sp-2); }
+.review-actions-row .btn { flex: 1; width: auto; }
+.review-btn-danger { color: var(--danger-text); border-color: var(--danger); }
+.review-btn-muted { color: var(--text-muted); }
+/* Поле своей суммы/причины — не карточка внутри карточки (D-11): без рамки/фона, только
+   отступ от соседних элементов ряда действий. */
+.review-actions .field { margin: var(--sp-2) 0; }
 
-/* ── статистика геймы (план 19-05): полосы по категориям на токенах, без библиотек ── */
+/* ── статистика геймы (план 19-05, dataviz-контракт 19.1-06): полосы по категориям на
+   токенах, без библиотек. Заливка — цвет серии данных (--chart-1), не акцент интерфейса
+   (--accent зарезервирован под UI-хром); трек — --chart-track, тот же паттерн, что уже
+   применён в дашборде (UI-SPEC §Dataviz, находка №10 dataviz.md). */
 .bar-row { display: flex; align-items: center; gap: var(--sp-2); padding: var(--sp-1) 0; }
 .bar-label { flex: 0 0 7em; font-size: 13px; color: var(--text-muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.bar-track { flex: 1; height: 14px; border-radius: var(--radius-pill); background: var(--surface-alt); overflow: hidden; }
-.bar-fill { height: 100%; border-radius: var(--radius-pill); background: var(--accent); transition: width var(--dur) var(--ease); }
+.bar-track { flex: 1; height: 14px; border-radius: var(--radius-pill); background: var(--chart-track); overflow: hidden; }
+.bar-fill { height: 100%; border-radius: var(--radius-pill); background: var(--chart-1); transition: width var(--dur) var(--ease); }
 .bar-count { flex: 0 0 2.5em; text-align: right; font-weight: 700; }
 
 /* ── задания менеджера: тумблер «Активные | Архив» + строки ────────────────────────── */
