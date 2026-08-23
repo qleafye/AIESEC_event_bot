@@ -199,6 +199,23 @@ def _build_snapshot_lines():
 # `toggle_dashboard_block` (`dash_block:*`, flips one of the eight block toggles), both in the
 # NEW seam module handlers/admin_dashboard.py, imported at the tail of admin_settings.py right
 # after admin_settings_lists -> land last among admin.router's handlers.
+#
+# Drift note (2026-08-23, Phase 19-08, D-06/D-10): 13 handlers appended (364 -> 376),
+# re-captured by RUNNING `_build_snapshot_lines()` against HEAD and diffed against the prior
+# 364-line snapshot -- every pre-existing line byte-for-byte identical in the same relative
+# order, pure appends/insertions, no reorders. admin.router gained 12 lines from the NEW seam
+# module handlers/admin_miniapp.py («🎨 Оформление» Mini App screen), imported at the tail of
+# admin_settings.py right after admin_dashboard: message observers `miniapp_accent_step`/
+# `miniapp_logo_step`/`miniapp_logo_step_invalid` (own small FSM group MiniAppTheme, land
+# right after admin_settings_lists's `settings_list_add_item` in the message bucket — no
+# OTHER message handler moves, since admin_dashboard itself registers none) and callback_query
+# observers `open_miniapp_settings`/`toggle_miniapp_enabled`/`toggle_miniapp_staff_only`/
+# `toggle_miniapp_section`/`miniapp_edit_accent_start`/`miniapp_edit_logo_start`/
+# `miniapp_remove_logo`/`miniapp_cancel_edit` (land right after `toggle_dashboard_block`).
+# user_actions.router gained 1 line, `open_miniapp_button` (reply-button «📱 Приложение» ->
+# inline web_app), registered at the very tail of handlers/user_actions.py, right after
+# `process_question` -> lands last among user_actions.router's message handlers, before the
+# gbal_*/gtask_* callback_query block.
 GOLDEN_SNAPSHOT = """
 admin|message|cmd_admin_help|cmd:admin
 admin|message|cmd_coins|cmd:coins
@@ -216,6 +233,9 @@ admin|message|settings_receive_file_doc|state:EditSetting:*
 admin|message|settings_receive_file_invalid|state:EditSetting:*
 admin|message|settings_edit_value|state:EditSetting:*
 admin|message|settings_list_add_item|state:EditSetting:*
+admin|message|miniapp_accent_step|state:MiniAppTheme:*
+admin|message|miniapp_logo_step|state:MiniAppTheme:*
+admin|message|miniapp_logo_step_invalid|state:MiniAppTheme:*
 admin|message|cancel_city_form|state:CityForm:*,state:CityForm:*
 admin|message|cancel_city_form|state:CityForm:*,state:CityForm:*
 admin|message|city_add_label_step|state:CityForm:*
@@ -327,6 +347,14 @@ admin|callback_query|settings_list_rm_go|settings_list_rm:*
 admin|callback_query|settings_list_replace_start|settings_list_replace:*
 admin|callback_query|open_dashboard_settings|admin_dashboard_settings
 admin|callback_query|toggle_dashboard_block|dash_block:*
+admin|callback_query|open_miniapp_settings|admin_miniapp_settings
+admin|callback_query|toggle_miniapp_enabled|miniapp_toggle_enabled
+admin|callback_query|toggle_miniapp_staff_only|miniapp_toggle_staff_only
+admin|callback_query|toggle_miniapp_section|miniapp_section:*
+admin|callback_query|miniapp_edit_accent_start|miniapp_edit_accent
+admin|callback_query|miniapp_edit_logo_start|miniapp_edit_logo
+admin|callback_query|miniapp_remove_logo|miniapp_remove_logo
+admin|callback_query|miniapp_cancel_edit|miniapp_cancel_edit
 admin|callback_query|show_admin_cities|admin_cities
 admin|callback_query|toggle_event_city_enabled|toggle_event_city_enabled
 admin|callback_query|city_toggle|city_toggle:*
@@ -551,6 +579,7 @@ user_actions|message|my_referrals|
 user_actions|message|ask_organizer_start|
 user_actions|message|cancel_question|state:Question:*
 user_actions|message|process_question|state:Question:*
+user_actions|message|open_miniapp_button|
 user_actions|callback_query|gbal_history|gbal_history:*
 user_actions|callback_query|gbal_top|gbal_top
 user_actions|callback_query|gbal_back|gbal_back
@@ -598,7 +627,7 @@ def test_snapshot_total_handler_count_is_292():
     # poll_wizard_cancel = два декоратора) в хвост admin.message, 15 callback (список/карточка
     # admin_polls + мастер admin_poll_wizard) в хвост admin.callback_query; чистый аппенд,
     # перепроверен прогоном _build_snapshot_lines() и diff'ом с прежним 334-строчным снапшотом.
-    assert len(GOLDEN_SNAPSHOT) == 364  # quick 260819: +toggle_preselect_enabled, +coinsman_amount_stale, +toggle_pending_reminder/+toggle_nudge_enabled; quick 260822: +5 settings_list_*, +toggle_game_submit_notify, +toggle_consent_recollect, +consent_renew_accept; опросы 260822: +20 (342 -> 362 после слияния); Phase 15-02: +2 open_dashboard_settings/toggle_dashboard_block (362 -> 364)
+    assert len(GOLDEN_SNAPSHOT) == 376  # quick 260819: +toggle_preselect_enabled, +coinsman_amount_stale, +toggle_pending_reminder/+toggle_nudge_enabled; quick 260822: +5 settings_list_*, +toggle_game_submit_notify, +toggle_consent_recollect, +consent_renew_accept; опросы 260822: +20 (342 -> 362 после слияния); Phase 15-02: +2 open_dashboard_settings/toggle_dashboard_block (362 -> 364); Phase 19-08: +12 admin_miniapp.py (message: miniapp_accent_step/miniapp_logo_step/miniapp_logo_step_invalid; callback_query: open_miniapp_settings/toggle_miniapp_enabled/toggle_miniapp_staff_only/toggle_miniapp_section/miniapp_edit_accent_start/miniapp_edit_logo_start/miniapp_remove_logo/miniapp_cancel_edit), +1 user_actions.router open_miniapp_button (364 -> 376)
 
 
 # ── Task 2(a): Dispatcher feed_update smoke — cross-router first-match routing ─────────────
