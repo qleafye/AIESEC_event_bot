@@ -113,3 +113,33 @@ def test_compose_miniapp_has_no_tz_override():
         assert not any(str(e).startswith("TZ=") for e in env)
     else:
         assert "TZ" not in env
+
+
+# --- docs/DEPLOY-DOMAIN.md (Task 2) ---------------------------------------------------------
+
+
+def _runbook_text() -> str:
+    return RUNBOOK.read_text(encoding="utf-8")
+
+
+def test_runbook_documents_app_path_rule():
+    text = _runbook_text()
+    assert "^/app(/|$)" in text
+    assert "miniapp:8001" in text
+
+
+def test_runbook_states_path_rule_order():
+    text = _runbook_text()
+    assert "порядок между ними важен" in text or "стоять" in text and "выше" in text
+
+
+def test_runbook_has_bot_fight_mode_checkpoint():
+    text = _runbook_text()
+    assert "Bot Fight Mode" in text
+    assert "выключен" in text
+
+
+def test_runbook_has_app_health_and_login_curl_checks():
+    text = _runbook_text()
+    assert "curl -sI https://yl26.<домен>/app/health" in text
+    assert "curl -sI https://yl26.<домен>/login" in text
