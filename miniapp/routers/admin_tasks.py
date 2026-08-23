@@ -50,6 +50,7 @@ from database.db import (
     update_task_title,
 )
 from game_labels import category_label, proof_types_label, render_task_card_text, task_deadline_short
+from settings_schema import get_setting_typed
 
 from miniapp.deps import Principal, require_cap, require_section
 from miniapp.outbox import enqueue
@@ -283,6 +284,7 @@ async def admin_tasks_list(
     page = wanted[off:off + lim]
     counts = await count_task_submissions_by_status([t["id"] for t in page])
     items = [await _row(t, off + i + 1, counts) for i, t in enumerate(page)]
+    empty_key = "miniapp_empty_admin_tasks_archived" if want_archived else "miniapp_empty_admin_tasks"
     return {
         "items": items,
         "total": len(wanted),
@@ -291,7 +293,7 @@ async def admin_tasks_list(
         "archived": want_archived,
         "offset": off,
         "limit": lim,
-        "empty_text": "Архив пуст." if want_archived else "Заданий пока нет.",
+        "empty_text": await get_setting_typed(empty_key),
     }
 
 
