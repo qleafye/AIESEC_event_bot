@@ -578,9 +578,12 @@ def test_review_screen_one_card_four_actions_and_already_is_calm():
     # Одна карточка: GET /review/next с offset; «Пропустить» — offset+1 на клиенте.
     assert "/review/next?offset=" in text
     assert "offset += 1" in text
-    # Четыре действия.
-    for label in ("✅ Принять", "✏️ Своя сумма", "❌ Отклонить", "⏭ Пропустить"):
+    # Четыре действия (editorial-минимал 19.1-06: главное действие — MainButton «Принять
+    # · +N», без эмодзи — D-13; вторичные — обведённый ряд, «Отклонить» с иконкой x).
+    assert "Принять · +${card.task.coins}" in text
+    for label in ("Своя сумма", "Отклонить", "Пропустить"):
         assert label in text, label
+    assert 'icon("x")' in text  # «Отклонить» — иконка вместо эмодзи
     # Решения — два литеральных пути (сторож путей их сверяет с маршрутами).
     assert "/approve`" in text and "/reject`" in text
     assert "${action}" not in text
@@ -611,8 +614,12 @@ def test_review_and_bar_css_classes_exist_on_tokens():
     css = (MINIAPP_STATIC / "app.css").read_text(encoding="utf-8")
     for cls in (".review-card", ".review-photo", ".review-quote", ".review-actions", ".bar-track", ".bar-fill"):
         assert cls in css, cls
-    bars = css[css.index(".bar-track"):]
-    assert "var(--accent)" in bars and "var(--surface-alt)" in bars
+    # Dataviz-контракт (UI-SPEC §Dataviz, план 19.1-06): заливка полосы — цвет серии данных
+    # --chart-1, трек — --chart-track, не акцент интерфейса --accent/--surface-alt.
+    track_rule = css[css.index(".bar-track {"):css.index("}", css.index(".bar-track {"))]
+    fill_rule = css[css.index(".bar-fill {"):css.index("}", css.index(".bar-fill {"))]
+    assert "var(--chart-track)" in track_rule and "var(--accent)" not in track_rule and "var(--surface-alt)" not in track_rule
+    assert "var(--chart-1)" in fill_rule and "var(--accent)" not in fill_rule
 
 
 # ── экраны заданий менеджера (план 19-06): admin_tasks.js / task_edit.js ────────────────
