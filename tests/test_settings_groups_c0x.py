@@ -218,6 +218,9 @@ def test_registry_coverage_event():
         # "dashboard" added Phase 15 (15-02, D-19): восемь тумблеров блоков веб-дашборда,
         # свой экран «📊 Дашборд» (handlers/admin_dashboard.py) — вне SETTINGS_FIELDS.
         "dashboard",
+        # "miniapp" added Phase 19 (19-01, D-06): тумблеры/оформление/разделы/тексты Mini App,
+        # свой экран «🎨 Оформление» (план 19-08) — вне SETTINGS_FIELDS, как и dashboard.
+        "miniapp",
     }
     allowed_types = {"toggle", "int", "list", "date", "text", "enum", "photo", "file"}
 
