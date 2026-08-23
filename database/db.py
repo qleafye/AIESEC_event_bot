@@ -2544,6 +2544,30 @@ async def count_task_submissions(task_id: int) -> int:
             return int(row[0]) if row and row[0] is not None else 0
 
 
+async def count_task_submissions_by_status(task_ids: list[int]) -> dict[int, dict[str, int]]:
+    """Phase 19 (Mini App, менеджерский список заданий): счётчики сдач по статусам для
+    НЕСКОЛЬКИХ заданий одним запросом — `{task_id: {"pending": n, "approved": n,
+    "rejected": n, "total": n}}`. Задания без сдач в словарь не попадают (вызывающий
+    подставляет нули). Пустой список -> пустой словарь без обращения к БД."""
+    ids = [int(t) for t in task_ids]
+    if not ids:
+        return {}
+    placeholders = ",".join("?" for _ in ids)
+    out: dict[int, dict[str, int]] = {}
+    async with _connect() as db:
+        async with db.execute(
+            f"SELECT task_id, status, COUNT(*) FROM game_submissions "
+            f"WHERE task_id IN ({placeholders}) GROUP BY task_id, status",
+            tuple(ids),
+        ) as cursor:
+            for task_id, status, n in await cursor.fetchall():
+                bucket = out.setdefault(int(task_id), {"pending": 0, "approved": 0, "rejected": 0, "total": 0})
+                if status in bucket:
+                    bucket[status] = int(n)
+                bucket["total"] += int(n)
+    return out
+
+
 async def delete_task(task_id: int) -> bool:
     """Hard delete — True iff the row existed AND had zero submissions of any status. The
     "no submissions" gate lives INSIDE the single DELETE statement (NOT EXISTS), not as a
