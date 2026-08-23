@@ -22,6 +22,10 @@ from aiogram import Bot
 
 from database.db import get_setting, set_setting, get_user
 from settings_schema import SETTINGS_SCHEMA, get_setting_typed
+# Phase 19 (Mini App): подписи анкеты живут в корневом aiogram-free `reg_labels.py`;
+# здесь — реэкспорт ТЕХ ЖЕ объектов (admin.py, admin_reg_config.py, admin_moderation.py
+# импортируют их отсюда как раньше).
+from reg_labels import REG_LABELS, STATUS_LABELS  # noqa: F401
 from cities import cities_module_on, normalize_city, is_default_city, city_tab_base, tab_suffix, get_setting_for_city
 from keyboards.builders import get_main_menu_kb
 
@@ -115,51 +119,7 @@ REG_DEFAULTS = {
     k: v["default"] for k, v in SETTINGS_SCHEMA.items() if v["type"] == "toggle"
 }
 
-REG_LABELS = {
-    "reg_q_age": "\U0001f382 Возраст",
-    "reg_q_vk": "\U0001f535 ВК",
-    "reg_q_email": "\U0001f4e7 Email",
-    "reg_q_phone": "\U0001f4f1 Телефон",
-    "reg_q_city": "\U0001f3d9 Город",
-    "reg_q_source": "\U0001f4e2 Источник",
-    "reg_q_lc": "\U0001f3e2 Лок. комитет",
-    "reg_q_position": "\U0001f454 Позиция",
-    "reg_q_education": "\U0001f393 Образование",
-    "reg_q_university": "\U0001f3eb ВУЗ",
-    "reg_q_course": "\U0001f4d6 Курс",
-    "reg_q_specialty": "\U0001f4dd Специальность",
-    "reg_q_work": "\U0001f4bc Работа",
-    "reg_q_work_sphere": "\U0001f3ed Сфера работы",
-    "reg_q_skills": "\U0001f4a1 Навыки",
-    "reg_q_expectations": "\U0001f4ac Ожидания (общие)",
-    "reg_q_informal_day": "\U0001f3d5 Неформальный день",
-    "reg_q_attendance": "\U0001f4cd Формат",
-    "reg_q_comments": "\U0001f4ac Доп. комментарии",
-    "reg_q_department": "🏢 Департамент",
-    "reg_q_aiesec_role": "🎖 Позиция AIESEC",
-    "reg_q_certificate": "📄 Справка в ВУЗ",
-    "reg_q_alumni_status": "🎓 Аламни/айсекер",
-    "reg_q_english": "🇬🇧 Англ. язык",
-    "reg_q_allergies": "🤧 Аллергии",
-    "reg_q_food": "🥗 Питание",
-    "reg_q_arrival": "🚌 Приезд",
-    "reg_q_housing": "🏠 Проживание",
-    "reg_q_bed_sharing": "🛏 Общая кровать",
-    "reg_q_bed_partner": "🛏 Сосед по кровати",
-    "reg_q_transport": "🚗 Трансфер",
-    "reg_q_payment_date": "💳 Дата оплаты",
-    "reg_q_cc_shop": "🛍 CC-shop",
-    "reg_q_exp_organizers": "💬 Ожидания: организация",
-    "reg_q_exp_content": "💬 Ожидания: контент",
-    "reg_q_volunteer": "🙋 Волонтёр",
-    "reg_q_arrival_date": "📅 Дата приезда",
-    "reg_q_birth_date": "🎂 Дата рождения",
-    "reg_q_study_field": "🎯 Направление обучения",
-    "reg_q_goal": "🎯 Цель участия",
-    "reg_q_formats": "📋 Форматы форума",
-    "reg_q_ambassador": "🧡 Амбассадор",
-    "reg_q_resume": "\U0001f4c4 Резюме",
-}
+# REG_LABELS — см. корневой reg_labels.py (Phase 19), импорт вверху модуля.
 
 # --- Event-type presets (admin one-tap bulk toggle) ---
 # A preset lists the reg_q_* keys to turn ON (everything else in REG_DEFAULTS is turned
@@ -318,7 +278,7 @@ def _sheet_details(data: dict) -> str:
 # status код БД → человеческий ярлык в колонке «Статус» (Таня, п.5). «Новая» = ещё не
 # смотрели (pending), «Одобрена»/«Отклонена» — после решения менеджера. Совпадает со
 # списком значений выпадашки в services.sheets.STATUS_LABELS.
-STATUS_LABELS = {"pending": "Новая", "approved": "Одобрена", "rejected": "Отклонена"}
+# Сам словарь — в корневом reg_labels.py (Phase 19), импорт вверху модуля.
 
 
 def _status_label(data: dict) -> str:
