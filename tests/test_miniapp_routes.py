@@ -292,6 +292,41 @@ def test_me_bound_manager_city_and_sections_reflect_registry(tmp_path):
     assert body["accent"] == "#FF5733"
 
 
+def test_me_reports_theme_preset_playful_tone_and_asset_slots(tmp_path):
+    """Phase 19.1-02 (D-03/D-04/D-08): новые поля /app/api/me — существующие (accent/
+    event_name/logo_file_id/...) НЕ переименованы, это чистое расширение контракта."""
+    db_path = _use_tmp_db(tmp_path)
+    _standard_seed()
+    body = _client(_cfg(db_path)).get("/app/api/me", headers=_hdr(ADMIN_ID)).json()
+    assert body["theme_preset"] == "bluebook"
+    assert body["playful_tone"] is False
+    assert body["cover_file_id"] is None
+    assert body["cover_dark_file_id"] is None
+    assert body["logo_dark_file_id"] is None
+    assert body["sticker_empty_file_id"] is None
+    assert body["sticker_success_file_id"] is None
+    assert body["sticker_error_file_id"] is None
+    assert body["sticker_top1_file_id"] is None
+    assert body["coin_icon_file_id"] is None
+    # старые поля не тронуты
+    assert body["accent"] == "#037EF3"
+    assert body["logo_file_id"] is None
+
+
+def test_me_reflects_youlead_preset_and_cover_asset(tmp_path):
+    # D-03: пресет заполняет ВСЕ ручки при выборе (сам процесс выбора — план 19.1-07);
+    # здесь миксуем ручки как это сделает та запись — preset + собственные значения ручек.
+    db_path = _use_tmp_db(tmp_path)
+    _standard_seed()
+    _set("miniapp_theme_preset", "youlead")
+    _set("miniapp_theme_playful_tone", "on")
+    _set("miniapp_cover", "AgACAgIAAxkBAAIcoverAssetX001")
+    body = _client(_cfg(db_path)).get("/app/api/me", headers=_hdr(ADMIN_ID)).json()
+    assert body["theme_preset"] == "youlead"
+    assert body["playful_tone"] is True
+    assert body["cover_file_id"] == "AgACAgIAAxkBAAIcoverAssetX001"
+
+
 # ── ветка cookie (D-05) ──────────────────────────────────────────────────────────────────
 
 def test_cookie_from_dashboard_admits_manager(tmp_path):

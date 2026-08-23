@@ -1,4 +1,5 @@
-"""Phase 19 (D-03, RESEARCH Pattern 4): `GET /app/api/file/{file_id}` — прокси getFile.
+"""Phase 19 (D-03, RESEARCH Pattern 4), расширено 19.1-02 (D-08/D-15/D-16):
+`GET /app/api/file/{file_id}` — прокси getFile.
 
 Прямая ссылка на файл Telegram содержит токен бота (`/file/bot<token>/<file_path>`),
 поэтому наружу отдаётся только этот маршрут: сервер сам делает getFile, скачивает и
@@ -8,11 +9,16 @@
 Доступ (T-19-20, IDOR) — allow-list, а не «всё, что знает бот» (у бота есть и чеки, и
 резюме делегатов — их `file_id` менеджер геймы видеть не должен):
   - обложка неархивного задания или лого приложения (`miniapp_logo`) — любому принципалу;
+  - любой ассет оформления из `web_theme.ASSET_KEYS` (лого/обложка тёмной темы, 4 стикера,
+    иконка монеты, T-19.1-06) — любому принципалу: это графика мероприятия, а не персональные
+    данные, менеджер загружает её осознанно как публичное оформление (accept, threat_model);
   - владельцу сдачи, в частях которой встречается `file_id`;
   - держателю `moderate_game` — в пределах городского скоупа сдачи (тот же критерий, что
     `_submission_out_of_scope` в боте: модуль городов выключен или привязки нет -> всё;
     иначе город делегата должен совпадать с привязкой менеджера).
-Иначе 403; неизвестный `file_id` — тоже 403 (ни одной сдачи/обложки с ним нет).
+Иначе 403; неизвестный `file_id` — тоже 403 (ни одной сдачи/обложки с ним нет) — расширение
+allow-list не ослабляет это правило: список конечен и явен, а не «любой file_id из настроек»
+регэкспом.
 Недоступный upstream — 404, не 500: картинка в приложении просто не покажется.
 """
 from __future__ import annotations
@@ -27,6 +33,7 @@ from cities import cities_module_on, normalize_city
 from database.db import find_submissions_by_file_id, get_user, is_active_task_cover
 from settings_schema import get_setting_typed
 
+import web_theme
 from miniapp import telegram_api
 from miniapp.deps import Principal, principal
 from miniapp.telegram_api import TelegramApiError
@@ -57,6 +64,9 @@ async def can_read_file(p: Principal, file_id: str) -> bool:
         return True
     if (await get_setting_typed("miniapp_logo") or "") == file_id:
         return True
+    for key in web_theme.ASSET_KEYS.values():
+        if (await get_setting_typed(key) or "") == file_id:
+            return True
     submissions = await find_submissions_by_file_id(file_id)
     if any(sub["user_id"] == p.telegram_id for sub in submissions):
         return True
