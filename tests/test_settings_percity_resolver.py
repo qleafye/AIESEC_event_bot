@@ -25,15 +25,18 @@ import cities
 
 # ── Task 1: состав per_city-ключей реестра ──────────────────────────────────────────
 
-# Явный список-литерал первой волны + Task 2 (menu_*) — 21 имя (12 CONTEXT B + 9
+# Явный список-литерал первой волны + Task 2 (menu_*) — 22 имени (12 CONTEXT B + 10
 # MENU_BUTTONS). Новый per_city-ключ обязан быть осознанным изменением ЭТОГО списка, а не
 # побочным эффектом правки реестра (T-092-03).
+# menu_miniapp (Phase 19 D-10) — обычная enum-запись группы "menu" (settings_schema.py:1466),
+# per_city у неё такой же, как у остальных menu_*; этого требуют соседние тесты
+# test_menu_keys_match_menu_buttons_literal / test_menu_keys_are_enum_on_off_default_on_per_city.
 EXPECTED_PER_CITY_KEYS = {
     "start_text", "start_text_registered", "reg_complete_text", "approve_text",
     "contact_person", "contact_vk", "contact_tg", "event_date", "event_time",
     "event_place_name", "event_place_address", "registration_mode",
     "menu_referral", "menu_invites", "menu_info", "menu_program", "menu_speakers",
-    "menu_contacts", "menu_question", "menu_coins", "menu_game_tasks",
+    "menu_contacts", "menu_question", "menu_coins", "menu_game_tasks", "menu_miniapp",
 }
 
 
