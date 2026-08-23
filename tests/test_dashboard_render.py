@@ -383,6 +383,48 @@ def test_all_seven_blocks_present_when_toggles_on(tmp_path):
     assert "Геймификация" in text
 
 
+def test_dashboard_footer_powered_by_aiesec(tmp_path):
+    """D-15: в подвале — мелкий AIESEC Human как powered-by (в шапке уже лого мероприятия)."""
+    db_path = _use_tmp_db(tmp_path)
+    _seed_full_fixture(db_path)
+    client = _stats_manager_client(db_path)
+    resp = client.get("/")
+    assert resp.status_code == 200
+    assert "powered by AIESEC" in resp.text
+    assert "/static/brand/aiesec-human-blue.svg" in resp.text
+
+
+_DIV_TAG_RE = re.compile(r"<(/?)div\b([^>]*)>")
+
+
+def _has_nested_card_div(html: str) -> bool:
+    """Стек открытых <div> по порядку появления: True, если div class="card" открыт, пока
+    другой div class="card" уже открыт выше по стеку — карточка внутри карточки (D-11)."""
+    stack = []
+    for match in _DIV_TAG_RE.finditer(html):
+        is_closing, attrs = match.group(1), match.group(2)
+        if is_closing:
+            if stack:
+                stack.pop()
+            continue
+        class_match = re.search(r'class="([^"]*)"', attrs)
+        classes = class_match.group(1).split() if class_match else []
+        is_card = "card" in classes
+        if is_card and any(stack):
+            return True
+        stack.append(is_card)
+    return False
+
+
+def test_no_card_nested_inside_card_in_rendered_dashboard(tmp_path):
+    db_path = _use_tmp_db(tmp_path)
+    _seed_full_fixture(db_path)
+    client = _stats_manager_client(db_path)
+    resp = client.get("/")
+    assert resp.status_code == 200
+    assert not _has_nested_card_div(resp.text), 'найдена div class="card" внутри div class="card"'
+
+
 def test_daily_chart_data_attributes_are_parseable_json(tmp_path):
     """tojson не экранирует двойные кавычки — в атрибуте с `"` строки-даты рвали JSON
     и график молча не рисовался. Атрибуты в одинарных кавычках, внутри — валидный JSON."""
