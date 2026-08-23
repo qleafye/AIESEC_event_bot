@@ -356,6 +356,117 @@ body[data-nav="hub"] #nav { display: none; }
 
 .hidden { display: none; }
 
+/* ── плоские строки списков (план 19.1-05, D-11): построитель ui.js::flatRow ──────────────
+   Одна поверхность (.flat-list), разделитель — hairline НА строке, не рамка вокруг неё;
+   последняя строка внутри списка — без разделителя. */
+.flat-list {
+  display: flex;
+  flex-direction: column;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  overflow: hidden;
+  margin-bottom: var(--gap);
+}
+.flat-row {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-3);
+  width: 100%;
+  min-height: var(--tap-min);
+  padding: var(--sp-3);
+  border: 0;
+  border-bottom: 1px solid var(--border);
+  border-radius: 0;
+  background: none;
+  color: inherit;
+  text-decoration: none;
+  font: inherit;
+  text-align: left;
+}
+.flat-list .flat-row:last-child { border-bottom: 0; }
+a.flat-row, button.flat-row { cursor: pointer; transition: background var(--dur) var(--ease); }
+a.flat-row:active, button.flat-row:active { background: var(--surface-alt); }
+.flat-row > .icon { flex: none; color: var(--text-muted); }
+.flat-row-rank { flex: none; width: 1.75em; color: var(--text-faint); font-variant-numeric: tabular-nums; }
+.flat-row-body { flex: 1; min-width: 0; }
+.flat-row-title { font-weight: 700; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.flat-row-trailing {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: var(--sp-1);
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+.flat-row-warn {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-1);
+  margin-top: var(--sp-1);
+  font-size: 12px;
+  color: var(--warn);
+}
+.row-coins { display: flex; align-items: center; gap: var(--sp-1); }
+.row-coins .icon { color: var(--text-muted); }
+
+/* Label-роль (UI-SPEC §Typography): 12px, Lato 700, letter-spacing .08em — мета-строки строк
+   списков, подписи полей, мета карточки задания. Не путать с .section-title (тот же размер, но
+   верхний регистр — надзаголовок, не подпись значения). */
+.flat-row-meta, .label-role {
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: .08em;
+  color: var(--text-muted);
+  margin-top: 2px;
+}
+
+/* Надзаголовок секции (ui.js::sectionTitle) — та же типографика, что и .sec (план 19.1-04,
+   hub.js), правило общее, чтобы классы не разошлись визуально. */
+.sec, .section-title {
+  margin-bottom: var(--sp-2);
+  color: var(--text-faint);
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+}
+
+/* Пустое/ошибочное состояние (ui.js::emptyState/errorState, D-18): стикер-слот пресета +
+   мемная строка из реестра + одна кнопка-действие. */
+.empty-state, .error-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  gap: var(--sp-3);
+  padding: var(--sp-10) var(--sp-4);
+}
+.empty-state .sticker {
+  display: block;
+  max-height: 140px;
+  max-width: 100%;
+  object-fit: contain;
+  background: var(--surface-alt);
+  border-radius: var(--radius-lg);
+}
+.empty-state-text { margin: 0; color: var(--text-muted); }
+.error-state .empty-state-text { color: var(--danger-text); }
+
+/* ── чипы типов доказательства (карточка задания, D-13: иконки вместо эмодзи) ─────────────── */
+.proof-chips { display: flex; flex-wrap: wrap; gap: var(--sp-2); margin: var(--sp-2) 0; }
+.chip.proof {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border-radius: var(--radius-pill);
+  background: var(--surface-alt);
+  color: var(--text-muted);
+}
+
 /* ── делегатские экраны (план 19-03): задания, карточка, профиль, монеты, рейтинг ── */
 .center { text-align: center; }
 .pre { white-space: pre-wrap; overflow-wrap: anywhere; }
@@ -614,14 +725,8 @@ body[data-nav="hub"] #nav { display: none; }
 .tile b { font-family: var(--font-heading); font-weight: 800; font-size: 15px; }
 .tile small { color: var(--text-faint); font-size: 12px; }
 
-.sec {
-  margin-bottom: var(--sp-2);
-  color: var(--text-faint);
-  font-size: 12px;
-  font-weight: 700;
-  letter-spacing: .08em;
-  text-transform: uppercase;
-}
+/* .sec typography rule moved to the shared `.sec, .section-title` block (план 19.1-05,
+   ui.js::sectionTitle) — see delegate-screens section above, единый источник, не разошлись. */
 
 /* Одноразовый привет-экран (D-09): обложка пресета + текст + кнопка, оба текста из реестра. */
 .onboarding {

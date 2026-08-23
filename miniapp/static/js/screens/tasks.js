@@ -1,53 +1,59 @@
-// Экран «Задания» (зеркало экрана 1 скетча Phase 16): карточная сетка со статус-маркером,
-// названием, монетами и дедлайном; «Показать ещё» — веб-нативная пагинация (D-07).
-// Тап по карточке -> #/task/{id}. Все значения из API — только через textContent (h()).
+// Экран «Задания» (editorial-минимал, D-11): плоские строки на одной поверхности — статус-
+// точка, название, мета «категория · до {дата}», справа монеты с иконкой coin (tabular-nums).
+// Просроченное задание — не только цветом, но и иконкой alert-triangle + словом. «Показать
+// ещё» — веб-нативная пагинация (D-07). Тап по строке -> #/task/{id}. Все значения из API —
+// только через textContent (h()/flatRow()).
+
+import { flatRow, emptyState } from "../ui.js";
+import { icon } from "../icons.js";
 
 const PAGE = 25;
 
-// Подписи статусов — те же слова, что в списке бота (handlers/user_actions.py).
-const STATUS = {
-  new: { label: "новое", cls: "new" },
-  pending: { label: "на проверке", cls: "pending" },
-  approved: { label: "принято", cls: "approved" },
-  rejected: { label: "отклонено", cls: "rejected" },
+const STATUS_META = {
+  pending: "на проверке",
+  approved: "принято",
 };
 
-function statusChip(h, item) {
-  const meta = STATUS[item.status] || STATUS.new;
-  let text = meta.label;
-  if (item.status === "rejected" && item.attempt) {
-    text += item.limit ? ` (попытка ${item.attempt} из ${item.limit})` : ` (попытка ${item.attempt})`;
+function metaLine(item) {
+  if (item.status === "rejected") {
+    if (item.attempt) {
+      return item.limit
+        ? `${item.category_label} · отклонено · попытка ${item.attempt} из ${item.limit}`
+        : `${item.category_label} · отклонено · попытка ${item.attempt}`;
+    }
+    return `${item.category_label} · отклонено`;
   }
-  if (item.status === "approved" && item.coins_awarded != null) text += ` +${item.coins_awarded}`;
-  return h("span", { class: `chip status ${meta.cls}`, text });
+  const known = STATUS_META[item.status];
+  if (known) return `${item.category_label} · ${known}`;
+  return `${item.category_label} · до ${item.deadline_short}`;
 }
 
-function taskCard(h, navigate, item) {
-  const meta = [item.category_label, `${item.coins} монет`, `до ${item.deadline_short}`].join(" · ");
-  return h("article", {
-    class: `card task clickable ${item.overdue ? "overdue" : ""}`,
-    role: "link",
-    tabindex: "0",
+function coinsTrailing(h, item) {
+  const value = item.status === "approved" && item.coins_awarded != null ? item.coins_awarded : item.coins;
+  return h("span", { class: "row-coins" }, String(value), icon("coin"));
+}
+
+function overdueBadge(h) {
+  return h("span", { class: "flat-row-warn" }, icon("alert-triangle"), h("span", { text: " просрочено" }));
+}
+
+function taskRow(h, navigate, item) {
+  return flatRow(h, {
+    dot: item.status,
+    title: item.title,
+    meta: metaLine(item),
+    extra: item.overdue ? overdueBadge(h) : null,
+    trailing: coinsTrailing(h, item),
     onClick: () => navigate(`#/task/${item.id}`),
-    onKeydown: (e) => { if (e.key === "Enter" || e.key === " ") navigate(`#/task/${item.id}`); },
-  },
-    h("div", { class: "task-head" },
-      h("span", { class: `status-dot ${item.status}` }),
-      h("div", { class: "title", text: item.title }),
-    ),
-    h("div", { class: "muted meta", text: meta }),
-    h("div", { class: "task-foot" },
-      statusChip(h, item),
-      item.overdue ? h("span", { class: "chip warn", text: "срок вышел" }) : null,
-    ),
-  );
+  });
 }
 
 export async function render(root, params, ctx) {
-  const { h, api, navigate } = ctx;
-  const grid = h("div", { class: "task-grid" });
+  const { h, api, navigate, me } = ctx;
+  root.append(h("h1", { text: "Задания" }));
+  const list = h("div", { class: "flat-list" });
   const foot = h("div", { class: "list-foot" });
-  root.append(h("h1", { text: "Задания" }), grid, foot);
+  root.append(list, foot);
 
   let offset = 0;
   let total = 0;
@@ -56,11 +62,18 @@ export async function render(root, params, ctx) {
     foot.replaceChildren(h("div", { class: "loading", text: "Загрузка…" }));
     const page = await api(`/tasks?offset=${offset}&limit=${PAGE}`);
     total = page.total;
-    for (const item of page.items) grid.append(taskCard(h, navigate, item));
+    for (const item of page.items) list.append(taskRow(h, navigate, item));
     offset += page.items.length;
     foot.replaceChildren();
     if (total === 0) {
-      foot.append(h("div", { class: "empty", text: page.empty_text || "" }));
+      list.replaceChildren(emptyState(h, {
+        me,
+        text: page.empty_text || "",
+        action: h("button", {
+          class: "btn secondary", type: "button", text: "Обновить",
+          onClick: () => { offset = 0; load(); },
+        }),
+      }));
       return;
     }
     if (offset < total) {
