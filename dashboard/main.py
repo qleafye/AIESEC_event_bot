@@ -25,12 +25,14 @@ from pathlib import Path
 from typing import Optional
 
 from fastapi import FastAPI, Request
-from fastapi.responses import HTMLResponse, RedirectResponse
+from fastapi.responses import HTMLResponse, RedirectResponse, Response
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from starlette.middleware.sessions import SessionMiddleware
 from uvicorn.middleware.proxy_headers import ProxyHeadersMiddleware
 
+import web_theme
+from settings_schema import _parse_setting
 from dashboard import queries
 from dashboard.access import has_stats, staff_city, viewer_scope
 from dashboard.auth import session_middleware_kwargs, verify_login_payload
@@ -57,6 +59,15 @@ TEMPLATES_DIR = BASE_DIR / "templates"
 STATIC_DIR = BASE_DIR / "static"
 
 templates = Jinja2Templates(directory=str(TEMPLATES_DIR))
+
+
+def _read_setting(conn, key: str):
+    """Синхронное типизированное чтение ключа реестра по read-only подключению — тот же
+    приём, что `miniapp.deps.read_setting` (не импортируется отсюда: `dashboard/` — базовый
+    слой, `miniapp/` строится поверх него, а не наоборот)."""
+    row = conn.execute("SELECT value FROM bot_settings WHERE key = ?", (key,)).fetchone()
+    raw = row["value"] if row is not None else None
+    return _parse_setting(key, raw)
 
 
 def _thousands(value) -> str:
@@ -206,6 +217,18 @@ def _build_asgi_app(cfg: DashboardConfig) -> FastAPI:
     def health() -> dict:
         # Открыт, без обращения к БД — только для HEALTHCHECK контейнера.
         return {"status": "ok"}
+
+    @app.get("/theme.css")
+    def theme_css() -> Response:
+        # Phase 19.1-02 (D-03): тот же движок, что `/app/theme.css` Mini App — resolve_theme
+        # читает ручки пресета из bot_settings, theme_css_text собирает CSS. Дашборд саму
+        # атрибут-ветку `[data-theme="dark"]` никогда не активирует (D-06: остаётся светлым
+        # при любой системной теме) — блок в CSS присутствует, но мёртв на этой поверхности.
+        with read_conn(cfg.db_path) as conn:
+            settings = {key: _read_setting(conn, key) for key in web_theme.THEME_KEYS.values()}
+        resolved = web_theme.resolve_theme(settings)
+        body = web_theme.theme_css_text(resolved)
+        return Response(body, media_type="text/css", headers={"Cache-Control": "no-cache"})
 
     @app.get("/login", response_class=HTMLResponse)
     def login_page(request: Request):

@@ -1,5 +1,5 @@
-"""Phase 19: оболочка и служебные маршруты — `/app`, `/app/theme.css`, `/app/health`,
-`/app/api/me`.
+"""Phase 19 (расширено 19.1-02, D-03/D-04/D-07): оболочка и служебные маршруты — `/app`,
+`/app/theme.css`, `/app/health`, `/app/api/me`.
 
 `/app` — единственная Jinja-страница приложения (`templates/app.html`): шапка с названием
 мероприятия и лого, контейнеры `#screen`/`#nav`, тексты экранов состояний из реестра в
@@ -8,20 +8,22 @@ data-атрибутах `<body>` (фронт-ядро читает их без �
 тот же шаблон отдаёт человеку страницу-объяснение 503, а не JSON (гасящий middleware в
 `miniapp.main` делает исключение для HTML-маршрута).
 
-`/app/theme.css` — одна строка `:root { --accent; --secondary }` из `miniapp_accent` (D-06).
-Отдельный маршрут вместо inline-`style` — чтобы CSP осталась без `'unsafe-inline'`. Значение
-проверяется regex `^#[0-9A-Fa-f]{6}$`, иначе молча дефолт (T-19-73: значение никогда не
-склеивается с разметкой; fail-soft: опечатка менеджера не роняет приложение).
+`/app/theme.css` — полный набор ручек активного пресета (акцент/вторичный/фон/шрифт
+заголовков + осветлённая тёмная пара) из `web_theme.resolve_theme`/`theme_css_text` (D-03).
+Отдельный маршрут вместо inline-`style` — чтобы CSP осталась без `'unsafe-inline'`. Значения
+проверяются в `web_theme` дважды (при разрешении ручки и при сборке CSS), иначе молча
+дефолт активного пресета (T-19-73/T-19.1-05: значение никогда не склеивается с разметкой;
+fail-soft: опечатка менеджера не роняет приложение).
 
 `/app/health` открыт и не трогает БД (HEALTHCHECK контейнера) — единственный маршрут,
 живущий и при `miniapp_enabled = off`.
 
-`/app/api/me` — первый запрос фронта: кто я, какие разделы включены, оформление.
+`/app/api/me` — первый запрос фронта: кто я, какие разделы включены, оформление (пресет,
+тон, ассеты).
 """
 from __future__ import annotations
 
 import json
-import re
 from pathlib import Path
 
 from fastapi import APIRouter, Depends, Request
@@ -31,6 +33,7 @@ from fastapi.templating import Jinja2Templates
 from dashboard.db import read_conn
 from settings_schema import SETTINGS_SCHEMA
 
+import web_theme
 from miniapp.deps import SECTIONS, Principal, delegate_denial, principal, read_setting
 
 router = APIRouter()
@@ -38,9 +41,6 @@ router = APIRouter()
 BASE_DIR = Path(__file__).resolve().parent.parent
 TEMPLATES_DIR = BASE_DIR / "templates"
 templates = Jinja2Templates(directory=str(TEMPLATES_DIR))
-
-DEFAULT_ACCENT = "#037EF3"
-_HEX6 = re.compile(r"^#[0-9A-Fa-f]{6}$")
 
 # Тексты экранов состояний: имя в контексте шаблона -> ключ реестра.
 STATE_TEXT_KEYS = {
@@ -51,12 +51,6 @@ STATE_TEXT_KEYS = {
     "no_access": "miniapp_no_access_text",
     "disabled": "miniapp_disabled_text",
 }
-
-
-def safe_accent(value) -> str:
-    """`miniapp_accent` из реестра -> гарантированно валидный `#rrggbb`."""
-    text = (value or "").strip() if isinstance(value, str) else ""
-    return text if _HEX6.match(text) else DEFAULT_ACCENT
 
 
 def deep_link(bot_username: str | None) -> str:
@@ -113,8 +107,9 @@ def shell(request: Request):
 def theme_css(request: Request) -> Response:
     cfg = request.app.state.cfg
     with read_conn(cfg.db_path) as conn:
-        accent = safe_accent(read_setting(conn, "miniapp_accent"))
-    body = f":root {{ --accent: {accent}; --secondary: {accent}; }}\n"
+        settings = {key: read_setting(conn, key) for key in web_theme.THEME_KEYS.values()}
+    resolved = web_theme.resolve_theme(settings)
+    body = web_theme.theme_css_text(resolved)
     return Response(body, media_type="text/css", headers={"Cache-Control": "no-cache"})
 
 
@@ -132,6 +127,9 @@ def me(request: Request, p: Principal = Depends(principal)) -> dict:
         event_name = read_setting(conn, "event_name")
         logo_file_id = read_setting(conn, "miniapp_logo")
         is_delegate = delegate_denial(conn, p) is None
+        theme_settings = {key: read_setting(conn, key) for key in web_theme.THEME_KEYS.values()}
+        assets = {name: read_setting(conn, key) for name, key in web_theme.ASSET_KEYS.items()}
+    resolved = web_theme.resolve_theme(theme_settings)
     return {
         "telegram_id": p.telegram_id,
         "via": p.via,
@@ -144,4 +142,8 @@ def me(request: Request, p: Principal = Depends(principal)) -> dict:
         "event_name": event_name,
         "logo_file_id": logo_file_id,
         "bot_username": cfg.bot_username,
+        # Оформление (D-03/D-04/D-08/D-15/D-16) — новые поля, старые выше НЕ переименованы.
+        "theme_preset": resolved["preset"],
+        "playful_tone": resolved["playful_tone"] == "on",
+        **assets,
     }

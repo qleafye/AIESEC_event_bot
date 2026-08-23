@@ -158,12 +158,18 @@ def test_static_served_under_app_prefix(tmp_path):
 def test_theme_css_uses_registry_accent(tmp_path):
     db_path = _use_tmp_db(tmp_path, "miniapp_theme.db")
     _standard_seed()
-    _set("miniapp_accent", "#F48924")
+    _set("miniapp_accent", "#112233")
+    _set("miniapp_theme_secondary", "#445566")
+    _set("miniapp_theme_bg", "#778899")
+    _set("miniapp_theme_heading_font", "lato")
     resp = _client(db_path).get("/app/theme.css")
     assert resp.status_code == 200
     assert resp.headers["content-type"].startswith("text/css")
-    assert "--accent: #F48924" in resp.text
-    assert "--secondary: #F48924" in resp.text
+    assert "--accent: #112233;" in resp.text
+    assert "--secondary: #445566;" in resp.text
+    assert "--bg: #778899;" in resp.text
+    assert '--font-heading: "Lato"' in resp.text
+    assert "--font-heading-style: normal;" in resp.text
 
 
 def test_theme_css_garbage_accent_falls_back_to_default(tmp_path):
@@ -172,9 +178,27 @@ def test_theme_css_garbage_accent_falls_back_to_default(tmp_path):
     client = _client(db_path)
     for bad in ("037EF3", "#GG0000", "", "#fff", "#037EF3; } body { background: url(x) }"):
         _set("miniapp_accent", bad)
+        _set("miniapp_theme_secondary", bad)
+        _set("miniapp_theme_bg", bad)
         resp = client.get("/app/theme.css")
         assert resp.status_code == 200, bad
-        assert resp.text == ":root { --accent: #037EF3; --secondary: #037EF3; }\n", bad
+        # Мусор в ЛЮБОЙ из трёх цветовых ручек -> значение активного пресета (bluebook),
+        # не литерал и не пустота (T-19.1-05: не проверяем строку целиком, только объявления).
+        assert "--accent: #037EF3;" in resp.text, bad
+        assert "--secondary: #F48924;" in resp.text, bad
+        assert "--bg: #F3F4F7;" in resp.text, bad
+
+
+def test_theme_css_dark_block_has_lightened_accent(tmp_path):
+    db_path = _use_tmp_db(tmp_path, "miniapp_theme_dark.db")
+    _standard_seed()
+    resp = _client(db_path).get("/app/theme.css")
+    assert resp.status_code == 200
+    assert ':root[data-theme="dark"] {' in resp.text
+    dark_block = resp.text.split(':root[data-theme="dark"] {', 1)[1]
+    assert "--accent:" in dark_block
+    # Тёмный акцент — не тот же литерал, что светлый (осветлён под контраст, D-07).
+    assert "--accent: #037EF3;" not in dark_block
 
 
 # ── фронт-ядро: таблица маршрутов (план 19-02, <route_table>) ───────────────────────────
