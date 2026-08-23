@@ -530,7 +530,20 @@ Gotcha «пропали колонки»: в 9 случаях из 10 это **�
 
 Загрузка fail-soft: недоступное облако не ломает регистрацию — участник проходит анкету,
 файл остаётся доступен через `file_id`. Бэкфилл ранее загруженных резюме —
-`scripts/backfill_resumes.py`.
+`scripts/backfill_resumes.py`; перенос уже сохранённых ссылок на новый домен Nextcloud —
+`scripts/backfill_nextcloud_urls.py` (`--old-base`/`--new-base`, сначала `--dry-run`).
+
+---
+
+## Дашборд статистики
+
+Веб-страница с воронкой, динамикой и разрезами по заявкам — пакет `dashboard/` (FastAPI),
+отдельный минимальный образ `dashboard/Dockerfile` и sidecar `yl26-dashboard` в том же
+`docker-compose.yml`, читает `data/forum.db` только на чтение. Вход — Telegram Login Widget,
+право «📊 Статистика» выдаётся в боте. Наружу смотрит через Cloudflare Tunnel (стек `tunnel/`):
+портов на сервере не открываем, сертификат даёт Cloudflare. Пошаговый деплой на домен —
+[docs/DEPLOY-DOMAIN.md](docs/DEPLOY-DOMAIN.md). Какие блоки показывать — настраивается в боте
+(⚙️ Настройки → 📊 Дашборд), а не в файлах.
 
 ---
 
