@@ -75,7 +75,7 @@ a { color: var(--accent-text); }
 
 /* ── иконки (D-13): SVG из js/icons.js, размер из шрифта, цвет — от родителя.
    stroke="currentColor" в icons.js уже подхватывает вычисленный color родителя, поэтому
-   активному состоянию навигации (например .nav a.active) достаточно менять только color —
+   активному состоянию навигации (например .tab.on) достаточно менять только color —
    собственного stroke иконка нигде в CSS не получает. */
 .icon {
   width: 1em;
@@ -109,34 +109,125 @@ a { color: var(--accent-text); }
   color: var(--accent-text);
 }
 
-/* ── навигация (вкладки) ── */
-.nav {
-  display: flex;
-  gap: var(--sp-2);
-  overflow-x: auto;
-  padding-bottom: var(--sp-2);
-  margin-bottom: var(--sp-3);
-  scrollbar-width: none;
-}
-.nav::-webkit-scrollbar { display: none; }
-.nav:empty { display: none; }
-.nav a {
-  flex: none;
-  padding: var(--sp-2) var(--sp-3);
-  border-radius: var(--radius-pill);
-  border: 1px solid var(--border);
+/* ── навигация: три раскладки (D-10), переключаемые NAV_LAYOUT/body[data-nav] ────────────
+   Верстаются все три сразу (UI-SPEC §Navigation) — голосование команды меняет только
+   константу в app.js, вёрстка ни одного экрана не трогается. Общее правило для всех трёх:
+   минимальная площадь тапа var(--tap-min) (44px), активное состояние — не только цветом
+   (подчёркивание/заливка/фон), неактивное — var(--text-muted); переходы на var(--dur)
+   var(--ease), чтобы motion "off" останавливал их разом. Старая лента пилюль-вкладок
+   снесена — владелец назвал её нейрослопом. */
+#nav:empty { display: none; }
+
+/* A: нижний таб-бар из максимум четырёх позиций + «Ещё» ────────────────────────────────── */
+body[data-nav="tabbar"] .tabbar {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 5;
+  display: grid;
+  grid-auto-flow: column;
+  grid-auto-columns: 1fr;
   background: var(--surface);
+  border-top: 1px solid var(--border);
+  padding: var(--sp-2) var(--sp-2) calc(var(--sp-2) + var(--tg-safe-bottom));
+}
+body[data-nav="tabbar"] .tab {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: var(--sp-1);
+  min-height: var(--tap-min);
+  padding: var(--sp-1);
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: none;
+  color: var(--text-muted);
+  text-decoration: none;
+  font-family: inherit;
+  font-size: 10.5px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: color var(--dur) var(--ease);
+}
+body[data-nav="tabbar"] .tab .icon { width: 22px; height: 22px; }
+body[data-nav="tabbar"] .tab.on { color: var(--accent-text); }
+/* MainButton Telegram ложится поверх таб-бара в этой раскладке — принятый компромисс
+   вердикта nav.html (два нижних слоя), контент под таб-баром не перекрывается: */
+body[data-nav="tabbar"] main#screen { padding-bottom: calc(64px + var(--tg-safe-bottom)); }
+
+/* «Ещё» — оверлей поверх экрана (не маршрут), закрывается тапом вне листа/BackButton'ом. */
+.sheet-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 10;
+  display: flex;
+  align-items: flex-end;
+  background: color-mix(in srgb, var(--text) 32%, transparent);
+}
+.sheet {
+  width: 100%;
+  max-height: 70vh;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  background: var(--surface);
+  border-radius: var(--radius-lg) var(--radius-lg) 0 0;
+  padding: var(--sp-3) var(--sp-2) calc(var(--sp-3) + var(--tg-safe-bottom));
+}
+.sheet-item {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-3);
+  min-height: var(--tap-min);
+  padding: var(--sp-2) var(--sp-3);
+  border-radius: var(--radius);
+  color: var(--text);
+  text-decoration: none;
+  transition: background var(--dur) var(--ease);
+}
+.sheet-item:active { background: var(--surface-alt); }
+.sheet-item.active { color: var(--accent-text); }
+
+/* B: верхние табы со скроллом, активная подчёркнута и скроллится в зону видимости ───────── */
+body[data-nav="toptabs"] .toptabs {
+  display: flex;
+  gap: var(--sp-5);
+  overflow-x: auto;
+  scrollbar-width: none;
+  border-bottom: 1px solid var(--border);
+  margin: 0 calc(-1 * var(--sp-4)) var(--sp-3);
+  padding: 0 var(--sp-4);
+}
+body[data-nav="toptabs"] .toptabs::-webkit-scrollbar { display: none; }
+body[data-nav="toptabs"] .toptabs a {
+  flex: none;
+  position: relative;
+  display: flex;
+  align-items: center;
+  min-height: var(--tap-min);
+  padding: var(--sp-2) 0 var(--sp-3);
   color: var(--text-muted);
   text-decoration: none;
   font-size: 14px;
-  white-space: nowrap;
-  transition: background var(--dur) var(--ease), color var(--dur) var(--ease);
+  font-weight: 700;
+  transition: color var(--dur) var(--ease);
 }
-.nav a.active {
+body[data-nav="toptabs"] .toptabs a.on { color: var(--text); }
+body[data-nav="toptabs"] .toptabs a.on::after {
+  content: "";
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: -1px;
+  height: 2.5px;
+  border-radius: var(--radius-sm);
   background: var(--accent);
-  border-color: var(--accent);
-  color: var(--on-accent);
 }
+
+/* C: хаб — панель навигации не рисуется вовсе, разделы живут плитками на #/hub ──────────── */
+body[data-nav="hub"] #nav { display: none; }
 
 /* ── карточки и списки ── */
 .card {
