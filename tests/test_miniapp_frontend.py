@@ -204,6 +204,7 @@ def test_theme_css_dark_block_has_lightened_accent(tmp_path):
 # ── фронт-ядро: таблица маршрутов (план 19-02, <route_table>) ───────────────────────────
 
 EXPECTED_ROUTES = {
+    "#/hub": "screens/hub.js",
     "#/tasks": "screens/tasks.js",
     "#/task/{id}": "screens/card.js",
     "#/profile": "screens/profile.js",
@@ -231,8 +232,8 @@ def _routes_from_app_js() -> dict[str, str]:
 def test_route_table_matches_phase_plan_exactly():
     routes = _routes_from_app_js()
     assert routes == EXPECTED_ROUTES
-    assert len(routes) == 13
-    assert set(routes.values()) == set(EXPECTED_ROUTES.values())  # 12 модулей, task_edit — 2 маршрута
+    assert len(routes) == 14
+    assert set(routes.values()) == set(EXPECTED_ROUTES.values())  # 13 модулей, task_edit — 2 маршрута
 
 
 def test_every_screen_module_is_registered_in_routes():
@@ -701,6 +702,41 @@ def test_coins_settings_css_classes_exist_on_tokens():
     css = (MINIAPP_STATIC / "app.css").read_text(encoding="utf-8")
     for cls in (".search-result", ".check-row", ".danger-settings"):
         assert cls in css, cls
+
+
+# ── хаб делегата и менеджера + привет-экран (план 19.1-04, D-09/D-10) ───────────────────
+
+def test_hub_screen_exports_render_without_innerhtml_or_colors():
+    path = SCREENS_DIR / "hub.js"
+    assert path.is_file(), "экран hub.js не создан"
+    text = _js_without_comments(path)
+    assert re.search(r"export\s+async\s+function\s+render\s*\(root,\s*params,\s*ctx\)", text)
+    assert "innerHTML" not in text and "document.write" not in text
+    assert not _HEX_OR_RGB_COLOR.findall(text), "литеральный цвет в hub.js"
+    assert "https://" not in text and "http://" not in text, "внешний URL в hub.js"
+
+
+def test_hub_route_registered_as_home():
+    routes = _routes_from_app_js()
+    assert routes["#/hub"] == "screens/hub.js"
+
+
+def test_hub_onboarding_texts_come_from_registry_not_literals():
+    text = _js_without_comments(SCREENS_DIR / "hub.js")
+    assert "Погнали" not in text, "текст кнопки приветственного экрана — только из реестра"
+    assert "onboarding_text" in text and "onboarding_cta" in text
+
+
+def test_hub_tiles_built_from_visible_nav_and_nav_icons():
+    text = _js_without_comments(SCREENS_DIR / "hub.js")
+    assert 'from "../app.js"' in text and "visibleNav" in text and "NAV_ICONS" in text
+
+
+def test_hub_manager_counters_are_fail_soft_per_tile():
+    text = _js_without_comments(SCREENS_DIR / "hub.js")
+    # Каждый счётчик — свой try/catch внутри общего Promise.all, отказ одной ручки не роняет хаб.
+    assert "Promise.all(items.map(async" in text
+    assert "try {" in text and "catch (_)" in text
 
 
 # ── сторож: replaceChildren не принимает null/false/undefined верхним аргументом (quick
