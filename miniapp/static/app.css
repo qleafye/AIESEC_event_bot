@@ -471,13 +471,9 @@ a.flat-row:active, button.flat-row:active { background: var(--surface-alt); }
 .center { text-align: center; }
 .pre { white-space: pre-wrap; overflow-wrap: anywhere; }
 
-.task-grid { display: grid; grid-template-columns: 1fr; gap: var(--sp-3); }
-@media (min-width: 560px) { .task-grid { grid-template-columns: 1fr 1fr; } }
-.card.task { margin-bottom: 0; }
-.card.task.overdue { border-color: var(--warn); }
-.task-head { display: flex; align-items: flex-start; gap: var(--sp-2); }
-.task-head .title { margin: 0; flex: 1; }
-.task .meta { font-size: 13px; margin-bottom: var(--sp-2); }
+/* .task-grid/.card.task/.task-head сняты (план 19.1-06): списки заданий (делегат — план
+   19.1-05, менеджер — этот план) переведены на .flat-list/flatRow, карточная сетка не
+   используется нигде в проекте. */
 .task-foot { display: flex; flex-wrap: wrap; gap: var(--sp-2); }
 .list-foot { margin-top: var(--sp-3); }
 
@@ -495,7 +491,10 @@ a.flat-row:active, button.flat-row:active { background: var(--surface-alt); }
 .chip.pay.paid { color: var(--success-text); }
 .chip.pay.overdue { color: var(--danger-text); }
 
-.task-card .cover {
+/* .task-preview (карточка задания менеджера) делит вёрстку с .task-card (карточка делегата,
+   план 19.1-05) — превью «как видит делегат» обязано визуально совпадать с реальностью
+   (план 19.1-06), общее правило исключает дрейф между ними. */
+.task-card .cover, .task-preview .cover {
   display: block; width: calc(100% + 2 * var(--sp-4)); margin: calc(-1 * var(--sp-4)) calc(-1 * var(--sp-4)) var(--sp-3);
   border-radius: var(--radius-lg) var(--radius-lg) 0 0; object-fit: cover; max-height: 240px;
   background: var(--surface-alt);
@@ -665,7 +664,8 @@ a.flat-row:active, button.flat-row:active { background: var(--surface-alt); }
 .bar-fill { height: 100%; border-radius: var(--radius-pill); background: var(--chart-1); transition: width var(--dur) var(--ease); }
 .bar-count { flex: 0 0 2.5em; text-align: right; font-weight: 700; }
 
-/* ── задания менеджера: тумблер «Активные | Архив» + строки ────────────────────────── */
+/* ── задания менеджера: сегментированный переключатель «Активные | Архив» + плоские строки
+   (D-11, план 19.1-06) ──────────────────────────────────────────────────────────────── */
 .toggle {
   display: flex;
   gap: 0;
@@ -678,6 +678,7 @@ a.flat-row:active, button.flat-row:active { background: var(--surface-alt); }
 .toggle .toggle-btn {
   flex: 1;
   margin: 0;
+  min-height: var(--tap-min);
   border: 0;
   border-radius: 0;
   background: transparent;
@@ -685,20 +686,22 @@ a.flat-row:active, button.flat-row:active { background: var(--surface-alt); }
 }
 .toggle .toggle-btn + .toggle-btn { margin-top: 0; border-left: 1px solid var(--border); }
 .toggle .toggle-btn.active { background: var(--accent); color: var(--on-accent); }
-.admin-task-row .task-number { flex: none; color: var(--text-faint); font-weight: 700; }
-.admin-task-row.archived { opacity: .75; border-style: dashed; }
+/* .admin-task-row — модификатор поверх .flat-row (ui.js::flatRow), не отдельная карточка. */
+.admin-task-row.archived { opacity: .7; }
 .admin-task-row .task-foot { margin-top: var(--sp-1); align-items: center; }
 
 /* ── карточка задания: превью, действия, шаги визарда, подтверждения ──────────────── */
-.task-preview .cover { width: 100%; border-radius: var(--radius-sm); margin-bottom: var(--sp-3); display: block; }
-.task-preview .card-text { white-space: pre-wrap; overflow-wrap: anywhere; }
-.task-preview blockquote { margin: var(--sp-2) 0 0; padding-left: var(--sp-3); border-left: 3px solid var(--border); color: var(--text-muted); }
 .task-actions { display: flex; flex-direction: column; gap: var(--sp-2); margin-top: var(--sp-3); }
 .task-actions .btn + .btn { margin-top: 0; }
-.task-actions .field { margin: var(--sp-1) 0; padding: var(--sp-3); border: 1px solid var(--border); border-radius: var(--radius); background: var(--surface); }
+/* Поле правки — не карточка внутри карточки (D-11): без рамки/фона. */
+.task-actions .field { margin: var(--sp-2) 0; }
 .task-actions .field .btn { margin-top: var(--sp-2); }
-.choice-grid { display: flex; flex-direction: column; gap: var(--sp-2); }
-.choice-grid .btn + .btn { margin-top: 0; }
+/* Кнопки выбора — сеткой в две колонки (план 19.1-06); поле «своя дата» и группы чекбоксов
+   занимают строку целиком. Выбранный вариант — обводка --accent, не заливка (не спорит с
+   основной кнопкой шага). */
+.choice-grid { display: grid; grid-template-columns: 1fr 1fr; gap: var(--sp-2); }
+.choice-grid .btn, .choice-grid .check { width: 100%; margin: 0; }
+.choice-grid .field { grid-column: 1 / -1; }
 .choice-grid .btn.chosen { outline: 2px solid var(--accent); outline-offset: 1px; }
 .confirm-box {
   padding: var(--sp-3);
@@ -709,8 +712,10 @@ a.flat-row:active, button.flat-row:active { background: var(--surface-alt); }
 }
 .confirm-box p { margin: 0 0 var(--sp-2); }
 .confirm-box .btn + .btn { margin-top: var(--sp-2); }
+/* Надзаголовок шага визарда набран общим .label-role (план 19.1-06), отдельного правила
+   не заводим — тот же приём, что уже объединил .sec/.section-title (план 19.1-05). */
 .wizard-step { margin-bottom: var(--sp-3); }
-.wizard-step .step-label { font-size: 13px; color: var(--text-muted); margin-bottom: var(--sp-1); }
+.wizard-step .label-role { margin-bottom: var(--sp-1); }
 
 /* ── монеты вручную (план 19-07, экран 8): карточка получателя, результаты поиска ─────── */
 .search-result { display: flex; justify-content: space-between; align-items: center; gap: var(--sp-3); margin-bottom: var(--sp-2); }

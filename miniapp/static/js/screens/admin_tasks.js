@@ -1,37 +1,35 @@
-// Задания менеджера (экран 6 скетча Phase 16 в вебе): тумблер «Активные | Архив» — два
-// состояния, список перерисовывается без перезагрузки; строка «№N · название · категория ·
-// монеты · до дд.мм» со счётчиками «на проверке / принято», «Показать ещё», «➕ Новое
-// задание» -> #/task-edit/new, тап по строке -> #/task-edit/{id}.
+// Задания менеджера (экран 6 скетча Phase 16 в вебе, editorial-минимал 19.1-06): сегментированный
+// переключатель «Активные | Архив» (одна поверхность, активный сегмент — заливка --accent,
+// площадь тапа var(--tap-min)) — два состояния, список перерисовывается без перезагрузки; плоские
+// строки (D-11, ui.js::flatRow) — номер, название, мета «категория · до дд.мм · N сдач», справа —
+// монеты с иконкой coin. Архивная строка — слово «архив» в мете и иконка archive вместо coin.
+// «Показать ещё», «Новое задание» -> #/task-edit/new, тап по строке -> #/task-edit/{id}.
 // Подписи категорий приходят с сервера готовыми (RU) — фронт кодов не знает.
+
+import { flatRow, emptyState } from "../ui.js";
+import { icon } from "../icons.js";
 
 const PAGE = 25;
 
 function taskRow(h, navigate, item) {
-  const open = () => navigate(`#/task-edit/${item.id}`);
-  const meta = [item.category_label, `${item.coins}🪙`, `до ${item.deadline_short}`].join(" · ");
-  const counters = [];
-  if (item.pending > 0) counters.push(h("span", { class: "chip warn", text: `на проверке: ${item.pending}` }));
-  if (item.approved > 0) counters.push(h("span", { class: "chip success", text: `принято: ${item.approved}` }));
-  if (item.overdue && !item.archived) counters.push(h("span", { class: "chip", text: "срок вышел" }));
-  if (item.has_photo) counters.push(h("span", { class: "faint", text: "📷" }));
-  return h("article", {
-    class: `card task clickable admin-task-row${item.archived ? " archived" : ""}`,
-    role: "link",
-    tabindex: "0",
-    onClick: open,
-    onKeydown: (e) => { if (e.key === "Enter" || e.key === " ") open(); },
-  },
-    h("div", { class: "task-head" },
-      h("span", { class: "task-number", text: `№${item.number}` }),
-      h("div", { class: "title", text: item.title }),
-    ),
-    h("div", { class: "muted meta", text: meta }),
-    counters.length ? h("div", { class: "task-foot" }, counters) : null,
-  );
+  const metaParts = [item.category_label, `до ${item.deadline_short}`, `${item.pending + item.approved} сдач`];
+  if (item.archived) metaParts.push("архив");
+  const badges = [];
+  if (item.pending > 0) badges.push(h("span", { class: "chip warn", text: `на проверке: ${item.pending}` }));
+  if (item.overdue && !item.archived) badges.push(h("span", { class: "chip", text: "срок вышел" }));
+  return flatRow(h, {
+    leadText: `№${item.number}`,
+    title: item.title,
+    meta: metaParts.join(" · "),
+    extra: badges.length ? h("div", { class: "task-foot" }, badges) : null,
+    trailing: h("span", { class: "row-coins" }, icon(item.archived ? "archive" : "coin"), h("span", { text: String(item.coins) })),
+    onClick: () => navigate(`#/task-edit/${item.id}`),
+    cls: item.archived ? "admin-task-row archived" : "admin-task-row",
+  });
 }
 
 export async function render(root, params, ctx) {
-  const { h, api, navigate } = ctx;
+  const { h, api, navigate, me } = ctx;
 
   let archived = false;
   let offset = 0;
@@ -41,12 +39,12 @@ export async function render(root, params, ctx) {
   const activeBtn = h("button", { class: "btn toggle-btn active", type: "button", text: "Активные" });
   const archiveBtn = h("button", { class: "btn toggle-btn", type: "button", text: "Архив" });
   const toggle = h("div", { class: "toggle", role: "tablist" }, activeBtn, archiveBtn);
-  const list = h("div", { class: "task-grid" });
+  const list = h("div", { class: "flat-list" });
   const foot = h("div", { class: "list-foot" });
   const newBtn = h("button", {
-    class: "btn", type: "button", text: "➕ Новое задание",
+    class: "btn", type: "button",
     onClick: () => navigate("#/task-edit/new"),
-  });
+  }, icon("check"), h("span", { text: " Новое задание" }));
 
   root.append(h("h1", { text: "Задания" }), toggle, newBtn, list, foot);
 
@@ -80,7 +78,7 @@ export async function render(root, params, ctx) {
     offset += page.items.length;
     foot.replaceChildren();
     if (total === 0) {
-      foot.append(h("div", { class: "empty" }, h("p", { text: page.empty_text || "" })));
+      list.replaceChildren(emptyState(h, { me, text: page.empty_text || "" }));
       return;
     }
     if (offset < total) {
