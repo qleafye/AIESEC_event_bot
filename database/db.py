@@ -478,6 +478,27 @@ async def init_db():
             "ON game_submit_digest_queue(sent_at, city)"
         )
 
+        # Phase 19 (D-01): outbox побочных эффектов Mini App. Веб-процесс `miniapp` пишет
+        # сюда события (сдача создана, сдача проверена, задание изменилось, ручные монеты),
+        # бот подбирает их джобой (план 19-08) и делает уведомления/дайджест/Sheets. Схемой
+        # владеет ТОЛЬКО бот: `miniapp` никогда не зовёт init_db (два мигратора за одним
+        # ALTER TABLE), а при отсутствии таблицы его enqueue молча пропускает событие.
+        await db.execute('''
+            CREATE TABLE IF NOT EXISTS miniapp_outbox (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                kind TEXT NOT NULL,
+                payload TEXT NOT NULL,
+                created_at TEXT NOT NULL,
+                processed_at TEXT,
+                attempts INTEGER NOT NULL DEFAULT 0,
+                last_error TEXT
+            )
+        ''')
+        await db.execute(
+            "CREATE INDEX IF NOT EXISTS idx_miniapp_outbox_pending "
+            "ON miniapp_outbox(processed_at, id)"
+        )
+
         # Phase 15 (STAT-03, D-06): append-only registration-funnel event log -- the top of
         # the funnel (start / form_started / form_completed) is otherwise physically
         # unrecoverable from `reg_started` (a keyed UPSERT, not a log). No UNIQUE: every call
@@ -2408,6 +2429,63 @@ async def mark_game_digest_sent(ids: list[int], sent_at: str) -> None:
         await db.executemany(
             "UPDATE game_submit_digest_queue SET sent_at = ? WHERE id = ?",
             [(sent_at, i) for i in ids],
+        )
+        await db.commit()
+
+
+# ── Phase 19 (D-01): outbox побочных эффектов Mini App ─────────────────────────────────────
+
+MINIAPP_OUTBOX_ERROR_MAX = 500
+
+
+async def enqueue_miniapp_outbox(kind: str, payload: dict, created_at: str) -> int:
+    """Кладёт событие в outbox; `payload` сериализуется в JSON (ensure_ascii=False).
+    Бросает `aiosqlite.OperationalError`, если таблицы ещё нет — fail-soft делает
+    вызывающий (`miniapp.outbox.enqueue`)."""
+    async with _connect() as db:
+        cursor = await db.execute(
+            "INSERT INTO miniapp_outbox (kind, payload, created_at) VALUES (?, ?, ?)",
+            (kind, json.dumps(payload, ensure_ascii=False), created_at),
+        )
+        await db.commit()
+        return cursor.lastrowid
+
+
+async def list_unprocessed_miniapp_outbox(limit: int = 50) -> list[dict]:
+    """Необработанные события в порядке `id`; `payload` уже разобран из JSON."""
+    async with _connect() as db:
+        db.row_factory = aiosqlite.Row
+        async with db.execute(
+            "SELECT * FROM miniapp_outbox WHERE processed_at IS NULL ORDER BY id LIMIT ?",
+            (int(limit),),
+        ) as cursor:
+            rows = [dict(row) for row in await cursor.fetchall()]
+    for row in rows:
+        try:
+            row["payload"] = json.loads(row["payload"])
+        except (TypeError, ValueError):
+            row["payload"] = {}
+    return rows
+
+
+async def mark_miniapp_outbox_processed(ids: list[int], processed_at: str) -> None:
+    if not ids:
+        return
+    async with _connect() as db:
+        await db.executemany(
+            "UPDATE miniapp_outbox SET processed_at = ? WHERE id = ?",
+            [(processed_at, i) for i in ids],
+        )
+        await db.commit()
+
+
+async def mark_miniapp_outbox_failed(row_id: int, error: str) -> None:
+    """Неудачная попытка: `attempts + 1`, текст ошибки усечён до 500 символов, строка
+    остаётся необработанной (джоба бота решает, когда сдаться)."""
+    async with _connect() as db:
+        await db.execute(
+            "UPDATE miniapp_outbox SET attempts = attempts + 1, last_error = ? WHERE id = ?",
+            ((error or "")[:MINIAPP_OUTBOX_ERROR_MAX], row_id),
         )
         await db.commit()
 
