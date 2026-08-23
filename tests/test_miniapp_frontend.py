@@ -518,8 +518,9 @@ def test_submit_screen_exports_render_and_checks_size_before_upload():
     assert size_check < text.index('api("/uploads", {')
     assert "too_large_text" in text
     assert "1024 * 1024" not in text and "20971520" not in text  # числа лимитов не хардкодятся
-    # Счётчик частей, «Убрать последнее», «Готово» -> одиночный POST /submissions.
-    assert "📸" in text and "📄" in text and "✍️" in text
+    # Счётчик частей — иконками из icons.js (D-13, план 19.1-05), не эмодзи; «Убрать
+    # последнее», «Готово» -> одиночный POST /submissions.
+    assert "counter-group" in text and 'icon("image")' in text and 'icon("pen-line")' in text
     assert "Убрать последнее" in text
     assert 'setMainButton("Готово"' in text
     assert 'api("/submissions", {' in text and text.count('api("/submissions"') == 1
@@ -527,6 +528,33 @@ def test_submit_screen_exports_render_and_checks_size_before_upload():
     assert "err.status === 409" in text      # «Уже отправлено»
     assert 'navigate("#/tasks")' in text
 
+
+def test_submit_screen_has_per_part_remove_and_accepted_moment():
+    text = _js_without_comments(SCREENS_DIR / "submit.js")
+    # Кнопка удаления части — иконка "x" с площадью тапа не меньше var(--tap-min) и aria-label.
+    assert 'icon("x")' in text and '"aria-label": "Убрать часть"' in text
+    css = (MINIAPP_STATIC / "app.css").read_text(encoding="utf-8")
+    assert ".part-remove" in css and "var(--tap-min)" in css[css.index(".part-remove"):]
+    # Принятая сдача — состояние успеха (стикер-слот "success" из ui.js::emptyState), не
+    # мгновенный переход: хаптик и конфетти вызываются на этом состоянии (D-17/D-18).
+    assert 'slot: "success"' in text
+    accepted = text[text.index("function showAccepted"):]
+    assert 'haptic("success")' in accepted and "confetti(view)" in accepted
+    # Ошибка загрузки (превышение размера / отказ сервера) — errorState, не голый notice.
+    assert "errorState(h, {" in text and "showUploadError" in text
+
+
+# Узкий список эмодзи, использовавшихся как ФУНКЦИОНАЛЬНЫЕ иконки интерфейса (кнопки/счётчики/
+# статусы частей submit.js) до перевода на icons.js (D-13, план 19.1-05) — не эмодзи из текстов
+# реестра/мемного тона (те не в зоне ответственности JS-файлов вовсе, приходят с сервера).
+_CHROME_ICON_EMOJI = ("📸", "📄", "✍️", "📎", "✅")
+
+
+@pytest.mark.parametrize("name", DELEGATE_SCREENS + ["submit.js"])
+def test_delegate_screens_have_no_emoji_icons_in_chrome(name):
+    text = _js_without_comments(SCREENS_DIR / name)
+    for e in _CHROME_ICON_EMOJI:
+        assert e not in text, f"{name}: эмодзи {e} в роли иконки интерфейса — замените icons.js (D-13)"
 
 
 # ── экраны менеджера (план 19-05): review.js / stats.js ────────────────────────────────
