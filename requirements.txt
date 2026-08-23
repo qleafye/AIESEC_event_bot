@@ -9,3 +9,15 @@ apscheduler==3.11.2
 sqlalchemy>=2.0,<3.0
 # явная база часовых поясов: ZoneInfo(Europe/Moscow) в services/scheduler.py не должен зависеть от системной tzdb в python:3.11-slim
 tzdata
+
+# Mini App (Phase 19, WEBAPP-01): один образ бота обслуживает и long polling, и miniapp/main.py
+# (uvicorn, свой процесс в том же контейнере-образе — см. docker-compose.yml::miniapp). Пины
+# совпадают с dashboard/requirements.txt, чтобы поведение FastAPI/Starlette не расходилось между
+# двумя процессами одного стека. Starlette НЕ поднимать до 1.x: в 1.0 удалён @app.middleware(),
+# который использует дашборд.
+fastapi>=0.115,<0.142
+uvicorn[standard]>=0.34,<0.53
+jinja2>=3.1,<4.0
+itsdangerous>=2.2,<3.0
+python-multipart>=0.0.18
+httpx[socks]>=0.28,<0.29
