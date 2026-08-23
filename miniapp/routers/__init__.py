@@ -26,8 +26,18 @@
   GET  /app/api/coins/history?offset&limit -> {items[{delta,reason,source,source_label,created_at}],
                                        total, limit, offset}
   GET  /app/api/leaderboard?limit  -> {items[{rank,name,balance,is_me}], me{rank,balance}, total}; limit <= 50
-  Делегат (план 19-04): POST /app/api/submissions, GET /app/api/file/{file_id}
-  Общий (план 19-04): POST /app/api/uploads — dependency `upload_actor` (делегат ИЛИ moderate_game)
+  Делегат (план 19-04):
+  POST /app/api/submissions {task_id, parts[{kind, content, part_token?, caption?}]}
+                                   -> {submission_id, accepted_text}; `delegate_gate` + section tasks
+                                       kind: photo|document (part_token обязателен) | text|link
+                                       400 {"reason":"empty"|"too_many_parts"|"bad_part"}
+                                       403 {"reason":"bad_part_token"}; 404 task_not_found
+                                       409 {"reason":"already_submitted"|"resubmit_limit"}
+  Общий (план 19-04): dependency `upload_actor` (одобренный делегат ИЛИ moderate_game), без section:
+  POST /app/api/uploads  multipart `file` -> {kind: photo|document, content: file_id, part_token}
+                                       413 too_large (> 20 МБ); 502 {"reason":"telegram_unavailable"}
+  GET  /app/api/file/{file_id}     -> байты файла (прокси getFile; `principal`; владелец части ИЛИ
+                                       moderate_game в пределах города ИЛИ обложка/лого); 403/404
   Менеджер (планы 19-05..19-07): /app/api/review/next, POST /app/api/review/{sid}/approve|reject,
       /app/api/stats/game, /app/api/admin/tasks*, /app/api/admin/coins*, /app/api/admin/settings
 
@@ -47,13 +57,14 @@
 """
 from __future__ import annotations
 
-from miniapp.routers import coins, page, profile, tasks
+from miniapp.routers import coins, page, profile, submissions, tasks
 
 ALL_ROUTERS = [
     page.router,
     tasks.router,
     profile.router,
     coins.router,
+    submissions.router,
 ]
 
 __all__ = ["ALL_ROUTERS"]
