@@ -162,6 +162,25 @@ def test_tokens_css_has_accent_variable():
     assert text.count("--accent") >= 1
 
 
+# ── typography scale (Phase 19.1 Plan 03, UI-SPEC §Typography) ─────────────────────────────
+
+def test_app_css_uses_exactly_three_font_weight_values():
+    """Три веса на весь проект: Lato 400/700, Raleway 800 — четвёртого не появляться (D-01)."""
+    text = APP_CSS.read_text(encoding="utf-8")
+    code_only = "\n".join(
+        line for line in text.splitlines() if not line.strip().startswith("*")
+    )
+    weights = set(re.findall(r"font-weight:\s*(\d+)", code_only))
+    assert weights == {"400", "700", "800"}, f"unexpected font-weight values: {weights}"
+
+
+def test_kpi_num_uses_tabular_nums():
+    text = APP_CSS.read_text(encoding="utf-8")
+    m = re.search(r"\.kpi \.num\s*\{([^}]*)\}", text)
+    assert m, ".kpi .num rule not found in app.css"
+    assert "tabular-nums" in m.group(1)
+
+
 _TOKENS_CSS_ALLOWED_SELECTORS = {
     ":root {",
     ':root[data-theme="dark"] {',
