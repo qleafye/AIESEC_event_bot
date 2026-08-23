@@ -140,6 +140,9 @@ async def task_card(task_id: int, p: Principal = Depends(delegate_gate),
         "proof_type": task.get("proof_type"),
         "proof_hint": await proof_types_label(task.get("proof_type")),
         "status_line": status_line,
+        # Готовый HTML-текст карточки (как в боте) — для паритета и тестов; фронт рисует
+        # структурные поля через textContent (innerHTML запрещён, T-19-15).
         "card_text": await render_task_card_text(task, status_line, attempt),
+        "overdue_hint": await get_setting_typed("game_task_overdue_hint_text") if item["overdue"] else None,
     })
     return item

@@ -221,3 +221,61 @@ a { color: var(--accent-text); }
 }
 
 .hidden { display: none; }
+
+/* ── делегатские экраны (план 19-03): задания, карточка, профиль, монеты, рейтинг ── */
+.center { text-align: center; }
+.pre { white-space: pre-wrap; overflow-wrap: anywhere; }
+
+.task-grid { display: grid; grid-template-columns: 1fr; gap: var(--sp-3); }
+@media (min-width: 560px) { .task-grid { grid-template-columns: 1fr 1fr; } }
+.card.task { margin-bottom: 0; }
+.card.task.overdue { border-color: var(--warn); }
+.task-head { display: flex; align-items: flex-start; gap: var(--sp-2); }
+.task-head .title { margin: 0; flex: 1; }
+.task .meta { font-size: 13px; margin-bottom: var(--sp-2); }
+.task-foot { display: flex; flex-wrap: wrap; gap: var(--sp-2); }
+.list-foot { margin-top: var(--sp-3); }
+
+.status-dot {
+  width: 10px; height: 10px; border-radius: 50%; flex: none; margin-top: 6px;
+  background: var(--accent);
+}
+.status-dot.pending { background: var(--warn); }
+.status-dot.approved { background: var(--success); }
+.status-dot.rejected { background: var(--danger); }
+
+.chip.status.pending { color: var(--text); border: 1px solid var(--warn); background: var(--surface); }
+.chip.status.approved { color: var(--success-text); }
+.chip.status.rejected { color: var(--danger-text); }
+.chip.pay.paid { color: var(--success-text); }
+.chip.pay.overdue { color: var(--danger-text); }
+
+.task-card .cover {
+  display: block; width: calc(100% + 2 * var(--sp-4)); margin: calc(-1 * var(--sp-4)) calc(-1 * var(--sp-4)) var(--sp-3);
+  border-radius: var(--radius-lg) var(--radius-lg) 0 0; object-fit: cover; max-height: 240px;
+  background: var(--surface-alt);
+}
+.task-card .pre { margin-top: var(--sp-3); }
+
+.field-row { padding: var(--sp-2) 0; border-bottom: 1px solid var(--border); }
+.field-row:last-child { border-bottom: 0; }
+.actions .btn + .faint { margin-top: var(--sp-2); }
+
+.stats { display: grid; grid-template-columns: 1fr 1fr; gap: var(--sp-3); margin-bottom: var(--sp-3); }
+.stat { text-align: center; margin-bottom: 0; }
+.stat-value { font-family: var(--font-heading); font-weight: 800; font-size: 28px; color: var(--accent-text); }
+.list-card { padding-top: var(--sp-1); padding-bottom: var(--sp-1); }
+.delta { font-weight: 700; flex: none; }
+.delta.plus { color: var(--success-text); }
+.delta.minus { color: var(--danger-text); }
+
+.rank-row .rank { color: var(--text-faint); width: 2.5em; flex: none; }
+.rank-row .name { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.rank-row .balance { font-weight: 700; }
+.rank-row.me { background: var(--accent-soft); margin: 0 calc(-1 * var(--sp-4)); padding-left: var(--sp-4); padding-right: var(--sp-4); border-radius: var(--radius-sm); }
+.pinned {
+  position: sticky; bottom: calc(var(--sp-3) + var(--tg-safe-bottom));
+  display: flex; justify-content: space-between; align-items: center; gap: var(--sp-3);
+  border-color: var(--accent); background: var(--accent-soft);
+}
+.pinned .balance { font-weight: 800; color: var(--accent-text); }
