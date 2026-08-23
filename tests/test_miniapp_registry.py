@@ -1,10 +1,14 @@
 """Phase 19 Plan 01 Task 1 (WEBAPP-01, D-06/D-10): реестр ключей `miniapp_*`, кнопка меню
 `menu_miniapp` и константы процесса `miniapp/config.py`.
 
-Список из 24 ключей перечислен ЯВНО: добавление 25-го обязано осознанно ломать этот тест
-(контракт, на который опираются экраны планов 19-02..19-08).
+Список из 43 ключей перечислен ЯВНО: добавление 44-го обязано осознанно ломать этот тест
+(контракт, на который опираются экраны планов 19-02..19-08). Расширен планом 19.1-02
+(D-03/D-04/D-07/D-08/D-15/D-16/D-18): ручки пресетов оформления, ассеты (стикеры/обложки/
+лого тёмной темы/иконка монеты), приветственный экран, тексты пустых состояний менеджера.
 """
 from __future__ import annotations
+
+import re
 
 from handlers import user_actions
 from handlers.admin_settings import SETTINGS_FIELDS, SETTINGS_GROUPS
@@ -40,15 +44,45 @@ MINIAPP_KEYS = [
     "miniapp_profile_edit_hint",
     "miniapp_upload_caption_delegate",
     "miniapp_upload_caption_staff",
+    # Phase 19.1-02: ручки пресетов оформления (D-03/D-04)
+    "miniapp_theme_preset",
+    "miniapp_theme_secondary",
+    "miniapp_theme_bg",
+    "miniapp_theme_heading_font",
+    "miniapp_theme_playful_tone",
+    "miniapp_theme_pattern_enabled",
+    # ассеты оформления (D-08/D-15/D-16)
+    "miniapp_logo_dark",
+    "miniapp_cover",
+    "miniapp_cover_dark",
+    "miniapp_sticker_empty",
+    "miniapp_sticker_success",
+    "miniapp_sticker_error",
+    "miniapp_sticker_top1",
+    "miniapp_coin_icon",
+    # приветственный экран (D-09)
+    "miniapp_onboarding_text",
+    "miniapp_onboarding_cta",
+    # пустые состояния менеджера (D-18) — раньше были литералами в роутерах
+    "miniapp_empty_admin_tasks",
+    "miniapp_empty_admin_tasks_archived",
+    "miniapp_empty_admin_coins",
 ]
 
 SECTION_KEYS = [k for k in MINIAPP_KEYS if k.startswith("miniapp_section_")]
 
+# Новые ручки этого плана — используются в проверках дефолтов/типов ниже.
+THEME_COLOR_KEYS = ["miniapp_theme_secondary", "miniapp_theme_bg"]
+THEME_ENUM_KEYS = [
+    "miniapp_theme_preset", "miniapp_theme_heading_font",
+    "miniapp_theme_playful_tone", "miniapp_theme_pattern_enabled",
+]
+
 _ALLOWED_TYPES = {"toggle", "int", "list", "date", "text", "enum", "photo", "file"}
 
 
-def test_exactly_24_miniapp_keys_and_no_extra():
-    assert len(MINIAPP_KEYS) == 24
+def test_exactly_43_miniapp_keys_and_no_extra():
+    assert len(MINIAPP_KEYS) == 43
     present = sorted(k for k in SETTINGS_SCHEMA if k.startswith("miniapp_"))
     assert present == sorted(MINIAPP_KEYS)
 
@@ -87,7 +121,7 @@ def test_text_keys_have_human_defaults():
         k for k in MINIAPP_KEYS
         if SETTINGS_SCHEMA[k]["type"] == "text" and k != "miniapp_accent"
     ]
-    assert len(text_keys) == 12
+    assert len(text_keys) == 19
     for key in text_keys:
         default = SETTINGS_SCHEMA[key]["default"]
         assert isinstance(default, str) and default.strip(), key
@@ -95,6 +129,54 @@ def test_text_keys_have_human_defaults():
     assert SETTINGS_SCHEMA["miniapp_login_button"]["default"] == "Войти через Telegram"
     assert SETTINGS_SCHEMA["miniapp_upload_caption_delegate"]["default"] == "копия сдачи"
     assert SETTINGS_SCHEMA["miniapp_upload_caption_staff"]["default"] == "загружено из приложения"
+
+
+def test_theme_color_handles_have_valid_hex_defaults():
+    """D-04: 3 цветовые ручки (акцент уже покрыт test_accent_and_logo_shape) — дефолт
+    обязан пройти тот же формат `^#rrggbb`, что проверяет `web_theme`/`safe_accent`."""
+    hex6 = re.compile(r"^#[0-9A-Fa-f]{6}$")
+    for key in THEME_COLOR_KEYS:
+        entry = SETTINGS_SCHEMA[key]
+        assert entry["type"] == "text", key
+        assert hex6.match(entry["default"]), key
+
+
+def test_theme_enum_handles_default_is_in_options():
+    for key in THEME_ENUM_KEYS:
+        entry = SETTINGS_SCHEMA[key]
+        assert entry["type"] == "enum", key
+        assert entry["default"] in entry["options"], key
+
+
+def test_theme_preset_options_are_bluebook_youlead_custom():
+    preset = SETTINGS_SCHEMA["miniapp_theme_preset"]
+    assert preset["options"] == ["bluebook", "youlead", "custom"]
+    assert preset["default"] == "bluebook"
+
+
+def test_asset_slot_keys_default_to_empty_photo():
+    """D-08/D-15/D-16: слоты ассетов оформления пусты по умолчанию — реальные дефолтные
+    картинки заводит план 19.1-07, здесь только пустые слоты (T-19.1 boundary)."""
+    asset_keys = [
+        "miniapp_logo_dark", "miniapp_cover", "miniapp_cover_dark",
+        "miniapp_sticker_empty", "miniapp_sticker_success", "miniapp_sticker_error",
+        "miniapp_sticker_top1", "miniapp_coin_icon",
+    ]
+    for key in asset_keys:
+        entry = SETTINGS_SCHEMA[key]
+        assert entry["type"] == "photo", key
+        assert entry["default"] is None, key
+
+
+def test_admin_empty_state_keys_removed_hardcode():
+    """D-18: тексты пустых состояний менеджера читаются из реестра, а не из литералов
+    в роутерах (см. `grep -rn "empty_text\": \\"" miniapp/routers/` в verification плана)."""
+    assert SETTINGS_SCHEMA["miniapp_empty_admin_tasks"]["default"] == "Заданий пока нет."
+    assert SETTINGS_SCHEMA["miniapp_empty_admin_tasks_archived"]["default"] == "Архив пуст."
+    assert (
+        SETTINGS_SCHEMA["miniapp_empty_admin_coins"]["default"]
+        == "Ручных операций пока не было."
+    )
 
 
 def test_miniapp_keys_not_in_settings_fields_or_groups():

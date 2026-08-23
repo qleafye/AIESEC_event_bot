@@ -1654,6 +1654,123 @@ SETTINGS_SCHEMA = {
         "prompt": "Подпись файла, загруженного менеджером из приложения (например: «загружено из приложения»).",
         "default": "загружено из приложения",
     },
+
+    # ── Phase 19.1 Plan 02 (D-03/D-04/D-07/D-08/D-15/D-16/D-18): ручки пресетов оформления —
+    # web_theme.py разрешает их в CSS-переменные, «🎨 Оформление» бота их выставляет (план
+    # 19.1-07). miniapp_accent НЕ дублируется новым ключом — существующий ключ остаётся
+    # «акцентом» ради миграции уже настроенных стендов (UI-SPEC).
+    "miniapp_theme_preset": {
+        "type": "enum", "group": "miniapp", "label": "🎭 Пресет оформления",
+        "options": ["bluebook", "youlead", "custom"], "prompt": None, "default": "bluebook",
+    },
+    "miniapp_theme_secondary": {
+        "type": "text", "group": "miniapp", "label": "🎨 Вторичный цвет",
+        "prompt": (
+            "Вторичный цвет оформления в формате HEX: решётка и шесть символов после неё, "
+            "например #F48924."
+        ),
+        "default": "#F48924",
+    },
+    "miniapp_theme_bg": {
+        "type": "text", "group": "miniapp", "label": "🎨 Цвет фона",
+        "prompt": (
+            "Цвет фона приложения в формате HEX: решётка и шесть символов после неё, "
+            "например #F3F4F7."
+        ),
+        "default": "#F3F4F7",
+    },
+    "miniapp_theme_heading_font": {
+        "type": "enum", "group": "miniapp", "label": "🔤 Шрифт заголовков",
+        "options": ["raleway", "raleway_italic", "lato"], "prompt": None, "default": "raleway",
+    },
+    "miniapp_theme_playful_tone": {
+        "type": "enum", "group": "miniapp", "label": "😄 Игривый тон текстов",
+        "options": ["on", "off"], "prompt": None, "default": "off",
+    },
+    "miniapp_theme_pattern_enabled": {
+        "type": "enum", "group": "miniapp", "label": "✨ Бренд-паттерн на фоне",
+        "options": ["on", "off"], "prompt": None, "default": "off",
+    },
+    "miniapp_logo_dark": {
+        "type": "photo", "group": "miniapp", "label": "🌙 Лого для тёмной темы",
+        "prompt": (
+            "Отправьте фото логотипа для тёмной темы — необязательно, без него используется "
+            "обычное лого."
+        ),
+        "default": None,
+    },
+    "miniapp_cover": {
+        "type": "photo", "group": "miniapp", "label": "🖼 Обложка приложения",
+        "prompt": "Отправьте фото обложки — она появится на приветственном экране.",
+        "default": None,
+    },
+    "miniapp_cover_dark": {
+        "type": "photo", "group": "miniapp", "label": "🌙 Обложка для тёмной темы",
+        "prompt": (
+            "Отправьте фото обложки для тёмной темы — необязательно, без него используется "
+            "обычная обложка."
+        ),
+        "default": None,
+    },
+    "miniapp_sticker_empty": {
+        "type": "photo", "group": "miniapp", "label": "🖼 Стикер «пусто»",
+        "prompt": "Отправьте стикер/картинку для пустых списков (заданий, монет и т.п.).",
+        "default": None,
+    },
+    "miniapp_sticker_success": {
+        "type": "photo", "group": "miniapp", "label": "🖼 Стикер «успех»",
+        "prompt": "Отправьте стикер/картинку для экрана успеха (сдача принята и т.п.).",
+        "default": None,
+    },
+    "miniapp_sticker_error": {
+        "type": "photo", "group": "miniapp", "label": "🖼 Стикер «ошибка»",
+        "prompt": "Отправьте стикер/картинку для экрана ошибки.",
+        "default": None,
+    },
+    "miniapp_sticker_top1": {
+        "type": "photo", "group": "miniapp", "label": "🖼 Стикер «топ-1»",
+        "prompt": "Отправьте стикер/картинку для делегата на первом месте рейтинга.",
+        "default": None,
+    },
+    "miniapp_coin_icon": {
+        "type": "photo", "group": "miniapp", "label": "🪙 Своя иконка монеты",
+        "prompt": (
+            "Отправьте свою иконку монеты — необязательно, без неё используется иконка "
+            "пресета."
+        ),
+        "default": None,
+    },
+    "miniapp_onboarding_text": {
+        "type": "text", "group": "miniapp", "label": "👋 Текст приветственного экрана",
+        "prompt": (
+            "Текст, который делегат видит при первом открытии приложения (например: "
+            "«Привет! Делаешь задания — получаешь монеты.»)."
+        ),
+        "default": "Привет! Делаешь задания — получаешь монеты.",
+    },
+    "miniapp_onboarding_cta": {
+        "type": "text", "group": "miniapp", "label": "👋 Кнопка приветственного экрана",
+        "prompt": "Подпись кнопки на приветственном экране (например: «Погнали»).",
+        "default": "Погнали",
+    },
+    "miniapp_empty_admin_tasks": {
+        "type": "text", "group": "miniapp", "label": "🗂 Пустой список активных заданий",
+        "prompt": "Текст, когда у менеджера ещё нет активных заданий (например: «Заданий пока нет.»).",
+        "default": "Заданий пока нет.",
+    },
+    "miniapp_empty_admin_tasks_archived": {
+        "type": "text", "group": "miniapp", "label": "🗂 Пустой архив заданий",
+        "prompt": "Текст, когда архив заданий менеджера пуст (например: «Архив пуст.»).",
+        "default": "Архив пуст.",
+    },
+    "miniapp_empty_admin_coins": {
+        "type": "text", "group": "miniapp", "label": "🪙 Пустой журнал монет",
+        "prompt": (
+            "Текст, когда журнал ручных операций с монетами пуст (например: «Ручных операций "
+            "пока не было.»)."
+        ),
+        "default": "Ручных операций пока не было.",
+    },
 }
 
 
