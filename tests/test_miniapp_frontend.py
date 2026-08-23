@@ -17,6 +17,7 @@ from __future__ import annotations
 import re
 from pathlib import Path
 
+import pytest
 from starlette.testclient import TestClient
 
 from miniapp.main import create_app
@@ -278,7 +279,9 @@ def test_api_js_handles_all_error_branches_without_retry():
     assert "export function esc" in text
 
 
-_JS_COMMENT = re.compile(r"/\*.*?\*/|^\s*//.*$|(?<=[;{}])\s*//.*$", re.S | re.M)
+# `[^\n]*`, а не `.*`: с re.S точка ела бы всё до конца файла после первого `//` — и
+# сторож innerHTML проверял бы пустую строку (так и было в 19-02, поймано в 19-03).
+_JS_COMMENT = re.compile(r"/\*.*?\*/|^\s*//[^\n]*$|(?<=[;{}])[ \t]*//[^\n]*$", re.S | re.M)
 
 
 def _js_without_comments(path: Path) -> str:
@@ -291,3 +294,81 @@ def test_no_innerhtml_with_interpolation_in_core():
         text = _js_without_comments(path)
         assert not pattern.search(text), f"innerHTML с интерполяцией в {path.name}"
         assert "innerHTML" not in text, f"innerHTML в {path.name} — только textContent/esc()"
+
+
+# ── экраны делегата (план 19-03): tasks / card / profile / coins / leaderboard ──────────
+
+DELEGATE_SCREENS = ["tasks.js", "card.js", "profile.js", "coins.js", "leaderboard.js"]
+
+# Пути, которые фронт зовёт через api("/...") / api(`/...`): литеральный префикс до `?`
+# или `${` — сверяется с маршрутами приложения (ловит опечатку в пути).
+_API_CALL = re.compile(r"""api\(\s*(["'`])/([^"'`?$]*)""")
+
+
+@pytest.mark.parametrize("name", DELEGATE_SCREENS)
+def test_delegate_screen_exports_render(name):
+    path = SCREENS_DIR / name
+    assert path.is_file(), f"экран {name} не создан"
+    text = _js_without_comments(path)
+    assert re.search(r"export\s+async\s+function\s+render\s*\(root,\s*params,\s*ctx\)", text), name
+    assert "innerHTML" not in text
+    assert "document.write" not in text
+    assert not _HEX_OR_RGB_COLOR.findall(text), f"литеральный цвет в {name}"
+    assert "https://" not in text and "http://" not in text, f"внешний URL в {name}"
+
+
+def _app_api_route_patterns() -> list[re.Pattern]:
+    """Маршруты /app/api/* из ALL_ROUTERS с `{param}` -> `[^/]+`."""
+    from miniapp.routers import ALL_ROUTERS
+
+    patterns = []
+    for router in ALL_ROUTERS:
+        for route in router.routes:
+            path = getattr(route, "path", "")
+            if path.startswith("/app/api/"):
+                patterns.append(re.compile("^" + re.sub(r"\{[^}]+\}", "[^/]+", path) + "$"))
+    return patterns
+
+
+def test_every_fetch_path_in_screens_matches_an_app_route():
+    patterns = _app_api_route_patterns()
+    seen = 0
+    for path in SCREENS_DIR.glob("*.js"):
+        text = _js_without_comments(path)
+        for _quote, rel in _API_CALL.findall(text):
+            seen += 1
+            full = "/app/api/" + rel.rstrip("/")
+            # `${...}` в середине пути — хвост после первого `${` уже отрезан регексом:
+            # сверяем как префикс с одним параметром (например /tasks/ -> /tasks/{id}).
+            candidates = [full, full + "/x", full + "x"]
+            assert any(p.match(c) for p in patterns for c in candidates), (
+                f"{path.name}: api('/{rel}') не соответствует ни одному маршруту приложения"
+            )
+    assert seen >= 6  # tasks, tasks/{id}, profile, coins/balance, coins/history, leaderboard
+
+
+def test_screens_use_registry_empty_texts_not_literals():
+    for name in ("tasks.js", "coins.js", "leaderboard.js"):
+        text = _js_without_comments(SCREENS_DIR / name)
+        assert "empty_text" in text, f"{name}: пустое состояние — текстом из реестра"
+
+
+def test_card_screen_main_button_submit_and_back():
+    text = _js_without_comments(SCREENS_DIR / "card.js")
+    assert 'setMainButton("Сдать"' in text
+    assert "#/submit/" in text
+    assert "/app/api/file/" in text and '"error"' in text  # обложка деградирует без ошибки
+
+
+def test_profile_screen_opens_deeplink_via_telegram():
+    text = _js_without_comments(SCREENS_DIR / "profile.js")
+    assert "openTelegramLink" in text and "edit_deeplink" in text
+    assert "Изменить — в боте" in text
+
+
+def test_show_more_pagination_in_lists():
+    for name in ("tasks.js", "coins.js"):
+        text = _js_without_comments(SCREENS_DIR / name)
+        assert "Показать ещё" in text and "offset" in text, name
+    text = _js_without_comments(SCREENS_DIR / "leaderboard.js")
+    assert "limit=50" in text and "board.me" in text
