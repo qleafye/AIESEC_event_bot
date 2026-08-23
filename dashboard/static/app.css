@@ -38,7 +38,9 @@
 
 * { box-sizing: border-box; }
 
-html { -webkit-text-size-adjust: 100%; }
+/* D-06: дашборд в браузере всегда светлый — пояс поверх meta[color-scheme=light] в base.html,
+   чтобы браузерный хром (скроллбар, контролы форм) не темнел даже при будущей регрессии. */
+html { -webkit-text-size-adjust: 100%; color-scheme: light; }
 
 body {
   background: var(--bg);
@@ -117,13 +119,10 @@ a, button {
 
 .brand img { height: 28px; width: auto; display: block; }
 
-/* Wordmark нельзя перекрашивать (BlueBook) — два файла, переключение через media. */
+/* Wordmark нельзя перекрашивать (BlueBook). Дашборд всегда светлый (D-06) — тёмный вариант
+   лого (.brand-dark) остаётся в разметке про запас (совместимость шаблонов), но не
+   показывается: без переключения по системной теме дашборд не потемнеет никогда. */
 .brand .brand-dark { display: none; }
-
-@media (prefers-color-scheme: dark) {
-  .brand .brand-light { display: none; }
-  .brand .brand-dark { display: block; }
-}
 
 .event-logo-slot { min-width: 0; min-height: 28px; }   /* слот под лого мероприятия, Phase 19 */
 

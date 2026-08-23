@@ -162,14 +162,21 @@ def test_tokens_css_has_accent_variable():
     assert text.count("--accent") >= 1
 
 
+_TOKENS_CSS_ALLOWED_SELECTORS = {
+    ":root {",
+    ':root[data-theme="dark"] {',
+    ':root[data-motion="off"] {',
+}
+
+
 def test_tokens_css_only_defines_root_and_dark_scheme_selectors():
     text = TOKENS_CSS.read_text(encoding="utf-8")
-    # Ни одного селектора компонента — только :root и @media (prefers-color-scheme: dark).
+    # Ни одного селектора компонента — только :root, его атрибут-ветки (тема/motion) и @media.
     for line in text.splitlines():
         stripped = line.strip()
         if stripped.endswith("{"):
-            assert stripped == ":root {" or stripped.startswith("@media"), (
-                f"unexpected component selector in tokens.css: {stripped!r}"
+            assert stripped in _TOKENS_CSS_ALLOWED_SELECTORS or stripped.startswith("@media"), (
+                f"в tokens.css не должно быть селекторов компонентов: {stripped!r}"
             )
 
 
