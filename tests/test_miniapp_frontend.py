@@ -532,3 +532,47 @@ def test_admin_tasks_css_classes_exist_on_tokens():
         assert cls in css, cls
     toggles = css[css.index(".toggle"):]
     assert "var(--accent)" in toggles and "var(--border)" in toggles
+
+
+# ── экраны монет вручную и настроек-лайт (план 19-07): admin_coins.js / settings.js ────
+
+COINS_SETTINGS_SCREENS = ["admin_coins.js", "settings.js"]
+
+
+@pytest.mark.parametrize("name", COINS_SETTINGS_SCREENS)
+def test_coins_settings_screen_exports_render_without_innerhtml_or_colors(name):
+    path = SCREENS_DIR / name
+    assert path.is_file(), f"экран {name} не создан"
+    text = _js_without_comments(path)
+    assert re.search(r"export\s+async\s+function\s+render\s*\(root,\s*params,\s*ctx\)", text), name
+    assert "innerHTML" not in text and "document.write" not in text
+    assert not _HEX_OR_RGB_COLOR.findall(text), f"литеральный цвет в {name}"
+    assert "https://" not in text and "http://" not in text, f"внешний URL в {name}"
+
+
+def test_admin_coins_screen_has_confirm_step_before_charging():
+    text = _js_without_comments(SCREENS_DIR / "admin_coins.js")
+    # Поиск получателя, quick-pick сумм из реестра, обязательная причина.
+    assert "/admin/users/search?q=" in text
+    assert "/admin/coins/presets" in text
+    assert "Причина обязательна" in text
+    # Шаг подтверждения «кому · сколько · за что» — отдельный экран перед отправкой.
+    assert "Кому:" in text and "Сколько:" in text and "За что:" in text
+    assert 'api("/admin/coins", { method: "POST"' in text
+    # Журнал — постранично, «Показать ещё».
+    assert "/admin/coins?offset=" in text and "Показать ещё" in text
+
+
+def test_settings_screen_toggles_in_one_tap_and_warns_on_self_disable():
+    text = _js_without_comments(SCREENS_DIR / "settings.js")
+    assert 'api("/admin/settings")' in text
+    assert 'api("/admin/settings", { method: "POST"' in text
+    # Тумблеры, способные выключить приложение у всех, — отдельным блоком с предупреждением.
+    assert "miniapp_enabled" in text and "miniapp_staff_only" in text
+    assert "спрячет приложение" in text
+
+
+def test_coins_settings_css_classes_exist_on_tokens():
+    css = (MINIAPP_STATIC / "app.css").read_text(encoding="utf-8")
+    for cls in (".search-result", ".check-row", ".danger-settings"):
+        assert cls in css, cls
