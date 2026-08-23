@@ -547,10 +547,9 @@ def _value_picker_kb(field: str, options: list[str], page: int,
     return InlineKeyboardMarkup(inline_keyboard=rows)
 
 # Human labels for payment_status values (shown in the filter summary / value picker).
-_PAYMENT_STATUS_LABELS = {
-    "not_paid": "Не оплатил", "overdue": "Просрочил",
-    "receipt_sent": "Чек на проверке", "paid": "Оплатил",
-}
+# Phase 19 (Mini App): словарь переехал в корневой `reg_labels.py` — профиль Mini App
+# показывает тот же статус оплаты теми же словами.
+from reg_labels import PAYMENT_STATUS_LABELS as _PAYMENT_STATUS_LABELS  # noqa: E402
 
 
 def _filter_summary(filters: list[dict]) -> str:

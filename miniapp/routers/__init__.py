@@ -13,9 +13,20 @@
 Защищённые (dependency `principal`), префикс /app/api:
   GET  /app/api/me                 -> {telegram_id, via, caps[], city, is_delegate, is_staff,
                                        sections{}, accent, event_name, logo_file_id, bot_username}
-  Делегат (планы 19-03/19-04): /app/api/tasks, /app/api/tasks/{id}, /app/api/profile,
-      /app/api/coins/balance, /app/api/coins/history, /app/api/leaderboard,
-      POST /app/api/submissions, GET /app/api/file/{file_id}
+  Делегат (план 19-03, все — `delegate_gate` + `require_section`):
+  GET  /app/api/tasks?offset&limit   -> {items[{id,title,category,category_label,coins,deadline_at,
+                                       deadline_short,status,attempt,overdue}], total, limit, offset}
+                                       status: new|pending|approved|rejected; limit <= 50, дефолт 25
+  GET  /app/api/tasks/{id}         -> задание + card_text, proof_hint, photo_file_id, status,
+                                       attempt, can_submit; 404 {"reason":"task_not_found"} и для архивных
+  GET  /app/api/profile            -> {full_name, username, fields[{key,label,value}], status,
+                                       status_label, payment_status, payment_status_label,
+                                       edit_deeplink, edit_hint}
+  GET  /app/api/coins/balance      -> {balance, rank|null, participants}
+  GET  /app/api/coins/history?offset&limit -> {items[{delta,reason,source,source_label,created_at}],
+                                       total, limit, offset}
+  GET  /app/api/leaderboard?limit  -> {items[{rank,name,balance,is_me}], me{rank,balance}, total}; limit <= 50
+  Делегат (план 19-04): POST /app/api/submissions, GET /app/api/file/{file_id}
   Общий (план 19-04): POST /app/api/uploads — dependency `upload_actor` (делегат ИЛИ moderate_game)
   Менеджер (планы 19-05..19-07): /app/api/review/next, POST /app/api/review/{sid}/approve|reject,
       /app/api/stats/game, /app/api/admin/tasks*, /app/api/admin/coins*, /app/api/admin/settings
@@ -36,10 +47,11 @@
 """
 from __future__ import annotations
 
-from miniapp.routers import page
+from miniapp.routers import page, profile
 
 ALL_ROUTERS = [
     page.router,
+    profile.router,
 ]
 
 __all__ = ["ALL_ROUTERS"]
