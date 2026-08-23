@@ -657,29 +657,39 @@ def test_task_edit_screen_point_edits_confirmations_and_wizard():
     text = _js_without_comments(SCREENS_DIR / "task_edit.js")
     # Два режима на одном экране.
     assert 'params.id === "new"' in text
-    # Режим «правка»: превью + отдельные действия, каждое — один PATCH.
-    for label in ("✏️ Название", "✏️ Описание", "💰 Монеты", "📅 Дедлайн", "📷 Добавить фото", "🗄 В архив", "↩️ Вернуть", "🗑 Удалить"):
-        assert label in text, label
-    assert 'method: "PATCH"' in text and "card.card_text" in text and "/app/api/file/" in text
+    # Режим «правка»: точечные правки — плоский список (D-11), «подпись — значение —
+    # карандаш» (icon("pen-line")), без эмодзи-иконок (D-13, план 19.1-06).
+    for label in ("Название", "Описание", "Монеты", "Дедлайн", "Обложка"):
+        assert f'title: "{label}"' in text, label
+    assert 'icon("pen-line")' in text and 'icon("image")' in text and 'icon("archive")' in text
+    assert 'icon("rotate-ccw")' in text and 'icon("trash-2")' in text
+    assert 'method: "PATCH"' in text and "card.text" in text and "/app/api/file/" in text
+    # Превью «как видит делегат» — та же вёрстка, что у карточки делегата (card.js, план
+    # 19.1-05): структурные поля, не card_text-блоб.
+    assert "card.category_label" in text and "card.deadline_display" in text
     # Дедлайн — пресеты с сервера + своя дата с примером формата в подсказке.
     assert "deadline_presets" in text and "deadline_example" in text and "ДД.ММ.ГГГГ ЧЧ:ММ" in text
     # Фото: размер проверяется до отправки, текст из реестра; затем PATCH с part_token.
     assert text.index("file.size > limits.photo_max_bytes") < text.index('api("/uploads", {')
     assert "too_large_text" in text and "part_token: up.part_token" in text
-    # Двухшаговое подтверждение архивации и удаления с описанием последствий.
+    # Двухшаговое подтверждение архивации и удаления с описанием последствий (формулировки
+    # последствий — не переписаны, только кнопки лишились эмодзи-префикса).
     assert "confirm-box" in text
-    assert "🗄 Да, в архив" in text and "делегаты перестанут его видеть" in text
-    assert "🗑 Да, удалить" in text and "удалено навсегда" in text
+    assert "Да, в архив" in text and "делегаты перестанут его видеть" in text
+    assert "Да, удалить" in text and "удалено навсегда" in text
     # Удаление недоступно при сдачах — с объяснением, не молча.
     assert "disabled: !card.can_delete" in text and "cannot_delete_text" in text
-    # Создание: категория/типы/город — кнопки и чекбоксы с подписями из /options; кодов нет.
+    # Создание: категория/типы/город — кнопки и чекбоксы сеткой с подписями из /options; кодов нет.
     assert 'api("/admin/tasks/options")' in text
     assert 'type: "checkbox"' in text and "options.categories" in text and "options.cities" in text
     assert "city_choice" in text and "bound_city_label" in text
-    # ("photo" как kind ответа /uploads — протокол, не подпись; типы подтверждения — по "pdf")
-    for code in ('"Light"', '"Medium"', '"Hard"', '"pdf"', '"link"', '"msk"', '"spb"'):
+    # Человеческие подписи категорий/городов не хардкодятся (коды — не подписи).
+    for code in ('"Light"', '"Medium"', '"Hard"', '"msk"', '"spb"'):
         assert code not in text, f"код {code} не должен быть в экране"
-    assert '"✅ Опубликовать"' in text and 'api("/admin/tasks", {' in text
+    # Исключение: код-имя иконки типа подтверждения ("pdf"/"link" — тот же приём, что и в
+    # card.js, план 19.1-05) — техническая карта код -> имя иконки, не подпись человеку.
+    assert 'pdf: "file-text"' in text and 'link: "link"' in text
+    assert '"Опубликовать"' in text and 'api("/admin/tasks", {' in text
     # Ошибки сервера — человеческим текстом из payload.text.
     assert "err.payload.text" in text
     # Архив/возврат/удаление — литеральные пути (сторож путей их сверяет с маршрутами).
