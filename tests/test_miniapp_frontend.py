@@ -325,6 +325,45 @@ def test_no_innerhtml_with_interpolation_in_core():
         assert "innerHTML" not in text, f"innerHTML в {path.name} — только textContent/esc()"
 
 
+# ── motion.js: три уровня, конфетти, докрутка, хаптика (план 19.1-04, D-17) ─────────────
+# Логика проверяется статически (в проекте нет запускалки JS-тестов) — осознанный предел
+# плана, визуально проверяется в 19.1-08.
+
+MOTION_JS = MINIAPP_STATIC / "js" / "motion.js"
+
+
+def test_motion_js_exports_five_helpers():
+    text = _js_without_comments(MOTION_JS)
+    for name in ("resolveMotionTier", "applyMotionTier", "confetti", "countUp", "haptic"):
+        assert re.search(rf"export\s+(async\s+)?function\s+{name}\s*\(", text), name
+
+
+def test_motion_reduced_motion_checked_before_battery_and_cores():
+    text = MOTION_JS.read_text(encoding="utf-8")
+    reduced_pos = text.index("prefers-reduced-motion")
+    assert reduced_pos < text.index("getBattery")
+    assert reduced_pos < text.index("hardwareConcurrency")
+
+
+def test_motion_cores_check_only_paired_with_android_platform():
+    text = _js_without_comments(MOTION_JS)
+    idx = text.index("hardwareConcurrency")
+    window = text[max(0, idx - 200):idx]
+    assert 'platform === "android"' in window
+
+
+def test_motion_get_battery_checked_for_existence_and_wrapped_in_catch():
+    text = _js_without_comments(MOTION_JS)
+    assert "typeof navigator.getBattery" in text
+    assert ".catch(" in text
+
+
+def test_motion_haptic_independent_of_motion_tier():
+    text = _js_without_comments(MOTION_JS)
+    haptic_fn = text[text.index("export function haptic"):]
+    assert "dataset.motion" not in haptic_fn  # хаптика не гейтится уровнем (D-17)
+
+
 # ── экраны делегата (план 19-03): tasks / card / profile / coins / leaderboard ──────────
 
 DELEGATE_SCREENS = ["tasks.js", "card.js", "profile.js", "coins.js", "leaderboard.js"]
