@@ -217,7 +217,10 @@ def test_menu_order_and_adjust_unchanged(tmp_path):
     _db_ready(tmp_path)
     kb = asyncio.run(get_main_menu_kb())
     texts = _menu_texts(kb)
-    expected_order = [label for _key, label in MENU_BUTTONS]
+    # menu_miniapp рисуется только при miniapp_enabled=on И непустом DASHBOARD_PUBLIC_URL
+    # (keyboards/builders.py, Phase 19 D-10); здесь оба гейта в дефолте выключены, отсутствие
+    # кнопки — ожидаемое поведение, гейт проверяется собственными тестами 19-08.
+    expected_order = [label for key, label in MENU_BUTTONS if key != "menu_miniapp"]
     assert texts == expected_order
 
 
