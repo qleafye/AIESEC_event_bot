@@ -4,7 +4,7 @@ import logging
 from datetime import datetime
 from aiogram import Router, F, types, Bot
 from aiogram.filters import Command
-from aiogram.types import FSInputFile, InlineKeyboardMarkup, InlineKeyboardButton
+from aiogram.types import FSInputFile, InlineKeyboardMarkup, InlineKeyboardButton, WebAppInfo
 from aiogram.fsm.context import FSMContext
 from database.db import (
     get_user,
@@ -1112,5 +1112,31 @@ async def process_question(message: types.Message, state: FSMContext, bot: Bot):
         logger.warning("No admins configured to receive questions")
         await message.answer("Администраторы не настроены.", reply_markup=await get_main_menu_kb(message.from_user.id))
 
-
     await state.clear()
+
+
+# ── Phase 19 (08, D-10): точка входа «📱 Приложение» — reply-кнопка ТЕКСТОВАЯ (Pitfall 1:
+# KeyboardButton(web_app=...) в reply-клавиатуре даёт simple web view БЕЗ initData, делегат не
+# аутентифицируется). Хендлер шлёт сообщение с inline web_app-кнопкой — только там initData
+# полный. Полностью вне CapabilityMiddleware (кнопка делегатская, права не нужны).
+@router.message(F.text == "📱 Приложение")
+async def open_miniapp_button(message: types.Message):
+    try:
+        enabled = await get_setting_typed("miniapp_enabled") == "on"
+        url = config.DASHBOARD_PUBLIC_URL
+        # T-19-54/Pitfall 10: выключенный тумблер ИЛИ пустой адрес — короткое человеческое
+        # объяснение, что приложение сейчас недоступно, без падения хендлера.
+        if not (enabled and url):
+            await message.answer(await get_setting_typed("miniapp_disabled_text"))
+            return
+        kb = InlineKeyboardMarkup(inline_keyboard=[[
+            InlineKeyboardButton(
+                text=await get_setting_typed("miniapp_open_button"),
+                web_app=WebAppInfo(url=url.rstrip("/") + "/app"),
+            ),
+        ]])
+        await message.answer(await get_setting_typed("miniapp_open_text"), reply_markup=kb)
+    except Exception as e:
+        # Fail-soft: любая ошибка построения кнопки не должна ронять обработчик.
+        logger.error(f"open_miniapp_button: failed for {message.from_user.id}: {e}")
+        await message.answer(await get_setting_typed("miniapp_disabled_text"))
