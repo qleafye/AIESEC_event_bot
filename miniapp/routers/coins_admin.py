@@ -218,7 +218,7 @@ async def coins_journal(
         "total": total,
         "offset": off,
         "limit": lim,
-        "empty_text": "Ручных операций пока не было.",
+        "empty_text": await get_setting_typed("miniapp_empty_admin_coins"),
     }
 
 
