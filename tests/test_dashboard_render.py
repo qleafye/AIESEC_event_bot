@@ -182,12 +182,19 @@ def test_no_hardcoded_colors_outside_tokens_css():
 
 # ── no external CDNs except Login Widget ────────────────────────────────────────────────
 
+_ALLOWED_EXTERNAL_HOSTS = (
+    "telegram.org/js/telegram-widget.js",  # Login Widget — единственный внешний скрипт
+    "fonts.googleapis.com",                # шрифты бренда Lato + Raleway (решение владельца)
+    "fonts.gstatic.com",
+)
+
+
 def test_no_external_cdn_except_telegram_widget_on_login_page():
     for path in TEMPLATES_DIR.glob("*.html"):
         text = path.read_text(encoding="utf-8")
         urls = re.findall(r"https?://[^\s\"'>]+", text)
         for url in urls:
-            assert "telegram.org/js/telegram-widget.js" in url, (
+            assert any(host in url for host in _ALLOWED_EXTERNAL_HOSTS), (
                 f"unexpected external URL in {path.name}: {url}"
             )
 
