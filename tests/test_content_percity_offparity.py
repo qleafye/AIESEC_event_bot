@@ -208,7 +208,12 @@ def test_menu_buttons_unaffected_by_city_overrides(tmp_path):
     after = asyncio.run(get_main_menu_kb(SPB_DELEGATE_ID))
     after_texts = [b.text for row in after.keyboard for b in row]
     assert after_texts == before_texts
-    assert after_texts == [label for _key, label in MENU_BUTTONS], "должны быть ВСЕ 9 кнопок (дефолт on)"
+    # menu_miniapp рисуется только при miniapp_enabled=on И непустом DASHBOARD_PUBLIC_URL
+    # (keyboards/builders.py, Phase 19 D-10); здесь оба гейта в дефолте выключены.
+    expected_texts = [label for key, label in MENU_BUTTONS if key != "menu_miniapp"]
+    assert after_texts == expected_texts, (
+        "должны быть ВСЕ кнопки меню (дефолт on), кроме «📱 Приложение» — Mini App выключен"
+    )
 
 
 # ── Поверхность 2: контакты/инфо-экраны user_actions.py ────────────────────────────────
