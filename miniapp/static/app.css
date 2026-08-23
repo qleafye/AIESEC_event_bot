@@ -435,3 +435,27 @@ a { color: var(--accent-text); }
 .check-row { cursor: pointer; }
 .check-row:active { background: var(--surface-alt); }
 .danger-settings { border-color: var(--warn); }
+
+/* ── motion (план 19.1-04, D-17): живой паттерн hero — дрейф/пульсация прозрачности,
+   низкая амплитуда. Включён ТОЛЬКО на motion "full" И когда пресет/кастом разрешил паттерн
+   (класс body.pattern-enabled, ставит app.js из /app/api/me pattern_enabled). Сам элемент
+   .hero-pattern появляется в разметке хаба (план 19.1-04, задача 3) — здесь только гейтинг,
+   на micro/off и без разрешения пресета — неподвижное пятно (правило само по себе безвредно
+   без .hero, которого пока нет в вёрстке). */
+.hero-pattern {
+  position: absolute;
+  inset: -20% -20% auto auto;
+  width: 140px;
+  height: 140px;
+  border-radius: 50%;
+  background: var(--on-accent);
+  opacity: .12;
+  pointer-events: none;
+}
+:root[data-motion="full"] body.pattern-enabled .hero-pattern {
+  animation: hero-pattern-drift 10s var(--ease) infinite;
+}
+@keyframes hero-pattern-drift {
+  0%, 100% { opacity: .1; transform: translateY(0); }
+  50% { opacity: .2; transform: translateY(-6px); }
+}
