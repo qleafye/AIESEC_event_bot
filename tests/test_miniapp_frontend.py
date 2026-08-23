@@ -325,6 +325,63 @@ def test_no_innerhtml_with_interpolation_in_core():
         assert "innerHTML" not in text, f"innerHTML в {path.name} — только textContent/esc()"
 
 
+# ── навигация: три раскладки, переключаемые NAV_LAYOUT (план 19.1-04, D-10) ─────────────
+
+def test_nav_layout_constant_defaults_to_hub_and_is_written_to_dataset():
+    text = APP_JS.read_text(encoding="utf-8")
+    m = re.search(r'const NAV_LAYOUT = "(tabbar|toptabs|hub)";', text)
+    assert m, "NAV_LAYOUT — одна константа со значением из tabbar/toptabs/hub"
+    assert m.group(1) == "hub"  # дефолт до голосования команды (D-10, UI-SPEC)
+    assert "body.dataset.nav = NAV_LAYOUT;" in text
+
+
+def test_three_nav_layouts_present_in_css():
+    css = (MINIAPP_STATIC / "app.css").read_text(encoding="utf-8")
+    for value in ("tabbar", "toptabs", "hub"):
+        assert f'body[data-nav="{value}"]' in css, value
+
+
+def test_old_pill_nav_removed_from_css():
+    css = (MINIAPP_STATIC / "app.css").read_text(encoding="utf-8")
+    assert 'class="nav"' not in css
+    assert ".nav a" not in css
+    assert ".nav {" not in css
+
+
+EXPECTED_NAV = [
+    {"hash": "#/tasks", "section": "tasks", "delegate": True},
+    {"hash": "#/coins", "section": "coins", "delegate": True},
+    {"hash": "#/leaderboard", "section": "leaderboard", "delegate": True},
+    {"hash": "#/profile", "section": "profile", "delegate": True},
+    {"hash": "#/review", "section": "review", "cap": "moderate_game"},
+    {"hash": "#/admin-tasks", "section": "admin_tasks", "cap": "moderate_game"},
+    {"hash": "#/admin-coins", "section": "coins", "cap": "moderate_game", "staffOnly": True},
+    {"hash": "#/stats", "section": "stats", "cap": "stats"},
+    {"hash": "#/settings", "section": "settings", "cap": "settings"},
+]
+
+
+def _nav_from_app_js() -> list[dict]:
+    text = APP_JS.read_text(encoding="utf-8")
+    block = text[text.index("export const NAV = ["):]
+    block = block[:block.index("\n];") + 1]
+    items = []
+    for row in re.finditer(r"\{([^{}]*)\}", block):
+        fields: dict = {}
+        for pair in re.finditer(r'(\w+):\s*("([^"]*)"|true)', row.group(1)):
+            key = pair.group(1)
+            fields[key] = pair.group(3) if pair.group(3) is not None else True
+        items.append(fields)
+    return items
+
+
+def test_nav_array_composition_unchanged_by_navigation_layout_plan():
+    """D-10: смена NAV_LAYOUT/добавление раскладок не должно тихо тронуть состав или права
+    NAV — сверка с составом, зафиксированным до плана 19.1-04 (те же hash/section/cap/
+    delegate/staffOnly, что были в app.js планов 19-02..19-07, см. git)."""
+    assert _nav_from_app_js() == EXPECTED_NAV
+
+
 # ── motion.js: три уровня, конфетти, докрутка, хаптика (план 19.1-04, D-17) ─────────────
 # Логика проверяется статически (в проекте нет запускалки JS-тестов) — осознанный предел
 # плана, визуально проверяется в 19.1-08.

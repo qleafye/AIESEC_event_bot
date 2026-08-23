@@ -13,6 +13,7 @@
 // интерполяцией запрещён (сторожевой тест, T-19-07).
 
 import { api, ApiError, esc, setAuthErrorHandler } from "./api.js";
+import { icon } from "./icons.js";
 import { applyMotionTier } from "./motion.js";
 
 const tg = window.Telegram && window.Telegram.WebApp;
@@ -21,6 +22,13 @@ const body = document.body;
 const ds = body.dataset;
 const screenEl = document.getElementById("screen");
 const navEl = document.getElementById("nav");
+
+// Раскладка навигации менеджера (D-10, голосование команды не закрыто): "tabbar" (A, нижний
+// таб-бар) / "toptabs" (B, верхние табы) / "hub" (C, счётчики на плитках). Правится ОДНА эта
+// строка — все три раскладки уже свёрстаны в app.css (body[data-nav="…"]), смена варианта
+// после голосования не требует правки ни одного экрана.
+const NAV_LAYOUT = "hub";
+body.dataset.nav = NAV_LAYOUT;
 
 // ── таблица маршрутов (один в один с планом фазы; {id} — параметр) ──────────────────────
 export const ROUTES = [
@@ -41,7 +49,7 @@ export const ROUTES = [
 
 // Навигация: вкладка показывается, если раздел включён чекбоксом (miniapp_section_*) И
 // человек имеет к нему доступ: делегатские — при is_delegate, менеджерские — по caps.
-const NAV = [
+export const NAV = [
   { hash: "#/tasks", section: "tasks", delegate: true },
   { hash: "#/coins", section: "coins", delegate: true },
   { hash: "#/leaderboard", section: "leaderboard", delegate: true },
@@ -52,6 +60,20 @@ const NAV = [
   { hash: "#/stats", section: "stats", cap: "stats" },
   { hash: "#/settings", section: "settings", cap: "settings" },
 ];
+
+// Иконки навигации (D-13) по маршруту — общий словарь для таб-бара (раскладка A) и плиток
+// хаба (screens/hub.js), чтобы иконка раздела не расходилась между раскладками.
+export const NAV_ICONS = {
+  "#/tasks": "target",
+  "#/coins": "coins",
+  "#/leaderboard": "trophy",
+  "#/profile": "user",
+  "#/review": "check-circle-2",
+  "#/admin-tasks": "clipboard-list",
+  "#/admin-coins": "wallet",
+  "#/stats": "bar-chart-2",
+  "#/settings": "settings",
+};
 
 const compiled = ROUTES.map(([pattern, module]) => {
   const names = [];
@@ -113,6 +135,10 @@ function applyTheme() {
   }
 }
 
+function backToHistory() {
+  history.back();
+}
+
 function bootstrapTelegram() {
   applyMotionTier(); // до первой отрисовки (D-17); работает и без tg (браузерный fallback D-05)
   if (!tg) return;
@@ -128,7 +154,7 @@ function bootstrapTelegram() {
     tg.onEvent("contentSafeAreaChanged", applySafeArea);
     tg.onEvent("safeAreaChanged", applySafeArea);
   }
-  if (tg.BackButton) tg.BackButton.onClick(() => history.back());
+  if (tg.BackButton) tg.BackButton.onClick(backToHistory);
 }
 
 // ── MainButton: принадлежит текущему экрану ─────────────────────────────────────────────
@@ -221,7 +247,7 @@ export function showState(state, detail) {
 let me = null;
 let sectionLabels = {};
 
-function visibleNav() {
+export function visibleNav() {
   if (!me) return [];
   return NAV.filter((item) => {
     if (!me.sections || !me.sections[item.section]) return false;
@@ -233,19 +259,123 @@ function visibleNav() {
 
 function homeHash() {
   const items = visibleNav();
+  if (NAV_LAYOUT === "hub") return items.length ? "#/hub" : "#/";
   return items.length ? items[0].hash : "#/";
 }
 
-function renderNav(activeHash) {
-  clear(navEl);
-  for (const item of visibleNav()) {
-    const active = activeHash === item.hash || activeHash.startsWith(`${item.hash}/`);
-    navEl.append(h("a", {
+function isActive(activeHash, hash) {
+  return activeHash === hash || activeHash.startsWith(`${hash}/`);
+}
+
+function navLabel(item) {
+  return sectionLabels[item.section] || item.section;
+}
+
+// «Ещё» (раскладка A, nav.html:186-192) — оверлей, не маршрут: закрывается тапом вне листа
+// и Telegram BackButton'ом, на серверную часть никак не влияет.
+let closeOverflowSheet = null;
+
+function closeOverflowSheetIfOpen() {
+  if (closeOverflowSheet) closeOverflowSheet();
+}
+
+function openOverflowSheet(items, activeHash) {
+  closeOverflowSheetIfOpen();
+  const backdrop = h("div", { class: "sheet-backdrop" });
+  const sheet = h("div", { class: "sheet", role: "dialog", "aria-label": "Ещё разделы" });
+  function close() {
+    backdrop.remove();
+    if (tg && tg.BackButton && backHandler) {
+      tg.BackButton.offClick(backHandler);
+      tg.BackButton.onClick(backToHistory);
+      updateBackButton(location.hash);
+    }
+    closeOverflowSheet = null;
+  }
+  for (const item of items) {
+    sheet.append(h("a", {
       href: item.hash,
-      class: active ? "active" : null,
-      text: sectionLabels[item.section] || item.section,
+      class: `sheet-item ${isActive(activeHash, item.hash) ? "active" : ""}`,
+      onClick: close,
+    },
+      icon(NAV_ICONS[item.hash] || "chevron-right"),
+      h("span", { text: navLabel(item) }),
+    ));
+  }
+  backdrop.append(sheet);
+  backdrop.addEventListener("click", (e) => { if (e.target === backdrop) close(); });
+  document.body.append(backdrop);
+
+  let backHandler = null;
+  if (tg && tg.BackButton) {
+    backHandler = close;
+    tg.BackButton.offClick(backToHistory);
+    tg.BackButton.onClick(backHandler);
+    tg.BackButton.show();
+  }
+  closeOverflowSheet = close;
+}
+
+const TABBAR_MAX = 4;
+
+// Раскладка A: нижний таб-бар из максимум четырёх позиций + «Ещё» (nav.html:186-192).
+function renderTabbar(activeHash) {
+  const items = visibleNav();
+  const overflow = items.length > TABBAR_MAX ? items.slice(TABBAR_MAX - 1) : [];
+  const primary = overflow.length ? items.slice(0, TABBAR_MAX - 1) : items;
+  const bar = h("div", { class: "tabbar" });
+  for (const item of primary) {
+    bar.append(h("a", {
+      href: item.hash,
+      class: `tab ${isActive(activeHash, item.hash) ? "on" : ""}`,
+    },
+      icon(NAV_ICONS[item.hash] || "chevron-right"),
+      h("span", { text: navLabel(item) }),
+    ));
+  }
+  if (overflow.length) {
+    const overflowActive = overflow.some((item) => isActive(activeHash, item.hash));
+    bar.append(h("button", {
+      type: "button",
+      class: `tab more ${overflowActive ? "on" : ""}`,
+      onClick: () => openOverflowSheet(overflow, activeHash),
+    },
+      icon("more-horizontal"),
+      h("span", { text: "Ещё" }),
+    ));
+  }
+  navEl.append(bar);
+}
+
+// Раскладка B: верхние табы, активная скроллится в зону видимости (nav.html:196-199).
+function renderToptabs(activeHash) {
+  const bar = h("div", { class: "toptabs" });
+  for (const item of visibleNav()) {
+    bar.append(h("a", {
+      href: item.hash,
+      class: isActive(activeHash, item.hash) ? "on" : null,
+      text: navLabel(item),
     }));
   }
+  navEl.append(bar);
+  const activeEl = bar.querySelector(".on");
+  if (activeEl) {
+    activeEl.scrollIntoView({
+      behavior: root.dataset.motion === "off" ? "auto" : "smooth",
+      inline: "center",
+      block: "nearest",
+    });
+  }
+}
+
+// Диспетчер раскладки (D-10) — единственное место, зависящее от NAV_LAYOUT; источник пунктов
+// у всех трёх раскладок один и тот же — visibleNav() поверх NAV и прав.
+function renderNav(activeHash) {
+  clear(navEl);
+  closeOverflowSheetIfOpen();
+  if (NAV_LAYOUT === "tabbar") renderTabbar(activeHash);
+  else if (NAV_LAYOUT === "toptabs") renderToptabs(activeHash);
+  // "hub" (C) — панель навигации не рисуется вовсе: разделы живут плитками на #/hub.
 }
 
 // ── роутер ───────────────────────────────────────────────────────────────────────────────
