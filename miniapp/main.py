@@ -17,16 +17,20 @@ Mini App в `<iframe>` на `https://web.telegram.org`, поэтому отве�
 живым, чтобы контейнер не перезапускался по кругу.
 
 `/docs`/`/openapi.json` отключены (T-19-10) — приложение смотрит в базу с ПД.
-Статика и Jinja-оболочка — план 19-02; фабрика обязана работать без каталога `static/`.
+Статика монтируется на `/app/static` только при наличии каталога — фабрика обязана работать
+без него (тесты, урезанный образ). HTML-маршрут `/app` при выключенном тумблере получает
+человеческую страницу 503 (`routers.page.render_disabled_page`), остальные — JSON.
 """
 from __future__ import annotations
 
 import logging
 import sqlite3
+from pathlib import Path
 from typing import Optional
 
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
+from fastapi.staticfiles import StaticFiles
 from starlette.exceptions import HTTPException as StarletteHTTPException
 from starlette.middleware.sessions import SessionMiddleware
 from uvicorn.middleware.proxy_headers import ProxyHeadersMiddleware
@@ -37,10 +41,13 @@ from dashboard.db import read_conn
 from miniapp.config import DashboardConfig, load_miniapp_config
 from miniapp.deps import read_setting
 from miniapp.routers import ALL_ROUTERS
+from miniapp.routers.page import render_disabled_page
 
 logger = logging.getLogger(__name__)
 
 HEALTH_PATH = "/app/health"
+SHELL_PATHS = frozenset({"/app", "/app/"})
+STATIC_DIR = Path(__file__).resolve().parent / "static"
 
 CONTENT_SECURITY_POLICY = (
     "frame-ancestors https://web.telegram.org https://*.telegram.org; "
@@ -68,6 +75,9 @@ def _build_asgi_app(cfg: DashboardConfig) -> FastAPI:
     app = FastAPI(docs_url=None, redoc_url=None, openapi_url=None, redirect_slashes=False)
     app.state.cfg = cfg
 
+    if STATIC_DIR.is_dir():
+        app.mount("/app/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
+
     app.add_middleware(SessionMiddleware, **session_middleware_kwargs(cfg))
 
     @app.exception_handler(StarletteHTTPException)
@@ -90,6 +100,8 @@ def _build_asgi_app(cfg: DashboardConfig) -> FastAPI:
     @app.middleware("http")
     async def _enabled_gate(request: Request, call_next):
         if request.url.path != HEALTH_PATH and not _miniapp_enabled(cfg.db_path):
+            if request.url.path in SHELL_PATHS:
+                return render_disabled_page(request)
             return JSONResponse({"reason": "miniapp_off"}, status_code=503)
         return await call_next(request)
 
