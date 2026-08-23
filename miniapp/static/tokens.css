@@ -1,0 +1,125 @@
+/* Дизайн-токены дашборда — бренд AIESEC (BlueBook) по refs/BRAND.md и решениям дизайн-совета
+   (refs/design-review/*). Единственный файл, где разрешены литералы цветов: app.css и шаблоны
+   ссылаются только на var(--…) — это проверяет сторожевой тест.
+
+   Подкраска под мероприятие (Phase 19, «🎨 Оформление») — только --secondary + лого + event_name.
+
+   Только :root-переменные (плюс ветки @media prefers-color-scheme: dark и
+   prefers-reduced-motion) — ни одного селектора компонента в этом файле. */
+
+:root {
+  /* ── поверхности ── */
+  --bg:            #F3F4F7;   /* BRAND light bg */
+  --surface:       #FFFFFF;
+  --surface-alt:   #F8F9FB;   /* hover строк, фон чипов, вложенные тайлы */
+  --border:        #E3E5EA;   /* hairline: карточки, строки таблиц */
+  --border-strong: #CACCD1;   /* BRAND grey: hover чипов */
+
+  /* ── текст (все ≥4.5:1 на белом и на --bg) ── */
+  --text:          #1C1C1C;   /* BRAND чёрный */
+  --text-muted:    #52565E;   /* BRAND dark grey */
+  --text-faint:    #6B7079;   /* минимум для текста ≤12px; для декора — --border-strong */
+
+  /* ── акцент: заливки vs текст (сырой синий 3.98:1 — только для заливок/линий/bold) ── */
+  --accent:        #037EF3;   /* кнопки, бордеры, линии, заливки */
+  --accent-text:   #0267C8;   /* ссылки, дельты, активные подписи, h1 (5.6:1) */
+  --accent-soft:   #E6F2FE;
+  --on-accent:     #FFFFFF;
+
+  /* ── семантика (как текст — *-text-варианты) ── */
+  --secondary:     #F48924;   /* подкраска мероприятия: полоска шапки / слот лого */
+  --success:       #00A35D;
+  --success-text:  #0B7A3B;
+  --warn:          #D9A500;   /* только с иконкой/текстом */
+  --danger:        #E04A32;
+  --danger-text:   #C93D27;
+
+  /* ── графики (BRAND.md § Графики, валидировано) — порядок фиксирован, не циклить ── */
+  --chart-1:       #037EF3;   /* AIESEC blue */
+  --chart-2:       #D9711A;   /* orange */
+  --chart-3:       #00A35D;   /* green */
+  --chart-4:       #D9A500;   /* yellow — только с прямыми подписями */
+  --chart-5:       #0A9AA1;   /* teal */
+  --chart-6:       #E04A32;   /* coral */
+  --chart-7:       #7552CC;   /* purple */
+  --chart-grid:    #E3E5EA;
+  --chart-tick:    #52565E;
+  --chart-track:   #DCEBFC;   /* трек метра/бара — светлый шаг того же hue */
+  --chart-1-wash:  rgba(3, 126, 243, 0.10);
+
+  /* ── форма ── */
+  --radius-sm:     4px;
+  --radius:        8px;
+  --radius-lg:     12px;
+  --radius-pill:   999px;     /* только чипы/бейджи */
+  --shadow-card:   0 1px 2px rgb(28 28 28 / .06);
+
+  /* ── spacing, шаг 4 ── */
+  --sp-1:  4px;
+  --sp-2:  8px;
+  --sp-3:  12px;
+  --sp-4:  16px;
+  --sp-5:  20px;
+  --sp-6:  24px;
+  --sp-8:  32px;
+  --sp-10: 40px;
+  --gap:        16px;         /* между карточками */
+  --block-gap:  32px;         /* между секциями */
+
+  /* ── шрифты (BlueBook: Lato — brand font, Raleway — заголовки) ── */
+  --font-heading:  "Raleway", "Lato", "Segoe UI", system-ui, sans-serif;
+  --font-body:     "Lato", "Segoe UI", system-ui, -apple-system, sans-serif;
+  --font-ui:       var(--font-body);   /* алиас для совместимости */
+  --font-mono:     "SF Mono", Consolas, Menlo, monospace;
+
+  /* ── motion ── */
+  --dur:   150ms;
+  --ease:  cubic-bezier(.2, .7, .3, 1);
+}
+
+/* Dark — отдельные шаги, не инверсия (BRAND.md). */
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg:            #131519;
+    --surface:       #1C1F25;
+    --surface-alt:   #22262D;
+    --border:        #2C3139;
+    --border-strong: #3D434D;
+
+    --text:          #E8EAEE;
+    --text-muted:    #A2A7B1;
+    --text-faint:    #8A8F97;
+
+    --accent:        #3B94F5;
+    --accent-text:   #5AA9F7;
+    --accent-soft:   #16304A;
+    --on-accent:     #0B1220;
+
+    --success:       #3BC47F;
+    --success-text:  #3BC47F;
+    --warn:          #E6B93D;
+    --danger:        #F0705B;
+    --danger-text:   #F0705B;
+
+    /* валидированный dark-набор dataviz (на #1C1F25 и #1C1C1C) */
+    --chart-1:       #037EF3;
+    --chart-2:       #C86512;
+    --chart-3:       #00B066;
+    --chart-4:       #B88C00;
+    --chart-5:       #0A9AA1;
+    --chart-6:       #E04A32;
+    --chart-7:       #8F70DC;
+    --chart-grid:    #2C3139;
+    --chart-tick:    #A2A7B1;
+    --chart-track:   #0E2E52;
+    --chart-1-wash:  rgba(3, 126, 243, 0.16);
+
+    --shadow-card:   none;      /* в dark elevation — бордером */
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  :root {
+    --dur: 0ms;
+  }
+}

@@ -1,0 +1,223 @@
+/* Компоненты Mini App — исключительно через var(--…) из tokens.css (побайтная копия токенов
+   дашборда). Ни одного литерального цвета: сторожевой тест грепает hex-коды и rgb-функции
+   во всех css кроме tokens.css и в шаблонах. Шрифты — только стеки из токенов (системный
+   fallback внутри), внешних загрузок нет: CSP font-src 'self'.
+
+   Раскладка — одна колонка под экран телефона внутри Telegram; шапка Telegram сверху
+   компенсируется отступом --tg-safe-top (ядро ставит его из contentSafeAreaInset). */
+
+* { box-sizing: border-box; }
+
+html { -webkit-text-size-adjust: 100%; }
+
+:root {
+  --tg-safe-top: 0px;
+  --tg-safe-bottom: 0px;
+}
+
+body {
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--font-body);
+  margin: 0;
+  padding: calc(var(--sp-3) + var(--tg-safe-top)) var(--sp-4) calc(var(--sp-10) + var(--tg-safe-bottom));
+  font-size: 15px;
+  line-height: 1.5;
+  min-height: 100dvh;
+  -webkit-font-smoothing: antialiased;
+  overscroll-behavior-y: none;
+}
+
+h1, h2, h3 {
+  font-family: var(--font-heading);
+  margin: 0 0 var(--sp-2);
+  line-height: 1.2;
+}
+h1 { font-size: 22px; }
+h2 { font-size: 17px; }
+h3 { font-size: 15px; }
+p { margin: 0 0 var(--sp-2); }
+a { color: var(--accent-text); }
+
+.muted { color: var(--text-muted); }
+.faint { color: var(--text-faint); font-size: 12px; }
+
+/* ── шапка ── */
+.app-header {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-3);
+  padding-bottom: var(--sp-3);
+  margin-bottom: var(--sp-3);
+  border-bottom: 2px solid var(--secondary);
+}
+.app-header .logo {
+  width: 40px;
+  height: 40px;
+  border-radius: var(--radius);
+  object-fit: cover;
+  flex: none;
+  background: var(--surface-alt);
+}
+.app-header .event-name {
+  font-family: var(--font-heading);
+  font-weight: 800;
+  font-size: 17px;
+  color: var(--accent-text);
+}
+
+/* ── навигация (вкладки) ── */
+.nav {
+  display: flex;
+  gap: var(--sp-2);
+  overflow-x: auto;
+  padding-bottom: var(--sp-2);
+  margin-bottom: var(--sp-3);
+  scrollbar-width: none;
+}
+.nav::-webkit-scrollbar { display: none; }
+.nav:empty { display: none; }
+.nav a {
+  flex: none;
+  padding: var(--sp-2) var(--sp-3);
+  border-radius: var(--radius-pill);
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--text-muted);
+  text-decoration: none;
+  font-size: 14px;
+  white-space: nowrap;
+  transition: background var(--dur) var(--ease), color var(--dur) var(--ease);
+}
+.nav a.active {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: var(--on-accent);
+}
+
+/* ── карточки и списки ── */
+.card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-card);
+  padding: var(--sp-4);
+  margin-bottom: var(--gap);
+}
+.card.clickable { cursor: pointer; }
+.card.clickable:active { background: var(--surface-alt); }
+.card .title { font-weight: 700; margin-bottom: var(--sp-1); }
+
+.list { display: flex; flex-direction: column; gap: var(--sp-3); }
+.row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: var(--sp-3);
+  padding: var(--sp-2) 0;
+  border-bottom: 1px solid var(--border);
+}
+.row:last-child { border-bottom: 0; }
+
+.chip {
+  display: inline-block;
+  padding: 2px var(--sp-2);
+  border-radius: var(--radius-pill);
+  background: var(--surface-alt);
+  color: var(--text-muted);
+  font-size: 12px;
+}
+.chip.accent { background: var(--accent-soft); color: var(--accent-text); }
+.chip.success { background: var(--surface-alt); color: var(--success-text); }
+.chip.danger { background: var(--surface-alt); color: var(--danger-text); }
+.chip.warn { color: var(--text); border: 1px solid var(--warn); background: var(--surface); }
+
+/* ── кнопки ── */
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--sp-2);
+  width: 100%;
+  padding: var(--sp-3) var(--sp-4);
+  border-radius: var(--radius);
+  border: 1px solid var(--accent);
+  background: var(--accent);
+  color: var(--on-accent);
+  font: inherit;
+  font-weight: 700;
+  text-decoration: none;
+  cursor: pointer;
+  transition: opacity var(--dur) var(--ease);
+}
+.btn:active { opacity: .85; }
+.btn:disabled { opacity: .5; cursor: default; }
+.btn.secondary {
+  background: var(--surface);
+  color: var(--accent-text);
+}
+.btn.ghost {
+  background: transparent;
+  border-color: var(--border);
+  color: var(--text);
+}
+.btn.danger { background: var(--danger); border-color: var(--danger); }
+.btn + .btn { margin-top: var(--sp-2); }
+
+/* ── формы ── */
+.field { margin-bottom: var(--sp-3); }
+.field label { display: block; font-size: 13px; color: var(--text-muted); margin-bottom: var(--sp-1); }
+.input, textarea.input {
+  width: 100%;
+  padding: var(--sp-2) var(--sp-3);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius);
+  background: var(--surface);
+  color: var(--text);
+  font: inherit;
+}
+.input:focus { outline: 2px solid var(--accent); outline-offset: 1px; border-color: var(--accent); }
+.check { display: flex; align-items: center; gap: var(--sp-2); padding: var(--sp-2) 0; }
+.check input { accent-color: var(--accent); width: 20px; height: 20px; }
+
+/* ── пустые состояния / загрузка ── */
+.empty {
+  text-align: center;
+  color: var(--text-muted);
+  padding: var(--sp-8) var(--sp-4);
+}
+.loading { color: var(--text-faint); text-align: center; padding: var(--sp-6); }
+
+/* ── экраны состояний: «Откройте через бота», «Сессия истекла», «Нет доступа», «Выключено» ── */
+.state {
+  max-width: 420px;
+  margin: var(--sp-8) auto 0;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-card);
+  padding: var(--sp-6) var(--sp-4);
+  text-align: center;
+}
+.state .icon { font-size: 40px; line-height: 1; margin-bottom: var(--sp-3); }
+.state h1 { font-size: 20px; }
+.state p { color: var(--text-muted); font-size: 14px; }
+.state .actions { margin-top: var(--sp-4); }
+.state .hint {
+  margin-top: var(--sp-3);
+  font-size: 12px;
+  color: var(--text-faint);
+  border-top: 1px solid var(--border);
+  padding-top: var(--sp-3);
+}
+
+.error-inline {
+  background: var(--surface);
+  border-left: 3px solid var(--danger);
+  color: var(--danger-text);
+  padding: var(--sp-2) var(--sp-3);
+  border-radius: var(--radius-sm);
+  margin-bottom: var(--sp-3);
+}
+
+.hidden { display: none; }
