@@ -1459,6 +1459,15 @@ SETTINGS_SCHEMA = {
         "options": ["on", "off"], "prompt": None, "default": "on",
         "per_city": True,
     },
+    # Phase 19 (D-10): текстовая reply-кнопка «📱 Приложение» рядом с «🎯 Задания». Форма
+    # записи ОБЯЗАНА совпадать с menu_game_tasks — экран «🔘 Кнопки меню» и пер-городные
+    # резолверы подхватывают кнопку по группе `menu` автоматически. Сама кнопка рисуется
+    # только при включённом тумблере miniapp_enabled (точки входа — план 19-08).
+    "menu_miniapp": {
+        "type": "enum", "group": "menu", "label": "📱 Приложение",
+        "options": ["on", "off"], "prompt": None, "default": "on",
+        "per_city": True,
+    },
 
     # ── Phase 15 (15-02, D-19): экран «📊 Дашборд» — тумблеры блоков веб-дашборда. Только
     # чекбоксы фиксированного набора (CLAUDE.md «бот для людей» — кодовые значения ключей
@@ -1504,6 +1513,146 @@ SETTINGS_SCHEMA = {
     "dashboard_block_game": {
         "type": "enum", "group": "dashboard", "label": "🎮 Гейма",
         "options": ["on", "off"], "prompt": None, "default": "off",
+    },
+
+    # ── Phase 19 (D-06): экран «🎨 Оформление» Mini App — тумблеры, оформление, чекбоксы
+    # разделов и тексты, которых нет в группах game/menu. Own group "miniapp": как и
+    # dashboard_block_*, эти ключи НЕ добавляются в handlers.admin_settings.SETTINGS_FIELDS/
+    # SETTINGS_GROUPS — у них своя поверхность правки (план 19-08), иначе они всплыли бы в
+    # «📦 Прочие» второй конкурирующей поверхностью. per_city нет — приложение одно на стек.
+    #
+    # Дефолт miniapp_enabled — "off": новая поверхность включается менеджером осознанно.
+    # Все miniapp_section_* по умолчанию "on". Тексты экранов бота (game_*/menu_*) здесь НЕ
+    # дублируются — экраны читают существующие ключи (правило Phase 17.1: 0 хардкода).
+    "miniapp_enabled": {
+        "type": "enum", "group": "miniapp", "label": "📱 Mini App включён",
+        "options": ["on", "off"], "prompt": None, "default": "off",
+    },
+    "miniapp_staff_only": {
+        "type": "enum", "group": "miniapp", "label": "🔒 Только менеджерам",
+        "options": ["on", "off"], "prompt": None, "default": "off",
+    },
+    "miniapp_accent": {
+        "type": "text", "group": "miniapp", "label": "🎨 Цвет акцента",
+        "prompt": (
+            "Цвет акцента приложения в формате HEX: решётка и шесть символов после неё, "
+            "например #037EF3. Базовый синий AIESEC — #037EF3."
+        ),
+        "default": "#037EF3",
+    },
+    "miniapp_logo": {
+        "type": "photo", "group": "miniapp", "label": "🖼 Лого мероприятия",
+        "prompt": "Отправьте фото логотипа — оно появится в шапке приложения.",
+        "default": None,
+    },
+    # Разделы-чекбоксы: по одному на экран приложения (делегат + менеджер).
+    "miniapp_section_tasks": {
+        "type": "enum", "group": "miniapp", "label": "🎯 Задания",
+        "options": ["on", "off"], "prompt": None, "default": "on",
+    },
+    "miniapp_section_coins": {
+        "type": "enum", "group": "miniapp", "label": "🪙 Монеты",
+        "options": ["on", "off"], "prompt": None, "default": "on",
+    },
+    "miniapp_section_leaderboard": {
+        "type": "enum", "group": "miniapp", "label": "🏆 Рейтинг",
+        "options": ["on", "off"], "prompt": None, "default": "on",
+    },
+    "miniapp_section_profile": {
+        "type": "enum", "group": "miniapp", "label": "👤 Профиль",
+        "options": ["on", "off"], "prompt": None, "default": "on",
+    },
+    "miniapp_section_review": {
+        "type": "enum", "group": "miniapp", "label": "🎮 Проверка сдач",
+        "options": ["on", "off"], "prompt": None, "default": "on",
+    },
+    "miniapp_section_admin_tasks": {
+        "type": "enum", "group": "miniapp", "label": "🗂 Задания (менеджер)",
+        "options": ["on", "off"], "prompt": None, "default": "on",
+    },
+    "miniapp_section_stats": {
+        "type": "enum", "group": "miniapp", "label": "📊 Статистика",
+        "options": ["on", "off"], "prompt": None, "default": "on",
+    },
+    "miniapp_section_settings": {
+        "type": "enum", "group": "miniapp", "label": "⚙️ Настройки-лайт",
+        "options": ["on", "off"], "prompt": None, "default": "on",
+    },
+    # Тексты, специфичные для Mini App (человеческие дефолты — менеджер может не трогать).
+    "miniapp_open_text": {
+        "type": "text", "group": "miniapp", "label": "💬 Сообщение с кнопкой приложения",
+        "prompt": (
+            "Текст сообщения, которое бот присылает вместе с кнопкой «Открыть приложение» "
+            "(например: «Задания, монеты и рейтинг — в одном экране»)."
+        ),
+        "default": "Задания, монеты и рейтинг — в одном экране. Открывай приложение 👇",
+    },
+    "miniapp_open_button": {
+        "type": "text", "group": "miniapp", "label": "🔘 Подпись кнопки приложения",
+        "prompt": "Подпись кнопки, открывающей приложение (например: «📱 Открыть приложение»).",
+        "default": "📱 Открыть приложение",
+    },
+    "miniapp_open_in_bot_text": {
+        "type": "text", "group": "miniapp", "label": "🤖 Экран «откройте через бота»",
+        "prompt": (
+            "Текст, который видит человек, открывший приложение не из Telegram "
+            "(например: «Это приложение открывается из бота — нажмите кнопку ниже»)."
+        ),
+        "default": (
+            "Это приложение открывается из бота. Нажмите «📱 Приложение» в меню бота — "
+            "и всё заработает."
+        ),
+    },
+    "miniapp_login_button": {
+        "type": "text", "group": "miniapp", "label": "🔑 Кнопка входа для менеджеров",
+        "prompt": "Подпись кнопки запасного входа через Telegram (например: «Войти через Telegram»).",
+        "default": "Войти через Telegram",
+    },
+    "miniapp_login_hint": {
+        "type": "text", "group": "miniapp", "label": "ℹ️ Пояснение под кнопкой входа",
+        "prompt": (
+            "Короткое пояснение под кнопкой входа: для кого она и что сделать после "
+            "(например: «Вход для менеджеров. После входа вернитесь на адрес приложения»)."
+        ),
+        "default": (
+            "Вход для менеджеров. После входа вернитесь на адрес приложения — оно откроется "
+            "в обычном браузере."
+        ),
+    },
+    "miniapp_session_expired_text": {
+        "type": "text", "group": "miniapp", "label": "⏳ Сессия истекла",
+        "prompt": "Текст при истёкшей сессии (например: «Сессия истекла — откройте приложение заново»).",
+        "default": "Сессия истекла — откройте приложение заново.",
+    },
+    "miniapp_disabled_text": {
+        "type": "text", "group": "miniapp", "label": "🚧 Приложение выключено",
+        "prompt": "Текст, когда приложение выключено тумблером (например: «Приложение временно недоступно»).",
+        "default": "Приложение временно недоступно. Всё то же самое есть в боте.",
+    },
+    "miniapp_no_access_text": {
+        "type": "text", "group": "miniapp", "label": "⛔ Нет доступа",
+        "prompt": "Текст, когда раздел недоступен или выключен (например: «Этот раздел вам недоступен»).",
+        "default": "Этот раздел сейчас недоступен.",
+    },
+    "miniapp_upload_too_large_text": {
+        "type": "text", "group": "miniapp", "label": "📦 Файл слишком большой",
+        "prompt": "Текст при файле больше 20 МБ (например: «Файл больше 20 МБ — пришлите его через бота»).",
+        "default": "Файл больше 20 МБ — пришлите его через бота.",
+    },
+    "miniapp_profile_edit_hint": {
+        "type": "text", "group": "miniapp", "label": "✏️ Подсказка «Изменить — в боте»",
+        "prompt": "Подсказка у кнопки «Изменить — в боте» в профиле (например: «Анкета правится в боте»).",
+        "default": "Анкета правится в боте — кнопка откроет нужный шаг.",
+    },
+    "miniapp_upload_caption_delegate": {
+        "type": "text", "group": "miniapp", "label": "📎 Подпись копии сдачи",
+        "prompt": "Подпись файла, который бот пересылает делегату как копию сдачи (например: «копия сдачи»).",
+        "default": "копия сдачи",
+    },
+    "miniapp_upload_caption_staff": {
+        "type": "text", "group": "miniapp", "label": "📎 Подпись файла менеджера",
+        "prompt": "Подпись файла, загруженного менеджером из приложения (например: «загружено из приложения»).",
+        "default": "загружено из приложения",
     },
 }
 
