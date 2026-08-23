@@ -300,9 +300,12 @@ def test_no_innerhtml_with_interpolation_in_core():
 
 DELEGATE_SCREENS = ["tasks.js", "card.js", "profile.js", "coins.js", "leaderboard.js"]
 
-# Пути, которые фронт зовёт через api("/...") / api(`/...`): литеральный префикс до `?`
-# или `${` — сверяется с маршрутами приложения (ловит опечатку в пути).
-_API_CALL = re.compile(r"""api\(\s*(["'`])/([^"'`?$]*)""")
+# Пути, которые фронт зовёт через api("/...") / api(`/...`): весь литерал до закрывающей
+# кавычки; `${…}` считается одним сегментом-параметром, query-строка отбрасывается.
+# Сверяется с маршрутами приложения целиком (ловит опечатку в пути и `${action}` вместо
+# литерального имени действия — план 19-05).
+_API_CALL = re.compile(r"""api\(\s*(["'`])(/[^"'`]*)\1""")
+_TEMPLATE_PARAM = re.compile(r"\$\{[^}]*\}")
 
 
 @pytest.mark.parametrize("name", DELEGATE_SCREENS)
@@ -337,14 +340,12 @@ def test_every_fetch_path_in_screens_matches_an_app_route():
         text = _js_without_comments(path)
         for _quote, rel in _API_CALL.findall(text):
             seen += 1
-            full = "/app/api/" + rel.rstrip("/")
-            # `${...}` в середине пути — хвост после первого `${` уже отрезан регексом:
-            # сверяем как префикс с одним параметром (например /tasks/ -> /tasks/{id}).
-            candidates = [full, full + "/x", full + "x"]
-            assert any(p.match(c) for p in patterns for c in candidates), (
-                f"{path.name}: api('/{rel}') не соответствует ни одному маршруту приложения"
+            literal = _TEMPLATE_PARAM.sub("x", rel.split("?")[0]).rstrip("/")
+            full = "/app/api" + literal
+            assert any(p.match(full) for p in patterns), (
+                f"{path.name}: api('{rel}') не соответствует ни одному маршруту приложения"
             )
-    assert seen >= 6  # tasks, tasks/{id}, profile, coins/balance, coins/history, leaderboard
+    assert seen >= 9  # 19-03: 6 делегатских; 19-04: uploads/limits, uploads, submissions; 19-05: review/*, stats
 
 
 def test_screens_use_registry_empty_texts_not_literals():
@@ -400,3 +401,61 @@ def test_submit_screen_exports_render_and_checks_size_before_upload():
     assert "err.status === 409" in text      # «Уже отправлено»
     assert 'navigate("#/tasks")' in text
 
+
+
+# ── экраны менеджера (план 19-05): review.js / stats.js ────────────────────────────────
+
+MANAGER_SCREENS = ["review.js", "stats.js"]
+
+
+@pytest.mark.parametrize("name", MANAGER_SCREENS)
+def test_manager_screen_exports_render_without_innerhtml_or_colors(name):
+    path = SCREENS_DIR / name
+    assert path.is_file(), f"экран {name} не создан"
+    text = _js_without_comments(path)
+    assert re.search(r"export\s+async\s+function\s+render\s*\(root,\s*params,\s*ctx\)", text), name
+    assert "innerHTML" not in text and "document.write" not in text
+    assert not _HEX_OR_RGB_COLOR.findall(text), f"литеральный цвет в {name}"
+    assert "https://" not in text and "http://" not in text, f"внешний URL в {name}"
+
+
+def test_review_screen_one_card_four_actions_and_already_is_calm():
+    text = _js_without_comments(SCREENS_DIR / "review.js")
+    # Одна карточка: GET /review/next с offset; «Пропустить» — offset+1 на клиенте.
+    assert "/review/next?offset=" in text
+    assert "offset += 1" in text
+    # Четыре действия.
+    for label in ("✅ Принять", "✏️ Своя сумма", "❌ Отклонить", "⏭ Пропустить"):
+        assert label in text, label
+    # Решения — два литеральных пути (сторож путей их сверяет с маршрутами).
+    assert "/approve`" in text and "/reject`" in text
+    assert "${action}" not in text
+    # «Уже обработано» — спокойный текст и переход дальше, не ошибка.
+    assert "Уже обработано" in text
+    already = text[text.index("Уже обработано"):]
+    assert "load()" in already[:200]
+    # Файлы частей — через прокси, текст — цитатой; счётчик «Осталось».
+    assert "/app/api/file/" in text
+    assert "blockquote" in text
+    assert "Осталось:" in text
+    # Причина отклонения обязательна, своя сумма — числовое поле с дефолтом из задания.
+    assert "!body.reason" in text
+    assert 'type: "number"' in text and "card.task.coins" in text
+
+
+def test_stats_screen_tiles_and_bars_without_libraries():
+    text = _js_without_comments(SCREENS_DIR / "stats.js")
+    assert 'api("/stats/game")' in text
+    assert "stat-value" in text                      # плитки чисел (классы app.css)
+    assert "bar-track" in text and "bar-fill" in text  # полосы классами, не canvas
+    assert "Chart" not in text and "canvas" not in text.lower()
+    assert "by_category" in text and "r.label" in text  # подписи из API (реестр), не свои
+    assert "Пока никто ничего не сдавал" in text      # тот же текст, что экран 9 бота
+
+
+def test_review_and_bar_css_classes_exist_on_tokens():
+    css = (MINIAPP_STATIC / "app.css").read_text(encoding="utf-8")
+    for cls in (".review-card", ".review-photo", ".review-quote", ".review-actions", ".bar-track", ".bar-fill"):
+        assert cls in css, cls
+    bars = css[css.index(".bar-track"):]
+    assert "var(--accent)" in bars and "var(--surface-alt)" in bars
