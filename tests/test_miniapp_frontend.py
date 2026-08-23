@@ -576,3 +576,85 @@ def test_coins_settings_css_classes_exist_on_tokens():
     css = (MINIAPP_STATIC / "app.css").read_text(encoding="utf-8")
     for cls in (".search-result", ".check-row", ".danger-settings"):
         assert cls in css, cls
+
+
+# ── сторож: replaceChildren не принимает null/false/undefined верхним аргументом (quick
+# 260823-rnc) — Element.replaceChildren() не фильтрует детей как это делает h() в app.js,
+# любой null прямым аргументом рисуется пользователю как текстовый узел «null». ──────────
+
+_STRING_LITERAL = re.compile(r"'(?:\\.|[^'\\])*'|\"(?:\\.|[^\"\\])*\"|`(?:\\.|[^`\\])*`", re.S)
+_REPLACE_CHILDREN_CALL = re.compile(r"\breplaceChildren\s*\(")
+_TOP_LEVEL_BAD_TOKEN = re.compile(r"\.filter\(Boolean\)|[()\[\]{}]|\b(?:null|false|undefined)\b")
+
+
+def _mask_span(m: re.Match) -> str:
+    """Заменяет найденный участок пробелами той же длины; переносы строк сохраняются, чтобы
+    номера строк в маскированном тексте совпадали с исходным файлом."""
+    return "".join(c if c == "\n" else " " for c in m.group(0))
+
+
+def _js_masked(path: Path) -> str:
+    """Маскирует (не удаляет, в отличие от `_js_without_comments`) комментарии и строковые
+    литералы пробелами той же длины — длины и номера строк остаются как в исходнике, а
+    скобки/слова внутри комментариев и текстовых подписей не ломают подсчёт вложенности."""
+    text = path.read_text(encoding="utf-8")
+    text = _JS_COMMENT.sub(_mask_span, text)
+    text = _STRING_LITERAL.sub(_mask_span, text)
+    return text
+
+
+def _replace_children_calls(masked_text: str):
+    """Для каждого вызова replaceChildren(...) в маскированном тексте возвращает
+    (номер_строки, срез_аргументов). Падает, если скобки не сошлись до конца файла."""
+    calls = []
+    for m in _REPLACE_CHILDREN_CALL.finditer(masked_text):
+        depth = 1
+        i = m.end()
+        n = len(masked_text)
+        while i < n and depth > 0:
+            if masked_text[i] in "([{":
+                depth += 1
+            elif masked_text[i] in ")]}":
+                depth -= 1
+            i += 1
+        line_no = masked_text.count("\n", 0, m.start()) + 1
+        if depth != 0:
+            raise AssertionError(f"не удалось разобрать скобки replaceChildren на строке {line_no}")
+        calls.append((line_no, masked_text[m.end():i - 1]))
+    return calls
+
+
+def _top_level_bad_token(args: str) -> bool:
+    """True, если в аргументах на глубине 0 (не внутри вложенных h(...)/[...]/{...}) есть
+    null/false/undefined. `.filter(Boolean)`, встреченный на глубине 0 (санкционированный
+    способ передать список с пропусками — `...[…].filter(Boolean)`), делает весь вызов
+    безопасным сразу; учитывается только на глубине 0, чтобы несвязанный `.filter(Boolean)`
+    внутри вложенного h(...) (например, для join(" · ")) не маскировал реальный дефект."""
+    depth = 0
+    for m in _TOP_LEVEL_BAD_TOKEN.finditer(args):
+        tok = m.group(0)
+        if tok == ".filter(Boolean)":
+            if depth == 0:
+                return False
+        elif tok in "([{":
+            depth += 1
+        elif tok in ")]}":
+            depth -= 1
+        elif depth == 0:
+            return True
+    return False
+
+
+def test_replace_children_never_gets_null_false_undefined_as_top_level_argument():
+    problems = []
+    files = [APP_JS, *(SCREENS_DIR.glob("*.js") if SCREENS_DIR.is_dir() else ())]
+    for path in files:
+        masked = _js_masked(path)
+        for line_no, args in _replace_children_calls(masked):
+            if _top_level_bad_token(args):
+                problems.append(f"{path.name}:{line_no}")
+    assert not problems, (
+        "null/false/undefined прямым аргументом replaceChildren: DOM-узел «null» увидит "
+        "пользователь. Оберните список: replaceChildren(...[…].filter(Boolean)). Места: "
+        + ", ".join(problems)
+    )
