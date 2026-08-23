@@ -2,6 +2,8 @@
 # образ дашборда не тянет aiogram/gspread/apscheduler. Пины сразу на весь пакет,
 # чтобы планы 15-04/15-05 (FastAPI-приложение, шаблоны, Bot API вызов) его не трогали.
 fastapi>=0.115,<0.142
+# uvicorn >=0.32: ProxyHeadersMiddleware понимает подсети (CIDR) в списке доверенных прокси —
+# адрес cloudflared в сети edge динамический, доверять можно только подсети (15-05/15-06).
 uvicorn[standard]>=0.34,<0.53
 jinja2>=3.1,<4.0
 itsdangerous>=2.2,<3.0
