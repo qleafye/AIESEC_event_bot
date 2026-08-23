@@ -1,17 +1,29 @@
-// Экран сдачи (экран 3 скетча Phase 16 в вебе): делегат собирает части — фото/файлы и
-// текст — в локальный черновик, видит счётчик «📸 2 · 📄 1 · ✍️ 0», может «Убрать последнее»
-// (в БД на этом этапе ничего нет), MainButton «Готово» -> POST /submissions одним запросом.
+// Экран сдачи: делегат собирает части — фото/файлы и текст — в локальный черновик, видит
+// счётчик собранных частей иконками (D-13, не эмодзи), может убрать часть (по одной — кнопка
+// «×» на строке, либо последнюю целиком), MainButton «Готово» -> POST /submissions одним
+// запросом. Принятая сдача — состояние успеха со стикером, хаптик и конфетти (D-17/D-18).
 //
 // Файлы уходят на сервер сразу при выборе (POST /uploads -> file_id + part_token), каждый
-// независимо; размер проверяется ДО отправки по лимитам из API (GET /uploads/limits) —
-// текст отказа из реестра (miniapp_upload_too_large_text), чисел и текстов в JS нет.
-// Пустая отправка — подсказка, черновик не сбрасывается (паритет с ботом).
+// независимо; размер проверяется ДО отправки по лимитам из API (GET /uploads/limits) — текст
+// отказа из реестра (miniapp_upload_too_large_text), чисел и текстов в JS нет. Пустая отправка
+// — подсказка, черновик не сбрасывается (паритет с ботом).
 
-const ICON = { photo: "📸", document: "📄", text: "✍️", link: "🔗" };
+import { emptyState, errorState } from "../ui.js";
+import { icon } from "../icons.js";
+import { confetti, haptic } from "../motion.js";
 
-function counterText(parts) {
+const KIND_ICON = { photo: "image", document: "file-text", text: "pen-line", link: "link" };
+
+function counterGroups(h, parts) {
   const n = (k) => parts.filter((p) => p.kind === k).length;
-  return `📸 ${n("photo")} · 📄 ${n("document")} · ✍️ ${n("text") + n("link")}`;
+  const groups = [
+    ["image", n("photo")],
+    ["file-text", n("document")],
+    ["pen-line", n("text") + n("link")],
+  ];
+  return groups.map(([iconName, count]) => h("span", { class: "counter-group" },
+    icon(iconName), h("span", { text: String(count) }),
+  ));
 }
 
 function isLink(text) {
@@ -20,7 +32,7 @@ function isLink(text) {
 }
 
 export async function render(root, params, ctx) {
-  const { h, api, navigate, setMainButton, tg } = ctx;
+  const { h, api, navigate, setMainButton, tg, me } = ctx;
   const taskId = params.id;
 
   const [task, limits] = await Promise.all([
@@ -37,26 +49,56 @@ export async function render(root, params, ctx) {
     h("p", { class: "muted", text: task.proof_hint ? `Нужно прислать: ${task.proof_hint}` : "" }),
   );
 
-  const counter = h("div", { class: "parts-counter", text: counterText(parts) });
+  const counter = h("div", { class: "parts-counter" }, ...counterGroups(h, parts));
   const list = h("div", { class: "parts-list" });
   const notice = h("p", { class: "error-inline hidden" });
+  const uploadError = h("div", { class: "hidden" });
 
   function say(text) {
     notice.textContent = text || "";
     notice.classList.toggle("hidden", !text);
   }
 
+  function clearUploadError() {
+    uploadError.replaceChildren();
+    uploadError.classList.add("hidden");
+  }
+
+  function showUploadError(text) {
+    uploadError.replaceChildren(errorState(h, {
+      me,
+      text: text || "",
+      retry: () => { clearUploadError(); fileInput.click(); },
+    }));
+    uploadError.classList.remove("hidden");
+  }
+
+  function removePartAt(index) {
+    const part = parts[index];
+    if (!part || part.status === "uploading") return;
+    parts.splice(index, 1);
+    say("");
+    redraw();
+  }
+
   function redraw() {
-    counter.textContent = counterText(parts);
+    counter.replaceChildren(...counterGroups(h, parts));
     list.replaceChildren(
       ...parts.map((p, i) =>
         h("div", { class: `part-row ${p.status}` },
-          h("span", { class: "part-icon", text: ICON[p.kind] || "📎" }),
+          h("span", { class: "part-icon" }, icon(KIND_ICON[p.kind] || "file-text")),
           h("span", { class: "part-label", text: `${i + 1}. ${p.label}` }),
           h("span", {
             class: "part-status",
             text: p.status === "uploading" ? "загружается…" : p.status === "error" ? "ошибка" : "готово",
           }),
+          h("button", {
+            type: "button",
+            class: "part-remove",
+            "aria-label": "Убрать часть",
+            disabled: p.status === "uploading",
+            onClick: () => removePartAt(i),
+          }, icon("x")),
         ),
       ),
     );
@@ -78,11 +120,12 @@ export async function render(root, params, ctx) {
       return;
     }
     if (file.size > limits.max_bytes) {
-      // Проверка размера ДО отправки: текст из реестра.
-      say(limits.too_large_text);
+      // Проверка размера ДО отправки: текст из реестра, состояние — через errorState (D-18).
+      showUploadError(limits.too_large_text);
       return;
     }
     say("");
+    clearUploadError();
     const isPhoto = file.type.startsWith("image/") && file.size <= limits.photo_max_bytes;
     const part = { kind: isPhoto ? "photo" : "document", content: null, status: "uploading", label: file.name };
     parts.push(part);
@@ -100,8 +143,8 @@ export async function render(root, params, ctx) {
       part.status = "error";
       const idx = parts.indexOf(part);
       if (idx >= 0) parts.splice(idx, 1);
-      if (err && err.status === 413) say(limits.too_large_text);
-      else say(`Не удалось загрузить «${file.name}» — попробуйте ещё раз.`);
+      if (err && err.status === 413) showUploadError(limits.too_large_text);
+      else showUploadError(`Не удалось загрузить «${file.name}» — попробуйте ещё раз.`);
     } finally {
       pending -= 1;
       redraw();
@@ -151,6 +194,19 @@ export async function render(root, params, ctx) {
   // ── финализация ──
   let sending = false;
 
+  function showAccepted(acceptedText) {
+    setMainButton(null);
+    const view = emptyState(h, {
+      me,
+      slot: "success",
+      text: acceptedText || "",
+      action: h("button", { class: "btn", type: "button", text: "К заданиям", onClick: () => navigate("#/tasks") }),
+    });
+    root.replaceChildren(view);
+    haptic("success");
+    confetti(view);
+  }
+
   async function finish() {
     if (sending) return;
     if (pending > 0) { say("Подождите, файлы ещё загружаются."); return; }
@@ -168,8 +224,7 @@ export async function render(root, params, ctx) {
           })),
         },
       });
-      if (tg && tg.showAlert) tg.showAlert(res.accepted_text || "Сдача принята");
-      navigate("#/tasks");
+      showAccepted(res.accepted_text);
     } catch (err) {
       sending = false;
       if (err && err.status === 409) {
@@ -190,15 +245,22 @@ export async function render(root, params, ctx) {
       counter,
       list,
       notice,
+      uploadError,
       h("div", { class: "submit-actions" },
-        h("button", { class: "btn", type: "button", text: "📎 Добавить фото или файл", onClick: () => fileInput.click() }),
+        h("button", { class: "btn", type: "button", onClick: () => fileInput.click() },
+          icon("image"), h("span", { text: "Добавить фото или файл" }),
+        ),
         fileInput,
         h("div", { class: "field" }, textArea),
-        h("button", { class: "btn secondary", type: "button", text: "✍️ Добавить текст", onClick: addText }),
+        h("button", { class: "btn secondary", type: "button", onClick: addText },
+          icon("pen-line"), h("span", { text: "Добавить текст" }),
+        ),
         removeBtn,
       ),
     ),
-    h("button", { class: "btn", type: "button", text: "✅ Готово", onClick: finish }),
+    h("button", { class: "btn", type: "button", onClick: finish },
+      icon("check"), h("span", { text: "Готово" }),
+    ),
   );
   redraw();
 }
