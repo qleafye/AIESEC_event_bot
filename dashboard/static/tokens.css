@@ -4,8 +4,14 @@
 
    Подкраска под мероприятие (Phase 19, «🎨 Оформление») — только --secondary + лого + event_name.
 
-   Только :root-переменные (плюс ветки @media prefers-color-scheme: dark и
-   prefers-reduced-motion) — ни одного селектора компонента в этом файле. */
+   Только :root-переменные плюс три допустимые ветки — ни одного селектора компонента в этом
+   файле:
+   - `:root[data-theme="dark"]` — тёмная тема (D-06/D-07). Атрибут ставит только ядро Mini App
+     по `tg.colorScheme === "dark"` (сигнал Telegram, не системная тема браузера/ОС); дашборд
+     атрибут никогда не ставит и остаётся светлым при любой системной теме.
+   - `:root[data-motion="off"]` — уровень motion «off» (D-17), задаётся клиентским JS поверх
+     `prefers-reduced-motion`.
+   - `@media (prefers-reduced-motion: reduce)` — низовой CSS-пол, не переопределяется JS. */
 
 :root {
   /* ── поверхности ── */
@@ -75,47 +81,55 @@
   /* ── motion ── */
   --dur:   150ms;
   --ease:  cubic-bezier(.2, .7, .3, 1);
+
+  /* ── типографика/тач-цели (Phase 19.1, UI-SPEC) ── */
+  --font-heading-style: normal;   /* YouLead-пресет переключает на italic отдельной ручкой */
+  --tap-min: 44px;                /* минимальная площадь тапа иконки-кнопки */
 }
 
-/* Dark — отдельные шаги, не инверсия (BRAND.md). */
-@media (prefers-color-scheme: dark) {
-  :root {
-    --bg:            #131519;
-    --surface:       #1C1F25;
-    --surface-alt:   #22262D;
-    --border:        #2C3139;
-    --border-strong: #3D434D;
+/* Dark — отдельные шаги, не инверсия (BRAND.md). Атрибут, не media-запрос: тёмная тема — сигнал
+   Telegram (tg.colorScheme), не системная тема ОС/браузера (D-06). */
+:root[data-theme="dark"] {
+  --bg:            #131519;
+  --surface:       #1C1F25;
+  --surface-alt:   #22262D;
+  --border:        #2C3139;
+  --border-strong: #3D434D;
 
-    --text:          #E8EAEE;
-    --text-muted:    #A2A7B1;
-    --text-faint:    #8A8F97;
+  --text:          #E8EAEE;
+  --text-muted:    #A2A7B1;
+  --text-faint:    #8A8F97;
 
-    --accent:        #3B94F5;
-    --accent-text:   #5AA9F7;
-    --accent-soft:   #16304A;
-    --on-accent:     #0B1220;
+  --accent:        #3B94F5;
+  --accent-text:   #5AA9F7;
+  --accent-soft:   #16304A;
+  --on-accent:     #0B1220;
 
-    --success:       #3BC47F;
-    --success-text:  #3BC47F;
-    --warn:          #E6B93D;
-    --danger:        #F0705B;
-    --danger-text:   #F0705B;
+  --success:       #3BC47F;
+  --success-text:  #3BC47F;
+  --warn:          #E6B93D;
+  --danger:        #F0705B;
+  --danger-text:   #F0705B;
 
-    /* валидированный dark-набор dataviz (на #1C1F25 и #1C1C1C) */
-    --chart-1:       #037EF3;
-    --chart-2:       #C86512;
-    --chart-3:       #00B066;
-    --chart-4:       #B88C00;
-    --chart-5:       #0A9AA1;
-    --chart-6:       #E04A32;
-    --chart-7:       #8F70DC;
-    --chart-grid:    #2C3139;
-    --chart-tick:    #A2A7B1;
-    --chart-track:   #0E2E52;
-    --chart-1-wash:  rgba(3, 126, 243, 0.16);
+  /* валидированный dark-набор dataviz (на #1C1F25 и #1C1C1C) */
+  --chart-1:       #037EF3;
+  --chart-2:       #C86512;
+  --chart-3:       #00B066;
+  --chart-4:       #B88C00;
+  --chart-5:       #0A9AA1;
+  --chart-6:       #E04A32;
+  --chart-7:       #8F70DC;
+  --chart-grid:    #2C3139;
+  --chart-tick:    #A2A7B1;
+  --chart-track:   #0E2E52;
+  --chart-1-wash:  rgba(3, 126, 243, 0.16);
 
-    --shadow-card:   none;      /* в dark elevation — бордером */
-  }
+  --shadow-card:   none;      /* в dark elevation — бордером */
+}
+
+/* Motion off (D-17, уровень «off») — ставит клиентский JS поверх prefers-reduced-motion. */
+:root[data-motion="off"] {
+  --dur: 0ms;
 }
 
 @media (prefers-reduced-motion: reduce) {
