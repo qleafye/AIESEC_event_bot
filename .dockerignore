@@ -48,8 +48,9 @@ backups
 *.bak
 *.log
 
-# Не нужно в рантайме
+# Не нужно в рантайме (tunnel — отдельный стек cloudflared; на сервере рядом лежит tunnel/.env с токеном)
 tests
+tunnel
 sketches
 docs
 docker-compose.yml

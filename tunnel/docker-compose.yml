@@ -1,0 +1,40 @@
+# Cloudflare Tunnel — единственная «дверь» с интернета на сервер (Phase 15, D-01/D-03).
+# Один туннель на сервер, свой compose вне стеков мероприятий: на сервере лежит в
+# /home/leaf/tunnel/ рядом с .env (в нём — токен туннеля, см. .env.example). Соединение к Cloudflare исходящее
+# (QUIC/443) — ни одного входящего порта на хосте, ничего в ufw открывать не нужно.
+#
+# Remotely-managed: ingress задаётся в панели CF Zero Trust → Networks → Tunnels →
+# Public Hostname, а НЕ в этом файле (локальных config.yml/credentials.json нет):
+#   yl26.<домен>   → Type HTTP, URL  yl26-dashboard:8000   (дашборд стека YouLead'26)
+#   cloud.<домен>  → Type HTTP, URL  nextcloud-app:80      (Nextcloud с резюме)
+# Следующие стеки — по той же схеме `<меро><год>.` (D-02): rusco26.<домен> → rusco26-dashboard:8000.
+#
+# cloudflared резолвит origin по имени docker-сервиса, поэтому стоит в обеих сетях, где
+# живут origin'ы. Сеть `edge` создаётся один раз руками (подсеть фиксирована — на неё
+# настроен DASHBOARD_TRUSTED_PROXIES дашборда):
+#   docker network create --subnet 172.31.0.0/16 edge
+# `nextcloud_internal` уже создана стеком Nextcloud (имя сверить: docker network ls).
+services:
+  cloudflared:
+    image: cloudflare/cloudflared:latest
+    container_name: cloudflared
+    restart: always
+    command: tunnel --no-autoupdate run
+    env_file:
+      - .env
+    networks:
+      - edge
+      - nextcloud_internal
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+networks:
+  edge:
+    external: true
+    name: edge
+  nextcloud_internal:
+    external: true
+    name: nextcloud_internal
