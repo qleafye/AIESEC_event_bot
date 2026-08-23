@@ -91,7 +91,7 @@
         <div class="funnel-step">
           <div class="n">{{ step.count | thousands }}</div>
           <div class="l">{{ step.label }}</div>
-          <div class="pct">{{ step.pct }}% от зашедших</div>
+          <div class="pct">{{ step.pct | round | int }}% от зашедших</div>
           <div class="funnel-bar" aria-hidden="true"><span style="width:{{ step.pct }}%"></span></div>
         </div>
         {% endfor %}
@@ -113,8 +113,8 @@
         <canvas id="daily-chart"
                 role="img"
                 aria-label="Регистрации по дням: {{ daily_chart.labels[0] }} — {{ daily_chart.labels[-1] }}, заявок в день"
-                data-labels="{{ daily_chart.labels | tojson }}"
-                data-values="{{ daily_chart.counts | tojson }}">График не загрузился — значения по дням в таблице ниже.</canvas>
+                data-labels='{{ daily_chart.labels | tojson }}'
+                data-values='{{ daily_chart.counts | tojson }}'>График не загрузился — значения по дням в таблице ниже.</canvas>
       </div>
       <p class="empty-note" id="daily-chart-fallback" hidden>График не загрузился — значения по дням в таблице ниже.</p>
       <noscript><p class="empty-note">График не загрузился — значения по дням в таблице ниже.</p></noscript>
