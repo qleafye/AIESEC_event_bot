@@ -481,9 +481,16 @@ def test_every_fetch_path_in_screens_matches_an_app_route():
 
 
 def test_screens_use_registry_empty_texts_not_literals():
-    for name in ("tasks.js", "coins.js", "leaderboard.js"):
+    for name in ("tasks.js", "coins.js", "leaderboard.js", "review.js"):
         text = _js_without_comments(SCREENS_DIR / name)
         assert "empty_text" in text, f"{name}: пустое состояние — текстом из реестра"
+    # 19.1-06: сторож против возврата двух литералов, снятых с review.js в план 19.1-02 не
+    # завёл ключи реестра. Кнопка «Начать сначала» от текста не зависит — остаётся на месте.
+    review_text = _js_without_comments(SCREENS_DIR / "review.js")
+    assert "Сдач на проверке нет" not in review_text
+    assert "Пропущено всё" not in review_text
+    assert "card.empty_text" in review_text
+    assert "Начать сначала" in review_text and "card.remaining" in review_text
 
 
 def test_card_screen_main_button_submit_and_back():

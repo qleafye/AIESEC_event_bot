@@ -76,12 +76,12 @@ export async function render(root, params, ctx) {
     }
     if (card.empty) {
       const allSkipped = card.remaining > 0;
-      // Нет отдельного ключа реестра под пустую очередь проверки (план 19.1-02 его не завёл) —
-      // используем прежний литеральный текст, как договорено в интерфейсе плана 19.1-06.
+      // Текст пустого состояния — из реестра (miniapp_empty_review / _skipped), сервер уже
+      // подставил {count}, экран его просто рисует.
       holder.replaceChildren(
         emptyState(h, {
           me,
-          text: allSkipped ? `Пропущено всё — осталось ${card.remaining}.` : "Сдач на проверке нет.",
+          text: card.empty_text || "",
           action: allSkipped
             ? h("button", { class: "btn secondary", type: "button", onClick: () => { offset = 0; load(); } }, icon("rotate-ccw"), h("span", { text: " Начать сначала" }))
             : null,
