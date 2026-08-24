@@ -45,6 +45,9 @@ MINIAPP_KEYS = [
     "miniapp_profile_edit_hint",
     "miniapp_upload_caption_delegate",
     "miniapp_upload_caption_staff",
+    # 260824-8qw (MD-03): подтверждение перед выключением приложения / скрытием от делегатов
+    "miniapp_confirm_disable_text",
+    "miniapp_confirm_staff_only_text",
     # Phase 19.1-02: ручки пресетов оформления (D-03/D-04)
     "miniapp_theme_preset",
     "miniapp_theme_secondary",
@@ -85,8 +88,8 @@ THEME_ENUM_KEYS = [
 _ALLOWED_TYPES = {"toggle", "int", "list", "date", "text", "enum", "photo", "file"}
 
 
-def test_exactly_45_miniapp_keys_and_no_extra():
-    assert len(MINIAPP_KEYS) == 45
+def test_exactly_47_miniapp_keys_and_no_extra():
+    assert len(MINIAPP_KEYS) == 47
     present = sorted(k for k in SETTINGS_SCHEMA if k.startswith("miniapp_"))
     assert present == sorted(MINIAPP_KEYS)
 
@@ -125,7 +128,7 @@ def test_text_keys_have_human_defaults():
         k for k in MINIAPP_KEYS
         if SETTINGS_SCHEMA[k]["type"] == "text" and k != "miniapp_accent"
     ]
-    assert len(text_keys) == 21
+    assert len(text_keys) == 23
     for key in text_keys:
         default = SETTINGS_SCHEMA[key]["default"]
         assert isinstance(default, str) and default.strip(), key
@@ -133,6 +136,20 @@ def test_text_keys_have_human_defaults():
     assert SETTINGS_SCHEMA["miniapp_login_button"]["default"] == "Войти через Telegram"
     assert SETTINGS_SCHEMA["miniapp_upload_caption_delegate"]["default"] == "копия сдачи"
     assert SETTINGS_SCHEMA["miniapp_upload_caption_staff"]["default"] == "загружено из приложения"
+
+
+def test_confirm_text_keys_have_human_defaults_and_no_code_leak():
+    """260824-8qw (MD-03): текст подтверждения приходит с сервера -- человеческий, называет
+    что именно пропадёт, без кодовых значений тумблеров."""
+    for key in ("miniapp_confirm_disable_text", "miniapp_confirm_staff_only_text"):
+        entry = SETTINGS_SCHEMA[key]
+        assert entry["type"] == "text"
+        assert entry["group"] == "miniapp"
+        assert isinstance(entry["default"], str) and entry["default"].strip()
+        assert isinstance(entry["prompt"], str) and entry["prompt"].strip()
+        assert "miniapp_enabled" not in entry["default"] and "miniapp_staff_only" not in entry["default"]
+    assert "исчезнет у всех" in SETTINGS_SCHEMA["miniapp_confirm_disable_text"]["default"]
+    assert "делегат" in SETTINGS_SCHEMA["miniapp_confirm_staff_only_text"]["default"]
 
 
 def test_theme_color_handles_have_valid_hex_defaults():
