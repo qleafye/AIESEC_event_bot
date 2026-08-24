@@ -1,9 +1,16 @@
-// Монеты вручную (экран 8 скетча Phase 16 в вебе): поиск получателя по @username/id/части
-// имени, карточка получателя с балансом, quick-pick сумм ± из /admin/coins/presets, своя
-// сумма, обязательная причина, шаг подтверждения «Кому · сколько · за что» и только потом
-// отправка. Журнал ручных начислений — постранично ниже, «Показать ещё».
+// Монеты вручную (экран 8 скетча Phase 16 в вебе, editorial-минимал 19.1-06): поиск получателя
+// по @username/id/части имени (поле с иконкой search и подсказкой формата), карточка получателя
+// (единичный объект — остаётся карточкой, D-11) с балансом, quick-pick сумм ± из
+// /admin/coins/presets, своя сумма, обязательная причина, шаг подтверждения «Кому · сколько ·
+// за что» и только потом отправка. Журнал ручных начислений — плоские строки (D-11) постранично
+// ниже, дельта + зелёным / − приглушённым (dataviz-контракт, план 19.1-05), пустой журнал —
+// emptyState (D-18).
 //
 // Ошибки сервера — человеческим текстом из payload.text, не кодом ответа.
+
+import { flatRow, emptyState } from "../ui.js";
+import { icon } from "../icons.js";
+import { haptic } from "../motion.js";
 
 const SEARCH_DEBOUNCE_MS = 300;
 const JOURNAL_PAGE = 20;
@@ -18,30 +25,31 @@ function isAuthError(err) {
 }
 
 function journalRow(h, item) {
-  const sign = item.delta >= 0 ? "+" : "";
-  return h("div", { class: "row" },
-    h("div", {},
-      h("div", { text: `${item.recipient} · ${item.reason}` }),
-      h("div", { class: "faint", text: `${item.when} · ${item.changed_by_name} · ${item.source_label}` }),
-    ),
-    h("span", { class: `delta ${item.delta >= 0 ? "plus" : "minus"}`, text: `${sign}${item.delta}` }),
-  );
+  const delta = item.delta >= 0 ? `+${item.delta}` : String(item.delta);
+  return flatRow(h, {
+    title: `${item.recipient} · ${item.reason}`,
+    meta: `${item.when} · ${item.changed_by_name} · ${item.source_label}`,
+    trailing: h("span", { class: `delta ${item.delta >= 0 ? "plus" : "minus"}`, text: delta }),
+  });
 }
 
 export async function render(root, params, ctx) {
-  const { h, api, tg } = ctx;
+  const { h, api, me } = ctx;
 
   const notice = h("p", { class: "chip accent hidden" });
   const input = h("input", { class: "input", type: "text", placeholder: "@username, id или часть имени" });
   const results = h("div");
   const holder = h("div");
-  const journalList = h("div", { class: "card list-card" });
+  const journalList = h("div", { class: "flat-list" });
   const journalFoot = h("div", { class: "list-foot" });
 
   root.append(
     h("h1", { text: "Монеты вручную" }),
     notice,
-    h("div", { class: "field" }, h("label", { text: "Кому начислить" }), input),
+    h("div", { class: "field" },
+      h("label", { text: "Кому начислить" }),
+      h("div", { class: "search-field" }, icon("search"), input),
+    ),
     results,
     holder,
     h("h2", { text: "Журнал" }),
@@ -52,10 +60,6 @@ export async function render(root, params, ctx) {
   function say(text, kind) {
     notice.textContent = text || "";
     notice.className = `chip ${kind || "accent"}${text ? "" : " hidden"}`;
-  }
-
-  function haptic(kind) {
-    if (tg && tg.HapticFeedback) tg.HapticFeedback.notificationOccurred(kind || "success");
   }
 
   let presets = null;
@@ -82,7 +86,7 @@ export async function render(root, params, ctx) {
     offset += page.items.length;
     journalFoot.replaceChildren();
     if (total === 0) {
-      journalList.append(h("div", { class: "empty", text: page.empty_text || "" }));
+      journalList.replaceChildren(emptyState(h, { me, text: page.empty_text || "" }));
       return;
     }
     if (offset < total) {
@@ -105,17 +109,13 @@ export async function render(root, params, ctx) {
   let searchTimer = null;
 
   function resultRow(user) {
-    return h("article", {
-      class: "card clickable search-result", role: "button", tabindex: "0",
+    return flatRow(h, {
+      title: user.name,
+      meta: [user.username, user.city].filter(Boolean).join(" · ") || "—",
+      trailing: h("span", { class: "chip accent" }, icon("coin"), h("span", { text: String(user.balance) })),
       onClick: () => selectRecipient(user),
-      onKeydown: (e) => { if (e.key === "Enter" || e.key === " ") selectRecipient(user); },
-    },
-      h("div", {},
-        h("div", { class: "title", text: user.name }),
-        h("div", { class: "faint", text: [user.username, user.city].filter(Boolean).join(" · ") || "—" }),
-      ),
-      h("span", { class: "chip accent", text: `${user.balance}🪙` }),
-    );
+      cls: "search-result",
+    });
   }
 
   async function search(q) {
@@ -134,7 +134,7 @@ export async function render(root, params, ctx) {
       results.append(h("p", { class: "muted", text: "Никого не нашли — проверьте написание." }));
       return;
     }
-    results.append(items.map(resultRow));
+    results.append(h("div", { class: "flat-list" }, items.map(resultRow)));
   }
 
   input.addEventListener("input", () => {
@@ -194,7 +194,7 @@ export async function render(root, params, ctx) {
       h("article", { class: "card recipient-card" },
         h("div", { class: "title", text: user.name }),
         h("div", { class: "muted", text: [user.username, user.city].filter(Boolean).join(" · ") || "—" }),
-        h("div", { class: "faint", text: `Баланс: ${user.balance}🪙` }),
+        h("div", { class: "flat-row-meta" }, icon("coin"), h("span", { text: ` Баланс: ${user.balance}` })),
       ),
       buttons.length ? h("div", { class: "choice-grid" }, buttons) : null,
       h("div", { class: "field" },
@@ -223,7 +223,7 @@ export async function render(root, params, ctx) {
       try {
         const res = await api("/admin/coins", { method: "POST", body: { user_id: user.telegram_id, delta, reason } });
         haptic("success");
-        say(`Готово: ${res.name} · ${sign}${delta}🪙 · новый баланс ${res.balance}🪙.`, "success");
+        say(`Готово: ${res.name} · ${sign}${delta} · новый баланс ${res.balance}.`, "success");
         holder.replaceChildren();
         await resetJournal();
       } catch (err) {
@@ -235,10 +235,10 @@ export async function render(root, params, ctx) {
     holder.replaceChildren(
       h("div", { class: "confirm-box" },
         h("p", { text: `Кому: ${user.name}` }),
-        h("p", { text: `Сколько: ${sign}${delta}🪙` }),
+        h("p", { text: `Сколько: ${sign}${delta}` }),
         h("p", { text: `За что: ${reason}` }),
-        h("button", { class: "btn", type: "button", text: "✅ Начислить", onClick: submit }),
-        h("button", { class: "btn ghost", type: "button", text: "◀️ Назад", onClick: () => renderAmount(user) }),
+        h("button", { class: "btn", type: "button", text: "Начислить", onClick: submit }),
+        h("button", { class: "btn ghost", type: "button", text: "Назад", onClick: () => renderAmount(user) }),
       ),
     );
   }

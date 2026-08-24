@@ -1,8 +1,14 @@
-// Настройки-лайт (закрытый белый список тумблеров, T-19-43): список чекбоксов «✅/☐» с
-// человеческой подписью из реестра — тап переключает и тут же перерисовывает список ответом
-// сервера (фронт не гадает состояние). Тумблеры «Mini App включён» / «Только менеджерам» —
-// отдельным, визуально отделённым блоком с предупреждением: выключение спрячет приложение у
-// всех, не только у того, кто нажал (тумблер обязан уметь выключать сам себя).
+// Настройки-лайт (закрытый белый список тумблеров, T-19-43, editorial-минимал 19.1-06): список
+// тумблеров-строк (flatRow, D-11) с человеческой подписью из реестра — тап переключает и тут же
+// перерисовывает список ответом сервера (фронт не гадает состояние); состояние — иконкой check
+// (вкл/выкл прозрачностью) И словом «Включено/Выключено» справа, не только цветом. Тумблеры
+// «Mini App включён» / «Только менеджерам» — отдельным блоком с рамкой --warn и надзаголовком,
+// который объясняет риск: выключение спрячет приложение у всех, не только у того, кто нажал
+// (тумблер обязан уметь выключать сам себя).
+
+import { flatRow } from "../ui.js";
+import { icon } from "../icons.js";
+import { haptic } from "../motion.js";
 
 const DANGER_KEYS = new Set(["miniapp_enabled", "miniapp_staff_only"]);
 
@@ -16,17 +22,17 @@ function isAuthError(err) {
 }
 
 export async function render(root, params, ctx) {
-  const { h, api, tg } = ctx;
+  const { h, api } = ctx;
 
   const notice = h("p", { class: "chip accent hidden" });
-  const list = h("div", { class: "card list-card" });
-  const dangerList = h("div", { class: "card danger-settings" });
+  const list = h("div", { class: "flat-list" });
+  const dangerList = h("div", { class: "flat-list danger-settings" });
 
   root.append(
     h("h1", { text: "Настройки" }),
     notice,
     list,
-    h("h2", { text: "Mini App целиком" }),
+    h("h2", {}, icon("alert-triangle"), h("span", { text: " Mini App целиком" })),
     h("p", { class: "muted", text: "Ниже — тумблеры, которые касаются всех: выключение спрячет приложение у всех менеджеров и делегатов, не только у вас." }),
     dangerList,
   );
@@ -49,13 +55,13 @@ export async function render(root, params, ctx) {
 
   function row(item) {
     const on = item.value === "on";
-    return h("div", {
-      class: "row check-row clickable", role: "button", tabindex: "0",
+    return flatRow(h, {
+      icon: "check",
+      title: item.label,
+      trailing: on ? "Включено" : "Выключено",
       onClick: () => toggle(item),
-      onKeydown: (e) => { if (e.key === "Enter" || e.key === " ") toggle(item); },
-    },
-      h("span", { text: `${on ? "✅" : "☐"} ${item.label}` }),
-    );
+      cls: `check-row${on ? " on" : ""}`,
+    });
   }
 
   async function toggle(item) {
@@ -65,7 +71,7 @@ export async function render(root, params, ctx) {
     try {
       const items = await api("/admin/settings", { method: "POST", body: { key: item.key, value: next } });
       say(`${item.label}: ${next === "on" ? "включено" : "выключено"}.`, "success");
-      if (tg && tg.HapticFeedback) tg.HapticFeedback.notificationOccurred("success");
+      haptic("success");
       draw(items);
     } catch (err) {
       if (!isAuthError(err)) say(errorText(err, "Не получилось сохранить — попробуйте ещё раз."), "warn");
