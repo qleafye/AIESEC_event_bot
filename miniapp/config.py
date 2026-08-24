@@ -19,6 +19,19 @@ from dashboard.config import DashboardConfig, load_config
 MAX_UPLOAD_BYTES = 20 * 1024 * 1024
 PHOTO_MAX_BYTES = 10 * 1024 * 1024
 
+# 260824-8qw (HG-01): единственный источник потолков ТЕЛА запроса для `miniapp.body_limit`.
+# MULTIPART_SLACK — обвязка multipart поверх самого файла (имя поля, boundary, заголовки
+# частей формы) — без запаса честная загрузка ровно в MAX_UPLOAD_BYTES отсеклась бы как
+# "слишком большая" из-за нескольких лишних байт протокола, не из-за размера файла.
+# MAX_BODY_BYTES — потолок ТЕЛА маршрута загрузки (файл + обвязка) — больше MAX_UPLOAD_BYTES
+# ровно на MULTIPART_SLACK; человеку в ответе 413 всё равно показывается MAX_UPLOAD_BYTES
+# (потолок файла, а не потолок тела с обвязкой). DEFAULT_MAX_BODY_BYTES — общий потолок тела
+# для всех остальных маршрутов `/app/api/*` (JSON-тела в килобайтах — миллиона байт хватает
+# с большим запасом; раньше эти маршруты были безлимитными).
+MULTIPART_SLACK = 64 * 1024
+MAX_BODY_BYTES = MAX_UPLOAD_BYTES + MULTIPART_SLACK
+DEFAULT_MAX_BODY_BYTES = 1024 * 1024
+
 # handlers/user_actions.py: MAX_PARTS / MAX_TEXT_PART.
 MAX_PARTS = 20
 MAX_TEXT_PART = 1000
@@ -36,10 +49,13 @@ def load_miniapp_config(env: dict | None = None) -> DashboardConfig:
 
 __all__ = [
     "DashboardConfig",
+    "DEFAULT_MAX_BODY_BYTES",
     "INIT_DATA_MAX_AGE",
+    "MAX_BODY_BYTES",
     "MAX_PARTS",
     "MAX_TEXT_PART",
     "MAX_UPLOAD_BYTES",
+    "MULTIPART_SLACK",
     "PHOTO_MAX_BYTES",
     "load_miniapp_config",
 ]

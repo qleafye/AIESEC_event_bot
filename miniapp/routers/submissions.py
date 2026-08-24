@@ -11,8 +11,12 @@
 
 Лимиты (RESEARCH Pitfall 7, D-03): единый потолок сервиса 20 МБ (`getFile` больше не отдаст
 — менеджер не смог бы открыть файл из приложения), фото ≤10 МБ идёт `sendPhoto`, крупнее или
-не-изображение — `sendDocument`; подпись ≤1024 (Bot API). Отсечка по `Content-Length` до
-разбора тела + чтение чанками с тем же потолком (глобального лимита тела у Starlette нет).
+не-изображение — `sendDocument`; подпись ≤1024 (Bot API). Реальный сторож от тела произвольного
+размера — `miniapp.body_limit.BodyLimitMiddleware` (ASGI-уровень, обрывает приём ДО
+`request.form()`, в том числе для chunked-запроса без `Content-Length` — 260824-8qw, HG-01);
+здесь остаются два эшелона подстраховки, которые не зависят от того, подключён ли middleware:
+дешёвая предварительная отсечка по `Content-Length` и `_read_capped` — чтение чанками с тем же
+потолком.
 
 `POST /app/api/submissions` — зеркало `handlers.user_actions.finalize_game_submission`
 (импортировать нельзя — aiogram): та же модель частей (`kind` photo|document|text|link, тот
@@ -36,7 +40,7 @@ from database.db import add_submission_part, create_submission, get_task, get_us
 from settings_schema import get_setting_typed
 
 from miniapp import telegram_api
-from miniapp.config import MAX_PARTS, MAX_TEXT_PART, MAX_UPLOAD_BYTES, PHOTO_MAX_BYTES
+from miniapp.config import MAX_PARTS, MAX_TEXT_PART, MAX_UPLOAD_BYTES, MULTIPART_SLACK, PHOTO_MAX_BYTES
 from miniapp.deps import Principal, UploadActor, delegate_gate, require_section, upload_actor
 from miniapp.outbox import enqueue
 from miniapp.routers.tasks import submission_state
@@ -51,7 +55,6 @@ FILE_KINDS = frozenset({"photo", "document"})
 TEXT_KINDS = frozenset({"text", "link"})
 
 CAPTION_MAX = 1024
-CONTENT_LENGTH_SLACK = 64 * 1024  # multipart-обвязка поверх самого файла
 READ_CHUNK = 1024 * 1024
 
 
@@ -121,7 +124,7 @@ async def upload_limits(actor: UploadActor = Depends(upload_actor)) -> dict:
 @router.post("/app/api/uploads")
 async def upload_part(request: Request, actor: UploadActor = Depends(upload_actor)) -> dict:
     length = request.headers.get("content-length")
-    if length and length.isdigit() and int(length) > MAX_UPLOAD_BYTES + CONTENT_LENGTH_SLACK:
+    if length and length.isdigit() and int(length) > MAX_UPLOAD_BYTES + MULTIPART_SLACK:
         raise _too_large()
 
     form = await request.form()

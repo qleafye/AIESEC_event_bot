@@ -14,10 +14,17 @@ from datetime import datetime, timedelta
 import aiosqlite
 import httpx
 import pytest
+from starlette.applications import Starlette
+from starlette.requests import Request as StarletteRequest
+from starlette.responses import JSONResponse as StarletteJSONResponse
+from starlette.routing import Route
+from starlette.testclient import TestClient as StarletteTestClient
 
 from database import db as bot_db
 
 from miniapp import telegram_api
+from miniapp.body_limit import BodyLimitMiddleware
+from miniapp.config import MAX_UPLOAD_BYTES
 from miniapp.routers.submissions import make_part_token
 
 from tests.test_miniapp_auth import TOKEN
@@ -123,6 +130,92 @@ def _file_part(user_id, kind, file_id, secret=SECRET):
     return {"kind": kind, "content": file_id, "part_token": make_part_token(secret, user_id, kind, file_id)}
 
 
+# ── BodyLimitMiddleware (260824-8qw, HG-01) — юнит-тесты на крошечном Starlette-приложении
+# со своим маленьким потолком, без 20 МБ ─────────────────────────────────────────────────
+
+def _toy_app(calls: list[int]):
+    async def echo(request):
+        body = await request.body()
+        calls.append(len(body))
+        return StarletteJSONResponse({"received": len(body)})
+
+    return Starlette(routes=[
+        Route("/limited", echo, methods=["POST"]),
+        Route("/other", echo, methods=["POST"]),
+    ])
+
+
+def _toy_client(calls, limits, default, report_limits=None):
+    app = _toy_app(calls)
+    wrapped = BodyLimitMiddleware(app, limits=limits, default=default, report_limits=report_limits)
+    return StarletteTestClient(wrapped, base_url="https://testserver")
+
+
+def test_body_limit_allows_body_exactly_at_ceiling():
+    calls: list[int] = []
+    client = _toy_client(calls, {"/limited": 10}, default=5)
+    resp = client.post("/limited", content=b"x" * 10)
+    assert resp.status_code == 200
+    assert calls == [10]
+
+
+def test_body_limit_rejects_known_length_body_over_ceiling_without_calling_handler():
+    calls: list[int] = []
+    client = _toy_client(calls, {"/limited": 10}, default=5)
+    resp = client.post("/limited", content=b"x" * 11)
+    assert resp.status_code == 413
+    assert resp.json() == {"reason": "too_large", "limit": 10}
+    assert calls == []
+
+
+def test_body_limit_rejects_content_length_header_without_reading_any_body():
+    """Content-Length врёт про размер -- отказ до чтения тела, даже если тело маленькое."""
+    calls: list[int] = []
+    client = _toy_client(calls, {"/limited": 10}, default=5)
+    resp = client.post("/limited", content=b"x", headers={"Content-Length": "1000"})
+    assert resp.status_code == 413
+    assert resp.json() == {"reason": "too_large", "limit": 10}
+    assert calls == []
+
+
+def test_body_limit_rejects_chunked_body_without_content_length():
+    """Тело несколькими http.request-сообщениями (генератор, без Content-Length, chunked) --
+    суммарно больше потолка -> 413, обработчик не вызван."""
+    calls: list[int] = []
+    client = _toy_client(calls, {"/limited": 10}, default=5)
+
+    def gen():
+        for _ in range(5):
+            yield b"12345"  # 5 чанков по 5 байт -- обрыв после третьего (15 > 10)
+
+    resp = client.post("/limited", content=gen())
+    assert resp.status_code == 413
+    assert resp.json() == {"reason": "too_large", "limit": 10}
+    assert calls == []
+
+
+def test_body_limit_uses_default_ceiling_for_unlisted_path():
+    calls: list[int] = []
+    client = _toy_client(calls, {"/limited": 100}, default=5)
+    over = client.post("/other", content=b"x" * 6)
+    assert over.status_code == 413
+    assert over.json() == {"reason": "too_large", "limit": 5}
+    assert calls == []
+    ok = client.post("/other", content=b"x" * 5)
+    assert ok.status_code == 200
+    assert calls == [5]
+
+
+def test_body_limit_reports_separate_public_limit_when_configured():
+    """`report_limits` -- потолок ФАЙЛА в ответе, отдельно от порога обрыва (обвязка)."""
+    calls: list[int] = []
+    client = _toy_client(calls, {"/limited": 20}, default=5, report_limits={"/limited": 10})
+    resp = client.post("/limited", content=b"x" * 21)
+    assert resp.status_code == 413
+    assert resp.json() == {"reason": "too_large", "limit": 10}  # не 20 -- отдельная таблица
+    assert calls == []
+
+
 # ── POST /app/api/uploads ────────────────────────────────────────────────────────────────
 
 def test_upload_image_goes_as_photo_with_delegate_caption_and_token(client, bot_api):
@@ -186,6 +279,46 @@ def test_upload_over_20mb_rejected_by_chunked_read(client, bot_api):
     assert resp.status_code == 413
     assert resp.json()["reason"] == "too_large"
     assert bot_api.calls == []
+
+
+def test_upload_chunked_without_content_length_over_20mb_rejected_before_form_parsing(client, bot_api, monkeypatch):
+    """ОБЯЗАТЕЛЬНЫЙ КЕЙС (260824-8qw, HG-01): тело генератором -- без Content-Length,
+    Transfer-Encoding: chunked -- суммарно больше 20 МБ. `BodyLimitMiddleware` обязан
+    оборвать приём ДО того, как роутинг дойдёт до хендлера: `Request.form` не вызывается
+    вовсе (шпион роняет тест при вызове) -- доказательство, что на диск не ушло ни байта."""
+    def _spy_form(self, *a, **k):
+        raise AssertionError("request.form() не должен вызываться -- тело оборвано раньше")
+
+    monkeypatch.setattr(StarletteRequest, "form", _spy_form)
+
+    def gen():
+        chunk = b"x" * MB
+        for _ in range(21):  # 21 МБ суммарно > потолка 20 МБ
+            yield chunk
+
+    resp = client.post("/app/api/uploads", content=gen(), headers=_hdr(DELEGATE_ID))
+    assert resp.status_code == 413
+    assert resp.json() == {"reason": "too_large", "limit": 20 * MB}
+    assert bot_api.calls == []
+
+
+def test_upload_413_still_carries_security_headers(client, bot_api):
+    """413 от BodyLimitMiddleware остаётся ПОД слоем `_security_headers` (CSP на ответе во
+    фрейме Telegram обязана быть и на ошибке, не только на успехе)."""
+    resp = _upload(client, DELEGATE_ID, b"x" * 10, headers={"Content-Length": str(30 * MB)})
+    assert resp.status_code == 413
+    assert "Content-Security-Policy" in resp.headers
+    assert bot_api.calls == []
+
+
+def test_upload_exactly_at_20mb_file_ceiling_still_succeeds_despite_multipart_overhead(client, bot_api):
+    """Легальная загрузка ровно в потолок файла: само тело запроса больше 20 МБ на
+    multipart-обвязку (имя поля, boundary, заголовки частей) -- без запаса (MULTIPART_SLACK)
+    честная загрузка ровно на границе отсеклась бы как «слишком большая» из-за нескольких
+    лишних байт протокола, не из-за размера файла."""
+    resp = _upload(client, DELEGATE_ID, b"x" * MAX_UPLOAD_BYTES, name="big.bin", ctype="application/octet-stream")
+    assert resp.status_code == 200, resp.text
+    assert bot_api.calls[0]["method"] == "sendDocument"
 
 
 def test_upload_pending_delegate_without_cap_forbidden(client, bot_api):
