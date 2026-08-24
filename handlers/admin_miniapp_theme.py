@@ -48,11 +48,11 @@ PREVIEW_DIR = Path(__file__).resolve().parent.parent / "assets" / "theme-preview
 
 # D-02: только два реальных пресета (RealTalk не заводим — нет бренд-материалов).
 _PRESET_LABELS: dict[str, str] = {
-    "bluebook": "AIESEC BlueBook",
-    "youlead": "YouLead",
+    "bluebook": "АЙСЕК — классика",
+    "youlead": "ЮЛид",
 }
 _PRESET_BLURBS: dict[str, str] = {
-    "bluebook": "строгий AIESEC: синий акцент, воздух, крупная типографика Raleway.",
+    "bluebook": "строгий АЙСЕК: синий акцент, воздух, крупная типографика Raleway.",
     "youlead": "игривый, на «ты», с мемами: оранжево-красный акцент, курсивные заголовки.",
 }
 
