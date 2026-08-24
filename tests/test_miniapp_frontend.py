@@ -749,6 +749,48 @@ def test_coins_settings_css_classes_exist_on_tokens():
         assert cls in css, cls
 
 
+# Узкий список модификаторов строки списка (D-11, план 19.1-06): каждый — надстройка поверх
+# .flat-row (ui.js::flatRow), не отдельная карточка. Список специально узкий (не весь файл),
+# чтобы не ловить легитимные карточки (.card, .recipient-card, .pinned — тот остаётся в паре
+# с .card по решению плана 19.1-05) как ложное срабатывание.
+_FLAT_ROW_MODIFIER_CLASSES = (".admin-task-row", ".search-result", ".check-row")
+
+
+def test_manager_row_modifiers_do_not_redeclare_card_shell():
+    css = (MINIAPP_STATIC / "app.css").read_text(encoding="utf-8")
+    for cls in _FLAT_ROW_MODIFIER_CLASSES:
+        for line in css.splitlines():
+            stripped = line.strip()
+            if not stripped.startswith(cls):
+                continue
+            # :active/.on — состояние по нажатию/включению, не форма строки — разрешено.
+            if ":active" in stripped or ".on" in stripped:
+                continue
+            assert "border:" not in stripped and "background:" not in stripped, (
+                f"{cls}: строка списка не должна рисовать свою рамку/фон — {stripped}"
+            )
+
+
+# Узкий список эмодзи, использовавшихся как ФУНКЦИОНАЛЬНЫЕ иконки интерфейса (кнопки/чипы/
+# состояния) на шести менеджерских экранах до итоговой ревизии плана 19.1-06 (D-13) — не
+# эмодзи из текстов реестра (те приходят с сервера, не в зоне ответственности этих файлов).
+# Простые типографские стрелки (←/→ навигации визарда) сюда намеренно не входят — это не
+# пиктограммы-иконки, тот же принцип, что и в _CHROME_ICON_EMOJI для делегатских экранов.
+_MANAGER_CHROME_ICON_EMOJI = (
+    "✅", "❌", "✏️", "💰", "📅", "🗄", "↩️", "🗑", "📷", "➕", "⏭", "🔁", "⏰",
+    "👁", "👤", "◀️", "🌍", "☐", "🪙", "👥", "⏳",
+)
+
+MANAGER_SIX_SCREENS = ["review.js", "stats.js", "admin_tasks.js", "task_edit.js", "admin_coins.js", "settings.js"]
+
+
+@pytest.mark.parametrize("name", MANAGER_SIX_SCREENS)
+def test_manager_screens_have_no_emoji_icons_in_chrome(name):
+    text = _js_without_comments(SCREENS_DIR / name)
+    for e in _MANAGER_CHROME_ICON_EMOJI:
+        assert e not in text, f"{name}: эмодзи {e} в роли иконки интерфейса — замените icons.js (D-13)"
+
+
 # ── хаб делегата и менеджера + привет-экран (план 19.1-04, D-09/D-10) ───────────────────
 
 def test_hub_screen_exports_render_without_innerhtml_or_colors():
