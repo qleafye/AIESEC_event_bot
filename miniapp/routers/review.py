@@ -111,8 +111,10 @@ async def review_next(
     rows = await get_pending_submissions(limit=1, offset=off, city_scope=scope)
     if not rows:
         # Пустая очередь — remaining 0; все карточки пропущены — remaining = total,
-        # фронт предлагает «начать сначала».
-        return {"empty": True, "remaining": total, "offset": off}
+        # фронт предлагает «начать сначала». Текст в обоих случаях — из реестра (D-18).
+        empty_key = "miniapp_empty_review_skipped" if total else "miniapp_empty_review"
+        empty_text = str(await get_setting_typed(empty_key) or "").replace("{count}", str(total))
+        return {"empty": True, "remaining": total, "offset": off, "empty_text": empty_text}
     row = rows[0]
     parts = await get_submission_parts_or_legacy(row)
 
