@@ -182,10 +182,19 @@ class PollCreate(StatesGroup):
 
 
 class MiniAppTheme(StatesGroup):
-    # Phase 19 (08, D-06): экран «🎨 Оформление» Mini App (handlers/admin_miniapp.py), право
-    # `settings` ("state:MiniAppTheme:*" в handlers/admin_caps.py). Своя маленькая группа, а
-    # не переиспользование EditSetting -- та же причина, что у GameTaskEdit: у экрана свой
-    # экран возврата (карточка «🎨 Оформление», не общий лендинг настроек), и оба поля правятся
-    # по одному за раз без общего wizard'а.
-    accent = State()  # HEX-цвет акцента, текстом
-    logo = State()    # логотип мероприятия, фото
+    # Phase 19 (08, D-06) + Phase 19.1 (07, D-20): экраны «🎨 Оформление» / «🎭 Пресеты и ручки»
+    # Mini App (handlers/admin_miniapp.py + handlers/admin_miniapp_theme.py), право `settings`
+    # ("state:MiniAppTheme:*" в handlers/admin_caps.py). Своя маленькая группа, а не
+    # переиспользование EditSetting -- та же причина, что у GameTaskEdit: у экранов свой экран
+    # возврата, и каждое поле правится по одному за раз без общего wizard'а.
+    logo = State()             # лого мероприятия (светлая тема), фото
+    color = State()            # HEX одной из трёх цветовых ручек (handle -- в
+                                # state.get_data()["miniapp_theme_color_handle"]: accent/secondary/bg)
+    logo_dark = State()        # лого для тёмной темы, фото (необязательно)
+    cover = State()            # обложка приложения, фото
+    cover_dark = State()       # обложка для тёмной темы, фото (необязательно)
+    sticker_empty = State()    # стикер «пусто», фото
+    sticker_success = State()  # стикер «успех», фото
+    sticker_error = State()    # стикер «ошибка», фото
+    sticker_top1 = State()     # стикер «топ-1», фото
+    coin_icon = State()        # своя иконка монеты, фото (необязательно)
