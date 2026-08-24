@@ -7,6 +7,14 @@ Tunnel маршрутизирует `yl26.<домен>/app*` сюда, оста�
 параметрами, что у дашборда (`dashboard.auth.session_middleware_kwargs` — один secret =
 cookie `yl_dash` читается здесь без изменений, D-05).
 
+260824-8qw (HG-01): сразу после `SessionMiddleware` подключён `miniapp.body_limit.
+BodyLimitMiddleware` — предел тела запроса на уровне ASGI, до `request.form()`. Порядок
+критичен: `app.add_middleware` делает позже добавленный слой внешним, поэтому итоговый стек
+— `_security_headers -> _enabled_gate -> BodyLimit -> Session -> роутер`. 413 остаётся ПОД
+слоем заголовков (CSP на ответе во фрейме Telegram обязана быть и на 413) и ПОД гейтом
+тумблера (выключенное приложение по-прежнему отвечает 503, а не 413 — гейт проверяется
+раньше, до того как middleware успеет прочитать тело).
+
 Security-заголовки (D-09, RESEARCH Pattern 5 / Pitfall 5): Telegram Web K/A встраивают
 Mini App в `<iframe>` на `https://web.telegram.org`, поэтому ответы `/app*` несут
 `Content-Security-Policy: frame-ancestors https://web.telegram.org https://*.telegram.org`
@@ -38,7 +46,14 @@ from uvicorn.middleware.proxy_headers import ProxyHeadersMiddleware
 from dashboard.auth import session_middleware_kwargs
 from dashboard.db import read_conn
 
-from miniapp.config import DashboardConfig, load_miniapp_config
+from miniapp.body_limit import BodyLimitMiddleware
+from miniapp.config import (
+    DEFAULT_MAX_BODY_BYTES,
+    MAX_BODY_BYTES,
+    MAX_UPLOAD_BYTES,
+    DashboardConfig,
+    load_miniapp_config,
+)
 from miniapp.deps import read_setting
 from miniapp.routers import ALL_ROUTERS
 from miniapp.routers.page import render_disabled_page
@@ -93,6 +108,16 @@ def _build_asgi_app(cfg: DashboardConfig) -> FastAPI:
         app.mount("/app/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
 
     app.add_middleware(SessionMiddleware, **session_middleware_kwargs(cfg))
+
+    # HG-01: см. докстринг модуля -- порядок (сразу после Session, до обоих @app.middleware)
+    # критичен. `report_limits` держит в ответе 413 потолок ФАЙЛА (MAX_UPLOAD_BYTES), а не
+    # потолок тела с multipart-обвязкой (MAX_BODY_BYTES) -- контракт фронта не меняется.
+    app.add_middleware(
+        BodyLimitMiddleware,
+        limits={"/app/api/uploads": MAX_BODY_BYTES},
+        default=DEFAULT_MAX_BODY_BYTES,
+        report_limits={"/app/api/uploads": MAX_UPLOAD_BYTES},
+    )
 
     @app.exception_handler(StarletteHTTPException)
     async def _json_errors(request: Request, exc: StarletteHTTPException):
