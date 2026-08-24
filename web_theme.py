@@ -132,6 +132,22 @@ def lighten_to_contrast(hex_color: str, bg_hex: str, target: float = 4.5, step: 
     return f"#{r:02X}{g:02X}{b:02X}"
 
 
+def darken_to_contrast(hex_color: str, bg_hex: str, target: float = 4.5, step: float = 0.04) -> str:
+    """Зеркало `lighten_to_contrast` — детерминированный шаг к чёрному, пока контраст против
+    `bg_hex` не достигнет `target`. Каждый канал только убывает (никогда не светлее исходного).
+    Найдено планом 19.1-08 (визуальная сверка): `--accent-text` (ссылки/числа/подписи, D-04
+    "Reserved for... links (--accent-text)") был захардкожен в `tokens.css` и не менялся при
+    смене пресета — YouLead оставался с синими числами поверх оранжевого hero. Этот хелпер
+    даёт `resolve_theme` посчитать читаемый text-вариант акцента для ЛЮБОГО пресета/кастома, а
+    не только для зашитого в токены BlueBook-значения."""
+    r, g, b = (int(hex_color[i:i + 2], 16) for i in (1, 3, 5))
+    while contrast_ratio(f"#{r:02x}{g:02x}{b:02x}", bg_hex) < target and (r, g, b) != (0, 0, 0):
+        r = max(0, r - max(1, round(r * step)))
+        g = max(0, g - max(1, round(g * step)))
+        b = max(0, b - max(1, round(b * step)))
+    return f"#{r:02X}{g:02X}{b:02X}"
+
+
 # ── resolve_theme ────────────────────────────────────────────────────────────────────────
 
 def _active_preset_name(raw) -> str:
@@ -159,6 +175,13 @@ def resolve_theme(settings: dict) -> dict:
 
     resolved["accent_dark"] = lighten_to_contrast(resolved["accent"], DARK_SURFACE)
     resolved["secondary_dark"] = lighten_to_contrast(resolved["secondary"], DARK_SURFACE)
+    # `--accent-text` (ссылки/числа/подписи, D-04 "Reserved for... links") -- читаемый на белом
+    # text-вариант акцента, пересчитывается на КАЖДЫЙ пресет/кастом (план 19.1-08: до этой
+    # правки был захардкожен в tokens.css под BlueBook и не следовал за сменой пресета).
+    # Тёмная тема уже даёт себе `accent_dark` контрастным против DARK_SURFACE (≥4.5:1) -- этого
+    # же значения достаточно и для текстового применения, второй пересчёт не нужен.
+    resolved["accent_text"] = darken_to_contrast(resolved["accent"], "#FFFFFF")
+    resolved["accent_text_dark"] = resolved["accent_dark"]
     return resolved
 
 
@@ -185,10 +208,16 @@ def theme_css_text(resolved: dict) -> str:
 
     accent_dark = _safe_hex(resolved.get("accent_dark"), lighten_to_contrast(accent, DARK_SURFACE))
     secondary_dark = _safe_hex(resolved.get("secondary_dark"), lighten_to_contrast(secondary, DARK_SURFACE))
+    # `--accent-text` (план 19.1-08 — см. resolve_theme) пересчитывается здесь же, если
+    # вызывающая сторона передала уже готовый resolved (обычный путь) -- иначе досчитывается
+    # на месте тем же правилом, что и accent_dark/secondary_dark выше.
+    accent_text = _safe_hex(resolved.get("accent_text"), darken_to_contrast(accent, "#FFFFFF"))
+    accent_text_dark = _safe_hex(resolved.get("accent_text_dark"), accent_dark)
 
     return (
         ":root {\n"
         f"  --accent: {accent};\n"
+        f"  --accent-text: {accent_text};\n"
         f"  --secondary: {secondary};\n"
         f"  --bg: {bg};\n"
         f"  --font-heading: {font_family};\n"
@@ -196,6 +225,7 @@ def theme_css_text(resolved: dict) -> str:
         "}\n"
         ":root[data-theme=\"dark\"] {\n"
         f"  --accent: {accent_dark};\n"
+        f"  --accent-text: {accent_text_dark};\n"
         f"  --secondary: {secondary_dark};\n"
         "}\n"
     )
