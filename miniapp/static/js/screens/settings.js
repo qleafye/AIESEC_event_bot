@@ -5,6 +5,14 @@
 // «Mini App включён» / «Только менеджерам» — отдельным блоком с рамкой --warn и надзаголовком,
 // который объясняет риск: выключение спрячет приложение у всех, не только у того, кто нажал
 // (тумблер обязан уметь выключать сам себя).
+//
+// 260824-8qw (MD-03): отнимающее направление этих двух тумблеров — второй тап через
+// `.confirm-box` (тот же паттерн, что архив/удаление в task_edit.js). Сервер помечает
+// отнимающее направление полем `item.confirm` (не null) — фронт не хранит НИ ЧИСЕЛ, НИ
+// какого тумблера в какую сторону опасен: это решает `miniapp.routers.settings.DANGER_CONFIRM`.
+// Текст последствий — тоже с сервера (реестр `miniapp_confirm_*_text`), в JS ни одного
+// литерала предупреждения — иначе владелец не смог бы переформулировать его без деплоя.
+// Возвращающее направление (включить обратно / вернуть делегатам доступ) остаётся в один тап.
 
 import { flatRow } from "../ui.js";
 import { icon } from "../icons.js";
@@ -28,6 +36,17 @@ export async function render(root, params, ctx) {
   const list = h("div", { class: "flat-list" });
   const dangerList = h("div", { class: "flat-list danger-settings" });
 
+  // Общая коробка подтверждения (D-11-паттерн task_edit.js) — одна на экран, содержимое
+  // подставляется под конкретный тумблер перед показом. Живёт СРАЗУ ПОСЛЕ dangerList, не
+  // внутри .flat-list — иначе разъедутся скругления/разделители списка.
+  const confirmText = h("p", {});
+  const confirmYes = h("button", { class: "btn danger", type: "button" });
+  const confirmBox = h("div", { class: "confirm-box hidden" },
+    confirmText,
+    confirmYes,
+    h("button", { class: "btn ghost", type: "button", text: "Отмена", onClick: () => confirmBox.classList.add("hidden") }),
+  );
+
   root.append(
     h("h1", { text: "Настройки" }),
     notice,
@@ -35,6 +54,7 @@ export async function render(root, params, ctx) {
     h("h2", {}, icon("alert-triangle"), h("span", { text: " Mini App целиком" })),
     h("p", { class: "muted", text: "Ниже — тумблеры, которые касаются всех: выключение спрячет приложение у всех менеджеров и делегатов, не только у вас." }),
     dangerList,
+    confirmBox,
   );
 
   function say(text, kind) {
@@ -45,6 +65,7 @@ export async function render(root, params, ctx) {
   let busy = false;
 
   function draw(items) {
+    confirmBox.classList.add("hidden");  // перерисовка = сброс незавершённого подтверждения
     list.replaceChildren();
     dangerList.replaceChildren();
     for (const item of items) {
@@ -59,9 +80,16 @@ export async function render(root, params, ctx) {
       icon: "check",
       title: item.label,
       trailing: on ? "Включено" : "Выключено",
-      onClick: () => toggle(item),
+      onClick: () => (item.confirm ? openConfirm(item) : toggle(item)),
       cls: `check-row${on ? " on" : ""}`,
     });
+  }
+
+  function openConfirm(item) {
+    confirmText.textContent = item.confirm;
+    confirmYes.textContent = item.value === "on" ? "Да, выключить" : "Да, включить";
+    confirmYes.onclick = () => toggle(item);
+    confirmBox.classList.remove("hidden");
   }
 
   async function toggle(item) {

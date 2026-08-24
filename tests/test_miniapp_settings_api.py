@@ -12,7 +12,8 @@ import asyncio
 from database import db as bot_db
 from settings_schema import get_setting_typed
 
-from miniapp.routers.settings import EDITABLE_KEYS
+from miniapp.routers import settings as settings_router
+from miniapp.routers.settings import DANGER_CONFIRM, EDITABLE_KEYS
 
 from tests.test_miniapp_routes import (
     ADMIN_ID,
@@ -68,7 +69,7 @@ def test_settings_list_only_whitelist_with_human_labels(tmp_path):
     keys = {i["key"] for i in items}
     assert keys == set(EDITABLE_KEYS)
     for item in items:
-        assert set(item.keys()) == {"key", "label", "value", "group_label"}
+        assert set(item.keys()) == {"key", "label", "value", "group_label", "confirm"}
         assert item["label"].strip()  # человеческая подпись, не пустая
         assert item["group_label"].strip()
         assert item["value"] in ("on", "off")
@@ -137,6 +138,80 @@ def test_settings_post_without_settings_cap_403(tmp_path):
 
 
 # ── miniapp_enabled умеет выключать сам себя ─────────────────────────────────────────────
+
+# ── подтверждение опасного направления (260824-8qw, MD-03) ──────────────────────────────
+
+def _item(items, key):
+    return next(i for i in items if i["key"] == key)
+
+
+def test_miniapp_enabled_confirm_only_on_disabling_direction(tmp_path):
+    # Через HTTP это не проверить: miniapp_enabled=off гасит весь /app/api/* (T-19-01,
+    # _enabled_gate) -- то есть саму настройку из выключенного приложения не открыть.
+    # `_items()` -- backend-логика роутера, тестируется напрямую.
+    _setup(tmp_path)
+    _set("miniapp_enabled", "on")
+    on_item = _item(_run(settings_router._items()), "miniapp_enabled")
+    assert on_item["confirm"] == _run(get_setting_typed("miniapp_confirm_disable_text"))
+    assert on_item["confirm"]
+
+    _set("miniapp_enabled", "off")
+    off_item = _item(_run(settings_router._items()), "miniapp_enabled")
+    assert off_item["confirm"] is None  # включение обратно -- безопасное направление
+
+
+def test_miniapp_staff_only_confirm_only_on_restricting_direction(tmp_path):
+    client = _setup(tmp_path)
+    _set("miniapp_staff_only", "off")
+    items = _list(client).json()
+    off_item = _item(items, "miniapp_staff_only")
+    assert off_item["confirm"] == _run(get_setting_typed("miniapp_confirm_staff_only_text"))
+    assert off_item["confirm"]
+
+    _set("miniapp_staff_only", "on")
+    items = _list(client).json()
+    on_item = _item(items, "miniapp_staff_only")
+    assert on_item["confirm"] is None  # вернуть делегатам доступ -- безопасное направление
+
+
+def test_ordinary_section_toggles_never_have_confirm(tmp_path):
+    client = _setup(tmp_path)
+    items = _list(client).json()
+    for item in items:
+        if item["key"] in ("miniapp_enabled", "miniapp_staff_only"):
+            continue
+        assert item["confirm"] is None, item["key"]
+
+
+def test_confirm_text_reads_overridden_registry_value(tmp_path):
+    client = _setup(tmp_path)
+    _set("miniapp_enabled", "on")
+    _set("miniapp_confirm_disable_text", "Точно выключить?")
+    items = _list(client).json()
+    assert _item(items, "miniapp_enabled")["confirm"] == "Точно выключить?"
+
+
+def test_confirm_text_keys_are_not_in_editable_keys(tmp_path):
+    """Тексты подтверждения читаются реестром, но не всплывают тумблерами в белом списке."""
+    assert "miniapp_confirm_disable_text" not in EDITABLE_KEYS
+    assert "miniapp_confirm_staff_only_text" not in EDITABLE_KEYS
+
+
+def test_post_still_toggles_without_confirmation_parameter(tmp_path):
+    """Подтверждение -- шаг интерфейса; серверный контракт POST не меняется, второй тап не
+    требует никакого специального параметра."""
+    client = _setup(tmp_path)
+    resp = _post(client, "miniapp_enabled", "off")
+    assert resp.status_code == 200, resp.text
+    assert _run(get_setting_typed("miniapp_enabled")) == "off"
+
+
+def test_danger_confirm_table_covers_only_the_two_taking_directions():
+    assert DANGER_CONFIRM == {
+        ("miniapp_enabled", "off"): "miniapp_confirm_disable_text",
+        ("miniapp_staff_only", "on"): "miniapp_confirm_staff_only_text",
+    }
+
 
 def test_disabling_miniapp_enabled_locks_app_with_503(tmp_path):
     client = _setup(tmp_path)
