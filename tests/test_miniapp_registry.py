@@ -1,10 +1,11 @@
 """Phase 19 Plan 01 Task 1 (WEBAPP-01, D-06/D-10): реестр ключей `miniapp_*`, кнопка меню
 `menu_miniapp` и константы процесса `miniapp/config.py`.
 
-Список из 43 ключей перечислен ЯВНО: добавление 44-го обязано осознанно ломать этот тест
+Список из 45 ключей перечислен ЯВНО: добавление 46-го обязано осознанно ломать этот тест
 (контракт, на который опираются экраны планов 19-02..19-08). Расширен планом 19.1-02
 (D-03/D-04/D-07/D-08/D-15/D-16/D-18): ручки пресетов оформления, ассеты (стикеры/обложки/
 лого тёмной темы/иконка монеты), приветственный экран, тексты пустых состояний менеджера.
+Хвост 19.1-06 (D-18): тексты пустой очереди проверки сдач (`miniapp_empty_review`/`_skipped`).
 """
 from __future__ import annotations
 
@@ -67,6 +68,9 @@ MINIAPP_KEYS = [
     "miniapp_empty_admin_tasks",
     "miniapp_empty_admin_tasks_archived",
     "miniapp_empty_admin_coins",
+    # пустые состояния менеджера
+    "miniapp_empty_review",
+    "miniapp_empty_review_skipped",
 ]
 
 SECTION_KEYS = [k for k in MINIAPP_KEYS if k.startswith("miniapp_section_")]
@@ -81,8 +85,8 @@ THEME_ENUM_KEYS = [
 _ALLOWED_TYPES = {"toggle", "int", "list", "date", "text", "enum", "photo", "file"}
 
 
-def test_exactly_43_miniapp_keys_and_no_extra():
-    assert len(MINIAPP_KEYS) == 43
+def test_exactly_45_miniapp_keys_and_no_extra():
+    assert len(MINIAPP_KEYS) == 45
     present = sorted(k for k in SETTINGS_SCHEMA if k.startswith("miniapp_"))
     assert present == sorted(MINIAPP_KEYS)
 
@@ -121,7 +125,7 @@ def test_text_keys_have_human_defaults():
         k for k in MINIAPP_KEYS
         if SETTINGS_SCHEMA[k]["type"] == "text" and k != "miniapp_accent"
     ]
-    assert len(text_keys) == 19
+    assert len(text_keys) == 21
     for key in text_keys:
         default = SETTINGS_SCHEMA[key]["default"]
         assert isinstance(default, str) and default.strip(), key
@@ -177,6 +181,12 @@ def test_admin_empty_state_keys_removed_hardcode():
         SETTINGS_SCHEMA["miniapp_empty_admin_coins"]["default"]
         == "Ручных операций пока не было."
     )
+    assert SETTINGS_SCHEMA["miniapp_empty_review"]["default"] == "Сдач на проверке нет."
+    assert (
+        SETTINGS_SCHEMA["miniapp_empty_review_skipped"]["default"]
+        == "Пропущено всё — осталось {count}."
+    )
+    assert "{count}" in SETTINGS_SCHEMA["miniapp_empty_review_skipped"]["prompt"]
 
 
 def test_miniapp_keys_not_in_settings_fields_or_groups():

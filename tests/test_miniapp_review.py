@@ -149,7 +149,7 @@ def test_next_returns_exactly_one_card_with_remaining(client, bot_api):
     ]
     assert body["after_deadline"] is False and body["archived_task"] is False
     assert body["attempt"] is None  # лимит перезаливов не задан
-    assert "empty" not in body
+    assert "empty" not in body and "empty_text" not in body
     assert s2 != s1
 
 
@@ -164,13 +164,21 @@ def test_next_offset_pages_and_skips_are_client_side(client, bot_api):
     assert client.get("/app/api/review/next", headers=_hdr(GAME_MANAGER_ID)).json()["submission"]["id"] == s1
     past_end = client.get("/app/api/review/next", params={"offset": 5}, headers=_hdr(GAME_MANAGER_ID)).json()
     assert past_end["empty"] is True and past_end["remaining"] == 2
+    assert past_end["empty_text"] == "Пропущено всё — осталось 2."
     garbage = client.get("/app/api/review/next", params={"offset": "abc"}, headers=_hdr(GAME_MANAGER_ID)).json()
     assert garbage["submission"]["id"] == s1
 
 
 def test_next_empty_queue(client, bot_api):
     body = client.get("/app/api/review/next", headers=_hdr(GAME_MANAGER_ID)).json()
-    assert body == {"empty": True, "remaining": 0, "offset": 0}
+    assert body == {
+        "empty": True, "remaining": 0, "offset": 0,
+        "empty_text": "Сдач на проверке нет.",
+    }
+    # переопределённое значение ключа читается вместо дефолта
+    _set("miniapp_empty_review", "Очередь пуста, идите пить чай.")
+    body2 = client.get("/app/api/review/next", headers=_hdr(GAME_MANAGER_ID)).json()
+    assert body2["empty_text"] == "Очередь пуста, идите пить чай."
 
 
 def test_next_flags_after_deadline_archive_and_attempt(client, bot_api):
