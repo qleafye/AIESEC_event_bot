@@ -35,10 +35,18 @@
   </header>
   {% endif %}
   {% if disabled_text %}
-  {# Тумблер miniapp_enabled = off: человеку — объяснение, а не JSON. #}
+  {# Тумблер miniapp_enabled = off: человеку — объяснение, а не JSON. Иконка -- инлайновая
+     копия icons.js::alert-triangle (D-13, план 19.1-08): страница рендерится сервером Jinja
+     до загрузки JS-ядра ("оболочка БЕЗ ядра" по докстрингу page.py), поэтому JS-хелпер icon()
+     здесь недоступен -- разметка та же, geometry не должна разойтись с icons.js вручную. #}
   <main id="screen">
     <section class="state">
-      <div class="icon">🚧</div>
+      <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+           stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false">
+        <path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3"></path>
+        <path d="M12 9v4"></path>
+        <path d="M12 17h.01"></path>
+      </svg>
       <h1>Приложение выключено</h1>
       <p>{{ disabled_text }}</p>
     </section>
