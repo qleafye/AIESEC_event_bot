@@ -42,7 +42,12 @@ export const ROUTES = [
   ["#/review", "screens/review.js"],
   ["#/stats", "screens/stats.js"],
   ["#/admin-tasks", "screens/admin_tasks.js"],
-  ["#/task-edit/new", "screens/task_edit.js"],
+  // Найдено планом 19.1-08 (визуальная сверка): отдельная литеральная запись «#/task-edit/new»
+  // стояла ПЕРЕД «#/task-edit/{id}» и перехватывала маршрут первой — params.id оставался
+  // undefined (у литерального паттерна нет {id}), а task_edit.js::isNew сравнивает именно со
+  // строкой "new" -> сравнение всегда ложно, мастер создания реально уходил в renderEdit(undefined)
+  // и падал на /admin/tasks/undefined (422). "new" и так проходит [^/]+ у {id} — вторая запись
+  // не нужна, params.id === "new" срабатывает сама.
   ["#/task-edit/{id}", "screens/task_edit.js"],
   ["#/admin-coins", "screens/admin_coins.js"],
   ["#/settings", "screens/settings.js"],
