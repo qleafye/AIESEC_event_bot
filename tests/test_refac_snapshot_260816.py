@@ -216,6 +216,38 @@ def _build_snapshot_lines():
 # inline web_app), registered at the very tail of handlers/user_actions.py, right after
 # `process_question` -> lands last among user_actions.router's message handlers, before the
 # gbal_*/gtask_* callback_query block.
+#
+# Drift note (2026-08-24, Phase 19.1-07, D-20): net +10 handlers (376 -> 386), re-captured by
+# RUNNING `_build_snapshot_lines()` against HEAD and diffed against the prior 376-line snapshot
+# -- every OTHER pre-existing line byte-for-byte identical in the same relative order (verified
+# by diffing both snapshots with every `miniapp` line filtered out first — zero remaining
+# diff). Second seam `handlers/admin_miniapp_theme.py` (пресеты BlueBook/YouLead/Своя + ручки
+# кастома D-04) imported at the tail of admin_settings.py right after admin_miniapp, replacing
+# the old accent/logo edit flow that used to live in admin_miniapp.py itself:
+# REMOVED (7, admin_miniapp.py): message `miniapp_accent_step`, `miniapp_logo_step`,
+# `miniapp_logo_step_invalid`; callback_query `miniapp_edit_accent_start`,
+# `miniapp_edit_logo_start`, `miniapp_remove_logo`, `miniapp_cancel_edit` — accent editing is
+# now `miniapp_theme_color:accent` and logo upload/remove is `miniapp_theme_photo:logo` /
+# `miniapp_theme_remove_photo:logo` in the new seam, both under the SAME FSM group
+# (`MiniAppTheme`, now with 10 fields instead of 2: `logo`, `color`, `logo_dark`, `cover`,
+# `cover_dark`, 4× `sticker_*`, `coin_icon`).
+# ADDED (17, admin_miniapp_theme.py): message `miniapp_theme_color_step` (one text-input state
+# shared by all three color handles, handle carried in `state.get_data()`),
+# `miniapp_theme_photo_step`/`miniapp_theme_photo_step_invalid` (one `StateFilter(*9 states)`
+# pair covering all nine photo slots — logo×2, cover×2, sticker×4, coin_icon — instead of 9
+# near-duplicate per-slot handlers, kept regex-derivable by spelling every `MiniAppTheme.*`
+# token out literally on the SAME physical `@router.message(...)` line, since
+# `_decorator_lines()` only reads lines starting with `"@router."`); callback_query
+# `open_miniapp_theme` (entry from admin_miniapp.py's new «🎭 Пресеты и ручки оформления»
+# button), `miniapp_theme_noop` («Своя» marker tap), `miniapp_theme_cancel_edit` (shared
+# cancel for every text/photo edit in this seam), `miniapp_preset_pick`/`miniapp_preset_apply`/
+# `miniapp_preset_cancel` (preset tap -> preview photo/text fallback -> confirm),
+# `miniapp_theme_reset_start`/`miniapp_theme_reset_go` (reset-to-preset confirm), colors
+# `miniapp_theme_color_start`, font `miniapp_theme_font_pick`, toggles
+# `miniapp_theme_toggle_playful`/`miniapp_theme_toggle_pattern`, and the two prefix-dispatched
+# asset entries `miniapp_theme_photo_start`/`miniapp_theme_remove_photo` (cover all nine slots
+# via callback_data suffix, same `toggle_miniapp_section`-style dispatch already used one seam
+# over). Net: -7 + 17 = +10 lines (376 -> 386).
 GOLDEN_SNAPSHOT = """
 admin|message|cmd_admin_help|cmd:admin
 admin|message|cmd_coins|cmd:coins
@@ -233,9 +265,9 @@ admin|message|settings_receive_file_doc|state:EditSetting:*
 admin|message|settings_receive_file_invalid|state:EditSetting:*
 admin|message|settings_edit_value|state:EditSetting:*
 admin|message|settings_list_add_item|state:EditSetting:*
-admin|message|miniapp_accent_step|state:MiniAppTheme:*
-admin|message|miniapp_logo_step|state:MiniAppTheme:*
-admin|message|miniapp_logo_step_invalid|state:MiniAppTheme:*
+admin|message|miniapp_theme_color_step|state:MiniAppTheme:*
+admin|message|miniapp_theme_photo_step|state:MiniAppTheme:*
+admin|message|miniapp_theme_photo_step_invalid|state:MiniAppTheme:*
 admin|message|cancel_city_form|state:CityForm:*,state:CityForm:*
 admin|message|cancel_city_form|state:CityForm:*,state:CityForm:*
 admin|message|city_add_label_step|state:CityForm:*
@@ -351,10 +383,20 @@ admin|callback_query|open_miniapp_settings|admin_miniapp_settings
 admin|callback_query|toggle_miniapp_enabled|miniapp_toggle_enabled
 admin|callback_query|toggle_miniapp_staff_only|miniapp_toggle_staff_only
 admin|callback_query|toggle_miniapp_section|miniapp_section:*
-admin|callback_query|miniapp_edit_accent_start|miniapp_edit_accent
-admin|callback_query|miniapp_edit_logo_start|miniapp_edit_logo
-admin|callback_query|miniapp_remove_logo|miniapp_remove_logo
-admin|callback_query|miniapp_cancel_edit|miniapp_cancel_edit
+admin|callback_query|open_miniapp_theme|miniapp_theme_open
+admin|callback_query|miniapp_theme_noop|miniapp_theme_noop
+admin|callback_query|miniapp_theme_cancel_edit|miniapp_theme_cancel_edit
+admin|callback_query|miniapp_preset_pick|miniapp_preset:*
+admin|callback_query|miniapp_preset_apply|miniapp_preset_apply:*
+admin|callback_query|miniapp_preset_cancel|miniapp_preset_cancel
+admin|callback_query|miniapp_theme_reset_start|miniapp_theme_reset
+admin|callback_query|miniapp_theme_reset_go|miniapp_theme_reset_go
+admin|callback_query|miniapp_theme_color_start|miniapp_theme_color:*
+admin|callback_query|miniapp_theme_font_pick|miniapp_theme_font:*
+admin|callback_query|miniapp_theme_toggle_playful|miniapp_theme_toggle_playful
+admin|callback_query|miniapp_theme_toggle_pattern|miniapp_theme_toggle_pattern
+admin|callback_query|miniapp_theme_photo_start|miniapp_theme_photo:*
+admin|callback_query|miniapp_theme_remove_photo|miniapp_theme_remove_photo:*
 admin|callback_query|show_admin_cities|admin_cities
 admin|callback_query|toggle_event_city_enabled|toggle_event_city_enabled
 admin|callback_query|city_toggle|city_toggle:*
@@ -627,7 +669,7 @@ def test_snapshot_total_handler_count_is_292():
     # poll_wizard_cancel = два декоратора) в хвост admin.message, 15 callback (список/карточка
     # admin_polls + мастер admin_poll_wizard) в хвост admin.callback_query; чистый аппенд,
     # перепроверен прогоном _build_snapshot_lines() и diff'ом с прежним 334-строчным снапшотом.
-    assert len(GOLDEN_SNAPSHOT) == 376  # quick 260819: +toggle_preselect_enabled, +coinsman_amount_stale, +toggle_pending_reminder/+toggle_nudge_enabled; quick 260822: +5 settings_list_*, +toggle_game_submit_notify, +toggle_consent_recollect, +consent_renew_accept; опросы 260822: +20 (342 -> 362 после слияния); Phase 15-02: +2 open_dashboard_settings/toggle_dashboard_block (362 -> 364); Phase 19-08: +12 admin_miniapp.py (message: miniapp_accent_step/miniapp_logo_step/miniapp_logo_step_invalid; callback_query: open_miniapp_settings/toggle_miniapp_enabled/toggle_miniapp_staff_only/toggle_miniapp_section/miniapp_edit_accent_start/miniapp_edit_logo_start/miniapp_remove_logo/miniapp_cancel_edit), +1 user_actions.router open_miniapp_button (364 -> 376)
+    assert len(GOLDEN_SNAPSHOT) == 386  # quick 260819: +toggle_preselect_enabled, +coinsman_amount_stale, +toggle_pending_reminder/+toggle_nudge_enabled; quick 260822: +5 settings_list_*, +toggle_game_submit_notify, +toggle_consent_recollect, +consent_renew_accept; опросы 260822: +20 (342 -> 362 после слияния); Phase 15-02: +2 open_dashboard_settings/toggle_dashboard_block (362 -> 364); Phase 19-08: +12 admin_miniapp.py (message: miniapp_accent_step/miniapp_logo_step/miniapp_logo_step_invalid; callback_query: open_miniapp_settings/toggle_miniapp_enabled/toggle_miniapp_staff_only/toggle_miniapp_section/miniapp_edit_accent_start/miniapp_edit_logo_start/miniapp_remove_logo/miniapp_cancel_edit), +1 user_actions.router open_miniapp_button (364 -> 376); Phase 19.1-07: -7 admin_miniapp.py (accent/logo edit flow replaced) +17 admin_miniapp_theme.py (presets + D-04 handles) = net +10 (376 -> 386)
 
 
 # ── Task 2(a): Dispatcher feed_update smoke — cross-router first-match routing ─────────────
