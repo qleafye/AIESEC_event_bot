@@ -215,7 +215,6 @@ EXPECTED_ROUTES = {
     "#/stats": "screens/stats.js",
     "#/admin-tasks": "screens/admin_tasks.js",
     "#/task-edit/{id}": "screens/task_edit.js",
-    "#/task-edit/new": "screens/task_edit.js",
     "#/admin-coins": "screens/admin_coins.js",
     "#/settings": "screens/settings.js",
 }
@@ -230,10 +229,17 @@ def _routes_from_app_js() -> dict[str, str]:
 
 
 def test_route_table_matches_phase_plan_exactly():
+    # Найдено планом 19.1-08 (визуальная сверка): отдельная литеральная запись
+    # "#/task-edit/new" стояла ПЕРЕД "#/task-edit/{id}" и перехватывала маршрут первой — у
+    # литерального паттерна нет {id}, params.id оставался undefined, task_edit.js::isNew
+    # (сравнение с "new") никогда не срабатывало -- мастер создания падал на
+    # /admin/tasks/undefined (422). Запись убрана из app.js: "new" и так проходит [^/]+ у
+    # {id}, второй маршрут не нужен -- проверяем явно ниже, чтобы регрессия не вернулась.
     routes = _routes_from_app_js()
     assert routes == EXPECTED_ROUTES
-    assert len(routes) == 14
-    assert set(routes.values()) == set(EXPECTED_ROUTES.values())  # 13 модулей, task_edit — 2 маршрута
+    assert len(routes) == 13
+    assert set(routes.values()) == set(EXPECTED_ROUTES.values())  # 13 модулей, у task_edit один маршрут
+    assert "#/task-edit/new" not in routes
 
 
 def test_every_screen_module_is_registered_in_routes():
