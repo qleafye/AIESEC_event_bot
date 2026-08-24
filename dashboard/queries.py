@@ -340,7 +340,7 @@ _STEP_LABELS = {
     "informal_day": "Неформальный день",
     "comments": "Доп. комментарии",
     "department": "Департамент",
-    "aiesec_role": "Позиция AIESEC",
+    "aiesec_role": "Позиция в АЙСЕК",
     "needs_certificate": "Справка в ВУЗ",
     "english_level": "Англ. язык",
     "allergies": "Аллергии",
