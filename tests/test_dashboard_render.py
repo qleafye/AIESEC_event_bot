@@ -383,14 +383,14 @@ def test_all_seven_blocks_present_when_toggles_on(tmp_path):
     assert "Геймификация" in text
 
 
-def test_dashboard_footer_powered_by_aiesec(tmp_path):
+def test_dashboard_footer_powered_by_aiesec_ru(tmp_path):
     """D-15: в подвале — мелкий AIESEC Human как powered-by (в шапке уже лого мероприятия)."""
     db_path = _use_tmp_db(tmp_path)
     _seed_full_fixture(db_path)
     client = _stats_manager_client(db_path)
     resp = client.get("/")
     assert resp.status_code == 200
-    assert "powered by AIESEC" in resp.text
+    assert "работает на АЙСЕК" in resp.text
     assert "/static/brand/aiesec-human-blue.svg" in resp.text
 
 
