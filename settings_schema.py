@@ -97,7 +97,7 @@ SETTINGS_SCHEMA = {
         "type": "text", "group": "event", "label": "🎪 Название меро",
         "prompt": (
             "Название мероприятия в родительном падеже — подставляется в вопрос об "
-            "ожиданиях (например: «конференции RusCo», «форума YouLead», «Годового отчёта»)"
+            "ожиданиях (например: «конференции RusCo», «форума ЮЛид», «Годового отчёта»)"
         ),
         "default": None,
     },
@@ -810,7 +810,7 @@ SETTINGS_SCHEMA = {
     "reg_q_informal_day": {"type": "toggle", "group": "reg_questions", "label": "🏕 Неформальный день", "prompt": None, "default": "off"},
     "reg_q_comments": {"type": "toggle", "group": "reg_questions", "label": "💬 Доп. комментарии", "prompt": None, "default": "off"},
     "reg_q_department": {"type": "toggle", "group": "reg_questions", "label": "🏢 Департамент", "prompt": None, "default": "off"},
-    "reg_q_aiesec_role": {"type": "toggle", "group": "reg_questions", "label": "🎖 Позиция AIESEC", "prompt": None, "default": "off"},
+    "reg_q_aiesec_role": {"type": "toggle", "group": "reg_questions", "label": "🎖 Позиция в АЙСЕК", "prompt": None, "default": "off"},
     "reg_q_certificate": {"type": "toggle", "group": "reg_questions", "label": "📄 Справка в ВУЗ", "prompt": None, "default": "off"},
     "reg_q_alumni_status": {"type": "toggle", "group": "reg_questions", "label": "🎓 Аламни/айсекер", "prompt": None, "default": "off"},
     "reg_q_english": {"type": "toggle", "group": "reg_questions", "label": "🇬🇧 Англ. язык", "prompt": None, "default": "off"},
@@ -1536,7 +1536,7 @@ SETTINGS_SCHEMA = {
         "type": "text", "group": "miniapp", "label": "🎨 Цвет акцента",
         "prompt": (
             "Цвет акцента приложения в формате HEX: решётка и шесть символов после неё, "
-            "например #037EF3. Базовый синий AIESEC — #037EF3."
+            "например #037EF3. Базовый синий АЙСЕК — #037EF3."
         ),
         "default": "#037EF3",
     },
