@@ -189,7 +189,12 @@ function updateBackButton(hash) {
 }
 
 // ── экраны состояний ─────────────────────────────────────────────────────────────────────
-const STATE_ICONS = { "open-in-bot": "🤖", expired: "⏳", "no-access": "⛔", disabled: "🚧", missing: "🧩" };
+// D-13 (найдено планом 19.1-08 при визуальной сверке): эмодзи здесь были функциональной
+// UI-иконкой, не голосом текста реестра ("эмодзи только в текстах реестра") -- заменены на
+// линейные SVG из icons.js, тем же приёмом, что таб-бар/плитки хаба (NAV_ICONS). Копия
+// STATE_TITLES/текстов НЕ переписана — UI-SPEC явно оставляет её вне этой фазы, в отличие от
+// визуального рестайла самой карточки `.state`, который в границах.
+const STATE_ICONS = { "open-in-bot": "link", expired: "clock", "no-access": "x", disabled: "alert-triangle", missing: "alert-triangle" };
 const STATE_TITLES = {
   "open-in-bot": "Откройте через бота",
   expired: "Сессия истекла",
@@ -204,7 +209,7 @@ export function showState(state, detail) {
   setMainButton(null);
   clear(navEl);
   const card = h("section", { class: "state", "data-state": state },
-    h("div", { class: "icon", text: STATE_ICONS[state] || "ℹ️" }),
+    h("div", { class: "icon" }, icon(STATE_ICONS[state] || "alert-triangle")),
     h("h1", { text: STATE_TITLES[state] || "" }),
   );
 

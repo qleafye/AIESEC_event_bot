@@ -563,6 +563,20 @@ def test_delegate_screens_have_no_emoji_icons_in_chrome(name):
         assert e not in text, f"{name}: эмодзи {e} в роли иконки интерфейса — замените icons.js (D-13)"
 
 
+# Найдено планом 19.1-08 (визуальная сверка): STATE_ICONS в app.js — экраны состояний
+# (open-in-bot/expired/no-access/disabled/missing) — рисовались эмодзи (🤖⏳⛔🚧🧩), та же
+# категория нарушения D-13, что и _CHROME_ICON_EMOJI выше, только в ядре, не в screens/*.js.
+_STATE_ICON_EMOJI = ("🤖", "⏳", "⛔", "🚧", "🧩", "ℹ️")
+
+
+def test_app_js_state_icons_have_no_emoji_and_use_icons_js():
+    text = _js_without_comments(APP_JS)
+    for e in _STATE_ICON_EMOJI:
+        assert e not in text, f"app.js: эмодзи {e} в роли иконки экрана состояния — замените icons.js (D-13)"
+    # showState() обязан собирать иконку через icon(...), не текстом.
+    assert 'h("div", { class: "icon" }, icon(STATE_ICONS[state]' in text
+
+
 # ── экраны менеджера (план 19-05): review.js / stats.js ────────────────────────────────
 
 MANAGER_SCREENS = ["review.js", "stats.js"]

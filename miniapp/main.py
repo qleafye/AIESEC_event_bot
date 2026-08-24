@@ -49,6 +49,20 @@ HEALTH_PATH = "/app/health"
 SHELL_PATHS = frozenset({"/app", "/app/"})
 STATIC_DIR = Path(__file__).resolve().parent / "static"
 
+# Ассеты оболочки (CSS/шрифты/иконки), которым разрешено грузиться ДАЖЕ при miniapp_enabled=off
+# -- план 19.1-08 (визуальная сверка): `render_disabled_page` рисует ту же `app.html`, что и
+# обычный shell (см. её докстринг «оболочка без ядра С ТЕКСТОМ»), но до этой правки гасящий
+# middleware блокировал `/app/static/*`/`/app/theme.css` наравне с API -- страница-объяснение
+# грузилась вообще без стилей и шрифтов (голый HTML, в этой среде браузер рисовал его тёмным
+# автоинвертированием). `/app/static/js/*` НАРОЧНО остаётся заблокирован -- «без ядра» означает
+# именно это: JS-модуль не должен исполниться и заново задёргать `/app/api/me`.
+_SHELL_ASSET_PREFIXES = ("/app/static/tokens.css", "/app/static/app.css", "/app/static/fonts/",
+                         "/app/static/icons/")
+
+
+def _is_shell_asset(path: str) -> bool:
+    return path == "/app/theme.css" or path.startswith(_SHELL_ASSET_PREFIXES)
+
 CONTENT_SECURITY_POLICY = (
     "frame-ancestors https://web.telegram.org https://*.telegram.org; "
     "default-src 'self'; "
@@ -99,9 +113,12 @@ def _build_asgi_app(cfg: DashboardConfig) -> FastAPI:
     # зависимостей — иначе ответ с ошибкой ушёл бы во фрейм Telegram без CSP.
     @app.middleware("http")
     async def _enabled_gate(request: Request, call_next):
-        if request.url.path != HEALTH_PATH and not _miniapp_enabled(cfg.db_path):
-            if request.url.path in SHELL_PATHS:
+        path = request.url.path
+        if path != HEALTH_PATH and not _miniapp_enabled(cfg.db_path):
+            if path in SHELL_PATHS:
                 return render_disabled_page(request)
+            if _is_shell_asset(path):
+                return await call_next(request)  # см. _is_shell_asset -- стили/шрифты оболочки
             return JSONResponse({"reason": "miniapp_off"}, status_code=503)
         return await call_next(request)
 
