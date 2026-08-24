@@ -1975,3 +1975,9 @@ from handlers import admin_dashboard  # noqa: E402,F401
 # snapshot together with the user_actions.py append).
 from handlers import admin_miniapp  # noqa: E402,F401
 
+# ── Seam chain (Phase 19.1, 07, D-20): handlers/admin_miniapp_theme.py (пресеты + ручки
+# кастома — второй шов «🎨 Оформление») decorates the same admin.router. Imported LAST, right
+# after admin_miniapp, so its handlers land right after every handler above at any module
+# import order. Golden snapshot: tests/test_refac_snapshot_260816.py.
+from handlers import admin_miniapp_theme  # noqa: E402,F401
+
