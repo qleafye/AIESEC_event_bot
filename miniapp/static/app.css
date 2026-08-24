@@ -717,13 +717,24 @@ a.flat-row:active, button.flat-row:active { background: var(--surface-alt); }
 .wizard-step { margin-bottom: var(--sp-3); }
 .wizard-step .label-role { margin-bottom: var(--sp-1); }
 
-/* ── монеты вручную (план 19-07, экран 8): карточка получателя, результаты поиска ─────── */
-.search-result { display: flex; justify-content: space-between; align-items: center; gap: var(--sp-3); margin-bottom: var(--sp-2); }
+/* ── монеты вручную (план 19-07, экран 8; плоские строки поиска — план 19.1-06) ────────── */
+/* .search-result — модификатор поверх .flat-row (ui.js::flatRow), поле поиска — с иконкой. */
+.search-field { position: relative; }
+.search-field .icon {
+  position: absolute; left: var(--sp-3); top: 50%; transform: translateY(-50%);
+  color: var(--text-muted); pointer-events: none;
+}
+.search-field .input { padding-left: calc(var(--sp-3) * 2 + 18px); }
 .recipient-card .title { font-size: 17px; }
+.recipient-card .icon { color: var(--accent-text); }
 
-/* ── настройки-лайт (план 19-07): список чекбоксов и отдельный блок опасных тумблеров ─── */
-.check-row { cursor: pointer; }
-.check-row:active { background: var(--surface-alt); }
+/* ── настройки-лайт (план 19-07; плоские строки-тумблеры — план 19.1-06) ──────────────── */
+/* Состояние тумблера — иконкой check (видна только когда включён) И словом
+   «Включено/Выключено» в trailing, не только цветом. */
+.check-row .icon { opacity: 0; transition: opacity var(--dur) var(--ease); }
+.check-row.on .icon { opacity: 1; color: var(--accent-text); }
+.check-row .flat-row-trailing { font-size: 12px; letter-spacing: .08em; color: var(--text-muted); }
+.check-row.on .flat-row-trailing { color: var(--accent-text); }
 .danger-settings { border-color: var(--warn); }
 
 /* ── хаб делегата и менеджера (план 19.1-04, D-09/D-10 вариант C) ─────────────────────── */
