@@ -31,7 +31,7 @@ REG_LABELS = {
     "reg_q_attendance": "\U0001f4cd Формат",
     "reg_q_comments": "\U0001f4ac Доп. комментарии",
     "reg_q_department": "🏢 Департамент",
-    "reg_q_aiesec_role": "🎖 Позиция AIESEC",
+    "reg_q_aiesec_role": "🎖 Позиция в АЙСЕК",
     "reg_q_certificate": "📄 Справка в ВУЗ",
     "reg_q_alumni_status": "🎓 Аламни/айсекер",
     "reg_q_english": "🇬🇧 Англ. язык",

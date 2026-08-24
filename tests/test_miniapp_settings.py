@@ -338,7 +338,7 @@ def test_all_new_callbacks_registered_under_settings():
 def test_theme_screen_defaults_to_bluebook_not_custom(tmp_path):
     _admin_ready(tmp_path)
     text = asyncio.run(admin_miniapp_theme.render_miniapp_theme_text())
-    assert "Пресет: AIESEC BlueBook" in text
+    assert "Пресет: АЙСЕК — классика" in text
     assert "Своя" not in text.split("\n")[2]  # заголовочная строка не «Своя»
     kb = asyncio.run(admin_miniapp_theme.build_miniapp_theme_keyboard())
     data = _flat_callback_data(kb)
@@ -370,7 +370,7 @@ def test_preset_pick_sends_text_fallback_when_preview_missing(tmp_path, monkeypa
     assert callback.message.photo_calls == []
     assert callback.message.answers_sent  # fail-soft: тот же вопрос текстом
     text = callback.message.answers_sent[-1]
-    assert "YouLead" in text
+    assert "ЮЛид" in text
 
 
 def test_preset_pick_unknown_name_rejected(tmp_path):
@@ -404,7 +404,7 @@ def test_preset_apply_writes_all_handles_at_once(tmp_path):
     expected = dict(web_theme.PRESETS["youlead"])
     expected["preset"] = "youlead"
     assert values == expected
-    assert callback.answers and "YouLead" in callback.answers[0][0]
+    assert callback.answers and "ЮЛид" in callback.answers[0][0]
     # применение шлёт свежий экран отдельным сообщением
     assert callback.message.answers_sent
 
@@ -439,7 +439,7 @@ def test_editing_one_handle_flips_header_to_custom(tmp_path):
     _admin_ready(tmp_path)
     asyncio.run(db.set_setting(web_theme.THEME_KEYS["accent"], "#123456"))
     text = asyncio.run(admin_miniapp_theme.render_miniapp_theme_text())
-    assert "Своя (на базе AIESEC BlueBook)" in text
+    assert "Своя (на базе АЙСЕК — классика)" in text
     kb = asyncio.run(admin_miniapp_theme.build_miniapp_theme_keyboard())
     data = _flat_callback_data(kb)
     assert "miniapp_theme_reset" in data
@@ -673,7 +673,7 @@ def test_theme_screen_text_and_labels_have_no_raw_keys(tmp_path):
     text = asyncio.run(admin_miniapp_theme.render_miniapp_theme_text())
     assert "miniapp_" not in text
     assert "raleway_italic" not in text  # код начертания -- только человеческая подпись
-    assert "bluebook" not in text  # код пресета (строчными) -- только "AIESEC BlueBook"
+    assert "bluebook" not in text  # код пресета (строчными) -- только "АЙСЕК — классика"
 
     kb = asyncio.run(admin_miniapp_theme.build_miniapp_theme_keyboard())
     for row in kb.inline_keyboard:
