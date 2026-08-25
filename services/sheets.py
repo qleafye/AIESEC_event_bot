@@ -858,6 +858,66 @@ async def ensure_named_sheet_header(tab_name: str, headers: list[str]):
         logger.warning(f"ensure_named_sheet_header({tab_name!r}) failed (skipping): {e}")
 
 
+# --- Quick 260825-ldi: incremental read/append for a named tab, mirroring get_existing_sheet_ids
+# / append_rows_to_sheet (main tab) but keyed by tab name. Needed by handlers/admin_settings.py's
+# «🔄 Синхронизация» (sync_sheet), which used to always dozapisyvat missing rows into the main
+# tab even for delegates whose city routes them to a named tab -- the fix loops over city tabs and
+# needs read+append primitives that don't abort the whole sync when a single tab misbehaves.
+
+def _named_existing_ids_sync(tab_name: str) -> set[int]:
+    sheet = _get_named_sheet(tab_name)
+    col_values = sheet.col_values(1)
+    ids = set()
+    for v in col_values[1:]:
+        try:
+            ids.add(int(v))
+        except (ValueError, TypeError):
+            continue
+    return ids
+
+
+async def get_existing_named_sheet_ids(tab_name: str) -> set[int] | None:
+    """Fail-soft read of column 1 (ids) on a named tab. Returns `None` — NOT `set()` — on any
+    failure (missing credentials or API error): `None` means «could not read the tab», `set()`
+    means «tab is empty». Collapsing those two into an empty set would make every delegate look
+    missing and flood the tab with duplicates on the next sync -- exactly the bug this task
+    fixes. Fail-soft (unlike get_existing_sheet_ids, which propagates) because this is called in
+    a per-tab loop where one bad tab must not cancel the rest."""
+    if not config.GOOGLE_SHEET_ID or not config.GOOGLE_CREDENTIALS_FILE:
+        return None
+    try:
+        return await asyncio.to_thread(_named_existing_ids_sync, tab_name)
+    except Exception as e:
+        _reset_named_sheet_cache(tab_name)
+        logger.warning(f"get_existing_named_sheet_ids({tab_name!r}) failed: {e}")
+        return None
+
+
+def _append_rows_to_named_sheet_sync(tab_name: str, rows: list[list]):
+    _get_named_sheet(tab_name).append_rows(rows)
+
+
+async def append_rows_to_named_sheet(tab_name: str, rows: list[list]) -> int:
+    """Batch append to a named tab, mirroring append_rows_to_sheet. Returns `-1` — the tab-failed
+    marker already used by the rebuild report (`f"{t}: {n if n >= 0 else '❌'}"`) — instead of
+    raising, for the same per-tab-loop-must-not-abort reason as get_existing_named_sheet_ids
+    above. No MAX_RETRIES/RETRY_DELAYS loop and no _alert_admins_sheet_failure: this is an
+    admin-triggered batch op behind a button (the manager just re-taps «Синхронизация»), not a
+    per-registration append where a silent retry matters; the sync report already tells the
+    manager which tab to retry."""
+    if not rows:
+        return 0
+    if not config.GOOGLE_SHEET_ID or not config.GOOGLE_CREDENTIALS_FILE:
+        return -1
+    try:
+        await asyncio.to_thread(_append_rows_to_named_sheet_sync, tab_name, rows)
+        return len(rows)
+    except Exception as e:
+        _reset_named_sheet_cache(tab_name)
+        logger.warning(f"append_rows_to_named_sheet({tab_name!r}) failed: {e}")
+        return -1
+
+
 # --- Quick 260815-3hw (Task 3): existing-tab confirm gate for the admin "📄 Вкладки таблицы" ---
 # screen -- before saving a NEW name for a tab the bot actually WRITES to, warn the manager if
 # that name already names an existing tab with data on it (CLAUDE.md: destructive operations
