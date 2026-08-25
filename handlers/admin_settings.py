@@ -41,6 +41,9 @@ from services.sheets import (
     REFUSED_UNPINNED_TAB,
     _reset_sheet_cache,
     tab_row_count,
+    ensure_named_sheet_header,
+    get_existing_named_sheet_ids,
+    append_rows_to_named_sheet,
 )
 from handlers.states import EditSetting
 from handlers.settings_validation import validate_setting_value, is_command_like
@@ -1255,32 +1258,108 @@ async def cancel_edit_setting_callback(callback: types.CallbackQuery, state: FSM
 
 @router.callback_query(F.data == "admin_sync_sheet")
 async def sync_sheet(callback: types.CallbackQuery):
+    """UAT 25.08 (prod snapshot): sync used to always dozapisyvat missing delegates into the
+    MAIN tab, even for delegates whose city routes them to a named tab — main tab («МСК») had
+    46 rows that actually belonged to СПб/Тюмень. Routes each user through the SAME resolver the
+    live append and rebuild_sheet use (city_row_tab), then appends missing rows per-tab, one
+    try/except per city tab so a single tab failure never cancels the rest."""
     await callback.answer("🔄 Синхронизация...")
     await callback.message.edit_text("🔄 Получаю данные из таблицы...", parse_mode="HTML")
 
     try:
         headers = await active_sheet_headers()  # only enabled columns
-        await ensure_sheet_header(headers)  # шапка таблицы, если её ещё нет
-        existing_ids = await get_existing_sheet_ids()
         all_users = await get_all_users_dicts()
 
-        missing = [u for u in all_users if u["telegram_id"] not in existing_ids]
+        main_users: list[dict] = []
+        city_users: dict[str, list[dict]] = {}
+        for u in all_users:
+            tab = await city_row_tab(u.get("event_city"), u.get("participant_type"))
+            if tab is None:
+                main_users.append(u)
+            else:
+                city_users.setdefault(tab, []).append(u)
 
-        if not missing:
+        # Основная вкладка — прежний порядок шагов, только теперь на своём подмножестве
+        # пользователей (module off / нет городов -> main_users == all_users, поведение прежнее).
+        await ensure_sheet_header(headers)  # шапка таблицы, если её ещё нет
+        existing_ids = await get_existing_sheet_ids()
+        main_missing = [u for u in main_users if u["telegram_id"] not in existing_ids]
+        main_count = 0
+        if main_missing:
+            main_rows = [[_sheet_value_map(u).get(h, "-") for h in headers] for u in main_missing]
+            main_count = await append_rows_to_sheet(main_rows)
+
+        # Городские вкладки — каждая в своём try/except: одна упавшая не отменяет остальные.
+        city_synced: list[tuple[str, int]] = []
+        failed_tabs: list[str] = []
+        for tab, trows in city_users.items():
+            try:
+                # Шапка ДО чтения id: чтение отбрасывает первую строку как шапку, и на вкладке
+                # без шапки первый делегат выпал бы из набора существующих и продублировался.
+                await ensure_named_sheet_header(tab, headers)
+                ids = await get_existing_named_sheet_ids(tab)
+                if ids is None:
+                    failed_tabs.append(tab)
+                    continue
+                missing_named = [u for u in trows if u["telegram_id"] not in ids]
+                if not missing_named:
+                    city_synced.append((tab, 0))
+                    continue
+                rows = [[_sheet_value_map(u).get(h, "-") for h in headers] for u in missing_named]
+                n = await append_rows_to_named_sheet(tab, rows)
+                if n < 0:
+                    failed_tabs.append(tab)
+                else:
+                    city_synced.append((tab, n))
+            except Exception as e:
+                logger.warning(f"sync_sheet: city tab {tab!r} failed: {e}")
+                failed_tabs.append(tab)
+
+        total_count = main_count + sum(n for _tab, n in city_synced)
+        # WR-06: только счётчики по вкладкам и id админа — никаких строк данных в логе.
+        logger.info(
+            f"admin={callback.from_user.id} action=sync_sheet main_added={main_count} "
+            f"city_tabs={len(city_users)} city_added={total_count - main_count} "
+            f"failed_tabs={len(failed_tabs)}"
+        )
+
+        if not city_users:
+            # Модуль городов выключен (или у всех делегатов основная вкладка) — байт-в-байт
+            # прежнее поведение и прежний текст.
+            if not main_missing:
+                await callback.message.edit_text(
+                    "✅ Таблица синхронизирована, пропущенных записей нет.",
+                    parse_mode="HTML",
+                    reply_markup=await admin_keyboard_for(callback.from_user.id),
+                )
+                return
             await callback.message.edit_text(
-                "✅ Таблица синхронизирована, пропущенных записей нет.",
+                f"✅ Синхронизация завершена!\n\n"
+                f"Добавлено записей: <b>{main_count}</b>",
                 parse_mode="HTML",
                 reply_markup=await admin_keyboard_for(callback.from_user.id),
             )
             return
 
-        # Align each row to the active header order so columns match the sheet exactly.
-        rows = [[_sheet_value_map(u).get(h, "-") for h in headers] for u in missing]
-        count = await append_rows_to_sheet(rows)
+        lines = [
+            "✅ Синхронизация завершена!",
+            "",
+            f"Добавлено записей: <b>{total_count}</b>",
+            f"Основная вкладка: <b>{main_count}</b>",
+        ]
+        for tab, n in city_synced:
+            lines.append(f"{html_module.escape(tab)}: <b>{n}</b>")
+        for tab in failed_tabs:
+            lines.append(f"{html_module.escape(tab)}: <b>❌</b>")
+        if failed_tabs:
+            names = ", ".join(html_module.escape(t) for t in failed_tabs)
+            lines.append(
+                f"⚠️ Не удалось обновить вкладки: {names}. Остальное записано, "
+                f"попробуйте нажать «Синхронизация» ещё раз."
+            )
 
         await callback.message.edit_text(
-            f"✅ Синхронизация завершена!\n\n"
-            f"Добавлено записей: <b>{count}</b>",
+            "\n".join(lines),
             parse_mode="HTML",
             reply_markup=await admin_keyboard_for(callback.from_user.id),
         )
