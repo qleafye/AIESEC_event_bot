@@ -64,6 +64,13 @@ def test_dashboard_dockerfile_copies_whole_package_with_static():
     )
 
 
+def test_dashboard_dockerfile_copies_web_theme_module():
+    """`dashboard.main` импортирует корневой `web_theme` (19.1) — без COPY образ падает на старте
+    `ModuleNotFoundError: web_theme` (прод 31.08). Тест-стенд этого не ловил: стоял на коммите до 19.1."""
+    body = DOCKERFILE.read_text(encoding="utf-8").splitlines()
+    assert any(ln.startswith("COPY --chown=appuser:appuser web_theme.py /app/web_theme.py") for ln in body)
+
+
 def test_dashboard_dockerfile_has_healthcheck_without_curl():
     hc = [ln for ln in DOCKERFILE.read_text(encoding="utf-8").splitlines() if ln.startswith("HEALTHCHECK")]
     assert len(hc) == 1
