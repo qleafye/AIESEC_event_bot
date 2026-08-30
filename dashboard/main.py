@@ -32,7 +32,6 @@ from starlette.middleware.sessions import SessionMiddleware
 from uvicorn.middleware.proxy_headers import ProxyHeadersMiddleware
 
 import web_theme
-from settings_schema import _parse_setting
 from dashboard import queries
 from dashboard.access import has_stats, staff_city, viewer_scope
 from dashboard.auth import session_middleware_kwargs, verify_login_payload
@@ -62,12 +61,12 @@ templates = Jinja2Templates(directory=str(TEMPLATES_DIR))
 
 
 def _read_setting(conn, key: str):
-    """Синхронное типизированное чтение ключа реестра по read-only подключению — тот же
-    приём, что `miniapp.deps.read_setting` (не импортируется отсюда: `dashboard/` — базовый
-    слой, `miniapp/` строится поверх него, а не наоборот)."""
+    """Сырое чтение ключа реестра по read-only подключению. Намеренно БЕЗ `settings_schema`:
+    тот модуль импортирует `database.db` → aiosqlite, которого в slim-образе дашборда нет
+    (образ падал `ModuleNotFoundError` на старте, 31.08). Типизация здесь не нужна: единственный
+    потребитель — `web_theme.resolve_theme`, он сам проверяет hex/enum и подставляет пресет."""
     row = conn.execute("SELECT value FROM bot_settings WHERE key = ?", (key,)).fetchone()
-    raw = row["value"] if row is not None else None
-    return _parse_setting(key, raw)
+    return row["value"] if row is not None else None
 
 
 def _thousands(value) -> str:
