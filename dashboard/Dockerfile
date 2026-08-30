@@ -18,6 +18,8 @@ RUN groupadd --gid 1000 appuser \
     && useradd --uid 1000 --gid 1000 --create-home --shell /usr/sbin/nologin appuser
 
 COPY --chown=appuser:appuser dashboard/ /app/dashboard/
+# Корневой модуль темы веб-слоя (19.1): чистый Python без зависимостей, общий с ботом и Mini App.
+COPY --chown=appuser:appuser web_theme.py /app/web_theme.py
 RUN mkdir -p /app/data && chown appuser:appuser /app/data
 
 USER appuser
