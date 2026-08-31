@@ -157,7 +157,8 @@ def test_toggle_at_header_city_writes_composite_key_not_global(tmp_path):
     # тогда, когда у города шапки есть собственное значение (идиома 09.3, не ослаблена).
     assert "<b>📝 Анкета</b>" in cb.message.text
     kb = cb.message.markup
-    assert kb.inline_keyboard[0][0].callback_data == "admin_city_switch"
+    # Шапка несёт свой раздел: смена города возвращает в «📝 Анкета», а не в корень (ревью фазы 20).
+    assert kb.inline_keyboard[0][0].callback_data == "admin_city_switch:form"
     assert kb.inline_keyboard[0][0].text == f"🏙 Город: {spb_label}"
     assert "settings_regmode_reset" in _flat_callback_data(kb)
     reset_texts = [t for t in _flat_button_texts(kb) if t == "↩️ Как везде"]
