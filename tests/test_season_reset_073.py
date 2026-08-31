@@ -239,7 +239,9 @@ def test_confirm_screen_shows_counts(tmp_path):
         assert "3" in text
         codes = _flat_callback_data(markup)
         assert "season_reset_go" in codes
-        assert "settings_group:event" in codes
+        # Ревью фазы 20: отмена ведёт в РАЗДЕЛ-владелец кнопки «🔄 Новый сезон», а не на экран
+        # группы «🎪 Событие/Медиа», откуда фаза 20 эту кнопку убрала.
+        assert "admin_sec:manage" in codes
 
     asyncio.run(go())
 
