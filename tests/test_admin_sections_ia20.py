@@ -1,6 +1,6 @@
-"""Phase 20 (20-01, ADMIN-IA-01..03) — сторож разделов админки по пути делегата.
+"""Phase 20 (20-01, ADMIN-IA-01..04) — сторож разделов админки по пути делегата.
 
-Шесть сюжетов:
+Семь сюжетов:
   (1) покрытие «до/после» — ни одна кнопка, достижимая с корня или с экрана настроек до
       фазы 20, не пропала при переезде в разделы;
   (2) каждая кнопка живёт ровно в ОДНОМ разделе (иначе менеджер найдёт одну настройку в
@@ -10,18 +10,24 @@
   (4) экран раздела: шапка города, «← Назад» в корень, отсутствие тупиков;
   (5) корень /admin — только разделы, и «Назад» с каждого экрана ведёт в его раздел (20-03);
   (6) после действия менеджера (тумблер, правка значения, приём медиа, отмена, выход) экран
-      возврата — тот, с которого действовали, а не исчезнувший плоский лендинг (20-04).
+      возврата — тот, с которого действовали, а не исчезнувший плоский лендинг (20-04);
+  (7) доки и встроенная справка не разъезжаются с раскладкой: путь к каждому пункту первой
+      настройки события — не глубже трёх нажатий от /admin, а «где менять» в справке бота и
+      подписи разделов в шпаргалке взяты из реестра, а не написаны от руки (20-05).
 
 pytest-asyncio в этом окружении нет — каждый async-вызов через asyncio.run(), config.DB_PATH
 смотрит в tmp_path (конвенция проекта, conftest.py нет).
 """
 import asyncio
+import re
+from pathlib import Path
 
 import pytest
 
 from database import db
 import cities
 from handlers import admin_reg_config as regcfg
+from handlers import admin_roles as roles
 from handlers import admin_sections as sec
 from handlers import admin_settings as st
 from handlers.admin_caps import role_caps_key
@@ -636,3 +642,81 @@ def test_legacy_admin_settings_lands_on_root(tmp_path):
     assert cb.message.edit_calls == 1
     assert any(cd.startswith("admin_sec:") for cd in _flat_callback_data(cb.message.markup))
     assert "переехали" in cb.message.text
+
+
+# (7) Доки и встроенная справка не разъезжаются с раскладкой (20-05, ADMIN-IA-04)
+
+# Пункты «Первой настройки события» из ADMIN_CHEATSHEET.md, которые делаются В БОТЕ. Первый
+# пункт списка (аватар и описание бота) сюда не входит: он делается в @BotFather, вне нашего
+# бота, и глубины в кнопках /admin у него нет по определению.
+# Пара: человеческое имя пункта -> идентификатор кнопки, до которой менеджеру нужно дойти.
+FIRST_SETUP: list[tuple[str, str]] = [
+    ("Приветствие", "settings_edit:start_text"),
+    ("Фото приветствия", "settings_photo:start"),
+    ("Инфо о форуме (дата, время, место, адрес)", "settings_edit:event_date"),
+    ("Контакты", "settings_edit:contact_person"),
+    ("Кнопки меню делегата", "admin_menu_buttons"),
+    ("Тексты вопросов анкеты", "admin_reg_prompts"),
+    ("Текст после одобрения", "settings_edit:approve_text"),
+    ("Текст при отклонении", "settings_edit:reject_text"),
+]
+
+
+def _taps_from_admin(target: str) -> tuple[int, str | None]:
+    """Сколько нажатий от /admin до кнопки `target` и в каком разделе она живёт.
+
+    Глубина считается ПО СТРУКТУРЕ реестра, а не кликами по живой клавиатуре:
+      строка раздела (op / screen / screen_admin / toggle) — 2 нажатия (раздел, затем строка);
+      поле внутри группы настроек (settings_edit / settings_photo / settings_file) — 3
+      (раздел, кнопка группы, само поле).
+    Неизвестная кнопка возвращает заведомо провальную глубину и None вместо раздела — тест
+    обязан упасть, а не молча посчитать её достижимой."""
+    token = sec.section_of(target)
+    if token:
+        return 2, token
+    if target.startswith("settings_edit:"):
+        group = st._group_of_setting_key(target.split(":", 1)[1])
+    elif target.startswith(("settings_photo:", "settings_file:")):
+        group = st.PHOTO_FILE_GROUP
+    else:
+        return 99, None
+    return (3, sec.section_of(group)) if group else (99, None)
+
+
+def test_first_setup_within_three_taps():
+    """Критерий успеха №3 ROADMAP фазы 20 — путь к каждому пункту первой настройки события не
+    глубже трёх нажатий от /admin. Проверяется по SECTIONS, поэтому это утверждение, за
+    которое отвечает раскладка, а не обещание в тексте: блок «Первая настройка события» в
+    ADMIN_CHEATSHEET.md только пересказывает менеджеру то, что посчитано здесь."""
+    assert len(FIRST_SETUP) == 8, "восемь пунктов в боте + BotFather = девять в шпаргалке"
+    for name, target in FIRST_SETUP:
+        taps, token = _taps_from_admin(target)
+        assert token is not None, f"{name}: «{target}» не объявлена ни в одном разделе"
+        assert taps <= 3, f"{name}: {taps} нажатий до «{target}» (раздел {token})"
+
+
+def test_settings_guide_where_starts_with_a_real_section():
+    """T-20-14: «📖 Справка по настройкам» печатает менеджеру, ГДЕ менять каждую настройку.
+    Путь обязан начинаться с подписи существующего раздела — переименуют раздел, забыв про
+    справку, и этот тест покраснеет раньше, чем менеджер уткнётся в несуществующую кнопку."""
+    labels = [label for _token, label, _rows in sec.SECTIONS]
+    for _title, _subtitle, entries in roles.SETTINGS_GUIDE_SECTIONS:
+        for entry in entries:
+            where = entry["where"]
+            assert "⚙️ Настройки →" not in where, entry["key"]
+            assert any(where.startswith(label) for label in labels), (entry["key"], where)
+
+
+def test_cheatsheet_covers_every_section():
+    """Сторож от тихого расхождения доки ↔ код: подпись раздела правится в SECTIONS, шпаргалка
+    обязана ехать следом. Плюс состав блока «Первая настройка события» — девять пунктов, и
+    первый из них про BotFather (единственный шаг вне бота)."""
+    text = (Path(__file__).resolve().parent.parent / "ADMIN_CHEATSHEET.md").read_text(encoding="utf-8")
+    for _token, label, _rows in sec.SECTIONS:
+        assert label in text, label
+
+    assert "## Первая настройка события" in text
+    block = text.split("## Первая настройка события", 1)[1].split("\n## ", 1)[0]
+    numbered = [line for line in block.splitlines() if re.match(r"^\d+\. ", line)]
+    assert len(numbered) == 9, numbered
+    assert "BotFather" in numbered[0], numbered[0]
