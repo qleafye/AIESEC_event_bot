@@ -17,6 +17,7 @@ Two clusters live here (.planning CONCERNS.md "Internal coupling inside handlers
 """
 from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
 
+from config import config
 from database.db import get_user
 from cities import (
     admin_selected_city,
@@ -29,13 +30,17 @@ from cities import (
 from handlers.admin_caps import required_capability, resolve_capabilities, ANY_CAPABILITY
 
 
-# ROLE-01 (D-15): the ONE list of (text, callback_data) menu rows — same order the plain
-# 14-button panel has always rendered in (13 original rows + Phase 07.2's «Города
-# мероприятия» row, appended last). This is the single source `_visible_menu_rows` filters
-# and `build_admin_keyboard` renders from; there is no second "button -> required right" map
-# anywhere in this file (D-01/D-15 invariant) — the required capability for each row is
-# looked up straight from `ADMIN_CAPS` (via `required_capability`), the exact map
-# `CapabilityMiddleware` enforces on the backend.
+# ROLE-01 (D-15): the ONE list of (text, callback_data) menu rows. Phase 20 (20-03,
+# ADMIN-IA-01): this is NO LONGER the layout of the root panel — the root now renders the
+# eight sections declared in `handlers/admin_sections.py::SECTIONS`, and every row below is
+# reachable through its own section. What this list still is, and why it must stay:
+#   — the map «callback_data -> подпись операции» that `build_section_keyboard` reads its
+#     button texts from (one operation cannot get two different labels on two screens);
+#   — the input of `_visible_menu_rows`, the pure per-person right filter still used by
+#     `/admin`'s auto-open decision (handlers/admin.py::cmd_admin_help, D-16).
+# There is no second "button -> required right" map anywhere in this file (D-01/D-15
+# invariant) — the required capability for each row is looked up straight from `ADMIN_CAPS`
+# (via `required_capability`), the exact map `CapabilityMiddleware` enforces on the backend.
 _ADMIN_MENU_ROWS: list[tuple[str, str]] = [
     ("📊 Статистика регистраций", "admin_stats"),
     ("🗓 Регистрации по месяцам", "admin_monthly_stats"),
@@ -84,15 +89,25 @@ def _visible_menu_rows(caps: set) -> list[tuple[str, str]]:
 
 async def build_admin_keyboard(user_id: int) -> InlineKeyboardMarkup:
     """ROLE-01 (D-15): the panel built for THIS person — a fresh capability read
-    (`resolve_capabilities`, D-05: no cache) followed by the pure row filter above. Every
-    caller MUST await this now; there is deliberately no synchronous fallback left, so a
-    forgotten `await` fails loudly (a coroutine object is not a valid `reply_markup`) instead
-    of silently showing an unfiltered panel to everyone."""
-    caps = await resolve_capabilities(user_id)
-    rows = _visible_menu_rows(caps)
+    (`resolve_capabilities`, D-05: no cache) followed by the pure row filter. Every caller
+    MUST await this now; there is deliberately no synchronous fallback left, so a forgotten
+    `await` fails loudly (a coroutine object is not a valid `reply_markup`) instead of
+    silently showing an unfiltered panel to everyone.
+
+    Phase 20 (20-03): the panel is now the eight SECTIONS, not 22 flat rows. `visible_sections`
+    applies exactly the same per-row `ADMIN_CAPS` filter — a section appears only when at least
+    one row inside it is available to this person (T-20-09), so an empty capability set still
+    yields an empty keyboard and nobody ever learns which sections exist for other roles.
+
+    The import is LAZY on purpose: `admin_sections` imports `admin_settings`, which imports
+    back into `admin_core` — a module-level import here closes that cycle."""
+    from handlers.admin_sections import visible_sections  # ленивый шов (см. docstring)
+
+    caps = await resolve_capabilities(user_id)  # D-05: одно свежее чтение на рендер, без кеша
+    sections = visible_sections(caps, user_id in config.ADMIN_IDS)
     return InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text=text, callback_data=callback_data)]
-        for text, callback_data in rows
+        [InlineKeyboardButton(text=label, callback_data=f"admin_sec:{token}")]
+        for token, label in sections
     ])
 
 
