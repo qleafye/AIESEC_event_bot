@@ -331,8 +331,15 @@ async def render_stats_text(admin_id: int | None = None) -> str:
 # ordinary capability-filtered admin panel whenever a public URL is configured (bootstrap-only,
 # config.DASHBOARD_PUBLIC_URL — never a bot_settings key, D-05). No new callback_data is
 # introduced (it's a `url=` button), so ADMIN_CAPS needs no new entry.
-async def _stats_keyboard_for(user_id: int) -> InlineKeyboardMarkup:
-    base = await admin_keyboard_for(user_id)
+async def _stats_keyboard_for(user_id: int, callback_data: str | None = None) -> InlineKeyboardMarkup:
+    # Ревью фазы 20: экран зовут и кнопкой раздела «📊 Данные», и командой /stats. Кнопка
+    # называет себя (callback_data) и получает клавиатуру своего раздела; у команды экрана-
+    # источника нет вовсе, поэтому там по-прежнему корень.
+    if callback_data:
+        from handlers.admin_sections import op_return_keyboard  # ленивый шов
+        base = await op_return_keyboard(user_id, callback_data)
+    else:
+        base = await admin_keyboard_for(user_id)
     if not config.DASHBOARD_PUBLIC_URL:
         return base
     dashboard_row = [InlineKeyboardButton(text="🌐 Открыть дашборд", url=config.DASHBOARD_PUBLIC_URL)]
@@ -684,13 +691,14 @@ async def cmd_stats_monthly(message: types.Message):
 async def show_admin_stats(callback: types.CallbackQuery):
     admin_id = callback.from_user.id
     text = await render_stats_text(admin_id)
-    await callback.message.edit_text(text, parse_mode="HTML", reply_markup=await _stats_keyboard_for(admin_id))
+    await callback.message.edit_text(text, parse_mode="HTML", reply_markup=await _stats_keyboard_for(admin_id, callback.data))
     await callback.answer()
 
 
 @router.callback_query(F.data == "admin_monthly_stats")
 async def show_admin_monthly_stats(callback: types.CallbackQuery):
-    await callback.message.edit_text(await render_monthly_stats(), parse_mode="HTML", reply_markup=await admin_keyboard_for(callback.from_user.id))
+    from handlers.admin_sections import op_return_keyboard  # ленивый шов (цикл на уровне модуля)
+    await callback.message.edit_text(await render_monthly_stats(), parse_mode="HTML", reply_markup=await op_return_keyboard(callback.from_user.id, callback.data))
     await callback.answer()
 
 
@@ -705,7 +713,8 @@ async def show_admin_source_stats(callback: types.CallbackQuery):
             lines.append(f"• {html_module.escape(str(source))} — {count}")
         text = "\n".join(lines)
 
-    await callback.message.edit_text(text, parse_mode="HTML", reply_markup=await admin_keyboard_for(callback.from_user.id))
+    from handlers.admin_sections import op_return_keyboard  # ленивый шов
+    await callback.message.edit_text(text, parse_mode="HTML", reply_markup=await op_return_keyboard(callback.from_user.id, callback.data))
     await callback.answer()
 
 
@@ -733,8 +742,9 @@ async def render_stuck_questions_text() -> str:
 
 @router.callback_query(F.data == "admin_stuck_questions")
 async def show_stuck_questions(callback: types.CallbackQuery):
+    from handlers.admin_sections import op_return_keyboard  # ленивый шов
     text = await render_stuck_questions_text()
-    await callback.message.edit_text(text, parse_mode="HTML", reply_markup=await admin_keyboard_for(callback.from_user.id))
+    await callback.message.edit_text(text, parse_mode="HTML", reply_markup=await op_return_keyboard(callback.from_user.id, callback.data))
     await callback.answer()
 
 
