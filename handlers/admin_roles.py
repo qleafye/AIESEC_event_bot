@@ -425,7 +425,9 @@ async def build_roles_keyboard(viewer_id: int | None = None) -> InlineKeyboardMa
         buttons.append(row_buttons)
 
     buttons.append([InlineKeyboardButton(text="➕ Добавить менеджера", callback_data="roles_add")])
-    buttons.append([InlineKeyboardButton(text="← Назад к настройкам", callback_data="admin_settings")])
+    # Phase 20 (20-03): «Назад» ведёт в раздел-владелец экрана («🔧 Управление»).
+    from handlers.admin_sections import back_button  # ленивый шов: модульный импорт даст цикл
+    buttons.append([back_button("admin_roles")])
     return InlineKeyboardMarkup(inline_keyboard=buttons)
 
 

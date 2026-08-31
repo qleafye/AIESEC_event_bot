@@ -58,7 +58,10 @@ async def build_dashboard_settings_keyboard() -> InlineKeyboardMarkup:
             text=("✅ " if on else "☐ ") + label,
             callback_data=f"dash_block:{_suffix(key)}",
         )])
-    buttons.append([InlineKeyboardButton(text="← К настройкам", callback_data="admin_settings")])
+    # Phase 20 (20-03): «Назад» ведёт в раздел-владелец экрана («📊 Данные»), а не в общий
+    # корень настроек. Цель выводится из SECTIONS — второй карты «экран -> раздел» нет.
+    from handlers.admin_sections import back_button  # ленивый шов: модульный импорт даст цикл
+    buttons.append([back_button("admin_dashboard_settings")])
     return InlineKeyboardMarkup(inline_keyboard=buttons)
 
 
