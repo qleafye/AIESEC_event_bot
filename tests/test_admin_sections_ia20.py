@@ -584,6 +584,67 @@ def test_toggle_inside_section_redraws_that_section(tmp_path, handler_name, call
     _assert_is_section_screen(cb.message.markup, section)
 
 
+# Ревью фазы 20: тумблеры перерисовку получили, а ОПЕРАЦИИ — нет. Экран результата любой из
+# них дорисовывал корень, поэтому менеджер, запустивший «🔄 Синхронизация» из «📊 Данные»,
+# заходил в раздел заново ради соседней кнопки. Здесь — те операции, которые выполняются на
+# одной локальной БД; те, что ходят в Google API, стережёт сторож по исходнику ниже.
+@pytest.mark.parametrize("module,handler_name,callback_data,section", [
+    ("admin", "show_admin_stats", "admin_stats", "data"),
+    ("admin", "show_admin_monthly_stats", "admin_monthly_stats", "data"),
+    ("admin", "show_admin_source_stats", "admin_source_stats", "data"),
+    ("admin", "show_stuck_questions", "admin_stuck_questions", "apps"),
+    ("game", "show_game_stats", "admin_game_stats", "game"),
+])
+def test_operation_inside_section_redraws_that_section(tmp_path, module, handler_name, callback_data, section):
+    from handlers import admin as admin_mod
+    from handlers import admin_gamification as game_mod
+
+    _roles_ready(tmp_path)
+    cb = FakeCallback(callback_data)
+    asyncio.run(getattr(admin_mod if module == "admin" else game_mod, handler_name)(cb))
+
+    assert sec.section_of(callback_data) == section  # раздел выведен из реестра, не задан
+    # Часть операций правит своё же сообщение, часть присылает отчёт новым — берём последнюю
+    # клавиатуру, какой бы дорогой она ни пришла.
+    kb = cb.message.markup if cb.message.markup is not None else cb.message.sent[-1][1]
+    _assert_is_section_screen(kb, section)
+
+
+def test_sheet_operations_return_to_their_section_too():
+    """Синхронизация / пересборка / дедуп / синк листов геймы ходят в живой Google API, поэтому
+    сторож здесь на уровне исходника: ни одна больше не дорисовывает корень, а операции за
+    гейтом подтверждения называют callback_data СВОЕЙ кнопки в разделе (строки «…_go» в
+    SECTIONS не объявлены — резолвер увёл бы их в корень)."""
+    import inspect
+
+    from handlers import admin_cities as cities_mod
+    from handlers import admin_gamification as game_mod
+
+    cases = [
+        (st.sync_sheet, "callback.data", "admin_sync_sheet", "data"),
+        (st.rebuild_sheet, '"admin_rebuild_sheet"', "admin_rebuild_sheet", "data"),
+        (cities_mod.dedupe_sheet_run, '"admin_dedupe_sheet"', "admin_dedupe_sheet", "data"),
+        (game_mod.sync_game_sheets, '"admin_game_sync_sheet"', "admin_game_sync_sheet", "game"),
+    ]
+    for func, arg, declared, section in cases:
+        source = inspect.getsource(func)
+        assert "admin_keyboard_for(" not in source, f"{func.__name__} снова дорисовывает корень"
+        assert f"op_return_keyboard(callback.from_user.id, {arg})" in source, func.__name__
+        assert sec.section_of(declared) == section, declared
+
+
+def test_stats_screen_keeps_the_root_when_it_comes_from_a_command():
+    """`/stats` экрана-источника не имеет — там корень остаётся правильным ответом, и общая
+    клавиатура статистики обязана уметь оба режима."""
+    import inspect
+
+    from handlers import admin as admin_mod
+
+    source = inspect.getsource(admin_mod._stats_keyboard_for)
+    assert "admin_keyboard_for(user_id)" in source  # ветка команды
+    assert "op_return_keyboard(user_id, callback_data)" in source  # ветка кнопки раздела
+
+
 def test_edit_value_returns_to_its_group_screen(tmp_path):
     """Правка значения возвращает на экран ГРУППЫ: кнопка «✏️ …» живёт только там. Заодно
     сторожит перекладку ключа — «После одобрения» после 20-01 лежит в «📋 Заявки»."""

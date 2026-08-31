@@ -1438,6 +1438,7 @@ async def sync_sheet(callback: types.CallbackQuery):
     46 rows that actually belonged to СПб/Тюмень. Routes each user through the SAME resolver the
     live append and rebuild_sheet use (city_row_tab), then appends missing rows per-tab, one
     try/except per city tab so a single tab failure never cancels the rest."""
+    from handlers.admin_sections import op_return_keyboard  # ленивый шов
     await callback.answer("🔄 Синхронизация...")
     await callback.message.edit_text("🔄 Получаю данные из таблицы...", parse_mode="HTML")
 
@@ -1505,14 +1506,14 @@ async def sync_sheet(callback: types.CallbackQuery):
                 await callback.message.edit_text(
                     "✅ Таблица синхронизирована, пропущенных записей нет.",
                     parse_mode="HTML",
-                    reply_markup=await admin_keyboard_for(callback.from_user.id),
+                    reply_markup=await op_return_keyboard(callback.from_user.id, callback.data),
                 )
                 return
             await callback.message.edit_text(
                 f"✅ Синхронизация завершена!\n\n"
                 f"Добавлено записей: <b>{main_count}</b>",
                 parse_mode="HTML",
-                reply_markup=await admin_keyboard_for(callback.from_user.id),
+                reply_markup=await op_return_keyboard(callback.from_user.id, callback.data),
             )
             return
 
@@ -1536,14 +1537,14 @@ async def sync_sheet(callback: types.CallbackQuery):
         await callback.message.edit_text(
             "\n".join(lines),
             parse_mode="HTML",
-            reply_markup=await admin_keyboard_for(callback.from_user.id),
+            reply_markup=await op_return_keyboard(callback.from_user.id, callback.data),
         )
     except Exception as e:
         logger.error(f"Sheet sync failed: {e}")
         await callback.message.edit_text(
             f"❌ Ошибка синхронизации:\n<code>{html_module.escape(str(e))}</code>",
             parse_mode="HTML",
-            reply_markup=await admin_keyboard_for(callback.from_user.id),
+            reply_markup=await op_return_keyboard(callback.from_user.id, callback.data),
         )
 
 
@@ -1575,6 +1576,8 @@ async def rebuild_sheet(callback: types.CallbackQuery):
     """Полная пересборка листа данных: перезаписать шапку + ВСЕ строки в текущем порядке
     колонок, применить выпадашку/цвета к «Статус». Выравнивает старые строки после смены
     порядка колонок (Таня п.1/п.5). Внимание: перезаписывает ручные правки на листе."""
+    # Гейт подтверждения дал callback «…_go», в разделе объявлена сама кнопка — называем её.
+    from handlers.admin_sections import op_return_keyboard  # ленивый шов
     await callback.answer("♻️ Пересборка...")
     logger.info(f"admin={callback.from_user.id} action=rebuild_sheet start")
     await callback.message.edit_text("♻️ Пересобираю таблицу (перезапись всех строк)…", parse_mode="HTML")
@@ -1612,14 +1615,14 @@ async def rebuild_sheet(callback: types.CallbackQuery):
                 "сразу, без перезапуска. Вариант для разработчика — <code>GOOGLE_SHEET_TAB</code> "
                 "в .env (тогда нужен перезапуск).",
                 parse_mode="HTML",
-                reply_markup=await admin_keyboard_for(callback.from_user.id),
+                reply_markup=await op_return_keyboard(callback.from_user.id, "admin_rebuild_sheet"),
             )
             return
         if count < 0:
             await callback.message.edit_text(
                 "❌ Пересборка не выполнена (таблица не настроена или ошибка API). Смотри логи.",
                 parse_mode="HTML",
-                reply_markup=await admin_keyboard_for(callback.from_user.id),
+                reply_markup=await op_return_keyboard(callback.from_user.id, "admin_rebuild_sheet"),
             )
             return
         # CR-9: rebuild is the re-sync point — freeze the snapshot to the header just written
@@ -1635,14 +1638,14 @@ async def rebuild_sheet(callback: types.CallbackQuery):
             f"{city_line}"
             f"Колонки выстроены в порядке анкеты, «Статус» с выпадашкой и цветами.",
             parse_mode="HTML",
-            reply_markup=await admin_keyboard_for(callback.from_user.id),
+            reply_markup=await op_return_keyboard(callback.from_user.id, "admin_rebuild_sheet"),
         )
     except Exception as e:
         logger.error(f"Sheet rebuild failed: {e}")
         await callback.message.edit_text(
             f"❌ Ошибка пересборки:\n<code>{html_module.escape(str(e))}</code>",
             parse_mode="HTML",
-            reply_markup=await admin_keyboard_for(callback.from_user.id),
+            reply_markup=await op_return_keyboard(callback.from_user.id, "admin_rebuild_sheet"),
         )
 
 

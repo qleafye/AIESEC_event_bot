@@ -265,6 +265,22 @@ async def settings_return_screen(
     return SETTINGS_MOVED_TEXT, await admin_keyboard_for(admin_id)
 
 
+async def op_return_keyboard(admin_id: int, callback_data: str) -> InlineKeyboardMarkup:
+    """Клавиатура экрана возврата для ОПЕРАЦИИ (статистика, синхронизация, выгрузки, гейма).
+
+    У операции свой текст — отчёт о проделанной работе, — а вот клавиатура должна быть той же,
+    что и у экрана, с которого её запустили. Раньше все они дорисовывали КОРЕНЬ: до фазы 20 это
+    и был предыдущий экран, после — нет, и менеджер, запустивший «🔄 Синхронизация» из раздела
+    «📊 Данные», вылетал в корень и заходил в раздел заново ради соседней кнопки.
+
+    Второй карты «операция -> экран» не заводим: раздел выводится из `callback_data` тем же
+    `settings_return_screen`, что и у тумблеров. Операции за гейтом подтверждения
+    (`admin_rebuild_sheet_go`, `admin_dedupe_sheet_go`) называют callback_data СВОЕЙ кнопки в
+    разделе — строки `*_go` в `SECTIONS` не объявлены и без этого уводили бы в корень."""
+    _text, kb = await settings_return_screen(admin_id, callback_data=callback_data)
+    return kb
+
+
 def visible_rows(token: str, caps: set, is_superadmin: bool) -> list[tuple]:
     """Чистая, синхронная, без I/O (идиома `_private`-хелперов CONVENTIONS.md) — та же
     форма, что у `_visible_menu_rows`. Право строки берётся ЖИВЬЁМ из `ADMIN_CAPS` через

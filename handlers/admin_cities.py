@@ -928,4 +928,6 @@ async def dedupe_sheet_run(callback: types.CallbackQuery):
     else:
         text = f"✅ Удалено дублей: <b>{removed}</b>. Оставлены свежие строки."
     logger.info(f"admin={callback.from_user.id} action=dedupe_sheet removed={removed}")
-    await callback.message.edit_text(text, parse_mode="HTML", reply_markup=await admin_keyboard_for(callback.from_user.id))
+    from handlers.admin_sections import op_return_keyboard  # ленивый шов
+    # Гейт подтверждения дал callback «…_go», в разделе объявлена сама кнопка — называем её.
+    await callback.message.edit_text(text, parse_mode="HTML", reply_markup=await op_return_keyboard(callback.from_user.id, "admin_dedupe_sheet"))
