@@ -83,52 +83,29 @@ CITY_CODES = [c["code"] for c in CITIES]  # msk/spb/tyumen from .env defaults
 
 # ── Task 1: «🏙 Города мероприятия» admin screen ──────────────────────────────
 
-def test_build_admin_keyboard_admin_cities_is_last_row_indices_unchanged(tmp_path):
-    # 08-05 (D-15): build_admin_keyboard is now async and capability-filtered — for a bootstrap
-    # admin (ALL_CAPABILITIES), the row set/order is unchanged from the pre-08-05 plain builder.
-    # QUICK T-08-33 (2026-08-13) inserted "admin_stuck_questions" right after "admin_receipts"
-    # -- the first-block length grew from 13 to 14. 09-02 (GAME-01) appended "admin_game_tasks"
-    # after "admin_cities". 09-04 (GAME-02/03) appended "admin_game_review" after that. 09-05
-    # (sheet export) appended "admin_game_sync_sheet" after that. 09-06 (stats screen) appended
-    # "admin_game_stats" last of all -- admin_cities is now fifth-to-last, admin_game_tasks
-    # fourth-to-last, admin_game_review third-to-last, admin_game_sync_sheet second-to-last,
-    # admin_game_stats last.
+def test_build_admin_keyboard_admin_cities_lives_in_manage_section(tmp_path):
+    # Phase 20 (20-03, ADMIN-IA-01): «🏙 Города мероприятия» больше не строка корня — корень
+    # показывает восемь разделов, а сама операция живёт в разделе «🔧 Управление».
     #
-    # NOTE (09-06): this is the FOURTH plan in a row (09-02/09-04/09-05/09-06) to break this
-    # same hard-coded last-row assertion by appending one more menu row. This test is brittle
-    # by construction -- it should be rewritten to assert row PRESENCE/order by scanning for
-    # each known callback_data's position relative to its neighbors (or just asserting set
-    # membership + first-14 block), not by counting negative indices from the end. Left as a
-    # recommendation, not fixed here (out of scope for a stats-screen plan).
-    #
-    # NOTE (14-04, GAME-09): fifth plan to break it -- «🪙 Монеты вручную» (admin_coins_manual)
-    # inserted right after admin_game_review, before admin_game_sync_sheet (CONTEXT.md B places
-    # it "рядом с остальными строками геймы"). Every index below shifted by one.
-    #
-    # NOTE (14-05, GAME-09): sixth plan to break it -- «📜 Журнал монет» (admin_coins_journal)
-    # inserted right after admin_coins_manual, before admin_game_sync_sheet (14-05-PLAN.md
-    # action: "сразу после строки «🪙 Монеты вручную»"). Every index below shifted by one again.
+    # Прежний сторож считал отрицательные индексы в плоском списке из 22 строк и ломался
+    # семь планов подряд (09-02/09-04/09-05/09-06/14-04/14-05/feat-polls — каждый добавлял
+    # ещё одну строку в конец). Ожидание переписано на принадлежность разделу и фактический
+    # рендер его экрана: это то, что действительно должно быть верно, и оно не зависит от
+    # того, сколько строк добавит следующая фаза.
     _admin_ready(tmp_path)
-    kb = asyncio.run(admin_mod.build_admin_keyboard(ADMIN_ID))
-    rows = kb.inline_keyboard
-    assert rows[-1][0].callback_data == "admin_game_stats"
-    assert rows[-2][0].callback_data == "admin_game_sync_sheet"
-    assert rows[-3][0].callback_data == "admin_coins_journal"
-    assert rows[-4][0].callback_data == "admin_coins_manual"
-    assert rows[-5][0].callback_data == "admin_game_review"
-    assert rows[-6][0].callback_data == "admin_game_tasks"
-    assert rows[-7][0].callback_data == "admin_cities"
-    # NOTE (feat/polls, 22.08): seventh break -- «📊 Опросы» (admin_polls) inserted right after
-    # «📢 Рассылка» (admin_broadcast); the prefix grew 14 -> 15.
-    expected_first_15 = [
-        "admin_stats", "admin_monthly_stats", "admin_source_stats", "admin_export_csv",
-        "admin_export_incomplete", "admin_applications", "admin_receipts",
-        "admin_stuck_questions", "admin_broadcast", "admin_polls",
-        "admin_sync_sheet", "admin_rebuild_sheet", "admin_dedupe_sheet", "admin_settings",
-        "admin_settings_guide",
-    ]
-    actual_first_15 = [rows[i][0].callback_data for i in range(15)]
-    assert actual_first_15 == expected_first_15
+    from handlers import admin_sections as sec
+    from handlers.admin_caps import resolve_capabilities
+
+    caps = asyncio.run(resolve_capabilities(ADMIN_ID))
+    assert ("op", "admin_cities") in sec.visible_rows("manage", caps, is_superadmin=True)
+
+    kb = asyncio.run(sec.build_section_keyboard("manage", ADMIN_ID))
+    assert "admin_cities" in _flat_callback_data(kb)
+
+    # …и на самом корне её нет: туда ведёт кнопка раздела, а не операция.
+    root = _flat_callback_data(asyncio.run(admin_mod.build_admin_keyboard(ADMIN_ID)))
+    assert "admin_cities" not in root
+    assert "admin_sec:manage" in root
 
 
 def test_build_cities_keyboard_contains_toggle_and_per_city_buttons(tmp_path):
