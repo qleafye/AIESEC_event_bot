@@ -417,7 +417,7 @@ admin|callback_query|season_reset_start|admin_season_reset
 admin|callback_query|season_reset_go|season_reset_go
 admin|callback_query|season_import_start|admin_season_import
 admin|callback_query|season_import_go|season_import_go
-admin|callback_query|admin_city_switch|admin_city_switch
+admin|callback_query|admin_city_switch|admin_city_switch*
 admin|callback_query|admin_city_pick|admin_city_pick:*
 admin|callback_query|admin_menu_root|admin_menu
 admin|callback_query|dedupe_sheet_confirm|admin_dedupe_sheet

@@ -338,7 +338,10 @@ async def build_section_keyboard(token: str, admin_id: int) -> InlineKeyboardMar
     buttons: list[list[InlineKeyboardButton]] = []
     if code is not None:
         label_text = ALL_CITIES_LABEL if code == ALL_CITIES else f"🏙 Город: {await city_label(code)}"
-        buttons.append([InlineKeyboardButton(text=label_text, callback_data="admin_city_switch")])
+        # Раздел-источник едет в callback_data: смена города — это контекст ВСЕГО раздела, и
+        # после неё менеджер должен остаться в нём, а не оказаться в корне. Голая форма
+        # «admin_city_switch» (корень, стейл-клавиатуры) продолжает работать.
+        buttons.append([InlineKeyboardButton(text=label_text, callback_data=f"admin_city_switch:{token}")])
 
     for row in rows:
         kind = row[0]
@@ -356,16 +359,36 @@ async def build_section_keyboard(token: str, admin_id: int) -> InlineKeyboardMar
     return InlineKeyboardMarkup(inline_keyboard=buttons)
 
 
+def is_section(token: str | None) -> bool:
+    """Есть ли такой раздел. Нужен там, где токен приходит ИЗ callback_data (переключатель
+    города несёт в себе раздел-источник): у стейл-кнопки в чате раздел мог быть переименован
+    или убран, и такой токен должен тихо уводить в корень, а не в пустой экран."""
+    return bool(token) and token in _SECTION_LABELS
+
+
+async def section_screen(admin_id: int, token: str | None) -> tuple[str, InlineKeyboardMarkup] | None:
+    """Пара (текст, клавиатура) экрана раздела — или `None`, если раздела нет либо в нём не
+    осталось ни одной доступной строки (права отозвали между нажатием и перерисовкой).
+
+    ОДИН предикат «раздел показуем» на весь проект: и экран раздела, и возврат из
+    переключателя города спрашивают здесь, а не каждый по-своему."""
+    if not is_section(token):
+        return None
+    caps = await resolve_capabilities(admin_id)
+    if not visible_rows(token, caps, admin_id in config.ADMIN_IDS):
+        return None
+    return render_section_text(token), await build_section_keyboard(token, admin_id)
+
+
 @router.callback_query(F.data.startswith("admin_sec:"))
 async def show_admin_section(callback: types.CallbackQuery):
     # T-20-03: токен ищется в SECTIONS точным сравнением; неизвестный — алерт и выход, в
     # сообщение пользовательская строка не форматируется никогда.
-    token = callback.data.split(":", 1)[1]
-    admin_id = callback.from_user.id
-    caps = await resolve_capabilities(admin_id)
-    if token not in _SECTION_LABELS or not visible_rows(token, caps, admin_id in config.ADMIN_IDS):
+    screen = await section_screen(callback.from_user.id, callback.data.split(":", 1)[1])
+    if screen is None:
         # T-20-04: текст не перечисляет существующие разделы — чужая раскладка не утекает.
         await callback.answer("Раздел недоступен.", show_alert=True)
         return
-    await callback.message.edit_text(render_section_text(token), parse_mode="HTML", reply_markup=await build_section_keyboard(token, admin_id))
+    text, kb = screen
+    await callback.message.edit_text(text, parse_mode="HTML", reply_markup=kb)
     await callback.answer()

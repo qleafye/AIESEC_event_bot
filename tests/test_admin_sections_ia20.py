@@ -311,7 +311,8 @@ def test_section_keyboard_has_city_header_when_module_on(tmp_path):
     for token, _label, _rows in sec.SECTIONS:
         kb = asyncio.run(sec.build_section_keyboard(token, ADMIN_ID))
         header = kb.inline_keyboard[0][0]
-        assert header.callback_data == "admin_city_switch", token
+        # Шапка несёт свой раздел: смена города должна вернуть менеджера туда же (ревью фазы 20).
+        assert header.callback_data == f"admin_city_switch:{token}", token
         assert header.text == f"🏙 Город: {label}", token
 
 
@@ -320,8 +321,73 @@ def test_section_keyboard_has_no_city_header_when_module_off(tmp_path):
     _roles_ready(tmp_path)
     for token, _label, _rows in sec.SECTIONS:
         kb = asyncio.run(sec.build_section_keyboard(token, ADMIN_ID))
-        assert all(b.callback_data != "admin_city_switch"
+        assert all(not (b.callback_data or "").startswith("admin_city_switch")
                    for row in kb.inline_keyboard for b in row), token
+
+
+# Ревью фазы 20: шапка города — единственная кнопка раздела, которая никуда не возвращала.
+# Смена города это контекст ВСЕГО раздела, а менеджер после неё оказывался в корне.
+
+def _picker_of(callback_data: str):
+    from handlers import admin_cities as cities_mod
+
+    cb = FakeCallback(callback_data)
+    asyncio.run(cities_mod.admin_city_switch(cb))
+    return cb, _flat_callback_data(cb.message.markup)
+
+
+def _pick(callback_data: str):
+    from handlers import admin_cities as cities_mod
+
+    cb = FakeCallback(callback_data)
+    asyncio.run(cities_mod.admin_city_pick(cb))
+    return cb
+
+
+def test_city_switch_from_a_section_returns_to_that_section(tmp_path):
+    _roles_ready(tmp_path)
+    _enable_cities()
+    code = cities.city_codes()[1]
+
+    _cb, picker = _picker_of("admin_city_switch:data")
+    assert picker[-1] == "admin_sec:data"  # «Назад» пикера — в раздел, а не в корень
+    picks = [cd for cd in picker if cd.startswith("admin_city_pick:")]
+    assert picks and all(cd.endswith(":data") for cd in picks), picks
+
+    pick = _pick(f"admin_city_pick:{code}:data")
+    assert asyncio.run(cities.admin_selected_city(ADMIN_ID)) == code
+    _assert_is_section_screen(pick.message.markup, "data")
+
+
+def test_city_switch_from_the_root_still_lands_on_the_root(tmp_path):
+    """Голая форма — это шапка КОРНЯ и все клавиатуры, отрисованные до правки: они живут в
+    чатах вечно и обязаны вести себя ровно как раньше."""
+    _roles_ready(tmp_path)
+    _enable_cities()
+    code = cities.city_codes()[1]
+
+    _cb, picker = _picker_of("admin_city_switch")
+    assert picker[-1] == "admin_menu"
+    picks = [cd for cd in picker if cd.startswith("admin_city_pick:")]
+    assert picks and all(cd.count(":") == 1 for cd in picks), picks
+
+    pick = _pick(f"admin_city_pick:{code}")
+    assert asyncio.run(cities.admin_selected_city(ADMIN_ID)) == code
+    assert "Панель администратора" in pick.message.text
+
+
+def test_city_switch_with_an_unknown_section_falls_back_to_the_root(tmp_path):
+    """Раздел могли переименовать после того, как клавиатуру отрисовали, — тупика быть не должно."""
+    _roles_ready(tmp_path)
+    _enable_cities()
+    code = cities.city_codes()[1]
+
+    _cb, picker = _picker_of("admin_city_switch:нет-такого-раздела")
+    assert picker[-1] == "admin_menu"
+    assert all(cd.count(":") == 1 for cd in picker if cd.startswith("admin_city_pick:"))
+
+    pick = _pick(f"admin_city_pick:{code}:нет-такого-раздела")
+    assert "Панель администратора" in pick.message.text
 
 
 def test_section_screen_renders_title_and_human_hint(tmp_path):

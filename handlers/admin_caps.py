@@ -227,8 +227,11 @@ ADMIN_CAPS: dict[str, str] = {
     # (`set_admin_city` refuses a bound manager outright, and every settings/menu write handler
     # re-checks `_per_city_visible_codes`) -- widening this to ANY_CAPABILITY does not widen who
     # can actually change anything.
+    # Ревью фазы 20: переключатель получил форму «admin_city_switch:{раздел}» (несёт экран, с
+    # которого его открыли), поэтому ключ стал префиксным — право то же самое, ANY_CAPABILITY,
+    # и покрывает обе формы: голую (корень, стейл-кнопки) и с разделом.
     "admin_city_pick:*": ANY_CAPABILITY,
-    "admin_city_switch": ANY_CAPABILITY,
+    "admin_city_switch*": ANY_CAPABILITY,
     # Phase 20 (20-01, ADMIN-IA-01): admin_sec:{token} -- экран раздела админки. Это
     # навигационная точка входа, а не право: содержимое раздела повторно фильтруется
     # ПОСТРОЧНО этой же картой (handlers/admin_sections.py::visible_rows -> required_capability
