@@ -313,7 +313,10 @@ def test_admin_keyboard_for_no_header_when_module_off(tmp_path):
 # ── ADMIN_CAPS widen (Pitfall 2 / T-093-08) ─────────────────────────────────────────────────
 
 def test_admin_caps_city_switcher_widened_to_any_capability():
-    assert ADMIN_CAPS["admin_city_switch"] == ANY_CAPABILITY
+    # Ключ переключателя стал префиксным (ревью фазы 20: он несёт раздел-источник), поэтому
+    # спрашиваем настоящий резолвер, а не литерал: он отвечает за обе формы сразу.
+    assert required_capability(callback_data="admin_city_switch") == ANY_CAPABILITY
+    assert required_capability(callback_data="admin_city_switch:data") == ANY_CAPABILITY
     assert ADMIN_CAPS["admin_city_pick:*"] == ANY_CAPABILITY
     assert required_capability(callback_data="admin_city_switch") == ANY_CAPABILITY
     assert required_capability(callback_data="admin_city_pick:spb") == ANY_CAPABILITY

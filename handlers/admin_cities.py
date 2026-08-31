@@ -822,14 +822,20 @@ async def season_import_go(callback: types.CallbackQuery, state: FSMContext):
     await callback.answer()
 
 
-@router.callback_query(F.data == "admin_city_switch")
+@router.callback_query(F.data.startswith("admin_city_switch"))
 async def admin_city_switch(callback: types.CallbackQuery):
     """Phase 07.2 (CITY-02): pick the city the admin panel is currently scoped to. Disabled
     cities are still listed (their past applications still need moderating), marked ❌.
 
     Phase 09.1 (C, ROLE-03): a manager bound to a city (`get_staff_city`) can't switch at
     all — the picker is never shown, only an alert naming their city. Bootstrap superadmins
-    (`config.ADMIN_IDS`, D-12) are never restricted."""
+    (`config.ADMIN_IDS`, D-12) are never restricted.
+
+    Ревью фазы 20: после переезда на разделы шапка города стоит на КАЖДОМ экране раздела, а
+    не только на корне. Переключатель принимает форму «admin_city_switch:{раздел}» и несёт
+    раздел-источник дальше — в кнопки выбора и в «◀️ Назад», — иначе смена города, то есть
+    контекст всего раздела, выбрасывала менеджера в корень. Голая форма без раздела осталась
+    рабочей: так выглядит шапка корня и все клавиатуры, отрисованные до этой правки."""
     # Phase 09.3 (CITY-08): the bound-manager lock above is the ONLY gate this screen needs --
     # it already computes is_superadmin/bound and returns early for anyone with a locked city,
     # so everyone who reaches the code below (superadmin or an unbound manager) is exactly who
@@ -844,10 +850,17 @@ async def admin_city_switch(callback: types.CallbackQuery):
         )
         return
 
+    from handlers.admin_sections import is_section  # ленивый шов (цикл на уровне модуля)
+    origin = callback.data.split(":", 1)[1] if ":" in callback.data else ""
+    if not is_section(origin):
+        origin = ""  # раздел переименовали/убрали (стейл-кнопка) — ведём в корень, не в тупик
+    back = f"admin_sec:{origin}" if origin else "admin_menu"
+    tail = f":{origin}" if origin else ""
+
     current = await admin_selected_city(callback.from_user.id)
     all_prefix = "✅ " if current == ALL_CITIES else ""
     buttons = [
-        [InlineKeyboardButton(text=f"{all_prefix}{ALL_CITIES_LABEL}", callback_data=f"admin_city_pick:{ALL_CITIES}")],
+        [InlineKeyboardButton(text=f"{all_prefix}{ALL_CITIES_LABEL}", callback_data=f"admin_city_pick:{ALL_CITIES}{tail}")],
     ]
     for c in CITIES:
         code = c["code"]
@@ -855,8 +868,8 @@ async def admin_city_switch(callback: types.CallbackQuery):
         enabled = await is_city_enabled(code)
         prefix = "✅ " if code == current else ""
         suffix = "" if enabled else " ❌"
-        buttons.append([InlineKeyboardButton(text=f"{prefix}{label}{suffix}", callback_data=f"admin_city_pick:{code}")])
-    buttons.append([InlineKeyboardButton(text="◀️ Назад", callback_data="admin_menu")])
+        buttons.append([InlineKeyboardButton(text=f"{prefix}{label}{suffix}", callback_data=f"admin_city_pick:{code}{tail}")])
+    buttons.append([InlineKeyboardButton(text="◀️ Назад", callback_data=back)])
     text = (
         "🏙 <b>Город админки</b>\n\n"
         "Всё в админке — про выбранный город: заявки, чеки, выгрузка, гейма, тексты и кнопки меню.\n"
@@ -868,11 +881,20 @@ async def admin_city_switch(callback: types.CallbackQuery):
 
 @router.callback_query(F.data.startswith("admin_city_pick:"))
 async def admin_city_pick(callback: types.CallbackQuery):
-    code = callback.data.split(":", 1)[1]
+    from handlers.admin_sections import section_screen  # ленивый шов (цикл на уровне модуля)
+    # «admin_city_pick:{код}» (корень и стейл-кнопки) либо «…:{код}:{раздел}» — раздел, из
+    # шапки которого пришли. Коды городов двоеточий не содержат, поэтому разбор однозначен.
+    parts = callback.data.split(":")
+    code = parts[1]
     if not await set_admin_city(callback.from_user.id, code):
         await callback.answer("Неизвестный город", show_alert=True)
         return
     await callback.answer(f"Город: {await city_label(code)}", show_alert=True)
+    screen = await section_screen(callback.from_user.id, parts[2] if len(parts) > 2 else "")
+    if screen is not None:
+        text, kb = screen
+        await callback.message.edit_text(text, parse_mode="HTML", reply_markup=kb)
+        return
     await callback.message.edit_text(
         "👮‍♂️ <b>Панель администратора</b>",
         parse_mode="HTML",
