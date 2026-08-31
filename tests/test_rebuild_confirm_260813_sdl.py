@@ -32,10 +32,13 @@ class _FakeMessage:
 
 
 class _FakeCallback:
-    def __init__(self, user_id):
+    def __init__(self, user_id, data=""):
         self.from_user = _FakeUser(user_id)
         self.message = _FakeMessage()
         self.answers = []
+        # У настоящего callback'а `data` есть всегда, и после ревью фазы 20 экран результата
+        # операции по ней определяет раздел возврата — фейку без неё верить больше нельзя.
+        self.data = data
 
     async def answer(self, text=None, show_alert=False):
         self.answers.append((text, show_alert))
