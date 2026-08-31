@@ -151,13 +151,56 @@ def test_toggle_at_header_city_writes_composite_key_not_global(tmp_path):
     spb_label = asyncio.run(cities.city_label("spb"))
     assert spb_label in cb.answers[0][0]
 
-    # screen re-render shows "своё" + the reset button.
-    text = cb.message.text
-    assert "— своё" in text
+    # Phase 20 (20-04): после тапа перерисовывается РАЗДЕЛ-владелец тумблера («📝 Анкета»),
+    # а не плоский лендинг настроек, поэтому маркер «— своё» переехал из текста экрана в саму
+    # клавиатуру: шапка города + условная строка «↩️ Как везде», которая рождается ровно
+    # тогда, когда у города шапки есть собственное значение (идиома 09.3, не ослаблена).
+    assert "<b>📝 Анкета</b>" in cb.message.text
     kb = cb.message.markup
+    assert kb.inline_keyboard[0][0].callback_data == "admin_city_switch"
+    assert kb.inline_keyboard[0][0].text == f"🏙 Город: {spb_label}"
     assert "settings_regmode_reset" in _flat_callback_data(kb)
     reset_texts = [t for t in _flat_button_texts(kb) if t == "↩️ Как везде"]
     assert reset_texts
+
+
+def test_toggle_reads_the_city_header_once_per_render_call(tmp_path):
+    """WR-05 на НОВОМ пути рендера (Phase 20, 20-04), а не ослабленный.
+
+    До фазы 20 тап тумблера читал шапку города ровно трижды: один раз сам хендлер (решает,
+    писать общий ключ или городской), один раз `render_settings_text` и один раз
+    `build_settings_keyboard` -> `settings_toggle_rows`. После 20-04 хендлер возвращает
+    менеджера на экран раздела, и читателей ровно столько же: хендлер, `build_section_keyboard`
+    (строка-шапка) и `settings_toggle_rows` (подписи тумблеров). `render_section_text`
+    синхронный и шапку не читает вовсе, `settings_return_screen` — тоже (он только резолвер).
+
+    Инвариант формулируется как ТОЧНОЕ число, а не «не больше N»: лишнее чтение шапки внутри
+    одного рендера — это ровно тот класс ошибки, ради которого 09.3 завела WR-05."""
+    _admin_ready(tmp_path)
+    _enable_cities()
+    asyncio.run(cities.set_admin_city(ADMIN_ID, "spb"))
+
+    from handlers import admin_sections
+    calls = []
+    original = cities.admin_selected_city
+
+    async def counting(admin_id=None):
+        calls.append(admin_id)
+        return await original(admin_id)
+
+    # Оба модуля импортируют имя напрямую (`from cities import admin_selected_city`), поэтому
+    # подменять надо в каждом — патч одного `cities.admin_selected_city` не перехватил бы ничего.
+    admin_settings.admin_selected_city = counting
+    admin_sections.admin_selected_city = counting
+    try:
+        cb = FakeCallback("settings_toggle_reg", user_id=ADMIN_ID)
+        asyncio.run(admin_settings.toggle_registration_mode(cb))
+    finally:
+        admin_settings.admin_selected_city = original
+        admin_sections.admin_selected_city = original
+
+    assert len(calls) == 3, calls
+    assert set(calls) == {ADMIN_ID}
 
 
 def test_toggle_at_all_cities_writes_global_key_unchanged_from_before_phase(tmp_path):
