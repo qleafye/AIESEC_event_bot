@@ -8,7 +8,7 @@
 // минимальным limit, каждый запрос fail-soft по отдельности (T-19.1-16): не ответившая ручка
 // даёт плитку без цифры, а не пустой экран.
 
-import { visibleNav, NAV_ICONS } from "../app.js";
+import { visibleNav, NAV_ICONS, SECTION_GROUPS } from "../app.js";
 import { icon } from "../icons.js";
 import { countUp } from "../motion.js";
 
@@ -206,26 +206,45 @@ async function renderManagerHub(root, ctx) {
   const { h, api, navigate } = ctx;
   const labels = sectionLabelsFromDom();
   const items = visibleNav().filter((item) => !item.delegate);
+  const knownGroups = new Set(SECTION_GROUPS.map(([token]) => token));
+  // Плитку без раздела (или с незнакомым токеном) терять нельзя: она уходит в хвост, под
+  // «🔧 Управление». Лежать не на своём месте — плохо, исчезнуть с экрана молча — хуже.
+  const groupOf = (item) => (knownGroups.has(item.group) ? item.group : "manage");
 
-  const hero = h("section", { class: "hero hero-flat" },
-    h("div", { class: "big", text: "0" }),
-    h("div", { class: "lbl", text: "сдач на проверке" }),
-  );
-  root.append(hero);
+  // Герой считает очередь проверки сдач. Без плитки «#/review» (гейма выключена или нет
+  // права) заполнять его нечем — он навсегда застыл бы на «0 / сдач на проверке» и врал.
+  // ИНВАРИАНТ: герой существует ровно тогда, когда среди плиток есть «#/review» —
+  // applyManagerTileData трогает hero только в этой ветке, поэтому null ниже безопасен.
+  const hero = items.some((item) => item.hash === "#/review")
+    ? h("section", { class: "hero hero-flat" },
+      h("div", { class: "big", text: "0" }),
+      h("div", { class: "lbl", text: "сдач на проверке" }),
+    )
+    : null;
+  if (hero) root.append(hero);
 
-  const tiles = h("div", { class: "tiles" });
+  // Хаб = та же карта админки, что корень /admin (Phase 20, ADMIN-IA-04, D-05): те же восемь
+  // разделов, те же подписи, тот же порядок. Раздел без единой видимой плитки не рисуется
+  // вовсе — ни заголовка, ни пустого контейнера (T-20-06: менеджер без права не узнаёт с
+  // экрана о существовании чужого раздела). Подпись самой плитки по-прежнему из реестра
+  // (labels[item.section]), а не из SECTION_GROUPS — это разные вещи.
   const tileEls = {};
-  for (const item of items) {
-    const el = tile(h, navigate, {
-      hash: item.hash,
-      iconName: NAV_ICONS[item.hash],
-      label: labels[item.section] || item.section,
-      meta: "…",
-    });
-    tileEls[item.hash] = el;
-    tiles.append(el);
+  for (const [token, label] of SECTION_GROUPS) {
+    const groupItems = items.filter((item) => groupOf(item) === token);
+    if (!groupItems.length) continue;
+    const tiles = h("div", { class: "tiles" });
+    for (const item of groupItems) {
+      const el = tile(h, navigate, {
+        hash: item.hash,
+        iconName: NAV_ICONS[item.hash],
+        label: labels[item.section] || item.section,
+        meta: "…",
+      });
+      tileEls[item.hash] = el;
+      tiles.append(el);
+    }
+    root.append(h("div", { class: "sec", text: label }), tiles);
   }
-  root.append(tiles);
 
   await Promise.all(items.map(async (item) => {
     const load = MANAGER_FETCHERS[item.hash];
