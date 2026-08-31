@@ -414,7 +414,8 @@ def test_import_confirm_shows_numbers(tmp_path):
     assert "3" in text and "YL" in text
     codes = [btn.callback_data for row in kb.inline_keyboard for btn in row]
     assert "season_import_go" in codes
-    assert "settings_group:event" in codes
+    # Ревью фазы 20: отмена ведёт в РАЗДЕЛ-владелец кнопки «📥 Импорт прошлого события».
+    assert "admin_sec:manage" in codes
 
 
 def _go_state(rows, season="YL'25"):

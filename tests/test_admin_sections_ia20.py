@@ -433,6 +433,11 @@ BACK_TARGETS = {
     "settings_toggle_reg": "form",
     "settings_group:apps": "apps",
     "settings_group:event": "event",
+    # Ревью фазы 20: «← Отмена» обоих визардов сезона вела литералом на экран группы
+    # «🎪 Событие/Медиа», откуда эта же фаза их кнопки и убрала, — отмена приземляла
+    # менеджера туда, где повторить действие нечем.
+    "admin_season_reset": "manage",
+    "admin_season_import": "manage",
 }
 
 
@@ -440,6 +445,19 @@ def test_every_screen_back_target_is_its_section():
     bad = {cb: sec.section_of(cb) for cb, token in BACK_TARGETS.items()
            if sec.section_of(cb) != token}
     assert not bad, bad
+
+
+def test_season_wizards_cancel_through_the_registry_not_a_literal():
+    """Экраны подтверждения визардов сезона собираются inline (не через общий рендер), поэтому
+    сторож нужен на уровне исходника: литеральной цели в модуле нет вовсе, а `back_button`
+    выводит её из реестра — переезд «🔄 Новый сезон» в другой раздел уведёт и отмену."""
+    from pathlib import Path
+
+    src = (Path(__file__).resolve().parent.parent / "handlers" / "admin_cities.py").read_text(encoding="utf-8")
+    assert "settings_group:event" not in src, "отмена визарда снова целится литералом в группу"
+    for screen in ("admin_season_reset", "admin_season_import"):
+        assert f'back_button("{screen}", text="← Отмена")' in src, screen
+        assert sec.back_button(screen).callback_data == "admin_sec:manage"
 
 
 def test_back_button_target_is_derived_not_a_second_map():
