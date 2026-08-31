@@ -298,6 +298,12 @@ def _settings_nav_groups() -> list[tuple[str, str]]:
         rows.append(("📦 Прочие", "misc"))
     return rows
 
+# Phase 20 (20-04): в какой группе настроек живут фото и файлы — ОДИН факт в одном месте.
+# Читают его и рендер экрана группы (обе ветки ниже), и обратный индекс
+# `_group_of_setting_key`: разъехавшись, они отправили бы менеджера после загрузки фото на
+# экран, где этой кнопки нет.
+PHOTO_FILE_GROUP = "event"
+
 PHOTO_FIELDS = [
     ("program", "📅 Программа", "Отправьте фото программы (можно с подписью)."),
     ("speakers", "🗣 Спикеры", "Отправьте одно фото со всеми спикерами (можно с подписью)."),
@@ -310,10 +316,43 @@ FILE_FIELDS = [
 ]
 
 
+def _group_of_setting_key(key: str) -> str | None:
+    """Обратный индекс «ключ настройки -> токен группы», ВЫВЕДЕННЫЙ из SETTINGS_GROUPS
+    (+ leftover-группа «misc»), а не второй литеральный словарь: он разъехался бы с
+    группировкой при первой же перекладке ключа, и менеджер после правки значения уезжал бы
+    на чужой экран. Нужен `handlers/admin_sections.py::settings_return_screen`, чтобы понять,
+    с какого экрана менеджер правил значение.
+
+    Композитный per-city ключ («{base}__city__{code}») приводится к базе — своей группы у
+    городского значения нет, оно живёт в группе базового ключа.
+
+    Медиа-ключи («{prefix}_photo_file_id» / «{prefix}_doc_file_id» / «{prefix}_caption») в
+    SETTINGS_GROUPS не перечислены вовсе — их рисует ветка PHOTO_FIELDS/FILE_FIELDS экрана
+    группы, поэтому и группа у них берётся из той же константы PHOTO_FILE_GROUP.
+
+    Неизвестный ключ -> None (резолвер уйдёт на следующий шаг, тупика не будет)."""
+    base = _base_setting_key(key)
+    for _label, token, keys in SETTINGS_GROUPS:
+        if base in keys:
+            return token
+    if base in _settings_group_keys("misc"):
+        return "misc"
+    for prefix, _label, _prompt in PHOTO_FIELDS + FILE_FIELDS:
+        if base in (f"{prefix}_photo_file_id", f"{prefix}_doc_file_id", f"{prefix}_caption"):
+            return PHOTO_FILE_GROUP
+    return None
+
+
 # Phase 09.3 (04, CITY-09): admin_id=None means "no header context" — reserved for tests
 # and call sites where the admin is unknown; every production call site MUST pass the real
 # admin id (structural test: tests/test_regmode_header_093.py asserts no empty-parens call
-# of render_settings_text()/build_settings_keyboard() remains in this file).
+# of render_settings_text/build_settings_keyboard remains in this file).
+#
+# Phase 20 (20-04): ЭТА ФУНКЦИЯ БОЛЬШЕ НЕ ЯВЛЯЕТСЯ ЭКРАНОМ. Плоский лендинг настроек заменён
+# восемью разделами (handlers/admin_sections.py), ни один хендлер её не рисует. Она и её пара
+# `build_settings_keyboard` сохранены как снапшот-контракт раскладки тумблеров
+# (tests/test_settings_groups_c0x.py::test_settings_toggle_button_snapshot) и как потребитель
+# `settings_toggle_rows` — не мёртвый код, удалять нельзя.
 async def render_settings_text(admin_id: int | None = None) -> str:
     # Phase 09.3 (04, CITY-09): WR-05 — resolve the header ONCE for this whole render call.
     # `admin_id is None` (tests, unknown-caller sites) and `header_code in (None, ALL_CITIES)`
@@ -520,6 +559,12 @@ async def settings_toggle_rows(admin_id: int | None = None) -> dict[str, list[li
 
 # Phase 09.3 (04, CITY-09): admin_id=None means "no header context" — see the comment
 # above render_settings_text (same contract, same structural test).
+#
+# Phase 20 (20-04): как и её пара выше, ПОСЛЕ ФАЗЫ 20 НЕ ЯВЛЯЕТСЯ ЭКРАНОМ — сохранена как
+# снапшот-контракт раскладки тумблеров и единственный оставшийся потребитель
+# `settings_toggle_rows`. Ни одна перерисовка после действия менеджера сюда не целится:
+# сторож tests/test_admin_sections_ia20.py требует ровно одного упоминания на весь handlers/ —
+# вот этого объявления.
 async def build_settings_keyboard(admin_id: int | None = None):
     # Phase 20 (20-01): порядок строк лендинга прежний, байт-в-байт; сами кнопки приходят из
     # settings_toggle_rows (WR-05: шапка города прочитана там ровно один раз).
@@ -610,7 +655,7 @@ async def render_settings_group_text(token: str, admin_id: int | None = None) ->
         lines.append(f"{label}: {flag}{city_suffix}")
 
     if token == "consent": lines += await consent_group_extra_lines()  # quick 260822 (шов admin_consent)
-    if token == "event":
+    if token == PHOTO_FILE_GROUP:
         for prefix, label, _ in PHOTO_FIELDS:
             photo = await get_setting(f"{prefix}_photo_file_id")
             lines.append(f"{label}: {'✅ загружена' if photo else '<i>— не задано</i>'}")
@@ -652,7 +697,7 @@ async def build_settings_group_keyboard(token: str, admin_id: int | None = None)
             value = await get_setting(key)
         (configured if value else unconfigured).append(btn)
 
-    if token == "event":
+    if token == PHOTO_FILE_GROUP:
         for prefix, label, _ in PHOTO_FIELDS:
             btn = InlineKeyboardButton(text=f"📷 {label}", callback_data=f"settings_photo:{prefix}")
             photo = await get_setting(f"{prefix}_photo_file_id")
@@ -676,14 +721,23 @@ async def build_settings_group_keyboard(token: str, admin_id: int | None = None)
     # настоящий гейт — прежняя перепроверка config.ADMIN_IDS внутри самих хендлеров визарда,
     # потому что стейл-клавиатура в чате живёт вечно.
     if token == "consent": buttons += consent_group_extra_buttons()  # quick 260822 (шов admin_consent)
-    buttons.append([InlineKeyboardButton(text="← Назад к настройкам", callback_data="admin_settings")])
+    # Phase 20 (20-04): «Назад» с экрана группы ведёт в РАЗДЕЛ-владелец этой группы
+    # («🎪 Событие/Медиа» -> «🎪 Событие», «📋 Заявки» -> «📋 Заявки»), а не на исчезнувший
+    # плоский лендинг. Цель считает `section_of` из реестра SECTIONS — второй карты нет.
+    from handlers.admin_sections import back_button  # ленивый шов (цикл на уровне модуля)
+    buttons.append([back_button(f"settings_group:{token}")])
     return InlineKeyboardMarkup(inline_keyboard=buttons)
 
 
 @router.callback_query(F.data == "admin_settings")
 async def show_admin_settings(callback: types.CallbackQuery):
-    text = await render_settings_text(callback.from_user.id)
-    await callback.message.edit_text(text, parse_mode="HTML", reply_markup=await build_settings_keyboard(callback.from_user.id))
+    """D-03, совместимость стейл-клавиатур: на этот callback ссылаются десятки «← Назад» из
+    клавиатур, отрисованных ДО фазы 20 и живущих в чатах вечно. Плоского лендинга больше нет,
+    поэтому кнопка приземляется на КОРЕНЬ разделов с объяснением переезда — тупика и
+    необработанного callback'а не возникает."""
+    from handlers.admin_sections import settings_return_screen  # ленивый шов
+    text, kb = await settings_return_screen(callback.from_user.id)
+    await callback.message.edit_text(text, parse_mode="HTML", reply_markup=kb)
     await callback.answer()
 
 
@@ -772,9 +826,14 @@ async def settings_regmode_reset(callback: types.CallbackQuery):
         f"Город {html_module.escape(city_txt)} снова будет использовать общую форму "
         f"регистрации:\n<b>{global_human}</b>\n\nСвоя форма регистрации города будет удалена."
     )
+    # Phase 20 (20-04): отмена возвращает в «📝 Анкета» — раздел тумблера `settings_toggle_reg`,
+    # чья условная вложенная строка «↩️ Как везде» и открыла этот экран (своей записи в
+    # SECTIONS у экрана подтверждения нет и быть не должно). Подпись остаётся «← Отмена»:
+    # это отказ от действия, а не навигация.
+    from handlers.admin_sections import back_button  # ленивый шов
     kb = InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text="✅ Да, как везде", callback_data=f"settings_regmode_reset_go:{header_code}")],
-        [InlineKeyboardButton(text="← Отмена", callback_data="admin_settings")],
+        [back_button("settings_toggle_reg", text="← Отмена")],
     ])
     await callback.message.edit_text(text, parse_mode="HTML", reply_markup=kb)
     await callback.answer()
@@ -1557,6 +1616,8 @@ def _parse_consent_list(raw: str) -> list[tuple[str, str]]:
 
 @router.callback_query(F.data == "admin_consent_pdfs")
 async def admin_consent_pdfs(callback: types.CallbackQuery):
+    # Phase 20 (20-04): «Назад» ведёт в раздел-владелец этого экрана — «📝 Анкета».
+    from handlers.admin_sections import back_button  # ленивый шов
     items = _parse_consent_list(await get_setting("consent_list") or "")
     if not items:
         await callback.answer()
@@ -1570,7 +1631,7 @@ async def admin_consent_pdfs(callback: types.CallbackQuery):
             parse_mode="HTML",
             reply_markup=InlineKeyboardMarkup(inline_keyboard=[
                 [InlineKeyboardButton(text="📋 К списку согласий", callback_data="settings_edit:consent_list")],
-                [InlineKeyboardButton(text="← Назад", callback_data="admin_settings")],
+                [back_button("admin_consent_pdfs")],
             ]),
         )
         return
@@ -1579,7 +1640,7 @@ async def admin_consent_pdfs(callback: types.CallbackQuery):
         has_pdf = bool(await get_setting(f"consent_pdf_{key}"))
         mark = "✅" if has_pdf else "📎"
         buttons.append([InlineKeyboardButton(text=f"{mark} {label}", callback_data=f"consent_pdf_set:{key}")])
-    buttons.append([InlineKeyboardButton(text="← Назад", callback_data="admin_settings")])
+    buttons.append([back_button("admin_consent_pdfs")])
     await callback.message.edit_text(
         "🧾 <b>PDF согласий</b>\n\n"
         "Нажми на согласие и пришли PDF-файл — участник увидит его прикреплённым к этому согласию.\n\n"

@@ -122,7 +122,7 @@ def test_group_pay_shows_configured_and_unconfigured_flags(tmp_path):
     assert "✏️ задано" in text
     assert "не задано" in text
     assert "settings_edit:payment_options" in flat
-    assert "admin_settings" in flat  # back button reuses existing landing handler
+    assert "admin_sec:pay" in flat  # Phase 20 (20-04): «Назад» ведёт в раздел-владелец группы, а не на исчезнувший плоский лендинг
 
 
 def test_group_event_contains_photo_and_file_callbacks(tmp_path):
@@ -269,7 +269,7 @@ def test_event_render_snapshot(tmp_path):
     # Fresh DB -> nothing configured yet -> the unconfigured collapse header must appear.
     assert "settings_group_noop" in flat
     # Back button unchanged.
-    assert "admin_settings" in flat
+    assert "admin_sec:event" in flat
 
 
 # ── Phase 6 plan 06-02 (REG-01/REG-03): reg/pay/party/consent groups migrated into the
@@ -400,7 +400,7 @@ def test_render_snapshot_reg(tmp_path):
     edit_cbs = [cd for cd in flat if cd and cd.startswith("settings_edit:")]
     assert edit_cbs == [f"settings_edit:{k}" for k in expected_keys]
     assert "settings_group_noop" in flat
-    assert "admin_settings" in flat
+    assert "admin_sec:form" in flat
 
 
 def test_render_snapshot_apps(tmp_path):
@@ -440,7 +440,7 @@ def test_render_snapshot_apps(tmp_path):
     assert "Заявки" in text
     edit_cbs = [cd for cd in flat if cd and cd.startswith("settings_edit:")]
     assert edit_cbs == [f"settings_edit:{k}" for k in expected_keys]
-    assert "admin_settings" in flat
+    assert "admin_sec:apps" in flat
 
 
 def test_render_snapshot_pay(tmp_path):
@@ -479,7 +479,7 @@ def test_render_snapshot_pay(tmp_path):
     edit_cbs = [cd for cd in flat if cd and cd.startswith("settings_edit:")]
     assert edit_cbs == [f"settings_edit:{k}" for k in expected_keys]
     assert "settings_group_noop" in flat
-    assert "admin_settings" in flat
+    assert "admin_sec:pay" in flat
 
 
 def test_render_snapshot_party(tmp_path):
@@ -501,7 +501,7 @@ def test_render_snapshot_party(tmp_path):
     expected_keys = ["party_closed_text", "approve_text__party", "party_fork_text"]
     edit_cbs = [cd for cd in flat if cd and cd.startswith("settings_edit:")]
     assert edit_cbs == [f"settings_edit:{k}" for k in expected_keys]
-    assert "admin_settings" in flat
+    assert "admin_sec:form" in flat
 
 
 def test_render_snapshot_consent(tmp_path):
@@ -518,7 +518,7 @@ def test_render_snapshot_consent(tmp_path):
     edit_cbs = [cd for cd in flat if cd and cd.startswith("settings_edit:")]
     assert edit_cbs == [f"settings_edit:{k}" for k in expected_keys]
     assert "settings_group_noop" in flat
-    assert "admin_settings" in flat
+    assert "admin_sec:form" in flat
 
 
 # ── Phase 6 plan 06-04 (REG-01/REG-02, D-06/D-12): toggle wave — reg_q_* toggles +

@@ -194,8 +194,9 @@ def _section_of_group(group_token: str) -> str | None:
 def back_button(callback_data: str, text: str = "← Назад") -> InlineKeyboardButton:
     """Кнопка возврата в РАЗДЕЛ-владелец экрана `callback_data`.
 
-    Подпись по умолчанию — просто «← Назад»: старое «← Назад к настройкам» больше не
-    описывает результат нажатия, кнопка ведёт в раздел (CLAUDE.md: подпись говорит, что будет).
+    Подпись по умолчанию — просто «← Назад»: старая подпись про возврат в настройки больше
+    не описывает результат нажатия, кнопка ведёт в раздел (CLAUDE.md: подпись говорит, что
+    произойдёт).
 
     T-20-11: неизвестный `callback_data` даёт запасной `admin_menu` (существующий корень) —
     тупика и необработанного callback'а не возникает ни при какой раскладке.
@@ -204,6 +205,64 @@ def back_button(callback_data: str, text: str = "← Назад") -> InlineKeybo
     права и фильтрует строки, а каждый реальный callback проверяет `CapabilityMiddleware`."""
     token = section_of(callback_data)
     return InlineKeyboardButton(text=text, callback_data=f"admin_sec:{token}" if token else "admin_menu")
+
+
+# Экран, на который приземляется старая кнопка «⚙️ Настройки форума» (callback `admin_settings`)
+# из клавиатур, отрисованных ДО фазы 20 и живущих в чатах вечно (D-03), — и он же экран
+# возврата, когда подсказки «откуда пришли» нет вовсе. Объявлен ОДИН раз: и `show_admin_settings`,
+# и ветка КОРЕНЬ резолвера ниже берут текст отсюда, иначе две формулировки разъедутся.
+SETTINGS_MOVED_TEXT = (
+    "⚙️ <b>Настройки форума</b>\n\n"
+    "Настройки переехали внутрь разделов: открой раздел — операции сверху, настройки ниже."
+)
+
+
+async def settings_return_screen(
+    admin_id: int,
+    *,
+    callback_data: str | None = None,
+    setting_key: str | None = None,
+    group_token: str | None = None,
+) -> tuple[str, InlineKeyboardMarkup]:
+    """ЕДИНСТВЕННЫЙ ответ на вопрос «куда вернуть менеджера ПОСЛЕ действия».
+
+    Возвращает ПАРУ (текст, клавиатура): экран возврата меняет и то, и другое, поэтому
+    вызывающий делает `text, kb = await settings_return_screen(...)` и один edit_text/answer.
+
+    Порядок разрешения (первое совпадение выигрывает); каждый шаг выведен из уже существующих
+    реестров — второй карты «кнопка -> экран» в проекте нет и не будет (D-01/D-15):
+
+    1. Названа существующая ГРУППА настроек (явно через `group_token` или по ключу настройки
+       через `_group_of_setting_key`) -> экран группы. Обоснование: кнопки `settings_edit:` /
+       `settings_photo:` / `settings_file:` живут ТОЛЬКО на экране группы, значит менеджер
+       правил значение именно оттуда, и возврат на уровень раздела отбросил бы его на шаг
+       назад посреди работы. Путь наверх остаётся: «← Назад» экрана группы ведёт в раздел.
+    2. `callback_data` объявлен строкой раздела (`section_of` вернул токен) -> экран РАЗДЕЛА.
+       Это путь всех тумблеров: тумблер — строка раздела, значит менеджер был на разделе.
+    3. Иначе -> КОРЕНЬ разделов с объяснением переезда. Тупика не бывает ни при какой
+       раскладке — тот же принцип запасного выхода, что у `back_button` (T-20-11).
+
+    WR-05: сам резолвер шапку города НЕ читает — ни одного её чтения здесь нет; каждая из
+    трёх пар рендера читает шапку ровно один раз внутри себя, как и до фазы."""
+    from handlers.admin_settings import (  # ленивый шов (см. docstring модуля)
+        SETTINGS_GROUPS, _group_of_setting_key,
+        render_settings_group_text, build_settings_group_keyboard,
+    )
+    from handlers.admin_core import admin_keyboard_for
+
+    token = group_token or (_group_of_setting_key(setting_key) if setting_key else None)
+    if token and token in {tok for _label, tok, _keys in SETTINGS_GROUPS} | {"misc"}:
+        return (await render_settings_group_text(token, admin_id),
+                await build_settings_group_keyboard(token, admin_id))
+
+    section_token = section_of(callback_data) if callback_data else None
+    if section_token:
+        return render_section_text(section_token), await build_section_keyboard(section_token, admin_id)
+
+    # T-20-18: корень рисуется через `admin_keyboard_for` -> `build_admin_keyboard`, то есть
+    # через свежий `resolve_capabilities` (D-05) — человек без прав получит пустую клавиатуру,
+    # а не чужой список разделов.
+    return SETTINGS_MOVED_TEXT, await admin_keyboard_for(admin_id)
 
 
 def visible_rows(token: str, caps: set, is_superadmin: bool) -> list[tuple]:
