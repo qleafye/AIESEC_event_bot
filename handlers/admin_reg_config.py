@@ -39,7 +39,7 @@ from cities import (
 )
 from handlers.admin import router
 from handlers.admin_consent import remind_consent_purposes_if_widened, remind_consent_purposes_after_preset
-from handlers.admin_settings import render_settings_text, build_settings_keyboard, _per_city_visible_codes  # Phase 13 (13-06): settings moved out of admin.py
+from handlers.admin_settings import _per_city_visible_codes  # Phase 13 (13-06): settings moved out of admin.py
 
 logger = logging.getLogger(__name__)
 
@@ -163,7 +163,7 @@ async def build_questions_keyboard(track: str = "full"):
         else:
             toggle_text = f"{'✅' if await _is_question_on(setting_key) else '❌'} {label}"
             buttons.append([InlineKeyboardButton(text=toggle_text, callback_data=f"reg_q_toggle:{setting_key}")])
-    buttons.append([InlineKeyboardButton(text="← Назад к настройкам", callback_data="reg_q_back")])
+    buttons.append([InlineKeyboardButton(text="← Назад", callback_data="reg_q_back")])
     return InlineKeyboardMarkup(inline_keyboard=buttons)
 
 
@@ -334,8 +334,12 @@ async def reg_q_noop(callback: types.CallbackQuery):
 
 @router.callback_query(F.data == "reg_q_back")
 async def reg_questions_back(callback: types.CallbackQuery):
-    text = await render_settings_text(callback.from_user.id)
-    await callback.message.edit_text(text, parse_mode="HTML", reply_markup=await build_settings_keyboard(callback.from_user.id))
+    # Phase 20 (20-04): выход с экрана «📋 Вопросы регистрации» ведёт в его раздел —
+    # «📝 Анкета». Подсказка резолверу — callback_data СВОЕГО экрана (`admin_reg_questions`),
+    # а не собственный `reg_q_back`: строки `reg_q_back` в SECTIONS нет и быть не должно.
+    from handlers.admin_sections import settings_return_screen  # ленивый шов
+    text, kb = await settings_return_screen(callback.from_user.id, callback_data="admin_reg_questions")
+    await callback.message.edit_text(text, parse_mode="HTML", reply_markup=kb)
     await callback.answer()
 
 
@@ -358,7 +362,7 @@ async def admin_event_preset(callback: types.CallbackQuery):
         [InlineKeyboardButton(text=p["label"], callback_data=f"preset_apply:{key}")]
         for key, p in REG_PRESETS.items()
     ]
-    buttons.append([InlineKeyboardButton(text="← Назад к настройкам", callback_data="reg_q_back")])
+    buttons.append([InlineKeyboardButton(text="← Назад", callback_data="reg_q_back")])
     await callback.message.edit_text(
         "🎛 <b>Тип события</b>\n\n"
         "Выбери пресет — он одним махом включит нужные вопросы и выключит остальные "
@@ -497,7 +501,9 @@ async def build_prompts_keyboard(track: str = "full"):
         custom = await get_setting(key)
         mark = "✅" if custom else "✏️"
         buttons.append([InlineKeyboardButton(text=f"{mark} {label}", callback_data=callback_data)])
-    buttons.append([InlineKeyboardButton(text="← Назад к настройкам", callback_data="admin_settings")])
+    # Phase 20 (20-04): «Назад» ведёт в раздел-владелец этого экрана — «📝 Анкета».
+    from handlers.admin_sections import back_button  # ленивый шов (цикл на уровне модуля)
+    buttons.append([back_button("admin_reg_prompts")])
     return InlineKeyboardMarkup(inline_keyboard=buttons)
 
 
@@ -601,7 +607,7 @@ async def build_menu_keyboard(admin_id: int | None = None):
     if per_city_ctx and await _menu_city_has_override(header_code):
         buttons.append([InlineKeyboardButton(text="↩️ Все как везде", callback_data="menu_reset_city")])
 
-    buttons.append([InlineKeyboardButton(text="← Назад к настройкам", callback_data="menu_back")])
+    buttons.append([InlineKeyboardButton(text="← Назад", callback_data="menu_back")])
     return InlineKeyboardMarkup(inline_keyboard=buttons)
 
 
@@ -657,8 +663,11 @@ async def toggle_menu_button(callback: types.CallbackQuery):
 
 @router.callback_query(F.data == "menu_back")
 async def menu_buttons_back(callback: types.CallbackQuery):
-    text = await render_settings_text(callback.from_user.id)
-    await callback.message.edit_text(text, parse_mode="HTML", reply_markup=await build_settings_keyboard(callback.from_user.id))
+    # Phase 20 (20-04): выход с экрана «🔘 Кнопки меню» ведёт в его раздел — «🎪 Событие»
+    # (подсказка — callback_data своего экрана, см. комментарий у reg_questions_back).
+    from handlers.admin_sections import settings_return_screen  # ленивый шов
+    text, kb = await settings_return_screen(callback.from_user.id, callback_data="admin_menu_buttons")
+    await callback.message.edit_text(text, parse_mode="HTML", reply_markup=kb)
     await callback.answer()
 
 
