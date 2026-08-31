@@ -16,6 +16,7 @@ import logging
 
 from config import config
 import services.sheets as sheets
+from handlers import admin_sections
 from handlers import admin_settings
 from tests.test_rebuild_confirm_260813_sdl import _FakeCallback, ADMIN_ID
 
@@ -175,7 +176,7 @@ def _wire(monkeypatch, route, existing_main=None, existing_named=None, append_na
             return append_named_result[tab]
         return len(rows)
 
-    async def fake_kb(uid):
+    async def fake_kb(admin_id, callback_data=None):
         return None
 
     monkeypatch.setattr(admin_settings, "active_sheet_headers", fake_headers)
@@ -186,7 +187,10 @@ def _wire(monkeypatch, route, existing_main=None, existing_named=None, append_na
     monkeypatch.setattr(admin_settings, "ensure_named_sheet_header", fake_ensure_named_header)
     monkeypatch.setattr(admin_settings, "get_existing_named_sheet_ids", fake_existing_named_ids)
     monkeypatch.setattr(admin_settings, "append_rows_to_named_sheet", fake_append_named)
-    monkeypatch.setattr(admin_settings, "admin_keyboard_for", fake_kb)
+    # Ревью фазы 20: экран результата берёт клавиатуру раздела-владельца операции, а не корня,
+    # поэтому шов для подмены переехал с admin_keyboard_for на op_return_keyboard. Хендлер
+    # импортирует её лениво из модуля — патч атрибута модуля перехватывает вызов.
+    monkeypatch.setattr(admin_sections, "op_return_keyboard", fake_kb)
     monkeypatch.setattr(admin_settings, "_sheet_value_map", lambda u: {"ID": u["telegram_id"]})
     monkeypatch.setattr(admin_settings, "city_row_tab", route)
     return calls
@@ -197,7 +201,7 @@ def test_sync_routes_missing_spb_delegate_to_spb_tab_not_main(monkeypatch):
         return {"spb": "СПб", "tyumen": "Тюмень"}.get(event_city)
 
     calls = _wire(monkeypatch, route)
-    cb = _FakeCallback(ADMIN_ID)
+    cb = _FakeCallback(ADMIN_ID, "admin_sync_sheet")
     asyncio.run(admin_settings.sync_sheet(cb))
 
     # main gets only msk (1) + NULL city (2); spb/tyumen never reach append_rows_to_sheet
@@ -215,7 +219,7 @@ def test_sync_skips_already_present_delegate_and_skips_empty_tab_call(monkeypatc
 
     # both spb delegates (3, 4) already on their tab -> nothing missing there
     calls = _wire(monkeypatch, route, existing_named={"СПб": {3, 4}})
-    cb = _FakeCallback(ADMIN_ID)
+    cb = _FakeCallback(ADMIN_ID, "admin_sync_sheet")
     asyncio.run(admin_settings.sync_sheet(cb))
 
     named_tabs = [tab for tab, _rows in calls["append_named"]]
@@ -228,7 +232,7 @@ def test_sync_module_off_is_byte_identical_to_old_behaviour(monkeypatch):
         return None  # cities module off / no per-city base -> everything to main
 
     calls = _wire(monkeypatch, route)
-    cb = _FakeCallback(ADMIN_ID)
+    cb = _FakeCallback(ADMIN_ID, "admin_sync_sheet")
     asyncio.run(admin_settings.sync_sheet(cb))
 
     assert calls["append_main"] == [[[1], [2], [3], [4], [5]]]
@@ -246,7 +250,7 @@ def test_sync_module_off_no_missing_rows_uses_old_empty_text(monkeypatch):
         return None
 
     calls = _wire(monkeypatch, route, existing_main={1, 2, 3, 4, 5})
-    cb = _FakeCallback(ADMIN_ID)
+    cb = _FakeCallback(ADMIN_ID, "admin_sync_sheet")
     asyncio.run(admin_settings.sync_sheet(cb))
 
     assert calls["append_main"] == []
@@ -260,7 +264,7 @@ def test_sync_one_tab_failure_does_not_cancel_the_rest(monkeypatch):
     # СПб can't be read at all (get_existing_named_sheet_ids -> None) -> tab must be reported
     # as failed, but Тюмень and main still get their rows.
     calls = _wire(monkeypatch, route, existing_named={"СПб": None})
-    cb = _FakeCallback(ADMIN_ID)
+    cb = _FakeCallback(ADMIN_ID, "admin_sync_sheet")
     asyncio.run(admin_settings.sync_sheet(cb))
 
     named_tabs = [tab for tab, _rows in calls["append_named"]]
