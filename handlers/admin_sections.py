@@ -161,16 +161,49 @@ def section_rows(token: str) -> list[tuple]:
     return rows
 
 
-def _section_of_group(group_token: str) -> str | None:
-    """Обратный индекс «группа настроек -> раздел», выведенный ИЗ `SECTIONS` (не второй
-    словарь-литерал, который разъехался бы с реестром). Нужен «Назад» из экрана группы."""
-    if group_token == "misc":
+def section_of(callback_data: str) -> str | None:
+    """Токен раздела, в котором объявлена строка с таким `callback_data`, или `None`.
+
+    Это ЕДИНСТВЕННЫЙ ответ на вопрос «в какой раздел ведёт „← Назад“ с этого экрана», и он
+    выведен ИЗ `SECTIONS`. Второй карты «кнопка -> раздел» в проекте нет и не будет — тот же
+    инвариант, что и «нет второй карты кнопка -> право» (D-01/D-15): литеральный словарь
+    разъехался бы с реестром при первом же переезде кнопки, и менеджер уехал бы «назад» в
+    чужой раздел.
+
+    Строка-группа матчится двумя способами сразу: и по полному `settings_group:{g}` (так
+    выглядит кнопка), и по голому `g` (так группа зовётся внутри экрана группы)."""
+    # «Прочие» рождаются в `section_rows("manage")` условно и в самом `SECTIONS` не объявлены —
+    # обходом реестра их не найти, поэтому единственное исключение живёт здесь.
+    if callback_data in ("misc", "settings_group:misc"):
         return "manage"
     for token, _label, rows in SECTIONS:
         for row in rows:
-            if row[0] == "group" and row[1] == group_token:
+            if row_callback(row) == callback_data:
+                return token
+            if row[0] == "group" and row[1] == callback_data:
                 return token
     return None
+
+
+def _section_of_group(group_token: str) -> str | None:
+    """Обратный индекс «группа настроек -> раздел» — частный случай `section_of`, а не второй
+    обход реестра. Оставлен именем: на него ссылается «Назад» с экрана группы."""
+    return section_of(group_token)
+
+
+def back_button(callback_data: str, text: str = "← Назад") -> InlineKeyboardButton:
+    """Кнопка возврата в РАЗДЕЛ-владелец экрана `callback_data`.
+
+    Подпись по умолчанию — просто «← Назад»: старое «← Назад к настройкам» больше не
+    описывает результат нажатия, кнопка ведёт в раздел (CLAUDE.md: подпись говорит, что будет).
+
+    T-20-11: неизвестный `callback_data` даёт запасной `admin_menu` (существующий корень) —
+    тупика и необработанного callback'а не возникает ни при какой раскладке.
+
+    T-20-10: это только навигация. При открытии раздела `show_admin_section` заново резолвит
+    права и фильтрует строки, а каждый реальный callback проверяет `CapabilityMiddleware`."""
+    token = section_of(callback_data)
+    return InlineKeyboardButton(text=text, callback_data=f"admin_sec:{token}" if token else "admin_menu")
 
 
 def visible_rows(token: str, caps: set, is_superadmin: bool) -> list[tuple]:

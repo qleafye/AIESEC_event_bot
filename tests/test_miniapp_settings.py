@@ -161,7 +161,8 @@ def test_screen_shows_toggles_eight_sections_and_theme_entry(tmp_path):
     expected_order = [f"miniapp_section:{k[len('miniapp_section_'):]}" for k in SECTION_KEYS_EXPECTED]
     assert section_buttons == expected_order
     assert "miniapp_theme_open" in data
-    assert "admin_settings" in data
+    # Phase 20 (20-03): «Назад» ведёт в раздел-владелец экрана («🔧 Управление»).
+    assert "admin_sec:manage" in data
     # правка акцента/лого больше не живёт на этом экране (перенесена во второй шов)
     assert "miniapp_edit_accent" not in data
     assert "miniapp_edit_logo" not in data
