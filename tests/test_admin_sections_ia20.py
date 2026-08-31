@@ -504,19 +504,30 @@ class FakeAnswerMessage:
 
 
 class FakeState:
-    def __init__(self, data=None):
+    def __init__(self, data=None, state=None):
         self._data = dict(data or {})
+        self.state = state
         self.cleared = False
 
     async def get_data(self):
         return dict(self._data)
 
+    async def get_state(self):
+        # aiogram отдаёт СТРОКУ («EditSetting:waiting_for_file»), а фейк хранит объект State —
+        # существующие тесты сверяют именно объект. Приводим на выходе, чтобы хендлеры видели
+        # ровно то, что увидят в проде.
+        return getattr(self.state, "state", self.state)
+
     async def clear(self):
         self._data = {}
+        self.state = None
         self.cleared = True
 
     async def update_data(self, **kwargs):
         self._data.update(kwargs)
+
+    async def set_data(self, data):
+        self._data = dict(data)
 
     async def set_state(self, state):
         self.state = state

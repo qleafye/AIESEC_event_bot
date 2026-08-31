@@ -545,7 +545,7 @@ async def reg_prompt_edit(callback: types.CallbackQuery, state: FSMContext):
     ])
     await callback.message.edit_text(text, parse_mode="HTML", reply_markup=cancel_kb)
     await state.set_state(EditSetting.waiting_for_value)
-    await state.update_data(setting_key=key)
+    await state.set_data({"setting_key": key})  # поток владеет данными один (admin_settings.consent_pdf_set)
     await callback.answer()
 
 

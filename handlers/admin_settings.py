@@ -1082,7 +1082,7 @@ async def settings_file_start(callback: types.CallbackQuery, state: FSMContext):
     ])
     await callback.message.edit_text(text, parse_mode="HTML", reply_markup=cancel_kb)
     await state.set_state(EditSetting.waiting_for_file)
-    await state.update_data(file_setting=prefix)
+    await state.set_data({"file_setting": prefix})  # поток владеет данными один (см. consent_pdf_set)
     await callback.answer()
 
 
@@ -1280,7 +1280,7 @@ async def settings_edit_city(callback: types.CallbackQuery, state: FSMContext):
     rows.append([InlineKeyboardButton(text="❌ Отмена", callback_data=f"settings_edit:{key}")])
     await callback.message.edit_text(text, parse_mode="HTML", reply_markup=InlineKeyboardMarkup(inline_keyboard=rows))
     await state.set_state(EditSetting.waiting_for_value)
-    await state.update_data(setting_key=composed, per_city_base=key)
+    await state.set_data({"setting_key": composed, "per_city_base": key})  # поток владеет данными один
     await callback.answer()
 
 
@@ -1377,34 +1377,44 @@ async def settings_photo_start(callback: types.CallbackQuery, state: FSMContext)
     ])
     await callback.message.edit_text(text, parse_mode="HTML", reply_markup=cancel_kb)
     await state.set_state(EditSetting.waiting_for_photo)
-    await state.update_data(photo_setting=prefix)
+    await state.set_data({"photo_setting": prefix})  # поток владеет данными один (см. consent_pdf_set)
     await callback.answer()
 
 
-def _return_hint_from_state(data: dict) -> dict:
+def _return_hint_from_state(data: dict, raw_state: str | None = None) -> dict:
     """Phase 20 (20-04): подсказка «откуда пришли» для `settings_return_screen`, собранная из
     данных FSM. Объявлена ОДИН раз и используется обеими отменами (кнопкой «❌ Отмена» и
     командой «/cancel»): дважды написанная развилка разъехалась бы при первом же новом ключе.
 
+    Развилка идёт ПО СОСТОЯНИЮ: оно однозначно называет поток, а ключ в данных — только его
+    параметр. Порядок «первый найденный ключ» (запасной проход ниже) разъезжается с реальностью
+    в тот день, когда кто-нибудь вернёт домешивание данных на входе в поток: отмена загрузки
+    фото уведёт менеджера на экран группы брошенной ТЕКСТОВОЙ правки.
+
     T-20-20: пустые/протухшие данные (MemoryStorage сбрасывается при рестарте) дают `{}` —
     резолвер уйдёт на корень, необработанного исключения и «зависшего» сообщения не будет."""
-    if data.get("setting_key"):
-        return {"setting_key": data["setting_key"]}
-    if data.get("photo_setting"):
-        return {"setting_key": f"{data['photo_setting']}_photo_file_id"}
-    if data.get("raw_file_key"):
-        # `consent_pdf_{key}` — не ключ SETTINGS_SCHEMA, группы у него нет, а экран есть.
-        return {"callback_data": "admin_consent_pdfs"}
-    if data.get("file_setting"):
-        return {"setting_key": f"{data['file_setting']}_doc_file_id"}
+    # `consent_pdf_{key}` — не ключ SETTINGS_SCHEMA, группы у него нет: резолвер вернёт
+    # менеджера в РАЗДЕЛ-владелец экрана «🧾 PDF согласий», то есть в «📝 Анкета».
+    flows = (
+        (EditSetting.waiting_for_value, "setting_key", lambda v: {"setting_key": v}),
+        (EditSetting.waiting_for_photo, "photo_setting", lambda v: {"setting_key": f"{v}_photo_file_id"}),
+        (EditSetting.waiting_for_file, "raw_file_key", lambda _v: {"callback_data": "admin_consent_pdfs"}),
+        (EditSetting.waiting_for_file, "file_setting", lambda v: {"setting_key": f"{v}_doc_file_id"}),
+    )
+    for flow, key, hint in flows:
+        if raw_state == flow.state and data.get(key):
+            return hint(data[key])
+    for _flow, key, hint in flows:  # состояние не названо (старый вызов) — порядок по данным
+        if data.get(key):
+            return hint(data[key])
     return {}
 
 
 @router.callback_query(F.data == "settings_cancel")
 async def cancel_edit_setting_callback(callback: types.CallbackQuery, state: FSMContext):
     from handlers.admin_sections import settings_return_screen  # ленивый шов (20-04)
-    # Данные читаются ДО очистки состояния — после неё подсказку взять уже неоткуда.
-    hint = _return_hint_from_state(await state.get_data())
+    # Данные и состояние читаются ДО очистки — после неё подсказку взять уже неоткуда.
+    hint = _return_hint_from_state(await state.get_data(), await state.get_state())
     await state.clear()
     text, kb = await settings_return_screen(callback.from_user.id, **hint)
     await callback.message.edit_text(text, parse_mode="HTML", reply_markup=kb)
@@ -1704,7 +1714,10 @@ async def consent_pdf_set(callback: types.CallbackQuery, state: FSMContext):
         reply_markup=cancel_kb,
     )
     await state.set_state(EditSetting.waiting_for_file)
-    await state.update_data(raw_file_key=f"consent_pdf_{key}")
+    # Данные задаются ЦЕЛИКОМ (set_data): иначе брошенный тут промпт переживал уход менеджера
+    # на «📎 Бонус за регистрацию» — приёмник документа разбирает `raw_file_key` раньше
+    # `file_setting`, и PDF бонуса молча уезжал в согласие. Правило на каждом входе в поток.
+    await state.set_data({"raw_file_key": f"consent_pdf_{key}"})
     await callback.answer()
 
 
@@ -1712,7 +1725,7 @@ async def consent_pdf_set(callback: types.CallbackQuery, state: FSMContext):
 @router.message(StateFilter(EditSetting), F.text == "Отмена")
 async def cancel_edit_setting(message: types.Message, state: FSMContext):
     from handlers.admin_sections import settings_return_screen  # ленивый шов (20-04)
-    hint = _return_hint_from_state(await state.get_data())  # ДО очистки, см. хелпер выше
+    hint = _return_hint_from_state(await state.get_data(), await state.get_state())  # ДО очистки
     await state.clear()
     text, kb = await settings_return_screen(message.from_user.id, **hint)
     await message.answer(text, parse_mode="HTML", reply_markup=kb)
