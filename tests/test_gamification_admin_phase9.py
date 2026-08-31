@@ -163,7 +163,9 @@ def test_cancel_mid_wizard_clears_state_and_shows_list(tmp_path):
 # ── Task 2: full wizard -- text -> category -> coins -> proof_type -> deadline -> confirm ──
 
 def _drive_to_confirm(state, *, text="Пост со скрином #знакомство", category="Light",
-                       coins="30", proof="photo", deadline="25.08.2026 23:59"):
+                       coins="30", proof="photo", deadline="25.08.2099 23:59"):
+    # Дедлайн в далёком будущем: визард отвергает прошедшие даты («Это время уже прошло»),
+    # а зашитый 25.08.2026 протух 26.08.2026 и уронил два теста при живом коде.
     """Phase 09.1 (A): the proof-type step is now checkboxes -- tap `gtproof:{proof}` to
     toggle it on, then `gtproof_done` to advance (empty selection is legal there too, callers
     that want the OLD single-type contract still pass exactly one `proof` code)."""
@@ -312,7 +314,7 @@ def test_game_task_confirm_creates_task_via_create_task(tmp_path):
     assert task["category"] == "Light"
     assert task["coins"] == 30
     assert task["proof_type"] == "photo"
-    assert task["deadline_at"] == "2026-08-25 23:59:00"
+    assert task["deadline_at"] == "2099-08-25 23:59:00"
     assert asyncio.run(state.get_state()) is None
 
 
