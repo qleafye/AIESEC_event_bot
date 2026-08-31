@@ -1,22 +1,29 @@
 """Phase 20 (20-01, ADMIN-IA-01..03) — сторож разделов админки по пути делегата.
 
-Четыре сюжета:
+Шесть сюжетов:
   (1) покрытие «до/после» — ни одна кнопка, достижимая с корня или с экрана настроек до
       фазы 20, не пропала при переезде в разделы;
   (2) каждая кнопка живёт ровно в ОДНОМ разделе (иначе менеджер найдёт одну настройку в
       двух местах и не поймёт, какая «настоящая»);
   (3) видимость по правам — раздел рендерится тогда и только тогда, когда в нём есть хотя
       бы одна доступная строка;
-  (4) экран раздела: шапка города, «← Назад» в корень, отсутствие тупиков.
+  (4) экран раздела: шапка города, «← Назад» в корень, отсутствие тупиков;
+  (5) корень /admin — только разделы, и «Назад» с каждого экрана ведёт в его раздел (20-03);
+  (6) после действия менеджера (тумблер, правка значения, приём медиа, отмена, выход) экран
+      возврата — тот, с которого действовали, а не исчезнувший плоский лендинг (20-04).
 
 pytest-asyncio в этом окружении нет — каждый async-вызов через asyncio.run(), config.DB_PATH
 смотрит в tmp_path (конвенция проекта, conftest.py нет).
 """
 import asyncio
 
+import pytest
+
 from database import db
 import cities
+from handlers import admin_reg_config as regcfg
 from handlers import admin_sections as sec
+from handlers import admin_settings as st
 from handlers.admin_caps import role_caps_key
 from handlers.admin_settings import settings_toggle_rows
 
@@ -41,11 +48,16 @@ class FakeMessage:
         self.text = None
         self.markup = None
         self.edit_calls = 0
+        self.sent: list[tuple] = []
 
     async def edit_text(self, text, parse_mode=None, reply_markup=None):
         self.text = text
         self.markup = reply_markup
         self.edit_calls += 1
+
+    async def answer(self, text=None, parse_mode=None, reply_markup=None, **kwargs):
+        # Тумблеры-модули дёргают напоминание о целях согласий через callback.message.answer.
+        self.sent.append((text, reply_markup))
 
 
 class FakeCallback:
@@ -437,3 +449,190 @@ def test_back_button_falls_back_to_root_for_unknown_screen():
     """T-20-11: неизвестный экран не даёт тупика — «Назад» ведёт в существующий корень."""
     assert sec.section_of("нет-такого-экрана") is None
     assert sec.back_button("нет-такого-экрана").callback_data == "admin_menu"
+
+
+# ══════════════════════════════════════════════════════════════════════════════════════════
+# (6) После действия — тот же экран (20-04)
+#
+# Ревью фазы 20, BLOCKER 1: callback_data тумблеров намеренно не менялись (D-02), поэтому
+# промах перерисовки не ловится НИЧЕМ, кроме прямой проверки клавиатуры — и старый плоский
+# экран, и экран раздела отвечают на те же самые callback'и. Правило всех тестов ниже:
+# сравнить МНОЖЕСТВО callback_data полученной клавиатуры с множеством эталона И дополнительно
+# убедиться, что оно НЕ равно множеству плоского лендинга. Второе утверждение обязательно:
+# без него тест прошёл бы и на лендинге, окажись тот случайно надмножеством.
+# ══════════════════════════════════════════════════════════════════════════════════════════
+
+class FakePhoto:
+    def __init__(self, file_id):
+        self.file_id = file_id
+
+
+class FakeDocument:
+    def __init__(self, file_id, mime_type):
+        self.file_id = file_id
+        self.mime_type = mime_type
+
+
+class FakeAnswerMessage:
+    """Сообщение ОТ менеджера (пути message-хендлеров): текст/фото/файл на входе, ответы бота
+    на выходе. Экран возврата — последний ответ С клавиатурой: подтверждение «✅ Фото
+    обновлено!» приходит отдельным сообщением и клавиатуры не несёт."""
+
+    def __init__(self, text=None, user_id=ADMIN_ID, photo=None, document=None):
+        self.text = text
+        self.html_text = text
+        self.caption = None
+        self.photo = photo
+        self.document = document
+        self.from_user = FakeUser(user_id)
+        self.sent: list[tuple] = []
+
+    async def answer(self, text=None, parse_mode=None, reply_markup=None, **kwargs):
+        self.sent.append((text, reply_markup))
+
+    @property
+    def screen(self) -> tuple:
+        with_kb = [pair for pair in self.sent if pair[1] is not None]
+        assert with_kb, f"бот не прислал ни одного экрана: {self.sent}"
+        return with_kb[-1]
+
+
+class FakeState:
+    def __init__(self, data=None):
+        self._data = dict(data or {})
+        self.cleared = False
+
+    async def get_data(self):
+        return dict(self._data)
+
+    async def clear(self):
+        self._data = {}
+        self.cleared = True
+
+    async def update_data(self, **kwargs):
+        self._data.update(kwargs)
+
+    async def set_state(self, state):
+        self.state = state
+
+
+def _cbs(kb) -> set:
+    return {cd for cd in _flat_callback_data(kb) if cd}
+
+
+def _assert_is_section_screen(kb, token: str):
+    assert _cbs(kb) == _cbs(asyncio.run(sec.build_section_keyboard(token, ADMIN_ID))), token
+    assert _cbs(kb) != _cbs(asyncio.run(st.build_settings_keyboard(ADMIN_ID))), token
+
+
+def _assert_is_group_screen(kb, token: str):
+    assert _cbs(kb) == _cbs(asyncio.run(st.build_settings_group_keyboard(token, ADMIN_ID))), token
+    assert _cbs(kb) != _cbs(asyncio.run(st.build_settings_keyboard(ADMIN_ID))), token
+
+
+@pytest.mark.parametrize("handler_name,callback_data,section", [
+    ("toggle_full_approval", "settings_toggle_full_approval", "apps"),
+    ("toggle_nudge_enabled", "toggle_nudge_enabled", "apps"),
+    ("toggle_uni_mode", "toggle_uni_mode", "form"),
+    ("toggle_payment_enabled", "toggle_payment_enabled", "pay"),
+    ("toggle_bonus", "settings_toggle_bonus", "event"),
+])
+def test_toggle_inside_section_redraws_that_section(tmp_path, handler_name, callback_data, section):
+    """Тумблеры из четырёх разных разделов и из трёх разных generic-хелперов: после тапа
+    менеджер остаётся ТАМ, где нажал, а не проваливается на плоский экран из 26 кнопок."""
+    _roles_ready(tmp_path)
+    cb = FakeCallback(callback_data)
+    asyncio.run(getattr(st, handler_name)(cb))
+
+    assert cb.message.edit_calls == 1
+    assert sec.section_of(callback_data) == section  # раздел выведен из реестра, не задан
+    _assert_is_section_screen(cb.message.markup, section)
+
+
+def test_edit_value_returns_to_its_group_screen(tmp_path):
+    """Правка значения возвращает на экран ГРУППЫ: кнопка «✏️ …» живёт только там. Заодно
+    сторожит перекладку ключа — «После одобрения» после 20-01 лежит в «📋 Заявки»."""
+    _roles_ready(tmp_path)
+    msg = FakeAnswerMessage("Ждём тебя на форуме!")
+    asyncio.run(st.settings_edit_value(msg, FakeState({"setting_key": "approve_text"})))
+
+    assert asyncio.run(db.get_setting("approve_text")) == "Ждём тебя на форуме!"
+    _assert_is_group_screen(msg.screen[1], "apps")
+
+
+def test_cancel_returns_to_the_screen_it_came_from(tmp_path):
+    """Отмена с контекстом — на экран группы; отмена БЕЗ контекста (данные FSM протухли после
+    рестарта, MemoryStorage) — на корень разделов, а не на плоский лендинг и не в тупик."""
+    _roles_ready(tmp_path)
+
+    cb = FakeCallback("settings_cancel")
+    asyncio.run(st.cancel_edit_setting_callback(cb, FakeState({"setting_key": "approve_text"})))
+    _assert_is_group_screen(cb.message.markup, "apps")
+
+    cb_empty = FakeCallback("settings_cancel")
+    asyncio.run(st.cancel_edit_setting_callback(cb_empty, FakeState()))
+    flat = _flat_callback_data(cb_empty.message.markup)
+    assert flat and all(cd.startswith("admin_sec:") for cd in flat), flat
+
+
+def test_photo_and_file_return_to_event_group(tmp_path):
+    """Приём медиа возвращает на экран группы, где живут кнопки «📷 …»/«📎 …»; PDF согласия
+    ключом SETTINGS_SCHEMA не является, поэтому его ветка возвращает в раздел-владелец
+    экрана «🧾 PDF согласий»."""
+    _roles_ready(tmp_path)
+
+    photo_msg = FakeAnswerMessage(photo=[FakePhoto("photo-file-id")])
+    asyncio.run(st.settings_receive_photo(photo_msg, FakeState({"photo_setting": "start"})))
+    assert asyncio.run(db.get_setting("start_photo_file_id")) == "photo-file-id"
+    _assert_is_group_screen(photo_msg.screen[1], "event")
+
+    doc_msg = FakeAnswerMessage(document=FakeDocument("doc-file-id", "application/pdf"))
+    asyncio.run(st.settings_receive_file_doc(doc_msg, FakeState({"file_setting": "reg_bonus"})))
+    assert asyncio.run(db.get_setting("reg_bonus_doc_file_id")) == "doc-file-id"
+    _assert_is_group_screen(doc_msg.screen[1], "event")
+
+    pdf_msg = FakeAnswerMessage(document=FakeDocument("pdf-file-id", "application/pdf"))
+    asyncio.run(st.settings_receive_file_doc(pdf_msg, FakeState({"raw_file_key": "consent_pdf_offer"})))
+    assert asyncio.run(db.get_setting("consent_pdf_offer")) == "pdf-file-id"
+    _assert_is_section_screen(pdf_msg.screen[1], "form")
+
+
+def test_reg_config_exits_land_in_their_sections(tmp_path):
+    """BLOCKER 2. Эти два выхода вызывают перерисовку ФУНКЦИЕЙ, а не кнопкой, поэтому греп по
+    кнопкам их не видел вовсе — сторож нужен именно здесь."""
+    _roles_ready(tmp_path)
+
+    cb_q = FakeCallback("reg_q_back")
+    asyncio.run(regcfg.reg_questions_back(cb_q))
+    _assert_is_section_screen(cb_q.message.markup, "form")
+
+    cb_m = FakeCallback("menu_back")
+    asyncio.run(regcfg.menu_buttons_back(cb_m))
+    _assert_is_section_screen(cb_m.message.markup, "event")
+
+
+def test_no_handler_redraws_the_flat_settings_screen():
+    """Структурный сторож — защита от возврата бага при следующей правке модуля настроек:
+    единственное упоминание `build_settings_keyboard(` на весь handlers/ — её объявление."""
+    from pathlib import Path
+
+    handlers_dir = Path(__file__).resolve().parent.parent / "handlers"
+    settings_src = (handlers_dir / "admin_settings.py").read_text(encoding="utf-8")
+    regcfg_src = (handlers_dir / "admin_reg_config.py").read_text(encoding="utf-8")
+
+    assert settings_src.count("build_settings_keyboard(") == 1, "перерисовка снова целится в лендинг"
+    assert "async def build_settings_keyboard(" in settings_src  # это именно объявление
+    assert regcfg_src.count("build_settings_keyboard(") == 0
+
+
+def test_legacy_admin_settings_lands_on_root(tmp_path):
+    """D-03: кнопка «⚙️ Настройки форума» из клавиатуры, отрисованной до фазы 20 и живущей в
+    чате вечно, открывает корень разделов И объясняет, что изменилось, — не тупик и не
+    молчаливый корень."""
+    _roles_ready(tmp_path)
+    cb = FakeCallback("admin_settings")
+    asyncio.run(st.show_admin_settings(cb))
+
+    assert cb.message.edit_calls == 1
+    assert any(cd.startswith("admin_sec:") for cd in _flat_callback_data(cb.message.markup))
+    assert "переехали" in cb.message.text
