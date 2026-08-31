@@ -114,15 +114,28 @@ _EVENT_FIELDS = [
 # registry; order is pinned per group (not registry dict-insertion order) so the on-screen
 # order stays byte-identical to the pre-migration literal tables.
 _REG_FIELD_ORDER = [
-    "source_options", "reg_complete_text", "approve_text", "reject_text",
-    # Phase 17.1 (17.1-01): гейт «заявка на рассмотрении» — рядом с reject_text, обе ветки
-    # одного `_gate_decision` теперь редактируются в одном месте.
-    "pending_gate_text",
-    "pending_reminder_interval", "city_options", "study_field_options",
+    "source_options", "city_options", "study_field_options",
     "goal_options", "formats_options", "university_options",
-    # Phase 17.1 (17.1-03, schema-completeness): экран выбора города при /start и тексты
-    # гейта предотбора — читались из bot_settings, но менеджер их в UI не видел.
-    "city_fork_text", "preselect_no_username_text", "preselect_fail_text", "preselect_link",
+    # Phase 17.1 (17.1-03, schema-completeness): экран выбора города при /start — читался из
+    # bot_settings, но менеджер его в UI не видел.
+    "city_fork_text",
+]
+
+# Phase 20 (20-01, ADMIN-IA-01): группа «📋 Заявки» — всё, что делегат видит ПОСЛЕ подачи
+# анкеты (подтверждение, одобрение, отклонение, «на рассмотрении», предотбор, догонялка) плюс
+# тайминг сводки для менеджера. До фазы 20 эти тексты лежали в «📝 Регистрация» вперемешку со
+# списками вариантов вопросов, и «После одобрения» приходилось искать в настройках анкеты.
+# SETTINGS_SCHEMA не тронут: физическое место ключа в реестре прежнее, переехала только
+# группировка экрана.
+_APPS_FIELD_ORDER = [
+    "reg_complete_text", "approve_text", "reject_text",
+    # Phase 17.1 (17.1-01): гейт «заявка на рассмотрении» — рядом с reject_text, обе ветки
+    # одного `_gate_decision` редактируются в одном месте.
+    "pending_gate_text",
+    "pending_reminder_interval",
+    # Phase 17.1 (17.1-03, schema-completeness): тексты гейта предотбора — читались из
+    # bot_settings, но менеджер их в UI не видел.
+    "preselect_no_username_text", "preselect_fail_text", "preselect_link",
     # Quick 260819 (schema-completeness): догонялка брошенных анкет (порог и текст).
     "nudge_after_minutes", "nudge_text",
 ]
@@ -197,6 +210,7 @@ _SHEETS_FIELD_ORDER = [
 ]
 
 _REG_FIELDS = [(k, SETTINGS_SCHEMA[k]["label"], SETTINGS_SCHEMA[k]["prompt"]) for k in _REG_FIELD_ORDER]
+_APPS_FIELDS = [(k, SETTINGS_SCHEMA[k]["label"], SETTINGS_SCHEMA[k]["prompt"]) for k in _APPS_FIELD_ORDER]
 _PAY_FIELDS = [(k, SETTINGS_SCHEMA[k]["label"], SETTINGS_SCHEMA[k]["prompt"]) for k in _PAY_FIELD_ORDER]
 _PARTY_FIELDS = [(k, SETTINGS_SCHEMA[k]["label"], SETTINGS_SCHEMA[k]["prompt"]) for k in _PARTY_FIELD_ORDER]
 _CONSENT_FIELDS = [(k, SETTINGS_SCHEMA[k]["label"], SETTINGS_SCHEMA[k]["prompt"]) for k in _CONSENT_FIELD_ORDER]
@@ -209,7 +223,7 @@ _SYSTEM_FIELDS = [(k, SETTINGS_SCHEMA[k]["label"], SETTINGS_SCHEMA[k]["prompt"])
 # Phase 5 (D-11a/D-13): party-track text settings (party_enabled/party_fork_question/
 # party_approval are toggle buttons in build_settings_keyboard, not here).
 SETTINGS_FIELDS = (
-    _EVENT_FIELDS + _REG_FIELDS + _PAY_FIELDS + _PARTY_FIELDS + _CONSENT_FIELDS
+    _EVENT_FIELDS + _REG_FIELDS + _APPS_FIELDS + _PAY_FIELDS + _PARTY_FIELDS + _CONSENT_FIELDS
     + _SHEETS_FIELDS + _GAME_FIELDS + _SYSTEM_FIELDS
 )
 
@@ -240,6 +254,9 @@ _EVENT_GROUP_KEYS = [
 SETTINGS_GROUPS = [
     ("🎪 Событие/Медиа", "event", _EVENT_GROUP_KEYS),
     ("📝 Регистрация", "reg", _REG_FIELD_ORDER),
+    # Phase 20 (20-01): сразу после «📝 Регистрация» — менеджер идёт по пути делегата
+    # (анкета -> заявка), а не ищет «После одобрения» среди списков вариантов вопросов.
+    ("📋 Заявки", "apps", _APPS_FIELD_ORDER),
     # Quick 260815-3hw: placed right after «📝 Регистрация» — a manager looks for tab names
     # near the registration settings, not buried at the tail of the settings list.
     ("📄 Вкладки таблицы", "sheets", _SHEETS_FIELD_ORDER),
@@ -394,11 +411,16 @@ async def render_settings_text(admin_id: int | None = None) -> str:
     return "\n".join(lines)
 
 
-# Phase 09.3 (04, CITY-09): admin_id=None means "no header context" — see the comment
-# above render_settings_text (same contract, same structural test).
-async def build_settings_keyboard(admin_id: int | None = None):
-    # Phase 09.3 (04, CITY-09): WR-05 — single header read for this render call, same
-    # contract as render_settings_text above.
+# Phase 20 (20-01, ADMIN-IA-01): ЕДИНСТВЕННЫЙ источник строк-тумблеров настроек. Отсюда их
+# берёт и старый лендинг (`build_settings_keyboard` ниже), и экраны разделов
+# (`handlers/admin_sections.py`) — иначе один и тот же тумблер имел бы две разные подписи в
+# двух местах. Ключ словаря — callback_data тумблера; значение — СТРОКИ клавиатуры (список
+# списков кнопок): у `settings_toggle_reg` их две, когда у города шапки есть собственное
+# значение registration_mode и показывается «↩️ Как везде», иначе одна.
+#
+# Phase 09.3 (04, CITY-09): WR-05 — шапка города читается РОВНО ОДИН раз за вызов, всё
+# остальное (per_city_ctx, own_key) выводится из этого единственного чтения.
+async def settings_toggle_rows(admin_id: int | None = None) -> dict[str, list[list[InlineKeyboardButton]]]:
     header_code = await admin_selected_city(admin_id) if admin_id is not None else None
     per_city_ctx = bool(header_code and header_code != ALL_CITIES)
 
@@ -460,9 +482,7 @@ async def build_settings_keyboard(admin_id: int | None = None):
     nudge_toggle_text = ("⏰ Догонялка анкет: ✅ Вкл → ❌ Выкл" if nudge_on == "on"
                          else "⏰ Догонялка анкет: ❌ Выкл → ✅ Вкл")
 
-    buttons = [
-        [InlineKeyboardButton(text=toggle_text, callback_data="settings_toggle_reg")],
-    ]
+    reg_rows = [[InlineKeyboardButton(text=toggle_text, callback_data="settings_toggle_reg")]]
     # Phase 09.3 (04, CITY-09): registration_mode has no settings_edit:{key} screen of its
     # own (it's a landing toggle, not a SETTINGS_FIELDS text entry) — the header toggle above
     # IS its per-city editor now; the old picker shortcut («🏙 Форма по городам», entering
@@ -472,25 +492,51 @@ async def build_settings_keyboard(admin_id: int | None = None):
     if per_city_ctx:
         own_key = per_city_key("registration_mode", header_code)
         if own_key and await get_setting(own_key):
-            buttons.append([InlineKeyboardButton(text="↩️ Как везде", callback_data="settings_regmode_reset")])
+            reg_rows.append([InlineKeyboardButton(text="↩️ Как везде", callback_data="settings_regmode_reset")])
+
+    def _row(text: str, callback_data: str) -> list[list[InlineKeyboardButton]]:
+        return [[InlineKeyboardButton(text=text, callback_data=callback_data)]]
+
+    return {
+        "settings_toggle_reg": reg_rows,
+        "settings_toggle_bonus": _row(bonus_toggle_text, "settings_toggle_bonus"),
+        "settings_toggle_full_approval": _row(full_txt, "settings_toggle_full_approval"),
+        "settings_toggle_short_approval": _row(short_txt, "settings_toggle_short_approval"),
+        "settings_toggle_notify": _row(notify_txt, "settings_toggle_notify"),
+        "toggle_payment_enabled": _row(payment_toggle_text, "toggle_payment_enabled"),
+        "toggle_payment_reminders": _row(pay_rem_toggle_text, "toggle_payment_reminders"),
+        "toggle_consent_enabled": _row(consent_toggle_text, "toggle_consent_enabled"),
+        "toggle_uni_mode": _row(uni_mode_text, "toggle_uni_mode"),
+        "toggle_edu_conditional": _row(edu_cond_text, "toggle_edu_conditional"),
+        "toggle_show_progress": _row(show_progress_text, "toggle_show_progress"),
+        "toggle_party_enabled": _row(party_toggle_text, "toggle_party_enabled"),
+        "toggle_party_fork_question": _row(party_fork_toggle_text, "toggle_party_fork_question"),
+        "settings_toggle_party_approval": _row(party_appr_txt, "settings_toggle_party_approval"),
+        "toggle_preselect_enabled": _row(preselect_toggle_text, "toggle_preselect_enabled"),
+        "toggle_pending_reminder": _row(pending_rem_text, "toggle_pending_reminder"),
+        "toggle_nudge_enabled": _row(nudge_toggle_text, "toggle_nudge_enabled"),
+    }
+
+
+# Phase 09.3 (04, CITY-09): admin_id=None means "no header context" — see the comment
+# above render_settings_text (same contract, same structural test).
+async def build_settings_keyboard(admin_id: int | None = None):
+    # Phase 20 (20-01): порядок строк лендинга прежний, байт-в-байт; сами кнопки приходят из
+    # settings_toggle_rows (WR-05: шапка города прочитана там ровно один раз).
+    rows = await settings_toggle_rows(admin_id)
+
+    buttons: list[list[InlineKeyboardButton]] = []
+    for cb in ("settings_toggle_reg", "settings_toggle_bonus", "settings_toggle_full_approval",
+               "settings_toggle_short_approval", "settings_toggle_notify",
+               "toggle_payment_enabled", "toggle_payment_reminders", "toggle_consent_enabled"):
+        buttons += rows[cb]
+    buttons.append([InlineKeyboardButton(text="🧾 PDF согласий", callback_data="admin_consent_pdfs")])
+    for cb in ("toggle_uni_mode", "toggle_edu_conditional", "toggle_show_progress",
+               "toggle_party_enabled", "toggle_party_fork_question",
+               "settings_toggle_party_approval", "toggle_preselect_enabled",
+               "toggle_pending_reminder", "toggle_nudge_enabled"):
+        buttons += rows[cb]
     buttons += [
-        [InlineKeyboardButton(text=bonus_toggle_text, callback_data="settings_toggle_bonus")],
-        [InlineKeyboardButton(text=full_txt, callback_data="settings_toggle_full_approval")],
-        [InlineKeyboardButton(text=short_txt, callback_data="settings_toggle_short_approval")],
-        [InlineKeyboardButton(text=notify_txt, callback_data="settings_toggle_notify")],
-        [InlineKeyboardButton(text=payment_toggle_text, callback_data="toggle_payment_enabled")],
-        [InlineKeyboardButton(text=pay_rem_toggle_text, callback_data="toggle_payment_reminders")],
-        [InlineKeyboardButton(text=consent_toggle_text, callback_data="toggle_consent_enabled")],
-        [InlineKeyboardButton(text="🧾 PDF согласий", callback_data="admin_consent_pdfs")],
-        [InlineKeyboardButton(text=uni_mode_text, callback_data="toggle_uni_mode")],
-        [InlineKeyboardButton(text=edu_cond_text, callback_data="toggle_edu_conditional")],
-        [InlineKeyboardButton(text=show_progress_text, callback_data="toggle_show_progress")],
-        [InlineKeyboardButton(text=party_toggle_text, callback_data="toggle_party_enabled")],
-        [InlineKeyboardButton(text=party_fork_toggle_text, callback_data="toggle_party_fork_question")],
-        [InlineKeyboardButton(text=party_appr_txt, callback_data="settings_toggle_party_approval")],
-        [InlineKeyboardButton(text=preselect_toggle_text, callback_data="toggle_preselect_enabled")],
-        [InlineKeyboardButton(text=pending_rem_text, callback_data="toggle_pending_reminder")],
-        [InlineKeyboardButton(text=nudge_toggle_text, callback_data="toggle_nudge_enabled")],
         [InlineKeyboardButton(text="🎛 Тип события (пресет)", callback_data="admin_event_preset")],
         [InlineKeyboardButton(text="📋 Вопросы регистрации", callback_data="admin_reg_questions")],
         [InlineKeyboardButton(text="✏️ Тексты вопросов", callback_data="admin_reg_prompts")],
@@ -623,19 +669,12 @@ async def build_settings_group_keyboard(token: str, admin_id: int | None = None)
         buttons.extend([[b] for b in unconfigured])
     if token == "game":  # Quick 260822: режим уведомлений о сдачах — тумблер, не ввод кода
         buttons.append([InlineKeyboardButton(text=await game_submit_notify_button_text(), callback_data="toggle_game_submit_notify")])
-    if token == "event" and admin_id is not None and admin_id in config.ADMIN_IDS:
-        # Phase 07.3 (02, RET-01, T-073-02-01): capability `settings` already gates this whole
-        # screen, but «Новый сезон» is stricter — superadmin only. Hiding the button from a
-        # non-superadmin `settings` holder is "bot for people" UX (CLAUDE.md), NOT the real
-        # gate — the real gate is the ADMIN_IDS re-check inside every wizard handler below,
-        # because a stale inline keyboard rendered before rights changed lives in the chat
-        # forever (same reasoning as roles_city_start's own inline re-check).
-        buttons.append([InlineKeyboardButton(text="🔄 Новый сезон", callback_data="admin_season_reset")])
-    if token == "event":
-        # Phase 07.3 (06, RET-04): visible to EVERYONE who reaches this screen — unlike «Новый
-        # сезон», import is not superadmin-only (CONTEXT D); the gate is the `settings`
-        # capability that already got them here.
-        buttons.append([InlineKeyboardButton(text="📥 Импорт прошлого события", callback_data="admin_season_import")])
+    # Phase 20 (20-01): «🔄 Новый сезон» и «📥 Импорт прошлого события» съехали с экрана
+    # группы «🎪 Событие/Медиа» в раздел «🔧 Управление» (handlers/admin_sections.py) — это
+    # операции над всем событием, а не тексты и медиа. Условие суперадмина для «Нового
+    # сезона» переехало вместе с кнопкой (тип строки `screen_admin` в реестре разделов);
+    # настоящий гейт — прежняя перепроверка config.ADMIN_IDS внутри самих хендлеров визарда,
+    # потому что стейл-клавиатура в чате живёт вечно.
     if token == "consent": buttons += consent_group_extra_buttons()  # quick 260822 (шов admin_consent)
     buttons.append([InlineKeyboardButton(text="← Назад к настройкам", callback_data="admin_settings")])
     return InlineKeyboardMarkup(inline_keyboard=buttons)
