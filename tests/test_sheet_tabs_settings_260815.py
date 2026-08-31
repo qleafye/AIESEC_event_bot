@@ -23,6 +23,7 @@ from config import config
 from database import db
 from handlers import admin_settings  # Phase 13 (13-06): settings moved out of admin.py
 from handlers import admin_gamification
+from handlers.admin_sections import section_of
 from handlers.admin_caps import ADMIN_CAPS, required_capability
 from settings_schema import SETTINGS_SCHEMA, _parse_setting
 import services.sheets as sheets
@@ -137,7 +138,11 @@ def test_render_snapshot_sheets(tmp_path):
         label = SETTINGS_SCHEMA[key]["label"]
         assert f"{label}: <i>по умолчанию</i>" in text, f"missing default flag for {label}"
 
-    assert "admin_settings" in flat
+    # Phase 20 (20-04): «← Назад» с экрана группы ведёт в раздел-владелец, а не на плоский
+    # экран настроек, которого больше нет. Цель берётся из реестра разделов, а не литералом:
+    # литерал разъехался бы снова при следующем переезде группы между разделами.
+    assert f"admin_sec:{section_of('sheets')}" in flat
+    assert "admin_settings" not in flat
     assert "settings_group_noop" in flat
 
 
