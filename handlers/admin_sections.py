@@ -306,19 +306,20 @@ async def build_section_keyboard(token: str, admin_id: int) -> InlineKeyboardMar
     Шапка рисуется ТЕМ ЖЕ способом, что в `admin_keyboard_for` (09.3): модуль выключен
     (`code is None`) — строки шапки нет вовсе, паритет с до-фазовым поведением.
 
-    Про два чтения шапки: `settings_toggle_rows` читает её сама (WR-05 внутри своего вызова),
-    здесь читаем для строки-переключателя города — ровно та же пара независимых чтений, что
-    у существующей пары render_settings_text/build_settings_keyboard на одном экране."""
+    WR-05: шапка города читается ЗДЕСЬ ровно один раз на рендер и передаётся в
+    `settings_toggle_rows` готовой. Прежде каждая из двух читала её сама — два независимых
+    await по одному ключу внутри сборки ОДНОЙ клавиатуры, и переключение города между ними
+    давало экран с шапкой одного города и тумблером регистрации другого."""
     from handlers.admin_core import _ADMIN_MENU_ROWS  # ленивый шов (см. docstring модуля)
     from handlers.admin_settings import settings_toggle_rows, _settings_group_label
 
     caps = await resolve_capabilities(admin_id)  # D-05: свежее чтение, без кеша
     rows = visible_rows(token, caps, admin_id in config.ADMIN_IDS)
     op_labels = {callback_data: text for text, callback_data in _ADMIN_MENU_ROWS}
-    toggles = await settings_toggle_rows(admin_id) if any(r[0] == "toggle" for r in rows) else {}
+    code = await admin_selected_city(admin_id)  # ЕДИНСТВЕННОЕ чтение шапки на рендер
+    toggles = await settings_toggle_rows(admin_id, header_code=code) if any(r[0] == "toggle" for r in rows) else {}
 
     buttons: list[list[InlineKeyboardButton]] = []
-    code = await admin_selected_city(admin_id)
     if code is not None:
         label_text = ALL_CITIES_LABEL if code == ALL_CITIES else f"🏙 Город: {await city_label(code)}"
         buttons.append([InlineKeyboardButton(text=label_text, callback_data="admin_city_switch")])

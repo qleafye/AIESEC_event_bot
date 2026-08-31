@@ -167,12 +167,18 @@ def test_toggle_at_header_city_writes_composite_key_not_global(tmp_path):
 def test_toggle_reads_the_city_header_once_per_render_call(tmp_path):
     """WR-05 на НОВОМ пути рендера (Phase 20, 20-04), а не ослабленный.
 
-    До фазы 20 тап тумблера читал шапку города ровно трижды: один раз сам хендлер (решает,
-    писать общий ключ или городской), один раз `render_settings_text` и один раз
-    `build_settings_keyboard` -> `settings_toggle_rows`. После 20-04 хендлер возвращает
-    менеджера на экран раздела, и читателей ровно столько же: хендлер, `build_section_keyboard`
-    (строка-шапка) и `settings_toggle_rows` (подписи тумблеров). `render_section_text`
-    синхронный и шапку не читает вовсе, `settings_return_screen` — тоже (он только резолвер).
+    До фазы 20 тап тумблера читал шапку города трижды: сам хендлер (решает, писать общий ключ
+    или городской), `render_settings_text` и `build_settings_keyboard` -> `settings_toggle_rows`.
+    Те три чтения приходились на ДВА артефакта — текст и клавиатуру, — и разъехаться внутри
+    одной клавиатуры не могли.
+
+    После 20-04 хендлер возвращает менеджера на экран раздела, где шапка нужна и строке-
+    переключателю города, и подписям тумблеров, — то есть дважды в пределах ОДНОЙ клавиатуры.
+    Ревью фазы 20: два независимых чтения здесь и есть тот дефект, ради которого WR-05 заведён,
+    а число «3» его не ловило, а закрепляло. Теперь `build_section_keyboard` читает шапку сам и
+    передаёт её в `settings_toggle_rows`, поэтому читателей ровно два: хендлер и рендер.
+    `render_section_text` синхронный и шапку не читает вовсе, `settings_return_screen` — тоже
+    (он только резолвер).
 
     Инвариант формулируется как ТОЧНОЕ число, а не «не больше N»: лишнее чтение шапки внутри
     одного рендера — это ровно тот класс ошибки, ради которого 09.3 завела WR-05."""
@@ -199,7 +205,7 @@ def test_toggle_reads_the_city_header_once_per_render_call(tmp_path):
         admin_settings.admin_selected_city = original
         admin_sections.admin_selected_city = original
 
-    assert len(calls) == 3, calls
+    assert len(calls) == 2, calls
     assert set(calls) == {ADMIN_ID}
 
 
