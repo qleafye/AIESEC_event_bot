@@ -229,6 +229,14 @@ ADMIN_CAPS: dict[str, str] = {
     # can actually change anything.
     "admin_city_pick:*": ANY_CAPABILITY,
     "admin_city_switch": ANY_CAPABILITY,
+    # Phase 20 (20-01, ADMIN-IA-01): admin_sec:{token} -- экран раздела админки. Это
+    # навигационная точка входа, а не право: содержимое раздела повторно фильтруется
+    # ПОСТРОЧНО этой же картой (handlers/admin_sections.py::visible_rows -> required_capability
+    # + _holds), раздел без единой доступной строки не открывается вовсе, а каждый реальный
+    # callback внутри по-прежнему проверяется CapabilityMiddleware независимо. Тот же приём и
+    # то же обоснование, что у admin_city_switch выше (09.3): открыть навигацию всем, кто
+    # вообще имеет доступ в панель, не расширяет того, что человек может сделать.
+    "admin_sec:*": ANY_CAPABILITY,
 
     # ── stats ────────────────────────────────────────────────────────────────────────────
     "admin_export_csv": "stats",

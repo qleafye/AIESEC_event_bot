@@ -2099,3 +2099,8 @@ from handlers import admin_miniapp  # noqa: E402,F401
 # import order. Golden snapshot: tests/test_refac_snapshot_260816.py.
 from handlers import admin_miniapp_theme  # noqa: E402,F401
 
+# ── Seam chain (Phase 20, 20-01): handlers/admin_sections.py (реестр 8 разделов админки по
+# пути делегата и экраны этих разделов) decorates the same admin.router. Imported LAST, right
+# after admin_miniapp_theme, so its handler lands right after every handler above at any
+# module import order. Golden snapshot: tests/test_refac_snapshot_260816.py.
+from handlers import admin_sections  # noqa: E402,F401
