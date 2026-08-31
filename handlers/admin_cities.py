@@ -556,9 +556,13 @@ async def season_reset_name_step(message: types.Message, state: FSMContext):
     data = await state.get_data()
     old = data.get("season_old") or ""
     n = await count_current_season_users(old or None)
+    from handlers.admin_sections import back_button  # ленивый шов: цикл на уровне модуля
     kb = InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text="➡️ Продолжить", callback_data="season_reset_go")],
-        [InlineKeyboardButton(text="← Отмена", callback_data="settings_group:event")],
+        # Цель берётся из реестра разделов: кнопка «🔄 Новый сезон» уехала из группы
+        # «🎪 Событие/Медиа» в «🔧 Управление», и литеральная отмена возвращала менеджера на
+        # экран, где нажатой кнопки больше нет. Литерал уехал бы снова при следующем переезде.
+        [back_button("admin_season_reset", text="← Отмена")],
     ])
     # State stays SeasonReset.naming — the next step is a tap (season_reset_go), not text; a
     # repeated text message here just re-renders this same screen with the new name.
@@ -777,9 +781,10 @@ async def season_import_name_step(message: types.Message, state: FSMContext):
     found = data.get("import_found", 0)
     existing = data.get("import_existing", 0)
     to_add = found - existing
+    from handlers.admin_sections import back_button  # ленивый шов: цикл на уровне модуля
     kb = InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text="📥 Да, импортировать", callback_data="season_import_go")],
-        [InlineKeyboardButton(text="← Отмена", callback_data="settings_group:event")],
+        [back_button("admin_season_import", text="← Отмена")],  # цель из реестра, см. выше
     ])
     await message.answer(
         f"📥 <b>Добавить {to_add} делегатов сезона «{html_module.escape(label)}»?</b>\n\n"
