@@ -944,3 +944,70 @@ def test_replace_children_never_gets_null_false_undefined_as_top_level_argument(
         "пользователь. Оберните список: replaceChildren(...[…].filter(Boolean)). Места: "
         + ", ".join(problems)
     )
+# ── Phase 20 (ADMIN-IA-04, D-05): хаб Mini App = та же IA, что корень /admin ─────────────
+# Менеджер держит в голове ОДНУ карту админки. Подписи разделов лежат в двух местах —
+# `handlers/admin_sections.py::SECTIONS` (бот) и `SECTION_GROUPS` в app.js (веб) — поэтому
+# нужен тот же сторож дрейфа, что у побайтной копии tokens.css выше
+# (`test_tokens_css_is_byte_for_byte_copy_of_dashboard_tokens`): расхождение обязано ронять
+# сборку, а не всплывать у менеджера двумя разными меню.
+
+def _section_groups_from_app_js() -> list[tuple[str, str]]:
+    text = APP_JS.read_text(encoding="utf-8")
+    start = text.index("export const SECTION_GROUPS = [")
+    block = text[start:text.index("];", start)]
+    return [(m.group(1), m.group(2)) for m in re.finditer(r'\["([^"]+)",\s*"([^"]+)"\]', block)]
+
+
+def _manager_hub_body() -> str:
+    """Тело renderManagerHub из hub.js — от объявления до следующей функции верхнего уровня."""
+    text = (SCREENS_DIR / "hub.js").read_text(encoding="utf-8")
+    start = text.index("async function renderManagerHub")
+    rest = text[start + 1:]
+    ends = [m.start() for m in re.finditer(r"^(async )?function ", rest, re.M)]
+    return rest[:ends[0]] if ends else rest
+
+
+def test_section_groups_match_bot_sections():
+    from handlers.admin_sections import SECTIONS
+
+    assert _section_groups_from_app_js() == [(token, label) for token, label, _ in SECTIONS], (
+        "SECTION_GROUPS в miniapp/static/js/app.js разошёлся с handlers/admin_sections.py::"
+        "SECTIONS — подписи и порядок разделов правятся в двух местах сразу, иначе бот и "
+        "Mini App показывают менеджеру две разные админки"
+    )
+
+
+def test_every_manager_nav_item_has_a_group():
+    tokens = {token for token, _ in _section_groups_from_app_js()}
+    for item in _nav_from_app_js():
+        if item.get("delegate"):
+            assert "group" not in item, f"{item['hash']}: делегатский хаб не группируется (D-05)"
+            continue
+        assert item.get("group") in tokens, (
+            f"{item['hash']}: менеджерская вкладка обязана лежать в одном из разделов "
+            f"SECTION_GROUPS, сейчас group={item.get('group')!r}"
+        )
+
+
+def test_manager_hub_renders_group_headers():
+    body = _manager_hub_body()
+    assert "SECTION_GROUPS" in body, "плитки менеджера раскладываются по SECTION_GROUPS"
+    assert "item.group" in body, "раздел плитки берётся из поля group записи NAV"
+    assert "continue" in body, "раздел без видимых плиток пропускается целиком (T-20-06)"
+    assert 'class: "sec"' in body, "у раздела есть заголовок — та же вёрстка, что в хабе делегата"
+    # Подпись ПЛИТКИ — по-прежнему из реестра (miniapp_section_*), а не из SECTION_GROUPS:
+    # иначе на плитках оказались бы подписи разделов и «Данные» вместо «Статистики».
+    assert "labels[item.section]" in body
+
+
+def test_manager_hero_only_with_review_tile():
+    """Критерий успеха №4 ROADMAP: при выключенной гейме хаб остаётся осмысленным. Герой
+    считает очередь проверки сдач, и без плитки «#/review» его нечем заполнить — он показывал
+    бы вечный ноль «сдач на проверке». Проверяем, что создание героя не стоит на верхнем
+    уровне функции безусловно: до него есть проверка наличия «#/review»."""
+    body = _manager_hub_body()
+    hero_at = body.index('"hero hero-flat"')
+    assert '"#/review"' in body[:hero_at], (
+        "герой рисуется до/без проверки наличия плитки «#/review» — при выключенной "
+        "геймификации менеджер увидит вечный ноль «сдач на проверке»"
+    )
