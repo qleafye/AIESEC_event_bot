@@ -248,6 +248,12 @@ def _build_snapshot_lines():
 # asset entries `miniapp_theme_photo_start`/`miniapp_theme_remove_photo` (cover all nine slots
 # via callback_data suffix, same `toggle_miniapp_section`-style dispatch already used one seam
 # over). Net: -7 + 17 = +10 lines (376 -> 386).
+# Drift note (2026-08-31, Phase 20, 20-01): +1 handler (386 -> 387) -- хвостовой seam-импорт
+# handlers/admin_sections.py в конце handlers/admin_settings.py регистрирует один
+# `show_admin_section` (admin_sec:*). Снапшот ПЕРЕСНЯТ прогоном `_build_snapshot_lines()`
+# против HEAD и сдиффен с прежним 386-строчным: единственное изменение -- вставка одной
+# строки после хвоста admin_miniapp_theme (конец цепочки швов admin_settings), все
+# существующие строки остались байт-в-байт на прежних местах в прежнем порядке.
 GOLDEN_SNAPSHOT = """
 admin|message|cmd_admin_help|cmd:admin
 admin|message|cmd_coins|cmd:coins
@@ -397,6 +403,7 @@ admin|callback_query|miniapp_theme_toggle_playful|miniapp_theme_toggle_playful
 admin|callback_query|miniapp_theme_toggle_pattern|miniapp_theme_toggle_pattern
 admin|callback_query|miniapp_theme_photo_start|miniapp_theme_photo:*
 admin|callback_query|miniapp_theme_remove_photo|miniapp_theme_remove_photo:*
+admin|callback_query|show_admin_section|admin_sec:*
 admin|callback_query|show_admin_cities|admin_cities
 admin|callback_query|toggle_event_city_enabled|toggle_event_city_enabled
 admin|callback_query|city_toggle|city_toggle:*
@@ -669,7 +676,7 @@ def test_snapshot_total_handler_count_is_292():
     # poll_wizard_cancel = два декоратора) в хвост admin.message, 15 callback (список/карточка
     # admin_polls + мастер admin_poll_wizard) в хвост admin.callback_query; чистый аппенд,
     # перепроверен прогоном _build_snapshot_lines() и diff'ом с прежним 334-строчным снапшотом.
-    assert len(GOLDEN_SNAPSHOT) == 386  # quick 260819: +toggle_preselect_enabled, +coinsman_amount_stale, +toggle_pending_reminder/+toggle_nudge_enabled; quick 260822: +5 settings_list_*, +toggle_game_submit_notify, +toggle_consent_recollect, +consent_renew_accept; опросы 260822: +20 (342 -> 362 после слияния); Phase 15-02: +2 open_dashboard_settings/toggle_dashboard_block (362 -> 364); Phase 19-08: +12 admin_miniapp.py (message: miniapp_accent_step/miniapp_logo_step/miniapp_logo_step_invalid; callback_query: open_miniapp_settings/toggle_miniapp_enabled/toggle_miniapp_staff_only/toggle_miniapp_section/miniapp_edit_accent_start/miniapp_edit_logo_start/miniapp_remove_logo/miniapp_cancel_edit), +1 user_actions.router open_miniapp_button (364 -> 376); Phase 19.1-07: -7 admin_miniapp.py (accent/logo edit flow replaced) +17 admin_miniapp_theme.py (presets + D-04 handles) = net +10 (376 -> 386)
+    assert len(GOLDEN_SNAPSHOT) == 387  # quick 260819: +toggle_preselect_enabled, +coinsman_amount_stale, +toggle_pending_reminder/+toggle_nudge_enabled; quick 260822: +5 settings_list_*, +toggle_game_submit_notify, +toggle_consent_recollect, +consent_renew_accept; опросы 260822: +20 (342 -> 362 после слияния); Phase 15-02: +2 open_dashboard_settings/toggle_dashboard_block (362 -> 364); Phase 19-08: +12 admin_miniapp.py (message: miniapp_accent_step/miniapp_logo_step/miniapp_logo_step_invalid; callback_query: open_miniapp_settings/toggle_miniapp_enabled/toggle_miniapp_staff_only/toggle_miniapp_section/miniapp_edit_accent_start/miniapp_edit_logo_start/miniapp_remove_logo/miniapp_cancel_edit), +1 user_actions.router open_miniapp_button (364 -> 376); Phase 19.1-07: -7 admin_miniapp.py (accent/logo edit flow replaced) +17 admin_miniapp_theme.py (presets + D-04 handles) = net +10 (376 -> 386); Phase 20-01: +1 admin_sections.py show_admin_section (386 -> 387)
 
 
 # ── Task 2(a): Dispatcher feed_update smoke — cross-router first-match routing ─────────────
