@@ -103,22 +103,23 @@ def test_season_reset_caps_registered():
     assert ADMIN_CAPS["state:SeasonReset:*"] == "settings"
 
 
-def test_season_reset_button_hidden_for_non_superadmin(tmp_path):
+def test_season_buttons_left_the_event_group(tmp_path):
+    """Phase 20 (20-01): «🔄 Новый сезон» и «📥 Импорт прошлого события» съехали с экрана
+    группы «🎪 Событие/Медиа» в раздел «🔧 Управление» — это операции над всем событием, а
+    не тексты и медиа. Экран группы теперь не показывает их НИКОМУ: ни суперадмину, ни
+    держателю `settings`, ни старому вызову без admin_id. Суперадминская видимость «Нового
+    сезона» переехала вместе с кнопкой и проверяется в
+    tests/test_admin_sections_ia20.py; настоящий гейт (перепроверка config.ADMIN_IDS внутри
+    визарда) не менялся — его сторожа ниже по файлу.
+    """
     _db_ready(tmp_path)
 
-    kb = asyncio.run(admin_settings.build_settings_group_keyboard("event", admin_id=OTHER_ID))
-    assert "admin_season_reset" not in _flat_callback_data(kb)
-
-    kb_admin = asyncio.run(admin_settings.build_settings_group_keyboard("event", admin_id=ADMIN_ID))
-    codes = _flat_callback_data(kb_admin)
-    assert codes.count("admin_season_reset") == 1
-
-
-def test_season_reset_button_absent_without_admin_id(tmp_path):
-    _db_ready(tmp_path)
-    # Backward compatibility with old call sites that never pass admin_id at all.
-    kb = asyncio.run(admin_settings.build_settings_group_keyboard("event"))
-    assert "admin_season_reset" not in _flat_callback_data(kb)
+    for kwargs in ({"admin_id": ADMIN_ID}, {"admin_id": OTHER_ID}, {}):
+        codes = _flat_callback_data(
+            asyncio.run(admin_settings.build_settings_group_keyboard("event", **kwargs))
+        )
+        assert "admin_season_reset" not in codes, kwargs
+        assert "admin_season_import" not in codes, kwargs
 
 
 def test_season_reset_start_denies_non_superadmin(tmp_path):

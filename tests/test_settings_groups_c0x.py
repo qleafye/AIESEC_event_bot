@@ -92,7 +92,13 @@ def test_landing_keyboard_emits_group_nav_not_per_field(tmp_path):
     kb = asyncio.run(admin_settings.build_settings_keyboard())
     flat = _flat_callback_data(kb)
 
-    assert any(cd.startswith("settings_group:") for cd in flat)
+    # Phase 20 (20-01): состав рядов-групп зафиксирован целиком, а не «хотя бы один» —
+    # разрез «📝 Регистрация» на анкету и «📋 Заявки» обязан быть виден этому сторожу.
+    assert [cd for cd in flat if cd and cd.startswith("settings_group:")] == [
+        "settings_group:event", "settings_group:reg", "settings_group:apps",
+        "settings_group:sheets", "settings_group:pay", "settings_group:party",
+        "settings_group:consent", "settings_group:game", "settings_group:system",
+    ]
     assert not any(cd and cd.startswith("settings_edit:") for cd in flat)
     assert not any(cd and cd.startswith("settings_photo:") for cd in flat)
     assert not any(cd and cd.startswith("settings_file:") for cd in flat)
@@ -355,25 +361,20 @@ def test_render_snapshot_reg(tmp_path):
     kb = asyncio.run(admin_settings.build_settings_group_keyboard("reg"))
     flat = _flat_callback_data(kb)
 
+    # Phase 20 (20-01): в группе остались ТОЛЬКО настройки анкеты — тексты «после
+    # регистрации / одобрения / отклонения / на рассмотрении», предотбор и догонялка
+    # переехали в «📋 Заявки» (см. test_render_snapshot_apps ниже).
     expected_keys = [
-        "source_options", "reg_complete_text", "approve_text", "reject_text",
-        "pending_gate_text",
-        "pending_reminder_interval", "city_options", "study_field_options",
+        "source_options", "city_options", "study_field_options",
         "goal_options", "formats_options", "university_options",
-        # Phase 17.1 (17.1-03, schema-completeness): экран выбора города при /start и
-        # тексты гейта предотбора — в хвосте группы.
-        "city_fork_text", "preselect_no_username_text", "preselect_fail_text", "preselect_link",
-        # Quick 260819 (schema-completeness): догонялка брошенных анкет — в хвосте группы.
-        "nudge_after_minutes", "nudge_text",
+        # Phase 17.1 (17.1-03, schema-completeness): экран выбора города при /start —
+        # в хвосте группы.
+        "city_fork_text",
     ]
     expected_labels = [
-        "📢 Источники", "✅ После регистрации", "🎉 После одобрения", "🚫 При отклонении",
-        "⏳ Заявка на рассмотрении",
-        "🕒 Тайминг батчей заявок", "🏙 Города (варианты)", "🎯 Направления обучения (варианты)",
+        "📢 Источники", "🏙 Города (варианты)", "🎯 Направления обучения (варианты)",
         "🎯 Цель участия (варианты)", "📋 Форматы форума (варианты)", "🏫 Список ВУЗов",
-        "🏙 Выбор города: вопрос", "🎯 Предотбор: нет @username", "🎯 Предотбор: не прошёл",
-        "🎯 Предотбор: ссылка",
-        "⏰ Догонялка: через сколько минут", "⏰ Догонялка: текст напоминания",
+        "🏙 Выбор города: вопрос",
     ]
     # Fresh DB -> nothing configured. Phase 17.1 (17.1-01): «⏳ Заявка на рассмотрении» —
     # первый ключ этой группы с непустым дефолтом в реестре, поэтому у него флаг
@@ -384,11 +385,7 @@ def test_render_snapshot_reg(tmp_path):
     # Quick 260819: «⏰ Догонялка: текст напоминания» -- текст с дефолтом (флаг «по умолчанию»);
     # «⏰ Догонялка: через сколько минут» -- int, как pending_reminder_interval: функциональный
     # parse-дефолт НЕ показывается как display-дефолт (_SETTINGS_DISPLAY_DEFAULTS только text).
-    defaulted_labels = {
-        "⏳ Заявка на рассмотрении", "🏙 Выбор города: вопрос",
-        "🎯 Предотбор: нет @username", "🎯 Предотбор: не прошёл",
-        "⏰ Догонялка: текст напоминания",
-    }
+    defaulted_labels = {"🏙 Выбор города: вопрос"}
     for label in defaulted_labels:
         assert f"{label}: <i>по умолчанию</i>" in text, f"missing/wrong flag for {label}"
     for label in expected_labels:
@@ -403,6 +400,46 @@ def test_render_snapshot_reg(tmp_path):
     edit_cbs = [cd for cd in flat if cd and cd.startswith("settings_edit:")]
     assert edit_cbs == [f"settings_edit:{k}" for k in expected_keys]
     assert "settings_group_noop" in flat
+    assert "admin_settings" in flat
+
+
+def test_render_snapshot_apps(tmp_path):
+    """Phase 20 (20-01, ADMIN-IA-01): «📋 Заявки» — всё, что делегат видит ПОСЛЕ подачи
+    анкеты. Ключи те же, что были в «📝 Регистрация», порядок — путь делегата: подтверждение
+    -> решение -> ожидание -> предотбор -> догонялка."""
+    _admin_ready(tmp_path)
+    text = asyncio.run(admin_settings.render_settings_group_text("apps"))
+    kb = asyncio.run(admin_settings.build_settings_group_keyboard("apps"))
+    flat = _flat_callback_data(kb)
+
+    expected_keys = [
+        "reg_complete_text", "approve_text", "reject_text", "pending_gate_text",
+        "pending_reminder_interval",
+        "preselect_no_username_text", "preselect_fail_text", "preselect_link",
+        "nudge_after_minutes", "nudge_text",
+    ]
+    expected_labels = [
+        "✅ После регистрации", "🎉 После одобрения", "🚫 При отклонении",
+        "⏳ Заявка на рассмотрении", "🕒 Тайминг батчей заявок",
+        "🎯 Предотбор: нет @username", "🎯 Предотбор: не прошёл", "🎯 Предотбор: ссылка",
+        "⏰ Догонялка: через сколько минут", "⏰ Догонялка: текст напоминания",
+    ]
+    defaulted_labels = {
+        "⏳ Заявка на рассмотрении", "🎯 Предотбор: нет @username",
+        "🎯 Предотбор: не прошёл", "⏰ Догонялка: текст напоминания",
+    }
+    for label in defaulted_labels:
+        assert f"{label}: <i>по умолчанию</i>" in text, f"missing/wrong flag for {label}"
+    for label in expected_labels:
+        if label in defaulted_labels:
+            continue
+        assert f"{label}: <i>— не задано</i>" in text, f"missing/wrong flag for {label}"
+    positions = [text.index(label) for label in expected_labels]
+    assert positions == sorted(positions), "label order drifted"
+
+    assert "Заявки" in text
+    edit_cbs = [cd for cd in flat if cd and cd.startswith("settings_edit:")]
+    assert edit_cbs == [f"settings_edit:{k}" for k in expected_keys]
     assert "admin_settings" in flat
 
 
@@ -751,7 +788,9 @@ def test_scheduler_and_reminder_keys_declared_with_code_defaults(tmp_path):
     # группы: system рендерит три новых int-поля, reg -- два поля догонялки
     assert admin_settings._settings_group_keys("system")[-3:] == [
         "nudge_scan_minutes", "allowlist_refresh_minutes", "incomplete_sync_hours"]
-    assert admin_settings._settings_group_keys("reg")[-2:] == ["nudge_after_minutes", "nudge_text"]
+    # Phase 20 (20-01): поля догонялки переехали из «📝 Регистрация» в «📋 Заявки» вместе
+    # с остальными послеподачными текстами — сама пара ключей и её порядок не менялись.
+    assert admin_settings._settings_group_keys("apps")[-2:] == ["nudge_after_minutes", "nudge_text"]
     text = asyncio.run(admin_settings.render_settings_group_text("system"))
     # int без значения в БД -- «— не задано» (как proxy_*: parse-дефолт не display-дефолт)
     assert "⏱ Догонялка: как часто проверять: <i>— не задано</i>" in text
