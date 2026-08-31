@@ -108,7 +108,9 @@ async def build_miniapp_settings_keyboard() -> InlineKeyboardMarkup:
     buttons.append([InlineKeyboardButton(
         text="🎭 Пресеты и ручки оформления", callback_data="miniapp_theme_open",
     )])
-    buttons.append([InlineKeyboardButton(text="← К настройкам", callback_data="admin_settings")])
+    # Phase 20 (20-03): «Назад» ведёт в раздел-владелец экрана («🔧 Управление»).
+    from handlers.admin_sections import back_button  # ленивый шов: модульный импорт даст цикл
+    buttons.append([back_button("admin_miniapp_settings")])
     return InlineKeyboardMarkup(inline_keyboard=buttons)
 
 

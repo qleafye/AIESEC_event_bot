@@ -117,7 +117,9 @@ def test_dashboard_settings_screen_shows_eight_buttons_in_order(tmp_path):
     block_buttons = [d for d in data if d.startswith("dash_block:")]
     expected_order = [f"dash_block:{k[len('dashboard_block_'):]}" for k in admin_dashboard.DASHBOARD_BLOCKS]
     assert block_buttons == expected_order
-    assert "admin_settings" in data
+    # Phase 20 (20-03): «Назад» ведёт в раздел-владелец экрана («📊 Данные»), а не в корень
+    # настроек; цель считает section_of по SECTIONS.
+    assert "admin_sec:data" in data
 
 
 def test_dashboard_settings_open_screen_handler(tmp_path):
