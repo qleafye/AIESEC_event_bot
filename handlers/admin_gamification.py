@@ -1863,10 +1863,12 @@ async def sync_game_sheets(callback: types.CallbackQuery):
         lines.append(f"{html_module.escape(r['tab'])}: {report}.")
     failed = sum(1 for r in results if r["written"] < 0)
     head = "✅ " if not failed else "⚠️ "
+    from handlers.admin_sections import op_return_keyboard  # ленивый шов
     await callback.message.answer(
         head + "\n".join(lines),
         parse_mode="HTML",
-        reply_markup=await admin_keyboard_for(callback.from_user.id),
+        # Гейт подтверждения дал callback «…_go», в разделе объявлена сама кнопка.
+        reply_markup=await op_return_keyboard(callback.from_user.id, "admin_game_sync_sheet"),
     )
 
 
@@ -1909,10 +1911,11 @@ async def show_game_stats(callback: types.CallbackQuery):
         lines.append(bars or "пока нет одобренных сдач")
         text = "\n".join(lines)
 
+    from handlers.admin_sections import op_return_keyboard  # ленивый шов
     await callback.message.answer(
         text,
         parse_mode="HTML",
-        reply_markup=await admin_keyboard_for(callback.from_user.id),
+        reply_markup=await op_return_keyboard(callback.from_user.id, callback.data),
     )
     await callback.answer()
 
