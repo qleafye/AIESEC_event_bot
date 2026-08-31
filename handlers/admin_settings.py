@@ -785,8 +785,12 @@ async def toggle_registration_mode(callback: types.CallbackQuery):
         label = "📋 Полная" if new_mode == "full" else "⚡ Краткая"
         await callback.answer(f"Форма регистрации: {label}", show_alert=True)
 
-    text = await render_settings_text(admin_id)
-    await callback.message.edit_text(text, parse_mode="HTML", reply_markup=await build_settings_keyboard(admin_id))
+    # Phase 20 (20-04): тумблер перерисовывает РАЗДЕЛ, с которого его нажали. Раздел не
+    # задаётся, а выводится: `callback.data` тумблера и есть строка ("toggle", …) реестра
+    # SECTIONS, `section_of` найдёт владельца — словаря «тумблер -> раздел» нет.
+    from handlers.admin_sections import settings_return_screen  # ленивый шов
+    text, kb = await settings_return_screen(admin_id, callback_data=callback.data)
+    await callback.message.edit_text(text, parse_mode="HTML", reply_markup=kb)
     # Phase 7 (SHORT-03, gate #5): materialize the short tab the moment the manager flips
     # into "Краткая" — no need to wait for the first registration. Switching back to "Полная"
     # is a no-op (the gate inside returns early); the tab and its data are never touched.
@@ -841,6 +845,11 @@ async def settings_regmode_reset(callback: types.CallbackQuery):
 
 @router.callback_query(F.data.startswith("settings_regmode_reset_go:"))
 async def settings_regmode_reset_go(callback: types.CallbackQuery):
+    # Phase 20 (20-04): обе перерисовки ниже (отказ по свежести и успешный сброс) возвращают
+    # в «📝 Анкета». Подсказка — `settings_toggle_reg`, а НЕ собственный callback хендлера:
+    # `settings_regmode_reset_go:{code}` в SECTIONS не объявлен, кнопка «↩️ Как везде» —
+    # условная вложенная строка тумблера регистрации, и раздел у неё тот же.
+    from handlers.admin_sections import settings_return_screen  # ленивый шов
     admin_id = callback.from_user.id
     code = callback.data.split(":", 1)[1]
     # Fail-closed (RESEARCH Pattern 2 / review WR-02): module off never deletes a per-city
@@ -870,15 +879,15 @@ async def settings_regmode_reset_go(callback: types.CallbackQuery):
     current = await admin_selected_city(admin_id)
     if code != current:
         await callback.answer("Город админки изменился — подтвердите заново.", show_alert=True)
-        text = await render_settings_text(admin_id)
-        await callback.message.edit_text(text, parse_mode="HTML", reply_markup=await build_settings_keyboard(admin_id))
+        text, kb = await settings_return_screen(admin_id, callback_data="settings_toggle_reg")
+        await callback.message.edit_text(text, parse_mode="HTML", reply_markup=kb)
         return
 
     await delete_setting(composed)  # idempotent — safe if already absent
     city_txt = await city_label(code)
     await callback.answer(f"Готово: {city_txt} — как везде", show_alert=True)
-    text = await render_settings_text(admin_id)
-    await callback.message.edit_text(text, parse_mode="HTML", reply_markup=await build_settings_keyboard(admin_id))
+    text, kb = await settings_return_screen(admin_id, callback_data="settings_toggle_reg")
+    await callback.message.edit_text(text, parse_mode="HTML", reply_markup=kb)
 
 
 async def _toggle_approval_setting(callback: types.CallbackQuery, key: str, default: str, title: str):
@@ -888,8 +897,12 @@ async def _toggle_approval_setting(callback: types.CallbackQuery, key: str, defa
     new_val = "auto" if current == "manual" else "manual"
     await set_setting(key, new_val)
     await callback.answer(f"{title}: {'👮 Ручная' if new_val == 'manual' else '⚡ Авто'}", show_alert=True)
-    text = await render_settings_text(callback.from_user.id)
-    await callback.message.edit_text(text, parse_mode="HTML", reply_markup=await build_settings_keyboard(callback.from_user.id))
+    # Phase 20 (20-04): одна правка на generic-хелпер покрывает все его callback'и — раздел
+    # выводится из `callback.data` через SECTIONS, а не задаётся словарём (см. комментарий
+    # у toggle_registration_mode).
+    from handlers.admin_sections import settings_return_screen  # ленивый шов
+    text, kb = await settings_return_screen(callback.from_user.id, callback_data=callback.data)
+    await callback.message.edit_text(text, parse_mode="HTML", reply_markup=kb)
 
 
 @router.callback_query(F.data == "settings_toggle_full_approval")
@@ -920,8 +933,9 @@ async def _toggle_module_setting(callback: types.CallbackQuery, key: str, title:
     await set_setting(key, new_val)
     label = "✅ Вкл" if new_val == "on" else "❌ Выкл"
     await callback.answer(f"{title}: {label}", show_alert=True)
-    text = await render_settings_text(callback.from_user.id)
-    await callback.message.edit_text(text, parse_mode="HTML", reply_markup=await build_settings_keyboard(callback.from_user.id))
+    from handlers.admin_sections import settings_return_screen  # ленивый шов (20-04)
+    text, kb = await settings_return_screen(callback.from_user.id, callback_data=callback.data)
+    await callback.message.edit_text(text, parse_mode="HTML", reply_markup=kb)
     await remind_consent_purposes_if_widened(callback.message, key, new_val)
 
 
@@ -984,8 +998,9 @@ async def _toggle_value_setting(callback, key, val_a, val_b, default, title_a, t
     new_val = val_b if current == val_a else val_a
     await set_setting(key, new_val)
     await callback.answer(title_a if new_val == val_a else title_b, show_alert=True)
-    text = await render_settings_text(callback.from_user.id)
-    await callback.message.edit_text(text, parse_mode="HTML", reply_markup=await build_settings_keyboard(callback.from_user.id))
+    from handlers.admin_sections import settings_return_screen  # ленивый шов (20-04)
+    text, kb = await settings_return_screen(callback.from_user.id, callback_data=callback.data)
+    await callback.message.edit_text(text, parse_mode="HTML", reply_markup=kb)
 
 
 @router.callback_query(F.data == "toggle_uni_mode")
@@ -1031,8 +1046,9 @@ async def toggle_notify_mode(callback: types.CallbackQuery):
     new_val = "batched" if current == "instant" else "instant"
     await set_setting("pending_notify_mode", new_val)
     await callback.answer(f"Уведомление: {'📨 Сразу' if new_val == 'instant' else '🕒 Пачкой'}", show_alert=True)
-    text = await render_settings_text(callback.from_user.id)
-    await callback.message.edit_text(text, parse_mode="HTML", reply_markup=await build_settings_keyboard(callback.from_user.id))
+    from handlers.admin_sections import settings_return_screen  # ленивый шов (20-04)
+    text, kb = await settings_return_screen(callback.from_user.id, callback_data=callback.data)
+    await callback.message.edit_text(text, parse_mode="HTML", reply_markup=kb)
 
 
 @router.callback_query(F.data == "settings_toggle_bonus")
@@ -1045,8 +1061,9 @@ async def toggle_bonus(callback: types.CallbackQuery):
     label = "✅ Вкл" if new_val == "on" else "❌ Выкл"
     await callback.answer(f"Бонус за регистрацию: {label}", show_alert=True)
 
-    text = await render_settings_text(callback.from_user.id)
-    await callback.message.edit_text(text, parse_mode="HTML", reply_markup=await build_settings_keyboard(callback.from_user.id))
+    from handlers.admin_sections import settings_return_screen  # ленивый шов (20-04)
+    text, kb = await settings_return_screen(callback.from_user.id, callback_data=callback.data)
+    await callback.message.edit_text(text, parse_mode="HTML", reply_markup=kb)
 
 
 @router.callback_query(F.data.startswith("settings_file:"))
@@ -1364,11 +1381,33 @@ async def settings_photo_start(callback: types.CallbackQuery, state: FSMContext)
     await callback.answer()
 
 
+def _return_hint_from_state(data: dict) -> dict:
+    """Phase 20 (20-04): подсказка «откуда пришли» для `settings_return_screen`, собранная из
+    данных FSM. Объявлена ОДИН раз и используется обеими отменами (кнопкой «❌ Отмена» и
+    командой «/cancel»): дважды написанная развилка разъехалась бы при первом же новом ключе.
+
+    T-20-20: пустые/протухшие данные (MemoryStorage сбрасывается при рестарте) дают `{}` —
+    резолвер уйдёт на корень, необработанного исключения и «зависшего» сообщения не будет."""
+    if data.get("setting_key"):
+        return {"setting_key": data["setting_key"]}
+    if data.get("photo_setting"):
+        return {"setting_key": f"{data['photo_setting']}_photo_file_id"}
+    if data.get("raw_file_key"):
+        # `consent_pdf_{key}` — не ключ SETTINGS_SCHEMA, группы у него нет, а экран есть.
+        return {"callback_data": "admin_consent_pdfs"}
+    if data.get("file_setting"):
+        return {"setting_key": f"{data['file_setting']}_doc_file_id"}
+    return {}
+
+
 @router.callback_query(F.data == "settings_cancel")
 async def cancel_edit_setting_callback(callback: types.CallbackQuery, state: FSMContext):
+    from handlers.admin_sections import settings_return_screen  # ленивый шов (20-04)
+    # Данные читаются ДО очистки состояния — после неё подсказку взять уже неоткуда.
+    hint = _return_hint_from_state(await state.get_data())
     await state.clear()
-    text = await render_settings_text(callback.from_user.id)
-    await callback.message.edit_text(text, parse_mode="HTML", reply_markup=await build_settings_keyboard(callback.from_user.id))
+    text, kb = await settings_return_screen(callback.from_user.id, **hint)
+    await callback.message.edit_text(text, parse_mode="HTML", reply_markup=kb)
     await callback.answer()
 
 
@@ -1672,9 +1711,11 @@ async def consent_pdf_set(callback: types.CallbackQuery, state: FSMContext):
 @router.message(StateFilter(EditSetting), Command("cancel"))
 @router.message(StateFilter(EditSetting), F.text == "Отмена")
 async def cancel_edit_setting(message: types.Message, state: FSMContext):
+    from handlers.admin_sections import settings_return_screen  # ленивый шов (20-04)
+    hint = _return_hint_from_state(await state.get_data())  # ДО очистки, см. хелпер выше
     await state.clear()
-    text = await render_settings_text(message.from_user.id)
-    await message.answer(text, parse_mode="HTML", reply_markup=await build_settings_keyboard(message.from_user.id))
+    text, kb = await settings_return_screen(message.from_user.id, **hint)
+    await message.answer(text, parse_mode="HTML", reply_markup=kb)
 
 
 @router.message(EditSetting.waiting_for_photo, F.photo)
@@ -1692,8 +1733,11 @@ async def settings_receive_photo(message: types.Message, state: FSMContext):
 
     await state.clear()
     await message.answer("✅ Фото обновлено!")
-    text = await render_settings_text(message.from_user.id)
-    await message.answer(text, parse_mode="HTML", reply_markup=await build_settings_keyboard(message.from_user.id))
+    # Phase 20 (20-04): возврат на экран группы, где живёт эта кнопка «📷 …» — подсказка —
+    # ключ, который только что записан. Подтверждение остаётся отдельным сообщением выше.
+    from handlers.admin_sections import settings_return_screen  # ленивый шов
+    text, kb = await settings_return_screen(message.from_user.id, setting_key=f"{prefix}_photo_file_id")
+    await message.answer(text, parse_mode="HTML", reply_markup=kb)
 
 
 @router.message(EditSetting.waiting_for_photo)
@@ -1720,12 +1764,16 @@ async def settings_receive_file_photo(message: types.Message, state: FSMContext)
 
     await state.clear()
     await message.answer("✅ Файл обновлён!")
-    text = await render_settings_text(message.from_user.id)
-    await message.answer(text, parse_mode="HTML", reply_markup=await build_settings_keyboard(message.from_user.id))
+    # Фото, присланное файлом, пишется в тот же «{prefix}_photo_file_id» — и экран возврата
+    # тот же, что у обычного фото (20-04).
+    from handlers.admin_sections import settings_return_screen  # ленивый шов
+    text, kb = await settings_return_screen(message.from_user.id, setting_key=f"{prefix}_photo_file_id")
+    await message.answer(text, parse_mode="HTML", reply_markup=kb)
 
 
 @router.message(EditSetting.waiting_for_file, F.document)
 async def settings_receive_file_doc(message: types.Message, state: FSMContext):
+    from handlers.admin_sections import settings_return_screen  # ленивый шов (20-04)
     data = await state.get_data()
 
     # Consent PDF: store the document file_id directly into an arbitrary settings key.
@@ -1737,8 +1785,10 @@ async def settings_receive_file_doc(message: types.Message, state: FSMContext):
         await set_setting(raw_key, message.document.file_id)
         await state.clear()
         await message.answer("✅ PDF согласия сохранён!")
-        text = await render_settings_text(message.from_user.id)
-        await message.answer(text, parse_mode="HTML", reply_markup=await build_settings_keyboard(message.from_user.id))
+        # Phase 20 (20-04): `raw_file_key` вида «consent_pdf_{key}» — не ключ SETTINGS_SCHEMA,
+        # группы у него нет, а экран есть: возвращаем на «🧾 PDF согласий».
+        text, kb = await settings_return_screen(message.from_user.id, callback_data="admin_consent_pdfs")
+        await message.answer(text, parse_mode="HTML", reply_markup=kb)
         return
 
     prefix = data.get("file_setting", "reg_bonus")
@@ -1754,8 +1804,8 @@ async def settings_receive_file_doc(message: types.Message, state: FSMContext):
 
     await state.clear()
     await message.answer("✅ Файл обновлён!")
-    text = await render_settings_text(message.from_user.id)
-    await message.answer(text, parse_mode="HTML", reply_markup=await build_settings_keyboard(message.from_user.id))
+    text, kb = await settings_return_screen(message.from_user.id, setting_key=f"{prefix}_doc_file_id")
+    await message.answer(text, parse_mode="HTML", reply_markup=kb)
 
 
 @router.message(EditSetting.waiting_for_file)
@@ -2021,8 +2071,12 @@ async def settings_edit_value(message: types.Message, state: FSMContext):
         text, kb = await _settings_edit_screen(per_city_base, header_code)
         await message.answer(text + warning, parse_mode="HTML", reply_markup=kb)
         return
-    text = await render_settings_text(message.from_user.id)
-    await message.answer(text + warning, parse_mode="HTML", reply_markup=await build_settings_keyboard(message.from_user.id))
+    # Phase 20 (20-04): возврат на экран ГРУППЫ, с которого менеджер и открыл правку (кнопка
+    # «✏️ …» живёт только там). Предупреждение о вариантах/вкладке приклеивается к тексту
+    # экрана возврата так же, как раньше приклеивалось к тексту лендинга.
+    from handlers.admin_sections import settings_return_screen  # ленивый шов
+    text, kb = await settings_return_screen(message.from_user.id, setting_key=key)
+    await message.answer(text + warning, parse_mode="HTML", reply_markup=kb)
 
 
 @router.callback_query(F.data == "sheets_tab_confirm")

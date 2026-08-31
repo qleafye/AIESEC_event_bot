@@ -749,14 +749,16 @@ def test_toggle_preselect_enabled_flips_and_rerenders_landing(tmp_path):
     asyncio.run(admin_settings.toggle_preselect_enabled(cb))
     assert asyncio.run(db.get_setting("preselect_enabled")) == "on"
     assert cb.message.edit_calls == 1
-    assert "🎯 Предотбор по таблице: <b>✅ Вкл</b>" in cb.message.text
+    # Phase 20 (20-04): перерисовывается РАЗДЕЛ-владелец тумблера («📋 Заявки»), а не
+    # исчезнувший плоский лендинг — новое состояние видно в подписи самой кнопки.
+    assert "<b>📋 Заявки</b>" in cb.message.text
     assert "🎯 Предотбор по таблице: ✅ Вкл → ❌ Выкл" in [b.text for r in cb.message.markup.inline_keyboard for b in r]
     assert cb.answers and cb.answers[0][0] == "🎯 Предотбор по таблице: ✅ Вкл"
 
     cb2 = FakeCallback("toggle_preselect_enabled")
     asyncio.run(admin_settings.toggle_preselect_enabled(cb2))
     assert asyncio.run(db.get_setting("preselect_enabled")) == "off"
-    assert "🎯 Предотбор по таблице: <b>❌ Выкл</b>" in cb2.message.text
+    assert "🎯 Предотбор по таблице: ❌ Выкл → ✅ Вкл" in [b.text for r in cb2.message.markup.inline_keyboard for b in r]
 
 
 def test_scheduler_and_reminder_keys_declared_with_code_defaults(tmp_path):
