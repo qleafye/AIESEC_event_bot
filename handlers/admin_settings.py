@@ -459,8 +459,18 @@ async def render_settings_text(admin_id: int | None = None) -> str:
 #
 # Phase 09.3 (04, CITY-09): WR-05 — шапка города читается РОВНО ОДИН раз за вызов, всё
 # остальное (per_city_ctx, own_key) выводится из этого единственного чтения.
-async def settings_toggle_rows(admin_id: int | None = None) -> dict[str, list[list[InlineKeyboardButton]]]:
-    header_code = await admin_selected_city(admin_id) if admin_id is not None else None
+#
+# Ревью фазы 20: экран раздела рисует и строку-шапку, и эти тумблеры, то есть шапка нужна
+# ДВАЖДЫ в пределах ОДНОЙ клавиатуры. Два независимых await по одному и тому же ключу в одном
+# рендере — ровно тот класс дефекта, ради которого WR-05 и заведён: aiogram обрабатывает
+# апдейты параллельно, и переключение города между ними давало клавиатуру с шапкой «СПб» и
+# тумблером регистрации от Москвы. Поэтому шапку можно ПЕРЕДАТЬ уже прочитанной.
+_HEADER_UNSET = object()  # «шапку не передавали»; None у неё значит «модуль городов выключен»
+
+
+async def settings_toggle_rows(admin_id: int | None = None, *, header_code=_HEADER_UNSET) -> dict[str, list[list[InlineKeyboardButton]]]:
+    if header_code is _HEADER_UNSET:
+        header_code = await admin_selected_city(admin_id) if admin_id is not None else None
     per_city_ctx = bool(header_code and header_code != ALL_CITIES)
 
     # REG-02 (06-05): feature-switch reads resolved via the registry's enum default,
