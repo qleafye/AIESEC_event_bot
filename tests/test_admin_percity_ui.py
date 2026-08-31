@@ -72,8 +72,17 @@ class FakeState:
     async def set_state(self, state):
         self.state = state
 
+    async def get_state(self):
+        # aiogram отдаёт СТРОКУ («EditSetting:waiting_for_file»), а фейк хранит объект State —
+        # существующие тесты сверяют именно объект. Приводим на выходе, чтобы хендлеры видели
+        # ровно то, что увидят в проде.
+        return getattr(self.state, "state", self.state)
+
     async def update_data(self, **kwargs):
         self.data.update(kwargs)
+
+    async def set_data(self, data):
+        self.data = dict(data)
 
     async def get_data(self):
         return dict(self.data)
