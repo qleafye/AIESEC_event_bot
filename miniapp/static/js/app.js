@@ -53,18 +53,40 @@ export const ROUTES = [
   ["#/settings", "screens/settings.js"],
 ];
 
+// Разделы админки (Phase 20, ADMIN-IA-04, D-05): те же восемь разделов и ровно те же подписи,
+// что менеджер видит в корне `/admin`. ИСТОЧНИК ПРАВДЫ — `handlers/admin_sections.py::SECTIONS`;
+// расхождение подписи или порядка роняет тест `test_section_groups_match_bot_sections`, а не
+// всплывает у менеджера двумя разными картами админки.
+// Список пар, а не объект: порядок разделов на экране — контракт (путь делегата), а порядок
+// ключей объекта в JS контрактом не является.
+// Подписи ВКЛАДОК этим списком НЕ подменяются — они по-прежнему приходят из реестра
+// (`miniapp_section_*`) через `body.dataset.sectionLabels`, см. hub.js::sectionLabelsFromDom.
+export const SECTION_GROUPS = [
+  ["event", "🎪 Событие"],
+  ["form", "📝 Анкета"],
+  ["apps", "📋 Заявки"],
+  ["pay", "💳 Оплата"],
+  ["comms", "📢 Общение"],
+  ["game", "🎮 Геймификация"],
+  ["data", "📊 Данные"],
+  ["manage", "🔧 Управление"],
+];
+
 // Навигация: вкладка показывается, если раздел включён чекбоксом (miniapp_section_*) И
 // человек имеет к нему доступ: делегатские — при is_delegate, менеджерские — по caps.
+// `group` — раздел из SECTION_GROUPS, под заголовком которого плитка встаёт в хабе менеджера
+// (hub.js). У делегатских записей его нет: делегатский хаб не группируется (D-05). Поле лишнее
+// для visibleNav/homeHash/navLabel и раскладок A/B — они его игнорируют.
 export const NAV = [
   { hash: "#/tasks", section: "tasks", delegate: true },
   { hash: "#/coins", section: "coins", delegate: true },
   { hash: "#/leaderboard", section: "leaderboard", delegate: true },
   { hash: "#/profile", section: "profile", delegate: true },
-  { hash: "#/review", section: "review", cap: "moderate_game" },
-  { hash: "#/admin-tasks", section: "admin_tasks", cap: "moderate_game" },
-  { hash: "#/admin-coins", section: "coins", cap: "moderate_game", staffOnly: true },
-  { hash: "#/stats", section: "stats", cap: "stats" },
-  { hash: "#/settings", section: "settings", cap: "settings" },
+  { hash: "#/review", section: "review", cap: "moderate_game", group: "game" },
+  { hash: "#/admin-tasks", section: "admin_tasks", cap: "moderate_game", group: "game" },
+  { hash: "#/admin-coins", section: "coins", cap: "moderate_game", staffOnly: true, group: "game" },
+  { hash: "#/stats", section: "stats", cap: "stats", group: "data" },
+  { hash: "#/settings", section: "settings", cap: "settings", group: "manage" },
 ];
 
 // Иконки навигации (D-13) по маршруту — общий словарь для таб-бара (раскладка A) и плиток

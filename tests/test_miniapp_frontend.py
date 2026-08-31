@@ -355,16 +355,19 @@ def test_old_pill_nav_removed_from_css():
     assert ".nav {" not in css
 
 
+# Phase 20 (ADMIN-IA-04): у менеджерских записей добавилось поле `group` — раздел хаба.
+# Состав, права и порядок записей при этом не менялись ни на строку: сторож переснят ровно
+# на одно новое поле, а не ослаблен (иначе он перестал бы ловить правку прав).
 EXPECTED_NAV = [
     {"hash": "#/tasks", "section": "tasks", "delegate": True},
     {"hash": "#/coins", "section": "coins", "delegate": True},
     {"hash": "#/leaderboard", "section": "leaderboard", "delegate": True},
     {"hash": "#/profile", "section": "profile", "delegate": True},
-    {"hash": "#/review", "section": "review", "cap": "moderate_game"},
-    {"hash": "#/admin-tasks", "section": "admin_tasks", "cap": "moderate_game"},
-    {"hash": "#/admin-coins", "section": "coins", "cap": "moderate_game", "staffOnly": True},
-    {"hash": "#/stats", "section": "stats", "cap": "stats"},
-    {"hash": "#/settings", "section": "settings", "cap": "settings"},
+    {"hash": "#/review", "section": "review", "cap": "moderate_game", "group": "game"},
+    {"hash": "#/admin-tasks", "section": "admin_tasks", "cap": "moderate_game", "group": "game"},
+    {"hash": "#/admin-coins", "section": "coins", "cap": "moderate_game", "staffOnly": True, "group": "game"},
+    {"hash": "#/stats", "section": "stats", "cap": "stats", "group": "data"},
+    {"hash": "#/settings", "section": "settings", "cap": "settings", "group": "manage"},
 ]
 
 
