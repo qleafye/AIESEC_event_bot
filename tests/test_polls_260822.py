@@ -308,8 +308,14 @@ def test_poll_callbacks_require_broadcast_capability_and_menu_row_exists(tmp_pat
     assert ("📊 Опросы", "admin_polls") in admin_core._ADMIN_MENU_ROWS
     rows = [cb for _, cb in admin_core._ADMIN_MENU_ROWS]
     assert rows.index("admin_polls") == rows.index("admin_broadcast") + 1
-    kb = asyncio.run(admin_core.build_admin_keyboard(ADMIN_ID))
-    assert "admin_polls" in _flat_callback_data(kb)
+    # Phase 20 (20-03): на корне теперь разделы — «📊 Опросы» приходят на экране «📢 Общение»
+    # (та же аудитория и то же право, что у рассылки, поэтому и раздел один).
+    from handlers.admin_sections import build_section_keyboard
+
+    root = _flat_callback_data(asyncio.run(admin_core.build_admin_keyboard(ADMIN_ID)))
+    assert "admin_sec:comms" in root
+    comms = _flat_callback_data(asyncio.run(build_section_keyboard("comms", ADMIN_ID)))
+    assert "admin_polls" in comms
 
 
 # ── мастер ───────────────────────────────────────────────────────────────────────────────────

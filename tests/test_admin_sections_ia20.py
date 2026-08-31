@@ -350,3 +350,90 @@ def test_toggle_rows_are_shared_with_the_settings_screen(tmp_path):
     texts = {b.callback_data: b.text for row in kb.inline_keyboard for b in row}
     for cb_data in ("toggle_payment_enabled", "toggle_payment_reminders"):
         assert texts[cb_data] == rows[cb_data][0][0].text
+
+
+# ══════════════════════════════════════════════════════════════════════════════════════════
+# (5) Корень переключён на разделы (20-03, ADMIN-IA-01)
+# ══════════════════════════════════════════════════════════════════════════════════════════
+
+def test_root_shows_at_most_nine_rows(tmp_path):
+    """Критерий успеха №1: шапка города + не больше восьми кнопок-разделов. До фазы 20 на
+    корне было 22 строки, и менеджер искал нужную глазами."""
+    _roles_ready(tmp_path)
+    _enable_cities()
+    from handlers.admin_core import admin_keyboard_for
+
+    kb = asyncio.run(admin_keyboard_for(ADMIN_ID))
+    assert len(kb.inline_keyboard) <= 9, _flat_callback_data(kb)
+    assert len(kb.inline_keyboard) == len(sec.SECTIONS) + 1  # суперадмину доступны все восемь
+
+
+def test_root_rows_are_only_sections(tmp_path):
+    """Ни одной старой операции на корне не осталось: всё, кроме шапки города, — разделы,
+    и их порядок задаёт реестр (путь делегата), а не история появления фаз."""
+    _roles_ready(tmp_path)
+    _enable_cities()
+    from handlers.admin_core import admin_keyboard_for
+
+    flat = _flat_callback_data(asyncio.run(admin_keyboard_for(ADMIN_ID)))
+    assert flat[0] == "admin_city_switch"
+    assert flat[1:] == [f"admin_sec:{token}" for token, _label, _rows in sec.SECTIONS]
+
+
+def test_root_of_moderate_reg_manager_is_only_the_applications_section(tmp_path):
+    """Критерий успеха №2, сквозной (не только на уровне visible_sections): одно право —
+    один раздел на корне, и никакого «пустого» экрана вокруг него."""
+    _roles_ready(tmp_path)
+    asyncio.run(db.add_staff(MANAGER_ID, "reg_manager", ADMIN_ID))
+    _only_caps("reg_manager", "moderate_reg")
+    from handlers.admin_core import build_admin_keyboard
+
+    flat = _flat_callback_data(asyncio.run(build_admin_keyboard(MANAGER_ID)))
+    assert flat == ["admin_sec:apps"]
+
+
+def test_root_of_a_stranger_stays_empty(tmp_path):
+    """T-20-09: у человека без прав корень пуст — чужой список разделов не утекает."""
+    _roles_ready(tmp_path)
+    from handlers.admin_core import build_admin_keyboard
+
+    assert asyncio.run(build_admin_keyboard(STRANGER_ID)).inline_keyboard == []
+
+
+# Таблица «экран -> его раздел» — ФИКСАЦИЯ РЕШЕНИЯ (D-01), а `section_of` — её проверка
+# против SECTIONS. Список литеральный и включает ВСЕ экраны фазы, а не только три, которые
+# перенацелены планом 20-03: план 20-04 (модуль настроек) опирается на этот же тест как на
+# контракт своих правок — если он уведёт «Назад» не туда, красным станет этот сторож.
+BACK_TARGETS = {
+    "admin_dashboard_settings": "data",
+    "admin_miniapp_settings": "manage",
+    "admin_roles": "manage",
+    "admin_reg_prompts": "form",
+    "admin_reg_questions": "form",
+    "admin_menu_buttons": "event",
+    "admin_consent_pdfs": "form",
+    "settings_toggle_reg": "form",
+    "settings_group:apps": "apps",
+    "settings_group:event": "event",
+}
+
+
+def test_every_screen_back_target_is_its_section():
+    bad = {cb: sec.section_of(cb) for cb, token in BACK_TARGETS.items()
+           if sec.section_of(cb) != token}
+    assert not bad, bad
+
+
+def test_back_button_target_is_derived_not_a_second_map():
+    """«Назад» строится ОДНОЙ функцией из реестра; подпись — просто «← Назад», потому что
+    кнопка ведёт в раздел, а не «к настройкам»."""
+    btn = sec.back_button("admin_roles")
+    assert btn.callback_data == "admin_sec:manage"
+    assert btn.text == "← Назад"
+    assert sec.back_button("settings_group:apps").callback_data == "admin_sec:apps"
+
+
+def test_back_button_falls_back_to_root_for_unknown_screen():
+    """T-20-11: неизвестный экран не даёт тупика — «Назад» ведёт в существующий корень."""
+    assert sec.section_of("нет-такого-экрана") is None
+    assert sec.back_button("нет-такого-экрана").callback_data == "admin_menu"

@@ -225,8 +225,15 @@ def test_roles_group_ui_row_is_in_settings_not_in_admin_menu(tmp_path):
     assert "admin_roles" in _flat_callback_data(settings_kb)
 
     # 08-05 (D-15): build_admin_keyboard is now async + capability-filtered.
+    # Phase 20 (20-03): корень — разделы, поэтому «Роли и доступы» отсутствуют на нём уже по
+    # построению; проверяем не только отсутствие, но и что кнопка не потерялась — она живёт
+    # на экране раздела «🔧 Управление».
+    from handlers.admin_sections import build_section_keyboard
+
     admin_kb = asyncio.run(admin_mod.build_admin_keyboard(ADMIN_ID))
     assert "admin_roles" not in _flat_callback_data(admin_kb)
+    manage_kb = asyncio.run(build_section_keyboard("manage", ADMIN_ID))
+    assert "admin_roles" in _flat_callback_data(manage_kb)
 
 
 def test_roles_screen_lists_staff_with_roles(tmp_path):
@@ -688,21 +695,31 @@ def test_admin_commands_match_d17_mapping():
 
 # ── 08-05 Task 1 (D-15): per-person admin menu — built from the SAME map middleware enforces ──
 
-def test_menu_admin_sees_all_rows(tmp_path):
+def test_menu_admin_sees_all_sections(tmp_path):
+    # Phase 20 (20-03, ADMIN-IA-01): корень — восемь разделов пути делегата, а не 22 плоские
+    # строки. Суперадмину доступна хотя бы одна строка в каждом разделе, поэтому он видит все
+    # восемь, и порядок задаёт реестр SECTIONS.
     _roles_ready(tmp_path)
+    from handlers.admin_sections import SECTIONS
+
     kb = asyncio.run(admin_mod.build_admin_keyboard(ADMIN_ID))
     flat = _flat_callback_data(kb)
-    assert flat == [cb for _, cb in admin_mod._ADMIN_MENU_ROWS]
+    assert flat == [f"admin_sec:{token}" for token, _label, _rows in SECTIONS]
 
 
-def test_menu_reg_manager_sees_only_own_rows(tmp_path):
+def test_menu_reg_manager_sees_only_own_sections(tmp_path):
+    # Критерий успеха №2 фазы 20: менеджер регистраций видит на корне только свои разделы —
+    # «📋 Заявки» (moderate_reg) и «💳 Оплата» (moderate_receipts, дефолтное право роли), и
+    # ни одного чужого. Фильтр — тот же ADMIN_CAPS, что и раньше, просто применён построчно
+    # внутри раздела: пустой по правам раздел не рисуется вовсе.
     _roles_ready(tmp_path)
     asyncio.run(db.add_staff(MANAGER_ID, "reg_manager", ADMIN_ID))
     kb = asyncio.run(admin_mod.build_admin_keyboard(MANAGER_ID))
     flat = _flat_callback_data(kb)
-    assert "admin_applications" in flat
-    assert "admin_receipts" in flat
-    for forbidden in ("admin_broadcast", "admin_settings", "admin_stats"):
+    assert "admin_sec:apps" in flat
+    assert "admin_sec:pay" in flat
+    for forbidden in ("admin_sec:event", "admin_sec:form", "admin_sec:comms",
+                      "admin_sec:game", "admin_sec:data", "admin_sec:manage"):
         assert forbidden not in flat
 
 
@@ -821,7 +838,14 @@ def test_action_only_row_never_autoopens_end_to_end(tmp_path):
     flat_markups = [rm for _t, _pm, rm in message.answers if rm is not None]
     assert flat_markups, "expected the ordinary menu keyboard to be sent"
     flat_cb = [b.callback_data for row in flat_markups[0].inline_keyboard for b in row]
-    assert "admin_rebuild_sheet" in flat_cb  # action row IS shown, just never auto-run
+    # Phase 20 (20-03): корень показывает разделы, поэтому сама строка-действие приходит на
+    # экране своего раздела («📊 Данные»). Показана она по-прежнему — просто /admin никогда
+    # не запускает её автоматически, что этот тест и стережёт.
+    assert "admin_sec:data" in flat_cb
+    from handlers.admin_sections import build_section_keyboard
+
+    section_cb = _flat_callback_data(asyncio.run(build_section_keyboard("data", MANAGER_ID)))
+    assert "admin_rebuild_sheet" in section_cb
 
 
 def test_no_sections_shows_explanatory_message(tmp_path):
