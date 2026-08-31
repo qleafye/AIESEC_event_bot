@@ -1812,7 +1812,7 @@ async def settings_receive_file_doc(message: types.Message, state: FSMContext):
         await state.clear()
         await message.answer("✅ PDF согласия сохранён!")
         # Phase 20 (20-04): `raw_file_key` вида «consent_pdf_{key}» — не ключ SETTINGS_SCHEMA,
-        # группы у него нет, а экран есть: возвращаем на «🧾 PDF согласий».
+        # группы у него нет: возвращаем в РАЗДЕЛ-владелец экрана «🧾 PDF согласий» — «📝 Анкета».
         text, kb = await settings_return_screen(message.from_user.id, callback_data="admin_consent_pdfs")
         await message.answer(text, parse_mode="HTML", reply_markup=kb)
         return
