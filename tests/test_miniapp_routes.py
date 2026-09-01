@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import asyncio
 import hashlib
+import re
 import hmac
 import time
 
@@ -507,5 +508,13 @@ def test_static_and_shell_send_no_cache_header(tmp_path):
     resp = client.get("/app/static/js/app.js")
     assert resp.status_code == 200
     assert resp.headers.get("cache-control") == "no-cache"
-    assert client.get("/app").headers.get("cache-control") == "no-cache"
+    shell = client.get("/app")
+    assert shell.headers.get("cache-control") == "no-cache"
+    # Кэш-бастинг: оболочка ссылается на версионированный префикс, и он реально смонтирован —
+    # иначе вебвью продолжит исполнять старый app.js после деплоя (находка 19-10).
+    m = re.search(r"(/app/static/v\d+)/js/app\.js", shell.text)
+    assert m, "app.html обязан ссылаться на /app/static/v<версия>/js/app.js"
+    versioned = client.get(f"{m.group(1)}/js/app.js")
+    assert versioned.status_code == 200
+    assert versioned.headers.get("cache-control") == "no-cache"
     assert client.get("/app/api/me").headers.get("cache-control") != "no-cache"
