@@ -993,6 +993,18 @@ def test_every_manager_nav_item_has_a_group():
         )
 
 
+def test_router_ignores_telegram_webapp_fragment():
+    """Telegram Web (K/A) передаёт initData фрагментом URL (#tgWebAppData=…). Роутер обязан
+    считать такой hash пустым и уводить на homeHash, а не в showState("missing") — иначе
+    каждый первый вход из Telegram Web упирается в «Раздел пока недоступен» (находка 19-10)."""
+    text = APP_JS.read_text(encoding="utf-8")
+    start = text.index("async function route()")
+    body = text[start:start + 800]
+    assert 'startsWith("#tgWebApp")' in body, (
+        "route() обязан сбрасывать служебный фрагмент #tgWebApp… в пустой hash до маршрутизации"
+    )
+
+
 def test_delegate_manager_sees_manager_groups_too():
     """Находка живой приёмки 19-10 (02.09): renderHub при is_delegate рисовал ТОЛЬКО делегатский
     хаб — менеджер, зарегистрированный делегатом, не имел ни одной ссылки на «Проверка сдач»/
