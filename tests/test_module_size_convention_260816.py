@@ -52,7 +52,10 @@ KNOWN_OVERAGES: dict[str, tuple[int, str]] = {
         "(Phase 14/16)",
     ),
     "admin_settings.py": (
-        2247,
+        2249,
+        "+2 строки (Info-хвост ревью фазы 20) -- два ленивых шва на settings_return_screen "
+        "вместо литеральных render_settings_group_text(\"sheets\")/build_settings_group_keyboard "
+        "в обоих хендлерах вкладок таблицы. "
         "+26 строк (ревью фазы 20) -- изоляция данных потоков EditSetting (вход задаёт данные "
         "целиком через set_data вместо домешивания, _return_hint_from_state выбирает поток по "
         "СОСТОЯНИЮ через таблицу flows, а не по первому найденному ключу) и приём уже "
