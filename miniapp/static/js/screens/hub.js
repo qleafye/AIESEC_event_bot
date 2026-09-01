@@ -186,6 +186,7 @@ function applyManagerTileData(hash, data, tileEl, hero) {
   if (hash === "#/review") {
     const remaining = data.empty ? 0 : data.remaining;
     small.textContent = remaining ? `${remaining} на очереди` : "очередь пуста";
+    if (!hero) return;
     countUp(hero.querySelector(".big"), 0, remaining || 0);
     const days = !data.empty && data.submission ? daysSince(data.submission.submitted_at) : null;
     hero.querySelector(".lbl").textContent = remaining
@@ -202,7 +203,10 @@ function applyManagerTileData(hash, data, tileEl, hero) {
   }
 }
 
-async function renderManagerHub(root, ctx) {
+async function renderManagerHub(root, ctx, opts = {}) {
+  // opts.skipHero — ветка делегата-менеджера (renderHub): плитки разделов дорисовываются ПОД
+  // делегатским хабом, а большой герой «сдач на проверке» не дублирует делегатского героя
+  // с монетами — счётчик очереди остаётся в подписи плитки «Проверка сдач».
   const { h, api, navigate } = ctx;
   const labels = sectionLabelsFromDom();
   const items = visibleNav().filter((item) => !item.delegate);
@@ -215,7 +219,7 @@ async function renderManagerHub(root, ctx) {
   // права) заполнять его нечем — он навсегда застыл бы на «0 / сдач на проверке» и врал.
   // ИНВАРИАНТ: герой существует ровно тогда, когда среди плиток есть «#/review» —
   // applyManagerTileData трогает hero только в этой ветке, поэтому null ниже безопасен.
-  const hero = items.some((item) => item.hash === "#/review")
+  const hero = !opts.skipHero && items.some((item) => item.hash === "#/review")
     ? h("section", { class: "hero hero-flat" },
       h("div", { class: "big", text: "0" }),
       h("div", { class: "lbl", text: "сдач на проверке" }),
@@ -260,8 +264,17 @@ async function renderManagerHub(root, ctx) {
 }
 
 async function renderHub(root, ctx) {
-  if (ctx.me.is_delegate) await renderDelegateHub(root, ctx);
-  else await renderManagerHub(root, ctx);
+  // Делегат-менеджер (наш обычный случай: менеджер прошёл регистрацию делегатом) видит ОБА
+  // набора: делегатский хаб как дом + менеджерские плитки под теми же заголовками разделов,
+  // что корень /admin (ADMIN-IA-04). До этого is_delegate прятал менеджерскую часть целиком —
+  // «Проверка сдач»/«Статистика» были недостижимы из хаба (находка живой приёмки 19-10).
+  // У чистого делегата visibleNav() менеджерских плиток не даёт — второй вызов рисует ничего.
+  if (ctx.me.is_delegate) {
+    await renderDelegateHub(root, ctx);
+    await renderManagerHub(root, ctx, { skipHero: true });
+  } else {
+    await renderManagerHub(root, ctx);
+  }
 }
 
 export async function render(root, params, ctx) {
