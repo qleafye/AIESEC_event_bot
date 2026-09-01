@@ -2118,8 +2118,9 @@ async def sheets_tab_confirm_go(callback: types.CallbackQuery, state: FSMContext
         await set_setting(key, value)
         if key in _SHEET_TAB_WRITE_MODE:
             await _after_tab_setting_saved(key)
-    text = await render_settings_group_text("sheets", callback.from_user.id)
-    await callback.message.edit_text(text, parse_mode="HTML", reply_markup=await build_settings_group_keyboard("sheets", callback.from_user.id))
+    from handlers.admin_sections import settings_return_screen  # ленивый шов
+    text, kb = await settings_return_screen(callback.from_user.id, group_token="sheets")
+    await callback.message.edit_text(text, parse_mode="HTML", reply_markup=kb)
     await callback.answer("✅ Сохранено")
 
 
@@ -2127,8 +2128,9 @@ async def sheets_tab_confirm_go(callback: types.CallbackQuery, state: FSMContext
 async def sheets_tab_cancel_go(callback: types.CallbackQuery, state: FSMContext):
     """Cancelled overwrite — nothing saved, prior value untouched."""
     await state.clear()
-    text = await render_settings_group_text("sheets", callback.from_user.id)
-    await callback.message.edit_text(text, parse_mode="HTML", reply_markup=await build_settings_group_keyboard("sheets", callback.from_user.id))
+    from handlers.admin_sections import settings_return_screen  # ленивый шов
+    text, kb = await settings_return_screen(callback.from_user.id, group_token="sheets")
+    await callback.message.edit_text(text, parse_mode="HTML", reply_markup=kb)
     await callback.answer("Отменено")
 
 
