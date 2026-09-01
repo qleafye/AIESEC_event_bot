@@ -154,6 +154,11 @@ def _build_asgi_app(cfg: DashboardConfig) -> FastAPI:
         response.headers["X-Content-Type-Options"] = "nosniff"
         response.headers["Referrer-Policy"] = "no-referrer"
         # X-Frame-Options НЕ ставим вовсе — DENY остаётся у дашборда (D-09).
+        # JS/CSS оболочки — только с ревалидацией (ETag -> 304): вебвью Telegram без
+        # Cache-Control кэшировал модули эвристикой, и после деплоя клиенты неделями
+        # исполняли старый app.js (живая приёмка 19-10: фиксы не доезжали до клиента).
+        if request.url.path.startswith("/app/static/") or request.url.path in SHELL_PATHS:
+            response.headers["Cache-Control"] = "no-cache"
         return response
 
     for router in ALL_ROUTERS:

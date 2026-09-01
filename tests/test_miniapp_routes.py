@@ -493,3 +493,19 @@ def test_upload_actor_admits_delegate_and_staff_with_flag(tmp_path):
     assert p.status_code == 403 and p.json() == {"reason": "delegate_gate", "kind": "pending"}
     r = client.post("/app/api/_probe/upload", headers=_hdr(BOUND_MANAGER_ID))
     assert r.status_code == 403 and r.json()["kind"] == "unregistered"
+
+
+def test_static_and_shell_send_no_cache_header(tmp_path):
+    """Вебвью Telegram без Cache-Control кэширует JS-модули эвристикой (у статики только
+    ETag/Last-Modified) — после деплоя клиент неделями исполняет старый app.js (находка живой
+    приёмки 19-10). Контракт: статика оболочки и сам /app идут с `Cache-Control: no-cache`
+    (ревалидация: 304 без изменений, свежий файл после деплоя)."""
+    db_path = _use_tmp_db(tmp_path)
+    _standard_seed()
+    _set("miniapp_enabled", "on")
+    client = _client(_cfg(db_path))
+    resp = client.get("/app/static/js/app.js")
+    assert resp.status_code == 200
+    assert resp.headers.get("cache-control") == "no-cache"
+    assert client.get("/app").headers.get("cache-control") == "no-cache"
+    assert client.get("/app/api/me").headers.get("cache-control") != "no-cache"
