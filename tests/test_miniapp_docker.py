@@ -75,11 +75,13 @@ def test_compose_miniapp_mounts_data_read_write():
     assert not any(v == "./data:/app/data:ro" for v in vols), "том БД у miniapp должен быть на запись (второй писатель)"
 
 
-def test_compose_dashboard_volume_still_read_only():
-    """Регрессия D-04/D-59: второй писатель не должен ослабить контракт дашборда."""
-    vols = _compose()["services"]["yl26-dashboard"]["volumes"]
-    assert "./data:/app/data:ro" in vols
-    assert not any(v == "./data:/app/data" for v in vols)
+def test_compose_dashboard_db_module_still_read_only():
+    """Регрессия D-04/D-59: второй писатель не должен ослабить контракт дашборда. После снятия
+    `:ro` с тома (WAL, quick 260902-38y) контракт живёт в `dashboard/db.py`: подключение
+    только `mode=ro`, функций записи в модуле нет."""
+    src = (ROOT / "dashboard" / "db.py").read_text(encoding="utf-8")
+    assert "?mode=ro" in src and "uri=True" in src
+    assert "INSERT" not in src and "UPDATE" not in src and "DELETE" not in src
 
 
 def test_compose_miniapp_in_edge_and_default_networks():

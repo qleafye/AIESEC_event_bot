@@ -3,8 +3,9 @@
 # пакет dashboard/ целиком: код, шаблоны, static (tokens.css/app.css, brand/*.svg, vendor/).
 #
 # Это НЕ образ бота: сюда ставится только dashboard/requirements.txt (fastapi/uvicorn/jinja2),
-# без aiogram, gspread и apscheduler. Общего с ботом — только примонтированный ./data:ro
-# с forum.db и тот же .env стека (D-05).
+# без aiogram, gspread и apscheduler. Общего с ботом — только примонтированный ./data
+# с forum.db (том без `:ro` — WAL требует -shm; только-чтение даёт `mode=ro` в dashboard/db.py)
+# и тот же .env стека (D-05).
 FROM python:3.11-slim
 
 WORKDIR /app

@@ -120,10 +120,16 @@ def test_compose_dashboard_builds_from_dashboard_dockerfile():
     assert build["dockerfile"] == "dashboard/Dockerfile"
 
 
-def test_compose_dashboard_mounts_data_read_only():
+def test_compose_dashboard_mounts_data_rw_but_db_opens_read_only():
+    """Том БД у дашборда БЕЗ `:ro`: WAL-режим (Phase 17) требует у читателя права на `-shm`
+    в каталоге, и на read-only томе `mode=ro`-подключение падало «unable to open database
+    file» — 500 сразу после входа (стенд 31.08). Контракт «дашборд не пишет» переезжает
+    целиком на URI `mode=ro` в `dashboard/db.py` — его и сторожим."""
     vols = _compose()["services"]["yl26-dashboard"]["volumes"]
-    assert "./data:/app/data:ro" in vols
-    assert not any(v == "./data:/app/data" for v in vols)
+    assert "./data:/app/data" in vols
+    assert not any(v.endswith(":ro") for v in vols), vols
+    src = (ROOT / "dashboard" / "db.py").read_text(encoding="utf-8")
+    assert "?mode=ro" in src and "uri=True" in src
 
 
 def test_compose_dashboard_in_edge_network_and_edge_is_external():
