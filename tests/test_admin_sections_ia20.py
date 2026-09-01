@@ -228,11 +228,11 @@ def test_sections_are_the_eight_delegate_flow_steps():
     assert [t for t, _, _ in sec.SECTIONS] == [
         "event", "form", "apps", "pay", "comms", "game", "data", "manage"]
     # обратный индекс выведен из реестра, а не из второго словаря-литерала
-    assert sec._section_of_group("apps") == "apps"
-    assert sec._section_of_group("sheets") == "data"
-    assert sec._section_of_group("system") == "manage"
-    assert sec._section_of_group("misc") == "manage"
-    assert sec._section_of_group("нет-такой-группы") is None
+    assert sec.section_of("apps") == "apps"
+    assert sec.section_of("sheets") == "data"
+    assert sec.section_of("system") == "manage"
+    assert sec.section_of("misc") == "manage"
+    assert sec.section_of("нет-такой-группы") is None
 
 
 # ══════════════════════════════════════════════════════════════════════════════════════════
