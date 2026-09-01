@@ -968,6 +968,10 @@ def _manager_hub_body() -> str:
 
 
 def test_section_groups_match_bot_sections():
+    """Сверка идёт по ИСХОДНЫМ строкам `SECTION_GROUPS` и `SECTIONS`, а не по тому, что видно
+    на экране: хаб рисует заголовок раздела капсом — `.sec` в `miniapp/static/app.css` ставит
+    `text-transform: uppercase`. Поэтому «🎪 СОБЫТИЕ» на экране при «🎪 Событие» в коде — это
+    оформление, а не расхождение карты админки, и чинить регистр в литералах не нужно."""
     from handlers.admin_sections import SECTIONS
 
     assert _section_groups_from_app_js() == [(token, label) for token, label, _ in SECTIONS], (

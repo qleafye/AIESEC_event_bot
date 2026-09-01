@@ -235,6 +235,25 @@ def test_sections_are_the_eight_delegate_flow_steps():
     assert sec.section_of("нет-такой-группы") is None
 
 
+def test_flat_menu_and_sections_agree_on_who_sees_anything():
+    """На вопрос «видит ли этот человек в панели хоть что-нибудь» отвечают два разных фильтра:
+    `_visible_menu_rows` (плоские строки `_ADMIN_MENU_ROWS`) и `visible_sections` (реестр
+    `SECTIONS`). Пока оба говорят одно и то же, расхождения не видно; разойдутся — менеджеру
+    с таким правом `/admin` скажет «нет доступных разделов», хотя панель раздел бы нарисовала
+    (или наоборот: раздел есть, а войти в него не с чего)."""
+    from handlers.admin_caps import ADMIN_CAPS
+    from handlers.admin_core import _visible_menu_rows
+
+    for cap in sorted(set(ADMIN_CAPS.values())):
+        flat = bool(_visible_menu_rows({cap}))
+        sections = bool(sec.visible_sections({cap}, False))
+        assert flat == sections, (
+            f"право «{cap}»: плоское меню {'рисует строки' if flat else 'пусто'}, "
+            f"а разделы {'есть' if sections else 'пусты'} — /admin и панель разошлись "
+            f"в ответе на «видит ли этот человек хоть что-то»"
+        )
+
+
 # ══════════════════════════════════════════════════════════════════════════════════════════
 # (3) Видимость по правам (ADMIN-IA-03)
 # ══════════════════════════════════════════════════════════════════════════════════════════
