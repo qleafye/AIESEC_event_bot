@@ -195,6 +195,26 @@ def test_disabled_by_default_returns_503(tmp_path):
     assert resp.json() == {"reason": "miniapp_off"}
 
 
+def test_trailing_slash_redirects_to_shell(tmp_path):
+    """Находка 3 приёмки 19-10: `/app/` отдавал JSON 404. Слэш-вариант — 308 на `/app`
+    с сохранением query; при выключенном тумблере middleware по-прежнему рисует человеку
+    страницу-объяснение (оба пути в SHELL_PATHS), а не редирект в никуда."""
+    db_path = _use_tmp_db(tmp_path)
+    _standard_seed()
+    client = _client(_cfg(db_path))
+    resp = client.get("/app/", follow_redirects=False)
+    assert resp.status_code == 308
+    assert resp.headers["location"] == "/app"
+    resp = client.get("/app/?tgWebAppStartParam=x", follow_redirects=False)
+    assert resp.status_code == 308
+    assert resp.headers["location"] == "/app?tgWebAppStartParam=x"
+    assert client.get("/app/").status_code == 200  # по редиректу — сама оболочка
+    _set("miniapp_enabled", "off")
+    resp = client.get("/app/", follow_redirects=False)
+    assert resp.status_code == 503
+    assert "text/html" in resp.headers["content-type"]
+
+
 def test_toggle_off_between_requests_without_restart(tmp_path):
     db_path = _use_tmp_db(tmp_path)
     _standard_seed()
