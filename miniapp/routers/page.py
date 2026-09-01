@@ -27,7 +27,7 @@ import json
 from pathlib import Path
 
 from fastapi import APIRouter, Depends, Request
-from fastapi.responses import HTMLResponse, Response
+from fastapi.responses import HTMLResponse, RedirectResponse, Response
 from fastapi.templating import Jinja2Templates
 
 from dashboard.db import read_conn
@@ -121,6 +121,17 @@ def shell(request: Request):
     with read_conn(cfg.db_path) as conn:
         context = _shell_context(request, conn)
     return templates.TemplateResponse(request, "app.html", context)
+
+
+@router.get("/app/", include_in_schema=False)
+def shell_trailing_slash(request: Request) -> RedirectResponse:
+    """`/app/` (со слэшем) -> `/app`. Приложение живёт с `redirect_slashes=False` (иначе
+    Starlette редиректил бы и API), поэтому слэш-вариант оболочки нужно объявить руками —
+    без него человек, набравший адрес сам, получал JSON 404 (находка 3 приёмки 19-10).
+    308 — постоянный редирект с сохранением метода; query переносится сервером, фрагмент
+    `#tgWebAppData=…` браузер переносит на редиректе сам (сервер его не видит)."""
+    target = "/app" + (f"?{request.url.query}" if request.url.query else "")
+    return RedirectResponse(url=target, status_code=308)
 
 
 @router.get("/app/theme.css")
