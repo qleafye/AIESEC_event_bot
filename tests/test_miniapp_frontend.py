@@ -993,6 +993,26 @@ def test_every_manager_nav_item_has_a_group():
         )
 
 
+def test_delegate_manager_sees_manager_groups_too():
+    """Находка живой приёмки 19-10 (02.09): renderHub при is_delegate рисовал ТОЛЬКО делегатский
+    хаб — менеджер, зарегистрированный делегатом, не имел ни одной ссылки на «Проверка сдач»/
+    «Статистика»/«Настройки-лайт». Контракт: делегатская ветка обязана дорисовывать менеджерские
+    группы (renderManagerHub с skipHero — без второго героя), а applyManagerTileData обязан
+    переживать hero == null."""
+    text = (SCREENS_DIR / "hub.js").read_text(encoding="utf-8")
+    start = text.index("async function renderHub")
+    rest = text[start + 1:]
+    ends = [m.start() for m in re.finditer(r"^(async )?function ", rest, re.M)]
+    body = rest[:ends[0]] if ends else rest
+    assert "renderDelegateHub" in body and body.count("renderManagerHub") >= 2, (
+        "renderHub: делегатская ветка обязана вызывать И renderDelegateHub, И renderManagerHub"
+    )
+    assert "skipHero" in body, "делегатская ветка зовёт менеджерский хаб без второго героя"
+    assert "if (!hero) return;" in text, (
+        "applyManagerTileData обязан переживать hero == null (ветка skipHero)"
+    )
+
+
 def test_manager_hub_renders_group_headers():
     body = _manager_hub_body()
     assert "SECTION_GROUPS" in body, "плитки менеджера раскладываются по SECTION_GROUPS"
