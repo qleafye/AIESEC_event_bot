@@ -326,6 +326,22 @@ def render_section_text(token: str) -> str:
     return f"<b>{label}</b>\n\n{hint}" if hint else f"<b>{label}</b>"
 
 
+GROUP_IN_SECTION_LABEL = "⚙️ Тексты и настройки"
+
+
+def section_group_label(section_token: str, group_token: str) -> str:
+    """Подпись кнопки группы настроек ВНУТРИ раздела. Три группы («📋 Заявки», «💳 Оплата»,
+    «🎮 Геймификация») называются так же, как их раздел, и кнопка с той же подписью прямо
+    под заголовком раздела читалась как дубль — менеджеру неясно, что она ведёт в тексты и
+    настройки (UAT фазы 20, п.3). Совпала с подписью раздела — подписываем по назначению;
+    остальные («🎪 Событие/Медиа», «📝 Регистрация», «🎉 Party»…) остаются своим именем.
+    Заголовок экрана самой группы («⚙️ Настройки → 📋 Заявки») не трогаем — там это имя группы."""
+    from handlers.admin_settings import _settings_group_label  # ленивый шов (см. docstring модуля)
+
+    label = _settings_group_label(group_token)
+    return GROUP_IN_SECTION_LABEL if label == _SECTION_LABELS.get(section_token) else label
+
+
 async def build_section_keyboard(token: str, admin_id: int, *, caps: set | None = None) -> InlineKeyboardMarkup:
     """Клавиатура раздела: шапка города (если модуль городов включён) -> строки раздела в
     объявленном порядке -> «← Назад» в корень.
@@ -344,7 +360,7 @@ async def build_section_keyboard(token: str, admin_id: int, *, caps: set | None 
     await по одному ключу внутри сборки ОДНОЙ клавиатуры, и переключение города между ними
     давало экран с шапкой одного города и тумблером регистрации другого."""
     from handlers.admin_core import _ADMIN_MENU_ROWS  # ленивый шов (см. docstring модуля)
-    from handlers.admin_settings import settings_toggle_rows, _settings_group_label
+    from handlers.admin_settings import settings_toggle_rows
 
     if caps is None:
         caps = await resolve_capabilities(admin_id)
@@ -381,7 +397,7 @@ async def build_section_keyboard(token: str, admin_id: int, *, caps: set | None 
                 continue
             buttons.extend(toggles[row[1]])
         elif kind == "group":
-            buttons.append([InlineKeyboardButton(text=_settings_group_label(row[1]), callback_data=f"settings_group:{row[1]}")])
+            buttons.append([InlineKeyboardButton(text=section_group_label(token, row[1]), callback_data=f"settings_group:{row[1]}")])
 
     # «← Назад» ведёт в существующий корень admin_menu — новых callback'ов не заводим.
     buttons.append([InlineKeyboardButton(text="← Назад", callback_data="admin_menu")])

@@ -895,3 +895,58 @@ def test_cheatsheet_covers_every_section():
     numbered = [line for line in block.splitlines() if re.match(r"^\d+\. ", line)]
     assert len(numbered) == 9, numbered
     assert "BotFather" in numbered[0], numbered[0]
+
+
+def test_group_button_inside_section_never_repeats_section_label(tmp_path):
+    """Quick 260902-32z (UAT 20, п.3): кнопка группы настроек прямо под заголовком раздела
+    с ТОЙ ЖЕ подписью читалась как дубль («📋 Заявки» под «📋 Заявки», «💳 Оплата»,
+    «🎮 Геймификация») — менеджеру неясно, что она ведёт в тексты и настройки. Совпавшая
+    подпись заменяется «⚙️ Тексты и настройки»; несовпавшие («🎪 Событие/Медиа»,
+    «📝 Регистрация»…) остаются именем группы, чтобы менеджер узнавал их на экране группы."""
+    _roles_ready(tmp_path)
+    renamed = set()
+    for token, label, rows in sec.SECTIONS:
+        kb = asyncio.run(sec.build_section_keyboard(token, ADMIN_ID))
+        texts = {b.callback_data: b.text for row in kb.inline_keyboard for b in row}
+        for row in rows:
+            if row[0] != "group":
+                continue
+            text = texts[f"settings_group:{row[1]}"]
+            assert text != label, (token, row[1])
+            group_label = st._settings_group_label(row[1])
+            if group_label == label:
+                assert text == sec.GROUP_IN_SECTION_LABEL, (token, row[1])
+                renamed.add(token)
+            else:
+                assert text == group_label, (token, row[1])
+    assert renamed == {"apps", "pay", "game"}
+
+
+def test_guide_and_cheatsheet_spell_group_path_with_new_label():
+    """Путь через группу-тёзку в справке бота, шпаргалке и гайде пишется новой подписью кнопки —
+    иначе менеджер ищет вторую «💳 Оплата», которой на экране больше нет. Для «📋 Заявки»
+    удвоенный путь в доках легален: так называется и операция «карточки по одной»
+    (`admin_applications`) — она своё имя не меняла; поэтому в доках сторожим только разделы,
+    у которых с группой не совпадает ни одна операция, а справку бота — целиком."""
+    from handlers.admin_core import _ADMIN_MENU_ROWS
+
+    op_labels = {text for text, _cb in _ADMIN_MENU_ROWS}
+    group_only = [label for _t, label, _r in sec.SECTIONS if label not in op_labels]
+    assert "💳 Оплата" in group_only and "🎮 Геймификация" in group_only
+    assert "📋 Заявки" not in group_only  # операция-тёзка — см. докстринг
+
+    for _title, _subtitle, entries in roles.SETTINGS_GUIDE_SECTIONS:
+        for entry in entries:
+            for _t, label, _r in sec.SECTIONS:
+                assert f"{label} → «{label}»" not in entry["where"], (entry["key"], entry["where"])
+    assert any(
+        f"«{sec.GROUP_IN_SECTION_LABEL}» →" in entry["where"]
+        for _t, _s, entries in roles.SETTINGS_GUIDE_SECTIONS for entry in entries
+    )
+    root = Path(__file__).resolve().parent.parent
+    for doc in ("ADMIN_CHEATSHEET.md", "ADMIN_GUIDE.md"):
+        text = (root / doc).read_text(encoding="utf-8")
+        for label in group_only:
+            assert f"{label} → «{label}»" not in text, (doc, label)
+            assert f"{label}** → «{label}»" not in text, (doc, label)
+        assert f"«{sec.GROUP_IN_SECTION_LABEL}»" in text, doc
