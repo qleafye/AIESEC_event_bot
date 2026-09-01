@@ -16,10 +16,12 @@ export async function render(root, params, ctx) {
       h("span", { class: "muted", text: "Заявка" }),
       h("span", { class: `chip status ${me.status}`, text: me.status_label }),
     ),
-    h("div", { class: "row" },
+    // Пустая подпись = модуль оплаты выключен (сервер шлёт "" при payment_enabled=off):
+    // строки «Оплата» на профиле нет вовсе, а не вечное «Не оплатил».
+    me.payment_status_label ? h("div", { class: "row" },
       h("span", { class: "muted", text: "Оплата" }),
       h("span", { class: `chip pay ${me.payment_status}`, text: me.payment_status_label }),
-    ),
+    ) : null,
   );
 
   const fields = h("div", { class: "flat-list" });

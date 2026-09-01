@@ -107,14 +107,19 @@ async def profile(request: Request, p: Principal = Depends(delegate_gate),
     user = await get_user(p.telegram_id) or {}
     status = user.get("status") or "approved"
     payment_status = user.get("payment_status") or "not_paid"
+    # Тумблер «💳 Модуль оплаты» выключен -> статус оплаты не существует как понятие:
+    # «Не оплатил» на профиле пугал бы делегата счётом, которого нет (вопрос владельца 02.09).
+    payment_on = await get_setting_typed("payment_enabled") == "on"
     return {
         "full_name": user.get("full_name"),
         "username": user.get("username"),
         "fields": profile_fields(user),
         "status": status,
         "status_label": STATUS_LABELS.get(status, status),
-        "payment_status": payment_status,
-        "payment_status_label": PAYMENT_STATUS_LABELS.get(payment_status, payment_status),
+        "payment_status": payment_status if payment_on else "",
+        "payment_status_label": (
+            PAYMENT_STATUS_LABELS.get(payment_status, payment_status) if payment_on else ""
+        ),
         "edit_deeplink": rereg_deeplink(request.app.state.cfg.bot_username),
         "edit_hint": await get_setting_typed("miniapp_profile_edit_hint"),
     }
