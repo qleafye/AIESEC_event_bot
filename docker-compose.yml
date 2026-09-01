@@ -34,7 +34,10 @@ services:
     env_file:
       - .env
     volumes:
-      - ./data:/app/data:ro
+      # НЕ `:ro`: WAL-БД (Phase 17) требует у читателя права создать/открыть `-shm` в каталоге,
+      # на read-only томе `mode=ro`-подключение падало «unable to open database file» (500
+      # после входа, 31.08). Только-чтение гарантирует само подключение — `dashboard/db.py`.
+      - ./data:/app/data
     networks:
       - default
       - edge
