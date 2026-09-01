@@ -846,3 +846,15 @@ a.flat-row:active, button.flat-row:active { background: var(--surface-alt); }
   color: var(--text);
   font-size: 15px;
 }
+
+/* ── переключатель вида хаба (делегат-менеджер, 02.09) ─────────────────────────────── */
+.hub-seg {
+  display: flex; gap: 4px; padding: 4px; margin-bottom: var(--sp-3);
+  background: var(--surface-alt); border-radius: var(--r-m);
+}
+.hub-seg-btn {
+  flex: 1; padding: 8px 12px; border: 0; border-radius: calc(var(--r-m) - 4px);
+  background: transparent; color: var(--text-muted);
+  font: inherit; font-weight: 700; cursor: pointer;
+}
+.hub-seg-btn.active { background: var(--accent); color: var(--on-accent, #fff); }
