@@ -32,6 +32,7 @@ Mini App в `<iframe>` на `https://web.telegram.org`, поэтому отве�
 from __future__ import annotations
 
 import logging
+import re
 import sqlite3
 from pathlib import Path
 from typing import Optional
@@ -56,6 +57,7 @@ from miniapp.config import (
 )
 from miniapp.deps import read_setting
 from miniapp.routers import ALL_ROUTERS
+from miniapp.routers.page import STATIC_PREFIX
 from miniapp.routers.page import render_disabled_page
 
 logger = logging.getLogger(__name__)
@@ -76,6 +78,9 @@ _SHELL_ASSET_PREFIXES = ("/app/static/tokens.css", "/app/static/app.css", "/app/
 
 
 def _is_shell_asset(path: str) -> bool:
+    # Версионированный префикс (/app/static/v123/…) приводится к легаси-виду — список
+    # префиксов оболочки один, независимо от того, каким путём пришёл клиент.
+    path = re.sub(r"^/app/static/v\d+/", "/app/static/", path)
     return path == "/app/theme.css" or path.startswith(_SHELL_ASSET_PREFIXES)
 
 CONTENT_SECURITY_POLICY = (
@@ -105,6 +110,9 @@ def _build_asgi_app(cfg: DashboardConfig) -> FastAPI:
     app.state.cfg = cfg
 
     if STATIC_DIR.is_dir():
+        # Порядок обязателен: версионированный mount ДО легаси, иначе /app/static перехватит
+        # и /app/static/v…/ (Starlette матчит mounts в порядке добавления).
+        app.mount(STATIC_PREFIX, StaticFiles(directory=str(STATIC_DIR)), name="static_versioned")
         app.mount("/app/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
 
     app.add_middleware(SessionMiddleware, **session_middleware_kwargs(cfg))

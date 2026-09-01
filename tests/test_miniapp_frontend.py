@@ -92,7 +92,7 @@ def test_only_external_url_is_telegram_web_app_sdk():
 
 def test_shell_links_sdk_before_module_and_no_inline_style():
     text = APP_HTML.read_text(encoding="utf-8")
-    assert text.index(TELEGRAM_SDK_URL) < text.index("/app/static/js/app.js")
+    assert text.index(TELEGRAM_SDK_URL) < text.index("/js/app.js")
     assert 'type="module"' in text
     assert "/app/theme.css" in text
     assert "style=" not in text and "<style" not in text, "CSP без 'unsafe-inline' — стили только файлами"
@@ -140,7 +140,7 @@ def test_shell_disabled_returns_human_page_503(tmp_path):
     assert resp.headers["content-type"].startswith("text/html")
     assert "Ушли на обед, всё в боте." in resp.text
     assert '"reason"' not in resp.text
-    assert "/app/static/js/app.js" not in resp.text  # ядро не грузится на заглушке
+    assert "/js/app.js" not in resp.text  # ядро не грузится на заглушке
     # API при этом по-прежнему JSON.
     assert _client(db_path).get("/app/api/me", headers=_hdr(ADMIN_ID)).json() == {"reason": "miniapp_off"}
 
