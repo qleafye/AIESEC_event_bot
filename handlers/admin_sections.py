@@ -17,6 +17,8 @@
 (admin_core -> admin_sections -> admin_settings -> admin_core). Прецедент ленивого шва —
 `handlers/admin_gamification.py`.
 """
+import logging
+
 from aiogram import F, types
 from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
 
@@ -24,6 +26,8 @@ from config import config
 from cities import admin_selected_city, city_label, ALL_CITIES, ALL_CITIES_LABEL
 from handlers.admin_caps import required_capability, resolve_capabilities, _holds
 from handlers.admin import router
+
+logger = logging.getLogger(__name__)
 
 # INVARIANT (13-01 cap-test): каждый `@router.*` декоратор ниже — в ОДНУ строку.
 
@@ -185,12 +189,6 @@ def section_of(callback_data: str) -> str | None:
     return None
 
 
-def _section_of_group(group_token: str) -> str | None:
-    """Обратный индекс «группа настроек -> раздел» — частный случай `section_of`, а не второй
-    обход реестра. Оставлен именем: на него ссылается «Назад» с экрана группы."""
-    return section_of(group_token)
-
-
 def back_button(callback_data: str, text: str = "← Назад") -> InlineKeyboardButton:
     """Кнопка возврата в РАЗДЕЛ-владелец экрана `callback_data`.
 
@@ -239,6 +237,10 @@ async def settings_return_screen(
        назад посреди работы. Путь наверх остаётся: «← Назад» экрана группы ведёт в раздел.
     2. `callback_data` объявлен строкой раздела (`section_of` вернул токен) -> экран РАЗДЕЛА.
        Это путь всех тумблеров: тумблер — строка раздела, значит менеджер был на разделе.
+       Решает тот же `section_screen`, что и открытие раздела по кнопке, — один предикат
+       «раздел показуем» на весь проект. Если права на раздел отозвали между нажатием и
+       перерисовкой, шаг проваливается в шаг 3 и менеджер приземляется в корне: титульный
+       экран раздела с единственной кнопкой «← Назад» был бы хуже.
     3. Иначе -> КОРЕНЬ разделов с объяснением переезда. Тупика не бывает ни при какой
        раскладке — тот же принцип запасного выхода, что у `back_button` (T-20-11).
 
@@ -264,7 +266,9 @@ async def settings_return_screen(
 
     section_token = section_of(callback_data) if callback_data else None
     if section_token:
-        return render_section_text(section_token), await build_section_keyboard(section_token, admin_id)
+        screen = await section_screen(admin_id, section_token)
+        if screen is not None:
+            return screen
 
     # T-20-18: корень рисуется через `admin_keyboard_for` -> `build_admin_keyboard`, то есть
     # через свежий `resolve_capabilities` (D-05) — человек без прав получит пустую клавиатуру,
@@ -322,12 +326,18 @@ def render_section_text(token: str) -> str:
     return f"<b>{label}</b>\n\n{hint}" if hint else f"<b>{label}</b>"
 
 
-async def build_section_keyboard(token: str, admin_id: int) -> InlineKeyboardMarkup:
+async def build_section_keyboard(token: str, admin_id: int, *, caps: set | None = None) -> InlineKeyboardMarkup:
     """Клавиатура раздела: шапка города (если модуль городов включён) -> строки раздела в
     объявленном порядке -> «← Назад» в корень.
 
     Шапка рисуется ТЕМ ЖЕ способом, что в `admin_keyboard_for` (09.3): модуль выключен
     (`code is None`) — строки шапки нет вовсе, паритет с до-фазовым поведением.
+
+    D-05 (свежее чтение прав, без кеша) остаётся значением по умолчанию: не передали `caps` —
+    читаем их здесь. Вызывающий, который права УЖЕ прочитал на ЭТОТ ЖЕ рендер (`section_screen`
+    решает ими, показывать раздел вообще), передаёт их готовыми: тогда гейт и рендер физически
+    не могут разъехаться, а вместо двух чтений подряд остаётся одно. Параметр keyword-only —
+    случайно передать третьим позиционным аргументом чужой набор прав нельзя.
 
     WR-05: шапка города читается ЗДЕСЬ ровно один раз на рендер и передаётся в
     `settings_toggle_rows` готовой. Прежде каждая из двух читала её сама — два независимых
@@ -336,7 +346,8 @@ async def build_section_keyboard(token: str, admin_id: int) -> InlineKeyboardMar
     from handlers.admin_core import _ADMIN_MENU_ROWS  # ленивый шов (см. docstring модуля)
     from handlers.admin_settings import settings_toggle_rows, _settings_group_label
 
-    caps = await resolve_capabilities(admin_id)  # D-05: свежее чтение, без кеша
+    if caps is None:
+        caps = await resolve_capabilities(admin_id)
     rows = visible_rows(token, caps, admin_id in config.ADMIN_IDS)
     op_labels = {callback_data: text for text, callback_data in _ADMIN_MENU_ROWS}
     code = await admin_selected_city(admin_id)  # ЕДИНСТВЕННОЕ чтение шапки на рендер
@@ -350,13 +361,24 @@ async def build_section_keyboard(token: str, admin_id: int) -> InlineKeyboardMar
         # «admin_city_switch» (корень, стейл-клавиатуры) продолжает работать.
         buttons.append([InlineKeyboardButton(text=label_text, callback_data=f"admin_city_switch:{token}")])
 
+    # Строка-сирота (опечатка в реестре, снесённый тумблер) должна быть НЕВИДИМОЙ, а не ронять
+    # `show_admin_section` до `callback.answer()` — иначе менеджер получает вечный спиннер.
     for row in rows:
         kind = row[0]
         if kind == "op":
-            buttons.append([InlineKeyboardButton(text=op_labels[row[1]], callback_data=row[1])])
+            label = op_labels.get(row[1])
+            if label is None:
+                logger.warning("Раздел %s: строка без подписи в _ADMIN_MENU_ROWS (%s) — пропущена", token, row[1])
+                continue
+            buttons.append([InlineKeyboardButton(text=label, callback_data=row[1])])
         elif kind in ("screen", "screen_admin"):
             buttons.append([InlineKeyboardButton(text=row[2], callback_data=row[1])])
         elif kind == "toggle":
+            # Проверяем НАЛИЧИЕ ключа, а не истинность: пустой список строк у существующего
+            # тумблера легален (тумблер скрыт настройками) и сиротой не является.
+            if row[1] not in toggles:
+                logger.warning("Раздел %s: тумблер %s не объявлен в settings_toggle_rows — пропущен", token, row[1])
+                continue
             buttons.extend(toggles[row[1]])
         elif kind == "group":
             buttons.append([InlineKeyboardButton(text=_settings_group_label(row[1]), callback_data=f"settings_group:{row[1]}")])
@@ -384,7 +406,7 @@ async def section_screen(admin_id: int, token: str | None) -> tuple[str, InlineK
     caps = await resolve_capabilities(admin_id)
     if not visible_rows(token, caps, admin_id in config.ADMIN_IDS):
         return None
-    return render_section_text(token), await build_section_keyboard(token, admin_id)
+    return render_section_text(token), await build_section_keyboard(token, admin_id, caps=caps)
 
 
 @router.callback_query(F.data.startswith("admin_sec:"))
