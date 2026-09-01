@@ -433,6 +433,11 @@ function navigate(hash) {
 async function route() {
   if (terminal) return;
   let hash = location.hash;
+  // Telegram Web (K/A) открывает вебвью с фрагментом собственных параметров
+  // (#tgWebAppData=…&tgWebAppVersion=…) — это не наш маршрут, а транспорт initData.
+  // Без этой ветки каждый первый вход из Telegram Web попадал в showState("missing")
+  // («Раздел пока недоступен») вместо хаба — находка живой приёмки 19-10.
+  if (hash.startsWith("#tgWebApp")) hash = "";
   if (!hash || hash === "#/" || hash === "#") {
     hash = homeHash();
     if (hash === "#/") {
