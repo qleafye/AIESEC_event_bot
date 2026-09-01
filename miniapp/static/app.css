@@ -857,4 +857,4 @@ a.flat-row:active, button.flat-row:active { background: var(--surface-alt); }
   background: transparent; color: var(--text-muted);
   font: inherit; font-weight: 700; cursor: pointer;
 }
-.hub-seg-btn.active { background: var(--accent); color: var(--on-accent, #fff); }
+.hub-seg-btn.active { background: var(--accent); color: var(--on-accent); }
