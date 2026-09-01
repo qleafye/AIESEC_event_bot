@@ -1005,6 +1005,20 @@ def test_router_ignores_telegram_webapp_fragment():
     )
 
 
+def test_payment_row_hidden_when_payment_module_off():
+    """Вопрос владельца 02.09: «почему висит Не оплатил, оплата же выключена». Контракт:
+    сервер шлёт пустой payment_status_label при payment_enabled=off (profile.py), а профиль
+    рисует строку «Оплата» только при непустой подписи; хаб уже падает на «профиль»."""
+    server = (Path("miniapp/routers/profile.py")).read_text(encoding="utf-8")
+    assert 'get_setting_typed("payment_enabled")' in server, (
+        "/app/api/profile обязан сверяться с тумблером payment_enabled"
+    )
+    js = (SCREENS_DIR / "profile.js").read_text(encoding="utf-8")
+    assert "me.payment_status_label ?" in js, (
+        "профиль обязан прятать строку «Оплата» при пустой подписи (модуль оплаты выключен)"
+    )
+
+
 def test_delegate_manager_sees_manager_groups_too():
     """Находка живой приёмки 19-10 (02.09): renderHub при is_delegate рисовал ТОЛЬКО делегатский
     хаб — менеджер, зарегистрированный делегатом, не имел ни одной ссылки на «Проверка сдач»/
