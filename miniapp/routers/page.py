@@ -62,9 +62,28 @@ def section_labels() -> dict[str, str]:
     return {s: SETTINGS_SCHEMA[f"miniapp_section_{s}"]["label"] for s in SECTIONS}
 
 
+# Кэш-бастинг статики (находка живой приёмки 19-10): вебвью Telegram хранит JS-модули по URL
+# и не ревалидирует их эвристический срок — деплой не доезжал до открытых клиентов. Версия в
+# самом ПУТИ меняет URL всех модулей разом (относительные import'ы внутри JS резолвятся под
+# тем же префиксом), поэтому свежая сборка качается сразу. Версия = max(mtime) файлов статики,
+# считается один раз на старте процесса; легаси-путь /app/static/ остаётся смонтированным.
+_STATIC_ASSETS_DIR = Path(__file__).resolve().parent.parent / "static"
+
+
+def _static_version() -> str:
+    try:
+        return str(max(int(f.stat().st_mtime) for f in _STATIC_ASSETS_DIR.rglob("*") if f.is_file()))
+    except (ValueError, OSError):
+        return "0"
+
+
+STATIC_PREFIX = f"/app/static/v{_static_version()}"
+
+
 def _shell_context(request: Request, conn) -> dict:
     cfg = request.app.state.cfg
     return {
+        "static_prefix": STATIC_PREFIX,
         "section_labels": json.dumps(section_labels(), ensure_ascii=False),
         "event_name": read_setting(conn, "event_name"),
         "bot_username": cfg.bot_username,
@@ -84,6 +103,7 @@ def render_disabled_page(request: Request) -> HTMLResponse:
             context = _shell_context(request, conn)
     except Exception:  # noqa: BLE001 — БД недоступна: дефолт реестра и пустая шапка
         context = {
+            "static_prefix": STATIC_PREFIX,
             "event_name": None, "bot_username": cfg.bot_username,
             "deep_link": deep_link(cfg.bot_username), "logo_file_id": None, "sections": [],
             "section_labels": "{}",
