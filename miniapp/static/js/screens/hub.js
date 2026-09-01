@@ -263,15 +263,48 @@ async function renderManagerHub(root, ctx, opts = {}) {
   }));
 }
 
+// Выбор вида хаба для делегата-менеджера (владелец 02.09: «неудобно, когда всё на одном
+// экране») — сегмент-переключатель сверху, выбор живёт в localStorage этого устройства.
+const HUB_MODE_KEY = "aiesec_miniapp_hub_mode_v1";
+
+function hubMode() {
+  try { return localStorage.getItem(HUB_MODE_KEY) === "manager" ? "manager" : "delegate"; }
+  catch (_) { return "delegate"; }
+}
+
+function setHubMode(mode) {
+  try { localStorage.setItem(HUB_MODE_KEY, mode); } catch (_) { /* приватный режим */ }
+}
+
+function modeSwitch(h, active, onPick) {
+  const seg = (mode, label) => h("button", {
+    class: `hub-seg-btn${active === mode ? " active" : ""}`,
+    type: "button", text: label,
+    onClick: () => { if (active !== mode) onPick(mode); },
+  });
+  return h("div", { class: "hub-seg", role: "tablist" },
+    seg("delegate", "Делегат"), seg("manager", "Менеджер"));
+}
+
 async function renderHub(root, ctx) {
-  // Делегат-менеджер (наш обычный случай: менеджер прошёл регистрацию делегатом) видит ОБА
-  // набора: делегатский хаб как дом + менеджерские плитки под теми же заголовками разделов,
-  // что корень /admin (ADMIN-IA-04). До этого is_delegate прятал менеджерскую часть целиком —
-  // «Проверка сдач»/«Статистика» были недостижимы из хаба (находка живой приёмки 19-10).
-  // У чистого делегата visibleNav() менеджерских плиток не даёт — второй вызов рисует ничего.
-  if (ctx.me.is_delegate) {
+  // Менеджер, прошедший регистрацию делегатом (наш обычный случай), получает ОБА вида:
+  // переключатель «Делегат | Менеджер» сверху (владелец 02.09), менеджерский вид — та же
+  // карта разделов, что корень /admin (ADMIN-IA-04). До 02.09 is_delegate прятал менеджерскую
+  // часть целиком — «Проверка сдач»/«Статистика» были недостижимы (находка приёмки 19-10).
+  // У чистого делегата и чистого менеджера переключателя нет — рисуется единственный вид.
+  const isDelegate = Boolean(ctx.me.is_delegate);
+  const hasManager = visibleNav().some((item) => !item.delegate);
+  if (isDelegate && hasManager) {
+    const mode = hubMode();
+    root.append(modeSwitch(ctx.h, mode, (next) => {
+      setHubMode(next);
+      root.replaceChildren();
+      renderHub(root, ctx);
+    }));
+    if (mode === "manager") await renderManagerHub(root, ctx, { skipHero: false });
+    else await renderDelegateHub(root, ctx);
+  } else if (isDelegate) {
     await renderDelegateHub(root, ctx);
-    await renderManagerHub(root, ctx, { skipHero: true });
   } else {
     await renderManagerHub(root, ctx);
   }
