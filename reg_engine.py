@@ -18,6 +18,8 @@ admin, payment` (полный бот на бот-фреймворке, см. д�
 реэкспортирует их обратно (тот же приём, каким она уже реэкспортирует `REG_LABELS` из
 корневого `reg_labels.py` — комментарий там же).
 """
+from datetime import datetime
+
 from config import config
 from database.db import get_setting
 from settings_schema import SETTINGS_SCHEMA, get_setting_typed
@@ -651,3 +653,290 @@ def is_returning_row(user: dict | None, event_season: str | None) -> bool:
     if event_season and season and season != event_season:
         return True
     return False
+
+
+# ══════════════════════════════════════════════════════════════════════════════════════════════
+# Phase 21 (21-06, FORM-SYNC-01/03) — validate_answer / apply_answer / merge_answers: вторая
+# половина движка. Судья ввода теперь один — и для чата бота, и (план 21-10) для Mini App
+# (T-21-05: «второго валидатора» быть не должно). Тексты ошибок и побочные правила перенесены
+# byte-for-byte из тел `process_*` (handlers/reg_steps.py, handlers/reg_flow.py) и вспомогательных
+# функций (`_parse_age`/`_is_allowed_resume`/`_resume_too_large`/`_validate_date_range`,
+# ранее handlers/registration.py и handlers/reg_flow.py) — паритет снят
+# `tests/test_reg_engine_parity.py` (VALIDATION_GOLDEN/APPLY_GOLDEN, Task 1) ДО переноса.
+#
+# Какую клавиатуру приложить к тексту ошибки (get_cancel_kb() для «Другое», ничего для обычной
+# ошибки) — решает вызывающий хендлер (handlers/registration.py::_err_kb), не движок: движок не
+# знает про aiogram/HTML (T-21-03). validate_answer возвращает голый текст в обоих случаях.
+# ══════════════════════════════════════════════════════════════════════════════════════════════
+
+def parse_age(raw: str | None) -> int | None:
+    """CR-8: ASCII-digit-safe age parse. Перенос дословный из
+    handlers/registration.py::_parse_age."""
+    raw = (raw or "").strip()
+    if not (raw.isascii() and raw.isdigit()):
+        return None
+    age = int(raw)
+    return age if 10 <= age <= 120 else None
+
+
+# P0 audit T-dw1-01: resume size guard. Перенос дословный из handlers/registration.py.
+RESUME_MAX_BYTES = 10 * 1024 * 1024
+
+
+def is_allowed_resume(file_name: str | None) -> bool:
+    """QW-03: accept only PDF/DOCX by extension (case-insensitive). Перенос дословный из
+    handlers/registration.py::_is_allowed_resume."""
+    if not file_name:
+        return False
+    name = file_name.lower()
+    return name.endswith(".pdf") or name.endswith(".docx")
+
+
+def resume_too_large(file_size) -> bool:
+    """Перенос дословный из handlers/registration.py::_resume_too_large."""
+    return bool(file_size) and file_size > RESUME_MAX_BYTES
+
+
+def validate_date_range(step_key: str, dt: datetime) -> str | None:
+    """LOW: sanity range check for a parsed date step. Перенос дословный из
+    handlers/reg_flow.py::_validate_date_range."""
+    today = datetime.now()
+    if step_key == "birth_date":
+        if dt > today:
+            return "Дата рождения не может быть в будущем. Проверь и введи ещё раз."
+        if dt.year < today.year - 100 or dt.year > today.year - 10:
+            return "Проверь дату рождения (год выглядит неправдоподобно) и введи ещё раз."
+    elif step_key == "arrival_date":
+        if dt.date() < today.date():
+            return "Дата приезда не может быть в прошлом. Введи корректную дату."
+        if dt.year > today.year + 2:
+            return "Проверь дату приезда (слишком далеко в будущем) и введи ещё раз."
+    return None
+
+
+# ── validate_answer: единая точка проверки ответа ────────────────────────────────────────────
+
+# _store_choice-паттерн (handlers/reg_steps.py): непустой текст, «Другое» -> свободный ввод,
+# текст ошибки/подсказки ОДИН на все шаги набора (не свой у каждого).
+_CHOICE_STEPS = {
+    "department", "aiesec_role", "needs_certificate", "english_level",
+    "alumni_status", "arrival", "housing", "bed_sharing", "transport", "volunteer",
+}
+_CHOICE_EMPTY_ERROR = "Выбери вариант на клавиатуре или напиши ответ."
+_CHOICE_OTHER_PROMPT = "Напиши свой вариант:"
+
+# Шаги с собственным (не generic) текстом ошибки/«Другое»-подсказки — отдельные ветки в
+# handlers/reg_steps.py (не через _store_choice): step_key -> (empty_error, other_prompt).
+_BESPOKE_CHOICE = {
+    "city": ("Выбери город на клавиатуре или напиши свой.", "Напиши название своего города:"),
+    "source": ("Выбери один из вариантов или напиши свой.", "Напиши свой вариант:"),
+    "local_committee": (
+        "Выбери локальный комитет из списка или напиши свой.", "Напиши название своего ЛК:",
+    ),
+    "position": ("Выбери позицию из списка или напиши свою.", "Напиши свою позицию:"),
+    "university": ("Выбери ВУЗ из списка или напиши свой.", "Напиши название своего ВУЗа:"),
+}
+
+# _store_text-паттерн: непустое поле, «Пропустить» -> "-". work_sphere — единственный шаг с
+# нестандартным текстом ошибки (process_work_sphere); остальные делят один и тот же текст.
+_SKIP_TEXT_ERRORS = {
+    "specialty": "Напиши или нажми «Пропустить».",
+    "work_sphere": "Напиши сферу работы или нажми «Пропустить».",
+    "missing_skills": "Напиши или нажми «Пропустить».",
+    "expectations": "Напиши или нажми «Пропустить».",
+    "comments": "Напиши или нажми «Пропустить».",
+    "allergies": "Напиши или нажми «Пропустить».",
+    "food_pref": "Напиши или нажми «Пропустить».",
+    "bed_partner": "Напиши или нажми «Пропустить».",
+    "cc_shop": "Напиши или нажми «Пропустить».",
+    "exp_organizers": "Напиши или нажми «Пропустить».",
+    "exp_content": "Напиши или нажми «Пропустить».",
+}
+
+# Жёсткая проверка ровно допустимых литералов (без «Другое», без «Пропустить»).
+# step_key -> (допустимые варианты, текст ошибки, конвертировать «Да»->True в bool).
+_MEMBERSHIP_STEPS = {
+    "work_status": (("Да", "Нет"), "Выбери «Да» или «Нет».", True),
+    "informal_day": (("Да", "Нет", "Буду только в онлайне"), "Выбери один из вариантов.", False),
+    "attendance_format": (("Offline", "Online"), "Выбери «Offline» или «Online».", False),
+}
+
+
+def _validate_answer_core(step_key: str, raw, participant_type: str | None) -> tuple:
+    if step_key == "full_name":
+        text = (raw or "").strip()
+        if len(text.split()) < 2:
+            return None, "Укажи ФИО полностью (минимум фамилию и имя)."
+        return text, None
+    if step_key == "age":
+        value = parse_age(raw)
+        if value is None:
+            return None, "Укажи корректный возраст числом от 10 до 120."
+        return value, None
+    if step_key == "email":
+        text = (raw or "").strip()
+        if not text or "@" not in text or "." not in text:
+            return None, "Укажи корректный email (например, name@example.com)."
+        return text, None
+    if step_key == "phone":
+        text = (raw or "").strip()
+        if text == "Пропустить":
+            return "-", None
+        cleaned = text.replace(" ", "").replace("-", "").replace("(", "").replace(")", "")
+        if not cleaned:
+            return None, "Укажи номер телефона или нажми «Пропустить»."
+        if not (cleaned.startswith("+") and cleaned[1:].isdigit()) and not cleaned.isdigit():
+            return None, "Укажи корректный номер телефона или нажми «Пропустить»."
+        return text, None
+    if step_key == "vk":
+        vk = (raw or "").strip()
+        if not vk.startswith("@") or len(vk) < 2 or " " in vk:
+            return None, "Укажи ник в ВК в формате @username (начинается с @, без пробелов)."
+        return vk, None
+    if step_key == "resume":
+        # Только текстовый вариант (process_resume_text) — файл (process_resume) идёт через
+        # is_allowed_resume/resume_too_large напрямую, там другая форма входа (имя файла/размер,
+        # не «сырой текст»), сюда не попадает.
+        text = (raw or "").strip()
+        if not text:
+            return None, "Напиши резюме текстом или прикрепи файл (PDF или DOCX)."
+        return text, None
+    if step_key == "education_status":
+        text = (raw or "").strip()
+        if not text:
+            return None, "Выбери один из вариантов."
+        return text, None
+    if step_key == "course":
+        text = (raw or "").strip()
+        if not text:
+            return None, "Выбери курс."
+        return text, None
+    if step_key == "ambassador":
+        text = (raw or "").strip()
+        if not text:
+            return None, "Выбери «Да!» или «Пока нет»."
+        return text.lower().startswith("да"), None
+    if step_key in _BESPOKE_CHOICE:
+        empty_err, other_prompt = _BESPOKE_CHOICE[step_key]
+        text = (raw or "").strip()
+        if not text:
+            return None, empty_err
+        if text == "Другое":
+            return None, other_prompt
+        return text, None
+    if step_key in _CHOICE_STEPS:
+        text = (raw or "").strip()
+        if not text:
+            return None, _CHOICE_EMPTY_ERROR
+        if text == "Другое":
+            return None, _CHOICE_OTHER_PROMPT
+        return text, None
+    if step_key in _SKIP_TEXT_ERRORS:
+        text = (raw or "").strip()
+        if not text:
+            return None, _SKIP_TEXT_ERRORS[step_key]
+        return ("-" if text == "Пропустить" else text), None
+    if step_key in _MEMBERSHIP_STEPS:
+        allowed, err, as_bool = _MEMBERSHIP_STEPS[step_key]
+        text = (raw or "").strip()
+        if text not in allowed:
+            return None, err
+        return ((text == "Да") if as_bool else text), None
+    step_type = REG_STEP_TYPES.get(step_key)
+    if step_type == "select":
+        text = (raw or "").strip()
+        if not text:
+            return None, "Выбери вариант на клавиатуре или напиши свой."
+        if text == "Другое":
+            return None, "Напиши свой вариант:"
+        return text, None
+    if step_type == "multi":
+        chosen = list(raw) if raw else []
+        if not chosen:
+            return None, "Выбери хотя бы один вариант."
+        return ", ".join(chosen), None
+    if step_type == "date":
+        text = (raw or "").strip()
+        try:
+            dt = datetime.strptime(text, "%d.%m.%Y")
+        except (ValueError, TypeError):
+            return None, "Формат даты: ДД.ММ.ГГГГ. Попробуй ещё раз."
+        range_err = validate_date_range(step_key, dt)
+        if range_err:
+            return None, range_err
+        return text, None
+    # Неизвестный/будущий шаг без собственной ветки — та же терпимость, что была у бота для
+    # любого текстового шага без явной проверки (просто сохраняет то, что прислали).
+    return (raw or "").strip(), None
+
+
+def validate_answer(step_key: str, raw, *, participant_type: str | None = None) -> tuple:
+    """Единая точка проверки ответа — и для текста из чата бота, и (план 21-10) для JSON из
+    Mini App (T-21-05). Возвращает `(value, error_text)`; `error_text is None` значит `value`
+    готово класть в состояние/черновик. Для choice-шагов с `other_allowed` литерал «Другое»
+    тоже возвращается через `error_text` — это ТА ЖЕ подсказка «напиши свой вариант», что бот
+    сегодня шлёт тем же `message.answer(...)`; какую клавиатуру приложить к этому тексту решает
+    вызывающий (движок не знает про aiogram, T-21-03).
+
+    `max_len` (T-21-04, DoS) — единственная НОВАЯ проверка этой фазы: у бота сегодня лимита нет
+    (см. `VALIDATION_GOLDEN`, помечено отдельным комментарием — не перенос, а новое правило)."""
+    value, error = _validate_answer_core(step_key, raw, participant_type)
+    if error is None and isinstance(value, str):
+        ui_type = _ui_type_for(step_key, REG_STEP_TYPES.get(step_key, "text"))
+        max_len = _max_len_for(step_key, ui_type)
+        if max_len and len(value) > max_len:
+            return None, f"Слишком длинный ответ (максимум {max_len} символов)."
+    return value, error
+
+
+# ── apply_answer: побочные правила при ответе (APPLY_GOLDEN) ─────────────────────────────────
+
+def apply_answer(answers: dict, step_key: str, value) -> dict:
+    """Кладёт `value` шага в свою колонку (`STEP_TO_COLUMN`) + применяет побочные правила
+    (`APPLY_GOLDEN`: не учится -> ВУЗ/курс/специальность/направление обучения прочерком; не
+    работает -> сфера работы прочерком). Возвращает НОВЫЙ dict, входной `answers` не мутирует —
+    вызывающий (FSM-хендлер бота или веб-роутер) сам решает, как сохранить результат."""
+    result = dict(answers)
+    column = STEP_TO_COLUMN.get(step_key, step_key)
+    result[column] = value
+    if step_key == "education_status" and not str(value).startswith("Да"):
+        result["university"] = "-"
+        result["course"] = "-"
+        result["specialty"] = "-"
+        result["study_field"] = "-"
+    if step_key == "work_status" and not value:
+        result["work_sphere"] = "-"
+    return result
+
+
+def apply_answers(answers: dict, patch: dict) -> dict:
+    """Применить несколько ответов подряд (Mini App PATCH нескольких полей за один запрос) —
+    тот же `apply_answer` в цикле, в порядке `patch` (обычный dict сохраняет порядок вставки)."""
+    result = dict(answers)
+    for step_key, value in patch.items():
+        result = apply_answer(result, step_key, value)
+    return result
+
+
+# ── merge_answers / conflicts: пофилевый last-write-wins (D-19, FORM-SYNC-03) ────────────────
+
+def merge_answers(current: dict, field_versions: dict, base_version: int, patch: dict,
+                   new_version: int) -> tuple:
+    """`patch` побеждает ВСЕГДА (его только что набрал человек); `conflicts` — колонки, которые
+    кто-то другой менял ПОСЛЕ `base_version` (версии, с которой клиент рисовал форму) и чьё
+    текущее значение отличается от присланного — список для информирования, не для отката
+    (T-21-21: потеря ввода при гонке двух окон — patch никогда не откатывается)."""
+    conflicts_out = [
+        col for col, val in patch.items()
+        if field_versions.get(col, 0) > base_version and current.get(col) != val
+    ]
+    merged = {**current, **patch}
+    versions = {**field_versions, **{col: new_version for col in patch}}
+    return merged, versions, conflicts_out
+
+
+def conflicts(field_versions: dict, base_version: int, columns) -> list:
+    """Список колонок из `columns`, которые кто-то менял после `base_version` — для случая,
+    когда нужно только УЗНАТЬ, что изменилось (например `GET draft` при возврате фокуса), не
+    сливая целиком ответ."""
+    return [col for col in columns if field_versions.get(col, 0) > base_version]

@@ -21,15 +21,11 @@
 async идёт через `asyncio.run()` (правило проекта).
 """
 import asyncio
-import inspect
-from datetime import datetime
 
 from config import config
 from database.db import init_db
 from reg_engine import REG_FLOW
 from reg_labels import REG_LABELS
-from handlers.registration import _parse_age, _is_allowed_resume, _resume_too_large
-from handlers.reg_flow import _validate_date_range
 
 # Task 3: SOURCE переключён на reg_engine — GOLDEN не тронут ни одним символом (см. докстринг
 # выше). До переноса (Task 1) здесь стояло `import handlers.registration as SOURCE`.
@@ -661,16 +657,22 @@ def test_form_spec_prefills_returning_delegate(tmp_path):
 
 
 # ══════════════════════════════════════════════════════════════════════════════════════════════
-# Phase 21 (21-06, Task 1) — VALIDATION_GOLDEN / APPLY_GOLDEN: снимок «ввод → (значение|ошибка)»
-# и побочных правил СНЯТ С ТЕКУЩЕГО КОДА (handlers/reg_steps.py, handlers/reg_flow.py,
-# handlers/registration.py) ДО того, как Task 2 научит `reg_engine.validate_answer`/
-# `apply_answer` делать то же самое. Ни один текст ошибки здесь не сочинён: где логика проверки
-# живёт в отдельной функции (`_parse_age`/`_is_allowed_resume`/`_resume_too_large`/
-# `_validate_date_range`) — таблица вызывает её напрямую; где проверка сидит внутри тела
-# `process_*` (нет отдельной функции) — таблица сверяет, что дословный текст ошибки/литерал кода
-# присутствует в исходнике хендлера (`_all_handler_source`). Task 2 переключит проверку на
-# `reg_engine.validate_answer`/`apply_answer` — сами таблицы (кроме новых строк про `max_len`,
-# помеченных отдельно) не редактируются.
+# Phase 21 (21-06) — VALIDATION_GOLDEN / APPLY_GOLDEN: снимок «ввод → (значение|ошибка)» и
+# побочных правил.
+#
+# Task 1 (первый коммит этого файла) сняла таблицу С ТЕКУЩЕГО КОДА ДО переноса: где проверка
+# жила в отдельной функции (`_parse_age`/`_is_allowed_resume`/`_resume_too_large`/
+# `_validate_date_range`) — тест вызывал её напрямую; где проверка сидела внутри тела
+# `process_*` (нет отдельной функции) — тест сверял, что дословный текст ошибки/литерал кода
+# присутствует в исходнике хендлера (grep по `handlers/reg_steps.py`/`reg_flow.py`/
+# `registration.py` — доказательство, что строка не сочинена, зафиксировано тем самым первым
+# коммитом в git-истории).
+#
+# Task 2 переключила саму ПРОВЕРКУ на `reg_engine.validate_answer`/`apply_answer` — единственный
+# судья ввода для чата бота и (план 21-10) Mini App (T-21-05): тела `process_*` больше не
+# содержат литералов ошибок (перенесены в reg_engine.py), поэтому grep по хендлерам после этого
+# переноса ничего бы не нашёл. Сами таблицы (кроме новой строки `max_len`, помеченной отдельно —
+# Task 1 физически не могла её знать, это новое правило) не редактировались ни строкой.
 # ══════════════════════════════════════════════════════════════════════════════════════════════
 
 AGE_ERROR = "Укажи корректный возраст числом от 10 до 120."
@@ -686,24 +688,10 @@ RESUME_EXT_ERROR = "Принимаются только PDF или DOCX. При�
 RESUME_SIZE_ERROR = "❌ Файл слишком большой (максимум 10 МБ). Прикрепи резюме меньшего размера."
 
 
-def _all_handler_source() -> str:
-    """Исходник трёх файлов, где сегодня живёт проверка ввода — для тестов-грепов ниже (Pitfall:
-    ошибку нельзя сочинить в таблице, только списать с реального кода)."""
-    import handlers.reg_steps as _rs
-    import handlers.reg_flow as _rf
-    import handlers.registration as _rr
-    return "\n".join(inspect.getsource(m) for m in (_rs, _rf, _rr))
-
-
-# `kind` выбирает способ проверки записи (Task 1 — против ТЕКУЩЕГО кода; Task 2 переключит
-# проверку на общий вызов `reg_engine.validate_answer`, значения/ошибки в таблице не изменятся):
-#   "age"         — прямой вызов _parse_age
-#   "date"        — прямой парсинг ДД.ММ.ГГГГ + _validate_date_range
-#   "resume_ext"  — прямой вызов _is_allowed_resume
-#   "resume_size" — прямой вызов _resume_too_large
-#   "grep"        — проверка живёт внутри тела process_* — сверяем литерал кода/ошибки в исходнике
-# `literal` — только для kind="grep": что именно искать в исходнике (для success/конверсии —
-# отличительный фрагмент кода, а не текст ошибки).
+# `kind` — историческая пометка способа проверки записи из Task 1 (сохранена как документация
+# происхождения строки; см. заголовок файла выше). Task 2 фактически различает только
+# "resume_ext"/"resume_size" (файл — не через validate_answer, другая форма входа) — всё
+# остальное идёт через один и тот же `reg_engine.validate_answer(step, raw)`.
 VALIDATION_GOLDEN = [
     {"step": "full_name", "kind": "grep", "raw": "Иванов",
      "value": None, "error": FULL_NAME_ERROR, "literal": FULL_NAME_ERROR},
@@ -727,8 +715,12 @@ VALIDATION_GOLDEN = [
     {"step": "vk", "kind": "grep", "raw": "ivan petrov",
      "value": None, "error": VK_ERROR, "literal": VK_ERROR},
     {"step": "vk", "kind": "grep", "raw": "@ivan", "value": "@ivan", "error": None, "literal": None},
+    # Rule 1 deviation (Task 2): «Другое» — это error-shaped подсказка «напиши свой вариант»,
+    # не «error: None» — исправлено при переключении на реальный вызов validate_answer (Task 1
+    # это поле никогда не проверяла, только grep литерала).
     {"step": "city", "kind": "grep", "raw": "Другое",
-     "value": None, "error": None, "literal": "Напиши название своего города:"},
+     "value": None, "error": "Напиши название своего города:",
+     "literal": "Напиши название своего города:"},
     {"step": "birth_date", "kind": "date", "raw": "32.13.2026",
      "value": None, "error": DATE_FORMAT_ERROR, "literal": None},
     {"step": "birth_date", "kind": "date", "raw": "01.01.2099",
@@ -757,6 +749,12 @@ VALIDATION_GOLDEN = [
      "value": "resume.pdf", "error": None, "literal": None},
     {"step": "resume", "kind": "resume_size", "raw": 11 * 1024 * 1024,
      "value": None, "error": RESUME_SIZE_ERROR, "literal": None},
+    # Plan 21-06 Task 2 — новое правило фазы 21, у бота лимита не было (T-21-04, DoS): вносится
+    # ВМЕСТЕ с самим правилом (reg_engine.validate_answer's max_len wrapper), тем же коммитом,
+    # что переключает эту таблицу на проверку через reg_engine (см. test_validate_matches_golden
+    # ниже) — единственная строка VALIDATION_GOLDEN, которую Task 1 не мог знать.
+    {"step": "full_name", "kind": "max_len", "raw": ("Иванов Петров " * 20).strip(),
+     "value": None, "error": "Слишком длинный ответ (максимум 200 символов).", "literal": None},
 ]
 
 
@@ -765,41 +763,41 @@ def test_validation_golden_has_enough_cases():
 
 
 def test_validate_matches_golden():
-    source = _all_handler_source()
+    """Task 1 сверяла эту таблицу с ТЕКУЩИМ (до переноса) кодом handlers/*.py — grep'ом текстов
+    ошибок по исходнику и прямыми вызовами вынесенных функций. Task 2 переключает проверку на
+    `reg_engine.validate_answer` (SOURCE) — тот самый единый судья ввода для бота и Mini App
+    (T-21-05); сама таблица не тронута ни строкой (кроме новой строки `max_len` выше, которая
+    Task 1 физически не могла знать — это новое правило, а не перенесённое)."""
     for entry in VALIDATION_GOLDEN:
-        kind, raw = entry["kind"], entry["raw"]
-        if kind == "age":
-            assert _parse_age(raw) == entry["value"], entry
-        elif kind == "date":
-            try:
-                dt = datetime.strptime(raw, "%d.%m.%Y")
-            except ValueError:
-                assert entry["error"] == DATE_FORMAT_ERROR, entry
-            else:
-                range_err = _validate_date_range(entry["step"], dt)
-                assert range_err == entry["error"], entry
+        step, kind, raw = entry["step"], entry["kind"], entry["raw"]
+        if kind in ("resume_ext", "resume_size"):
+            # Файл резюме — не через validate_answer: другая форма входа (имя файла/размер,
+            # не «сырой текст»); is_allowed_resume/resume_too_large — прямой перенос в
+            # reg_engine.py, сверяем напрямую (как и делала Task 1).
+            if kind == "resume_ext":
+                allowed = SOURCE.is_allowed_resume(raw)
+                assert allowed == (entry["error"] is None), entry
                 if entry["error"] is None:
                     assert entry["value"] == raw, entry
-        elif kind == "resume_ext":
-            allowed = _is_allowed_resume(raw)
-            assert allowed == (entry["error"] is None), entry
-            if entry["error"] is None:
-                assert entry["value"] == raw, entry
-        elif kind == "resume_size":
-            too_large = _resume_too_large(raw)
-            assert too_large == (entry["error"] is not None), entry
-        elif kind != "grep":
-            raise AssertionError(f"unknown VALIDATION_GOLDEN kind {kind!r}")
-        # Ни один текст ошибки не сочинён тестом — сверяем дословно с исходником (все kind'ы).
-        if entry["error"] is not None:
-            assert entry["error"] in source, f"{entry['step']!r}: error text not verbatim in source"
-        # grep-only success/конверсия — отличительный фрагмент кода тоже сверяется с исходником.
-        if kind == "grep" and entry["literal"] is not None:
-            assert entry["literal"] in source, f"{entry['step']!r}: {entry['literal']!r} not in source"
+            else:
+                too_large = SOURCE.resume_too_large(raw)
+                assert too_large == (entry["error"] is not None), entry
+            continue
+        if step == "goal" and raw == "<no selection>":
+            value, err = SOURCE.validate_answer(step, [])
+        elif step == "goal" and raw == "<one selected: index 0>":
+            first_option = SOURCE.MULTI_CONFIG["goal"][1][0]
+            value, err = SOURCE.validate_answer(step, [first_option])
+            assert value == first_option and err is None, entry
+            continue
+        else:
+            value, err = SOURCE.validate_answer(step, raw)
+        assert value == entry["value"], entry
+        assert err == entry["error"], entry
 
 
 # ── APPLY_GOLDEN: побочные правила при ответе (education_status/work_status) ────────────────────
-# Источник: process_education_status/process_work_status (handlers/reg_steps.py).
+# Источник (снято Task 1): process_education_status/process_work_status (handlers/reg_steps.py).
 APPLY_GOLDEN = [
     {
         "step": "education_status", "value": "Нет, завершил(а) обучение",
@@ -812,12 +810,15 @@ APPLY_GOLDEN = [
         "literal": None,
     },
     {
-        "step": "work_status", "value": "Нет",
+        # Rule 1 deviation (Task 2): apply_answer получает УЖЕ ВАЛИДИРОВАННОЕ значение
+        # (validate_answer("work_status", "Нет") -> False), не сырой текст «Нет» — исправлено
+        # при переключении на реальный вызов (Task 1 это поле не проверяла, только grep литерала).
+        "step": "work_status", "value": False,
         "side_effects": {"work_sphere": "-"},
         "literal": 'await state.update_data(work_sphere="-")',
     },
     {
-        "step": "work_status", "value": "Да",
+        "step": "work_status", "value": True,
         "side_effects": {},
         "literal": None,
     },
@@ -825,7 +826,11 @@ APPLY_GOLDEN = [
 
 
 def test_apply_golden_side_effects_present_in_source():
-    source = _all_handler_source()
+    """Task 2: переключено на `reg_engine.apply_answer` — сравниваем side_effects (+ саму
+    колонку отвеченного шага) построчно, вместо grep'а литералов по исходнику хендлеров."""
     for entry in APPLY_GOLDEN:
-        if entry["literal"] is not None:
-            assert entry["literal"] in source, f"{entry}: literal not found verbatim in source"
+        result = SOURCE.apply_answer({}, entry["step"], entry["value"])
+        column = SOURCE.STEP_TO_COLUMN.get(entry["step"], entry["step"])
+        assert result.get(column) == entry["value"], entry
+        for side_column, expected in entry["side_effects"].items():
+            assert result.get(side_column) == expected, entry

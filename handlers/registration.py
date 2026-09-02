@@ -158,6 +158,10 @@ from reg_engine import (
     is_returning_row, prior_answers_for, has_prior_resume, pre_flow,
     consent_entries, get_consent_steps, DEFAULT_CONSENTS,
     should_show_fork, should_show_city_fork,
+    # Phase 21 (21-06, FORM-SYNC-01/03): второй половина движка — validate_answer/apply_answer
+    # (одна проверка для чата и Mini App) + merge_answers/conflicts (пофилевый LWW, D-19).
+    validate_answer, apply_answer, apply_answers, merge_answers, conflicts,
+    parse_age, is_allowed_resume, resume_too_large, RESUME_MAX_BYTES,
 )
 _get_enabled_steps = enabled_steps
 _get_options = option_list_for
@@ -167,6 +171,13 @@ _consent_entries = consent_entries
 _get_consent_steps = get_consent_steps
 _should_show_fork = should_show_fork
 _should_show_city_fork = should_show_city_fork
+# Back-compat aliases (старые private-имена) — handlers/reg_flow.py, handlers/reg_steps.py и
+# ~4 существующих тестовых файла (test_registration_phase1.py, test_review_b1b.py,
+# test_block7_low.py) продолжают импортировать их отсюда без изменений.
+_parse_age = parse_age
+_is_allowed_resume = is_allowed_resume
+_resume_too_large = resume_too_large
+_RESUME_MAX_BYTES = RESUME_MAX_BYTES
 
 
 async def _prompt(step_key: str, default: str, participant_type: str | None = None) -> str:
@@ -671,14 +682,8 @@ def _extract_referrer_id(command_args: str | None, current_user_id: int) -> int 
     return referrer_id
 
 
-def _parse_age(raw: str | None) -> int | None:
-    """CR-8: ASCII-digit-safe age parse. Returns the age for a plain 10..120 integer, else
-    None (non-numeric, Unicode digits like ²/①, or out of range) — never raises."""
-    raw = (raw or "").strip()
-    if not (raw.isascii() and raw.isdigit()):
-        return None
-    age = int(raw)
-    return age if 10 <= age <= 120 else None
+# Phase 21 (21-06): _parse_age moved to reg_engine.parse_age (aliased above, right after the
+# reg_engine import block) — единая точка правды для validate_answer("age", ...) тоже.
 
 
 def _consent_key_matches(tapped: str | None, active: str | None) -> bool:
@@ -822,6 +827,15 @@ async def _progress(step: int, total: int) -> str:
     if await get_setting_typed("reg_show_progress") == "on":  # REG-02: registry-backed
         return f"({step}/{total}) "
     return ""
+
+
+# Phase 21 (21-06, FORM-SYNC-01): reg_engine.validate_answer() возвращает голый текст ошибки/
+# «Другое»-подсказки — движок не знает про aiogram (T-21-03), поэтому какую клавиатуру приложить
+# к ответу решает хендлер, по тому же raw-тексту, что был передан движку. Дословное поведение
+# бота ДО переноса: «Другое» просит свободный текст с клавиатурой «Отмена» (get_cancel_kb),
+# обычная ошибка ввода — без клавиатуры (reply_markup не передавался вовсе).
+def _err_kb(raw: str | None):
+    return get_cancel_kb() if (raw or "").strip() == "Другое" else None
 
 
 def _reply_kb(options: list[str], add_other: bool = False, add_skip: bool = False):
@@ -1173,22 +1187,9 @@ def _build_summary(data: dict) -> str:
     return "\n".join(lines)
 
 
-def _is_allowed_resume(file_name: str | None) -> bool:
-    """QW-03: accept only PDF/DOCX by extension (case-insensitive)."""
-    if not file_name:
-        return False
-    name = file_name.lower()
-    return name.endswith(".pdf") or name.endswith(".docx")
-
-
-# P0 audit T-dw1-01: resume size guard, mirrors handlers.payment._RECEIPT_MAX_BYTES /
-# _receipt_too_large. Replicated locally (not imported) to avoid a cross-module import risk
-# and to keep the caps independently tunable.
-_RESUME_MAX_BYTES = 10 * 1024 * 1024
-
-
-def _resume_too_large(file_size) -> bool:
-    return bool(file_size) and file_size > _RESUME_MAX_BYTES
+# Phase 21 (21-06): _is_allowed_resume/_resume_too_large/_RESUME_MAX_BYTES moved to
+# reg_engine.is_allowed_resume/resume_too_large/RESUME_MAX_BYTES (aliased above, right after
+# the reg_engine import block).
 
 
 # --- /start ---
