@@ -12,6 +12,9 @@
   - любой ассет оформления из `web_theme.ASSET_KEYS` (лого/обложка тёмной темы, 4 стикера,
     иконка монеты, T-19.1-06) — любому принципалу: это графика мероприятия, а не персональные
     данные, менеджер загружает её осознанно как публичное оформление (accept, threat_model);
+  - держателю `settings` — `file_id`, который прямо сейчас является значением одного из
+    photo/file-ключей реестра (`settings_ops.file_setting_keys`, Phase 22 T-22-12): превью
+    обложки программы/спикеров/старта в веб-настройках, без права на любой файл бота;
   - владельцу сдачи, в частях которой встречается `file_id`;
   - держателю `moderate_game` — в пределах городского скоупа сдачи (тот же критерий, что
     `_submission_out_of_scope` в боте: модуль городов выключен или привязки нет -> всё;
@@ -34,6 +37,7 @@ from cities import cities_module_on, normalize_city
 from database.db import find_submissions_by_file_id, get_setting, get_user, is_active_task_cover
 from settings_schema import get_setting_typed
 
+import settings_ops
 import web_theme
 from miniapp import telegram_api
 from miniapp.deps import Principal, principal
@@ -73,6 +77,10 @@ async def can_read_file(p: Principal, file_id: str) -> bool:
     for _label, consent_key in await reg_engine.consent_entries():
         if (await get_setting(f"consent_pdf_{consent_key}") or "") == file_id:
             return True
+    # Phase 22 (22-04, T-22-12): держателю `settings` — только file_id, который прямо сейчас
+    # является значением photo/file-ключа реестра (settings_ops.file_setting_keys), не любой.
+    if "settings" in p.caps and await settings_ops.is_current_file_value(file_id):
+        return True
     submissions = await find_submissions_by_file_id(file_id)
     if any(sub["user_id"] == p.telegram_id for sub in submissions):
         return True
