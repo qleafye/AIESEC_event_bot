@@ -113,8 +113,19 @@ def test_reg_labels_keys_snapshot():
 
 
 def test_profile_columns_cover_only_known_labels():
-    """Каждый вопрос профиля — ключ REG_LABELS (опечатка в карте колонок ловится здесь)."""
+    """Каждый вопрос профиля — ключ REG_LABELS, и каждый шаг движка (кроме `full_name` —
+    отдельное поле профиля, не вопрос) находит подпись: новый шаг без подписи или опечатка
+    в алиасе `_LABEL_KEY_ALIASES` ловится здесь, а не молчаливо выпадает из профиля."""
+    import reg_engine
     import reg_labels
-    from miniapp.routers.profile import PROFILE_COLUMNS
+    from miniapp.routers.profile import _LABEL_KEY_ALIASES, _profile_columns
 
-    assert set(PROFILE_COLUMNS) <= set(reg_labels.REG_LABELS)
+    columns = _profile_columns()
+    assert set(columns) <= set(reg_labels.REG_LABELS)
+    assert set(_LABEL_KEY_ALIASES.values()) <= set(reg_labels.REG_LABELS)
+
+    unresolved = {
+        step for step in reg_engine.STEP_TO_COLUMN
+        if _LABEL_KEY_ALIASES.get(step, f"reg_q_{step}") not in reg_labels.REG_LABELS
+    }
+    assert unresolved == {"full_name"}
