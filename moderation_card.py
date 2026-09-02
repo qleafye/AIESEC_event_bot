@@ -127,20 +127,37 @@ def fit_card(text: str, limit: int = CARD_TEXT_LIMIT) -> tuple[str, bool]:
 
 def split_for_telegram(text: str, limit: int = TELEGRAM_LIMIT) -> list[str]:
     """Разбить длинный текст на куски ≤ `limit` по границам строк — склейка через «\\n»
-    равна исходнику, ни одна строка не режется посередине."""
+    равна исходнику, ни одна строка не режется посередине.
+
+    ИСКЛЮЧЕНИЕ: строка длиннее `limit` сама по себе (полный ответ анкеты + подпись + HTML-
+    экранирование могут дать одну строку за 4096 символов — `sendMessage` тогда падает) —
+    такая строка режется жёстко на куски по `limit` символов, каждый кусок — свой элемент
+    списка. Для НЕЁ инвариант «"\\n".join(chunks) == text» не держится (разделитель между
+    жёсткими кусками одной строки не нужен — конкатенация БЕЗ разделителя восстанавливает
+    исходную строку); для всех строк в пределах `limit` инвариант держится как раньше."""
     lines = text.split("\n")
     chunks: list[str] = []
     current: list[str] = []
     used = 0
-    for line in lines:
-        addition = len(line) + (1 if current else 0)
-        if current and used + addition > limit:
+
+    def flush():
+        nonlocal current, used
+        if current:
             chunks.append("\n".join(current))
             current = []
             used = 0
+
+    for line in lines:
+        if len(line) > limit:
+            flush()
+            for i in range(0, len(line), limit):
+                chunks.append(line[i:i + limit])
+            continue
+        addition = len(line) + (1 if current else 0)
+        if current and used + addition > limit:
+            flush()
             addition = len(line)
         current.append(line)
         used += addition
-    if current:
-        chunks.append("\n".join(current))
+    flush()
     return chunks
