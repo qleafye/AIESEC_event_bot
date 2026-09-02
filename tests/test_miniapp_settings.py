@@ -43,6 +43,7 @@ SECTION_KEYS_EXPECTED = [
     "miniapp_section_coins",
     "miniapp_section_leaderboard",
     "miniapp_section_profile",
+    "miniapp_section_form",
     "miniapp_section_review",
     "miniapp_section_admin_tasks",
     "miniapp_section_stats",
@@ -126,7 +127,7 @@ async def _read_sections():
 
 # ── реестр ────────────────────────────────────────────────────────────────────────────────
 
-def test_exactly_eight_miniapp_section_keys():
+def test_exactly_nine_miniapp_section_keys():
     keys = [k for k in SETTINGS_SCHEMA if k.startswith("miniapp_section_")]
     assert sorted(keys) == sorted(SECTION_KEYS_EXPECTED)
 

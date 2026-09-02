@@ -19,6 +19,7 @@
 import { flatRow } from "../ui.js";
 import { icon } from "../icons.js";
 import { haptic } from "../motion.js";
+import { errorText, isAuthError as isAuthErrorBase } from "../form.js";
 
 // Иконка по типу подтверждения — та же карта, что у card.js (план 19.1-05): технический
 // код -> имя иконки, не человеческая подпись (подписи по-прежнему только с сервера).
@@ -39,13 +40,12 @@ function fileUrl(fileId) {
   return `/app/api/file/${encodeURIComponent(fileId)}`;
 }
 
-function errorText(err, fallback) {
-  if (err && err.payload && err.payload.text) return err.payload.text;
-  return fallback;
-}
-
+// errorText/isAuthError — перенесены в form.js (план 21-04, были дословным дублем settings.js).
+// Свои причины 403, которые НЕ считаются гейтом авторизации у этого экрана, — вторым
+// аргументом, поведение не изменилось.
+const AUTH_EXCEPT_REASONS = ["bad_part_token", "out_of_scope"];
 function isAuthError(err) {
-  return Boolean(err && (err.status === 401 || err.status === 403 && err.reason !== "bad_part_token" && err.reason !== "out_of_scope" || err.status === 503));
+  return isAuthErrorBase(err, AUTH_EXCEPT_REASONS);
 }
 
 export async function render(root, params, ctx) {
