@@ -2351,6 +2351,35 @@ SETTINGS_SCHEMA = {
             "настроенных текстов и вопросов может стать недоступна делегатам."
         ),
     },
+
+    # ── Quick 260902-tzh: «🧾 Поля карточки заявки» — какие ответы анкеты показывать
+    # менеджеру в карточке отбора и до какой длины обрезать длинный ответ. Own group "apps"
+    # (как dashboard/miniapp выше): свой экран `handlers/admin_modcard.py`, эти два ключа
+    # НЕ добавляются в handlers.admin_settings.SETTINGS_FIELDS/SETTINGS_GROUPS — второй
+    # конкурирующей поверхности правки не заводим. Дефолт modcard_fields ПОВТОРЯЕТ
+    # moderation_card.DEFAULT_CARD_STEPS литералом (import moderation_card сюда даёт цикл:
+    # moderation_card -> reg_engine -> settings_schema) — дрейф закрыт сторожем
+    # test_registry_default_matches_service_default.
+    "modcard_fields": {
+        "type": "list", "group": "apps", "label": "🧾 Поля карточки заявки",
+        "prompt": (
+            "Отмечайте вопросы кнопками в боте: ⚙️ /admin → 📋 Заявки → 🧾 Поля карточки заявки"
+        ),
+        "default": [
+            "age", "city", "education_status", "university", "course", "local_committee",
+            "position", "alumni_status", "aiesec_role", "source", "work_sphere",
+            "english_level", "attendance_format", "goal", "expectations", "exp_organizers",
+            "exp_content", "missing_skills", "volunteer", "resume",
+        ],
+    },
+    "modcard_answer_limit": {
+        "type": "int", "group": "apps", "label": "✂️ Длина ответа в карточке",
+        "prompt": (
+            "Отмечайте кнопкой готовый вариант в боте: ⚙️ /admin → 📋 Заявки → 🧾 Поля "
+            "карточки заявки"
+        ),
+        "default": 300,
+    },
 }
 
 

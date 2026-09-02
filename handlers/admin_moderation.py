@@ -41,8 +41,10 @@ from services.background import spawn as _spawn
 from services.consent import consent_card_line
 from handlers.states import Approval, ReceiptReview
 from keyboards.builders import get_cancel_kb, get_main_menu_kb
-from handlers.reg_schema import STATUS_LABELS, REG_LABELS, approve_user
-from reg_engine import STEP_TO_COLUMN
+from handlers.reg_schema import STATUS_LABELS, approve_user
+from reg_engine import STEP_TO_COLUMN, label_for
+import moderation_card
+from settings_schema import get_setting_typed
 from cities import city_label, admin_selected_city, city_scope, city_codes, normalize_city, ALL_CITIES, ALL_CITIES_LABEL
 from handlers.admin_core import admin_keyboard_for, _admin_city_view, _card_out_of_scope, _OUT_OF_SCOPE_ALERT
 from handlers.admin import router
@@ -58,9 +60,9 @@ logger = logging.getLogger(__name__)
 # ONE place that turns it into words for the moderation card / history screen.
 _EDITED_SOURCE_LABELS = {"miniapp": "в приложении", "bot": "в чате"}
 
-# column (users row) -> human label, built from the same STEP_TO_COLUMN/REG_LABELS pair the
-# engine uses for the questionnaire itself (reg_engine.py:359/553) — no second label table.
-_COLUMN_TO_LABEL = {col: REG_LABELS.get(f"reg_q_{step}", col) for step, col in STEP_TO_COLUMN.items()}
+# column (users row) -> human label, via reg_engine.label_for (the engine already resolves the
+# nine steps where setting_key != f"reg_q_{step}", plan 21-13) — no second label table.
+_COLUMN_TO_LABEL = {col: label_for(step) for step, col in STEP_TO_COLUMN.items()}
 
 
 def _format_edited_date(raw: str | None) -> str:
@@ -115,13 +117,18 @@ def _parse_appr(data: str) -> tuple[str, int | None]:
     return data, None
 
 
-def _render_application_card(user: dict, position: int, total: int, city_label_text: str | None = None, consent_line: str | None = None, edited_line: str | None = None, resubmit_line: str | None = None) -> str:
+def _render_application_card(user: dict, position: int, total: int, city_label_text: str | None = None, consent_line: str | None = None, edited_line: str | None = None, resubmit_line: str | None = None, fields: list[tuple[str, str]] | None = None, show_resume: bool = True) -> str:
     """HTML card for one pending application; all free-text escaped. `city_label_text` (Phase
     07.2, CITY-02) appends «· 🏙 {label}» to the header when an admin city is selected; None
     keeps the header byte-identical to the pre-CITY-02 line (module off / no city chosen).
     `edited_line`/`resubmit_line` (Phase 21, 21-07, D-14/D-10) are pre-resolved by the caller
     (`_edit_badges_for`, registry template + human date/source already substituted) — this
-    function only decides WHETHER to print them, same optional-line contract as `consent_line`."""
+    function only decides WHETHER to print them, same optional-line contract as `consent_line`.
+    Quick 260902-tzh: `fields` — `[(label, value)]` из `moderation_card.card_answers`, вопросы
+    анкеты по выбору менеджера (реестр `modcard_fields`); `None` (все старые вызовы) печатает
+    ни одной строки вопроса — карточка байт-совместима с версией до этой правки. Шесть
+    захардкоженных полей (образование/город/лок.комитет/позиция/аламни/возраст) заменены этим
+    циклом; резюме — отдельный блок ниже, гасится целиком только `show_resume=False`."""
     def esc(v):
         return html_module.escape(str(v)) if v not in (None, "", "-") else None
 
@@ -154,30 +161,22 @@ def _render_application_card(user: dict, position: int, total: int, city_label_t
             lines.append("🔁 Повторный: был(а) на прошлом событии")
         else:
             lines.append(f"🔁 Повторный: был(а) в {html_module.escape(prev_season_raw)}")
-    edu = esc(user.get("university")) or esc(user.get("education_status"))
-    if edu:
-        course = esc(user.get("course"))
-        lines.append(f"🎓 {edu}" + (f", {course}" if course else ""))
-    if esc(user.get("city")):
-        lines.append(f"📍 {esc(user.get('city'))}")
-    if esc(user.get("local_committee")):
-        lines.append(f"🏢 {esc(user.get('local_committee'))}")
-    if esc(user.get("position")):
-        lines.append(f"👔 {esc(user.get('position'))}")
-    if esc(user.get("alumni_status")):
-        lines.append(f"🏷 {esc(user.get('alumni_status'))}")
-    if user.get("age"):
-        lines.append(f"🎂 {esc(user.get('age'))}")
+    # Quick 260902-tzh: ответы анкеты по выбору менеджера (реестр modcard_fields) — единая
+    # схема (moderation_card.card_answers), не девять захардкоженных полей.
+    for label, value in fields or []:
+        lines.append(f"{label}: {html_module.escape(value)}")
     # Резюме: файлом, текстом или нет. Текст показываем прямо в карточке (Таня п.4),
-    # обрезая длинные — полный текст доступен по кнопке «📎 Резюме».
-    if user.get("resume_file_id"):
-        lines.append("📎 Резюме: файлом (кнопка ниже)")
-    elif esc(user.get("resume_text")):
-        rt = str(user.get("resume_text"))
-        preview = html_module.escape(rt[:300] + ("…" if len(rt) > 300 else ""))
-        lines.append(f"📎 Резюме (текст): {preview}")
-    else:
-        lines.append("📎 Резюме: нет")
+    # обрезая длинные — полный текст доступен по кнопке «📎 Резюме». show_resume=False гасит
+    # блок целиком — шаг «resume» выключен в наборе полей карточки.
+    if show_resume:
+        if user.get("resume_file_id"):
+            lines.append("📎 Резюме: файлом (кнопка ниже)")
+        elif esc(user.get("resume_text")):
+            rt = str(user.get("resume_text"))
+            preview = html_module.escape(rt[:300] + ("…" if len(rt) > 300 else ""))
+            lines.append(f"📎 Резюме (текст): {preview}")
+        else:
+            lines.append("📎 Резюме: нет")
     # Phase 21 (21-07, D-14/D-10): «✏️ Изменена …» / «🔁 Повторная подача» — пометки для
     # менеджера о правке уже поданной анкеты, ПЕРЕД строкой согласия (та всегда идёт последней).
     if edited_line:
@@ -191,7 +190,7 @@ def _render_application_card(user: dict, position: int, total: int, city_label_t
     return "\n".join(lines)
 
 
-async def _appr_card_kb(tid: int, has_resume: bool, total: int, has_history: bool = False) -> InlineKeyboardMarkup:
+async def _appr_card_kb(tid: int, has_resume: bool, total: int, has_history: bool = False, has_full: bool = False) -> InlineKeyboardMarkup:
     rows = [
         [
             InlineKeyboardButton(text="✅ Одобрить", callback_data=f"appr_approve:{tid}"),
@@ -206,6 +205,10 @@ async def _appr_card_kb(tid: int, has_resume: bool, total: int, has_history: boo
         # литерал в коде; кнопка видна только при непустой истории (get_answer_history limit=1).
         history_label = await get_setting("reg_edit_history_button_label") or "🕓 История"
         third.append(InlineKeyboardButton(text=history_label, callback_data=f"appr_history:{tid}"))
+    if has_full:
+        # Quick 260902-tzh: карточка не влезла в лимит Telegram (moderation_card.fit_card) —
+        # хвост отдаём отдельными сообщениями по appr_full. Кнопка видна только при переполнении.
+        third.append(InlineKeyboardButton(text="📄 Полная анкета", callback_data=f"appr_full:{tid}"))
     third.append(InlineKeyboardButton(text="⏭ Пропустить", callback_data=f"appr_skip:{tid}"))
     rows.append(third)
     rows.append([InlineKeyboardButton(text=f"✅ Одобрить все ({total})", callback_data="appr_all")])
@@ -254,18 +257,29 @@ async def _show_current_card(target: types.Message, state: FSMContext):
     # Phase 21 (21-07, D-14/D-15/D-10): одна выборка истории обслуживает и пометку карточки,
     # и видимость кнопки «🕓 История» — см. докстринг _edit_badges_for.
     edited_line, resubmit_line, has_history = await _edit_badges_for(current)
-    await target.answer(
+    # Quick 260902-tzh: набор вопросов и лимит длины ответа — реестром (экран «🧾 Поля
+    # карточки заявки»), не девять захардкоженных полей. «resume» — отдельный блок карточки
+    # (файлом/текстом/нет), из fields исключается и управляет только show_resume.
+    steps = moderation_card.enabled_steps(await get_setting_typed("modcard_fields"))
+    answer_limit = await get_setting_typed("modcard_answer_limit")
+    fields = moderation_card.card_answers(current, [s for s in steps if s != "resume"], answer_limit)
+    card_text, overflow = moderation_card.fit_card(
         _render_application_card(
             current, position, total, city_label_text=card_label,
             consent_line=await consent_card_line(current["telegram_id"]),
             edited_line=edited_line, resubmit_line=resubmit_line,
-        ),
+            fields=fields, show_resume=("resume" in steps),
+        )
+    )
+    await target.answer(
+        card_text,
         parse_mode="HTML",
         reply_markup=await _appr_card_kb(
             current["telegram_id"],
             bool(current.get("resume_file_id") or current.get("resume_text")),
             total,
             has_history=has_history,
+            has_full=overflow,
         ),
     )
 
@@ -769,4 +783,34 @@ async def appr_history(callback: types.CallbackQuery):
             new = html_module.escape(str(ch.get("new"))) if ch.get("new") not in (None, "") else "—"
             lines.append(f"{label}: {old} → {new} ({when}, {src})")
     await callback.message.answer("\n".join(lines), parse_mode="HTML")
+    await callback.answer()
+
+
+# ── Quick 260902-tzh: «📄 Полная анкета» — хвост карточки, не влезающий в лимит Telegram ──────
+
+@router.callback_query(F.data.startswith("appr_full:"))
+async def appr_full(callback: types.CallbackQuery):
+    """Все включённые вопросы БЕЗ обрезки ответа, отдельными сообщениями (карточка сама
+    обрывается по лимиту Telegram — moderation_card.fit_card). WR-03: тот же гейт чужого
+    города, что у appr_approve — кнопки карточки не истекают. В лог — только telegram_id
+    (T-21-22): значения ответов не логируются."""
+    _, tid = _parse_appr(callback.data)
+    if tid is None:
+        await callback.answer()
+        return
+    if await _card_out_of_scope(callback.from_user.id, tid):
+        await callback.answer(_OUT_OF_SCOPE_ALERT, show_alert=True)
+        return
+    user = await get_user(tid)
+    if not user:
+        await callback.answer("Заявка не найдена.", show_alert=True)
+        return
+    steps = moderation_card.enabled_steps(await get_setting_typed("modcard_fields"))
+    fields = moderation_card.card_answers(user, [s for s in steps if s != "resume"], None)
+    lines = ["📋 <b>Полная анкета</b>", ""]
+    for label, value in fields:
+        lines.append(f"{label}: {html_module.escape(value)}")
+    logger.info(f"admin={callback.from_user.id} action=view_full_card user={tid}")
+    for chunk in moderation_card.split_for_telegram("\n".join(lines)):
+        await callback.message.answer(chunk, parse_mode="HTML")
     await callback.answer()

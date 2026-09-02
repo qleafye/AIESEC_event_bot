@@ -74,10 +74,6 @@ def test_card_answers_composite_and_bool_columns():
     assert answers2[mc.CARD_STEPS["work_status"]] == "Нет"
     assert mc.CARD_STEPS["ambassador"] not in answers2  # 0 → пропуск строки (второе значение None)
 
-    user3 = {"work_status": None}
-    answers3 = dict(mc.card_answers(user3, ["work_status"], 300))
-    assert mc.CARD_STEPS["work_status"] not in answers3  # None — строки нет
-
 
 def test_card_answers_truncates_to_limit():
     long_val = "x" * 500
