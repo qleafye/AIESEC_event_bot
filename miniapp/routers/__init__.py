@@ -110,7 +110,13 @@
                                        closed, closed_text|null, prior_badge_text|null}
                                        resume-шаг дополнительно несёт has_prior_resume (bool,
                                        без самого file_id/URL — Pitfall 3)
-  PATCH /app/api/reg/draft {version, answers:{column: value|null|{"other":text}}, step?}
+  PATCH /app/api/reg/draft {version, answers:{column: value|null|{"other":text}}, step?,
+                            event_city?, participant_type?}  — выбор из пикеров pre-flow
+                                       (pre_items[{type:city_fork|party_fork, field, text,
+                                       options[{code,label}], value}]); те же валидаторы, что
+                                       у тапа по развилке в боте
+                                       409 {"reason":"already_set","field"} — город/трек уже
+                                       зафиксирован (deep-link) или kind=edit (D-13)
                                     -> тот же ответ GET + conflicts[column] (колонки, изменённые
                                        из чата после `version` клиента); value=null — «Пропустить»
                                        400 {"reason":"bad_field","field"} — колонка вне allowlist

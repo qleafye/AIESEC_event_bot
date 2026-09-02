@@ -97,11 +97,13 @@ async def _load_context(telegram_id: int) -> dict:
 
 async def _pre_items(pre_tokens: list[str]) -> list[dict]:
     """Данные для рендера pre-flow экранов мастера (план 21-11): согласия — карточка с
-    названием/PDF/подписью чекбокса, вилки города/трека — только текст факта (сам выбор
-    города/трека делается ботом на `/start` по deep-link, D-01 — `reg_drafts` не хранит
-    отдельный `PATCH` для city/participant_type, поэтому вилка в приложении не интерактивна,
-    экран предлагает «Продолжить в чате»). Экран не содержит своих текстов — только то, что
-    вернула эта функция."""
+    названием/PDF/подписью чекбокса; вилки города/трека — интерактивные пикеры: `field` —
+    имя поля PATCH (`event_city`/`participant_type`), `options` — варианты с сервера (те же
+    города и те же подписи, что в клавиатурах бота), выбор уходит `PATCH /app/api/reg/draft`
+    в те же валидаторы, что у тапа в боте (`reg_engine.validate_city_choice`/
+    `validate_track_choice`). Deep-link приоритетен: вилка приходит только когда значение
+    ещё не задано (`pre_flow`), уже заданное отбивается 409 `already_set`. Экран не содержит
+    своих текстов и не знает имён полей — только то, что вернула эта функция."""
     if not pre_tokens:
         return []
     items: list[dict] = []
@@ -119,9 +121,17 @@ async def _pre_items(pre_tokens: list[str]) -> list[dict]:
                 "button_text": button_text,
             })
         elif token == "city_fork":
-            items.append({"type": "city_fork", "text": await get_setting_typed("city_fork_text")})
+            items.append({
+                "type": "city_fork", "field": "event_city",
+                "text": await get_setting_typed("city_fork_text"),
+                "options": await reg_engine.city_fork_options(), "value": None,
+            })
         elif token == "party_fork":
-            items.append({"type": "party_fork", "text": await get_setting_typed("party_fork_text")})
+            items.append({
+                "type": "party_fork", "field": "participant_type",
+                "text": await get_setting_typed("party_fork_text"),
+                "options": await reg_engine.party_track_options(), "value": None,
+            })
     return items
 
 
@@ -213,6 +223,17 @@ class DraftPatch(BaseModel):
     version: int
     answers: dict[str, Any] = Field(default_factory=dict)
     step: str | None = None
+    # Pre-flow выбор (gap closure, D-01): город/трек из пикеров мастера. Проверяются теми же
+    # валидаторами, что тап по развилке в боте; уже заданное значение -> 409 already_set.
+    event_city: str | None = None
+    participant_type: str | None = None
+
+
+# (имя поля PATCH, валидатор движка) — порядок важен: трек резолвится с учётом города.
+_PRE_CHOICE_VALIDATORS = (
+    ("event_city", reg_engine.validate_city_choice),
+    ("participant_type", reg_engine.validate_track_choice),
+)
 
 
 def _unwrap_other(raw: Any) -> Any:
@@ -238,13 +259,32 @@ async def draft_patch(
         })
 
     errors: dict[str, str] = {}
+    # Город/трек из пикеров pre-flow. T-21-32/D-13: deep-link и правка поданной анкеты
+    # приоритетны — приложение не может перебить уже зафиксированное значение (409).
+    pre_patch: dict[str, str] = {}
+    for field, validator in _PRE_CHOICE_VALIDATORS:
+        raw = getattr(body, field)
+        if raw is None:
+            continue
+        if ctx["kind"] == "edit" or ctx[field] is not None:
+            raise HTTPException(409, {"reason": "already_set", "field": field})
+        if field == "participant_type":
+            value, err = await validator(raw, pre_patch.get("event_city") or ctx["event_city"])
+        else:
+            value, err = await validator(raw)
+        if err:
+            errors[field] = err
+        else:
+            pre_patch[field] = value
+    effective_track = pre_patch.get("participant_type") or ctx["participant_type"]
+
     step_patch: dict[str, Any] = {}
     for column, raw in body.answers.items():
         step_key = reg_engine.column_to_step(column)
         if step_key is None:
             raise HTTPException(400, {"reason": "bad_field", "field": column})
         value, err = reg_engine.validate_answer(
-            step_key, _unwrap_other(raw), participant_type=ctx["participant_type"],
+            step_key, _unwrap_other(raw), participant_type=effective_track,
         )
         if err:
             errors[column] = err
@@ -263,15 +303,16 @@ async def draft_patch(
     await upsert_reg_draft(
         p.telegram_id,
         kind=ctx["kind"],
-        participant_type=ctx["participant_type"],
-        event_city=ctx["event_city"],
+        participant_type=effective_track,
+        event_city=pre_patch.get("event_city") or ctx["event_city"],
         step=body.step,
         patch=delta,
         source="miniapp",
     )
+    # T-21-08: в лог — только имена полей/колонок, значения не пишутся.
     logger.info(
-        "reg draft patch telegram_id=%s step=%s base_version=%s columns=%s",
-        p.telegram_id, body.step, body.version, sorted(delta.keys()),
+        "reg draft patch telegram_id=%s step=%s base_version=%s pre=%s columns=%s",
+        p.telegram_id, body.step, body.version, sorted(pre_patch), sorted(delta.keys()),
     )
     resp = await _draft_response(p.telegram_id, bot_username=request.app.state.cfg.bot_username)
     resp["conflicts"] = conflicts
