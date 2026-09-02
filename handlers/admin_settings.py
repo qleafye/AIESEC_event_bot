@@ -530,6 +530,12 @@ async def settings_toggle_rows(admin_id: int | None = None, *, header_code=_HEAD
     nudge_on = await get_setting_typed("nudge_enabled")
     nudge_toggle_text = ("⏰ Догонялка анкет: ✅ Вкл → ❌ Выкл" if nudge_on == "on"
                          else "⏰ Догонялка анкет: ❌ Выкл → ✅ Вкл")
+    # Phase 21 (21-07, D-12, FORM-SYNC-04): подпись — из реестра (SETTINGS_SCHEMA), не
+    # литерал в коде — менеджер переписывает её сам, как и любой другой текст реестра.
+    reg_edit_remod = await get_setting_typed("toggle_reg_edit_remoderation")
+    reg_edit_remod_label = SETTINGS_SCHEMA["toggle_reg_edit_remoderation"]["label"]
+    reg_edit_remod_text = (f"🔁 {reg_edit_remod_label}: ✅ Вкл → ❌ Выкл" if reg_edit_remod == "on"
+                           else f"🔁 {reg_edit_remod_label}: ❌ Выкл → ✅ Вкл")
 
     reg_rows = [[InlineKeyboardButton(text=toggle_text, callback_data="settings_toggle_reg")]]
     # Phase 09.3 (04, CITY-09): registration_mode has no settings_edit:{key} screen of its
@@ -564,6 +570,7 @@ async def settings_toggle_rows(admin_id: int | None = None, *, header_code=_HEAD
         "toggle_preselect_enabled": _row(preselect_toggle_text, "toggle_preselect_enabled"),
         "toggle_pending_reminder": _row(pending_rem_text, "toggle_pending_reminder"),
         "toggle_nudge_enabled": _row(nudge_toggle_text, "toggle_nudge_enabled"),
+        "toggle_reg_edit_remoderation": _row(reg_edit_remod_text, "toggle_reg_edit_remoderation"),
     }
 
 
@@ -988,6 +995,17 @@ async def toggle_pending_reminder(callback: types.CallbackQuery):
 async def toggle_nudge_enabled(callback: types.CallbackQuery):
     # Догонялка брошенных анкет (services/scheduler.py): enum on/off, дефолт ON.
     await _toggle_module_setting(callback, "nudge_enabled", "⏰ Догонялка анкет")
+
+
+@router.callback_query(F.data == "toggle_reg_edit_remoderation")
+async def toggle_reg_edit_remoderation(callback: types.CallbackQuery):
+    # Phase 21 (21-07, D-12, FORM-SYNC-04): правка одобренной анкеты по умолчанию НЕ снимает
+    # заявку с одобрения — enum on/off, дефолт OFF (SETTINGS_SCHEMA). Само переключение статуса
+    # + уведомление модераторам при submit анкеты реализует план 21-08; здесь только настройка.
+    await _toggle_module_setting(
+        callback, "toggle_reg_edit_remoderation",
+        SETTINGS_SCHEMA["toggle_reg_edit_remoderation"]["label"],
+    )
 
 
 @router.callback_query(F.data == "toggle_payment_reminders")

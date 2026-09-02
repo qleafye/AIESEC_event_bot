@@ -73,6 +73,7 @@ SECTIONS: list[tuple[str, str, list[tuple]]] = [
         ("toggle", "toggle_preselect_enabled"),
         ("toggle", "toggle_pending_reminder"),
         ("toggle", "toggle_nudge_enabled"),
+        ("toggle", "toggle_reg_edit_remoderation"),
         ("group", "apps"),
     ]),
     ("pay", "💳 Оплата", [
