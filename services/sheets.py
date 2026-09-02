@@ -624,6 +624,76 @@ def _update_status_in_sheet_sync(telegram_id: int, label: str, tab_name: str | N
     return False
 
 
+def _update_row_by_id_in_range(sheet, telegram_id: int, row: list) -> bool:
+    """Point single-row update (D-16): col1 scan with the same normalization as
+    _update_status_in_row_range (`(val or "").strip()`, header row skipped), then ONE
+    `sheet.update` call over the whole matched row — never update_cell in a loop, never
+    rebuild. Width is exactly len(row); the frozen header and every other row are untouched."""
+    target = str(telegram_id)
+    col1 = sheet.col_values(1)
+    for row_idx, val in enumerate(col1[1:], start=2):  # skip header
+        if (val or "").strip() == target:
+            end = gspread.utils.rowcol_to_a1(row_idx, len(row))
+            sheet.update(values=[row], range_name=f"A{row_idx}:{end}")
+            return True
+    return False
+
+
+def _update_row_by_id_sync(tab_name: str | None, telegram_id: int, row: list) -> bool:
+    """One attempt: named tab first (if given, mirrors _update_status_in_sheet_sync's
+    fallback), then the main sheet. Ненахождение строки — NOT an exception: returns False with
+    a warning (caller does append, plan 21-08). Exceptions raised while touching the MAIN sheet
+    propagate to the caller (update_row_by_id), which retries the whole attempt via
+    RETRY_DELAYS — same contract as append_to_sheet."""
+    if tab_name:
+        try:
+            named_sheet = _get_named_sheet(tab_name)
+            if _update_row_by_id_in_range(named_sheet, telegram_id, row):
+                return True
+        except Exception as e:
+            logger.warning(
+                f"_update_row_by_id_sync: tab {tab_name!r} lookup failed for "
+                f"telegram_id={telegram_id}, falling back to main sheet: {e}"
+            )
+
+    if _update_row_by_id_in_range(_get_sheet(), telegram_id, row):
+        return True
+
+    logger.warning(
+        f"update_row_by_id: telegram_id={telegram_id} not found on tab {tab_name!r} "
+        "or the main sheet"
+    )
+    return False
+
+
+async def update_row_by_id(tab_name: str | None, telegram_id: int, row: list) -> bool:
+    """Точечное обновление строки делегата по telegram_id вместо второй строки-append (D-16):
+    правка анкеты в Mini App обновляет ту же строку таблицы, а не дублирует её. Найдена — один
+    запрос update() на диапазон A{row}:{end}. Не найдена — fail-soft False (вызывающий делает
+    append, план 21-08), данные не теряются. Провал API/сети — ретраи по RETRY_DELAYS (как
+    append_to_sheet), после исчерпания — _alert_admins_sheet_failure и False. В логах — только
+    telegram_id и имя вкладки, НИКОГДА содержимое row (T-21-17, ПД)."""
+    if not config.GOOGLE_SHEET_ID or not config.GOOGLE_CREDENTIALS_FILE:
+        logger.warning("Google Sheet ID or Credentials not set. Skipping row update.")
+        return False
+
+    for attempt in range(MAX_RETRIES):
+        try:
+            return await asyncio.to_thread(_update_row_by_id_sync, tab_name, telegram_id, row)
+        except Exception as e:
+            _reset_sheet_cache()
+            delay = RETRY_DELAYS[attempt] if attempt < len(RETRY_DELAYS) else RETRY_DELAYS[-1]
+            logger.warning(
+                f"Sheet update_row_by_id attempt {attempt + 1}/{MAX_RETRIES} failed for "
+                f"telegram_id={telegram_id}: {e}. Retrying in {delay}s..."
+            )
+            await asyncio.sleep(delay)
+
+    logger.error(f"Failed to update row after {MAX_RETRIES} attempts for telegram_id={telegram_id}")
+    await _alert_admins_sheet_failure(f"обновление строки, telegram_id={telegram_id}")
+    return False
+
+
 def _bulk_update_status_row_range(sheet, wanted: set[str], id_to_label: dict[str, str]) -> tuple[int, set[str]]:
     """Shared batch_update pass for one worksheet: writes every id in `wanted` that's found on
     this sheet's col1, one batch_update for the whole sheet. Returns (updated_count, found_ids)."""
