@@ -669,3 +669,45 @@ def test_form_spec_hides_party_fork_when_track_known(db_path):
     spec = asyncio.run(reg_engine.form_spec({}, None, None))
     assert "party_fork" in spec["pre"]
 
+
+# ── D-27: возвращенец видит развилки города/трека так же, как бот, с предзаполнением ────────
+# (владелец, 02.09) — `is_registered=bool(prior)` больше не прячет развилку; см. reg_engine.py
+# `form_spec` и `miniapp/routers/form.py::_load_context`/`_pre_items`.
+
+def test_pre_items_preselect_prior_value_for_returning_delegate(client):
+    _set("event_city_enabled", "on")
+    _set("party_enabled", "on")
+    _set("party_fork_question", "on")
+    _fill(REJECTED_ID, event_city="spb", participant_type="party_overnight")
+
+    body = client.get("/app/api/reg/draft", headers=_hdr(REJECTED_ID)).json()
+    assert "city_fork" in body["pre"]
+    assert "party_fork" in body["pre"]
+    city_item = next(i for i in body["pre_items"] if i["type"] == "city_fork")
+    party_item = next(i for i in body["pre_items"] if i["type"] == "party_fork")
+    assert city_item["value"] == "spb"
+    assert party_item["value"] == "party_overnight"
+
+
+def test_pre_items_no_fork_for_returning_delegate_when_module_off(client):
+    _fill(REJECTED_ID, event_city="spb", participant_type="party_overnight")
+    body = client.get("/app/api/reg/draft", headers=_hdr(REJECTED_ID)).json()
+    assert "city_fork" not in body["pre"]
+    assert "party_fork" not in body["pre"]
+    assert body["pre_items"] == [] or all(i["type"] not in ("city_fork", "party_fork") for i in body["pre_items"])
+
+
+def test_patch_city_choice_accepted_for_returning_delegate_not_already_set(client):
+    """D-27: у возвращенца (kind='new', есть прошлая заявка) прошлый город НЕ переносится в
+    `ctx["event_city"]` (это решало бы за него, как rereg_start бота никогда не делает) — PATCH
+    новой развилки принимается, а не 409 already_set."""
+    _set("event_city_enabled", "on")
+    _fill(REJECTED_ID, event_city="spb")
+
+    resp = client.patch(
+        "/app/api/reg/draft", headers=_hdr(REJECTED_ID),
+        json={"version": 0, "event_city": "msk"},
+    )
+    assert resp.status_code == 200, resp.text
+    assert _draft_row(REJECTED_ID)["event_city"] == "msk"
+
