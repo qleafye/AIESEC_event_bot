@@ -15,6 +15,14 @@ Telegram или пересобирать таблицу самому — еди�
 - `submission_reviewed` / `task_changed` / `coins_manual` -> `services.game_sync.request_resync()`
   — debounced, синхронная, схлопывает пачку событий в один ребилд вкладок геймы. Делегата о
   решении по сдаче уведомляет сам Mini App (план 19-05) — повторно НЕ уведомляем.
+- `reg_finalized` / `reg_edited` -> `services.reg_finalize.post_finalize(bot, telegram_id, mode,
+  ...)` (Phase 21, 21-08) — тот же хвост (Sheets/уведомления менеджерам/приветствие при
+  auto-approve), что и прямой вызов из чата (`handlers/registration.py::finalize_registration`).
+  Payload несёт только `telegram_id` (T-21-08) — для `reg_edited` недостающие
+  `changed_columns`/`remoderated`/`resubmitted` дочитывает `services.reg_finalize.
+  derive_edit_facts` из уже записанной `reg_answer_history`/`users.status`.
+- `reg_resume_upload` -> `services.reg_finalize.handle_resume_upload(bot, ...)` — резюме,
+  загруженное в Mini App: Nextcloud + ячейка «Резюме (ссылка)» + копия делегату в чат (D-05).
 
 At-least-once, с ретраями (T-19-56): исключение -> `mark_miniapp_outbox_failed` (`attempts+1`,
 текст ошибки), после `MAX_ATTEMPTS` попыток строка выводится из очереди (помечена обработанной)
@@ -35,9 +43,11 @@ from database.db import (
     list_unprocessed_miniapp_outbox,
     mark_miniapp_outbox_failed,
     mark_miniapp_outbox_processed,
+    get_user,
 )
 from services.game_digest import notify_submission
 from services.game_sync import request_resync
+from services.reg_finalize import post_finalize, derive_edit_facts, handle_resume_upload
 
 logger = logging.getLogger(__name__)
 
@@ -64,6 +74,23 @@ async def _handle_row(bot, kind: str, payload: dict) -> None:
         return
     if kind in _RESYNC_KINDS:
         request_resync()
+        return
+    if kind in ("reg_finalized", "reg_edited"):
+        telegram_id = payload.get("telegram_id")
+        mode = "new" if kind == "reg_finalized" else "edit"
+        changed_columns, remoderated, resubmitted = None, False, False
+        if mode == "edit":
+            full = await get_user(telegram_id) or {}
+            changed_columns, remoderated, resubmitted = await derive_edit_facts(telegram_id, full)
+        await post_finalize(
+            bot, telegram_id, mode,
+            changed_columns=changed_columns, remoderated=remoderated, resubmitted=resubmitted,
+        )
+        return
+    if kind == "reg_resume_upload":
+        await handle_resume_upload(
+            bot, payload.get("telegram_id"), payload.get("file_id"), payload.get("filename")
+        )
         return
     raise ValueError(f"unknown miniapp_outbox kind: {kind!r}")
 
