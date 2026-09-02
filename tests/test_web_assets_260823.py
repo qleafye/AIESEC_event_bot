@@ -34,6 +34,8 @@ EXPECTED_ICON_NAMES = {
     "alert-triangle", "check", "search", "sparkles", "coin",
     # Phase 21 (21-UI-SPEC § Icon Inventory): мастер анкеты и формо-компоненты form.js
     "message-circle", "refresh-cw", "undo-2", "shield-check", "upload", "history",
+    # Phase 22 (22-03): превью настроек экрана
+    "eye",
 }
 
 
@@ -107,7 +109,7 @@ def test_icons_js_exports_exactly_expected_icon_names():
         f"расхождение с инвентарём UI-SPEC: лишние {names - EXPECTED_ICON_NAMES}, "
         f"не хватает {EXPECTED_ICON_NAMES - names}"
     )
-    assert len(EXPECTED_ICON_NAMES) == 32  # 26 (19.1) + 6 (Phase 21, form.js)
+    assert len(EXPECTED_ICON_NAMES) == 33  # 26 (19.1) + 6 (Phase 21, form.js) + 1 (Phase 22, preview)
 
 
 _FILL_OR_STROKE_ATTR = re.compile(r'\b(?:fill|stroke):\s*"([^"]*)"')
