@@ -12,6 +12,16 @@ skip_allowed/other_allowed у `reg_engine.step_spec()` (Pitfall 10, RESEARCH).
 Здесь только литералы — никакой логики, никаких импортов бот-фреймворка и проекта.
 """
 
+# Развилка формата участия (pre-flow, не шаг REG_FLOW): (код трека, подпись кнопки).
+# Единственный источник подписей развилки для бота (`handlers/registration.py::_party_fork_kb`)
+# и веба (`reg_engine.party_track_options`) — перенос литералов из `_party_fork_kb` байт-в-байт.
+# Перевод подписей в реестр настроек (группа «🎉 Party») — follow-up, здесь только перенос.
+PARTY_TRACK_OPTIONS = [
+    ("full", "Полная регистрация"),
+    ("party_overnight", "\U0001f389 Гости с ночёвкой"),
+    ("party_noovernight", "\U0001f389 Гости без ночёвки"),
+]
+
 DEFAULT_SOURCE_OPTIONS = [
     "Соцсети Юлид",
     "Соцсети АЙСЕК",

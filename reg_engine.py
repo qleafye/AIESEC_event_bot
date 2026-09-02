@@ -23,7 +23,10 @@ from datetime import datetime
 from config import config
 from database.db import get_setting
 from settings_schema import SETTINGS_SCHEMA, get_setting_typed
-from cities import cities_module_on, enabled_cities
+from cities import (
+    cities_module_on, city_codes, city_label, enabled_cities, get_setting_typed_for_city,
+    is_city_enabled,
+)
 from reg_labels import REG_LABELS
 import reg_options as _opts
 
@@ -484,6 +487,90 @@ async def pre_flow(answers: dict, meta: dict | None = None) -> list[str]:
     return screens
 
 
+# ── Pre-flow: выбор города / трека (gap closure фазы 21, D-01/FORM-SYNC-02) ─────────────────
+# Тап по кнопке развилки в боте (`handlers/reg_flow.py::party_pick`/`city_pick`) и PATCH из
+# приложения (`miniapp/routers/form.py::draft_patch`) проходят ОДНИ и те же проверки и тот же
+# `resolve_track` — здесь, а не в двух копиях. Тексты ошибок — прежние литералы бота,
+# переехавшие сюда как единый источник (не новый текст).
+
+# Fixed 2-entry map — exact-match only (T-05-01-01: no prefix/startswith/regex matching, so
+# no crafted payload can produce a track value outside this closed vocabulary).
+PARTY_TAG_MAP = {"party_over": "party_overnight", "party_noover": "party_noovernight"}
+# Закрытый словарь кодов, которые может прислать пикер формата участия (веб).
+PARTY_TRACK_CODES = ("full", "party_overnight", "party_noovernight")
+
+# Один текст на тап по устаревшей кнопке в боте и на PATCH из приложения.
+CITY_CHOICE_INVALID_TEXT = "Некорректный выбор."
+CITY_CLOSED_TEXT = "Регистрация на этот город закрыта."
+PARTY_CLOSED_TEXT = "Регистрация на вечеринку уже закрыта."
+
+
+async def resolve_track(candidate: str | None, city_code: str | None = None) -> str:
+    """Phase 7 (SHORT-01/CONTEXT.md): resolves the effective track a fresh/resumed
+    registration should run under, given a candidate track (deep-link arg or a track already
+    recorded in FSM/`reg_started`).
+
+    1. A party track is authoritative no matter what `registration_mode` says — party has
+       its own master gate (`party_enabled`) and deep-link vocabulary; this phase must not
+       touch that.
+    2. Otherwise, `registration_mode == "short"` is a GLOBAL override (user decision,
+       CONTEXT.md: "7-10 августа краткая форма для всех новых заявок, полная недоступна").
+       It wins even over a `candidate` of "full" recovered from a stale `reg_started` row —
+       a delegate who started under the old full form and returns mid-promo gets funneled
+       into the promo track too.
+    3. Otherwise fall back to whatever `candidate` already says, defaulting to "full". This
+       is what makes the promo reversible without stranding in-flight delegates: someone who
+       started under "short" and finishes AFTER the manager flips the toggle back keeps
+       "short" (step 3 sees a non-None candidate and never reaches step 2's mode check).
+
+    Phase 09.2-04 (CITY-04/CONTEXT B): step 2 now reads `registration_mode` through
+    `cities.get_setting_typed_for_city`, so a manager can flip the short/full toggle for one
+    city without affecting every other city — `city_code=None` (the default) collapses to
+    the exact global read this function always used. The caller resolves the city, not this
+    function (RESEARCH Pitfall 3) — by the time `_resolve_track` runs, the delegate's city is
+    already known by construction (07.1: welcome -> CITY -> track fork), so re-deriving it
+    here would risk a second resolution disagreeing with the caller's own."""
+    if _is_party_track(candidate):
+        return candidate
+    if await get_setting_typed_for_city("registration_mode", city_code) == SHORT_TRACK:
+        return SHORT_TRACK
+    return candidate or "full"
+
+
+async def party_track_options() -> list[dict]:
+    """Варианты пикера формата участия — тот же список и те же подписи, что у кнопок
+    `_party_fork_kb` бота (`reg_options.PARTY_TRACK_OPTIONS`)."""
+    return [{"code": code, "label": label} for code, label in _opts.PARTY_TRACK_OPTIONS]
+
+
+async def city_fork_options() -> list[dict]:
+    """Варианты пикера города — по включённым городам в порядке CITIES, подпись из
+    `city_label` (per-city override менеджера): ровно то, что строит `_city_fork_kb` бота."""
+    return [{"code": c["code"], "label": await city_label(c["code"])} for c in await enabled_cities()]
+
+
+async def validate_city_choice(code) -> tuple[str | None, str | None]:
+    """Порядок проверок — как в `city_pick`: закрытый словарь CITIES, затем `is_city_enabled`
+    (окно «нарисовали — выключили»)."""
+    if code not in city_codes():
+        return None, CITY_CHOICE_INVALID_TEXT
+    if not await is_city_enabled(code):
+        return None, CITY_CLOSED_TEXT
+    return code, None
+
+
+async def validate_track_choice(code, city_code: str | None = None) -> tuple[str | None, str | None]:
+    """Ровно то, что делает `party_pick` -> `_start_registration_flow` -> `resolve_track`:
+    закрытый словарь кодов; вечеринка — только при `party_enabled == on`; «Полная регистрация»
+    (`full`) означает «кандидата нет» и уходит в `resolve_track(None, city)` — так глобальный
+    `registration_mode == short` перебивает выбор, как у бота."""
+    if code not in PARTY_TRACK_CODES:
+        return None, CITY_CHOICE_INVALID_TEXT
+    if _is_party_track(code) and await get_setting_typed("party_enabled") != "on":
+        return None, PARTY_CLOSED_TEXT
+    return await resolve_track(None if code == "full" else code, city_code), None
+
+
 # ── Веб-контракт: allowlist колонок, спека шага, спека формы ────────────────────────────────
 
 _EXTRA_ANSWER_COLUMNS = ["resume_file_id", "resume_file_name", "resume_text"]
@@ -640,7 +727,11 @@ async def form_spec(answers: dict, participant_type: str | None = None,
             spec["value"] = None
             spec["value_source"] = None
         steps_out.append(spec)
-    pre = await pre_flow(answers, {"event_city": event_city, "is_registered": bool(prior)})
+    # Вилка трека не показывается, когда трек уже известен (deep-link или выбор в приложении) —
+    # паритет с `should_show_fork` в боте.
+    pre = await pre_flow(answers, {
+        "event_city": event_city, "is_registered": bool(prior), "party_track": participant_type,
+    })
     return {"pre": pre, "steps": steps_out, "progress": {"done": done, "total": len(steps_out)}}
 
 
