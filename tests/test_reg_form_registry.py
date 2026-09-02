@@ -11,6 +11,8 @@ SETTINGS_SCHEMA (модуль-уровня dict, БД не требуется).
 """
 import re
 
+import handlers.admin_miniapp as admin_miniapp
+import miniapp.deps as miniapp_deps
 from settings_schema import SETTINGS_SCHEMA
 
 # Закрытый список 30 текстов фазы (Task 1) — добавление 31-го обязано осознанно ломать
@@ -113,3 +115,24 @@ def test_default_placeholders_are_described_in_prompt():
             assert placeholder in prompt, (
                 f"{key}: дефолт содержит {placeholder!r}, но prompt его не описывает"
             )
+
+
+# ── Task 2: раздел «📝 Анкета» + тумблер повторной модерации ───────────────────────────
+
+def test_form_section_registered_in_miniapp_deps():
+    assert "form" in miniapp_deps.SECTIONS
+
+
+def test_miniapp_section_form_default_on():
+    assert SETTINGS_SCHEMA["miniapp_section_form"]["default"] == "on"
+
+
+def test_toggle_reg_edit_remoderation_default_off():
+    assert SETTINGS_SCHEMA["toggle_reg_edit_remoderation"]["default"] == "off"
+
+
+def test_section_keys_match_sections():
+    """Сторож от расхождения списка разделов бота (SECTION_KEYS) и веба (SECTIONS)."""
+    assert set(admin_miniapp.SECTION_KEYS) == {
+        f"miniapp_section_{s}" for s in miniapp_deps.SECTIONS
+    }

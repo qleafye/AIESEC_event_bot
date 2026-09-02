@@ -28,6 +28,7 @@ MINIAPP_KEYS = [
     "miniapp_section_coins",
     "miniapp_section_leaderboard",
     "miniapp_section_profile",
+    "miniapp_section_form",  # Phase 21 Plan 02 (FORM-SYNC-05, D-08): раздел «📝 Анкета»
     "miniapp_section_review",
     "miniapp_section_admin_tasks",
     "miniapp_section_stats",
@@ -45,6 +46,7 @@ MINIAPP_KEYS = [
     "miniapp_profile_edit_hint",
     "miniapp_upload_caption_delegate",
     "miniapp_upload_caption_staff",
+    "miniapp_upload_caption_resume",  # Phase 21 Plan 02 (FORM-SYNC-05, Pattern 5)
     # 260824-8qw (MD-03): подтверждение перед выключением приложения / скрытием от делегатов
     "miniapp_confirm_disable_text",
     "miniapp_confirm_staff_only_text",
@@ -88,8 +90,8 @@ THEME_ENUM_KEYS = [
 _ALLOWED_TYPES = {"toggle", "int", "list", "date", "text", "enum", "photo", "file"}
 
 
-def test_exactly_47_miniapp_keys_and_no_extra():
-    assert len(MINIAPP_KEYS) == 47
+def test_exactly_49_miniapp_keys_and_no_extra():
+    assert len(MINIAPP_KEYS) == 49
     present = sorted(k for k in SETTINGS_SCHEMA if k.startswith("miniapp_"))
     assert present == sorted(MINIAPP_KEYS)
 
@@ -107,7 +109,7 @@ def test_every_miniapp_key_has_label_group_and_valid_type():
 def test_toggle_defaults():
     assert SETTINGS_SCHEMA["miniapp_enabled"]["default"] == "off"
     assert SETTINGS_SCHEMA["miniapp_staff_only"]["default"] == "off"
-    assert len(SECTION_KEYS) == 8
+    assert len(SECTION_KEYS) == 9
     for key in SECTION_KEYS:
         entry = SETTINGS_SCHEMA[key]
         assert entry["type"] == "enum" and entry["options"] == ["on", "off"], key
@@ -128,7 +130,7 @@ def test_text_keys_have_human_defaults():
         k for k in MINIAPP_KEYS
         if SETTINGS_SCHEMA[k]["type"] == "text" and k != "miniapp_accent"
     ]
-    assert len(text_keys) == 23
+    assert len(text_keys) == 24
     for key in text_keys:
         default = SETTINGS_SCHEMA[key]["default"]
         assert isinstance(default, str) and default.strip(), key
