@@ -6,6 +6,12 @@
 (D-03/D-04/D-07/D-08/D-15/D-16/D-18): ручки пресетов оформления, ассеты (стикеры/обложки/
 лого тёмной темы/иконка монеты), приветственный экран, тексты пустых состояний менеджера.
 Хвост 19.1-06 (D-18): тексты пустой очереди проверки сдач (`miniapp_empty_review`/`_skipped`).
+
+Phase 22 Plan 02 (WEB-SET-02/03, D-15): +41 надпись веб-экрана «⚙️ Настройки» Mini App
+(`miniapp_settings_*` из 22-UI-SPEC § Copywriting Contract — 38 UI-текстов, `misc`-заголовок
+НЕ заведён, т.к. leftover-группа `_settings_group_keys("misc")` сегодня пуста) + 3 текста
+подтверждения опасных ключей (`miniapp_settings_confirm_*`), которых в реестре раньше не
+было (требует `settings_ops.dangerous_confirm_key`, план 22-01).
 """
 from __future__ import annotations
 
@@ -76,7 +82,52 @@ MINIAPP_KEYS = [
     # пустые состояния менеджера
     "miniapp_empty_review",
     "miniapp_empty_review_skipped",
+    # Phase 22 Plan 02 (WEB-SET-02/03, D-15): веб-экран «⚙️ Настройки» Mini App
+    "miniapp_settings_search_placeholder_text",
+    "miniapp_settings_search_count_text",
+    "miniapp_settings_search_empty_heading_text",
+    "miniapp_settings_search_empty_body_text",
+    "miniapp_settings_search_suggest_text",
+    "miniapp_settings_value_default_text",
+    "miniapp_settings_value_set_text",
+    "miniapp_settings_value_not_set_text",
+    "miniapp_settings_reset_default_label_text",
+    "miniapp_settings_reset_default_confirm_text",
+    "miniapp_settings_reset_city_label_text",
+    "miniapp_settings_city_own_badge_text",
+    "miniapp_settings_city_default_badge_text",
+    "miniapp_settings_city_override_count_text",
+    "miniapp_settings_city_override_list_text",
+    "miniapp_settings_preview_button_text",
+    "miniapp_settings_preview_heading_text",
+    "miniapp_settings_batch_bar_text",
+    "miniapp_settings_batch_discard_text",
+    "miniapp_settings_diff_heading_text",
+    "miniapp_settings_diff_was_label_text",
+    "miniapp_settings_diff_will_label_text",
+    "miniapp_settings_diff_confirm_cta_text",
+    "miniapp_settings_diff_confirm_dangerous_cta_text",
+    "miniapp_settings_saved_toast_text",
+    "miniapp_settings_error_toast_text",
+    "miniapp_settings_stale_badge_text",
+    "miniapp_settings_stale_current_value_text",
+    "miniapp_settings_stale_overwrite_label_text",
+    "miniapp_settings_stale_keep_label_text",
+    "miniapp_settings_sheets_needs_confirm_text",
+    "miniapp_settings_upload_413_text",
+    "miniapp_settings_upload_offline_text",
+    "miniapp_settings_upload_wrong_type_text",
+    "miniapp_settings_forbidden_text",
+    "miniapp_settings_loading_text",
+    "miniapp_settings_load_error_text",
+    "miniapp_settings_dangerous_saved_toast_text",
+    "miniapp_settings_confirm_reg_mode_text",
+    "miniapp_settings_confirm_approval_mode_text",
+    "miniapp_settings_confirm_event_type_text",
 ]
+
+# Phase 22 Plan 02: новые тексты веб-экрана настроек — используются в проверках ниже.
+MINIAPP_SETTINGS_SCREEN_KEYS = [k for k in MINIAPP_KEYS if k.startswith("miniapp_settings_")]
 
 SECTION_KEYS = [k for k in MINIAPP_KEYS if k.startswith("miniapp_section_")]
 
@@ -90,8 +141,8 @@ THEME_ENUM_KEYS = [
 _ALLOWED_TYPES = {"toggle", "int", "list", "date", "text", "enum", "photo", "file"}
 
 
-def test_exactly_49_miniapp_keys_and_no_extra():
-    assert len(MINIAPP_KEYS) == 49
+def test_exactly_90_miniapp_keys_and_no_extra():
+    assert len(MINIAPP_KEYS) == 90
     present = sorted(k for k in SETTINGS_SCHEMA if k.startswith("miniapp_"))
     assert present == sorted(MINIAPP_KEYS)
 
@@ -130,7 +181,7 @@ def test_text_keys_have_human_defaults():
         k for k in MINIAPP_KEYS
         if SETTINGS_SCHEMA[k]["type"] == "text" and k != "miniapp_accent"
     ]
-    assert len(text_keys) == 24
+    assert len(text_keys) == 65
     for key in text_keys:
         default = SETTINGS_SCHEMA[key]["default"]
         assert isinstance(default, str) and default.strip(), key
@@ -238,6 +289,40 @@ def test_limits_match_bot():
     assert miniapp_config.MAX_UPLOAD_BYTES == 20 * 1024 * 1024
     assert miniapp_config.PHOTO_MAX_BYTES == 10 * 1024 * 1024
     assert miniapp_config.INIT_DATA_MAX_AGE == 86400
+
+
+def test_settings_screen_keys_count_and_shape():
+    """Phase 22 Plan 02 (WEB-SET-02/03): 38 UI-текстов экрана настроек + 3 текста
+    подтверждения опасных ключей = 41. `misc`-заголовок не заведён, т.к. leftover-группа
+    `_settings_group_keys("misc")` сегодня пуста (см. docstring)."""
+    assert len(MINIAPP_SETTINGS_SCREEN_KEYS) == 41
+    assert "miniapp_settings_misc_group_label_text" not in MINIAPP_SETTINGS_SCREEN_KEYS
+    for key in MINIAPP_SETTINGS_SCREEN_KEYS:
+        entry = SETTINGS_SCHEMA[key]
+        assert entry["type"] == "text", key
+        assert entry["group"] == "miniapp", key
+        assert not entry.get("per_city"), key
+        assert isinstance(entry["default"], str) and entry["default"].strip(), key
+        assert isinstance(entry["prompt"], str) and entry["prompt"].strip(), key
+        assert isinstance(entry["label"], str) and entry["label"].strip(), key
+
+
+def test_settings_screen_confirm_keys_name_real_consequence():
+    """22-01 `settings_ops.dangerous_confirm_key` требует эти три ключа — CLAUDE.md: подтверждение
+    называет реальный ущерб, а не общую фразу «вы уверены?»."""
+    reg = SETTINGS_SCHEMA["miniapp_settings_confirm_reg_mode_text"]["default"]
+    approval = SETTINGS_SCHEMA["miniapp_settings_confirm_approval_mode_text"]["default"]
+    event_type = SETTINGS_SCHEMA["miniapp_settings_confirm_event_type_text"]["default"]
+    assert "форм" in reg
+    assert "одобряться" in approval
+    assert "Оплата" in event_type and "Согласия" in event_type
+
+
+def test_settings_screen_keys_no_html_promise():
+    """Ни один новый prompt не обещает «поддерживается HTML» — эти ключи не входят в
+    HTML_SETTINGS (правило 17.1, `test_html_promise_in_prompt_matches_html_settings`)."""
+    for key in MINIAPP_SETTINGS_SCREEN_KEYS:
+        assert "html" not in SETTINGS_SCHEMA[key]["prompt"].lower(), key
 
 
 def test_load_miniapp_config_wraps_dashboard_config():
