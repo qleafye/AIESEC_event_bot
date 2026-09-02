@@ -66,6 +66,7 @@ SECTIONS: list[tuple[str, str, list[tuple]]] = [
     ("apps", "📋 Заявки", [
         ("op", "admin_applications"),
         ("op", "admin_stuck_questions"),
+        ("screen", "modcard_open", "🧾 Поля карточки заявки"),
         ("toggle", "settings_toggle_full_approval"),
         ("toggle", "settings_toggle_short_approval"),
         ("toggle", "settings_toggle_party_approval"),
