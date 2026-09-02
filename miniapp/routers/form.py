@@ -1,0 +1,294 @@
+"""Phase 21 (21-10, FORM-SYNC-03/04/05): HTTP-контракт анкеты Mini App — прочитать черновик со
+спекой шагов (`reg_engine.form_spec`), записать ответы пофилевым слиянием (`version` +
+`conflicts`), подписать согласия, отправить анкету. Один движок для чата бота и приложения
+(T-21-05) — этот роутер не содержит НИ ОДНОЙ собственной проверки формата ввода: судья —
+`reg_engine.validate_answer`, финал — `services.reg_finalize.finalize_data`/`post_finalize`
+(план 21-08), те же функции, что зовёт бот.
+
+Права (RESEARCH § «Права / безопасность формы», T-21-01/T-21-19): `telegram_id` — только из
+подписанного initData (`form_gate`, не `delegate_gate` — Pitfall 9: незарегистрированный
+делегат с черновиком `kind='new'` обязан пройти), allowlist колонок PATCH —
+`reg_engine.column_to_step`, ни один из маршрутов не принимает чужой `telegram_id` ни в пути,
+ни в теле. Логи — только `telegram_id`/`step`/`version`/коды ошибок, НИКОГДА `answers` (T-21-08).
+
+Веб-процесс не ходит в Telegram Bot API/Sheets сам (D-01 фазы 19): `submit`/резюме ставят
+события в `miniapp.outbox`, их разбирает `services/miniapp_outbox.py` в боте
+(`post_finalize`/`handle_resume_upload`, план 21-08). Единственное исключение — мгновенный
+ответ делегату в ЕГО ЖЕ чат через `telegram_api.send_message` (тот же приём, что
+`miniapp/routers/review.py::_notify_delegate`) — не эффект над чужими данными, а копия того,
+что уже отдано в ответе HTTP.
+"""
+from __future__ import annotations
+
+import logging
+from typing import Any
+
+from fastapi import APIRouter, Depends, HTTPException, Request
+from pydantic import BaseModel, Field
+
+import reg_engine
+from cities import cities_module_on, get_setting_typed_for_city, is_city_enabled
+from database.db import (
+    claim_reg_draft,
+    get_reg_draft,
+    get_setting,
+    get_user,
+    get_user_consents,
+    record_user_consent,
+    upsert_reg_draft,
+)
+from settings_schema import get_setting_typed
+from services.reg_finalize import finalize_data, resolve_delegate_text
+
+from miniapp import telegram_api
+from miniapp.deps import Principal, form_gate, require_section
+from miniapp.outbox import enqueue
+from miniapp.telegram_api import TelegramApiError
+
+logger = logging.getLogger(__name__)
+router = APIRouter()
+
+
+# ── Контекст черновика: общий для GET/PATCH/submit ──────────────────────────────────────────
+
+async def _load_context(telegram_id: int) -> dict:
+    """Один общий разбор «где сейчас черновик» — GET/PATCH обязаны видеть одно и то же
+    состояние, иначе PATCH мог бы записать поверх track/city, которых GET не знал (T-21-19).
+    Черновика может не быть вовсе — тогда `kind` выводится ТЕМ ЖЕ правилом, что
+    `_start_registration_flow` бота (план 21-09): есть незакрытая строка `users` текущего
+    сезона -> `edit`, иначе (новичок / отклонён / прошлый сезон) -> `new` с префиллом (D-07)."""
+    draft = await get_reg_draft(telegram_id)
+    user_row = await get_user(telegram_id)
+    is_returning = reg_engine.is_returning_row(user_row, (await get_setting("event_season") or "").strip() or None)
+
+    if draft:
+        kind = draft["kind"]
+        answers = draft["answers"] or {}
+        meta = draft["meta"] or {}
+        participant_type = draft.get("participant_type")
+        event_city = draft.get("event_city")
+        version = draft["version"]
+        step = draft.get("step")
+    else:
+        kind = "edit" if (user_row and not is_returning) else "new"
+        answers = {}
+        meta = {}
+        participant_type = user_row.get("participant_type") if (kind == "edit" and user_row) else None
+        event_city = user_row.get("event_city") if user_row else None
+        version = 0
+        step = None
+
+    # Pitfall 5: prior — ТОЛЬКО на лету из users, никогда не персистится в reg_drafts.
+    prior = reg_engine.prior_answers_for(user_row) if (kind == "new" and is_returning) else {}
+
+    return {
+        "draft": draft,
+        "user_row": user_row,
+        "kind": kind,
+        "answers": answers,
+        "meta": meta,
+        "participant_type": participant_type,
+        "event_city": event_city,
+        "version": version,
+        "step": step,
+        "prior": prior,
+    }
+
+
+async def _registration_closed(event_city: str | None) -> bool:
+    """D-11: «регистрация закрыта режимом города» — единственный существующий в боте сигнал
+    для конкретного города (общего тумблера «закрыть регистрацию совсем» бот сегодня не имеет;
+    появится — эта функция станет его первой проверкой). Единственный/безгородской ивент
+    (`cities_module_on() == False`) никогда не «закрыт» этой проверкой — паритет с ботом, где
+    такое событие сегодня тоже нельзя закрыть переключателем города."""
+    if not event_city or not await cities_module_on():
+        return False
+    return not await is_city_enabled(event_city)
+
+
+async def _draft_response(telegram_id: int, ctx: dict | None = None) -> dict:
+    ctx = ctx or await _load_context(telegram_id)
+    closed = ctx["kind"] == "new" and await _registration_closed(ctx["event_city"])
+    spec = await reg_engine.form_spec(
+        ctx["answers"], ctx["participant_type"], ctx["event_city"], prior=ctx["prior"],
+    )
+    for step_spec_row in spec["steps"]:
+        if step_spec_row["key"] == "resume":
+            step_spec_row["has_prior_resume"] = reg_engine.has_prior_resume(ctx["user_row"])
+    return {
+        "exists": ctx["draft"] is not None,
+        "kind": ctx["kind"],
+        "step": ctx["step"],
+        "version": ctx["version"],
+        "pre": spec["pre"],
+        "steps": spec["steps"],
+        "progress": spec["progress"],
+        "closed": closed,
+        "closed_text": (
+            await get_setting_typed_for_city("reg_form_closed_text", ctx["event_city"]) if closed else None
+        ),
+        "prior_badge_text": (
+            await get_setting_typed("reg_form_prior_answer_badge_text") if ctx["prior"] else None
+        ),
+    }
+
+
+# ── GET /app/api/reg/draft ───────────────────────────────────────────────────────────────
+
+@router.get("/app/api/reg/draft")
+async def draft_get(
+    p: Principal = Depends(form_gate), _: Principal = Depends(require_section("form")),
+) -> dict:
+    return await _draft_response(p.telegram_id)
+
+
+# ── PATCH /app/api/reg/draft ─────────────────────────────────────────────────────────────
+
+class DraftPatch(BaseModel):
+    version: int
+    answers: dict[str, Any] = Field(default_factory=dict)
+    step: str | None = None
+
+
+def _unwrap_other(raw: Any) -> Any:
+    """Pitfall 10: веб шлёт `{"other": "текст"}` для choice-шагов с `other_allowed` вместо
+    литерала «Другое» — движок про эту обёртку не знает, распаковка целиком на роутере."""
+    if isinstance(raw, dict) and "other" in raw:
+        return raw["other"]
+    return raw
+
+
+@router.patch("/app/api/reg/draft")
+async def draft_patch(
+    body: DraftPatch,
+    p: Principal = Depends(form_gate),
+    _: Principal = Depends(require_section("form")),
+) -> dict:
+    ctx = await _load_context(p.telegram_id)
+    if ctx["kind"] == "new" and await _registration_closed(ctx["event_city"]):
+        raise HTTPException(403, {
+            "reason": "registration_closed",
+            "text": await get_setting_typed_for_city("reg_form_closed_text", ctx["event_city"]),
+        })
+
+    errors: dict[str, str] = {}
+    step_patch: dict[str, Any] = {}
+    for column, raw in body.answers.items():
+        step_key = reg_engine.column_to_step(column)
+        if step_key is None:
+            raise HTTPException(400, {"reason": "bad_field", "field": column})
+        value, err = reg_engine.validate_answer(
+            step_key, _unwrap_other(raw), participant_type=ctx["participant_type"],
+        )
+        if err:
+            errors[column] = err
+        else:
+            step_patch[step_key] = value
+    if errors:
+        raise HTTPException(400, {"reason": "invalid", "errors": errors})
+
+    field_versions = ctx["meta"].get("field_versions", {})
+    touched_columns = [reg_engine.STEP_TO_COLUMN.get(sk, sk) for sk in step_patch]
+    conflicts = reg_engine.conflicts(field_versions, body.version, touched_columns)
+
+    new_answers = reg_engine.apply_answers(ctx["answers"], step_patch)
+    delta = {col: val for col, val in new_answers.items() if ctx["answers"].get(col) != val}
+
+    await upsert_reg_draft(
+        p.telegram_id,
+        kind=ctx["kind"],
+        participant_type=ctx["participant_type"],
+        event_city=ctx["event_city"],
+        step=body.step,
+        patch=delta,
+        source="miniapp",
+    )
+    logger.info(
+        "reg draft patch telegram_id=%s step=%s base_version=%s columns=%s",
+        p.telegram_id, body.step, body.version, sorted(delta.keys()),
+    )
+    resp = await _draft_response(p.telegram_id)
+    resp["conflicts"] = conflicts
+    return resp
+
+
+# ── POST /app/api/reg/consent/{key} ──────────────────────────────────────────────────────
+
+@router.post("/app/api/reg/consent/{key}")
+async def draft_consent(
+    key: str,
+    p: Principal = Depends(form_gate),
+    _: Principal = Depends(require_section("form")),
+) -> dict:
+    valid_keys = {consent_key for _label, consent_key in await reg_engine.consent_entries()}
+    if key not in valid_keys:
+        raise HTTPException(400, {"reason": "bad_key"})
+    await record_user_consent(p.telegram_id, key)  # idempotent (INSERT OR IGNORE)
+    return {"ok": True, "key": key}
+
+
+# ── POST /app/api/reg/draft/submit ───────────────────────────────────────────────────────
+
+@router.post("/app/api/reg/draft/submit")
+async def draft_submit(
+    request: Request,
+    p: Principal = Depends(form_gate),
+    _: Principal = Depends(require_section("form")),
+) -> dict:
+    # T-21-05/D-23: серверная проверка обязательна — скрытия кнопки на фронте недостаточно.
+    consent_steps = await reg_engine.get_consent_steps()
+    required_keys = [step_key.split(":", 1)[1] for step_key in consent_steps]
+    if required_keys:
+        signed = set(await get_user_consents(p.telegram_id))
+        missing = [key for key in required_keys if key not in signed]
+        if missing:
+            raise HTTPException(409, {
+                "reason": "consent_required",
+                "keys": missing,
+                "text": await get_setting_typed("reg_form_consent_required_text"),
+            })
+
+    # T-21-02: claim перед финалом — второй submit (гонка с чатом) получает 409, не вторую запись.
+    draft = await claim_reg_draft(p.telegram_id)
+    if draft is None:
+        raise HTTPException(409, {"reason": "already_submitting"})
+
+    try:
+        result = await finalize_data(p.telegram_id, p.username, draft)
+    except Exception:
+        # finalize_data сама освобождает claim (release_reg_draft) перед пробросом исключения.
+        logger.exception("reg draft submit: finalize_data failed telegram_id=%s", p.telegram_id)
+        raise HTTPException(500, {"reason": "server_error"})
+
+    event_city = draft.get("event_city")
+    if result["mode"] == "new":
+        heading = await get_setting_typed_for_city("reg_form_complete_heading_text", event_city)
+        body = await get_setting_typed_for_city("reg_form_complete_body_text", event_city)
+    else:
+        heading = await resolve_delegate_text(
+            result["mode"],
+            remoderated=result["remoderated"],
+            resubmitted=result["resubmitted"],
+            event_city=event_city,
+        )
+        body = None
+
+    kind_event = "reg_finalized" if result["mode"] == "new" else "reg_edited"
+    await enqueue(kind_event, {"telegram_id": p.telegram_id})
+    logger.info(
+        "reg draft submit telegram_id=%s mode=%s status=%s", p.telegram_id, result["mode"], result["status"],
+    )
+
+    chat_text = heading if not body else f"{heading}\n{body}"
+    if chat_text:
+        try:
+            await telegram_api.send_message(request.app.state.cfg, p.telegram_id, chat_text)
+        except TelegramApiError as exc:
+            logger.warning(
+                "reg draft submit: chat notify failed telegram_id=%s (%s)", p.telegram_id, exc.reason,
+            )
+
+    return {"mode": result["mode"], "status": result["status"], "heading": heading, "body": body}
+
+
+__all__ = ["router", "DraftPatch"]
