@@ -160,6 +160,32 @@ def test_split_for_telegram_chunks_fit_and_keep_lines():
             assert line in lines
 
 
+def test_split_for_telegram_hard_cuts_single_line_longer_than_limit():
+    """Полная анкета: вопрос+ответ+HTML-экранирование дали одну строку за 4096 символов —
+    режется жёстко на куски по `limit`, конкатенация БЕЗ разделителя равна исходнику."""
+    long_line = "z" * 5000
+    chunks = mc.split_for_telegram(long_line)
+    assert all(len(c) <= mc.TELEGRAM_LIMIT for c in chunks)
+    assert "".join(chunks) == long_line
+    assert len(chunks) == 2
+
+
+def test_split_for_telegram_hard_cuts_long_line_among_normal_lines():
+    head = ["строка 0", "строка 1"]
+    tail = ["строка 2", "строка 3", "строка 4"]
+    long_line = "y" * 4500
+    text = "\n".join(head + [long_line] + tail)
+    chunks = mc.split_for_telegram(text)
+    assert all(len(c) <= mc.TELEGRAM_LIMIT for c in chunks)
+    expected = [
+        "\n".join(head),
+        long_line[: mc.TELEGRAM_LIMIT],
+        long_line[mc.TELEGRAM_LIMIT:],
+        "\n".join(tail),
+    ]
+    assert chunks == expected
+
+
 # ═══════════════════════════════════════════════════════════════════════════════════════════
 # Task 3 — экран «🧾 Поля карточки заявки»: реестр, IA, сторожа
 # ═══════════════════════════════════════════════════════════════════════════════════════════
