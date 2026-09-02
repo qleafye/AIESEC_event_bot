@@ -31,10 +31,13 @@ from fastapi.responses import HTMLResponse, RedirectResponse, Response
 from fastapi.templating import Jinja2Templates
 
 from dashboard.db import read_conn
+from reg_labels import STATUS_LABELS
 from settings_schema import SETTINGS_SCHEMA
 
 import web_theme
-from miniapp.deps import SECTIONS, Principal, delegate_denial, principal, read_setting
+from miniapp.deps import (
+    SECTIONS, Principal, delegate_denial, form_access_denial, form_status, principal, read_setting,
+)
 
 router = APIRouter()
 
@@ -158,6 +161,10 @@ def me(request: Request, p: Principal = Depends(principal)) -> dict:
         event_name = read_setting(conn, "event_name")
         logo_file_id = read_setting(conn, "miniapp_logo")
         is_delegate = delegate_denial(conn, p) is None
+        # D-24/D-08: сервер решает, «открывать ли приложение на анкете» — JS только исполняет.
+        # form_access считается той же функцией, что и form_gate (T-21-34).
+        status = form_status(conn, p.telegram_id)
+        form_access = form_access_denial(conn, p) is None
         theme_settings = {key: read_setting(conn, key) for key in web_theme.THEME_KEYS.values()}
         assets = {name: read_setting(conn, key) for name, key in web_theme.ASSET_KEYS.items()}
         onboarding_text = read_setting(conn, "miniapp_onboarding_text") or ""
@@ -175,6 +182,12 @@ def me(request: Request, p: Principal = Depends(principal)) -> dict:
         "event_name": event_name,
         "logo_file_id": logo_file_id,
         "bot_username": cfg.bot_username,
+        # Анкета (gap closure фазы 21, D-24): статус заявки/черновика, доступ к экрану анкеты
+        # и признак «дом приложения — анкета» (нет заявки или незаконченный черновик новой).
+        "form_status": status,
+        "form_status_label": STATUS_LABELS.get(status, ""),
+        "form_access": form_access,
+        "form_first": form_access and sections["form"] and status in ("none", "draft"),
         # Оформление (D-03/D-04/D-08/D-15/D-16) — новые поля, старые выше НЕ переименованы.
         "theme_preset": resolved["preset"],
         "playful_tone": resolved["playful_tone"] == "on",

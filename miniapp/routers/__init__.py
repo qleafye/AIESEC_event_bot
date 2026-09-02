@@ -12,7 +12,10 @@
 
 Защищённые (dependency `principal`), префикс /app/api:
   GET  /app/api/me                 -> {telegram_id, via, caps[], city, is_delegate, is_staff,
-                                       sections{}, accent, event_name, logo_file_id, bot_username}
+                                       sections{}, accent, event_name, logo_file_id, bot_username,
+                                       form_status: none|draft|pending|approved|rejected,
+                                       form_status_label, form_access, form_first}
+                                       form_first — дом приложения = экран анкеты (D-24)
   Делегат (план 19-03, все — `delegate_gate` + `require_section`):
   GET  /app/api/tasks?offset&limit   -> {items[{id,title,category,category_label,coins,deadline_at,
                                        deadline_short,status,attempt,overdue}], total, limit, offset}

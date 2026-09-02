@@ -114,6 +114,65 @@ def test_form_section_visible_by_default_and_hidden_by_toggle(client):
     assert body["sections"]["form"] is False
 
 
+# ── /app/api/me: статус анкеты, доступ, дом приложения (gap closure фазы 21, D-24) ───────
+
+def _me(client, telegram_id):
+    return client.get("/app/api/me", headers=_hdr(telegram_id)).json()
+
+
+def test_me_form_status_contract(client):
+    from reg_labels import STATUS_LABELS
+
+    body = _me(client, UNREGISTERED_ID)
+    assert body["form_status"] == "none"
+    assert body["form_first"] is True
+    assert body["form_access"] is True
+    assert body["form_status_label"] == ""
+
+    _run(bot_db.upsert_reg_draft(UNREGISTERED_ID, kind="new", source="miniapp"))
+    body = _me(client, UNREGISTERED_ID)
+    assert body["form_status"] == "draft"
+    assert body["form_first"] is True
+
+    body = _me(client, PENDING_ID)
+    assert body["form_status"] == "pending"
+    assert body["form_first"] is False
+    assert body["form_status_label"] == STATUS_LABELS["pending"]
+
+    body = _me(client, DELEGATE_ID)
+    assert body["form_status"] == "approved"
+    assert body["form_first"] is False
+
+    body = _me(client, REJECTED_ID)
+    assert body["form_status"] == "rejected"
+    assert body["form_first"] is False
+    assert body["form_access"] is True
+
+
+def test_me_form_first_off_when_section_off(client):
+    _set("miniapp_section_form", "off")
+    body = _me(client, UNREGISTERED_ID)
+    assert body["form_first"] is False
+    assert body["form_access"] is True
+    assert body["sections"]["form"] is False
+
+
+def test_me_form_access_false_via_cookie_and_staff_only(tmp_path):
+    from tests.test_miniapp_routes import ADMIN_ID, _cookie_client
+
+    db_path = _use_tmp_db(tmp_path, "miniapp_delegate_me.db")
+    _standard_seed()
+    cfg = _cfg(db_path)
+    body = _cookie_client(cfg, ADMIN_ID).get("/app/api/me").json()
+    assert body["form_access"] is False
+    assert body["form_first"] is False
+
+    _set("miniapp_staff_only", "on")
+    body = _client(cfg).get("/app/api/me", headers=_hdr(UNREGISTERED_ID)).json()
+    assert body["form_access"] is False
+    assert body["form_first"] is False
+
+
 # ── задания ─────────────────────────────────────────────────────────────────────────────
 
 def _deadline(days: int) -> str:
