@@ -267,6 +267,29 @@ async def init_db():
         # idempotent — safe against ~590 live records.
         await _ensure_column(db, "reg_started", "partial_data", "TEXT")
 
+        # Phase 21 (FORM-SYNC-02, D-19/D-21): reg_drafts is the ONE shared home of "the
+        # questionnaire in flight" — both the bot process and the Mini App process read/write
+        # this row instead of anything living only in FSM memory. reg_started above is left
+        # completely untouched: it stays the dropout/"Незавершённые" bookkeeping table it
+        # always was; reg_drafts is a second, orthogonal table for live sync + conflict
+        # resolution (per-field version, LWW) + double-submit protection (submitting_at claim).
+        await db.execute('''
+            CREATE TABLE IF NOT EXISTS reg_drafts (
+                telegram_id INTEGER PRIMARY KEY,
+                kind TEXT NOT NULL,
+                participant_type TEXT,
+                event_city TEXT,
+                answers TEXT NOT NULL DEFAULT '{}',
+                meta TEXT NOT NULL DEFAULT '{}',
+                step TEXT,
+                version INTEGER NOT NULL DEFAULT 0,
+                updated_by TEXT NOT NULL,
+                updated_at TEXT NOT NULL,
+                created_at TEXT NOT NULL,
+                submitting_at TEXT
+            )
+        ''')
+
         # Phase 3 (SCHED-01): scheduled-broadcast payload store. APScheduler owns the
         # trigger (data/jobs.sqlite); this row holds the message/filter payload keyed by id.
         await db.execute('''
@@ -1321,6 +1344,154 @@ async def clear_reg_started(telegram_id: int):
         await db.commit()
 
 
+# ── Phase 21 (FORM-SYNC-02, D-19/D-21): reg_drafts — shared "questionnaire in flight" ────────
+# The bot's FSM lives in MemoryStorage (one process, lost on restart); the Mini App is a
+# separate process that never sees it at all. reg_drafts is the ONE table both write to on
+# every answer, so either surface can pick up where the other left off. Conflicts are
+# resolved per-field, last-write-wins, via `meta["field_versions"][column]` (D-19) — no locks.
+# Double-submit (bot finalize race with Mini App submit) is closed by claim_reg_draft's atomic
+# `WHERE submitting_at IS NULL` (same idiom as claim_submission, database/db.py:2745).
+
+def _row_to_reg_draft(row: dict) -> dict:
+    d = dict(row)
+    d["answers"] = json.loads(d["answers"]) if d.get("answers") else {}
+    d["meta"] = json.loads(d["meta"]) if d.get("meta") else {}
+    return d
+
+
+async def get_reg_draft(telegram_id: int) -> dict | None:
+    async with _connect() as db:
+        db.row_factory = aiosqlite.Row
+        async with db.execute(
+            "SELECT * FROM reg_drafts WHERE telegram_id = ?", (telegram_id,)
+        ) as cursor:
+            row = await cursor.fetchone()
+            return _row_to_reg_draft(dict(row)) if row else None
+
+
+async def upsert_reg_draft(
+    telegram_id: int,
+    *,
+    kind: str,
+    participant_type: str | None = None,
+    event_city: str | None = None,
+    step: str | None = None,
+    patch: dict | None = None,
+    meta_patch: dict | None = None,
+    source: str,
+) -> int:
+    """One short transaction: SELECT the current row (if any), merge `patch` into `answers`
+    in Python, bump `version`, stamp `meta["field_versions"][col] = new_version` for every
+    column present in `patch` (D-19 — LWW is per-field, not per-row), then INSERT or UPDATE.
+    Keys with a leading underscore in `patch` are client-side scratch (e.g. `_client_ts`) and
+    are filtered out before they ever touch `answers`. `source` is who is writing right now
+    ('bot' | 'miniapp') — stored as `updated_by` so the OTHER surface can show "обновлено в
+    чате/приложении" on refetch. Returns the new version."""
+    now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    clean_patch = {k: v for k, v in (patch or {}).items() if not k.startswith("_")}
+
+    async with _connect() as db:
+        db.row_factory = aiosqlite.Row
+        async with db.execute(
+            "SELECT answers, meta, version FROM reg_drafts WHERE telegram_id = ?",
+            (telegram_id,),
+        ) as cursor:
+            existing = await cursor.fetchone()
+
+        if existing:
+            answers = json.loads(existing["answers"]) if existing["answers"] else {}
+            meta = json.loads(existing["meta"]) if existing["meta"] else {}
+            new_version = int(existing["version"]) + 1
+        else:
+            answers = {}
+            meta = {}
+            new_version = 1
+
+        answers.update(clean_patch)
+        field_versions = meta.setdefault("field_versions", {})
+        for col in clean_patch:
+            field_versions[col] = new_version
+        if meta_patch:
+            meta.update({k: v for k, v in meta_patch.items() if not k.startswith("_")})
+
+        answers_json = json.dumps(answers, ensure_ascii=False)
+        meta_json = json.dumps(meta, ensure_ascii=False)
+
+        if existing:
+            await db.execute(
+                "UPDATE reg_drafts SET kind = ?, participant_type = COALESCE(?, participant_type), "
+                "event_city = COALESCE(?, event_city), answers = ?, meta = ?, "
+                "step = COALESCE(?, step), version = ?, updated_by = ?, updated_at = ? "
+                "WHERE telegram_id = ?",
+                (kind, participant_type, event_city, answers_json, meta_json, step,
+                 new_version, source, now, telegram_id),
+            )
+        else:
+            await db.execute(
+                "INSERT INTO reg_drafts (telegram_id, kind, participant_type, event_city, "
+                "answers, meta, step, version, updated_by, updated_at, created_at, submitting_at) "
+                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL)",
+                (telegram_id, kind, participant_type, event_city, answers_json, meta_json,
+                 step, new_version, source, now, now),
+            )
+        await db.commit()
+        # Log step/version only — never the answers payload (T-21-08, PII).
+        logger.info("reg_draft upsert telegram_id=%s step=%s version=%s", telegram_id, step, new_version)
+        return new_version
+
+
+async def claim_reg_draft(telegram_id: int) -> dict | None:
+    """Atomic single-row claim (same idiom as claim_submission, database/db.py:2745): the
+    caller that flips `submitting_at` from NULL wins (rowcount == 1) and gets the draft row
+    back; a concurrent second finalize call (bot vs Mini App, T-21-02) gets None and must
+    tell the user "уже отправляется"."""
+    now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    async with _connect() as db:
+        cursor = await db.execute(
+            "UPDATE reg_drafts SET submitting_at = ? WHERE telegram_id = ? AND submitting_at IS NULL",
+            (now, telegram_id),
+        )
+        await db.commit()
+        if cursor.rowcount != 1:
+            return None
+        db.row_factory = aiosqlite.Row
+        async with db.execute(
+            "SELECT * FROM reg_drafts WHERE telegram_id = ?", (telegram_id,)
+        ) as sel:
+            row = await sel.fetchone()
+            return _row_to_reg_draft(dict(row)) if row else None
+
+
+async def release_reg_draft(telegram_id: int) -> None:
+    """Undo a claim after a failed finalize, so the delegate can retry (D-19)."""
+    async with _connect() as db:
+        await db.execute(
+            "UPDATE reg_drafts SET submitting_at = NULL WHERE telegram_id = ?", (telegram_id,)
+        )
+        await db.commit()
+
+
+async def delete_reg_draft(telegram_id: int) -> None:
+    """Drop the draft after a successful finalize. Idempotent — a repeat call on an already
+    gone row is a no-op, not an error."""
+    async with _connect() as db:
+        await db.execute("DELETE FROM reg_drafts WHERE telegram_id = ?", (telegram_id,))
+        await db.commit()
+
+
+async def touch_reg_draft_activity(telegram_id: int) -> None:
+    """Bump `updated_at` WITHOUT touching `version`/`answers`/`meta` — a pure activity
+    heartbeat. Called every time the Mini App writes a step/answer so the delegate stops
+    looking abandoned to the dropout-nudge scan while they are actively answering there
+    (D-21: reg_started itself is never touched by this). No-op if the draft is already gone."""
+    now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    async with _connect() as db:
+        await db.execute(
+            "UPDATE reg_drafts SET updated_at = ? WHERE telegram_id = ?", (now, telegram_id)
+        )
+        await db.commit()
+
+
 # ── Phase 15 (STAT-03, D-06): append-only registration-funnel event log ──────
 # Deliberately separate from reg_started above -- reg_started is a keyed UPSERT (one row per
 # telegram_id, overwritten on every re-entry), so the moment a delegate re-/start's or the
@@ -1795,12 +1966,21 @@ async def cancel_scheduled_broadcast(broadcast_id: int):
 
 async def get_nudge_candidates(cutoff: str) -> list[int]:
     """Incomplete registrations older than cutoff that were never nudged.
-    started_at is ISO ('%Y-%m-%d %H:%M:%S') so lexicographic `<` is chronological."""
+    started_at is ISO ('%Y-%m-%d %H:%M:%S') so lexicographic `<` is chronological.
+
+    Phase 21 (D-21): a delegate answering in the Mini App right now looks abandoned to
+    reg_started (the bot never saw an answer), so they'd get nudged mid-flow. The NOT EXISTS
+    clause below excludes anyone with a draft activity stamp at or after the SAME cutoff
+    (touch_reg_draft_activity keeps it moving forward while they are active) — one threshold,
+    no separate config key. reg_started, _INCOMPLETE_NOT_REGISTERED and the «Незавершённые»
+    reads (get_incomplete_rows*) are untouched by this — the exclusion applies ONLY here."""
     async with _connect() as db:
         async with db.execute(
             "SELECT telegram_id FROM reg_started "
-            f"WHERE started_at < ? AND nudged_at IS NULL AND {_INCOMPLETE_NOT_REGISTERED}",
-            (cutoff,),
+            f"WHERE started_at < ? AND nudged_at IS NULL AND {_INCOMPLETE_NOT_REGISTERED} "
+            "AND NOT EXISTS (SELECT 1 FROM reg_drafts d WHERE d.telegram_id = reg_started.telegram_id "
+            "AND d.updated_at >= ?)",
+            (cutoff, cutoff),
         ) as cursor:
             return [row[0] for row in await cursor.fetchall()]
 
