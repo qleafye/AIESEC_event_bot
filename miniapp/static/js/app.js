@@ -51,6 +51,7 @@ export const ROUTES = [
   ["#/task-edit/{id}", "screens/task_edit.js"],
   ["#/admin-coins", "screens/admin_coins.js"],
   ["#/settings", "screens/settings.js"],
+  ["#/form", "screens/form.js"],
 ];
 
 // Разделы админки (Phase 20, ADMIN-IA-04, D-05): те же восемь разделов и ровно те же подписи,
