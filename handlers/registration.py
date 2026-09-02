@@ -14,7 +14,7 @@ from aiogram.types import FSInputFile, ReplyKeyboardRemove, InlineKeyboardMarkup
 from aiogram.utils.keyboard import ReplyKeyboardBuilder
 
 from config import config
-from database.db import add_user, get_user, get_setting, set_setting, mark_reg_started, clear_reg_started, set_reg_step, set_user_subscribed, set_user_status, record_user_consent, get_user_consents, get_reg_started_track, get_reg_started_city, has_short_incomplete, _csv_safe, get_incomplete_rows_with_city, reset_payment_for_new_season, record_reg_event  # Phase 15 (STAT-03, D-06): funnel event log
+from database.db import add_user, get_user, get_setting, set_setting, mark_reg_started, clear_reg_started, set_reg_step, set_user_subscribed, set_user_status, record_user_consent, get_user_consents, get_reg_started_track, get_reg_started_city, has_short_incomplete, _csv_safe, get_incomplete_rows_with_city, reset_payment_for_new_season, record_reg_event, claim_reg_draft, get_reg_draft  # Phase 15 (STAT-03, D-06): funnel event log; Phase 21 (21-08): claim_reg_draft/get_reg_draft feed finalize_registration's thin wrapper
 from settings_schema import SETTINGS_SCHEMA, get_setting_typed  # REG-01/D-06 (06-04): REG_DEFAULTS derivation source; get_setting_typed (06-06 gate migration)
 from cities import CITIES, all_cities, normalize_city, is_default_city, city_tab_base, cities_module_on, is_city_enabled, city_label, enabled_cities, tab_suffix, get_setting_for_city, get_setting_typed_for_city  # Phase 07.1 (CITY-01/CITY-02/CITY-03): city registry — _city_tag_map() + city_row_tab + city fork below; tab_suffix added quick 260815-3hw (TABS-01/02/03, replaces the raw TAB_SUFFIX import); get_setting_for_city/get_setting_typed_for_city added Phase 09.2-04 (CITY-04): per-city text/mode resolver; all_cities added Phase 14 (CITY-07)
 from handlers.states import Registration
@@ -42,6 +42,10 @@ from keyboards.builders import (
 from services.sheets import append_to_sheet, append_to_named_sheet
 from services.nextcloud import upload_resume, upload_text_resume
 from services.background import spawn as _spawn
+# Phase 21 (21-08, FORM-SYNC-02/04, Pattern 4): common data+effects finale shared with the
+# Mini App outbox job (services/miniapp_outbox.py) — finalize_registration below is now a
+# thin wrapper around these two.
+from services.reg_finalize import finalize_data, post_finalize, resolve_delegate_text
 # Phase 21 (21-01, FORM-SYNC-01): литеральные списки без своей клавиатуры в builders.py —
 # reg_options.py, та же точка правды, что читает reg_engine.step_spec() для Mini App.
 from reg_options import (
@@ -1749,103 +1753,48 @@ def _single_flight(func):
 
 @_single_flight
 async def finalize_registration(message: types.Message, state: FSMContext, bot: Bot):
+    """Тонкая обёртка (Phase 21, 21-08, Pattern 4): данные и статус считает
+    `services.reg_finalize.finalize_data`, эффекты (Nextcloud/Sheets/уведомления
+    менеджерам/приветствие при auto-approve) — `services.reg_finalize.post_finalize` — тот же
+    путь, который зовёт джоба очереди для отправок из Mini App
+    (`services/miniapp_outbox.py::_handle_row`, kind `reg_finalized`/`reg_edited`).
+
+    Здесь остаётся то, что не может жить в общем (веб-совместимом) модуле: живой `message`
+    (текст-подтверждение делегату уходит в ТОТ ЖЕ чат, откуда пришёл тап «Всё верно» —
+    `message.answer`, а не `bot.send_message`, иначе `post_finalize`, вызванный из очереди,
+    задвоил бы сообщение при прямом вызове ботом) и retry-friendly обработка сбоя
+    `finalize_data` (ночное ревью, находка #4: делегат должен увидеть «нажми ещё раз», а не
+    тишину; FSM/`reg_started` остаются нетронутыми для повторного тапа).
+
+    `_single_flight` остаётся как есть — он защищает от двойного тапа ВНУТРИ процесса
+    (0.05с окно между проверкой и `add_user`), `claim_reg_draft` ниже — от гонки МЕЖДУ
+    поверхностями (чат vs Mini App); они не мешают друг другу."""
     data = await state.get_data()
-    data["telegram_id"] = message.from_user.id
-    data["username"] = f"@{message.from_user.username}" if message.from_user.username else "-"
-    data["registration_date"] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    uid = message.from_user.id
+    username = f"@{message.from_user.username}" if message.from_user.username else "-"
 
-    # Phase 21 (21-06, Task 3): дефолты финала (~20 полей) — reg_engine.with_defaults, тот же
-    # setdefault-блок, теперь общий с будущим веб-финалом (план 21-08). Чистая функция — merge
-    # обратно в живой FSM-словарь одним присваиванием, а не построчными data.setdefault(...).
-    data = with_defaults(data)
+    # Phase 21 (21-08, T-21-02): бот пока не пишет reg_drafts сам (та часть D-19 приходит
+    # позже) — claim_reg_draft почти всегда возвращает None (строки нет), и тогда собираем
+    # псевдо-черновик прямо из FSM-данных, чтобы чат работал уже сегодня. Если строка ЕСТЬ (в
+    # будущем — синхрон с Mini App, сегодня — гипотетическая гонка), но занята другим
+    # финалом — не пишем поверх, просто выходим (тот же принцип, что и у _single_flight выше).
+    draft = await claim_reg_draft(uid)
+    if draft is None:
+        existing = await get_reg_draft(uid)
+        if existing is not None:
+            logger.warning(f"finalize_registration: draft for {uid} is already submitting elsewhere")
+            return
+        draft = {"telegram_id": uid, "kind": "new", "answers": dict(data), "updated_by": "bot"}
 
-    # Phase 07.3 (04, RET-01/RET-02): resolve season/prev_season BEFORE add_user, in its own
-    # fail-soft try/except -- a season-resolve error must never lose an already-collected
-    # application (T-073-04-07). `prior` (the returning delegate's snapshot from plan 03,
-    # empty for a first-time delegate) is read once here and reused after add_user below for
-    # the payment-reset decision.
-    prior = data.get("_prior_answers") or {}
-    season = None
     try:
-        season = (await get_setting("event_season") or "").strip() or None
-        data["season"] = season
-        if prior:
-            # CONTEXT B: a genuinely returning delegate always gets a prev_season, even when
-            # their prior row predates the season concept ("legacy" -- same literal
-            # mark_season_ended uses, per plan 01's D-03; never shown raw to a manager, plan 05
-            # translates it). A first-time delegate (prior empty) leaves prev_season unset --
-            # data.get('prev_season') rides through add_user as None like any other never-set
-            # column.
-            data["prev_season"] = (prior.get("season") or "").strip() or "legacy"
+        result = await finalize_data(uid, username, draft)
     except Exception as e:
-        logger.error(f"Season resolve failed for {message.from_user.id}: {e}")
-        season = None
-        data["season"] = None
-    # T-073-04-?? / RESEARCH: referrer_id is deliberately NEVER read from `prior` -- it is not
-    # in STEP_TO_COLUMN and `data['referrer_id']` only ever comes from THIS session's deep-link
-    # (cmd_start/_start_registration_flow). A returning delegate's past referral is not carried
-    # forward; no code change is needed here, this comment plus a dedicated test pin the
-    # invariant so a future edit can't silently start reading `prior.get('referrer_id')`.
-
-    # WK6/16c: resume (file OR text) → Nextcloud WebDAV PUT + deep-link into the manual folder
-    # share, captured BEFORE add_user so the URL is persisted in DB and lands in the sheet row.
-    # File is named "<ФИО>_<username>_<telegram_id>_<ts>.<ext>" (unique per upload — WebDAV
-    # PUT overwrites silently); text resume is uploaded as a "<...>.txt" file.
-    # Fully fail-soft: bounded by a 20s wait_for, upload_* never raise, and any timeout/error
-    # leaves resume_url None so registration always completes even if Nextcloud is down.
-    try:
-        if data.get("resume_file_id"):
-            ext = os.path.splitext(data.get("resume_file_name") or "")[1]
-            fname = f"{_resume_file_stem(data)}{ext}"
-            url = await asyncio.wait_for(
-                upload_resume(bot, data["resume_file_id"], fname), timeout=20
-            )
-            if url:
-                data["resume_url"] = url
-        elif data.get("resume_text"):
-            fname = f"{_resume_file_stem(data)}.txt"
-            url = await asyncio.wait_for(
-                upload_text_resume(data["resume_text"], fname), timeout=20
-            )
-            if url:
-                data["resume_url"] = url
-    except Exception as e:  # IN-02: TimeoutError is already a subclass of Exception
-        logger.error(f"Nextcloud resume upload failed for {message.from_user.id}: {e}")
-
-    # LOW (consent compliance): consent acceptance is enforced only by FSM step ordering during
-    # the flow — never re-verified at the end. Re-check here as a compliance audit: if consent is
-    # enabled and any required consent has no recorded D-02 acceptance row for this user, log a
-    # warning. We do NOT block — an already-consenting user must never be locked out by a
-    # transient recording hiccup; the recorded rows remain the source of truth, this only
-    # surfaces a gap that should never occur.
-    try:
-        if await _is_module_enabled("consent_enabled"):
-            _required = {k for _lbl, k in await _consent_entries()}
-            if _required:
-                _recorded = set(await get_user_consents(message.from_user.id))
-                _missing = _required - _recorded
-                if _missing:
-                    logger.warning(
-                        f"Consent compliance gap for {message.from_user.id}: missing "
-                        f"{sorted(_missing)} (recorded={sorted(_recorded)}) — proceeding."
-                    )
-    except Exception as e:
-        logger.error(f"Consent re-verify failed for {message.from_user.id}: {e}")
-
-    # Phase 5 (D-01): a flow that never saw a party link writes the default explicitly rather
-    # than relying on the column default.
-    data.setdefault("participant_type", "full")
-    # Ночное ревью, находка #4: единственный неогороженный await во всей финализации.
-    # Падение SQLite («database is locked») уходило в глобальный @dp.errors() (main.py),
-    # который его молча глотал: заявка не сохранена, делегат уверен, что зарегистрировался.
-    # Теперь — ранний выход БЕЗ очистки состояния: FSM остаётся в Registration.confirm
-    # (повторный тап «Всё верно» сработает), reg_started не стирается (регистрация
-    # действительно не завершена, нуджи должны продолжать работать), в таблицу ничего
-    # не едет. Клавиатуру прикладываем заново: one-time клава уже сложилась.
-    try:
-        await add_user(data)
-    except Exception as e:
-        logger.error(f"add_user failed for {message.from_user.id}: {e}")
+        # Ночное ревью, находка #4: падение НЕ должно быть тихим — заявка не сохранена,
+        # делегат обязан увидеть, что нажать ещё раз, а не решить, что зарегистрировался.
+        # FSM остаётся в Registration.confirm (state.clear() ниже не выполняется), reg_started
+        # не тронут — регистрация действительно не завершена, догонялка должна продолжать
+        # работать. Клавиатуру прикладываем заново: one-time клава уже сложилась.
+        logger.error(f"finalize_data failed for {uid}: {e}")
         await _safe_answer(
             message,
             "Не получилось сохранить заявку — техническая ошибка на нашей стороне. "
@@ -1855,150 +1804,47 @@ async def finalize_registration(message: types.Message, state: FSMContext, bot: 
         )
         return
 
-    # Phase 07.3 (04, RET-02/WR-06): payment reset lives in its own try/except AFTER add_user
-    # succeeds -- add_user itself never touches payment columns (WR-06), so "anketa first,
-    # reset second" gives a correct result no matter which of the two operations would fail.
-    # Condition is deliberately narrower than "any returning delegate": only fires when the
-    # delegate is ACTUALLY entering a new season (CONTEXT B: «новый сезон = новая оплата»). A
-    # rejected delegate re-applying within the SAME season keeps their existing payment state
-    # (the WR-06 invariant payment columns are excluded from add_user's ON CONFLICT for).
-    if prior and season and (prior.get("season") or "").strip() != season:
-        try:
-            await reset_payment_for_new_season(message.from_user.id)
-        except Exception as e:
-            logger.error(f"reset_payment_for_new_season failed for {message.from_user.id}: {e}")
+    await post_finalize(
+        bot, uid, result["mode"],
+        changed_columns=result.get("changed_columns"),
+        remoderated=result.get("remoderated", False),
+        resubmitted=result.get("resubmitted", False),
+        resume_file_id=result.get("resume_file_id"),
+        resume_file_name=result.get("resume_file_name"),
+        resume_text=data.get("resume_text"),
+    )
 
     logger.info(
-        f"user={message.from_user.id} action=registration_complete "
+        f"user={uid} action=registration_complete "
         f"mode={await get_setting('registration_mode') or 'short'} name={data.get('full_name')!r}"
     )
-
-    # Phase 15 (STAT-03, D-06): funnel log -- AFTER add_user succeeded above, so a failed
-    # save never logs a phantom completion. Own try/except, fail-soft.
-    try:
-        await record_reg_event(
-            message.from_user.id, "form_completed",
-            event_city=data.get("event_city"), season=season,
-        )
-    except Exception as e:
-        logger.error(f"record_reg_event(form_completed) failed for {message.from_user.id}: {e}")
-
-    # SCHED-02: registration finished — drop the dropout row (fail-soft).
-    try:
-        await clear_reg_started(message.from_user.id)
-    except Exception as e:
-        logger.error(f"Failed to clear reg_started for {message.from_user.id}: {e}")
-
-    # Phase 2 (D-01..D-04): decide approval status from form type + per-form setting, persist it.
-    # Считаем статус ДО записи в таблицу, чтобы колонка «Статус» (Таня п.5) заполнилась
-    # сразу правильным значением (Новая/Одобрена), а не дефолтом.
-    # REG-02 (06-06): registry-backed — full_approval/short_approval/registration_mode carry
-    # the SAME defaults ("manual"/"auto"/"short") the old `or "<default>"` idiom applied.
-    reg_mode = await get_setting_typed("registration_mode")
-    full_setting = await get_setting_typed("full_approval")  # BLOCKER-1
-    short_setting = await get_setting_typed("short_approval")
-    # Phase 5 (D-13): party tracks resolve status from their own independent setting.
-    # RAW-read site migrated (06-06): party_approval's registry default ("manual") is
-    # identical to _decide_status's own `party_setting or "manual"` fallback below.
-    party_setting = await get_setting_typed("party_approval")
-    status = _decide_status(
-        reg_mode, full_setting, short_setting,
-        participant_type=data.get("participant_type", "full"), party_setting=party_setting,
-    )
-    data["status"] = status
-    try:
-        await set_user_status(message.from_user.id, status)
-    except Exception as e:
-        logger.error(f"Failed to set status for {message.from_user.id}: {e}")
-
-    # HG-01: persist the subscription flag NOW. cmd_start ran its check BEFORE this user's row
-    # existed (first /start on a brand-new user = UPDATE 0 rows, silently dropped), so a
-    # first-touch registrant — the majority — would otherwise stay subscribed=NULL forever and
-    # never land in the «не подписаны» broadcast segment. add_user above guarantees the row here.
-    # Fail-soft + fail-open (D-07): a check error never blocks registration completion.
-    try:
-        _sub_channel = _normalize_channel_ref(await get_setting("contact_tg"))
-        if _sub_channel is not None:
-            _sub_result = await is_subscribed(bot, _sub_channel, message.from_user.id)
-            if _sub_result is not None:
-                await set_user_subscribed(message.from_user.id, _sub_result)
-    except Exception as e:
-        logger.warning(f"Subscription persist skipped for {message.from_user.id}: {e}")
-
-    # Fire-and-forget the Google Sheet write so the user is NOT blocked on a ~5s network
-    # round-trip (auth + open + append, plus up to 3 retries with sleeps). append_to_sheet /
-    # append_to_party_sheet are fail-soft and log their own errors. Build the row inline (needs
-    # current settings), then hand the network I/O to the background.
-    #
-    # Phase 5 (D-11/D-12) / Phase 7 (SHORT-02): EXCLUSIVE routing — a registration goes to
-    # exactly one tab (party / short / main), never more than one. Resolved via _sheet_dispatch
-    # so the exclusivity property is provable by a test that doesn't run this whole function.
-    # Phase 07.1 (CITY-02): city selects the TAB, track (via _sheet_dispatch) still selects the
-    # COLUMNS — _row_fn/the row itself are unchanged; only the append destination can move to a
-    # non-default city's named tab. Exactly ONE append per registration either way.
-    try:
-        _row_fn, _append_fn = _sheet_dispatch(data.get("participant_type"))
-        _row = await _row_fn(data)
-        _tab = await city_row_tab(data.get("event_city"), data.get("participant_type"))
-        if _tab is None:
-            _spawn(_append_fn(_row))
-        else:
-            _spawn(append_to_named_sheet(_tab, _row))
-    except Exception as e:
-        logger.error(f"Failed to schedule sheet append for {message.from_user.id}: {e}")
-
-    # Admin notify: always for approved; for pending only when pending_notify_mode='instant' (D-15).
-    notify_admins = status == "approved" or (
-        status == "pending" and await get_setting_typed("pending_notify_mode") == "instant"  # REG-02
-    )
-    if config.ADMIN_IDS and notify_admins:
-        safe_name = html.escape(str(data.get("full_name", "-")))
-        safe_username = html.escape(str(data.get("username", "-")))
-        admin_text = (
-            f"\U0001f195 <b>Новая регистрация!</b>\n"
-            f"\U0001f464 {safe_name} ({safe_username})"
-        )
-        if status == "pending":
-            admin_text += "\n⏳ Ожидает одобрения (/admin → Заявки)"
-        if data.get("local_committee") and data["local_committee"] != "-":
-            admin_text += f"\n\U0001f3e2 {html.escape(str(data['local_committee']))}"
-        if data.get("position") and data["position"] != "-":
-            admin_text += f"\n\U0001f454 {html.escape(str(data['position']))}"
-        if data.get("age"):
-            admin_text += f"\n\U0001f382 {data['age']}"
-        safe_source = html.escape(str(data.get("source", "-")))
-        if safe_source != "-":
-            admin_text += f"\n\U0001f4dd {safe_source}"
-
-        # Phase 09.2 (D): заявка из города уходит менеджерам этого города; None = город не
-        # выбран → сегодняшний глобальный фан-аут; фолбэк «после фильтра пусто → все» живёт
-        # внутри capability_holders (не дублируется здесь). Grep-проверка (09.2-02 Task 3):
-        # data.get("event_city") уже читается строкой выше (city_row_tab, line ~3008) в ЭТОЙ
-        # ЖЕ функции — доступен на всех треках (short/full/party идут через один и тот же
-        # finalize_registration), отдельного get_user не требуется.
-        await notify_by_capability(bot, "moderate_reg", admin_text, parse_mode="HTML", city=data.get("event_city"))  # D-13
 
     await state.clear()
     # Tatiana: «поздравляем»-скрипт приходит сразу после регистрации — всем (и pending, и
     # approved). Approve/reject досылают свои отдельные скрипты позже.
-    # Phase 09.2-04 (CITY-04/CONTEXT B): resolved by the delegate's own event_city;
-    # data.get("event_city") is already read a few lines above (city_row_tab) in this SAME
-    # function on every track (short/full/party), no extra get_user call needed.
-    try:
-        submitted = await get_setting_for_city("reg_complete_text", data.get("event_city")) or DEFAULT_REG_COMPLETE_TEXT
-    except Exception as e:
-        logger.error(f"get_setting_for_city(reg_complete_text) failed for {message.from_user.id}: {e}")
-        submitted = await get_setting("reg_complete_text") or DEFAULT_REG_COMPLETE_TEXT
+    if result["mode"] == "new":
+        # Phase 09.2-04 (CITY-04/CONTEXT B): resolved by the delegate's own event_city.
+        try:
+            submitted = await get_setting_for_city("reg_complete_text", data.get("event_city")) or DEFAULT_REG_COMPLETE_TEXT
+        except Exception as e:
+            logger.error(f"get_setting_for_city(reg_complete_text) failed for {uid}: {e}")
+            submitted = await get_setting("reg_complete_text") or DEFAULT_REG_COMPLETE_TEXT
+    else:
+        # Phase 21 (21-08, D-10/D-12): правка одобренной/pending/rejected анкеты — сегодня
+        # только гипотетический путь для чата (сам мастер правки живёт в Mini App, D-26), но
+        # обёртка обязана вести себя корректно, если черновик правки когда-нибудь придёт сюда.
+        submitted = await resolve_delegate_text(
+            result["mode"], remoderated=result.get("remoderated", False),
+            resubmitted=result.get("resubmitted", False), event_city=data.get("event_city"),
+        ) or DEFAULT_REG_COMPLETE_TEXT
     # UAT 19.08: раньше здесь был ReplyKeyboardRemove — pending-делегат оставался без меню
     # до следующего /start (а /start ему меню показывает). Возвращаем главное меню сразу:
     # тапы по кнопкам до одобрения упираются в pending-гейт ensure_registered.
-    menu_kb = await get_main_menu_kb(message.from_user.id)
+    menu_kb = await get_main_menu_kb(uid)
     try:
         await message.answer(submitted, reply_markup=menu_kb, parse_mode="HTML")
     except Exception:
         await message.answer(submitted, reply_markup=menu_kb)
-    if status == "approved":
-        await approve_user(bot, message.from_user.id)
 
 
 # Phase 13 REFAC (13-03, REFAC-02): seam imports trigger decoration of the moved handler
