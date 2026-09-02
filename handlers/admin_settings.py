@@ -21,7 +21,6 @@ from aiogram.filters import Command, StateFilter
 from aiogram.fsm.context import FSMContext
 from aiogram.types import BufferedInputFile, InlineKeyboardButton, InlineKeyboardMarkup
 
-from config import config
 from settings_schema import SETTINGS_SCHEMA, get_setting_typed
 from database.db import (
     get_all_users_dicts,
@@ -30,7 +29,6 @@ from database.db import (
     set_setting,
     delete_setting,
     get_dropout_step_stats,
-    get_staff_city,
 )
 from services.sheets import (
     get_existing_sheet_ids,
@@ -39,7 +37,6 @@ from services.sheets import (
     sync_named_worksheet,
     rebuild_main_sheet,
     REFUSED_UNPINNED_TAB,
-    _reset_sheet_cache,
     tab_row_count,
     ensure_named_sheet_header,
     get_existing_named_sheet_ids,
@@ -47,6 +44,16 @@ from services.sheets import (
 )
 from handlers.states import EditSetting
 from handlers.settings_validation import validate_setting_value, is_command_like
+from settings_ops import (
+    apply_event_type_preset as _apply_event_type_preset,
+    per_city_visible_codes as _per_city_visible_codes,
+    HTML_SETTINGS,
+    base_setting_key as _base_setting_key,
+    SHEET_TAB_WRITE_MODE as _SHEET_TAB_WRITE_MODE,
+    after_tab_setting_saved as _after_tab_setting_saved,
+    tab_confirm_text_html as _tab_confirm_text,
+    tab_check_failed_warning as _tab_check_failed_warning,
+)
 from services.game_digest import game_submit_notify_button_text  # Quick 260822: тумблер дайджеста сдач
 from keyboards.builders import MENU_BUTTONS
 from handlers.reg_schema import (
@@ -62,8 +69,6 @@ from cities import (
     city_label,
     cities_module_on,
     admin_selected_city,
-    city_codes,
-    normalize_city,
     ALL_CITIES,
     is_per_city,
     per_city_key,
@@ -1055,18 +1060,6 @@ async def toggle_show_progress(callback: types.CallbackQuery):
     )
 
 
-async def _apply_event_type_preset(event_type: str):
-    """D-05: event type presets module flags; each is still manually overridable after.
-    conference → payment+consent ON; forum → both OFF; custom → no change."""
-    if event_type == "conference":
-        await set_setting("payment_enabled", "on")
-        await set_setting("consent_enabled", "on")
-    elif event_type == "forum":
-        await set_setting("payment_enabled", "off")
-        await set_setting("consent_enabled", "off")
-    # "custom" → no change (manual control)
-
-
 @router.callback_query(F.data == "settings_toggle_notify")
 async def toggle_notify_mode(callback: types.CallbackQuery):
     # REG-02 (06-05): current-value read migrated to the registry; write path unchanged.
@@ -1120,23 +1113,6 @@ async def settings_file_start(callback: types.CallbackQuery, state: FSMContext):
 # from the editor (settings_edit_start below) and from the landing's «🏙 Форма по городам»
 # shortcut for registration_mode, which has no settings_edit screen of its own. Mirrors the
 # admin_city_switch/_roles_city_kb idiom (RESEARCH Pattern 3): city LABELS only, never codes.
-
-async def _per_city_visible_codes(admin_id: int) -> list[str]:
-    """Which city codes this admin may edit — a RIGHT, not a filter (Phase 07.2 terminology).
-    Phase 09.3 (06, CITY-09): the only caller-facing question this answers now is "can this
-    admin edit the city currently sitting in the header" (membership test), not "which cities
-    should a picker list" — there is no picker left. Superadmins (config.ADMIN_IDS) see every
-    city; a manager bound to a city (get_staff_city) sees exactly that one; an unbound manager
-    sees all. This shapes the keyboard only — every write handler below (settings_edit_city /
-    settings_reset_city_go) re-checks membership itself before writing anything (RESEARCH
-    Pitfall 6: a hidden button is not access control)."""
-    if admin_id in config.ADMIN_IDS:
-        return city_codes()
-    bound = await get_staff_city(admin_id)
-    if bound:
-        return [normalize_city(bound)]
-    return city_codes()
-
 
 async def _settings_edit_screen(key: str, header_code: str | None) -> tuple[str, InlineKeyboardMarkup]:
     """Phase 09.3 (06, CITY-09): single render helper for the per-key editor, relative to an
@@ -1857,41 +1833,6 @@ async def settings_receive_file_invalid(message: types.Message):
     await message.answer("Отправьте фото или документ.")
 
 
-HTML_SETTINGS = {
-    "start_text", "start_text_registered", "start_text_returning", "reg_complete_text",
-    "approve_text", "approve_text__party",
-    # Phase 17.1 (17.1-03): единая политика для текстовых ключей 17.1 — если prompt обещает
-    # менеджеру «Поддерживается HTML», ввод берётся из message.html_text (жирный/курсив из
-    # Telegram сохраняются, «<»/«&» экранируются сами), как у соседей выше. Ключи, которые
-    # консьюмер дополнительно html.escape'ит (preselect_*) или шлёт с parse_mode=None,
-    # сюда НЕ входят. Инвариант «prompt говорит HTML <=> ключ здесь» сторожит
-    # tests/test_delegate_texts_registry_260819.py::test_html_promise_in_prompt_matches_html_settings.
-    "pending_gate_text",
-    "poll_intro_text",  # опросы: вступление шлётся send_message с parse_mode=HTML (default бота)
-    "start_returning_cta_text", "recall_generic_prompt_text",
-    "payment_option_picker_header_text", "payment_details_template_text",
-    "payment_pay_later_text", "payment_pay_later_menu_hint_text",
-    "payment_receipt_received_text",
-    "leaderboard_header_text", "leaderboard_rank_line_text",
-    "balance_history_header_text", "referral_list_header_text",
-    "game_wizard_preview_title",  # Phase 16 (16-03): заголовок превью финального шага визарда
-    "program_empty_text", "speakers_empty_text", "contacts_empty_text",
-    "ask_question_prompt_text", "ask_question_sent_text",
-    # Phase 21 Plan 02 (FORM-SYNC-04): анкета Mini App — три ключа уходят сообщением в чат
-    # с parse_mode="HTML" (реестровый текст, не badge/подпись кнопки).
-    "reg_sync_from_app_text", "reg_resume_restart_confirm_text", "reg_form_closed_text",
-}
-
-
-def _base_setting_key(key: str) -> str:
-    """Phase 09.2 (C, CITY-05): strips a `{key}__city__{code}` composite key down to the
-    base registry key — used ONLY for the HTML_SETTINGS membership check in
-    settings_edit_value, so per-city text saves get the same HTML parsing as the global
-    save. `_SHEET_TAB_WRITE_MODE`/`_options` branches deliberately stay on the raw key
-    (guarded by test_no_per_city_key_in_sheet_tab_write_mode_or_options_suffix)."""
-    return key.split(PER_CITY_SEP)[0]
-
-
 def _enum_human_label(key: str, value: str) -> str:
     """Human-readable alert text for a per-city enum toggle (CLAUDE.md: no raw values in
     admin-facing alerts)."""
@@ -1902,74 +1843,6 @@ def _enum_human_label(key: str, value: str) -> str:
     if value == "off":
         return "❌ Выкл"
     return value
-
-
-# Quick 260815-3hw (Task 3): which Google Sheets tab-name keys the bot actually WRITES to, and
-# HOW. "rewrite" = the sync path does ws.clear() + full rewrite (rebuild_main_sheet /
-# sync_named_worksheet); "append" = only new rows are ever added (append_to_named_sheet), never
-# a clear. preselect_tab (read-only — the bot never writes it) and the five
-# city_tab_suffix__* keys (not full tab names, just suffixes — incl. the per-city gamification
-# suffixes __game/__game_history) are deliberately ABSENT — the confirm-gate in
-# settings_edit_value only fires for a key present in this dict.
-_SHEET_TAB_WRITE_MODE = {
-    "main_sheet_tab": "rewrite",
-    "incomplete_sheet_tab": "rewrite",
-    "game_matrix_tab": "rewrite",
-    "game_history_tab": "rewrite",
-    "short_sheet_tab": "append",
-    "party_sheet_tab": "append",
-}
-
-
-async def _after_tab_setting_saved(key: str) -> None:
-    """Called after EVERY save/clear of a _SHEET_TAB_WRITE_MODE key (plain save, gated
-    save-after-confirm, and the "-" clear path) — resets the cached MAIN worksheet handle
-    (services.sheets._sheet global) so a renamed main_sheet_tab takes effect on the very next
-    write, no bot restart needed. Named-tab caches (short/party/game/incomplete) need no
-    reset: they're keyed BY NAME (services.sheets._named_sheets), so a new name simply opens a
-    new cache entry — the stale entry under the old name just goes unused, it isn't wrong."""
-    if key == "main_sheet_tab":
-        _reset_sheet_cache()
-
-
-def _tab_confirm_text(key: str, value: str, rows: int) -> str:
-    """Confirm-screen body for an EXISTING tab name — text differs by write mode (CLAUDE.md:
-    a confirmation has to name the actual damage, and for an append-only tab nothing is
-    actually lost)."""
-    label = SETTINGS_SCHEMA.get(key, {}).get("label", key)
-    safe_value = html_module.escape(value)
-    mode = _SHEET_TAB_WRITE_MODE.get(key)
-    if mode == "append":
-        body = (
-            f"Вкладка «{safe_value}» уже существует, в ней {rows} строк.\n\n"
-            "Бот будет дописывать в неё строки заявок, к тому, что там уже есть — ничего не "
-            "сотрётся."
-        )
-    else:
-        body = (
-            f"Вкладка «{safe_value}» уже существует, в ней {rows} строк.\n\n"
-            "Бот будет перезаписывать её целиком при каждой синхронизации — <b>всё, что там "
-            "сейчас есть, пропадёт.</b>"
-        )
-        if key == "main_sheet_tab":
-            body += (
-                "\n\nРегистрации будут дописываться в неё по одной; кнопка «♻️ Пересобрать "
-                "таблицу» очистит её целиком и запишет заново."
-            )
-    return f"⚠️ <b>{html_module.escape(label)}</b>\n\n{body}"
-
-
-def _tab_check_failed_warning(key: str) -> str:
-    """Appended to the post-save confirmation text when tab_row_count() couldn't check the
-    spreadsheet at all (Sheets down/unconfigured) — the value is saved regardless (a settings
-    change must never depend on Sheets being reachable), but the manager needs to know the
-    existing-tab check didn't run."""
-    mode = _SHEET_TAB_WRITE_MODE.get(key)
-    if mode == "append":
-        tail = "если такая вкладка уже есть, бот будет дописывать в неё, ничего не потеряется."
-    else:
-        tail = "если такая вкладка уже есть, при следующей синхронизации она будет перезаписана."
-    return f"\n\n⚠️ Значение сохранено, но проверить вкладку в Google-таблице не удалось — {tail}"
 
 
 def _tab_confirm_keyboard() -> InlineKeyboardMarkup:
