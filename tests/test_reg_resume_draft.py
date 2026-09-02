@@ -393,9 +393,14 @@ def test_reg_started_dropout_snapshot_unaffected(tmp_path):
 
     async def go():
         await db.set_setting("reg_q_age", "on")
+        await db.set_setting("reg_q_phone", "on")
+        await db.mark_reg_started(USER_ID, "delegate", "full", None)
         msg = _KBCapturingMessage(USER_ID, "delegate")
         state = _new_state(USER_ID)
         await state.update_data(participant_type="full", _draft_kind="new", age="20")
+        # "age" -> следующий включённый шаг ("phone") задаётся через _ask_step_or_recall,
+        # который и стемпит reg_started.partial_data (_stamp_reg_step) -- отдельно от
+        # reg_drafts, только регресс-смоук, что этот путь не сломан синхроном черновика.
         await reg._advance("age", msg, state, bot=object())
         async with db._connect() as conn:
             async with conn.execute(
@@ -404,8 +409,7 @@ def test_reg_started_dropout_snapshot_unaffected(tmp_path):
                 return await cur.fetchone()
 
     row = asyncio.run(go())
-    # reg_started снапшот пишется отдельно (_stamp_reg_step), не связан с reg_drafts
-    assert row is not None
+    assert row is not None and row[0] is not None
 
 
 # ── 10. Активный в приложении сейчас -> не в кандидатах догонялки; со старым -- в кандидатах ─
