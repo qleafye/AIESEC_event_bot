@@ -21,11 +21,15 @@
 async идёт через `asyncio.run()` (правило проекта).
 """
 import asyncio
+import inspect
+from datetime import datetime
 
 from config import config
 from database.db import init_db
 from reg_engine import REG_FLOW
 from reg_labels import REG_LABELS
+from handlers.registration import _parse_age, _is_allowed_resume, _resume_too_large
+from handlers.reg_flow import _validate_date_range
 
 # Task 3: SOURCE переключён на reg_engine — GOLDEN не тронут ни одним символом (см. докстринг
 # выше). До переноса (Task 1) здесь стояло `import handlers.registration as SOURCE`.
@@ -654,3 +658,174 @@ def test_form_spec_prefills_returning_delegate(tmp_path):
             assert step_spec_row["value_source"] != "prior"
 
     asyncio.run(go())
+
+
+# ══════════════════════════════════════════════════════════════════════════════════════════════
+# Phase 21 (21-06, Task 1) — VALIDATION_GOLDEN / APPLY_GOLDEN: снимок «ввод → (значение|ошибка)»
+# и побочных правил СНЯТ С ТЕКУЩЕГО КОДА (handlers/reg_steps.py, handlers/reg_flow.py,
+# handlers/registration.py) ДО того, как Task 2 научит `reg_engine.validate_answer`/
+# `apply_answer` делать то же самое. Ни один текст ошибки здесь не сочинён: где логика проверки
+# живёт в отдельной функции (`_parse_age`/`_is_allowed_resume`/`_resume_too_large`/
+# `_validate_date_range`) — таблица вызывает её напрямую; где проверка сидит внутри тела
+# `process_*` (нет отдельной функции) — таблица сверяет, что дословный текст ошибки/литерал кода
+# присутствует в исходнике хендлера (`_all_handler_source`). Task 2 переключит проверку на
+# `reg_engine.validate_answer`/`apply_answer` — сами таблицы (кроме новых строк про `max_len`,
+# помеченных отдельно) не редактируются.
+# ══════════════════════════════════════════════════════════════════════════════════════════════
+
+AGE_ERROR = "Укажи корректный возраст числом от 10 до 120."
+EMAIL_ERROR = "Укажи корректный email (например, name@example.com)."
+PHONE_ERROR = "Укажи корректный номер телефона или нажми «Пропустить»."
+VK_ERROR = "Укажи ник в ВК в формате @username (начинается с @, без пробелов)."
+FULL_NAME_ERROR = "Укажи ФИО полностью (минимум фамилию и имя)."
+DATE_FORMAT_ERROR = "Формат даты: ДД.ММ.ГГГГ. Попробуй ещё раз."
+BIRTH_FUTURE_ERROR = "Дата рождения не может быть в будущем. Проверь и введи ещё раз."
+ARRIVAL_PAST_ERROR = "Дата приезда не может быть в прошлом. Введи корректную дату."
+MULTI_EMPTY_ERROR = "Выбери хотя бы один вариант."
+RESUME_EXT_ERROR = "Принимаются только PDF или DOCX. Прикрепи файл ещё раз."
+RESUME_SIZE_ERROR = "❌ Файл слишком большой (максимум 10 МБ). Прикрепи резюме меньшего размера."
+
+
+def _all_handler_source() -> str:
+    """Исходник трёх файлов, где сегодня живёт проверка ввода — для тестов-грепов ниже (Pitfall:
+    ошибку нельзя сочинить в таблице, только списать с реального кода)."""
+    import handlers.reg_steps as _rs
+    import handlers.reg_flow as _rf
+    import handlers.registration as _rr
+    return "\n".join(inspect.getsource(m) for m in (_rs, _rf, _rr))
+
+
+# `kind` выбирает способ проверки записи (Task 1 — против ТЕКУЩЕГО кода; Task 2 переключит
+# проверку на общий вызов `reg_engine.validate_answer`, значения/ошибки в таблице не изменятся):
+#   "age"         — прямой вызов _parse_age
+#   "date"        — прямой парсинг ДД.ММ.ГГГГ + _validate_date_range
+#   "resume_ext"  — прямой вызов _is_allowed_resume
+#   "resume_size" — прямой вызов _resume_too_large
+#   "grep"        — проверка живёт внутри тела process_* — сверяем литерал кода/ошибки в исходнике
+# `literal` — только для kind="grep": что именно искать в исходнике (для success/конверсии —
+# отличительный фрагмент кода, а не текст ошибки).
+VALIDATION_GOLDEN = [
+    {"step": "full_name", "kind": "grep", "raw": "Иванов",
+     "value": None, "error": FULL_NAME_ERROR, "literal": FULL_NAME_ERROR},
+    {"step": "full_name", "kind": "grep", "raw": "Иван Иванов",
+     "value": "Иван Иванов", "error": None, "literal": None},
+    {"step": "age", "kind": "age", "raw": "abc", "value": None, "error": AGE_ERROR, "literal": None},
+    {"step": "age", "kind": "age", "raw": "9", "value": None, "error": AGE_ERROR, "literal": None},
+    {"step": "age", "kind": "age", "raw": "10", "value": 10, "error": None, "literal": None},
+    {"step": "age", "kind": "age", "raw": "120", "value": 120, "error": None, "literal": None},
+    {"step": "age", "kind": "age", "raw": "121", "value": None, "error": AGE_ERROR, "literal": None},
+    {"step": "age", "kind": "age", "raw": "²²",  # ²² — не ASCII-цифры (CR-8)
+     "value": None, "error": AGE_ERROR, "literal": None},
+    {"step": "email", "kind": "grep", "raw": "bad-email",
+     "value": None, "error": EMAIL_ERROR, "literal": EMAIL_ERROR},
+    {"step": "email", "kind": "grep", "raw": "a@b.com",
+     "value": "a@b.com", "error": None, "literal": None},
+    {"step": "phone", "kind": "grep", "raw": "abcdefgh",
+     "value": None, "error": PHONE_ERROR, "literal": PHONE_ERROR},
+    {"step": "phone", "kind": "grep", "raw": "+79991234567",
+     "value": "+79991234567", "error": None, "literal": None},
+    {"step": "vk", "kind": "grep", "raw": "ivan petrov",
+     "value": None, "error": VK_ERROR, "literal": VK_ERROR},
+    {"step": "vk", "kind": "grep", "raw": "@ivan", "value": "@ivan", "error": None, "literal": None},
+    {"step": "city", "kind": "grep", "raw": "Другое",
+     "value": None, "error": None, "literal": "Напиши название своего города:"},
+    {"step": "birth_date", "kind": "date", "raw": "32.13.2026",
+     "value": None, "error": DATE_FORMAT_ERROR, "literal": None},
+    {"step": "birth_date", "kind": "date", "raw": "01.01.2099",
+     "value": None, "error": BIRTH_FUTURE_ERROR, "literal": None},
+    {"step": "birth_date", "kind": "date", "raw": "01.01.2000",
+     "value": "01.01.2000", "error": None, "literal": None},
+    {"step": "arrival_date", "kind": "date", "raw": "01.01.2020",
+     "value": None, "error": ARRIVAL_PAST_ERROR, "literal": None},
+    {"step": "goal", "kind": "grep", "raw": "<no selection>",
+     "value": None, "error": MULTI_EMPTY_ERROR, "literal": MULTI_EMPTY_ERROR},
+    {"step": "goal", "kind": "grep", "raw": "<one selected: index 0>",
+     "value": "<joined single option>", "error": None, "literal": '", ".join(chosen)'},
+    {"step": "specialty", "kind": "grep", "raw": "Пропустить", "value": "-", "error": None,
+     "literal": 'await state.update_data(specialty="-" if text == "Пропустить" else text)'},
+    {"step": "work_status", "kind": "grep", "raw": "Да", "value": True, "error": None,
+     "literal": 'working = answer == "Да"'},
+    {"step": "work_status", "kind": "grep", "raw": "Нет", "value": False, "error": None,
+     "literal": 'working = answer == "Да"'},
+    {"step": "ambassador", "kind": "grep", "raw": "Да!", "value": True, "error": None,
+     "literal": 'is_ambassador_candidate=text.lower().startswith("да")'},
+    {"step": "ambassador", "kind": "grep", "raw": "Пока нет", "value": False, "error": None,
+     "literal": 'is_ambassador_candidate=text.lower().startswith("да")'},
+    {"step": "resume", "kind": "resume_ext", "raw": "resume.txt",
+     "value": None, "error": RESUME_EXT_ERROR, "literal": None},
+    {"step": "resume", "kind": "resume_ext", "raw": "resume.pdf",
+     "value": "resume.pdf", "error": None, "literal": None},
+    {"step": "resume", "kind": "resume_size", "raw": 11 * 1024 * 1024,
+     "value": None, "error": RESUME_SIZE_ERROR, "literal": None},
+]
+
+
+def test_validation_golden_has_enough_cases():
+    assert len(VALIDATION_GOLDEN) >= 18
+
+
+def test_validate_matches_golden():
+    source = _all_handler_source()
+    for entry in VALIDATION_GOLDEN:
+        kind, raw = entry["kind"], entry["raw"]
+        if kind == "age":
+            assert _parse_age(raw) == entry["value"], entry
+        elif kind == "date":
+            try:
+                dt = datetime.strptime(raw, "%d.%m.%Y")
+            except ValueError:
+                assert entry["error"] == DATE_FORMAT_ERROR, entry
+            else:
+                range_err = _validate_date_range(entry["step"], dt)
+                assert range_err == entry["error"], entry
+                if entry["error"] is None:
+                    assert entry["value"] == raw, entry
+        elif kind == "resume_ext":
+            allowed = _is_allowed_resume(raw)
+            assert allowed == (entry["error"] is None), entry
+            if entry["error"] is None:
+                assert entry["value"] == raw, entry
+        elif kind == "resume_size":
+            too_large = _resume_too_large(raw)
+            assert too_large == (entry["error"] is not None), entry
+        elif kind != "grep":
+            raise AssertionError(f"unknown VALIDATION_GOLDEN kind {kind!r}")
+        # Ни один текст ошибки не сочинён тестом — сверяем дословно с исходником (все kind'ы).
+        if entry["error"] is not None:
+            assert entry["error"] in source, f"{entry['step']!r}: error text not verbatim in source"
+        # grep-only success/конверсия — отличительный фрагмент кода тоже сверяется с исходником.
+        if kind == "grep" and entry["literal"] is not None:
+            assert entry["literal"] in source, f"{entry['step']!r}: {entry['literal']!r} not in source"
+
+
+# ── APPLY_GOLDEN: побочные правила при ответе (education_status/work_status) ────────────────────
+# Источник: process_education_status/process_work_status (handlers/reg_steps.py).
+APPLY_GOLDEN = [
+    {
+        "step": "education_status", "value": "Нет, завершил(а) обучение",
+        "side_effects": {"university": "-", "course": "-", "specialty": "-", "study_field": "-"},
+        "literal": 'await state.update_data(university="-", course="-", specialty="-", study_field="-")',
+    },
+    {
+        "step": "education_status", "value": "Да, в ВУЗе или колледже",
+        "side_effects": {},
+        "literal": None,
+    },
+    {
+        "step": "work_status", "value": "Нет",
+        "side_effects": {"work_sphere": "-"},
+        "literal": 'await state.update_data(work_sphere="-")',
+    },
+    {
+        "step": "work_status", "value": "Да",
+        "side_effects": {},
+        "literal": None,
+    },
+]
+
+
+def test_apply_golden_side_effects_present_in_source():
+    source = _all_handler_source()
+    for entry in APPLY_GOLDEN:
+        if entry["literal"] is not None:
+            assert entry["literal"] in source, f"{entry}: literal not found verbatim in source"
