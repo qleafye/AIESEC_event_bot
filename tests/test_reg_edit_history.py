@@ -304,3 +304,53 @@ def test_appr_history_skips_status_marker_not_shown_as_a_field():
     # (_edit_badges_for) — экран истории не должен дублировать его как поле анкеты "status".
     out_columns = admin_moderation._COLUMN_TO_LABEL
     assert "status" not in out_columns
+
+
+# ── Task 2 (21-07): тумблер «toggle_reg_edit_remoderation» в разделе «📋 Заявки» ────────────
+
+from settings_schema import SETTINGS_SCHEMA  # noqa: E402
+from handlers.admin_sections import SECTIONS  # noqa: E402
+from handlers.admin_caps import ADMIN_CAPS  # noqa: E402
+from handlers import admin_settings  # noqa: E402
+
+
+def test_toggle_lives_in_apps_section():
+    apps_rows = next(rows for token, _label, rows in SECTIONS if token == "apps")
+    assert ("toggle", "toggle_reg_edit_remoderation") in apps_rows
+
+
+def test_toggle_closed_by_settings_capability():
+    assert ADMIN_CAPS["toggle_reg_edit_remoderation"] == "settings"
+
+
+def test_toggle_default_is_off():
+    assert SETTINGS_SCHEMA["toggle_reg_edit_remoderation"]["default"] == "off"
+
+
+def test_toggle_label_comes_from_registry_not_a_code(tmp_path):
+    _ready_card(tmp_path, name="reg_edit_remod_toggle.db")
+    rows = asyncio.run(admin_settings.settings_toggle_rows())
+    assert "toggle_reg_edit_remoderation" in rows
+    button = rows["toggle_reg_edit_remoderation"][0][0]
+    label = SETTINGS_SCHEMA["toggle_reg_edit_remoderation"]["label"]
+    assert label in button.text
+    assert button.callback_data == "toggle_reg_edit_remoderation"
+    # подпись не зашита литералом в коде — источник текста здесь: SETTINGS_SCHEMA, а не строка
+    assert "toggle_reg_edit_remoderation" not in label  # это сам ключ, не человеческий текст
+
+
+def test_toggle_flips_on_and_back_off(tmp_path):
+    _ready_card(tmp_path, name="reg_edit_remod_flip.db")
+
+    async def go():
+        cb = FakeCallback("toggle_reg_edit_remoderation")
+        await admin_settings.toggle_reg_edit_remoderation(cb)
+        from settings_schema import get_setting_typed
+        after_first = await get_setting_typed("toggle_reg_edit_remoderation")
+        await admin_settings.toggle_reg_edit_remoderation(cb)
+        after_second = await get_setting_typed("toggle_reg_edit_remoderation")
+        return after_first, after_second
+
+    after_first, after_second = asyncio.run(go())
+    assert after_first == "on"
+    assert after_second == "off"
