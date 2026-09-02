@@ -8,13 +8,9 @@
 
 Колонки вопроса анкеты читаются из `reg_engine.STEP_TO_COLUMN` (план 21-11) — второй копии
 схемы анкеты (литеральный словарь ключ-анкеты-к-колонке, живший раньше прямо в этом файле)
-в проекте больше нет. `reg_labels.REG_LABELS`
-использует более короткие имена ключей, чем `step_key` движка для девяти вопросов
-(например `reg_q_education`, а не `reg_q_education_status`) — это самостоятельный, более
-старый разъезд именования между `reg_labels.py` и `reg_engine.py` (`step_spec()` из-за него же
-не находит подпись для этих девяти шагов и откатывается на сырой `step_key` — известный,
-не относящийся к этому плану баг движка, см. `deferred-items.md`); `_LABEL_KEY_ALIASES`
-компенсирует его ТОЛЬКО для профиля, ничего не чиня в самом движке.
+в проекте больше нет. Ключ подписи вопроса — `reg_engine.label_key_for(step_key)` (setting_key
+из `REG_FLOW`, тот же ключ, по которому бот и админка берут подпись из `REG_LABELS`); своей
+таблицы алиасов у профиля нет — источник один и тот же для бота, мастера и профиля.
 
 Точка входа в правку (D-24): кнопка «✏️ Изменить анкету» ведёт `navigate("#/form")` внутри
 приложения (`screens/profile.js`), а не по deep-link в бота — прежний нерабочий deep-link
@@ -44,19 +40,6 @@ _EXTRA_ANSWER_COLUMNS_BY_STEP: dict[str, tuple[str, ...]] = {
     "resume": ("resume_text", "resume_url"),
 }
 
-# step_key движка -> ключ REG_LABELS, там, где они расходятся (см. докстринг модуля).
-_LABEL_KEY_ALIASES: dict[str, str] = {
-    "education_status": "reg_q_education",
-    "local_committee": "reg_q_lc",
-    "work_status": "reg_q_work",
-    "missing_skills": "reg_q_skills",
-    "attendance_format": "reg_q_attendance",
-    "needs_certificate": "reg_q_certificate",
-    "english_level": "reg_q_english",
-    "food_pref": "reg_q_food",
-    "payment_plan_date": "reg_q_payment_date",
-}
-
 
 def _profile_columns() -> dict[str, tuple[str, ...]]:
     """Вопрос анкеты (ключ REG_LABELS) -> колонка(и) `users`, где лежит ответ — выведено из
@@ -65,7 +48,7 @@ def _profile_columns() -> dict[str, tuple[str, ...]]:
     в вывод не попадают."""
     out: dict[str, tuple[str, ...]] = {}
     for step_key, column in reg_engine.STEP_TO_COLUMN.items():
-        label_key = _LABEL_KEY_ALIASES.get(step_key, f"reg_q_{step_key}")
+        label_key = reg_engine.label_key_for(step_key)
         if label_key not in REG_LABELS:
             continue
         out[label_key] = _EXTRA_ANSWER_COLUMNS_BY_STEP.get(step_key, (column,))
