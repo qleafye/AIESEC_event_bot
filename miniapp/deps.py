@@ -201,17 +201,44 @@ def delegate_gate(request: Request, p: Principal = Depends(principal)) -> Princi
     return p
 
 
+def form_access_denial(conn, p: Principal) -> str | None:
+    """Причина отказа в доступе к анкете или `None`. Одна логика для `form_gate` и для
+    `/app/api/me.form_access` (T-21-34: видимость плитки — не право, каждый маршрут анкеты
+    по-прежнему за гейтом, но гейт и признак считаются одной функцией)."""
+    if p.via == "cookie":
+        return "cookie"  # D-05: анкета — исключительно initData
+    if read_setting(conn, "miniapp_staff_only") == "on" and not p.caps:
+        return "staff_only_mode"
+    return None
+
+
+def form_status(conn, telegram_id: int) -> str:
+    """Статус анкеты делегата: `draft` — есть незаконченный черновик новой анкеты
+    (`reg_drafts.kind == 'new'`), `none` — заявки ещё нет (нет строки `users`), иначе
+    статус заявки (`pending`|`approved`|`rejected`; legacy без статуса — `approved`).
+    none/draft — анкета ещё не подана, дом приложения — экран анкеты (D-24)."""
+    row = conn.execute(
+        "SELECT kind FROM reg_drafts WHERE telegram_id = ?", (telegram_id,)
+    ).fetchone()
+    if row is not None and row["kind"] == "new":
+        return "draft"
+    registered, status = _user_status(conn, telegram_id)
+    if not registered:
+        return "none"
+    return status or "approved"
+
+
 def form_gate(request: Request, p: Principal = Depends(principal)) -> Principal:
     """Анкета — НЕ `delegate_gate` (RESEARCH Pitfall 9): незарегистрированный/pending/rejected
     делегат обязан пройти — это ровно тот, у кого черновик `kind='new'` и есть (`delegate_gate`
-    отдал бы ему 403 на его же анкету). Уважает только режим доступа: cookie-ветка закрыта
-    (анкета — исключительно initData, как и остальные делегатские экраны, D-05), и
-    `miniapp_staff_only` — как у `delegate_denial`, но без `_user_status`/`_gate_decision`."""
-    if p.via == "cookie":
-        raise HTTPException(403, {"reason": "delegate_gate", "kind": "cookie"})
+    отдал бы ему 403 на его же анкету). Уважает только режим доступа (`form_access_denial`):
+    cookie-ветка закрыта (анкета — исключительно initData, как и остальные делегатские
+    экраны, D-05), и `miniapp_staff_only` — как у `delegate_denial`, но без
+    `_user_status`/`_gate_decision`."""
     with read_conn(request.app.state.cfg.db_path) as conn:
-        if read_setting(conn, "miniapp_staff_only") == "on" and not p.caps:
-            raise HTTPException(403, {"reason": "delegate_gate", "kind": "staff_only_mode"})
+        kind = form_access_denial(conn, p)
+    if kind is not None:
+        raise HTTPException(403, {"reason": "delegate_gate", "kind": kind})
     return p
 
 
