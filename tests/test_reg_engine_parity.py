@@ -656,6 +656,41 @@ def test_form_spec_prefills_returning_delegate(tmp_path):
     asyncio.run(go())
 
 
+# ── D-27 (владелец, 02.09): развилка город/трек у возвращенца — как у бота ────────────────
+# `handlers/registration.py::_city_fork_then_continue`/`_continue_after_city` зовут
+# `should_show_city_fork`/`should_show_fork` с `is_registered` ЖЁСТКО False на каждом
+# вызове (докстрока прямым текстом: "is_registered stays hardcoded False" /
+# "is_registered is always False here") — у бота прошлая регистрация НИКОГДА не прячет
+# развилку, прячет только уже известный город/трек. `form_spec` обязан давать те же токены
+# `pre` возвращенцу (`prior` непустой), что даёт `should_show_*` с `is_registered=False` —
+# сторож ловит регресс к `is_registered=bool(prior)`.
+
+def test_form_spec_fork_parity_with_bot_for_returning_delegate(tmp_path):
+    _ready(tmp_path)
+    prior = SOURCE.prior_answers_for(RECALL_ROW)
+    assert prior  # синтетическая строка возвращенца непустая (задача 1)
+
+    async def set_setting(key: str, value: str):
+        from database.db import set_setting as _set
+        await _set(key, value)
+
+    async def go():
+        for city_on, party_on in ((False, False), (True, False), (False, True), (True, True)):
+            await set_setting("event_city_enabled", "on" if city_on else "off")
+            await set_setting("party_enabled", "on" if party_on else "off")
+            await set_setting("party_fork_question", "on" if party_on else "off")
+
+            bot_shows_city = await SOURCE.should_show_city_fork(None, False)
+            bot_shows_party = await SOURCE.should_show_fork(None, None, False)
+
+            spec = await SOURCE.form_spec({}, participant_type=None, event_city=None, prior=prior)
+
+            assert ("city_fork" in spec["pre"]) == bot_shows_city, (city_on, party_on)
+            assert ("party_fork" in spec["pre"]) == bot_shows_party, (city_on, party_on)
+
+    asyncio.run(go())
+
+
 # ══════════════════════════════════════════════════════════════════════════════════════════════
 # Phase 21 (21-06) — VALIDATION_GOLDEN / APPLY_GOLDEN: снимок «ввод → (значение|ошибка)» и
 # побочных правил.
