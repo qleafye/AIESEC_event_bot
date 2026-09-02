@@ -34,6 +34,7 @@ from fastapi import Depends, Header, HTTPException, Request
 
 from dashboard.access import resolve_capabilities, staff_city
 from dashboard.db import read_conn
+from database.db import get_reg_draft
 from settings_schema import _parse_setting
 
 from miniapp.auth import verify_init_data
@@ -63,6 +64,11 @@ class Principal:
     via: str  # "initdata" | "cookie"
     caps: frozenset[str]
     city: str | None  # staff_city; None = все города
+    # Phase 21 (21-10, FORM-SYNC-04): username из подписанного initData.user (cookie-ветка ->
+    # None — дашборд его не несёт). Нужен ТОЛЬКО форме анкеты (services.reg_finalize.finalize_data
+    # ждёт настоящий username для НОВОЙ регистрации целиком через Mini App, без единого касания
+    # чата бота); остальные потребители Principal поле не используют.
+    username: str | None = None
 
     @property
     def is_staff(self) -> bool:
@@ -130,11 +136,13 @@ def principal(
     x_telegram_init_data: str | None = Header(default=None),
 ) -> Principal:
     cfg = request.app.state.cfg
+    username: str | None = None
     if x_telegram_init_data:
         data = verify_init_data(x_telegram_init_data, cfg.bot_token)
         if data is None:
             raise HTTPException(401, {"reason": "bad_initdata"})
         telegram_id, via = int(data["user"]["id"]), "initdata"
+        username = data["user"].get("username")
     elif "session" in request.scope and request.session.get("telegram_id"):
         try:
             telegram_id = int(request.session["telegram_id"])
@@ -155,7 +163,7 @@ def principal(
 
     if via == "cookie" and not caps:
         raise HTTPException(403, {"reason": "staff_only"})
-    return Principal(telegram_id=telegram_id, via=via, caps=caps, city=city)
+    return Principal(telegram_id=telegram_id, via=via, caps=caps, city=city, username=username)
 
 
 def require_cap(cap: str):
@@ -188,15 +196,35 @@ def delegate_gate(request: Request, p: Principal = Depends(principal)) -> Princi
     return p
 
 
-def upload_actor(request: Request, p: Principal = Depends(principal)) -> UploadActor:
-    """Один маршрут `POST /app/api/uploads` на два сценария: делегат прикладывает часть
-    сдачи ЛИБО менеджер с `moderate_game` грузит обложку задания (план 19-06)."""
+def form_gate(request: Request, p: Principal = Depends(principal)) -> Principal:
+    """Анкета — НЕ `delegate_gate` (RESEARCH Pitfall 9): незарегистрированный/pending/rejected
+    делегат обязан пройти — это ровно тот, у кого черновик `kind='new'` и есть (`delegate_gate`
+    отдал бы ему 403 на его же анкету). Уважает только режим доступа: cookie-ветка закрыта
+    (анкета — исключительно initData, как и остальные делегатские экраны, D-05), и
+    `miniapp_staff_only` — как у `delegate_denial`, но без `_user_status`/`_gate_decision`."""
+    if p.via == "cookie":
+        raise HTTPException(403, {"reason": "delegate_gate", "kind": "cookie"})
+    with read_conn(request.app.state.cfg.db_path) as conn:
+        if read_setting(conn, "miniapp_staff_only") == "on" and not p.caps:
+            raise HTTPException(403, {"reason": "delegate_gate", "kind": "staff_only_mode"})
+    return p
+
+
+async def upload_actor(request: Request, p: Principal = Depends(principal)) -> UploadActor:
+    """Три сценария на один маршрут `POST /app/api/uploads`: делегат прикладывает часть сдачи,
+    менеджер с `moderate_game` грузит обложку задания (план 19-06), ЛИБО (план 21-10, D-05)
+    делегат без прошедшего делегатского гейта (`unregistered`/`pending`/`rejected`), но с живым
+    черновиком анкеты, грузит резюме — тот же маршрут, третья ветка `delegate_denial`, не копия
+    (RESEARCH Pitfall 9: анкета — не `delegate_gate`). `cookie`/`staff_only_mode` НЕ пропускаются
+    этой веткой — это гейты режима доступа, а не статуса регистрации."""
     with read_conn(request.app.state.cfg.db_path) as conn:
         kind = delegate_denial(conn, p)
     if kind is None:
         staff_upload = False
     elif "moderate_game" in p.caps:
         staff_upload = True
+    elif kind in ("unregistered", "pending", "rejected") and await get_reg_draft(p.telegram_id) is not None:
+        staff_upload = False
     else:
         raise HTTPException(403, {"reason": "delegate_gate", "kind": kind})
     return UploadActor(
@@ -216,6 +244,7 @@ __all__ = [
     "UploadActor",
     "delegate_denial",
     "delegate_gate",
+    "form_gate",
     "principal",
     "read_setting",
     "require_cap",

@@ -24,6 +24,18 @@
 `already_submitted` (partial UNIQUE, гонка с ботом — D-05), уведомление менеджерам — через
 `miniapp_outbox` (`submission_created`), его делает бот (D-01). Время — `datetime.now()`
 без TZ, ровно как бот: сервис обязан жить в той же TZ контейнера.
+
+`POST /app/api/uploads?target=resume` (план 21-10, D-05, Pattern 5) — ТОТ ЖЕ маршрут, третий
+сценарий: делегат с живым черновиком анкеты (`upload_actor` третья ветка, `miniapp/deps.py`)
+грузит резюме. Расширение/размер проверяет `reg_engine.is_allowed_resume`/`resume_too_large`
+(лимит 10 МБ — как у бота, а не общий потолок сервиса 20 МБ, RESEARCH Pattern 5), файл уходит
+`sendDocument` с подписью `miniapp_upload_caption_resume`, `file_id`/имя кладутся ПРЯМО в
+`reg_drafts.answers` (`upsert_reg_draft`, allowlist-колонки `resume_file_id`/`resume_file_name`
+— finalize_data подхватит их тем же путём, что и текстовое резюме), реальная загрузка в
+Nextcloud — заботa бота через outbox `reg_resume_upload` (веб-процесс в Nextcloud не ходит).
+Общий ASGI-потолок тела маршрута (`BodyLimitMiddleware`, 20 МБ) не расширяется под резюме
+отдельно — 10 МБ резюме укладываются в него с запасом, отдельной записи в таблице лимитов
+`miniapp/main.py` заводить не нужно.
 """
 from __future__ import annotations
 
@@ -35,8 +47,9 @@ from datetime import datetime
 from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel, Field
 
+import reg_engine
 from cities import cities_module_on, normalize_city
-from database.db import add_submission_part, create_submission, get_task, get_user
+from database.db import add_submission_part, create_submission, get_reg_draft, get_task, get_user, upsert_reg_draft
 from settings_schema import get_setting_typed
 
 from miniapp import telegram_api
@@ -119,6 +132,56 @@ async def upload_limits(actor: UploadActor = Depends(upload_actor)) -> dict:
     }
 
 
+# ── POST /app/api/uploads?target=resume — резюме (план 21-10, D-05, Pattern 5) ────────────
+
+async def _upload_resume(request: Request, actor: UploadActor, content: bytes, filename: str,
+                          content_type: str) -> dict:
+    """Третий сценарий одного и того же маршрута: файл резюме кладётся ПРЯМО в
+    `reg_drafts.answers` (не возвращается фронту как `file_id`/`part_token` — резюме не часть
+    сдачи геймы, второго round-trip'а через `PATCH /app/api/reg/draft` не нужно)."""
+    draft = await get_reg_draft(actor.telegram_id)
+    if draft is None:
+        raise HTTPException(404, {"reason": "no_draft"})
+    if not reg_engine.is_allowed_resume(filename):
+        raise HTTPException(400, {
+            "reason": "bad_type",
+            "text": await get_setting_typed("reg_form_resume_wrong_type_text"),
+        })
+    if reg_engine.resume_too_large(len(content)):
+        raise HTTPException(413, {
+            "reason": "too_large",
+            "text": await get_setting_typed("reg_form_resume_too_large_text"),
+        })
+
+    caption = (await get_setting_typed("miniapp_upload_caption_resume") or "")[:CAPTION_MAX]
+    cfg = request.app.state.cfg
+    try:
+        result = await telegram_api.send_document(
+            cfg, actor.telegram_id, content, filename, content_type, caption,
+        )
+    except TelegramApiError as exc:
+        raise HTTPException(502, {"reason": "telegram_unavailable", "detail": exc.reason})
+
+    file_id = _extract_file_id("document", result)
+    if not file_id:
+        logger.warning("uploads(resume): Bot API не вернул file_id")
+        raise HTTPException(502, {"reason": "telegram_unavailable", "detail": "no_file_id"})
+
+    await upsert_reg_draft(
+        actor.telegram_id,
+        kind=draft["kind"],
+        participant_type=draft.get("participant_type"),
+        event_city=draft.get("event_city"),
+        step=draft.get("step"),
+        patch={"resume_file_id": file_id, "resume_file_name": filename},
+        source="miniapp",
+    )
+    await enqueue("reg_resume_upload", {
+        "telegram_id": actor.telegram_id, "file_id": file_id, "filename": filename,
+    })
+    return {"file_id": file_id, "filename": filename}
+
+
 # ── POST /app/api/uploads ────────────────────────────────────────────────────────────────
 
 @router.post("/app/api/uploads")
@@ -135,9 +198,13 @@ async def upload_part(request: Request, actor: UploadActor = Depends(upload_acto
     if not content:
         raise HTTPException(400, {"reason": "no_file"})
 
-    kind = _classify_upload(upload.content_type, len(content))
     filename = (upload.filename or "file")[:255]
     content_type = upload.content_type or "application/octet-stream"
+
+    if request.query_params.get("target") == "resume":
+        return await _upload_resume(request, actor, content, filename, content_type)
+
+    kind = _classify_upload(upload.content_type, len(content))
     caption_key = "miniapp_upload_caption_staff" if actor.is_staff_upload else "miniapp_upload_caption_delegate"
     caption = (await get_setting_typed(caption_key) or "")[:CAPTION_MAX]
 
