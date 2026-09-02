@@ -53,6 +53,7 @@ from reg_options import (
     BED_SHARING_OPTIONS,
     TRANSPORT_OPTIONS,
     AMBASSADOR_OPTIONS,
+    PARTY_TRACK_OPTIONS,  # gap closure фазы 21: подписи развилки формата — один список с вебом
 )
 from handlers.admin_caps import notify_by_capability  # D-13: fan out by capability, not bare ADMIN_IDS
 # Phase 13 REFAC (13-02, REFAC-02): shared registration data registries + sheet-schema
@@ -141,6 +142,8 @@ from reg_engine import (
     parse_age, is_allowed_resume, resume_too_large, RESUME_MAX_BYTES,
     # Phase 21 (21-06, Task 3): дефолты финала / данные сводки / статус модерации / diff.
     with_defaults, summary_fields, decide_status, diff,
+    # Gap closure фазы 21 (D-01): выбор трека/города — один код для тапа в боте и PATCH из веба.
+    resolve_track, PARTY_TAG_MAP,
 )
 _get_enabled_steps = enabled_steps
 _get_options = option_list_for
@@ -775,41 +778,12 @@ def _extract_source_tag(command_args: str | None) -> str | None:
 # (13-02, REFAC-02); imported above. Deep-link parsing below is unaffected.
 
 
-async def _resolve_track(candidate: str | None, city_code: str | None = None) -> str:
-    """Phase 7 (SHORT-01/CONTEXT.md): resolves the effective track a fresh/resumed
-    registration should run under, given a candidate track (deep-link arg or a track already
-    recorded in FSM/`reg_started`).
-
-    1. A party track is authoritative no matter what `registration_mode` says — party has
-       its own master gate (`party_enabled`) and deep-link vocabulary; this phase must not
-       touch that.
-    2. Otherwise, `registration_mode == "short"` is a GLOBAL override (user decision,
-       CONTEXT.md: "7-10 августа краткая форма для всех новых заявок, полная недоступна").
-       It wins even over a `candidate` of "full" recovered from a stale `reg_started` row —
-       a delegate who started under the old full form and returns mid-promo gets funneled
-       into the promo track too.
-    3. Otherwise fall back to whatever `candidate` already says, defaulting to "full". This
-       is what makes the promo reversible without stranding in-flight delegates: someone who
-       started under "short" and finishes AFTER the manager flips the toggle back keeps
-       "short" (step 3 sees a non-None candidate and never reaches step 2's mode check).
-
-    Phase 09.2-04 (CITY-04/CONTEXT B): step 2 now reads `registration_mode` through
-    `cities.get_setting_typed_for_city`, so a manager can flip the short/full toggle for one
-    city without affecting every other city — `city_code=None` (the default) collapses to
-    the exact global read this function always used. The caller resolves the city, not this
-    function (RESEARCH Pitfall 3) — by the time `_resolve_track` runs, the delegate's city is
-    already known by construction (07.1: welcome -> CITY -> track fork), so re-deriving it
-    here would risk a second resolution disagreeing with the caller's own."""
-    if _is_party_track(candidate):
-        return candidate
-    if await get_setting_typed_for_city("registration_mode", city_code) == SHORT_TRACK:
-        return SHORT_TRACK
-    return candidate or "full"
-
-
-# Fixed 2-entry map — exact-match only (T-05-01-01: no prefix/startswith/regex matching, so
-# no crafted payload can produce a track value outside this closed vocabulary).
-_PARTY_TAG_MAP = {"party_over": "party_overnight", "party_noover": "party_noovernight"}
+# Phase 7 `_resolve_track` (три шага: party-трек авторитетен -> глобальный/per-city
+# `registration_mode == short` -> кандидат или "full") и закрытый словарь `_PARTY_TAG_MAP`
+# переехали в reg_engine.py (gap closure фазы 21) — тот же код обслуживает PATCH из Mini App.
+# Старые имена сохранены: их зовут ~20 тестов и код ниже.
+_resolve_track = resolve_track
+_PARTY_TAG_MAP = PARTY_TAG_MAP
 
 
 def _extract_party_track(command_args: str | None) -> str | None:
@@ -909,12 +883,14 @@ DEFAULT_PARTY_FORK_TEXT = SETTINGS_SCHEMA["party_fork_text"]["default"]
 
 
 def _party_fork_kb() -> InlineKeyboardMarkup:
-    """D-10/D-09: pre-flow inline keyboard, not a REG_FLOW step. Reuses the same two literal
-    party tokens as _PARTY_TAG_MAP so there is exactly one token vocabulary in this file."""
+    """D-10/D-09: pre-flow inline keyboard, not a REG_FLOW step. Кнопки строятся из
+    `reg_options.PARTY_TRACK_OPTIONS` — того же списка, что отдаёт пикеру веба
+    `reg_engine.party_track_options()`; токен callback — обратная карта `_PARTY_TAG_MAP`
+    (единый словарь токенов с deep-link), `full` остаётся `full`."""
+    token_by_track = {track: token for token, track in _PARTY_TAG_MAP.items()}
     return InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="Полная регистрация", callback_data="party_pick:full")],
-        [InlineKeyboardButton(text="\U0001f389 Гости с ночёвкой", callback_data="party_pick:party_over")],
-        [InlineKeyboardButton(text="\U0001f389 Гости без ночёвки", callback_data="party_pick:party_noover")],
+        [InlineKeyboardButton(text=label, callback_data=f"party_pick:{token_by_track.get(code, code)}")]
+        for code, label in PARTY_TRACK_OPTIONS
     ])
 
 

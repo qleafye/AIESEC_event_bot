@@ -39,6 +39,9 @@ from handlers.registration import (
 )
 # Phase 21 (21-06, FORM-SYNC-01): validate_answer — единая проверка для чата бота и Mini App.
 from reg_engine import validate_answer, validate_date_range as _validate_date_range
+# Gap closure фазы 21: тексты ошибок тапа по развилке — из движка (те же, что получает PATCH
+# из Mini App), не локальные литералы.
+from reg_engine import CITY_CHOICE_INVALID_TEXT, CITY_CLOSED_TEXT, PARTY_CLOSED_TEXT
 
 logger = logging.getLogger(__name__)
 
@@ -56,12 +59,12 @@ async def party_pick(callback: types.CallbackQuery, state: FSMContext):
     elif token in _PARTY_TAG_MAP:
         chosen_track = _PARTY_TAG_MAP[token]
     else:
-        await callback.answer("Некорректный выбор.", show_alert=True)
+        await callback.answer(CITY_CHOICE_INVALID_TEXT, show_alert=True)
         return
 
     if chosen_track and await get_setting_typed("party_enabled") != "on":  # REG-02: registry-backed
         # Render-then-flip window (T-05-04-01): the track closed between render and tap.
-        await callback.answer("Регистрация на вечеринку уже закрыта.", show_alert=True)
+        await callback.answer(PARTY_CLOSED_TEXT, show_alert=True)
         return
 
     await callback.answer()
@@ -173,11 +176,11 @@ async def city_pick(callback: types.CallbackQuery, state: FSMContext):
     is picked back up there, not passed again here."""
     code = callback.data.split(":", 1)[1]
     if code not in {c["code"] for c in CITIES}:
-        await callback.answer("Некорректный выбор.", show_alert=True)
+        await callback.answer(CITY_CHOICE_INVALID_TEXT, show_alert=True)
         return
 
     if not await is_city_enabled(code):
-        await callback.answer("Регистрация на этот город закрыта.", show_alert=True)
+        await callback.answer(CITY_CLOSED_TEXT, show_alert=True)
         return
 
     await callback.answer()
