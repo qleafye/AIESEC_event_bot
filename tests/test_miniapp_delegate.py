@@ -74,7 +74,7 @@ def test_profile_returns_labeled_nonempty_fields_and_rereg_deeplink(client):
     # Модуль оплаты выключен (дефолт реестра) -> статуса оплаты как понятия нет: сервер шлёт
     # пустые значения, профиль не рисует «Не оплатил» (фикс 03d62a8 по живой приёмке 19-10).
     assert body["payment_status"] == "" and body["payment_status_label"] == ""
-    assert body["edit_deeplink"] == "https://t.me/YouLead_test_bot?start=rereg"
+    assert body["edit_deeplink"] == "https://t.me/YouLead_test_bot?start=edit"
     assert body["edit_hint"]  # дефолт реестра miniapp_profile_edit_hint
 
     _set("payment_enabled", "on")
