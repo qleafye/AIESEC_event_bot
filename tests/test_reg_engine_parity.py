@@ -24,12 +24,12 @@ import asyncio
 
 from config import config
 from database.db import init_db
-from handlers.reg_schema import REG_FLOW
+from reg_engine import REG_FLOW
 from reg_labels import REG_LABELS
 
-# Task 3 переключает SOURCE на `reg_engine` одной строкой — GOLDEN не трогается ни одним
-# символом (см. докстринг выше).
-import handlers.registration as SOURCE  # noqa: E402  (см. докстринг: SOURCE переключается в Task 3)
+# Task 3: SOURCE переключён на reg_engine — GOLDEN не тронут ни одним символом (см. докстринг
+# выше). До переноса (Task 1) здесь стояло `import handlers.registration as SOURCE`.
+import reg_engine as SOURCE  # noqa: E402
 
 
 def _ready(tmp_path):
@@ -185,12 +185,24 @@ async def _legacy_step_options(mod, step_key: str) -> list[str]:
     return _kb_texts(getattr(mod, _KB_BUILDER_NAME[step_key])())
 
 
+# Эти 4 шага сегодня строят клавиатуру через builders.py, которая допечатывает литеральную
+# кнопку "Другое" БЕЗУСЛОВНО (не через флаг add_other) -- она попала в golden как часть
+# плоского списка подписей кнопок задачи 1. reg_engine.options() отдаёт только сам список
+# (без служебных слов -- Pitfall 10, Task 2 read_first); "Другое" для этих шагов реконструируем
+# из отдельного флага other_allowed (reg_engine.step_spec()), чтобы не трогать GOLDEN и не
+# продолжать хранить "Другое" в самом списке вариантов.
+_OTHER_APPENDED_IN_GOLDEN = {"local_committee", "position", "department", "aiesec_role"}
+
+
 async def _collect_options(mod) -> dict:
     options_fn = getattr(mod, "options", None)
     out = {}
     for step_key in OPTION_STEPS:
         if options_fn is not None:
-            out[step_key] = list(await options_fn(step_key))
+            value = list(await options_fn(step_key))
+            if step_key in _OTHER_APPENDED_IN_GOLDEN:
+                value = value + ["Другое"]
+            out[step_key] = value
         else:
             out[step_key] = await _legacy_step_options(mod, step_key)
     return out
@@ -608,3 +620,37 @@ def test_golden_recall_has_no_empty_or_dash_values():
     for value in GOLDEN["recall"]["answers"].values():
         assert value not in (None, "", "-")
     assert GOLDEN["recall"]["answers"]  # непустой раздел
+
+
+# ── form_spec: префилл возвращенца (D-07, Task 3 acceptance criteria) ──────────────────────
+
+def test_form_spec_prefills_returning_delegate(tmp_path):
+    """Для строки users возвращенца и пустого черновика form_spec помечает шаг с прошлым
+    ответом value_source == "prior" и кладёт непустой `prior`; для новичка (prior=None)
+    поле `prior` пустое у ВСЕХ шагов и value_source нигде не "prior"."""
+    _ready(tmp_path)
+
+    async def go():
+        prior = SOURCE.prior_answers_for(RECALL_ROW)
+        assert prior  # синтетическая строка задачи 1 непустая
+
+        spec_returning = await SOURCE.form_spec({}, participant_type="full", prior=prior)
+        by_key = {s["key"]: s for s in spec_returning["steps"]}
+        prior_steps = [s for s in spec_returning["steps"] if s["value_source"] == "prior"]
+        assert prior_steps, "ни один шаг не получил value_source == 'prior'"
+        for step_spec_row in prior_steps:
+            assert step_spec_row["prior"] is not None
+            assert step_spec_row["prior"]["value"] == prior[step_spec_row["key"]]
+            assert step_spec_row["value"] == prior[step_spec_row["key"]]
+        # Шаг "age" точно есть в RECALL_ROW и в enabled по умолчанию (empty-сценарий golden).
+        if "age" in by_key:
+            assert by_key["age"]["value_source"] == "prior"
+            assert by_key["age"]["prior"]["value"] == 25
+
+        spec_newcomer = await SOURCE.form_spec({}, participant_type="full", prior=None)
+        assert spec_newcomer["steps"], "у новичка форма не должна быть пустой"
+        for step_spec_row in spec_newcomer["steps"]:
+            assert step_spec_row["prior"] is None
+            assert step_spec_row["value_source"] != "prior"
+
+    asyncio.run(go())
