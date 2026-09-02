@@ -845,6 +845,64 @@ def _extract_event_city(command_args: str | None) -> str | None:
     return _city_tag_map().get(command_args.strip())
 
 
+# Phase 21 (21-09, D-18/T-21-25): two more exact-match literals in the SAME closed token
+# vocabulary as _PARTY_TAG_MAP/_city_tag_map above — "continue"/"edit" do not overlap with a
+# numeric referrer id, "src_"-prefixed source tag, the two party tokens, or "city_"-prefixed
+# city tokens, so this extractor is mutually exclusive with all four by construction (same
+# proof shape as _extract_event_city's docstring; test matrix extended in
+# tests/test_cities_phase71.py).
+def _extract_resume_arg(command_args: str | None) -> str | None:
+    if not command_args:
+        return None
+    v = command_args.strip()
+    return v if v in ("continue", "edit") else None
+
+
+def _draft_is_fresh(draft: dict, ttl_hours: int) -> bool:
+    """Phase 21 (21-09, D-20): TTL applies ONLY to kind='new' drafts (a delegate mid a fresh
+    registration) — a kind='edit' draft (правка одобренной анкеты) is offered regardless of
+    age, the caller never calls this for one. `created_at` (start of THIS draft, not the last
+    keystroke) is the same "started_at" analog reg_started.get_reg_started_track/_city already
+    use for their own TTL window — a sane parse failure degrades to "fresh" (never traps a
+    delegate behind a screen that can't resolve)."""
+    if not ttl_hours:
+        return True
+    created = draft.get("created_at")
+    if not created:
+        return True
+    try:
+        created_dt = datetime.strptime(created, "%Y-%m-%d %H:%M:%S")
+    except Exception:
+        return True
+    return datetime.now() - created_dt < timedelta(hours=ttl_hours)
+
+
+async def _reg_form_cta_kb() -> InlineKeyboardMarkup | None:
+    """Phase 21 (21-09, D-01): the ONE entry point into the Mini App from the registration
+    flow — attached to the newcomer welcome message (`cmd_start`'s tail), never under any
+    individual question. Returns None (no button at all) unless the delegate-facing section
+    is on, the Mini App master toggle is on, AND a public URL is actually configured — same
+    three-way gate `handlers/user_actions.py::open_miniapp_button` already uses, so a
+    half-configured Mini App never renders a dead button."""
+    try:
+        if await get_setting_typed("miniapp_section_form") != "on":
+            return None
+        if await get_setting_typed("miniapp_enabled") != "on":
+            return None
+        url = config.DASHBOARD_PUBLIC_URL
+        if not url:
+            return None
+        return InlineKeyboardMarkup(inline_keyboard=[[
+            InlineKeyboardButton(
+                text=await get_setting_typed("reg_form_cta_text"),
+                web_app=WebAppInfo(url=url.rstrip("/") + "/app"),
+            ),
+        ]])
+    except Exception as e:
+        logger.error(f"reg_form_cta button build failed: {e}")
+        return None
+
+
 # Phase 17.1 (17.1-03): дефолт живёт в реестре (party_fork_text, группа «🎉 Party»); константа
 # оставлена для тестов/читателей и указывает на единственный источник правды.
 DEFAULT_PARTY_FORK_TEXT = SETTINGS_SCHEMA["party_fork_text"]["default"]
@@ -1539,6 +1597,29 @@ async def cmd_start(message: types.Message, state: FSMContext, bot: Bot, command
     dl_event_city = _extract_event_city(args)          # Phase 07.1 (CITY-03)
     if referrer_id:
         logger.info(f"Deep-link referrer_id={referrer_id} for user {user_id}")
+    resume_arg = _extract_resume_arg(args)  # Phase 21 (21-09, D-18): "continue" | "edit" | None
+
+    # Phase 21 (21-09, D-18): branch (a) — a fresh in-flight kind='new' draft (no `users` row
+    # yet, or a current-season rejected one) takes priority over EVERY other /start branch
+    # below, including the returning-delegate banner just below — a delegate mid-registration
+    # must see «Продолжить/Заново», not a fresh welcome or a past-season banner. Fail-soft: a
+    # draft-lookup glitch degrades to "no draft", never crashes /start.
+    try:
+        _draft_probe = await get_reg_draft(user_id)
+    except Exception as e:
+        logger.error(f"reg_resume draft lookup failed for {user_id}: {e}")
+        _draft_probe = None
+    _not_registered_or_rejected = (not user) or ((user.get("status") or "approved") == "rejected")
+    if _draft_probe and _draft_probe.get("kind") == "new" and _not_registered_or_rejected:
+        try:
+            _resume_ttl_hours = await get_setting_typed("reg_resume_ttl_hours")
+        except Exception as e:
+            logger.error(f"reg_resume_ttl_hours resolve failed for {user_id}: {e}")
+            _resume_ttl_hours = SETTINGS_SCHEMA["reg_resume_ttl_hours"]["default"]
+        if resume_arg in ("continue", "edit") or _draft_is_fresh(_draft_probe, _resume_ttl_hours):
+            from handlers.reg_resume import offer_resume
+            await offer_resume(message, _draft_probe)
+            return
 
     start_text = await get_setting("start_text") or DEFAULT_START_TEXT
     start_photo = await get_setting("start_photo_file_id")
@@ -1585,6 +1666,39 @@ async def cmd_start(message: types.Message, state: FSMContext, bot: Bot, command
         if dl_event_city:
             await state.update_data(event_city=dl_event_city)
         return
+
+    # Phase 21 (21-09, D-18): branch (b) — a delegate already registered THIS season (not
+    # rejected, not is_returning — that branch already returned above) either (1) already has
+    # a kind='edit' draft (started editing in Mini App, D-26) → same «Продолжить/Заново» screen
+    # as branch (a), or (2) came with `?start=edit` and has NO draft yet → the bot-side fallback
+    # entry point (D-18: "мастер правки — в приложении", this is only the fallback), which
+    # reuses the SAME recall-per-step engine rereg_start already uses for a past-season row
+    # (T-073-03-02 idiom: snapshot the TAPPER's own row, never anything from the callback/
+    # deep-link payload) — _start_registration_flow resolves kind='edit' itself for this exact
+    # case (see its own docstring), no separate flag needs to travel through the city/party
+    # fork chain.
+    if user and (user.get("status") or "approved") != "rejected":
+        try:
+            _cur_season = await get_setting_typed("event_season") or None
+        except Exception as e:
+            logger.error(f"event_season resolve failed for {user_id}: {e}")
+            _cur_season = None
+        if (user.get("season") or None) == _cur_season:
+            _edit_draft = _draft_probe if (_draft_probe and _draft_probe.get("kind") == "edit") else None
+            if _edit_draft:
+                from handlers.reg_resume import offer_resume
+                await offer_resume(message, _edit_draft)
+                return
+            if resume_arg == "edit":
+                await state.update_data(_prior_answers=dict(user))
+                if referrer_id:
+                    await state.update_data(referrer_id=referrer_id)
+                if source_tag:
+                    await state.update_data(source=source_tag, _source_from_tag=True)
+                await _city_fork_then_continue(
+                    message, state, user.get("event_city"), referrer_id, source_tag, None, None,
+                )
+                return
 
     if user and (user.get("status") or "approved") != "rejected":
         # D-05a: a rejected user falls through to re-register; others see the welcome menu.
@@ -1687,7 +1801,8 @@ async def cmd_start(message: types.Message, state: FSMContext, bot: Bot, command
             logger.error(f"per-city start_text resolve failed for {user_id}: {e}")
 
     logger.info(f"User {user_id} not registered, showing welcome then registration")
-    await _send_welcome(message, start_text, start_photo, None, user_id)
+    cta_kb = await _reg_form_cta_kb()  # Phase 21 (21-09, D-01): ОДИН раз, рядом с приветствием
+    await _send_welcome(message, start_text, start_photo, cta_kb, user_id)
 
     await _city_fork_then_continue(message, state, effective_city, referrer_id, source_tag, dl_party_track, recovered_track)
 
@@ -1973,3 +2088,8 @@ async def finalize_registration(message: types.Message, state: FSMContext, bot: 
 from handlers import reg_flow  # noqa: E402
 from handlers import reg_steps  # noqa: E402
 from handlers.reg_consent import maybe_offer_consent_recollect  # noqa: E402  -- quick 260822: пересогласие новой редакции
+
+# Phase 21 (21-09): imported LAST — its callback_query handlers (reg_resume:*) register at the
+# very TAIL of registration.router (after consent_renew_accept), so the golden order+filter
+# snapshot only ever gets APPENDED to, never reordered.
+from handlers import reg_resume  # noqa: E402
