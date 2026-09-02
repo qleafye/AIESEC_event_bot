@@ -56,7 +56,11 @@ KNOWN_OVERAGES: dict[str, tuple[int, str]] = {
         "(Phase 14/16)",
     ),
     "admin_settings.py": (
-        2252,
+        2384,
+        "+18 строк (Phase 21, 21-07 Task 2, FORM-SYNC-04) -- тумблер toggle_reg_edit_remoderation "
+        "(«Изменённая анкета — снова на модерацию», D-12): текст статуса в settings_toggle_rows "
+        "(подпись читает SETTINGS_SCHEMA, не литерал), строка в карте _row, хендлер по форме "
+        "toggle_nudge_enabled (2252 -> 2270); потолок поднят до нового размера + ~5% запаса. "
         "+3 строки (Phase 21, анкета в Mini App) -- три ключа текстов анкеты (reg_form_*) в HTML_SETTINGS; "
         "сами тексты живут в реестре, экраны -- в miniapp. "
         "+2 строки (Info-хвост ревью фазы 20) -- два ленивых шва на settings_return_screen "

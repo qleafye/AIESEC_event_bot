@@ -261,6 +261,13 @@ def _build_snapshot_lines():
 # admin_roles.py). Снапшот ПЕРЕСНЯТ прогоном `_build_snapshot_lines()` и сдиффен с прежним
 # 387-строчным -- единственное изменение: одна вставленная строка, всё остальное на прежних
 # местах в прежнем порядке.
+# Drift note (2026-09-02, Phase 21, 21-07 Task 2): +1 handler (388 -> 389) -- новый
+# `toggle_reg_edit_remoderation` («Изменённая анкета — снова на модерацию», D-12) дописан в
+# handlers/admin_settings.py сразу после `toggle_nudge_enabled` (тот же принцип, что и у
+# соседних тумблеров: физическая позиция декоратора в файле = позиция в этом снапшоте), поэтому
+# встал между `toggle_nudge_enabled` и `toggle_payment_reminders`. Снапшот ПЕРЕСНЯТ прогоном
+# `_build_snapshot_lines()` и сдиффен с прежним 388-строчным -- единственное изменение: одна
+# вставленная строка, всё остальное на прежних местах в прежнем порядке.
 GOLDEN_SNAPSHOT = """
 admin|message|cmd_admin_help|cmd:admin
 admin|message|cmd_coins|cmd:coins
@@ -362,6 +369,7 @@ admin|callback_query|toggle_party_fork_question|toggle_party_fork_question
 admin|callback_query|toggle_preselect_enabled|toggle_preselect_enabled
 admin|callback_query|toggle_pending_reminder|toggle_pending_reminder
 admin|callback_query|toggle_nudge_enabled|toggle_nudge_enabled
+admin|callback_query|toggle_reg_edit_remoderation|toggle_reg_edit_remoderation
 admin|callback_query|toggle_payment_reminders|toggle_payment_reminders
 admin|callback_query|toggle_uni_mode|toggle_uni_mode
 admin|callback_query|toggle_edu_conditional|toggle_edu_conditional
@@ -684,7 +692,7 @@ def test_snapshot_total_handler_count_is_292():
     # poll_wizard_cancel = два декоратора) в хвост admin.message, 15 callback (список/карточка
     # admin_polls + мастер admin_poll_wizard) в хвост admin.callback_query; чистый аппенд,
     # перепроверен прогоном _build_snapshot_lines() и diff'ом с прежним 334-строчным снапшотом.
-    assert len(GOLDEN_SNAPSHOT) == 388  # quick 260819: +toggle_preselect_enabled, +coinsman_amount_stale, +toggle_pending_reminder/+toggle_nudge_enabled; quick 260822: +5 settings_list_*, +toggle_game_submit_notify, +toggle_consent_recollect, +consent_renew_accept; опросы 260822: +20 (342 -> 362 после слияния); Phase 15-02: +2 open_dashboard_settings/toggle_dashboard_block (362 -> 364); Phase 19-08: +12 admin_miniapp.py (message: miniapp_accent_step/miniapp_logo_step/miniapp_logo_step_invalid; callback_query: open_miniapp_settings/toggle_miniapp_enabled/toggle_miniapp_staff_only/toggle_miniapp_section/miniapp_edit_accent_start/miniapp_edit_logo_start/miniapp_remove_logo/miniapp_cancel_edit), +1 user_actions.router open_miniapp_button (364 -> 376); Phase 19.1-07: -7 admin_miniapp.py (accent/logo edit flow replaced) +17 admin_miniapp_theme.py (presets + D-04 handles) = net +10 (376 -> 386); Phase 20-01: +1 admin_sections.py show_admin_section (386 -> 387); Phase 21-07 Task 1: +1 admin_moderation.py appr_history (387 -> 388)
+    assert len(GOLDEN_SNAPSHOT) == 389  # quick 260819: +toggle_preselect_enabled, +coinsman_amount_stale, +toggle_pending_reminder/+toggle_nudge_enabled; quick 260822: +5 settings_list_*, +toggle_game_submit_notify, +toggle_consent_recollect, +consent_renew_accept; опросы 260822: +20 (342 -> 362 после слияния); Phase 15-02: +2 open_dashboard_settings/toggle_dashboard_block (362 -> 364); Phase 19-08: +12 admin_miniapp.py (message: miniapp_accent_step/miniapp_logo_step/miniapp_logo_step_invalid; callback_query: open_miniapp_settings/toggle_miniapp_enabled/toggle_miniapp_staff_only/toggle_miniapp_section/miniapp_edit_accent_start/miniapp_edit_logo_start/miniapp_remove_logo/miniapp_cancel_edit), +1 user_actions.router open_miniapp_button (364 -> 376); Phase 19.1-07: -7 admin_miniapp.py (accent/logo edit flow replaced) +17 admin_miniapp_theme.py (presets + D-04 handles) = net +10 (376 -> 386); Phase 20-01: +1 admin_sections.py show_admin_section (386 -> 387); Phase 21-07 Task 1: +1 admin_moderation.py appr_history (387 -> 388); Phase 21-07 Task 2: +1 admin_settings.py toggle_reg_edit_remoderation (388 -> 389)
 
 
 # ── Task 2(a): Dispatcher feed_update smoke — cross-router first-match routing ─────────────
