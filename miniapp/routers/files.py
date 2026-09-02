@@ -29,8 +29,9 @@ from pathlib import PurePosixPath
 from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import StreamingResponse
 
+import reg_engine
 from cities import cities_module_on, normalize_city
-from database.db import find_submissions_by_file_id, get_user, is_active_task_cover
+from database.db import find_submissions_by_file_id, get_setting, get_user, is_active_task_cover
 from settings_schema import get_setting_typed
 
 import web_theme
@@ -66,6 +67,11 @@ async def can_read_file(p: Principal, file_id: str) -> bool:
         return True
     for key in web_theme.ASSET_KEYS.values():
         if (await get_setting_typed(key) or "") == file_id:
+            return True
+    # PDF согласий (`consent_pdf_{key}`, не ключ SETTINGS_SCHEMA): публичный документ анкеты,
+    # который делегат обязан прочитать до подписи — открыт любому принципалу, как логотип.
+    for _label, consent_key in await reg_engine.consent_entries():
+        if (await get_setting(f"consent_pdf_{consent_key}") or "") == file_id:
             return True
     submissions = await find_submissions_by_file_id(file_id)
     if any(sub["user_id"] == p.telegram_id for sub in submissions):
