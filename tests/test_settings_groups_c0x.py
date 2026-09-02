@@ -227,6 +227,10 @@ def test_registry_coverage_event():
         # "miniapp" added Phase 19 (19-01, D-06): тумблеры/оформление/разделы/тексты Mini App,
         # свой экран «🎨 Оформление» (план 19-08) — вне SETTINGS_FIELDS, как и dashboard.
         "miniapp",
+        # "apps" added quick 260902-tzh: modcard_fields/modcard_answer_limit — набор вопросов
+        # и лимит длины ответа для карточки заявки, свой экран «🧾 Поля карточки заявки»
+        # (handlers/admin_modcard.py) — вне SETTINGS_FIELDS, как dashboard/miniapp.
+        "apps",
     }
     allowed_types = {"toggle", "int", "list", "date", "text", "enum", "photo", "file"}
 
