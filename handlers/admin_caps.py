@@ -259,6 +259,9 @@ ADMIN_CAPS: dict[str, str] = {
     # button carries an optional ":<city>" suffix. Prefix key, not the bare exact string.
     "appr_all_yes*": "moderate_reg",
     "appr_approve:*": "moderate_reg",
+    # Phase 21 (21-07, T-21-09): кнопка «🕓 История» правок анкеты в карточке заявки — та же
+    # капа, что и вся остальная карточка, чужую историю без прав не открыть.
+    "appr_history:*": "moderate_reg",
     "appr_reject:*": "moderate_reg",
     "appr_resume:*": "moderate_reg",
     "appr_skip:*": "moderate_reg",
