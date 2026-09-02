@@ -597,26 +597,217 @@ export function settingSpec(item) {
 
 // ── headless-утилиты для фазы 22 (поиск/свёртка группы, без DOM) ─────────────────────────
 
+// Нестрогий поиск по реестру (WEB-SET-02, D-15б/в), своим кодом без внешних библиотек:
+// подпись + подсказка + синонимы с сервера (search_terms — словарь во фронте не живёт, D-13)
+// + текущее отображаемое значение; нижний регистр, ё=е; запрос режется на слова, совпасть
+// должны ВСЕ (AND); слово совпадает по префиксу слова кандидата, а с 5 символов — ещё и с
+// одной опечаткой (Левенштейн ≤ 1, ранний выход — T-22-10: 255 ключей на каждый keystroke).
+
+// Опечатка допускается только у слов от этой длины — короче слишком много ложных попаданий.
+const SEARCH_FUZZY_MIN_LEN = 5;
+// Подсказка при нуле результатов (D-15в): ближайшие слова по тому же расстоянию, порог 2.
+const SEARCH_SUGGEST_MAX_DISTANCE = 2;
+const SEARCH_SUGGEST_MIN_WORD_LEN = 3;
+const SEARCH_SUGGEST_DEFAULT_LIMIT = 3;
+
 function normalizeSearch(s) {
   // U+0451 (ё) -> U+0435 (е) кодовыми точками, не литералом кириллицы (D-25, сторож
   // test_form_js_has_no_human_text_literals сканирует ВСЕ строковые литералы файла).
-  return String(s || "").toLowerCase().replace(/ё/g, "\u0435");
+  // Обе замены сохраняют длину строки — индексы токенов годятся для подсветки оригинала.
+  return String(s == null ? "" : s).toLowerCase().replace(/\u0451/g, "\u0435");
+}
+
+const SEARCH_WORD_RE = /[\p{L}\p{N}]+/gu;
+
+// Слова текста с позициями в исходной строке.
+function searchTokens(text) {
+  const out = [];
+  const norm = normalizeSearch(text);
+  for (const m of norm.matchAll(SEARCH_WORD_RE)) {
+    out.push({ word: m[0], start: m.index, end: m.index + m[0].length });
+  }
+  return out;
+}
+
+function searchQueryWords(query) {
+  return searchTokens(query).map((t) => t.word);
+}
+
+// Расстояние Левенштейна ≤ 1? Один проход с ранним выходом: расхождение длин больше единицы
+// отсекается сразу, дальше сравниваются хвосты после первого несовпадения.
+function withinOneEdit(a, b) {
+  if (a === b) return true;
+  const la = a.length;
+  const lb = b.length;
+  if (Math.abs(la - lb) > 1) return false;
+  const n = Math.min(la, lb);
+  let i = 0;
+  while (i < n && a[i] === b[i]) i++;
+  if (la === lb) return a.slice(i + 1) === b.slice(i + 1);
+  if (la > lb) return a.slice(i + 1) === b.slice(i);
+  return a.slice(i) === b.slice(i + 1);
+}
+
+// Совпадение слова запроса с одним словом кандидата: сначала префикс, затем — только для
+// слов от SEARCH_FUZZY_MIN_LEN и только если префикс не сработал — одна опечатка против слова
+// целиком или его префикса той же длины. Возвращает длину совпавшего отрезка (0 — мимо).
+function matchSearchWord(q, word) {
+  if (word.startsWith(q)) return q.length;
+  if (q.length >= SEARCH_FUZZY_MIN_LEN) {
+    if (withinOneEdit(q, word)) return word.length;
+    if (word.length > q.length && withinOneEdit(q, word.slice(0, q.length))) return q.length;
+  }
+  return 0;
+}
+
+// Токены полей элемента; кэш по объекту элемента — массив от экрана между нажатиями клавиш
+// один и тот же, токенизировать 255 ключей заново на каждую букву незачем.
+const searchWordsCache = new WeakMap();
+
+function searchFieldWords(item) {
+  const it = item || {};
+  const cacheable = typeof item === "object" && item !== null;
+  if (cacheable && searchWordsCache.has(item)) return searchWordsCache.get(item);
+  const terms = Array.isArray(it.search_terms) ? it.search_terms.join(" ") : (it.search_terms || "");
+  const value = it.display != null ? it.display : it.value;
+  const valueText = Array.isArray(value) ? value.join(" ") : (value == null ? "" : String(value));
+  const words = {
+    label: searchTokens(it.label),
+    help: searchTokens(it.help != null ? it.help : it.prompt),
+    other: searchTokens(`${terms} ${valueText}`),
+  };
+  if (cacheable) searchWordsCache.set(item, words);
+  return words;
 }
 
 /**
- * Нестрогое совпадение по подписи/подсказке/значению с нормализацией регистра и «ё» (поиск по
- * ~70 ключам реестра, WEB-SET-02). Потребителя в фазе 21 нет — headless-функция строится и
- * тестируется здесь, UI над ней подключает фаза 22.
- * @param {Array<{label?: string, prompt?: string, value?: *}>} items
+ * Нестрогий поиск по элементам реестра (контракт D-15б). Пустой запрос — все элементы в
+ * исходном порядке. Возвращает `{item, ranges}`: `ranges.label` — совпавшие отрезки
+ * `[start, end)` в подписи, `ranges.help` — в подсказке (только для слов, не найденных в
+ * подписи); совпадения по синонимам/значению отрезков не дают. Подсветку по `ranges` рисует
+ * вызывающий код через highlightMatch().
+ * @param {Array<{label?: string, help?: string, prompt?: string, search_terms?: string[], value?: *, display?: string}>} items
  * @param {string} query
+ * @returns {Array<{item: object, ranges: {label: number[][], help: number[][]}}>}
  */
 export function searchFilter(items, query) {
-  const q = normalizeSearch(query).trim();
-  if (!q) return items || [];
-  return (items || []).filter((item) => {
-    const haystack = [item.label, item.prompt, item.value].map(normalizeSearch).join(" ");
-    return haystack.includes(q);
-  });
+  const list = items || [];
+  const words = searchQueryWords(query);
+  if (!words.length) return list.map((item) => ({ item, ranges: { label: [], help: [] } }));
+  const out = [];
+  for (const item of list) {
+    const fields = searchFieldWords(item);
+    const ranges = { label: [], help: [] };
+    let all = true;
+    for (const q of words) {
+      let hit = false;
+      for (const t of fields.label) {
+        const n = matchSearchWord(q, t.word);
+        if (n) { ranges.label.push([t.start, t.start + n]); hit = true; }
+      }
+      if (!hit) {
+        for (const t of fields.help) {
+          const n = matchSearchWord(q, t.word);
+          if (n) { ranges.help.push([t.start, t.start + n]); hit = true; }
+        }
+      }
+      if (!hit) hit = fields.other.some((t) => matchSearchWord(q, t.word) > 0);
+      if (!hit) { all = false; break; }
+    }
+    if (all) out.push({ item, ranges });
+  }
+  return out;
+}
+
+/**
+ * Подпись с подсветкой совпадений — массив детей для h(): обычные отрезки строками
+ * (textContent), совпавшие — h("mark"). Пересекающиеся отрезки склеиваются. Разметка
+ * строкой не собирается (T-22-03: в подписи может оказаться ввод менеджера).
+ * @param {*} h
+ * @param {string} text
+ * @param {number[][]} ranges - отрезки [start, end) из searchFilter()
+ */
+export function highlightMatch(h, text, ranges) {
+  const s = text == null ? "" : String(text);
+  const sorted = (ranges || [])
+    .map(([a, b]) => [Math.max(0, a), Math.min(s.length, b)])
+    .filter(([a, b]) => b > a)
+    .sort((x, y) => x[0] - y[0]);
+  const merged = [];
+  for (const r of sorted) {
+    const last = merged[merged.length - 1];
+    if (last && r[0] <= last[1]) last[1] = Math.max(last[1], r[1]);
+    else merged.push([r[0], r[1]]);
+  }
+  const out = [];
+  let pos = 0;
+  for (const [a, b] of merged) {
+    if (a > pos) out.push(s.slice(pos, a));
+    out.push(h("mark", { text: s.slice(a, b) }));
+    pos = b;
+  }
+  if (pos < s.length) out.push(s.slice(pos));
+  return out;
+}
+
+// Ограниченное расстояние Левенштейна (порог max, ранний выход, когда вся строка матрицы
+// выше порога). Зовётся только при нуле результатов — не на каждое нажатие клавиши.
+function levenshteinBounded(a, b, max) {
+  if (Math.abs(a.length - b.length) > max) return max + 1;
+  let prev = [];
+  for (let j = 0; j <= b.length; j++) prev.push(j);
+  for (let i = 1; i <= a.length; i++) {
+    const cur = [i];
+    let rowMin = i;
+    for (let j = 1; j <= b.length; j++) {
+      const cost = a[i - 1] === b[j - 1] ? 0 : 1;
+      const v = Math.min(prev[j] + 1, cur[j - 1] + 1, prev[j - 1] + cost);
+      cur.push(v);
+      if (v < rowMin) rowMin = v;
+    }
+    if (rowMin > max) return max + 1;
+    prev = cur;
+  }
+  return prev[b.length];
+}
+
+/**
+ * Подсказка при нуле результатов (D-15в): до `limit` ближайших слов из подписей и синонимов
+ * (по тому же расстоянию Левенштейна, порог 2; слово, начинающееся с запроса, ближе любой
+ * опечатки), отсортированных по близости. Возвращает слова, не тексты — формулировку
+ * «возможно, вы имели в виду» даёт реестр.
+ * @param {Array<{label?: string, search_terms?: string[]}>} items
+ * @param {string} query
+ * @param {number} [limit]
+ * @returns {string[]}
+ */
+export function suggestTerms(items, query, limit) {
+  const words = searchQueryWords(query);
+  const cap = limit == null ? SEARCH_SUGGEST_DEFAULT_LIMIT : limit;
+  if (!words.length || cap <= 0) return [];
+  const vocab = new Set();
+  for (const item of items || []) {
+    const it = item || {};
+    for (const t of searchTokens(it.label)) vocab.add(t.word);
+    for (const term of Array.isArray(it.search_terms) ? it.search_terms : []) {
+      for (const t of searchTokens(term)) vocab.add(t.word);
+    }
+  }
+  const scored = [];
+  for (const w of vocab) {
+    if (w.length < SEARCH_SUGGEST_MIN_WORD_LEN) continue;
+    let best = Infinity;
+    for (const q of words) {
+      if (w === q) { best = Infinity; break; }
+      const d = w.startsWith(q)
+        ? (w.length - q.length) / (w.length + 1)
+        : levenshteinBounded(q, w, SEARCH_SUGGEST_MAX_DISTANCE);
+      if (d < best) best = d;
+    }
+    if (best <= SEARCH_SUGGEST_MAX_DISTANCE) scored.push([best, w]);
+  }
+  scored.sort((x, y) => x[0] - y[0] || (x[1] < y[1] ? -1 : (x[1] > y[1] ? 1 : 0)));
+  return scored.slice(0, cap).map(([, w]) => w);
 }
 
 /**
