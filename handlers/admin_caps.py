@@ -411,6 +411,10 @@ ADMIN_CAPS: dict[str, str] = {
     "modcard_limit:*": "settings",
     "modcard_noop": "settings",
     "admin_sync_sheet": "settings",
+    # Quick 260902-vth: «🕓 Журналы в таблицу» — та же капа, что «🔄 Синхронизация таблицы».
+    "sheet_logs_open": "settings",
+    "sheet_logs_autosync_toggle": "settings",
+    "sheet_logs_sync_go": "settings",
     "city_toggle:*": "settings",
     "cmd:refresh_allowlist": "settings",
     "cmd:settings_guide": "settings",
