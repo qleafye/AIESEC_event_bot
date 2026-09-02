@@ -137,10 +137,10 @@ async def _registration_closed(event_city: str | None) -> bool:
 
 
 def _continue_deeplink(bot_username: str | None) -> str | None:
-    """D-17: «Продолжить в чате» — deep-link строится на сервере (тот же приём, что
-    `miniapp/routers/profile.py::rereg_deeplink`); фронт не собирает `t.me/...` строкой сам —
-    сторож `test_only_external_url_is_telegram_web_app_sdk` запрещает внешние URL-литералы
-    в JS вне SDK Telegram."""
+    """D-17: «Продолжить в чате» — deep-link строится на сервере, тем же приёмом, что
+    построение deep-link в `miniapp/routers/profile.py`; фронт не собирает `t.me/...` строкой
+    сам — сторож `test_only_external_url_is_telegram_web_app_sdk` запрещает внешние
+    URL-литералы в JS вне SDK Telegram."""
     return f"https://t.me/{bot_username}?start=continue" if bot_username else None
 
 
