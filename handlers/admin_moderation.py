@@ -6,10 +6,17 @@ moderation (`appr_*`) and receipt moderation (`rcpt_*`), with their shared priva
 (`_parse_appr`/`_parse_rcpt`, `_render_application_card`/`_render_receipt_card`,
 `_appr_card_kb`/`_rcpt_card_kb`, `_show_current_card`/`_show_current_receipt_card`,
 `_welcome_flipped`) moved together, internal order intact.
+
+Phase 21 (21-07, FORM-SYNC-04, D-14/D-15): «✏️ Изменена»/«🔁 Повторная подача» card badges
+and the «🕓 История» screen (`appr_history`, tail handler) read `users.edited_at`/
+`edited_source` + `database.db.get_answer_history` — written by `update_user_answers`/
+`record_answer_history`/`mark_user_edited` from plan 21-05, called by the edit-submit flow
+plan 21-08 wires up next. This plan is read-only against that trail.
 """
 import asyncio
 import html as html_module
 import logging
+from datetime import datetime
 
 from aiogram import F, types
 from aiogram.fsm.context import FSMContext
@@ -27,13 +34,15 @@ from database.db import (
     get_receipt_pending_users,
     get_receipt_pending_count,
     update_payment_status,
+    get_answer_history,
 )
 from services.sheets import update_status_in_sheet, bulk_update_status_in_sheet
 from services.background import spawn as _spawn
 from services.consent import consent_card_line
 from handlers.states import Approval, ReceiptReview
 from keyboards.builders import get_cancel_kb, get_main_menu_kb
-from handlers.reg_schema import STATUS_LABELS, approve_user
+from handlers.reg_schema import STATUS_LABELS, REG_LABELS, approve_user
+from reg_engine import STEP_TO_COLUMN
 from cities import city_label, admin_selected_city, city_scope, city_codes, normalize_city, ALL_CITIES, ALL_CITIES_LABEL
 from handlers.admin_core import admin_keyboard_for, _admin_city_view, _card_out_of_scope, _OUT_OF_SCOPE_ALERT
 from handlers.admin import router
@@ -42,6 +51,55 @@ logger = logging.getLogger(__name__)
 
 # INVARIANT (13-01 cap-test, extended by 13-04 to scan every handlers/admin*.py file): every
 # `@router.*` decorator below MUST fit on ONE line.
+
+
+# Phase 21 (21-07, D-14): edited_source is a service-layer literal ('bot'|'miniapp', see
+# database.db.mark_user_edited) — CLAUDE.md forbids printing codes to a manager, so this is the
+# ONE place that turns it into words for the moderation card / history screen.
+_EDITED_SOURCE_LABELS = {"miniapp": "в приложении", "bot": "в чате"}
+
+# column (users row) -> human label, built from the same STEP_TO_COLUMN/REG_LABELS pair the
+# engine uses for the questionnaire itself (reg_engine.py:359/553) — no second label table.
+_COLUMN_TO_LABEL = {col: REG_LABELS.get(f"reg_q_{step}", col) for step, col in STEP_TO_COLUMN.items()}
+
+
+def _format_edited_date(raw: str | None) -> str:
+    """'2026-09-03 14:12:00' -> '03.09 14:12' (формат подстановки {date} в reg_edited_admin_label).
+    Нераспознанный формат — печатаем как есть, а не роняем карточку заявки."""
+    if not raw:
+        return ""
+    try:
+        return datetime.strptime(str(raw), "%Y-%m-%d %H:%M:%S").strftime("%d.%m %H:%M")
+    except ValueError:
+        return str(raw)
+
+
+async def _edit_badges_for(user: dict) -> tuple[str | None, str | None, bool]:
+    """(edited_line, resubmit_line, has_history) для карточки заявки (D-14/D-15/D-10).
+    Пустой `edited_at` -> ничего нет (пометка ставится только при непустом diff — уже гарантия
+    reg_engine.diff/mark_user_edited, здесь просто читаем факт). `has_history` — по ОДНОЙ и той
+    же выборке get_answer_history(limit=1), которую переиспользует и признак повторной подачи,
+    так что карточка не делает лишний запрос ради одного только флага кнопки."""
+    edited_at = user.get("edited_at")
+    if not edited_at:
+        return None, None, False
+    tid = user.get("telegram_id")
+    history = await get_answer_history(tid, limit=1) if tid is not None else []
+    has_history = bool(history)
+    tmpl = await get_setting("reg_edited_admin_label") or "✏️ Изменена {date}"
+    edited_line = tmpl.replace("{date}", _format_edited_date(edited_at))
+    src_label = _EDITED_SOURCE_LABELS.get(user.get("edited_source"))
+    if src_label:
+        edited_line = f"{edited_line} ({src_label})"
+    resubmit_line = None
+    if history:
+        changes = history[0].get("changes") or []
+        # план 21-08 отмечает повторную подачу отклонённой анкеты отдельной записью
+        # {"column": "status", "old": "rejected", "new": "pending"} в ТОЙ ЖЕ выборке.
+        was_resubmit = any(c.get("column") == "status" and c.get("old") == "rejected" for c in changes)
+        if was_resubmit:
+            resubmit_line = await get_setting("reg_resubmit_admin_label") or "🔁 Повторная подача"
+    return edited_line, resubmit_line, has_history
 
 
 # ── Phase 2: application review queue ("Заявки", tinder UI) ───────────────────
@@ -57,10 +115,13 @@ def _parse_appr(data: str) -> tuple[str, int | None]:
     return data, None
 
 
-def _render_application_card(user: dict, position: int, total: int, city_label_text: str | None = None, consent_line: str | None = None) -> str:
+def _render_application_card(user: dict, position: int, total: int, city_label_text: str | None = None, consent_line: str | None = None, edited_line: str | None = None, resubmit_line: str | None = None) -> str:
     """HTML card for one pending application; all free-text escaped. `city_label_text` (Phase
     07.2, CITY-02) appends «· 🏙 {label}» to the header when an admin city is selected; None
-    keeps the header byte-identical to the pre-CITY-02 line (module off / no city chosen)."""
+    keeps the header byte-identical to the pre-CITY-02 line (module off / no city chosen).
+    `edited_line`/`resubmit_line` (Phase 21, 21-07, D-14/D-10) are pre-resolved by the caller
+    (`_edit_badges_for`, registry template + human date/source already substituted) — this
+    function only decides WHETHER to print them, same optional-line contract as `consent_line`."""
     def esc(v):
         return html_module.escape(str(v)) if v not in (None, "", "-") else None
 
@@ -117,6 +178,12 @@ def _render_application_card(user: dict, position: int, total: int, city_label_t
         lines.append(f"📎 Резюме (текст): {preview}")
     else:
         lines.append("📎 Резюме: нет")
+    # Phase 21 (21-07, D-14/D-10): «✏️ Изменена …» / «🔁 Повторная подача» — пометки для
+    # менеджера о правке уже поданной анкеты, ПЕРЕД строкой согласия (та всегда идёт последней).
+    if edited_line:
+        lines.append(edited_line)
+    if resubmit_line:
+        lines.append(resubmit_line)
     # Quick 260822: одна строка «Согласие: v…» (+ маркер старой редакции) — готовый текст
     # от services.consent.consent_card_line; None = подписей нет (модуль выключен/legacy).
     if consent_line:
@@ -124,7 +191,7 @@ def _render_application_card(user: dict, position: int, total: int, city_label_t
     return "\n".join(lines)
 
 
-def _appr_card_kb(tid: int, has_resume: bool, total: int) -> InlineKeyboardMarkup:
+async def _appr_card_kb(tid: int, has_resume: bool, total: int, has_history: bool = False) -> InlineKeyboardMarkup:
     rows = [
         [
             InlineKeyboardButton(text="✅ Одобрить", callback_data=f"appr_approve:{tid}"),
@@ -134,6 +201,11 @@ def _appr_card_kb(tid: int, has_resume: bool, total: int) -> InlineKeyboardMarku
     third = []
     if has_resume:
         third.append(InlineKeyboardButton(text="📎 Резюме", callback_data=f"appr_resume:{tid}"))
+    if has_history:
+        # Phase 21 (21-07, D-15): подпись — из реестра (reg_edit_history_button_label), не
+        # литерал в коде; кнопка видна только при непустой истории (get_answer_history limit=1).
+        history_label = await get_setting("reg_edit_history_button_label") or "🕓 История"
+        third.append(InlineKeyboardButton(text=history_label, callback_data=f"appr_history:{tid}"))
     third.append(InlineKeyboardButton(text="⏭ Пропустить", callback_data=f"appr_skip:{tid}"))
     rows.append(third)
     rows.append([InlineKeyboardButton(text=f"✅ Одобрить все ({total})", callback_data="appr_all")])
@@ -179,16 +251,21 @@ async def _show_current_card(target: types.Message, state: FSMContext):
     card_label = label
     if label == ALL_CITIES_LABEL:
         card_label = await city_label(normalize_city(current.get("event_city")))
+    # Phase 21 (21-07, D-14/D-15/D-10): одна выборка истории обслуживает и пометку карточки,
+    # и видимость кнопки «🕓 История» — см. докстринг _edit_badges_for.
+    edited_line, resubmit_line, has_history = await _edit_badges_for(current)
     await target.answer(
         _render_application_card(
             current, position, total, city_label_text=card_label,
             consent_line=await consent_card_line(current["telegram_id"]),
+            edited_line=edited_line, resubmit_line=resubmit_line,
         ),
         parse_mode="HTML",
-        reply_markup=_appr_card_kb(
+        reply_markup=await _appr_card_kb(
             current["telegram_id"],
             bool(current.get("resume_file_id") or current.get("resume_text")),
             total,
+            has_history=has_history,
         ),
     )
 
@@ -658,3 +735,38 @@ async def rcpt_view(callback: types.CallbackQuery):
         await callback.answer()
     else:
         await callback.answer("Чек не найден.", show_alert=True)
+
+
+# ── Phase 21 (21-07, FORM-SYNC-04, D-15): «🕓 История» — правки анкеты для менеджера ──────────
+
+@router.callback_query(F.data.startswith("appr_history:"))
+async def appr_history(callback: types.CallbackQuery):
+    """Человекочитаемый список «было → стало» по reg_answer_history — без похода в БД и без
+    разработчика. T-21-22 (Info Disclosure): в лог идёт только telegram_id и число записей,
+    сами значения changes не логируются."""
+    _, tid = _parse_appr(callback.data)
+    if tid is None:
+        await callback.answer()
+        return
+    rows = await get_answer_history(tid, limit=5)
+    logger.info(f"admin={callback.from_user.id} action=view_edit_history user={tid} count={len(rows)}")
+    if not rows:
+        await callback.message.answer("🕓 Правок пока нет.")
+        await callback.answer()
+        return
+    lines = ["🕓 <b>История правок</b>", ""]
+    for row in rows:
+        when = _format_edited_date(row.get("changed_at"))
+        src = _EDITED_SOURCE_LABELS.get(row.get("source"), html_module.escape(str(row.get("source") or "")))
+        for ch in row.get("changes") or []:
+            column = ch.get("column")
+            if column == "status":
+                # маркер повторной подачи (D-10) — уже показан отдельной строкой в карточке,
+                # это не поле анкеты, в списке «было → стало» не дублируем.
+                continue
+            label = html_module.escape(str(_COLUMN_TO_LABEL.get(column, column)))
+            old = html_module.escape(str(ch.get("old"))) if ch.get("old") not in (None, "") else "—"
+            new = html_module.escape(str(ch.get("new"))) if ch.get("new") not in (None, "") else "—"
+            lines.append(f"{label}: {old} → {new} ({when}, {src})")
+    await callback.message.answer("\n".join(lines), parse_mode="HTML")
+    await callback.answer()
