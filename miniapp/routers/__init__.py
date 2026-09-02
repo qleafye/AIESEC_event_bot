@@ -100,6 +100,38 @@
   POST /app/api/admin/settings {key, value} -> тот же список после записи
                                        403 {"reason":"not_editable"} — ключ вне белого списка
                                        400 {"reason":"bad_value","text"} — value не "on"/"off"
+  Делегат (план 21-10, FORM-SYNC-03/04/05): dependency `form_gate` (НЕ `delegate_gate` —
+  незарегистрированный/pending/rejected с черновиком kind='new' обязан пройти) + section "form":
+  GET  /app/api/reg/draft          -> {exists, kind: new|edit, step, version,
+                                       pre[consent:key|city_fork|party_fork], steps[{key, column,
+                                       type, label, prompt, options, other_allowed, skip_allowed,
+                                       required, max_len, prior{value,display}|null, value,
+                                       value_source: answer|prior|null}], progress{done,total},
+                                       closed, closed_text|null, prior_badge_text|null}
+                                       resume-шаг дополнительно несёт has_prior_resume (bool,
+                                       без самого file_id/URL — Pitfall 3)
+  PATCH /app/api/reg/draft {version, answers:{column: value|null|{"other":text}}, step?}
+                                    -> тот же ответ GET + conflicts[column] (колонки, изменённые
+                                       из чата после `version` клиента); value=null — «Пропустить»
+                                       400 {"reason":"bad_field","field"} — колонка вне allowlist
+                                       400 {"reason":"invalid","errors":{column:text}} — тот же
+                                       текст ошибки, что у бота (T-21-05)
+                                       403 {"reason":"registration_closed","text"} — только для
+                                       kind=new (правка одобренной работает и при закрытой
+                                       регистрации, D-11)
+  POST /app/api/reg/consent/{key}  -> {ok, key}; идемпотентно; 400 {"reason":"bad_key"}
+  POST /app/api/reg/draft/submit   -> {mode: new|edit, status, heading, body|null}
+                                       409 {"reason":"consent_required","keys","text"} — без
+                                       подписанных обязательных согласий (D-23, серверный гейт)
+                                       409 {"reason":"already_submitting"} — claim занят (T-21-02)
+                                       ставит ровно одно событие outbox reg_finalized|reg_edited,
+                                       мгновенный ответ делегату в чат — telegram_api.send_message
+  Резюме (план 21-10, D-05) — тот же `upload_actor`, третий сценарий «есть черновик»:
+  POST /app/api/uploads?target=resume  multipart `file` (.pdf/.docx, ≤10 МБ) -> {file_id, filename}
+                                       400 {"reason":"bad_type","text"} — не PDF/DOCX
+                                       413 {"reason":"too_large","text"} — больше 10 МБ
+                                       404 {"reason":"no_draft"} — черновика ещё нет
+                                       ставит outbox reg_resume_upload {telegram_id,file_id,filename}
 
 Коды ошибок — всегда JSON-тело с полем `reason`:
   401 {"reason": "no_auth"}        — ни initData, ни cookie
@@ -122,6 +154,7 @@ from miniapp.routers import (
     coins,
     coins_admin,
     files,
+    form,
     page,
     profile,
     review,
@@ -143,6 +176,7 @@ ALL_ROUTERS = [
     admin_tasks.router,
     coins_admin.router,
     settings.router,
+    form.router,
 ]
 
 __all__ = ["ALL_ROUTERS"]

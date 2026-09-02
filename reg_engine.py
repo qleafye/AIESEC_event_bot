@@ -870,6 +870,14 @@ def _validate_answer_core(step_key: str, raw, participant_type: str | None) -> t
     return (raw or "").strip(), None
 
 
+# Plan 21-10 (FORM-SYNC-03, Pitfall 10): Mini App шлёт `null`, когда делегат нажал
+# «Пропустить» — эквивалент литерала «Пропустить», который бот сегодня получает текстом.
+# Подставлять литерал безопасно ТОЛЬКО туда, где сам валидатор уже понимает «Пропустить» как
+# сигнал очистки поля (иначе, например, "multi" получил бы строку вместо списка, а "resume"
+# принял бы «Пропустить» как настоящий текст резюме, хотя своего литерала-скипа не имеет).
+_NULL_SKIP_STEPS = _SKIP_ALLOWED_STEPS | {"phone"}
+
+
 def validate_answer(step_key: str, raw, *, participant_type: str | None = None) -> tuple:
     """Единая точка проверки ответа — и для текста из чата бота, и (план 21-10) для JSON из
     Mini App (T-21-05). Возвращает `(value, error_text)`; `error_text is None` значит `value`
@@ -878,8 +886,14 @@ def validate_answer(step_key: str, raw, *, participant_type: str | None = None) 
     сегодня шлёт тем же `message.answer(...)`; какую клавиатуру приложить к этому тексту решает
     вызывающий (движок не знает про aiogram, T-21-03).
 
+    `raw is None` (план 21-10, Mini App) — эквивалент «Пропустить» для шагов, где это реальный
+    skip-литерал (`_NULL_SKIP_STEPS`); для остальных шагов `None` остаётся «пустой ввод» и
+    получает обычную ошибку «поле обязательно» — конверсия НЕ в роутере (RESEARCH Pattern 2).
+
     `max_len` (T-21-04, DoS) — единственная НОВАЯ проверка этой фазы: у бота сегодня лимита нет
     (см. `VALIDATION_GOLDEN`, помечено отдельным комментарием — не перенос, а новое правило)."""
+    if raw is None and step_key in _NULL_SKIP_STEPS:
+        raw = "Пропустить"
     value, error = _validate_answer_core(step_key, raw, participant_type)
     if error is None and isinstance(value, str):
         ui_type = _ui_type_for(step_key, REG_STEP_TYPES.get(step_key, "text"))
