@@ -106,6 +106,7 @@ SECTIONS: list[tuple[str, str, list[tuple]]] = [
         ("op", "admin_rebuild_sheet"),
         ("op", "admin_dedupe_sheet"),
         ("group", "sheets"),
+        ("screen", "sheet_logs_open", "🕓 Журналы в таблицу"),
         ("screen", "admin_dashboard_settings", "📊 Дашборд"),
     ]),
     ("manage", "🔧 Управление", [
@@ -439,3 +440,9 @@ async def show_admin_section(callback: types.CallbackQuery):
     text, kb = screen
     await callback.message.edit_text(text, parse_mode="HTML", reply_markup=kb)
     await callback.answer()
+
+
+# Quick 260902-vth: шов «🕓 Журналы в таблицу» — регистрируется ПОСЛЕДНИМ (после всех хендлеров
+# этого модуля), чтобы его строка в GOLDEN_SNAPSHOT (tests/test_refac_snapshot_260816.py)
+# встала строго в хвосте, а не разъехалась порядком с уже существующими хендлерами раздела.
+from handlers import admin_sheet_logs  # noqa: E402,F401

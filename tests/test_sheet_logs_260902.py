@@ -16,6 +16,9 @@ from database import db
 from settings_schema import SETTINGS_SCHEMA
 from settings_synonyms import SETTINGS_SYNONYMS
 from services import sheet_logs
+import handlers.admin_sections as sec
+from handlers.admin_caps import ADMIN_CAPS
+import handlers.admin_sheet_logs as ash
 
 
 def _run(coro):
@@ -338,3 +341,85 @@ def test_two_calls_while_inflight_coalesce_to_one_extra_run(tmp_path, monkeypatc
 
     _run(go())
     assert calls == [1]
+
+
+# ── Task 3: экран «🕓 Журналы в таблицу» ────────────────────────────────────────────────────
+
+class _FakeUser:
+    def __init__(self, uid):
+        self.id = uid
+
+
+class _FakeMessage:
+    def __init__(self):
+        self.text = None
+        self.markup = None
+        self.edit_calls = 0
+
+    async def edit_text(self, text, parse_mode=None, reply_markup=None):
+        self.text = text
+        self.markup = reply_markup
+        self.edit_calls += 1
+
+
+class _FakeCallback:
+    def __init__(self, data, user_id=900001):
+        self.data = data
+        self.from_user = _FakeUser(user_id)
+        self.message = _FakeMessage()
+        self.answers = []
+
+    async def answer(self, text=None, show_alert=False):
+        self.answers.append((text, show_alert))
+
+
+def _flat(kb):
+    return [b.callback_data for row in kb.inline_keyboard for b in row]
+
+
+def test_screen_registered_in_data_section_and_capability_guarded():
+    data_rows = next(rows for token, _label, rows in sec.SECTIONS if token == "data")
+    assert ("screen", "sheet_logs_open", "🕓 Журналы в таблицу") in data_rows
+    assert ADMIN_CAPS["sheet_logs_open"] == "settings"
+    assert ADMIN_CAPS["sheet_logs_autosync_toggle"] == "settings"
+    assert ADMIN_CAPS["sheet_logs_sync_go"] == "settings"
+    assert sec.back_button("sheet_logs_open").callback_data == "admin_sec:data"
+
+
+def test_keyboard_contains_settings_edit_buttons(tmp_path):
+    _ready(tmp_path)
+    kb = ash.build_sheet_logs_keyboard(autosync_on=True)
+    flat = _flat(kb)
+    assert "settings_edit:history_sheet_tab" in flat
+    assert "settings_edit:questions_sheet_tab" in flat
+
+
+def test_toggle_switches_state_and_text(tmp_path):
+    _ready(tmp_path)
+
+    async def go():
+        callback = _FakeCallback("sheet_logs_autosync_toggle")
+        await ash.sheet_logs_autosync_toggle(callback)
+        assert await db.get_setting("sheet_logs_autosync") == "off"
+        assert "выключено" in callback.message.text
+        callback2 = _FakeCallback("sheet_logs_autosync_toggle")
+        await ash.sheet_logs_autosync_toggle(callback2)
+        assert await db.get_setting("sheet_logs_autosync") == "on"
+        assert "включено" in callback2.message.text
+
+    _run(go())
+
+
+def test_sync_go_shows_warning_on_failure_without_crashing(tmp_path, monkeypatch):
+    _ready(tmp_path)
+
+    async def fake_sync():
+        return (-1, -1)
+    monkeypatch.setattr(ash, "sync_sheet_logs", fake_sync)
+
+    async def go():
+        callback = _FakeCallback("sheet_logs_sync_go")
+        await ash.sheet_logs_sync_go(callback)
+        assert "Не удалось записать" in callback.message.text
+
+    _run(go())
