@@ -517,6 +517,8 @@ BACK_TARGETS = {
     "admin_consent_pdfs": "form",
     "settings_toggle_reg": "form",
     "settings_group:apps": "apps",
+    # Quick 260902-tzh: «🧾 Поля карточки заявки» — экран раздела «📋 Заявки».
+    "modcard_open": "apps",
     "settings_group:event": "event",
     # Ревью фазы 20: «← Отмена» обоих визардов сезона вела литералом на экран группы
     # «🎪 Событие/Медиа», откуда эта же фаза их кнопки и убрала, — отмена приземляла
