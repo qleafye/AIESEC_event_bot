@@ -325,18 +325,24 @@ def test_process_question_source_has_city_kwarg_and_correct_order():
 # ── Task 3: new-application notification -> same filter ────────────────────────────────────
 
 def test_finalize_registration_source_passes_event_city():
-    from handlers import registration as reg_mod
+    # Phase 21 (21-08): notify_by_capability's call site moved from finalize_registration
+    # itself into the shared services.reg_finalize.post_finalize (both the direct bot call
+    # and the Mini App outbox job now share one notify path, T-21-02) — city kwarg lives here.
+    from services import reg_finalize as reg_finalize_mod
 
-    s = inspect.getsource(reg_mod.finalize_registration)
+    s = inspect.getsource(reg_finalize_mod.post_finalize)
     assert "notify_by_capability" in s
-    assert 'city=data.get("event_city")' in s
+    assert 'city=full.get("event_city")' in s
 
 
 def test_both_fanout_sites_pass_city_kwarg():
     repo_root = Path(__file__).resolve().parent.parent
-    reg_src = (repo_root / "handlers/registration.py").read_text(encoding="utf-8")
+    # Phase 21 (21-08): registration's own site moved into services/reg_finalize.py
+    # (post_finalize, shared with the Mini App outbox job) — included here so the invariant
+    # ("both fan-out sites pass a city kwarg") still holds across the move.
+    reg_finalize_src = (repo_root / "services/reg_finalize.py").read_text(encoding="utf-8")
     ua_src = (repo_root / "handlers/user_actions.py").read_text(encoding="utf-8")
-    combined = reg_src + "\n" + ua_src
+    combined = reg_finalize_src + "\n" + ua_src
     calls_with_city = len(re.findall(r"notify_by_capability\([^)]*city=", combined))
     assert calls_with_city == 2
 
