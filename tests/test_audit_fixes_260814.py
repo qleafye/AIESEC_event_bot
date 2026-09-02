@@ -107,7 +107,7 @@ def test_blocked_candidate_is_marked_nudged_and_not_retried(monkeypatch):
         return {"nudge_enabled": "on", "nudge_after_minutes": "120"}.get(key)
 
     class _FakeBot:
-        async def send_message(self, chat_id, text):
+        async def send_message(self, chat_id, text, reply_markup=None):
             sent_attempts.append(chat_id)
             raise _forbidden()
 

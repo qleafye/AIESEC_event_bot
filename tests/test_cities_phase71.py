@@ -285,6 +285,34 @@ def test_mutual_exclusivity_city_token_not_party_track():
     assert reg._extract_party_track("city_spb") is None
 
 
+# ── Phase 21 (21-09, D-18/T-21-25): _extract_resume_arg ("continue"/"edit") joins the SAME
+# closed exact-match vocabulary — mutually exclusive with all four extractors above and vice
+# versa (existing test dupliated the pattern here rather than replaced, per plan instruction).
+
+def test_extract_resume_arg_not_referrer_id():
+    assert reg._extract_referrer_id("continue", 1) is None
+    assert reg._extract_referrer_id("edit", 1) is None
+    assert reg._extract_resume_arg("123456") is None
+
+
+def test_extract_resume_arg_not_source_tag():
+    assert reg._extract_source_tag("continue") is None
+    assert reg._extract_source_tag("edit") is None
+    assert reg._extract_resume_arg("src_vk") is None
+
+
+def test_extract_resume_arg_not_party_track():
+    assert reg._extract_party_track("continue") is None
+    assert reg._extract_party_track("edit") is None
+    assert reg._extract_resume_arg("party_over") is None
+
+
+def test_extract_resume_arg_not_event_city():
+    assert reg._extract_event_city("continue") is None
+    assert reg._extract_event_city("edit") is None
+    assert reg._extract_resume_arg("city_spb") is None
+
+
 def test_event_city_enabled_default_off(tmp_path):
     _use_tmp_db(tmp_path)
 
