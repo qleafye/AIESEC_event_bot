@@ -207,6 +207,13 @@ def _sheet_details(data: dict) -> str:
     parts = []
     if data.get("referrer_id"):
         parts.append(f"Referrer ID: {data['referrer_id']}")
+    # Phase 21 (21-08, D-16): пометка правки — «✏️ Изменена дд.мм (поля: ...)». Дописывается
+    # ВТОРЫМ элементом (после Referrer ID, если он есть), а не отдельной колонкой листа
+    # (Pitfall 4 — новая колонка посреди сезона сдвигает уже записанные строки). Значение
+    # проставляет services.reg_finalize.post_finalize перед сборкой строки — здесь только
+    # читаем готовую строку, никакой логики форматирования.
+    if data.get("_edited_note"):
+        parts.append(str(data["_edited_note"]))
     return " | ".join(parts) if parts else "-"
 
 
