@@ -1127,3 +1127,71 @@ def test_form_screen_has_no_human_text_literals():
     cyrillic = re.compile(r"[А-Яа-яЁё]")
     for m in _STRING_LITERAL.finditer(text):
         assert not cyrillic.search(m.group(0)), f"кириллический литерал в screens/form.js: {m.group(0)}"
+
+
+# ── form.js: типы реестра настроек + нестрогий поиск (фаза 22, D-05/D-13/D-15) ──────────
+# Веб-настройки НЕ заводят второго набора компонентов: те же field()/setFieldState()
+# расширены ветками toggle/photo/file/list, поиск — headless-функциями в том же файле.
+# Поведение поиска проверяется в node отдельным файлом (tests/test_settings_search_js.py);
+# здесь — статические сторожа, которые остаются гейтом и без node.
+
+ICONS_JS = MINIAPP_STATIC / "js" / "icons.js"
+APP_CSS = MINIAPP_STATIC / "app.css"
+SETTINGS_CSS_CLASSES = (".settings-search", ".settings-group", ".settings-row", ".settings-batch-bar", ".settings-diff")
+SETTINGS_CSS_MARKER = "/* ── экран настроек (фаза 22"
+
+
+def test_form_js_covers_registry_types():
+    text = _js_without_comments(FORM_JS)
+    for t in ("toggle", "photo", "file", "list"):
+        assert f'case "{t}"' in text, f"form.js: нет ветки типа реестра {t}"
+    assert re.search(r"export\s+function\s+settingSpec\s*\(", text), "settingSpec не экспортирован"
+    # Сеть остаётся у экрана: загрузка photo/file, batch и preview — не в компонентах.
+    assert "fetch(" not in text and 'from "./api.js"' not in text
+    # Тумблер — тот же визуал, что «настройки-лайт» (flatRow + check-row), не новый компонент.
+    assert 'from "./ui.js"' in text and '"check-row"' in text
+
+
+def test_form_js_search_exports_and_no_synonym_literals():
+    text = _js_without_comments(FORM_JS)
+    for name in ("searchFilter", "highlightMatch", "suggestTerms"):
+        assert re.search(rf"export\s+function\s+{name}\s*\(", text), name
+    # Синонимы приходят с сервера (D-13/D-15а) — во фронте словаря нет: ни одного
+    # кириллического строкового литерала во всём файле (те же правила, что D-25 фазы 21).
+    assert "search_terms" in text
+    cyrillic = re.compile(r"[А-Яа-яЁё]")
+    for m in _STRING_LITERAL.finditer(text):
+        assert not cyrillic.search(m.group(0)), f"кириллический литерал в form.js: {m.group(0)}"
+    # Подсветка — фрагментами h("mark"), не разметкой строкой (T-22-03).
+    assert "innerHTML" not in text
+    assert 'h("mark"' in text
+    # Внешних библиотек расстояния нет — только относительные импорты соседних модулей.
+    assert not re.search(r'import .* from "http', text)
+    assert re.search(r'^import .* from "\./', text, re.M)
+
+
+def _settings_css_block() -> str:
+    css = APP_CSS.read_text(encoding="utf-8")
+    assert SETTINGS_CSS_MARKER in css, "в app.css нет блока экрана настроек"
+    return css[css.index(SETTINGS_CSS_MARKER):]
+
+
+def test_settings_css_classes_present_and_tokenised():
+    block = _settings_css_block()
+    for cls in SETTINGS_CSS_CLASSES:
+        assert cls in block, cls
+    assert not _HEX_OR_RGB_COLOR.findall(block), "литеральный цвет в блоке экрана настроек"
+    assert "position: sticky" in block[block.index(".settings-search"):]
+    assert "position: fixed" in block[block.index(".settings-batch-bar"):]
+    mark_rule = block[block.index(".settings-row mark"):]
+    assert "var(--accent-soft)" in mark_rule[:mark_rule.index("}")]
+    assert "var(--tap-min)" in block
+    assert "var(--warn)" in block[block.index(".settings-diff"):]
+
+
+def test_icons_js_has_eye_for_settings_preview():
+    # icon("eye") без записи бросает и роняет экран настроек на первом ключе с плейсхолдером
+    # (22-UI-SPEC § Icon Inventory) — ровно одна запись, тот же формат, что у соседей.
+    text = ICONS_JS.read_text(encoding="utf-8")
+    assert text.count('"eye": [') == 1
+    assert 'viewBox", "0 0 24 24"' in text
