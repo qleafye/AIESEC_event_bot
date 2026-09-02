@@ -777,21 +777,19 @@ def test_admin_coins_screen_has_confirm_step_before_charging():
     assert "/admin/coins?offset=" in text and "Показать ещё" in text
 
 
-def test_settings_screen_confirms_dangerous_direction_and_warns_on_self_disable():
-    """260824-8qw (MD-03): «в один тап» больше не правда для отнимающего направления двух
-    самых дорогих тумблеров — второй тап с текстом последствий из реестра."""
+def test_settings_screen_reads_whole_registry_not_a_whitelist():
+    """Фаза 22 (план 22-05, D-01): экран больше не закрытый список `EDITABLE_KEYS` (десять
+    тумблеров, план 19-07/MD-03) — весь правимый реестр одним запросом `settings/all`, шапка
+    города тем же `set_admin_city`, что у бота. Список `miniapp_enabled`/`miniapp_staff_only`
+    как отдельных "опасных" ключей в JS не хардкодится — опасность и текст последствий
+    (`item.dangerous`/`item.confirm_text`) считает сервер (T-22-13, 22-04)."""
     text = _js_without_comments(SCREENS_DIR / "settings.js")
-    assert 'api("/admin/settings")' in text
-    assert 'api("/admin/settings", { method: "POST"' in text
-    # Тумблеры, способные выключить приложение у всех, — отдельным блоком с предупреждением.
-    assert "miniapp_enabled" in text and "miniapp_staff_only" in text
-    assert "спрячет приложение" in text
-    # Опасное направление — второй тап через confirm-box (паттерн task_edit.js); текст
-    # последствий приходит с сервера -- в JS нет ни одного литерала предупреждения.
-    assert "confirm-box" in text
-    assert "item.confirm" in text
-    assert "Выключить Mini App" not in text
-    assert "Скрыть приложение от делегатов" not in text
+    assert 'api("/admin/settings/all")' in text
+    assert 'api("/admin/settings/city"' in text
+    assert "DANGER_KEYS" not in text
+    assert '"miniapp_enabled"' not in text and '"miniapp_staff_only"' not in text
+    # Поиск/свёртка/маркер состояния — из данных сервера, не из захардкоженных ключей.
+    assert "searchFilter" in text and "settingSpec" in text
 
 
 def test_coins_settings_css_classes_exist_on_tokens():
