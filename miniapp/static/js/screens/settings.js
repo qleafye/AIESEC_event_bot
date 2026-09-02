@@ -17,16 +17,16 @@
 import { flatRow } from "../ui.js";
 import { icon } from "../icons.js";
 import { haptic } from "../motion.js";
+import { errorText, isAuthError as isAuthErrorBase } from "../form.js";
 
 const DANGER_KEYS = new Set(["miniapp_enabled", "miniapp_staff_only"]);
 
-function errorText(err, fallback) {
-  if (err && err.payload && err.payload.text) return err.payload.text;
-  return fallback;
-}
-
+// errorText/isAuthError — перенесены в form.js (план 21-04, были дословным дублем task_edit.js).
+// "not_editable" — единственная причина 403 у этого экрана, которая НЕ гейт авторизации;
+// поведение не изменилось.
+const AUTH_EXCEPT_REASONS = ["not_editable"];
 function isAuthError(err) {
-  return Boolean(err && (err.status === 401 || (err.status === 403 && err.reason !== "not_editable") || err.status === 503));
+  return isAuthErrorBase(err, AUTH_EXCEPT_REASONS);
 }
 
 export async function render(root, params, ctx) {

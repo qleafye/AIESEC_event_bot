@@ -460,7 +460,9 @@ export function listChips(h, opts) {
 // ── headless-утилиты для фазы 22 (поиск/свёртка группы, без DOM) ─────────────────────────
 
 function normalizeSearch(s) {
-  return String(s || "").toLowerCase().replace(/ё/g, "е");
+  // U+0451 (ё) -> U+0435 (е) кодовыми точками, не литералом кириллицы (D-25, сторож
+  // test_form_js_has_no_human_text_literals сканирует ВСЕ строковые литералы файла).
+  return String(s || "").toLowerCase().replace(/ё/g, "\u0435");
 }
 
 /**
