@@ -26,6 +26,8 @@ def _ready(tmp_path, name="sheet_logs.db"):
     config.DB_PATH = str(tmp_path / name)
     config.GOOGLE_SHEET_ID = ""  # тестовое окружение не должно ходить в сеть
     _run(db.init_db())
+    sheet_logs._sync_inflight = False
+    sheet_logs._sync_task = None
 
 
 async def _add_user(tid, name="Иван", username="@ivan", city=None):
@@ -195,3 +197,144 @@ def test_export_uses_tab_setting_and_fails_soft(tmp_path, monkeypatch):
     monkeypatch.setattr(sheets, "sync_named_worksheet", boom)
     assert _run(sheet_logs.export_history_to_sheet()) == -1
     assert _run(sheet_logs.export_questions_to_sheet()) == -1
+
+
+# ── Task 2: автосинхрон fire-and-forget ─────────────────────────────────────────────────────
+
+def test_record_answer_history_no_sync_when_sheet_not_configured(tmp_path, monkeypatch):
+    _ready(tmp_path)  # config.GOOGLE_SHEET_ID == "" из _ready
+    calls = []
+
+    async def fake_sync():
+        calls.append(1)
+        return (0, 0)
+    monkeypatch.setattr(sheet_logs, "sync_sheet_logs", fake_sync)
+
+    async def go():
+        await _add_user(1)
+        await db.record_answer_history(1, [{"column": "phone", "old": "1", "new": "2"}], source="bot")
+        await asyncio.sleep(0)
+        if sheet_logs._sync_task:
+            await sheet_logs._sync_task
+
+    _run(go())
+    assert calls == []
+    assert sheet_logs._sync_inflight is False
+
+
+def test_record_answer_history_triggers_sync_when_configured(tmp_path, monkeypatch):
+    _ready(tmp_path)
+    monkeypatch.setattr(config, "GOOGLE_SHEET_ID", "sheet123")
+    monkeypatch.setattr(config, "GOOGLE_CREDENTIALS_FILE", "creds.json")
+    calls = []
+
+    async def fake_sync():
+        calls.append(1)
+        return (0, 0)
+    monkeypatch.setattr(sheet_logs, "sync_sheet_logs", fake_sync)
+
+    async def go():
+        await db.set_setting("sheet_logs_autosync", "on")
+        await _add_user(1)
+        await db.record_answer_history(1, [{"column": "phone", "old": "1", "new": "2"}], source="bot")
+        await asyncio.sleep(0)
+        if sheet_logs._sync_task:
+            await sheet_logs._sync_task
+
+    _run(go())
+    assert calls == [1]
+
+
+def test_record_answer_history_no_sync_when_autosync_off(tmp_path, monkeypatch):
+    _ready(tmp_path)
+    monkeypatch.setattr(config, "GOOGLE_SHEET_ID", "sheet123")
+    monkeypatch.setattr(config, "GOOGLE_CREDENTIALS_FILE", "creds.json")
+    calls = []
+
+    async def fake_sync():
+        calls.append(1)
+        return (0, 0)
+    monkeypatch.setattr(sheet_logs, "sync_sheet_logs", fake_sync)
+
+    async def go():
+        await db.set_setting("sheet_logs_autosync", "off")
+        await _add_user(1)
+        await db.record_answer_history(1, [{"column": "phone", "old": "1", "new": "2"}], source="bot")
+        await asyncio.sleep(0)
+        if sheet_logs._sync_task:
+            await sheet_logs._sync_task
+
+    _run(go())
+    assert calls == []
+
+
+def test_create_question_triggers_sync(tmp_path, monkeypatch):
+    _ready(tmp_path)
+    monkeypatch.setattr(config, "GOOGLE_SHEET_ID", "sheet123")
+    monkeypatch.setattr(config, "GOOGLE_CREDENTIALS_FILE", "creds.json")
+    calls = []
+
+    async def fake_sync():
+        calls.append(1)
+        return (0, 0)
+    monkeypatch.setattr(sheet_logs, "sync_sheet_logs", fake_sync)
+
+    async def go():
+        await db.set_setting("sheet_logs_autosync", "on")
+        await _add_user(1)
+        await db.create_question(1, "Вопрос")
+        await asyncio.sleep(0)
+        if sheet_logs._sync_task:
+            await sheet_logs._sync_task
+
+    _run(go())
+    assert calls == [1]
+
+
+def test_autosync_exception_does_not_propagate(tmp_path, monkeypatch):
+    _ready(tmp_path)
+    monkeypatch.setattr(config, "GOOGLE_SHEET_ID", "sheet123")
+    monkeypatch.setattr(config, "GOOGLE_CREDENTIALS_FILE", "creds.json")
+
+    async def boom():
+        raise RuntimeError("boom")
+    monkeypatch.setattr(sheet_logs, "sync_sheet_logs", boom)
+
+    async def go():
+        await db.set_setting("sheet_logs_autosync", "on")
+        await _add_user(1)
+        # запись должна пройти нормально, исключение не должно всплыть наружу
+        await db.record_answer_history(1, [{"column": "phone", "old": "1", "new": "2"}], source="bot")
+        history = await db.get_answer_history(1)
+        assert len(history) == 1
+        await asyncio.sleep(0)
+        if sheet_logs._sync_task:
+            await sheet_logs._sync_task
+
+    _run(go())
+    assert sheet_logs._sync_inflight is False
+
+
+def test_two_calls_while_inflight_coalesce_to_one_extra_run(tmp_path, monkeypatch):
+    _ready(tmp_path)
+    monkeypatch.setattr(config, "GOOGLE_SHEET_ID", "sheet123")
+    monkeypatch.setattr(config, "GOOGLE_CREDENTIALS_FILE", "creds.json")
+    calls = []
+
+    async def fake_sync():
+        calls.append(1)
+        return (0, 0)
+    monkeypatch.setattr(sheet_logs, "sync_sheet_logs", fake_sync)
+
+    async def go():
+        await db.set_setting("sheet_logs_autosync", "on")
+        await _add_user(1)
+        # два вызова подряд, ни один ещё не отработал (задача летит асинхронно) — склейка
+        sheet_logs.schedule_sheet_logs_sync()
+        sheet_logs.schedule_sheet_logs_sync()
+        await asyncio.sleep(0)
+        if sheet_logs._sync_task:
+            await sheet_logs._sync_task
+
+    _run(go())
+    assert calls == [1]
