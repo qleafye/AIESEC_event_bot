@@ -814,3 +814,11 @@ async def appr_full(callback: types.CallbackQuery):
     for chunk in moderation_card.split_for_telegram("\n".join(lines)):
         await callback.message.answer(chunk, parse_mode="HTML")
     await callback.answer()
+
+
+# Quick 260902-tzh: handlers/admin_modcard.py (экран «🧾 Поля карточки заявки» — тумблеры
+# вопросов + пресеты лимита) decorates the same admin.router. Imported LAST, right after
+# every handler above, so its handlers land right after this module at any import order —
+# same seam-import technique as admin_gamification/admin_polls at the tail of admin.py.
+# Golden snapshot: tests/test_refac_snapshot_260816.py.
+from handlers import admin_modcard  # noqa: E402,F401

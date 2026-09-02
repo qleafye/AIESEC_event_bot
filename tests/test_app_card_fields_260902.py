@@ -158,3 +158,116 @@ def test_split_for_telegram_chunks_fit_and_keep_lines():
     for chunk in chunks:
         for line in chunk.split("\n"):
             assert line in lines
+
+
+# ═══════════════════════════════════════════════════════════════════════════════════════════
+# Task 3 — экран «🧾 Поля карточки заявки»: реестр, IA, сторожа
+# ═══════════════════════════════════════════════════════════════════════════════════════════
+
+from pathlib import Path
+
+from settings_schema import SETTINGS_SCHEMA, _parse_setting
+from settings_synonyms import SETTINGS_SYNONYMS
+from handlers import admin_sections as sec
+from handlers import admin_settings
+from handlers import admin_modcard
+from handlers.admin_caps import ADMIN_CAPS
+
+
+def _db_ready(tmp_path):
+    from config import config
+    from database import db
+
+    config.DB_PATH = str(tmp_path / "test_app_card_fields_260902.db")
+    _run(db.init_db())
+
+
+class _FakeUser:
+    def __init__(self, uid):
+        self.id = uid
+
+
+class _FakeMessage:
+    def __init__(self):
+        self.text = None
+        self.markup = None
+        self.edit_calls = 0
+
+    async def edit_text(self, text, parse_mode=None, reply_markup=None):
+        self.text = text
+        self.markup = reply_markup
+        self.edit_calls += 1
+
+
+class _FakeCallback:
+    def __init__(self, data, user_id=900001):
+        self.data = data
+        self.from_user = _FakeUser(user_id)
+        self.message = _FakeMessage()
+        self.answers = []
+
+    async def answer(self, text=None, show_alert=False):
+        self.answers.append((text, show_alert))
+
+
+def test_registry_keys_live_in_apps_group():
+    for key in ("modcard_fields", "modcard_answer_limit"):
+        entry = SETTINGS_SCHEMA[key]
+        assert entry["group"] == "apps"
+        _parse_setting(key, entry["default"])  # не падает
+    assert SETTINGS_SCHEMA["modcard_fields"]["type"] == "list"
+    assert SETTINGS_SCHEMA["modcard_answer_limit"]["type"] == "int"
+
+
+def test_registry_default_matches_service_default():
+    assert SETTINGS_SCHEMA["modcard_fields"]["default"] == list(mc.DEFAULT_CARD_STEPS)
+
+
+def test_registry_keys_not_added_to_bot_group_screen():
+    field_keys = {k for k, _, _ in admin_settings.SETTINGS_FIELDS}
+    assert "modcard_fields" not in field_keys
+    assert "modcard_answer_limit" not in field_keys
+
+
+def test_synonyms_cover_new_keys():
+    for key in ("modcard_fields", "modcard_answer_limit"):
+        assert key in SETTINGS_SYNONYMS
+        assert len(SETTINGS_SYNONYMS[key]) >= 2
+
+
+def test_screen_declared_in_apps_section_and_capability_guarded():
+    apps_rows = next(rows for token, _label, rows in sec.SECTIONS if token == "apps")
+    assert ("screen", "modcard_open", "🧾 Поля карточки заявки") in apps_rows
+    assert ADMIN_CAPS["modcard_open"] == "settings"
+    assert ADMIN_CAPS["appr_full:*"] == "moderate_reg"
+    assert sec.back_button("modcard_open").callback_data == "admin_sec:apps"
+
+
+def test_toggle_writes_sentinel_when_nothing_selected(tmp_path):
+    _db_ready(tmp_path)
+    from database.db import get_setting, set_setting
+
+    _run(set_setting("modcard_fields", "age"))
+    callback = _FakeCallback("modcard_toggle:age")
+    _run(admin_modcard.modcard_toggle(callback))
+    raw = _run(get_setting("modcard_fields"))
+    assert raw == mc.EMPTY_SENTINEL
+    assert mc.enabled_steps([raw]) == []
+    assert callback.message.edit_calls == 1
+
+
+def test_full_card_handler_checks_city_scope():
+    source_path = Path(__file__).resolve().parent.parent / "handlers" / "admin_moderation.py"
+    text = source_path.read_text(encoding="utf-8")
+    start = text.index("async def appr_full(")
+    end = text.index("# Quick 260902-tzh: handlers/admin_modcard.py", start)
+    body = text[start:end]
+    assert "_card_out_of_scope" in body
+
+
+def test_keyboard_never_shows_step_codes():
+    kb = admin_modcard.build_modcard_keyboard(list(mc.DEFAULT_CARD_STEPS), 300)
+    for row in kb.inline_keyboard:
+        for button in row:
+            assert "_" not in button.text
+            assert button.text not in mc.CARD_STEPS
