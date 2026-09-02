@@ -940,3 +940,157 @@ def conflicts(field_versions: dict, base_version: int, columns) -> list:
     когда нужно только УЗНАТЬ, что изменилось (например `GET draft` при возврате фокуса), не
     сливая целиком ответ."""
     return [col for col in columns if field_versions.get(col, 0) > base_version]
+
+
+# ══════════════════════════════════════════════════════════════════════════════════════════════
+# Phase 21 (21-06, Task 3) — with_defaults / summary_fields / decide_status / diff: дефолты
+# финала, данные сводки, расчёт статуса модерации и вычисление diff — перенос дословный из
+# handlers/registration.py (setdefault-блок finalize_registration, _build_summary/_esc,
+# _decide_status). `finalize_registration` САМА в этом плане не переписывается (план 21-08) —
+# отсюда только исчезает дублирующая логика, движок становится единственным источником правды
+# для обеих поверхностей.
+#
+# T-21-03 (XSS): движок НЕ собирает HTML — `summary_fields` отдаёт голые (label, value), теги и
+# экранирование добавляет вызывающий (бот своим `_esc`, Mini App своим `h()`/DOM). В этом файле
+# намеренно нет ни одного HTML-тега и ни одного вызова экранирующей функции стандартной библиотеки.
+# ══════════════════════════════════════════════════════════════════════════════════════════════
+
+def with_defaults(answers: dict) -> dict:
+    """Дефолты финала анкеты — прежний setdefault-блок `finalize_registration` (~20 полей),
+    перенесён дословно, без изменения значений по умолчанию. Возвращает НОВЫЙ dict (копия
+    `answers` + дефолты) — чистая функция, в отличие от прежнего `data.setdefault(...)` на живом
+    FSM-словаре; единая для бота и будущего веб-финала (план 21-08)."""
+    result = dict(answers)
+    result.setdefault("email", "-")
+    result.setdefault("phone", "-")
+    result.setdefault("city", "-")
+    result.setdefault("is_aiesec_member", False)
+    result.setdefault(
+        "source", "Реферальная ссылка" if result.get("referrer_id") else "Самостоятельно",
+    )
+    result.setdefault("source_details", f"Referrer ID: {result.get('referrer_id', '-')}")
+    result.setdefault("education_status", "-")
+    result.setdefault("university", "-")
+    result.setdefault("course", "-")
+    result.setdefault("specialty", "-")
+    result.setdefault("work_status", False)
+    result.setdefault("work_sphere", "-")
+    result.setdefault("missing_skills", "-")
+    result.setdefault("expectations", "-")
+    result.setdefault("local_committee", "-")
+    result.setdefault("position", "-")
+    # IN-01: expectations_ar остаётся мёртвым дефолтом не заведённым намеренно (ни один шаг его
+    # не заполняет) — колонка листа остаётся, повторное заведение сломало бы ширину листа.
+    result.setdefault("informal_day", "-")
+    result.setdefault("attendance_format", "-")
+    result.setdefault("comments", "-")
+    result.setdefault("resume_file_id", None)
+    result.setdefault("resume_text", None)
+    result.setdefault("resume_url", None)
+    return result
+
+
+# Поля сводки (QW-01) — перенос дословный из handlers/registration.py::_build_summary: тот же
+# список, тот же порядок, то же условие фильтрации (None/пустая строка не попадают в сводку).
+_SUMMARY_FIELD_LABELS = [
+    ("ФИО", "full_name"),
+    ("Возраст", "age"),
+    ("Дата приезда", "arrival_date"),
+    ("Дата рождения", "birth_date"),
+    ("Email", "email"),
+    ("Телефон", "phone"),
+    ("ВК", "vk_username"),
+    ("Город", "city"),
+    ("Источник", "source"),
+    ("Лок. комитет", "local_committee"),
+    ("Позиция", "position"),
+    ("Образование", "education_status"),
+    ("ВУЗ", "university"),
+    ("Курс", "course"),
+    ("Специальность", "specialty"),
+    ("Направление обучения", "study_field"),
+    # "Работа" и "Амбассадор" вычисляются отдельно ниже (bool -> «Да»/None, не прямой .get).
+    ("Сфера работы", "work_sphere"),
+    ("Навыки", "missing_skills"),
+    ("Ожидания", "expectations"),
+    ("Неформальный день", "informal_day"),
+    ("Формат", "attendance_format"),
+    ("Комментарии", "comments"),
+    ("Департамент", "department"),
+    ("Позиция AIESEC", "aiesec_role"),
+    ("Аламни/айсекер", "alumni_status"),
+    ("Справка в ВУЗ", "needs_certificate"),
+    ("Английский", "english_level"),
+    ("Аллергии", "allergies"),
+    ("Питание", "food_pref"),
+    ("Приезд", "arrival"),
+    ("Проживание", "housing"),
+    ("Общая кровать", "bed_sharing"),
+    ("Сосед по кровати", "bed_partner"),
+    ("Трансфер", "transport"),
+    ("Дата план. оплаты", "payment_plan_date"),
+    ("CC-shop", "cc_shop"),
+    ("Ожидания от орг", "exp_organizers"),
+    ("Ожидания от контента", "exp_content"),
+    ("Волонтёр", "volunteer"),
+    ("Цель участия", "goal"),
+    ("Форматы форума", "formats"),
+]
+
+
+def summary_fields(answers: dict) -> list:
+    """QW-01: данные сводки анкеты БЕЗ разметки (T-21-03 — HTML собирает вызывающий, не
+    движок). Перенос дословный из handlers/registration.py::_build_summary — тот же список
+    полей в том же порядке, то же условие фильтрации пустых значений, то же условие резюме
+    (файл побеждает текст)."""
+    answers = answers or {}
+    fields = [(label, answers.get(column)) for label, column in _SUMMARY_FIELD_LABELS]
+    fields.append(("Работа", "Да" if answers.get("work_status") else "Нет"))
+    fields.append(("Амбассадор", "Да" if answers.get("is_ambassador_candidate") else None))
+    out = [(label, value) for label, value in fields if not (value is None or str(value) == "")]
+    if answers.get("resume_file_id"):
+        out.append(("Резюме", "прикреплено файлом"))
+    elif answers.get("resume_text"):
+        out.append(("Резюме", answers.get("resume_text")))
+    return out
+
+
+def decide_status(reg_mode: str, full_setting: str, short_setting: str,
+                   participant_type: str = "full", party_setting: str | None = None) -> str:
+    """Form type x per-form moderation setting -> 'pending' | 'approved'. Перенос дословный из
+    handlers/registration.py::_decide_status (Phase 2, D-01..D-03).
+
+    Phase 5 (D-13): party tracks resolve status from party_approval alone, completely
+    independent of full_approval/short_approval — this branch never falls through to the
+    reg_mode logic below it, and never reads full_setting/short_setting. `party_setting`
+    of None (an unconfigured party_approval) resolves to "manual": a party track must be
+    moderated by default, never silently auto-approved (T-05-04-02).
+
+    Phase 7 (SHORT-05): the short track resolves status from `short_setting` (short_approval)
+    alone, keyed off the persisted `participant_type`, and — crucially — WITHOUT reading
+    `reg_mode` at all."""
+    if _is_party_track(participant_type):
+        setting = party_setting or "manual"
+        return "pending" if setting == "manual" else "approved"
+    if _is_short_track(participant_type):
+        return "pending" if short_setting == "manual" else "approved"
+    setting = full_setting if reg_mode == "full" else short_setting
+    return "pending" if setting == "manual" else "approved"
+
+
+def diff(old_row: dict | None, new_answers: dict) -> list:
+    """Только колонки анкеты (`answer_columns()`); значения, равные с точностью до
+    `str().strip()`, изменением не считаются — пустой результат означает «правки не было»
+    (D-14: пометка «изменена» в карточке заявки ставится только при непустом diff)."""
+    old_row = old_row or {}
+    new_answers = new_answers or {}
+    changes = []
+    for column in answer_columns():
+        old_value = old_row.get(column)
+        new_value = new_answers.get(column)
+        old_str = "" if old_value is None else str(old_value).strip()
+        new_str = "" if new_value is None else str(new_value).strip()
+        if old_str == new_str:
+            continue
+        changes.append({"column": column, "old": old_value, "new": new_value})
+    return changes

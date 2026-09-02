@@ -834,3 +834,101 @@ def test_apply_golden_side_effects_present_in_source():
         assert result.get(column) == entry["value"], entry
         for side_column, expected in entry["side_effects"].items():
             assert result.get(side_column) == expected, entry
+
+
+# ══════════════════════════════════════════════════════════════════════════════════════════════
+# FINALIZE_GOLDEN (Plan 21-06, Task 3) — дефолты финала (`with_defaults`) и статус модерации
+# (`decide_status`) для нескольких наборов ответов x режимов. Снято прогоном
+# `reg_engine.with_defaults`/`reg_engine.decide_status` (SOURCE) — тот же setdefault-блок и та
+# же `_decide_status`, что раньше жили в handlers/registration.py (перенос дословный, см.
+# докстринги функций в reg_engine.py); значения не сочинены — сверены прогоном перед тем, как
+# лечь в файл. Любое расхождение здесь — регресс переноса Task 3, а не повод править константу.
+# ══════════════════════════════════════════════════════════════════════════════════════════════
+
+FINALIZE_GOLDEN = [
+    {
+        "name": "новичок без реферера, full-track, full_approval=manual",
+        "answers": {"full_name": "Иван Иванов"},
+        "defaults": {
+            "full_name": "Иван Иванов",
+            "email": "-", "phone": "-", "city": "-", "is_aiesec_member": False,
+            "source": "Самостоятельно", "source_details": "Referrer ID: -",
+            "education_status": "-", "university": "-", "course": "-", "specialty": "-",
+            "work_status": False, "work_sphere": "-", "missing_skills": "-",
+            "expectations": "-", "local_committee": "-", "position": "-",
+            "informal_day": "-", "attendance_format": "-", "comments": "-",
+            "resume_file_id": None, "resume_text": None, "resume_url": None,
+        },
+        "status_args": ("full", "manual", "auto"),
+        "status_kwargs": {"participant_type": "full", "party_setting": None},
+        "status": "pending",
+    },
+    {
+        "name": "делегат с рефералом, full-track, full_approval=auto",
+        "answers": {"referrer_id": 12345},
+        "defaults": {
+            "referrer_id": 12345,
+            "email": "-", "phone": "-", "city": "-", "is_aiesec_member": False,
+            "source": "Реферальная ссылка", "source_details": "Referrer ID: 12345",
+            "education_status": "-", "university": "-", "course": "-", "specialty": "-",
+            "work_status": False, "work_sphere": "-", "missing_skills": "-",
+            "expectations": "-", "local_committee": "-", "position": "-",
+            "informal_day": "-", "attendance_format": "-", "comments": "-",
+            "resume_file_id": None, "resume_text": None, "resume_url": None,
+        },
+        "status_args": ("full", "auto", "manual"),
+        "status_kwargs": {"participant_type": "full", "party_setting": None},
+        "status": "approved",
+    },
+    {
+        "name": "party_overnight трек, party_approval=auto побеждает full_approval=manual (D-13)",
+        "answers": {"participant_type": "party_overnight"},
+        "defaults": {
+            "participant_type": "party_overnight",
+            "email": "-", "phone": "-", "city": "-", "is_aiesec_member": False,
+            "source": "Самостоятельно", "source_details": "Referrer ID: -",
+            "education_status": "-", "university": "-", "course": "-", "specialty": "-",
+            "work_status": False, "work_sphere": "-", "missing_skills": "-",
+            "expectations": "-", "local_committee": "-", "position": "-",
+            "informal_day": "-", "attendance_format": "-", "comments": "-",
+            "resume_file_id": None, "resume_text": None, "resume_url": None,
+        },
+        "status_args": ("full", "manual", "manual"),
+        "status_kwargs": {"participant_type": "party_overnight", "party_setting": "auto"},
+        "status": "approved",
+    },
+]
+
+
+def test_finalize_golden_with_defaults_and_status():
+    for entry in FINALIZE_GOLDEN:
+        result = SOURCE.with_defaults(entry["answers"])
+        assert result == entry["defaults"], entry["name"]
+        reg_mode, full_setting, short_setting = entry["status_args"]
+        status = SOURCE.decide_status(reg_mode, full_setting, short_setting, **entry["status_kwargs"])
+        assert status == entry["status"], entry["name"]
+
+
+def test_summary_fields_no_markup_and_matches_bot_summary():
+    """summary_fields отдаёт голые (label, value) без HTML — T-21-03; handlers/registration.py
+    _build_summary остаётся тонкой обёрткой (склеивает те же пары своим _esc)."""
+    import handlers.registration as reg_mod
+
+    answers = {"full_name": "Иван Иванов", "age": 20, "work_status": True, "resume_file_id": "f1"}
+    fields = SOURCE.summary_fields(answers)
+    assert ("ФИО", "Иван Иванов") in fields
+    assert ("Работа", "Да") in fields
+    assert ("Резюме", "прикреплено файлом") in fields
+    for _label, value in fields:
+        assert "<" not in str(value) and ">" not in str(value)
+
+    bot_summary = reg_mod._build_summary(answers)
+    for label, value in fields:
+        assert f"<b>{label}:</b>" in bot_summary
+
+
+def test_diff_ignores_whitespace_and_empty_means_no_edit():
+    assert SOURCE.diff({"age": "20"}, {"age": " 20 "}) == []
+    assert SOURCE.diff({}, {}) == []
+    changed = SOURCE.diff({"age": "20"}, {"age": "21"})
+    assert changed == [{"column": "age", "old": "20", "new": "21"}]
