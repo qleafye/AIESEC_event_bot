@@ -7,11 +7,16 @@ clear + перезапись), не append по событию. Обрыв пр�
 потерянную строку (память проекта: sheet-append-no-retry-on-proxy-drop) — ровно то же
 рассуждение, что уже отработано для вкладки опросов.
 
-Автосинхрон (fire-and-forget точка врезки из `database/db.py`) — Task 2 этого же квика.
+Автосинхрон (`schedule_sheet_logs_sync`) — fire-and-forget точка врезки, которую зовут
+`database/db.py::record_answer_history` и `::create_question` ПОСЛЕ commit. Правка анкеты и
+отправка вопроса не должны ждать раунд-трипа Google Sheets, поэтому это не `await`, а фоновая
+задача; любая её ошибка остаётся в логе, а не всплывает делегату или менеджеру.
 """
+import asyncio
 import logging
 from datetime import datetime
 
+from config import config
 from database.db import (
     list_answer_history,
     list_questions,
@@ -178,3 +183,46 @@ async def sync_sheet_logs() -> tuple[int, int]:
     history_n = await export_history_to_sheet()
     questions_n = await export_questions_to_sheet()
     return history_n, questions_n
+
+
+# ── автосинхрон: fire-and-forget точка врезки для database/db.py ───────────────────────────
+
+_sync_inflight = False
+_sync_task: asyncio.Task | None = None
+
+
+async def _run_autosync():
+    global _sync_inflight
+    try:
+        if await get_setting_typed("sheet_logs_autosync") != "on":
+            return
+        await sync_sheet_logs()
+    except Exception as e:
+        logger.error("sheet_logs autosync failed: %s", e)
+    finally:
+        _sync_inflight = False
+
+
+def schedule_sheet_logs_sync() -> None:
+    """Fire-and-forget точка врезки, зовётся из `database/db.py` ПОСЛЕ commit. Порядок
+    проверок — дёшево -> дорого, всё синхронно:
+    (а) `GOOGLE_SHEET_ID`/`GOOGLE_CREDENTIALS_FILE` непустые — иначе молча выходим (тестовое
+        окружение и не настроенная установка не должны ходить в сеть);
+    (б) есть работающий event loop — иначе выходим (нет цикла — некуда планировать задачу);
+    (в) `_sync_inflight` — если задача уже летит, выходим (склейка: правка пачкой из мастера
+        анкеты не должна дать пять перезаписей листа подряд).
+    Тумблер `sheet_logs_autosync` читается ВНУТРИ фоновой корутины (это async-чтение БД, в
+    синхронной точке врезки его звать нельзя). Ссылка на задачу держится в модульной
+    переменной, чтобы сборщик мусора не съел её на лету (`asyncio.create_task` её не
+    удерживает)."""
+    global _sync_inflight, _sync_task
+    if not config.GOOGLE_SHEET_ID or not config.GOOGLE_CREDENTIALS_FILE:
+        return
+    try:
+        asyncio.get_running_loop()
+    except RuntimeError:
+        return
+    if _sync_inflight:
+        return
+    _sync_inflight = True
+    _sync_task = asyncio.create_task(_run_autosync())
