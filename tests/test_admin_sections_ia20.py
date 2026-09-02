@@ -525,6 +525,8 @@ BACK_TARGETS = {
     # менеджера туда, где повторить действие нечем.
     "admin_season_reset": "manage",
     "admin_season_import": "manage",
+    # Quick 260902-vth: «🕓 Журналы в таблицу» — экран раздела «📊 Данные».
+    "sheet_logs_open": "data",
 }
 
 
