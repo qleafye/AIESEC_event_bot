@@ -37,6 +37,12 @@ EXPECTED_PER_CITY_KEYS = {
     "event_place_name", "event_place_address", "registration_mode",
     "menu_referral", "menu_invites", "menu_info", "menu_program", "menu_speakers",
     "menu_contacts", "menu_question", "menu_coins", "menu_game_tasks", "menu_miniapp",
+    # Phase 21 (D-25): тексты анкеты в Mini App, обращённые к делегату, -- per-city как их
+    # соседи из группы «📝 Регистрация» (reg_complete_text/approve_text)
+    "reg_form_cta_text", "reg_form_complete_heading_text", "reg_form_complete_body_text",
+    "reg_form_edited_heading_text", "reg_form_edited_pending_heading_text",
+    "reg_form_resubmit_heading_text", "reg_form_closed_text", "reg_form_rejected_banner_text",
+    "reg_nudge_app_button_text",
 }
 
 
