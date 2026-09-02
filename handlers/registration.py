@@ -114,35 +114,8 @@ DEFAULT_REG_COMPLETE_TEXT = (
 # DEFAULT_APPROVE_TEXT moved to handlers/reg_schema.py (13-02, REFAC-02).
 
 # --- Approval status decision (Phase 2, D-01..D-03) ---
-
-def _decide_status(reg_mode: str, full_setting: str, short_setting: str,
-                    participant_type: str = "full", party_setting: str | None = None) -> str:
-    """Form type x per-form moderation setting -> 'pending' | 'approved'.
-    Full form uses full_setting, short form uses short_setting; 'manual' -> pending.
-
-    Phase 5 (D-13): party tracks resolve status from party_approval alone, completely
-    independent of full_approval/short_approval — this branch never falls through to the
-    reg_mode logic below it, and never reads full_setting/short_setting. `party_setting`
-    of None (an unconfigured party_approval) resolves to "manual": a party track must be
-    moderated by default, never silently auto-approved (T-05-04-02).
-
-    Phase 7 (SHORT-05): the short track resolves status from `short_setting` (short_approval)
-    alone, keyed off the persisted `participant_type`, and — crucially — WITHOUT reading
-    `reg_mode` at all. Before this phase the short form was answered in one message, so the
-    gap between flow-start and finalize() (where `reg_mode` is re-read live) was ~0 and the
-    old `reg_mode`-based lookup was harmless. Task 2 turns the short form into a multi-question
-    conversation, so that gap can now span the whole promo window: a delegate who starts the
-    form on 2026-08-10 and finishes after the manager flips `registration_mode` back to "full"
-    on 2026-08-11 would otherwise be moderated by `full_approval` instead of `short_approval` —
-    a direct SHORT-05 violation. Branching on the immutable `participant_type` instead of the
-    live `reg_mode` setting is the same decoupling technique D-13 already used for party."""
-    if _is_party_track(participant_type):
-        setting = party_setting or "manual"
-        return "pending" if setting == "manual" else "approved"
-    if _is_short_track(participant_type):
-        return "pending" if short_setting == "manual" else "approved"
-    setting = full_setting if reg_mode == "full" else short_setting
-    return "pending" if setting == "manual" else "approved"
+# Phase 21 (21-06, Task 3): _decide_status moved to reg_engine.decide_status (aliased below,
+# right after the reg_engine import block) — same signature, byte-for-byte body.
 
 
 # --- Registration Flow Engine ---
@@ -162,6 +135,8 @@ from reg_engine import (
     # (одна проверка для чата и Mini App) + merge_answers/conflicts (пофилевый LWW, D-19).
     validate_answer, apply_answer, apply_answers, merge_answers, conflicts,
     parse_age, is_allowed_resume, resume_too_large, RESUME_MAX_BYTES,
+    # Phase 21 (21-06, Task 3): дефолты финала / данные сводки / статус модерации / diff.
+    with_defaults, summary_fields, decide_status, diff,
 )
 _get_enabled_steps = enabled_steps
 _get_options = option_list_for
@@ -178,6 +153,12 @@ _parse_age = parse_age
 _is_allowed_resume = is_allowed_resume
 _resume_too_large = resume_too_large
 _RESUME_MAX_BYTES = RESUME_MAX_BYTES
+# Back-compat alias (Task 3) — ~20 существующих тестов (test_registration_phase2/5,
+# test_short_track_phase7, test_settings_consumers_phase6, test_registration_finalize_260816
+# в т.ч. monkeypatch.setattr(reg, "_decide_status", ...)) зовут её отсюда бэрным именем;
+# finalize_registration ниже вызывает ровно это же module-level имя, поэтому монkey-патч
+# продолжает перехватывать вызов.
+_decide_status = decide_status
 
 
 async def _prompt(step_key: str, default: str, participant_type: str | None = None) -> str:
@@ -1129,61 +1110,13 @@ def _esc(value) -> str:
 
 
 def _build_summary(data: dict) -> str:
-    """QW-01 pre-finalize summary of the full-form answers (HTML, escaped)."""
+    """QW-01 pre-finalize summary of the full-form answers (HTML, escaped). Phase 21 (21-06,
+    Task 3): голые (label, value) теперь считает reg_engine.summary_fields (T-21-03: движок не
+    собирает HTML) — эта функция осталась тонкой обёрткой, которая склеивает их в HTML своим
+    существующим _esc, байт-в-байт то же самое, что делал прежний инлайн-цикл."""
     lines = ["<b>Проверь свои ответы:</b>", ""]
-    fields = [
-        ("ФИО", data.get("full_name")),
-        ("Возраст", data.get("age")),
-        ("Дата приезда", data.get("arrival_date")),
-        ("Дата рождения", data.get("birth_date")),
-        ("Email", data.get("email")),
-        ("Телефон", data.get("phone")),
-        ("ВК", data.get("vk_username")),
-        ("Город", data.get("city")),
-        ("Источник", data.get("source")),
-        ("Лок. комитет", data.get("local_committee")),
-        ("Позиция", data.get("position")),
-        ("Образование", data.get("education_status")),
-        ("ВУЗ", data.get("university")),
-        ("Курс", data.get("course")),
-        ("Специальность", data.get("specialty")),
-        ("Направление обучения", data.get("study_field")),
-        ("Работа", "Да" if data.get("work_status") else "Нет"),
-        ("Сфера работы", data.get("work_sphere")),
-        ("Навыки", data.get("missing_skills")),
-        ("Ожидания", data.get("expectations")),
-        ("Неформальный день", data.get("informal_day")),
-        ("Формат", data.get("attendance_format")),
-        ("Комментарии", data.get("comments")),
-        ("Департамент", data.get("department")),
-        ("Позиция AIESEC", data.get("aiesec_role")),
-        ("Аламни/айсекер", data.get("alumni_status")),
-        ("Справка в ВУЗ", data.get("needs_certificate")),
-        ("Английский", data.get("english_level")),
-        ("Аллергии", data.get("allergies")),
-        ("Питание", data.get("food_pref")),
-        ("Приезд", data.get("arrival")),
-        ("Проживание", data.get("housing")),
-        ("Общая кровать", data.get("bed_sharing")),
-        ("Сосед по кровати", data.get("bed_partner")),
-        ("Трансфер", data.get("transport")),
-        ("Дата план. оплаты", data.get("payment_plan_date")),
-        ("CC-shop", data.get("cc_shop")),
-        ("Ожидания от орг", data.get("exp_organizers")),
-        ("Ожидания от контента", data.get("exp_content")),
-        ("Волонтёр", data.get("volunteer")),
-        ("Цель участия", data.get("goal")),
-        ("Форматы форума", data.get("formats")),
-        ("Амбассадор", "Да" if data.get("is_ambassador_candidate") else None),
-    ]
-    for label, value in fields:
-        if value is None or str(value) == "":
-            continue
+    for label, value in summary_fields(data):
         lines.append(f"<b>{label}:</b> {_esc(value)}")
-    if data.get("resume_file_id"):
-        lines.append("<b>Резюме:</b> прикреплено файлом")
-    elif data.get("resume_text"):
-        lines.append(f"<b>Резюме:</b> {_esc(data.get('resume_text'))}")
     return "\n".join(lines)
 
 
@@ -1821,31 +1754,10 @@ async def finalize_registration(message: types.Message, state: FSMContext, bot: 
     data["username"] = f"@{message.from_user.username}" if message.from_user.username else "-"
     data["registration_date"] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
-    data.setdefault("email", "-")
-    data.setdefault("phone", "-")
-    data.setdefault("city", "-")
-    data.setdefault("is_aiesec_member", False)
-    data.setdefault("source", "Реферальная ссылка" if data.get("referrer_id") else "Самостоятельно")
-    data.setdefault("source_details", f"Referrer ID: {data.get('referrer_id', '-')}")
-    data.setdefault("education_status", "-")
-    data.setdefault("university", "-")
-    data.setdefault("course", "-")
-    data.setdefault("specialty", "-")
-    data.setdefault("work_status", False)
-    data.setdefault("work_sphere", "-")
-    data.setdefault("missing_skills", "-")
-    data.setdefault("expectations", "-")
-    data.setdefault("local_committee", "-")
-    data.setdefault("position", "-")
-    # IN-01: expectations_ar is vestigial (no step ever populates it). The dead setdefault is
-    # dropped; the "Ожидания (AR)" sheet column is left in place to avoid a mid-season sheet
-    # width change (removing it would require an admin «Пересобрать таблицу» to re-align).
-    data.setdefault("informal_day", "-")
-    data.setdefault("attendance_format", "-")
-    data.setdefault("comments", "-")
-    data.setdefault("resume_file_id", None)
-    data.setdefault("resume_text", None)
-    data.setdefault("resume_url", None)
+    # Phase 21 (21-06, Task 3): дефолты финала (~20 полей) — reg_engine.with_defaults, тот же
+    # setdefault-блок, теперь общий с будущим веб-финалом (план 21-08). Чистая функция — merge
+    # обратно в живой FSM-словарь одним присваиванием, а не построчными data.setdefault(...).
+    data = with_defaults(data)
 
     # Phase 07.3 (04, RET-01/RET-02): resolve season/prev_season BEFORE add_user, in its own
     # fail-soft try/except -- a season-resolve error must never lose an already-collected
