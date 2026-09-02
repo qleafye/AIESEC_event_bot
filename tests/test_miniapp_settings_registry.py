@@ -33,7 +33,8 @@ SETTINGS_MANAGER_SPB = 900610
 ITEM_FIELDS = {
     "key", "base_key", "label", "help", "type", "options", "value", "raw", "display",
     "is_default", "default", "per_city", "is_city_override", "city_override_count",
-    "city_override_labels", "dangerous", "confirm_text", "html", "search_terms", "editable",
+    "city_override_labels", "dangerous", "confirm_text", "html", "max_len", "search_terms",
+    "editable",
 }
 
 
