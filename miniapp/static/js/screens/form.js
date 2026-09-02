@@ -233,7 +233,8 @@ export async function render(root, params, ctx) {
   }
 
   // ════════════════════════════════════════════════════════════════════════════════════
-  // Режим «мастер» (kind='new', D-03/D-04): pre-flow (согласия) → шаги по одному → submit.
+  // Режим «мастер» (kind='new', D-03/D-04): pre-flow (согласия → развилки город/формат) →
+  // шаги по одному → submit.
   // ════════════════════════════════════════════════════════════════════════════════════
   async function renderWizard(initialDraft) {
     let d = initialDraft;
@@ -253,16 +254,104 @@ export async function render(root, params, ctx) {
       } catch (_) { /* фоновая проверка — экран не падает */ }
     };
 
-    function drawCurrent() {
-      const items = d.pre_items || [];
-      if (preIndex < items.length) drawPre(items);
-      else drawStep();
+    // ── pre-flow: список экранов строится из d.pre_items при КАЖДОМ drawCurrent(): первый
+    // экран — все согласия (D-23/A1), затем по экрану на каждую развилку (элемент с `field`).
+    // После успешного PATCH развилки сервер её больше не отдаёт — preScreens укорачивается,
+    // preIndex не трогаем: следующий экран подтягивается сам. Экран не знает имён полей и
+    // типов развилок — только item.field / item.text / item.options / item.value.
+    function buildPreScreens(items) {
+      const consentItems = items.filter((it) => it.type === "consent");
+      const infoItems = items.filter((it) => it.type !== "consent" && !it.field);
+      const preScreens = [];
+      if (consentItems.length || infoItems.length) preScreens.push({ consents: consentItems, info: infoItems });
+      for (const item of items) {
+        if (item.field) preScreens.push({ fork: item });
+      }
+      return preScreens;
     }
 
-    // ── pre-flow: согласия одним прокручиваемым списком (D-23) + информационные вилки ───
-    function drawPre(items) {
-      const consentItems = items.filter((it) => it.type === "consent");
-      const otherItems = items.filter((it) => it.type !== "consent");
+    function drawCurrent() {
+      const preScreens = buildPreScreens(d.pre_items || []);
+      if (preIndex < preScreens.length) {
+        const screen = preScreens[preIndex];
+        if (screen.fork) drawFork(screen.fork);
+        else drawPre(screen.consents, screen.info);
+      } else {
+        drawStep();
+      }
+    }
+
+    // Общая ветка «регистрация закрыта» для PATCH из pre-flow и из шага (D-11).
+    function showClosed(err) {
+      onRefresh = null;
+      setMainButton(null);
+      holder.replaceChildren(h("section", { class: "state" },
+        h("p", { text: (err.payload && err.payload.text) || "" })));
+    }
+
+    // Пересборка состояния целиком: выбор трека меняет список шагов, applyServer тут не годится.
+    function adoptDraft(res) {
+      d = res;
+      state = buildFormState(res);
+      stepIndex = stepIndexFromKey(state.specs, res.step);
+    }
+
+    // ── pre-flow: развилка (город / формат участия) — пикер choice-chips из item.options ──
+    function drawFork(item) {
+      const options = item.options || [];
+      const current = options.find((o) => o.code === item.value);
+      let chosen = current ? current.label : null;
+      const el = field(h, {
+        key: item.type, type: "choice-chips", label: item.text || "",
+        options: options.map((o) => o.label),
+      }, chosen, (v) => { chosen = v; });
+      const errorZone = el._nodes && el._nodes.errorZone;
+      function showError(msg) {
+        if (errorZone) { errorZone.textContent = msg || ""; errorZone.classList.remove("hidden"); }
+      }
+
+      async function next() {
+        if (busy) return;
+        busy = true;
+        const picked = options.find((o) => o.label === chosen);
+        // Без выбора уходит пустая строка — текст ошибки вернёт сервер (литерала здесь нет).
+        const body = { version: d.version };
+        body[item.field] = picked ? picked.code : "";
+        try {
+          const res = await api("/reg/draft", { method: "PATCH", body });
+          busy = false;
+          adoptDraft(res);
+          drawCurrent();
+        } catch (err) {
+          busy = false;
+          if (err && err.status === 400 && err.reason === "invalid" && err.payload && err.payload.errors) {
+            showError(err.payload.errors[item.field] || errorText(err, ""));
+          } else if (err && err.status === 409 && err.reason === "already_set") {
+            // Значение уже зафиксировано в чате — перечитать черновик, экран исчезнет сам.
+            try { adoptDraft(await api("/reg/draft")); } catch (_) { /* фон — экран не падает */ }
+            drawCurrent();
+          } else if (err && err.status === 403 && err.reason === "registration_closed") {
+            showClosed(err);
+          } else if (!isAuthError(err)) {
+            showError(errorText(err, ""));
+          }
+        }
+      }
+
+      holder.replaceChildren(
+        h("div", { class: "wizard-step" },
+          el,
+          h("div", { class: "task-actions" },
+            h("button", { class: "btn", type: "button", disabled: busy, "aria-label": item.text || "", onClick: next }, icon("check")),
+            chatLink(d.continue_in_chat_text, d.continue_deeplink),
+          ),
+        ),
+      );
+      setMainButton(null);
+    }
+
+    // ── pre-flow: согласия одним прокручиваемым списком (D-23) + информационные карточки ─
+    function drawPre(consentItems, otherItems) {
       const cards = [];
 
       for (const item of consentItems) {
@@ -373,10 +462,7 @@ export async function render(root, params, ctx) {
             setMainButton(null, null);
             setMainButton("→", goNext);
           } else if (err && err.status === 403 && err.reason === "registration_closed") {
-            onRefresh = null;
-            setMainButton(null);
-            holder.replaceChildren(h("section", { class: "state" },
-              h("p", { text: (err.payload && err.payload.text) || "" })));
+            showClosed(err);
           } else if (!isAuthError(err)) {
             if (errorZone) { errorZone.textContent = errorText(err, ""); errorZone.classList.remove("hidden"); }
             setMainButton("→", goNext);
