@@ -5,8 +5,10 @@
 (`telegram_id`, `resume_file_id`, `receipt_file_id`, `referrer_id`, статусы, даты системы)
 наружу не отдаются — они не вопросы анкеты. Ответ с ПД не логируется (T-19-14).
 
-Редактирования нет: кнопка «Изменить — в боте» — deep-link `?start=rereg` на перерегистрацию;
-текст подсказки — ключ реестра `miniapp_profile_edit_hint`.
+Редактирования в самом Mini App профиле ещё нет (мастер точечной правки — план 21-11, D-24/
+D-26): кнопка «Изменить — в боте» — deep-link `?start=edit` (план 21-09/21-10; ДО этого плана
+здесь стоял `?start=rereg`, который `cmd_start` не разбирает вовсе — RESEARCH Pitfall 1, кнопка
+не делала ничего); текст подсказки — ключ реестра `miniapp_profile_edit_hint`.
 """
 from __future__ import annotations
 
@@ -98,7 +100,10 @@ def profile_fields(user: dict) -> list[dict]:
 
 
 def rereg_deeplink(bot_username: str | None) -> str:
-    return f"https://t.me/{bot_username}?start=rereg" if bot_username else ""
+    """Phase 21 (21-10, D-24, Pitfall 1): `?start=edit` — единственный аргумент, который
+    `cmd_start` реально разбирает для правки (план 21-09); `?start=rereg` нигде не
+    обрабатывался и кнопка «Изменить» вела в никуда."""
+    return f"https://t.me/{bot_username}?start=edit" if bot_username else ""
 
 
 @router.get("/app/api/profile")
