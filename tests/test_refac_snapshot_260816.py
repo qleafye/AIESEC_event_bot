@@ -268,6 +268,14 @@ def _build_snapshot_lines():
 # встал между `toggle_nudge_enabled` и `toggle_payment_reminders`. Снапшот ПЕРЕСНЯТ прогоном
 # `_build_snapshot_lines()` и сдиффен с прежним 388-строчным -- единственное изменение: одна
 # вставленная строка, всё остальное на прежних местах в прежнем порядке.
+# Drift note (2026-09-02, Phase 21, 21-09 Task 3): +3 handlers (389 -> 392) -- новый шов
+# handlers/reg_resume.py («▶️ Продолжить с шага N / 🔄 Заново», D-18) импортируется ПОСЛЕДНИМ в
+# конце handlers/registration.py (после reg_flow/reg_steps/reg_consent), поэтому его три
+# callback_query-хендлера (reg_resume_continue/reg_resume_restart/reg_resume_restart_yes)
+# встали в САМЫЙ ХВОСТ registration.router, сразу после `consent_renew_accept` и перед первой
+# строкой user_actions.router. Снапшот ПЕРЕСНЯТ прогоном `_build_snapshot_lines()` и сдиффен с
+# прежним 389-строчным -- единственное изменение: три вставленные строки подряд, всё остальное
+# на прежних местах в прежнем порядке.
 GOLDEN_SNAPSHOT = """
 admin|message|cmd_admin_help|cmd:admin
 admin|message|cmd_coins|cmd:coins
@@ -629,6 +637,9 @@ registration|callback_query|process_multi_toggle|regmulti:*
 registration|callback_query|process_multi_done|regmulti_done:*
 registration|callback_query|process_consent_accept|consent_accept:*
 registration|callback_query|consent_renew_accept|consent_renew:*
+registration|callback_query|reg_resume_continue|reg_resume:continue
+registration|callback_query|reg_resume_restart|reg_resume:restart
+registration|callback_query|reg_resume_restart_yes|reg_resume:restart_yes
 user_actions|message|show_my_coins|
 user_actions|message|show_leaderboard|
 user_actions|message|show_game_tasks|
@@ -692,7 +703,7 @@ def test_snapshot_total_handler_count_is_292():
     # poll_wizard_cancel = два декоратора) в хвост admin.message, 15 callback (список/карточка
     # admin_polls + мастер admin_poll_wizard) в хвост admin.callback_query; чистый аппенд,
     # перепроверен прогоном _build_snapshot_lines() и diff'ом с прежним 334-строчным снапшотом.
-    assert len(GOLDEN_SNAPSHOT) == 389  # quick 260819: +toggle_preselect_enabled, +coinsman_amount_stale, +toggle_pending_reminder/+toggle_nudge_enabled; quick 260822: +5 settings_list_*, +toggle_game_submit_notify, +toggle_consent_recollect, +consent_renew_accept; опросы 260822: +20 (342 -> 362 после слияния); Phase 15-02: +2 open_dashboard_settings/toggle_dashboard_block (362 -> 364); Phase 19-08: +12 admin_miniapp.py (message: miniapp_accent_step/miniapp_logo_step/miniapp_logo_step_invalid; callback_query: open_miniapp_settings/toggle_miniapp_enabled/toggle_miniapp_staff_only/toggle_miniapp_section/miniapp_edit_accent_start/miniapp_edit_logo_start/miniapp_remove_logo/miniapp_cancel_edit), +1 user_actions.router open_miniapp_button (364 -> 376); Phase 19.1-07: -7 admin_miniapp.py (accent/logo edit flow replaced) +17 admin_miniapp_theme.py (presets + D-04 handles) = net +10 (376 -> 386); Phase 20-01: +1 admin_sections.py show_admin_section (386 -> 387); Phase 21-07 Task 1: +1 admin_moderation.py appr_history (387 -> 388); Phase 21-07 Task 2: +1 admin_settings.py toggle_reg_edit_remoderation (388 -> 389)
+    assert len(GOLDEN_SNAPSHOT) == 392  # quick 260819: +toggle_preselect_enabled, +coinsman_amount_stale, +toggle_pending_reminder/+toggle_nudge_enabled; quick 260822: +5 settings_list_*, +toggle_game_submit_notify, +toggle_consent_recollect, +consent_renew_accept; опросы 260822: +20 (342 -> 362 после слияния); Phase 15-02: +2 open_dashboard_settings/toggle_dashboard_block (362 -> 364); Phase 19-08: +12 admin_miniapp.py (message: miniapp_accent_step/miniapp_logo_step/miniapp_logo_step_invalid; callback_query: open_miniapp_settings/toggle_miniapp_enabled/toggle_miniapp_staff_only/toggle_miniapp_section/miniapp_edit_accent_start/miniapp_edit_logo_start/miniapp_remove_logo/miniapp_cancel_edit), +1 user_actions.router open_miniapp_button (364 -> 376); Phase 19.1-07: -7 admin_miniapp.py (accent/logo edit flow replaced) +17 admin_miniapp_theme.py (presets + D-04 handles) = net +10 (376 -> 386); Phase 20-01: +1 admin_sections.py show_admin_section (386 -> 387); Phase 21-07 Task 1: +1 admin_moderation.py appr_history (387 -> 388); Phase 21-07 Task 2: +1 admin_settings.py toggle_reg_edit_remoderation (388 -> 389); Phase 21-09 Task 3: +3 handlers/reg_resume.py (registration.router tail: reg_resume_continue/reg_resume_restart/reg_resume_restart_yes, callback_query) (389 -> 392)
 
 
 # ── Task 2(a): Dispatcher feed_update smoke — cross-router first-match routing ─────────────

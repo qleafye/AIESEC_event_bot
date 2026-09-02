@@ -286,7 +286,10 @@ def test_reg_resume_restart_yes_deletes_draft_and_restarts(tmp_path):
         return draft_after, callback.message
 
     draft_after, msg = asyncio.run(go())
-    assert draft_after is None
+    # старый черновик стёрт (не тот же answers, что был), а не оставлен как есть -- анкета
+    # стартовала ЗАНОВО, _start_registration_flow тут же завела свежий пустой черновик
+    assert draft_after is not None
+    assert draft_after["answers"] == {}
     assert msg.sent  # анкета стартовала заново (приветствие/первый шаг)
 
 

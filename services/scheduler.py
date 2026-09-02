@@ -18,6 +18,7 @@ from zoneinfo import ZoneInfo
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.jobstores.sqlalchemy import SQLAlchemyJobStore
 from aiogram.exceptions import TelegramBadRequest, TelegramForbiddenError, TelegramRetryAfter
+from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup, WebAppInfo
 
 from config import config
 from database.db import get_setting
@@ -698,12 +699,20 @@ async def nudge_incomplete_registrations():
         if not candidates:
             return
         text = await get_setting("nudge_text") or DEFAULT_NUDGE_TEXT
+        # Phase 21 (21-09, D-21): вторая поверхность — «в чате» (deep-link ?start=continue) и
+        # «📱 в приложении» (web_app, только при включённом разделе «📝 Анкета» и самом Mini
+        # App). Построены ОДИН раз на весь прогон джобы, не на каждого делегата — get_me()/
+        # тумблеры не меняются посреди одного цикла. nudge_text и mark_nudged НЕ трогаем; отбор
+        # кандидатов ("активен в приложении сейчас" -> не в списке) уже сделан внутри
+        # database.db.get_nudge_candidates (план 21-05) — второй копии этого условия здесь
+        # быть не должно.
+        kb = await _nudge_keyboard()
         for tid in candidates:
             # A blocked user can never receive the nudge, so stamping nudged_at on permanent
             # failure is what keeps the "exactly once" contract (D-14) from degenerating into
             # "forever" — the give-up is the one-shot.
             ok = await _safe_send(
-                lambda cid: _bot.send_message(cid, text), tid,
+                lambda cid: _bot.send_message(cid, text, reply_markup=kb), tid,
                 on_permanent_failure=mark_nudged,
             )
             if ok:
@@ -711,6 +720,37 @@ async def nudge_incomplete_registrations():
             await asyncio.sleep(0.05)
     except Exception as e:
         logger.error(f"nudge_incomplete_registrations failed: {e}")
+
+
+async def _nudge_keyboard() -> InlineKeyboardMarkup | None:
+    """Phase 21 (21-09, D-21): the догонялка's own two-button keyboard — «в чате» (always, if
+    the bot's username is resolvable) and «📱 в приложении» (only when the delegate-facing
+    form section AND the Mini App master toggle are both on and a public URL is configured).
+    None (no keyboard at all) if even the bot username can't be resolved — the plain-text
+    nudge still goes out, same as before this plan."""
+    bot_username = None
+    try:
+        me = await _bot.get_me()
+        bot_username = me.username
+    except Exception as e:
+        logger.warning(f"nudge: get_me failed, chat button omitted: {e}")
+    if not bot_username:
+        return None
+    rows = [[InlineKeyboardButton(
+        text=await get_setting_typed("reg_nudge_chat_button_text"),
+        url=f"https://t.me/{bot_username}?start=continue",
+    )]]
+    try:
+        if await get_setting_typed("miniapp_section_form") == "on" \
+                and await get_setting_typed("miniapp_enabled") == "on" \
+                and config.DASHBOARD_PUBLIC_URL:
+            rows.append([InlineKeyboardButton(
+                text=await get_setting_typed("reg_nudge_app_button_text"),
+                web_app=WebAppInfo(url=config.DASHBOARD_PUBLIC_URL.rstrip("/") + "/app"),
+            )])
+    except Exception as e:
+        logger.warning(f"nudge: app button build failed: {e}")
+    return InlineKeyboardMarkup(inline_keyboard=rows)
 
 
 # ── VERIF: mandatory allowlist-refresh interval job (D-11) ───────────────────
