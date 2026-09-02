@@ -728,9 +728,17 @@ async def form_spec(answers: dict, participant_type: str | None = None,
             spec["value_source"] = None
         steps_out.append(spec)
     # Вилка трека не показывается, когда трек уже известен (deep-link или выбор в приложении) —
-    # паритет с `should_show_fork` в боте.
+    # паритет с `should_show_fork` в боте. D-27 (гейт владельца, 02.09): `is_registered` в
+    # пре-флоу зовётся ЖЁСТКО False — ровно то, что передаёт бот на КАЖДОМ вызове
+    # `_should_show_city_fork`/`_should_show_fork` (handlers/registration.py::
+    # _city_fork_then_continue/_continue_after_city, тела которых пишут это прямым текстом:
+    # «is_registered stays hardcoded False» / «is_registered is always False here»). У бота
+    # прошлый сезон/`prior` НИКОГДА не подавляет развилку — подавляет только уже известный
+    # город/трек (deep-link, восстановленный `reg_started`). `prior` — ранее подменял собой
+    # это булево и прятал развилку у возвращенца; это была не «та же развилка, что у бота», а
+    # своё правило.
     pre = await pre_flow(answers, {
-        "event_city": event_city, "is_registered": bool(prior), "party_track": participant_type,
+        "event_city": event_city, "is_registered": False, "party_track": participant_type,
     })
     return {"pre": pre, "steps": steps_out, "progress": {"done": done, "total": len(steps_out)}}
 

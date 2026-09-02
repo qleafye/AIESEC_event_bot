@@ -73,13 +73,23 @@ async def _load_context(telegram_id: int) -> dict:
         kind = "edit" if (user_row and not is_returning) else "new"
         answers = {}
         meta = {}
+        # D-27: город/трек ПРОШЛОГО сезона у возвращенца (kind='new') сюда не переносятся —
+        # так же, как rereg_start/`_city_fork_then_continue` бота никогда не подставляет
+        # `user.event_city` в `effective_city`, а спрашивает город/трек заново (CONTEXT B:
+        # «переспрашиваем всегда»). Иначе PATCH ловил бы 409 already_set на пустом месте, а
+        # `should_show_city_fork` считал бы город уже известным и прятал развилку.
         participant_type = user_row.get("participant_type") if (kind == "edit" and user_row) else None
-        event_city = user_row.get("event_city") if user_row else None
+        event_city = user_row.get("event_city") if (kind == "edit" and user_row) else None
         version = 0
         step = None
 
     # Pitfall 5: prior — ТОЛЬКО на лету из users, никогда не персистится в reg_drafts.
     prior = reg_engine.prior_answers_for(user_row) if (kind == "new" and is_returning) else {}
+    # D-27: прошлые город/трек возвращенца — ТОЛЬКО для предзаполнения пикера развилки
+    # (`_pre_items`), не для `ctx["event_city"]`/`ctx["participant_type"]` (те решают
+    # «уже известно» и гейтят PATCH 409 already_set — см. комментарий выше).
+    prior_city = user_row.get("event_city") if (kind == "new" and is_returning and user_row) else None
+    prior_track = user_row.get("participant_type") if (kind == "new" and is_returning and user_row) else None
 
     return {
         "draft": draft,
@@ -92,10 +102,14 @@ async def _load_context(telegram_id: int) -> dict:
         "version": version,
         "step": step,
         "prior": prior,
+        "prior_city": prior_city,
+        "prior_track": prior_track,
     }
 
 
-async def _pre_items(pre_tokens: list[str]) -> list[dict]:
+async def _pre_items(
+    pre_tokens: list[str], prior_city: str | None = None, prior_track: str | None = None,
+) -> list[dict]:
     """Данные для рендера pre-flow экранов мастера (план 21-11): согласия — карточка с
     названием/PDF/подписью чекбокса; вилки города/трека — интерактивные пикеры: `field` —
     имя поля PATCH (`event_city`/`participant_type`), `options` — варианты с сервера (те же
@@ -103,7 +117,13 @@ async def _pre_items(pre_tokens: list[str]) -> list[dict]:
     в те же валидаторы, что у тапа в боте (`reg_engine.validate_city_choice`/
     `validate_track_choice`). Deep-link приоритетен: вилка приходит только когда значение
     ещё не задано (`pre_flow`), уже заданное отбивается 409 `already_set`. Экран не содержит
-    своих текстов и не знает имён полей — только то, что вернула эта функция."""
+    своих текстов и не знает имён полей — только то, что вернула эта функция.
+
+    D-27: `prior_city`/`prior_track` — прошлый город/трек возвращенца (`_load_context`,
+    только когда `kind == "new" and is_returning` — тот же признак, что открывает `prior` для
+    шагов анкеты); кладутся в `value`, который пикер уже умеет предвыбирать (`drawFork` в
+    `miniapp/static/js/screens/form.js` ищет `options.find(o => o.code === item.value)`),
+    JS не менялся."""
     if not pre_tokens:
         return []
     items: list[dict] = []
@@ -124,13 +144,13 @@ async def _pre_items(pre_tokens: list[str]) -> list[dict]:
             items.append({
                 "type": "city_fork", "field": "event_city",
                 "text": await get_setting_typed("city_fork_text"),
-                "options": await reg_engine.city_fork_options(), "value": None,
+                "options": await reg_engine.city_fork_options(), "value": prior_city,
             })
         elif token == "party_fork":
             items.append({
                 "type": "party_fork", "field": "participant_type",
                 "text": await get_setting_typed("party_fork_text"),
-                "options": await reg_engine.party_track_options(), "value": None,
+                "options": await reg_engine.party_track_options(), "value": prior_track,
             })
     return items
 
@@ -174,7 +194,7 @@ async def _draft_response(telegram_id: int, ctx: dict | None = None, *, bot_user
         "step": ctx["step"],
         "version": ctx["version"],
         "pre": spec["pre"],
-        "pre_items": await _pre_items(spec["pre"]),
+        "pre_items": await _pre_items(spec["pre"], ctx.get("prior_city"), ctx.get("prior_track")),
         "steps": spec["steps"],
         "progress": spec["progress"],
         "closed": closed,
