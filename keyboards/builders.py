@@ -5,6 +5,25 @@ from config import config
 from database.db import get_user
 from settings_schema import get_setting_typed
 from cities import get_setting_typed_for_city, cities_module_on, normalize_city
+# Phase 21 (21-01, FORM-SYNC-01): литеральные списки вариантов ответа живут в корневом
+# aiogram-free reg_options.py — общая точка правды для бота (эти клавиатуры) и будущего
+# Mini App (reg_engine.step_spec()). Сами клавиатуры (ReplyKeyboardBuilder, add_other/
+# add_skip, порядок kb.adjust(...)) остаются здесь без изменений.
+from reg_options import (
+    DEFAULT_SOURCE_OPTIONS,
+    EDUCATION_STATUS_OPTIONS,
+    COURSE_OPTIONS,
+    DEPARTMENT_OPTIONS,
+    AIESEC_ROLE_OPTIONS,
+    ENGLISH_LEVEL_OPTIONS,
+    ARRIVAL_OPTIONS,
+    HOUSING_OPTIONS,
+    POSITION_OPTIONS,
+    ATTENDANCE_FORMAT_OPTIONS,
+    INFORMAL_DAY_OPTIONS,
+    LOCAL_COMMITTEE_OPTIONS,
+    YES_NO_OPTIONS,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -85,20 +104,10 @@ async def get_main_menu_kb(telegram_id: int | None = None) -> ReplyKeyboardMarku
 
 def get_yes_no_kb() -> ReplyKeyboardMarkup:
     kb = ReplyKeyboardBuilder()
-    kb.button(text="Да")
-    kb.button(text="Нет")
+    for opt in YES_NO_OPTIONS:
+        kb.button(text=opt)
     kb.adjust(2)
     return kb.as_markup(resize_keyboard=True, one_time_keyboard=True)
-
-DEFAULT_SOURCE_OPTIONS = [
-    "Соцсети Юлид",
-    "Соцсети АЙСЕК",
-    "Университетские каналы",
-    "Рассказал друг/знакомый",
-    "Узнал от амбассадора",
-    "Узнал от блогера",  # 2026-08-17: Instagram bloggers without direct reg link — track this channel
-    "Другое",
-]
 
 async def get_source_kb() -> ReplyKeyboardMarkup:
     kb = ReplyKeyboardBuilder()
@@ -115,9 +124,8 @@ async def get_source_kb() -> ReplyKeyboardMarkup:
 
 def get_education_status_kb() -> ReplyKeyboardMarkup:
     kb = ReplyKeyboardBuilder()
-    kb.button(text="Да, в ВУЗе или колледже")
-    kb.button(text="Нет, завершил(а) обучение")
-    kb.button(text="Нет, не получал(а) образование")
+    for opt in EDUCATION_STATUS_OPTIONS:
+        kb.button(text=opt)
     kb.adjust(1)
     return kb.as_markup(resize_keyboard=True, one_time_keyboard=True)
 
@@ -131,7 +139,7 @@ def get_universities_kb() -> ReplyKeyboardMarkup:
 
 def get_local_committee_kb() -> ReplyKeyboardMarkup:
     kb = ReplyKeyboardBuilder()
-    for lc in ["EG", "SPUEF", "Moscow", "Tyumen", "Ufa", "Ekaterinburg"]:
+    for lc in LOCAL_COMMITTEE_OPTIONS:
         kb.button(text=lc)
     kb.button(text="Другое")
     kb.adjust(2)
@@ -142,7 +150,7 @@ def get_local_committee_kb() -> ReplyKeyboardMarkup:
 
 def get_department_kb() -> ReplyKeyboardMarkup:
     kb = ReplyKeyboardBuilder()
-    for d in ["OGV", "OGT", "MKT", "F&L", "BD", "LCP", "EwA"]:
+    for d in DEPARTMENT_OPTIONS:
         kb.button(text=d)
     kb.button(text="Другое")
     kb.adjust(2)
@@ -151,7 +159,7 @@ def get_department_kb() -> ReplyKeyboardMarkup:
 
 def get_aiesec_role_kb() -> ReplyKeyboardMarkup:
     kb = ReplyKeyboardBuilder()
-    for r in ["Member", "TL", "Manager", "VP", "LCP", "Coordinator"]:
+    for r in AIESEC_ROLE_OPTIONS:
         kb.button(text=r)
     kb.button(text="Другое")
     kb.adjust(2)
@@ -160,7 +168,7 @@ def get_aiesec_role_kb() -> ReplyKeyboardMarkup:
 
 def get_english_level_kb() -> ReplyKeyboardMarkup:
     kb = ReplyKeyboardBuilder()
-    for lvl in ["Начальный", "Средний", "Продвинутый", "Свободный"]:
+    for lvl in ENGLISH_LEVEL_OPTIONS:
         kb.button(text=lvl)
     kb.adjust(2)
     return kb.as_markup(resize_keyboard=True, one_time_keyboard=True)
@@ -168,7 +176,7 @@ def get_english_level_kb() -> ReplyKeyboardMarkup:
 
 def get_arrival_kb() -> ReplyKeyboardMarkup:
     kb = ReplyKeyboardBuilder()
-    for a in ["В дни конфы", "Заранее", "После"]:
+    for a in ARRIVAL_OPTIONS:
         kb.button(text=a)
     kb.adjust(2)
     return kb.as_markup(resize_keyboard=True, one_time_keyboard=True)
@@ -176,14 +184,14 @@ def get_arrival_kb() -> ReplyKeyboardMarkup:
 
 def get_housing_kb() -> ReplyKeyboardMarkup:
     kb = ReplyKeyboardBuilder()
-    for h in ["Хост", "Сам(а)", "Не нужно"]:
+    for h in HOUSING_OPTIONS:
         kb.button(text=h)
     kb.adjust(2)
     return kb.as_markup(resize_keyboard=True, one_time_keyboard=True)
 
 def get_position_kb() -> ReplyKeyboardMarkup:
     kb = ReplyKeyboardBuilder()
-    for pos in ["AIESECer", "Alumni", "AIESEC Friend"]:
+    for pos in POSITION_OPTIONS:
         kb.button(text=pos)
     kb.button(text="Другое")
     kb.adjust(2)
@@ -191,25 +199,22 @@ def get_position_kb() -> ReplyKeyboardMarkup:
 
 def get_attendance_format_kb() -> ReplyKeyboardMarkup:
     kb = ReplyKeyboardBuilder()
-    kb.button(text="Offline")
-    kb.button(text="Online")
+    for opt in ATTENDANCE_FORMAT_OPTIONS:
+        kb.button(text=opt)
     kb.adjust(2)
     return kb.as_markup(resize_keyboard=True, one_time_keyboard=True)
 
 def get_informal_day_kb() -> ReplyKeyboardMarkup:
     kb = ReplyKeyboardBuilder()
-    kb.button(text="Да")
-    kb.button(text="Нет")
-    kb.button(text="Буду только в онлайне")
+    for opt in INFORMAL_DAY_OPTIONS:
+        kb.button(text=opt)
     kb.adjust(2, 1)
     return kb.as_markup(resize_keyboard=True, one_time_keyboard=True)
 
 def get_course_kb() -> ReplyKeyboardMarkup:
     kb = ReplyKeyboardBuilder()
-    for i in range(1, 5):
-        kb.button(text=str(i))
-    kb.button(text="5+")
-    kb.button(text="Магистратура/Аспирантура")
+    for opt in COURSE_OPTIONS:
+        kb.button(text=opt)
     kb.adjust(3, 2, 1)
     return kb.as_markup(resize_keyboard=True, one_time_keyboard=True)
 
