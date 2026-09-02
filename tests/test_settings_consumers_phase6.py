@@ -642,14 +642,17 @@ def test_registration_mode_and_reg_university_mode_equiv(tmp_path):
     # deleted. finalize_registration's own registration_mode read (feeding _decide_status's
     # reg_mode param, still used for the full/None branch) is untouched by Phase 7 and keeps
     # the original assertion.
+    # Phase 21 (21-08): this read-site moved from finalize_registration into
+    # services.reg_finalize.finalize_data (shared with the Mini App outbox job).
+    from services import reg_finalize as reg_finalize_mod
     process_src = inspect.getsource(reg_steps_mod.process_full_name)
-    finalize_src = inspect.getsource(reg_mod.finalize_registration)
+    finalize_src = inspect.getsource(reg_finalize_mod.finalize_data)
     assert 'get_setting_typed("registration_mode")' not in process_src, (
         "process_full_name should no longer read registration_mode at all (Phase 7, 07-01 Task 2 "
         "moved the short/full fork to _resolve_track at flow start)"
     )
     assert 'get_setting_typed("registration_mode")' in finalize_src, (
-        "finalize_registration does not resolve registration_mode via get_setting_typed"
+        "finalize_data does not resolve registration_mode via get_setting_typed"
     )
 
     calls = []
@@ -687,11 +690,13 @@ def test_full_approval_gate_equiv(tmp_path):
         oracle = raw or "manual"
         assert typed == oracle, f"full_approval mismatch raw={raw!r}"
 
-    # BLOCKER-1, RED before Task 2: finalize_registration must feed _decide_status via
+    # BLOCKER-1: finalize_data must feed reg_engine.decide_status via
     # get_setting_typed("full_approval"), not `get_setting("full_approval") or "manual"`.
-    finalize_src = inspect.getsource(reg_mod.finalize_registration)
+    # Phase 21 (21-08): moved from finalize_registration into services.reg_finalize.finalize_data.
+    from services import reg_finalize as reg_finalize_mod
+    finalize_src = inspect.getsource(reg_finalize_mod.finalize_data)
     assert 'get_setting_typed("full_approval")' in finalize_src, (
-        "finalize_registration does not resolve full_approval via get_setting_typed (BLOCKER-1)"
+        "finalize_data does not resolve full_approval via get_setting_typed (BLOCKER-1)"
     )
 
 
@@ -727,12 +732,14 @@ def test_short_approval_and_party_approval_equiv(tmp_path):
         new_status = reg_mod._decide_status("full", "manual", "auto", "party_overnight", typed)
         assert old_status == new_status, f"party_approval branch changed for raw={raw!r}"
 
-    finalize_src = inspect.getsource(reg_mod.finalize_registration)
+    # Phase 21 (21-08): moved from finalize_registration into services.reg_finalize.finalize_data.
+    from services import reg_finalize as reg_finalize_mod
+    finalize_src = inspect.getsource(reg_finalize_mod.finalize_data)
     assert 'get_setting_typed("short_approval")' in finalize_src, (
-        "finalize_registration does not resolve short_approval via get_setting_typed"
+        "finalize_data does not resolve short_approval via get_setting_typed"
     )
     assert 'get_setting_typed("party_approval")' in finalize_src, (
-        "finalize_registration does not resolve party_approval via get_setting_typed"
+        "finalize_data does not resolve party_approval via get_setting_typed"
     )
 
 
@@ -751,9 +758,13 @@ def test_pending_notify_mode_gate_equiv(tmp_path):
         new_is_instant = typed == "instant"
         assert old_is_instant == new_is_instant, f"pending_notify_mode mismatch raw={raw!r}"
 
-    finalize_src = inspect.getsource(reg_mod.finalize_registration)
+    # Phase 21 (21-08): the admin-notify gate moved from finalize_registration into the
+    # shared services.reg_finalize.post_finalize (bot-direct call AND the Mini App outbox
+    # job share this one notify path now).
+    from services import reg_finalize as reg_finalize_mod
+    finalize_src = inspect.getsource(reg_finalize_mod.post_finalize)
     assert 'get_setting_typed("pending_notify_mode")' in finalize_src, (
-        "finalize_registration does not resolve pending_notify_mode via get_setting_typed"
+        "post_finalize does not resolve pending_notify_mode via get_setting_typed"
     )
 
 
@@ -804,12 +815,14 @@ def test_raw_read_sites_preserved(tmp_path):
     # Task 2) deleted the registration_mode read from process_full_name outright (the short/full
     # fork moved to _resolve_track at flow start), so asserting its presence would contradict
     # the currently-correct source.
+    # Phase 21 (21-08): moved from finalize_registration into services.reg_finalize.finalize_data.
+    from services import reg_finalize as reg_finalize_mod
     process_src = inspect.getsource(reg_steps_mod.process_full_name)
-    finalize_src = inspect.getsource(reg_mod.finalize_registration)
+    finalize_src = inspect.getsource(reg_finalize_mod.finalize_data)
     assert 'get_setting_typed("registration_mode")' not in process_src, (
         "process_full_name should no longer read registration_mode at all (Phase 7, 07-01 Task 2)"
     )
     assert 'get_setting_typed("party_approval")' in finalize_src, (
-        "finalize_registration should migrate the raw party_approval read (RAW-read rule: "
-        "_decide_status's own `party_setting or \"manual\"` fallback matches the enum default)"
+        "finalize_data should migrate the raw party_approval read (RAW-read rule: "
+        "reg_engine.decide_status's own `party_setting or \"manual\"` fallback matches the enum default)"
     )

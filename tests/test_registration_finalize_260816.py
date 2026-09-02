@@ -16,9 +16,11 @@ import sqlite3
 
 import pytest
 
+import reg_engine
 from config import config
 from database import db
 from handlers import registration as reg
+from services import reg_finalize
 
 
 class _FakeFromUser:
@@ -100,7 +102,8 @@ def test_double_tap_confirm_writes_exactly_one_user_and_one_append(tmp_path, mon
         add_calls.append(data)
         await asyncio.sleep(0.05)
 
-    monkeypatch.setattr(reg, "add_user", slow_add_user)
+    # Phase 21 (21-08): add_user's real call site moved into services.reg_finalize.finalize_data.
+    monkeypatch.setattr(reg_finalize, "add_user", slow_add_user)
 
     async def go():
         await db.init_db()
@@ -125,7 +128,7 @@ def test_guard_released_after_normal_completion(tmp_path, monkeypatch):
     async def counting_add_user(data):
         add_calls.append(data)
 
-    monkeypatch.setattr(reg, "add_user", counting_add_user)
+    monkeypatch.setattr(reg_finalize, "add_user", counting_add_user)
 
     async def go():
         await db.init_db()
@@ -140,6 +143,12 @@ def test_guard_released_after_normal_completion(tmp_path, monkeypatch):
 
 
 def test_guard_released_when_finalize_raises(tmp_path, monkeypatch):
+    """Phase 21 (21-08): раньше единственным неогороженным шагом был `add_user`, и любой сбой
+    ПОСЛЕ него (например в `_decide_status`) пробрасывался наружу необработанным. Теперь ВЕСЬ
+    `finalize_data` — один узел: любое исключение внутри освобождает `reg_drafts`-claim
+    (T-21-24) И `_single_flight`-гвард, а вызывающий (`finalize_registration`) показывает ту же
+    retry-дружелюбную реплику, что и при сбое `add_user` — делегат никогда не остаётся ни
+    запертым, ни у разбитого корыта без объяснения."""
     _offline(tmp_path, monkeypatch, "release_boom.db")
     _patch_appenders(monkeypatch)
     uid = 880003
@@ -147,16 +156,18 @@ def test_guard_released_when_finalize_raises(tmp_path, monkeypatch):
     def boom(*args, **kwargs):
         raise RuntimeError("boom")
 
-    monkeypatch.setattr(reg, "_decide_status", boom)
+    monkeypatch.setattr(reg_engine, "decide_status", boom)
+
+    msg = _FakeMessage(uid)
 
     async def go():
         await db.init_db()
         await db.set_setting("full_approval", "manual")
-        await reg.finalize_registration(_FakeMessage(uid), _FakeState(_data()), bot=None)
+        await reg.finalize_registration(msg, _FakeState(_data()), bot=None)
 
-    with pytest.raises(RuntimeError):
-        asyncio.run(go())
+    asyncio.run(go())  # больше не поднимает исключение — обёртка перехватывает и отвечает
     assert uid not in reg._FINALIZING_USERS, "release обязан быть в finally, иначе делегат заперт"
+    assert msg.answers, "делегат обязан увидеть сообщение, а не тишину"
 
 
 # ── Находка #4: падение add_user не должно быть тихим ─────────────────────────
@@ -168,7 +179,7 @@ def _run_locked_db_finalize(tmp_path, monkeypatch, uid):
     async def locked_add_user(data):
         raise sqlite3.OperationalError("database is locked")
 
-    monkeypatch.setattr(reg, "add_user", locked_add_user)
+    monkeypatch.setattr(reg_finalize, "add_user", locked_add_user)
 
     msg = _FakeMessage(uid)
     state = _FakeState(_data())
