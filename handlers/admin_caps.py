@@ -262,6 +262,8 @@ ADMIN_CAPS: dict[str, str] = {
     # Phase 21 (21-07, T-21-09): кнопка «🕓 История» правок анкеты в карточке заявки — та же
     # капа, что и вся остальная карточка, чужую историю без прав не открыть.
     "appr_history:*": "moderate_reg",
+    # Quick 260902-tzh: «📄 Полная анкета» — та же капа, что вся остальная карточка заявки.
+    "appr_full:*": "moderate_reg",
     "appr_reject:*": "moderate_reg",
     "appr_resume:*": "moderate_reg",
     "appr_skip:*": "moderate_reg",
@@ -403,6 +405,11 @@ ADMIN_CAPS: dict[str, str] = {
     "admin_settings": "settings",
     "toggle_game_submit_notify": "settings",  # Quick 260822: тумблер дайджеста сдач (экран 🎮)
     "admin_settings_guide": "settings",
+    # Quick 260902-tzh: «🧾 Поля карточки заявки» — та же капа, что остальные экраны настроек.
+    "modcard_open": "settings",
+    "modcard_toggle:*": "settings",
+    "modcard_limit:*": "settings",
+    "modcard_noop": "settings",
     "admin_sync_sheet": "settings",
     "city_toggle:*": "settings",
     "cmd:refresh_allowlist": "settings",
