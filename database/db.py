@@ -1560,6 +1560,15 @@ async def record_answer_history(
             (telegram_id, changed_at, source, season, json.dumps(changes, ensure_ascii=False)),
         )
         await db.commit()
+    # Quick 260902-vth: одна врезка покрывает ОБА источника правки (бот и Mini App), потому
+    # что через record_answer_history проходят оба, — не трогаем handlers/registration.py и
+    # miniapp/. Ленивый импорт: db.py — нижний слой, не тянет services на импорте модуля.
+    # Fail-soft: сбой планирования фоновой синхронизации не должен ронять запись правки.
+    try:
+        from services.sheet_logs import schedule_sheet_logs_sync
+        schedule_sheet_logs_sync()
+    except Exception as e:
+        logger.warning("sheet_logs autosync scheduling after record_answer_history failed: %s", e)
 
 
 async def get_answer_history(telegram_id: int, limit: int = 5) -> list[dict]:
@@ -2462,7 +2471,14 @@ async def create_question(user_id: int, question_text: str) -> int:
             (user_id, question_text, datetime.utcnow().isoformat()),
         )
         await db.commit()
-        return cursor.lastrowid
+    # Quick 260902-vth: та же врезка, что у record_answer_history (см. её комментарий) — сюда
+    # заходит только источник «вопрос делегата», второй источник правки анкеты не касается.
+    try:
+        from services.sheet_logs import schedule_sheet_logs_sync
+        schedule_sheet_logs_sync()
+    except Exception as e:
+        logger.warning("sheet_logs autosync scheduling after create_question failed: %s", e)
+    return cursor.lastrowid
 
 
 async def get_question(question_id: int) -> dict | None:
