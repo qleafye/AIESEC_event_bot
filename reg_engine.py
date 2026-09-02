@@ -138,6 +138,28 @@ STEP_TO_COLUMN["ambassador"] = "is_ambassador_candidate"
 STEP_TO_COLUMN["full_name"] = "full_name"
 RECALLABLE_STEPS = {k for k in STEP_TO_COLUMN if k != "resume"}
 
+# Phase 21 (gap closure, FORM-SYNC-01): ключ подписи шага в REG_LABELS — это setting_key из
+# тройки REG_FLOW (так бот подписывает шаг в `handlers/admin_reg_config.py`:
+# `REG_LABELS.get(setting_key, setting_key)`), а НЕ `reg_q_{step_key}`. Для девяти шагов
+# (education_status→reg_q_education, local_committee→reg_q_lc, work_status→reg_q_work,
+# missing_skills→reg_q_skills, attendance_format→reg_q_attendance, needs_certificate→
+# reg_q_certificate, english_level→reg_q_english, food_pref→reg_q_food, payment_plan_date→
+# reg_q_payment_date) эти ключи расходятся — префиксный поиск откатывался на сырой step_key
+# (deferred-items 21-11). Единственный источник подписи для бота, мастера и профиля — здесь.
+SETTING_KEY_BY_STEP = {step_key: setting_key for step_key, setting_key, _t in REG_FLOW}
+
+
+def label_key_for(step_key: str) -> str:
+    """Ключ REG_LABELS для шага: setting_key из REG_FLOW; для ключей вне REG_FLOW (например
+    `full_name` — ФИО спрашивается до движка шагов) — префиксный `reg_q_{step_key}`."""
+    return SETTING_KEY_BY_STEP.get(step_key, f"reg_q_{step_key}")
+
+
+def label_for(step_key: str) -> str:
+    """Человеческая подпись шага — та же строка, что у бота в админке; фоллбэк на step_key
+    остаётся только для ключей, которых нет ни в REG_FLOW, ни в REG_LABELS."""
+    return REG_LABELS.get(label_key_for(step_key), step_key)
+
 # Phase 21 (21-11, D-13): шаги, не редактируемые при правке уже поданной анкеты («город/трек/
 # согласия — другая заявка»). Согласия — pre-flow, не запись REG_FLOW, поэтому их сюда
 # заводить не нужно (обзор правки их вовсе не запрашивает). "city" — единственный REG_FLOW-шаг
@@ -363,7 +385,9 @@ async def _default_prompt_text(step_key: str, participant_type: str | None) -> s
     if step_key in PROMPT_DEFAULTS:
         return PROMPT_DEFAULTS[step_key]
     step_type = REG_STEP_TYPES.get(step_key)
-    label = REG_LABELS.get(f"reg_q_{step_key}", _GENERIC_FALLBACK_LABEL.get(step_type, "Вопрос"))
+    # Ключ подписи — setting_key из REG_FLOW (label_key_for), не reg_q_{step_key}: для шагов,
+    # доходящих сюда, оба совпадают, поэтому golden-снимок prompts не меняется.
+    label = REG_LABELS.get(label_key_for(step_key), _GENERIC_FALLBACK_LABEL.get(step_type, "Вопрос"))
     if step_type == "date":
         return f"{label} (ДД.ММ.ГГГГ):"
     if step_type == "select":
@@ -557,7 +581,7 @@ async def step_spec(step_key: str, participant_type: str | None = None,
     принят для единообразия с будущими per-city полями формы; сегодня спека от него не зависит."""
     step_type = REG_STEP_TYPES.get(step_key, "text")
     ui_type = _ui_type_for(step_key, step_type)
-    label = REG_LABELS.get(f"reg_q_{step_key}", step_key)
+    label = label_for(step_key)
     spec = {
         "key": step_key,
         "column": STEP_TO_COLUMN.get(step_key, step_key),
