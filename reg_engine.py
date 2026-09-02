@@ -138,6 +138,13 @@ STEP_TO_COLUMN["ambassador"] = "is_ambassador_candidate"
 STEP_TO_COLUMN["full_name"] = "full_name"
 RECALLABLE_STEPS = {k for k in STEP_TO_COLUMN if k != "resume"}
 
+# Phase 21 (21-11, D-13): шаги, не редактируемые при правке уже поданной анкеты («город/трек/
+# согласия — другая заявка»). Согласия — pre-flow, не запись REG_FLOW, поэтому их сюда
+# заводить не нужно (обзор правки их вовсе не запрашивает). "city" — единственный REG_FLOW-шаг
+# из этого списка; трек (party) не является отдельным шагом step_spec (выбирается вилкой
+# pre-flow, participant_type), поэтому в списке колонок анкеты его тоже нет.
+EDIT_LOCKED_STEPS = {"city"}
+
 # Configurable single-select steps: step_key → (options_setting_key, default options).
 SELECT_CONFIG = {
     "city": ("city_options", [
