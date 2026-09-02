@@ -15,8 +15,6 @@ process_* step block.
 Behavior is byte-for-byte unchanged from the pre-move code -- every handler body below is a
 verbatim relocation, not a rewrite.
 """
-from datetime import datetime
-
 from aiogram import Bot, F, types
 from aiogram.filters import StateFilter
 from aiogram.fsm.context import FSMContext
@@ -27,7 +25,7 @@ from database.db import get_user, get_setting, record_user_consent
 from settings_schema import get_setting_typed
 from cities import CITIES, is_city_enabled
 from handlers.states import Registration
-from keyboards.builders import get_cancel_kb, get_main_menu_kb
+from keyboards.builders import get_main_menu_kb
 from handlers.registration import (
     router,
     _PARTY_TAG_MAP, MULTI_CONFIG,
@@ -35,8 +33,10 @@ from handlers.registration import (
     _city_fork_then_continue, _continue_after_city,
     _consent_key_matches, _ask_step_or_recall, _ask_full_name,
     finalize_registration, _advance, _get_options, _multi_kb,
-    _is_allowed_resume, _resume_too_large,
+    _is_allowed_resume, _resume_too_large, _err_kb,
 )
+# Phase 21 (21-06, FORM-SYNC-01): validate_answer — единая проверка для чата бота и Mini App.
+from reg_engine import validate_answer, validate_date_range as _validate_date_range
 
 
 @router.callback_query(F.data.startswith("party_pick:"))
@@ -252,6 +252,8 @@ async def process_confirm_edit(message: types.Message, state: FSMContext):
 
 @router.message(Registration.resume, F.document)
 async def process_resume(message: types.Message, state: FSMContext, bot: Bot):
+    # Файл резюме — своя форма входа (имя файла/размер, не «сырой текст»), поэтому не через
+    # validate_answer: is_allowed_resume/resume_too_large — прямой перенос в reg_engine.py.
     if not _is_allowed_resume(message.document.file_name):
         await message.answer("Принимаются только PDF или DOCX. Прикрепи файл ещё раз.")
         return
@@ -270,11 +272,11 @@ async def process_resume(message: types.Message, state: FSMContext, bot: Bot):
 @router.message(Registration.resume, F.text)
 async def process_resume_text(message: types.Message, state: FSMContext, bot: Bot):
     # Tatiana: резюме можно либо файлом, либо текстом. Обязательно (без «Пропустить»).
-    text = (message.text or "").strip()
-    if not text:
-        await message.answer("Напиши резюме текстом или прикрепи файл (PDF или DOCX).")
+    value, err = validate_answer("resume", message.text)
+    if err:
+        await message.answer(err)
         return
-    await state.update_data(resume_text=text)
+    await state.update_data(resume_text=value)
     await _advance("resume", message, state, bot)
 
 
@@ -285,40 +287,19 @@ async def process_resume_invalid(message: types.Message, state: FSMContext):
 
 
 # --- Phase 4: date-type step (MOD-02) ---
-
-def _validate_date_range(step_key: str, dt: datetime) -> str | None:
-    """LOW: sanity range check for a parsed date step. Loose bounds — reject only clearly-wrong
-    input (typos, impossible dates), never a plausible real value. Returns a user-facing error
-    message, or None if the date is acceptable."""
-    today = datetime.now()
-    if step_key == "birth_date":
-        if dt > today:
-            return "Дата рождения не может быть в будущем. Проверь и введи ещё раз."
-        if dt.year < today.year - 100 or dt.year > today.year - 10:
-            return "Проверь дату рождения (год выглядит неправдоподобно) и введи ещё раз."
-    elif step_key == "arrival_date":
-        if dt.date() < today.date():
-            return "Дата приезда не может быть в прошлом. Введи корректную дату."
-        if dt.year > today.year + 2:
-            return "Проверь дату приезда (слишком далеко в будущем) и введи ещё раз."
-    return None
-
+# _validate_date_range — перенесена в reg_engine.validate_date_range (алиас в блоке импортов
+# выше, для обратной совместимости с существующими вызывающими/тестами); process_date_input
+# ниже зовёт общий validate_answer (формат + диапазон — обе проверки внутри одной функции).
 
 @router.message(Registration.date_input)
 async def process_date_input(message: types.Message, state: FSMContext, bot: Bot):
-    raw = (message.text or "").strip()
-    try:
-        dt = datetime.strptime(raw, "%d.%m.%Y")
-    except ValueError:
-        await message.answer("Формат даты: ДД.ММ.ГГГГ. Попробуй ещё раз.")
-        return
     data = await state.get_data()
     step_key = data.get("_current_date_step", "arrival_date")
-    range_err = _validate_date_range(step_key, dt)
-    if range_err:
-        await message.answer(range_err)
+    value, err = validate_answer(step_key, message.text)
+    if err:
+        await message.answer(err)
         return
-    await state.update_data(**{step_key: raw})
+    await state.update_data(**{step_key: value})
     await _advance(step_key, message, state, bot)
 
 
@@ -326,16 +307,13 @@ async def process_date_input(message: types.Message, state: FSMContext, bot: Bot
 
 @router.message(Registration.select_input)
 async def process_select_input(message: types.Message, state: FSMContext, bot: Bot):
-    text = (message.text or "").strip()
-    if not text:
-        await message.answer("Выбери вариант на клавиатуре или напиши свой.")
-        return
-    if text == "Другое":
-        await message.answer("Напиши свой вариант:", reply_markup=get_cancel_kb())
-        return
     data = await state.get_data()
     step_key = data.get("_current_select_step", "study_field")
-    await state.update_data(**{step_key: text})
+    value, err = validate_answer(step_key, message.text)
+    if err:
+        await message.answer(err, reply_markup=_err_kb(message.text))
+        return
+    await state.update_data(**{step_key: value})
     await _advance(step_key, message, state, bot)
 
 
@@ -375,11 +353,15 @@ async def process_multi_done(callback: types.CallbackQuery, state: FSMContext, b
     data = await state.get_data()
     selected = sorted(set(data.get(f"_multi_{step_key}", [])))
     options = await _multi_options(step_key)
+    # Index -> label resolution is UI-specific (depends on the rendered options order) and
+    # stays here; validate_answer takes the resolved label list (empty-check + join — same
+    # rule as before, now shared with any future multi-typed step, not just goal/formats).
     chosen = [options[i] for i in selected if 0 <= i < len(options)]
-    if not chosen:
-        await callback.answer("Выбери хотя бы один вариант.", show_alert=True)
+    value, err = validate_answer(step_key, chosen)
+    if err:
+        await callback.answer(err, show_alert=True)
         return
-    await state.update_data(**{step_key: ", ".join(chosen)})
+    await state.update_data(**{step_key: value})
     try:
         await callback.message.edit_reply_markup(reply_markup=None)
     except Exception:
@@ -397,11 +379,11 @@ async def process_multi_ignore(message: types.Message):
 
 @router.message(Registration.ambassador)
 async def process_ambassador(message: types.Message, state: FSMContext, bot: Bot):
-    text = (message.text or "").strip()
-    if not text:
-        await message.answer("Выбери «Да!» или «Пока нет».")
+    value, err = validate_answer("ambassador", message.text)
+    if err:
+        await message.answer(err)
         return
-    await state.update_data(is_ambassador_candidate=text.lower().startswith("да"))
+    await state.update_data(is_ambassador_candidate=value)
     await _advance("ambassador", message, state, bot)
 
 

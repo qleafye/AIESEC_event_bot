@@ -15,23 +15,29 @@ from aiogram import F, types, Bot
 from aiogram.fsm.context import FSMContext
 
 from handlers.states import Registration
-from keyboards.builders import get_cancel_kb
 from handlers.registration import (
     router,
     _get_enabled_steps, _ask_step_or_recall, finalize_registration, _after_full_name,
-    _advance, _parse_age,
+    _advance, _err_kb,
 )
+from reg_engine import validate_answer, apply_answer, STEP_TO_COLUMN
 
 # --- Core Registration ---
 
+# Phase 21 (21-06, FORM-SYNC-01): каждый простой текстовый шаг ниже — один и тот же контур:
+# validate_answer(step_key, raw) -> (value, err); err -> сообщить и остаться; иначе сохранить
+# value под своей колонкой (STEP_TO_COLUMN, совпадает с тем, что писал сам хендлер раньше:
+# vk_username/is_ambassador_candidate — единственные шаги с несовпадающим именем) и продолжить.
+# Тела НЕ дублируют проверку — вся она теперь в reg_engine.validate_answer (T-21-05: один
+# судья для чата и Mini App), здесь только STORE + ADVANCE.
+
 @router.message(Registration.full_name)
 async def process_full_name(message: types.Message, state: FSMContext, bot: Bot):
-    full_name = (message.text or "").strip()
-    if len(full_name.split()) < 2:
-        await message.answer("Укажи ФИО полностью (минимум фамилию и имя).")
+    value, err = validate_answer("full_name", message.text)
+    if err:
+        await message.answer(err)
         return
-
-    await state.update_data(full_name=full_name)
+    await state.update_data(full_name=value)
 
     # Phase 7 (SHORT-04): the old `registration_mode != "full"` early-exit straight to
     # finalize() is REMOVED. The generic engine below now runs for every track, including
@@ -52,24 +58,27 @@ async def process_full_name(message: types.Message, state: FSMContext, bot: Bot)
 
 # --- Extended Question Handlers ---
 
+async def _thin_step(step_key: str, message: types.Message, state: FSMContext, bot: Bot,
+                      *, kb_on_error: bool = False):
+    """Общий контур «валидировать → сохранить под своей колонкой → _advance», без побочных
+    правил (education_status/work_status используют apply_answer напрямую — см. ниже)."""
+    value, err = validate_answer(step_key, message.text)
+    if err:
+        await message.answer(err, reply_markup=_err_kb(message.text) if kb_on_error else None)
+        return
+    column = STEP_TO_COLUMN.get(step_key, step_key)
+    await state.update_data(**{column: value})
+    await _advance(step_key, message, state, bot)
+
+
 @router.message(Registration.age)
 async def process_age(message: types.Message, state: FSMContext, bot: Bot):
-    age = _parse_age(message.text)
-    if age is None:
-        await message.answer("Укажи корректный возраст числом от 10 до 120.")
-        return
-    await state.update_data(age=age)
-    await _advance("age", message, state, bot)
+    await _thin_step("age", message, state, bot)
 
 
 @router.message(Registration.email)
 async def process_email(message: types.Message, state: FSMContext, bot: Bot):
-    email = (message.text or "").strip()
-    if not email or "@" not in email or "." not in email:
-        await message.answer("Укажи корректный email (например, name@example.com).")
-        return
-    await state.update_data(email=email)
-    await _advance("email", message, state, bot)
+    await _thin_step("email", message, state, bot)
 
 
 @router.message(Registration.phone, F.contact)
@@ -83,226 +92,124 @@ async def process_phone_contact(message: types.Message, state: FSMContext, bot: 
 
 @router.message(Registration.phone)
 async def process_phone(message: types.Message, state: FSMContext, bot: Bot):
-    text = (message.text or "").strip()
-    if text == "Пропустить":
-        await state.update_data(phone="-")
-        await _advance("phone", message, state, bot)
-        return
-    cleaned = text.replace(" ", "").replace("-", "").replace("(", "").replace(")", "")
-    if not cleaned:
-        await message.answer("Укажи номер телефона или нажми «Пропустить».")
-        return
-    if not (cleaned.startswith("+") and cleaned[1:].isdigit()) and not cleaned.isdigit():
-        await message.answer("Укажи корректный номер телефона или нажми «Пропустить».")
-        return
-    await state.update_data(phone=text)
-    await _advance("phone", message, state, bot)
+    await _thin_step("phone", message, state, bot)
 
 
 @router.message(Registration.vk)
 async def process_vk(message: types.Message, state: FSMContext, bot: Bot):
-    vk = (message.text or "").strip()
-    # Tatiana: ник строго в формате @username.
-    if not vk.startswith("@") or len(vk) < 2 or " " in vk:
-        await message.answer("Укажи ник в ВК в формате @username (начинается с @, без пробелов).")
-        return
-    await state.update_data(vk_username=vk)
-    await _advance("vk", message, state, bot)
+    await _thin_step("vk", message, state, bot)
 
 
 @router.message(Registration.city)
 async def process_city(message: types.Message, state: FSMContext, bot: Bot):
-    text = (message.text or "").strip()
-    if not text:
-        await message.answer("Выбери город на клавиатуре или напиши свой.")
-        return
-    if text == "Другое":
-        # Tap «Другое» → ask for the free-text value; the next message (any city) is stored.
-        await message.answer("Напиши название своего города:", reply_markup=get_cancel_kb())
-        return
-    await state.update_data(city=text)
-    await _advance("city", message, state, bot)
+    await _thin_step("city", message, state, bot, kb_on_error=True)
 
 
 @router.message(Registration.source)
 async def process_source(message: types.Message, state: FSMContext, bot: Bot):
-    source = (message.text or "").strip()
-    if not source:
-        await message.answer("Выбери один из вариантов или напиши свой.")
-        return
-    if source == "Другое":
-        await message.answer("Напиши свой вариант:", reply_markup=get_cancel_kb())
-        return
-    await state.update_data(source=source)
-    await _advance("source", message, state, bot)
+    await _thin_step("source", message, state, bot, kb_on_error=True)
 
 
 @router.message(Registration.local_committee)
 async def process_local_committee(message: types.Message, state: FSMContext, bot: Bot):
-    text = (message.text or "").strip()
-    if not text:
-        await message.answer("Выбери локальный комитет из списка или напиши свой.")
-        return
-    if text == "Другое":
-        await message.answer("Напиши название своего ЛК:", reply_markup=get_cancel_kb())
-        return
-    await state.update_data(local_committee=text)
-    await _advance("local_committee", message, state, bot)
+    await _thin_step("local_committee", message, state, bot, kb_on_error=True)
 
 
 @router.message(Registration.position)
 async def process_position(message: types.Message, state: FSMContext, bot: Bot):
-    text = (message.text or "").strip()
-    if not text:
-        await message.answer("Выбери позицию из списка или напиши свою.")
-        return
-    if text == "Другое":
-        await message.answer("Напиши свою позицию:", reply_markup=get_cancel_kb())
-        return
-    await state.update_data(position=text)
-    await _advance("position", message, state, bot)
+    await _thin_step("position", message, state, bot, kb_on_error=True)
 
 
 @router.message(Registration.education_status)
 async def process_education_status(message: types.Message, state: FSMContext, bot: Bot):
-    status = (message.text or "").strip()
-    if not status:
-        await message.answer("Выбери один из вариантов.")
+    value, err = validate_answer("education_status", message.text)
+    if err:
+        await message.answer(err)
         return
-    await state.update_data(education_status=status)
-    if not status.startswith("Да"):
-        await state.update_data(university="-", course="-", specialty="-", study_field="-")
+    data = await state.get_data()
+    # apply_answer (APPLY_GOLDEN): не «Да…» -> ВУЗ/курс/специальность/направление прочерком.
+    await state.set_data(apply_answer(data, "education_status", value))
     await _advance("education_status", message, state, bot)
 
 
 @router.message(Registration.university)
 async def process_university(message: types.Message, state: FSMContext, bot: Bot):
-    uni = (message.text or "").strip()
-    if not uni:
-        await message.answer("Выбери ВУЗ из списка или напиши свой.")
-        return
-    if uni == "Другое":
-        await message.answer("Напиши название своего ВУЗа:", reply_markup=get_cancel_kb())
-        return
-    await state.update_data(university=uni)
-    await _advance("university", message, state, bot)
+    await _thin_step("university", message, state, bot, kb_on_error=True)
 
 
 @router.message(Registration.course)
 async def process_course(message: types.Message, state: FSMContext, bot: Bot):
-    course = (message.text or "").strip()
-    if not course:
-        await message.answer("Выбери курс.")
-        return
-    await state.update_data(course=course)
-    await _advance("course", message, state, bot)
+    await _thin_step("course", message, state, bot)
 
 
 @router.message(Registration.specialty)
 async def process_specialty(message: types.Message, state: FSMContext, bot: Bot):
-    text = (message.text or "").strip()
-    if not text:
-        await message.answer("Напиши или нажми «Пропустить».")
-        return
-    await state.update_data(specialty="-" if text == "Пропустить" else text)
-    await _advance("specialty", message, state, bot)
+    await _thin_step("specialty", message, state, bot)
 
 
 @router.message(Registration.work_status)
 async def process_work_status(message: types.Message, state: FSMContext, bot: Bot):
-    answer = (message.text or "").strip()
-    if answer not in ("Да", "Нет"):
-        await message.answer("Выбери «Да» или «Нет».")
+    value, err = validate_answer("work_status", message.text)
+    if err:
+        await message.answer(err)
         return
-    working = answer == "Да"
-    await state.update_data(work_status=working)
-    if not working:
-        await state.update_data(work_sphere="-")
+    data = await state.get_data()
+    # apply_answer (APPLY_GOLDEN): work_status=Нет -> work_sphere прочерком.
+    await state.set_data(apply_answer(data, "work_status", value))
     await _advance("work_status", message, state, bot)
 
 
 @router.message(Registration.work_sphere)
 async def process_work_sphere(message: types.Message, state: FSMContext, bot: Bot):
-    text = (message.text or "").strip()
-    if not text:
-        await message.answer("Напиши сферу работы или нажми «Пропустить».")
-        return
-    await state.update_data(work_sphere="-" if text == "Пропустить" else text)
-    await _advance("work_sphere", message, state, bot)
+    await _thin_step("work_sphere", message, state, bot)
 
 
 @router.message(Registration.missing_skills)
 async def process_missing_skills(message: types.Message, state: FSMContext, bot: Bot):
-    text = (message.text or "").strip()
-    if not text:
-        await message.answer("Напиши или нажми «Пропустить».")
-        return
-    await state.update_data(missing_skills="-" if text == "Пропустить" else text)
-    await _advance("missing_skills", message, state, bot)
+    await _thin_step("missing_skills", message, state, bot)
 
 
 @router.message(Registration.expectations)
 async def process_expectations(message: types.Message, state: FSMContext, bot: Bot):
-    text = (message.text or "").strip()
-    if not text:
-        await message.answer("Напиши или нажми «Пропустить».")
-        return
-    await state.update_data(expectations="-" if text == "Пропустить" else text)
-    await _advance("expectations", message, state, bot)
+    await _thin_step("expectations", message, state, bot)
 
 
 @router.message(Registration.informal_day)
 async def process_informal_day(message: types.Message, state: FSMContext, bot: Bot):
-    text = (message.text or "").strip()
-    if text not in ("Да", "Нет", "Буду только в онлайне"):
-        await message.answer("Выбери один из вариантов.")
-        return
-    await state.update_data(informal_day=text)
-    await _advance("informal_day", message, state, bot)
+    await _thin_step("informal_day", message, state, bot)
 
 
 @router.message(Registration.attendance_format)
 async def process_attendance_format(message: types.Message, state: FSMContext, bot: Bot):
-    text = (message.text or "").strip()
-    if text not in ("Offline", "Online"):
-        await message.answer("Выбери «Offline» или «Online».")
-        return
-    await state.update_data(attendance_format=text)
-    await _advance("attendance_format", message, state, bot)
+    await _thin_step("attendance_format", message, state, bot)
 
 
 @router.message(Registration.comments)
 async def process_comments(message: types.Message, state: FSMContext, bot: Bot):
-    text = (message.text or "").strip()
-    if not text:
-        await message.answer("Напиши или нажми «Пропустить».")
-        return
-    await state.update_data(comments="-" if text == "Пропустить" else text)
-    await _advance("comments", message, state, bot)
+    await _thin_step("comments", message, state, bot)
 
 
 # --- Conference (RusCo) reg-flow handlers ---
 
 async def _store_choice(field: str, after: str, message: types.Message, state: FSMContext, bot: Bot):
-    text = (message.text or "").strip()
-    if not text:
-        await message.answer("Выбери вариант на клавиатуре или напиши ответ.")
+    # field == after == validate_answer step_key for every caller below (department, aiesec_role,
+    # needs_certificate, english_level, alumni_status, arrival, housing, bed_sharing, transport,
+    # volunteer) — reg_engine._CHOICE_STEPS covers the same set with the same generic error/
+    # «Другое»-prompt text this function used to inline.
+    value, err = validate_answer(field, message.text)
+    if err:
+        await message.answer(err, reply_markup=_err_kb(message.text))
         return
-    if text == "Другое":
-        # Covers every «Другое»-bearing choice step routed through here (department,
-        # aiesec_role, …): ask for the free-text value, stay in state, store the next reply.
-        await message.answer("Напиши свой вариант:", reply_markup=get_cancel_kb())
-        return
-    await state.update_data(**{field: text})
+    await state.update_data(**{field: value})
     await _advance(after, message, state, bot)
 
 
 async def _store_text(field: str, after: str, message: types.Message, state: FSMContext, bot: Bot):
-    text = (message.text or "").strip()
-    if not text:
-        await message.answer("Напиши или нажми «Пропустить».")
+    value, err = validate_answer(field, message.text)
+    if err:
+        await message.answer(err)
         return
-    await state.update_data(**{field: "-" if text == "Пропустить" else text})
+    await state.update_data(**{field: value})
     await _advance(after, message, state, bot)
 
 
