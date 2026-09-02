@@ -40,11 +40,15 @@ DEFAULT_CEILING = 850
 # edit the number + reason together, in the same commit as the growth that needs it.
 KNOWN_OVERAGES: dict[str, tuple[int, str]] = {
     "registration.py": (
-        2310,
-        "FSM-движок (_ask_step/_advance/_decide_status/...), cmd_start, "
-        "finalize_registration -- документированный разрыв 13-03 (registration.py "
-        "остаётся агрегатором-ядром, а не god-файлом: reg_flow.py/reg_steps.py уже "
-        "вынесены и оба комфортно под GUIDELINE)",
+        2204,
+        "Phase 21 (21-01, FORM-SYNC-01): REG_STEP_TYPES/STEP_TO_COLUMN/RECALLABLE_STEPS/"
+        "SELECT_CONFIG/MULTI_CONFIG/enabled_steps/prompt-резолюция/pre-flow гейты/"
+        "prior-answer правило переехали в корневой reg_engine.py (2309 -> 2099 строк) -- "
+        "потолок опущен до нового размера + ~5% запаса (план 21-09 добавит точки "
+        "синхронизации черновика). Остаток -- FSM-движок (_ask_step/_advance/"
+        "_decide_status/...), cmd_start, finalize_registration -- документированный "
+        "разрыв 13-03 (registration.py остаётся агрегатором-ядром, а не god-файлом: "
+        "reg_flow.py/reg_steps.py уже вынесены и оба комфортно под GUIDELINE)",
     ),
     "admin_gamification.py": (
         2020,

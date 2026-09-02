@@ -42,6 +42,14 @@ from keyboards.builders import (
 from services.sheets import append_to_sheet, append_to_named_sheet
 from services.nextcloud import upload_resume, upload_text_resume
 from services.background import spawn as _spawn
+# Phase 21 (21-01, FORM-SYNC-01): литеральные списки без своей клавиатуры в builders.py —
+# reg_options.py, та же точка правды, что читает reg_engine.step_spec() для Mini App.
+from reg_options import (
+    ALUMNI_STATUS_OPTIONS,
+    BED_SHARING_OPTIONS,
+    TRANSPORT_OPTIONS,
+    AMBASSADOR_OPTIONS,
+)
 from handlers.admin_caps import notify_by_capability  # D-13: fan out by capability, not bare ADMIN_IDS
 # Phase 13 REFAC (13-02, REFAC-02): shared registration data registries + sheet-schema
 # plumbing extracted to handlers/reg_schema.py (router-free) so handlers/admin.py no longer
@@ -139,207 +147,41 @@ def _decide_status(reg_mode: str, full_setting: str, short_setting: str,
 
 # --- Registration Flow Engine ---
 
-# REG_FLOW moved to handlers/reg_schema.py (13-02, REFAC-02); imported above. Kept here as
-# the single source REG_STEP_TYPES/STEP_TO_COLUMN/RECALLABLE_STEPS below derive from.
-
-# Map step_key → type for O(1) dispatch in _ask_step (consent:* keys handled separately).
-REG_STEP_TYPES = {step_key: step_type for step_key, _sk, step_type in REG_FLOW}
-
-# _STEP_TO_SETTING moved to handlers/reg_schema.py alongside dropout_step_label (13-02).
-
-# Phase 07.3 (04, RET-02): step_key -> users column name. EXPLICIT map, not derived from
-# step_key identity (RESEARCH's own anti-pattern warning) -- most REG_FLOW keys match their
-# column 1:1, but "vk" writes vk_username and "ambassador" writes is_ambassador_candidate
-# (registration.py process_vk / process_ambassador_yesno). "resume" stays in the map as an
-# identity entry (three real columns: resume_file_id/resume_text/resume_url) but is excluded
-# from RECALLABLE_STEPS -- it gets its own carve-out branch in _ask_step_or_recall/recall_keep
-# because showing a raw file_id to a human is meaningless (RESEARCH Pitfall 3).
-STEP_TO_COLUMN = {step_key: step_key for step_key, _sk, _t in REG_FLOW}
-STEP_TO_COLUMN["vk"] = "vk_username"
-STEP_TO_COLUMN["ambassador"] = "is_ambassador_candidate"
-# UAT 19.08: ФИО спрашивается ВНЕ REG_FLOW (_ask_full_name, до движка шагов), поэтому в
-# карте его не было и recall_keep/recall_change для него не работали. Колонка совпадает с
-# ключом; сам recall-экран для ФИО рисует _ask_full_name (не _ask_step_or_recall).
-STEP_TO_COLUMN["full_name"] = "full_name"
-RECALLABLE_STEPS = {k for k in STEP_TO_COLUMN if k != "resume"}
-
-# dropout_step_label moved to handlers/reg_schema.py (13-02, REFAC-02); imported above.
-
-# Configurable single-select steps: step_key → (options_setting_key, default options).
-# Options edited in admin as newline text (reuse source_options pattern). "Другое" appended.
-SELECT_CONFIG = {
-    "city": ("city_options", [
-        "Москва и МО", "Санкт-Петербург", "Новосибирск", "Екатеринбург",
-        "Казань", "Нижний Новгород", "Красноярск", "Уфа",
-    ]),
-    "study_field": ("study_field_options", [
-        "Бизнес и управление", "IT и технологии",
-        "Социальные и гуманитарные науки", "Математические и естественные науки",
-    ]),
-}
-
-# Configurable multi-select steps: step_key → (options_setting_key, default options).
-MULTI_CONFIG = {
-    "goal": ("goal_options", [
-        "Найти возможность трудоустройства",
-        "Прокачать свои hard и soft skills",
-        "Пообщаться с людьми из моей сферы, нетворкинг",
-        "Получить карьерную консультацию от HR",
-        "Узнать о деятельности компаний",
-    ]),
-    "formats": ("formats_options", [
-        "Панельные дискуссии", "Мастер-классы", "Сессии со спикерами",
-        "Нетворкинг-сессии", "Ярмарка открытых вакансий",
-    ]),
-}
-
-
-async def _get_options(setting_key: str, defaults: list[str]) -> list[str]:
-    """Admin-editable option list (newline text) with a hardcoded fallback."""
-    raw = await get_setting(setting_key)
-    if raw:
-        items = [line.strip() for line in raw.splitlines() if line.strip()]
-        if items:
-            return items
-    return list(defaults)
-
-# REG_DEFAULTS, REG_LABELS, REG_PRESETS, _PARTY_PRESET_OVERNIGHT_EXEMPT, _apply_party_preset,
-# _apply_short_preset, REG_CATEGORIES moved to handlers/reg_schema.py (13-02, REFAC-02);
-# imported above.
+# Phase 21 (21-01, FORM-SYNC-01): step-type/column maps, select/multi configs, enabled-step
+# resolution, prompt/options resolution, the prior-answer (recall) rule and pre-flow gates
+# moved to the root aiogram-free reg_engine.py — the single engine bot AND Mini App call
+# (D-03, FORM-SYNC-01). Old private names kept as aliases so every existing call site in this
+# file and in handlers/reg_flow.py, handlers/reg_consent.py, tests/*.py keeps working unchanged.
+from reg_engine import (
+    REG_STEP_TYPES, STEP_TO_COLUMN, SELECT_CONFIG, MULTI_CONFIG, RECALLABLE_STEPS,
+    enabled_steps, option_list_for, is_step_enabled_for_track, prompt,
+    is_returning_row, prior_answers_for, has_prior_resume, pre_flow,
+    consent_entries, get_consent_steps, DEFAULT_CONSENTS,
+    should_show_fork, should_show_city_fork,
+)
+_get_enabled_steps = enabled_steps
+_get_options = option_list_for
+_is_step_enabled_for_track = is_step_enabled_for_track
+_is_returning_row = is_returning_row
+_consent_entries = consent_entries
+_get_consent_steps = get_consent_steps
+_should_show_fork = should_show_fork
+_should_show_city_fork = should_show_city_fork
 
 
 async def _prompt(step_key: str, default: str, participant_type: str | None = None) -> str:
-    """Editable question wording: admin override reg_prompt_<step_key> else the default.
-    Lets organizers set exact per-event wording (YL'26/Summit/…) without code changes.
-    Phase 5 (D-05): party tracks check reg_prompt_<step_key>__party FIRST (truthy wins),
-    else fall through to the existing global resolution unchanged. `participant_type`
-    defaults to None so every pre-Phase-5 two-arg call site keeps compiling and behaving
-    identically — only _ask_step (which resolves the track once) passes the third arg.
-    Truthiness (not `is not None`) is deliberate here: an accidentally-empty override
-    string must fall back to the global text rather than send a blank message — this
-    differs from the gate resolver (_is_step_enabled_for_track), where `is not None` is
-    required to keep "off" distinguishable from "inherit"."""
+    """Back-compat 3-arg resolver (admin override reg_prompt_<step_key> else a
+    CALLER-SUPPLIED default) — kept local because handlers/reg_consent.py calls it for
+    synthetic `consent_<key>` step keys, which are not part of REG_FLOW and therefore have no
+    entry in reg_engine.PROMPT_DEFAULTS. `_ask_step` below uses the new 2-arg
+    `reg_engine.prompt(step_key, participant_type)` (engine-computed default) for every real
+    REG_FLOW step instead; this shim is the SAME override-resolution algorithm, just with the
+    default passed in rather than computed internally — same reasoning as before Phase 21."""
     if _is_party_track(participant_type):
         override = await get_setting(f"reg_prompt_{step_key}__party")
         if override:
             return override
     return await get_setting(f"reg_prompt_{step_key}") or default
-
-
-# _is_step_enabled moved to handlers/reg_schema.py (13-02, REFAC-02); imported above.
-
-
-async def _is_step_enabled_for_track(setting_key: str, participant_type: str | None) -> bool:
-    """D-03/D-04: tri-state per-track gate. `__party` is ONE namespace shared by
-    party_overnight and party_noovernight — there is no per-sub-track key split.
-    Key-absence means "inherit the global reg_q_<step> value"; key-presence means the
-    explicit on/off wins, regardless of what the global value is. The `is not None` check
-    is load-bearing: collapsing None into a boolean early would make "inherit"
-    indistinguishable from "off" and would break the admin tri-state cycle (plan 05-03).
-    Full track (or None) never reads the __party key — byte-identical to _is_step_enabled.
-
-    Phase 7 (SHORT-01/SHORT-04): the short track reads `{setting_key}__short` the same
-    tri-state way (`is not None`, never truthiness — same load-bearing reason as above, so
-    the admin tri-state cycle for `__short` keys works identically to `__party`). It
-    deliberately does NOT fall through to the global `_is_step_enabled` on key-absence: party
-    is a curated subset of the ALREADY-live full form, so "inherit the global set" is the
-    right default there. Short exists specifically to NOT be the global set — inheriting it
-    would make the promo form equal to the full form again, which is the exact bug this phase
-    fixes, and would silently break SHORT-04 (manager would have to turn off ~14 global
-    toggles by hand). So for short, key-absence means "do not ask this question", full stop.
-    """
-    if _is_party_track(participant_type):
-        override = await get_setting(f"{setting_key}__party")
-        if override is not None:
-            return override == "on"
-    elif _is_short_track(participant_type):
-        override = await get_setting(f"{setting_key}__short")
-        if override is not None:
-            return override == "on"
-        return False
-    return await _is_step_enabled(setting_key)
-
-
-# _is_module_enabled moved to handlers/reg_schema.py (13-02, REFAC-02); imported above.
-
-
-async def _get_enabled_steps(data: dict) -> list[str]:
-    enabled = []
-    # edu_conditional (default on): skip ВУЗ/курс/специальность when "не учусь". Turn OFF
-    # for events (e.g. YL'26) that ask образование as a level, not a Да/Нет, and want those
-    # steps always shown.
-    edu_conditional = await get_setting_typed("edu_conditional") == "on"  # REG-02: registry-backed
-    studying = str(data.get("education_status", "")).startswith("Да")
-    participant_type = data.get("participant_type") or "full"  # Phase 5 (D-03/D-04/D-08)
-    for step_key, setting_key, *_rest in REG_FLOW:
-        if not await _is_step_enabled_for_track(setting_key, participant_type):
-            continue
-        if step_key == "informal_day" and data.get("attendance_format") == "Online":
-            continue
-        # Source came from a src_ deep-link tag — don't ask «Откуда узнал», it's authoritative.
-        if step_key == "source" and data.get("_source_from_tag"):
-            continue
-        # Tatiana: «Где будешь жить» — только если приезжает Заранее (в дни конфы жильё не нужно).
-        # Backward-safe: gate only when arrival was actually asked; else housing stays unconditional.
-        if step_key == "housing" and "arrival" in data and data.get("arrival") != "Заранее":
-            continue
-        # «С кем на кровати» спрашиваем только если согласился делить (bed_sharing = «Да»).
-        if step_key == "bed_partner" and not str(data.get("bed_sharing", "")).startswith("Да"):
-            continue
-        # Phase 5 (D-08): housing/bed_sharing/bed_partner reuse the SAME steps, gated to the
-        # overnight party sub-track only. No new step keys, no new DB/sheet columns (D-08/D-09).
-        # Written so it can never fire for "full"/None — only excludes party tracks that are
-        # NOT party_overnight (i.e. party_noovernight).
-        if step_key in ("housing", "bed_sharing", "bed_partner") and _is_party_track(participant_type) \
-                and participant_type != "party_overnight":
-            continue
-        if edu_conditional and step_key == "university" and not studying:
-            continue
-        if edu_conditional and step_key == "course" and not studying:
-            continue
-        if edu_conditional and step_key == "specialty" and not studying:
-            continue
-        if edu_conditional and step_key == "study_field" and not studying:
-            continue
-        if step_key == "work_sphere" and not data.get("work_status"):
-            continue
-        enabled.append(step_key)
-    # Consents run BEFORE ФИО now (handled in _start_registration_flow /
-    # process_consent_accept), so they are no longer part of the question engine.
-    return enabled
-
-
-# Fallback when consent_enabled is on but consent_list is empty: one «обработка ПД» consent
-# (ссылки на документы уже в приветственном сообщении, поэтому хватает одной кнопки).
-DEFAULT_CONSENTS = [("Согласие на обработку персональных данных", "personal_data")]
-
-
-async def _consent_entries() -> list[tuple[str, str]]:
-    """Parse consent_list ('Видимое название | ключ' per line) → [(label, key)].
-    Empty/invalid list → DEFAULT_CONSENTS. Shared by step-building and rendering so the
-    label/key stay in sync."""
-    raw = await get_setting("consent_list") or ""
-    entries: list[tuple[str, str]] = []
-    # Accept ';' as a line separator too: on mobile Telegram Enter=send splits a
-    # multi-line entry into separate messages (only the first survives set_setting),
-    # so admins can put all consents on one line using ';'. Newline data unaffected.
-    for line in raw.replace(";", "\n").strip().splitlines():
-        line = line.strip()
-        if not line or "|" not in line:
-            continue
-        label, consent_key = line.split("|", 1)
-        consent_key = consent_key.strip()
-        if consent_key:
-            entries.append((label.strip(), consent_key))
-    return entries or DEFAULT_CONSENTS
-
-
-async def _get_consent_steps() -> list[str]:
-    """Consent step keys (consent:<key>) when consent_enabled is on, else []. Shared by
-    the full-form engine and the short-form path so consents fire regardless of form length."""
-    if not await _is_module_enabled("consent_enabled"):
-        return []
-    return [f"consent:{key}" for _label, key in await _consent_entries()]
 
 
 async def _payment_price_block() -> str:
@@ -442,23 +284,25 @@ def _recall_display(step_key: str, value) -> str:
 
 async def _ask_step(step_key: str, message: types.Message, state: FSMContext, step: int, total: int):
     # Phase 5 (D-05): resolve the track once, same as _get_enabled_steps, and pass it to
-    # every _prompt call below so party-track wording overrides resolve correctly.
+    # every prompt() call below so party-track wording overrides resolve correctly.
+    # Phase 21 (21-01, FORM-SYNC-01): текст вопроса теперь идёт из reg_engine.prompt() (общая
+    # точка правды с Mini App) — эта функция оставляет себе только клавиатуру и set_state.
     data = await state.get_data()
     participant_type = data.get("participant_type") or "full"
     await _stamp_reg_step(step_key, message, data)
     p = await _progress(step, total)
     if step_key == "age":
-        await _safe_answer(message, f"{p}{await _prompt('age', 'Напиши свой возраст числом:', participant_type)}", reply_markup=get_cancel_kb())
+        await _safe_answer(message, f"{p}{await prompt('age', participant_type)}", reply_markup=get_cancel_kb())
         await state.set_state(Registration.age)
     elif step_key == "email":
-        await _safe_answer(message, f"{p}{await _prompt('email', 'Укажи свой email:', participant_type)}", reply_markup=get_cancel_kb())
+        await _safe_answer(message, f"{p}{await prompt('email', participant_type)}", reply_markup=get_cancel_kb())
         await state.set_state(Registration.email)
     elif step_key == "phone":
-        await _safe_answer(message, f"{p}{await _prompt('phone', 'Укажи номер телефона:', participant_type)}", reply_markup=get_phone_kb())
+        await _safe_answer(message, f"{p}{await prompt('phone', participant_type)}", reply_markup=get_phone_kb())
         await state.set_state(Registration.phone)
     elif step_key == "vk":
         await _safe_answer(message,
-            f"{p}{await _prompt('vk', 'Введи свой ник в ВК в формате @username:', participant_type)}",
+            f"{p}{await prompt('vk', participant_type)}",
             reply_markup=get_cancel_kb(),
         )
         await state.set_state(Registration.vk)
@@ -466,27 +310,27 @@ async def _ask_step(step_key: str, message: types.Message, state: FSMContext, st
         opt_key, default = SELECT_CONFIG["city"]
         options = await _get_options(opt_key, default)
         await _safe_answer(message,
-            f"{p}{await _prompt('city', 'Из какого ты города?', participant_type)}",
+            f"{p}{await prompt('city', participant_type)}",
             reply_markup=_reply_kb(options, add_other=True),
         )
         await state.set_state(Registration.city)
     elif step_key == "source":
-        await _safe_answer(message, f"{p}{await _prompt('source', 'Откуда ты узнал(а) о нас?', participant_type)}", reply_markup=await get_source_kb())
+        await _safe_answer(message, f"{p}{await prompt('source', participant_type)}", reply_markup=await get_source_kb())
         await state.set_state(Registration.source)
     elif step_key == "local_committee":
-        await _safe_answer(message, f"{p}{await _prompt('local_committee', 'Локальный комитет:', participant_type)}", reply_markup=get_local_committee_kb())
+        await _safe_answer(message, f"{p}{await prompt('local_committee', participant_type)}", reply_markup=get_local_committee_kb())
         await state.set_state(Registration.local_committee)
     elif step_key == "position":
-        await _safe_answer(message, f"{p}{await _prompt('position', 'Твоя позиция:', participant_type)}", reply_markup=get_position_kb())
+        await _safe_answer(message, f"{p}{await prompt('position', participant_type)}", reply_markup=get_position_kb())
         await state.set_state(Registration.position)
     elif step_key == "education_status":
-        await _safe_answer(message, f"{p}{await _prompt('education_status', 'Учишься ли ты сейчас?', participant_type)}", reply_markup=get_education_status_kb())
+        await _safe_answer(message, f"{p}{await prompt('education_status', participant_type)}", reply_markup=get_education_status_kb())
         await state.set_state(Registration.education_status)
     elif step_key == "university":
         # Mode toggle (reg_university_mode): "list" = pick from база вузов, "text" = free input.
         mode = await get_setting_typed("reg_university_mode")  # REG-02: registry-backed
         if mode == "text":
-            await _safe_answer(message, f"{p}{await _prompt('university', 'Введи название твоего ВУЗа:', participant_type)}", reply_markup=get_skip_kb())
+            await _safe_answer(message, f"{p}{await prompt('university', participant_type)}", reply_markup=get_skip_kb())
         else:
             uni_opts = await get_setting("university_options")
             if uni_opts and uni_opts.strip():
@@ -494,152 +338,146 @@ async def _ask_step(step_key: str, message: types.Message, state: FSMContext, st
                 kb = _reply_kb(options, add_other=True)
             else:
                 kb = get_universities_kb()  # fallback: config.UNIVERSITIES
-            await _safe_answer(message, f"{p}{await _prompt('university', 'В каком ВУЗе/колледже ты учишься?', participant_type)}", reply_markup=kb)
+            await _safe_answer(message, f"{p}{await prompt('university', participant_type)}", reply_markup=kb)
         await state.set_state(Registration.university)
     elif step_key == "course":
-        await _safe_answer(message, f"{p}{await _prompt('course', 'На каком ты курсе?', participant_type)}", reply_markup=get_course_kb())
+        await _safe_answer(message, f"{p}{await prompt('course', participant_type)}", reply_markup=get_course_kb())
         await state.set_state(Registration.course)
     elif step_key == "specialty":
-        await _safe_answer(message, f"{p}{await _prompt('specialty', 'Какая у тебя специальность?', participant_type)}", reply_markup=get_skip_kb())
+        await _safe_answer(message, f"{p}{await prompt('specialty', participant_type)}", reply_markup=get_skip_kb())
         await state.set_state(Registration.specialty)
     elif step_key == "work_status":
-        await _safe_answer(message, f"{p}{await _prompt('work_status', 'Работаешь ли ты сейчас?', participant_type)}", reply_markup=get_yes_no_kb())
+        await _safe_answer(message, f"{p}{await prompt('work_status', participant_type)}", reply_markup=get_yes_no_kb())
         await state.set_state(Registration.work_status)
     elif step_key == "work_sphere":
-        await _safe_answer(message, f"{p}{await _prompt('work_sphere', 'В какой сфере ты работаешь?', participant_type)}", reply_markup=get_skip_kb())
+        await _safe_answer(message, f"{p}{await prompt('work_sphere', participant_type)}", reply_markup=get_skip_kb())
         await state.set_state(Registration.work_sphere)
     elif step_key == "missing_skills":
-        await _safe_answer(message, f"{p}{await _prompt('missing_skills', 'Каких навыков тебе сейчас не хватает?', participant_type)}", reply_markup=get_skip_kb())
+        await _safe_answer(message, f"{p}{await prompt('missing_skills', participant_type)}", reply_markup=get_skip_kb())
         await state.set_state(Registration.missing_skills)
     elif step_key == "expectations":
-        event_name = await get_setting("event_name") or "мероприятия"
         await _safe_answer(message,
-            f"{p}{await _prompt('expectations', f'Что ты ожидаешь от {event_name}? Что хотел(а) бы узнать или получить?', participant_type)}",
+            f"{p}{await prompt('expectations', participant_type)}",
             reply_markup=get_skip_kb(),
         )
         await state.set_state(Registration.expectations)
     elif step_key == "informal_day":
         await _safe_answer(message,
-            f"{p}{await _prompt('informal_day', 'Планируете ли вы посетить второй неформальный день (пройдёт загородом)?', participant_type)}",
+            f"{p}{await prompt('informal_day', participant_type)}",
             reply_markup=get_informal_day_kb(),
         )
         await state.set_state(Registration.informal_day)
     elif step_key == "attendance_format":
-        await _safe_answer(message, f"{p}{await _prompt('attendance_format', 'В каком формате ты будешь присутствовать?', participant_type)}", reply_markup=get_attendance_format_kb())
+        await _safe_answer(message, f"{p}{await prompt('attendance_format', participant_type)}", reply_markup=get_attendance_format_kb())
         await state.set_state(Registration.attendance_format)
     elif step_key == "comments":
-        await _safe_answer(message, f"{p}{await _prompt('comments', 'Любые вопросы/комментарии/пожелания:', participant_type)}", reply_markup=get_skip_kb())
+        await _safe_answer(message, f"{p}{await prompt('comments', participant_type)}", reply_markup=get_skip_kb())
         await state.set_state(Registration.comments)
     elif step_key == "department":
-        await _safe_answer(message, f"{p}{await _prompt('department', 'Твой департамент:', participant_type)}", reply_markup=get_department_kb())
+        await _safe_answer(message, f"{p}{await prompt('department', participant_type)}", reply_markup=get_department_kb())
         await state.set_state(Registration.department)
     elif step_key == "aiesec_role":
-        await _safe_answer(message, f"{p}{await _prompt('aiesec_role', 'Твоя позиция (Member/TL/Manager/VP/LCP/Coordinator):', participant_type)}", reply_markup=get_aiesec_role_kb())
+        await _safe_answer(message, f"{p}{await prompt('aiesec_role', participant_type)}", reply_markup=get_aiesec_role_kb())
         await state.set_state(Registration.aiesec_role)
     elif step_key == "needs_certificate":
-        await _safe_answer(message, f"{p}{await _prompt('needs_certificate', 'Нужна справка в ВУЗ?', participant_type)}", reply_markup=get_yes_no_kb())
+        await _safe_answer(message, f"{p}{await prompt('needs_certificate', participant_type)}", reply_markup=get_yes_no_kb())
         await state.set_state(Registration.needs_certificate)
     elif step_key == "alumni_status":
         await _safe_answer(message,
-            f"{p}{await _prompt('alumni_status', 'Ты аламни или айсекер?', participant_type)}",
-            reply_markup=_reply_kb(["Аламни", "Айсекер", "Ни то, ни другое"]),
+            f"{p}{await prompt('alumni_status', participant_type)}",
+            reply_markup=_reply_kb(ALUMNI_STATUS_OPTIONS),
         )
         await state.set_state(Registration.alumni_status)
     elif step_key == "english_level":
-        await _safe_answer(message, f"{p}{await _prompt('english_level', 'Уровень английского:', participant_type)}", reply_markup=get_english_level_kb())
+        await _safe_answer(message, f"{p}{await prompt('english_level', participant_type)}", reply_markup=get_english_level_kb())
         await state.set_state(Registration.english_level)
     elif step_key == "allergies":
-        await _safe_answer(message, f"{p}{await _prompt('allergies', 'Есть ли у тебя аллергии на продукты/запахи? (если нет — поставь «-»)', participant_type)}", reply_markup=get_skip_kb())
+        await _safe_answer(message, f"{p}{await prompt('allergies', participant_type)}", reply_markup=get_skip_kb())
         await state.set_state(Registration.allergies)
     elif step_key == "food_pref":
-        await _safe_answer(message, f"{p}{await _prompt('food_pref', 'Особенности питания? Напиши, если ты веган/вегетарианец (иначе — обычное):', participant_type)}", reply_markup=get_skip_kb())
+        await _safe_answer(message, f"{p}{await prompt('food_pref', participant_type)}", reply_markup=get_skip_kb())
         await state.set_state(Registration.food_pref)
     elif step_key == "arrival":
-        await _safe_answer(message, f"{p}{await _prompt('arrival', 'Когда приедешь?', participant_type)}", reply_markup=get_arrival_kb())
+        await _safe_answer(message, f"{p}{await prompt('arrival', participant_type)}", reply_markup=get_arrival_kb())
         await state.set_state(Registration.arrival)
     elif step_key == "housing":
-        await _safe_answer(message, f"{p}{await _prompt('housing', 'Где будешь жить?', participant_type)}", reply_markup=get_housing_kb())
+        await _safe_answer(message, f"{p}{await prompt('housing', participant_type)}", reply_markup=get_housing_kb())
         await state.set_state(Registration.housing)
     elif step_key == "bed_sharing":
         await _safe_answer(message,
-            f"{p}{await _prompt('bed_sharing', 'На площадке много двуспальных кроватей. Готов(а) спать с кем-то на одной кровати?', participant_type)}",
-            reply_markup=_reply_kb(["Да", "Нет"]),
+            f"{p}{await prompt('bed_sharing', participant_type)}",
+            reply_markup=_reply_kb(BED_SHARING_OPTIONS),
         )
         await state.set_state(Registration.bed_sharing)
     elif step_key == "bed_partner":
         await _safe_answer(message,
-            f"{p}{await _prompt('bed_partner', 'С кем хотел(а) бы делить кровать? Напиши имя или «без разницы».', participant_type)}",
+            f"{p}{await prompt('bed_partner', participant_type)}",
             reply_markup=get_skip_kb(),
         )
         await state.set_state(Registration.bed_partner)
     elif step_key == "transport":
         await _safe_answer(message,
-            f"{p}{await _prompt('transport', 'Как добираешься до площадки?', participant_type)}",
-            reply_markup=_reply_kb(["Трансфер до площадки", "Самостоятельно"]),
+            f"{p}{await prompt('transport', participant_type)}",
+            reply_markup=_reply_kb(TRANSPORT_OPTIONS),
         )
         await state.set_state(Registration.transport)
     elif step_key == "payment_plan_date":
         # Deadline is pulled live from the payment_deadline setting (stored «ДД.ММ.ГГГГ ЧЧ:ММ»,
-        # show just the date) — was hardcoded before, so it never synced with admin config.
+        # show just the date) — reg_engine.prompt() computes the same {dl_note} text; {deadline}
+        # substitution below is only for an admin override that embeds the literal placeholder.
         deadline = await get_setting("payment_deadline")
         dl_date = deadline.split()[0] if deadline else ""
-        dl_note = f" Крайний срок: {dl_date}." if dl_date else ""
-        default = f"Когда планируешь оплатить взнос?{dl_note} Введи дату (ДД.ММ.ГГГГ):"
-        # Admin overrides may embed {deadline} to place the date wherever they want.
-        prompt = (await _prompt('payment_plan_date', default, participant_type)).replace("{deadline}", dl_date)
+        prompt_text = (await prompt('payment_plan_date', participant_type)).replace("{deadline}", dl_date)
         price_block = await _payment_price_block()  # show tariff prices before asking the date
-        await _safe_answer(message, f"{p}{price_block}{prompt}", reply_markup=get_cancel_kb())
+        await _safe_answer(message, f"{p}{price_block}{prompt_text}", reply_markup=get_cancel_kb())
         await state.update_data(_current_date_step="payment_plan_date")
         await state.set_state(Registration.date_input)
     elif step_key == "cc_shop":
-        await _safe_answer(message, f"{p}{await _prompt('cc_shop', 'Что бы ты хотел(а) видеть в CC-shop?', participant_type)}", reply_markup=get_skip_kb())
+        await _safe_answer(message, f"{p}{await prompt('cc_shop', participant_type)}", reply_markup=get_skip_kb())
         await state.set_state(Registration.cc_shop)
     elif step_key == "exp_organizers":
-        await _safe_answer(message, f"{p}{await _prompt('exp_organizers', 'Ожидания от команды организаторов?', participant_type)}", reply_markup=get_skip_kb())
+        await _safe_answer(message, f"{p}{await prompt('exp_organizers', participant_type)}", reply_markup=get_skip_kb())
         await state.set_state(Registration.exp_organizers)
     elif step_key == "exp_content":
-        await _safe_answer(message, f"{p}{await _prompt('exp_content', 'Ожидания от контента?', participant_type)}", reply_markup=get_skip_kb())
+        await _safe_answer(message, f"{p}{await prompt('exp_content', participant_type)}", reply_markup=get_skip_kb())
         await state.set_state(Registration.exp_content)
     elif step_key == "volunteer":
-        await _safe_answer(message, f"{p}{await _prompt('volunteer', 'Хочешь быть волонтёром?', participant_type)}", reply_markup=get_yes_no_kb())
+        await _safe_answer(message, f"{p}{await prompt('volunteer', participant_type)}", reply_markup=get_yes_no_kb())
         await state.set_state(Registration.volunteer)
     elif step_key == "resume":
         # Резюме обязательно (Таня п.2): без «Пропустить». Убираем reply-клаву целиком —
         # ответ = файл (PDF/DOCX) или текст, иначе шаг переспрашивает.
         await _safe_answer(message,
-            f"{p}{await _prompt('resume', 'Прикрепи резюме файлом (PDF или DOCX) или напиши его текстом.', participant_type)}",
+            f"{p}{await prompt('resume', participant_type)}",
             reply_markup=ReplyKeyboardRemove(),
         )
         await state.set_state(Registration.resume)
     elif REG_STEP_TYPES.get(step_key) == "date":
         # Phase 4 (MOD-02): generic date-type step — one handler validates ДД.ММ.ГГГГ.
-        label = REG_LABELS.get(f"reg_q_{step_key}", "Дата")
-        await _safe_answer(message, f"{p}{await _prompt(step_key, f'{label} (ДД.ММ.ГГГГ):', participant_type)}", reply_markup=get_cancel_kb())
+        await _safe_answer(message, f"{p}{await prompt(step_key, participant_type)}", reply_markup=get_cancel_kb())
         await state.update_data(_current_date_step=step_key)
         await state.set_state(Registration.date_input)
     elif REG_STEP_TYPES.get(step_key) == "select":
         # Configurable single-select (study_field etc.) — options from settings.
         opt_key, default = SELECT_CONFIG.get(step_key, (f"{step_key}_options", []))
         options = await _get_options(opt_key, default)
-        label = REG_LABELS.get(f"reg_q_{step_key}", "Выбери вариант")
-        await _safe_answer(message, f"{p}{await _prompt(step_key, f'{label}:', participant_type)}", reply_markup=_reply_kb(options, add_other=True))
+        await _safe_answer(message, f"{p}{await prompt(step_key, participant_type)}", reply_markup=_reply_kb(options, add_other=True))
         await state.update_data(_current_select_step=step_key)
         await state.set_state(Registration.select_input)
     elif REG_STEP_TYPES.get(step_key) == "multi":
         # Configurable multi-select via inline toggle keyboard.
         opt_key, default = MULTI_CONFIG.get(step_key, (f"{step_key}_options", []))
         options = await _get_options(opt_key, default)
-        label = REG_LABELS.get(f"reg_q_{step_key}", "Выбери варианты")
         await state.update_data(_current_multi_step=step_key, **{f"_multi_{step_key}": []})
         await _safe_answer(message,
-            f"{p}{await _prompt(step_key, f'{label} (можно выбрать несколько):', participant_type)}",
+            f"{p}{await prompt(step_key, participant_type)}",
             reply_markup=_multi_kb(step_key, options, set()),
         )
         await state.set_state(Registration.multi_input)
     elif step_key == "ambassador":
         await _safe_answer(message,
-            f"{p}{await _prompt('ambassador', 'Хочешь стать амбассадором форума?', participant_type)}",
-            reply_markup=_reply_kb(["Да!", "Пока нет"]),
+            f"{p}{await prompt('ambassador', participant_type)}",
+            reply_markup=_reply_kb(AMBASSADOR_OPTIONS),
         )
         await state.set_state(Registration.ambassador)
     elif step_key.startswith("consent:"):
@@ -700,20 +538,20 @@ async def _ask_step_or_recall(step_key: str, message: types.Message, state: FSMC
     """Phase 07.3 (04, RET-02): the single seam in front of all 4 _ask_step call sites
     (RESEARCH Pattern 1). A returning delegate's non-empty prior answer for a recallable step
     is shown as a «Прошлый ответ ... Оставить/Изменить» screen instead of asking the question
-    again; a newcomer (no _prior_answers), a step excluded from RECALLABLE_STEPS, or an empty
-    prior value all fall straight through to the real _ask_step, byte-for-byte unchanged."""
+    again; a newcomer (no _prior_answers), a step with no prior value, or an empty prior value
+    all fall straight through to the real _ask_step, byte-for-byte unchanged.
+
+    Phase 21 (21-01, FORM-SYNC-01): the "which steps are recallable, is this value empty" rule
+    now lives ONLY in reg_engine.prior_answers_for/has_prior_resume — this handler no longer
+    keeps its own copy of that membership + empty-value check."""
     data = await state.get_data()
-    prior = data.get("_prior_answers") or {}
-    if prior and step_key == "resume":
+    raw_prior = data.get("_prior_answers") or {}
+    if raw_prior and step_key == "resume":
         # Task 2 / Pitfall 3: resume gets its OWN carve-out, checked before the generic
-        # RECALLABLE_STEPS gate ("resume" is deliberately excluded from that set) -- a raw
+        # prior_answers_for lookup (resume is deliberately excluded from that dict) -- a raw
         # file_id/URL is meaningless to a human, so this screen never shows the prior value,
         # only the fact that one exists (T-073-04-02).
-        has_prior_resume = any(
-            prior.get(col) not in (None, "", "-")
-            for col in ("resume_file_id", "resume_text", "resume_url")
-        )
-        if has_prior_resume:
+        if has_prior_resume(raw_prior):
             await _stamp_reg_step(step_key, message, data)
             p = await _progress(step, total)
             # Phase 17.1 (17.1-02): текст развилки — из реестра (recall_resume_prompt_text);
@@ -727,11 +565,10 @@ async def _ask_step_or_recall(step_key: str, message: types.Message, state: FSMC
             await state.update_data(_recall_step=step_key, _reg_step=step, _reg_total=total)
             await state.set_state(Registration.recall_pending)
             return
-    if prior and step_key in RECALLABLE_STEPS:
-        value = prior.get(STEP_TO_COLUMN[step_key])
-        if value not in (None, "", "-"):
-            await _show_recall_screen(step_key, value, message, state, data, step, total)
-            return
+    prior = prior_answers_for(raw_prior)
+    if step_key in prior:
+        await _show_recall_screen(step_key, prior[step_key], message, state, data, step, total)
+        return
     await _ask_step(step_key, message, state, step, total)
 
 
@@ -948,25 +785,8 @@ def _party_fork_kb() -> InlineKeyboardMarkup:
     ])
 
 
-async def _should_show_fork(party_track: str | None, recovered_track: str | None, is_registered: bool) -> bool:
-    """D-10: pure(ish) gating helper for the pre-flow fork keyboard, extracted so it is
-    testable without a Telegram update. ALL conditions below must hold before the fork is
-    shown; when party_fork_question is at its default "off", this returns False for every
-    combination of the other inputs (ROADMAP SC#5: an ordinary delegate sees zero extra
-    screens). `party_track`/`recovered_track` truthy means an authoritative deep-link (or a
-    recovered) value is already resolved — same posture as _source_from_tag (D-10)."""
-    if party_track:
-        return False
-    if recovered_track:
-        return False
-    if is_registered:
-        return False
-    if await get_setting_typed("party_fork_question") != "on":  # REG-02: registry-backed
-        return False
-    # D-11a: offering a party option while the track is closed would contradict the master gate.
-    if await get_setting_typed("party_enabled") != "on":  # REG-02: registry-backed
-        return False
-    return True
+# _should_show_fork moved to reg_engine.py (Phase 21, 21-01) as should_show_fork; imported +
+# aliased above.
 
 
 # Phase 07.1 (CITY-03): second pre-flow screen, modelled on _party_fork_kb /
@@ -991,21 +811,8 @@ async def _city_fork_kb() -> InlineKeyboardMarkup:
 # воспроизводится только конфигурацией (event_city_enabled=off или <2 включённых городов),
 # не кодовой зависимостью от режима формы. Поведение закреплено регрессионным тестом
 # test_city_fork_shown_for_short_mode (tests/test_content_percity_consumers.py).
-async def _should_show_city_fork(event_city: str | None, is_registered: bool) -> bool:
-    """Pure(ish) gating helper for the city pre-flow screen, mirrors _should_show_fork.
-    ALL conditions below must hold before the screen is shown; when event_city_enabled is
-    "off" (default) this returns False for every combination (ROADMAP: zero extra screens
-    for an ordinary delegate until a manager turns the module on)."""
-    if event_city:
-        return False  # city already authoritative — deep-link or recovered from reg_started
-    if is_registered:
-        return False
-    if not await cities_module_on():
-        return False
-    enabled = await enabled_cities()
-    if len(enabled) < 2:
-        return False  # a single-button screen is pointless; the default resolves on read
-    return True
+# _should_show_city_fork moved to reg_engine.py (Phase 21, 21-01) as should_show_city_fork;
+# imported + aliased above.
 
 
 async def _progress(step: int, total: int) -> str:
@@ -1596,26 +1403,8 @@ async def is_subscribed(bot: Bot, channel, user_id: int) -> bool | None:
         return None
 
 
-def _is_returning_row(user: dict | None, event_season: str | None) -> bool:
-    """Phase 07.3 (RET-02/CONTEXT A): "прошлый делегат" = has a users row AND (status is
-    'rejected' OR their row's `season` is set and differs from the currently configured
-    `event_season`). Pure function (no await) — testable as a case table without a DB, and
-    reusable as-is by `rereg_start`'s self-guard below (T-073-03-01).
-
-    While `event_season` is unset (CONTEXT A: "фаза ведёт себя как сегодня"), only rejected
-    rows are "returning" — parity with today's behaviour for every other row. A row with
-    `season IS NULL` (pre-season legacy data) is never "returning" on this predicate alone;
-    plan 02's "Новый сезон" button is what later stamps it with a season label.
-    """
-    if not user:
-        return False
-    status = user.get("status") or "approved"
-    if status == "rejected":
-        return True
-    season = user.get("season")
-    if event_season and season and season != event_season:
-        return True
-    return False
+# _is_returning_row moved to reg_engine.py (Phase 21, 21-01) as is_returning_row; imported +
+# aliased above.
 
 
 # bot is placed BEFORE the defaulted `command` param (a non-default arg after a default is a SyntaxError);
