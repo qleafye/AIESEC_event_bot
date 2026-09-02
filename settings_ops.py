@@ -33,7 +33,7 @@ from config import config
 from cities import PER_CITY_SEP, city_codes, normalize_city
 from database.db import get_staff_city, set_setting
 from services.sheets import _reset_sheet_cache
-from settings_schema import SETTINGS_SCHEMA
+from settings_schema import SETTINGS_SCHEMA, get_setting_typed
 
 
 # ── event_type preset (D-05) ──────────────────────────────────────────────────────────────
@@ -317,6 +317,26 @@ def dangerous_confirm_key(key: str, next_value: str) -> str | None:
     if key == "event_type":
         return "miniapp_settings_confirm_event_type_text"
     return None
+
+
+def next_value_from(key: str, current) -> str:
+    """Значение, В КОТОРОЕ уйдёт ключ при смене «из текущего»: для on/off-тумблера —
+    противоположное (направление важно: miniapp_enabled -> off опасно, -> on нет), для
+    остальных ключей направление не различается — пустая строка."""
+    base = base_setting_key(key)
+    if SETTINGS_SCHEMA.get(base, {}).get("options") == ["on", "off"]:
+        return "off" if current == "on" else "on"
+    return ""
+
+
+async def dangerous_confirm_text(key: str, next_value: str) -> str | None:
+    """Plain-текст подтверждения (D-06) для направления `key -> next_value` из реестра, либо
+    `None`: направление безопасно или текст считается по месту (вкладки Sheets)."""
+    confirm_key = dangerous_confirm_key(base_setting_key(key), next_value)
+    if not confirm_key:
+        return None
+    text = await get_setting_typed(confirm_key)
+    return plain_text(str(text)) if text else None
 
 
 def item_spec(key: str, *, raw: str | None, value, is_default: bool) -> dict:

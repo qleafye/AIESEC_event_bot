@@ -19,16 +19,41 @@ cookie-ветке уже закрыт в `miniapp.deps.principal` (T-19-04), з�
 `confirm` элемента списка, читается из реестра. Обратное (безопасное) направление —
 `confirm` = None, фронт переключает с одного тапа, как раньше. POST не трогается:
 подтверждение — шаг интерфейса, серверный контракт (белый список + capability) не слабеет.
+
+Phase 22 (22-04, WEB-SET-01/03/04): ниже старых ручек — полный реестр (`settings/all`),
+шапка города (`settings/city`), атомарный пакет правок (`settings/batch`) и превью
+(`settings/preview`). Старые `GET`/`POST /app/api/admin/settings` и `EDITABLE_KEYS` живут
+как есть — открытые вебвью держат их в руках (22-CONTEXT § Reusable Assets). Всё
+бот-знание — из aiogram-free `settings_ops`/`settings_validation`/`settings_schema`/`cities`;
+`handlers.*` этот модуль не импортирует.
 """
 from __future__ import annotations
+
+import logging
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 
-from database.db import set_setting
+import settings_ops
+from cities import (
+    ALL_CITIES,
+    ALL_CITIES_LABEL,
+    admin_selected_city,
+    cities_module_on,
+    city_codes,
+    city_label,
+    city_override_codes,
+    get_setting_typed_for_city,
+    per_city_key,
+    set_admin_city,
+)
+from database.db import get_setting, set_setting
 from settings_schema import SETTINGS_SCHEMA, get_setting_typed
+from settings_synonyms import SETTINGS_SYNONYMS
 
 from miniapp.deps import Principal, require_cap, require_section
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
@@ -107,6 +132,221 @@ async def settings_set(
         raise HTTPException(400, {"reason": "bad_value", "text": BAD_VALUE_TEXT})
     await set_setting(body.key, body.value)
     return await _items()
+
+
+# ══ Phase 22 (22-04): весь правимый реестр + шапка города ═══════════════════════════════
+#
+# D-01: не белый список выше, а весь SETTINGS_SCHEMA минус группа roles — формула
+# `settings_ops.editable_keys()`; подписи/подсказки/дефолты/опасность/синонимы — из реестра и
+# карт settings_ops/settings_synonyms: роутер ничего не сочиняет и ничего не считает сам.
+
+
+def _display(value) -> str:
+    """Строка значения для экрана (поиск по значению, маркер, diff) — `value` при этом едет
+    типизированным, как читает его бот."""
+    if value is None:
+        return ""
+    if isinstance(value, bool):
+        return "on" if value else "off"
+    if isinstance(value, list):
+        return "\n".join(str(v) for v in value)
+    return str(value)
+
+
+def _is_default(raw: str | None, meta: dict) -> bool:
+    """«по умолчанию» = сырого значения нет либо оно равно дефолту реестра (D-03)."""
+    if raw is None:
+        return True
+    default = meta.get("default")
+    if default is None:
+        return False
+    if isinstance(default, list):
+        items = [s.strip() for line in raw.splitlines() for s in line.split(";") if s.strip()]
+        return items == list(default)
+    return raw == str(default)
+
+
+class _CityCtx:
+    """Контекст города на один запрос: модуль, шапка (`admin_selected_city` — та же функция,
+    что у бота, D-04) и право на правку (`per_city_visible_codes`, D-11)."""
+
+    def __init__(self, on: bool, selected: str | None, visible: list[str]):
+        self.on = on
+        self.selected = selected
+        self.visible = visible
+
+    @property
+    def sees_all(self) -> bool:
+        return self.visible == city_codes()
+
+
+async def _city_ctx(telegram_id: int) -> _CityCtx:
+    if not await cities_module_on():
+        return _CityCtx(False, None, city_codes())
+    return _CityCtx(
+        True,
+        await admin_selected_city(telegram_id),
+        await settings_ops.per_city_visible_codes(telegram_id),
+    )
+
+
+async def _city_header(ctx: _CityCtx) -> dict | None:
+    if not ctx.on:
+        return None
+    selected = ctx.selected
+    return {
+        "selected": selected,
+        "selected_label": ALL_CITIES_LABEL if selected == ALL_CITIES else await city_label(selected),
+        "cities": [{"code": code, "label": await city_label(code)} for code in ctx.visible],
+        "all_cities": ALL_CITIES,
+        "all_cities_label": ALL_CITIES_LABEL,
+        "can_select_all": ctx.sees_all,
+    }
+
+
+async def _confirm_text(base: str, value) -> str | None:
+    """Текст подтверждения для направления «из текущего значения» — источник один
+    (`settings_ops.dangerous_confirm_key`), plain-текст (D-06). Ключи вкладок Sheets — None:
+    их подтверждение считается при записи по числу строк вкладки."""
+    return await settings_ops.dangerous_confirm_text(base, settings_ops.next_value_from(base, value))
+
+
+async def _item_for(base: str, ctx: _CityCtx) -> dict:
+    """Один элемент ответа для базового ключа реестра с учётом шапки города: при выбранном
+    городе per-city ключ едет композитным (`{base}__city__{code}`), при «все города» или
+    выключенном модуле — глобальным со счётчиком переопределений (D-03/D-04)."""
+    meta = SETTINGS_SCHEMA[base]
+    per_city = bool(meta.get("per_city"))
+    key = base
+    is_city_override = False
+    override_labels: list[str] = []
+    editable = True
+
+    composite = None
+    if per_city and ctx.on and ctx.selected not in (None, ALL_CITIES):
+        composite = per_city_key(base, ctx.selected)
+    if composite:
+        key = composite
+        raw_override = await get_setting(composite)
+        is_city_override = bool(raw_override)
+        raw = raw_override if raw_override else await get_setting(base)
+        value = await get_setting_typed_for_city(base, ctx.selected)
+        editable = ctx.selected in ctx.visible
+    else:
+        raw = await get_setting(base)
+        value = await get_setting_typed(base)
+        if per_city and ctx.on:
+            override_labels = [await city_label(code) for code in await city_override_codes(base)]
+            editable = ctx.sees_all
+
+    spec = settings_ops.item_spec(key, raw=raw, value=value, is_default=_is_default(raw, meta))
+    spec.setdefault("max_len", None)
+    spec.update({
+        "display": _display(value),
+        "is_city_override": is_city_override,
+        "city_override_count": len(override_labels),
+        "city_override_labels": override_labels,
+        "confirm_text": await _confirm_text(base, value),
+        "search_terms": list(SETTINGS_SYNONYMS.get(base, [])),
+        "editable": editable,
+    })
+    return spec
+
+
+async def _sections(ctx: _CityCtx) -> tuple[list[dict], int]:
+    """Разделы в порядке SECTION_GROUPS; внутри — тумблеры раздела (TOGGLE_SECTION, строки
+    уровня раздела, как в боте) и группы в порядке карты; пустое не рисуется. Ключ, не
+    попавший ни в одну карту (сторож test_settings_ops держит это множество пустым), уезжает
+    в хвостовой раздел, а не теряется молча."""
+    by_group: dict[str, list[str]] = {}
+    toggles_by_section: dict[str, list[str]] = {}
+    leftovers: list[str] = []
+    known_groups = {g for _s, _l, groups in settings_ops.SECTION_GROUPS for g in groups}
+    for key in settings_ops.editable_keys():
+        section = settings_ops.TOGGLE_SECTION.get(key)
+        group = SETTINGS_SCHEMA[key].get("group")
+        if section:
+            toggles_by_section.setdefault(section, []).append(key)
+        elif group in known_groups:
+            by_group.setdefault(group, []).append(key)
+        else:
+            leftovers.append(key)
+
+    sections: list[dict] = []
+    total = 0
+    for token, label, groups in settings_ops.SECTION_GROUPS:
+        toggles = [await _item_for(k, ctx) for k in toggles_by_section.get(token, [])]
+        group_rows = []
+        for group in groups:
+            keys = by_group.get(group, [])
+            if not keys:
+                continue
+            group_rows.append({
+                "token": group,
+                "label": settings_ops.GROUP_LABELS.get(group, group),
+                "items": [await _item_for(k, ctx) for k in keys],
+            })
+        if not toggles and not group_rows:
+            continue
+        total += len(toggles) + sum(len(g["items"]) for g in group_rows)
+        sections.append({"token": token, "label": label, "toggles": toggles, "groups": group_rows})
+    if leftovers:
+        misc_label = settings_ops.GROUP_LABELS.get("misc", "📦 Прочие")
+        items = [await _item_for(k, ctx) for k in leftovers]
+        total += len(items)
+        sections.append({
+            "token": "misc",
+            "label": misc_label,
+            "toggles": [],
+            "groups": [{"token": "misc", "label": misc_label, "items": items}],
+        })
+    return sections, total
+
+
+async def _texts() -> dict[str, str]:
+    """Все надписи экрана — ключи `miniapp_settings_*` реестра (план 22-02): экран не хранит
+    ни одной строки (Copywriting Contract 22-UI-SPEC)."""
+    return {
+        key: await get_setting_typed(key)
+        for key in settings_ops.editable_keys()
+        if key.startswith("miniapp_settings_")
+    }
+
+
+@router.get("/app/api/admin/settings/all")
+async def settings_all(
+    p: Principal = Depends(require_cap("settings")),
+    _: Principal = Depends(require_section("settings")),
+) -> dict:
+    ctx = await _city_ctx(p.telegram_id)
+    sections, total = await _sections(ctx)
+    return {
+        "sections": sections,
+        "city_header": await _city_header(ctx),
+        "texts": await _texts(),
+        "total": total,
+    }
+
+
+class CityIn(BaseModel):
+    code: str
+
+
+@router.post("/app/api/admin/settings/city")
+async def settings_city(
+    body: CityIn,
+    p: Principal = Depends(require_cap("settings")),
+    _: Principal = Depends(require_section("settings")),
+) -> dict:
+    """Переключение шапки города — тот же `cities.set_admin_city`, что и в боте (D-04): один
+    замок на город менеджера, одна запись `admin_city__{id}` в bot_settings."""
+    if not await cities_module_on():
+        raise HTTPException(400, {"reason": "cities_off"})
+    if not await set_admin_city(p.telegram_id, body.code):
+        raise HTTPException(400, {"reason": "bad_city"})
+    header = await _city_header(await _city_ctx(p.telegram_id))
+    assert header is not None
+    return header
 
 
 __all__ = ["router", "EDITABLE_KEYS"]
