@@ -185,6 +185,12 @@ async def init_db():
         await _ensure_column(db, "users", "exp_content", "TEXT")
         await _ensure_column(db, "users", "volunteer", "TEXT")
 
+        # Phase 21 (FORM-SYNC-04, D-12/D-15): edit-tracking for an already-submitted
+        # application. update_user_answers/mark_user_edited (below) stamp these two — NULL for
+        # every row until the first edit, additive against ~590 live users.
+        await _ensure_column(db, "users", "edited_at", "TEXT")
+        await _ensure_column(db, "users", "edited_source", "TEXT")
+
         await db.execute('''
             CREATE TABLE IF NOT EXISTS bot_settings (
                 key TEXT PRIMARY KEY,
@@ -289,6 +295,23 @@ async def init_db():
                 submitting_at TEXT
             )
         ''')
+
+        # Phase 21 (FORM-SYNC-04, D-15): append-only edit trail — "было → стало" for every
+        # narrow update_user_answers() call, shown to the manager via «🕓 История» (plan 21-07)
+        # without touching the users row itself (that stays the current-value source of truth).
+        await db.execute('''
+            CREATE TABLE IF NOT EXISTS reg_answer_history (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                telegram_id INTEGER NOT NULL,
+                changed_at TEXT NOT NULL,
+                source TEXT NOT NULL,
+                season TEXT,
+                changes TEXT NOT NULL
+            )
+        ''')
+        await db.execute(
+            'CREATE INDEX IF NOT EXISTS idx_reg_answer_history_telegram_id ON reg_answer_history(telegram_id)'
+        )
 
         # Phase 3 (SCHED-01): scheduled-broadcast payload store. APScheduler owns the
         # trigger (data/jobs.sqlite); this row holds the message/filter payload keyed by id.
@@ -1488,6 +1511,84 @@ async def touch_reg_draft_activity(telegram_id: int) -> None:
     async with _connect() as db:
         await db.execute(
             "UPDATE reg_drafts SET updated_at = ? WHERE telegram_id = ?", (now, telegram_id)
+        )
+        await db.commit()
+
+
+# ── Phase 21 (FORM-SYNC-04, D-12/D-13/D-15): narrow answer edit + history ────────────────────
+# add_user (605+) is an ON CONFLICT DO UPDATE over ~60 columns — using it for an edit would
+# silently overwrite registration_date/referrer_id/source/status/payment_* with whatever the
+# edit-form patch happens NOT to include (Pitfall 2/3). update_user_answers instead builds a
+# plain `UPDATE users SET col = ?, ...` over ONLY the intersection of `patch` and the caller's
+# `allowed_columns` (the caller passes reg_engine.answer_columns(), which never contains
+# attribution/status columns — T-21-19) — every other column is left exactly as it was.
+
+async def update_user_answers(telegram_id: int, patch: dict, *, allowed_columns) -> int:
+    """Narrow UPDATE over the intersection of `patch` and `allowed_columns`. A patch key
+    outside the allowlist is silently ignored (logged at warning, not raised — a stray extra
+    key from a client is not the caller's problem to crash on). Returns the number of columns
+    actually written; an empty intersection sends no SQL at all."""
+    allowed = set(allowed_columns)
+    cols = [c for c in patch if c in allowed]
+    ignored = [c for c in patch if c not in allowed]
+    if ignored:
+        logger.warning("update_user_answers: ignoring columns outside allowlist: %s", ignored)
+    if not cols:
+        return 0
+    for c in cols:
+        _assert_identifier(c)
+    set_clause = ", ".join(f"{c} = ?" for c in cols)
+    params = [patch[c] for c in cols] + [telegram_id]
+    async with _connect() as db:
+        await db.execute(f"UPDATE users SET {set_clause} WHERE telegram_id = ?", params)
+        await db.commit()
+    return len(cols)
+
+
+async def record_answer_history(
+    telegram_id: int, changes: list[dict], source: str, season: str | None = None
+) -> None:
+    """Append one edit-trail row (`changes`: list of {"column","old","new"}). No-op on an
+    empty `changes` list — a diff with nothing in it is not an edit worth remembering."""
+    if not changes:
+        return
+    changed_at = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    async with _connect() as db:
+        await db.execute(
+            "INSERT INTO reg_answer_history (telegram_id, changed_at, source, season, changes) "
+            "VALUES (?, ?, ?, ?, ?)",
+            (telegram_id, changed_at, source, season, json.dumps(changes, ensure_ascii=False)),
+        )
+        await db.commit()
+
+
+async def get_answer_history(telegram_id: int, limit: int = 5) -> list[dict]:
+    """Newest-first edit trail for the «🕓 История» button (plan 21-07). `changes` is
+    unpacked from JSON into a list of dicts — never printed as a raw string."""
+    async with _connect() as db:
+        db.row_factory = aiosqlite.Row
+        async with db.execute(
+            "SELECT * FROM reg_answer_history WHERE telegram_id = ? "
+            "ORDER BY id DESC LIMIT ?",
+            (telegram_id, limit),
+        ) as cursor:
+            rows = await cursor.fetchall()
+    result = []
+    for row in rows:
+        d = dict(row)
+        d["changes"] = json.loads(d["changes"]) if d.get("changes") else []
+        result.append(d)
+    return result
+
+
+async def mark_user_edited(telegram_id: int, source: str) -> None:
+    """Stamp users.edited_at/edited_source ('bot' | 'miniapp') — the «✏️ Изменена» flag on the
+    moderation card (D-12). Repeat calls simply advance edited_at to the latest edit time."""
+    edited_at = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    async with _connect() as db:
+        await db.execute(
+            "UPDATE users SET edited_at = ?, edited_source = ? WHERE telegram_id = ?",
+            (edited_at, source, telegram_id),
         )
         await db.commit()
 
