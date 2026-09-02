@@ -1,11 +1,12 @@
 // Общие формо-компоненты (план 21-04, D-22): один рендерер поля анкеты по типу + матрица
-// состояний, которые фаза 22 переиспользует для веб-настроек без второго набора компонентов.
-// dirty/diff/confirm-box/headless-утилиты (поиск, свёртка группы) — та же цель, Task 2.
+// состояний + dirty/diff + confirm-box + headless-утилиты (поиск, свёртка группы), которые
+// фаза 22 переиспользует для веб-настроек без второго набора компонентов.
 //
 // Правило 0-хардкода (D-25): ни одного текстового литерала, обращённого к человеку. Подписи —
 // только из `spec` (reg_engine.step_spec, приходит с сервера) или из параметров, которые
-// вызывающий экран передаёт из реестра/ответа API (`payload.text`). Здесь этому правилу
-// подчиняется КАЖДАЯ строка.
+// вызывающий экран передаёт из реестра/ответа API (`payload.text`, `labels.*`,
+// `confirmText`/`cancelText`/`text` в confirmBox). Здесь этому правилу подчиняется КАЖДАЯ
+// строка — даже подпись кнопки confirmBox приходит параметром, как в screens/settings.js.
 //
 // `errorText`/`isAuthError` перенесены сюда из screens/task_edit.js и screens/settings.js
 // (были дословными дублями) — сигнатура `isAuthError` расширена вторым необязательным
@@ -302,4 +303,190 @@ export function setFieldState(el, state, payload) {
     if (nodes.placeholder) { nodes.placeholder.textContent = data.text || ""; nodes.placeholder.classList.remove("hidden"); }
   }
   // "default" — сброс выше уже достаточен.
+}
+
+// ── dirty/diff, confirm-box (Task 2) ───────────────────────────────────────────────────
+
+/**
+ * Локальное состояние формы поверх черновика: какие колонки правились локально (dirty), какой
+ * патч отправлять (только изменённые), как подмешать пришедшие с сервера значения не перетирая
+ * то, что человек правит прямо сейчас (D-19, `keepDirty`).
+ * @param {Array<{column: string}>} specs
+ * @param {Record<string, *>} values
+ */
+export function createFormState(specs, values) {
+  const base = { ...(values || {}) };
+  const current = { ...(values || {}) };
+  const dirty = new Set();
+
+  function isDirty(column) {
+    return dirty.has(column);
+  }
+  function setValue(column, v) {
+    current[column] = v;
+    dirty.add(column);
+  }
+  function collectPatch() {
+    const patch = {};
+    for (const column of dirty) patch[column] = current[column];
+    return patch;
+  }
+  // D-19: чужие правки из чата подмешиваются в base/current, НО не в поля, которые дельгат
+  // правит прямо сейчас (keepDirty=true, дефолт) — возвращает список колонок, реально
+  // подменённых (для setFieldState("updated-in-chat", …) на стороне экрана).
+  function applyServer(fresh, opts) {
+    const keepDirty = !opts || opts.keepDirty !== false;
+    const updated = [];
+    for (const [column, v] of Object.entries(fresh || {})) {
+      if (keepDirty && dirty.has(column)) continue;
+      if (base[column] !== v) updated.push(column);
+      base[column] = v;
+      current[column] = v;
+    }
+    return updated;
+  }
+  function reset() {
+    dirty.clear();
+    for (const column of Object.keys(base)) current[column] = base[column];
+  }
+  function value(column) {
+    return current[column];
+  }
+
+  return { specs: specs || [], isDirty, setValue, collectPatch, applyServer, reset, value, base, current };
+}
+
+/**
+ * Строки «Было: {X}» + бейдж «изменено» под каждым локально изменённым полем (обзор правки,
+ * D-26, UI-SPEC «Экран 7»). Подписи — параметром `labels` (реестр), не литералом.
+ * @param {*} h
+ * @param {Record<string,*>} base
+ * @param {Record<string,*>} current
+ * @param {{changedBadgeText?: string, wasPrefix?: string}} labels
+ */
+export function diffView(h, base, current, labels) {
+  const box = h("div", { class: "diff-view" });
+  const l = labels || {};
+  for (const [column, from] of Object.entries(base || {})) {
+    const to = current ? current[column] : undefined;
+    if (to === undefined || to === from) continue;
+    box.append(h("div", { class: "diff-row" },
+      l.changedBadgeText ? h("span", { class: "chip accent", text: l.changedBadgeText }) : null,
+      h("p", { class: "label-role diff-was" }, `${l.wasPrefix || ""}${from == null ? "" : String(from)}`),
+    ));
+  }
+  return box;
+}
+
+/**
+ * Обобщение существующего `.confirm-box` (task_edit.js/settings.js) — все три надписи приходят
+ * снаружи (сервер/реестр), как в settings.js::openConfirm. Возвращает узел с методами
+ * open()/close() поверх готовой разметки.
+ * @param {*} h
+ * @param {{text?: string, confirmText?: string, cancelText?: string, onConfirm?: () => void, onCancel?: () => void}} opts
+ */
+export function confirmBox(h, opts) {
+  const o = opts || {};
+  const box = h("div", { class: "confirm-box hidden" },
+    h("p", { text: o.text || "" }),
+    h("button", { class: "btn danger", type: "button", text: o.confirmText || "", onClick: () => { if (o.onConfirm) o.onConfirm(); } }),
+    h("button", {
+      class: "btn ghost", type: "button", text: o.cancelText || "",
+      onClick: () => { box.classList.add("hidden"); if (o.onCancel) o.onCancel(); },
+    }),
+  );
+  box.open = () => box.classList.remove("hidden");
+  box.close = () => box.classList.add("hidden");
+  return box;
+}
+
+// Список-чипы (построены в 21, потребитель — фаза 22, WEB-SET-01: у анкеты нет type=list
+// шагов). Добавление — Enter, запятая, «;»-разделитель при вставке (память проекта
+// «telegram-enter-send-trap» — списки обязаны принимать «;» как разделитель).
+export function listChips(h, opts) {
+  const o = opts || {};
+  let items = Array.isArray(o.values) ? [...o.values] : [];
+  const input = h("input", { class: "input", type: "text", placeholder: o.placeholder || "" });
+  const box = h("div", { class: "list-chips" });
+
+  function emit() {
+    if (o.onChange) o.onChange([...items]);
+  }
+
+  function paint() {
+    box.replaceChildren(
+      ...items.map((v, idx) => h("span", { class: "chip list-chip" },
+        h("span", { text: v }),
+        h("button", {
+          class: "chip-remove", type: "button", "aria-label": o.placeholder || v,
+          onClick: () => { items.splice(idx, 1); paint(); emit(); },
+        }, icon("x")),
+      )),
+      input,
+    );
+  }
+
+  function addFromText(raw) {
+    const parts = String(raw || "").split(/[,;\n]/).map((s) => s.trim()).filter(Boolean);
+    if (!parts.length) return;
+    items.push(...parts);
+  }
+
+  input.addEventListener("keydown", (e) => {
+    if (e.key === "Enter" || e.key === "," || e.key === ";") {
+      e.preventDefault();
+      addFromText(input.value);
+      input.value = "";
+      paint();
+      emit();
+    }
+  });
+  input.addEventListener("paste", (e) => {
+    const clip = e.clipboardData || window.clipboardData;
+    const text = clip ? clip.getData("text") : "";
+    if (text && /[,;\n]/.test(text)) {
+      e.preventDefault();
+      addFromText(text);
+      input.value = "";
+      paint();
+      emit();
+    }
+  });
+
+  paint();
+  return box;
+}
+
+// ── headless-утилиты для фазы 22 (поиск/свёртка группы, без DOM) ─────────────────────────
+
+function normalizeSearch(s) {
+  return String(s || "").toLowerCase().replace(/ё/g, "е");
+}
+
+/**
+ * Нестрогое совпадение по подписи/подсказке/значению с нормализацией регистра и «ё» (поиск по
+ * ~70 ключам реестра, WEB-SET-02). Потребителя в фазе 21 нет — headless-функция строится и
+ * тестируется здесь, UI над ней подключает фаза 22.
+ * @param {Array<{label?: string, prompt?: string, value?: *}>} items
+ * @param {string} query
+ */
+export function searchFilter(items, query) {
+  const q = normalizeSearch(query).trim();
+  if (!q) return items || [];
+  return (items || []).filter((item) => {
+    const haystack = [item.label, item.prompt, item.value].map(normalizeSearch).join(" ");
+    return haystack.includes(q);
+  });
+}
+
+/**
+ * Переключает свёртку группы настроек (WEB-SET-02) — чистая функция, возвращает НОВЫЙ объект
+ * состояния (не мутирует `state`), чтобы вызывающий экран мог сравнивать ссылки при перерисовке.
+ * @param {Record<string, boolean>} state
+ * @param {string} groupCode
+ */
+export function groupCollapse(state, groupCode) {
+  const next = { ...(state || {}) };
+  next[groupCode] = !next[groupCode];
+  return next;
 }
