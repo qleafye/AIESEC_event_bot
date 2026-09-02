@@ -8,7 +8,7 @@
   (тот же приём, что у tokens.css — дрейф ассетов между двумя образами);
 - каждый woff2 содержит кириллицу (весь диапазон U+0410–U+044F);
 - `@font-face` в обоих `app.css` ссылаются только на локальные пути;
-- `miniapp/static/js/icons.js`: 26 иконок, только `none`/`currentColor` в fill/stroke, без
+- `miniapp/static/js/icons.js`: 32 иконки (26 + 6 фазы 21), только `none`/`currentColor` в fill/stroke, без
   `innerHTML` и без `http`.
 """
 from __future__ import annotations
@@ -32,6 +32,8 @@ EXPECTED_ICON_NAMES = {
     "bar-chart-2", "settings", "more-horizontal", "chevron-right", "chevron-down", "clock",
     "x", "trash-2", "archive", "rotate-ccw", "image", "file-text", "link", "pen-line",
     "alert-triangle", "check", "search", "sparkles", "coin",
+    # Phase 21 (21-UI-SPEC § Icon Inventory): мастер анкеты и формо-компоненты form.js
+    "message-circle", "refresh-cw", "undo-2", "shield-check", "upload", "history",
 }
 
 
@@ -105,7 +107,7 @@ def test_icons_js_exports_exactly_expected_icon_names():
         f"расхождение с инвентарём UI-SPEC: лишние {names - EXPECTED_ICON_NAMES}, "
         f"не хватает {EXPECTED_ICON_NAMES - names}"
     )
-    assert len(EXPECTED_ICON_NAMES) == 26
+    assert len(EXPECTED_ICON_NAMES) == 32  # 26 (19.1) + 6 (Phase 21, form.js)
 
 
 _FILL_OR_STROKE_ATTR = re.compile(r'\b(?:fill|stroke):\s*"([^"]*)"')
