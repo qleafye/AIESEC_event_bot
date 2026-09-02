@@ -115,13 +115,25 @@ def test_sheet_dispatch_short_pair_excludes_main_sheet_appender():
 
 
 def test_finalize_registration_dispatch_is_the_only_branch():
-    """Structural guard: the fork lives in _sheet_dispatch, not inlined in
-    finalize_registration. No direct append_to_*( calls may remain in its body."""
-    src = inspect.getsource(reg.finalize_registration)
-    assert "_sheet_dispatch" in src
-    assert "append_to_sheet(" not in src
-    assert "append_to_party_sheet(" not in src
-    assert "append_to_short_sheet(" not in src
+    """Structural guard: the fork lives in _sheet_dispatch, not inlined by name anywhere in
+    the finalize path. No direct append_to_*( calls may remain.
+
+    Phase 21 (21-08): the append itself moved out of finalize_registration into the shared
+    services.reg_finalize.post_finalize (bot-direct call AND the Mini App outbox job now
+    share this one Sheets path) -- the guard now looks there instead."""
+    from services import reg_finalize as reg_finalize_mod
+
+    reg_src = inspect.getsource(reg.finalize_registration)
+    assert "_sheet_dispatch" not in reg_src
+    assert "append_to_sheet(" not in reg_src
+    assert "append_to_party_sheet(" not in reg_src
+    assert "append_to_short_sheet(" not in reg_src
+
+    finalize_src = inspect.getsource(reg_finalize_mod.post_finalize)
+    assert "_sheet_dispatch" in finalize_src
+    assert "append_to_sheet(" not in finalize_src
+    assert "append_to_party_sheet(" not in finalize_src
+    assert "append_to_short_sheet(" not in finalize_src
 
 
 # ── Group 5: tab name resolution (default vs configured) ────────────────────────────────────
