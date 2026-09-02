@@ -99,6 +99,109 @@ def test_resync_kinds_call_request_resync_and_mark_processed(tmp_path, monkeypat
     assert all(r["processed_at"] for r in rows)
 
 
+# ── reg_finalized/reg_edited/reg_resume_upload -> services.reg_finalize (Phase 21, 21-08) ──
+
+def test_reg_finalized_kind_calls_post_finalize_with_new_mode(tmp_path, monkeypatch):
+    _init(tmp_path)
+    calls = []
+
+    async def fake_post_finalize(bot, telegram_id, mode, **kwargs):
+        calls.append((bot, telegram_id, mode, kwargs))
+
+    monkeypatch.setattr(miniapp_outbox, "post_finalize", fake_post_finalize)
+    row_id = _enqueue("reg_finalized", {"telegram_id": 12345})
+    bot = FakeBot()
+
+    done = _run(miniapp_outbox.drain(bot))
+
+    assert done == 1
+    assert len(calls) == 1
+    called_bot, telegram_id, mode, kwargs = calls[0]
+    assert called_bot is bot
+    assert telegram_id == 12345
+    assert mode == "new"
+    row = _run(_fetchall("SELECT processed_at FROM miniapp_outbox WHERE id = ?", (row_id,)))[0]
+    assert row["processed_at"]
+
+
+def test_reg_edited_kind_calls_post_finalize_with_edit_mode_and_derived_facts(tmp_path, monkeypatch):
+    """T-21-08: payload несёт только telegram_id — недостающие changed_columns/remoderated/
+    resubmitted дочитывает services.reg_finalize.derive_edit_facts (payload без ответов
+    анкеты — ПД в очередь не попадают)."""
+    _init(tmp_path)
+    post_finalize_calls = []
+    derive_calls = []
+
+    async def fake_post_finalize(bot, telegram_id, mode, **kwargs):
+        post_finalize_calls.append((telegram_id, mode, kwargs))
+
+    async def fake_derive(telegram_id, full):
+        derive_calls.append((telegram_id, full))
+        return (["phone"], False, True)
+
+    monkeypatch.setattr(miniapp_outbox, "post_finalize", fake_post_finalize)
+    monkeypatch.setattr(miniapp_outbox, "derive_edit_facts", fake_derive)
+    monkeypatch.setattr(miniapp_outbox, "get_user", lambda telegram_id: _fake_user_row(telegram_id))
+    _enqueue("reg_edited", {"telegram_id": 999})
+
+    done = _run(miniapp_outbox.drain(FakeBot()))
+
+    assert done == 1
+    assert len(post_finalize_calls) == 1
+    telegram_id, mode, kwargs = post_finalize_calls[0]
+    assert telegram_id == 999
+    assert mode == "edit"
+    assert kwargs["changed_columns"] == ["phone"]
+    assert kwargs["remoderated"] is False
+    assert kwargs["resubmitted"] is True
+    assert len(derive_calls) == 1
+
+
+async def _fake_user_row(telegram_id):
+    return {"telegram_id": telegram_id, "status": "pending"}
+
+
+def test_reg_resume_upload_kind_calls_handle_resume_upload(tmp_path, monkeypatch):
+    _init(tmp_path)
+    calls = []
+
+    async def fake_handle(bot, telegram_id, file_id, filename):
+        calls.append((bot, telegram_id, file_id, filename))
+
+    monkeypatch.setattr(miniapp_outbox, "handle_resume_upload", fake_handle)
+    _enqueue("reg_resume_upload", {"telegram_id": 555, "file_id": "AgAD1", "filename": "cv.pdf"})
+    bot = FakeBot()
+
+    done = _run(miniapp_outbox.drain(bot))
+
+    assert done == 1
+    assert len(calls) == 1
+    called_bot, telegram_id, file_id, filename = calls[0]
+    assert called_bot is bot
+    assert telegram_id == 555
+    assert file_id == "AgAD1"
+    assert filename == "cv.pdf"
+
+
+def test_reg_finalized_kind_retries_on_failure_same_as_other_kinds(tmp_path, monkeypatch):
+    _init(tmp_path)
+
+    async def boom(bot, telegram_id, mode, **kwargs):
+        raise RuntimeError("sheets down")
+
+    monkeypatch.setattr(miniapp_outbox, "post_finalize", boom)
+    row_id = _enqueue("reg_finalized", {"telegram_id": 1})
+
+    done = _run(miniapp_outbox.drain(FakeBot()))
+
+    assert done == 0
+    row = _run(_fetchall(
+        "SELECT attempts, processed_at FROM miniapp_outbox WHERE id = ?", (row_id,)
+    ))[0]
+    assert row["attempts"] == 1
+    assert row["processed_at"] is None
+
+
 # ── пустая очередь ────────────────────────────────────────────────────────────────────
 
 def test_empty_queue_makes_zero_calls(tmp_path, monkeypatch):

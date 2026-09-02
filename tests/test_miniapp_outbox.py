@@ -146,4 +146,5 @@ def test_kinds_match_module_docstring():
     documented = set(re.findall(r"^\s{4}([a-z_]+)\s+\{", outbox.__doc__, re.M))
     assert documented == set(outbox.OUTBOX_KINDS) == {
         "submission_created", "submission_reviewed", "task_changed", "coins_manual",
+        "reg_finalized", "reg_edited", "reg_resume_upload",
     }
