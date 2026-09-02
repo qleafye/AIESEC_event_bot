@@ -43,6 +43,11 @@ CSRF_HEADER = "X-Requested-With"
 CSRF_HEADER_VALUE = "fetch"
 _MUTATING_METHODS = frozenset({"POST", "PUT", "PATCH", "DELETE"})
 
+# Права, дающие staff-ветку `upload_actor` (подпись `miniapp_upload_caption_staff`, тот же
+# маршрут и лимит): `moderate_game` — обложки заданий (19-06), `settings` — фото/файлы
+# настроек (Phase 22, D-05/T-22-05: нового транспорта для них не заводится).
+STAFF_UPLOAD_CAPS = frozenset({"moderate_game", "settings"})
+
 # Разделы-чекбоксы D-06: имя раздела -> ключ реестра `miniapp_section_{section}`.
 # "form" (Phase 21 Plan 02, FORM-SYNC-05, D-08) — рядом с "profile": оба делегатские разделы.
 SECTIONS = (
@@ -212,7 +217,8 @@ def form_gate(request: Request, p: Principal = Depends(principal)) -> Principal:
 
 async def upload_actor(request: Request, p: Principal = Depends(principal)) -> UploadActor:
     """Три сценария на один маршрут `POST /app/api/uploads`: делегат прикладывает часть сдачи,
-    менеджер с `moderate_game` грузит обложку задания (план 19-06), ЛИБО (план 21-10, D-05)
+    менеджер с правом из `STAFF_UPLOAD_CAPS` грузит обложку задания (план 19-06) или
+    фото/файл настройки (Phase 22), ЛИБО (план 21-10, D-05)
     делегат без прошедшего делегатского гейта (`unregistered`/`pending`/`rejected`), но с живым
     черновиком анкеты, грузит резюме — тот же маршрут, третья ветка `delegate_denial`, не копия
     (RESEARCH Pitfall 9: анкета — не `delegate_gate`). `cookie`/`staff_only_mode` НЕ пропускаются
@@ -221,7 +227,7 @@ async def upload_actor(request: Request, p: Principal = Depends(principal)) -> U
         kind = delegate_denial(conn, p)
     if kind is None:
         staff_upload = False
-    elif "moderate_game" in p.caps:
+    elif p.caps & STAFF_UPLOAD_CAPS:
         staff_upload = True
     elif kind in ("unregistered", "pending", "rejected") and await get_reg_draft(p.telegram_id) is not None:
         staff_upload = False
@@ -241,6 +247,7 @@ __all__ = [
     "CSRF_HEADER_VALUE",
     "Principal",
     "SECTIONS",
+    "STAFF_UPLOAD_CAPS",
     "UploadActor",
     "delegate_denial",
     "delegate_gate",

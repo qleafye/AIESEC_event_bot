@@ -32,7 +32,7 @@ from dataclasses import dataclass
 
 from config import config
 from cities import PER_CITY_SEP, city_codes, normalize_city, split_per_city_key
-from database.db import delete_setting, get_staff_city, set_setting
+from database.db import delete_setting, get_setting, get_staff_city, set_setting
 from services.sheets import _reset_sheet_cache
 from settings_schema import SETTINGS_SCHEMA, get_setting_typed
 from settings_validation import is_command_like, validate_setting_value
@@ -506,3 +506,95 @@ async def commit_batch_item(key: str, value: str | None) -> str | None:
     if key in SHEET_TAB_WRITE_MODE:
         await after_tab_setting_saved(key)
     return warning
+
+
+# ══ Phase 22 (22-04, D-07): превью текста глазами делегата ════════════════════════════════
+#
+# Консьюмеры подставляют плейсхолдеры цепочками `.replace` (НЕ `.format`: текст менеджера
+# может содержать посторонние `{}`) — grep по handlers/services/miniapp: {deadline} {season}
+# {requisites} {reason} {penalties} {option} {label} {display} {delta} {count} {balance}
+# {amount} {total} {step} {date}. Превью делает то же самое с образцами: реальные значения
+# берутся из реестра/БД (`preview_samples`), недоступные — человеческие заглушки.
+
+# Плейсхолдеры, которые подставляет АДРЕСАТ текста — экран настроек Mini App (счётчики
+# поиска, diff, шапка города), а не бот делегату. Превью их не трогает; сторож в
+# tests/test_miniapp_settings_batch.py требует, чтобы каждый плейсхолдер реестра был либо
+# здесь, либо в PREVIEW_SAMPLES.
+PREVIEW_ADDRESSEE_PLACEHOLDERS: frozenset[str] = frozenset({
+    "shown", "suggestions", "cities", "default", "value", "tab", "rows", "consequence",
+})
+
+PREVIEW_SAMPLES: dict[str, str] = {
+    "name": "Иван",
+    "season": "YouLead'25",
+    "deadline": "15.10.2026",
+    "requisites": "Сбербанк, 2202 2000 0000 0000, Иван И.",
+    "amount": "3500",
+    "option": "Полная форма",
+    "penalties": "⚠️ Штрафы за отмену:\n• до 10.10.2026 — остаток 1000 ₽\n\n",
+    "label": "Университет",
+    "display": "МГУ",
+    "delta": "+10",
+    "reason": "за активность на форуме",
+    "balance": "120",
+    "count": "3",
+    "total": "12",
+    "step": "4",
+    "date": "02.09.2026 14:30",
+    "rank": "5",
+    "link": "https://t.me/YouLead_bot?start=ref_123",
+    "breakdown": "📷 1 фото, ✍️ 1 текст",
+    "page": "1",
+    "status": "на проверке",
+}
+
+
+async def preview_samples() -> dict[str, str]:
+    """Образцы для превью: поверх заглушек — реальные значения мероприятия из реестра/БД
+    (сезон, дедлайн оплаты, реквизиты), чтобы менеджер видел свой текст, а не абстрактный."""
+    samples = dict(PREVIEW_SAMPLES)
+    season = await get_setting_typed("event_season")
+    if season:
+        samples["season"] = str(season)
+    deadline = await get_setting("payment_deadline")
+    if deadline:
+        samples["deadline"] = deadline.split()[0]
+    requisites = await get_setting_typed("payment_requisites")
+    if requisites:
+        samples["requisites"] = str(requisites)
+    return samples
+
+
+def preview_text(key: str, value: str, *, samples: dict[str, str]) -> str:
+    """Текст, как его увидит делегат: подстановка образцов теми же `.replace`-цепочками, что у
+    консьюмеров; для ключей HTML_SETTINGS разметка снимается (`plain_text`) — в DOM экрана
+    едет только текст (D-06/D-07)."""
+    text = value
+    for name, sample in samples.items():
+        text = text.replace("{" + name + "}", sample)
+    if base_setting_key(key) in HTML_SETTINGS:
+        return plain_text(text)
+    return text
+
+
+# ══ Phase 22 (22-04, D-05, T-22-12): фото/файлы настроек через существующий staff-путь ═════
+
+def file_setting_keys() -> tuple[str, ...]:
+    """Правимые ключи типа photo/file — их значения (file_id) менеджер с правом `settings`
+    вправе читать через GET /app/api/file/{file_id}, и только их."""
+    return tuple(
+        key for key in editable_keys()
+        if SETTINGS_SCHEMA[key].get("type") in ("photo", "file")
+    )
+
+
+async def is_current_file_value(file_id: str) -> bool:
+    """`file_id` прямо сейчас — значение какого-либо photo/file-ключа реестра (проверка по
+    bot_settings, не по произвольному file_id — иначе право `settings` стало бы чтением любых
+    файлов бота)."""
+    if not file_id:
+        return False
+    for key in file_setting_keys():
+        if await get_setting(key) == file_id:
+            return True
+    return False

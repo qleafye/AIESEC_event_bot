@@ -363,3 +363,110 @@ def test_validate_batch_item_mirrors_bot_check_order(tmp_path):
     assert gate.needs_confirm and "12" in gate.needs_confirm and gate.error is None
     unknown = _run(settings_ops.validate_batch_item("main_sheet_tab", "Реги", **kw, tab_probe=None))
     assert unknown.warning and unknown.needs_confirm is None and unknown.value == "Реги"
+
+
+# ══ Task 3: preview — текст глазами делегата (D-07) ═══════════════════════════════════════
+
+import re
+
+from settings_schema import SETTINGS_SCHEMA
+
+from miniapp.deps import Principal
+from miniapp.routers.files import can_read_file
+
+from tests.test_miniapp_routes import _probe_client
+
+_PLACEHOLDER_RE = re.compile(r"\{([a-z_]+)\}")
+
+
+def _preview(client, key, value, user=ADMIN_ID):
+    return client.get("/app/api/admin/settings/preview", params={"key": key, "value": value}, headers=_hdr(user))
+
+
+def test_preview_substitutes_placeholders_like_consumers_do(tmp_path):
+    client = _setup(tmp_path)
+    _set("payment_deadline", "15.10.2026 23:59")
+    resp = _preview(client, "payment_details_template_text", "Тариф {option}: {amount} ₽ до {deadline}. {unknown}")
+    assert resp.status_code == 200, resp.text
+    text = resp.json()["text"]
+    assert text == "Тариф Полная форма: 3500 ₽ до 15.10.2026. {unknown}"  # чужие {} не трогаются, как в .replace бота
+    # тот же образец, что видит делегат у консьюмера (handlers/registration.py: deadline.split()[0])
+    samples = _run(settings_ops.preview_samples())
+    assert samples["deadline"] == "15.10.2026"
+
+
+def test_preview_html_key_arrives_as_plain_text(tmp_path):
+    client = _setup(tmp_path)
+    assert "payment_details_template_text" in settings_ops.HTML_SETTINGS
+    text = _preview(client, "payment_details_template_text", "<b>Реквизиты:</b> {requisites} &amp; всё").json()["text"]
+    assert "<" not in text and text.startswith("Реквизиты: ") and "& всё" in text
+
+
+def test_preview_foreign_key_403_and_no_cap_403(tmp_path):
+    client = _setup(tmp_path)
+    resp = _preview(client, "role_caps_reg_manager", "x")
+    assert resp.status_code == 403 and resp.json()["reason"] == "not_editable"
+    resp = _preview(client, "event_name", "x", user=GAME_MANAGER_ID)
+    assert resp.status_code == 403 and resp.json()["reason"] == "no_cap"
+
+
+def test_preview_uses_replace_chain_not_format():
+    # Текст менеджера с посторонними фигурными скобками не роняет превью (у .format упало бы).
+    text = settings_ops.preview_text("event_name", "{season} {не плейсхолдер} {", samples={"season": "YL26"})
+    assert text == "YL26 {не плейсхолдер} {"
+
+
+def test_every_registry_placeholder_is_covered_by_preview_samples_or_addressee():
+    """Сторож: каждый плейсхолдер в дефолте текстового ключа реестра либо подставляется
+    превью (PREVIEW_SAMPLES), либо явно объявлен как «подставляет адресат, не превью»."""
+    covered = set(settings_ops.PREVIEW_SAMPLES) | settings_ops.PREVIEW_ADDRESSEE_PLACEHOLDERS
+    missing = {}
+    for key in settings_ops.editable_keys():
+        meta = SETTINGS_SCHEMA[key]
+        if meta.get("type") != "text" or not isinstance(meta.get("default"), str):
+            continue
+        for name in _PLACEHOLDER_RE.findall(meta["default"]):
+            if name not in covered:
+                missing.setdefault(name, []).append(key)
+    assert missing == {}, missing
+    assert not (set(settings_ops.PREVIEW_SAMPLES) & settings_ops.PREVIEW_ADDRESSEE_PLACEHOLDERS)
+
+
+# ══ Task 3: uploads и чтение файлов через существующий staff-путь (D-05, T-22-05/T-22-12) ═
+
+SETTINGS_FILE_ID = "AgACAgIAAxkBAAIsettingsPh01"
+OTHER_FILE_ID = "AgACAgIAAxkBAAIsomeoneElse1"
+
+
+def test_settings_manager_gets_staff_upload_branch(tmp_path):
+    db_path = _use_tmp_db(tmp_path, "settings_uploads.db")
+    _standard_seed()
+    _seed(staff=[(SETTINGS_MANAGER_SPB, "reg_manager", "spb")])
+    _set("role_caps_reg_manager", "moderate_reg\nsettings")
+    probe = _probe_client(_cfg(db_path))
+    resp = probe.post("/app/api/_probe/upload", headers=_hdr(SETTINGS_MANAGER_SPB))
+    assert resp.status_code == 200, resp.text
+    assert resp.json() == {"telegram_id": SETTINGS_MANAGER_SPB, "is_staff_upload": True}
+    # без права settings/moderate_game незарегистрированный staff по-прежнему не грузит
+    _set("role_caps_reg_manager", "moderate_reg")
+    resp = probe.post("/app/api/_probe/upload", headers=_hdr(SETTINGS_MANAGER_SPB))
+    assert resp.status_code == 403
+
+
+def test_can_read_file_for_settings_cap_only_current_setting_values(tmp_path):
+    _use_tmp_db(tmp_path, "settings_files.db")
+    _standard_seed()
+    _set("program", SETTINGS_FILE_ID)
+    with_settings = Principal(telegram_id=SETTINGS_MANAGER_SPB, via="initdata", caps=frozenset({"settings"}), city="spb")
+    without = Principal(telegram_id=SETTINGS_MANAGER_SPB, via="initdata", caps=frozenset({"moderate_reg"}), city="spb")
+    assert _run(can_read_file(with_settings, SETTINGS_FILE_ID)) is True
+    assert _run(can_read_file(with_settings, OTHER_FILE_ID)) is False  # произвольный file_id — нет
+    assert _run(can_read_file(without, SETTINGS_FILE_ID)) is False
+    _set("program", "")  # значение снято — доступ пропал вместе с ним
+    assert _run(can_read_file(with_settings, SETTINGS_FILE_ID)) is False
+
+
+def test_file_setting_keys_are_exactly_photo_and_file_types():
+    keys = settings_ops.file_setting_keys()
+    assert keys and all(SETTINGS_SCHEMA[k]["type"] in ("photo", "file") for k in keys)
+    assert "program" in keys and "miniapp_logo" in keys and "event_name" not in keys
