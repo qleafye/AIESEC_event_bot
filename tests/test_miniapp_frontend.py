@@ -325,8 +325,13 @@ def _js_without_comments(path: Path) -> str:
 
 
 def test_no_innerhtml_with_interpolation_in_core():
+    # 21-04: выборка расширена с (API_JS, APP_JS, screens/*.js) на ВЕСЬ miniapp/static/js/*.js —
+    # корневые модули типа form.js раньше не покрывались этим сторожем.
+    js_dir = MINIAPP_STATIC / "js"
+    root_js = sorted(js_dir.glob("*.js")) if js_dir.is_dir() else []
+    screens_js = sorted(SCREENS_DIR.glob("*.js")) if SCREENS_DIR.is_dir() else []
     pattern = re.compile(r"innerHTML\s*\+?=\s*(`|[^;]*\+)")
-    for path in (API_JS, APP_JS, *(SCREENS_DIR.glob("*.js") if SCREENS_DIR.is_dir() else ())):
+    for path in {*root_js, *screens_js}:
         text = _js_without_comments(path)
         assert not pattern.search(text), f"innerHTML с интерполяцией в {path.name}"
         assert "innerHTML" not in text, f"innerHTML в {path.name} — только textContent/esc()"
@@ -720,8 +725,10 @@ def test_task_edit_screen_point_edits_confirmations_and_wizard():
     # card.js, план 19.1-05) — техническая карта код -> имя иконки, не подпись человеку.
     assert 'pdf: "file-text"' in text and 'link: "link"' in text
     assert '"Опубликовать"' in text and 'api("/admin/tasks", {' in text
-    # Ошибки сервера — человеческим текстом из payload.text.
-    assert "err.payload.text" in text
+    # Ошибки сервера — человеческим текстом из payload.text. Сама логика перенесена в form.js
+    # (план 21-04, был дословный дубль с settings.js) — экран только импортирует и зовёт.
+    assert 'from "../form.js"' in text and "errorText(err," in text
+    assert "err.payload.text" in _js_without_comments(FORM_JS)
     # Архив/возврат/удаление — литеральные пути (сторож путей их сверяет с маршрутами).
     assert "/archive`" in text and "/unarchive`" in text and 'method: "DELETE"' in text
     assert "${action}" not in text
@@ -1063,3 +1070,40 @@ def test_manager_hero_only_with_review_tile():
         "герой рисуется до/без проверки наличия плитки «#/review» — при выключенной "
         "геймификации менеджер увидит вечный ноль «сдач на проверке»"
     )
+
+
+# ── form.js: общие формо-компоненты анкеты (план 21-04, D-22, Reuse Contract фазы 22) ───
+
+FORM_JS = MINIAPP_STATIC / "js" / "form.js"
+
+# Тот же список типов, что reg_engine.step_spec()::_ui_type_for публикует на сегодня
+# (21-UI-SPEC.md § «Form Components → По типу») — контракт с движком, литерал намеренный.
+FORM_SPEC_TYPES = [
+    "text", "textarea", "phone", "email", "int", "date", "choice-chips",
+    "select", "multi", "yesno", "file", "consent",
+]
+
+
+def test_form_js_exports_shared_components():
+    text = _js_without_comments(FORM_JS)
+    for name in (
+        "field", "setFieldState", "createFormState", "diffView", "confirmBox",
+        "listChips", "searchFilter", "groupCollapse", "errorText", "isAuthError",
+    ):
+        assert re.search(rf"export\s+(async\s+)?function\s+{name}\s*\(", text), name
+
+
+def test_form_js_covers_every_spec_type():
+    text = _js_without_comments(FORM_JS)
+    for t in FORM_SPEC_TYPES:
+        assert f'case "{t}"' in text, t
+
+
+def test_form_js_has_no_human_text_literals():
+    """D-25: подписи в form.js — только из spec/payload, ни одного кириллического литерала
+    в строках/шаблонах. Комментарии (по конвенции проекта — на русском) исключены заранее
+    через _js_without_comments; здесь проверяются только строковые/шаблонные литералы."""
+    text = _js_without_comments(FORM_JS)
+    cyrillic = re.compile(r"[А-Яа-яЁё]")
+    for m in _STRING_LITERAL.finditer(text):
+        assert not cyrillic.search(m.group(0)), f"кириллический литерал в form.js: {m.group(0)}"

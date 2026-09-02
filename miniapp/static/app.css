@@ -858,3 +858,94 @@ a.flat-row:active, button.flat-row:active { background: var(--surface-alt); }
   font: inherit; font-weight: 700; cursor: pointer;
 }
 .hub-seg-btn.active { background: var(--accent); color: var(--on-accent); }
+
+/* ── формо-компоненты анкеты (form.js, план 21-04, 21-UI-SPEC.md § «Form Components») ────
+   Матрица состояний поля (default/focus/error/disabled/updated-in-chat/not-set), чипы
+   выбора, дропзона резюме, диф-строка обзора правки, прогресс-бар мастера, чипы списка
+   (построены для фазы 22 — WEB-SET-01). `display` намеренно не переопределяется ни на одном
+   элементе, который переключает класс `.hidden` — глобальное правило `.hidden{display:none}`
+   (строка 357) обязано оставаться последним словом в каскаде для этих узлов. ─────────────── */
+
+.field-label-row { display: flex; align-items: center; justify-content: space-between; gap: var(--sp-2); }
+.field-badge .icon { margin-right: var(--sp-1); vertical-align: -2px; }
+.chip.accent-soft { background: var(--accent-soft); color: var(--accent-text); }
+
+.field.is-error .input,
+.field.is-error textarea.input,
+.field.is-error select.input { border-color: var(--danger); }
+.field-error { color: var(--danger-text); font-size: 12px; margin: var(--sp-1) 0 0; }
+
+.field.is-disabled { opacity: .5; pointer-events: none; }
+
+.field.is-updated .input,
+.field.is-updated textarea.input,
+.field.is-updated select.input {
+  background: var(--accent-soft);
+  transition: background var(--dur) var(--ease);
+}
+
+.field-not-set { color: var(--text-muted); font-style: italic; font-size: 15px; margin: var(--sp-1) 0 0; }
+.field-counter { text-align: right; font-size: 12px; color: var(--text-faint); margin-top: var(--sp-1); }
+
+/* Чипы выбора (choice-chips/yesno) — порог options.length<=4 (A3 21-UI-SPEC.md). */
+.choice-chips { display: flex; flex-wrap: wrap; gap: var(--sp-2); }
+.chip-choice {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: var(--tap-min);
+  padding: var(--sp-2) var(--sp-3);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-pill);
+  background: var(--surface-alt);
+  color: var(--text);
+  font: inherit;
+  cursor: pointer;
+  transition: background var(--dur) var(--ease), color var(--dur) var(--ease);
+}
+.chip-choice.chosen { background: var(--accent); border-color: var(--accent); color: var(--on-accent); }
+.chip-choice:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+.chip-other { width: var(--tap-min); padding: 0; }
+
+/* Дропзона резюме — default/success по классам-переключателям (см. правило выше про .hidden). */
+.dropzone { display: flex; align-items: center; flex-wrap: wrap; gap: var(--sp-2); }
+.dropzone-status { color: var(--text-muted); font-size: 13px; }
+
+/* Диф-строка обзора правки (D-26, UI-SPEC «Экран 7»): «Было: X» + бейдж «изменено». */
+.diff-row { padding: var(--sp-2) 0; border-bottom: 1px solid var(--border); }
+.diff-row:last-child { border-bottom: 0; }
+.diff-was { margin: var(--sp-1) 0 0; }
+
+/* Прогресс-бар мастера (UI-SPEC § Wizard Step Screen Contract) — подключает screens/form.js. */
+.wizard-progress { height: 4px; border-radius: var(--radius-pill); background: var(--chart-track); overflow: hidden; margin-bottom: var(--sp-2); }
+.wizard-progress-fill { height: 100%; border-radius: var(--radius-pill); background: var(--accent); transition: width var(--dur) var(--ease); }
+
+/* Чипы списка (list-chips, построены в 21 — потребитель WEB-SET-01, фаза 22). */
+.list-chips { display: flex; flex-wrap: wrap; gap: var(--sp-2); align-items: center; }
+.list-chips .input { flex: 1 1 120px; min-width: 120px; margin: 0; }
+.list-chip { display: inline-flex; align-items: center; gap: var(--sp-1); }
+.chip-remove {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+  padding: 0;
+}
+
+/* Карточка согласия (consent, pre-flow — не пронумерованный шаг мастера). */
+.consent-card {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--sp-2);
+  padding: var(--sp-4);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  background: var(--surface);
+  margin-bottom: var(--sp-3);
+}
+.consent-card .icon { flex: none; color: var(--accent-text); }
