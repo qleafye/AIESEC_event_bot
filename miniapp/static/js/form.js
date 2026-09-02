@@ -14,6 +14,12 @@
 // причины 403 не считаются гейтом авторизации) без копии тела функции.
 
 import { icon } from "./icons.js";
+import { flatRow } from "./ui.js";
+
+// Фаза 22 (D-05, Reuse Contract 21-UI-SPEC): тот же рендерер обслуживает реестр настроек —
+// ветки toggle/photo/list, адаптер settingSpec(), нестрогий поиск (D-15). Модуль остаётся
+// импортируемым в чистом node (поведенческий тест поиска): на уровне модуля нет обращений
+// к document/window — DOM только внутри функций, вызываемых экраном.
 
 // ── errorText/isAuthError (перенос из task_edit.js/settings.js) ─────────────────────────
 
@@ -147,27 +153,53 @@ function multiControl(h, spec, value, onChange) {
 // переключатель «ответить текстом» раскрывает textarea того же поля (UI-SPEC «Экран 5»).
 // Прогресс/ошибка загрузки — забота вызывающего экрана (он владеет самим запросом
 // POST /app/api/uploads); field() отдаёт сырой File через onChange, ничего не грузит сам
-// (form.js не ходит в fetch — Reuse Contract).
+// (form.js не ходит в сеть — Reuse Contract).
+//
+// Фаза 22 (D-05): та же дропзона обслуживает photo/file реестра — settingSpec() выключает
+// «ответить текстом» (spec.text_allowed=false), задаёт accept, а сохранённое значение
+// показывается миниатюрой (spec.preview_url) либо именем (spec.display) — сырой file_id
+// человеку не показывается (T-19-45). Состояния uploading/ошибка — setFieldState()
+// с текстом из payload (узел progress отдаётся наверх).
+function localPreviewUrl(file) {
+  if (!file || typeof file.type !== "string" || !file.type.startsWith("image/")) return null;
+  if (typeof URL === "undefined" || typeof URL.createObjectURL !== "function") return null;
+  return URL.createObjectURL(file);
+}
+
 function fileControl(h, spec, value, onChange) {
-  const input = h("input", { type: "file", class: "hidden", accept: ".pdf,.doc,.docx" });
-  const trigger = h("button", { class: "btn secondary dropzone-trigger", type: "button", onClick: () => input.click() }, icon("upload"));
+  const textAllowed = spec.text_allowed !== false;
+  const input = h("input", { type: "file", class: "hidden", accept: spec.accept || ".pdf,.doc,.docx" });
+  const trigger = h("button", {
+    class: "btn secondary dropzone-trigger", type: "button", "aria-label": spec.label, onClick: () => input.click(),
+  }, icon(spec.type === "photo" ? "image" : "upload"));
+  const preview = h("img", { class: "dropzone-preview hidden", alt: "" });
   const status = h("span", { class: "dropzone-status" });
+  const progress = h("span", { class: "dropzone-progress hidden", "aria-live": "polite" });
   const remove = h("button", {
     class: "btn ghost dropzone-remove hidden", type: "button", "aria-label": spec.label,
     onClick: () => { onChange(null); paint(null); },
   }, icon("x"));
-  const textarea = h("textarea", { class: "input hidden", rows: "4" });
-  const toggleText = h("button", {
+  const textarea = textAllowed ? h("textarea", { class: "input hidden", rows: "4" }) : null;
+  const toggleText = textAllowed ? h("button", {
     class: "btn ghost dropzone-toggle-text", type: "button", "aria-label": spec.label,
     onClick: () => textarea.classList.toggle("hidden"),
-  }, icon("pen-line"));
-  textarea.addEventListener("input", () => onChange({ text: textarea.value }));
+  }, icon("pen-line")) : null;
+  if (textarea) textarea.addEventListener("input", () => onChange({ text: textarea.value }));
 
   function paint(v) {
-    const hasFile = Boolean(v && v.name);
-    status.textContent = hasFile ? v.name : "";
-    remove.classList.toggle("hidden", !hasFile);
-    trigger.classList.toggle("hidden", hasFile);
+    const local = Boolean(v && v.name);
+    const stored = !local && Boolean((v != null && v !== "") || spec.preview_url);
+    status.textContent = local ? v.name : (stored ? (spec.display || "") : "");
+    const src = local ? localPreviewUrl(v) : (stored ? spec.preview_url : null);
+    if (src) {
+      preview.src = src;
+      preview.classList.remove("hidden");
+    } else {
+      preview.removeAttribute("src");
+      preview.classList.add("hidden");
+    }
+    remove.classList.toggle("hidden", !(local || stored));
+    trigger.classList.toggle("hidden", local);
   }
   input.addEventListener("change", () => {
     const file = (input.files || [])[0];
@@ -177,7 +209,37 @@ function fileControl(h, spec, value, onChange) {
     paint(file);
   });
   paint(value);
-  return h("div", { class: "dropzone" }, trigger, status, remove, input, toggleText, textarea);
+  const control = h("div", { class: "dropzone" }, preview, trigger, status, progress, remove, input, toggleText, textarea);
+  return { control, progress };
+}
+
+// Тумблер реестра (toggle, D-05/D-08): визуал сегодняшних «настроек-лайт» — flatRow с классом
+// check-row (ui.js), подписи состояний из spec.texts ({on, off} — реестр), не литералом.
+// Сообщает наружу намерение (следующее значение "on"/"off" — то, что хранит бот) и НЕ
+// перерисовывает себя: решение о немедленном сохранении принимает экран (D-08), а после
+// ответа сервера обновляет строку через control.paint(v) без пересборки поля.
+function isOn(v) {
+  return v === true || v === "on";
+}
+
+function toggleControl(h, spec, value, onChange) {
+  const texts = spec.texts || {};
+  let current = value;
+  const row = flatRow(h, {
+    icon: "check", title: spec.label, trailing: "", cls: "check-row",
+    onClick: () => onChange(isOn(current) ? "off" : "on"),
+  });
+  const trailing = row.querySelector(".flat-row-trailing");
+  function paint(v) {
+    current = v;
+    const on = isOn(v);
+    row.classList.toggle("on", on);
+    row.setAttribute("aria-pressed", on ? "true" : "false");
+    if (trailing) trailing.textContent = on ? (texts.on || "") : (texts.off || "");
+  }
+  row.paint = paint;
+  paint(value);
+  return row;
 }
 
 // Карточка согласия (pre-flow, не пронумерованный шаг мастера). Режим правки (locked, D-13) —
@@ -216,9 +278,18 @@ function buildControl(h, spec, value, onChange) {
     case "yesno":
       return { control: choiceChips(h, { ...spec, options: spec.options && spec.options.length ? spec.options : [] }, value, onChange) };
     case "file":
-      return { control: fileControl(h, spec, value, onChange) };
+      return fileControl(h, spec, value, onChange);
     case "consent":
       return { control: consentControl(h, spec, value, onChange) };
+    // Типы реестра настроек (фаза 22, D-05) — у анкеты их нет.
+    case "toggle":
+      return { control: toggleControl(h, spec, value, onChange) };
+    case "photo":
+      // Список расширений, а не MIME-маска image со звёздочкой: слэш-звёздочка внутри
+      // строки читается сторожем тестов как начало блочного комментария.
+      return fileControl(h, { ...spec, accept: spec.accept || ".jpg,.jpeg,.png,.webp", text_allowed: false }, value, onChange);
+    case "list":
+      return { control: listChips(h, { values: value, onChange, placeholder: spec.placeholder || "" }) };
     default:
       return textControl(h, spec, value, onChange, "text");
   }
@@ -231,23 +302,25 @@ function buildControl(h, spec, value, onChange) {
  * (фаза 22, Reuse Contract) — рендерер не переписывается по экранам, только расширяется
  * switch на новые типы (toggle/photo/list).
  * @param {(tag: string, attrs?: object, ...children: any[]) => HTMLElement} h
- * @param {{key: string, type: string, label: string, options?: string[], other_allowed?: boolean, max_len?: number}} spec
+ * Фаза 22: `spec.help` (подсказка реестра) рисуется под подписью всегда (A5 22-UI-SPEC);
+ * у `toggle` подпись живёт внутри строки-тумблера, отдельный label скрыт. Узлы `label`/`help`
+ * отдаются в `_nodes`, чтобы экран мог подменить их детей подсветкой `highlightMatch()`.
+ * @param {{key: string, type: string, label: string, help?: string, options?: string[], other_allowed?: boolean, max_len?: number}} spec
  * @param {*} value
  * @param {(v: *) => void} onChange
  */
 export function field(h, spec, value, onChange) {
   const badge = h("span", { class: "chip accent-soft field-badge hidden" },
     icon("refresh-cw"), h("span", { class: "field-badge-text" }));
-  const labelRow = h("div", { class: "field-label-row" },
-    h("label", { text: spec.label, for: `f-${spec.key}` }),
-    badge,
-  );
-  const { control, extra } = buildControl(h, spec, value, onChange);
+  const label = h("label", { text: spec.label, for: `f-${spec.key}`, class: spec.type === "toggle" ? "hidden" : null });
+  const labelRow = h("div", { class: "field-label-row" }, label, badge);
+  const help = spec.help ? h("p", { class: "field-help label-role", text: spec.help }) : null;
+  const { control, extra, progress } = buildControl(h, spec, value, onChange);
   const placeholder = h("p", { class: "field-not-set hidden" });
   const errorZone = h("p", { class: "field-error hidden", "aria-live": "polite" });
 
   const wrap = h("div", { class: "field", "data-key": spec.key, "data-type": spec.type },
-    labelRow, control, extra, placeholder, errorZone,
+    labelRow, help, control, extra, placeholder, errorZone,
   );
   wrap._nodes = {
     control,
@@ -255,6 +328,9 @@ export function field(h, spec, value, onChange) {
     badgeText: badge.querySelector(".field-badge-text"),
     placeholder,
     errorZone,
+    label,
+    help,
+    progress: progress || null,
   };
   return wrap;
 }
@@ -273,17 +349,21 @@ function setControlDisabled(control, disabled) {
  * на CSS `:focus-visible`. Никаких новых DOM-узлов не создаёт — только показывает/прячет и
  * заполняет текстом узлы, уже построенные `field()`; весь человеческий текст приходит
  * параметром `payload.text` (сервер/реестр), не литералом.
+ * Фаза 22: `uploading` — загрузка photo/file реестра в полёте (контрол заблокирован, текст
+ * прогресса из `payload.text` в узле progress дропзоны); ошибка загрузки — обычный `error`,
+ * дропзона остаётся кликабельной для повтора.
  * @param {HTMLElement} el - узел, возвращённый field()
- * @param {"default"|"error"|"disabled"|"updated-in-chat"|"not-set"} state
+ * @param {"default"|"error"|"disabled"|"updated-in-chat"|"not-set"|"uploading"} state
  * @param {{text?: string}} [payload]
  */
 export function setFieldState(el, state, payload) {
   const nodes = (el && el._nodes) || {};
   const data = payload || {};
-  el.classList.remove("is-error", "is-disabled", "is-updated", "is-not-set");
+  el.classList.remove("is-error", "is-disabled", "is-updated", "is-not-set", "is-uploading");
   if (nodes.errorZone) { nodes.errorZone.textContent = ""; nodes.errorZone.classList.add("hidden"); }
   if (nodes.badge) nodes.badge.classList.add("hidden");
   if (nodes.placeholder) { nodes.placeholder.textContent = ""; nodes.placeholder.classList.add("hidden"); }
+  if (nodes.progress) { nodes.progress.textContent = ""; nodes.progress.classList.add("hidden"); }
   setControlDisabled(nodes.control, false);
 
   if (state === "error") {
@@ -301,6 +381,10 @@ export function setFieldState(el, state, payload) {
   } else if (state === "not-set") {
     el.classList.add("is-not-set");
     if (nodes.placeholder) { nodes.placeholder.textContent = data.text || ""; nodes.placeholder.classList.remove("hidden"); }
+  } else if (state === "uploading") {
+    el.classList.add("is-uploading");
+    setControlDisabled(nodes.control, true);
+    if (nodes.progress) { nodes.progress.textContent = data.text || ""; nodes.progress.classList.remove("hidden"); }
   }
   // "default" — сброс выше уже достаточен.
 }
@@ -455,6 +539,60 @@ export function listChips(h, opts) {
 
   paint();
   return box;
+}
+
+// ── settingSpec: элемент ответа settings/all → spec для field() (фаза 22, D-05) ──────────
+
+// Порог A2 22-UI-SPEC: текст с max_len выше этого — textarea с автовысотой (у анкеты то же
+// деление: 200 у ФИО против 1000/4000 у свободных текстов).
+const SETTING_TEXT_INPUT_MAX_LEN = 200;
+// Порог A3 21-UI-SPEC: enum до 4 вариантов — сегмент чипов, больше — нативный select.
+const SETTING_CHIPS_MAX_OPTIONS = 4;
+
+function isLongSettingText(item) {
+  if (item.max_len) return item.max_len > SETTING_TEXT_INPUT_MAX_LEN;
+  // Шаблонные/HTML-тексты бота без лимита (item.html) — многострочные по природе.
+  return Boolean(item.html);
+}
+
+/**
+ * Чистый адаптер «элемент ответа API настроек → spec для field()». Тип реестра → тип
+ * рендера: text → text/textarea (порог max_len / HTML-ключи), enum → choice-chips/select
+ * (порог 4), int/date/toggle/photo/file/list — один в один. label/help/options/max_len
+ * переносятся как есть — ни одной подписи адаптер не сочиняет (D-13): тексты состояний
+ * тумблера (item.texts), display/preview_url файла, placeholder списка тоже приходят с сервера.
+ * @param {{key: string, type: string, label: string, help?: string, options?: string[], max_len?: number, html?: boolean, texts?: {on?: string, off?: string}, display?: string, preview_url?: string, accept?: string, placeholder?: string}} item
+ */
+export function settingSpec(item) {
+  const it = item || {};
+  const spec = { key: it.key, type: "text", label: it.label, help: it.help, options: it.options, max_len: it.max_len };
+  switch (it.type) {
+    case "text":
+      spec.type = isLongSettingText(it) ? "textarea" : "text";
+      break;
+    case "enum":
+      spec.type = (it.options || []).length <= SETTING_CHIPS_MAX_OPTIONS ? "choice-chips" : "select";
+      break;
+    case "int":
+    case "date":
+    case "toggle":
+    case "photo":
+    case "file":
+    case "list":
+      spec.type = it.type;
+      break;
+    default:
+      break;
+  }
+  if (spec.type === "toggle") spec.texts = it.texts;
+  if (spec.type === "photo" || spec.type === "file") {
+    spec.display = it.display;
+    spec.preview_url = it.preview_url;
+    spec.accept = it.accept;
+    spec.text_allowed = false;
+  }
+  if (spec.type === "list") spec.placeholder = it.placeholder;
+  return spec;
 }
 
 // ── headless-утилиты для фазы 22 (поиск/свёртка группы, без DOM) ─────────────────────────
