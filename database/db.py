@@ -1581,6 +1581,25 @@ async def get_answer_history(telegram_id: int, limit: int = 5) -> list[dict]:
     return result
 
 
+async def list_answer_history(limit: int = 5000) -> list[dict]:
+    """Quick 260902-vth: весь журнал правок (не по одному делегату, как `get_answer_history`)
+    для полной пересборки листа «История правок» — лист пересобирается целиком, поэтому нужен
+    весь журнал, а не хвост. `limit` — предохранитель от бесконечной выгрузки, не
+    постраничность экрана."""
+    async with _connect() as db:
+        db.row_factory = aiosqlite.Row
+        async with db.execute(
+            "SELECT * FROM reg_answer_history ORDER BY id ASC LIMIT ?", (limit,)
+        ) as cursor:
+            rows = await cursor.fetchall()
+    result = []
+    for row in rows:
+        d = dict(row)
+        d["changes"] = json.loads(d["changes"]) if d.get("changes") else []
+        result.append(d)
+    return result
+
+
 async def mark_user_edited(telegram_id: int, source: str) -> None:
     """Stamp users.edited_at/edited_source ('bot' | 'miniapp') — the «✏️ Изменена» flag on the
     moderation card (D-12). Repeat calls simply advance edited_at to the latest edit time."""
@@ -2493,6 +2512,20 @@ async def get_stuck_questions() -> list[dict]:
             "SELECT * FROM delegate_questions "
             "WHERE answered_by IS NOT NULL AND delivered_at IS NULL "
             "ORDER BY answered_at ASC"
+        ) as cursor:
+            rows = await cursor.fetchall()
+            return [dict(row) for row in rows]
+
+
+async def list_questions(limit: int = 5000) -> list[dict]:
+    """Quick 260902-vth: весь журнал вопросов делегатов (все статусы, не только «застрявшие»,
+    как `get_stuck_questions`) для полной пересборки листа «Вопросы» — лист пересобирается
+    целиком, поэтому нужен весь журнал, а не хвост. `limit` — предохранитель от бесконечной
+    выгрузки, не постраничность."""
+    async with _connect() as db:
+        db.row_factory = aiosqlite.Row
+        async with db.execute(
+            "SELECT * FROM delegate_questions ORDER BY id ASC LIMIT ?", (limit,)
         ) as cursor:
             rows = await cursor.fetchall()
             return [dict(row) for row in rows]
