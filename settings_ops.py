@@ -174,3 +174,173 @@ def plain_text(value: str) -> str:
     отдаваемые в JSON веб-слоем (D-06: «plain-text, без HTML бота»). Используется планом
     22-04; здесь только объявляется и покрывается снимком поведения."""
     return html_module.unescape(_TAG_RE.sub("", value))
+
+
+# ── D-01/D-02/D-08/D-13: что веб даёт править, где это лежит, что опасно ────────────────
+#
+# Четыре карты ниже ВЫВЕДЕНЫ из SETTINGS_SCHEMA/admin_sections.SECTIONS, а не переписаны
+# руками вторым списком (та же формула, что у editable_keys() ниже: один источник правды,
+# правка реестра не требует править эту карту отдельно).
+
+# Правка ролей (role_caps_*) из веба вынесена за границу фазы 22 (22-CONTEXT.md § Phase
+# Boundary) — у неё свой экран и своя модель прав (T-22-07: элевация через веб-редактор ролей).
+EXCLUDED_GROUPS = ("roles",)
+
+# Токены групп в ТОМ ЖЕ порядке, что экраны бота (handlers.admin_settings.SETTINGS_GROUPS) —
+# литерал, а не импорт: admin_settings.py тянет aiogram, settings_ops.py — нет (D-12), а
+# импортировать оттуда сюда список токенов означало бы либо цикл (admin_settings уже
+# импортирует settings_ops), либо протаскивание aiogram транзитивно. Список — девять
+# литералов, меняющихся вместе с редкой перестановкой экранов бота, не риск дрейфа кода
+# ключей (в отличие от подписей/текста, которые полностью читаются из реестра).
+_GROUP_SCREEN_ORDER = (
+    "event", "reg", "apps", "sheets", "pay", "party", "consent", "game", "system",
+)
+
+
+def editable_keys() -> tuple[str, ...]:
+    """Все ключи SETTINGS_SCHEMA, чья группа не в EXCLUDED_GROUPS (D-01: показываем весь
+    реестр, прячем только явно вынесенное за границу фазы). Порядок — сначала ключи групп
+    экранов бота (_GROUP_SCREEN_ORDER, паритет с ботом), затем остальные (toggles/
+    reg_questions/menu/dashboard/miniapp/...) в порядке реестра."""
+    by_group: dict[str | None, list[str]] = {}
+    for key, meta in SETTINGS_SCHEMA.items():
+        by_group.setdefault(meta.get("group"), []).append(key)
+
+    ordered: list[str] = []
+    seen_groups: set[str | None] = set()
+    for group in _GROUP_SCREEN_ORDER:
+        ordered.extend(by_group.get(group, []))
+        seen_groups.add(group)
+
+    for key, meta in SETTINGS_SCHEMA.items():
+        group = meta.get("group")
+        if group in EXCLUDED_GROUPS or group in seen_groups:
+            continue
+        ordered.append(key)
+
+    return tuple(ordered)
+
+
+# Человеческая подпись группы (T-19-45: код ключа/группы человеку не показывается). Для
+# групп из SETTINGS_GROUPS бота — те же подписи, что на экранах бота; для групп, которых в
+# SETTINGS_GROUPS нет вовсе (reg_questions/menu/dashboard/miniapp — Известное ограничение
+# ниже), подписи по формуле экрана-входа, которым они сегодня открываются в боте.
+GROUP_LABELS: dict[str, str] = {
+    "event": "🎪 Событие/Медиа",
+    "reg": "📝 Регистрация",
+    "apps": "📋 Заявки",
+    "sheets": "📄 Вкладки таблицы",
+    "pay": "💳 Оплата",
+    "party": "🎉 Party",
+    "consent": "📋 Согласия",
+    "game": "🎮 Геймификация",
+    "system": "🔧 Система",
+    "reg_questions": "📋 Вопросы регистрации",
+    "menu": "🔘 Кнопки меню",
+    "dashboard": "📊 Дашборд",
+    "miniapp": "🎨 Mini App",
+}
+
+# (section_token, section_label, (group_token, ...)) — в порядке разделов
+# handlers.admin_sections.SECTIONS. Раздел «comms» настроек не имеет (пустой раздел не
+# рисует заголовка — 22-UI-SPEC.md) и в карте отсутствует.
+#
+# Известное ограничение (см. SUMMARY): группы menu/dashboard/reg_questions/miniapp не
+# объявлены строками ("group", …) в admin_sections.SECTIONS и привязаны к разделам здесь
+# ВРУЧНУЮ (menu→event, dashboard→data, reg_questions→form, miniapp→manage) — сторож ниже
+# сверяет подписи и порядок разделов, но не принадлежность именно этих четырёх групп
+# конкретному разделу; дрейф в боте (если менеджер физически перенесёт кнопку экрана в
+# другой раздел) этим тестом не ловится.
+SECTION_GROUPS: tuple[tuple[str, str, tuple[str, ...]], ...] = (
+    ("event", "🎪 Событие", ("event", "menu")),
+    ("form", "📝 Анкета", ("reg_questions", "reg", "party", "consent")),
+    ("apps", "📋 Заявки", ("apps",)),
+    ("pay", "💳 Оплата", ("pay",)),
+    ("game", "🎮 Геймификация", ("game",)),
+    ("data", "📊 Данные", ("sheets", "dashboard")),
+    ("manage", "🔧 Управление", ("miniapp", "system")),
+)
+
+# Ключ группы "toggles" -> раздел, куда его кладёт соответствующая строка ("toggle", …) в
+# handlers.admin_sections.SECTIONS (девятнадцать ключей группы "toggles" в SETTINGS_SCHEMA,
+# распределены ровно по одному разу — сторож tests/test_settings_ops.py).
+TOGGLE_SECTION: dict[str, str] = {
+    "reg_bonus_enabled": "event",
+    "registration_mode": "form",
+    "reg_university_mode": "form",
+    "edu_conditional": "form",
+    "reg_show_progress": "form",
+    "party_enabled": "form",
+    "party_fork_question": "form",
+    "consent_enabled": "form",
+    "consent_recollect_enabled": "form",
+    "full_approval": "apps",
+    "short_approval": "apps",
+    "party_approval": "apps",
+    "pending_notify_mode": "apps",
+    "preselect_enabled": "apps",
+    "pending_reminder_enabled": "apps",
+    "nudge_enabled": "apps",
+    "payment_enabled": "pay",
+    "payment_reminders_enabled": "pay",
+    "event_city_enabled": "manage",
+}
+
+# Единственный источник «что подтверждаем» для ОБЕИХ поверхностей (UI-SPEC A6): вкладки
+# Sheets (пересчёт строк), event_type (пресет модулей), режимы регистрации/модерации, пара
+# сегодняшнего DANGER_CONFIRM миниаппа (miniapp/routers/settings.py).
+DANGEROUS_KEYS: frozenset[str] = frozenset(SHEET_TAB_WRITE_MODE) | {
+    "event_type",
+    "registration_mode",
+    "full_approval",
+    "short_approval",
+    "party_approval",
+    "miniapp_enabled",
+    "miniapp_staff_only",
+}
+
+
+def dangerous_confirm_key(key: str, next_value: str) -> str | None:
+    """Ключ реестра с текстом последствий для опасного направления `key -> next_value`, или
+    `None`, если текст считается по месту (ключи Sheets-вкладок — `tab_confirm_text_html` +
+    `plain_text`) либо направление безопасно (обратное — без подтверждения)."""
+    if key in SHEET_TAB_WRITE_MODE:
+        return None
+    if key == "miniapp_enabled" and next_value == "off":
+        return "miniapp_confirm_disable_text"
+    if key == "miniapp_staff_only" and next_value == "on":
+        return "miniapp_confirm_staff_only_text"
+    if key == "registration_mode":
+        return "miniapp_settings_confirm_reg_mode_text"
+    if key in ("full_approval", "short_approval", "party_approval"):
+        return "miniapp_settings_confirm_approval_mode_text"
+    if key == "event_type":
+        return "miniapp_settings_confirm_event_type_text"
+    return None
+
+
+def item_spec(key: str, *, raw: str | None, value, is_default: bool) -> dict:
+    """Чистый конструктор словаря одного поля для ответа веб-API — ни одной подписи функция
+    не сочиняет, всё из реестра. `search_terms` и per-city счётчики подмешивает роутер
+    (планы 22-02/22-04)."""
+    base = base_setting_key(key)
+    entry = SETTINGS_SCHEMA.get(base, {})
+    spec = {
+        "key": key,
+        "base_key": base,
+        "label": entry.get("label", key),
+        "type": entry.get("type"),
+        "options": entry.get("options"),
+        "help": entry.get("prompt"),
+        "default": entry.get("default"),
+        "value": value,
+        "raw": raw,
+        "is_default": is_default,
+        "per_city": bool(entry.get("per_city")),
+        "html": base in HTML_SETTINGS,
+        "dangerous": key in DANGEROUS_KEYS or base in DANGEROUS_KEYS,
+    }
+    max_len = entry.get("max_len")
+    if max_len is not None:
+        spec["max_len"] = max_len
+    return spec
