@@ -217,6 +217,7 @@ EXPECTED_ROUTES = {
     "#/task-edit/{id}": "screens/task_edit.js",
     "#/admin-coins": "screens/admin_coins.js",
     "#/settings": "screens/settings.js",
+    "#/form": "screens/form.js",
 }
 _ROUTE_ROW = re.compile(r'\[\s*"(#/[^"]+)"\s*,\s*"(screens/[^"]+\.js)"\s*\]')
 
@@ -237,8 +238,8 @@ def test_route_table_matches_phase_plan_exactly():
     # {id}, второй маршрут не нужен -- проверяем явно ниже, чтобы регрессия не вернулась.
     routes = _routes_from_app_js()
     assert routes == EXPECTED_ROUTES
-    assert len(routes) == 13
-    assert set(routes.values()) == set(EXPECTED_ROUTES.values())  # 13 модулей, у task_edit один маршрут
+    assert len(routes) == 14
+    assert set(routes.values()) == set(EXPECTED_ROUTES.values())  # 14 модулей, у task_edit один маршрут
     assert "#/task-edit/new" not in routes
 
 

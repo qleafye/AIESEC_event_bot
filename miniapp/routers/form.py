@@ -95,6 +95,36 @@ async def _load_context(telegram_id: int) -> dict:
     }
 
 
+async def _pre_items(pre_tokens: list[str]) -> list[dict]:
+    """Данные для рендера pre-flow экранов мастера (план 21-11): согласия — карточка с
+    названием/PDF/подписью чекбокса, вилки города/трека — только текст факта (сам выбор
+    города/трека делается ботом на `/start` по deep-link, D-01 — `reg_drafts` не хранит
+    отдельный `PATCH` для city/participant_type, поэтому вилка в приложении не интерактивна,
+    экран предлагает «Продолжить в чате»). Экран не содержит своих текстов — только то, что
+    вернула эта функция."""
+    if not pre_tokens:
+        return []
+    items: list[dict] = []
+    consent_tokens = [t for t in pre_tokens if t.startswith("consent:")]
+    consent_labels = dict([(k, lbl) for lbl, k in await reg_engine.consent_entries()]) if consent_tokens else {}
+    button_text = await get_setting_typed("consent_button_text") if consent_tokens else None
+    for token in pre_tokens:
+        if token.startswith("consent:"):
+            key = token.split(":", 1)[1]
+            items.append({
+                "type": "consent",
+                "key": key,
+                "label": consent_labels.get(key, key),
+                "pdf_file_id": await get_setting(f"consent_pdf_{key}"),
+                "button_text": button_text,
+            })
+        elif token == "city_fork":
+            items.append({"type": "city_fork", "text": await get_setting_typed("city_fork_text")})
+        elif token == "party_fork":
+            items.append({"type": "party_fork", "text": await get_setting_typed("party_fork_text")})
+    return items
+
+
 async def _registration_closed(event_city: str | None) -> bool:
     """D-11: «регистрация закрыта режимом города» — единственный существующий в боте сигнал
     для конкретного города (общего тумблера «закрыть регистрацию совсем» бот сегодня не имеет;
@@ -106,21 +136,35 @@ async def _registration_closed(event_city: str | None) -> bool:
     return not await is_city_enabled(event_city)
 
 
-async def _draft_response(telegram_id: int, ctx: dict | None = None) -> dict:
+def _continue_deeplink(bot_username: str | None) -> str | None:
+    """D-17: «Продолжить в чате» — deep-link строится на сервере (тот же приём, что
+    `miniapp/routers/profile.py::rereg_deeplink`); фронт не собирает `t.me/...` строкой сам —
+    сторож `test_only_external_url_is_telegram_web_app_sdk` запрещает внешние URL-литералы
+    в JS вне SDK Telegram."""
+    return f"https://t.me/{bot_username}?start=continue" if bot_username else None
+
+
+async def _draft_response(telegram_id: int, ctx: dict | None = None, *, bot_username: str | None = None) -> dict:
     ctx = ctx or await _load_context(telegram_id)
     closed = ctx["kind"] == "new" and await _registration_closed(ctx["event_city"])
     spec = await reg_engine.form_spec(
         ctx["answers"], ctx["participant_type"], ctx["event_city"], prior=ctx["prior"],
     )
+    # D-13: город/трек/согласия не меняются при правке — «locked» решает сервер по спеке
+    # (движок знает список REG_FLOW-шагов), а не экран по названию колонки (Task 2
+    # acceptance: JS не содержит литералов "city"/"participant_type").
     for step_spec_row in spec["steps"]:
         if step_spec_row["key"] == "resume":
             step_spec_row["has_prior_resume"] = reg_engine.has_prior_resume(ctx["user_row"])
+        step_spec_row["locked"] = ctx["kind"] == "edit" and step_spec_row["key"] in reg_engine.EDIT_LOCKED_STEPS
+    user_row = ctx["user_row"]
     return {
         "exists": ctx["draft"] is not None,
         "kind": ctx["kind"],
         "step": ctx["step"],
         "version": ctx["version"],
         "pre": spec["pre"],
+        "pre_items": await _pre_items(spec["pre"]),
         "steps": spec["steps"],
         "progress": spec["progress"],
         "closed": closed,
@@ -130,6 +174,26 @@ async def _draft_response(telegram_id: int, ctx: dict | None = None) -> dict:
         "prior_badge_text": (
             await get_setting_typed("reg_form_prior_answer_badge_text") if ctx["prior"] else None
         ),
+        # Task 2 (обзор правки, D-26): статус нужен для баннера отклонённой заявки и для
+        # решения, какой заголовок покажет submit (в edit-режиме статус не приходит нигде
+        # больше — GET /app/api/reg/draft не отдавал его до этого плана).
+        "status": (user_row.get("status") or "approved") if (ctx["kind"] == "edit" and user_row) else None,
+        "rejected_banner_text": (
+            await get_setting_typed_for_city("reg_form_rejected_banner_text", ctx["event_city"])
+            if (ctx["kind"] == "edit" and user_row and user_row.get("status") == "rejected") else None
+        ),
+        "not_set_text": await get_setting_typed("reg_form_not_set_text"),
+        "submit_cta_text": await get_setting_typed(
+            "reg_form_edit_submit_cta_text" if ctx["kind"] == "edit" else "reg_form_submit_cta_text",
+        ),
+        "cancel_changes_text": await get_setting_typed("reg_form_cancel_changes_text"),
+        "cancel_changes_confirm_text": await get_setting_typed("reg_form_cancel_changes_confirm_text"),
+        "continue_in_chat_text": await get_setting_typed("reg_form_continue_in_chat_text"),
+        "updated_in_chat_badge_text": await get_setting_typed("reg_form_updated_in_chat_badge_text"),
+        "conflict_text": await get_setting_typed("reg_form_conflict_text"),
+        "consent_required_text": await get_setting_typed("reg_form_consent_required_text"),
+        "show_progress": await get_setting_typed("reg_show_progress") == "on",
+        "continue_deeplink": _continue_deeplink(bot_username),
     }
 
 
@@ -137,9 +201,10 @@ async def _draft_response(telegram_id: int, ctx: dict | None = None) -> dict:
 
 @router.get("/app/api/reg/draft")
 async def draft_get(
+    request: Request,
     p: Principal = Depends(form_gate), _: Principal = Depends(require_section("form")),
 ) -> dict:
-    return await _draft_response(p.telegram_id)
+    return await _draft_response(p.telegram_id, bot_username=request.app.state.cfg.bot_username)
 
 
 # ── PATCH /app/api/reg/draft ─────────────────────────────────────────────────────────────
@@ -161,6 +226,7 @@ def _unwrap_other(raw: Any) -> Any:
 @router.patch("/app/api/reg/draft")
 async def draft_patch(
     body: DraftPatch,
+    request: Request,
     p: Principal = Depends(form_gate),
     _: Principal = Depends(require_section("form")),
 ) -> dict:
@@ -207,7 +273,7 @@ async def draft_patch(
         "reg draft patch telegram_id=%s step=%s base_version=%s columns=%s",
         p.telegram_id, body.step, body.version, sorted(delta.keys()),
     )
-    resp = await _draft_response(p.telegram_id)
+    resp = await _draft_response(p.telegram_id, bot_username=request.app.state.cfg.bot_username)
     resp["conflicts"] = conflicts
     return resp
 
