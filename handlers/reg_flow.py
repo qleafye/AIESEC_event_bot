@@ -15,13 +15,15 @@ process_* step block.
 Behavior is byte-for-byte unchanged from the pre-move code -- every handler body below is a
 verbatim relocation, not a rewrite.
 """
+import logging
+
 from aiogram import Bot, F, types
 from aiogram.filters import StateFilter
 from aiogram.fsm.context import FSMContext
 from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
 
 from config import config
-from database.db import get_user, get_setting, record_user_consent
+from database.db import get_user, get_setting, record_user_consent, delete_reg_draft
 from settings_schema import get_setting_typed
 from cities import CITIES, is_city_enabled
 from handlers.states import Registration
@@ -37,6 +39,8 @@ from handlers.registration import (
 )
 # Phase 21 (21-06, FORM-SYNC-01): validate_answer — единая проверка для чата бота и Mini App.
 from reg_engine import validate_answer, validate_date_range as _validate_date_range
+
+logger = logging.getLogger(__name__)
 
 
 @router.callback_query(F.data.startswith("party_pick:"))
@@ -210,6 +214,12 @@ async def cancel_registration_confirm(callback: types.CallbackQuery, state: FSMC
     # WR-05: state-scoped so a stale "Точно отменить?" button can only clear an active
     # registration — never wipe unrelated FSM state (e.g. an admin mid-broadcast/settings).
     await state.clear()
+    # Phase 21 (21-09, Pattern 3): an abandoned draft must not linger and be offered back via
+    # a later /start — fail-soft, an idempotent no-op if the row is already gone.
+    try:
+        await delete_reg_draft(callback.from_user.id)
+    except Exception as e:
+        logger.error(f"delete_reg_draft failed on cancel for {callback.from_user.id}: {e}")
     try:
         await callback.message.edit_reply_markup(reply_markup=None)
     except Exception:

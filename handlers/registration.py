@@ -3,18 +3,18 @@ import functools
 import json
 import logging
 import html
-from datetime import datetime
+from datetime import datetime, timedelta
 
 from aiogram import Bot, F, Router, types
 from aiogram.filters import Command, CommandObject, StateFilter
 from aiogram.fsm.context import FSMContext
 import os
 
-from aiogram.types import FSInputFile, ReplyKeyboardRemove, InlineKeyboardMarkup, InlineKeyboardButton
+from aiogram.types import FSInputFile, ReplyKeyboardRemove, InlineKeyboardMarkup, InlineKeyboardButton, WebAppInfo
 from aiogram.utils.keyboard import ReplyKeyboardBuilder
 
 from config import config
-from database.db import add_user, get_user, get_setting, set_setting, mark_reg_started, clear_reg_started, set_reg_step, set_user_subscribed, set_user_status, record_user_consent, get_user_consents, get_reg_started_track, get_reg_started_city, has_short_incomplete, _csv_safe, get_incomplete_rows_with_city, reset_payment_for_new_season, record_reg_event, claim_reg_draft, get_reg_draft  # Phase 15 (STAT-03, D-06): funnel event log; Phase 21 (21-08): claim_reg_draft/get_reg_draft feed finalize_registration's thin wrapper
+from database.db import add_user, get_user, get_setting, set_setting, mark_reg_started, clear_reg_started, set_reg_step, set_user_subscribed, set_user_status, record_user_consent, get_user_consents, get_reg_started_track, get_reg_started_city, has_short_incomplete, _csv_safe, get_incomplete_rows_with_city, reset_payment_for_new_season, record_reg_event, claim_reg_draft, get_reg_draft, upsert_reg_draft, delete_reg_draft, touch_reg_draft_activity  # Phase 15 (STAT-03, D-06): funnel event log; Phase 21 (21-08): claim_reg_draft/get_reg_draft feed finalize_registration's thin wrapper; Phase 21 (21-09): upsert/delete/touch feed the draft-sync points below
 from settings_schema import SETTINGS_SCHEMA, get_setting_typed  # REG-01/D-06 (06-04): REG_DEFAULTS derivation source; get_setting_typed (06-06 gate migration)
 from cities import CITIES, all_cities, normalize_city, is_default_city, city_tab_base, cities_module_on, is_city_enabled, city_label, enabled_cities, tab_suffix, get_setting_for_city, get_setting_typed_for_city  # Phase 07.1 (CITY-01/CITY-02/CITY-03): city registry — _city_tag_map() + city_row_tab + city fork below; tab_suffix added quick 260815-3hw (TABS-01/02/03, replaces the raw TAB_SUFFIX import); get_setting_for_city/get_setting_typed_for_city added Phase 09.2-04 (CITY-04): per-city text/mode resolver; all_cities added Phase 14 (CITY-07)
 from handlers.states import Registration
@@ -249,7 +249,7 @@ async def _safe_answer(message: types.Message, text: str, **kwargs):
         return None
 
 
-async def _stamp_reg_step(step_key: str, message: types.Message, data: dict) -> None:
+async def _stamp_reg_step(step_key: str, message: types.Message, state: FSMContext, data: dict) -> None:
     """Dropout analytics + quick k4y: stamp the question about to be shown AND snapshot the
     already-answered fields (FSM data minus internal `_`-prefixed bookkeeping keys) so the
     «Незавершённые» sheet tab can show what the delegate has filled in so far. message.chat.id
@@ -258,13 +258,31 @@ async def _stamp_reg_step(step_key: str, message: types.Message, data: dict) -> 
 
     Phase 07.3 (04): extracted verbatim from _ask_step's head so _ask_step_or_recall's recall
     screen can stamp the same way -- otherwise «Незавершённые» would lose track of where a
-    returning delegate stopped."""
+    returning delegate stopped.
+
+    Phase 21 (21-09, D-21/Pattern 3): ALSO stamps the same step into the shared reg_drafts row
+    (own try/except -- a reg_started failure must never skip the draft write or vice versa) and
+    bumps the draft's activity heartbeat, so a delegate answering right now in the bot never
+    looks abandoned to the dropout-nudge scan (mirrors what the Mini App side of D-21 does on
+    every PATCH). `_draft_version` in FSM state is refreshed with the version THIS write
+    produced -- otherwise the next _sync_draft_in would see the bot's own no-op step-stamp as a
+    "foreign" change and (harmlessly, but wastefully) re-merge it."""
     try:
         snapshot = {k: v for k, v in data.items() if not k.startswith("_")}
         partial_json = json.dumps(snapshot, ensure_ascii=False, default=str)
         await set_reg_step(message.chat.id, step_key, partial_json)
     except Exception as e:
         logger.error(f"set_reg_step failed for {message.chat.id} @ {step_key}: {e}")
+    try:
+        kind = data.get("_draft_kind") or "new"
+        ver = await upsert_reg_draft(
+            message.chat.id, kind=kind, participant_type=data.get("participant_type"),
+            event_city=data.get("event_city"), step=step_key, source="bot",
+        )
+        await touch_reg_draft_activity(message.chat.id)
+        await state.update_data(_draft_version=ver)
+    except Exception as e:
+        logger.error(f"reg_draft step-stamp failed for {message.chat.id} @ {step_key}: {e}")
 
 
 def _recall_display(step_key: str, value) -> str:
@@ -285,7 +303,7 @@ async def _ask_step(step_key: str, message: types.Message, state: FSMContext, st
     # точка правды с Mini App) — эта функция оставляет себе только клавиатуру и set_state.
     data = await state.get_data()
     participant_type = data.get("participant_type") or "full"
-    await _stamp_reg_step(step_key, message, data)
+    await _stamp_reg_step(step_key, message, state, data)
     p = await _progress(step, total)
     if step_key == "age":
         await _safe_answer(message, f"{p}{await prompt('age', participant_type)}", reply_markup=get_cancel_kb())
@@ -503,8 +521,75 @@ async def _ask_step(step_key: str, message: types.Message, state: FSMContext, st
         await state.set_state(Registration.consent_pending)
 
 
-async def _advance(after_step: str, message: types.Message, state: FSMContext, bot: Bot):
+async def _sync_draft_in(state: FSMContext, telegram_id: int, message: types.Message,
+                          just_answered: str | None = None) -> dict:
+    """Phase 21 (21-09, Pattern 3/D-19): перед выбором следующего шага — подмешать в FSM
+    data чужие правки (Mini App), не теряя то, на что делегат ТОЛЬКО ЧТО ответил в чате
+    (`just_answered` исключается из подмешивания; его собственная версия станет новее следующим
+    _sync_draft_out). Fail-soft: сбой чтения черновика оставляет FSM data как есть — синхрон
+    просто пропускается на этот шаг, вопрос всё равно будет задан вызывающим.
+
+    ПОРЯДОК ВЫЗОВА в _advance ниже — этот хелпер ПЕРЕД _sync_draft_out (не как в наброске
+    RESEARCH Pattern 3): если сперва писать бот-ответ, `updated_by` в БД тут же станет 'bot' и
+    эта функция никогда не увидит 'miniapp' — «подхватили из приложения» не сообщится НИ РАЗУ,
+    даже когда подмешивание реально произошло. Сперва читаем/мержим (видим 'miniapp', если он
+    там есть), потом бот пишет свой ответ поверх."""
     data = await state.get_data()
+    try:
+        draft = await get_reg_draft(telegram_id)
+    except Exception as e:
+        logger.error(f"_sync_draft_in read failed for {telegram_id}: {e}")
+        return data
+    if draft and draft["version"] > data.get("_draft_version", -1):
+        for col, val in draft["answers"].items():
+            if col == just_answered:
+                continue
+            data[col] = val
+        data["_draft_version"] = draft["version"]
+        await state.set_data(data)
+        if draft["updated_by"] == "miniapp":
+            try:
+                await _safe_answer(message, await get_setting_typed("reg_sync_from_app_text"))
+            except Exception as e:
+                logger.error(f"reg_sync_from_app_text send failed for {telegram_id}: {e}")
+    return data
+
+
+async def _sync_draft_out(telegram_id: int, state: FSMContext, data: dict, step_key: str | None,
+                           answered_col: str | None = None) -> None:
+    """Phase 21 (21-09, Pattern 3): пишет только что данный в чате ответ (и текущий шаг) в
+    общий reg_drafts, чтобы Mini App видел прогресс бота в реальном времени. Fail-soft — тот же
+    посыл, что и у _stamp_reg_step: любая ошибка логируется и НЕ блокирует переход к следующему
+    вопросу."""
+    try:
+        kind = data.get("_draft_kind") or "new"
+        patch = {answered_col: data.get(answered_col)} if answered_col else None
+        meta_patch = {}
+        if data.get("referrer_id"):
+            meta_patch["referrer_id"] = data.get("referrer_id")
+        if data.get("source"):
+            meta_patch["source"] = data.get("source")
+        ver = await upsert_reg_draft(
+            telegram_id, kind=kind, participant_type=data.get("participant_type"),
+            event_city=data.get("event_city"), step=step_key, patch=patch,
+            meta_patch=meta_patch or None, source="bot",
+        )
+        await state.update_data(_draft_version=ver)
+    except Exception as e:
+        logger.error(f"_sync_draft_out failed for {telegram_id} @ {step_key}: {e}")
+
+
+async def _advance(after_step: str, message: types.Message, state: FSMContext, bot: Bot):
+    # message.chat.id == the user's id in private chats — same idiom _stamp_reg_step uses
+    # (and the ONLY attribute _advance's existing test doubles guarantee, see
+    # tests/test_registration_send_guard_260816.py::_FakeMessage's docstring).
+    telegram_id = message.chat.id
+    answered_col = STEP_TO_COLUMN.get(after_step)
+    # Phase 21 (21-09): подмешать чужие правки ПЕРЕД тем, как посчитать enabled_steps (иначе
+    # условные шаги посчитаются по устаревшим данным) и ПЕРЕД тем, как бот запишет свой
+    # собственный ответ (см. докстринг _sync_draft_in — порядок load-bearing).
+    data = await _sync_draft_in(state, telegram_id, message, just_answered=answered_col)
+    await _sync_draft_out(telegram_id, state, data, after_step, answered_col=answered_col)
     enabled = await _get_enabled_steps(data)
 
     try:
@@ -548,7 +633,7 @@ async def _ask_step_or_recall(step_key: str, message: types.Message, state: FSMC
         # file_id/URL is meaningless to a human, so this screen never shows the prior value,
         # only the fact that one exists (T-073-04-02).
         if has_prior_resume(raw_prior):
-            await _stamp_reg_step(step_key, message, data)
+            await _stamp_reg_step(step_key, message, state, data)
             p = await _progress(step, total)
             # Phase 17.1 (17.1-02): текст развилки — из реестра (recall_resume_prompt_text);
             # префикс прогресса по-прежнему приклеивает бот.
@@ -573,7 +658,7 @@ async def _show_recall_screen(step_key: str, value, message: types.Message, stat
     """Экран «Прошлый ответ … ✅ Оставить / ✏️ Изменить» для одного шага. Вынесен из
     _ask_step_or_recall (UAT 19.08), чтобы тот же экран показывать и для ФИО, которое
     спрашивается вне движка шагов (_ask_full_name). step=0 -> без префикса прогресса."""
-    await _stamp_reg_step(step_key, message, data)
+    await _stamp_reg_step(step_key, message, state, data)
     p = await _progress(step, total) if step else ""
     label = dropout_step_label(step_key)
     display = _recall_display(step_key, value)
@@ -1211,6 +1296,38 @@ async def _start_registration_flow(message: types.Message, state: FSMContext, re
     if saved_prior:
         await state.update_data(_prior_answers=saved_prior)
 
+    # Phase 21 (21-09, Pattern 3/D-19): create/refresh the shared draft row as the flow ACTUALLY
+    # starts. kind='edit' only when the delegate already has a non-rejected `users` row for the
+    # CURRENT season — the only caller that reaches THAT case today is cmd_start's new
+    # `?start=edit` fallback (D-18); every other caller (newcomer, a rejected delegate's
+    # ordinary resubmission, a past-season "Обновить анкету" via rereg_start) gets kind='new',
+    # matching add_user's existing ON-CONFLICT-DO-UPDATE ('new') semantics in
+    # services.reg_finalize.finalize_data — no behavior change for those paths. Fail-soft: a
+    # draft-write hiccup here must never block the flow from starting.
+    draft_kind = "new"
+    try:
+        existing_user = await get_user(message.from_user.id)
+        cur_season = await get_setting_typed("event_season") or None
+        if existing_user and (existing_user.get("status") or "approved") != "rejected" \
+                and (existing_user.get("season") or None) == cur_season:
+            draft_kind = "edit"
+    except Exception as e:
+        logger.error(f"draft-kind resolve failed for {message.from_user.id}: {e}")
+    await state.update_data(_draft_kind=draft_kind)
+    try:
+        meta_patch = {}
+        if saved_referrer_id:
+            meta_patch["referrer_id"] = saved_referrer_id
+        if saved_source_tag:
+            meta_patch["source"] = saved_source_tag
+        ver = await upsert_reg_draft(
+            message.from_user.id, kind=draft_kind, participant_type=saved_track,
+            event_city=saved_city, source="bot", meta_patch=meta_patch or None,
+        )
+        await state.update_data(_draft_version=ver)
+    except Exception as e:
+        logger.error(f"draft create/refresh failed for {message.from_user.id}: {e}")
+
     await message.answer(
         "Отлично, начинаем регистрацию."
         if not saved_referrer_id
@@ -1773,11 +1890,12 @@ async def finalize_registration(message: types.Message, state: FSMContext, bot: 
     uid = message.from_user.id
     username = f"@{message.from_user.username}" if message.from_user.username else "-"
 
-    # Phase 21 (21-08, T-21-02): бот пока не пишет reg_drafts сам (та часть D-19 приходит
-    # позже) — claim_reg_draft почти всегда возвращает None (строки нет), и тогда собираем
-    # псевдо-черновик прямо из FSM-данных, чтобы чат работал уже сегодня. Если строка ЕСТЬ (в
-    # будущем — синхрон с Mini App, сегодня — гипотетическая гонка), но занята другим
-    # финалом — не пишем поверх, просто выходим (тот же принцип, что и у _single_flight выше).
+    # Phase 21 (21-09, T-21-02): бот теперь САМ ведёт reg_drafts (_start_registration_flow +
+    # _sync_draft_out/_stamp_reg_step, план 21-09) — claim_reg_draft обычно находит и забирает
+    # ту самую строку. Псевдо-черновик из FSM-данных остаётся fallback'ом на случай, если
+    # запись когда-то не удалась (fail-soft путь синхронизации) или делегат стартовал совсем
+    # без единого ответа. Если строка ЕСТЬ, но занята другим финалом (гонка бота с Mini App) —
+    # не пишем поверх, просто выходим (тот же принцип, что и у _single_flight выше).
     draft = await claim_reg_draft(uid)
     if draft is None:
         existing = await get_reg_draft(uid)
