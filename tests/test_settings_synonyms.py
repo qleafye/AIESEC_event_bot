@@ -4,18 +4,16 @@
 («каждый X из множества A должен встретиться в множестве B, и ничего лишнего в B»),
 применённая к синонимам вместо групп.
 
-`settings_ops.editable_keys()` (план 22-01) в этом воркруте не существует — множество
-редактируемых ключей вычислено формулой по `SETTINGS_SCHEMA` (все ключи минус группа
-`roles` — единственная группа, не редактируемая ни ботом, ни веб-экраном настроек, у неё
-своя поверхность правки ролей). После 22-01 эту формулу заменяет `settings_ops.editable_keys()`.
+Множество редактируемых ключей — `settings_ops.editable_keys()` (план 22-01): все ключи
+`SETTINGS_SCHEMA` минус `EXCLUDED_GROUPS` (группа `roles` — у неё своя поверхность правки).
 """
 from __future__ import annotations
 
+from settings_ops import editable_keys
 from settings_schema import SETTINGS_SCHEMA
 from settings_synonyms import SETTINGS_SYNONYMS
 
-# После 22-01: заменить на `settings_ops.editable_keys()`.
-EDITABLE_KEYS = {k for k, v in SETTINGS_SCHEMA.items() if v.get("group") != "roles"}
+EDITABLE_KEYS = set(editable_keys())
 
 # Ключи группы `miniapp`, у которых подпись реестра УЖЕ содержит слова, по которым их ищут
 # (тексты веб-экрана настроек и «настроек-лайт» Mini App — управляющие тексты интерфейса
