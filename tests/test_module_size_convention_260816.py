@@ -56,7 +56,14 @@ KNOWN_OVERAGES: dict[str, tuple[int, str]] = {
         "(Phase 14/16)",
     ),
     "admin_settings.py": (
-        2384,
+        2143,
+        "Phase 22 (22-01, WEB-SET-01/04, D-12): _apply_event_type_preset/_per_city_visible_codes/"
+        "HTML_SETTINGS/_base_setting_key/_SHEET_TAB_WRITE_MODE/_after_tab_setting_saved/"
+        "_tab_confirm_text/_tab_check_failed_warning вынесены в корневой aiogram-free "
+        "settings_ops.py (2384 -> 2143 строки); admin_settings.py импортирует их оттуда с "
+        "теми же приватными именами-алиасами, тела и порядок хендлеров не сдвинуты -- "
+        "потолок опущен до фактического размера. Причины роста ДО этого выноса (история "
+        "потолка) сохранены ниже. "
         "+18 строк (Phase 21, 21-07 Task 2, FORM-SYNC-04) -- тумблер toggle_reg_edit_remoderation "
         "(«Изменённая анкета — снова на модерацию», D-12): текст статуса в settings_toggle_rows "
         "(подпись читает SETTINGS_SCHEMA, не литерал), строка в карте _row, хендлер по форме "
