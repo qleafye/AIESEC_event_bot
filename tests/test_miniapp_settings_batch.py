@@ -33,6 +33,7 @@ from tests.test_miniapp_routes import (
 )
 
 SETTINGS_MANAGER_SPB = 900610  # reg_manager + право settings через реестр, привязан к spb
+SEEDED_EVENT_NAME = "форума YouLead"  # _standard_seed уже пишет event_name
 
 
 def _run(coro):
@@ -102,14 +103,14 @@ def test_command_like_value_rejected_like_in_bot(tmp_path, no_tab):
     resp = _batch(client, [("event_name", "/start"), ("nudge_after_minutes", "15")])
     body = resp.json()
     assert "event_name" in body["errors"] and "команда" in body["errors"]["event_name"]
-    assert _raw("event_name") is None and _raw("nudge_after_minutes") is None
+    assert _raw("event_name") == SEEDED_EVENT_NAME and _raw("nudge_after_minutes") is None
 
 
 def test_empty_value_rejected(tmp_path, no_tab):
     client = _setup(tmp_path)
     body = _batch(client, [("event_name", "   ")]).json()
     assert "event_name" in body["errors"]
-    assert _raw("event_name") is None
+    assert _raw("event_name") == SEEDED_EVENT_NAME
 
 
 def test_not_editable_key_is_403_and_nothing_written(tmp_path, no_tab):
@@ -117,7 +118,7 @@ def test_not_editable_key_is_403_and_nothing_written(tmp_path, no_tab):
     resp = _batch(client, [("event_name", "новое"), ("role_caps_reg_manager", "settings")])
     assert resp.status_code == 403
     assert resp.json()["reason"] == "not_editable"
-    assert _raw("event_name") is None
+    assert _raw("event_name") == SEEDED_EVENT_NAME
     resp = _batch(client, [("bot_token", "x")])
     assert resp.status_code == 403
 
@@ -127,7 +128,7 @@ def test_duplicate_key_in_batch_is_400(tmp_path, no_tab):
     resp = _batch(client, [("event_name", "a"), ("event_name", "b")])
     assert resp.status_code == 400
     assert resp.json()["reason"] == "duplicate_key"
-    assert _raw("event_name") is None
+    assert _raw("event_name") == SEEDED_EVENT_NAME
 
 
 def test_batch_without_settings_cap_403(tmp_path, no_tab):
@@ -153,7 +154,7 @@ def test_existing_sheet_tab_needs_confirm_then_confirm_writes(tmp_path, monkeypa
     assert [c["key"] for c in body["needs_confirm"]] == ["game_matrix_tab"]
     text = body["needs_confirm"][0]["text"]
     assert "GAMIFICATION бот" in text and "30" in text and "<" not in text
-    assert _raw("game_matrix_tab") is None and _raw("event_name") is None  # ничего не записано
+    assert _raw("game_matrix_tab") is None and _raw("event_name") == SEEDED_EVENT_NAME  # ничего не записано
     assert calls == ["GAMIFICATION бот"]
 
     resp = _batch(client, [("game_matrix_tab", "GAMIFICATION бот"), ("event_name", "форума")], confirm=["game_matrix_tab"])
@@ -303,7 +304,7 @@ def test_per_city_key_with_cities_module_off_refused(tmp_path, no_tab):
     client = _setup(tmp_path)
     body = _batch(client, [(f"start_text{PER_CITY_SEP}msk", "привет"), ("event_name", "x")]).json()
     assert "Города выключены" in body["errors"][f"start_text{PER_CITY_SEP}msk"]
-    assert body["saved"] == [] and _raw("event_name") is None
+    assert body["saved"] == [] and _raw("event_name") == SEEDED_EVENT_NAME
 
 
 def test_per_city_key_of_foreign_city_refused_for_bound_manager(tmp_path, no_tab):
