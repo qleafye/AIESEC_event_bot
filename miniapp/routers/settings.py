@@ -48,6 +48,7 @@ from cities import (
     set_admin_city,
 )
 from database.db import get_setting, set_setting
+from services.sheets import tab_row_count
 from settings_schema import SETTINGS_SCHEMA, get_setting_typed
 from settings_synonyms import SETTINGS_SYNONYMS
 
@@ -347,6 +348,116 @@ async def settings_city(
     header = await _city_header(await _city_ctx(p.telegram_id))
     assert header is not None
     return header
+
+
+# ══ Phase 22 (22-04): атомарный пакет правок ═════════════════════════════════════════════
+
+
+class BatchChange(BaseModel):
+    key: str
+    value: str | None = None  # None = сброс к значению по умолчанию (D-10, «-» бота)
+
+
+class SettingsBatchIn(BaseModel):
+    changes: list[BatchChange]
+    base: dict[str, str | None] = {}  # сырое значение, которое видел экран (D-09)
+    confirm: list[str] = []  # ключи, подтверждённые в диалоге (опасные, вкладки, stale)
+
+
+def _editable_target(key: str) -> str | None:
+    """База ключа из `changes`, если его можно править из веба: сам ключ реестра либо
+    per-city композит над per_city-ключом реестра. Иначе None -> 403 not_editable."""
+    base = settings_ops.base_setting_key(key)
+    if base not in settings_ops.editable_keys():
+        return None
+    if key != base and not SETTINGS_SCHEMA[base].get("per_city"):
+        return None
+    return base
+
+
+@router.post("/app/api/admin/settings/batch")
+async def settings_batch(
+    body: SettingsBatchIn,
+    p: Principal = Depends(require_cap("settings")),
+    _: Principal = Depends(require_section("settings")),
+) -> dict:
+    """Две фазы, между ними ни одной записи (D-08, T-22-02): (1) по каждому ключу — право на
+    правку, `stale`-сверка `base` с текущим сырым значением, проверки бота
+    (`settings_ops.validate_batch_item`, вкладка Sheets — `tab_row_count` отсюда); (2) только
+    при пустых `errors`/`needs_confirm`/`stale` — `commit_batch_item` по каждому ключу.
+    HTTP 200 и при непустых `errors` — это состояние формы, а не отказ запроса."""
+    seen: set[str] = set()
+    targets: dict[str, str] = {}
+    for change in body.changes:
+        if change.key in seen:
+            raise HTTPException(400, {"reason": "duplicate_key", "key": change.key})
+        seen.add(change.key)
+        base = _editable_target(change.key)
+        if base is None:
+            raise HTTPException(403, {"reason": "not_editable", "key": change.key})
+        targets[change.key] = base
+
+    ctx = await _city_ctx(p.telegram_id)
+    confirmed = set(body.confirm)
+    errors: dict[str, str] = {}
+    needs_confirm: list[dict] = []
+    stale: list[dict] = []
+    warnings: dict[str, str] = {}
+    checked: dict[str, str | None] = {}
+
+    # Фаза 1 — проверки по всем ключам.
+    for change in body.changes:
+        key = change.key
+        if key in body.base and key not in confirmed:
+            current = await get_setting(key)
+            if current != body.base[key]:
+                stale.append({
+                    "key": key,
+                    "raw": current,
+                    "value": await get_setting_typed(key) if key == targets[key] else current,
+                })
+        probe = None
+        if key in settings_ops.SHEET_TAB_WRITE_MODE and change.value and key not in confirmed:
+            probe = await tab_row_count(change.value.strip())
+        check = await settings_ops.validate_batch_item(
+            key, change.value,
+            visible_codes=ctx.visible, selected_city=ctx.selected, cities_on=ctx.on,
+            tab_probe=probe, confirmed=key in confirmed,
+        )
+        if check.error:
+            errors[key] = check.error
+            continue
+        if check.needs_confirm:
+            needs_confirm.append({"key": key, "text": check.needs_confirm})
+            continue
+        if check.warning:
+            warnings[key] = check.warning
+        checked[key] = check.value
+
+    saved: list[str] = []
+    if not errors and not needs_confirm and not stale:
+        # Фаза 2 — записи. Аудит «кто правит» — та же строка, что у бота (Quick 260820-rms).
+        for change in body.changes:
+            key = change.key
+            logger.info(f"admin {p.telegram_id} правит настройку {key}")
+            warning = await settings_ops.commit_batch_item(key, checked[key])
+            if warning:
+                warnings[key] = (warnings.get(key, "") + "\n\n" + warning).strip()
+            saved.append(key)
+    else:
+        warnings = {}
+
+    # Свежие элементы затронутых ключей — экран не перезапрашивает весь реестр.
+    ctx = await _city_ctx(p.telegram_id)
+    items = [await _item_for(targets[key], ctx) for key in saved]
+    return {
+        "saved": saved,
+        "errors": errors,
+        "needs_confirm": needs_confirm,
+        "stale": stale,
+        "warnings": warnings,
+        "items": items,
+    }
 
 
 __all__ = ["router", "EDITABLE_KEYS"]

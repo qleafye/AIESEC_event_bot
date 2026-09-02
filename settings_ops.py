@@ -28,12 +28,14 @@ from __future__ import annotations
 
 import html as html_module
 import re
+from dataclasses import dataclass
 
 from config import config
-from cities import PER_CITY_SEP, city_codes, normalize_city
-from database.db import get_staff_city, set_setting
+from cities import PER_CITY_SEP, city_codes, normalize_city, split_per_city_key
+from database.db import delete_setting, get_staff_city, set_setting
 from services.sheets import _reset_sheet_cache
 from settings_schema import SETTINGS_SCHEMA, get_setting_typed
+from settings_validation import is_command_like, validate_setting_value
 
 
 # ── event_type preset (D-05) ──────────────────────────────────────────────────────────────
@@ -364,3 +366,143 @@ def item_spec(key: str, *, raw: str | None, value, is_default: bool) -> dict:
     if max_len is not None:
         spec["max_len"] = max_len
     return spec
+
+
+# ══ Phase 22 (22-04, D-06/D-08/D-10/D-11): ядро пакетной правки — без FastAPI, без aiogram ═
+#
+# `validate_batch_item` повторяет порядок девяти проверок `handlers.admin_settings.
+# settings_edit_value` (пустое -> команда -> per-city TOCTOU -> validate_setting_value ->
+# гейт вкладки / опасный ключ), но без message/state и с plain-текстами (D-06); запись —
+# `commit_batch_item` (сброс -> delete_setting, иначе set_setting; event_type -> пресет;
+# *_options -> предупреждение о служебных словах; ключ вкладки -> сброс кэша листа).
+# Веб-роутер зовёт их по списку ключей в две фазы: сначала ВСЕ проверки, потом ВСЕ записи —
+# либо пакет целиком, либо ничего (T-22-02). Второго валидатора нет: `is_command_like` /
+# `validate_setting_value` — те же функции, что у бота (T-22-03).
+
+EMPTY_VALUE_TEXT = (
+    "Не понял значение — введите его текстом (например: Реги бот). Чтобы очистить настройку, "
+    "сбросьте её к значению по умолчанию."
+)
+CITIES_OFF_TEXT = "Города выключены — правка отменена."
+FOREIGN_CITY_TEXT = "Этот город правит суперадмин — правка отменена."
+CITY_HEADER_MOVED_TEXT = "Город админки изменился — начните правку заново."
+
+# WR-02: служебные слова потока регистрации — вариант списка, равный одному из них,
+# недостижим для выбора (срабатывает отмена / «свой вариант»). Тот же набор, что в боте.
+RESERVED_OPTION_WORDS = frozenset({"отмена", "другое", "пропустить"})
+
+
+def command_like_text(value: str) -> str:
+    return (
+        f"«{value}» — это команда, а не значение настройки, сохранять её не стал. "
+        "Введите значение текстом."
+    )
+
+
+def reserved_option_clashes(value: str) -> list[str]:
+    """Строки списка, совпадающие со служебными словами (без учёта регистра); принимает и
+    перенос строки, и «;» — оба разделителя читает `settings_schema._parse_setting`."""
+    return sorted({
+        seg.strip()
+        for line in value.splitlines()
+        for seg in line.split(";")
+        if seg.strip().lower() in RESERVED_OPTION_WORDS
+    })
+
+
+def reserved_words_warning(clashes: list[str]) -> str:
+    return (
+        "Варианты " + ", ".join(f"«{c}»" for c in clashes)
+        + " совпадают со служебными словами бота и будут недоступны для выбора. Переименуйте их."
+    )
+
+
+@dataclass(frozen=True)
+class BatchCheck:
+    """Итог проверки одного ключа: `value` — нормализованное значение (`None` = сброс);
+    ровно одно из `error`/`needs_confirm` может быть непустым; `warning` — не блокирует."""
+    value: str | None
+    error: str | None = None
+    needs_confirm: str | None = None
+    warning: str | None = None
+
+
+def _next_value_for_confirm(key: str, value: str | None) -> str:
+    """Направление для `dangerous_confirm_key`: значение, которое ляжет в ключ; при сбросе —
+    дефолт реестра (сброс miniapp_enabled -> «off» так же опасен, как явный off)."""
+    if value is not None:
+        return value
+    default = SETTINGS_SCHEMA.get(base_setting_key(key), {}).get("default")
+    return "" if default is None else str(default)
+
+
+async def validate_batch_item(
+    key: str,
+    value: str | None,
+    *,
+    visible_codes: list[str],
+    selected_city: str | None,
+    cities_on: bool,
+    tab_probe: tuple[bool, int] | None = None,
+    confirmed: bool = False,
+) -> BatchCheck:
+    """Проверки бота для одного ключа пакета, ни одной записи. `tab_probe` — результат
+    `services.sheets.tab_row_count` (роутер зовёт его сам, ядро остаётся синхронным по I/O
+    Sheets); `confirmed` — ключ прислан в `confirm`: гейты подтверждения пропускаются."""
+    if value is not None:
+        value = value.strip()
+        if not value:
+            return BatchCheck(None, error=EMPTY_VALUE_TEXT)
+        if is_command_like(value):
+            return BatchCheck(None, error=command_like_text(value))
+
+    if PER_CITY_SEP in key:
+        parsed = split_per_city_key(key)
+        if parsed is None or not cities_on:
+            return BatchCheck(None, error=CITIES_OFF_TEXT)
+        _base, code = parsed
+        if code not in visible_codes:
+            return BatchCheck(None, error=FOREIGN_CITY_TEXT)
+        if code != selected_city:
+            return BatchCheck(None, error=CITY_HEADER_MOVED_TEXT)
+
+    if value is not None:
+        value, error = validate_setting_value(key, value)
+        if error:
+            return BatchCheck(None, error=plain_text(error))
+
+    if confirmed:
+        return BatchCheck(value)
+
+    if key in SHEET_TAB_WRITE_MODE:
+        if value is None:
+            return BatchCheck(None)  # снятие значения — нечего защищать
+        if tab_probe is None:
+            return BatchCheck(value, warning=plain_text(tab_check_failed_warning(key)).strip())
+        if tab_probe[0]:
+            return BatchCheck(value, needs_confirm=plain_text(tab_confirm_text_html(key, value, tab_probe[1])))
+        return BatchCheck(value)
+
+    text = await dangerous_confirm_text(key, _next_value_for_confirm(key, value))
+    if text:
+        return BatchCheck(value, needs_confirm=text)
+    return BatchCheck(value)
+
+
+async def commit_batch_item(key: str, value: str | None) -> str | None:
+    """Шаги записи одного ключа (после того как ВЕСЬ пакет прошёл проверки). Возвращает
+    предупреждение (не блокирующее) либо `None`."""
+    warning = None
+    if value is None:
+        await delete_setting(key)
+    else:
+        await set_setting(key, value)
+        if key == "event_type":
+            await apply_event_type_preset(value.strip().lower())
+        if key.endswith("_options"):
+            clashes = reserved_option_clashes(value)
+            if clashes:
+                warning = reserved_words_warning(clashes)
+    if key in SHEET_TAB_WRITE_MODE:
+        await after_tab_setting_saved(key)
+    return warning
