@@ -31,7 +31,7 @@ from __future__ import annotations
 
 import logging
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel
 
 import settings_ops
@@ -458,6 +458,24 @@ async def settings_batch(
         "warnings": warnings,
         "items": items,
     }
+
+
+# ══ Phase 22 (22-04, D-07): превью — текст глазами делегата, до сохранения ═══════════════
+
+
+@router.get("/app/api/admin/settings/preview")
+async def settings_preview(
+    key: str = Query(...),
+    value: str = Query(""),
+    p: Principal = Depends(require_cap("settings")),
+    _: Principal = Depends(require_section("settings")),
+) -> dict:
+    """Значение берётся из запроса (ещё не сохранённое), плейсхолдеры подставляются теми же
+    `.replace`-цепочками, что у консьюмеров бота; результат — plain-текст для DOM."""
+    if _editable_target(key) is None:
+        raise HTTPException(403, {"reason": "not_editable", "key": key})
+    samples = await settings_ops.preview_samples()
+    return {"text": settings_ops.preview_text(key, value, samples=samples)}
 
 
 __all__ = ["router", "EDITABLE_KEYS"]
