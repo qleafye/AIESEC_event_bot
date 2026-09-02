@@ -1,0 +1,134 @@
+"""Phase 22 План 01 (WEB-SET-01/04, D-12): снимок поведения переносимых функций —
+написан ДО переноса `_apply_event_type_preset`/`_SHEET_TAB_WRITE_MODE`/`HTML_SETTINGS`/
+`_tab_confirm_text`/... из `handlers/admin_settings.py` в корневой aiogram-free `settings_ops.py`.
+
+Пока `settings_ops.py` не создан (задача 2 плана), импорт на уровне модуля падает
+`ModuleNotFoundError` — это и есть Wave 0 RED-снимок.
+
+pytest-asyncio недоступен в этом окружении (см. tests/test_db_phase5.py) — асинхронные
+проверки гонятся через asyncio.run(), config.DB_PATH указывает на tmp_path.
+"""
+import asyncio
+
+import pytest
+
+import settings_ops
+from settings_schema import SETTINGS_SCHEMA
+from tests.test_miniapp_labels_drift import _loaded_aiogram
+
+
+ADMIN_ID = 900022
+
+
+def _use_tmp_db(tmp_path):
+    from config import config
+    config.DB_PATH = str(tmp_path / "test_settings_ops.db")
+
+
+# ── модуль aiogram-free (сторож T-22-06 / D-12) ──────────────────────────────────────────
+
+def test_settings_ops_module_does_not_load_aiogram():
+    loaded = _loaded_aiogram("import settings_ops")
+    assert loaded == [], f"settings_ops потянул aiogram: {loaded}"
+
+
+# ── перенос, а не копия: HTML_SETTINGS — тот же объект, что видит бот ────────────────────
+
+def test_html_settings_is_same_object_as_bot():
+    from handlers import admin_settings
+    assert admin_settings.HTML_SETTINGS is settings_ops.HTML_SETTINGS
+
+
+# ── SHEET_TAB_WRITE_MODE — ровно шесть ключей с теми же режимами ────────────────────────
+
+def test_sheet_tab_write_mode_has_exactly_six_keys_with_expected_modes():
+    assert settings_ops.SHEET_TAB_WRITE_MODE == {
+        "main_sheet_tab": "rewrite",
+        "incomplete_sheet_tab": "rewrite",
+        "game_matrix_tab": "rewrite",
+        "game_history_tab": "rewrite",
+        "short_sheet_tab": "append",
+        "party_sheet_tab": "append",
+    }
+    assert "preselect_tab" not in settings_ops.SHEET_TAB_WRITE_MODE
+    assert not any(k.startswith("city_tab_suffix__") for k in settings_ops.SHEET_TAB_WRITE_MODE)
+
+
+# ── apply_event_type_preset ───────────────────────────────────────────────────────────────
+
+def test_apply_event_type_preset_conference_turns_payment_and_consent_on(tmp_path):
+    from database import db
+    from database.db import get_setting
+
+    async def _run():
+        _use_tmp_db(tmp_path)
+        await db.init_db()
+        await settings_ops.apply_event_type_preset("conference")
+        assert await get_setting("payment_enabled") == "on"
+        assert await get_setting("consent_enabled") == "on"
+
+    asyncio.run(_run())
+
+
+def test_apply_event_type_preset_forum_turns_payment_and_consent_off(tmp_path):
+    from database import db
+    from database.db import get_setting
+
+    async def _run():
+        _use_tmp_db(tmp_path)
+        await db.init_db()
+        await settings_ops.apply_event_type_preset("forum")
+        assert await get_setting("payment_enabled") == "off"
+        assert await get_setting("consent_enabled") == "off"
+
+    asyncio.run(_run())
+
+
+def test_apply_event_type_preset_custom_does_not_change_values(tmp_path):
+    from database import db
+    from database.db import get_setting, set_setting
+
+    async def _run():
+        _use_tmp_db(tmp_path)
+        await db.init_db()
+        await set_setting("payment_enabled", "on")
+        await set_setting("consent_enabled", "off")
+        await settings_ops.apply_event_type_preset("custom")
+        assert await get_setting("payment_enabled") == "on"
+        assert await get_setting("consent_enabled") == "off"
+
+    asyncio.run(_run())
+
+
+# ── tab_confirm_text_html — эталонные строки символ в символ (снимок текущего бота) ──────
+
+def test_tab_confirm_text_html_append_key_mentions_dopisyvat():
+    text = settings_ops.tab_confirm_text_html("short_sheet_tab", "Краткая", 5)
+    assert "дописывать" in text
+    assert "перезаписывать" not in text
+
+
+def test_tab_confirm_text_html_rewrite_key_mentions_perezapisyvat():
+    text = settings_ops.tab_confirm_text_html("game_matrix_tab", "Гейма", 5)
+    assert "перезаписывать" in text
+    assert "дописывать" not in text
+
+
+def test_tab_confirm_text_html_main_sheet_tab_mentions_peresobrat():
+    text = settings_ops.tab_confirm_text_html("main_sheet_tab", "Регистрации", 5)
+    assert "перезаписывать" in text
+    assert "Пересобрать таблицу" in text
+
+
+# ── plain_text — снятие HTML-тегов + разэкранирование сущностей ─────────────────────────
+
+def test_plain_text_strips_tags_and_unescapes_entities():
+    html = '<b>Вкладка «А»</b> &amp; строки'
+    assert settings_ops.plain_text(html) == 'Вкладка «А» & строки'
+
+
+# ── base_setting_key ──────────────────────────────────────────────────────────────────────
+
+def test_base_setting_key_strips_per_city_suffix():
+    assert settings_ops.base_setting_key("start_text__city__msk") == "start_text"
+    assert settings_ops.base_setting_key("start_text") == "start_text"
