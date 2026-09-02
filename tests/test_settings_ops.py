@@ -132,3 +132,77 @@ def test_plain_text_strips_tags_and_unescapes_entities():
 def test_base_setting_key_strips_per_city_suffix():
     assert settings_ops.base_setting_key("start_text__city__msk") == "start_text"
     assert settings_ops.base_setting_key("start_text") == "start_text"
+
+
+# ── Task 3: множество ключей веба, карта разделов, опасные ключи (D-01/D-02/D-08/D-13) ────
+
+# (а) editable_keys() не содержит ни одного ключа группы roles и содержит ровно
+# len(SETTINGS_SCHEMA) - len(группа roles) ключей — формулой, не литералом (план 22-02 той
+# же волны добавляет ~42 ключа группы miniapp).
+
+def test_editable_keys_excludes_roles_group_by_formula():
+    roles_keys = [k for k, m in SETTINGS_SCHEMA.items() if m.get("group") == "roles"]
+    keys = settings_ops.editable_keys()
+    assert not any(k in roles_keys for k in keys)
+    assert len(keys) == len(SETTINGS_SCHEMA) - len(roles_keys)
+    assert len(keys) == len(set(keys)), "editable_keys() не должен задваивать ключи"
+
+
+# (б) каждый ключ editable_keys() достижим ровно через одну пару (раздел, группа) по
+# SECTION_GROUPS/TOGGLE_SECTION — ни одного потерянного, ни одного задвоенного.
+
+def test_every_editable_key_reachable_exactly_once_via_section_maps():
+    reach_count: dict[str, int] = {}
+
+    for _section, _label, groups in settings_ops.SECTION_GROUPS:
+        for group in groups:
+            for key, meta in SETTINGS_SCHEMA.items():
+                if meta.get("group") == group:
+                    reach_count[key] = reach_count.get(key, 0) + 1
+
+    for key, section in settings_ops.TOGGLE_SECTION.items():
+        assert section in {s for s, _l, _g in settings_ops.SECTION_GROUPS}
+        reach_count[key] = reach_count.get(key, 0) + 1
+
+    for key in settings_ops.editable_keys():
+        assert reach_count.get(key, 0) == 1, f"{key}: достижим {reach_count.get(key, 0)} раз(а), ожидалось 1"
+
+
+# (в) все ключи группы toggles распределены TOGGLE_SECTION ровно один раз.
+
+def test_toggle_section_covers_every_toggles_group_key_exactly_once():
+    toggle_keys = [k for k, m in SETTINGS_SCHEMA.items() if m.get("group") == "toggles"]
+    assert len(settings_ops.TOGGLE_SECTION) == 19
+    assert sorted(settings_ops.TOGGLE_SECTION) == sorted(toggle_keys)
+    assert len(settings_ops.TOGGLE_SECTION) == len(set(settings_ops.TOGGLE_SECTION))
+
+
+# (г) DANGEROUS_KEYS содержит все ключи SHEET_TAB_WRITE_MODE и обе пары DANGER_CONFIRM.
+
+def test_dangerous_keys_covers_sheet_tabs_and_miniapp_danger_confirm_pair():
+    assert set(settings_ops.SHEET_TAB_WRITE_MODE).issubset(settings_ops.DANGEROUS_KEYS)
+    assert "miniapp_enabled" in settings_ops.DANGEROUS_KEYS
+    assert "miniapp_staff_only" in settings_ops.DANGEROUS_KEYS
+    assert settings_ops.dangerous_confirm_key("miniapp_enabled", "off") == "miniapp_confirm_disable_text"
+    assert settings_ops.dangerous_confirm_key("miniapp_staff_only", "on") == "miniapp_confirm_staff_only_text"
+    assert settings_ops.dangerous_confirm_key("miniapp_enabled", "on") is None
+
+
+# (д) item_spec не возвращает ни None-подписи, ни код ключа в label.
+
+def test_item_spec_never_returns_none_label_or_key_code_in_label():
+    for key in settings_ops.editable_keys():
+        spec = settings_ops.item_spec(key, raw=None, value=None, is_default=True)
+        assert spec["label"] is not None
+        assert "_" not in spec["label"], f"{key}: label содержит код ключа — {spec['label']!r}"
+
+
+def test_editable_keys_count_matches_formula():
+    roles_count = len([k for k, m in SETTINGS_SCHEMA.items() if m.get("group") == "roles"])
+    assert len(settings_ops.editable_keys()) == len(SETTINGS_SCHEMA) - roles_count
+
+
+def test_no_key_code_in_any_editable_label():
+    for key in settings_ops.editable_keys():
+        label = SETTINGS_SCHEMA[settings_ops.base_setting_key(key)]["label"]
+        assert "_" not in label
