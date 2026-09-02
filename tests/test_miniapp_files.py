@@ -183,6 +183,18 @@ def test_theme_asset_open_for_any_delegate(client, files_api):
     assert _get(client, OTHER_ID, STICKER_ID).status_code == 200
 
 
+def test_consent_pdf_open_for_any_delegate(client, files_api):
+    """PDF согласия (`consent_pdf_{key}` из `consent_list`) — документ, который делегат
+    обязан прочитать до подписи в мастере анкеты Mini App: allow-list, как логотип.
+    Ключ вне `consent_list` (удалённое согласие) — file_id забыт, 403."""
+    PDF_ID = "BQACAgIAAxkBAAIconsentPdf001"
+    _set("consent_list", "Согласие на обработку данных | personal")
+    _set("consent_pdf_personal", PDF_ID)
+    assert _get(client, OTHER_ID, PDF_ID).status_code == 200
+    _set("consent_list", "")
+    assert _get(client, OTHER_ID, PDF_ID).status_code == 403
+
+
 def test_unset_theme_asset_slot_stays_forbidden(client, files_api):
     """Пустой слот (менеджер не загрузил ассет) — file_id всё равно неизвестен, 403."""
     resp = _get(client, OTHER_ID, "AgACAgIAAxkBAAInotUploadedYet1")
