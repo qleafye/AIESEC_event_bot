@@ -287,7 +287,9 @@ export function visibleNav() {
   if (!me) return [];
   return NAV.filter((item) => {
     if (!me.sections || !me.sections[item.section]) return false;
-    if (item.delegate) return Boolean(me.is_delegate);
+    // Анкета доступна незарегистрированному/pending/rejected (form_gate, D-10/D-24) —
+    // остальные делегатские разделы только approved-делегату.
+    if (item.delegate) return item.section === "form" ? Boolean(me.form_access) : Boolean(me.is_delegate);
     if (item.staffOnly && me.is_delegate) return false;
     return Array.isArray(me.caps) && me.caps.includes(item.cap);
   });
@@ -295,7 +297,12 @@ export function visibleNav() {
 
 function homeHash() {
   const items = visibleNav();
-  if (NAV_LAYOUT === "hub") return items.length ? "#/hub" : "#/";
+  if (NAV_LAYOUT === "hub") {
+    // D-24: делегат без заявки / с незаконченным черновиком открывает приложение сразу на
+    // анкете (решает сервер — me.form_first); в хаб можно вернуться (navigate("#/hub")).
+    if (me && me.form_first && items.some((item) => item.hash === "#/form")) return "#/form";
+    return items.length ? "#/hub" : "#/";
+  }
   return items.length ? items[0].hash : "#/";
 }
 

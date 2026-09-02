@@ -118,7 +118,8 @@ async function renderDelegateHub(root, ctx) {
       hash: item.hash,
       iconName: NAV_ICONS[item.hash],
       label: labels[item.section] || item.section,
-      meta: "…",
+      // Плитка анкеты — статус заявки с сервера (STATUS_LABELS), не литерал.
+      meta: item.hash === "#/form" ? (ctx.me.form_status_label || "…") : "…",
     });
     tileEls[item.hash] = el;
     tiles.append(el);
@@ -170,6 +171,25 @@ async function renderDelegateHub(root, ctx) {
     deadlineSec.remove();
     deadlineList.remove();
   }
+}
+
+// ── хаб из одних плиток: не-делегат с доступной анкетой (D-24, gap closure фазы 21) ────
+// Незарегистрированный/pending/rejected видит плитку «Анкета» (form_access), но остальные
+// делегатские ручки (/coins|/profile|/tasks) отвечают ему 403 — герой и «Ближайший
+// дедлайн» не рисуются, запросов к ним нет. Подпись плитки анкеты — статус с сервера.
+async function renderTilesOnlyHub(root, ctx, items) {
+  const { h, navigate } = ctx;
+  const labels = sectionLabelsFromDom();
+  const tiles = h("div", { class: "tiles" });
+  for (const item of items) {
+    tiles.append(tile(h, navigate, {
+      hash: item.hash,
+      iconName: NAV_ICONS[item.hash],
+      label: labels[item.section] || item.section,
+      meta: item.hash === "#/form" ? (ctx.me.form_status_label || "") : "",
+    }));
+  }
+  root.append(tiles);
 }
 
 // ── хаб менеджера (D-10, вариант C по умолчанию до голосования) ─────────────────────────
@@ -294,6 +314,14 @@ async function renderHub(root, ctx) {
   // У чистого делегата и чистого менеджера переключателя нет — рисуется единственный вид.
   const isDelegate = Boolean(ctx.me.is_delegate);
   const hasManager = visibleNav().some((item) => !item.delegate);
+  const delegateItems = visibleNav().filter((item) => item.delegate);
+  // Не-делегат с доступной анкетой (D-24): плитка анкеты над менеджерскими разделами (если
+  // они есть) — незарегистрированный менеджер не теряет ни того, ни другого.
+  if (!isDelegate && delegateItems.length) {
+    await renderTilesOnlyHub(root, ctx, delegateItems);
+    if (hasManager) await renderManagerHub(root, ctx, { skipHero: true });
+    return;
+  }
   if (isDelegate && hasManager) {
     const mode = hubMode();
     root.append(modeSwitch(ctx.h, mode, (next) => {

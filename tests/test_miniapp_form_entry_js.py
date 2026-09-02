@@ -58,3 +58,38 @@ def test_form_screen_pre_screens_rebuilt_from_pre_items():
     assert "applyServer" not in fork
     adopt = text[text.index("function adoptDraft("):text.index("function drawFork(")]
     assert "buildFormState(" in adopt
+
+# ── app.js / hub.js: плитка анкеты и дом приложения (Task 4, D-24/D-08) ──────────────────
+
+def _function_body(text: str, name: str) -> str:
+    start = text.index(name)
+    rest = text[start + 1:]
+    ends = [m.start() for m in re.finditer(r"^(export )?(async )?function ", rest, re.M)]
+    return rest[:ends[0]] if ends else rest
+
+
+def test_app_js_form_tile_visible_by_form_access_and_home_is_form_when_form_first():
+    text = _js_without_comments(APP_JS)
+    visible = _function_body(text, "export function visibleNav()")
+    assert "me.form_access" in visible
+    home = _function_body(text, "function homeHash()")
+    assert "me.form_first" in home
+    assert '"#/form"' in home
+    nav_block = text[text.index("export const NAV = ["):]
+    nav_block = nav_block[:nav_block.index("];")]
+    assert "form_access" not in nav_block
+    assert "formGate" not in nav_block
+
+
+def test_hub_renders_tiles_only_for_non_delegate_with_form():
+    text = _js_without_comments(HUB_JS)
+    assert "renderTilesOnlyHub" in text
+    assert "form_status_label" in text
+    body = _function_body(text, "async function renderHub(")
+    assert "delegateItems" in body
+    assert "renderTilesOnlyHub(" in body
+    assert body.index("renderTilesOnlyHub(") < body.index("renderManagerHub(")
+    assert "innerHTML" not in text
+    assert not _HEX_OR_RGB_COLOR.search(text)
+    assert "https://" not in text
+
