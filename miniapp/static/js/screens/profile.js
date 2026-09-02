@@ -1,12 +1,12 @@
-// Профиль делегата — только просмотр (D-08): строки «подпись — значение» по REG_LABELS (подпись
-// Label-роли, значение Body-роли) на общей плоской поверхности, статус заявки и оплаты, кнопка
-// «Изменить — в боте» (deep-link на перерегистрацию через Telegram.WebApp.openTelegramLink; вне
-// Telegram — обычная ссылка).
+// Профиль делегата (D-08: просмотр; D-24, план 21-11: правка) — строки «подпись — значение»
+// по REG_LABELS (подпись Label-роли, значение Body-роли) на общей плоской поверхности, статус
+// заявки и оплаты, кнопка «✏️ Изменить анкету» — навигация на #/form внутри приложения
+// (мастер точечной правки, не deep-link в бота).
 
 import { icon } from "../icons.js";
 
 export async function render(root, params, ctx) {
-  const { h, api, tg } = ctx;
+  const { h, api, navigate } = ctx;
   const me = await api("/profile");
 
   const head = h("div", { class: "card" },
@@ -36,17 +36,10 @@ export async function render(root, params, ctx) {
   }
 
   const actions = h("div", { class: "actions" });
-  if (me.edit_deeplink) {
-    const open = (e) => {
-      if (tg && typeof tg.openTelegramLink === "function") {
-        e.preventDefault();
-        tg.openTelegramLink(me.edit_deeplink);
-      }
-    };
-    actions.append(h("a", { class: "btn secondary", href: me.edit_deeplink, onClick: open },
-      icon("pen-line"), h("span", { text: "Изменить — в боте" }),
-    ));
-    if (me.edit_hint) actions.append(h("p", { class: "faint center", text: me.edit_hint }));
+  if (me.can_edit) {
+    actions.append(h("button", {
+      class: "btn secondary", type: "button", onClick: () => navigate("#/form"),
+    }, icon("pen-line"), h("span", { text: me.edit_cta_text || "" })));
   }
 
   root.append(head, fields, actions);

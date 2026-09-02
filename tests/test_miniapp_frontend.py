@@ -369,6 +369,7 @@ EXPECTED_NAV = [
     {"hash": "#/coins", "section": "coins", "delegate": True},
     {"hash": "#/leaderboard", "section": "leaderboard", "delegate": True},
     {"hash": "#/profile", "section": "profile", "delegate": True},
+    {"hash": "#/form", "section": "form", "delegate": True},
     {"hash": "#/review", "section": "review", "cap": "moderate_game", "group": "game"},
     {"hash": "#/admin-tasks", "section": "admin_tasks", "cap": "moderate_game", "group": "game"},
     {"hash": "#/admin-coins", "section": "coins", "cap": "moderate_game", "staffOnly": True, "group": "game"},
@@ -509,10 +510,14 @@ def test_card_screen_main_button_submit_and_back():
     assert "/app/api/file/" in text and '"error"' in text  # обложка деградирует без ошибки
 
 
-def test_profile_screen_opens_deeplink_via_telegram():
+def test_profile_screen_opens_form_edit_inside_app():
+    # План 21-11 (D-24): «Изменить анкету» ведёт на #/form внутри приложения, не по
+    # deep-link в бота — deeplink/openTelegramLink здесь больше нет, подпись кнопки только
+    # с сервера (me.edit_cta_text), литерала-подписи в файле нет.
     text = _js_without_comments(SCREENS_DIR / "profile.js")
-    assert "openTelegramLink" in text and "edit_deeplink" in text
-    assert "Изменить — в боте" in text
+    assert "openTelegramLink" not in text and "edit_deeplink" not in text
+    assert 'navigate("#/form")' in text
+    assert "me.can_edit" in text and "me.edit_cta_text" in text
 
 
 def test_show_more_pagination_in_lists():
@@ -1108,3 +1113,17 @@ def test_form_js_has_no_human_text_literals():
     cyrillic = re.compile(r"[А-Яа-яЁё]")
     for m in _STRING_LITERAL.finditer(text):
         assert not cyrillic.search(m.group(0)), f"кириллический литерал в form.js: {m.group(0)}"
+
+
+# ── screens/form.js: экран #/form (план 21-11, D-25) ─────────────────────────────────────
+
+FORM_SCREEN_JS = SCREENS_DIR / "form.js"
+
+
+def test_form_screen_has_no_human_text_literals():
+    """D-25 — тот же сторож, что form.js (test_form_js_has_no_human_text_literals), теперь
+    и на экране #/form: подписи только из ответа сервера (реестр reg_form_*)."""
+    text = _js_without_comments(FORM_SCREEN_JS)
+    cyrillic = re.compile(r"[А-Яа-яЁё]")
+    for m in _STRING_LITERAL.finditer(text):
+        assert not cyrillic.search(m.group(0)), f"кириллический литерал в screens/form.js: {m.group(0)}"

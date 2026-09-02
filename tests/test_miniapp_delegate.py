@@ -53,7 +53,7 @@ def client(tmp_path):
 
 # ── профиль (D-08) ──────────────────────────────────────────────────────────────────────
 
-def test_profile_returns_labeled_nonempty_fields_and_rereg_deeplink(client):
+def test_profile_returns_labeled_nonempty_fields_and_edit_cta(client):
     _fill_profile(DELEGATE_ID, phone="+7 999", city="Москва", email="", work_status=1,
                   resume_file_id="AgACfile", receipt_file_id="AgACrcpt", payment_status="paid")
     resp = client.get("/app/api/profile", headers=_hdr(DELEGATE_ID))
@@ -74,8 +74,10 @@ def test_profile_returns_labeled_nonempty_fields_and_rereg_deeplink(client):
     # Модуль оплаты выключен (дефолт реестра) -> статуса оплаты как понятия нет: сервер шлёт
     # пустые значения, профиль не рисует «Не оплатил» (фикс 03d62a8 по живой приёмке 19-10).
     assert body["payment_status"] == "" and body["payment_status_label"] == ""
-    assert body["edit_deeplink"] == "https://t.me/YouLead_test_bot?start=edit"
-    assert body["edit_hint"]  # дефолт реестра miniapp_profile_edit_hint
+    # D-24 (план 21-11): правка — экран #/form внутри приложения, не deep-link в бота.
+    assert "edit_deeplink" not in body and "edit_hint" not in body
+    assert body["can_edit"] is True
+    assert body["edit_cta_text"]  # дефолт реестра reg_form_profile_edit_cta_text
 
     _set("payment_enabled", "on")
     body = client.get("/app/api/profile", headers=_hdr(DELEGATE_ID)).json()
@@ -95,6 +97,21 @@ def test_profile_section_off(client):
     resp = client.get("/app/api/profile", headers=_hdr(DELEGATE_ID))
     assert resp.status_code == 403
     assert resp.json()["reason"] == "section_off"
+
+
+# ── плитка «📝 Анкета» в хабе (D-08/D-24, план 21-11) ────────────────────────────────────
+# Плитка строится в hub.js циклом по visibleNav(), который фильтрует NAV по
+# me.sections[item.section] — тумблер миниapp_section_form решает видимость через тот же
+# /app/api/me, который читает hub.js; отдельного экрана-теста для DOM плитки нет (харнесс
+# фазы 19 не рендерит JS), сторож — сам признак раздела в контракте /app/api/me.
+
+def test_form_section_visible_by_default_and_hidden_by_toggle(client):
+    body = client.get("/app/api/me", headers=_hdr(DELEGATE_ID)).json()
+    assert body["sections"]["form"] is True  # дефолт реестра miniapp_section_form = on
+
+    _set("miniapp_section_form", "off")
+    body = client.get("/app/api/me", headers=_hdr(DELEGATE_ID)).json()
+    assert body["sections"]["form"] is False
 
 
 # ── задания ─────────────────────────────────────────────────────────────────────────────
