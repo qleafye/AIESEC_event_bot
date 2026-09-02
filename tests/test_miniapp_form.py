@@ -482,3 +482,190 @@ def test_patch_does_not_log_answer_values(client, caplog):
             json={"version": 0, "answers": {"comments": "секретный текст ответа делегата"}},
         )
     assert "секретный текст ответа делегата" not in caplog.text
+
+# ── Развилки город/трек: PATCH через движок (gap closure, D-01/FORM-SYNC-02) ────────────────
+# Выбор города и формата участия в мастере приложения идёт теми же валидаторами и тем же
+# `resolve_track`, что тап по кнопке развилки в боте; варианты пикера — из ответа сервера
+# (те же города и те же подписи, что у клавиатур бота); deep-link/edit приоритетны (409).
+
+def test_pre_items_city_fork_carries_field_and_server_options(client):
+    import cities
+
+    _set("event_city_enabled", "on")
+    body = client.get("/app/api/reg/draft", headers=_hdr(UNREGISTERED_ID)).json()
+    assert "city_fork" in body["pre"]
+    item = next(i for i in body["pre_items"] if i["type"] == "city_fork")
+    assert item["field"] == "event_city"
+    assert item["text"]
+    assert item["value"] is None
+    assert [o["code"] for o in item["options"]] == ["msk", "spb", "tyumen"]
+    for opt in item["options"]:
+        assert opt["label"]
+        assert opt["label"] == asyncio.run(cities.city_label(opt["code"]))
+
+
+def test_pre_items_party_fork_options_match_bot_keyboard(client):
+    import handlers.registration as reg
+
+    _set("party_enabled", "on")
+    _set("party_fork_question", "on")
+    body = client.get("/app/api/reg/draft", headers=_hdr(UNREGISTERED_ID)).json()
+    assert "party_fork" in body["pre"]
+    item = next(i for i in body["pre_items"] if i["type"] == "party_fork")
+    assert item["field"] == "participant_type"
+    assert item["text"]
+    assert [o["code"] for o in item["options"]] == ["full", "party_overnight", "party_noovernight"]
+    kb = reg._party_fork_kb().inline_keyboard
+    assert [o["label"] for o in item["options"]] == [btn.text for row in kb for btn in row]
+    assert [btn.callback_data for row in kb for btn in row] == [
+        "party_pick:full", "party_pick:party_over", "party_pick:party_noover",
+    ]
+
+
+def test_patch_city_choice_persists_and_hides_fork(client):
+    _set("event_city_enabled", "on")
+    resp = client.patch(
+        "/app/api/reg/draft", headers=_hdr(UNREGISTERED_ID),
+        json={"version": 0, "event_city": "spb"},
+    )
+    assert resp.status_code == 200, resp.text
+    body = resp.json()
+    assert "city_fork" not in body["pre"]
+    assert body["kind"] == "new"
+    row = _draft_row(UNREGISTERED_ID)
+    assert row["event_city"] == "spb"
+    assert row["updated_by"] == "miniapp"
+
+
+def test_patch_city_choice_invalid_and_closed_match_bot_texts(client):
+    import reg_engine
+
+    assert reg_engine.CITY_CHOICE_INVALID_TEXT == "Некорректный выбор."
+    assert reg_engine.CITY_CLOSED_TEXT == "Регистрация на этот город закрыта."
+    _set("event_city_enabled", "on")
+    resp = client.patch(
+        "/app/api/reg/draft", headers=_hdr(UNREGISTERED_ID),
+        json={"version": 0, "event_city": "xxx"},
+    )
+    assert resp.status_code == 400
+    assert resp.json() == {"reason": "invalid", "errors": {"event_city": reg_engine.CITY_CHOICE_INVALID_TEXT}}
+
+    _set("city_enabled__spb", "off")
+    resp = client.patch(
+        "/app/api/reg/draft", headers=_hdr(UNREGISTERED_ID),
+        json={"version": 0, "event_city": "spb"},
+    )
+    assert resp.status_code == 400
+    assert resp.json()["errors"]["event_city"] == reg_engine.CITY_CLOSED_TEXT
+    assert _draft_row(UNREGISTERED_ID) is None
+
+
+def test_patch_city_when_already_set_409_deeplink_wins(client):
+    _set("event_city_enabled", "on")
+    _seed_draft(UNREGISTERED_ID, event_city="msk")
+    resp = client.patch(
+        "/app/api/reg/draft", headers=_hdr(UNREGISTERED_ID),
+        json={"version": 0, "event_city": "spb"},
+    )
+    assert resp.status_code == 409
+    assert resp.json() == {"reason": "already_set", "field": "event_city"}
+    assert _draft_row(UNREGISTERED_ID)["event_city"] == "msk"
+
+
+def test_patch_track_choice_resolves_like_bot(client):
+    import reg_engine
+
+    _set("party_enabled", "on")
+    resp = client.patch(
+        "/app/api/reg/draft", headers=_hdr(UNREGISTERED_ID),
+        json={"version": 0, "participant_type": "party_overnight"},
+    )
+    assert resp.status_code == 200, resp.text
+    assert "party_fork" not in resp.json()["pre"]
+    assert _draft_row(UNREGISTERED_ID)["participant_type"] == "party_overnight"
+
+    # Правило `_resolve_track` шаг 2: глобальный «short» перебивает выбор «Полная регистрация».
+    _set("registration_mode", "short")
+    resp = client.patch(
+        "/app/api/reg/draft", headers=_hdr(REJECTED_ID),
+        json={"version": 0, "participant_type": "full"},
+    )
+    assert resp.status_code == 200, resp.text
+    assert _draft_row(REJECTED_ID)["participant_type"] == "short"
+
+    resp = client.patch(
+        "/app/api/reg/draft", headers=_hdr(UNREGISTERED_ID + 7),
+        json={"version": 0, "participant_type": "bogus"},
+    )
+    assert resp.status_code == 400
+    assert resp.json()["errors"]["participant_type"] == reg_engine.CITY_CHOICE_INVALID_TEXT
+
+    _set("party_enabled", "off")
+    resp = client.patch(
+        "/app/api/reg/draft", headers=_hdr(UNREGISTERED_ID + 7),
+        json={"version": 0, "participant_type": "party_noovernight"},
+    )
+    assert resp.status_code == 400
+    assert resp.json()["errors"]["participant_type"] == reg_engine.PARTY_CLOSED_TEXT
+    assert reg_engine.PARTY_CLOSED_TEXT == "Регистрация на вечеринку уже закрыта."
+    assert _draft_row(UNREGISTERED_ID + 7) is None
+
+
+def test_patch_pre_choice_for_edit_kind_409(client):
+    for field, value in (("event_city", "spb"), ("participant_type", "full")):
+        resp = client.patch(
+            "/app/api/reg/draft", headers=_hdr(DELEGATE_ID),
+            json={"version": 0, field: value},
+        )
+        assert resp.status_code == 409, resp.text
+        assert resp.json() == {"reason": "already_set", "field": field}
+
+
+def test_patch_pre_choice_and_answer_in_one_body(client):
+    _set("event_city_enabled", "on")
+    # Атомарно: ошибка в ответе — город тоже не записан (ошибки собираются до upsert).
+    resp = client.patch(
+        "/app/api/reg/draft", headers=_hdr(UNREGISTERED_ID),
+        json={"version": 0, "event_city": "spb", "answers": {"age": "abc"}},
+    )
+    assert resp.status_code == 400
+    assert resp.json()["reason"] == "invalid"
+    assert "age" in resp.json()["errors"]
+    assert _draft_row(UNREGISTERED_ID) is None
+
+    resp = client.patch(
+        "/app/api/reg/draft", headers=_hdr(UNREGISTERED_ID),
+        json={"version": 0, "event_city": "spb", "answers": {"age": "25"}},
+    )
+    assert resp.status_code == 200, resp.text
+    row = _draft_row(UNREGISTERED_ID)
+    assert row["event_city"] == "spb"
+    assert row["answers"]["age"] == 25
+
+
+def test_engine_aliases_are_same_objects():
+    from pathlib import Path
+
+    import handlers.registration as reg
+    import reg_engine
+
+    assert reg._resolve_track is reg_engine.resolve_track
+    assert reg._PARTY_TAG_MAP is reg_engine.PARTY_TAG_MAP
+    src = (Path(__file__).resolve().parent.parent / "handlers" / "reg_flow.py").read_text(encoding="utf-8")
+    for literal in ("Некорректный выбор.", "Регистрация на этот город закрыта.",
+                    "Регистрация на вечеринку уже закрыта."):
+        assert literal not in src, literal
+    for name in ("CITY_CHOICE_INVALID_TEXT", "CITY_CLOSED_TEXT", "PARTY_CLOSED_TEXT"):
+        assert name in src, name
+
+
+def test_form_spec_hides_party_fork_when_track_known(db_path):
+    import reg_engine
+
+    _set("party_enabled", "on")
+    _set("party_fork_question", "on")
+    spec = asyncio.run(reg_engine.form_spec({}, "party_overnight", None))
+    assert "party_fork" not in spec["pre"]
+    spec = asyncio.run(reg_engine.form_spec({}, None, None))
+    assert "party_fork" in spec["pre"]
+
