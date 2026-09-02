@@ -216,22 +216,27 @@ def test_edu_conditional_gate_equiv(tmp_path):
 
     # Wiring (RED before Task 2): _get_enabled_steps must resolve edu_conditional via
     # get_setting_typed, not the local `get_setting(...) or "on"` idiom.
+    # Phase 21 (21-01, FORM-SYNC-01): _get_enabled_steps is now an alias for
+    # reg_engine.enabled_steps, which resolves get_setting_typed via reg_engine's OWN module
+    # globals -- patching handlers.registration's binding no longer intercepts the call.
+    import reg_engine
+
     calls = []
 
     async def fake_typed(key):
         calls.append(key)
         return "on"
 
-    had_attr = hasattr(reg_mod, "get_setting_typed")
-    orig = getattr(reg_mod, "get_setting_typed", None)
-    reg_mod.get_setting_typed = fake_typed
+    had_attr = hasattr(reg_engine, "get_setting_typed")
+    orig = getattr(reg_engine, "get_setting_typed", None)
+    reg_engine.get_setting_typed = fake_typed
     try:
         asyncio.run(reg_mod._get_enabled_steps({}))
     finally:
         if had_attr:
-            reg_mod.get_setting_typed = orig
+            reg_engine.get_setting_typed = orig
         else:
-            del reg_mod.get_setting_typed
+            del reg_engine.get_setting_typed
     assert "edu_conditional" in calls, (
         "_get_enabled_steps did not resolve edu_conditional via get_setting_typed"
     )
@@ -270,6 +275,11 @@ def test_party_enabled_gate_equiv(tmp_path):
     # Wiring (RED before Task 2): both fork-family gates + progress must resolve via
     # get_setting_typed. Force both settings "on" so _should_show_fork doesn't short-circuit
     # before reaching the party_enabled check.
+    # Phase 21 (21-01, FORM-SYNC-01): _should_show_fork is now an alias for
+    # reg_engine.should_show_fork (resolves get_setting_typed via reg_engine's own module
+    # globals); _progress stays local to handlers/registration.py unmoved. Patch both.
+    import reg_engine
+
     calls = []
 
     async def fake_typed(key):
@@ -278,7 +288,10 @@ def test_party_enabled_gate_equiv(tmp_path):
 
     had_attr = hasattr(reg_mod, "get_setting_typed")
     orig = getattr(reg_mod, "get_setting_typed", None)
+    engine_had_attr = hasattr(reg_engine, "get_setting_typed")
+    engine_orig = getattr(reg_engine, "get_setting_typed", None)
     reg_mod.get_setting_typed = fake_typed
+    reg_engine.get_setting_typed = fake_typed
     try:
         asyncio.run(reg_mod._should_show_fork(None, None, False))
         asyncio.run(reg_mod._progress(1, 2))
@@ -287,6 +300,10 @@ def test_party_enabled_gate_equiv(tmp_path):
             reg_mod.get_setting_typed = orig
         else:
             del reg_mod.get_setting_typed
+        if engine_had_attr:
+            reg_engine.get_setting_typed = engine_orig
+        else:
+            del reg_engine.get_setting_typed
     assert "party_fork_question" in calls, "_should_show_fork did not resolve party_fork_question via get_setting_typed"
     assert "party_enabled" in calls, "_should_show_fork did not resolve party_enabled via get_setting_typed"
     assert "reg_show_progress" in calls, "_progress did not resolve reg_show_progress via get_setting_typed"
@@ -476,23 +493,28 @@ def test_is_module_enabled_gate_equiv(tmp_path):
 
     # Wiring (BLOCKER-2, RED before Task 2): the helper BODY must call get_setting_typed(key)
     # directly -- this covers all 4 call sites (consent_enabled/payment_enabled) at once.
+    # Phase 21 (21-01, FORM-SYNC-01): _is_module_enabled moved from reg_schema.py to
+    # reg_engine.py (reg_schema re-exports it) -- it now resolves get_setting_typed via
+    # reg_engine's own module globals, so the patch target moves with it.
+    import reg_engine
+
     calls = []
 
     async def fake_typed(key):
         calls.append(key)
         return "off"
 
-    had_attr = hasattr(reg_schema_mod, "get_setting_typed")
-    orig = getattr(reg_schema_mod, "get_setting_typed", None)
-    reg_schema_mod.get_setting_typed = fake_typed
+    had_attr = hasattr(reg_engine, "get_setting_typed")
+    orig = getattr(reg_engine, "get_setting_typed", None)
+    reg_engine.get_setting_typed = fake_typed
     try:
         asyncio.run(reg_mod._is_module_enabled("payment_enabled"))
         asyncio.run(reg_mod._is_module_enabled("consent_enabled"))
     finally:
         if had_attr:
-            reg_schema_mod.get_setting_typed = orig
+            reg_engine.get_setting_typed = orig
         else:
-            del reg_schema_mod.get_setting_typed
+            del reg_engine.get_setting_typed
     assert calls == ["payment_enabled", "consent_enabled"], (
         f"_is_module_enabled did not resolve both keys via get_setting_typed, got calls={calls!r}"
     )

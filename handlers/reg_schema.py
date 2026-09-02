@@ -21,70 +21,29 @@ import logging
 from aiogram import Bot
 
 from database.db import get_setting, set_setting, get_user
-from settings_schema import SETTINGS_SCHEMA, get_setting_typed
+from settings_schema import get_setting_typed
 # Phase 19 (Mini App): подписи анкеты живут в корневом aiogram-free `reg_labels.py`;
 # здесь — реэкспорт ТЕХ ЖЕ объектов (admin.py, admin_reg_config.py, admin_moderation.py
 # импортируют их отсюда как раньше).
 from reg_labels import REG_LABELS, STATUS_LABELS  # noqa: F401
+# Phase 21 (21-01, FORM-SYNC-01): REG_FLOW и его непосредственные зависимости переехали в
+# корневой aiogram-free reg_engine.py (та же причина, что у REG_LABELS выше — веб-процесс
+# Mini App не должен импортировать handlers.* и тянуть за собой весь бот). Реэкспорт ТЕХ ЖЕ
+# объектов — handlers/registration.py, handlers/admin.py, admin_reg_config.py и тесты
+# продолжают импортировать их отсюда как раньше.
+from reg_engine import (  # noqa: F401
+    REG_FLOW, _is_party_track, SHORT_TRACK, _is_short_track,
+    REG_DEFAULTS, _is_step_enabled, _is_module_enabled,
+    STEP_TO_COLUMN, REG_STEP_TYPES,
+)
 from cities import cities_module_on, normalize_city, is_default_city, city_tab_base, tab_suffix, get_setting_for_city
 from keyboards.builders import get_main_menu_kb
 
 logger = logging.getLogger(__name__)
 
 # --- Registration Flow Engine ---
-
-# Phase 4 (D-07): each entry is (step_key, setting_key, type). type is "text" (default
-# free-text handler), "date" (ДД.ММ.ГГГГ validation), or "consent" (injected dynamically,
-# never declared statically here). Iteration sites star-unpack the type so 2-tuples would
-# still work during any incremental migration.
-REG_FLOW = [
-    # YL'26 launch order (Tatiana). Consent + ФИО run before this list (see
-    # _start_registration_flow). Order here IS the ask order for the enabled steps.
-    ("age", "reg_q_age", "text"),
-    ("phone", "reg_q_phone", "text"),
-    ("alumni_status", "reg_q_alumni_status", "text"),  # аламни / айсекер / ни то, ни другое
-    ("vk", "reg_q_vk", "text"),
-    ("city", "reg_q_city", "text"),
-    ("education_status", "reg_q_education", "text"),
-    ("course", "reg_q_course", "text"),
-    ("university", "reg_q_university", "text"),
-    ("study_field", "reg_q_study_field", "select"),
-    ("goal", "reg_q_goal", "multi"),
-    ("formats", "reg_q_formats", "multi"),
-    ("expectations", "reg_q_expectations", "text"),
-    ("source", "reg_q_source", "text"),
-    ("ambassador", "reg_q_ambassador", "ambassador"),
-    ("resume", "reg_q_resume", "text"),
-    # Remaining steps — default OFF, kept for other events (RusCo/Summit).
-    ("email", "reg_q_email", "text"),
-    ("local_committee", "reg_q_lc", "text"),
-    ("position", "reg_q_position", "text"),
-    ("specialty", "reg_q_specialty", "text"),
-    ("work_status", "reg_q_work", "text"),
-    ("work_sphere", "reg_q_work_sphere", "text"),
-    ("missing_skills", "reg_q_skills", "text"),
-    ("attendance_format", "reg_q_attendance", "text"),
-    ("informal_day", "reg_q_informal_day", "text"),
-    ("comments", "reg_q_comments", "text"),
-    ("department", "reg_q_department", "text"),
-    ("aiesec_role", "reg_q_aiesec_role", "text"),
-    ("needs_certificate", "reg_q_certificate", "text"),
-    ("english_level", "reg_q_english", "text"),
-    ("allergies", "reg_q_allergies", "text"),
-    ("food_pref", "reg_q_food", "text"),
-    ("arrival", "reg_q_arrival", "text"),
-    ("housing", "reg_q_housing", "text"),
-    ("bed_sharing", "reg_q_bed_sharing", "text"),   # конфа: делить двуспальную кровать?
-    ("bed_partner", "reg_q_bed_partner", "text"),   # конфа: с кем (условно на «Да»)
-    ("transport", "reg_q_transport", "text"),
-    ("cc_shop", "reg_q_cc_shop", "text"),
-    ("exp_organizers", "reg_q_exp_organizers", "text"),
-    ("exp_content", "reg_q_exp_content", "text"),
-    ("volunteer", "reg_q_volunteer", "text"),
-    ("arrival_date", "reg_q_arrival_date", "date"),
-    ("birth_date", "reg_q_birth_date", "date"),
-    ("payment_plan_date", "reg_q_payment_date", "date"),
-]
+# REG_FLOW moved to reg_engine.py (Phase 21, 21-01, FORM-SYNC-01); imported above (re-export
+# block, same reason/pattern as REG_LABELS).
 
 # step_key → its reg_q_* setting key, for resolving human labels in dropout analytics.
 _STEP_TO_SETTING = {step_key: setting_key for step_key, setting_key, _t in REG_FLOW}
@@ -106,18 +65,10 @@ def dropout_step_label(step_key: str | None) -> str:
     return step_key
 
 
-# REG-01/D-06 (06-04): REG_DEFAULTS is now DERIVED from settings_schema.SETTINGS_SCHEMA
-# (every registered "toggle"-type entry), not a hand-maintained literal — the registry is
-# the single source of truth for reg_q_* defaults (T-06-12/T-06-13, test_reg_defaults_parity
-# pins byte-for-byte parity against the pre-migration 43-key literal). The NAME is retained
-# unchanged because handlers/admin.py still imports/iterates it (admin.py:59 import, :501,
-# :2097 _is_question_on, :2248, and the preset bulk-write loop at :2336/:2412) — deleting the
-# name would break those call sites for no benefit; only the VALUE's origin changed.
-# settings_schema imports only database.db (one-directional, T-06-14) — importing it here
-# does not create a cycle.
-REG_DEFAULTS = {
-    k: v["default"] for k, v in SETTINGS_SCHEMA.items() if v["type"] == "toggle"
-}
+# REG_DEFAULTS moved to reg_engine.py (Phase 21, 21-01) alongside REG_FLOW; imported above.
+# The NAME is retained unchanged because handlers/admin.py still imports/iterates it
+# (admin.py:59 import, :501, :2097 _is_question_on, :2248, and the preset bulk-write loop at
+# :2336/:2412) — deleting the name would break those call sites for no benefit.
 
 # REG_LABELS — см. корневой reg_labels.py (Phase 19), импорт вверху модуля.
 
@@ -248,24 +199,8 @@ REG_CATEGORIES = [
 ]
 
 
-# Phase 5 (TRACK-01/03): participant track vocabulary + deep-link parsing (D-10).
-def _is_party_track(participant_type: str | None) -> bool:
-    """The single predicate every later Phase 5 plan imports; do not duplicate elsewhere."""
-    return participant_type in ("party_overnight", "party_noovernight")
-
-
-# Phase 7 (SHORT-04): short-form track vocabulary.
-SHORT_TRACK = "short"
-
-
-def _is_short_track(participant_type: str | None) -> bool:
-    """Exact-literal predicate for the short-form track — deliberately separate from
-    _is_party_track, never merged into it. `_is_party_track` matches a CLOSED tuple of two
-    literals; extending it to include "short" would leak the short track into the party-only
-    housing/bed_* skip rule (:430), the party wording override in `_prompt`, and the
-    party-first branch of `_decide_status` — all three gate on `_is_party_track` alone. Kept
-    as its own one-line predicate so those three call sites structurally cannot see "short"."""
-    return participant_type == SHORT_TRACK
+# _is_party_track/SHORT_TRACK/_is_short_track moved to reg_engine.py (Phase 21, 21-01);
+# imported above (re-export block).
 
 
 def _sheet_details(data: dict) -> str:
@@ -361,11 +296,7 @@ def _sheet_value_map(data: dict) -> dict:
     return {h: fn(data) for h, _g, fn in SHEET_COLUMNS}
 
 
-async def _is_step_enabled(setting_key: str) -> bool:
-    val = await get_setting(setting_key)
-    if val is None:
-        return REG_DEFAULTS.get(setting_key, "on") == "on"
-    return val == "on"
+# _is_step_enabled moved to reg_engine.py (Phase 21, 21-01); imported above.
 
 
 async def active_sheet_headers() -> list[str]:
@@ -463,12 +394,7 @@ async def incomplete_city_batches() -> list[tuple[str, list[str], list[list]]]:
 DEFAULT_APPROVE_TEXT = "Твоя заявка одобрена! Добро пожаловать 🎉"
 
 
-async def _is_module_enabled(key: str) -> bool:
-    """Phase 4 module flag check — None/absent/'off'/anything-but-'on' → False (D-15 fail-safe).
-    # REG-02 (06-06, BLOCKER-2): resolved via the registry — consent_enabled/payment_enabled
-    # both default "off" (06-04), so get_setting_typed returns "off" for None AND "" and
-    # `== "on"` stays False, byte-identical to the old None->False fail-safe."""
-    return await get_setting_typed(key) == "on"
+# _is_module_enabled moved to reg_engine.py (Phase 21, 21-01); imported above.
 
 
 async def _approve_text_for(participant_type: str | None, city_code: str | None = None) -> str:
