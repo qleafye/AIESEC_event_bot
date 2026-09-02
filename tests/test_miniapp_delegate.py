@@ -13,6 +13,7 @@ from database import db as bot_db
 
 from tests.test_miniapp_routes import (
     DELEGATE_ID,
+    GAME_MANAGER_ID,
     PENDING_ID,
     REJECTED_ID,
     UNREGISTERED_ID,
@@ -147,6 +148,16 @@ def test_me_form_status_contract(client):
     assert body["form_status"] == "rejected"
     assert body["form_first"] is False
     assert body["form_access"] is True
+
+
+def test_me_form_first_false_for_manager_without_own_application(client):
+    """Находка 21-13: у менеджера (`caps` не пустой, строки `users` нет) `form_status`
+    тоже "none" — без гварда его бы кидало на анкету вместо хаба. `form_access` не меняется:
+    плитка «Анкета» видна и менеджеру."""
+    body = _me(client, GAME_MANAGER_ID)
+    assert body["form_status"] == "none"
+    assert body["form_access"] is True
+    assert body["form_first"] is False
 
 
 def test_me_form_first_off_when_section_off(client):

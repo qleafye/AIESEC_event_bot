@@ -184,10 +184,13 @@ def me(request: Request, p: Principal = Depends(principal)) -> dict:
         "bot_username": cfg.bot_username,
         # Анкета (gap closure фазы 21, D-24): статус заявки/черновика, доступ к экрану анкеты
         # и признак «дом приложения — анкета» (нет заявки или незаконченный черновик новой).
+        # `not p.caps` (находка 21-13): менеджер без своей заявки (`caps` не пустой, строки
+        # `users` нет — статус тоже "none") всегда попадает в хаб, а не на чужую для него
+        # анкету; плитка «Анкета» остаётся видна через `form_access`.
         "form_status": status,
         "form_status_label": STATUS_LABELS.get(status, ""),
         "form_access": form_access,
-        "form_first": form_access and sections["form"] and status in ("none", "draft"),
+        "form_first": form_access and sections["form"] and status in ("none", "draft") and not p.caps,
         # Оформление (D-03/D-04/D-08/D-15/D-16) — новые поля, старые выше НЕ переименованы.
         "theme_preset": resolved["preset"],
         "playful_tone": resolved["playful_tone"] == "on",
