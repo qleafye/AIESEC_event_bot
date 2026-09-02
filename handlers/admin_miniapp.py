@@ -35,12 +35,15 @@ from handlers.admin import router
 
 logger = logging.getLogger(__name__)
 
-# Порядок разделов на экране (D-06): зеркало восьми экранов делегата/менеджера фазы 19.
+# Порядок разделов на экране (D-06): зеркало экранов делегата/менеджера фазы 19.
+# "miniapp_section_form" (Phase 21 Plan 02, FORM-SYNC-05, D-08) — раздел «📝 Анкета»; общий
+# toggle_miniapp_section подхватывает суффикс сам, нового хендлера не заводим.
 SECTION_KEYS = [
     "miniapp_section_tasks",
     "miniapp_section_coins",
     "miniapp_section_leaderboard",
     "miniapp_section_profile",
+    "miniapp_section_form",
     "miniapp_section_review",
     "miniapp_section_admin_tasks",
     "miniapp_section_stats",

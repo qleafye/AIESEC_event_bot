@@ -43,11 +43,13 @@ CSRF_HEADER_VALUE = "fetch"
 _MUTATING_METHODS = frozenset({"POST", "PUT", "PATCH", "DELETE"})
 
 # Разделы-чекбоксы D-06: имя раздела -> ключ реестра `miniapp_section_{section}`.
+# "form" (Phase 21 Plan 02, FORM-SYNC-05, D-08) — рядом с "profile": оба делегатские разделы.
 SECTIONS = (
     "tasks",
     "coins",
     "leaderboard",
     "profile",
+    "form",
     "review",
     "admin_tasks",
     "stats",

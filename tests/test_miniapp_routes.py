@@ -283,7 +283,8 @@ def test_me_delegate_via_initdata(tmp_path):
     assert body["is_delegate"] is True
     assert body["city"] is None
     assert set(body["sections"]) == {
-        "tasks", "coins", "leaderboard", "profile", "review", "admin_tasks", "stats", "settings",
+        "tasks", "coins", "leaderboard", "profile", "form", "review", "admin_tasks", "stats",
+        "settings",
     }
     assert all(body["sections"].values())
     assert body["accent"] == "#037EF3"
