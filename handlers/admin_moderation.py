@@ -42,6 +42,7 @@ from services.applications import (
     TRACK_LABELS,
     claim_approve,
     claim_reject,
+    COLUMN_TO_LABEL as _COLUMN_TO_LABEL,
     EDITED_SOURCE_LABELS as _EDITED_SOURCE_LABELS,
     format_edited_date as _format_edited_date,
     edit_badges_for as _edit_badges_for,
@@ -51,7 +52,6 @@ from services.background import spawn as _spawn
 from services.consent import consent_card_line
 from handlers.states import Approval, ReceiptReview
 from keyboards.builders import get_cancel_kb, get_main_menu_kb
-from reg_engine import STEP_TO_COLUMN, label_for
 import moderation_card
 from settings_schema import get_setting_typed
 from cities import city_label, admin_selected_city, city_scope, city_codes, normalize_city, ALL_CITIES, ALL_CITIES_LABEL
@@ -64,9 +64,10 @@ logger = logging.getLogger(__name__)
 # `@router.*` decorator below MUST fit on ONE line.
 
 
-# column (users row) -> human label, via reg_engine.label_for (the engine already resolves the
-# nine steps where setting_key != f"reg_q_{step}", plan 21-13) — no second label table.
-_COLUMN_TO_LABEL = {col: label_for(step) for step, col in STEP_TO_COLUMN.items()}
+# Phase 23 (23-06, T-23-28): _COLUMN_TO_LABEL перенесён в services/applications.py как
+# COLUMN_TO_LABEL — та же формула через reg_engine.label_for (STEP_TO_COLUMN обратным ключом),
+# но единственная точка правды: карточка веба (`services.applications.card_payload`) теперь
+# берёт подписи истории оттуда же, второй копии словаря больше нет.
 
 
 # ── Phase 2: application review queue ("Заявки", tinder UI) ───────────────────

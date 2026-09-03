@@ -41,7 +41,7 @@ from datetime import datetime
 from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel
 
-from cities import ALL_CITIES, normalize_city
+from cities import ALL_CITIES, cities_module_on, city_label, normalize_city
 from services import applications
 from settings_schema import get_setting_typed
 
@@ -127,6 +127,15 @@ async def applications_next(
         "initials": initials(row.get("full_name")),
     }
 
+    # Plan 23-06 (Known Stub #2 из 23-05): человекочитаемый город менеджера для «Принять всех N»
+    # (D-07 хотел «число + город»). Тот же приём, что review.py::applications_next делает для
+    # города делегата (city_label(normalize_city(...))), но здесь — привязка МЕНЕДЖЕРА
+    # (`p.city`), а не карточки; `None` привязки = «все города» (ALL_CITIES), модуль выключен —
+    # поля вовсе нет (клиент не рисует вторую строку подтверждения).
+    manager_city_label = None
+    if await cities_module_on():
+        manager_city_label = await city_label(normalize_city(p.city) if p.city is not None else ALL_CITIES)
+
     return {
         "application": {
             "telegram_id": row.get("telegram_id"),
@@ -144,6 +153,7 @@ async def applications_next(
         "remaining": total,
         "position": off + 1,
         "offset": off,
+        "city_label": manager_city_label,
         "filters": {
             "reject_templates": await applications.reject_reason_templates(),
             "chips": {

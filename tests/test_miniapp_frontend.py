@@ -1361,6 +1361,26 @@ def test_applications_screen_mass_approve_uses_shared_confirm_box():
     assert len(re.findall(r"confirmBox\(h,", text)) == 1
 
 
+def test_applications_screen_history_renders_server_labels_not_raw_columns():
+    """План 23-06 закрыл Known Stub 23-05: экран рисует `label`/`old`/`new`/`when`/
+    `source_label`, которые уже перевёл сервер (`services.applications._history_entry`) —
+    ни `row.column`, ни `row.source`, ни голого `row.changed_at` в JS больше нет."""
+    text = _js_without_comments(APPLICATIONS_JS)
+    assert "change.label" in text
+    assert "entry.when" in text and "entry.source_label" in text
+    assert "row.changed_at" not in text
+    assert ".column" not in text and "row.source" not in text
+
+
+def test_applications_screen_approve_all_confirm_shows_city_label():
+    """D-07: подтверждение массового одобрения называет и число, и город — `city_label`
+    приходит из ответа `/applications/next`, отдельной строкой под count-текстом (как
+    appr_all_confirm бота), без литерала-подписи в JS."""
+    text = _js_without_comments(APPLICATIONS_JS)
+    assert "currentCard.city_label" in text
+    assert "approveAllCityLine" in text
+
+
 def test_applications_route_and_nav_registered_with_moderate_reg_cap():
     text = APP_JS.read_text(encoding="utf-8")
     assert text.count("#/applications") == 3  # ROUTES + NAV + NAV_ICONS

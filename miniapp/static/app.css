@@ -1261,6 +1261,17 @@ a.flat-row:active, button.flat-row:active { background: var(--surface-alt); }
   font-size: 13px;
 }
 .appl-history-list { margin-top: var(--sp-1); padding-left: calc(1em + var(--sp-2)); }
+.appl-history-entry { margin-bottom: var(--sp-2); }
+.appl-history-entry:last-child { margin-bottom: 0; }
+.appl-history-change {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-1);
+  font-size: 13px;
+}
+.appl-history-label { color: var(--text-muted); flex-shrink: 0; }
+.appl-history-values { display: flex; align-items: center; gap: var(--sp-1); overflow-wrap: anywhere; }
+.appl-history-arrow { width: 14px; height: 14px; flex-shrink: 0; color: var(--text-muted); }
 
 /* Оверлей решения (specific_ideas D-04): цветной ✅/❌ по мере смещения, прозрачность —
    от JS (progress), сама подложка — только токены. */
