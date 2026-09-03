@@ -1931,7 +1931,7 @@ SETTINGS_SCHEMA = {
         "options": ["on", "off"], "prompt": None, "default": "on",
     },
     "miniapp_section_settings": {
-        "type": "enum", "group": "miniapp", "label": "⚙️ Настройки-лайт",
+        "type": "enum", "group": "miniapp", "label": "⚙️ Настройки",
         "options": ["on", "off"], "prompt": None, "default": "on",
     },
     # Phase 21 Plan 02 (FORM-SYNC-05, D-08): раздел анкеты делегата. Label едет в
