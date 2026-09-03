@@ -539,7 +539,7 @@ def _run_empty_seed_pass() -> int:
             staff=[(GAME_MANAGER_ID, "game_manager", None)],
             users=[(DELEGATE_ID, "approved")],
             settings={{"miniapp_enabled": "on", "miniapp_section_settings": "on",
-                      "event_name": "форума YouLead"}},
+                      "event_name": "форума Юлид"}},
         )
 
         inner = create_app(cfg=_cfg(db_path))

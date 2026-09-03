@@ -50,7 +50,7 @@ ARRIVAL_OPTIONS = ["В дни конфы", "Заранее", "После"]
 
 HOUSING_OPTIONS = ["Хост", "Сам(а)", "Не нужно"]
 
-POSITION_OPTIONS = ["AIESECer", "Alumni", "AIESEC Friend"]
+POSITION_OPTIONS = ["Айсекер", "Аламни", "Друг АЙСЕК"]
 
 ATTENDANCE_FORMAT_OPTIONS = ["Offline", "Online"]
 

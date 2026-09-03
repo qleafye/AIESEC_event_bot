@@ -1190,7 +1190,7 @@ _SUMMARY_FIELD_LABELS = [
     ("Формат", "attendance_format"),
     ("Комментарии", "comments"),
     ("Департамент", "department"),
-    ("Позиция AIESEC", "aiesec_role"),
+    ("Позиция АЙСЕК", "aiesec_role"),
     ("Аламни/айсекер", "alumni_status"),
     ("Справка в ВУЗ", "needs_certificate"),
     ("Английский", "english_level"),
