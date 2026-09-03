@@ -147,6 +147,56 @@ def test_theme_css_text_youlead_heading_font_is_italic():
     assert "--font-heading-style: italic;" in css
 
 
+# ── Phase 23.1-02 (D-05/T-23.1-04): ручка `plate_pattern` — --plate-pattern* в CSS ─────────
+
+def test_plate_pattern_builtin_youlead_name_resolves_to_asset_url():
+    resolved = web_theme.resolve_theme({"miniapp_theme_preset": "youlead"})
+    css = web_theme.theme_css_text(resolved)
+    assert '--plate-pattern: url("/app/static/pattern/youlead.svg");' in css
+
+
+def test_plate_pattern_none_gives_literal_none():
+    resolved = web_theme.resolve_theme({"miniapp_theme_preset": "bluebook"})
+    css = web_theme.theme_css_text(resolved)
+    assert "--plate-pattern: none;" in css
+
+
+def test_plate_pattern_valid_file_id_goes_through_file_proxy_at_low_opacity():
+    file_id = "AgACAgIAAxkBAAI" + "c" * 15  # 30 символов, проходит FILE_ID-регэксп
+    resolved = web_theme.resolve_theme({
+        "miniapp_theme_preset": "bluebook",
+        "miniapp_theme_pattern": file_id,
+    })
+    assert resolved["plate_pattern"] == file_id
+    css = web_theme.theme_css_text(resolved)
+    assert f'--plate-pattern: url("/app/api/file/{file_id}");' in css
+    assert "--plate-pattern-opacity: 0.2;" in css
+
+
+def test_plate_pattern_garbage_value_never_reaches_css_output():
+    for garbage in ("'; }", "../../etc/passwd", "a" * 5):
+        resolved = web_theme.resolve_theme({
+            "miniapp_theme_preset": "bluebook",
+            "miniapp_theme_pattern": garbage,
+        })
+        # Мусор не проходит валидацию ручки — resolve_theme откатывается к пресету.
+        assert resolved["plate_pattern"] == "none"
+        css = web_theme.theme_css_text(resolved)
+        assert "passwd" not in css
+        assert "etc" not in css
+        assert "'; }" not in css
+        assert garbage not in css
+
+        # Тот же откат, даже если мусор попадает напрямую в theme_css_text, минуя resolve_theme
+        # (T-19.1-05: вторая проверка, а не доверие уже пришедшему словарю).
+        direct_css = web_theme.theme_css_text({"preset": "bluebook", "plate_pattern": garbage})
+        assert "passwd" not in direct_css
+        assert "etc" not in direct_css
+        assert "'; }" not in direct_css
+        assert garbage not in direct_css
+        assert "--plate-pattern: none;" in direct_css
+
+
 # ── aiogram-free import ─────────────────────────────────────────────────────────────────
 
 def test_import_web_theme_does_not_load_aiogram():
