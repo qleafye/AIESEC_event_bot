@@ -55,6 +55,12 @@ def client(tmp_path):
 # ── профиль (D-08) ──────────────────────────────────────────────────────────────────────
 
 def test_profile_returns_labeled_nonempty_fields_and_edit_cta(client):
+    # reg_q_phone/reg_q_city по умолчанию выключены в реестре (владелец 03.09: профиль теперь
+    # фильтрует вопросы по reg_engine.enabled_steps — как и мастер анкеты, вопрос выключенного
+    # шага не показывается, даже если в колонке случайно осталось значение); включаем явно,
+    # чтобы протестировать именно показ ЗАПОЛНЕННОГО включённого вопроса.
+    _set("reg_q_phone", "on")
+    _set("reg_q_city", "on")
     _fill_profile(DELEGATE_ID, phone="+7 999", city="Москва", email="", work_status=1,
                   resume_file_id="AgACfile", receipt_file_id="AgACrcpt", payment_status="paid")
     resp = client.get("/app/api/profile", headers=_hdr(DELEGATE_ID))
@@ -104,6 +110,9 @@ def test_profile_initials_two_words_and_one_word(client):
 
 
 def test_profile_contacts_and_fields_do_not_overlap(client):
+    # reg_q_phone/reg_q_email по умолчанию выключены (см. комментарий в тесте выше).
+    _set("reg_q_phone", "on")
+    _set("reg_q_email", "on")
     _fill_profile(DELEGATE_ID, phone="+7 999", email="a@b.ru", work_status=1, city="Москва")
     body = client.get("/app/api/profile", headers=_hdr(DELEGATE_ID)).json()
     contact_keys = {c["key"] for c in body["contacts"]}
@@ -112,6 +121,31 @@ def test_profile_contacts_and_fields_do_not_overlap(client):
     assert contact_keys == {"reg_q_phone", "reg_q_email", "reg_q_work"}
     # фиксированный порядок email/phone/work, а не порядок REG_LABELS
     assert [c["key"] for c in body["contacts"]] == ["reg_q_email", "reg_q_phone", "reg_q_work"]
+
+
+def test_profile_short_track_shows_only_short_track_questions(client):
+    """Владелец 03.09 (стенд с телефона): профиль делегата короткого трека показывал ответы
+    ЛЮБОГО шага анкеты — например `university` (глобально `reg_q_university` default "on"),
+    хотя короткий трек его вообще не спрашивает (`is_step_enabled_for_track` для short не
+    откатывается на глобальное значение при отсутствии `__short`-ключа) — если в колонке
+    `users` случайно осталось непустое значение (например после смены трека при повторной
+    регистрации). Профиль теперь фильтрует по `reg_engine.enabled_steps` — тот же движок и тот
+    же приём (трек аргументом, не из ответов), что фикс 797b0f0 сделал для мастера анкеты."""
+    _set("reg_q_age__short", "on")
+    _set("reg_q_vk__short", "on")
+    _fill_profile(DELEGATE_ID, participant_type="short", age=21, vk_username="@ivan",
+                  university="МГУ", phone="+7 999")
+    body = client.get("/app/api/profile", headers=_hdr(DELEGATE_ID)).json()
+    field_keys = {f["key"] for f in body["fields"]}
+    assert field_keys == {"reg_q_age", "reg_q_vk"}
+    assert "reg_q_university" not in field_keys
+    by_key = {f["key"]: f for f in body["fields"]}
+    assert by_key["reg_q_age"]["value"] == "21"
+    assert by_key["reg_q_vk"]["value"] == "@ivan"
+    # reg_q_phone не включён для короткого трека (нет __short-override) -> не показан нигде,
+    # даже с непустым значением в колонке.
+    assert body["contacts"] == []
+    assert body["form_total"] == 2
 
 
 def test_profile_form_progress_reflects_filled_and_total(client):
