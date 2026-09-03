@@ -108,6 +108,13 @@ async def get_file(cfg, file_id: str) -> dict:
     return await _call(cfg, "getFile", json_body={"file_id": file_id})
 
 
+async def get_user_profile_photos(cfg, user_id: int, limit: int = 1) -> dict:
+    """`result`: `{total_count, photos: [[PhotoSize, ...], ...]}` — внутренний список каждого
+    фото отсортирован от меньшего размера к большему (D-02, план 23-03, аватар делегата на
+    карточке заявки). Кеширует и разбирает ответ `miniapp/avatars.py`."""
+    return await _call(cfg, "getUserProfilePhotos", json_body={"user_id": user_id, "limit": limit})
+
+
 class FileStream:
     """Открытый поток файла Telegram: `content_type`, `content_length` (может быть None) и
     `chunks()` — асинхронный итератор байтов, закрывающий соединение по завершении."""
