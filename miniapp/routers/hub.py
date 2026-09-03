@@ -1,0 +1,77 @@
+"""Phase 23.1 (UI-REDESIGN-02): хаб делегата — тексты и факты первого экрана. Только чтение.
+
+Клиенту достаточно ОДНОГО запроса, чтобы получить все надписи и посчитанные факты плиты —
+подстановка `{done}`/`{total}`/`{days}` делается ЗДЕСЬ, на сервере: `hub.js` ничего не
+форматирует (D-06 — тексты хаба это реестр, не литералы JS). `done`/`total` — тот же
+источник правды, что список заданий (`miniapp.routers.tasks.tasks_progress`, тот же
+`list_active_tasks(city_scope=…)`), `event_dates`/`event_place` — те же ключи
+`event_date`/`event_place_name`, что видит бот, с городским скоупом делегата.
+
+Гейт — `delegate_gate` (тот же приём, что у `miniapp/routers/coins.py`): у хаба нет своего
+раздела-чекбокса в `SECTIONS` (он и есть дом приложения), поэтому `require_section` здесь
+не нужен — только принадлежность к одобренным делегатам.
+"""
+from __future__ import annotations
+
+from datetime import datetime
+from zoneinfo import ZoneInfo
+
+from fastapi import APIRouter, Depends
+
+from cities import get_setting_typed_for_city
+from database.db import get_user
+from settings_schema import get_setting_typed
+
+from miniapp.deps import Principal, delegate_gate
+from miniapp.routers.tasks import delegate_city_scope, tasks_progress
+
+router = APIRouter()
+
+# services.scheduler._now_moscow_naive держит единственный литерал часового пояса проекта
+# (TZFIX-260816), но ребра miniapp -> services у ЭТОГО роутера нет (соседние делегатские
+# роутеры его тоже не тянут) — заводить его ради одной константы значило бы протащить в
+# процесс Mini App aiogram/APScheduler целиком. Второй осознанный литерал, не первый.
+_MOSCOW_TZ = ZoneInfo("Europe/Moscow")
+
+
+def _days_until(raw: str | None) -> int | None:
+    """Целое число полных дней от московского «сегодня» до даты `raw` (строго ДД.ММ.ГГГГ).
+    Дата не задана, не разбирается или уже прошла (строго меньше сегодняшней) -> `None`."""
+    if not raw:
+        return None
+    try:
+        target = datetime.strptime(raw.strip(), "%d.%m.%Y").date()
+    except ValueError:
+        return None
+    today = datetime.now(_MOSCOW_TZ).date()
+    delta = (target - today).days
+    return delta if delta >= 0 else None
+
+
+@router.get("/app/api/hub")
+async def hub(p: Principal = Depends(delegate_gate)) -> dict:
+    user = await get_user(p.telegram_id)
+    event_city = user.get("event_city") if user else None
+
+    done, total = await tasks_progress(p.telegram_id, await delegate_city_scope(p.telegram_id))
+    tasks_fact_text = await get_setting_typed("miniapp_hub_tasks_fact_text")
+    tasks_fact = tasks_fact_text.format(done=done, total=total) if tasks_fact_text else None
+
+    countdown_date = await get_setting_typed_for_city("miniapp_hub_countdown_date", event_city)
+    days = _days_until(countdown_date)
+    days_fact_text = await get_setting_typed("miniapp_hub_days_fact_text")
+    days_fact = days_fact_text.format(days=days) if (days is not None and days_fact_text) else None
+
+    event_dates = await get_setting_typed_for_city("event_date", event_city) or None
+    event_place = await get_setting_typed_for_city("event_place_name", event_city) or None
+
+    return {
+        "balance_eyebrow": await get_setting_typed("miniapp_hub_balance_eyebrow"),
+        "balance_unit": await get_setting_typed("miniapp_hub_balance_unit"),
+        "next_eyebrow": await get_setting_typed("miniapp_hub_next_eyebrow"),
+        "sections_eyebrow": await get_setting_typed("miniapp_hub_sections_eyebrow"),
+        "tasks_fact": tasks_fact,
+        "days_fact": days_fact,
+        "event_dates": event_dates,
+        "event_place": event_place,
+    }
