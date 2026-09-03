@@ -1527,6 +1527,11 @@ a.flat-row:active, button.flat-row:active { background: var(--surface-alt); }
 
 .icon-flip { transform: scaleX(-1); }
 
+/* Незаполненное обязательное поле обязано отличаться от просто пустого
+   (находка №6 обзора 19.1): маркер акцентом, а не тем же серым. */
+.flat-row.q-required > .icon { color: var(--secondary); }
+.flat-row.q-required .flat-row-value { color: var(--text-muted); font-weight: 700; }
+
 /* Горизонтальный отступ поверх полноширинного `.flat-list.flush` (mockups/_src.html: `.pad`)
    — строка «…и ещё N вопросов впереди» не входит в список, ей нужен тот же боковой отступ. */
 .pad { padding: 0 var(--sp-4); }

@@ -211,13 +211,17 @@ export async function render(root, params, ctx) {
       }
     }
 
+    // Обзор правки на общих строках с мастером (questionRow, Task 2, обзор 19.1 находка №6):
+    // заблокированное поле (город/трек/согласия, D-13) остаётся статичной строкой без
+    // pen-line — поведение не меняется, меняется только визуал строки. Незаполненное
+    // обязательное получает `q-required`, чтобы отличаться от просто пустой строки.
     function fieldRow(spec) {
       const column = spec.column;
       const locked = Boolean(spec.locked);
       const value = state.value(column);
-      const displayValue = value == null || value === "" ? (d.not_set_text || "") : String(value);
+      const empty = value == null || value === "";
       if (locked) {
-        return flatRow(h, { title: spec.label, meta: displayValue });
+        return questionRow(h, spec, { value, notSetText: d.not_set_text });
       }
       const panel = h("div", { class: "field hidden" });
       let liveValue = value;
@@ -237,12 +241,16 @@ export async function render(root, params, ctx) {
         }, icon("check")));
         panel.classList.remove("hidden");
       }
-      const row = flatRow(h, { title: spec.label, meta: displayValue, trailing: icon("pen-line"), onClick: open });
+      const requiredEmpty = Boolean(spec.required) && empty;
+      const row = questionRow(h, spec, {
+        value, notSetText: d.not_set_text, onEdit: open,
+        extraCls: requiredEmpty ? "q-required" : null,
+      });
       return h("div", {}, row, panel);
     }
 
     function drawList() {
-      const list = h("div", { class: "flat-list" }, ...state.specs.map(fieldRow));
+      const list = h("div", { class: "flat-list flush" }, ...state.specs.map(fieldRow));
       const diffBox = diffView(h, state.base, state.current, { wasPrefix: "" });
       const dirty = state.specs.some((s) => state.isDirty(s.column));
       const footer = dirty
@@ -257,7 +265,7 @@ export async function render(root, params, ctx) {
       const banner = d.rejected_banner_text
         ? h("div", { class: "confirm-box" }, h("p", { text: d.rejected_banner_text }))
         : null;
-      holder.replaceChildren(...[banner, list, diffBox, footer].filter(Boolean));
+      holder.replaceChildren(...[banner, sectionTitle(h, d.questions_eyebrow), list, diffBox, footer].filter(Boolean));
       setMainButton(dirty ? (d.submit_cta_text || null) : null, dirty ? submitChanges : null, { disabled: busy });
     }
 
