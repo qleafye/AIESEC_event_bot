@@ -1,0 +1,200 @@
+// Экран #/questions — журнал вопросов делегатов (quick 260904-2cj). Форма — журнальная
+// половина screens/admin_coins.js: постраничный список, emptyState на пустом журнале,
+// ошибки сервера текстом из payload, а не кодом ответа. Правило статуса — на сервере
+// (services/questions.py через miniapp/routers/questions.py), клиент только показывает
+// готовые подписи (status_label/filters[].label/answer_button/sent_toast/empty_text) —
+// доменные тексты в JS не хардкодятся.
+
+import { flatRow, emptyState, labelText } from "../ui.js";
+import { icon } from "../icons.js";
+
+const PAGE = 20;
+
+function errorText(err, fallback) {
+  if (err && err.payload && err.payload.text) return err.payload.text;
+  return fallback;
+}
+
+function isAuthError(err) {
+  return Boolean(err && (err.status === 401 || err.status === 403 || err.status === 503));
+}
+
+// Та же форма, что screens/applications.js::sectionLabel — подпись раздела из реестра
+// (`body.dataset.sectionLabels`, miniapp/routers/page.py::section_labels), не литерал.
+function sectionLabel(section) {
+  try {
+    const labels = JSON.parse(document.body.dataset.sectionLabels || "{}");
+    return labels[section] || "";
+  } catch (_) {
+    return "";
+  }
+}
+
+export async function render(root, params, ctx) {
+  const { h, api, me } = ctx;
+
+  let status = null; // null == чип «Все»
+  let offset = 0;
+  let total = 0;
+  let items = [];
+  let openId = null;
+  let emptyText = "";
+  let answerButtonLabel = "";
+  let sentToast = "";
+  const drafts = {};
+  let noticeTimer = null;
+
+  const notice = h("p", { class: "chip success hidden" });
+  const filtersRow = h("div", { class: "chip-row" });
+  const list = h("div", { class: "flat-list" });
+  const foot = h("div", { class: "list-foot" });
+
+  root.append(
+    h("h1", { text: labelText(sectionLabel("questions")) }),
+    notice,
+    filtersRow,
+    list,
+    foot,
+  );
+
+  function say(text) {
+    if (noticeTimer) { clearTimeout(noticeTimer); noticeTimer = null; }
+    notice.textContent = text || "";
+    notice.className = `chip success${text ? "" : " hidden"}`;
+    if (text) noticeTimer = setTimeout(() => say(""), 3000);
+  }
+
+  function renderFilters(filters) {
+    filtersRow.replaceChildren();
+    const activeKey = status || "all";
+    for (const f of filters || []) {
+      filtersRow.append(h("button", {
+        class: `chip appl-filter-chip${f.key === activeKey ? " on" : ""}`,
+        type: "button",
+        text: `${f.label} · ${f.count}`,
+        onClick: () => {
+          if (f.key === activeKey) return;
+          status = f.key === "all" ? null : f.key;
+          offset = 0;
+          items = [];
+          openId = null;
+          load();
+        },
+      }));
+    }
+  }
+
+  function answerForm(item) {
+    const textarea = h("textarea", { class: "input", rows: "3", placeholder: "Ответ делегату" });
+    textarea.value = drafts[item.id] || "";
+    textarea.addEventListener("input", () => { drafts[item.id] = textarea.value; });
+    const errLine = h("p", { class: "error-inline hidden" });
+    const submitBtn = h("button", { class: "btn", type: "button", text: answerButtonLabel || "" });
+
+    async function submit() {
+      const text = textarea.value;
+      submitBtn.disabled = true;
+      errLine.classList.add("hidden");
+      errLine.textContent = "";
+      try {
+        const res = await api(`/questions/${item.id}/answer`, { method: "POST", body: { text } });
+        if (res.ok) {
+          delete drafts[item.id];
+          openId = null;
+          const idx = items.findIndex((row) => row.id === item.id);
+          if (idx >= 0) {
+            items[idx] = {
+              ...items[idx], status: "answered", status_label: "✅ отвечен",
+              answer_text: text, can_answer: false,
+            };
+          }
+          say(sentToast);
+          renderList();
+          return;
+        }
+        // Поле НЕ очищаем: менеджер не должен перенабирать ответ после отказа сервера.
+        errLine.textContent = res.text || errorText({ payload: res }, "Не получилось отправить.");
+        errLine.classList.remove("hidden");
+        submitBtn.disabled = false;
+      } catch (err) {
+        submitBtn.disabled = false;
+        if (!isAuthError(err)) {
+          errLine.textContent = errorText(err, "Не получилось отправить — попробуйте ещё раз.");
+          errLine.classList.remove("hidden");
+        }
+      }
+    }
+
+    submitBtn.addEventListener("click", submit);
+    return h("div", { class: "task-actions" }, textarea, errLine, submitBtn);
+  }
+
+  function questionRow(item) {
+    const isOpen = openId === item.id;
+    const extraChildren = [
+      h("div", { class: "flat-row-meta", text: item.question_text || "" }),
+    ];
+    if (item.answer_text) {
+      extraChildren.push(h("div", { class: "flat-row-meta muted", text: `↩️ ${item.answer_text}` }));
+    }
+    if (isOpen) extraChildren.push(answerForm(item));
+
+    const toggle = item.can_answer
+      ? h("button", {
+        class: "btn ghost", type: "button",
+        onClick: () => { openId = isOpen ? null : item.id; renderList(); },
+      }, icon(isOpen ? "chevron-down" : "pen-line"))
+      : null;
+
+    const meta = [item.name || item.username || "—", item.asked_at, item.stuck ? "залип" : null]
+      .filter(Boolean).join(" · ");
+
+    return flatRow(h, {
+      title: `#${item.id} · ${item.status_label}`,
+      meta,
+      extra: h("div", {}, ...extraChildren),
+      trailing: toggle,
+    });
+  }
+
+  function renderList() {
+    list.replaceChildren();
+    if (items.length === 0) {
+      list.replaceChildren(emptyState(h, { me, text: emptyText }));
+      return;
+    }
+    for (const item of items) list.append(questionRow(item));
+  }
+
+  async function load() {
+    foot.replaceChildren(h("div", { class: "loading", text: "Загрузка…" }));
+    let page;
+    try {
+      const q = `offset=${offset}&limit=${PAGE}` + (status ? `&status=${status}` : "");
+      page = await api(`/questions?${q}`);
+    } catch (err) {
+      foot.replaceChildren();
+      renderList();
+      if (!isAuthError(err)) foot.append(h("p", { class: "error-inline", text: "Не удалось загрузить журнал — попробуйте ещё раз." }));
+      return;
+    }
+    total = page.total;
+    emptyText = page.empty_text || "";
+    answerButtonLabel = page.answer_button || "";
+    sentToast = page.sent_toast || "";
+    renderFilters(page.filters);
+    items = items.concat(page.items);
+    offset += page.items.length;
+    renderList();
+    foot.replaceChildren();
+    if (offset < total) {
+      foot.append(h("button", {
+        class: "btn secondary", type: "button",
+        text: `Показать ещё (${total - offset})`,
+        onClick: load,
+      }));
+    }
+  }
+
+  await load();
+}
