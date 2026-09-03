@@ -107,7 +107,15 @@ NAV_LAYOUT_RE = re.compile(r'const NAV_LAYOUT = "(\w+)";')
 
 # ── общие помощники съёмки Mini App ──────────────────────────────────────────────────────────
 
-def _wait_screen_ready(driver, timeout_s: float = 10) -> None:
+# Находка ревью 23.1-07: `#screen` получает НЕ пустые дети (`notice`+`holder`, form.js:76-77)
+# СИНХРОННО, до первого `await api(...)` внутри `render()` — общий чек ниже («есть дети, нет
+# .loading») проходит на пустой оболочке модуля раньше, чем модуль успевает нарисовать контент
+# из ответа сервера (тот же паттерн синхронного плейсхолдера, что и holder.replaceChildren
+# ниже по файлу). У большинства экранов это не всплывает — их видимая разметка строится
+# синхронно ДО await (hub.js/tasks.js и т.п.), а у #/form контент есть только после ответа
+# `GET /app/api/reg/draft`. `content_selector` — доп. условие ожидания ПОВЕРХ общего чека, для
+# экранов, где сам факт непустого `#screen` ничего не гарантирует.
+def _wait_screen_ready(driver, timeout_s: float = 10, content_selector: str | None = None) -> None:
     from selenium.webdriver.support.ui import WebDriverWait
 
     def ready(d):
@@ -117,10 +125,26 @@ def _wait_screen_ready(driver, timeout_s: float = 10) -> None:
         )
 
     WebDriverWait(driver, timeout_s).until(ready)
+    if content_selector:
+        WebDriverWait(driver, timeout_s).until(
+            lambda d: d.execute_script("return !!document.querySelector(arguments[0]);", content_selector)
+        )
+
+
+# Экран -> доп. CSS-селектор реального контента (см. _wait_screen_ready). Только #/form сегодня
+# показывает пустую оболочку модуля до ответа сервера — остальные экраны строят видимую
+# разметку синхронно и общего чека `_wait_screen_ready` им достаточно. Селектор перечисляет ВСЕ
+# ветки рендера form.js: `.plate--form`/`.wizard-field` — обычный шаг мастера, `.wizard-step` —
+# развилка/согласия pre-flow, `.flat-list` — обзор точечной правки (kind='edit'), `.state` —
+# «анкета закрыта»/«отправлено», `.error-inline` — сетевая ошибка.
+SCREEN_CONTENT_SELECTOR = {
+    "form": ".plate--form, .wizard-field, .wizard-step, .flat-list, .state, .error-inline",
+}
 
 
 def shoot_miniapp_screen(driver, base_url, telegram_id, hash_fragment, out_path,
-                          skip_onboarding=True, task_id=None, wait_selector=True) -> None:
+                          skip_onboarding=True, task_id=None, wait_selector=True,
+                          content_selector=None) -> None:
     url = f"{base_url}/app?as={telegram_id}"
     driver.get(url)
     if skip_onboarding:
@@ -130,7 +154,7 @@ def shoot_miniapp_screen(driver, base_url, telegram_id, hash_fragment, out_path,
     hash_ = hash_fragment.format(task_id=task_id) if task_id is not None else hash_fragment
     driver.get(f"{url}{hash_}")
     if wait_selector:
-        _wait_screen_ready(driver)
+        _wait_screen_ready(driver, content_selector=content_selector)
     time.sleep(0.3)  # докрутка счётчика монет / шрифты — тот же запас, что в make_theme_previews.py
     save_screenshot(driver, out_path, MINIAPP_WINDOW)
 
@@ -272,6 +296,7 @@ def _shoot_delegate_only(db_path: Path, task_id: int) -> int:
                 shoot_miniapp_screen(
                     driver_light, MINIAPP_BASE_URL, DELEGATE_ID, hash_tpl,
                     SHOTS_DIR / f"miniapp-{name}-{preset}-light-hub.png", task_id=tid,
+                    content_selector=SCREEN_CONTENT_SELECTOR.get(name),
                 )
             print(f"OK: {preset} light — delegate screens")
     finally:
@@ -287,6 +312,7 @@ def _shoot_delegate_only(db_path: Path, task_id: int) -> int:
             shoot_miniapp_screen(
                 driver_dark, MINIAPP_BASE_URL, DELEGATE_ID, hash_tpl,
                 SHOTS_DIR / f"miniapp-{name}-bluebook-dark-hub.png", task_id=tid,
+                content_selector=SCREEN_CONTENT_SELECTOR.get(name),
             )
         print("OK: bluebook dark — delegate screens")
     finally:
@@ -376,6 +402,7 @@ def run_full_pass(delegate_only: bool = False) -> int:
                     shoot_miniapp_screen(
                         driver_light, MINIAPP_BASE_URL, DELEGATE_ID, hash_tpl,
                         SHOTS_DIR / f"miniapp-{name}-{preset}-light-hub.png", task_id=tid,
+                        content_selector=SCREEN_CONTENT_SELECTOR.get(name),
                     )
                 for name, hash_tpl in MANAGER_SCREENS:
                     tid = task_id if "{task_id}" in hash_tpl else None
@@ -485,6 +512,7 @@ def run_full_pass(delegate_only: bool = False) -> int:
                 shoot_miniapp_screen(
                     driver_dark, MINIAPP_BASE_URL, DELEGATE_ID, hash_tpl,
                     SHOTS_DIR / f"miniapp-{name}-bluebook-dark-hub.png", task_id=tid,
+                    content_selector=SCREEN_CONTENT_SELECTOR.get(name),
                 )
             for name, hash_tpl in MANAGER_SCREENS:
                 tid = task_id if "{task_id}" in hash_tpl else None
