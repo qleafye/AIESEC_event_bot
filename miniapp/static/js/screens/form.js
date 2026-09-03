@@ -13,7 +13,7 @@ import {
   field, setFieldState, createFormState, diffView, confirmBox, errorText,
   isAuthError as isAuthErrorBase,
 } from "../form.js";
-import { flatRow, sectionTitle } from "../ui.js";
+import { flatRow, sectionTitle, labelText } from "../ui.js";
 import { icon } from "../icons.js";
 import { haptic } from "../motion.js";
 
@@ -59,7 +59,9 @@ function questionRow(h, spec, opts = {}) {
   const answered = raw != null && raw !== "";
   return flatRow(h, {
     icon: answered ? "check" : "circle",
-    title: spec.label,
+    // D-04: строка уже с Lucide-иконкой слева (check/circle) — labelText (ui.js) снимает
+    // ведущий эмодзи подписи вопроса REG_LABELS, не дублируя его рядом с иконкой (23.1-07).
+    title: labelText(spec.label),
     value: answered ? String(raw) : (notSetText || ""),
     valueCls: answered ? "strong" : null,
     cls: [answered ? "q-done" : "q-empty", extraCls].filter(Boolean).join(" "),
