@@ -691,6 +691,69 @@ def test_form_spec_fork_parity_with_bot_for_returning_delegate(tmp_path):
     asyncio.run(go())
 
 
+# ── Живой баг владельца (03.09): form_spec игнорировал аргумент `participant_type` ─────────
+# `enabled_steps(answers)` читал `data.get("participant_type") or "full"` из САМОГО `answers`,
+# а `form_spec` передавал туда `answers` как есть -- аргумент `participant_type` (то, что
+# реально знает Mini App, т.к. `answers` черновика track вообще не содержит, см.
+# `miniapp/routers/form.py::_load_context`) никогда не попадал в `enabled_steps`. Итог —
+# каждый веб-делегат тихо считался full-треком и видел все 43 вопроса вместо своих.
+
+def test_form_spec_short_track_uses_track_argument_not_answers_dict(tmp_path):
+    _ready(tmp_path)
+
+    async def go():
+        from database.db import set_setting
+        await set_setting("reg_q_age__short", "on")
+        await set_setting("reg_q_vk__short", "on")
+        # `answers` мимикрирует draft["answers"] Mini App -- ключа participant_type в нём НЕТ,
+        # трек знает только отдельный аргумент (ровно как в реальном вызове из form.py).
+        answers = {}
+        spec = await SOURCE.form_spec(answers, participant_type="short")
+        step_keys = [s["key"] for s in spec["steps"]]
+        expected = await SOURCE.enabled_steps({"participant_type": "short"})
+        assert step_keys == expected == ["age", "vk"]
+        assert len(step_keys) < len(REG_FLOW)
+        assert spec["progress"]["total"] == len(expected)
+        # answers сам не должен получить забытый participant_type -- form_spec не мутирует
+        # аргумент вызывающего.
+        assert answers == {}
+
+    asyncio.run(go())
+
+
+def test_form_spec_party_track_uses_track_argument_not_answers_dict(tmp_path):
+    _ready(tmp_path)
+
+    async def go():
+        from database.db import set_setting
+        await set_setting("party_enabled", "on")
+        await set_setting("reg_q_housing__party", "on")
+        await set_setting("reg_q_bed_sharing__party", "off")
+        answers = {}
+        spec = await SOURCE.form_spec(answers, participant_type="party_overnight")
+        step_keys = [s["key"] for s in spec["steps"]]
+        expected = await SOURCE.enabled_steps({"participant_type": "party_overnight"})
+        assert step_keys == expected
+        assert "housing" in step_keys
+        assert "bed_sharing" not in step_keys
+        assert len(step_keys) < len(REG_FLOW)
+
+    asyncio.run(go())
+
+
+def test_form_spec_full_track_matches_golden_enabled_steps(tmp_path):
+    """GOLDEN не тронут -- полный трек через form_spec совпадает с GOLDEN['enabled']['track_full']
+    (сторож против регресса самого фикса)."""
+    _ready(tmp_path)
+
+    async def go():
+        spec = await SOURCE.form_spec({}, participant_type="full")
+        step_keys = [s["key"] for s in spec["steps"]]
+        assert step_keys == GOLDEN["enabled"]["track_full"]
+
+    asyncio.run(go())
+
+
 # ══════════════════════════════════════════════════════════════════════════════════════════════
 # Phase 21 (21-06) — VALIDATION_GOLDEN / APPLY_GOLDEN: снимок «ввод → (значение|ошибка)» и
 # побочных правил.
