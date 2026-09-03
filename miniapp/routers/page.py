@@ -55,11 +55,11 @@ STATE_TEXT_KEYS = {
     "disabled": "miniapp_disabled_text",
 }
 
-# Phase 23 план 05 Task 2 (D-25, зеркало STATE_TEXT_KEYS/section_labels): подписи карточки
-# заявки, которых НЕТ в ответе `GET /app/api/applications/next` (тот отдаёт только то, что
-# зависит от карточки/фильтра — `filters.chips`/`reject_templates`/`empty_text`). Читаются
-# один раз при рендере оболочки — тот же приём, что `section_labels`/`STATE_TEXT_KEYS`.
-# Дополнено Task 3 (undo/toasts/шторка/«Принять всех») — см. правку ниже по истории коммитов.
+# Phase 23 план 05 (D-25, зеркало STATE_TEXT_KEYS/section_labels): подписи экрана «📋 Заявки»,
+# которых НЕТ в ответе `GET /app/api/applications/next` (тот отдаёт только то, что зависит от
+# карточки/фильтра — `filters.chips`/`reject_templates`/`empty_text`). Читаются один раз при
+# рендере оболочки — тот же приём, что `section_labels`/`STATE_TEXT_KEYS`. Task 2 — подписи
+# карточки; Task 3 — шторка отказа/тост отмены/«Принять всех».
 APPLICATIONS_TEXT_KEYS = {
     "show_all": "miniapp_applications_show_all",
     "approve_button": "miniapp_applications_approve_button",
@@ -67,6 +67,15 @@ APPLICATIONS_TEXT_KEYS = {
     "resume_open": "miniapp_applications_resume_open",
     "resume_none": "miniapp_applications_resume_none",
     "history_label": "miniapp_applications_history_label",
+    "undo_button": "miniapp_applications_undo_button",
+    "approved_toast": "miniapp_applications_approved_toast",
+    "rejected_toast": "miniapp_applications_rejected_toast",
+    "undone_toast": "miniapp_applications_undone_toast",
+    "undo_too_late": "miniapp_applications_undo_too_late",
+    "approve_all_confirm": "miniapp_applications_approve_all_confirm",
+    "approve_all_button": "miniapp_applications_approve_all_button",
+    "reject_no_reason": "miniapp_applications_reject_no_reason",
+    "reject_own_reason": "miniapp_applications_reject_own_reason",
 }
 
 

@@ -1336,9 +1336,29 @@ def test_applications_screen_touch_action_pan_y_present_in_css():
 
 def test_applications_screen_api_paths_are_literal_not_action_interpolated():
     text = _js_without_comments(APPLICATIONS_JS)
-    for path in ("/applications/next", "/approve", "/reject"):
+    for path in ("/applications/next", "/applications/undo", "/applications/approve_all", "/approve", "/reject"):
         assert path in text, path
     assert "${action}" not in text
+
+
+def test_applications_screen_undo_window_comes_from_server_not_hardcoded():
+    text = _js_without_comments(APPLICATIONS_JS)
+    assert "undo_seconds" in text
+    assert "5000" not in text
+    assert "5 * 1000" not in text
+
+
+def test_applications_screen_reject_flow_has_template_own_and_no_reason_paths():
+    text = _js_without_comments(APPLICATIONS_JS)
+    assert "reject_templates" in text
+    assert "reject_own_reason" in text or "rejectOwnBox" in text
+    assert "reject_no_reason" in text
+
+
+def test_applications_screen_mass_approve_uses_shared_confirm_box():
+    text = _js_without_comments(APPLICATIONS_JS)
+    assert 'from "../form.js"' in text and "confirmBox" in text
+    assert len(re.findall(r"confirmBox\(h,", text)) == 1
 
 
 def test_applications_route_and_nav_registered_with_moderate_reg_cap():
