@@ -101,6 +101,19 @@ def test_sections_follow_section_groups_order_and_hide_empty(tmp_path):
             assert settings_ops.TOGGLE_SECTION[item["key"]] == section["token"]
 
 
+def test_sections_carry_tier_from_settings_main_sections(tmp_path):
+    """Phase 22 Plan 07 (D-16): стартовый экран настроек группирует плитки разделов в два
+    ряда по `sections[].tier` — веб-слой читает `settings_ops.SETTINGS_MAIN_SECTIONS`, а не
+    решает сам, какой раздел «нужен часто»."""
+    client = _setup(tmp_path)
+    body = _all(client).json()
+    for section in body["sections"]:
+        expected = "main" if section["token"] in settings_ops.SETTINGS_MAIN_SECTIONS else "rare"
+        assert section["tier"] == expected, section["token"]
+    tiers = {s["tier"] for s in body["sections"]}
+    assert tiers <= {"main", "rare"}
+
+
 def test_no_roles_keys_in_response(tmp_path):
     client = _setup(tmp_path)
     keys = {i["key"] for i in _items(_all(client).json())}

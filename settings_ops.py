@@ -263,6 +263,14 @@ SECTION_GROUPS: tuple[tuple[str, str, tuple[str, ...]], ...] = (
     ("manage", "🔧 Управление", ("miniapp", "system")),
 )
 
+# Phase 22 Plan 07 (D-16, владелец 03.09): какие разделы стартового экрана настроек попадают
+# в первый ряд плиток «Нужно менеджеру» — константа, а не хардкод в JS (веб-слой читает
+# `sections[].tier`, ничего не решает сам). Раздел, не попавший сюда, едет во второй ряд
+# «Реже» (сегодня — только "manage"; список подрастёт сам, если структура SECTION_GROUPS
+# изменится, а этот список забудут поправить — тест ниже сверяет, что каждый код здесь
+# реально существует в SECTION_GROUPS).
+SETTINGS_MAIN_SECTIONS: frozenset[str] = frozenset({"event", "form", "apps", "pay", "game", "data"})
+
 # Ключ группы "toggles" -> раздел, куда его кладёт соответствующая строка ("toggle", …) в
 # handlers.admin_sections.SECTIONS (девятнадцать ключей группы "toggles" в SETTINGS_SCHEMA,
 # распределены ровно по одному разу — сторож tests/test_settings_ops.py).
