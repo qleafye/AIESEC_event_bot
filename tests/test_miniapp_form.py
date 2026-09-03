@@ -854,6 +854,27 @@ def test_pre_items_no_fork_for_returning_delegate_when_module_off(client):
     assert body["pre_items"] == [] or all(i["type"] not in ("city_fork", "party_fork") for i in body["pre_items"])
 
 
+# ── Живой баг владельца (03.09): GET short-трека раньше отдавал все 43 шага ────────────────
+# `reg_engine.form_spec` игнорировал аргумент `participant_type` -- `ctx["answers"]` черновика
+# Mini App вообще не содержит ключа `participant_type` (он едет отдельным аргументом, см.
+# `_load_context`), поэтому движок тихо считал каждого веб-делегата full-треком.
+
+def test_draft_get_short_track_returns_only_short_steps_and_progress_total(client):
+    _set("reg_q_age__short", "on")
+    _set("reg_q_vk__short", "on")
+    _run(bot_db.upsert_reg_draft(
+        UNREGISTERED_ID, kind="new", participant_type="short",
+        step=None, patch={}, source="miniapp",
+    ))
+
+    resp = client.get("/app/api/reg/draft", headers=_hdr(UNREGISTERED_ID))
+    body = resp.json()
+    step_keys = [s["key"] for s in body["steps"]]
+    assert step_keys == ["age", "vk"]
+    assert body["progress"]["total"] == 2
+    assert body["progress"]["total"] < 43
+
+
 def test_patch_city_choice_accepted_for_returning_delegate_not_already_set(client):
     """D-27: у возвращенца (kind='new', есть прошлая заявка) прошлый город НЕ переносится в
     `ctx["event_city"]` (это решало бы за него, как rereg_start бота никогда не делает) — PATCH
