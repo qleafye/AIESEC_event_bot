@@ -402,9 +402,18 @@ export async function render(root, params, ctx) {
       onClick: () => openRejectSheet(),
     }, icon("x"));
 
+    // D-04 (фикс «подложка закрывает кнопки», квик 03.09): стопка (тень следующей карточки +
+    // сама карточка) — отдельная обёртка `.appl-stack-wrap`, а не прямой ребёнок cardHolder.
+    // Абсолютно спозиционированная `.appl-stack` (z-index:0) в CSS-каскаде красится ПОВЕРХ
+    // статичного in-flow контента (правило CSS2.1 stacking order — позиционированные потомки
+    // со stack level 0 красятся над не-позиционированными block-потомками независимо от
+    // порядка в DOM), поэтому ряд кнопок решения обязан быть СОСЕДОМ обёртки стопки, а не
+    // третьим ребёнком того же контейнера, где стопка технически перекрывает его геометрию.
     cardHolder.replaceChildren(
-      h("div", { class: "appl-stack", "aria-hidden": "true" }),
-      cardEl,
+      h("div", { class: "appl-stack-wrap" },
+        h("div", { class: "appl-stack", "aria-hidden": "true" }),
+        cardEl,
+      ),
       h("div", { class: "appl-decide-row" }, rejectBtn, approveBtn),
     );
 

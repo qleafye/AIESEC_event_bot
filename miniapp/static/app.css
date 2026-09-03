@@ -1190,8 +1190,14 @@ a.flat-row:active, button.flat-row:active { background: var(--surface-alt); }
 
 /* Стопка (D-04 «specific_ideas»): следующая карточка чуть ниже и уже — статичный подслой,
    без второго запроса к серверу. touch-action: pan-y — вертикаль остаётся у прокрутки,
-   swipe.js разбирает только преобладание горизонтали (T-23-22/T-23-24). */
+   swipe.js разбирает только преобладание горизонтали (T-23-22/T-23-24).
+   Фикс «подложка закрывает кнопки» (квик 03.09): `.appl-stack-wrap` держит тень+карточку
+   ОТДЕЛЬНО от `.appl-decide-row` (см. screens/applications.js::draw) — ряд кнопок больше не
+   родной ребёнок контейнера, геометрию которого перекрывает абсолютно спозиционированная
+   тень. Карточка получает свою высоту (min(62vh,540px)) со скроллом внутри — длинная анкета
+   (история/доп.поля) не раздувает страницу и не грозит съесть ряд кнопок снова. */
 .appl-card-holder { position: relative; }
+.appl-stack-wrap { position: relative; }
 .appl-stack {
   position: absolute;
   inset: var(--sp-2) calc(-1 * var(--sp-2)) calc(-1 * var(--sp-2)) var(--sp-2);
@@ -1205,7 +1211,9 @@ a.flat-row:active, button.flat-row:active { background: var(--surface-alt); }
   position: relative;
   z-index: 1;
   touch-action: pan-y;
-  overflow: visible;
+  overflow: auto;
+  max-height: min(62vh, 540px);
+  overscroll-behavior: contain;
 }
 :root[data-motion="off"] .appl-card { transition: none; }
 
@@ -1282,7 +1290,23 @@ a.flat-row:active, button.flat-row:active { background: var(--surface-alt); }
 .appl-overlay.approve { background: color-mix(in srgb, var(--accent) 18%, transparent); color: var(--accent-text); }
 .appl-overlay.reject { background: color-mix(in srgb, var(--danger) 18%, transparent); color: var(--danger-text); }
 
-.appl-decide-row { display: flex; gap: var(--sp-3); margin-top: var(--sp-3); }
+/* position:sticky (не absolute/fixed) — ряд остаётся в нормальном потоке (тень стопки его не
+   геометрически перекрывает, margin-top больше нахлёста тени), а на маленьких экранах
+   прилипает к низу вьюпорта поверх прокрученного контента (тот же приём, что .pinned на
+   лидерборде). z-index:2 — выше `.appl-stack` (z:0) на случай, если геометрия всё же
+   пересечётся (позиционированные потомки со stack level 0 красятся над статичным контентом
+   независимо от DOM-порядка — правило CSS2.1, найдено при разборе бага «подложка закрывает
+   кнопки»). Фон — чтобы прокрученный текст карточки не просвечивал сквозь прилипший ряд. */
+.appl-decide-row {
+  position: sticky;
+  bottom: calc(var(--sp-3) + var(--tg-safe-bottom));
+  z-index: 2;
+  display: flex;
+  gap: var(--sp-3);
+  margin-top: var(--sp-3);
+  padding: var(--sp-2) 0;
+  background: var(--bg);
+}
 .appl-decide {
   width: var(--tap-min);
   height: var(--tap-min);
@@ -1327,6 +1351,13 @@ a.flat-row:active, button.flat-row:active { background: var(--surface-alt); }
   box-shadow: var(--shadow-card);
 }
 .appl-toast .btn { width: auto; }
+/* Rule 1 (найдено при разборе бага «подложка закрывает кнопки», квик 03.09): у `.hidden` и
+   `.appl-toast` одинаковая специфичность (один класс) — `.appl-toast` объявлен НИЖЕ по файлу
+   и его `display: inline-flex` побеждал `.hidden{display:none}` в каскаде, так что скрытый
+   тост всё равно рисовался пустой белой таблеткой (padding без контента, border-radius:pill)
+   поверх контента внизу экрана. Двухклассовый селектор поднимает специфичность и гарантирует
+   `display: none`, независимо от порядка правил в файле. */
+.appl-toast.hidden { display: none; }
 
 .appl-card-holder.is-loading { opacity: .5; pointer-events: none; transition: opacity var(--dur) var(--ease); }
 :root[data-motion="off"] .appl-card-holder.is-loading { transition: none; }
