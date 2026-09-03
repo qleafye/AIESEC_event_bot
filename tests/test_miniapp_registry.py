@@ -77,6 +77,18 @@ MINIAPP_KEYS = [
     # приветственный экран (D-09)
     "miniapp_onboarding_text",
     "miniapp_onboarding_cta",
+    # Phase 23.1-03 (UI-REDESIGN-03): герой и шаги «как это работает» привет-экрана
+    "miniapp_onboarding_hero",
+    "miniapp_onboarding_steps_title",
+    "miniapp_onboarding_steps",
+    # Phase 23.1-03 (UI-REDESIGN-02): тексты хаба делегата — плита, факты, надзаголовки, якорь
+    "miniapp_hub_balance_eyebrow",
+    "miniapp_hub_balance_unit",
+    "miniapp_hub_tasks_fact_text",
+    "miniapp_hub_days_fact_text",
+    "miniapp_hub_countdown_date",
+    "miniapp_hub_next_eyebrow",
+    "miniapp_hub_sections_eyebrow",
     # пустые состояния менеджера (D-18) — раньше были литералами в роутерах
     "miniapp_empty_admin_tasks",
     "miniapp_empty_admin_tasks_archived",
@@ -171,8 +183,8 @@ THEME_ENUM_KEYS = [
 _ALLOWED_TYPES = {"toggle", "int", "list", "date", "text", "enum", "photo", "file"}
 
 
-def test_exactly_115_miniapp_keys_and_no_extra():
-    assert len(MINIAPP_KEYS) == 115
+def test_exactly_125_miniapp_keys_and_no_extra():
+    assert len(MINIAPP_KEYS) == 125
     present = sorted(k for k in SETTINGS_SCHEMA if k.startswith("miniapp_"))
     assert present == sorted(MINIAPP_KEYS)
 
@@ -207,11 +219,15 @@ def test_accent_and_logo_shape():
 
 
 def test_text_keys_have_human_defaults():
+    # Phase 23.1-03: miniapp_hub_countdown_date — тоже "text", но per_city-дата без дефолта
+    # (пусто = «отсчёта нет», как и у остальных per_city-дат группы event) — исключена тем же
+    # приёмом, что и miniapp_accent (не человеческий текст-подпись).
     text_keys = [
         k for k in MINIAPP_KEYS
-        if SETTINGS_SCHEMA[k]["type"] == "text" and k != "miniapp_accent"
+        if SETTINGS_SCHEMA[k]["type"] == "text"
+        and k not in ("miniapp_accent", "miniapp_hub_countdown_date")
     ]
-    assert len(text_keys) == 88
+    assert len(text_keys) == 97
     for key in text_keys:
         default = SETTINGS_SCHEMA[key]["default"]
         assert isinstance(default, str) and default.strip(), key
