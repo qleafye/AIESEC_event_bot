@@ -49,7 +49,10 @@ _ADMIN_MENU_ROWS: list[tuple[str, str]] = [
     ("📝 Незавершённые → таблица", "admin_export_incomplete"),
     ("📋 Заявки", "admin_applications"),
     ("🧾 Чеки", "admin_receipts"),
-    ("🔒 Залипшие вопросы", "admin_stuck_questions"),
+    # Quick 260904-2cj: «🔒 Залипшие вопросы» поглощён журналом «❓ Вопросы делегатов» —
+    # видит все три статуса, а не только «в работе». Старый callback `admin_stuck_questions`
+    # жив как алиас (клавиатуры, живущие в чатах) — см. handlers/admin.py::show_stuck_questions.
+    ("❓ Вопросы делегатов", "admin_questions"),
     ("📢 Рассылка", "admin_broadcast"),
     ("📊 Опросы", "admin_polls"),  # рядом с рассылками: та же аудитория, то же право
     ("🔄 Синхронизация таблицы", "admin_sync_sheet"),

@@ -268,6 +268,13 @@ ADMIN_CAPS: dict[str, str] = {
     "appr_resume:*": "moderate_reg",
     "appr_skip:*": "moderate_reg",
     "admin_stuck_questions": "moderate_reg",  # T-08-33 quick task, part D: stuck-question list
+    # Quick 260904-2cj (QJRN-01..04): раздел «❓ Вопросы делегатов» — экран, фильтр/страница,
+    # ответ из экрана. `admin_stuck_questions` ОСТАЁТСЯ выше — callback жив как алиас на тот же
+    # экран (клавиатуры, живущие в старых чатах), снятие записи закрыло бы его deny-by-default.
+    "admin_questions": "moderate_reg",
+    "aq:*": "moderate_reg",
+    "aq_answer:*": "moderate_reg",
+    "state:QuestionAnswer:*": "moderate_reg",
     "cmd:create_link": "moderate_reg",
     "cmd:find": "moderate_reg",
     "special:question_reply": "moderate_reg",
