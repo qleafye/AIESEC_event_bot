@@ -221,6 +221,34 @@ def test_plate_pattern_garbage_value_never_reaches_css_output():
         assert "--plate-pattern: none;" in direct_css
 
 
+# ── Quick 260904-183 (BACKLOG-0904-REALTALK-PRESET): третий пресет «РилТолк» ──────────────
+
+def test_resolve_theme_realtalk_preset_is_purple_orange_with_pattern():
+    resolved = web_theme.resolve_theme({"miniapp_theme_preset": "realtalk"})
+    assert resolved["accent"] == "#7552CC"
+    assert resolved["secondary"] == "#FF8B10"
+    assert resolved["bg"] == "#F3F4F7"
+    assert resolved["heading_font"] == "raleway"
+    assert resolved["plate_pattern"] == "realtalk"
+    assert resolved["pattern_enabled"] == "on"
+    assert resolved["playful_tone"] == "on"
+
+
+def test_theme_css_realtalk_has_purple_accent_and_pattern_asset():
+    resolved = web_theme.resolve_theme({"miniapp_theme_preset": "realtalk"})
+    css = web_theme.theme_css_text(resolved)
+    assert '--plate-pattern: url("/app/static/pattern/realtalk.webp");' in css
+    assert "--font-heading-style: normal;" in css
+
+
+def test_realtalk_accent_contrast_meets_threshold_unchanged():
+    # contrast_ratio("#7552CC", "#FFFFFF") == 5.48 (посчитано заранее в плане) — porog 4.5
+    # пройден, darken_to_contrast должен вернуть акцент без изменений.
+    assert web_theme.contrast_ratio("#7552CC", "#FFFFFF") >= 4.5
+    resolved = web_theme.resolve_theme({"miniapp_theme_preset": "realtalk"})
+    assert resolved["accent_text"] == "#7552CC"
+
+
 # ── aiogram-free import ─────────────────────────────────────────────────────────────────
 
 def test_import_web_theme_does_not_load_aiogram():

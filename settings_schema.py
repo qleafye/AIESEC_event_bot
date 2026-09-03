@@ -2127,7 +2127,7 @@ SETTINGS_SCHEMA = {
     # «акцентом» ради миграции уже настроенных стендов (UI-SPEC).
     "miniapp_theme_preset": {
         "type": "enum", "group": "miniapp", "label": "🎭 Пресет оформления",
-        "options": ["bluebook", "youlead", "custom"], "prompt": None, "default": "bluebook",
+        "options": ["bluebook", "youlead", "realtalk", "custom"], "prompt": None, "default": "bluebook",
     },
     "miniapp_theme_secondary": {
         "type": "text", "group": "miniapp", "label": "🎨 Вторичный цвет",

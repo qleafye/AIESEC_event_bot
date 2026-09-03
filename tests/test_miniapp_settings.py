@@ -347,8 +347,8 @@ def test_theme_screen_defaults_to_bluebook_not_custom(tmp_path):
     data = _flat_callback_data(kb)
     assert "miniapp_preset:bluebook" in data
     assert "miniapp_preset:youlead" in data
-    # RealTalk (D-02) не заводим — нет третьего реального пресета
-    assert "miniapp_preset:realtalk" not in data
+    # Quick 260904-183: РилТолк — третий реальный пресет (бренд-материалы сняты 04.09.2026).
+    assert "miniapp_preset:realtalk" in data
     assert "miniapp_theme_noop" in data  # кнопка «Своя»
     # не «Своя» -> кнопки сброса нет
     assert "miniapp_theme_reset" not in data
@@ -378,7 +378,7 @@ def test_preset_pick_sends_text_fallback_when_preview_missing(tmp_path, monkeypa
 
 def test_preset_pick_unknown_name_rejected(tmp_path):
     _admin_ready(tmp_path)
-    callback = FakeCallback("miniapp_preset:realtalk")
+    callback = FakeCallback("miniapp_preset:doesnotexist")
     asyncio.run(admin_miniapp_theme.miniapp_preset_pick(callback))
     assert callback.answers and callback.answers[0][0] == "Неизвестная кнопка"
 
@@ -414,7 +414,7 @@ def test_preset_apply_writes_all_handles_at_once(tmp_path):
 
 def test_preset_apply_unknown_name_rejected(tmp_path):
     _admin_ready(tmp_path)
-    callback = FakeCallback("miniapp_preset_apply:realtalk")
+    callback = FakeCallback("miniapp_preset_apply:doesnotexist")
     asyncio.run(admin_miniapp_theme.miniapp_preset_apply(callback))
     assert callback.answers and callback.answers[0][0] == "Неизвестная кнопка"
     assert asyncio.run(get_setting_typed("miniapp_theme_preset")) == "bluebook"
