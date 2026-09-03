@@ -408,6 +408,16 @@ async def draft_submit(
     # T-21-02: claim перед финалом — второй submit (гонка с чатом) получает 409, не вторую запись.
     draft = await claim_reg_draft(p.telegram_id)
     if draft is None:
+        # UAT 21-12 находка 1 (round 2): claim ничего не нашёл по ДВУМ разным причинам —
+        # строки `reg_drafts` вообще нет (обзор правки не PATCH-ил ни одного поля перед
+        # отправкой, D-26) или строка есть, но уже отправляется (гонка с чатом, T-21-02).
+        # Раньше обе ветки отвечали одним и тем же вводящим в заблуждение `already_submitting`
+        # — делегат читал «уже отправляется», хотя правка просто не сохранилась.
+        if await get_reg_draft(p.telegram_id) is None:
+            raise HTTPException(409, {
+                "reason": "no_draft",
+                "text": await get_setting_typed("reg_form_no_draft_text"),
+            })
         raise HTTPException(409, {"reason": "already_submitting"})
 
     try:
