@@ -14,6 +14,8 @@
 """
 from __future__ import annotations
 
+from datetime import datetime
+
 from fastapi import APIRouter, Depends, HTTPException
 
 from cities import cities_module_on, city_scope, normalize_city
@@ -29,6 +31,7 @@ from game_labels import category_label, proof_types_label, render_task_card_text
 from settings_schema import get_setting_typed
 
 from miniapp.deps import Principal, delegate_gate, require_section
+from miniapp.timeutil import today_msk
 
 router = APIRouter()
 
@@ -133,6 +136,21 @@ async def tasks_list(offset: str | None = None, limit: str | None = None,
     }
 
 
+def _deadline_days_left(deadline_at, overdue: bool) -> int | None:
+    """Целое число полных дней от московского «сегодня» (`miniapp.timeutil.today_msk`) до
+    `deadline_at` (`"%Y-%m-%d %H:%M:%S"`, тот же формат, что `game_labels.task_deadline_short`
+    разбирает). Просроченное задание уже несёт `overdue_hint` — вторую строку не дублируем;
+    дедлайна нет или дата не разбирается -> `None`."""
+    if overdue or not deadline_at:
+        return None
+    try:
+        target = datetime.strptime(deadline_at, "%Y-%m-%d %H:%M:%S").date()
+    except (TypeError, ValueError):
+        return None
+    delta = (target - today_msk()).days
+    return delta if delta >= 0 else None
+
+
 @router.get("/app/api/tasks/{task_id}")
 async def task_card(task_id: int, p: Principal = Depends(delegate_gate),
                     _: Principal = Depends(require_section("tasks"))) -> dict:
@@ -149,6 +167,16 @@ async def task_card(task_id: int, p: Principal = Depends(delegate_gate),
         limit, rejected = item["limit"], item["attempt"]
         status_line = f"новое · попытка {rejected} из {limit}" if limit and rejected else "новое"
         attempt = rejected
+
+    # Phase 23.1-05 (UI-REDESIGN-06): плита с наградой и остатком срока, блок «нужно
+    # прислать», строки фактов (макет 05-task.png) — все подписи из реестра, числа
+    # подставляются здесь (D-06).
+    deadline_left_tpl = await get_setting_typed("miniapp_task_deadline_left_text")
+    days_left = _deadline_days_left(task.get("deadline_at"), item["overdue"])
+    deadline_left_text = (
+        deadline_left_tpl.format(days=days_left) if (days_left is not None and deadline_left_tpl) else None
+    )
+
     item.update({
         "text": task["text"],
         "proof_type": task.get("proof_type"),
@@ -158,5 +186,10 @@ async def task_card(task_id: int, p: Principal = Depends(delegate_gate),
         # структурные поля через textContent (innerHTML запрещён, T-19-15).
         "card_text": await render_task_card_text(task, status_line, attempt),
         "overdue_hint": await get_setting_typed("game_task_overdue_hint_text") if item["overdue"] else None,
+        "deadline_left_text": deadline_left_text,
+        "todo_eyebrow": await get_setting_typed("miniapp_task_todo_eyebrow"),
+        "proof_eyebrow": await get_setting_typed("miniapp_task_proof_eyebrow"),
+        "proof_note": await get_setting_typed("miniapp_task_proof_note"),
+        "review_note": await get_setting_typed("miniapp_task_review_note"),
     })
     return item

@@ -512,6 +512,13 @@ def test_card_screen_main_button_submit_and_back():
     assert "/app/api/file/" in text and '"error"' in text  # обложка деградирует без ошибки
 
 
+def test_task_card_uses_plate_and_proof_block():
+    text = _js_without_comments(SCREENS_DIR / "card.js")
+    for token in ("plate--task", "proof-drop", "flat-list flush", 'icon("camera")'):
+        assert token in text, f"нет {token} в screens/card.js"
+    assert 'class: "card task-card"' not in text
+
+
 def test_profile_screen_opens_form_edit_inside_app():
     # План 21-11 (D-24): «Изменить анкету» ведёт на #/form внутри приложения, не по
     # deep-link в бота — deeplink/openTelegramLink здесь больше нет, подпись кнопки только

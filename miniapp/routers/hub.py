@@ -14,7 +14,6 @@
 from __future__ import annotations
 
 from datetime import datetime
-from zoneinfo import ZoneInfo
 
 from fastapi import APIRouter, Depends
 
@@ -24,27 +23,23 @@ from settings_schema import get_setting_typed
 
 from miniapp.deps import Principal, delegate_gate
 from miniapp.routers.tasks import delegate_city_scope, tasks_progress
+from miniapp.timeutil import today_msk
 
 router = APIRouter()
 
-# services.scheduler._now_moscow_naive держит единственный литерал часового пояса проекта
-# (TZFIX-260816), но ребра miniapp -> services у ЭТОГО роутера нет (соседние делегатские
-# роутеры его тоже не тянут) — заводить его ради одной константы значило бы протащить в
-# процесс Mini App aiogram/APScheduler целиком. Второй осознанный литерал, не первый.
-_MOSCOW_TZ = ZoneInfo("Europe/Moscow")
-
 
 def _days_until(raw: str | None) -> int | None:
-    """Целое число полных дней от московского «сегодня» до даты `raw` (строго ДД.ММ.ГГГГ).
-    Дата не задана, не разбирается или уже прошла (строго меньше сегодняшней) -> `None`."""
+    """Целое число полных дней от московского «сегодня» (`miniapp.timeutil.today_msk` —
+    план 23.1-05 вынес общий помощник отсюда, чтобы `tasks.py` не заводил второй литерал
+    часового пояса) до даты `raw` (строго ДД.ММ.ГГГГ). Дата не задана, не разбирается или уже
+    прошла (строго меньше сегодняшней) -> `None`."""
     if not raw:
         return None
     try:
         target = datetime.strptime(raw.strip(), "%d.%m.%Y").date()
     except ValueError:
         return None
-    today = datetime.now(_MOSCOW_TZ).date()
-    delta = (target - today).days
+    delta = (target - today_msk()).days
     return delta if delta >= 0 else None
 
 

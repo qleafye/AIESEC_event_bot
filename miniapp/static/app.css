@@ -1546,3 +1546,35 @@ a.flat-row:active, button.flat-row:active { background: var(--surface-alt); }
   font-size: 12px; line-height: 1.4; color: var(--text-faint);
 }
 .profile-note .icon { flex: none; width: 17px; height: 17px; margin-top: 1px; }
+
+/* ── Карточка задания на плите (план 23.1-05, макет 05-task.png) ─────────────────────────── */
+/* Блок «нужно прислать» закрывает нижнюю половину экрана композицией, а не ещё одной
+   карточкой (принцип 2 макетов 03.09). Пунктир — --accent: более светлого синего в
+   токенах нет, а литеральных цветов в app.css быть не может. */
+.proof-drop {
+  margin: 0 0 var(--sp-6);
+  border: 1px dashed var(--accent);
+  border-radius: var(--radius-lg);
+  background: var(--accent-soft);
+  padding: var(--sp-5) var(--sp-4);
+  text-align: center;
+}
+.proof-drop > .icon { width: 30px; height: 30px; color: var(--accent-text); }
+.proof-drop-title {
+  font-family: var(--font-heading); font-weight: 800; font-size: 17px;
+  line-height: 1.2; margin-top: var(--sp-2);
+}
+.proof-drop-note { font-size: 13px; line-height: 1.45; color: var(--text-faint); margin-top: var(--sp-1); }
+.proof-drop .proof-chips { justify-content: center; margin-top: var(--sp-3); }
+
+.plate-reward { margin-left: auto; display: flex; align-items: center; gap: var(--sp-2); }
+.plate-reward b {
+  font-family: var(--font-heading); font-weight: 800; font-size: 30px;
+  letter-spacing: -.03em; font-variant-numeric: tabular-nums;
+}
+.plate-reward .icon { width: 24px; height: 24px; color: var(--secondary); }
+.plate .cover {
+  display: block; width: calc(100% + 2 * var(--sp-4));
+  margin: calc(-1 * var(--sp-5)) calc(-1 * var(--sp-4)) var(--sp-4);
+  max-height: 180px; object-fit: cover;
+}
