@@ -26,6 +26,7 @@ from config import config
 from database import db
 from handlers import registration as reg
 from handlers import reg_flow
+from handlers import reg_steps
 from handlers.states import Registration
 
 from tests.test_reg_resume_ttl_260820 import USER_ID
@@ -58,9 +59,10 @@ class _KBCapturingMessage:
     (text, reply_markup, parse_mode) triples from answer/answer_photo, own class (not an
     import) so this file stays runnable standalone against a red/missing reg_resume module."""
 
-    def __init__(self, uid, username=None):
+    def __init__(self, uid, username=None, text=None):
         self.from_user = _FakeUser(uid, username)
         self.chat = _FakeChat(uid)
+        self.text = text
         self.sent = []
 
     async def answer(self, text=None, reply_markup=None, parse_mode=None, *a, **k):
@@ -75,7 +77,7 @@ class _KBCapturingMessage:
         return None
 
     def model_copy(self, update=None):
-        new = _KBCapturingMessage(self.from_user.id, self.from_user.username)
+        new = _KBCapturingMessage(self.from_user.id, self.from_user.username, text=self.text)
         new.sent = self.sent
         if update and "from_user" in update:
             new.from_user = update["from_user"]
@@ -496,3 +498,73 @@ def test_sync_draft_out_failure_is_soft(tmp_path, monkeypatch):
 
     msg = asyncio.run(go())
     assert msg.sent  # вопрос всё равно задан (следующий шаг или confirm)
+
+
+# ── UAT 21-12 round 2, находка: ФИО обязано попасть в общий reg_drafts ─────────────────────
+# ФИО спрашивается ДО движка REG_FLOW-шагов (_ask_full_name/process_full_name/_after_full_name),
+# поэтому _advance/_sync_draft_out его никогда не видит — единственная функция, которая пишет
+# ответ в reg_drafts.answers. `_start_registration_flow` уже создаёт строку reg_drafts ДО того,
+# как задан вопрос про ФИО, так что finalize_registration находит именно её (без fallback на
+# живой FSM dict, где full_name как раз есть) — и add_user() пишет пустую строку.
+
+def test_after_full_name_syncs_answer_into_shared_draft(tmp_path, monkeypatch):
+    """`_after_full_name` — общий хвост и для набранного текста (process_full_name), и для
+    «Оставить» прошлого ФИО (recall_keep:full_name, D-26) — синхрон должен жить именно здесь,
+    одной точкой на оба вызывающих, тем же приёмом, что `_advance` использует для остальных
+    шагов."""
+    _use_tmp_db(tmp_path)
+    finalize_calls = []
+
+    async def fake_finalize(message, state, bot):
+        finalize_calls.append(1)
+
+    monkeypatch.setattr(reg, "finalize_registration", fake_finalize)
+
+    async def go():
+        # Черновик уже существует к этому моменту — тот же порядок, что производит
+        # _start_registration_flow (план 21-09): создан ДО вопроса про ФИО, без единого ответа.
+        await db.upsert_reg_draft(USER_ID, kind="new", participant_type="short", source="bot")
+        msg = _KBCapturingMessage(USER_ID, "delegate")
+        state = _new_state(USER_ID)
+        await state.update_data(participant_type="short", _draft_kind="new", full_name="Иванов Иван")
+        await reg._after_full_name(msg, state, bot=object())
+        return await db.get_reg_draft(USER_ID)
+
+    draft = asyncio.run(go())
+    assert len(finalize_calls) == 1  # short-трек без включённых __short вопросов финализирует сразу
+    assert draft is not None
+    assert draft["answers"].get("full_name") == "Иванов Иван"
+
+
+def test_short_track_new_registration_saves_full_name_to_users(tmp_path, monkeypatch):
+    """Конец в конец: совсем новый делегат коротким треком вводит ФИО текстом -> сразу финал
+    (нет включённых __short вопросов) -> users.full_name обязано содержать введённое имя, не
+    пустую строку (`database.db.add_user` дефолтит `full_name` на `''`, если его нет в
+    answers — реальный симптом UAT round 2)."""
+    _use_tmp_db(tmp_path, "short_full_name.db")
+    named_calls = []
+    main_calls = []
+
+    async def fake_named(tab_name, data):
+        named_calls.append((tab_name, data))
+
+    async def fake_main(data):
+        main_calls.append(data)
+
+    monkeypatch.setattr(reg, "append_to_named_sheet", fake_named)
+    monkeypatch.setattr(reg, "append_to_sheet", fake_main)
+
+    async def go():
+        await db.set_setting("registration_mode", "short")
+        await db.set_setting("short_approval", "manual")
+        # Тот же порядок, что производит _start_registration_flow: черновик создан ДО ФИО.
+        await db.upsert_reg_draft(OTHER_ID, kind="new", participant_type="short", source="bot")
+        msg = _KBCapturingMessage(OTHER_ID, "delegate", text="Новый Делегат")
+        state = _new_state(OTHER_ID)
+        await state.update_data(participant_type="short", _draft_kind="new")
+        await reg_steps.process_full_name(msg, state, bot=None)
+        return await db.get_user(OTHER_ID)
+
+    user = asyncio.run(go())
+    assert user is not None
+    assert user["full_name"] == "Новый Делегат"

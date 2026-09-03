@@ -29,9 +29,18 @@ class _FakeUser:
         self.username = username
 
 
+class _FakeChat:
+    def __init__(self, cid):
+        self.id = cid
+
+
 class _FakeMessage:
     def __init__(self, uid, text, username=None):
         self.from_user = _FakeUser(uid, username)
+        # UAT round 2 (21-12): _after_full_name теперь читает message.chat.id (тем же приёмом,
+        # что _advance) — без chat падает AttributeError раньше, чем тест успевает проверить
+        # свой сценарий.
+        self.chat = _FakeChat(uid)
         self.text = text
         self.answers = []
 
