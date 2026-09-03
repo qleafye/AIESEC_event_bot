@@ -1240,3 +1240,51 @@ def test_settings_screen_reuses_existing_upload_route():
     assert 'api("/uploads"' in text
     assert 'api("/uploads/limits")' in text
     assert "/app/api/admin/uploads" not in text and "settings/upload" not in text
+
+
+# ── swipe.js: распознавание жеста «принять/отклонить» (фаза 23 план 05, D-04) ───────────
+# Поведение порогов/угла проверяется в node (tests/test_swipe_js.py); здесь — статические
+# сторожа, которые остаются гейтом и без node.
+
+SWIPE_JS = MINIAPP_STATIC / "js" / "swipe.js"
+
+
+def _swipe_decision_source() -> str:
+    """Текст ровно тела `swipeDecision` (без комментариев) — до начала `attachSwipe`."""
+    text = _js_without_comments(SWIPE_JS)
+    start = text.index("export function swipeDecision")
+    end = text.index("export function attachSwipe")
+    return text[start:end]
+
+
+def test_swipe_js_exports_pure_and_no_dom_outside_attach_swipe():
+    text = _js_without_comments(SWIPE_JS)
+    assert re.search(r"export\s+function\s+swipeDecision\s*\(", text)
+    assert re.search(r"export\s+function\s+attachSwipe\s*\(", text)
+    decision_src = _swipe_decision_source()
+    assert "document" not in decision_src and "window" not in decision_src, (
+        "swipeDecision обязана быть чистой — без document/window"
+    )
+    before_decision = text[:text.index("export function swipeDecision")]
+    assert "document" not in before_decision and "window" not in before_decision
+
+
+def test_swipe_js_thresholds_are_named_constants():
+    text = _js_without_comments(SWIPE_JS)
+    for name in ("HORIZONTAL_MIN", "COMMIT_PX", "COMMIT_RATIO", "MAX_TILT", "EDGE_GUARD", "VERTICAL_SLOPE_MAX"):
+        assert re.search(rf"export\s+const\s+{name}\s*=", text), name
+    decision_src = _swipe_decision_source()
+    # В теле swipeDecision числовые литералы допустимы только 0 и 1 (клэмп/дефолт) — каждый
+    # реальный порог обязан быть именованной константой, объявленной выше по файлу.
+    numbers = re.findall(r"(?<![\w.])\d+(?:\.\d+)?", decision_src)
+    assert all(n in ("0", "1") for n in numbers), f"магическое число в swipeDecision: {numbers}"
+
+
+def test_attach_swipe_sets_touch_action_pan_y_and_reads_motion_tier():
+    text = _js_without_comments(SWIPE_JS)
+    attach_src = text[text.index("export function attachSwipe"):]
+    assert 'touchAction = "pan-y"' in attach_src
+    assert "dataset.motion" in attach_src
+    assert "setPointerCapture" in attach_src
+    for ev in ("pointerdown", "pointermove", "pointerup", "pointercancel"):
+        assert ev in attach_src, ev
