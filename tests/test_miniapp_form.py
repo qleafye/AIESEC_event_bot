@@ -367,6 +367,37 @@ def test_consent_post_unknown_key_400(client):
     assert resp.json() == {"reason": "bad_key"}
 
 
+def test_draft_get_skips_already_signed_current_version_consent(client):
+    """UAT 21-12 находка 1 / БАГ: мастер переспрашивал согласие на КАЖДОЕ открытие, даже
+    секунды после подписи в чате той же сессией (`user_consents` уже содержит свежую запись
+    текущей редакции). Ожидание: уже подписанная ТЕКУЩЕЙ редакцией согласие-экран не
+    показывается повторно (тот же фильтр версий, что `services.consent.outstanding_consents`
+    у гейта пересогласия — вторая копия не заводится)."""
+    _set("consent_enabled", "on")
+    resp = client.get("/app/api/reg/draft", headers=_hdr(DELEGATE_ID))
+    body = resp.json()
+    assert "consent:personal_data" in body["pre"]  # ещё не подписано — экран нужен
+
+    client.post("/app/api/reg/consent/personal_data", headers=_hdr(DELEGATE_ID))
+    resp2 = client.get("/app/api/reg/draft", headers=_hdr(DELEGATE_ID))
+    body2 = resp2.json()
+    assert "consent:personal_data" not in body2["pre"]
+    assert not any(item["type"] == "consent" for item in body2["pre_items"])
+
+
+def test_draft_get_reshows_consent_signed_with_outdated_version(client):
+    """Подпись СТАРОЙ редакции согласия не гасит экран — владелец поднял `consent_version`,
+    делегат обязан подтвердить заново (паритет с гейтом пересогласия `outstanding_consents`)."""
+    _set("consent_enabled", "on")
+    client.post("/app/api/reg/consent/personal_data", headers=_hdr(DELEGATE_ID))
+    _set("consent_version", "2")  # новая редакция после подписи -> старая подпись устарела
+
+    resp = client.get("/app/api/reg/draft", headers=_hdr(DELEGATE_ID))
+    body = resp.json()
+    assert "consent:personal_data" in body["pre"]
+    assert any(item["type"] == "consent" for item in body["pre_items"])
+
+
 # ── submit: гейт согласий, claim, финал ─────────────────────────────────────────────────────
 
 def test_submit_without_required_consents_409(client):
