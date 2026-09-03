@@ -45,6 +45,9 @@ SECTION_KEYS = [
     "miniapp_section_profile",
     "miniapp_section_form",
     "miniapp_section_review",
+    # Phase 23 (APP-TINDER-01, D-09): раздел «🗂 Отбор заявок» — рядом с «review» (менеджерские
+    # разделы вместе), тот же общий toggle_miniapp_section подхватывает суффикс сам.
+    "miniapp_section_applications",
     "miniapp_section_admin_tasks",
     "miniapp_section_stats",
     "miniapp_section_settings",

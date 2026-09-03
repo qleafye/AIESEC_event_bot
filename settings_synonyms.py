@@ -64,6 +64,7 @@ SETTINGS_SYNONYMS: dict[str, list[str]] = {
     "reg_complete_text": ["анкета отправлена", "спасибо за заявку"],
     "approve_text": ["одобрили", "приняли в делегаты"],
     "reject_text": ["отказ", "не прошёл отбор"],
+    "reject_reason_templates": ["причины отказа", "шаблоны отклонения заявки"],
     "pending_gate_text": ["на рассмотрении", "ждите решения"],
     "pending_reminder_interval": ["частота сводки", "интервал напоминаний менеджеру"],
     "nudge_after_minutes": ["напоминание бросившим", "таймер догонялки"],
