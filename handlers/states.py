@@ -55,6 +55,13 @@ class Registration(StatesGroup):
 class Approval(StatesGroup):
     reason = State()
 
+class QuestionAnswer(StatesGroup):
+    # Quick 260904-2cj: ответ на вопрос делегата прямо из экрана «❓ Вопросы делегатов»
+    # (handlers/admin_questions.py), право `moderate_reg` ("state:QuestionAnswer:*" в
+    # handlers/admin_caps.py). Qid/user_id — в state.get_data() (aq_qid/aq_user_id), тот же
+    # приём, что GameTaskEdit несёт task id.
+    text = State()
+
 class ReceiptReview(StatesGroup):
     reject_reason = State()   # admin types receipt rejection reason (mirrors Approval.reason)
 
