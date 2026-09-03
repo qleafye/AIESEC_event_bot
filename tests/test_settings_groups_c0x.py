@@ -421,12 +421,15 @@ def test_render_snapshot_apps(tmp_path):
         "pending_reminder_interval",
         "preselect_no_username_text", "preselect_fail_text", "preselect_link",
         "nudge_after_minutes", "nudge_text",
+        # Phase 23-01 (APP-TINDER-01, D-05): шаблоны причин отказа шторки Mini App.
+        "reject_reason_templates",
     ]
     expected_labels = [
         "✅ После регистрации", "🎉 После одобрения", "🚫 При отклонении",
         "⏳ Заявка на рассмотрении", "🕒 Тайминг батчей заявок",
         "🎯 Предотбор: нет @username", "🎯 Предотбор: не прошёл", "🎯 Предотбор: ссылка",
         "⏰ Догонялка: через сколько минут", "⏰ Догонялка: текст напоминания",
+        "✍️ Причины отказа",
     ]
     defaulted_labels = {
         "⏳ Заявка на рассмотрении", "🎯 Предотбор: нет @username",
@@ -796,7 +799,9 @@ def test_scheduler_and_reminder_keys_declared_with_code_defaults(tmp_path):
         "nudge_scan_minutes", "allowlist_refresh_minutes", "incomplete_sync_hours"]
     # Phase 20 (20-01): поля догонялки переехали из «📝 Регистрация» в «📋 Заявки» вместе
     # с остальными послеподачными текстами — сама пара ключей и её порядок не менялись.
-    assert admin_settings._settings_group_keys("apps")[-2:] == ["nudge_after_minutes", "nudge_text"]
+    # Phase 23-01 (APP-TINDER-01, D-05): reject_reason_templates добавлен хвостом _APPS_FIELD_ORDER.
+    assert admin_settings._settings_group_keys("apps")[-3:] == [
+        "nudge_after_minutes", "nudge_text", "reject_reason_templates"]
     text = asyncio.run(admin_settings.render_settings_group_text("system"))
     # int без значения в БД -- «— не задано» (как proxy_*: parse-дефолт не display-дефолт)
     assert "⏱ Догонялка: как часто проверять: <i>— не задано</i>" in text
