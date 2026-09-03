@@ -85,6 +85,7 @@ SETTINGS_SYNONYMS: dict[str, list[str]] = {
     "reg_sync_from_app_text": ["ответы из веба", "синхронизация анкеты"],
     "reg_form_conflict_text": ["конфликт правок", "анкету поменяли в двух местах"],
     "reg_form_not_set_text": ["поле пустое", "не заполнено"],
+    "reg_form_progress_text": ["шаг из скольки", "подпись прогресс-бара анкеты"],
     "reg_form_submit_cta_text": ["отправить заявку", "подать анкету"],
     "reg_form_edit_submit_cta_text": ["сохранить правки анкеты", "отправить правки"],
     "reg_form_cancel_changes_text": ["отменить правки", "не сохранять"],

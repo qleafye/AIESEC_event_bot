@@ -203,6 +203,7 @@ async def _draft_response(telegram_id: int, ctx: dict | None = None, *, bot_user
             step_spec_row["has_prior_resume"] = reg_engine.has_prior_resume(ctx["user_row"])
         step_spec_row["locked"] = ctx["kind"] == "edit" and step_spec_row["key"] in reg_engine.EDIT_LOCKED_STEPS
     user_row = ctx["user_row"]
+    show_progress = await get_setting_typed("reg_show_progress") == "on"
     return {
         "exists": ctx["draft"] is not None,
         "kind": ctx["kind"],
@@ -237,7 +238,12 @@ async def _draft_response(telegram_id: int, ctx: dict | None = None, *, bot_user
         "updated_in_chat_badge_text": await get_setting_typed("reg_form_updated_in_chat_badge_text"),
         "conflict_text": await get_setting_typed("reg_form_conflict_text"),
         "consent_required_text": await get_setting_typed("reg_form_consent_required_text"),
-        "show_progress": await get_setting_typed("reg_show_progress") == "on",
+        "show_progress": show_progress,
+        # UAT 21-12 находка 2: подпись «N из M» — шаблон из реестра, не литерал JS (D-25);
+        # {step}/{total} подставляет фронт `.replace` (Pitfall 11), номер шага меняется без
+        # похода на сервер. Только когда тумблер включён — незачем гонять текст, который
+        # экран не покажет.
+        "progress_text": (await get_setting_typed("reg_form_progress_text")) if show_progress else None,
         "continue_deeplink": _continue_deeplink(bot_username),
     }
 
