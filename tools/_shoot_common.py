@@ -9,6 +9,7 @@ demo.db тем же приёмом, что `miniapp_preset_apply` в проде.
 """
 from __future__ import annotations
 
+import os
 import subprocess
 import sys
 import sqlite3
@@ -124,6 +125,16 @@ def ensure_repo_on_path() -> None:
         sys.path.insert(0, str(REPO_ROOT))
 
 
+def shoot_scale() -> float:
+    """Множитель плотности снимка: `SHOOT_SCALE=2` -- телефонные PNG выходят в 2x
+    (780x1688 вместо 390x844), CSS-вьюпорт при этом не меняется (390x844) -- лечит жалобу
+    владельца «сжатые фотки», источник которой -- 1x захват при рендере на телефоне 2-3x."""
+    try:
+        return float(os.environ.get("SHOOT_SCALE", "1"))
+    except ValueError:
+        return 1.0
+
+
 def make_chrome_driver(window_size: tuple[int, int], disable_cache: bool = True):
     from selenium import webdriver
     from selenium.webdriver.chrome.options import Options
@@ -132,6 +143,9 @@ def make_chrome_driver(window_size: tuple[int, int], disable_cache: bool = True)
     opts.add_argument("--headless=new")
     opts.add_argument(f"--window-size={window_size[0]},{window_size[1]}")
     opts.add_argument("--hide-scrollbars")
+    scale = shoot_scale()
+    if scale != 1:
+        opts.add_argument(f"--force-device-scale-factor={scale}")
     driver = webdriver.Chrome(options=opts)
     if disable_cache:
         # Между снимками tools/shoot_screens.py временно правит app.js (переключение
@@ -187,17 +201,20 @@ def inject_tg_mock(driver, color_scheme: str = "light") -> None:
 
 
 def save_screenshot(driver, out_path: Path, window_size: tuple[int, int]) -> None:
-    """headless-снимок может прийти с devicePixelRatio != 1 -- сжимаем к целевому размеру
-    окна, не обрезая содержимое (что снято, то и видно)."""
+    """headless-снимок может прийти с devicePixelRatio != 1 (в т.ч. специально задранным
+    через SHOOT_SCALE/--force-device-scale-factor, см. shoot_scale()) -- сжимаем/дотягиваем
+    к целевому размеру окна * SHOOT_SCALE, не обрезая содержимое (что снято, то и видно)."""
     from PIL import Image
 
+    scale = shoot_scale()
+    target_size = (round(window_size[0] * scale), round(window_size[1] * scale))
     tmp_path = out_path.with_suffix(".raw.png")
     driver.save_screenshot(str(tmp_path))
     try:
         with Image.open(tmp_path) as img:
             img = img.convert("RGB")
-            if img.size != window_size:
-                img = img.resize(window_size, Image.LANCZOS)
+            if img.size != target_size:
+                img = img.resize(target_size, Image.LANCZOS)
             img.save(out_path, format="PNG", optimize=True)
     finally:
         tmp_path.unlink(missing_ok=True)
