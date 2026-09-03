@@ -5,7 +5,7 @@
 // приложения (мастер точечной правки, не deep-link в бота).
 
 import { icon } from "../icons.js";
-import { flatRow, sectionTitle } from "../ui.js";
+import { flatRow, sectionTitle, labelText } from "../ui.js";
 
 // Соответствие «ключ вопроса анкеты -> иконка строки контактов» — модульный словарь, а не
 // строковое угадывание на каждый рендер; ключ вне словаря -> строка без иконки, не падаем.
@@ -49,7 +49,9 @@ export async function render(root, params, ctx) {
     sections.push(h("div", { class: "flat-list flush" },
       ...me.contacts.map((item) => flatRow(h, {
         icon: CONTACT_ICON[item.key],
-        title: item.label,
+        // D-04: строка уже с Lucide-иконкой слева — labelText (ui.js) снимает ведущий эмодзи
+        // подписи REG_LABELS, не дублируя его рядом с иконкой (план 23.1-07).
+        title: labelText(item.label),
         value: item.value,
         valueCls: "strong",
       })),

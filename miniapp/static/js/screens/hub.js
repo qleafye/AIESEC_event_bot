@@ -11,7 +11,7 @@
 import { visibleNav, NAV_ICONS, SECTION_GROUPS } from "../app.js";
 import { icon } from "../icons.js";
 import { countUp } from "../motion.js";
-import { flatRow, sectionTitle } from "../ui.js";
+import { flatRow, sectionTitle, labelText } from "../ui.js";
 
 const ONBOARDING_KEY = "aiesec_miniapp_onboarding_seen_v1";
 
@@ -179,7 +179,9 @@ async function renderDelegateHub(root, ctx) {
   for (const item of items) {
     const rowEl = flatRow(h, {
       icon: NAV_ICONS[item.hash],
-      title: labels[item.section] || item.section,
+      // D-04 (план 23.1-07): строка уже несёт Lucide-иконку слева — ведущий эмодзи подписи
+      // реестра (labelText, ui.js) здесь не дублируется рядом с ней.
+      title: labelText(labels[item.section] || item.section),
       value: item.hash === "#/form" ? (ctx.me.form_status_label || "") : "",
       valueCls: item.hash === "#/form" && ctx.me.form_status === "approved" ? "ok" : undefined,
       chevron: true,
