@@ -33,6 +33,7 @@ PRESETS: dict[str, dict[str, str]] = {
         "heading_font": "raleway",
         "playful_tone": "off",
         "pattern_enabled": "off",
+        "plate_pattern": "none",
     },
     "youlead": {
         "accent": "#F85A40",
@@ -41,6 +42,7 @@ PRESETS: dict[str, dict[str, str]] = {
         "heading_font": "raleway_italic",
         "playful_tone": "on",
         "pattern_enabled": "on",
+        "plate_pattern": "youlead",
     },
 }
 
@@ -62,6 +64,7 @@ THEME_KEYS: dict[str, str] = {
     "heading_font": "miniapp_theme_heading_font",
     "playful_tone": "miniapp_theme_playful_tone",
     "pattern_enabled": "miniapp_theme_pattern_enabled",
+    "plate_pattern": "miniapp_theme_pattern",
 }
 
 _COLOR_HANDLES = ("accent", "secondary", "bg")
@@ -77,6 +80,23 @@ FONT_STACKS: dict[str, tuple[str, str]] = {
 }
 
 _HEX6 = re.compile(r"^#[0-9A-Fa-f]{6}$")
+
+# Ручка `plate_pattern` (D-05, план 23.1-02) принимает либо встроенное имя из этого словаря,
+# либо file_id картинки менеджера (regexp ниже — тот же, что FILE_ID_RE в
+# `miniapp/routers/files.py`; дублировать импортом нельзя, `web_theme` обязан остаться чистым
+# stdlib-модулем). Значение -> (url, background-size, x, y, opacity). Смещения — из
+# mockups/NOTES.md (масштаб ×1.8, решение владельца 03.09); ассет уже несёт fill-opacity 0.2,
+# поэтому дополнительная непрозрачность встроенного варианта равна 1.
+PLATE_PATTERNS: dict[str, tuple[str, str, str, str, str]] = {
+    "none":    ("none", "1368px", "-162px", "-324px", "1"),
+    "youlead": ('url("/app/static/pattern/youlead.svg")', "1368px", "-162px", "-324px", "1"),
+}
+
+# Непрозрачность паттерна менеджера (file_id): картинка приходит непрозрачной, 20% даёт тот же
+# визуальный вес, что и у встроенного ассета (у которого прозрачность уже зашита в SVG).
+_UPLOADED_PATTERN_OPACITY = "0.2"
+
+_FILE_ID = re.compile(r"^[A-Za-z0-9_-]{20,200}$")
 
 # Ассеты оформления (D-08/D-15/D-16) — «имя поля ответа /app/api/me» -> «ключ реестра».
 # Единственное место, где перечислены эти ключи: `page.py` читает их для /app/api/me,
@@ -173,6 +193,14 @@ def resolve_theme(settings: dict) -> dict:
         raw = settings.get(THEME_KEYS[handle])
         resolved[handle] = raw if raw in ("on", "off") else preset[handle]
 
+    # `plate_pattern` (D-05): валидно либо встроенное имя PLATE_PATTERNS, либо file_id
+    # картинки менеджера — мусор/пусто откатывается к значению активного пресета.
+    pattern_raw = settings.get(THEME_KEYS["plate_pattern"])
+    if pattern_raw in PLATE_PATTERNS or (isinstance(pattern_raw, str) and _FILE_ID.match(pattern_raw)):
+        resolved["plate_pattern"] = pattern_raw
+    else:
+        resolved["plate_pattern"] = preset["plate_pattern"]
+
     resolved["accent_dark"] = lighten_to_contrast(resolved["accent"], DARK_SURFACE)
     resolved["secondary_dark"] = lighten_to_contrast(resolved["secondary"], DARK_SURFACE)
     # `--accent-text` (ссылки/числа/подписи, D-04 "Reserved for... links") -- читаемый на белом
@@ -214,6 +242,20 @@ def theme_css_text(resolved: dict) -> str:
     accent_text = _safe_hex(resolved.get("accent_text"), darken_to_contrast(accent, "#FFFFFF"))
     accent_text_dark = _safe_hex(resolved.get("accent_text_dark"), accent_dark)
 
+    # `--plate-pattern*` (T-23.1-04): значение перепроверяется здесь же, независимо от того,
+    # прошло ли оно уже resolve_theme — тот же приём, что и у цветов выше (T-19.1-05). Строка
+    # попадает в CSS ровно двумя путями: встроенное имя из PLATE_PATTERNS либо file_id за
+    # /app/api/file/, третьей склейки быть не должно.
+    pattern_value = resolved.get("plate_pattern")
+    if pattern_value in PLATE_PATTERNS:
+        pattern_url, pattern_size, pattern_x, pattern_y, pattern_opacity = PLATE_PATTERNS[pattern_value]
+    elif isinstance(pattern_value, str) and _FILE_ID.match(pattern_value):
+        _fallback_url, pattern_size, pattern_x, pattern_y, _fallback_opacity = PLATE_PATTERNS[preset["plate_pattern"]]
+        pattern_url = f'url("/app/api/file/{pattern_value}")'
+        pattern_opacity = _UPLOADED_PATTERN_OPACITY
+    else:
+        pattern_url, pattern_size, pattern_x, pattern_y, pattern_opacity = PLATE_PATTERNS[preset["plate_pattern"]]
+
     return (
         ":root {\n"
         f"  --accent: {accent};\n"
@@ -222,6 +264,11 @@ def theme_css_text(resolved: dict) -> str:
         f"  --bg: {bg};\n"
         f"  --font-heading: {font_family};\n"
         f"  --font-heading-style: {font_style};\n"
+        f"  --plate-pattern: {pattern_url};\n"
+        f"  --plate-pattern-size: {pattern_size};\n"
+        f"  --plate-pattern-x: {pattern_x};\n"
+        f"  --plate-pattern-y: {pattern_y};\n"
+        f"  --plate-pattern-opacity: {pattern_opacity};\n"
         "}\n"
         ":root[data-theme=\"dark\"] {\n"
         f"  --accent: {accent_dark};\n"
