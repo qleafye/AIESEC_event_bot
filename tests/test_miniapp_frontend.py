@@ -1032,8 +1032,10 @@ def test_payment_row_hidden_when_payment_module_off():
         "/app/api/profile обязан сверяться с тумблером payment_enabled"
     )
     js = (SCREENS_DIR / "profile.js").read_text(encoding="utf-8")
-    assert "me.payment_status_label ?" in js, (
-        "профиль обязан прятать строку «Оплата» при пустой подписи (модуль оплаты выключен)"
+    # Phase 23.1-05: чип оплаты собирается веткой `if (me.payment_status_label)` (плита с
+    # массивом chips), не тернарником — тот же контракт (пустая подпись -> чипа нет вовсе).
+    assert "if (me.payment_status_label)" in js, (
+        "профиль обязан прятать чип «Оплата» при пустой подписи (модуль оплаты выключен)"
     )
 
 

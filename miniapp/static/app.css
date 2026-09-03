@@ -1535,3 +1535,14 @@ a.flat-row:active, button.flat-row:active { background: var(--surface-alt); }
 /* Горизонтальный отступ поверх полноширинного `.flat-list.flush` (mockups/_src.html: `.pad`)
    — строка «…и ещё N вопросов впереди» не входит в список, ей нужен тот же боковой отступ. */
 .pad { padding: 0 var(--sp-4); }
+
+/* ── Профиль делегата на плите (план 23.1-05, макет 04-profile.png) ──────────────────────── */
+.plate-person { display: flex; align-items: center; gap: var(--sp-3); }
+.plate-person h1 { font-size: 26px; }
+.plate-chips { display: flex; flex-wrap: wrap; gap: var(--sp-2); }
+.profile-note {
+  display: flex; align-items: flex-start; gap: var(--sp-2);
+  margin: var(--sp-5) 0 var(--sp-4);
+  font-size: 12px; line-height: 1.4; color: var(--text-faint);
+}
+.profile-note .icon { flex: none; width: 17px; height: 17px; margin-top: 1px; }
