@@ -70,6 +70,12 @@ export async function render(root, params, ctx) {
     cancelText: texts.undo_button || "",
     onConfirm: () => { approveAllConfirm.close(); approveAll(); },
   });
+  // D-07 (план 23-06 закрыл Known Stub 23-05): «Принять всех N» называет и число, и город —
+  // `city_label` уже собранный сервером текст (miniapp/routers/applications.py), отдельной
+  // строкой под count-текстом, как appr_all_confirm бота. Модуль городов выключен -> сервер
+  // отдаёт `null`, строка остаётся скрытой.
+  const approveAllCityLine = h("p", { class: "faint hidden" });
+  approveAllConfirm.insertBefore(approveAllCityLine, approveAllConfirm.querySelector(".btn.danger"));
 
   const rejectReasonInput = h("textarea", { class: "input", rows: "2", maxlength: "500" });
   const rejectOwnSubmit = h("button", {
@@ -187,6 +193,9 @@ export async function render(root, params, ctx) {
     if (busy || !currentCard || !currentCard.remaining) return;
     const count = currentCard.remaining;
     approveAllConfirm.querySelector("p").textContent = (texts.approve_all_confirm || "").replace("{count}", String(count));
+    const cityLabel = currentCard.city_label || "";
+    approveAllCityLine.textContent = cityLabel;
+    approveAllCityLine.classList.toggle("hidden", !cityLabel);
     const confirmBtn = approveAllConfirm.querySelector(".btn.danger");
     if (confirmBtn) confirmBtn.textContent = (texts.approve_all_button || "").replace("{count}", String(count));
     approveAllConfirm.open();
@@ -287,11 +296,33 @@ export async function render(root, params, ctx) {
     return h("p", { class: "muted", text: texts.resume_none || "" });
   }
 
+  // «Было → стало» — план 23-06 закрыл Known Stub 23-05: `row.when`/`row.source_label`/
+  // `row.changes[].label` уже переведены сервером (services.applications._history_entry),
+  // здесь нет ни одного кода колонки/источника — только готовые подписи.
+  function historyChangeNode(change) {
+    return h("p", { class: "appl-history-change" },
+      h("span", { class: "appl-history-label", text: change.label || "" }),
+      h("span", { class: "appl-history-values" },
+        h("span", { text: change.old != null ? String(change.old) : "" }),
+        icon("chevron-right", { class: "appl-history-arrow" }),
+        h("span", { text: change.new != null ? String(change.new) : "" }),
+      ),
+    );
+  }
+
+  function historyEntryNode(entry) {
+    const metaText = [entry.when, entry.source_label].filter(Boolean).join(" · ");
+    return h("div", { class: "appl-history-entry" },
+      h("p", { class: "faint", text: metaText }),
+      (entry.changes || []).map(historyChangeNode),
+    );
+  }
+
   function historyNode(history) {
     if (!history || !history.length) return null;
     return h("details", { class: "appl-history" },
       h("summary", {}, icon("history"), h("span", { text: texts.history_label || "" })),
-      h("div", { class: "appl-history-list" }, history.map((row) => h("p", { class: "faint", text: row.changed_at || "" }))),
+      h("div", { class: "appl-history-list" }, history.map(historyEntryNode)),
     );
   }
 

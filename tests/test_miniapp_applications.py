@@ -193,6 +193,69 @@ def test_next_returns_one_card_oldest_first_with_avatar_and_fields(client):
     assert body["filters"]["reject_templates"][0] == "Анкета заполнена не полностью"
 
 
+# ── история правок: сервер отдаёт готовые подписи, а не сырые коды (23-06, Known Stub 23-05) ──
+
+def test_next_history_carries_labels_and_source_not_raw_columns(client):
+    import moderation_card
+
+    _seed_user(931001, age="20", registration_date="2026-01-01 00:00:01")
+    _run(bot_db.record_answer_history(
+        931001,
+        [
+            {"column": "age", "old": "20", "new": "21"},
+            # маркер повторной подачи (D-10) — уже показан бейджем resubmit, в history не идёт.
+            {"column": "status", "old": "rejected", "new": "pending"},
+        ],
+        "bot",
+    ))
+    body = client.get("/app/api/applications/next", headers=_hdr(REG_MANAGER_ID)).json()
+    assert len(body["history"]) == 1
+    entry = body["history"][0]
+    assert set(entry.keys()) == {"when", "source_label", "changes"}
+    assert entry["source_label"] == "в чате"
+    assert entry["changes"] == [
+        {"label": moderation_card.CARD_STEPS["age"], "old": "20", "new": "21"}
+    ]
+    # ни один сырой код (имя колонки/источника) не утёк в JSON менеджеру.
+    assert "column" not in entry["changes"][0]
+    assert "status" not in [c["label"] for c in entry["changes"]]
+
+
+def test_next_history_entry_with_only_resubmit_marker_is_dropped(client):
+    _seed_user(931002, registration_date="2026-01-01 00:00:01")
+    _run(bot_db.record_answer_history(
+        931002, [{"column": "status", "old": "rejected", "new": "pending"}], "miniapp",
+    ))
+    body = client.get("/app/api/applications/next", headers=_hdr(REG_MANAGER_ID)).json()
+    assert body["history"] == []
+
+
+# ── city_label для «Принять всех N» (D-07, Known Stub 23-05) ─────────────────────────────
+
+def test_next_city_label_absent_when_cities_module_off(client):
+    _seed_user(932001, registration_date="2026-01-01 00:00:01")
+    body = client.get("/app/api/applications/next", headers=_hdr(REG_MANAGER_ID)).json()
+    assert body["city_label"] is None
+
+
+def test_next_city_label_all_cities_for_unbound_manager(client):
+    from cities import ALL_CITIES_LABEL
+
+    _set("event_city_enabled", "on")
+    _seed_user(932002, registration_date="2026-01-01 00:00:01")
+    body = client.get("/app/api/applications/next", headers=_hdr(REG_MANAGER_ID)).json()
+    assert body["city_label"] == ALL_CITIES_LABEL
+
+
+def test_next_city_label_matches_bound_manager_city(client):
+    from cities import city_label as _city_label_fn
+
+    _set("event_city_enabled", "on")
+    _seed_user(932003, event_city="spb", registration_date="2026-01-01 00:00:01")
+    body = client.get("/app/api/applications/next", headers=_hdr(BOUND_REG_MANAGER_ID)).json()
+    assert body["city_label"] == _run(_city_label_fn("spb"))
+
+
 def test_next_track_filter_party_only(client):
     _seed_user(940001, participant_type="full", registration_date="2026-01-01 00:00:01")
     _seed_user(940002, participant_type="party_overnight", registration_date="2026-01-01 00:00:02")
