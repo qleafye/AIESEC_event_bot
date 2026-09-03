@@ -2240,10 +2240,37 @@ SETTINGS_SCHEMA = {
         "prompt": "Заголовок свёрнутого блока истории правок анкеты на карточке заявки.",
         "default": "История правок",
     },
+    # Task 3 (D-07): «Принять всех N» и честное «отменить уже нельзя» вместо молчания.
+    "miniapp_applications_approve_all_button": {
+        "type": "text", "group": "miniapp", "label": "🗂 Кнопка «Принять всех N»",
+        "prompt": "Подпись кнопки массового одобрения в шапке очереди. «{count}» подставится числом заявок в очереди.",
+        "default": "Принять всех {count}",
+    },
+    "miniapp_applications_undo_too_late": {
+        "type": "text", "group": "miniapp", "label": "🗂 Текст «Отменить уже нельзя»",
+        "prompt": "Спокойный текст, когда менеджер нажал «Отменить», но окно уже истекло (эффекты решения уже ушли делегату) — план 23-05.",
+        "default": "Решение уже отправлено делегату — отменить нельзя.",
+    },
     "miniapp_applications_filter_all": {
         "type": "text", "group": "miniapp", "label": "🗂 Фильтр «Все»",
         "prompt": "Подпись чипа-фильтра «без фильтра по треку».",
         "default": "Все",
+    },
+    # Task 3 (D-08): три подписи трек-чипов — API 23-04 отдавал только chips.all/changed.
+    "miniapp_applications_filter_full": {
+        "type": "text", "group": "miniapp", "label": "🗂 Фильтр «Полный трек»",
+        "prompt": "Подпись чипа-фильтра «только заявки полного трека» (D-08, план 23-05).",
+        "default": "Полный",
+    },
+    "miniapp_applications_filter_party": {
+        "type": "text", "group": "miniapp", "label": "🗂 Фильтр «Вечеринка»",
+        "prompt": "Подпись чипа-фильтра «только заявки трека вечеринки» (D-08, план 23-05).",
+        "default": "Вечеринка",
+    },
+    "miniapp_applications_filter_short": {
+        "type": "text", "group": "miniapp", "label": "🗂 Фильтр «Краткая анкета»",
+        "prompt": "Подпись чипа-фильтра «только заявки краткой анкеты (акция)» (D-08, план 23-05).",
+        "default": "Краткая",
     },
     "miniapp_applications_filter_changed": {
         "type": "text", "group": "miniapp", "label": "🗂 Фильтр «Изменённые»",
