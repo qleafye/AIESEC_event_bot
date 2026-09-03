@@ -1,10 +1,11 @@
 """Phase 21 Plan 02 (FORM-SYNC-04, D-25): реестр текстов анкеты Mini App — сторож полноты и
 человечности для планов 21-07..21-11, которые эти ключи ЧИТАЮТ, а не заводят заново.
 
-Закрытый список из 30 текстовых ключей группы «reg» — добавление 31-го обязано осознанно
-ломать этот тест. Группа большинства ключей — "reg" (D-25), не "miniapp" (имена
-`reg_form_*`/`reg_resume_*` не совпадают с UI-SPEC `miniapp_form_*` намеренно — префикс
-`miniapp_` у КАЖДОГО ключа обязан иметь group == "miniapp", tests/test_miniapp_registry.py).
+Закрытый список из 35 текстовых ключей группы «reg» — добавление 36-го обязано осознанно
+ломать этот тест (Phase 23.1: +5 подписей экрана мастера). Группа большинства ключей —
+"reg" (D-25), не "miniapp" (имена `reg_form_*`/`reg_resume_*` не совпадают с UI-SPEC
+`miniapp_form_*` намеренно — префикс `miniapp_` у КАЖДОГО ключа обязан иметь
+group == "miniapp", tests/test_miniapp_registry.py).
 
 pytest-asyncio недоступен в этом окружении — тест синхронный, чтения только из
 SETTINGS_SCHEMA (модуль-уровня dict, БД не требуется).
@@ -15,8 +16,8 @@ import handlers.admin_miniapp as admin_miniapp
 import miniapp.deps as miniapp_deps
 from settings_schema import SETTINGS_SCHEMA
 
-# Закрытый список 30 текстов фазы (Task 1) — добавление 31-го обязано осознанно ломать
-# этот тест.
+# Закрытый список 35 текстов фазы (Task 1 + Phase 23.1) — добавление 36-го обязано
+# осознанно ломать этот тест.
 REG_FORM_TEXT_KEYS = [
     "reg_form_cta_text",
     "reg_resume_continue_label",
@@ -48,6 +49,12 @@ REG_FORM_TEXT_KEYS = [
     "reg_edit_history_button_label",
     "reg_nudge_chat_button_text",
     "reg_nudge_app_button_text",
+    # Phase 23.1 (UI-REDESIGN-04): подписи экрана мастера по макетам 03.09.
+    "reg_form_questions_eyebrow",
+    "reg_form_more_questions_text",
+    "reg_form_draft_saved_text",
+    "reg_form_next_cta_text",
+    "reg_form_back_cta_text",
 ]
 
 # Закрытый список per_city (ровно 9 — тексты, обращённые к делегату, per UI-SPEC §
@@ -68,8 +75,8 @@ _PLACEHOLDER_RE = re.compile(r"\{\w+\}")
 
 
 def test_exactly_30_reg_form_keys():
-    assert len(REG_FORM_TEXT_KEYS) == 30
-    assert len(set(REG_FORM_TEXT_KEYS)) == 30
+    assert len(REG_FORM_TEXT_KEYS) == 35
+    assert len(set(REG_FORM_TEXT_KEYS)) == 35
 
 
 def test_every_key_in_registry_as_reg_text():
