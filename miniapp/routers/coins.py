@@ -28,7 +28,10 @@ LEADERBOARD_MAX = 50
 PARTICIPANTS_CAP = 10_000  # тот же «масштаб-приемлемый» приём, что у бота (1000–1500 за сезон)
 
 
-async def _participants() -> int:
+async def count_participants() -> int:
+    """Сколько делегатов вообще есть в рейтинге — тот же приём «масштаб-приемлемый» лимит,
+    что и у бота (1000–1500 за сезон). Публичная (без `_`), т.к. с плана 23.1-06 её зовёт
+    ещё и `miniapp.routers.hub` для подстановки `{total}` в подпись места на плите."""
     return len(await get_leaderboard(PARTICIPANTS_CAP))
 
 
@@ -43,7 +46,7 @@ async def balance(p: Principal = Depends(delegate_gate),
     return {
         "balance": await get_balance(p.telegram_id),
         "rank": await get_user_rank(p.telegram_id),
-        "participants": await _participants(),
+        "participants": await count_participants(),
     }
 
 
@@ -95,6 +98,6 @@ async def leaderboard(limit: str | None = None, p: Principal = Depends(delegate_
     return {
         "items": items,
         "me": {"rank": await get_user_rank(p.telegram_id), "balance": await get_balance(p.telegram_id)},
-        "total": await _participants(),
+        "total": await count_participants(),
         "empty_text": await get_setting_typed("leaderboard_empty_text") if not rows else None,
     }

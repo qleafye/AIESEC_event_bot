@@ -103,6 +103,10 @@ MINIAPP_KEYS = [
     "miniapp_task_proof_note",
     "miniapp_task_deadline_left_text",
     "miniapp_task_review_note",
+    # Phase 23.1-06 (UI-REDESIGN-06): подписи плит списочных экранов — задания/монеты/рейтинг
+    "miniapp_tasks_plate_eyebrow",
+    "miniapp_leaderboard_plate_eyebrow",
+    "miniapp_leaderboard_plate_unit",
     # пустые состояния менеджера (D-18) — раньше были литералами в роутерах
     "miniapp_empty_admin_tasks",
     "miniapp_empty_admin_tasks_archived",
@@ -197,8 +201,8 @@ THEME_ENUM_KEYS = [
 _ALLOWED_TYPES = {"toggle", "int", "list", "date", "text", "enum", "photo", "file"}
 
 
-def test_exactly_137_miniapp_keys_and_no_extra():
-    assert len(MINIAPP_KEYS) == 137
+def test_exactly_140_miniapp_keys_and_no_extra():
+    assert len(MINIAPP_KEYS) == 140
     present = sorted(k for k in SETTINGS_SCHEMA if k.startswith("miniapp_"))
     assert present == sorted(MINIAPP_KEYS)
 
@@ -241,7 +245,7 @@ def test_text_keys_have_human_defaults():
         if SETTINGS_SCHEMA[k]["type"] == "text"
         and k not in ("miniapp_accent", "miniapp_hub_countdown_date")
     ]
-    assert len(text_keys) == 109
+    assert len(text_keys) == 112
     for key in text_keys:
         default = SETTINGS_SCHEMA[key]["default"]
         assert isinstance(default, str) and default.strip(), key
