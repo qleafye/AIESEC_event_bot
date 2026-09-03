@@ -201,7 +201,14 @@ def me(request: Request, p: Principal = Depends(principal)) -> dict:
         onboarding_hero = read_setting(conn, "miniapp_onboarding_hero") or ""
         onboarding_steps_title = read_setting(conn, "miniapp_onboarding_steps_title") or ""
         onboarding_steps = read_setting(conn, "miniapp_onboarding_steps") or ""
+        # Quick 260903: подпись плитки «Дашборд» — из реестра, адрес — из деплойного cfg
+        # (см. dashboard_url ниже), не из bot_settings (D-05/D-19).
+        dashboard_tile_label = read_setting(conn, "miniapp_tile_dashboard_label") or ""
     resolved = web_theme.resolve_theme(theme_settings)
+    # Плитка «Дашборд» хаба менеджера: адрес виден только staff (is_staff — любое право),
+    # и только когда деплой задал `DASHBOARD_PUBLIC_URL` (cfg.public_url) — тот же источник,
+    # что у кнопки «🌐 Открыть дашборд» в боте (handlers/admin.py::_stats_keyboard_for).
+    dashboard_url = cfg.public_url if (p.is_staff and cfg.public_url) else None
     return {
         "telegram_id": p.telegram_id,
         "via": p.via,
@@ -234,5 +241,7 @@ def me(request: Request, p: Principal = Depends(principal)) -> dict:
         "onboarding_hero": onboarding_hero,
         "onboarding_steps_title": onboarding_steps_title,
         "onboarding_steps": onboarding_steps,
+        "dashboard_url": dashboard_url,
+        "dashboard_tile_label": dashboard_tile_label,
         **assets,
     }
