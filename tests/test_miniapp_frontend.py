@@ -1410,3 +1410,34 @@ def test_plate_alpha_tokens_declared_in_both_themes():
         assert text.count(name) == 2, f"{name}: ожидалось 2 вхождения (светлая+тёмная ветка), найдено {text.count(name)}"
     assert text == DASHBOARD_TOKENS.read_text(encoding="utf-8"), "tokens.css разошёлся с dashboard/static/tokens.css"
 
+
+# ── Phase 23.1-04 (UI-REDESIGN-04): мастер анкеты — плита, живой прогресс, список вопросов ──
+
+def test_no_inline_style_attribute_anywhere_in_frontend():
+    """Живой дефект (план 23.1-04): `style-src 'self'` в `miniapp/main.py` без
+    `'unsafe-inline'` — атрибут `style="…"` браузер молча отбрасывает, полоса прогресса
+    мастера не заполнялась никогда. Писать в CSSOM (`el.style.x = …`) можно и нужно, эту
+    политику она не ограничивает — сторож запрещён только атрибуту, не CSSOM-присвоению."""
+    js_files = sorted((MINIAPP_STATIC / "js").glob("*.js")) + sorted(SCREENS_DIR.glob("*.js"))
+    style_key_re = re.compile(r"\{[^}]*\bstyle\s*:")
+    problems = []
+    for path in js_files:
+        text = _js_without_comments(path)
+        if style_key_re.search(text):
+            problems.append(path.name)
+    assert not problems, f"ключ style: передан в h(...) в файлах {problems} — CSP его отбросит"
+
+    template_problems = []
+    for path in sorted(MINIAPP_TEMPLATES.rglob("*")):
+        if path.is_file() and "style=" in path.read_text(encoding="utf-8"):
+            template_problems.append(path.name)
+    assert not template_problems, f"атрибут style= в шаблонах {template_problems}"
+
+
+def test_form_screen_uses_plate_and_question_rows():
+    text = _js_without_comments(SCREENS_DIR / "form.js")
+    for token in ("plate--form", "wizard-field", "questionRow", "flat-list flush"):
+        assert token in text, f"нет {token} в screens/form.js"
+    assert 'setMainButton("→"' not in text
+    assert not re.search(r"\{[^}]*\bstyle\s*:", text)
+
