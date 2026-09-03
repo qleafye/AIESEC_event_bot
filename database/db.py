@@ -191,6 +191,13 @@ async def init_db():
         await _ensure_column(db, "users", "edited_at", "TEXT")
         await _ensure_column(db, "users", "edited_source", "TEXT")
 
+        # Phase 23 (APP-TINDER-01, D-02): кеш аватара делегата для карточки Mini App.
+        # file_id живёт в Telegram — на диск ничего не кладём (CLAUDE.md, «file_id Pattern»);
+        # avatar_checked_at различает «фото нет» от «ещё не проверяли» (getUserProfilePhotos
+        # зовётся не чаще, чем раз в TTL — решает вызывающий сервис, не эта колонка).
+        await _ensure_column(db, "users", "avatar_file_id", "TEXT")
+        await _ensure_column(db, "users", "avatar_checked_at", "TEXT")
+
         await db.execute('''
             CREATE TABLE IF NOT EXISTS bot_settings (
                 key TEXT PRIMARY KEY,
@@ -543,6 +550,33 @@ async def init_db():
         await db.execute(
             "CREATE INDEX IF NOT EXISTS idx_miniapp_outbox_pending "
             "ON miniapp_outbox(processed_at, id)"
+        )
+
+        # Phase 23 (APP-TINDER-01, D-06): журнал решений по заявкам с окном отмены. Решение по
+        # заявке УЖЕ записано в users.status (approve_user_atomic/reject_user/будущий сервис),
+        # но ПОБОЧНЫЕ эффекты (приветствие делегату/сообщение об отказе/строка в листе)
+        # отложены до effects_due_at — окно, в течение которого менеджер может нажать «Отменить»
+        # без единого исходящего сообщения. Ровно один из двух исходов — «эффекты заявлены»
+        # (effects_sent_at) или «отменено» (undone_at) — может случиться с конкретной строкой;
+        # это гарантируют условные UPDATE ... WHERE effects_sent_at IS NULL AND undone_at IS NULL
+        # в claim_application_undo/claim_due_application_decisions ниже, а НЕ порядок вызовов —
+        # два параллельных сметателя (бот-джоба и веб-отмена) не могут оба выиграть одну строку.
+        await db.execute('''
+            CREATE TABLE IF NOT EXISTS application_decisions (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                telegram_id INTEGER NOT NULL,
+                decision TEXT NOT NULL,
+                reason TEXT,
+                decided_by INTEGER NOT NULL,
+                decided_at TEXT NOT NULL,
+                effects_due_at TEXT NOT NULL,
+                effects_sent_at TEXT,
+                undone_at TEXT
+            )
+        ''')
+        await db.execute(
+            "CREATE INDEX IF NOT EXISTS idx_application_decisions_due "
+            "ON application_decisions(effects_sent_at, undone_at, effects_due_at)"
         )
 
         # Phase 15 (STAT-03, D-06): append-only registration-funnel event log -- the top of
@@ -1884,26 +1918,83 @@ def _city_clause(scope: tuple[str, tuple[str, ...]] | None, column: str = "event
     return f"({column} IS NULL OR {column} NOT IN ({placeholders}))", list(exclude)
 
 
-async def get_pending_users(limit: int = 1, offset: int = 0, *, city_scope=None) -> list[dict]:
-    """Pending applications, oldest first (registration_date then telegram_id)."""
-    frag, city_params = _city_clause(city_scope)
-    extra = f" AND {frag}" if frag else ""
+# ── Phase 23 (APP-TINDER-01, D-08): track filter clause builder ──────────────────────────────
+#
+# Same shape as `_city_clause` — a pure SQL-fragment builder, no leading AND/WHERE, callers
+# splice it into the same WHERE as `_city_clause`, so track + city scope combine in ONE query
+# (T-23-04: no Python-side post-filter over the whole pending table). Track codes are this
+# file's own literals (db.py imports neither `reg_engine` nor `cities` — same import-cycle
+# reason as `_city_clause` above); a drift guard against `reg_engine.PARTY_TRACK_CODES` lives
+# in plan 23-02 (T-23-05, accepted risk here).
+def _track_clause(track: str | None, column: str = "participant_type") -> tuple[str, list]:
+    """`track is None` or an unrecognized value -> `("", [])`, no filtering (keeps callers
+    without the new kwarg byte-identical to today). `"full"` also matches NULL — an empty
+    `participant_type` means the full track, same reading `_render_application_card` uses.
+    `"party"` matches both overnight variants. `"short"` is a plain equality."""
+    if track == "full":
+        return f"({column} IS NULL OR {column} = ?)", ["full"]
+    if track == "party":
+        return f"{column} IN (?, ?)", ["party_overnight", "party_noovernight"]
+    if track == "short":
+        return f"{column} = ?", ["short"]
+    return "", []
+
+
+def _changed_only_clause(changed_only: bool, column: str = "edited_at") -> str:
+    """No leading AND — `""` when the filter is off (default), else a non-empty edited_at
+    check. Kept as its own tiny helper (not inlined) so the WHERE-assembly in
+    `get_pending_users`/`get_pending_count` reads as a flat list of fragments, same style
+    as `_city_clause`/`_track_clause`."""
+    if not changed_only:
+        return ""
+    return f"{column} IS NOT NULL AND TRIM({column}) != ''"
+
+
+def _pending_where(city_scope, track, changed_only, *, city_column: str = "event_city") -> tuple[str, list]:
+    """Assemble the shared WHERE tail (city scope + track + changed-only) used by
+    `get_pending_users`/`get_pending_count` — ONE place builds the fragment list so both
+    functions stay byte-identical in filtering behaviour."""
+    parts = []
+    params: list = []
+    city_frag, city_params = _city_clause(city_scope, city_column)
+    if city_frag:
+        parts.append(city_frag)
+        params.extend(city_params)
+    track_frag, track_params = _track_clause(track)
+    if track_frag:
+        parts.append(track_frag)
+        params.extend(track_params)
+    changed_frag = _changed_only_clause(changed_only)
+    if changed_frag:
+        parts.append(changed_frag)
+    extra = "".join(f" AND {p}" for p in parts)
+    return extra, params
+
+
+async def get_pending_users(limit: int = 1, offset: int = 0, *, city_scope=None,
+                             track: str | None = None, changed_only: bool = False) -> list[dict]:
+    """Pending applications, oldest first (registration_date then telegram_id).
+
+    `track`/`changed_only` splice into the SAME WHERE as `city_scope` — SQL does the
+    filtering, not a Python post-filter (T-23-04). Defaults keep bot call sites (which never
+    pass these kwargs) byte-identical to pre-Phase-23 behaviour."""
+    extra, params = _pending_where(city_scope, track, changed_only)
     async with _connect() as db:
         db.row_factory = aiosqlite.Row
         async with db.execute(
             f"SELECT * FROM users WHERE status = 'pending'{extra} "
             "ORDER BY registration_date ASC, telegram_id ASC LIMIT ? OFFSET ?",
-            (*city_params, limit, offset),
+            (*params, limit, offset),
         ) as cursor:
             return [dict(row) for row in await cursor.fetchall()]
 
 
-async def get_pending_count(*, city_scope=None) -> int:
-    frag, city_params = _city_clause(city_scope)
-    extra = f" AND {frag}" if frag else ""
+async def get_pending_count(*, city_scope=None, track: str | None = None,
+                             changed_only: bool = False) -> int:
+    extra, params = _pending_where(city_scope, track, changed_only)
     async with _connect() as db:
         async with db.execute(
-            f"SELECT COUNT(*) FROM users WHERE status = 'pending'{extra}", tuple(city_params)
+            f"SELECT COUNT(*) FROM users WHERE status = 'pending'{extra}", tuple(params)
         ) as cursor:
             row = await cursor.fetchone()
             return int(row[0]) if row and row[0] is not None else 0
@@ -1929,6 +2020,114 @@ async def approve_all_pending(*, city_scope=None) -> list[int]:
             rows = await cursor.fetchall()
         await db.commit()
         return [row[0] for row in rows]
+
+
+# ── Phase 23 (APP-TINDER-01, D-06): journal of application decisions ─────────────────────────
+#
+# See the CREATE TABLE comment in init_db() for the full rationale (undo window, at-most-one
+# effect delivery). All four accessors follow the `miniapp_outbox` shape (async, plain-dict
+# rows, no ORM).
+
+async def record_application_decision(telegram_id: int, decision: str, reason: str | None,
+                                       decided_by: int, decided_at: str,
+                                       effects_due_at: str) -> int:
+    """Records a decision already applied to `users.status`; effects stay pending until
+    `effects_due_at`. Returns the new row's id (> 0)."""
+    async with _connect() as db:
+        cursor = await db.execute(
+            "INSERT INTO application_decisions "
+            "(telegram_id, decision, reason, decided_by, decided_at, effects_due_at) "
+            "VALUES (?, ?, ?, ?, ?, ?)",
+            (telegram_id, decision, reason, decided_by, decided_at, effects_due_at),
+        )
+        await db.commit()
+        return cursor.lastrowid
+
+
+async def claim_application_undo(decision_id: int) -> dict | None:
+    """Claims the undo for one decision — succeeds exactly once. `effects_sent_at IS NULL AND
+    undone_at IS NULL` in the WHERE closes the race against `claim_due_application_decisions`
+    at the statement level (T-23-01): whichever UPDATE commits first wins the row, the other
+    sees rowcount 0 and gets None back, never both."""
+    async with _connect() as db:
+        db.row_factory = aiosqlite.Row
+        async with db.execute(
+            "UPDATE application_decisions SET undone_at = ? "
+            "WHERE id = ? AND effects_sent_at IS NULL AND undone_at IS NULL "
+            "RETURNING *",
+            (datetime.now().strftime("%Y-%m-%d %H:%M:%S"), decision_id),
+        ) as cursor:
+            row = await cursor.fetchone()
+        await db.commit()
+        return dict(row) if row else None
+
+
+async def claim_due_application_decisions(now: str, limit: int = 50) -> list[dict]:
+    """Claims every overdue, still-live decision (`effects_sent_at IS NULL AND undone_at IS
+    NULL AND effects_due_at <= now`) and marks it `effects_sent_at = now` in the SAME
+    condition per row, so a row already claimed by a concurrent call (or already undone) is
+    silently skipped — each row is returned to exactly one caller, ever (T-23-01)."""
+    async with _connect() as db:
+        db.row_factory = aiosqlite.Row
+        async with db.execute(
+            "SELECT id FROM application_decisions "
+            "WHERE effects_sent_at IS NULL AND undone_at IS NULL AND effects_due_at <= ? "
+            "ORDER BY id LIMIT ?",
+            (now, limit),
+        ) as cursor:
+            candidate_ids = [row["id"] for row in await cursor.fetchall()]
+
+        claimed: list[dict] = []
+        for candidate_id in candidate_ids:
+            async with db.execute(
+                "UPDATE application_decisions SET effects_sent_at = ? "
+                "WHERE id = ? AND effects_sent_at IS NULL AND undone_at IS NULL "
+                "RETURNING *",
+                (now, candidate_id),
+            ) as cursor:
+                row = await cursor.fetchone()
+            if row:
+                claimed.append(dict(row))
+        await db.commit()
+        return claimed
+
+
+async def revert_user_to_pending(telegram_id: int, from_status: str) -> bool:
+    """Undo effect on `users`: puts the row back to `pending` ONLY if it is still in the
+    status the decision expected (T-23-02) — a concurrent second decision by another manager
+    silently wins, this call returns False rather than clobbering it."""
+    async with _connect() as db:
+        cursor = await db.execute(
+            "UPDATE users SET status = 'pending' WHERE telegram_id = ? AND status = ?",
+            (telegram_id, from_status),
+        )
+        await db.commit()
+        return cursor.rowcount == 1
+
+
+# ── Phase 23 (APP-TINDER-01, D-02): delegate avatar cache ────────────────────────────────────
+
+async def set_user_avatar(telegram_id: int, file_id: str, checked_at: str) -> None:
+    async with _connect() as db:
+        await db.execute(
+            "UPDATE users SET avatar_file_id = ?, avatar_checked_at = ? WHERE telegram_id = ?",
+            (file_id, checked_at, telegram_id),
+        )
+        await db.commit()
+
+
+async def find_user_by_avatar_file_id(file_id: str) -> dict | None:
+    """Reverse lookup: whose avatar is this file_id (used by the file proxy allow-list,
+    plan 23-03). Empty/None `file_id` short-circuits to None without a query."""
+    if not file_id:
+        return None
+    async with _connect() as db:
+        db.row_factory = aiosqlite.Row
+        async with db.execute(
+            "SELECT * FROM users WHERE avatar_file_id = ? LIMIT 1", (file_id,)
+        ) as cursor:
+            row = await cursor.fetchone()
+            return dict(row) if row else None
 
 
 # ── Phase 3: scheduled-broadcast payload store (SCHED-01) ────────────────────
