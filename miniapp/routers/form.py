@@ -279,9 +279,18 @@ _PRE_CHOICE_VALIDATORS = (
 
 def _unwrap_other(raw: Any) -> Any:
     """Pitfall 10: веб шлёт `{"other": "текст"}` для choice-шагов с `other_allowed` вместо
-    литерала «Другое» — движок про эту обёртку не знает, распаковка целиком на роутере."""
-    if isinstance(raw, dict) and "other" in raw:
-        return raw["other"]
+    литерала «Другое» — движок про эту обёртку не знает, распаковка целиком на роутере.
+
+    UAT 21-12 находка 5: та же история для шага «Резюме» — дропзона (`miniapp/static/js/
+    form.js::fileControl`) шлёт текстовый ответ как `{"text": "..."}` (переключатель
+    «ответить текстом» вместо загрузки файла), а `reg_engine.validate_answer("resume", ...)`
+    ждёт голую строку и падает на `.strip()` словаря. Обёртка на этом же роутере, не в
+    движке (T-21-05: движок не знает про формы JS)."""
+    if isinstance(raw, dict):
+        if "other" in raw:
+            return raw["other"]
+        if "text" in raw:
+            return raw["text"]
     return raw
 
 
