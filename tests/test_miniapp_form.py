@@ -203,6 +203,26 @@ def test_draft_get_unregistered_newcomer_is_new_kind_no_prior(client):
         assert step["value_source"] != "prior"
 
 
+# ── Прогресс мастера «N из M» (UAT 21-12 находка 2) ──────────────────────────────────────────
+
+def test_draft_get_exposes_progress_text_template_when_toggle_on(client):
+    """Подпись прогресс-бара мастера — из реестра (reg_form_progress_text), не литерал JS
+    (D-25). `{step}`/`{total}` подставляет фронт (номер шага меняется без похода на сервер,
+    тем же приёмом `.replace`, что reg_resume_continue_label в чате бота)."""
+    _set("reg_show_progress", "on")
+    resp = client.get("/app/api/reg/draft", headers=_hdr(UNREGISTERED_ID))
+    body = resp.json()
+    assert body["show_progress"] is True
+    assert body["progress_text"] == "Шаг {step} из {total}"
+
+
+def test_draft_get_progress_text_absent_when_toggle_off(client):
+    resp = client.get("/app/api/reg/draft", headers=_hdr(UNREGISTERED_ID))
+    body = resp.json()
+    assert body["show_progress"] is False
+    assert body["progress_text"] is None
+
+
 # ── Регистрация закрыта (D-11) ──────────────────────────────────────────────────────────────
 
 def test_new_draft_closed_when_city_disabled(client):
