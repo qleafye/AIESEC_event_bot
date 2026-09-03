@@ -89,6 +89,14 @@ MINIAPP_KEYS = [
     "miniapp_hub_countdown_date",
     "miniapp_hub_next_eyebrow",
     "miniapp_hub_sections_eyebrow",
+    # Phase 23.1-05 (UI-REDESIGN-05): подписи профиля делегата по макету 04-profile.png
+    "miniapp_profile_contacts_eyebrow",
+    "miniapp_profile_form_eyebrow",
+    "miniapp_profile_form_progress_text",
+    "miniapp_profile_submitted_text",
+    "miniapp_profile_edited_text",
+    "miniapp_profile_approved_text",  # D-10 (23.1-CONTEXT.md O-2)
+    "miniapp_profile_privacy_note",
     # пустые состояния менеджера (D-18) — раньше были литералами в роутерах
     "miniapp_empty_admin_tasks",
     "miniapp_empty_admin_tasks_archived",
@@ -183,8 +191,8 @@ THEME_ENUM_KEYS = [
 _ALLOWED_TYPES = {"toggle", "int", "list", "date", "text", "enum", "photo", "file"}
 
 
-def test_exactly_125_miniapp_keys_and_no_extra():
-    assert len(MINIAPP_KEYS) == 125
+def test_exactly_132_miniapp_keys_and_no_extra():
+    assert len(MINIAPP_KEYS) == 132
     present = sorted(k for k in SETTINGS_SCHEMA if k.startswith("miniapp_"))
     assert present == sorted(MINIAPP_KEYS)
 
@@ -227,7 +235,7 @@ def test_text_keys_have_human_defaults():
         if SETTINGS_SCHEMA[k]["type"] == "text"
         and k not in ("miniapp_accent", "miniapp_hub_countdown_date")
     ]
-    assert len(text_keys) == 97
+    assert len(text_keys) == 104
     for key in text_keys:
         default = SETTINGS_SCHEMA[key]["default"]
         assert isinstance(default, str) and default.strip(), key
