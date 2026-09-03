@@ -32,7 +32,7 @@ CASES = {
     "section_tasks": ("\U0001f3af Задания", "Задания"),
     "section_coins": ("\U0001fa99 Монеты", "Монеты"),
     "section_form": ("\U0001f4dd Анкета", "Анкета"),
-    "variation_selector": ("⚙️ Настройки-лайт", "Настройки-лайт"),
+    "variation_selector": ("⚙️ Настройки", "Настройки"),
     "flag_regional_indicator": ("\U0001f1ec\U0001f1e7 Англ. язык", "Англ. язык"),
     "email": ("\U0001f4e7 Email", "Email"),
     "no_emoji": ("Просто текст", "Просто текст"),
