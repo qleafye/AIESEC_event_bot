@@ -89,6 +89,8 @@ MINIAPP_KEYS = [
     "miniapp_hub_countdown_date",
     "miniapp_hub_next_eyebrow",
     "miniapp_hub_sections_eyebrow",
+    # Quick 260903: подпись плитки «Дашборд» в хабе менеджера (адрес — cfg.public_url, не реестр)
+    "miniapp_tile_dashboard_label",
     # Phase 23.1-05 (UI-REDESIGN-05): подписи профиля делегата по макету 04-profile.png
     "miniapp_profile_contacts_eyebrow",
     "miniapp_profile_form_eyebrow",
@@ -201,8 +203,8 @@ THEME_ENUM_KEYS = [
 _ALLOWED_TYPES = {"toggle", "int", "list", "date", "text", "enum", "photo", "file"}
 
 
-def test_exactly_140_miniapp_keys_and_no_extra():
-    assert len(MINIAPP_KEYS) == 140
+def test_exactly_141_miniapp_keys_and_no_extra():
+    assert len(MINIAPP_KEYS) == 141
     present = sorted(k for k in SETTINGS_SCHEMA if k.startswith("miniapp_"))
     assert present == sorted(MINIAPP_KEYS)
 
@@ -245,7 +247,7 @@ def test_text_keys_have_human_defaults():
         if SETTINGS_SCHEMA[k]["type"] == "text"
         and k not in ("miniapp_accent", "miniapp_hub_countdown_date")
     ]
-    assert len(text_keys) == 112
+    assert len(text_keys) == 113
     for key in text_keys:
         default = SETTINGS_SCHEMA[key]["default"]
         assert isinstance(default, str) and default.strip(), key

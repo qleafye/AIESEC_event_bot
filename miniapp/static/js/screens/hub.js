@@ -294,6 +294,29 @@ const MANAGER_FETCHERS = {
   "#/settings": (api) => api("/admin/settings"),
 };
 
+// Плитка «📊 Дашборд» (quick 260903): открывает веб-дашборд во внешнем браузере — НЕ раздел
+// NAV (нет hash/секции), поэтому не строится через tile()/visibleNav(). Адрес и подпись
+// приходят с сервера (`/app/api/me` -> dashboard_url/dashboard_tile_label): адрес — деплойный
+// `cfg.public_url` (D-05/D-19, тот же источник, что у кнопки «🌐 Открыть дашборд» в боте),
+// пустой -> плитки нет вовсе. Тот же приём, что у остальных плиток группы «data» — в
+// Telegram-клиенте открываем через WebApp SDK (tg.openLink), вне Telegram — обычной вкладкой.
+function openDashboardLink(tg, url) {
+  if (tg && typeof tg.openLink === "function") tg.openLink(url);
+  else window.open(url, "_blank", "noopener");
+}
+
+function dashboardTile(h, tg, me) {
+  if (!me.dashboard_url) return null;
+  return h("button", {
+    type: "button",
+    class: "tile",
+    onClick: () => openDashboardLink(tg, me.dashboard_url),
+  },
+    icon("link"),
+    h("b", { text: me.dashboard_tile_label || "" }),
+  );
+}
+
 function applyManagerTileData(hash, data, tileEl, hero) {
   const small = tileEl.querySelector("small");
   if (hash === "#/review") {
@@ -320,7 +343,7 @@ async function renderManagerHub(root, ctx, opts = {}) {
   // opts.skipHero — ветка делегата-менеджера (renderHub): плитки разделов дорисовываются ПОД
   // делегатским хабом, а большой герой «сдач на проверке» не дублирует делегатского героя
   // с монетами — счётчик очереди остаётся в подписи плитки «Проверка сдач».
-  const { h, api, navigate } = ctx;
+  const { h, api, navigate, tg, me } = ctx;
   const labels = sectionLabelsFromDom();
   const items = visibleNav().filter((item) => !item.delegate);
   const knownGroups = new Set(SECTION_GROUPS.map(([token]) => token));
@@ -348,7 +371,11 @@ async function renderManagerHub(root, ctx, opts = {}) {
   const tileEls = {};
   for (const [token, label] of SECTION_GROUPS) {
     const groupItems = items.filter((item) => groupOf(item) === token);
-    if (!groupItems.length) continue;
+    // Плитка «Дашборд» встаёт в группу «data» рядом со «Статистикой» — она не строка NAV,
+    // поэтому раздел «data» обязан рисоваться и тогда, когда единственная видимая плитка в
+    // нём — именно дашборд (менеджер без права "stats", но с адресом дашборда).
+    const dashTile = token === "data" ? dashboardTile(h, tg, me) : null;
+    if (!groupItems.length && !dashTile) continue;
     const tiles = h("div", { class: "tiles" });
     for (const item of groupItems) {
       const el = tile(h, navigate, {
@@ -362,6 +389,7 @@ async function renderManagerHub(root, ctx, opts = {}) {
       tileEls[item.hash] = el;
       tiles.append(el);
     }
+    if (dashTile) tiles.append(dashTile);
     root.append(h("div", { class: "sec", text: label }), tiles);
   }
 
