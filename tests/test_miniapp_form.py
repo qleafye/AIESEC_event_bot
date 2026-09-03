@@ -474,6 +474,48 @@ def test_submit_edit_success_queues_one_event_and_replies(client, bot_api):
     assert len(bot_api.messages) == 1  # мгновенный ответ в чат
 
 
+def test_submit_no_draft_at_all_409_no_draft(client, bot_api):
+    """UAT round 2, находка 1: approved-делегат БЕЗ строки `reg_drafts` жмёт «Отправить
+    изменения» напрямую (обзор ничего не PATCH-ил) — раньше сервер путал это с
+    `already_submitting` (гонка с чатом), хотя черновика вообще не существует."""
+    assert _draft_row(DELEGATE_ID) is None
+    resp = client.post("/app/api/reg/draft/submit", headers=_hdr(DELEGATE_ID))
+    assert resp.status_code == 409
+    body = resp.json()
+    assert body["reason"] == "no_draft"
+    assert body["text"]
+    assert _outbox_rows("reg_edited") == []
+    assert _outbox_rows("reg_finalized") == []
+
+
+def test_edit_approved_without_prior_draft_patch_then_submit_succeeds(client, bot_api):
+    """UAT round 2, находка 1: тот же approved-делегат без черновика, но правка ПРОШЛА через
+    `PATCH /app/api/reg/draft` (то, что теперь делает `submitChanges()` обзора правки перед
+    отправкой) — черновик материализуется, `submit` его находит, `users`/история/статус
+    обновляются как в обычной правке."""
+    assert _draft_row(DELEGATE_ID) is None
+    patch_resp = client.patch(
+        "/app/api/reg/draft", headers=_hdr(DELEGATE_ID),
+        json={"version": 0, "answers": {"phone": "+79997776655"}},
+    )
+    assert patch_resp.status_code == 200, patch_resp.text
+    assert _draft_row(DELEGATE_ID) is not None
+
+    resp = client.post("/app/api/reg/draft/submit", headers=_hdr(DELEGATE_ID))
+    assert resp.status_code == 200, resp.text
+    body = resp.json()
+    assert body["mode"] == "edit"
+    assert body["status"] == "approved"
+
+    user = _run(bot_db.get_user(DELEGATE_ID))
+    assert user["phone"] == "+79997776655"
+    assert user["status"] == "approved"
+    history = _run(bot_db.get_answer_history(DELEGATE_ID))
+    assert len(history) == 1
+    assert any(c["column"] == "phone" for c in history[0]["changes"])
+    assert _draft_row(DELEGATE_ID) is None  # claim -> finalize -> delete
+
+
 def test_submit_new_success_creates_user_and_queues_reg_finalized(client, bot_api):
     _seed_draft(UNREGISTERED_ID, kind="new", patch={"age": 22, "full_name": "Иван Иванов"})
     resp = client.post("/app/api/reg/draft/submit", headers=_hdr(UNREGISTERED_ID))

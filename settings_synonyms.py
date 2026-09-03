@@ -93,6 +93,7 @@ SETTINGS_SYNONYMS: dict[str, list[str]] = {
     "reg_form_cancel_changes_confirm_text": ["точно отменить правки", "подтверждение отмены"],
     "reg_form_continue_in_chat_text": ["заполнить в боте", "перейти в чат"],
     "reg_form_consent_required_text": ["нет согласия", "не отмечено согласие"],
+    "reg_form_no_draft_text": ["черновика нет", "правка не сохранилась"],
     "reg_form_resume_too_large_text": ["файл резюме большой", "превышен размер резюме"],
     "reg_form_resume_wrong_type_text": ["не тот файл резюме", "формат резюме"],
     "reg_form_prior_answer_badge_text": ["старый ответ", "ответ из прошлого сезона"],
