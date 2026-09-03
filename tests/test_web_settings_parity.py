@@ -283,3 +283,75 @@ def test_settings_require_cap_and_roles_group_never_readable_or_writable(tmp_pat
     assert resp.json().get("reason") == "not_editable"
     after = _raw("role_caps_reg_manager")
     assert after == before, "значение role_caps_reg_manager изменилось после отклонённой попытки записи"
+
+
+# ── Сторож 6: матрица «трек × вопрос» (D-17 Task 3, владелец 03.09) ─────────────────────────
+
+def _reg_questions_group(body: dict) -> dict:
+    for section in body["sections"]:
+        for group in section["groups"]:
+            if group["token"] == "reg_questions":
+                return group
+    raise AssertionError("группа reg_questions не найдена в settings/all")
+
+
+def test_reg_questions_matrix_structure_and_track_semantics(tmp_path):
+    """Матрица — одна строка на вопрос REG_FLOW (43, тот же порядок, что бот), три ячейки:
+    полная/party/short; party наследует полную форму при отсутствии `__party` (D-03/D-04
+    reg_engine.is_step_enabled_for_track), short без `__short` — жёсткий off (SHORT-04);
+    флат-список `group["items"]` остаётся рядом (T-19-45, поиск)."""
+    import reg_engine
+
+    client = _setup(tmp_path)
+    body = _sections_body(client)
+    group = _reg_questions_group(body)
+
+    matrix = group.get("matrix")
+    assert matrix and matrix.get("rows"), "у группы reg_questions нет матрицы"
+    assert len(matrix["rows"]) == len(reg_engine.REG_FLOW) == 43
+    assert [r["step_key"] for r in matrix["rows"]] == [sk for sk, *_r in reg_engine.REG_FLOW]
+
+    # Флат-список для поиска не пропал — то же множество ключей, что и раньше.
+    flat_keys = {i["key"] for i in group["items"]}
+    assert flat_keys == {sk for _s, sk, *_r in reg_engine.REG_FLOW}
+
+    age_row = next(r for r in matrix["rows"] if r["step_key"] == "age")
+    assert age_row["full"]["key"] == "reg_q_age"
+    assert age_row["party"]["key"] == "reg_q_age__party"
+    assert age_row["short"]["key"] == "reg_q_age__short"
+    # Ни __party, ни __short ничего не задано в БД — party наследует значение полной формы,
+    # short — жёсткий "off" (разная семантика отсутствия, docstring _reg_questions_matrix).
+    assert age_row["party"]["is_inherited"] is True
+    assert age_row["party"]["value"] == age_row["full"]["value"]
+    assert age_row["short"]["is_inherited"] is True
+    assert age_row["short"]["value"] == "off"
+
+
+def test_reg_question_track_composite_write_read_roundtrip(tmp_path):
+    """D-17 Task 3: тумблер матрицы шлёт явный трек-композит через тот же settings/batch, что
+    и обычная настройка — party/short пишутся и читаются обратно, крафченный композит над
+    ключом вне reg_questions (или несуществующим суффиксом) отклоняется 403 not_editable."""
+    client = _setup(tmp_path)
+
+    resp = _batch(client, [("reg_q_age__party", "off"), ("reg_q_age__short", "on")])
+    assert resp.status_code == 200, resp.text
+    payload = resp.json()
+    assert not payload["errors"] and not payload["needs_confirm"] and not payload["stale"]
+    assert set(payload["saved"]) == {"reg_q_age__party", "reg_q_age__short"}
+    # Трек-композит не приходит в payload["items"] — у него нет item_spec-обёртки (роутер
+    # его сознательно пропускает, миниапп/routers/settings.py::settings_batch), фронт красит
+    # ячейку сам записанным значением.
+    assert not any(i["key"] in ("reg_q_age__party", "reg_q_age__short") for i in payload["items"])
+
+    assert _raw("reg_q_age__party") == "off"
+    assert _raw("reg_q_age__short") == "on"
+
+    body = _sections_body(client)
+    age_row = next(r for r in _reg_questions_group(body)["matrix"]["rows"] if r["step_key"] == "age")
+    assert age_row["party"] == {"key": "reg_q_age__party", "value": "off", "is_inherited": False}
+    assert age_row["short"] == {"key": "reg_q_age__short", "value": "on", "is_inherited": False}
+
+    # Композит над ключом не из reg_questions (или над ключом не toggle-типа) — не редактируемый.
+    resp = _batch(client, [("event_name__party", "off")])
+    assert resp.status_code == 403
+    assert resp.json().get("reason") == "not_editable"
