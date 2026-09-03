@@ -2050,6 +2050,15 @@ SETTINGS_SCHEMA = {
         "type": "enum", "group": "miniapp", "label": "✨ Бренд-паттерн на фоне",
         "options": ["on", "off"], "prompt": None, "default": "off",
     },
+    "miniapp_theme_pattern": {
+        "type": "photo", "group": "miniapp", "label": "🖼 Паттерн плиты",
+        "prompt": (
+            "Отправьте картинку фирменного паттерна — она ляжет фоном синей плиты на "
+            "экранах приложения. Без неё используется паттерн выбранного набора "
+            "оформления: «Юлид» — фирменный, «АЙСЕК — классика» — без паттерна."
+        ),
+        "default": None,
+    },
     "miniapp_logo_dark": {
         "type": "photo", "group": "miniapp", "label": "🌙 Лого для тёмной темы",
         "prompt": (
