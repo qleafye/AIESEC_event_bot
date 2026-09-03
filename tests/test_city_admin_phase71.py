@@ -1,6 +1,6 @@
 """Phase 07.1 Plan 04 (CITY-04) tests: admin «🏙 Города мероприятия» screen, per-city
 «Незавершённые» batching (manual export + 2h auto-sync parity), and doc-string-safety
-checks tying ADMIN_GUIDE.md to the implemented tab names/tokens.
+checks tying docs/ADMIN_GUIDE.md to the implemented tab names/tokens.
 
 pytest-asyncio is unavailable in this env — every async helper is driven via
 asyncio.run() and config.DB_PATH points at a tmp_path file (same idiom as
@@ -387,7 +387,7 @@ def test_export_incomplete_is_capability_guarded(tmp_path):
 # ── Task 3: documentation must stay in sync with implemented tab names/tokens ─────────────
 
 def test_admin_guide_documents_city_deep_links_and_spb_incomplete_tab():
-    with open("ADMIN_GUIDE.md", "r", encoding="utf-8") as f:
+    with open("docs/ADMIN_GUIDE.md", "r", encoding="utf-8") as f:
         text = f.read()
     assert "?start=city_spb" in text
     assert "СПб Незавершённые" in text

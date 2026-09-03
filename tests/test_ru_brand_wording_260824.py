@@ -183,13 +183,13 @@ def _iter_cleaned_doc_lines(text: str):
 def test_human_docs_have_no_owner_latin_brand():
     """Задача 260903 (правило владельца, закон РФ): менеджер и делегат нигде не должны
     читать латинские «AIESEC»/«YouLead» вне ссылок/email/юзернеймов/хэштегов/кода — три
-    дока, которые они реально читают: BOT_GUIDE.md (делегат), ADMIN_CHEATSHEET.md и
-    ADMIN_GUIDE.md (менеджер).
+    дока, которые они реально читают: docs/BOT_GUIDE.md (делегат), docs/ADMIN_CHEATSHEET.md и
+    docs/ADMIN_GUIDE.md (менеджер).
 
     README.md и CLAUDE.md сюда намеренно НЕ входят — это доки для разработчика, их не
     видит ни делегат, ни менеджер, правило владельца на них не распространяется.
     """
-    docs_root = Path(__file__).resolve().parent.parent
+    docs_root = Path(__file__).resolve().parent.parent / "docs"
     doc_names = ("BOT_GUIDE.md", "ADMIN_CHEATSHEET.md", "ADMIN_GUIDE.md")
 
     offenders = []
