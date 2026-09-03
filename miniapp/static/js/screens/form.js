@@ -169,6 +169,16 @@ export async function render(root, params, ctx) {
       busy = true;
       drawList();
       try {
+        // UAT 21-12 находка 1 (round 2): касание поля в обзоре меняло только локальный
+        // state.setValue(...) (см. open() ниже) — сервер об этом не знал, и на
+        // approved-делегате без ранее созданного `reg_drafts` submit не находил, что
+        // claim'ить (409 already_submitting, правка молча терялась). PATCH здесь —
+        // тот же `collectPatch()`, что уже строит diffView, — единственный источник
+        // изменённых полей, отправляется ОДНИМ запросом перед submit.
+        const patch = state.collectPatch();
+        if (Object.keys(patch).length) {
+          d = await api("/reg/draft", { method: "PATCH", body: { version: d.version, answers: patch } });
+        }
         const res = await api("/reg/draft/submit", { method: "POST" });
         haptic("success");
         renderComplete(res);
