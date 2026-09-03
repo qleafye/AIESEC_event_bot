@@ -290,7 +290,8 @@ async def _sections(ctx: _CityCtx) -> tuple[list[dict], int]:
         if not toggles and not group_rows:
             continue
         total += len(toggles) + sum(len(g["items"]) for g in group_rows)
-        sections.append({"token": token, "label": label, "toggles": toggles, "groups": group_rows})
+        tier = "main" if token in settings_ops.SETTINGS_MAIN_SECTIONS else "rare"
+        sections.append({"token": token, "label": label, "toggles": toggles, "groups": group_rows, "tier": tier})
     if leftovers:
         misc_label = settings_ops.GROUP_LABELS.get("misc", "📦 Прочие")
         items = [await _item_for(k, ctx) for k in leftovers]
@@ -300,6 +301,7 @@ async def _sections(ctx: _CityCtx) -> tuple[list[dict], int]:
             "label": misc_label,
             "toggles": [],
             "groups": [{"token": "misc", "label": misc_label, "items": items}],
+            "tier": "rare",
         })
     return sections, total
 

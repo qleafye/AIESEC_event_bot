@@ -202,6 +202,17 @@ def test_editable_keys_count_matches_formula():
     assert len(settings_ops.editable_keys()) == len(SETTINGS_SCHEMA) - roles_count
 
 
+# (е) Phase 22 Plan 07 (D-16): SETTINGS_MAIN_SECTIONS — подмножество кодов SECTION_GROUPS,
+# непустое и не покрывающее все разделы (иначе второй ряд «Реже» стартового экрана всегда
+# пуст — сигнал, что константу забыли поправить вместе со структурой разделов).
+
+def test_settings_main_sections_is_a_proper_nonempty_subset_of_section_groups():
+    all_tokens = {token for token, _label, _groups in settings_ops.SECTION_GROUPS}
+    assert settings_ops.SETTINGS_MAIN_SECTIONS
+    assert settings_ops.SETTINGS_MAIN_SECTIONS.issubset(all_tokens)
+    assert settings_ops.SETTINGS_MAIN_SECTIONS != all_tokens
+
+
 def test_no_key_code_in_any_editable_label():
     for key in settings_ops.editable_keys():
         label = SETTINGS_SCHEMA[settings_ops.base_setting_key(key)]["label"]
