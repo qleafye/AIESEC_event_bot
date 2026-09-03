@@ -721,7 +721,15 @@ async def form_spec(answers: dict, participant_type: str | None = None,
     не фильтрует согласия вовсе."""
     answers = answers or {}
     prior = prior or {}
-    enabled = await enabled_steps(answers)
+    # Живой баг владельца (03.09): `enabled_steps` сам решает трек только по
+    # `data.get("participant_type")` -- у Mini App трек живёт в ОТДЕЛЬНОМ аргументе этой
+    # функции (`answers` черновика ключа "participant_type" не содержит вовсе, см.
+    # `miniapp/routers/form.py::_load_context`), поэтому раньше сюда всегда уходил "answers"
+    # без трека и `enabled_steps` тихо падал на дефолт "full" -- каждый веб-делегат видел все
+    # 43 вопроса вместо своего трека. Явно подмешиваем track в копию для этого одного вызова;
+    # сам `answers` ниже (value/prior по шагам) остаётся нетронутым.
+    track = participant_type or answers.get("participant_type") or "full"
+    enabled = await enabled_steps({**answers, "participant_type": track})
     steps_out = []
     done = 0
     for step_key in enabled:
