@@ -358,6 +358,40 @@ def test_me_reflects_youlead_preset_and_cover_asset(tmp_path):
     assert body["cover_file_id"] == "AgACAgIAAxkBAAIcoverAssetX001"
 
 
+# ── плитка «Дашборд» хаба менеджера (quick 260903): адрес — cfg.public_url (деплой,
+# D-05/D-19 — никогда не bot_settings-ключ), подпись плитки — реестр ──────────────────────
+
+def test_me_staff_gets_dashboard_url_from_deploy_config(tmp_path):
+    db_path = _use_tmp_db(tmp_path)
+    _standard_seed()
+    body = _client(_cfg(db_path)).get("/app/api/me", headers=_hdr(GAME_MANAGER_ID)).json()
+    assert body["dashboard_url"] == "https://yl26.example.com"
+    assert body["dashboard_tile_label"] == "📊 Дашборд"
+
+
+def test_me_delegate_never_gets_dashboard_url(tmp_path):
+    db_path = _use_tmp_db(tmp_path)
+    _standard_seed()
+    body = _client(_cfg(db_path)).get("/app/api/me", headers=_hdr(DELEGATE_ID)).json()
+    assert body["dashboard_url"] is None
+
+
+def test_me_dashboard_url_null_when_deploy_config_empty(tmp_path):
+    db_path = _use_tmp_db(tmp_path)
+    _standard_seed()
+    cfg = _cfg(db_path, public_url="")
+    body = _client(cfg).get("/app/api/me", headers=_hdr(GAME_MANAGER_ID)).json()
+    assert body["dashboard_url"] is None
+
+
+def test_me_dashboard_tile_label_reflects_registry_override(tmp_path):
+    db_path = _use_tmp_db(tmp_path)
+    _standard_seed()
+    _set("miniapp_tile_dashboard_label", "📈 Статистика для всех")
+    body = _client(_cfg(db_path)).get("/app/api/me", headers=_hdr(GAME_MANAGER_ID)).json()
+    assert body["dashboard_tile_label"] == "📈 Статистика для всех"
+
+
 # ── ветка cookie (D-05) ──────────────────────────────────────────────────────────────────
 
 def test_cookie_from_dashboard_admits_manager(tmp_path):
