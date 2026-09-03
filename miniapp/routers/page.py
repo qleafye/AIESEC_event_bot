@@ -197,6 +197,10 @@ def me(request: Request, p: Principal = Depends(principal)) -> dict:
         assets = {name: read_setting(conn, key) for name, key in web_theme.ASSET_KEYS.items()}
         onboarding_text = read_setting(conn, "miniapp_onboarding_text") or ""
         onboarding_cta = read_setting(conn, "miniapp_onboarding_cta") or ""
+        # Phase 23.1-03 (UI-REDESIGN-03): герой и шаги «как это работает» привет-экрана.
+        onboarding_hero = read_setting(conn, "miniapp_onboarding_hero") or ""
+        onboarding_steps_title = read_setting(conn, "miniapp_onboarding_steps_title") or ""
+        onboarding_steps = read_setting(conn, "miniapp_onboarding_steps") or ""
     resolved = web_theme.resolve_theme(theme_settings)
     return {
         "telegram_id": p.telegram_id,
@@ -227,5 +231,8 @@ def me(request: Request, p: Principal = Depends(principal)) -> dict:
         "pattern_enabled": resolved["pattern_enabled"] == "on",
         "onboarding_text": onboarding_text,
         "onboarding_cta": onboarding_cta,
+        "onboarding_hero": onboarding_hero,
+        "onboarding_steps_title": onboarding_steps_title,
+        "onboarding_steps": onboarding_steps,
         **assets,
     }

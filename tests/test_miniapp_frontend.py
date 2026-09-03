@@ -863,6 +863,11 @@ def test_hub_onboarding_texts_come_from_registry_not_literals():
     text = _js_without_comments(SCREENS_DIR / "hub.js")
     assert "Погнали" not in text, "текст кнопки приветственного экрана — только из реестра"
     assert "onboarding_text" in text and "onboarding_cta" in text
+    # Phase 23.1-03 (UI-REDESIGN-03): герой и шаги привет-экрана — тоже только из реестра.
+    assert "onboarding_hero" in text
+    assert "onboarding_steps_title" in text and "onboarding_steps" in text
+    assert "Привет!" not in text, "заголовок привет-экрана — только из реестра"
+    assert "Как это работает" not in text, "надзаголовок шагов — только из реестра"
 
 
 def test_hub_tiles_built_from_visible_nav_and_nav_icons():
