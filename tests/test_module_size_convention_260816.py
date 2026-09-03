@@ -5,7 +5,7 @@ The whole point of Phase 13 (13-01..13-06) was cutting `handlers/admin.py` (3067
 sharing one `Router()` per aggregator. Splitting once is worthless if nothing stops the same
 files from silently re-accreting handlers back to god-file size over the next dozen features.
 
-This is that guard. See `CONVENTIONS.md` ("Размер модуля: ориентир ~800 строк") for the full
+This is that guard. See `docs/CONVENTIONS.md` ("Размер модуля: ориентир ~800 строк") for the full
 rationale and the human-readable version of the table below.
 
 Design (per 13-07-PLAN.md's <interfaces> note):
@@ -27,7 +27,7 @@ import pytest
 
 HANDLERS_DIR = Path(__file__).resolve().parent.parent / "handlers"
 
-# Soft guideline every handlers/*.py module SHOULD stay under (see CONVENTIONS.md).
+# Soft guideline every handlers/*.py module SHOULD stay under (see docs/CONVENTIONS.md).
 GUIDELINE = 800
 
 # Hard CI ceiling for any handlers/*.py file NOT explicitly listed in KNOWN_OVERAGES below.
@@ -184,7 +184,7 @@ def test_handler_module_under_size_ceiling(path: Path):
     Not in KNOWN_OVERAGES -> DEFAULT_CEILING applies. In KNOWN_OVERAGES -> that file's own
     ceiling applies instead. Either way: if this test fails, the module has regrown toward
     god-file size (or crossed its already-generous named exception) and needs a split -- see
-    CONVENTIONS.md for the shared-router seam-import technique this phase established. If the
+    docs/CONVENTIONS.md for the shared-router seam-import technique this phase established. If the
     growth is legitimate and a split is genuinely not worth it right now, raise the ceiling for
     THIS file in KNOWN_OVERAGES above, in the same commit, with an updated reason.
     """
@@ -196,13 +196,13 @@ def test_handler_module_under_size_ceiling(path: Path):
             f"Recorded reason for the existing exception: {reason!r}. If this new growth is "
             "legitimate, raise the ceiling in KNOWN_OVERAGES (tests/test_module_size_"
             "convention_260816.py) in the same commit, with an updated reason -- otherwise "
-            "split the module along a feature/callback-prefix seam (see CONVENTIONS.md)."
+            "split the module along a feature/callback-prefix seam (see docs/CONVENTIONS.md)."
         )
     else:
         assert lines <= DEFAULT_CEILING, (
             f"{path.name}: {lines} lines exceeds the default ceiling ({DEFAULT_CEILING}, "
             f"guideline is ~{GUIDELINE}). Either split the module along a feature/"
-            "callback-prefix seam (see CONVENTIONS.md's shared-router technique), or, if the "
+            "callback-prefix seam (see docs/CONVENTIONS.md's shared-router technique), or, if the "
             "growth is a deliberate and reviewed exception, add a named entry to "
             "KNOWN_OVERAGES in this file, in the same commit, with a one-line reason."
         )

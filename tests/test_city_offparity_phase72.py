@@ -344,7 +344,7 @@ def test_manager_pending_reminder_stays_global():
     assert "from cities" not in module_src
 
 
-# ── Doc-safety: ADMIN_GUIDE.md обязан описывать РЕАЛЬНЫЕ экраны и кнопки ─────────────────
+# ── Doc-safety: docs/ADMIN_GUIDE.md обязан описывать РЕАЛЬНЫЕ экраны и кнопки ─────────────────
 #
 # Прецедент — tests/test_city_admin_phase71.py::test_admin_guide_documents_city_deep_links...
 # Гайд менеджера — это инструкция к необратимым массовым действиям (T-072-18): если он
@@ -357,7 +357,7 @@ def _read(path: str) -> str:
 
 def test_admin_guide_no_longer_promises_city_filters_as_future_work():
     """Строка «появятся отдельной фазой позже» стала ЛОЖЬЮ после фазы 07.2."""
-    assert "появятся отдельной фазой позже" not in _read("ADMIN_GUIDE.md")
+    assert "появятся отдельной фазой позже" not in _read("docs/ADMIN_GUIDE.md")
 
 
 def test_admin_guide_documents_the_city_switcher_and_its_scope():
@@ -366,7 +366,7 @@ def test_admin_guide_documents_the_city_switcher_and_its_scope():
     # the UI strings this doc-safety test cross-checks can now live in any of them (e.g.
     # "🏙 Город:" moved to admin_core.py's admin_keyboard_for), so "the code" means every
     # handlers/admin*.py file concatenated, not just the aggregator.
-    guide = _read("ADMIN_GUIDE.md")
+    guide = _read("docs/ADMIN_GUIDE.md")
     admin_src = "".join(
         _read(str(p)) for p in sorted(Path("handlers").glob("admin*.py"))
     )
@@ -384,7 +384,7 @@ def test_admin_guide_documents_the_city_switcher_and_its_scope():
 
 
 def test_admin_guide_states_what_is_deliberately_not_city_scoped():
-    guide = _read("ADMIN_GUIDE.md")
+    guide = _read("docs/ADMIN_GUIDE.md")
     assert "По городам" in guide                    # статистика — сравнение городов
     assert "Незавершённые" in guide                 # пишет все города за проход
     # предупреждение «после включения модуля очередь показывает город по умолчанию»
