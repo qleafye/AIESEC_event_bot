@@ -17,7 +17,7 @@
 // файлов этого плана (только JS/CSS/тесты). Слэш — не человеческий текст, сторож литералов
 // его не видит.
 
-import { sectionTitle, emptyState, errorState } from "../ui.js";
+import { sectionTitle, emptyState, errorState, labelText } from "../ui.js";
 import { icon } from "../icons.js";
 import { haptic } from "../motion.js";
 import {
@@ -174,7 +174,9 @@ export async function render(root, params, ctx) {
 
   root.append(title, cityBar, stateWrap, searchBar, sectionsWrap);
 
-  title.textContent = sectionLabelsFromDom().settings || "";
+  // D-04: заголовок экрана без иконки рядом — labelText (ui.js) снимает ведущий эмодзи
+  // подписи раздела из реестра (без этого <h1> дублирует иконку раздела глифом «⚙️»).
+  title.textContent = labelText(sectionLabelsFromDom().settings || "");
 
   if (activeScrollHandler) window.removeEventListener("scroll", activeScrollHandler);
   if (activeDiffCleanup) { activeDiffCleanup(); activeDiffCleanup = null; }

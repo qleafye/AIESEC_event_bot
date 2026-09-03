@@ -18,7 +18,7 @@
 // decide-кнопки ниже).
 
 import { icon } from "../icons.js";
-import { emptyState, flatRow } from "../ui.js";
+import { emptyState, flatRow, labelText } from "../ui.js";
 import { haptic } from "../motion.js";
 import { confirmBox, errorText } from "../form.js";
 import { attachSwipe } from "../swipe.js";
@@ -97,7 +97,9 @@ export async function render(root, params, ctx) {
   );
 
   root.append(
-    h("h1", { text: sectionLabel("applications") }),
+    // D-04: заголовок экрана без иконки рядом — labelText (ui.js) снимает ведущий эмодзи
+    // подписи раздела из реестра (без этого <h1> дублирует иконку раздела глифом «🗂»).
+    h("h1", { text: labelText(sectionLabel("applications")) }),
     notice,
     h("div", { class: "appl-head" }, filtersRow, approveAllBtn),
     approveAllConfirm,
