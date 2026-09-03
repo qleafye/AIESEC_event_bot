@@ -136,6 +136,59 @@ async def settings_set(
     return await _items()
 
 
+# ══ Quick 260903 (BACKLOG-0309-COUNTDOWN): подсказка менеджеру про незаданную дату ═══════
+#
+# Сегодня пустой `miniapp_hub_countdown_date` = молча отсутствующая строка отсчёта у делегата
+# — менеджер об этом не узнаёт никак. Текст собирается ЗДЕСЬ (D-06: hub.js человеко-видимых
+# литералов не заводит), ключ настройки менеджеру не показываем — только подпись из реестра.
+
+COUNTDOWN_KEY = "miniapp_hub_countdown_date"
+
+
+def _countdown_missing_text(cities: list[str] | None) -> str:
+    label = SETTINGS_SCHEMA[COUNTDOWN_KEY]["label"]
+    text = (
+        f"Не задана «{label}» — делегаты не видят, сколько дней осталось. "
+        "Укажите дату в формате ДД.ММ.ГГГГ."
+    )
+    if cities:
+        text += f" Города без даты: {', '.join(cities)}."
+    return text
+
+
+async def _countdown_hint(telegram_id: int) -> dict | None:
+    """`None` — дата задана (везде, где это сейчас проверяется); иначе — текст с переходом в
+    настройки. Три ветки повторяют лестницу `_city_ctx`/`get_setting_typed_for_city` (D-04):
+    модуль городов выключен -> одно глобальное значение; шапка на конкретном городе ->
+    проверяется только он; шапка «все города» -> обходим все города, называем те, где нет
+    даже эффективного (per-city ИЛИ общего) значения."""
+    if not await cities_module_on():
+        value = await get_setting_typed_for_city(COUNTDOWN_KEY, None)
+        return None if value else {"text": _countdown_missing_text(None), "hash": "#/settings"}
+
+    selected = await admin_selected_city(telegram_id)
+    if selected not in (None, ALL_CITIES):
+        value = await get_setting_typed_for_city(COUNTDOWN_KEY, selected)
+        return None if value else {"text": _countdown_missing_text(None), "hash": "#/settings"}
+
+    missing = []
+    for code in city_codes():
+        value = await get_setting_typed_for_city(COUNTDOWN_KEY, code)
+        if not value:
+            missing.append(await city_label(code))
+    if not missing:
+        return None
+    return {"text": _countdown_missing_text(missing), "hash": "#/settings"}
+
+
+@router.get("/app/api/admin/settings/hints")
+async def settings_hints(
+    p: Principal = Depends(require_cap("settings")),
+    _: Principal = Depends(require_section("settings")),
+) -> dict:
+    return {"countdown": await _countdown_hint(p.telegram_id)}
+
+
 # ══ Phase 22 (22-04): весь правимый реестр + шапка города ═══════════════════════════════
 #
 # D-01: не белый список выше, а весь SETTINGS_SCHEMA минус группа roles — формула
