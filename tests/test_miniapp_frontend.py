@@ -777,7 +777,7 @@ def test_admin_coins_screen_has_confirm_step_before_charging():
     assert "/admin/coins?offset=" in text and "Показать ещё" in text
 
 
-def test_settings_screen_reads_whole_registry_not_a_whitelist():
+def test_settings_reads_whole_registry_not_a_whitelist():
     """Фаза 22 (план 22-05, D-01): экран больше не закрытый список `EDITABLE_KEYS` (десять
     тумблеров, план 19-07/MD-03) — весь правимый реестр одним запросом `settings/all`, шапка
     города тем же `set_admin_city`, что у бота. Список `miniapp_enabled`/`miniapp_staff_only`
@@ -1193,3 +1193,50 @@ def test_icons_js_has_eye_for_settings_preview():
     text = ICONS_JS.read_text(encoding="utf-8")
     assert text.count('"eye": [') == 1
     assert 'viewBox", "0 0 24 24"' in text
+
+
+# ── screens/settings.js: экран «⚙️ Настройки» (план 22-05, D-01…D-15) ────────────────────
+
+SETTINGS_JS = SCREENS_DIR / "settings.js"
+
+
+def test_settings_screen_uses_form_module():
+    """Экран — ПОТРЕБИТЕЛЬ form.js (Reuse Contract 22-UI-SPEC): ровно один импорт, ни одного
+    собственного ветвления по типу поля (свитч типов живёт в form.js::buildControl)."""
+    text = _js_without_comments(SETTINGS_JS)
+    assert len(re.findall(r'from "\.\./form\.js"', text)) == 1
+    assert 'case "enum"' not in text and 'case "toggle"' not in text
+    assert "settingSpec(item)" in text and "field(h, spec" in text
+
+
+def test_settings_screen_has_no_human_text_literals():
+    """D-25/22-UI-SPEC Copywriting Contract: ни одного кириллического литерала — каждая
+    надпись экрана идёт из `texts` ответа `settings/all` (реестр `miniapp_settings_*`,
+    план 22-02), помеченная человеку подпись поля/группы — из самого элемента реестра."""
+    text = _js_without_comments(SETTINGS_JS)
+    cyrillic = re.compile(r"[А-Яа-яЁё]")
+    for m in _STRING_LITERAL.finditer(text):
+        assert not cyrillic.search(m.group(0)), f"кириллический литерал в screens/settings.js: {m.group(0)}"
+
+
+def test_settings_screen_covers_batch_response_branches():
+    """Все четыре ветки ответа `POST settings/batch` разобраны (WEB-SET-03): errors — под
+    поле, needs_confirm — авто-подтверждение на повторе, stale — «оставить как в боте»/
+    «перезаписать» без потери остальных правок, saved — точечная перерисовка строк."""
+    text = _js_without_comments(SETTINGS_JS)
+    assert "resp.errors" in text
+    assert "resp.needs_confirm" in text
+    assert "resp.stale" in text
+    assert "resp.saved" in text
+    # stale — обе кнопки диалога (перезаписать / оставить как в боте), не только badge.
+    assert "miniapp_settings_stale_overwrite_label_text" in text
+    assert "miniapp_settings_stale_keep_label_text" in text
+
+
+def test_settings_screen_reuses_existing_upload_route():
+    """Фото/файл реестра идут тем же staff-путём, что резюме делегата (план 19-04/21-10) —
+    экран не заводит своего маршрута загрузки."""
+    text = _js_without_comments(SETTINGS_JS)
+    assert 'api("/uploads"' in text
+    assert 'api("/uploads/limits")' in text
+    assert "/app/api/admin/uploads" not in text and "settings/upload" not in text

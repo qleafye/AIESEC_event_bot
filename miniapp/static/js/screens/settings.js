@@ -131,7 +131,13 @@ export async function render(root, params, ctx) {
   // ── состояние экрана ────────────────────────────────────────────────────────────────
   let texts = {};
   let payload = null;
-  const itemIndex = new Map(); // key -> { item, el }
+  const itemIndex = new Map(); // key -> { item, el } — ТЕКУЩЕЕ отображение (может быть
+  // локальным предпросмотром сброса, ещё не сохранённым)
+  const originalItems = new Map(); // key -> последний ПОДТВЕРЖДЁННЫЙ сервером item — источник
+  // правды для diff «было», base батча и отмены правок; локальный предпросмотр (кнопка
+  // «Сбросить»/«Как везде» — задача 3) его не трогает, чтобы «Отменить правки» не подменял
+  // отмену настоящим значением сброса.
+  function setOriginal(item) { originalItems.set(item.key, item); }
   const groupCollapsedState = new Map(); // token -> bool
   let query = "";
 
@@ -268,6 +274,106 @@ export async function render(root, params, ctx) {
     dangerConfirm.open();
   }
 
+  // ── сброс к умолчанию / «как везде» (D-10) — очередь в общий пакет (value: null,
+  // эквивалент «-» бота), локальный предпросмотр строки без похода на сервер. Confirm нужен
+  // только у сброса к дефолту (текст с {default} — менеджеру важно ЧТО именно вернётся);
+  // «как везде» безопасно, без подтверждения — снимает только переопределение города.
+  let resetTarget = null;
+  const resetConfirm = confirmBox(h, {
+    onConfirm: () => { if (resetTarget) queueReset(resetTarget.item); },
+  });
+  root.append(resetConfirm);
+
+  function openResetDefaultConfirm(item) {
+    resetTarget = { item };
+    resetConfirm.querySelector("p").textContent = (texts.miniapp_settings_reset_default_confirm_text || "")
+      .replace("{default}", defaultDisplayText(item));
+    resetConfirm.querySelector(".btn.danger").textContent = texts.miniapp_settings_reset_default_label_text || "";
+    resetConfirm.querySelector(".btn.ghost").textContent = texts.miniapp_settings_batch_discard_text || "";
+    resetConfirm.open();
+  }
+
+  function queueReset(item) {
+    resetConfirm.close();
+    pending.set(item.key, null);
+    fileNames.delete(item.key);
+    updateBatchBar();
+    repaintRow({ ...item, value: null, raw: item.raw, display: defaultDisplayText(item), is_default: true });
+  }
+
+  function queueCityReset(item) {
+    pending.set(item.key, null);
+    fileNames.delete(item.key);
+    updateBatchBar();
+    repaintRow({ ...item, value: null, raw: item.raw, is_city_override: false, display: "" });
+  }
+
+  // Ключи с плейсхолдерами в тексте/дефолте — тот же список, что HTML/шаблонные ключи бота
+  // (item.html), плюс любой текст, где встречается «{слово}» в подсказке/значении/дефолте.
+  const PLACEHOLDER_RE = /\{[a-z_]+\}/;
+  function hasPlaceholder(item) {
+    const hay = `${item.display || ""} ${item.default == null ? "" : item.default} ${item.help || ""}`;
+    return item.type !== "toggle" && (PLACEHOLDER_RE.test(hay) || Boolean(item.html));
+  }
+
+  function buildPreviewButton(item) {
+    const heading = h("p", { class: "label-role", text: texts.miniapp_settings_preview_heading_text || "" });
+    const body = h("p", {});
+    const panel = h("div", { class: "settings-preview hidden" }, heading, body);
+    let busy = false;
+    const btn = h("button", {
+      class: "btn ghost", type: "button", "aria-label": item.label,
+      onClick: async () => {
+        if (busy) return;
+        busy = true;
+        try {
+          const current = pending.has(item.key) ? pending.get(item.key) : item.value;
+          const q = `key=${encodeURIComponent(item.base_key)}&value=${encodeURIComponent(toBatchValue(current) || "")}`;
+          const resp = await api(`/admin/settings/preview?${q}`);
+          body.textContent = resp.text || "";
+          panel.classList.remove("hidden");
+        } catch (err) {
+          if (!isAuthError(err)) showToast(errorText(err, texts.miniapp_settings_error_toast_text || ""), "warn");
+        } finally {
+          busy = false;
+        }
+      },
+    }, icon("eye"), h("span", { text: texts.miniapp_settings_preview_button_text || "" }));
+    return { btn, panel };
+  }
+
+  function applyActions(el, item) {
+    el._actions.replaceChildren();
+    const locked = item.editable === false;
+    const isComposite = item.key !== item.base_key;
+    const buttons = [];
+    if (!isComposite && item.is_default === false && !locked) {
+      buttons.push(h("button", {
+        class: "btn ghost", type: "button", "aria-label": item.label,
+        onClick: () => openResetDefaultConfirm(item),
+      }, icon("rotate-ccw"), h("span", { text: texts.miniapp_settings_reset_default_label_text || "" })));
+    }
+    if (isComposite && item.is_city_override && !locked) {
+      buttons.push(h("button", {
+        class: "btn ghost", type: "button", "aria-label": item.label,
+        onClick: () => queueCityReset(item),
+      }, icon("rotate-ccw"), h("span", { text: texts.miniapp_settings_reset_city_label_text || "" })));
+    }
+    let previewPanel = null;
+    if (hasPlaceholder(item) && !locked) {
+      const preview = buildPreviewButton(item);
+      buttons.push(preview.btn);
+      previewPanel = preview.panel;
+    }
+    if (buttons.length) {
+      el._actions.append(...buttons);
+      el._actions.classList.remove("hidden");
+    } else {
+      el._actions.classList.add("hidden");
+    }
+    if (previewPanel) el.append(previewPanel);
+  }
+
   // ── плавающая панель «Сохранить N изменений» (D-08) — появляется при первом dirty
   // нетумблерном поле; MainButton-паттерн дублирования нет (batch — не MainButton задача:
   // здесь ДВЕ кнопки — сохранить/отменить, task_edit.js использует MainButton только когда
@@ -290,8 +396,8 @@ export async function render(root, params, ctx) {
   function discardPending() {
     if (busyBatch) return;
     for (const key of pending.keys()) {
-      const row = itemIndex.get(key);
-      if (row) repaintRow(row.item);
+      const original = originalItems.get(key);
+      if (original) repaintRow(original);
     }
     pending.clear();
     fileNames.clear();
@@ -329,7 +435,7 @@ export async function render(root, params, ctx) {
   function openDiffDialog() {
     if (!pending.size) return;
     confirmedKeys = new Set(
-      [...pending.keys()].filter((key) => diffCategoryFor(itemIndex.get(key).item) === "dangerous"),
+      [...pending.keys()].filter((key) => diffCategoryFor(originalItems.get(key)) === "dangerous"),
     );
     needsConfirmState.clear();
     staleState.clear();
@@ -393,14 +499,24 @@ export async function render(root, params, ctx) {
   }
 
   function resolveStale(key, choice) {
+    const info = staleState.get(key) || {};
     staleState.delete(key);
     if (choice === "overwrite") {
       confirmedKeys.add(key);
     } else {
       pending.delete(key);
       fileNames.delete(key);
-      const row = itemIndex.get(key);
-      if (row) repaintRow(row.item);
+      // «Оставить как в боте» — актуальное значение из ответа stale (info.raw/info.value),
+      // не наш черновик и не то, что было при загрузке экрана (оно уже устарело — иначе
+      // stale не случился бы). Это ПОДТВЕРЖДЁННАЯ сервером правда — обновляет и originalItems.
+      const original = originalItems.get(key) || {};
+      const fresh = {
+        ...original, raw: info.raw, value: info.value,
+        display: info.value == null ? "" : String(info.value),
+        is_default: info.raw == null,
+      };
+      repaintRow(fresh);
+      setOriginal(fresh);
       updateBatchBar();
     }
     if (!pending.size) { closeDiffDialog(); return; }
@@ -412,13 +528,13 @@ export async function render(root, params, ctx) {
     const rows = [];
     for (const [key, value] of pending) {
       if (needsConfirmState.has(key) || staleState.has(key)) continue;
-      rows.push(buildOrdinaryDiffRow(key, itemIndex.get(key).item, value));
+      rows.push(buildOrdinaryDiffRow(key, originalItems.get(key), value));
     }
-    for (const [key, text] of needsConfirmState) rows.push(buildNeedsConfirmRow(itemIndex.get(key).item, text));
-    for (const [key, info] of staleState) rows.push(buildStaleRow(key, itemIndex.get(key).item, info));
+    for (const [key, text] of needsConfirmState) rows.push(buildNeedsConfirmRow(originalItems.get(key), text));
+    for (const [key, info] of staleState) rows.push(buildStaleRow(key, originalItems.get(key), info));
     diffList.replaceChildren(...rows);
 
-    const hasWarn = [...pending.keys()].some((k) => diffCategoryFor(itemIndex.get(k).item) === "dangerous")
+    const hasWarn = [...pending.keys()].some((k) => diffCategoryFor(originalItems.get(k)) === "dangerous")
       || needsConfirmState.size > 0 || staleState.size > 0;
     diffConfirmBtn.textContent = hasWarn
       ? (texts.miniapp_settings_diff_confirm_dangerous_cta_text || "")
@@ -434,7 +550,7 @@ export async function render(root, params, ctx) {
     try {
       const changes = [...pending.entries()].map(([key, value]) => ({ key, value: toBatchValue(value) }));
       const base = {};
-      for (const key of pending.keys()) base[key] = itemIndex.get(key).item.raw;
+      for (const key of pending.keys()) base[key] = (originalItems.get(key) || {}).raw ?? null;
       const resp = await api("/admin/settings/batch", { method: "POST", body: { changes, base, confirm: [...confirmedKeys] } });
 
       batchErrors = new Map(Object.entries(resp.errors || {}));
@@ -461,7 +577,7 @@ export async function render(root, params, ctx) {
         pending.delete(key);
         fileNames.delete(key);
       }
-      for (const item of resp.items || []) repaintRow(item);
+      for (const item of resp.items || []) { repaintRow(item); setOriginal(item); }
       updateBatchBar();
       closeDiffDialog();
       haptic("success");
@@ -498,6 +614,7 @@ export async function render(root, params, ctx) {
 
     if (item.editable === false) setFieldState(el, "disabled");
     applyMarker(el, item);
+    applyActions(el, item);
     paintHighlight(el, item, null);
     return { item, el };
   }
@@ -559,8 +676,61 @@ export async function render(root, params, ctx) {
       else saveToggle(item, el, value);
       return;
     }
+    if ((item.type === "photo" || item.type === "file") && typeof File !== "undefined" && value instanceof File) {
+      // Дропзона (form.js::fileControl) уже нарисовала локальный предпросмотр сама (внутренний
+      // input-листенер вызывает свой paint() до этого onChange) — здесь только загрузка через
+      // существующий staff-путь /uploads (без нового транспорта, D-05) и постановка file_id в
+      // общий пакет; onChange(null) от кнопки «✕» дропзоны идёт мимо этой ветки — обычный
+      // сброс к дефолту через pending ниже (D-10).
+      handleFileUpload(item, el, value);
+      return;
+    }
     pending.set(item.key, value);
     updateBatchBar();
+  }
+
+  // ── фото/файл: тот же staff-путь POST /app/api/uploads, что резюме делегата (без нового
+  // транспорта) — полученный file_id ложится в pending обычным изменением (не сразу, как
+  // тумблер — D-08 относит photo/file к «остальным типам»). 413/оффлайн/неверный тип —
+  // инлайн под полем текстами реестра, дропзона остаётся кликабельной для повтора.
+  let uploadLimitsPromise = null;
+  function getUploadLimits() {
+    if (!uploadLimitsPromise) uploadLimitsPromise = api("/uploads/limits").catch(() => ({}));
+    return uploadLimitsPromise;
+  }
+
+  const IMAGE_EXT_RE = /\.(jpe?g|png|webp)$/i;
+
+  async function handleFileUpload(item, el, file) {
+    if (item.type === "photo" && !(file.type || "").startsWith("image/") && !IMAGE_EXT_RE.test(file.name || "")) {
+      setFieldState(el, "error", { text: texts.miniapp_settings_upload_wrong_type_text || "" });
+      return;
+    }
+    const limits = await getUploadLimits();
+    if (limits.max_bytes && file.size > limits.max_bytes) {
+      setFieldState(el, "error", { text: texts.miniapp_settings_upload_413_text || "" });
+      return;
+    }
+    setFieldState(el, "uploading", { text: "" });
+    try {
+      const form = new FormData();
+      form.append("file", file, file.name);
+      const res = await api("/uploads", { method: "POST", form });
+      fileNames.set(item.key, file.name);
+      pending.set(item.key, res.content);
+      updateBatchBar();
+      setFieldState(el, "default");
+    } catch (err) {
+      if (isAuthError(err)) {
+        setFieldState(el, "default");
+        return;
+      }
+      let text = texts.miniapp_settings_error_toast_text || "";
+      if (err && err.status === 413) text = texts.miniapp_settings_upload_413_text || "";
+      else if (!err || typeof err.status !== "number") text = texts.miniapp_settings_upload_offline_text || "";
+      else text = errorText(err, text);
+      setFieldState(el, "error", { text });
+    }
   }
 
   // ── тумблер: один POST batch из одного изменения (D-08). ────────────────────────────────
@@ -580,7 +750,7 @@ export async function render(root, params, ctx) {
         return;
       }
       if (resp.saved && resp.saved.includes(item.key) && resp.items && resp.items[0]) {
-        const row = repaintRow(resp.items[0]);
+        const row = repaintRow(resp.items[0]); setOriginal(resp.items[0]);
         row.el.classList.add("is-flash");
         setTimeout(() => row.el.classList.remove("is-flash"), 400);
         haptic("success");
@@ -610,6 +780,7 @@ export async function render(root, params, ctx) {
     for (const item of group.items) {
       const row = buildRow(item);
       itemIndex.set(item.key, row);
+      setOriginal(item);
       rowsWrap.append(row.el);
     }
     const countEl = h("span", { class: "settings-group-count" });
@@ -659,6 +830,7 @@ export async function render(root, params, ctx) {
       for (const item of section.toggles) {
         const row = buildRow(item);
         itemIndex.set(item.key, row);
+        setOriginal(item);
         toggleList.append(row.el);
       }
       sectionEl.append(toggleList);
