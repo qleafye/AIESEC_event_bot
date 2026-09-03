@@ -1431,6 +1431,38 @@ def test_applications_screen_touch_action_pan_y_present_in_css():
     assert "pan-y" in css
 
 
+def test_appl_card_swipe_release_uses_named_duration_tokens_not_literals():
+    """Владелец 03.09 («дёргано»): .appl-card раньше не имел ни одного transition вовсе —
+    отпускание карточки было мгновенным скачком, а не анимацией. Токены — именованные
+    (tokens.css), не литералы в app.css (тот же приём, что --dur/--ease везде в файле)."""
+    css = APP_CSS.read_text(encoding="utf-8")
+    appl_card_start = css.index(".appl-card {")
+    appl_card_block = css[appl_card_start:css.index("}", appl_card_start)]
+    assert "var(--dur-swipe-exit)" in appl_card_block
+    assert "var(--ease-swipe-exit)" in appl_card_block
+    assert "will-change: transform" in appl_card_block
+    assert ".is-dragging" in css
+    is_dragging_start = css.index(".appl-card.is-dragging")
+    is_dragging_block = css[is_dragging_start:css.index("}", is_dragging_start)]
+    assert "transition: none" in is_dragging_block
+    assert "user-select: none" in is_dragging_block
+    tokens = (MINIAPP_STATIC / "tokens.css").read_text(encoding="utf-8")
+    assert "--dur-swipe-exit" in tokens and "--ease-swipe-exit" in tokens
+    # Оба нулятся под motion off / prefers-reduced-motion — тот же приём, что --dur.
+    assert tokens.count("--dur-swipe-exit: 0ms") == 2
+
+
+def test_attach_swipe_coalesces_progress_via_request_animation_frame():
+    """Владелец 03.09: сырые pointermove могут прилетать чаще кадра — handleMove обязан
+    ТОЛЬКО запоминать событие, а сам onProgress звать через requestAnimationFrame (не более
+    раза за кадр). Поведенческая проверка — tests/test_swipe_js.py (node, coalesce_result)."""
+    text = _js_without_comments(SWIPE_JS)
+    attach_src = text[text.index("export function attachSwipe"):]
+    handle_move_src = attach_src[attach_src.index("function handleMove"):attach_src.index("function handleUp")]
+    assert "requestAnimationFrame(" in handle_move_src
+    assert "onProgress(" not in handle_move_src, "onProgress обязан звать flush по кадру, не сырое событие"
+
+
 def test_applications_screen_api_paths_are_literal_not_action_interpolated():
     text = _js_without_comments(APPLICATIONS_JS)
     for path in ("/applications/next", "/applications/undo", "/applications/approve_all", "/approve", "/reject"):
