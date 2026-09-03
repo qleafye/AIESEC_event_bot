@@ -1,10 +1,10 @@
-// Карточка задания (editorial-минимал, D-11 hero-исключение — карточка с обложкой остаётся
-// карточкой): обложка во всю ширину сверху (если есть photo_file_id; деградирует молча при
-// ошибке загрузки), заголовок Heading-роли, мета «категория · монеты · дедлайн», чипы типов
-// доказательства с иконками (image/file-text/link/pen-line), просроченный срок — иконкой +
-// словом, строка статуса, «Нужно прислать», описание. MainButton «Сдать» -> #/submit/{id}.
+// Карточка задания (план 23.1-05, макет mockups/05-task.png): плита с наградой и остатком
+// срока сверху (обложка — первым ребёнком плиты, если есть photo_file_id; деградирует молча
+// при ошибке загрузки), «Что сделать», крупный блок «Нужно прислать» с чипами типов
+// доказательства, строки фактов (статус/проверка). MainButton «Сдать» -> #/submit/{id}.
 
 import { icon } from "../icons.js";
+import { flatRow, sectionTitle } from "../ui.js";
 
 const PROOF_ICON = { photo: "image", pdf: "file-text", text: "pen-line", link: "link" };
 const PROOF_ORDER = ["photo", "pdf", "text", "link"];
@@ -23,7 +23,7 @@ export async function render(root, params, ctx) {
   const { h, api, navigate, setMainButton } = ctx;
   const task = await api(`/tasks/${encodeURIComponent(params.id)}`);
 
-  const card = h("article", { class: "card task-card" });
+  const plate = h("article", { class: "plate plate--task" });
   if (task.photo_file_id) {
     const img = h("img", {
       class: "cover",
@@ -31,29 +31,51 @@ export async function render(root, params, ctx) {
       src: `/app/api/file/${encodeURIComponent(task.photo_file_id)}`,
     });
     img.addEventListener("error", () => img.remove());
-    card.append(img);
+    plate.append(img);
   }
-  card.append(
+  plate.append(
+    h("p", { class: "plate-eyebrow", text: [task.category_label, `до ${task.deadline_short}`].join(" · ") }),
     h("h1", { text: task.title }),
-    h("p", { class: "label-role", text: [task.category_label, `${task.coins} монет`, `до ${task.deadline_short}`].join(" · ") }),
+    h("hr", { class: "plate-rule" }),
   );
-  const chips = proofChips(h, task.proof_type);
-  if (chips) card.append(chips);
-  if (task.overdue && task.overdue_hint) {
-    card.append(h("p", { class: "flat-row-warn" }, icon("alert-triangle"), h("span", { text: ` ${task.overdue_hint}` })));
+  // Строка «сколько осталось» — тот же слот и у обычного, и у просроченного задания:
+  // deadline_left_text (свежее) или overdue_hint (мягкий дедлайн вышел, D-05); пусто (оба
+  // поля null) -> блока времени нет вовсе, награда остаётся одна в строке.
+  const timeText = task.deadline_left_text || task.overdue_hint;
+  plate.append(h("div", { class: "plate-row" },
+    timeText ? icon("clock") : null,
+    timeText ? h("span", { class: "plate-sub", text: timeText }) : null,
+    h("div", { class: "plate-reward" }, h("b", { text: `+${task.coins}` }), icon("coin")),
+  ));
+  root.append(plate);
+
+  root.append(
+    sectionTitle(h, task.todo_eyebrow),
+    h("p", { class: "pre muted", text: task.text }),
+  );
+
+  if (task.proof_hint) {
+    root.append(
+      sectionTitle(h, task.proof_eyebrow),
+      h("div", { class: "proof-drop" },
+        icon("camera"),
+        h("div", { class: "proof-drop-title", text: task.proof_hint }),
+        h("div", { class: "proof-drop-note", text: task.proof_note }),
+        proofChips(h, task.proof_type),
+      ),
+    );
   }
-  card.append(
-    h("div", { class: "row" },
-      h("span", { class: "muted", text: "Статус" }),
-      h("span", { class: `chip status ${task.status}`, text: task.status_line }),
-    ),
-    h("div", { class: "row" },
-      h("span", { class: "muted", text: "Нужно прислать" }),
-      h("span", { text: task.proof_hint }),
-    ),
-    h("div", { class: "pre", text: task.text }),
-  );
-  root.append(card);
+
+  // Просроченное задание помечается alert-triangle + flat-row-warn прямо на строке статуса
+  // (D-05: дедлайн мягкий, сдача разрешена — это визуальная пометка, а не запрет).
+  root.append(h("div", { class: "flat-list flush" },
+    flatRow(h, {
+      icon: task.overdue ? "alert-triangle" : undefined,
+      cls: task.overdue ? "flat-row-warn" : undefined,
+      title: "Статус", value: task.status_line, valueCls: "strong",
+    }),
+    flatRow(h, { title: "Проверка", value: task.review_note, valueCls: "strong" }),
+  ));
 
   if (task.can_submit) {
     const go = () => navigate(`#/submit/${task.id}`);

@@ -385,6 +385,38 @@ def test_task_card_pending_and_missing(client):
     assert client.get("/app/api/tasks/abc", headers=_hdr(DELEGATE_ID)).status_code == 422
 
 
+# ── плита карточки задания (план 23.1-05, UI-REDESIGN-06): остаток срока, подписи блока
+# «нужно прислать», строка проверки ────────────────────────────────────────────────────────
+
+def test_task_card_deadline_left_text_present_for_future_deadline(client):
+    from miniapp.timeutil import today_msk
+
+    t = _task("Свежее", days=5)
+    task = _run(bot_db.get_task(t))
+    target = datetime.strptime(task["deadline_at"], "%Y-%m-%d %H:%M:%S").date()
+    expected_days = (target - today_msk()).days
+    body = client.get(f"/app/api/tasks/{t}", headers=_hdr(DELEGATE_ID)).json()
+    assert body["deadline_left_text"] == f"осталось {expected_days} дн."
+    assert body["overdue"] is False
+
+
+def test_task_card_deadline_left_text_none_when_overdue(client):
+    t = _task("Просрочено", days=-2)
+    body = client.get(f"/app/api/tasks/{t}", headers=_hdr(DELEGATE_ID)).json()
+    assert body["overdue"] is True
+    assert body["deadline_left_text"] is None
+    assert body["overdue_hint"]  # своя строка уже есть — не дублируем вторым текстом
+
+
+def test_task_card_ships_todo_proof_and_review_texts(client):
+    t = _task("Тексты карточки")
+    body = client.get(f"/app/api/tasks/{t}", headers=_hdr(DELEGATE_ID)).json()
+    assert body["todo_eyebrow"]
+    assert body["proof_eyebrow"]
+    assert body["proof_note"]
+    assert body["review_note"]
+
+
 # ── монеты ──────────────────────────────────────────────────────────────────────────────
 
 def test_balance_without_operations_rank_is_null(client):

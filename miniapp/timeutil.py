@@ -1,0 +1,23 @@
+"""Phase 23.1-05 (UI-REDESIGN-06): общее московское «сегодня» для miniapp-роутеров.
+
+Вынесено из `miniapp/routers/hub.py` (план 23.1-03) — `tasks.py` (план 23.1-05, строка
+«сколько дней осталось» до дедлайна задания) на плане самого плана 23.1-05 попросил не
+копировать локальный помощник хаба, а вынести общее место. `services/scheduler.py` держит
+СВОЙ `MOSCOW_TZ` (TZFIX-260816) — это не второй, случайно разошедшийся литерал часового пояса,
+а третий, ОСОЗНАННЫЙ: `services.scheduler` тянет aiogram + APScheduler, а `miniapp/` обязан
+оставаться aiogram-free (D-01, `miniapp/deps.py`) — ребра `miniapp -> services.scheduler` нет
+и не будет. `miniapp/routers/admin_tasks.py` держит четвёртый (дедлайны задач менеджера,
+план 16) — тот же осознанный компромисс, другая точка входа в тот же процесс.
+"""
+from __future__ import annotations
+
+from datetime import date, datetime
+from zoneinfo import ZoneInfo
+
+MOSCOW_TZ = ZoneInfo("Europe/Moscow")
+
+
+def today_msk() -> date:
+    """Московская календарная дата «сейчас» — единая точка входа для всех miniapp-роутеров,
+    которым нужно посчитать «сколько дней осталось» без aiogram-зависимостей."""
+    return datetime.now(MOSCOW_TZ).date()
