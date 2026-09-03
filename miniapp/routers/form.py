@@ -71,7 +71,11 @@ async def _load_context(telegram_id: int) -> dict:
         step = draft.get("step")
     else:
         kind = "edit" if (user_row and not is_returning) else "new"
-        answers = {}
+        # UAT 21-12 находка 4: правка уже поданной анкеты (D-26) без строки `reg_drafts` —
+        # обзор обязан подставить текущие ответы из `users` тем же приёмом, что чат-recall
+        # (reg_engine.prior_answers_for/STEP_TO_COLUMN), иначе form_spec видит answers={} и
+        # каждое поле рисуется «Не заполнено», хотя users содержит реальные значения.
+        answers = reg_engine.answers_from_user_row(user_row) if kind == "edit" else {}
         meta = {}
         # D-27: город/трек ПРОШЛОГО сезона у возвращенца (kind='new') сюда не переносятся —
         # так же, как rereg_start/`_city_fork_then_continue` бота никогда не подставляет
