@@ -333,6 +333,7 @@ def test_me_reports_theme_preset_playful_tone_and_asset_slots(tmp_path):
     assert body["sticker_error_file_id"] is None
     assert body["sticker_top1_file_id"] is None
     assert body["coin_icon_file_id"] is None
+    assert body["plate_pattern_file_id"] is None
     # старые поля не тронуты
     assert body["accent"] == "#037EF3"
     assert body["logo_file_id"] is None

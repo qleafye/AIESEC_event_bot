@@ -198,3 +198,4 @@ class MiniAppTheme(StatesGroup):
     sticker_error = State()    # стикер «ошибка», фото
     sticker_top1 = State()     # стикер «топ-1», фото
     coin_icon = State()        # своя иконка монеты, фото (необязательно)
+    pattern = State()          # паттерн плиты, фото (необязательно)

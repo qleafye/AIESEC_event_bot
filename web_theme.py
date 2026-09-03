@@ -110,6 +110,7 @@ ASSET_KEYS: dict[str, str] = {
     "sticker_error_file_id": "miniapp_sticker_error",
     "sticker_top1_file_id": "miniapp_sticker_top1",
     "coin_icon_file_id": "miniapp_coin_icon",
+    "plate_pattern_file_id": "miniapp_theme_pattern",
 }
 
 # Тёмная поверхность Mini App (tokens.css `:root[data-theme="dark"] --surface`) — фон, против
