@@ -8,6 +8,14 @@
 Запуск:
     python tools/shoot_screens.py            # снять всё + проверить (ни одного пустого файла)
     python tools/shoot_screens.py --check     # только проверить уже снятое, без headless-Chrome
+    python tools/shoot_screens.py --shots-dir PATH
+        # писать/проверять снимки не в дефолтную папку 19.1, а в PATH (относительный --
+        # от корня репозитория). Без аргумента поведение прежнее, побайтно.
+    python tools/shoot_screens.py --delegate-only [--shots-dir PATH]
+        # Phase 23.1 (задача 1): только делегатские экраны (DELEGATE_SCREENS + онбординг),
+        # оба пресета, светлая и тёмная тема -- без менеджерских экранов, раскладок навигации,
+        # экранов состояний, пустых состояний и дашборда. Минуты вместо получаса, дашборд не
+        # поднимается вовсе. `--check --delegate-only` сверяется с урезанным манифестом.
 
 Механика (см. `<interfaces>`/задача 1 плана 19.1-08):
 - Mini App — `.planning/phases/19-mini-app/demo_server.py` (уже существующий dev-артефакт,
@@ -58,6 +66,7 @@ from _shoot_common import (
 )
 
 SHOTS_DIR = REPO_ROOT / ".planning" / "phases" / "19.1-web-design-pass" / "shots"
+# ^ значение по умолчанию; main() может переписать глобал через --shots-dir (см. main()).
 APP_JS_PATH = REPO_ROOT / "miniapp" / "static" / "js" / "app.js"
 
 MINIAPP_WINDOW = (390, 844)  # типичный телефон, как в make_theme_previews.py
@@ -80,6 +89,7 @@ DELEGATE_SCREENS = [
     ("coins", "#/coins"),
     ("leaderboard", "#/leaderboard"),
     ("profile", "#/profile"),
+    ("form", "#/form"),  # Phase 23.1 задача 1: мастер анкеты -- штатный экран съёмки
 ]
 MANAGER_SCREENS = [
     ("hub-manager", "#/hub"),
@@ -201,7 +211,18 @@ def shoot_dashboard_login(driver, base_url, out_path) -> None:
 
 # ── manifest (список ожидаемых файлов) -- общий источник для съёмки и --check ───────────────
 
-def build_manifest() -> list[str]:
+def build_manifest(delegate_only: bool = False) -> list[str]:
+    if delegate_only:
+        # Зеркало _shoot_delegate_only(): онбординг один раз (bluebook light), делегатские
+        # экраны в обоих пресетах на светлой теме, и та же линейка на bluebook в тёмной.
+        names = ["miniapp-onboarding-bluebook-light-hub.png"]
+        for preset in ("bluebook", "youlead"):
+            for name, _ in DELEGATE_SCREENS:
+                names.append(f"miniapp-{name}-{preset}-light-hub.png")
+        for name, _ in DELEGATE_SCREENS:
+            names.append(f"miniapp-{name}-bluebook-dark-hub.png")
+        return names
+
     names = []
     for preset in ("bluebook", "youlead"):
         for name, _ in DELEGATE_SCREENS + MANAGER_SCREENS:
@@ -229,7 +250,52 @@ def build_manifest() -> list[str]:
 
 # ── основной прогон ──────────────────────────────────────────────────────────────────────────
 
-def run_full_pass() -> int:
+def _shoot_delegate_only(db_path: Path, task_id: int) -> int:
+    """Phase 23.1 задача 1: урезанный обход для `--delegate-only` -- только DELEGATE_SCREENS
+    + онбординг, оба пресета на светлой теме, bluebook на тёмной. Ни дашборда, ни менеджерских
+    экранов, ни раскладок навигации, ни состояний -- см. модульный докстринг/README флага."""
+    driver_light = make_chrome_driver(MINIAPP_WINDOW)
+    try:
+        inject_tg_mock(driver_light, "light")
+        write_preset(db_path, "bluebook")
+        shoot_miniapp_screen(
+            driver_light, MINIAPP_BASE_URL, DELEGATE_ID, "#/hub",
+            SHOTS_DIR / "miniapp-onboarding-bluebook-light-hub.png",
+            skip_onboarding=False,
+        )
+        print("OK: onboarding")
+
+        for preset in ("bluebook", "youlead"):
+            write_preset(db_path, preset)
+            for name, hash_tpl in DELEGATE_SCREENS:
+                tid = task_id if "{task_id}" in hash_tpl else None
+                shoot_miniapp_screen(
+                    driver_light, MINIAPP_BASE_URL, DELEGATE_ID, hash_tpl,
+                    SHOTS_DIR / f"miniapp-{name}-{preset}-light-hub.png", task_id=tid,
+                )
+            print(f"OK: {preset} light — delegate screens")
+    finally:
+        driver_light.quit()
+
+    write_preset(db_path, "bluebook")  # вернуть дефолт перед тёмной темой
+
+    driver_dark = make_chrome_driver(MINIAPP_WINDOW)
+    try:
+        inject_tg_mock(driver_dark, "dark")
+        for name, hash_tpl in DELEGATE_SCREENS:
+            tid = task_id if "{task_id}" in hash_tpl else None
+            shoot_miniapp_screen(
+                driver_dark, MINIAPP_BASE_URL, DELEGATE_ID, hash_tpl,
+                SHOTS_DIR / f"miniapp-{name}-bluebook-dark-hub.png", task_id=tid,
+            )
+        print("OK: bluebook dark — delegate screens")
+    finally:
+        driver_dark.quit()
+
+    return 0
+
+
+def run_full_pass(delegate_only: bool = False) -> int:
     if not DEMO_SERVER.is_file():
         print(f"СТОП: demo-сервер не найден: {DEMO_SERVER}", file=sys.stderr)
         print(
@@ -278,6 +344,12 @@ def run_full_pass() -> int:
             print("СТОП: в demo.db нет ни одной задачи -- посев demo_server.py не сработал.", file=sys.stderr)
             return 1
         task_id = task_row[0]
+
+        if delegate_only:
+            # Отдельная урезанная ветка (Phase 23.1 задача 1): только делегатские экраны,
+            # без менеджерских, раскладок навигации, состояний и дашборда -- см. модульный
+            # докстринг. Переиспользует те же помощники съёмки, что и полный прогон ниже.
+            return _shoot_delegate_only(db_path, task_id)
 
         driver_light = make_chrome_driver(MINIAPP_WINDOW)
         try:
@@ -539,8 +611,8 @@ def _run_empty_seed_pass() -> int:
     return 0
 
 
-def run_check() -> int:
-    manifest = build_manifest()
+def run_check(delegate_only: bool = False) -> int:
+    manifest = build_manifest(delegate_only=delegate_only)
     missing = []
     empty = []
     for name in manifest:
@@ -564,12 +636,26 @@ def run_check() -> int:
 
 
 def main() -> int:
-    if "--check" in sys.argv[1:]:
-        return run_check()
-    rc = run_full_pass()
+    global SHOTS_DIR
+    argv = sys.argv[1:]
+    check = "--check" in argv
+    delegate_only = "--delegate-only" in argv
+    if "--shots-dir" in argv:
+        idx = argv.index("--shots-dir")
+        try:
+            raw = argv[idx + 1]
+        except IndexError:
+            print("СТОП: --shots-dir требует значение (путь).", file=sys.stderr)
+            return 1
+        path = Path(raw)
+        SHOTS_DIR = path if path.is_absolute() else (REPO_ROOT / path)
+
+    if check:
+        return run_check(delegate_only=delegate_only)
+    rc = run_full_pass(delegate_only=delegate_only)
     if rc != 0:
         return rc
-    return run_check()
+    return run_check(delegate_only=delegate_only)
 
 
 if __name__ == "__main__":
