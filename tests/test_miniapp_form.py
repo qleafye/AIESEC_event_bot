@@ -171,6 +171,28 @@ def test_draft_get_approved_delegate_is_edit_kind(client):
     assert body["exists"] is False  # черновика ещё не заводилось
 
 
+def test_edit_review_seeds_answers_from_users_row_without_draft(client):
+    """UAT 21-12 находка 4 / БАГ: approved-делегат без строки `reg_drafts` открывает обзор
+    «Изменить анкету» — сервер обязан подставить текущие ответы из `users` (тем же приёмом,
+    что чат-recall `reg_engine.prior_answers_for`/`STEP_TO_COLUMN`), а не отдавать пустые
+    поля. `exists` остаётся False (черновика физически нет) — но `steps[].value` не пуст."""
+    _fill(
+        DELEGATE_ID, age=25, education_status="Нет, не получал(а) образование",
+        source="Самостоятельно",
+    )
+    resp = client.get("/app/api/reg/draft", headers=_hdr(DELEGATE_ID))
+    body = resp.json()
+    assert body["kind"] == "edit"
+    assert body["exists"] is False
+    for key, expected in (
+        ("age", 25),
+        ("education_status", "Нет, не получал(а) образование"), ("source", "Самостоятельно"),
+    ):
+        step = next(s for s in body["steps"] if s["key"] == key)
+        assert step["value"] == expected, f"{key}: {step}"
+        assert step["value_source"] == "answer", f"{key}: {step}"
+
+
 def test_draft_get_unregistered_newcomer_is_new_kind_no_prior(client):
     resp = client.get("/app/api/reg/draft", headers=_hdr(UNREGISTERED_ID))
     body = resp.json()
