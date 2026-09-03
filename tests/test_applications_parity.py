@@ -245,7 +245,7 @@ def test_card_payload_main_and_extra_do_not_overlap(tmp_path):
     _use_tmp_db(tmp_path)
     _run(db.init_db())
     _seed_user(801, education_status="Студент", city="Москва", age="20", goal="цель")
-    _run(db.set_setting("modcard_fields", '["age", "city"]'))
+    _run(db.set_setting("modcard_fields", "age\ncity"))
 
     payload = _run(applications.card_payload(_run(db.get_user(801))))
 
@@ -260,7 +260,7 @@ def test_card_payload_prev_season_badge_before_edited_and_track_badges_precede_i
     _use_tmp_db(tmp_path)
     _run(db.init_db())
     _seed_user(804, participant_type="short", prev_season="legacy")
-    _run(db.set_setting("modcard_fields", '["age"]'))
+    _run(db.set_setting("modcard_fields", "age"))
 
     payload = _run(applications.card_payload(_run(db.get_user(804))))
     kinds = [b["kind"] for b in payload["badges"]]
@@ -275,7 +275,7 @@ def test_card_payload_show_resume_false_when_step_disabled(tmp_path):
     _use_tmp_db(tmp_path)
     _run(db.init_db())
     _seed_user(802, resume_text="мой опыт")
-    _run(db.set_setting("modcard_fields", '["age"]'))  # resume не включён
+    _run(db.set_setting("modcard_fields", "age"))  # resume не включён
 
     payload = _run(applications.card_payload(_run(db.get_user(802))))
     assert payload["show_resume"] is False
