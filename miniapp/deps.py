@@ -60,6 +60,9 @@ SECTIONS = (
     # Phase 23 (APP-TINDER-01, D-09): менеджерский раздел отбора заявок — рядом с "review"
     # (менеджерские разделы идут вместе).
     "applications",
+    # Quick 260904-2cj (QJRN-01..04): журнал вопросов делегатов менеджера — рядом с
+    # "applications" (менеджерские разделы идут вместе).
+    "questions",
     "admin_tasks",
     "stats",
     "settings",
