@@ -235,6 +235,13 @@ async def _draft_response(telegram_id: int, ctx: dict | None = None, *, bot_user
         "cancel_changes_text": await get_setting_typed("reg_form_cancel_changes_text"),
         "cancel_changes_confirm_text": await get_setting_typed("reg_form_cancel_changes_confirm_text"),
         "continue_in_chat_text": await get_setting_typed("reg_form_continue_in_chat_text"),
+        # Phase 23.1 (UI-REDESIGN-04): подписи экрана мастера — надзаголовок списка
+        # вопросов, «…и ещё N впереди», пометка сохранения черновика, кнопки дальше/назад.
+        "questions_eyebrow": await get_setting_typed("reg_form_questions_eyebrow"),
+        "more_questions_text": await get_setting_typed("reg_form_more_questions_text"),
+        "draft_saved_text": await get_setting_typed("reg_form_draft_saved_text"),
+        "next_cta_text": await get_setting_typed("reg_form_next_cta_text"),
+        "back_cta_text": await get_setting_typed("reg_form_back_cta_text"),
         "updated_in_chat_badge_text": await get_setting_typed("reg_form_updated_in_chat_badge_text"),
         "conflict_text": await get_setting_typed("reg_form_conflict_text"),
         "consent_required_text": await get_setting_typed("reg_form_consent_required_text"),
