@@ -466,3 +466,75 @@ def test_prior_answers_not_in_incomplete_snapshot(tmp_path, monkeypatch):
             assert "_prior_answers" not in partial_json
 
     asyncio.run(go())
+
+
+# ── UAT 21-12 находка 6: итоговое summary-сообщение чата без кнопки отправки ───────────────
+#
+# Расследование (не воспроизвелось как баг кода): `_advance()` (handlers/registration.py)
+# безусловно прикладывает `get_confirm_kb()` к summary-сообщению в ЕДИНСТВЕННОЙ ветке, где
+# оно вообще отправляется — status делегата на это никак не влияет (движок не читает
+# `status` вовсе). Единственный код-путь, где итоговое сообщение уходит БЕЗ подтверждения —
+# `_after_full_name`: «нет включённых вопросов -> сразу finalize», задокументированный как
+# СОЗНАТЕЛЬНОЕ поведение SHORT-04 (handlers/reg_steps.py::process_full_name, комментарий
+# «reproduces the historical short-form behavior STRUCTURALLY») для КОРОТКОЙ формы с нулём
+# вопросов (дефолт `registration_mode=short`, факт установленный тестом ниже) — но в этой
+# ветке текст «Проверь свои ответы» вообще не отправляется (сразу submit), а не отправляется
+# БЕЗ кнопки, как описано в находке. Дефект не воспроизведён; см. финальный отчёт исполнителя.
+def test_advance_summary_always_carries_confirm_keyboard(tmp_path):
+    """Характеризующий тест (не репродукция бага): итоговое summary-сообщение из `_advance()`
+    ВСЕГДА несёт `get_confirm_kb()` (ReplyKeyboardMarkup «Всё верно»/«Изменить»), когда есть
+    хотя бы один включённый вопрос трека — независимо от `status` делегата (отклонён/новый),
+    это просто не параметр `_advance`. Регрессионный сторож на случай, если это когда-нибудь
+    перестанет быть так."""
+    _use_tmp_db(tmp_path)
+
+    async def go():
+        await db.init_db()
+        await db.set_setting("registration_mode", "full")
+        await _register(UID, "delegate", status="rejected", season=None)
+        # work_status=0 (не 1): иначе включается доп. шаг "work_sphere", для которого нет
+        # прошлого ответа, и рекол-цикл ниже упрётся в обычный вопрос вместо recall_keep.
+        async with db._connect() as conn:
+            await conn.execute(
+                "UPDATE users SET age=25, vk_username='@delegate', "
+                "education_status='Нет, не получал(а) образование', "
+                "expectations='Нетворкинг', source='Самостоятельно', work_status=0, "
+                "missing_skills='Тайм-менеджмент' WHERE telegram_id=?",
+                (UID,),
+            )
+            await conn.commit()
+
+        state = _new_state(UID)
+        callback = _FakeCallback("rereg_start", UID, "delegate")
+        await reg_flow.rereg_start(callback, state)
+        assert await state.get_state() == Registration.recall_pending.state
+
+        # Гоняем recall_keep, пока не дойдём до Registration.confirm — потолок итераций
+        # страхует от бесконечного цикла, если движок когда-нибудь перестанет сходиться.
+        msg = callback.message
+        for _ in range(30):
+            state_name = await state.get_state()
+            if state_name == Registration.confirm.state:
+                break
+            assert state_name == Registration.recall_pending.state, state_name
+            data = await state.get_data()
+            step_key = data["_recall_step"]
+            cb = _FakeCallback(f"recall_keep:{step_key}", UID, "delegate")
+            cb.message = msg  # тот же транскрипт .sent через весь цикл (T-073-04 идиома)
+            await reg.recall_keep(cb, state, bot=None)
+        else:
+            raise AssertionError("не дошли до Registration.confirm за 30 тапов")
+
+        summary_msgs = [
+            (t, rm, p) for (t, rm, p) in msg.sent if t and "Проверь свои ответы" in t
+        ]
+        assert summary_msgs, "итоговое summary-сообщение не найдено в транскрипте"
+        text, reply_markup, _parse_mode = summary_msgs[-1]
+        assert isinstance(reply_markup, ReplyKeyboardMarkup), (
+            f"summary без клавиатуры подтверждения: reply_markup={reply_markup!r}"
+        )
+        button_texts = {btn.text for row in reply_markup.keyboard for btn in row}
+        assert "Всё верно" in button_texts
+        assert "Изменить" in button_texts
+
+    asyncio.run(go())
