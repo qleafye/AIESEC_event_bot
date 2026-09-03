@@ -14,6 +14,7 @@ import hashlib
 import re
 import hmac
 import time
+from datetime import datetime, timedelta
 
 from fastapi import APIRouter, Depends
 from starlette.testclient import TestClient
@@ -337,6 +338,10 @@ def test_me_reports_theme_preset_playful_tone_and_asset_slots(tmp_path):
     # старые поля не тронуты
     assert body["accent"] == "#037EF3"
     assert body["logo_file_id"] is None
+    # Phase 23.1-03 (UI-REDESIGN-03): герой и шаги привет-экрана — реестр, дефолты нетронутого стенда
+    assert body["onboarding_hero"] == "Привет!"
+    assert body["onboarding_steps_title"] == "Как это работает"
+    assert body["onboarding_steps"].count(";") == 2
 
 
 def test_me_reflects_youlead_preset_and_cover_asset(tmp_path):
@@ -543,3 +548,49 @@ def test_static_and_shell_send_no_cache_header(tmp_path):
     assert versioned.status_code == 200
     assert versioned.headers.get("cache-control") == "no-cache"
     assert client.get("/app/api/me").headers.get("cache-control") != "no-cache"
+
+
+# ── Phase 23.1-03 (UI-REDESIGN-02): GET /app/api/hub — тексты и факты плиты хаба ────────
+
+def test_hub_returns_registry_defaults_for_untouched_stand(tmp_path):
+    db_path = _use_tmp_db(tmp_path)
+    _standard_seed()
+    body = _client(_cfg(db_path)).get("/app/api/hub", headers=_hdr(DELEGATE_ID)).json()
+    assert body["balance_eyebrow"] == "Твой баланс"
+    assert body["balance_unit"] == "монет"
+    assert body["next_eyebrow"] == "Следующее"
+    assert body["sections_eyebrow"] == "Разделы"
+    assert body["event_dates"] is None
+    assert body["event_place"] is None
+    assert body["days_fact"] is None  # дата отсчёта не задана
+
+
+def test_hub_tasks_fact_has_real_numbers_not_a_template(tmp_path):
+    db_path = _use_tmp_db(tmp_path)
+    _standard_seed()
+    body = _client(_cfg(db_path)).get("/app/api/hub", headers=_hdr(DELEGATE_ID)).json()
+    assert body["tasks_fact"] is not None
+    assert "{done}" not in body["tasks_fact"] and "{total}" not in body["tasks_fact"]
+    assert body["tasks_fact"] == "0 из 0 заданий сдано"  # заданий на стенде ещё нет
+
+
+def test_hub_days_fact_future_date_gives_number_past_date_gives_none(tmp_path):
+    db_path = _use_tmp_db(tmp_path)
+    _standard_seed()
+    client = _client(_cfg(db_path))
+    future = (datetime.now() + timedelta(days=5)).strftime("%d.%m.%Y")
+    _set("miniapp_hub_countdown_date", future)
+    body = client.get("/app/api/hub", headers=_hdr(DELEGATE_ID)).json()
+    assert body["days_fact"] is not None and "{days}" not in body["days_fact"]
+    past = (datetime.now() - timedelta(days=5)).strftime("%d.%m.%Y")
+    _set("miniapp_hub_countdown_date", past)
+    body = client.get("/app/api/hub", headers=_hdr(DELEGATE_ID)).json()
+    assert body["days_fact"] is None
+
+
+def test_hub_denied_for_non_delegate_403(tmp_path):
+    db_path = _use_tmp_db(tmp_path)
+    _standard_seed()
+    resp = _client(_cfg(db_path)).get("/app/api/hub", headers=_hdr(PENDING_ID))
+    assert resp.status_code == 403
+    assert resp.json()["reason"] == "delegate_gate"

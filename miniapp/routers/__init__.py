@@ -29,6 +29,11 @@
   GET  /app/api/coins/history?offset&limit -> {items[{delta,reason,source,source_label,created_at}],
                                        total, limit, offset}
   GET  /app/api/leaderboard?limit  -> {items[{rank,name,balance,is_me}], me{rank,balance}, total}; limit <= 50
+  Делегат (план 23.1-03, UI-REDESIGN-02): готовые тексты и факты плиты хаба, 0 форматирования
+  на клиенте — {done}/{total}/{days} подставлены сервером:
+  GET  /app/api/hub                -> {balance_eyebrow, balance_unit, next_eyebrow,
+                                       sections_eyebrow, tasks_fact|null, days_fact|null,
+                                       event_dates|null, event_place|null}
   Делегат (план 19-04):
   POST /app/api/submissions {task_id, parts[{kind, content, part_token?, caption?}]}
                                    -> {submission_id, accepted_text}; `delegate_gate` + section tasks
@@ -189,6 +194,7 @@ from miniapp.routers import (
     coins_admin,
     files,
     form,
+    hub,
     page,
     profile,
     review,
@@ -203,6 +209,7 @@ ALL_ROUTERS = [
     tasks.router,
     profile.router,
     coins.router,
+    hub.router,
     submissions.router,
     files.router,
     review.router,

@@ -103,6 +103,20 @@ async def _list_item(task: dict, user_id: int) -> dict:
     }
 
 
+async def tasks_progress(user_id: int, city_scope) -> tuple[int, int]:
+    """`(done, total)` — сколько активных заданий делегата уже принято (`status == "approved"`)
+    из общего числа активных. Общий помощник для `/app/api/hub` (план 23.1-03, факт «N из M
+    заданий сдано»): тот же `list_active_tasks(city_scope=…)` + `submission_state`, что и
+    список заданий выше — второго источника правды не заводим."""
+    all_tasks = await list_active_tasks(city_scope=city_scope)
+    done = 0
+    for task in all_tasks:
+        state = await submission_state(task["id"], user_id)
+        if state["status"] == "approved":
+            done += 1
+    return done, len(all_tasks)
+
+
 @router.get("/app/api/tasks")
 async def tasks_list(offset: str | None = None, limit: str | None = None,
                      p: Principal = Depends(delegate_gate),
