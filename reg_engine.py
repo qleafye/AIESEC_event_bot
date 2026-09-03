@@ -759,6 +759,17 @@ def prior_answers_for(user_row: dict | None) -> dict:
     }
 
 
+def answers_from_user_row(user_row: dict | None) -> dict:
+    """Текущие ответы уже поданной анкеты — колонки `users`, а не шаги (в отличие от
+    `prior_answers_for`): `form_spec` индексирует `answers` по колонке (`STEP_TO_COLUMN.values()`),
+    не по `step_key`). Источник — та же карта `STEP_TO_COLUMN`, вторая копия не заводится:
+    ключи `prior_answers_for` просто перекладываются в свою колонку. Нужна веб-обзору правки
+    уже поданной анкеты (`miniapp/routers/form.py::_load_context`, D-26) для делегата без
+    строки `reg_drafts` — тем же способом, каким чат-recall уже читает `users` напрямую
+    (UAT 21-12 находка 4: обзор показывал «Не заполнено» вместо реальных значений)."""
+    return {STEP_TO_COLUMN[step]: value for step, value in prior_answers_for(user_row).items()}
+
+
 def has_prior_resume(user_row: dict | None) -> bool:
     """Карвинг resume (Pitfall 3): наличие любой из resume_file_id/resume_text/resume_url;
     само значение наружу не отдаётся — показывать raw file_id человеку бессмысленно."""
