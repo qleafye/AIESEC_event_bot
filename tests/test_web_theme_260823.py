@@ -176,7 +176,7 @@ def test_theme_css_text_youlead_heading_font_is_italic():
 def test_plate_pattern_builtin_youlead_name_resolves_to_asset_url():
     resolved = web_theme.resolve_theme({"miniapp_theme_preset": "youlead"})
     css = web_theme.theme_css_text(resolved)
-    assert '--plate-pattern: url("/app/static/pattern/youlead.svg");' in css
+    assert '--plate-pattern: url("/app/static/pattern/youlead.webp");' in css
 
 
 def test_plate_pattern_none_gives_literal_none():
