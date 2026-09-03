@@ -48,6 +48,9 @@ SECTION_KEYS = [
     # Phase 23 (APP-TINDER-01, D-09): раздел «🗂 Отбор заявок» — рядом с «review» (менеджерские
     # разделы вместе), тот же общий toggle_miniapp_section подхватывает суффикс сам.
     "miniapp_section_applications",
+    # Quick 260904-2cj (QJRN-01..04): раздел «❓ Вопросы делегатов» — рядом с «applications»
+    # (менеджерские разделы вместе), тот же общий toggle_miniapp_section подхватывает суффикс сам.
+    "miniapp_section_questions",
     "miniapp_section_admin_tasks",
     "miniapp_section_stats",
     "miniapp_section_settings",

@@ -2014,6 +2014,29 @@ SETTINGS_SCHEMA = {
             "#/applications."
         ), "default": "on",
     },
+    # Quick 260904-2cj (QJRN-01..04): раздел журнала вопросов делегатов менеджера.
+    "miniapp_section_questions": {
+        "type": "enum", "group": "miniapp", "label": "❓ Вопросы делегатов",
+        "options": ["on", "off"], "prompt": (
+            "Выключено — исчезают: плитка «❓ Вопросы делегатов» в хабе менеджера и экран "
+            "#/questions."
+        ), "default": "on",
+    },
+    "miniapp_empty_questions": {
+        "type": "text", "group": "miniapp", "label": "❓ Пустой журнал вопросов",
+        "prompt": "Текст, когда вопросов делегатов пока нет (например: «Вопросов пока нет.»).",
+        "default": "Вопросов пока нет.",
+    },
+    "miniapp_questions_answer_button": {
+        "type": "text", "group": "miniapp", "label": "❓ Кнопка «Отправить ответ»",
+        "prompt": "Подпись кнопки отправки ответа делегату под раскрытым вопросом.",
+        "default": "Отправить ответ",
+    },
+    "miniapp_questions_sent_toast": {
+        "type": "text", "group": "miniapp", "label": "❓ Тост «Ответ отправлен»",
+        "prompt": "Текст тоста сразу после того, как ответ ушёл делегату.",
+        "default": "Ответ отправлен",
+    },
     # Тексты, специфичные для Mini App (человеческие дефолты — менеджер может не трогать).
     "miniapp_open_text": {
         "type": "text", "group": "miniapp", "label": "💬 Сообщение с кнопкой приложения",
