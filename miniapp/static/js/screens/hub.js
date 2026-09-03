@@ -11,6 +11,7 @@
 import { visibleNav, NAV_ICONS, SECTION_GROUPS } from "../app.js";
 import { icon } from "../icons.js";
 import { countUp } from "../motion.js";
+import { flatRow, sectionTitle } from "../ui.js";
 
 const ONBOARDING_KEY = "aiesec_miniapp_onboarding_seen_v1";
 
@@ -48,26 +49,6 @@ function tile(h, navigate, { hash, iconName, label, meta }) {
   );
 }
 
-function shortDeadline(item) {
-  if (item.status === "approved") {
-    return item.coins_awarded != null ? `+${item.coins_awarded}🪙` : `${item.coins}🪙`;
-  }
-  return `${item.coins}🪙`;
-}
-
-function deadlineRow(h, item) {
-  const statusMeta = item.status === "approved"
-    ? "принято"
-    : (item.overdue ? "срок вышел" : `до ${item.deadline_short}`);
-  return h("div", { class: "row" },
-    h("div", {},
-      h("div", { text: item.title }),
-      h("div", { class: "faint", text: [item.category_label, statusMeta].filter(Boolean).join(" · ") }),
-    ),
-    h("span", { class: "stat-value", text: shortDeadline(item) }),
-  );
-}
-
 function daysSince(value) {
   const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(value || "");
   if (!m) return null;
@@ -97,79 +78,149 @@ function renderOnboarding(root, ctx, onDone) {
   root.append(wrap);
 }
 
-// ── хаб делегата (D-09, вариант C — заперт, не часть голосования) ───────────────────────
+// Строка приоритетного действия (D-06): статус-или-срок — то же правило, что было у
+// deadlineRow (принято / срок вышел / до {deadline_short}), это не новый литерал.
+function nextActionMeta(item) {
+  if (item.status === "approved") return "принято";
+  return item.overdue ? "срок вышел" : `до ${item.deadline_short}`;
+}
+
+function nextActionReward(item) {
+  return item.status === "approved" && item.coins_awarded != null ? item.coins_awarded : item.coins;
+}
+
+function nextAction(h, navigate, item) {
+  const reward = nextActionReward(item);
+  return h("button", {
+    class: "next-action", type: "button",
+    onClick: () => navigate(`#/task/${item.id}`),
+  },
+    h("div", { class: "next-action-body" },
+      h("div", { class: "next-action-title", text: item.title }),
+      h("div", {
+        class: "next-action-meta",
+        text: [item.category_label, nextActionMeta(item)].filter(Boolean).join(" · "),
+      }),
+    ),
+    h("div", { class: "next-action-reward" },
+      h("b", { text: reward != null ? `+${reward}` : "" }),
+      icon("coin"),
+    ),
+  );
+}
+
+// ── хаб делегата (D-09, вариант C — заперт, не часть голосования; переезд на плиту —
+// план 23.1-03, макет mockups/01-hub.png) ────────────────────────────────────────────────
 async function renderDelegateHub(root, ctx) {
   const { h, api, navigate } = ctx;
   const labels = sectionLabelsFromDom();
   const items = visibleNav().filter((item) => item.delegate);
 
-  const heroBig = h("div", { class: "big", text: "0" });
-  const heroLbl = h("div", { class: "lbl", text: "монет" });
-  const hero = h("section", { class: "hero" },
-    h("span", { class: "hero-pattern", "aria-hidden": "true" }),
-    heroBig, heroLbl,
+  // Плита баланса — в DOM сразу, без ожидания сети (сегодняшнее поведение): число
+  // докручивается countUp'ом, надзаголовок/единица/факты дозаполняются ответом /hub.
+  const plateEyebrow = h("div", { class: "plate-eyebrow", text: "" });
+  const plateBig = h("div", { class: "plate-big", text: "0" });
+  const plateUnit = h("span", { text: "" });
+  const plateRow = h("div", { class: "plate-row" },
+    plateBig, h("span", { class: "plate-coin" }, icon("coin")), plateUnit,
   );
-  root.append(hero);
+  const factsSlot = h("div", {});
+  root.append(h("section", { class: "plate plate--hub" }, plateEyebrow, plateRow, factsSlot));
 
-  const tiles = h("div", { class: "tiles" });
-  const tileEls = {};
+  // Приоритетное действие — заполняется только когда известны и текст надзаголовка (/hub),
+  // и само задание (/tasks); до тех пор слот пуст, никакой пустой рамки не рисуется.
+  const nextSlot = h("div", {});
+  root.append(nextSlot);
+
+  // Разделы — строятся сразу из visibleNav() (право по-прежнему проверяет сервер на каждом
+  // маршруте, T-19.1-14); надзаголовок и значения справа дозаполняются ответами ниже
+  // (fail-soft, T-19.1-16: не ответившая ручка даёт строку без значения, не пустой экран).
+  const sectionsEyebrow = h("div", { class: "section-title", text: "" });
+  const sectionsList = h("div", { class: "flat-list flush" });
+  const sectionRows = {};
   for (const item of items) {
-    const el = tile(h, navigate, {
-      hash: item.hash,
-      iconName: NAV_ICONS[item.hash],
-      label: labels[item.section] || item.section,
-      // Плитка анкеты — статус заявки с сервера (STATUS_LABELS), не литерал.
-      meta: item.hash === "#/form" ? (ctx.me.form_status_label || "…") : "…",
+    const rowEl = flatRow(h, {
+      icon: NAV_ICONS[item.hash],
+      title: labels[item.section] || item.section,
+      value: item.hash === "#/form" ? (ctx.me.form_status_label || "") : "",
+      valueCls: item.hash === "#/form" && ctx.me.form_status === "approved" ? "ok" : undefined,
+      chevron: true,
+      onClick: () => navigate(item.hash),
     });
-    tileEls[item.hash] = el;
-    tiles.append(el);
+    sectionRows[item.hash] = rowEl;
+    sectionsList.append(rowEl);
   }
-  root.append(tiles);
+  root.append(sectionsEyebrow, sectionsList);
 
-  const deadlineSec = h("div", { class: "sec", text: "Ближайший дедлайн" });
-  const deadlineList = h("div", { class: "card list-card" });
-  root.append(deadlineSec, deadlineList);
+  const anchorSlot = h("div", {});
+  root.append(anchorSlot);
 
-  const [balanceR, historyR, profileR, tasksR] = await Promise.allSettled([
+  const setSectionValue = (hash, value, cls) => {
+    const valueEl = sectionRows[hash]?.querySelector(".flat-row-value");
+    if (!valueEl) return;
+    valueEl.textContent = value;
+    if (cls) valueEl.classList.add(cls);
+  };
+
+  const [balanceR, historyR, profileR, tasksR, hubR] = await Promise.allSettled([
     api("/coins/balance"),
     api("/coins/history?offset=0&limit=1"),
     api("/profile"),
     api("/tasks?offset=0&limit=2"),
+    api("/hub"),
   ]);
 
   if (balanceR.status === "fulfilled") {
     const bal = balanceR.value;
-    countUp(heroBig, 0, bal.balance || 0);
+    countUp(plateBig, 0, bal.balance || 0);
     if (bal.rank != null) {
-      hero.append(h("span", {
-        class: "rank",
+      plateRow.append(h("span", {
+        class: "chip sec",
         text: bal.participants ? `${bal.rank}-й из ${bal.participants}` : `${bal.rank}-й`,
       }));
     }
-    if (tileEls["#/leaderboard"]) {
-      tileEls["#/leaderboard"].querySelector("small").textContent =
-        bal.rank == null ? "пока без места" : `ты ${bal.rank}-й`;
-    }
+    setSectionValue("#/leaderboard", bal.rank == null ? "пока без места" : `ты ${bal.rank}-й`);
   }
-  if (historyR.status === "fulfilled" && tileEls["#/coins"]) {
-    tileEls["#/coins"].querySelector("small").textContent = `${historyR.value.total} операций`;
+  if (historyR.status === "fulfilled") {
+    setSectionValue("#/coins", `${historyR.value.total} операций`);
   }
-  if (profileR.status === "fulfilled" && tileEls["#/profile"]) {
-    tileEls["#/profile"].querySelector("small").textContent = profileR.value.payment_status_label || "профиль";
+  if (profileR.status === "fulfilled" && profileR.value.payment_status_label) {
+    // D-08: пусто = модуль оплаты выключен — строка «Профиль» остаётся без значения.
+    setSectionValue("#/profile", profileR.value.payment_status_label);
   }
   if (tasksR.status === "fulfilled") {
-    const page = tasksR.value;
-    if (tileEls["#/tasks"]) {
-      tileEls["#/tasks"].querySelector("small").textContent = `${page.total} активных`;
+    setSectionValue("#/tasks", `${tasksR.value.total} активных`);
+  }
+
+  if (hubR.status === "fulfilled") {
+    const hub = hubR.value;
+    plateEyebrow.textContent = hub.balance_eyebrow || "";
+    plateUnit.textContent = hub.balance_unit || "";
+    if (hub.tasks_fact || hub.days_fact) {
+      factsSlot.append(
+        h("hr", { class: "plate-rule" }),
+        h("div", { class: "plate-facts" },
+          hub.tasks_fact ? h("span", { text: hub.tasks_fact }) : null,
+          hub.days_fact ? h("span", { text: hub.days_fact }) : null,
+        ),
+      );
     }
-    if (page.items.length) {
-      for (const item of page.items) deadlineList.append(deadlineRow(h, item));
-    } else {
-      deadlineList.append(h("div", { class: "empty", text: page.empty_text || "" }));
+    sectionsEyebrow.textContent = hub.sections_eyebrow || "";
+    if (tasksR.status === "fulfilled" && tasksR.value.items.length) {
+      nextSlot.append(
+        sectionTitle(h, hub.next_eyebrow || ""),
+        nextAction(h, navigate, tasksR.value.items[0]),
+      );
     }
-  } else {
-    deadlineSec.remove();
-    deadlineList.remove();
+    if (hub.event_dates || hub.event_place) {
+      anchorSlot.append(h("div", { class: "screen-anchor" },
+        icon("calendar"),
+        h("div", {},
+          hub.event_dates ? h("div", { class: "screen-anchor-title", text: hub.event_dates }) : null,
+          hub.event_place ? h("div", { class: "screen-anchor-sub", text: hub.event_place }) : null,
+        ),
+      ));
+    }
   }
 }
 
