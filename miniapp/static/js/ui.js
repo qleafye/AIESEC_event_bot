@@ -13,7 +13,14 @@ import { icon } from "./icons.js";
 // (`.flat-row` в app.css), не рамка вокруг неё; последняя строка внутри `.flat-list` — без
 // разделителя (`:last-child` в CSS). `href` — ссылка, `onClick` — кнопка; если не задано ни то,
 // ни другое — статичная строка (div), например верхние места рейтинга без перехода.
-export function flatRow(h, { icon: iconName, dot, leadText, title, meta, extra, trailing, href, onClick, cls }) {
+//
+// Phase 23.1: `value` — строка справа от тела (класс `.flat-row-value`, доп. модификатор
+// `valueCls`: "ok"/"strong"); `chevron` — булево, добавляет справа шеврон `.flat-row-chev`
+// (иконка `chevron-right`). Модификатор `.flush` (app.css, план 23.1-01) превращает
+// `.flat-list` в полноширинный список без рамок и радиуса — второго списочного компонента в
+// проекте нет, .flush только переопределяет отступы существующего `.flat-list`/`.flat-row`.
+// Порядок детей строки: lead, body, value, trailing, chevron.
+export function flatRow(h, { icon: iconName, dot, leadText, title, meta, extra, trailing, href, onClick, cls, value, valueCls, chevron }) {
   const lead = iconName
     ? icon(iconName)
     : dot
@@ -26,19 +33,23 @@ export function flatRow(h, { icon: iconName, dot, leadText, title, meta, extra, 
     meta ? h("div", { class: "flat-row-meta", text: meta }) : null,
     extra || null,
   );
+  const valueNode = value != null
+    ? h("div", { class: `flat-row-value ${valueCls || ""}`.trim(), text: value })
+    : null;
   const tail = trailing != null ? h("div", { class: "flat-row-trailing" }, trailing) : null;
+  const chev = chevron ? h("span", { class: "flat-row-chev" }, icon("chevron-right")) : null;
   const attrs = { class: `flat-row ${cls || ""}`.trim() };
   if (href) {
     attrs.href = href;
     if (onClick) attrs.onClick = onClick;
-    return h("a", attrs, lead, body, tail);
+    return h("a", attrs, lead, body, valueNode, tail, chev);
   }
   if (onClick) {
     attrs.type = "button";
     attrs.onClick = onClick;
-    return h("button", attrs, lead, body, tail);
+    return h("button", attrs, lead, body, valueNode, tail, chev);
   }
-  return h("div", attrs, lead, body, tail);
+  return h("div", attrs, lead, body, valueNode, tail, chev);
 }
 
 // Надзаголовок секции (12px, Lato 700, letter-spacing .08em, верхний регистр, --text-faint) —
