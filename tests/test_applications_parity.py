@@ -15,13 +15,18 @@ from __future__ import annotations
 
 import asyncio
 import html as html_module
+import pathlib
+from datetime import datetime, timedelta
 
+import moderation_card
 import reg_engine
 import services.application_effects as application_effects
 import services.applications as applications
 from config import config
 from database import db
 from tests.test_miniapp_labels_drift import _loaded_aiogram
+
+ROOT = pathlib.Path(__file__).resolve().parent.parent
 
 
 def _use_tmp_db(tmp_path):
@@ -289,3 +294,262 @@ def test_card_payload_empty_resume_is_kind_none(tmp_path):
 
     payload = _run(applications.card_payload(_run(db.get_user(803))))
     assert payload["resume"] == {"kind": "none", "file_id": None, "text": None}
+
+
+# ── Сквозные сторожа паритета «бот ↔ приложение» (план 23-06, T-23-28) ──────────────────────
+#
+# Веб-путь здесь собран из тех же звеньев, что реально образуют production pipeline
+# (miniapp/routers/applications.py::_decide -> record_decision -> miniapp/outbox.py::
+# flush_application_decisions -> services/miniapp_outbox.py::drain -> apply_decision_effects/
+# mass_approve_effects) — не второй, укороченный путь. `effects_due_at` в прошлом (вместо
+# ожидания UNDO_WINDOW_SECONDS) — та же техника, что `_expire` в tests/test_miniapp_applications.py.
+
+async def _outbox_row_count() -> int:
+    async with db._connect() as conn:
+        async with conn.execute("SELECT COUNT(*) FROM miniapp_outbox") as cur:
+            row = await cur.fetchone()
+            return row[0]
+
+
+def _due_now() -> datetime:
+    """`record_decision(..., now=...)` считает `effects_due_at = now + UNDO_WINDOW_SECONDS` —
+    подставляя `now` в прошлом, получаем решение, уже просроченное к моменту flush."""
+    return datetime.now() - timedelta(seconds=applications.UNDO_WINDOW_SECONDS + 5)
+
+
+def test_bot_and_web_reach_same_state(tmp_path, monkeypatch):
+    _use_tmp_db(tmp_path)
+    _run(db.init_db())
+    _seed_user(1901, full_name="Bot Path")
+    _seed_user(1902, full_name="Web Path")
+
+    calls = []
+
+    async def fake_approve_user(bot, tid):
+        calls.append(("approve_user", tid))
+
+    async def fake_update_status_in_sheet(tid, label):
+        calls.append(("update_status_in_sheet", tid, label))
+
+    import handlers.reg_schema as reg_schema
+    monkeypatch.setattr(reg_schema, "approve_user", fake_approve_user)
+    monkeypatch.setattr(application_effects, "update_status_in_sheet", fake_update_status_in_sheet)
+
+    bot = _FakeBot()
+
+    # ── бот: тот же путь, что appr_approve — claim -> apply_decision_effects СРАЗУ ──────────
+    assert _run(applications.claim_approve(1901))
+    _run(application_effects.apply_decision_effects(bot, 1901, "approved"))
+
+    # ── веб: claim -> record_decision (окно уже истекло) -> miniapp_outbox drain ────────────
+    assert _run(applications.claim_approve(1902))
+    _run(applications.record_decision(1902, "approved", None, 999, _due_now()))
+
+    import miniapp.outbox as web_outbox
+    import services.miniapp_outbox as bot_outbox
+    _run(web_outbox.flush_application_decisions(datetime.now()))
+    _run(bot_outbox.drain(bot))
+
+    welcome_calls = {c[1] for c in calls if c[0] == "approve_user"}
+    sheet_calls = {tuple(c) for c in calls if c[0] == "update_status_in_sheet"}
+    assert welcome_calls == {1901, 1902}
+    assert sheet_calls == {
+        ("update_status_in_sheet", 1901, "Одобрена"),
+        ("update_status_in_sheet", 1902, "Одобрена"),
+    }
+    assert _run(db.get_user(1901))["status"] == "approved"
+    assert _run(db.get_user(1902))["status"] == "approved"
+
+
+def test_bot_and_web_reject_reach_same_state_with_identical_text(tmp_path, monkeypatch):
+    _use_tmp_db(tmp_path)
+    _run(db.init_db())
+    _seed_user(1911, full_name="Bot Path")
+    _seed_user(1912, full_name="Web Path")
+
+    async def fake_update_status_in_sheet(tid, label):
+        return None
+
+    async def fake_get_setting(key):
+        assert key == "reject_text"
+        return None  # дефолт
+
+    monkeypatch.setattr(application_effects, "update_status_in_sheet", fake_update_status_in_sheet)
+    monkeypatch.setattr(applications, "get_setting", fake_get_setting)
+
+    sent: dict[int, tuple[str, dict]] = {}
+
+    class _TrackingBot:
+        async def send_message(self, chat_id, text, **kwargs):
+            sent[chat_id] = (text, kwargs)
+
+    bot = _TrackingBot()
+    reason = "Не хватает опыта"
+
+    # ── бот ──────────────────────────────────────────────────────────────────────────────
+    assert _run(applications.claim_reject(1911))
+    _run(application_effects.apply_decision_effects(bot, 1911, "rejected", reason))
+
+    # ── веб ──────────────────────────────────────────────────────────────────────────────
+    assert _run(applications.claim_reject(1912))
+    _run(applications.record_decision(1912, "rejected", reason, 999, _due_now()))
+
+    import miniapp.outbox as web_outbox
+    import services.miniapp_outbox as bot_outbox
+    _run(web_outbox.flush_application_decisions(datetime.now()))
+    _run(bot_outbox.drain(bot))
+
+    text_bot, kwargs_bot = sent[1911]
+    text_web, kwargs_web = sent[1912]
+    # D-05: символ в символ один и тот же текст, кто бы ни принял решение.
+    assert text_bot == text_web
+    assert kwargs_bot == kwargs_web == {"parse_mode": "HTML"}
+
+
+def test_web_reject_without_reason_has_no_hanging_separator_or_none_word():
+    """Причина по желанию (D-05) — веб-роутер приводит пустую строку к `None`
+    (`miniapp/routers/applications.py::applications_reject`), `reject_message_text` обязана
+    отдать ТОЛЬКО префикс без висящего «\\n\\n» и без слова `None` в тексте делегату."""
+    text = _run(applications.reject_message_text(None))
+    assert not text.endswith("\n\n")
+    assert "None" not in text
+    assert text == html_module.escape("К сожалению, твоя заявка отклонена.")
+
+
+def test_undo_leaves_no_trace(tmp_path, monkeypatch):
+    _use_tmp_db(tmp_path)
+    _run(db.init_db())
+    _seed_user(1921)
+
+    calls = []
+
+    async def fake_update_status_in_sheet(tid, label):
+        calls.append((tid, label))
+
+    monkeypatch.setattr(application_effects, "update_status_in_sheet", fake_update_status_in_sheet)
+
+    assert _run(applications.claim_approve(1921))
+    decision_id = _run(applications.record_decision(1921, "approved", None, 999, datetime.now()))
+
+    result = _run(applications.undo_decision(decision_id))
+    assert result == {"ok": True, "telegram_id": 1921}
+
+    assert _run(db.get_user(1921))["status"] == "pending"
+    row = _run(applications.get_decision(decision_id))
+    assert row["undone_at"] is not None
+    assert row["effects_sent_at"] is None
+
+    # эффекты не ушли — ни один хвост не позвал лист, ни одной строки в outbox не появилось.
+    import miniapp.outbox as web_outbox
+    _run(web_outbox.flush_application_decisions(datetime.now()))
+    assert calls == []
+    assert _run(_outbox_row_count()) == 0
+
+
+def test_mass_approve_parity(tmp_path, monkeypatch):
+    _use_tmp_db(tmp_path)
+    _run(db.init_db())
+    # Два захода по два делегата — вторая пара сидируется ПОСЛЕ первого одобрения, иначе
+    # атомарный `approve_all_pending` (общий и для бота, и для веба) заберёт все четыре сразу
+    # и второму заходу нечего будет одобрять.
+    _seed_user(1931)
+    _seed_user(1932)
+
+    calls = []
+
+    async def fake_approve_user(bot, tid):
+        calls.append(("welcome", tid))
+
+    async def fake_bulk(mapping):
+        calls.append(("bulk", mapping))
+
+    import handlers.reg_schema as reg_schema
+    monkeypatch.setattr(reg_schema, "approve_user", fake_approve_user)
+    monkeypatch.setattr(application_effects, "bulk_update_status_in_sheet", fake_bulk)
+
+    # ── бот: appr_all_yes зовёт database.db.approve_all_pending напрямую ────────────────────
+    ids_bot = _run(db.approve_all_pending(city_scope=None))
+    _run(application_effects.mass_approve_effects(_FakeBot(), ids_bot))
+
+    # ── веб: claim_approve_all — тонкая обёртка над ТОЙ ЖЕ approve_all_pending ──────────────
+    _seed_user(1941)
+    _seed_user(1942)
+    ids_web = _run(applications.claim_approve_all(None))
+    _run(application_effects.mass_approve_effects(_FakeBot(), ids_web))
+
+    assert set(ids_bot) == {1931, 1932}
+    assert set(ids_web) == {1941, 1942}
+
+    welcomed = {tid for kind, tid in calls if kind == "welcome"}
+    assert welcomed == {1931, 1932, 1941, 1942}
+
+    bulk_calls = [payload for kind, payload in calls if kind == "bulk"]
+    # один batch-вызов на КАЖДЫЙ заход (не построчно) — паритет с _welcome_flipped бота.
+    assert len(bulk_calls) == 2
+    assert bulk_calls[0] == {"1931": "Одобрена", "1932": "Одобрена"}
+    assert bulk_calls[1] == {"1941": "Одобрена", "1942": "Одобрена"}
+
+
+def test_no_second_source_of_truth():
+    """T-23-28: единственный вызывающий `approve_user`/`update_status_in_sheet`/
+    `bulk_update_status_in_sheet` — `services/application_effects.py`. Ни веб-роутер, ни
+    бот-хендлер не держат собственной копии хвоста решения."""
+    forbidden = ("approve_user(", "update_status_in_sheet(", "bulk_update_status_in_sheet(")
+    for rel_path in ("miniapp/routers/applications.py", "handlers/admin_moderation.py"):
+        text = (ROOT / rel_path).read_text(encoding="utf-8")
+        clean = "\n".join(ln for ln in text.splitlines() if not ln.strip().startswith("#"))
+        for name in forbidden:
+            assert name not in clean, f"{rel_path}: второй источник правды — {name}"
+
+
+def test_card_fields_same_registry_key_drives_both_surfaces(tmp_path):
+    """D-01: один ключ реестра (`modcard_fields`) задаёт набор вопросов И карточке бота
+    (`handlers/admin_moderation.py::_show_current_card`/`appr_full`), И карточке веба
+    (`services/applications.py::card_payload`) — обе стороны читают его через ОДНУ функцию
+    `moderation_card.enabled_steps`, второго набора вопросов не существует."""
+    for rel_path in ("handlers/admin_moderation.py",):
+        text = (ROOT / rel_path).read_text(encoding="utf-8")
+        assert 'moderation_card.enabled_steps(await get_setting_typed("modcard_fields"))' in text
+
+    _use_tmp_db(tmp_path)
+    _run(db.init_db())
+    _seed_user(1951, age="20", city="Москва")
+
+    _run(db.set_setting("modcard_fields", "age"))
+    main_before = {label for label, _ in _run(applications.card_payload(_run(db.get_user(1951))))["main_fields"]}
+
+    _run(db.set_setting("modcard_fields", "age\ncity"))
+    main_after = {label for label, _ in _run(applications.card_payload(_run(db.get_user(1951))))["main_fields"]}
+
+    assert main_after - main_before == {moderation_card.CARD_STEPS["city"]}
+
+
+def test_file_scope_matches_service_scope(tmp_path):
+    """T-23-05 (сторож дрейфа, оставленный планом 23-05): правило городского скоупа временно
+    живёт в двух местах — `miniapp/routers/files.py::_city_matches` и
+    `services/applications.py::out_of_scope` (D-14). На таблице случаев (модуль выключен /
+    менеджер без привязки / города совпадают / расходятся) оба места обязаны давать
+    согласованный ответ (`_city_matches == not out_of_scope`)."""
+    from miniapp.deps import Principal
+    from miniapp.routers.files import _city_matches
+
+    _use_tmp_db(tmp_path)
+    _run(db.init_db())
+    _seed_user(1961, event_city="spb")
+    _seed_user(1962, event_city="msk")
+
+    cases = [
+        # (event_city_enabled, manager_city, delegate_tid)
+        ("off", "spb", 1961),
+        ("off", None, 1961),
+        ("on", None, 1961),   # менеджер без привязки — модуль включён, но видит всех
+        ("on", "spb", 1961),  # привязка совпадает с городом делегата
+        ("on", "spb", 1962),  # привязка расходится с городом делегата
+    ]
+    for enabled, manager_city, delegate_tid in cases:
+        _run(db.set_setting("event_city_enabled", enabled))
+        p = Principal(telegram_id=1, via="cookie", caps=frozenset({"moderate_reg"}), city=manager_city)
+        user = _run(db.get_user(delegate_tid))
+        in_scope_files = _run(_city_matches(p, user))
+        out_of_scope_service = _run(applications.out_of_scope(manager_city, delegate_tid))
+        assert in_scope_files == (not out_of_scope_service), (enabled, manager_city, delegate_tid)
