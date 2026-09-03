@@ -66,6 +66,19 @@ export function swipeDecision({ dx, dy, width, startX } = {}) {
  *          onCancel?: (decision: object) => void}} handlers
  * @returns {() => void} detach — снимает все слушатели (звать из unmount())
  */
+// Владелец (03.09, стенд с телефона): кнопка «Показать всё» внутри карточки переставала
+// открываться после того, как attachSwipe стал ловить pointerdown на всей карточке и звать
+// `el.setPointerCapture` — начиная с этого кадра ВСЕ последующие pointer-события (и производный
+// click) для этого pointerId браузер ретаргетит на захвативший элемент (саму карточку), а не на
+// исходную кнопку/ссылку под пальцем (тот же механизм ломал бы и открытие резюме-ссылки, и
+// раскрытие истории `<summary>`). Жест решения — только по самой карточке; тап по интерактивному
+// потомку (кнопка/ссылка/summary/поле ввода) не должен становиться стартом захвата вовсе.
+const INTERACTIVE_SELECTOR = "button, a, input, textarea, select, summary, label, [data-no-swipe]";
+
+function isInteractiveTarget(target) {
+  return !!(target && typeof target.closest === "function" && target.closest(INTERACTIVE_SELECTOR));
+}
+
 export function attachSwipe(el, { onProgress, onCommit, onCancel } = {}) {
   if (!el) return () => {};
   el.style.touchAction = "pan-y";
@@ -91,6 +104,7 @@ export function attachSwipe(el, { onProgress, onCommit, onCancel } = {}) {
 
   function handleDown(e) {
     if (pointerId != null) return; // уже ведём один жест — второй палец игнорируем
+    if (isInteractiveTarget(e.target)) return; // тап по кнопке/ссылке карточки — не жест решения
     pointerId = e.pointerId;
     startX = e.clientX;
     startY = e.clientY;
