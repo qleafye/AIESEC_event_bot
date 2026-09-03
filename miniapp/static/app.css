@@ -1472,3 +1472,10 @@ a.flat-row:active, button.flat-row:active { background: var(--surface-alt); }
 .plate--form       { --plate-pattern-size: 1152px; --plate-pattern-x: -216px; --plate-pattern-y: -252px; }
 .plate--profile    { --plate-pattern-size: 1620px; --plate-pattern-x: -720px; --plate-pattern-y: -540px; }
 .plate--task       { --plate-pattern-size: 1260px; --plate-pattern-x:  -90px; --plate-pattern-y: -450px; }
+
+/* Иконка монеты на плите — единственная роль --secondary на плите кроме её ребра. */
+.plate-coin { display: flex; color: var(--secondary); }
+.plate-coin .icon { width: 26px; height: 26px; }
+/* Чип места в рейтинге прижат вправо тем же приёмом, что в mockups/_src.html (margin-left:
+   auto внутри flex-строки .plate-row), а не отдельным спейсером. */
+.plate-row .chip.sec { margin-left: auto; }
