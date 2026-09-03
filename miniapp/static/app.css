@@ -1465,6 +1465,9 @@ a.flat-row:active, button.flat-row:active { background: var(--surface-alt); }
 .plate--form       { --plate-pattern-size: 1152px; --plate-pattern-x: -216px; --plate-pattern-y: -252px; }
 .plate--profile    { --plate-pattern-size: 1620px; --plate-pattern-x: -720px; --plate-pattern-y: -540px; }
 .plate--task       { --plate-pattern-size: 1260px; --plate-pattern-x:  -90px; --plate-pattern-y: -450px; }
+.plate--tasks      { --plate-pattern-size: 1440px; --plate-pattern-x: -360px; --plate-pattern-y: -180px; }
+.plate--coins      { --plate-pattern-size: 1836px; --plate-pattern-x: -918px; --plate-pattern-y: -108px; }
+.plate--rank       { --plate-pattern-size:  972px; --plate-pattern-x:  -54px; --plate-pattern-y: -594px; }
 
 /* Иконка монеты на плите — единственная роль --secondary на плите кроме её ребра. */
 .plate-coin { display: flex; color: var(--secondary); }
@@ -1578,3 +1581,10 @@ a.flat-row:active, button.flat-row:active { background: var(--surface-alt); }
   margin: calc(-1 * var(--sp-5)) calc(-1 * var(--sp-4)) var(--sp-4);
   max-height: 180px; object-fit: cover;
 }
+
+/* ── Списочные экраны на плите (план 23.1-06): задания/монеты/рейтинг ────────────────────── */
+/* Плита списочного экрана: главное число экрана, без фактов и без ребра-акцента снизу
+   — списки ниже сами дают ритм, второй сигнатурный блок экрану не нужен. */
+.plate--list { padding-bottom: var(--sp-4); }
+.plate--list .plate-sub { margin-bottom: var(--sp-2); }
+.plate-rank { margin-left: auto; margin-bottom: var(--sp-2); border: 0; cursor: pointer; font: inherit; }
