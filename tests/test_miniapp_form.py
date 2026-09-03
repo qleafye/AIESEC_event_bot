@@ -295,6 +295,22 @@ def test_patch_bumps_version_and_activity(client):
     assert row["updated_at"]
 
 
+def test_patch_resume_text_wrapper_advances_step(client):
+    """UAT 21-12 находка 5 / БАГ: шаг «Резюме» рисует дропзону (`miniapp/static/js/form.js::
+    fileControl`), текстовый ответ уходит `onChange({text: ...})` — та же обёртка, что
+    `{"other": ...}` для choice-шагов с "Другое" (Pitfall 10), только под другим ключом.
+    `_unwrap_other` её не знал -> `reg_engine.validate_answer("resume", {"text": ...})` падал
+    на `.strip()` словаря -> PATCH 500 -> мастер не продвигался."""
+    _set("reg_q_resume", "on")
+    resp = client.patch(
+        "/app/api/reg/draft", headers=_hdr(DELEGATE_ID),
+        json={"version": 0, "answers": {"resume": {"text": "Тестовое резюме UAT 21-12"}}},
+    )
+    assert resp.status_code == 200, resp.text
+    row = _draft_row(DELEGATE_ID)
+    assert row["answers"]["resume"] == "Тестовое резюме UAT 21-12"
+
+
 def test_patch_stale_version_saves_field_and_reports_conflicts(client):
     # Клиент рисует форму на version=0. Пока он печатал, "бот" (чат) поменял тот же phone.
     _set("reg_q_phone", "on")  # выключен по умолчанию — этому тесту нужен шаг в спеке формы
