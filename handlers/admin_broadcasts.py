@@ -484,8 +484,8 @@ _FILTER_FIELD_LABELS = {
     "city": "Город", "university": "ВУЗ", "status": "Статус",
     "source": "Источник", "registration_date": "Дата регистрации",
     "payment_status": "Оплата",
-    "local_committee": "Комитет AIESEC", "department": "Департамент",
-    "aiesec_role": "Роль AIESEC", "education_status": "Образование",
+    "local_committee": "Комитет АЙСЕК", "department": "Департамент",
+    "aiesec_role": "Роль АЙСЕК", "education_status": "Образование",
     "course": "Курс", "study_field": "Направление",
     "position": "Позиция", "attendance_format": "Формат участия",
     "participant_type": "Трек",  # Phase 5 (D-19)
@@ -576,9 +576,9 @@ def _filter_summary(filters: list[dict]) -> str:
 
 def _filter_menu_kb(filters: list[dict], *, show_city: bool = False) -> InlineKeyboardMarkup:
     kb = [
-        [InlineKeyboardButton(text="Комитет AIESEC", callback_data="filter_f_local_committee"),
+        [InlineKeyboardButton(text="Комитет АЙСЕК", callback_data="filter_f_local_committee"),
          InlineKeyboardButton(text="Департамент", callback_data="filter_f_department")],
-        [InlineKeyboardButton(text="Роль AIESEC", callback_data="filter_f_aiesec_role"),
+        [InlineKeyboardButton(text="Роль АЙСЕК", callback_data="filter_f_aiesec_role"),
          InlineKeyboardButton(text="Позиция", callback_data="filter_f_position")],
         [InlineKeyboardButton(text="Город", callback_data="filter_f_city"),
          InlineKeyboardButton(text="ВУЗ", callback_data="filter_f_university")],

@@ -1141,7 +1141,7 @@ async def get_source_stats():
 CSV_HEADER_LABELS = {
     "telegram_id": "ID Telegram", "username": "Username", "full_name": "ФИО",
     "email": "Email", "age": "Возраст", "phone": "Телефон", "vk_username": "ВК",
-    "is_aiesec_member": "Член AIESEC", "source": "Источник", "source_details": "Детали источника",
+    "is_aiesec_member": "Член АЙСЕК", "source": "Источник", "source_details": "Детали источника",
     "referrer_id": "ID реферера", "registration_date": "Дата регистрации",
     "education_status": "Образование", "university": "ВУЗ", "course": "Курс",
     "specialty": "Специальность", "study_field": "Направление обучения",
@@ -1149,7 +1149,7 @@ CSV_HEADER_LABELS = {
     "expectations": "Ожидания (общие)", "expectations_ar": "Ожидания (AR)",
     "exp_organizers": "Ожидания: организация", "exp_content": "Ожидания: контент",
     "comments": "Доп. комментарии", "city": "Город", "local_committee": "Локальный комитет",
-    "position": "Позиция", "department": "Департамент", "aiesec_role": "Роль AIESEC",
+    "position": "Позиция", "department": "Департамент", "aiesec_role": "Роль АЙСЕК",
     "needs_certificate": "Справка в ВУЗ", "english_level": "Английский",
     "alumni_status": "Аламни/айсекер",
     "attendance_format": "Формат участия", "informal_day": "Неформальный день",
