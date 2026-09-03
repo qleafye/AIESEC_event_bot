@@ -429,7 +429,7 @@ export async function render(root, params, ctx) {
   }
 
   function diffCategoryFor(item) {
-    return item.dangerous && item.confirm_text ? "dangerous" : "ordinary";
+    return item && item.dangerous && item.confirm_text ? "dangerous" : "ordinary";
   }
 
   function openDiffDialog() {
