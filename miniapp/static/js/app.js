@@ -57,6 +57,7 @@ export const ROUTES = [
   ["#/settings/{code}", "screens/settings.js"],
   ["#/form", "screens/form.js"],
   ["#/applications", "screens/applications.js"],
+  ["#/questions", "screens/questions.js"],
 ];
 
 // Разделы админки (Phase 20, ADMIN-IA-04, D-05): те же восемь разделов и ровно те же подписи,
@@ -90,6 +91,7 @@ export const NAV = [
   { hash: "#/profile", section: "profile", delegate: true },
   { hash: "#/form", section: "form", delegate: true },
   { hash: "#/applications", section: "applications", cap: "moderate_reg", group: "apps" },
+  { hash: "#/questions", section: "questions", cap: "moderate_reg", group: "apps" },
   { hash: "#/review", section: "review", cap: "moderate_game", group: "game" },
   { hash: "#/admin-tasks", section: "admin_tasks", cap: "moderate_game", group: "game" },
   { hash: "#/admin-coins", section: "coins", cap: "moderate_game", staffOnly: true, group: "game" },
@@ -106,6 +108,7 @@ export const NAV_ICONS = {
   "#/profile": "user",
   "#/form": "file-text",
   "#/applications": "shield-check",
+  "#/questions": "message-circle",
   "#/review": "check-circle-2",
   "#/admin-tasks": "clipboard-list",
   "#/admin-coins": "wallet",

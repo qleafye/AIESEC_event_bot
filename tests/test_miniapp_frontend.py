@@ -220,6 +220,7 @@ EXPECTED_ROUTES = {
     "#/settings/{code}": "screens/settings.js",
     "#/form": "screens/form.js",
     "#/applications": "screens/applications.js",
+    "#/questions": "screens/questions.js",
 }
 _ROUTE_ROW = re.compile(r'\[\s*"(#/[^"]+)"\s*,\s*"(screens/[^"]+\.js)"\s*\]')
 
@@ -241,9 +242,10 @@ def test_route_table_matches_phase_plan_exactly():
     routes = _routes_from_app_js()
     assert routes == EXPECTED_ROUTES
     # Phase 22 Plan 07 (D-16): "#/settings/{code}" — второй маршрут на тот же модуль
-    # screens/settings.js (params.code решает старт/раздел), поэтому 16 маршрутов на 15
-    # уникальных модулей (settings.js — единственный модуль с двумя записями).
-    assert len(routes) == 16
+    # screens/settings.js (params.code решает старт/раздел), поэтому маршрутов на один
+    # больше числа уникальных модулей (settings.js — единственный модуль с двумя записями).
+    # Quick 260904-2cj: +1 маршрут "#/questions" (16 -> 17).
+    assert len(routes) == 17
     assert set(routes.values()) == set(EXPECTED_ROUTES.values())
     assert "#/task-edit/new" not in routes
 
@@ -376,6 +378,7 @@ EXPECTED_NAV = [
     {"hash": "#/profile", "section": "profile", "delegate": True},
     {"hash": "#/form", "section": "form", "delegate": True},
     {"hash": "#/applications", "section": "applications", "cap": "moderate_reg", "group": "apps"},
+    {"hash": "#/questions", "section": "questions", "cap": "moderate_reg", "group": "apps"},
     {"hash": "#/review", "section": "review", "cap": "moderate_game", "group": "game"},
     {"hash": "#/admin-tasks", "section": "admin_tasks", "cap": "moderate_game", "group": "game"},
     {"hash": "#/admin-coins", "section": "coins", "cap": "moderate_game", "staffOnly": True, "group": "game"},

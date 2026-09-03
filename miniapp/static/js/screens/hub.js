@@ -278,6 +278,7 @@ const MANAGER_FETCHERS = {
   "#/review": (api) => api("/review/next?offset=0"),
   "#/admin-tasks": (api) => api("/admin/tasks?archived=0&offset=0&limit=1"),
   "#/admin-coins": (api) => api("/admin/coins?offset=0&limit=1"),
+  "#/questions": (api) => api("/questions?offset=0&limit=1"),
   "#/stats": (api) => api("/stats/game"),
   "#/settings": (api) => api("/admin/settings"),
 };
@@ -320,6 +321,8 @@ function applyManagerTileData(hash, data, tileEl, hero) {
     small.textContent = `${data.active_count} активных · ${data.archived_count} в архиве`;
   } else if (hash === "#/admin-coins") {
     small.textContent = `${data.total} операций`;
+  } else if (hash === "#/questions") {
+    small.textContent = data.counts.new ? `${data.counts.new} без ответа` : "все отвечены";
   } else if (hash === "#/stats") {
     small.textContent = `${data.participants} участников`;
   } else if (hash === "#/settings") {
