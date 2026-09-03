@@ -526,7 +526,7 @@ PREVIEW_ADDRESSEE_PLACEHOLDERS: frozenset[str] = frozenset({
 
 PREVIEW_SAMPLES: dict[str, str] = {
     "name": "Иван",
-    "season": "YouLead'25",
+    "season": "Юлид'25",
     "deadline": "15.10.2026",
     "requisites": "Сбербанк, 2202 2000 0000 0000, Иван И.",
     "amount": "3500",

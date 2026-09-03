@@ -80,7 +80,7 @@ def dropout_step_label(step_key: str | None) -> str:
 # individually afterwards (see REG_CATEGORIES «➕ Экстра»).
 REG_PRESETS = {
     "forum": {
-        "label": "🏛 Форум (YouLead)",
+        "label": "🏛 Форум (Юлид)",
         "payment_enabled": "off",
         "on": [
             "reg_q_age", "reg_q_vk", "reg_q_source", "reg_q_education",
@@ -270,7 +270,7 @@ SHEET_COLUMNS = [
     ("Неформальный день", "reg_q_informal_day", lambda d: d.get("informal_day") or "-"),
     ("Комментарии", "reg_q_comments", lambda d: d.get("comments") or "-"),
     ("Департамент", "reg_q_department", lambda d: d.get("department") or "-"),
-    ("Роль AIESEC", "reg_q_aiesec_role", lambda d: d.get("aiesec_role") or "-"),
+    ("Роль АЙСЕК", "reg_q_aiesec_role", lambda d: d.get("aiesec_role") or "-"),
     ("Справка в ВУЗ", "reg_q_certificate", lambda d: d.get("needs_certificate") or "-"),
     ("Английский", "reg_q_english", lambda d: d.get("english_level") or "-"),
     ("Аллергии", "reg_q_allergies", lambda d: d.get("allergies") or "-"),

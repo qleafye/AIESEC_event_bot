@@ -489,7 +489,7 @@ GOLDEN = {'prompts': {'age': {'full': 'Напиши свой возраст чи
                                  'Ufa',
                                  'Ekaterinburg',
                                  'Другое'],
-             'position': ['AIESECer', 'Alumni', 'AIESEC Friend', 'Другое'],
+             'position': ['Айсекер', 'Аламни', 'Друг АЙСЕК', 'Другое'],
              'department': ['OGV', 'OGT', 'MKT', 'F&L', 'BD', 'LCP', 'EwA', 'Другое'],
              'aiesec_role': ['Member', 'TL', 'Manager', 'VP', 'LCP', 'Coordinator', 'Другое'],
              'english_level': ['Начальный', 'Средний', 'Продвинутый', 'Свободный'],
