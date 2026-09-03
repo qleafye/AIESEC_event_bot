@@ -100,18 +100,21 @@ MANAGER_SCREENS = [
     ("task-edit", "#/task-edit/{task_id}"),
     ("admin-coins", "#/admin-coins"),
     ("settings", "#/settings"),
+    # Phase 22 Plan 07 (D-16): стартовый экран настроек теперь плитки разделов — отдельный
+    # кадр страницы ОДНОГО раздела («💳 Оплата», #/settings/pay), тот же модуль settings.js.
+    ("settings-pay", "#/settings/pay"),
     # Phase 23.1 задача 2: экран отбора заявок «тиндером» (settings/applications оба требуют
     # прав, которых у GAME_MANAGER_ID нет — см. MANAGER_SCREEN_PRINCIPAL ниже).
     ("applications", "#/applications"),
 ]
 
 # Экран -> telegram_id, от чьего лица снимать (по умолчанию GAME_MANAGER_ID — держит только
-# moderate_game). "settings" требует cap "settings", "applications" — cap "moderate_reg"
-# (miniapp/routers/settings.py::require_cap("settings") / applications.py::require_cap(
-# "moderate_reg")) — ни того, ни другого у GAME_MANAGER_ID нет (demo_server.py сеет только
-# game_manager); ADMIN_ID держит все 7 capability через bootstrap ADMIN_IDS
+# moderate_game). "settings"/"settings-pay" требуют cap "settings", "applications" — cap
+# "moderate_reg" (miniapp/routers/settings.py::require_cap("settings") / applications.py::
+# require_cap("moderate_reg")) — ни того, ни другого у GAME_MANAGER_ID нет (demo_server.py
+# сеет только game_manager); ADMIN_ID держит все 7 capability через bootstrap ADMIN_IDS
 # (handlers/admin_caps.py::resolve_capabilities).
-MANAGER_SCREEN_PRINCIPAL = {"settings": ADMIN_ID, "applications": ADMIN_ID}
+MANAGER_SCREEN_PRINCIPAL = {"settings": ADMIN_ID, "settings-pay": ADMIN_ID, "applications": ADMIN_ID}
 
 NAV_LAYOUT_RE = re.compile(r'const NAV_LAYOUT = "(\w+)";')
 
@@ -149,29 +152,35 @@ def _wait_screen_ready(driver, timeout_s: float = 10, content_selector: str | No
 # развилка/согласия pre-flow, `.flat-list` — обзор точечной правки (kind='edit'), `.state` —
 # «анкета закрыта»/«отправлено», `.error-inline` — сетевая ошибка.
 # "settings"/"applications" (Phase 23.1 задача 2) добавлены тем же приёмом, что "form" —
-# оболочка `#screen` у обоих непустая ДО ответа сервера (settings.js рисует `title`+`cityBar`+
-# `searchBar` синхронно, applications.js — заголовок+notice), так что общий чек
+# оболочка `#screen` у обоих непустая ДО ответа сервера (settings.js рисует `title`+`searchBar`
+# синхронно на стартовом экране, applications.js — заголовок+notice), так что общий чек
 # `_wait_screen_ready` проходит раньше, чем приезжает `GET .../settings/all` /
-# `GET .../applications/next`. `.settings-group, .settings-row` — реальные карточки настроек
-# (settings.js paint()); карточка заявки — `.appl-card` (applications.js рисует `<article
-# class="card appl-card">`), пустое состояние очереди — общий `.empty-state` (ui.js::
-# stateShell) — НЕ `.appl-empty`, такого класса в applications.js нет (emptyState()
-# переиспользует общую оболочку ui.js, найдено при проверке файла).
+# `GET .../applications/next`. Phase 22 Plan 07 (D-16): `#/settings` теперь плитки разделов —
+# `.tiles .tile` реальные плитки (settings.js::renderTiles); `#/settings/{code}` — страница
+# одного раздела, `.settings-group, .settings-row` реальные карточки настроек (settings.js::
+# renderSectionBody, тот же контракт, что был у старого `#/settings`); карточка заявки —
+# `.appl-card` (applications.js рисует `<article class="card appl-card">`), пустое состояние
+# очереди — общий `.empty-state` (ui.js::stateShell) — НЕ `.appl-empty`, такого класса в
+# applications.js нет (emptyState() переиспользует общую оболочку ui.js, найдено при проверке
+# файла).
 SCREEN_CONTENT_SELECTOR = {
     "form": ".plate--form, .wizard-field, .wizard-step, .flat-list, .state, .error-inline",
-    "settings": ".settings-group, .settings-row",
+    "settings": ".tiles .tile",
+    "settings-pay": ".settings-group, .settings-row",
     "applications": ".appl-card, .empty-state",
 }
 
 # Экран -> секунды ожидания content_selector сверх дефолтных 10 (см. _wait_screen_ready).
 # Обнаружено при первом прогоне задачи 2: `#/settings` тянет ВЕСЬ реестр разом (~70 ключей,
-# `GET .../admin/settings/all`, ответ ~235 КБ) и рисует ~400 DOM-узлов (settings.js::paint) —
-# на этой машине честные ~13с, не зависание и не JS-ошибка (проверено вручную: console чист,
-# группы появляются к 10-13с). 10с общего дефолта достаточно form/applications (маленький
-# ответ), но не settings — отдельный, не общий бюджет, чтобы не раздувать таймаут остальным
-# экранам, где долгое ожидание как раз симптом реальной поломки.
+# `GET .../admin/settings/all`, ответ ~235 КБ) — на этой машине честные ~13с, не зависание и
+# не JS-ошибка (проверено вручную: console чист). 10с общего дефолта достаточно form/
+# applications (маленький ответ), но не settings/settings-pay — оба тянут тот же тяжёлый
+# ответ целиком (роутер не фильтрует по разделу на сервере, Phase 22 Plan 07 D-16: «Remove
+# nothing from the API»), отдельный бюджет, чтобы не раздувать таймаут остальным экранам, где
+# долгое ожидание как раз симптом реальной поломки.
 SCREEN_CONTENT_TIMEOUT_S = {
     "settings": 25,
+    "settings-pay": 25,
 }
 
 

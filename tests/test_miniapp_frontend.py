@@ -217,6 +217,7 @@ EXPECTED_ROUTES = {
     "#/task-edit/{id}": "screens/task_edit.js",
     "#/admin-coins": "screens/admin_coins.js",
     "#/settings": "screens/settings.js",
+    "#/settings/{code}": "screens/settings.js",
     "#/form": "screens/form.js",
     "#/applications": "screens/applications.js",
 }
@@ -239,8 +240,11 @@ def test_route_table_matches_phase_plan_exactly():
     # {id}, второй маршрут не нужен -- проверяем явно ниже, чтобы регрессия не вернулась.
     routes = _routes_from_app_js()
     assert routes == EXPECTED_ROUTES
-    assert len(routes) == 15
-    assert set(routes.values()) == set(EXPECTED_ROUTES.values())  # 15 модулей, у task_edit один маршрут
+    # Phase 22 Plan 07 (D-16): "#/settings/{code}" — второй маршрут на тот же модуль
+    # screens/settings.js (params.code решает старт/раздел), поэтому 16 маршрутов на 15
+    # уникальных модулей (settings.js — единственный модуль с двумя записями).
+    assert len(routes) == 16
+    assert set(routes.values()) == set(EXPECTED_ROUTES.values())
     assert "#/task-edit/new" not in routes
 
 

@@ -11,7 +11,7 @@
 import { visibleNav, NAV_ICONS, SECTION_GROUPS } from "../app.js";
 import { icon } from "../icons.js";
 import { countUp } from "../motion.js";
-import { flatRow, sectionTitle, labelText } from "../ui.js";
+import { flatRow, sectionTitle, labelText, tile } from "../ui.js";
 
 const ONBOARDING_KEY = "aiesec_miniapp_onboarding_seen_v1";
 
@@ -35,18 +35,6 @@ function sectionLabelsFromDom() {
   } catch (_) {
     return {};
   }
-}
-
-function tile(h, navigate, { hash, iconName, label, meta }) {
-  return h("button", {
-    type: "button",
-    class: "tile",
-    onClick: () => navigate(hash),
-  },
-    iconName ? icon(iconName) : null,
-    h("b", { text: label }),
-    h("small", { text: meta }),
-  );
 }
 
 function daysSince(value) {
@@ -273,8 +261,8 @@ async function renderTilesOnlyHub(root, ctx, items) {
   const labels = sectionLabelsFromDom();
   const tiles = h("div", { class: "tiles" });
   for (const item of items) {
-    tiles.append(tile(h, navigate, {
-      hash: item.hash,
+    tiles.append(tile(h, {
+      onClick: () => navigate(item.hash),
       iconName: NAV_ICONS[item.hash],
       // D-04: плитка уже несёт Lucide-иконку слева — ведущий эмодзи подписи реестра здесь
       // не дублируется рядом с ней (тот же приём, что renderDelegateHub чуть выше).
@@ -378,8 +366,8 @@ async function renderManagerHub(root, ctx, opts = {}) {
     if (!groupItems.length && !dashTile) continue;
     const tiles = h("div", { class: "tiles" });
     for (const item of groupItems) {
-      const el = tile(h, navigate, {
-        hash: item.hash,
+      const el = tile(h, {
+        onClick: () => navigate(item.hash),
         iconName: NAV_ICONS[item.hash],
         // D-04: плитка уже несёт Lucide-иконку слева — labelText снимает ведущий эмодзи
         // подписи реестра, не дублируя его рядом с иконкой (тот же приём, что выше по файлу).
