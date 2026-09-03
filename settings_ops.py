@@ -546,6 +546,10 @@ PREVIEW_SAMPLES: dict[str, str] = {
     "breakdown": "📷 1 фото, ✍️ 1 текст",
     "page": "1",
     "status": "на проверке",
+    "days": "12",
+    "done": "3",
+    "filled": "14",
+    "n": "10",
 }
 
 
