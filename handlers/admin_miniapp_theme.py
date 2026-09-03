@@ -70,7 +70,7 @@ _FONT_LABELS: dict[str, str] = {
 }
 
 # «Имя слота» (в callback_data и в FSM-состоянии) -> (State, ключ реестра, подпись, где видно).
-# Единственное место, где перечислены девять фото-ручек — клавиатура/загрузка/удаление читают
+# Единственное место, где перечислены десять фото-ручек — клавиатура/загрузка/удаление читают
 # ровно этот список, ничего не дублируется руками во второй раз.
 _ASSET_SLOTS: list[tuple[str, State, str, str, str]] = [
     ("logo", MiniAppTheme.logo, "miniapp_logo", "Лого", "в шапке приложения"),
@@ -90,6 +90,8 @@ _ASSET_SLOTS: list[tuple[str, State, str, str, str]] = [
      "у делегата на первом месте рейтинга"),
     ("coin_icon", MiniAppTheme.coin_icon, "miniapp_coin_icon", "Своя иконка монеты",
      "вместо вшитой иконки пресета — необязательно"),
+    ("pattern", MiniAppTheme.pattern, "miniapp_theme_pattern", "Паттерн плиты",
+     "фоном синей плиты на экранах приложения — необязательно, без него берётся паттерн набора"),
 ]
 _ASSET_SLOT_BY_NAME: dict[str, tuple[State, str, str, str]] = {
     name: (state, key, label, hint) for name, state, key, label, hint in _ASSET_SLOTS
@@ -242,6 +244,7 @@ async def build_miniapp_theme_keyboard() -> InlineKeyboardMarkup:
     rows.append([InlineKeyboardButton(
         text=pattern_mark + "Бренд-паттерн на фоне", callback_data="miniapp_theme_toggle_pattern",
     )])
+    rows.extend(_asset_slot_button_rows("pattern", await get_setting_typed("miniapp_theme_pattern")))
 
     # ── D-04, 7: четыре стикера ──────────────────────────────────────────────────────────
     for slot_name in ("sticker_empty", "sticker_success", "sticker_error", "sticker_top1"):
@@ -469,7 +472,7 @@ async def miniapp_theme_toggle_pattern(callback: types.CallbackQuery):
     await _rerender_theme(callback)
 
 
-# ── D-04, 4/5/7/8: девять фото-ручек (лого×2, обложка×2, стикеры×4, иконка монеты) ─────────
+# ── D-04, 4/5/6/7/8: десять фото-ручек (лого×2, обложка×2, паттерн, стикеры×4, иконка монеты) ─
 # T-19.1-25: принимается ТОЛЬКО message.photo (Telegram перекодирует в растр); документы и
 # произвольный SVG отклоняются с человеческим объяснением — тем же catch-all-хендлером, что и
 # любой другой не-фото контент.
@@ -505,7 +508,7 @@ async def miniapp_theme_remove_photo(callback: types.CallbackQuery):
 # (`tests/test_refac_snapshot_260816.py`, через `inspect.getsource`) читает только строки,
 # начинающиеся с "@router.", и ищет в НИХ токены "MiniAppTheme.xxx" -- перенос аргументов на
 # отдельные строки увёл бы derived key в пустоту (проверено вживую при написании этого шва).
-@router.message(StateFilter(MiniAppTheme.logo, MiniAppTheme.logo_dark, MiniAppTheme.cover, MiniAppTheme.cover_dark, MiniAppTheme.sticker_empty, MiniAppTheme.sticker_success, MiniAppTheme.sticker_error, MiniAppTheme.sticker_top1, MiniAppTheme.coin_icon), F.photo)
+@router.message(StateFilter(MiniAppTheme.logo, MiniAppTheme.logo_dark, MiniAppTheme.cover, MiniAppTheme.cover_dark, MiniAppTheme.sticker_empty, MiniAppTheme.sticker_success, MiniAppTheme.sticker_error, MiniAppTheme.sticker_top1, MiniAppTheme.coin_icon, MiniAppTheme.pattern), F.photo)
 async def miniapp_theme_photo_step(message: types.Message, state: FSMContext):
     raw_state = await state.get_state()
     suffix = raw_state.split(":", 1)[1] if raw_state else None
@@ -525,6 +528,6 @@ async def miniapp_theme_photo_step(message: types.Message, state: FSMContext):
 
 
 # См. комментарий у miniapp_theme_photo_step выше -- та же причина держать decorator в одну строку.
-@router.message(StateFilter(MiniAppTheme.logo, MiniAppTheme.logo_dark, MiniAppTheme.cover, MiniAppTheme.cover_dark, MiniAppTheme.sticker_empty, MiniAppTheme.sticker_success, MiniAppTheme.sticker_error, MiniAppTheme.sticker_top1, MiniAppTheme.coin_icon))
+@router.message(StateFilter(MiniAppTheme.logo, MiniAppTheme.logo_dark, MiniAppTheme.cover, MiniAppTheme.cover_dark, MiniAppTheme.sticker_empty, MiniAppTheme.sticker_success, MiniAppTheme.sticker_error, MiniAppTheme.sticker_top1, MiniAppTheme.coin_icon, MiniAppTheme.pattern))
 async def miniapp_theme_photo_step_invalid(message: types.Message):
     await message.answer("Не понял — пришлите фото сообщением (документы и файлы не принимаются).")

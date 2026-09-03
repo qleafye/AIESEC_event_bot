@@ -73,6 +73,7 @@ MINIAPP_KEYS = [
     "miniapp_sticker_error",
     "miniapp_sticker_top1",
     "miniapp_coin_icon",
+    "miniapp_theme_pattern",  # Phase 23.1: паттерн плиты
     # приветственный экран (D-09)
     "miniapp_onboarding_text",
     "miniapp_onboarding_cta",
@@ -170,8 +171,8 @@ THEME_ENUM_KEYS = [
 _ALLOWED_TYPES = {"toggle", "int", "list", "date", "text", "enum", "photo", "file"}
 
 
-def test_exactly_114_miniapp_keys_and_no_extra():
-    assert len(MINIAPP_KEYS) == 114
+def test_exactly_115_miniapp_keys_and_no_extra():
+    assert len(MINIAPP_KEYS) == 115
     present = sorted(k for k in SETTINGS_SCHEMA if k.startswith("miniapp_"))
     assert present == sorted(MINIAPP_KEYS)
 
@@ -263,12 +264,23 @@ def test_asset_slot_keys_default_to_empty_photo():
     asset_keys = [
         "miniapp_logo_dark", "miniapp_cover", "miniapp_cover_dark",
         "miniapp_sticker_empty", "miniapp_sticker_success", "miniapp_sticker_error",
-        "miniapp_sticker_top1", "miniapp_coin_icon",
+        "miniapp_sticker_top1", "miniapp_coin_icon", "miniapp_theme_pattern",
     ]
     for key in asset_keys:
         entry = SETTINGS_SCHEMA[key]
         assert entry["type"] == "photo", key
         assert entry["default"] is None, key
+
+
+def test_plate_pattern_asset_key_wired_into_theme_and_file_proxy():
+    """Phase 23.1-02 (D-05): добавление ключа в `ASSET_KEYS` автоматически даёт и поле в
+    `/app/api/me`, и доступ к файлу через `can_read_file` — руками `page.py`/`files.py`
+    не правятся, проверяем именно эту проводку."""
+    import web_theme
+    import settings_ops
+
+    assert web_theme.ASSET_KEYS["plate_pattern_file_id"] == "miniapp_theme_pattern"
+    assert "miniapp_theme_pattern" in settings_ops.file_setting_keys()
 
 
 def test_admin_empty_state_keys_removed_hardcode():
