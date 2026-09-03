@@ -38,6 +38,7 @@ from database.db import (
     upsert_reg_draft,
 )
 from settings_schema import get_setting_typed
+from services.consent import outstanding_consents
 from services.reg_finalize import finalize_data, resolve_delegate_text
 
 from miniapp import telegram_api
@@ -181,8 +182,18 @@ def _continue_deeplink(bot_username: str | None) -> str | None:
 async def _draft_response(telegram_id: int, ctx: dict | None = None, *, bot_username: str | None = None) -> dict:
     ctx = ctx or await _load_context(telegram_id)
     closed = ctx["kind"] == "new" and await _registration_closed(ctx["event_city"])
+    # UAT 21-12 находка 1: мастер переспрашивал согласие на КАЖДОЕ открытие, даже секунды
+    # после подписи в чате той же сессией. `outstanding_consents` — тот же фильтр версий, что
+    # уже использует гейт пересогласия (services/consent.py) — подпись старой редакции ИЛИ
+    # без подписи вовсе остаётся «pending» (экран нужен), подпись текущей редакции гасит
+    # экран. Submit-гейт (D-23, ниже по файлу) не меняется — сверяет ЛЮБУЮ версию, это
+    # отдельный жёсткий чек, не UI-удобство.
+    pending_consents = [key for _label, key in await outstanding_consents(
+        telegram_id, await reg_engine.consent_entries(),
+    )]
     spec = await reg_engine.form_spec(
         ctx["answers"], ctx["participant_type"], ctx["event_city"], prior=ctx["prior"],
+        pending_consent_keys=pending_consents,
     )
     # D-13: город/трек/согласия не меняются при правке — «locked» решает сервер по спеке
     # (движок знает список REG_FLOW-шагов), а не экран по названию колонки (Task 2
