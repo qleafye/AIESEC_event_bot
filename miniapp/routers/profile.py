@@ -12,6 +12,15 @@
 из `REG_FLOW`, тот же ключ, по которому бот и админка берут подпись из `REG_LABELS`); своей
 таблицы алиасов у профиля нет — источник один и тот же для бота, мастера и профиля.
 
+Находка владельца (03.09, со стенда с телефона): профиль показывал ответы по ВСЕМ шагам
+`STEP_TO_COLUMN` независимо от трека делегата и условных правил — `_profile_columns()` сама
+по себе НЕ фильтрует ни по треку, ни по условиям (она остаётся полной схемой-справочником,
+на неё завязаны сторожа `test_profile_columns_cover_only_known_labels`/
+`test_profile_has_no_alias_table_and_uses_engine_keys`). Фильтр — `_enabled_label_keys()`,
+тот же `reg_engine.enabled_steps` и тот же приём (трек аргументом, не из `answers`), что
+фикс 797b0f0 сделал для мастера анкеты; `profile_fields`/`contact_fields` и `form_total`
+пересекают полную схему с этим множеством.
+
 Точка входа в правку (D-24): кнопка «✏️ Изменить анкету» ведёт `navigate("#/form")` внутри
 приложения (`screens/profile.js`), а не по deep-link в бота — прежний нерабочий deep-link
 (старый параметр запуска, который `cmd_start` никогда не разбирал) в профиле больше не
@@ -103,14 +112,32 @@ def _value(user: dict, column: str) -> str | None:
     return text or None
 
 
-def profile_fields(user: dict) -> list[dict]:
-    """`[{key, label, value}]` в порядке REG_LABELS, только непустые значения, БЕЗ вопросов из
-    `_CONTACT_LABEL_KEYS` (они — отдельный раздел «Контакты», `contact_fields()` ниже; один и
-    тот же вопрос не показывается дважды)."""
+async def _enabled_label_keys(user: dict) -> set[str]:
+    """Ключи REG_LABELS вопросов, реально включённых для трека И условий делегата (находка
+    владельца 03.09: профиль показывал ответы по ВСЕМ шагам `STEP_TO_COLUMN` — в том числе
+    шагам чужого трека/выключенных условно, если в колонке `users` случайно осталось непустое
+    значение, например после смены трека при повторной регистрации). Тот же вызов, что фикс
+    797b0f0 сделал для `reg_engine.form_spec` мастера анкеты — движок решения «включён ли шаг»
+    один (`reg_engine.enabled_steps`), второй копии условий здесь не заводится. Текущие ответы
+    подмешиваются ТОЛЬКО чтобы разрешить условные шаги (education_status/attendance_format/
+    arrival/bed_sharing/work_status) — `user` не мутируется, копия дописывается новым словарём."""
+    track = user.get("participant_type") or "full"
+    answers = reg_engine.answers_from_user_row(user)
+    enabled = await reg_engine.enabled_steps({**answers, "participant_type": track})
+    return {reg_engine.label_key_for(step_key) for step_key in enabled}
+
+
+def profile_fields(user: dict, enabled_label_keys: set[str]) -> list[dict]:
+    """`[{key, label, value}]` в порядке REG_LABELS, только непустые значения ВОПРОСОВ,
+    включённых для трека и условий делегата (`enabled_label_keys`, см. `_enabled_label_keys`),
+    БЕЗ вопросов из `_CONTACT_LABEL_KEYS` (они — отдельный раздел «Контакты», `contact_fields()`
+    ниже; один и тот же вопрос не показывается дважды)."""
     out = []
     columns_by_key = _profile_columns()
     for key, label in REG_LABELS.items():
         if key in _CONTACT_LABEL_KEYS:
+            continue
+        if key not in enabled_label_keys:
             continue
         columns = columns_by_key.get(key)
         if not columns:
@@ -121,14 +148,17 @@ def profile_fields(user: dict) -> list[dict]:
     return out
 
 
-def contact_fields(user: dict) -> list[dict]:
+def contact_fields(user: dict, enabled_label_keys: set[str]) -> list[dict]:
     """`[{key, label, value}]` для `_CONTACT_LABEL_KEYS`, в фиксированном порядке кортежа —
-    та же `_profile_columns()`, что и `profile_fields`, второй схемы нет. Вопроса нет в анкете
-    этого события (не в `_profile_columns()`) или значение пусто -> элемента нет, список короче,
-    не ошибка (CLAUDE.md: ничего не падает на отсутствии необязательного поля)."""
+    та же `_profile_columns()`, что и `profile_fields`, второй схемы нет; тот же фильтр по
+    треку и условиям (`enabled_label_keys`). Вопроса нет в анкете этого события/трека (не в
+    `_profile_columns()` или не в `enabled_label_keys`) или значение пусто -> элемента нет,
+    список короче, не ошибка (CLAUDE.md: ничего не падает на отсутствии необязательного поля)."""
     out = []
     columns_by_key = _profile_columns()
     for key in _CONTACT_LABEL_KEYS:
+        if key not in enabled_label_keys:
+            continue
         columns = columns_by_key.get(key)
         if not columns:
             continue
@@ -195,9 +225,12 @@ async def profile(request: Request, p: Principal = Depends(delegate_gate),
     # «Не оплатил» на профиле пугал бы делегата счётом, которого нет (вопрос владельца 02.09).
     payment_on = await get_setting_typed("payment_enabled") == "on"
 
-    fields = profile_fields(user)
-    contacts = contact_fields(user)
-    form_total = len(_profile_columns())
+    enabled_label_keys = await _enabled_label_keys(user)
+    fields = profile_fields(user, enabled_label_keys)
+    contacts = contact_fields(user, enabled_label_keys)
+    # form_total — только вопросы трека/условий делегата (owner finding 03.09), не все ~43
+    # шага анкеты: короткий/party-трек делегат раньше видел прогресс вроде «2 из 43».
+    form_total = len(enabled_label_keys & _profile_columns().keys())
     form_filled = len(fields) + len(contacts)
     form_percent = round(100 * form_filled / form_total) if form_total else None
 
