@@ -55,6 +55,20 @@ STATE_TEXT_KEYS = {
     "disabled": "miniapp_disabled_text",
 }
 
+# Phase 23 план 05 Task 2 (D-25, зеркало STATE_TEXT_KEYS/section_labels): подписи карточки
+# заявки, которых НЕТ в ответе `GET /app/api/applications/next` (тот отдаёт только то, что
+# зависит от карточки/фильтра — `filters.chips`/`reject_templates`/`empty_text`). Читаются
+# один раз при рендере оболочки — тот же приём, что `section_labels`/`STATE_TEXT_KEYS`.
+# Дополнено Task 3 (undo/toasts/шторка/«Принять всех») — см. правку ниже по истории коммитов.
+APPLICATIONS_TEXT_KEYS = {
+    "show_all": "miniapp_applications_show_all",
+    "approve_button": "miniapp_applications_approve_button",
+    "reject_button": "miniapp_applications_reject_button",
+    "resume_open": "miniapp_applications_resume_open",
+    "resume_none": "miniapp_applications_resume_none",
+    "history_label": "miniapp_applications_history_label",
+}
+
 
 def deep_link(bot_username: str | None) -> str:
     return f"https://t.me/{bot_username}?start=app" if bot_username else ""
@@ -94,6 +108,10 @@ def _shell_context(request: Request, conn) -> dict:
         "logo_file_id": read_setting(conn, "miniapp_logo"),
         "sections": [s for s in SECTIONS if read_setting(conn, f"miniapp_section_{s}") == "on"],
         "texts": {name: read_setting(conn, key) or "" for name, key in STATE_TEXT_KEYS.items()},
+        "applications_texts": json.dumps(
+            {name: read_setting(conn, key) or "" for name, key in APPLICATIONS_TEXT_KEYS.items()},
+            ensure_ascii=False,
+        ),
     }
 
 
@@ -111,6 +129,7 @@ def render_disabled_page(request: Request) -> HTMLResponse:
             "deep_link": deep_link(cfg.bot_username), "logo_file_id": None, "sections": [],
             "section_labels": "{}",
             "texts": {name: "" for name in STATE_TEXT_KEYS},
+            "applications_texts": "{}",
         }
     context["disabled_text"] = (
         context["texts"].get("disabled") or "Приложение временно недоступно."
