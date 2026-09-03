@@ -26,6 +26,8 @@ import re
 # ── таблица пресетов (BRAND.md, UI-SPEC §Theme Presets) ────────────────────────────────────
 
 PRESETS: dict[str, dict[str, str]] = {
+    # Строгий АЙСЕК: плита без паттерна, прямые заголовки. Тот же набор, что и был,
+    # плюс явное «паттерна нет».
     "bluebook": {
         "accent": "#037EF3",
         "secondary": "#F48924",
@@ -35,10 +37,13 @@ PRESETS: dict[str, dict[str, str]] = {
         "pattern_enabled": "off",
         "plate_pattern": "none",
     },
+    # «ЮЛид» (макеты 03.09, решение владельца): та же синяя палитра BRAND.md, но
+    # курсивные заголовки-герои, фирменный паттерн на плите и тон на «ты».
+    # Прежний оранжево-красный акцент версии 19.1-02 снят: принятые макеты — синие (D-09).
     "youlead": {
-        "accent": "#F85A40",
+        "accent": "#037EF3",
         "secondary": "#F48924",
-        "bg": "#F3F4F8",
+        "bg": "#F3F4F7",
         "heading_font": "raleway_italic",
         "playful_tone": "on",
         "pattern_enabled": "on",
