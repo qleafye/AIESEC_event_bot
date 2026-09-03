@@ -288,6 +288,8 @@ def test_me_delegate_via_initdata(tmp_path):
         "tasks", "coins", "leaderboard", "profile", "form", "review",
         # Phase 23-01 (APP-TINDER-01, D-09): раздел «🗂 Отбор заявок».
         "applications",
+        # Quick 260904-2cj (QJRN-01..04): раздел «❓ Вопросы делегатов».
+        "questions",
         "admin_tasks", "stats",
         "settings",
     }

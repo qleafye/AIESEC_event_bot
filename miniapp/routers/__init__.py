@@ -86,6 +86,24 @@
                                        403 {"reason":"city_mismatch","text"} — не совпадает с
                                        привязкой менеджера (веб-аналог CR-02 appr_all_yes бота);
                                        отмены нет (D-07), эффекты ставятся в outbox сразу
+  Менеджер (quick 260904-2cj, `require_cap("moderate_reg")` + section questions; городской
+  скоуп — вопрос ДЕЛЕГАТА против привязки менеджера, как у applications/review):
+  GET  /app/api/questions?status&offset&limit -> {items[{id,user_id,name,username,city,
+                                       asked_at,question_text,status,status_label,stuck,
+                                       answered_by_name,answered_at,answer_text,can_answer}],
+                                       total, counts{all,new,in_work,answered},
+                                       filters[{key,label,count}], offset, limit,
+                                       empty_text, answer_button, sent_toast}
+                                       status: new|in_work|answered (неизвестное — без фильтра,
+                                       не 400); limit <= 50, дефолт 20
+  POST /app/api/questions/{qid}/answer {text} -> {ok: true, status: "answered"}
+                                       | {ok: false, reason: "already", by}
+                                       | {ok: false, reason: "delivery_failed", "text"}
+                                       400 {"reason":"empty_text"|"too_long","text"} — до
+                                       обращения к Bot API; 404 not_found; захват атомарный
+                                       (claim_question), делегату уходит обычный текст (без
+                                       parse_mode); уведомление остальных moderate_reg
+                                       («кто ответил») из веба не шлётся (aiogram-путь бота)
   Менеджер (план 19-06, `require_cap("moderate_game")` + section admin_tasks; городской скоуп
   на чтении и на каждой мутации — 403 {"reason":"out_of_scope","text"}):
   GET  /app/api/admin/tasks/options -> {categories[{code,label}], proof_types[{code,label}],
@@ -197,6 +215,7 @@ from miniapp.routers import (
     hub,
     page,
     profile,
+    questions,
     review,
     settings,
     stats,
@@ -219,6 +238,7 @@ ALL_ROUTERS = [
     settings.router,
     form.router,
     applications.router,
+    questions.router,
 ]
 
 __all__ = ["ALL_ROUTERS"]
