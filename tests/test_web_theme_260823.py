@@ -69,22 +69,46 @@ def test_resolve_theme_empty_settings_gives_full_bluebook_handle_set():
     assert resolved["pattern_enabled"] == "off"
 
 
-def test_resolve_theme_youlead_preset_accent_and_secondary():
+def test_resolve_theme_youlead_preset_is_blue_with_italic_and_pattern():
+    # D-09 (03.09): принятые макеты сняты на синей палитре BlueBook — «событийность» пресета
+    # «ЮЛид» несут паттерн, курсив и тон, а не смена акцента на оранжево-красный (был #F85A40
+    # в версии 19.1-02, снят этим планом).
     resolved = web_theme.resolve_theme({"miniapp_theme_preset": "youlead"})
-    assert resolved["accent"] == "#F85A40"
+    assert resolved["accent"] == "#037EF3"
     assert resolved["secondary"] == "#F48924"
+    assert resolved["heading_font"] == "raleway_italic"
+    assert resolved["plate_pattern"] == "youlead"
+    assert resolved["pattern_enabled"] == "on"
+
+
+def test_presets_differ_by_pattern_and_heading_not_by_accent():
+    bluebook = web_theme.PRESETS["bluebook"]
+    youlead = web_theme.PRESETS["youlead"]
+    assert bluebook["accent"] == youlead["accent"] == "#037EF3"
+    assert bluebook["plate_pattern"] != youlead["plate_pattern"]
+    assert bluebook["heading_font"] != youlead["heading_font"]
+    assert bluebook["playful_tone"] != youlead["playful_tone"]
+
+
+def test_theme_css_youlead_turns_headings_italic():
+    css_youlead = web_theme.theme_css_text(web_theme.resolve_theme({"miniapp_theme_preset": "youlead"}))
+    css_bluebook = web_theme.theme_css_text(web_theme.resolve_theme({"miniapp_theme_preset": "bluebook"}))
+    assert "--font-heading-style: italic;" in css_youlead
+    assert "--font-heading-style: normal;" in css_bluebook
 
 
 def test_resolve_theme_garbage_hex_falls_back_to_active_preset():
+    # D-09: оба пресета синие (#037EF3) — «активный пресет» здесь по-прежнему youlead, просто
+    # его собственный accent теперь совпадает с bluebook, это не регресс отката к пресету.
     resolved = web_theme.resolve_theme({
         "miniapp_theme_preset": "youlead",
         "miniapp_accent": "#037EF3; } body { background: url(x) }",
         "miniapp_theme_secondary": "not-a-color",
         "miniapp_theme_bg": "",
     })
-    assert resolved["accent"] == "#F85A40"  # пресет youlead, не литерал и не пусто
+    assert resolved["accent"] == "#037EF3"  # пресет youlead, не литерал и не пусто
     assert resolved["secondary"] == "#F48924"
-    assert resolved["bg"] == "#F3F4F8"
+    assert resolved["bg"] == "#F3F4F7"
 
 
 def test_resolve_theme_valid_handle_overrides_preset_starting_point():
