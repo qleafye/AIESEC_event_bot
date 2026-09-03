@@ -68,7 +68,7 @@ _ADMIN_MENU_ROWS: list[tuple[str, str]] = [
 
 
 def _visible_menu_rows(caps: set) -> list[tuple[str, str]]:
-    """Pure, synchronous, no I/O (CONVENTIONS.md `_private`-helper idiom) — the unit-testable
+    """Pure, synchronous, no I/O (docs/CONVENTIONS.md `_private`-helper idiom) — the unit-testable
     half of D-15's "menu built from this person's rights". `caps` must already be resolved
     (the SQLite read happens once, in `build_admin_keyboard`, not per-row here). Hiding a row
     the caller can't reach is convenience only — `CapabilityMiddleware` (handlers/admin_caps.py)

@@ -825,7 +825,7 @@ def test_legacy_admin_settings_lands_on_root(tmp_path):
 
 # (7) Доки и встроенная справка не разъезжаются с раскладкой (20-05, ADMIN-IA-04)
 
-# Пункты «Первой настройки события» из ADMIN_CHEATSHEET.md, которые делаются В БОТЕ. Первый
+# Пункты «Первой настройки события» из docs/ADMIN_CHEATSHEET.md, которые делаются В БОТЕ. Первый
 # пункт списка (аватар и описание бота) сюда не входит: он делается в @BotFather, вне нашего
 # бота, и глубины в кнопках /admin у него нет по определению. Последний пункт («🗓 Дата
 # отсчёта до форума», quick 260903) тоже не входит: ключ `miniapp_hub_countdown_date` живёт в
@@ -869,7 +869,7 @@ def test_first_setup_within_three_taps():
     """Критерий успеха №3 ROADMAP фазы 20 — путь к каждому пункту первой настройки события не
     глубже трёх нажатий от /admin. Проверяется по SECTIONS, поэтому это утверждение, за
     которое отвечает раскладка, а не обещание в тексте: блок «Первая настройка события» в
-    ADMIN_CHEATSHEET.md только пересказывает менеджеру то, что посчитано здесь."""
+    docs/ADMIN_CHEATSHEET.md только пересказывает менеджеру то, что посчитано здесь."""
     assert len(FIRST_SETUP) == 8, (
         "восемь пунктов в боте + BotFather + приложение (дата отсчёта) = десять в шпаргалке"
     )
@@ -896,7 +896,7 @@ def test_cheatsheet_covers_every_section():
     обязана ехать следом. Плюс состав блока «Первая настройка события» — десять пунктов:
     первый про BotFather (шаг вне бота), последний про дату отсчёта (шаг в приложении, не в
     боте, quick 260903)."""
-    text = (Path(__file__).resolve().parent.parent / "ADMIN_CHEATSHEET.md").read_text(encoding="utf-8")
+    text = (Path(__file__).resolve().parent.parent / "docs" / "ADMIN_CHEATSHEET.md").read_text(encoding="utf-8")
     for _token, label, _rows in sec.SECTIONS:
         assert label in text, label
 
@@ -953,7 +953,7 @@ def test_guide_and_cheatsheet_spell_group_path_with_new_label():
         f"«{sec.GROUP_IN_SECTION_LABEL}» →" in entry["where"]
         for _t, _s, entries in roles.SETTINGS_GUIDE_SECTIONS for entry in entries
     )
-    root = Path(__file__).resolve().parent.parent
+    root = Path(__file__).resolve().parent.parent / "docs"
     for doc in ("ADMIN_CHEATSHEET.md", "ADMIN_GUIDE.md"):
         text = (root / doc).read_text(encoding="utf-8")
         for label in group_only:

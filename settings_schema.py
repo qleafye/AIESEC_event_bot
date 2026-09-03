@@ -11,7 +11,7 @@ Design (D-01..D-08, see .planning/phases/06-settings-schema-registry/06-CONTEXT.
 - D-01: lives in its own top-level module — imports ONLY `database.db.get_setting`
   (one-directional dependency, no import of handlers.* — avoids import cycles).
 - D-02: plain dict-by-key (`SETTINGS_SCHEMA = {key: {...}}`) — O(1) lookup, no dataclass
-  (project convention: domain entities are plain dicts, see CONVENTIONS.md).
+  (project convention: domain entities are plain dicts, see docs/CONVENTIONS.md).
 - D-03/D-04: type-driven parse dispatch. `type` taxonomy: toggle/int/list/date/text/enum/
   photo/file. An optional per-entry `"parse"` callable overrides the type-branch for rare
   special cases (exception, not the rule).

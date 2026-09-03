@@ -232,7 +232,7 @@ SETTINGS_GUIDE_SECTIONS = [
     (
         "👥 Роли и доступы",
         "Кто, кроме суперадминов из .env, имеет доступ к админке, и что именно каждой роли "
-        "можно (подробности — ADMIN_GUIDE.md, §22).",
+        "можно (подробности — docs/ADMIN_GUIDE.md, §22).",
         [
             {
                 "key": "role_reg_manager_enabled",
@@ -314,8 +314,8 @@ def _render_settings_guide(sections: list, current: dict) -> list[str]:
         "Остальное — внутри разделов /admin: 🎪 Событие (даты, место, контакты, приветствия, "
         "фото), 📝 Анкета (вопросы, тексты вопросов, согласия, Party), 📋 Заявки (тексты после "
         "подачи), 💳 Оплата, 📢 Общение, 🎮 Геймификация, 📊 Данные (таблица и выгрузки), "
-        "🔧 Управление (города, роли, оформление).\nПодробный гайд — файл ADMIN_GUIDE.md, "
-        "короткая версия — ADMIN_CHEATSHEET.md."
+        "🔧 Управление (города, роли, оформление).\nПодробный гайд — файл docs/ADMIN_GUIDE.md, "
+        "короткая версия — docs/ADMIN_CHEATSHEET.md."
     )
 
     messages, buf = [], ""
@@ -577,13 +577,13 @@ _STAFF_INPUT_ERROR = (
 
 
 def _resolve_staff_input(message) -> tuple[int | None, str | None]:
-    """Synchronous, DB-free parse of the admin's "who to add" input (CONVENTIONS.md
+    """Synchronous, DB-free parse of the admin's "who to add" input (docs/CONVENTIONS.md
     `_private`-helper unit-testability idiom — mirrors `_parse_coins_amount`).
 
     Returns (telegram_id, marker_or_error):
     - (id, None) — resolved directly (forward or numeric id); ready for role assignment.
     - (None, "@username") — needs an async `get_user_by_username` lookup by the caller
-      (kept out of this function so it stays sync + DB-free, per CONVENTIONS.md).
+      (kept out of this function so it stays sync + DB-free, per docs/CONVENTIONS.md).
     - (None, "<human error text>") — nothing usable; caller shows this text verbatim.
     """
     # Bot API 7.0 (январь 2024) убрал forward_from/forward_date/forward_sender_name из Message

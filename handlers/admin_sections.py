@@ -296,7 +296,7 @@ async def op_return_keyboard(admin_id: int, callback_data: str) -> InlineKeyboar
 
 
 def visible_rows(token: str, caps: set, is_superadmin: bool) -> list[tuple]:
-    """Чистая, синхронная, без I/O (идиома `_private`-хелперов CONVENTIONS.md) — та же
+    """Чистая, синхронная, без I/O (идиома `_private`-хелперов docs/CONVENTIONS.md) — та же
     форма, что у `_visible_menu_rows`. Право строки берётся ЖИВЬЁМ из `ADMIN_CAPS` через
     `required_capability`; второй карты «кнопка -> право» в проекте нет и не будет (D-01/D-15,
     сторож — tests/test_roles_phase8.py::test_menu_has_no_second_map).

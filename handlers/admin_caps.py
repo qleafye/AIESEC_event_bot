@@ -657,7 +657,7 @@ def _is_callback_shaped(event) -> bool:
     `FakeCallback`/`FakeMessage` doubles through this exact middleware (Pitfall 4: it's the
     only place in the suite that exercises real `Router.propagate_event`), and those doubles
     are not `aiogram.types` subclasses -- matching this codebase's established Fake-object
-    convention (CONVENTIONS.md), which every existing admin handler already relies on via
+    convention (docs/CONVENTIONS.md), which every existing admin handler already relies on via
     plain attribute access, never `isinstance`."""
     return hasattr(event, "data") and not hasattr(event, "text")
 

@@ -6,7 +6,7 @@ second sheet row to the manager:
 
 - `handlers/admin.py::_render_application_card` — «🔁 Повторный: был(а) в …» badge line.
 - `handlers/admin.py::render_stats_text` — «🔁 Повторных: N» global counter line.
-- `ADMIN_GUIDE.md` — new «Новый сезон и вернувшиеся делегаты» section, human language only.
+- `docs/ADMIN_GUIDE.md` — new «Новый сезон и вернувшиеся делегаты» section, human language only.
 
 pytest-asyncio is unavailable in this env — every async call goes through asyncio.run(),
 config.DB_PATH points at a tmp_path file, no conftest.py (project convention, see
@@ -104,7 +104,7 @@ def test_stats_returning_line_outside_city_block(tmp_path):
 
 # ── Task 2: ADMIN_GUIDE section ──────────────────────────────────────────────────────────
 
-_GUIDE_PATH = Path(__file__).resolve().parent.parent / "ADMIN_GUIDE.md"
+_GUIDE_PATH = Path(__file__).resolve().parent.parent / "docs" / "ADMIN_GUIDE.md"
 
 
 def _guide_text() -> str:
