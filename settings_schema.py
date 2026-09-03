@@ -43,37 +43,66 @@ SETTINGS_SCHEMA = {
     # what can be overridden by city (CONTEXT A); nothing else may decide this.
     "event_date": {
         "type": "text", "group": "event", "label": "🗓 Дата",
-        "prompt": "Введите дату форума", "default": None,
+        "prompt": (
+            "Дата мероприятия — в свободной форме, как удобно читать делегату (например "
+            "«12–13 сентября 2026»). Показывается в разделе «Информация о форуме» и в "
+            "приветствии /start."
+        ),
+        "default": None,
         "per_city": True,
     },
     "event_time": {
         "type": "text", "group": "event", "label": "⌚ Время",
-        "prompt": "Введите время проведения", "default": None,
+        "prompt": (
+            "Время начала — свободный текст (например «10:00, сбор с 9:30»). Показывается "
+            "рядом с датой в разделе «Информация о форуме» и в приветствии /start."
+        ),
+        "default": None,
         "per_city": True,
     },
     "event_place_name": {
         "type": "text", "group": "event", "label": "📍 Место",
-        "prompt": "Введите название площадки", "default": None,
+        "prompt": (
+            "Название площадки (например «Экспоцентр, павильон 2»). Показывается делегату в "
+            "разделе «Информация о форуме» вместе с адресом."
+        ),
+        "default": None,
         "per_city": True,
     },
     "event_place_address": {
         "type": "text", "group": "event", "label": "📫 Адрес",
-        "prompt": "Введите адрес площадки", "default": None,
+        "prompt": (
+            "Адрес площадки — как делегату проще доехать (например «Москва, "
+            "Краснопресненская наб., 14»). Показывается вместе с названием площадки."
+        ),
+        "default": None,
         "per_city": True,
     },
     "contact_person": {
         "type": "text", "group": "event", "label": "👤 Контакт",
-        "prompt": "Введите юзернейм контактного лица (например @username)", "default": None,
+        "prompt": (
+            "Юзернейм контактного лица оргкомитета, например @username. Показывается "
+            "делегату в разделе «📞 Контакты», если он ещё не задан там же."
+        ),
+        "default": None,
         "per_city": True,
     },
     "contact_vk": {
         "type": "text", "group": "event", "label": "🔵 VK",
-        "prompt": "Введите ссылку на группу ВК", "default": None,
+        "prompt": (
+            "Ссылка на группу ВКонтакте, например https://vk.com/aiesec_ru. Показывается "
+            "делегату в разделе «📞 Контакты»."
+        ),
+        "default": None,
         "per_city": True,
     },
     "contact_tg": {
         "type": "text", "group": "event", "label": "🔹 TG",
-        "prompt": "Введите ссылку на Telegram-канал", "default": None,
+        "prompt": (
+            "Ссылка на Telegram-канал, например https://t.me/aiesec_ru. Показывается "
+            "делегату в разделе «📞 Контакты»."
+        ),
+        "default": None,
         "per_city": True,
     },
     "start_text": {
@@ -230,23 +259,43 @@ SETTINGS_SCHEMA = {
     # mechanics stay special-cased outside the registry (D-10). Metadata only here.
     "program": {
         "type": "photo", "group": "event", "label": "📅 Программа",
-        "prompt": "Отправьте фото программы (можно с подписью).", "default": None,
+        "prompt": (
+            "Отправьте фото программы (можно с подписью) — оно появится делегату по кнопке "
+            "«📅 Программа форума»."
+        ),
+        "default": None,
     },
     "speakers": {
         "type": "photo", "group": "event", "label": "🗣 Спикеры",
-        "prompt": "Отправьте одно фото со всеми спикерами (можно с подписью).", "default": None,
+        "prompt": (
+            "Отправьте одно фото со всеми спикерами (можно с подписью) — оно появится "
+            "делегату по кнопке «🗣 Спикеры»."
+        ),
+        "default": None,
     },
     "start": {
         "type": "photo", "group": "event", "label": "💬 Фото приветствия",
-        "prompt": "Отправьте фото для приветственного сообщения (/start).", "default": None,
+        "prompt": (
+            "Отправьте фото для приветственного сообщения — оно уйдёт вместе с текстом "
+            "«💬 Приветствие» при первом /start."
+        ),
+        "default": None,
     },
     "venue": {
         "type": "photo", "group": "event", "label": "🏢 Площадка",
-        "prompt": "Отправьте фото площадки (можно с подписью).", "default": None,
+        "prompt": (
+            "Отправьте фото площадки (можно с подписью) — оно появится вместе с адресом в "
+            "разделе «Информация о форуме»."
+        ),
+        "default": None,
     },
     "reg_bonus": {
         "type": "file", "group": "event", "label": "🎁 Бонус за регистрацию",
-        "prompt": "Отправьте файл или фото бонуса (можно с подписью).", "default": None,
+        "prompt": (
+            "Отправьте файл или фото бонуса (можно с подписью) — бот пришлёт его делегату "
+            "сразу после отправки анкеты, пока включён тумблер «🎁 Бонус за регистрацию»."
+        ),
+        "default": None,
     },
 
     # ── REG-01/REG-03 (06-02): "reg" group ("📝 Регистрация") ──────────────────────────
@@ -256,7 +305,11 @@ SETTINGS_SCHEMA = {
     # test_parse_equivalence_int).
     "source_options": {
         "type": "list", "group": "reg", "label": "📢 Источники",
-        "prompt": "Отправьте варианты источников, каждый с новой строки", "default": None,
+        "prompt": (
+            "Варианты ответа на вопрос «Откуда узнал(-а) о нас» — каждый с новой строки.\n\n"
+            "Пусто = стандартный список («Соцсети АЙСЕК», «Университетские каналы» и т.п.)."
+        ),
+        "default": None,
     },
     "reg_complete_text": {
         "type": "text", "group": "reg", "label": "✅ После регистрации",
@@ -935,9 +988,10 @@ SETTINGS_SCHEMA = {
             "Цена\n\nПример:\nПолный билет|5000\nСтудент|3000\n\nЦена 0 = бесплатно. Если "
             "вариант один — участник его не выбирает, сразу видит реквизиты.\n\n"
             "Необязательное третье поле — фильтр по треку: Название | Цена | треки (треки "
-            "— через запятую, значения: full, party_overnight, party_noovernight). Без "
-            "третьего поля тариф виден ВСЕМ трекам. Пример строки только для party:\n"
-            "Вход на вечеринку|1000|party_overnight,party_noovernight"
+            "— через запятую, пишутся латиницей: full — полная регистрация, "
+            "party_overnight — вечеринка с ночёвкой, party_noovernight — вечеринка без "
+            "ночёвки). Без третьего поля тариф виден ВСЕМ трекам. Пример строки только для "
+            "вечеринки:\nВход на вечеринку|1000|party_overnight,party_noovernight"
         ),
         "default": None,
     },
@@ -1060,10 +1114,9 @@ SETTINGS_SCHEMA = {
     "party_closed_text": {
         "type": "text", "group": "party", "label": "🎉 Текст «вечеринка закрыта»",
         "prompt": (
-            "Текст, который увидит гость по вечеринковой ссылке (?start=party_over / "
-            "party_noover), пока трек выключен (party_enabled = ❌). Показывается вместе "
-            "с кнопкой «Перейти к полной регистрации».\n\nОставьте пустым — будет "
-            "стандартный текст."
+            "Текст, который увидит гость по вечеринковой пригласительной ссылке, пока трек "
+            "«🎉 Трек вечеринки» выключен. Показывается вместе с кнопкой «Перейти к полной "
+            "регистрации».\n\nОставьте пустым — будет стандартный текст."
         ),
         "default": "Регистрация на вечеринку сейчас закрыта.",
     },
@@ -1297,16 +1350,24 @@ SETTINGS_SCHEMA = {
     # payment_enabled/consent_enabled/party_enabled, so it plugs into the existing generic
     # `_toggle_module_setting` helper (reads get_setting_typed(key) == "on") with zero
     # conversion at the call site (see 08-01-PLAN.md Task 2 discretion note).
+    # Quick 260813: экран «✏️ Права роли» — чекбоксы (handlers/admin_roles.py::show_role_caps),
+    # не набор кода текстом. Этот prompt здесь не показывается ни в одном живом экране (ключ
+    # исключён из редактируемых в Mini App и в общем settings_edit — своя поверхность правки),
+    # оставлен человекочитаемым на случай ручного просмотра реестра.
     "role_caps_reg_manager": {
         "type": "list", "group": "roles", "label": "🛂 Права роли: Менеджер регистраций",
-        "prompt": "Права роли, по одному на строке (или через «;»): moderate_reg, "
-                  "moderate_receipts, moderate_game, broadcast, settings, stats, checkin",
+        "prompt": (
+            "Отмечайте права галочками в боте: 🔧 Управление → «👥 Роли и доступы» → "
+            "«✏️ Права роли: 🛂 Менеджер регистраций»."
+        ),
         "default": ["moderate_reg", "moderate_receipts"],
     },
     "role_caps_game_manager": {
         "type": "list", "group": "roles", "label": "🎮 Права роли: Менеджер геймификации",
-        "prompt": "Права роли, по одному на строке (или через «;»): moderate_reg, "
-                  "moderate_receipts, moderate_game, broadcast, settings, stats, checkin",
+        "prompt": (
+            "Отмечайте права галочками в боте: 🔧 Управление → «👥 Роли и доступы» → "
+            "«✏️ Права роли: 🎮 Менеджер геймификации»."
+        ),
         "default": ["moderate_game"],
     },
     "role_reg_manager_enabled": {
@@ -2101,7 +2162,7 @@ SETTINGS_SCHEMA = {
         "prompt": (
             "Отправьте картинку фирменного паттерна — она ляжет фоном синей плиты на "
             "экранах приложения. Без неё используется паттерн выбранного набора "
-            "оформления: «Юлид» — фирменный, «АЙСЕК — классика» — без паттерна."
+            "оформления: «ЮЛид» — фирменный, «АЙСЕК — классика» — без паттерна."
         ),
         "default": None,
     },
