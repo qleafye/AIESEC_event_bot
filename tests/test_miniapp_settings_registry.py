@@ -307,3 +307,72 @@ def test_legacy_settings_list_still_serves_whitelist(tmp_path):
     resp = client.get("/app/api/admin/settings", headers=_hdr(ADMIN_ID))
     assert resp.status_code == 200
     assert {i["key"] for i in resp.json()} == set(EDITABLE_KEYS)
+
+
+# ── подсказка про незаданную дату отсчёта (quick 260903, BACKLOG-0309-COUNTDOWN) ─────────
+
+def _hints(client, user=ADMIN_ID):
+    return client.get("/app/api/admin/settings/hints", headers=_hdr(user))
+
+
+def test_hints_countdown_null_when_date_set_and_module_off(tmp_path):
+    client = _setup(tmp_path)
+    _set("miniapp_hub_countdown_date", "31.10.2026")
+    resp = _hints(client)
+    assert resp.status_code == 200, resp.text
+    assert resp.json() == {"countdown": None}
+
+
+def test_hints_countdown_present_when_date_empty_and_module_off(tmp_path):
+    client = _setup(tmp_path)
+    resp = _hints(client)
+    assert resp.status_code == 200, resp.text
+    countdown = resp.json()["countdown"]
+    assert countdown is not None
+    assert "Дата отсчёта до форума" in countdown["text"]
+    assert "делегаты не видят" in countdown["text"]
+    assert countdown["hash"] == "#/settings"
+
+
+def test_hints_countdown_selected_city_checks_only_that_city(tmp_path):
+    """Шапка на конкретном городе (менеджер, привязанный к spb) — проверяется только spb,
+    даже если у msk (город админа по умолчанию) своя дата есть."""
+    client = _setup(tmp_path)
+    _set("event_city_enabled", "on")
+    _set(f"miniapp_hub_countdown_date{PER_CITY_SEP}msk", "31.10.2026")
+
+    resp = _hints(client)  # ADMIN_ID не привязан -> видит msk по умолчанию
+    assert resp.json()["countdown"] is None
+
+    resp = _hints(client, SETTINGS_MANAGER_SPB)  # привязан к spb, у spb даты нет
+    countdown = resp.json()["countdown"]
+    assert countdown is not None
+    assert "Города без даты" not in countdown["text"]  # не «все города» — просто текст
+
+
+def test_hints_countdown_all_cities_lists_missing_city_labels(tmp_path):
+    client = _setup(tmp_path)
+    _set("event_city_enabled", "on")
+    _set(f"admin_city__{ADMIN_ID}", ALL_CITIES)
+    _set(f"miniapp_hub_countdown_date{PER_CITY_SEP}msk", "31.10.2026")
+
+    resp = _hints(client)
+    countdown = resp.json()["countdown"]
+    assert countdown is not None
+    assert "Города без даты:" in countdown["text"]
+
+    async def _labels():
+        import cities as cities_mod
+        return {code: await cities_mod.city_label(code) for code in city_codes()}
+
+    labels = asyncio.run(_labels())
+    assert labels["msk"] not in countdown["text"]
+    for code in ("spb", "tyumen"):
+        assert labels[code] in countdown["text"]
+
+
+def test_hints_without_settings_cap_403(tmp_path):
+    client = _setup(tmp_path)
+    resp = _hints(client, GAME_MANAGER_ID)
+    assert resp.status_code == 403
+    assert resp.json()["reason"] == "no_cap"

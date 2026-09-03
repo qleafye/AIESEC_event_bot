@@ -1147,6 +1147,19 @@ def test_manager_hub_dashboard_tile_lives_in_data_group():
     assert "!groupItems.length && !dashTile" in body
 
 
+def test_manager_hub_countdown_hint_is_fail_soft_and_server_driven():
+    """Quick 260903 (BACKLOG-0309-COUNTDOWN): подсказка про незаданную «Дату отсчёта до
+    форума» — текст и решение «показывать/нет» считает сервер (D-06, `settings/hints`),
+    hub.js не заводит человеко-видимых литералов и не роняет хаб при отказе ручки (тот же
+    приём, что у MANAGER_FETCHERS ниже по файлу)."""
+    body = _manager_hub_body()
+    assert '"/admin/settings/hints"' in body
+    assert "try {" in body and "catch (_)" in body
+    assert "countdown.text" in body
+    assert "countdown.hash" in body
+    assert 'icon: "calendar"' in body
+
+
 def test_manager_hero_only_with_review_tile():
     """Критерий успеха №4 ROADMAP: при выключенной гейме хаб остаётся осмысленным. Герой
     считает очередь проверки сдач, и без плитки «#/review» его нечем заполнить — он показывал
