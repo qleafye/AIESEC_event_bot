@@ -334,6 +334,28 @@ async function renderManagerHub(root, ctx, opts = {}) {
   const { h, api, navigate, tg, me } = ctx;
   const labels = sectionLabelsFromDom();
   const items = visibleNav().filter((item) => !item.delegate);
+
+  // Подсказка про незаданную «🗓 Дата отсчёта до форума» (quick 260903, D-06): текст и решение
+  // «показывать/нет» считает сервер — hub.js только рисует. Fail-soft — тот же приём, что у
+  // MANAGER_FETCHERS ниже: отказ/403 (делегат без права settings) даёт хаб без строки, а не
+  // падение экрана. Строку рисуем и в skipHero-ветке — она про настройку, не про очередь.
+  let countdown = null;
+  try {
+    const hints = await api("/admin/settings/hints");
+    countdown = hints && hints.countdown ? hints.countdown : null;
+  } catch (_) {
+    countdown = null;
+  }
+  if (countdown) {
+    root.append(h("div", { class: "flat-list" },
+      flatRow(h, {
+        icon: "calendar",
+        title: countdown.text,
+        chevron: true,
+        onClick: () => navigate(countdown.hash),
+      }),
+    ));
+  }
   const knownGroups = new Set(SECTION_GROUPS.map(([token]) => token));
   // Плитку без раздела (или с незнакомым токеном) терять нельзя: она уходит в хвост, под
   // «🔧 Управление». Лежать не на своём месте — плохо, исчезнуть с экрана молча — хуже.
