@@ -13,7 +13,7 @@ import {
   field, setFieldState, createFormState, diffView, confirmBox, errorText,
   isAuthError as isAuthErrorBase,
 } from "../form.js";
-import { flatRow } from "../ui.js";
+import { flatRow, sectionTitle } from "../ui.js";
 import { icon } from "../icons.js";
 import { haptic } from "../motion.js";
 
@@ -44,6 +44,28 @@ function stepIndexFromKey(specs, stepKey) {
   if (!stepKey) return 0;
   const idx = specs.findIndex((s) => s.key === stepKey);
   return idx >= 0 ? idx : 0;
+}
+
+// Строка списка вопросов анкеты (обзор 19.1 находка №6): общий помощник для окна вопросов
+// мастера (renderWizard::drawStep) и списка обзора точечной правки (renderOverview::fieldRow,
+// Task 3) — отвеченный вопрос показывает галку и значение основным цветом, неотвеченный —
+// тусклый кружок и `not_set_text`. `opts.value` перекрывает `spec.value` там, где актуальнее
+// живое значение состояния (обзор правки — `state.value(column)`, не значение с момента
+// загрузки черновика). `opts.extraCls` — дополнительный модификатор строки (например
+// `q-required` для незаполненного обязательного поля в обзоре правки).
+function questionRow(h, spec, opts = {}) {
+  const { onEdit, notSetText, value: valueOverride, extraCls } = opts;
+  const raw = valueOverride !== undefined ? valueOverride : spec.value;
+  const answered = raw != null && raw !== "";
+  return flatRow(h, {
+    icon: answered ? "check" : "circle",
+    title: spec.label,
+    value: answered ? String(raw) : (notSetText || ""),
+    valueCls: answered ? "strong" : null,
+    cls: [answered ? "q-done" : "q-empty", extraCls].filter(Boolean).join(" "),
+    trailing: onEdit ? icon("pen-line") : null,
+    onClick: onEdit || null,
+  });
 }
 
 export async function render(root, params, ctx) {
@@ -426,6 +448,31 @@ export async function render(root, params, ctx) {
       setMainButton(null);
     }
 
+    // Окно списка вопросов вокруг текущего шага (обзор 19.1 находка №5): одна ближайшая
+    // отвеченная строка + до двух ближайших предстоящих — текущий шаг в списке не
+    // дублируется (он уже на плите и в поле). Остаток сворачивается в `more_questions_text`.
+    function drawQuestionWindow(specs) {
+      let prevIdx = -1;
+      for (let i = stepIndex - 1; i >= 0; i -= 1) {
+        const v = specs[i].value;
+        if (v != null && v !== "") { prevIdx = i; break; }
+      }
+      const rows = [];
+      if (prevIdx >= 0) rows.push(specs[prevIdx]);
+      const upcoming = specs.slice(stepIndex + 1, stepIndex + 3);
+      rows.push(...upcoming);
+      const totalUpcoming = Math.max(0, specs.length - stepIndex - 1);
+      const remaining = totalUpcoming - upcoming.length;
+      const list = h("div", { class: "flat-list flush" },
+        ...rows.map((s) => questionRow(h, s, { notSetText: d.not_set_text })),
+      );
+      const more = remaining > 0
+        ? h("p", { class: "pad faint", text: (d.more_questions_text || "").replace("{n}", String(remaining)) })
+        : null;
+      if (!rows.length && !more) return null;
+      return h("div", {}, sectionTitle(h, d.questions_eyebrow), list, more);
+    }
+
     // ── шаги анкеты: один вопрос на экран (D-03) ────────────────────────────────────────
     function drawStep() {
       const specs = state.specs;
@@ -470,12 +517,12 @@ export async function render(root, params, ctx) {
             const msg = err.payload.errors[column];
             if (errorZone && msg) { errorZone.textContent = msg; errorZone.classList.remove("hidden"); }
             setMainButton(null, null);
-            setMainButton("→", goNext);
+            setMainButton(d.next_cta_text || null, goNext);
           } else if (err && err.status === 403 && err.reason === "registration_closed") {
             showClosed(err);
           } else if (!isAuthError(err)) {
             if (errorZone) { errorZone.textContent = errorText(err, ""); errorZone.classList.remove("hidden"); }
-            setMainButton("→", goNext);
+            setMainButton(d.next_cta_text || null, goNext);
           }
         }
       }
@@ -489,25 +536,58 @@ export async function render(root, params, ctx) {
       const showProgress = Boolean(d.show_progress) && specs.length > 0;
       const progressLabel = (d.progress_text || "")
         .replace("{step}", String(stepIndex + 1)).replace("{total}", String(specs.length));
-      const eyebrow = showProgress
-        ? h("div", {},
-          h("p", { class: "label-role", "aria-hidden": "true", text: progressLabel }),
-          h("div", {
-            class: "wizard-progress", role: "progressbar",
-            "aria-valuenow": String(stepIndex + 1), "aria-valuemin": "1", "aria-valuemax": String(specs.length),
-            "aria-label": progressLabel,
-          },
-            h("div", { class: "wizard-progress-fill", style: `width:${Math.round(((stepIndex + 1) / specs.length) * 100)}%` })),
+
+      // Полоса прогресса мастера: во всю ширину, событийным цветом. Заливку двигает CSSOM,
+      // не атрибут style — политика CSP приложения (`style-src 'self'` без `'unsafe-inline'`,
+      // miniapp/main.py) молча отбрасывает style="…", запись в el.style ею не ограничена.
+      let progressRow = null;
+      if (showProgress) {
+        const fill = h("div", { class: "wizard-progress-fill" });
+        fill.style.width = `${Math.round(((stepIndex + 1) / specs.length) * 100)}%`;
+        const bar = h("div", {
+          class: "wizard-progress flush", role: "progressbar",
+          "aria-valuenow": String(stepIndex + 1), "aria-valuemin": "1", "aria-valuemax": String(specs.length),
+          "aria-label": progressLabel,
+        }, fill);
+        progressRow = h("div", { class: "wizard-progress-row" },
+          bar,
+          d.exists ? h("span", { class: "wizard-progress-note", text: d.draft_saved_text || "" }) : null,
+        );
+      }
+
+      // Плита шага: номер + вопрос крупным курсивом (обзор 19.1 находка №5) — тумблер
+      // reg_show_progress выключен целиком гасит номерной блок, а не показывает его пусто.
+      const plateRow = showProgress
+        ? h("div", { class: "plate-row" },
+          h("span", { class: "plate-big", text: String(stepIndex + 1).padStart(2, "0") }),
+          h("span", { class: "plate-total", text: `/ ${specs.length}` }),
+          h("span", { class: "plate-eyebrow", text: progressLabel }),
         )
         : null;
-
-      const footer = h("div", { class: "task-actions" },
-        stepIndex > 0 ? h("button", { class: "btn ghost", type: "button", "aria-label": spec.label, onClick: goBack }, icon("chevron-right")) : null,
-        h("button", { class: "btn", type: "button", disabled: busy, "aria-label": spec.label, onClick: goNext }, icon("chevron-right")),
+      const plate = h("section", { class: "plate plate--form" },
+        plateRow,
+        h("h1", { text: spec.prompt || spec.label }),
+        spec.help ? h("p", { class: "plate-sub", text: spec.help }) : null,
       );
 
-      holder.replaceChildren(h("div", { class: "wizard-step" }, eyebrow, el, footer, chatLink(d.continue_in_chat_text, d.continue_deeplink)));
-      setMainButton("→", goNext, { disabled: busy });
+      const footer = h("div", { class: "task-actions" },
+        stepIndex > 0
+          ? h("button", { class: "btn ghost", type: "button", "aria-label": d.back_cta_text || "", onClick: goBack },
+            icon("arrow-right", { class: "icon-flip" }), h("span", { text: d.back_cta_text || "" }))
+          : null,
+        h("button", { class: "btn", type: "button", disabled: busy, "aria-label": d.next_cta_text || "", onClick: goNext },
+          h("span", { text: d.next_cta_text || "" }), icon("arrow-right")),
+      );
+
+      holder.replaceChildren(...[
+        progressRow,
+        plate,
+        h("div", { class: "wizard-field" }, el),
+        drawQuestionWindow(specs),
+        chatLink(d.continue_in_chat_text, d.continue_deeplink),
+        footer,
+      ].filter(Boolean));
+      setMainButton(d.next_cta_text || null, goNext, { disabled: busy });
     }
 
     async function submitForm() {
