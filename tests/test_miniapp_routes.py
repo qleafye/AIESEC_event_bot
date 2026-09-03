@@ -15,6 +15,7 @@ import re
 import hmac
 import time
 from datetime import datetime, timedelta
+from pathlib import Path
 
 from fastapi import APIRouter, Depends
 from starlette.testclient import TestClient
@@ -582,6 +583,29 @@ def test_static_and_shell_send_no_cache_header(tmp_path):
     assert versioned.status_code == 200
     assert versioned.headers.get("cache-control") == "no-cache"
     assert client.get("/app/api/me").headers.get("cache-control") != "no-cache"
+
+
+# ── Quick 260903 (BACKLOG-0309-PATTERN): растр вместо мегабайтного SVG ───────────────────
+
+def test_pattern_webp_served_with_correct_mime_and_under_size_budget(tmp_path):
+    """`tools/make_pattern_raster.py` пересобирает `youlead.webp` из исходника — этот тест
+    проверяет то, что реально отдаёт сервер: `image/webp` (mimetypes.add_type в miniapp/main.py
+    — на этой машине guess_type("*.webp") без регистрации отдаёт None) и вес в рамках бюджета
+    ≤200 КБ (иначе замена растром не решает исходную проблему)."""
+    db_path = _use_tmp_db(tmp_path)
+    _standard_seed()
+    client = _client(_cfg(db_path))
+    resp = client.get("/app/static/pattern/youlead.webp")
+    assert resp.status_code == 200
+    assert resp.headers.get("content-type") == "image/webp"
+    assert len(resp.content) <= 200 * 1024, f"{len(resp.content) / 1024:.1f} КБ > 200 КБ"
+
+
+def test_pattern_svg_source_still_present_on_disk():
+    """Исходник паттерна остаётся в репозитории (НЕ удалён) — растр воспроизводимо
+    пересобирается им `tools/make_pattern_raster.py`, а не редактируется руками."""
+    svg_path = Path("miniapp/static/pattern/youlead.svg")
+    assert svg_path.is_file(), "youlead.svg (исходник паттерна) должен остаться рядом с растром"
 
 
 # ── Phase 23.1-03 (UI-REDESIGN-02): GET /app/api/hub — тексты и факты плиты хаба ────────

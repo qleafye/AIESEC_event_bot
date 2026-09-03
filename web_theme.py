@@ -92,9 +92,14 @@ _HEX6 = re.compile(r"^#[0-9A-Fa-f]{6}$")
 # stdlib-модулем). Значение -> (url, background-size, x, y, opacity). Смещения — из
 # mockups/NOTES.md (масштаб ×1.8, решение владельца 03.09); ассет уже несёт fill-opacity 0.2,
 # поэтому дополнительная непрозрачность встроенного варианта равна 1.
+#
+# Quick 260903 (BACKLOG-0309-PATTERN): `.svg` (1,0 МБ, 567 `<path>`) заменён растром `.webp`
+# (≤200 КБ) — CSS растягивает паттерн фоном на каждой плите без тайлинга, браузер растеризовал
+# бы всю геометрию SVG на каждый paint. Исходник остаётся рядом (`youlead.svg`, НЕ удалён),
+# растр воспроизводимо пересобирается `tools/make_pattern_raster.py`.
 PLATE_PATTERNS: dict[str, tuple[str, str, str, str, str]] = {
     "none":    ("none", "1368px", "-162px", "-324px", "1"),
-    "youlead": ('url("/app/static/pattern/youlead.svg")', "1368px", "-162px", "-324px", "1"),
+    "youlead": ('url("/app/static/pattern/youlead.webp")', "1368px", "-162px", "-324px", "1"),
 }
 
 # Непрозрачность паттерна менеджера (file_id): картинка приходит непрозрачной, 20% даёт тот же
