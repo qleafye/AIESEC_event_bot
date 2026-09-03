@@ -32,6 +32,7 @@ Mini App в `<iframe>` на `https://web.telegram.org`, поэтому отве�
 from __future__ import annotations
 
 import logging
+import mimetypes
 import re
 import sqlite3
 from pathlib import Path
@@ -110,6 +111,12 @@ def _build_asgi_app(cfg: DashboardConfig) -> FastAPI:
     app.state.cfg = cfg
 
     if STATIC_DIR.is_dir():
+        # Quick 260903 (BACKLOG-0309-PATTERN): на этой машине `mimetypes.guess_type("a.webp")`
+        # отдаёт (None, None) — без явной регистрации StaticFiles отдало бы паттерн-растр
+        # `application/octet-stream`, и поведение зависело бы от mime-таблиц конкретного
+        # образа. Регистрация — идемпотентна, безопасна на модуле, который уже настроил webp
+        # (Python сам не перезатирает существующее сопоставление другим типом).
+        mimetypes.add_type("image/webp", ".webp")
         # Порядок обязателен: версионированный mount ДО легаси, иначе /app/static перехватит
         # и /app/static/v…/ (Starlette матчит mounts в порядке добавления).
         app.mount(STATIC_PREFIX, StaticFiles(directory=str(STATIC_DIR)), name="static_versioned")
