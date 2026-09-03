@@ -48,6 +48,18 @@ def test_form_screen_still_has_no_human_literals_or_innerhtml():
     assert "https://" not in text
 
 
+def test_form_screen_progress_label_from_server_template_not_hardcoded():
+    """UAT 21-12 находка 2: подпись прогресса «N из M» — шаблон с сервера
+    (`d.progress_text`, реестр `reg_form_progress_text`), подстановка {step}/{total} через
+    `.replace` (Pitfall 11 — `.format` падает на «{» в тексте менеджера); экран не собирает
+    подпись сам строкой `${...}/${...}`."""
+    text = _js_without_comments(FORM_SCREEN_JS)
+    assert "d.progress_text" in text
+    assert '.replace("{step}"' in text
+    assert '.replace("{total}"' in text
+    assert "}/${" not in text  # старый литеральный формат "N/M" в шаблонной строке
+
+
 def test_form_screen_pre_screens_rebuilt_from_pre_items():
     text = _js_without_comments(FORM_SCREEN_JS)
     assert "preScreens" in text
