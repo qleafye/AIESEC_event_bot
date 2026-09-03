@@ -14,7 +14,6 @@ clear + перезапись), не append по событию. Обрыв пр�
 """
 import asyncio
 import logging
-from datetime import datetime
 
 from config import config
 from database.db import (
@@ -24,6 +23,7 @@ from database.db import (
     _csv_safe,
 )
 from settings_schema import get_setting_typed, SETTINGS_SCHEMA
+from services.questions import format_stamp as _fmt_dt, status_label
 import reg_engine
 
 logger = logging.getLogger(__name__)
@@ -33,6 +33,9 @@ HISTORY_SHEET_HEADERS = [
 ]
 QUESTIONS_SHEET_HEADERS = [
     "Дата", "Telegram ID", "Делегат", "Username", "Город", "Вопрос", "Кому ушло",
+    # Quick 260904-2cj: журнал вопросов делегатов — статус + текст ответа В ХВОСТЕ, первые
+    # семь колонок и их порядок не тронуты (на их индексы смотрят существующие тесты).
+    "Статус", "Ответ",
 ]
 
 SOURCE_LABELS = {"bot": "бот", "miniapp": "приложение"}
@@ -52,22 +55,10 @@ def _column_label(column: str) -> str:
     return reg_engine.label_for(step)
 
 
-def _fmt_dt(raw: str | None) -> str:
-    """Два формата времени в одном хелпере — потому что `record_answer_history` пишет
-    "%Y-%m-%d %H:%M:%S", а `create_question` пишет `datetime.utcnow().isoformat()`, и это факт
-    кода (разные таблицы, разный возраст), а не недосмотр. Неразобранное отдаётся как есть
-    (fail-soft, форма `polls._fmt_date`)."""
-    if not raw:
-        return ""
-    for parser in (
-        lambda s: datetime.strptime(s, "%Y-%m-%d %H:%M:%S"),
-        lambda s: datetime.fromisoformat(s),
-    ):
-        try:
-            return parser(raw).strftime("%d.%m.%Y %H:%M")
-        except ValueError:
-            continue
-    return str(raw)
+# Quick 260904-2cj: тело переехало в `services/questions.py::format_stamp` — единственное
+# место, где живёт разбор обоих форматов времени (нужно и листу «Вопросы», и статусу вопроса,
+# и экранам бота/приложения). Алиас сохраняет и вызовы ниже, и имя, на которое смотрят
+# существующие тесты этого модуля.
 
 
 def _cell(value) -> str:
@@ -144,6 +135,8 @@ async def build_questions_sheet_rows() -> list[list]:
             _cell(raw_city) if module_on and raw_city else "",
             _cell(q.get("question_text")),
             recipient,
+            status_label(q),
+            _cell(q.get("answer_text")),
         ])
     return [[_csv_safe(v) for v in r] for r in rows]
 

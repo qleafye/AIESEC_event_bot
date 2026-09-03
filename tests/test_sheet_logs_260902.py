@@ -166,6 +166,23 @@ def test_questions_rows_recipient_city_on(tmp_path):
     _run(go())
 
 
+# Quick 260904-2cj: две новые колонки в хвосте («Статус», «Ответ») — статус берётся из
+# services.questions.status_label, не второй копией правила.
+def test_questions_rows_status_and_answer_columns(tmp_path):
+    _ready(tmp_path)
+
+    async def go():
+        await _add_user(1)
+        qid = await db.create_question(1, "Когда дедлайн?")
+        await db.claim_question(qid, 999, "Менеджер")
+        await db.set_question_answer(qid, "Завтра в 18:00")
+        rows = await sheet_logs.build_questions_sheet_rows()
+        assert rows[0][-2] == "✅ отвечен"
+        assert rows[0][-1] == "Завтра в 18:00"
+
+    _run(go())
+
+
 # ── Task 1: export_*_to_sheet / fail-soft ───────────────────────────────────────────────────
 
 def test_export_uses_tab_setting_and_fails_soft(tmp_path, monkeypatch):
