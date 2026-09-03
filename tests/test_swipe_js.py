@@ -157,6 +157,17 @@ def test_missing_start_x_does_not_trigger_edge_guard(result):
 # addEventListener/removeEventListener, closest(), setPointerCapture, style, clientWidth.
 ATTACH_SWIPE_NODE_SCRIPT = """
 globalThis.document = { documentElement: { dataset: { motion: "" } } };
+// requestAnimationFrame коалесинга (D-04 quick 03.09) не существует в голом node — раз узел
+// один поток и события диспатчатся синхронно, симулируем кадр СРАЗУ (детерминированный тест).
+globalThis.requestAnimationFrame = (cb) => { cb(0); return 1; };
+globalThis.cancelAnimationFrame = () => {};
+
+class FakeClassList {
+  constructor() { this._set = new Set(); }
+  add(name) { this._set.add(name); }
+  remove(name) { this._set.delete(name); }
+  contains(name) { return this._set.has(name); }
+}
 
 class FakeEl {
   constructor(tag, opts = {}) {
@@ -166,6 +177,7 @@ class FakeEl {
     this._listeners = {};
     this.parent = opts.parent || null;
     this.capturedIds = [];
+    this.classList = new FakeClassList();
   }
   addEventListener(type, fn) { (this._listeners[type] ||= []).push(fn); }
   removeEventListener(type, fn) {
@@ -230,3 +242,95 @@ def test_pointerdown_on_interactive_descendant_does_not_capture_or_decide(intera
 
 def test_pointerdown_on_card_itself_still_commits_swipe_decision(interactive_result):
     assert interactive_result["commits"] == ["approve"]
+
+
+# ── attachSwipe: rAF-коалесинг onProgress + класс жеста (владелец 03.09, «дёргано») ─────────
+# requestAnimationFrame здесь НЕ автозапускается синхронно (в отличие от других тестов файла) —
+# полифил кладёт колбэк в единственный слот `queuedCb` (attachSwipe никогда не держит больше
+# одного pending rAF за раз, у него свой `rafId`-гейт), и тест зовёт `flushRAF()` САМ, ровно раз,
+# после нескольких pointermove — так видно, что несколько сырых событий между кадрами схлопнулись
+# в один вызов onProgress с последними координатами, а не рисовали каждое по отдельности.
+COALESCE_NODE_SCRIPT = """
+globalThis.document = { documentElement: { dataset: { motion: "" } } };
+let queuedCb = null;
+globalThis.requestAnimationFrame = (cb) => { queuedCb = cb; return 1; };
+globalThis.cancelAnimationFrame = () => { queuedCb = null; };
+function flushRAF() { const cb = queuedCb; queuedCb = null; if (cb) cb(0); }
+
+class FakeClassList {
+  constructor() { this._set = new Set(); }
+  add(name) { this._set.add(name); }
+  remove(name) { this._set.delete(name); }
+  contains(name) { return this._set.has(name); }
+}
+
+class FakeEl {
+  constructor(tag, opts = {}) {
+    this.tagName = tag.toUpperCase();
+    this.style = {};
+    this.clientWidth = opts.clientWidth ?? 300;
+    this._listeners = {};
+    this.classList = new FakeClassList();
+  }
+  addEventListener(type, fn) { (this._listeners[type] ||= []).push(fn); }
+  removeEventListener(type, fn) {
+    this._listeners[type] = (this._listeners[type] || []).filter((f) => f !== fn);
+  }
+  dispatch(type, evt) { for (const fn of (this._listeners[type] || []).slice()) fn(evt); }
+  setPointerCapture() {}
+  closest() { return null; }
+}
+
+const m = await import(%(url)s);
+const card = new FakeEl("article", { clientWidth: 300 });
+
+const progressCalls = [];
+m.attachSwipe(card, { onProgress: (decision, raw) => progressCalls.push(raw.dx) });
+
+card.dispatch("pointerdown", { pointerId: 1, target: card, clientX: 150, clientY: 0 });
+const dragClassDuringGesture = card.classList.contains("is-dragging");
+
+// Три сырых pointermove ДО первого кадра — ни один onProgress ещё не должен был случиться.
+card.dispatch("pointermove", { pointerId: 1, target: card, clientX: 160, clientY: 0 });
+card.dispatch("pointermove", { pointerId: 1, target: card, clientX: 180, clientY: 0 });
+card.dispatch("pointermove", { pointerId: 1, target: card, clientX: 200, clientY: 0 });
+const callsBeforeFrame = progressCalls.length;
+
+flushRAF(); // один «кадр» — все три move должны схлопнуться в один onProgress с dx=50 (200-150)
+
+card.dispatch("pointerup", { pointerId: 1, target: card, clientX: 200, clientY: 0 });
+const dragClassAfterUp = card.classList.contains("is-dragging");
+
+console.log(JSON.stringify({
+  callsBeforeFrame, callsAfterFrame: progressCalls.length, lastDx: progressCalls[progressCalls.length - 1],
+  dragClassDuringGesture, dragClassAfterUp,
+}));
+"""
+
+
+@pytest.fixture(scope="module")
+def coalesce_result() -> dict:
+    node = shutil.which("node")
+    if not node:
+        pytest.skip("node не найден в PATH — поведенческий тест rAF-коалесинга пропущен")
+    script = COALESCE_NODE_SCRIPT % {"url": json.dumps(SWIPE_JS.resolve().as_uri())}
+    proc = subprocess.run(
+        [node, "--input-type=module", "-e", script],
+        cwd=str(ROOT), capture_output=True, text=True, encoding="utf-8", timeout=120,
+    )
+    assert proc.returncode == 0, proc.stderr[-3000:]
+    return json.loads(proc.stdout.strip().splitlines()[-1])
+
+
+def test_multiple_pointermoves_before_a_frame_do_not_call_onprogress_yet(coalesce_result):
+    assert coalesce_result["callsBeforeFrame"] == 0
+
+
+def test_one_frame_flush_coalesces_pending_moves_into_a_single_onprogress_call(coalesce_result):
+    assert coalesce_result["callsAfterFrame"] == 1
+    assert coalesce_result["lastDx"] == 50  # 200 - 150, самая свежая координата, не первая
+
+
+def test_drag_class_present_during_gesture_and_removed_on_release(coalesce_result):
+    assert coalesce_result["dragClassDuringGesture"] is True
+    assert coalesce_result["dragClassAfterUp"] is False

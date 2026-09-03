@@ -60,12 +60,24 @@ export function swipeDecision({ dx, dy, width, startX } = {}) {
  * прокрутке, наш код разбирает только горизонталь. Уровень анимации "off" (motion.js) отключает
  * ПРОМЕЖУТОЧНЫЙ `onProgress`-трансформ (нечего анимировать без движения), но не отключает сам
  * жест — commit/cancel по-прежнему считаются и вызываются.
+ *
+ * Владелец (03.09, стенд с телефона, «дёргано»): pointermove на сенсоре может прилетать чаще
+ * частоты кадров — раньше каждое сырое событие СРАЗУ писало `el.style.transform` (запись стиля
+ * вне кадра отрисовки — источник дёрганости, конкурирует с браузерным layout/paint). Теперь
+ * `handleMove` только запоминает последнее событие; сам вызов `onProgress` идёт максимум раз за
+ * кадр через `requestAnimationFrame` (coalescing) — несколько pointermove между кадрами схлопы-
+ * ваются в одно обновление transform. Класс `DRAG_CLASS` на элементе снимает CSS-transition на
+ * время жеста (app.css `.is-dragging`) — иначе transform из onProgress «боролся» бы с переходом
+ * к предыдущему значению на каждый кадр; при pointerup/pointercancel класс снимается, и сброс
+ * `el.style.transform` (см. screens/applications.js::resetCardTransform) уже анимируется этим же
+ * CSS-transition (200–250мс, cubic-bezier) вместо мгновенного скачка.
  * @param {HTMLElement} el
  * @param {{onProgress?: (decision: object, raw: {dx:number, dy:number}) => void,
  *          onCommit?: (action: "approve"|"reject") => void,
  *          onCancel?: (decision: object) => void}} handlers
  * @returns {() => void} detach — снимает все слушатели (звать из unmount())
  */
+const DRAG_CLASS = "is-dragging";
 // Владелец (03.09, стенд с телефона): кнопка «Показать всё» внутри карточки переставала
 // открываться после того, как attachSwipe стал ловить pointerdown на всей карточке и звать
 // `el.setPointerCapture` — начиная с этого кадра ВСЕ последующие pointer-события (и производный
@@ -86,13 +98,25 @@ export function attachSwipe(el, { onProgress, onCommit, onCancel } = {}) {
   let pointerId = null;
   let startX = 0;
   let startY = 0;
+  let rafId = null;
+  let pendingEvent = null; // последнее необработанное pointermove — коалесинг до кадра
 
   function motionOff() {
     return document.documentElement.dataset.motion === "off";
   }
 
+  function cancelPendingFrame() {
+    if (rafId != null) {
+      cancelAnimationFrame(rafId);
+      rafId = null;
+    }
+    pendingEvent = null;
+  }
+
   function reset() {
     pointerId = null;
+    cancelPendingFrame();
+    el.classList.remove(DRAG_CLASS);
   }
 
   function gestureFrom(e) {
@@ -102,12 +126,24 @@ export function attachSwipe(el, { onProgress, onCommit, onCancel } = {}) {
     return swipeDecision({ dx, dy, width, startX });
   }
 
+  // Один onProgress за кадр отрисовки, а не за pointer-событие (сенсор может слать move чаще
+  // частоты кадров) — раннее событие того же кадра просто перезаписывается более свежим.
+  function flushPendingFrame() {
+    rafId = null;
+    const e = pendingEvent;
+    pendingEvent = null;
+    if (!e || pointerId == null || e.pointerId !== pointerId || motionOff() || !onProgress) return;
+    const decision = gestureFrom(e);
+    onProgress(decision, { dx: e.clientX - startX, dy: e.clientY - startY });
+  }
+
   function handleDown(e) {
     if (pointerId != null) return; // уже ведём один жест — второй палец игнорируем
     if (isInteractiveTarget(e.target)) return; // тап по кнопке/ссылке карточки — не жест решения
     pointerId = e.pointerId;
     startX = e.clientX;
     startY = e.clientY;
+    el.classList.add(DRAG_CLASS); // снимает CSS-transition на время жеста (app.css)
     if (typeof el.setPointerCapture === "function") {
       try {
         el.setPointerCapture(pointerId);
@@ -119,9 +155,8 @@ export function attachSwipe(el, { onProgress, onCommit, onCancel } = {}) {
 
   function handleMove(e) {
     if (pointerId == null || e.pointerId !== pointerId) return;
-    if (motionOff() || !onProgress) return;
-    const decision = gestureFrom(e);
-    onProgress(decision, { dx: e.clientX - startX, dy: e.clientY - startY });
+    pendingEvent = e;
+    if (rafId == null) rafId = requestAnimationFrame(flushPendingFrame);
   }
 
   function handleUp(e) {
@@ -138,15 +173,20 @@ export function attachSwipe(el, { onProgress, onCommit, onCancel } = {}) {
     if (onCancel) onCancel({ action: null, cancelled: true });
   }
 
-  el.addEventListener("pointerdown", handleDown);
-  el.addEventListener("pointermove", handleMove);
-  el.addEventListener("pointerup", handleUp);
-  el.addEventListener("pointercancel", handleCancel);
+  // passive: true — ни один обработчик здесь не зовёт preventDefault (вертикаль браузер уже
+  // отдаёт прокрутке через touch-action: pan-y), явная пометка снимает с браузера необходимость
+  // ждать возможный preventDefault перед скроллом/отрисовкой кадра.
+  const listenerOpts = { passive: true };
+  el.addEventListener("pointerdown", handleDown, listenerOpts);
+  el.addEventListener("pointermove", handleMove, listenerOpts);
+  el.addEventListener("pointerup", handleUp, listenerOpts);
+  el.addEventListener("pointercancel", handleCancel, listenerOpts);
 
   return function detach() {
-    el.removeEventListener("pointerdown", handleDown);
-    el.removeEventListener("pointermove", handleMove);
-    el.removeEventListener("pointerup", handleUp);
-    el.removeEventListener("pointercancel", handleCancel);
+    cancelPendingFrame();
+    el.removeEventListener("pointerdown", handleDown, listenerOpts);
+    el.removeEventListener("pointermove", handleMove, listenerOpts);
+    el.removeEventListener("pointerup", handleUp, listenerOpts);
+    el.removeEventListener("pointercancel", handleCancel, listenerOpts);
   };
 }

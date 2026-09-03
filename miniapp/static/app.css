@@ -1277,6 +1277,13 @@ a.flat-row:active, button.flat-row:active { background: var(--surface-alt); }
   z-index: 0;
   pointer-events: none;
 }
+/* Владелец (03.09, стенд с телефона, «дёргано»): свайп сам по себе не сглаживался ни разу —
+   у `.appl-card` не было transition вовсе, поэтому «отпустил не докинув» всегда был мгновенным
+   скачком в исходное положение, а не анимацией. `will-change: transform` подсказывает браузеру
+   слой заранее (перетаскивание — единственное, что меняет transform у карточки). Сам
+   transition работает только КОГДА карточка НЕ тащится — на время жеста класс `.is-dragging`
+   (ставит/снимает screens/applications.js::attachSwipe через swipe.js) снимает его целиком,
+   иначе JS-обновление transform на каждый кадр «гналось» бы за уже идущим переходом. */
 .appl-card {
   position: relative;
   z-index: 1;
@@ -1284,6 +1291,12 @@ a.flat-row:active, button.flat-row:active { background: var(--surface-alt); }
   overflow: auto;
   max-height: min(62vh, 540px);
   overscroll-behavior: contain;
+  will-change: transform;
+  transition: transform var(--dur-swipe-exit) var(--ease-swipe-exit);
+}
+.appl-card.is-dragging {
+  transition: none;
+  user-select: none;
 }
 :root[data-motion="off"] .appl-card { transition: none; }
 

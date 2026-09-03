@@ -89,6 +89,11 @@
   /* ── motion ── */
   --dur:   150ms;
   --ease:  cubic-bezier(.2, .7, .3, 1);
+  /* Возврат/выход карточки отбора заявок (Phase 23 план 05, владелец 03.09 «дёргано»)
+     — отдельные токены от --dur/--ease: жест длиннее и мягче обычных UI-переходов
+     (кнопка/чип), тот же приём именованных токенов, литералов в app.css/swipe.js нет. */
+  --dur-swipe-exit:  220ms;
+  --ease-swipe-exit: cubic-bezier(.2, .8, .2, 1);
 
   /* ── типографика/тач-цели (Phase 19.1, UI-SPEC) ── */
   --font-heading-style: normal;   /* YouLead-пресет переключает на italic отдельной ручкой */
@@ -146,10 +151,12 @@
 /* Motion off (D-17, уровень «off») — ставит клиентский JS поверх prefers-reduced-motion. */
 :root[data-motion="off"] {
   --dur: 0ms;
+  --dur-swipe-exit: 0ms;
 }
 
 @media (prefers-reduced-motion: reduce) {
   :root {
     --dur: 0ms;
+    --dur-swipe-exit: 0ms;
   }
 }
