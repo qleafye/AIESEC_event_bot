@@ -69,8 +69,8 @@ def _shoot(driver, out_path: Path) -> None:
     driver.get(url)
     driver.execute_script(f"localStorage.setItem('{ONBOARDING_KEY}', '1');")
     driver.get(f"{url}#/hub")
-    WebDriverWait(driver, 10).until(EC.presence_of_element_located((By.CLASS_NAME, "hero")))
-    time.sleep(0.3)  # докрутка счётчика монет / шрифты — небольшой запас после появления .hero
+    WebDriverWait(driver, 10).until(EC.presence_of_element_located((By.CLASS_NAME, "plate-facts")))
+    time.sleep(1.2)  # докрутка счётчика монет (countUp) / шрифты — запас после прихода данных хаба
     save_screenshot(driver, out_path, WINDOW_SIZE)
 
 
