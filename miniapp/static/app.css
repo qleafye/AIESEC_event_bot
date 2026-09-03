@@ -1337,3 +1337,130 @@ a.flat-row:active, button.flat-row:active { background: var(--surface-alt); }
 
 .appl-card-holder.is-loading { opacity: .5; pointer-events: none; transition: opacity var(--dur) var(--ease); }
 :root[data-motion="off"] .appl-card-holder.is-loading { transition: none; }
+
+/* ── Phase 23.1 (D-01, макеты 03.09): плита, приоритетное действие, плоские строки ── */
+
+.plate {
+  position: relative;
+  overflow: hidden;
+  background: var(--accent);
+  color: var(--on-accent);
+  border-bottom: 3px solid var(--secondary);
+  /* Вынос за боковой padding body + снятие ВЕРХНЕГО отступа body, чтобы плита
+     примыкала к шапке приложения. --tg-safe-top не компенсируется намеренно:
+     это область системной шторки. Тот же приём выноса, что у .settings-search. */
+  margin: calc(-1 * var(--sp-3)) calc(-1 * var(--sp-4)) var(--sp-5);
+  padding: var(--sp-5) var(--sp-4) var(--sp-4);
+}
+/* Фрагмент фирменного паттерна. Картинка и её непрозрачность приходят переменными
+   из /app/theme.css (план 23.1-02); без набора оформления плита просто заливка. */
+.plate::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background-image: var(--plate-pattern, none);
+  background-repeat: no-repeat;
+  background-size: var(--plate-pattern-size, 1368px) auto;
+  background-position: var(--plate-pattern-x, -162px) var(--plate-pattern-y, -324px);
+  opacity: var(--plate-pattern-opacity, 1);
+}
+.plate > * { position: relative; }
+
+.plate-eyebrow {
+  font-size: 11px; font-weight: 700; letter-spacing: .12em;
+  text-transform: uppercase; color: var(--on-accent-soft);
+}
+.plate-big {
+  font-family: var(--font-heading); font-weight: 800;
+  font-size: clamp(44px, 16vw, 64px); line-height: 1; letter-spacing: -.035em;
+  font-variant-numeric: tabular-nums;
+}
+/* Герой плиты. font-style берётся из ручки оформления (--font-heading-style,
+   tokens.css) — курсив Raleway 800 Italic включает пресет, а не жёсткий CSS (D-02/D-05). */
+.plate h1, .plate-title {
+  font-family: var(--font-heading); font-weight: 800; font-size: 28px;
+  line-height: 1.12; letter-spacing: -.02em;
+  font-style: var(--font-heading-style); margin: 0;
+}
+.plate-sub { font-size: 13px; line-height: 1.3; color: var(--on-accent-strong); }
+.plate-rule {
+  height: 1px; border: 0; background: var(--on-accent-rule);
+  margin: var(--sp-4) 0 var(--sp-3);
+}
+.plate-row { display: flex; align-items: flex-end; gap: var(--sp-2); }
+.plate-facts {
+  display: flex; flex-wrap: wrap; gap: var(--sp-3) var(--sp-6);
+  font-size: 13px; line-height: 1.3; color: var(--on-accent-strong);
+}
+.plate-facts b { font-family: var(--font-heading); font-weight: 800; color: var(--on-accent); }
+.plate-mono {
+  width: 64px; height: 64px; flex: 0 0 64px;   /* макет 66px -> 64px, 4px-шаг */
+  border-radius: var(--radius-lg);
+  background: var(--on-accent-wash); border: 1px solid var(--on-accent-line);
+  display: grid; place-items: center;
+  font-family: var(--font-heading); font-weight: 800; font-size: 24px;
+  letter-spacing: -.02em;
+}
+/* Чип на плите: белая таблетка (заливка --secondary или --surface) поверх заливки. */
+.plate .chip.sec { background: var(--secondary); color: var(--on-accent); font-weight: 700; }
+.plate .chip.ok  { background: var(--surface); color: var(--success-text); font-weight: 700; }
+
+/* Приоритетное действие — ЕДИНСТВЕННАЯ карточка на экране (правило «один сигнатурный
+   блок»): рамка + оранжевое ребро слева, без второй такой же на том же экране. */
+.next-action {
+  display: flex; align-items: center; gap: var(--sp-3); width: 100%;
+  background: var(--surface); border: 1px solid var(--border);
+  border-left: 3px solid var(--secondary); border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-card);
+  padding: var(--sp-3); margin-bottom: var(--sp-6);
+  text-align: left; color: var(--text); font: inherit; cursor: pointer;
+}
+.next-action:active { background: var(--surface-alt); }
+.next-action-body { flex: 1; min-width: 0; }
+.next-action-title {
+  font-family: var(--font-heading); font-weight: 800; font-size: 17px;
+  line-height: 1.25; letter-spacing: -.01em;
+}
+.next-action-meta { font-size: 12px; line-height: 1.4; color: var(--text-faint); margin-top: 2px; }
+.next-action-reward { flex: none; display: flex; align-items: center; gap: var(--sp-1); }
+.next-action-reward b {
+  font-family: var(--font-heading); font-weight: 800; font-size: 26px;
+  color: var(--accent-text); font-variant-numeric: tabular-nums;
+}
+.next-action-reward .icon { width: 20px; height: 20px; color: var(--secondary); }
+
+/* Плоский список во всю ширину экрана — модификатор существующего .flat-list, а не
+   второй списочный компонент (keep-лист обзора 19.1: расширять flatRow, не заменять). */
+.flat-list.flush {
+  margin: 0 calc(-1 * var(--sp-4)) var(--sp-6);
+  border-left: 0; border-right: 0; border-radius: 0;
+}
+.flat-list.flush .flat-row { min-height: 56px; padding: var(--sp-2) var(--sp-4); }
+.flat-row-value {
+  flex: none; text-align: right; color: var(--text-muted);
+  font-variant-numeric: tabular-nums;
+}
+.flat-row-value.ok { color: var(--success-text); font-weight: 700; }
+.flat-row-value.strong { color: var(--text); }
+.flat-row-chev { flex: none; display: flex; color: var(--border-strong); }
+.flat-row-chev .icon { width: 16px; height: 16px; }
+.flat-row-num {
+  flex: none; font-family: var(--font-heading); font-weight: 800; font-size: 17px;
+  color: var(--accent-text); font-variant-numeric: tabular-nums;
+}
+
+/* Якорь низа экрана (дата и место форума в хабе): композиция вместо пустоты —
+   не карточка, а блок на фоне --bg с верхним хайрлайном. */
+.screen-anchor {
+  display: flex; align-items: flex-start; gap: var(--sp-3);
+  margin: var(--sp-5) calc(-1 * var(--sp-4)) 0;
+  padding: var(--sp-5) var(--sp-4) var(--sp-4);
+  border-top: 1px solid var(--border);
+}
+.screen-anchor .icon { width: 22px; height: 22px; color: var(--secondary); margin-top: 2px; }
+.screen-anchor-title {
+  font-family: var(--font-heading); font-weight: 800; font-size: 20px;
+  line-height: 1.15; letter-spacing: -.02em;
+}
+.screen-anchor-sub { font-size: 13px; color: var(--text-faint); margin-top: 2px; }
