@@ -31,12 +31,11 @@ from tests.test_miniapp_routes import (
     _hdr,
     _seed,
     _set,
-    _standard_seed,
     _use_tmp_db,
 )
 
 REG_MANAGER_ID = 900603        # reg_manager, без привязки к городу (видит все)
-BOUND_REG_MANAGER_ID = 900601  # reg_manager, привязан к spb (сидируется _standard_seed)
+BOUND_REG_MANAGER_ID = 900604  # reg_manager, привязан к spb
 
 
 def _run(coro):
@@ -116,9 +115,13 @@ def bot_api(monkeypatch):
 
 @pytest.fixture
 def client(tmp_path):
+    # НЕ _standard_seed() — она сидирует делегата PENDING_ID, который тихо всплыл бы в КАЖДОЙ
+    # проверке очереди/remaining этого файла. Сидируем только то, что нужно API заявок.
     db_path = _use_tmp_db(tmp_path, "miniapp_applications.db")
-    _standard_seed()
-    _seed(staff=[(REG_MANAGER_ID, "reg_manager", None)])
+    _seed(
+        staff=[(REG_MANAGER_ID, "reg_manager", None), (BOUND_REG_MANAGER_ID, "reg_manager", "spb")],
+        settings={"miniapp_enabled": "on", "event_name": "форума YouLead"},
+    )
     return _client(_cfg(db_path))
 
 
@@ -246,7 +249,7 @@ def test_approve_twice_second_is_already(client):
     assert len(_decision_rows(970002)) == 1
 
 
-def test_reject_empty_reason_allowed(client):
+def test_reject_with_blank_reason_is_allowed(client):
     _seed_user(970003)
     resp = client.post("/app/api/applications/970003/reject", json={}, headers=_hdr(REG_MANAGER_ID))
     assert resp.status_code == 200, resp.text
@@ -337,7 +340,7 @@ def test_flush_enqueues_exactly_one_row_and_is_idempotent(client):
 
 # ── городской скоуп на прямом POST ───────────────────────────────────────────────────────
 
-def test_out_of_scope_direct_post_returns_403(client):
+def test_direct_post_on_wrong_city_is_forbidden(client):
     _set("event_city_enabled", "on")
     _seed_user(970008, event_city="msk")
     resp = client.post("/app/api/applications/970008/approve", headers=_hdr(BOUND_REG_MANAGER_ID))
