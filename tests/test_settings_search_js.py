@@ -167,3 +167,42 @@ def test_highlight_match_wraps_each_hit_in_one_mark(result):
     assert _plain(overlap) == "Дата оплаты"
     # Без отрезков — одна строка без mark.
     assert result["highlight"]["none"] == ["Реквизиты"]
+
+
+# ── settingSpec: enum on/off -> тумблер (D-17 Task 1, владелец 03.09) ────────────────────
+
+SETTING_SPEC_SCRIPT = """
+const m = await import(%(url)s);
+const out = {};
+out.on_off = m.settingSpec({ key: "party_enabled", type: "enum", options: ["on", "off"], label: "Party" }).type;
+out.off_on = m.settingSpec({ key: "r", type: "enum", options: ["off", "on"], label: "R" }).type;
+out.three = m.settingSpec({ key: "registration_mode", type: "enum", options: ["short", "full"], label: "Форма" }).type;
+out.many = m.settingSpec({ key: "x", type: "enum", options: ["a", "b", "c", "d", "e"], label: "X" }).type;
+out.real_toggle = m.settingSpec({ key: "reg_q_age", type: "toggle", label: "Возраст" }).type;
+console.log(JSON.stringify(out));
+"""
+
+
+@pytest.fixture(scope="module")
+def setting_spec_result() -> dict:
+    node = shutil.which("node")
+    if not node:
+        pytest.skip("node не найден в PATH — поведенческий тест settingSpec form.js пропущен")
+    script = SETTING_SPEC_SCRIPT % {"url": json.dumps(FORM_JS.resolve().as_uri())}
+    proc = subprocess.run(
+        [node, "--input-type=module", "-e", script],
+        cwd=str(ROOT), capture_output=True, text=True, encoding="utf-8", timeout=60,
+    )
+    assert proc.returncode == 0, proc.stderr[-3000:]
+    return json.loads(proc.stdout.strip().splitlines()[-1])
+
+
+def test_setting_spec_enum_on_off_renders_as_toggle(setting_spec_result):
+    # D-17 Task 1: options ровно {"on","off"} (порядок неважен) -> тот же control, что
+    # настоящий toggle (reg_q_*) — владелец жаловался на два разных визуала одного вопроса.
+    assert setting_spec_result["on_off"] == "toggle"
+    assert setting_spec_result["off_on"] == "toggle"
+    assert setting_spec_result["real_toggle"] == "toggle"
+    # Не-on/off enum (даже двухвариантный) остаётся chip-выбором — это НЕ вопрос «да/нет».
+    assert setting_spec_result["three"] == "choice-chips"
+    assert setting_spec_result["many"] == "select"

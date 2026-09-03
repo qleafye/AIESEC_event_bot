@@ -1060,12 +1060,80 @@ a.flat-row:active, button.flat-row:active { background: var(--surface-alt); }
 }
 .settings-row .field-actions { display: flex; flex-wrap: wrap; gap: var(--sp-2); margin-top: var(--sp-2); }
 .settings-row .field-actions .btn { width: auto; min-height: var(--tap-min); margin: 0; }
-.settings-row .flat-row { padding-left: 0; padding-right: 0; border-bottom: 0; }
+/* Единый вертикальный ритм строк (D-17 Task 2, владелец 03.09: «отступы кривые, интерфейс
+   как будто разный») — ОДИН источник вертикального отступа на строку, .settings-row сверху/
+   снизу (var(--sp-3)); всё, что рисуется внутри (.flat-row тумблера, инпуты полей), своего
+   вертикального паддинга не добавляет — иначе строка-тумблер получала бы вдвое больше
+   высоты (sp-3 снаружи + sp-3 у .flat-row внутри), чем текстовая строка того же поля. */
+.settings-row .flat-row { padding: 0; border-bottom: 0; }
 .settings-row .flat-row-title { font-weight: 400; }
 .settings-row.is-flash > .field-label-row { background: var(--accent-soft); transition: background var(--dur) var(--ease); }
+/* Тумблер (toggle И enum on/off, D-17 Task 1) — .field-label-row у него несёт только маркер
+   состояния; label-row целиком прячется (маркер переехал в .settings-row-toggle-line, buildRow
+   screens/settings.js), без орфанной первой строки «маркер сам по себе» над тумблером —
+   тумблер становится ОДНОЙ строкой той же высоты, что у остальных полей. */
+.settings-row-toggle > .field-label-row { display: none; }
+/* control (.flat-row, сам button) и маркер — соседи в одном флекс-ряду, не вложенные button-ы
+   (buildRow: HTML не допускает button-в-button). */
+.settings-row-toggle-line { display: flex; align-items: center; gap: var(--sp-2); }
+.settings-row-toggle-line > .flat-row { flex: 1 1 auto; min-width: 0; }
+.settings-row-toggle-line > .field-state { flex: none; }
 @media (max-width: 359px) {
   .settings-row > .field-label-row { flex-direction: column; align-items: flex-start; }
 }
+
+/* Матрица «трек × вопрос» (D-17 Task 3, владелец 03.09: «одна строка на вопрос, три маленьких
+   тумблера вместо трёх отдельных строк») — screens/settings.js::buildMatrix, заменяет флат-
+   список группы reg_questions. Строка ≥ var(--tap-min) (44px), тумблер ≥ 32px — читаемо и
+   тапабельно даже на 360px (лейбл переносится по словам, колонки не сжимаются). */
+.settings-matrix { display: flex; flex-direction: column; }
+.settings-matrix-head {
+  display: flex; align-items: flex-end; gap: var(--sp-2);
+  padding: 0 0 var(--sp-2);
+  color: var(--text-faint);
+}
+.settings-matrix-head-question { flex: 1 1 auto; min-width: 0; }
+/* Подписи колонок («Полная»/«Вечеринка»/«Короткая») шире тумблера (32px) — переносятся по
+   словам на 2 строки, мельче и без uppercase (заглавные буквы визуально шире тех же букв
+   строчными) вместо обрезки/наложения на соседнюю колонку. */
+.settings-matrix-head-col {
+  flex: none;
+  width: 32px;
+  text-align: center;
+  text-transform: none;
+  font-size: 10px;
+  line-height: 1.15;
+  white-space: normal;
+  overflow-wrap: break-word;
+}
+.settings-matrix-row {
+  display: flex; align-items: center; gap: var(--sp-2);
+  min-height: var(--tap-min);
+  padding: var(--sp-2) 0;
+  border-bottom: 1px solid var(--border);
+}
+.settings-matrix-row:last-child { border-bottom: 0; }
+.settings-matrix-row-label { flex: 1 1 auto; min-width: 0; font-size: 14px; color: var(--text); overflow-wrap: anywhere; }
+.settings-matrix-row-toggles { display: flex; align-items: center; gap: var(--sp-2); flex: none; }
+.settings-matrix-toggle {
+  flex: none;
+  width: 32px;
+  height: 32px;
+  border-radius: var(--radius-pill);
+  border: 1px solid var(--border);
+  background: var(--surface-alt);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-faint);
+}
+.settings-matrix-toggle .icon { width: 16px; height: 16px; opacity: 0; }
+.settings-matrix-toggle.on { background: var(--accent-soft); border-color: var(--accent); color: var(--accent-text); }
+.settings-matrix-toggle.on .icon { opacity: 1; }
+/* «Наследует» (party — от полной формы, отсутствие явного значения) / «не переопределено»
+   (short) — приглушённая заливка, D-17 Task 3: тумблер уже показывает ДЕЙСТВУЮЩЕЕ значение,
+   просто помечает, что оно не задано явно для этого трека. */
+.settings-matrix-toggle.is-inherited { opacity: .5; }
 
 /* Подсказка реестра под подписью (form.js: spec.help) и дропзона photo/file реестра:
    миниатюра сохранённого значения + текст прогресса загрузки (текст — из payload). */
