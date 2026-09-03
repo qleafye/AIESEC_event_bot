@@ -147,3 +147,86 @@ def test_missing_start_x_does_not_trigger_edge_guard(result):
     r = result["results"]["no_start_x_still_commits"]
     assert r["action"] == "approve"
     assert "edge" not in r
+
+
+# ── attachSwipe: тап/драг, начатый на интерактивном потомке (владелец 03.09) ────────────────
+# «Показать всё» переставала открываться после того, как attachSwipe стал ловить pointerdown на
+# всей карточке и звать el.setPointerCapture — браузер ретаргетит все последующие pointer- и
+# производные click-события на захвативший элемент, а не на исходную кнопку. Минимальный
+# фейковый DOM (без jsdom в проекте, тот же приём файла) — только то, что использует attachSwipe:
+# addEventListener/removeEventListener, closest(), setPointerCapture, style, clientWidth.
+ATTACH_SWIPE_NODE_SCRIPT = """
+globalThis.document = { documentElement: { dataset: { motion: "" } } };
+
+class FakeEl {
+  constructor(tag, opts = {}) {
+    this.tagName = tag.toUpperCase();
+    this.style = {};
+    this.clientWidth = opts.clientWidth ?? 300;
+    this._listeners = {};
+    this.parent = opts.parent || null;
+    this.capturedIds = [];
+  }
+  addEventListener(type, fn) { (this._listeners[type] ||= []).push(fn); }
+  removeEventListener(type, fn) {
+    this._listeners[type] = (this._listeners[type] || []).filter((f) => f !== fn);
+  }
+  dispatch(type, evt) { for (const fn of (this._listeners[type] || []).slice()) fn(evt); }
+  setPointerCapture(id) { this.capturedIds.push(id); }
+  closest(selector) {
+    const tags = selector.split(",").map((s) => s.trim().toUpperCase());
+    let node = this;
+    while (node) {
+      if (tags.includes(node.tagName)) return node;
+      node = node.parent;
+    }
+    return null;
+  }
+}
+
+const m = await import(%(url)s);
+const card = new FakeEl("article", { clientWidth: 300 });
+const button = new FakeEl("button", { parent: card });
+
+const commits = [];
+const cancels = [];
+m.attachSwipe(card, {
+  onCommit: (a) => commits.push(a),
+  onCancel: (d) => cancels.push(d),
+});
+
+// Драг far-right, начатый НА КНОПКЕ — не должен ни захватить указатель, ни решить жест.
+card.dispatch("pointerdown", { pointerId: 1, target: button, clientX: 150, clientY: 0 });
+card.dispatch("pointermove", { pointerId: 1, target: button, clientX: 260, clientY: 0 });
+card.dispatch("pointerup", { pointerId: 1, target: button, clientX: 260, clientY: 0 });
+
+// Тот же драг, начатый на самой карточке — жест решает как обычно (approve).
+card.dispatch("pointerdown", { pointerId: 2, target: card, clientX: 150, clientY: 0 });
+card.dispatch("pointermove", { pointerId: 2, target: card, clientX: 260, clientY: 0 });
+card.dispatch("pointerup", { pointerId: 2, target: card, clientX: 260, clientY: 0 });
+
+console.log(JSON.stringify({ commits, cancels, captured: card.capturedIds }));
+"""
+
+
+@pytest.fixture(scope="module")
+def interactive_result() -> dict:
+    node = shutil.which("node")
+    if not node:
+        pytest.skip("node не найден в PATH — поведенческий тест attachSwipe пропущен")
+    script = ATTACH_SWIPE_NODE_SCRIPT % {"url": json.dumps(SWIPE_JS.resolve().as_uri())}
+    proc = subprocess.run(
+        [node, "--input-type=module", "-e", script],
+        cwd=str(ROOT), capture_output=True, text=True, encoding="utf-8", timeout=120,
+    )
+    assert proc.returncode == 0, proc.stderr[-3000:]
+    return json.loads(proc.stdout.strip().splitlines()[-1])
+
+
+def test_pointerdown_on_interactive_descendant_does_not_capture_or_decide(interactive_result):
+    assert interactive_result["captured"] == [2]
+    assert interactive_result["cancels"] == []
+
+
+def test_pointerdown_on_card_itself_still_commits_swipe_decision(interactive_result):
+    assert interactive_result["commits"] == ["approve"]

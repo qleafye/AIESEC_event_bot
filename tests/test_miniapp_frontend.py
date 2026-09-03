@@ -1374,6 +1374,21 @@ def test_attach_swipe_sets_touch_action_pan_y_and_reads_motion_tier():
         assert ev in attach_src, ev
 
 
+def test_attach_swipe_skips_interactive_descendants_before_capture():
+    """Владелец 03.09: pointerdown на кнопке/ссылке внутри карточки (например «Показать всё»)
+    не должен начинать захват указателя — иначе браузер ретаргетит все последующие pointer- и
+    производные click-события на саму карточку, и кнопка перестаёт отвечать на тап (см. node-
+    поведенческий тест tests/test_swipe_js.py)."""
+    text = _js_without_comments(SWIPE_JS)
+    assert "button" in text and "summary" in text  # INTERACTIVE_SELECTOR перечисляет теги
+    attach_src = text[text.index("export function attachSwipe"):]
+    handle_down_src = attach_src[attach_src.index("function handleDown"):attach_src.index("function handleMove")]
+    guard_idx = handle_down_src.find("isInteractiveTarget(")
+    capture_idx = handle_down_src.find("setPointerCapture")
+    assert guard_idx != -1, "handleDown не проверяет интерактивную цель"
+    assert guard_idx < capture_idx, "проверка интерактивной цели должна идти раньше setPointerCapture"
+
+
 # ── screens/applications.js: экран #/applications (фаза 23 план 05, D-01..D-09) ─────────
 
 APPLICATIONS_JS = SCREENS_DIR / "applications.js"
