@@ -17,7 +17,7 @@
 // файлов этого плана (только JS/CSS/тесты). Слэш — не человеческий текст, сторож литералов
 // его не видит.
 
-import { flatRow, sectionTitle, emptyState, errorState } from "../ui.js";
+import { sectionTitle, emptyState, errorState } from "../ui.js";
 import { icon } from "../icons.js";
 import { haptic } from "../motion.js";
 import {
@@ -71,7 +71,27 @@ function defaultDisplayText(item) {
   return String(d);
 }
 
-// Маркер состояния строки (UI-SPEC §Color/Typography): per-city直 приоритетнее default/set/
+// Значение контрола (может быть массивом/числом/файлом) -> строка для POST settings/batch
+// (сервер типизирует сам, `_parse_setting`/`validate_setting_value`, тот же приём, что бот).
+function toBatchValue(v) {
+  if (v == null) return null;
+  if (Array.isArray(v)) return v.join(";");
+  return String(v);
+}
+
+// «Станет» в diff-строке (WEB-SET-03) — человеческий предпросмотр локально изменённого
+// значения без похода на сервер: enum/список хранят уже человекочитаемые опции (D-05),
+// сброс (v === null) показывает дефолт реестра.
+function humanDisplayValue(item, v, fileNames) {
+  if (v == null) return defaultDisplayText(item);
+  if (Array.isArray(v)) return v.join(", ");
+  if ((item.type === "photo" || item.type === "file") && fileNames && fileNames.has(item.key)) {
+    return fileNames.get(item.key);
+  }
+  return String(v);
+}
+
+// Маркер состояния строки (UI-SPEC §Color/Typography): per-city приоритетнее default/set/
 // not-set (D-03/D-04). `item.key !== item.base_key` — признак композитного ключа выбранного
 // города (per_city_key), сервер отдаёт его только когда шапка города указывает конкретный
 // город (роутер miniapp/routers/settings.py::_item_for).
@@ -103,6 +123,7 @@ function markerFor(item, texts) {
 // мог снять именно его — без этого повторный заход на экран копил бы по листенеру на visit
 // (паттерн card.js/review.js: unmount снимает то, что завёл render).
 let activeScrollHandler = null;
+let activeDiffCleanup = null;
 
 export async function render(root, params, ctx) {
   const { h, api, me } = ctx;
@@ -113,6 +134,19 @@ export async function render(root, params, ctx) {
   const itemIndex = new Map(); // key -> { item, el }
   const groupCollapsedState = new Map(); // token -> bool
   let query = "";
+
+  // Гибридное сохранение (D-08): тумблер сохраняется сам по себе, отдельным POST batch из
+  // одного изменения (busyToggle — глобальный однократный замок, «один тап = один запрос»).
+  // Остальные типы копятся здесь локально (ключ -> значение с контрола, ЕЩЁ НЕ строка для
+  // сети — toBatchValue() переводит в строку только перед отправкой/показом diff) до тапа на
+  // плавающую панель «Сохранить N изменений». Своя карта вместо form.js::createFormState —
+  // stale «оставить как в боте» требует точечного снятия ОДНОГО ключа из черновика, которого
+  // API createFormState не даёт (только полный reset()); полноценно реализовать это здесь —
+  // три метода Map, тянуть невписывающийся контракт в form.js внутри этого плана незачем.
+  const pending = new Map();
+  const fileNames = new Map(); // key -> имя выбранного файла (для diff-предпросмотра photo/file)
+  let busyToggle = false;
+  let busyBatch = false;
 
   // ── статичный каркас (строится один раз, содержимое заполняется после загрузки) ──────
   const title = h("h1", {});
@@ -137,6 +171,7 @@ export async function render(root, params, ctx) {
   title.textContent = sectionLabelsFromDom().settings || "";
 
   if (activeScrollHandler) window.removeEventListener("scroll", activeScrollHandler);
+  if (activeDiffCleanup) { activeDiffCleanup(); activeDiffCleanup = null; }
   function onScroll() {
     searchBar.classList.toggle("scrolled", window.scrollY > 0);
   }
@@ -214,6 +249,232 @@ export async function render(root, params, ctx) {
   }
   root.append(toast);
 
+  // ── тумблер: сохраняется по касанию (D-08). Опасное направление — тот же confirmBox, что
+  // сегодня (перенос конвенции старого settings.js), текст последствий — только с сервера
+  // (item.confirm_text, T-22-13: клиент не решает, что опасно). Кнопки диалога переиспользуют
+  // ближайшие по смыслу тексты реестра — под точечный «да, эта одна опасная правка» отдельного
+  // ключа план 22-02 не завёл (только общий CTA батча и общий «отменить правки»).
+  let dangerToggle = null;
+  const dangerConfirm = confirmBox(h, {
+    onConfirm: () => { if (dangerToggle) saveToggle(dangerToggle.item, dangerToggle.el, dangerToggle.next); },
+  });
+  root.append(dangerConfirm);
+
+  function openDangerToggleConfirm(item, el, next) {
+    dangerToggle = { item, el, next };
+    dangerConfirm.querySelector("p").textContent = item.confirm_text || "";
+    dangerConfirm.querySelector(".btn.danger").textContent = texts.miniapp_settings_diff_confirm_dangerous_cta_text || "";
+    dangerConfirm.querySelector(".btn.ghost").textContent = texts.miniapp_settings_batch_discard_text || "";
+    dangerConfirm.open();
+  }
+
+  // ── плавающая панель «Сохранить N изменений» (D-08) — появляется при первом dirty
+  // нетумблерном поле; MainButton-паттерн дублирования нет (batch — не MainButton задача:
+  // здесь ДВЕ кнопки — сохранить/отменить, task_edit.js использует MainButton только когда
+  // действие одно). ────────────────────────────────────────────────────────────────────────
+  const batchBtnText = h("span", {});
+  const batchBtn = h("button", { class: "btn", type: "button", onClick: () => openDiffDialog() }, batchBtnText);
+  const batchDiscard = h("button", { class: "btn ghost", type: "button", onClick: () => discardPending() });
+  const batchBar = h("div", { class: "settings-batch-bar off" }, batchBtn, batchDiscard);
+  const batchSpacer = h("div", { class: "settings-batch-spacer hidden" });
+  root.append(batchSpacer, batchBar);
+
+  function updateBatchBar() {
+    const count = pending.size;
+    batchBtnText.textContent = (texts.miniapp_settings_batch_bar_text || "").replace("{count}", String(count));
+    batchDiscard.textContent = texts.miniapp_settings_batch_discard_text || "";
+    batchBar.classList.toggle("off", count === 0);
+    batchSpacer.classList.toggle("hidden", count === 0);
+  }
+
+  function discardPending() {
+    if (busyBatch) return;
+    for (const key of pending.keys()) {
+      const row = itemIndex.get(key);
+      if (row) repaintRow(row.item);
+    }
+    pending.clear();
+    fileNames.clear();
+    updateBatchBar();
+  }
+
+  // ── диалог diff (WEB-SET-03, D-08/D-09) — переиспользует .sheet-backdrop/.sheet (тот же
+  // компонент, что «Ещё» app.js::openOverflowSheet), не заводит нового CSS. Порядок пунктов
+  // (A4 UI-SPEC): обычные → опасные → needs_confirm (Sheets) → stale, единым списком. ────────
+  const diffHeading = h("h2", {});
+  const diffList = h("div", { class: "settings-diff" });
+  const diffConfirmBtn = h("button", { class: "btn", type: "button", onClick: () => submitDiff() });
+  const diffCancelBtn = h("button", { class: "btn ghost", type: "button", onClick: () => closeDiffDialog() });
+  const diffSheet = h(
+    "div", { class: "sheet settings-diff-sheet", role: "dialog", "aria-modal": "true", tabindex: "-1" },
+    diffHeading, diffList, h("div", { class: "task-actions" }, diffConfirmBtn, diffCancelBtn),
+  );
+  const diffBackdrop = h("div", { class: "sheet-backdrop hidden" }, diffSheet);
+  diffBackdrop.addEventListener("click", (e) => { if (e.target === diffBackdrop) closeDiffDialog(); });
+  root.append(diffBackdrop);
+
+  let confirmedKeys = new Set();
+  const needsConfirmState = new Map(); // key -> текст сервера
+  const staleState = new Map(); // key -> {raw, value}
+  let batchErrors = new Map(); // key -> текст ошибки
+
+  function onDiffKeydown(e) {
+    if (e.key === "Escape") closeDiffDialog();
+  }
+
+  function diffCategoryFor(item) {
+    return item.dangerous && item.confirm_text ? "dangerous" : "ordinary";
+  }
+
+  function openDiffDialog() {
+    if (!pending.size) return;
+    confirmedKeys = new Set(
+      [...pending.keys()].filter((key) => diffCategoryFor(itemIndex.get(key).item) === "dangerous"),
+    );
+    needsConfirmState.clear();
+    staleState.clear();
+    batchErrors = new Map();
+    renderDiffList();
+    diffBackdrop.classList.remove("hidden");
+    document.addEventListener("keydown", onDiffKeydown);
+    diffSheet.focus();
+  }
+
+  function closeDiffDialog() {
+    diffBackdrop.classList.add("hidden");
+    document.removeEventListener("keydown", onDiffKeydown);
+  }
+  // Уход с экрана при открытом диалоге (переход по BackButton/ссылке) — снимаем keydown-
+  // листенер вместе со скроллом (unmount снимает то, что завёл render, тот же приём выше).
+  activeDiffCleanup = () => document.removeEventListener("keydown", onDiffKeydown);
+
+  function setDiffBusy(busy) {
+    diffConfirmBtn.disabled = busy;
+    diffCancelBtn.disabled = busy;
+    diffList.querySelectorAll("button").forEach((b) => { b.disabled = busy; });
+  }
+
+  function buildOrdinaryDiffRow(key, item, value) {
+    const category = diffCategoryFor(item);
+    const row = h("div", { class: `settings-diff-row${category === "dangerous" ? " dangerous" : ""}` });
+    row.append(
+      h("p", { class: "settings-diff-label", text: item.label }),
+      h("p", { class: "settings-diff-was" }, `${texts.miniapp_settings_diff_was_label_text || ""}: ${item.display || ""}`),
+      h("p", { class: "settings-diff-will" },
+        `${texts.miniapp_settings_diff_will_label_text || ""}: `,
+        h("span", { class: "settings-diff-value", text: humanDisplayValue(item, value, fileNames) }),
+      ),
+    );
+    if (category === "dangerous") {
+      row.append(h("p", { class: "settings-diff-note" }, icon("alert-triangle"), h("span", { text: item.confirm_text || "" })));
+    }
+    const err = batchErrors.get(key);
+    if (err) row.append(h("p", { class: "settings-diff-note" }, icon("alert-triangle"), h("span", { text: err })));
+    return row;
+  }
+
+  function buildNeedsConfirmRow(item, text) {
+    return h("div", { class: "settings-diff-row dangerous" },
+      h("p", { class: "settings-diff-label", text: item.label }),
+      h("p", { class: "settings-diff-note" }, icon("alert-triangle"), h("span", { text })),
+    );
+  }
+
+  function buildStaleRow(key, item, info) {
+    return h("div", { class: "settings-diff-row stale" },
+      h("p", { class: "settings-diff-label", text: item.label }),
+      h("p", { class: "settings-diff-note" }, icon("alert-triangle"), h("span", { text: texts.miniapp_settings_stale_badge_text || "" })),
+      h("p", { class: "settings-diff-was", text: (texts.miniapp_settings_stale_current_value_text || "").replace("{value}", info.value == null ? "" : String(info.value)) }),
+      h("div", { class: "task-actions" },
+        h("button", { class: "btn secondary", type: "button", text: texts.miniapp_settings_stale_overwrite_label_text || "", onClick: () => resolveStale(key, "overwrite") }),
+        h("button", { class: "btn ghost", type: "button", text: texts.miniapp_settings_stale_keep_label_text || "", onClick: () => resolveStale(key, "keep") }),
+      ),
+    );
+  }
+
+  function resolveStale(key, choice) {
+    staleState.delete(key);
+    if (choice === "overwrite") {
+      confirmedKeys.add(key);
+    } else {
+      pending.delete(key);
+      fileNames.delete(key);
+      const row = itemIndex.get(key);
+      if (row) repaintRow(row.item);
+      updateBatchBar();
+    }
+    if (!pending.size) { closeDiffDialog(); return; }
+    renderDiffList();
+  }
+
+  function renderDiffList() {
+    diffHeading.textContent = texts.miniapp_settings_diff_heading_text || "";
+    const rows = [];
+    for (const [key, value] of pending) {
+      if (needsConfirmState.has(key) || staleState.has(key)) continue;
+      rows.push(buildOrdinaryDiffRow(key, itemIndex.get(key).item, value));
+    }
+    for (const [key, text] of needsConfirmState) rows.push(buildNeedsConfirmRow(itemIndex.get(key).item, text));
+    for (const [key, info] of staleState) rows.push(buildStaleRow(key, itemIndex.get(key).item, info));
+    diffList.replaceChildren(...rows);
+
+    const hasWarn = [...pending.keys()].some((k) => diffCategoryFor(itemIndex.get(k).item) === "dangerous")
+      || needsConfirmState.size > 0 || staleState.size > 0;
+    diffConfirmBtn.textContent = hasWarn
+      ? (texts.miniapp_settings_diff_confirm_dangerous_cta_text || "")
+      : (texts.miniapp_settings_diff_confirm_cta_text || "");
+    diffCancelBtn.textContent = texts.miniapp_settings_batch_discard_text || "";
+  }
+
+  async function submitDiff() {
+    if (busyBatch || !pending.size) return;
+    busyBatch = true;
+    batchBar.classList.add("busy");
+    setDiffBusy(true);
+    try {
+      const changes = [...pending.entries()].map(([key, value]) => ({ key, value: toBatchValue(value) }));
+      const base = {};
+      for (const key of pending.keys()) base[key] = itemIndex.get(key).item.raw;
+      const resp = await api("/admin/settings/batch", { method: "POST", body: { changes, base, confirm: [...confirmedKeys] } });
+
+      batchErrors = new Map(Object.entries(resp.errors || {}));
+      for (const [key, text] of batchErrors) {
+        const row = itemIndex.get(key);
+        if (row) setFieldState(row.el, "error", { text });
+      }
+
+      needsConfirmState.clear();
+      for (const entry of resp.needs_confirm || []) {
+        needsConfirmState.set(entry.key, entry.text);
+        confirmedKeys.add(entry.key);
+      }
+
+      staleState.clear();
+      for (const entry of resp.stale || []) staleState.set(entry.key, entry);
+
+      if (batchErrors.size || needsConfirmState.size || staleState.size) {
+        renderDiffList();
+        return;
+      }
+
+      for (const key of resp.saved || []) {
+        pending.delete(key);
+        fileNames.delete(key);
+      }
+      for (const item of resp.items || []) repaintRow(item);
+      updateBatchBar();
+      closeDiffDialog();
+      haptic("success");
+      showToast(texts.miniapp_settings_saved_toast_text || "", "success");
+    } catch (err) {
+      if (!isAuthError(err)) showToast(errorText(err, texts.miniapp_settings_error_toast_text || ""), "warn");
+    } finally {
+      busyBatch = false;
+      batchBar.classList.remove("busy");
+      setDiffBusy(false);
+    }
+  }
+
   // ── строка настройки: field() из form.js + маркер состояния (расширение .field, не новый
   // контейнер — settings-row добавляется прямо на узел field()). ─────────────────────────
   function buildRow(item) {
@@ -276,10 +537,70 @@ export async function render(root, params, ctx) {
     }
   }
 
+  // Точечная перерисовка одной строки СВЕЖИМ item (после сохранения/отмены/stale-«оставить
+  // как в боте») — вместо попытки обновить произвольный контрол на месте (у большинства
+  // типов form.js нет универсального setValue, см. комментарий у `pending` выше). Заменяет
+  // DOM-узел строки, не трогая соседей — фокус/скролл остальной страницы не прыгает.
+  function repaintRow(item) {
+    const prev = itemIndex.get(item.key);
+    const row = buildRow(item);
+    itemIndex.set(item.key, row);
+    if (prev && prev.el && prev.el.parentNode) prev.el.replaceWith(row.el);
+    if (query) paintHighlight(row.el, item, null);
+    return row;
+  }
+
   function onFieldChange(item, el, value) {
-    // Задача 1 — только каркас: значение фиксируется локально на самом контроле, сохранением
-    // занимается задача 2 (гибридный batch/toggle). Тумблер тут ничего не пишет — иначе
-    // отрисовал бы "включено" до реального ответа сервера (D-08 требует именно так).
+    if (item.type === "toggle") {
+      // toggleControl(form.js) уже отдаёт СЛЕДУЮЩЕЕ значение ("on"/"off"), не текущее —
+      // сохраняется сразу (D-08); опасное направление сначала подтверждается (item.confirm_text
+      // — единственный источник опасности, T-22-13: клиент ничего не решает сам).
+      if (item.confirm_text) openDangerToggleConfirm(item, el, value);
+      else saveToggle(item, el, value);
+      return;
+    }
+    pending.set(item.key, value);
+    updateBatchBar();
+  }
+
+  // ── тумблер: один POST batch из одного изменения (D-08). ────────────────────────────────
+  async function saveToggle(item, el, nextValue) {
+    if (busyToggle) return;
+    busyToggle = true;
+    dangerConfirm.close();
+    const wasDangerous = Boolean(item.confirm_text);
+    try {
+      const resp = await api("/admin/settings/batch", { method: "POST", body: {
+        changes: [{ key: item.key, value: nextValue }],
+        base: { [item.key]: item.raw },
+        confirm: wasDangerous ? [item.key] : [],
+      } });
+      if (resp.errors && resp.errors[item.key]) {
+        setFieldState(el, "error", { text: resp.errors[item.key] });
+        return;
+      }
+      if (resp.saved && resp.saved.includes(item.key) && resp.items && resp.items[0]) {
+        const row = repaintRow(resp.items[0]);
+        row.el.classList.add("is-flash");
+        setTimeout(() => row.el.classList.remove("is-flash"), 400);
+        haptic("success");
+        showToast(
+          wasDangerous ? texts.miniapp_settings_dangerous_saved_toast_text : texts.miniapp_settings_saved_toast_text,
+          "success",
+        );
+        return;
+      }
+      // needs_confirm/stale на одиночном тумблере — нештатно (сервер уже подтвердил опасность
+      // текстом item.confirm_text до отправки); безопасный отказ — перечитать реестр целиком,
+      // не оставлять строку в неопределённом визуальном состоянии.
+      await loadAndRender();
+    } catch (err) {
+      if (!isAuthError(err)) {
+        setFieldState(el, "error", { text: errorText(err, texts.miniapp_settings_error_toast_text || "") });
+      }
+    } finally {
+      busyToggle = false;
+    }
   }
 
   // ── карточка группы: заголовок-кнопка (счётчик + шеврон, вращение — CSS .collapsed) +
@@ -466,5 +787,9 @@ export function unmount() {
   if (activeScrollHandler) {
     window.removeEventListener("scroll", activeScrollHandler);
     activeScrollHandler = null;
+  }
+  if (activeDiffCleanup) {
+    activeDiffCleanup();
+    activeDiffCleanup = null;
   }
 }
