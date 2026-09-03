@@ -1,7 +1,9 @@
-// «Рейтинг» (D-19): подиум топ-3, плоские строки мест 4–10, закреплённая своя строка («ещё N
-// монет до M-го места» либо факт лидерства) и обезличенный хвост «ещё K участников» — имена
-// за пределами топ-10 в DOM не попадают (T-19.1-18). Топ-1 у самого зрителя — хаптик успеха
-// (все уровни) и конфетти (только motion "full").
+// «Рейтинг» (D-19): плита со своим местом (план 23.1-06 — та же система, что и остальные семь
+// делегатских экранов; своего места ещё нет -> плиты нет вовсе, экран начинается подиумом),
+// подиум топ-3, плоские строки мест 4–10, закреплённая своя строка («ещё N монет до M-го
+// места» либо факт лидерства) и обезличенный хвост «ещё K участников» — имена за пределами
+// топ-10 в DOM не попадают (T-19.1-18). Топ-1 у самого зрителя — хаптик успеха (все уровни) и
+// конфетти (только motion "full").
 
 import { flatRow, emptyState } from "../ui.js";
 import { icon } from "../icons.js";
@@ -69,10 +71,26 @@ function pinnedRow(h, board) {
 export async function render(root, params, ctx) {
   const { h, api, me } = ctx;
 
+  let hub = {};
+  try { hub = await api("/hub"); } catch (_) {
+    // Пятый источник подписей не заводим (см. hub.js) — отказ ручки обвязки не роняет
+    // экран, своего места без надзаголовка/единицы не рисуем вовсе (см. ниже).
+  }
+
   async function load() {
     root.replaceChildren(h("div", { class: "loading", text: "Загрузка…" }));
     const board = await api("/leaderboard?limit=50");
-    root.replaceChildren(h("h1", { text: "Рейтинг" }));
+
+    const myRank = board.me && board.me.rank != null ? board.me.rank : null;
+    root.replaceChildren(...[
+      myRank == null ? null : h("section", { class: "plate plate--list plate--rank" },
+        h("div", { class: "plate-eyebrow", text: hub.rank_eyebrow || "" }),
+        h("div", { class: "plate-row" },
+          h("span", { class: "plate-big", text: String(myRank) }),
+          h("span", { class: "plate-sub", text: hub.rank_unit || "" }),
+        ),
+      ),
+    ].filter(Boolean));
 
     if (!board.items.length) {
       root.append(emptyState(h, {
@@ -89,7 +107,7 @@ export async function render(root, params, ctx) {
 
     const restRows = board.items.slice(3, 10);
     if (restRows.length) {
-      const list = h("div", { class: "flat-list" });
+      const list = h("div", { class: "flat-list flush" });
       for (const item of restRows) list.append(rankRow(h, item));
       root.append(list);
     }

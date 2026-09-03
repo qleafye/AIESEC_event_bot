@@ -1,7 +1,8 @@
-// «Монеты» (зеркало экрана «🪙 Мои монеты» бота): крупный баланс (Display-роль, tabular-nums,
-// иконка coin), докручиваемый через motion.js::countUp (D-17), история операций плоскими
-// строками (дата+причина слева, дельта справа) постранично с «Показать ещё» (D-07). Подписи
-// источников приходят из API (реестр).
+// «Монеты» (зеркало экрана «🪙 Мои монеты» бота): плита с балансом (план 23.1-06 — та же
+// система, что и остальные семь делегатских экранов), крупный баланс (Display-роль,
+// tabular-nums, иконка coin), докручиваемый через motion.js::countUp (D-17), чип-переход на
+// рейтинг справа, история операций плоскими строками (дата+причина слева, дельта справа)
+// постранично с «Показать ещё» (D-07). Подписи источников приходят из API (реестр).
 
 import { flatRow, sectionTitle, emptyState } from "../ui.js";
 import { icon } from "../icons.js";
@@ -28,24 +29,33 @@ export async function render(root, params, ctx) {
   const { h, api, navigate, me } = ctx;
   const bal = await api("/coins/balance");
 
-  const balanceValue = h("span", { class: "stat-value", text: "0" });
+  let hub = {};
+  try { hub = await api("/hub"); } catch (_) {
+    // Пятый источник подписей не заводим (см. hub.js) — отказ ручки обвязки не роняет
+    // экран, плита остаётся без надзаголовка/единицы.
+  }
+
+  const plateBig = h("span", { class: "plate-big", text: "0" });
+  const rankChip = bal.rank == null ? null : h("button", {
+    class: "chip sec plate-rank", type: "button",
+    onClick: () => navigate("#/leaderboard"),
+    text: bal.participants ? `${bal.rank}-й из ${bal.participants}` : `${bal.rank}-й`,
+  });
   root.append(
-    h("h1", { text: "Монеты" }),
-    h("div", { class: "stats" },
-      h("div", { class: "card stat" },
-        h("div", { class: "balance-big" }, icon("coin"), balanceValue),
-        h("div", { class: "faint", text: "баланс" }),
-      ),
-      h("div", { class: "card stat clickable", onClick: () => navigate("#/leaderboard") },
-        h("div", { class: "stat-value", text: bal.rank == null ? "—" : String(bal.rank) }),
-        h("div", { class: "faint", text: bal.participants ? `место из ${bal.participants}` : "место" }),
+    h("section", { class: "plate plate--list plate--coins" },
+      h("div", { class: "plate-eyebrow", text: hub.balance_eyebrow || "" }),
+      h("div", { class: "plate-row" },
+        plateBig,
+        h("span", { class: "plate-coin" }, icon("coin")),
+        h("span", { class: "plate-sub", text: hub.balance_unit || "" }),
+        rankChip,
       ),
     ),
   );
-  countUp(balanceValue, 0, bal.balance || 0);
+  countUp(plateBig, 0, bal.balance || 0);
 
   root.append(sectionTitle(h, "История"));
-  const list = h("div", { class: "flat-list" });
+  const list = h("div", { class: "flat-list flush" });
   const foot = h("div", { class: "list-foot" });
   root.append(list, foot);
 
