@@ -531,9 +531,16 @@ def test_registration_mode_and_reg_university_mode_equiv(tmp_path):
     # which still lives in handlers/registration.py (unmoved engine helper).
     import handlers.reg_steps as reg_steps_mod
 
+    class _Chat:
+        def __init__(self, cid=1):
+            self.id = cid
+
     class _Msg:
         def __init__(self, text="Иван Иванов"):
             self.text = text
+            # UAT round 2 (21-12): _after_full_name читает message.chat.id (тем же приёмом,
+            # что _advance) — без chat падает AttributeError раньше проверки сценария.
+            self.chat = _Chat()
 
         async def answer(self, *a, **k):
             return None
@@ -547,6 +554,9 @@ def test_registration_mode_and_reg_university_mode_equiv(tmp_path):
 
         async def get_data(self):
             return dict(self.data)
+
+        async def set_data(self, data):
+            self.data = dict(data)
 
     async def go_full_name():
         finalize_calls = []
