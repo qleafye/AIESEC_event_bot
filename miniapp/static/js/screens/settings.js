@@ -166,7 +166,18 @@ export async function render(root, params, ctx) {
 
 function sectionItemsFlat(section) {
   const out = [...section.toggles];
-  for (const group of section.groups) out.push(...group.items);
+  for (const group of section.groups) {
+    out.push(...group.items);
+    // D-17 Task 3: party/short трек-композиты матрицы — свои ключи (не входят в group.items,
+    // у них нет item_spec с сервера), но должны находиться поиском и считаться в точке
+    // pending на плитке раздела наравне с обычными настройками (докстринг файла).
+    if (group.matrix) {
+      for (const row of group.matrix.rows) out.push(
+        { key: row.party.key, label: row.label, help: "" },
+        { key: row.short.key, label: row.label, help: "" },
+      );
+    }
+  }
   return out;
 }
 
@@ -391,6 +402,11 @@ async function renderSection(root, code, ctx) {
   let section = null;
   const itemIndex = new Map(); // key -> { item, el } — ТЕКУЩЕЕ отображение этой страницы
   const groupCollapsedState = new Map(); // token -> bool
+  // D-17 Task 3: ячейки матрицы «трек × вопрос» не проходят через buildRow()/itemIndex
+  // (у них нет отдельной строки-field, три тумблера сидят в одной строке вопроса) — свой
+  // маленький реестр key -> paint(value) перекрашивает только сам тумблер, updateBatchBar()
+  // зовёт его вместе с обычной перерисовкой (единая точка «что-то в pending изменилось»).
+  const matrixCellPaint = new Map();
   let busyToggle = false;
   let busyBatch = false;
 
@@ -609,6 +625,20 @@ async function renderSection(root, code, ctx) {
     batchDiscard.textContent = texts.miniapp_settings_batch_discard_text || "";
     batchBar.classList.toggle("off", count === 0);
     batchSpacer.classList.toggle("hidden", count === 0);
+    repaintMatrixCells();
+  }
+
+  // Значение ячейки матрицы прямо сейчас (черновик, если есть, иначе последнее подтверждённое
+  // сервером) — та же формула, что withPendingOverride() для обычных строк, без пересборки
+  // всего item.
+  function matrixCellValue(key) {
+    if (pending.has(key)) return pending.get(key);
+    const original = originalItems.get(key);
+    return original ? original.value : null;
+  }
+
+  function repaintMatrixCells() {
+    for (const [key, paint] of matrixCellPaint) paint(matrixCellValue(key));
   }
 
   function discardPending() {
@@ -788,6 +818,15 @@ async function renderSection(root, code, ctx) {
       }
 
       for (const key of resp.saved || []) {
+        // D-17 Task 3: трек-композиты (reg_q_X__party/__short) не приходят в resp.items
+        // (сервер их пропускает — у них нет item_spec-обёртки, миниапп/routers/settings.py::
+        // settings_batch), матрица красит ячейку сама сохранённым значением ДО того, как
+        // pending его забудет — иначе после сохранения ячейка откатилась бы к значению,
+        // которое видела ДО этой правки (matrixCellValue() читает pending, потом originalItems).
+        if (matrixCellPaint.has(key)) {
+          const prevOriginal = originalItems.get(key) || { key, base_key: key };
+          originalItems.set(key, { ...prevOriginal, value: pending.get(key), raw: pending.get(key), is_default: false });
+        }
         pending.delete(key);
         fileNames.delete(key);
       }
@@ -814,8 +853,24 @@ async function renderSection(root, code, ctx) {
     el.dataset.key = item.key;
 
     const marker = h("button", { type: "button", class: "chip field-state", onClick: () => toggleOverrideList(el) });
-    const labelRow = el._nodes.label ? el._nodes.label.parentElement : null;
-    if (labelRow) labelRow.append(marker);
+    // D-17 Task 2 (владелец 03.09, «отступы кривые») — у тумблера (toggle И enum on/off,
+    // D-17 Task 1) label скрыт (form.js::field), маркер в ЕГО пустом label-row повисал бы
+    // орфанной строкой над тумблером. control тумблера (form.js::toggleControl) — САМ
+    // `<button class="flat-row">` (D-08 клик по всей строке) — вложить туда ещё один
+    // `<button>` (маркер) нельзя (HTML не допускает button-в-button, всплытие клика сломало бы
+    // тумблер); вместо этого заворачиваем control+маркер СОСЕДЯМИ в один флекс-ряд — визуально
+    // одна строка, кнопки остаются на одном уровне вложенности (app.css::.settings-row-toggle).
+    const isToggleControl = spec.type === "toggle" && el._nodes.control instanceof HTMLElement
+      && el._nodes.control.classList.contains("flat-row");
+    if (isToggleControl) {
+      const line = h("div", { class: "settings-row-toggle-line" });
+      el._nodes.control.replaceWith(line);
+      line.append(el._nodes.control, marker);
+      el.classList.add("settings-row-toggle");
+    } else {
+      const labelRow = el._nodes.label ? el._nodes.label.parentElement : null;
+      if (labelRow) labelRow.append(marker);
+    }
     el._marker = marker;
 
     const overrideList = h("p", { class: "label-role hidden" });
@@ -853,7 +908,11 @@ async function renderSection(root, code, ctx) {
   }
 
   function paintHighlight(el, item) {
-    if (item.type === "toggle") {
+    // D-17 Task 1: el.dataset.type — ОТРИСОВАННЫЙ тип (form.js::field ставит его из spec.type),
+    // не сырой item.type реестра — у enum on/off (D-17) они расходятся (сервер отдаёт "enum",
+    // рисуется тумблером), а title, который нужно перекрасить, живёт внутри .flat-row именно
+    // у отрисованного тумблера.
+    if (el.dataset.type === "toggle") {
       const titleEl = el._nodes.control && el._nodes.control.querySelector
         ? el._nodes.control.querySelector(".flat-row-title")
         : null;
@@ -972,15 +1031,96 @@ async function renderSection(root, code, ctx) {
     }
   }
 
+  // ── матрица «трек × вопрос» (D-17 Task 3, владелец 03.09: «одна строка на вопрос, три
+  // маленьких тумблера вместо трёх отдельных строк на каждый»). Заменяет флат-список ТОЛЬКО
+  // визуально — group.items (тот же список reg_q_*) остаётся в ответе для поиска (T-19-45,
+  // sectionItemsFlat выше) и для diff/stale базовых значений ("полная" колонка — реальный
+  // ключ реестра, её original уже пришёл в group.items). Party/short — трек-композиты без
+  // отдельного item_spec (сервер их не рисует строкой), original им собирает сам экран.
+  function matrixColumnLabel(track) {
+    if (track === "party") return texts.miniapp_settings_reg_matrix_party_label_text || "";
+    if (track === "short") return texts.miniapp_settings_reg_matrix_short_label_text || "";
+    return texts.miniapp_settings_reg_matrix_full_label_text || "";
+  }
+
+  function matrixCellDisplay(value) {
+    return value === "on" ? (texts.miniapp_settings_value_set_text || "") : (texts.miniapp_settings_value_not_set_text || "");
+  }
+
+  function buildMatrixToggle(row, track, cell) {
+    const key = cell.key;
+    if (track !== "full") {
+      // party/short — синтетический original (нет отдельного item_spec с сервера): raw
+      // отсутствует у унаследованного/неустановленного значения (тот же смысл, что raw=null
+      // у обычной настройки «по умолчанию», stale-сверка submitDiff читает его наравне).
+      originalItems.set(key, {
+        key, base_key: key, type: "toggle",
+        label: `${row.label} — ${matrixColumnLabel(track)}`,
+        value: cell.value, raw: cell.is_inherited ? null : cell.value,
+        display: matrixCellDisplay(cell.value), is_default: cell.is_inherited,
+        dangerous: false, confirm_text: null,
+      });
+    }
+    const btn = h("button", {
+      type: "button", class: `settings-matrix-toggle settings-matrix-toggle-${track}`,
+      "aria-label": `${row.label} — ${matrixColumnLabel(track)}`,
+      "aria-pressed": "false",
+      onClick: () => {
+        const next = matrixCellValue(key) === "on" ? "off" : "on";
+        pending.set(key, next);
+        updateBatchBar();
+      },
+    }, icon("check"));
+    function paint(value) {
+      const on = value === "on";
+      btn.classList.toggle("on", on);
+      btn.setAttribute("aria-pressed", on ? "true" : "false");
+      const original = originalItems.get(key);
+      const inherited = track !== "full" && Boolean(original && original.is_default) && !pending.has(key);
+      btn.classList.toggle("is-inherited", inherited);
+    }
+    matrixCellPaint.set(key, paint);
+    paint(matrixCellValue(key));
+    return btn;
+  }
+
+  function buildMatrixRow(row) {
+    return h("div", { class: "settings-matrix-row" },
+      h("span", { class: "settings-matrix-row-label", text: row.label }),
+      h("div", { class: "settings-matrix-row-toggles" },
+        buildMatrixToggle(row, "full", row.full),
+        buildMatrixToggle(row, "party", row.party),
+        buildMatrixToggle(row, "short", row.short),
+      ),
+    );
+  }
+
+  function buildMatrix(group) {
+    for (const item of group.items) setOriginal(item); // "полная" колонка — реальные reg_q_*
+    return h("div", { class: "settings-matrix" },
+      h("div", { class: "settings-matrix-head" },
+        h("span", { class: "settings-matrix-head-question" }),
+        h("span", { class: "settings-matrix-head-col", text: matrixColumnLabel("full") }),
+        h("span", { class: "settings-matrix-head-col", text: matrixColumnLabel("party") }),
+        h("span", { class: "settings-matrix-head-col", text: matrixColumnLabel("short") }),
+      ),
+      ...group.matrix.rows.map((row) => buildMatrixRow(row)),
+    );
+  }
+
   // ── карточка группы: заголовок-кнопка (счётчик + шеврон, вращение — CSS .collapsed) +
-  // тело со строками. ─────────────────────────────────────────────────────────────────────
+  // тело со строками (или матрицей — reg_questions, см. выше). ────────────────────────────
   function buildGroupCard(group, isFirst) {
     const rowsWrap = h("div", { class: "settings-group-body" });
-    for (const item of group.items) {
-      const row = buildRow(item);
-      itemIndex.set(item.key, row);
-      setOriginal(item);
-      rowsWrap.append(row.el);
+    if (group.matrix) {
+      rowsWrap.append(buildMatrix(group));
+    } else {
+      for (const item of group.items) {
+        const row = buildRow(item);
+        itemIndex.set(item.key, row);
+        setOriginal(item);
+        rowsWrap.append(row.el);
+      }
     }
     const countEl = h("span", { class: "settings-group-count", text: String(group.items.length) });
     const chevron = h("span", { class: "settings-group-chevron" }, icon("chevron-down"));

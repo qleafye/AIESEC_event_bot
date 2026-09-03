@@ -555,6 +555,12 @@ function isLongSettingText(item) {
   return Boolean(item.html);
 }
 
+// D-17 Task 1 — options ровно {"on","off"} (порядок неважен, значений ровно два).
+function isOnOffEnum(options) {
+  const opts = options || [];
+  return opts.length === 2 && opts.includes("on") && opts.includes("off");
+}
+
 /**
  * Чистый адаптер «элемент ответа API настроек → spec для field()». Тип реестра → тип
  * рендера: text → text/textarea (порог max_len / HTML-ключи), enum → choice-chips/select
@@ -571,7 +577,15 @@ export function settingSpec(item) {
       spec.type = isLongSettingText(it) ? "textarea" : "text";
       break;
     case "enum":
-      spec.type = (it.options || []).length <= SETTING_CHIPS_MAX_OPTIONS ? "choice-chips" : "select";
+      // D-17 Task 1 (владелец 03.09): enum ровно с options ["on","off"] — тот же тумблер-
+      // слайдер, что настоящий тип "toggle" (reg_q_*), а не chip-кнопки "on"/"off": человеку
+      // это один и тот же вопрос «включено или нет», два разных контрола для него сбивали с
+      // толку («настройки как будто разные»). Опасные ключи (registration_mode и т.п. сюда
+      // не попадают: у них options — НЕ ["on","off"]) confirm-flow не теряют — экран решает
+      // это по item.confirm_text, не по типу контрола.
+      spec.type = isOnOffEnum(it.options)
+        ? "toggle"
+        : (it.options || []).length <= SETTING_CHIPS_MAX_OPTIONS ? "choice-chips" : "select";
       break;
     case "int":
     case "date":
