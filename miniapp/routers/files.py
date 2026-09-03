@@ -18,7 +18,11 @@
   - владельцу сдачи, в частях которой встречается `file_id`;
   - держателю `moderate_game` — в пределах городского скоупа сдачи (тот же критерий, что
     `_submission_out_of_scope` в боте: модуль городов выключен или привязки нет -> всё;
-    иначе город делегата должен совпадать с привязкой менеджера).
+    иначе город делегата должен совпадать с привязкой менеджера);
+  - держателю `moderate_reg` (Phase 23, 23-03, D-02) — `avatar_file_id` делегата в пределах
+    того же городского скоупа, что и очередь заявок; резюме, чек и любой другой `file_id`
+    того же делегата этой веткой НЕ открываются — сверяется ИМЕННО колонка `avatar_file_id`
+    обратным поиском по ней (не любой файл известного пользователя).
 Иначе 403; неизвестный `file_id` — тоже 403 (ни одной сдачи/обложки с ним нет) — расширение
 allow-list не ослабляет это правило: список конечен и явен, а не «любой file_id из настроек»
 регэкспом.
@@ -34,7 +38,13 @@ from fastapi.responses import StreamingResponse
 
 import reg_engine
 from cities import cities_module_on, normalize_city
-from database.db import find_submissions_by_file_id, get_setting, get_user, is_active_task_cover
+from database.db import (
+    find_submissions_by_file_id,
+    find_user_by_avatar_file_id,
+    get_setting,
+    get_user,
+    is_active_task_cover,
+)
 from settings_schema import get_setting_typed
 
 import settings_ops
@@ -50,16 +60,23 @@ CACHE_CONTROL = "private, max-age=3000"
 _SAFE_EXT = re.compile(r"^\.[A-Za-z0-9]{1,8}$")
 
 
+async def _city_matches(p: Principal, user: dict | None) -> bool:
+    """Единственная в файле реализация правила городского скоупа (D-14): модуль городов
+    выключен или у менеджера нет привязки -> видит всех; иначе город делегата должен совпасть
+    с привязкой менеджера. Переиспользуется обеими ветками allow-list — сдачи геймификации
+    (`moderate_game`) и аватар заявок (`moderate_reg`) — вместо второй копии правила."""
+    if not await cities_module_on() or p.city is None:
+        return True
+    return normalize_city((user or {}).get("event_city")) == normalize_city(p.city)
+
+
 async def _manager_in_scope(p: Principal, submissions: list[dict]) -> bool:
     """`moderate_game` видит файл, если хотя бы одна сдача с ним — в его городском скоупе."""
     if "moderate_game" not in p.caps or not submissions:
         return False
-    if not await cities_module_on() or p.city is None:
-        return True
-    scope = normalize_city(p.city)
     for sub in submissions:
         user = await get_user(sub["user_id"])
-        if normalize_city((user or {}).get("event_city")) == scope:
+        if await _city_matches(p, user):
             return True
     return False
 
@@ -81,6 +98,13 @@ async def can_read_file(p: Principal, file_id: str) -> bool:
     # является значением photo/file-ключа реестра (settings_ops.file_setting_keys), не любой.
     if "settings" in p.caps and await settings_ops.is_current_file_value(file_id):
         return True
+    # Phase 23 (23-03, D-02): держателю moderate_reg — только avatar_file_id делегата в его
+    # городском скоупе; сверяется КОЛОНКА, а не «любой file_id известного пользователя»
+    # (T-23-11) — резюме и чек того же делегата этой веткой НЕ открываются.
+    if "moderate_reg" in p.caps:
+        avatar_owner = await find_user_by_avatar_file_id(file_id)
+        if avatar_owner and await _city_matches(p, avatar_owner):
+            return True
     submissions = await find_submissions_by_file_id(file_id)
     if any(sub["user_id"] == p.telegram_id for sub in submissions):
         return True

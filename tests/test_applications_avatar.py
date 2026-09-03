@@ -12,6 +12,7 @@ from __future__ import annotations
 import asyncio
 from types import SimpleNamespace
 
+import httpx
 import pytest
 
 from config import config
@@ -19,10 +20,28 @@ from database import db
 from miniapp import avatars, telegram_api
 from miniapp.telegram_api import TelegramApiError
 
+from tests.test_miniapp_routes import (
+    BOUND_MANAGER_ID,
+    DELEGATE_ID,
+    GAME_MANAGER_ID,
+    _cfg,
+    _client,
+    _hdr,
+    _set,
+    _standard_seed,
+    _use_tmp_db as _use_tmp_route_db,
+)
+
 PHOTO_ID = "AgACAgIAAxkBAAIavatarSmall01"
 BIG_PHOTO_ID = "AgACAgIAAxkBAAIavatarBig0001"
 
 CFG = SimpleNamespace(bot_token="123456:TEST-TOKEN", proxy_url=None)
+
+# ── Task 2: доступ к аватару через прокси файлов ────────────────────────────────────────
+AVATAR_FILE_ID = "AgACAvatarDelegateFileId01"
+RESUME_FILE_ID = "BQACResumeDelegateFileId01"
+AVATAR_FILE_PATH = "photos/avatar_42.jpg"
+AVATAR_BODY = b"\xff\xd8\xff" + b"A" * 100
 
 
 def _use_tmp_db(tmp_path):
@@ -190,3 +209,123 @@ def test_initials_lowercase_input_is_uppercased():
 @pytest.mark.parametrize("value", [None, "", "   "])
 def test_initials_empty_is_question_mark(value):
     assert avatars.initials(value) == "?"
+
+
+# ── can_read_file: allow-list для аватара (Task 2) ───────────────────────────────────────
+#
+# BOUND_MANAGER_ID (900601) — staff `reg_manager`, привязан к spb (caps moderate_reg +
+# moderate_receipts, `_standard_seed`); GAME_MANAGER_ID (900600) — `game_manager` (только
+# moderate_game), DELEGATE_ID (900100) — одобренный делегат без прав. Фикстуры БД/сети — свои
+# (не разделяем харнесс `test_miniapp_files.py::client`, у которого своя сдача-фикстура).
+
+
+class _AvatarTransport:
+    def __init__(self):
+        self.calls: list[str] = []
+
+    def handler(self, request: httpx.Request) -> httpx.Response:
+        path = request.url.path
+        self.calls.append(path)
+        if path.endswith("/getFile"):
+            return httpx.Response(200, json={"ok": True, "result": {
+                "file_id": "x", "file_unique_id": "u", "file_size": len(AVATAR_BODY),
+                "file_path": AVATAR_FILE_PATH,
+            }})
+        return httpx.Response(200, content=AVATAR_BODY, headers={"content-type": "image/jpeg"})
+
+
+@pytest.fixture
+def avatar_download(monkeypatch):
+    fake = _AvatarTransport()
+    monkeypatch.setattr(
+        telegram_api, "_make_client",
+        lambda cfg, timeout: httpx.AsyncClient(transport=httpx.MockTransport(fake.handler)),
+    )
+    return fake
+
+
+@pytest.fixture
+def avatar_client(tmp_path):
+    db_path = _use_tmp_route_db(tmp_path, "miniapp_applications_avatar.db")
+    _standard_seed()
+    return _client(_cfg(db_path))
+
+
+def _set_field(user_id: int, field: str, value):
+    async def _go():
+        async with db._connect() as conn:
+            await conn.execute(f"UPDATE users SET {field} = ? WHERE telegram_id = ?", (value, user_id))
+            await conn.commit()
+    asyncio.run(_go())
+
+
+def _set_avatar(user_id: int, file_id: str):
+    asyncio.run(db.set_user_avatar(user_id, file_id, "2026-09-01 00:00:00"))
+
+
+def _get_file(client, user_id: int, file_id: str):
+    return client.get(f"/app/api/file/{file_id}", headers=_hdr(user_id))
+
+
+def test_reg_manager_same_city_reads_avatar(avatar_client, avatar_download):
+    _set("event_city_enabled", "on")
+    _set_field(DELEGATE_ID, "event_city", "spb")
+    _set_avatar(DELEGATE_ID, AVATAR_FILE_ID)
+
+    resp = _get_file(avatar_client, BOUND_MANAGER_ID, AVATAR_FILE_ID)
+
+    assert resp.status_code == 200, resp.text
+
+
+def test_reg_manager_other_city_forbidden(avatar_client, avatar_download):
+    _set("event_city_enabled", "on")
+    _set_field(DELEGATE_ID, "event_city", "msk")
+    _set_avatar(DELEGATE_ID, AVATAR_FILE_ID)
+
+    resp = _get_file(avatar_client, BOUND_MANAGER_ID, AVATAR_FILE_ID)
+
+    assert resp.status_code == 403
+    assert avatar_download.calls == []
+
+
+def test_game_manager_without_moderate_reg_is_forbidden(avatar_client, avatar_download):
+    """`moderate_game` (без `moderate_reg`) не открывает аватар делегата заявки."""
+    _set_avatar(DELEGATE_ID, AVATAR_FILE_ID)
+
+    resp = _get_file(avatar_client, GAME_MANAGER_ID, AVATAR_FILE_ID)
+
+    assert resp.status_code == 403
+    assert avatar_download.calls == []
+
+
+def test_delegate_cannot_read_own_avatar_via_manager_branch(avatar_client, avatar_download):
+    _set_avatar(DELEGATE_ID, AVATAR_FILE_ID)
+
+    resp = _get_file(avatar_client, DELEGATE_ID, AVATAR_FILE_ID)
+
+    assert resp.status_code == 403
+    assert avatar_download.calls == []
+
+
+def test_resume_file_id_of_same_delegate_not_opened_via_avatar_branch(avatar_client, avatar_download):
+    """Сторож границы (T-23-11): сверяется ИМЕННО колонка `avatar_file_id`, а не «любой
+    file_id пользователя» — `resume_file_id` того же делегата этой веткой не открывается,
+    даже держателю `moderate_reg` в его городском скоупе."""
+    _set_field(DELEGATE_ID, "event_city", "spb")
+    _set_avatar(DELEGATE_ID, AVATAR_FILE_ID)
+    _set_field(DELEGATE_ID, "resume_file_id", RESUME_FILE_ID)
+
+    resp = _get_file(avatar_client, BOUND_MANAGER_ID, RESUME_FILE_ID)
+
+    assert resp.status_code == 403
+    assert avatar_download.calls == []
+
+
+def test_cities_module_off_avatar_open_regardless_of_city(avatar_client, avatar_download):
+    """Модуль городов выключен — то же правило, что у очереди заявок: без фильтра."""
+    _set_field(DELEGATE_ID, "event_city", "msk")
+    _set_avatar(DELEGATE_ID, AVATAR_FILE_ID)
+
+    resp = _get_file(avatar_client, BOUND_MANAGER_ID, AVATAR_FILE_ID)
+
+    assert resp.status_code == 200, resp.text
