@@ -1150,3 +1150,16 @@ a.flat-row:active, button.flat-row:active { background: var(--surface-alt); }
 }
 .settings-toast.off { opacity: 0; transform: translate(-50%, var(--sp-2)); pointer-events: none; }
 :root[data-motion="off"] .settings-toast { transition: none; }
+
+/* Задача 3 (превью «Так увидит делегат», D-07): панель под полем с плейсхолдером — та же
+   рамка, что diff-строка, без warn-акцента (это не предупреждение). Появляется по кнопке,
+   не на каждый символ — обновляется по тапу, см. screens/settings.js::buildPreviewButton. */
+.settings-preview {
+  padding: var(--sp-2) var(--sp-3);
+  margin-top: var(--sp-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface-alt);
+}
+.settings-preview p { margin: 0 0 var(--sp-1); }
+.settings-preview p:last-child { margin-bottom: 0; }
