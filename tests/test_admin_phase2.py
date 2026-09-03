@@ -102,8 +102,9 @@ async def _no_admin_city(admin_id):
 
 
 def test_wr01_welcome_drain_scheduled_despite_edit_failure(monkeypatch):
-    """WR-01: appr_all_yes must schedule _welcome_flipped BEFORE the fragile confirm edit, so a
-    >48h/deleted card whose edit_text raises still delivers welcome/menu to the approved users."""
+    """WR-01: appr_all_yes must schedule mass_approve_effects (Phase 23, 23-02 — welcome drain +
+    sheet sync, formerly _welcome_flipped) BEFORE the fragile confirm edit, so a >48h/deleted
+    card whose edit_text raises still delivers welcome/menu to the approved users."""
     uid = 42
     monkeypatch.setattr(config, "ADMIN_IDS", [uid])
     welcomed = []
@@ -111,18 +112,14 @@ def test_wr01_welcome_drain_scheduled_despite_edit_failure(monkeypatch):
     async def fake_approve_all_pending(*, city_scope=None):
         return [1, 2, 3]
 
-    async def fake_welcome_flipped(bot, ids):
+    async def fake_mass_approve_effects(bot, ids):
         welcomed.append(list(ids))
-
-    async def fake_bulk_sync(mapping):
-        return None
 
     async def fake_admin_keyboard_for(admin_id):
         return None
 
     monkeypatch.setattr(admin_moderation, "approve_all_pending", fake_approve_all_pending)
-    monkeypatch.setattr(admin_moderation, "_welcome_flipped", fake_welcome_flipped)
-    monkeypatch.setattr(admin_moderation, "bulk_update_status_in_sheet", fake_bulk_sync)
+    monkeypatch.setattr(admin_moderation, "mass_approve_effects", fake_mass_approve_effects)
     monkeypatch.setattr(admin_moderation, "admin_keyboard_for", fake_admin_keyboard_for)
     monkeypatch.setattr(admin_moderation, "admin_selected_city", _no_admin_city)
 
@@ -196,7 +193,7 @@ def test_wr04_stale_reclick_no_drain_and_honest_message(monkeypatch):
         return None
 
     monkeypatch.setattr(admin_moderation, "approve_all_pending", fake_approve_all_pending)
-    monkeypatch.setattr(admin_moderation, "_welcome_flipped", fake_welcome)
+    monkeypatch.setattr(admin_moderation, "mass_approve_effects", fake_welcome)
     monkeypatch.setattr(admin_moderation, "admin_keyboard_for", fake_admin_keyboard_for)
     monkeypatch.setattr(admin_moderation, "_show_current_card", fake_show)
     monkeypatch.setattr(admin_moderation, "admin_selected_city", _no_admin_city)

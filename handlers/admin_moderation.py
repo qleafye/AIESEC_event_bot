@@ -12,36 +12,45 @@ and the «🕓 История» screen (`appr_history`, tail handler) read `user
 `edited_source` + `database.db.get_answer_history` — written by `update_user_answers`/
 `record_answer_history`/`mark_user_edited` from plan 21-05, called by the edit-submit flow
 plan 21-08 wires up next. This plan is read-only against that trail.
+
+Phase 23 (23-02, APP-TINDER-01): the queue/card core (`_edit_badges_for`/`_format_edited_date`/
+`_EDITED_SOURCE_LABELS`/track labels) and the bot-only tail (welcome + reject message + sheet
+sync, formerly `_welcome_flipped`) moved to `services/applications.py`/
+`services/application_effects.py` — aiogram-free ground floor the Mini App queue (`miniapp/`)
+can call without pulling the bot in. Module-level aliases under the old private names keep this
+file's handler bodies and order untouched (same technique as `settings_ops.py`, Phase 22).
 """
-import asyncio
 import html as html_module
 import logging
-from datetime import datetime
 
 from aiogram import F, types
 from aiogram.fsm.context import FSMContext
 from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup, ReplyKeyboardRemove
-from aiogram.exceptions import TelegramRetryAfter
 
 from database.db import (
     get_user,
     get_setting,
     get_pending_users,
     get_pending_count,
-    approve_user_atomic,
-    reject_user,
     approve_all_pending,
     get_receipt_pending_users,
     get_receipt_pending_count,
     update_payment_status,
     get_answer_history,
 )
-from services.sheets import update_status_in_sheet, bulk_update_status_in_sheet
+from services.applications import (
+    TRACK_LABELS,
+    claim_approve,
+    claim_reject,
+    EDITED_SOURCE_LABELS as _EDITED_SOURCE_LABELS,
+    format_edited_date as _format_edited_date,
+    edit_badges_for as _edit_badges_for,
+)
+from services.application_effects import apply_decision_effects, mass_approve_effects
 from services.background import spawn as _spawn
 from services.consent import consent_card_line
 from handlers.states import Approval, ReceiptReview
 from keyboards.builders import get_cancel_kb, get_main_menu_kb
-from handlers.reg_schema import STATUS_LABELS, approve_user
 from reg_engine import STEP_TO_COLUMN, label_for
 import moderation_card
 from settings_schema import get_setting_typed
@@ -55,53 +64,9 @@ logger = logging.getLogger(__name__)
 # `@router.*` decorator below MUST fit on ONE line.
 
 
-# Phase 21 (21-07, D-14): edited_source is a service-layer literal ('bot'|'miniapp', see
-# database.db.mark_user_edited) — CLAUDE.md forbids printing codes to a manager, so this is the
-# ONE place that turns it into words for the moderation card / history screen.
-_EDITED_SOURCE_LABELS = {"miniapp": "в приложении", "bot": "в чате"}
-
 # column (users row) -> human label, via reg_engine.label_for (the engine already resolves the
 # nine steps where setting_key != f"reg_q_{step}", plan 21-13) — no second label table.
 _COLUMN_TO_LABEL = {col: label_for(step) for step, col in STEP_TO_COLUMN.items()}
-
-
-def _format_edited_date(raw: str | None) -> str:
-    """'2026-09-03 14:12:00' -> '03.09 14:12' (формат подстановки {date} в reg_edited_admin_label).
-    Нераспознанный формат — печатаем как есть, а не роняем карточку заявки."""
-    if not raw:
-        return ""
-    try:
-        return datetime.strptime(str(raw), "%Y-%m-%d %H:%M:%S").strftime("%d.%m %H:%M")
-    except ValueError:
-        return str(raw)
-
-
-async def _edit_badges_for(user: dict) -> tuple[str | None, str | None, bool]:
-    """(edited_line, resubmit_line, has_history) для карточки заявки (D-14/D-15/D-10).
-    Пустой `edited_at` -> ничего нет (пометка ставится только при непустом diff — уже гарантия
-    reg_engine.diff/mark_user_edited, здесь просто читаем факт). `has_history` — по ОДНОЙ и той
-    же выборке get_answer_history(limit=1), которую переиспользует и признак повторной подачи,
-    так что карточка не делает лишний запрос ради одного только флага кнопки."""
-    edited_at = user.get("edited_at")
-    if not edited_at:
-        return None, None, False
-    tid = user.get("telegram_id")
-    history = await get_answer_history(tid, limit=1) if tid is not None else []
-    has_history = bool(history)
-    tmpl = await get_setting("reg_edited_admin_label") or "✏️ Изменена {date}"
-    edited_line = tmpl.replace("{date}", _format_edited_date(edited_at))
-    src_label = _EDITED_SOURCE_LABELS.get(user.get("edited_source"))
-    if src_label:
-        edited_line = f"{edited_line} ({src_label})"
-    resubmit_line = None
-    if history:
-        changes = history[0].get("changes") or []
-        # план 21-08 отмечает повторную подачу отклонённой анкеты отдельной записью
-        # {"column": "status", "old": "rejected", "new": "pending"} в ТОЙ ЖЕ выборке.
-        was_resubmit = any(c.get("column") == "status" and c.get("old") == "rejected" for c in changes)
-        if was_resubmit:
-            resubmit_line = await get_setting("reg_resubmit_admin_label") or "🔁 Повторная подача"
-    return edited_line, resubmit_line, has_history
 
 
 # ── Phase 2: application review queue ("Заявки", tinder UI) ───────────────────
@@ -144,11 +109,9 @@ def _render_application_card(user: dict, position: int, total: int, city_label_t
     # are HTML-escaped (T-05-03-03): the raw DB column value can never inject markup here.
     track = user.get("participant_type") or "full"
     if track != "full":
-        track_label = {
-            "party_overnight": "🎉 Трек: вечеринка с ночёвкой",
-            "party_noovernight": "🎉 Трек: вечеринка без ночёвки",
-            "short": "⚡ Трек: краткая анкета (акция)",
-        }.get(track, f"🎉 Трек: {html_module.escape(str(track))}")
+        # Phase 23 (23-02): подписи треков — services.applications.TRACK_LABELS, тот же
+        # словарь, что читает карточка Mini App (card_payload).
+        track_label = TRACK_LABELS.get(track, f"🎉 Трек: {html_module.escape(str(track))}")
         lines.append(track_label)
     # Phase 07.3 (05, RET-03): prev_season — сырая строка из БД, пришедшая изначально из
     # текстовой настройки event_season (см. threat T-073-05-01) — обязана пройти то же
@@ -334,11 +297,11 @@ async def appr_approve(callback: types.CallbackQuery, state: FSMContext):
     if await _card_out_of_scope(callback.from_user.id, tid):
         await callback.answer(_OUT_OF_SCOPE_ALERT, show_alert=True)
         return
-    won = await approve_user_atomic(tid) if tid is not None else False
+    won = await claim_approve(tid) if tid is not None else False
     if won:
-        await approve_user(callback.bot, tid)  # welcome exactly once (D-10)
-        # Автосинк статуса в таблицу (Таня п.5), fire-and-forget fail-soft.
-        _spawn(update_status_in_sheet(tid, STATUS_LABELS["approved"]))
+        # Хвост (приветствие ровно один раз D-10 + автосинк статуса в таблицу, Таня п.5) —
+        # services/application_effects.py, fire-and-forget fail-soft.
+        _spawn(apply_decision_effects(callback.bot, tid, "approved"))
         logger.info(f"admin={callback.from_user.id} action=approve user={tid}")
         await callback.answer("Одобрено")
     else:
@@ -384,19 +347,12 @@ async def appr_reject_reason(message: types.Message, state: FSMContext):
     data = await state.get_data()
     tid = data.get("appr_reject_id")
     reason = message.text or "-"
-    ok = await reject_user(tid) if tid is not None else False
+    ok = await claim_reject(tid) if tid is not None else False
     if ok:
-        _spawn(update_status_in_sheet(tid, STATUS_LABELS["rejected"]))
+        # Хвост (сообщение делегату + автосинк статуса в таблицу, Таня п.5) —
+        # services/application_effects.py, fire-and-forget fail-soft.
+        _spawn(apply_decision_effects(message.bot, tid, "rejected", reason))
         logger.info(f"admin={message.from_user.id} action=reject user={tid} reason={reason!r}")
-        try:
-            prefix = await get_setting("reject_text") or "К сожалению, твоя заявка отклонена."
-            # WR-05: escape the admin-set prefix symmetrically with reason — an unescaped
-            # &/< in the setting would otherwise break every rejection message under HTML mode.
-            await message.bot.send_message(
-                tid, f"{html_module.escape(prefix)}\n\n{html_module.escape(reason)}", parse_mode="HTML"
-            )
-        except Exception as e:
-            logger.error(f"Failed to notify rejected user {tid}: {e}")
         await message.answer("Заявка отклонена.", reply_markup=ReplyKeyboardRemove())
     else:
         await message.answer("Заявка уже обработана.", reply_markup=ReplyKeyboardRemove())
@@ -454,22 +410,6 @@ async def appr_all_no(callback: types.CallbackQuery, state: FSMContext):
     await _show_current_card(callback.message, state)
 
 
-async def _welcome_flipped(bot, ids: list):
-    """Drain welcome sends for a mass approval, handling Telegram 429 (D-11)."""
-    for tid in ids:
-        try:
-            await approve_user(bot, tid)
-        except TelegramRetryAfter as e:
-            await asyncio.sleep(e.retry_after + 1)
-            try:
-                await approve_user(bot, tid)
-            except Exception as e2:
-                logger.error(f"Mass-approve welcome retry failed for {tid}: {e2}")
-        except Exception as e:
-            logger.error(f"Mass-approve welcome failed for {tid}: {e}")
-        await asyncio.sleep(0.05)
-
-
 @router.callback_query(F.data.startswith("appr_all_yes"))
 async def appr_all_yes(callback: types.CallbackQuery, state: FSMContext):
     # CR-02: массовое одобрение необратимо, поэтому оно fail-closed. Город берётся из
@@ -513,12 +453,9 @@ async def appr_all_yes(callback: types.CallbackQuery, state: FSMContext):
     # have been deleted — if the edit threw first, the N just-approved users would be left
     # `approved` in DB with no welcome/menu/payment requisites (violates D-11 "welcome exactly
     # once"). Ordering the background sends first makes delivery independent of the edit.
-    _spawn(_welcome_flipped(callback.bot, ids))  # drain sends in background
-    # Массовый автосинк статуса в таблицу (Таня п.5) — один batch, fail-soft.
-    if ids:
-        _spawn(
-            bulk_update_status_in_sheet({str(t): STATUS_LABELS["approved"] for t in ids})
-        )
+    # services/application_effects.py::mass_approve_effects — welcome drain + один batch-sync
+    # в лист (Таня п.5), fire-and-forget fail-soft.
+    _spawn(mass_approve_effects(callback.bot, ids))
     try:
         await callback.message.edit_text(
             f"✅ Одобрено: {len(ids)}. Рассылаю приветствия…",
