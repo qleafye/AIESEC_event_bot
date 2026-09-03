@@ -190,6 +190,10 @@ MINIAPP_KEYS = [
     "miniapp_settings_row_main_label",
     "miniapp_settings_row_rare_label",
     "miniapp_settings_tile_count_text",
+    # Phase 22 Plan 07 (D-17 Task 3): заголовки колонок матрицы «трек × вопрос».
+    "miniapp_settings_reg_matrix_full_label_text",
+    "miniapp_settings_reg_matrix_party_label_text",
+    "miniapp_settings_reg_matrix_short_label_text",
 ]
 
 # Phase 22 Plan 02: новые тексты веб-экрана настроек — используются в проверках ниже.
@@ -208,7 +212,10 @@ _ALLOWED_TYPES = {"toggle", "int", "list", "date", "text", "enum", "photo", "fil
 
 
 def test_exactly_144_miniapp_keys_and_no_extra():
-    assert len(MINIAPP_KEYS) == 144
+    # D-17 Task 3: +3 заголовка колонок матрицы «трек × вопрос» (144 -> 147); имя теста
+    # осталось историческим (числовые сторожа этого проекта именуются по факту на момент
+    # заведения, см. соседние test_module_size_convention_260816.py KNOWN_OVERAGES).
+    assert len(MINIAPP_KEYS) == 147
     present = sorted(k for k in SETTINGS_SCHEMA if k.startswith("miniapp_"))
     assert present == sorted(MINIAPP_KEYS)
 
@@ -251,7 +258,8 @@ def test_text_keys_have_human_defaults():
         if SETTINGS_SCHEMA[k]["type"] == "text"
         and k not in ("miniapp_accent", "miniapp_hub_countdown_date")
     ]
-    assert len(text_keys) == 116
+    # D-17 Task 3: +3 заголовка колонок матрицы «трек × вопрос» (116 -> 119).
+    assert len(text_keys) == 119
     for key in text_keys:
         default = SETTINGS_SCHEMA[key]["default"]
         assert isinstance(default, str) and default.strip(), key
@@ -376,8 +384,9 @@ def test_settings_screen_keys_count_and_shape():
     """Phase 22 Plan 02 (WEB-SET-02/03): 38 UI-текстов экрана настроек + 3 текста
     подтверждения опасных ключей = 41. `misc`-заголовок не заведён, т.к. leftover-группа
     `_settings_group_keys("misc")` сегодня пуста (см. docstring). Phase 22 Plan 07 (D-16):
-    +3 текста стартового экрана-плиток (два заголовка ряда + счётчик настроек) = 44."""
-    assert len(MINIAPP_SETTINGS_SCREEN_KEYS) == 44
+    +3 текста стартового экрана-плиток (два заголовка ряда + счётчик настроек) = 44.
+    Phase 22 Plan 07 (D-17 Task 3): +3 заголовка колонок матрицы «трек × вопрос» = 47."""
+    assert len(MINIAPP_SETTINGS_SCREEN_KEYS) == 47
     assert "miniapp_settings_misc_group_label_text" not in MINIAPP_SETTINGS_SCREEN_KEYS
     for key in MINIAPP_SETTINGS_SCREEN_KEYS:
         entry = SETTINGS_SCHEMA[key]

@@ -309,6 +309,31 @@ DANGEROUS_KEYS: frozenset[str] = frozenset(SHEET_TAB_WRITE_MODE) | {
     "miniapp_staff_only",
 }
 
+# Phase 22 Plan 07 (D-17 Task 3): трек-переопределения вопросов регистрации (`reg_q_X__party`/
+# `reg_q_X__short`) — та же ось, что per-city composite (`cities.per_city_key`), только вместо
+# города различает трек анкеты. Ни один из этих составных ключей НЕ объявлен в
+# SETTINGS_SCHEMA (как и per-city composite) — `validate_batch_item`/`commit_batch_item` уже
+# читают/пишут их как обычную строку (ветка `entry is None` в `validate_setting_value`), здесь
+# только распознавание «можно ли вообще их править» (миниапп/routers/settings.py::
+# `_editable_target`) и то же множество допустимых базовых ключей, что
+# `handlers.admin_reg_config` сверяет по `REG_FLOW` перед записью (T-05-03-02/T-07-09) —
+# крафченный `reg_q_noop__party` не долетает до `bot_settings`.
+REG_QUESTION_TRACK_SUFFIXES = ("__party", "__short")
+
+
+def reg_question_track_base(key: str) -> str | None:
+    """Базовый ключ `reg_q_*`, если `key` — валидный трек-композит над вопросом анкеты
+    (группа `reg_questions`, `type == "toggle"`); иначе `None` (в том числе для суффикса над
+    любым другим ключом реестра — тот же гейт, что у бота)."""
+    for suffix in REG_QUESTION_TRACK_SUFFIXES:
+        if key.endswith(suffix):
+            base = key[: -len(suffix)]
+            meta = SETTINGS_SCHEMA.get(base)
+            if meta and meta.get("type") == "toggle" and meta.get("group") == "reg_questions":
+                return base
+            return None
+    return None
+
 
 def dangerous_confirm_key(key: str, next_value: str) -> str | None:
     """Ключ реестра с текстом последствий для опасного направления `key -> next_value`, или
