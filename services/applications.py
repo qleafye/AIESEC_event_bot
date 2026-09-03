@@ -52,6 +52,7 @@ from database.db import (
     reject_user,
     revert_user_to_pending,
 )
+from reg_engine import STEP_TO_COLUMN, label_for
 from services.consent import consent_card_line
 from settings_schema import get_setting_typed
 
@@ -59,6 +60,13 @@ from settings_schema import get_setting_typed
 # database.db.mark_user_edited) — CLAUDE.md запрещает показывать код менеджеру, это ЕДИНСТВЕННОЕ
 # место, которое превращает его в слова для карточки заявки / экрана истории.
 EDITED_SOURCE_LABELS = {"miniapp": "в приложении", "bot": "в чате"}
+
+# Plan 23-06 (Known Stub #1 из 23-05): column (users row) -> человеческая подпись, дословно
+# перенесено из `handlers/admin_moderation.py::_COLUMN_TO_LABEL` (та же формула через
+# `reg_engine.label_for` в обратную сторону от `STEP_TO_COLUMN`) — единственная точка правды,
+# бот теперь импортирует её отсюда, а не строит вторую копию (T-23-28: второй источник правды
+# рано или поздно разъедется). Карточка веба использует её же для `history[].changes[].label`.
+COLUMN_TO_LABEL: dict[str, str] = {col: label_for(step) for step, col in STEP_TO_COLUMN.items()}
 
 # Quick 260902-tzh / Phase 05 (D-14): подписи треков — та же общая карточка заявки (бот и веб).
 # D-11 (23-CONTEXT): подписи остаются литералами здесь (паритет с ботом); перенос в реестр —
@@ -124,6 +132,45 @@ async def edit_badges_for(user: dict) -> tuple[str | None, str | None, bool]:
     return edited_line, resubmit_line, has_history
 
 
+def _history_changes(raw_changes: list[dict] | None) -> list[dict]:
+    """Одна запись `reg_answer_history.changes` -> `[{label, old, new}]` для «было → стало»
+    (D-03, Known Stub #1 из 23-05). Дословно правило `handlers/admin_moderation.py::appr_history`:
+    служебный маркер повторной подачи (`column == "status"`) не поле анкеты — пропускается (D-10,
+    уже показан отдельным бейджем `resubmit`); колонка без подписи в `COLUMN_TO_LABEL` тоже
+    пропускается — показать код менеджеру вместо слова запрещает CLAUDE.md, а не показать одну
+    строку истории безопаснее второй копии словаря переводов в JS."""
+    out: list[dict] = []
+    for ch in raw_changes or []:
+        column = ch.get("column")
+        if column == "status":
+            continue
+        label = COLUMN_TO_LABEL.get(column)
+        if not label:
+            continue
+        old = ch.get("old")
+        new = ch.get("new")
+        out.append({
+            "label": label,
+            "old": old if old not in (None, "") else None,
+            "new": new if new not in (None, "") else None,
+        })
+    return out
+
+
+def _history_entry(row: dict) -> dict | None:
+    """Одна строка `get_answer_history` -> `{when, source_label, changes}` для карточки веба.
+    `None`, если после фильтра `_history_changes` не осталось ни одной строки (та же строка
+    бота в этом случае тоже не печатает ничего — запись с одним только маркером `status`)."""
+    changes = _history_changes(row.get("changes"))
+    if not changes:
+        return None
+    return {
+        "when": format_edited_date(row.get("changed_at")),
+        "source_label": EDITED_SOURCE_LABELS.get(row.get("source"), row.get("source") or ""),
+        "changes": changes,
+    }
+
+
 # ── Скоуп менеджера (D-08, форма miniapp/routers/review.py::manager_scope) ──────────────────
 
 async def manager_scope(city: str | None):
@@ -175,7 +222,9 @@ async def card_payload(user: dict) -> dict:
     разбор служебного литерала `legacy`, что и у карточки бота), `edited`/`resubmit`
     (`edit_badges_for`), `consent` — строка согласия ВСЕГДА последней.
     `resume` — `{kind: "file"|"text"|"none", file_id, text}`.
-    `history` — до 5 записей `get_answer_history` (D-03).
+    `history` — до 5 записей `get_answer_history` (D-03), КАЖДАЯ уже переведена в
+    `{when, source_label, changes:[{label, old, new}]}` — `_history_entry` (найдено планом
+    23-05 как Known Stub: до 23-06 фронт получал сырые `column`/`source` литералы).
     `show_resume` — включён ли шаг `resume` в наборе полей карточки."""
     steps = moderation_card.enabled_steps(await get_setting_typed("modcard_fields"))
     answer_limit = await get_setting_typed("modcard_answer_limit")
@@ -213,7 +262,8 @@ async def card_payload(user: dict) -> dict:
         resume = {"kind": "none", "file_id": None, "text": None}
 
     tid = user.get("telegram_id")
-    history = await get_answer_history(tid) if tid is not None else []
+    history_raw = await get_answer_history(tid) if tid is not None else []
+    history = [entry for entry in (_history_entry(row) for row in history_raw) if entry is not None]
 
     return {
         "main_fields": main_fields,
