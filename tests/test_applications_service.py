@@ -230,6 +230,61 @@ def test_claim_approve_all_returns_flipped_ids(tmp_path):
     assert set(ids) == {1903, 1904}
 
 
+# ── D-10 (23.1-CONTEXT.md O-2, план 23.1-05): users.approved_at — общая точка правды для
+# чата, веба и «Принять всех», старые строки остаются NULL ─────────────────────────────────
+
+def test_claim_approve_stamps_approved_at_chat_and_web_single_path(tmp_path):
+    # claim_approve — ОДНО имя для бота (appr_approve) и веба (miniapp/routers/applications.py)
+    # — единственный путь одиночного одобрения; approved_at ставит approve_user_atomic.
+    _use_tmp_db(tmp_path)
+    _run(db.init_db())
+    _seed_user(1905, participant_type="full")
+    assert _run(db.get_user(1905))["approved_at"] is None
+
+    won = _run(applications.claim_approve(1905))
+    assert won is True
+    row = _run(db.get_user(1905))
+    assert row["approved_at"] is not None
+    assert row["approved_at"].count("-") == 2  # "YYYY-MM-DD HH:MM:SS", тот же формат, что и registration_date
+
+
+def test_claim_approve_all_stamps_approved_at_web_mass_path(tmp_path):
+    # claim_approve_all — «Принять всех» веб-слоя.
+    _use_tmp_db(tmp_path)
+    _run(db.init_db())
+    _seed_user(1906, participant_type="full")
+    _seed_user(1907, participant_type="short")
+
+    ids = _run(applications.claim_approve_all(None))
+    assert set(ids) == {1906, 1907}
+    for tid in (1906, 1907):
+        assert _run(db.get_user(tid))["approved_at"] is not None
+
+
+def test_bot_direct_approve_all_pending_also_stamps_approved_at(tmp_path):
+    # Бот (handlers/admin_moderation.py::appr_all_yes) зовёт database.db.approve_all_pending
+    # НАПРЯМУЮ, минуя services.applications.claim_approve_all — approved_at обязан приехать
+    # и по этому пути (та же атомарная UPDATE, живёт в database.db, а не в этом сервисе).
+    _use_tmp_db(tmp_path)
+    _run(db.init_db())
+    _seed_user(1908, participant_type="full")
+
+    ids = _run(db.approve_all_pending(city_scope=None))
+    assert ids == [1908]
+    assert _run(db.get_user(1908))["approved_at"] is not None
+
+
+def test_old_rows_approved_at_stays_null_until_approved(tmp_path):
+    # Строка не одобрена (или ещё не тронута) — approved_at остаётся NULL, а не пустой строкой.
+    _use_tmp_db(tmp_path)
+    _run(db.init_db())
+    _seed_user(1909, participant_type="full")
+
+    ok = _run(applications.claim_reject(1909))
+    assert ok is True
+    assert _run(db.get_user(1909))["approved_at"] is None
+
+
 # ── Журнал отмены: record -> undo внутри окна -> flush после окна ──────────────────────────
 
 def test_record_decision_then_undo_inside_window_reverts_and_nothing_flushes(tmp_path):

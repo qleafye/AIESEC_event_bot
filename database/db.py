@@ -465,6 +465,15 @@ async def init_db():
         await _ensure_column(db, "game_tasks", "title", "TEXT")
         await _ensure_column(db, "game_tasks", "photo_file_id", "TEXT")
 
+        # Phase 23.1-05 (D-10, 23.1-CONTEXT.md O-2): approval date for the delegate profile
+        # («одобрена {date}», mockup 04-profile.png). Additive, no backfill — NULL means
+        # "approved before this column existed" (same discipline as edited_at/event_city
+        # above), the profile simply shows no «одобрена…» fragment for those rows. Stamped by
+        # approve_user_atomic/approve_all_pending below — the ONE seam every approval path
+        # (bot single approve, bot «Принять всех», web single approve, web «Принять всех»)
+        # already funnels through, so profile.py never needs to know which path fired.
+        await _ensure_column(db, "users", "approved_at", "TEXT")
+
         # `content` stores a file_id for photo/pdf proof, raw text for text/link proof — the
         # project never writes uploaded files to disk (README/CLAUDE.md file_id pattern).
         await db.execute('''
@@ -1865,11 +1874,16 @@ async def set_user_status(telegram_id: int, status: str):
 
 async def approve_user_atomic(telegram_id: int) -> bool:
     """Atomically approve one pending user. True iff this call flipped the row
-    (rowcount==1) — a concurrent second approve returns False (no double approval)."""
+    (rowcount==1) — a concurrent second approve returns False (no double approval).
+    approved_at (D-10, Phase 23.1-05) is stamped in the SAME UPDATE — this is the shared seam
+    for both the bot's single-approve (appr_approve) and the web's single-approve
+    (services.applications.claim_approve), so a second timestamp write is never needed."""
+    approved_at = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     async with _connect() as db:
         cursor = await db.execute(
-            "UPDATE users SET status = 'approved' WHERE telegram_id = ? AND status = 'pending'",
-            (telegram_id,),
+            "UPDATE users SET status = 'approved', approved_at = ? "
+            "WHERE telegram_id = ? AND status = 'pending'",
+            (approved_at, telegram_id),
         )
         await db.commit()
         return cursor.rowcount == 1
@@ -2008,14 +2022,20 @@ async def approve_all_pending(*, city_scope=None) -> list[int]:
 
     `city_scope` narrows the WHERE of this SAME atomic UPDATE ... RETURNING (not a second
     query, not a post-filter on the returned ids) — a scoped call structurally cannot flip
-    a row belonging to another city (T-072-03)."""
+    a row belonging to another city (T-072-03).
+
+    approved_at (D-10, Phase 23.1-05) is stamped in the SAME UPDATE — this is the shared seam
+    for BOTH mass-approve callers: the bot's appr_all_yes calls this function directly (not
+    through services.applications.claim_approve_all), so stamping only in the service wrapper
+    would silently miss the chat path."""
+    approved_at = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     frag, city_params = _city_clause(city_scope)
     extra = f" AND {frag}" if frag else ""
     async with _connect() as db:
         async with db.execute(
-            f"UPDATE users SET status = 'approved' WHERE status = 'pending'{extra} "
-            "RETURNING telegram_id",
-            tuple(city_params),
+            f"UPDATE users SET status = 'approved', approved_at = ? "
+            f"WHERE status = 'pending'{extra} RETURNING telegram_id",
+            (approved_at, *city_params),
         ) as cursor:
             rows = await cursor.fetchall()
         await db.commit()
