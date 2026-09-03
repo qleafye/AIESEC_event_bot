@@ -218,6 +218,7 @@ EXPECTED_ROUTES = {
     "#/admin-coins": "screens/admin_coins.js",
     "#/settings": "screens/settings.js",
     "#/form": "screens/form.js",
+    "#/applications": "screens/applications.js",
 }
 _ROUTE_ROW = re.compile(r'\[\s*"(#/[^"]+)"\s*,\s*"(screens/[^"]+\.js)"\s*\]')
 
@@ -238,8 +239,8 @@ def test_route_table_matches_phase_plan_exactly():
     # {id}, второй маршрут не нужен -- проверяем явно ниже, чтобы регрессия не вернулась.
     routes = _routes_from_app_js()
     assert routes == EXPECTED_ROUTES
-    assert len(routes) == 14
-    assert set(routes.values()) == set(EXPECTED_ROUTES.values())  # 14 модулей, у task_edit один маршрут
+    assert len(routes) == 15
+    assert set(routes.values()) == set(EXPECTED_ROUTES.values())  # 15 модулей, у task_edit один маршрут
     assert "#/task-edit/new" not in routes
 
 
@@ -370,6 +371,7 @@ EXPECTED_NAV = [
     {"hash": "#/leaderboard", "section": "leaderboard", "delegate": True},
     {"hash": "#/profile", "section": "profile", "delegate": True},
     {"hash": "#/form", "section": "form", "delegate": True},
+    {"hash": "#/applications", "section": "applications", "cap": "moderate_reg", "group": "apps"},
     {"hash": "#/review", "section": "review", "cap": "moderate_game", "group": "game"},
     {"hash": "#/admin-tasks", "section": "admin_tasks", "cap": "moderate_game", "group": "game"},
     {"hash": "#/admin-coins", "section": "coins", "cap": "moderate_game", "staffOnly": True, "group": "game"},
@@ -1288,3 +1290,60 @@ def test_attach_swipe_sets_touch_action_pan_y_and_reads_motion_tier():
     assert "setPointerCapture" in attach_src
     for ev in ("pointerdown", "pointermove", "pointerup", "pointercancel"):
         assert ev in attach_src, ev
+
+
+# ── screens/applications.js: экран #/applications (фаза 23 план 05, D-01..D-09) ─────────
+
+APPLICATIONS_JS = SCREENS_DIR / "applications.js"
+
+
+def test_applications_screen_exports_render_without_innerhtml_or_colors():
+    text = _js_without_comments(APPLICATIONS_JS)
+    assert re.search(r"export\s+async\s+function\s+render\s*\(root,\s*params,\s*ctx\)", text)
+    assert re.search(r"export\s+function\s+unmount\s*\(", text)
+    assert "innerHTML" not in text
+    assert not _HEX_OR_RGB_COLOR.findall(text), "литеральный цвет в applications.js"
+    assert "https://" not in text and "http://" not in text
+
+
+def test_applications_screen_has_no_human_text_literals():
+    """D-25 (найдено планом 23-05): API 23-04 не отдавал часть подписей экрана вовсе —
+    дописано в miniapp/routers/page.py::APPLICATIONS_TEXT_KEYS (body.dataset.applicationsTexts,
+    тот же приём, что hub.js::sectionLabelsFromDom). Ни одного кириллического литерала
+    в строковых/шаблонных литералах — тот же сторож, что form.js/settings.js."""
+    text = _js_without_comments(APPLICATIONS_JS)
+    cyrillic = re.compile(r"[А-Яа-яЁё]")
+    for m in _STRING_LITERAL.finditer(text):
+        assert not cyrillic.search(m.group(0)), f"кириллический литерал в screens/applications.js: {m.group(0)}"
+
+
+def test_applications_screen_does_not_touch_review_screen_or_classes():
+    text = _js_without_comments(APPLICATIONS_JS)
+    assert "review-" not in text
+    assert not re.search(r'from\s+"\.\./screens/review\.js"', text)
+
+
+def test_applications_screen_uses_attach_swipe_exactly_once_via_swipe_js():
+    text = _js_without_comments(APPLICATIONS_JS)
+    assert re.search(r'import\s*\{[^}]*attachSwipe[^}]*\}\s*from\s*"\.\./swipe\.js"', text)
+    assert len(re.findall(r"attachSwipe\(", text)) == 1
+
+
+def test_applications_screen_touch_action_pan_y_present_in_css():
+    css = APP_CSS.read_text(encoding="utf-8")
+    assert "pan-y" in css
+
+
+def test_applications_screen_api_paths_are_literal_not_action_interpolated():
+    text = _js_without_comments(APPLICATIONS_JS)
+    for path in ("/applications/next", "/approve", "/reject"):
+        assert path in text, path
+    assert "${action}" not in text
+
+
+def test_applications_route_and_nav_registered_with_moderate_reg_cap():
+    text = APP_JS.read_text(encoding="utf-8")
+    assert text.count("#/applications") == 3  # ROUTES + NAV + NAV_ICONS
+    nav_block = text[text.index("export const NAV ="):text.index("export const NAV_ICONS")]
+    assert '"#/applications"' in nav_block and 'cap: "moderate_reg"' in nav_block and 'group: "apps"' in nav_block
+

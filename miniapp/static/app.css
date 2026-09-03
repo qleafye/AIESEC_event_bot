@@ -1163,3 +1163,106 @@ a.flat-row:active, button.flat-row:active { background: var(--surface-alt); }
 }
 .settings-preview p { margin: 0 0 var(--sp-1); }
 .settings-preview p:last-child { margin-bottom: 0; }
+
+/* ── экран «🗂 Отбор заявок» (Phase 23 план 05, D-01..D-09): собственный префикс .appl-*,
+   .review-* (screens/review.js — соседняя очередь геймификации) не переиспользуется ни разу. ── */
+
+/* Стопка (D-04 «specific_ideas»): следующая карточка чуть ниже и уже — статичный подслой,
+   без второго запроса к серверу. touch-action: pan-y — вертикаль остаётся у прокрутки,
+   swipe.js разбирает только преобладание горизонтали (T-23-22/T-23-24). */
+.appl-card-holder { position: relative; }
+.appl-stack {
+  position: absolute;
+  inset: var(--sp-2) calc(-1 * var(--sp-2)) calc(-1 * var(--sp-2)) var(--sp-2);
+  background: var(--surface-alt);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  z-index: 0;
+  pointer-events: none;
+}
+.appl-card {
+  position: relative;
+  z-index: 1;
+  touch-action: pan-y;
+  overflow: visible;
+}
+:root[data-motion="off"] .appl-card { transition: none; }
+
+.appl-head-row { display: flex; align-items: center; gap: var(--sp-3); margin-bottom: var(--sp-3); }
+.appl-avatar, .appl-avatar-initials {
+  flex: none;
+  width: 48px;
+  height: 48px;
+  border-radius: var(--radius-pill);
+  object-fit: cover;
+  background: var(--surface-alt);
+}
+.appl-avatar-initials {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 700;
+  color: var(--accent-text);
+}
+.appl-name-block { flex: 1; min-width: 0; }
+.appl-position { flex: none; font-variant-numeric: tabular-nums; }
+
+.appl-badges { display: flex; flex-wrap: wrap; gap: var(--sp-1); margin-bottom: var(--sp-3); }
+.appl-fields { margin-bottom: var(--sp-2); }
+.appl-extra { margin-bottom: var(--sp-2); }
+.appl-show-all { width: auto; margin-bottom: var(--sp-2); }
+
+.appl-resume { margin-bottom: var(--sp-2); }
+.appl-resume-open { width: auto; }
+.appl-resume-quote {
+  margin: 0;
+  padding: var(--sp-2) var(--sp-3);
+  border-left: 3px solid var(--border-strong);
+  color: var(--text-muted);
+  white-space: pre-wrap;
+}
+
+.appl-history { margin-bottom: var(--sp-2); }
+.appl-history summary {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  min-height: var(--tap-min);
+  cursor: pointer;
+  color: var(--text-muted);
+  font-size: 13px;
+}
+.appl-history-list { margin-top: var(--sp-1); padding-left: calc(1em + var(--sp-2)); }
+
+/* Оверлей решения (specific_ideas D-04): цветной ✅/❌ по мере смещения, прозрачность —
+   от JS (progress), сама подложка — только токены. */
+.appl-overlay {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: var(--radius-lg);
+  opacity: 0;
+  pointer-events: none;
+}
+.appl-overlay .icon { width: 64px; height: 64px; }
+.appl-overlay.approve { background: color-mix(in srgb, var(--accent) 18%, transparent); color: var(--accent-text); }
+.appl-overlay.reject { background: color-mix(in srgb, var(--danger) 18%, transparent); color: var(--danger-text); }
+
+.appl-decide-row { display: flex; gap: var(--sp-3); margin-top: var(--sp-3); }
+.appl-decide {
+  width: var(--tap-min);
+  height: var(--tap-min);
+  flex: none;
+  padding: 0;
+  border-radius: var(--radius-pill);
+  margin-left: auto;
+}
+.appl-decide.approve { background: var(--accent); border-color: var(--accent); }
+.appl-decide.reject { background: var(--surface); border-color: var(--danger); color: var(--danger-text); }
+.appl-decide-row .appl-decide:first-child { margin-left: 0; margin-right: auto; }
+.appl-decide .icon { width: 22px; height: 22px; }
+
+.appl-card-holder.is-loading { opacity: .5; pointer-events: none; transition: opacity var(--dur) var(--ease); }
+:root[data-motion="off"] .appl-card-holder.is-loading { transition: none; }

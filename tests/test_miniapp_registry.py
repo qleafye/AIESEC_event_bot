@@ -95,6 +95,13 @@ MINIAPP_KEYS = [
     "miniapp_applications_approve_all_confirm",
     "miniapp_applications_reject_no_reason",
     "miniapp_applications_reject_own_reason",
+    # Phase 23-05 Task 2 (APP-TINDER-03, D-25): подписи карточки заявки, которых не хватало
+    # плану 23-04 (API отдавал только то, что зависит от карточки, не статичные подписи кнопок).
+    "miniapp_applications_approve_button",
+    "miniapp_applications_reject_button",
+    "miniapp_applications_resume_open",
+    "miniapp_applications_resume_none",
+    "miniapp_applications_history_label",
     "miniapp_applications_filter_all",
     "miniapp_applications_filter_changed",
     # Phase 22 Plan 02 (WEB-SET-02/03, D-15): веб-экран «⚙️ Настройки» Mini App
@@ -156,8 +163,8 @@ THEME_ENUM_KEYS = [
 _ALLOWED_TYPES = {"toggle", "int", "list", "date", "text", "enum", "photo", "file"}
 
 
-def test_exactly_104_miniapp_keys_and_no_extra():
-    assert len(MINIAPP_KEYS) == 104
+def test_exactly_109_miniapp_keys_and_no_extra():
+    assert len(MINIAPP_KEYS) == 109
     present = sorted(k for k in SETTINGS_SCHEMA if k.startswith("miniapp_"))
     assert present == sorted(MINIAPP_KEYS)
 
@@ -196,7 +203,7 @@ def test_text_keys_have_human_defaults():
         k for k in MINIAPP_KEYS
         if SETTINGS_SCHEMA[k]["type"] == "text" and k != "miniapp_accent"
     ]
-    assert len(text_keys) == 78
+    assert len(text_keys) == 83
     for key in text_keys:
         default = SETTINGS_SCHEMA[key]["default"]
         assert isinstance(default, str) and default.strip(), key
