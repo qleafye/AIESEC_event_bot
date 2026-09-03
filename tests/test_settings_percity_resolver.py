@@ -43,6 +43,9 @@ EXPECTED_PER_CITY_KEYS = {
     "reg_form_edited_heading_text", "reg_form_edited_pending_heading_text",
     "reg_form_resubmit_heading_text", "reg_form_closed_text", "reg_form_rejected_banner_text",
     "reg_nudge_app_button_text",
+    # Phase 23.1 (23.1-03, D-хаб): дата отсчёта до форума в приложении — per_city как её
+    # якоря event_date/event_place_name, у разных городов форум может стартовать в разный день.
+    "miniapp_hub_countdown_date",
 }
 
 
