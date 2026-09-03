@@ -789,8 +789,9 @@ def test_single_section_autoopens(tmp_path):
     asyncio.run(db.add_staff(MANAGER_ID, "reg_manager", ADMIN_ID))
     # Isolate this person to exactly ONE menu row (admin_receipts) — reg_manager's default
     # caps (moderate_reg + moderate_receipts) would otherwise show two rows, and moderate_reg
-    # alone now ALSO maps to two rows (admin_applications + T-08-33's admin_stuck_questions) --
-    # moderate_receipts is the one capability that still maps to exactly one row. Registry
+    # alone now ALSO maps to two rows (admin_applications + quick 260904's admin_questions,
+    # T-08-33's screen renamed/absorbed into the journal) -- moderate_receipts is the one
+    # capability that still maps to exactly one row. Registry
     # `list` values are stored as a raw newline/`;`-separated STRING
     # (settings_schema._parse_setting), not a Python list -- one capability per line here is
     # exactly one line.

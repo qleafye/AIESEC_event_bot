@@ -54,7 +54,6 @@ from database.db import (
     get_question,
     claim_question,
     set_question_answer,
-    get_stuck_questions,
     list_all_tasks,
     create_task,
     get_task,
@@ -718,33 +717,20 @@ async def show_admin_source_stats(callback: types.CallbackQuery):
     await callback.answer()
 
 
-# T-08-33 (quick task), part D: claimed-but-never-delivered delegate questions. Gated by
-# moderate_reg (same capability as the rest of the question-reply flow), not a mass
-# moderation queue like «Заявки»/«Чеки» (CLAUDE.md's pagination constraint targets queues on
-# the order of 1000+ live rows -- a stuck question only ever exists when delivery genuinely
-# failed, expected to be rare) -- a single text screen, same shape as render_stats_text/
-# render_monthly_stats above, not a per-row card UI.
-async def render_stuck_questions_text() -> str:
-    rows = await get_stuck_questions()
-    if not rows:
-        return "🔒 <b>Залипшие вопросы</b>\n\nНет вопросов, захваченных без доставки ответа."
-
-    lines = ["🔒 <b>Залипшие вопросы</b>", "", "Захвачены, но ответ не дошёл до делегата:"]
-    for row in rows:
-        name = html_module.escape(str(row.get("answered_by_name") or "неизвестно"))
-        question_text = html_module.escape(str(row.get("question_text") or ""))
-        lines.append(
-            f"• 🆔 <code>{row['user_id']}</code> — захватил(а) {name}\n"
-            f"  «{question_text}»"
-        )
-    return "\n".join(lines)
-
-
+# T-08-33 (quick task), part D: claimed-but-never-delivered delegate questions.
+#
+# Quick 260904-2cj: экран-однострочник поглощён журналом «❓ Вопросы делегатов»
+# (handlers/admin_questions.py) — видит все три статуса, не только «в работе», и умеет
+# отвечать прямо со страницы. Кнопки «🔒 Залипшие вопросы» на главном экране больше нет
+# (см. handlers/admin_core.py::_ADMIN_MENU_ROWS), но этот callback остаётся жить: клавиатуры,
+# отправленные ДО этого квика, лежат в чатах менеджеров вечно и должны продолжать работать.
+# Имя функции и декоратор НЕ трогаем — они зафиксированы золотым снимком
+# `tests/test_refac_snapshot_260816.py`.
 @router.callback_query(F.data == "admin_stuck_questions")
 async def show_stuck_questions(callback: types.CallbackQuery):
-    from handlers.admin_sections import op_return_keyboard  # ленивый шов
-    text = await render_stuck_questions_text()
-    await callback.message.edit_text(text, parse_mode="HTML", reply_markup=await op_return_keyboard(callback.from_user.id, callback.data))
+    from handlers.admin_questions import render_questions_screen  # ленивый шов
+    text, kb = await render_questions_screen(callback.from_user.id, status="in_work")
+    await callback.message.edit_text(text, parse_mode="HTML", reply_markup=kb)
     await callback.answer()
 
 
@@ -766,6 +752,11 @@ from handlers.admin_broadcasts import show_admin_broadcast  # noqa: E402
 
 from handlers import admin_reg_config  # noqa: E402
 
+
+# Quick 260904-2cj (QJRN-01..04): shared-router seam import for the delegate-questions journal
+# screen («❓ Вопросы делегатов») — registers admin_questions/aq:*/aq_answer:*/QuestionAnswer.*
+# on the shared router right after the reg-config seam.
+from handlers import admin_questions  # noqa: E402
 
 
 # Phase 13 (13-06, REFAC-01): shared-router seam import for the moderation seam, inserted AT

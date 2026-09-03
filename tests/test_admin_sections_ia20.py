@@ -100,9 +100,11 @@ def _only_caps(role: str, caps: str):
 # совместимости в плане 20-03, а не этого покрытия.
 FROZEN_BEFORE = frozenset({
     # 21 строка _ADMIN_MENU_ROWS (22-я — сам admin_settings, см. комментарий выше)
+    # quick 260904: экран залипших поглощён журналом, callback жив как алиас —
+    # "admin_stuck_questions" убран отсюда, "admin_questions" добавлен.
     "admin_stats", "admin_monthly_stats", "admin_source_stats",
     "admin_export_csv", "admin_export_incomplete",
-    "admin_applications", "admin_receipts", "admin_stuck_questions",
+    "admin_applications", "admin_receipts", "admin_questions",
     "admin_broadcast", "admin_polls",
     "admin_sync_sheet", "admin_rebuild_sheet", "admin_dedupe_sheet",
     "admin_settings_guide", "admin_cities",
@@ -293,8 +295,10 @@ def test_stranger_sees_no_sections(tmp_path):
 
 def test_apps_section_for_moderate_reg_has_operations_only():
     """Раздел рендерится, но внутри — только доступное: тумблеры и группы требуют `settings`."""
+    # quick 260904: экран залипших поглощён журналом, callback жив как алиас — раздел несёт
+    # "admin_questions", не "admin_stuck_questions".
     rows = sec.visible_rows("apps", {"moderate_reg"}, False)
-    assert [sec.row_callback(r) for r in rows] == ["admin_applications", "admin_stuck_questions"]
+    assert [sec.row_callback(r) for r in rows] == ["admin_applications", "admin_questions"]
     assert not [r for r in rows if r[0] in ("toggle", "group")]
 
 
@@ -681,7 +685,9 @@ def test_toggle_inside_section_redraws_that_section(tmp_path, handler_name, call
     ("admin", "show_admin_stats", "admin_stats", "data"),
     ("admin", "show_admin_monthly_stats", "admin_monthly_stats", "data"),
     ("admin", "show_admin_source_stats", "admin_source_stats", "data"),
-    ("admin", "show_stuck_questions", "admin_stuck_questions", "apps"),
+    # quick 260904: экран залипших поглощён журналом, callback жив как алиас — новый экран
+    # интерактивный и несёт СВОЮ клавиатуру (как admin_applications, которого в этом списке и
+    # не было), а `_assert_is_section_screen` требует ровно клавиатуру раздела.
     ("game", "show_game_stats", "admin_game_stats", "game"),
 ])
 def test_operation_inside_section_redraws_that_section(tmp_path, module, handler_name, callback_data, section):

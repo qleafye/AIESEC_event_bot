@@ -65,7 +65,10 @@ SECTIONS: list[tuple[str, str, list[tuple]]] = [
     ]),
     ("apps", "📋 Заявки", [
         ("op", "admin_applications"),
-        ("op", "admin_stuck_questions"),
+        # Quick 260904-2cj: «🔒 Залипшие вопросы» переехал в «❓ Вопросы делегатов» — экран
+        # журнала со всеми тремя статусами; старый callback жив как алиас (см.
+        # handlers/admin.py::show_stuck_questions).
+        ("op", "admin_questions"),
         ("screen", "modcard_open", "🧾 Поля карточки заявки"),
         ("toggle", "settings_toggle_full_approval"),
         ("toggle", "settings_toggle_short_approval"),
