@@ -100,7 +100,18 @@ MANAGER_SCREENS = [
     ("task-edit", "#/task-edit/{task_id}"),
     ("admin-coins", "#/admin-coins"),
     ("settings", "#/settings"),
+    # Phase 23.1 задача 2: экран отбора заявок «тиндером» (settings/applications оба требуют
+    # прав, которых у GAME_MANAGER_ID нет — см. MANAGER_SCREEN_PRINCIPAL ниже).
+    ("applications", "#/applications"),
 ]
+
+# Экран -> telegram_id, от чьего лица снимать (по умолчанию GAME_MANAGER_ID — держит только
+# moderate_game). "settings" требует cap "settings", "applications" — cap "moderate_reg"
+# (miniapp/routers/settings.py::require_cap("settings") / applications.py::require_cap(
+# "moderate_reg")) — ни того, ни другого у GAME_MANAGER_ID нет (demo_server.py сеет только
+# game_manager); ADMIN_ID держит все 7 capability через bootstrap ADMIN_IDS
+# (handlers/admin_caps.py::resolve_capabilities).
+MANAGER_SCREEN_PRINCIPAL = {"settings": ADMIN_ID, "applications": ADMIN_ID}
 
 NAV_LAYOUT_RE = re.compile(r'const NAV_LAYOUT = "(\w+)";')
 
@@ -137,14 +148,36 @@ def _wait_screen_ready(driver, timeout_s: float = 10, content_selector: str | No
 # ветки рендера form.js: `.plate--form`/`.wizard-field` — обычный шаг мастера, `.wizard-step` —
 # развилка/согласия pre-flow, `.flat-list` — обзор точечной правки (kind='edit'), `.state` —
 # «анкета закрыта»/«отправлено», `.error-inline` — сетевая ошибка.
+# "settings"/"applications" (Phase 23.1 задача 2) добавлены тем же приёмом, что "form" —
+# оболочка `#screen` у обоих непустая ДО ответа сервера (settings.js рисует `title`+`cityBar`+
+# `searchBar` синхронно, applications.js — заголовок+notice), так что общий чек
+# `_wait_screen_ready` проходит раньше, чем приезжает `GET .../settings/all` /
+# `GET .../applications/next`. `.settings-group, .settings-row` — реальные карточки настроек
+# (settings.js paint()); карточка заявки — `.appl-card` (applications.js рисует `<article
+# class="card appl-card">`), пустое состояние очереди — общий `.empty-state` (ui.js::
+# stateShell) — НЕ `.appl-empty`, такого класса в applications.js нет (emptyState()
+# переиспользует общую оболочку ui.js, найдено при проверке файла).
 SCREEN_CONTENT_SELECTOR = {
     "form": ".plate--form, .wizard-field, .wizard-step, .flat-list, .state, .error-inline",
+    "settings": ".settings-group, .settings-row",
+    "applications": ".appl-card, .empty-state",
+}
+
+# Экран -> секунды ожидания content_selector сверх дефолтных 10 (см. _wait_screen_ready).
+# Обнаружено при первом прогоне задачи 2: `#/settings` тянет ВЕСЬ реестр разом (~70 ключей,
+# `GET .../admin/settings/all`, ответ ~235 КБ) и рисует ~400 DOM-узлов (settings.js::paint) —
+# на этой машине честные ~13с, не зависание и не JS-ошибка (проверено вручную: console чист,
+# группы появляются к 10-13с). 10с общего дефолта достаточно form/applications (маленький
+# ответ), но не settings — отдельный, не общий бюджет, чтобы не раздувать таймаут остальным
+# экранам, где долгое ожидание как раз симптом реальной поломки.
+SCREEN_CONTENT_TIMEOUT_S = {
+    "settings": 25,
 }
 
 
 def shoot_miniapp_screen(driver, base_url, telegram_id, hash_fragment, out_path,
                           skip_onboarding=True, task_id=None, wait_selector=True,
-                          content_selector=None) -> None:
+                          content_selector=None, content_timeout_s=10) -> None:
     url = f"{base_url}/app?as={telegram_id}"
     driver.get(url)
     if skip_onboarding:
@@ -154,7 +187,7 @@ def shoot_miniapp_screen(driver, base_url, telegram_id, hash_fragment, out_path,
     hash_ = hash_fragment.format(task_id=task_id) if task_id is not None else hash_fragment
     driver.get(f"{url}{hash_}")
     if wait_selector:
-        _wait_screen_ready(driver, content_selector=content_selector)
+        _wait_screen_ready(driver, timeout_s=content_timeout_s, content_selector=content_selector)
     time.sleep(0.3)  # докрутка счётчика монет / шрифты — тот же запас, что в make_theme_previews.py
     save_screenshot(driver, out_path, MINIAPP_WINDOW)
 
@@ -177,6 +210,58 @@ def nav_layout_override(layout: str):
             # Не должно случиться (мы только что сами это записали) -- но если случилось,
             # кричим явно, а не оставляем правку раскладки тихо висеть в рабочем дереве.
             raise RuntimeError(f"{APP_JS_PATH} не восстановлен побайтно после NAV_LAYOUT override")
+
+
+# Phase 23.1 задача 2 (бонус-кадры, вне манифеста build_manifest()/--check): «есть ли смысл
+# смотреть глазами» важнее строгой проверки размера файла -- settings после опечатки в поиске
+# + applications после «Показать всё» дают ревьюеру то, чего статичный первый кадр не покажет
+# (highlightMatch/suggestTerms, свёрнутые extra_fields). Обе интеракции дёшевы (один
+# send_keys/один click), но НЕ гарантированы: поисковый индекс/набор extra_fields зависят от
+# посева demo_server.py, а не от кода этого файла -- отсюда try/except с предупреждением в
+# stderr вместо падения всего прогона (задание прямо просит «оба -- optional, только если
+# дёшево»).
+def _shoot_manager_bonus_screens(driver) -> None:
+    from selenium.webdriver.common.by import By
+    from selenium.webdriver.support.ui import WebDriverWait
+
+    url = f"{MINIAPP_BASE_URL}/app?as={ADMIN_ID}"
+
+    try:
+        driver.get(url)
+        driver.execute_script(f"localStorage.setItem('{ONBOARDING_KEY}', '1');")
+        driver.get(f"{url}#/settings")
+        _wait_screen_ready(
+            driver, timeout_s=SCREEN_CONTENT_TIMEOUT_S.get("settings", 10),
+            content_selector=SCREEN_CONTENT_SELECTOR["settings"],
+        )
+        search_input = WebDriverWait(driver, 10).until(
+            lambda d: d.find_element(By.CSS_SELECTOR, ".settings-search input[type='search']")
+        )
+        # Поле поиска стартует disabled до загрузки реестра (settings.js) -- ждём, пока
+        # снимется, иначе send_keys уходит в никуда.
+        WebDriverWait(driver, 10).until(lambda d: not search_input.get_attribute("disabled"))
+        search_input.send_keys("дедлаин")
+        time.sleep(0.4)  # debounce поиска (onSearchInput) + перерисовка highlightMatch/suggestTerms
+        save_screenshot(driver, SHOTS_DIR / "miniapp-settings-search-typo-bluebook-light-hub.png", MINIAPP_WINDOW)
+        print("OK: bonus — settings search typo")
+    except Exception as exc:  # noqa: BLE001 -- бонус-кадр, не часть манифеста
+        print(f"ПРОПУСК бонус-кадра settings-search-typo: {exc}", file=sys.stderr)
+
+    try:
+        driver.get(url)
+        driver.execute_script(f"localStorage.setItem('{ONBOARDING_KEY}', '1');")
+        driver.get(f"{url}#/applications")
+        _wait_screen_ready(driver, content_selector=SCREEN_CONTENT_SELECTOR["applications"])
+        show_all = WebDriverWait(driver, 5).until(
+            lambda d: d.find_element(By.CSS_SELECTOR, ".appl-show-all")
+        )
+        show_all.click()
+        time.sleep(0.3)
+        save_screenshot(driver, SHOTS_DIR / "miniapp-applications-showall-bluebook-light-hub.png", MINIAPP_WINDOW)
+        print("OK: bonus — applications show-all")
+    except Exception as exc:  # noqa: BLE001 -- бонус-кадр, не часть манифеста; кнопки может не
+        # быть, если у первой карточки очереди нет extra_fields (посев demo_server.py).
+        print(f"ПРОПУСК бонус-кадра applications-showall: {exc}", file=sys.stderr)
 
 
 # ── дашборд ──────────────────────────────────────────────────────────────────────────────────
@@ -407,10 +492,20 @@ def run_full_pass(delegate_only: bool = False) -> int:
                 for name, hash_tpl in MANAGER_SCREENS:
                     tid = task_id if "{task_id}" in hash_tpl else None
                     shoot_miniapp_screen(
-                        driver_light, MINIAPP_BASE_URL, GAME_MANAGER_ID if name != "settings" else ADMIN_ID,
+                        driver_light, MINIAPP_BASE_URL, MANAGER_SCREEN_PRINCIPAL.get(name, GAME_MANAGER_ID),
                         hash_tpl, SHOTS_DIR / f"miniapp-{name}-{preset}-light-hub.png", task_id=tid,
+                        content_selector=SCREEN_CONTENT_SELECTOR.get(name),
+                        content_timeout_s=SCREEN_CONTENT_TIMEOUT_S.get(name, 10),
                     )
                 print(f"OK: {preset} light — delegate+manager screens")
+
+                # ── Phase 23.1 задача 2 (бонус, вне манифеста --check): settings после ввода
+                # опечатки в поиск + applications после «Показать всё» — только на bluebook,
+                # только со светлой темой (та же логика, что онбординг снят один раз). Обёрнуто
+                # в try/except: это ДОПОЛНИТЕЛЬНЫЕ кадры для ревью, не часть манифеста, падение
+                # здесь не должно ронять весь прогон -- см. модульный докстринг задачи 2.
+                if preset == "bluebook":
+                    _shoot_manager_bonus_screens(driver_light)
 
             write_preset(db_path, "bluebook")  # вернуть дефолт перед раскладками/состояниями
 
@@ -517,8 +612,10 @@ def run_full_pass(delegate_only: bool = False) -> int:
             for name, hash_tpl in MANAGER_SCREENS:
                 tid = task_id if "{task_id}" in hash_tpl else None
                 shoot_miniapp_screen(
-                    driver_dark, MINIAPP_BASE_URL, GAME_MANAGER_ID if name != "settings" else ADMIN_ID,
+                    driver_dark, MINIAPP_BASE_URL, MANAGER_SCREEN_PRINCIPAL.get(name, GAME_MANAGER_ID),
                     hash_tpl, SHOTS_DIR / f"miniapp-{name}-bluebook-dark-hub.png", task_id=tid,
+                    content_selector=SCREEN_CONTENT_SELECTOR.get(name),
+                    content_timeout_s=SCREEN_CONTENT_TIMEOUT_S.get(name, 10),
                 )
             print("OK: bluebook dark — delegate+manager screens")
         finally:
