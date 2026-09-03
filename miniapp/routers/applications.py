@@ -148,6 +148,12 @@ async def applications_next(
             "reject_templates": await applications.reject_reason_templates(),
             "chips": {
                 "all": await get_setting_typed("miniapp_applications_filter_all"),
+                # D-08 (найдено планом 23-05, задача 3): три подписи трека — те же коды, что
+                # `applications.TRACK_FILTERS` (full/party/short), но текст менеджер видит
+                # только здесь, не в query-параметре.
+                "full": await get_setting_typed("miniapp_applications_filter_full"),
+                "party": await get_setting_typed("miniapp_applications_filter_party"),
+                "short": await get_setting_typed("miniapp_applications_filter_short"),
                 "changed": await get_setting_typed("miniapp_applications_filter_changed"),
             },
         },

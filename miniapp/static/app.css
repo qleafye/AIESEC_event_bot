@@ -1167,6 +1167,34 @@ a.flat-row:active, button.flat-row:active { background: var(--surface-alt); }
 /* ── экран «🗂 Отбор заявок» (Phase 23 план 05, D-01..D-09): собственный префикс .appl-*,
    .review-* (screens/review.js — соседняя очередь геймификации) не переиспользуется ни разу. ── */
 
+/* Фильтры-чипы и «Принять всех N» (Task 3, D-07/D-08). */
+.appl-filters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--sp-2);
+  margin-bottom: var(--sp-3);
+}
+.appl-filter-chip {
+  display: inline-flex;
+  align-items: center;
+  min-height: var(--tap-min);
+  padding: 0 var(--sp-3);
+  border: 1px solid var(--border);
+  cursor: pointer;
+  font: inherit;
+  transition: background var(--dur) var(--ease), color var(--dur) var(--ease), border-color var(--dur) var(--ease);
+}
+.appl-filter-chip.on { background: var(--accent-soft); color: var(--accent-text); border-color: var(--accent); }
+
+.appl-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--sp-3);
+  margin-bottom: var(--sp-3);
+}
+.appl-head .btn { width: auto; }
+
 /* Стопка (D-04 «specific_ideas»): следующая карточка чуть ниже и уже — статичный подслой,
    без второго запроса к серверу. touch-action: pan-y — вертикаль остаётся у прокрутки,
    swipe.js разбирает только преобладание горизонтали (T-23-22/T-23-24). */
@@ -1263,6 +1291,38 @@ a.flat-row:active, button.flat-row:active { background: var(--surface-alt); }
 .appl-decide.reject { background: var(--surface); border-color: var(--danger); color: var(--danger-text); }
 .appl-decide-row .appl-decide:first-child { margin-left: 0; margin-right: auto; }
 .appl-decide .icon { width: 22px; height: 22px; }
+
+/* Шторка отказа (Task 3, D-05/T-23-23): блок ПОД карточкой, не модалка поверх всего —
+   модалка конфликтует с системным жестом закрытия вебвью Telegram. */
+.appl-sheet {
+  margin-top: var(--sp-3);
+  padding: var(--sp-3);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  background: var(--surface);
+}
+.appl-sheet-templates { display: flex; flex-direction: column; gap: var(--sp-2); margin-bottom: var(--sp-2); }
+.appl-sheet-templates .btn, .appl-sheet > .btn { width: 100%; }
+.appl-sheet .field { margin: var(--sp-2) 0; }
+
+/* Тост отмены (Task 3, D-06) — над безопасной зоной, не перекрывает MainButton (то же место,
+   что у .settings-toast). */
+.appl-toast {
+  position: fixed;
+  left: 50%;
+  bottom: calc(var(--sp-8) + var(--tg-safe-bottom));
+  transform: translateX(-50%);
+  z-index: 7;
+  display: inline-flex;
+  align-items: center;
+  gap: var(--sp-2);
+  padding: var(--sp-2) var(--sp-3);
+  border-radius: var(--radius-pill);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  box-shadow: var(--shadow-card);
+}
+.appl-toast .btn { width: auto; }
 
 .appl-card-holder.is-loading { opacity: .5; pointer-events: none; transition: opacity var(--dur) var(--ease); }
 :root[data-motion="off"] .appl-card-holder.is-loading { transition: none; }
