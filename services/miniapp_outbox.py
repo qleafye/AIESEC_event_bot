@@ -23,6 +23,14 @@ Telegram или пересобирать таблицу самому — еди�
   derive_edit_facts` из уже записанной `reg_answer_history`/`users.status`.
 - `reg_resume_upload` -> `services.reg_finalize.handle_resume_upload(bot, ...)` — резюме,
   загруженное в Mini App: Nextcloud + ячейка «Резюме (ссылка)» + копия делегату в чат (D-05).
+- `application_decided` -> `services.application_effects.apply_decision_effects(bot,
+  telegram_id, status, reason)` (Phase 23, план 23-04, D-06) — приветствие/отказ делегату
+  по заявке отбора + лист, тот же хвост, что и прямой вызов из `handlers/admin_moderation.py`.
+  Событие ставится не сразу: `miniapp/outbox.py::flush_application_decisions` переносит его
+  из журнала `application_decisions` только после истечения окна отмены.
+- `application_mass_approved` -> `services.application_effects.mass_approve_effects(bot,
+  ids)` (D-07) — welcome-рассылка + один batch-sync листа для «Принять всех N»; у массового
+  одобрения нет отмены, это событие ставится сразу в `miniapp/routers/applications.py`.
 
 At-least-once, с ретраями (T-19-56): исключение -> `mark_miniapp_outbox_failed` (`attempts+1`,
 текст ошибки), после `MAX_ATTEMPTS` попыток строка выводится из очереди (помечена обработанной)
@@ -45,6 +53,7 @@ from database.db import (
     mark_miniapp_outbox_processed,
     get_user,
 )
+from services.application_effects import apply_decision_effects, mass_approve_effects
 from services.game_digest import notify_submission
 from services.game_sync import request_resync
 from services.reg_finalize import post_finalize, derive_edit_facts, handle_resume_upload
@@ -91,6 +100,14 @@ async def _handle_row(bot, kind: str, payload: dict) -> None:
         await handle_resume_upload(
             bot, payload.get("telegram_id"), payload.get("file_id"), payload.get("filename")
         )
+        return
+    if kind == "application_decided":
+        await apply_decision_effects(
+            bot, payload.get("telegram_id"), payload.get("status"), payload.get("reason")
+        )
+        return
+    if kind == "application_mass_approved":
+        await mass_approve_effects(bot, payload.get("ids") or [])
         return
     raise ValueError(f"unknown miniapp_outbox kind: {kind!r}")
 
