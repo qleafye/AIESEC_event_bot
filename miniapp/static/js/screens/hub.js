@@ -57,25 +57,63 @@ function daysSince(value) {
   return days;
 }
 
-// ── привет-экран (D-09): показывается один раз, оба текста из реестра ───────────────────
+// Шаги «как это работает» (D-06): `miniapp_onboarding_steps` — шаги через `;`, внутри шага
+// заголовок и пояснение через ` — ` (перевод строки в подписи Telegram отправляет сообщение,
+// поэтому не многострочный текст). Пустые куски и лишние пробелы менеджера не рождают строк.
+function parseOnboardingSteps(raw) {
+  return (raw || "")
+    .split(";")
+    .map((s) => s.trim())
+    .filter(Boolean)
+    .map((s) => {
+      const sepIndex = s.indexOf(" — ");
+      return sepIndex === -1
+        ? { title: s, meta: "" }
+        : { title: s.slice(0, sepIndex), meta: s.slice(sepIndex + 3) };
+    });
+}
+
+function onboardingStepRow(h, step, index) {
+  return flatRow(h, {
+    leadText: String(index + 1).padStart(2, "0"),
+    title: step.title,
+    meta: step.meta || undefined,
+  });
+}
+
+// ── привет-экран (D-09): показывается один раз, все тексты из реестра — герой на плите с
+// паттерном (план 23.1-03, макет mockups/02-onboarding.png) и три шага «как это работает». ──
 function renderOnboarding(root, ctx, onDone) {
   const { h, me } = ctx;
   const dark = document.documentElement.dataset.theme === "dark";
   const coverId = (dark && me.cover_dark_file_id) ? me.cover_dark_file_id : me.cover_file_id;
-  const wrap = h("section", { class: "onboarding" });
+
+  const plate = h("section", { class: "plate plate--onboarding" });
   if (coverId) {
     const img = h("img", { class: "onboarding-cover", src: `/app/api/file/${coverId}`, alt: "" });
     img.addEventListener("error", () => img.remove()); // обложки нет/не грузится — экран всё равно корректен
-    wrap.append(img);
+    plate.append(img);
   }
-  wrap.append(
-    h("p", { class: "onboarding-text", text: me.onboarding_text || "" }),
-    h("button", {
-      class: "btn", type: "button", text: me.onboarding_cta || "",
-      onClick: () => { markOnboardingSeen(); onDone(); },
-    }),
+  plate.append(
+    h("div", { class: "onboarding-hero", text: me.onboarding_hero || "" }),
+    h("div", { class: "onboarding-rule" }),
+    h("p", { class: "onboarding-slogan", text: me.onboarding_text || "" }),
   );
-  root.append(wrap);
+
+  const steps = parseOnboardingSteps(me.onboarding_steps);
+  const stepsBlock = steps.length
+    ? [
+      sectionTitle(h, me.onboarding_steps_title || ""),
+      h("div", { class: "flat-list flush onboarding-steps" }, ...steps.map((step, i) => onboardingStepRow(h, step, i))),
+    ]
+    : [];
+
+  const button = h("button", {
+    class: "btn", type: "button", text: me.onboarding_cta || "",
+    onClick: () => { markOnboardingSeen(); onDone(); },
+  });
+
+  root.append(plate, ...stepsBlock, button);
 }
 
 // Строка приоритетного действия (D-06): статус-или-срок — то же правило, что было у
