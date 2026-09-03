@@ -223,6 +223,32 @@ def test_draft_get_progress_text_absent_when_toggle_off(client):
     assert body["progress_text"] is None
 
 
+# ── Подписи экрана мастера (Phase 23.1, UI-REDESIGN-04) ──────────────────────────────────────
+
+def test_draft_get_exposes_wizard_screen_texts(client):
+    """Пять подписей экрана мастера приезжают тем же ответом черновика, что и остальные
+    тексты — тем же приёмом get_setting_typed, что continue_in_chat_text."""
+    resp = client.get("/app/api/reg/draft", headers=_hdr(UNREGISTERED_ID))
+    body = resp.json()
+    assert body["questions_eyebrow"] == "Вопросы анкеты"
+    assert body["more_questions_text"] == "…и ещё {n} вопросов впереди"
+    assert body["draft_saved_text"] == "Черновик сохранён"
+    assert body["next_cta_text"] == "Дальше"
+    assert body["back_cta_text"] == "Назад"
+
+
+def test_continue_in_chat_and_profile_edit_defaults_have_no_emoji(client):
+    """D-04: эмодзи-иконки убираем — кнопки и так рисуют icon("message-circle")/
+    icon("pen-line"), эмодзи в подписи дублировал бы иконку."""
+    from settings_schema import SETTINGS_SCHEMA
+
+    resp = client.get("/app/api/reg/draft", headers=_hdr(UNREGISTERED_ID))
+    body = resp.json()
+    assert body["continue_in_chat_text"] == "Продолжить в чате"
+    assert "💬" not in body["continue_in_chat_text"]
+    assert "✏️" not in SETTINGS_SCHEMA["reg_form_profile_edit_cta_text"]["default"]
+
+
 # ── Регистрация закрыта (D-11) ──────────────────────────────────────────────────────────────
 
 def test_new_draft_closed_when_city_disabled(client):
