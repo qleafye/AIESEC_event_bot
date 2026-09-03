@@ -1432,6 +1432,113 @@ def test_applications_route_and_nav_registered_with_moderate_reg_cap():
     assert '"#/applications"' in nav_block and 'cap: "moderate_reg"' in nav_block and 'group: "apps"' in nav_block
 
 
+# ── фикс «подложка закрывает кнопки» (квик 03.09): стопка карточек не должна геометрически
+# или по каскаду перекрывать ряд кнопок решения -- см. applications.js::draw и .appl-stack/
+# .appl-decide-row в app.css. ──────────────────────────────────────────────────────────────
+
+def _find_call_args(text: str, marker: str) -> str:
+    """Возвращает срез аргументов вызова `marker` (например `"cardHolder.replaceChildren("`)
+    до закрывающей скобки на глубине 0 -- строковые литералы и комментарии не разбираются
+    как код (скобки/запятые внутри них не сбивают подсчёт вложенности)."""
+    start = text.index(marker) + len(marker)
+    depth = 1
+    i = start
+    n = len(text)
+    while i < n and depth > 0:
+        if text[i] in "\"'`":
+            quote = text[i]
+            i += 1
+            while i < n and text[i] != quote:
+                i += 2 if text[i] == "\\" else 1
+            i += 1
+            continue
+        if text[i:i + 2] == "/*":
+            i = text.index("*/", i) + 2
+            continue
+        if text[i:i + 2] == "//":
+            i = text.index("\n", i)
+            continue
+        if text[i] in "([{":
+            depth += 1
+        elif text[i] in ")]}":
+            depth -= 1
+        i += 1
+    return text[start:i - 1]
+
+
+def _split_top_level_args(s: str) -> list[str]:
+    """Разбивает срез аргументов на верхнеуровневые (глубина 0) части по запятым."""
+    parts, buf, depth, i, n = [], [], 0, 0, len(s)
+    while i < n:
+        c = s[i]
+        if c in "\"'`":
+            quote = c
+            buf.append(c)
+            i += 1
+            while i < n and s[i] != quote:
+                if s[i] == "\\" and i + 1 < n:
+                    buf.append(s[i]); buf.append(s[i + 1]); i += 2
+                    continue
+                buf.append(s[i]); i += 1
+            if i < n:
+                buf.append(s[i]); i += 1
+            continue
+        if c in "([{":
+            depth += 1
+        elif c in ")]}":
+            depth -= 1
+        if c == "," and depth == 0:
+            parts.append("".join(buf))
+            buf = []
+            i += 1
+            continue
+        buf.append(c)
+        i += 1
+    tail = "".join(buf).strip()
+    if tail:
+        parts.append(tail)
+    return [p.strip() for p in parts if p.strip()]
+
+
+def test_applications_decide_row_is_sibling_after_stack_not_nested_inside_it():
+    """`.appl-decide-row` обязан быть ВЕРХНЕУРОВНЕВЫМ (не вложенным) ребёнком того же
+    cardHolder, что и обёртка стопки `.appl-stack-wrap`, и идти ПОСЛЕ неё в разметке --
+    иначе абсолютно спозиционированная тень стопки (z-index:0) красится поверх ряда кнопок
+    независимо от того, что она визуально «позади» карточки (правило CSS2.1 stacking order:
+    позиционированные потомки со stack level 0 красятся над статичным in-flow контентом
+    независимо от порядка в DOM — разобрано в комментарии applications.js::draw)."""
+    text = APPLICATIONS_JS.read_text(encoding="utf-8")
+    args = _find_call_args(text, "cardHolder.replaceChildren(")
+    top_level = _split_top_level_args(args)
+    assert len(top_level) == 2, (
+        f"ожидались ровно 2 верхнеуровневых ребёнка cardHolder.replaceChildren в draw(), "
+        f"найдено {len(top_level)}"
+    )
+    stack_arg, decide_arg = top_level
+    assert "appl-stack-wrap" in stack_arg, "первый ребёнок должен быть обёрткой стопки"
+    assert "appl-decide-row" not in stack_arg, "ряд кнопок решения вложен внутрь обёртки стопки"
+    assert "appl-decide-row" in decide_arg, "второй (следующий) ребёнок должен быть рядом кнопок решения"
+
+
+def test_applications_stack_overlay_pointer_events_and_decide_row_stacking_in_css():
+    """CSS-сторож того же фикса: тень стопки и оверлей свайпа не перехватывают тапы
+    (pointer-events:none), ряд кнопок красится строго поверх тени (z-index выше), а скрытый
+    тост (`.appl-toast.hidden`) не остаётся видимой пустой «таблеткой» из-за проигрыша
+    каскаду `.appl-toast{display:inline-flex}` над общим `.hidden{display:none}` (найдено при
+    разборе бага — оба правила с одинаковой специфичностью, `.appl-toast` объявлен ниже)."""
+    css = APP_CSS.read_text(encoding="utf-8")
+    stack_block = re.search(r"\.appl-stack\s*\{([^}]*)\}", css)
+    assert stack_block and "pointer-events: none" in stack_block.group(1)
+    overlay_block = re.search(r"\.appl-overlay\s*\{([^}]*)\}", css)
+    assert overlay_block and "pointer-events: none" in overlay_block.group(1)
+    decide_row_block = re.search(r"\.appl-decide-row\s*\{([^}]*)\}", css)
+    assert decide_row_block and "z-index: 2" in decide_row_block.group(1)
+    assert re.search(r"\.appl-toast\.hidden\s*\{\s*display:\s*none;\s*\}", css), (
+        "нет явного .appl-toast.hidden{display:none} — скрытый тост снова рискует остаться "
+        "видимой пустой таблеткой из-за каскада с .appl-toast{display:inline-flex}"
+    )
+
+
 # ── Phase 23.1: компоненты плиты (UI-REDESIGN-01) ────────────────────────────────────────────
 
 def test_plate_components_exist_and_use_only_tokens():
