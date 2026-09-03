@@ -100,6 +100,9 @@ _HEX6 = re.compile(r"^#[0-9A-Fa-f]{6}$")
 PLATE_PATTERNS: dict[str, tuple[str, str, str, str, str]] = {
     "none":    ("none", "1368px", "-162px", "-324px", "1"),
     "youlead": ('url("/app/static/pattern/youlead.webp")', "1368px", "-162px", "-324px", "1"),
+    # Quick 260904-183 (BACKLOG-0904-REALTALK-PRESET): тот же viewBox (7236×5197), что и у
+    # youlead.svg, поэтому геометрия плиты (смещения/размер) не меняется.
+    "realtalk": ('url("/app/static/pattern/realtalk.webp")', "1368px", "-162px", "-324px", "1"),
 }
 
 # Непрозрачность паттерна менеджера (file_id): картинка приходит непрозрачной, 20% даёт тот же
