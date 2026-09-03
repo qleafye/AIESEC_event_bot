@@ -475,9 +475,22 @@ async def should_show_city_fork(event_city: str | None, is_registered: bool) -> 
 async def pre_flow(answers: dict, meta: dict | None = None) -> list[str]:
     """Список экранов до анкеты (согласия, вилка города, вилка трека), в том же порядке, в
     каком их сегодня показывает бот (D-02: общий движок гейтов, одинаково для бота и веба).
-    `meta` — {event_city, is_registered, party_track, recovered_track}, все опциональны."""
+    `meta` — {event_city, is_registered, party_track, recovered_track, pending_consent_keys},
+    все опциональны.
+
+    UAT 21-12 находка 1: `pending_consent_keys` (если передан, не None) сужает согласия до
+    ключей, которых в нём НЕТ ни одного отфильтрованного — то есть до реально несогласованных;
+    вызывающий (`form_spec`) считает список тем же фильтром версий, что и гейт пересогласия
+    (`services.consent.outstanding_consents`), не второй копией правила. `None` (по умолчанию,
+    бот сюда не заглядывает — pre_flow вообще не вызывается из handlers/*) — старое поведение,
+    все согласия модуля."""
     meta = meta or {}
-    screens = list(await get_consent_steps())
+    consent_steps = await get_consent_steps()
+    pending_consent_keys = meta.get("pending_consent_keys")
+    if pending_consent_keys is not None:
+        pending = set(pending_consent_keys)
+        consent_steps = [step for step in consent_steps if step.split(":", 1)[1] in pending]
+    screens = list(consent_steps)
     is_registered = bool(meta.get("is_registered"))
     event_city = meta.get("event_city") or answers.get("event_city")
     if await should_show_city_fork(event_city, is_registered):
@@ -696,12 +709,16 @@ def _display_value(value) -> str:
 
 
 async def form_spec(answers: dict, participant_type: str | None = None,
-                     event_city: str | None = None, prior: dict | None = None) -> dict:
+                     event_city: str | None = None, prior: dict | None = None,
+                     pending_consent_keys: list[str] | None = None) -> dict:
     """Контракт формы для Mini App (RESEARCH Pattern 2): `{pre, steps, progress}`. `prior` —
     результат `prior_answers_for(user_row)` для возвращенца (D-07); движок НИКУДА prior не
     пишет и не логирует — вызывающий передаёт его на каждый запрос заново (Pitfall 5). Шаг без
     собственного ответа, но с непустым prior, получает `value_source == "prior"`; отвеченный
-    шаг — `"answer"`; шаг без ответа и без prior — `None`."""
+    шаг — `"answer"`; шаг без ответа и без prior — `None`.
+
+    `pending_consent_keys` (UAT 21-12 находка 1) — см. докстринг `pre_flow`: `None` (дефолт)
+    не фильтрует согласия вовсе."""
     answers = answers or {}
     prior = prior or {}
     enabled = await enabled_steps(answers)
@@ -739,6 +756,7 @@ async def form_spec(answers: dict, participant_type: str | None = None,
     # своё правило.
     pre = await pre_flow(answers, {
         "event_city": event_city, "is_registered": False, "party_track": participant_type,
+        "pending_consent_keys": pending_consent_keys,
     })
     return {"pre": pre, "steps": steps_out, "progress": {"done": done, "total": len(steps_out)}}
 
