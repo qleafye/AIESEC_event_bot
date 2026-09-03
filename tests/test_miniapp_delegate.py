@@ -61,14 +61,15 @@ def test_profile_returns_labeled_nonempty_fields_and_edit_cta(client):
     assert resp.status_code == 200, resp.text
     body = resp.json()
     by_key = {f["key"]: f for f in body["fields"]}
-    assert by_key["reg_q_phone"] == {"key": "reg_q_phone", "label": "\U0001f4f1 Телефон", "value": "+7 999"}
+    contacts_by_key = {c["key"]: c for c in body["contacts"]}
+    # Phase 23.1-05: телефон/работа — раздел «Контакты», не «Анкета» (см. тест ниже про
+    # _CONTACT_LABEL_KEYS); в fields их больше нет, чтобы вопрос не показывался дважды.
+    assert contacts_by_key["reg_q_phone"] == {"key": "reg_q_phone", "label": "\U0001f4f1 Телефон", "value": "+7 999"}
+    assert contacts_by_key["reg_q_work"]["value"] == "Да"
+    assert "reg_q_phone" not in by_key and "reg_q_work" not in by_key
     assert by_key["reg_q_city"]["value"] == "Москва"
-    assert by_key["reg_q_work"]["value"] == "Да"
-    assert "reg_q_email" not in by_key  # пустое — не показываем
+    assert "reg_q_email" not in by_key and "reg_q_email" not in contacts_by_key  # пустое — не показываем
     assert "reg_q_resume" not in by_key  # только file_id — не текст/ссылка
-    # порядок — как в REG_LABELS: телефон раньше города
-    keys = [f["key"] for f in body["fields"]]
-    assert keys.index("reg_q_phone") < keys.index("reg_q_city")
     # служебных колонок в ответе нет нигде
     assert "AgACfile" not in resp.text and "AgACrcpt" not in resp.text
     assert body["status"] == "approved" and body["status_label"] == "Одобрена"
@@ -83,6 +84,64 @@ def test_profile_returns_labeled_nonempty_fields_and_edit_cta(client):
     _set("payment_enabled", "on")
     body = client.get("/app/api/profile", headers=_hdr(DELEGATE_ID)).json()
     assert body["payment_status"] == "paid" and body["payment_status_label"] == "Оплатил"
+
+
+# ── плита профиля (план 23.1-05, UI-REDESIGN-05): монограмма, город, контакты отдельно,
+# прогресс анкеты, метастрока дат, D-10 «одобрена {date}» ──────────────────────────────────
+
+def test_profile_initials_two_words_and_one_word(client):
+    _fill_profile(DELEGATE_ID, full_name="Иван Петров")
+    body = client.get("/app/api/profile", headers=_hdr(DELEGATE_ID)).json()
+    assert body["initials"] == "ИП"
+
+    _fill_profile(DELEGATE_ID, full_name="Иван")
+    body = client.get("/app/api/profile", headers=_hdr(DELEGATE_ID)).json()
+    assert body["initials"] == "И"
+
+    _fill_profile(DELEGATE_ID, full_name="")
+    body = client.get("/app/api/profile", headers=_hdr(DELEGATE_ID)).json()
+    assert body["initials"] == ""
+
+
+def test_profile_contacts_and_fields_do_not_overlap(client):
+    _fill_profile(DELEGATE_ID, phone="+7 999", email="a@b.ru", work_status=1, city="Москва")
+    body = client.get("/app/api/profile", headers=_hdr(DELEGATE_ID)).json()
+    contact_keys = {c["key"] for c in body["contacts"]}
+    field_keys = {f["key"] for f in body["fields"]}
+    assert not (contact_keys & field_keys)
+    assert contact_keys == {"reg_q_phone", "reg_q_email", "reg_q_work"}
+    # фиксированный порядок email/phone/work, а не порядок REG_LABELS
+    assert [c["key"] for c in body["contacts"]] == ["reg_q_email", "reg_q_phone", "reg_q_work"]
+
+
+def test_profile_form_progress_reflects_filled_and_total(client):
+    body = client.get("/app/api/profile", headers=_hdr(DELEGATE_ID)).json()
+    assert body["form_filled"] <= body["form_total"]
+    assert "{filled}" not in body["form_progress_text"] and "{total}" not in body["form_progress_text"]
+
+
+def test_profile_city_label_falls_back_to_free_text_when_module_off(client):
+    _fill_profile(DELEGATE_ID, city="Казань", event_city=None)
+    body = client.get("/app/api/profile", headers=_hdr(DELEGATE_ID)).json()
+    # event_city_enabled выключен по умолчанию -> свободный текст users.city как есть.
+    assert body["city_label"] == "Казань"
+
+
+def test_profile_form_meta_text_none_without_any_date(client):
+    _fill_profile(DELEGATE_ID, registration_date=None, edited_at=None, approved_at=None)
+    body = client.get("/app/api/profile", headers=_hdr(DELEGATE_ID)).json()
+    assert body["form_meta_text"] is None
+
+
+def test_profile_approved_text_shown_only_when_approved_at_set(client):
+    _fill_profile(DELEGATE_ID, registration_date="2026-08-20 10:00:00", edited_at=None,
+                  approved_at=None)
+    body = client.get("/app/api/profile", headers=_hdr(DELEGATE_ID)).json()
+    assert "одобрена" not in (body["form_meta_text"] or "")
+
+    _fill_profile(DELEGATE_ID, approved_at="2026-08-25 12:00:00")
+    body = client.get("/app/api/profile", headers=_hdr(DELEGATE_ID)).json()
+    assert "одобрена" in body["form_meta_text"]
 
 
 @pytest.mark.parametrize("user_id,kind", [(PENDING_ID, "pending"), (REJECTED_ID, "rejected"),

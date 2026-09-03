@@ -276,9 +276,15 @@ async def card_payload(user: dict) -> dict:
 
 
 # ── Решения (D-06/D-07): тонкие обёртки над атомарными UPDATE ───────────────────────────────
+#
+# D-10 (23.1-CONTEXT.md O-2): `users.approved_at` стамповать здесь, вторым запросом, было бы
+# неверно — `database.db.approve_user_atomic`/`approve_all_pending` уже пишут его в ТОЙ ЖЕ
+# атомарной `UPDATE`, что и `status` (одна запись, не гонка approve/read). Ниже — тонкие
+# обёртки, approved_at уже приехал вместе со status.
 
 async def claim_approve(telegram_id: int) -> bool:
-    """Правило «выигрывает ровно один» — одно имя для бота и веба."""
+    """Правило «выигрывает ровно один» — одно имя для бота и веба. approved_at ставит
+    `approve_user_atomic` в той же атомарной записи, что и status (D-10)."""
     return await approve_user_atomic(telegram_id)
 
 
@@ -287,6 +293,10 @@ async def claim_reject(telegram_id: int) -> bool:
 
 
 async def claim_approve_all(scope) -> list[int]:
+    """«Принять всех» веб-слоя. approved_at ставит `approve_all_pending` в той же атомарной
+    записи, что и status (D-10). Бот зовёт `approve_all_pending` НАПРЯМУЮ для своего «Принять
+    всех» (`handlers/admin_moderation.py::appr_all_yes`), минуя эту обёртку — approved_at всё
+    равно проставляется, т.к. живёт в database.db, а не здесь."""
     return await approve_all_pending(city_scope=scope)
 
 
