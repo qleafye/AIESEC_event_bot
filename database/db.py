@@ -2781,6 +2781,76 @@ async def list_questions(limit: int = 5000) -> list[dict]:
             return [dict(row) for row in rows]
 
 
+# ── Quick 260904-2cj (QJRN-01/02/03/04): постраничный журнал вопросов делегатов ─────────────
+#
+# ЗЕРКАЛО `services.questions.question_status` — три фрагмента WHERE ниже обязаны отвечать
+# ТОЧНО так же, как чистая функция статуса, для каждой строки; расхождение ловит паритет-тест
+# `tests/test_questions_journal_260904.py`. Второй карты «статус вопроса» в проекте нет и не
+# будет — правило объявлено ОДИН раз в services/questions.py, это только SQL-версия того же
+# правила для фильтрации/подсчёта прямо в базе (без выгрузки всего журнала в Python).
+_QUESTION_STATUS_SQL = {
+    "new": "q.answered_by IS NULL",
+    "in_work": "q.answered_by IS NOT NULL AND q.delivered_at IS NULL",
+    "answered": "q.delivered_at IS NOT NULL",
+}
+
+
+async def list_questions_page(*, status: str | None = None, city_scope=None,
+                               limit: int = 6, offset: int = 0) -> list[dict]:
+    """Страница журнала вопросов для экрана бота и API Mini App. Неизвестный `status`
+    трактуется как None (фильтр — чип экрана, а не контракт: тот же приём, что `track_filter`
+    в `miniapp/routers/applications.py`). Городской фильтр — по `u.event_city` (город
+    ДЕЛЕГАТА, не менеджера), LEFT JOIN не роняет вопрос делегата, которого уже нет в `users`.
+    Порядок: при `status == "in_work"` — `answered_at ASC, id ASC` («залипло дольше всех»
+    первым), иначе — свежие сверху (`id DESC`)."""
+    where = []
+    params: list = []
+    frag = _QUESTION_STATUS_SQL.get(status)
+    if frag:
+        where.append(frag)
+    city_frag, city_params = _city_clause(city_scope, "u.event_city")
+    if city_frag:
+        where.append(city_frag)
+        params.extend(city_params)
+    where_sql = f"WHERE {' AND '.join(where)}" if where else ""
+    order_sql = "ORDER BY q.answered_at ASC, q.id ASC" if status == "in_work" else "ORDER BY q.id DESC"
+    async with _connect() as db:
+        db.row_factory = aiosqlite.Row
+        async with db.execute(
+            "SELECT q.*, u.full_name AS user_full_name, u.username AS user_username, "
+            "u.event_city AS user_event_city "
+            "FROM delegate_questions q LEFT JOIN users u ON u.telegram_id = q.user_id "
+            f"{where_sql} {order_sql} LIMIT ? OFFSET ?",
+            (*params, limit, offset),
+        ) as cursor:
+            return [dict(row) for row in await cursor.fetchall()]
+
+
+async def count_questions_by_status(*, city_scope=None) -> dict[str, int]:
+    """Один запрос, три `SUM(CASE …)` по тем же фрагментам `_QUESTION_STATUS_SQL` плюс
+    `COUNT(*)` в "all" (`all` == сумме трёх — паритет закреплён тестом)."""
+    city_frag, city_params = _city_clause(city_scope, "u.event_city")
+    where_sql = f"WHERE {city_frag}" if city_frag else ""
+    async with _connect() as db:
+        async with db.execute(
+            "SELECT COUNT(*), "
+            f"SUM(CASE WHEN {_QUESTION_STATUS_SQL['new']} THEN 1 ELSE 0 END), "
+            f"SUM(CASE WHEN {_QUESTION_STATUS_SQL['in_work']} THEN 1 ELSE 0 END), "
+            f"SUM(CASE WHEN {_QUESTION_STATUS_SQL['answered']} THEN 1 ELSE 0 END) "
+            "FROM delegate_questions q LEFT JOIN users u ON u.telegram_id = q.user_id "
+            f"{where_sql}",
+            tuple(city_params),
+        ) as cursor:
+            row = await cursor.fetchone()
+    total, new_n, in_work_n, answered_n = row if row else (0, 0, 0, 0)
+    return {
+        "all": int(total or 0),
+        "new": int(new_n or 0),
+        "in_work": int(in_work_n or 0),
+        "answered": int(answered_n or 0),
+    }
+
+
 # ── Phase 9 (GAME-01/02/03): task model + submission queue ──────────────────────────────────
 #
 # GAME_CATEGORIES (D-06) — a single classification axis, no RESULT/INTERACTIVE/NETWORK track
