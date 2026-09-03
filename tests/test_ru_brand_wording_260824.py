@@ -52,6 +52,12 @@ _SNAKE_IDENTIFIER_RE = re.compile(r"\b[a-z][a-z0-9]*(?:_[a-z0-9]+)+\b")
 # JS-комментарии (// ...) — разработческий текст, не видимый пользователю.
 _JS_LINE_COMMENT_RE = re.compile(r"^\s*//.*$", re.MULTILINE)
 
+# Инлайновый код в обратных кавычках и цель markdown-ссылки `](...)` — код/URL, не
+# человеко-видимая проза. Заборы ```...``` вырезаются построчно (см. _iter_cleaned_lines),
+# т.к. re.sub с DOTALL по всему тексту сдвинул бы номера строк в отчёте о падении.
+_INLINE_CODE_RE = re.compile(r"`[^`]*`")
+_LINK_TARGET_RE = re.compile(r"\]\([^)]*\)")
+
 
 def _contains_latin_brand(text: str) -> bool:
     lowered = _URL_RE.sub("", text.lower())
@@ -156,6 +162,44 @@ def test_miniapp_js_display_strings_have_no_owner_latin_brand():
             offenders.append(str(path.relative_to(js_root.parent.parent.parent)))
 
     assert not offenders, f"латиница бренда в JS Mini App: {offenders}"
+
+
+def _iter_cleaned_doc_lines(text: str):
+    """Отдаёт (номер_строки, очищенная_строка) — вырезает код-заборы целиком, инлайновый
+    код и цели markdown-ссылок построчно, чтобы номер строки в отчёте о падении совпадал
+    с номером строки в исходном файле."""
+    in_fence = False
+    for lineno, raw_line in enumerate(text.splitlines(), start=1):
+        if raw_line.strip().startswith("```"):
+            in_fence = not in_fence
+            continue
+        if in_fence:
+            continue
+        line = _INLINE_CODE_RE.sub(" ", raw_line)
+        line = _LINK_TARGET_RE.sub(" ", line)
+        yield lineno, line
+
+
+def test_human_docs_have_no_owner_latin_brand():
+    """Задача 260903 (правило владельца, закон РФ): менеджер и делегат нигде не должны
+    читать латинские «AIESEC»/«YouLead» вне ссылок/email/юзернеймов/хэштегов/кода — три
+    дока, которые они реально читают: BOT_GUIDE.md (делегат), ADMIN_CHEATSHEET.md и
+    ADMIN_GUIDE.md (менеджер).
+
+    README.md и CLAUDE.md сюда намеренно НЕ входят — это доки для разработчика, их не
+    видит ни делегат, ни менеджер, правило владельца на них не распространяется.
+    """
+    docs_root = Path(__file__).resolve().parent.parent
+    doc_names = ("BOT_GUIDE.md", "ADMIN_CHEATSHEET.md", "ADMIN_GUIDE.md")
+
+    offenders = []
+    for name in doc_names:
+        text = (docs_root / name).read_text(encoding="utf-8")
+        for lineno, line in _iter_cleaned_doc_lines(text):
+            if _contains_owner_latin_brand(line):
+                offenders.append(f"{name}:{lineno}: {line.strip()}")
+
+    assert not offenders, "латиница бренда в человеческих доках: " + "; ".join(offenders)
 
 
 def test_aiesec_role_label_matches_registry():
