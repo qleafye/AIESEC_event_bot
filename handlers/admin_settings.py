@@ -143,6 +143,9 @@ _APPS_FIELD_ORDER = [
     "preselect_no_username_text", "preselect_fail_text", "preselect_link",
     # Quick 260819 (schema-completeness): догонялка брошенных анкет (порог и текст).
     "nudge_after_minutes", "nudge_text",
+    # Phase 23 (APP-TINDER-01, D-05): шаблоны причин отказа шторки Mini App — общий списочный
+    # редактор (admin_settings_lists.py) достаётся бесплатно попаданием в этот список.
+    "reject_reason_templates",
 ]
 _PAY_FIELD_ORDER = [
     "payment_options", "payment_requisites", "payment_requisites_by_lc",

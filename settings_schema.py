@@ -1890,6 +1890,14 @@ SETTINGS_SCHEMA = {
             "приложения в догонялке брошенных анкет (D-08)."
         ), "default": "on",
     },
+    # Phase 23 (APP-TINDER-01, D-09/D-13): раздел отбора заявок менеджера — «тиндер» карточек.
+    "miniapp_section_applications": {
+        "type": "enum", "group": "miniapp", "label": "🗂 Отбор заявок",
+        "options": ["on", "off"], "prompt": (
+            "Выключено — исчезают: плитка «🗂 Отбор заявок» в хабе менеджера и экран "
+            "#/applications."
+        ), "default": "on",
+    },
     # Тексты, специфичные для Mini App (человеческие дефолты — менеджер может не трогать).
     "miniapp_open_text": {
         "type": "text", "group": "miniapp", "label": "💬 Сообщение с кнопкой приложения",
@@ -2128,6 +2136,83 @@ SETTINGS_SCHEMA = {
             "осталось {count}.»)."
         ),
         "default": "Пропущено всё — осталось {count}.",
+    },
+
+    # ── Phase 23 Plan 01 (APP-TINDER-01, D-05/D-06/D-08): надписи экрана «🗂 Отбор заявок»
+    # Mini App — карточка-«тиндер», undo-тост, шторка причины отказа, фильтры-чипы. Правило
+    # 0-хардкода (CLAUDE.md): ни одного русского литерала в JS.
+    "miniapp_empty_applications": {
+        "type": "text", "group": "miniapp", "label": "🗂 Пустая очередь заявок",
+        "prompt": "Текст, когда заявок на модерации нет вообще (например: «Заявок на модерации нет.»).",
+        "default": "Заявок на модерации нет.",
+    },
+    "miniapp_empty_applications_skipped": {
+        "type": "text", "group": "miniapp", "label": "🗂 Очередь заявок: всё пропущено",
+        "prompt": (
+            "Текст, когда менеджер пропустил все заявки в очереди (сами заявки остались). "
+            "«{count}» подставится числом оставшихся заявок (например: «Пропущено всё — "
+            "осталось {count}.»)."
+        ),
+        "default": "Пропущено всё — осталось {count}.",
+    },
+    "miniapp_empty_applications_filtered": {
+        "type": "text", "group": "miniapp", "label": "🗂 Заявок нет по фильтру",
+        "prompt": "Текст, когда по включённому фильтру (трек/«изменённые») заявок нет (например: «По этому фильтру заявок нет — снимите фильтр.»).",
+        "default": "По этому фильтру заявок нет — снимите фильтр.",
+    },
+    "miniapp_applications_show_all": {
+        "type": "text", "group": "miniapp", "label": "🗂 Кнопка «Показать всё»",
+        "prompt": "Подпись кнопки, которая разворачивает остальные заполненные ответы анкеты на карточке заявки.",
+        "default": "Показать всё",
+    },
+    "miniapp_applications_undo_button": {
+        "type": "text", "group": "miniapp", "label": "🗂 Кнопка «Отменить»",
+        "prompt": "Подпись кнопки отмены в тосте после решения по заявке.",
+        "default": "Отменить",
+    },
+    "miniapp_applications_approved_toast": {
+        "type": "text", "group": "miniapp", "label": "🗂 Тост «Принято»",
+        "prompt": "Текст тоста сразу после одобрения заявки.",
+        "default": "Принято",
+    },
+    "miniapp_applications_rejected_toast": {
+        "type": "text", "group": "miniapp", "label": "🗂 Тост «Отклонено»",
+        "prompt": "Текст тоста сразу после отклонения заявки.",
+        "default": "Отклонено",
+    },
+    "miniapp_applications_undone_toast": {
+        "type": "text", "group": "miniapp", "label": "🗂 Тост «Отменено»",
+        "prompt": "Текст тоста после того, как менеджер нажал «Отменить» и заявка вернулась в очередь.",
+        "default": "Отменено — заявка вернулась в очередь.",
+    },
+    "miniapp_applications_approve_all_confirm": {
+        "type": "text", "group": "miniapp", "label": "🗂 Подтверждение «Принять всех»",
+        "prompt": (
+            "Текст подтверждения массового одобрения. «{count}» подставится числом заявок "
+            "(например: «Одобрить все {count} заявок? Отменить будет нельзя.»); название "
+            "города дописывает приложение отдельной строкой, как appr_all_confirm бота."
+        ),
+        "default": "Одобрить все {count} заявок? Отменить будет нельзя.",
+    },
+    "miniapp_applications_reject_no_reason": {
+        "type": "text", "group": "miniapp", "label": "🗂 Кнопка «Отклонить без причины»",
+        "prompt": "Подпись кнопки отказа без указания причины в шторке отказа.",
+        "default": "Отклонить без причины",
+    },
+    "miniapp_applications_reject_own_reason": {
+        "type": "text", "group": "miniapp", "label": "🗂 Кнопка «Своя причина»",
+        "prompt": "Подпись кнопки, которая открывает поле произвольного текста причины отказа.",
+        "default": "Своя причина",
+    },
+    "miniapp_applications_filter_all": {
+        "type": "text", "group": "miniapp", "label": "🗂 Фильтр «Все»",
+        "prompt": "Подпись чипа-фильтра «без фильтра по треку».",
+        "default": "Все",
+    },
+    "miniapp_applications_filter_changed": {
+        "type": "text", "group": "miniapp", "label": "🗂 Фильтр «Изменённые»",
+        "prompt": "Подпись чипа-фильтра «только изменённые/повторные заявки».",
+        "default": "Изменённые",
     },
 
     # ── Phase 22 Plan 02 (WEB-SET-02/03, D-15, 22-UI-SPEC § Copywriting Contract): надписи
@@ -2422,6 +2507,21 @@ SETTINGS_SCHEMA = {
             "карточки заявки"
         ),
         "default": 300,
+    },
+
+    # Phase 23 Plan 01 (APP-TINDER-01, D-05): шаблоны причин отказа для шторки отказа Mini App
+    # (и карточки бота, паритет). Own group "apps" — правится ОБЩИМ списочным редактором
+    # (handlers/admin_settings_lists.py: ➕ добавить / 🗑 удалить / ✏️ заменить целиком), нового
+    # экрана бота не заводим — достаточно попадания в _APPS_FIELD_ORDER.
+    "reject_reason_templates": {
+        "type": "list", "group": "apps", "label": "✍️ Причины отказа",
+        "prompt": "Отправьте варианты причин отказа, каждый с новой строки",
+        "default": [
+            "Анкета заполнена не полностью",
+            "Не подходит по критериям участия",
+            "Мест на это мероприятие уже нет",
+            "Заявка-дубликат",
+        ],
     },
 }
 

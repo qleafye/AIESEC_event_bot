@@ -57,6 +57,9 @@ SECTIONS = (
     "profile",
     "form",
     "review",
+    # Phase 23 (APP-TINDER-01, D-09): менеджерский раздел отбора заявок — рядом с "review"
+    # (менеджерские разделы идут вместе).
+    "applications",
     "admin_tasks",
     "stats",
     "settings",

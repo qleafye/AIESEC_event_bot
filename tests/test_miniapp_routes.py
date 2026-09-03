@@ -283,7 +283,10 @@ def test_me_delegate_via_initdata(tmp_path):
     assert body["is_delegate"] is True
     assert body["city"] is None
     assert set(body["sections"]) == {
-        "tasks", "coins", "leaderboard", "profile", "form", "review", "admin_tasks", "stats",
+        "tasks", "coins", "leaderboard", "profile", "form", "review",
+        # Phase 23-01 (APP-TINDER-01, D-09): раздел «🗂 Отбор заявок».
+        "applications",
+        "admin_tasks", "stats",
         "settings",
     }
     assert all(body["sections"].values())
