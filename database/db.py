@@ -2092,6 +2092,21 @@ async def claim_due_application_decisions(now: str, limit: int = 50) -> list[dic
         return claimed
 
 
+async def get_application_decision(decision_id: int) -> dict | None:
+    """Read-only lookup of one `application_decisions` row — used to verify OWNERSHIP
+    (`decided_by`) and current state (`effects_sent_at`/`undone_at`) BEFORE attempting the
+    mutating `undo_decision` (Phase 23, plan 23-04, T-23-17): the claim itself
+    (`claim_application_undo`) stays atomic and blind to who asks — this function never
+    decides the claim, only lets a caller refuse early without spending it."""
+    async with _connect() as db:
+        db.row_factory = aiosqlite.Row
+        async with db.execute(
+            "SELECT * FROM application_decisions WHERE id = ?", (decision_id,)
+        ) as cursor:
+            row = await cursor.fetchone()
+            return dict(row) if row else None
+
+
 async def revert_user_to_pending(telegram_id: int, from_status: str) -> bool:
     """Undo effect on `users`: puts the row back to `pending` ONLY if it is still in the
     status the decision expected (T-23-02) — a concurrent second decision by another manager

@@ -663,6 +663,36 @@ async def sync_incomplete_sheet_job():
         logger.error(f"sync_incomplete_sheet_job failed: {e}")
 
 
+async def _flush_due_application_decisions(now: datetime) -> None:
+    """Phase 23 (23-04, D-06/T-23-18): crash-safety sweep — if the web process died inside
+    the undo window, the decision's deferred effect (`application_decided`) would otherwise
+    never leave `application_decisions` for `miniapp_outbox`. Same translation as
+    `miniapp/outbox.py::flush_application_decisions` (kind/payload shape, collect-then-gather
+    around `services.applications.flush_due_decisions`'s sync unawaited callback) — duplicated
+    here on purpose rather than imported: `services/scheduler.py` (bot process) must never
+    depend on `miniapp.*` (the one-way boundary every other job in this file already respects,
+    see the docstring above). Lazy import of `services.applications`/`database.db.
+    enqueue_miniapp_outbox` for the same reason the sibling job below stays lazy — this
+    function only runs from inside a job, never at module import time."""
+    from database.db import enqueue_miniapp_outbox
+    from services import applications
+
+    pending = []
+    now_str = now.strftime("%Y-%m-%d %H:%M:%S")
+
+    def _collect(decision: str, row: dict) -> None:
+        payload = {
+            "telegram_id": row["telegram_id"],
+            "status": row.get("decision", decision),
+            "reason": row.get("reason"),
+        }
+        pending.append(enqueue_miniapp_outbox("application_decided", payload, now_str))
+
+    await applications.flush_due_decisions(now, _collect)
+    if pending:
+        await asyncio.gather(*pending)
+
+
 async def miniapp_outbox_drain_job():
     """Interval-job target (no args, picklable — Pitfall 3: a job function must never close
     over a Bot). Delegates to services/miniapp_outbox.py::drain(bot), reading the injected
@@ -670,8 +700,15 @@ async def miniapp_outbox_drain_job():
     nudge_incomplete_registrations above. Lazy import: services.miniapp_outbox imports
     services.game_digest, which imports this module at ITS top level (`from services import
     scheduler as _sched`) — importing it at OUR top level would run that import mid-module,
-    before `_bot`/`_scheduler` exist yet."""
+    before `_bot`/`_scheduler` exist yet.
+
+    Phase 23 (23-04, D-06): runs `_flush_due_application_decisions` FIRST — the web process's
+    own request-time/background sweep (`miniapp/outbox.py::flush_application_decisions`)
+    normally beats this job to it, this is only the safety net for a web process that died
+    inside the undo window (known limit: effect delay then grows from 5s to <= this job's
+    30s interval, documented in the plan's SUMMARY)."""
     try:
+        await _flush_due_application_decisions(datetime.now())
         from services.miniapp_outbox import drain
         await drain(_bot)
     except Exception as e:

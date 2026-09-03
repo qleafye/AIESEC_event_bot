@@ -43,6 +43,7 @@ from database.db import (
     claim_application_undo,
     claim_due_application_decisions,
     get_answer_history,
+    get_application_decision,
     get_pending_count,
     get_pending_users,
     get_setting,
@@ -252,6 +253,12 @@ async def record_decision(telegram_id: int, decision: str, reason: str | None, b
     decided_at = _stamp(now)
     effects_due_at = _stamp(now + timedelta(seconds=UNDO_WINDOW_SECONDS))
     return await record_application_decision(telegram_id, decision, reason, by, decided_at, effects_due_at)
+
+
+async def get_decision(decision_id: int) -> dict | None:
+    """Read-only lookup — плана 23-04, ownership/state проверка ДО `undo_decision` (T-23-17):
+    веб-роутер обязан отказать чужому/уже разрешённому `decision_id`, не потратив claim."""
+    return await get_application_decision(decision_id)
 
 
 async def undo_decision(decision_id: int) -> dict:
