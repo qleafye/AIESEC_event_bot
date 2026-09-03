@@ -1387,3 +1387,21 @@ def test_applications_route_and_nav_registered_with_moderate_reg_cap():
     nav_block = text[text.index("export const NAV ="):text.index("export const NAV_ICONS")]
     assert '"#/applications"' in nav_block and 'cap: "moderate_reg"' in nav_block and 'group: "apps"' in nav_block
 
+
+# ── Phase 23.1: компоненты плиты (UI-REDESIGN-01) ────────────────────────────────────────────
+
+def test_plate_components_exist_and_use_only_tokens():
+    css = APP_CSS.read_text(encoding="utf-8")
+    for selector in (".plate {", ".plate::before", ".next-action {", ".flat-list.flush {", ".screen-anchor {"):
+        assert selector in css, f"нет селектора {selector} в app.css"
+    assert "var(--font-heading-style)" in css
+    assert "var(--plate-pattern" in css
+    assert not _HEX_OR_RGB_COLOR.findall(css), "литеральный цвет в app.css"
+
+
+def test_plate_alpha_tokens_declared_in_both_themes():
+    text = MINIAPP_TOKENS.read_text(encoding="utf-8")
+    for name in ("--on-accent-strong", "--on-accent-soft", "--on-accent-line", "--on-accent-rule", "--on-accent-wash"):
+        assert text.count(name) == 2, f"{name}: ожидалось 2 вхождения (светлая+тёмная ветка), найдено {text.count(name)}"
+    assert text == DASHBOARD_TOKENS.read_text(encoding="utf-8"), "tokens.css разошёлся с dashboard/static/tokens.css"
+
