@@ -57,6 +57,30 @@
   GET  /app/api/stats/game         -> {participants, submissions{pending,approved,rejected},
                                        by_category[{code,label,count}]} — только агрегаты, без ПД;
                                        `moderate_game` + section stats; числа = get_game_stats()
+  Менеджер (план 23-04, APP-TINDER-02, `require_cap("moderate_reg")` + section applications;
+  городской скоуп на очереди и на каждой мутации — 403 {"reason":"out_of_scope","text"}):
+  GET  /app/api/applications/next?offset&track&changed -> {application{telegram_id,full_name,
+                                       username,city,registered_at}, avatar{url|null,initials},
+                                       badges[{kind,text}], main_fields[{label,value}],
+                                       extra_fields[{label,value}], resume{kind:file|text|none,
+                                       url|text}, history[], remaining, position, offset,
+                                       filters{reject_templates[],chips{all,changed}}}
+                                       либо {empty: true, remaining, offset, empty_text}
+                                       track: full|party|short (неизвестное — без фильтра);
+                                       changed: "1"|"true" — только изменённые/повторные
+  POST /app/api/applications/{tid}/approve -> {ok: true, decision_id, undo_seconds: 5}
+                                       | {ok: false, reason: "already"}; эффекты (приветствие/
+                                       лист) откладываются на undo_seconds (D-06), не отправляются
+                                       синхронно с ответом
+  POST /app/api/applications/{tid}/reject {reason?} -> тот же контракт, что approve; причина
+                                       необязательна (D-05), обрезается по лимиту шторки
+  POST /app/api/applications/undo {decision_id} -> {ok: true} | {ok: false, reason: "too_late"}
+                                       404 {"reason":"not_found"} — чужой/неизвестный decision_id
+  POST /app/api/applications/approve_all {city} -> {ok: true, count} | {ok: false, reason: "already"}
+                                       400 {"reason":"city_required","text"} — город не передан
+                                       403 {"reason":"city_mismatch","text"} — не совпадает с
+                                       привязкой менеджера (веб-аналог CR-02 appr_all_yes бота);
+                                       отмены нет (D-07), эффекты ставятся в outbox сразу
   Менеджер (план 19-06, `require_cap("moderate_game")` + section admin_tasks; городской скоуп
   на чтении и на каждой мутации — 403 {"reason":"out_of_scope","text"}):
   GET  /app/api/admin/tasks/options -> {categories[{code,label}], proof_types[{code,label}],
@@ -160,6 +184,7 @@ from __future__ import annotations
 
 from miniapp.routers import (
     admin_tasks,
+    applications,
     coins,
     coins_admin,
     files,
@@ -186,6 +211,7 @@ ALL_ROUTERS = [
     coins_admin.router,
     settings.router,
     form.router,
+    applications.router,
 ]
 
 __all__ = ["ALL_ROUTERS"]
