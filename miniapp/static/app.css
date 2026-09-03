@@ -823,6 +823,8 @@ a.flat-row:active, button.flat-row:active { background: var(--surface-alt); }
 .tile .icon { width: 20px; height: 20px; color: var(--text-muted); }
 .tile b { font-family: var(--font-heading); font-weight: 800; font-size: 15px; }
 .tile small { color: var(--text-faint); font-size: 12px; }
+.tile { position: relative; }
+.tile-dot { position: absolute; top: var(--sp-2); right: var(--sp-2); width: 8px; height: 8px; border-radius: 50%; background: var(--accent); }
 
 /* .sec typography rule moved to the shared `.sec, .section-title` block (план 19.1-05,
    ui.js::sectionTitle) — see delegate-screens section above, единый источник, не разошлись. */
