@@ -51,6 +51,10 @@ export const ROUTES = [
   ["#/task-edit/{id}", "screens/task_edit.js"],
   ["#/admin-coins", "screens/admin_coins.js"],
   ["#/settings", "screens/settings.js"],
+  // Phase 22 Plan 07 (D-16): страница одного раздела настроек — тот же модуль settings.js
+  // (params.code решает, что рисовать), не отдельный screens/*-файл и не строка NAV (плитка
+  // раздела строит hash сама, settings.js::SECTION_ICONS).
+  ["#/settings/{code}", "screens/settings.js"],
   ["#/form", "screens/form.js"],
   ["#/applications", "screens/applications.js"],
 ];

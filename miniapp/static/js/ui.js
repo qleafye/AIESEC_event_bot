@@ -78,6 +78,23 @@ export function sectionTitle(h, text) {
   return h("div", { class: "section-title", text });
 }
 
+// Плитка хаба (`.tiles`/`.tile` app.css, план 19.1-04) — иконка + подпись + мета-строка,
+// вынесена из hub.js (Phase 22 Plan 07, D-16) для повторного использования на стартовом
+// экране настроек (плитки разделов). `dot` — несохранённые правки раздела (маркер `.tile-
+// dot`, тот же приём, что status-dot у flatRow), без него разметка не меняется.
+export function tile(h, { onClick, iconName, label, meta, dot }) {
+  return h("button", {
+    type: "button",
+    class: `tile${dot ? " has-dot" : ""}`,
+    onClick,
+  },
+    iconName ? icon(iconName) : null,
+    h("b", { text: label }),
+    h("small", { text: meta }),
+    dot ? h("span", { class: "tile-dot", "aria-hidden": "true" }) : null,
+  );
+}
+
 // Слоты стикеров пресета (D-04/D-18) — file_id приходит из ctx.me (/app/api/me, план 19.1-02).
 const STICKER_FIELD = {
   empty: "sticker_empty_file_id",

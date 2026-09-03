@@ -1,23 +1,30 @@
-// Экран «⚙️ Настройки» (фаза 22, D-01…D-15, 22-UI-SPEC.md): весь правимый реестр
-// `SETTINGS_SCHEMA` одной страницей — липкий поиск сверху, разделы Phase 20 с карточками
-// групп бота, строки настроек на месте (не отдельный экран правки), гибридное сохранение
-// (тумблер — сразу, остальное — пакетом с diff/confirm/stale). Экран — ПОТРЕБИТЕЛЬ `form.js`
-// (план 22-03): ни одного собственного контрола по типу поля, ни одной надписи литералом —
-// все тексты идут из `texts` ответа `GET .../settings/all` (реестр `miniapp_settings_*`,
-// план 22-02). Заголовок экрана и подписи разделов — из `document.body.dataset.sectionLabels`
-// (тот же приём, что `screens/hub.js::sectionLabelsFromDom`), а не литералом.
+// Экран «⚙️ Настройки» (фаза 22, D-01…D-15; Phase 22 Plan 07, D-16: пересмотр владельца
+// 03.09 — НЕ одна длинная страница). Два маршрута одного модуля:
+//   #/settings        — стартовый экран: общий поиск по ВСЕМ настройкам сразу + два ряда
+//                        плиток разделов («Нужно менеджеру» / «Реже», `sections[].tier`
+//                        считает `settings_ops.SETTINGS_MAIN_SECTIONS`, JS ничего не решает
+//                        сам — T-19-45, код раздела человеку не показывается, только подпись).
+//   #/settings/{code}  — страница одного раздела: заголовок раздела + назад (Telegram
+//                        BackButton, тот же общий механизм app.js, что у #/task/{id} — экран
+//                        не рисует свою кнопку «назад»), группы/строки настроек раздела,
+//                        гибридное сохранение (тумблер — сразу, остальное — пакетом с diff/
+//                        confirm/stale).
 //
-// Задача 1 (каркас): шапка города, липкий поиск, разделы/группы/строки, свёртка через
-// localStorage. Задача 2 добавляет гибридное сохранение (тумблер сразу / батч с diff).
-// Задача 3 — превью, сброс к дефолту, «как везде», фото/файл через staff-путь /uploads.
+// Экран — ПОТРЕБИТЕЛЬ `form.js` (план 22-03): ни одного собственного контрола по типу поля,
+// ни одной надписи литералом — все тексты идут из `texts` ответа `GET .../settings/all`
+// (реестр `miniapp_settings_*`). Заголовки экрана/раздела — из `document.body.dataset.
+// sectionLabels`/`section.label` (тот же приём, что screens/hub.js::sectionLabelsFromDom), а
+// не литералом.
 //
-// Группа заголовка «N/M» — символьный счётчик (не фраза «N из M»): в реестре 22-02 есть
-// текст для строки поиска (`search_count_text`), но не для заголовка карточки группы —
-// отдельного ключа под эту фразу план не завёл, а вводить новый ключ реестра — вне границ
-// файлов этого плана (только JS/CSS/тесты). Слэш — не человеческий текст, сторож литералов
-// его не видит.
+// D-08/D-09 (гибридное сохранение, «изменено в боте» stale-сверка) переживают переход между
+// разделами: `pending`/`fileNames`/`originalItems` — МОДУЛЬНЫЕ карты (не пересоздаются в
+// render()), тот же приём, что `activeScrollHandler`/`activeDiffCleanup` ниже — правка,
+// начатая на одном разделе и не сохранённая, не теряется при переходе на другой раздел или
+// на стартовый экран назад; плавающая панель «Сохранить N изменений» на странице раздела
+// показывает ОБЩЕЕ число несохранённых правок по всем разделам сразу и одним batch сохраняет
+// все разом (сервер уже давно это умеет — `settings/batch` не завязан на «текущий» раздел).
 
-import { sectionTitle, emptyState, errorState, labelText } from "../ui.js";
+import { sectionTitle, emptyState, errorState, labelText, tile } from "../ui.js";
 import { icon } from "../icons.js";
 import { haptic } from "../motion.js";
 import {
@@ -32,6 +39,21 @@ const AUTH_EXCEPT_REASONS = ["not_editable"];
 function isAuthError(err) {
   return isAuthErrorBase(err, AUTH_EXCEPT_REASONS);
 }
+
+// Иконка плитки раздела (Lucide, план 19.1-04 инвентарь) — сопоставление в JS, а не с
+// сервера: код раздела уже приходит (`section.token`), заводить ещё одно API-поле под
+// единственный выбор из семи готовых иконок — лишний контракт (наименьшее из решений,
+// допущенных Claude's Discretion 22-CONTEXT). Раздел без записи (новый токен в будущем)
+// остаётся без иконки — плитка всё равно рабочая, просто без левой картинки.
+const SECTION_ICONS = {
+  event: "calendar",
+  form: "clipboard-list",
+  apps: "check-circle-2",
+  pay: "wallet",
+  game: "trophy",
+  data: "bar-chart-2",
+  manage: "settings",
+};
 
 // Свёртка групп переживает перезаход (WEB-SET-02, UI-SPEC «Каркас страницы» п.4) — тот же
 // приём try/catch, что HUB_MODE_KEY/ONBOARDING_KEY в screens/hub.js: недоступный localStorage
@@ -119,44 +141,46 @@ function markerFor(item, texts) {
   return { text: texts.miniapp_settings_value_set_text || "", cls: "is-set" };
 }
 
-// Слушатель скролла живёт вне замыкания render() (модульная переменная), чтобы unmount()
-// мог снять именно его — без этого повторный заход на экран копил бы по листенеру на visit
-// (паттерн card.js/review.js: unmount снимает то, что завёл render).
+// ── состояние сессии (D-08/D-09 «переживает переход между разделами», см. докстринг файла) ──
+// МОДУЛЬНЫЕ карты — не пересоздаются в render(), живут, пока не сохранены/отменены или пока
+// не перезагрузится страница целиком (ESM-модуль переживает переход между хэшами, как и
+// activeScrollHandler/activeDiffCleanup ниже — тот же приём).
+const pending = new Map(); // ключ -> значение с контрола (ещё не строка для сети, D-08)
+const fileNames = new Map(); // key -> имя выбранного файла (для diff-предпросмотра photo/file)
+const originalItems = new Map(); // key -> последний ПОДТВЕРЖДЁННЫЙ сервером item — источник
+// правды для diff «было», base батча и repaint; накапливается по мере посещения разделов, не
+// очищается при уходе с раздела — иначе diff/stale по ключу с ДРУГОГО раздела не нашёл бы item.
+function setOriginal(item) { originalItems.set(item.key, item); }
+
+// Слушатели живут вне замыкания render() (модульные переменные), чтобы unmount() мог снять
+// именно те, что завёл последний render() (паттерн card.js/review.js).
 let activeScrollHandler = null;
 let activeDiffCleanup = null;
 
 export async function render(root, params, ctx) {
-  const { h, api, me } = ctx;
+  if (params && params.code) return renderSection(root, params.code, ctx);
+  return renderStart(root, ctx);
+}
 
-  // ── состояние экрана ────────────────────────────────────────────────────────────────
+// ══ Стартовый экран: общий поиск + плитки разделов (D-16) ════════════════════════════════
+
+function sectionItemsFlat(section) {
+  const out = [...section.toggles];
+  for (const group of section.groups) out.push(...group.items);
+  return out;
+}
+
+function sectionItemCount(section) {
+  return section.toggles.length + section.groups.reduce((n, g) => n + g.items.length, 0);
+}
+
+async function renderStart(root, ctx) {
+  const { h, api, me, navigate } = ctx;
+
   let texts = {};
   let payload = null;
-  const itemIndex = new Map(); // key -> { item, el } — ТЕКУЩЕЕ отображение (может быть
-  // локальным предпросмотром сброса, ещё не сохранённым)
-  const originalItems = new Map(); // key -> последний ПОДТВЕРЖДЁННЫЙ сервером item — источник
-  // правды для diff «было», base батча и отмены правок; локальный предпросмотр (кнопка
-  // «Сбросить»/«Как везде» — задача 3) его не трогает, чтобы «Отменить правки» не подменял
-  // отмену настоящим значением сброса.
-  function setOriginal(item) { originalItems.set(item.key, item); }
-  const groupCollapsedState = new Map(); // token -> bool
-  let query = "";
 
-  // Гибридное сохранение (D-08): тумблер сохраняется сам по себе, отдельным POST batch из
-  // одного изменения (busyToggle — глобальный однократный замок, «один тап = один запрос»).
-  // Остальные типы копятся здесь локально (ключ -> значение с контрола, ЕЩЁ НЕ строка для
-  // сети — toBatchValue() переводит в строку только перед отправкой/показом diff) до тапа на
-  // плавающую панель «Сохранить N изменений». Своя карта вместо form.js::createFormState —
-  // stale «оставить как в боте» требует точечного снятия ОДНОГО ключа из черновика, которого
-  // API createFormState не даёт (только полный reset()); полноценно реализовать это здесь —
-  // три метода Map, тянуть невписывающийся контракт в form.js внутри этого плана незачем.
-  const pending = new Map();
-  const fileNames = new Map(); // key -> имя выбранного файла (для diff-предпросмотра photo/file)
-  let busyToggle = false;
-  let busyBatch = false;
-
-  // ── статичный каркас (строится один раз, содержимое заполняется после загрузки) ──────
   const title = h("h1", {});
-  const cityBar = h("div", { class: "choice-chips hidden" });
   const searchInput = h("input", {
     class: "input", type: "search", disabled: true,
     onInput: () => onSearchInput(),
@@ -169,13 +193,12 @@ export async function render(root, params, ctx) {
   const searchCount = h("p", { class: "settings-search-count", "aria-live": "polite" });
   const searchEmpty = h("div", { class: "settings-search-empty hidden" });
   const searchBar = h("div", { class: "settings-search" }, searchField, searchCount, searchEmpty);
-  const sectionsWrap = h("div");
-  const stateWrap = h("div"); // скелетон / ошибка загрузки
+  const stateWrap = h("div");
+  const resultsWrap = h("div", { class: "hidden" });
+  const tilesWrap = h("div");
 
-  root.append(title, cityBar, stateWrap, searchBar, sectionsWrap);
+  root.append(title, stateWrap, searchBar, resultsWrap, tilesWrap);
 
-  // D-04: заголовок экрана без иконки рядом — labelText (ui.js) снимает ведущий эмодзи
-  // подписи раздела из реестра (без этого <h1> дублирует иконку раздела глифом «⚙️»).
   title.textContent = labelText(sectionLabelsFromDom().settings || "");
 
   if (activeScrollHandler) window.removeEventListener("scroll", activeScrollHandler);
@@ -186,10 +209,211 @@ export async function render(root, params, ctx) {
   activeScrollHandler = onScroll;
   window.addEventListener("scroll", onScroll, { passive: true });
 
-  // ── скелетон загрузки (без текста на первом заходе — texts.miniapp_settings_loading_text
-  // ещё не пришёл, это ЧАСТЬ того же ответа, который мы ждём; на повторных загрузках
-  // (смена города) texts уже в кэше — см. loadAndRender). Только существующие классы —
-  // .card/.muted, задача 1 не заводит новых CSS. ─────────────────────────────────────────
+  function renderSkeleton() {
+    const bars = Array.from({ length: 6 }, () => {
+      const bar = h("div", { class: "card" });
+      bar.style.height = "48px";
+      bar.style.opacity = ".5";
+      return bar;
+    });
+    stateWrap.replaceChildren(...bars);
+  }
+
+  function clearState() {
+    stateWrap.replaceChildren();
+  }
+
+  // ── ряды плиток разделов (D-16): «Нужно менеджеру» (tier=main) / «Реже» (tier=rare). ─────
+  function sectionHasPendingDot(section) {
+    if (!pending.size) return false;
+    const keys = new Set(sectionItemsFlat(section).map((i) => i.key));
+    for (const key of pending.keys()) if (keys.has(key)) return true;
+    return false;
+  }
+
+  function buildTileRow(rowLabel, sections) {
+    if (!sections.length) return null;
+    const wrap = h("div", {});
+    wrap.append(sectionTitle(h, rowLabel));
+    const tiles = h("div", { class: "tiles" });
+    for (const section of sections) {
+      tiles.append(tile(h, {
+        onClick: () => navigate(`#/settings/${section.token}`),
+        iconName: SECTION_ICONS[section.token],
+        label: labelText(section.label),
+        meta: (texts.miniapp_settings_tile_count_text || "").replace("{n}", String(sectionItemCount(section))),
+        dot: sectionHasPendingDot(section),
+      }));
+    }
+    wrap.append(tiles);
+    return wrap;
+  }
+
+  function renderTiles() {
+    const main = payload.sections.filter((s) => s.tier === "main");
+    const rare = payload.sections.filter((s) => s.tier !== "main");
+    tilesWrap.replaceChildren(
+      ...[
+        buildTileRow(texts.miniapp_settings_row_main_label || "", main),
+        buildTileRow(texts.miniapp_settings_row_rare_label || "", rare),
+      ].filter(Boolean),
+    );
+  }
+
+  // ── общий поиск (D-15, теперь по ВСЕМ разделам сразу) — результаты сгруппированы
+  // подзаголовком раздела (T-19-45: подпись раздела, не код), тап по строке открывает раздел.
+  function buildSearchRow(item, ranges, sectionToken) {
+    const titleEl = h("div", { class: "flat-row-title" });
+    titleEl.replaceChildren(...highlightMatch(h, item.label, ranges.label));
+    const metaEl = item.help ? h("div", { class: "flat-row-meta" }) : null;
+    if (metaEl) metaEl.replaceChildren(...highlightMatch(h, item.help, ranges.help));
+    return h("button", {
+      type: "button", class: "flat-row", "aria-label": item.label,
+      onClick: () => navigate(`#/settings/${sectionToken}`),
+    },
+      h("div", { class: "flat-row-body" }, titleEl, metaEl),
+      h("span", { class: "flat-row-chev" }, icon("chevron-right")),
+    );
+  }
+
+  function allItems() {
+    const out = [];
+    for (const section of payload.sections) out.push(...sectionItemsFlat(section));
+    return out;
+  }
+
+  function onSearchInput() {
+    const query = searchInput.value;
+    searchClear.classList.toggle("hidden", !query);
+
+    if (!query) {
+      resultsWrap.classList.add("hidden");
+      tilesWrap.classList.remove("hidden");
+      searchCount.textContent = "";
+      searchCount.classList.remove("active");
+      renderSearchEmpty(false, query);
+      return;
+    }
+
+    const items = allItems();
+    const results = searchFilter(items, query);
+    const rangesByKey = new Map(results.map((r) => [r.item.key, r.ranges]));
+
+    let shown = 0;
+    const groups = [];
+    for (const section of payload.sections) {
+      const rows = [];
+      for (const item of sectionItemsFlat(section)) {
+        const ranges = rangesByKey.get(item.key);
+        if (!ranges) continue;
+        rows.push(buildSearchRow(item, ranges, section.token));
+        shown += 1;
+      }
+      if (rows.length) groups.push(h("div", {}, sectionTitle(h, section.label), h("div", { class: "flat-list" }, ...rows)));
+    }
+
+    tilesWrap.classList.add("hidden");
+    resultsWrap.classList.toggle("hidden", groups.length === 0);
+    resultsWrap.replaceChildren(...groups);
+
+    searchCount.textContent = (texts.miniapp_settings_search_count_text || "")
+      .replace("{shown}", String(shown)).replace("{total}", String(payload.total));
+    searchCount.classList.add("active");
+
+    renderSearchEmpty(shown === 0, query, items);
+  }
+
+  function renderSearchEmpty(show, query, items) {
+    searchEmpty.classList.toggle("hidden", !show);
+    if (!show) return;
+    const suggestions = suggestTerms(items || allItems(), query, 3);
+    const template = texts.miniapp_settings_search_suggest_text || "";
+    const parts = template.split("{suggestions}");
+    const suggestRow = suggestions.length
+      ? h("p", { class: "settings-search-suggest" },
+          parts[0] || "",
+          ...suggestions.map((w) => h("button", {
+            class: "chip", type: "button", text: w,
+            onClick: () => { searchInput.value = w; onSearchInput(); },
+          })),
+          parts[1] || "",
+        )
+      : null;
+    searchEmpty.replaceChildren(
+      ...[
+        h("h2", { text: texts.miniapp_settings_search_empty_heading_text || "" }),
+        h("p", { text: texts.miniapp_settings_search_empty_body_text || "" }),
+        suggestRow,
+      ].filter(Boolean),
+    );
+  }
+
+  async function loadAndRender() {
+    searchInput.disabled = true;
+    clearState();
+    renderSkeleton();
+    let data;
+    try {
+      data = await api("/admin/settings/all");
+    } catch (err) {
+      clearState();
+      if (isAuthError(err)) return;
+      stateWrap.append(errorState(h, {
+        me, text: errorText(err, texts.miniapp_settings_load_error_text || ""), retry: loadAndRender,
+      }));
+      return;
+    }
+    payload = data;
+    texts = data.texts || {};
+    clearState();
+    searchInput.disabled = false;
+    searchInput.placeholder = texts.miniapp_settings_search_placeholder_text || "";
+
+    if (!data.sections.length) {
+      tilesWrap.replaceChildren(emptyState(h, { me, text: texts.miniapp_settings_load_error_text || "" }));
+      return;
+    }
+    renderTiles();
+  }
+
+  await loadAndRender();
+}
+
+// ══ Страница одного раздела: группы/строки + гибридное сохранение ════════════════════════
+
+async function renderSection(root, code, ctx) {
+  const { h, api, me } = ctx;
+
+  // ── состояние экрана (per-render; pending/fileNames/originalItems — модульные, см. верх
+  // файла) ─────────────────────────────────────────────────────────────────────────────────
+  let texts = {};
+  let payload = null;
+  let section = null;
+  const itemIndex = new Map(); // key -> { item, el } — ТЕКУЩЕЕ отображение этой страницы
+  const groupCollapsedState = new Map(); // token -> bool
+  let busyToggle = false;
+  let busyBatch = false;
+
+  // Правка, начатая на другом разделе и ещё не сохранённая (module-scope pending), не должна
+  // молча исчезать с глаз при возврате на её раздел — строка показывает именно ЧЕРНОВИК, не
+  // забытое сервером значение (D-08/D-09, докстринг файла).
+  function withPendingOverride(item) {
+    if (!pending.has(item.key)) return item;
+    const v = pending.get(item.key);
+    return { ...item, value: v, display: humanDisplayValue(item, v, fileNames), is_default: v == null };
+  }
+
+  // ── статичный каркас ──────────────────────────────────────────────────────────────────
+  const title = h("h1", {});
+  const cityBar = h("div", { class: "choice-chips hidden" });
+  const stateWrap = h("div"); // скелетон / ошибка загрузки
+  const sectionsWrap = h("div");
+
+  root.append(title, cityBar, stateWrap, sectionsWrap);
+
+  if (activeScrollHandler) { window.removeEventListener("scroll", activeScrollHandler); activeScrollHandler = null; }
+  if (activeDiffCleanup) { activeDiffCleanup(); activeDiffCleanup = null; }
+
   function renderSkeleton(withText) {
     const bars = Array.from({ length: 6 }, () => {
       const bar = h("div", { class: "card" });
@@ -243,8 +467,7 @@ export async function render(root, params, ctx) {
     }
   }
 
-  // ── тост (используется задачей 2, каркас — здесь, чтобы Task 1 уже мог показать ошибку
-  // переключения города человеческим текстом реестра). ────────────────────────────────────
+  // ── тост ─────────────────────────────────────────────────────────────────────────────────
   const toast = h("div", { class: "settings-toast chip off" }, icon("check"), h("span", {}));
   let toastTimer = null;
   function showToast(text, kind) {
@@ -258,10 +481,7 @@ export async function render(root, params, ctx) {
   root.append(toast);
 
   // ── тумблер: сохраняется по касанию (D-08). Опасное направление — тот же confirmBox, что
-  // сегодня (перенос конвенции старого settings.js), текст последствий — только с сервера
-  // (item.confirm_text, T-22-13: клиент не решает, что опасно). Кнопки диалога переиспользуют
-  // ближайшие по смыслу тексты реестра — под точечный «да, эта одна опасная правка» отдельного
-  // ключа план 22-02 не завёл (только общий CTA батча и общий «отменить правки»).
+  // сегодня, текст последствий — только с сервера (item.confirm_text, T-22-13). ────────────
   let dangerToggle = null;
   const dangerConfirm = confirmBox(h, {
     onConfirm: () => { if (dangerToggle) saveToggle(dangerToggle.item, dangerToggle.el, dangerToggle.next); },
@@ -277,9 +497,7 @@ export async function render(root, params, ctx) {
   }
 
   // ── сброс к умолчанию / «как везде» (D-10) — очередь в общий пакет (value: null,
-  // эквивалент «-» бота), локальный предпросмотр строки без похода на сервер. Confirm нужен
-  // только у сброса к дефолту (текст с {default} — менеджеру важно ЧТО именно вернётся);
-  // «как везде» безопасно, без подтверждения — снимает только переопределение города.
+  // эквивалент «-» бота), локальный предпросмотр строки без похода на сервер. ───────────────
   let resetTarget = null;
   const resetConfirm = confirmBox(h, {
     onConfirm: () => { if (resetTarget) queueReset(resetTarget.item); },
@@ -376,10 +594,8 @@ export async function render(root, params, ctx) {
     if (previewPanel) el.append(previewPanel);
   }
 
-  // ── плавающая панель «Сохранить N изменений» (D-08) — появляется при первом dirty
-  // нетумблерном поле; MainButton-паттерн дублирования нет (batch — не MainButton задача:
-  // здесь ДВЕ кнопки — сохранить/отменить, task_edit.js использует MainButton только когда
-  // действие одно). ────────────────────────────────────────────────────────────────────────
+  // ── плавающая панель «Сохранить N изменений» (D-08) — N считает ВСЕ несохранённые правки
+  // сессии (модульный pending), не только правки текущего раздела (докстринг файла). ────────
   const batchBtnText = h("span", {});
   const batchBtn = h("button", { class: "btn", type: "button", onClick: () => openDiffDialog() }, batchBtnText);
   const batchDiscard = h("button", { class: "btn ghost", type: "button", onClick: () => discardPending() });
@@ -407,8 +623,9 @@ export async function render(root, params, ctx) {
   }
 
   // ── диалог diff (WEB-SET-03, D-08/D-09) — переиспользует .sheet-backdrop/.sheet (тот же
-  // компонент, что «Ещё» app.js::openOverflowSheet), не заводит нового CSS. Порядок пунктов
-  // (A4 UI-SPEC): обычные → опасные → needs_confirm (Sheets) → stale, единым списком. ────────
+  // компонент, что «Ещё» app.js::openOverflowSheet). Порядок пунктов: обычные → опасные →
+  // needs_confirm (Sheets) → stale, единым списком. Может показать правки С ДРУГИХ разделов
+  // (originalItems накоплен по всем посещённым разделам сессии — см. докстринг файла). ──────
   const diffHeading = h("h2", {});
   const diffList = h("div", { class: "settings-diff" });
   const diffConfirmBtn = h("button", { class: "btn", type: "button", onClick: () => submitDiff() });
@@ -452,8 +669,6 @@ export async function render(root, params, ctx) {
     diffBackdrop.classList.add("hidden");
     document.removeEventListener("keydown", onDiffKeydown);
   }
-  // Уход с экрана при открытом диалоге (переход по BackButton/ссылке) — снимаем keydown-
-  // листенер вместе со скроллом (unmount снимает то, что завёл render, тот же приём выше).
   activeDiffCleanup = () => document.removeEventListener("keydown", onDiffKeydown);
 
   function setDiffBusy(busy) {
@@ -508,9 +723,6 @@ export async function render(root, params, ctx) {
     } else {
       pending.delete(key);
       fileNames.delete(key);
-      // «Оставить как в боте» — актуальное значение из ответа stale (info.raw/info.value),
-      // не наш черновик и не то, что было при загрузке экрана (оно уже устарело — иначе
-      // stale не случился бы). Это ПОДТВЕРЖДЁННАЯ сервером правда — обновляет и originalItems.
       const original = originalItems.get(key) || {};
       const fresh = {
         ...original, raw: info.raw, value: info.value,
@@ -593,11 +805,11 @@ export async function render(root, params, ctx) {
     }
   }
 
-  // ── строка настройки: field() из form.js + маркер состояния (расширение .field, не новый
-  // контейнер — settings-row добавляется прямо на узел field()). ─────────────────────────
-  function buildRow(item) {
+  // ── строка настройки: field() из form.js + маркер состояния. ────────────────────────────
+  function buildRow(rawItem) {
+    const item = withPendingOverride(rawItem);
     const spec = settingSpec(item);
-    const el = field(h, spec, item.value, (v) => onFieldChange(item, el, v));
+    const el = field(h, spec, item.value, (v) => onFieldChange(rawItem, el, v));
     el.classList.add("settings-row");
     el.dataset.key = item.key;
 
@@ -616,9 +828,9 @@ export async function render(root, params, ctx) {
 
     if (item.editable === false) setFieldState(el, "disabled");
     applyMarker(el, item);
-    applyActions(el, item);
-    paintHighlight(el, item, null);
-    return { item, el };
+    applyActions(el, rawItem);
+    paintHighlight(el, item);
+    return { item: rawItem, el };
   }
 
   function toggleOverrideList(el) {
@@ -640,50 +852,41 @@ export async function render(root, params, ctx) {
     }
   }
 
-  function paintHighlight(el, item, ranges) {
-    const labelRanges = ranges ? ranges.label : [];
-    const helpRanges = ranges ? ranges.help : [];
+  function paintHighlight(el, item) {
     if (item.type === "toggle") {
       const titleEl = el._nodes.control && el._nodes.control.querySelector
         ? el._nodes.control.querySelector(".flat-row-title")
         : null;
-      if (titleEl) titleEl.replaceChildren(...highlightMatch(h, item.label, labelRanges));
+      if (titleEl) titleEl.replaceChildren(...highlightMatch(h, item.label, []));
     } else if (el._nodes.label) {
-      el._nodes.label.replaceChildren(...highlightMatch(h, item.label, labelRanges));
+      el._nodes.label.replaceChildren(...highlightMatch(h, item.label, []));
     }
     if (el._nodes.help) {
-      el._nodes.help.replaceChildren(...highlightMatch(h, item.help || "", helpRanges));
+      el._nodes.help.replaceChildren(...highlightMatch(h, item.help || "", []));
     }
   }
 
   // Точечная перерисовка одной строки СВЕЖИМ item (после сохранения/отмены/stale-«оставить
-  // как в боте») — вместо попытки обновить произвольный контрол на месте (у большинства
-  // типов form.js нет универсального setValue, см. комментарий у `pending` выше). Заменяет
-  // DOM-узел строки, не трогая соседей — фокус/скролл остальной страницы не прыгает.
+  // как в боте») — заменяет DOM-узел строки, не трогая соседей. Если ключ принадлежит
+  // ДРУГОМУ разделу (не показан на этой странице), itemIndex не находит prev — новый узел
+  // просто не на что заменить, вызывающий код это переживает (см. resolveStale/submitDiff).
   function repaintRow(item) {
     const prev = itemIndex.get(item.key);
     const row = buildRow(item);
     itemIndex.set(item.key, row);
     if (prev && prev.el && prev.el.parentNode) prev.el.replaceWith(row.el);
-    if (query) paintHighlight(row.el, item, null);
     return row;
   }
 
   function onFieldChange(item, el, value) {
     if (item.type === "toggle") {
       // toggleControl(form.js) уже отдаёт СЛЕДУЮЩЕЕ значение ("on"/"off"), не текущее —
-      // сохраняется сразу (D-08); опасное направление сначала подтверждается (item.confirm_text
-      // — единственный источник опасности, T-22-13: клиент ничего не решает сам).
+      // сохраняется сразу (D-08); опасное направление сначала подтверждается.
       if (item.confirm_text) openDangerToggleConfirm(item, el, value);
       else saveToggle(item, el, value);
       return;
     }
     if ((item.type === "photo" || item.type === "file") && typeof File !== "undefined" && value instanceof File) {
-      // Дропзона (form.js::fileControl) уже нарисовала локальный предпросмотр сама (внутренний
-      // input-листенер вызывает свой paint() до этого onChange) — здесь только загрузка через
-      // существующий staff-путь /uploads (без нового транспорта, D-05) и постановка file_id в
-      // общий пакет; onChange(null) от кнопки «✕» дропзоны идёт мимо этой ветки — обычный
-      // сброс к дефолту через pending ниже (D-10).
       handleFileUpload(item, el, value);
       return;
     }
@@ -691,10 +894,7 @@ export async function render(root, params, ctx) {
     updateBatchBar();
   }
 
-  // ── фото/файл: тот же staff-путь POST /app/api/uploads, что резюме делегата (без нового
-  // транспорта) — полученный file_id ложится в pending обычным изменением (не сразу, как
-  // тумблер — D-08 относит photo/file к «остальным типам»). 413/оффлайн/неверный тип —
-  // инлайн под полем текстами реестра, дропзона остаётся кликабельной для повтора.
+  // ── фото/файл: тот же staff-путь POST /app/api/uploads, что резюме делегата. ─────────────
   let uploadLimitsPromise = null;
   function getUploadLimits() {
     if (!uploadLimitsPromise) uploadLimitsPromise = api("/uploads/limits").catch(() => ({}));
@@ -762,9 +962,6 @@ export async function render(root, params, ctx) {
         );
         return;
       }
-      // needs_confirm/stale на одиночном тумблере — нештатно (сервер уже подтвердил опасность
-      // текстом item.confirm_text до отправки); безопасный отказ — перечитать реестр целиком,
-      // не оставлять строку в неопределённом визуальном состоянии.
       await loadAndRender();
     } catch (err) {
       if (!isAuthError(err)) {
@@ -785,7 +982,7 @@ export async function render(root, params, ctx) {
       setOriginal(item);
       rowsWrap.append(row.el);
     }
-    const countEl = h("span", { class: "settings-group-count" });
+    const countEl = h("span", { class: "settings-group-count", text: String(group.items.length) });
     const chevron = h("span", { class: "settings-group-chevron" }, icon("chevron-down"));
     const wrap = h("div", { class: "settings-group" });
     wrap.dataset.token = group.token;
@@ -794,7 +991,6 @@ export async function render(root, params, ctx) {
       onClick: () => onGroupHeadClick(group.token, wrap),
     }, h("span", { class: "settings-group-title", text: group.label }), countEl, chevron);
     wrap.append(head, rowsWrap);
-    countEl.textContent = `${group.items.length}/${group.items.length}`;
 
     const stored = loadCollapsed(group.token);
     const collapsed = stored != null ? stored : !isFirst;
@@ -808,25 +1004,14 @@ export async function render(root, params, ctx) {
     const next = !groupCollapsedState.get(token);
     groupCollapsedState.set(token, next);
     saveCollapsed(token, next);
-    updateGroupCollapseVisual(wrap);
-  }
-
-  function updateGroupCollapseVisual(wrap) {
-    const token = wrap.dataset.token;
-    const stored = Boolean(groupCollapsedState.get(token));
-    const hidden = wrap.classList.contains("search-hidden");
-    const forceOpen = Boolean(query) && !hidden;
-    const collapsed = forceOpen ? false : stored;
-    wrap.classList.toggle("collapsed", collapsed);
+    wrap.classList.toggle("collapsed", next);
     const head = wrap.querySelector(".settings-group-head");
-    if (head) head.setAttribute("aria-expanded", collapsed ? "false" : "true");
+    if (head) head.setAttribute("aria-expanded", next ? "false" : "true");
   }
 
-  // ── раздел: eyebrow-заголовок + тумблеры раздела (флат-список строк) + карточки групп.
-  // Пустой раздел не рисуется вовсе — сервер уже не присылает пустые (settings.py::_sections).
-  function buildSection(section) {
-    const sectionEl = h("div", { class: "settings-section" });
-    sectionEl.append(sectionTitle(h, section.label));
+  // ── тело раздела: тумблеры раздела (флат-список строк) + карточки групп. ─────────────────
+  function renderSectionBody() {
+    sectionsWrap.replaceChildren();
     if (section.toggles.length) {
       const toggleList = h("div", { class: "settings-toggle-list" });
       for (const item of section.toggles) {
@@ -835,95 +1020,17 @@ export async function render(root, params, ctx) {
         setOriginal(item);
         toggleList.append(row.el);
       }
-      sectionEl.append(toggleList);
+      sectionsWrap.append(toggleList);
     }
     section.groups.forEach((group, idx) => {
-      sectionEl.append(buildGroupCard(group, idx === 0));
+      sectionsWrap.append(buildGroupCard(group, idx === 0 && !section.toggles.length));
     });
-    return sectionEl;
-  }
-
-  // ── поиск (WEB-SET-02, D-15): фильтр на каждый keystroke без debounce, подсветка через
-  // highlightMatch (h("mark"), не строкой). Группа без совпадений скрывается целиком,
-  // совпавшая строка временно разворачивает свою группу — сохранённая свёрнутость
-  // восстанавливается при очистке (updateGroupCollapseVisual читает query по замыканию).
-  function allItems() {
-    return Array.from(itemIndex.values(), (r) => r.item);
-  }
-
-  function onSearchInput() {
-    query = searchInput.value;
-    searchClear.classList.toggle("hidden", !query);
-
-    const results = searchFilter(allItems(), query);
-    const rangesByKey = new Map(results.map((r) => [r.item.key, r.ranges]));
-
-    let shown = 0;
-    for (const [key, row] of itemIndex) {
-      const matched = !query || rangesByKey.has(key);
-      row.el.classList.toggle("hidden", !matched);
-      if (matched) shown += 1;
-      paintHighlight(row.el, row.item, query ? rangesByKey.get(key) : null);
-    }
-
-    for (const groupEl of sectionsWrap.querySelectorAll(".settings-group")) {
-      const rows = groupEl.querySelectorAll(".settings-row");
-      let visible = 0;
-      rows.forEach((r) => { if (!r.classList.contains("hidden")) visible += 1; });
-      const groupHidden = Boolean(query) && visible === 0;
-      groupEl.classList.toggle("search-hidden", groupHidden);
-      groupEl.classList.toggle("hidden", groupHidden);
-      const countEl = groupEl.querySelector(".settings-group-count");
-      if (countEl) countEl.textContent = `${visible}/${rows.length}`;
-      updateGroupCollapseVisual(groupEl);
-    }
-
-    for (const sectionEl of sectionsWrap.children) {
-      const rows = sectionEl.querySelectorAll(".settings-row");
-      let anyVisible = false;
-      rows.forEach((r) => { if (!r.classList.contains("hidden")) anyVisible = true; });
-      sectionEl.classList.toggle("hidden", Boolean(query) && !anyVisible);
-    }
-
-    searchCount.textContent = (texts.miniapp_settings_search_count_text || "")
-      .replace("{shown}", String(shown)).replace("{total}", String(payload ? payload.total : itemIndex.size));
-    searchCount.classList.toggle("active", Boolean(query));
-
-    const zero = Boolean(query) && shown === 0;
-    sectionsWrap.classList.toggle("hidden", zero);
-    renderSearchEmpty(zero);
-  }
-
-  function renderSearchEmpty(show) {
-    searchEmpty.classList.toggle("hidden", !show);
-    if (!show) return;
-    const suggestions = suggestTerms(allItems(), query, 3);
-    const template = texts.miniapp_settings_search_suggest_text || "";
-    const parts = template.split("{suggestions}");
-    const suggestRow = suggestions.length
-      ? h("p", { class: "settings-search-suggest" },
-          parts[0] || "",
-          ...suggestions.map((w) => h("button", {
-            class: "chip", type: "button", text: w,
-            onClick: () => { searchInput.value = w; onSearchInput(); },
-          })),
-          parts[1] || "",
-        )
-      : null;
-    searchEmpty.replaceChildren(
-      ...[
-        h("h2", { text: texts.miniapp_settings_search_empty_heading_text || "" }),
-        h("p", { text: texts.miniapp_settings_search_empty_body_text || "" }),
-        suggestRow,
-      ].filter(Boolean),
-    );
   }
 
   // ── загрузка/перезагрузка ────────────────────────────────────────────────────────────
   async function loadAndRender() {
     itemIndex.clear();
     groupCollapsedState.clear();
-    searchInput.disabled = true;
     clearState();
     renderSkeleton(Object.keys(texts).length > 0);
     let data;
@@ -939,19 +1046,20 @@ export async function render(root, params, ctx) {
     }
     payload = data;
     texts = data.texts || {};
+    section = data.sections.find((s) => s.token === code) || null;
     clearState();
-    searchInput.disabled = false;
-    searchInput.placeholder = texts.miniapp_settings_search_placeholder_text || "";
 
-    buildCityBar(data.city_header);
-    sectionsWrap.replaceChildren(...data.sections.map((s) => buildSection(s)));
+    title.textContent = section ? labelText(section.label) : labelText(sectionLabelsFromDom().settings || "");
 
-    if (!data.sections.length) {
-      sectionsWrap.append(emptyState(h, { me, text: texts.miniapp_settings_load_error_text || "" }));
+    if (!section) {
+      sectionsWrap.replaceChildren(emptyState(h, { me, text: texts.miniapp_settings_load_error_text || "" }));
+      cityBar.classList.add("hidden");
+      return;
     }
 
-    query = searchInput.value || "";
-    onSearchInput();
+    buildCityBar(data.city_header);
+    renderSectionBody();
+    updateBatchBar();
   }
 
   await loadAndRender();
