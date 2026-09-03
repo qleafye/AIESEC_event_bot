@@ -827,11 +827,9 @@ a.flat-row:active, button.flat-row:active { background: var(--surface-alt); }
 /* .sec typography rule moved to the shared `.sec, .section-title` block (план 19.1-05,
    ui.js::sectionTitle) — see delegate-screens section above, единый источник, не разошлись. */
 
-/* Одноразовый привет-экран (D-09): обложка пресета + текст + кнопка, оба текста из реестра. */
-.onboarding {
-  padding-top: var(--sp-6);
-  text-align: center;
-}
+/* Одноразовый привет-экран (D-09): обложка пресета (если есть) — первый ребёнок плиты-героя,
+   текст и шаги ниже, оба текста из реестра. `.onboarding`/`.onboarding-text` (текстовый
+   центрированный экран без плиты) сняты планом 23.1-03 — герой переехал на плиту. */
 .onboarding-cover {
   display: block;
   width: 100%;
@@ -840,11 +838,6 @@ a.flat-row:active, button.flat-row:active { background: var(--surface-alt); }
   border-radius: var(--radius-lg);
   background: var(--surface-alt);
   object-fit: cover;
-}
-.onboarding-text {
-  margin-bottom: var(--sp-4);
-  color: var(--text);
-  font-size: 15px;
 }
 
 /* ── переключатель вида хаба (делегат-менеджер, 02.09) ─────────────────────────────── */
@@ -1479,3 +1472,24 @@ a.flat-row:active, button.flat-row:active { background: var(--surface-alt); }
 /* Чип места в рейтинге прижат вправо тем же приёмом, что в mockups/_src.html (margin-left:
    auto внутри flex-строки .plate-row), а не отдельным спейсером. */
 .plate-row .chip.sec { margin-left: auto; }
+
+/* Привет-экран (D-09, план 23.1-03, макет mockups/02-onboarding.png): плита-герой во весь
+   верх экрана, курсивный заголовок прижат к её низу; шаги «как это работает» — ниже плиты. */
+.plate--onboarding {
+  min-height: 420px;                 /* макет: 466px вместе со статус-баром клиента */
+  display: flex; flex-direction: column; justify-content: flex-end;
+  padding-bottom: var(--sp-8);
+}
+.onboarding-hero {
+  font-family: var(--font-heading); font-weight: 800;
+  font-size: clamp(44px, 16vw, 62px); line-height: .98; letter-spacing: -.045em;
+  font-style: var(--font-heading-style);
+}
+.onboarding-rule { width: 56px; height: 4px; background: var(--secondary); margin: var(--sp-5) 0 var(--sp-4); }
+.onboarding-slogan { font-size: 19px; line-height: 1.42; max-width: 18em; margin: 0; }
+.onboarding-steps .flat-row { align-items: flex-start; }
+.onboarding-steps .flat-row-rank {
+  font-family: var(--font-heading); font-weight: 800; font-size: 15px;
+  color: var(--accent-text); width: 1.5em;
+}
+.onboarding-steps .flat-row-meta { text-transform: none; letter-spacing: 0; font-weight: 400; }
