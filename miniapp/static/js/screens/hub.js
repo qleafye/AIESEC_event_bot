@@ -276,7 +276,9 @@ async function renderTilesOnlyHub(root, ctx, items) {
     tiles.append(tile(h, navigate, {
       hash: item.hash,
       iconName: NAV_ICONS[item.hash],
-      label: labels[item.section] || item.section,
+      // D-04: плитка уже несёт Lucide-иконку слева — ведущий эмодзи подписи реестра здесь
+      // не дублируется рядом с ней (тот же приём, что renderDelegateHub чуть выше).
+      label: labelText(labels[item.section] || item.section),
       meta: item.hash === "#/form" ? (ctx.me.form_status_label || "") : "",
     }));
   }
@@ -352,7 +354,9 @@ async function renderManagerHub(root, ctx, opts = {}) {
       const el = tile(h, navigate, {
         hash: item.hash,
         iconName: NAV_ICONS[item.hash],
-        label: labels[item.section] || item.section,
+        // D-04: плитка уже несёт Lucide-иконку слева — labelText снимает ведущий эмодзи
+        // подписи реестра, не дублируя его рядом с иконкой (тот же приём, что выше по файлу).
+        label: labelText(labels[item.section] || item.section),
         meta: "…",
       });
       tileEls[item.hash] = el;
