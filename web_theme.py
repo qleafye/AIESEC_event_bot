@@ -49,6 +49,19 @@ PRESETS: dict[str, dict[str, str]] = {
         "pattern_enabled": "on",
         "plate_pattern": "youlead",
     },
+    # «РилТолк» (форум RealTalk'26, quick 260904-183): бренд снят владельцем из Figma
+    # REALTALK26 04.09.2026 (`refs/realtalk/BRAND.md`). Собственная палитра — фиолетовый
+    # акцент + оранжевый вторичный, а не синяя BlueBook/YouLead; заголовки прямые (лого
+    # RealTalk набрано прямым Raleway ExtraBold, курсив «ЮЛид» сюда не переносим), тон на «ты».
+    "realtalk": {
+        "accent": "#7552CC",
+        "secondary": "#FF8B10",
+        "bg": "#F3F4F7",
+        "heading_font": "raleway",
+        "playful_tone": "on",
+        "pattern_enabled": "on",
+        "plate_pattern": "realtalk",
+    },
 }
 
 DEFAULT_PRESET = "bluebook"

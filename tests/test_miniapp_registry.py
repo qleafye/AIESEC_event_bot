@@ -21,6 +21,7 @@ from handlers import user_actions
 from handlers.admin_settings import SETTINGS_FIELDS, SETTINGS_GROUPS
 from settings_schema import SETTINGS_SCHEMA
 
+import web_theme
 from miniapp import config as miniapp_config
 
 MINIAPP_KEYS = [
@@ -300,9 +301,11 @@ def test_theme_enum_handles_default_is_in_options():
         assert entry["default"] in entry["options"], key
 
 
-def test_theme_preset_options_are_bluebook_youlead_custom():
+def test_theme_preset_options_match_web_theme_presets_plus_custom():
+    # Сверка с источником (quick 260904-183): реестр не дублирует список пресетов литералом —
+    # новый пресет в web_theme.PRESETS без правки options уронит этот тест, а не тихо разойдётся.
     preset = SETTINGS_SCHEMA["miniapp_theme_preset"]
-    assert preset["options"] == ["bluebook", "youlead", "custom"]
+    assert preset["options"] == list(web_theme.PRESETS) + ["custom"]
     assert preset["default"] == "bluebook"
 
 

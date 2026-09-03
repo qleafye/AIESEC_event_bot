@@ -22,13 +22,14 @@ from pathlib import Path
 from handlers.admin_miniapp_theme import _PRESET_BLURBS, _PRESET_LABELS
 import reg_labels
 import reg_options
+import web_theme
 from settings_schema import SETTINGS_SCHEMA
 
-LATIN_BRAND_SUBSTRINGS = ("aiesec", "youlead", "bluebook")
+LATIN_BRAND_SUBSTRINGS = ("aiesec", "youlead", "bluebook", "realtalk")
 
-# Только для широкого сторожа реестра/анкеты/фронтенда (задача 260903) — узкий список из
-# правила владельца, без «bluebook» (кодовое имя пресета, отдельно покрыто выше).
-LATIN_OWNER_BRAND_SUBSTRINGS = ("aiesec", "youlead")
+# Только для широкого сторожа реестра/анкеты/фронтенда (задача 260903, расширено 260904-183) —
+# узкий список из правила владельца, без «bluebook» (кодовое имя пресета, отдельно покрыто выше).
+LATIN_OWNER_BRAND_SUBSTRINGS = ("aiesec", "youlead", "realtalk")
 
 # Примеры-URL (t.me/aiesec_ru и т.п.) — не человеко-видимая надпись бренда, а
 # служебная ссылка; латиница там обязана остаться рабочей ссылкой.
@@ -75,8 +76,10 @@ def _contains_owner_latin_brand(text: str) -> bool:
 
 
 def test_preset_labels_are_cyrillic():
-    assert set(_PRESET_LABELS.keys()) == {"bluebook", "youlead"}
-    assert set(_PRESET_BLURBS.keys()) == {"bluebook", "youlead"}
+    # Сверка с источником (quick 260904-183) — новый пресет без человеческой подписи роняет
+    # тест, а не тихо исчезает из клавиатуры (`build_miniapp_theme_keyboard` пропускает
+    # пресеты без записи в _PRESET_LABELS).
+    assert set(_PRESET_LABELS) == set(_PRESET_BLURBS) == set(web_theme.PRESETS)
 
     offenders = [
         key for key, value in {**_PRESET_LABELS, **_PRESET_BLURBS}.items()

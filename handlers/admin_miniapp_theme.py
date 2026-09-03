@@ -46,15 +46,19 @@ _TEXT_INK = "#1C1C1C"
 
 PREVIEW_DIR = Path(__file__).resolve().parent.parent / "assets" / "theme-preview"
 
-# D-02: только два реальных пресета (RealTalk не заводим — нет бренд-материалов).
+# Quick 260904-183: бренд-материалы РилТолк сняты владельцем 04.09.2026 — третий пресет
+# заведён. Три встроенных пресета; «Своя» вычисляется отдельно (не хранится в этих словарях).
 _PRESET_LABELS: dict[str, str] = {
     "bluebook": "АЙСЕК — классика",
     "youlead": "ЮЛид",
+    "realtalk": "РилТолк",
 }
 _PRESET_BLURBS: dict[str, str] = {
     "bluebook": "строгий АЙСЕК: синий акцент, прямые заголовки, плита без паттерна.",
     "youlead": "событийный: тот же синий акцент, курсивные заголовки, фирменный паттерн на "
                "плите, тон на «ты».",
+    "realtalk": "фиолетовый акцент, оранжевый вторичный, прямые заголовки, орнамент на плите, "
+                "тон на «ты».",
 }
 
 _COLOR_LABELS: dict[str, str] = {
@@ -197,7 +201,12 @@ async def build_miniapp_theme_keyboard() -> InlineKeyboardMarkup:
     rows: list[list[InlineKeyboardButton]] = []
 
     # ── пресеты (D-20) ──────────────────────────────────────────────────────────────────
-    for name in ("bluebook", "youlead"):
+    # Цикл по web_theme.PRESETS, а не литеральный кортеж имён (quick 260904-183): третий
+    # пресет уже доказал, что литерал — источник дрейфа. Пресет без человеческой подписи в
+    # _PRESET_LABELS пропускается — кодовое имя человеку не показываем.
+    for name in web_theme.PRESETS:
+        if name not in _PRESET_LABELS:
+            continue
         mark = "✅ " if (preset_name == name and not is_custom) else ""
         rows.append([InlineKeyboardButton(
             text=mark + _PRESET_LABELS[name], callback_data=f"miniapp_preset:{name}",
