@@ -56,7 +56,7 @@ KNOWN_OVERAGES: dict[str, tuple[int, str]] = {
         "(Phase 14/16)",
     ),
     "admin_settings.py": (
-        2146,
+        2161,
         "Phase 22 (22-01, WEB-SET-01/04, D-12): _apply_event_type_preset/_per_city_visible_codes/"
         "HTML_SETTINGS/_base_setting_key/_SHEET_TAB_WRITE_MODE/_after_tab_setting_saved/"
         "_tab_confirm_text/_tab_check_failed_warning вынесены в корневой aiogram-free "
@@ -114,7 +114,10 @@ KNOWN_OVERAGES: dict[str, tuple[int, str]] = {
         "(второй шов «🎨 Оформление»: пресеты и ручки кастома, сами хендлеры живут в новом модуле); "
         "+3 строки (Phase 23-01, APP-TINDER-01, D-05) -- reject_reason_templates в "
         "_APPS_FIELD_ORDER (шаблоны причин отказа для шторки Mini App, правится общим списочным "
-        "редактором admin_settings_lists.py, нового экрана бота нет)",
+        "редактором admin_settings_lists.py, нового экрана бота нет); "
+        "+15 строк (коммит 34633f1) -- подсказки настроек переписаны менеджерским языком с "
+        "примером значения (PHOTO_FIELDS/FILE_FIELDS синхронизированы с реестром), потолок "
+        "поднят до фактического размера",
     ),
     "admin_cities.py": (
         960,
