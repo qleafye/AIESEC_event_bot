@@ -607,6 +607,36 @@ def test_app_js_state_icons_have_no_emoji_and_use_icons_js():
     assert 'h("div", { class: "icon" }, icon(STATE_ICONS[state]' in text
 
 
+# Сторож D-04 (нашла headless-съёмка 23.1: заголовки экранов «🗂 Отбор заявок»/«⚙️ Настройки-
+# лайт» дублировали ведущий эмодзи подписи раздела реестром рядом с иконкой строки/плиты) —
+# структурный, не поведенческий: любой text:/title:/label: и любое `.textContent =`, чьё
+# значение читает подпись раздела реестра (`sectionLabel(...)`/`sectionLabelsFromDom()`/
+# `labels[...]`), обязано быть обёрнуто в `labelText(` (ui.js) — иначе эмодзи из реестра
+# просачивается в заголовок как второй глиф. Функция `sectionLabel`, объявление `const
+# labels = …` и точечный доступ вида `labels.category` (свой локальный словарь task_edit.js,
+# не подписи реестра) сюда не попадают — регэксп ищет только `labels[`/`sectionLabel(`.
+_REGISTRY_LABEL_SOURCE = re.compile(r"\bsectionLabel\w*\s*\(|\blabels\[")
+_TITLE_LIKE_PROP = re.compile(r"\b(?:text|title|label)\s*:\s*([^,}\n]+)")
+_TEXTCONTENT_ASSIGN = re.compile(r"\.textContent\s*=\s*([^;]+);")
+
+
+def test_screen_titles_from_registry_section_labels_use_labeltext():
+    offenders = []
+    for path in sorted(SCREENS_DIR.glob("*.js")):
+        text = _js_without_comments(path)
+        for m in _TITLE_LIKE_PROP.finditer(text):
+            expr = m.group(1)
+            if _REGISTRY_LABEL_SOURCE.search(expr) and "labelText(" not in expr:
+                offenders.append(f"{path.name}: {expr.strip()}")
+        for m in _TEXTCONTENT_ASSIGN.finditer(text):
+            expr = m.group(1)
+            if _REGISTRY_LABEL_SOURCE.search(expr) and "labelText(" not in expr:
+                offenders.append(f"{path.name}: .textContent = {expr.strip()}")
+    assert not offenders, (
+        "заголовок из подписи раздела реестра без labelText() (D-04): " + "; ".join(offenders)
+    )
+
+
 # ── экраны менеджера (план 19-05): review.js / stats.js ────────────────────────────────
 
 MANAGER_SCREENS = ["review.js", "stats.js"]
