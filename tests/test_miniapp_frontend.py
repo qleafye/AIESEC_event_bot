@@ -1109,6 +1109,40 @@ def test_manager_hub_renders_group_headers():
     assert "labels[item.section]" in body
 
 
+def test_manager_hub_dashboard_tile_driven_by_registry_not_literal():
+    """Quick 260903: плитка «Дашборд» — адрес и подпись из ctx.me (/app/api/me), не литерал.
+    hub.js уже проходит общий сторож «нет https:///http://» (test_hub_screen_exports_render_
+    without_innerhtml_or_colors) — здесь проверяем, что сама плитка читает dashboard_url/
+    dashboard_tile_label, а не собирает ссылку/текст сама."""
+    text = _js_without_comments(SCREENS_DIR / "hub.js")
+    assert "me.dashboard_url" in text
+    assert "me.dashboard_tile_label" in text
+
+
+def test_manager_hub_dashboard_tile_opens_via_telegram_or_new_tab():
+    text = _js_without_comments(SCREENS_DIR / "hub.js")
+    assert "tg.openLink" in text or "openLink(" in text
+    assert 'window.open(url, "_blank", "noopener")' in text
+
+
+def test_manager_hub_dashboard_tile_absent_when_url_empty():
+    """dashboardTile() возвращает null при пустом dashboard_url — плитки нет вовсе, не
+    пустая/сломанная кнопка."""
+    text = _js_without_comments(SCREENS_DIR / "hub.js")
+    start = text.index("function dashboardTile(")
+    body = text[start:text.index("\n}\n", start)]
+    assert "if (!me.dashboard_url) return null;" in body
+
+
+def test_manager_hub_dashboard_tile_lives_in_data_group():
+    """Плитка встаёт в ту же группу «data», что «#/stats» — и рисует заголовок раздела, даже
+    если единственная видимая плитка в нём — сам дашборд (менеджер без права stats)."""
+    body = _manager_hub_body()
+    assert 'token === "data"' in body
+    assert "dashboardTile(h, tg, me)" in body
+    assert "!groupItems.length && !dashTile" in body
+
+
 def test_manager_hero_only_with_review_tile():
     """Критерий успеха №4 ROADMAP: при выключенной гейме хаб остаётся осмысленным. Герой
     считает очередь проверки сдач, и без плитки «#/review» его нечем заполнить — он показывал
