@@ -1401,8 +1401,20 @@ async def _ask_full_name_plain(message: types.Message, state: FSMContext):
 async def _after_full_name(message: types.Message, state: FSMContext, bot: Bot):
     """Продолжение после ФИО (введённого или оставленного прошлого): список включённых
     шагов трека -> первый вопрос, либо сразу финализация. Общий хвост для
-    reg_steps.process_full_name и recall_keep:full_name."""
-    data = await state.get_data()
+    reg_steps.process_full_name и recall_keep:full_name.
+
+    UAT round 2 (21-12): ФИО стоит ДО движка REG_FLOW-шагов (Phase 21, план 21-09) — единственное
+    место, которое пишет ответ в общий `reg_drafts` (`_advance`/`_sync_draft_out`), никогда его
+    не видит. `_start_registration_flow` уже завела строку `reg_drafts` к этому моменту (без
+    ответов), так что `finalize_registration`'s `claim_reg_draft` находит именно её — без
+    fallback на живой FSM dict, где full_name как раз есть. Итог для совсем новой регистрации
+    (нет строки `users`, чтобы `finalize_data`'s edit-merge подставил старое значение) —
+    `add_user(data.get('full_name', ''))` пишет пустую строку. Синхрон здесь — тем же приёмом
+    `_sync_draft_in`/`_sync_draft_out`, что использует `_advance` для остальных шагов — общая
+    точка для ОБОИХ вызывающих (набранный текст и «Оставить» прошлого ФИО)."""
+    telegram_id = message.chat.id
+    data = await _sync_draft_in(state, telegram_id, message, just_answered="full_name")
+    await _sync_draft_out(telegram_id, state, data, "full_name", answered_col="full_name")
     enabled = await _get_enabled_steps(data)
 
     if not enabled:
