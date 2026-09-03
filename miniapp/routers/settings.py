@@ -34,6 +34,7 @@ import logging
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel
 
+import reg_engine
 import settings_ops
 from cities import (
     ALL_CITIES,
@@ -254,6 +255,43 @@ async def _item_for(base: str, ctx: _CityCtx) -> dict:
     return spec
 
 
+async def _reg_questions_matrix() -> dict:
+    """Матрица «трек × вопрос» (D-17 Task 3, владелец 03.09): одна строка на вопрос анкеты
+    (`REG_FLOW`, тот же порядок, что мастер и бот), три ячейки — полная форма/party/short.
+
+    party — трёхзначный гейт бота (`reg_engine.is_step_enabled_for_track`): отсутствие
+    `{key}__party` значит «наследует полную форму», явное значение — переопределение;
+    `is_inherited` здесь = «ключ не задан явно» (муть на экране, реестр читает то же самое).
+    short — двузначный (07-01/SHORT-03): отсутствие значит «не задаётся», НЕ наследование —
+    `is_inherited` тоже True на отсутствии (тот же визуальный приём «не переопределено
+    явно»), но эффективное значение — жёсткий "off", а не значение полной формы.
+
+    Тумблер матрицы всегда шлёт явный "on"/"off" (T-22-… D-17): у веба нет кнопки «вернуть
+    наследование», как у бота (`reg_q_ptoggle` цикл inherit->on->off->inherit) — наименьшее
+    из решений, отдельный «сбросить трек» откладывается до появления запроса менеджера."""
+    rows = []
+    for step_key, setting_key, *_rest in reg_engine.REG_FLOW:
+        full_value = await get_setting_typed(setting_key)
+        party_raw = await get_setting(f"{setting_key}__party")
+        short_raw = await get_setting(f"{setting_key}__short")
+        rows.append({
+            "step_key": step_key,
+            "label": reg_engine.label_for(step_key),
+            "full": {"key": setting_key, "value": full_value},
+            "party": {
+                "key": f"{setting_key}__party",
+                "value": party_raw if party_raw is not None else full_value,
+                "is_inherited": party_raw is None,
+            },
+            "short": {
+                "key": f"{setting_key}__short",
+                "value": "on" if short_raw == "on" else "off",
+                "is_inherited": short_raw is None,
+            },
+        })
+    return {"rows": rows}
+
+
 async def _sections(ctx: _CityCtx) -> tuple[list[dict], int]:
     """Разделы в порядке SECTION_GROUPS; внутри — тумблеры раздела (TOGGLE_SECTION, строки
     уровня раздела, как в боте) и группы в порядке карты; пустое не рисуется. Ключ, не
@@ -282,11 +320,18 @@ async def _sections(ctx: _CityCtx) -> tuple[list[dict], int]:
             keys = by_group.get(group, [])
             if not keys:
                 continue
-            group_rows.append({
+            row = {
                 "token": group,
                 "label": settings_ops.GROUP_LABELS.get(group, group),
                 "items": [await _item_for(k, ctx) for k in keys],
-            })
+            }
+            if group == "reg_questions":
+                # D-17 Task 3: тот же список ключей, что и `items` выше (флат-список остаётся
+                # для поиска, T-19-45), плюс матричный вид трек × вопрос для экрана — тумблеры
+                # матрицы шлют трек-композиты (settings_ops.reg_question_track_base), не сами
+                # эти ключи.
+                row["matrix"] = await _reg_questions_matrix()
+            group_rows.append(row)
         if not toggles and not group_rows:
             continue
         total += len(toggles) + sum(len(g["items"]) for g in group_rows)
@@ -367,8 +412,16 @@ class SettingsBatchIn(BaseModel):
 
 
 def _editable_target(key: str) -> str | None:
-    """База ключа из `changes`, если его можно править из веба: сам ключ реестра либо
-    per-city композит над per_city-ключом реестра. Иначе None -> 403 not_editable."""
+    """База ключа из `changes`, если его можно править из веба: сам ключ реестра, per-city
+    композит над per_city-ключом реестра, либо трек-композит вопроса анкеты
+    (D-17 Task 3, `settings_ops.reg_question_track_base`). Иначе None -> 403 not_editable.
+
+    Трек-композит возвращается САМ СОБОЙ (не своей базой) — у него нет `item_spec`-обёртки
+    (матрица красит ячейку сама, без переотрисовки `item`, см. `settings_batch` ниже), в
+    отличие от per-city композита, для которого `_item_for(base, ctx)` с шапкой города сам
+    пересчитывает правильный составной ключ ответа."""
+    if settings_ops.reg_question_track_base(key) is not None:
+        return key
     base = settings_ops.base_setting_key(key)
     if base not in settings_ops.editable_keys():
         return None
@@ -449,9 +502,16 @@ async def settings_batch(
     else:
         warnings = {}
 
-    # Свежие элементы затронутых ключей — экран не перезапрашивает весь реестр.
+    # Свежие элементы затронутых ключей — экран не перезапрашивает весь реестр. Трек-композит
+    # (D-17 Task 3) сюда не попадает: у него нет item_spec-обёртки (targets[key] == key, не
+    # обычный ключ реестра), матрица красит свою ячейку сама — фронт уже знает точное
+    # записанное значение (тумблер матрицы всегда шлёт явное "on"/"off", не сброс).
     ctx = await _city_ctx(p.telegram_id)
-    items = [await _item_for(targets[key], ctx) for key in saved]
+    items = [
+        await _item_for(targets[key], ctx)
+        for key in saved
+        if settings_ops.reg_question_track_base(key) is None
+    ]
     return {
         "saved": saved,
         "errors": errors,
