@@ -477,13 +477,15 @@ export async function render(root, params, ctx) {
       }
 
       const showProgress = Boolean(d.show_progress) && specs.length > 0;
+      const progressLabel = (d.progress_text || "")
+        .replace("{step}", String(stepIndex + 1)).replace("{total}", String(specs.length));
       const eyebrow = showProgress
         ? h("div", {},
-          h("p", { class: "label-role", "aria-hidden": "true", text: `${stepIndex + 1}/${specs.length}` }),
+          h("p", { class: "label-role", "aria-hidden": "true", text: progressLabel }),
           h("div", {
             class: "wizard-progress", role: "progressbar",
             "aria-valuenow": String(stepIndex + 1), "aria-valuemin": "1", "aria-valuemax": String(specs.length),
-            "aria-label": `${stepIndex + 1}/${specs.length}`,
+            "aria-label": progressLabel,
           },
             h("div", { class: "wizard-progress-fill", style: `width:${Math.round(((stepIndex + 1) / specs.length) * 100)}%` })),
         )
