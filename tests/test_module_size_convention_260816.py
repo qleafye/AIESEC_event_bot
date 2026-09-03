@@ -56,7 +56,7 @@ KNOWN_OVERAGES: dict[str, tuple[int, str]] = {
         "(Phase 14/16)",
     ),
     "admin_settings.py": (
-        2143,
+        2146,
         "Phase 22 (22-01, WEB-SET-01/04, D-12): _apply_event_type_preset/_per_city_visible_codes/"
         "HTML_SETTINGS/_base_setting_key/_SHEET_TAB_WRITE_MODE/_after_tab_setting_saved/"
         "_tab_confirm_text/_tab_check_failed_warning вынесены в корневой aiogram-free "
@@ -111,7 +111,10 @@ KNOWN_OVERAGES: dict[str, tuple[int, str]] = {
         "кнопка «🎨 Оформление» на лендинге настроек рядом с «📊 Дашборд» и хвостовой "
         "seam-импорт handlers/admin_miniapp.py (сами хендлеры живут в новом модуле); "
         "+3 строки (Phase 19.1-07) -- хвостовой seam-импорт handlers/admin_miniapp_theme.py "
-        "(второй шов «🎨 Оформление»: пресеты и ручки кастома, сами хендлеры живут в новом модуле)",
+        "(второй шов «🎨 Оформление»: пресеты и ручки кастома, сами хендлеры живут в новом модуле); "
+        "+3 строки (Phase 23-01, APP-TINDER-01, D-05) -- reject_reason_templates в "
+        "_APPS_FIELD_ORDER (шаблоны причин отказа для шторки Mini App, правится общим списочным "
+        "редактором admin_settings_lists.py, нового экрана бота нет)",
     ),
     "admin_cities.py": (
         960,

@@ -39,6 +39,7 @@ MINIAPP_KEYS = [
     "miniapp_section_admin_tasks",
     "miniapp_section_stats",
     "miniapp_section_settings",
+    "miniapp_section_applications",  # Phase 23-01 (APP-TINDER-01, D-09): раздел «🗂 Отбор заявок»
     # тексты
     "miniapp_open_text",
     "miniapp_open_button",
@@ -82,6 +83,20 @@ MINIAPP_KEYS = [
     # пустые состояния менеджера
     "miniapp_empty_review",
     "miniapp_empty_review_skipped",
+    # Phase 23-01 (APP-TINDER-01, D-05/D-06/D-08): экран «🗂 Отбор заявок» Mini App
+    "miniapp_empty_applications",
+    "miniapp_empty_applications_skipped",
+    "miniapp_empty_applications_filtered",
+    "miniapp_applications_show_all",
+    "miniapp_applications_undo_button",
+    "miniapp_applications_approved_toast",
+    "miniapp_applications_rejected_toast",
+    "miniapp_applications_undone_toast",
+    "miniapp_applications_approve_all_confirm",
+    "miniapp_applications_reject_no_reason",
+    "miniapp_applications_reject_own_reason",
+    "miniapp_applications_filter_all",
+    "miniapp_applications_filter_changed",
     # Phase 22 Plan 02 (WEB-SET-02/03, D-15): веб-экран «⚙️ Настройки» Mini App
     "miniapp_settings_search_placeholder_text",
     "miniapp_settings_search_count_text",
@@ -141,8 +156,8 @@ THEME_ENUM_KEYS = [
 _ALLOWED_TYPES = {"toggle", "int", "list", "date", "text", "enum", "photo", "file"}
 
 
-def test_exactly_90_miniapp_keys_and_no_extra():
-    assert len(MINIAPP_KEYS) == 90
+def test_exactly_104_miniapp_keys_and_no_extra():
+    assert len(MINIAPP_KEYS) == 104
     present = sorted(k for k in SETTINGS_SCHEMA if k.startswith("miniapp_"))
     assert present == sorted(MINIAPP_KEYS)
 
@@ -160,7 +175,7 @@ def test_every_miniapp_key_has_label_group_and_valid_type():
 def test_toggle_defaults():
     assert SETTINGS_SCHEMA["miniapp_enabled"]["default"] == "off"
     assert SETTINGS_SCHEMA["miniapp_staff_only"]["default"] == "off"
-    assert len(SECTION_KEYS) == 9
+    assert len(SECTION_KEYS) == 10
     for key in SECTION_KEYS:
         entry = SETTINGS_SCHEMA[key]
         assert entry["type"] == "enum" and entry["options"] == ["on", "off"], key
@@ -181,7 +196,7 @@ def test_text_keys_have_human_defaults():
         k for k in MINIAPP_KEYS
         if SETTINGS_SCHEMA[k]["type"] == "text" and k != "miniapp_accent"
     ]
-    assert len(text_keys) == 65
+    assert len(text_keys) == 78
     for key in text_keys:
         default = SETTINGS_SCHEMA[key]["default"]
         assert isinstance(default, str) and default.strip(), key
