@@ -43,7 +43,7 @@ async def apply_decision_effects(bot, telegram_id: int, status: str, reason: str
     до утра нельзя); уведомление делегату — единственное, что откладывается. Если `notify`
     попал в окно тишины делегата, решение кладётся в очередь `services.quiet_hours` с
     due_at = конец окна, а немедленной отправки НЕ происходит (`quiet_hours.flush_due`
-    перечитывает `users.status` на разборе и доставляет — Task 3 20-04-PLAN.md)."""
+    перечитывает `users.status` на разборе и доставляет — Task 3 260904-dq1-PLAN.md)."""
     notify_now = notify
     if notify:
         from services import quiet_hours
