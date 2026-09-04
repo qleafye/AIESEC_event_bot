@@ -33,6 +33,11 @@ from settings_schema import SETTINGS_SCHEMA
 # остаётся нормальным значением: отбиваем узкий случай, а не всё подряд.
 _COMMAND_RE = re.compile(r"/[A-Za-z0-9_]{1,32}(@[A-Za-z0-9_]{1,32})?\Z")
 
+# Quick 260904-dq1: время «ЧЧ:ММ» для `format: "time"` (тихие часы). Допускает «9:00» —
+# менеджер не обязан помнить ведущий ноль; диапазон часов/минут проверяется отдельно, чтобы
+# отбить «22:60» с понятным текстом, а не молчаливым regex-провалом.
+_TIME_RE = re.compile(r"(\d{1,2}):(\d{2})")
+
 
 def is_command_like(value: str | None) -> bool:
     """Похоже ли присланное на команду боту, а не на значение настройки."""
@@ -88,6 +93,22 @@ def validate_setting_value(key: str, value: str) -> tuple[str | None, str | None
             f"Пришлите одно из них (например <code>{options[0]}</code>) "
             "или «-», чтобы сбросить к значению по умолчанию."
         )
+
+    if entry.get("format") == "time":
+        match = _TIME_RE.fullmatch(value.strip())
+        if not match:
+            return None, (
+                "Нужно время в формате <code>ЧЧ:ММ</code>, например <code>22:00</code>.\n\n"
+                "Пришлите ещё раз или «-», чтобы сбросить к значению по умолчанию."
+            )
+        hours, minutes = int(match.group(1)), int(match.group(2))
+        if hours > 23 or minutes > 59:
+            return None, (
+                "Часы должны быть от 0 до 23, минуты — от 0 до 59, например "
+                "<code>22:00</code>.\n\n"
+                "Пришлите ещё раз или «-», чтобы сбросить к значению по умолчанию."
+            )
+        return f"{hours:02d}:{minutes:02d}", None
 
     return value, None
 

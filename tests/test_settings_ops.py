@@ -172,7 +172,7 @@ def test_every_editable_key_reachable_exactly_once_via_section_maps():
 
 def test_toggle_section_covers_every_toggles_group_key_exactly_once():
     toggle_keys = [k for k, m in SETTINGS_SCHEMA.items() if m.get("group") == "toggles"]
-    assert len(settings_ops.TOGGLE_SECTION) == 19
+    assert len(settings_ops.TOGGLE_SECTION) == 20
     assert sorted(settings_ops.TOGGLE_SECTION) == sorted(toggle_keys)
     assert len(settings_ops.TOGGLE_SECTION) == len(set(settings_ops.TOGGLE_SECTION))
 
