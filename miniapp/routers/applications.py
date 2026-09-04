@@ -42,12 +42,13 @@ from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel
 
 from cities import ALL_CITIES, cities_module_on, city_label, normalize_city
-from services import applications
+from services import applications, quiet_hours
 from settings_schema import get_setting_typed
 
 from miniapp import outbox
 from miniapp.avatars import initials, resolve_avatar
 from miniapp.deps import Principal, require_cap, require_section
+from miniapp.timeutil import now_msk_naive
 
 router = APIRouter()
 
@@ -185,7 +186,14 @@ async def _decide(tid: int, decision: str, reason: str | None, p: Principal) -> 
         return {"ok": False, "reason": "already"}
     decision_id = await applications.record_decision(tid, decision, reason, p.telegram_id, datetime.now())
     asyncio.create_task(_delayed_flush())
-    return {"ok": True, "decision_id": decision_id, "undo_seconds": applications.UNDO_WINDOW_SECONDS}
+    # Quick 260904-dq1: приписка «делегат узнает в 09:00» для тоста менеджера. Сама проверка
+    # окна при отправке живёт в apply_decision_effects (вызовется позже, после окна отмены,
+    # через application_decided) — здесь только снимок «попадёт ли в тихие часы сейчас».
+    quiet_notice = await quiet_hours.manager_notice(now_msk_naive(), tid)
+    return {
+        "ok": True, "decision_id": decision_id, "undo_seconds": applications.UNDO_WINDOW_SECONDS,
+        "quiet_notice": quiet_notice,
+    }
 
 
 @router.post("/app/api/applications/{tid}/approve")

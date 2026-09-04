@@ -2,11 +2,14 @@
 
 Три вещи, которые обязаны оставаться верными при любой правке этого модуля:
 
-1. **Модуль aiogram-free на уровне импорта.** Его импортирует веб-процесс Mini App
-   (`miniapp/routers/review.py`, `miniapp/routers/applications.py` — см. `miniapp/deps.py`:
-   «Модуль aiogram-free»). Всё, что тянет aiogram (`services.scheduler`,
-   `services.application_effects`, `services.game_digest` — оно само тянет
-   `services.scheduler`) импортируется ЛЕНИВО, внутри функций, никогда на уровне модуля.
+1. **Модуль aiogram-free — и на уровне импорта, И на уровне вызова.** Его импортирует и
+   ВЫЗЫВАЕТ веб-процесс Mini App (`miniapp/routers/review.py`, `miniapp/routers/applications.py`
+   — см. `miniapp/deps.py`: «Модуль aiogram-free»). Всё, что тянет aiogram
+   (`services.scheduler`, `services.application_effects`, `services.game_digest` — оно само
+   тянет `services.scheduler`) импортируется ЛЕНИВО, внутри функций, которые вызывает ТОЛЬКО
+   бот (`flush_due` и её приватные помощники) — никогда на пути, которым идёт веб-процесс
+   (`window_for_city`/`defer_until`/`send_or_queue_text`/`manager_notice`/`queued_count`
+   намеренно НЕ импортируют `game_digest`/`scheduler` даже лениво — см. `_resolve_delegate_city`).
    `database.db`/`settings_schema`/`cities` — безопасны на уровне модуля (сами aiogram-free).
 
 2. **`now` всегда приходит АРГУМЕНТОМ.** Модуль не заводит свой литерал часового пояса
@@ -25,7 +28,8 @@ import logging
 from datetime import datetime, time, timedelta
 
 from settings_schema import get_setting_typed
-from cities import get_setting_typed_for_city
+from cities import cities_module_on, get_setting_typed_for_city, normalize_city
+from database.db import get_user
 
 logger = logging.getLogger(__name__)
 
@@ -96,6 +100,24 @@ async def window_for_city(city_code: str | None) -> tuple[time, time] | None:
     return start, end
 
 
+async def _resolve_delegate_city(user_id: int) -> str | None:
+    """Та же идиома, что `services.game_digest.resolve_submitter_city` («город делегата или
+    None»), но ПРОДУБЛИРОВАНА здесь намеренно, а не импортирована: `game_digest.py` тянет
+    `services.scheduler` (aiogram) на уровне СВОЕГО модуля, и даже ленивый импорт ВНУТРИ
+    функции этого файла заставил бы веб-процесс исполнить тот импорт при первом вызове
+    `defer_until`/`manager_notice` из `miniapp/routers/*` — ровно то ребро, которого
+    инвариант 1 докстринга модуля запрещает. Модуль городов выключен -> None (глобальные
+    значения); ошибка чтения -> None и лог (fail-soft = «слать сразу»)."""
+    if not await cities_module_on():
+        return None
+    try:
+        user = await get_user(user_id)
+        return normalize_city(user.get("event_city") if user else None)
+    except Exception as e:
+        logger.error(f"quiet_hours: failed to resolve city for user_id={user_id}: {e}")
+        return None
+
+
 async def defer_until(now: datetime, user_id: int) -> datetime | None:
     """`None` — слать сразу. Иначе — момент конца окна тишины по городу делегата.
 
@@ -104,12 +126,7 @@ async def defer_until(now: datetime, user_id: int) -> datetime | None:
     не должно вовсе."""
     if await get_setting_typed("quiet_hours_enabled") != "on":
         return None
-    try:
-        from services.game_digest import resolve_submitter_city  # lazy: тянет services.scheduler
-        city_code = await resolve_submitter_city(user_id)
-    except Exception as e:
-        logger.error(f"quiet_hours: defer_until failed to resolve city for user_id={user_id}: {e}")
-        city_code = None
+    city_code = await _resolve_delegate_city(user_id)
     window = await window_for_city(city_code)
     if window is None:
         return None

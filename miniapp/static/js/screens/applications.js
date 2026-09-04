@@ -261,7 +261,10 @@ export async function render(root, params, ctx) {
         : await api(`/applications/${encodeURIComponent(tid)}/reject`, { method: "POST", body: { reason: reason || "" } });
       if (res.ok) {
         haptic("success");
-        const toastText = action === "approve" ? texts.approved_toast : texts.rejected_toast;
+        // Quick 260904-dq1: приписка «делегат узнает в 09:00» приходит с сервера целиком
+        // (D-13: ни одного русского литерала в JS) — JS только склеивает, когда она непустая.
+        let toastText = action === "approve" ? texts.approved_toast : texts.rejected_toast;
+        if (res.quiet_notice) toastText = `${toastText} · ${res.quiet_notice}`;
         showToast(toastText, res.undo_seconds, () => undoDecision(res.decision_id));
         await load();
       } else {
