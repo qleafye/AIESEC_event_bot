@@ -336,7 +336,9 @@ def test_patch_resume_text_wrapper_advances_step(client):
     )
     assert resp.status_code == 200, resp.text
     row = _draft_row(DELEGATE_ID)
-    assert row["answers"]["resume"] == "Тестовое резюме UAT 21-12"
+    # Quick 260904-aup (D6): STEP_TO_COLUMN["resume"] теперь "resume_text" (была мёртвая
+    # идентити-запись "resume" — такой колонки в `users` нет, ответ пропадал на финализации).
+    assert row["answers"]["resume_text"] == "Тестовое резюме UAT 21-12"
 
 
 def test_patch_stale_version_saves_field_and_reports_conflicts(client):
