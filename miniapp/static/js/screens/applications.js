@@ -31,6 +31,7 @@ const EDITED_BADGE_KINDS = ["edited", "resubmit"];
 // таймер тоста), живёт на уровне модуля, а не в замыкании render().
 let _detachSwipe = null;
 let _toastTimer = null;
+let _detachRejectKeys = null; // ссылка на onRejectKeydown, пока шторка отказа открыта (D18)
 
 function applicationsTexts() {
   try {
@@ -92,9 +93,21 @@ export async function render(root, params, ctx) {
     class: "btn ghost", type: "button", text: texts.reject_no_reason || "",
     onClick: () => submitReject(""),
   });
-  const rejectSheet = h("div", { class: "appl-sheet hidden" },
-    rejectTemplatesBox, rejectOwnToggle, rejectOwnBox, rejectNoReasonBtn,
+  const rejectCancelBtn = h("button", {
+    class: "btn ghost", type: "button", text: texts.reject_cancel || "",
+    onClick: () => closeRejectSheet(),
+  });
+  // D18 (квик 260904-7e7): общий компонент .sheet-backdrop/.sheet (эталон — settings.js::
+  // diffBackdrop), не собственная поверхность .appl-sheet — см. комментарий у стилей ниже.
+  const rejectSheet = h(
+    "div", {
+      class: "sheet appl-sheet", role: "dialog", "aria-modal": "true", tabindex: "-1",
+      "aria-label": texts.reject_button || "",
+    },
+    rejectTemplatesBox, rejectOwnToggle, rejectOwnBox, rejectNoReasonBtn, rejectCancelBtn,
   );
+  const rejectBackdrop = h("div", { class: "sheet-backdrop hidden" }, rejectSheet);
+  rejectBackdrop.addEventListener("click", (e) => { if (e.target === rejectBackdrop) closeRejectSheet(); });
 
   root.append(
     // D-04: заголовок экрана без иконки рядом — labelText (ui.js) снимает ведущий эмодзи
@@ -104,8 +117,8 @@ export async function render(root, params, ctx) {
     h("div", { class: "appl-head" }, filtersRow, approveAllBtn),
     approveAllConfirm,
     cardHolder,
-    rejectSheet,
     toast,
+    rejectBackdrop,
   );
 
   function say(text, kind) {
@@ -173,16 +186,26 @@ export async function render(root, params, ctx) {
     }
   }
 
-  // ── шторка отказа (D-05/T-23-23): свайп влево и кнопка «❌» её только ОТКРЫВАЮТ ─────────
+  // ── шторка отказа (D-05/T-23-23, модальный лист D18): свайп влево и кнопка «❌» её только
+  // ОТКРЫВАЮТ; закрывается тапом по затемнению, кнопкой «Отмена» и Escape. ──────────────────
+  function onRejectKeydown(e) {
+    if (e.key === "Escape") closeRejectSheet();
+  }
+
   function openRejectSheet() {
     if (!currentCard) return;
     rejectReasonInput.value = "";
     rejectOwnBox.classList.add("hidden");
-    rejectSheet.classList.remove("hidden");
+    rejectBackdrop.classList.remove("hidden");
+    document.addEventListener("keydown", onRejectKeydown);
+    _detachRejectKeys = onRejectKeydown;
+    (rejectTemplatesBox.querySelector("button") || rejectNoReasonBtn).focus();
   }
 
   function closeRejectSheet() {
-    rejectSheet.classList.add("hidden");
+    rejectBackdrop.classList.add("hidden");
+    document.removeEventListener("keydown", onRejectKeydown);
+    _detachRejectKeys = null;
   }
 
   async function submitReject(reason) {
@@ -465,4 +488,7 @@ export function unmount() {
   // Тост/побочные эффекты решения сервер довезёт сам (D-06) — здесь только визуальная уборка.
   if (_detachSwipe) { _detachSwipe(); _detachSwipe = null; }
   if (_toastTimer) { clearTimeout(_toastTimer); _toastTimer = null; }
+  // D18: экран может быть размонтирован при открытой шторке отказа — иначе слушатель Escape
+  // остаётся висеть на document и переживает уход с экрана.
+  if (_detachRejectKeys) { document.removeEventListener("keydown", _detachRejectKeys); _detachRejectKeys = null; }
 }

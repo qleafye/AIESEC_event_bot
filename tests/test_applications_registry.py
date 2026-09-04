@@ -29,6 +29,10 @@ APPLICATIONS_TEXT_KEYS = [
 
 NEW_KEYS = APPLICATIONS_TEXT_KEYS + ["miniapp_section_applications"]
 
+# Квик 260904-7e7 (D18): шторка отказа стала модальным листом — своя кнопка отмены. Отдельный
+# список (не в NEW_KEYS выше — тот фиксирует ровно 14 ключей плана 23-01, свой контракт).
+QUICK_260904_7E7_KEYS = ["miniapp_applications_reject_cancel"]
+
 
 # ── Раздел объявлен в обе стороны ────────────────────────────────────────────────────────
 
@@ -92,3 +96,14 @@ def test_reject_reason_templates_default_is_human_list():
 def test_count_placeholder_present_in_skipped_and_approve_all():
     assert "{count}" in SETTINGS_SCHEMA["miniapp_empty_applications_skipped"]["default"]
     assert "{count}" in SETTINGS_SCHEMA["miniapp_applications_approve_all_confirm"]["default"]
+
+
+# ── Квик 260904-7e7 (D18): шторка отказа — модальный лист, своя кнопка отмены ─────────────
+
+def test_reject_cancel_key_registered_with_human_default():
+    for key in QUICK_260904_7E7_KEYS:
+        entry = SETTINGS_SCHEMA[key]
+        assert entry["type"] == "text" and entry["group"] == "miniapp", key
+        assert isinstance(entry["label"], str) and entry["label"].strip(), key
+        assert "_" not in entry["label"] and "miniapp" not in entry["label"], key
+        assert isinstance(entry["default"], str) and entry["default"].strip(), key

@@ -130,6 +130,8 @@ MINIAPP_KEYS = [
     "miniapp_applications_approve_all_confirm",
     "miniapp_applications_reject_no_reason",
     "miniapp_applications_reject_own_reason",
+    # Квик 260904-7e7 (D18): шторка отказа — модальный лист, своя кнопка отмены.
+    "miniapp_applications_reject_cancel",
     # Phase 23-05 Task 2 (APP-TINDER-03, D-25): подписи карточки заявки, которых не хватало
     # плану 23-04 (API отдавал только то, что зависит от карточки, не статичные подписи кнопок).
     "miniapp_applications_approve_button",
@@ -224,7 +226,9 @@ def test_exactly_144_miniapp_keys_and_no_extra():
     # Quick 260904-2cj: +4 ключа журнала вопросов делегатов (miniapp_section_questions,
     # miniapp_empty_questions, miniapp_questions_answer_button, miniapp_questions_sent_toast)
     # (147 -> 151).
-    assert len(MINIAPP_KEYS) == 151
+    # Quick 260904-7e7 (D18): +1 ключ шторки отказа (miniapp_applications_reject_cancel)
+    # (151 -> 152).
+    assert len(MINIAPP_KEYS) == 152
     present = sorted(k for k in SETTINGS_SCHEMA if k.startswith("miniapp_"))
     assert present == sorted(MINIAPP_KEYS)
 
@@ -269,7 +273,8 @@ def test_text_keys_have_human_defaults():
     ]
     # D-17 Task 3: +3 заголовка колонок матрицы «трек × вопрос» (116 -> 119).
     # Quick 260904-2cj: +3 текстовых ключа журнала вопросов делегатов (119 -> 122).
-    assert len(text_keys) == 122
+    # Quick 260904-7e7 (D18): +1 текстовый ключ шторки отказа (122 -> 123).
+    assert len(text_keys) == 123
     for key in text_keys:
         default = SETTINGS_SCHEMA[key]["default"]
         assert isinstance(default, str) and default.strip(), key

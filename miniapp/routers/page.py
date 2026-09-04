@@ -76,6 +76,7 @@ APPLICATIONS_TEXT_KEYS = {
     "approve_all_button": "miniapp_applications_approve_all_button",
     "reject_no_reason": "miniapp_applications_reject_no_reason",
     "reject_own_reason": "miniapp_applications_reject_own_reason",
+    "reject_cancel": "miniapp_applications_reject_cancel",
 }
 
 
