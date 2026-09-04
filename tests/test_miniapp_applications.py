@@ -278,6 +278,23 @@ def test_next_changed_filter_only_edited(client):
     assert any(b["kind"] == "edited" for b in body["badges"])
 
 
+def test_next_resubmitted_rejected_has_prev_reject_badge_with_reason(client):
+    # Quick 260904-liz: делегат отклонён с причиной, подал заново — журнал (application_decisions,
+    # прямым INSERT, тот же приём, что _expire) отдаёт причину бейджем в карточке менеджера.
+    _seed_user(951001, registration_date="2026-01-01 00:00:01")
+    _run(_exec(
+        "INSERT INTO application_decisions "
+        "(telegram_id, decision, reason, decided_by, decided_at, effects_due_at, effects_sent_at) "
+        "VALUES (?, 'rejected', ?, 999, '2026-01-01 00:00:00', '2026-01-01 00:00:00', "
+        "'2026-01-01 00:00:00')",
+        (951001, "Мало опыта"),
+    ))
+    body = client.get("/app/api/applications/next", headers=_hdr(REG_MANAGER_ID)).json()
+    prev_badge = next((b for b in body["badges"] if b["kind"] == "prev_reject"), None)
+    assert prev_badge is not None
+    assert prev_badge["text"] == "🚫 Ранее отклонена: Мало опыта"
+
+
 def test_next_scope_hides_other_city_offset_is_skip_only(client):
     _set("event_city_enabled", "on")
     _seed_user(960001, event_city="spb", registration_date="2026-01-01 00:00:01")

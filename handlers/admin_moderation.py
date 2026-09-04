@@ -48,6 +48,7 @@ from services.applications import (
     EDITED_SOURCE_LABELS as _EDITED_SOURCE_LABELS,
     format_edited_date as _format_edited_date,
     edit_badges_for as _edit_badges_for,
+    prev_reject_line as _prev_reject_line,
 )
 from services.application_effects import apply_decision_effects, mass_approve_effects
 from services.background import spawn as _spawn
@@ -85,13 +86,16 @@ def _parse_appr(data: str) -> tuple[str, int | None]:
     return data, None
 
 
-def _render_application_card(user: dict, position: int, total: int, city_label_text: str | None = None, consent_line: str | None = None, edited_line: str | None = None, resubmit_line: str | None = None, fields: list[tuple[str, str]] | None = None, show_resume: bool = True) -> str:
+def _render_application_card(user: dict, position: int, total: int, city_label_text: str | None = None, consent_line: str | None = None, edited_line: str | None = None, resubmit_line: str | None = None, prev_reject_line: str | None = None, fields: list[tuple[str, str]] | None = None, show_resume: bool = True) -> str:
     """HTML card for one pending application; all free-text escaped. `city_label_text` (Phase
     07.2, CITY-02) appends «· 🏙 {label}» to the header when an admin city is selected; None
     keeps the header byte-identical to the pre-CITY-02 line (module off / no city chosen).
     `edited_line`/`resubmit_line` (Phase 21, 21-07, D-14/D-10) are pre-resolved by the caller
     (`_edit_badges_for`, registry template + human date/source already substituted) — this
     function only decides WHETHER to print them, same optional-line contract as `consent_line`.
+    `prev_reject_line` (quick 260904-liz) — same contract: caller (`_prev_reject_line`,
+    `escape_reason=True`) already resolved and HTML-escaped the string, printed right after
+    `resubmit_line` and before `consent_line`. Default None keeps every other call byte-compatible.
     Quick 260902-tzh: `fields` — `[(label, value)]` из `moderation_card.card_answers`, вопросы
     анкеты по выбору менеджера (реестр `modcard_fields`); `None` (все старые вызовы) печатает
     ни одной строки вопроса — карточка байт-совместима с версией до этой правки. Шесть
@@ -149,6 +153,10 @@ def _render_application_card(user: dict, position: int, total: int, city_label_t
         lines.append(edited_line)
     if resubmit_line:
         lines.append(resubmit_line)
+    # Quick 260904-liz: «🚫 Ранее отклонена: <причина>» — сразу после повторной подачи, перед
+    # согласием (то всегда идёт последним).
+    if prev_reject_line:
+        lines.append(prev_reject_line)
     # Quick 260822: одна строка «Согласие: v…» (+ маркер старой редакции) — готовый текст
     # от services.consent.consent_card_line; None = подписей нет (модуль выключен/legacy).
     if consent_line:
@@ -223,6 +231,9 @@ async def _show_current_card(target: types.Message, state: FSMContext):
     # Phase 21 (21-07, D-14/D-15/D-10): одна выборка истории обслуживает и пометку карточки,
     # и видимость кнопки «🕓 История» — см. докстринг _edit_badges_for.
     edited_line, resubmit_line, has_history = await _edit_badges_for(current)
+    # Quick 260904-liz: «🚫 Ранее отклонена: <причина>» — escape_reason=True, карточка бота
+    # печатает готовые строки как есть (тот же контракт, что edited_line/resubmit_line).
+    prev_reject = await _prev_reject_line(current, escape_reason=True)
     # Quick 260902-tzh: набор вопросов и лимит длины ответа — реестром (экран «🧾 Поля
     # карточки заявки»), не девять захардкоженных полей. «resume» — отдельный блок карточки
     # (файлом/текстом/нет), из fields исключается и управляет только show_resume.
@@ -234,6 +245,7 @@ async def _show_current_card(target: types.Message, state: FSMContext):
             current, position, total, city_label_text=card_label,
             consent_line=await consent_card_line(current["telegram_id"]),
             edited_line=edited_line, resubmit_line=resubmit_line,
+            prev_reject_line=prev_reject,
             fields=fields, show_resume=("resume" in steps),
         )
     )

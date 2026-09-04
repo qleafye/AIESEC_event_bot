@@ -125,6 +125,7 @@ SETTINGS_SYNONYMS: dict[str, list[str]] = {
     "reg_form_back_cta_text": ["кнопка назад анкета", "предыдущий вопрос мастера"],
     "reg_edited_admin_label": ["метка для менеджера правки", "делегат изменил анкету"],
     "reg_resubmit_admin_label": ["метка переподачи", "менеджеру о повторной заявке"],
+    "reg_prev_reject_admin_label": ["прошлый отказ", "причина прошлого отказа"],
     "reg_edit_history_button_label": ["история изменений анкеты", "лог правок"],
     "reg_nudge_chat_button_text": ["напоминание кнопка бот", "догонялка через чат"],
     "reg_nudge_app_button_text": ["напоминание кнопка веб", "догонялка через приложение"],
