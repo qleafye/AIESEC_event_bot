@@ -426,7 +426,12 @@ async def post_finalize(
         logger.warning(f"Subscription persist skipped for {telegram_id}: {e}")
 
     if mode == "new" and status == "approved":
-        await approve_user(bot, telegram_id)
+        # Quick 260904-3vm (E2): статус решён ЗДЕСЬ, сразу на подаче — значит модерации не
+        # было (иначе status был бы "pending", а approve_user на одобрение позвал бы отдельный
+        # путь менеджера — services/applications.py/admin_moderation.py). Делегат читает
+        # «заявка принята», а не «прошёл отбор» — отбора не было. Покрывает и чат, и Mini App
+        # (submit из приложения приходит сюда же через outbox reg_finalized).
+        await approve_user(bot, telegram_id, auto_approved=True)
 
 
 async def derive_edit_facts(telegram_id: int, full: dict) -> tuple[list, bool, bool]:

@@ -56,9 +56,13 @@ def _offline(monkeypatch):
 class FakeBot:
     def __init__(self):
         self.sent_documents = []
+        self.sent_messages = []
 
     async def send_document(self, chat_id, file_id, caption=None):
         self.sent_documents.append((chat_id, file_id, caption))
+
+    async def send_message(self, chat_id, text, **kwargs):
+        self.sent_messages.append((chat_id, text))
 
 
 def _patch_sheet_calls(monkeypatch):
@@ -422,3 +426,68 @@ def test_unknown_kind_still_raises_via_handle_row(tmp_path):
         return False
 
     assert asyncio.run(go()) is True
+
+
+# ── Quick 260904-3vm (E2): автоприём читает «заявка принята», не «прошёл отбор» ────────────
+
+def test_post_finalize_new_approved_sends_auto_approve_text(tmp_path, monkeypatch):
+    """post_finalize решает `mode == "new" and status == "approved"` -> это ВСЕГДА автоприём
+    (модерация дала бы status='pending', одобрение менеджером идёт отдельным путём) — делегат
+    должен получить DEFAULT_APPROVE_AUTO_TEXT, а не общий DEFAULT_APPROVE_TEXT."""
+    _ready(tmp_path)
+    _offline(monkeypatch)
+    _patch_sheet_calls(monkeypatch)
+    _patch_notify(monkeypatch)
+    monkeypatch.setattr(config, "ADMIN_IDS", [])
+
+    from handlers import reg_schema
+
+    async def go():
+        await _seed_user(UID, status="approved", event_city=None)
+        bot = FakeBot()
+        await rf.post_finalize(bot, UID, "new")
+        return bot
+
+    bot = asyncio.run(go())
+    assert len(bot.sent_messages) == 1
+    _, text = bot.sent_messages[0]
+    assert text == reg_schema.DEFAULT_APPROVE_AUTO_TEXT
+    assert text != reg_schema.DEFAULT_APPROVE_TEXT
+
+
+def test_post_finalize_new_approved_respects_approve_text_auto_override(tmp_path, monkeypatch):
+    _ready(tmp_path)
+    _offline(monkeypatch)
+    _patch_sheet_calls(monkeypatch)
+    _patch_notify(monkeypatch)
+    monkeypatch.setattr(config, "ADMIN_IDS", [])
+
+    async def go():
+        await db.set_setting("approve_text__auto", "Готово! Ты в деле ✅")
+        await _seed_user(UID, status="approved", event_city=None)
+        bot = FakeBot()
+        await rf.post_finalize(bot, UID, "new")
+        return bot
+
+    bot = asyncio.run(go())
+    assert bot.sent_messages[0][1] == "Готово! Ты в деле ✅"
+
+
+def test_manual_approve_still_uses_default_approve_text(tmp_path, monkeypatch):
+    """Ручное одобрение менеджером (handlers.reg_schema.approve_user БЕЗ auto_approved) —
+    прежний текст «🎉 После одобрения», регресс не допускается."""
+    _ready(tmp_path)
+    _offline(monkeypatch)
+    monkeypatch.setattr(config, "ADMIN_IDS", [])
+
+    from handlers import reg_schema
+
+    async def go():
+        await _seed_user(UID, status="approved")
+        bot = FakeBot()
+        await reg_schema.approve_user(bot, UID)
+        return bot
+
+    bot = asyncio.run(go())
+    assert len(bot.sent_messages) == 1
+    assert bot.sent_messages[0][1] == reg_schema.DEFAULT_APPROVE_TEXT

@@ -399,13 +399,21 @@ async def incomplete_city_batches() -> list[tuple[str, list[str], list[list]]]:
 
 
 DEFAULT_APPROVE_TEXT = "Твоя заявка одобрена! Добро пожаловать 🎉"
+# Quick 260904-3vm (E2): автоприём (short-трек/подобные сценарии без модерации) — своя
+# причина принятия, не «прошёл отбор» (отбора не было вовсе).
+DEFAULT_APPROVE_AUTO_TEXT = "Заявка принята ✅ Всё получили — ждём тебя!"
 
 
 # _is_module_enabled moved to reg_engine.py (Phase 21, 21-01); imported above.
 
 
-async def _approve_text_for(participant_type: str | None, city_code: str | None = None) -> str:
+async def _approve_text_for(participant_type: str | None, city_code: str | None = None, *,
+                             auto_approved: bool = False) -> str:
     """D-15: per-track approval message. Resolution order:
+    (0) Quick 260904-3vm (E2): `auto_approved=True` (заявка принята БЕЗ модерации — short-трек
+        и подобные сценарии) СНАЧАЛА проверяет `approve_text__auto`; пусто -> DEFAULT_APPROVE_
+        AUTO_TEXT. Дальше по цепочке (party/city/DEFAULT_APPROVE_TEXT) эта ветка НЕ идёт —
+        текст про «прошёл отбор» здесь неуместен в принципе, отбора не было.
     (1) party track and `approve_text__party` non-empty (truthy wins — an accidentally-empty
         override falls back rather than sending a blank message, same posture as _prompt's
         D-05 wording resolution) -> that text, WITHOUT any per-city layer. Phase 09.2-04
@@ -418,6 +426,8 @@ async def _approve_text_for(participant_type: str | None, city_code: str | None 
         delegate's city can override the global script.
     (3) otherwise -> DEFAULT_APPROVE_TEXT, reusing the same constant so there is only one
         copy of the default."""
+    if auto_approved:
+        return await get_setting("approve_text__auto") or DEFAULT_APPROVE_AUTO_TEXT
     if _is_party_track(participant_type):
         override = await get_setting("approve_text__party")
         if override:
@@ -426,7 +436,8 @@ async def _approve_text_for(participant_type: str | None, city_code: str | None 
 
 
 async def send_completion_and_bonus(bot: Bot, telegram_id: int, with_menu: bool = True,
-                                     participant_type: str | None = None):
+                                     participant_type: str | None = None, *,
+                                     auto_approved: bool = False):
     """Deliver approve_text (post-approval script) + the configured registration bonus.
     Reused by the non-payment approval path, the free/single payment path (handlers.payment),
     and the admin receipt-confirm path (handlers.admin). Fail-soft: a blocked/unknown user
@@ -440,7 +451,11 @@ async def send_completion_and_bonus(bot: Bot, telegram_id: int, with_menu: bool 
     approve_user which already has a resolved user row for participant_type), so get_user is
     the only way to learn the city. Kept module-gated so an all-cities-off deployment adds
     zero extra DB reads to the approval path. A resolve failure falls back to city_code=None
-    (global approve_text) — the approval message must still go out (T-05-04-04)."""
+    (global approve_text) — the approval message must still go out (T-05-04-04).
+    Quick 260904-3vm (E2): `auto_approved=True` (short-трек/подобные сценарии без модерации)
+    reroutes text resolution to `approve_text__auto` — see `_approve_text_for`. Default False
+    keeps every existing caller (manual approve, receipt confirm, payment path) byte-for-byte
+    unchanged."""
     city_code = None
     try:
         if await cities_module_on():
@@ -450,7 +465,7 @@ async def send_completion_and_bonus(bot: Bot, telegram_id: int, with_menu: bool 
         logger.error(f"per-city resolve for approve text failed for {telegram_id}: {e}")
         city_code = None
     try:
-        complete_text = await _approve_text_for(participant_type, city_code)
+        complete_text = await _approve_text_for(participant_type, city_code, auto_approved=auto_approved)
         kwargs = {"parse_mode": "HTML"}
         if with_menu:
             kwargs["reply_markup"] = await get_main_menu_kb(telegram_id)
@@ -468,10 +483,14 @@ async def send_completion_and_bonus(bot: Bot, telegram_id: int, with_menu: bool 
         logger.error(f"Failed to send completion/bonus to {telegram_id}: {e}")
 
 
-async def approve_user(bot: Bot, telegram_id: int):
+async def approve_user(bot: Bot, telegram_id: int, *, auto_approved: bool = False):
     """Send the post-approval welcome (complete text + main menu + bonus) to a user
     by chat id. Reused by the auto-approve path here and the manager manual-approve
-    path (admin.py). Fail-soft: a blocked/unknown user never raises."""
+    path (admin.py). Fail-soft: a blocked/unknown user never raises.
+    Quick 260904-3vm (E2): `auto_approved=True` — заявка принята БЕЗ модерации (short-трек и
+    подобные сценарии) — делегат читает «заявка принята», а не «прошёл отбор». Default False
+    keeps every existing caller (manual approve, receipt confirm, payment path) unchanged; the
+    ONLY caller passing True is `services/reg_finalize.py::post_finalize`'s auto-approve tail."""
     logger.info(f"user={telegram_id} action=approve_welcome")
     # Phase 5 (D-15): resolve the track ONCE, here, at the top — BEFORE the module-gate
     # branch below (which checks the payment setting and returns early). approve_user
@@ -498,6 +517,8 @@ async def approve_user(bot: Bot, telegram_id: int):
             await start_payment_step(bot, telegram_id, participant_type)
             return
 
-        await send_completion_and_bonus(bot, telegram_id, participant_type=participant_type)
+        await send_completion_and_bonus(
+            bot, telegram_id, participant_type=participant_type, auto_approved=auto_approved,
+        )
     except Exception as e:
         logger.error(f"Failed to send approval welcome to {telegram_id}: {e}")
