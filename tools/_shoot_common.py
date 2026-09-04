@@ -183,6 +183,11 @@ window.Telegram.WebApp = {
   BackButton: { show() {}, hide() {}, onClick() {}, offClick() {} },
   MainButton: { show() {}, hide() {}, setText() {}, onClick() {}, offClick() {}, enable() {}, disable() {} },
   HapticFeedback: { notificationOccurred() {}, impactOccurred() {} },
+  // D13 (quick 260904-de4): без этих двух методов headless-съёмка шага телефона не покажет
+  // кнопку «Поделиться номером» (canShareContact в screens/form.js требует обоих) — падать
+  // при клике незачем, съёмка кнопку не нажимает, но она обязана хотя бы быть на экране.
+  isVersionAtLeast(v) { return true; },
+  requestContact(cb) { cb(true, { status: "sent", responseUnsafe: { contact: { phone_number: "+79161234567" } } }); },
 };
 """
 

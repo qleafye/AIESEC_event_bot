@@ -285,6 +285,8 @@ async def _draft_response(telegram_id: int, ctx: dict | None = None, *, bot_user
         # человеческий текст своим (`bad_type`/`too_large` дают его сами — см.
         # `submissions.py::_upload_resume`); отдельный литерал в JS не заводим.
         "resume_upload_error_text": await get_setting_typed("reg_form_resume_upload_error_text"),
+        # D13: подпись кнопки «Поделиться номером» на шаге телефона — из реестра, не литерал JS.
+        "share_contact_text": await get_setting_typed("reg_form_share_contact_text"),
     }
 
 
