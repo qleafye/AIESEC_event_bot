@@ -182,12 +182,25 @@ async def _countdown_hint(telegram_id: int) -> dict | None:
     return {"text": _countdown_missing_text(missing), "hash": "#/settings"}
 
 
+# Quick 260904-dq1: «в очереди: N» — та же форма, что countdown выше (None при пустой
+# очереди), тот же счётчик, что читает бот (handlers/admin_sections.py::section_screen).
+async def _quiet_queue_hint() -> dict | None:
+    from services import quiet_hours
+    pending = await quiet_hours.queued_count()
+    if not pending:
+        return None
+    return {"text": f"🌙 Тихие часы: в очереди {pending}", "hash": "#/settings"}
+
+
 @router.get("/app/api/admin/settings/hints")
 async def settings_hints(
     p: Principal = Depends(require_cap("settings")),
     _: Principal = Depends(require_section("settings")),
 ) -> dict:
-    return {"countdown": await _countdown_hint(p.telegram_id)}
+    return {
+        "countdown": await _countdown_hint(p.telegram_id),
+        "quiet_queue": await _quiet_queue_hint(),
+    }
 
 
 # ══ Phase 22 (22-04): весь правимый реестр + шапка города ═══════════════════════════════

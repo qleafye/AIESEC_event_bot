@@ -429,7 +429,16 @@ async def section_screen(admin_id: int, token: str | None) -> tuple[str, InlineK
     caps = await resolve_capabilities(admin_id)
     if not visible_rows(token, caps, admin_id in config.ADMIN_IDS):
         return None
-    return render_section_text(token), await build_section_keyboard(token, admin_id, caps=caps)
+    text = render_section_text(token)
+    # Quick 260904-dq1: «🌙 Тихие часы: в очереди N» — ТОЛЬКО в разделе «📋 Заявки» и ТОЛЬКО
+    # при непустой очереди. render_section_text — синхронная (снапшот-тесты), БД сюда не
+    # трогает; счётчик дописывается здесь, после неё.
+    if token == "apps":
+        from services import quiet_hours
+        pending = await quiet_hours.queued_count()
+        if pending > 0:
+            text += f"\n\n🌙 Тихие часы: в очереди {pending}"
+    return text, await build_section_keyboard(token, admin_id, caps=caps)
 
 
 @router.callback_query(F.data.startswith("admin_sec:"))

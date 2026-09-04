@@ -384,11 +384,16 @@ async function renderManagerHub(root, ctx, opts = {}) {
   // MANAGER_FETCHERS ниже: отказ/403 (делегат без права settings) даёт хаб без строки, а не
   // падение экрана. Строку рисуем и в skipHero-ветке — она про настройку, не про очередь.
   let countdown = null;
+  let quietQueue = null;
   try {
     const hints = await api("/admin/settings/hints");
     countdown = hints && hints.countdown ? hints.countdown : null;
+    // Quick 260904-dq1: «в очереди: N» — тот же fail-soft приём, что countdown выше; текст
+    // считает сервер, hub.js только рисует строку, когда она непустая.
+    quietQueue = hints && hints.quiet_queue ? hints.quiet_queue : null;
   } catch (_) {
     countdown = null;
+    quietQueue = null;
   }
   if (countdown) {
     root.append(h("div", { class: "flat-list" },
@@ -397,6 +402,16 @@ async function renderManagerHub(root, ctx, opts = {}) {
         title: countdown.text,
         chevron: true,
         onClick: () => navigate(countdown.hash),
+      }),
+    ));
+  }
+  if (quietQueue) {
+    root.append(h("div", { class: "flat-list" },
+      flatRow(h, {
+        icon: "clock",
+        title: quietQueue.text,
+        chevron: true,
+        onClick: () => navigate(quietQueue.hash),
       }),
     ));
   }

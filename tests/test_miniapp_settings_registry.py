@@ -325,7 +325,8 @@ def test_hints_countdown_null_when_date_set_and_module_off(tmp_path):
     _set("miniapp_hub_countdown_date", "31.10.2026")
     resp = _hints(client)
     assert resp.status_code == 200, resp.text
-    assert resp.json() == {"countdown": None}
+    # Quick 260904-dq1: quiet_queue — тот же контракт, что countdown (None при пустой очереди).
+    assert resp.json() == {"countdown": None, "quiet_queue": None}
 
 
 def test_hints_countdown_present_when_date_empty_and_module_off(tmp_path):
