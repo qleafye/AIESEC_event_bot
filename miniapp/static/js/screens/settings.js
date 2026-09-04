@@ -1007,6 +1007,7 @@ async function renderSection(root, code, ctx) {
         confirm: wasDangerous ? [item.key] : [],
       } });
       if (resp.errors && resp.errors[item.key]) {
+        if (el._nodes.control && el._nodes.control.paint) el._nodes.control.paint(item.value);
         setFieldState(el, "error", { text: resp.errors[item.key] });
         return;
       }
@@ -1024,6 +1025,7 @@ async function renderSection(root, code, ctx) {
       await loadAndRender();
     } catch (err) {
       if (!isAuthError(err)) {
+        if (el._nodes.control && el._nodes.control.paint) el._nodes.control.paint(item.value);
         setFieldState(el, "error", { text: errorText(err, texts.miniapp_settings_error_toast_text || "") });
       }
     } finally {

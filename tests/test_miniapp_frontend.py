@@ -1250,6 +1250,23 @@ def test_form_js_covers_registry_types():
     assert 'from "./ui.js"' in text and '"check-row"' in text
 
 
+def test_toggle_control_paints_itself_before_calling_onchange():
+    """Quick 260904-8o3 Task 1 (E1/E7) — статический сторож без node: регресс «контрол снова
+    не красит себя» (тумблер зовёт onChange, а визуал ставит только вызывающий экран) ловится
+    даже там, где node недоступен. Поведенческий тест — tests/test_settings_toggle_js.py."""
+    text = _js_without_comments(FORM_JS)
+    m = re.search(r"function toggleControl\([^)]*\)\s*\{.*?\n\}\n", text, re.S)
+    assert m, "toggleControl не найден в form.js"
+    body = m.group(0)
+    paint_call = re.search(r"\bpaint\(", body)
+    onchange_call = re.search(r"\bonChange\(", body)
+    assert paint_call and onchange_call, "toggleControl должен вызывать и paint(...), и onChange(...)"
+    assert paint_call.start() < onchange_call.start(), (
+        "toggleControl должен красить себя (paint(next)) ДО onChange(next) — оптимистичная "
+        "прокраска, откат делает вызывающий (screens/settings.js::saveToggle)"
+    )
+
+
 def test_form_js_search_exports_and_no_synonym_literals():
     text = _js_without_comments(FORM_JS)
     for name in ("searchFilter", "highlightMatch", "suggestTerms"):

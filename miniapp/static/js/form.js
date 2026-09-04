@@ -213,11 +213,13 @@ function fileControl(h, spec, value, onChange) {
   return { control, progress };
 }
 
-// Тумблер реестра (toggle, D-05/D-08): визуал сегодняшних «настроек-лайт» — flatRow с классом
-// check-row (ui.js), подписи состояний из spec.texts ({on, off} — реестр), не литералом.
-// Сообщает наружу намерение (следующее значение "on"/"off" — то, что хранит бот) и НЕ
-// перерисовывает себя: решение о немедленном сохранении принимает экран (D-08), а после
-// ответа сервера обновляет строку через control.paint(v) без пересборки поля.
+// Тумблер реестра (toggle, D-05/D-08, D-17 Task 1): визуал сегодняшних «настроек-лайт» —
+// flatRow с классом check-row (ui.js), подписи состояний из spec.texts ({on, off} — реестр),
+// не литералом. КОНТРОЛ САМ красит своё состояние по клику (оптимистично, до ответа сети) —
+// `repaintRow` остаётся авторитетным ПОСЛЕ ответа сервера (перестраивает контрол заново через
+// `paint(value)` в конструкторе); `control.paint(v)` снаружи (например, откат по ошибке
+// сохранения в screens/settings.js::saveToggle) переигрывает визуал и синхронизирует
+// внутренний `current`, чтобы следующий клик снова считал правильное «следующее» значение.
 function isOn(v) {
   return v === true || v === "on";
 }
@@ -227,7 +229,11 @@ function toggleControl(h, spec, value, onChange) {
   let current = value;
   const row = flatRow(h, {
     icon: "check", title: spec.label, trailing: "", cls: "check-row",
-    onClick: () => onChange(isOn(current) ? "off" : "on"),
+    onClick: () => {
+      const next = isOn(current) ? "off" : "on";
+      paint(next);
+      onChange(next);
+    },
   });
   const trailing = row.querySelector(".flat-row-trailing");
   function paint(v) {
