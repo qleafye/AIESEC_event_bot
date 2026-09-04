@@ -36,6 +36,7 @@ from pydantic import BaseModel
 
 import reg_engine
 import settings_ops
+import web_theme
 from cities import (
     ALL_CITIES,
     ALL_CITIES_LABEL,
@@ -304,6 +305,13 @@ async def _item_for(base: str, ctx: _CityCtx) -> dict:
         "confirm_text": await _confirm_text(base, value),
         "search_terms": list(SETTINGS_SYNONYMS.get(base, [])),
         "editable": editable,
+        # Quick 260904-8o3 Task 3 (E5/E6): группа "miniapp" несёт ключи оформления ВПЕРЕМЕШКУ
+        # с обычными текстами Mini App (row["theme_preview"] в _sections отмечает всю группу
+        # целиком) — фронт различает, какие из group.items реально можно слать в
+        # POST /admin/theme/preview, без второго хардкод-списка ключей в JS (T-8o3-02: чужой
+        # ключ там 403, случайно попавшая в pending НЕ-тема правка не должна ронять весь запрос
+        # превью и уводить экран в «нет доступа», см. api.js::authErrorHandler на любой 403).
+        "theme_key": base in web_theme.THEME_KEYS.values(),
     })
     return spec
 
@@ -384,6 +392,11 @@ async def _sections(ctx: _CityCtx) -> tuple[list[dict], int]:
                 # матрицы шлют трек-композиты (settings_ops.reg_question_track_base), не сами
                 # эти ключи.
                 row["matrix"] = await _reg_questions_matrix()
+            # Quick 260904-8o3 Task 3 (E5/E6): решение «где рисовать живое превью оформления»
+            # принимает СЕРВЕР, не фронт (тот же приём, что row["matrix"] выше) — признак:
+            # пересечение ключей группы с web_theme.THEME_KEYS.
+            if set(keys) & set(web_theme.THEME_KEYS.values()):
+                row["theme_preview"] = True
             group_rows.append(row)
         if not toggles and not group_rows:
             continue
@@ -591,6 +604,41 @@ async def settings_preview(
         raise HTTPException(403, {"reason": "not_editable", "key": key})
     samples = await settings_ops.preview_samples()
     return {"text": settings_ops.preview_text(key, value, samples=samples)}
+
+
+# ══ Quick 260904-8o3 Task 3 (E5/E6, T-8o3-02): живое превью оформления, ДО сохранения ═════
+
+
+class ThemePreviewIn(BaseModel):
+    changes: list[BatchChange]
+
+
+@router.post("/app/api/admin/theme/preview")
+async def theme_preview(
+    body: ThemePreviewIn,
+    p: Principal = Depends(require_cap("settings")),
+    _: Principal = Depends(require_section("settings")),
+) -> dict:
+    """Мини-плита «🎨 Оформление» на экране настроек должна реагировать на смену пресета/
+    паттерна/шрифта ДО того, как менеджер нажмёт «Сохранить» (владелец 04.09, E5/E6: сегодня
+    видна только полоска сверху). Ручка НИЧЕГО не пишет в БД — читает текущие значения
+    `web_theme.THEME_KEYS`, накладывает сверху черновик `changes` и пересчитывает CSS-
+    переменные тем же `resolve_theme`/`theme_css_vars`, что и боевая `/app/theme.css`.
+
+    Ключ вне `THEME_KEYS.values()` — недоверенный вход с клиента (T-8o3-02) — отклоняется
+    403 `not_editable`, не тихим игнором: экран мог бы иначе прислать чужой ключ реестра
+    незамеченным."""
+    theme_keys = set(web_theme.THEME_KEYS.values())
+    for change in body.changes:
+        if change.key not in theme_keys:
+            raise HTTPException(403, {"reason": "not_editable", "key": change.key})
+
+    settings = {key: await get_setting_typed(key) for key in theme_keys}
+    for change in body.changes:
+        settings[change.key] = change.value
+
+    resolved = web_theme.resolve_theme(settings)
+    return {"vars": web_theme.theme_css_vars(resolved)}
 
 
 __all__ = ["router", "EDITABLE_KEYS"]

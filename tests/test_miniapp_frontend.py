@@ -1383,6 +1383,29 @@ def test_settings_screen_reuses_existing_upload_route():
     assert "/app/api/admin/uploads" not in text and "settings/upload" not in text
 
 
+def test_settings_screen_theme_preview_uses_server_flag_and_preview_route():
+    """Quick 260904-8o3 Task 3 (E5/E6) — экран не решает сам, где рисовать превью (флаг
+    `group.theme_preview` приходит с сервера, тот же приём, что `group.matrix`), а обновляет
+    мини-плиту через `POST /admin/theme/preview`, не литералом собирает CSS."""
+    text = _js_without_comments(SETTINGS_JS)
+    assert "group.theme_preview" in text
+    assert 'api("/admin/theme/preview"' in text
+    assert "setProperty(" in text  # переменные применяются, не собирается CSS-строка вручную
+    # Мини-плита — те же классы, что делегатская (plate/plate--hub), плюс модификатор превью.
+    assert '"plate plate--hub plate--preview"' in text
+    # Группа "miniapp" смешанная (оформление + обычные тексты, T-8o3-02) — фильтр по
+    # item.theme_key, а не по всем group.items подряд (иначе неродственная правка в pending
+    # ушла бы в theme/preview, поймала 403 not_editable и увела весь экран в «нет доступа»).
+    assert "item.theme_key" in text
+
+
+def test_settings_screen_theme_preview_has_no_hex_or_cyrillic_literals():
+    """Цвета — только переменными с сервера (vars.light/vars.dark), надписи — только из
+    texts (D-25); ни хекс-литерала, ни кириллицы в блоке превью JS не заводит."""
+    text = _js_without_comments(SETTINGS_JS)
+    assert re.search(r"#[0-9A-Fa-f]{3,8}\b", text) is None, "хекс-литерал в screens/settings.js"
+
+
 # ── swipe.js: распознавание жеста «принять/отклонить» (фаза 23 план 05, D-04) ───────────
 # Поведение порогов/угла проверяется в node (tests/test_swipe_js.py); здесь — статические
 # сторожа, которые остаются гейтом и без node.
