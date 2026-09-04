@@ -46,6 +46,10 @@ EXPECTED_PER_CITY_KEYS = {
     # Phase 23.1 (23.1-03, D-хаб): дата отсчёта до форума в приложении — per_city как её
     # якоря event_date/event_place_name, у разных городов форум может стартовать в разный день.
     "miniapp_hub_countdown_date",
+    # Quick 260904-aup Task 1 (UAT D3): «через сколько дней ответ» в плите «Анкета на
+    # проверке» — per_city, как соседний miniapp_hub_countdown_date выше: у разных городов
+    # модерация может идти с разной скоростью.
+    "miniapp_hub_pending_days",
 }
 
 
