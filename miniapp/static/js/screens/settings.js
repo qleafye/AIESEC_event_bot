@@ -24,7 +24,7 @@
 // показывает ОБЩЕЕ число несохранённых правок по всем разделам сразу и одним batch сохраняет
 // все разом (сервер уже давно это умеет — `settings/batch` не завязан на «текущий» раздел).
 
-import { sectionTitle, emptyState, errorState, labelText, tile } from "../ui.js";
+import { sectionTitle, emptyState, errorState, labelText, tile, formatCount } from "../ui.js";
 import { icon } from "../icons.js";
 import { haptic } from "../motion.js";
 import {
@@ -252,7 +252,7 @@ async function renderStart(root, ctx) {
         onClick: () => navigate(`#/settings/${section.token}`),
         iconName: SECTION_ICONS[section.token],
         label: labelText(section.label),
-        meta: (texts.miniapp_settings_tile_count_text || "").replace("{n}", String(sectionItemCount(section))),
+        meta: formatCount(texts.miniapp_settings_tile_count_text || "", sectionItemCount(section)),
         dot: sectionHasPendingDot(section),
       }));
     }
@@ -621,7 +621,7 @@ async function renderSection(root, code, ctx) {
 
   function updateBatchBar() {
     const count = pending.size;
-    batchBtnText.textContent = (texts.miniapp_settings_batch_bar_text || "").replace("{count}", String(count));
+    batchBtnText.textContent = formatCount(texts.miniapp_settings_batch_bar_text || "", count);
     batchDiscard.textContent = texts.miniapp_settings_batch_discard_text || "";
     batchBar.classList.toggle("off", count === 0);
     batchSpacer.classList.toggle("hidden", count === 0);
@@ -1006,6 +1006,20 @@ async function renderSection(root, code, ctx) {
     return row;
   }
 
+  // Возврат правки к исходному значению (E-настройки, quick 260904-de4) — снимает ключ из
+  // pending вместо того, чтобы держать «правку», которая на самом деле ничего не меняет:
+  // счётчик «Сохранить N изменений» иначе рос бы и не убывал при обратном клике. Сравнение —
+  // строкой с нормализацией null/"" (черновик из контрола и исходное значение реестра бывают
+  // разных типов — "" против null, число против строки).
+  function setPending(key, value) {
+    const original = originalItems.get(key);
+    const originalValue = original ? original.value : null;
+    const norm = (v) => (v == null ? "" : String(v));
+    if (norm(value) === norm(originalValue)) pending.delete(key);
+    else pending.set(key, value);
+    updateBatchBar();
+  }
+
   function onFieldChange(item, el, value) {
     if (item.type === "toggle") {
       // toggleControl(form.js) уже отдаёт СЛЕДУЮЩЕЕ значение ("on"/"off"), не текущее —
@@ -1018,8 +1032,7 @@ async function renderSection(root, code, ctx) {
       handleFileUpload(item, el, value);
       return;
     }
-    pending.set(item.key, value);
-    updateBatchBar();
+    setPending(item.key, value);
   }
 
   // ── фото/файл: тот же staff-путь POST /app/api/uploads, что резюме делегата. ─────────────
@@ -1141,8 +1154,7 @@ async function renderSection(root, code, ctx) {
       "aria-pressed": "false",
       onClick: () => {
         const next = matrixCellValue(key) === "on" ? "off" : "on";
-        pending.set(key, next);
-        updateBatchBar();
+        setPending(key, next);
       },
     }, icon("check"));
     function paint(value) {
