@@ -65,6 +65,7 @@ from reg_labels import PAYMENT_STATUS_LABELS, REG_LABELS, STATUS_LABELS
 from services.applications import format_edited_date
 from settings_schema import get_setting_typed
 
+from miniapp.avatars import resolve_avatar
 from miniapp.deps import Principal, delegate_gate, require_section
 
 router = APIRouter()
@@ -270,10 +271,23 @@ async def profile(request: Request, p: Principal = Depends(delegate_gate),
     approved_tpl = await get_setting_typed("miniapp_profile_approved_text")  # D-10
     form_meta_text = _form_meta_text(user, submitted_tpl, edited_tpl, approved_tpl)
 
+    # Quick 260904-aup (UAT D10): аватар — тот же вызов и тот же кеш, что карточка заявки
+    # менеджера (miniapp.routers.applications::applications_next), второй резолвер не
+    # заводится. display_name — фолбэк-цепочка для делегата БЕЗ поданной анкеты
+    # (`users.full_name` тогда пуст): full_name -> первое имя из initData -> текст реестра.
+    # initials считается от display_name — иначе монограмма была бы пустой ровно тогда же.
+    avatar_file_id = await resolve_avatar(request.app.state.cfg, user) if user else None
+    display_name = (
+        user.get("full_name") or p.first_name
+        or await get_setting_typed("miniapp_profile_greeting_fallback_text")
+    )
+
     return {
         "full_name": user.get("full_name"),
         "username": user.get("username"),
-        "initials": _initials(user.get("full_name")),
+        "avatar_url": f"/app/api/file/{avatar_file_id}" if avatar_file_id else None,
+        "display_name": display_name,
+        "initials": _initials(display_name),
         "city_label": await _profile_city_label(user),
         "fields": fields,
         "contacts": contacts,

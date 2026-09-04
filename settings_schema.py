@@ -2521,6 +2521,17 @@ SETTINGS_SCHEMA = {
             "Анкету видит только менеджер АЙСЕК. Город и трек после одобрения не меняются."
         ),
     },
+    # Quick 260904-aup Task 3 (UAT D10): имя в плите профиля у делегата БЕЗ поданной анкеты
+    # (`users.full_name` тогда пуст) — фолбэк, когда даже first_name из Telegram недоступен
+    # (cookie-вход дашборда его не несёт).
+    "miniapp_profile_greeting_fallback_text": {
+        "type": "text", "group": "miniapp", "label": "👋 Имя-заглушка в плите профиля",
+        "prompt": (
+            "Что печатать в плите профиля, если у делегата ещё нет анкеты и Telegram не отдал "
+            "имя (например: «Привет!»)."
+        ),
+        "default": "Привет!",
+    },
     # Phase 23.1 (UI-REDESIGN-06): подписи карточки задания по макету 05-task.png
     "miniapp_task_todo_eyebrow": {
         "type": "text", "group": "miniapp", "label": "🎯 Надзаголовок «что сделать»",

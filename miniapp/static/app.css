@@ -1516,6 +1516,14 @@ a.flat-row:active, button.flat-row:active { background: var(--surface-alt); }
   font-family: var(--font-heading); font-weight: 800; font-size: 24px;
   letter-spacing: -.02em;
 }
+/* Quick 260904-aup (UAT D10): настоящий аватар делегата в плите профиля — та же геометрия,
+   что монограмма-фолбэк .plate-mono выше (screens/profile.js подменяет узел при ошибке). */
+.plate-avatar {
+  width: 64px; height: 64px; flex: 0 0 64px;
+  border-radius: var(--radius-lg);
+  background: var(--on-accent-wash);
+  object-fit: cover;
+}
 /* Чип на плите: белая таблетка (заливка --secondary или --surface) поверх заливки. */
 .plate .chip.sec { background: var(--secondary); color: var(--on-accent); font-weight: 700; }
 .plate .chip.ok  { background: var(--surface); color: var(--success-text); font-weight: 700; }
