@@ -171,6 +171,10 @@ MINIAPP_KEYS = [
     "miniapp_settings_city_override_list_text",
     "miniapp_settings_preview_button_text",
     "miniapp_settings_preview_heading_text",
+    # Quick 260904-8o3 Task 3 (E5/E6): живая мини-плита превью оформления в настройках.
+    "miniapp_settings_theme_preview_heading_text",
+    "miniapp_settings_theme_preview_eyebrow_text",
+    "miniapp_settings_theme_preview_sub_text",
     "miniapp_settings_batch_bar_text",
     "miniapp_settings_batch_discard_text",
     "miniapp_settings_diff_heading_text",
@@ -232,7 +236,9 @@ def test_exactly_144_miniapp_keys_and_no_extra():
     # Quick 260904-8o3 Task 2 (E3): +1 ключ подписи ассета оформления
     # (miniapp_upload_caption_settings) — менеджер-делегат больше не получает подпись
     # «копия сдачи» за загрузку из настроек (152 -> 153).
-    assert len(MINIAPP_KEYS) == 153
+    # Quick 260904-8o3 Task 3 (E5/E6): +3 надписи мини-плиты живого превью оформления
+    # (miniapp_settings_theme_preview_heading_text/_eyebrow_text/_sub_text) (153 -> 156).
+    assert len(MINIAPP_KEYS) == 156
     present = sorted(k for k in SETTINGS_SCHEMA if k.startswith("miniapp_"))
     assert present == sorted(MINIAPP_KEYS)
 
@@ -279,7 +285,8 @@ def test_text_keys_have_human_defaults():
     # Quick 260904-2cj: +3 текстовых ключа журнала вопросов делегатов (119 -> 122).
     # Quick 260904-7e7 (D18): +1 текстовый ключ шторки отказа (122 -> 123).
     # Quick 260904-8o3 Task 2 (E3): +1 текстовый ключ подписи ассета оформления (123 -> 124).
-    assert len(text_keys) == 124
+    # Quick 260904-8o3 Task 3 (E5/E6): +3 текстовых ключа мини-плиты превью оформления (124 -> 127).
+    assert len(text_keys) == 127
     for key in text_keys:
         default = SETTINGS_SCHEMA[key]["default"]
         assert isinstance(default, str) and default.strip(), key
@@ -410,8 +417,9 @@ def test_settings_screen_keys_count_and_shape():
     подтверждения опасных ключей = 41. `misc`-заголовок не заведён, т.к. leftover-группа
     `_settings_group_keys("misc")` сегодня пуста (см. docstring). Phase 22 Plan 07 (D-16):
     +3 текста стартового экрана-плиток (два заголовка ряда + счётчик настроек) = 44.
-    Phase 22 Plan 07 (D-17 Task 3): +3 заголовка колонок матрицы «трек × вопрос» = 47."""
-    assert len(MINIAPP_SETTINGS_SCREEN_KEYS) == 47
+    Phase 22 Plan 07 (D-17 Task 3): +3 заголовка колонок матрицы «трек × вопрос» = 47.
+    Quick 260904-8o3 Task 3 (E5/E6): +3 надписи мини-плиты живого превью оформления = 50."""
+    assert len(MINIAPP_SETTINGS_SCREEN_KEYS) == 50
     assert "miniapp_settings_misc_group_label_text" not in MINIAPP_SETTINGS_SCREEN_KEYS
     for key in MINIAPP_SETTINGS_SCREEN_KEYS:
         entry = SETTINGS_SCHEMA[key]

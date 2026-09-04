@@ -35,6 +35,9 @@ ITEM_FIELDS = {
     "is_default", "default", "per_city", "is_city_override", "city_override_count",
     "city_override_labels", "dangerous", "confirm_text", "html", "max_len", "search_terms",
     "editable",
+    # Quick 260904-8o3 Task 3 (E5/E6): различает ключи оформления внутри группы "miniapp"
+    # (вперемешку с обычными текстами) — без второго хардкод-списка ключей во фронте.
+    "theme_key",
 }
 
 
@@ -376,3 +379,92 @@ def test_hints_without_settings_cap_403(tmp_path):
     resp = _hints(client, GAME_MANAGER_ID)
     assert resp.status_code == 403
     assert resp.json()["reason"] == "no_cap"
+
+
+# ── живое превью оформления (quick 260904-8o3 Task 3, E5/E6) ────────────────────────────────
+
+def _group_for_key(body, key):
+    for section in body["sections"]:
+        for group in section["groups"]:
+            if any(i["key"] == key for i in group["items"]):
+                return group
+    return None
+
+
+def test_theme_keys_group_carries_theme_preview_flag(tmp_path):
+    """Решение «где рисовать превью» — сервер (row["theme_preview"], тот же приём, что
+    row["matrix"] у reg_questions): группа, несущая ключи web_theme.THEME_KEYS, помечена."""
+    import web_theme
+
+    client = _setup(tmp_path)
+    body = _all(client).json()
+    group = _group_for_key(body, "miniapp_theme_preset")
+    assert group is not None and group.get("theme_preview") is True
+    # Группа реально пересекается с THEME_KEYS (не пустой признак).
+    keys = {i["key"] for i in group["items"]}
+    assert keys & set(web_theme.THEME_KEYS.values())
+    # Раздел без ключей оформления флага не несёт.
+    other = _group_for_key(body, "event_name")
+    assert other is not None and not other.get("theme_preview")
+
+
+def test_theme_key_flag_distinguishes_theme_items_within_shared_group(tmp_path):
+    """Группа "miniapp" несёт ключи оформления вперемешку с обычными текстами (D-контекст
+    плана) — `item.theme_key` не даёт фронту случайно отправить неродственную правку в
+    theme/preview (и получить 403, роняющий весь экран, см. api.js::authErrorHandler)."""
+    import web_theme
+
+    client = _setup(tmp_path)
+    body = _all(client).json()
+    group = _group_for_key(body, "miniapp_theme_preset")
+    theme_keys = set(web_theme.THEME_KEYS.values())
+    for item in group["items"]:
+        assert item["theme_key"] == (item["base_key"] in theme_keys), item["key"]
+    assert any(i["theme_key"] for i in group["items"])
+    assert any(not i["theme_key"] for i in group["items"])  # группа реально смешанная
+
+
+def _preview(client, changes, user=ADMIN_ID):
+    return client.post(
+        "/app/api/admin/theme/preview", json={"changes": changes}, headers=_hdr(user),
+    )
+
+
+def test_theme_preview_returns_vars_for_changed_preset_without_saving(tmp_path):
+    client = _setup(tmp_path)
+    resp = _preview(client, [{"key": "miniapp_theme_preset", "value": "realtalk"}])
+    assert resp.status_code == 200, resp.text
+    body = resp.json()
+    assert "realtalk" in body["vars"]["light"]["--plate-pattern"]
+    # Ничего не сохранилось — активный пресет в БД не тронут.
+    assert _run(get_setting_typed("miniapp_theme_preset")) != "realtalk"
+
+
+def test_theme_preview_different_presets_give_different_plate_pattern(tmp_path):
+    client = _setup(tmp_path)
+    realtalk = _preview(client, [{"key": "miniapp_theme_preset", "value": "realtalk"}]).json()
+    bluebook = _preview(client, [{"key": "miniapp_theme_preset", "value": "bluebook"}]).json()
+    assert realtalk["vars"]["light"]["--plate-pattern"] != bluebook["vars"]["light"]["--plate-pattern"]
+
+
+def test_theme_preview_foreign_key_is_403_not_editable(tmp_path):
+    client = _setup(tmp_path)
+    before = _run(bot_db.get_setting("event_name"))
+    resp = _preview(client, [{"key": "event_name", "value": "Взлом"}])
+    assert resp.status_code == 403
+    assert resp.json()["reason"] == "not_editable"
+    assert _run(bot_db.get_setting("event_name")) == before  # ручка ничего не пишет в БД
+
+
+def test_theme_preview_without_settings_cap_403(tmp_path):
+    client = _setup(tmp_path)
+    resp = _preview(client, [{"key": "miniapp_theme_preset", "value": "realtalk"}], user=GAME_MANAGER_ID)
+    assert resp.status_code == 403
+
+
+def test_theme_preview_file_id_pattern_goes_through_file_proxy(tmp_path):
+    client = _setup(tmp_path)
+    file_id = "AgACAgIAAxkBAAI" + "c" * 15
+    resp = _preview(client, [{"key": "miniapp_theme_pattern", "value": file_id}])
+    assert resp.status_code == 200, resp.text
+    assert f"/app/api/file/{file_id}" in resp.json()["vars"]["light"]["--plate-pattern"]

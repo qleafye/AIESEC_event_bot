@@ -249,6 +249,46 @@ def test_realtalk_accent_contrast_meets_threshold_unchanged():
     assert resolved["accent_text"] == "#7552CC"
 
 
+# ── Quick 260904-8o3 Task 3 (E5/E6): theme_css_vars — единственный источник переменных ────
+
+def test_theme_css_vars_returns_light_and_dark_dicts():
+    resolved = web_theme.resolve_theme({})
+    css_vars = web_theme.theme_css_vars(resolved)
+    assert set(css_vars.keys()) == {"light", "dark"}
+    for name in ("--accent", "--accent-text", "--secondary", "--bg", "--font-heading",
+                 "--font-heading-style", "--plate-pattern", "--plate-pattern-size",
+                 "--plate-pattern-x", "--plate-pattern-y", "--plate-pattern-opacity"):
+        assert name in css_vars["light"], name
+    for name in ("--accent", "--accent-text", "--secondary"):
+        assert name in css_vars["dark"], name
+
+
+def test_theme_css_text_has_no_second_source_of_variables():
+    """T-8o3-03: каждая пара `theme_css_vars` присутствует в тексте `theme_css_text` —
+    сторож на второе место сборки переменных (второй набор значений расходился бы молча)."""
+    for preset_key in ("bluebook", "youlead", "realtalk"):
+        resolved = web_theme.resolve_theme({"miniapp_theme_preset": preset_key})
+        css = web_theme.theme_css_text(resolved)
+        css_vars = web_theme.theme_css_vars(resolved)
+        light_block = css.split(':root[data-theme="dark"]', 1)[0]
+        dark_block = css.split(':root[data-theme="dark"]', 1)[1]
+        for name, value in css_vars["light"].items():
+            assert f"{name}: {value};" in light_block, (preset_key, name)
+        for name, value in css_vars["dark"].items():
+            assert f"{name}: {value};" in dark_block, (preset_key, name)
+
+
+def test_theme_css_vars_file_id_pattern_goes_through_file_proxy():
+    file_id = "AgACAgIAAxkBAAI" + "c" * 15
+    resolved = web_theme.resolve_theme({
+        "miniapp_theme_preset": "bluebook",
+        "miniapp_theme_pattern": file_id,
+    })
+    css_vars = web_theme.theme_css_vars(resolved)
+    assert css_vars["light"]["--plate-pattern"] == f'url("/app/api/file/{file_id}")'
+    assert css_vars["light"]["--plate-pattern-opacity"] == "0.2"
+
+
 # ── aiogram-free import ─────────────────────────────────────────────────────────────────
 
 def test_import_web_theme_does_not_load_aiogram():
