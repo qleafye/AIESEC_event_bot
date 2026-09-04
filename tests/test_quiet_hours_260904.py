@@ -89,3 +89,300 @@ def test_time_format_validator_per_city_composite_uses_base_type():
 def _ready(tmp_path, name):
     config.DB_PATH = str(tmp_path / name)
     asyncio.run(db.init_db())
+
+
+# ── Task 2: механика — окно, очередь delayed_notifications, джоба разбора ─────────────────
+
+from datetime import datetime, time as dtime, timedelta
+
+from cities import per_city_key
+import services.quiet_hours as qh
+from tests.test_miniapp_labels_drift import _loaded_aiogram
+
+DELEGATE = 940901
+
+
+def test_quiet_hours_module_does_not_load_aiogram():
+    loaded = _loaded_aiogram("import services.quiet_hours")
+    assert loaded == [], f"services.quiet_hours потянул aiogram: {loaded}"
+
+
+# ── чистые функции ──────────────────────────────────────────────────────────────────────
+
+def test_is_quiet_normal_window():
+    start, end = dtime(9, 0), dtime(22, 0)
+    assert qh.is_quiet(datetime(2026, 9, 4, 10, 0), start, end) is True
+    assert qh.is_quiet(datetime(2026, 9, 4, 8, 59), start, end) is False
+    assert qh.is_quiet(datetime(2026, 9, 4, 22, 0), start, end) is False  # [start, end)
+
+
+def test_is_quiet_through_midnight():
+    start, end = dtime(22, 0), dtime(9, 0)
+    assert qh.is_quiet(datetime(2026, 9, 4, 23, 30), start, end) is True
+    assert qh.is_quiet(datetime(2026, 9, 4, 2, 0), start, end) is True
+    assert qh.is_quiet(datetime(2026, 9, 4, 9, 0), start, end) is False
+    assert qh.is_quiet(datetime(2026, 9, 4, 12, 0), start, end) is False
+    assert qh.is_quiet(datetime(2026, 9, 4, 22, 0), start, end) is True  # включительно start
+
+
+def test_is_quiet_start_equals_end_means_no_window():
+    same = dtime(10, 0)
+    assert qh.is_quiet(datetime(2026, 9, 4, 10, 0), same, same) is False
+    assert qh.is_quiet(datetime(2026, 9, 4, 23, 59), same, same) is False
+
+
+def test_next_window_end_today_vs_tomorrow():
+    start, end = dtime(22, 0), dtime(9, 0)
+    assert qh.next_window_end(datetime(2026, 9, 4, 2, 0), start, end) == datetime(2026, 9, 4, 9, 0)
+    assert qh.next_window_end(datetime(2026, 9, 4, 23, 30), start, end) == datetime(2026, 9, 5, 9, 0)
+
+
+def test_parse_hhmm():
+    assert qh.parse_hhmm("22:00") == dtime(22, 0)
+    assert qh.parse_hhmm("9:05") == dtime(9, 5)
+    assert qh.parse_hhmm(None) is None
+    assert qh.parse_hhmm("") is None
+    assert qh.parse_hhmm("вечером") is None
+    assert qh.parse_hhmm("25:00") is None
+
+
+# ── window_for_city ──────────────────────────────────────────────────────────────────────
+
+def test_window_for_city_toggle_off_returns_none_even_with_hours_set(tmp_path):
+    _ready(tmp_path, "test_qh_toggle_off.db")
+
+    async def scenario():
+        await db.set_setting("quiet_hours_start", "22:00")
+        await db.set_setting("quiet_hours_end", "09:00")
+        assert await qh.window_for_city(None) is None
+
+    asyncio.run(scenario())
+
+
+def test_window_for_city_per_city_hours_differ(tmp_path):
+    _ready(tmp_path, "test_qh_percity.db")
+
+    async def scenario():
+        await db.set_setting("quiet_hours_enabled", "on")
+        await db.set_setting("event_city_enabled", "on")
+        await db.set_setting("quiet_hours_start", "22:00")
+        await db.set_setting("quiet_hours_end", "09:00")
+        await db.set_setting(per_city_key("quiet_hours_start", "spb"), "23:00")
+        await db.set_setting(per_city_key("quiet_hours_end", "spb"), "08:00")
+
+        assert await qh.window_for_city("msk") == (dtime(22, 0), dtime(9, 0))
+        assert await qh.window_for_city("spb") == (dtime(23, 0), dtime(8, 0))
+
+    asyncio.run(scenario())
+
+
+def test_window_for_city_cities_module_off_uses_global(tmp_path):
+    _ready(tmp_path, "test_qh_cities_off.db")
+
+    async def scenario():
+        await db.set_setting("quiet_hours_enabled", "on")
+        # event_city_enabled НЕ выставляется -> модуль городов выключен
+        await db.set_setting("quiet_hours_start", "22:00")
+        await db.set_setting("quiet_hours_end", "09:00")
+        await db.set_setting(per_city_key("quiet_hours_start", "spb"), "23:30")
+
+        assert await qh.window_for_city("spb") == (dtime(22, 0), dtime(9, 0))
+
+    asyncio.run(scenario())
+
+
+def test_window_for_city_start_equals_end_is_no_window(tmp_path):
+    _ready(tmp_path, "test_qh_percity_same.db")
+
+    async def scenario():
+        await db.set_setting("quiet_hours_enabled", "on")
+        await db.set_setting("quiet_hours_start", "10:00")
+        await db.set_setting("quiet_hours_end", "10:00")
+        assert await qh.window_for_city(None) is None
+
+    asyncio.run(scenario())
+
+
+# ── defer_until ──────────────────────────────────────────────────────────────────────────
+
+def test_defer_until_toggle_off_skips_city_resolution(tmp_path, monkeypatch):
+    _ready(tmp_path, "test_qh_defer_off.db")
+    from services import game_digest
+
+    calls = []
+
+    async def fake_resolve(uid):
+        calls.append(uid)
+        return None
+
+    monkeypatch.setattr(game_digest, "resolve_submitter_city", fake_resolve)
+
+    async def scenario():
+        return await qh.defer_until(datetime(2026, 9, 4, 23, 0), DELEGATE)
+
+    assert asyncio.run(scenario()) is None
+    assert calls == [], "тумблер выключен -- город делегата резолвиться не должен вовсе"
+
+
+def test_defer_until_in_window_returns_next_end_for_delegate_city(tmp_path):
+    _ready(tmp_path, "test_qh_defer_in.db")
+
+    async def scenario():
+        await db.add_user({
+            "telegram_id": DELEGATE, "event_city": "spb",
+            "registration_date": "2026-09-04 00:00:00",
+        })
+        await db.set_setting("quiet_hours_enabled", "on")
+        await db.set_setting("event_city_enabled", "on")
+        await db.set_setting("quiet_hours_start", "22:00")
+        await db.set_setting("quiet_hours_end", "09:00")
+        await db.set_setting(per_city_key("quiet_hours_end", "spb"), "08:00")
+
+        due = await qh.defer_until(datetime(2026, 9, 4, 23, 0), DELEGATE)
+        assert due == datetime(2026, 9, 5, 8, 0)  # городской конец окна, не глобальный
+
+    asyncio.run(scenario())
+
+
+def test_defer_until_outside_window_returns_none(tmp_path):
+    _ready(tmp_path, "test_qh_defer_out.db")
+
+    async def scenario():
+        await db.add_user({
+            "telegram_id": DELEGATE, "event_city": "spb",
+            "registration_date": "2026-09-04 00:00:00",
+        })
+        await db.set_setting("quiet_hours_enabled", "on")
+        await db.set_setting("quiet_hours_start", "22:00")
+        await db.set_setting("quiet_hours_end", "09:00")
+
+        due = await qh.defer_until(datetime(2026, 9, 4, 12, 0), DELEGATE)
+        assert due is None
+
+    asyncio.run(scenario())
+
+
+# ── enqueue / дедуп ──────────────────────────────────────────────────────────────────────
+
+def test_enqueue_replace_keeps_one_row_per_user_and_kind(tmp_path):
+    _ready(tmp_path, "test_qh_enqueue_replace.db")
+
+    async def scenario():
+        now = datetime(2026, 9, 4, 23, 0)
+        due = datetime(2026, 9, 5, 9, 0)
+        await qh.enqueue(DELEGATE, qh.KIND_APPLICATION_DECISION, {"status": "approved"}, due, now)
+        await qh.enqueue(DELEGATE, qh.KIND_APPLICATION_DECISION, {"status": "rejected"}, due, now)
+        rows = await db.list_due_delayed_notifications(due.strftime("%Y-%m-%d %H:%M:%S"))
+        assert len(rows) == 1
+        assert rows[0]["payload"]["status"] == "rejected"
+
+    asyncio.run(scenario())
+
+
+def test_enqueue_non_replaceable_kind_accumulates(tmp_path):
+    _ready(tmp_path, "test_qh_enqueue_accum.db")
+
+    async def scenario():
+        now = datetime(2026, 9, 4, 23, 0)
+        due = datetime(2026, 9, 5, 9, 0)
+        await qh.enqueue(DELEGATE, qh.KIND_TEXT, {"text": "first"}, due, now)
+        await qh.enqueue(DELEGATE, qh.KIND_TEXT, {"text": "second"}, due, now)
+        rows = await db.list_due_delayed_notifications(due.strftime("%Y-%m-%d %H:%M:%S"))
+        assert len(rows) == 2
+
+    asyncio.run(scenario())
+
+
+def test_enqueue_replace_does_not_touch_already_sent_rows(tmp_path):
+    _ready(tmp_path, "test_qh_enqueue_sent.db")
+
+    async def scenario():
+        now = datetime(2026, 9, 4, 23, 0)
+        due = datetime(2026, 9, 5, 9, 0)
+        row_id = await qh.enqueue(
+            DELEGATE, qh.KIND_APPLICATION_DECISION, {"status": "approved"}, due, now,
+        )
+        await db.mark_delayed_notification_sent(row_id, "2026-09-05 09:00:00")
+        await qh.enqueue(DELEGATE, qh.KIND_APPLICATION_DECISION, {"status": "rejected"}, due, now)
+        rows = await db.list_due_delayed_notifications(due.strftime("%Y-%m-%d %H:%M:%S"))
+        assert len(rows) == 1
+        assert rows[0]["payload"]["status"] == "rejected"
+        assert await db.count_pending_delayed_notifications() == 1
+
+    asyncio.run(scenario())
+
+
+# ── flush_due / джоба ────────────────────────────────────────────────────────────────────
+
+class _FakeBot:
+    def __init__(self):
+        self.sent = []
+
+    async def send_message(self, chat_id, text, parse_mode=None):
+        self.sent.append((chat_id, text, parse_mode))
+
+
+def test_flush_due_sends_only_due_rows_and_marks_sent(tmp_path):
+    _ready(tmp_path, "test_qh_flush.db")
+    from services import scheduler as sched
+    bot = _FakeBot()
+    sched._bot = bot
+
+    async def scenario():
+        now = datetime(2026, 9, 5, 9, 0)
+        await qh.enqueue(DELEGATE, qh.KIND_TEXT, {"text": "due"}, now - timedelta(minutes=1), now)
+        await qh.enqueue(DELEGATE + 1, qh.KIND_TEXT, {"text": "not yet"}, now + timedelta(hours=1), now)
+        sent_count = await qh.flush_due(now)
+        assert sent_count == 1
+        assert bot.sent == [(DELEGATE, "due", "HTML")]
+        assert await db.count_pending_delayed_notifications() == 1
+
+    asyncio.run(scenario())
+
+
+def test_flush_due_unknown_kind_marked_error_never_executed(tmp_path):
+    _ready(tmp_path, "test_qh_flush_unknown.db")
+    from services import scheduler as sched
+    bot = _FakeBot()
+    sched._bot = bot
+
+    async def scenario():
+        now = datetime(2026, 9, 5, 9, 0)
+        await qh.enqueue(DELEGATE, "some_future_kind", {"x": 1}, now - timedelta(minutes=1), now)
+        sent_count = await qh.flush_due(now)
+        assert sent_count == 1
+        assert bot.sent == []
+        assert await db.count_pending_delayed_notifications() == 0
+
+    asyncio.run(scenario())
+
+
+def test_flush_due_twice_does_not_resend(tmp_path):
+    _ready(tmp_path, "test_qh_flush_twice.db")
+    from services import scheduler as sched
+    bot = _FakeBot()
+    sched._bot = bot
+
+    async def scenario():
+        now = datetime(2026, 9, 5, 9, 0)
+        await qh.enqueue(DELEGATE, qh.KIND_TEXT, {"text": "once"}, now - timedelta(minutes=1), now)
+        first = await qh.flush_due(now)
+        second = await qh.flush_due(now)
+        assert first == 1
+        assert second == 0
+        assert len(bot.sent) == 1
+
+    asyncio.run(scenario())
+
+
+def test_queued_count_matches_pending(tmp_path):
+    _ready(tmp_path, "test_qh_count.db")
+
+    async def scenario():
+        now = datetime(2026, 9, 4, 23, 0)
+        due = datetime(2026, 9, 5, 9, 0)
+        assert await qh.queued_count() == 0
+        await qh.enqueue(DELEGATE, qh.KIND_TEXT, {"text": "a"}, due, now)
+        assert await qh.queued_count() == 1
+
+    asyncio.run(scenario())

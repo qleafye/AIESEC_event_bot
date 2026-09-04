@@ -552,6 +552,29 @@ async def init_db():
             "ON game_submit_digest_queue(sent_at, city)"
         )
 
+        # Quick 260904-dq1: «🌙 Тихие часы» — очередь уведомлений делегату, отложенных до конца
+        # окна тишины (services/quiet_hours.py). `kind` — закрытый диспетчер на стороне
+        # разборщика (application_decision / text_html), `payload` — JSON. `error` хранит след
+        # неотправленной/перерешённой строки (T-dq1-06: без отдельного аудита, масштаб
+        # 1000-1500 делегатов). FSM — MemoryStorage, поэтому очередь живёт в БД и переживает
+        # рестарт (джоба разбора взводится заново в init_scheduler, ре-арм не нужен — interval).
+        await db.execute('''
+            CREATE TABLE IF NOT EXISTS delayed_notifications (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                user_id INTEGER NOT NULL,
+                kind TEXT NOT NULL,
+                payload TEXT NOT NULL,
+                due_at TEXT NOT NULL,
+                created_at TEXT NOT NULL,
+                sent_at TEXT,
+                error TEXT
+            )
+        ''')
+        await db.execute(
+            "CREATE INDEX IF NOT EXISTS idx_delayed_notifications_due "
+            "ON delayed_notifications(sent_at, due_at)"
+        )
+
         # Phase 19 (D-01): outbox побочных эффектов Mini App. Веб-процесс `miniapp` пишет
         # сюда события (сдача создана, сдача проверена, задание изменилось, ручные монеты),
         # бот подбирает их джобой (план 19-08) и делает уведомления/дайджест/Sheets. Схемой
@@ -3132,6 +3155,66 @@ async def mark_game_digest_sent(ids: list[int], sent_at: str) -> None:
             [(sent_at, i) for i in ids],
         )
         await db.commit()
+
+
+# ── Quick 260904-dq1: очередь «🌙 Тихие часы» ──────────────────────────────────────────────
+
+async def enqueue_delayed_notification(user_id: int, kind: str, payload: dict, due_at: str,
+                                       created_at: str, *, replace: bool) -> int:
+    """Кладёт строку в очередь; `replace=True` — сначала удаляет ЛЮБУЮ ещё не отправленную
+    строку той же пары (user_id, kind) в ОДНОЙ транзакции («последнее решение выигрывает» —
+    services.quiet_hours.REPLACEABLE_KINDS). `replace=False` — строки копятся списком."""
+    async with _connect() as db:
+        if replace:
+            await db.execute(
+                "DELETE FROM delayed_notifications WHERE user_id = ? AND kind = ? "
+                "AND sent_at IS NULL",
+                (user_id, kind),
+            )
+        cursor = await db.execute(
+            "INSERT INTO delayed_notifications (user_id, kind, payload, due_at, created_at) "
+            "VALUES (?, ?, ?, ?, ?)",
+            (user_id, kind, json.dumps(payload, ensure_ascii=False), due_at, created_at),
+        )
+        await db.commit()
+        return cursor.lastrowid
+
+
+async def list_due_delayed_notifications(now: str, limit: int = 100) -> list[dict]:
+    """Неотправленные строки с `due_at <= now`, в порядке постановки; `payload` уже разобран
+    из JSON обратно в dict."""
+    async with _connect() as db:
+        db.row_factory = aiosqlite.Row
+        async with db.execute(
+            "SELECT * FROM delayed_notifications WHERE sent_at IS NULL AND due_at <= ? "
+            "ORDER BY id LIMIT ?",
+            (now, int(limit)),
+        ) as cursor:
+            rows = [dict(row) for row in await cursor.fetchall()]
+    for row in rows:
+        try:
+            row["payload"] = json.loads(row["payload"])
+        except (TypeError, ValueError):
+            row["payload"] = {}
+    return rows
+
+
+async def mark_delayed_notification_sent(row_id: int, sent_at: str, error: str | None = None) -> None:
+    async with _connect() as db:
+        await db.execute(
+            "UPDATE delayed_notifications SET sent_at = ?, error = ? WHERE id = ?",
+            (sent_at, error, row_id),
+        )
+        await db.commit()
+
+
+async def count_pending_delayed_notifications() -> int:
+    async with _connect() as db:
+        async with db.execute(
+            "SELECT COUNT(*) FROM delayed_notifications WHERE sent_at IS NULL"
+        ) as cursor:
+            row = await cursor.fetchone()
+            return int(row[0]) if row else 0
 
 
 # ── Phase 19 (D-01): outbox побочных эффектов Mini App ─────────────────────────────────────
