@@ -8,6 +8,8 @@ from __future__ import annotations
 
 import asyncio
 
+import pytest
+
 import settings_ops
 from cities import ALL_CITIES, PER_CITY_SEP, city_codes
 from database import db as bot_db
@@ -468,3 +470,12 @@ def test_theme_preview_file_id_pattern_goes_through_file_proxy(tmp_path):
     resp = _preview(client, [{"key": "miniapp_theme_pattern", "value": file_id}])
     assert resp.status_code == 200, resp.text
     assert f"/app/api/file/{file_id}" in resp.json()["vars"]["light"]["--plate-pattern"]
+
+
+# ── quick 260904-de4 Task 5: счётчики склоняются — дефолты несут группу из трёх форм ────────
+
+@pytest.mark.parametrize("key", ["miniapp_settings_batch_bar_text", "miniapp_settings_tile_count_text"])
+def test_counter_defaults_carry_three_plural_forms(key):
+    default = SETTINGS_SCHEMA[key]["default"]
+    assert default.count("|") == 2, default
+    assert "{" in default and "}" in default

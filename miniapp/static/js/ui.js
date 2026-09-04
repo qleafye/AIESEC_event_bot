@@ -27,6 +27,30 @@ export function labelText(label) {
   return String(label || "").replace(LEADING_EMOJI_RE, "");
 }
 
+// Склонение счётчиков по-русски (quick 260904-de4, полировка E-настройки): шаблон реестра
+// несёт число (`{count}`/`{n}`) и, опционально, группу трёх форм через «|»
+// (`{форма1|форма2|форма3}` — 1/немного 2-4/остальное 5+, школьное правило с исключением
+// 11-14). Формы приходят ИЗ ШАБЛОНА — литералов множественного числа в этом файле нет
+// (сторож `_CYRILLIC` тестов фронта). Шаблон без группы (старое значение, уже сохранённое
+// менеджером) — просто подставляет число, ничего не ломает.
+const _PLURAL_GROUP_RE = /\{([^{}|]+)\|([^{}|]+)\|([^{}|]+)\}/;
+
+function _ruPluralForm(n, one, few, many) {
+  const mod10 = n % 10;
+  const mod100 = n % 100;
+  if (mod10 === 1 && mod100 !== 11) return one;
+  if (mod10 >= 2 && mod10 <= 4 && (mod100 < 12 || mod100 > 14)) return few;
+  return many;
+}
+
+export function formatCount(template, n) {
+  const withNumber = String(template || "").replace(/\{count\}/g, String(n)).replace(/\{n\}/g, String(n));
+  const match = _PLURAL_GROUP_RE.exec(withNumber);
+  if (!match) return withNumber;
+  const form = _ruPluralForm(Math.abs(n), match[1], match[2], match[3]);
+  return withNumber.slice(0, match.index) + form + withNumber.slice(match.index + match[0].length);
+}
+
 // Плоская строка списка (D-11): иконка/статус-точка/номер места слева, заголовок + мета-строка
 // (Label-роль) по центру, trailing (число/чип) справа. Разделитель — hairline на самой строке
 // (`.flat-row` в app.css), не рамка вокруг неё; последняя строка внутри `.flat-list` — без
