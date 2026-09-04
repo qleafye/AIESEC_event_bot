@@ -7,13 +7,17 @@ aiogram), правило статуса и постраничная выборк
 
     text пуст/длиннее ANSWER_MAX -> 400, без обращения к Bot API
     get_question -> 404 not_found
-    уже delivered -> {ok: false, reason: "already", by}
-    claim_question(...) -> проиграл и захватил НЕ ты -> тот же "already"
+    уже delivered -> {ok: false, reason: "already", by, item: _status_patch(row)}
+    claim_question(...) -> проиграл и захватил НЕ ты -> тот же "already" (+ item)
         (проиграл, но захват твой же, доставка не прошла в прошлый раз — тот же приём, что
         T-08-33 часть C / `handlers/admin.py::admin_reply_to_question`: это retry, не чужой
         ответ)
     -> telegram_api.send_message(...) -> ТОЛЬКО при успехе set_question_answer(...)
     -> {ok: true, status: "answered"}
+
+Quick 260904-kk6 (Q2): обе ветки `ok: false` дописывают `item` — ЧАСТИЧНЫЙ патч полей статуса
+(`_status_patch`, ниже), чтобы список на фронте перерисовал строку без перезагрузки экрана
+(до этой правки провал доставки/гонка захвата оставляли строку залипшей на «🆕 без ответа»).
 
 Сбой доставки (`TelegramApiError`) не откатывает захват — то же принятое ограничение, что у
 бота (см. `handlers/admin.py::_attempt_question_delivery`'s docstring): повторная отправка
@@ -76,6 +80,30 @@ async def _manager_name(p: Principal) -> str:
     if p.username:
         return f"@{p.username}"
     return f"Менеджер {p.telegram_id}"
+
+
+def _status_patch(row: dict) -> dict:
+    """Quick 260904-kk6 (Q2): ЧАСТИЧНЫЙ патч ровно тех полей `_item`, которые зависят от
+    статуса вопроса — status/status_label/stuck/answered_by_name/answered_at/can_answer.
+
+    Намеренно частичный, а не полный `_item(...)`: `get_question` (в отличие от
+    `list_questions_page`) не делает JOIN и не знает `user_full_name`/`user_username`/
+    `user_event_city` — полный `_item` затёр бы эти поля на фронте пустыми значениями при
+    слиянии патча в уже отрисованную строку списка.
+
+    T-kk6-01 (threat model): по той же причине сюда НЕ кладутся `question_text`/`user_id` и
+    что-либо о делегате — строка уже прошла city-scope на `GET`, а `get_question(qid)` scope
+    не проверяет; полный дамп строки мог бы отдать привязанному к городу менеджеру данные
+    чужого делегата.
+    """
+    return {
+        "status": question_status(row),
+        "status_label": status_label(row),
+        "stuck": is_stuck(row),
+        "answered_by_name": row.get("answered_by_name"),
+        "answered_at": format_stamp(row.get("answered_at")) if row.get("answered_at") else None,
+        "can_answer": question_status(row) != "answered",
+    }
 
 
 async def _item(row: dict, module_on: bool, city_labels: dict[str, str]) -> dict:
@@ -144,6 +172,10 @@ async def questions_list(
         "empty_text": await get_setting_typed("miniapp_empty_questions"),
         "answer_button": await get_setting_typed("miniapp_questions_answer_button"),
         "sent_toast": await get_setting_typed("miniapp_questions_sent_toast"),
+        # Quick 260904-kk6 (Q2): плейсхолдер поля ответа + подпись кнопки-тоггла — были
+        # литералом/безымянной кнопкой в questions.js.
+        "answer_placeholder": await get_setting_typed("miniapp_questions_answer_placeholder"),
+        "answer_toggle_label": await get_setting_typed("miniapp_questions_answer_toggle_label"),
     }
 
 
@@ -171,7 +203,9 @@ async def questions_answer(
     if row is None:
         raise HTTPException(404, {"reason": "not_found"})
     if row.get("delivered_at"):
-        return {"ok": False, "reason": "already", "by": row.get("answered_by_name")}
+        # Quick 260904-kk6 (Q2): патч из уже прочитанной строки — второго запроса в БД не
+        # делаем, `row` уже несёт актуальный статус.
+        return {"ok": False, "reason": "already", "by": row.get("answered_by_name"), "item": _status_patch(row)}
 
     manager_name = await _manager_name(p)
     won = await claim_question(qid, p.telegram_id, manager_name)
@@ -181,7 +215,10 @@ async def questions_answer(
             row2 and row2.get("answered_by") == p.telegram_id and not row2.get("delivered_at")
         )
         if not is_own_retry:
-            return {"ok": False, "reason": "already", "by": (row2 or {}).get("answered_by_name")}
+            return {
+                "ok": False, "reason": "already", "by": (row2 or {}).get("answered_by_name"),
+                **({"item": _status_patch(row2)} if row2 else {}),
+            }
 
     try:
         await telegram_api.send_message(
@@ -189,7 +226,14 @@ async def questions_answer(
         )
     except TelegramApiError as exc:
         logger.error("questions: не удалось доставить ответ %s (%s)", qid, exc.reason)
-        return {"ok": False, "reason": "delivery_failed", "text": DELIVERY_FAILED_TEXT}
+        # Quick 260904-kk6 (Q2): захват уже записан claim_question() выше — перечитываем
+        # факт из БД (не собираем патч руками), иначе status_patch мог бы разойтись с тем,
+        # что реально в строке.
+        row_after = await get_question(qid)
+        return {
+            "ok": False, "reason": "delivery_failed", "text": DELIVERY_FAILED_TEXT,
+            **({"item": _status_patch(row_after)} if row_after else {}),
+        }
 
     await set_question_answer(qid, text)
     return {"ok": True, "status": "answered"}

@@ -163,6 +163,9 @@ MINIAPP_KEYS = [
     "miniapp_empty_questions",
     "miniapp_questions_answer_button",
     "miniapp_questions_sent_toast",
+    # Quick 260904-kk6 (Q2): плейсхолдер поля ответа + подпись кнопки-тоггла (доступность)
+    "miniapp_questions_answer_placeholder",
+    "miniapp_questions_answer_toggle_label",
     # Phase 22 Plan 02 (WEB-SET-02/03, D-15): веб-экран «⚙️ Настройки» Mini App
     "miniapp_settings_search_placeholder_text",
     "miniapp_settings_search_count_text",
@@ -253,7 +256,9 @@ def test_exactly_144_miniapp_keys_and_no_extra():
     # miniapp_hub_rejected_heading_text/_body_text/_cta_text) (156 -> 162).
     # Quick 260904-aup Task 3 (UAT D10): +1 ключ имени-заглушки в плите профиля
     # (miniapp_profile_greeting_fallback_text) (162 -> 163).
-    assert len(MINIAPP_KEYS) == 163
+    # Quick 260904-kk6 (Q2): +2 текста экрана вопросов — плейсхолдер поля ответа и подпись
+    # кнопки-тоггла для скринридера (163 -> 165).
+    assert len(MINIAPP_KEYS) == 165
     present = sorted(k for k in SETTINGS_SCHEMA if k.startswith("miniapp_"))
     assert present == sorted(MINIAPP_KEYS)
 
@@ -305,7 +310,9 @@ def test_text_keys_have_human_defaults():
     # отклонена» (miniapp_hub_pending_days — "int", не считается здесь) (127 -> 132).
     # Quick 260904-aup Task 3 (UAT D10): +1 текстовый ключ имени-заглушки в плите профиля
     # (132 -> 133).
-    assert len(text_keys) == 133
+    # Quick 260904-kk6 (Q2): +2 текстовых ключа экрана вопросов — плейсхолдер поля ответа и
+    # подпись кнопки-тоггла (133 -> 135).
+    assert len(text_keys) == 135
     for key in text_keys:
         default = SETTINGS_SCHEMA[key]["default"]
         assert isinstance(default, str) and default.strip(), key
