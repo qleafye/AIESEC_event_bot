@@ -1590,6 +1590,12 @@ a.flat-row:active, button.flat-row:active { background: var(--surface-alt); }
 .plate--coins      { --plate-pattern-size: 1836px; --plate-pattern-x: -918px; --plate-pattern-y: -108px; }
 .plate--rank       { --plate-pattern-size:  972px; --plate-pattern-x:  -54px; --plate-pattern-y: -594px; }
 
+/* Quick 260904-8o3 Task 3 (E5/E6): мини-плита предпросмотра оформления живёт ВНУТРИ карточки
+   группы настроек, не на весь экран — снимаем bleed-margin .plate и уменьшаем плиту-герой,
+   геометрию паттерна не трогаем (наследуется от .plate--hub, тот же фрагмент, что у хаба). */
+.plate--preview { margin: 0 0 var(--sp-4); padding: var(--sp-4); border-radius: var(--radius-lg); }
+.plate--preview .plate-big { font-size: 28px; }
+
 /* Иконка монеты на плите — единственная роль --secondary на плите кроме её ребра. */
 .plate-coin { display: flex; color: var(--secondary); }
 .plate-coin .icon { width: 26px; height: 26px; }

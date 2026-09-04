@@ -2815,6 +2815,23 @@ SETTINGS_SCHEMA = {
         "prompt": "Заголовок панели, показывающей текст настройки как его увидит делегат.",
         "default": "Так увидит делегат",
     },
+    # Quick 260904-8o3 Task 3 (E5/E6): живая мини-плита в группе «🎨 Оформление» — реагирует на
+    # смену пресета/паттерна/шрифта ДО сохранения (POST /app/api/admin/theme/preview).
+    "miniapp_settings_theme_preview_heading_text": {
+        "type": "text", "group": "miniapp", "label": "🎨 Заголовок превью оформления",
+        "prompt": "Заголовок над мини-плитой предпросмотра оформления в настройках.",
+        "default": "Как это увидит делегат",
+    },
+    "miniapp_settings_theme_preview_eyebrow_text": {
+        "type": "text", "group": "miniapp", "label": "🎨 Надзаголовок мини-плиты превью",
+        "prompt": "Маленькая подпись над числом на мини-плите предпросмотра (например: «Твой баланс»).",
+        "default": "Твой баланс",
+    },
+    "miniapp_settings_theme_preview_sub_text": {
+        "type": "text", "group": "miniapp", "label": "🎨 Подпись под числом мини-плиты превью",
+        "prompt": "Подпись под числом-образцом на мини-плите предпросмотра оформления.",
+        "default": "монет на счету",
+    },
     "miniapp_settings_batch_bar_text": {
         "type": "text", "group": "miniapp", "label": "💾 Кнопка «Сохранить N изменений»",
         "prompt": (

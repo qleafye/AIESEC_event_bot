@@ -246,10 +246,14 @@ def _safe_hex(value, fallback: str) -> str:
     return value if isinstance(value, str) and _HEX6.match(value) else fallback
 
 
-def theme_css_text(resolved: dict) -> str:
-    """Собирает `:root { … }` + `:root[data-theme="dark"] { … }`. Не доверяет `resolved`
-    слепо (T-19.1-05) — каждое значение перепроверяется тем же регэкспом/enum'ом, что и в
-    `resolve_theme`, прежде чем попасть в фиксированный шаблон подстановки."""
+def theme_css_vars(resolved: dict) -> dict[str, dict[str, str]]:
+    """ЕДИНСТВЕННОЕ место, где собираются переменные оформления (quick 260904-8o3 Task 3,
+    T-8o3-03) — `theme_css_text` ниже и `POST /app/api/admin/theme/preview`
+    (`miniapp/routers/settings.py`) оба форматируют РЕЗУЛЬТАТ этой функции, второго места
+    сборки в проекте быть не должно. Не доверяет `resolved` слепо (T-19.1-05) — каждое
+    значение перепроверяется тем же регэкспом/enum'ом, что и в `resolve_theme`, прежде чем
+    попасть в возвращаемый словарь. Возвращает `{"light": {"--var": "значение", ...}, "dark":
+    {...}}` — ключи уже имена CSS-переменных (с двумя дефисами)."""
     preset_name = resolved.get("preset") if resolved.get("preset") in PRESETS else DEFAULT_PRESET
     preset = PRESETS[preset_name]
 
@@ -283,23 +287,36 @@ def theme_css_text(resolved: dict) -> str:
     else:
         pattern_url, pattern_size, pattern_x, pattern_y, pattern_opacity = PLATE_PATTERNS[preset["plate_pattern"]]
 
-    return (
-        ":root {\n"
-        f"  --accent: {accent};\n"
-        f"  --accent-text: {accent_text};\n"
-        f"  --secondary: {secondary};\n"
-        f"  --bg: {bg};\n"
-        f"  --font-heading: {font_family};\n"
-        f"  --font-heading-style: {font_style};\n"
-        f"  --plate-pattern: {pattern_url};\n"
-        f"  --plate-pattern-size: {pattern_size};\n"
-        f"  --plate-pattern-x: {pattern_x};\n"
-        f"  --plate-pattern-y: {pattern_y};\n"
-        f"  --plate-pattern-opacity: {pattern_opacity};\n"
-        "}\n"
-        ":root[data-theme=\"dark\"] {\n"
-        f"  --accent: {accent_dark};\n"
-        f"  --accent-text: {accent_text_dark};\n"
-        f"  --secondary: {secondary_dark};\n"
-        "}\n"
-    )
+    return {
+        "light": {
+            "--accent": accent,
+            "--accent-text": accent_text,
+            "--secondary": secondary,
+            "--bg": bg,
+            "--font-heading": font_family,
+            "--font-heading-style": font_style,
+            "--plate-pattern": pattern_url,
+            "--plate-pattern-size": pattern_size,
+            "--plate-pattern-x": pattern_x,
+            "--plate-pattern-y": pattern_y,
+            "--plate-pattern-opacity": pattern_opacity,
+        },
+        "dark": {
+            "--accent": accent_dark,
+            "--accent-text": accent_text_dark,
+            "--secondary": secondary_dark,
+        },
+    }
+
+
+def theme_css_text(resolved: dict) -> str:
+    """Собирает `:root { … }` + `:root[data-theme="dark"] { … }` — ТОЛЬКО форматирует
+    результат `theme_css_vars` в фиксированный шаблон подстановки, сама значений не считает
+    (T-19.1-05/T-8o3-03: второго места сборки переменных быть не должно)."""
+    css_vars = theme_css_vars(resolved)
+
+    def block(selector: str, pairs: dict[str, str]) -> str:
+        body = "".join(f"  {name}: {value};\n" for name, value in pairs.items())
+        return f"{selector} {{\n{body}}}\n"
+
+    return block(":root", css_vars["light"]) + block(':root[data-theme="dark"]', css_vars["dark"])

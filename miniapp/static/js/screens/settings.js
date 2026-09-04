@@ -626,6 +626,7 @@ async function renderSection(root, code, ctx) {
     batchBar.classList.toggle("off", count === 0);
     batchSpacer.classList.toggle("hidden", count === 0);
     repaintMatrixCells();
+    scheduleThemePreviewRefresh();
   }
 
   // Значение ячейки матрицы прямо сейчас (черновик, если есть, иначе последнее подтверждённое
@@ -639,6 +640,74 @@ async function renderSection(root, code, ctx) {
 
   function repaintMatrixCells() {
     for (const [key, paint] of matrixCellPaint) paint(matrixCellValue(key));
+  }
+
+  // ── превью оформления (quick 260904-8o3 Task 3, E5/E6): группа, помеченную сервером
+  // (group.theme_preview — решение «где рисовать» принимает сервер, тот же приём, что
+  // group.matrix), несёт собственную мини-плиту, которая обновляется по pending БЕЗ похода на
+  // «Сохранить». Единственная такая группа на странице раздела — themePreviewPlate хранит её
+  // DOM-узел; ключи темы во фронте не перечисляются вторым списком — берутся из
+  // group.items той же группы (сервер уже отфильтровал их через web_theme.THEME_KEYS). ────────
+  let themePreviewGroupItems = null; // group.items текущей theme_preview-группы (или null)
+  let themePreviewPlate = null;
+  let themePreviewTimer = null;
+  let themePreviewBusy = false;
+
+  function buildThemePreviewBlock(group) {
+    themePreviewGroupItems = group.items;
+    themePreviewPlate = h("section", { class: "plate plate--hub plate--preview" },
+      h("div", { class: "plate-eyebrow", text: texts.miniapp_settings_theme_preview_eyebrow_text || "" }),
+      h("div", { class: "plate-row" },
+        h("span", { class: "plate-big", text: "128" }),
+        h("span", { class: "plate-sub", text: texts.miniapp_settings_theme_preview_sub_text || "" }),
+      ),
+    );
+    return h("div", { class: "settings-theme-preview" },
+      h("p", { class: "label-role", text: texts.miniapp_settings_theme_preview_heading_text || "" }),
+      themePreviewPlate,
+    );
+  }
+
+  function applyThemePreviewVars(vars) {
+    if (!themePreviewPlate) return;
+    const dark = document.documentElement.dataset.theme === "dark";
+    for (const [name, value] of Object.entries((vars && vars.light) || {})) {
+      themePreviewPlate.style.setProperty(name, value);
+    }
+    if (dark) {
+      for (const [name, value] of Object.entries((vars && vars.dark) || {})) {
+        themePreviewPlate.style.setProperty(name, value);
+      }
+    }
+  }
+
+  async function refreshThemePreview() {
+    if (!themePreviewGroupItems || themePreviewBusy) return;
+    // group.items несёт ВСЕ ключи группы "miniapp" (оформление вперемешку с обычными
+    // текстами) — item.theme_key (сервер, _item_for) отделяет ключи оформления БЕЗ второго
+    // списка во фронте; иначе черновик неродственной текстовой настройки в той же группе
+    // ушёл бы в theme/preview, получил 403 not_editable и увёл весь экран в «нет доступа»
+    // (api.js::authErrorHandler реагирует на любой 403).
+    const changes = themePreviewGroupItems
+      .filter((item) => item.theme_key && pending.has(item.key))
+      .map((item) => ({ key: item.key, value: toBatchValue(pending.get(item.key)) }));
+    if (!changes.length) return;
+    themePreviewBusy = true;
+    try {
+      const resp = await api("/admin/theme/preview", { method: "POST", body: { changes } });
+      applyThemePreviewVars(resp.vars);
+    } catch (_) {
+      // Fail-soft (владелец 04.09, D-план): превью остаётся прежним, тоста нет — это
+      // необязательная подсказка, не путь сохранения.
+    } finally {
+      themePreviewBusy = false;
+    }
+  }
+
+  function scheduleThemePreviewRefresh() {
+    if (!themePreviewGroupItems) return;
+    if (themePreviewTimer) clearTimeout(themePreviewTimer);
+    themePreviewTimer = setTimeout(refreshThemePreview, 200);
   }
 
   function discardPending() {
@@ -1117,6 +1186,10 @@ async function renderSection(root, code, ctx) {
   // тело со строками (или матрицей — reg_questions, см. выше). ────────────────────────────
   function buildGroupCard(group, isFirst) {
     const rowsWrap = h("div", { class: "settings-group-body" });
+    if (group.theme_preview) {
+      rowsWrap.append(buildThemePreviewBlock(group));
+      scheduleThemePreviewRefresh(); // «один раз после первой отрисовки» (докстринг выше)
+    }
     if (group.matrix) {
       rowsWrap.append(buildMatrix(group));
     } else {
