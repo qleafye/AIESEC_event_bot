@@ -105,3 +105,13 @@ def test_hub_renders_tiles_only_for_non_delegate_with_form():
     assert not _HEX_OR_RGB_COLOR.search(text)
     assert "https://" not in text
 
+
+# ── D1 (quick 260904-de4): подсказка формата не задваивается на плите мастера ────────────
+
+def test_wizard_field_call_suppresses_duplicate_help():
+    """Плита мастера (`plate-sub`) уже рисует `spec.help`; `field()` рисует то же самое как
+    `.field-help` ВСЕГДА (см. `form.js::field`) — второй одинаковый абзац на экране, если не
+    погасить подсказку в спеке, отдаваемой полю."""
+    text = _js_without_comments(FORM_SCREEN_JS)
+    assert "{ ...spec, help: null }" in text
+
