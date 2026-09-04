@@ -89,6 +89,42 @@ def test_approved_delegate_gets_no_heading(client):
     assert body["heading"] is None
 
 
+def _seed_rejection(tid: int, reason: str | None):
+    """Сеет причину прямой записью в журнал (не гоняя путь отказа целиком) — тот же приём,
+    что `_expire` в `tests/test_miniapp_applications.py`. `effects_sent_at` заполнен — строка
+    выглядит как настоящее, уже применённое решение."""
+    _run(_sql(
+        "INSERT INTO application_decisions "
+        "(telegram_id, decision, reason, decided_by, decided_at, effects_due_at, effects_sent_at) "
+        "VALUES (?, 'rejected', ?, 999, '2026-01-01 00:00:00', '2026-01-01 00:00:00', "
+        "'2026-01-01 00:00:00')",
+        (tid, reason),
+    ))
+
+
+def test_rejected_delegate_with_reason_sees_reason_line(client):
+    _seed_rejection(REJECTED_ID, "Анкета заполнена не полностью")
+    resp = client.get("/app/api/hub/status", headers=_hdr(REJECTED_ID))
+    body = resp.json()
+    assert body["reason_line"] == "Причина: Анкета заполнена не полностью"
+    assert "{reason}" not in body["reason_line"]
+
+
+def test_rejected_delegate_without_reason_gets_no_reason_line(client):
+    # Старый отказ (до quick 260904-liz) или отказ без причины — reason_line = None, никакого
+    # «Причина: None» в выдаче.
+    resp = client.get("/app/api/hub/status", headers=_hdr(REJECTED_ID))
+    body = resp.json()
+    assert body["reason_line"] is None
+
+
+def test_pending_and_approved_have_no_reason_line(client):
+    body_pending = client.get("/app/api/hub/status", headers=_hdr(PENDING_ID)).json()
+    assert body_pending["reason_line"] is None
+    body_approved = client.get("/app/api/hub/status", headers=_hdr(DELEGATE_ID)).json()
+    assert body_approved["reason_line"] is None
+
+
 def test_unregistered_does_not_crash(client):
     # form_gate пропускает незарегистрированного (он тот, у кого ещё нет анкеты) — ручка не
     # должна падать 500, даже если по плану 260904-aup он читается как "approved" (пустая
