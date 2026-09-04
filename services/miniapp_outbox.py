@@ -23,6 +23,14 @@ Telegram или пересобирать таблицу самому — еди�
   derive_edit_facts` из уже записанной `reg_answer_history`/`users.status`.
 - `reg_resume_upload` -> `services.reg_finalize.handle_resume_upload(bot, ...)` — резюме,
   загруженное в Mini App: Nextcloud + ячейка «Резюме (ссылка)» + копия делегату в чат (D-05).
+- `reg_fsm_reset` (quick 260904-3vm, эстафета) -> сбрасывает FSM бота (`dp.storage`) для
+  `telegram_id` из payload: `storage.set_state(key, None)` + `storage.set_data(key, {})`, где
+  `key = StorageKey(bot_id=bot.id, chat_id=tid, user_id=tid)` (личка: chat_id == user_id, та
+  же идиома, что `_stamp_reg_step`). Требует `init_fsm_storage(dp.storage)`, вызванный из
+  `main.py` при старте — без него ветка логирует предупреждение и no-op (fail-soft: строка
+  всё равно выходит из очереди обработанной, ретраить нечего чинить сбоем БД). При
+  `reason="takeover"` дополнительно шлёт делегату `reg_handoff_to_app_text` — сбой отправки
+  ловится отдельным try/except и не должен приводить к ретраю сброса FSM.
 - `application_decided` -> `services.application_effects.apply_decision_effects(bot,
   telegram_id, status, reason)` (Phase 23, план 23-04, D-06) — приветствие/отказ делегату
   по заявке отбора + лист, тот же хвост, что и прямой вызов из `handlers/admin_moderation.py`.
@@ -57,11 +65,48 @@ from services.application_effects import apply_decision_effects, mass_approve_ef
 from services.game_digest import notify_submission
 from services.game_sync import request_resync
 from services.reg_finalize import post_finalize, derive_edit_facts, handle_resume_upload
+from settings_schema import get_setting_typed
 
 logger = logging.getLogger(__name__)
 
 DRAIN_LIMIT = 50
 MAX_ATTEMPTS = 5
+
+# Quick 260904-3vm (эстафета): set once at startup (main.py -> init_fsm_storage(dp.storage)),
+# same idiom as handlers/payment.py::init_payment_module. MemoryStorage бота никто извне не
+# сбрасывает — это единственный путь веб-процесса к FSM бота.
+_storage = None
+
+
+def init_fsm_storage(storage) -> None:
+    global _storage
+    _storage = storage
+
+
+async def _reset_fsm(bot, telegram_id: int, reason: str) -> None:
+    """Сбрасывает FSM бота для `telegram_id` и (только при takeover) уведомляет делегата.
+    Fail-soft: без `init_fsm_storage` — предупреждение, без падения (строка всё равно
+    считается обработанной, ретраить нечего чинить сбоем настройки процесса)."""
+    if _storage is None:
+        logger.warning(
+            "miniapp_outbox: reg_fsm_reset telegram_id=%s reason=%s — FSM storage не "
+            "инициализирован (init_fsm_storage не вызван), пропуск", telegram_id, reason,
+        )
+        return
+    from aiogram.fsm.storage.base import StorageKey
+
+    key = StorageKey(bot_id=bot.id, chat_id=telegram_id, user_id=telegram_id)
+    await _storage.set_state(key, None)
+    await _storage.set_data(key, {})
+    if reason == "takeover":
+        try:
+            text = await get_setting_typed("reg_handoff_to_app_text")
+            await bot.send_message(telegram_id, text)
+        except Exception as exc:
+            logger.warning(
+                "miniapp_outbox: reg_fsm_reset takeover-уведомление telegram_id=%s не "
+                "доставлено (%s)", telegram_id, exc,
+            )
 
 # Закрытый набор kind -> "просто попросить ребилд" (T-19-55). submission_created обрабатывается
 # отдельной веткой ниже (у неё другой обработчик, не request_resync).
@@ -100,6 +145,9 @@ async def _handle_row(bot, kind: str, payload: dict) -> None:
         await handle_resume_upload(
             bot, payload.get("telegram_id"), payload.get("file_id"), payload.get("filename")
         )
+        return
+    if kind == "reg_fsm_reset":
+        await _reset_fsm(bot, payload.get("telegram_id"), payload.get("reason"))
         return
     if kind == "application_decided":
         await apply_decision_effects(

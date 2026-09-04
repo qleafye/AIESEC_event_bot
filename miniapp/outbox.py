@@ -13,8 +13,15 @@
     reg_finalized        {telegram_id}
     reg_edited           {telegram_id}
     reg_resume_upload    {telegram_id, file_id, filename}
+    reg_fsm_reset        {telegram_id, reason}
     application_decided        {telegram_id, status, reason}
     application_mass_approved  {ids}
+
+`reg_fsm_reset` (quick 260904-3vm, эстафета) — `reason` ∈ {takeover, submitted}: разбирающий
+код (`services/miniapp_outbox.py`) сбрасывает FSM бота в `dp.storage` — MemoryStorage бота
+никто извне не сбрасывает, это единственный путь веб-процесса туда. При `reason="takeover"`
+делегату дополнительно уходит уведомление «анкета открыта в приложении»; при
+`reason="submitted"` — молча (приложение уже показало экран «Заявка принята»).
 
 Монеты через outbox НЕ ходят никогда: их начисляет сам `miniapp` в связке
 `claim_submission -> add_coins` (план 19-05); `coins_manual` — только уведомление делегату.
@@ -62,6 +69,7 @@ OUTBOX_KINDS = frozenset({
     "reg_finalized",
     "reg_edited",
     "reg_resume_upload",
+    "reg_fsm_reset",
     "application_decided",
     "application_mass_approved",
 })

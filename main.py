@@ -13,6 +13,7 @@ from services.scheduler import init_scheduler
 from services.allowlist import warm_allowlist_if_gating_on
 from services.sheets import ensure_sheet_header
 from services.background import spawn as _spawn, cancel_all as cancel_background_tasks
+import services.miniapp_outbox as miniapp_outbox
 from services.heartbeat import PollingHeartbeatMiddleware, heartbeat_loop, clear_heartbeat
 import services.sheets as sheets_service
 import services.proxy_session as proxy_session
@@ -363,6 +364,9 @@ async def main():
 
     # Register routers
     payment.init_payment_module(dp.storage)  # out-of-handler FSMContext for free/single-option path
+    # Quick 260904-3vm (эстафета): MemoryStorage бота никто извне не сбрасывает — это
+    # единственный путь веб-процесса (miniapp_outbox::reg_fsm_reset) к FSM бота.
+    miniapp_outbox.init_fsm_storage(dp.storage)
     dp.include_router(admin.router) # Admin first to intercept commands
     dp.include_router(payment.router)  # payment callbacks/states checked before registration
     dp.include_router(registration.router)
