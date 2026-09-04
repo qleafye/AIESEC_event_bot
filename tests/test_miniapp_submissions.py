@@ -29,6 +29,7 @@ from miniapp.routers.submissions import make_part_token
 
 from tests.test_miniapp_auth import TOKEN
 from tests.test_miniapp_routes import (
+    ADMIN_ID,
     DELEGATE_ID,
     GAME_MANAGER_ID,
     PENDING_ID,
@@ -111,9 +112,10 @@ def client(tmp_path):
     return _client(_cfg(db_path))
 
 
-def _upload(client, user_id, data: bytes, *, name="pic.jpg", ctype="image/jpeg", headers=None):
+def _upload(client, user_id, data: bytes, *, name="pic.jpg", ctype="image/jpeg", headers=None, target=None):
+    url = "/app/api/uploads" if not target else f"/app/api/uploads?target={target}"
     return client.post(
-        "/app/api/uploads", files={"file": (name, data, ctype)},
+        url, files={"file": (name, data, ctype)},
         headers={**_hdr(user_id), **(headers or {})},
     )
 
@@ -248,6 +250,29 @@ def test_upload_by_game_manager_uses_staff_caption(client, bot_api):
     assert call["chat_id"] == str(GAME_MANAGER_ID)
     assert call["caption"] == "обложка из приложения"
     assert resp.json()["part_token"] == make_part_token(SECRET, GAME_MANAGER_ID, "photo", "AgACphotoBIG")
+
+
+# ── target=settings_asset (quick 260904-8o3 Task 2, E3) ──────────────────────────────────
+
+def test_upload_settings_asset_uses_settings_caption_not_staff_or_delegate(client, bot_api):
+    _set("miniapp_upload_caption_settings", "сохранено в оформлении")
+    resp = _upload(client, ADMIN_ID, b"img", name="pattern.png", ctype="image/png", target="settings_asset")
+    assert resp.status_code == 200, resp.text
+    assert bot_api.calls[0]["caption"] == "сохранено в оформлении"
+
+
+def test_upload_settings_asset_without_settings_cap_is_403_not_editable(client, bot_api):
+    resp = _upload(client, GAME_MANAGER_ID, b"img", target="settings_asset")
+    assert resp.status_code == 403
+    assert resp.json() == {"reason": "not_editable"}
+    assert bot_api.calls == []
+
+
+def test_upload_without_target_keeps_delegate_and_staff_captions_unchanged(client, bot_api):
+    # Контроль: ветка target=settings_asset не задевает существующее поведение (сдача геймы).
+    resp = _upload(client, DELEGATE_ID, b"\xff\xd8" + b"x" * 1000)
+    assert resp.status_code == 200
+    assert bot_api.calls[0]["caption"] == "копия сдачи"
 
 
 def test_upload_non_image_goes_as_document(client, bot_api):

@@ -123,6 +123,28 @@ def test_shell_renders_logo_only_when_set(tmp_path):
     assert '/app/api/file/AgACAgIAAxkBAAI' in resp.text
 
 
+def test_shell_header_has_no_python_none_when_only_logo_is_set(tmp_path):
+    """Quick 260904-8o3 Task 2 (E3, «None» в шапке) — шапка рисуется ради логотипа (внешний
+    гейт `logo_file_id or event_name`), а `event_name` не задан (реестр: default=None).
+    Jinja печатает питоновский None буквой, если вывод названия безусловный — проверяем
+    отсутствие ИМЕННО `>None<` (не общее слово "None", оно может легитимно встретиться в
+    JS-бандле)."""
+    db_path = _use_tmp_db(tmp_path, "miniapp_front_none.db")
+    _seed(settings={"miniapp_enabled": "on", "miniapp_logo": "AgACAgIAAxkBAAI"})
+    resp = _client(db_path).get("/app")
+    assert resp.status_code == 200
+    assert ">None<" not in resp.text
+    assert '/app/api/file/AgACAgIAAxkBAAI' in resp.text  # шапка всё же рисуется (ради лого)
+
+
+def test_shell_header_shows_event_name_when_set(tmp_path):
+    db_path = _use_tmp_db(tmp_path, "miniapp_front_name.db")
+    _standard_seed()
+    resp = _client(db_path).get("/app")
+    assert resp.status_code == 200
+    assert '<div class="event-name">форума YouLead</div>' in resp.text
+
+
 def test_shell_escapes_registry_texts(tmp_path):
     db_path = _use_tmp_db(tmp_path, "miniapp_front_xss.db")
     _standard_seed()
@@ -1352,9 +1374,11 @@ def test_settings_screen_covers_batch_response_branches():
 
 def test_settings_screen_reuses_existing_upload_route():
     """Фото/файл реестра идут тем же staff-путём, что резюме делегата (план 19-04/21-10) —
-    экран не заводит своего маршрута загрузки."""
+    экран не заводит своего маршрута загрузки. Quick 260904-8o3 Task 2 (E3): загрузка ассета
+    оформления добавляет ЯВНЫЙ контекст `target=settings_asset` (собственная подпись,
+    submissions.py::upload_part), маршрут при этом тот же `/uploads`, не отдельный."""
     text = _js_without_comments(SETTINGS_JS)
-    assert 'api("/uploads"' in text
+    assert 'api("/uploads?target=settings_asset"' in text
     assert 'api("/uploads/limits")' in text
     assert "/app/api/admin/uploads" not in text and "settings/upload" not in text
 
