@@ -101,11 +101,19 @@ def _profile_columns() -> dict[str, tuple[str, ...]]:
 _BOOL_COLUMNS = {"work_status": ("Да", "Нет"), "is_ambassador_candidate": ("Да", None)}
 
 
+_FALSY_BOOL_STRINGS = {"0", "-", "нет", "false", "no"}
+
+
 def _value(user: dict, column: str) -> str | None:
     raw = user.get(column)
     if column in _BOOL_COLUMNS:
+        # Quick 260904-aup (D5): строка «0» истинна в Python (`if "0":`), поэтому
+        # `is_ambassador_candidate = "0"` раньше отдавал «Да» — явный список «делегат не
+        # отмечал»: пусто/None/0/"0"/"-"/«нет»/«Нет» (регистронезависимо). Второй копии этого
+        # правила в проекте нет.
         yes, no = _BOOL_COLUMNS[column]
-        return yes if raw else no
+        is_falsy = not raw or str(raw).strip().lower() in _FALSY_BOOL_STRINGS
+        return no if is_falsy else yes
     if raw is None:
         return None
     text = str(raw).strip()
@@ -120,14 +128,28 @@ async def _enabled_label_keys(user: dict) -> set[str]:
     797b0f0 сделал для `reg_engine.form_spec` мастера анкеты — движок решения «включён ли шаг»
     один (`reg_engine.enabled_steps`), второй копии условий здесь не заводится. Текущие ответы
     подмешиваются ТОЛЬКО чтобы разрешить условные шаги (education_status/attendance_format/
-    arrival/bed_sharing/work_status) — `user` не мутируется, копия дописывается новым словарём."""
+    arrival/bed_sharing/work_status) — `user` не мутируется, копия дописывается новым словарём.
+
+    Известное ограничение (quick 260904-aup, не чинится в этом квике): анкета, НАЧАТАЯ ИЗ
+    ПРИЛОЖЕНИЯ, сегодня вообще не переносит метку кампании (`src_*`) в `users` — финал читает
+    только `draft["answers"]`, `draft["meta"]` не читает (в отличие от чата, где
+    `_start_registration_flow` пишет `source_from_tag` в `meta_patch`). У такого делегата
+    `users.source_from_tag` всегда 0, вопрос «Источник» задаётся и его ответ — собственный,
+    что и есть корректное поведение для этого случая (метки у него на самом деле не было)."""
     # Quick 260904-3vm (D16, тот же контур): персистентный трек делегата авторитетен — короткое
     # промо-окно (registration_mode=short) не должно перебивать УЖЕ зарегистрированного full-
     # трек делегата веб-профилем. resolve_track зовётся ТОЛЬКО когда трек не известен (пустой
     # candidate) — тот же контракт, что reg_engine.form_spec ниже по плану.
     track = user.get("participant_type") or await reg_engine.resolve_track(None, user.get("event_city"))
     answers = reg_engine.answers_from_user_row(user)
-    enabled = await reg_engine.enabled_steps({**answers, "participant_type": track})
+    # Quick 260904-aup (D5, «Источник»): персистентный признак «источник пришёл из рекламной
+    # метки, делегат его не вводил» (`users.source_from_tag`) решает, включён ли шаг "source" —
+    # то же правило, что уже применяет мастер анкеты (`reg_engine.enabled_steps`), второй копии
+    # «прятать источник в профиле» здесь не заводится.
+    enabled = await reg_engine.enabled_steps({
+        **answers, "participant_type": track,
+        "_source_from_tag": bool(user.get("source_from_tag")),
+    })
     return {reg_engine.label_key_for(step_key) for step_key in enabled}
 
 

@@ -148,6 +148,25 @@ def test_profile_short_track_shows_only_short_track_questions(client):
     assert body["form_total"] == 2
 
 
+def test_profile_short_mode_null_track_shows_only_short_questions_d4(client):
+    """UAT D4 regression guard (quick 260904-aup Task 2): владелец 03.09 сообщил «в веб
+    подсасываются вопросы с полной формы, даже если выбран short-трек» — по словам владельца,
+    тот же корень, что D16 (quick 260904-3vm), уже починен в `_enabled_label_keys`
+    (`resolve_track` зовётся, когда трек делегата пуст). Этот тест — сторож поверх фикса, не
+    новый фикс: `participant_type=None` (делегат без своего трека) при глобальном
+    `registration_mode=short` обязан видеть только короткий набор вопросов. Если сторож
+    покраснеет — чинить точку резолва трека в профиле, а не заводить фильтр-заплату."""
+    _set("registration_mode", "short")
+    _set("reg_q_age__short", "on")
+    _set("reg_q_vk__short", "on")
+    _fill_profile(DELEGATE_ID, participant_type=None, age=21, vk_username="@ivan", university="МГУ")
+    body = client.get("/app/api/profile", headers=_hdr(DELEGATE_ID)).json()
+    field_keys = {f["key"] for f in body["fields"]}
+    assert field_keys == {"reg_q_age", "reg_q_vk"}
+    assert "reg_q_university" not in field_keys
+    assert body["form_total"] == 2
+
+
 def test_profile_form_progress_reflects_filled_and_total(client):
     body = client.get("/app/api/profile", headers=_hdr(DELEGATE_ID)).json()
     assert body["form_filled"] <= body["form_total"]

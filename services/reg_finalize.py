@@ -164,6 +164,15 @@ async def finalize_data(telegram_id: int, username: str | None, draft: dict) -> 
             # тихо поглощённым, иначе делегат уверен, что зарегистрировался, а строки нет.
             await add_user(data)
 
+            # Quick 260904-aup (D5, «Источник»): узкий UPDATE — тот же приём, которым ниже по
+            # этой же функции post_finalize дописывает `resume_url` (не разрастание большого
+            # INSERT в add_user). `draft["meta"]` — единственное место, где ещё жив признак
+            # «источник — из деп-линка», к моменту delete_reg_draft ниже он исчезнет.
+            if (draft.get("meta") or {}).get("source_from_tag"):
+                await update_user_answers(
+                    telegram_id, {"source_from_tag": 1}, allowed_columns=["source_from_tag"]
+                )
+
             reg_mode = await get_setting_typed("registration_mode")
             full_setting = await get_setting_typed("full_approval")
             short_setting = await get_setting_typed("short_approval")

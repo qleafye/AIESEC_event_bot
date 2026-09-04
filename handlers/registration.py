@@ -1365,6 +1365,13 @@ async def _start_registration_flow(message: types.Message, state: FSMContext, re
             meta_patch["referrer_id"] = saved_referrer_id
         if saved_source_tag:
             meta_patch["source"] = saved_source_tag
+            # Quick 260904-aup (D5, «Источник»): персистентный признак для профиля Mini App —
+            # ТОЛЬКО когда источник пришёл из деп-линка (source_from_tag выше), не просто
+            # потому что значение source вообще есть (оно есть и у делегата, ответившего
+            # вопрос «Источник» сам). finalize_data подхватит его из draft["meta"] и запишет
+            # в users.source_from_tag узким UPDATE (services/reg_finalize.py).
+            if source_from_tag:
+                meta_patch["source_from_tag"] = True
         ver = await upsert_reg_draft(
             message.from_user.id, kind=draft_kind, participant_type=saved_track,
             event_city=saved_city, source="bot", meta_patch=meta_patch or None,

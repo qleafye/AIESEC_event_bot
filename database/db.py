@@ -479,6 +479,13 @@ async def init_db():
         # already funnels through, so profile.py never needs to know which path fired.
         await _ensure_column(db, "users", "approved_at", "TEXT")
 
+        # Quick 260904-aup (UAT D5, «Источник»): персистентный признак «источник пришёл из
+        # рекламной метки кампании (src_*), делегат его не вводил» — `_source_from_tag` живёт
+        # только в FSM/reg_drafts.meta, а черновик удаляется после финализации, поэтому профиль
+        # не мог восстановить причину и печатал метку кампании как ответ делегата. NULL/0 —
+        # старые/нетронутые строки: вопрос «Источник» в профиле показывается как раньше.
+        await _ensure_column(db, "users", "source_from_tag", "INTEGER DEFAULT 0")
+
         # `content` stores a file_id for photo/pdf proof, raw text for text/link proof — the
         # project never writes uploaded files to disk (README/CLAUDE.md file_id pattern).
         await db.execute('''

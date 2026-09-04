@@ -131,12 +131,17 @@ REG_STEP_TYPES = {step_key: step_type for step_key, _sk, step_type in REG_FLOW}
 
 # Phase 07.3 (04, RET-02): step_key -> users column name. EXPLICIT map — most REG_FLOW keys
 # match their column 1:1, but "vk" writes vk_username and "ambassador" writes
-# is_ambassador_candidate. "resume" stays in the map as an identity entry (three real columns:
-# resume_file_id/resume_text/resume_url) but is excluded from RECALLABLE_STEPS — a raw
-# file_id/URL is meaningless to a human (Pitfall 3).
+# is_ambassador_candidate. "resume" stays in the map, but is excluded from RECALLABLE_STEPS —
+# a raw file_id/URL is meaningless to a human (Pitfall 3).
 STEP_TO_COLUMN = {step_key: step_key for step_key, _sk, _t in REG_FLOW}
 STEP_TO_COLUMN["vk"] = "vk_username"
 STEP_TO_COLUMN["ambassador"] = "is_ambassador_candidate"
+# Quick 260904-aup (D6): БЫЛА идентити-запись "resume" -> "resume" — колонки с таким именем в
+# `users` нет (там resume_file_id/resume_text/resume_url), поэтому apply_answer клал текстовый
+# ответ шага «резюме» из Mini App в reg_drafts.answers["resume"], а add_user такую колонку не
+# знал — значение молча пропадало на финализации. Бот этой дыры не имел: он пишет resume_text
+# напрямую (handlers/reg_flow.py::process_resume_text), минуя STEP_TO_COLUMN. Теперь совпадают.
+STEP_TO_COLUMN["resume"] = "resume_text"
 # ФИО спрашивается ВНЕ REG_FLOW (_ask_full_name, до движка шагов) — колонка совпадает с ключом.
 STEP_TO_COLUMN["full_name"] = "full_name"
 RECALLABLE_STEPS = {k for k in STEP_TO_COLUMN if k != "resume"}
@@ -605,6 +610,10 @@ def answer_columns() -> list[str]:
 _COLUMN_TO_STEP: dict[str, str] = {}
 for _step_key, _col in STEP_TO_COLUMN.items():
     _COLUMN_TO_STEP.setdefault(_col, _step_key)
+# Quick 260904-aup (D6): legacy-алиас для делегата, у которого приложение уже открыто со
+# старой спекой шага (колонка "resume") в момент деплоя фикса выше — PATCH со старым именем
+# колонки не должен ловить 400 bad_field. Новые ответы всегда идут в "resume_text".
+_COLUMN_TO_STEP.setdefault("resume", "resume")
 
 
 def column_to_step(column: str) -> str | None:
