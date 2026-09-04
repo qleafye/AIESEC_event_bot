@@ -16,6 +16,7 @@ import io
 import json
 import os
 import re
+from datetime import datetime
 
 from aiogram import F, types, Bot
 from aiogram.exceptions import TelegramRetryAfter
@@ -388,13 +389,62 @@ async def broadcast_schedule_when(message: types.Message, state: FSMContext):
     if when <= _now_moscow_naive():
         await message.answer("❌ Это время уже прошло. Введите будущую дату.")
         return
+    # Quick 260904-dq1: рассылка не привязана к одному городу — окно ГЛОБАЛЬНОЕ
+    # (window_for_city(None)). Тумблер выключен / окна нет / время вне окна — шаг работает
+    # БЕЗ единого лишнего сообщения, байт-в-байт как раньше.
+    from services import quiet_hours
+    window = await quiet_hours.window_for_city(None)
+    if window is not None and quiet_hours.is_quiet(when, *window):
+        start, end = window
+        window_end = quiet_hours.next_window_end(when, start, end)
+        await state.update_data(
+            schedule_dt_pending=_fmt_dt(when),
+            schedule_dt_shift=_fmt_dt(window_end),
+        )
+        kb = InlineKeyboardMarkup(inline_keyboard=[[
+            InlineKeyboardButton(
+                text=f"📨 Отправить в {window_end.strftime('%H:%M')}",
+                callback_data="bcast_quiet:shift",
+            ),
+            InlineKeyboardButton(text="🌙 Всё равно в это время", callback_data="bcast_quiet:keep"),
+        ]])
+        await message.answer(
+            f"🌙 Это время попадёт в тихие часы ({start.strftime('%H:%M')}–"
+            f"{end.strftime('%H:%M')}) — делегаты получат рассылку ночью.",
+            reply_markup=kb,
+        )
+        return
+    await _confirm_broadcast_schedule(message, state, when)
+
+
+async def _confirm_broadcast_schedule(target, state: FSMContext, when: datetime) -> None:
+    """Хвост шага «когда» — общий для прямого ввода и обеих кнопок `bcast_quiet:*`."""
     await state.update_data(schedule_dt=when)
-    await message.answer(
+    await target.answer(
         f"✅ Запланировано на {when.strftime('%d.%m.%Y %H:%M')}.\n"
         "Теперь отправьте сообщение (текст или фото с подписью) для рассылки.",
         reply_markup=get_cancel_kb(),
     )
     await state.set_state(Broadcast.schedule_message)
+
+
+@router.callback_query(F.data.startswith("bcast_quiet:"), Broadcast.schedule_when)
+async def broadcast_schedule_quiet_choice(callback: types.CallbackQuery, state: FSMContext):
+    action = callback.data.split(":", 1)[1]
+    data = await state.get_data()
+    pending_raw = data.get("schedule_dt_pending")
+    if not pending_raw:
+        await callback.answer()
+        return
+    shift_raw = data.get("schedule_dt_shift")
+    raw = shift_raw if action == "shift" and shift_raw else pending_raw
+    when = datetime.strptime(raw, "%Y-%m-%d %H:%M:%S")
+    await callback.answer()
+    try:
+        await callback.message.delete()
+    except Exception:
+        pass
+    await _confirm_broadcast_schedule(callback.message, state, when)
 
 
 @router.message(Broadcast.schedule_message)
