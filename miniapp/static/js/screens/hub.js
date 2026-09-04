@@ -13,6 +13,11 @@ import { icon } from "../icons.js";
 import { countUp } from "../motion.js";
 import { flatRow, sectionTitle, labelText, tile } from "../ui.js";
 
+// Quick 260904-aup (UAT D11 + Q4): разделение ролей — СЕРВЕР (`me.show_onboarding`, `/app/api/me`)
+// решает, кому вообще положено видеть привет-экран (не сотруднику и не делегату с уже поданной
+// анкетой), localStorage ниже по-прежнему решает только «показывали ли уже НА ЭТОМ устройстве».
+// Раньше гейта на сервере не было — сотрудник и делегат с одобренной анкетой видели экран
+// заново на новом устройстве или после очистки localStorage.
 const ONBOARDING_KEY = "aiesec_miniapp_onboarding_seen_v1";
 
 function hasSeenOnboarding() {
@@ -514,7 +519,7 @@ export async function render(root, params, ctx) {
   const { setMainButton } = ctx;
   setMainButton(null); // хаб — дом; MainButton здесь не показывается (D-10 вариант C)
 
-  if (!hasSeenOnboarding()) {
+  if (ctx.me.show_onboarding && !hasSeenOnboarding()) {
     renderOnboarding(root, ctx, () => {
       root.replaceChildren();
       renderHub(root, ctx);
