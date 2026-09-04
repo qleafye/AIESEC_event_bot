@@ -32,7 +32,9 @@
     {% if logo_file_id %}
     <img class="logo" src="/app/api/file/{{ logo_file_id }}" alt="">
     {% endif %}
+    {% if event_name %}
     <div class="event-name">{{ event_name }}</div>
+    {% endif %}
   </header>
   {% endif %}
   {% if disabled_text %}

@@ -976,7 +976,10 @@ async function renderSection(root, code, ctx) {
     try {
       const form = new FormData();
       form.append("file", file, file.name);
-      const res = await api("/uploads", { method: "POST", form });
+      // Quick 260904-8o3 Task 2 (E3): контекст загрузки — явно от клиента (не по правам
+      // менеджера, submissions.py::upload_part), иначе менеджер-делегат получает подпись
+      // «копия сдачи» вместо подписи ассета оформления.
+      const res = await api("/uploads?target=settings_asset", { method: "POST", form });
       fileNames.set(item.key, file.name);
       pending.set(item.key, res.content);
       updateBatchBar();
