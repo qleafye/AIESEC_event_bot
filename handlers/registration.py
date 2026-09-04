@@ -563,7 +563,13 @@ async def _sync_draft_out(telegram_id: int, state: FSMContext, data: dict, step_
     """Phase 21 (21-09, Pattern 3): пишет только что данный в чате ответ (и текущий шаг) в
     общий reg_drafts, чтобы Mini App видел прогресс бота в реальном времени. Fail-soft — тот же
     посыл, что и у _stamp_reg_step: любая ошибка логируется и НЕ блокирует переход к следующему
-    вопросу."""
+    вопросу.
+
+    Quick 260904-3vm (эстафета): сознательно НЕ передаёт `active_surface` — единственный путь
+    бота к записи ответа теперь проходит через `handlers/reg_handoff.py::RegHandoffGuard`
+    (апдейт, дошедший до этой функции, уже прошёл гвард, т.е. владение и так у бота). Безусловный
+    штамп 'bot' на КАЖДОМ ходе означал бы тихую кражу анкеты у приложения любым апдейтом,
+    проскочившим мимо гварда — ровно ту беззвучную смену владельца, которую эстафета убирает."""
     try:
         kind = data.get("_draft_kind") or "new"
         patch = {answered_col: data.get(answered_col)} if answered_col else None
@@ -1357,6 +1363,9 @@ async def _start_registration_flow(message: types.Message, state: FSMContext, re
         ver = await upsert_reg_draft(
             message.from_user.id, kind=draft_kind, participant_type=saved_track,
             event_city=saved_city, source="bot", meta_patch=meta_patch or None,
+            # Quick 260904-3vm (эстафета): старт анкеты в чате ВСЕГДА забирает владение —
+            # неважно, был ли черновик до этого пуст или держался приложением.
+            active_surface="bot",
         )
         await state.update_data(_draft_version=ver)
     except Exception as e:
@@ -2081,3 +2090,8 @@ from handlers.reg_consent import maybe_offer_consent_recollect  # noqa: E402  --
 # very TAIL of registration.router (after consent_renew_accept), so the golden order+filter
 # snapshot only ever gets APPENDED to, never reordered.
 from handlers import reg_resume  # noqa: E402
+
+# Quick 260904-3vm (эстафета): imported LAST OF ALL — registers RegHandoffGuard as OUTER
+# middleware on registration.router (message + callback_query) and the reg_handoff:to_bot
+# callback at the very TAIL, same seam pattern as reg_resume just above.
+from handlers import reg_handoff  # noqa: E402
