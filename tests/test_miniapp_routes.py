@@ -55,9 +55,14 @@ async def _seed_async(*, staff=None, settings=None, users=None):
                 (telegram_id, role, ADMIN_ID, "2026-01-01 00:00:00", city),
             )
         for telegram_id, status in users or []:
+            # Quick 260904-3vm (D15): реальная анкета, даже отклонённая/на проверке, несёт
+            # непустой registration_date — has_submitted_anketa проверяет именно это поле, не
+            # факт наличия строки. Без даты «одобренный» тестовый делегат читался бы как «ещё
+            # не подавал анкету» (kind='new' вместо 'edit') во всех потребителях этой фикстуры.
             await conn.execute(
-                "INSERT INTO users (telegram_id, full_name, status) VALUES (?, ?, ?)",
-                (telegram_id, f"User {telegram_id}", status),
+                "INSERT INTO users (telegram_id, full_name, status, registration_date) "
+                "VALUES (?, ?, ?, ?)",
+                (telegram_id, f"User {telegram_id}", status, "2026-01-01 00:00:00"),
             )
         for key, value in (settings or {}).items():
             await conn.execute(
@@ -135,7 +140,12 @@ def _standard_seed():
             (PENDING_ID, "pending"),
             (REJECTED_ID, "rejected"),
         ],
-        settings={"miniapp_enabled": "on", "event_name": "форума YouLead"},
+        # Quick 260904-3vm (D16): реестр по умолчанию несёт registration_mode=short (промо-окно
+        # запуска) — без явного "full" здесь общий набор миниапп-тестов, писавшихся ДО фикса
+        # D16, молча переехал бы на короткий трек (никакого __short-переопределения у них нет,
+        # а короткий трек не наследует общий reg_q_* при отсутствии override). Тесты короткого
+        # режима переопределяют этот ключ явно (`_set("registration_mode", "short")`).
+        settings={"miniapp_enabled": "on", "event_name": "форума YouLead", "registration_mode": "full"},
     )
 
 
