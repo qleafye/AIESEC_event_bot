@@ -56,7 +56,13 @@ KNOWN_OVERAGES: dict[str, tuple[int, str]] = {
         "(Phase 14/16)",
     ),
     "admin_settings.py": (
-        2161,
+        2174,
+        "+13 строк (quick 260904-dq1, «🌙 Тихие часы») -- три текстовых ключа в "
+        "_APPS_FIELD_ORDER (редактор экрана и per-city пикер достаются бесплатно), строка "
+        "тумблера quiet_hours_toggle_text в settings_toggle_rows и хендлер toggle_quiet_hours "
+        "по форме toggle_pending_reminder; сам механизм окна/очереди живёт в "
+        "services/quiet_hours.py, нового экрана бота нет; потолок поднят до фактического "
+        "размера. "
         "Phase 22 (22-01, WEB-SET-01/04, D-12): _apply_event_type_preset/_per_city_visible_codes/"
         "HTML_SETTINGS/_base_setting_key/_SHEET_TAB_WRITE_MODE/_after_tab_setting_saved/"
         "_tab_confirm_text/_tab_check_failed_warning вынесены в корневой aiogram-free "

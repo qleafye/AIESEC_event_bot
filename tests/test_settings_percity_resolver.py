@@ -50,6 +50,9 @@ EXPECTED_PER_CITY_KEYS = {
     # проверке» — per_city, как соседний miniapp_hub_countdown_date выше: у разных городов
     # модерация может идти с разной скоростью.
     "miniapp_hub_pending_days",
+    # Quick 260904-dq1: часы тишины у Владивостока и Москвы разные — «с»/«до» per_city, а
+    # сам тумблер quiet_hours_enabled — нет (фича либо есть, либо нет, одна на событие).
+    "quiet_hours_start", "quiet_hours_end",
 }
 
 
