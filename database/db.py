@@ -302,6 +302,11 @@ async def init_db():
                 submitting_at TEXT
             )
         ''')
+        # Quick 260904-3vm (эстафета вместо двустороннего синхрона): кто сейчас владеет
+        # черновиком — 'bot' | 'app' | NULL. NULL у строк, созданных до этой фичи, читается
+        # как 'bot' (см. services/reg_handoff.py::draft_holder) — их всегда заводил бот,
+        # отдельного backfill не делаем.
+        await _ensure_column(db, "reg_drafts", "active_surface", "TEXT")
 
         # Phase 21 (FORM-SYNC-04, D-15): append-only edit trail — "было → стало" for every
         # narrow update_user_answers() call, shown to the manager via «🕓 История» (plan 21-07)
@@ -1445,6 +1450,7 @@ async def upsert_reg_draft(
     patch: dict | None = None,
     meta_patch: dict | None = None,
     source: str,
+    active_surface: str | None = None,
 ) -> int:
     """One short transaction: SELECT the current row (if any), merge `patch` into `answers`
     in Python, bump `version`, stamp `meta["field_versions"][col] = new_version` for every
@@ -1452,7 +1458,13 @@ async def upsert_reg_draft(
     Keys with a leading underscore in `patch` are client-side scratch (e.g. `_client_ts`) and
     are filtered out before they ever touch `answers`. `source` is who is writing right now
     ('bot' | 'miniapp') — stored as `updated_by` so the OTHER surface can show "обновлено в
-    чате/приложении" on refetch. Returns the new version."""
+    чате/приложении" on refetch. Returns the new version.
+
+    `active_surface` (quick 260904-3vm, эстафета) — explicit ownership stamp. On UPDATE it is
+    written with COALESCE so a caller that does not pass it (the common per-step write) never
+    silently steals ownership from whoever holds the draft (see `_sync_draft_out` comment in
+    `handlers/registration.py` for why that matters). On INSERT — whoever creates the row owns
+    it: `active_surface or ("app" if source == "miniapp" else "bot")`."""
     now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     clean_patch = {k: v for k, v in (patch or {}).items() if not k.startswith("_")}
 
@@ -1487,23 +1499,39 @@ async def upsert_reg_draft(
             await db.execute(
                 "UPDATE reg_drafts SET kind = ?, participant_type = COALESCE(?, participant_type), "
                 "event_city = COALESCE(?, event_city), answers = ?, meta = ?, "
-                "step = COALESCE(?, step), version = ?, updated_by = ?, updated_at = ? "
+                "step = COALESCE(?, step), version = ?, updated_by = ?, updated_at = ?, "
+                "active_surface = COALESCE(?, active_surface) "
                 "WHERE telegram_id = ?",
                 (kind, participant_type, event_city, answers_json, meta_json, step,
-                 new_version, source, now, telegram_id),
+                 new_version, source, now, active_surface, telegram_id),
             )
         else:
+            surface = active_surface or ("app" if source == "miniapp" else "bot")
             await db.execute(
                 "INSERT INTO reg_drafts (telegram_id, kind, participant_type, event_city, "
-                "answers, meta, step, version, updated_by, updated_at, created_at, submitting_at) "
-                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL)",
+                "answers, meta, step, version, updated_by, updated_at, created_at, submitting_at, "
+                "active_surface) "
+                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, ?)",
                 (telegram_id, kind, participant_type, event_city, answers_json, meta_json,
-                 step, new_version, source, now, now),
+                 step, new_version, source, now, now, surface),
             )
         await db.commit()
         # Log step/version only — never the answers payload (T-21-08, PII).
         logger.info("reg_draft upsert telegram_id=%s step=%s version=%s", telegram_id, step, new_version)
         return new_version
+
+
+async def set_reg_draft_surface(telegram_id: int, surface: str) -> None:
+    """Меняет ТОЛЬКО владение (quick 260904-3vm) — `version`/`answers`/`updated_at` не трогает,
+    т.к. это не правка анкеты, а передача владения между поверхностями. Идемпотентно:
+    отсутствующая строка — no-op (черновика ещё нет, отбирать нечего)."""
+    async with _connect() as db:
+        await db.execute(
+            "UPDATE reg_drafts SET active_surface = ? WHERE telegram_id = ?",
+            (surface, telegram_id),
+        )
+        await db.commit()
+        logger.info("reg_draft surface telegram_id=%s surface=%s", telegram_id, surface)
 
 
 async def claim_reg_draft(telegram_id: int) -> dict | None:

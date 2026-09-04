@@ -807,6 +807,27 @@ def has_prior_resume(user_row: dict | None) -> bool:
     )
 
 
+def has_submitted_anketa(user_row: dict | None, season: str | None) -> bool:
+    """Quick 260904-3vm (D15): «анкета реально подана в ТЕКУЩЕМ сезоне» — намеренно НЕ то же
+    самое, что «есть строка `users`». Экран «Изменение анкеты» обязан появляться только у
+    того, кто анкету подал; пустой `full_name`/`registration_date` при статусе approved —
+    артефакт импорта (например, предзаведённая строка амбассадора/менеджера), а не поданная
+    анкета — вот почему признак «подана» = непустой `registration_date`, а не факт наличия
+    строки или статус ≠ rejected (это раньше и давало D15: делегат без единого ответа видел
+    пустой экран правки поверх реально заполненного черновика).
+
+    True только когда ВСЕ условия разом: строка есть, её `season` совпадает с переданным
+    `season`, статус ≠ 'rejected' и `registration_date` непустой."""
+    if not user_row:
+        return False
+    if season and user_row.get("season") != season:
+        return False
+    status = user_row.get("status") or "approved"
+    if status == "rejected":
+        return False
+    return bool(user_row.get("registration_date"))
+
+
 def is_returning_row(user: dict | None, event_season: str | None) -> bool:
     """«прошлый делегат» = has a users row AND (status is 'rejected' OR their row's `season`
     is set and differs from the currently configured `event_season`). Перенос дословный из
