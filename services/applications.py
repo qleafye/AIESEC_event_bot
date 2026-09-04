@@ -44,6 +44,7 @@ from database.db import (
     claim_due_application_decisions,
     get_answer_history,
     get_application_decision,
+    get_last_application_decision,
     get_pending_count,
     get_pending_users,
     get_setting,
@@ -307,10 +308,29 @@ def _stamp(dt: datetime) -> str:
 
 
 async def record_decision(telegram_id: int, decision: str, reason: str | None, by: int,
-                           now: datetime) -> int:
+                           now: datetime, *, effects_already_sent: bool = False) -> int:
     """Пишет решение в журнал; `effects_due_at = now + UNDO_WINDOW_SECONDS` — эффекты
-    (приветствие/отказ/лист) остаются отложенными до истечения окна отмены."""
+    (приветствие/отказ/лист) остаются отложенными до истечения окна отмены.
+
+    `effects_already_sent` (quick 260904-liz, keyword-only) — для бот-пути
+    (`handlers/admin_moderation.py::appr_reject_reason`/`appr_approve`): бот применяет эффекты
+    СИНХРОННО и САМ (`_spawn(apply_decision_effects(...))`), ДО вызова этой функции, поэтому
+    строка журнала обязана родиться УЖЕ помеченной отправленной (`effects_sent_at = _stamp(now)`)
+    — живая строка (`effects_sent_at IS NULL`) означала бы, что `claim_due_application_decisions`
+    рано или поздно заберёт её и один из двух сметателей (`miniapp/outbox.py::
+    flush_application_decisions` в веб-процессе или `services/scheduler.py::
+    _flush_due_application_decisions` в бот-процессе — сметателей ДВА, оба слушают одну и ту же
+    таблицу) отправит делегату сообщение об отказе/приветствие ВТОРОЙ раз. `effects_due_at`
+    в этом случае тоже ставится в `_stamp(now)` — значение уже не имеет смысла (эффекты не ждут
+    его), но колонка NOT NULL. Журнал бот-пути пишется РАДИ ИСТОРИИ (чтобы
+    `last_rejection_reason` видел причину независимо от того, кто принял решение), не ради
+    доставки — доставка уже случилась синхронно, до этого вызова."""
     decided_at = _stamp(now)
+    if effects_already_sent:
+        sent_at = _stamp(now)
+        return await record_application_decision(
+            telegram_id, decision, reason, by, decided_at, sent_at, effects_sent_at=sent_at,
+        )
     effects_due_at = _stamp(now + timedelta(seconds=UNDO_WINDOW_SECONDS))
     return await record_application_decision(telegram_id, decision, reason, by, decided_at, effects_due_at)
 
@@ -319,6 +339,22 @@ async def get_decision(decision_id: int) -> dict | None:
     """Read-only lookup — плана 23-04, ownership/state проверка ДО `undo_decision` (T-23-17):
     веб-роутер обязан отказать чужому/уже разрешённому `decision_id`, не потратив claim."""
     return await get_application_decision(decision_id)
+
+
+async def last_rejection_reason(telegram_id: int) -> str | None:
+    """Quick 260904-liz: причина ПОСЛЕДНЕГО НЕ отменённого отказа делегата — обёртка над
+    `get_last_application_decision`. `None`, если: отказов не было, последнее решение —
+    одобрение, у отказа пустая причина (`"-"` менеджер вводит явно за «без причины», но здесь
+    достаточно общей проверки `.strip()`), или последний отказ отменён (уже отфильтровано SQL
+    в `get_last_application_decision`). Единая точка правды и для экрана делегата
+    (`miniapp/routers/hub.py::hub_status`), и для карточки менеджера
+    (`prev_reject_line` ниже) — обе поверхности не должны разъезжаться в трактовке «была ли
+    причина»."""
+    row = await get_last_application_decision(telegram_id)
+    if row is None or row.get("decision") != "rejected":
+        return None
+    reason = (row.get("reason") or "").strip()
+    return reason or None
 
 
 async def undo_decision(decision_id: int) -> dict:

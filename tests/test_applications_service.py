@@ -391,3 +391,54 @@ def test_reject_reason_templates_default_has_four_items(tmp_path):
 
 def test_undo_window_seconds_is_five():
     assert applications.UNDO_WINDOW_SECONDS == 5
+
+
+# ── last_rejection_reason (quick 260904-liz) ────────────────────────────────────────────────
+
+def test_last_rejection_reason_none_when_no_decisions(tmp_path):
+    _use_tmp_db(tmp_path)
+    _run(db.init_db())
+    _seed_user(2101, status="pending")
+    assert _run(applications.last_rejection_reason(2101)) is None
+
+
+def test_last_rejection_reason_none_when_last_decision_is_approval(tmp_path):
+    _use_tmp_db(tmp_path)
+    _run(db.init_db())
+    _seed_user(2102, status="pending")
+    assert _run(applications.claim_approve(2102))
+    now = datetime(2026, 1, 1, 12, 0, 0)
+    _run(applications.record_decision(2102, "approved", None, 999, now))
+    assert _run(applications.last_rejection_reason(2102)) is None
+
+
+def test_last_rejection_reason_none_when_reason_empty(tmp_path):
+    _use_tmp_db(tmp_path)
+    _run(db.init_db())
+    _seed_user(2103, status="pending")
+    assert _run(applications.claim_reject(2103))
+    now = datetime(2026, 1, 1, 12, 0, 0)
+    _run(applications.record_decision(2103, "rejected", "  ", 999, now))
+    assert _run(applications.last_rejection_reason(2103)) is None
+
+
+def test_last_rejection_reason_none_when_rejection_undone(tmp_path):
+    _use_tmp_db(tmp_path)
+    _run(db.init_db())
+    _seed_user(2104, status="pending")
+    assert _run(applications.claim_reject(2104))
+    now = datetime(2026, 1, 1, 12, 0, 0)
+    decision_id = _run(applications.record_decision(2104, "rejected", "Не подходит", 999, now))
+    result = _run(applications.undo_decision(decision_id))
+    assert result["ok"] is True
+    assert _run(applications.last_rejection_reason(2104)) is None
+
+
+def test_last_rejection_reason_returns_reason_of_live_rejection(tmp_path):
+    _use_tmp_db(tmp_path)
+    _run(db.init_db())
+    _seed_user(2105, status="pending")
+    assert _run(applications.claim_reject(2105))
+    now = datetime(2026, 1, 1, 12, 0, 0)
+    _run(applications.record_decision(2105, "rejected", "Не хватает опыта", 999, now))
+    assert _run(applications.last_rejection_reason(2105)) == "Не хватает опыта"

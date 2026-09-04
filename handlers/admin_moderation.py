@@ -22,6 +22,7 @@ file's handler bodies and order untouched (same technique as `settings_ops.py`, 
 """
 import html as html_module
 import logging
+from datetime import datetime
 
 from aiogram import F, types
 from aiogram.fsm.context import FSMContext
@@ -42,6 +43,7 @@ from services.applications import (
     TRACK_LABELS,
     claim_approve,
     claim_reject,
+    record_decision,
     COLUMN_TO_LABEL as _COLUMN_TO_LABEL,
     EDITED_SOURCE_LABELS as _EDITED_SOURCE_LABELS,
     format_edited_date as _format_edited_date,
@@ -305,6 +307,18 @@ async def appr_approve(callback: types.CallbackQuery, state: FSMContext):
         # часов живёт ВНУТРИ apply_decision_effects — здесь только приписка менеджеру.
         _spawn(apply_decision_effects(callback.bot, tid, "approved"))
         logger.info(f"admin={callback.from_user.id} action=approve user={tid}")
+        # Quick 260904-liz: журнал бот-пути — РАДИ ИСТОРИИ (last_rejection_reason читает эту же
+        # таблицу), не ради доставки — приветствие уже ушло синхронно строкой выше.
+        # effects_already_sent=True — иначе flush_due_decisions отправил бы его повторно
+        # (см. докстринг services.applications.record_decision). fail-soft: не записали историю
+        # — менеджер и делегат уже получили своё, вторая попытка не нужна.
+        try:
+            await record_decision(
+                tid, "approved", None, callback.from_user.id, datetime.now(),
+                effects_already_sent=True,
+            )
+        except Exception as e:
+            logger.error(f"admin={callback.from_user.id} action=approve user={tid}: не удалось записать журнал решения: {e}")
         from services import quiet_hours
         from services.scheduler import _now_moscow_naive
         notice = await quiet_hours.manager_notice(_now_moscow_naive(), tid)
@@ -358,7 +372,21 @@ async def appr_reject_reason(message: types.Message, state: FSMContext):
         # services/application_effects.py, fire-and-forget fail-soft. Сама проверка тихих
         # часов живёт ВНУТРИ apply_decision_effects — здесь только приписка менеджеру.
         _spawn(apply_decision_effects(message.bot, tid, "rejected", reason))
-        logger.info(f"admin={message.from_user.id} action=reject user={tid} reason={reason!r}")
+        # T-liz-01 (ПД): причина отказа сюда больше НЕ попадает — это свободный текст делегата
+        # о делегате, в логах ему не место. Остальная телеметрия строки (admin/action/user)
+        # сохранена без изменений.
+        logger.info(f"admin={message.from_user.id} action=reject user={tid}")
+        # Quick 260904-liz: журнал бот-пути ПОСЛЕ _spawn (доставка делегату не зависит от
+        # записи истории) — effects_already_sent=True, иначе flush_due_decisions отправил бы
+        # отказ делегату ВТОРОЙ раз (см. докстринг services.applications.record_decision).
+        # fail-soft: не записали историю — менеджер и делегат уже получили своё.
+        try:
+            await record_decision(
+                tid, "rejected", reason, message.from_user.id, datetime.now(),
+                effects_already_sent=True,
+            )
+        except Exception as e:
+            logger.error(f"admin={message.from_user.id} action=reject user={tid}: не удалось записать журнал решения: {e}")
         from services import quiet_hours
         from services.scheduler import _now_moscow_naive
         notice = await quiet_hours.manager_notice(_now_moscow_naive(), tid)
@@ -446,6 +474,10 @@ async def appr_all_yes(callback: types.CallbackQuery, state: FSMContext):
         return
     # T-072-03/T-072-07: city condition lives in the WHERE of this SAME atomic
     # UPDATE ... RETURNING — structurally cannot flip another city's rows.
+    # Quick 260904-liz: массовое одобрение журнал решений НЕ пишет — «Принять всех» без причин,
+    # отдельный хвост mass_approve_effects (не apply_decision_effects), последнее решение по
+    # делегату из этой ветки last_rejection_reason/prev_reject_line просто не увидят (нет
+    # причины отказа тут в принципе, только approve).
     ids = await approve_all_pending(city_scope=city_scope(confirmed))  # atomic flip first (D-11)
     # WR-04: a stale confirm dialog re-clicked (buttons never expire) hits approve_all_pending
     # again — atomic, so it returns [] the second time. Don't run the drain or claim a count;
