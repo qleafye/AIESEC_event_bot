@@ -110,6 +110,8 @@ MINIAPP_KEYS = [
     "miniapp_profile_edited_text",
     "miniapp_profile_approved_text",  # D-10 (23.1-CONTEXT.md O-2)
     "miniapp_profile_privacy_note",
+    # Quick 260904-aup Task 3 (UAT D10): имя-заглушка в плите профиля делегата без анкеты.
+    "miniapp_profile_greeting_fallback_text",
     # Phase 23.1-05 (UI-REDESIGN-06): подписи карточки задания по макету 05-task.png
     "miniapp_task_todo_eyebrow",
     "miniapp_task_proof_eyebrow",
@@ -249,7 +251,9 @@ def test_exactly_144_miniapp_keys_and_no_extra():
     # Quick 260904-aup Task 1 (UAT D3): +6 ключей плиты «Анкета на проверке / Заявка
     # отклонена» в хабе (miniapp_hub_pending_heading_text/_body_text/_days,
     # miniapp_hub_rejected_heading_text/_body_text/_cta_text) (156 -> 162).
-    assert len(MINIAPP_KEYS) == 162
+    # Quick 260904-aup Task 3 (UAT D10): +1 ключ имени-заглушки в плите профиля
+    # (miniapp_profile_greeting_fallback_text) (162 -> 163).
+    assert len(MINIAPP_KEYS) == 163
     present = sorted(k for k in SETTINGS_SCHEMA if k.startswith("miniapp_"))
     assert present == sorted(MINIAPP_KEYS)
 
@@ -299,7 +303,9 @@ def test_text_keys_have_human_defaults():
     # Quick 260904-8o3 Task 3 (E5/E6): +3 текстовых ключа мини-плиты превью оформления (124 -> 127).
     # Quick 260904-aup Task 1 (UAT D3): +5 текстовых ключей плиты «Анкета на проверке / Заявка
     # отклонена» (miniapp_hub_pending_days — "int", не считается здесь) (127 -> 132).
-    assert len(text_keys) == 132
+    # Quick 260904-aup Task 3 (UAT D10): +1 текстовый ключ имени-заглушки в плите профиля
+    # (132 -> 133).
+    assert len(text_keys) == 133
     for key in text_keys:
         default = SETTINGS_SCHEMA[key]["default"]
         assert isinstance(default, str) and default.strip(), key

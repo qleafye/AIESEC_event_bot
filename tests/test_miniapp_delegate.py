@@ -104,9 +104,49 @@ def test_profile_initials_two_words_and_one_word(client):
     body = client.get("/app/api/profile", headers=_hdr(DELEGATE_ID)).json()
     assert body["initials"] == "И"
 
+    # Quick 260904-aup (UAT D10): пустой full_name больше не даёт пустую монограмму — initials
+    # считается от display_name, а display_name падает на first_name из initData (макет
+    # test_miniapp_auth.make_init_data по умолчанию несёт "Тест"), когда анкеты ещё нет.
     _fill_profile(DELEGATE_ID, full_name="")
     body = client.get("/app/api/profile", headers=_hdr(DELEGATE_ID)).json()
-    assert body["initials"] == ""
+    assert body["display_name"] == "Тест"
+    assert body["initials"] == "Т"
+
+
+# ── аватар и имя в плите (UAT D10, quick 260904-aup) ─────────────────────────────────────────
+
+def test_profile_avatar_url_from_positive_cache_no_network(client):
+    # Позитивный кеш (avatar_file_id уже записан) — resolve_avatar не ходит в сеть.
+    _fill_profile(DELEGATE_ID, avatar_file_id="AgACavatar")
+    body = client.get("/app/api/profile", headers=_hdr(DELEGATE_ID)).json()
+    assert body["avatar_url"] == "/app/api/file/AgACavatar"
+
+
+def test_profile_avatar_url_none_with_fresh_negative_cache(client):
+    # Свежий отрицательный кеш («фото нет», проверено недавно) — тоже без сети, avatar_url None.
+    _fill_profile(DELEGATE_ID, avatar_checked_at=datetime.now().strftime("%Y-%m-%d %H:%M:%S"))
+    body = client.get("/app/api/profile", headers=_hdr(DELEGATE_ID)).json()
+    assert body["avatar_url"] is None
+
+
+def test_profile_display_name_falls_back_to_first_name_then_registry_default(client):
+    _fill_profile(DELEGATE_ID, full_name="Иван Петров")
+    body = client.get("/app/api/profile", headers=_hdr(DELEGATE_ID)).json()
+    assert body["display_name"] == "Иван Петров"
+
+    # full_name пуст (анкета ещё не подана) -> first_name из initData.
+    _fill_profile(DELEGATE_ID, full_name="")
+    body = client.get("/app/api/profile", headers=_hdr(DELEGATE_ID, first_name="Мария")).json()
+    assert body["display_name"] == "Мария"
+    assert body["initials"] == "М"
+
+    # Оба источника пусты -> дефолт реестра miniapp_profile_greeting_fallback_text, монограмма
+    # всё равно непуста (фолбэк — не второй пустой исход).
+    body = client.get(
+        "/app/api/profile", headers=_hdr(DELEGATE_ID, user_extra={"first_name": ""}),
+    ).json()
+    assert body["display_name"] == "Привет!"
+    assert body["initials"] == "П"
 
 
 def test_profile_contacts_and_fields_do_not_overlap(client):

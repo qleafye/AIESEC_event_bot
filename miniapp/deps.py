@@ -80,6 +80,11 @@ class Principal:
     # ждёт настоящий username для НОВОЙ регистрации целиком через Mini App, без единого касания
     # чата бота); остальные потребители Principal поле не используют.
     username: str | None = None
+    # Quick 260904-aup (UAT D10): first_name из initData.user — единственный источник имени
+    # для плиты профиля у делегата БЕЗ поданной анкеты (`users.full_name` тогда пуст, печатать
+    # нечего). Cookie-ветка оставляет None (дашборд его не несёт, как и username выше). Это ПД
+    # (как и username строкой выше) — в логи не попадает.
+    first_name: str | None = None
 
     @property
     def is_staff(self) -> bool:
@@ -148,12 +153,14 @@ def principal(
 ) -> Principal:
     cfg = request.app.state.cfg
     username: str | None = None
+    first_name: str | None = None
     if x_telegram_init_data:
         data = verify_init_data(x_telegram_init_data, cfg.bot_token)
         if data is None:
             raise HTTPException(401, {"reason": "bad_initdata"})
         telegram_id, via = int(data["user"]["id"]), "initdata"
         username = data["user"].get("username")
+        first_name = data["user"].get("first_name")
     elif "session" in request.scope and request.session.get("telegram_id"):
         try:
             telegram_id = int(request.session["telegram_id"])
@@ -174,7 +181,10 @@ def principal(
 
     if via == "cookie" and not caps:
         raise HTTPException(403, {"reason": "staff_only"})
-    return Principal(telegram_id=telegram_id, via=via, caps=caps, city=city, username=username)
+    return Principal(
+        telegram_id=telegram_id, via=via, caps=caps, city=city,
+        username=username, first_name=first_name,
+    )
 
 
 def require_cap(cap: str):
