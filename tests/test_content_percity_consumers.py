@@ -676,8 +676,10 @@ def test_approve_text_for_signature_and_callers_unchanged():
     src = inspect.getsource(reg_mod._approve_text_for)
     assert "approve_text__party" in src
     assert 'get_setting_for_city("approve_text"' in src
+    # Quick 260904-3vm (E2): auto_approved добавлен kw-only с дефолтом False — существующие
+    # позиционные/именованные вызовы остаются байт-в-байт прежними.
     assert list(inspect.signature(reg_mod.send_completion_and_bonus).parameters) == [
-        "bot", "telegram_id", "with_menu", "participant_type",
+        "bot", "telegram_id", "with_menu", "participant_type", "auto_approved",
     ]
 
 
