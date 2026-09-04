@@ -46,6 +46,41 @@ function stepIndexFromKey(specs, stepKey) {
   return idx >= 0 ? idx : 0;
 }
 
+// D13 (quick 260904-de4): «Поделиться номером» — доступно, только когда клиент физически
+// умеет (Bot API 6.9+, requestContact есть); вынесено в одну функцию, используют оба режима
+// (мастер и обзор правки).
+function canShareContact(tg) {
+  return Boolean(
+    tg && typeof tg.requestContact === "function" && typeof tg.isVersionAtLeast === "function"
+    && tg.isVersionAtLeast("6.9"),
+  );
+}
+
+// Колбэк `requestContact()` у клиентов разной формы — разбираем защитно: успех = явный
+// `status === "sent"` ИЛИ старая форма (нет `res`, `ok === true`); номер достаём только из
+// `responseUnsafe.contact` — в старой форме колбэка его нет, тогда просто ничего не делаем
+// (ручной ввод остаётся). Номер без «+», состоящий из цифр, нормализуем добавлением «+»
+// (валидатор `phone` принимает и то, и то — человеку показываем канонический вид).
+function shareContactButton(h, spec, el, text, onNumber) {
+  if (spec.type !== "phone" || !canShareContact(tgRef)) return null;
+  return h("button", {
+    class: "btn secondary", type: "button", "aria-label": spec.label,
+    onClick: () => {
+      tgRef.requestContact((ok, res) => {
+        const success = (res && res.status === "sent") || (!res && ok === true);
+        if (!success) return;
+        const raw = res && res.responseUnsafe && res.responseUnsafe.contact
+          && res.responseUnsafe.contact.phone_number;
+        if (!raw) return;
+        const normalized = /^[0-9]+$/.test(raw) ? `+${raw}` : raw;
+        const input = el.querySelector("input");
+        if (input) input.value = normalized;
+        onNumber(normalized);
+      });
+    },
+  }, icon("smartphone"), h("span", { text: text || "" }));
+}
+
 // Строка списка вопросов анкеты (обзор 19.1 находка №6): общий помощник для окна вопросов
 // мастера (renderWizard::drawStep) и списка обзора точечной правки (renderOverview::fieldRow,
 // Task 3) — отвеченный вопрос показывает галку и значение основным цветом, неотвеченный —
@@ -322,7 +357,14 @@ export async function render(root, params, ctx) {
           }
         });
         fieldEls[column] = el;
-        panel.append(el, h("button", {
+        // D13: контакт из Telegram применяется сразу, как файл резюме — то же самое, что
+        // делает ручной ввод с последующей галкой, но одним касанием.
+        const contactBtn = shareContactButton(h, spec, el, d.share_contact_text, (v) => {
+          liveValue = v;
+          state.setValue(column, liveValue);
+          drawList();
+        });
+        panel.append(el, ...[contactBtn].filter(Boolean), h("button", {
           class: "btn", type: "button", "aria-label": spec.label,
           onClick: () => {
             state.setValue(column, liveValue);
@@ -595,6 +637,9 @@ export async function render(root, params, ctx) {
           uploadResume(v, el, { getDraft: () => d, setDraft: (nd) => { d = nd; }, state, column });
         }
       });
+      // D13: контакт из Telegram — та же кнопка, что и в обзоре правки, только без немедленной
+      // отправки на сервер (мастер и так шлёт PATCH по кнопке «Дальше»).
+      const contactBtn = shareContactButton(h, spec, el, d.share_contact_text, (v) => { liveValue = v; });
       if (spec.value_source === "prior" && !state.isDirty(column)) {
         setFieldState(el, "updated-in-chat", { text: d.prior_badge_text });
         el.addEventListener("input", () => setFieldState(el, "default", {}), { once: true });
@@ -699,7 +744,7 @@ export async function render(root, params, ctx) {
       holder.replaceChildren(...[
         progressRow,
         plate,
-        h("div", { class: "wizard-field" }, el),
+        h("div", { class: "wizard-field" }, el, contactBtn),
         drawQuestionWindow(specs),
         chatLink(d.continue_in_chat_text, d.continue_deeplink),
         footer,

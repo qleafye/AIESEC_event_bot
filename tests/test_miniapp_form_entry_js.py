@@ -136,3 +136,21 @@ def test_wizard_go_next_never_puts_file_into_json_patch():
     assert "isFileValue" in body
     assert "instanceof File" in body
 
+
+# ── D13 (quick 260904-de4): «Поделиться номером» на шаге телефона ───────────────────────
+
+def test_share_contact_gate_checks_version_and_requestContact_once():
+    text = _js_without_comments(FORM_SCREEN_JS)
+    assert 'spec.type !== "phone"' in text
+    assert "requestContact" in text
+    assert "isVersionAtLeast" in text
+    # Проверка версии — в ОДНОЙ функции (canShareContact), не скопирована по обоим режимам.
+    assert text.count('"6.9"') == 1
+
+
+def test_share_contact_label_from_server_not_hardcoded():
+    text = _js_without_comments(FORM_SCREEN_JS)
+    assert "share_contact_text" in text
+    for m in _STRING_LITERAL.finditer(text):
+        assert not _CYRILLIC.search(m.group(0)), m.group(0)
+
