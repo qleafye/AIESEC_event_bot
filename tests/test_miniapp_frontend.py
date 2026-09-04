@@ -936,6 +936,16 @@ def test_hub_onboarding_texts_come_from_registry_not_literals():
     assert "Как это работает" not in text, "надзаголовок шагов — только из реестра"
 
 
+def test_hub_onboarding_gate_reads_show_onboarding_from_server():
+    """UAT D11 + Q4 (quick 260904-aup): сервер (`me.show_onboarding`, `/app/api/me`) решает,
+    кому вообще положено видеть привет-экран — localStorage (`hasSeenOnboarding`) остаётся
+    только про «показывали ли уже на этом устройстве». Сторож против регресса: гейт не должен
+    переехать обратно в клиент (голое `if (!hasSeenOnboarding())` без серверного условия)."""
+    text = _js_without_comments(SCREENS_DIR / "hub.js")
+    assert "ctx.me.show_onboarding && !hasSeenOnboarding()" in text
+    assert re.search(r"if\s*\(\s*!hasSeenOnboarding\(\)\s*\)", text) is None
+
+
 def test_hub_tiles_built_from_visible_nav_and_nav_icons():
     text = _js_without_comments(SCREENS_DIR / "hub.js")
     assert 'from "../app.js"' in text and "visibleNav" in text and "NAV_ICONS" in text

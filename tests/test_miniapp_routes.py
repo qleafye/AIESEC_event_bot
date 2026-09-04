@@ -310,6 +310,46 @@ def test_me_delegate_via_initdata(tmp_path):
     assert body["bot_username"] == "YouLead_test_bot"
 
 
+# ── show_onboarding (UAT D11 + Q4, quick 260904-aup) — сервер решает, кому показывать
+# привет-экран; localStorage (hub.js) по-прежнему решает только «показывали ли уже» ──────────
+
+def test_me_show_onboarding_true_for_unregistered_and_draft(tmp_path):
+    db_path = _use_tmp_db(tmp_path)
+    _standard_seed()
+    body = _client(_cfg(db_path)).get("/app/api/me", headers=_hdr(UNREGISTERED_ID)).json()
+    assert body["form_status"] == "none"
+    assert body["show_onboarding"] is True
+
+    asyncio.run(bot_db.upsert_reg_draft(
+        UNREGISTERED_ID, kind="new", participant_type=None, event_city=None,
+        step=None, patch={"age": 20}, source="miniapp",
+    ))
+    body2 = _client(_cfg(db_path)).get("/app/api/me", headers=_hdr(UNREGISTERED_ID)).json()
+    assert body2["form_status"] == "draft"
+    assert body2["show_onboarding"] is True
+
+
+def test_me_show_onboarding_false_for_pending_and_approved(tmp_path):
+    db_path = _use_tmp_db(tmp_path)
+    _standard_seed()
+    client = _client(_cfg(db_path))
+    for user_id, expected_status in ((PENDING_ID, "pending"), (DELEGATE_ID, "approved")):
+        body = client.get("/app/api/me", headers=_hdr(user_id)).json()
+        assert body["form_status"] == expected_status
+        assert body["show_onboarding"] is False
+
+
+def test_me_show_onboarding_false_for_staff_without_own_anketa(tmp_path):
+    # Сотрудник с правом (moderate_game), но без своей строки users -> status "none" — без
+    # серверного гейта он видел бы привет-экран про регистрацию, хотя он не делегат.
+    db_path = _use_tmp_db(tmp_path)
+    _standard_seed()
+    body = _client(_cfg(db_path)).get("/app/api/me", headers=_hdr(GAME_MANAGER_ID)).json()
+    assert body["form_status"] == "none"
+    assert body["is_staff"] is True
+    assert body["show_onboarding"] is False
+
+
 def test_me_superadmin_has_all_caps(tmp_path):
     db_path = _use_tmp_db(tmp_path)
     _standard_seed()
