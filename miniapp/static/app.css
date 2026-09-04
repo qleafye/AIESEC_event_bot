@@ -354,7 +354,8 @@ body[data-nav="hub"] #nav { display: none; }
   margin-bottom: var(--sp-3);
 }
 
-.hidden { display: none; }
+/* `.hidden` перенесён в САМЫЙ КОНЕЦ файла (квик 260904-7e7, D17) — правило живёт там,
+   искать его здесь. */
 
 /* ── плоские строки списков (план 19.1-05, D-11): построитель ui.js::flatRow ──────────────
    Одна поверхность (.flat-list), разделитель — hairline НА строке, не рамка вокруг неё;
@@ -1439,7 +1440,11 @@ a.flat-row:active, button.flat-row:active { background: var(--surface-alt); }
    и его `display: inline-flex` побеждал `.hidden{display:none}` в каскаде, так что скрытый
    тост всё равно рисовался пустой белой таблеткой (padding без контента, border-radius:pill)
    поверх контента внизу экрана. Двухклассовый селектор поднимает специфичность и гарантирует
-   `display: none`, независимо от порядка правил в файле. */
+   `display: none`, независимо от порядка правил в файле. Тогда это была точечная заплатка —
+   общий корень (D17, квик 260904-7e7: тот же баг молчал ещё у `.flat-list`/`.choice-chips`/
+   `.settings-search-clear`) закрыт переносом `.hidden` в конец файла — см. блок в самом низу
+   app.css. Само правило здесь не убираем: составной селектор безвреден и документирует
+   конкретный случай, на который наткнулись до общего фикса. */
 .appl-toast.hidden { display: none; }
 
 .appl-card-holder.is-loading { opacity: .5; pointer-events: none; transition: opacity var(--dur) var(--ease); }
@@ -1702,3 +1707,25 @@ a.flat-row:active, button.flat-row:active { background: var(--surface-alt); }
 .plate--list { padding-bottom: var(--sp-4); }
 .plate--list .plate-sub { margin-bottom: var(--sp-2); }
 .plate-rank { margin-left: auto; margin-bottom: var(--sp-2); border: 0; cursor: pointer; font: inherit; }
+
+/* ── D17 (квик 260904-7e7): `.hidden` — САМЫЙ ПОСЛЕДНИЙ одноклассовый селектор файла,
+   задающий `display` ──────────────────────────────────────────────────────────────────────
+   Раньше правило жило у строки 357 (сразу после .error-inline), а одноклассовые правила вроде
+   `.flat-list{display:flex}`, `.choice-chips{display:flex}`, `.settings-search-clear{display:
+   inline-flex}` были объявлены НИЖЕ по файлу. Специфичность обоих правил одинакова (0,1,0) —
+   при равной специфичности побеждает порядок объявления, а не намерение автора: класс `hidden`
+   переключался (`aria-expanded` менялся правильно), но `display` у элемента браузер брал из
+   более позднего правила и блок оставался нарисованным. Ровно это и было D17 («Показать всё»
+   в отборе заявок не работает) — регресса в JS не было, `applications.js` уже переключал класс
+   верно; ломался чистый каскад CSS, который ни один существующий тест не проверял (сторожа
+   03.09 разбирали только перехват тапов свайпом, не порядок правил).
+   Точечная заплатка 03.09 (`.appl-toast.hidden`, см. комментарий ниже по файлу) закрыла один
+   частный случай составным селектором (specificity 0,2,0 — сильнее порядка). Здесь — общий
+   корень: `.hidden` внизу файла гарантирует, что НИ ОДНО будущее одноклассовое правило не
+   перехватит его молча. Сторож — tests/test_miniapp_frontend.py::
+   test_hidden_rule_is_the_last_single_class_display_rule_in_app_css (плюс сторож по каждому
+   классу, переключаемому вместе с `hidden`, — test_hidden_class_wins_the_cascade_for_every_
+   toggled_class). Если этот тест падает — значит ниже добавили правило с `display` для
+   класса, который где-то сочетается с `hidden`: либо поднимите специфичность (`.cls.hidden`),
+   либо переносите новое правило выше этого блока. */
+.hidden { display: none; }

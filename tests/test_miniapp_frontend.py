@@ -1640,6 +1640,106 @@ def test_applications_stack_overlay_pointer_events_and_decide_row_stacking_in_cs
     )
 
 
+# ── D17 (quick 260904-7e7): «.hidden» обязан побеждать в каскаде ВЕЗДЕ, не только у тоста ──
+# Баг общего класса — переключение класса `hidden` не давало эффекта у «Показать всё» в
+# отборе заявок, потому что одноклассовые правила `display` объявлены НИЖЕ `.hidden` в файле
+# (равная специфичность 0,1,0 — побеждает порядок). Составные селекторы вида `.cls.hidden`
+# (specificity 0,2,0, как `.appl-toast.hidden`) сильнее порядка и в проверку не входят.
+
+_CSS_RULE_RE = re.compile(r"([^{}]+)\{([^{}]*)\}")
+_SINGLE_CLASS_SELECTOR_RE = re.compile(r"^\.[a-z0-9_-]+$")
+_JS_CLASS_ATTR_RE = re.compile(r'class:\s*"([^"]*)"')
+
+
+def _strip_css_comments(css: str) -> str:
+    """Комментарии `/* … */` заменяются пробелами той же длины (позиции остальных правил не
+    сдвигаются) — иначе селектор перед правилом склеивается с текстом комментария и
+    одноклассовый селектор перестаёт совпадать с `^\\.[a-z0-9_-]+$`."""
+    return re.sub(r"/\*.*?\*/", lambda m: " " * len(m.group(0)), css, flags=re.DOTALL)
+
+
+def _hidden_rule_position(css: str) -> int:
+    """Позиция САМОГО правила `.hidden { ... }», не подстроки внутри составных вроде
+    `.appl-toast.hidden` (у которых `.hidden {` тоже встречается как хвост селектора) и не
+    упоминаний `.hidden{...}` в тексте комментариев (в файле есть пояснительные комментарии,
+    которые цитируют само правило)."""
+    m = re.search(r"(?<![.\w-])\.hidden\s*\{", _strip_css_comments(css))
+    assert m, "нет правила .hidden в app.css"
+    return m.start()
+
+
+def _single_class_display_rules(css: str) -> list[tuple[int, str]]:
+    """Список (позиция, селектор) одноклассовых правил, где объявлено свойство `display`."""
+    css = _strip_css_comments(css)
+    rules = []
+    for m in _CSS_RULE_RE.finditer(css):
+        body = m.group(2)
+        if "display" not in body:
+            continue
+        for raw_sel in m.group(1).split(","):
+            sel = raw_sel.strip()
+            if _SINGLE_CLASS_SELECTOR_RE.match(sel):
+                rules.append((m.start(), sel))
+    return rules
+
+
+def _composite_hidden_protected_classes(css: str) -> set[str]:
+    """Классы, у которых уже есть составной селектор `.cls.hidden`/`.hidden.cls` с `display` —
+    его специфичность (0,2,0) выше одноклассового, порядок в файле для них не важен."""
+    css = _strip_css_comments(css)
+    protected = set()
+    for m in _CSS_RULE_RE.finditer(css):
+        if "display" not in m.group(2):
+            continue
+        for raw_sel in m.group(1).split(","):
+            sel = raw_sel.strip()
+            if re.fullmatch(r"\.hidden\.[a-z0-9_-]+", sel):
+                protected.add(f".{sel.split('.')[-1]}")
+            elif re.fullmatch(r"\.[a-z0-9_-]+\.hidden", sel):
+                protected.add(f".{sel.split('.')[1]}")
+    return protected
+
+
+def _js_class_strings_with_hidden(text: str) -> list[list[str]]:
+    return [m.group(1).split() for m in _JS_CLASS_ATTR_RE.finditer(text) if "hidden" in m.group(1).split()]
+
+
+def test_hidden_class_wins_the_cascade_for_every_toggled_class():
+    """Test 1 (D17): для каждой строки `class: "… hidden …"` во всех screens/*.js и app.js ни
+    один одноклассовый селектор из этой строки не задаёт `display` НИЖЕ `.hidden` в app.css.
+    До фикса падает на `flat-list` (applications.js), `settings-search-clear` и
+    `choice-chips` (settings.js) — после переноса `.hidden` в конец файла зелёный."""
+    css = APP_CSS.read_text(encoding="utf-8")
+    hidden_pos = _hidden_rule_position(css)
+    single_class_display = _single_class_display_rules(css)
+    protected = _composite_hidden_protected_classes(css)
+
+    js_files = sorted((MINIAPP_STATIC / "js").rglob("*.js"))
+    problems = []
+    for path in js_files:
+        text = path.read_text(encoding="utf-8")
+        for classes in _js_class_strings_with_hidden(text):
+            for cls in classes:
+                if cls == "hidden":
+                    continue
+                sel = f".{cls}"
+                if sel in protected:
+                    continue
+                if any(pos > hidden_pos for pos, s in single_class_display if s == sel):
+                    problems.append(f"{path.name}: {sel}")
+    assert not problems, f"классы теряют .hidden в каскаде (display объявлен ниже): {sorted(set(problems))}"
+
+
+def test_hidden_rule_is_the_last_single_class_display_rule_in_app_css():
+    """Test 2 (D17): `.hidden { display: none; }` — последнее одноклассовое правило файла,
+    задающее `display`, чтобы никакой будущий блок CSS не отобрал у него каскад молча."""
+    css = APP_CSS.read_text(encoding="utf-8")
+    hidden_pos = _hidden_rule_position(css)
+    single_class_display = _single_class_display_rules(css)
+    after = [sel for pos, sel in single_class_display if pos > hidden_pos]
+    assert not after, f"одноклассовые правила с display объявлены после .hidden: {after}"
+
+
 # ── Phase 23.1: компоненты плиты (UI-REDESIGN-01) ────────────────────────────────────────────
 
 def test_plate_components_exist_and_use_only_tokens():
