@@ -101,6 +101,34 @@ export async function render(root, params, ctx) {
       icon("message-circle"), h("span", { text: text || "" }));
   }
 
+  // Quick 260904-3vm (эстафета): плита «анкета сейчас в чате» — общая точка для начального
+  // рендера (draft.handoff), для 409 held_by_bot на любом PATCH (мастер/обзор) и для activated
+  // (onRefresh увидел fresh.handoff). «Продолжить в чате» здесь — НЕ обычный chatLink: перед
+  // открытием чата приложение обязано отдать владение (POST /reg/draft/release), иначе гвард
+  // бота (handlers/reg_handoff.py) отобьёт делегата же его собственным вводом.
+  function showHandoff(handoff) {
+    onRefresh = null;
+    setMainButton(null);
+    const continueBtn = h("button", { class: "btn ghost", type: "button", onClick: async () => {
+      try { await api("/reg/draft/release", { method: "POST" }); } catch (_) { /* fail-soft: чат всё равно откроется */ }
+      continueInChat(handoff.deeplink);
+    } }, icon("message-circle"), h("span", { text: handoff.continue_text || "" }));
+    const takeoverBtn = h("button", { class: "btn", type: "button", onClick: async () => {
+      try {
+        const res = await api("/reg/draft/takeover", { method: "POST" });
+        if (res.kind === "edit") await renderOverview(res);
+        else await renderWizard(res);
+      } catch (err) {
+        if (!isAuthError(err)) say(errorText(err, ""), "warn");
+      }
+    } }, icon("smartphone"), h("span", { text: handoff.takeover_text || "" }));
+    holder.replaceChildren(h("section", { class: "state" },
+      h("div", { class: "icon" }, icon("message-circle")),
+      h("p", { text: handoff.text || "" }),
+      h("div", { class: "actions" }, continueBtn, takeoverBtn),
+    ));
+  }
+
   // ── activated: подхват чужих правок из чата (D-19) — регистрируется ДО первого await,
   // чтобы unmount() могла снять обработчик, даже если запрос черновика ещё не вернулся. ────
   let onRefresh = null; // выставляется renderWizard()/renderOverview() ниже
@@ -145,6 +173,11 @@ export async function render(root, params, ctx) {
     return;
   }
 
+  if (draft.handoff) {
+    showHandoff(draft.handoff);
+    return;
+  }
+
   if (draft.kind === "edit") await renderOverview(draft);
   else await renderWizard(draft);
 
@@ -161,6 +194,7 @@ export async function render(root, params, ctx) {
     onRefresh = async () => {
       try {
         const fresh = await api("/reg/draft");
+        if (fresh.handoff) { showHandoff(fresh.handoff); return; }
         d = fresh;
         const touched = state.applyServer(answersFromSteps(fresh.steps), { keepDirty: true });
         for (const column of touched) {
@@ -208,6 +242,13 @@ export async function render(root, params, ctx) {
         renderComplete(res);
       } catch (err) {
         busy = false;
+        if (err && err.status === 409 && err.reason === "held_by_bot") {
+          // 409 несёт только text — полный набор полей плиты (deeplink/кнопки) берём
+          // свежим GET, он уже отдаёт `handoff` целиком.
+          try { showHandoff((await api("/reg/draft")).handoff || (err.payload || {})); }
+          catch (_) { showHandoff(err.payload || {}); }
+          return;
+        }
         if (!isAuthError(err)) say(errorText(err, ""), "warn");
         drawList();
       }
@@ -289,6 +330,7 @@ export async function render(root, params, ctx) {
     onRefresh = async () => {
       try {
         const fresh = await api("/reg/draft");
+        if (fresh.handoff) { showHandoff(fresh.handoff); return; }
         d = fresh;
         const touched = state.applyServer(answersFromSteps(fresh.steps), { keepDirty: true });
         if (touched.length) say(fresh.conflict_text || "", "accent");
@@ -530,6 +572,9 @@ export async function render(root, params, ctx) {
             setMainButton(d.next_cta_text || null, goNext);
           } else if (err && err.status === 403 && err.reason === "registration_closed") {
             showClosed(err);
+          } else if (err && err.status === 409 && err.reason === "held_by_bot") {
+            try { showHandoff((await api("/reg/draft")).handoff || (err.payload || {})); }
+            catch (_) { showHandoff(err.payload || {}); }
           } else if (!isAuthError(err)) {
             if (errorZone) { errorZone.textContent = errorText(err, ""); errorZone.classList.remove("hidden"); }
             setMainButton(d.next_cta_text || null, goNext);

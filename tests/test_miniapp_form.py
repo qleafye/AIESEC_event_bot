@@ -254,7 +254,9 @@ def test_continue_in_chat_and_profile_edit_defaults_have_no_emoji(client):
 def test_new_draft_closed_when_city_disabled(client):
     _set("event_city_enabled", "on")
     _set("city_enabled__spb", "off")
-    _seed_draft(UNREGISTERED_ID, kind="new", event_city="spb")
+    # Quick 260904-3vm: черновик заводится ЭТИМ делегатом через приложение — active_surface
+    # должен быть 'app', иначе PATCH ловит 409 held_by_bot раньше, чем 403 registration_closed.
+    _seed_draft(UNREGISTERED_ID, kind="new", event_city="spb", source="miniapp")
     resp = client.get("/app/api/reg/draft", headers=_hdr(UNREGISTERED_ID))
     body = resp.json()
     assert body["closed"] is True
@@ -719,7 +721,9 @@ def test_patch_city_choice_invalid_and_closed_match_bot_texts(client):
 
 def test_patch_city_when_already_set_409_deeplink_wins(client):
     _set("event_city_enabled", "on")
-    _seed_draft(UNREGISTERED_ID, event_city="msk")
+    # Quick 260904-3vm: тем же приёмом — черновик "принадлежит" приложению, иначе PATCH
+    # отбивается 409 held_by_bot раньше, чем 409 already_set.
+    _seed_draft(UNREGISTERED_ID, event_city="msk", source="miniapp")
     resp = client.patch(
         "/app/api/reg/draft", headers=_hdr(UNREGISTERED_ID),
         json={"version": 0, "event_city": "spb"},

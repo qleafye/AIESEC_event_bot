@@ -35,11 +35,13 @@ from database.db import (
     get_user,
     get_user_consents,
     record_user_consent,
+    set_reg_draft_surface,
     upsert_reg_draft,
 )
 from settings_schema import get_setting_typed
 from services.consent import outstanding_consents
 from services.reg_finalize import finalize_data, resolve_delegate_text
+from services.reg_handoff import SURFACE_APP, SURFACE_BOT, draft_holder
 
 from miniapp import telegram_api
 from miniapp.deps import Principal, form_gate, require_section
@@ -56,11 +58,13 @@ async def _load_context(telegram_id: int) -> dict:
     """Один общий разбор «где сейчас черновик» — GET/PATCH обязаны видеть одно и то же
     состояние, иначе PATCH мог бы записать поверх track/city, которых GET не знал (T-21-19).
     Черновика может не быть вовсе — тогда `kind` выводится ТЕМ ЖЕ правилом, что
-    `_start_registration_flow` бота (план 21-09): есть незакрытая строка `users` текущего
-    сезона -> `edit`, иначе (новичок / отклонён / прошлый сезон) -> `new` с префиллом (D-07)."""
+    `_start_registration_flow` бота (план 21-09, обновлено quick 260904-3vm D15): анкета
+    ТЕКУЩЕГО сезона реально подана (непустой `registration_date`) -> `edit`, иначе (новичок /
+    ещё не подавал / отклонён / прошлый сезон) -> `new` с префиллом (D-07)."""
     draft = await get_reg_draft(telegram_id)
     user_row = await get_user(telegram_id)
-    is_returning = reg_engine.is_returning_row(user_row, (await get_setting("event_season") or "").strip() or None)
+    season = (await get_setting("event_season") or "").strip() or None
+    is_returning = reg_engine.is_returning_row(user_row, season)
 
     if draft:
         kind = draft["kind"]
@@ -71,7 +75,11 @@ async def _load_context(telegram_id: int) -> dict:
         version = draft["version"]
         step = draft.get("step")
     else:
-        kind = "edit" if (user_row and not is_returning) else "new"
+        # Quick 260904-3vm (D15): экран «Изменение анкеты» читает `users`, а черновик лежит в
+        # `reg_drafts` — показать его делегату, который анкету ещё не подавал, значит показать
+        # пустой экран поверх реально заполненного черновика. `has_submitted_anketa` — тот же
+        # признак («подана» = непустой `registration_date`), что и у бота.
+        kind = "edit" if reg_engine.has_submitted_anketa(user_row, season) else "new"
         # UAT 21-12 находка 4: правка уже поданной анкеты (D-26) без строки `reg_drafts` —
         # обзор обязан подставить текущие ответы из `users` тем же приёмом, что чат-recall
         # (reg_engine.prior_answers_for/STEP_TO_COLUMN), иначе form_spec видит answers={} и
@@ -109,6 +117,15 @@ async def _load_context(telegram_id: int) -> dict:
         "prior": prior,
         "prior_city": prior_city,
         "prior_track": prior_track,
+        # Quick 260904-3vm (эстафета): кто владеет черновиком ПРЯМО СЕЙЧАС — "bot" | "app" |
+        # None (ничей: пустой черновик, или уже отправляется). Питает и плиту GET-ответа
+        # (`_draft_response["handoff"]`), и 409 в PATCH.
+        "holder": draft_holder(draft),
+        # Quick 260904-3vm (D16): трек, разрешённый ТЕМ ЖЕ правилом, что `reg_engine.form_spec`
+        # теперь применяет сама (resolve_track с пустым кандидатом). `participant_type` НЕ
+        # заменяется этим значением нигде рядом — он гейтит 409 already_set/скрытие развилки,
+        # смешивать эти две роли нельзя (см. комментарий у D-27 выше).
+        "effective_track": participant_type or await reg_engine.resolve_track(None, event_city),
     }
 
 
@@ -204,9 +221,21 @@ async def _draft_response(telegram_id: int, ctx: dict | None = None, *, bot_user
         step_spec_row["locked"] = ctx["kind"] == "edit" and step_spec_row["key"] in reg_engine.EDIT_LOCKED_STEPS
     user_row = ctx["user_row"]
     show_progress = await get_setting_typed("reg_show_progress") == "on"
+    # Quick 260904-3vm (эстафета): плита «анкета сейчас в чате» — ТОЛЬКО когда держит бот;
+    # владение приложением (или «ничей») ответ не отмечает — экран рисует обычный мастер/обзор.
+    handoff = None
+    if ctx["holder"] == SURFACE_BOT:
+        handoff = {
+            "held_by": "bot",
+            "text": await get_setting_typed("reg_form_held_by_bot_text"),
+            "takeover_text": await get_setting_typed("reg_form_takeover_cta_text"),
+            "continue_text": await get_setting_typed("reg_form_continue_in_chat_text"),
+            "deeplink": _continue_deeplink(bot_username),
+        }
     return {
         "exists": ctx["draft"] is not None,
         "kind": ctx["kind"],
+        "handoff": handoff,
         "step": ctx["step"],
         "version": ctx["version"],
         "pre": spec["pre"],
@@ -309,6 +338,13 @@ async def draft_patch(
     _: Principal = Depends(require_section("form")),
 ) -> dict:
     ctx = await _load_context(p.telegram_id)
+    # Quick 260904-3vm (эстафета): ПЕРВЫМ делом — владение. Бот держит анкету -> приложение не
+    # пишет вообще ничего, даже до валидации/проверки «регистрация закрыта».
+    if ctx["holder"] == SURFACE_BOT:
+        raise HTTPException(409, {
+            "reason": "held_by_bot",
+            "text": await get_setting_typed("reg_form_held_by_bot_text"),
+        })
     if ctx["kind"] == "new" and await _registration_closed(ctx["event_city"]):
         raise HTTPException(403, {
             "reason": "registration_closed",
@@ -333,7 +369,10 @@ async def draft_patch(
             errors[field] = err
         else:
             pre_patch[field] = value
-    effective_track = pre_patch.get("participant_type") or ctx["participant_type"]
+    # Quick 260904-3vm (D16): ctx["effective_track"] уже резолвит промо-short так же, как
+    # reg_engine.form_spec — иначе PATCH на пустом черновике мог бы провалидировать ответ по
+    # "full" (дефолт до резолва), пока GET того же черновика уже отдаёт короткий набор шагов.
+    effective_track = pre_patch.get("participant_type") or ctx["effective_track"]
 
     step_patch: dict[str, Any] = {}
     for column, raw in body.answers.items():
@@ -357,23 +396,76 @@ async def draft_patch(
     new_answers = reg_engine.apply_answers(ctx["answers"], step_patch)
     delta = {col: val for col, val in new_answers.items() if ctx["answers"].get(col) != val}
 
+    # Quick 260904-3vm (D2): контракт `reg_drafts.step` = шаг, который ЕЩЁ НЕ ОТВЕЧЕН — ровно
+    # то, что штампует бот последним действием хода (registration.py::_stamp_reg_step штампует
+    # ЗАДАВАЕМЫЙ вопрос), и то, что читают reg_resume.py::resume_from_draft и
+    # form.js::stepIndexFromKey. `body.step`, наоборот, приходит как ТОЛЬКО ЧТО ОТВЕЧЕННЫЙ шаг
+    # (form.js::goNext) — переводим один в другой здесь, один раз, а не в каждом читателе.
+    step_to_store = body.step
+    if body.step:
+        enabled_now = await reg_engine.enabled_steps({**new_answers, "participant_type": effective_track})
+        if body.step in enabled_now:
+            idx = enabled_now.index(body.step)
+            if idx + 1 < len(enabled_now):
+                step_to_store = enabled_now[idx + 1]
+            # иначе — отвеченный шаг был последним включённым: мастеру некуда двигаться,
+            # step_to_store остаётся body.step (submit решает следующий экран).
+
+    # Quick 260904-3vm (эстафета): "ничей" черновик (holder is None — пуст или только что
+    # создаётся) занимается МОЛЧА приложением; уже занятый приложением — как раньше, без событий.
+    silent_takeover = ctx["holder"] is None
     await upsert_reg_draft(
         p.telegram_id,
         kind=ctx["kind"],
         participant_type=effective_track,
         event_city=pre_patch.get("event_city") or ctx["event_city"],
-        step=body.step,
+        step=step_to_store,
         patch=delta,
         source="miniapp",
+        active_surface=SURFACE_APP if silent_takeover else None,
     )
+    if silent_takeover:
+        # FSM бота могла остаться в анкете с прошлого захода (делегат начал в чате, ушёл, а
+        # потом открыл пустой черновик в приложении) — сбрасываем на всякий случай.
+        await enqueue("reg_fsm_reset", {"telegram_id": p.telegram_id, "reason": "takeover"})
     # T-21-08: в лог — только имена полей/колонок, значения не пишутся.
     logger.info(
         "reg draft patch telegram_id=%s step=%s base_version=%s pre=%s columns=%s",
-        p.telegram_id, body.step, body.version, sorted(pre_patch), sorted(delta.keys()),
+        p.telegram_id, step_to_store, body.version, sorted(pre_patch), sorted(delta.keys()),
     )
     resp = await _draft_response(p.telegram_id, bot_username=request.app.state.cfg.bot_username)
     resp["conflicts"] = conflicts
     return resp
+
+
+# ── POST /app/api/reg/draft/takeover, /release ──────────────────────────────────────────────
+
+@router.post("/app/api/reg/draft/takeover")
+async def draft_takeover(
+    request: Request,
+    p: Principal = Depends(form_gate),
+    _: Principal = Depends(require_section("form")),
+) -> dict:
+    """Кнопка «Забрать сюда» на плите «анкета сейчас в чате» — явный захват владения
+    приложением. Черновика может не быть вовсе (мастер просто откроется пустым) — маршрут
+    всё равно 200. Всегда ставит РОВНО одно событие сброса FSM бота, даже если владение уже
+    было у приложения (идемпотентный тап — лишний сброс FSM безвреден)."""
+    await set_reg_draft_surface(p.telegram_id, SURFACE_APP)
+    await enqueue("reg_fsm_reset", {"telegram_id": p.telegram_id, "reason": "takeover"})
+    return await _draft_response(p.telegram_id, bot_username=request.app.state.cfg.bot_username)
+
+
+@router.post("/app/api/reg/draft/release")
+async def draft_release(
+    p: Principal = Depends(form_gate),
+    _: Principal = Depends(require_section("form")),
+) -> dict:
+    """Кнопка «Продолжить в чате» — отдаёт владение ПЕРЕД тем, как приложение откроет
+    deep-link, иначе гвард бота (handlers/reg_handoff.py) отбил бы делегата же его собственным
+    вводом. Без outbox: бот и так заберёт анкету по deep-link `?start=continue` через
+    существующий экран «Продолжить / Заново» (D-17/D-18)."""
+    await set_reg_draft_surface(p.telegram_id, SURFACE_BOT)
+    return {"ok": True}
 
 
 # ── POST /app/api/reg/consent/{key} ──────────────────────────────────────────────────────
@@ -449,6 +541,10 @@ async def draft_submit(
 
     kind_event = "reg_finalized" if result["mode"] == "new" else "reg_edited"
     await enqueue(kind_event, {"telegram_id": p.telegram_id})
+    # Quick 260904-3vm (эстафета): второй слой к гварду бота (handlers/reg_handoff.py) — гвард
+    # закрывает окно до 30 с, пока эта джоба очереди не проснулась. Молча — приложение уже
+    # показало делегату экран «Заявка принята», второе уведомление не нужно.
+    await enqueue("reg_fsm_reset", {"telegram_id": p.telegram_id, "reason": "submitted"})
     logger.info(
         "reg draft submit telegram_id=%s mode=%s status=%s", p.telegram_id, result["mode"], result["status"],
     )

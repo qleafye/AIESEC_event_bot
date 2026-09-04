@@ -728,7 +728,15 @@ async def form_spec(answers: dict, participant_type: str | None = None,
     # без трека и `enabled_steps` тихо падал на дефолт "full" -- каждый веб-делегат видел все
     # 43 вопроса вместо своего трека. Явно подмешиваем track в копию для этого одного вызова;
     # сам `answers` ниже (value/prior по шагам) остаётся нетронутым.
-    track = participant_type or answers.get("participant_type") or "full"
+    # Quick 260904-3vm (D16, УАТ владельца 04.09): "or 'full'" тут раньше означало, что
+    # глобальный/по-городу registration_mode=short веб просто ИГНОРИРУЕТ, когда в черновике
+    # нет трека (старт из приложения, kind=new, без party-форка) -- каждый веб-делегат на
+    # промо-окне получал полную форму. `resolve_track` зовётся ТОЛЬКО с пустым кандидатом
+    # (raw_track is None) -- вызов с непустым кандидатом означал бы, что промо-окно
+    # перебивает уже зафиксированный трек 'full' (шаг 2 функции выиграл бы у шага 3) и
+    # перевело бы делегатов, начавших полную анкету, на короткую в середине заполнения.
+    raw_track = participant_type or answers.get("participant_type")
+    track = raw_track or await resolve_track(None, event_city)
     enabled = await enabled_steps({**answers, "participant_type": track})
     steps_out = []
     done = 0

@@ -144,6 +144,9 @@ from reg_engine import (
     with_defaults, summary_fields, decide_status, diff,
     # Gap closure фазы 21 (D-01): выбор трека/города — один код для тапа в боте и PATCH из веба.
     resolve_track, PARTY_TAG_MAP,
+    # Quick 260904-3vm (D15): «анкета реально подана в этом сезоне» — не то же самое, что
+    # «есть строка users» (см. докстринг функции).
+    has_submitted_anketa,
 )
 _get_enabled_steps = enabled_steps
 _get_options = option_list_for
@@ -1348,8 +1351,10 @@ async def _start_registration_flow(message: types.Message, state: FSMContext, re
     try:
         existing_user = await get_user(message.from_user.id)
         cur_season = await get_setting_typed("event_season") or None
-        if existing_user and (existing_user.get("status") or "approved") != "rejected" \
-                and (existing_user.get("season") or None) == cur_season:
+        # Quick 260904-3vm (D15): «подана анкета» = непустой registration_date, не факт
+        # наличия строки users / статус ≠ rejected — иначе делегат без единого ответа (строка
+        # завелась как артефакт импорта) видел бы экран «Изменение анкеты» вместо мастера.
+        if has_submitted_anketa(existing_user, cur_season):
             draft_kind = "edit"
     except Exception as e:
         logger.error(f"draft-kind resolve failed for {message.from_user.id}: {e}")
