@@ -100,6 +100,7 @@ MINIAPP_KEYS = [
     "miniapp_hub_rejected_heading_text",
     "miniapp_hub_rejected_body_text",
     "miniapp_hub_rejected_cta_text",
+    "miniapp_hub_rejected_reason_text",  # quick 260904-liz
     # Quick 260903: подпись плитки «Дашборд» в хабе менеджера (адрес — cfg.public_url, не реестр)
     "miniapp_tile_dashboard_label",
     # Phase 23.1-05 (UI-REDESIGN-05): подписи профиля делегата по макету 04-profile.png
@@ -261,7 +262,9 @@ def test_exactly_144_miniapp_keys_and_no_extra():
     # кнопки-тоггла для скринридера (163 -> 165).
     # Quick 260904-kk6 (D17): +1 ключ подписи «Свернуть» той же кнопки карточки заявки
     # (miniapp_applications_hide_all) (165 -> 166).
-    assert len(MINIAPP_KEYS) == 166
+    # Quick 260904-liz: +1 ключ строки причины отказа на плите «Заявка отклонена»
+    # (miniapp_hub_rejected_reason_text) (166 -> 167).
+    assert len(MINIAPP_KEYS) == 167
     present = sorted(k for k in SETTINGS_SCHEMA if k.startswith("miniapp_"))
     assert present == sorted(MINIAPP_KEYS)
 
@@ -316,7 +319,8 @@ def test_text_keys_have_human_defaults():
     # Quick 260904-kk6 (Q2): +2 текстовых ключа экрана вопросов — плейсхолдер поля ответа и
     # подпись кнопки-тоггла (133 -> 135).
     # Quick 260904-kk6 (D17): +1 текстовый ключ «Свернуть» (135 -> 136).
-    assert len(text_keys) == 136
+    # Quick 260904-liz: +1 текстовый ключ строки причины отказа (136 -> 137).
+    assert len(text_keys) == 137
     for key in text_keys:
         default = SETTINGS_SCHEMA[key]["default"]
         assert isinstance(default, str) and default.strip(), key
