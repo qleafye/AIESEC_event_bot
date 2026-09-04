@@ -389,14 +389,18 @@ export async function render(root, params, ctx) {
     const mainFieldNodes = (card.main_fields || []).map((f) => flatRow(h, { title: f.label, meta: f.value }));
     const extraFields = card.extra_fields || [];
     const extraBlock = h("div", { class: "flat-list appl-extra hidden" }, extraFields.map((f) => flatRow(h, { title: f.label, meta: f.value })));
+    // Quick 260904-kk6 (D17): подпись — отдельный узел, чтобы менять текст на месте после
+    // переключения, не пересобирая всю кнопку (иконку не трогаем — chevron-up в icons.js нет).
+    const showAllLabel = h("span", { text: texts.show_all || "" });
     const showAllBtn = extraFields.length
       ? h("button", {
           class: "btn ghost appl-show-all", type: "button", "aria-expanded": "false",
           onClick: () => {
             const nowHidden = extraBlock.classList.toggle("hidden");
             showAllBtn.setAttribute("aria-expanded", nowHidden ? "false" : "true");
+            showAllLabel.textContent = nowHidden ? (texts.show_all || "") : (texts.hide_all || "");
           },
-        }, icon("chevron-down"), h("span", { text: texts.show_all || "" }))
+        }, icon("chevron-down"), showAllLabel)
       : null;
 
     const overlayApprove = h("div", { class: "appl-overlay approve", "aria-hidden": "true" }, icon("check"));

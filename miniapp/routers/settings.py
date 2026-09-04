@@ -679,7 +679,17 @@ async def theme_preview(
         settings.update(preset_writes)
 
     resolved = web_theme.resolve_theme(settings)
-    return {"vars": web_theme.theme_css_vars(resolved)}
+    return {
+        "vars": web_theme.theme_css_vars(resolved),
+        # Quick 260904-kk6 (E5/T-kk6-02): та же форма, что у `/app/api/me`
+        # (miniapp/routers/page.py:246) — состояние для клиента, НЕ команда рисовать: сама
+        # картинка уже погашена `--plate-pattern: none` внутри `theme_css_vars` выше. Флаг
+        # считается сервером из `resolve_theme(settings)`, а не берётся из `body.changes`, так
+        # что подделать его с клиента нельзя. Класс на контейнере мини-плиты не понадобился —
+        # `--plate-pattern` из `vars` уже гасит фон сам (`applyThemePreviewVars` в settings.js
+        # просто раскладывает vars на CSS-переменные плиты).
+        "pattern_enabled": resolved["pattern_enabled"] == "on",
+    }
 
 
 __all__ = ["router", "EDITABLE_KEYS"]
