@@ -369,6 +369,54 @@ PROMPT_DEFAULTS = {
     "volunteer": "Хочешь быть волонтёром?",
 }
 
+# ── Подсказки формата (D1, quick 260904-de4) ────────────────────────────────────────────────
+
+# Подсказка формата под вопросом веб-анкеты — дословно согласована с веткой валидатора шага в
+# `_validate_answer_core` (подсказка обязана описывать то, что валидатор ПРИНИМАЕТ, а не то, что
+# человеку кажется удобным). Единственный источник подсказок: экран Mini App её не дублирует,
+# бот в чат её не шлёт (менять `prompt()` = ломать golden-снимки текстов бота, а текст ошибки
+# валидации в чате и так называет формат).
+STEP_HELP = {
+    "full_name": "Фамилия и имя минимум, например «Иванова Мария».",
+    "age": "Число от 10 до 120, например «19».",
+    "email": "Формат имя@домен, например «ivanova@example.com».",
+    "phone": "Цифры, можно с плюсом впереди, например «+79161234567».",
+    "vk": "Ник в ВК начинается с «@» и без пробелов, например «@ivanova_maria».",
+    "resume": "Файл PDF или DOCX до 10 МБ, либо текст ответом в чате.",
+}
+
+# Пример-значение для каждого шага из STEP_HELP — ровно то, что названо в подсказке. Карта
+# существует ради сторожа «подсказка не врёт»: пример, не проходящий собственный валидатор
+# шага, — баг, который иначе видит только делегат.
+STEP_HELP_EXAMPLES = {
+    "full_name": "Иванова Мария",
+    "age": "19",
+    "email": "ivanova@example.com",
+    "phone": "+79161234567",
+    "vk": "@ivanova_maria",
+    "resume": "Резюме текстом: 2 года опыта в маркетинге.",
+}
+
+_DATE_HELP = "Формат ДД.ММ.ГГГГ, например «01.09.2026»."
+
+
+async def help_text(step_key: str, participant_type: str | None = None) -> str | None:
+    """Подсказка формата под вопросом веб-анкеты (D1). Дефолт = `STEP_HELP.get(step_key)`, а
+    для шагов типа `date` — общая `_DATE_HELP` (одна константа, не копия на каждый шаг). Нет
+    дефолта → `None` СРАЗУ, без похода в `bot_settings`: `form_spec` зовёт `step_spec` на ~43
+    шага, лишний `get_setting` на каждый шаг без подсказки не нужен. Есть дефолт → оверрайд
+    `reg_help_{step_key}` (динамический ключ, как `reg_prompt_*`; в `SETTINGS_SCHEMA` НЕ
+    заводится — иначе реестр вырастет на десяток ключей ради шести подсказок), пустая строка в
+    оверрайде = «дефолт» (та же семантика `or default`, что у `prompt()`)."""
+    if REG_STEP_TYPES.get(step_key) == "date":
+        default = _DATE_HELP
+    else:
+        default = STEP_HELP.get(step_key)
+    if default is None:
+        return None
+    return await get_setting(f"reg_help_{step_key}") or default
+
+
 _GENERIC_FALLBACK_LABEL = {"select": "Выбери вариант", "multi": "Выбери варианты", "date": "Дата"}
 
 
@@ -697,6 +745,7 @@ async def step_spec(step_key: str, participant_type: str | None = None,
         "type": ui_type,
         "label": label,
         "prompt": await prompt(step_key, participant_type),
+        "help": await help_text(step_key, participant_type),
         "options": None,
         "other_allowed": step_key in _OTHER_ALLOWED_STEPS,
         "skip_allowed": step_key in _SKIP_ALLOWED_STEPS,

@@ -538,7 +538,9 @@ export async function render(root, params, ctx) {
       // (form.js::field() строит один badge-узел на состояние «updated-in-chat» — второго
       // набора DOM-узлов под отдельную иконку «history» общий компонент сегодня не даёт);
       // подпись — параметром из ответа сервера ниже, не литерал. Снимается первым касанием.
-      const el = field(h, spec, value, (v) => { liveValue = v; });
+      // help: null — подсказку формата уже рисует плита (`plate-sub` ниже); field() рисует
+      // spec.help как `.field-help` ВСЕГДА, без этого получились бы два одинаковых абзаца.
+      const el = field(h, { ...spec, help: null }, value, (v) => { liveValue = v; });
       if (spec.value_source === "prior" && !state.isDirty(column)) {
         setFieldState(el, "updated-in-chat", { text: d.prior_badge_text });
         el.addEventListener("input", () => setFieldState(el, "default", {}), { once: true });
