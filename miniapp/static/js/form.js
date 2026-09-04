@@ -408,9 +408,17 @@ export function createFormState(specs, values) {
   const base = { ...(values || {}) };
   const current = { ...(values || {}) };
   const dirty = new Set();
+  // D9 (quick 260904-de4): правка, которую уже применил сервер (файл резюме — загружен через
+  // POST /uploads?target=resume, значение лежит в черновике), — это dirty ДЛЯ КНОПКИ
+  // «Отправить изменения», но НЕ дельта для PATCH: повторная отправка текстом затёрла бы
+  // файл. Отдельный набор, а не общий `dirty`, — collectPatch() не должен видеть эти колонки.
+  const serverDirty = new Set();
 
   function isDirty(column) {
-    return dirty.has(column);
+    return dirty.has(column) || serverDirty.has(column);
+  }
+  function markServerDirty(column) {
+    serverDirty.add(column);
   }
   function setValue(column, v) {
     current[column] = v;
@@ -423,7 +431,9 @@ export function createFormState(specs, values) {
   }
   // D-19: чужие правки из чата подмешиваются в base/current, НО не в поля, которые дельгат
   // правит прямо сейчас (keepDirty=true, дефолт) — возвращает список колонок, реально
-  // подменённых (для setFieldState("updated-in-chat", …) на стороне экрана).
+  // подменённых (для setFieldState("updated-in-chat", …) на стороне экрана). Проверяет только
+  // `dirty` (не `serverDirty`): столбец, только что записанный сервером (файл), обязан принять
+  // свежее значение сервера, а не защищаться как «своя локальная» правка.
   function applyServer(fresh, opts) {
     const keepDirty = !opts || opts.keepDirty !== false;
     const updated = [];
@@ -437,13 +447,14 @@ export function createFormState(specs, values) {
   }
   function reset() {
     dirty.clear();
+    serverDirty.clear();
     for (const column of Object.keys(base)) current[column] = base[column];
   }
   function value(column) {
     return current[column];
   }
 
-  return { specs: specs || [], isDirty, setValue, collectPatch, applyServer, reset, value, base, current };
+  return { specs: specs || [], isDirty, markServerDirty, setValue, collectPatch, applyServer, reset, value, base, current };
 }
 
 /**

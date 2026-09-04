@@ -129,6 +129,43 @@ export async function render(root, params, ctx) {
     ));
   }
 
+  // D9 (quick 260904-de4): загрузка резюме файлом — общая для мастера и обзора правки.
+  // `fileControl` (form.js) отдаёт наверх сырой `File`, сам ничего не грузит (Reuse Contract) —
+  // эта функция звонит `POST /uploads?target=resume` (submissions.py::_upload_resume) и кладёт
+  // результат в состояние формы через `markServerDirty` (файл уже применён сервером — повторный
+  // PATCH текстом затёр бы его, см. `form.js::createFormState`).
+  // `ctx.getDraft`/`ctx.setDraft` — доступ к переменной `d`, объявленной `let` в замыкании
+  // каждого режима (мастер/обзор), эта функция режимов не знает.
+  async function uploadResume(file, el, ctx) {
+    let current = ctx.getDraft();
+    if (!current.exists) {
+      // Черновика у одобренного делегата, правящего анкету впервые с файла, может не быть —
+      // `_upload_resume` без черновика отвечает 404 no_draft. Пустой PATCH его создаёт.
+      try {
+        current = await api("/reg/draft", { method: "PATCH", body: { version: current.version, answers: {} } });
+        ctx.setDraft(current);
+      } catch (err) {
+        if (!isAuthError(err)) setFieldState(el, "error", { text: errorText(err, current.resume_upload_error_text) });
+        return;
+      }
+    }
+    setFieldState(el, "uploading", { text: "" });
+    try {
+      const form = new FormData();
+      form.append("file", file, file.name);
+      await api("/uploads?target=resume", { method: "POST", form });
+      const fresh = await api("/reg/draft");
+      ctx.setDraft(fresh);
+      ctx.state.applyServer(answersFromSteps(fresh.steps), { keepDirty: true });
+      ctx.state.markServerDirty(ctx.column);
+      setFieldState(el, "default");
+      if (ctx.onDone) ctx.onDone(fresh);
+    } catch (err) {
+      if (isAuthError(err)) return;
+      setFieldState(el, "error", { text: errorText(err, ctx.getDraft().resume_upload_error_text) });
+    }
+  }
+
   // ── activated: подхват чужих правок из чата (D-19) — регистрируется ДО первого await,
   // чтобы unmount() могла снять обработчик, даже если запрос черновика ещё не вернулся. ────
   let onRefresh = null; // выставляется renderWizard()/renderOverview() ниже
@@ -273,7 +310,17 @@ export async function render(root, params, ctx) {
         panel.classList.add("hidden");
         panel.replaceChildren();
         if (!wasHidden) return;
-        const el = field(h, spec, value, (v) => { liveValue = v; });
+        const el = field(h, spec, value, (v) => {
+          liveValue = v;
+          // D9: файл резюме грузится СРАЗУ по выбору, не дожидаясь галки — галка остаётся
+          // способом подтвердить текстовый ввод ({text: …}).
+          if (typeof File !== "undefined" && v instanceof File) {
+            uploadResume(v, el, {
+              getDraft: () => d, setDraft: (nd) => { d = nd; }, state, column,
+              onDone: () => drawList(),
+            });
+          }
+        });
         fieldEls[column] = el;
         panel.append(el, h("button", {
           class: "btn", type: "button", "aria-label": spec.label,
@@ -540,7 +587,14 @@ export async function render(root, params, ctx) {
       // подпись — параметром из ответа сервера ниже, не литерал. Снимается первым касанием.
       // help: null — подсказку формата уже рисует плита (`plate-sub` ниже); field() рисует
       // spec.help как `.field-help` ВСЕГДА, без этого получились бы два одинаковых абзаца.
-      const el = field(h, { ...spec, help: null }, value, (v) => { liveValue = v; });
+      const el = field(h, { ...spec, help: null }, value, (v) => {
+        liveValue = v;
+        // D9: файл резюме грузится СРАЗУ по выбору — goNext() ниже его в JSON PATCH не кладёт
+        // (markServerDirty уже отработал здесь).
+        if (typeof File !== "undefined" && v instanceof File) {
+          uploadResume(v, el, { getDraft: () => d, setDraft: (nd) => { d = nd; }, state, column });
+        }
+      });
       if (spec.value_source === "prior" && !state.isDirty(column)) {
         setFieldState(el, "updated-in-chat", { text: d.prior_badge_text });
         el.addEventListener("input", () => setFieldState(el, "default", {}), { once: true });
@@ -553,9 +607,15 @@ export async function render(root, params, ctx) {
         if (busy) return;
         busy = true;
         setMainButton(null);
-        state.setValue(column, liveValue);
+        // D9: файл уже уехал на сервер через uploadResume() (markServerDirty) — класть его в
+        // JSON PATCH нельзя (`JSON.stringify(File)` даёт "{}", сервер отвечает 400). Указатель
+        // шага всё равно сдвигаем — answers пустой, step идёт отдельным полем.
+        const isFileValue = typeof File !== "undefined" && liveValue instanceof File;
         const patch = {};
-        patch[column] = liveValue;
+        if (!isFileValue) {
+          state.setValue(column, liveValue);
+          patch[column] = liveValue;
+        }
         try {
           const res = await api("/reg/draft", {
             method: "PATCH", body: { version: d.version, answers: patch, step: spec.key },
