@@ -257,8 +257,44 @@ async function renderDelegateHub(root, ctx) {
 // делегатские ручки (/coins|/profile|/tasks) отвечают ему 403 — герой и «Ближайший
 // дедлайн» не рисуются, запросов к ним нет. Подпись плитки анкеты — статус с сервера.
 async function renderTilesOnlyHub(root, ctx, items) {
-  const { h, navigate } = ctx;
+  const { h, api, navigate } = ctx;
   const labels = sectionLabelsFromDom();
+
+  // Плита «Анкета на проверке / заявка отклонена» (UAT D3): запрашивается только когда
+  // статус вообще может нести текст — approved/none/draft получают heading: None и ручку
+  // можно не звать вовсе. Отказ ручки -> плиты нет, плитки на месте (тот же fail-soft, что
+  // у MANAGER_FETCHERS ниже по файлу, T-19.1-16).
+  if (ctx.me.form_status === "pending" || ctx.me.form_status === "rejected") {
+    try {
+      const status = await api("/hub/status");
+      if (status && status.heading) {
+        const plate = h("section", { class: "plate plate--hub" },
+          h("h1", { text: status.heading }),
+          h("hr", { class: "plate-rule" }),
+          h("p", { class: "plate-sub", text: status.body || "" }),
+        );
+        if (status.status === "rejected" && status.cta_text) {
+          plate.append(h("button", {
+            class: "btn", type: "button", text: status.cta_text,
+            onClick: () => navigate("#/form"),
+          }));
+        }
+        root.append(plate);
+        if (status.event_dates || status.event_place) {
+          root.append(h("div", { class: "screen-anchor" },
+            icon("calendar"),
+            h("div", {},
+              status.event_dates ? h("div", { class: "screen-anchor-title", text: status.event_dates }) : null,
+              status.event_place ? h("div", { class: "screen-anchor-sub", text: status.event_place }) : null,
+            ),
+          ));
+        }
+      }
+    } catch (_) {
+      // fail-soft (T-19.1-16): плиты нет, плитки всё равно рисуются ниже
+    }
+  }
+
   const tiles = h("div", { class: "tiles" });
   for (const item of items) {
     tiles.append(tile(h, {

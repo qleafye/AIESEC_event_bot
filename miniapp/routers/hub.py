@@ -27,7 +27,7 @@ from cities import get_setting_typed_for_city
 from database.db import get_user
 from settings_schema import get_setting_typed
 
-from miniapp.deps import Principal, delegate_gate
+from miniapp.deps import Principal, delegate_gate, form_gate
 from miniapp.routers.coins import count_participants
 from miniapp.routers.tasks import delegate_city_scope, tasks_progress
 from miniapp.timeutil import today_msk
@@ -86,4 +86,47 @@ async def hub(p: Principal = Depends(delegate_gate)) -> dict:
         "tasks_eyebrow": await get_setting_typed("miniapp_tasks_plate_eyebrow"),
         "rank_eyebrow": await get_setting_typed("miniapp_leaderboard_plate_eyebrow"),
         "rank_unit": rank_unit,
+    }
+
+
+@router.get("/app/api/hub/status")
+async def hub_status(p: Principal = Depends(form_gate)) -> dict:
+    """Плита состояния анкеты над плитками хаба (UAT D3, quick 260904-aup): pending/rejected
+    делегату сегодня нечего показать (`delegate_gate` отдал бы ему 403), а `form_gate`
+    пропускает ровно этих двоих плюс незарегистрированного/черновик — им ручка отвечает
+    `heading: None`, клиент просто не рисует плиту. `require_section` не нужен — у хаба нет
+    своего раздела-чекбокса (см. докстринг модуля выше)."""
+    user = await get_user(p.telegram_id) or {}
+    status = user.get("status") or "approved"
+    event_city = user.get("event_city")
+
+    event_dates = await get_setting_typed_for_city("event_date", event_city) or None
+    event_place = await get_setting_typed_for_city("event_place_name", event_city) or None
+
+    if status == "pending":
+        heading = await get_setting_typed("miniapp_hub_pending_heading_text")
+        body_tpl = await get_setting_typed("miniapp_hub_pending_body_text")
+        days = await get_setting_typed_for_city("miniapp_hub_pending_days", event_city)
+        # Та же подстановка, что applications.py::applications_next делает для «{count}» —
+        # `.format()` уронил бы ручку, если менеджер случайно сотрёт фигурные скобки в тексте.
+        body = body_tpl.replace("{days}", str(days)) if body_tpl else None
+        return {
+            "status": status, "heading": heading, "body": body, "days": days,
+            "cta_text": None, "event_dates": event_dates, "event_place": event_place,
+        }
+    if status == "rejected":
+        heading = await get_setting_typed("miniapp_hub_rejected_heading_text")
+        body = await get_setting_typed("miniapp_hub_rejected_body_text")
+        cta_text = await get_setting_typed("miniapp_hub_rejected_cta_text")
+        # ВАЖНО: причина отказа делегату здесь не показывается — она нигде не хранится.
+        # `services/application_effects.py::apply_decision_effects` отправляет её сообщением
+        # в чат и забывает; колонки `users.reject_reason` в проекте нет. Заводить её — не
+        # предмет этого квика (см. SUMMARY/source_audit плана 260904-aup).
+        return {
+            "status": status, "heading": heading, "body": body, "days": None,
+            "cta_text": cta_text, "event_dates": event_dates, "event_place": event_place,
+        }
+    return {
+        "status": status, "heading": None, "body": None, "days": None,
+        "cta_text": None, "event_dates": event_dates, "event_place": event_place,
     }
