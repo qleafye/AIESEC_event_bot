@@ -41,7 +41,10 @@ export async function render(root, params, ctx) {
   let emptyText = "";
   let answerButtonLabel = "";
   let sentToast = "";
+  let answerPlaceholder = "";
+  let answerToggleLabel = "";
   const drafts = {};
+  const formErrors = {};
   let noticeTimer = null;
 
   const notice = h("p", { class: "chip success hidden" });
@@ -85,10 +88,14 @@ export async function render(root, params, ctx) {
   }
 
   function answerForm(item) {
-    const textarea = h("textarea", { class: "input", rows: "3", placeholder: "Ответ делегату" });
+    const textarea = h("textarea", { class: "input", rows: "3", placeholder: answerPlaceholder });
     textarea.value = drafts[item.id] || "";
     textarea.addEventListener("input", () => { drafts[item.id] = textarea.value; });
-    const errLine = h("p", { class: "error-inline hidden" });
+    // Quick 260904-kk6 (Q2): ошибка предыдущей попытки переживает перерисовку списка (без
+    // этого патч статуса res.item в ветке ok:false стирал бы сообщение об ошибке вместе со
+    // старой формой).
+    const existingError = formErrors[item.id];
+    const errLine = h("p", { class: `error-inline${existingError ? "" : " hidden"}`, text: existingError || "" });
     const submitBtn = h("button", { class: "btn", type: "button", text: answerButtonLabel || "" });
 
     async function submit() {
@@ -100,6 +107,7 @@ export async function render(root, params, ctx) {
         const res = await api(`/questions/${item.id}/answer`, { method: "POST", body: { text } });
         if (res.ok) {
           delete drafts[item.id];
+          delete formErrors[item.id];
           openId = null;
           const idx = items.findIndex((row) => row.id === item.id);
           if (idx >= 0) {
@@ -113,13 +121,21 @@ export async function render(root, params, ctx) {
           return;
         }
         // Поле НЕ очищаем: менеджер не должен перенабирать ответ после отказа сервера.
-        errLine.textContent = res.text || errorText({ payload: res }, "Не получилось отправить.");
-        errLine.classList.remove("hidden");
-        submitBtn.disabled = false;
+        // Форма остаётся открытой (openId не трогаем) — черновик и ошибка подхватятся из
+        // drafts/formErrors при следующей перерисовке.
+        const message = res.text || errorText({ payload: res }, "Не получилось отправить.");
+        formErrors[item.id] = message;
+        const idx = items.findIndex((row) => row.id === item.id);
+        if (idx >= 0 && res.item) {
+          items[idx] = { ...items[idx], ...res.item };
+        }
+        renderList();
       } catch (err) {
         submitBtn.disabled = false;
         if (!isAuthError(err)) {
-          errLine.textContent = errorText(err, "Не получилось отправить — попробуйте ещё раз.");
+          const message = errorText(err, "Не получилось отправить — попробуйте ещё раз.");
+          formErrors[item.id] = message;
+          errLine.textContent = message;
           errLine.classList.remove("hidden");
         }
       }
@@ -139,9 +155,11 @@ export async function render(root, params, ctx) {
     }
     if (isOpen) extraChildren.push(answerForm(item));
 
+    // aria-label/title: иконка без текста иначе читается скринридером как «кнопка».
     const toggle = item.can_answer
       ? h("button", {
         class: "btn ghost", type: "button",
+        "aria-label": answerToggleLabel || "", title: answerToggleLabel || "",
         onClick: () => { openId = isOpen ? null : item.id; renderList(); },
       }, icon(isOpen ? "chevron-down" : "pen-line"))
       : null;
@@ -182,6 +200,8 @@ export async function render(root, params, ctx) {
     emptyText = page.empty_text || "";
     answerButtonLabel = page.answer_button || "";
     sentToast = page.sent_toast || "";
+    answerPlaceholder = page.answer_placeholder || "";
+    answerToggleLabel = page.answer_toggle_label || "";
     renderFilters(page.filters);
     items = items.concat(page.items);
     offset += page.items.length;
