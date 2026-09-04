@@ -1500,6 +1500,45 @@ def test_applications_screen_reject_flow_has_template_own_and_no_reason_paths():
     assert "reject_no_reason" in text
 
 
+# ── D18 (квик 260904-7e7): шторка отказа — модальный низовой лист поверх стопки, а не блок
+# под карточкой (владелец 04.09 переголосовал решение фазы 23 — жест закрытия вебвью уже
+# выключен глобально `tg.disableVerticalSwipes()`, см. app.js). Переиспользует общий компонент
+# `.sheet-backdrop`/`.sheet` (эталон — settings.js::diffBackdrop). ─────────────────────────────
+
+def test_reject_sheet_built_on_shared_sheet_backdrop_component():
+    text = _js_without_comments(APPLICATIONS_JS)
+    assert "sheet-backdrop" in text
+    assert re.search(r'class:\s*"[^"]*\bsheet\b[^"]*"', text), "класс листа не содержит sheet"
+    assert 'role: "dialog"' in text
+    assert '"aria-modal": "true"' in text
+    assert 'tabindex: "-1"' in text
+
+
+def test_reject_sheet_closes_via_backdrop_click_escape_and_cancel_button():
+    text = _js_without_comments(APPLICATIONS_JS)
+    assert re.search(r"e\.target\s*===\s*rejectBackdrop", text), "клик мимо листа не закрывает шторку"
+    assert re.search(r'e\.key\s*===\s*"Escape"', text), "нет ветки Escape в keydown-обработчике"
+    assert "texts.reject_cancel" in text, "кнопка «Отмена» не подписана из реестра"
+
+
+def test_reject_sheet_keydown_listener_detached_on_close_and_unmount():
+    text = _js_without_comments(APPLICATIONS_JS)
+    removes = re.findall(r'removeEventListener\("keydown"', text)
+    assert len(removes) >= 2, "снятие keydown-слушателя обязано быть и в closeRejectSheet(), и в unmount()"
+    unmount_src = text[text.index("export function unmount"):]
+    assert 'removeEventListener("keydown"' in unmount_src, "unmount() не снимает keydown-слушатель шторки"
+
+
+def test_reject_sheet_backdrop_has_no_pointer_events_none_so_it_blocks_swipe():
+    """Свайп карточки при открытой шторке блокируется не JS-гейтом, а физическим перехватом
+    жеста затемнением (`.sheet-backdrop` без `pointer-events: none`, `position: fixed;
+    inset: 0`) — см. интерфейс плана и общий компонент app.css:161-179."""
+    css = APP_CSS.read_text(encoding="utf-8")
+    backdrop_block = re.search(r"\.sheet-backdrop\s*\{([^}]*)\}", css)
+    assert backdrop_block and "pointer-events: none" not in backdrop_block.group(1)
+    assert "position: fixed" in backdrop_block.group(1) and "inset: 0" in backdrop_block.group(1)
+
+
 def test_applications_screen_mass_approve_uses_shared_confirm_box():
     text = _js_without_comments(APPLICATIONS_JS)
     assert 'from "../form.js"' in text and "confirmBox" in text

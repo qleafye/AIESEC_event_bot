@@ -1404,15 +1404,17 @@ a.flat-row:active, button.flat-row:active { background: var(--surface-alt); }
 .appl-decide-row .appl-decide:first-child { margin-left: 0; margin-right: auto; }
 .appl-decide .icon { width: 22px; height: 22px; }
 
-/* Шторка отказа (Task 3, D-05/T-23-23): блок ПОД карточкой, не модалка поверх всего —
-   модалка конфликтует с системным жестом закрытия вебвью Telegram. */
-.appl-sheet {
-  margin-top: var(--sp-3);
-  padding: var(--sp-3);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-lg);
-  background: var(--surface);
-}
+/* Шторка отказа (D18, квик 260904-7e7): решение фазы 23 (Task 3, D-05/T-23-23) держало этот
+   блок ПОД карточкой, не модалкой поверх всего — основание было «модалка конфликтует с
+   системным жестом закрытия вебвью Telegram». Основание устарело: `app.js` уже зовёт
+   `tg.disableVerticalSwipes()` на старте приложения (весь экран, не только этот), системный
+   жест выключен глобально. На практике блок под карточкой уезжал за нижний край экрана и
+   был не виден без прокрутки вслепую — владелец 04.09 решение переголосовал. `.appl-sheet`
+   теперь МОДИФИКАТОР общего `.sheet` (app.css:161-179, тот же компонент, что диалог diff в
+   settings.js) — фон/скругление/паддинг/безопасная зона/скролл/затемнение приходят оттуда,
+   здесь только то, что специфично экрану. Затемнение `.sheet-backdrop` физически перехватывает
+   жест (`position: fixed; inset: 0`, без `pointer-events: none`) — пока шторка открыта,
+   карточка под ней не свайпается, отдельного JS-гейта на это нет и не нужно. */
 .appl-sheet-templates { display: flex; flex-direction: column; gap: var(--sp-2); margin-bottom: var(--sp-2); }
 .appl-sheet-templates .btn, .appl-sheet > .btn { width: 100%; }
 .appl-sheet .field { margin: var(--sp-2) 0; }
