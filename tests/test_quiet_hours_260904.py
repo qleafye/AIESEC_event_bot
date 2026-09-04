@@ -402,3 +402,234 @@ def test_queued_count_matches_pending(tmp_path):
         assert await qh.queued_count() == 1
 
     asyncio.run(scenario())
+
+
+# ── Task 4: гейма, ручные монеты, напоминания ─────────────────────────────────────────────
+
+import tests.test_gamification_review_phase9 as gr_mod
+from handlers import admin as admin_mod
+from handlers import admin_gamification
+
+
+async def _set_quiet_hours_on_all_day():
+    await db.set_setting("quiet_hours_enabled", "on")
+    await db.set_setting("quiet_hours_start", "00:00")
+    await db.set_setting("quiet_hours_end", "23:59")
+
+
+def test_grev_approve_default_amount_in_quiet_hours_queues_not_sends(tmp_path):
+    gr_mod._db_ready(tmp_path)
+    task_id = gr_mod._seed_task(coins=10)
+    sub_id = gr_mod._seed_submission(task_id)
+
+    async def scenario():
+        await _set_quiet_hours_on_all_day()
+        callback = gr_mod.FakeCallback(f"grev_approve:{sub_id}")
+        state = gr_mod._new_state()
+        await admin_gamification.grev_approve(callback, state)
+        assert callback.message.bot.sent == []
+        assert await qh.queued_count() == 1
+        # монеты и статус не отложены -- только пуш
+        submission = await db.get_submission(sub_id)
+        assert submission["status"] == "approved"
+        assert await db.get_balance(gr_mod.DELEGATE_ID) == 10
+
+    asyncio.run(scenario())
+
+
+def test_grev_approve_custom_amount_in_quiet_hours_queues_not_sends(tmp_path):
+    gr_mod._db_ready(tmp_path)
+    task_id = gr_mod._seed_task(coins=5)
+    sub_id = gr_mod._seed_submission(task_id)
+
+    async def scenario():
+        await _set_quiet_hours_on_all_day()
+        state = gr_mod._new_state()
+        await admin_gamification.grev_approve_custom_start(
+            gr_mod.FakeCallback(f"grev_approve_custom:{sub_id}"), state,
+        )
+        amount_msg = gr_mod.FakeMessage(text="45")
+        await admin_gamification.grev_approve_amount_step(amount_msg, state)
+        assert amount_msg.bot.sent == []
+        assert await qh.queued_count() == 1
+
+    asyncio.run(scenario())
+
+
+def test_grev_reject_reason_in_quiet_hours_queues_not_sends(tmp_path):
+    gr_mod._db_ready(tmp_path)
+    task_id = gr_mod._seed_task(coins=10)
+    sub_id = gr_mod._seed_submission(task_id)
+
+    async def scenario():
+        await _set_quiet_hours_on_all_day()
+        state = gr_mod._new_state()
+        await state.update_data(grev_submission_id=sub_id)
+        from handlers.states import GameReview
+        await state.set_state(GameReview.reject_reason)
+        msg = gr_mod.FakeMessage(text="не по теме")
+        await admin_gamification.grev_reject_reason(msg, state)
+        assert msg.bot.sent == []
+        assert await qh.queued_count() == 1
+
+    asyncio.run(scenario())
+
+
+def test_two_game_approvals_same_night_both_queued_and_both_flushed(tmp_path):
+    """kind text_html НЕ схлопывается (REPLACEABLE_KINDS не содержит его) -- вторая сдача той
+    же ночью даёт ВТОРУЮ строку, утром уходят оба сообщения."""
+    gr_mod._db_ready(tmp_path)
+    task1 = gr_mod._seed_task(text="Задание А", coins=10)
+    task2 = gr_mod._seed_task(text="Задание Б", coins=20)
+    sub1 = gr_mod._seed_submission(task1, user_id=gr_mod.DELEGATE_ID)
+    sub2 = gr_mod._seed_submission(task2, user_id=gr_mod.DELEGATE_ID)
+
+    async def scenario():
+        await _set_quiet_hours_on_all_day()
+        state = gr_mod._new_state()
+        await admin_gamification.grev_approve(gr_mod.FakeCallback(f"grev_approve:{sub1}"), state)
+        await admin_gamification.grev_approve(gr_mod.FakeCallback(f"grev_approve:{sub2}"), state)
+        assert await qh.queued_count() == 2
+
+        from services import scheduler as sched
+        bot = _FakeBot()
+        sched._bot = bot
+        sent = await qh.flush_due(datetime(2030, 1, 1))
+        assert sent == 2
+        assert len(bot.sent) == 2
+
+    asyncio.run(scenario())
+
+
+def test_notify_manual_coins_in_quiet_hours_returns_true_and_queues(tmp_path):
+    _ready(tmp_path, "test_qh_manual_coins.db")
+
+    async def scenario():
+        await _set_quiet_hours_on_all_day()
+        bot = _FakeBot()
+        ok = await admin_mod._notify_manual_coins(bot, DELEGATE, 5, "молодец", 10)
+        assert ok is True
+        assert bot.sent == []
+        assert await qh.queued_count() == 1
+
+    asyncio.run(scenario())
+
+
+def test_notify_manual_coins_toggle_off_sends_immediately(tmp_path):
+    _ready(tmp_path, "test_qh_manual_coins_off.db")
+
+    async def scenario():
+        bot = _FakeBot()
+        ok = await admin_mod._notify_manual_coins(bot, DELEGATE, 5, "молодец", 10)
+        assert ok is True
+        assert len(bot.sent) == 1
+        assert await qh.queued_count() == 0
+
+    asyncio.run(scenario())
+
+
+def test_send_payment_reminder_in_quiet_hours_reschedules_self(tmp_path):
+    _ready(tmp_path, "test_qh_payment_reminder.db")
+    from services import scheduler as sched
+    from tests.test_game_submit_digest_260822 import _FakeScheduler
+
+    fake_sched = _FakeScheduler()
+    bot = _FakeBot()
+
+    async def scenario():
+        await db.add_user({
+            "telegram_id": DELEGATE, "registration_date": "2026-09-04 00:00:00",
+        })
+        async with db._connect() as conn:
+            await conn.execute(
+                "UPDATE users SET payment_status='not_paid', payment_option='A' "
+                "WHERE telegram_id=?",
+                (DELEGATE,),
+            )
+            await conn.commit()
+        await _set_quiet_hours_on_all_day()
+        sched._scheduler = fake_sched
+        sched._bot = bot
+        await sched.send_payment_reminder(DELEGATE)
+
+    asyncio.run(scenario())
+    assert bot.sent == []
+    assert fake_sched.add_calls, "джоба обязана перевзвестись, а не пропасть"
+    _func, trigger, kw = fake_sched.add_calls[-1]
+    assert trigger == "date"
+    assert kw["id"].startswith(f"pay_reminder_{DELEGATE}_")
+    assert kw["args"] == [DELEGATE]
+
+
+def test_nudge_in_quiet_hours_skips_without_marking(tmp_path, monkeypatch):
+    _ready(tmp_path, "test_qh_nudge.db")
+    from services import scheduler as sched
+    from database import db as db_mod
+
+    marked, sent = [], []
+
+    async def fake_get_candidates(_cutoff):
+        return [DELEGATE]
+
+    async def fake_mark_nudged(uid):
+        marked.append(uid)
+
+    async def fake_get_setting(key):
+        return {"nudge_enabled": "on", "nudge_after_minutes": "120", "nudge_text": "Продолжите"}.get(key)
+
+    class _FakeMeBot:
+        async def get_me(self):
+            class _Me:
+                username = "test_bot"
+            return _Me()
+
+        async def send_message(self, chat_id, text, parse_mode=None, reply_markup=None):
+            sent.append((chat_id, text))
+
+    monkeypatch.setattr(db_mod, "get_nudge_candidates", fake_get_candidates)
+    monkeypatch.setattr(db_mod, "mark_nudged", fake_mark_nudged)
+    monkeypatch.setattr(sched, "get_setting", fake_get_setting)
+    sched._bot = _FakeMeBot()
+
+    async def scenario():
+        await _set_quiet_hours_on_all_day()
+        await sched.nudge_incomplete_registrations()
+
+    asyncio.run(scenario())
+    assert sent == []
+    assert marked == []
+
+
+def test_nudge_toggle_off_sends_and_marks_as_before(tmp_path, monkeypatch):
+    _ready(tmp_path, "test_qh_nudge_off.db")
+    from services import scheduler as sched
+    from database import db as db_mod
+
+    marked, sent = [], []
+
+    async def fake_get_candidates(_cutoff):
+        return [DELEGATE]
+
+    async def fake_mark_nudged(uid):
+        marked.append(uid)
+
+    async def fake_get_setting(key):
+        return {"nudge_enabled": "on", "nudge_after_minutes": "120", "nudge_text": "Продолжите"}.get(key)
+
+    class _FakeMeBot:
+        async def get_me(self):
+            class _Me:
+                username = "test_bot"
+            return _Me()
+
+        async def send_message(self, chat_id, text, parse_mode=None, reply_markup=None):
+            sent.append((chat_id, text))
+
+    monkeypatch.setattr(db_mod, "get_nudge_candidates", fake_get_candidates)
+    monkeypatch.setattr(db_mod, "mark_nudged", fake_mark_nudged)
+    monkeypatch.setattr(sched, "get_setting", fake_get_setting)
+    sched._bot = _FakeMeBot()
+
+    asyncio.run(sched.nudge_incomplete_registrations())
+    assert sent == [(DELEGATE, "Продолжите")]
+    assert marked == [DELEGATE]
