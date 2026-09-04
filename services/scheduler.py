@@ -573,7 +573,17 @@ def cancel_payment_reminders(user_id: int):
 
 async def send_payment_reminder(user_id: int):
     """Date-job target: nudge a non-payer. Arg is int only (picklable); Bot from _bot
-    module global. SC#5: never fire if already paid or a receipt is already in review."""
+    module global. SC#5: never fire if already paid or a receipt is already in review.
+
+    Quick 260904-dq1 (mechanism 1 of 3 — see the module comment above sweep_payment_overdue
+    for why the three reminder jobs each pick a DIFFERENT mechanism): gated on quiet hours at
+    FIRE time, same idiom as the `payment_reminders_enabled` gate right above it — a
+    one-shot date job can cheaply RESCHEDULE ITSELF onto the end of the window instead of
+    firing. The re-added job uses a NEW id (not the original `pay_reminder_{user_id}_{label}`
+    — this function only receives `user_id`, the label isn't picklable through here); this is
+    safe because the self-guard above (paid/receipt_sent/None -> return) makes a stray extra
+    job a harmless no-op even if `cancel_payment_reminders` (fired on receipt confirm) never
+    learns this new id and cannot cancel it."""
     try:
         from database.db import get_user
         # Gated at FIRE time (not scheduling) so the admin toggle takes effect live — even
@@ -582,6 +592,15 @@ async def send_payment_reminder(user_id: int):
             return
         user = await get_user(user_id)
         if not user or user.get("payment_status") in ("paid", "receipt_sent", None):
+            return
+        from services import quiet_hours
+        now = _now_moscow_naive()
+        due = await quiet_hours.defer_until(now, user_id)
+        if due is not None:
+            get_scheduler().add_job(
+                send_payment_reminder, "date", run_date=due, args=[user_id],
+                id=f"pay_reminder_{user_id}_quiet_hours_shift", replace_existing=True,
+            )
             return
         text = await get_setting("payment_reminder_text") or (
             "⏰ Напоминание об оплате участия!\n\n"
@@ -597,7 +616,16 @@ async def sweep_payment_overdue():
     'not_paid' rows that actually entered the payment flow ('payment_option' set or
     'payment_due' populated) — 'receipt_sent'/'paid' are left alone, and the ~590 legacy
     users backfilled to 'not_paid' (who never picked an option) are NOT swept. No-op until
-    a parseable payment_deadline is set and has passed."""
+    a parseable payment_deadline is set and has passed.
+
+    Quick 260904-dq1 (mechanism 2 of 3 — queue, not self-reschedule): this is a DAILY job —
+    sliding its own next run to the end of quiet hours (mechanism 1 above, `send_payment_
+    reminder`'s date-job self-reschedule) would mean the users it flips today wait until the
+    NEXT DAY's run to be re-selected, since the status flip itself must stay immediate (it
+    feeds the «неоплатившие» broadcast segment). So the status flip runs unconditionally, and
+    only the one-shot ping below goes through `quiet_hours.send_or_queue_text` (mechanism 3,
+    skip-without-stamp, is for `nudge_incomplete_registrations` below — a different job with a
+    single-shot budget that a queued send would spend for nothing)."""
     try:
         from database.db import _connect
         # REG-02: read through the registry accessor — byte-identical to the previous
@@ -632,8 +660,12 @@ async def sweep_payment_overdue():
                 "Если ты ещё планируешь участвовать — загрузи чек через бота "
                 "(кнопка «💳 Оплата» в меню) или свяжись с организатором."
             )
+            from services import quiet_hours
             for tid in overdue_ids:
-                await _safe_send(lambda cid: _bot.send_message(cid, text), tid)
+                await quiet_hours.send_or_queue_text(
+                    _now_moscow_naive(), tid, text,
+                    sender=lambda cid=tid: _bot.send_message(cid, text),
+                )
                 await asyncio.sleep(0.05)
     except Exception as e:
         logger.error(f"sweep_payment_overdue failed: {e}")
@@ -735,7 +767,14 @@ async def quiet_hours_flush_job():
 
 async def nudge_incomplete_registrations():
     """Interval-job target (no args, picklable). Nudge each incomplete registration
-    older than the threshold exactly once, then stamp nudged_at (D-14)."""
+    older than the threshold exactly once, then stamp nudged_at (D-14).
+
+    Quick 260904-dq1 (mechanism 3 of 3 — skip without stamping, no queue): a candidate caught
+    in quiet hours is skipped WITHOUT calling `mark_nudged` — this job re-scans every
+    `nudge_scan_minutes` (default 15) and will pick the same candidate up again right after
+    the window ends. A queue entry here would be the wrong tool twice over: it would burn the
+    one-shot `mark_nudged` budget (D-14) on a message that hasn't gone out yet, and the delay
+    is short enough (one scan tick past the window) that a persisted row buys nothing."""
     try:
         from database.db import get_nudge_candidates, mark_nudged
         if not _nudge_enabled(await get_setting("nudge_enabled")):
@@ -762,7 +801,11 @@ async def nudge_incomplete_registrations():
         # database.db.get_nudge_candidates (план 21-05) — второй копии этого условия здесь
         # быть не должно.
         kb = await _nudge_keyboard()
+        from services import quiet_hours
+        now = _now_moscow_naive()
         for tid in candidates:
+            if await quiet_hours.defer_until(now, tid) is not None:
+                continue  # тихие часы -- пропуск без mark_nudged, заберёт следующий тик
             # A blocked user can never receive the nudge, so stamping nudged_at on permanent
             # failure is what keeps the "exactly once" contract (D-14) from degenerating into
             # "forever" — the give-up is the one-shot.

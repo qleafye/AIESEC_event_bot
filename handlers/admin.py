@@ -401,7 +401,9 @@ async def cmd_admin_help(message: types.Message, state: FSMContext):
 # an explicit sign (f"{delta:+d}") since the same template covers both credit and debit (CONTEXT.md
 # B). `{reason}` (free text from a human) is HTML-escaped -- the bot sends with parse_mode="HTML".
 async def _notify_manual_coins(bot: Bot, user_id: int, delta: int, reason: str, balance: int) -> bool:
-    """Returns True on successful delivery, False on any failure (delegate blocked the bot,
+    """Returns True on successful delivery OR on being queued for the end of quiet hours
+    (Quick 260904-dq1: for the caller this counts as success — the delegate WILL get the
+    notification, just not right now), False on any failure (delegate blocked the bot,
     etc.) -- logged, never raised. The ledger write already happened before this is called
     (T-14-20): a failed notification must never be the reason an operation looks undone."""
     template = await get_setting_typed("coins_manual_notify_text")
@@ -414,7 +416,14 @@ async def _notify_manual_coins(bot: Bot, user_id: int, delta: int, reason: str, 
         .replace("{balance}", str(balance))
     )
     try:
-        await bot.send_message(user_id, text, parse_mode="HTML")
+        from services import quiet_hours
+        from services.scheduler import _now_moscow_naive
+        sent_now = await quiet_hours.send_or_queue_text(
+            _now_moscow_naive(), user_id, text,
+            sender=lambda: bot.send_message(user_id, text, parse_mode="HTML"),
+        )
+        if not sent_now:
+            logger.info(f"Manual coins notification for user {user_id} deferred to end of quiet hours")
         return True
     except Exception as e:
         logger.warning(f"Failed to notify user {user_id} of manual coins change: {e}", exc_info=True)
