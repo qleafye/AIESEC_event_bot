@@ -281,6 +281,10 @@ async def _draft_response(telegram_id: int, ctx: dict | None = None, *, bot_user
         # экран не покажет.
         "progress_text": (await get_setting_typed("reg_form_progress_text")) if show_progress else None,
         "continue_deeplink": _continue_deeplink(bot_username),
+        # D9 (quick 260904-de4): фолбэк на загрузку резюме файлом, когда сервер не отдал
+        # человеческий текст своим (`bad_type`/`too_large` дают его сами — см.
+        # `submissions.py::_upload_resume`); отдельный литерал в JS не заводим.
+        "resume_upload_error_text": await get_setting_typed("reg_form_resume_upload_error_text"),
     }
 
 

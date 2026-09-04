@@ -115,3 +115,24 @@ def test_wizard_field_call_suppresses_duplicate_help():
     text = _js_without_comments(FORM_SCREEN_JS)
     assert "{ ...spec, help: null }" in text
 
+
+# ── D9 (quick 260904-de4): резюме файлом реально загружается ────────────────────────────
+
+def test_form_screen_uploads_resume_file_directly():
+    text = _js_without_comments(FORM_SCREEN_JS)
+    assert "target=resume" in text
+    assert "instanceof File" in text
+    assert "markServerDirty" in text
+
+
+def test_wizard_go_next_never_puts_file_into_json_patch():
+    """`JSON.stringify(File)` даёт `{}` — до этой правки мастер клал `liveValue` (сырой File)
+    прямо в `patch[column]`, теперь файл-ветка пропускает и `state.setValue`, и `patch[column]`
+    (уже отработал `uploadResume`/`markServerDirty` в колбэке выше)."""
+    text = _js_without_comments(FORM_SCREEN_JS)
+    start = text.index("async function goNext(")
+    end = text.index("function goBack(", start)
+    body = text[start:end]
+    assert "isFileValue" in body
+    assert "instanceof File" in body
+
