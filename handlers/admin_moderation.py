@@ -301,10 +301,14 @@ async def appr_approve(callback: types.CallbackQuery, state: FSMContext):
     won = await claim_approve(tid) if tid is not None else False
     if won:
         # Хвост (приветствие ровно один раз D-10 + автосинк статуса в таблицу, Таня п.5) —
-        # services/application_effects.py, fire-and-forget fail-soft.
+        # services/application_effects.py, fire-and-forget fail-soft. Сама проверка тихих
+        # часов живёт ВНУТРИ apply_decision_effects — здесь только приписка менеджеру.
         _spawn(apply_decision_effects(callback.bot, tid, "approved"))
         logger.info(f"admin={callback.from_user.id} action=approve user={tid}")
-        await callback.answer("Одобрено")
+        from services import quiet_hours
+        from services.scheduler import _now_moscow_naive
+        notice = await quiet_hours.manager_notice(_now_moscow_naive(), tid)
+        await callback.answer(f"Одобрено · {notice}" if notice else "Одобрено")
     else:
         await callback.answer("Уже обработано")
     try:
@@ -351,10 +355,15 @@ async def appr_reject_reason(message: types.Message, state: FSMContext):
     ok = await claim_reject(tid) if tid is not None else False
     if ok:
         # Хвост (сообщение делегату + автосинк статуса в таблицу, Таня п.5) —
-        # services/application_effects.py, fire-and-forget fail-soft.
+        # services/application_effects.py, fire-and-forget fail-soft. Сама проверка тихих
+        # часов живёт ВНУТРИ apply_decision_effects — здесь только приписка менеджеру.
         _spawn(apply_decision_effects(message.bot, tid, "rejected", reason))
         logger.info(f"admin={message.from_user.id} action=reject user={tid} reason={reason!r}")
-        await message.answer("Заявка отклонена.", reply_markup=ReplyKeyboardRemove())
+        from services import quiet_hours
+        from services.scheduler import _now_moscow_naive
+        notice = await quiet_hours.manager_notice(_now_moscow_naive(), tid)
+        reject_text = f"Заявка отклонена. {notice}" if notice else "Заявка отклонена."
+        await message.answer(reject_text, reply_markup=ReplyKeyboardRemove())
     else:
         await message.answer("Заявка уже обработана.", reply_markup=ReplyKeyboardRemove())
     await state.set_state(None)
@@ -457,9 +466,18 @@ async def appr_all_yes(callback: types.CallbackQuery, state: FSMContext):
     # services/application_effects.py::mass_approve_effects — welcome drain + один batch-sync
     # в лист (Таня п.5), fire-and-forget fail-soft.
     _spawn(mass_approve_effects(callback.bot, ids))
+    # Приписка о тихих часах — по ПЕРВОМУ делегату списка, тем же текстом реестра, что и
+    # одиночное одобрение (второй ключ ради формулировки во множественном числе не заводим —
+    # план явно это оговаривает).
+    from services import quiet_hours
+    from services.scheduler import _now_moscow_naive
+    notice = await quiet_hours.manager_notice(_now_moscow_naive(), ids[0])
+    confirm_text = f"✅ Одобрено: {len(ids)}. Рассылаю приветствия…"
+    if notice:
+        confirm_text += f"\n{notice}"
     try:
         await callback.message.edit_text(
-            f"✅ Одобрено: {len(ids)}. Рассылаю приветствия…",
+            confirm_text,
             reply_markup=await admin_keyboard_for(callback.from_user.id),
         )
     except Exception as e:

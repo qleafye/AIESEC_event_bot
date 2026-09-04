@@ -32,30 +32,71 @@ from services.sheets import bulk_update_status_in_sheet, update_status_in_sheet
 logger = logging.getLogger(__name__)
 
 
-async def apply_decision_effects(bot, telegram_id: int, status: str, reason: str | None = None) -> None:
+async def apply_decision_effects(bot, telegram_id: int, status: str, reason: str | None = None, *,
+                                 notify: bool = True, sheet: bool = True) -> None:
     """Хвост одного решения по заявке. `approved`: приветствие (`approve_user`, ровно один раз
     — D-10) затем лист. `rejected`: сообщение делегату (`reject_message_text`, `parse_mode=HTML`)
-    затем лист; сбой отправки — только в лог, решение НЕ откатывается (паритет с ботом)."""
+    затем лист; сбой отправки — только в лог, решение НЕ откатывается (паритет с ботом).
+
+    Quick 260904-dq1: `notify=False`/`sheet=False` — обратно совместимые kwargs. Лист
+    обновляется НЕЗАВИСИМО от тихих часов (рабочий инструмент менеджера, автосинк, морозить
+    до утра нельзя); уведомление делегату — единственное, что откладывается. Если `notify`
+    попал в окно тишины делегата, решение кладётся в очередь `services.quiet_hours` с
+    due_at = конец окна, а немедленной отправки НЕ происходит (`quiet_hours.flush_due`
+    перечитывает `users.status` на разборе и доставляет — Task 3 20-04-PLAN.md)."""
+    notify_now = notify
+    if notify:
+        from services import quiet_hours
+        from services.scheduler import _now_moscow_naive
+        now = _now_moscow_naive()
+        due = await quiet_hours.defer_until(now, telegram_id)
+        if due is not None:
+            await quiet_hours.enqueue(
+                telegram_id, quiet_hours.KIND_APPLICATION_DECISION,
+                {"status": status, "reason": reason}, due, now,
+            )
+            notify_now = False
+
     if status == "approved":
-        from handlers.reg_schema import approve_user  # локальный импорт против цикла
-        await approve_user(bot, telegram_id)  # welcome exactly once (D-10)
-        await update_status_in_sheet(telegram_id, STATUS_LABELS["approved"])
+        if notify_now:
+            from handlers.reg_schema import approve_user  # локальный импорт против цикла
+            await approve_user(bot, telegram_id)  # welcome exactly once (D-10)
+        if sheet:
+            await update_status_in_sheet(telegram_id, STATUS_LABELS["approved"])
     elif status == "rejected":
-        text = await reject_message_text(reason)
-        try:
-            await bot.send_message(telegram_id, text, parse_mode="HTML")
-        except Exception as e:
-            logger.error(f"Failed to notify rejected user {telegram_id}: {e}")
-        await update_status_in_sheet(telegram_id, STATUS_LABELS["rejected"])
+        if notify_now:
+            text = await reject_message_text(reason)
+            try:
+                await bot.send_message(telegram_id, text, parse_mode="HTML")
+            except Exception as e:
+                logger.error(f"Failed to notify rejected user {telegram_id}: {e}")
+        if sheet:
+            await update_status_in_sheet(telegram_id, STATUS_LABELS["rejected"])
 
 
 async def mass_approve_effects(bot, ids: list) -> None:
     """Перенесённый `_welcome_flipped` (обработка `TelegramRetryAfter`, пауза 0.05 между
-    отправками) + один `bulk_update_status_in_sheet`. Пустой список — выход без единого вызова."""
+    отправками) + один `bulk_update_status_in_sheet`. Пустой список — выход без единого вызова.
+
+    Quick 260904-dq1: та же проверка окна на КАЖДОГО делегата — попал в тихие часы, строка в
+    очередь, приветствие не шлётся. `bulk_update_status_in_sheet` — для ВСЕХ id одним вызовом,
+    как раньше (лист не ждёт тихих часов)."""
     if not ids:
         return
+    from services import quiet_hours
+    from services.scheduler import _now_moscow_naive
+
     for tid in ids:
         try:
+            now = _now_moscow_naive()
+            due = await quiet_hours.defer_until(now, tid)
+            if due is not None:
+                await quiet_hours.enqueue(
+                    tid, quiet_hours.KIND_APPLICATION_DECISION,
+                    {"status": "approved", "reason": None}, due, now,
+                )
+                await asyncio.sleep(0.05)
+                continue
             from handlers.reg_schema import approve_user  # локальный импорт против цикла
             await approve_user(bot, tid)
         except TelegramRetryAfter as e:

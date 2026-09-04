@@ -21,3 +21,11 @@ def today_msk() -> date:
     """Московская календарная дата «сейчас» — единая точка входа для всех miniapp-роутеров,
     которым нужно посчитать «сколько дней осталось» без aiogram-зависимостей."""
     return datetime.now(MOSCOW_TZ).date()
+
+
+def now_msk_naive() -> datetime:
+    """Quick 260904-dq1: naive московское «сейчас» для веб-процесса — тот же контракт, что
+    `services.scheduler._now_moscow_naive()` у бота (TZFIX-260816: naive, сравнимо с naive
+    временем из настроек), но СВОЙ `MOSCOW_TZ` этого файла (докстринг модуля: ребра
+    `miniapp -> services.scheduler` нет и не будет)."""
+    return datetime.now(MOSCOW_TZ).replace(tzinfo=None)
