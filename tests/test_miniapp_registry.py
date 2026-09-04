@@ -55,6 +55,7 @@ MINIAPP_KEYS = [
     "miniapp_profile_edit_hint",
     "miniapp_upload_caption_delegate",
     "miniapp_upload_caption_staff",
+    "miniapp_upload_caption_settings",  # Quick 260904-8o3 Task 2 (E3): ассет оформления
     "miniapp_upload_caption_resume",  # Phase 21 Plan 02 (FORM-SYNC-05, Pattern 5)
     # 260824-8qw (MD-03): подтверждение перед выключением приложения / скрытием от делегатов
     "miniapp_confirm_disable_text",
@@ -228,7 +229,10 @@ def test_exactly_144_miniapp_keys_and_no_extra():
     # (147 -> 151).
     # Quick 260904-7e7 (D18): +1 ключ шторки отказа (miniapp_applications_reject_cancel)
     # (151 -> 152).
-    assert len(MINIAPP_KEYS) == 152
+    # Quick 260904-8o3 Task 2 (E3): +1 ключ подписи ассета оформления
+    # (miniapp_upload_caption_settings) — менеджер-делегат больше не получает подпись
+    # «копия сдачи» за загрузку из настроек (152 -> 153).
+    assert len(MINIAPP_KEYS) == 153
     present = sorted(k for k in SETTINGS_SCHEMA if k.startswith("miniapp_"))
     assert present == sorted(MINIAPP_KEYS)
 
@@ -274,7 +278,8 @@ def test_text_keys_have_human_defaults():
     # D-17 Task 3: +3 заголовка колонок матрицы «трек × вопрос» (116 -> 119).
     # Quick 260904-2cj: +3 текстовых ключа журнала вопросов делегатов (119 -> 122).
     # Quick 260904-7e7 (D18): +1 текстовый ключ шторки отказа (122 -> 123).
-    assert len(text_keys) == 123
+    # Quick 260904-8o3 Task 2 (E3): +1 текстовый ключ подписи ассета оформления (123 -> 124).
+    assert len(text_keys) == 124
     for key in text_keys:
         default = SETTINGS_SCHEMA[key]["default"]
         assert isinstance(default, str) and default.strip(), key
@@ -282,6 +287,9 @@ def test_text_keys_have_human_defaults():
     assert SETTINGS_SCHEMA["miniapp_login_button"]["default"] == "Войти через Telegram"
     assert SETTINGS_SCHEMA["miniapp_upload_caption_delegate"]["default"] == "копия сдачи"
     assert SETTINGS_SCHEMA["miniapp_upload_caption_staff"]["default"] == "загружено из приложения"
+    assert SETTINGS_SCHEMA["miniapp_upload_caption_settings"]["default"] == (
+        "🎨 Файл сохранён — можно выбрать его в настройках оформления."
+    )
 
 
 def test_confirm_text_keys_have_human_defaults_and_no_code_leak():

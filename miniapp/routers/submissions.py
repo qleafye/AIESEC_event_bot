@@ -201,11 +201,23 @@ async def upload_part(request: Request, actor: UploadActor = Depends(upload_acto
     filename = (upload.filename or "file")[:255]
     content_type = upload.content_type or "application/octet-stream"
 
-    if request.query_params.get("target") == "resume":
+    target = request.query_params.get("target")
+    if target == "resume":
         return await _upload_resume(request, actor, content, filename, content_type)
 
     kind = _classify_upload(upload.content_type, len(content))
-    caption_key = "miniapp_upload_caption_staff" if actor.is_staff_upload else "miniapp_upload_caption_delegate"
+    # Quick 260904-8o3 Task 2 (E3): `is_staff_upload` из `deps.upload_actor` отвечает на
+    # вопрос «прошёл ли делегатский гейт», а не «зачем грузим» — менеджер, который сам
+    # одновременно одобренный делегат (владелец, тестировщица), по нему ВСЕГДА делегат, тогда
+    # ассет оформления настроек уходил бы с подписью про сдачу задания. Контекст загрузки
+    # приходит от клиента явно (`target=settings_asset`, screens/settings.js::handleFileUpload);
+    # порядок веток не трогаем — он же обслуживает резюме (выше) и сдачу геймы (staff/delegate).
+    if target == "settings_asset":
+        if "settings" not in actor.caps:
+            raise HTTPException(403, {"reason": "not_editable"})
+        caption_key = "miniapp_upload_caption_settings"
+    else:
+        caption_key = "miniapp_upload_caption_staff" if actor.is_staff_upload else "miniapp_upload_caption_delegate"
     caption = (await get_setting_typed(caption_key) or "")[:CAPTION_MAX]
 
     cfg = request.app.state.cfg
