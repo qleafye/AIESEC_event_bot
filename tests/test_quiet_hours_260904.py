@@ -600,6 +600,182 @@ def test_nudge_in_quiet_hours_skips_without_marking(tmp_path, monkeypatch):
     assert marked == []
 
 
+# ── Task 5: предупреждение о рассылке, «в очереди: N», разделы ────────────────────────────
+
+from aiogram.fsm.context import FSMContext
+from aiogram.fsm.storage.base import StorageKey
+from aiogram.fsm.storage.memory import MemoryStorage
+
+from handlers import admin_broadcasts
+from handlers.states import Broadcast
+import handlers.admin_sections as sections_mod
+from tests.test_roles_phase8 import ADMIN_ID as _ROLES_ADMIN_ID, _roles_ready
+
+
+def _bcast_state(uid=1) -> FSMContext:
+    return FSMContext(storage=MemoryStorage(), key=StorageKey(bot_id=1, chat_id=uid, user_id=uid))
+
+
+class _BcastFakeMessage:
+    def __init__(self, text=None):
+        self.text = text
+        self.answers_sent = []
+        self.markups = []
+        self.deleted = False
+
+    async def answer(self, text, parse_mode=None, reply_markup=None):
+        self.answers_sent.append(text)
+        self.markups.append(reply_markup)
+
+    async def delete(self):
+        self.deleted = True
+
+
+class _BcastFakeCallback:
+    def __init__(self, data):
+        self.data = data
+        self.message = _BcastFakeMessage()
+        self.answers = []
+
+    async def answer(self, text=None, show_alert=False):
+        self.answers.append((text, show_alert))
+
+
+def _flat_bcast_callback_data(markup):
+    return [btn.callback_data for row in markup.inline_keyboard for btn in row]
+
+
+def test_broadcast_schedule_in_quiet_hours_asks_shift_or_keep(tmp_path, monkeypatch):
+    _ready(tmp_path, "test_qh_bcast_ask.db")
+    orig = admin_broadcasts._now_moscow_naive
+    admin_broadcasts._now_moscow_naive = lambda: datetime(2026, 7, 1, 10, 0)
+
+    async def scenario():
+        await db.set_setting("quiet_hours_enabled", "on")
+        await db.set_setting("quiet_hours_start", "22:00")
+        await db.set_setting("quiet_hours_end", "09:00")
+        state = _bcast_state()
+        await state.set_state(Broadcast.schedule_when)
+        msg = _BcastFakeMessage(text="01.07.2026 23:00")
+        await admin_broadcasts.broadcast_schedule_when(msg, state)
+
+        assert await state.get_state() == Broadcast.schedule_when, "остаёмся на шаге, ждём выбор"
+        assert "тихие часы" in msg.answers_sent[-1].lower()
+        kb = msg.markups[-1]
+        cbs = _flat_bcast_callback_data(kb)
+        assert "bcast_quiet:shift" in cbs and "bcast_quiet:keep" in cbs
+
+        data = await state.get_data()
+        assert data["schedule_dt_pending"] == "2026-07-01 23:00:00"
+        assert data["schedule_dt_shift"] == "2026-07-02 09:00:00"
+
+    try:
+        asyncio.run(scenario())
+    finally:
+        admin_broadcasts._now_moscow_naive = orig
+
+
+def test_broadcast_schedule_quiet_shift_rewrites_to_window_end(tmp_path, monkeypatch):
+    _ready(tmp_path, "test_qh_bcast_shift.db")
+    orig = admin_broadcasts._now_moscow_naive
+    admin_broadcasts._now_moscow_naive = lambda: datetime(2026, 7, 1, 10, 0)
+
+    async def scenario():
+        await db.set_setting("quiet_hours_enabled", "on")
+        await db.set_setting("quiet_hours_start", "22:00")
+        await db.set_setting("quiet_hours_end", "09:00")
+        state = _bcast_state()
+        await state.set_state(Broadcast.schedule_when)
+        msg = _BcastFakeMessage(text="01.07.2026 23:00")
+        await admin_broadcasts.broadcast_schedule_when(msg, state)
+
+        callback = _BcastFakeCallback("bcast_quiet:shift")
+        await admin_broadcasts.broadcast_schedule_quiet_choice(callback, state)
+        assert await state.get_state() == Broadcast.schedule_message
+        data = await state.get_data()
+        assert data["schedule_dt"] == datetime(2026, 7, 2, 9, 0)
+
+    try:
+        asyncio.run(scenario())
+    finally:
+        admin_broadcasts._now_moscow_naive = orig
+
+
+def test_broadcast_schedule_quiet_keep_preserves_entered_time(tmp_path, monkeypatch):
+    _ready(tmp_path, "test_qh_bcast_keep.db")
+    orig = admin_broadcasts._now_moscow_naive
+    admin_broadcasts._now_moscow_naive = lambda: datetime(2026, 7, 1, 10, 0)
+
+    async def scenario():
+        await db.set_setting("quiet_hours_enabled", "on")
+        await db.set_setting("quiet_hours_start", "22:00")
+        await db.set_setting("quiet_hours_end", "09:00")
+        state = _bcast_state()
+        await state.set_state(Broadcast.schedule_when)
+        msg = _BcastFakeMessage(text="01.07.2026 23:00")
+        await admin_broadcasts.broadcast_schedule_when(msg, state)
+
+        callback = _BcastFakeCallback("bcast_quiet:keep")
+        await admin_broadcasts.broadcast_schedule_quiet_choice(callback, state)
+        assert await state.get_state() == Broadcast.schedule_message
+        data = await state.get_data()
+        assert data["schedule_dt"] == datetime(2026, 7, 1, 23, 0)
+
+    try:
+        asyncio.run(scenario())
+    finally:
+        admin_broadcasts._now_moscow_naive = orig
+
+
+def test_broadcast_schedule_toggle_off_no_question(tmp_path, monkeypatch):
+    _ready(tmp_path, "test_qh_bcast_off.db")
+    orig = admin_broadcasts._now_moscow_naive
+    admin_broadcasts._now_moscow_naive = lambda: datetime(2026, 7, 1, 10, 0)
+
+    async def scenario():
+        state = _bcast_state()
+        await state.set_state(Broadcast.schedule_when)
+        msg = _BcastFakeMessage(text="01.07.2026 23:00")
+        await admin_broadcasts.broadcast_schedule_when(msg, state)
+        assert await state.get_state() == Broadcast.schedule_message
+        assert "тихие часы" not in msg.answers_sent[-1].lower()
+
+    try:
+        asyncio.run(scenario())
+    finally:
+        admin_broadcasts._now_moscow_naive = orig
+
+
+def test_settings_hints_quiet_queue_only_when_nonempty(tmp_path):
+    _ready(tmp_path, "test_qh_hints.db")
+
+    async def scenario():
+        from miniapp.routers.settings import _quiet_queue_hint
+        assert await _quiet_queue_hint() is None
+        await qh.enqueue(DELEGATE, qh.KIND_TEXT, {"text": "x"}, datetime(2026, 9, 5, 9, 0), datetime(2026, 9, 4, 23, 0))
+        hint = await _quiet_queue_hint()
+        assert hint is not None
+        assert "1" in hint["text"]
+        assert hint["hash"] == "#/settings"
+
+    asyncio.run(scenario())
+
+
+def test_apps_section_shows_queue_counter_only_when_nonzero(tmp_path):
+    _roles_ready(tmp_path)
+
+    async def scenario():
+        text0, _ = await sections_mod.section_screen(_ROLES_ADMIN_ID, "apps")
+        assert "в очереди" not in text0
+
+        await qh.enqueue(DELEGATE, qh.KIND_TEXT, {"text": "x"}, datetime(2026, 9, 5, 9, 0), datetime(2026, 9, 4, 23, 0))
+
+        text1, _ = await sections_mod.section_screen(_ROLES_ADMIN_ID, "apps")
+        assert "🌙 Тихие часы: в очереди 1" in text1
+
+    asyncio.run(scenario())
+
+
 def test_nudge_toggle_off_sends_and_marks_as_before(tmp_path, monkeypatch):
     _ready(tmp_path, "test_qh_nudge_off.db")
     from services import scheduler as sched

@@ -290,6 +290,9 @@ ADMIN_CAPS: dict[str, str] = {
 
     # ── broadcast ────────────────────────────────────────────────────────────────────────
     "admin_broadcast": "broadcast",
+    # Quick 260904-dq1: предупреждение о тихих часах на шаге планирования — та же capability,
+    # что у соседних шагов рассылки.
+    "bcast_quiet:*": "broadcast",
     "broadcast_all": "broadcast",
     "broadcast_cancel": "broadcast",
     "broadcast_filter": "broadcast",

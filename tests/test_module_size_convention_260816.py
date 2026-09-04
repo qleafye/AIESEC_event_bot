@@ -130,8 +130,12 @@ KNOWN_OVERAGES: dict[str, tuple[int, str]] = {
         "города + сброс/импорт сезона + дедупликация -- один связный экран (13-05)",
     ),
     "admin_broadcasts.py": (
-        860,
-        "рассылки + pending_albums (13-05)",
+        883,
+        "рассылки + pending_albums (13-05). "
+        "+23 строки (quick 260904-dq1, «🌙 Тихие часы») -- предупреждение на шаге "
+        "«когда» (broadcast_schedule_when) при попадании времени в глобальное окно тишины: "
+        "две кнопки bcast_quiet:shift/keep + общий хвост _confirm_broadcast_schedule; "
+        "потолок поднят до фактического размера.",
     ),
     "admin_roles.py": (
         860,
