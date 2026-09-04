@@ -194,6 +194,12 @@ def me(request: Request, p: Principal = Depends(principal)) -> dict:
         # form_access считается той же функцией, что и form_gate (T-21-34).
         status = form_status(conn, p.telegram_id)
         form_access = form_access_denial(conn, p) is None
+        # Quick 260904-aup (UAT D11 + Q4): сервер решает, кому вообще показывать привет-экран
+        # (тот же принцип, что form_first строкой выше) — сотрудник и делегат с уже поданной
+        # анкетой видели его снова на новом устройстве/после очистки localStorage, потому что
+        # клиент решал это сам (только по localStorage). Здесь ТОЛЬКО «кому положено» —
+        # «показывали ли уже на этом устройстве» по-прежнему решает localStorage в hub.js.
+        show_onboarding = not p.is_staff and status in ("none", "draft") and form_access
         theme_settings = {key: read_setting(conn, key) for key in web_theme.THEME_KEYS.values()}
         assets = {name: read_setting(conn, key) for name, key in web_theme.ASSET_KEYS.items()}
         onboarding_text = read_setting(conn, "miniapp_onboarding_text") or ""
@@ -231,6 +237,7 @@ def me(request: Request, p: Principal = Depends(principal)) -> dict:
         "form_status_label": STATUS_LABELS.get(status, ""),
         "form_access": form_access,
         "form_first": form_access and sections["form"] and status in ("none", "draft") and not p.caps,
+        "show_onboarding": show_onboarding,
         # Оформление (D-03/D-04/D-08/D-15/D-16) — новые поля, старые выше НЕ переименованы.
         "theme_preset": resolved["preset"],
         "playful_tone": resolved["playful_tone"] == "on",
