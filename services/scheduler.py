@@ -235,6 +235,10 @@ async def init_scheduler(bot):
     # остальных интервалов намеренно: делегат ждёт быстрой реакции менеджеров.
     _add_interval_job(miniapp_outbox_drain_job, "miniapp_outbox_drain", timedelta(seconds=30))
 
+    # Quick 260904-dq1: разбор очереди «🌙 Тихие часы» — каждую минуту, ре-арм на старте не
+    # нужен (см. докстринг quiet_hours_flush_job).
+    _add_interval_job(quiet_hours_flush_job, "quiet_hours_flush", timedelta(minutes=1))
+
     # ME-03: re-arm any pending broadcast whose date job was dropped from the jobstore during a
     # downtime longer than misfire_grace — otherwise it stays 'pending' forever and never fires.
     await reconcile_scheduled_broadcasts()
@@ -713,6 +717,20 @@ async def miniapp_outbox_drain_job():
         await drain(_bot)
     except Exception as e:
         logger.error(f"miniapp_outbox_drain_job failed: {e}")
+
+
+async def quiet_hours_flush_job():
+    """Interval-job target (no args, picklable — Pitfall 3), ровно по образцу
+    `miniapp_outbox_drain_job` выше. Ленивый импорт `services.quiet_hours` (aiogram-free
+    модуль, его же импортирует веб-процесс — не тащить его собственный импорт в верхний
+    уровень этого файла было бы поводом для цикла, если бы quiet_hours когда-нибудь захотел
+    что-то отсюда). Ре-арм на старте не нужен: interval-джоба взводится каждым бутом, а
+    просроченные строки разбираются первым же тиком по `due_at <= now`."""
+    try:
+        from services import quiet_hours
+        await quiet_hours.flush_due(_now_moscow_naive())
+    except Exception as e:
+        logger.error(f"quiet_hours_flush_job failed: {e}")
 
 
 async def nudge_incomplete_registrations():
