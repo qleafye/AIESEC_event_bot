@@ -46,6 +46,7 @@ SECTION_KEYS_EXPECTED = [
     "miniapp_section_form",
     "miniapp_section_review",
     "miniapp_section_applications",
+    "miniapp_section_questions",  # Quick 260904-2cj (QJRN-01..04): раздел «❓ Вопросы делегатов»
     "miniapp_section_admin_tasks",
     "miniapp_section_stats",
     "miniapp_section_settings",
