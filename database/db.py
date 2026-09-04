@@ -2108,15 +2108,22 @@ async def approve_all_pending(*, city_scope=None) -> list[int]:
 
 async def record_application_decision(telegram_id: int, decision: str, reason: str | None,
                                        decided_by: int, decided_at: str,
-                                       effects_due_at: str) -> int:
+                                       effects_due_at: str,
+                                       effects_sent_at: str | None = None) -> int:
     """Records a decision already applied to `users.status`; effects stay pending until
-    `effects_due_at`. Returns the new row's id (> 0)."""
+    `effects_due_at`. `effects_sent_at` — необязательный хвостовой параметр (quick
+    260904-liz): веб-путь по-прежнему оставляет его пустым (живая строка, ждёт своего
+    сметателя), а бот-путь передаёт уже проставленное время — бот применяет эффекты СИНХРОННО,
+    сам, до записи журнала, поэтому строка бот-пути должна родиться УЖЕ отмеченной отправленной
+    (иначе `claim_due_application_decisions` заберёт её и отправит отказ/приветствие делегату
+    ВТОРОЙ раз). Возвращает id новой строки (> 0)."""
     async with _connect() as db:
         cursor = await db.execute(
             "INSERT INTO application_decisions "
-            "(telegram_id, decision, reason, decided_by, decided_at, effects_due_at) "
-            "VALUES (?, ?, ?, ?, ?, ?)",
-            (telegram_id, decision, reason, decided_by, decided_at, effects_due_at),
+            "(telegram_id, decision, reason, decided_by, decided_at, effects_due_at, "
+            "effects_sent_at) VALUES (?, ?, ?, ?, ?, ?, ?)",
+            (telegram_id, decision, reason, decided_by, decided_at, effects_due_at,
+             effects_sent_at),
         )
         await db.commit()
         return cursor.lastrowid
@@ -2180,6 +2187,24 @@ async def get_application_decision(decision_id: int) -> dict | None:
         db.row_factory = aiosqlite.Row
         async with db.execute(
             "SELECT * FROM application_decisions WHERE id = ?", (decision_id,)
+        ) as cursor:
+            row = await cursor.fetchone()
+            return dict(row) if row else None
+
+
+async def get_last_application_decision(telegram_id: int) -> dict | None:
+    """Quick 260904-liz: последнее НЕ отменённое решение по делегату — `undone_at IS NULL`
+    исключает отменённые строки на уровне SQL, а не в Python, потому что отменённый отказ не
+    факт истории: менеджер вернул заявку в очередь (`undo_decision`/`revert_user_to_pending`),
+    делегат/менеджер не должны видеть решение, которого фактически не было. Берётся ПОСЛЕДНЯЯ
+    строка (`ORDER BY id DESC LIMIT 1`), а не первая — если делегата отклоняли дважды (подал
+    повторно, отклонили снова), актуальна причина ВТОРОГО отказа, а не первого."""
+    async with _connect() as db:
+        db.row_factory = aiosqlite.Row
+        async with db.execute(
+            "SELECT * FROM application_decisions WHERE telegram_id = ? AND undone_at IS NULL "
+            "ORDER BY id DESC LIMIT 1",
+            (telegram_id,),
         ) as cursor:
             row = await cursor.fetchone()
             return dict(row) if row else None
