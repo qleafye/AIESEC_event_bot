@@ -468,7 +468,13 @@ def test_theme_preview_without_settings_cap_403(tmp_path):
 def test_theme_preview_file_id_pattern_goes_through_file_proxy(tmp_path):
     client = _setup(tmp_path)
     file_id = "AgACAgIAAxkBAAI" + "c" * 15
-    resp = _preview(client, [{"key": "miniapp_theme_pattern", "value": file_id}])
+    # Quick 260904-kk6 (E5): чистый стенд стартует от пресета bluebook (pattern_enabled=off) —
+    # гейт в theme_css_vars погасил бы --plate-pattern независимо от plate_pattern. Тест про
+    # резолюцию file_id через файловый прокси, не про гейт — включаем паттерн явно.
+    resp = _preview(client, [
+        {"key": "miniapp_theme_pattern_enabled", "value": "on"},
+        {"key": "miniapp_theme_pattern", "value": file_id},
+    ])
     assert resp.status_code == 200, resp.text
     assert f"/app/api/file/{file_id}" in resp.json()["vars"]["light"]["--plate-pattern"]
 
