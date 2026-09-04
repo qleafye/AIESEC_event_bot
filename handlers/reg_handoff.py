@@ -26,6 +26,10 @@ from settings_schema import get_setting_typed
 from services.reg_handoff import SURFACE_APP, SURFACE_BOT, draft_holder
 from reg_engine import has_submitted_anketa
 from handlers.registration import router
+# `reg_resume` — импортирован строкой ВЫШЕ этого модуля в хвосте handlers/registration.py
+# (см. докстринг), значит handlers.reg_resume уже полностью загружен к этому моменту —
+# верхнеуровневый импорт здесь безопасен, второго модуля циклом не образует.
+from handlers.reg_resume import resume_from_draft
 
 logger = logging.getLogger(__name__)
 
@@ -119,9 +123,6 @@ router.callback_query.outer_middleware(RegHandoffGuard())
 async def reg_handoff_to_bot(callback: types.CallbackQuery, state: FSMContext, bot: Bot):
     """T-3vm-05: черновик читается ТОЛЬКО по `callback.from_user.id` — в callback_data нет
     параметров (та же посадка, что `reg_resume:*`)."""
-    from handlers.reg_resume import resume_from_draft  # локально: reg_resume импортируется
-    # ПОСЛЕ этого модуля (см. докстринг вверху) — импорт наверху дал бы циклическую загрузку.
-
     uid = callback.from_user.id
     draft = await get_reg_draft(uid)
     if not draft:
