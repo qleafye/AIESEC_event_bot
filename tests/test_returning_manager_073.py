@@ -121,7 +121,9 @@ def test_guide_documents_returning_delegate():
 
 def test_guide_has_no_code_identifiers():
     text = _guide_text()
-    idx = text.index("## 24. Новый сезон и вернувшиеся делегаты")
+    # Quick 260904-dq1: раздел «🌙 Тихие часы» встал под номером 12, разделы 12-26 сдвинулись
+    # на +1 — «Новый сезон и вернувшиеся делегаты» теперь 25-й, не 24-й.
+    idx = text.index("## 25. Новый сезон и вернувшиеся делегаты")
     section = text[idx:]
     for identifier in ("prev_season", "event_season", "legacy", "season"):
         assert identifier not in section, f"код {identifier!r} не должен быть виден менеджеру"

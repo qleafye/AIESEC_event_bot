@@ -584,6 +584,9 @@ PREVIEW_SAMPLES: dict[str, str] = {
     "done": "3",
     "filled": "14",
     "n": "10",
+    # Quick 260904-dq1: {time} у quiet_hours_manager_notice_text — конец окна тихих часов,
+    # подставляется services.quiet_hours.manager_notice тем же .replace-приёмом.
+    "time": "09:00",
 }
 
 
