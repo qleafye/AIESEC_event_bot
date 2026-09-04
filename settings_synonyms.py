@@ -106,6 +106,8 @@ SETTINGS_SYNONYMS: dict[str, list[str]] = {
     "reg_form_no_draft_text": ["черновика нет", "правка не сохранилась"],
     "reg_form_resume_too_large_text": ["файл резюме большой", "превышен размер резюме"],
     "reg_form_resume_wrong_type_text": ["не тот файл резюме", "формат резюме"],
+    "reg_form_resume_upload_error_text": ["ошибка загрузки резюме", "не загрузился файл резюме"],
+    "reg_form_share_contact_text": ["поделиться номером", "кнопка контакта телефон"],
     "reg_form_prior_answer_badge_text": ["старый ответ", "ответ из прошлого сезона"],
     "reg_form_updated_in_chat_badge_text": ["изменили в боте", "обновлено в телеграме"],
     "reg_form_complete_heading_text": ["заявка принята заголовок", "анкета отправлена веб"],
