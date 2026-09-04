@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+from pathlib import Path
 
 import httpx
 import pytest
@@ -139,6 +140,9 @@ def test_questions_list_returns_page_counts_and_texts(client, bot_api):
     assert body["empty_text"] == "Вопросов пока нет."
     assert body["answer_button"] == "Отправить ответ"
     assert body["sent_toast"] == "Ответ отправлен"
+    # Quick 260904-kk6 (Q2): плейсхолдер поля ответа + подпись кнопки-тоггла из реестра.
+    assert body["answer_placeholder"] == "Ответ делегату"
+    assert body["answer_toggle_label"] == "Ответить"
 
 
 def test_questions_list_unknown_status_treated_as_all_not_400(client, bot_api):
@@ -243,7 +247,10 @@ def test_answer_already_answered_returns_ok_false_by(client, bot_api):
 
     resp = client.post(f"/app/api/questions/{qid}/answer", json={"text": "Ещё раз"}, headers=_hdr(REG_MANAGER_ID))
     assert resp.status_code == 200
-    assert resp.json() == {"ok": False, "reason": "already", "by": "Другой Менеджер"}
+    body = resp.json()
+    # Quick 260904-kk6 (Q2): плюс "item" (см. test_answer_already_answered_returns_status_patch_answered
+    # ниже) — здесь по-прежнему точечно про ok/reason/by, без дублирования проверки патча.
+    assert body["ok"] is False and body["reason"] == "already" and body["by"] == "Другой Менеджер"
     assert bot_api.messages == []
 
 
@@ -253,7 +260,8 @@ def test_answer_claim_lost_to_other_manager_delegate_gets_nothing(client, bot_ap
 
     resp = client.post(f"/app/api/questions/{qid}/answer", json={"text": "Мой ответ"}, headers=_hdr(REG_MANAGER_ID))
     assert resp.status_code == 200
-    assert resp.json() == {"ok": False, "reason": "already", "by": "Другой Менеджер"}
+    body = resp.json()
+    assert body["ok"] is False and body["reason"] == "already" and body["by"] == "Другой Менеджер"
     assert bot_api.messages == []
     row = _get_question(qid)
     assert row["delivered_at"] is None
@@ -287,9 +295,61 @@ def test_answer_delivery_failure_keeps_claim_no_delivered_at(client, bot_api):
     assert row["answered_by"] == REG_MANAGER_ID  # захват не отпущен
 
 
+# ── Quick 260904-kk6 (Q2): item-патч статуса в ветках ok:false ───────────────────────────
+
+def test_answer_delivery_failure_returns_status_patch_in_work_not_stuck(client, bot_api):
+    qid = _seed_question(DELEGATE_ID)
+    bot_api.fail = True
+
+    resp = client.post(f"/app/api/questions/{qid}/answer", json={"text": "Ответ"}, headers=_hdr(REG_MANAGER_ID))
+    body = resp.json()
+    item = body["item"]
+    assert item["status"] == "in_work"
+    assert item["status_label"] == "✍️ в работе"
+    assert item["stuck"] is False
+    assert item["answered_by_name"]  # заполнено _manager_name(p) — конкретное значение не контракт этого теста
+    assert item["can_answer"] is True
+    # Патч не тянет данные о делегате — get_question без JOIN их не знает (T-kk6-01).
+    assert "user_id" not in item and "question_text" not in item
+
+
+def test_answer_already_answered_returns_status_patch_answered(client, bot_api):
+    qid = _seed_question(DELEGATE_ID)
+    _run(bot_db.claim_question(qid, BOUND_REG_MANAGER_ID, "Другой Менеджер"))
+    _run(bot_db.set_question_answer(qid, "Уже отвечено"))
+
+    resp = client.post(f"/app/api/questions/{qid}/answer", json={"text": "Ещё раз"}, headers=_hdr(REG_MANAGER_ID))
+    body = resp.json()
+    item = body["item"]
+    assert item["status"] == "answered"
+    assert item["can_answer"] is False
+    assert item["answered_by_name"] == "Другой Менеджер"
+
+
+def test_answer_claim_lost_returns_status_patch(client, bot_api):
+    qid = _seed_question(DELEGATE_ID)
+    _run(bot_db.claim_question(qid, BOUND_REG_MANAGER_ID, "Другой Менеджер"))
+
+    resp = client.post(f"/app/api/questions/{qid}/answer", json={"text": "Мой ответ"}, headers=_hdr(REG_MANAGER_ID))
+    body = resp.json()
+    item = body["item"]
+    assert item["status"] == "in_work"
+    assert item["can_answer"] is True
+
+
 def test_answer_section_off_403(client, bot_api):
     qid = _seed_question(DELEGATE_ID)
     _set("miniapp_section_questions", "off")
     resp = client.post(f"/app/api/questions/{qid}/answer", json={"text": "Ответ"}, headers=_hdr(REG_MANAGER_ID))
     assert resp.status_code == 403
     assert bot_api.messages == []
+
+
+# ── Quick 260904-kk6 (Q2): сторож на фронт — плейсхолдер из реестра, тоггл озвучен ────────
+
+def test_questions_js_placeholder_from_registry_and_toggle_has_aria_label():
+    src = Path(__file__).resolve().parent.parent.joinpath(
+        "miniapp", "static", "js", "screens", "questions.js",
+    ).read_text(encoding="utf-8")
+    assert "Ответ делегату" not in src
+    assert "aria-label" in src
