@@ -41,6 +41,7 @@ MINIAPP_KEYS = [
     "miniapp_section_stats",
     "miniapp_section_settings",
     "miniapp_section_applications",  # Phase 23-01 (APP-TINDER-01, D-09): раздел «🗂 Отбор заявок»
+    "miniapp_section_questions",  # Quick 260904-2cj (QJRN-01..04): раздел «❓ Вопросы делегатов»
     # тексты
     "miniapp_open_text",
     "miniapp_open_button",
@@ -145,6 +146,10 @@ MINIAPP_KEYS = [
     "miniapp_applications_filter_party",
     "miniapp_applications_filter_short",
     "miniapp_applications_filter_changed",
+    # Quick 260904-2cj (QJRN-01..04): журнал вопросов делегатов Mini App
+    "miniapp_empty_questions",
+    "miniapp_questions_answer_button",
+    "miniapp_questions_sent_toast",
     # Phase 22 Plan 02 (WEB-SET-02/03, D-15): веб-экран «⚙️ Настройки» Mini App
     "miniapp_settings_search_placeholder_text",
     "miniapp_settings_search_count_text",
@@ -216,7 +221,10 @@ def test_exactly_144_miniapp_keys_and_no_extra():
     # D-17 Task 3: +3 заголовка колонок матрицы «трек × вопрос» (144 -> 147); имя теста
     # осталось историческим (числовые сторожа этого проекта именуются по факту на момент
     # заведения, см. соседние test_module_size_convention_260816.py KNOWN_OVERAGES).
-    assert len(MINIAPP_KEYS) == 147
+    # Quick 260904-2cj: +4 ключа журнала вопросов делегатов (miniapp_section_questions,
+    # miniapp_empty_questions, miniapp_questions_answer_button, miniapp_questions_sent_toast)
+    # (147 -> 151).
+    assert len(MINIAPP_KEYS) == 151
     present = sorted(k for k in SETTINGS_SCHEMA if k.startswith("miniapp_"))
     assert present == sorted(MINIAPP_KEYS)
 
@@ -234,7 +242,7 @@ def test_every_miniapp_key_has_label_group_and_valid_type():
 def test_toggle_defaults():
     assert SETTINGS_SCHEMA["miniapp_enabled"]["default"] == "off"
     assert SETTINGS_SCHEMA["miniapp_staff_only"]["default"] == "off"
-    assert len(SECTION_KEYS) == 10
+    assert len(SECTION_KEYS) == 11  # Quick 260904-2cj: +miniapp_section_questions (10 -> 11)
     for key in SECTION_KEYS:
         entry = SETTINGS_SCHEMA[key]
         assert entry["type"] == "enum" and entry["options"] == ["on", "off"], key
@@ -260,7 +268,8 @@ def test_text_keys_have_human_defaults():
         and k not in ("miniapp_accent", "miniapp_hub_countdown_date")
     ]
     # D-17 Task 3: +3 заголовка колонок матрицы «трек × вопрос» (116 -> 119).
-    assert len(text_keys) == 119
+    # Quick 260904-2cj: +3 текстовых ключа журнала вопросов делегатов (119 -> 122).
+    assert len(text_keys) == 122
     for key in text_keys:
         default = SETTINGS_SCHEMA[key]["default"]
         assert isinstance(default, str) and default.strip(), key
