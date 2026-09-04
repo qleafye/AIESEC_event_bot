@@ -201,6 +201,26 @@ def _active_preset_name(raw) -> str:
     return raw if isinstance(raw, str) and raw in PRESETS else DEFAULT_PRESET
 
 
+# ── preset_handle_writes (E5, quick 260904-de4) ────────────────────────────────────────────
+
+def preset_handle_writes(name: str, skip_keys: set[str] | None = None) -> dict[str, str]:
+    """`{ключ реестра: значение}` для ВСЕХ ручек пресета `name` (кроме ключа самого пресета и
+    кроме `skip_keys`) — единственный список «что пишет применение пресета» в проекте.
+    Эталон паритета: `handlers/admin_miniapp_theme.py::miniapp_preset_apply` (бот при выборе
+    пресета пишет ровно эти ручки, веб обязан делать то же самое — иначе пресет в вебе никогда
+    не побеждает уже сохранённые значения ручек, T-8o3 E5). Неизвестное имя пресета -> пустой
+    словарь (нечего дописывать)."""
+    if name not in PRESETS:
+        return {}
+    skip = skip_keys or set()
+    preset = PRESETS[name]
+    return {
+        THEME_KEYS[handle]: value
+        for handle, value in preset.items()
+        if THEME_KEYS[handle] not in skip
+    }
+
+
 def resolve_theme(settings: dict) -> dict:
     """`settings` — уже прочитанное отображение «ключ реестра -> значение» (см. `THEME_KEYS`).
     Отдаёт разрешённые ручки пресета плюс посчитанную тёмную пару акцент/вторичный."""
