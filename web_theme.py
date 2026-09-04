@@ -307,6 +307,19 @@ def theme_css_vars(resolved: dict) -> dict[str, dict[str, str]]:
     else:
         pattern_url, pattern_size, pattern_x, pattern_y, pattern_opacity = PLATE_PATTERNS[preset["plate_pattern"]]
 
+    # Quick 260904-kk6 (E5): `pattern_enabled` — единственная ручка, которой менеджер выключает
+    # паттерн; она НЕ гейтит вычисление выше (размер/смещения/непрозрачность остаются
+    # посчитанными — они безвредны без картинки, заводить для них второй набор правил незачем).
+    # `body.pattern-enabled` в CSS (app.css:793) гейтит ТОЛЬКО анимацию `.hero-pattern` — фон
+    # `.plate::before` (app.css:1476, `var(--plate-pattern, none)`) не гейтит никто, поэтому до
+    # этой правки выключенный паттерн продолжал рисоваться и на боевых плитах, и в мини-плите
+    # превью настроек (`POST /app/api/admin/theme/preview` зовёт эту же функцию). Гасим здесь —
+    # единственном месте сборки переменных (инвариант докстринга `theme_css_text`) — а не
+    # классом на контейнере мини-плиты: класс починил бы только превью и оставил бы боевой
+    # экран рисовать паттерн вопреки настройке.
+    if resolved.get("pattern_enabled") == "off":
+        pattern_url = "none"
+
     return {
         "light": {
             "--accent": accent,
