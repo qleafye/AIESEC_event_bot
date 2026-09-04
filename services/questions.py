@@ -26,6 +26,8 @@ from __future__ import annotations
 
 from datetime import datetime
 
+from services.timeutil import utc_naive_to_msk
+
 STATUS_NEW = "new"
 STATUS_IN_WORK = "in_work"
 STATUS_ANSWERED = "answered"
@@ -94,13 +96,34 @@ def is_stuck(row: dict, now: datetime | None = None) -> bool:
     return (moment - stamp).total_seconds() > STUCK_AFTER_MINUTES * 60
 
 
-def format_stamp(raw: str | None) -> str:
+def format_stamp(raw: str | None, *, stored_utc: bool = True) -> str:
     """ПЕРЕЕЗД `services/sheet_logs.py::_fmt_dt` — оба формата времени в проекте разобраны
     одинаково, что для листа «Вопросы», что для экранов бота/приложения. Неразобранное
-    отдаётся как есть (fail-soft, форма `polls._fmt_date`); пустое -> ''."""
+    отдаётся как есть (fail-soft, форма `polls._fmt_date`); пустое -> ''.
+
+    Quick 260904-kk6 (Q1): `stored_utc=True` (по умолчанию) переводит разобранную метку в
+    МСК (`utc_naive_to_msk`) ПЕРЕД `strftime` — до этой правки метка печаталась как есть, и
+    менеджер читал время вопроса в UTC вместо московского. Что реально пишется в БД (факт из
+    `database/db.py`, а не догадка):
+
+        UTC (`datetime.utcnow().isoformat()`)         -> stored_utc=True (по умолчанию):
+            delegate_questions.asked_at      (create_question)
+            delegate_questions.answered_at   (claim_question)
+            delegate_questions.delivered_at  (set_question_answer)
+
+        НЕ UTC (`datetime.now().strftime(...)`)        -> stored_utc=False, единственный вызов:
+            reg_answer_history.changed_at    (record_answer_history)
+
+    На проде (Dockerfile без `ENV TZ`, контейнер живёт на UTC) `datetime.now()` и
+    `datetime.utcnow()` совпадают — то есть «История правок» на проде ТОЖЕ отстаёт от
+    московского времени на 3 часа. Это отдельный долг (перевести `record_answer_history` на
+    `utcnow()`, отдельный тикет): здесь мы только не ломаем существующее поведение листа —
+    `stored_utc=False` печатает метку как раньше, без сдвига."""
     if not raw:
         return ""
     stamp = _parse_stamp(raw)
     if stamp is None:
         return str(raw)
+    if stored_utc:
+        stamp = utc_naive_to_msk(stamp)
     return stamp.strftime("%d.%m.%Y %H:%M")

@@ -86,14 +86,62 @@ def test_is_stuck_fail_soft_on_empty_or_broken_answered_at():
 
 
 def test_format_stamp_parses_both_formats():
-    assert q.format_stamp("2026-09-04 10:00:00") == "04.09.2026 10:00"
-    assert q.format_stamp("2026-09-04T10:00:00") == "04.09.2026 10:00"
+    # Quick 260904-kk6 (Q1): по умолчанию format_stamp теперь переводит UTC -> МСК (+3ч), эти
+    # значения — уже метки, которые format_stamp должна прочитать И сдвинуть в МСК.
+    assert q.format_stamp("2026-09-04 07:00:00") == "04.09.2026 10:00"
+    assert q.format_stamp("2026-09-04T07:00:00") == "04.09.2026 10:00"
 
 
 def test_format_stamp_unparsed_as_is_and_empty_string():
     assert q.format_stamp("не дата") == "не дата"
     assert q.format_stamp(None) == ""
     assert q.format_stamp("") == ""
+
+
+# ── Quick 260904-kk6 (Q1): UTC -> МСК на отображении, stored_utc=False не сдвигает ────────
+
+def test_format_stamp_shifts_utc_to_msk_across_midnight():
+    assert q.format_stamp("2026-09-04T22:10:00") == "05.09.2026 01:10"
+
+
+def test_format_stamp_shifts_utc_to_msk_second_format():
+    assert q.format_stamp("2026-07-01 09:00:00") == "01.07.2026 12:00"
+
+
+def test_format_stamp_stored_utc_false_does_not_shift():
+    assert q.format_stamp("2026-09-04T22:10:00", stored_utc=False) == "04.09.2026 22:10"
+
+
+def test_format_stamp_unparsed_and_empty_ignore_stored_utc_flag():
+    # Fail-soft: нечего сдвигать, если разобрать не удалось или значение пустое.
+    assert q.format_stamp("не дата", stored_utc=False) == "не дата"
+    assert q.format_stamp(None, stored_utc=False) == ""
+    assert q.format_stamp("", stored_utc=False) == ""
+
+
+def test_format_stamp_same_raw_stored_utc_true_and_false_differ_by_exactly_3_hours():
+    raw = "2026-09-04T10:00:00"
+    msk = datetime.strptime(q.format_stamp(raw), "%d.%m.%Y %H:%M")
+    utc = datetime.strptime(q.format_stamp(raw, stored_utc=False), "%d.%m.%Y %H:%M")
+    assert (msk - utc).total_seconds() == 3 * 3600
+
+
+def test_is_stuck_still_compares_utc_to_utc_after_format_stamp_change():
+    # Сторож: is_stuck не должен был затронут переездом литерала/добавлением сдвига в
+    # format_stamp — answered_at остаётся UTC, datetime.utcnow() тоже UTC.
+    fresh_stamp = (datetime.utcnow() - timedelta(minutes=1)).isoformat()
+    row = {"answered_by": 1, "delivered_at": None, "answered_at": fresh_stamp}
+    assert q.is_stuck(row) is False
+
+    old_stamp = (datetime.utcnow() - timedelta(minutes=q.STUCK_AFTER_MINUTES + 1)).isoformat()
+    row_stuck = {"answered_by": 1, "delivered_at": None, "answered_at": old_stamp}
+    assert q.is_stuck(row_stuck) is True
+
+
+def test_utc_naive_to_msk_matches_format_stamp_shift():
+    from services.timeutil import utc_naive_to_msk
+
+    assert utc_naive_to_msk(datetime(2026, 9, 4, 22, 10)) == datetime(2026, 9, 5, 1, 10)
 
 
 # ══════════════════════════════════════════════════════════════════════════════════════════
