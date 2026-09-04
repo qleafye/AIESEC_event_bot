@@ -279,3 +279,312 @@ def test_reg_fsm_reset_without_init_fsm_storage_is_fail_soft():
         "telegram_id": USER_ID, "reason": "takeover",
     }))
     assert bot.sent == []
+
+
+# ══════════════════════════════════════════════════════════════════════════════════════════════
+# Задача 2 — гвард бота и возврат владения в чат
+# ══════════════════════════════════════════════════════════════════════════════════════════════
+
+from aiogram.fsm.context import FSMContext as _FSMContext
+from aiogram.fsm.storage.base import StorageKey as _StorageKey
+from aiogram.fsm.storage.memory import MemoryStorage as _MemoryStorage
+from aiogram.types import InlineKeyboardMarkup as _InlineKeyboardMarkup
+
+from handlers.states import Registration
+
+
+def _new_state(uid: int) -> _FSMContext:
+    return _FSMContext(storage=_MemoryStorage(), key=_StorageKey(bot_id=1, chat_id=uid, user_id=uid))
+
+
+class _FakeUser2:
+    def __init__(self, uid, username=None):
+        self.id = uid
+        self.username = username
+
+
+class _FakeChat2:
+    def __init__(self, cid):
+        self.id = cid
+
+
+class _FakeMessage2:
+    """Тот же приём, что `tests/test_reg_resume_draft.py::_KBCapturingMessage` — своя копия,
+    чтобы файл не тянул чужой модуль как зависимость."""
+
+    def __init__(self, uid, username=None, text=None):
+        self.from_user = _FakeUser2(uid, username)
+        self.chat = _FakeChat2(uid)
+        self.text = text
+        self.sent = []
+
+    async def answer(self, text=None, reply_markup=None, parse_mode=None, *a, **k):
+        self.sent.append((text, reply_markup, parse_mode))
+        return None
+
+    async def edit_reply_markup(self, reply_markup=None):
+        return None
+
+    def model_copy(self, update=None):
+        new = _FakeMessage2(self.from_user.id, self.from_user.username, text=self.text)
+        new.sent = self.sent
+        if update and "from_user" in update:
+            new.from_user = update["from_user"]
+        return new
+
+
+class _FakeCallback2:
+    def __init__(self, data, user_id, username=None):
+        self.data = data
+        self.from_user = _FakeUser2(user_id, username)
+        self.message = _FakeMessage2(user_id, username)
+        self.answers = []
+
+    async def answer(self, text=None, show_alert=False):
+        self.answers.append((text, show_alert))
+        return None
+
+
+def _texts2(msg):
+    return [t for (t, _, _) in msg.sent]
+
+
+def _kb_msgs2(msg):
+    return [(t, rm, p) for (t, rm, p) in msg.sent if isinstance(rm, _InlineKeyboardMarkup)]
+
+
+async def _handler_stub(event, data):
+    data.setdefault("_calls", []).append(event)
+    return "handled"
+
+
+def test_guard_holder_app_blocks_text_and_shows_plate(tmp_path):
+    _ready(tmp_path)
+    from handlers.reg_handoff import RegHandoffGuard
+
+    async def go():
+        await bot_db.upsert_reg_draft(
+            USER_ID, kind="new", step="course", patch={"full_name": "Иван"},
+            source="miniapp", active_surface="app",
+        )
+        state = _new_state(USER_ID)
+        await state.set_state(Registration.course)
+        msg = _FakeMessage2(USER_ID, text="dada")
+        data = {"state": state}
+        result = await RegHandoffGuard()(_handler_stub, msg, data)
+        return result, data, msg, await state.get_state()
+
+    result, data, msg, raw_state = _run(go())
+    assert "_calls" not in data  # _advance/_handler_stub не вызван
+    assert raw_state == "Registration:course"  # состояние не поменялось
+    kbs = _kb_msgs2(msg)
+    assert len(kbs) == 1
+    buttons = [b.callback_data for row in kbs[0][1].inline_keyboard for b in row]
+    assert buttons == ["reg_handoff:to_bot"]
+
+
+def test_guard_after_submit_clears_state_and_blocks_text(tmp_path):
+    _ready(tmp_path)
+    from handlers.reg_handoff import RegHandoffGuard
+
+    async def go():
+        await bot_db.set_setting("event_season", "2026")
+        async with bot_db._connect() as conn:
+            await conn.execute(
+                "INSERT INTO users (telegram_id, full_name, season, status, registration_date) "
+                "VALUES (?, 'Иван', '2026', 'approved', '2026-09-01')",
+                (USER_ID,),
+            )
+            await conn.commit()
+        state = _new_state(USER_ID)
+        await state.set_state(Registration.course)
+        msg = _FakeMessage2(USER_ID, text="dada")
+        data = {"state": state}
+        result = await RegHandoffGuard()(_handler_stub, msg, data)
+        return result, data, await state.get_state(), msg
+
+    result, data, raw_state, msg = _run(go())
+    assert "_calls" not in data
+    assert raw_state is None  # состояние очищено (D7)
+    assert any("уже отправлена" in (t or "").lower() or "✅" in (t or "") for t in _texts2(msg))
+
+
+def test_guard_after_submit_still_passes_slash_commands(tmp_path):
+    _ready(tmp_path)
+    from handlers.reg_handoff import RegHandoffGuard
+
+    async def go():
+        await bot_db.set_setting("event_season", "2026")
+        async with bot_db._connect() as conn:
+            await conn.execute(
+                "INSERT INTO users (telegram_id, full_name, season, status, registration_date) "
+                "VALUES (?, 'Иван', '2026', 'approved', '2026-09-01')",
+                (USER_ID,),
+            )
+            await conn.commit()
+        state = _new_state(USER_ID)
+        await state.set_state(Registration.course)
+        msg = _FakeMessage2(USER_ID, text="/start")
+        data = {"state": state}
+        result = await RegHandoffGuard()(_handler_stub, msg, data)
+        return result, data, await state.get_state()
+
+    result, data, raw_state = _run(go())
+    assert "_calls" in data  # handler ВЫЗВАН
+    assert raw_state is None  # состояние всё равно очищено
+
+
+def test_guard_holder_bot_does_not_intercept(tmp_path):
+    _ready(tmp_path)
+    from handlers.reg_handoff import RegHandoffGuard
+
+    async def go():
+        await bot_db.upsert_reg_draft(
+            USER_ID, kind="new", step="course", patch={"full_name": "Иван"},
+            source="bot", active_surface="bot",
+        )
+        state = _new_state(USER_ID)
+        await state.set_state(Registration.course)
+        msg = _FakeMessage2(USER_ID, text="20")
+        data = {"state": state}
+        await RegHandoffGuard()(_handler_stub, msg, data)
+        return data
+
+    data = _run(go())
+    assert "_calls" in data  # обычный ход анкеты не сломан
+
+
+def test_guard_callback_holder_app_shows_alert_not_advance(tmp_path):
+    _ready(tmp_path)
+    from handlers.reg_handoff import RegHandoffGuard
+
+    async def go():
+        await bot_db.upsert_reg_draft(
+            USER_ID, kind="new", step="course", patch={"full_name": "Иван"},
+            source="miniapp", active_surface="app",
+        )
+        state = _new_state(USER_ID)
+        await state.set_state(Registration.course)
+        callback = _FakeCallback2("regmulti_done:goal", USER_ID)
+        data = {"state": state}
+        await RegHandoffGuard()(_handler_stub, callback, data)
+        return data, callback
+
+    data, callback = _run(go())
+    assert "_calls" not in data
+    assert len(callback.answers) == 1
+    text, show_alert = callback.answers[0]
+    assert show_alert is True
+
+
+def test_guard_exempt_callbacks_always_pass_through(tmp_path):
+    _ready(tmp_path)
+    from handlers.reg_handoff import RegHandoffGuard
+
+    async def go(data_str):
+        await bot_db.upsert_reg_draft(
+            USER_ID, kind="new", step="course", patch={"full_name": "Иван"},
+            source="miniapp", active_surface="app",
+        )
+        state = _new_state(USER_ID)
+        await state.set_state(Registration.course)
+        callback = _FakeCallback2(data_str, USER_ID)
+        data = {"state": state}
+        await RegHandoffGuard()(_handler_stub, callback, data)
+        return data
+
+    for cb_data in ("reg_handoff:to_bot", "reg_cancel_yes", "reg_cancel_no", "reg_resume:continue"):
+        data = _run(go(cb_data))
+        assert "_calls" in data, f"{cb_data} должен пройти сквозь гвард"
+
+
+def test_guard_db_failure_is_fail_soft(tmp_path, monkeypatch):
+    _ready(tmp_path)
+    import handlers.reg_handoff as rh_mod
+
+    async def boom(_uid):
+        raise RuntimeError("db down")
+
+    monkeypatch.setattr(rh_mod, "get_reg_draft", boom)
+
+    async def go():
+        state = _new_state(USER_ID)
+        await state.set_state(Registration.course)
+        msg = _FakeMessage2(USER_ID, text="20")
+        data = {"state": state}
+        await rh_mod.RegHandoffGuard()(_handler_stub, msg, data)
+        return data
+
+    data = _run(go())
+    assert "_calls" in data  # апдейт пропущен дальше, а не заперт
+
+
+def test_reg_handoff_to_bot_sets_surface_and_resumes_unanswered_step(tmp_path):
+    _ready(tmp_path)
+    from handlers import reg_handoff as rh_mod
+
+    async def go():
+        await bot_db.set_setting("reg_q_phone", "on")
+        await bot_db.set_setting("reg_q_age", "on")
+        await bot_db.upsert_reg_draft(
+            USER_ID, kind="new", participant_type="full", step="phone",
+            patch={"age": "22"}, source="miniapp", active_surface="app",
+        )
+        callback = _FakeCallback2("reg_handoff:to_bot", USER_ID, "delegate")
+        state = _new_state(USER_ID)
+        await rh_mod.reg_handoff_to_bot(callback, state, bot=object())
+        draft = await bot_db.get_reg_draft(USER_ID)
+        raw_state = await state.get_state()
+        return draft, raw_state, callback.message
+
+    draft, raw_state, msg = _run(go())
+    assert draft["active_surface"] == "bot"
+    # незаконченный шаг "phone" -> должен быть задан ИМЕННО он, а не предыдущий "age" (уже отвечен)
+    assert raw_state == "Registration:phone"
+
+
+def test_reg_handoff_to_bot_missing_draft_shows_alert(tmp_path):
+    _ready(tmp_path)
+    from handlers import reg_handoff as rh_mod
+
+    async def go():
+        callback = _FakeCallback2("reg_handoff:to_bot", USER_ID, "delegate")
+        state = _new_state(USER_ID)
+        await rh_mod.reg_handoff_to_bot(callback, state, bot=object())
+        return callback.answers
+
+    answers = _run(go())
+    assert len(answers) == 1
+    assert answers[0][1] is True  # show_alert
+
+
+# ── handlers/user_actions.py: фолбэк без состояния ──────────────────────────────────────────
+
+def test_idle_fallback_shows_plate_when_holder_is_app(tmp_path):
+    _ready(tmp_path)
+    from handlers.user_actions import reg_handoff_idle_fallback
+
+    async def go():
+        await bot_db.upsert_reg_draft(
+            USER_ID, kind="new", step="course", patch={"full_name": "Иван"},
+            source="miniapp", active_surface="app",
+        )
+        msg = _FakeMessage2(USER_ID, text="привет")
+        await reg_handoff_idle_fallback(msg)
+        return msg
+
+    msg = _run(go())
+    assert _kb_msgs2(msg)
+
+
+def test_idle_fallback_noop_when_no_draft(tmp_path):
+    _ready(tmp_path)
+    from handlers.user_actions import reg_handoff_idle_fallback
+
+    async def go():
+        msg = _FakeMessage2(USER_ID, text="привет")
+        await reg_handoff_idle_fallback(msg)
+        return msg
+
+    msg = _run(go())
+    assert msg.sent == []

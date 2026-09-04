@@ -15,8 +15,9 @@ from aiogram import Bot, F, types
 from aiogram.fsm.context import FSMContext
 from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
 
-from database.db import get_user, get_reg_draft, delete_reg_draft
+from database.db import get_user, get_reg_draft, delete_reg_draft, set_reg_draft_surface
 from settings_schema import get_setting_typed
+from services.reg_handoff import SURFACE_BOT
 from handlers.states import Registration
 from keyboards.builders import get_confirm_kb, get_main_menu_kb
 from handlers.registration import (
@@ -53,21 +54,13 @@ async def offer_resume(message: types.Message, draft: dict) -> None:
     await message.answer("У тебя есть незаконченная анкета — что дальше?", reply_markup=kb)
 
 
-@router.callback_query(F.data == "reg_resume:continue")
-async def reg_resume_continue(callback: types.CallbackQuery, state: FSMContext, bot: Bot):
-    """T-21-01: черновик читается ТОЛЬКО по callback.from_user.id — ни один аргумент этого
-    callback'а не несёт telegram_id, поэтому чужой черновик восстановить нельзя."""
-    telegram_id = callback.from_user.id
-    draft = await get_reg_draft(telegram_id)
-    if not draft:
-        await callback.answer("Черновик не найден — начни заново с /start.", show_alert=True)
-        return
-    try:
-        await callback.message.edit_reply_markup(reply_markup=None)
-    except Exception:
-        pass
-    await callback.answer()
-
+async def resume_from_draft(tap_message: types.Message, state: FSMContext, bot: Bot, draft: dict) -> None:
+    """Phase 21 (21-09) + quick 260904-3vm: тело восстановления FSM из черновика — вынесено из
+    `reg_resume_continue` (поведение байт-в-байт прежнее), чтобы им же пользовался
+    `handlers/reg_handoff.py::reg_handoff_to_bot` («✍️ Продолжить в чате» — возврат владения из
+    приложения). Черновик передаётся вызывающим — он уже прочитан ПО СОБСТВЕННОМУ id тапнувшего
+    (T-21-01/T-3vm-05), здесь второй раз не перечитывается."""
+    telegram_id = tap_message.from_user.id
     await state.clear()
     fsm_patch = dict(draft.get("answers") or {})
     if draft.get("participant_type"):
@@ -86,7 +79,6 @@ async def reg_resume_continue(callback: types.CallbackQuery, state: FSMContext, 
             fsm_patch["_prior_answers"] = dict(user_row)
     await state.update_data(**fsm_patch)
 
-    tap_message = callback.message.model_copy(update={"from_user": callback.from_user})
     data = await state.get_data()
     enabled = await _get_enabled_steps(data)
     step = draft.get("step")
@@ -113,6 +105,29 @@ async def reg_resume_continue(callback: types.CallbackQuery, state: FSMContext, 
         await _ask_step_or_recall(consent_steps[0], tap_message, state, 1, len(consent_steps))
     else:
         await _ask_full_name(tap_message, state)
+
+
+@router.callback_query(F.data == "reg_resume:continue")
+async def reg_resume_continue(callback: types.CallbackQuery, state: FSMContext, bot: Bot):
+    """T-21-01: черновик читается ТОЛЬКО по callback.from_user.id — ни один аргумент этого
+    callback'а не несёт telegram_id, поэтому чужой черновик восстановить нельзя."""
+    telegram_id = callback.from_user.id
+    draft = await get_reg_draft(telegram_id)
+    if not draft:
+        await callback.answer("Черновик не найден — начни заново с /start.", show_alert=True)
+        return
+    try:
+        await callback.message.edit_reply_markup(reply_markup=None)
+    except Exception:
+        pass
+    await callback.answer()
+
+    # Quick 260904-3vm (эстафета): «Продолжить» в этом экране — тоже точка возврата владения
+    # в чат (D-18 остаётся, но теперь он ещё и передаёт active_surface).
+    await set_reg_draft_surface(telegram_id, SURFACE_BOT)
+
+    tap_message = callback.message.model_copy(update={"from_user": callback.from_user})
+    await resume_from_draft(tap_message, state, bot, draft)
 
 
 @router.callback_query(F.data == "reg_resume:restart")
