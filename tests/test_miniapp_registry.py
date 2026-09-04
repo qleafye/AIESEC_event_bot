@@ -92,6 +92,14 @@ MINIAPP_KEYS = [
     "miniapp_hub_countdown_date",
     "miniapp_hub_next_eyebrow",
     "miniapp_hub_sections_eyebrow",
+    # Quick 260904-aup Task 1 (UAT D3): плита «Анкета на проверке / Заявка отклонена» над
+    # плитками хаба (GET /app/api/hub/status).
+    "miniapp_hub_pending_heading_text",
+    "miniapp_hub_pending_body_text",
+    "miniapp_hub_pending_days",
+    "miniapp_hub_rejected_heading_text",
+    "miniapp_hub_rejected_body_text",
+    "miniapp_hub_rejected_cta_text",
     # Quick 260903: подпись плитки «Дашборд» в хабе менеджера (адрес — cfg.public_url, не реестр)
     "miniapp_tile_dashboard_label",
     # Phase 23.1-05 (UI-REDESIGN-05): подписи профиля делегата по макету 04-profile.png
@@ -238,7 +246,10 @@ def test_exactly_144_miniapp_keys_and_no_extra():
     # «копия сдачи» за загрузку из настроек (152 -> 153).
     # Quick 260904-8o3 Task 3 (E5/E6): +3 надписи мини-плиты живого превью оформления
     # (miniapp_settings_theme_preview_heading_text/_eyebrow_text/_sub_text) (153 -> 156).
-    assert len(MINIAPP_KEYS) == 156
+    # Quick 260904-aup Task 1 (UAT D3): +6 ключей плиты «Анкета на проверке / Заявка
+    # отклонена» в хабе (miniapp_hub_pending_heading_text/_body_text/_days,
+    # miniapp_hub_rejected_heading_text/_body_text/_cta_text) (156 -> 162).
+    assert len(MINIAPP_KEYS) == 162
     present = sorted(k for k in SETTINGS_SCHEMA if k.startswith("miniapp_"))
     assert present == sorted(MINIAPP_KEYS)
 
@@ -286,7 +297,9 @@ def test_text_keys_have_human_defaults():
     # Quick 260904-7e7 (D18): +1 текстовый ключ шторки отказа (122 -> 123).
     # Quick 260904-8o3 Task 2 (E3): +1 текстовый ключ подписи ассета оформления (123 -> 124).
     # Quick 260904-8o3 Task 3 (E5/E6): +3 текстовых ключа мини-плиты превью оформления (124 -> 127).
-    assert len(text_keys) == 127
+    # Quick 260904-aup Task 1 (UAT D3): +5 текстовых ключей плиты «Анкета на проверке / Заявка
+    # отклонена» (miniapp_hub_pending_days — "int", не считается здесь) (127 -> 132).
+    assert len(text_keys) == 132
     for key in text_keys:
         default = SETTINGS_SCHEMA[key]["default"]
         assert isinstance(default, str) and default.strip(), key
