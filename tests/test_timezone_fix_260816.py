@@ -100,9 +100,15 @@ def test_moscow_tz_resolves_and_tzdata_declared():
 
 
 def test_moscow_literal_declared_exactly_once():
-    """The quoted "Europe/Moscow" literal must live in exactly one place (services/scheduler.py)
+    """The quoted "Europe/Moscow" literal must live in exactly one place (services/timeutil.py)
     so the scheduler pin and the admin-input validations physically cannot read a different
-    timezone — that divergence was the root cause of TZFIX-260816."""
+    timezone — that divergence was the root cause of TZFIX-260816.
+
+    Quick 260904-kk6 (Q1): the literal moved scheduler.py -> timeutil.py — `services/questions.py`
+    needs MOSCOW_TZ too but cannot import `services.scheduler` (aiogram + APScheduler), and
+    `services/questions.py` is imported from `miniapp/routers/questions.py`, which must stay
+    aiogram-free (D-01). `services/scheduler.py` now re-exports MOSCOW_TZ from timeutil.py.
+    """
     hits = []
     for pattern in ("services/*.py", "handlers/*.py"):
         for path in glob.glob(pattern):
@@ -115,7 +121,7 @@ def test_moscow_literal_declared_exactly_once():
     assert total == 1, (
         f"пояс задаётся в одном месте, MOSCOW_TZ — нашли {total} вхождений в {hits}"
     )
-    assert hits[0][0].replace("\\", "/") == "services/scheduler.py"
+    assert hits[0][0].replace("\\", "/") == "services/timeutil.py"
 
 
 # ── Task 2: three fixed points on Moscow wall-clock, fourth deliberately untouched ──────
