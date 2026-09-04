@@ -588,3 +588,356 @@ def test_idle_fallback_noop_when_no_draft(tmp_path):
 
     msg = _run(go())
     assert msg.sent == []
+
+
+# ══════════════════════════════════════════════════════════════════════════════════════════════
+# Задача 3 — Mini App: захват/возврат владения, 409, плита и контракт шага
+# ══════════════════════════════════════════════════════════════════════════════════════════════
+
+from tests.test_miniapp_routes import (
+    DELEGATE_ID,
+    UNREGISTERED_ID,
+    _cfg,
+    _client,
+    _hdr,
+    _standard_seed,
+    _use_tmp_db,
+)
+
+
+def _miniapp_client(tmp_path, name="reg_handoff_form.db"):
+    db_path = _use_tmp_db(tmp_path, name)
+    _standard_seed()
+    return _client(_cfg(db_path))
+
+
+def _draft_row3(telegram_id: int) -> dict | None:
+    return _run(bot_db.get_reg_draft(telegram_id))
+
+
+def _outbox_kind_rows3(kind: str) -> list[dict]:
+    return _run(bot_db.list_unprocessed_miniapp_outbox(limit=50))
+
+
+def test_get_handoff_none_when_holder_is_app(tmp_path):
+    client = _miniapp_client(tmp_path)
+    _run(bot_db.upsert_reg_draft(
+        DELEGATE_ID, kind="edit", patch={"age": 20}, source="miniapp", active_surface="app",
+    ))
+    resp = client.get("/app/api/reg/draft", headers=_hdr(DELEGATE_ID))
+    assert resp.status_code == 200
+    assert resp.json()["handoff"] is None
+
+
+def test_get_handoff_present_when_holder_is_bot(tmp_path):
+    client = _miniapp_client(tmp_path)
+    _run(bot_db.upsert_reg_draft(
+        DELEGATE_ID, kind="edit", patch={"age": 20}, source="bot", active_surface="bot",
+    ))
+    resp = client.get("/app/api/reg/draft", headers=_hdr(DELEGATE_ID))
+    assert resp.status_code == 200
+    handoff = resp.json()["handoff"]
+    assert handoff["held_by"] == "bot"
+    assert handoff["text"]
+    assert handoff["takeover_text"]
+    assert handoff["continue_text"]
+
+
+def test_patch_held_by_bot_returns_409_and_does_not_write(tmp_path):
+    client = _miniapp_client(tmp_path)
+    _run(bot_db.upsert_reg_draft(
+        DELEGATE_ID, kind="edit", patch={"age": 20}, source="bot", active_surface="bot",
+    ))
+    resp = client.patch(
+        "/app/api/reg/draft", headers=_hdr(DELEGATE_ID),
+        json={"version": 1, "answers": {"age": "30"}},
+    )
+    assert resp.status_code == 409
+    assert resp.json()["reason"] == "held_by_bot"
+    draft = _draft_row3(DELEGATE_ID)
+    assert draft["answers"]["age"] == 20  # не перезаписано
+
+
+def test_patch_on_empty_draft_silently_becomes_app_and_resets_fsm(tmp_path):
+    client = _miniapp_client(tmp_path)
+    resp = client.patch(
+        "/app/api/reg/draft", headers=_hdr(UNREGISTERED_ID),
+        json={"version": 0, "answers": {"age": "20"}},
+    )
+    assert resp.status_code == 200, resp.text
+    draft = _draft_row3(UNREGISTERED_ID)
+    assert draft["active_surface"] == "app"
+    rows = [r for r in _run(bot_db.list_unprocessed_miniapp_outbox(limit=50)) if r["kind"] == "reg_fsm_reset"]
+    assert len(rows) == 1
+    assert rows[0]["payload"]["telegram_id"] == UNREGISTERED_ID
+    assert rows[0]["payload"]["reason"] == "takeover"
+
+
+def test_takeover_route_sets_app_and_fires_exactly_one_reset(tmp_path):
+    client = _miniapp_client(tmp_path)
+    _run(bot_db.upsert_reg_draft(
+        DELEGATE_ID, kind="edit", patch={"age": 20}, source="bot", active_surface="bot",
+    ))
+    resp = client.post("/app/api/reg/draft/takeover", headers=_hdr(DELEGATE_ID))
+    assert resp.status_code == 200, resp.text
+    assert resp.json()["handoff"] is None
+    draft = _draft_row3(DELEGATE_ID)
+    assert draft["active_surface"] == "app"
+    rows = [r for r in _run(bot_db.list_unprocessed_miniapp_outbox(limit=50)) if r["kind"] == "reg_fsm_reset"]
+    assert len(rows) == 1
+
+
+def test_takeover_route_works_without_existing_draft(tmp_path):
+    client = _miniapp_client(tmp_path)
+    resp = client.post("/app/api/reg/draft/takeover", headers=_hdr(UNREGISTERED_ID))
+    assert resp.status_code == 200, resp.text
+
+
+def test_release_route_sets_bot_and_fires_no_reset(tmp_path):
+    client = _miniapp_client(tmp_path)
+    _run(bot_db.upsert_reg_draft(
+        DELEGATE_ID, kind="edit", patch={"age": 20}, source="miniapp", active_surface="app",
+    ))
+    resp = client.post("/app/api/reg/draft/release", headers=_hdr(DELEGATE_ID))
+    assert resp.status_code == 200
+    assert resp.json() == {"ok": True}
+    draft = _draft_row3(DELEGATE_ID)
+    assert draft["active_surface"] == "bot"
+    rows = [r for r in _run(bot_db.list_unprocessed_miniapp_outbox(limit=50)) if r["kind"] == "reg_fsm_reset"]
+    assert rows == []
+
+
+def test_patch_stamps_next_unanswered_step_not_just_answered(tmp_path):
+    client = _miniapp_client(tmp_path)
+    _run(bot_db.set_setting("reg_q_phone", "on"))
+    _run(bot_db.set_setting("reg_q_age", "on"))
+    resp = client.patch(
+        "/app/api/reg/draft", headers=_hdr(UNREGISTERED_ID),
+        json={"version": 0, "answers": {"age": "20"}, "step": "age"},
+    )
+    assert resp.status_code == 200, resp.text
+    draft = _draft_row3(UNREGISTERED_ID)
+    assert draft["step"] != "age"
+    assert draft["step"] == "phone"
+
+
+def test_patch_last_enabled_step_keeps_step_unchanged(tmp_path):
+    client = _miniapp_client(tmp_path)
+    # только один включённый шаг ("age") -- отвечаем на него, шагу двигаться некуда
+    for step_key, setting_key, *_rest in reg_engine.REG_FLOW:
+        _run(bot_db.set_setting(setting_key, "on" if step_key == "age" else "off"))
+    resp = client.patch(
+        "/app/api/reg/draft", headers=_hdr(UNREGISTERED_ID),
+        json={"version": 0, "answers": {"age": "20"}, "step": "age"},
+    )
+    assert resp.status_code == 200, resp.text
+    draft = _draft_row3(UNREGISTERED_ID)
+    assert draft["step"] == "age"
+
+
+def test_submit_enqueues_fsm_reset_submitted_in_addition_to_reg_finalized(tmp_path, monkeypatch):
+    client = _miniapp_client(tmp_path)
+    _run(bot_db.set_setting("reg_q_age", "on"))
+    resp = client.patch(
+        "/app/api/reg/draft", headers=_hdr(UNREGISTERED_ID),
+        json={"version": 0, "answers": {"age": "20"}, "step": "age"},
+    )
+    assert resp.status_code == 200, resp.text
+    resp = client.post("/app/api/reg/draft/submit", headers=_hdr(UNREGISTERED_ID))
+    assert resp.status_code == 200, resp.text
+    rows = [r for r in _run(bot_db.list_unprocessed_miniapp_outbox(limit=50)) if r["kind"] == "reg_fsm_reset"]
+    submitted_rows = [r for r in rows if r["payload"].get("reason") == "submitted"]
+    assert len(submitted_rows) == 1
+    assert submitted_rows[0]["payload"]["telegram_id"] == UNREGISTERED_ID
+    finalized_rows = [r for r in _run(bot_db.list_unprocessed_miniapp_outbox(limit=50)) if r["kind"] == "reg_finalized"]
+    assert len(finalized_rows) == 1
+
+
+# ══════════════════════════════════════════════════════════════════════════════════════════════
+# Задача 4 — D16: короткий трек в вебе; D15: режим правки только у поданной анкеты
+# ══════════════════════════════════════════════════════════════════════════════════════════════
+
+from cities import per_city_key
+
+
+def _only_age_and_vk_on():
+    """Голая дорожка: включён только `age`+`vk` (full), `age__short` = on -- под short-режимом
+    остаётся ровно `age` (vk наследование не читает: короткий трек не падает на глобальное
+    значение при отсутствии `__short`-ключа)."""
+    for step_key, setting_key, *_rest in reg_engine.REG_FLOW:
+        _run(bot_db.set_setting(setting_key, "on" if step_key in ("age", "vk") else "off"))
+    _run(bot_db.set_setting("reg_q_age__short", "on"))
+
+
+def test_form_spec_global_short_empty_track_gives_short_subset(tmp_path):
+    _ready(tmp_path)
+    _only_age_and_vk_on()
+    _run(bot_db.set_setting("registration_mode", "short"))
+
+    spec = _run(reg_engine.form_spec({}, None, None))
+    keys = [s["key"] for s in spec["steps"]]
+    assert keys == ["age"]
+
+
+def test_form_spec_full_track_untouched_by_global_short(tmp_path):
+    _ready(tmp_path)
+    _only_age_and_vk_on()
+    _run(bot_db.set_setting("registration_mode", "short"))
+
+    spec = _run(reg_engine.form_spec({}, "full", None))
+    keys = [s["key"] for s in spec["steps"]]
+    assert set(keys) == {"age", "vk"}
+
+
+def test_form_spec_percity_short_gives_short_subset(tmp_path):
+    _ready(tmp_path)
+    _only_age_and_vk_on()
+    _run(bot_db.set_setting("event_city_enabled", "on"))
+    _run(bot_db.set_setting("registration_mode", "full"))
+    _run(bot_db.set_setting(per_city_key("registration_mode", "spb"), "short"))
+
+    spec = _run(reg_engine.form_spec({}, None, "spb"))
+    keys = [s["key"] for s in spec["steps"]]
+    assert keys == ["age"]
+
+    # другой город без переопределения остаётся полным
+    spec_full = _run(reg_engine.form_spec({}, None, "msk"))
+    assert set(s["key"] for s in spec_full["steps"]) == {"age", "vk"}
+
+
+def test_get_and_patch_short_mode_via_http(tmp_path):
+    from tests.test_miniapp_routes import UNREGISTERED_ID, _cfg, _client, _hdr, _standard_seed, _use_tmp_db
+
+    db_path = _use_tmp_db(tmp_path, "reg_handoff_short.db")
+    _standard_seed()
+    _only_age_and_vk_on()
+    _run(bot_db.set_setting("registration_mode", "short"))
+    client = _client(_cfg(db_path))
+
+    resp = client.get("/app/api/reg/draft", headers=_hdr(UNREGISTERED_ID))
+    assert resp.status_code == 200, resp.text
+    keys = [s["key"] for s in resp.json()["steps"]]
+    assert keys == ["age"]
+
+    patch = client.patch(
+        "/app/api/reg/draft", headers=_hdr(UNREGISTERED_ID),
+        json={"version": 0, "answers": {"age": "20"}, "step": "age"},
+    )
+    assert patch.status_code == 200, patch.text
+    assert [s["key"] for s in patch.json()["steps"]] == ["age"]
+
+
+def test_profile_full_track_shows_full_set_during_short_window(tmp_path):
+    from tests.test_miniapp_routes import _cfg, _client, _hdr, _standard_seed, _use_tmp_db
+
+    db_path = _use_tmp_db(tmp_path, "reg_handoff_profile_short.db")
+    _standard_seed()
+    _only_age_and_vk_on()
+    _run(bot_db.set_setting("registration_mode", "short"))
+
+    async def _fill():
+        async with bot_db._connect() as conn:
+            await conn.execute(
+                "UPDATE users SET participant_type = 'full', age = 20, vk_username = '@x' "
+                "WHERE telegram_id = ?",
+                (900100,),  # DELEGATE_ID
+            )
+            await conn.commit()
+
+    _run(_fill())
+    client = _client(_cfg(db_path))
+    resp = client.get("/app/api/profile", headers=_hdr(900100))
+    assert resp.status_code == 200, resp.text
+    keys = {f["key"] for f in resp.json()["fields"]}
+    # персистентный трек 'full' сохраняет доступ к вопросу vk несмотря на промо-short
+    assert "reg_q_vk" in keys
+
+
+# ── D15: режим правки только у РЕАЛЬНО поданной анкеты ──────────────────────────────────────
+
+def test_start_registration_flow_no_registration_date_is_new_kind(tmp_path):
+    _ready(tmp_path)
+    from handlers import registration as reg_mod
+
+    async def go():
+        await bot_db.set_setting("event_season", "2026")
+        async with bot_db._connect() as conn:
+            await conn.execute(
+                "INSERT INTO users (telegram_id, full_name, season, status, registration_date) "
+                "VALUES (?, '', '2026', 'approved', NULL)",
+                (USER_ID,),
+            )
+            await conn.commit()
+        msg = _FakeMessage2(USER_ID, text="/start")
+        state = _new_state(USER_ID)
+        await reg_mod._start_registration_flow(msg, state)
+        return await state.get_data()
+
+    data = _run(go())
+    assert data.get("_draft_kind") == "new"
+
+
+def test_start_registration_flow_with_registration_date_is_edit_kind(tmp_path):
+    _ready(tmp_path)
+    from handlers import registration as reg_mod
+
+    async def go():
+        await bot_db.set_setting("event_season", "2026")
+        async with bot_db._connect() as conn:
+            await conn.execute(
+                "INSERT INTO users (telegram_id, full_name, season, status, registration_date) "
+                "VALUES (?, 'Иван', '2026', 'approved', '2026-09-01')",
+                (USER_ID,),
+            )
+            await conn.commit()
+        msg = _FakeMessage2(USER_ID, text="/start")
+        state = _new_state(USER_ID)
+        await reg_mod._start_registration_flow(msg, state)
+        return await state.get_data()
+
+    data = _run(go())
+    assert data.get("_draft_kind") == "edit"
+
+
+def test_load_context_new_kind_when_no_registration_date(tmp_path):
+    from tests.test_miniapp_routes import _cfg, _client, _hdr, _standard_seed, _use_tmp_db
+
+    db_path = _use_tmp_db(tmp_path, "reg_handoff_d15_miniapp.db")
+    _standard_seed()
+
+    async def go():
+        await bot_db.set_setting("event_season", "2026")
+        async with bot_db._connect() as conn:
+            await conn.execute(
+                "UPDATE users SET season = ?, registration_date = NULL WHERE telegram_id = ?",
+                ("2026", 900100),
+            )
+            await conn.commit()
+
+    _run(go())
+    client = _client(_cfg(db_path))
+    resp = client.get("/app/api/reg/draft", headers=_hdr(900100))
+    assert resp.status_code == 200, resp.text
+    assert resp.json()["kind"] == "new"
+
+
+def test_load_context_edit_kind_when_registration_date_present(tmp_path):
+    from tests.test_miniapp_routes import _cfg, _client, _hdr, _standard_seed, _use_tmp_db
+
+    db_path = _use_tmp_db(tmp_path, "reg_handoff_d15_miniapp_edit.db")
+    _standard_seed()
+
+    async def go():
+        await bot_db.set_setting("event_season", "2026")
+        async with bot_db._connect() as conn:
+            await conn.execute(
+                "UPDATE users SET season = ?, registration_date = ? WHERE telegram_id = ?",
+                ("2026", "2026-09-01", 900100),
+            )
+            await conn.commit()
+
+    _run(go())
+    client = _client(_cfg(db_path))
+    resp = client.get("/app/api/reg/draft", headers=_hdr(900100))
+    assert resp.status_code == 200, resp.text
+    assert resp.json()["kind"] == "edit"

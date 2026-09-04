@@ -121,7 +121,11 @@ async def _enabled_label_keys(user: dict) -> set[str]:
     один (`reg_engine.enabled_steps`), второй копии условий здесь не заводится. Текущие ответы
     подмешиваются ТОЛЬКО чтобы разрешить условные шаги (education_status/attendance_format/
     arrival/bed_sharing/work_status) — `user` не мутируется, копия дописывается новым словарём."""
-    track = user.get("participant_type") or "full"
+    # Quick 260904-3vm (D16, тот же контур): персистентный трек делегата авторитетен — короткое
+    # промо-окно (registration_mode=short) не должно перебивать УЖЕ зарегистрированного full-
+    # трек делегата веб-профилем. resolve_track зовётся ТОЛЬКО когда трек не известен (пустой
+    # candidate) — тот же контракт, что reg_engine.form_spec ниже по плану.
+    track = user.get("participant_type") or await reg_engine.resolve_track(None, user.get("event_city"))
     answers = reg_engine.answers_from_user_row(user)
     enabled = await reg_engine.enabled_steps({**answers, "participant_type": track})
     return {reg_engine.label_key_for(step_key) for step_key in enabled}
