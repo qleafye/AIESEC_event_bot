@@ -297,6 +297,108 @@ def test_card_payload_empty_resume_is_kind_none(tmp_path):
     assert payload["resume"] == {"kind": "none", "file_id": None, "text": None}
 
 
+# ── prev_reject_line / карточка «Ранее отклонена: …» (quick 260904-liz) ─────────────────────
+
+def test_card_payload_prev_reject_badge_after_resubmit_before_consent(tmp_path):
+    _use_tmp_db(tmp_path)
+    _run(db.init_db())
+    _seed_user(810)
+    assert _run(applications.claim_reject(810))
+    _run(applications.record_decision(810, "rejected", "Мало опыта", 999, datetime(2026, 1, 1)))
+    _run(db.mark_user_edited(810, "bot"))
+    _run(db.record_answer_history(
+        810, [{"column": "status", "old": "rejected", "new": "pending"}], "bot",
+    ))
+    _run(db.set_user_status(810, "pending"))
+
+    payload = _run(applications.card_payload(_run(db.get_user(810))))
+    kinds = [b["kind"] for b in payload["badges"]]
+    assert "resubmit" in kinds and "prev_reject" in kinds
+    assert kinds.index("resubmit") < kinds.index("prev_reject")
+    prev_badge = next(b for b in payload["badges"] if b["kind"] == "prev_reject")
+    assert prev_badge["text"] == "🚫 Ранее отклонена: Мало опыта"
+    # согласие (если бы было) всегда последним — здесь его нет, но prev_reject не последний
+    # элемент структуры вслепую: убеждаемся хотя бы, что не идёт ПЕРЕД resubmit.
+
+
+def test_card_payload_no_prev_reject_badge_without_past_rejection(tmp_path):
+    _use_tmp_db(tmp_path)
+    _run(db.init_db())
+    _seed_user(811)
+    payload = _run(applications.card_payload(_run(db.get_user(811))))
+    assert "prev_reject" not in [b["kind"] for b in payload["badges"]]
+
+
+def test_card_payload_no_prev_reject_badge_when_reason_empty(tmp_path):
+    _use_tmp_db(tmp_path)
+    _run(db.init_db())
+    _seed_user(812)
+    assert _run(applications.claim_reject(812))
+    _run(applications.record_decision(812, "rejected", "", 999, datetime(2026, 1, 1)))
+    payload = _run(applications.card_payload(_run(db.get_user(812))))
+    assert "prev_reject" not in [b["kind"] for b in payload["badges"]]
+
+
+def test_card_payload_no_prev_reject_badge_when_last_decision_is_approval(tmp_path):
+    _use_tmp_db(tmp_path)
+    _run(db.init_db())
+    _seed_user(813)
+    assert _run(applications.claim_reject(813))
+    _run(applications.record_decision(813, "rejected", "Не подходит", 999, datetime(2026, 1, 1)))
+    _run(db.set_user_status(813, "pending"))  # имитация повторной подачи
+    assert _run(applications.claim_approve(813))
+    _run(applications.record_decision(813, "approved", None, 999, datetime(2026, 1, 2)))
+    payload = _run(applications.card_payload(_run(db.get_user(813))))
+    assert "prev_reject" not in [b["kind"] for b in payload["badges"]]
+
+
+def test_card_payload_no_prev_reject_badge_when_rejection_undone(tmp_path):
+    _use_tmp_db(tmp_path)
+    _run(db.init_db())
+    _seed_user(814)
+    assert _run(applications.claim_reject(814))
+    decision_id = _run(applications.record_decision(814, "rejected", "Не подходит", 999, datetime(2026, 1, 1)))
+    result = _run(applications.undo_decision(decision_id))
+    assert result["ok"] is True
+    payload = _run(applications.card_payload(_run(db.get_user(814))))
+    assert "prev_reject" not in [b["kind"] for b in payload["badges"]]
+
+
+def test_prev_reject_line_none_without_telegram_id():
+    assert _run(applications.prev_reject_line({})) is None
+
+
+def test_prev_reject_line_escapes_reason_only_when_flagged(tmp_path):
+    _use_tmp_db(tmp_path)
+    _run(db.init_db())
+    _seed_user(815)
+    assert _run(applications.claim_reject(815))
+    _run(applications.record_decision(815, "rejected", "<script>плохо</script>", 999, datetime(2026, 1, 1)))
+    user = _run(db.get_user(815))
+
+    plain = _run(applications.prev_reject_line(user))
+    escaped = _run(applications.prev_reject_line(user, escape_reason=True))
+    assert plain == "🚫 Ранее отклонена: <script>плохо</script>"
+    assert "<script>" not in escaped
+    assert "&lt;script&gt;" in escaped
+
+
+def test_render_application_card_prints_prev_reject_between_resubmit_and_consent():
+    import handlers.admin_moderation as admin_moderation
+    user = {"telegram_id": 1, "full_name": "Иван"}
+    text = admin_moderation._render_application_card(
+        user, 1, 1,
+        consent_line="Согласие: v1",
+        resubmit_line="🔁 Повторная подача",
+        prev_reject_line="🚫 Ранее отклонена: Мало опыта",
+    )
+    lines = text.splitlines()
+    i_resubmit = lines.index("🔁 Повторная подача")
+    i_prev = lines.index("🚫 Ранее отклонена: Мало опыта")
+    i_consent = lines.index("Согласие: v1")
+    assert i_resubmit < i_prev < i_consent
+
+
 # ── Сквозные сторожа паритета «бот ↔ приложение» (план 23-06, T-23-28) ──────────────────────
 #
 # Веб-путь здесь собран из тех же звеньев, что реально образуют production pipeline
