@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import asyncio
 import html as html_module
+import inspect
 import pathlib
 from datetime import datetime, timedelta
 
@@ -414,6 +415,57 @@ def test_web_reject_without_reason_has_no_hanging_separator_or_none_word():
     assert not text.endswith("\n\n")
     assert "None" not in text
     assert text == html_module.escape("К сожалению, твоя заявка отклонена.")
+
+
+def test_bot_reject_writes_journal_without_second_send(tmp_path, monkeypatch):
+    """Quick 260904-liz (T-liz-04): бот-путь (claim_reject -> apply_decision_effects ->
+    record_decision(..., effects_already_sent=True)) оставляет ровно одну строку журнала,
+    заполненный effects_sent_at — и `flush_due_decisions` даже спустя окно отмены её НЕ
+    забирает: 0 забранных, колбэк не вызван, ни одной новой строки в miniapp_outbox. Делегат
+    получает сообщение об отказе РОВНО ОДИН раз — то, что уже отправил apply_decision_effects
+    синхронно, ниже."""
+    _use_tmp_db(tmp_path)
+    _run(db.init_db())
+    _seed_user(1971, full_name="Bot Reject Path")
+
+    async def fake_update_status_in_sheet(tid, label):
+        return None
+
+    monkeypatch.setattr(application_effects, "update_status_in_sheet", fake_update_status_in_sheet)
+
+    bot = _FakeBot()
+    reason = "Анкета неполная"
+
+    assert _run(applications.claim_reject(1971))
+    _run(application_effects.apply_decision_effects(bot, 1971, "rejected", reason))
+    decision_id = _run(applications.record_decision(
+        1971, "rejected", reason, 999, datetime.now(), effects_already_sent=True,
+    ))
+
+    row = _run(applications.get_decision(decision_id))
+    assert row["reason"] == reason
+    assert row["effects_sent_at"] is not None
+
+    enqueued = []
+    far_future = datetime.now() + timedelta(days=1)
+    flushed = _run(applications.flush_due_decisions(far_future, lambda k, p: enqueued.append((k, p))))
+    assert flushed == 0
+    assert enqueued == []
+    assert _run(_outbox_row_count()) == 0
+
+    assert len(bot.sent) == 1  # ровно одна отправка делегату — от apply_decision_effects
+
+
+def test_appr_reject_reason_records_journal_without_reason_in_log():
+    """T-liz-01 (Info disclosure): сторож самого хендлера — `record_decision`/
+    `effects_already_sent` в теле функции ЕСТЬ, а `reason={reason!r}` (утечка ПД в лог) НЕТ.
+    Проверяет исходники, а не только примитивы (тест выше), чтобы правка не откатилась тихо
+    следующим рефакторингом."""
+    import handlers.admin_moderation as admin_moderation
+    source = inspect.getsource(admin_moderation.appr_reject_reason)
+    assert "record_decision" in source
+    assert "effects_already_sent" in source
+    assert "reason={reason!r}" not in source
 
 
 def test_undo_leaves_no_trace(tmp_path, monkeypatch):
