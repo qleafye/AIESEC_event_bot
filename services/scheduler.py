@@ -13,7 +13,6 @@ import json
 import logging
 import os
 from datetime import datetime, timedelta
-from zoneinfo import ZoneInfo
 
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.jobstores.sqlalchemy import SQLAlchemyJobStore
@@ -23,16 +22,20 @@ from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup, WebAppInfo
 from config import config
 from database.db import get_setting
 from settings_schema import get_setting_typed
+from services.timeutil import MOSCOW_TZ
 
 logger = logging.getLogger(__name__)
 
 _JOBSTORE_URL = "sqlite:///data/jobs.sqlite"
 
-# TZFIX-260816: the ONE place the timezone literal is named in the whole codebase. Both the
-# scheduler pin below (init_scheduler) and _now_moscow_naive() read this constant, so they
-# structurally cannot drift apart — that drift (pin=Moscow, checks=container clock/UTC) was
-# exactly the bug this fix closes. See .planning/TZFIX-260816.md.
-MOSCOW_TZ = ZoneInfo("Europe/Moscow")
+# TZFIX-260816: the scheduler pin below (init_scheduler) and _now_moscow_naive() read the SAME
+# MOSCOW_TZ constant, so they structurally cannot drift apart — that drift (pin=Moscow,
+# checks=container clock/UTC) was exactly the bug this fix closes. See .planning/TZFIX-260816.md.
+# Quick 260904-kk6 (Q1): the literal itself now lives in `services/timeutil.py` (leaf module,
+# no aiogram import) — `services/questions.py::format_stamp` needs it too and cannot import
+# this module (aiogram + APScheduler), and the "exactly one literal" guard
+# (tests/test_timezone_fix_260816.py::test_moscow_literal_declared_exactly_once) forbids a
+# second copy. This is a re-export, not a second source of truth.
 
 # Night review 260816 (review/services.md #2, #4). ONE source for the misfire grace: it feeds
 # both `job_defaults` below and the staleness threshold in reconcile_scheduled_broadcasts(), so
