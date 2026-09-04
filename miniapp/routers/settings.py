@@ -565,6 +565,20 @@ async def settings_batch(
             if warning:
                 warnings[key] = (warnings.get(key, "") + "\n\n" + warning).strip()
             saved.append(key)
+        # E5 (quick 260904-de4): смена пресета в вебе обязана дописать ручки пресета — тот же
+        # приём, что у кнопки пресета в боте (`miniapp_preset_apply`). Дозапись — ТОЛЬКО после
+        # успешной фазы 2 (право "settings" уже проверил `require_cap` выше), только по ключам
+        # из `web_theme.THEME_KEYS`, значения — из `PRESETS`, не из тела запроса (T-de4-03).
+        preset_key = web_theme.THEME_KEYS["preset"]
+        if preset_key in saved:
+            preset_name = checked.get(preset_key)
+            if isinstance(preset_name, str) and preset_name in web_theme.PRESETS:
+                preset_writes = web_theme.preset_handle_writes(preset_name, skip_keys=seen)
+                for handle_key, handle_value in preset_writes.items():
+                    await set_setting(handle_key, handle_value)
+                    targets[handle_key] = handle_key
+                    saved.append(handle_key)
+                logger.info(f"admin {p.telegram_id} применил пресет {preset_name} в вебе")
     else:
         warnings = {}
 
@@ -627,15 +641,29 @@ async def theme_preview(
 
     Ключ вне `THEME_KEYS.values()` — недоверенный вход с клиента (T-8o3-02) — отклоняется
     403 `not_editable`, не тихим игнором: экран мог бы иначе прислать чужой ключ реестра
-    незамеченным."""
+    незамеченным.
+
+    Quick 260904-de4 (E5, второй корень): чтения — СЫРЫЕ (`get_setting`, `None` = «не
+    задано»), а не `get_setting_typed`: незаданная ручка приходила бы дефолтом реестра, и
+    `resolve_theme` считал бы любое валидное значение явной ручкой — пресет в превью никогда
+    не побеждал бы. Если среди `changes` пришла смена пресета на валидное имя — подмешиваем
+    `preset_handle_writes` (те же ручки, что допишет `settings_batch` при сохранении) поверх
+    ключей из `changes`: превью обязано показывать РОВНО то состояние, которое даст
+    «Сохранить», иначе менеджер увидит одно, а получит другое."""
     theme_keys = set(web_theme.THEME_KEYS.values())
     for change in body.changes:
         if change.key not in theme_keys:
             raise HTTPException(403, {"reason": "not_editable", "key": change.key})
 
-    settings = {key: await get_setting_typed(key) for key in theme_keys}
+    settings = {key: await get_setting(key) for key in theme_keys}
+    changed_keys = {change.key for change in body.changes}
     for change in body.changes:
         settings[change.key] = change.value
+
+    preset_key = web_theme.THEME_KEYS["preset"]
+    if preset_key in changed_keys:
+        preset_writes = web_theme.preset_handle_writes(settings[preset_key], skip_keys=changed_keys)
+        settings.update(preset_writes)
 
     resolved = web_theme.resolve_theme(settings)
     return {"vars": web_theme.theme_css_vars(resolved)}
