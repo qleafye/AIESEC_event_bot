@@ -28,7 +28,7 @@ from aiogram.fsm.state import State
 from aiogram.types import FSInputFile, InlineKeyboardButton, InlineKeyboardMarkup
 
 import web_theme
-from database.db import set_setting, delete_setting
+from database.db import get_setting, set_setting, delete_setting
 from settings_schema import get_setting_typed
 from handlers.admin import router
 from handlers.states import MiniAppTheme
@@ -140,8 +140,13 @@ async def _contrast_note(handle: str, value: str) -> str:
 
 
 async def _current_preset_and_custom() -> tuple[str, bool]:
-    """D-03: «Своя» вычисляется сравнением, не хранится отдельным флагом."""
-    settings = {key: await get_setting_typed(key) for key in web_theme.THEME_KEYS.values()}
+    """D-03: «Своя» вычисляется сравнением, не хранится отдельным флагом.
+
+    Quick 260904-de4 (E5, второй корень): сырые чтения (`get_setting`, `None` = «ручка не
+    задана»), а не `get_setting_typed` (незаданная ручка приходила бы ДЕФОЛТОМ реестра и
+    `resolve_theme` считал бы её явно заданной — «Своя» показывалась бы на чистом стенде).
+    Паритет с `page.py`/`dashboard/main.py`, которые уже читают эти ключи сырыми."""
+    settings = {key: await get_setting(key) for key in web_theme.THEME_KEYS.values()}
     resolved = web_theme.resolve_theme(settings)
     preset_name = resolved["preset"]
     preset_defaults = web_theme.PRESETS[preset_name]
@@ -153,7 +158,7 @@ async def _current_preset_and_custom() -> tuple[str, bool]:
 
 
 async def _resolved_handles() -> dict:
-    settings = {key: await get_setting_typed(key) for key in web_theme.THEME_KEYS.values()}
+    settings = {key: await get_setting(key) for key in web_theme.THEME_KEYS.values()}
     return web_theme.resolve_theme(settings)
 
 
