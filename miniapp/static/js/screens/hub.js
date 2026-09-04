@@ -277,6 +277,11 @@ async function renderTilesOnlyHub(root, ctx, items) {
           h("h1", { text: status.heading }),
           h("hr", { class: "plate-rule" }),
           h("p", { class: "plate-sub", text: status.body || "" }),
+          // Quick 260904-liz: строка причины отказа — второй узел, создаётся ТОЛЬКО когда
+          // сервер прислал reason_line (нет причины/старый отказ -> None -> узла нет вовсе,
+          // «Причина: None» на экране невозможна). Подстановка уже сделана на сервере
+          // (miniapp/routers/hub.py) — здесь только textContent, никакого форматирования.
+          status.reason_line ? h("p", { class: "plate-sub", text: status.reason_line }) : null,
         );
         if (status.status === "rejected" && status.cta_text) {
           plate.append(h("button", {

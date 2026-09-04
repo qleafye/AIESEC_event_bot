@@ -25,6 +25,7 @@ from fastapi import APIRouter, Depends
 
 from cities import get_setting_typed_for_city
 from database.db import get_user
+from services import applications
 from settings_schema import get_setting_typed
 
 from miniapp.deps import Principal, delegate_gate, form_gate
@@ -113,20 +114,27 @@ async def hub_status(p: Principal = Depends(form_gate)) -> dict:
         return {
             "status": status, "heading": heading, "body": body, "days": days,
             "cta_text": None, "event_dates": event_dates, "event_place": event_place,
+            "reason_line": None,
         }
     if status == "rejected":
         heading = await get_setting_typed("miniapp_hub_rejected_heading_text")
         body = await get_setting_typed("miniapp_hub_rejected_body_text")
         cta_text = await get_setting_typed("miniapp_hub_rejected_cta_text")
-        # ВАЖНО: причина отказа делегату здесь не показывается — она нигде не хранится.
-        # `services/application_effects.py::apply_decision_effects` отправляет её сообщением
-        # в чат и забывает; колонки `users.reject_reason` в проекте нет. Заводить её — не
-        # предмет этого квика (см. SUMMARY/source_audit плана 260904-aup).
+        # Quick 260904-liz: причина последнего НЕ отменённого отказа — `last_rejection_reason`
+        # читает СТРОГО по `p.telegram_id` из `form_gate` (T-liz-02: чужую причину узнать
+        # нельзя, параметра для этого в ручке нет). `.replace`, не `.format` — та же защита от
+        # стёртых менеджером фигурных скобок, что и у `body` выше; строки нет вовсе, если нет
+        # либо причины (старый отказ/отказ без причины), либо самого шаблона.
+        reason = await applications.last_rejection_reason(p.telegram_id)
+        reason_tpl = await get_setting_typed("miniapp_hub_rejected_reason_text")
+        reason_line = reason_tpl.replace("{reason}", reason) if (reason and reason_tpl) else None
         return {
             "status": status, "heading": heading, "body": body, "days": None,
             "cta_text": cta_text, "event_dates": event_dates, "event_place": event_place,
+            "reason_line": reason_line,
         }
     return {
         "status": status, "heading": None, "body": None, "days": None,
         "cta_text": None, "event_dates": event_dates, "event_place": event_place,
+        "reason_line": None,
     }
