@@ -25,7 +25,7 @@ import { attachSwipe } from "../swipe.js";
 
 // Порядок трек-чипов после «Все» (D-08) — коды совпадают с services.applications.TRACK_FILTERS.
 const TRACK_CHIP_ORDER = [["full", "full"], ["party", "party"], ["short", "short"]];
-const EDITED_BADGE_KINDS = ["edited", "resubmit"];
+const EDITED_BADGE_KINDS = ["edited", "resubmit", "prev_reject"];
 
 // unmount() — отдельная функция вне render(), поэтому то, что она обязана снять (жест,
 // таймер тоста), живёт на уровне модуля, а не в замыкании render().

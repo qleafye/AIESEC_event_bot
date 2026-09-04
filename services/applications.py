@@ -133,6 +133,33 @@ async def edit_badges_for(user: dict) -> tuple[str | None, str | None, bool]:
     return edited_line, resubmit_line, has_history
 
 
+async def prev_reject_line(user: dict, *, escape_reason: bool = False) -> str | None:
+    """Quick 260904-liz: «🚫 Ранее отклонена: <причина>» для карточки повторно поданной заявки
+    — читает `last_rejection_reason` по `user["telegram_id"]` (единый аксессор с экраном
+    делегата, `miniapp/routers/hub.py::hub_status`). НЕ расширяет кортеж `edit_badges_for` —
+    у той функции два вызывающих и сторожа паритета (T-23-28), отдельная функция дешевле, чем
+    менять форму существующего контракта.
+
+    `escape_reason=True` (карточка бота) — причина проходит `html_module.escape` ПЕРЕД
+    подстановкой в шаблон: шаблон `reg_prev_reject_admin_label` — текст реестра менеджера, его
+    экранировать нельзя (карточка бота печатает готовые строки как есть, тот же контракт, что
+    у `edited_line`/`resubmit_line`). Карточка веба (`card_payload`, `escape_reason=False` по
+    умолчанию) несёт ПЛОСКИЙ текст — экранирует только бот.
+
+    Нет `telegram_id` или нет причины (её и не было, отказ отменён, или последнее решение —
+    одобрение) -> None (бейджа/строки нет вовсе); пустой шаблон реестра — тот же дефолт-фолбэк
+    в коде, что у `edit_badges_for` выше."""
+    tid = user.get("telegram_id")
+    if tid is None:
+        return None
+    reason = await last_rejection_reason(tid)
+    if not reason:
+        return None
+    tmpl = await get_setting("reg_prev_reject_admin_label") or "🚫 Ранее отклонена: {reason}"
+    shown_reason = html_module.escape(reason) if escape_reason else reason
+    return tmpl.replace("{reason}", shown_reason)
+
+
 def _history_changes(raw_changes: list[dict] | None) -> list[dict]:
     """Одна запись `reg_answer_history.changes` -> `[{label, old, new}]` для «было → стало»
     (D-03, Known Stub #1 из 23-05). Дословно правило `handlers/admin_moderation.py::appr_history`:
@@ -221,7 +248,8 @@ async def card_payload(user: dict) -> dict:
     `main_fields`.
     `badges` — `[{kind, text}]`: трек (`TRACK_LABELS`), «🔁 Повторный …» (`prev_season`, тот же
     разбор служебного литерала `legacy`, что и у карточки бота), `edited`/`resubmit`
-    (`edit_badges_for`), `consent` — строка согласия ВСЕГДА последней.
+    (`edit_badges_for`), `prev_reject` — «🚫 Ранее отклонена: <причина>» (`prev_reject_line`,
+    quick 260904-liz), ПОСЛЕ `resubmit` и ПЕРЕД `consent` — строка согласия ВСЕГДА последней.
     `resume` — `{kind: "file"|"text"|"none", file_id, text}`.
     `history` — до 5 записей `get_answer_history` (D-03), КАЖДАЯ уже переведена в
     `{when, source_label, changes:[{label, old, new}]}` — `_history_entry` (найдено планом
@@ -251,6 +279,9 @@ async def card_payload(user: dict) -> dict:
         badges.append({"kind": "edited", "text": edited_line})
     if resubmit_line:
         badges.append({"kind": "resubmit", "text": resubmit_line})
+    prev = await prev_reject_line(user)
+    if prev:
+        badges.append({"kind": "prev_reject", "text": prev})
     consent_line = await consent_card_line(user.get("telegram_id"))
     if consent_line:
         badges.append({"kind": "consent", "text": consent_line})
