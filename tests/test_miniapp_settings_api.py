@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import asyncio
 
+from cities import PER_CITY_SEP
 from database import db as bot_db
 from settings_schema import get_setting_typed
 
@@ -211,6 +212,54 @@ def test_danger_confirm_table_covers_only_the_two_taking_directions():
         ("miniapp_enabled", "off"): "miniapp_confirm_disable_text",
         ("miniapp_staff_only", "on"): "miniapp_confirm_staff_only_text",
     }
+
+
+# ── скоуп города в Mini App (quick 260904-8o3 Task 4, E4) ────────────────────────────────
+# E4 признан НЕ багом (тестировщица — суперадмин, все города по дизайну). Доказываем тестом,
+# что менеджер СО СВОИМ городом (staff.city) чужие города не видит и не правит через Mini App
+# — тот же принцип, что уже доказан для бота (09.1/09.3). Заявка «право settings + свой
+# город» через реестр `role_caps_reg_manager`, тот же приём, что в test_miniapp_settings_batch.py
+# и test_miniapp_settings_registry.py (SETTINGS_MANAGER_SPB) — POST /settings/batch отказ
+# чужого города уже покрыт test_per_city_key_of_foreign_city_refused_for_bound_manager
+# (settings_batch.py); здесь — недостающая половина: GET /settings/all показывает менеджеру
+# ТОЛЬКО его город и не отдаёт ни одного композита с ЧУЖИМ городом в ключе.
+
+SETTINGS_MANAGER_SPB = 900610
+
+
+def test_get_all_scoped_to_bound_manager_city_own_editable_foreign_absent(tmp_path):
+    db_path = _use_tmp_db(tmp_path, "miniapp_settings_api_city.db")
+    _standard_seed()
+    _seed(staff=[(SETTINGS_MANAGER_SPB, "reg_manager", "spb")])
+    _set("role_caps_reg_manager", "moderate_reg\nsettings")
+    _set("event_city_enabled", "on")
+    client = _client(_cfg(db_path))
+
+    resp = client.get("/app/api/admin/settings/all", headers=_hdr(SETTINGS_MANAGER_SPB))
+    assert resp.status_code == 200, resp.text
+    body = resp.json()
+
+    header = body["city_header"]
+    assert header["selected"] == "spb"
+    assert [c["code"] for c in header["cities"]] == ["spb"]
+    assert header["can_select_all"] is False
+
+    items = []
+    for section in body["sections"]:
+        items.extend(section["toggles"])
+        for group in section["groups"]:
+            items.extend(group["items"])
+    keys = {i["key"] for i in items}
+
+    # Сервер строит композит только для ВЫБРАННОГО города (шапка singular) — ни одного ключа
+    # с чужим городом в теле ответа физически быть не может, проверяем это явно.
+    assert not any(f"{PER_CITY_SEP}msk" in k for k in keys)
+    assert not any(f"{PER_CITY_SEP}tyumen" in k for k in keys)
+
+    own_key = f"start_text{PER_CITY_SEP}spb"
+    assert own_key in keys
+    own = next(i for i in items if i["key"] == own_key)
+    assert own["editable"] is True
 
 
 def test_disabling_miniapp_enabled_locks_app_with_503(tmp_path):
