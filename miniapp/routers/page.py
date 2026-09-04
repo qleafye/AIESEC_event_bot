@@ -62,6 +62,8 @@ STATE_TEXT_KEYS = {
 # карточки; Task 3 — шторка отказа/тост отмены/«Принять всех».
 APPLICATIONS_TEXT_KEYS = {
     "show_all": "miniapp_applications_show_all",
+    # Quick 260904-kk6 (D17): подпись той же кнопки в раскрытом состоянии.
+    "hide_all": "miniapp_applications_hide_all",
     "approve_button": "miniapp_applications_approve_button",
     "reject_button": "miniapp_applications_reject_button",
     "resume_open": "miniapp_applications_resume_open",

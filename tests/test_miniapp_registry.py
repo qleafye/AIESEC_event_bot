@@ -134,6 +134,7 @@ MINIAPP_KEYS = [
     "miniapp_empty_applications_skipped",
     "miniapp_empty_applications_filtered",
     "miniapp_applications_show_all",
+    "miniapp_applications_hide_all",  # Quick 260904-kk6 (D17): та же кнопка, раскрытое состояние
     "miniapp_applications_undo_button",
     "miniapp_applications_approved_toast",
     "miniapp_applications_rejected_toast",
@@ -258,7 +259,9 @@ def test_exactly_144_miniapp_keys_and_no_extra():
     # (miniapp_profile_greeting_fallback_text) (162 -> 163).
     # Quick 260904-kk6 (Q2): +2 текста экрана вопросов — плейсхолдер поля ответа и подпись
     # кнопки-тоггла для скринридера (163 -> 165).
-    assert len(MINIAPP_KEYS) == 165
+    # Quick 260904-kk6 (D17): +1 ключ подписи «Свернуть» той же кнопки карточки заявки
+    # (miniapp_applications_hide_all) (165 -> 166).
+    assert len(MINIAPP_KEYS) == 166
     present = sorted(k for k in SETTINGS_SCHEMA if k.startswith("miniapp_"))
     assert present == sorted(MINIAPP_KEYS)
 
@@ -312,7 +315,8 @@ def test_text_keys_have_human_defaults():
     # (132 -> 133).
     # Quick 260904-kk6 (Q2): +2 текстовых ключа экрана вопросов — плейсхолдер поля ответа и
     # подпись кнопки-тоггла (133 -> 135).
-    assert len(text_keys) == 135
+    # Quick 260904-kk6 (D17): +1 текстовый ключ «Свернуть» (135 -> 136).
+    assert len(text_keys) == 136
     for key in text_keys:
         default = SETTINGS_SCHEMA[key]["default"]
         assert isinstance(default, str) and default.strip(), key

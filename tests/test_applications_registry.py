@@ -33,6 +33,10 @@ NEW_KEYS = APPLICATIONS_TEXT_KEYS + ["miniapp_section_applications"]
 # список (не в NEW_KEYS выше — тот фиксирует ровно 14 ключей плана 23-01, свой контракт).
 QUICK_260904_7E7_KEYS = ["miniapp_applications_reject_cancel"]
 
+# Квик 260904-kk6 (D17): та же кнопка «Показать всё» в раскрытом состоянии подписывается
+# «Свернуть» — отдельный список тем же приёмом, что QUICK_260904_7E7_KEYS выше.
+QUICK_260904_KK6_KEYS = ["miniapp_applications_hide_all"]
+
 
 # ── Раздел объявлен в обе стороны ────────────────────────────────────────────────────────
 
@@ -102,6 +106,17 @@ def test_count_placeholder_present_in_skipped_and_approve_all():
 
 def test_reject_cancel_key_registered_with_human_default():
     for key in QUICK_260904_7E7_KEYS:
+        entry = SETTINGS_SCHEMA[key]
+        assert entry["type"] == "text" and entry["group"] == "miniapp", key
+        assert isinstance(entry["label"], str) and entry["label"].strip(), key
+        assert "_" not in entry["label"] and "miniapp" not in entry["label"], key
+        assert isinstance(entry["default"], str) and entry["default"].strip(), key
+
+
+# ── Квик 260904-kk6 (D17): «Показать всё» / «Свернуть» — обе подписи одной кнопки ────────
+
+def test_hide_all_key_registered_with_human_default():
+    for key in QUICK_260904_KK6_KEYS:
         entry = SETTINGS_SCHEMA[key]
         assert entry["type"] == "text" and entry["group"] == "miniapp", key
         assert isinstance(entry["label"], str) and entry["label"].strip(), key

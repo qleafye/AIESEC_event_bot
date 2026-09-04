@@ -189,6 +189,10 @@ def test_plate_pattern_valid_file_id_goes_through_file_proxy_at_low_opacity():
     file_id = "AgACAgIAAxkBAAI" + "c" * 15  # 30 символов, проходит FILE_ID-регэксп
     resolved = web_theme.resolve_theme({
         "miniapp_theme_preset": "bluebook",
+        # Quick 260904-kk6 (E5): bluebook по умолчанию pattern_enabled=off — гейт
+        # theme_css_vars погасил бы --plate-pattern независимо от plate_pattern. Тест про
+        # резолюцию file_id, не про гейт — включаем паттерн явно.
+        "miniapp_theme_pattern_enabled": "on",
         "miniapp_theme_pattern": file_id,
     })
     assert resolved["plate_pattern"] == file_id
@@ -282,6 +286,9 @@ def test_theme_css_vars_file_id_pattern_goes_through_file_proxy():
     file_id = "AgACAgIAAxkBAAI" + "c" * 15
     resolved = web_theme.resolve_theme({
         "miniapp_theme_preset": "bluebook",
+        # Quick 260904-kk6 (E5): см. комментарий в
+        # test_plate_pattern_valid_file_id_goes_through_file_proxy_at_low_opacity выше.
+        "miniapp_theme_pattern_enabled": "on",
         "miniapp_theme_pattern": file_id,
     })
     css_vars = web_theme.theme_css_vars(resolved)

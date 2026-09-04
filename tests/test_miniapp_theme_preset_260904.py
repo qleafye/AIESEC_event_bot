@@ -141,3 +141,55 @@ def test_bot_theme_menu_reflects_preset_after_web_batch_save(tmp_path):
     preset_name, is_custom = _run(_current_preset_and_custom())
     assert preset_name == "realtalk"
     assert is_custom is False
+
+
+# ── Quick 260904-kk6 (E5): выключенный паттерн гасит --plate-pattern ────────────────────
+
+def test_theme_css_vars_pattern_off_is_none():
+    resolved = web_theme.resolve_theme({
+        "miniapp_theme_preset": "youlead",
+        "miniapp_theme_pattern_enabled": "off",
+    })
+    assert web_theme.theme_css_vars(resolved)["light"]["--plate-pattern"] == "none"
+
+
+def test_theme_css_vars_pattern_on_keeps_url_not_broken_by_gate():
+    resolved = web_theme.resolve_theme({
+        "miniapp_theme_preset": "youlead",
+        "miniapp_theme_pattern_enabled": "on",
+    })
+    value = web_theme.theme_css_vars(resolved)["light"]["--plate-pattern"]
+    assert value != "none"
+    assert value.startswith("url(")
+
+
+def test_theme_css_vars_bluebook_preset_parity_unchanged():
+    """Пресет `bluebook` (pattern_enabled off + plate_pattern none) уже отдавал --plate-pattern:
+    none ДО этой правки — гейт не должен был изменить его поведение (тест-паритет из плана)."""
+    resolved = web_theme.resolve_theme({"miniapp_theme_preset": "bluebook"})
+    assert resolved["pattern_enabled"] == "off"
+    assert web_theme.theme_css_vars(resolved)["light"]["--plate-pattern"] == "none"
+
+
+def test_preview_pattern_off_returns_flag_false_and_none_var(tmp_path):
+    client = _setup(tmp_path)
+    resp = _preview(client, [
+        {"key": "miniapp_theme_preset", "value": "youlead"},
+        {"key": "miniapp_theme_pattern_enabled", "value": "off"},
+    ])
+    assert resp.status_code == 200, resp.text
+    body = resp.json()
+    assert body["pattern_enabled"] is False
+    assert body["vars"]["light"]["--plate-pattern"] == "none"
+
+
+def test_preview_pattern_on_returns_flag_true_and_url_var(tmp_path):
+    client = _setup(tmp_path)
+    resp = _preview(client, [
+        {"key": "miniapp_theme_preset", "value": "youlead"},
+        {"key": "miniapp_theme_pattern_enabled", "value": "on"},
+    ])
+    assert resp.status_code == 200, resp.text
+    body = resp.json()
+    assert body["pattern_enabled"] is True
+    assert body["vars"]["light"]["--plate-pattern"] != "none"
