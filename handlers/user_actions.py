@@ -3,7 +3,7 @@ import html
 import logging
 from datetime import datetime
 from aiogram import Router, F, types, Bot
-from aiogram.filters import Command
+from aiogram.filters import Command, StateFilter
 from aiogram.types import FSInputFile, InlineKeyboardMarkup, InlineKeyboardButton, WebAppInfo
 from aiogram.fsm.context import FSMContext
 from database.db import (
@@ -24,6 +24,7 @@ from database.db import (
     task_title,
     list_coin_entries_for_user,
     count_coin_entries_for_user,
+    get_reg_draft,
 )
 from handlers.admin_caps import notify_by_capability  # D-13: fan out by capability, not bare ADMIN_IDS
 from handlers.game_labels import (  # Phase 16 (16-01): single RU-label source; 16-03: shared card render
@@ -1140,3 +1141,25 @@ async def open_miniapp_button(message: types.Message):
         # Fail-soft: любая ошибка построения кнопки не должна ронять обработчик.
         logger.error(f"open_miniapp_button: failed for {message.from_user.id}: {e}")
         await message.answer(await get_setting_typed("miniapp_disabled_text"))
+
+
+# Quick 260904-3vm (эстафета): делегат БЕЗ активного FSM-состояния (Registration уже сброшена —
+# takeover уже прошёл, а не в узком гонка-окне, которое ловит RegHandoffGuard в
+# handlers/reg_handoff.py) пишет произвольный текст, пока анкета открыта в приложении. Placed
+# LAST, ПОСЛЕ open_miniapp_button — так все кнопки меню (F.text == "...") сохраняют приоритет:
+# аiogram останавливается на первом совпавшем хендлере в router, а этот фолбэк стоит в самом
+# хвосте. Вешать его на registration.router нельзя — registration.router подключён РАНЬШЕ
+# user_actions.router (main.py), он перехватил бы меню первым.
+@router.message(StateFilter(None), F.text)
+async def reg_handoff_idle_fallback(message: types.Message) -> None:
+    from services.reg_handoff import draft_holder, SURFACE_APP
+    from handlers.reg_handoff import handoff_plate
+
+    try:
+        draft = await get_reg_draft(message.from_user.id)
+    except Exception as e:
+        logger.error(f"reg_handoff_idle_fallback: draft lookup failed for {message.from_user.id}: {e}")
+        return
+    if draft_holder(draft) != SURFACE_APP:
+        return
+    await handoff_plate(message)
