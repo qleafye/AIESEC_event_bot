@@ -423,6 +423,8 @@ def test_render_snapshot_apps(tmp_path):
         "nudge_after_minutes", "nudge_text",
         # Phase 23-01 (APP-TINDER-01, D-05): шаблоны причин отказа шторки Mini App.
         "reject_reason_templates",
+        # Quick 260904-dq1: «🌙 Тихие часы» — «с»/«до» и приписка менеджеру, в хвосте группы.
+        "quiet_hours_start", "quiet_hours_end", "quiet_hours_manager_notice_text",
     ]
     expected_labels = [
         "✅ После регистрации", "🎉 После одобрения", "🚫 При отклонении",
@@ -430,10 +432,13 @@ def test_render_snapshot_apps(tmp_path):
         "🎯 Предотбор: нет @username", "🎯 Предотбор: не прошёл", "🎯 Предотбор: ссылка",
         "⏰ Догонялка: через сколько минут", "⏰ Догонялка: текст напоминания",
         "✍️ Причины отказа",
+        "🌙 Тихие часы: с", "🌙 Тихие часы: до", "🌙 Приписка менеджеру о тихих часах",
     ]
     defaulted_labels = {
         "⏳ Заявка на рассмотрении", "🎯 Предотбор: нет @username",
         "🎯 Предотбор: не прошёл", "⏰ Догонялка: текст напоминания",
+        # Quick 260904-dq1: все три ключа тихих часов имеют дефолт в реестре.
+        "🌙 Тихие часы: с", "🌙 Тихие часы: до", "🌙 Приписка менеджеру о тихих часах",
     }
     for label in defaulted_labels:
         assert f"{label}: <i>по умолчанию</i>" in text, f"missing/wrong flag for {label}"
@@ -800,8 +805,9 @@ def test_scheduler_and_reminder_keys_declared_with_code_defaults(tmp_path):
     # Phase 20 (20-01): поля догонялки переехали из «📝 Регистрация» в «📋 Заявки» вместе
     # с остальными послеподачными текстами — сама пара ключей и её порядок не менялись.
     # Phase 23-01 (APP-TINDER-01, D-05): reject_reason_templates добавлен хвостом _APPS_FIELD_ORDER.
+    # Quick 260904-dq1: три ключа «🌙 Тихие часы» — новый хвост _APPS_FIELD_ORDER.
     assert admin_settings._settings_group_keys("apps")[-3:] == [
-        "nudge_after_minutes", "nudge_text", "reject_reason_templates"]
+        "quiet_hours_start", "quiet_hours_end", "quiet_hours_manager_notice_text"]
     text = asyncio.run(admin_settings.render_settings_group_text("system"))
     # int без значения в БД -- «— не задано» (как proxy_*: parse-дефолт не display-дефолт)
     assert "⏱ Догонялка: как часто проверять: <i>— не задано</i>" in text

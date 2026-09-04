@@ -146,6 +146,9 @@ _APPS_FIELD_ORDER = [
     # Phase 23 (APP-TINDER-01, D-05): шаблоны причин отказа шторки Mini App — общий списочный
     # редактор (admin_settings_lists.py) достаётся бесплатно попаданием в этот список.
     "reject_reason_templates",
+    # Quick 260904-dq1: «🌙 Тихие часы» — редактор экрана и per-city пикер достаются
+    # бесплатно попаданием в этот список; сам тумблер живёт в settings_toggle_rows.
+    "quiet_hours_start", "quiet_hours_end", "quiet_hours_manager_notice_text",
 ]
 _PAY_FIELD_ORDER = [
     "payment_options", "payment_requisites", "payment_requisites_by_lc",
@@ -553,6 +556,9 @@ async def settings_toggle_rows(admin_id: int | None = None, *, header_code=_HEAD
     nudge_on = await get_setting_typed("nudge_enabled")
     nudge_toggle_text = ("⏰ Догонялка анкет: ✅ Вкл → ❌ Выкл" if nudge_on == "on"
                          else "⏰ Догонялка анкет: ❌ Выкл → ✅ Вкл")
+    quiet_hours_on = await get_setting_typed("quiet_hours_enabled")
+    quiet_hours_toggle_text = ("🌙 Тихие часы: ✅ Вкл → ❌ Выкл" if quiet_hours_on == "on"
+                               else "🌙 Тихие часы: ❌ Выкл → ✅ Вкл")
     # Phase 21 (21-07, D-12, FORM-SYNC-04): подпись — из реестра (SETTINGS_SCHEMA), не
     # литерал в коде — менеджер переписывает её сам, как и любой другой текст реестра.
     reg_edit_remod = await get_setting_typed("toggle_reg_edit_remoderation")
@@ -594,6 +600,7 @@ async def settings_toggle_rows(admin_id: int | None = None, *, header_code=_HEAD
         "toggle_pending_reminder": _row(pending_rem_text, "toggle_pending_reminder"),
         "toggle_nudge_enabled": _row(nudge_toggle_text, "toggle_nudge_enabled"),
         "toggle_reg_edit_remoderation": _row(reg_edit_remod_text, "toggle_reg_edit_remoderation"),
+        "toggle_quiet_hours": _row(quiet_hours_toggle_text, "toggle_quiet_hours"),
     }
 
 
@@ -1018,6 +1025,12 @@ async def toggle_pending_reminder(callback: types.CallbackQuery):
 async def toggle_nudge_enabled(callback: types.CallbackQuery):
     # Догонялка брошенных анкет (services/scheduler.py): enum on/off, дефолт ON.
     await _toggle_module_setting(callback, "nudge_enabled", "⏰ Догонялка анкет")
+
+
+@router.callback_query(F.data == "toggle_quiet_hours")
+async def toggle_quiet_hours(callback: types.CallbackQuery):
+    # Quick 260904-dq1: «🌙 Тихие часы» (services/quiet_hours.py) — enum on/off, дефолт OFF.
+    await _toggle_module_setting(callback, "quiet_hours_enabled", "🌙 Тихие часы")
 
 
 @router.callback_query(F.data == "toggle_reg_edit_remoderation")

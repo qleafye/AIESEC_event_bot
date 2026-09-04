@@ -503,6 +503,7 @@ ADMIN_CAPS: dict[str, str] = {
     "toggle_preselect_enabled": "settings",
     "toggle_payment_reminders": "settings",
     "toggle_pending_reminder": "settings",
+    "toggle_quiet_hours": "settings",
     "toggle_reg_edit_remoderation": "settings",
     "toggle_show_progress": "settings",
     "toggle_uni_mode": "settings",

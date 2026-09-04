@@ -272,7 +272,7 @@ SECTION_GROUPS: tuple[tuple[str, str, tuple[str, ...]], ...] = (
 SETTINGS_MAIN_SECTIONS: frozenset[str] = frozenset({"event", "form", "apps", "pay", "game", "data"})
 
 # Ключ группы "toggles" -> раздел, куда его кладёт соответствующая строка ("toggle", …) в
-# handlers.admin_sections.SECTIONS (девятнадцать ключей группы "toggles" в SETTINGS_SCHEMA,
+# handlers.admin_sections.SECTIONS (двадцать ключей группы "toggles" в SETTINGS_SCHEMA,
 # распределены ровно по одному разу — сторож tests/test_settings_ops.py).
 TOGGLE_SECTION: dict[str, str] = {
     "reg_bonus_enabled": "event",
@@ -294,6 +294,7 @@ TOGGLE_SECTION: dict[str, str] = {
     "payment_enabled": "pay",
     "payment_reminders_enabled": "pay",
     "event_city_enabled": "manage",
+    "quiet_hours_enabled": "apps",
 }
 
 # Единственный источник «что подтверждаем» для ОБЕИХ поверхностей (UI-SPEC A6): вкладки
