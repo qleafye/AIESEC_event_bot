@@ -298,9 +298,25 @@ def test_approve_flips_status_no_outbox_no_effects_yet(client, bot_api):
     assert resp.status_code == 200, resp.text
     body = resp.json()
     assert body["ok"] is True and body["undo_seconds"] == 5 and "decision_id" in body
+    # Quick 260904-dq1: тихие часы выключены по умолчанию -- приписка пустая.
+    assert body["quiet_notice"] == ""
     assert _user_status(970001) == "approved"
     assert _outbox_rows("application_decided") == []
     assert "sendMessage" not in bot_api.calls
+
+
+def test_approve_in_quiet_hours_returns_manager_notice(client, bot_api):
+    """Quick 260904-dq1: снимок «попадёт ли в тихие часы» в ответе решения — окно 00:00-23:59
+    накрывает любое «сейчас», проверяем только что приписка непустая и несёт время конца окна."""
+    _set("quiet_hours_enabled", "on")
+    _set("quiet_hours_start", "00:00")
+    _set("quiet_hours_end", "23:59")
+    _seed_user(970099)
+    resp = client.post("/app/api/applications/970099/approve", headers=_hdr(REG_MANAGER_ID))
+    body = resp.json()
+    assert body["ok"] is True
+    assert body["quiet_notice"] != ""
+    assert "23:59" in body["quiet_notice"]
 
 
 def test_approve_twice_second_is_already(client):

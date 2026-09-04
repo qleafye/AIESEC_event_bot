@@ -207,7 +207,6 @@ def test_window_for_city_start_equals_end_is_no_window(tmp_path):
 
 def test_defer_until_toggle_off_skips_city_resolution(tmp_path, monkeypatch):
     _ready(tmp_path, "test_qh_defer_off.db")
-    from services import game_digest
 
     calls = []
 
@@ -215,13 +214,30 @@ def test_defer_until_toggle_off_skips_city_resolution(tmp_path, monkeypatch):
         calls.append(uid)
         return None
 
-    monkeypatch.setattr(game_digest, "resolve_submitter_city", fake_resolve)
+    monkeypatch.setattr(qh, "_resolve_delegate_city", fake_resolve)
 
     async def scenario():
         return await qh.defer_until(datetime(2026, 9, 4, 23, 0), DELEGATE)
 
     assert asyncio.run(scenario()) is None
     assert calls == [], "тумблер выключен -- город делегата резолвиться не должен вовсе"
+
+
+def test_quiet_hours_web_facing_functions_never_import_game_digest_or_scheduler():
+    """Инвариант 1 докстринга модуля: путь, которым идёт веб-процесс (defer_until и всё, что
+    его вызывает), не тянет aiogram даже ленивым импортом внутри функции — только flush_due и
+    её приватные помощники (вызывает исключительно бот) вправе это делать."""
+    import inspect
+    web_facing = [
+        qh.window_for_city, qh.defer_until, qh._resolve_delegate_city,
+        qh.enqueue, qh.send_or_queue_text, qh.manager_notice, qh.queued_count,
+    ]
+    for func in web_facing:
+        lines = [ln.strip() for ln in inspect.getsource(func).splitlines()]
+        import_lines = [ln for ln in lines if ln.startswith("import ") or ln.startswith("from ")]
+        joined = " ".join(import_lines)
+        assert "game_digest" not in joined, (func.__name__, import_lines)
+        assert "scheduler" not in joined, (func.__name__, import_lines)
 
 
 def test_defer_until_in_window_returns_next_end_for_delegate_city(tmp_path):
