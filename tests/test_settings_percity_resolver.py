@@ -53,6 +53,36 @@ EXPECTED_PER_CITY_KEYS = {
     # Quick 260904-dq1: часы тишины у Владивостока и Москвы разные — «с»/«до» per_city, а
     # сам тумблер quiet_hours_enabled — нет (фича либо есть, либо нет, одна на событие).
     "quiet_hours_start", "quiet_hours_end",
+    # Phase 25 (CITYQ-01): 43 тумблера вопросов анкеты (группа reg_questions) — набор вопросов
+    # переопределяется по городу тем же механизмом.
+    "reg_q_age", "reg_q_aiesec_role", "reg_q_allergies", "reg_q_alumni_status",
+    "reg_q_ambassador", "reg_q_arrival", "reg_q_arrival_date", "reg_q_attendance",
+    "reg_q_bed_partner", "reg_q_bed_sharing", "reg_q_birth_date", "reg_q_cc_shop",
+    "reg_q_certificate", "reg_q_city", "reg_q_comments", "reg_q_course", "reg_q_department",
+    "reg_q_education", "reg_q_email", "reg_q_english", "reg_q_exp_content",
+    "reg_q_exp_organizers", "reg_q_expectations", "reg_q_food", "reg_q_formats", "reg_q_goal",
+    "reg_q_housing", "reg_q_informal_day", "reg_q_lc", "reg_q_payment_date", "reg_q_phone",
+    "reg_q_position", "reg_q_resume", "reg_q_skills", "reg_q_source", "reg_q_specialty",
+    "reg_q_study_field", "reg_q_transport", "reg_q_university", "reg_q_vk", "reg_q_volunteer",
+    "reg_q_work", "reg_q_work_sphere",
+    # Phase 25 (CITYQ-01): 44 текста вопросов (группа reg_prompts, литерал REG_PROMPT_STEPS)
+    # — та же ось, переопределяются по городу независимо от трека.
+    "reg_prompt_age", "reg_prompt_aiesec_role", "reg_prompt_allergies",
+    "reg_prompt_alumni_status", "reg_prompt_ambassador", "reg_prompt_arrival",
+    "reg_prompt_arrival_date", "reg_prompt_attendance_format", "reg_prompt_bed_partner",
+    "reg_prompt_bed_sharing", "reg_prompt_birth_date", "reg_prompt_cc_shop", "reg_prompt_city",
+    "reg_prompt_comments", "reg_prompt_course", "reg_prompt_department",
+    "reg_prompt_education_status", "reg_prompt_email", "reg_prompt_english_level",
+    "reg_prompt_exp_content", "reg_prompt_exp_organizers", "reg_prompt_expectations",
+    "reg_prompt_food_pref", "reg_prompt_formats", "reg_prompt_full_name", "reg_prompt_goal",
+    "reg_prompt_housing", "reg_prompt_informal_day", "reg_prompt_local_committee",
+    "reg_prompt_missing_skills", "reg_prompt_needs_certificate", "reg_prompt_payment_plan_date",
+    "reg_prompt_phone", "reg_prompt_position", "reg_prompt_resume", "reg_prompt_source",
+    "reg_prompt_specialty", "reg_prompt_study_field", "reg_prompt_transport",
+    "reg_prompt_university", "reg_prompt_vk", "reg_prompt_volunteer", "reg_prompt_work_sphere",
+    "reg_prompt_work_status",
+    # Phase 25 (CITYQ-01): режим приёма резюме — file_or_text/text_only по городу.
+    "reg_resume_mode",
 }
 
 
