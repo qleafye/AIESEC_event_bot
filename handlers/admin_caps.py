@@ -442,6 +442,12 @@ ADMIN_CAPS: dict[str, str] = {
     "preset_apply:*": "settings",
     "preset_confirm:*": "settings",
     "reg_prompt_edit:*": "settings",
+    # Phase 25 (CITYQ-05): «↩️ Как везде» on the per-question text editor. Distinct literal
+    # prefixes ("reg_prompt_rst:" ends in a colon before the go-variant's "_go") so, unlike
+    # reg_q_reset_city/menu_reset_city, no exact-vs-prefix ordering hazard exists here — kept
+    # anyway as two separate entries for the same reason those are.
+    "reg_prompt_rst:*": "settings",
+    "reg_prompt_rst_go:*": "settings",
     "reg_prompt_track:*": "settings",
     "reg_q_back": "settings",
     "reg_q_noop": "settings",
