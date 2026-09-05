@@ -309,20 +309,21 @@ async def _ask_step(step_key: str, message: types.Message, state: FSMContext, st
     # точка правды с Mini App) — эта функция оставляет себе только клавиатуру и set_state.
     data = await state.get_data()
     participant_type = data.get("participant_type") or "full"
+    city_code = data.get("event_city")
     await _stamp_reg_step(step_key, message, state, data)
     p = await _progress(step, total)
     if step_key == "age":
-        await _safe_answer(message, f"{p}{await prompt('age', participant_type)}", reply_markup=get_cancel_kb())
+        await _safe_answer(message, f"{p}{await prompt('age', participant_type, city_code)}", reply_markup=get_cancel_kb())
         await state.set_state(Registration.age)
     elif step_key == "email":
-        await _safe_answer(message, f"{p}{await prompt('email', participant_type)}", reply_markup=get_cancel_kb())
+        await _safe_answer(message, f"{p}{await prompt('email', participant_type, city_code)}", reply_markup=get_cancel_kb())
         await state.set_state(Registration.email)
     elif step_key == "phone":
-        await _safe_answer(message, f"{p}{await prompt('phone', participant_type)}", reply_markup=get_phone_kb())
+        await _safe_answer(message, f"{p}{await prompt('phone', participant_type, city_code)}", reply_markup=get_phone_kb())
         await state.set_state(Registration.phone)
     elif step_key == "vk":
         await _safe_answer(message,
-            f"{p}{await prompt('vk', participant_type)}",
+            f"{p}{await prompt('vk', participant_type, city_code)}",
             reply_markup=get_cancel_kb(),
         )
         await state.set_state(Registration.vk)
@@ -330,27 +331,27 @@ async def _ask_step(step_key: str, message: types.Message, state: FSMContext, st
         opt_key, default = SELECT_CONFIG["city"]
         options = await _get_options(opt_key, default)
         await _safe_answer(message,
-            f"{p}{await prompt('city', participant_type)}",
+            f"{p}{await prompt('city', participant_type, city_code)}",
             reply_markup=_reply_kb(options, add_other=True),
         )
         await state.set_state(Registration.city)
     elif step_key == "source":
-        await _safe_answer(message, f"{p}{await prompt('source', participant_type)}", reply_markup=await get_source_kb())
+        await _safe_answer(message, f"{p}{await prompt('source', participant_type, city_code)}", reply_markup=await get_source_kb())
         await state.set_state(Registration.source)
     elif step_key == "local_committee":
-        await _safe_answer(message, f"{p}{await prompt('local_committee', participant_type)}", reply_markup=get_local_committee_kb())
+        await _safe_answer(message, f"{p}{await prompt('local_committee', participant_type, city_code)}", reply_markup=get_local_committee_kb())
         await state.set_state(Registration.local_committee)
     elif step_key == "position":
-        await _safe_answer(message, f"{p}{await prompt('position', participant_type)}", reply_markup=get_position_kb())
+        await _safe_answer(message, f"{p}{await prompt('position', participant_type, city_code)}", reply_markup=get_position_kb())
         await state.set_state(Registration.position)
     elif step_key == "education_status":
-        await _safe_answer(message, f"{p}{await prompt('education_status', participant_type)}", reply_markup=get_education_status_kb())
+        await _safe_answer(message, f"{p}{await prompt('education_status', participant_type, city_code)}", reply_markup=get_education_status_kb())
         await state.set_state(Registration.education_status)
     elif step_key == "university":
         # Mode toggle (reg_university_mode): "list" = pick from база вузов, "text" = free input.
         mode = await get_setting_typed("reg_university_mode")  # REG-02: registry-backed
         if mode == "text":
-            await _safe_answer(message, f"{p}{await prompt('university', participant_type)}", reply_markup=get_skip_kb())
+            await _safe_answer(message, f"{p}{await prompt('university', participant_type, city_code)}", reply_markup=get_skip_kb())
         else:
             uni_opts = await get_setting("university_options")
             if uni_opts and uni_opts.strip():
@@ -358,86 +359,86 @@ async def _ask_step(step_key: str, message: types.Message, state: FSMContext, st
                 kb = _reply_kb(options, add_other=True)
             else:
                 kb = get_universities_kb()  # fallback: config.UNIVERSITIES
-            await _safe_answer(message, f"{p}{await prompt('university', participant_type)}", reply_markup=kb)
+            await _safe_answer(message, f"{p}{await prompt('university', participant_type, city_code)}", reply_markup=kb)
         await state.set_state(Registration.university)
     elif step_key == "course":
-        await _safe_answer(message, f"{p}{await prompt('course', participant_type)}", reply_markup=get_course_kb())
+        await _safe_answer(message, f"{p}{await prompt('course', participant_type, city_code)}", reply_markup=get_course_kb())
         await state.set_state(Registration.course)
     elif step_key == "specialty":
-        await _safe_answer(message, f"{p}{await prompt('specialty', participant_type)}", reply_markup=get_skip_kb())
+        await _safe_answer(message, f"{p}{await prompt('specialty', participant_type, city_code)}", reply_markup=get_skip_kb())
         await state.set_state(Registration.specialty)
     elif step_key == "work_status":
-        await _safe_answer(message, f"{p}{await prompt('work_status', participant_type)}", reply_markup=get_yes_no_kb())
+        await _safe_answer(message, f"{p}{await prompt('work_status', participant_type, city_code)}", reply_markup=get_yes_no_kb())
         await state.set_state(Registration.work_status)
     elif step_key == "work_sphere":
-        await _safe_answer(message, f"{p}{await prompt('work_sphere', participant_type)}", reply_markup=get_skip_kb())
+        await _safe_answer(message, f"{p}{await prompt('work_sphere', participant_type, city_code)}", reply_markup=get_skip_kb())
         await state.set_state(Registration.work_sphere)
     elif step_key == "missing_skills":
-        await _safe_answer(message, f"{p}{await prompt('missing_skills', participant_type)}", reply_markup=get_skip_kb())
+        await _safe_answer(message, f"{p}{await prompt('missing_skills', participant_type, city_code)}", reply_markup=get_skip_kb())
         await state.set_state(Registration.missing_skills)
     elif step_key == "expectations":
         await _safe_answer(message,
-            f"{p}{await prompt('expectations', participant_type)}",
+            f"{p}{await prompt('expectations', participant_type, city_code)}",
             reply_markup=get_skip_kb(),
         )
         await state.set_state(Registration.expectations)
     elif step_key == "informal_day":
         await _safe_answer(message,
-            f"{p}{await prompt('informal_day', participant_type)}",
+            f"{p}{await prompt('informal_day', participant_type, city_code)}",
             reply_markup=get_informal_day_kb(),
         )
         await state.set_state(Registration.informal_day)
     elif step_key == "attendance_format":
-        await _safe_answer(message, f"{p}{await prompt('attendance_format', participant_type)}", reply_markup=get_attendance_format_kb())
+        await _safe_answer(message, f"{p}{await prompt('attendance_format', participant_type, city_code)}", reply_markup=get_attendance_format_kb())
         await state.set_state(Registration.attendance_format)
     elif step_key == "comments":
-        await _safe_answer(message, f"{p}{await prompt('comments', participant_type)}", reply_markup=get_skip_kb())
+        await _safe_answer(message, f"{p}{await prompt('comments', participant_type, city_code)}", reply_markup=get_skip_kb())
         await state.set_state(Registration.comments)
     elif step_key == "department":
-        await _safe_answer(message, f"{p}{await prompt('department', participant_type)}", reply_markup=get_department_kb())
+        await _safe_answer(message, f"{p}{await prompt('department', participant_type, city_code)}", reply_markup=get_department_kb())
         await state.set_state(Registration.department)
     elif step_key == "aiesec_role":
-        await _safe_answer(message, f"{p}{await prompt('aiesec_role', participant_type)}", reply_markup=get_aiesec_role_kb())
+        await _safe_answer(message, f"{p}{await prompt('aiesec_role', participant_type, city_code)}", reply_markup=get_aiesec_role_kb())
         await state.set_state(Registration.aiesec_role)
     elif step_key == "needs_certificate":
-        await _safe_answer(message, f"{p}{await prompt('needs_certificate', participant_type)}", reply_markup=get_yes_no_kb())
+        await _safe_answer(message, f"{p}{await prompt('needs_certificate', participant_type, city_code)}", reply_markup=get_yes_no_kb())
         await state.set_state(Registration.needs_certificate)
     elif step_key == "alumni_status":
         await _safe_answer(message,
-            f"{p}{await prompt('alumni_status', participant_type)}",
+            f"{p}{await prompt('alumni_status', participant_type, city_code)}",
             reply_markup=_reply_kb(ALUMNI_STATUS_OPTIONS),
         )
         await state.set_state(Registration.alumni_status)
     elif step_key == "english_level":
-        await _safe_answer(message, f"{p}{await prompt('english_level', participant_type)}", reply_markup=get_english_level_kb())
+        await _safe_answer(message, f"{p}{await prompt('english_level', participant_type, city_code)}", reply_markup=get_english_level_kb())
         await state.set_state(Registration.english_level)
     elif step_key == "allergies":
-        await _safe_answer(message, f"{p}{await prompt('allergies', participant_type)}", reply_markup=get_skip_kb())
+        await _safe_answer(message, f"{p}{await prompt('allergies', participant_type, city_code)}", reply_markup=get_skip_kb())
         await state.set_state(Registration.allergies)
     elif step_key == "food_pref":
-        await _safe_answer(message, f"{p}{await prompt('food_pref', participant_type)}", reply_markup=get_skip_kb())
+        await _safe_answer(message, f"{p}{await prompt('food_pref', participant_type, city_code)}", reply_markup=get_skip_kb())
         await state.set_state(Registration.food_pref)
     elif step_key == "arrival":
-        await _safe_answer(message, f"{p}{await prompt('arrival', participant_type)}", reply_markup=get_arrival_kb())
+        await _safe_answer(message, f"{p}{await prompt('arrival', participant_type, city_code)}", reply_markup=get_arrival_kb())
         await state.set_state(Registration.arrival)
     elif step_key == "housing":
-        await _safe_answer(message, f"{p}{await prompt('housing', participant_type)}", reply_markup=get_housing_kb())
+        await _safe_answer(message, f"{p}{await prompt('housing', participant_type, city_code)}", reply_markup=get_housing_kb())
         await state.set_state(Registration.housing)
     elif step_key == "bed_sharing":
         await _safe_answer(message,
-            f"{p}{await prompt('bed_sharing', participant_type)}",
+            f"{p}{await prompt('bed_sharing', participant_type, city_code)}",
             reply_markup=_reply_kb(BED_SHARING_OPTIONS),
         )
         await state.set_state(Registration.bed_sharing)
     elif step_key == "bed_partner":
         await _safe_answer(message,
-            f"{p}{await prompt('bed_partner', participant_type)}",
+            f"{p}{await prompt('bed_partner', participant_type, city_code)}",
             reply_markup=get_skip_kb(),
         )
         await state.set_state(Registration.bed_partner)
     elif step_key == "transport":
         await _safe_answer(message,
-            f"{p}{await prompt('transport', participant_type)}",
+            f"{p}{await prompt('transport', participant_type, city_code)}",
             reply_markup=_reply_kb(TRANSPORT_OPTIONS),
         )
         await state.set_state(Registration.transport)
@@ -447,41 +448,41 @@ async def _ask_step(step_key: str, message: types.Message, state: FSMContext, st
         # substitution below is only for an admin override that embeds the literal placeholder.
         deadline = await get_setting("payment_deadline")
         dl_date = deadline.split()[0] if deadline else ""
-        prompt_text = (await prompt('payment_plan_date', participant_type)).replace("{deadline}", dl_date)
+        prompt_text = (await prompt('payment_plan_date', participant_type, city_code)).replace("{deadline}", dl_date)
         price_block = await _payment_price_block()  # show tariff prices before asking the date
         await _safe_answer(message, f"{p}{price_block}{prompt_text}", reply_markup=get_cancel_kb())
         await state.update_data(_current_date_step="payment_plan_date")
         await state.set_state(Registration.date_input)
     elif step_key == "cc_shop":
-        await _safe_answer(message, f"{p}{await prompt('cc_shop', participant_type)}", reply_markup=get_skip_kb())
+        await _safe_answer(message, f"{p}{await prompt('cc_shop', participant_type, city_code)}", reply_markup=get_skip_kb())
         await state.set_state(Registration.cc_shop)
     elif step_key == "exp_organizers":
-        await _safe_answer(message, f"{p}{await prompt('exp_organizers', participant_type)}", reply_markup=get_skip_kb())
+        await _safe_answer(message, f"{p}{await prompt('exp_organizers', participant_type, city_code)}", reply_markup=get_skip_kb())
         await state.set_state(Registration.exp_organizers)
     elif step_key == "exp_content":
-        await _safe_answer(message, f"{p}{await prompt('exp_content', participant_type)}", reply_markup=get_skip_kb())
+        await _safe_answer(message, f"{p}{await prompt('exp_content', participant_type, city_code)}", reply_markup=get_skip_kb())
         await state.set_state(Registration.exp_content)
     elif step_key == "volunteer":
-        await _safe_answer(message, f"{p}{await prompt('volunteer', participant_type)}", reply_markup=get_yes_no_kb())
+        await _safe_answer(message, f"{p}{await prompt('volunteer', participant_type, city_code)}", reply_markup=get_yes_no_kb())
         await state.set_state(Registration.volunteer)
     elif step_key == "resume":
         # Резюме обязательно (Таня п.2): без «Пропустить». Убираем reply-клаву целиком —
         # ответ = файл (PDF/DOCX) или текст, иначе шаг переспрашивает.
         await _safe_answer(message,
-            f"{p}{await prompt('resume', participant_type)}",
+            f"{p}{await prompt('resume', participant_type, city_code)}",
             reply_markup=ReplyKeyboardRemove(),
         )
         await state.set_state(Registration.resume)
     elif REG_STEP_TYPES.get(step_key) == "date":
         # Phase 4 (MOD-02): generic date-type step — one handler validates ДД.ММ.ГГГГ.
-        await _safe_answer(message, f"{p}{await prompt(step_key, participant_type)}", reply_markup=get_cancel_kb())
+        await _safe_answer(message, f"{p}{await prompt(step_key, participant_type, city_code)}", reply_markup=get_cancel_kb())
         await state.update_data(_current_date_step=step_key)
         await state.set_state(Registration.date_input)
     elif REG_STEP_TYPES.get(step_key) == "select":
         # Configurable single-select (study_field etc.) — options from settings.
         opt_key, default = SELECT_CONFIG.get(step_key, (f"{step_key}_options", []))
         options = await _get_options(opt_key, default)
-        await _safe_answer(message, f"{p}{await prompt(step_key, participant_type)}", reply_markup=_reply_kb(options, add_other=True))
+        await _safe_answer(message, f"{p}{await prompt(step_key, participant_type, city_code)}", reply_markup=_reply_kb(options, add_other=True))
         await state.update_data(_current_select_step=step_key)
         await state.set_state(Registration.select_input)
     elif REG_STEP_TYPES.get(step_key) == "multi":
@@ -490,13 +491,13 @@ async def _ask_step(step_key: str, message: types.Message, state: FSMContext, st
         options = await _get_options(opt_key, default)
         await state.update_data(_current_multi_step=step_key, **{f"_multi_{step_key}": []})
         await _safe_answer(message,
-            f"{p}{await prompt(step_key, participant_type)}",
+            f"{p}{await prompt(step_key, participant_type, city_code)}",
             reply_markup=_multi_kb(step_key, options, set()),
         )
         await state.set_state(Registration.multi_input)
     elif step_key == "ambassador":
         await _safe_answer(message,
-            f"{p}{await prompt('ambassador', participant_type)}",
+            f"{p}{await prompt('ambassador', participant_type, city_code)}",
             reply_markup=_reply_kb(AMBASSADOR_OPTIONS),
         )
         await state.set_state(Registration.ambassador)
