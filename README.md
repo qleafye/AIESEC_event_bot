@@ -191,6 +191,7 @@ python -m pytest -q
 | Про трек «вечеринка» | [docs/party-flow-guide.md](docs/party-flow-guide.md) |
 | Деплой на домен, туннель, Nextcloud | [docs/DEPLOY-DOMAIN.md](docs/DEPLOY-DOMAIN.md) |
 | Конвенции кода и модулей | [docs/CONVENTIONS.md](docs/CONVENTIONS.md) |
+| Разработчику, полный справочник (переменные окружения, схема БД, FSM, путь оплаты, дерево проекта) | [docs/REFERENCE.md](docs/REFERENCE.md) |
 
 ## Конвенции разработки
 
