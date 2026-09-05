@@ -598,14 +598,21 @@ async def settings_batch(
         warnings = {}
 
     # Свежие элементы затронутых ключей — экран не перезапрашивает весь реестр. Трек-композит
-    # (D-17 Task 3) сюда не попадает: у него нет item_spec-обёртки (targets[key] == key, не
-    # обычный ключ реестра), матрица красит свою ячейку сама — фронт уже знает точное
-    # записанное значение (тумблер матрицы всегда шлёт явное "on"/"off", не сброс).
+    # (D-17 Task 3) и трек×город композит (Phase 25 CITYQ-01) сюда не попадают: у них нет
+    # item_spec-обёртки (targets[key] == key, не обычный ключ реестра), матрица красит свою
+    # ячейку сама — фронт уже знает точное записанное значение (тумблер матрицы всегда шлёт
+    # явное "on"/"off", не сброс). Для всех остальных ключей `base_setting_key` — единственный
+    # нормализатор композита к базе реестра перед `_item_for`/`SETTINGS_SCHEMA[...]`: он же
+    # режет и обычный per-city композит без трека (`{base}__city__{code}`, любой ключ с
+    # `per_city: True`, не только `reg_q_*`), и совпадает с тем, что `_item_for` дальше сам
+    # пересчитывает нужный композит ответа по шапке города (D-03/D-04) — передавать в него уже
+    # готовый композит вместо базы означало бы падение на `SETTINGS_SCHEMA[композит]`.
     ctx = await _city_ctx(p.telegram_id)
     items = [
-        await _item_for(targets[key], ctx)
+        await _item_for(settings_ops.base_setting_key(key), ctx)
         for key in saved
         if settings_ops.reg_question_track_base(key) is None
+        and settings_ops.reg_setting_city_track_base(key) is None
     ]
     return {
         "saved": saved,

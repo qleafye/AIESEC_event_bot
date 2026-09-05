@@ -343,6 +343,45 @@ def test_global_per_city_key_under_all_cities_header_saves_global(tmp_path, no_t
     assert body["saved"] == ["start_text"] and _raw("start_text") == "общий привет"
 
 
+# ── регресс Phase 25 (CITYQ-01, 65255e9): items ответа на композит трек×город ────────────
+#
+# `settings_ops.reg_setting_city_track_base` перехватывал ЛЮБОЙ per-city композит (не только
+# трек×город), из-за чего `_editable_target` возвращал в `targets[key]` сам композит, а не
+# базу реестра — `_item_for(targets[key], ctx)` в ответе `settings/batch` падал `KeyError` на
+# `SETTINGS_SCHEMA[композит]`. Ниже — оба случая: обычный per-city ключ БЕЗ трека (не только
+# `reg_q_*`) и композит трек×город над вопросом анкеты.
+
+def test_non_reg_per_city_key_batch_item_resolves_to_schema_base(tmp_path, no_tab):
+    """`start_text` — не `reg_q_*`, обычный per-city ключ. Раньше падал `KeyError` в `_item_for`
+    на построении `items` ответа; сейчас ключ композита резолвится к схемной базе `start_text`."""
+    client = _setup(tmp_path)
+    _set("event_city_enabled", "on")
+    key = f"start_text{PER_CITY_SEP}msk"
+    body = _batch(client, [(key, "привет, Москва")]).json()
+    assert body["errors"] == {}, body["errors"]
+    assert body["saved"] == [key]
+    items = {i["key"]: i for i in body["items"]}
+    assert key in items
+    assert items[key]["base_key"] == "start_text"
+    assert items[key]["is_city_override"] is True
+    assert items[key]["raw"] == "привет, Москва"
+
+
+def test_reg_question_track_city_composite_batch_saves_without_crash(tmp_path, no_tab):
+    """`reg_q_age__party__city__msk` — композит трек×город (Phase 25 CITYQ-01): сохраняется,
+    не роняет ответ `KeyError`-ом и не попадает в `items` (нет item_spec-обёртки — свою ячейку
+    красит матрица, см. комментарий у `_editable_target`/сборки `items` в
+    `miniapp/routers/settings.py`)."""
+    client = _setup(tmp_path)
+    _set("event_city_enabled", "on")
+    key = f"reg_q_age__party{PER_CITY_SEP}msk"
+    body = _batch(client, [(key, "off")]).json()
+    assert body["errors"] == {}, body["errors"]
+    assert body["saved"] == [key]
+    assert _raw(key) == "off"
+    assert key not in {i["key"] for i in body["items"]}
+
+
 # ── ядро вне веба ────────────────────────────────────────────────────────────────────────
 
 def test_validate_batch_item_mirrors_bot_check_order(tmp_path):
