@@ -762,6 +762,17 @@ from handlers.admin_broadcasts import show_admin_broadcast  # noqa: E402
 from handlers import admin_reg_config  # noqa: E402
 
 
+# Module-size convention split (tests/test_module_size_convention_260816.py): the per-city
+# question/prompt screens moved out of admin_reg_config.py into their own seam file, registered
+# on the SAME shared router right after it. admin_reg_percity.py imports the three
+# `_refresh_*_sheet_header` helpers back from admin_reg_config at module level, so this seam
+# MUST load after admin_reg_config -- the reorder this causes on the golden snapshot below
+# (event-preset/menu-button handlers now register before question/prompt handlers, instead of
+# being interleaved as in the original single file) is intentional and reviewed, not a residual
+# artifact of the split.
+from handlers import admin_reg_percity  # noqa: E402
+
+
 # Quick 260904-2cj (QJRN-01..04): shared-router seam import for the delegate-questions journal
 # screen («❓ Вопросы делегатов») — registers admin_questions/aq:*/aq_answer:*/QuestionAnswer.*
 # on the shared router right after the reg-config seam.

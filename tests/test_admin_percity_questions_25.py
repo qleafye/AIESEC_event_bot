@@ -23,6 +23,7 @@ from config import config
 from database import db
 from handlers import admin as admin_mod
 from handlers import admin_reg_config
+from handlers import admin_reg_percity  # module-size split: per-city questions/prompts screens
 from handlers.admin_caps import role_caps_key, role_enabled_key
 from handlers.reg_schema import REG_FLOW
 import cities
@@ -100,7 +101,7 @@ def test_render_questions_text_at_city_header_names_city_and_marks_own_row(tmp_p
     asyncio.run(cities.set_admin_city(ADMIN_ID, "spb"))
     asyncio.run(db.set_setting(cities.per_city_key(SETTING_KEY, "spb"), "off"))
 
-    text = asyncio.run(admin_reg_config.render_questions_text("full", ADMIN_ID))
+    text = asyncio.run(admin_reg_percity.render_questions_text("full", ADMIN_ID))
     spb_label = asyncio.run(cities.city_label("spb"))
     assert spb_label in text.splitlines()[0]
     assert "spb" not in text
@@ -125,7 +126,7 @@ def test_build_questions_keyboard_at_city_header_no_city_code_in_labels(tmp_path
     asyncio.run(cities.set_admin_city(ADMIN_ID, "spb"))
     asyncio.run(db.set_setting(cities.per_city_key(SETTING_KEY, "spb"), "off"))
 
-    kb = asyncio.run(admin_reg_config.build_questions_keyboard("full", ADMIN_ID))
+    kb = asyncio.run(admin_reg_percity.build_questions_keyboard("full", ADMIN_ID))
     texts = _kb_texts(kb)
     assert not any("spb" in t for t in texts)
     from reg_labels import REG_LABELS
@@ -142,7 +143,7 @@ def test_bound_manager_header_locked_to_own_city(tmp_path):
     _enable_cities()
     _add_bound_manager(MANAGER_ID, "spb")
 
-    text = asyncio.run(admin_reg_config.render_questions_text("full", MANAGER_ID))
+    text = asyncio.run(admin_reg_percity.render_questions_text("full", MANAGER_ID))
     spb_label = asyncio.run(cities.city_label("spb"))
     msk_label = asyncio.run(cities.city_label("msk"))
     assert spb_label in text.splitlines()[0]
@@ -159,13 +160,13 @@ def test_toggle_reg_question_city_writes_composite_key_not_global(tmp_path):
     asyncio.run(cities.set_admin_city(ADMIN_ID, "spb"))
 
     cb = FakeCallback(f"reg_q_toggle:{SETTING_KEY}")
-    asyncio.run(admin_reg_config.toggle_reg_question(cb))
+    asyncio.run(admin_reg_percity.toggle_reg_question(cb))
 
     assert asyncio.run(db.get_setting(SETTING_KEY)) is None  # global untouched
     assert asyncio.run(db.get_setting(cities.per_city_key(SETTING_KEY, "spb"))) == "off"  # default is "on" -> inverted
 
     cb2 = FakeCallback(f"reg_q_toggle:{SETTING_KEY}")
-    asyncio.run(admin_reg_config.toggle_reg_question(cb2))
+    asyncio.run(admin_reg_percity.toggle_reg_question(cb2))
     assert asyncio.run(db.get_setting(cities.per_city_key(SETTING_KEY, "spb"))) == "on"
     assert asyncio.run(db.get_setting(SETTING_KEY)) is None
 
@@ -174,7 +175,7 @@ def test_toggle_reg_question_global_mode_writes_global_key(tmp_path):
     """Module off / no header / «все города» -- unchanged behaviour, writes the plain key."""
     _admin_ready(tmp_path)
     cb = FakeCallback(f"reg_q_toggle:{SETTING_KEY}")
-    asyncio.run(admin_reg_config.toggle_reg_question(cb))
+    asyncio.run(admin_reg_percity.toggle_reg_question(cb))
     assert asyncio.run(db.get_setting(SETTING_KEY)) == "off"
 
 
@@ -183,7 +184,7 @@ def test_toggle_reg_question_all_cities_header_writes_global_key(tmp_path):
     _enable_cities()
     asyncio.run(cities.set_admin_city(ADMIN_ID, cities.ALL_CITIES))
     cb = FakeCallback(f"reg_q_toggle:{SETTING_KEY}")
-    asyncio.run(admin_reg_config.toggle_reg_question(cb))
+    asyncio.run(admin_reg_percity.toggle_reg_question(cb))
     assert asyncio.run(db.get_setting(SETTING_KEY)) == "off"
     assert asyncio.run(db.get_setting(cities.per_city_key(SETTING_KEY, "spb"))) is None
 
@@ -196,10 +197,10 @@ def test_toggle_reg_question_bound_manager_refused_on_foreign_city(tmp_path, mon
 
     async def _empty_visible(admin_id):
         return []
-    monkeypatch.setattr(admin_reg_config, "_per_city_visible_codes", _empty_visible)
+    monkeypatch.setattr(admin_reg_percity, "_per_city_visible_codes", _empty_visible)
 
     cb = FakeCallback(f"reg_q_toggle:{SETTING_KEY}", user_id=MANAGER_ID)
-    asyncio.run(admin_reg_config.toggle_reg_question(cb))
+    asyncio.run(admin_reg_percity.toggle_reg_question(cb))
     assert cb.message.edit_calls == 0
     assert asyncio.run(db.get_setting(cities.per_city_key(SETTING_KEY, "spb"))) is None
 
@@ -210,7 +211,7 @@ def test_toggle_reg_question_bound_manager_own_city_works(tmp_path):
     _add_bound_manager(MANAGER_ID, "spb")
 
     cb = FakeCallback(f"reg_q_toggle:{SETTING_KEY}", user_id=MANAGER_ID)
-    asyncio.run(admin_reg_config.toggle_reg_question(cb))
+    asyncio.run(admin_reg_percity.toggle_reg_question(cb))
     assert asyncio.run(db.get_setting(cities.per_city_key(SETTING_KEY, "spb"))) == "off"
 
 
@@ -219,7 +220,7 @@ def test_toggle_reg_question_city_unknown_key_refused(tmp_path):
     _enable_cities()
     asyncio.run(cities.set_admin_city(ADMIN_ID, "spb"))
     cb = FakeCallback("reg_q_toggle:not_a_question_key")
-    asyncio.run(admin_reg_config.toggle_reg_question(cb))
+    asyncio.run(admin_reg_percity.toggle_reg_question(cb))
     assert cb.message.edit_calls == 0
 
 
@@ -233,11 +234,11 @@ def test_toggle_party_question_city_cycle_inherit_on_off_inherit(tmp_path):
     asyncio.run(cities.set_admin_city(ADMIN_ID, "spb"))
     composed = cities.per_city_key(f"{SETTING_KEY}__party", "spb")
 
-    asyncio.run(admin_reg_config.toggle_party_question(FakeCallback(f"reg_q_ptoggle:{SETTING_KEY}")))
+    asyncio.run(admin_reg_percity.toggle_party_question(FakeCallback(f"reg_q_ptoggle:{SETTING_KEY}")))
     assert asyncio.run(db.get_setting(composed)) == "on"
-    asyncio.run(admin_reg_config.toggle_party_question(FakeCallback(f"reg_q_ptoggle:{SETTING_KEY}")))
+    asyncio.run(admin_reg_percity.toggle_party_question(FakeCallback(f"reg_q_ptoggle:{SETTING_KEY}")))
     assert asyncio.run(db.get_setting(composed)) == "off"
-    asyncio.run(admin_reg_config.toggle_party_question(FakeCallback(f"reg_q_ptoggle:{SETTING_KEY}")))
+    asyncio.run(admin_reg_percity.toggle_party_question(FakeCallback(f"reg_q_ptoggle:{SETTING_KEY}")))
     assert asyncio.run(db.get_setting(composed)) is None  # back to inherit
 
     # Global __party key never touched by the city-scoped cycle above.
@@ -256,11 +257,11 @@ def test_toggle_short_question_city_explicit_on_off_no_delete(tmp_path, monkeypa
     async def _tracking_delete(key):
         deleted.append(key)
         return await real_delete(key)
-    monkeypatch.setattr(admin_reg_config, "delete_setting", _tracking_delete)
+    monkeypatch.setattr(admin_reg_percity, "delete_setting", _tracking_delete)
 
-    asyncio.run(admin_reg_config.toggle_short_question(FakeCallback(f"reg_q_stoggle:{SETTING_KEY}")))
+    asyncio.run(admin_reg_percity.toggle_short_question(FakeCallback(f"reg_q_stoggle:{SETTING_KEY}")))
     assert asyncio.run(db.get_setting(composed)) == "on"
-    asyncio.run(admin_reg_config.toggle_short_question(FakeCallback(f"reg_q_stoggle:{SETTING_KEY}")))
+    asyncio.run(admin_reg_percity.toggle_short_question(FakeCallback(f"reg_q_stoggle:{SETTING_KEY}")))
     assert asyncio.run(db.get_setting(composed)) == "off"
 
     assert deleted == []  # 2-state model: never delete_setting
@@ -278,7 +279,7 @@ def test_resume_mode_toggle_city_writes_composite_key(tmp_path):
     composed = cities.per_city_key("reg_resume_mode", "spb")
 
     cb = FakeCallback("reg_resume_mode_toggle")
-    asyncio.run(admin_reg_config.reg_resume_mode_toggle(cb))
+    asyncio.run(admin_reg_percity.reg_resume_mode_toggle(cb))
     assert asyncio.run(db.get_setting(composed)) == "text_only"
     assert asyncio.run(db.get_setting("reg_resume_mode")) is None  # global untouched
 
@@ -288,7 +289,7 @@ def test_resume_mode_toggle_label_has_no_codes(tmp_path):
     _enable_cities()
     asyncio.run(cities.set_admin_city(ADMIN_ID, "spb"))
 
-    kb = asyncio.run(admin_reg_config.build_questions_keyboard("full", ADMIN_ID))
+    kb = asyncio.run(admin_reg_percity.build_questions_keyboard("full", ADMIN_ID))
     resume_row = [row for row in kb.inline_keyboard if row[0].callback_data == "reg_resume_mode_toggle"]
     assert resume_row
     text = resume_row[0][0].text
@@ -299,7 +300,7 @@ def test_resume_mode_toggle_label_has_no_codes(tmp_path):
 def test_resume_mode_toggle_global_mode(tmp_path):
     _admin_ready(tmp_path)
     cb = FakeCallback("reg_resume_mode_toggle")
-    asyncio.run(admin_reg_config.reg_resume_mode_toggle(cb))
+    asyncio.run(admin_reg_percity.reg_resume_mode_toggle(cb))
     assert asyncio.run(db.get_setting("reg_resume_mode")) == "text_only"
 
 
@@ -339,11 +340,11 @@ def test_reset_city_button_visible_only_with_override(tmp_path):
     _enable_cities()
     asyncio.run(cities.set_admin_city(ADMIN_ID, "spb"))
 
-    kb_none = asyncio.run(admin_reg_config.build_questions_keyboard("full", ADMIN_ID))
+    kb_none = asyncio.run(admin_reg_percity.build_questions_keyboard("full", ADMIN_ID))
     assert "reg_q_reset_city" not in _kb_callbacks(kb_none)
 
     asyncio.run(db.set_setting(cities.per_city_key(SETTING_KEY, "spb"), "off"))
-    kb_with = asyncio.run(admin_reg_config.build_questions_keyboard("full", ADMIN_ID))
+    kb_with = asyncio.run(admin_reg_percity.build_questions_keyboard("full", ADMIN_ID))
     assert "reg_q_reset_city" in _kb_callbacks(kb_with)
 
 
@@ -355,8 +356,8 @@ def test_reg_q_reset_city_confirm_names_city_and_count(tmp_path):
     asyncio.run(db.set_setting(cities.per_city_key("reg_q_vk", "spb"), "off"))
 
     cb = FakeCallback("reg_q_reset_city")
-    cb.message.reply_markup = asyncio.run(admin_reg_config.build_questions_keyboard("full", ADMIN_ID))
-    asyncio.run(admin_reg_config.reg_q_reset_city(cb))
+    cb.message.reply_markup = asyncio.run(admin_reg_percity.build_questions_keyboard("full", ADMIN_ID))
+    asyncio.run(admin_reg_percity.reg_q_reset_city(cb))
     assert "2" in cb.message.text
     spb_label = asyncio.run(cities.city_label("spb"))
     assert spb_label in cb.message.text
@@ -374,7 +375,7 @@ def test_reg_q_reset_city_go_deletes_only_current_track_keys(tmp_path):
     asyncio.run(db.set_setting(party_key, "on"))  # different track -- must survive a "full" reset
 
     cb = FakeCallback("reg_q_reset_city_go:spb:full")
-    asyncio.run(admin_reg_config.reg_q_reset_city_go(cb))
+    asyncio.run(admin_reg_percity.reg_q_reset_city_go(cb))
 
     assert asyncio.run(db.get_setting(full_key)) is None
     assert asyncio.run(db.get_setting(party_key)) == "on"  # untouched -- different track
@@ -388,7 +389,7 @@ def test_reg_q_reset_city_go_forged_foreign_city_refused(tmp_path):
     asyncio.run(db.set_setting(tyumen_key, "off"))
 
     cb = FakeCallback("reg_q_reset_city_go:tyumen:full", user_id=MANAGER_ID)
-    asyncio.run(admin_reg_config.reg_q_reset_city_go(cb))
+    asyncio.run(admin_reg_percity.reg_q_reset_city_go(cb))
     assert cb.message.edit_calls == 0
     assert asyncio.run(db.get_setting(tyumen_key)) == "off"  # untouched
 
@@ -403,7 +404,7 @@ def test_reg_q_reset_city_go_freshness_check_refuses_after_header_changed(tmp_pa
     asyncio.run(cities.set_admin_city(ADMIN_ID, "msk"))  # header moved on before confirming
 
     cb = FakeCallback("reg_q_reset_city_go:spb:full")
-    asyncio.run(admin_reg_config.reg_q_reset_city_go(cb))
+    asyncio.run(admin_reg_percity.reg_q_reset_city_go(cb))
     assert cb.answers and cb.answers[0][0] == "Город админки изменился — подтвердите заново."
     assert asyncio.run(db.get_setting(composed)) == "off"  # untouched
 
@@ -415,11 +416,11 @@ def test_reg_q_reset_city_go_freshness_check_refuses_after_header_changed(tmp_pa
 def test_questions_screen_module_off_admin_id_parity(tmp_path):
     _admin_ready(tmp_path)
     for track in ("full", "party", "short"):
-        text_none = asyncio.run(admin_reg_config.render_questions_text(track))
-        text_admin = asyncio.run(admin_reg_config.render_questions_text(track, ADMIN_ID))
+        text_none = asyncio.run(admin_reg_percity.render_questions_text(track))
+        text_admin = asyncio.run(admin_reg_percity.render_questions_text(track, ADMIN_ID))
         assert text_admin == text_none, track
 
-        kb_none = asyncio.run(admin_reg_config.build_questions_keyboard(track))
-        kb_admin = asyncio.run(admin_reg_config.build_questions_keyboard(track, ADMIN_ID))
+        kb_none = asyncio.run(admin_reg_percity.build_questions_keyboard(track))
+        kb_admin = asyncio.run(admin_reg_percity.build_questions_keyboard(track, ADMIN_ID))
         assert _kb_callbacks(kb_admin) == _kb_callbacks(kb_none), track
         assert _kb_texts(kb_admin) == _kb_texts(kb_none), track

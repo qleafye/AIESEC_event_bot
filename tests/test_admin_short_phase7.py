@@ -13,7 +13,7 @@ from config import config
 from database import db
 from handlers import admin as admin_mod
 from handlers import admin_moderation  # Phase 13 (13-06): moderation moved out of admin.py
-from handlers import admin_reg_config  # Phase 13 (13-05): reg-question/menu-button config moved here
+from handlers import admin_reg_percity  # module-size split: per-city questions/prompts screens
 from handlers.admin_caps import required_capability
 from handlers.reg_schema import REG_FLOW, REG_PRESETS, _apply_short_preset
 
@@ -84,7 +84,7 @@ def _drain():
 # ── Group 1: track switcher (three buttons, reg_q_track_switch validation) ───────────────
 
 def test_track_switcher_row_has_three_buttons_short_active():
-    kb = admin_reg_config._track_switcher_row("short")
+    kb = admin_reg_percity._track_switcher_row("short")
     cbs = [b.callback_data for b in kb]
     assert cbs == ["reg_q_track:full", "reg_q_track:party", "reg_q_track:short"]
     assert kb[2].text.startswith("• ")
@@ -95,7 +95,7 @@ def test_track_switcher_row_has_three_buttons_short_active():
 def test_reg_q_track_switch_short_renders_short_screen(tmp_path):
     _admin_ready(tmp_path)
     cb = FakeCallback("reg_q_track:short")
-    asyncio.run(admin_reg_config.reg_q_track_switch(cb))
+    asyncio.run(admin_reg_percity.reg_q_track_switch(cb))
     assert cb.message.edit_calls == 1
     assert "Краткая" in cb.message.text
     flat = _flat_callback_data(cb.message.markup)
@@ -106,7 +106,7 @@ def test_reg_q_track_switch_short_renders_short_screen(tmp_path):
 def test_reg_q_track_switch_garbage_value_collapses_to_full(tmp_path):
     _admin_ready(tmp_path)
     cb = FakeCallback("reg_q_track:bogus")
-    asyncio.run(admin_reg_config.reg_q_track_switch(cb))
+    asyncio.run(admin_reg_percity.reg_q_track_switch(cb))
     flat = _flat_callback_data(cb.message.markup)
     assert any(cd.startswith("reg_q_toggle:") for cd in flat)
     assert not any(cd.startswith("reg_q_stoggle:") for cd in flat)
@@ -119,7 +119,7 @@ def test_toggle_short_question_rejects_unknown_key(tmp_path):
     _admin_ready(tmp_path)
     before = asyncio.run(_all_settings())
     cb = FakeCallback("reg_q_stoggle:reg_q_НЕСУЩЕСТВУЕТ")
-    asyncio.run(admin_reg_config.toggle_short_question(cb))
+    asyncio.run(admin_reg_percity.toggle_short_question(cb))
     after = asyncio.run(_all_settings())
     assert after == before  # not a single new bot_settings row
     assert cb.answers and cb.answers[0][1] is True  # alert shown
@@ -131,7 +131,7 @@ def test_toggle_short_question_rejects_non_reg_flow_key_party_enabled(tmp_path):
     _admin_ready(tmp_path)
     before = asyncio.run(_all_settings())
     cb = FakeCallback("reg_q_stoggle:party_enabled")
-    asyncio.run(admin_reg_config.toggle_short_question(cb))
+    asyncio.run(admin_reg_percity.toggle_short_question(cb))
     after = asyncio.run(_all_settings())
     assert after == before
     assert asyncio.run(db.get_setting("party_enabled__short")) is None
@@ -155,7 +155,7 @@ def test_toggle_short_question_is_capability_guarded():
 def test_toggle_short_question_writes_only_short_suffix(tmp_path):
     _admin_ready(tmp_path)
     setting_key = "reg_q_city"
-    asyncio.run(admin_reg_config.toggle_short_question(FakeCallback(f"reg_q_stoggle:{setting_key}")))
+    asyncio.run(admin_reg_percity.toggle_short_question(FakeCallback(f"reg_q_stoggle:{setting_key}")))
     assert asyncio.run(db.get_setting(f"{setting_key}__short")) == "on"
     assert asyncio.run(db.get_setting(setting_key)) is None
     assert asyncio.run(db.get_setting(f"{setting_key}__party")) is None
@@ -179,13 +179,13 @@ def test_toggle_short_question_two_state_cycle(tmp_path, monkeypatch):
 
     assert asyncio.run(db.get_setting(short_key)) is None
 
-    asyncio.run(admin_reg_config.toggle_short_question(FakeCallback(f"reg_q_stoggle:{setting_key}")))
+    asyncio.run(admin_reg_percity.toggle_short_question(FakeCallback(f"reg_q_stoggle:{setting_key}")))
     assert asyncio.run(db.get_setting(short_key)) == "on"
 
-    asyncio.run(admin_reg_config.toggle_short_question(FakeCallback(f"reg_q_stoggle:{setting_key}")))
+    asyncio.run(admin_reg_percity.toggle_short_question(FakeCallback(f"reg_q_stoggle:{setting_key}")))
     assert asyncio.run(db.get_setting(short_key)) == "off"
 
-    asyncio.run(admin_reg_config.toggle_short_question(FakeCallback(f"reg_q_stoggle:{setting_key}")))
+    asyncio.run(admin_reg_percity.toggle_short_question(FakeCallback(f"reg_q_stoggle:{setting_key}")))
     assert asyncio.run(db.get_setting(short_key)) == "on"
 
     assert delete_calls == []  # short-cycle never calls delete_setting
@@ -259,7 +259,7 @@ def test_toggle_short_question_no_tab_when_mode_full(tmp_path, monkeypatch):
         # registration_mode unset -> defaults to "short" per the registry (07-01 SUMMARY),
         # so pin it explicitly to "full" to exercise the gate's negative branch.
         await db.set_setting("registration_mode", "full")
-        await admin_reg_config.toggle_short_question(FakeCallback("reg_q_stoggle:reg_q_city"))
+        await admin_reg_percity.toggle_short_question(FakeCallback("reg_q_stoggle:reg_q_city"))
         await _drain()()
 
     asyncio.run(go())
@@ -278,7 +278,7 @@ def test_toggle_short_question_materializes_tab_when_mode_short(tmp_path, monkey
 
     async def go():
         await db.set_setting("registration_mode", "short")
-        await admin_reg_config.toggle_short_question(FakeCallback("reg_q_stoggle:reg_q_city"))
+        await admin_reg_percity.toggle_short_question(FakeCallback("reg_q_stoggle:reg_q_city"))
         await _drain()()
 
     asyncio.run(go())
