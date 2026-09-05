@@ -300,3 +300,16 @@ def test_no_session_required_for_theme_asset(tmp_path, monkeypatch):
     # Ни один cookie сессии не выставлен — страница входа рисует favicon до авторизации.
     resp = client.get(f"/api/file/{VALID_FILE_ID}")
     assert resp.status_code == 200
+
+
+# ── Фаза 26-02 Задача 3: снимки дашборда в трёх пресетах для приёмки ────────────────────
+
+SHOOT_SCREENS_PY = Path(__file__).resolve().parent.parent / "tools" / "shoot_screens.py"
+
+
+def test_shoot_screens_covers_realtalk_dashboard():
+    text = SHOOT_SCREENS_PY.read_text(encoding="utf-8")
+    code_only = "\n".join(
+        line for line in text.splitlines() if not line.strip().startswith("#")
+    )
+    assert code_only.count("realtalk") >= 2
