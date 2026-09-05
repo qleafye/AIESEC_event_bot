@@ -39,6 +39,7 @@ _SETTING_DEFAULTS = {
     "dashboard_block_courses": "on",
     "dashboard_block_study_fields": "on",
     "dashboard_block_dropout": "on",
+    "dashboard_block_utm": "on",
     "dashboard_block_game": "off",
     "payment_enabled": "off",
     "event_city_enabled": "off",
@@ -477,6 +478,67 @@ def city_comparison(conn, scope: Scope) -> list[dict]:
         result.append({
             "code": code, "label": row["label"],
             "total": total, "pending": pending, "approved": approved,
+        })
+    return result
+
+
+# ── метки кампаний (квик 260905-qqg) ─────────────────────────────────────────────────────
+
+_UTM_LIMIT = 30
+
+
+def utm_table(conn, scope: Scope) -> list[dict]:
+    """Мини-воронка по меткам кампаний (deep-link `/start src_<метка>`).
+
+    Строка на каждую непустую `reg_events.source_tag`, отсортированную по `starts` по
+    убыванию (при равенстве — по метке), не более `_UTM_LIMIT` строк. ДВА нюанса: (а) верх
+    воронки (`starts`/`form_started`) считается по `reg_events.source_tag`, а низ
+    (`completed`/`approved`) — по `users.source`, потому что событие `form_completed` метки не
+    несёт (единственная точка записи — `services/reg_finalize`, общая с Mini App, этот квик её
+    не трогает); (б) поэтому ручной ответ на вопрос «Источник», дословно совпавший со слагом
+    кампании, теоретически может подмешаться в низ воронки — цена честного верха, которого
+    сегодня нет вовсе (T-QQG-06, `accept`).
+
+    Значения — только `?`-параметры (T-QQG-01): ни метка, ни лимит не попадают в f-строку.
+    """
+    parts, params = _scope_sql(conn, scope)
+    tag_parts = parts + ["source_tag IS NOT NULL", "TRIM(source_tag) != ''"]
+    sql = (
+        "SELECT source_tag AS tag, "
+        "COUNT(DISTINCT CASE WHEN event = 'start' THEN telegram_id END) AS starts, "
+        "COUNT(DISTINCT CASE WHEN event = 'form_started' THEN telegram_id END) AS form_started "
+        "FROM reg_events"
+        f"{_where(tag_parts)} GROUP BY source_tag ORDER BY starts DESC, source_tag ASC LIMIT ?"
+    )
+    rows = conn.execute(sql, params + (_UTM_LIMIT,)).fetchall()
+
+    tracking_since = funnel_tracking_since(conn)
+    result: list[dict] = []
+    for row in rows:
+        tag = row["tag"]
+        starts = row["starts"]
+
+        user_parts = parts + ["source = ?"]
+        user_params = params + (tag,)
+        if tracking_since is not None:
+            user_parts = user_parts + ["registration_date >= ?"]
+            user_params = user_params + (tracking_since,)
+        completed = _scalar(
+            conn, f"SELECT COUNT(*) FROM users{_where(user_parts)}", user_params
+        ) or 0
+        approved = _scalar(
+            conn,
+            f"SELECT COUNT(*) FROM users{_where(user_parts + ['status = ?'])}",
+            user_params + ("approved",),
+        ) or 0
+        conversion = round(completed / starts * 100, 1) if starts else None
+        result.append({
+            "tag": tag,
+            "starts": starts,
+            "form_started": row["form_started"],
+            "completed": completed,
+            "approved": approved,
+            "conversion": conversion,
         })
     return result
 
