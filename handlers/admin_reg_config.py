@@ -105,8 +105,68 @@ def _categorized_question_keys() -> list[tuple[str, str]]:
     return rows
 
 
-async def render_questions_text(track: str = "full") -> str:
-    lines = ["📋 <b>Вопросы регистрации</b>", ""]
+def _question_override_key(track: str, setting_key: str, code: str) -> str | None:
+    """Composite per-city key for ONE question at ONE track — the only place deciding which
+    track suffix (if any) sits between the base `reg_q_*` key and `cities.PER_CITY_SEP`.
+    Returns `None` when `code` is not a real city code (per_city_key's own contract)."""
+    if track == "party":
+        return per_city_key(f"{setting_key}__party", code)
+    if track == "short":
+        return per_city_key(f"{setting_key}__short", code)
+    return per_city_key(setting_key, code)
+
+
+async def _question_effective_and_own(track: str, setting_key: str, code: str) -> tuple[str, bool]:
+    """Effective status label + whether the CITY has its own override, for one question row
+    at one real city header, in one track (Phase 25, CITYQ-04).
+
+    full: effective via `get_setting_typed_for_city` (module-off/no-city fallback baked in);
+    own = the composite key is present (always an explicit "on"/"off", never deleted).
+    party/short: effective is read RAW (never through `_is_question_on`, which would collapse
+    `None`) — city raw wins if present, else the day's global raw; own = the CITY key is
+    present at all (both "on" and "off" count as "own" — absence alone means "inherit")."""
+    override_key = _question_override_key(track, setting_key, code)
+    if track == "party":
+        track_key = f"{setting_key}__party"
+        city_raw = await get_setting(override_key) if override_key else None
+        raw = city_raw if city_raw is not None else await get_setting(track_key)
+        return _party_tri_state_label(raw), city_raw is not None
+    if track == "short":
+        track_key = f"{setting_key}__short"
+        city_raw = await get_setting(override_key) if override_key else None
+        raw = city_raw if city_raw is not None else await get_setting(track_key)
+        return ("✅ Вкл" if raw == "on" else "❌ Выкл"), city_raw is not None
+    is_on = await get_setting_typed_for_city(setting_key, code) == "on"
+    own = bool(override_key and await get_setting(override_key))
+    return ("✅" if is_on else "❌"), own
+
+
+async def _questions_city_has_override(code: str, track: str) -> bool:
+    """True if the city has at least one REG_FLOW question overridden for the GIVEN track —
+    mirrors `_menu_city_has_override`'s truthy-key-presence check, scoped to one track. Feeds
+    the merged keyboard's «↩️ Как везде» row (same shape as the menu-buttons screen's
+    reset-visibility gate)."""
+    for _header, setting_key in _categorized_question_keys():
+        override_key = _question_override_key(track, setting_key, code)
+        if override_key and await get_setting(override_key):
+            return True
+    return False
+
+
+async def render_questions_text(track: str = "full", admin_id: int | None = None) -> str:
+    """Phase 25 (CITYQ-04, WR-05): resolves the header ITSELF, once — header = real city ->
+    title names the city, every row shows the city's EFFECTIVE value plus a
+    «(своё)»/«(как везде)» mark (same wording as the menu-buttons screen). Header = None
+    (module off / no admin_id passed) / ALL_CITIES («все города») -> today's global screen,
+    byte-identical (untouched branch below)."""
+    header_code = await admin_selected_city(admin_id) if admin_id is not None else None
+    per_city_ctx = bool(header_code and header_code != ALL_CITIES)
+
+    if per_city_ctx:
+        city_txt = await city_label(header_code)
+        lines = [f"📋 <b>Вопросы регистрации — {html_module.escape(city_txt)}</b>", ""]
+    else:
+        lines = ["📋 <b>Вопросы регистрации</b>", ""]
     if track == "party":
         lines.append(
             "<i>Действуют в режиме «🎉 Party». ➕ Наследует — берётся общая настройка, "
@@ -130,6 +190,11 @@ async def render_questions_text(track: str = "full") -> str:
             lines.append(f"\n<b>{header}</b>")
             current = header
         label = REG_LABELS.get(setting_key, setting_key)
+        if per_city_ctx:
+            status, own = await _question_effective_and_own(track, setting_key, header_code)
+            mark = " <i>(своё)</i>" if own else " <i>(как везде)</i>"
+            lines.append(f"{status} {label}{mark}")
+            continue
         if track == "party":
             raw = await get_setting(f"{setting_key}__party")
             status = _party_tri_state_label(raw)
@@ -142,7 +207,14 @@ async def render_questions_text(track: str = "full") -> str:
     return "\n".join(lines)
 
 
-async def build_questions_keyboard(track: str = "full"):
+async def build_questions_keyboard(track: str = "full", admin_id: int | None = None):
+    """Same header-aware branch as `render_questions_text` (WR-05: this function resolves the
+    header itself, ONCE). Callback data never carries the city code (T-25-14) — every toggle
+    button keeps its EXISTING callback_data regardless of header, the write handler re-reads
+    the header itself."""
+    header_code = await admin_selected_city(admin_id) if admin_id is not None else None
+    per_city_ctx = bool(header_code and header_code != ALL_CITIES)
+
     buttons = [_track_switcher_row(track)]
     current = None
     for header, setting_key in _categorized_question_keys():
@@ -151,6 +223,17 @@ async def build_questions_keyboard(track: str = "full"):
             buttons.append([InlineKeyboardButton(text=f"── {header} ──", callback_data="reg_q_noop")])
             current = header
         label = REG_LABELS.get(setting_key, setting_key)
+        if per_city_ctx:
+            status, own = await _question_effective_and_own(track, setting_key, header_code)
+            marker = "• " if own else ""
+            toggle_label = f"{status} {marker}{label}"
+            if track == "party":
+                buttons.append([InlineKeyboardButton(text=toggle_label, callback_data=f"reg_q_ptoggle:{setting_key}")])
+            elif track == "short":
+                buttons.append([InlineKeyboardButton(text=toggle_label, callback_data=f"reg_q_stoggle:{setting_key}")])
+            else:
+                buttons.append([InlineKeyboardButton(text=toggle_label, callback_data=f"reg_q_toggle:{setting_key}")])
+            continue
         if track == "party":
             raw = await get_setting(f"{setting_key}__party")
             toggle_text = f"{_party_tri_state_label(raw)} {label}"
@@ -165,14 +248,18 @@ async def build_questions_keyboard(track: str = "full"):
         else:
             toggle_text = f"{'✅' if await _is_question_on(setting_key) else '❌'} {label}"
             buttons.append([InlineKeyboardButton(text=toggle_text, callback_data=f"reg_q_toggle:{setting_key}")])
+
+    if per_city_ctx and await _questions_city_has_override(header_code, track):
+        buttons.append([InlineKeyboardButton(text="↩️ Как везде", callback_data="reg_q_reset_city")])
     buttons.append([InlineKeyboardButton(text="← Назад", callback_data="reg_q_back")])
     return InlineKeyboardMarkup(inline_keyboard=buttons)
 
 
 @router.callback_query(F.data == "admin_reg_questions")
 async def show_reg_questions(callback: types.CallbackQuery):
-    text = await render_questions_text()
-    await callback.message.edit_text(text, parse_mode="HTML", reply_markup=await build_questions_keyboard())
+    admin_id = callback.from_user.id
+    text = await render_questions_text(admin_id=admin_id)
+    await callback.message.edit_text(text, parse_mode="HTML", reply_markup=await build_questions_keyboard(admin_id=admin_id))
     await callback.answer()
 
 
@@ -400,8 +487,9 @@ async def reg_q_track_switch(callback: types.CallbackQuery):
     track = callback.data.split(":", 1)[1]
     if track not in ("full", "party", "short"):
         track = "full"
-    text = await render_questions_text(track)
-    await callback.message.edit_text(text, parse_mode="HTML", reply_markup=await build_questions_keyboard(track))
+    admin_id = callback.from_user.id
+    text = await render_questions_text(track, admin_id)
+    await callback.message.edit_text(text, parse_mode="HTML", reply_markup=await build_questions_keyboard(track, admin_id))
     await callback.answer()
 
 
