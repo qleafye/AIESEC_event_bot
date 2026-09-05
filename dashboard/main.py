@@ -89,6 +89,22 @@ def _read_setting(conn, key: str):
     return row["value"] if row is not None else None
 
 
+def _event_logo_url(conn) -> "str | None":
+    """Фаза 26-02 (RT-01/RT-05): `miniapp_logo` — тот же ключ, что читает Mini App в
+    «🎨 Оформление». Значение проверяется тем же `FILE_ID_RE`, что и прокси
+    `GET /api/file/{file_id}` (T-26-02-01) — второго правила валидации file_id заводить не
+    нужно, мусор в ключе просто гасится в `None`, а не попадает в HTML.
+
+    Страницы `login.html`/`no_access.html` этот хелпер не зовут — они сегодня не ходят в БД
+    вовсе, и ради favicon заводить им подключение не нужно: `base.html` в их контексте видит
+    неопределённую `event_logo_url` (Jinja2 отдаёт её как ложное значение) и молча уходит в
+    откат на иконку АЙСЕК."""
+    value = _read_setting(conn, "miniapp_logo")
+    if not value or not FILE_ID_RE.match(value):
+        return None
+    return f"/api/file/{value}"
+
+
 def _thousands(value) -> str:
     """`1284` → `1 284` (ru-RU: разряды через пробел, без «12.9K» — менеджеру нужна точная
     цифра). Не-числа (`None`, `—`, строки) возвращаются как есть."""
@@ -215,6 +231,7 @@ def build_page_context(conn, cfg: DashboardConfig, scope: queries.Scope, viewer:
     return {
         "event_name": flags.get("event_name"),
         "event_season": scope.season or flags.get("event_season"),
+        "event_logo_url": _event_logo_url(conn),
         "viewer": viewer,
         "scope": scope,
         "city_options": city_options,

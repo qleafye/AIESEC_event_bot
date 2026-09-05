@@ -128,6 +128,9 @@ a, button {
 
 .event-logo-slot:empty { min-width: 28px; }
 
+/* Фаза 26-02 (RT-01): лого мероприятия внутри слота — та же высота, что лого АЙСЕК слева. */
+.event-logo-slot img { max-height: 40px; width: auto; display: block; }
+
 /* Display-роль (UI-SPEC §Typography): clamp вместо точки-перелома на 900px. */
 .site-header h1 {
   margin: 0;
