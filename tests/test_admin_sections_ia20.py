@@ -31,6 +31,7 @@ from handlers import admin_reg_percity as regpercity  # module-size split: quest
 from handlers import admin_roles as roles
 from handlers import admin_sections as sec
 from handlers import admin_settings as st
+from handlers import admin_sheets  # module-size split: rebuild/sync moved out of admin_settings.py
 from handlers.admin_caps import role_caps_key
 from handlers.admin_settings import settings_toggle_rows
 
@@ -717,8 +718,8 @@ def test_sheet_operations_return_to_their_section_too():
     from handlers import admin_gamification as game_mod
 
     cases = [
-        (st.sync_sheet, "callback.data", "admin_sync_sheet", "data"),
-        (st.rebuild_sheet, '"admin_rebuild_sheet"', "admin_rebuild_sheet", "data"),
+        (admin_sheets.sync_sheet, "callback.data", "admin_sync_sheet", "data"),
+        (admin_sheets.rebuild_sheet, '"admin_rebuild_sheet"', "admin_rebuild_sheet", "data"),
         (cities_mod.dedupe_sheet_run, '"admin_dedupe_sheet"', "admin_dedupe_sheet", "data"),
         (game_mod.sync_game_sheets, '"admin_game_sync_sheet"', "admin_game_sync_sheet", "game"),
     ]

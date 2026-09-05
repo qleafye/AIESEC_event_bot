@@ -314,6 +314,17 @@ def _build_snapshot_lines():
 # deletions, one block relocated (confirmed by counting `reg_q`/`preset`/`menu_`/`reg_prompt`/
 # `reg_questions`/`admin_event_preset`/`admin_reg_prompts` occurrences before/after -- same 23
 # lines, same internal order within each of the two sub-blocks).
+#
+# Drift note (module-size split, admin_settings.py, 414 handlers unchanged -- REORDER only):
+# `sync_sheet`/`rebuild_sheet_confirm`/`rebuild_sheet` (admin_settings.py, 2211 lines, over its
+# KNOWN_OVERAGES ceiling of 2174) moved to the new `handlers/admin_sheets.py` seam, imported
+# right after `admin_settings` in handlers/admin.py -- these three handlers now register right
+# after everything else that stayed in admin_settings.py (previously mid-file, right after
+# `cancel_edit_setting_callback` and before `settings_back_to_admin`). Re-captured by RUNNING
+# `_build_snapshot_lines()` against HEAD and diffed against the prior 414-line snapshot: zero
+# insertions/deletions, the same three lines relocated from right before `settings_back_to_admin`
+# to right after `sheet_logs_sync_go` (and before `show_admin_cities`), all other lines
+# byte-for-byte identical in the same order.
 GOLDEN_SNAPSHOT = """
 admin|message|cmd_admin_help|cmd:admin
 admin|message|cmd_coins|cmd:coins
@@ -432,9 +443,6 @@ admin|callback_query|settings_reset_city|settings_reset_city:*
 admin|callback_query|settings_reset_city_go|settings_reset_city_go:*
 admin|callback_query|settings_photo_start|settings_photo:*
 admin|callback_query|cancel_edit_setting_callback|settings_cancel
-admin|callback_query|sync_sheet|admin_sync_sheet
-admin|callback_query|rebuild_sheet_confirm|admin_rebuild_sheet
-admin|callback_query|rebuild_sheet|admin_rebuild_sheet_go
 admin|callback_query|settings_back_to_admin|settings_back
 admin|callback_query|admin_consent_pdfs|admin_consent_pdfs
 admin|callback_query|consent_pdf_set|consent_pdf_set:*
@@ -471,6 +479,9 @@ admin|callback_query|show_admin_section|admin_sec:*
 admin|callback_query|sheet_logs_open|sheet_logs_open
 admin|callback_query|sheet_logs_autosync_toggle|sheet_logs_autosync_toggle
 admin|callback_query|sheet_logs_sync_go|sheet_logs_sync_go
+admin|callback_query|sync_sheet|admin_sync_sheet
+admin|callback_query|rebuild_sheet_confirm|admin_rebuild_sheet
+admin|callback_query|rebuild_sheet|admin_rebuild_sheet_go
 admin|callback_query|show_admin_cities|admin_cities
 admin|callback_query|toggle_event_city_enabled|toggle_event_city_enabled
 admin|callback_query|city_toggle|city_toggle:*

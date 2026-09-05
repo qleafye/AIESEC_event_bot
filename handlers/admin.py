@@ -752,6 +752,14 @@ from handlers import admin_settings  # noqa: E402
 from handlers.admin_settings import show_admin_settings  # noqa: E402
 
 
+# Module-size convention split (tests/test_module_size_convention_260816.py): «🔄 Синхронизация»/
+# «♻️ Пересобрать таблицу» moved out of admin_settings.py into their own seam file, registered
+# on the shared router right after it -- these two handlers were the last ones in the original
+# file to rewrite Sheets by tab, so they now register right after everything else that stayed in
+# admin_settings.py, instead of their old mid-file position (golden snapshot reorder, reviewed).
+from handlers import admin_sheets  # noqa: E402
+
+
 from handlers import admin_cities  # noqa: E402
 
 
