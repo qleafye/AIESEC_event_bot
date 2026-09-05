@@ -13,6 +13,7 @@
 from __future__ import annotations
 
 import asyncio
+from pathlib import Path
 
 import httpx
 import pytest
@@ -28,6 +29,7 @@ from dashboard.main import create_app
 
 BOT_TOKEN = "123456:ABCDEF-testtoken"
 ADMIN_ID = 900001
+APP_CSS = Path(__file__).resolve().parent.parent / "dashboard" / "static" / "app.css"
 
 
 def _use_tmp_db(tmp_path, name: str = "dashboard_event_assets.db") -> str:
@@ -131,6 +133,46 @@ def test_theme_css_pattern_off_has_no_url(tmp_path):
     resp = client.get("/theme.css")
     assert resp.status_code == 200
     assert "--plate-pattern: none;" in resp.text
+
+
+# ── Фаза 26-02 Задача 2: сдержанный орнамент пресета в шапке дашборда ────────────────────
+
+def test_dashboard_css_consumes_plate_pattern():
+    text = APP_CSS.read_text(encoding="utf-8")
+    assert "var(--plate-pattern" in text
+    assert ".site-header::before" in text
+    # ЕДИНСТВЕННЫЙ потребитель --plate-pattern в app.css — слой шапки.
+    assert text.count("var(--plate-pattern,") == 1
+
+
+def test_header_pattern_disabled_by_toggle(tmp_path):
+    db_path = _use_tmp_db(tmp_path)
+    settings = _write_preset("realtalk")
+    settings[web_theme.THEME_KEYS["pattern_enabled"]] = "off"
+    _seed(settings=settings)
+    client = _client(_cfg(db_path))
+
+    resp = client.get("/theme.css")
+    assert resp.status_code == 200
+    assert "--plate-pattern: none;" in resp.text
+
+
+def test_header_pattern_url_matches_active_preset(tmp_path):
+    db_path = _use_tmp_db(tmp_path)
+    _seed(settings=_write_preset("realtalk"))
+    client = _client(_cfg(db_path))
+
+    resp = client.get("/theme.css")
+    assert resp.status_code == 200
+    assert 'url("/static/pattern/realtalk.webp")' in resp.text
+
+    db_path2 = _use_tmp_db(tmp_path, name="dashboard_event_assets_bluebook.db")
+    _seed(settings=_write_preset("bluebook"))
+    client2 = _client(_cfg(db_path2))
+
+    resp2 = client2.get("/theme.css")
+    assert resp2.status_code == 200
+    assert "--plate-pattern: none;" in resp2.text
 
 
 # ── Задача 3: прокси ассетов оформления GET /api/file/{file_id} ─────────────────────────
