@@ -256,3 +256,127 @@ def test_record_reg_event_failure_never_breaks_start(tmp_path, monkeypatch):
 
     # Must not raise -- fail-soft hook swallows the monkeypatched exception.
     asyncio.run(reg_mod.cmd_start(msg, state, bot=object(), command=None))
+
+
+# ── Quick task 260905-iyw: `start` gets a city (deep-link forward, backfill backward) ────
+
+class _FakeCommand:
+    def __init__(self, args=None):
+        self.args = args
+
+
+def test_start_hook_with_city_deep_link_carries_event_city(tmp_path):
+    from handlers import registration as reg_mod
+
+    _use_tmp_db(tmp_path)
+    asyncio.run(db.init_db())
+
+    uid = 555003
+    msg = _FakeMessage(uid, "tester3")
+    state = _new_state(uid)
+    asyncio.run(reg_mod.cmd_start(msg, state, bot=object(), command=_FakeCommand("city_spb")))
+
+    async def _city():
+        async with db._connect() as conn:
+            async with conn.execute(
+                "SELECT event_city FROM reg_events WHERE telegram_id = ? AND event = 'start'",
+                (uid,),
+            ) as cursor:
+                row = await cursor.fetchone()
+                return row[0] if row else None
+
+    assert asyncio.run(_city()) == "spb"
+
+
+def test_start_hook_without_deep_link_leaves_event_city_null(tmp_path):
+    from handlers import registration as reg_mod
+
+    _use_tmp_db(tmp_path)
+    asyncio.run(db.init_db())
+
+    uid = 555004
+    msg = _FakeMessage(uid, "tester4")
+    state = _new_state(uid)
+    asyncio.run(reg_mod.cmd_start(msg, state, bot=object(), command=None))
+
+    async def _city():
+        async with db._connect() as conn:
+            async with conn.execute(
+                "SELECT event_city FROM reg_events WHERE telegram_id = ? AND event = 'start'",
+                (uid,),
+            ) as cursor:
+                row = await cursor.fetchone()
+                return row[0] if row else None
+
+    assert asyncio.run(_city()) is None
+
+
+def test_backfill_reg_event_city_fills_only_own_null_start_row(tmp_path):
+    _use_tmp_db(tmp_path)
+    asyncio.run(db.init_db())
+    asyncio.run(db.record_reg_event(1, "start"))  # own NULL start -> gets filled
+    asyncio.run(db.record_reg_event(2, "start"))  # other user's NULL start -> untouched
+    asyncio.run(db.record_reg_event(1, "form_started", event_city="msk"))  # other event -> untouched
+    asyncio.run(db.record_reg_event(1, "start", event_city="tyumen"))  # own already-filled start -> untouched
+
+    asyncio.run(db.backfill_reg_event_city(1, "spb"))
+
+    async def _rows():
+        async with db._connect() as conn:
+            async with conn.execute(
+                "SELECT telegram_id, event, event_city FROM reg_events ORDER BY id"
+            ) as cursor:
+                return await cursor.fetchall()
+
+    rows = asyncio.run(_rows())
+    assert rows[0] == (1, "start", "spb")           # own NULL start -> filled
+    assert rows[1] == (2, "start", None)            # other user's NULL start -> untouched
+    assert rows[2] == (1, "form_started", "msk")    # other event -> untouched
+    assert rows[3] == (1, "start", "tyumen")        # own already-filled start -> untouched
+
+
+def test_backfill_reg_event_city_noop_on_falsy_city(tmp_path):
+    _use_tmp_db(tmp_path)
+    asyncio.run(db.init_db())
+    asyncio.run(db.record_reg_event(9, "start"))
+
+    asyncio.run(db.backfill_reg_event_city(9, None))
+    asyncio.run(db.backfill_reg_event_city(9, ""))
+
+    async def _city():
+        async with db._connect() as conn:
+            async with conn.execute(
+                "SELECT event_city FROM reg_events WHERE telegram_id = ? AND event = 'start'",
+                (9,),
+            ) as cursor:
+                row = await cursor.fetchone()
+                return row[0] if row else None
+
+    assert asyncio.run(_city()) is None
+
+
+def test_form_started_backfills_city_onto_earlier_null_start_row(tmp_path):
+    from handlers import registration as reg_mod
+
+    _use_tmp_db(tmp_path)
+    asyncio.run(db.init_db())
+    asyncio.run(db.set_setting("event_city_enabled", "on"))
+
+    uid = 555005
+    msg = _FakeMessage(uid, "tester5")
+    state = _new_state(uid)
+    # No deep-link -> "start" row lands with event_city NULL.
+    asyncio.run(reg_mod.cmd_start(msg, state, bot=object(), command=None))
+    # Delegate reaches form_started with a city already resolved (e.g. picked in the flow).
+    asyncio.run(reg_mod._start_registration_flow(msg, state, event_city="tyumen"))
+
+    async def _start_city():
+        async with db._connect() as conn:
+            async with conn.execute(
+                "SELECT event_city FROM reg_events WHERE telegram_id = ? AND event = 'start'",
+                (uid,),
+            ) as cursor:
+                row = await cursor.fetchone()
+                return row[0] if row else None
+
+    assert asyncio.run(_start_city()) == "tyumen"
