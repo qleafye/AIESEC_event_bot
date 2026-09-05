@@ -42,6 +42,9 @@ from reg_engine import validate_answer, validate_date_range as _validate_date_ra
 # Gap closure фазы 21: тексты ошибок тапа по развилке — из движка (те же, что получает PATCH
 # из Mini App), не локальные литералы.
 from reg_engine import CITY_CHOICE_INVALID_TEXT, CITY_CLOSED_TEXT, PARTY_CLOSED_TEXT
+# Phase 25 (CITYQ-02): режим приёма резюме («файл или текст» / «только текст») по городу
+# делегата — общий резолвер движка, гейт на входе в шаг документа.
+from reg_engine import resume_mode
 
 logger = logging.getLogger(__name__)
 
@@ -267,6 +270,13 @@ async def process_confirm_edit(message: types.Message, state: FSMContext):
 async def process_resume(message: types.Message, state: FSMContext, bot: Bot):
     # Файл резюме — своя форма входа (имя файла/размер, не «сырой текст»), поэтому не через
     # validate_answer: is_allowed_resume/resume_too_large — прямой перенос в reg_engine.py.
+    # Phase 25 (CITYQ-02): режим «только текст» по городу делегата — гейт ДО проверок формата
+    # и размера, файл не принимается вовсе, resume_file_id в FSM не пишется, шаг остаётся на
+    # месте — делегат отвечает текстом, его ловит process_resume_text ниже.
+    data = await state.get_data()
+    if await resume_mode(data.get("event_city")) == "text_only":
+        await message.answer(await get_setting_typed("reg_form_resume_text_only_text"))
+        return
     if not _is_allowed_resume(message.document.file_name):
         await message.answer("Принимаются только PDF или DOCX. Прикрепи файл ещё раз.")
         return
@@ -296,6 +306,12 @@ async def process_resume_text(message: types.Message, state: FSMContext, bot: Bo
 @router.message(Registration.resume)
 async def process_resume_invalid(message: types.Message, state: FSMContext):
     # Neither a document nor text (sticker/photo/etc.) — re-prompt, never crash (D-10).
+    # Phase 25 (CITYQ-02): режим «только текст» — тот же реестровый текст, что и у гейта
+    # документа (один источник формулировки на всё событие), не отдельный литерал про файл.
+    data = await state.get_data()
+    if await resume_mode(data.get("event_city")) == "text_only":
+        await message.answer(await get_setting_typed("reg_form_resume_text_only_text"))
+        return
     await message.answer("Пришли резюме текстом или прикрепи файл (PDF или DOCX).")
 
 
