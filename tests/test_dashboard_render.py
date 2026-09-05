@@ -472,6 +472,46 @@ def test_payment_disabled_removes_payment_stage_and_tariff_cut(tmp_path):
     assert "Тариф" not in resp.text
 
 
+# ── воронка: база = первая ненулевая ступень + подпись (квик 260905-iyw) ─────────────────
+
+def test_funnel_baseline_shifts_to_first_nonzero_stage(tmp_path):
+    """«Зашли» = 0, «Начали анкету» = 39 -> база сместилась, подпись честно говорит
+    «от начавших анкету», а НЕ «от зашедших» (город без событий "start" не должен видеть
+    сплошные 0%)."""
+    db_path = _use_tmp_db(tmp_path)
+    _seed(
+        cities=[("msk", "Москва", 1, 0), ("spb", "СПб", 1, 1)],
+        settings={"event_city_enabled": "on"},
+        reg_events=[(t, "form_started", "spb", None, "2026-08-01 10:00:00") for t in range(1, 40)],
+    )
+    client = _stats_manager_client(db_path, city="spb")
+    resp = client.get("/")
+    assert resp.status_code == 200
+    text = resp.text
+    assert "от начавших анкету" in text
+    assert "от зашедших" not in text
+
+
+def test_funnel_since_note_present_with_events_absent_without(tmp_path):
+    db_path = _use_tmp_db(tmp_path)
+    _seed_full_fixture(db_path)
+    client = _stats_manager_client(db_path)
+    resp = client.get("/")
+    assert "— по событиям бота" in resp.text
+
+    db_path2 = _use_tmp_db(tmp_path, name="dashboard_render_no_events.db")
+    _seed(
+        settings={
+            "event_name": "YouLead'26",
+            "dashboard_block_funnel": "on",
+        },
+        users=[{"telegram_id": 1, "status": "approved", "registration_date": "2020-01-01 00:00:00"}],
+    )
+    client2 = _stats_manager_client(db_path2)
+    resp2 = client2.get("/")
+    assert "— по событиям бота" not in resp2.text
+
+
 def test_payment_enabled_shows_payment_stage_and_tariff_cut(tmp_path):
     db_path = _use_tmp_db(tmp_path)
     _seed_full_fixture(db_path, payment_enabled=True)
