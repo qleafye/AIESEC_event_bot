@@ -16,3 +16,4 @@ httpx[socks]>=0.28,<0.29
 # tests/test_web_assets_260823.py (fontTools.ttLib.cmap). Не рантайм-зависимость.
 fonttools>=4.50,<5.0
 brotli>=1.1,<2.0
+pytest-xdist>=3.6,<4  # локальный параллельный прогон: python -m pytest -n auto (34 мин -> 12 мин на 16 ядрах)
