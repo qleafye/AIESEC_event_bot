@@ -32,6 +32,7 @@ from dashboard.queries import (
     funnel_tracking_since,
     game_block,
     kpi_row,
+    monthly_table,
     season_options,
     utm_table,
 )
@@ -701,6 +702,144 @@ def test_utm_table_sorted_by_completed_desc_first(tmp_path):
         rows = utm_table(conn, Scope())
     tags = [row["tag"] for row in rows]
     assert tags[0] == "few_starts"  # completed=2 против completed=0 у many_starts
+
+
+# ── monthly_table (квик 260906-dmq, задача 2) ────────────────────────────────────────────
+
+def test_monthly_table_empty_db_returns_empty_list(tmp_path):
+    path = _use_tmp_db(tmp_path)
+    with dash_db.read_conn(path) as conn:
+        assert monthly_table(conn, Scope()) == []
+
+
+def test_monthly_table_two_months_fresh_first(tmp_path):
+    path = _use_tmp_db(tmp_path)
+    _seed(users=[
+        {"telegram_id": 1, "source": "vk", "status": "approved",
+         "registration_date": "2026-08-01 09:00:00"},
+        {"telegram_id": 2, "source": "vk", "status": "pending",
+         "registration_date": "2026-09-01 09:00:00"},
+    ])
+    with dash_db.read_conn(path) as conn:
+        rows = monthly_table(conn, Scope())
+    keys = [row["month_key"] for row in rows]
+    assert keys == ["2026-09", "2026-08"]  # свежий месяц первым
+
+
+def test_monthly_table_human_month_label(tmp_path):
+    path = _use_tmp_db(tmp_path)
+    _seed(users=[
+        {"telegram_id": 1, "source": "vk", "status": "approved",
+         "registration_date": "2026-09-05 09:00:00"},
+    ])
+    with dash_db.read_conn(path) as conn:
+        rows = monthly_table(conn, Scope())
+    assert rows[0]["month"] == "Сентябрь 2026"
+
+
+def test_monthly_table_total_and_approved(tmp_path):
+    path = _use_tmp_db(tmp_path)
+    _seed(users=[
+        {"telegram_id": 1, "source": "vk", "status": "approved",
+         "registration_date": "2026-09-01 09:00:00"},
+        {"telegram_id": 2, "source": "vk", "status": "pending",
+         "registration_date": "2026-09-02 09:00:00"},
+        {"telegram_id": 3, "source": "vk", "status": "rejected",
+         "registration_date": "2026-09-03 09:00:00"},
+    ])
+    with dash_db.read_conn(path) as conn:
+        rows = monthly_table(conn, Scope())
+    assert rows[0]["total"] == 3
+    assert rows[0]["approved"] == 1
+
+
+def test_monthly_table_top_sources_and_top_tags_capped_at_three(tmp_path):
+    path = _use_tmp_db(tmp_path)
+    _seed(users=[
+        {"telegram_id": 1, "source": "a_tag", "status": "approved",
+         "registration_date": "2026-09-01 09:00:00"},
+        {"telegram_id": 2, "source": "a_tag", "status": "approved",
+         "registration_date": "2026-09-01 09:00:00"},
+        {"telegram_id": 3, "source": "b_tag", "status": "approved",
+         "registration_date": "2026-09-01 09:00:00"},
+        {"telegram_id": 4, "source": "c_tag", "status": "approved",
+         "registration_date": "2026-09-01 09:00:00"},
+        {"telegram_id": 5, "source": "d_tag", "status": "approved",
+         "registration_date": "2026-09-01 09:00:00"},
+    ])
+    with dash_db.read_conn(path) as conn:
+        rows = monthly_table(conn, Scope())
+    row = rows[0]
+    assert len(row["top_sources"]) == 3
+    assert row["top_sources"][0] == ("a_tag", 2)
+    assert len(row["top_tags"]) == 3
+    assert row["top_tags"][0] == ("a_tag", 2)
+
+
+def test_monthly_table_top_sources_excludes_dash_and_blank(tmp_path):
+    path = _use_tmp_db(tmp_path)
+    _seed(users=[
+        {"telegram_id": 1, "source": "-", "status": "approved",
+         "registration_date": "2026-09-01 09:00:00"},
+        {"telegram_id": 2, "source": "", "status": "approved",
+         "registration_date": "2026-09-01 09:00:00"},
+        {"telegram_id": 3, "source": None, "status": "approved",
+         "registration_date": "2026-09-01 09:00:00"},
+        {"telegram_id": 4, "source": "vk", "status": "approved",
+         "registration_date": "2026-09-01 09:00:00"},
+    ])
+    with dash_db.read_conn(path) as conn:
+        rows = monthly_table(conn, Scope())
+    assert rows[0]["top_sources"] == [("vk", 1)]
+
+
+def test_monthly_table_top_tags_excludes_cyrillic_manual_answer(tmp_path):
+    """`top_tags` использует предикат метки из задачи 1 -- кириллический ручной ответ на
+    вопрос «Источник» в `top_tags` не попадает, а в `top_sources` (без предиката метки) —
+    попадает наравне со слагами."""
+    path = _use_tmp_db(tmp_path)
+    _seed(users=[
+        {"telegram_id": 1, "source": "ВК", "status": "approved",
+         "registration_date": "2026-09-01 09:00:00"},
+    ])
+    with dash_db.read_conn(path) as conn:
+        rows = monthly_table(conn, Scope())
+    assert rows[0]["top_sources"] == [("ВК", 1)]
+    assert rows[0]["top_tags"] == []
+
+
+def test_monthly_table_narrowed_by_city_scope(tmp_path):
+    path = _use_tmp_db(tmp_path)
+    _seed(
+        cities=[("msk", "Москва", 1, 0), ("spb", "СПб", 1, 1)],
+        settings={"event_city_enabled": "on"},
+        users=[
+            {"telegram_id": 1, "source": "vk", "status": "approved",
+             "registration_date": "2026-09-01 09:00:00", "event_city": "spb"},
+            {"telegram_id": 2, "source": "vk", "status": "approved",
+             "registration_date": "2026-09-01 09:00:00", "event_city": "msk"},
+        ],
+    )
+    with dash_db.read_conn(path) as conn:
+        spb_rows = monthly_table(conn, Scope(city="spb"))
+        msk_rows = monthly_table(conn, Scope(city="msk"))
+    assert spb_rows[0]["total"] == 1
+    assert msk_rows[0]["total"] == 1
+
+
+def test_monthly_table_broken_registration_date_does_not_crash(tmp_path):
+    """Непустой, но не парсящийся `registration_date` -- строка создаётся (фильтр режет
+    только `NULL`/пустое), подпись месяца отдаётся как есть, страница не падает."""
+    path = _use_tmp_db(tmp_path)
+    _seed(users=[
+        {"telegram_id": 1, "source": "vk", "status": "approved",
+         "registration_date": "не дата"},
+    ])
+    with dash_db.read_conn(path) as conn:
+        rows = monthly_table(conn, Scope())
+    assert len(rows) == 1
+    assert rows[0]["month_key"] == "не дата"[:7]
+    assert rows[0]["month"] == rows[0]["month_key"]
 
 
 # ── game_block (D-12) ────────────────────────────────────────────────────────────────────

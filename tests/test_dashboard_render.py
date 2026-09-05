@@ -496,6 +496,7 @@ def test_daily_chart_data_attributes_are_parseable_json(tmp_path):
         ("dashboard_block_study_fields", '<h3 class="cut-title">Направление обучения</h3>'),
         ("dashboard_block_dropout", "Где бросают"),
         ("dashboard_block_utm", "Метки кампаний"),
+        ("dashboard_block_months", "По месяцам"),
         ("dashboard_block_game", "Геймификация"),
     ],
 )
@@ -577,6 +578,26 @@ def test_utm_block_enabled_empty_shows_hint_with_bot_username(tmp_path):
     assert "Метки кампаний" in text
     assert "Меток пока нет" in text
     assert "t.me/YouLead_test_bot?start=src_" in text
+
+
+# ── «По месяцам» (квик 260906-dmq, задача 2) ─────────────────────────────────────────────
+
+def test_months_block_with_data_shows_month_and_tops(tmp_path):
+    db_path = _use_tmp_db(tmp_path)
+    _seed(
+        settings={"dashboard_block_months": "on"},
+        users=[
+            {"telegram_id": 1, "source": "vk_post_1", "status": "approved",
+             "registration_date": "2026-09-01 09:00:00"},
+        ],
+    )
+    client = _stats_manager_client(db_path)
+    resp = client.get("/")
+    assert resp.status_code == 200
+    text = resp.text
+    assert "По месяцам" in text
+    assert "Сентябрь 2026" in text
+    assert "vk_post_1" in text
 
 
 # ── воронка: база = первая ненулевая ступень + подпись (квик 260905-iyw) ─────────────────
