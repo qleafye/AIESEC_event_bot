@@ -191,6 +191,46 @@
   </section>
   {% endif %}
 
+  {# «Метки кампаний» (квик 260905-qqg) #}
+  {% if utm %}
+  <section class="block">
+    <h2 class="block-title">Метки кампаний</h2>
+    <div class="card">
+      {% if utm.has_data %}
+      <div class="table-wrap">
+      <table class="responsive">
+        <thead>
+          <tr>
+            <th>Метка</th>
+            <th class="num">Зашли</th>
+            <th class="num">Начали анкету</th>
+            <th class="num">Заявки</th>
+            <th class="num">Одобрено</th>
+            <th class="num">Конверсия</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for row in utm.rows %}
+          <tr>
+            <td data-label="Метка">{{ row.tag }}</td>
+            <td class="num" data-label="Зашли">{{ row.starts | thousands }}</td>
+            <td class="num" data-label="Начали анкету">{{ row.form_started | thousands }}</td>
+            <td class="num" data-label="Заявки">{{ row.completed | thousands }}</td>
+            <td class="num" data-label="Одобрено">{{ row.approved | thousands }}</td>
+            <td class="num" data-label="Конверсия">{% if row.conversion is none %}—{% else %}{{ row.conversion }}%{% endif %}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+      </div>
+      {% else %}
+      <p class="empty-note">Меток пока нет. Раздайте ссылку вида t.me/{{ bot_username }}?start=src_вк_пост —
+        метка из ссылки попадёт сюда, а вопрос «Источник» такому делегату бот не задаст.</p>
+      {% endif %}
+    </div>
+  </section>
+  {% endif %}
+
   {# «Где бросают» (D-07) #}
   {% if dropout %}
   <section class="block">

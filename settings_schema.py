@@ -2031,6 +2031,10 @@ SETTINGS_SCHEMA = {
         "type": "enum", "group": "dashboard", "label": "🚪 Где бросают",
         "options": ["on", "off"], "prompt": None, "default": "on",
     },
+    "dashboard_block_utm": {
+        "type": "enum", "group": "dashboard", "label": "🔗 Метки кампаний (UTM)",
+        "options": ["on", "off"], "prompt": None, "default": "on",
+    },
     "dashboard_block_game": {
         "type": "enum", "group": "dashboard", "label": "🎮 Гейма",
         "options": ["on", "off"], "prompt": None, "default": "off",
