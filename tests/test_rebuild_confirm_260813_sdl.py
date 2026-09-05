@@ -12,7 +12,7 @@ monkeypatch, no real Google API).
 import asyncio
 
 from handlers import admin as admin_mod
-from handlers import admin_settings  # Phase 13 (13-06): settings moved out of admin.py
+from handlers import admin_sheets  # module-size split: rebuild moved out of admin_sheets.py
 from handlers import admin_caps
 
 
@@ -59,12 +59,12 @@ def test_rebuild_confirm_does_not_touch_the_sheet(monkeypatch):
         called.append((headers, rows))
         return 0
 
-    monkeypatch.setattr(admin_settings, "rebuild_main_sheet", boom)
+    monkeypatch.setattr(admin_sheets, "rebuild_main_sheet", boom)
 
     callback = _FakeCallback(ADMIN_ID)
 
     async def go():
-        await admin_settings.rebuild_sheet_confirm(callback)
+        await admin_sheets.rebuild_sheet_confirm(callback)
 
     asyncio.run(go())
 
@@ -78,7 +78,7 @@ def test_rebuild_confirm_warns_about_losing_manual_edits(monkeypatch):
     callback = _FakeCallback(ADMIN_ID)
 
     async def go():
-        await admin_settings.rebuild_sheet_confirm(callback)
+        await admin_sheets.rebuild_sheet_confirm(callback)
 
     asyncio.run(go())
 
@@ -102,14 +102,14 @@ def test_rebuild_go_runs_the_rebuild(monkeypatch):
         called.append((headers, rows))
         return 0
 
-    monkeypatch.setattr(admin_settings, "active_sheet_headers", fake_headers)
-    monkeypatch.setattr(admin_settings, "get_all_users_dicts", fake_users)
-    monkeypatch.setattr(admin_settings, "rebuild_main_sheet", fake_rebuild)
+    monkeypatch.setattr(admin_sheets, "active_sheet_headers", fake_headers)
+    monkeypatch.setattr(admin_sheets, "get_all_users_dicts", fake_users)
+    monkeypatch.setattr(admin_sheets, "rebuild_main_sheet", fake_rebuild)
 
     callback = _FakeCallback(ADMIN_ID)
 
     async def go():
-        await admin_settings.rebuild_sheet(callback)
+        await admin_sheets.rebuild_sheet(callback)
 
     asyncio.run(go())
 
