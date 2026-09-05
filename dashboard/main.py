@@ -21,6 +21,7 @@ from __future__ import annotations
 
 import logging
 from dataclasses import replace
+from datetime import datetime
 from pathlib import Path
 from typing import Optional
 
@@ -50,6 +51,18 @@ _BREAKDOWN_CUTS: tuple[tuple[str, str, "str | None"], ...] = (
     ("participant_type", "Трек", None),
     ("payment_option", "Тариф", None),  # гасится payment_enabled внутри queries.breakdown
 )
+
+# Квик-задача 260905-iyw: подпись процента воронки должна называть ступень, от которой он
+# посчитан (родительный падеж), а не всегда «зашедших» — база сместилась на первую ненулевую
+# ступень (см. _funnel_display). Ключи — те же подписи, что и stages в queries.funnel().
+_FUNNEL_BASELINE_LABELS: dict[str, str] = {
+    "Зашли": "зашедших",
+    "Начали анкету": "начавших анкету",
+    "Дошли до конца": "дошедших до конца",
+    "На модерации": "отправленных на модерацию",
+    "Одобрено": "одобренных",
+    "Оплатили": "оплативших",
+}
 
 logger = logging.getLogger(__name__)
 
@@ -93,14 +106,27 @@ def _bar_rows(rows: list[tuple[str, int]]) -> list[dict]:
     ]
 
 
-def _funnel_display(rows: "list[tuple[str, int]] | None") -> "dict | None":
+def _funnel_display(rows: "list[tuple[str, int]] | None", tracking_since: "str | None" = None) -> "dict | None":
     """`None` — блок выключен тумблером (D-19: блока нет вовсе). Иначе — ширина бара каждой
-    ступени относительно ПЕРВОЙ ступени (классическая воронка, не относительно максимума —
-    ступени монотонно убывают), плюс `has_data`, чтобы шаблон мог показать заглушку «пока
-    нет данных» вместо нулевой графики."""
+    ступени относительно ПЕРВОЙ НЕНУЛЕВОЙ ступени (не обязательно rows[0] — в городе, где
+    «Зашли» пусто, но «Начали анкету» уже есть данные, база — вторая ступень; иначе процент
+    был бы неопределён/0% там, где данные реально есть), плюс `has_data`, чтобы шаблон мог
+    показать заглушку «пока нет данных» вместо нулевой графики.
+
+    `baseline_label` — родительный падеж подписи ступени, ставшей базой (для строки
+    «N% от {baseline_label}» в шаблоне) — без него подпись всегда врала бы «от зашедших»,
+    даже когда база сместилась. `since` — дата начала трекинга событий в формате ДД.ММ для
+    подписи «с ДД.ММ — по событиям бота»; `None`, если трекинга ещё нет или `ts` не парсится
+    (сбой формата не должен ронять страницу)."""
     if rows is None:
         return None
-    baseline = rows[0][1] if rows else 0
+    baseline_label = "зашедших"
+    baseline = 0
+    for label, count in rows:
+        if count:
+            baseline = count
+            baseline_label = _FUNNEL_BASELINE_LABELS.get(label, "зашедших")
+            break
     has_data = any(count for _, count in rows)
     steps = [
         {
@@ -110,7 +136,13 @@ def _funnel_display(rows: "list[tuple[str, int]] | None") -> "dict | None":
         }
         for label, count in rows
     ]
-    return {"steps": steps, "has_data": has_data}
+    since = None
+    if tracking_since:
+        try:
+            since = datetime.strptime(tracking_since, "%Y-%m-%d %H:%M:%S").strftime("%d.%m")
+        except ValueError:
+            since = None
+    return {"steps": steps, "has_data": has_data, "baseline_label": baseline_label, "since": since}
 
 
 def _city_label(conn, code: "str | None") -> "str | None":
@@ -129,6 +161,7 @@ def build_page_context(conn, cfg: DashboardConfig, scope: queries.Scope, viewer:
     flags = queries.dashboard_flags(conn)
 
     funnel_rows = queries.funnel(conn, scope) if flags.get("dashboard_block_funnel") == "on" else None
+    funnel_since = queries.funnel_tracking_since(conn) if funnel_rows is not None else None
     daily_rows = (
         queries.daily_registrations(conn, scope)
         if flags.get("dashboard_block_dynamics") == "on"
@@ -179,7 +212,7 @@ def build_page_context(conn, cfg: DashboardConfig, scope: queries.Scope, viewer:
         "bound_city_label": _city_label(conn, bound_city_code),
         "season_options": queries.season_options(conn),
         "kpi": queries.kpi_row(conn, scope),
-        "funnel": _funnel_display(funnel_rows),
+        "funnel": _funnel_display(funnel_rows, funnel_since),
         "dynamics_enabled": daily_rows is not None,
         "daily_chart": daily_chart,
         "city_cut": (

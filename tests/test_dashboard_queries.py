@@ -29,6 +29,7 @@ from dashboard.queries import (
     dashboard_flags,
     dropout_steps,
     funnel,
+    funnel_tracking_since,
     game_block,
     kpi_row,
     season_options,
@@ -215,6 +216,77 @@ def test_funnel_counts_distinct_reg_events(tmp_path):
         stages = dict(funnel(conn, Scope()))
     assert stages["Зашли"] == 2  # DISTINCT telegram_id, повтор не удваивает
     assert stages["Начали анкету"] == 1
+
+
+# ── funnel: отсечка статусных ступеней по началу трекинга (квик 260905-iyw) ──────────────
+
+def test_funnel_status_stages_cut_by_tracking_since(tmp_path):
+    """Заявка РАНЬШЕ единственного reg_events.ts не попадает в статусные ступени; более
+    поздняя — попадает (иначе воронка смешивает событийный период с сезонным и даёт
+    проценты за 100%, см. объективку квика)."""
+    path = _use_tmp_db(tmp_path)
+    _seed(
+        users=[
+            {"telegram_id": 1, "registration_date": "2026-01-01 09:00:00", "status": "approved"},  # до трекинга
+            {"telegram_id": 2, "registration_date": "2026-09-01 09:00:00", "status": "approved"},  # после трекинга
+        ],
+        reg_events=[(2, "start", None, None, "2026-08-30 23:25:00")],
+    )
+    with dash_db.read_conn(path) as conn:
+        stages = dict(funnel(conn, Scope()))
+    assert stages["Одобрено"] == 1  # только поздняя заявка
+
+
+def test_funnel_status_stages_uncut_when_reg_events_empty(tmp_path):
+    """Пустая reg_events -> отсечки нет вовсе, старые заявки по-прежнему считаются
+    (страхует прежнее поведение до появления трекинга событий)."""
+    path = _use_tmp_db(tmp_path)
+    _seed(users=[
+        {"telegram_id": 1, "registration_date": "2020-01-01 09:00:00", "status": "approved"},
+    ])
+    with dash_db.read_conn(path) as conn:
+        stages = dict(funnel(conn, Scope()))
+    assert stages["Одобрено"] == 1
+
+
+def test_funnel_tracking_since_not_narrowed_by_scope(tmp_path):
+    """`funnel_tracking_since` — глобальная отсечка, без параметра scope вовсе: просмотр
+    одного города должен резать статусные ступени по ОБЩЕМУ началу трекинга, а не по
+    первому событию в этом самом городе (иначе город с поздним первым входом резал бы
+    статусные ступени сильнее событийных и воронка снова врала бы, только в другую
+    сторону)."""
+    path = _use_tmp_db(tmp_path)
+    _seed(
+        cities=[("msk", "Москва", 1, 0), ("spb", "СПб", 1, 1)],
+        settings={"event_city_enabled": "on"},
+        reg_events=[
+            (1, "start", "msk", None, "2026-08-01 10:00:00"),  # общее начало трекинга
+            (2, "start", "spb", None, "2026-08-15 10:00:00"),  # первое событие СПб — позже
+        ],
+        users=[
+            # Заявка СПб между общим началом трекинга и первым событием СПб: если бы
+            # отсечка резалась по-городски, эта заявка выпала бы из "Одобрено" СПб.
+            {"telegram_id": 3, "event_city": "spb", "registration_date": "2026-08-10 09:00:00", "status": "approved"},
+        ],
+    )
+    with dash_db.read_conn(path) as conn:
+        assert funnel_tracking_since(conn) == "2026-08-01 10:00:00"
+        spb_stages = dict(funnel(conn, Scope(city="spb")))
+    assert spb_stages["Одобрено"] == 1
+
+
+def test_funnel_start_event_city_counts_only_for_matching_city_scope(tmp_path):
+    path = _use_tmp_db(tmp_path)
+    _seed(
+        cities=[("msk", "Москва", 1, 0), ("spb", "СПб", 1, 1)],
+        settings={"event_city_enabled": "on"},
+        reg_events=[(1, "start", "spb", None, "2026-08-01 10:00:00")],
+    )
+    with dash_db.read_conn(path) as conn:
+        spb_stages = dict(funnel(conn, Scope(city="spb")))
+        msk_stages = dict(funnel(conn, Scope(city="msk")))
+    assert spb_stages["Зашли"] == 1
+    assert msk_stages["Зашли"] == 0
 
 
 # ── daily_registrations ─────────────────────────────────────────────────────────────────

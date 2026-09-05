@@ -84,6 +84,9 @@
   {% if funnel %}
   <section class="block">
     <h2 class="block-title">Воронка регистрации</h2>
+    {% if funnel.since %}
+    <div class="updated-note">с {{ funnel.since }} — по событиям бота</div>
+    {% endif %}
     <div class="card">
       {% if funnel.has_data %}
       <div class="funnel">
@@ -91,7 +94,7 @@
         <div class="funnel-step">
           <div class="n">{{ step.count | thousands }}</div>
           <div class="l">{{ step.label }}</div>
-          <div class="pct">{{ step.pct | round | int }}% от зашедших</div>
+          <div class="pct">{{ step.pct | round | int }}% от {{ funnel.baseline_label }}</div>
           <div class="funnel-bar" aria-hidden="true"><span style="width:{{ step.pct }}%"></span></div>
         </div>
         {% endfor %}
