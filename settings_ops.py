@@ -338,6 +338,33 @@ def reg_question_track_base(key: str) -> str | None:
     return None
 
 
+# Phase 25 (CITYQ-01): композит трек×город над ключом реестра — `{base}{TRACK}__city__{CODE}`
+# (трек-суффикс ДО `__city__`, 25-RESEARCH Pattern A/Pitfall 2: обратный порядок ломает
+# `split_per_city_key`'s проверку кода города и потому недостижим намеренно). Функция чистая
+# (без I/O) — используется `miniapp/routers/settings.py::_editable_target`, чтобы такой
+# составной ключ не отдавал 403 «not_editable» веб-клиенту Mini App.
+
+def reg_setting_city_track_base(key: str) -> str | None:
+    """Базовый ключ реестра, если `key` — валидный композит трек×город: (а) трек-композит
+    вопроса анкеты (`reg_question_track_base`, группа `reg_questions`) с городским суффиксом
+    поверх, либо (б) сам ключ реестра с `per_city: True`, скомпонованный с городом без трека.
+    Иначе `None` — в том числе если код города после `__city__` невалиден
+    (`split_per_city_key` уже это проверяет)."""
+    if PER_CITY_SEP not in key:
+        return None
+    parsed = split_per_city_key(key)
+    if parsed is None:
+        return None
+    base, _code = parsed
+    track_base = reg_question_track_base(base)
+    if track_base is not None:
+        return track_base
+    meta = SETTINGS_SCHEMA.get(base)
+    if meta and meta.get("per_city"):
+        return base
+    return None
+
+
 def dangerous_confirm_key(key: str, next_value: str) -> str | None:
     """Ключ реестра с текстом последствий для опасного направления `key -> next_value`, или
     `None`, если текст считается по месту (ключи Sheets-вкладок — `tab_confirm_text_html` +

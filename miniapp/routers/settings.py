@@ -501,6 +501,8 @@ def _editable_target(key: str) -> str | None:
     пересчитывает правильный составной ключ ответа."""
     if settings_ops.reg_question_track_base(key) is not None:
         return key
+    if settings_ops.reg_setting_city_track_base(key) is not None:
+        return key
     base = settings_ops.base_setting_key(key)
     if base not in settings_ops.editable_keys():
         return None
