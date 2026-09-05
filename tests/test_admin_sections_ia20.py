@@ -27,6 +27,7 @@ import pytest
 from database import db
 import cities
 from handlers import admin_reg_config as regcfg
+from handlers import admin_reg_percity as regpercity  # module-size split: questions/prompts screens
 from handlers import admin_roles as roles
 from handlers import admin_sections as sec
 from handlers import admin_settings as st
@@ -794,7 +795,7 @@ def test_reg_config_exits_land_in_their_sections(tmp_path):
     _roles_ready(tmp_path)
 
     cb_q = FakeCallback("reg_q_back")
-    asyncio.run(regcfg.reg_questions_back(cb_q))
+    asyncio.run(regpercity.reg_questions_back(cb_q))
     _assert_is_section_screen(cb_q.message.markup, "form")
 
     cb_m = FakeCallback("menu_back")
