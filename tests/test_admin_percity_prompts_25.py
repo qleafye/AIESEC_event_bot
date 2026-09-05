@@ -24,7 +24,7 @@ import asyncio
 from config import config
 from database import db
 from handlers import admin as admin_mod
-from handlers import admin_reg_config
+from handlers import admin_reg_percity  # module-size split: per-city questions/prompts screens
 from handlers import admin_settings
 from handlers.admin_caps import required_capability, role_caps_key, role_enabled_key
 import cities
@@ -137,7 +137,7 @@ def test_render_prompts_text_at_city_header_names_city_no_code(tmp_path):
     _enable_cities()
     asyncio.run(cities.set_admin_city(ADMIN_ID, "spb"))
 
-    text = asyncio.run(admin_reg_config.render_prompts_text("full", ADMIN_ID))
+    text = asyncio.run(admin_reg_percity.render_prompts_text("full", ADMIN_ID))
     spb_label = asyncio.run(cities.city_label("spb"))
     assert spb_label in text.splitlines()[0]
     assert "spb" not in text
@@ -149,7 +149,7 @@ def test_build_prompts_keyboard_marks_own_vs_common(tmp_path):
     asyncio.run(cities.set_admin_city(ADMIN_ID, "spb"))
     asyncio.run(db.set_setting(cities.per_city_key(BASE_KEY, "spb"), "Свой текст ожиданий"))
 
-    kb = asyncio.run(admin_reg_config.build_prompts_keyboard("full", ADMIN_ID))
+    kb = asyncio.run(admin_reg_percity.build_prompts_keyboard("full", ADMIN_ID))
     texts = _kb_texts(kb)
     assert not any("spb" in t for t in texts)
 
@@ -173,7 +173,7 @@ def test_bound_manager_header_locked_to_own_city_prompts_screen(tmp_path):
     _enable_cities()
     _add_bound_manager(MANAGER_ID, "spb")
 
-    text = asyncio.run(admin_reg_config.render_prompts_text("full", MANAGER_ID))
+    text = asyncio.run(admin_reg_percity.render_prompts_text("full", MANAGER_ID))
     spb_label = asyncio.run(cities.city_label("spb"))
     msk_label = asyncio.run(cities.city_label("msk"))
     assert spb_label in text.splitlines()[0]
@@ -191,7 +191,7 @@ def test_reg_prompt_edit_city_fsm_has_composite_key(tmp_path):
 
     cb = FakeCallback(f"reg_prompt_edit:{STEP_KEY}")
     state = FakeState()
-    asyncio.run(admin_reg_config.reg_prompt_edit(cb, state))
+    asyncio.run(admin_reg_percity.reg_prompt_edit(cb, state))
 
     assert state.data.get("setting_key") == "reg_prompt_expectations__city__spb"
     assert state.state == admin_mod.EditSetting.waiting_for_value
@@ -206,7 +206,7 @@ def test_reg_prompt_edit_city_shows_own_and_common_lines(tmp_path):
 
     cb = FakeCallback(f"reg_prompt_edit:{STEP_KEY}")
     state = FakeState()
-    asyncio.run(admin_reg_config.reg_prompt_edit(cb, state))
+    asyncio.run(admin_reg_percity.reg_prompt_edit(cb, state))
 
     assert "Питерский текст ожиданий" in cb.message.text
     assert "Общий текст ожиданий" in cb.message.text
@@ -223,7 +223,7 @@ def test_reg_prompt_edit_city_no_own_value_shows_no_reset_button(tmp_path):
 
     cb = FakeCallback(f"reg_prompt_edit:{STEP_KEY}")
     state = FakeState()
-    asyncio.run(admin_reg_config.reg_prompt_edit(cb, state))
+    asyncio.run(admin_reg_percity.reg_prompt_edit(cb, state))
 
     assert "как везде" in cb.message.text
     assert "стандартный (по умолчанию)" in cb.message.text
@@ -237,7 +237,7 @@ def test_reg_prompt_edit_city_unknown_step_refused(tmp_path):
 
     cb = FakeCallback("reg_prompt_edit:not_a_real_step")
     state = FakeState()
-    asyncio.run(admin_reg_config.reg_prompt_edit(cb, state))
+    asyncio.run(admin_reg_percity.reg_prompt_edit(cb, state))
 
     assert cb.message.edit_calls == 0
     assert state.data == {}
@@ -254,7 +254,7 @@ def test_reg_prompt_edit_party_city_key_splits_correctly(tmp_path):
 
     cb = FakeCallback(f"reg_prompt_edit:{STEP_KEY}:party")
     state = FakeState()
-    asyncio.run(admin_reg_config.reg_prompt_edit(cb, state))
+    asyncio.run(admin_reg_percity.reg_prompt_edit(cb, state))
 
     composed = state.data.get("setting_key")
     assert composed == "reg_prompt_expectations__party__city__spb"
@@ -270,12 +270,12 @@ def test_reg_prompt_edit_party_city_key_isolated_from_full_track(tmp_path):
 
     full_cb = FakeCallback(f"reg_prompt_edit:{STEP_KEY}")
     full_state = FakeState()
-    asyncio.run(admin_reg_config.reg_prompt_edit(full_cb, full_state))
+    asyncio.run(admin_reg_percity.reg_prompt_edit(full_cb, full_state))
     asyncio.run(admin_settings.settings_edit_value(FakeMsgIn("Общий per-city текст"), full_state))
 
     party_cb = FakeCallback(f"reg_prompt_edit:{STEP_KEY}:party")
     party_state = FakeState()
-    asyncio.run(admin_reg_config.reg_prompt_edit(party_cb, party_state))
+    asyncio.run(admin_reg_percity.reg_prompt_edit(party_cb, party_state))
     asyncio.run(admin_settings.settings_edit_value(FakeMsgIn("Party-текст города"), party_state))
 
     assert asyncio.run(db.get_setting(cities.per_city_key(BASE_KEY, "spb"))) == "Общий per-city текст"
@@ -294,7 +294,7 @@ def test_write_via_settings_edit_value_writes_city_key_not_global(tmp_path):
 
     cb = FakeCallback(f"reg_prompt_edit:{STEP_KEY}")
     state = FakeState()
-    asyncio.run(admin_reg_config.reg_prompt_edit(cb, state))
+    asyncio.run(admin_reg_percity.reg_prompt_edit(cb, state))
 
     asyncio.run(admin_settings.settings_edit_value(FakeMsgIn("Питерский текст"), state))
 
@@ -313,7 +313,7 @@ def test_dash_clears_city_key_leaves_global_untouched(tmp_path):
 
     cb = FakeCallback(f"reg_prompt_edit:{STEP_KEY}")
     state = FakeState()
-    asyncio.run(admin_reg_config.reg_prompt_edit(cb, state))
+    asyncio.run(admin_reg_percity.reg_prompt_edit(cb, state))
     asyncio.run(admin_settings.settings_edit_value(FakeMsgIn("-"), state))
 
     assert asyncio.run(db.get_setting(cities.per_city_key(BASE_KEY, "spb"))) is None
@@ -331,11 +331,11 @@ def test_reg_prompt_edit_bound_manager_refused_on_foreign_city(tmp_path, monkeyp
 
     async def _empty_visible(admin_id):
         return []
-    monkeypatch.setattr(admin_reg_config, "_per_city_visible_codes", _empty_visible)
+    monkeypatch.setattr(admin_reg_percity, "_per_city_visible_codes", _empty_visible)
 
     cb = FakeCallback(f"reg_prompt_edit:{STEP_KEY}", user_id=MANAGER_ID)
     state = FakeState()
-    asyncio.run(admin_reg_config.reg_prompt_edit(cb, state))
+    asyncio.run(admin_reg_percity.reg_prompt_edit(cb, state))
 
     assert cb.message.edit_calls == 0
     assert state.data == {}
@@ -349,7 +349,7 @@ def test_reg_prompt_rst_go_forged_foreign_city_refused_no_write(tmp_path):
     asyncio.run(db.set_setting(tyumen_key, "Тюменский текст"))
 
     cb = FakeCallback(f"reg_prompt_rst_go:tyumen:{STEP_KEY}", user_id=MANAGER_ID)
-    asyncio.run(admin_reg_config.reg_prompt_rst_go(cb))
+    asyncio.run(admin_reg_percity.reg_prompt_rst_go(cb))
 
     assert cb.message.edit_calls == 0
     assert asyncio.run(db.get_setting(tyumen_key)) == "Тюменский текст"  # untouched
@@ -362,7 +362,7 @@ def test_reg_prompt_edit_bound_manager_own_city_works(tmp_path):
 
     cb = FakeCallback(f"reg_prompt_edit:{STEP_KEY}", user_id=MANAGER_ID)
     state = FakeState()
-    asyncio.run(admin_reg_config.reg_prompt_edit(cb, state))
+    asyncio.run(admin_reg_percity.reg_prompt_edit(cb, state))
 
     assert state.data.get("setting_key") == cities.per_city_key(BASE_KEY, "spb")
 
@@ -378,7 +378,7 @@ def test_reg_prompt_rst_confirm_names_city_and_question(tmp_path):
     asyncio.run(db.set_setting(cities.per_city_key(BASE_KEY, "spb"), "Питерский текст"))
 
     cb = FakeCallback(f"reg_prompt_rst:{STEP_KEY}")
-    asyncio.run(admin_reg_config.reg_prompt_rst(cb))
+    asyncio.run(admin_reg_percity.reg_prompt_rst(cb))
 
     spb_label = asyncio.run(cities.city_label("spb"))
     assert spb_label in cb.message.text
@@ -395,7 +395,7 @@ def test_reg_prompt_rst_refuses_when_no_own_text(tmp_path):
     asyncio.run(cities.set_admin_city(ADMIN_ID, "spb"))
 
     cb = FakeCallback(f"reg_prompt_rst:{STEP_KEY}")
-    asyncio.run(admin_reg_config.reg_prompt_rst(cb))
+    asyncio.run(admin_reg_percity.reg_prompt_rst(cb))
 
     assert cb.message.edit_calls == 0
     assert cb.answers and cb.answers[-1][1] is True
@@ -409,12 +409,12 @@ def test_reg_prompt_rst_go_deletes_city_key_idempotent(tmp_path):
     asyncio.run(db.set_setting(composed, "Питерский текст"))
 
     cb = FakeCallback(f"reg_prompt_rst_go:spb:{STEP_KEY}")
-    asyncio.run(admin_reg_config.reg_prompt_rst_go(cb))
+    asyncio.run(admin_reg_percity.reg_prompt_rst_go(cb))
     assert asyncio.run(db.get_setting(composed)) is None
 
     # Second tap (idempotent, key already gone) must not raise.
     cb2 = FakeCallback(f"reg_prompt_rst_go:spb:{STEP_KEY}")
-    asyncio.run(admin_reg_config.reg_prompt_rst_go(cb2))
+    asyncio.run(admin_reg_percity.reg_prompt_rst_go(cb2))
     assert asyncio.run(db.get_setting(composed)) is None
 
 
@@ -428,7 +428,7 @@ def test_reg_prompt_rst_go_freshness_check_refuses_after_header_changed(tmp_path
     asyncio.run(cities.set_admin_city(ADMIN_ID, "msk"))  # header moved on before confirming
 
     cb = FakeCallback(f"reg_prompt_rst_go:spb:{STEP_KEY}")
-    asyncio.run(admin_reg_config.reg_prompt_rst_go(cb))
+    asyncio.run(admin_reg_percity.reg_prompt_rst_go(cb))
     assert cb.answers and cb.answers[0][0] == "Город админки изменился — подтвердите заново."
     assert asyncio.run(db.get_setting(composed)) == "Питерский текст"  # untouched
 
@@ -443,7 +443,7 @@ def test_reg_prompt_rst_go_party_track_isolated_from_full(tmp_path):
     asyncio.run(db.set_setting(party_key, "Party-текст города"))
 
     cb = FakeCallback(f"reg_prompt_rst_go:spb:{STEP_KEY}:party")
-    asyncio.run(admin_reg_config.reg_prompt_rst_go(cb))
+    asyncio.run(admin_reg_percity.reg_prompt_rst_go(cb))
 
     assert asyncio.run(db.get_setting(party_key)) is None
     assert asyncio.run(db.get_setting(full_key)) == "Общий per-city текст"  # different track, untouched
@@ -456,12 +456,12 @@ def test_reg_prompt_rst_go_party_track_isolated_from_full(tmp_path):
 def test_prompts_screen_module_off_admin_id_parity(tmp_path):
     _admin_ready(tmp_path)
     for track in ("full", "party"):
-        text_none = asyncio.run(admin_reg_config.render_prompts_text(track))
-        text_admin = asyncio.run(admin_reg_config.render_prompts_text(track, ADMIN_ID))
+        text_none = asyncio.run(admin_reg_percity.render_prompts_text(track))
+        text_admin = asyncio.run(admin_reg_percity.render_prompts_text(track, ADMIN_ID))
         assert text_admin == text_none, track
 
-        kb_none = asyncio.run(admin_reg_config.build_prompts_keyboard(track))
-        kb_admin = asyncio.run(admin_reg_config.build_prompts_keyboard(track, ADMIN_ID))
+        kb_none = asyncio.run(admin_reg_percity.build_prompts_keyboard(track))
+        kb_admin = asyncio.run(admin_reg_percity.build_prompts_keyboard(track, ADMIN_ID))
         assert _kb_callbacks(kb_admin) == _kb_callbacks(kb_none), track
         assert _kb_texts(kb_admin) == _kb_texts(kb_none), track
 
@@ -470,7 +470,7 @@ def test_reg_prompt_edit_module_off_writes_bare_global_key(tmp_path):
     _admin_ready(tmp_path)
     cb = FakeCallback(f"reg_prompt_edit:{STEP_KEY}")
     state = FakeState()
-    asyncio.run(admin_reg_config.reg_prompt_edit(cb, state))
+    asyncio.run(admin_reg_percity.reg_prompt_edit(cb, state))
 
     assert state.data.get("setting_key") == BASE_KEY  # bare key, no composite
 
@@ -481,7 +481,7 @@ def test_reg_prompt_edit_all_cities_header_writes_bare_global_key(tmp_path):
     asyncio.run(cities.set_admin_city(ADMIN_ID, cities.ALL_CITIES))
     cb = FakeCallback(f"reg_prompt_edit:{STEP_KEY}")
     state = FakeState()
-    asyncio.run(admin_reg_config.reg_prompt_edit(cb, state))
+    asyncio.run(admin_reg_percity.reg_prompt_edit(cb, state))
 
     assert state.data.get("setting_key") == BASE_KEY
 

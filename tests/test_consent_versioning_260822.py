@@ -14,7 +14,7 @@ from config import config
 from database import db
 from settings_schema import SETTINGS_SCHEMA, _parse_setting
 from services import consent as consent_svc
-from handlers import admin_settings, admin_reg_config, admin_consent, admin_moderation, reg_consent
+from handlers import admin_settings, admin_reg_config, admin_reg_percity, admin_consent, admin_moderation, reg_consent
 from handlers.admin_caps import required_capability
 
 ADMIN_ID = 900822
@@ -324,14 +324,14 @@ def test_reminder_on_resume_question_toggle(tmp_path, monkeypatch):
 
     async def _noop(*args, **kwargs):
         return None
-    monkeypatch.setattr(admin_reg_config, "_refresh_sheet_header", _noop)
+    monkeypatch.setattr(admin_reg_percity, "_refresh_sheet_header", _noop)
     asyncio.run(db.set_setting("reg_q_resume", "off"))
     cb = FakeCallback("reg_q_toggle:reg_q_resume")
-    asyncio.run(admin_reg_config.toggle_reg_question(cb))
+    asyncio.run(admin_reg_percity.toggle_reg_question(cb))
     assert asyncio.run(db.get_setting("reg_q_resume")) == "on"
     _assert_reminder(cb.message, "Nextcloud")
     cb = FakeCallback("reg_q_toggle:reg_q_city")
-    asyncio.run(admin_reg_config.toggle_reg_question(cb))
+    asyncio.run(admin_reg_percity.toggle_reg_question(cb))
     assert _reminders(cb.message) == []
 
 

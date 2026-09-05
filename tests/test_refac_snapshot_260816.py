@@ -294,6 +294,26 @@ def _build_snapshot_lines():
 # `show_admin_section` и `show_admin_cities` (первый хендлер следующего шва). Пересъёмка
 # `_build_snapshot_lines()` + diff с прежним 397-строчным подтвердили: чистая вставка трёх
 # строк, весь остальной порядок байт-в-байт тот же.
+#
+# Drift note (module-size split, 414 handlers unchanged -- REORDER, not insert/delete):
+# handlers/admin_reg_config.py (1451 lines, over tests/test_module_size_convention_260816.py's
+# DEFAULT_CEILING) was split. `show_reg_questions`/`toggle_reg_question`/`reg_q_track_switch`/
+# `toggle_party_question`/`toggle_short_question`/`reg_resume_mode_toggle`/`reg_q_reset_city`/
+# `reg_q_reset_city_go`/`reg_q_noop`/`reg_questions_back`/`admin_reg_prompts`/
+# `reg_prompt_track_switch`/`reg_prompt_edit`/`reg_prompt_rst`/`reg_prompt_rst_go` moved to the
+# new `handlers/admin_reg_percity.py` seam, which imports the three `_refresh_*_sheet_header`
+# helpers back from admin_reg_config.py at module level (that module loads FIRST in
+# handlers/admin.py's seam-import order) — so admin_reg_percity's own handlers now register
+# AFTER admin_reg_config's remaining `admin_event_preset`/`preset_apply`/`preset_confirm`/
+# `show_menu_buttons`/`toggle_menu_button`/`menu_buttons_back`/`menu_reset_city`/
+# `menu_reset_city_go` (previously interleaved: questions, then event-preset, then prompts,
+# then menu, in one file). All 15 moved handlers keep their OWN relative order (questions
+# block, then prompts block, unchanged internally) and every filter/name is byte-identical --
+# only the block-level position shifted. Re-captured by RUNNING `_build_snapshot_lines()`
+# against HEAD after the split and diffed against the prior 414-line snapshot: zero insertions/
+# deletions, one block relocated (confirmed by counting `reg_q`/`preset`/`menu_`/`reg_prompt`/
+# `reg_questions`/`admin_event_preset`/`admin_reg_prompts` occurrences before/after -- same 23
+# lines, same internal order within each of the two sub-blocks).
 GOLDEN_SNAPSHOT = """
 admin|message|cmd_admin_help|cmd:admin
 admin|message|cmd_coins|cmd:coins
@@ -488,6 +508,14 @@ admin|callback_query|filter_back|filter_back
 admin|callback_query|filter_count|filter_count
 admin|callback_query|filter_send_now|filter_send_now
 admin|callback_query|filter_schedule|filter_schedule
+admin|callback_query|admin_event_preset|admin_event_preset
+admin|callback_query|preset_apply|preset_apply:*
+admin|callback_query|preset_confirm|preset_confirm:*
+admin|callback_query|show_menu_buttons|admin_menu_buttons
+admin|callback_query|toggle_menu_button|menu_toggle:*
+admin|callback_query|menu_buttons_back|menu_back
+admin|callback_query|menu_reset_city|menu_reset_city
+admin|callback_query|menu_reset_city_go|menu_reset_city_go:*
 admin|callback_query|show_reg_questions|admin_reg_questions
 admin|callback_query|toggle_reg_question|reg_q_toggle:*
 admin|callback_query|reg_q_track_switch|reg_q_track:*
@@ -498,19 +526,11 @@ admin|callback_query|reg_q_reset_city|reg_q_reset_city
 admin|callback_query|reg_q_reset_city_go|reg_q_reset_city_go:*
 admin|callback_query|reg_q_noop|reg_q_noop
 admin|callback_query|reg_questions_back|reg_q_back
-admin|callback_query|admin_event_preset|admin_event_preset
-admin|callback_query|preset_apply|preset_apply:*
-admin|callback_query|preset_confirm|preset_confirm:*
 admin|callback_query|admin_reg_prompts|admin_reg_prompts
 admin|callback_query|reg_prompt_track_switch|reg_prompt_track:*
 admin|callback_query|reg_prompt_edit|reg_prompt_edit:*
 admin|callback_query|reg_prompt_rst|reg_prompt_rst:*
 admin|callback_query|reg_prompt_rst_go|reg_prompt_rst_go:*
-admin|callback_query|show_menu_buttons|admin_menu_buttons
-admin|callback_query|toggle_menu_button|menu_toggle:*
-admin|callback_query|menu_buttons_back|menu_back
-admin|callback_query|menu_reset_city|menu_reset_city
-admin|callback_query|menu_reset_city_go|menu_reset_city_go:*
 admin|callback_query|admin_questions|admin_questions
 admin|callback_query|aq_page|aq:*
 admin|callback_query|aq_answer_start|aq_answer:*
