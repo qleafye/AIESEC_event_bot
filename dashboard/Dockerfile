@@ -21,6 +21,11 @@ RUN groupadd --gid 1000 appuser \
 COPY --chown=appuser:appuser dashboard/ /app/dashboard/
 # Корневой модуль темы веб-слоя (19.1): чистый Python без зависимостей, общий с ботом и Mini App.
 COPY --chown=appuser:appuser web_theme.py /app/web_theme.py
+# Фаза 26-01 (RT-01): в образ едут ТОЛЬКО растры орнамента, ни одного `.py` Mini App —
+# раскладка каталогов в образе совпадает с репозиторием, поэтому `dashboard.main.PATTERN_DIR`
+# (`BASE_DIR.parent / "miniapp" / "static" / "pattern"`) резолвится одинаково и локально, и
+# в контейнере.
+COPY --chown=appuser:appuser miniapp/static/pattern/ /app/miniapp/static/pattern/
 RUN mkdir -p /app/data && chown appuser:appuser /app/data
 
 USER appuser
