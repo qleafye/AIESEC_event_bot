@@ -81,6 +81,27 @@ async def finalize_data(telegram_id: int, username: str | None, draft: dict) -> 
     mode = draft.get("kind") or "new"
     raw_answers = draft.get("answers") or {}
 
+    # Хотфикс 06.09 (с b460826 обёртка передаёт СЮДА реальный черновик `reg_drafts`, а не
+    # FSM-словарь): город и трек анкеты живут в КОЛОНКАХ черновика (`event_city`,
+    # `participant_type`), а признак «пришёл по деп-линку» (`source`/`referrer_id`) — в
+    # `draft["meta"]` (`handlers/registration.py::_start_registration_flow`, `meta_patch`).
+    # Ни то ни другое не попадает в `draft["answers"]` — до b460826 всё это лежало прямо в
+    # FSM `data`, которую обёртка и передавала сюда как "answers". Подмешиваем ПОД реальные
+    # ответы (те, что делегат заполнил сам, — например руками ответил на «Источник» — обязаны
+    # победить черновиковые/деп-линковые значения), иначе `event_city` уходит в users как NULL,
+    # а `with_defaults` подставляет «Самостоятельно» вместо настоящей метки кампании.
+    # Пседво-черновик (fallback из FSM, см. `finalize_registration`) этих ключей на верхнем
+    # уровне не имеет — `draft.get(...)` вернёт `None`, слияние станет no-op.
+    draft_level: dict = {}
+    for col in ("event_city", "participant_type"):
+        if draft.get(col):
+            draft_level[col] = draft[col]
+    meta = draft.get("meta") or {}
+    for key in ("source", "referrer_id"):
+        if meta.get(key) not in (None, ""):
+            draft_level[key] = meta[key]
+    raw_answers = {**draft_level, **raw_answers}
+
     changed_columns: list[str] = []
     remoderated = False
     resubmitted = False
