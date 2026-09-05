@@ -987,11 +987,39 @@ def _prompt_track_switcher_row(active: str) -> list[InlineKeyboardButton]:
     ]
 
 
-async def render_prompts_text(track: str = "full") -> str:
-    text = (
-        "✏️ <b>Тексты вопросов</b>\n\nВыбери вопрос и пришли свой текст. ✅ — текст переопределён, "
-        "✏️ — стандартный. Чтобы вернуть стандартный, отправь «-»."
-    )
+def _prompt_base_key(track: str, step_key: str) -> str:
+    """The plain (non-composite) `reg_prompt_*` key for one step at one track — the single
+    place deciding whether the `__party` track suffix sits between `reg_prompt_{step}` and
+    nothing else (Phase 25, CITYQ-05, mirrors `_question_override_key`'s track-suffix seam)."""
+    return f"reg_prompt_{step_key}__party" if track == "party" else f"reg_prompt_{step_key}"
+
+
+def _prompt_override_key(track: str, step_key: str, code: str) -> str | None:
+    """Composite per-city key for one prompt-text step at one track. Returns `None` when
+    `code` is not a real city code (`per_city_key`'s own contract)."""
+    return per_city_key(_prompt_base_key(track, step_key), code)
+
+
+async def render_prompts_text(track: str = "full", admin_id: int | None = None) -> str:
+    """Phase 25 (CITYQ-05, WR-05): resolves the header ITSELF, once — header = real city ->
+    title names the city, no city code anywhere. Header = None (module off / no admin_id
+    passed) / ALL_CITIES («все города») -> today's global screen, byte-identical (untouched
+    branch below)."""
+    header_code = await admin_selected_city(admin_id) if admin_id is not None else None
+    per_city_ctx = bool(header_code and header_code != ALL_CITIES)
+
+    if per_city_ctx:
+        city_txt = await city_label(header_code)
+        text = (
+            f"✏️ <b>Тексты вопросов — {html_module.escape(city_txt)}</b>\n\n"
+            "Выбери вопрос и пришли свой текст ИМЕННО для этого города. ✅ — у города свой "
+            "текст, ✏️ — как везде. Чтобы вернуть общий текст, отправь «-»."
+        )
+    else:
+        text = (
+            "✏️ <b>Тексты вопросов</b>\n\nВыбери вопрос и пришли свой текст. ✅ — текст переопределён, "
+            "✏️ — стандартный. Чтобы вернуть стандартный, отправь «-»."
+        )
     if track == "party":
         text += (
             "\n\n<i>Действуют в режиме 🎉 Party. ✏️ — берётся общий текст вопроса, "
@@ -1000,16 +1028,22 @@ async def render_prompts_text(track: str = "full") -> str:
     return text
 
 
-async def build_prompts_keyboard(track: str = "full"):
+async def build_prompts_keyboard(track: str = "full", admin_id: int | None = None):
+    """Same header-aware branch as `render_prompts_text` (WR-05: this function resolves the
+    header itself, ONCE). Callback data never carries the city code (T-25-14 lineage) — every
+    button keeps its EXISTING callback_data regardless of header, the edit handler re-reads
+    the header itself."""
+    header_code = await admin_selected_city(admin_id) if admin_id is not None else None
+    per_city_ctx = bool(header_code and header_code != ALL_CITIES)
+
     buttons = [_prompt_track_switcher_row(track)]
     for step_key, label in _prompt_steps():
-        if track == "party":
-            key = f"reg_prompt_{step_key}__party"
-            callback_data = f"reg_prompt_edit:{step_key}:party"
+        callback_data = f"reg_prompt_edit:{step_key}:party" if track == "party" else f"reg_prompt_edit:{step_key}"
+        if per_city_ctx:
+            override_key = _prompt_override_key(track, step_key, header_code)
+            custom = bool(override_key and await get_setting(override_key))
         else:
-            key = f"reg_prompt_{step_key}"
-            callback_data = f"reg_prompt_edit:{step_key}"
-        custom = await get_setting(key)
+            custom = await get_setting(_prompt_base_key(track, step_key))
         mark = "✅" if custom else "✏️"
         buttons.append([InlineKeyboardButton(text=f"{mark} {label}", callback_data=callback_data)])
     # Phase 20 (20-04): «Назад» ведёт в раздел-владелец этого экрана — «📝 Анкета».
@@ -1020,8 +1054,9 @@ async def build_prompts_keyboard(track: str = "full"):
 
 @router.callback_query(F.data == "admin_reg_prompts")
 async def admin_reg_prompts(callback: types.CallbackQuery):
-    text = await render_prompts_text("full")
-    await callback.message.edit_text(text, parse_mode="HTML", reply_markup=await build_prompts_keyboard("full"))
+    admin_id = callback.from_user.id
+    text = await render_prompts_text("full", admin_id)
+    await callback.message.edit_text(text, parse_mode="HTML", reply_markup=await build_prompts_keyboard("full", admin_id))
     await callback.answer()
 
 
@@ -1032,8 +1067,9 @@ async def reg_prompt_track_switch(callback: types.CallbackQuery):
     track = callback.data.split(":", 1)[1]
     if track not in ("full", "party"):
         track = "full"
-    text = await render_prompts_text(track)
-    await callback.message.edit_text(text, parse_mode="HTML", reply_markup=await build_prompts_keyboard(track))
+    admin_id = callback.from_user.id
+    text = await render_prompts_text(track, admin_id)
+    await callback.message.edit_text(text, parse_mode="HTML", reply_markup=await build_prompts_keyboard(track, admin_id))
     await callback.answer()
 
 
