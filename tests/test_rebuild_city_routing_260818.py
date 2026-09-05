@@ -10,6 +10,8 @@ users, incl. 12 spb + 11 tyumen). Contract:
 Handler called directly (established idiom, see test_rebuild_confirm_260813_sdl.py)."""
 import asyncio
 
+from config import config
+from database import db
 from handlers import admin as admin_mod
 from handlers import admin_settings  # Phase 13 (13-06): settings moved out of admin.py
 from tests.test_rebuild_confirm_260813_sdl import _FakeCallback, ADMIN_ID
@@ -110,3 +112,71 @@ def test_rebuild_refused_main_does_not_touch_city_tabs(monkeypatch):
     cb = _FakeCallback(ADMIN_ID)
     asyncio.run(admin_settings.rebuild_sheet(cb))
     assert named_calls == []  # main refused -> nothing else is wiped either
+
+
+# ── Phase 25 (CITYQ-03), Task 4: у СПб — свой набор колонок ─────────────────────────────────
+#
+# Unlike `_wire` above (headers/sheet_city_code/city_row_tab all mocked to isolate the routing
+# contract), this test exercises the REAL header/code resolvers against a real tmp DB — only
+# the Sheets I/O primitives (get_all_users_dicts/rebuild_main_sheet/sync_named_worksheet/
+# set_sheet_schema/admin_keyboard_for) are mocked. This is the only way to prove the column
+# SET (not just the row routing) actually differs per city.
+
+def test_rebuild_gives_spb_a_narrower_header_than_main_when_city_overrides_a_question_off(monkeypatch, tmp_path):
+    config.DB_PATH = str(tmp_path / "test_rebuild_percity25.db")
+    config.ADMIN_IDS = [ADMIN_ID]
+
+    async def prepare():
+        await db.init_db()
+        await db.set_setting("event_city_enabled", "on")
+        # global toggle ON so the difference is visible; СПб overrides it back OFF.
+        await db.set_setting("reg_q_formats", "on")
+        await db.set_setting("reg_q_formats__city__spb", "off")
+
+    asyncio.run(prepare())
+
+    users = [
+        {"telegram_id": 1, "event_city": "msk", "participant_type": "full", "formats": "Игры"},
+        {"telegram_id": 2, "event_city": "spb", "participant_type": "full", "formats": "Игры"},
+    ]
+
+    async def fake_users():
+        return users
+
+    main_calls: list[tuple] = []
+    named_calls: list[tuple] = []
+
+    async def fake_rebuild(headers, rows):
+        main_calls.append((headers, rows))
+        return len(rows)
+
+    async def fake_sync(title, headers, rows):
+        named_calls.append((title, headers, rows))
+        return len(rows)
+
+    async def fake_schema(headers, city_code=None):
+        return None
+
+    async def fake_kb(uid):
+        return None
+
+    monkeypatch.setattr(admin_settings, "get_all_users_dicts", fake_users)
+    monkeypatch.setattr(admin_settings, "rebuild_main_sheet", fake_rebuild)
+    monkeypatch.setattr(admin_settings, "sync_named_worksheet", fake_sync)
+    monkeypatch.setattr(admin_settings, "set_sheet_schema", fake_schema)
+    monkeypatch.setattr(admin_settings, "admin_keyboard_for", fake_kb)
+
+    cb = _FakeCallback(ADMIN_ID)
+    asyncio.run(admin_settings.rebuild_sheet(cb))
+
+    assert len(main_calls) == 1 and len(named_calls) == 1
+    main_headers, main_rows = main_calls[0]
+    tab, spb_headers, spb_rows = named_calls[0]
+    assert tab == "СПб"
+    assert "Форматы форума" in main_headers
+    assert "Форматы форума" not in spb_headers
+    # Ширина строки совпадает с шириной ЕЁ ЖЕ шапки, а не какой-то одной общей.
+    assert len(main_rows[0]) == len(main_headers)
+    assert len(spb_rows[0]) == len(spb_headers)
+    assert f"({len(main_headers)} кол.)" in cb.message.text
+    assert f"({len(spb_headers)} кол.)" in cb.message.text
