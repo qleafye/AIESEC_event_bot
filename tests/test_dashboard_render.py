@@ -401,6 +401,43 @@ def test_dashboard_footer_powered_by_aiesec_ru(tmp_path):
     assert "/static/brand/aiesec-human-blue.svg" in resp.text
 
 
+# ── Фаза 26-02 (RT-01/RT-05): логотип мероприятия в шапке и во вкладке браузера ──────────
+
+_EVENT_LOGO_FILE_ID = "AgACAgIAAxkBAAI" + "c" * 15  # 30 символов, проходит FILE_ID_RE
+
+
+def test_event_logo_absent_keeps_slot_empty(tmp_path):
+    db_path = _use_tmp_db(tmp_path)
+    client = _stats_manager_client(db_path)
+    resp = client.get("/")
+    assert resp.status_code == 200
+    text = resp.text
+    assert "/api/file/" not in text
+    assert '<link rel="icon" href="/static/brand/aiesec-human-blue.svg"' in text
+
+
+def test_event_logo_rendered_from_settings(tmp_path):
+    db_path = _use_tmp_db(tmp_path)
+    client = _stats_manager_client(
+        db_path,
+        extra_settings={"miniapp_logo": _EVENT_LOGO_FILE_ID, "event_name": "Демо Форум"},
+    )
+    resp = client.get("/")
+    assert resp.status_code == 200
+    text = resp.text
+    assert f'<img class="event-logo" src="/api/file/{_EVENT_LOGO_FILE_ID}" alt="Демо Форум">' in text
+    assert f'<link rel="icon" href="/api/file/{_EVENT_LOGO_FILE_ID}">' in text
+
+
+def test_event_logo_garbage_file_id_ignored(tmp_path):
+    db_path = _use_tmp_db(tmp_path)
+    client = _stats_manager_client(db_path, extra_settings={"miniapp_logo": "../../etc/passwd"})
+    resp = client.get("/")
+    assert resp.status_code == 200
+    assert "../../etc/passwd" not in resp.text
+    assert "/api/file/" not in resp.text
+
+
 _DIV_TAG_RE = re.compile(r"<(/?)div\b([^>]*)>")
 
 
