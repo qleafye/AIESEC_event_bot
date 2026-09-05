@@ -306,7 +306,11 @@ def test_incomplete_city_batches_null_event_city_goes_to_default_tab(tmp_path):
 
 
 def test_incomplete_city_batches_headers_shared_across_batches(tmp_path):
-    """headers computed exactly once per call (Google Sheets quota) — every batch shares it."""
+    """Phase 25 (CITYQ-03): headers are now computed PER CITY CODE (once per distinct code,
+    cached in headers_by_code — still one call per code, not per row/batch, T-25-10 quota),
+    not once for the whole call. With no per-city override in play, СПб's column set has the
+    SAME VALUES as the default (msk) tab's — but they are two distinct list objects (one per
+    code), not the same shared object like before this phase."""
     _use_tmp_db(tmp_path)
 
     async def go():
@@ -318,7 +322,7 @@ def test_incomplete_city_batches_headers_shared_across_batches(tmp_path):
         batches = await reg_mod.incomplete_city_batches()
         assert len(batches) == 2
         headers_list = [h for _t, h, _r in batches]
-        assert headers_list[0] is headers_list[1]
+        assert headers_list[0] == headers_list[1]
 
     asyncio.run(go())
 

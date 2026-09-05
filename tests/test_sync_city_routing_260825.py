@@ -146,8 +146,16 @@ def _wire(monkeypatch, route, existing_main=None, existing_named=None, append_na
         "append_named": [],
     }
 
-    async def fake_headers():
+    # Phase 25 (CITYQ-03): sync_sheet now resolves headers PER CODE via sheet_city_code
+    # (main tab = code None, each city tab = its own code) instead of one shared list — see
+    # the identical fixture note in tests/test_rebuild_city_routing_260818.py::_wire. Reusing
+    # `route`'s own city mapping here (participant_type is irrelevant to it) keeps this a fully
+    # mocked handler test — no real read of the dev sqlite file at data/forum.db.
+    async def fake_headers(city_code=None):
         return ["ID"]
+
+    async def fake_city_code(event_city):
+        return event_city if (await route(event_city, None)) is not None else None
 
     async def fake_users():
         return _users()
@@ -180,6 +188,7 @@ def _wire(monkeypatch, route, existing_main=None, existing_named=None, append_na
         return None
 
     monkeypatch.setattr(admin_settings, "active_sheet_headers", fake_headers)
+    monkeypatch.setattr(admin_settings, "sheet_city_code", fake_city_code)
     monkeypatch.setattr(admin_settings, "get_all_users_dicts", fake_users)
     monkeypatch.setattr(admin_settings, "ensure_sheet_header", fake_ensure_header)
     monkeypatch.setattr(admin_settings, "get_existing_sheet_ids", fake_existing_ids)
