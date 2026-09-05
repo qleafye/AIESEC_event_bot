@@ -201,6 +201,9 @@ def build_page_context(conn, cfg: DashboardConfig, scope: queries.Scope, viewer:
     utm_rows = (
         queries.utm_table(conn, scope) if flags.get("dashboard_block_utm") == "on" else None
     )
+    monthly_rows = (
+        queries.monthly_table(conn, scope) if flags.get("dashboard_block_months") == "on" else None
+    )
 
     city_options = queries.city_options(conn)
     bound_city_code = viewer.get("bound_city")
@@ -258,6 +261,11 @@ def build_page_context(conn, cfg: DashboardConfig, scope: queries.Scope, viewer:
         ),
         "utm": (
             {"rows": utm_rows, "has_data": bool(utm_rows)} if utm_rows is not None else None
+        ),
+        "months": (
+            {"rows": monthly_rows, "has_data": bool(monthly_rows)}
+            if monthly_rows is not None
+            else None
         ),
         "bot_username": cfg.bot_username,
         "game": game_stats,

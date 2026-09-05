@@ -237,6 +237,43 @@
   </section>
   {% endif %}
 
+  {# «По месяцам» (квик 260906-dmq) #}
+  {% if months %}
+  <section class="block">
+    <h2 class="block-title">По месяцам</h2>
+    <div class="card">
+      {% if months.has_data %}
+      <div class="table-wrap">
+      <table class="responsive">
+        <thead>
+          <tr>
+            <th>Месяц</th>
+            <th class="num">Заявок</th>
+            <th class="num">Одобрено</th>
+            <th>Топ-3 каналов</th>
+            <th>Топ-3 меток</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for row in months.rows %}
+          <tr>
+            <td data-label="Месяц">{{ row.month }}</td>
+            <td class="num" data-label="Заявок">{{ row.total | thousands }}</td>
+            <td class="num" data-label="Одобрено">{{ row.approved | thousands }}</td>
+            <td data-label="Топ-3 каналов">{% if row.top_sources %}{% for value, count in row.top_sources %}{{ value }} · {{ count | thousands }}{% if not loop.last %}, {% endif %}{% endfor %}{% else %}—{% endif %}</td>
+            <td data-label="Топ-3 меток">{% if row.top_tags %}{% for value, count in row.top_tags %}{{ value }} · {{ count | thousands }}{% if not loop.last %}, {% endif %}{% endfor %}{% else %}—{% endif %}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+      </div>
+      {% else %}
+      <p class="empty-note">Заявок пока нет — как только появятся, здесь будет разбивка по месяцам.</p>
+      {% endif %}
+    </div>
+  </section>
+  {% endif %}
+
   {# «Где бросают» (D-07) #}
   {% if dropout %}
   <section class="block">

@@ -40,6 +40,7 @@ _SETTING_DEFAULTS = {
     "dashboard_block_study_fields": "on",
     "dashboard_block_dropout": "on",
     "dashboard_block_utm": "on",
+    "dashboard_block_months": "on",
     "dashboard_block_game": "off",
     "payment_enabled": "off",
     "event_city_enabled": "off",
@@ -575,6 +576,90 @@ def utm_table(conn, scope: Scope) -> list[dict]:
         })
     result.sort(key=lambda row: (-row["completed"], -row["starts"], row["tag"]))
     return result[:_UTM_LIMIT]
+
+
+# ── по месяцам (квик 260906-dmq, задача 2) ────────────────────────────────────────────────
+
+# Подписи месяцев собираются в Python из этого кортежа, а НЕ через `locale` -- он не
+# гарантирован в slim-образе дашборда (модульный докстринг файла).
+_MONTH_NAMES = (
+    "Январь", "Февраль", "Март", "Апрель", "Май", "Июнь",
+    "Июль", "Август", "Сентябрь", "Октябрь", "Ноябрь", "Декабрь",
+)
+
+_MONTHLY_LIMIT = 12
+_MONTHLY_TOP_LIMIT = 3
+
+
+def _month_label(ym: str) -> str:
+    """`"2026-09"` -> `"Сентябрь 2026"`. Битый `ym` (не парсится в год-месяц) отдаётся как
+    есть -- тот же fail-soft, что и в `_fill_missing_days`: одна кривая строка не должна
+    ронять всю страницу."""
+    try:
+        year_str, month_str = ym.split("-")
+        month_idx = int(month_str)
+        if not (1 <= month_idx <= 12):
+            raise ValueError(month_idx)
+    except (ValueError, AttributeError):
+        return ym
+    return f"{_MONTH_NAMES[month_idx - 1]} {year_str}"
+
+
+def monthly_table(conn, scope: Scope) -> list[dict]:
+    """Заявки и одобренные помесячно + топ-3 каналов и топ-3 меток внутри месяца.
+
+    Месяц определяется по `users.registration_date` (`substr(…, 1, 7)`), а НЕ по
+    `reg_events.ts` -- иначе в одной строке смешались бы два разных определения месяца
+    (заявка попадает в разбивку по дате регистрации, а не по дате первого события).
+    `top_tags` поэтому тоже считается по `users.source` (тем же предикатом
+    `_UTM_TAG_PREDICATE`, что и `utm_table`), а не по `reg_events.source_tag`.
+
+    Не более `_MONTHLY_LIMIT` месяцев, свежий месяц первым (`ORDER BY ym DESC`). Заявки с
+    пустым/`NULL` `registration_date` строк не создают вовсе (тот же фильтр, что у
+    `daily_registrations`); заявка с непустым, но кривым `registration_date` строку создаёт --
+    подпись месяца в этом случае просто не парсится и отдаётся как есть (`_month_label`),
+    страница не падает. `top_sources`/`top_tags` -- списки пар (значение, число), не более
+    трёх, по убыванию числа; мусорные значения (`NULL`/пустая строка/`-`) исключены тем же
+    правилом, что `breakdown()`. Пусто на пустой БД -- пустой список.
+    """
+    parts, params = _scope_sql(conn, scope)
+    date_parts = parts + ["registration_date IS NOT NULL", "TRIM(registration_date) != ''"]
+    rows = conn.execute(
+        "SELECT substr(registration_date, 1, 7) AS ym, COUNT(*) AS total, "
+        "SUM(CASE WHEN status = 'approved' THEN 1 ELSE 0 END) AS approved FROM users"
+        f"{_where(date_parts)} GROUP BY ym ORDER BY ym DESC LIMIT ?",
+        params + (_MONTHLY_LIMIT,),
+    ).fetchall()
+
+    result: list[dict] = []
+    for row in rows:
+        ym = row["ym"]
+        month_parts = date_parts + ["substr(registration_date, 1, 7) = ?"]
+        month_params = params + (ym,)
+
+        source_parts = month_parts + ["source IS NOT NULL", "TRIM(source) != ''", "source != '-'"]
+        source_rows = conn.execute(
+            f"SELECT source AS value, COUNT(*) AS cnt FROM users{_where(source_parts)} "
+            "GROUP BY source ORDER BY cnt DESC, source ASC LIMIT ?",
+            month_params + (_MONTHLY_TOP_LIMIT,),
+        ).fetchall()
+
+        tag_parts = month_parts + _UTM_TAG_PREDICATE
+        tag_rows = conn.execute(
+            f"SELECT source AS value, COUNT(*) AS cnt FROM users{_where(tag_parts)} "
+            "GROUP BY source ORDER BY cnt DESC, source ASC LIMIT ?",
+            month_params + (_MONTHLY_TOP_LIMIT,),
+        ).fetchall()
+
+        result.append({
+            "month": _month_label(ym),
+            "month_key": ym,
+            "total": row["total"],
+            "approved": row["approved"] or 0,
+            "top_sources": [(r["value"], r["cnt"]) for r in source_rows],
+            "top_tags": [(r["value"], r["cnt"]) for r in tag_rows],
+        })
+    return result
 
 
 # ── гейма (D-12) ─────────────────────────────────────────────────────────────────────────

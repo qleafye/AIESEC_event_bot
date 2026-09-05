@@ -1,9 +1,9 @@
-"""Phase 15 (15-02, D-19): экран «⚙️ Настройки → 📊 Дашборд» — девять чекбоксов блоков.
+"""Phase 15 (15-02, D-19): экран «⚙️ Настройки → 📊 Дашборд» — десять чекбоксов блоков.
 
 pytest-asyncio недоступен в этом окружении (см. tests/test_db_phase5.py) — каждый async
 хелпер гоняется через asyncio.run(), config.DB_PATH указывает на файл в tmp_path.
 
-Task 1: реестр — девять ключей dashboard_block_* в SETTINGS_SCHEMA, вне SETTINGS_FIELDS,
+Task 1: реестр — десять ключей dashboard_block_* в SETTINGS_SCHEMA, вне SETTINGS_FIELDS,
 дефолты читаются через get_setting_typed на пустой БД.
 
 Task 2: экран handlers/admin_dashboard.py — рендер, тумблер по одному ключу, права в
@@ -36,13 +36,14 @@ DASHBOARD_KEYS_EXPECTED = [
     "dashboard_block_study_fields",
     "dashboard_block_dropout",
     "dashboard_block_utm",
+    "dashboard_block_months",
     "dashboard_block_game",
 ]
 
 
 # ── Task 1: реестр ───────────────────────────────────────────────────────────────────────
 
-def test_exactly_nine_dashboard_block_keys():
+def test_exactly_ten_dashboard_block_keys():
     keys = [k for k in SETTINGS_SCHEMA if k.startswith("dashboard_block_")]
     assert sorted(keys) == sorted(DASHBOARD_KEYS_EXPECTED)
 
