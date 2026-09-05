@@ -80,11 +80,18 @@ async def _seed_async(
                 (telegram_id, role, ADMIN_ID, "2026-01-01 00:00:00", city),
             )
         for row in reg_events or []:
-            await conn.execute(
-                "INSERT INTO reg_events (telegram_id, event, event_city, season, ts) "
-                "VALUES (?, ?, ?, ?, ?)",
-                row,
-            )
+            if isinstance(row, dict):
+                cols = ", ".join(row.keys())
+                placeholders = ", ".join("?" for _ in row)
+                await conn.execute(
+                    f"INSERT INTO reg_events ({cols}) VALUES ({placeholders})", tuple(row.values())
+                )
+            else:
+                await conn.execute(
+                    "INSERT INTO reg_events (telegram_id, event, event_city, season, ts) "
+                    "VALUES (?, ?, ?, ?, ?)",
+                    row,
+                )
         for row in reg_started or []:
             cols = ", ".join(row.keys())
             placeholders = ", ".join("?" for _ in row)
@@ -451,6 +458,7 @@ def test_daily_chart_data_attributes_are_parseable_json(tmp_path):
         ("dashboard_block_courses", '<h3 class="cut-title">Курс</h3>'),
         ("dashboard_block_study_fields", '<h3 class="cut-title">Направление обучения</h3>'),
         ("dashboard_block_dropout", "Где бросают"),
+        ("dashboard_block_utm", "Метки кампаний"),
         ("dashboard_block_game", "Геймификация"),
     ],
 )
@@ -470,6 +478,48 @@ def test_payment_disabled_removes_payment_stage_and_tariff_cut(tmp_path):
     resp = client.get("/")
     assert "Оплатили" not in resp.text
     assert "Тариф" not in resp.text
+
+
+# ── «Метки кампаний» / UTM (квик 260905-qqg) ─────────────────────────────────────────────
+
+def test_utm_block_with_data_shows_tag_and_numbers(tmp_path):
+    db_path = _use_tmp_db(tmp_path)
+    _seed(
+        settings={"dashboard_block_utm": "on"},
+        users=[
+            {"telegram_id": 1, "source": "vk_post_1", "status": "approved",
+             "registration_date": "2026-08-01 10:02:00"},
+        ],
+        reg_events=[
+            {
+                "telegram_id": 1, "event": "start", "event_city": None, "season": None,
+                "ts": "2026-08-01 10:00:00", "source_tag": "vk_post_1",
+            },
+            {
+                "telegram_id": 1, "event": "form_started", "event_city": None, "season": None,
+                "ts": "2026-08-01 10:01:00", "source_tag": "vk_post_1",
+            },
+        ],
+    )
+    client = _stats_manager_client(db_path)
+    resp = client.get("/")
+    assert resp.status_code == 200
+    text = resp.text
+    assert "Метки кампаний" in text
+    assert "vk_post_1" in text
+    assert "100.0%" in text
+
+
+def test_utm_block_enabled_empty_shows_hint_with_bot_username(tmp_path):
+    db_path = _use_tmp_db(tmp_path)
+    _seed(settings={"dashboard_block_utm": "on"})
+    client = _stats_manager_client(db_path)
+    resp = client.get("/")
+    assert resp.status_code == 200
+    text = resp.text
+    assert "Метки кампаний" in text
+    assert "Меток пока нет" in text
+    assert "t.me/YouLead_test_bot?start=src_" in text
 
 
 # ── воронка: база = первая ненулевая ступень + подпись (квик 260905-iyw) ─────────────────

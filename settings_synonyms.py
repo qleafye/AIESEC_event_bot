@@ -249,6 +249,7 @@ SETTINGS_SYNONYMS: dict[str, list[str]] = {
     "dashboard_block_courses": ["курсы дашборд", "по курсам"],
     "dashboard_block_study_fields": ["направления дашборд", "специальности блок"],
     "dashboard_block_dropout": ["отвал", "где бросают анкету"],
+    "dashboard_block_utm": ["utm", "метки кампаний", "источники ссылок"],
     "dashboard_block_game": ["гейма дашборд", "геймификация блок"],
 
     # ── «🎮 Геймификация» — game ──────────────────────────────────────────────────────────

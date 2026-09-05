@@ -170,6 +170,9 @@ def build_page_context(conn, cfg: DashboardConfig, scope: queries.Scope, viewer:
     dropout_rows = (
         queries.dropout_steps(conn, scope) if flags.get("dashboard_block_dropout") == "on" else None
     )
+    utm_rows = (
+        queries.utm_table(conn, scope) if flags.get("dashboard_block_utm") == "on" else None
+    )
 
     city_options = queries.city_options(conn)
     bound_city_code = viewer.get("bound_city")
@@ -224,6 +227,10 @@ def build_page_context(conn, cfg: DashboardConfig, scope: queries.Scope, viewer:
             if dropout_rows is not None
             else None
         ),
+        "utm": (
+            {"rows": utm_rows, "has_data": bool(utm_rows)} if utm_rows is not None else None
+        ),
+        "bot_username": cfg.bot_username,
         "game": game_stats,
     }
 

@@ -33,6 +33,7 @@ from dashboard.queries import (
     game_block,
     kpi_row,
     season_options,
+    utm_table,
 )
 
 DASHBOARD_QUERIES_FILE = Path(__file__).resolve().parent.parent / "dashboard" / "queries.py"
@@ -69,11 +70,18 @@ async def _seed_async(
                 f"INSERT INTO users ({cols}) VALUES ({placeholders})", tuple(row.values())
             )
         for row in reg_events or []:
-            await conn.execute(
-                "INSERT INTO reg_events (telegram_id, event, event_city, season, ts) "
-                "VALUES (?, ?, ?, ?, ?)",
-                row,
-            )
+            if isinstance(row, dict):
+                cols = ", ".join(row.keys())
+                placeholders = ", ".join("?" for _ in row)
+                await conn.execute(
+                    f"INSERT INTO reg_events ({cols}) VALUES ({placeholders})", tuple(row.values())
+                )
+            else:
+                await conn.execute(
+                    "INSERT INTO reg_events (telegram_id, event, event_city, season, ts) "
+                    "VALUES (?, ?, ?, ?, ?)",
+                    row,
+                )
         for row in reg_started or []:
             cols = ", ".join(row.keys())
             placeholders = ", ".join("?" for _ in row)
@@ -492,6 +500,116 @@ def test_city_comparison_one_row_per_city_null_folds_into_default(tmp_path):
     assert rows["msk"]["pending"] == 1
     assert rows["spb"]["total"] == 1
     assert rows["spb"]["approved"] == 1
+
+
+# ── utm_table (квик 260905-qqg) ──────────────────────────────────────────────────────────
+
+def _tag_event(telegram_id, event, ts, source_tag, event_city=None, season=None):
+    return {
+        "telegram_id": telegram_id, "event": event, "event_city": event_city,
+        "season": season, "ts": ts, "source_tag": source_tag,
+    }
+
+
+def test_utm_table_counts_per_tag_with_conversion(tmp_path):
+    path = _use_tmp_db(tmp_path)
+    _seed(
+        reg_events=[
+            _tag_event(1, "start", "2026-08-01 10:00:00", "vk_post_1"),
+            _tag_event(1, "form_started", "2026-08-01 10:01:00", "vk_post_1"),
+        ],
+        users=[
+            {"telegram_id": 1, "source": "vk_post_1", "status": "approved",
+             "registration_date": "2026-08-01 10:02:00"},
+        ],
+    )
+    with dash_db.read_conn(path) as conn:
+        rows = {row["tag"]: row for row in utm_table(conn, Scope())}
+    row = rows["vk_post_1"]
+    assert row["starts"] == 1
+    assert row["form_started"] == 1
+    assert row["completed"] == 1
+    assert row["approved"] == 1
+    assert row["conversion"] == 100.0
+
+
+def test_utm_table_repeat_start_is_deduped_by_telegram_id(tmp_path):
+    path = _use_tmp_db(tmp_path)
+    _seed(reg_events=[
+        _tag_event(1, "start", "2026-08-01 10:00:00", "vk_post_1"),
+        _tag_event(1, "start", "2026-08-01 10:05:00", "vk_post_1"),  # повторный /start
+    ])
+    with dash_db.read_conn(path) as conn:
+        rows = {row["tag"]: row for row in utm_table(conn, Scope())}
+    assert rows["vk_post_1"]["starts"] == 1
+
+
+def test_utm_table_narrowed_by_city_scope(tmp_path):
+    path = _use_tmp_db(tmp_path)
+    _seed(
+        cities=[("msk", "Москва", 1, 0), ("spb", "СПб", 1, 1)],
+        settings={"event_city_enabled": "on"},
+        reg_events=[
+            _tag_event(1, "start", "2026-08-01 10:00:00", "vk_post_1", event_city="spb"),
+            _tag_event(2, "start", "2026-08-01 10:00:00", "vk_post_1", event_city="msk"),
+        ],
+    )
+    with dash_db.read_conn(path) as conn:
+        spb_rows = {row["tag"]: row for row in utm_table(conn, Scope(city="spb"))}
+        msk_rows = {row["tag"]: row for row in utm_table(conn, Scope(city="msk"))}
+    assert spb_rows["vk_post_1"]["starts"] == 1
+    assert msk_rows["vk_post_1"]["starts"] == 1
+
+
+def test_utm_table_sorted_by_starts_desc_then_tag_asc_and_limited(tmp_path):
+    path = _use_tmp_db(tmp_path)
+    reg_events = [_tag_event(1, "start", "2026-08-01 10:00:00", "b_tag")]
+    reg_events += [
+        _tag_event(100 + i, "start", "2026-08-01 10:00:00", "a_tag") for i in range(2)
+    ]
+    reg_events += [_tag_event(200, "start", "2026-08-01 10:00:00", "c_tag")]
+    _seed(reg_events=reg_events)
+    with dash_db.read_conn(path) as conn:
+        rows = utm_table(conn, Scope())
+    tags = [row["tag"] for row in rows]
+    assert tags == ["a_tag", "b_tag", "c_tag"]  # a_tag (2 starts) выше, дальше по алфавиту
+
+
+def test_utm_table_conversion_none_when_starts_zero(tmp_path):
+    path = _use_tmp_db(tmp_path)
+    # source_tag есть только на form_started -- событие start с этой меткой отсутствует.
+    _seed(reg_events=[_tag_event(1, "form_started", "2026-08-01 10:00:00", "orphan_tag")])
+    with dash_db.read_conn(path) as conn:
+        rows = {row["tag"]: row for row in utm_table(conn, Scope())}
+    assert rows["orphan_tag"]["starts"] == 0
+    assert rows["orphan_tag"]["conversion"] is None
+
+
+def test_utm_table_completed_cut_by_tracking_since(tmp_path):
+    path = _use_tmp_db(tmp_path)
+    _seed(
+        reg_events=[_tag_event(2, "start", "2026-08-30 23:25:00", "vk_post_1")],
+        users=[
+            {"telegram_id": 1, "source": "vk_post_1", "status": "approved",
+             "registration_date": "2026-01-01 09:00:00"},  # до начала трекинга
+            {"telegram_id": 2, "source": "vk_post_1", "status": "approved",
+             "registration_date": "2026-09-01 09:00:00"},  # после начала трекинга
+        ],
+    )
+    with dash_db.read_conn(path) as conn:
+        rows = {row["tag"]: row for row in utm_table(conn, Scope())}
+    assert rows["vk_post_1"]["completed"] == 1  # только поздняя заявка
+
+
+def test_utm_table_ignores_empty_or_null_source_tag(tmp_path):
+    path = _use_tmp_db(tmp_path)
+    _seed(reg_events=[
+        _tag_event(1, "start", "2026-08-01 10:00:00", None),
+        _tag_event(2, "start", "2026-08-01 10:00:00", ""),
+    ])
+    with dash_db.read_conn(path) as conn:
+        rows = utm_table(conn, Scope())
+    assert rows == []
 
 
 # ── game_block (D-12) ────────────────────────────────────────────────────────────────────
