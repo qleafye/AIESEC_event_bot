@@ -355,6 +355,143 @@ def test_backfill_reg_event_city_noop_on_falsy_city(tmp_path):
     assert asyncio.run(_city()) is None
 
 
+# ── Квик 260905-qqg: метка кампании (`source_tag`) в событиях `start`/`form_started` ─────
+
+def test_start_hook_with_src_deep_link_writes_source_tag(tmp_path):
+    from handlers import registration as reg_mod
+
+    _use_tmp_db(tmp_path)
+    asyncio.run(db.init_db())
+
+    uid = 555006
+    msg = _FakeMessage(uid, "tester6")
+    state = _new_state(uid)
+    asyncio.run(reg_mod.cmd_start(msg, state, bot=object(), command=_FakeCommand("src_vk_post_1")))
+
+    async def _tag():
+        async with db._connect() as conn:
+            async with conn.execute(
+                "SELECT source_tag FROM reg_events WHERE telegram_id = ? AND event = 'start'",
+                (uid,),
+            ) as cursor:
+                row = await cursor.fetchone()
+                return row[0] if row else None
+
+    assert asyncio.run(_tag()) == "vk_post_1"
+
+
+def test_start_hook_without_args_leaves_source_tag_null(tmp_path):
+    from handlers import registration as reg_mod
+
+    _use_tmp_db(tmp_path)
+    asyncio.run(db.init_db())
+
+    uid = 555007
+    msg = _FakeMessage(uid, "tester7")
+    state = _new_state(uid)
+    asyncio.run(reg_mod.cmd_start(msg, state, bot=object(), command=None))
+
+    async def _tag():
+        async with db._connect() as conn:
+            async with conn.execute(
+                "SELECT source_tag FROM reg_events WHERE telegram_id = ? AND event = 'start'",
+                (uid,),
+            ) as cursor:
+                row = await cursor.fetchone()
+                return row[0] if row else None
+
+    assert asyncio.run(_tag()) is None
+
+
+def test_start_hook_with_city_deep_link_leaves_source_tag_null(tmp_path):
+    from handlers import registration as reg_mod
+
+    _use_tmp_db(tmp_path)
+    asyncio.run(db.init_db())
+
+    uid = 555008
+    msg = _FakeMessage(uid, "tester8")
+    state = _new_state(uid)
+    asyncio.run(reg_mod.cmd_start(msg, state, bot=object(), command=_FakeCommand("city_spb")))
+
+    async def _tag():
+        async with db._connect() as conn:
+            async with conn.execute(
+                "SELECT source_tag FROM reg_events WHERE telegram_id = ? AND event = 'start'",
+                (uid,),
+            ) as cursor:
+                row = await cursor.fetchone()
+                return row[0] if row else None
+
+    assert asyncio.run(_tag()) is None
+
+
+def test_form_started_flow_writes_source_tag_from_deep_link(tmp_path):
+    from handlers import registration as reg_mod
+
+    _use_tmp_db(tmp_path)
+    asyncio.run(db.init_db())
+
+    uid = 555009
+    msg = _FakeMessage(uid, "tester9")
+    state = _new_state(uid)
+    asyncio.run(reg_mod._start_registration_flow(msg, state, source_tag="vk_post_1"))
+
+    async def _tag():
+        async with db._connect() as conn:
+            async with conn.execute(
+                "SELECT source_tag FROM reg_events WHERE telegram_id = ? AND event = 'form_started'",
+                (uid,),
+            ) as cursor:
+                row = await cursor.fetchone()
+                return row[0] if row else None
+
+    assert asyncio.run(_tag()) == "vk_post_1"
+
+
+def test_form_started_flow_manual_source_answer_is_not_a_tag(tmp_path):
+    from handlers import registration as reg_mod
+
+    _use_tmp_db(tmp_path)
+    asyncio.run(db.init_db())
+
+    uid = 555010
+    msg = _FakeMessage(uid, "tester10")
+    state = _new_state(uid)
+    # Delegate answered the «Источник» question by hand — no deep-link tag involved.
+    asyncio.run(state.update_data(source="ВК"))
+    asyncio.run(reg_mod._start_registration_flow(msg, state))
+
+    async def _tag():
+        async with db._connect() as conn:
+            async with conn.execute(
+                "SELECT source_tag FROM reg_events WHERE telegram_id = ? AND event = 'form_started'",
+                (uid,),
+            ) as cursor:
+                row = await cursor.fetchone()
+                return row[0] if row else None
+
+    assert asyncio.run(_tag()) is None
+
+
+def test_init_db_rerun_keeps_old_reg_events_rows_with_null_source_tag(tmp_path):
+    _use_tmp_db(tmp_path)
+    asyncio.run(db.init_db())
+    asyncio.run(db.record_reg_event(1, "start"))
+
+    asyncio.run(db.init_db())  # re-run migration on a DB with pre-existing rows
+
+    async def _row():
+        async with db._connect() as conn:
+            async with conn.execute(
+                "SELECT telegram_id, source_tag FROM reg_events WHERE telegram_id = 1"
+            ) as cursor:
+                return await cursor.fetchone()
+
+    row = asyncio.run(_row())
+    assert row == (1, None)
+
+
 def test_form_started_backfills_city_onto_earlier_null_start_row(tmp_path):
     from handlers import registration as reg_mod
 
