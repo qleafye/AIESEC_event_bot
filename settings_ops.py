@@ -343,12 +343,21 @@ def reg_question_track_base(key: str) -> str | None:
 # `split_per_city_key`'s проверку кода города и потому недостижим намеренно). Функция чистая
 # (без I/O) — используется `miniapp/routers/settings.py::_editable_target`, чтобы такой
 # составной ключ не отдавал 403 «not_editable» веб-клиенту Mini App.
+#
+# ВАЖНО (fix после 65255e9): эта функция распознаёт ТОЛЬКО композит трек×город — то есть
+# требует трекового суффикса ПОД городским. Обычный per-city композит без трека
+# (`{base}__city__{code}` над ключом реестра с `per_city: True`, например `start_text__city__
+# msk` или `reg_q_1__city__msk`) сюда НЕ входит и обязан возвращать `None`: такой ключ уже
+# правильно резолвится через `base_setting_key` + `editable_keys()`/`per_city` fallthrough в
+# `_editable_target`, а если бы эта функция перехватывала и его тоже, `_editable_target` вернул
+# бы композит целиком вместо базы — и `_item_for(base, ctx)` ниже по стеку падал бы с
+# `KeyError` на `SETTINGS_SCHEMA[композит]` (миниапп/routers/settings.py::_item_for).
 
 def reg_setting_city_track_base(key: str) -> str | None:
-    """Базовый ключ реестра, если `key` — валидный композит трек×город: (а) трек-композит
-    вопроса анкеты (`reg_question_track_base`, группа `reg_questions`) с городским суффиксом
-    поверх, либо (б) сам ключ реестра с `per_city: True`, скомпонованный с городом без трека.
-    Иначе `None` — в том числе если код города после `__city__` невалиден
+    """Базовый ключ `reg_q_*`, если `key` — валидный композит трек×город (трек-композит
+    вопроса анкеты, `reg_question_track_base`, с городским суффиксом поверх). `None` для
+    любого другого случая, в том числе для обычного per-city композита без трека (тот не
+    наш случай — см. предупреждение выше) и при невалидном коде города после `__city__`
     (`split_per_city_key` уже это проверяет)."""
     if PER_CITY_SEP not in key:
         return None
@@ -356,13 +365,7 @@ def reg_setting_city_track_base(key: str) -> str | None:
     if parsed is None:
         return None
     base, _code = parsed
-    track_base = reg_question_track_base(base)
-    if track_base is not None:
-        return track_base
-    meta = SETTINGS_SCHEMA.get(base)
-    if meta and meta.get("per_city"):
-        return base
-    return None
+    return reg_question_track_base(base)
 
 
 def dangerous_confirm_key(key: str, next_value: str) -> str | None:
