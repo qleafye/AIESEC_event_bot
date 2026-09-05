@@ -55,6 +55,12 @@ def main() -> int:
     while True:
         try:
             active = _recent_activity(args.db, args.quiet)
+        except sqlite3.OperationalError as e:
+            if "no such table" in str(e):
+                print("Таблицы черновиков ещё нет (старая схема) — защищать нечего, можно рестартовать.")
+                return 0
+            print(f"БД недоступна: {e}", file=sys.stderr)
+            return 1
         except sqlite3.Error as e:
             print(f"БД недоступна: {e}", file=sys.stderr)
             return 1
