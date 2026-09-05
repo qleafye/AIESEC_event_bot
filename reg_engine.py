@@ -825,24 +825,36 @@ _OTHER_ALLOWED_STEPS = {"city", "study_field", "local_committee", "position", "d
 async def step_spec(step_key: str, participant_type: str | None = None,
                      event_city: str | None = None) -> dict:
     """Спека одного шага по контракту UI-SPEC — бот берёт из неё текст/варианты по отдельности
-    (`prompt()`/`options()`), Mini App (план 21-04a/b) — эту функцию целиком. `event_city`
-    принят для единообразия с будущими per-city полями формы; сегодня спека от него не зависит."""
+    (`prompt()`/`options()`), Mini App (план 21-04a/b) — эту функцию целиком.
+
+    Phase 25 (CITYQ-02): `event_city` теперь используется — `prompt`/`help_text` резолвятся по
+    городу делегата, а шаг `resume` в режиме `reg_resume_mode(event_city) == "text_only"`
+    рисуется текстовым полем вместо дропзоны (`_UI_TYPE_OVERRIDES` не трогается — оверрайд
+    режима резюме считается здесь, где уже известен город). Для всех прочих шагов вывод не
+    меняется."""
     step_type = REG_STEP_TYPES.get(step_key, "text")
     ui_type = _ui_type_for(step_key, step_type)
     label = label_for(step_key)
+    resume_mode_value = None
+    if step_key == "resume":
+        resume_mode_value = await resume_mode(event_city)
+        if resume_mode_value == "text_only":
+            ui_type = "textarea"
     spec = {
         "key": step_key,
         "column": STEP_TO_COLUMN.get(step_key, step_key),
         "type": ui_type,
         "label": label,
-        "prompt": await prompt(step_key, participant_type),
-        "help": await help_text(step_key, participant_type),
+        "prompt": await prompt(step_key, participant_type, event_city),
+        "help": await help_text(step_key, participant_type, event_city),
         "options": None,
         "other_allowed": step_key in _OTHER_ALLOWED_STEPS,
         "skip_allowed": step_key in _SKIP_ALLOWED_STEPS,
         "required": step_key not in _SKIP_ALLOWED_STEPS,
         "max_len": _max_len_for(step_key, ui_type),
     }
+    if step_key == "resume":
+        spec["resume_mode"] = resume_mode_value
     if ui_type in ("choice-chips", "select", "multi", "yesno"):
         spec["options"] = await options(step_key)
     return spec
@@ -886,7 +898,10 @@ async def form_spec(answers: dict, participant_type: str | None = None,
     # перевело бы делегатов, начавших полную анкету, на короткую в середине заполнения.
     raw_track = participant_type or answers.get("participant_type")
     track = raw_track or await resolve_track(None, event_city)
-    enabled = await enabled_steps({**answers, "participant_type": track})
+    # Phase 25 (CITYQ-02): город делегата в набор шагов — без этого веб-форма считала набор
+    # глобально даже для делегата города с выключенными вопросами (enabled_steps сама умеет
+    # брать event_city из data, но form_spec раньше его не передавал).
+    enabled = await enabled_steps({**answers, "participant_type": track, "event_city": event_city})
     steps_out = []
     done = 0
     for step_key in enabled:
