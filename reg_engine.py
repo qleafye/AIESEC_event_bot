@@ -24,8 +24,8 @@ from config import config
 from database.db import get_setting
 from settings_schema import SETTINGS_SCHEMA, get_setting_typed
 from cities import (
-    cities_module_on, city_codes, city_label, enabled_cities, get_setting_typed_for_city,
-    is_city_enabled,
+    ALL_CITIES, cities_module_on, city_codes, city_label, enabled_cities,
+    get_setting_typed_for_city, is_city_enabled, normalize_city, per_city_key,
 )
 from reg_labels import REG_LABELS
 import reg_options as _opts
@@ -268,7 +268,28 @@ async def options(step_key: str) -> list[str]:
 
 # ── Гейт «включён ли шаг для трека» + список включённых шагов ──────────────────────────────
 
-async def is_step_enabled_for_track(setting_key: str, participant_type: str | None) -> bool:
+async def _city_override(setting_key: str, city_code: str | None) -> str | None:
+    """Городской слой поверх УЖЕ СОБРАННОГО ключа (с трековым суффиксом, если он есть) —
+    Phase 25 (CITYQ-01). Лестница ранних выходов ровно как в `cities.get_setting_for_city`,
+    но БЕЗ похода в `is_per_city`/`get_setting_for_city`: те делают точный lookup ключа в
+    `SETTINGS_SCHEMA` и не увидят суффиксный `reg_q_goal__party` (25-RESEARCH Pitfall 1) —
+    он никогда не будет отдельной записью реестра."""
+    if city_code is None:
+        return None
+    if city_code == ALL_CITIES:
+        return None
+    if not await cities_module_on():
+        return None
+    code = normalize_city(city_code)
+    key = per_city_key(setting_key, code)
+    if key is None:
+        return None
+    return await get_setting(key) or None
+
+
+async def is_step_enabled_for_track(
+    setting_key: str, participant_type: str | None, city_code: str | None = None
+) -> bool:
     """D-03/D-04: tri-state per-track gate. `__party` is ONE namespace shared by
     party_overnight and party_noovernight. Key-absence means "inherit the global reg_q_<step>
     value"; key-presence means the explicit on/off wins. Full track (or None) never reads the
@@ -276,29 +297,51 @@ async def is_step_enabled_for_track(setting_key: str, participant_type: str | No
 
     Phase 7 (SHORT-01/SHORT-04): the short track reads `{setting_key}__short` the same
     tri-state way but does NOT fall through to the global value on key-absence — short is a
-    curated subset of the full form, so key-absence means "do not ask this question"."""
+    curated subset of the full form, so key-absence means "do not ask this question".
+
+    Phase 25 (CITYQ-01): `city_code` добавляет городской слой поверх трекового, порядок
+    резолюции зафиксирован в CONTEXT «Оси переопределения». ВАЖНО (не «улучшать»): композит
+    `{setting_key}__city__{code}` (БЕЗ трекового суффикса) читается ТОЛЬКО для full-трека
+    (T=full) — party/short без своего трекового переопределения наследуют ГЛОБАЛЬНЫЙ базовый
+    ключ, как сегодня, а не городской слой над ним."""
     if _is_party_track(participant_type):
-        override = await get_setting(f"{setting_key}__party")
+        track_key = f"{setting_key}__party"
+        override = await _city_override(track_key, city_code)
+        if override is None:
+            override = await get_setting(track_key)
         if override is not None:
             return override == "on"
+        # ни городского, ни трекового переопределения для party — общий хвост ниже.
     elif _is_short_track(participant_type):
-        override = await get_setting(f"{setting_key}__short")
+        track_key = f"{setting_key}__short"
+        override = await _city_override(track_key, city_code)
+        if override is None:
+            override = await get_setting(track_key)
         if override is not None:
             return override == "on"
         return False
+    else:
+        override = await _city_override(setting_key, city_code)
+        if override is not None:
+            return override == "on"
     return await _is_step_enabled(setting_key)
 
 
-async def enabled_steps(data: dict) -> list[str]:
+async def enabled_steps(data: dict, city_code: str | None = None) -> list[str]:
     """Список step_key, которые нужно спросить/показать для текущих `data` — единая точка
     правды для условных шагов и пресетов (D-03/FORM-SYNC-01). Перенос дословный из
-    handlers/registration.py::_get_enabled_steps."""
+    handlers/registration.py::_get_enabled_steps.
+
+    Phase 25 (CITYQ-01): `city_code`, если передан явно, побеждает `data["event_city"]` (FSM
+    бота уже кладёт его туда — handlers/registration.py:1341-1344); ни один сегодняшний
+    вызывающий не обязан меняться (`city_code=None` → берём из `data`, а не глобально)."""
     enabled = []
     edu_conditional = await get_setting_typed("edu_conditional") == "on"
     studying = str(data.get("education_status", "")).startswith("Да")
     participant_type = data.get("participant_type") or "full"
+    city = city_code if city_code is not None else data.get("event_city")
     for step_key, setting_key, *_rest in REG_FLOW:
-        if not await is_step_enabled_for_track(setting_key, participant_type):
+        if not await is_step_enabled_for_track(setting_key, participant_type, city):
             continue
         if step_key == "informal_day" and data.get("attendance_format") == "Online":
             continue
@@ -400,15 +443,23 @@ STEP_HELP_EXAMPLES = {
 _DATE_HELP = "Формат ДД.ММ.ГГГГ, например «01.09.2026»."
 
 
-async def help_text(step_key: str, participant_type: str | None = None) -> str | None:
+async def help_text(
+    step_key: str, participant_type: str | None = None, city_code: str | None = None
+) -> str | None:
     """Подсказка формата под вопросом веб-анкеты (D1). Дефолт = `STEP_HELP.get(step_key)`, а
     для шагов типа `date` — общая `_DATE_HELP` (одна константа, не копия на каждый шаг). Нет
     дефолта → `None` СРАЗУ, без похода в `bot_settings`: `form_spec` зовёт `step_spec` на ~43
     шага, лишний `get_setting` на каждый шаг без подсказки не нужен. Есть дефолт → оверрайд
     `reg_help_{step_key}` (динамический ключ, как `reg_prompt_*`; в `SETTINGS_SCHEMA` НЕ
     заводится — иначе реестр вырастет на десяток ключей ради шести подсказок), пустая строка в
-    оверрайде = «дефолт» (та же семантика `or default`, что у `prompt()`)."""
-    if REG_STEP_TYPES.get(step_key) == "date":
+    оверрайде = «дефолт» (та же семантика `or default`, что у `prompt()`).
+
+    Phase 25 (CITYQ-01): шаг `resume` в режиме `reg_resume_mode(city_code) == "text_only"`
+    получает свой дефолт («Коротко, текстом в чате.») вместо общего `STEP_HELP["resume"]` —
+    сам литерал `STEP_HELP` не меняется, оверрайд `reg_help_resume` остаётся глобальным."""
+    if step_key == "resume" and await resume_mode(city_code) == "text_only":
+        default = "Коротко, текстом в чате."
+    elif REG_STEP_TYPES.get(step_key) == "date":
         default = _DATE_HELP
     else:
         default = STEP_HELP.get(step_key)
@@ -420,11 +471,33 @@ async def help_text(step_key: str, participant_type: str | None = None) -> str |
 _GENERIC_FALLBACK_LABEL = {"select": "Выбери вариант", "multi": "Выбери варианты", "date": "Дата"}
 
 
-async def _default_prompt_text(step_key: str, participant_type: str | None) -> str:
+async def resume_mode(city_code: str | None = None) -> str:
+    """Режим приёма резюме (Phase 25, CITYQ-01): `file_or_text` (дефолт, как всегда было) или
+    `text_only`. `reg_resume_mode` — обычный реестровый ключ БЕЗ трекового суффикса, поэтому
+    общий резолвер `cities.get_setting_typed_for_city` уместен напрямую (в отличие от
+    `_city_override`, который существует ради суффиксных `reg_q_*__party`/`__short`)."""
+    value = await get_setting_typed_for_city("reg_resume_mode", city_code)
+    if value not in ("file_or_text", "text_only"):
+        return "file_or_text"
+    return value
+
+
+async def _default_prompt_text(
+    step_key: str, participant_type: str | None, city_code: str | None = None
+) -> str:
     """Вычисляет дефолтный текст вопроса — то же самое, что раньше собирал `_ask_step` перед
     вызовом `_prompt(step_key, default, participant_type)`. university/expectations/
     payment_plan_date зависят от реестра (режим ВУЗа, event_name, дедлайн оплаты); остальные
-    типизированные (date/select/multi) — от REG_LABELS; всё прочее — статический литерал."""
+    типизированные (date/select/multi) — от REG_LABELS; всё прочее — статический литерал.
+
+    Phase 25 (CITYQ-01): `resume` в режиме `text_only` — единственная новая ветка (литерал из
+    CONTEXT); остальные ветки не тронуты — golden-снимки текстов бота обязаны сойтись."""
+    if step_key == "resume" and await resume_mode(city_code) == "text_only":
+        return (
+            "Опиши вкратце свой опыт участия в проектах / активностях и, если есть, опыт "
+            "работы. Например: был организатором школьных мероприятий, был куратором в "
+            "университете и т. п."
+        )
     if step_key == "university":
         mode = await get_setting_typed("reg_university_mode")
         if mode == "text":
@@ -453,14 +526,32 @@ async def _default_prompt_text(step_key: str, participant_type: str | None) -> s
     return label
 
 
-async def prompt(step_key: str, participant_type: str | None = None) -> str:
+async def prompt(
+    step_key: str, participant_type: str | None = None, city_code: str | None = None
+) -> str:
     """D-05: admin override reg_prompt_<step_key> (party track checks __party first, truthy
     wins) else the computed default. Перенос `_prompt` из handlers/registration.py — с той
     разницей, что `default` теперь считается ВНУТРИ (см. `_default_prompt_text`), а не
-    приходит аргументом от вызывающего: бот и веб зовут одну и ту же резолюцию."""
-    default = await _default_prompt_text(step_key, participant_type)
+    приходит аргументом от вызывающего: бот и веб зовут одну и ту же резолюцию.
+
+    Phase 25 (CITYQ-01): порядок резолюции — `reg_prompt_{step}__party__city__C` →
+    `reg_prompt_{step}__party` (обе ветки ТОЛЬКО для party-трека) → `reg_prompt_{step}__city__C`
+    (только full/None) → `reg_prompt_{step}` → вычисленный дефолт. Городской слой — через
+    `_city_override`, короткий трек здесь как и раньше не имеет своей ветки (это НЕ новый
+    пробел — у `prompt()` его не было и до этого плана)."""
+    default = await _default_prompt_text(step_key, participant_type, city_code)
     if _is_party_track(participant_type):
-        override = await get_setting(f"reg_prompt_{step_key}__party")
+        track_key = f"reg_prompt_{step_key}__party"
+        override = await _city_override(track_key, city_code)
+        if override:
+            return override
+        override = await get_setting(track_key)
+        if override:
+            return override
+    elif not _is_short_track(participant_type):
+        # short не получал city-слой ни разу до этого плана — new global city composite
+        # доступен только full/None, ровно как зафиксировано в CONTEXT.
+        override = await _city_override(f"reg_prompt_{step_key}", city_code)
         if override:
             return override
     return await get_setting(f"reg_prompt_{step_key}") or default
