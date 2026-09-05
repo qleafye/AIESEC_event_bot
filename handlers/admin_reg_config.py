@@ -142,7 +142,10 @@ async def _question_effective_and_own(track: str, setting_key: str, code: str) -
         city_raw = await get_setting(override_key) if override_key else None
         raw = city_raw if city_raw is not None else await get_setting(track_key)
         return ("✅ Вкл" if raw == "on" else "❌ Выкл"), city_raw is not None
-    is_on = await get_setting_typed_for_city(setting_key, code) == "on"
+    # reg_q_* keys are SETTINGS_SCHEMA type "toggle" -> get_setting_typed_for_city already
+    # resolves to a bool (settings_schema._parse_setting's toggle branch), never "on"/"off" —
+    # unlike the "enum"-typed menu_*/reg_resume_mode keys the sibling screens compare as strings.
+    is_on = await get_setting_typed_for_city(setting_key, code)
     own = bool(override_key and await get_setting(override_key))
     return ("✅" if is_on else "❌"), own
 
@@ -489,7 +492,8 @@ async def toggle_reg_question(callback: types.CallbackQuery):
         if composed is None:
             await callback.answer("Неизвестный город", show_alert=True)
             return
-        current_on = await get_setting_typed_for_city(setting_key, header_code) == "on"
+        # reg_q_* is SETTINGS_SCHEMA type "toggle" -> already a bool, see _question_effective_and_own.
+        current_on = await get_setting_typed_for_city(setting_key, header_code)
         new_val = "off" if current_on else "on"
         await set_setting(composed, new_val)
         label = REG_LABELS.get(setting_key, setting_key)
