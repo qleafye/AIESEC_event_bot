@@ -8,7 +8,10 @@ from __future__ import annotations
 
 import logging
 import os
+import re
 from dataclasses import dataclass
+
+from dashboard import registry
 
 logger = logging.getLogger(__name__)
 
@@ -37,6 +40,54 @@ def _parse_admin_ids(raw: str) -> tuple[int, ...]:
     return tuple(ids)
 
 
+def _parse_emails(raw: str) -> tuple[str, ...]:
+    """Phase 26.1 (SD-01/T-26.1-01-02): список e-mail суперадминов супердашборда. Те же
+    разделители, что у списков в проекте (запятая, «;», перевод строки — ловушка «мобильный
+    Enter = отправка», CLAUDE.md), обрезка пробелов, приведение к нижнему регистру,
+    дедупликация с сохранением порядка. Токен без «@» — опечатка, а не адрес: пропускается
+    с `logger.warning`, не попадает в список молча."""
+    if not raw:
+        return ()
+    tokens: list[str] = []
+    for line in raw.splitlines():
+        for chunk in line.replace(";", ",").split(","):
+            chunk = chunk.strip()
+            if chunk:
+                tokens.append(chunk)
+    emails: list[str] = []
+    seen: set[str] = set()
+    for token in tokens:
+        normalized = token.lower()
+        if "@" not in normalized:
+            logger.warning(
+                "DASHBOARD_SUPERADMIN_EMAILS: %r похоже на опечатку (нет «@») — "
+                "пропущено", token,
+            )
+            continue
+        if normalized in seen:
+            continue
+        emails.append(normalized)
+        seen.add(normalized)
+    return tuple(emails)
+
+
+_TEAM_DOMAIN_SCHEME_RE = re.compile(r"^https?://", re.IGNORECASE)
+_TEAM_DOMAIN_SUFFIX_RE = re.compile(r"\.cloudflareaccess\.com$", re.IGNORECASE)
+
+
+def _normalize_team_domain(raw: str) -> str:
+    """`DASHBOARD_ACCESS_TEAM_DOMAIN` ожидается как голый поддомен команды Zero Trust
+    (напр. `aiesec`). Если владелец по ошибке вписал полный URL — отрезаем схему и хвост
+    `.cloudflareaccess.com`, иначе адрес JWKS соберётся кривым (план 26.1-02)."""
+    value = (raw or "").strip()
+    if not value:
+        return ""
+    value = _TEAM_DOMAIN_SCHEME_RE.sub("", value)
+    value = value.split("/", 1)[0]
+    value = _TEAM_DOMAIN_SUFFIX_RE.sub("", value)
+    return value
+
+
 @dataclass(frozen=True)
 class DashboardConfig:
     db_path: str
@@ -48,6 +99,14 @@ class DashboardConfig:
     proxy_url: str | None
     event_city_default: str
     trusted_proxies: str
+    # Phase 26.1 (SD-01): поля СТРОГО с дефолтами и СТРОГО в конце списка — у всех полей
+    # выше дефолтов нет, существующие вызовы `DashboardConfig(**base)` с явным набором
+    # kwargs не должны сломаться (tests/test_dashboard_render.py::_cfg и аналоги).
+    events: tuple = ()
+    superadmin_emails: tuple[str, ...] = ()
+    access_team_domain: str = ""
+    access_aud: str = ""
+    access_dev_bypass: bool = False
 
 
 def load_config(env: dict | None = None) -> DashboardConfig:
@@ -69,6 +128,34 @@ def load_config(env: dict | None = None) -> DashboardConfig:
             "кого угодно. Так можно, только если снаружи к порту 8000 нет доступа."
         )
 
+    # Phase 26.1 (SD-01, T-26.1-01-02/07): реестр событий + периметр Cloudflare Access.
+    # `DASHBOARD_SUPERADMINS` (telegram_id) сознательно НЕ заводится — решение владельца
+    # 06.09 (26.1-CONTEXT.md `<owner_decision_260906_access>`): вход не через Telegram.
+    events = registry.parse_events(source.get("DASHBOARD_EVENTS", ""))
+    superadmin_emails = _parse_emails(source.get("DASHBOARD_SUPERADMIN_EMAILS", ""))
+    access_team_domain = _normalize_team_domain(source.get("DASHBOARD_ACCESS_TEAM_DOMAIN", ""))
+    access_aud = source.get("DASHBOARD_ACCESS_AUD", "")
+    access_dev_bypass = source.get("DASHBOARD_ACCESS_DEV_BYPASS", "") == "1"
+
+    if registry.multi_mode(events):
+        if not superadmin_emails:
+            logger.warning(
+                "DASHBOARD_EVENTS задаёт %d событий (мульти-режим), а "
+                "DASHBOARD_SUPERADMIN_EMAILS пуст — сводный экран будет закрыт для всех "
+                "(fail-closed: пусто значит никому, не всем)", len(events),
+            )
+        if not access_team_domain or not access_aud:
+            logger.warning(
+                "DASHBOARD_EVENTS задаёт мульти-режим, а DASHBOARD_ACCESS_TEAM_DOMAIN/"
+                "DASHBOARD_ACCESS_AUD не заданы — проверить токен Cloudflare Access будет "
+                "нечем, сводный экран будет отдавать отказ всем"
+            )
+    if access_dev_bypass:
+        logger.warning(
+            "DASHBOARD_ACCESS_DEV_BYPASS включён — периметр Cloudflare Access отключён. "
+            "Так можно запускать только локально, в проде эту переменную не задавать."
+        )
+
     return DashboardConfig(
         db_path=source.get("DASHBOARD_DB_PATH", "data/forum.db"),
         public_url=source.get("DASHBOARD_PUBLIC_URL", ""),
@@ -79,4 +166,9 @@ def load_config(env: dict | None = None) -> DashboardConfig:
         proxy_url=source.get("PROXY_URL") or None,
         event_city_default=source.get("EVENT_CITY_DEFAULT", "msk"),
         trusted_proxies=trusted_proxies,
+        events=events,
+        superadmin_emails=superadmin_emails,
+        access_team_domain=access_team_domain,
+        access_aud=access_aud,
+        access_dev_bypass=access_dev_bypass,
     )
