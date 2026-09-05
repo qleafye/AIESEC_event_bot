@@ -482,65 +482,99 @@ def city_comparison(conn, scope: Scope) -> list[dict]:
     return result
 
 
-# ── метки кампаний (квик 260905-qqg) ─────────────────────────────────────────────────────
+# ── метки кампаний (квик 260905-qqg, правка квик 260906-dmq) ─────────────────────────────
 
 _UTM_LIMIT = 30
+
+# Условие «это метка кампании, а не ручной ответ человека» (квик 260906-dmq, задача 1):
+# Telegram разрешает в start-параметре deep-link только латиницу, цифры, `_` и `-`
+# (https://core.telegram.org/bots/features#deep-linking) — поэтому slug-подобное значение
+# `users.source` считаем меткой, а свободный текст (в т.ч. кириллический ручной ответ на
+# вопрос «Источник», например «ВК») — нет. `source_from_tag = 1` (флаг живёт с 04.09:
+# deep-link дошёл до конца анкеты без перезаписи ручным ответом) перекрывает эвристику там,
+# где он явно проставлен — даже кириллический `source` в этом случае метка. Хвостовой `-`
+# внутри класса GLOB `[^...]` — литерал, а не начало диапазона; переставлять его нельзя.
+# Предикат константный, значений в него не подставляется — в f-строку попадает как есть.
+_UTM_TAG_PREDICATE = [
+    "source IS NOT NULL",
+    "TRIM(source) != ''",
+    "source != '-'",
+    "(source_from_tag = 1 OR source NOT GLOB '*[^a-zA-Z0-9_-]*')",
+]
 
 
 def utm_table(conn, scope: Scope) -> list[dict]:
     """Мини-воронка по меткам кампаний (deep-link `/start src_<метка>`).
 
-    Строка на каждую непустую `reg_events.source_tag`, отсортированную по `starts` по
-    убыванию (при равенстве — по метке), не более `_UTM_LIMIT` строк. ДВА нюанса: (а) верх
-    воронки (`starts`/`form_started`) считается по `reg_events.source_tag`, а низ
-    (`completed`/`approved`) — по `users.source`, потому что событие `form_completed` метки не
-    несёт (единственная точка записи — `services/reg_finalize`, общая с Mini App, этот квик её
-    не трогает); (б) поэтому ручной ответ на вопрос «Источник», дословно совпавший со слагом
-    кампании, теоретически может подмешаться в низ воронки — цена честного верха, которого
-    сегодня нет вовсе (T-QQG-06, `accept`).
+    Множество меток собирается из ДВУХ источников: `reg_events.source_tag` (верх воронки —
+    `starts`/`form_started`) И `users.source` (низ воронки — `completed`/`approved`), а не
+    только из первого. Причина: `source_tag` заполняется только с 05.09 22:57 UTC — у меток
+    старше этой даты верх воронки честно нулевой (это ГРАНИЦА ТРЕКИНГА, а не баг), но заявки
+    по ним уже есть в `users.source`; если бы множество меток бралось только из `source_tag`,
+    такая метка выпала бы из таблицы целиком, хотя `users` ясно говорит, что заявки были.
 
-    Значения — только `?`-параметры (T-QQG-01): ни метка, ни лимит не попадают в f-строку.
+    Заявки (`completed`/`approved`) считаются по метке ВСЕ, без отсечки по началу трекинга
+    событий (`funnel_tracking_since`) — прежняя отсечка обнуляла НЕ ТОЛЬКО верх воронки (что
+    честно), но и низ (что нет): строка по старой метке оставалась пустой во всех колонках
+    вместо того, чтобы показать хотя бы «Заявки». `funnel()`/`kpi_row()` эту отсечку не
+    теряют — она их устройства не касается, снята только здесь.
+
+    Риск подмешивания ручного ответа на вопрос «Источник», дословно совпавшего со слагом
+    кампании, сохраняется и принят (T-QQG-06, `accept`) — но `_UTM_TAG_PREDICATE` сужает его:
+    попасть в `completed` теперь может только slug-подобный (латиница/цифры/`_`/`-`) ручной
+    ответ, кириллический текст (например «ВК») предикат уже не пропускает.
+
+    Строка на каждую метку из объединения обоих множеств, отсортированную по `completed` по
+    убыванию, затем по `starts` по убыванию, затем по метке — не более `_UTM_LIMIT` строк.
+    Отсутствующая в одном из источников метка получает нули по его колонкам (`conversion`
+    считается уже после объединения, только если `starts > 0`).
+
+    Значения — только `?`-параметры (T-QQG-01/T-DMQ-01): ни метка, ни лимит, ни город/сезон
+    не попадают в f-строку; `_UTM_TAG_PREDICATE` — константные фрагменты без подстановок.
     """
     parts, params = _scope_sql(conn, scope)
+
     tag_parts = parts + ["source_tag IS NOT NULL", "TRIM(source_tag) != ''"]
-    sql = (
+    events_sql = (
         "SELECT source_tag AS tag, "
         "COUNT(DISTINCT CASE WHEN event = 'start' THEN telegram_id END) AS starts, "
         "COUNT(DISTINCT CASE WHEN event = 'form_started' THEN telegram_id END) AS form_started "
         "FROM reg_events"
-        f"{_where(tag_parts)} GROUP BY source_tag ORDER BY starts DESC, source_tag ASC LIMIT ?"
+        f"{_where(tag_parts)} GROUP BY source_tag"
     )
-    rows = conn.execute(sql, params + (_UTM_LIMIT,)).fetchall()
+    events_rows = conn.execute(events_sql, params).fetchall()
 
-    tracking_since = funnel_tracking_since(conn)
+    user_parts = parts + _UTM_TAG_PREDICATE
+    users_sql = (
+        "SELECT source AS tag, COUNT(*) AS completed, "
+        "SUM(CASE WHEN status = 'approved' THEN 1 ELSE 0 END) AS approved "
+        "FROM users"
+        f"{_where(user_parts)} GROUP BY source"
+    )
+    users_rows = conn.execute(users_sql, params).fetchall()
+
+    events_by_tag = {row["tag"]: row for row in events_rows}
+    users_by_tag = {row["tag"]: row for row in users_rows}
+
     result: list[dict] = []
-    for row in rows:
-        tag = row["tag"]
-        starts = row["starts"]
-
-        user_parts = parts + ["source = ?"]
-        user_params = params + (tag,)
-        if tracking_since is not None:
-            user_parts = user_parts + ["registration_date >= ?"]
-            user_params = user_params + (tracking_since,)
-        completed = _scalar(
-            conn, f"SELECT COUNT(*) FROM users{_where(user_parts)}", user_params
-        ) or 0
-        approved = _scalar(
-            conn,
-            f"SELECT COUNT(*) FROM users{_where(user_parts + ['status = ?'])}",
-            user_params + ("approved",),
-        ) or 0
+    for tag in set(events_by_tag) | set(users_by_tag):
+        event_row = events_by_tag.get(tag)
+        user_row = users_by_tag.get(tag)
+        starts = event_row["starts"] if event_row is not None else 0
+        form_started = event_row["form_started"] if event_row is not None else 0
+        completed = user_row["completed"] if user_row is not None else 0
+        approved = (user_row["approved"] or 0) if user_row is not None else 0
         conversion = round(completed / starts * 100, 1) if starts else None
         result.append({
             "tag": tag,
             "starts": starts,
-            "form_started": row["form_started"],
+            "form_started": form_started,
             "completed": completed,
             "approved": approved,
             "conversion": conversion,
         })
-    return result
+    result.sort(key=lambda row: (-row["completed"], -row["starts"], row["tag"]))
+    return result[:_UTM_LIMIT]
 
 
 # ── гейма (D-12) ─────────────────────────────────────────────────────────────────────────

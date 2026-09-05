@@ -547,6 +547,26 @@ def test_utm_block_with_data_shows_tag_and_numbers(tmp_path):
     assert "100.0%" in text
 
 
+def test_utm_block_tag_only_in_users_source_shows_row_without_events(tmp_path):
+    """Квик 260906-dmq: метка без единого события (`reg_events` пуст), только заявки в
+    `users.source`, -- строка есть, «Меток пока нет» не рисуется, конверсия -- «—»."""
+    db_path = _use_tmp_db(tmp_path)
+    _seed(
+        settings={"dashboard_block_utm": "on"},
+        users=[
+            {"telegram_id": 1, "source": "old_slug", "status": "approved",
+             "registration_date": "2026-01-01 09:00:00"},
+        ],
+    )
+    client = _stats_manager_client(db_path)
+    resp = client.get("/")
+    assert resp.status_code == 200
+    text = resp.text
+    assert "Метки кампаний" in text
+    assert "old_slug" in text
+    assert "Меток пока нет" not in text
+
+
 def test_utm_block_enabled_empty_shows_hint_with_bot_username(tmp_path):
     db_path = _use_tmp_db(tmp_path)
     _seed(settings={"dashboard_block_utm": "on"})
