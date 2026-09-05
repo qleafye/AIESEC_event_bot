@@ -95,6 +95,8 @@ a, button {
 /* ── Header ─────────────────────────────────────────────────────────────────────────── */
 
 .site-header {
+  position: relative;
+  overflow: hidden;
   background: var(--surface);
   border: 1px solid var(--border);
   border-top: 3px solid var(--secondary);   /* единственный декоративный штрих — подкраска мероприятия */
@@ -102,11 +104,33 @@ a, button {
   box-shadow: var(--shadow-card);
   padding: var(--sp-4);
   margin-bottom: var(--gap);
+  /* Геометрия орнамента шапки (тот же приём, что .plate--hub в Mini App: переопределяется
+     только геометрия, картинка общая — задаётся --plate-pattern из /theme.css). */
+  --plate-pattern-size: 1100px;
+  --plate-pattern-x: -260px;
+  --plate-pattern-y: -140px;
 }
 
 @media (min-width: 900px) {
   .site-header { padding: var(--sp-5) var(--sp-6); }
 }
+
+/* ЕДИНСТВЕННОЕ место, где дашборд рисует орнамент пресета — сдержанный декоративный слой
+   позади шапки. Тумблер «паттерн выключен» гасить здесь не нужно: web_theme уже отдаёт
+   --plate-pattern: none, и слой становится пустым сам. */
+.site-header::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background-image: var(--plate-pattern, none);
+  background-repeat: no-repeat;
+  background-size: var(--plate-pattern-size, 1100px) auto;
+  background-position: var(--plate-pattern-x, -260px) var(--plate-pattern-y, -140px);
+  opacity: calc(var(--plate-pattern-opacity, 1) * 0.5);
+}
+
+.site-header > * { position: relative; }
 
 .brand-row {
   display: grid;
