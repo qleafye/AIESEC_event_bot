@@ -26,7 +26,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Optional
 
-from fastapi import FastAPI, Request
+from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import HTMLResponse, RedirectResponse, Response
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
@@ -39,6 +39,7 @@ from dashboard.access import has_stats, staff_city, viewer_scope
 from dashboard.auth import session_middleware_kwargs, verify_login_payload
 from dashboard.config import DashboardConfig, load_config
 from dashboard.db import read_conn
+from dashboard.files import FILE_ID_RE, fetch_theme_asset, is_theme_asset
 from dashboard.notify import notify_access_request
 
 # D-14: разрезы (сверх городов/тарифа, у которых своя логика показа) — фиксированный порядок
@@ -288,6 +289,26 @@ def _build_asgi_app(cfg: DashboardConfig) -> FastAPI:
         resolved = web_theme.resolve_theme(settings)
         body = web_theme.theme_css_text(resolved, asset_base="")
         return Response(body, media_type="text/css", headers={"Cache-Control": "no-cache"})
+
+    @app.get("/api/file/{file_id}")
+    def api_file(file_id: str) -> Response:
+        # Фаза 26-01 (RT-01/RT-02, T-26-01-01/T-26-01-02): прокси ассетов оформления
+        # мероприятия — allow-list по значениям ключей `dashboard.files.ASSET_SETTING_KEYS`
+        # (логотип + весь `web_theme.ASSET_KEYS`), НЕ «любой file_id, который знает бот».
+        # Открыт БЕЗ сессии (принят риск T-26-01-02, тот же, что у `ASSET_KEYS` в Mini App):
+        # логотип нужен и в favicon, и на странице входа. Именно 404, а не 403 — маршрут не
+        # должен подтверждать своим кодом ответа сам факт существования file_id.
+        # Префикс `/api`, а НЕ `/app`: последний зарезервирован за Mini App (сторож
+        # test_no_app_route_and_no_export_or_csv_route).
+        if not FILE_ID_RE.match(file_id):
+            raise HTTPException(404, {"reason": "not_found"})
+        if not is_theme_asset(cfg.db_path, file_id):
+            raise HTTPException(404, {"reason": "not_found"})
+        asset = fetch_theme_asset(cfg, file_id)
+        if asset is None:
+            raise HTTPException(404, {"reason": "not_found"})
+        content, content_type = asset
+        return Response(content, media_type=content_type, headers={"Cache-Control": "private, max-age=3000"})
 
     @app.get("/login", response_class=HTMLResponse)
     def login_page(request: Request):
