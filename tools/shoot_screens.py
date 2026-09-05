@@ -358,7 +358,7 @@ def build_manifest(delegate_only: bool = False) -> list[str]:
         names.append(f"miniapp-state-{state}-bluebook-light-na.png")
     for name in ("tasks-empty", "coins-empty", "review-empty", "admin-tasks-empty"):
         names.append(f"miniapp-{name}-bluebook-light-hub.png")
-    for preset in ("bluebook", "youlead"):
+    for preset in ("bluebook", "youlead", "realtalk"):
         names.append(f"dashboard-home-{preset}-light-na.png")
     names.append("dashboard-login-bluebook-light-na.png")
     names.append("dashboard-no-access-bluebook-light-na.png")
@@ -581,10 +581,28 @@ def run_full_pass(delegate_only: bool = False) -> int:
                 driver_dash = make_chrome_driver(DASHBOARD_WINDOW)
                 try:
                     shoot_dashboard_login(driver_dash, dash_url, SHOTS_DIR / "dashboard-login-bluebook-light-na.png")
-                    for preset in ("bluebook", "youlead"):
+                    # Фаза 26-02 (задача 3): кириллическое имя мероприятия на время съёмки
+                    # шапки дашборда во всех трёх пресетах — «Демо Форум» короче/нейтральнее
+                    # «форума Юлид» demo_server.py, годится под любой пресет одинаково.
+                    # Восстанавливается сразу после — та же demo.db дальше уходит под тёмную
+                    # тему Mini App, её экраны не должны увидеть подменённое имя (миниапп
+                    # циклы этот план не трогает). Лого не сеется: оно приезжает от менеджера
+                    # через бота, не из репозитория демо-сида — снимок без лого ожидаем.
+                    import sqlite3
+                    demo_conn = sqlite3.connect(str(db_path))
+                    try:
+                        _prev_row = demo_conn.execute(
+                            "SELECT value FROM bot_settings WHERE key = 'event_name'"
+                        ).fetchone()
+                    finally:
+                        demo_conn.close()
+                    write_setting(db_path, "event_name", "Демо Форум")
+                    for preset in ("bluebook", "youlead", "realtalk"):
                         write_preset(db_path, preset)
                         shoot_dashboard(driver_dash, dash_url, bot_token, ADMIN_ID,
                                          SHOTS_DIR / f"dashboard-home-{preset}-light-na.png")
+                    if _prev_row is not None:
+                        write_setting(db_path, "event_name", _prev_row[0])
                     write_preset(db_path, "bluebook")
                     shoot_dashboard(driver_dash, dash_url, bot_token, DELEGATE_ID,
                                      SHOTS_DIR / "dashboard-no-access-bluebook-light-na.png", expect_denied=True)
