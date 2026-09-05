@@ -446,9 +446,19 @@ ADMIN_CAPS: dict[str, str] = {
     "reg_q_back": "settings",
     "reg_q_noop": "settings",
     "reg_q_ptoggle:*": "settings",
+    # Phase 25 (CITYQ-04): «↩️ Как везде» on the header-scoped questions screen. Exact key
+    # "reg_q_reset_city" MUST be registered ABOVE the prefixed "reg_q_reset_city_go:*" —
+    # otherwise the exact key IS a string-prefix of the go-variant and, absent this ordering,
+    # `required_capability`'s exact-match-first lookup would still resolve correctly (dict
+    # membership checks the FULL string), but any future refactor toward pure prefix-scanning
+    # must not swallow the exact entry — same reasoning already documented at
+    # `menu_reset_city`/`menu_reset_city_go:*` above.
+    "reg_q_reset_city": "settings",
+    "reg_q_reset_city_go:*": "settings",
     "reg_q_stoggle:*": "settings",
     "reg_q_toggle:*": "settings",
     "reg_q_track:*": "settings",
+    "reg_resume_mode_toggle": "settings",
     "roles_add": "settings",
     "roles_addrole:*": "settings",
     "roles_del:*": "settings",

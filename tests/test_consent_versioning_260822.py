@@ -322,7 +322,7 @@ def test_reminder_on_widening_toggle_only_when_turned_on(tmp_path):
 def test_reminder_on_resume_question_toggle(tmp_path, monkeypatch):
     _ready(tmp_path)
 
-    async def _noop():
+    async def _noop(*args, **kwargs):
         return None
     monkeypatch.setattr(admin_reg_config, "_refresh_sheet_header", _noop)
     asyncio.run(db.set_setting("reg_q_resume", "off"))
@@ -338,7 +338,7 @@ def test_reminder_on_resume_question_toggle(tmp_path, monkeypatch):
 def test_reminder_on_event_preset(tmp_path, monkeypatch):
     _ready(tmp_path)
 
-    async def _noop():
+    async def _noop(*args, **kwargs):
         return None
     monkeypatch.setattr(admin_reg_config, "_refresh_sheet_header", _noop)
     cb = FakeCallback("preset_confirm:forum")
