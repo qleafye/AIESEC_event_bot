@@ -14,7 +14,7 @@ from aiogram.types import FSInputFile, ReplyKeyboardRemove, InlineKeyboardMarkup
 from aiogram.utils.keyboard import ReplyKeyboardBuilder
 
 from config import config
-from database.db import add_user, get_user, get_setting, set_setting, mark_reg_started, clear_reg_started, set_reg_step, set_user_subscribed, set_user_status, record_user_consent, get_user_consents, get_reg_started_track, get_reg_started_city, has_short_incomplete, _csv_safe, get_incomplete_rows_with_city, reset_payment_for_new_season, record_reg_event, claim_reg_draft, get_reg_draft, upsert_reg_draft, delete_reg_draft, touch_reg_draft_activity  # Phase 15 (STAT-03, D-06): funnel event log; Phase 21 (21-08): claim_reg_draft/get_reg_draft feed finalize_registration's thin wrapper; Phase 21 (21-09): upsert/delete/touch feed the draft-sync points below
+from database.db import add_user, get_user, get_setting, set_setting, mark_reg_started, clear_reg_started, set_reg_step, set_user_subscribed, set_user_status, record_user_consent, get_user_consents, get_reg_started_track, get_reg_started_city, has_short_incomplete, _csv_safe, get_incomplete_rows_with_city, reset_payment_for_new_season, record_reg_event, backfill_reg_event_city, claim_reg_draft, get_reg_draft, upsert_reg_draft, delete_reg_draft, touch_reg_draft_activity  # Phase 15 (STAT-03, D-06): funnel event log; backfill_reg_event_city dozapolnyaet gorod na form_started; Phase 21 (21-08): claim_reg_draft/get_reg_draft feed finalize_registration's thin wrapper; Phase 21 (21-09): upsert/delete/touch feed the draft-sync points below
 from settings_schema import SETTINGS_SCHEMA, get_setting_typed  # REG-01/D-06 (06-04): REG_DEFAULTS derivation source; get_setting_typed (06-06 gate migration)
 from cities import CITIES, all_cities, normalize_city, is_default_city, city_tab_base, cities_module_on, is_city_enabled, city_label, enabled_cities, tab_suffix, get_setting_for_city, get_setting_typed_for_city  # Phase 07.1 (CITY-01/CITY-02/CITY-03): city registry — _city_tag_map() + city_row_tab + city fork below; tab_suffix added quick 260815-3hw (TABS-01/02/03, replaces the raw TAB_SUFFIX import); get_setting_for_city/get_setting_typed_for_city added Phase 09.2-04 (CITY-04): per-city text/mode resolver; all_cities added Phase 14 (CITY-07)
 from handlers.states import Registration
@@ -1295,6 +1295,16 @@ async def _start_registration_flow(message: types.Message, state: FSMContext, re
     except Exception as e:
         logger.warning(f"record_reg_event(form_started) failed for {message.from_user.id}: {e}")
 
+    # Phase 15 continuation (D-06): backfill the city on this delegate's earlier "start" row
+    # if it landed with event_city NULL (no city-tagged deep-link at /start time). Own
+    # try/except, order relative to the record_reg_event(form_started) call above is
+    # irrelevant -- there's no hidden dependency between the two, both are independently
+    # fail-soft against a flaky write.
+    try:
+        await backfill_reg_event_city(message.from_user.id, saved_city)
+    except Exception as e:
+        logger.warning(f"backfill_reg_event_city failed for {message.from_user.id}: {e}")
+
     saved_referrer_id = referrer_id or existing_data.get("referrer_id")
     saved_source_tag = source_tag or existing_data.get("source")
     # A src_ deep-link tag is authoritative: skip the «Источник» question so the delegate's
@@ -1536,13 +1546,23 @@ async def cmd_start(message: types.Message, state: FSMContext, bot: Bot, command
     user_id = message.from_user.id
     logger.info(f"User {user_id} requested /start")
 
+    # Phase 07.1 (CITY-03): moved up from its original position further down in this function
+    # (below the pre-selection gate) so the "start" funnel write right below can already carry
+    # the deep-link city. _extract_event_city is pure -- no await, no DB -- so hoisting it here
+    # is safe and does not duplicate any work; the other extractors below still parse the same
+    # already-computed `args`.
+    args = command.args if command else None
+    dl_event_city = _extract_event_city(args)          # Phase 07.1 (CITY-03)
+
     # Phase 15 (STAT-03, D-06): funnel log -- top of the funnel, BEFORE every other gate
     # below (subscription check, pre-selection) so a Nextcloud/subscription/allowlist hiccup
     # can never suppress it. Own try/except, fail-soft -- a log write must never block /start.
-    # City is not yet known at this point (dl_event_city is resolved further down) -- None.
+    # City comes from the deep-link (dl_event_city) when the delegate used a city-tagged
+    # /start; a delegate without one has no city yet at this point and is backfilled later,
+    # on the form_started step below, once mark_reg_started/_resolve_track have settled saved_city.
     try:
         _season = await get_setting_typed("event_season") or None
-        await record_reg_event(user_id, "start", season=_season)
+        await record_reg_event(user_id, "start", event_city=dl_event_city, season=_season)
     except Exception as e:
         logger.warning(f"record_reg_event(start) failed for {user_id}: {e}")
 
@@ -1598,12 +1618,11 @@ async def cmd_start(message: types.Message, state: FSMContext, bot: Bot, command
         logger.warning(f"Pre-selection gate skipped for {user_id}: {e}")
 
     # user already fetched above (ME-05 gate bypass); do not re-query.
-    args = command.args if command else None
+    # args/dl_event_city already resolved above (hoisted for the "start" funnel write).
     referrer_id = _extract_referrer_id(args, user_id)
     source_tag = _extract_source_tag(args)
     party_track = _extract_party_track(args)          # Phase 5 (D-10)
     dl_party_track = party_track  # preserved for the fork-suppression check below (D-10)
-    dl_event_city = _extract_event_city(args)          # Phase 07.1 (CITY-03)
     if referrer_id:
         logger.info(f"Deep-link referrer_id={referrer_id} for user {user_id}")
     resume_arg = _extract_resume_arg(args)  # Phase 21 (21-09, D-18): "continue" | "edit" | None
