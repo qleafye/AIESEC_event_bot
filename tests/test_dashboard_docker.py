@@ -71,6 +71,18 @@ def test_dashboard_dockerfile_copies_web_theme_module():
     assert any(ln.startswith("COPY --chown=appuser:appuser web_theme.py /app/web_theme.py") for ln in body)
 
 
+def test_dashboard_dockerfile_copies_only_pattern_assets_from_miniapp():
+    """Фаза 26-01 (RT-01): дашборд раздаёт растры орнамента с себя (COPY из `miniapp/`), но
+    в образ не должен попасть НИ ОДИН `.py` Mini App — второго кода приложения в образе нет."""
+    body = _body(DOCKERFILE)
+    miniapp_copy_lines = [ln for ln in body if ln.startswith("COPY") and "miniapp/" in ln]
+    assert len(miniapp_copy_lines) == 1
+    assert miniapp_copy_lines[0] == (
+        "COPY --chown=appuser:appuser miniapp/static/pattern/ /app/miniapp/static/pattern/"
+    )
+    assert not any(".py" in ln for ln in miniapp_copy_lines)
+
+
 def test_dashboard_dockerfile_has_healthcheck_without_curl():
     hc = [ln for ln in DOCKERFILE.read_text(encoding="utf-8").splitlines() if ln.startswith("HEALTHCHECK")]
     assert len(hc) == 1

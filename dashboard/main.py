@@ -20,6 +20,7 @@ docker-сети `edge`. Самый внешний слой приложения 
 from __future__ import annotations
 
 import logging
+import mimetypes
 from dataclasses import replace
 from datetime import datetime
 from pathlib import Path
@@ -69,6 +70,11 @@ logger = logging.getLogger(__name__)
 BASE_DIR = Path(__file__).resolve().parent
 TEMPLATES_DIR = BASE_DIR / "templates"
 STATIC_DIR = BASE_DIR / "static"
+# Фаза 26-01 (RT-01): растры орнамента живут в Mini App (`miniapp/static/pattern/`), не
+# копируются в `dashboard/static/` — источник один, второй копии бинарника в репозитории
+# быть не должно. В образе (Dockerfile) раскладка совпадает с репозиторием, поэтому путь
+# резолвится одинаково и локально, и в контейнере.
+PATTERN_DIR = BASE_DIR.parent / "miniapp" / "static" / "pattern"
 
 templates = Jinja2Templates(directory=str(TEMPLATES_DIR))
 
@@ -239,6 +245,16 @@ def _build_asgi_app(cfg: DashboardConfig) -> FastAPI:
     app = FastAPI(docs_url=None, redoc_url=None, openapi_url=None, redirect_slashes=False)
     app.state.cfg = cfg
 
+    # Фаза 26-01 (RT-01): mount `/static/pattern` ДО `/static` — Starlette матчит mounts в
+    # порядке добавления, иначе `/static` перехватил бы `/static/pattern/...` первым же и
+    # растр орнамента отдавала бы (или не отдавала) не та точка монтирования. Регистрация
+    # webp — тот же приём, что в `miniapp/main.py` (BACKLOG-0309-PATTERN): на части машин
+    # `mimetypes.guess_type("a.webp")` даёт `(None, None)`, без явной регистрации StaticFiles
+    # отдал бы растр как `application/octet-stream`.
+    if PATTERN_DIR.is_dir():
+        mimetypes.add_type("image/webp", ".webp")
+        app.mount("/static/pattern", StaticFiles(directory=str(PATTERN_DIR)), name="pattern")
+
     if STATIC_DIR.is_dir():
         app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
 
@@ -263,10 +279,14 @@ def _build_asgi_app(cfg: DashboardConfig) -> FastAPI:
         # читает ручки пресета из bot_settings, theme_css_text собирает CSS. Дашборд саму
         # атрибут-ветку `[data-theme="dark"]` никогда не активирует (D-06: остаётся светлым
         # при любой системной теме) — блок в CSS присутствует, но мёртв на этой поверхности.
+        #
+        # Фаза 26-01 (RT-01): asset_base="" — префикс `/app` принадлежит Mini App, у хоста
+        # дашборда (rt26., su26.) правила пути `/app` в Cloudflare нет вовсе, и с этим
+        # префиксом орнамент и лого молча 404-ят. Дашборд отдаёт свои ассеты со своего корня.
         with read_conn(cfg.db_path) as conn:
             settings = {key: _read_setting(conn, key) for key in web_theme.THEME_KEYS.values()}
         resolved = web_theme.resolve_theme(settings)
-        body = web_theme.theme_css_text(resolved)
+        body = web_theme.theme_css_text(resolved, asset_base="")
         return Response(body, media_type="text/css", headers={"Cache-Control": "no-cache"})
 
     @app.get("/login", response_class=HTMLResponse)
