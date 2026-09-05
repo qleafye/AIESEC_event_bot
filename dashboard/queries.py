@@ -240,6 +240,47 @@ def funnel_tracking_since(conn) -> str | None:
     return _scalar(conn, "SELECT MIN(ts) FROM reg_events")
 
 
+# ── супердашборд (Phase 26.1 Plan 01, SD-03): сезонный старт регистрации + статусы ──────────
+
+def registration_start(conn, scope: Scope) -> str | None:
+    """`MIN(ts) FROM reg_events`, суженный СЕЗОНОМ ровно так же, как `_season_sql` сужает
+    всё остальное. Городская ось намеренно НЕ применяется — ось «день N» общая для события,
+    а не для отдельного города (сравниваем сезоны событий, а не города внутри события).
+
+    НЕ путать с соседним `funnel_tracking_since`: тот отвечает «с какого момента бот в этой
+    базе ВООБЩЕ ведёт события» и сознательно глобален (его переиспользование сломало бы
+    отсечку статусных ступеней воронки — см. его собственный докстринг). Эта функция отвечает
+    на другой вопрос — «когда открылось окно регистрации ЭТОГО сезона». В базе, прожившей
+    два сезона (возвратные делегаты, Phase 07.3), это разные даты: `funnel_tracking_since`
+    держится за самый первый когда-либо отслеженный сезон, а `registration_start` — за
+    сезон, выбранный в `scope`. Подмена одной функции другой сдвинула бы всю ось сравнения
+    супердашборда на разницу между сезонами. `funnel_tracking_since` НЕ параметризуется
+    скоупом умышленно — от его глобальности зависит поведение уже существующей воронки."""
+    season_frag, season_params = _season_sql(conn, scope.season)
+    parts = [season_frag] if season_frag else []
+    return _scalar(conn, f"SELECT MIN(ts) FROM reg_events{_where(parts)}", tuple(season_params))
+
+
+def status_totals(conn, scope: Scope) -> dict:
+    """Итоги `users.status` по скоупу (город+сезон) — один `GROUP BY`, гарантированные ключи
+    `pending`/`approved`/`rejected` (отсутствующий статус = 0, а не пропущенный ключ).
+
+    Здесь НЕТ отсечки по `funnel_tracking_since` и не должно быть: эта функция отвечает на
+    вопрос «сколько всего заявок в каждом статусе в базе», а не «сколько прошло через
+    воронку отслеживаемых событий» — `funnel()` режет ступень «Одобрено» по началу трекинга,
+    эта функция — нет, и числа МОГУТ законно разойтись. Это не баг и не расхождение при
+    приёмке, а разная семантика двух функций."""
+    parts, params = _scope_sql(conn, scope)
+    totals = {"pending": 0, "approved": 0, "rejected": 0}
+    rows = conn.execute(
+        f"SELECT status, COUNT(*) AS cnt FROM users{_where(parts)} GROUP BY status", params
+    ).fetchall()
+    for row in rows:
+        if row["status"] in totals:
+            totals[row["status"]] = row["cnt"]
+    return totals
+
+
 # ── воронка (D-07/D-08) ──────────────────────────────────────────────────────────────────
 
 def funnel(conn, scope: Scope) -> list[tuple[str, int]]:
