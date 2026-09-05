@@ -5,7 +5,15 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="color-scheme" content="light">
   <title>{% block title %}{{ event_name or "Дашборд статистики" }}{% endblock %}</title>
+  {# Фаза 26-02 (RT-05): favicon мероприятия, если менеджер задал miniapp_logo, иначе —
+     прежняя иконка АЙСЕК. Jinja2 отдаёт неопределённую event_logo_url как ложное значение —
+     на страницах входа/«нет доступа» (контекст без event_logo_url) ветка молча уходит в
+     откат, их контексты трогать не нужно. #}
+  {% if event_logo_url %}
+  <link rel="icon" href="{{ event_logo_url }}">
+  {% else %}
   <link rel="icon" href="/static/brand/aiesec-human-blue.svg" type="image/svg+xml">
+  {% endif %}
   {# Шрифты бренда (BlueBook: Lato + Raleway) — вшиты локально (D-14: RU-троттлинг Google
      Fonts + CSP font-src 'self'), подключение через @font-face в /static/app.css. #}
   <link rel="stylesheet" href="/static/tokens.css">

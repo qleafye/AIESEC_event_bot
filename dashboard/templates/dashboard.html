@@ -12,8 +12,14 @@
         <h1>{{ event_name or "Дашборд статистики" }}</h1>
         {% if event_season %}<div class="subtitle">Сезон {{ event_season }}</div>{% endif %}
       </div>
-      {# Слот под лого мероприятия — заполняется из «🎨 Оформление» (Phase 19). #}
-      <div class="event-logo-slot"></div>
+      {# Лого мероприятия — из «🎨 Оформление» бота (ключ miniapp_logo), отдаётся прокси
+         дашборда GET /api/file/{file_id}. Латинских названий мероприятий здесь нет —
+         подпись берётся из event_name. #}
+      <div class="event-logo-slot">
+        {% if event_logo_url %}
+        <img class="event-logo" src="{{ event_logo_url }}" alt="{{ event_name or 'Логотип мероприятия' }}">
+        {% endif %}
+      </div>
     </div>
 
     {% if show_city_switcher %}
