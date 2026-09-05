@@ -1081,6 +1081,62 @@ async def reg_prompt_edit(callback: types.CallbackQuery, state: FSMContext):
     parts = callback.data.split(":")
     step_key = parts[1]
     track = "party" if len(parts) > 2 and parts[2] == "party" else "full"
+    admin_id = callback.from_user.id
+    header_code = await admin_selected_city(admin_id)
+    per_city_ctx = bool(header_code and header_code != ALL_CITIES)
+
+    if per_city_ctx:
+        # Phase 25 (CITYQ-05): city branch — header already resolved to a real city (implies
+        # the cities module is on, admin_selected_city's own contract) -> RIGHT re-checked
+        # here (T-25-15/16 lineage) -> step_key verified against the CLOSED `_prompt_steps()`
+        # list BEFORE it is ever folded into a composed key (T-25-17: a crafted step is
+        # rejected, never turned into a bot_settings write) -> per_city_key(...) not None.
+        visible = await _per_city_visible_codes(admin_id)
+        if header_code not in visible:
+            await callback.answer("Этот город правит суперадмин", show_alert=True)
+            return
+        valid_keys = {sk for sk, _ in _prompt_steps()}
+        if step_key not in valid_keys:
+            await callback.answer("Неизвестный вопрос.", show_alert=True)
+            return
+        composed = per_city_key(_prompt_base_key(track, step_key), header_code)
+        if composed is None:
+            await callback.answer("Неизвестный город", show_alert=True)
+            return
+
+        city_txt = await city_label(header_code)
+        own_current = await get_setting(composed)
+        global_current = await get_setting(_prompt_base_key(track, step_key))
+        text = f"🏙 {html_module.escape(city_txt)}\n\n"
+        if own_current:
+            text += f"Сейчас у города:\n<b>{html_module.escape(own_current)}</b>\n\n"
+        else:
+            text += "Сейчас у города: <i>как везде</i>\n\n"
+        if global_current:
+            text += f"Общий текст:\n<b>{html_module.escape(global_current)}</b>\n\n"
+        else:
+            text += "Общий текст: <i>стандартный (по умолчанию)</i>\n\n"
+        text += "Пришли новый текст — будет своим ТОЛЬКО для этого города."
+        text += "\n\n<i>«-» — вернуть общий текст.</i>"
+
+        suffix = ":party" if track == "party" else ""
+        rows: list[list[InlineKeyboardButton]] = []
+        if own_current:
+            rows.append([InlineKeyboardButton(text="↩️ Как везде", callback_data=f"reg_prompt_rst:{step_key}{suffix}")])
+        rows.append([InlineKeyboardButton(text="❌ Отмена", callback_data="settings_cancel")])
+        await callback.message.edit_text(text, parse_mode="HTML", reply_markup=InlineKeyboardMarkup(inline_keyboard=rows))
+        await state.set_state(EditSetting.waiting_for_value)
+        # Phase 25 (CITYQ-05): FSM carries ONLY the composed key, deliberately WITHOUT the
+        # sibling "return to the general per-key editor" data field settings_edit_city sets —
+        # that field sends settings_edit_value to the GENERAL settings editor screen after
+        # saving, and the "reg_prompts" group has no bot screen there. Return stays today's
+        # settings_return_screen fallback — the same known "no screen step" limitation the
+        # global (non-city) branch below already lives with.
+        await state.set_data({"setting_key": composed})
+        await callback.answer()
+        return
+
+    # Global branch (module off / no city header / «все города») — сегодняшний код байт-в-байт.
     key = f"reg_prompt_{step_key}__party" if track == "party" else f"reg_prompt_{step_key}"
     current = await get_setting(key)
     text = "Пришли новый текст вопроса."
@@ -1094,6 +1150,94 @@ async def reg_prompt_edit(callback: types.CallbackQuery, state: FSMContext):
     await state.set_state(EditSetting.waiting_for_value)
     await state.set_data({"setting_key": key})  # поток владеет данными один (admin_settings.consent_pdf_set)
     await callback.answer()
+
+
+@router.callback_query(F.data.startswith("reg_prompt_rst:"))
+async def reg_prompt_rst(callback: types.CallbackQuery):
+    """Confirm screen for «↩️ Как везде» on the per-question text editor — same two-step
+    confirm gate idiom as `menu_reset_city`/`reg_q_reset_city`: names the city and the
+    question about to lose its own text before deleting anything (Phase 25, CITYQ-05)."""
+    parts = callback.data.split(":")
+    step_key = parts[1]
+    track = "party" if len(parts) > 2 and parts[2] == "party" else "full"
+    admin_id = callback.from_user.id
+    if not await cities_module_on():
+        await callback.answer("Города выключены", show_alert=True)
+        return
+    header_code = await admin_selected_city(admin_id)
+    if not header_code or header_code == ALL_CITIES:
+        await callback.answer("Нет своего текста для сброса", show_alert=True)
+        return
+    visible = await _per_city_visible_codes(admin_id)
+    if header_code not in visible:
+        await callback.answer("Этот город правит суперадмин", show_alert=True)
+        return
+    valid_keys = {sk for sk, _ in _prompt_steps()}
+    if step_key not in valid_keys:
+        await callback.answer("Неизвестный вопрос.", show_alert=True)
+        return
+    composed = per_city_key(_prompt_base_key(track, step_key), header_code)
+    if composed is None or not await get_setting(composed):
+        await callback.answer("Нет своего текста для сброса", show_alert=True)
+        return
+
+    city_txt = await city_label(header_code)
+    label = dict(_prompt_steps()).get(step_key, step_key)
+    track_txt = " (трек Party)" if track == "party" else ""
+    text = (
+        f"Город {html_module.escape(city_txt)} снова будет спрашивать «{html_module.escape(label)}»"
+        f"{track_txt} общим текстом;\nсвой текст пропадёт."
+    )
+    suffix = ":party" if track == "party" else ""
+    kb = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="✅ Да, как везде", callback_data=f"reg_prompt_rst_go:{header_code}:{step_key}{suffix}")],
+        [InlineKeyboardButton(text="← Отмена", callback_data=f"reg_prompt_edit:{step_key}{suffix}")],
+    ])
+    await callback.message.edit_text(text, parse_mode="HTML", reply_markup=kb)
+    await callback.answer()
+
+
+@router.callback_query(F.data.startswith("reg_prompt_rst_go:"))
+async def reg_prompt_rst_go(callback: types.CallbackQuery):
+    parts = callback.data.split(":")
+    code = parts[1] if len(parts) > 1 else ""
+    step_key = parts[2] if len(parts) > 2 else ""
+    track = "party" if len(parts) > 3 and parts[3] == "party" else "full"
+    admin_id = callback.from_user.id
+    if not await cities_module_on():
+        await callback.answer("Города выключены", show_alert=True)
+        return
+    if code not in city_codes():
+        await callback.answer("Неизвестный город", show_alert=True)
+        return
+    # T-25-16: RIGHT checked against the code carried in callback_data (not just the current
+    # header) — same ordering as `menu_reset_city_go`/`reg_q_reset_city_go` (right check
+    # before freshness).
+    visible = await _per_city_visible_codes(admin_id)
+    if code not in visible:
+        await callback.answer("Этот город правит суперадмин", show_alert=True)
+        return
+    valid_keys = {sk for sk, _ in _prompt_steps()}
+    if step_key not in valid_keys:
+        await callback.answer("Неизвестный вопрос.", show_alert=True)
+        return
+    # Freshness — the confirm screen named the header's city; if the header moved on since,
+    # refuse and re-render for the NEW header instead of deleting.
+    current = await admin_selected_city(admin_id)
+    if code != current:
+        await callback.answer("Город админки изменился — подтвердите заново.", show_alert=True)
+        text = await render_prompts_text(track, admin_id)
+        await callback.message.edit_text(text, parse_mode="HTML", reply_markup=await build_prompts_keyboard(track, admin_id))
+        return
+
+    composed = per_city_key(_prompt_base_key(track, step_key), code)
+    if composed:
+        await delete_setting(composed)  # idempotent -- deleting an already-absent key is a no-op
+
+    city_txt = await city_label(code)
+    await callback.answer(f"Готово: {city_txt} — как везде", show_alert=True)
+    text = await render_prompts_text(track, admin_id)
+    await callback.message.edit_text(text, parse_mode="HTML", reply_markup=await build_prompts_keyboard(track, admin_id))
 
 
 # --- Menu Button Toggles ---
