@@ -48,6 +48,12 @@ logger = logging.getLogger(__name__)
 # INVARIANT (13-01 cap-test, extended by 13-04 to scan every handlers/admin*.py file): every
 # `@router.*` decorator below MUST fit on ONE line.
 
+# Phase 25 (CITYQ-04): a question/resume-mode toggle changes the sheet's column set — old
+# rows keep their positions until the manager reruns «♻️ Пересобрать таблицу» (CONTEXT.md's
+# Google-таблица decision). Appended to every toggle alert below, one place to keep the
+# wording consistent.
+_REBUILD_HINT = "\n\nСтроки до этого момента не сдвинутся — нажми ♻️ Пересобрать таблицу."
+
 
 async def _is_question_on(setting_key: str) -> bool:
     # REG-02 (06-04): delegates entirely to the registry's typed toggle accessor — byte-
@@ -233,6 +239,8 @@ async def build_questions_keyboard(track: str = "full", admin_id: int | None = N
                 buttons.append([InlineKeyboardButton(text=toggle_label, callback_data=f"reg_q_stoggle:{setting_key}")])
             else:
                 buttons.append([InlineKeyboardButton(text=toggle_label, callback_data=f"reg_q_toggle:{setting_key}")])
+                if setting_key == "reg_q_resume":
+                    buttons.append([await _resume_mode_toggle_button(header_code)])
             continue
         if track == "party":
             raw = await get_setting(f"{setting_key}__party")
@@ -248,6 +256,8 @@ async def build_questions_keyboard(track: str = "full", admin_id: int | None = N
         else:
             toggle_text = f"{'✅' if await _is_question_on(setting_key) else '❌'} {label}"
             buttons.append([InlineKeyboardButton(text=toggle_text, callback_data=f"reg_q_toggle:{setting_key}")])
+            if setting_key == "reg_q_resume":
+                buttons.append([await _resume_mode_toggle_button(None)])
 
     if per_city_ctx and await _questions_city_has_override(header_code, track):
         buttons.append([InlineKeyboardButton(text="↩️ Как везде", callback_data="reg_q_reset_city")])
@@ -460,9 +470,41 @@ async def _refresh_short_sheet_header(city_code: str | None = None, setting_key:
 @router.callback_query(F.data.startswith("reg_q_toggle:"))
 async def toggle_reg_question(callback: types.CallbackQuery):
     setting_key = callback.data.split(":", 1)[1]
+    admin_id = callback.from_user.id
+    header_code = await admin_selected_city(admin_id)
+    per_city_ctx = bool(header_code and header_code != ALL_CITIES)
 
-    # REG-02 (06-04): registry-driven resolution, byte-identical to the prior manual
-    # (val == "on") if val is not None else REG_DEFAULTS.get(setting_key, "on") == "on" idiom.
+    if per_city_ctx:
+        # T-25-12: RIGHT re-checked here, not just via a hidden button.
+        visible = await _per_city_visible_codes(admin_id)
+        if header_code not in visible:
+            await callback.answer("Этот город правит суперадмин", show_alert=True)
+            return
+        valid_keys = {sk for _, sk, *_ in REG_FLOW}
+        if setting_key not in valid_keys:
+            await callback.answer("Неизвестный вопрос.", show_alert=True)
+            return
+        # T-093-25 idiom: composed key comes ONLY from cities.per_city_key.
+        composed = per_city_key(setting_key, header_code)
+        if composed is None:
+            await callback.answer("Неизвестный город", show_alert=True)
+            return
+        current_on = await get_setting_typed_for_city(setting_key, header_code) == "on"
+        new_val = "off" if current_on else "on"
+        await set_setting(composed, new_val)
+        label = REG_LABELS.get(setting_key, setting_key)
+        status = "✅ Вкл" if new_val == "on" else "❌ Выкл"
+        city_txt = await city_label(header_code)
+        await callback.answer(f"{label} — {city_txt}: {status}{_REBUILD_HINT}", show_alert=True)
+        text = await render_questions_text("full", admin_id)
+        await callback.message.edit_text(text, parse_mode="HTML", reply_markup=await build_questions_keyboard("full", admin_id))
+        await _refresh_sheet_header(header_code, setting_key)  # only THIS city's tab
+        await remind_consent_purposes_if_widened(callback.message, setting_key, new_val)
+        return
+
+    # Global branch — REG-02 (06-04): registry-driven resolution, byte-identical to the prior
+    # manual (val == "on") if val is not None else REG_DEFAULTS.get(setting_key, "on") == "on"
+    # idiom.
     current_on = await get_setting_typed(setting_key)
 
     new_val = "off" if current_on else "on"
@@ -470,11 +512,11 @@ async def toggle_reg_question(callback: types.CallbackQuery):
 
     label = REG_LABELS.get(setting_key, setting_key)
     status = "✅ Вкл" if new_val == "on" else "❌ Выкл"
-    await callback.answer(f"{label}: {status}", show_alert=True)
+    await callback.answer(f"{label}: {status}{_REBUILD_HINT}", show_alert=True)
 
-    text = await render_questions_text()
-    await callback.message.edit_text(text, parse_mode="HTML", reply_markup=await build_questions_keyboard())
-    await _refresh_sheet_header()  # keep the sheet header in sync with enabled questions
+    text = await render_questions_text("full", admin_id)
+    await callback.message.edit_text(text, parse_mode="HTML", reply_markup=await build_questions_keyboard("full", admin_id))
+    await _refresh_sheet_header(setting_key=setting_key)  # main tab + cities without their own override
     # Quick 260822: включение резюме = передача файлов в Nextcloud — напоминание о целях.
     await remind_consent_purposes_if_widened(callback.message, setting_key, new_val)
 
@@ -507,7 +549,38 @@ async def toggle_party_question(callback: types.CallbackQuery):
         await callback.answer("Неизвестный вопрос.", show_alert=True)
         return
 
+    admin_id = callback.from_user.id
+    header_code = await admin_selected_city(admin_id)
+    per_city_ctx = bool(header_code and header_code != ALL_CITIES)
     party_key = f"{setting_key}__party"
+
+    if per_city_ctx:
+        visible = await _per_city_visible_codes(admin_id)
+        if header_code not in visible:
+            await callback.answer("Этот город правит суперадмин", show_alert=True)
+            return
+        composed = per_city_key(party_key, header_code)
+        if composed is None:
+            await callback.answer("Неизвестный город", show_alert=True)
+            return
+        current = await get_setting(composed)  # None | "on" | "off" — do NOT collapse
+        new_val = _party_tri_state_advance(current)
+        if new_val is None:
+            await delete_setting(composed)  # back to inherit — key ABSENCE is the inherit state
+        else:
+            await set_setting(composed, new_val)
+        label = _party_tri_state_label(new_val)
+        city_txt = await city_label(header_code)
+
+        await _refresh_party_sheet_header(header_code, setting_key)  # only THIS city's tab
+        await callback.answer(
+            f"{REG_LABELS.get(setting_key, setting_key)} (party) — {city_txt}: {label}{_REBUILD_HINT}",
+            show_alert=True,
+        )
+        text = await render_questions_text("party", admin_id)
+        await callback.message.edit_text(text, parse_mode="HTML", reply_markup=await build_questions_keyboard("party", admin_id))
+        return
+
     current = await get_setting(party_key)  # None | "on" | "off" — do NOT collapse
     new_val = _party_tri_state_advance(current)
     if new_val is None:
@@ -516,10 +589,10 @@ async def toggle_party_question(callback: types.CallbackQuery):
         await set_setting(party_key, new_val)
     label = _party_tri_state_label(new_val)
 
-    await _refresh_party_sheet_header()  # MEDIUM-01: keep the party tab header aligned with the toggle
-    await callback.answer(f"{REG_LABELS.get(setting_key, setting_key)} (party): {label}", show_alert=True)
-    text = await render_questions_text("party")
-    await callback.message.edit_text(text, parse_mode="HTML", reply_markup=await build_questions_keyboard("party"))
+    await _refresh_party_sheet_header(setting_key=setting_key)  # MEDIUM-01: keep the party tab aligned
+    await callback.answer(f"{REG_LABELS.get(setting_key, setting_key)} (party): {label}{_REBUILD_HINT}", show_alert=True)
+    text = await render_questions_text("party", admin_id)
+    await callback.message.edit_text(text, parse_mode="HTML", reply_markup=await build_questions_keyboard("party", admin_id))
 
 
 @router.callback_query(F.data.startswith("reg_q_stoggle:"))
@@ -539,16 +612,212 @@ async def toggle_short_question(callback: types.CallbackQuery):
         await callback.answer("Неизвестный вопрос.", show_alert=True)
         return
 
+    admin_id = callback.from_user.id
+    header_code = await admin_selected_city(admin_id)
+    per_city_ctx = bool(header_code and header_code != ALL_CITIES)
     short_key = f"{setting_key}__short"
+
+    if per_city_ctx:
+        visible = await _per_city_visible_codes(admin_id)
+        if header_code not in visible:
+            await callback.answer("Этот город правит суперадмин", show_alert=True)
+            return
+        composed = per_city_key(short_key, header_code)
+        if composed is None:
+            await callback.answer("Неизвестный город", show_alert=True)
+            return
+        current = await get_setting(composed)  # None | "on" | "off"
+        new_val = "off" if current == "on" else "on"
+        await set_setting(composed, new_val)  # always an explicit write, never delete_setting
+        label = "✅ Вкл" if new_val == "on" else "❌ Выкл"
+        city_txt = await city_label(header_code)
+
+        await _refresh_short_sheet_header(header_code, setting_key)  # only THIS city's tab
+        await callback.answer(
+            f"{REG_LABELS.get(setting_key, setting_key)} (краткая) — {city_txt}: {label}{_REBUILD_HINT}",
+            show_alert=True,
+        )
+        text = await render_questions_text("short", admin_id)
+        await callback.message.edit_text(text, parse_mode="HTML", reply_markup=await build_questions_keyboard("short", admin_id))
+        return
+
     current = await get_setting(short_key)  # None | "on" | "off"
     new_val = "off" if current == "on" else "on"
     await set_setting(short_key, new_val)  # always an explicit write, never delete_setting
     label = "✅ Вкл" if new_val == "on" else "❌ Выкл"
 
-    await _refresh_short_sheet_header()  # keep the short tab header aligned with the toggle
-    await callback.answer(f"{REG_LABELS.get(setting_key, setting_key)} (краткая): {label}", show_alert=True)
-    text = await render_questions_text("short")
-    await callback.message.edit_text(text, parse_mode="HTML", reply_markup=await build_questions_keyboard("short"))
+    await _refresh_short_sheet_header(setting_key=setting_key)  # keep the short tab header aligned
+    await callback.answer(f"{REG_LABELS.get(setting_key, setting_key)} (краткая): {label}{_REBUILD_HINT}", show_alert=True)
+    text = await render_questions_text("short", admin_id)
+    await callback.message.edit_text(text, parse_mode="HTML", reply_markup=await build_questions_keyboard("short", admin_id))
+
+
+# --- Resume mode (file-or-text vs text-only), Phase 25 (CITYQ-04) ---
+#
+# Human labels only — the enum's own on-the-wire values (file_or_text/text_only) never reach
+# a manager, same "коды не показываем" rule as everywhere else in the admin surface.
+_RESUME_MODE_HUMAN = {"file_or_text": "файл или текст", "text_only": "только текст"}
+
+
+def _resume_mode_toggle_label(current: str) -> str:
+    """«Текущее → Новое» direction idiom — same shape as every other direction-toggle button
+    in the admin surface (handlers/admin_settings.py: registration_mode/bonus_enabled/...)."""
+    target = "file_or_text" if current == "text_only" else "text_only"
+    return f"📄 Резюме: {_RESUME_MODE_HUMAN.get(current, current)} → {_RESUME_MODE_HUMAN.get(target, target)}"
+
+
+async def _resume_mode_toggle_button(header_code: str | None) -> InlineKeyboardButton:
+    """The keyboard row placed right under «📄 Резюме» on the full-track screen. `header_code`
+    given (a real city) -> effective value + «(своё)» bullet marker for that city; `None` ->
+    global value, no marker."""
+    if header_code:
+        current = await get_setting_typed_for_city("reg_resume_mode", header_code)
+        override_key = per_city_key("reg_resume_mode", header_code)
+        own = bool(override_key and await get_setting(override_key))
+        marker = "• " if own else ""
+    else:
+        current = await get_setting_typed("reg_resume_mode")
+        marker = ""
+    return InlineKeyboardButton(text=f"{marker}{_resume_mode_toggle_label(current)}", callback_data="reg_resume_mode_toggle")
+
+
+@router.callback_query(F.data == "reg_resume_mode_toggle")
+async def reg_resume_mode_toggle(callback: types.CallbackQuery):
+    """Human toggle for the resume-collection mode — same right-check order as the three
+    question toggles above; the composite key is the BASE reg_resume_mode key (no track
+    suffix, CITYQ-01: it already resolves through cities.get_setting_typed_for_city directly)."""
+    admin_id = callback.from_user.id
+    header_code = await admin_selected_city(admin_id)
+    per_city_ctx = bool(header_code and header_code != ALL_CITIES)
+
+    if per_city_ctx:
+        visible = await _per_city_visible_codes(admin_id)
+        if header_code not in visible:
+            await callback.answer("Этот город правит суперадмин", show_alert=True)
+            return
+        composed = per_city_key("reg_resume_mode", header_code)
+        if composed is None:
+            await callback.answer("Неизвестный город", show_alert=True)
+            return
+        current = await get_setting_typed_for_city("reg_resume_mode", header_code)
+        new_val = "file_or_text" if current == "text_only" else "text_only"
+        await set_setting(composed, new_val)
+    else:
+        current = await get_setting_typed("reg_resume_mode")
+        new_val = "file_or_text" if current == "text_only" else "text_only"
+        await set_setting("reg_resume_mode", new_val)
+
+    label = _RESUME_MODE_HUMAN.get(new_val, new_val)
+    await callback.answer(f"📄 Резюме: {label}{_REBUILD_HINT}", show_alert=True)
+    text = await render_questions_text("full", admin_id)
+    await callback.message.edit_text(text, parse_mode="HTML", reply_markup=await build_questions_keyboard("full", admin_id))
+
+
+# --- «↩️ Как везде» for the questions screen, Phase 25 (CITYQ-04) ---
+#
+# The tapped button carries no track (ADMIN_CAPS keeps ONE exact-match entry for
+# "reg_q_reset_city" — see admin_caps.py's ordering comment). The keyboard CURRENTLY shown
+# already encodes which track it belongs to, via its own toggle-button callback prefixes
+# (reg_q_ptoggle:/reg_q_stoggle:/reg_q_toggle:) — reading that avoids a second state channel
+# (FSM or a module-level dict) just for routing this one confirm screen.
+def _track_from_keyboard(markup: InlineKeyboardMarkup | None) -> str:
+    if markup is not None:
+        for row in markup.inline_keyboard:
+            for button in row:
+                cd = button.callback_data or ""
+                if cd.startswith("reg_q_ptoggle:"):
+                    return "party"
+                if cd.startswith("reg_q_stoggle:"):
+                    return "short"
+    return "full"
+
+
+@router.callback_query(F.data == "reg_q_reset_city")
+async def reg_q_reset_city(callback: types.CallbackQuery):
+    """Confirm screen for «↩️ Как везде» — same two-step confirm gate idiom as
+    `menu_reset_city`: names the city and the number of questions about to lose their own
+    value for the CURRENT track before deleting anything."""
+    admin_id = callback.from_user.id
+    if not await cities_module_on():
+        await callback.answer("Города выключены", show_alert=True)
+        return
+    header_code = await admin_selected_city(admin_id)
+    if not header_code or header_code == ALL_CITIES:
+        await callback.answer("Нет своих настроек для сброса", show_alert=True)
+        return
+    visible = await _per_city_visible_codes(admin_id)
+    if header_code not in visible:
+        await callback.answer("Этот город правит суперадмин", show_alert=True)
+        return
+
+    track = _track_from_keyboard(callback.message.reply_markup)
+    override_count = 0
+    for _header, setting_key in _categorized_question_keys():
+        override_key = _question_override_key(track, setting_key, header_code)
+        if override_key and await get_setting(override_key):
+            override_count += 1
+    if override_count == 0:
+        await callback.answer("Нет своих настроек для сброса", show_alert=True)
+        return
+
+    city_txt = await city_label(header_code)
+    track_txt = {"party": " (трек Party)", "short": " (трек «Краткая»)"}.get(track, "")
+    text = (
+        f"Город {html_module.escape(city_txt)} снова будет показывать общий набор вопросов{track_txt};\n"
+        f"свои значения {override_count} вопросов пропадут."
+    )
+    kb = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="✅ Да, как везде", callback_data=f"reg_q_reset_city_go:{header_code}:{track}")],
+        [InlineKeyboardButton(text="← Отмена", callback_data=f"reg_q_track:{track}")],
+    ])
+    await callback.message.edit_text(text, parse_mode="HTML", reply_markup=kb)
+    await callback.answer()
+
+
+@router.callback_query(F.data.startswith("reg_q_reset_city_go:"))
+async def reg_q_reset_city_go(callback: types.CallbackQuery):
+    parts = callback.data.split(":")
+    code = parts[1] if len(parts) > 1 else ""
+    track = parts[2] if len(parts) > 2 and parts[2] in ("full", "party", "short") else "full"
+    admin_id = callback.from_user.id
+    if not await cities_module_on():
+        await callback.answer("Города выключены", show_alert=True)
+        return
+    if code not in city_codes():
+        await callback.answer("Неизвестный город", show_alert=True)
+        return
+    # T-25-11: RIGHT checked against the code carried in callback_data (not just the current
+    # header) — same ordering as `menu_reset_city_go` (right check before freshness).
+    visible = await _per_city_visible_codes(admin_id)
+    if code not in visible:
+        await callback.answer("Этот город правит суперадмин", show_alert=True)
+        return
+    # Freshness — the confirm screen named the header's city; if the header moved on since,
+    # refuse and re-render for the NEW header instead of deleting.
+    current = await admin_selected_city(admin_id)
+    if code != current:
+        await callback.answer("Город админки изменился — подтвердите заново.", show_alert=True)
+        text = await render_questions_text(track, admin_id)
+        await callback.message.edit_text(text, parse_mode="HTML", reply_markup=await build_questions_keyboard(track, admin_id))
+        return
+
+    # Idempotent -- deleting an already-absent key is a no-op, safe to repeat.
+    for _header, setting_key in _categorized_question_keys():
+        override_key = _question_override_key(track, setting_key, code)
+        if override_key:
+            await delete_setting(override_key)
+
+    if track == "party":
+        await _refresh_party_sheet_header(code)
+    elif track == "short":
+        await _refresh_short_sheet_header(code)
+    else:
+        await _refresh_sheet_header(code)
+
+    city_txt = await city_label(code)
+    await callback.answer(f"Готово: {city_txt} — как везде", show_alert=True)
+    text = await render_questions_text(track, admin_id)
+    await callback.message.edit_text(text, parse_mode="HTML", reply_markup=await build_questions_keyboard(track, admin_id))
 
 
 @router.callback_query(F.data == "reg_q_noop")
@@ -640,6 +909,19 @@ async def preset_confirm(callback: types.CallbackQuery):
     preset = REG_PRESETS.get(key)
     if not preset:
         await callback.answer("Неизвестный пресет.", show_alert=True)
+        return
+    # T-25-13: a preset is a GLOBAL bulk-writer (_apply_event_preset/_apply_party_preset/
+    # _apply_short_preset all write the base/track key, never a per-city composite) — applying
+    # it while the header is scoped to one city would silently rewrite EVERY city's effective
+    # question set without the manager ever seeing that. Early exit, no state changed.
+    admin_id = callback.from_user.id
+    header_code = await admin_selected_city(admin_id)
+    if header_code and header_code != ALL_CITIES:
+        await callback.answer(
+            "Пресет меняет набор вопросов для всех городов. Переключи шапку на «🌍 Все города», "
+            "если правда этого хочешь.",
+            show_alert=True,
+        )
         return
     if key == "party":
         # D-07: route to the isolated __party-only bulk writer. _apply_event_preset writes
