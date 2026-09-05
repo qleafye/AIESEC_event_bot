@@ -33,7 +33,9 @@ from dashboard.queries import (
     game_block,
     kpi_row,
     monthly_table,
+    registration_start,
     season_options,
+    status_totals,
     utm_table,
 )
 
@@ -296,6 +298,109 @@ def test_funnel_start_event_city_counts_only_for_matching_city_scope(tmp_path):
         msk_stages = dict(funnel(conn, Scope(city="msk")))
     assert spb_stages["Зашли"] == 1
     assert msk_stages["Зашли"] == 0
+
+
+# ── registration_start (Phase 26.1 Plan 01, SD-03) ───────────────────────────────────────
+
+def test_registration_start_scoped_by_season_differs_from_funnel_tracking_since(tmp_path):
+    """База, прожившая два сезона: `funnel_tracking_since` держится за самый ранний ts
+    вообще, `registration_start(scope)` — за старт КОНКРЕТНОГО сезона. На неравных датах
+    подмена одной функции другой сдвинула бы всю ось «день N»."""
+    path = _use_tmp_db(tmp_path)
+    _seed(
+        settings={"event_season": "YL26"},
+        reg_events=[
+            (1, "start", None, "RusCo25", "2025-09-01 10:00:00"),  # старый сезон — раньше
+            (2, "start", None, "YL26", "2026-08-01 10:00:00"),      # текущий сезон
+        ],
+    )
+    with dash_db.read_conn(path) as conn:
+        global_since = funnel_tracking_since(conn)
+        current_season_start = registration_start(conn, Scope())  # season=None -> текущий
+        past_season_start = registration_start(conn, Scope(season="RusCo25"))
+    assert global_since == "2025-09-01 10:00:00"
+    assert current_season_start == "2026-08-01 10:00:00"
+    assert past_season_start == "2025-09-01 10:00:00"
+    assert current_season_start != global_since
+
+
+def test_registration_start_empty_reg_events_returns_none(tmp_path):
+    path = _use_tmp_db(tmp_path)
+    with dash_db.read_conn(path) as conn:
+        assert registration_start(conn, Scope()) is None
+
+
+def test_registration_start_city_in_scope_does_not_narrow_result(tmp_path):
+    path = _use_tmp_db(tmp_path)
+    _seed(
+        cities=[("msk", "Москва", 1, 0), ("spb", "СПб", 1, 1)],
+        settings={"event_city_enabled": "on"},
+        reg_events=[(1, "start", "spb", None, "2026-08-01 10:00:00")],
+    )
+    with dash_db.read_conn(path) as conn:
+        msk_scoped = registration_start(conn, Scope(city="msk"))
+        spb_scoped = registration_start(conn, Scope(city="spb"))
+    # Городская ось игнорируется -- оба скоупа видят одно и то же событие СПб.
+    assert msk_scoped == spb_scoped == "2026-08-01 10:00:00"
+
+
+# ── status_totals (Phase 26.1 Plan 01, SD-03) ────────────────────────────────────────────
+
+def test_status_totals_always_has_three_keys_zero_on_empty_db(tmp_path):
+    path = _use_tmp_db(tmp_path)
+    with dash_db.read_conn(path) as conn:
+        totals = status_totals(conn, Scope())
+    assert totals == {"pending": 0, "approved": 0, "rejected": 0}
+
+
+def test_status_totals_counts_by_status(tmp_path):
+    path = _use_tmp_db(tmp_path)
+    _seed(users=[
+        {"telegram_id": 1, "status": "pending"},
+        {"telegram_id": 2, "status": "pending"},
+        {"telegram_id": 3, "status": "approved"},
+        {"telegram_id": 4, "status": "rejected"},
+    ])
+    with dash_db.read_conn(path) as conn:
+        totals = status_totals(conn, Scope())
+    assert totals == {"pending": 2, "approved": 1, "rejected": 1}
+
+
+def test_status_totals_scoped_by_city_and_season(tmp_path):
+    path = _use_tmp_db(tmp_path)
+    _seed(
+        cities=[("msk", "Москва", 1, 0), ("spb", "СПб", 1, 1)],
+        settings={"event_city_enabled": "on", "event_season": "YL26"},
+        users=[
+            {"telegram_id": 1, "event_city": "msk", "season": "YL26", "status": "approved"},
+            {"telegram_id": 2, "event_city": "spb", "season": "YL26", "status": "approved"},
+            {"telegram_id": 3, "event_city": "msk", "season": "RusCo25", "status": "approved"},
+        ],
+    )
+    with dash_db.read_conn(path) as conn:
+        msk_current = status_totals(conn, Scope(city="msk"))
+        spb_current = status_totals(conn, Scope(city="spb"))
+        msk_past = status_totals(conn, Scope(city="msk", season="RusCo25"))
+    assert msk_current["approved"] == 1
+    assert spb_current["approved"] == 1
+    assert msk_past["approved"] == 1
+
+
+def test_status_totals_not_cut_by_funnel_tracking_since(tmp_path):
+    """В отличие от `funnel()`'s «Одобрено», здесь НЕТ отсечки по началу трекинга событий —
+    это итог по всей базе, а не окно воронки; числа МОГУТ законно разойтись с `funnel()`."""
+    path = _use_tmp_db(tmp_path)
+    _seed(
+        users=[
+            {"telegram_id": 1, "registration_date": "2020-01-01 09:00:00", "status": "approved"},
+        ],
+        reg_events=[(2, "start", None, None, "2026-08-30 23:25:00")],
+    )
+    with dash_db.read_conn(path) as conn:
+        totals = status_totals(conn, Scope())
+        funnel_stages = dict(funnel(conn, Scope()))
+    assert totals["approved"] == 1  # status_totals видит старую заявку
+    assert funnel_stages["Одобрено"] == 0  # funnel() режет её по началу трекинга
 
 
 # ── daily_registrations ─────────────────────────────────────────────────────────────────
