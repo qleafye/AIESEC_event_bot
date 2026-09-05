@@ -1756,6 +1756,29 @@ async def record_reg_event(
         await db.commit()
 
 
+async def backfill_reg_event_city(telegram_id: int, event_city: str) -> None:
+    """Дозаполняет город в уже записанной строке `start` этого пользователя (D-06 продолжение).
+
+    `record_reg_event(..., "start", ...)` пишется в самом верху `/start`, ДО того, как деп-линк
+    успевает подсказать город делегату без городского аргумента -- в этот момент город физически
+    ещё не может быть известен. Без этой функции такой делегат навсегда теряет свою строку
+    `start` для городской воронки (`event_city IS NULL`), хотя город становится известен уже на
+    следующем шаге (`form_started`, где город так или иначе выбран/восстановлен). Условие
+    `event_city IS NULL` в WHERE делает вызов идемпотентным и не даёт затереть город, уже
+    пришедший из deep-link на этапе `cmd_start` -- backfill только ДОПОЛНЯЕТ пустые строки,
+    никогда не перезаписывает заполненные.
+    """
+    if not event_city:
+        return
+    async with _connect() as db:
+        await db.execute(
+            "UPDATE reg_events SET event_city = ? "
+            "WHERE telegram_id = ? AND event = 'start' AND event_city IS NULL",
+            (event_city, telegram_id),
+        )
+        await db.commit()
+
+
 def _reg_started_cutoff(max_age_hours: int | None) -> str | None:
     """Нижняя граница `started_at` для восстановления брошенной анкеты, в том же формате и по
     тем же часам, которыми `mark_reg_started` эту колонку пишет (`datetime.now()`, локальное
