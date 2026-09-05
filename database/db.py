@@ -639,6 +639,10 @@ async def init_db():
             )
         ''')
         await db.execute('CREATE INDEX IF NOT EXISTS idx_reg_events_event_ts ON reg_events(event, ts)')
+        # Квик 260905-qqg: метка кампании из deep-link `src_<метка>`; NULL у органики и у всех
+        # строк, записанных до этой миграции. Отдельный индекс не заводится — блок «Метки
+        # кампаний» читается один раз на отрисовку дашборда, объём таблицы не требует его.
+        await _ensure_column(db, "reg_events", "source_tag", "TEXT")
         # Опросы (native Telegram polls). `polls` — сам опрос и его аудитория (audience_json —
         # тот же filter_spec, что у рассылок; [] = все). `poll_messages` — по строке на
         # ДОСТАВЛЕННЫЙ чат: бот шлёт каждому делегату ОТДЕЛЬНЫЙ Telegram-опрос со своим
@@ -1737,11 +1741,14 @@ async def record_reg_event(
     *,
     event_city: str | None = None,
     season: str | None = None,
+    source_tag: str | None = None,
 ) -> None:
     """Append-only funnel write (D-06). `ts` uses the SAME format as mark_reg_started's
     started_at (not .isoformat()) so the dashboard's daily grouping via substr(ts, 1, 10)
     needs no parsing. `event` outside REG_EVENT_KINDS is still written -- a caller's typo must
-    never silently drop a funnel row -- but logged at WARNING so it doesn't go unnoticed."""
+    never silently drop a funnel row -- but logged at WARNING so it doesn't go unnoticed.
+    `source_tag` (квик 260905-qqg) — метка кампании из deep-link `src_<метка>`; NULL у
+    органики и у ручного ответа на вопрос «Источник»."""
     if event not in REG_EVENT_KINDS:
         logger.warning(
             "record_reg_event: unexpected event kind %r for telegram_id=%s", event, telegram_id
@@ -1749,9 +1756,9 @@ async def record_reg_event(
     ts = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     async with _connect() as db:
         await db.execute(
-            "INSERT INTO reg_events (telegram_id, event, event_city, season, ts) "
-            "VALUES (?, ?, ?, ?, ?)",
-            (telegram_id, event, event_city, season, ts),
+            "INSERT INTO reg_events (telegram_id, event, event_city, season, ts, source_tag) "
+            "VALUES (?, ?, ?, ?, ?, ?)",
+            (telegram_id, event, event_city, season, ts, source_tag),
         )
         await db.commit()
 

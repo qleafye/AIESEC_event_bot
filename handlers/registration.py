@@ -1287,11 +1287,26 @@ async def _start_registration_flow(message: types.Message, state: FSMContext, re
     except Exception as e:
         logger.error(f"Failed to mark reg_started for {message.from_user.id}: {e}")
 
+    saved_referrer_id = referrer_id or existing_data.get("referrer_id")
+    saved_source_tag = source_tag or existing_data.get("source")
+    # A src_ deep-link tag is authoritative: skip the «Источник» question so the delegate's
+    # answer can't overwrite the campaign tag. Organic users (no tag) still get asked.
+    source_from_tag = bool(source_tag) or existing_data.get("_source_from_tag", False)
+
     # Phase 15 (STAT-03, D-06): funnel log -- same city as mark_reg_started above, own
-    # try/except (fail-soft, order-independent from the write above).
+    # try/except (fail-soft, order-independent from the write above). Квик 260905-qqg:
+    # `source_tag=` только когда метка пришла из deep-link (`source_from_tag`) — иначе в
+    # блок «Метки кампаний» полезли бы человеческие ответы вроде «ВК» вперемешку со слагами
+    # кампаний, потому что `existing_data["source"]`/`saved_source_tag` хранит и то, и другое.
     try:
         _season = await get_setting_typed("event_season") or None
-        await record_reg_event(message.from_user.id, "form_started", event_city=saved_city, season=_season)
+        await record_reg_event(
+            message.from_user.id,
+            "form_started",
+            event_city=saved_city,
+            season=_season,
+            source_tag=saved_source_tag if source_from_tag else None,
+        )
     except Exception as e:
         logger.warning(f"record_reg_event(form_started) failed for {message.from_user.id}: {e}")
 
@@ -1305,11 +1320,6 @@ async def _start_registration_flow(message: types.Message, state: FSMContext, re
     except Exception as e:
         logger.warning(f"backfill_reg_event_city failed for {message.from_user.id}: {e}")
 
-    saved_referrer_id = referrer_id or existing_data.get("referrer_id")
-    saved_source_tag = source_tag or existing_data.get("source")
-    # A src_ deep-link tag is authoritative: skip the «Источник» question so the delegate's
-    # answer can't overwrite the campaign tag. Organic users (no tag) still get asked.
-    source_from_tag = bool(source_tag) or existing_data.get("_source_from_tag", False)
     # Phase 5 (D-10, forward-compat only): mirror the _source_from_tag marker above. A fresh
     # `participant_type` arg means the track came from an authoritative source (deep link or
     # the reg_started recovery in cmd_start) this call. NOT consumed by any REG_FLOW step in
@@ -1553,6 +1563,9 @@ async def cmd_start(message: types.Message, state: FSMContext, bot: Bot, command
     # already-computed `args`.
     args = command.args if command else None
     dl_event_city = _extract_event_city(args)          # Phase 07.1 (CITY-03)
+    # Квик 260905-qqg: поднято сюда, чтобы запись `start` уже несла метку кампании; функция
+    # чистая — ни await, ни БД, поднять её раньше безопасно.
+    source_tag = _extract_source_tag(args)
 
     # Phase 15 (STAT-03, D-06): funnel log -- top of the funnel, BEFORE every other gate
     # below (subscription check, pre-selection) so a Nextcloud/subscription/allowlist hiccup
@@ -1562,7 +1575,9 @@ async def cmd_start(message: types.Message, state: FSMContext, bot: Bot, command
     # on the form_started step below, once mark_reg_started/_resolve_track have settled saved_city.
     try:
         _season = await get_setting_typed("event_season") or None
-        await record_reg_event(user_id, "start", event_city=dl_event_city, season=_season)
+        await record_reg_event(
+            user_id, "start", event_city=dl_event_city, season=_season, source_tag=source_tag
+        )
     except Exception as e:
         logger.warning(f"record_reg_event(start) failed for {user_id}: {e}")
 
@@ -1618,9 +1633,8 @@ async def cmd_start(message: types.Message, state: FSMContext, bot: Bot, command
         logger.warning(f"Pre-selection gate skipped for {user_id}: {e}")
 
     # user already fetched above (ME-05 gate bypass); do not re-query.
-    # args/dl_event_city already resolved above (hoisted for the "start" funnel write).
+    # args/dl_event_city/source_tag already resolved above (hoisted for the "start" funnel write).
     referrer_id = _extract_referrer_id(args, user_id)
-    source_tag = _extract_source_tag(args)
     party_track = _extract_party_track(args)          # Phase 5 (D-10)
     dl_party_track = party_track  # preserved for the fork-suppression check below (D-10)
     if referrer_id:
