@@ -1,8 +1,9 @@
 """Phase 21 Plan 02 (FORM-SYNC-04, D-25): реестр текстов анкеты Mini App — сторож полноты и
 человечности для планов 21-07..21-11, которые эти ключи ЧИТАЮТ, а не заводят заново.
 
-Закрытый список из 35 текстовых ключей группы «reg» — добавление 36-го обязано осознанно
-ломать этот тест (Phase 23.1: +5 подписей экрана мастера). Группа большинства ключей —
+Закрытый список из 36 текстовых ключей группы «reg» — добавление 37-го обязано осознанно
+ломать этот тест (Phase 23.1: +5 подписей экрана мастера; Phase 25: +1 «резюме только
+текстом»). Группа большинства ключей —
 "reg" (D-25), не "miniapp" (имена `reg_form_*`/`reg_resume_*` не совпадают с UI-SPEC
 `miniapp_form_*` намеренно — префикс `miniapp_` у КАЖДОГО ключа обязан иметь
 group == "miniapp", tests/test_miniapp_registry.py).
@@ -16,7 +17,7 @@ import handlers.admin_miniapp as admin_miniapp
 import miniapp.deps as miniapp_deps
 from settings_schema import SETTINGS_SCHEMA
 
-# Закрытый список 35 текстов фазы (Task 1 + Phase 23.1) — добавление 36-го обязано
+# Закрытый список 36 текстов фазы (Task 1 + Phase 23.1 + Phase 25) — добавление 37-го обязано
 # осознанно ломать этот тест.
 REG_FORM_TEXT_KEYS = [
     "reg_form_cta_text",
@@ -55,6 +56,9 @@ REG_FORM_TEXT_KEYS = [
     "reg_form_draft_saved_text",
     "reg_form_next_cta_text",
     "reg_form_back_cta_text",
+    # Phase 25 (CITYQ-01): резюме только текстом — по-городски (сам ключ per_city не несёт,
+    # т.к. это ответ бота, а не переопределяемый текст вопроса).
+    "reg_form_resume_text_only_text",
 ]
 
 # Закрытый список per_city (ровно 9 — тексты, обращённые к делегату, per UI-SPEC §
@@ -75,8 +79,8 @@ _PLACEHOLDER_RE = re.compile(r"\{\w+\}")
 
 
 def test_exactly_30_reg_form_keys():
-    assert len(REG_FORM_TEXT_KEYS) == 35
-    assert len(set(REG_FORM_TEXT_KEYS)) == 35
+    assert len(REG_FORM_TEXT_KEYS) == 36
+    assert len(set(REG_FORM_TEXT_KEYS)) == 36
 
 
 def test_every_key_in_registry_as_reg_text():

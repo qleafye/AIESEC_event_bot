@@ -28,6 +28,7 @@ legacy literal tables in handlers/admin.py holds throughout the incremental migr
 from datetime import datetime
 
 from database.db import get_setting, DEFAULT_CONSENT_VERSION
+from reg_labels import REG_LABELS
 
 # REG-01: event-group entries — labels/prompts copied byte-for-byte from the pre-migration
 # literal SETTINGS_FIELDS/PHOTO_FIELDS/FILE_FIELDS tables (handlers/admin.py) so the render
@@ -690,6 +691,14 @@ SETTINGS_SCHEMA = {
         ),
         "default": "Резюме принимается как PDF или DOCX — другой формат не подойдёт.",
     },
+    "reg_form_resume_text_only_text": {
+        "type": "text", "group": "reg", "label": "📝 Резюме только текстом",
+        "prompt": (
+            "Ответ делегату, когда в его городе резюме принимается только текстом, а он "
+            "присылает файл."
+        ),
+        "default": "Здесь резюме принимается текстом — напиши коротко в ответном сообщении.",
+    },
     "reg_form_resume_upload_error_text": {
         "type": "text", "group": "reg", "label": "⚠️ Резюме не загрузилось (общая ошибка)",
         "prompt": (
@@ -1294,49 +1303,49 @@ SETTINGS_SCHEMA = {
     # literal (handlers/registration.py:197-241) — verified count 43 (not 44, see 06-04
     # SUMMARY deviation note). handlers/registration.py::REG_DEFAULTS is now DERIVED from
     # these entries (a comprehension filtering type == "toggle"), not the other way round.
-    "reg_q_age": {"type": "toggle", "group": "reg_questions", "label": "🎂 Возраст", "prompt": None, "default": "on"},
-    "reg_q_vk": {"type": "toggle", "group": "reg_questions", "label": "🔵 ВК", "prompt": None, "default": "on"},
-    "reg_q_email": {"type": "toggle", "group": "reg_questions", "label": "📧 Email", "prompt": None, "default": "off"},
-    "reg_q_phone": {"type": "toggle", "group": "reg_questions", "label": "📱 Телефон", "prompt": None, "default": "off"},
-    "reg_q_city": {"type": "toggle", "group": "reg_questions", "label": "🏙 Город", "prompt": None, "default": "off"},
-    "reg_q_source": {"type": "toggle", "group": "reg_questions", "label": "📢 Источник", "prompt": None, "default": "on"},
-    "reg_q_lc": {"type": "toggle", "group": "reg_questions", "label": "🏢 Лок. комитет", "prompt": None, "default": "off"},
-    "reg_q_position": {"type": "toggle", "group": "reg_questions", "label": "👔 Позиция", "prompt": None, "default": "off"},
-    "reg_q_education": {"type": "toggle", "group": "reg_questions", "label": "🎓 Образование", "prompt": None, "default": "on"},
-    "reg_q_university": {"type": "toggle", "group": "reg_questions", "label": "🏫 ВУЗ", "prompt": None, "default": "on"},
-    "reg_q_course": {"type": "toggle", "group": "reg_questions", "label": "📖 Курс", "prompt": None, "default": "on"},
-    "reg_q_study_field": {"type": "toggle", "group": "reg_questions", "label": "🎯 Направление обучения", "prompt": None, "default": "on"},
-    "reg_q_specialty": {"type": "toggle", "group": "reg_questions", "label": "📝 Специальность", "prompt": None, "default": "off"},
-    "reg_q_work": {"type": "toggle", "group": "reg_questions", "label": "💼 Работа", "prompt": None, "default": "on"},
-    "reg_q_work_sphere": {"type": "toggle", "group": "reg_questions", "label": "🏭 Сфера работы", "prompt": None, "default": "on"},
-    "reg_q_skills": {"type": "toggle", "group": "reg_questions", "label": "💡 Навыки", "prompt": None, "default": "on"},
-    "reg_q_expectations": {"type": "toggle", "group": "reg_questions", "label": "💬 Ожидания (общие)", "prompt": None, "default": "on"},
-    "reg_q_attendance": {"type": "toggle", "group": "reg_questions", "label": "📍 Формат", "prompt": None, "default": "off"},
-    "reg_q_informal_day": {"type": "toggle", "group": "reg_questions", "label": "🏕 Неформальный день", "prompt": None, "default": "off"},
-    "reg_q_comments": {"type": "toggle", "group": "reg_questions", "label": "💬 Доп. комментарии", "prompt": None, "default": "off"},
-    "reg_q_department": {"type": "toggle", "group": "reg_questions", "label": "🏢 Департамент", "prompt": None, "default": "off"},
-    "reg_q_aiesec_role": {"type": "toggle", "group": "reg_questions", "label": "🎖 Позиция в АЙСЕК", "prompt": None, "default": "off"},
-    "reg_q_certificate": {"type": "toggle", "group": "reg_questions", "label": "📄 Справка в ВУЗ", "prompt": None, "default": "off"},
-    "reg_q_alumni_status": {"type": "toggle", "group": "reg_questions", "label": "🎓 Аламни/айсекер", "prompt": None, "default": "off"},
-    "reg_q_english": {"type": "toggle", "group": "reg_questions", "label": "🇬🇧 Англ. язык", "prompt": None, "default": "off"},
-    "reg_q_allergies": {"type": "toggle", "group": "reg_questions", "label": "🤧 Аллергии", "prompt": None, "default": "off"},
-    "reg_q_food": {"type": "toggle", "group": "reg_questions", "label": "🥗 Питание", "prompt": None, "default": "off"},
-    "reg_q_arrival": {"type": "toggle", "group": "reg_questions", "label": "🚌 Приезд", "prompt": None, "default": "off"},
-    "reg_q_housing": {"type": "toggle", "group": "reg_questions", "label": "🏠 Проживание", "prompt": None, "default": "off"},
-    "reg_q_bed_sharing": {"type": "toggle", "group": "reg_questions", "label": "🛏 Общая кровать", "prompt": None, "default": "off"},
-    "reg_q_bed_partner": {"type": "toggle", "group": "reg_questions", "label": "🛏 Сосед по кровати", "prompt": None, "default": "off"},
-    "reg_q_transport": {"type": "toggle", "group": "reg_questions", "label": "🚗 Трансфер", "prompt": None, "default": "off"},
-    "reg_q_payment_date": {"type": "toggle", "group": "reg_questions", "label": "💳 Дата оплаты", "prompt": None, "default": "off"},
-    "reg_q_cc_shop": {"type": "toggle", "group": "reg_questions", "label": "🛍 CC-shop", "prompt": None, "default": "off"},
-    "reg_q_exp_organizers": {"type": "toggle", "group": "reg_questions", "label": "💬 Ожидания: организация", "prompt": None, "default": "off"},
-    "reg_q_exp_content": {"type": "toggle", "group": "reg_questions", "label": "💬 Ожидания: контент", "prompt": None, "default": "off"},
-    "reg_q_volunteer": {"type": "toggle", "group": "reg_questions", "label": "🙋 Волонтёр", "prompt": None, "default": "off"},
-    "reg_q_arrival_date": {"type": "toggle", "group": "reg_questions", "label": "📅 Дата приезда", "prompt": None, "default": "off"},
-    "reg_q_birth_date": {"type": "toggle", "group": "reg_questions", "label": "🎂 Дата рождения", "prompt": None, "default": "off"},
-    "reg_q_goal": {"type": "toggle", "group": "reg_questions", "label": "🎯 Цель участия", "prompt": None, "default": "off"},
-    "reg_q_formats": {"type": "toggle", "group": "reg_questions", "label": "📋 Форматы форума", "prompt": None, "default": "off"},
-    "reg_q_ambassador": {"type": "toggle", "group": "reg_questions", "label": "🧡 Амбассадор", "prompt": None, "default": "off"},
-    "reg_q_resume": {"type": "toggle", "group": "reg_questions", "label": "📄 Резюме", "prompt": None, "default": "off"},
+    "reg_q_age": {"type": "toggle", "group": "reg_questions", "label": "🎂 Возраст", "prompt": None, "default": "on", "per_city": True},
+    "reg_q_vk": {"type": "toggle", "group": "reg_questions", "label": "🔵 ВК", "prompt": None, "default": "on", "per_city": True},
+    "reg_q_email": {"type": "toggle", "group": "reg_questions", "label": "📧 Email", "prompt": None, "default": "off", "per_city": True},
+    "reg_q_phone": {"type": "toggle", "group": "reg_questions", "label": "📱 Телефон", "prompt": None, "default": "off", "per_city": True},
+    "reg_q_city": {"type": "toggle", "group": "reg_questions", "label": "🏙 Город", "prompt": None, "default": "off", "per_city": True},
+    "reg_q_source": {"type": "toggle", "group": "reg_questions", "label": "📢 Источник", "prompt": None, "default": "on", "per_city": True},
+    "reg_q_lc": {"type": "toggle", "group": "reg_questions", "label": "🏢 Лок. комитет", "prompt": None, "default": "off", "per_city": True},
+    "reg_q_position": {"type": "toggle", "group": "reg_questions", "label": "👔 Позиция", "prompt": None, "default": "off", "per_city": True},
+    "reg_q_education": {"type": "toggle", "group": "reg_questions", "label": "🎓 Образование", "prompt": None, "default": "on", "per_city": True},
+    "reg_q_university": {"type": "toggle", "group": "reg_questions", "label": "🏫 ВУЗ", "prompt": None, "default": "on", "per_city": True},
+    "reg_q_course": {"type": "toggle", "group": "reg_questions", "label": "📖 Курс", "prompt": None, "default": "on", "per_city": True},
+    "reg_q_study_field": {"type": "toggle", "group": "reg_questions", "label": "🎯 Направление обучения", "prompt": None, "default": "on", "per_city": True},
+    "reg_q_specialty": {"type": "toggle", "group": "reg_questions", "label": "📝 Специальность", "prompt": None, "default": "off", "per_city": True},
+    "reg_q_work": {"type": "toggle", "group": "reg_questions", "label": "💼 Работа", "prompt": None, "default": "on", "per_city": True},
+    "reg_q_work_sphere": {"type": "toggle", "group": "reg_questions", "label": "🏭 Сфера работы", "prompt": None, "default": "on", "per_city": True},
+    "reg_q_skills": {"type": "toggle", "group": "reg_questions", "label": "💡 Навыки", "prompt": None, "default": "on", "per_city": True},
+    "reg_q_expectations": {"type": "toggle", "group": "reg_questions", "label": "💬 Ожидания (общие)", "prompt": None, "default": "on", "per_city": True},
+    "reg_q_attendance": {"type": "toggle", "group": "reg_questions", "label": "📍 Формат", "prompt": None, "default": "off", "per_city": True},
+    "reg_q_informal_day": {"type": "toggle", "group": "reg_questions", "label": "🏕 Неформальный день", "prompt": None, "default": "off", "per_city": True},
+    "reg_q_comments": {"type": "toggle", "group": "reg_questions", "label": "💬 Доп. комментарии", "prompt": None, "default": "off", "per_city": True},
+    "reg_q_department": {"type": "toggle", "group": "reg_questions", "label": "🏢 Департамент", "prompt": None, "default": "off", "per_city": True},
+    "reg_q_aiesec_role": {"type": "toggle", "group": "reg_questions", "label": "🎖 Позиция в АЙСЕК", "prompt": None, "default": "off", "per_city": True},
+    "reg_q_certificate": {"type": "toggle", "group": "reg_questions", "label": "📄 Справка в ВУЗ", "prompt": None, "default": "off", "per_city": True},
+    "reg_q_alumni_status": {"type": "toggle", "group": "reg_questions", "label": "🎓 Аламни/айсекер", "prompt": None, "default": "off", "per_city": True},
+    "reg_q_english": {"type": "toggle", "group": "reg_questions", "label": "🇬🇧 Англ. язык", "prompt": None, "default": "off", "per_city": True},
+    "reg_q_allergies": {"type": "toggle", "group": "reg_questions", "label": "🤧 Аллергии", "prompt": None, "default": "off", "per_city": True},
+    "reg_q_food": {"type": "toggle", "group": "reg_questions", "label": "🥗 Питание", "prompt": None, "default": "off", "per_city": True},
+    "reg_q_arrival": {"type": "toggle", "group": "reg_questions", "label": "🚌 Приезд", "prompt": None, "default": "off", "per_city": True},
+    "reg_q_housing": {"type": "toggle", "group": "reg_questions", "label": "🏠 Проживание", "prompt": None, "default": "off", "per_city": True},
+    "reg_q_bed_sharing": {"type": "toggle", "group": "reg_questions", "label": "🛏 Общая кровать", "prompt": None, "default": "off", "per_city": True},
+    "reg_q_bed_partner": {"type": "toggle", "group": "reg_questions", "label": "🛏 Сосед по кровати", "prompt": None, "default": "off", "per_city": True},
+    "reg_q_transport": {"type": "toggle", "group": "reg_questions", "label": "🚗 Трансфер", "prompt": None, "default": "off", "per_city": True},
+    "reg_q_payment_date": {"type": "toggle", "group": "reg_questions", "label": "💳 Дата оплаты", "prompt": None, "default": "off", "per_city": True},
+    "reg_q_cc_shop": {"type": "toggle", "group": "reg_questions", "label": "🛍 CC-shop", "prompt": None, "default": "off", "per_city": True},
+    "reg_q_exp_organizers": {"type": "toggle", "group": "reg_questions", "label": "💬 Ожидания: организация", "prompt": None, "default": "off", "per_city": True},
+    "reg_q_exp_content": {"type": "toggle", "group": "reg_questions", "label": "💬 Ожидания: контент", "prompt": None, "default": "off", "per_city": True},
+    "reg_q_volunteer": {"type": "toggle", "group": "reg_questions", "label": "🙋 Волонтёр", "prompt": None, "default": "off", "per_city": True},
+    "reg_q_arrival_date": {"type": "toggle", "group": "reg_questions", "label": "📅 Дата приезда", "prompt": None, "default": "off", "per_city": True},
+    "reg_q_birth_date": {"type": "toggle", "group": "reg_questions", "label": "🎂 Дата рождения", "prompt": None, "default": "off", "per_city": True},
+    "reg_q_goal": {"type": "toggle", "group": "reg_questions", "label": "🎯 Цель участия", "prompt": None, "default": "off", "per_city": True},
+    "reg_q_formats": {"type": "toggle", "group": "reg_questions", "label": "📋 Форматы форума", "prompt": None, "default": "off", "per_city": True},
+    "reg_q_ambassador": {"type": "toggle", "group": "reg_questions", "label": "🧡 Амбассадор", "prompt": None, "default": "off", "per_city": True},
+    "reg_q_resume": {"type": "toggle", "group": "reg_questions", "label": "📄 Резюме", "prompt": None, "default": "off", "per_city": True},
 
     # ── REG-01 (06-04, D-12): "toggles" group — feature-switch enums. Consumer read-sites
     # (handlers/admin.py, handlers/registration.py, handlers/payment.py, services/scheduler.py)
@@ -1406,6 +1415,11 @@ SETTINGS_SCHEMA = {
     "reg_university_mode": {
         "type": "enum", "group": "toggles", "label": "🏫 Режим выбора ВУЗа",
         "options": ["text", "list"], "prompt": None, "default": "text",
+    },
+    "reg_resume_mode": {
+        "type": "enum", "group": "toggles", "label": "📄 Резюме",
+        "options": ["file_or_text", "text_only"], "prompt": None, "default": "file_or_text",
+        "per_city": True,
     },
     "registration_mode": {
         "type": "enum", "group": "toggles", "label": "📝 Форма регистрации",
@@ -3244,6 +3258,72 @@ SETTINGS_SCHEMA = {
         "default": "🌙 делегат узнает в {time}",
     },
 }
+
+
+# ── Phase 25 (CITYQ-01): группа "reg_prompts" — тексты вопросов анкеты, переопределяемые по
+# городу. Пары (step_key, setting_key) — байт-в-байт порядок `_prompt_steps()`
+# (handlers/admin_reg_config.py): первая — full_name (setting_key=None, вопрос без reg_q_*
+# тумблера), дальше — одна пара на каждую тройку `reg_engine.REG_FLOW`, в её порядке.
+# Литерал, а не импорт REG_FLOW: `reg_engine` импортирует ЭТОТ модуль (SETTINGS_SCHEMA),
+# обратный импорт дал бы цикл.
+REG_PROMPT_STEPS: tuple[tuple[str, str | None], ...] = (
+    ("full_name", None),
+    ("age", "reg_q_age"),
+    ("phone", "reg_q_phone"),
+    ("alumni_status", "reg_q_alumni_status"),
+    ("vk", "reg_q_vk"),
+    ("city", "reg_q_city"),
+    ("education_status", "reg_q_education"),
+    ("course", "reg_q_course"),
+    ("university", "reg_q_university"),
+    ("study_field", "reg_q_study_field"),
+    ("goal", "reg_q_goal"),
+    ("formats", "reg_q_formats"),
+    ("expectations", "reg_q_expectations"),
+    ("source", "reg_q_source"),
+    ("ambassador", "reg_q_ambassador"),
+    ("resume", "reg_q_resume"),
+    ("email", "reg_q_email"),
+    ("local_committee", "reg_q_lc"),
+    ("position", "reg_q_position"),
+    ("specialty", "reg_q_specialty"),
+    ("work_status", "reg_q_work"),
+    ("work_sphere", "reg_q_work_sphere"),
+    ("missing_skills", "reg_q_skills"),
+    ("attendance_format", "reg_q_attendance"),
+    ("informal_day", "reg_q_informal_day"),
+    ("comments", "reg_q_comments"),
+    ("department", "reg_q_department"),
+    ("aiesec_role", "reg_q_aiesec_role"),
+    ("needs_certificate", "reg_q_certificate"),
+    ("english_level", "reg_q_english"),
+    ("allergies", "reg_q_allergies"),
+    ("food_pref", "reg_q_food"),
+    ("arrival", "reg_q_arrival"),
+    ("housing", "reg_q_housing"),
+    ("bed_sharing", "reg_q_bed_sharing"),
+    ("bed_partner", "reg_q_bed_partner"),
+    ("transport", "reg_q_transport"),
+    ("cc_shop", "reg_q_cc_shop"),
+    ("exp_organizers", "reg_q_exp_organizers"),
+    ("exp_content", "reg_q_exp_content"),
+    ("volunteer", "reg_q_volunteer"),
+    ("arrival_date", "reg_q_arrival_date"),
+    ("birth_date", "reg_q_birth_date"),
+    ("payment_plan_date", "reg_q_payment_date"),
+)
+
+_FULL_NAME_PROMPT_LABEL = "🪪 Фамилия и Имя"
+
+for _step_key, _setting_key in REG_PROMPT_STEPS:
+    _human = REG_LABELS.get(_setting_key, _step_key) if _setting_key else _FULL_NAME_PROMPT_LABEL
+    SETTINGS_SCHEMA[f"reg_prompt_{_step_key}"] = {
+        "type": "text", "group": "reg_prompts",
+        "label": f"✏️ Текст: {_human}",
+        "prompt": "Свой текст этого вопроса анкеты. «-» — вернуть стандартный.",
+        "default": None, "per_city": True,
+    }
+del _step_key, _setting_key, _human
 
 
 # Quick 260822: человеческие подписи режимов game_submit_notify_mode (CLAUDE.md: коды
