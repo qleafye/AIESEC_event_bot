@@ -147,9 +147,13 @@ async def _enabled_label_keys(user: dict) -> set[str]:
     # метки, делегат его не вводил» (`users.source_from_tag`) решает, включён ли шаг "source" —
     # то же правило, что уже применяет мастер анкеты (`reg_engine.enabled_steps`), второй копии
     # «прятать источник в профиле» здесь не заводится.
+    # Phase 25 (CITYQ-02): город делегата — без него профиль считал набор вопросов глобально
+    # и показывал делегату СПб поля вопросов, выключенных в его городе (мастер уже считает
+    # набор по городу через reg_engine.form_spec).
     enabled = await reg_engine.enabled_steps({
         **answers, "participant_type": track,
         "_source_from_tag": bool(user.get("source_from_tag")),
+        "event_city": user.get("event_city"),
     })
     return {reg_engine.label_key_for(step_key) for step_key in enabled}
 
