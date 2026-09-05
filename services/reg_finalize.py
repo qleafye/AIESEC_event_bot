@@ -355,6 +355,7 @@ async def post_finalize(
         _sheet_dispatch, append_to_named_sheet, is_subscribed, _normalize_channel_ref,
         city_row_tab, approve_user, notify_by_capability,
     )
+    from handlers.reg_schema import sheet_city_code
     from services.nextcloud import upload_resume, upload_text_resume
     from services.sheets import update_row_by_id
 
@@ -390,7 +391,12 @@ async def post_finalize(
     if touches_sheet:
         try:
             row_fn, append_fn = _sheet_dispatch(full.get("participant_type"))
-            row = await row_fn(full)
+            # Phase 25 (CITYQ-03): резолвим город ОДИН раз на путь (не по разу на ветку
+            # new/edit) — sheet_city_code и city_row_tab/_resolve_update_tab построены на
+            # одних и тех же трёх ранних выходах (инвариант зафиксирован докстрингом
+            # sheet_city_code), сверять их результат друг с другом не нужно.
+            city = await sheet_city_code(full.get("event_city"))
+            row = await row_fn(full, city)
             if mode == "new":
                 tab = await city_row_tab(full.get("event_city"), full.get("participant_type"))
                 if tab is None:
@@ -490,9 +496,11 @@ async def handle_resume_upload(bot, telegram_id: int, file_id: str, filename: st
         await update_user_answers(telegram_id, {"resume_url": url}, allowed_columns=["resume_url"])
         try:
             from handlers.registration import _sheet_dispatch
+            from handlers.reg_schema import sheet_city_code
 
             row_fn, _append_fn = _sheet_dispatch(full.get("participant_type"))
-            row = await row_fn({**full, "resume_url": url})
+            city = await sheet_city_code(full.get("event_city"))
+            row = await row_fn({**full, "resume_url": url}, city)
             tab = await _resolve_update_tab(full.get("event_city"), full.get("participant_type"))
             await update_row_by_id(tab, telegram_id, row)
         except Exception as e:
