@@ -36,6 +36,8 @@ from cities import (
     city_label,
     get_setting_typed_for_city,
     per_city_key,
+    enabled_cities,
+    is_default_city,
 )
 from handlers.admin import router
 from handlers.admin_consent import remind_consent_purposes_if_widened, remind_consent_purposes_after_preset
@@ -174,7 +176,7 @@ async def show_reg_questions(callback: types.CallbackQuery):
     await callback.answer()
 
 
-async def _refresh_sheet_header() -> None:
+async def _refresh_sheet_header(city_code: str | None = None, setting_key: str | None = None) -> None:
     """Regenerate the Google-sheet header after a question toggle so newly enabled
     questions show up as columns right away. The header is otherwise built only at
     startup (main.py), so mid-session toggles left the sheet missing enabled columns —
@@ -183,7 +185,38 @@ async def _refresh_sheet_header() -> None:
 
     NOTE: a column inserted mid-list only aligns rows appended AFTER the toggle; rows
     already in the sheet keep their original positions. Set the event type before
-    delegates start registering to avoid mid-event drift."""
+    delegates start registering to avoid mid-event drift.
+
+    Phase 25 (CITYQ-03): two new optional args, both `None` by default — every EXISTING call
+    site in this plan keeps calling with zero arguments and gets the exact behavior above
+    (main tab only). A future per-city toggle screen (plan 25-04) will pass them:
+    - `city_code` given (a manager toggled a question FOR one city) — touch ONLY that city's
+      tab, never the main tab or any other city;
+    - `city_code is None` and `setting_key` given (a GLOBAL question toggle) — main tab AS
+      ABOVE, plus every ENABLED non-default city's tab that has NO OWN override for this
+      setting key (`per_city_key(setting_key, code)` empty) — CONTEXT.md's Google-таблица
+      decision: a global toggle must reach every tab that doesn't have its own answer already.
+      A city with its own override is deliberately left untouched — the global flip did not
+      change what that city sees.
+    - both `None` (presets, and any other bulk writer that doesn't know a single setting key)
+      — main tab only, exactly as before this phase.
+    Each city tab is its own try/except (mirrors the party/short siblings below) so one city's
+    Sheets failure never cancels the rest."""
+    from handlers.reg_schema import city_row_tab
+    from services.sheets import ensure_named_sheet_header
+
+    if city_code is not None:
+        try:
+            headers = await active_sheet_headers(city_code)
+            tab = await city_row_tab(city_code, None)
+        except Exception as e:
+            logger.warning(f"_refresh_sheet_header: could not compute headers for city={city_code!r}: {e}")
+            return
+        if tab is None:
+            return
+        _spawn(ensure_named_sheet_header(tab, headers))
+        return
+
     try:
         headers = await active_sheet_headers()
     except Exception as e:
@@ -191,21 +224,63 @@ async def _refresh_sheet_header() -> None:
         return
     _spawn(ensure_sheet_header(headers))
 
+    if setting_key is None or not await cities_module_on():
+        return
+    for city in await enabled_cities():
+        code = city["code"]
+        if is_default_city(code):
+            continue
+        own_key = per_city_key(setting_key, code)
+        if own_key is not None and await get_setting(own_key):
+            continue  # у города своё значение — глобальный тумблер его не касается
+        try:
+            city_headers = await active_sheet_headers(code)
+            city_tab = await city_row_tab(code, None)
+        except Exception as e:
+            logger.warning(f"_refresh_sheet_header: could not compute headers for city={code!r}: {e}")
+            continue
+        if city_tab is None:
+            continue
+        _spawn(ensure_named_sheet_header(city_tab, city_headers))
 
-async def _refresh_party_sheet_header() -> None:
+
+async def _refresh_party_sheet_header(city_code: str | None = None, setting_key: str | None = None) -> None:
     """MEDIUM-01: resync the party tab's physical header after a party-question toggle/preset so
     party rows appended afterwards align to the same columns as row 1. party_sheet_row recomputes
     party_sheet_headers() live per append, so a mid-event __party override otherwise shifts every
     subsequent row against the once-written startup header — a silent column misalignment.
     Mirrors _refresh_sheet_header for the main tab. GATED on party_enabled='on' (like the startup
     _maybe_ensure_party_sheet_header) so toggling a party override while the track is OFF never
-    materializes the tab (D-15). Fail-soft + backgrounded."""
+    materializes the tab (D-15). Fail-soft + backgrounded.
+
+    Phase 25 (CITYQ-03): same `city_code`/`setting_key` contract as `_refresh_sheet_header`
+    (see its docstring), with ONE difference: the "does this city already have its own
+    override" check reads the TRACK-SPECIFIC key `{setting_key}__party`, not the base key —
+    a city can override the party question independently of its full-track override."""
     from handlers.registration import party_sheet_headers, PARTY_SHEET_TAB_DEFAULT
+    from handlers.reg_schema import city_row_tab
     from services.sheets import ensure_named_sheet_header
     try:
         # REG-02 (06-05): gate read migrated to the registry; behavior unchanged.
         if (await get_setting_typed("party_enabled")) != "on":
             return
+    except Exception as e:
+        logger.warning(f"_refresh_party_sheet_header: gate check failed: {e}")
+        return
+
+    if city_code is not None:
+        try:
+            headers = await party_sheet_headers(city_code)
+            tab = await city_row_tab(city_code, "party_overnight")
+        except Exception as e:
+            logger.warning(f"_refresh_party_sheet_header: could not compute headers for city={city_code!r}: {e}")
+            return
+        if tab is None:
+            return
+        _spawn(ensure_named_sheet_header(tab, headers))
+        return
+
+    try:
         tab = await get_setting("party_sheet_tab") or PARTY_SHEET_TAB_DEFAULT
         headers = await party_sheet_headers()
     except Exception as e:
@@ -213,24 +288,86 @@ async def _refresh_party_sheet_header() -> None:
         return
     _spawn(ensure_named_sheet_header(tab, headers))
 
+    if setting_key is None or not await cities_module_on():
+        return
+    track_key = f"{setting_key}__party"
+    for city in await enabled_cities():
+        code = city["code"]
+        if is_default_city(code):
+            continue
+        own_key = per_city_key(track_key, code)
+        if own_key is not None and await get_setting(own_key):
+            continue
+        try:
+            city_headers = await party_sheet_headers(code)
+            city_tab = await city_row_tab(code, "party_overnight")
+        except Exception as e:
+            logger.warning(f"_refresh_party_sheet_header: could not compute headers for city={code!r}: {e}")
+            continue
+        if city_tab is None:
+            continue
+        _spawn(ensure_named_sheet_header(city_tab, city_headers))
 
-async def _refresh_short_sheet_header() -> None:
+
+async def _refresh_short_sheet_header(city_code: str | None = None, setting_key: str | None = None) -> None:
     """Phase 7 (SHORT-03): resync the short (promo) tab's physical header after a __short
     question toggle/preset — mirrors _refresh_party_sheet_header exactly. GATED on
     registration_mode == 'short' (gate #5) so a tap on the short-track questions screen while
     the manager is still on «Полная» never materializes an empty promo tab. Fail-soft +
-    backgrounded, local import to avoid a circular import (same idiom as the party sibling)."""
+    backgrounded, local import to avoid a circular import (same idiom as the party sibling).
+
+    Phase 25 (CITYQ-03): same `city_code`/`setting_key` contract as `_refresh_sheet_header`,
+    override check against the TRACK-SPECIFIC `{setting_key}__short` key — same reasoning as
+    the party sibling above."""
     from handlers.registration import short_sheet_headers, SHORT_SHEET_TAB_DEFAULT
+    from handlers.reg_schema import city_row_tab
     from services.sheets import ensure_named_sheet_header
     try:
         if (await get_setting_typed("registration_mode")) != "short":
             return
+    except Exception as e:
+        logger.warning(f"_refresh_short_sheet_header: gate check failed: {e}")
+        return
+
+    if city_code is not None:
+        try:
+            headers = await short_sheet_headers(city_code)
+            tab = await city_row_tab(city_code, "short")
+        except Exception as e:
+            logger.warning(f"_refresh_short_sheet_header: could not compute headers for city={city_code!r}: {e}")
+            return
+        if tab is None:
+            return
+        _spawn(ensure_named_sheet_header(tab, headers))
+        return
+
+    try:
         tab = await get_setting("short_sheet_tab") or SHORT_SHEET_TAB_DEFAULT
         headers = await short_sheet_headers()
     except Exception as e:
         logger.warning(f"_refresh_short_sheet_header: could not compute headers: {e}")
         return
     _spawn(ensure_named_sheet_header(tab, headers))
+
+    if setting_key is None or not await cities_module_on():
+        return
+    track_key = f"{setting_key}__short"
+    for city in await enabled_cities():
+        code = city["code"]
+        if is_default_city(code):
+            continue
+        own_key = per_city_key(track_key, code)
+        if own_key is not None and await get_setting(own_key):
+            continue
+        try:
+            city_headers = await short_sheet_headers(code)
+            city_tab = await city_row_tab(code, "short")
+        except Exception as e:
+            logger.warning(f"_refresh_short_sheet_header: could not compute headers for city={code!r}: {e}")
+            continue
+        if city_tab is None:
+            continue
+        _spawn(ensure_named_sheet_header(city_tab, city_headers))
 
 
 @router.callback_query(F.data.startswith("reg_q_toggle:"))

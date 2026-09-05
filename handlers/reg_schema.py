@@ -411,8 +411,16 @@ async def incomplete_city_batches() -> list[tuple[str, list[str], list[list]]]:
 
     Groups rows by the RESOLVED TAB NAME (city_incomplete_tab), not by raw city code: with the
     cities module off, every row's tab resolves to the single default «Незавершённые» name, so
-    they all collapse into one batch — today's behavior, byte for byte. `headers` is computed
-    exactly ONCE per call (Google Sheets quota) and shared by every batch.
+    they all collapse into one batch — today's behavior, byte for byte.
+
+    Phase 25 (CITYQ-03): `headers` is computed exactly ONCE PER CITY (not once per call
+    overall, as before this phase) via `sheet_city_code` + a `headers_by_code` cache — still
+    only one `incomplete_sheet_headers(code)` call per DISTINCT code (Google Sheets quota,
+    T-25-10), so a city's own question toggles now show up in its «Незавершённые» tab instead
+    of every tab silently sharing the main tab's column set. `sheet_city_code` and
+    `city_incomplete_tab` are built on the SAME three-check ladder (module off / default city /
+    no tab_base), so a row's tab and its header-cache code always agree: tab == default_tab
+    iff code is None.
 
     The default city's tab is always present, even with an empty row list, so a full
     clear+rewrite (sync_named_worksheet) keeps wiping out dropouts that have since registered
@@ -428,16 +436,26 @@ async def incomplete_city_batches() -> list[tuple[str, list[str], list[list]]]:
     to dodge a cycle."""
     from handlers.registration import get_incomplete_rows_with_city, incomplete_sheet_headers, city_incomplete_tab, incomplete_sheet_row
     rows = await get_incomplete_rows_with_city()
-    headers = await incomplete_sheet_headers()
+    headers_by_code: dict[str | None, list[str]] = {}
+
+    async def _headers_for(code: str | None) -> list[str]:
+        if code not in headers_by_code:
+            headers_by_code[code] = await incomplete_sheet_headers(code)
+        return headers_by_code[code]
+
     default_tab = await city_incomplete_tab(None)
-    batches: dict[str, list[list]] = {default_tab: []}
+    default_headers = await _headers_for(await sheet_city_code(None))
+    batch_headers: dict[str, list[str]] = {default_tab: default_headers}
+    batch_rows: dict[str, list[list]] = {default_tab: []}
     for telegram_id, username, started_at, last_step, partial_data, event_city in rows:
         tab = await city_incomplete_tab(event_city)
-        batches.setdefault(tab, [])
-        batches[tab].append(
+        headers = await _headers_for(await sheet_city_code(event_city))
+        batch_headers.setdefault(tab, headers)
+        batch_rows.setdefault(tab, [])
+        batch_rows[tab].append(
             incomplete_sheet_row(telegram_id, username, started_at, last_step, partial_data, headers)
         )
-    return [(tab, headers, sheet_rows) for tab, sheet_rows in batches.items()]
+    return [(tab, batch_headers[tab], sheet_rows) for tab, sheet_rows in batch_rows.items()]
 
 
 DEFAULT_APPROVE_TEXT = "Твоя заявка одобрена! Добро пожаловать 🎉"

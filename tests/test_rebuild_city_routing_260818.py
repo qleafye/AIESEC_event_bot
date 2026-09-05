@@ -28,7 +28,14 @@ def _users():
 def _wire(monkeypatch, route):
     main_calls, named_calls = [], []
 
-    async def fake_headers():
+    # Phase 25 (CITYQ-03): rebuild_sheet now computes headers PER CODE (main tab = code None,
+    # each city tab = its own code) instead of one shared list — active_sheet_headers/
+    # set_sheet_schema both gain an optional city_code, and sheet_city_code resolves the code
+    # for a delegate's row. This fixture's `route` already encodes "which city (if any) this
+    # event_city belongs to" (None = main tab) — fake_city_code reuses that SAME mapping
+    # (participant_type is irrelevant to it, route ignores it too) so a real DB call to the
+    # dev sqlite file at data/forum.db never happens from this fully-mocked handler test.
+    async def fake_headers(city_code=None):
         return ["ID"]
 
     async def fake_users():
@@ -42,8 +49,11 @@ def _wire(monkeypatch, route):
         named_calls.append((title, rows))
         return len(rows)
 
-    async def fake_schema(headers):
+    async def fake_schema(headers, city_code=None):
         return None
+
+    async def fake_city_code(event_city):
+        return event_city if (await route(event_city, None)) is not None else None
 
     async def fake_kb(uid):
         return None
@@ -53,6 +63,7 @@ def _wire(monkeypatch, route):
     monkeypatch.setattr(admin_settings, "rebuild_main_sheet", fake_rebuild)
     monkeypatch.setattr(admin_settings, "sync_named_worksheet", fake_sync)
     monkeypatch.setattr(admin_settings, "set_sheet_schema", fake_schema)
+    monkeypatch.setattr(admin_settings, "sheet_city_code", fake_city_code)
     monkeypatch.setattr(admin_settings, "admin_keyboard_for", fake_kb)
     monkeypatch.setattr(admin_settings, "_sheet_value_map", lambda u: {"ID": u["telegram_id"]})
     monkeypatch.setattr(admin_settings, "city_row_tab", route)
