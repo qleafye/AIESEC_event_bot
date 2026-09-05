@@ -18,7 +18,7 @@ from services.heartbeat import PollingHeartbeatMiddleware, heartbeat_loop, clear
 import services.sheets as sheets_service
 import services.proxy_session as proxy_session
 from services.proxy_session import FailoverAiohttpSession, build_proxy_chain, mask_proxy_url
-from handlers.registration import active_sheet_headers, set_sheet_schema, party_sheet_headers, PARTY_SHEET_TAB_DEFAULT, short_sheet_headers, SHORT_SHEET_TAB_DEFAULT, get_sheet_schema, city_row_tab
+from handlers.registration import active_sheet_headers, set_sheet_schema, party_sheet_headers, PARTY_SHEET_TAB_DEFAULT, short_sheet_headers, SHORT_SHEET_TAB_DEFAULT, city_row_tab
 from cities import enabled_cities, is_default_city, seed_cities_if_empty, reload_cities
 from settings_schema import get_setting_typed, SETTINGS_SCHEMA
 from aiogram.client.default import DefaultBotProperties
@@ -111,10 +111,15 @@ async def _maybe_ensure_city_sheet_headers():
         if not base:
             continue
 
-        # Main tab — always materialized for an enabled non-default city.
+        # Main tab — always materialized for an enabled non-default city. Phase 25 (CITYQ-03):
+        # headers are computed for THIS city's own question set (not the global snapshot), and
+        # the per-city snapshot is frozen BEFORE the physical header write — the snapshot and
+        # the physical header must appear together, otherwise the very first append after
+        # deploy would align to a snapshot that doesn't match the just-written header.
         try:
             tab = await city_row_tab(code, None)
-            headers = await get_sheet_schema()  # CR-9 frozen snapshot, not live headers
+            headers = await active_sheet_headers(code)
+            await set_sheet_schema(headers, code)
             await sheets_service.ensure_named_sheet_header(tab, headers)
         except Exception as e:
             logger.warning(f"Failed to ensure city sheet header (tab={tab!r}): {e}")
@@ -123,7 +128,7 @@ async def _maybe_ensure_city_sheet_headers():
         if await get_setting_typed("party_enabled") == "on":
             try:
                 tab = await city_row_tab(code, "party_overnight")
-                headers = await party_sheet_headers()
+                headers = await party_sheet_headers(code)
                 await sheets_service.ensure_named_sheet_header(tab, headers)
             except Exception as e:
                 logger.warning(f"Failed to ensure city sheet header (tab={tab!r}): {e}")
@@ -132,7 +137,7 @@ async def _maybe_ensure_city_sheet_headers():
         if await get_setting_typed("registration_mode") == "short":
             try:
                 tab = await city_row_tab(code, "short")
-                headers = await short_sheet_headers()
+                headers = await short_sheet_headers(code)
                 await sheets_service.ensure_named_sheet_header(tab, headers)
             except Exception as e:
                 logger.warning(f"Failed to ensure city sheet header (tab={tab!r}): {e}")
