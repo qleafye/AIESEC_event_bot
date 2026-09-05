@@ -224,11 +224,26 @@ def kpi_row(conn, scope: Scope) -> dict:
     }
 
 
+def funnel_tracking_since(conn) -> str | None:
+    """С какого момента `reg_events` вообще ведутся -- НЕ со скоупом (в отличие от
+    `kpi_row`'s own `tracking_since`, у которого другая семантика: подпись «Отслеживаем с»
+    ДЛЯ ЭТОГО экрана/города, её мы не трогаем). `funnel()` использует это значение, чтобы
+    отсечь статусные ступени («На модерации»/«Одобрено»/«Оплатили») по общему началу трекинга
+    событий: если сузить отсечку скоупом города, а первое событие в этом городе случилось
+    позже общего начала трекинга, статусные ступени резались бы СИЛЬНЕЕ, чем событийные
+    (`start`/`form_started`/`form_completed`, которые и так живут только внутри окна
+    трекинга) -- воронка снова начала бы врать, только в другую сторону: заниженные статусы
+    относительно честных событий. Вопрос здесь один и тот же для всех городов: «с какого
+    момента бот вообще ведёт события», а не «когда в этом городе случился первый вход»."""
+    return _scalar(conn, "SELECT MIN(ts) FROM reg_events")
+
+
 # ── воронка (D-07/D-08) ──────────────────────────────────────────────────────────────────
 
 def funnel(conn, scope: Scope) -> list[tuple[str, int]]:
     flags = dashboard_flags(conn)
     parts, params = _scope_sql(conn, scope)
+    tracking_since = funnel_tracking_since(conn)
 
     def _distinct_event_count(event: str) -> int:
         event_parts = parts + ["event = ?"]
@@ -240,8 +255,16 @@ def funnel(conn, scope: Scope) -> list[tuple[str, int]]:
 
     def _status_count(status: str) -> int:
         status_parts = parts + ["status = ?"]
+        status_params = params + (status,)
+        # Отсечка по началу трекинга событий (см. funnel_tracking_since) -- только когда
+        # reg_events не пуста. Заявки с пустым registration_date под отсечку НЕ проходят:
+        # это верно, такая строка заведомо старше трекинга (иначе registration_date был бы
+        # заполнен). Пустая reg_events -> веток отсечки нет вовсе, поведение прежнее.
+        if tracking_since is not None:
+            status_parts = status_parts + ["registration_date >= ?"]
+            status_params = status_params + (tracking_since,)
         return _scalar(
-            conn, f"SELECT COUNT(*) FROM users{_where(status_parts)}", params + (status,)
+            conn, f"SELECT COUNT(*) FROM users{_where(status_parts)}", status_params
         ) or 0
 
     stages = [
@@ -253,8 +276,12 @@ def funnel(conn, scope: Scope) -> list[tuple[str, int]]:
     ]
     if flags.get("payment_enabled") == "on":
         payment_parts = parts + ["payment_status = ?"]
+        payment_params = params + ("paid",)
+        if tracking_since is not None:
+            payment_parts = payment_parts + ["registration_date >= ?"]
+            payment_params = payment_params + (tracking_since,)
         paid = _scalar(
-            conn, f"SELECT COUNT(*) FROM users{_where(payment_parts)}", params + ("paid",)
+            conn, f"SELECT COUNT(*) FROM users{_where(payment_parts)}", payment_params
         ) or 0
         stages.append(("Оплатили", paid))
     return stages
