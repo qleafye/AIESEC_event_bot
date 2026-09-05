@@ -585,20 +585,25 @@ def test_utm_table_conversion_none_when_starts_zero(tmp_path):
     assert rows["orphan_tag"]["conversion"] is None
 
 
-def test_utm_table_completed_cut_by_tracking_since(tmp_path):
+def test_utm_table_completed_not_cut_by_tracking_since(tmp_path):
+    """Квик 260906-dmq: отсечка по `funnel_tracking_since` снята — заявка старше начала
+    трекинга событий (05.09 22:57 UTC на проде) больше не отсекается из `completed`. Раньше
+    эта отсечка обнуляла низ воронки заодно с верхом: у меток старше начала трекинга не было
+    ни одного события, а отсечка вдобавок съедала и заявки — строка оставалась пустой во ВСЕХ
+    колонках, хотя `users.source` честно говорит, что заявки были."""
     path = _use_tmp_db(tmp_path)
     _seed(
         reg_events=[_tag_event(2, "start", "2026-08-30 23:25:00", "vk_post_1")],
         users=[
             {"telegram_id": 1, "source": "vk_post_1", "status": "approved",
-             "registration_date": "2026-01-01 09:00:00"},  # до начала трекинга
+             "registration_date": "2026-01-01 09:00:00"},  # до начала трекинга событий
             {"telegram_id": 2, "source": "vk_post_1", "status": "approved",
-             "registration_date": "2026-09-01 09:00:00"},  # после начала трекинга
+             "registration_date": "2026-09-01 09:00:00"},  # после начала трекинга событий
         ],
     )
     with dash_db.read_conn(path) as conn:
         rows = {row["tag"]: row for row in utm_table(conn, Scope())}
-    assert rows["vk_post_1"]["completed"] == 1  # только поздняя заявка
+    assert rows["vk_post_1"]["completed"] == 2  # обе заявки, отсечки больше нет
 
 
 def test_utm_table_ignores_empty_or_null_source_tag(tmp_path):
@@ -610,6 +615,92 @@ def test_utm_table_ignores_empty_or_null_source_tag(tmp_path):
     with dash_db.read_conn(path) as conn:
         rows = utm_table(conn, Scope())
     assert rows == []
+
+
+def test_utm_table_tag_present_only_in_users_source(tmp_path):
+    """Метка живёт только в `users.source` (событий с этой меткой нет вовсе, например —
+    заявка старше начала трекинга событий) -- строка всё равно есть: `starts`/`form_started`
+    нулевые, `completed` -- число заявок, `conversion` -- `None` (нет `starts`, делить не на
+    что)."""
+    path = _use_tmp_db(tmp_path)
+    _seed(users=[
+        {"telegram_id": 1, "source": "old_slug", "status": "approved",
+         "registration_date": "2026-01-01 09:00:00"},
+        {"telegram_id": 2, "source": "old_slug", "status": "pending",
+         "registration_date": "2026-01-02 09:00:00"},
+    ])
+    with dash_db.read_conn(path) as conn:
+        rows = {row["tag"]: row for row in utm_table(conn, Scope())}
+    row = rows["old_slug"]
+    assert row["starts"] == 0
+    assert row["form_started"] == 0
+    assert row["completed"] == 2
+    assert row["approved"] == 1
+    assert row["conversion"] is None
+
+
+def test_utm_table_cyrillic_manual_answer_is_not_a_tag(tmp_path):
+    """Кириллический ручной ответ на вопрос «Источник» («ВК») при `source_from_tag = 0`
+    (дефолт) меткой не считается -- в таблице такой строки нет вовсе."""
+    path = _use_tmp_db(tmp_path)
+    _seed(users=[
+        {"telegram_id": 1, "source": "ВК", "status": "approved",
+         "registration_date": "2026-08-01 09:00:00", "source_from_tag": 0},
+    ])
+    with dash_db.read_conn(path) as conn:
+        rows = utm_table(conn, Scope())
+    assert rows == []
+
+
+def test_utm_table_source_from_tag_flag_overrides_cyrillic_heuristic(tmp_path):
+    """`source_from_tag = 1` перекрывает эвристику латиницы -- метка считается, даже если
+    текст в `users.source` кириллический."""
+    path = _use_tmp_db(tmp_path)
+    _seed(users=[
+        {"telegram_id": 1, "source": "ВК", "status": "approved",
+         "registration_date": "2026-08-01 09:00:00", "source_from_tag": 1},
+    ])
+    with dash_db.read_conn(path) as conn:
+        rows = {row["tag"]: row for row in utm_table(conn, Scope())}
+    assert rows["ВК"]["completed"] == 1
+
+
+def test_utm_table_dash_and_blank_source_are_not_tags(tmp_path):
+    path = _use_tmp_db(tmp_path)
+    _seed(users=[
+        {"telegram_id": 1, "source": "-", "status": "approved",
+         "registration_date": "2026-08-01 09:00:00"},
+        {"telegram_id": 2, "source": "", "status": "approved",
+         "registration_date": "2026-08-01 09:00:00"},
+        {"telegram_id": 3, "source": None, "status": "approved",
+         "registration_date": "2026-08-01 09:00:00"},
+    ])
+    with dash_db.read_conn(path) as conn:
+        rows = utm_table(conn, Scope())
+    assert rows == []
+
+
+def test_utm_table_sorted_by_completed_desc_first(tmp_path):
+    """Новая сортировка: `completed` desc идёт ПЕРЕД `starts` desc -- метка с меньшим числом
+    `starts`, но большим числом заявок, оказывается выше."""
+    path = _use_tmp_db(tmp_path)
+    _seed(
+        reg_events=[
+            _tag_event(1, "start", "2026-08-01 10:00:00", "many_starts"),
+            _tag_event(2, "start", "2026-08-01 10:00:00", "many_starts"),
+            _tag_event(3, "start", "2026-08-01 10:00:00", "few_starts"),
+        ],
+        users=[
+            {"telegram_id": 10, "source": "few_starts", "status": "approved",
+             "registration_date": "2026-08-01 09:00:00"},
+            {"telegram_id": 11, "source": "few_starts", "status": "approved",
+             "registration_date": "2026-08-01 09:00:00"},
+        ],
+    )
+    with dash_db.read_conn(path) as conn:
+        rows = utm_table(conn, Scope())
+    tags = [row["tag"] for row in rows]
+    assert tags[0] == "few_starts"  # completed=2 против completed=0 у many_starts
 
 
 # ── game_block (D-12) ────────────────────────────────────────────────────────────────────
