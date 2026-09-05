@@ -238,6 +238,7 @@ GROUP_LABELS: dict[str, str] = {
     "game": "🎮 Геймификация",
     "system": "🔧 Система",
     "reg_questions": "📋 Вопросы регистрации",
+    "reg_prompts": "✏️ Тексты вопросов",
     "menu": "🔘 Кнопки меню",
     "dashboard": "📊 Дашборд",
     "miniapp": "🎨 Mini App",
@@ -255,7 +256,7 @@ GROUP_LABELS: dict[str, str] = {
 # другой раздел) этим тестом не ловится.
 SECTION_GROUPS: tuple[tuple[str, str, tuple[str, ...]], ...] = (
     ("event", "🎪 Событие", ("event", "menu")),
-    ("form", "📝 Анкета", ("reg_questions", "reg", "party", "consent")),
+    ("form", "📝 Анкета", ("reg_questions", "reg_prompts", "reg", "party", "consent")),
     ("apps", "📋 Заявки", ("apps",)),
     ("pay", "💳 Оплата", ("pay",)),
     ("game", "🎮 Геймификация", ("game",)),
@@ -272,7 +273,7 @@ SECTION_GROUPS: tuple[tuple[str, str, tuple[str, ...]], ...] = (
 SETTINGS_MAIN_SECTIONS: frozenset[str] = frozenset({"event", "form", "apps", "pay", "game", "data"})
 
 # Ключ группы "toggles" -> раздел, куда его кладёт соответствующая строка ("toggle", …) в
-# handlers.admin_sections.SECTIONS (двадцать ключей группы "toggles" в SETTINGS_SCHEMA,
+# handlers.admin_sections.SECTIONS (двадцать один ключ группы "toggles" в SETTINGS_SCHEMA,
 # распределены ровно по одному разу — сторож tests/test_settings_ops.py).
 TOGGLE_SECTION: dict[str, str] = {
     "reg_bonus_enabled": "event",
@@ -295,6 +296,7 @@ TOGGLE_SECTION: dict[str, str] = {
     "payment_reminders_enabled": "pay",
     "event_city_enabled": "manage",
     "quiet_hours_enabled": "apps",
+    "reg_resume_mode": "form",
 }
 
 # Единственный источник «что подтверждаем» для ОБЕИХ поверхностей (UI-SPEC A6): вкладки

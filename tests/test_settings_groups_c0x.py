@@ -231,6 +231,10 @@ def test_registry_coverage_event():
         # и лимит длины ответа для карточки заявки, свой экран «🧾 Поля карточки заявки»
         # (handlers/admin_modcard.py) — вне SETTINGS_FIELDS, как dashboard/miniapp.
         "apps",
+        # "reg_prompts" added Phase 25 (CITYQ-01): 44 текста вопросов анкеты, переопределяемые
+        # по городу — свой экран «✏️ Тексты вопросов» (handlers/admin_reg_config.py), вне
+        # SETTINGS_FIELDS, как reg_questions.
+        "reg_prompts",
     }
     allowed_types = {"toggle", "int", "list", "date", "text", "enum", "photo", "file"}
 
