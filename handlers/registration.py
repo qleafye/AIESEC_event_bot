@@ -16,7 +16,7 @@ from aiogram.utils.keyboard import ReplyKeyboardBuilder
 from config import config
 from database.db import add_user, get_user, get_setting, set_setting, mark_reg_started, clear_reg_started, set_reg_step, set_user_subscribed, set_user_status, record_user_consent, get_user_consents, get_reg_started_track, get_reg_started_city, has_short_incomplete, _csv_safe, get_incomplete_rows_with_city, reset_payment_for_new_season, record_reg_event, backfill_reg_event_city, claim_reg_draft, get_reg_draft, upsert_reg_draft, delete_reg_draft, touch_reg_draft_activity  # Phase 15 (STAT-03, D-06): funnel event log; backfill_reg_event_city дозаполняет город на шаге form_started; Phase 21 (21-08): claim_reg_draft/get_reg_draft feed finalize_registration's thin wrapper; Phase 21 (21-09): upsert/delete/touch feed the draft-sync points below
 from settings_schema import SETTINGS_SCHEMA, get_setting_typed  # REG-01/D-06 (06-04): REG_DEFAULTS derivation source; get_setting_typed (06-06 gate migration)
-from cities import CITIES, all_cities, normalize_city, is_default_city, city_tab_base, cities_module_on, is_city_enabled, city_label, enabled_cities, tab_suffix, get_setting_for_city, get_setting_typed_for_city  # Phase 07.1 (CITY-01/CITY-02/CITY-03): city registry — _city_tag_map() + city_row_tab + city fork below; tab_suffix added quick 260815-3hw (TABS-01/02/03, replaces the raw TAB_SUFFIX import); get_setting_for_city/get_setting_typed_for_city added Phase 09.2-04 (CITY-04): per-city text/mode resolver; all_cities added Phase 14 (CITY-07)
+from cities import CITIES, all_cities, normalize_city, is_default_city, city_tab_base, cities_module_on, is_city_enabled, city_label, enabled_cities, tab_suffix, get_setting_for_city, get_setting_typed_for_city, per_city_key  # Phase 07.1 (CITY-01/CITY-02/CITY-03): city registry — _city_tag_map() + city_row_tab + city fork below; tab_suffix added quick 260815-3hw (TABS-01/02/03, replaces the raw TAB_SUFFIX import); get_setting_for_city/get_setting_typed_for_city added Phase 09.2-04 (CITY-04): per-city text/mode resolver; all_cities added Phase 14 (CITY-07); per_city_key added Phase 25 (CITYQ-03): per-tab sheet_header_schema snapshot key
 from handlers.states import Registration
 from keyboards.builders import (
     get_main_menu_kb,
@@ -68,7 +68,7 @@ from handlers.reg_schema import (
     _sheet_details, STATUS_LABELS, _status_label,
     SHEET_COLUMNS, SHEET_HEADERS, _build_sheet_row, _sheet_value_map,
     _is_step_enabled, active_sheet_headers, set_sheet_schema,
-    _sheet_kind, city_row_tab, incomplete_city_batches,
+    _sheet_kind, city_row_tab, incomplete_city_batches, sheet_city_code,
     DEFAULT_APPROVE_TEXT, _is_module_enabled, _approve_text_for,
     send_completion_and_bonus, approve_user,
 )
@@ -981,30 +981,57 @@ def _multi_kb(step_key: str, options: list[str], selected: set[int]):
 # handlers/reg_schema.py (13-02, REFAC-02); imported above.
 
 
-async def get_sheet_schema() -> list[str]:
+def _parse_sheet_schema_snapshot(raw: str | None) -> list[str] | None:
+    """Shared JSON-parse for both the global and the per-city frozen snapshot — Phase 25
+    (CITYQ-03): one parsing rule for both branches of get_sheet_schema, so a malformed value
+    in either key degrades the same way (falls through, never raises)."""
+    if not raw:
+        return None
+    try:
+        parsed = json.loads(raw)
+        if isinstance(parsed, list) and parsed:
+            return [str(h) for h in parsed]
+    except Exception:
+        pass
+    return None
+
+
+async def get_sheet_schema(city_code: str | None = None) -> list[str]:
     """Frozen header snapshot (set at header write / rebuild). Falls back to the live
     active_sheet_headers() when no snapshot exists or it is malformed — zero migration risk
-    for deployments that predate the snapshot."""
-    raw = await get_setting("sheet_header_schema")
-    if raw:
-        try:
-            parsed = json.loads(raw)
-            if isinstance(parsed, list) and parsed:
-                return [str(h) for h in parsed]
-        except Exception:
-            pass
-    return await active_sheet_headers()
+    for deployments that predate the snapshot.
+
+    Phase 25 (CITYQ-03): resolution order for a non-`None` city_code is per-city snapshot ->
+    global snapshot -> live active_sheet_headers(city_code). The per-city branch is gated on
+    `cities_module_on()` explicitly (not just on city_code being non-None) so that with the
+    module OFF this function is byte-identical to city_code=None AND never even reads the
+    `sheet_header_schema__city__*` key — required by the module-off parity guarantee."""
+    if city_code is not None and await cities_module_on():
+        composed = per_city_key("sheet_header_schema", city_code)
+        if composed is not None:
+            parsed = _parse_sheet_schema_snapshot(await get_setting(composed))
+            if parsed is not None:
+                return parsed
+    parsed = _parse_sheet_schema_snapshot(await get_setting("sheet_header_schema"))
+    if parsed is not None:
+        return parsed
+    return await active_sheet_headers(city_code)
 
 
-async def active_sheet_row(data: dict) -> list:
+async def active_sheet_row(data: dict, city_code: str | None = None) -> list:
     """Row projected onto the FROZEN sheet schema (CR-9), aligned to the header actually on the
     sheet. Name-based projection; falls back to live headers when no snapshot is set.
+
+    Phase 25 (CITYQ-03): `city_code` (default `None` = main tab, byte-identical) selects WHICH
+    frozen snapshot the row is projected onto — a city's own snapshot for a named tab, so a
+    delegate's row is always built by the SAME rule that decided the tab's own header (see
+    `handlers.reg_schema.sheet_city_code`'s docstring for the shared invariant).
 
     LOW (formula-injection parity, T-05-06-01): every projected cell is passed through
     database.db._csv_safe — the same neutralizer the party path already applies — so a crafted
     ФИО like «=HYPERLINK(...)» is stored as text on the MAIN tab too, not evaluated as a formula.
     Neutralizes only STRING cells starting with =,+,-,@,\\t,\\r (ints/None pass through)."""
-    headers = await get_sheet_schema()
+    headers = await get_sheet_schema(city_code)
     values = _sheet_value_map(data)
     return [_csv_safe(values.get(h, "-")) for h in headers]
 
@@ -1017,11 +1044,13 @@ INCOMPLETE_BASE_HEADERS = ["ID Telegram", "Username", "Начал регистр
 _INCOMPLETE_EXCLUDED_HEADERS = {"ID Telegram", "Username", "Дата регистрации", "Статус", "Детали"}
 
 
-async def incomplete_sheet_headers() -> list[str]:
+async def incomplete_sheet_headers(city_code: str | None = None) -> list[str]:
     """Headers for the «Незавершённые» tab: base dropout columns + ФИО + every currently
     enabled question column. Width follows the active preset, same as the main sheet
     (active_sheet_headers) — reuses it instead of duplicating the column list. Headers are
-    computed ONCE per export/sync call, not per row (Google Sheets quota).
+    computed ONCE per export/sync call PER CITY, not per row (Google Sheets quota) — Phase 25
+    (CITYQ-03): `city_code` (default `None` = main tab, byte-identical) threads the city layer
+    into both gate checks below, same as active_sheet_headers.
 
     Phase 7 (07-04, SHORT-06): during the promo window (or while an abandoned promo
     registration is still sitting in reg_started) a question can be enabled ONLY in the
@@ -1048,11 +1077,15 @@ async def incomplete_sheet_headers() -> list[str]:
     if await get_setting_typed("registration_mode") == SHORT_TRACK or await has_short_incomplete():
         out = []
         for header, gate, _fn in SHEET_COLUMNS:
-            if gate is None or await _is_step_enabled(gate) or await _is_step_enabled_for_track(gate, SHORT_TRACK):
+            if (
+                gate is None
+                or await is_step_enabled_for_track(gate, None, city_code)
+                or await is_step_enabled_for_track(gate, SHORT_TRACK, city_code)
+            ):
                 out.append(header)
         rest = [h for h in out if h not in _INCOMPLETE_EXCLUDED_HEADERS]
         return INCOMPLETE_BASE_HEADERS + rest
-    active = await active_sheet_headers()
+    active = await active_sheet_headers(city_code)
     rest = [h for h in active if h not in _INCOMPLETE_EXCLUDED_HEADERS]
     return INCOMPLETE_BASE_HEADERS + rest
 
@@ -1102,20 +1135,24 @@ PARTY_SHEET_COLUMNS = [
 ]
 
 
-async def party_sheet_headers() -> list[str]:
+async def party_sheet_headers(city_code: str | None = None) -> list[str]:
     """Mirror active_sheet_headers, but every gate is resolved through the tri-state
     __party override namespace (via the overnight sub-track) rather than the plain global
     gate — D-03 makes __party a single namespace shared by both sub-tracks, so resolving
     against "party_overnight" is correct; housing/bed columns simply stay empty for a
-    no-overnight guest's row."""
+    no-overnight guest's row.
+
+    Phase 25 (CITYQ-03): `city_code` (default `None`, byte-identical) threads the city layer
+    into the same `is_step_enabled_for_track` call — resolution order (city+party -> party ->
+    global) is entirely reg_engine's, unchanged here."""
     out = []
     for header, gate, _fn in PARTY_SHEET_COLUMNS:
-        if gate is None or await _is_step_enabled_for_track(gate, "party_overnight"):
+        if gate is None or await is_step_enabled_for_track(gate, "party_overnight", city_code):
             out.append(header)
     return out
 
 
-async def party_sheet_row(data: dict) -> list:
+async def party_sheet_row(data: dict, city_code: str | None = None) -> list:
     """Mirror active_sheet_row. Claude's Discretion: no frozen-header snapshot for the party
     tab (unlike the main sheet's CR-9 sheet_header_schema) — party volume is low enough that
     live headers are acceptable; this is a deliberate scope choice, not an oversight.
@@ -1123,8 +1160,12 @@ async def party_sheet_row(data: dict) -> list:
     T-05-06-01: every registrant-supplied cell is passed through database.db._csv_safe (the
     reviewed formula-injection neutralizer, 260713-jgi) before being returned, matching the
     same mitigation used for the CSV export path. NOTE: the main sheet's active_sheet_row does
-    NOT currently apply _csv_safe — that gap is out of this plan's scope (see SUMMARY)."""
-    headers = await party_sheet_headers()
+    NOT currently apply _csv_safe — that gap is out of this plan's scope (see SUMMARY).
+
+    Phase 25 (CITYQ-03): `city_code` (default `None`) shares the SAME signature shape as
+    active_sheet_row/short_sheet_row so `_sheet_dispatch` stays a plain (row_fn, append_fn)
+    resolver."""
+    headers = await party_sheet_headers(city_code)
     values = {h: _csv_safe(fn(data)) for h, _g, fn in PARTY_SHEET_COLUMNS}
     return [values.get(h, "-") for h in headers]
 
@@ -1152,27 +1193,34 @@ SHORT_SHEET_SYSTEM_HEADERS = ["ID Telegram", "Username", "Дата регист�
 # «Детали» (referrer) is intentionally excluded — the promo form never collects it.
 
 
-async def short_sheet_headers() -> list[str]:
+async def short_sheet_headers(city_code: str | None = None) -> list[str]:
     """Filter over SHEET_COLUMNS (not a curated list, see module-level docstring above):
     system columns from SHORT_SHEET_SYSTEM_HEADERS always included, question columns included
     only when their `__short` gate resolves to enabled for SHORT_TRACK. Order follows
-    SHEET_COLUMNS (== question order in the form) — never re-sorted."""
+    SHEET_COLUMNS (== question order in the form) — never re-sorted.
+
+    Phase 25 (CITYQ-03): `city_code` (default `None`, byte-identical) threads the city layer
+    into the same `is_step_enabled_for_track` call."""
     out = []
     for header, gate, _fn in SHEET_COLUMNS:
         if gate is None:
             if header in SHORT_SHEET_SYSTEM_HEADERS:
                 out.append(header)
-        elif await _is_step_enabled_for_track(gate, SHORT_TRACK):
+        elif await is_step_enabled_for_track(gate, SHORT_TRACK, city_code):
             out.append(header)
     return out
 
 
-async def short_sheet_row(data: dict) -> list:
+async def short_sheet_row(data: dict, city_code: str | None = None) -> list:
     """Mirror party_sheet_row: live headers (no frozen sheet_header_schema snapshot — promo
     volume is small, same deliberate scope choice as party). Every cell passes through
     database.db._csv_safe (T-07-04) so a crafted ФИО like «=HYPERLINK(...)» is stored as text,
-    not evaluated as a formula."""
-    headers = await short_sheet_headers()
+    not evaluated as a formula.
+
+    Phase 25 (CITYQ-03): `city_code` (default `None`) shares the SAME signature shape as
+    active_sheet_row/party_sheet_row so `_sheet_dispatch` stays a plain (row_fn, append_fn)
+    resolver."""
+    headers = await short_sheet_headers(city_code)
     values = _sheet_value_map(data)
     return [_csv_safe(values.get(h, "-")) for h in headers]
 

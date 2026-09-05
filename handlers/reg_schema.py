@@ -34,9 +34,9 @@ from reg_labels import REG_LABELS, STATUS_LABELS  # noqa: F401
 from reg_engine import (  # noqa: F401
     REG_FLOW, _is_party_track, SHORT_TRACK, _is_short_track,
     REG_DEFAULTS, _is_step_enabled, _is_module_enabled,
-    STEP_TO_COLUMN, REG_STEP_TYPES,
+    STEP_TO_COLUMN, REG_STEP_TYPES, is_step_enabled_for_track,
 )
-from cities import cities_module_on, normalize_city, is_default_city, city_tab_base, tab_suffix, get_setting_for_city
+from cities import cities_module_on, normalize_city, is_default_city, city_tab_base, tab_suffix, get_setting_for_city, per_city_key
 from keyboards.builders import get_main_menu_kb
 
 logger = logging.getLogger(__name__)
@@ -306,24 +306,44 @@ def _sheet_value_map(data: dict) -> dict:
 # _is_step_enabled moved to reg_engine.py (Phase 21, 21-01); imported above.
 
 
-async def active_sheet_headers() -> list[str]:
+async def active_sheet_headers(city_code: str | None = None) -> list[str]:
     """Headers for only the columns whose gating question is enabled (system columns
     always included). The sheet width follows the active preset. NOTE: this reflects the
     CURRENT toggles — set the event type before delegates register (the physical header row
-    is created once by ensure_sheet_header and is not rewritten if toggles change later)."""
+    is created once by ensure_sheet_header and is not rewritten if toggles change later).
+
+    Phase 25 (CITYQ-03): `city_code` (default `None` = main tab, byte-identical to before)
+    threads the city layer through `is_step_enabled_for_track(gate, None, city_code)` —
+    `participant_type=None` means the full track, which is exactly the track this column set
+    (and every named non-default-city tab built from it) belongs to; party/short have their
+    own builders below."""
     out = []
     for header, gate, _fn in SHEET_COLUMNS:
-        if gate is None or await _is_step_enabled(gate):
+        if gate is None or await is_step_enabled_for_track(gate, None, city_code):
             out.append(header)
     return out
 
 
-async def set_sheet_schema(headers: list[str]) -> None:
+async def set_sheet_schema(headers: list[str], city_code: str | None = None) -> None:
     """CR-9: persist the header snapshot so appended rows stay aligned to the PHYSICAL header
     written to the sheet, even if question toggles change mid-event. Fail-soft — a bot_settings
-    hiccup must never block startup or a rebuild."""
+    hiccup must never block startup or a rebuild.
+
+    Phase 25 (CITYQ-03): `city_code=None` (default) keeps writing the single legacy global key
+    — byte-identical to before the phase. A non-`None` code writes to its OWN per-tab snapshot
+    key instead, assembled through `cities.per_city_key` (the ONLY point in this module that
+    builds that key — T-25-07: an f-string composing it directly is forbidden). An unknown
+    city code makes `per_city_key` return `None`; the snapshot write is skipped rather than
+    silently falling back to the global key (that would corrupt the main tab's own snapshot)."""
+    key = "sheet_header_schema"
+    if city_code is not None:
+        composed = per_city_key("sheet_header_schema", city_code)
+        if composed is None:
+            logger.warning(f"set_sheet_schema: unknown city code {city_code!r}, snapshot not saved")
+            return
+        key = composed
     try:
-        await set_setting("sheet_header_schema", json.dumps(headers, ensure_ascii=False))
+        await set_setting(key, json.dumps(headers, ensure_ascii=False))
     except Exception:
         logger.warning("Failed to persist sheet_header_schema", exc_info=True)
 
@@ -359,6 +379,28 @@ async def city_row_tab(event_city: str | None, participant_type: str | None) -> 
     if not base:
         return None
     return f"{base}{await tab_suffix(_sheet_kind(participant_type))}"
+
+
+async def sheet_city_code(event_city: str | None) -> str | None:
+    """Код города для НАБОРА КОЛОНОК вкладки (не для её имени — это `city_row_tab`) —
+    Phase 25 (CITYQ-03). ИНВАРИАНТ, обязателен к сохранению: возвращает `None` РОВНО в тех же
+    трёх случаях, что и `city_row_tab` (модуль городов выключен / город по умолчанию / у
+    города нет `tab_base`), иначе — нормализованный код города. Набор колонок и адрес вкладки
+    решаются ОДНИМ правилом — поэтому строка, уехавшая на основную вкладку (`city_row_tab`
+    вернул `None`), всегда построена колонками основной вкладки (`active_sheet_headers(None)`),
+    а строка на именной вкладке города — набором колонок ЭТОГО ЖЕ города. Не трек-специфична
+    (в отличие от `city_row_tab`, которому нужен `participant_type` для party/short-суффикса
+    имени вкладки) — набор колонок для party/short строит отдельная пара
+    `party_sheet_headers`/`short_sheet_headers` в `handlers/registration.py`."""
+    if not await cities_module_on():
+        return None
+    code = normalize_city(event_city)
+    if is_default_city(code):
+        return None
+    base = await city_tab_base(code)
+    if not base:
+        return None
+    return code
 
 
 async def incomplete_city_batches() -> list[tuple[str, list[str], list[list]]]:
