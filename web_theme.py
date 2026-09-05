@@ -99,23 +99,34 @@ FONT_STACKS: dict[str, tuple[str, str]] = {
 
 _HEX6 = re.compile(r"^#[0-9A-Fa-f]{6}$")
 
+# Фаза 26-01: `asset_base` — префикс HTTP-путей ассетов темы. Mini App отдаёт их за `/app`
+# (маршруты `miniapp/routers/*`), дашборд — с собственного корня (пустая строка): у дашборда
+# нет и не будет маршрута `/app` (сторож test_no_app_route_and_no_export_or_csv_route).
+# Пустая строка сама по себе матчится регэкспу — это и есть база дашборда, а не «невалидное
+# значение». Как и `_safe_hex`, значение перепроверяется в `_safe_asset_base` НЕЗАВИСИМО от
+# того, кто его передал (T-19.1-05) — второго доверенного источника в проекте нет.
+DEFAULT_ASSET_BASE = "/app"
+_ASSET_BASE = re.compile(r"^(/[a-z0-9][a-z0-9-]{0,30})*$")
+
 # Ручка `plate_pattern` (D-05, план 23.1-02) принимает либо встроенное имя из этого словаря,
 # либо file_id картинки менеджера (regexp ниже — тот же, что FILE_ID_RE в
 # `miniapp/routers/files.py`; дублировать импортом нельзя, `web_theme` обязан остаться чистым
-# stdlib-модулем). Значение -> (url, background-size, x, y, opacity). Смещения — из
-# mockups/NOTES.md (масштаб ×1.8, решение владельца 03.09); ассет уже несёт fill-opacity 0.2,
-# поэтому дополнительная непрозрачность встроенного варианта равна 1.
+# stdlib-модулем). Значение -> (имя файла растра | None для "none", background-size, x, y,
+# opacity). Префикс пути (`/app` либо пусто) здесь больше НЕ хранится — его подставляет
+# `theme_css_vars` по `asset_base` (фаза 26-01: дашборду он тоже нужен, но без `/app`).
+# Смещения — из mockups/NOTES.md (масштаб ×1.8, решение владельца 03.09); ассет уже несёт
+# fill-opacity 0.2, поэтому дополнительная непрозрачность встроенного варианта равна 1.
 #
 # Quick 260903 (BACKLOG-0309-PATTERN): `.svg` (1,0 МБ, 567 `<path>`) заменён растром `.webp`
 # (≤200 КБ) — CSS растягивает паттерн фоном на каждой плите без тайлинга, браузер растеризовал
 # бы всю геометрию SVG на каждый paint. Исходник остаётся рядом (`youlead.svg`, НЕ удалён),
 # растр воспроизводимо пересобирается `tools/make_pattern_raster.py`.
-PLATE_PATTERNS: dict[str, tuple[str, str, str, str, str]] = {
-    "none":    ("none", "1368px", "-162px", "-324px", "1"),
-    "youlead": ('url("/app/static/pattern/youlead.webp")', "1368px", "-162px", "-324px", "1"),
+PLATE_PATTERNS: dict[str, tuple[str | None, str, str, str, str]] = {
+    "none":    (None, "1368px", "-162px", "-324px", "1"),
+    "youlead": ("youlead.webp", "1368px", "-162px", "-324px", "1"),
     # Quick 260904-183 (BACKLOG-0904-REALTALK-PRESET): тот же viewBox (7236×5197), что и у
     # youlead.svg, поэтому геометрия плиты (смещения/размер) не меняется.
-    "realtalk": ('url("/app/static/pattern/realtalk.webp")', "1368px", "-162px", "-324px", "1"),
+    "realtalk": ("realtalk.webp", "1368px", "-162px", "-324px", "1"),
 }
 
 # Непрозрачность паттерна менеджера (file_id): картинка приходит непрозрачной, 20% даёт тот же
@@ -266,14 +277,31 @@ def _safe_hex(value, fallback: str) -> str:
     return value if isinstance(value, str) and _HEX6.match(value) else fallback
 
 
-def theme_css_vars(resolved: dict) -> dict[str, dict[str, str]]:
+def _safe_asset_base(value) -> str:
+    """Тот же приём, что `_safe_hex` — значение перепроверяется ЗДЕСЬ, независимо от того,
+    кто его передал (T-19.1-05). Невалидное значение (не строка, не матчится `_ASSET_BASE`)
+    молча откатывается к `DEFAULT_ASSET_BASE` — второго источника доверия не заводим."""
+    return value if isinstance(value, str) and _ASSET_BASE.match(value) else DEFAULT_ASSET_BASE
+
+
+def _pattern_url(base: str, filename: "str | None") -> str:
+    """`filename=None` (ручка `"none"`) -> литерал `none`; иначе — путь под `base`."""
+    return "none" if filename is None else f'url("{base}/static/pattern/{filename}")'
+
+
+def theme_css_vars(resolved: dict, asset_base: str = DEFAULT_ASSET_BASE) -> dict[str, dict[str, str]]:
     """ЕДИНСТВЕННОЕ место, где собираются переменные оформления (quick 260904-8o3 Task 3,
     T-8o3-03) — `theme_css_text` ниже и `POST /app/api/admin/theme/preview`
     (`miniapp/routers/settings.py`) оба форматируют РЕЗУЛЬТАТ этой функции, второго места
     сборки в проекте быть не должно. Не доверяет `resolved` слепо (T-19.1-05) — каждое
     значение перепроверяется тем же регэкспом/enum'ом, что и в `resolve_theme`, прежде чем
     попасть в возвращаемый словарь. Возвращает `{"light": {"--var": "значение", ...}, "dark":
-    {...}}` — ключи уже имена CSS-переменных (с двумя дефисами)."""
+    {...}}` — ключи уже имена CSS-переменных (с двумя дефисами).
+
+    `asset_base` (фаза 26-01) — префикс HTTP-путей ассетов темы: `/app` для Mini App (дефолт,
+    байт-в-байт прежнее поведение), пустая строка — для дашборда. Невалидное значение молча
+    откатывается к `/app`."""
+    base = _safe_asset_base(asset_base)
     preset_name = resolved.get("preset") if resolved.get("preset") in PRESETS else DEFAULT_PRESET
     preset = PRESETS[preset_name]
 
@@ -296,16 +324,18 @@ def theme_css_vars(resolved: dict) -> dict[str, dict[str, str]]:
     # `--plate-pattern*` (T-23.1-04): значение перепроверяется здесь же, независимо от того,
     # прошло ли оно уже resolve_theme — тот же приём, что и у цветов выше (T-19.1-05). Строка
     # попадает в CSS ровно двумя путями: встроенное имя из PLATE_PATTERNS либо file_id за
-    # /app/api/file/, третьей склейки быть не должно.
+    # {base}/api/file/, третьей склейки быть не должно.
     pattern_value = resolved.get("plate_pattern")
     if pattern_value in PLATE_PATTERNS:
-        pattern_url, pattern_size, pattern_x, pattern_y, pattern_opacity = PLATE_PATTERNS[pattern_value]
+        filename, pattern_size, pattern_x, pattern_y, pattern_opacity = PLATE_PATTERNS[pattern_value]
+        pattern_url = _pattern_url(base, filename)
     elif isinstance(pattern_value, str) and _FILE_ID.match(pattern_value):
-        _fallback_url, pattern_size, pattern_x, pattern_y, _fallback_opacity = PLATE_PATTERNS[preset["plate_pattern"]]
-        pattern_url = f'url("/app/api/file/{pattern_value}")'
+        _fallback_filename, pattern_size, pattern_x, pattern_y, _fallback_opacity = PLATE_PATTERNS[preset["plate_pattern"]]
+        pattern_url = f'url("{base}/api/file/{pattern_value}")'
         pattern_opacity = _UPLOADED_PATTERN_OPACITY
     else:
-        pattern_url, pattern_size, pattern_x, pattern_y, pattern_opacity = PLATE_PATTERNS[preset["plate_pattern"]]
+        filename, pattern_size, pattern_x, pattern_y, pattern_opacity = PLATE_PATTERNS[preset["plate_pattern"]]
+        pattern_url = _pattern_url(base, filename)
 
     # Quick 260904-kk6 (E5): `pattern_enabled` — единственная ручка, которой менеджер выключает
     # паттерн; она НЕ гейтит вычисление выше (размер/смещения/непрозрачность остаются
@@ -342,11 +372,14 @@ def theme_css_vars(resolved: dict) -> dict[str, dict[str, str]]:
     }
 
 
-def theme_css_text(resolved: dict) -> str:
+def theme_css_text(resolved: dict, asset_base: str = DEFAULT_ASSET_BASE) -> str:
     """Собирает `:root { … }` + `:root[data-theme="dark"] { … }` — ТОЛЬКО форматирует
     результат `theme_css_vars` в фиксированный шаблон подстановки, сама значений не считает
-    (T-19.1-05/T-8o3-03: второго места сборки переменных быть не должно)."""
-    css_vars = theme_css_vars(resolved)
+    (T-19.1-05/T-8o3-03: второго места сборки переменных быть не должно).
+
+    `asset_base` — только проброс в `theme_css_vars` (см. её докстринг), собственной сборки
+    путей здесь нет и не будет."""
+    css_vars = theme_css_vars(resolved, asset_base)
 
     def block(selector: str, pairs: dict[str, str]) -> str:
         body = "".join(f"  {name}: {value};\n" for name, value in pairs.items())

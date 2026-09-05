@@ -296,6 +296,50 @@ def test_theme_css_vars_file_id_pattern_goes_through_file_proxy():
     assert css_vars["light"]["--plate-pattern-opacity"] == "0.2"
 
 
+# ── Фаза 26-01 (RT-01/RT-02): asset_base — дашборд без вшитого /app ─────────────────────
+
+def test_theme_css_text_asset_base_empty_points_to_dashboard_paths():
+    resolved = web_theme.resolve_theme({"miniapp_theme_preset": "realtalk"})
+    css = web_theme.theme_css_text(resolved, asset_base="")
+    assert '--plate-pattern: url("/static/pattern/realtalk.webp");' in css
+    assert "/app/" not in css
+
+
+def test_theme_css_vars_asset_base_empty_file_id_goes_through_dashboard_proxy():
+    file_id = "AgACAgIAAxkBAAI" + "c" * 15
+    resolved = web_theme.resolve_theme({
+        "miniapp_theme_preset": "bluebook",
+        "miniapp_theme_pattern_enabled": "on",
+        "miniapp_theme_pattern": file_id,
+    })
+    css_vars = web_theme.theme_css_vars(resolved, asset_base="")
+    assert css_vars["light"]["--plate-pattern"] == f'url("/api/file/{file_id}")'
+
+
+@pytest.mark.parametrize("garbage", [
+    "javascript:alert(1)", "http://evil.example", '/app") ; }', 123, None,
+])
+def test_theme_css_vars_rejects_garbage_asset_base(garbage):
+    resolved = web_theme.resolve_theme({"miniapp_theme_preset": "realtalk"})
+    default_css_vars = web_theme.theme_css_vars(resolved)
+    garbage_css_vars = web_theme.theme_css_vars(resolved, asset_base=garbage)
+    assert garbage_css_vars == default_css_vars
+
+
+def test_theme_css_vars_pattern_off_is_none_for_any_asset_base():
+    resolved = web_theme.resolve_theme({
+        "miniapp_theme_preset": "realtalk",
+        "miniapp_theme_pattern_enabled": "off",
+    })
+    css_vars = web_theme.theme_css_vars(resolved, asset_base="")
+    assert css_vars["light"]["--plate-pattern"] == "none"
+
+
+def test_plate_patterns_have_no_app_prefix_baked_in():
+    for filename, *_ in web_theme.PLATE_PATTERNS.values():
+        assert filename is None or "/app" not in filename
+
+
 # ── aiogram-free import ─────────────────────────────────────────────────────────────────
 
 def test_import_web_theme_does_not_load_aiogram():
