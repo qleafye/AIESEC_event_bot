@@ -100,7 +100,7 @@
         <div class="funnel-step">
           <div class="n">{{ step.count | thousands }}</div>
           <div class="l">{{ step.label }}</div>
-          <div class="pct">{{ step.pct | round | int }}% от {{ funnel.baseline_label }}</div>
+          <div class="pct">{% if step.is_baseline %}база для процентов ниже{% else %}{{ step.pct | round | int }}% от {{ funnel.baseline_label }}{% endif %}</div>
           <div class="funnel-bar" aria-hidden="true"><span style="width:{{ step.pct }}%"></span></div>
         </div>
         {% endfor %}

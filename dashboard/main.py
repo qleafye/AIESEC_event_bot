@@ -145,19 +145,24 @@ def _funnel_display(rows: "list[tuple[str, int]] | None", tracking_since: "str |
         return None
     baseline_label = "зашедших"
     baseline = 0
-    for label, count in rows:
+    baseline_index = None
+    for idx, (label, count) in enumerate(rows):
         if count:
             baseline = count
             baseline_label = _FUNNEL_BASELINE_LABELS.get(label, "зашедших")
+            baseline_index = idx
             break
     has_data = any(count for _, count in rows)
+    # Базовой ступени процент не подписываем: «100% от зашедших» под «Зашли» — тавтология
+    # (владелец, 06.09). Шаблон вместо процента ставит «база для процентов ниже».
     steps = [
         {
             "label": label,
             "count": count,
             "pct": round(count / baseline * 100, 1) if baseline else 0,
+            "is_baseline": idx == baseline_index,
         }
-        for label, count in rows
+        for idx, (label, count) in enumerate(rows)
     ]
     since = None
     if tracking_since:
