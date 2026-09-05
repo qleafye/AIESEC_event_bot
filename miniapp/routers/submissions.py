@@ -142,6 +142,11 @@ async def _upload_resume(request: Request, actor: UploadActor, content: bytes, f
     draft = await get_reg_draft(actor.telegram_id)
     if draft is None:
         raise HTTPException(404, {"reason": "no_draft"})
+    # Phase 25 (CITYQ-02, T-25-04): отказ по режиму «только текст» ДО проверок формата/размера
+    # и ДО Bot API — файл не попадает ни в Telegram, ни в reg_drafts; делегат получает «нужен
+    # текст», а не «не тот формат».
+    if await reg_engine.resume_mode(draft.get("event_city")) == "text_only":
+        raise HTTPException(409, {"reason": "resume_text_only", "text": await get_setting_typed("reg_form_resume_text_only_text")})
     if not reg_engine.is_allowed_resume(filename):
         raise HTTPException(400, {
             "reason": "bad_type",
