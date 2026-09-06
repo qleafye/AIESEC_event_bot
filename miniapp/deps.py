@@ -56,6 +56,9 @@ SECTIONS = (
     "leaderboard",
     "profile",
     "form",
+    # Quick 260906-8uq (FAQ-05): делегатский раздел «❓ Частые вопросы» — рядом с form/profile
+    # (делегатские разделы идут вместе, как applications/questions идут вместе ниже).
+    "faq",
     "review",
     # Phase 23 (APP-TINDER-01, D-09): менеджерский раздел отбора заявок — рядом с "review"
     # (менеджерские разделы идут вместе).

@@ -2167,6 +2167,15 @@ SETTINGS_SCHEMA = {
             "приложения в догонялке брошенных анкет (D-08)."
         ), "default": "on",
     },
+    # Quick 260906-8uq (FAQ-05): раздел делегата «❓ Частые вопросы» — рядом с остальными
+    # делегатскими разделами (после "form", до "review", как в miniapp/deps.py::SECTIONS).
+    "miniapp_section_faq": {
+        "type": "enum", "group": "miniapp", "label": "❓ Частые вопросы",
+        "options": ["on", "off"], "prompt": (
+            "Выключено — исчезают: плитка «❓ Частые вопросы» в делегатском хабе и экран "
+            "#/faq."
+        ), "default": "on",
+    },
     # Phase 23 (APP-TINDER-01, D-09/D-13): раздел отбора заявок менеджера — «тиндер» карточек.
     "miniapp_section_applications": {
         "type": "enum", "group": "miniapp", "label": "🗂 Отбор заявок",
