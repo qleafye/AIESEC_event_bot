@@ -124,6 +124,27 @@ def test_moscow_literal_declared_exactly_once():
     assert hits[0][0].replace("\\", "/") == "services/timeutil.py"
 
 
+def test_moscow_literal_under_miniapp_declared_exactly_once():
+    """Тот же сторож, что выше, но для `miniapp/` — второй, ОСОЗНАННЫЙ литерал проекта
+    (докстринг `miniapp/timeutil.py`: `miniapp/` не может импортировать `services.scheduler`,
+    aiogram-free, D-01). Квик 260906-52m свёл бывшую четвёртую копию
+    (`miniapp/routers/admin_tasks.py::MOSCOW_TZ`/`now_moscow_naive`) сюда — сторож ловит
+    возврат пятой."""
+    hits = []
+    for pattern in ("miniapp/*.py", "miniapp/routers/*.py"):
+        for path in glob.glob(pattern):
+            text = Path(path).read_text(encoding="utf-8")
+            count = text.count('"Europe/Moscow"')
+            if count:
+                hits.append((path, count))
+
+    total = sum(c for _, c in hits)
+    assert total == 1, (
+        f"под miniapp/ пояс задаётся в одном месте, MOSCOW_TZ — нашли {total} вхождений в {hits}"
+    )
+    assert hits[0][0].replace("\\", "/") == "miniapp/timeutil.py"
+
+
 # ── Task 2: three fixed points on Moscow wall-clock, fourth deliberately untouched ──────
 
 # Oracle scenario shared by all three fixed points: "now" = 01.07.2026 14:00 MSK

@@ -4,10 +4,12 @@
 «сколько дней осталось» до дедлайна задания) на плане самого плана 23.1-05 попросил не
 копировать локальный помощник хаба, а вынести общее место. `services/scheduler.py` держит
 СВОЙ `MOSCOW_TZ` (TZFIX-260816) — это не второй, случайно разошедшийся литерал часового пояса,
-а третий, ОСОЗНАННЫЙ: `services.scheduler` тянет aiogram + APScheduler, а `miniapp/` обязан
+а второй, ОСОЗНАННЫЙ: `services.scheduler` тянет aiogram + APScheduler, а `miniapp/` обязан
 оставаться aiogram-free (D-01, `miniapp/deps.py`) — ребра `miniapp -> services.scheduler` нет
-и не будет. `miniapp/routers/admin_tasks.py` держит четвёртый (дедлайны задач менеджера,
-план 16) — тот же осознанный компромисс, другая точка входа в тот же процесс.
+и не будет. Квик 260906-52m свёл бывший четвёртый литерал (`miniapp/routers/admin_tasks.py`,
+дедлайны задач менеджера, план 16) сюда — тот роутер теперь импортирует `now_msk_naive`
+отсюда вместо собственной копии `MOSCOW_TZ`/`now_moscow_naive`. Осознанных литералов
+Europe/Moscow под всем проектом два: `services/timeutil.py` и этот файл.
 """
 from __future__ import annotations
 

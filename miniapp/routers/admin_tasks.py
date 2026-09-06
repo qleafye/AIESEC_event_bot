@@ -25,7 +25,6 @@
 from __future__ import annotations
 
 from datetime import datetime, timedelta
-from zoneinfo import ZoneInfo
 
 from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel, Field
@@ -56,10 +55,14 @@ from miniapp.deps import Principal, require_cap, require_section
 from miniapp.outbox import enqueue
 from miniapp.routers.submissions import check_part_token
 from miniapp.routers.tasks import parse_page
+# Quick 260906-52m: ввод менеджера (дедлайн задания) сравнивается с МОСКОВСКИМ временем, а не
+# с часами контейнера (UTC) — свели четвёртую копию MOSCOW_TZ/now_moscow_naive к общему
+# miniapp/timeutil.py вместо собственной пары (докстринг timeutil.py объясняет, почему не
+# services.scheduler — тот тянет aiogram).
+from miniapp.timeutil import now_msk_naive
 
 router = APIRouter()
 
-MOSCOW_TZ = ZoneInfo("Europe/Moscow")
 TITLE_MAX = 60          # handlers/admin_gamification.py::_normalize_task_title
 TEXT_MAX = 4000         # описание уходит в <blockquote> сообщения Telegram (4096)
 COINS_MAX = 100_000
@@ -89,18 +92,12 @@ TEXT_NOT_FOUND = "Задание не найдено — возможно, ег�
 
 # ── время и разбор полей (копии чистых хелперов бота — импорт тянет aiogram) ───────────
 
-def now_moscow_naive() -> datetime:
-    """services/scheduler.py::_now_moscow_naive — ввод менеджера сравнивается с МОСКОВСКИМ
-    временем, а не с часами контейнера (UTC)."""
-    return datetime.now(MOSCOW_TZ).replace(tzinfo=None)
-
-
 def resolve_deadline_preset(code: str) -> datetime | None:
     """handlers/game_task_wizard.py::_resolve_deadline_preset: неизвестный код -> None."""
     days = _PRESET_DAYS.get(code)
     if days is None:
         return None
-    base = now_moscow_naive().replace(hour=23, minute=59, second=0, microsecond=0)
+    base = now_msk_naive().replace(hour=23, minute=59, second=0, microsecond=0)
     return base + timedelta(days=days)
 
 
@@ -120,7 +117,7 @@ def parse_deadline(raw) -> tuple[str | None, str | None]:
                 continue
     if when is None:
         return None, "bad_deadline"
-    if when <= now_moscow_naive():
+    if when <= now_msk_naive():
         return None, "deadline_past"
     return when.strftime(STORAGE_FMT), None
 
@@ -258,7 +255,7 @@ async def task_options(
         "categories": [{"code": c, "label": await category_label(c)} for c in GAME_CATEGORIES],
         "proof_types": [{"code": c, "label": await proof_types_label(c)} for c in GAME_PROOF_TYPES],
         "deadline_presets": [{"code": c, "label": label} for c, label in DEADLINE_PRESETS],
-        "deadline_example": (now_moscow_naive() + timedelta(days=3)).replace(hour=23, minute=59).strftime(INPUT_FMT),
+        "deadline_example": (now_msk_naive() + timedelta(days=3)).replace(hour=23, minute=59).strftime(INPUT_FMT),
         "cities": cities,
         "city_choice": bool(cities),
         "bound_city_label": (await city_label(bound)) if bound else None,
