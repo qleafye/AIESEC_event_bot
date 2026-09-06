@@ -10,6 +10,7 @@ Access и поведение `/` в мульти-режиме. Свой файл
 from __future__ import annotations
 
 import asyncio
+import re
 import time
 from types import SimpleNamespace
 
@@ -140,6 +141,24 @@ def _access_token(private_key, *, email=SUPERADMIN_EMAIL, aud=AUD, iss=ISSUER) -
 
 def _access_headers(token: str) -> dict:
     return {ACCESS_HEADER: token}
+
+
+def _cell_value(html: str, name_marker: str, data_label: str) -> str:
+    """Значение ячейки KPI-таблицы для строки события `name_marker` под колонкой
+    `data_label`. Ищем ТОЛЬКО внутри секции «Событие рядом» — имя события до неё уже
+    встречается в ряду «фишек» (event-chips), где нет `data-label`, но ЕСТЬ имя другого
+    события впереди по документу, и наивный поиск «от первого вхождения имени» уводил бы
+    на чужую ячейку."""
+    table_start = html.find("Событие рядом")
+    assert table_start != -1, "секция «Событие рядом» не найдена в разметке"
+    scoped = html[table_start:]
+    pattern = re.compile(
+        re.escape(name_marker) + r".*?data-label=\"" + re.escape(data_label) + r"\">\s*([0-9]+)",
+        re.S,
+    )
+    match = pattern.search(scoped)
+    assert match, f"cell not found: событие={name_marker!r}, колонка={data_label!r}"
+    return match.group(1)
 
 
 # ── тесты ─────────────────────────────────────────────────────────────────────────────
@@ -274,8 +293,10 @@ def test_seasons_switch_changes_numbers_only_for_that_event(tmp_path, monkeypatc
     )
     assert resp_switched.status_code == 200
     # Сезон a переключён на YL25 (2 заявки), b не задет (1 заявка, RT26 без изменений).
-    assert "2 заявок" in resp_switched.text
-    assert "1 заявок" in resp_switched.text
+    # Маркер без апострофа — Jinja2 экранирует «'» в «&#39;» при автоэскейпе.
+    assert _cell_value(resp_switched.text, "Юлид", "Заявок") == "2"
+    assert _cell_value(resp_switched.text, "РилТолк", "Заявок") == "1"
+    assert _cell_value(resp_current.text, "Юлид", "Заявок") == "1"
 
 
 def test_seasons_garbage_value_returns_200_without_crash(tmp_path, monkeypatch):
