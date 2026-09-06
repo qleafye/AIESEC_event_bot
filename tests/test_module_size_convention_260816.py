@@ -40,7 +40,7 @@ DEFAULT_CEILING = 850
 # edit the number + reason together, in the same commit as the growth that needs it.
 KNOWN_OVERAGES: dict[str, tuple[int, str]] = {
     "registration.py": (
-        2208,
+        2240,
         "Phase 21 (21-01, FORM-SYNC-01): REG_STEP_TYPES/STEP_TO_COLUMN/RECALLABLE_STEPS/"
         "SELECT_CONFIG/MULTI_CONFIG/enabled_steps/prompt-резолюция/pre-flow гейты/"
         "prior-answer правило переехали в корневой reg_engine.py (2309 -> 2099 строк) -- "
@@ -52,7 +52,12 @@ KNOWN_OVERAGES: dict[str, tuple[int, str]] = {
         "+4 строки (Phase 27, 27-04, LANG-01) -- вызов и импорт нового шва "
         "handlers/reg_lang.py (экран выбора языка на /start) в cmd_start и в хвосте файла; "
         "вся логика (offer_language/menu_lang_open/lang_pick_choose) — в самом шве, "
-        "потолок поднят до фактического размера.",
+        "потолок поднят до фактического размера. "
+        "+32 строки (Phase 27, 27-05, LANG-02) -- врезка перевода делегатской анкеты чата НА "
+        "ОТПРАВКЕ: импорт handlers/reg_i18n.py, tr_text/tr_kb внутри _safe_answer (единственная "
+        "воронка), lang/tr_map в _build_summary (составная строка сводки переводится адресно) "
+        "и в _advance перед вызовом _build_summary; вся логика перевода (say()/tr_kb()/ctx_for())"
+        " — в самом шве, здесь только точки врезки; потолок поднят до фактического размера.",
     ),
     "admin_gamification.py": (
         2020,
