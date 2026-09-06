@@ -14,9 +14,12 @@
 бы long polling на десятки секунд (27-RESEARCH.md Pitfall 7).
 
 Конвейер на строку (глоссарий — `services/i18n_glossary.py`, обязательные находки замера
-27-01): `split_leading_symbols` (эмодзи-префикс отдельно) -> `protect` (DNT-термины/HTML-тэги/
-плейсхолдеры сентинелами) -> `driver.translate_batch` (в потоке) -> `apply` (восстановление +
-POST-замены, `""` при потерянном/задвоенном сентинеле) -> приклеить эмодзи-префикс обратно.
+27-01 + UAT 260906): `split_leading_symbols`/`split_trailing_symbols` (эмодзи-префикс и
+-суффикс отдельно — движок не переживает голый эмодзи ни в начале, ни в конце строки) ->
+`strip_gender_suffix` (русская скобочная гендерная приписка «(а)»/«(ла)» — у английского нет
+рода, латиницей в переводе не нужна) -> `protect` (DNT-термины/HTML-тэги/плейсхолдеры
+сентинелами) -> `driver.translate_batch` (в потоке) -> `apply` (восстановление + POST-замены,
+`""` при потерянном/задвоенном сентинеле) -> приклеить эмодзи-префикс И -суффикс обратно.
 Пустой результат (после `apply()` либо потому что движок реально вернул пустую/совпадающую с
 исходником строку) — НЕ ошибка: пишется в `translations` как есть (короткие термины часто
 совпадают дословно; битая разметка — легитимное состояние "failed" контракта
@@ -43,7 +46,13 @@ from database.db import (
 )
 from services.i18n import src_hash
 from services.i18n_engine import get_driver
-from services.i18n_glossary import apply, protect, split_leading_symbols
+from services.i18n_glossary import (
+    apply,
+    protect,
+    split_leading_symbols,
+    split_trailing_symbols,
+    strip_gender_suffix,
+)
 from services.i18n_sources import corpus
 
 logger = logging.getLogger(__name__)
@@ -86,10 +95,12 @@ async def drain(limit_batches: int = 1) -> int:
 
         prepared = []
         for row in rows:
-            prefix, body = split_leading_symbols(row["src_text"])
+            prefix, rest = split_leading_symbols(row["src_text"])
+            body, suffix = split_trailing_symbols(rest)
+            body = strip_gender_suffix(body)
             protected, mapping = protect(body)
             prepared.append({
-                "row": row, "prefix": prefix, "body": body,
+                "row": row, "prefix": prefix, "suffix": suffix, "body": body,
                 "mapping": mapping, "protected": protected,
             })
 
@@ -116,8 +127,8 @@ async def drain(limit_batches: int = 1) -> int:
         for p, text_en in zip(prepared, translated):
             final_body = apply(p["body"], text_en or "", p["mapping"])
             # Пустой перевод (движок отдал "" сам ИЛИ apply() отбросил битую разметку) — не
-            # ошибка: пишем "" как есть, без эмодзи-префикса (нечего к нему приклеивать).
-            final_text = (p["prefix"] + final_body) if final_body else final_body
+            # ошибка: пишем "" как есть, без эмодзи-префикса/суффикса (нечего к ним приклеивать).
+            final_text = (p["prefix"] + final_body + p["suffix"]) if final_body else final_body
             row = p["row"]
             await upsert_translation(
                 "en", row["src_hash"], row["src_text"], final_text,
