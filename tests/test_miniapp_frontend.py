@@ -1273,7 +1273,9 @@ SETTINGS_CSS_MARKER = "/* ── экран настроек (фаза 22"
 
 def test_form_js_covers_registry_types():
     text = _js_without_comments(FORM_JS)
-    for t in ("toggle", "photo", "file", "list"):
+    # Quick 260906-6xe: `multi` — закрытый набор (сегодня modcard_fields) чекбоксами с
+    # подписями (multiControl уже существовал для анкеты, settingSpec обязан его выбирать).
+    for t in ("toggle", "photo", "file", "list", "multi"):
         assert f'case "{t}"' in text, f"form.js: нет ветки типа реестра {t}"
     assert re.search(r"export\s+function\s+settingSpec\s*\(", text), "settingSpec не экспортирован"
     # Сеть остаётся у экрана: загрузка photo/file, batch и preview — не в компонентах.
