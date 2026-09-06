@@ -162,6 +162,34 @@ def code_literals() -> list[tuple[str, str]]:
     for uni in config.UNIVERSITIES:
         items.append(("lit:config.UNIVERSITIES", uni))
 
+    # Quick 260906 (UAT-фикс 27-05): /start-литералы handlers/registration.py, найденные
+    # стендовым UAT (делегат видел русский, даже когда bulk_seed уже перевёл весь остальной
+    # корпус) — этот модуль НЕ импортирует handlers ни при каких условиях (докстринг модуля
+    # выше, тот же инвариант, что у reg_engine.py) -> строки продублированы буквально, а не
+    # импортированы из DEFAULT_START_REGISTERED_TEXT/DEFAULT_START_RETURNING_TEXT. Правка
+    # текста в registration.py без зеркальной правки здесь тихо расходится с корпусом —
+    # `tests/test_i18n_sources_27.py` держит обе строки байт-в-байт списком, «сверено на дату
+    # плана» (тот же приём, что уже используется в i18n_ui_en.py для validate_date_range).
+    # DEFAULT_START_RETURNING_TEXT несёт {season} — плейсхолдер сентинелится автоматически
+    # (services/i18n_glossary.py::_TAG_OR_PLACEHOLDER_RE), отдельно защищать не нужно.
+    items.append((
+        "lit:registration.DEFAULT_START_REGISTERED_TEXT",
+        "С возвращением! Ты уже зарегистрирован(а) — всё нужное в меню ниже \U0001f447",
+    ))
+    items.append((
+        "lit:registration.DEFAULT_START_RETURNING_TEXT",
+        "С возвращением! Ты уже был(а) с нами на {season}. Давай обновим анкету — "
+        "большинство ответов уже заполнено, останется только подтвердить \U0001f447",
+    ))
+    items.append((
+        "lit:registration._start_registration_flow",
+        "Отлично, начинаем регистрацию.",
+    ))
+    items.append((
+        "lit:registration._start_registration_flow",
+        "Отлично, ты пришёл по приглашению друга. Начинаем регистрацию.",
+    ))
+
     return items
 
 
