@@ -549,6 +549,16 @@ async def settings_toggle_rows(admin_id: int | None = None, *, header_code=_HEAD
     quiet_hours_on = await get_setting_typed("quiet_hours_enabled")
     quiet_hours_toggle_text = ("🌙 Тихие часы: ✅ Вкл → ❌ Выкл" if quiet_hours_on == "on"
                                else "🌙 Тихие часы: ❌ Выкл → ✅ Вкл")
+    # Phase 27 (27-02, LANG-01): подписи — из реестра (SETTINGS_SCHEMA), тот же приём, что у
+    # toggle_reg_edit_remoderation ниже — менеджер правит их сам, как любой другой текст.
+    delegate_lang_on = await get_setting_typed("delegate_lang_enabled")
+    delegate_lang_label = SETTINGS_SCHEMA["delegate_lang_enabled"]["label"]
+    delegate_lang_toggle_text = (f"{delegate_lang_label}: ✅ Вкл → ❌ Выкл" if delegate_lang_on == "on"
+                                 else f"{delegate_lang_label}: ❌ Выкл → ✅ Вкл")
+    delegate_lang_ask_on = await get_setting_typed("delegate_lang_ask_on_start")
+    delegate_lang_ask_label = SETTINGS_SCHEMA["delegate_lang_ask_on_start"]["label"]
+    delegate_lang_ask_text = (f"{delegate_lang_ask_label}: ✅ Вкл → ❌ Выкл" if delegate_lang_ask_on == "on"
+                              else f"{delegate_lang_ask_label}: ❌ Выкл → ✅ Вкл")
     # Phase 21 (21-07, D-12, FORM-SYNC-04): подпись — из реестра (SETTINGS_SCHEMA), не
     # литерал в коде — менеджер переписывает её сам, как и любой другой текст реестра.
     reg_edit_remod = await get_setting_typed("toggle_reg_edit_remoderation")
@@ -591,6 +601,8 @@ async def settings_toggle_rows(admin_id: int | None = None, *, header_code=_HEAD
         "toggle_nudge_enabled": _row(nudge_toggle_text, "toggle_nudge_enabled"),
         "toggle_reg_edit_remoderation": _row(reg_edit_remod_text, "toggle_reg_edit_remoderation"),
         "toggle_quiet_hours": _row(quiet_hours_toggle_text, "toggle_quiet_hours"),
+        "toggle_delegate_lang_enabled": _row(delegate_lang_toggle_text, "toggle_delegate_lang_enabled"),
+        "toggle_delegate_lang_ask_on_start": _row(delegate_lang_ask_text, "toggle_delegate_lang_ask_on_start"),
     }
 
 
@@ -1021,6 +1033,26 @@ async def toggle_nudge_enabled(callback: types.CallbackQuery):
 async def toggle_quiet_hours(callback: types.CallbackQuery):
     # Quick 260904-dq1: «🌙 Тихие часы» (services/quiet_hours.py) — enum on/off, дефолт OFF.
     await _toggle_module_setting(callback, "quiet_hours_enabled", "🌙 Тихие часы")
+
+
+@router.callback_query(F.data == "toggle_delegate_lang_enabled")
+async def toggle_delegate_lang_enabled(callback: types.CallbackQuery):
+    # Phase 27 (27-02, LANG-01): английский язык анкеты — enum on/off, дефолт OFF (A-05:
+    # выключенный модуль не меняет поведение бота ни на байт). Тот же generic-хелпер, что у
+    # соседей-модулей (payment/consent/party) — подпись из реестра, менеджер кода не видит.
+    await _toggle_module_setting(
+        callback, "delegate_lang_enabled", SETTINGS_SCHEMA["delegate_lang_enabled"]["label"],
+    )
+
+
+@router.callback_query(F.data == "toggle_delegate_lang_ask_on_start")
+async def toggle_delegate_lang_ask_on_start(callback: types.CallbackQuery):
+    # Phase 27 (27-02, LANG-01): спрашивать язык при /start у не-русского клиента — enum
+    # on/off, дефолт ON.
+    await _toggle_module_setting(
+        callback, "delegate_lang_ask_on_start",
+        SETTINGS_SCHEMA["delegate_lang_ask_on_start"]["label"],
+    )
 
 
 @router.callback_query(F.data == "toggle_reg_edit_remoderation")
