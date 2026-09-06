@@ -24,7 +24,7 @@ admin_settings.py упирается в потолок test_module_size_conventi
 import re
 
 from cities import PER_CITY_SEP
-from settings_schema import SETTINGS_SCHEMA
+from settings_schema import SETTINGS_SCHEMA, multi_codes
 
 # Quick 260820-rms: одиночная команда — `/slovo` или `/slovo@YouLead_bot`, без пробелов и без
 # продолжения. Ровно то, что телеграм отправляет по тапу на подсказку команды; ровно то, чем
@@ -93,6 +93,32 @@ def validate_setting_value(key: str, value: str) -> tuple[str | None, str | None
             f"Пришлите одно из них (например <code>{options[0]}</code>) "
             "или «-», чтобы сбросить к значению по умолчанию."
         )
+
+    if entry_type == "multi":
+        # Quick 260906-6xe: закрытый набор, отмеченный галочками в вебе — вход приходит
+        # ПОДПИСЯМИ (JSON человеку показывает подписи, коды не уезжают в веб вовсе), теми же
+        # разделителями, что `settings_schema._parse_setting` для `list` (перевод строки
+        # и «;»). Пустой набор — законный ввод (снятие всех галочек), а не «не понял
+        # значение»: превращается в сентинел из меты `empty_value`, если её нет — значение
+        # проходит как есть (реестр не выдумывает сентинел за модуль-владелец).
+        segments = [
+            segment.strip()
+            for line in value.splitlines()
+            for segment in line.split(";")
+            if segment.strip()
+        ]
+        if not segments:
+            empty_value = entry.get("empty_value")
+            return (empty_value, None) if empty_value is not None else (value, None)
+        codes, _bad_label = multi_codes(base, segments)
+        if codes is None:
+            # Текст НЕ содержит кода шага и НЕ повторяет присланное — оно может быть кодом,
+            # а код человеку не показываем (CLAUDE.md), даже в тексте отказа.
+            return None, (
+                "Такого варианта нет — отметьте варианты галочками. Обновите экран и "
+                "попробуйте ещё раз."
+            )
+        return "\n".join(codes), None
 
     if entry.get("format") == "time":
         match = _TIME_RE.fullmatch(value.strip())
