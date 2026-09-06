@@ -3190,10 +3190,21 @@ SETTINGS_SCHEMA = {
     # moderation_card.DEFAULT_CARD_STEPS литералом (import moderation_card сюда даёт цикл:
     # moderation_card -> reg_engine -> settings_schema) — дрейф закрыт сторожем
     # test_registry_default_matches_service_default.
+    # Quick 260906-6xe: `type: "multi"` — набор закрыт (43 шага `moderation_card.CARD_STEPS`),
+    # веб рисует чекбоксы с подписями вместо кодов (CLAUDE.md: кодов человеку не показываем).
+    # `options_ref` — строка "модуль:атрибут", а не импорт `moderation_card` на уровне модуля
+    # (тот же цикл, что и с дефолтом выше) и не литерал 43 подписей копией (гарантированный
+    # дрейф) — карта читается лениво, в момент вызова `multi_options`/`multi_labels`.
+    # `empty_value` — сентинел бота (`moderation_card.EMPTY_SENTINEL`): пустой набор из веба
+    # обязан писаться так же, как снятие всех тумблеров в боте, а не пустой строкой (которую
+    # `_parse_setting` читал бы обратно как дефолтные 20 вопросов).
     "modcard_fields": {
-        "type": "list", "group": "apps", "label": "🧾 Поля карточки заявки",
+        "type": "multi", "group": "apps", "label": "🧾 Поля карточки заявки",
+        "options_ref": "moderation_card:CARD_STEPS",
+        "empty_value": "—",
         "prompt": (
-            "Отмечайте вопросы кнопками в боте: ⚙️ /admin → 📋 Заявки → 🧾 Поля карточки заявки"
+            "Какие ответы анкеты видит менеджер в карточке заявки. Один набор и для "
+            "карточки в чате, и для карточки в приложении."
         ),
         "default": [
             "age", "city", "education_status", "university", "course", "local_committee",
@@ -3392,7 +3403,12 @@ def _parse_setting(key, raw):
         except (TypeError, ValueError, AttributeError):
             return default
 
-    if entry_type == "list":
+    if entry_type in ("list", "multi"):
+        # Quick 260906-6xe: `multi` — a `list` whose value set is CLOSED (checkbox UI +
+        # server-side label<->code mapping in `multi_options`/`multi_labels`/`multi_codes`
+        # below); storage/read shape is byte-identical to `list`, so this branch is shared
+        # and unchanged — the bot's own screen keeps reading `modcard_fields` exactly as
+        # before this migration.
         # Phase 8 (ROLE-02): a registry `default` may itself be a non-empty list literal
         # (role_caps_* — see D-09), unlike every pre-phase-8 "list" entry (which used
         # `default: None`). Real DB reads never hand this branch anything but str|None
@@ -3421,6 +3437,62 @@ def _parse_setting(key, raw):
 
     # Unknown type in the registry itself — fail-soft rather than raise.
     return raw
+
+
+def _multi_options_map(key: str) -> dict[str, str]:
+    """Ленивая (внутри функции — на уровне модуля цикл, см. комментарий у `modcard_fields`)
+    загрузка карты код->подпись для записи типа `multi` по мете `options_ref`
+    (`"module:ATTR"`). Не `multi` / нет `options_ref` / модуль без атрибута -> пустая карта
+    (fail-soft, как остальной реестр)."""
+    entry = SETTINGS_SCHEMA.get(key)
+    if entry is None or entry.get("type") != "multi":
+        return {}
+    ref = entry.get("options_ref")
+    if not ref or ":" not in ref:
+        return {}
+    module_name, attr_name = ref.split(":", 1)
+    import importlib
+
+    try:
+        module = importlib.import_module(module_name)
+        mapping = getattr(module, attr_name)
+    except (ImportError, AttributeError):
+        return {}
+    return dict(mapping)
+
+
+def multi_options(key: str) -> list[tuple[str, str]]:
+    """Закрытый набор `(код, подпись)` записи `multi`, в порядке карты `options_ref`.
+
+    ЕДИНСТВЕННЫЙ маппинг код<->подпись в проекте для типа `multi` (как у `theme_css_vars`
+    — второго места быть не должно): в JSON веб-API уезжают ПОДПИСИ, в БД ложатся КОДЫ,
+    перевод — только через эту функцию и `multi_labels`/`multi_codes` ниже. Подписи
+    статичны (читаются из модульной константы, не из БД), поэтому маппинг не может
+    разъехаться между отрисовкой и сохранением.
+    """
+    return list(_multi_options_map(key).items())
+
+
+def multi_labels(key: str, codes: list[str]) -> list[str]:
+    """Коды -> подписи, в порядке набора (`multi_options`); неизвестный код молча
+    отбрасывается (тот же fail-soft приём, что `moderation_card.enabled_steps`)."""
+    mapping = _multi_options_map(key)
+    chosen = set(codes or [])
+    return [label for code, label in mapping.items() if code in chosen]
+
+
+def multi_codes(key: str, labels: list[str]) -> tuple[list[str] | None, str | None]:
+    """Подписи -> коды, в порядке набора (`multi_options`). Успех -> `(коды, None)`.
+    Первая подпись вне закрытого набора -> `(None, эта_подпись)` — вызывающий
+    (`settings_validation`) сам решает, как её показать в тексте отказа."""
+    mapping = _multi_options_map(key)
+    label_to_code = {label: code for code, label in mapping.items()}
+    wanted = set(labels or [])
+    for label in labels or []:
+        if label not in label_to_code:
+            return None, label
+    chosen = {label_to_code[label] for label in wanted}
+    return [code for code in mapping if code in chosen], None
 
 
 async def get_setting_typed(key: str):
