@@ -41,7 +41,11 @@ from services.i18n_glossary import split_leading_symbols
 # validate_answer — reg_engine сам о языках не знает (A-03), эти две функции существуют
 # РЯДОМ с ним как узкий вход (план 27-04). reg_engine НЕ импортирует handlers ни при каких
 # условиях — обратного цикла нет.
-from reg_engine import option_pairs, canonical_option
+# UAT-фикс (стенд, lang=en, 27-05): option_pairs — тот же общий источник для ОБРАТНОЙ задачи —
+# канон варианта -> подпись для показа (display_summary_value/display_value_for_step ниже).
+# MULTI_CONFIG — определить, какие шаги хранят несколько канонов через ", ".join (см.
+# reg_engine.validate_answer, ветка step_type == "multi") и требуют сплита перед переводом.
+from reg_engine import option_pairs, canonical_option, MULTI_CONFIG
 
 logger = logging.getLogger(__name__)
 
@@ -168,6 +172,106 @@ async def canonicalize(message, step_key: str, text):
     pairs = await option_pairs(step_key, lang, tr_map)
     canon = canonical_option(pairs, text)
     return canon if canon is not None else text
+
+
+_MULTI_SEPARATOR = ", "  # reg_engine.validate_answer: step_type == "multi" -> ", ".join(chosen)
+
+# UAT-фикс (стенд, lang=en, 27-05): _build_summary переводит ЛЕЙБЛЫ (`tr_text` на строку
+# REG_LABELS/_SUMMARY_FIELD_LABELS), но ЗНАЧЕНИЯ closed-option шагов (город/образование/цель
+# участия/...) хранятся русским каноном и раньше уходили в сводку как есть — та же дыра, что
+# LANG-06 уже закрыла на ВВОДЕ (canonicalize выше), теперь закрыта и на ВЫВОДЕ. Метка сводки ->
+# step_key: единственная точка, где составной label (`reg_engine._SUMMARY_FIELD_LABELS` +
+# «Работа»/«Амбассадор», добавленные `summary_fields` построчно) знает, из какого шага он взят —
+# summary_fields() отдаёт голые (label, value) без этой информации (T-21-03, движок не знает
+# про язык/показ), поэтому связка ведётся здесь, а не в reg_engine.
+_SUMMARY_OPTION_STEP_BY_LABEL = {
+    "Город": "city",
+    "Источник": "source",
+    "Лок. комитет": "local_committee",
+    "Позиция": "position",
+    "Образование": "education_status",
+    "ВУЗ": "university",
+    "Направление обучения": "study_field",
+    "Неформальный день": "informal_day",
+    "Формат": "attendance_format",
+    "Департамент": "department",
+    "Позиция АЙСЕК": "aiesec_role",
+    "Аламни/айсекер": "alumni_status",
+    "Справка в ВУЗ": "needs_certificate",
+    "Английский": "english_level",
+    "Приезд": "arrival",
+    "Проживание": "housing",
+    "Общая кровать": "bed_sharing",
+    "Трансфер": "transport",
+    "Волонтёр": "volunteer",
+    "Цель участия": "goal",
+    "Форматы форума": "formats",
+    # "Работа" хранит РОВНО "Да"/"Нет" (bool -> литерал, см. reg_engine.summary_fields) — тот же
+    # канон, что YES_NO_OPTIONS шага work_status, поэтому option_pairs его тоже переводит.
+    "Работа": "work_status",
+}
+
+# "Амбассадор"/"Резюме" — синтетические литералы `summary_fields()` (bool -> "Да" без "Нет"-ветки,
+# факт вложения файла), НЕ канон варианта шага: AMBASSADOR_OPTIONS = ["Да!", "Пока нет"], "Да"
+# среди них не встречается, option_pairs("ambassador", ...) его не найдёт. Переводятся напрямую
+# через tr_text (ярус A: "Да"/"Нет" там уже есть) — безопасно ИМЕННО потому, что оба литерала
+# синтезированы кодом (bool/факт вложения), никогда не пришли свободным текстом от делегата.
+_SUMMARY_LITERAL_LABELS = {"Амбассадор", "Резюме"}
+
+
+async def summary_value_maps(lang: str, tr_map: dict[str, str]) -> dict[str, dict[str, str]]:
+    """`{step_key: {канон_ru: подпись}}` для всех closed-option полей сводки — считается ОДИН
+    раз за рендер (`_advance`, перед `_build_summary`), не по шагу внутри цикла: `option_pairs`
+    читает реестровые option-листы (city_options/source_options/...) через БД, N чтений на
+    рендер сводки того же класса проблемы, которую уже решает `load_map` для меток (докстринг
+    `services/i18n.py::load_map`). `lang == "ru"` -> пустой словарь без единого чтения."""
+    if lang == "ru":
+        return {}
+    maps: dict[str, dict[str, str]] = {}
+    for step_key in set(_SUMMARY_OPTION_STEP_BY_LABEL.values()):
+        pairs = await option_pairs(step_key, lang, tr_map)
+        if pairs:
+            maps[step_key] = dict(pairs)
+    return maps
+
+
+def display_summary_value(label: str, value, lang: str, tr_map: dict[str, str],
+                           value_maps: dict[str, dict[str, str]] | None):
+    """Значение строки сводки для показа: канон варианта -> переведённая подпись
+    (`summary_value_maps` уже посчитана, здесь только словарные обращения — синхронно, без
+    похода в БД). `lang == "ru"` или не-строка/пустое значение -> `value` без изменений (даты,
+    числа, свободный ввод). Шаги без готовой карты (нет в `value_maps`, включая ЛЮБОЙ шаг без
+    вариантов) — значение возвращается как есть: это либо свободный ввод, который трогать
+    нельзя, либо непереведённый шаг (fail-soft, D-04)."""
+    if lang == "ru" or not isinstance(value, str) or not value:
+        return value
+    if label in _SUMMARY_LITERAL_LABELS:
+        return tr_text(value, lang, tr_map)
+    step_key = _SUMMARY_OPTION_STEP_BY_LABEL.get(label)
+    by_canon = (value_maps or {}).get(step_key) if step_key else None
+    if not by_canon:
+        return value
+    if step_key in MULTI_CONFIG:
+        parts = value.split(_MULTI_SEPARATOR)
+        return _MULTI_SEPARATOR.join(by_canon.get(part, part) for part in parts)
+    return by_canon.get(value, value)
+
+
+async def display_value_for_step(step_key: str, value, lang: str, tr_map: dict[str, str]):
+    """Тот же перевод канон -> подпись, что `display_summary_value`, но для ОДНОГО шага сразу
+    (экран «Прошлый ответ» — `_show_recall_screen`, один вызов на экран, поход в БД внутри
+    `option_pairs` не нужно объединять с чем-либо ещё). `step_key` берётся напрямую из вызова
+    (в отличие от сводки, здесь не нужна карта label -> step_key)."""
+    if lang == "ru" or not isinstance(value, str) or not value:
+        return value
+    pairs = await option_pairs(step_key, lang, tr_map)
+    if not pairs:
+        return value
+    by_canon = dict(pairs)
+    if step_key in MULTI_CONFIG:
+        parts = value.split(_MULTI_SEPARATOR)
+        return _MULTI_SEPARATOR.join(by_canon.get(part, part) for part in parts)
+    return by_canon.get(value, value)
 
 
 async def say(message, text, **kwargs):

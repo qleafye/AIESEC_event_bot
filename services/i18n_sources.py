@@ -138,6 +138,21 @@ def code_literals() -> list[tuple[str, str]]:
     for setting_key, label in reg_labels.REG_LABELS.items():
         items.append((f"lit:REG_LABELS.{setting_key}", label))
 
+    # UAT-фикс (стенд, lang=en, 27-05): подписи сводки анкеты (_build_summary) — ОТДЕЛЬНЫЙ
+    # голый список bare-строк ("Возраст", "Город", ...), НЕ REG_LABELS (те несут эмоджи-префикс,
+    # «🎂 Возраст» — другой src_hash). Без этой регистрации handlers/registration.py::_build_summary
+    # честно зовёт tr_text(label, ...) на отправке, но карта переводов эту строку никогда не
+    # видела — фоновый переводчик её не переводил, tr() fail-soft отдаёт русский (D-04). Тот же
+    # класс дыры, что LANG-06 уже закрыла для ВАРИАНТОВ ответа (option_pairs) — здесь для МЕТОК.
+    for label, _column in reg_engine._SUMMARY_FIELD_LABELS:
+        items.append((f"lit:_SUMMARY_FIELD_LABELS.{_column}", label))
+    # "Работа"/"Амбассадор"/"Резюме" — computed-строки summary_fields() поверх списка выше (bool
+    # -> "Да"/"Нет", факт вложения файла), та же дыра корпуса.
+    items.append(("lit:reg_engine.summary_fields.work_status", "Работа"))
+    items.append(("lit:reg_engine.summary_fields.ambassador", "Амбассадор"))
+    items.append(("lit:reg_engine.summary_fields.resume", "Резюме"))
+    items.append(("lit:reg_engine.summary_fields.resume_attached", "прикреплено файлом"))
+
     # Все UPPERCASE-списки reg_options — перебор через vars(), а не 18 имён руками: новый
     # список вариантов, добавленный когда-нибудь в reg_options.py, попадёт в корпус сам.
     # Большинство элементов — простые строки; PARTY_TRACK_OPTIONS — список (код, подпись) —

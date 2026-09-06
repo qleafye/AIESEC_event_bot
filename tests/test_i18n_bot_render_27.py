@@ -17,8 +17,18 @@ from aiogram.types import (
     ReplyKeyboardRemove,
 )
 
+from config import config
+from database import db
 from handlers import reg_i18n
 from handlers import registration as reg
+
+
+def _db_ready(tmp_path, name="test_i18n_bot_render_27.db"):
+    """DB для option_pairs/summary_value_maps (option_list_for читает city_options/goal_options
+    через get_setting даже на дефолтном списке) — тот же приём, что
+    tests/test_i18n_options_roundtrip_27.py::_db_ready."""
+    config.DB_PATH = str(tmp_path / name)
+    asyncio.run(db.init_db())
 
 UID = 820001
 
@@ -222,6 +232,52 @@ def test_build_summary_translates_labels_keeps_values_verbatim():
     assert "Full name" in out
     assert "Иванова Мария" in out  # значение делегата НЕ переводится
     assert "ФИО" not in out
+
+
+def test_build_summary_translates_closed_option_values_choice_and_multi(tmp_path):
+    """UAT-фикс (стенд, lang=en, 27-05): значения closed-option полей сводки — choice (city) и
+    multi (goal, ", ".join канонов) — переводятся канон -> подпись; свободный ввод (comments)
+    остаётся как есть. Byte-identical output at lang="ru" — тот же вызов без lang/tr_map/
+    value_maps (parity guard, тот же приём, что test_build_summary_default_lang_ru_unchanged)."""
+    _db_ready(tmp_path)
+    header = "Проверь свои ответы:"
+    label_city, label_goal, label_comments = "Город", "Цель участия", "Комментарии"
+    goal_a = "Найти возможность трудоустройства"
+    goal_b = "Прокачать свои hard и soft skills"
+    data = {
+        "full_name": "Иванова Мария",
+        "city": "Казань",
+        "goal": f"{goal_a}, {goal_b}",
+        "comments": "Свободный текст делегата",
+    }
+
+    async def go():
+        tr_map = {
+            reg_i18n.i18n_service.src_hash(header): "Check your answers:",
+            reg_i18n.i18n_service.src_hash(label_city): "City",
+            reg_i18n.i18n_service.src_hash(label_goal): "Goal",
+            reg_i18n.i18n_service.src_hash(label_comments): "Comments",
+            reg_i18n.i18n_service.src_hash("Казань"): "Kazan",
+            reg_i18n.i18n_service.src_hash(goal_a): "Find a job opportunity",
+            reg_i18n.i18n_service.src_hash(goal_b): "Improve hard and soft skills",
+        }
+        value_maps = await reg_i18n.summary_value_maps("en", tr_map)
+        return reg._build_summary(data, "en", tr_map, value_maps)
+
+    out_en = asyncio.run(go())
+
+    assert "Check your answers:" in out_en
+    assert "<b>City:</b> Kazan" in out_en
+    assert "<b>Goal:</b> Find a job opportunity, Improve hard and soft skills" in out_en
+    assert "<b>Comments:</b> Свободный текст делегата" in out_en  # свободный ввод не тронут
+    assert "Казань" not in out_en
+    assert goal_a not in out_en and goal_b not in out_en
+
+    # lang="ru" (дефолт, без value_maps) — байт-в-байт то же, что и до этого фикса.
+    out_ru = reg._build_summary(data)
+    assert "<b>Город:</b> Казань" in out_ru
+    assert f"<b>Цель участия:</b> {goal_a}, {goal_b}" in out_ru
+    assert "<b>Комментарии:</b> Свободный текст делегата" in out_ru
 
 
 # ── Гейт: составная строка summary не ломается повторной попыткой перевода в _safe_answer ──
