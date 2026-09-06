@@ -130,13 +130,16 @@ KNOWN_OVERAGES: dict[str, tuple[int, str]] = {
         "города + сброс/импорт сезона + дедупликация -- один связный экран (13-05)",
     ),
     "admin_reg_percity.py": (
-        975,
+        1127,
         "новый шов (module-size split из admin_reg_config.py, 1451 строка): экраны «📋 Вопросы "
         "регистрации» и «✏️ Тексты вопросов» per-city/per-track (toggle_reg_question/"
         "toggle_party_question/toggle_short_question/reg_resume_mode_toggle/reg_q_reset_city*/"
         "reg_prompt_*) плюс хелперы, которые использует только эта пара экранов (928 строк) -- "
         "один связный экран той же природы, что admin_cities.py/admin_broadcasts.py выше; "
-        "потолок = фактический размер + ~5% запаса.",
+        "потолок = фактический размер + ~5% запаса. "
+        "Квик 260906-7zv (HELP-01/02/03): +145 строк -- редактор подсказок формата под "
+        "вопросом («💡 Подсказка», reg_help_edit/reg_help_rst/reg_help_rst_go), тот же экран, "
+        "новых модулей не заводит (1073 строки); потолок поднят до фактического размера + ~5%.",
     ),
     "admin_broadcasts.py": (
         883,

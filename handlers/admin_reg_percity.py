@@ -46,6 +46,7 @@ from handlers.admin_reg_config import (
     _refresh_party_sheet_header,
     _refresh_short_sheet_header,
 )
+import reg_engine  # квик 260906-7zv: help_default/has_help — швов циклов нет, reg_engine handlers не импортирует
 
 logger = logging.getLogger(__name__)
 
@@ -695,17 +696,25 @@ async def render_prompts_text(track: str = "full", admin_id: int | None = None) 
     header_code = await admin_selected_city(admin_id) if admin_id is not None else None
     per_city_ctx = bool(header_code and header_code != ALL_CITIES)
 
+    # квик 260906-7zv (HELP-01, D-1): одна строка про 💡 в обеих ветках, ДО party-блока и без
+    # кодов городов — она о ключе reg_help_*, который остаётся глобальным всегда.
+    _help_hint = (
+        "\n\n💡 — подсказка формата под вопросом, её видит делегат в анкете. Подсказка общая: "
+        "одна на все города и оба трека."
+    )
     if per_city_ctx:
         city_txt = await city_label(header_code)
         text = (
             f"✏️ <b>Тексты вопросов — {html_module.escape(city_txt)}</b>\n\n"
             "Выбери вопрос и пришли свой текст ИМЕННО для этого города. ✅ — у города свой "
             "текст, ✏️ — как везде. Чтобы вернуть общий текст, отправь «-»."
+            + _help_hint
         )
     else:
         text = (
             "✏️ <b>Тексты вопросов</b>\n\nВыбери вопрос и пришли свой текст. ✅ — текст переопределён, "
             "✏️ — стандартный. Чтобы вернуть стандартный, отправь «-»."
+            + _help_hint
         )
     if track == "party":
         text += (
@@ -732,7 +741,19 @@ async def build_prompts_keyboard(track: str = "full", admin_id: int | None = Non
         else:
             custom = await get_setting(_prompt_base_key(track, step_key))
         mark = "✅" if custom else "✏️"
-        buttons.append([InlineKeyboardButton(text=f"{mark} {label}", callback_data=callback_data)])
+        row = [InlineKeyboardButton(text=f"{mark} {label}", callback_data=callback_data)]
+        # квик 260906-7zv (HELP-01, D-1): вторая кнопка в той же строке — только у шагов с
+        # подсказкой формата (`reg_engine.has_help`). Без ✅/✏️ маркеров: они здесь уже значат
+        # «у города своё», а ключ reg_help_{step} от города/трека не зависит — переиспользовать
+        # их для глобального ключа было бы враньём разметкой. Суффикс `:party` в callback'е —
+        # ТОЛЬКО подсказка «куда вернуться после правки», сам ключ reg_help_{step} от трека не
+        # зависит (никакого reg_help_{step}__party не заводится).
+        if reg_engine.has_help(step_key):
+            help_callback = f"reg_help_edit:{step_key}:party" if track == "party" else f"reg_help_edit:{step_key}"
+            help_custom = bool(await get_setting(f"reg_help_{step_key}"))
+            help_label = "💡 Подсказка: своя" if help_custom else "💡 Подсказка: стандартная"
+            row.append(InlineKeyboardButton(text=help_label, callback_data=help_callback))
+        buttons.append(row)
     # Phase 20 (20-04): «Назад» ведёт в раздел-владелец этого экрана — «📝 Анкета».
     from handlers.admin_sections import back_button  # ленивый шов (цикл на уровне модуля)
     buttons.append([back_button("admin_reg_prompts")])
@@ -923,6 +944,130 @@ async def reg_prompt_rst_go(callback: types.CallbackQuery):
 
     city_txt = await city_label(code)
     await callback.answer(f"Готово: {city_txt} — как везде", show_alert=True)
+    text = await render_prompts_text(track, admin_id)
+    await callback.message.edit_text(text, parse_mode="HTML", reply_markup=await build_prompts_keyboard(track, admin_id))
+
+
+# --- Editable question format hints (квик 260906-7zv, HELP-01/02/03: reg_help_<step>) ------
+#
+# Подсказка формата под вопросом (`reg_engine.STEP_HELP`/`reg_engine.help_text`) остаётся
+# ГЛОБАЛЬНОЙ — без осей города и трека (D-1): валидатор ответа (`_validate_answer_core`) один
+# на все города и оба трека, подсказка обязана описывать то, что он принимает, а не отличаться
+# по городу. Экран правки поэтому не повторяет per-city лестницу reg_prompt_*, а суффикс
+# `:party` в callback'е ниже — только подсказка «куда вернуться после правки», не часть ключа.
+
+async def _reg_help_guard(step_key: str, admin_id: int) -> str | None:
+    """Общая преамбула reg_help_edit/reg_help_rst/reg_help_rst_go. Два условия ДО сборки ключа
+    `reg_help_{step}` (T-7zv-01, линия T-25-17): шаг сверяется с закрытым `_prompt_steps()` И с
+    `reg_engine.has_help` — крафченый/несуществующий шаг не превращается в запись в
+    `bot_settings`. Затем право (D-3, T-7zv-02): ключ глобальный, привязанный к городу менеджер
+    (`per_city_visible_codes(admin_id) != city_codes()`) его не правит — иначе он переписывает
+    подсказку всем городам. Возвращает текст алерта при отказе, `None` — «можно продолжать»."""
+    valid_keys = {sk for sk, _ in _prompt_steps()}
+    if step_key not in valid_keys or not reg_engine.has_help(step_key):
+        return "У этого вопроса нет подсказки формата."
+    if await cities_module_on():
+        visible = set(await _per_city_visible_codes(admin_id))
+        if visible != set(city_codes()):
+            return (
+                "Подсказка формата общая для всех городов — её меняет суперадмин. "
+                "Напишите ему, если пример в подсказке неверный."
+            )
+    return None
+
+
+@router.callback_query(F.data.startswith("reg_help_edit:"))
+async def reg_help_edit(callback: types.CallbackQuery, state: FSMContext):
+    parts = callback.data.split(":")
+    step_key = parts[1]
+    track = "party" if len(parts) > 2 and parts[2] == "party" else "full"
+    admin_id = callback.from_user.id
+    denial = await _reg_help_guard(step_key, admin_id)
+    if denial:
+        await callback.answer(denial, show_alert=True)
+        return
+
+    label = dict(_prompt_steps()).get(step_key, step_key)
+    header_code = await admin_selected_city(admin_id)
+    own_current = await get_setting(f"reg_help_{step_key}")
+    default = await reg_engine.help_default(step_key, header_code) or ""
+    text = f"💡 <b>Подсказка формата — «{html_module.escape(label)}»</b>\n\n"
+    if own_current:
+        text += f"Сейчас: <b>{html_module.escape(own_current)}</b>\n\n"
+    else:
+        text += "Сейчас: <i>стандартная</i>\n\n"
+    text += f"Стандартная: <i>{html_module.escape(default)}</i>\n\n"
+    text += "Подсказка общая: одна на все города и оба трека — проверка ответа тоже одна.\n\n"
+    text += (
+        "Подсказка должна описывать то, что бот ПРИНИМАЕТ: если написать в ней формат, "
+        "который бот не примет, делегат будет получать ошибку, делая всё по подсказке.\n\n"
+    )
+    text += (
+        f"Пришли новый текст одним сообщением, например:\n<code>{html_module.escape(default)}</code>"
+        "\n\n<i>«-» — вернуть стандартную.</i>"
+    )
+
+    suffix = ":party" if track == "party" else ""
+    rows: list[list[InlineKeyboardButton]] = []
+    if own_current:
+        rows.append([InlineKeyboardButton(
+            text="♻️ Вернуть стандартную", callback_data=f"reg_help_rst:{step_key}{suffix}",
+        )])
+    rows.append([InlineKeyboardButton(text="❌ Отмена", callback_data="settings_cancel")])
+    await callback.message.edit_text(text, parse_mode="HTML", reply_markup=InlineKeyboardMarkup(inline_keyboard=rows))
+    await state.set_state(EditSetting.waiting_for_value)
+    # Ключ ГЛОБАЛЬНЫЙ (D-1) — трек в FSM не попадает, писать/читать умеет общий
+    # settings_edit_value, «-» там уже значит удаление.
+    await state.set_data({"setting_key": f"reg_help_{step_key}"})
+    await callback.answer()
+
+
+@router.callback_query(F.data.startswith("reg_help_rst:"))
+async def reg_help_rst(callback: types.CallbackQuery):
+    """Confirm screen for «♻️ Вернуть стандартную» — та же двухшаговая идиома, что у
+    reg_prompt_rst/menu_reset_city: называет вопрос и показывает, ЧТО встанет вместо своего,
+    до удаления чего-либо."""
+    parts = callback.data.split(":")
+    step_key = parts[1]
+    track = "party" if len(parts) > 2 and parts[2] == "party" else "full"
+    admin_id = callback.from_user.id
+    denial = await _reg_help_guard(step_key, admin_id)
+    if denial:
+        await callback.answer(denial, show_alert=True)
+        return
+    current = await get_setting(f"reg_help_{step_key}")
+    if not current:
+        await callback.answer("Подсказка и так стандартная", show_alert=True)
+        return
+
+    label = dict(_prompt_steps()).get(step_key, step_key)
+    header_code = await admin_selected_city(admin_id)
+    default = await reg_engine.help_default(step_key, header_code) or ""
+    text = (
+        f"Вопрос «{html_module.escape(label)}» снова будет показывать стандартную подсказку: "
+        f"<i>{html_module.escape(default)}</i>\nСвоя подсказка пропадёт."
+    )
+    suffix = ":party" if track == "party" else ""
+    kb = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="✅ Да, вернуть стандартную", callback_data=f"reg_help_rst_go:{step_key}{suffix}")],
+        [InlineKeyboardButton(text="← Отмена", callback_data=f"reg_help_edit:{step_key}{suffix}")],
+    ])
+    await callback.message.edit_text(text, parse_mode="HTML", reply_markup=kb)
+    await callback.answer()
+
+
+@router.callback_query(F.data.startswith("reg_help_rst_go:"))
+async def reg_help_rst_go(callback: types.CallbackQuery):
+    parts = callback.data.split(":")
+    step_key = parts[1]
+    track = "party" if len(parts) > 2 and parts[2] == "party" else "full"
+    admin_id = callback.from_user.id
+    denial = await _reg_help_guard(step_key, admin_id)
+    if denial:
+        await callback.answer(denial, show_alert=True)
+        return
+    await delete_setting(f"reg_help_{step_key}")  # idempotent -- deleting an already-absent key is a no-op
+    await callback.answer("Готово: стандартная подсказка", show_alert=True)
     text = await render_prompts_text(track, admin_id)
     await callback.message.edit_text(text, parse_mode="HTML", reply_markup=await build_prompts_keyboard(track, admin_id))
 
