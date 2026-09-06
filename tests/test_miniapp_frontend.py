@@ -245,6 +245,8 @@ EXPECTED_ROUTES = {
     "#/questions": "screens/questions.js",
     # Quick 260906-8uq (FAQ-05): делегатский экран «❓ Частые вопросы».
     "#/faq": "screens/faq.js",
+    # Quick 260906-nxp: менеджерский экран ведения того же списка.
+    "#/admin-faq": "screens/admin_faq.js",
 }
 _ROUTE_ROW = re.compile(r'\[\s*"(#/[^"]+)"\s*,\s*"(screens/[^"]+\.js)"\s*\]')
 
@@ -270,7 +272,8 @@ def test_route_table_matches_phase_plan_exactly():
     # больше числа уникальных модулей (settings.js — единственный модуль с двумя записями).
     # Quick 260904-2cj: +1 маршрут "#/questions" (16 -> 17).
     # Quick 260906-8uq (FAQ-05): +1 маршрут "#/faq" (17 -> 18).
-    assert len(routes) == 18
+    # Quick 260906-nxp: +1 маршрут "#/admin-faq" (18 -> 19).
+    assert len(routes) == 19
     assert set(routes.values()) == set(EXPECTED_ROUTES.values())
     assert "#/task-edit/new" not in routes
 
@@ -406,6 +409,9 @@ EXPECTED_NAV = [
     {"hash": "#/faq", "section": "faq", "delegate": True},
     {"hash": "#/applications", "section": "applications", "cap": "moderate_reg", "group": "apps"},
     {"hash": "#/questions", "section": "questions", "cap": "moderate_reg", "group": "apps"},
+    # Quick 260906-nxp: менеджерское ведение FAQ — рядом с #/questions (менеджерские разделы
+    # идут вместе), section "faq" — тот же чекбокс, что у делегатского #/faq.
+    {"hash": "#/admin-faq", "section": "faq", "cap": "moderate_reg", "group": "apps"},
     {"hash": "#/review", "section": "review", "cap": "moderate_game", "group": "game"},
     {"hash": "#/admin-tasks", "section": "admin_tasks", "cap": "moderate_game", "group": "game"},
     {"hash": "#/admin-coins", "section": "coins", "cap": "moderate_game", "staffOnly": True, "group": "game"},
@@ -1924,4 +1930,44 @@ def test_form_screen_uses_plate_and_question_rows():
         assert token in text, f"нет {token} в screens/form.js"
     assert 'setMainButton("→"' not in text
     assert not re.search(r"\{[^}]*\bstyle\s*:", text)
+
+
+# ── screens/admin_faq.js: экран #/admin-faq (quick 260906-nxp) ──────────────────────────
+
+ADMIN_FAQ_JS = SCREENS_DIR / "admin_faq.js"
+
+
+def test_admin_faq_screen_exports_render_without_innerhtml_or_colors():
+    text = _js_without_comments(ADMIN_FAQ_JS)
+    assert re.search(r"export\s+async\s+function\s+render\s*\(root,\s*params,\s*ctx\)", text)
+    assert "innerHTML" not in text
+    assert "document.write" not in text
+    assert not _HEX_OR_RGB_COLOR.findall(text), "литеральный цвет в admin_faq.js"
+    assert "https://" not in text and "http://" not in text
+
+
+def test_admin_faq_screen_has_no_manager_chrome_emoji():
+    text = _js_without_comments(ADMIN_FAQ_JS)
+    for e in _MANAGER_CHROME_ICON_EMOJI:
+        assert e not in text, f"admin_faq.js: эмодзи {e} в роли иконки интерфейса — замените icons.js (D-13)"
+
+
+def test_admin_faq_screen_delete_is_two_step_confirm():
+    text = _js_without_comments(ADMIN_FAQ_JS)
+    assert "confirm-box" in text
+    assert "delete_confirm_text" in text
+    assert len(re.findall(r'method:\s*"DELETE"', text)) == 1
+
+
+def test_admin_faq_screen_uses_server_labels_not_literals():
+    text = _js_without_comments(ADMIN_FAQ_JS)
+    for token in ("status_text", "toggle_label", "city_toggle_label", "city_hint", "empty_text"):
+        assert token in text, f"нет {token} в admin_faq.js"
+
+
+def test_admin_faq_route_and_nav_registered_with_moderate_reg_cap():
+    text = APP_JS.read_text(encoding="utf-8")
+    assert text.count("#/admin-faq") == 3  # ROUTES + NAV + NAV_ICONS
+    nav_block = text[text.index("export const NAV ="):text.index("export const NAV_ICONS")]
+    assert '"#/admin-faq"' in nav_block and 'cap: "moderate_reg"' in nav_block and 'group: "apps"' in nav_block
 
