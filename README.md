@@ -41,72 +41,34 @@
 
 ## Архитектура
 
-```mermaid
-C4Context
-  title Контекст: АЙСЕК Event Bot
-
-  Person(delegate, "Делегат", "Участник Юлида, РилТолка или СкиллАпа")
-  Person(manager, "Менеджер события", "Ведёт регистрацию и рассылки без разработчика")
-
-  System(bot, "АЙСЕК Event Bot", "Регистрация, модерация, оплата, геймификация, Mini App, дашборд")
-
-  System_Ext(telegram, "Telegram Bot API", "Long polling, сообщения и файлы")
-  System_Ext(sheets, "Google Sheets", "Таблица заявок по вкладкам городов")
-  System_Ext(nextcloud, "Nextcloud", "Хранилище резюме по WebDAV")
-  System_Ext(cf, "Cloudflare Tunnel", "Внешний доступ к дашборду и Mini App через relay is-hosting")
-
-  Rel(delegate, telegram, "Регистрируется, оплачивает, сдаёт задания")
-  Rel(manager, telegram, "Модерирует, настраивает, рассылает")
-  Rel(delegate, cf, "Открывает Mini App внутри Telegram")
-  Rel(manager, cf, "Открывает дашборд статистики")
-  Rel(telegram, bot, "Update'ы", "long polling")
-  Rel(cf, bot, "Проксирует дашборд и Mini App")
-  Rel(bot, sheets, "Дублирует заявки", "gspread")
-  Rel(bot, nextcloud, "Заливает резюме", "WebDAV")
-```
+Один docker-compose стек на событие: бот, планировщик, Mini App и дашборд вокруг одной
+SQLite. Наружу смотрит только Cloudflare Tunnel, входящих портов на сервере нет.
 
 ```mermaid
-C4Container
-  title Контейнеры: АЙСЕК Event Bot
+flowchart TB
+    delegate(["Делегат"]) --> tg
+    manager(["Менеджер события"]) --> tg
+    tg["Telegram Bot API"] <-- "long polling" --> bot
 
-  Person(delegate, "Делегат")
-  Person(manager, "Менеджер события")
+    subgraph stack["Стек события — один docker compose"]
+        direction TB
+        bot["Бот · aiogram 3"]
+        sched["Планировщик · APScheduler"]
+        miniapp["Mini App · FastAPI"]
+        dash["Дашборд · FastAPI"]
+        db[("SQLite")]
+        bot --> db
+        bot --> sched --> db
+        miniapp -- "второй писатель + outbox" --> db
+        dash -- "только чтение" --> db
+    end
 
-  System_Ext(telegram, "Telegram Bot API")
-  System_Ext(sheets, "Google Sheets")
-  System_Ext(nextcloud, "Nextcloud")
-  System_Ext(cf, "Cloudflare Tunnel", "relay is-hosting")
-
-  Container_Boundary(stack, "Один docker-compose стек на событие") {
-    Container(botc, "Bot", "aiogram 3, long polling", "Регистрация, модерация, рассылки, геймификация")
-    Container(scheduler, "Планировщик", "APScheduler 3.x, AsyncIOScheduler", "Отложенные рассылки, напоминания об оплате")
-    ContainerDb(db, "SQLite", "aiosqlite + SQLAlchemyJobStore", "users, bot_settings, coins, job store")
-    Container(miniapp, "Mini App", "FastAPI, uvicorn", "Веб-версия анкеты, заданий и отбора заявок")
-    Container(dashboard, "Дашборд", "FastAPI, uvicorn", "Read-only воронка и срезы по заявкам")
-  }
-
-  Rel(delegate, telegram, "Сообщения")
-  Rel(manager, telegram, "Команды и кнопки")
-  Rel(telegram, botc, "Update'ы", "long polling")
-  Rel(botc, telegram, "Ответы, рассылки", "Bot API")
-
-  Rel(botc, db, "Читает и пишет", "aiosqlite")
-  Rel(botc, scheduler, "Ставит и снимает джобы")
-  Rel(scheduler, db, "Хранит и читает джобы", "SQLAlchemy")
-  Rel(scheduler, telegram, "Шлёт рассылку или напоминание по джобе", "Bot API")
-
-  Rel(botc, sheets, "Дублирует заявки и статусы", "gspread")
-  Rel(botc, nextcloud, "Заливает резюме", "WebDAV")
-
-  Rel(miniapp, db, "Пишет сдачи заданий и монеты напрямую, второй писатель")
-  Rel(miniapp, db, "Ставит уведомления и пересборку таблицы в очередь miniapp_outbox")
-  Rel(botc, db, "Разбирает очередь miniapp_outbox раз в 30 секунд")
-  Rel(dashboard, db, "Читает", "read-only том")
-
-  Rel(delegate, cf, "Открывает Mini App", "HTTPS, путь /app")
-  Rel(manager, cf, "Открывает дашборд", "HTTPS, Telegram Login Widget")
-  Rel(cf, miniapp, "Проксирует")
-  Rel(cf, dashboard, "Проксирует")
+    bot -- "заявки" --> sheets["Google Sheets"]
+    bot -- "резюме" --> nextcloud["Nextcloud"]
+    cf["Cloudflare Tunnel"] --> miniapp
+    cf --> dash
+    delegate -- "Mini App" --> cf
+    manager -- "дашборд" --> cf
 ```
 
 SQLite остаётся единственным источником истины: Google-таблица и дашборд читают из неё,
@@ -118,6 +80,66 @@ SQLite остаётся единственным источником истин
 которую разбирает джоба планировщика. Дашборд подключается к той же базе только на чтение.
 Наружу дашборд и Mini App смотрят через один Cloudflare Tunnel: сервер не открывает входящих
 портов, сертификат выдаёт Cloudflare.
+
+## Путь заявки
+
+Дорожки: делегат, бот, менеджер. Две развилки зависят от настроек события (предотбор и
+оплата включаются тумблерами), решают либо бот сам, либо менеджер на карточке заявки и на
+карточке чека. Всё, что в дорожке «Бот», идёт без участия людей.
+
+![Путь заявки: BPMN с дорожками Делегат / Бот / Менеджер](docs/diagrams/application-flow-bpmn.svg)
+
+Рядом с процессом крутятся фоновые циклы: догон брошенных анкет, напоминания об оплате,
+сводка менеджерам по заявкам в ожидании, тихие часы уведомлений и разбор очереди Mini App.
+
+## Как рос бот
+
+Даты — по коммитам, вехи мероприятий — по срокам заказчика.
+
+```mermaid
+gantt
+    title Что и к какому событию делалось
+    dateFormat YYYY-MM-DD
+    axisFormat %d.%m
+
+    section Мероприятия
+    SkillUp4                            :milestone, 2026-04-26, 0d
+    МС-отчёт                            :milestone, 2026-06-30, 0d
+    SumMeet'26                          :milestone, 2026-07-31, 0d
+    Акция, краткая анкета               :milestone, 2026-08-07, 0d
+    Старт геймификации                  :milestone, 2026-08-18, 0d
+    YouLead'26                          :milestone, 2026-10-30, 0d
+    SkillUp5                            :milestone, 2026-11-14, 0d
+
+    section Разовый бот под SkillUp4
+    Анкета, Google Sheets, инфо-меню    :done, 2026-01-23, 2026-03-19
+    Прокси, рассылка по списку, CV-гайд :done, 2026-03-20, 2026-04-02
+    Короткая форма и рефералка          :done, 2026-04-03, 2026-04-26
+    Статистика и первые настройки в админке :done, 2026-05-05, 2026-05-07
+    Перенос в этот репозиторий          :done, 2026-05-07, 2026-06-08
+
+    section v1.0 — к МС-отчёту и SumMeet
+    Анкета и меню собираются из БД      :done, 2026-06-09, 2026-07-24
+    Планировщик, рассылки, напоминания  :done, 2026-06-28, 2026-07-24
+    Оплата, чеки, согласия              :done, 2026-06-30, 2026-07-24
+    Треки и вечеринка                   :done, 2026-07-20, 2026-07-24
+
+    section v2 — к YouLead'26
+    Реестр настроек                     :done, 2026-07-24, 2026-08-08
+    Краткая анкета для акции            :done, 2026-07-28, 2026-08-13
+    Города и городские ссылки           :done, 2026-08-08, 2026-08-11
+    Погородная админка                  :done, 2026-08-11, 2026-08-13
+    Роли и права менеджеров             :done, 2026-08-13, 2026-08-17
+    Геймификация                        :done, 2026-08-13, 2026-08-17
+    Контент по городам                  :done, 2026-08-17, 2026-08-18
+    Разбиение god-файлов, UI геймы, тексты в реестр :done, 2026-08-17, 2026-08-19
+    Хардeнинг по ревью, CI              :done, 2026-08-19, 2026-08-19
+    Mini App делегата и менеджера       :done, 2026-08-20, 2026-09-04
+    Дашборд статистики                  :done, 2026-08-26, 2026-09-05
+    Вопросы по городам, темы событий    :done, 2026-09-04, 2026-09-06
+    Супердашборд и FAQ                  :done, 2026-09-06, 2026-09-06
+    Язык делегата (английская анкета)   :2026-09-06, 2026-09-20
+```
 
 ## Быстрый старт
 
