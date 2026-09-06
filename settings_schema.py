@@ -2222,6 +2222,18 @@ SETTINGS_SCHEMA = {
         ),
         "default": "Ответить",
     },
+    # Quick 260906-8uq (FAQ-06): кнопка «В FAQ» под отвеченным вопросом журнала в приложении —
+    # симметрично боту (задача 4), но без полноценного экрана правки (follow-up, not_in_scope).
+    "miniapp_questions_to_faq_button": {
+        "type": "text", "group": "miniapp", "label": "❓ Кнопка «В FAQ»",
+        "prompt": "Подпись кнопки, которая кладёт отвеченный вопрос в FAQ.",
+        "default": "❓ В FAQ",
+    },
+    "miniapp_questions_to_faq_saved_toast": {
+        "type": "text", "group": "miniapp", "label": "❓ Тост «Пункт добавлен в FAQ»",
+        "prompt": "Текст тоста сразу после того, как пункт сохранён в FAQ.",
+        "default": "Добавлено в FAQ",
+    },
     # Тексты, специфичные для Mini App (человеческие дефолты — менеджер может не трогать).
     "miniapp_open_text": {
         "type": "text", "group": "miniapp", "label": "💬 Сообщение с кнопкой приложения",

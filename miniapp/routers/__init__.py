@@ -90,10 +90,14 @@
   скоуп — вопрос ДЕЛЕГАТА против привязки менеджера, как у applications/review):
   GET  /app/api/questions?status&offset&limit -> {items[{id,user_id,name,username,city,
                                        asked_at,question_text,status,status_label,stuck,
-                                       answered_by_name,answered_at,answer_text,can_answer}],
+                                       answered_by_name,answered_at,answer_text,can_answer,
+                                       can_add_to_faq}],
                                        total, counts{all,new,in_work,answered},
                                        filters[{key,label,count}], offset, limit,
-                                       empty_text, answer_button, sent_toast}
+                                       empty_text, answer_button, sent_toast,
+                                       to_faq_button, to_faq_saved_toast}
+                                       can_add_to_faq — только для отвеченных строк (quick
+                                       260906-8uq, задача 6, кнопка «В FAQ»)
                                        status: new|in_work|answered (неизвестное — без фильтра,
                                        не 400); limit <= 50, дефолт 20
   POST /app/api/questions/{qid}/answer {text} -> {ok: true, status: "answered"}
