@@ -190,6 +190,72 @@ def code_literals() -> list[tuple[str, str]]:
         "Отлично, ты пришёл по приглашению друга. Начинаем регистрацию.",
     ))
 
+    # UAT run 2 (Quick 260906, второй проход после 2773791/44c77df/222340a): те же два aiogram-
+    # free модуля (handlers/reg_resume.py, handlers/reg_flow.py, handlers/reg_consent.py,
+    # handlers/registration.py) НЕ импортируются отсюда (докстринг модуля выше) — литералы
+    # продублированы буквально, `tests/test_i18n_sources_27.py` держит их байт-в-байт списком.
+    items.append((
+        "lit:reg_resume.offer_resume",
+        "У тебя есть незаконченная анкета — что дальше?",
+    ))
+    items.append((
+        "lit:reg_resume.reg_resume_restart_yes",
+        "Изменения отменены — анкета осталась прежней.",
+    ))
+    items.append((
+        # Тот же литерал шлёт handlers/reg_handoff.py::reg_handoff_to_bot — один корпусный
+        # источник на оба сайта, дедуп по strip()-нутому тексту в corpus() ниже.
+        "lit:reg_resume.reg_resume_continue",
+        "Черновик не найден — начни заново с /start.",
+    ))
+    items.append((
+        "lit:reg_flow.rereg_start",
+        "Ты уже зарегистрирован(а) на этот сезон",
+    ))
+    items.append((
+        "lit:reg_flow.cancel_registration",
+        "Точно отменить регистрацию? Все введённые ответы сотрутся.",
+    ))
+    items.append((
+        "lit:reg_flow.cancel_registration_confirm",
+        "Регистрация отменена. Чтобы начать заново, отправь /start.",
+    ))
+    items.append((
+        "lit:reg_flow.process_resume",
+        "Принимаются только PDF или DOCX. Прикрепи файл ещё раз.",
+    ))
+    items.append((
+        "lit:reg_flow.process_resume",
+        "❌ Файл слишком большой (максимум 10 МБ). Прикрепи резюме меньшего размера.",
+    ))
+    items.append((
+        # НЕ совпадает с UI_EN («Напиши резюме текстом...» — текст ошибки validate_answer)
+        # дословно: тут «Пришли...» — приглашение на невалидный тип апдейта (не текст ошибки
+        # ввода), отдельный литерал, отдельная строка корпуса.
+        "lit:reg_flow.process_resume_invalid",
+        "Пришли резюме текстом или прикрепи файл (PDF или DOCX).",
+    ))
+    items.append((
+        "lit:reg_flow.process_multi_ignore",
+        "Отмечай варианты кнопками выше и нажми «Готово».",
+    ))
+    items.append((
+        "lit:reg_consent.consent_renew_accept",
+        "✅ Спасибо! Согласие обновлено.",
+    ))
+    items.append((
+        "lit:registration._build_summary",
+        "Проверь свои ответы:",
+    ))
+    # Задача 4 (известный остаток первого фикса, docstring `_ask_full_name_plain`): дефолт
+    # override reg_prompt_full_name ушёл в корпус через `code_literals()` фикса 2773791
+    # (override, когда он задан), но CALLER-SUPPLIED default (когда override НЕ задан,
+    # `_prompt("full_name", ...)`) — нет, отдельный литерал того же вопроса.
+    items.append((
+        "lit:registration._ask_full_name_plain",
+        "Напиши свои ФИО (Фамилия Имя Отчество):",
+    ))
+
     return items
 
 
