@@ -24,6 +24,7 @@ from tests.test_miniapp_routes import (
 )
 
 REG_MANAGER_ID = 900750
+BOUND_REG_MANAGER_ID = 900751
 DELEGATE_ID = 900752
 KZN_DELEGATE_ID = 900753
 
@@ -36,7 +37,10 @@ def _run(coro):
 def client(tmp_path):
     db_path = _use_tmp_db(tmp_path, "miniapp_faq.db")
     _seed(
-        staff=[(REG_MANAGER_ID, "reg_manager", None)],
+        staff=[
+            (REG_MANAGER_ID, "reg_manager", None),
+            (BOUND_REG_MANAGER_ID, "reg_manager", "kzn"),
+        ],
         users=[(DELEGATE_ID, "approved"), (KZN_DELEGATE_ID, "approved")],
         settings={"miniapp_enabled": "on", "event_name": "форума YouLead"},
     )
@@ -181,3 +185,104 @@ def test_faq_router_registered_in_all_routers():
     from miniapp.routers.faq import router as faq_router
 
     assert faq_router in ALL_ROUTERS
+
+
+# ══════════════════════════════════════════════════════════════════════════════════════════
+# Задача 6: POST /app/api/faq — кнопка «В FAQ» менеджера в приложении
+# ══════════════════════════════════════════════════════════════════════════════════════════
+
+def test_faq_post_requires_moderate_reg_cap(client):
+    resp = client.post("/app/api/faq", headers=_hdr(DELEGATE_ID), json={"question": "Q?", "answer": "A"})
+    assert resp.status_code == 403
+    assert resp.json()["reason"] == "no_cap"
+
+
+def test_faq_post_section_off_403(client):
+    _set("miniapp_section_questions", "off")
+    resp = client.post("/app/api/faq", headers=_hdr(REG_MANAGER_ID), json={"question": "Q?", "answer": "A"})
+    assert resp.status_code == 403
+    assert resp.json() == {"reason": "section_off", "section": "questions"}
+
+
+def test_faq_post_empty_question_400(client):
+    resp = client.post("/app/api/faq", headers=_hdr(REG_MANAGER_ID), json={"question": "  ", "answer": "A"})
+    assert resp.status_code == 400
+    assert resp.json()["reason"] == "empty"
+
+
+def test_faq_post_empty_answer_400(client):
+    resp = client.post("/app/api/faq", headers=_hdr(REG_MANAGER_ID), json={"question": "Q?", "answer": " "})
+    assert resp.status_code == 400
+    assert resp.json()["reason"] == "empty"
+
+
+def test_faq_post_too_long_question_400(client):
+    resp = client.post("/app/api/faq", headers=_hdr(REG_MANAGER_ID), json={"question": "Q" * 301, "answer": "A"})
+    assert resp.status_code == 400
+    assert resp.json()["reason"] == "too_long"
+
+
+def test_faq_post_creates_general_item_for_unbound_manager(client):
+    resp = client.post("/app/api/faq", headers=_hdr(REG_MANAGER_ID), json={"question": "Где проходит форум?", "answer": "В кампусе."})
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["ok"] is True
+    row = _run(bot_db.get_faq_item(body["id"]))
+    assert row["city"] is None
+    assert row["question"] == "Где проходит форум?"
+    assert row["answer"] == "В кампусе."
+
+
+def test_faq_post_creates_city_item_for_bound_manager(client):
+    resp = client.post(
+        "/app/api/faq", headers=_hdr(BOUND_REG_MANAGER_ID),
+        json={"question": "Где регистрация?", "answer": "У входа."},
+    )
+    assert resp.status_code == 200
+    row = _run(bot_db.get_faq_item(resp.json()["id"]))
+    assert row["city"] == "kzn"
+
+
+def test_faq_post_duplicate_does_not_create_second_row(client):
+    existing_id = _run(bot_db.create_faq_item(
+        city=None, question="Где проходит форум??", answer="В кампусе.", created_by=REG_MANAGER_ID,
+    ))
+    resp = client.post(
+        "/app/api/faq", headers=_hdr(REG_MANAGER_ID),
+        json={"question": "где ПРОХОДИТ форум", "answer": "Другой ответ."},
+    )
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body == {"ok": False, "reason": "already", "id": existing_id}
+    items = _run(bot_db.list_faq_items())
+    assert len(items) == 1
+
+
+def test_faq_post_duplicate_scoped_to_same_city_bucket(client):
+    """Дубль ищем СРЕДИ пунктов ТОГО ЖЕ городского ведра — общий пункт с тем же вопросом не
+    мешает менеджеру Казани завести свой городской пункт с другим ответом."""
+    _run(bot_db.create_faq_item(city=None, question="Где проходит форум?", answer="Общий ответ.", created_by=REG_MANAGER_ID))
+    resp = client.post(
+        "/app/api/faq", headers=_hdr(BOUND_REG_MANAGER_ID),
+        json={"question": "Где проходит форум?", "answer": "Казанский ответ."},
+    )
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["ok"] is True
+    items = _run(bot_db.list_faq_items())
+    assert len(items) == 2
+
+
+def test_questions_list_exposes_can_add_to_faq_and_labels(client):
+    qid = _run(bot_db.create_question(DELEGATE_ID, "Когда дедлайн?"))
+    _run(bot_db.claim_question(qid, REG_MANAGER_ID, "Менеджер"))
+    _run(bot_db.set_question_answer(qid, "Завтра в полдень."))
+    new_qid = _run(bot_db.create_question(DELEGATE_ID, "Ещё вопрос?"))
+
+    resp = client.get("/app/api/questions", headers=_hdr(REG_MANAGER_ID))
+    body = resp.json()
+    assert body["to_faq_button"]
+    assert body["to_faq_saved_toast"]
+    by_id = {i["id"]: i for i in body["items"]}
+    assert by_id[qid]["can_add_to_faq"] is True
+    assert by_id[new_qid]["can_add_to_faq"] is False
