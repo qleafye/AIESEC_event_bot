@@ -441,6 +441,13 @@ ADMIN_CAPS: dict[str, str] = {
     "menu_toggle:*": "settings",
     "preset_apply:*": "settings",
     "preset_confirm:*": "settings",
+    # Квик 260906-7zv (HELP-01/02/03): экран правки подсказки формата под вопросом
+    # (reg_help_<step>, D-1 — ключ глобальный). "reg_help_rst:" заканчивается двоеточием и
+    # потому не проглатывается префиксом "reg_help_rst_go:" — та же оговорка, что у соседней
+    # пары reg_prompt_rst*.
+    "reg_help_edit:*": "settings",
+    "reg_help_rst:*": "settings",
+    "reg_help_rst_go:*": "settings",
     "reg_prompt_edit:*": "settings",
     # Phase 25 (CITYQ-05): «↩️ Как везде» on the per-question text editor. Distinct literal
     # prefixes ("reg_prompt_rst:" ends in a colon before the go-variant's "_go") so, unlike
