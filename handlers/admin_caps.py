@@ -282,6 +282,17 @@ ADMIN_CAPS: dict[str, str] = {
     "admin_faq": "moderate_reg",
     "afaq_*": "moderate_reg",
     "state:FaqItem:*": "moderate_reg",
+    # Phase 27 (27-06, LANG-05/09): экран «🌐 Английские тексты» — тот же гейт, что у соседних
+    # экранов раздела «📝 Анкета» (admin_reg_prompts и т.д.), не заводим нового.
+    "admin_i18n": "settings",
+    "admin_i18n:*": "settings",
+    "admin_i18n_noop": "settings",
+    "admin_i18n_row:*": "settings",
+    "admin_i18n_edit:*": "settings",
+    "admin_i18n_edit_new:*": "settings",
+    "admin_i18n_retr:*": "settings",
+    "admin_i18n_retr_go:*": "settings",
+    "state:AdminI18nEdit:*": "settings",
     "cmd:create_link": "moderate_reg",
     "cmd:find": "moderate_reg",
     "special:question_reply": "moderate_reg",

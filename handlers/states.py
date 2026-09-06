@@ -217,3 +217,11 @@ class MiniAppTheme(StatesGroup):
     sticker_top1 = State()     # стикер «топ-1», фото
     coin_icon = State()        # своя иконка монеты, фото (необязательно)
     pattern = State()          # паттерн плиты, фото (необязательно)
+
+
+class AdminI18nEdit(StatesGroup):
+    # Phase 27 (27-06, LANG-05/LANG-09): экран «🌐 Английские тексты» (handlers/admin_i18n.py)
+    # — ручная правка одного английского текста. Одно состояние: цель правки (какую строку
+    # (src_hash/src_text/origin_key) и куда вернуться после сохранения) целиком живёт в
+    # state.get_data() (i18n_hash/i18n_src_text/i18n_origin_key/i18n_return), как у CoinsManual.
+    text = State()
