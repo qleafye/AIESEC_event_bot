@@ -60,6 +60,9 @@ export const ROUTES = [
   ["#/questions", "screens/questions.js"],
   // Quick 260906-8uq (FAQ-05): делегатский экран «❓ Частые вопросы».
   ["#/faq", "screens/faq.js"],
+  // Quick 260906-nxp: менеджерский экран ведения того же списка (список/правка/порядок/
+  // город/удаление) — тот же раздел «faq», второй записи чекбокса не заводится.
+  ["#/admin-faq", "screens/admin_faq.js"],
 ];
 
 // Разделы админки (Phase 20, ADMIN-IA-04, D-05): те же восемь разделов и ровно те же подписи,
@@ -97,6 +100,12 @@ export const NAV = [
   { hash: "#/faq", section: "faq", delegate: true },
   { hash: "#/applications", section: "applications", cap: "moderate_reg", group: "apps" },
   { hash: "#/questions", section: "questions", cap: "moderate_reg", group: "apps" },
+  // Quick 260906-nxp: менеджерское ведение FAQ — сразу после #/questions (менеджерские
+  // разделы идут вместе); section "faq" — тот же чекбокс, что у делегатского #/faq выше
+  // (пара «делегатский раздел + менеджерский экран того же домена под одним чекбоксом» уже
+  // есть в проекте, #/coins и #/admin-coins); staffOnly НЕ ставим — менеджер, зарегистрированный
+  // делегатом, обязан сохранить доступ к ведению FAQ.
+  { hash: "#/admin-faq", section: "faq", cap: "moderate_reg", group: "apps" },
   { hash: "#/review", section: "review", cap: "moderate_game", group: "game" },
   { hash: "#/admin-tasks", section: "admin_tasks", cap: "moderate_game", group: "game" },
   { hash: "#/admin-coins", section: "coins", cap: "moderate_game", staffOnly: true, group: "game" },
@@ -115,6 +124,7 @@ export const NAV_ICONS = {
   "#/faq": "help-circle",
   "#/applications": "shield-check",
   "#/questions": "message-circle",
+  "#/admin-faq": "help-circle",
   "#/review": "check-circle-2",
   "#/admin-tasks": "clipboard-list",
   "#/admin-coins": "wallet",
