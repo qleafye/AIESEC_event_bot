@@ -443,26 +443,44 @@ STEP_HELP_EXAMPLES = {
 _DATE_HELP = "Формат ДД.ММ.ГГГГ, например «01.09.2026»."
 
 
+async def help_default(step_key: str, city_code: str | None = None) -> str | None:
+    """Единственный расчёт СТАНДАРТНОЙ подсказки формата — те же три ветки, в том же порядке,
+    что раньше считал `help_text` сам (квик 260906-7zv, HELP-01): resume/text_only -> общий
+    `_DATE_HELP` для шагов типа `date` -> словарь `STEP_HELP`. Аргумента `participant_type` здесь
+    нет: трековой оси у подсказки нет (D-1) — лишний неиспользуемый аргумент её бы подразумевал.
+    `None` означает «у шага нет подсказки формата вовсе» (не «оверрайд ещё не задан»)."""
+    if step_key == "resume" and await resume_mode(city_code) == "text_only":
+        return "Коротко, текстом в чате."
+    if REG_STEP_TYPES.get(step_key) == "date":
+        return _DATE_HELP
+    return STEP_HELP.get(step_key)
+
+
+def has_help(step_key: str) -> bool:
+    """Синхронный предикат «у шага есть подсказка формата» — существует ради клавиатуры
+    админки (квик 260906-7zv): рисовать кнопку 💡 или нет — вопрос без похода в БД, экран и так
+    делает по одному `get_setting` на каждый из ~44 шагов «✏️ Тексты вопросов». Обязан сходиться
+    с `help_default` (тест `test_reg_help_editor_260906.py` проверяет это по всем шагам сразу) —
+    иначе кнопка появится там, где показывать нечего, или наоборот."""
+    return step_key in STEP_HELP or REG_STEP_TYPES.get(step_key) == "date"
+
+
 async def help_text(
     step_key: str, participant_type: str | None = None, city_code: str | None = None
 ) -> str | None:
-    """Подсказка формата под вопросом веб-анкеты (D1). Дефолт = `STEP_HELP.get(step_key)`, а
-    для шагов типа `date` — общая `_DATE_HELP` (одна константа, не копия на каждый шаг). Нет
-    дефолта → `None` СРАЗУ, без похода в `bot_settings`: `form_spec` зовёт `step_spec` на ~43
-    шага, лишний `get_setting` на каждый шаг без подсказки не нужен. Есть дефолт → оверрайд
-    `reg_help_{step_key}` (динамический ключ, как `reg_prompt_*`; в `SETTINGS_SCHEMA` НЕ
-    заводится — иначе реестр вырастет на десяток ключей ради шести подсказок), пустая строка в
-    оверрайде = «дефолт» (та же семантика `or default`, что у `prompt()`).
+    """Подсказка формата под вопросом веб-анкеты (D1). Дефолт считает `help_default` (единый
+    расчёт, квик 260906-7zv) — для шагов типа `date` он же отдаёт общую `_DATE_HELP` (одна
+    константа, не копия на каждый шаг). Нет дефолта → `None` СРАЗУ, без похода в `bot_settings`:
+    `form_spec` зовёт `step_spec` на ~43 шага, лишний `get_setting` на каждый шаг без подсказки
+    не нужен. Есть дефолт → оверрайд `reg_help_{step_key}` (динамический ключ, как `reg_prompt_*`;
+    в `SETTINGS_SCHEMA` НЕ заводится — иначе реестр вырастет на десяток ключей ради шести
+    подсказок), пустая строка в оверрайде = «дефолт» (та же семантика `or default`, что у
+    `prompt()`).
 
     Phase 25 (CITYQ-01): шаг `resume` в режиме `reg_resume_mode(city_code) == "text_only"`
     получает свой дефолт («Коротко, текстом в чате.») вместо общего `STEP_HELP["resume"]` —
     сам литерал `STEP_HELP` не меняется, оверрайд `reg_help_resume` остаётся глобальным."""
-    if step_key == "resume" and await resume_mode(city_code) == "text_only":
-        default = "Коротко, текстом в чате."
-    elif REG_STEP_TYPES.get(step_key) == "date":
-        default = _DATE_HELP
-    else:
-        default = STEP_HELP.get(step_key)
+    default = await help_default(step_key, city_code)
     if default is None:
         return None
     return await get_setting(f"reg_help_{step_key}") or default
