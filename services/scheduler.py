@@ -238,6 +238,11 @@ async def init_scheduler(bot):
     # остальных интервалов намеренно: делегат ждёт быстрой реакции менеджеров.
     _add_interval_job(miniapp_outbox_drain_job, "miniapp_outbox_drain", timedelta(seconds=30))
 
+    # Phase 27 (27-03, LANG-04): разбор очереди перевода делегатской анкеты. 30с — тот же
+    # интервал, что у miniapp_outbox выше (батч ограничен services/i18n_worker.py::BATCH_SIZE,
+    # инференс — в отдельном потоке, длинный батч не морозит long polling ни на одном тике).
+    _add_interval_job(translation_drain_job, "translation_drain", timedelta(seconds=30))
+
     # Quick 260904-dq1: разбор очереди «🌙 Тихие часы» — каждую минуту, ре-арм на старте не
     # нужен (см. докстринг quiet_hours_flush_job).
     _add_interval_job(quiet_hours_flush_job, "quiet_hours_flush", timedelta(minutes=1))
@@ -752,6 +757,23 @@ async def miniapp_outbox_drain_job():
         await drain(_bot)
     except Exception as e:
         logger.error(f"miniapp_outbox_drain_job failed: {e}")
+
+
+async def translation_drain_job():
+    """Interval-job target (no args, picklable — Pitfall 3), ровно по образцу
+    `miniapp_outbox_drain_job` выше. Выключенный модуль (`delegate_lang_enabled` != "on",
+    A-05 27-CONTEXT.md) выходит НЕМЕДЛЕННО, не читая очередь ни разу — 30-секундный тик не
+    должен стоить ни одного запроса, пока делегатский английский не включён. Ленивый импорт
+    `services.i18n_worker` внутри функции — тот же приём, что у соседей (сам
+    `services.i18n_worker` лениво импортирует `argostranslate` только внутри драйвера, не
+    здесь и не при импорте этого модуля)."""
+    try:
+        if await get_setting_typed("delegate_lang_enabled") != "on":
+            return
+        from services.i18n_worker import drain
+        await drain()
+    except Exception as e:
+        logger.error(f"translation_drain_job failed: {e}")
 
 
 async def quiet_hours_flush_job():
