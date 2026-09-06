@@ -610,6 +610,10 @@ export function settingSpec(item) {
     case "photo":
     case "file":
     case "list":
+    // Quick 260906-6xe: сервер отдаёт закрытый набор `multi` ПОДПИСЯМИ (options/value/
+    // default — уже человеческий текст, кодов шагов JS не видит и не собирает, CLAUDE.md).
+    // buildControl уже умеет case "multi" (multiControl — те же чекбоксы, что у анкеты).
+    case "multi":
       spec.type = it.type;
       break;
     default:
