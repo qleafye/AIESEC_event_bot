@@ -795,6 +795,70 @@ async def set_setting(key: str, value: str):
             (key, value),
         )
         await db.commit()
+    await _maybe_enqueue_translation(key, value)
+
+
+async def _maybe_enqueue_translation(key: str, value) -> None:
+    """Phase 27 (27-03, LANG-04): постановка делегатского текста в очередь машинного
+    перевода при сохранении настройки — врезана в `set_setting`, ЕДИНСТВЕННУЮ точку записи
+    настроек (64 вызова), а не в хендлеры админки: так покрываются бесплатно и веб-настройки
+    Mini App (`miniapp/routers/settings.py`), и массовые пресеты
+    (`handlers/reg_schema.py::_apply_*_preset`).
+
+    **Fail-soft (T-27-03-04):** обёрнута ЦЕЛИКОМ в `try/except` — запись настройки к этому
+    моменту УЖЕ закоммичена, сбой очереди (или движка перевода, которого этот модуль даже не
+    импортирует) не имеет права её откатить или уронить вызывающего. Ленивые импорты
+    `settings_schema`/`services.*` — `database.db` низкий слой, `settings_schema` САМ
+    импортирует `database.db` на уровне модуля (см. `settings_schema.py:30`), статический
+    импорт назад создал бы цикл.
+
+    Две независимые ветки:
+    1. `key == "delegate_lang_enabled"` — переключение модуля. Значение `"on"` запускает
+       фоновый `bulk_seed()` всего корпуса анкеты (`services.background.spawn`, НЕ голый
+       `create_task` — слабые ссылки убивают фоновую работу, T-27-03-01). Значение `"off"`
+       (или что угодно иное) — ничего не делает. Сам ключ НЕ является делегатским текстом
+       (группа `toggles`, не в `DELEGATE_GROUPS`) и во вторую ветку не идёт.
+    2. Любой другой ключ — если модуль включён И ключ делегатский
+       (`services.i18n_sources.is_delegate_dynamic_key`) И значение непусто, каждая непустая
+       строка значения (список разворачивается построчно — `_parse_setting`'овский формат
+       "по строке на вариант") ставится в очередь через `enqueue_translation`
+       (`UNIQUE(lang, src_hash)` дедуплицирует повторы и массовые пресеты в схеме, не здесь).
+       Явная проверка префикса `consent` — страховка сверх границы `DELEGATE_GROUPS`
+       (согласия и так вне `DELEGATE_GROUPS`, LANG-09), а не единственная защита."""
+    try:
+        if key == "delegate_lang_enabled":
+            if value == "on":
+                from services import background
+                from services.i18n_worker import bulk_seed
+
+                background.spawn(bulk_seed())
+            return
+
+        if not value:
+            return
+
+        from settings_schema import get_setting_typed
+
+        if await get_setting_typed("delegate_lang_enabled") != "on":
+            return
+        if key.startswith("consent"):
+            return
+
+        from services.i18n_sources import is_delegate_dynamic_key
+
+        if not is_delegate_dynamic_key(key):
+            return
+
+        from services.i18n import src_hash
+
+        for line in str(value).splitlines():
+            text = line.strip()
+            if text:
+                await enqueue_translation("en", src_hash(text), text, origin_key=key)
+    except Exception as exc:  # noqa: BLE001 — намеренно широкий fail-soft (T-27-03-04)
+        logger.error(
+            "set_setting: постановка в очередь перевода не удалась для %s (%s)", key, exc,
+        )
 
 
 async def delete_setting(key: str):
