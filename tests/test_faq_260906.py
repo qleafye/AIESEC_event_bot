@@ -426,3 +426,239 @@ def test_get_main_menu_kb_shows_faq_button_once_item_exists(tmp_path):
     kb = _run(get_main_menu_kb(DELEGATE_ID))
     labels = [btn.text for row in kb.keyboard for btn in row]
     assert "❓ Частые вопросы" in labels
+
+
+# ══════════════════════════════════════════════════════════════════════════════════════════
+# Задача 3: экран менеджера «❓ Частые вопросы»
+# ══════════════════════════════════════════════════════════════════════════════════════════
+
+from handlers import admin as admin_mod  # noqa: E402 -- канонический порядок импорта хендлеров
+from handlers import admin_faq  # noqa: E402
+from handlers.admin_caps import required_capability, role_caps_key, role_enabled_key
+import cities as cities_mod
+
+ADMIN_ID = 8901201
+MANAGER_ID = 8901202
+
+
+def _admin_ready(tmp_path, name="faq_admin_260906.db"):
+    config.DB_PATH = str(tmp_path / name)
+    config.GOOGLE_SHEET_ID = ""
+    _run(db.init_db())
+    config.ADMIN_IDS = [ADMIN_ID]
+
+
+def _enable_cities():
+    _run(db.set_setting("event_city_enabled", "on"))
+
+
+def _bind_manager_to_city(manager_id, city):
+    _run(db.add_staff(manager_id, "reg_manager", ADMIN_ID))
+    _run(db.set_staff_city(manager_id, city))
+    _run(db.set_setting(role_enabled_key("reg_manager"), "on"))
+    _run(db.set_setting(role_caps_key("reg_manager"), "moderate_reg"))
+
+
+def test_render_faq_screen_empty_invites_to_add(tmp_path):
+    _admin_ready(tmp_path)
+    text, kb = _run(admin_faq.render_faq_screen(ADMIN_ID))
+    assert "Пока ни одного пункта" in text
+    cbs = [btn.callback_data for row in kb.inline_keyboard for btn in row]
+    assert "afaq_new" in cbs
+
+
+def test_render_faq_screen_lists_items_with_status_badge(tmp_path, _restore_cities_cache):
+    _admin_ready(tmp_path)
+    a = _run(db.create_faq_item(city=None, question="Где проходит форум?", answer="В кампусе.", created_by=ADMIN_ID))
+    b = _run(db.create_faq_item(city=None, question="Сколько стоит?", answer="Бесплатно.", created_by=ADMIN_ID))
+    _run(db.update_faq_item(b, enabled=0))
+    text, kb = _run(admin_faq.render_faq_screen(ADMIN_ID))
+    cbs = [btn.callback_data for row in kb.inline_keyboard for btn in row]
+    assert f"afaq_v:{a}" in cbs and f"afaq_v:{b}" in cbs
+    row_labels = [btn.text for row in kb.inline_keyboard for btn in row if btn.callback_data == f"afaq_v:{b}"]
+    assert row_labels and "🚫" in row_labels[0]
+
+
+def test_admin_faq_callback_renders_screen(tmp_path):
+    _admin_ready(tmp_path)
+    callback = _FakeCallback("admin_faq", user_id=ADMIN_ID)
+    _run(admin_faq.admin_faq(callback))
+    assert "Частые вопросы" in callback.message.text_edited
+
+
+def test_afaq_view_shows_card_with_actions(tmp_path):
+    _admin_ready(tmp_path)
+    item_id = _run(db.create_faq_item(city=None, question="Где?", answer="Тут.", created_by=ADMIN_ID))
+    callback = _FakeCallback(f"afaq_v:{item_id}", user_id=ADMIN_ID)
+    _run(admin_faq.afaq_view(callback))
+    cbs = [btn.callback_data for row in callback.message.edit_markup.inline_keyboard for btn in row]
+    assert f"afaq_eq:{item_id}" in cbs and f"afaq_ea:{item_id}" in cbs
+    assert f"afaq_up:{item_id}" in cbs and f"afaq_dn:{item_id}" in cbs
+    assert f"afaq_t:{item_id}" in cbs and f"afaq_d:{item_id}" in cbs
+    assert "afaq_p:0" in cbs
+
+
+def test_afaq_view_stale_item_shows_alert(tmp_path):
+    _admin_ready(tmp_path)
+    callback = _FakeCallback("afaq_v:999999", user_id=ADMIN_ID)
+    _run(admin_faq.afaq_view(callback))
+    assert callback.answers and callback.answers[0][1] is True
+
+
+def test_afaq_move_up_and_down_swap_neighbors(tmp_path):
+    _admin_ready(tmp_path)
+    a = _run(db.create_faq_item(city=None, question="A?", answer="a", created_by=ADMIN_ID))
+    b = _run(db.create_faq_item(city=None, question="B?", answer="b", created_by=ADMIN_ID))
+    callback = _FakeCallback(f"afaq_dn:{a}", user_id=ADMIN_ID)
+    _run(admin_faq.afaq_move_down(callback))
+    rows = {r["id"]: r["position"] for r in _run(db.list_faq_items())}
+    assert rows[b] < rows[a]
+    callback2 = _FakeCallback(f"afaq_up:{a}", user_id=ADMIN_ID)
+    _run(admin_faq.afaq_move_up(callback2))
+    rows2 = {r["id"]: r["position"] for r in _run(db.list_faq_items())}
+    assert rows2[a] < rows2[b]
+
+
+def test_afaq_toggle_enabled_flips_status(tmp_path):
+    _admin_ready(tmp_path)
+    item_id = _run(db.create_faq_item(city=None, question="A?", answer="a", created_by=ADMIN_ID))
+    callback = _FakeCallback(f"afaq_t:{item_id}", user_id=ADMIN_ID)
+    _run(admin_faq.afaq_toggle_enabled(callback))
+    row = _run(db.get_faq_item(item_id))
+    assert row["enabled"] == 0
+    callback2 = _FakeCallback(f"afaq_t:{item_id}", user_id=ADMIN_ID)
+    _run(admin_faq.afaq_toggle_enabled(callback2))
+    row2 = _run(db.get_faq_item(item_id))
+    assert row2["enabled"] == 1
+
+
+def test_afaq_card_no_city_toggle_when_header_is_all_cities(tmp_path):
+    _admin_ready(tmp_path)
+    item_id = _run(db.create_faq_item(city=None, question="A?", answer="a", created_by=ADMIN_ID))
+    text, kb = _run(admin_faq.render_faq_card(ADMIN_ID, item_id))
+    cbs = [btn.callback_data for row in kb.inline_keyboard for btn in row]
+    assert f"afaq_c:{item_id}" not in cbs
+    assert "конкретный город" in text
+
+
+def test_afaq_toggle_city_switches_general_to_header_city_and_back(tmp_path, _restore_cities_cache):
+    _admin_ready(tmp_path)
+    _run(_seed_cities([("msk", "Москва", "", 0), ("kzn", "Казань", "", 1)]))
+    _enable_cities()
+    _run(cities_mod.set_admin_city(ADMIN_ID, "kzn"))
+    item_id = _run(db.create_faq_item(city=None, question="A?", answer="a", created_by=ADMIN_ID))
+
+    text, kb = _run(admin_faq.render_faq_card(ADMIN_ID, item_id))
+    cbs = {btn.callback_data: btn.text for row in kb.inline_keyboard for btn in row}
+    assert f"afaq_c:{item_id}" in cbs
+    assert "Казань" in cbs[f"afaq_c:{item_id}"]
+
+    callback = _FakeCallback(f"afaq_c:{item_id}", user_id=ADMIN_ID)
+    _run(admin_faq.afaq_toggle_city(callback))
+    row = _run(db.get_faq_item(item_id))
+    assert row["city"] == "kzn"
+
+    callback2 = _FakeCallback(f"afaq_c:{item_id}", user_id=ADMIN_ID)
+    _run(admin_faq.afaq_toggle_city(callback2))
+    row2 = _run(db.get_faq_item(item_id))
+    assert row2["city"] is None
+
+
+def test_afaq_delete_confirm_names_question_then_go_removes_it(tmp_path):
+    _admin_ready(tmp_path)
+    item_id = _run(db.create_faq_item(city=None, question="Удалить меня?", answer="a", created_by=ADMIN_ID))
+    confirm_cb = _FakeCallback(f"afaq_d:{item_id}", user_id=ADMIN_ID)
+    _run(admin_faq.afaq_delete_confirm(confirm_cb))
+    assert "Удалить меня?" in confirm_cb.message.text_edited
+    assert "у всех городов" in confirm_cb.message.text_edited
+
+    go_cb = _FakeCallback(f"afaq_dgo:{item_id}", user_id=ADMIN_ID)
+    _run(admin_faq.afaq_delete_go(go_cb))
+    assert _run(db.get_faq_item(item_id)) is None
+
+
+def test_afaq_new_wizard_creates_item_question_then_answer(tmp_path):
+    _admin_ready(tmp_path)
+    state = _new_state(ADMIN_ID)
+    start_cb = _FakeCallback("afaq_new", user_id=ADMIN_ID)
+    _run(admin_faq.afaq_new_start(start_cb, state))
+    assert _run(state.get_state()) == "FaqItem:text"
+
+    q_msg = _FakeMessage(text="Где проходит форум?", user_id=ADMIN_ID)
+    _run(admin_faq.afaq_text_step(q_msg, state))
+    assert _run(state.get_state()) == "FaqItem:text"  # ждём ответ
+
+    a_msg = _FakeMessage(text="В кампусе.", user_id=ADMIN_ID)
+    _run(admin_faq.afaq_text_step(a_msg, state))
+    assert _run(state.get_state()) is None
+
+    items = _run(db.list_faq_items())
+    assert len(items) == 1
+    assert items[0]["question"] == "Где проходит форум?"
+    assert items[0]["answer"] == "В кампусе."
+
+
+def test_afaq_new_wizard_cancel_creates_nothing(tmp_path):
+    _admin_ready(tmp_path)
+    state = _new_state(ADMIN_ID)
+    start_cb = _FakeCallback("afaq_new", user_id=ADMIN_ID)
+    _run(admin_faq.afaq_new_start(start_cb, state))
+
+    q_msg = _FakeMessage(text="Где проходит форум?", user_id=ADMIN_ID)
+    _run(admin_faq.afaq_text_step(q_msg, state))
+
+    cancel_msg = _FakeMessage(text="Отмена", user_id=ADMIN_ID)
+    _run(admin_faq.afaq_text_cancel(cancel_msg, state))
+    assert _run(state.get_state()) is None
+    assert _run(db.list_faq_items()) == []
+
+
+def test_afaq_edit_question_and_answer_via_wizard(tmp_path):
+    _admin_ready(tmp_path)
+    item_id = _run(db.create_faq_item(city=None, question="Старый вопрос?", answer="Старый ответ.", created_by=ADMIN_ID))
+    state = _new_state(ADMIN_ID)
+
+    eq_cb = _FakeCallback(f"afaq_eq:{item_id}", user_id=ADMIN_ID)
+    _run(admin_faq.afaq_edit_question_start(eq_cb, state))
+    q_msg = _FakeMessage(text="Новый вопрос?", user_id=ADMIN_ID)
+    _run(admin_faq.afaq_text_step(q_msg, state))
+    row = _run(db.get_faq_item(item_id))
+    assert row["question"] == "Новый вопрос?"
+    assert row["answer"] == "Старый ответ."
+
+    ea_cb = _FakeCallback(f"afaq_ea:{item_id}", user_id=ADMIN_ID)
+    _run(admin_faq.afaq_edit_answer_start(ea_cb, state))
+    a_msg = _FakeMessage(text="Новый ответ.", user_id=ADMIN_ID)
+    _run(admin_faq.afaq_text_step(a_msg, state))
+    row2 = _run(db.get_faq_item(item_id))
+    assert row2["answer"] == "Новый ответ."
+
+
+def test_afaq_card_out_of_scope_for_bound_manager_shows_alert(tmp_path, _restore_cities_cache):
+    _admin_ready(tmp_path)
+    _run(_seed_cities([("msk", "Москва", "", 0), ("kzn", "Казань", "", 1)]))
+    _enable_cities()
+    _bind_manager_to_city(MANAGER_ID, "kzn")
+    other_city_item = _run(db.create_faq_item(city="msk", question="Только Москва?", answer="m", created_by=ADMIN_ID))
+
+    callback = _FakeCallback(f"afaq_v:{other_city_item}", user_id=MANAGER_ID)
+    _run(admin_faq.afaq_view(callback))
+    assert callback.answers and callback.answers[0][1] is True
+    assert callback.message.text_edited is None  # карточка не открылась
+
+
+def test_admin_caps_cover_faq_namespace_exactly_three_records(tmp_path):
+    """<verification> квика: три записи, других точек входа нет."""
+    assert required_capability(callback_data="admin_faq") == "moderate_reg"
+    assert required_capability(callback_data="afaq_new") == "moderate_reg"
+    assert required_capability(callback_data="afaq_v:1") == "moderate_reg"
+    assert required_capability(raw_state="FaqItem:text") == "moderate_reg"
+
+
+def test_admin_faq_wired_into_apps_section_and_menu_rows():
+    from handlers import admin_sections as sec
+    from handlers.admin_core import _ADMIN_MENU_ROWS
+
+    assert ("❓ Частые вопросы", "admin_faq") in _ADMIN_MENU_ROWS
+    apps_rows = next(rows for token, _label, rows in sec.SECTIONS if token == "apps")
+    assert ("op", "admin_faq") in apps_rows

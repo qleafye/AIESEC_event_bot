@@ -275,6 +275,13 @@ ADMIN_CAPS: dict[str, str] = {
     "aq:*": "moderate_reg",
     "aq_answer:*": "moderate_reg",
     "state:QuestionAnswer:*": "moderate_reg",
+    # Quick 260906-8uq (FAQ-01..06): раздел «❓ Частые вопросы» — тот же `moderate_reg`, что
+    # журнал вопросов выше (FAQ ведут те же люди, что отвечают делегатам; иначе кнопка
+    # «❓ В FAQ» из задачи 4 оказалась бы недоступна тому, кто только что ответил). Один
+    # префиксный ключ на всё пространство callback'ов менеджерского экрана.
+    "admin_faq": "moderate_reg",
+    "afaq_*": "moderate_reg",
+    "state:FaqItem:*": "moderate_reg",
     "cmd:create_link": "moderate_reg",
     "cmd:find": "moderate_reg",
     "special:question_reply": "moderate_reg",

@@ -69,6 +69,8 @@ SECTIONS: list[tuple[str, str, list[tuple]]] = [
         # журнала со всеми тремя статусами; старый callback жив как алиас (см.
         # handlers/admin.py::show_stuck_questions).
         ("op", "admin_questions"),
+        # Quick 260906-8uq (FAQ-01..06): раздел ведения FAQ, сразу после журнала вопросов.
+        ("op", "admin_faq"),
         ("screen", "modcard_open", "🧾 Поля карточки заявки"),
         ("toggle", "settings_toggle_full_approval"),
         ("toggle", "settings_toggle_short_approval"),
