@@ -179,6 +179,9 @@ out.off_on = m.settingSpec({ key: "r", type: "enum", options: ["off", "on"], lab
 out.three = m.settingSpec({ key: "registration_mode", type: "enum", options: ["short", "full"], label: "Форма" }).type;
 out.many = m.settingSpec({ key: "x", type: "enum", options: ["a", "b", "c", "d", "e"], label: "X" }).type;
 out.real_toggle = m.settingSpec({ key: "reg_q_age", type: "toggle", label: "Возраст" }).type;
+const multiSpec = m.settingSpec({ key: "modcard_fields", type: "multi", options: ["Возраст", "Город"], label: "Поля карточки" });
+out.multi_type = multiSpec.type;
+out.multi_options = multiSpec.options;
 console.log(JSON.stringify(out));
 """
 
@@ -206,3 +209,10 @@ def test_setting_spec_enum_on_off_renders_as_toggle(setting_spec_result):
     # Не-on/off enum (даже двухвариантный) остаётся chip-выбором — это НЕ вопрос «да/нет».
     assert setting_spec_result["three"] == "choice-chips"
     assert setting_spec_result["many"] == "select"
+
+
+def test_setting_spec_multi_passes_type_and_options_through_unchanged(setting_spec_result):
+    # Quick 260906-6xe: адаптер ничего не сочиняет — сервер уже отдал закрытый набор
+    # ПОДПИСЯМИ, JS их только переносит в spec (buildControl → multiControl).
+    assert setting_spec_result["multi_type"] == "multi"
+    assert setting_spec_result["multi_options"] == ["Возраст", "Город"]
