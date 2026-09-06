@@ -65,10 +65,10 @@ def _draft_row(telegram_id: int) -> dict | None:
     return _run(bot_db.get_reg_draft(telegram_id))
 
 
-def _seed_draft(telegram_id: int, *, kind="new", event_city=None, patch=None, source="bot"):
+def _seed_draft(telegram_id: int, *, kind="new", event_city=None, patch=None, source="bot", meta_patch=None):
     return _run(bot_db.upsert_reg_draft(
         telegram_id, kind=kind, participant_type="full", event_city=event_city,
-        step=None, patch=patch or {}, source=source,
+        step=None, patch=patch or {}, meta_patch=meta_patch, source=source,
     ))
 
 
@@ -894,4 +894,89 @@ def test_patch_city_choice_accepted_for_returning_delegate_not_already_set(clien
     )
     assert resp.status_code == 200, resp.text
     assert _draft_row(REJECTED_ID)["event_city"] == "msk"
+
+
+# ── Метка кампании (quick 260906-4rg): веб не спрашивает «Источник» у делегата с меткой ──────
+# Бот пропускает шаг "source" когда `_source_from_tag` есть в answers (reg_engine.py:348).
+# Веб собирал answers только из draft["answers"]/users, маркер туда не попадал -- делегат с
+# меткой (`src_*`) видел вопрос, ответ на который у бота уже есть. Швом чинится
+# `miniapp/routers/form.py::_load_context`, один и тот же для GET (form_spec) и PATCH
+# (enabled_now), поэтому проверяем оба маршрута.
+
+def test_source_step_hidden_when_draft_meta_marks_campaign_tag(client):
+    _seed_draft(
+        UNREGISTERED_ID, kind="new",
+        meta_patch={"source_from_tag": True, "source": "src_vk"},
+    )
+    resp = client.get("/app/api/reg/draft", headers=_hdr(UNREGISTERED_ID))
+    body = resp.json()
+    assert "source" not in [s["key"] for s in body["steps"]]
+
+
+def test_source_step_shown_without_campaign_tag_control(client):
+    """Контроль к предыдущему тесту: тот же черновик, но без `meta.source_from_tag` -- шаг
+    "Источник" виден как раньше. Без этого теста предыдущий ничего не доказывает (шаг мог
+    отсутствовать по другой причине)."""
+    _seed_draft(UNREGISTERED_ID, kind="new")
+    resp = client.get("/app/api/reg/draft", headers=_hdr(UNREGISTERED_ID))
+    body = resp.json()
+    assert "source" in [s["key"] for s in body["steps"]]
+
+
+def test_source_step_hidden_even_when_answered_manually_if_tag_present(client):
+    """Метка кампании приоритетнее ручного ответа: делегат успел ответить на "Источник"
+    руками (`answers.source` уже заполнен), но `meta.source_from_tag` тоже стоит -- шаг всё
+    равно скрыт, как у бота."""
+    _seed_draft(
+        UNREGISTERED_ID, kind="new",
+        patch={"source": "Друзья"},
+        meta_patch={"source_from_tag": True, "source": "src_vk"},
+    )
+    resp = client.get("/app/api/reg/draft", headers=_hdr(UNREGISTERED_ID))
+    body = resp.json()
+    assert "source" not in [s["key"] for s in body["steps"]]
+
+
+def test_patch_keeps_source_step_hidden_and_does_not_persist_marker(client):
+    """PATCH любого поля помеченного делегата: шаг "Источник" по-прежнему отсутствует в ответе,
+    а маркер `_source_from_tag` -- контекст запроса, а не данные -- в `reg_drafts.answers` не
+    попадает (даже случайно, через `delta`)."""
+    version = _seed_draft(
+        UNREGISTERED_ID, kind="new", source="miniapp",
+        meta_patch={"source_from_tag": True, "source": "src_vk"},
+    )
+    resp = client.patch(
+        "/app/api/reg/draft", headers=_hdr(UNREGISTERED_ID),
+        json={"version": version, "answers": {"comments": "тестовый комментарий"}},
+    )
+    assert resp.status_code == 200, resp.text
+    body = resp.json()
+    assert "source" not in [s["key"] for s in body["steps"]]
+    row = _draft_row(UNREGISTERED_ID)
+    assert "_source_from_tag" not in row["answers"]
+
+
+def test_source_step_hidden_for_edit_of_previously_tagged_delegate(client):
+    """Правка уже поданной анкеты (`kind == 'edit'`, строки `reg_drafts` нет вовсе): метка
+    кампании прошлого раза живёт в `users.source_from_tag` -- шаг "Источник" скрыт, как уже
+    скрыт этот же вопрос в профиле того же делегата (`miniapp/routers/profile.py`)."""
+    _fill(DELEGATE_ID, source_from_tag=1)
+    assert _draft_row(DELEGATE_ID) is None
+    resp = client.get("/app/api/reg/draft", headers=_hdr(DELEGATE_ID))
+    body = resp.json()
+    assert body["kind"] == "edit"
+    assert "source" not in [s["key"] for s in body["steps"]]
+
+
+def test_source_step_shown_for_returning_delegate_with_past_season_tag(client):
+    """Возвращенец без метки в НОВОМ сезоне (`kind == 'new'`, `is_returning`): пометка
+    `users.source_from_tag` -- это признак ПРОШЛОЙ анкеты (REJECTED_ID: `status='rejected'`
+    => `is_returning=True`, но `kind='new'`, не `'edit'`). Она не должна глушить вопрос в
+    новой анкете -- у бота в новой сессии без метки вопрос тоже задаётся."""
+    _fill(REJECTED_ID, source_from_tag=1)
+    assert _draft_row(REJECTED_ID) is None
+    resp = client.get("/app/api/reg/draft", headers=_hdr(REJECTED_ID))
+    body = resp.json()
+    assert body["kind"] == "new"
+    assert "source" in [s["key"] for s in body["steps"]]
 
