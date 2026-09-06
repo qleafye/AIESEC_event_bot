@@ -69,10 +69,13 @@ class Question(StatesGroup):
     waiting_for_question = State()
 
 class FaqItem(StatesGroup):
-    # Quick 260906-8uq (FAQ-01..06): один текстовый шаг несёт ДВА разных сценария — мастер
+    # Quick 260906-8uq (FAQ-01..06): один текстовый шаг несёт ТРИ разных сценария — мастер
     # «➕ Добавить» (faq_mode="new", faq_step="question"/"answer", вопрос копится в
-    # faq_question до второго сообщения) и правку существующего пункта (faq_mode="edit",
-    # faq_id/faq_field в state.get_data()) — форма QuestionAnswer, право `moderate_reg`
+    # faq_question до второго сообщения), правку существующего пункта (faq_mode="edit",
+    # faq_id/faq_field в state.get_data()) и (задача 4, FAQ-04) правку ЧЕРНОВИКА «❓ В FAQ» из
+    # журнала вопросов (faq_mode="draft", faq_qid/faq_draft_q/faq_draft_a/faq_field —
+    # faq_qid — id ИСХОДНОГО вопроса журнала, не пункта FAQ, отличает «draft» от «edit», у
+    # которого вместо этого faq_id пункта) — форма QuestionAnswer, право `moderate_reg`
     # ("state:FaqItem:*" в handlers/admin_caps.py).
     text = State()
 

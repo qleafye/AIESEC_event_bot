@@ -140,6 +140,12 @@ async def render_questions_screen(
             buttons.append([InlineKeyboardButton(
                 text=f"✉️ Ответить #{row['id']}", callback_data=f"aq_answer:{row['id']}",
             )])
+        else:
+            # Quick 260906-8uq (FAQ-04): под ОТВЕЧЕННЫМ вопросом — кнопка «В FAQ», ведёт в
+            # handlers/admin_faq.py::afaq_from_question (черновик правится ДО сохранения).
+            buttons.append([InlineKeyboardButton(
+                text=f"❓ В FAQ #{row['id']}", callback_data=f"afaq_from:{row['id']}",
+            )])
 
     nav_row: list[InlineKeyboardButton] = []
     if offset > 0:

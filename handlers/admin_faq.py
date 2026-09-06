@@ -7,7 +7,12 @@
 нет, хендлеры декорируют ОБЩИЙ `handlers.admin.router`; каждый декоратор — в одну строку
 (инвариант cap-теста 13-01). `admin_core` импортируется на уровне модуля (безопасно — не
 создаёт цикл), `admin_sections` — лениво внутри функций (цикл на уровне модуля: admin_sections
-импортирует admin_settings, тот — обратно к admin_core)."""
+импортирует admin_settings, тот — обратно к admin_core).
+
+Задача 4 (FAQ-04, кнопка «❓ В FAQ» из журнала вопросов) добавляет импорт
+`handlers.admin_questions.render_questions_screen` НА УРОВНЕ МОДУЛЯ — безопасно, потому что
+`handlers/admin.py` подключает этот шов ХВОСТОМ сразу после `admin_questions` (тот уже
+полностью загружен) и сам `admin_questions.py` этот модуль не импортирует (цикла нет)."""
 import html as html_module
 
 from aiogram import F, types
@@ -18,16 +23,19 @@ from database.db import (
     create_faq_item,
     delete_faq_item,
     get_faq_item,
+    get_question,
     list_faq_items,
     reorder_faq_items,
     update_faq_item,
 )
 from handlers.admin import router
 from handlers.admin_core import _admin_city_view
+from handlers.admin_questions import render_questions_screen
 from handlers.states import FaqItem
 from keyboards.builders import get_cancel_kb
 from cities import ALL_CITIES, admin_selected_city, city_label
 from services import faq as faq_service
+from services.questions import question_status
 
 FAQ_PAGE = 8
 
@@ -325,6 +333,122 @@ async def afaq_delete_go(callback: types.CallbackQuery):
     await callback.answer("Пункт удалён.")
 
 
+# ── Quick 260906-8uq (FAQ-04): «❓ В FAQ» из журнала вопросов делегатов ──────────────────────
+#
+# Кнопка `afaq_from:{qid}` рисуется в handlers/admin_questions.py::render_questions_screen под
+# ОТВЕЧЕННЫМ вопросом. Черновик (вопрос+ответ, ещё НИЧЕГО не создано в faq_items) живёт в
+# state.get_data() — faq_qid/faq_draft_q/faq_draft_a; ветка «черновик» шага FaqItem.text
+# отличается от «new»/«edit» (задача 3) значением faq_mode == "draft" (faq_field указывает,
+# какое поле правится). Дубль проверяем в момент «✅ Сохранить», а не при открытии
+# предпросмотра — правка текста черновика может как раз устранить совпадение.
+async def _render_faq_draft_preview(admin_id: int, data: dict) -> tuple[str, InlineKeyboardMarkup]:
+    header_code = await admin_selected_city(admin_id)
+    target_city = header_code if header_code and header_code != ALL_CITIES else None
+    city_label_text = await city_label(target_city) if target_city else None
+    badge = faq_service.city_badge(city_label_text)
+    question = data.get("faq_draft_q", "")
+    answer = data.get("faq_draft_a", "")
+
+    lines = [
+        "❓ <b>В FAQ</b>",
+        f"Будет виден: {badge}",
+        "",
+        f"<b>Вопрос:</b> {html_module.escape(str(question))}",
+        "",
+        f"<b>Ответ:</b> {html_module.escape(str(answer))}",
+    ]
+    kb = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="✏️ Вопрос", callback_data="afaq_dq")],
+        [InlineKeyboardButton(text="✏️ Ответ", callback_data="afaq_da")],
+        [InlineKeyboardButton(text="✅ Сохранить", callback_data="afaq_save")],
+        [InlineKeyboardButton(text="❌ Отмена", callback_data="afaq_cancel")],
+    ])
+    return "\n".join(lines), kb
+
+
+@router.callback_query(F.data.startswith("afaq_from:"))
+async def afaq_from_question(callback: types.CallbackQuery, state: FSMContext):
+    qid = _parse_id(callback.data)
+    if qid is None:
+        await callback.answer("Вопрос не найден.", show_alert=True)
+        return
+    question = await get_question(qid)
+    if question is None:
+        await callback.answer("Вопрос не найден.", show_alert=True)
+        return
+    if question_status(question) != "answered":
+        await callback.answer("Ещё нет ответа — сначала ответьте делегату.", show_alert=True)
+        return
+    await state.clear()
+    await state.update_data(
+        faq_qid=qid,
+        faq_draft_q=question.get("question_text") or "",
+        faq_draft_a=question.get("answer_text") or "",
+    )
+    text, kb = await _render_faq_draft_preview(callback.from_user.id, await state.get_data())
+    await callback.message.edit_text(text, parse_mode="HTML", reply_markup=kb)
+    await callback.answer()
+
+
+@router.callback_query(F.data == "afaq_dq")
+async def afaq_draft_edit_question(callback: types.CallbackQuery, state: FSMContext):
+    await state.update_data(faq_mode="draft", faq_field="question")
+    await state.set_state(FaqItem.text)
+    await callback.message.answer("Пришлите новый текст вопроса.", reply_markup=get_cancel_kb())
+    await callback.answer()
+
+
+@router.callback_query(F.data == "afaq_da")
+async def afaq_draft_edit_answer(callback: types.CallbackQuery, state: FSMContext):
+    await state.update_data(faq_mode="draft", faq_field="answer")
+    await state.set_state(FaqItem.text)
+    await callback.message.answer("Пришлите новый текст ответа.", reply_markup=get_cancel_kb())
+    await callback.answer()
+
+
+@router.callback_query(F.data == "afaq_save")
+async def afaq_save_draft(callback: types.CallbackQuery, state: FSMContext):
+    data = await state.get_data()
+    qid = data.get("faq_qid")
+    draft_q = data.get("faq_draft_q")
+    draft_a = data.get("faq_draft_a")
+    if qid is None or not draft_q or not draft_a:
+        await callback.answer("Черновик утерян — откройте «В FAQ» заново.", show_alert=True)
+        return
+
+    header_code = await admin_selected_city(callback.from_user.id)
+    target_city = header_code if header_code and header_code != ALL_CITIES else None
+
+    # T-FAQ дубль: ищем совпадение по нормализованному вопросу СРЕДИ пунктов ТОГО ЖЕ городского
+    # ведра (city == target_city, точное совпадение, не include_null-видимость делегата —
+    # `services.faq.apply_city_overrides` тут не подходит, та функция про то, что видит делегат,
+    # а не про поиск дублей в ведре менеджера).
+    all_items = await list_faq_items(city_scope=None)
+    norm_target = faq_service.normalize_question(draft_q)
+    for row in all_items:
+        if row.get("city") != target_city:
+            continue
+        if faq_service.normalize_question(row.get("question")) == norm_target:
+            await callback.answer(f"Такой вопрос уже в FAQ (#{row['id']}).", show_alert=True)
+            return
+
+    await create_faq_item(
+        city=target_city, question=draft_q, answer=draft_a, created_by=callback.from_user.id,
+    )
+    await state.clear()
+    text, kb = await render_questions_screen(callback.from_user.id)
+    await callback.message.edit_text(text, parse_mode="HTML", reply_markup=kb)
+    await callback.answer("Пункт добавлен в FAQ.")
+
+
+@router.callback_query(F.data == "afaq_cancel")
+async def afaq_cancel_draft(callback: types.CallbackQuery, state: FSMContext):
+    await state.clear()
+    text, kb = await render_questions_screen(callback.from_user.id)
+    await callback.message.edit_text(text, parse_mode="HTML", reply_markup=kb)
+    await callback.answer("Отменено.")
+
+
 @router.callback_query(F.data == "afaq_new")
 async def afaq_new_start(callback: types.CallbackQuery, state: FSMContext):
     await state.update_data(faq_mode="new", faq_step="question")
@@ -413,6 +537,24 @@ async def afaq_text_step(message: types.Message, state: FSMContext):
         if screen is not None:
             text, kb = screen
             await message.answer(text, parse_mode="HTML", reply_markup=kb)
+        return
+
+    if mode == "draft":
+        # Quick 260906-8uq (FAQ-04): правка ЧЕРНОВИКА «В FAQ» ДО сохранения — отличается от
+        # "edit" отсутствием faq_id (черновик ещё не строка faq_items, faq_qid — id вопроса
+        # журнала, не пункта FAQ).
+        field = data.get("faq_field")
+        if field not in ("question", "answer"):
+            await message.answer(
+                "Черновик утерян — откройте «В FAQ» заново.", reply_markup=ReplyKeyboardRemove(),
+            )
+            return
+        draft_key = "faq_draft_q" if field == "question" else "faq_draft_a"
+        await state.update_data(**{draft_key: text_value})
+        data[draft_key] = text_value
+        await message.answer("✅ Сохранено в черновике.", reply_markup=ReplyKeyboardRemove())
+        text, kb = await _render_faq_draft_preview(message.from_user.id, data)
+        await message.answer(text, parse_mode="HTML", reply_markup=kb)
         return
 
     await message.answer("Что-то пошло не так — откройте FAQ заново.", reply_markup=ReplyKeyboardRemove())

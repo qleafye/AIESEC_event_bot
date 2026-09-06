@@ -662,3 +662,139 @@ def test_admin_faq_wired_into_apps_section_and_menu_rows():
     assert ("❓ Частые вопросы", "admin_faq") in _ADMIN_MENU_ROWS
     apps_rows = next(rows for token, _label, rows in sec.SECTIONS if token == "apps")
     assert ("op", "admin_faq") in apps_rows
+
+
+# ══════════════════════════════════════════════════════════════════════════════════════════
+# Задача 4: кнопка «❓ В FAQ» из журнала вопросов делегатов
+# ══════════════════════════════════════════════════════════════════════════════════════════
+
+from handlers import admin_questions  # noqa: E402 -- канонический порядок импорта хендлеров
+
+
+def _seed_answered_question(
+    user_id=DELEGATE_ID, question_text="Где проходит форум?", answer_text="В кампусе.",
+    admin_id=ADMIN_ID,
+):
+    qid = _run(db.create_question(user_id, question_text))
+    _run(db.claim_question(qid, admin_id, "Админ"))
+    _run(db.set_question_answer(qid, answer_text))
+    return qid
+
+
+def test_answered_question_shows_to_faq_button_unanswered_does_not(tmp_path):
+    _admin_ready(tmp_path)
+    answered_qid = _seed_answered_question()
+    new_qid = _run(db.create_question(DELEGATE_ID, "Ещё вопрос?"))
+    text, kb = _run(admin_questions.render_questions_screen(ADMIN_ID, status="all"))
+    cbs = _flat_cb(kb)
+    assert f"afaq_from:{answered_qid}" in cbs
+    assert f"afaq_from:{new_qid}" not in cbs
+    assert f"aq_answer:{new_qid}" in cbs
+    assert f"aq_answer:{answered_qid}" not in cbs
+
+
+def test_afaq_from_question_shows_preview_with_question_and_answer(tmp_path):
+    _admin_ready(tmp_path)
+    qid = _seed_answered_question(question_text="Сколько стоит?", answer_text="Бесплатно.")
+    state = _new_state(ADMIN_ID)
+    callback = _FakeCallback(f"afaq_from:{qid}", user_id=ADMIN_ID)
+    _run(admin_faq.afaq_from_question(callback, state))
+    assert "Сколько стоит?" in callback.message.text_edited
+    assert "Бесплатно." in callback.message.text_edited
+    assert "все города" in callback.message.text_edited
+    data = _run(state.get_data())
+    assert data["faq_qid"] == qid
+    assert data["faq_draft_q"] == "Сколько стоит?"
+    assert data["faq_draft_a"] == "Бесплатно."
+
+
+def test_afaq_from_question_unanswered_shows_alert_and_creates_nothing(tmp_path):
+    _admin_ready(tmp_path)
+    qid = _run(db.create_question(DELEGATE_ID, "Без ответа?"))
+    state = _new_state(ADMIN_ID)
+    callback = _FakeCallback(f"afaq_from:{qid}", user_id=ADMIN_ID)
+    _run(admin_faq.afaq_from_question(callback, state))
+    assert callback.answers and callback.answers[0][1] is True
+    assert _run(db.list_faq_items()) == []
+
+
+def test_afaq_draft_edit_question_and_answer_before_save_creates_nothing(tmp_path):
+    _admin_ready(tmp_path)
+    qid = _seed_answered_question(question_text="Старый вопрос?", answer_text="Старый ответ.")
+    state = _new_state(ADMIN_ID)
+    from_cb = _FakeCallback(f"afaq_from:{qid}", user_id=ADMIN_ID)
+    _run(admin_faq.afaq_from_question(from_cb, state))
+
+    dq_cb = _FakeCallback("afaq_dq", user_id=ADMIN_ID)
+    _run(admin_faq.afaq_draft_edit_question(dq_cb, state))
+    assert _run(state.get_state()) == "FaqItem:text"
+    q_msg = _FakeMessage(text="Новый вопрос?", user_id=ADMIN_ID)
+    _run(admin_faq.afaq_text_step(q_msg, state))
+    assert _run(state.get_state()) is None
+    data = _run(state.get_data())
+    assert data["faq_draft_q"] == "Новый вопрос?"
+    assert data["faq_draft_a"] == "Старый ответ."
+    assert _run(db.list_faq_items()) == []  # правка черновика — в БД пока ничего не создано
+
+    da_cb = _FakeCallback("afaq_da", user_id=ADMIN_ID)
+    _run(admin_faq.afaq_draft_edit_answer(da_cb, state))
+    a_msg = _FakeMessage(text="Новый ответ.", user_id=ADMIN_ID)
+    _run(admin_faq.afaq_text_step(a_msg, state))
+    data2 = _run(state.get_data())
+    assert data2["faq_draft_a"] == "Новый ответ."
+    assert _run(db.list_faq_items()) == []
+
+
+def test_afaq_save_creates_item_with_header_city_and_returns_to_journal(tmp_path, _restore_cities_cache):
+    _admin_ready(tmp_path)
+    _run(_seed_cities([("msk", "Москва", "", 0), ("kzn", "Казань", "", 1)]))
+    _enable_cities()
+    _run(cities_mod.set_admin_city(ADMIN_ID, "kzn"))
+    qid = _seed_answered_question(question_text="Где проходит форум?", answer_text="В кампусе.")
+    state = _new_state(ADMIN_ID)
+    from_cb = _FakeCallback(f"afaq_from:{qid}", user_id=ADMIN_ID)
+    _run(admin_faq.afaq_from_question(from_cb, state))
+
+    save_cb = _FakeCallback("afaq_save", user_id=ADMIN_ID)
+    _run(admin_faq.afaq_save_draft(save_cb, state))
+
+    items = _run(db.list_faq_items())
+    assert len(items) == 1
+    assert items[0]["city"] == "kzn"
+    assert items[0]["question"] == "Где проходит форум?"
+    assert items[0]["answer"] == "В кампусе."
+    assert "Вопросы делегатов" in save_cb.message.text_edited
+    assert _run(state.get_data()) == {}
+
+
+def test_afaq_cancel_leaves_no_row_and_returns_to_journal(tmp_path):
+    _admin_ready(tmp_path)
+    qid = _seed_answered_question()
+    state = _new_state(ADMIN_ID)
+    from_cb = _FakeCallback(f"afaq_from:{qid}", user_id=ADMIN_ID)
+    _run(admin_faq.afaq_from_question(from_cb, state))
+
+    cancel_cb = _FakeCallback("afaq_cancel", user_id=ADMIN_ID)
+    _run(admin_faq.afaq_cancel_draft(cancel_cb, state))
+    assert _run(db.list_faq_items()) == []
+    assert "Вопросы делегатов" in cancel_cb.message.text_edited
+
+
+def test_afaq_save_duplicate_question_does_not_create_second_row(tmp_path):
+    _admin_ready(tmp_path)
+    existing_id = _run(db.create_faq_item(
+        city=None, question="Где проходит форум??", answer="В кампусе.", created_by=ADMIN_ID,
+    ))
+    qid = _seed_answered_question(question_text="где ПРОХОДИТ форум", answer_text="В кампусе (дубль).")
+    state = _new_state(ADMIN_ID)
+    from_cb = _FakeCallback(f"afaq_from:{qid}", user_id=ADMIN_ID)
+    _run(admin_faq.afaq_from_question(from_cb, state))
+
+    save_cb = _FakeCallback("afaq_save", user_id=ADMIN_ID)
+    _run(admin_faq.afaq_save_draft(save_cb, state))
+
+    items = _run(db.list_faq_items())
+    assert len(items) == 1
+    assert items[0]["id"] == existing_id
+    assert save_cb.answers and save_cb.answers[0][1] is True
+    assert f"#{existing_id}" in save_cb.answers[0][0]
