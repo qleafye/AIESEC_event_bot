@@ -140,6 +140,35 @@ def test_draft_patch_canonicalizes_english_option_label(client, monkeypatch):
     assert draft["answers"]["attendance_format"] == "Offline"  # русский канон, не EN:Offline
 
 
+def test_draft_patch_canonicalizes_select_step_study_field(client, monkeypatch):
+    """27-05 Deviation 4 fix, симметрия с ботом: `_canonicalize_answer` (form.py) не
+    специализируется по типу шага (choice/select/date) — она универсально зовёт
+    `reg_engine.option_pairs(step_key, ...)` для ЛЮБОГО `step_key` из `body.answers`, и на
+    шаге без вариантов получает `[]` (no-op). Для `study_field` (`SELECT_CONFIG`, тип "select")
+    список НЕ пуст -- ровно тот шаг, где UAT на стороне чата бота (не Mini App) поймал
+    непереведённую английскую подпись `study_field` в драфте (`process_select_input` без
+    канонизации, см. `handlers/reg_flow.py`). Здесь тест подтверждает, что Mini App-путь УЖЕ
+    канонизирует его правильно генерическим циклом -- фикса на этой стороне не потребовалось."""
+    monkeypatch.setattr(i18n_mod, "tr", _fake_tr)
+    monkeypatch.setattr(reg_engine, "_tr", _fake_tr)
+    _enable_lang_for_delegate()
+
+    before = client.get("/app/api/reg/draft", headers=_hdr(DELEGATE_ID)).json()
+    # study_field -- SELECT_CONFIG, канон "IT и технологии", подпись под фейковым tr() станет
+    # "EN:IT и технологии".
+    resp = client.patch(
+        "/app/api/reg/draft", headers=_hdr(DELEGATE_ID),
+        json={"version": before["version"], "answers": {"study_field": f"{EN_PREFIX}IT и технологии"}},
+    )
+    assert resp.status_code == 200, resp.text
+
+    async def go():
+        return await bot_db.get_reg_draft(DELEGATE_ID)
+
+    draft = _run(go())
+    assert draft["answers"]["study_field"] == "IT и технологии"  # русский канон, не EN:...
+
+
 def test_draft_patch_other_allowed_free_text_saved_verbatim(client, monkeypatch):
     """Шаг с `other_allowed` -- свободный текст, которого нет ни среди вариантов, ни в ярусе A,
     сохраняется дословно (canonical_option -> None -> raw как есть)."""
