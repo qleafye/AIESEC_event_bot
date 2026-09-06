@@ -104,6 +104,17 @@
                                        (claim_question), делегату уходит обычный текст (без
                                        parse_mode); уведомление остальных moderate_reg
                                        («кто ответил») из веба не шлётся (aiogram-путь бота)
+  Делегат (quick 260906-8uq, задача 5, `delegate_gate` + section faq; правило видимости —
+  services.faq.apply_city_overrides, то же самое, что читает бот):
+  GET  /app/api/faq                -> {items[{id,question,answer}], empty_text}
+                                       городской пункт перекрывает общий с тем же нормализо-
+                                       ванным вопросом; выключенные пункты и чужой город никогда
+                                       не попадают в ответ
+  Менеджер (quick 260906-8uq, задача 6, `require_cap("moderate_reg")` + section questions —
+  кнопка «В FAQ» живёт на экране журнала вопросов, не заводит отдельного раздела):
+  POST /app/api/faq {question, answer} -> {ok: true, id} | {ok: false, reason: "already", id}
+                                       город — Principal.city (привязка менеджера), пусто ->
+                                       общий пункт; 400 {"reason":"empty"|"too_long","text"}
   Менеджер (план 19-06, `require_cap("moderate_game")` + section admin_tasks; городской скоуп
   на чтении и на каждой мутации — 403 {"reason":"out_of_scope","text"}):
   GET  /app/api/admin/tasks/options -> {categories[{code,label}], proof_types[{code,label}],
@@ -210,6 +221,7 @@ from miniapp.routers import (
     applications,
     coins,
     coins_admin,
+    faq,
     files,
     form,
     hub,
@@ -239,6 +251,7 @@ ALL_ROUTERS = [
     form.router,
     applications.router,
     questions.router,
+    faq.router,
 ]
 
 __all__ = ["ALL_ROUTERS"]

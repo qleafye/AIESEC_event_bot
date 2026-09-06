@@ -302,6 +302,8 @@ def test_me_delegate_via_initdata(tmp_path):
         "questions",
         "admin_tasks", "stats",
         "settings",
+        # Quick 260906-8uq (FAQ-05): делегатский раздел «❓ Частые вопросы».
+        "faq",
     }
     assert all(body["sections"].values())
     assert body["accent"] == "#037EF3"
