@@ -188,6 +188,197 @@
     </div>
   </section>
 
-  {# Задача 4 плана 26.1-02: динамика несколькими сериями и разрезы. #}
+  {# Динамика несколькими сериями (линия = событие, ось — день N либо календарь) #}
+  <section class="block">
+    <h2 class="block-title">Динамика регистраций</h2>
+    <nav class="switchers axis-toggle" aria-label="Ось времени">
+      <a class="switch-link{% if axis == 'day_n' %} active{% endif %}"
+         {% if axis == 'day_n' %}aria-current="page"{% endif %}
+         href="{{ compare_url(events=selected_codes, axis='day_n', seasons=selected_seasons) }}">День N от старта регистрации</a>
+      <a class="switch-link{% if axis == 'calendar' %} active{% endif %}"
+         {% if axis == 'calendar' %}aria-current="page"{% endif %}
+         href="{{ compare_url(events=selected_codes, axis='calendar', seasons=selected_seasons) }}">Календарные даты</a>
+    </nav>
+    <div class="card">
+      {% if dynamics.series and dynamics.labels %}
+      <div class="compare-chart-wrap chart-wrap">
+        <canvas id="compare-chart"
+                role="img"
+                aria-label="Динамика регистраций — {{ dynamics.series | length }} событий"
+                data-labels='{{ dynamics.labels | tojson }}'
+                data-series='{{ dynamics.series | tojson }}'>График не загрузился — значения по дням в таблице ниже.</canvas>
+      </div>
+      <p class="empty-note" id="compare-chart-fallback" hidden>График не загрузился — значения по дням в таблице ниже.</p>
+      <noscript><p class="empty-note">График не загрузился — значения по дням в таблице ниже.</p></noscript>
+      {% if axis == 'day_n' %}
+      <p class="empty-note">День 1 — первый день сезона: старт трекинга или первая заявка, что было раньше.</p>
+      {% else %}
+      <p class="empty-note">Календарные даты; сезоны с разными датами старта не совпадут по оси.</p>
+      {% endif %}
+      <details class="chart-table">
+        <summary>Таблица</summary>
+        <table>
+          <thead>
+            <tr>
+              <th>{% if axis == 'day_n' %}День{% else %}Дата{% endif %}</th>
+              {% for s in dynamics.series %}<th class="num">{{ s.name }}</th>{% endfor %}
+            </tr>
+          </thead>
+          <tbody>
+            {% for label in dynamics.labels %}
+            {% set day_idx = loop.index0 %}
+            <tr>
+              <td>{{ label }}</td>
+              {% for s in dynamics.series %}<td class="num">{{ s['values'][day_idx] | thousands }}</td>{% endfor %}
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </details>
+      {% else %}
+      <p class="empty-note">Появится после первой заявки — график строится по дате регистрации.</p>
+      {% endif %}
+    </div>
+  </section>
 
+  {# Разрезы — общий список значений, столбец = событие #}
+  {% for cut in cuts %}
+  <section class="block">
+    <h2 class="block-title">{{ cut.title }}</h2>
+    <div class="card">
+      {% if cut['values'] %}
+      <div class="table-wrap">
+        <table class="responsive compare-table">
+          <thead>
+            <tr>
+              <th>{{ cut.title }}</th>
+              {% for e in events %}
+              <th class="num"{% if not e.available %} title="{{ e.error }}"{% endif %}>
+                <span class="series-dot" aria-hidden="true" style="--series-color: {{ e.accent or 'var(--chart-1)' }}"></span>
+                {{ e.name }}{% if not e.available %} (недоступно){% endif %}
+              </th>
+              {% endfor %}
+            </tr>
+          </thead>
+          <tbody>
+            {% for value in cut['values'] %}
+            <tr>
+              <td data-label="{{ cut.title }}">{{ value }}</td>
+              {% for e in events %}
+              {% if not e.available %}
+              <td class="num" data-label="{{ e.name }}"><span class="cell-empty" title="{{ e.error }}">—</span></td>
+              {% else %}
+              {% set event_cells = cut.cells.get(e.code) %}
+              {% if event_cells is none %}
+              <td class="num" data-label="{{ e.name }}"><span class="cell-empty" title="{{ cut.reasons.get(e.code, '') }}">—</span></td>
+              {% else %}
+              {% set cell = event_cells.get(value) %}
+              {% if cell is none %}
+              <td class="num" data-label="{{ e.name }}"><span class="cell-empty">—</span></td>
+              {% else %}
+              <td class="num" data-label="{{ e.name }}">{{ cell.count | thousands }} · {% if cell.share is none %}—{% else %}{{ cell.share }}%{% endif %}</td>
+              {% endif %}
+              {% endif %}
+              {% endif %}
+              {% endfor %}
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+      {% else %}
+      <p class="empty-note">Появится, когда в анкетах появятся значения.</p>
+      {% endif %}
+    </div>
+  </section>
+  {% endfor %}
+
+  {% if dynamics.series and dynamics.labels %}
+  <script src="/static/vendor/chart.umd.min.js"></script>
+  <script>
+    (function () {
+      var canvas = document.getElementById("compare-chart");
+      if (!canvas) { return; }
+      if (typeof Chart === "undefined") {
+        var fallback = document.getElementById("compare-chart-fallback");
+        if (fallback) { fallback.hidden = false; }
+        canvas.parentNode.hidden = true;
+        return;
+      }
+      var labels = JSON.parse(canvas.getAttribute("data-labels") || "[]");
+      var series = JSON.parse(canvas.getAttribute("data-series") || "[]");
+      // Цвет серии — accent САМОГО события из JSON (не палитра графика --chart-N): одно
+      // событие — один цвет на всех экранах страницы (точки серий в таблицах — тот же приём).
+      var css = getComputedStyle(document.documentElement);
+      var v = function (name, fallbackValue) {
+        return css.getPropertyValue(name).trim() || fallbackValue || "currentColor";
+      };
+      var reduceMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+
+      Chart.defaults.font.family = v("--font-body", "sans-serif");
+      Chart.defaults.font.size = 12;
+      Chart.defaults.color = v("--chart-tick");
+
+      new Chart(canvas, {
+        type: "line",
+        data: {
+          labels: labels,
+          datasets: series.map(function (s) {
+            return {
+              label: s.name,
+              data: s.values,
+              borderColor: s.accent,
+              pointBackgroundColor: s.accent,
+              borderWidth: 2,
+              tension: 0,
+              fill: false,
+              pointRadius: 2,
+              pointHitRadius: 12,
+              pointHoverRadius: 5,
+              pointHoverBorderColor: v("--surface"),
+              pointHoverBorderWidth: 2
+            };
+          })
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          locale: "ru-RU",
+          animation: reduceMotion ? false : undefined,
+          interaction: { mode: "index", intersect: false },
+          layout: { padding: { top: 8, right: 12 } },
+          plugins: {
+            legend: { display: true, position: "bottom" },
+            tooltip: {
+              backgroundColor: v("--surface"),
+              titleColor: v("--text-muted"),
+              bodyColor: v("--text"),
+              bodyFont: { weight: "700", size: 13 },
+              borderColor: v("--border"),
+              borderWidth: 1,
+              cornerRadius: 4,
+              padding: 8,
+              callbacks: {
+                label: function (ctx) { return ctx.dataset.label + ": " + ctx.parsed.y + " заявок"; }
+              }
+            }
+          },
+          scales: {
+            x: {
+              grid: { display: false },
+              border: { color: v("--chart-grid") },
+              ticks: { maxRotation: 0, autoSkip: true, maxTicksLimit: 8, color: v("--chart-tick") }
+            },
+            y: {
+              beginAtZero: true,
+              grid: { color: v("--chart-grid"), drawTicks: false },
+              border: { display: false },
+              ticks: { precision: 0, maxTicksLimit: 5, padding: 6, color: v("--chart-tick") }
+            }
+          }
+        }
+      });
+    })();
+  </script>
+  {% endif %}
 {% endblock %}
