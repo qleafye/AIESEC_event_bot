@@ -129,6 +129,9 @@ async def _item(row: dict, module_on: bool, city_labels: dict[str, str]) -> dict
         "answered_at": format_stamp(row.get("answered_at")) if row.get("answered_at") else None,
         "answer_text": row.get("answer_text"),
         "can_answer": status != "answered",
+        # Quick 260906-8uq (FAQ-06): кнопка «В FAQ» — только под ОТВЕЧЕННЫМ вопросом,
+        # симметрично боту (handlers/admin_questions.py::render_questions_screen).
+        "can_add_to_faq": status == "answered",
     }
 
 
@@ -176,6 +179,9 @@ async def questions_list(
         # литералом/безымянной кнопкой в questions.js.
         "answer_placeholder": await get_setting_typed("miniapp_questions_answer_placeholder"),
         "answer_toggle_label": await get_setting_typed("miniapp_questions_answer_toggle_label"),
+        # Quick 260906-8uq (FAQ-06): подпись кнопки/тоста «В FAQ» — 0 хардкода в JS.
+        "to_faq_button": await get_setting_typed("miniapp_questions_to_faq_button"),
+        "to_faq_saved_toast": await get_setting_typed("miniapp_questions_to_faq_saved_toast"),
     }
 
 
