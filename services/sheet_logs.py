@@ -81,10 +81,10 @@ async def build_history_sheet_rows() -> list[list]:
         full_name = (u or {}).get("full_name")
         username = (u or {}).get("username")
         source_label = SOURCE_LABELS.get(entry["source"], entry["source"])
-        # Quick 260904-kk6 (Q1): reg_answer_history.changed_at пишется `datetime.now()`, не
-        # `utcnow()` (см. докстринг `services/questions.py::format_stamp`) — сдвига в МСК
-        # тут не нужно, он бы удвоил (уже локальное время сдвинулось бы ещё раз на 3 часа).
-        stamp = _fmt_dt(entry.get("changed_at"), stored_utc=False)
+        # Quick 260906-52m: reg_answer_history.changed_at теперь пишется `datetime.utcnow()`
+        # (см. докстринг `database/db.py::record_answer_history`) — метка сдвигается в МСК тем
+        # же приёмом, что и «Вопросы», иначе два листа одной таблицы снова разойдутся на 3 часа.
+        stamp = _fmt_dt(entry.get("changed_at"))
         for change in entry.get("changes") or []:
             column = change.get("column")
             rows.append([

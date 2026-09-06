@@ -770,7 +770,7 @@ async def appr_history(callback: types.CallbackQuery):
         return
     lines = ["🕓 <b>История правок</b>", ""]
     for row in rows:
-        when = _format_edited_date(row.get("changed_at"))
+        when = _format_edited_date(row.get("changed_at"), stored_utc=True)
         src = _EDITED_SOURCE_LABELS.get(row.get("source"), html_module.escape(str(row.get("source") or "")))
         for ch in row.get("changes") or []:
             column = ch.get("column")

@@ -134,6 +134,25 @@ def test_history_rows_csv_safe(tmp_path):
     _run(go())
 
 
+# Quick 260906-52m: сторож против возврата расхождения между двумя листами одной таблицы —
+# запись `reg_answer_history` (`changed_at`, теперь UTC) и запись `delegate_questions`
+# (`asked_at`, уже UTC), сделанные подряд, должны дать на «Истории правок» и «Вопросах» одну и
+# ту же метку. Сравниваем до минуты — секунды между двумя вставками могут разойтись.
+def test_history_and_questions_sheets_agree_on_time_for_same_moment(tmp_path):
+    _ready(tmp_path)
+
+    async def go():
+        await _add_user(1)
+        await db.record_answer_history(1, [{"column": "phone", "old": "1", "new": "2"}], source="bot")
+        await db.create_question(1, "Когда дедлайн?")
+        history_rows = await sheet_logs.build_history_sheet_rows()
+        questions_rows = await sheet_logs.build_questions_sheet_rows()
+        # формат "%d.%m.%Y %H:%M" — секунд в метке уже нет, сравнение "до минуты" — это сама метка
+        assert history_rows[0][0] == questions_rows[0][0]
+
+    _run(go())
+
+
 # ── Task 1: build_questions_sheet_rows ──────────────────────────────────────────────────────
 
 def test_questions_rows_order_and_recipient_cities_off(tmp_path):
