@@ -236,7 +236,12 @@ async def questions_answer(
         }
 
     await set_question_answer(qid, text)
-    return {"ok": True, "status": "answered"}
+    # Quick 260906-52m (правило D-06): единственная ветка эндпоинта, которая раньше не отдавала
+    # `item` — фронт был вынужден выдумывать подпись статуса сам. Второй поход в БД здесь
+    # осознанный, та же мотивация, что в ветке delivery_failed выше: патч собирается из факта
+    # в строке, а не руками.
+    row_after = await get_question(qid)
+    return {"ok": True, "status": "answered", **({"item": _status_patch(row_after)} if row_after else {})}
 
 
 __all__ = ["router"]

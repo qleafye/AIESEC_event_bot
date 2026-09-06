@@ -389,9 +389,11 @@ export async function render(root, params, ctx) {
     const mainFieldNodes = (card.main_fields || []).map((f) => flatRow(h, { title: f.label, meta: f.value }));
     const extraFields = card.extra_fields || [];
     const extraBlock = h("div", { class: "flat-list appl-extra hidden" }, extraFields.map((f) => flatRow(h, { title: f.label, meta: f.value })));
-    // Quick 260904-kk6 (D17): подпись — отдельный узел, чтобы менять текст на месте после
-    // переключения, не пересобирая всю кнопку (иконку не трогаем — chevron-up в icons.js нет).
+    // Quick 260904-kk6 (D17) / 260906-52m: подпись и иконка — отдельные узлы, чтобы менять их
+    // на месте после переключения, не пересобирая всю кнопку. chevron-up заведён в icons.js
+    // квиком 260906-52m — теперь иконка меняется вместе с текстом и aria-expanded.
     const showAllLabel = h("span", { text: texts.show_all || "" });
+    let showAllIcon = icon("chevron-down");
     const showAllBtn = extraFields.length
       ? h("button", {
           class: "btn ghost appl-show-all", type: "button", "aria-expanded": "false",
@@ -399,8 +401,11 @@ export async function render(root, params, ctx) {
             const nowHidden = extraBlock.classList.toggle("hidden");
             showAllBtn.setAttribute("aria-expanded", nowHidden ? "false" : "true");
             showAllLabel.textContent = nowHidden ? (texts.show_all || "") : (texts.hide_all || "");
+            const nextIcon = nowHidden ? icon("chevron-down") : icon("chevron-up");
+            showAllIcon.replaceWith(nextIcon);
+            showAllIcon = nextIcon;
           },
-        }, icon("chevron-down"), showAllLabel)
+        }, showAllIcon, showAllLabel)
       : null;
 
     const overlayApprove = h("div", { class: "appl-overlay approve", "aria-hidden": "true" }, icon("check"));
