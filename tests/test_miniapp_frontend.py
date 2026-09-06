@@ -1639,6 +1639,23 @@ def test_applications_screen_approve_all_confirm_shows_city_label():
     assert "approveAllCityLine" in text
 
 
+def test_applications_show_all_button_switches_icon_up_and_down():
+    """Quick 260906-52m: кнопка «Показать всё» переключает иконку шеврона вместе с текстом —
+    chevron-down в свёрнутом состоянии, chevron-up в раскрытом (T-52m-03: chevron-up заведён
+    в icons.js ДО появления этого вызова)."""
+    text = _js_without_comments(APPLICATIONS_JS)
+    assert 'icon("chevron-down")' in text
+    assert 'icon("chevron-up")' in text
+
+
+def test_questions_screen_status_label_comes_from_server_not_literal():
+    """Quick 260906-52m (D-06): успешный ответ на POST .../answer больше не выдумывает подпись
+    статуса на фронте — она приходит с сервера в res.item и сливается в строку списка."""
+    text = _js_without_comments(SCREENS_DIR / "questions.js")
+    assert "✅ отвечен" not in text
+    assert "...res.item" in text
+
+
 def test_applications_route_and_nav_registered_with_moderate_reg_cap():
     text = APP_JS.read_text(encoding="utf-8")
     assert text.count("#/applications") == 3  # ROUTES + NAV + NAV_ICONS
