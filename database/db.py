@@ -423,6 +423,24 @@ async def init_db():
         # send to the delegate (set_question_answer below), never on a claim alone.
         await _ensure_column(db, "delegate_questions", "delivered_at", "TEXT")
 
+        # Quick 260906-8uq (FAQ-01..06): «❓ Частые вопросы» — city NULL means "все города"
+        # (same convention as game_tasks.event_city above), position orders the manager's
+        # list (ties broken by id — see reorder_faq_items), enabled toggles delegate
+        # visibility without deleting the row. created_at is UTC ISO, same shape as
+        # create_question below.
+        await db.execute('''
+            CREATE TABLE IF NOT EXISTS faq_items (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                city TEXT,
+                question TEXT NOT NULL,
+                answer TEXT NOT NULL,
+                position INTEGER NOT NULL DEFAULT 0,
+                enabled INTEGER NOT NULL DEFAULT 1,
+                created_at TEXT NOT NULL,
+                created_by INTEGER
+            )
+        ''')
+
         # Phase 07.1 migrations (CITY-01) — additive, idempotent; NO backfill. ~590 rows are
         # accumulated PAST data (only ~100 are live current-event applications); writing
         # "Москва" into old rows would fabricate a fact in storage. NULL means "registered
@@ -2971,6 +2989,139 @@ async def count_questions_by_status(*, city_scope=None) -> dict[str, int]:
         "in_work": int(in_work_n or 0),
         "answered": int(answered_n or 0),
     }
+
+
+# ── Quick 260906-8uq (FAQ-01..06): аксессоры faq_items ───────────────────────────────────────
+#
+# Правило «городской пункт перекрывает общий» здесь НЕ живёт — это одноразовая городская
+# ФИЛЬТРАЦИЯ (см. `_city_clause`), сама логика перекрытия объявлена ровно один раз в чистом
+# модуле `services/faq.py::apply_city_overrides`, который вызывающий (бот/Mini App) применяет
+# поверх результата `list_faq_for_city`.
+
+# Белый список колонок для `update_faq_item` (T-FAQ-04): имя колонки никогда не приходит из
+# callback_data — SET собирается только из этих литералов, значения — параметрами.
+_FAQ_UPDATABLE_FIELDS = ("question", "answer", "city", "enabled", "position")
+
+
+async def list_faq_items(*, city_scope=None, enabled_only: bool = False) -> list[dict]:
+    """Список для экрана МЕНЕДЖЕРА: `city_scope` — дескриптор шапки города (`cities.city_scope`),
+    include_null=True — тот же приём, что `list_active_tasks` (NULL = «все города» обязан
+    попасть в выборку и при конкретном городе шапки). `enabled_only` — фильтр «показывается
+    делегатам» поверх городского, для делегатских поверхностей используйте `list_faq_for_city`
+    вместо этого (там же живёт вся делегатская видимость)."""
+    frag, city_params = _city_clause(city_scope, "city", include_null=True)
+    where_parts = []
+    params: list = []
+    if frag:
+        where_parts.append(frag)
+        params.extend(city_params)
+    if enabled_only:
+        where_parts.append("enabled = 1")
+    where_sql = f"WHERE {' AND '.join(where_parts)}" if where_parts else ""
+    async with _connect() as db:
+        db.row_factory = aiosqlite.Row
+        async with db.execute(
+            f"SELECT * FROM faq_items {where_sql} ORDER BY position ASC, id ASC",
+            tuple(params),
+        ) as cursor:
+            return [dict(row) for row in await cursor.fetchall()]
+
+
+async def list_faq_for_city(city_code: str | None) -> list[dict]:
+    """Список для ДЕЛЕГАТА: включённые пункты, у которых city IS NULL или city = его город.
+    `city_code=None` (модуль городов выключен / город не резолвится) отдаёт только общие
+    пункты — параметр `?` со значением None никогда не совпадает с `city = ?` в SQLite, так
+    что вторая ветка OR молчаливо не срабатывает, а первая (`city IS NULL`) уже покрывает этот
+    случай. Перекрытие общего пункта городским (тот же нормализованный вопрос) — забота
+    вызывающего через `services.faq.apply_city_overrides`, не этой функции."""
+    async with _connect() as db:
+        db.row_factory = aiosqlite.Row
+        async with db.execute(
+            "SELECT * FROM faq_items WHERE enabled = 1 AND (city IS NULL OR city = ?) "
+            "ORDER BY position ASC, id ASC",
+            (city_code,),
+        ) as cursor:
+            return [dict(row) for row in await cursor.fetchall()]
+
+
+async def has_faq_for_city(city_code: str | None) -> bool:
+    """Тот же WHERE, что `list_faq_for_city`, но LIMIT 1 -> bool — используется, чтобы решить,
+    рисовать ли делегату кнопку меню «❓ Частые вопросы» (fail-soft со стороны вызывающего)."""
+    async with _connect() as db:
+        async with db.execute(
+            "SELECT 1 FROM faq_items WHERE enabled = 1 AND (city IS NULL OR city = ?) LIMIT 1",
+            (city_code,),
+        ) as cursor:
+            row = await cursor.fetchone()
+            return row is not None
+
+
+async def get_faq_item(item_id: int) -> dict | None:
+    async with _connect() as db:
+        db.row_factory = aiosqlite.Row
+        async with db.execute(
+            "SELECT * FROM faq_items WHERE id = ?", (item_id,)
+        ) as cursor:
+            row = await cursor.fetchone()
+            return dict(row) if row else None
+
+
+async def create_faq_item(*, city: str | None, question: str, answer: str,
+                           created_by: int | None) -> int:
+    """Кладёт пункт в конец: `position = MAX(position) + 1` через всю таблицу (не по городскому
+    ведру) — тот же простой приём, что и остальные списки этого проекта; вторая карта позиций
+    по городу не заводится (см. докстринг `reorder_faq_items` про ограничение перестановки)."""
+    created_at = datetime.utcnow().isoformat()
+    async with _connect() as db:
+        async with db.execute(
+            "SELECT COALESCE(MAX(position), -1) FROM faq_items"
+        ) as cursor:
+            row = await cursor.fetchone()
+        next_position = (row[0] if row and row[0] is not None else -1) + 1
+        cursor = await db.execute(
+            "INSERT INTO faq_items (city, question, answer, position, enabled, created_at, "
+            "created_by) VALUES (?, ?, ?, ?, 1, ?, ?)",
+            (city, question, answer, next_position, created_at, created_by),
+        )
+        await db.commit()
+        return cursor.lastrowid
+
+
+async def update_faq_item(item_id: int, **fields) -> bool:
+    """T-FAQ-04: SET собирается ТОЛЬКО из `_FAQ_UPDATABLE_FIELDS` — ключ вне списка молча
+    игнорируется (не поднимает исключение), значения уходят параметрами, имя колонки никогда
+    не строится из пользовательского ввода."""
+    updates = {k: v for k, v in fields.items() if k in _FAQ_UPDATABLE_FIELDS}
+    if not updates:
+        return False
+    set_sql = ", ".join(f"{col} = ?" for col in updates)
+    params = list(updates.values()) + [item_id]
+    async with _connect() as db:
+        cursor = await db.execute(
+            f"UPDATE faq_items SET {set_sql} WHERE id = ?", params
+        )
+        await db.commit()
+        return cursor.rowcount > 0
+
+
+async def delete_faq_item(item_id: int) -> bool:
+    async with _connect() as db:
+        cursor = await db.execute("DELETE FROM faq_items WHERE id = ?", (item_id,))
+        await db.commit()
+        return cursor.rowcount > 0
+
+
+async def reorder_faq_items(ordered_ids: list[int]) -> None:
+    """Одна транзакция, `position` = индекс в `ordered_ids`. Пишет позиции ТОЛЬКО переданным
+    id — вызывающий (админ-экран) передаёт видимое в его scope подмножество, порядок пунктов
+    другого города доопределяется вторичным ключом `id` (документированное ограничение,
+    handlers/admin_faq.py)."""
+    async with _connect() as db:
+        for idx, item_id in enumerate(ordered_ids):
+            await db.execute(
+                "UPDATE faq_items SET position = ? WHERE id = ?", (idx, item_id)
+            )
+        await db.commit()
 
 
 # ── Phase 9 (GAME-01/02/03): task model + submission queue ──────────────────────────────────
