@@ -1616,6 +1616,17 @@ async def cmd_start(message: types.Message, state: FSMContext, bot: Bot, command
     # чистая — ни await, ни БД, поднять её раньше безопасно.
     source_tag = _extract_source_tag(args)
 
+    # Phase 27 (27-04, LANG-01, D-06): вопрос о языке — РАНЬШЕ party-closed/приветствия/города/
+    # вилки трека ниже (единственные четыре гейта, чей порядок этот план обязан сохранить);
+    # funnel-лог сразу ниже не в счёт — это запись в БД, не делегатский текст. `offer_language`
+    # сам решает, показывать ли экран (module off / ask_on_start off / язык уже resolved ->
+    # `False`, поток не меняется ни на шаг); показанный экран стоит между /start и первым же
+    # делегатским текстом, поэтому `args` передаётся сырым — `lang_pick_choose` реинвокнёт
+    # `cmd_start` с той же атрибуцией кампании, как если бы вопроса о языке не было.
+    from handlers.reg_lang import offer_language
+    if await offer_language(message, state, args):
+        return
+
     # Phase 15 (STAT-03, D-06): funnel log -- top of the funnel, BEFORE every other gate
     # below (subscription check, pre-selection) so a Nextcloud/subscription/allowlist hiccup
     # can never suppress it. Own try/except, fail-soft -- a log write must never block /start.
@@ -2179,6 +2190,12 @@ async def finalize_registration(message: types.Message, state: FSMContext, bot: 
 from handlers import reg_flow  # noqa: E402
 from handlers import reg_steps  # noqa: E402
 from handlers.reg_consent import maybe_offer_consent_recollect  # noqa: E402  -- quick 260822: пересогласие новой редакции
+
+# Phase 27 (27-04, LANG-01): imported right after reg_consent, BEFORE reg_resume/reg_handoff —
+# its message handler (menu_lang_open) lands LAST among registration.router's message handlers
+# (reg_flow/reg_steps already registered theirs above), its callback (lang_pick_choose) lands
+# right after consent_renew_accept and before reg_resume's callbacks (golden snapshot order).
+from handlers import reg_lang  # noqa: E402, F401
 
 # Phase 21 (21-09): imported LAST — its callback_query handlers (reg_resume:*) register at the
 # very TAIL of registration.router (after consent_renew_accept), so the golden order+filter

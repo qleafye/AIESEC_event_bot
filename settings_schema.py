@@ -2087,6 +2087,21 @@ SETTINGS_SCHEMA = {
         "options": ["on", "off"], "prompt": None, "default": "on",
         "per_city": True,
     },
+    # Phase 27 (27-04, LANG-01): переключатель языка анкеты в главном меню. Форма записи —
+    # та же группа/тип/опции, что у прочих menu_* (экран «🔘 Кнопки меню» и пер-городные
+    # резолверы подхватывают её автоматически по группе `menu`), но `default: "off"` —
+    # ЕДИНСТВЕННОЕ отступление от конвенции menu_* default "on" в этом файле (см.
+    # `tests/test_settings_percity_resolver.py::_MENU_DEFAULT_OVERRIDES`). Причина: кнопка не
+    # должна «внезапно появиться» у всех событий в момент, когда план 27 просто попадает в
+    # прод, — её включает менеджер explicitly, ПОСЛЕ того как включил сам модуль
+    # (`delegate_lang_enabled`, group="toggles" выше) и увидел, что перевод анкеты готов.
+    # `keyboards/builders.py::get_main_menu_kb` дополнительно гейтит эту кнопку модулем (тот
+    # же приём, что у menu_miniapp/miniapp_enabled) — value=="on" здесь одной не достаточно.
+    "menu_lang": {
+        "type": "enum", "group": "menu", "label": "🌐 Язык / Language",
+        "options": ["on", "off"], "prompt": None, "default": "off",
+        "per_city": True,
+    },
 
     # ── Phase 15 (15-02, D-19): экран «📊 Дашборд» — тумблеры блоков веб-дашборда. Только
     # чекбоксы фиксированного набора (CLAUDE.md «бот для людей» — кодовые значения ключей
