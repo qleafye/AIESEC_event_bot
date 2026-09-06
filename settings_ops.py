@@ -88,6 +88,9 @@ HTML_SETTINGS = {
     "game_wizard_preview_title",  # Phase 16 (16-03): заголовок превью финального шага визарда
     "program_empty_text", "speakers_empty_text", "contacts_empty_text",
     "ask_question_prompt_text", "ask_question_sent_text",
+    # Quick 260906-8uq: faq_ask_button_text — подпись inline-кнопки (Telegram не парсит
+    # разметку в тексте кнопки) — сюда НЕ входит, только сообщения экрана FAQ.
+    "faq_intro_text", "faq_empty_text",
     # Phase 21 Plan 02 (FORM-SYNC-04): анкета Mini App — три ключа уходят сообщением в чат
     # с parse_mode="HTML" (реестровый текст, не badge/подпись кнопки).
     "reg_sync_from_app_text", "reg_resume_restart_confirm_text", "reg_form_closed_text",
