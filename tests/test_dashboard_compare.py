@@ -426,3 +426,20 @@ def test_cache_expires_after_ttl(tmp_path, monkeypatch):
     later = datetime(2026, 9, 6, 12, 1, 1)  # +61 с
     compare.build_compare_context(cfg, now=later)
     assert len(calls) == 2
+
+
+# ── orchestrator-ревью плана 26.1-01, находка 1: кэш ограничен по размеру ────────────────
+
+def test_cache_key_from_unvalidated_garbage_seasons_does_not_grow_without_bound(tmp_path):
+    """`?seasons=<код>:<мусор>` — значение сезона не валидируется до попадания в ключ кэша
+    (валидация — внутри `build_compare_context`, ключ строится раньше). Без потолка каждое
+    новое мусорное значение растило бы `_CACHE` навсегда."""
+    path_a = _make_event_db(tmp_path, "a.db", users=[_users_row(1, registration_date="2026-08-01 10:00:00")])
+    path_b = _make_event_db(tmp_path, "b.db", users=[_users_row(1, registration_date="2026-08-01 10:00:00")])
+    cfg = _cfg((EventSource(code="a", db_path=path_a), EventSource(code="b", db_path=path_b)))
+    now = datetime(2026, 9, 6, 12, 0, 0)
+
+    for i in range(compare._CACHE_MAX_ENTRIES + 20):
+        compare.build_compare_context(cfg, seasons={"a": f"garbage-season-{i}"}, now=now)
+
+    assert len(compare._CACHE) <= compare._CACHE_MAX_ENTRIES

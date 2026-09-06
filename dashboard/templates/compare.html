@@ -1,0 +1,27 @@
+{% extends "base.html" %}
+{% block title %}Сводная статистика{% endblock %}
+{% block body %}
+  <header class="site-header">
+    <h1>Сводная статистика</h1>
+    <div class="viewer-email">Вы вошли как {{ viewer_email }}</div>
+  </header>
+
+  {% if unavailable %}
+  <div class="card compare-note">
+    {% for item in unavailable %}
+    <p>Недоступно: {{ item.name }} — {{ item.error }}. Показаны остальные события.</p>
+    {% endfor %}
+  </div>
+  {% endif %}
+
+  <section class="block">
+    <h2 class="block-title">События</h2>
+    <ul>
+      {% for e in events %}
+      <li>{{ e.name }} — {% if e.available %}{{ e.kpi.total | thousands }} заявок{% else %}недоступно{% endif %}</li>
+      {% endfor %}
+    </ul>
+  </section>
+
+  {# Задачи 3-4 плана 26.1-02: сводная таблица KPI, воронки рядом, динамика, разрезы. #}
+{% endblock %}
