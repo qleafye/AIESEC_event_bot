@@ -509,3 +509,55 @@ def test_file_setting_keys_are_exactly_photo_and_file_types():
     keys = settings_ops.file_setting_keys()
     assert keys and all(SETTINGS_SCHEMA[k]["type"] in ("photo", "file") for k in keys)
     assert "program" in keys and "miniapp_logo" in keys and "event_name" not in keys
+
+
+# ── quick 260906-6xe: PATCH «🧾 Поля карточки заявки» — подписи → байт-формат бота ──────────
+
+import moderation_card as mc
+
+
+def test_batch_multi_labels_write_bot_byte_format_in_registry_order(tmp_path, no_tab):
+    client = _setup(tmp_path)
+    resp = _batch(client, [("modcard_fields", "🏙 Город;🎂 Возраст")])
+    assert resp.status_code == 200, resp.text
+    body = resp.json()
+    assert body["saved"] == ["modcard_fields"] and body["errors"] == {}
+    assert _raw("modcard_fields") == "age\ncity"  # порядок CARD_STEPS, разделитель \n
+    assert mc.enabled_steps(_run(get_setting_typed("modcard_fields"))) == ["age", "city"]
+    fresh = body["items"][0]
+    assert fresh["value"] == ["🎂 Возраст", "🏙 Город"]
+
+
+def test_batch_multi_empty_value_writes_sentinel_not_default(tmp_path, no_tab):
+    client = _setup(tmp_path)
+    resp = _batch(client, [("modcard_fields", "")])
+    assert resp.status_code == 200, resp.text
+    body = resp.json()
+    assert body["saved"] == ["modcard_fields"] and body["errors"] == {}
+    assert _raw("modcard_fields") == mc.EMPTY_SENTINEL
+    assert mc.enabled_steps(_run(get_setting_typed("modcard_fields"))) == []
+
+
+def test_batch_multi_unknown_label_rejected_db_untouched(tmp_path, no_tab):
+    client = _setup(tmp_path)
+    resp = _batch(client, [("modcard_fields", "Чужой вариант")])
+    assert resp.status_code == 200, resp.text
+    body = resp.json()
+    assert body["saved"] == []
+    assert "modcard_fields" in body["errors"]
+    for code in mc.CARD_STEPS:
+        assert code not in body["errors"]["modcard_fields"]
+    assert _raw("modcard_fields") is None  # ничего не записано
+
+
+def test_batch_multi_null_resets_to_twenty_defaults(tmp_path, no_tab):
+    client = _setup(tmp_path)
+    _set("modcard_fields", "age\ncity")
+    resp = _batch(client, [("modcard_fields", None)])
+    assert resp.status_code == 200, resp.text
+    body = resp.json()
+    assert body["saved"] == ["modcard_fields"]
+    assert _raw("modcard_fields") is None
+    # enabled_steps сортирует по CARD_STEPS (порядок анкеты), не по литералу DEFAULT_CARD_STEPS
+    # (порядок первого экрана отбора) — набор сравниваем как множество, не как список.
+    assert set(mc.enabled_steps(_run(get_setting_typed("modcard_fields")))) == set(mc.DEFAULT_CARD_STEPS)

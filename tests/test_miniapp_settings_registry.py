@@ -135,7 +135,14 @@ def test_item_shape_and_registry_sourced_fields(tmp_path):
         assert item["label"] == meta["label"]
         assert item["help"] == meta.get("prompt")
         assert item["type"] == meta["type"]
-        assert item["options"] == meta.get("options")
+        if meta["type"] == "multi":
+            # Quick 260906-6xe: закрытый набор `multi` — options в реестре хранит КОДЫ
+            # неявно (через options_ref), а элемент отдаёт ПОДПИСИ (CLAUDE.md); отдельная
+            # проверка ниже (test_multi_item_never_leaks_step_codes) сверяет с
+            # settings_schema.multi_options напрямую.
+            assert item["options"] != meta.get("options")
+        else:
+            assert item["options"] == meta.get("options")
         assert item["per_city"] == bool(meta.get("per_city"))
         assert item["html"] == (item["base_key"] in settings_ops.HTML_SETTINGS)
         assert item["dangerous"] == (item["base_key"] in settings_ops.DANGEROUS_KEYS)
@@ -486,3 +493,44 @@ def test_counter_defaults_carry_three_plural_forms(key):
     default = SETTINGS_SCHEMA[key]["default"]
     assert default.count("|") == 2, default
     assert "{" in default and "}" in default
+
+
+# ── quick 260906-6xe: «🧾 Поля карточки заявки» — чекбоксы с подписями, не коды ─────────────
+
+import moderation_card as mc
+from settings_schema import multi_options as _multi_options
+
+
+def test_multi_item_never_leaks_step_codes(tmp_path):
+    client = _setup(tmp_path)
+    body = _all(client).json()
+    item = _item(body, "modcard_fields")
+    assert item["type"] == "multi"
+    assert len(item["options"]) == 43
+    assert set(item["options"]) == set(mc.CARD_STEPS.values())
+    assert item["options"] == [label for _code, label in _multi_options("modcard_fields")]
+    # Ни одного кода шага — ровно в этих четырёх полях (root_causes плана); "raw"/"key"
+    # намеренно НЕ проверяются здесь: "raw" — внутреннее хранилище (коды, как пишет бот),
+    # "base_key"/"key" естественно содержат подстроку "city" (per_city — служебное поле
+    # ответа, не подпись анкеты) — сравнение по подстроке дало бы ложный сигнал.
+    dump = " ".join(str(item[f]) for f in ("options", "value", "default", "display"))
+    for code in mc.CARD_STEPS:
+        assert code not in dump, code
+
+
+def test_multi_item_value_and_display_are_labels_in_registry_order(tmp_path):
+    client = _setup(tmp_path)
+    _set("modcard_fields", "age\ncity")
+    body = _all(client).json()
+    item = _item(body, "modcard_fields")
+    assert item["value"] == ["🎂 Возраст", "🏙 Город"]
+    assert item["display"] == "🎂 Возраст, 🏙 Город"
+
+
+def test_multi_item_default_is_20_labels_when_unset(tmp_path):
+    client = _setup(tmp_path)
+    body = _all(client).json()
+    item = _item(body, "modcard_fields")
+    assert item["is_default"] is True
+    assert len(item["value"]) == 20
+    assert all(isinstance(v, str) and v not in mc.CARD_STEPS for v in item["value"])
