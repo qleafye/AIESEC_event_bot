@@ -2,7 +2,7 @@ import logging
 from aiogram.types import ReplyKeyboardMarkup, InlineKeyboardMarkup, InlineKeyboardButton
 from aiogram.utils.keyboard import ReplyKeyboardBuilder, InlineKeyboardBuilder
 from config import config
-from database.db import get_user
+from database.db import get_user, has_faq_for_city
 from settings_schema import get_setting_typed
 from cities import get_setting_typed_for_city, cities_module_on, normalize_city
 # Phase 21 (21-01, FORM-SYNC-01): литеральные списки вариантов ответа живут в корневом
@@ -37,6 +37,10 @@ MENU_BUTTONS = [
     ("menu_speakers", "🗣 Спикеры"),
     ("menu_contacts", "📞 Контакты"),
     ("menu_question", "❓ Задать вопрос"),
+    # Quick 260906-8uq (FAQ-01..06): рядом с «Задать вопрос» — экран готовых ответов.
+    # Дополнительный гейт ниже (`has_faq_for_city`) прячет кнопку, пока в FAQ нет ни одного
+    # включённого пункта, — тот же приём, что у menu_miniapp (T-19-54).
+    ("menu_faq", "❓ Частые вопросы"),
     ("menu_coins", "🪙 Мои монеты"),
     ("menu_game_tasks", "🎯 Задания"),
     # Phase 19 (D-10): текстовая reply-кнопка «📱 Приложение» — НЕ web_app-кнопка (Pitfall 1:
@@ -72,6 +76,15 @@ async def get_main_menu_kb(telegram_id: int | None = None) -> ReplyKeyboardMarku
         logger.error(f"get_main_menu_kb: miniapp_enabled resolve failed: {e}")
         miniapp_on = False
 
+    # Quick 260906-8uq (FAQ-01..06, T-19-54 idiom): one extra read before the loop -- fail-soft
+    # (a read error means "no button", never a broken menu), same shape as miniapp_on above.
+    faq_on = False
+    try:
+        faq_on = await has_faq_for_city(code)
+    except Exception as e:
+        logger.error(f"get_main_menu_kb: has_faq_for_city resolve failed for {telegram_id}: {e}")
+        faq_on = False
+
     kb = ReplyKeyboardBuilder()
     for key, text in MENU_BUTTONS:
         # menu_* is a registry `enum` key (options ["on","off"], default "on") -- the enum
@@ -86,6 +99,11 @@ async def get_main_menu_kb(telegram_id: int | None = None) -> ReplyKeyboardMarku
             # configured (empty URL means no entry points exist at all, Pitfall 10). Every
             # other button is untouched by this branch.
             if key == "menu_miniapp" and not (miniapp_on and config.DASHBOARD_PUBLIC_URL):
+                continue
+            # Quick 260906-8uq: пустой FAQ (ни одного включённого пункта, ни общего, ни
+            # своего города) — кнопки нет; появляется сама, как только менеджер завёл первый
+            # пункт (has_faq_for_city).
+            if key == "menu_faq" and not faq_on:
                 continue
             kb.button(text=text)
     # Persistent "upload receipt" entry — only while the user still owes one.

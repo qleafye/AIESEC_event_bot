@@ -25,6 +25,8 @@ from database.db import (
     list_coin_entries_for_user,
     count_coin_entries_for_user,
     get_reg_draft,
+    has_faq_for_city,  # Quick 260906-8uq: экран «❓ Частые вопросы» + гейт формы вопроса
+    list_faq_for_city,
 )
 from handlers.admin_caps import notify_by_capability  # D-13: fan out by capability, not bare ADMIN_IDS
 from handlers.game_labels import (  # Phase 16 (16-01): single RU-label source; 16-03: shared card render
@@ -48,6 +50,7 @@ from handlers.states import Question, GameSubmit
 from settings_schema import get_setting_typed  # Phase 09.1 (A): flow texts live in the registry
 from services.background import spawn as _spawn
 from services.game_digest import notify_submission as notify_game_submission  # Quick 260822
+from services.faq import apply_city_overrides, short as _faq_short  # Quick 260906-8uq
 from config import config
 
 router = Router()
@@ -1038,6 +1041,145 @@ async def my_referrals(message: types.Message, bot: Bot):
     )
 
 
+# ── Quick 260906-8uq (FAQ-01..06): «❓ Частые вопросы» ────────────────────────────────────────
+#
+# Правило видимости (какой пункт виден делегату, городской перекрывает общий) живёт ровно
+# один раз в services/faq.py; здесь — только резолв города делегата (тот же fail-soft приём,
+# что process_question ниже использует для фан-аута вопроса по городу) и рендер (text, kb).
+FAQ_PAGE_SIZE = 8
+
+
+async def _delegate_city_for_faq(user_id: int) -> str | None:
+    """Fail-soft резолв города делегата — ошибка чтения не должна ронять экран FAQ, только
+    сузить его до общих пунктов (city=None), тот же приём, что show_game_tasks/process_question."""
+    if not await cities_module_on():
+        return None
+    try:
+        user = await get_user(user_id)
+        return normalize_city(user.get("event_city") if user else None)
+    except Exception as e:
+        logger.error(f"FAQ: city resolve failed for {user_id}: {e}")
+        return None
+
+
+async def _faq_visible_items(city_code: str | None) -> list[dict]:
+    try:
+        rows = await list_faq_for_city(city_code)
+    except Exception as e:
+        logger.error(f"FAQ: list_faq_for_city failed for city={city_code!r}: {e}")
+        rows = []
+    return apply_city_overrides(rows, city_code)
+
+
+async def faq_screen(city_code: str | None, offset: int = 0) -> tuple[str, InlineKeyboardMarkup]:
+    """(text, kb) для экрана «❓ Частые вопросы» — пустой FAQ рисует `faq_empty_text` +
+    кнопку «спросить менеджера» вместо пустого сообщения, при любом offset (в т.ч. когда
+    пункт исчез между открытием списка и тапом по стейл-клавиатуре)."""
+    items = await _faq_visible_items(city_code)
+
+    if not items:
+        text = await get_setting_typed("faq_empty_text")
+        kb = InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(
+            text=await get_setting_typed("faq_ask_button_text"), callback_data="faq_ask",
+        )]])
+        return text, kb
+
+    text = await get_setting_typed("faq_intro_text")
+    page = items[offset: offset + FAQ_PAGE_SIZE]
+    buttons: list[list[InlineKeyboardButton]] = [
+        [InlineKeyboardButton(
+            text=_faq_short(str(item.get("question") or ""), 60),
+            callback_data=f"faq_q:{item['id']}",
+        )]
+        for item in page
+    ]
+    nav_row: list[InlineKeyboardButton] = []
+    if offset > 0:
+        nav_row.append(InlineKeyboardButton(
+            text="⬅️", callback_data=f"faq_list:{max(0, offset - FAQ_PAGE_SIZE)}",
+        ))
+    if offset + FAQ_PAGE_SIZE < len(items):
+        nav_row.append(InlineKeyboardButton(
+            text="➡️", callback_data=f"faq_list:{offset + FAQ_PAGE_SIZE}",
+        ))
+    if nav_row:
+        buttons.append(nav_row)
+    buttons.append([InlineKeyboardButton(
+        text=await get_setting_typed("faq_ask_button_text"), callback_data="faq_ask",
+    )])
+    return text, InlineKeyboardMarkup(inline_keyboard=buttons)
+
+
+async def _start_question_form(message: types.Message, state: FSMContext) -> None:
+    """Общий шаг «открыть форму вопроса» — вызывается и из `faq_ask` (кнопка «Не нашёл
+    ответ»), и из `ask_organizer_start` (пустой FAQ). Вторая копия текста/состояния
+    недопустима (одна и та же форма, один и тот же приглашающий текст)."""
+    await message.answer(
+        await get_setting_typed("ask_question_prompt_text"),
+        reply_markup=get_cancel_kb(),
+    )
+    await state.set_state(Question.waiting_for_question)
+
+
+@router.message(F.text == "❓ Частые вопросы")
+async def show_faq(message: types.Message):
+    if not await ensure_registered(message):
+        return
+    city = await _delegate_city_for_faq(message.from_user.id)
+    text, kb = await faq_screen(city)
+    await message.answer(text, parse_mode="HTML", reply_markup=kb)
+
+
+@router.callback_query(F.data.startswith("faq_list:"))
+async def faq_page(callback: types.CallbackQuery):
+    try:
+        offset = int(callback.data.split(":", 1)[1])
+    except (IndexError, ValueError):
+        offset = 0
+    if offset < 0:
+        offset = 0
+    city = await _delegate_city_for_faq(callback.from_user.id)
+    text, kb = await faq_screen(city, offset)
+    await callback.message.edit_text(text, parse_mode="HTML", reply_markup=kb)
+    await callback.answer()
+
+
+@router.callback_query(F.data.startswith("faq_q:"))
+async def faq_open_answer(callback: types.CallbackQuery):
+    try:
+        item_id = int(callback.data.split(":", 1)[1])
+    except (IndexError, ValueError):
+        await callback.answer("Вопрос не найден.", show_alert=True)
+        return
+    city = await _delegate_city_for_faq(callback.from_user.id)
+    items = await _faq_visible_items(city)
+    item = next((r for r in items if r.get("id") == item_id), None)
+    if item is None:
+        # Стейл-клавиатура: пункт удалили/скрыли/сменили город — экран не пустой, а список.
+        text, kb = await faq_screen(city)
+        await callback.message.edit_text(text, parse_mode="HTML", reply_markup=kb)
+        await callback.answer("Этот вопрос уже недоступен.", show_alert=True)
+        return
+    text = (
+        f"❓ <b>{html.escape(str(item.get('question') or ''))}</b>\n\n"
+        f"{html.escape(str(item.get('answer') or ''))}"
+    )
+    kb = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="← К вопросам", callback_data="faq_list:0")],
+        [InlineKeyboardButton(
+            text=await get_setting_typed("faq_ask_button_text"), callback_data="faq_ask",
+        )],
+    ])
+    await callback.message.edit_text(text, parse_mode="HTML", reply_markup=kb)
+    await callback.answer()
+
+
+@router.callback_query(F.data == "faq_ask")
+async def faq_ask(callback: types.CallbackQuery, state: FSMContext):
+    await _start_question_form(callback.message, state)
+    await callback.answer()
+
+
 # ❓ Задать вопрос
 @router.message(F.text == "❓ Задать вопрос")
 async def ask_organizer_start(message: types.Message, state: FSMContext):
@@ -1045,12 +1187,20 @@ async def ask_organizer_start(message: types.Message, state: FSMContext):
         return
 
     logger.info(f"User {message.from_user.id} wants to ask a question")
-    # Phase 17.1 (17.1-03): приглашение из реестра.
-    await message.answer(
-        await get_setting_typed("ask_question_prompt_text"),
-        reply_markup=get_cancel_kb()
-    )
-    await state.set_state(Question.waiting_for_question)
+    # Quick 260906-8uq (FAQ-01..06): непустой FAQ показывается СНАЧАЛА — форма открывается по
+    # «Не нашёл ответ» (faq_ask), не сразу. Пустой FAQ — байт-в-байт сегодняшнее поведение
+    # (17.1-03), ни одного изменения текста/состояния на этой ветке.
+    city = await _delegate_city_for_faq(message.from_user.id)
+    try:
+        show_faq_first = await has_faq_for_city(city)
+    except Exception as e:
+        logger.error(f"ask_organizer_start: has_faq_for_city failed for {message.from_user.id}: {e}")
+        show_faq_first = False
+    if show_faq_first:
+        text, kb = await faq_screen(city)
+        await message.answer(text, parse_mode="HTML", reply_markup=kb)
+        return
+    await _start_question_form(message, state)
 
 @router.message(Question.waiting_for_question, F.text.in_({"Отмена", "/cancel"}))
 async def cancel_question(message: types.Message, state: FSMContext):

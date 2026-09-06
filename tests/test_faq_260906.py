@@ -10,10 +10,16 @@ pytest-asyncio в проекте нет — каждый async-вызов чер
 import asyncio
 
 import pytest
+from aiogram.fsm.context import FSMContext
+from aiogram.fsm.storage.base import StorageKey
+from aiogram.fsm.storage.memory import MemoryStorage
 
 from config import config
 from database import db
 from services import faq as faq_service
+from handlers import user_actions as ua_mod
+from keyboards.builders import get_main_menu_kb
+from settings_schema import SETTINGS_SCHEMA
 
 
 def _run(coro):
@@ -37,6 +43,20 @@ async def _seed_cities(rows):
         enabled = r[4] if len(r) > 4 else 1
         await db.insert_city(code, label, tab_base, sort_order, enabled)
     await cities.reload_cities()
+
+
+@pytest.fixture
+def _restore_cities_cache():
+    """`cities.reload_cities()` мутирует `cities.CITIES` НА МЕСТЕ (см. докстринг в cities.py —
+    другие модули держат `from cities import CITIES`, ребинд сломал бы их алиасы), а conftest.py
+    этого проекта намеренно не сбрасывает состояние между тестами/файлами. Без восстановления
+    тест, дописавший «kzn»/«msk» в реестр, продолжает жить и в следующих тестовых файлах того
+    же процесса (в т.ч. tests/test_admin_percity_menu.py, который ждёт СВОЙ набор городов)."""
+    import cities
+    snapshot = list(cities.CITIES)
+    yield
+    cities.CITIES.clear()
+    cities.CITIES.extend(snapshot)
 
 
 # ══════════════════════════════════════════════════════════════════════════════════════════
@@ -163,7 +183,7 @@ def test_reorder_faq_items_writes_sequential_positions(tmp_path):
     assert rows[c] == 0 and rows[a] == 1 and rows[b] == 2
 
 
-def test_list_faq_items_with_city_scope_includes_city_and_general(tmp_path):
+def test_list_faq_items_with_city_scope_includes_city_and_general(tmp_path, _restore_cities_cache):
     _ready(tmp_path)
     _run(_seed_cities([("msk", "Москва", "", 0), ("kzn", "Казань", "", 1)]))
     import cities
@@ -221,3 +241,188 @@ def test_delete_faq_item_removes_row(tmp_path):
     assert _run(db.delete_faq_item(item_id)) is True
     assert _run(db.get_faq_item(item_id)) is None
     assert _run(db.delete_faq_item(item_id)) is False
+
+
+# ══════════════════════════════════════════════════════════════════════════════════════════
+# Задача 2: экран делегата «❓ Частые вопросы» + FAQ перед формой «Задать вопрос»
+# ══════════════════════════════════════════════════════════════════════════════════════════
+
+DELEGATE_ID = 8901101
+
+
+class _FakeUser:
+    def __init__(self, uid):
+        self.id = uid
+        self.full_name = None
+        self.username = None
+
+
+class _FakeMessage:
+    def __init__(self, text=None, user_id=DELEGATE_ID):
+        self.text = text
+        self.from_user = _FakeUser(user_id)
+        self.answers_sent = []
+        self.answer_markups = []
+        self.text_edited = None
+        self.edit_markup = None
+
+    async def answer(self, text, parse_mode=None, reply_markup=None):
+        self.answers_sent.append(text)
+        self.answer_markups.append(reply_markup)
+
+    async def edit_text(self, text, parse_mode=None, reply_markup=None):
+        self.text_edited = text
+        self.edit_markup = reply_markup
+
+
+class _FakeCallback:
+    def __init__(self, data, user_id=DELEGATE_ID, message=None):
+        self.data = data
+        self.from_user = _FakeUser(user_id)
+        self.message = message if message is not None else _FakeMessage(user_id=user_id)
+        self.answers = []
+
+    async def answer(self, text=None, show_alert=False):
+        self.answers.append((text, show_alert))
+
+
+def _new_state(uid: int) -> FSMContext:
+    return FSMContext(storage=MemoryStorage(), key=StorageKey(bot_id=1, chat_id=uid, user_id=uid))
+
+
+def _seed_delegate(uid=DELEGATE_ID, **extra):
+    data = {"telegram_id": uid, "full_name": f"Delegate {uid}", "registration_date": "2026-09-06"}
+    data.update(extra)
+    _run(db.add_user(data))
+
+
+def _flat_cb(kb):
+    return [btn.callback_data for row in kb.inline_keyboard for btn in row]
+
+
+def _default(key):
+    return SETTINGS_SCHEMA[key]["default"]
+
+
+def test_faq_screen_empty_shows_empty_text_and_ask_button(tmp_path):
+    _ready(tmp_path)
+    text, kb = _run(ua_mod.faq_screen(None))
+    assert text == _default("faq_empty_text")
+    assert _flat_cb(kb) == ["faq_ask"]
+
+
+def test_faq_screen_lists_questions_and_ask_button(tmp_path):
+    _ready(tmp_path)
+    a = _run(db.create_faq_item(city=None, question="Где проходит форум?", answer="В кампусе.", created_by=1))
+    b = _run(db.create_faq_item(city=None, question="Сколько стоит участие?", answer="Бесплатно.", created_by=1))
+    text, kb = _run(ua_mod.faq_screen(None))
+    assert text == _default("faq_intro_text")
+    cbs = _flat_cb(kb)
+    assert cbs == [f"faq_q:{a}", f"faq_q:{b}", "faq_ask"]
+
+
+def test_faq_screen_paginates_after_eight_items(tmp_path):
+    _ready(tmp_path)
+    for i in range(9):
+        _run(db.create_faq_item(city=None, question=f"Вопрос {i}?", answer=f"Ответ {i}.", created_by=1))
+    text, kb = _run(ua_mod.faq_screen(None, offset=0))
+    cbs = _flat_cb(kb)
+    assert cbs.count("faq_ask") == 1
+    assert any(cb.startswith("faq_list:") for cb in cbs)
+
+
+def test_faq_screen_city_override_shows_only_city_answer(tmp_path):
+    _ready(tmp_path)
+    general = _run(db.create_faq_item(city=None, question="Где проходит форум?", answer="Общий ответ.", created_by=1))
+    kzn = _run(db.create_faq_item(city="kzn", question="где проходит форум??", answer="Казанский ответ.", created_by=1))
+    text, kb = _run(ua_mod.faq_screen("kzn"))
+    cbs = _flat_cb(kb)
+    assert f"faq_q:{kzn}" in cbs
+    assert f"faq_q:{general}" not in cbs
+
+
+def test_show_faq_message_handler_sends_screen(tmp_path):
+    _ready(tmp_path)
+    _seed_delegate()
+    _run(db.create_faq_item(city=None, question="Где проходит форум?", answer="В кампусе.", created_by=1))
+    message = _FakeMessage(text="❓ Частые вопросы")
+    _run(ua_mod.show_faq(message))
+    assert message.answers_sent == [_default("faq_intro_text")]
+
+
+def test_faq_page_callback_paginates(tmp_path):
+    _ready(tmp_path)
+    for i in range(9):
+        _run(db.create_faq_item(city=None, question=f"Вопрос {i}?", answer=f"Ответ {i}.", created_by=1))
+    callback = _FakeCallback("faq_list:8")
+    _run(ua_mod.faq_page(callback))
+    cbs = _flat_cb(callback.message.edit_markup)
+    assert any(cb == "faq_list:0" for cb in cbs)  # стрелка «назад» на второй странице
+
+
+def test_faq_open_answer_shows_question_and_answer_escaped(tmp_path):
+    _ready(tmp_path)
+    item_id = _run(db.create_faq_item(
+        city=None, question="<b>Где</b> форум?", answer="В кампусе & рядом.", created_by=1,
+    ))
+    callback = _FakeCallback(f"faq_q:{item_id}")
+    _run(ua_mod.faq_open_answer(callback))
+    assert "&lt;b&gt;Где&lt;/b&gt;" in callback.message.text_edited
+    assert "кампусе &amp; рядом" in callback.message.text_edited
+    cbs = _flat_cb(callback.message.edit_markup)
+    assert cbs == ["faq_list:0", "faq_ask"]
+
+
+def test_faq_open_answer_stale_item_falls_back_to_list(tmp_path):
+    _ready(tmp_path)
+    callback = _FakeCallback("faq_q:999999")
+    _run(ua_mod.faq_open_answer(callback))
+    assert callback.answers and callback.answers[0][1] is True  # show_alert=True
+
+
+def test_faq_ask_callback_opens_question_form(tmp_path):
+    _ready(tmp_path)
+    state = _new_state(DELEGATE_ID)
+    callback = _FakeCallback("faq_ask")
+    _run(ua_mod.faq_ask(callback, state))
+    assert callback.message.answers_sent == [_default("ask_question_prompt_text")]
+    assert _run(state.get_state()) == "Question:waiting_for_question"
+
+
+def test_ask_organizer_start_shows_faq_first_when_not_empty(tmp_path):
+    _ready(tmp_path)
+    _seed_delegate()
+    _run(db.create_faq_item(city=None, question="Где проходит форум?", answer="В кампусе.", created_by=1))
+    message = _FakeMessage(text="❓ Задать вопрос")
+    state = _new_state(DELEGATE_ID)
+    _run(ua_mod.ask_organizer_start(message, state))
+    assert message.answers_sent == [_default("faq_intro_text")]
+    # форма вопроса ещё не открыта — стейт не выставлен
+    assert _run(state.get_state()) is None
+
+
+def test_ask_organizer_start_empty_faq_is_byte_identical_to_before(tmp_path):
+    _ready(tmp_path)
+    _seed_delegate()
+    message = _FakeMessage(text="❓ Задать вопрос")
+    state = _new_state(DELEGATE_ID)
+    _run(ua_mod.ask_organizer_start(message, state))
+    assert message.answers_sent == [_default("ask_question_prompt_text")]
+    assert _run(state.get_state()) == "Question:waiting_for_question"
+
+
+def test_get_main_menu_kb_hides_faq_button_when_empty(tmp_path):
+    _ready(tmp_path)
+    _seed_delegate()
+    kb = _run(get_main_menu_kb(DELEGATE_ID))
+    labels = [btn.text for row in kb.keyboard for btn in row]
+    assert "❓ Частые вопросы" not in labels
+
+
+def test_get_main_menu_kb_shows_faq_button_once_item_exists(tmp_path):
+    _ready(tmp_path)
+    _seed_delegate()
+    _run(db.create_faq_item(city=None, question="Где проходит форум?", answer="В кампусе.", created_by=1))
+    kb = _run(get_main_menu_kb(DELEGATE_ID))
+    labels = [btn.text for row in kb.keyboard for btn in row]
+    assert "❓ Частые вопросы" in labels
