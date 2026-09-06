@@ -51,7 +51,7 @@ from cities import (
 )
 from database.db import get_setting, set_setting
 from services.sheets import tab_row_count
-from settings_schema import SETTINGS_SCHEMA, get_setting_typed
+from settings_schema import SETTINGS_SCHEMA, get_setting_typed, multi_labels
 from settings_synonyms import SETTINGS_SYNONYMS
 
 from miniapp.deps import Principal, require_cap, require_section
@@ -308,10 +308,21 @@ async def _item_for(base: str, ctx: _CityCtx) -> dict:
             override_labels = [await city_label(code) for code in await city_override_codes(base)]
             editable = ctx.sees_all
 
-    spec = settings_ops.item_spec(key, raw=raw, value=value, is_default=_is_default(raw, meta))
+    # Quick 260906-6xe: закрытый набор `multi` (сегодня — modcard_fields) уезжает в JSON
+    # ПОДПИСЯМИ, а не кодами (CLAUDE.md) — единственная точка перевода:
+    # `settings_schema.multi_labels`, сюда логика маппинга не копируется. `item_spec`
+    # конвертирует `options`/`default` сам (та же функция), здесь — только отмеченное
+    # значение и строка состояния.
+    is_multi = meta.get("type") == "multi"
+    value_for_spec = multi_labels(base, value) if is_multi else value
+
+    spec = settings_ops.item_spec(key, raw=raw, value=value_for_spec, is_default=_is_default(raw, meta))
     spec.setdefault("max_len", None)
     spec.update({
-        "display": _display(value),
+        # Запятая, а не перевод строки: строка уезжает в «было» диалога сохранения и в
+        # маркер строки списка, где перенос строки выглядит мусором (multi-специфика,
+        # обычные списки продолжают печатать через `\n` — `_display`).
+        "display": ", ".join(value_for_spec) if is_multi else _display(value),
         "is_city_override": is_city_override,
         "city_override_count": len(override_labels),
         "city_override_labels": override_labels,
