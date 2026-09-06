@@ -38,6 +38,8 @@ EXPECTED_ICON_NAMES = {
     "eye",
     # Phase 23.1 (макеты 03.09): якорь даты, контакты профиля, блок доказательства, мастер
     "calendar", "mail", "smartphone", "briefcase", "camera", "lock", "arrow-right", "circle",
+    # Quick 260906-52m: шеврон вверх — переключение кнопки «Показать всё» в раскрытом состоянии
+    "chevron-up",
 }
 
 
@@ -111,7 +113,7 @@ def test_icons_js_exports_exactly_expected_icon_names():
         f"расхождение с инвентарём UI-SPEC: лишние {names - EXPECTED_ICON_NAMES}, "
         f"не хватает {EXPECTED_ICON_NAMES - names}"
     )
-    assert len(EXPECTED_ICON_NAMES) == 41  # 26 (19.1) + 6 (Phase 21, form.js) + 1 (Phase 22, preview) + 8 (Phase 23.1, макеты 03.09)
+    assert len(EXPECTED_ICON_NAMES) == 42  # 26 (19.1) + 6 (Phase 21, form.js) + 1 (Phase 22, preview) + 8 (Phase 23.1, макеты 03.09) + 1 (quick 260906, chevron-up для «Показать всё»)
 
 
 _FILL_OR_STROKE_ATTR = re.compile(r'\b(?:fill|stroke):\s*"([^"]*)"')

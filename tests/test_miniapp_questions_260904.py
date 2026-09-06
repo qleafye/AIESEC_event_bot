@@ -203,7 +203,10 @@ def test_answer_success_marks_answered_and_delivers(client, bot_api):
         headers=_hdr(REG_MANAGER_ID),
     )
     assert resp.status_code == 200, resp.text
-    assert resp.json() == {"ok": True, "status": "answered"}
+    body = resp.json()
+    # Quick 260906-52m: успешная ветка теперь несёт "item" (правило D-06) — ok/status из
+    # ответа не пропадают, только к ним добавляется патч статуса.
+    assert body["ok"] is True and body["status"] == "answered"
 
     assert len(bot_api.messages) == 1
     sent = bot_api.messages[0]
@@ -214,6 +217,22 @@ def test_answer_success_marks_answered_and_delivers(client, bot_api):
     assert row["answer_text"] == "Завтра в 18:00"
     assert row["delivered_at"] is not None
     assert row["answered_by"] == REG_MANAGER_ID
+
+
+# Quick 260906-52m: успешная ветка отдаёт item == _status_patch (та же форма, что три
+# неуспешные ветки) — подпись статуса и can_answer с сервера, без данных делегата (T-52m-01).
+def test_answer_success_returns_status_patch_answered_without_delegate_data(client, bot_api):
+    qid = _seed_question(DELEGATE_ID, "Когда дедлайн?")
+    resp = client.post(
+        f"/app/api/questions/{qid}/answer", json={"text": "Завтра в 18:00"},
+        headers=_hdr(REG_MANAGER_ID),
+    )
+    body = resp.json()
+    item = body["item"]
+    assert item["status"] == "answered"
+    assert item["status_label"]  # подпись пришла с сервера, не пустая строка
+    assert item["can_answer"] is False
+    assert "user_id" not in item and "question_text" not in item
 
 
 def test_answer_not_found_404(client, bot_api):
@@ -275,7 +294,8 @@ def test_answer_same_manager_retry_after_own_failed_claim_succeeds(client, bot_a
 
     resp = client.post(f"/app/api/questions/{qid}/answer", json={"text": "Ответ"}, headers=_hdr(REG_MANAGER_ID))
     assert resp.status_code == 200
-    assert resp.json() == {"ok": True, "status": "answered"}
+    body = resp.json()
+    assert body["ok"] is True and body["status"] == "answered"
     assert len(bot_api.messages) == 1
 
 

@@ -111,10 +111,11 @@ export async function render(root, params, ctx) {
           openId = null;
           const idx = items.findIndex((row) => row.id === item.id);
           if (idx >= 0) {
-            items[idx] = {
-              ...items[idx], status: "answered", status_label: "✅ отвечен",
-              answer_text: text, can_answer: false,
-            };
+            // Quick 260906-52m (D-06): подпись статуса — с сервера (res.item), не литералом
+            // тут. answer_text остаётся локальным — _status_patch его намеренно не несёт
+            // (менеджер только что его набрал). Если res.item не пришёл (старый сервер за
+            // кэшем), спред undefined безопасен — строка остаётся как была.
+            items[idx] = { ...items[idx], ...res.item, answer_text: text };
           }
           say(sentToast);
           renderList();
