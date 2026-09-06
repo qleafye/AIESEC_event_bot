@@ -91,6 +91,9 @@ _EVENT_FIELD_ORDER = [
     # экрана «❓ Задать вопрос» — тексты информационных кнопок меню, рядом с медиа/контактами.
     "program_empty_text", "speakers_empty_text", "contacts_empty_text",
     "ask_question_prompt_text", "ask_question_sent_text",
+    # Quick 260906-8uq (FAQ-01..06): три текста экрана «❓ Частые вопросы», рядом с текстами
+    # «Задать вопрос» — иначе менеджер их на экране группы не увидит вовсе.
+    "faq_intro_text", "faq_empty_text", "faq_ask_button_text",
     # Опросы: вступление перед опросом — делегатский текст, рядом с другими текстами меню.
     "poll_intro_text",
     "event_name", "event_season", "event_type",
