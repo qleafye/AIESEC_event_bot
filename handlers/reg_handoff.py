@@ -30,6 +30,9 @@ from handlers.registration import router
 # (см. докстринг), значит handlers.reg_resume уже полностью загружен к этому моменту —
 # верхнеуровневый импорт здесь безопасен, второго модуля циклом не образует.
 from handlers.reg_resume import resume_from_draft
+# Phase 27 (27-05, LANG-02): say()/tr_for() переводят делегатские отправки этого шва (гвард
+# держит event = реальный Message/CallbackQuery делегата, ctx_for резолвит личность и по нему).
+from handlers import reg_i18n
 
 logger = logging.getLogger(__name__)
 
@@ -57,7 +60,7 @@ async def handoff_plate(message: types.Message) -> None:
     """Плита «анкета открыта в приложении» + кнопка возврата — общая точка для гварда
     (Registration-состояние) и для `handlers/user_actions.py`'s фолбэка без состояния."""
     text = await get_setting_typed("reg_handoff_held_by_app_text")
-    await message.answer(text, reply_markup=await _held_by_app_keyboard())
+    await reg_i18n.say(message, text, reply_markup=await _held_by_app_keyboard())
 
 
 class RegHandoffGuard(BaseMiddleware):
@@ -94,22 +97,22 @@ class RegHandoffGuard(BaseMiddleware):
             await state.clear()
             if is_callback:
                 text = await get_setting_typed("reg_already_submitted_text")
-                await event.answer(text, show_alert=True)
+                await event.answer(await reg_i18n.tr_for(event, text), show_alert=True)
                 return None
             msg_text = getattr(event, "text", None) or ""
             if msg_text.startswith("/"):
                 # Команды остаются рабочими, состояние уже снято выше.
                 return await handler(event, data)
             text = await get_setting_typed("reg_already_submitted_text")
-            await event.answer(text)
+            await reg_i18n.say(event, text)
             return None
 
         if holder == SURFACE_APP:
             text = await get_setting_typed("reg_handoff_held_by_app_text")
             if is_callback:
-                await event.answer(text, show_alert=True)
+                await event.answer(await reg_i18n.tr_for(event, text), show_alert=True)
             else:
-                await event.answer(text, reply_markup=await _held_by_app_keyboard())
+                await reg_i18n.say(event, text, reply_markup=await _held_by_app_keyboard())
             return None
 
         return await handler(event, data)
@@ -126,7 +129,10 @@ async def reg_handoff_to_bot(callback: types.CallbackQuery, state: FSMContext, b
     uid = callback.from_user.id
     draft = await get_reg_draft(uid)
     if not draft:
-        await callback.answer("Черновик не найден — начни заново с /start.", show_alert=True)
+        await callback.answer(
+            await reg_i18n.tr_for(callback, "Черновик не найден — начни заново с /start."),
+            show_alert=True,
+        )
         return
 
     await set_reg_draft_surface(uid, SURFACE_BOT)
@@ -139,7 +145,7 @@ async def reg_handoff_to_bot(callback: types.CallbackQuery, state: FSMContext, b
     text = await get_setting_typed("reg_handoff_resumed_text")
     tap_message = callback.message.model_copy(update={"from_user": callback.from_user})
     try:
-        await tap_message.answer(text)
+        await reg_i18n.say(tap_message, text)
     except Exception as e:
         logger.warning("reg_handoff_resumed_text send failed for %s: %s", uid, e)
 

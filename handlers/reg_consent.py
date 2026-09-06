@@ -20,6 +20,10 @@ from database.db import get_setting, record_user_consent
 from settings_schema import get_setting_typed
 from services.consent import recollect_gate_on, outstanding_consents
 from handlers.registration import router, _consent_entries, _prompt
+# Phase 27 (27-05, LANG-02/LANG-09): say()/tr_for() переводят UI-обвязку экрана пересогласия
+# (интро/подтверждение/алерт) — САМ текст согласия (caption/PDF/кнопка) НЕ переводим нигде в
+# этом файле (LANG-09: машинный перевод согласий запрещён, PDF остаётся русским).
+from handlers import reg_i18n
 
 logger = logging.getLogger(__name__)
 
@@ -28,7 +32,12 @@ RENEW_PREFIX = "consent_renew:"
 
 async def _send_renew_card(message: types.Message, label: str, consent_key: str) -> None:
     """Та же карточка, что у шага consent:* в анкете (registration._ask_step), но с
-    callback'ом пересогласия."""
+    callback'ом пересогласия.
+
+    Phase 27 (27-05): НЕ переводим ничего в этой функции — caption это САМ текст согласия
+    (`_prompt(f"consent_{consent_key}", label)`), btn_text это подпись кнопки согласия
+    (`consent_button_text`) — LANG-09 запрещает машинный перевод обоих, PDF тоже остаётся
+    русским. Прямые `message.answer_document`/`message.answer`, не `say()` — намеренно."""
     pdf_file_id = await get_setting(f"consent_pdf_{consent_key}")
     caption = html.escape(await _prompt(f"consent_{consent_key}", label))
     btn_text = await get_setting("consent_button_text") or "Согласен(-на)"
@@ -56,7 +65,8 @@ async def maybe_offer_consent_recollect(message: types.Message, user_id: int) ->
             return False
         intro = await get_setting_typed("consent_recollect_text")
         if intro:
-            await message.answer(html.escape(intro))
+            # Интро-уведомление О пересогласии (не сам текст согласия) — переводимая обвязка.
+            await reg_i18n.say(message, html.escape(intro))
         label, key = pending[0]
         await _send_renew_card(message, label, key)
         return True
@@ -75,7 +85,7 @@ async def consent_renew_accept(callback: types.CallbackQuery):
         await callback.answer()
         return
     await record_user_consent(user_id, consent_key)  # новая строка аудита с текущей версией
-    await callback.answer("✅ Принято")
+    await callback.answer(await reg_i18n.tr_for(callback, "✅ Принято"))
     try:
         await callback.message.edit_reply_markup(reply_markup=None)
     except Exception:
@@ -85,4 +95,4 @@ async def consent_renew_accept(callback: types.CallbackQuery):
         label, key = pending[0]
         await _send_renew_card(callback.message, label, key)
         return
-    await callback.message.answer("✅ Спасибо! Согласие обновлено.")
+    await reg_i18n.say(callback.message, "✅ Спасибо! Согласие обновлено.")
