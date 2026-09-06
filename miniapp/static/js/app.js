@@ -58,6 +58,8 @@ export const ROUTES = [
   ["#/form", "screens/form.js"],
   ["#/applications", "screens/applications.js"],
   ["#/questions", "screens/questions.js"],
+  // Quick 260906-8uq (FAQ-05): делегатский экран «❓ Частые вопросы».
+  ["#/faq", "screens/faq.js"],
 ];
 
 // Разделы админки (Phase 20, ADMIN-IA-04, D-05): те же восемь разделов и ровно те же подписи,
@@ -90,6 +92,9 @@ export const NAV = [
   { hash: "#/leaderboard", section: "leaderboard", delegate: true },
   { hash: "#/profile", section: "profile", delegate: true },
   { hash: "#/form", section: "form", delegate: true },
+  // Quick 260906-8uq (FAQ-05): делегатский раздел — рядом с form (визуальный хаб строится
+  // из visibleNav() сам, второй правки экрана хаба не требуется).
+  { hash: "#/faq", section: "faq", delegate: true },
   { hash: "#/applications", section: "applications", cap: "moderate_reg", group: "apps" },
   { hash: "#/questions", section: "questions", cap: "moderate_reg", group: "apps" },
   { hash: "#/review", section: "review", cap: "moderate_game", group: "game" },
@@ -107,6 +112,7 @@ export const NAV_ICONS = {
   "#/leaderboard": "trophy",
   "#/profile": "user",
   "#/form": "file-text",
+  "#/faq": "help-circle",
   "#/applications": "shield-check",
   "#/questions": "message-circle",
   "#/review": "check-circle-2",

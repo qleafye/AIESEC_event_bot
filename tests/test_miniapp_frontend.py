@@ -243,6 +243,8 @@ EXPECTED_ROUTES = {
     "#/form": "screens/form.js",
     "#/applications": "screens/applications.js",
     "#/questions": "screens/questions.js",
+    # Quick 260906-8uq (FAQ-05): делегатский экран «❓ Частые вопросы».
+    "#/faq": "screens/faq.js",
 }
 _ROUTE_ROW = re.compile(r'\[\s*"(#/[^"]+)"\s*,\s*"(screens/[^"]+\.js)"\s*\]')
 
@@ -267,7 +269,8 @@ def test_route_table_matches_phase_plan_exactly():
     # screens/settings.js (params.code решает старт/раздел), поэтому маршрутов на один
     # больше числа уникальных модулей (settings.js — единственный модуль с двумя записями).
     # Quick 260904-2cj: +1 маршрут "#/questions" (16 -> 17).
-    assert len(routes) == 17
+    # Quick 260906-8uq (FAQ-05): +1 маршрут "#/faq" (17 -> 18).
+    assert len(routes) == 18
     assert set(routes.values()) == set(EXPECTED_ROUTES.values())
     assert "#/task-edit/new" not in routes
 
@@ -399,6 +402,8 @@ EXPECTED_NAV = [
     {"hash": "#/leaderboard", "section": "leaderboard", "delegate": True},
     {"hash": "#/profile", "section": "profile", "delegate": True},
     {"hash": "#/form", "section": "form", "delegate": True},
+    # Quick 260906-8uq (FAQ-05): делегатский раздел — рядом с form.
+    {"hash": "#/faq", "section": "faq", "delegate": True},
     {"hash": "#/applications", "section": "applications", "cap": "moderate_reg", "group": "apps"},
     {"hash": "#/questions", "section": "questions", "cap": "moderate_reg", "group": "apps"},
     {"hash": "#/review", "section": "review", "cap": "moderate_game", "group": "game"},
