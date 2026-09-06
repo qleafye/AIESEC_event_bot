@@ -104,6 +104,22 @@ async def _load_context(telegram_id: int) -> dict:
     prior_city = user_row.get("event_city") if (kind == "new" and is_returning and user_row) else None
     prior_track = user_row.get("participant_type") if (kind == "new" and is_returning and user_row) else None
 
+    # Quick 260906-4rg: веб задавал вопрос «Источник» делегату, который уже пришёл по
+    # рекламной метке (deep-link `src_*`) — бот тот же вопрос не задаёт. Правило пропуска шага
+    # одно на оба клиента (`reg_engine.enabled_steps:348`), но живёт на признаке `_source_from_tag`
+    # в `answers` — веб этот ключ не подмешивал. `meta["source_from_tag"]` (без `_`) — то же
+    # самое поле под другим именем: `upsert_reg_draft` вырезает ключи с ведущим `_` при записи,
+    # поэтому бот пишет маркер в meta без подчёркивания, а читает движок — с ним. Второй
+    # источник признака — уже поданная анкета (`users.source_from_tag`), но ТОЛЬКО при
+    # kind == "edit": у возвращенца (kind == "new", is_returning) `user_row` — от ПРОШЛОГО
+    # сезона, и его пометка не означает метку в ТЕКУЩЕЙ сессии (бот в новой сессии без метки
+    # вопрос задаёт — иначе разъедемся с ним).
+    from_tag = bool(meta.get("source_from_tag")) or (
+        kind == "edit" and bool(user_row) and bool(user_row.get("source_from_tag"))
+    )
+    if from_tag:
+        answers = {**answers, "_source_from_tag": True}
+
     return {
         "draft": draft,
         "user_row": user_row,
