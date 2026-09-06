@@ -298,13 +298,15 @@ def _fmt_mb(kb: int | None) -> str:
     return f"{kb / 1024:.1f} МБ"
 
 
-def _measure_section(driver, corpus: list[tuple[str, str]]) -> str:
-    rss_before = _rss_kb()
-    t0 = time.monotonic()
-    driver.translate_batch([corpus[0][1]] if corpus else ["тест"])
-    cold_load_s = time.monotonic() - t0
-    rss_after = _rss_kb()
-
+def _measure_section(
+    driver, corpus: list[tuple[str, str]],
+    rss_before: int | None, rss_after: int | None, cold_load_s: float,
+) -> str:
+    """`rss_before`/`rss_after`/`cold_load_s` приходят СНАРУЖИ (сняты в `main()` вокруг ПЕРВОГО
+    вызова `translate_batch` за весь прогон) — намеренно: к моменту, когда сюда попадает
+    управление, драйвер уже прогнал весь корпус на перевод (секция «Полная таблица» строится
+    раньше), модель прогрета, и локальное до/после внутри этой функции показало бы одинаковое
+    число оба раза (баг, пойманный на первом прогоне на стенде: 286.2 МБ / 286.2 МБ)."""
     sample = corpus[: min(50, len(corpus))]
     per_line_ms: list[float] = []
     for _origin, ru in sample:
@@ -369,8 +371,24 @@ def main(argv=None) -> int:
     )
 
     driver = _make_driver(args)
+    texts = [ru for _origin, ru in corpus]
+
+    # RSS/время холодной загрузки снимаются ВОКРУГ первого вызова translate_batch за весь
+    # прогон, до того как что-либо ещё прогрело модель — иначе (первый прогон на стенде это
+    # подтвердил: 286.2 МБ / 286.2 МБ) "до" и "после" совпадут, потому что модель уже будет
+    # загружена секцией отчёта ниже.
+    rss_before = _rss_kb()
+    t0 = time.monotonic()
     try:
-        translations = _translate_all(driver, [ru for _origin, ru in corpus])
+        first_translation = _translate_all(driver, texts[:1]) if texts else []
+    except EngineMissing as exc:
+        print(str(exc), file=sys.stderr)
+        return 2
+    cold_load_s = time.monotonic() - t0
+    rss_after_cold = _rss_kb()
+
+    try:
+        translations = first_translation + _translate_all(driver, texts[1:])
     except EngineMissing as exc:
         print(str(exc), file=sys.stderr)
         return 2
@@ -386,7 +404,7 @@ def main(argv=None) -> int:
 
     if args.measure:
         try:
-            report += _measure_section(driver, corpus)
+            report += _measure_section(driver, corpus, rss_before, rss_after_cold, cold_load_s)
         except EngineMissing as exc:
             print(str(exc), file=sys.stderr)
             return 2
