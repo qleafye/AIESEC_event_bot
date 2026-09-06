@@ -304,6 +304,110 @@ def test_ambassador_russian_still_works_module_off():
     assert data.get("is_ambassador_candidate") is False
 
 
+# ── Канонизация: process_select_input (SELECT_CONFIG — study_field), Deviation 4 fix ───────
+# 27-05-SUMMARY.md Deviation 4: `process_select_input`/`process_date_input` были оставлены БЕЗ
+# `reg_i18n.canonicalize` — UAT 27-05 поймал именно study_field: английская подпись «IT and
+# technology» доходила до драфта дословно. Фикс — тот же паттерн, что у `_thin_step`/
+# `_store_choice` (канонизация ДО `validate_answer`).
+
+def test_select_step_english_label_canonicalizes_to_russian_canon(monkeypatch):
+    tr_map = {}
+    _patch_ctx(monkeypatch, "en", tr_map)
+    msg = _FakeMessage("IT and technology")
+    state = _new_state()
+
+    async def _fake_option_pairs(step_key, lang, _tr_map):
+        if step_key == "study_field":
+            return [
+                ("Бизнес и управление", "Business and management"),
+                ("IT и технологии", "IT and technology"),
+                ("Социальные и гуманитарные науки", "Social sciences and humanities"),
+                ("Математические и естественные науки", "Mathematics and natural sciences"),
+            ]
+        return []
+
+    monkeypatch.setattr(reg_i18n, "option_pairs", _fake_option_pairs)
+
+    asyncio.run(reg_flow.process_select_input(msg, state, bot=None))
+
+    data = asyncio.run(state.get_data())
+    assert data.get("study_field") == "IT и технологии"
+
+
+def test_select_step_free_text_kept_verbatim(monkeypatch):
+    tr_map = {}
+    _patch_ctx(monkeypatch, "en", tr_map)
+    msg = _FakeMessage("Astrophysics")  # не совпадает ни с одним вариантом
+    state = _new_state()
+
+    async def _fake_option_pairs(step_key, lang, _tr_map):
+        if step_key == "study_field":
+            return [("IT и технологии", "IT and technology")]
+        return []
+
+    monkeypatch.setattr(reg_i18n, "option_pairs", _fake_option_pairs)
+
+    asyncio.run(reg_flow.process_select_input(msg, state, bot=None))
+
+    data = asyncio.run(state.get_data())
+    assert data.get("study_field") == "Astrophysics"
+
+
+def test_select_step_russian_canon_roundtrips_with_module_off(monkeypatch):
+    # Модуль выключен -- поведение байт-в-байт прежнее.
+    async def _fake_option_pairs(step_key, lang, _tr_map):
+        return []
+
+    monkeypatch.setattr(reg_i18n, "option_pairs", _fake_option_pairs)
+    msg = _FakeMessage("Бизнес и управление")
+    state = _new_state()
+
+    asyncio.run(reg_flow.process_select_input(msg, state, bot=None))
+
+    data = asyncio.run(state.get_data())
+    assert data.get("study_field") == "Бизнес и управление"
+
+
+# ── Канонизация: process_date_input (date-шаги с пресет-кнопками), Deviation 4 fix ─────────
+# На сегодня ни у одного date-шага (arrival_date/birth_date/payment_plan_date) нет
+# сконфигурированных пресетов (SELECT_CONFIG их не несёт) — но риск тот же класс, что у select
+# (option_pairs может стать непустой для date-типа с пресетами в будущем), поэтому канонизация
+# заведена симметрично и здесь, а не только в process_select_input.
+
+def test_date_step_with_preset_english_label_canonicalizes(monkeypatch):
+    tr_map = {}
+    _patch_ctx(monkeypatch, "en", tr_map)
+    msg = _FakeMessage("November 1, 2026")
+    state = _new_state()
+    asyncio.run(state.update_data(_current_date_step="arrival_date"))
+
+    async def _fake_option_pairs(step_key, lang, _tr_map):
+        if step_key == "arrival_date":
+            return [("01.11.2026", "November 1, 2026"), ("02.11.2026", "November 2, 2026")]
+        return []
+
+    monkeypatch.setattr(reg_i18n, "option_pairs", _fake_option_pairs)
+
+    asyncio.run(reg_flow.process_date_input(msg, state, bot=None))
+
+    data = asyncio.run(state.get_data())
+    assert data.get("arrival_date") == "01.11.2026"
+
+
+def test_date_step_without_presets_free_text_unaffected(monkeypatch):
+    # Реальность сегодняшнего дня: date-шаги без конфигурации вариантов -- canonicalize должна
+    # остаться безопасным no-op, свободный ввод в формате даты доходит как есть.
+    _patch_ctx(monkeypatch, "en", {})
+    msg = _FakeMessage("01.11.2026")
+    state = _new_state()
+    asyncio.run(state.update_data(_current_date_step="arrival_date"))
+
+    asyncio.run(reg_flow.process_date_input(msg, state, bot=None))
+
+    data = asyncio.run(state.get_data())
+    assert data.get("arrival_date") == "01.11.2026"
+
+
 # ── Модуль выключен: все пять точек ведут себя как до фазы ──────────────────────────────────
 
 def test_module_off_choice_step_english_label_not_recognized_as_domain_option():
