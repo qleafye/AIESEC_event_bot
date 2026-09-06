@@ -44,6 +44,7 @@ SECTION_KEYS_EXPECTED = [
     "miniapp_section_leaderboard",
     "miniapp_section_profile",
     "miniapp_section_form",
+    "miniapp_section_faq",  # Quick 260906-8uq (FAQ-05): раздел «❓ Частые вопросы»
     "miniapp_section_review",
     "miniapp_section_applications",
     "miniapp_section_questions",  # Quick 260904-2cj (QJRN-01..04): раздел «❓ Вопросы делегатов»
@@ -129,7 +130,7 @@ async def _read_sections():
 
 # ── реестр ────────────────────────────────────────────────────────────────────────────────
 
-def test_exactly_ten_miniapp_section_keys():
+def test_exactly_twelve_miniapp_section_keys():
     keys = [k for k in SETTINGS_SCHEMA if k.startswith("miniapp_section_")]
     assert sorted(keys) == sorted(SECTION_KEYS_EXPECTED)
 
@@ -154,7 +155,7 @@ def test_miniapp_theme_keys_default(tmp_path):
 
 # ── экран 1 (admin_miniapp.py): рендер + чекбоксы ──────────────────────────────────────────
 
-def test_screen_shows_toggles_eight_sections_and_theme_entry(tmp_path):
+def test_screen_shows_toggles_twelve_sections_and_theme_entry(tmp_path):
     _admin_ready(tmp_path)
     kb = asyncio.run(admin_miniapp.build_miniapp_settings_keyboard())
     data = _flat_callback_data(kb)
