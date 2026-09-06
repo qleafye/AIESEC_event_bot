@@ -209,8 +209,9 @@ docker compose exec yl26-dashboard python -c "import urllib.request; print(urlli
 | 8001 | Mini App Юлид |
 | 8002 | дашборд РилТолк |
 | 8003 | дашборд СкиллАп |
+| 8004 | супердашборд (все события) |
 
-Следующий свободный — **8004**.
+Следующий свободный — **8005**.
 
 **Проверка:** `ss -ltnp | grep -E ':80[0-9][0-9]'` на leafye не показывает выбранный порт.
 
@@ -300,6 +301,58 @@ Telegram и видит цифры своей базы. Дашборды сосе
 | Mini App Юлид | `yl26` (`/app`) | 8001 | `youlead26-miniapp` | `@YouLead2026_bot` |
 | РилТолк | `rt26` | 8002 | `realtalk26-dashboard` | `@realtalk_forum_bot` |
 | СкиллАп | `su26` | 8003 | `skillup-dashboard` | `@SkillUp2026_bot` |
+| Супердашборд | `all` | 8004 | `superdashboard` | — (вход через Cloudflare Access) |
+
+## Супердашборд: одно окно на все события (`all.<домен>`)
+
+Отдельный стек `~/SuperDash` на leafye (Phase 26.1, развёрнут 06.09.2026). Это тот же образ
+`dashboard/`, но ОДИН экземпляр читает базы нескольких мероприятий и показывает их рядом:
+KPI, воронки, динамика по «дню N» от старта регистрации, разрезы. Боты и их дашборды
+не трогаются — супердашборд только читает.
+
+**Откуда данные.** Не из контейнеров: в compose примонтированы папки `data` стеков
+(`../YouLead26/data`, `../RealTalk26/data`, `../SkillUp4/data`, без `:ro` — WAL требует `-shm`
+рядом с файлом; только-чтение гарантирует `mode=ro` в `dashboard/db.py`). Список событий —
+строка в `.env` стека:
+
+```
+DASHBOARD_EVENTS=yl26=/app/data-yl26/forum.db;rt26=/app/data-rt26/forum.db;su26=/app/data-su26/forum.db
+```
+
+Имя события и оформление берутся из настроек каждой базы (`event_name`, пресет темы).
+Битый путь или недоступная база не роняют экран — событие помечается «недоступно».
+
+**Добавить событие:** строка тома в `~/SuperDash/docker-compose.yml` + запись в
+`DASHBOARD_EVENTS` + `docker compose up -d superdashboard`. Убрать — наоборот.
+
+**Обновить код:** `cd ~/SuperDash && git pull && docker compose up -d --build superdashboard`
+(клон `main`, независим от стеков ботов).
+
+**Вход — Cloudflare Access, не Telegram.** На `all.<домен>` Login Widget не работает и не
+нужен: `/` сразу ведёт на `/compare`, а тот проверяет подпись заголовка `Cf-Access-Jwt-Assertion`
+и сверяет e-mail со списком. Ключи в `.env` стека:
+
+| Ключ | Что | Где взять |
+|---|---|---|
+| `DASHBOARD_SUPERADMIN_EMAILS` | кому открыт экран; **пусто = никому** | список e-mail через запятую |
+| `DASHBOARD_ACCESS_TEAM_DOMAIN` | поддомен команды Zero Trust (`summer-fire-7e83`) | Zero Trust → Settings → Custom Pages → Team domain |
+| `DASHBOARD_ACCESS_AUD` | AUD-тег Access-приложения | Zero Trust → Access → Applications → карточка приложения → Overview |
+| `DASHBOARD_ACCESS_DEV_BYPASS` | **только локально**; в проде не задавать | — |
+
+Access-приложение (self-hosted) заводится на `all.<домен>`: политика Allow по тем же e-mail,
+метод входа — одноразовый код на почту. Те же адреса обязаны стоять и в политике Access, и в
+`DASHBOARD_SUPERADMIN_EMAILS`: Access пускает к странице, приложение — к цифрам. Без обоих
+`/compare` отдаёт 403 всем (fail-closed).
+
+**Публикация** — та же схема, что у остальных (шаг 3): `-R 127.0.0.1:8004:127.0.0.1:8004`
+в `~/tunnel-relay/docker-compose.yml`, `127.0.0.1 superdashboard` в `/etc/hosts` на is-hosting,
+Public Hostname `all.<домен> → http://superdashboard:8004`, CNAME `all` на туннель.
+
+**Проверка:** `https://all.<домен>/health` → 200; `/` → 302 на `/compare`; `/compare` без
+входа → 403; после входа через Access под e-mail из списка → таблица событий.
+
+**Откат:** `cd ~/SuperDash && docker compose down` — боты, дашборды событий и релей не
+затронуты; правило в Zero Trust и DNS можно оставить (отдадут 502) или удалить.
 
 ## Шаг 5. Nextcloud за туннелем (на тесте пропускается)
 
