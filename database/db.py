@@ -4345,6 +4345,21 @@ async def upsert_translation(
         await db.commit()
 
 
+async def clear_translation_manual(lang: str, src_hash: str) -> None:
+    """Снимает `manual=1` — единственный явный обход защиты `upsert_translation` (план 27-06,
+    «↻ Перевести заново»): менеджер осознанно возвращает строку машине, подтвердив, что его
+    правка пропадёт. Это НЕ дыра в LANG-05 — та защита не даёт МАШИННОЙ записи тихо перебить
+    ручную правку; здесь ручное, подтверждённое действие человека через отдельный вызов, не
+    `upsert_translation(..., manual=0)` (та ветка намеренно no-op поверх `manual=1`, см. её
+    докстринг)."""
+    async with _connect() as db:
+        await db.execute(
+            "UPDATE translations SET manual = 0 WHERE lang = ? AND src_hash = ?",
+            (lang, src_hash),
+        )
+        await db.commit()
+
+
 async def get_translation(lang: str, src_hash: str) -> dict | None:
     """Одна строка перевода целиком (админский экран правки, план 27-06) — либо `None`,
     если для этой пары `(lang, src_hash)` ещё ничего не приходило (ни машины, ни менеджера)."""

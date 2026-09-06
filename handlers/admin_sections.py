@@ -64,6 +64,9 @@ SECTIONS: list[tuple[str, str, list[tuple]]] = [
         # входит — тот же приём, что у toggle_reg_edit_remoderation в разделе «📋 Заявки»).
         ("toggle", "toggle_delegate_lang_enabled"),
         ("toggle", "toggle_delegate_lang_ask_on_start"),
+        # Phase 27 (27-06, LANG-05/09): экран правки корпуса английских строк — рядом с
+        # тумблерами языка, тот же раздел, что и «✏️ Тексты вопросов».
+        ("screen", "admin_i18n", "🌐 Английские тексты"),
         ("group", "reg"),
         ("group", "party"),
         ("group", "consent"),
