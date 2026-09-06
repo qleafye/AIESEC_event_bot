@@ -690,6 +690,14 @@ tr:last-child td { border-bottom: none; }
 
 .cell-empty { color: var(--text-muted); }
 
+/* Динамика несколькими сериями — фиксированная высота (не 240px, как у одиночного графика:
+   несколько линий + видимая легенда снизу нуждаются в чуть большем холсте). */
+.compare-chart-wrap { position: relative; height: 300px; }
+
+/* Переключатель оси — переиспользует .switchers/.switch-link, свой отступ снизу вместо
+   стандартного margin-top у .switchers (это не шапка события, а управление графиком). */
+.axis-toggle { margin-top: 0; margin-bottom: var(--sp-3); }
+
 /* ── Reduced motion ─────────────────────────────────────────────────────────────────── */
 
 @media (prefers-reduced-motion: reduce) {
