@@ -346,20 +346,26 @@ def test_menu_counter_uses_effective_percity_values_at_header(tmp_path):
     _enable_cities()
     asyncio.run(cities.set_admin_city(ADMIN_ID, "spb"))
     total = len(admin_mod.MENU_BUTTONS)
+    # Phase 27 (27-04, LANG-01): menu_lang -- единственный menu_* с default "off" (кнопка
+    # включается менеджером ПОСЛЕ модуля перевода, settings_schema.py) -- базовая строка
+    # счётчика больше не "total из total"; MENU_BUTTONS[0]/[1] ниже остаются
+    # menu_referral/menu_invites (menu_lang дописан в конец списка), сам сценарий теста не
+    # трогает menu_lang вовсе.
+    default_on = total - 1
 
     text_default = asyncio.run(admin_settings.render_settings_text(ADMIN_ID))
-    assert f"🔘 Меню: <b>{total} из {total}</b> кнопок" in text_default  # all default "on"
+    assert f"🔘 Меню: <b>{default_on} из {total}</b> кнопок" in text_default
 
     off_key = admin_mod.MENU_BUTTONS[0][0]
     asyncio.run(db.set_setting(cities.per_city_key(off_key, "spb"), "off"))
     text_after = asyncio.run(admin_settings.render_settings_text(ADMIN_ID))
-    assert f"🔘 Меню: <b>{total - 1} из {total}</b> кнопок" in text_after
+    assert f"🔘 Меню: <b>{default_on - 1} из {total}</b> кнопок" in text_after
 
     # a msk override must NOT affect the spb-headed counter.
     on_key2 = admin_mod.MENU_BUTTONS[1][0]
     asyncio.run(db.set_setting(cities.per_city_key(on_key2, "msk"), "off"))
     text_still = asyncio.run(admin_settings.render_settings_text(ADMIN_ID))
-    assert f"🔘 Меню: <b>{total - 1} из {total}</b> кнопок" in text_still
+    assert f"🔘 Меню: <b>{default_on - 1} из {total}</b> кнопок" in text_still
 
 
 def test_admin_caps_covers_both_new_callbacks_without_prefix_collision(tmp_path):

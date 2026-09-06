@@ -452,8 +452,11 @@ async def render_settings_text(admin_id: int | None = None) -> str:
             # the header's city must reflect what that city's delegates actually see.
             is_on = await get_setting_typed_for_city(key, header_code) == "on"
         else:
-            v = await get_setting(key)
-            is_on = (v == "on") if v is not None else True
+            # Phase 27 (27-04): было `v is not None else True` — жёстко предполагало, что
+            # ЛЮБОЙ menu_* по умолчанию "on". `menu_lang` (LANG-01) первый ключ этой группы с
+            # `default: "off"` — get_setting_typed уже правильно резолвит дефолт из
+            # SETTINGS_SCHEMA (та же лестница, что per_city_ctx-ветка выше), не гадает "on".
+            is_on = await get_setting_typed(key) == "on"
         if is_on:
             enabled_m += 1
     lines.append(f"🔘 Меню: <b>{enabled_m} из {len(MENU_BUTTONS)}</b> кнопок")
