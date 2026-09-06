@@ -119,6 +119,28 @@
   POST /app/api/faq {question, answer} -> {ok: true, id} | {ok: false, reason: "already", id}
                                        город — Principal.city (привязка менеджера), пусто ->
                                        общий пункт; 400 {"reason":"empty"|"too_long","text"}
+  Менеджер (quick 260906-nxp, `require_cap("moderate_reg")` + section faq — тот же чекбокс,
+  что у делегатского GET /app/api/faq выше, второго раздела не заводится; городской скоуп на
+  чтении и на КАЖДОЙ мутации — 403 {"reason":"out_of_scope","text"}; город пункта ВСЕГДА из
+  Principal.city, тело мутаций несёт только "all"/"mine"):
+  GET  /app/api/admin/faq?offset&limit -> {items[{id,number,question,answer,city_badge,
+                                       is_general,enabled,status_text,toggle_label,
+                                       city_toggle_label,delete_confirm_text,can_move_up,
+                                       can_move_down}], total, offset, limit, empty_text,
+                                       city_choice, bound_city_label, city_hint, question_max,
+                                       answer_max}; limit <= 50
+  POST /app/api/admin/faq {question, answer} -> {ok: true, id, item} | {ok: false,
+                                       reason: "already", id}; 400 empty/too_long
+  PATCH /app/api/admin/faq/{id} {question|answer|enabled|city: "all"|"mine"} -> {ok, field,
+                                       item}; РОВНО одно поле — 400 one_field/empty/too_long/
+                                       bad_city/no_city_binding (все с text); 403 out_of_scope;
+                                       404 not_found
+  POST /app/api/admin/faq/{id}/move {direction: "up"|"down"} -> {ok: true, moved: bool}
+                                       moved=false — пункт уже с краю, не ошибка; 400
+                                       bad_direction; 403 out_of_scope; 404 not_found
+  DELETE /app/api/admin/faq/{id}   -> {ok: true, deleted: true}; 403 out_of_scope; 404
+                                       not_found; без серверного «подтверждения» — это шаг
+                                       интерфейса (как «Начислить» в admin_coins)
   Менеджер (план 19-06, `require_cap("moderate_game")` + section admin_tasks; городской скоуп
   на чтении и на каждой мутации — 403 {"reason":"out_of_scope","text"}):
   GET  /app/api/admin/tasks/options -> {categories[{code,label}], proof_types[{code,label}],
