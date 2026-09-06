@@ -7,6 +7,10 @@
       <img class="brand-dark" src="/static/brand/aiesec-logo-white.svg" alt="" aria-hidden="true">
     </div>
     <h1>Нет доступа</h1>
+    {% if super_only %}
+    <p>Сводный дашборд открыт только суперадминам АЙСЕК. Если вы вошли не той почтой —
+      закройте вкладку и войдите заново.</p>
+    {% else %}
     <p>Попросите право «📊 Статистика» в боте у администратора.</p>
     <p>Суперадминам уже отправлено уведомление о вашем запросе.</p>
     {% if bot_username %}
@@ -14,5 +18,6 @@
     <a class="button" href="tg://resolve?domain={{ bot_username }}">Открыть бота</a>
     {% endif %}
     <p class="fallback-note"><a href="/">Проверить доступ ещё раз</a></p>
+    {% endif %}
   </div>
 {% endblock %}
