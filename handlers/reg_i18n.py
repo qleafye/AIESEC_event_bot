@@ -132,6 +132,27 @@ async def tr_for(message_or_callback, text: str) -> str:
     return tr_text(text, lang, tr_map)
 
 
+def tr_fmt(text, lang: str, tr_map: dict[str, str], **subs) -> str:
+    """UAT-фикс 27-05 (LANG-02): перевод ШАБЛОНА (с `{step}`/`{total}`/`{count}`-плейсхолдерами)
+    СНАЧАЛА, подстановка значений ПОСЛЕ — тот же порядок, что уже был применён точечно для
+    `{season}` в `registration.py::cmd_start` (Quick 260906). Нарушение порядка — реальный
+    класс бага, найденный стендовым UAT: код подставлял `{step}`/`{total}` в русский шаблон
+    ДО перевода (`.replace` прямо в `handlers/reg_resume.py`), из-за чего `src_hash`
+    подставленной строки переставал совпадать с хешем исходного шаблона в `tr_map`, и делегат
+    с `lang="en"` видел русскую кнопку/текст, хотя перевод шаблона в БД был.
+
+    Подстановка — `.replace("{key}", str(value))` цепочкой, НЕ `.format()` (T-073-03-05: текст
+    менеджера может содержать посторонние `{}`, `.format()` на них упал бы). Плейсхолдеры
+    переживают машинный перевод сентинелами глоссария (`services/i18n_glossary.py`), поэтому
+    после `tr_text` они остаются в переведённом тексте нетронутыми и годными для `.replace`."""
+    translated = tr_text(text, lang, tr_map)
+    if not isinstance(translated, str):
+        return translated
+    for key, value in subs.items():
+        translated = translated.replace("{" + key + "}", str(value))
+    return translated
+
+
 async def canonicalize(message, step_key: str, text):
     """Английская (или любая другая) подпись варианта -> русский канон, ДО `validate_answer`
     (LANG-06, план 27-05 Задача 3). Общая точка для пяти мест приёма ответа в чате

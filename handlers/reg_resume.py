@@ -35,7 +35,11 @@ async def offer_resume(message: types.Message, draft: dict) -> None:
     (двойной /start посреди анкеты) и kind='edit' (?start=edit fallback / черновик правки,
     начатый в приложении). Кнопки — из реестра (`reg_resume_continue_label`/
     `reg_resume_restart_label`), подстановка {step}/{total} — только `.replace`, не `.format`
-    (T-073-03-05: текст менеджера может содержать посторонние {})."""
+    (T-073-03-05: текст менеджера может содержать посторонние {}).
+
+    UAT-фикс 27-05 (LANG-02): подстановка идёт ПОСЛЕ перевода шаблона (`reg_i18n.tr_fmt`), не
+    ДО — иначе `src_hash` подставленной строки не совпадает с хешем исходного шаблона в
+    `tr_map`, и переведённая в БД кнопка всё равно уходит делегату по-русски."""
     answers = draft.get("answers") or {}
     probe = {
         "participant_type": draft.get("participant_type"),
@@ -47,9 +51,12 @@ async def offer_resume(message: types.Message, draft: dict) -> None:
     step_no = 1
     if draft.get("step") in enabled:
         step_no = enabled.index(draft["step"]) + 1
-    continue_label = (await get_setting_typed("reg_resume_continue_label")) \
-        .replace("{step}", str(step_no)).replace("{total}", str(total))
-    restart_label = await get_setting_typed("reg_resume_restart_label")
+    lang, tr_map = await reg_i18n.ctx_for(message)
+    continue_label = reg_i18n.tr_fmt(
+        await get_setting_typed("reg_resume_continue_label"), lang, tr_map,
+        step=step_no, total=total,
+    )
+    restart_label = reg_i18n.tr_text(await get_setting_typed("reg_resume_restart_label"), lang, tr_map)
     kb = InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text=continue_label, callback_data="reg_resume:continue")],
         [InlineKeyboardButton(text=restart_label, callback_data="reg_resume:restart")],
@@ -138,16 +145,29 @@ async def reg_resume_continue(callback: types.CallbackQuery, state: FSMContext, 
 
 @router.callback_query(F.data == "reg_resume:restart")
 async def reg_resume_restart(callback: types.CallbackQuery, state: FSMContext):
+    """UAT-фикс 27-05 (LANG-02): та же перестановка «перевод сначала, подстановка после», что
+    и в `offer_resume` выше — `{count}` подставляется ПОСЛЕ `reg_i18n.tr_fmt`, не до. Кнопки
+    «Да, начать заново»/«Нет, продолжить» переводятся тем же вызовом `reg_i18n.tr_text` —
+    раньше первая была голым русским литералом мимо любого перевода, а вторая совпадала с
+    ярусом A случайно (общий литерал с экраном отмены анкеты в `reg_flow.py`), так что пара
+    расходилась по языку на одном и том же экране."""
     try:
         await callback.message.edit_reply_markup(reply_markup=None)
     except Exception:
         pass
     draft = await get_reg_draft(callback.from_user.id)
     count = len(draft.get("answers") or {}) if draft else 0
-    text = (await get_setting_typed("reg_resume_restart_confirm_text")).replace("{count}", str(count))
+    lang, tr_map = await reg_i18n.ctx_for(callback.message)
+    text = reg_i18n.tr_fmt(
+        await get_setting_typed("reg_resume_restart_confirm_text"), lang, tr_map, count=count,
+    )
     kb = InlineKeyboardMarkup(inline_keyboard=[[
-        InlineKeyboardButton(text="Да, начать заново", callback_data="reg_resume:restart_yes"),
-        InlineKeyboardButton(text="Нет, продолжить", callback_data="reg_resume:continue"),
+        InlineKeyboardButton(
+            text=reg_i18n.tr_text("Да, начать заново", lang, tr_map), callback_data="reg_resume:restart_yes"
+        ),
+        InlineKeyboardButton(
+            text=reg_i18n.tr_text("Нет, продолжить", lang, tr_map), callback_data="reg_resume:continue"
+        ),
     ]])
     await reg_i18n.say(callback.message, text, reply_markup=kb, parse_mode="HTML")
     await callback.answer()
