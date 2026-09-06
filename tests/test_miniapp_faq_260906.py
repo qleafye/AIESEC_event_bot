@@ -286,3 +286,281 @@ def test_questions_list_exposes_can_add_to_faq_and_labels(client):
     by_id = {i["id"]: i for i in body["items"]}
     assert by_id[qid]["can_add_to_faq"] is True
     assert by_id[new_qid]["can_add_to_faq"] is False
+
+
+# ══════════════════════════════════════════════════════════════════════════════════════════
+# Quick 260906-nxp, задача 1: менеджерский API /app/api/admin/faq
+# ══════════════════════════════════════════════════════════════════════════════════════════
+
+# ── права / раздел ───────────────────────────────────────────────────────────────────────
+
+def test_admin_faq_list_no_auth_401(client):
+    resp = client.get("/app/api/admin/faq")
+    assert resp.status_code == 401
+    assert resp.json() == {"reason": "no_auth"}
+
+
+def test_admin_faq_list_requires_moderate_reg_cap(client):
+    resp = client.get("/app/api/admin/faq", headers=_hdr(DELEGATE_ID))
+    assert resp.status_code == 403
+    assert resp.json()["reason"] == "no_cap"
+
+
+def test_admin_faq_list_section_off_403(client):
+    _set("miniapp_section_faq", "off")
+    resp = client.get("/app/api/admin/faq", headers=_hdr(REG_MANAGER_ID))
+    assert resp.status_code == 403
+    assert resp.json() == {"reason": "section_off", "section": "faq"}
+
+
+# ── GET — пустой список / город / номера / стрелки ──────────────────────────────────────
+
+def test_admin_faq_list_empty_has_empty_text_and_no_city_choice_for_unbound(client):
+    resp = client.get("/app/api/admin/faq", headers=_hdr(REG_MANAGER_ID))
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["items"] == []
+    assert body["empty_text"]
+    assert body["city_choice"] is False
+    assert body["bound_city_label"] is None
+    assert body["city_hint"]
+
+
+def test_admin_faq_list_rows_carry_number_badge_status_and_edge_arrows(client):
+    first = _run(bot_db.create_faq_item(city=None, question="Первый?", answer="a", created_by=REG_MANAGER_ID))
+    second = _run(bot_db.create_faq_item(city=None, question="Второй?", answer="b", created_by=REG_MANAGER_ID))
+
+    resp = client.get("/app/api/admin/faq", headers=_hdr(REG_MANAGER_ID))
+    items = resp.json()["items"]
+    assert [i["id"] for i in items] == [first, second]
+    assert [i["number"] for i in items] == [1, 2]
+    assert items[0]["city_badge"] == "🌍 все города"
+    assert items[0]["is_general"] is True
+    assert items[0]["status_text"] == "показывается делегатам"
+    assert items[0]["toggle_label"] == "Скрыть"
+    assert items[0]["can_move_up"] is False and items[0]["can_move_down"] is True
+    assert items[1]["can_move_up"] is True and items[1]["can_move_down"] is False
+
+
+def test_admin_faq_list_bound_manager_sees_own_city_and_general_not_other_city(client, _restore_cities_cache):
+    _seed_kzn_city()
+    _set("event_city_enabled", "on")
+    general = _run(bot_db.create_faq_item(city=None, question="Общий?", answer="a", created_by=REG_MANAGER_ID))
+    kzn = _run(bot_db.create_faq_item(city="kzn", question="Казанский?", answer="b", created_by=REG_MANAGER_ID))
+    msk = _run(bot_db.create_faq_item(city="msk", question="Московский?", answer="c", created_by=REG_MANAGER_ID))
+
+    resp = client.get("/app/api/admin/faq", headers=_hdr(BOUND_REG_MANAGER_ID))
+    body = resp.json()
+    ids = [i["id"] for i in body["items"]]
+    assert general in ids and kzn in ids
+    assert msk not in ids
+    assert body["city_choice"] is True
+    assert body["bound_city_label"] == "Казань"
+    kzn_row = next(i for i in body["items"] if i["id"] == kzn)
+    assert kzn_row["city_toggle_label"] == "Для всех городов"
+    general_row = next(i for i in body["items"] if i["id"] == general)
+    assert general_row["city_toggle_label"] == "Только Казань"
+
+
+# ── POST — создание / дубли ──────────────────────────────────────────────────────────────
+
+def test_admin_faq_create_general_item_for_unbound_manager_returns_item(client):
+    resp = client.post(
+        "/app/api/admin/faq", headers=_hdr(REG_MANAGER_ID),
+        json={"question": "Где кампус?", "answer": "На набережной."},
+    )
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["ok"] is True
+    assert body["item"]["question"] == "Где кампус?"
+    assert body["item"]["is_general"] is True
+    row = _run(bot_db.get_faq_item(body["id"]))
+    assert row["city"] is None
+
+
+def test_admin_faq_create_city_item_for_bound_manager(client, _restore_cities_cache):
+    _seed_kzn_city()
+    _set("event_city_enabled", "on")
+    resp = client.post(
+        "/app/api/admin/faq", headers=_hdr(BOUND_REG_MANAGER_ID),
+        json={"question": "Где стойка регистрации?", "answer": "У входа."},
+    )
+    assert resp.status_code == 200
+    row = _run(bot_db.get_faq_item(resp.json()["id"]))
+    assert row["city"] == "kzn"
+
+
+def test_admin_faq_create_duplicate_does_not_create_second_row(client):
+    existing_id = _run(bot_db.create_faq_item(
+        city=None, question="Где кампус??", answer="a", created_by=REG_MANAGER_ID,
+    ))
+    resp = client.post(
+        "/app/api/admin/faq", headers=_hdr(REG_MANAGER_ID),
+        json={"question": "где КАМПУС", "answer": "Другой ответ."},
+    )
+    assert resp.status_code == 200
+    assert resp.json() == {"ok": False, "reason": "already", "id": existing_id}
+    assert len(_run(bot_db.list_faq_items())) == 1
+
+
+# ── PATCH — правка одним полем ───────────────────────────────────────────────────────────
+
+def test_admin_faq_patch_question(client):
+    item_id = _run(bot_db.create_faq_item(city=None, question="Старый вопрос?", answer="a", created_by=REG_MANAGER_ID))
+    resp = client.patch(f"/app/api/admin/faq/{item_id}", headers=_hdr(REG_MANAGER_ID), json={"question": "Новый вопрос?"})
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["ok"] is True and body["field"] == "question"
+    assert body["item"]["question"] == "Новый вопрос?"
+    row = _run(bot_db.get_faq_item(item_id))
+    assert row["question"] == "Новый вопрос?"
+
+
+def test_admin_faq_patch_answer(client):
+    item_id = _run(bot_db.create_faq_item(city=None, question="Q?", answer="Старый ответ.", created_by=REG_MANAGER_ID))
+    resp = client.patch(f"/app/api/admin/faq/{item_id}", headers=_hdr(REG_MANAGER_ID), json={"answer": "Новый ответ."})
+    assert resp.status_code == 200
+    assert resp.json()["item"]["answer"] == "Новый ответ."
+
+
+def test_admin_faq_patch_enabled_hides_from_delegate_get(client):
+    item_id = _run(bot_db.create_faq_item(city=None, question="Q?", answer="a", created_by=REG_MANAGER_ID))
+    resp = client.patch(f"/app/api/admin/faq/{item_id}", headers=_hdr(REG_MANAGER_ID), json={"enabled": False})
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["item"]["enabled"] is False
+    assert body["item"]["status_text"] == "скрыт от делегатов"
+    # Сквозная проверка: делегатский GET /app/api/faq больше не отдаёт скрытый пункт.
+    delegate_resp = client.get("/app/api/faq", headers=_hdr(DELEGATE_ID))
+    assert delegate_resp.json()["items"] == []
+
+
+def test_admin_faq_patch_city_mine_for_bound_manager_writes_kzn(client, _restore_cities_cache):
+    _seed_kzn_city()
+    _set("event_city_enabled", "on")
+    item_id = _run(bot_db.create_faq_item(city=None, question="Q?", answer="a", created_by=REG_MANAGER_ID))
+    resp = client.patch(f"/app/api/admin/faq/{item_id}", headers=_hdr(BOUND_REG_MANAGER_ID), json={"city": "mine"})
+    assert resp.status_code == 200
+    row = _run(bot_db.get_faq_item(item_id))
+    assert row["city"] == "kzn"
+
+
+def test_admin_faq_patch_city_all_writes_null(client, _restore_cities_cache):
+    _seed_kzn_city()
+    _set("event_city_enabled", "on")
+    item_id = _run(bot_db.create_faq_item(city="kzn", question="Q?", answer="a", created_by=REG_MANAGER_ID))
+    resp = client.patch(f"/app/api/admin/faq/{item_id}", headers=_hdr(BOUND_REG_MANAGER_ID), json={"city": "all"})
+    assert resp.status_code == 200
+    row = _run(bot_db.get_faq_item(item_id))
+    assert row["city"] is None
+
+
+def test_admin_faq_patch_city_mine_for_unbound_manager_400_no_city_binding(client):
+    item_id = _run(bot_db.create_faq_item(city=None, question="Q?", answer="a", created_by=REG_MANAGER_ID))
+    resp = client.patch(f"/app/api/admin/faq/{item_id}", headers=_hdr(REG_MANAGER_ID), json={"city": "mine"})
+    assert resp.status_code == 400
+    assert resp.json()["reason"] == "no_city_binding"
+
+
+def test_admin_faq_patch_two_fields_at_once_400_one_field(client):
+    item_id = _run(bot_db.create_faq_item(city=None, question="Q?", answer="a", created_by=REG_MANAGER_ID))
+    resp = client.patch(
+        f"/app/api/admin/faq/{item_id}", headers=_hdr(REG_MANAGER_ID),
+        json={"question": "Другой?", "answer": "Другой."},
+    )
+    assert resp.status_code == 400
+    assert resp.json()["reason"] == "one_field"
+
+
+def test_admin_faq_patch_empty_question_400(client):
+    item_id = _run(bot_db.create_faq_item(city=None, question="Q?", answer="a", created_by=REG_MANAGER_ID))
+    resp = client.patch(f"/app/api/admin/faq/{item_id}", headers=_hdr(REG_MANAGER_ID), json={"question": "   "})
+    assert resp.status_code == 400
+    assert resp.json()["reason"] == "empty"
+
+
+# ── скоуп на мутациях — 403/404 ──────────────────────────────────────────────────────────
+
+def test_admin_faq_patch_other_city_item_403_out_of_scope(client, _restore_cities_cache):
+    _seed_kzn_city()
+    _set("event_city_enabled", "on")
+    msk_item = _run(bot_db.create_faq_item(city="msk", question="Q?", answer="a", created_by=REG_MANAGER_ID))
+    resp = client.patch(f"/app/api/admin/faq/{msk_item}", headers=_hdr(BOUND_REG_MANAGER_ID), json={"enabled": False})
+    assert resp.status_code == 403
+    assert resp.json()["reason"] == "out_of_scope"
+
+
+def test_admin_faq_move_other_city_item_403_out_of_scope(client, _restore_cities_cache):
+    _seed_kzn_city()
+    _set("event_city_enabled", "on")
+    msk_item = _run(bot_db.create_faq_item(city="msk", question="Q?", answer="a", created_by=REG_MANAGER_ID))
+    resp = client.post(f"/app/api/admin/faq/{msk_item}/move", headers=_hdr(BOUND_REG_MANAGER_ID), json={"direction": "up"})
+    assert resp.status_code == 403
+    assert resp.json()["reason"] == "out_of_scope"
+
+
+def test_admin_faq_delete_other_city_item_403_out_of_scope(client, _restore_cities_cache):
+    _seed_kzn_city()
+    _set("event_city_enabled", "on")
+    msk_item = _run(bot_db.create_faq_item(city="msk", question="Q?", answer="a", created_by=REG_MANAGER_ID))
+    resp = client.delete(f"/app/api/admin/faq/{msk_item}", headers=_hdr(BOUND_REG_MANAGER_ID))
+    assert resp.status_code == 403
+    assert resp.json()["reason"] == "out_of_scope"
+
+
+def test_admin_faq_patch_nonexistent_404(client):
+    resp = client.patch("/app/api/admin/faq/999999", headers=_hdr(REG_MANAGER_ID), json={"enabled": False})
+    assert resp.status_code == 404
+    assert resp.json()["reason"] == "not_found"
+
+
+def test_admin_faq_move_nonexistent_404(client):
+    resp = client.post("/app/api/admin/faq/999999/move", headers=_hdr(REG_MANAGER_ID), json={"direction": "up"})
+    assert resp.status_code == 404
+
+
+def test_admin_faq_delete_nonexistent_404(client):
+    resp = client.delete("/app/api/admin/faq/999999", headers=_hdr(REG_MANAGER_ID))
+    assert resp.status_code == 404
+
+
+# ── move — порядок / край ────────────────────────────────────────────────────────────────
+
+def test_admin_faq_move_up_swaps_actual_order(client):
+    first = _run(bot_db.create_faq_item(city=None, question="Первый?", answer="a", created_by=REG_MANAGER_ID))
+    second = _run(bot_db.create_faq_item(city=None, question="Второй?", answer="b", created_by=REG_MANAGER_ID))
+
+    resp = client.post(f"/app/api/admin/faq/{second}/move", headers=_hdr(REG_MANAGER_ID), json={"direction": "up"})
+    assert resp.status_code == 200
+    assert resp.json() == {"ok": True, "moved": True}
+
+    ordered_ids = [r["id"] for r in _run(bot_db.list_faq_items())]
+    assert ordered_ids == [second, first]
+
+
+def test_admin_faq_move_at_edge_returns_moved_false_without_error(client):
+    only = _run(bot_db.create_faq_item(city=None, question="Единственный?", answer="a", created_by=REG_MANAGER_ID))
+    resp = client.post(f"/app/api/admin/faq/{only}/move", headers=_hdr(REG_MANAGER_ID), json={"direction": "up"})
+    assert resp.status_code == 200
+    assert resp.json() == {"ok": True, "moved": False}
+
+
+def test_admin_faq_move_bad_direction_400(client):
+    item_id = _run(bot_db.create_faq_item(city=None, question="Q?", answer="a", created_by=REG_MANAGER_ID))
+    resp = client.post(f"/app/api/admin/faq/{item_id}/move", headers=_hdr(REG_MANAGER_ID), json={"direction": "sideways"})
+    assert resp.status_code == 400
+    assert resp.json()["reason"] == "bad_direction"
+
+
+# ── delete ────────────────────────────────────────────────────────────────────────────────
+
+def test_admin_faq_delete_removes_row_second_delete_404(client):
+    item_id = _run(bot_db.create_faq_item(city=None, question="Q?", answer="a", created_by=REG_MANAGER_ID))
+    resp = client.delete(f"/app/api/admin/faq/{item_id}", headers=_hdr(REG_MANAGER_ID))
+    assert resp.status_code == 200
+    assert resp.json() == {"ok": True, "deleted": True}
+    assert _run(bot_db.get_faq_item(item_id)) is None
+
+    resp2 = client.delete(f"/app/api/admin/faq/{item_id}", headers=_hdr(REG_MANAGER_ID))
+    assert resp2.status_code == 404
+    assert resp2.json()["reason"] == "not_found"
