@@ -525,7 +525,7 @@ async def _ask_step(step_key: str, message: types.Message, state: FSMContext, st
         )
         pdf_file_id = await get_setting(f"consent_pdf_{consent_key}")
         # Ссылки на документы уже в приветственном сообщении — показываем короткий вопрос.
-        caption = html.escape(await _prompt(f'consent_{consent_key}', label, participant_type))
+        caption = html.escape(await _prompt(f'consent_{consent_key}', label, participant_type))  # Quick 260906: LANG-09, не переводим
         btn_text = await get_setting("consent_button_text") or "Согласен(-на)"
         kb = InlineKeyboardMarkup(inline_keyboard=[[
             InlineKeyboardButton(text=btn_text, callback_data=f"consent_accept:{consent_key}")
@@ -767,7 +767,7 @@ async def recall_change(callback: types.CallbackQuery, state: FSMContext):
 @router.message(Registration.recall_pending)
 async def process_recall_ignore(message: types.Message):
     # Same shape as process_consent_ignore -- the recall screen is only advanced by a tap.
-    await message.answer("Нажми «✅ Оставить» или «✏️ Изменить».")
+    await _safe_answer(message, "Нажми «✅ Оставить» или «✏️ Изменить».")  # Quick 260906: ярус A
 
 
 # --- Helpers ---
@@ -1484,7 +1484,8 @@ async def _start_registration_flow(message: types.Message, state: FSMContext, re
     except Exception as e:
         logger.error(f"draft create/refresh failed for {message.from_user.id}: {e}")
 
-    await message.answer(
+    await _safe_answer(  # Quick 260906: литералы -> i18n_sources.py::code_literals()
+        message,
         "Отлично, начинаем регистрацию."
         if not saved_referrer_id
         else "Отлично, ты пришёл по приглашению друга. Начинаем регистрацию."
@@ -1516,7 +1517,7 @@ async def _ask_full_name_plain(message: types.Message, state: FSMContext):
         await set_reg_step(message.chat.id, "full_name")  # dropout analytics
     except Exception as e:
         logger.error(f"set_reg_step failed for {message.chat.id} @ full_name: {e}")
-    await message.answer(await _prompt("full_name", "Напиши свои ФИО (Фамилия Имя Отчество):"), reply_markup=get_cancel_kb())
+    await _safe_answer(message, await _prompt("full_name", "Напиши свои ФИО (Фамилия Имя Отчество):"), reply_markup=get_cancel_kb())  # Quick 260906
     await state.set_state(Registration.full_name)
 
 
@@ -1549,6 +1550,9 @@ async def _after_full_name(message: types.Message, state: FSMContext, bot: Bot):
 
 
 async def _send_welcome(message: types.Message, text: str, photo_file_id: str | None, kb, user_id: int):
+    # Quick 260906: answer_photo — свой метод, не _safe_answer -> переводим здесь, ДО short_text.
+    lang, tr_map = await reg_i18n.ctx_for(message)
+    text = reg_i18n.tr_text(text, lang, tr_map)
     short_text = len(text) <= 1024
     photo_sent = False
 
@@ -1711,12 +1715,12 @@ async def cmd_start(message: types.Message, state: FSMContext, bot: Bot, command
                 uname = message.from_user.username
                 if uname is None and user_id not in manual_ids:
                     prompt = await get_setting_typed("preselect_no_username_text")
-                    await message.answer(html.escape(prompt))
+                    await message.answer(html.escape(await reg_i18n.tr_for(message, prompt)))  # Quick 260906
                     return
                 if uname is not None and not is_allowed(uname) and user_id not in manual_ids:
                     fail = await get_setting_typed("preselect_fail_text")
-                    link = await get_setting_typed("preselect_link")
-                    text = html.escape(fail)
+                    link = await get_setting_typed("preselect_link")  # ссылка — не переводим
+                    text = html.escape(await reg_i18n.tr_for(message, fail))
                     if link:
                         text += "\n" + html.escape(link)
                     await message.answer(text)
@@ -1775,6 +1779,7 @@ async def cmd_start(message: types.Message, state: FSMContext, bot: Bot, command
     if is_returning:
         prev_label = (user.get("season") or "").strip() or "прошлом событии"
         returning_text = await get_setting("start_text_returning") or DEFAULT_START_RETURNING_TEXT
+        returning_text = await reg_i18n.tr_for(message, returning_text)  # Quick 260906: ДО .replace(season)!
         # T-073-03-05: str.replace, NOT .format() — an admin-authored text may contain other
         # unrelated {} that .format() would raise on.
         returning_text = returning_text.replace("{season}", prev_label)
@@ -1783,10 +1788,7 @@ async def cmd_start(message: types.Message, state: FSMContext, bot: Bot, command
             InlineKeyboardButton(text="\U0001f680 Обновить анкету", callback_data="rereg_start")
         ]])
         # Phase 17.1 (17.1-02): CTA под баннером — из реестра, как и сам баннер выше.
-        await message.answer(
-            await get_setting_typed("start_returning_cta_text"),
-            reply_markup=kb,
-        )
+        await reg_i18n.say(message, await get_setting_typed("start_returning_cta_text"), reply_markup=kb)
         # The tap on rereg_start arrives as a SEPARATE update, after this /start's local
         # variables (referrer_id/source_tag/party_track/dl_event_city) are gone — preserve
         # whatever this deep-link carried into FSM now, same idiom as the city-fork early
@@ -1865,7 +1867,7 @@ async def cmd_start(message: types.Message, state: FSMContext, bot: Bot, command
             kb = InlineKeyboardMarkup(inline_keyboard=[[
                 InlineKeyboardButton(text="\U0001f504 Пройти регистрацию заново", callback_data="admin_rereg")
             ]])
-            await message.answer(
+            await message.answer(  # Quick 260906: НЕ переводим — адресовано админу (см. guard allowlist)
                 "Вы админ — можете пройти регистрацию заново для теста.",
                 reply_markup=kb,
             )
@@ -1884,7 +1886,7 @@ async def cmd_start(message: types.Message, state: FSMContext, bot: Bot, command
             kb = InlineKeyboardMarkup(inline_keyboard=[[
                 InlineKeyboardButton(text="Перейти к полной регистрации", callback_data="party_fallback_full")
             ]])
-            await message.answer(closed_text, reply_markup=kb)
+            await reg_i18n.say(message, closed_text, reply_markup=kb)  # Quick 260906: "party" в корпусе
             return  # D-11a: NEVER silently reroute — user must tap the button to opt into `full`
     except Exception as e:
         logger.error(f"party_enabled gate failed for {user_id}: {e}")
@@ -1987,7 +1989,8 @@ async def _city_fork_then_continue(
         if dl_party_track:
             await state.update_data(_track_from_link=True)
         city_fork_text = await get_setting_typed("city_fork_text")  # Phase 17.1 (17.1-03): реестр
-        await message.answer(city_fork_text, reply_markup=await _city_fork_kb())
+        # Quick 260906: вопрос переводим, кнопки-города НЕТ (данные v1, не UI-текст).
+        await message.answer(await reg_i18n.tr_for(message, city_fork_text), reply_markup=await _city_fork_kb())
         return  # wait for the tap; city_pick continues the chain with the chosen city
 
     await _continue_after_city(message, state, effective_city, referrer_id, source_tag, dl_party_track, recovered_track)
@@ -2046,7 +2049,7 @@ async def _continue_after_city(
             participant_type=dl_party_track or recovered_track or _existing.get("participant_type"),
         )
         fork_text = await get_setting_typed("party_fork_text")  # Phase 17.1 (17.1-03): реестр
-        await message.answer(fork_text, reply_markup=_party_fork_kb())
+        await reg_i18n.say(message, fork_text, reply_markup=_party_fork_kb())  # Quick 260906
         return  # wait for the tap; the party_pick handler starts the flow with the chosen track
 
     await _start_registration_flow(
@@ -2208,10 +2211,7 @@ async def finalize_registration(message: types.Message, state: FSMContext, bot: 
     # до следующего /start (а /start ему меню показывает). Возвращаем главное меню сразу:
     # тапы по кнопкам до одобрения упираются в pending-гейт ensure_registered.
     menu_kb = await get_main_menu_kb(uid)
-    try:
-        await message.answer(submitted, reply_markup=menu_kb, parse_mode="HTML")
-    except Exception:
-        await message.answer(submitted, reply_markup=menu_kb)
+    await _safe_answer(message, submitted, reply_markup=menu_kb, parse_mode="HTML")  # Quick 260906
 
 
 # Phase 13 REFAC (13-03, REFAC-02): seam imports trigger decoration of the moved handler
