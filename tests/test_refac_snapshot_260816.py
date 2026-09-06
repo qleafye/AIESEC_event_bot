@@ -371,6 +371,8 @@ admin|message|cmd_scheduled|cmd:scheduled
 admin|message|cmd_refresh_allowlist|cmd:refresh_allowlist
 admin|message|aq_answer_cancel|state:QuestionAnswer:*
 admin|message|aq_answer_step|state:QuestionAnswer:*
+admin|message|afaq_text_cancel|state:FaqItem:*
+admin|message|afaq_text_step|state:FaqItem:*
 admin|message|appr_reject_cancel|state:Approval:*
 admin|message|appr_reject_reason|state:Approval:*
 admin|message|rcpt_reject_cancel|state:ReceiptReview:*
@@ -548,6 +550,18 @@ admin|callback_query|reg_help_rst_go|reg_help_rst_go:*
 admin|callback_query|admin_questions|admin_questions
 admin|callback_query|aq_page|aq:*
 admin|callback_query|aq_answer_start|aq_answer:*
+admin|callback_query|admin_faq|admin_faq
+admin|callback_query|afaq_page|afaq_p:*
+admin|callback_query|afaq_view|afaq_v:*
+admin|callback_query|afaq_move_up|afaq_up:*
+admin|callback_query|afaq_move_down|afaq_dn:*
+admin|callback_query|afaq_toggle_enabled|afaq_t:*
+admin|callback_query|afaq_toggle_city|afaq_c:*
+admin|callback_query|afaq_delete_confirm|afaq_d:*
+admin|callback_query|afaq_delete_go|afaq_dgo:*
+admin|callback_query|afaq_new_start|afaq_new
+admin|callback_query|afaq_edit_question_start|afaq_eq:*
+admin|callback_query|afaq_edit_answer_start|afaq_ea:*
 admin|callback_query|show_applications|admin_applications
 admin|callback_query|appr_skip|appr_skip:*
 admin|callback_query|appr_resume|appr_resume:*
@@ -725,6 +739,7 @@ user_actions|message|show_speakers|
 user_actions|message|show_contacts|
 user_actions|message|my_referral_link|
 user_actions|message|my_referrals|
+user_actions|message|show_faq|
 user_actions|message|ask_organizer_start|
 user_actions|message|cancel_question|state:Question:*
 user_actions|message|process_question|state:Question:*
@@ -743,6 +758,9 @@ user_actions|callback_query|gs_remove_last|gs_remove_last
 user_actions|callback_query|gs_cancel|gs_cancel
 user_actions|callback_query|info_date|info_date
 user_actions|callback_query|info_place|info_place
+user_actions|callback_query|faq_page|faq_list:*
+user_actions|callback_query|faq_open_answer|faq_q:*
+user_actions|callback_query|faq_ask|faq_ask
 """.strip("\n").splitlines()
 
 
@@ -777,7 +795,7 @@ def test_snapshot_total_handler_count_is_292():
     # poll_wizard_cancel = два декоратора) в хвост admin.message, 15 callback (список/карточка
     # admin_polls + мастер admin_poll_wizard) в хвост admin.callback_query; чистый аппенд,
     # перепроверен прогоном _build_snapshot_lines() и diff'ом с прежним 334-строчным снапшотом.
-    assert len(GOLDEN_SNAPSHOT) == 417  # quick 260819: +toggle_preselect_enabled, +coinsman_amount_stale, +toggle_pending_reminder/+toggle_nudge_enabled; quick 260822: +5 settings_list_*, +toggle_game_submit_notify, +toggle_consent_recollect, +consent_renew_accept; опросы 260822: +20 (342 -> 362 после слияния); Phase 15-02: +2 open_dashboard_settings/toggle_dashboard_block (362 -> 364); Phase 19-08: +12 admin_miniapp.py (message: miniapp_accent_step/miniapp_logo_step/miniapp_logo_step_invalid; callback_query: open_miniapp_settings/toggle_miniapp_enabled/toggle_miniapp_staff_only/toggle_miniapp_section/miniapp_edit_accent_start/miniapp_edit_logo_start/miniapp_remove_logo/miniapp_cancel_edit), +1 user_actions.router open_miniapp_button (364 -> 376); Phase 19.1-07: -7 admin_miniapp.py (accent/logo edit flow replaced) +17 admin_miniapp_theme.py (presets + D-04 handles) = net +10 (376 -> 386); Phase 20-01: +1 admin_sections.py show_admin_section (386 -> 387); Phase 21-07 Task 1: +1 admin_moderation.py appr_history (387 -> 388); Phase 21-07 Task 2: +1 admin_settings.py toggle_reg_edit_remoderation (388 -> 389); Phase 21-09 Task 3: +3 handlers/reg_resume.py (registration.router tail: reg_resume_continue/reg_resume_restart/reg_resume_restart_yes, callback_query) (389 -> 392); quick 260902-tzh: +1 admin_moderation.py appr_full, +4 handlers/admin_modcard.py (modcard_open/modcard_toggle/modcard_limit/modcard_noop) (392 -> 397); quick 260902-vth: +3 handlers/admin_sheet_logs.py (sheet_logs_open/sheet_logs_autosync_toggle/sheet_logs_sync_go), встали сразу после show_admin_section (шов импортируется из хвоста admin_sections.py) и перед show_admin_cities (397 -> 400); quick 260904-2cj: +5 handlers/admin_questions.py (message: aq_answer_cancel/aq_answer_step; callback_query: admin_questions/aq_page/aq_answer_start), шов встал сразу после admin_reg_config и перед admin_moderation (400 -> 405); quick 260904-3vm: +1 registration.router reg_handoff_to_bot (callback_query, хвост, после reg_resume_restart_yes) +1 user_actions.router reg_handoff_idle_fallback (message, хвост, после open_miniapp_button) (405 -> 407); quick 260904-dq1: +1 admin_settings.py toggle_quiet_hours (callback_query, сразу после toggle_nudge_enabled) +1 admin_broadcasts.py broadcast_schedule_quiet_choice (callback_query, сразу после broadcast_schedule_start) (407 -> 409); Phase 25: +3 admin_reg_config.py (reg_q_reset_city / reg_q_reset_city_go / reg_resume_mode_toggle) (409 -> 412); Phase 25 (CITYQ-05): +2 admin_reg_config.py (reg_prompt_rst / reg_prompt_rst_go) (412 -> 414); +3 admin_reg_percity.py (reg_help_edit/reg_help_rst/reg_help_rst_go) (414 -> 417)
+    assert len(GOLDEN_SNAPSHOT) == 435  # quick 260819: +toggle_preselect_enabled, +coinsman_amount_stale, +toggle_pending_reminder/+toggle_nudge_enabled; quick 260822: +5 settings_list_*, +toggle_game_submit_notify, +toggle_consent_recollect, +consent_renew_accept; опросы 260822: +20 (342 -> 362 после слияния); Phase 15-02: +2 open_dashboard_settings/toggle_dashboard_block (362 -> 364); Phase 19-08: +12 admin_miniapp.py (message: miniapp_accent_step/miniapp_logo_step/miniapp_logo_step_invalid; callback_query: open_miniapp_settings/toggle_miniapp_enabled/toggle_miniapp_staff_only/toggle_miniapp_section/miniapp_edit_accent_start/miniapp_edit_logo_start/miniapp_remove_logo/miniapp_cancel_edit), +1 user_actions.router open_miniapp_button (364 -> 376); Phase 19.1-07: -7 admin_miniapp.py (accent/logo edit flow replaced) +17 admin_miniapp_theme.py (presets + D-04 handles) = net +10 (376 -> 386); Phase 20-01: +1 admin_sections.py show_admin_section (386 -> 387); Phase 21-07 Task 1: +1 admin_moderation.py appr_history (387 -> 388); Phase 21-07 Task 2: +1 admin_settings.py toggle_reg_edit_remoderation (388 -> 389); Phase 21-09 Task 3: +3 handlers/reg_resume.py (registration.router tail: reg_resume_continue/reg_resume_restart/reg_resume_restart_yes, callback_query) (389 -> 392); quick 260902-tzh: +1 admin_moderation.py appr_full, +4 handlers/admin_modcard.py (modcard_open/modcard_toggle/modcard_limit/modcard_noop) (392 -> 397); quick 260902-vth: +3 handlers/admin_sheet_logs.py (sheet_logs_open/sheet_logs_autosync_toggle/sheet_logs_sync_go), встали сразу после show_admin_section (шов импортируется из хвоста admin_sections.py) и перед show_admin_cities (397 -> 400); quick 260904-2cj: +5 handlers/admin_questions.py (message: aq_answer_cancel/aq_answer_step; callback_query: admin_questions/aq_page/aq_answer_start), шов встал сразу после admin_reg_config и перед admin_moderation (400 -> 405); quick 260904-3vm: +1 registration.router reg_handoff_to_bot (callback_query, хвост, после reg_resume_restart_yes) +1 user_actions.router reg_handoff_idle_fallback (message, хвост, после open_miniapp_button) (405 -> 407); quick 260904-dq1: +1 admin_settings.py toggle_quiet_hours (callback_query, сразу после toggle_nudge_enabled) +1 admin_broadcasts.py broadcast_schedule_quiet_choice (callback_query, сразу после broadcast_schedule_start) (407 -> 409); Phase 25: +3 admin_reg_config.py (reg_q_reset_city / reg_q_reset_city_go / reg_resume_mode_toggle) (409 -> 412); Phase 25 (CITYQ-05): +2 admin_reg_config.py (reg_prompt_rst / reg_prompt_rst_go) (412 -> 414); +3 admin_reg_percity.py (reg_help_edit/reg_help_rst/reg_help_rst_go) (414 -> 417); quick 260906-8uq (FAQ-01..06): +4 user_actions.router (message show_faq; callback_query faq_page/faq_open_answer/faq_ask, хвост роутера, перед ask_organizer_start/после reg_handoff_idle_fallback) + handlers/admin_faq.py (message afaq_text_cancel/afaq_text_step; callback_query admin_faq/afaq_page/afaq_view/afaq_move_up/afaq_move_down/afaq_toggle_enabled/afaq_toggle_city/afaq_delete_confirm/afaq_delete_go/afaq_new_start/afaq_edit_question_start/afaq_edit_answer_start), шов встал сразу после admin_questions (417 -> 435)
 
 
 # ── Task 2(a): Dispatcher feed_update smoke — cross-router first-match routing ─────────────
