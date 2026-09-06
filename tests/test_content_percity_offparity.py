@@ -212,12 +212,15 @@ def test_menu_buttons_unaffected_by_city_overrides(tmp_path):
     # (keyboards/builders.py, Phase 19 D-10); здесь оба гейта в дефолте выключены.
     # menu_faq рисуется только при непустом FAQ (has_faq_for_city, quick 260906-8uq); в
     # свежей БД пунктов FAQ нет.
+    # menu_lang (Phase 27, 27-04) — единственный menu_* с default "off" (не "on"): кнопка не
+    # рисуется, пока менеджер не включит модуль (`delegate_lang_enabled`) И саму кнопку.
     expected_texts = [
-        label for key, label in MENU_BUTTONS if key not in ("menu_miniapp", "menu_faq")
+        label for key, label in MENU_BUTTONS
+        if key not in ("menu_miniapp", "menu_faq", "menu_lang")
     ]
     assert after_texts == expected_texts, (
         "должны быть ВСЕ кнопки меню (дефолт on), кроме «📱 Приложение» и «❓ Частые вопросы» "
-        "— Mini App выключен, FAQ пуст"
+        "— Mini App выключен, FAQ пуст, и кроме «🌐 Язык / Language» — default off"
     )
 
 

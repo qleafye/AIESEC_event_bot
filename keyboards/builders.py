@@ -48,6 +48,14 @@ MENU_BUTTONS = [
     # аутентифицируется). Хендлер `handlers/user_actions.py::open_miniapp_button` отвечает
     # сообщением с inline web_app-кнопкой; там initData полный.
     ("menu_miniapp", "📱 Приложение"),
+    # Phase 27 (27-04, LANG-01): переключатель языка анкеты в главном меню. Default этого
+    # ключа — "off" (единственное исключение из конвенции menu_* default "on", см.
+    # settings_schema.py) И доп. гейт ниже (тот же приём, что у menu_miniapp/menu_faq):
+    # кнопка не появится ни от одного включения по отдельности — нужны оба, менеджер
+    # включает модуль («📝 Анкета» → «Английский язык анкеты») и саму кнопку («🔘 Кнопки
+    # меню»), иначе тап по показанной, но мёртвой кнопке (модуль ещё выключен) был бы
+    # нарушением «бот для людей».
+    ("menu_lang", "🌐 Язык / Language"),
 ]
 
 async def get_main_menu_kb(telegram_id: int | None = None) -> ReplyKeyboardMarkup:
@@ -85,6 +93,15 @@ async def get_main_menu_kb(telegram_id: int | None = None) -> ReplyKeyboardMarku
         logger.error(f"get_main_menu_kb: has_faq_for_city resolve failed for {telegram_id}: {e}")
         faq_on = False
 
+    # Phase 27 (27-04, LANG-01): тот же идиом, что miniapp_on/faq_on выше — одно доп. чтение
+    # ПЕРЕД циклом, не одно на кнопку. Fail-soft: сбой чтения значит «нет кнопки», меню цело.
+    lang_module_on = False
+    try:
+        lang_module_on = await get_setting_typed("delegate_lang_enabled") == "on"
+    except Exception as e:
+        logger.error(f"get_main_menu_kb: delegate_lang_enabled resolve failed: {e}")
+        lang_module_on = False
+
     kb = ReplyKeyboardBuilder()
     for key, text in MENU_BUTTONS:
         # menu_* is a registry `enum` key (options ["on","off"], default "on") -- the enum
@@ -104,6 +121,10 @@ async def get_main_menu_kb(telegram_id: int | None = None) -> ReplyKeyboardMarku
             # своего города) — кнопки нет; появляется сама, как только менеджер завёл первый
             # пункт (has_faq_for_city).
             if key == "menu_faq" and not faq_on:
+                continue
+            # Phase 27 (27-04): вторая половина гейта — сама кнопка value=="on" (проверено
+            # выше общей веткой `if val == "on"`) недостаточна, пока не включён модуль.
+            if key == "menu_lang" and not lang_module_on:
                 continue
             kb.button(text=text)
     # Persistent "upload receipt" entry — only while the user still owes one.

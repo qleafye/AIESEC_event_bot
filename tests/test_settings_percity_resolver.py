@@ -38,6 +38,8 @@ EXPECTED_PER_CITY_KEYS = {
     "menu_referral", "menu_invites", "menu_info", "menu_program", "menu_speakers",
     "menu_contacts", "menu_question", "menu_faq", "menu_coins", "menu_game_tasks",
     "menu_miniapp",
+    # Phase 27 (27-04, LANG-01): переключатель языка анкеты в главном меню.
+    "menu_lang",
     # Phase 21 (D-25): тексты анкеты в Mini App, обращённые к делегату, -- per-city как их
     # соседи из группы «📝 Регистрация» (reg_complete_text/approve_text)
     "reg_form_cta_text", "reg_form_complete_heading_text", "reg_form_complete_body_text",
@@ -113,6 +115,13 @@ def test_menu_keys_match_menu_buttons_literal():
     assert menu_button_keys == registry_menu_keys
 
 
+# Phase 27 (27-04, LANG-01): единственное отступление от конвенции menu_* default "on" —
+# `menu_lang` рождается выключенной, менеджер включает её сам ПОСЛЕ модуля перевода
+# (обоснование — комментарий у ключа в settings_schema.py). Explicit override, а не смена
+# самого инварианта: любой ДРУГОЙ будущий menu_* ключ по-прежнему обязан быть default "on".
+_MENU_DEFAULT_OVERRIDES = {"menu_lang": "off"}
+
+
 def test_menu_keys_are_enum_on_off_default_on_per_city():
     from keyboards.builders import MENU_BUTTONS
 
@@ -120,7 +129,7 @@ def test_menu_keys_are_enum_on_off_default_on_per_city():
         entry = s.SETTINGS_SCHEMA[key]
         assert entry["type"] == "enum", key
         assert entry["options"] == ["on", "off"], key
-        assert entry["default"] == "on", key
+        assert entry["default"] == _MENU_DEFAULT_OVERRIDES.get(key, "on"), key
         assert entry["group"] == "menu", key
         assert entry.get("per_city") is True, key
         assert entry["label"] == label, key
