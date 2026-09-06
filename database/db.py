@@ -198,6 +198,12 @@ async def init_db():
         await _ensure_column(db, "users", "avatar_file_id", "TEXT")
         await _ensure_column(db, "users", "avatar_checked_at", "TEXT")
 
+        # Phase 27 (27-02, LANG-01): выбранный делегатом язык интерфейса. NULL у всех
+        # существующих (1000+ живых) записей — «язык не выбран», resolve_lang() трактует это
+        # как повод спросить (или молча остаться на русском, если модуль выключен). Значение
+        # пишется ТОЛЬКО через set_user_lang ниже — закрытое множество {"ru", "en", None}.
+        await _ensure_column(db, "users", "lang", "TEXT")
+
         await db.execute('''
             CREATE TABLE IF NOT EXISTS bot_settings (
                 key TEXT PRIMARY KEY,
@@ -612,6 +618,56 @@ async def init_db():
         await db.execute(
             "CREATE INDEX IF NOT EXISTS idx_miniapp_outbox_pending "
             "ON miniapp_outbox(processed_at, id)"
+        )
+
+        # Phase 27 (27-02, LANG-02/LANG-03): хранилище переводов. Первичный ключ —
+        # `(lang, src_hash)`, ГДЕ src_hash — sha256 РЕЗУЛЬТАТА резолюции (services/i18n.py::
+        # src_hash), а не ключ реестра bot_settings. Причина: пространство делегатских ключей
+        # трёхосное (динамические `reg_prompt_*`/`reg_help_*` вне реестра, трековые суффиксы
+        # `__party`/`__short`, городские `__city__{code}`, и они композитны), плюс литералы
+        # кода, у которых ключа нет вовсе — а переводится всегда одна реально показанная
+        # строка, у неё один хеш. Побочный эффект желательный: правка русского текста меняет
+        # src_hash → старая английская строка в этой таблице становится недостижимой (новый
+        # хеш её просто не находит) — устаревший перевод физически не может показаться
+        # делегату, без отдельной инвалидации. `manual=1` — правка менеджера (LANG-05);
+        # `upsert_translation` ниже не даёт машинному переводу затереть её. `origin_key` —
+        # метка «откуда пришло» для админского экрана (план 27-06), на идентичность строки
+        # не влияет никак.
+        await db.execute('''
+            CREATE TABLE IF NOT EXISTS translations (
+                lang TEXT NOT NULL,
+                src_hash TEXT NOT NULL,
+                src_text TEXT NOT NULL,
+                text TEXT,
+                manual INTEGER NOT NULL DEFAULT 0,
+                origin_key TEXT,
+                updated_at TEXT,
+                PRIMARY KEY (lang, src_hash)
+            )
+        ''')
+
+        # Phase 27 (27-02, LANG-04): очередь на перевод — форма один в один как у
+        # `miniapp_outbox` выше (тот же паттерн: attempts/last_error, дошлёт после рестарта).
+        # UNIQUE(lang, src_hash) + `INSERT OR IGNORE` в enqueue_translation — дедупликация
+        # массового пресета (`handlers/reg_schema.py::_apply_*_preset` кладёт десятки ключей
+        # одним нажатием) решена в СХЕМЕ, не в коде воркера плана 27-03. Пишут сюда оба
+        # процесса (бот и `miniapp`), в `translations` — только бот (A-04, 27-CONTEXT.md).
+        await db.execute('''
+            CREATE TABLE IF NOT EXISTS translation_queue (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                lang TEXT NOT NULL,
+                src_hash TEXT NOT NULL,
+                src_text TEXT NOT NULL,
+                origin_key TEXT,
+                created_at TEXT NOT NULL,
+                attempts INTEGER NOT NULL DEFAULT 0,
+                last_error TEXT,
+                UNIQUE(lang, src_hash)
+            )
+        ''')
+        await db.execute(
+            "CREATE INDEX IF NOT EXISTS idx_translation_queue_pending "
+            "ON translation_queue(attempts, id)"
         )
 
         # Phase 23 (APP-TINDER-01, D-06): журнал решений по заявкам с окном отмены. Решение по
@@ -4166,3 +4222,193 @@ async def get_poll_results(poll_id: int) -> dict | None:
         "poll": poll, "counts": counts, "respondents": respondents,
         "delivered": delivered, "failed": failed, "source": source,
     }
+
+
+# ── Phase 27 (27-02, LANG-02/03/04/05/08): хранилище переводов ─────────────────────────────
+# Контракт значения `translations.text` (нужен `list_translations` ниже и плану 27-06):
+# NULL — перевод ещё не пришёл («pending»); '' (пустая строка) — движок отработал, но
+# результат отброшен fail-soft'ом плана 27-03 (битая HTML-разметка, потерянный DNT-сентинел —
+# см. 27-CONTEXT.md «Находки замера») («failed»); непустая строка — есть перевод, `manual`
+# отличает ручную правку менеджера («manual») от машинной. `fetch_translations`
+# (единственная точка чтения ядра `services/i18n.py::load_map`) видит только непустые строки —
+# «pending»/«failed» для делегата неотличимы от отсутствия перевода (fail-soft, D-04: делегат
+# всегда видит русский, а не дыру).
+
+async def fetch_translations(lang: str) -> dict[str, str]:
+    """Одна выборка карты `src_hash -> text` для языка — `services/i18n.py::load_map` зовёт
+    это РОВНО один раз на запрос делегата, не N раз на текст (`form_spec()` резолвит ~43 шага,
+    поход в БД на каждый текст удвоил бы чтения на рендер анкеты)."""
+    async with _connect() as db:
+        async with db.execute(
+            "SELECT src_hash, text FROM translations "
+            "WHERE lang = ? AND text IS NOT NULL AND text != ''",
+            (lang,),
+        ) as cursor:
+            rows = await cursor.fetchall()
+    return {row[0]: row[1] for row in rows}
+
+
+async def upsert_translation(
+    lang: str, src_hash: str, src_text: str, text: str | None, *,
+    manual: int = 0, origin_key: str | None = None,
+) -> None:
+    """Пишет строку перевода (машинную — план 27-03, ручную — план 27-06).
+
+    **Ключевое правило (LANG-05, T-27-02-01):** ручная правка менеджера (`manual=1`) машинным
+    переводом затереть НЕЛЬЗЯ. `ON CONFLICT ... WHERE` ниже кодирует это как условие апдейта,
+    а не как проверку в коде: строка обновляется, только если новое значение само ручное
+    (`excluded.manual = 1` — менеджер правит поверх чего угодно, включая свою же прошлую
+    правку) ИЛИ старая строка ещё не ручная (`translations.manual = 0` — машинный перевод
+    вправе перезаписывать только машинный же). Если оба условия ложны (машинная попытка
+    поверх ручной правки), INSERT ... DO UPDATE молча ничего не делает — это и есть защита,
+    не побочный эффект."""
+    updated_at = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    async with _connect() as db:
+        await db.execute(
+            '''
+            INSERT INTO translations (lang, src_hash, src_text, text, manual, origin_key, updated_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
+            ON CONFLICT(lang, src_hash) DO UPDATE SET
+                src_text = excluded.src_text,
+                text = excluded.text,
+                manual = excluded.manual,
+                origin_key = COALESCE(excluded.origin_key, translations.origin_key),
+                updated_at = excluded.updated_at
+            WHERE excluded.manual = 1 OR translations.manual = 0
+            ''',
+            (lang, src_hash, src_text, text, int(manual), origin_key, updated_at),
+        )
+        await db.commit()
+
+
+async def get_translation(lang: str, src_hash: str) -> dict | None:
+    """Одна строка перевода целиком (админский экран правки, план 27-06) — либо `None`,
+    если для этой пары `(lang, src_hash)` ещё ничего не приходило (ни машины, ни менеджера)."""
+    async with _connect() as db:
+        db.row_factory = aiosqlite.Row
+        async with db.execute(
+            "SELECT * FROM translations WHERE lang = ? AND src_hash = ?",
+            (lang, src_hash),
+        ) as cursor:
+            row = await cursor.fetchone()
+            return dict(row) if row else None
+
+
+_TRANSLATION_STATES = (None, "pending", "manual", "failed")
+
+
+async def list_translations(
+    lang: str, *, offset: int = 0, limit: int = 20, state: str | None = None,
+) -> tuple[list[dict], int]:
+    """Срез + общее число для пагинированного экрана правки (план 27-06) — при 265+ строках
+    английского корпуса сообщение-на-строку не годится (CLAUDE.md, «масштаб модерации»).
+
+    `state` (см. контракт `text` в комментарии над этим блоком): `None` — все строки;
+    `"manual"` — правка менеджера; `"pending"` — перевод ещё не пришёл; `"failed"` — движок
+    отработал, но результат отброшен fail-soft'ом."""
+    if state not in _TRANSLATION_STATES:
+        raise ValueError(f"unknown translations state: {state!r}")
+    where = "WHERE lang = ?"
+    params: list = [lang]
+    if state == "manual":
+        where += " AND manual = 1"
+    elif state == "pending":
+        where += " AND text IS NULL"
+    elif state == "failed":
+        where += " AND text = ''"
+    async with _connect() as db:
+        db.row_factory = aiosqlite.Row
+        async with db.execute(f"SELECT COUNT(*) AS n FROM translations {where}", params) as cursor:
+            total_row = await cursor.fetchone()
+            total = int(total_row["n"]) if total_row else 0
+        async with db.execute(
+            f"SELECT * FROM translations {where} ORDER BY updated_at DESC, src_hash LIMIT ? OFFSET ?",
+            params + [int(limit), int(offset)],
+        ) as cursor:
+            rows = [dict(row) for row in await cursor.fetchall()]
+    return rows, total
+
+
+async def enqueue_translation(
+    lang: str, src_hash: str, src_text: str,
+    origin_key: str | None = None, created_at: str | None = None,
+) -> int | None:
+    """Кладёт строку в очередь на перевод (план 27-03 — фон при сохранении настройки,
+    план 27-01 — bulk-seed). `INSERT OR IGNORE` — дедупликация массового пресета
+    (`handlers/reg_schema.py::_apply_*_preset` кладёт десятки ключей одним нажатием) решена в
+    СХЕМЕ через `UNIQUE(lang, src_hash)` (T-27-02-02), не в коде воркера. Возвращает
+    `lastrowid` новой строки или `None`, если строка с этим `(lang, src_hash)` уже стоит
+    в очереди."""
+    ts = created_at or datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    async with _connect() as db:
+        cursor = await db.execute(
+            "INSERT OR IGNORE INTO translation_queue (lang, src_hash, src_text, origin_key, created_at) "
+            "VALUES (?, ?, ?, ?, ?)",
+            (lang, src_hash, src_text, origin_key, ts),
+        )
+        await db.commit()
+        return cursor.lastrowid if cursor.rowcount else None
+
+
+async def list_pending_translations(
+    lang: str, *, limit: int = 32, max_attempts: int = 5,
+) -> list[dict]:
+    """Строки очереди, ещё не сдавшиеся (`attempts < max_attempts`), в порядке `attempts, id`
+    — сначала непопробованные/меньше пытавшиеся. Безнадёжные строки (`attempts >=
+    max_attempts`) исключены из выборки (T-27-02-02): одна битая строка в массовом пресете не
+    забивает джобу воркера навсегда, а просто перестаёт в неё попадать."""
+    async with _connect() as db:
+        db.row_factory = aiosqlite.Row
+        async with db.execute(
+            "SELECT * FROM translation_queue WHERE lang = ? AND attempts < ? "
+            "ORDER BY attempts, id LIMIT ?",
+            (lang, int(max_attempts), int(limit)),
+        ) as cursor:
+            rows = [dict(row) for row in await cursor.fetchall()]
+    return rows
+
+
+async def drop_translation_queue(ids: list[int]) -> int:
+    """Удаляет обработанные строки очереди по `id` (воркер плана 27-03 после успешного
+    перевода). Пустой список — no-op без похода в БД. Возвращает число реально удалённых
+    строк (может быть меньше `len(ids)`, если строка уже исчезла — второй писатель очереди,
+    `miniapp`, теоретически мог её тоже тронуть)."""
+    id_list = [int(i) for i in ids]
+    if not id_list:
+        return 0
+    placeholders = ",".join("?" for _ in id_list)
+    async with _connect() as db:
+        cursor = await db.execute(
+            f"DELETE FROM translation_queue WHERE id IN ({placeholders})", tuple(id_list),
+        )
+        await db.commit()
+        return cursor.rowcount
+
+
+async def bump_translation_attempt(row_id: int, error: str | None = None) -> None:
+    """Неудачная попытка перевода строки очереди: `attempts + 1`, текст ошибки усечён до 500
+    символов — тот же паттерн, что `mark_miniapp_outbox_failed` выше. Строка остаётся в
+    очереди; `list_pending_translations` перестаёт её отдавать сама, как только `attempts`
+    достигнет `max_attempts` вызывающего."""
+    async with _connect() as db:
+        await db.execute(
+            "UPDATE translation_queue SET attempts = attempts + 1, last_error = ? WHERE id = ?",
+            (error[:500] if error else None, row_id),
+        )
+        await db.commit()
+
+
+_ALLOWED_USER_LANGS = frozenset({"ru", "en"})
+
+
+async def set_user_lang(telegram_id: int, lang: str | None) -> None:
+    """Пишет `users.lang`. Допустимые значения — закрытое множество `{"ru", "en", None}`
+    (T-27-02-04): кодовые значения приходят из наших же кнопок (план 27-04/27-05), чужого
+    сюда попасть не должно. Мусор не пишется и логируется, а не бросает исключение —
+    вызывающий обработчик тапа не обязан ловить `ValueError` на каждое нажатие."""
+    if lang is not None and lang not in _ALLOWED_USER_LANGS:
+        logger.error(f"set_user_lang: недопустимое значение {lang!r} для {telegram_id}, игнорирую")
+        return
+    async with _connect() as db:
+        await db.execute("UPDATE users SET lang = ? WHERE telegram_id = ?", (lang, telegram_id))
+        await db.commit()
