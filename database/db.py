@@ -1654,10 +1654,19 @@ async def record_answer_history(
     telegram_id: int, changes: list[dict], source: str, season: str | None = None
 ) -> None:
     """Append one edit-trail row (`changes`: list of {"column","old","new"}). No-op on an
-    empty `changes` list — a diff with nothing in it is not an edit worth remembering."""
+    empty `changes` list — a diff with nothing in it is not an edit worth remembering.
+
+    Quick 260906-52m: `changed_at` хранится в UTC (`datetime.utcnow()`), формат строки
+    `"%Y-%m-%d %H:%M:%S"` НЕ менялся — его разбирают и `services/questions.py::_parse_stamp`,
+    и `services/applications.py::format_edited_date`. Показ переводит метку в МСК на всех трёх
+    экранах (`services/sheet_logs.py`, `services/applications.py::_history_entry`,
+    `handlers/admin_moderation.py::appr_history`). Соседняя `mark_user_edited` (`edited_at`)
+    ОСТАЁТСЯ на `datetime.now()` (локальное время контейнера) — это разные поля с разной
+    историей, синхронный перевод обеих не входит в этот квик. Старые строки, записанные до
+    этой правки локальным временем, не мигрированы — граница по времени внедрения, не по коду."""
     if not changes:
         return
-    changed_at = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    changed_at = datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S")
     async with _connect() as db:
         await db.execute(
             "INSERT INTO reg_answer_history (telegram_id, changed_at, source, season, changes) "

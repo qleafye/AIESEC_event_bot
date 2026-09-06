@@ -124,6 +124,24 @@ def test_record_and_get_answer_history_newest_first(tmp_path):
     assert rows[0]["changes"][0]["column"] == "phone"
 
 
+# Quick 260906-52m: changed_at пишется UTC, не локальным временем контейнера — сторож против
+# возврата расхождения листов «История правок»/«Вопросы» одной таблицы.
+def test_record_answer_history_changed_at_is_utc(tmp_path):
+    _ready(tmp_path)
+
+    async def go():
+        await _seed_user()
+        await db.record_answer_history(
+            USER_ID, [{"column": "phone", "old": "1", "new": "2"}], source="bot", season="2026",
+        )
+        rows = await db.get_answer_history(USER_ID, limit=1)
+        return rows[0]["changed_at"]
+
+    changed_at = asyncio.run(go())
+    stamp = datetime.strptime(changed_at, "%Y-%m-%d %H:%M:%S")
+    assert abs((datetime.utcnow() - stamp).total_seconds()) < 60
+
+
 def test_record_answer_history_empty_changes_no_row(tmp_path):
     _ready(tmp_path)
 
@@ -354,3 +372,28 @@ def test_toggle_flips_on_and_back_off(tmp_path):
     after_first, after_second = asyncio.run(go())
     assert after_first == "on"
     assert after_second == "off"
+
+
+# ── Quick 260906-52m: format_edited_date(stored_utc=...) — новый keyword-only флаг ───────────
+# reg_answer_history.changed_at пишется UTC (record_answer_history), а edited_at/approved_at/
+# registration_date — локальным временем контейнера; format_edited_date default остаётся
+# байт-в-байт прежним для трёх из четырёх вызывающих (Rule: T-52m-02 accept).
+
+def test_format_edited_date_stored_utc_true_shifts_plus_3h():
+    from services.applications import format_edited_date
+    assert format_edited_date("2026-09-04 07:00:00", stored_utc=True) == "04.09 10:00"
+
+
+def test_format_edited_date_default_does_not_shift():
+    from services.applications import format_edited_date
+    assert format_edited_date("2026-09-04 07:00:00") == "04.09 07:00"
+
+
+def test_format_edited_date_stored_utc_true_empty_is_fail_soft():
+    from services.applications import format_edited_date
+    assert format_edited_date(None, stored_utc=True) == ""
+
+
+def test_format_edited_date_stored_utc_true_unparsed_is_fail_soft():
+    from services.applications import format_edited_date
+    assert format_edited_date("не дата", stored_utc=True) == "не дата"

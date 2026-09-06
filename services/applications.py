@@ -55,6 +55,7 @@ from database.db import (
 )
 from reg_engine import STEP_TO_COLUMN, label_for
 from services.consent import consent_card_line
+from services.timeutil import utc_naive_to_msk
 from settings_schema import get_setting_typed
 
 # Phase 21 (21-07, D-14): edited_source — служебный литерал ('bot'|'miniapp', см.
@@ -94,15 +95,35 @@ TRACK_FILTERS: dict[str, tuple[str, ...]] = {
 UNDO_WINDOW_SECONDS = 5
 
 
-def format_edited_date(raw: str | None) -> str:
+def format_edited_date(raw: str | None, *, stored_utc: bool = False) -> str:
     """'2026-09-03 14:12:00' -> '03.09 14:12' (формат подстановки {date} в reg_edited_admin_label).
-    Нераспознанный формат — печатаем как есть, а не роняем карточку заявки."""
+    Нераспознанный формат — печатаем как есть, а не роняем карточку заявки.
+
+    Quick 260906-52m: `stored_utc` — какое время лежит в поле, которое сюда передали.
+
+        Поле                    | Пишется          | stored_utc
+        -------------------------|------------------|------------
+        edited_at                | datetime.now()   | False (по умолчанию)
+        registration_date        | datetime.now()   | False (по умолчанию)
+        approved_at              | datetime.now()   | False (по умолчанию)
+        reg_answer_history.changed_at | datetime.utcnow() | True
+
+    По умолчанию `False` — три из четырёх вызывающих (`edit_badges_for` для `edited_at`,
+    `miniapp/routers/profile.py` для `registration_date` и `approved_at`) обязаны остаться
+    байт-в-байт прежними: эти поля пишутся локальным временем контейнера, сдвигать их в МСК
+    было бы новым багом, а не фиксом. `stored_utc=True` используют только вызывающие
+    `changed_at` (`_history_entry` здесь и `appr_history` в `handlers/admin_moderation.py`) —
+    им поле приходит в UTC. Ветки «пусто» и «не разобралось» флаг не трогает — fail-soft
+    остаётся как был."""
     if not raw:
         return ""
     try:
-        return datetime.strptime(str(raw), "%Y-%m-%d %H:%M:%S").strftime("%d.%m %H:%M")
+        stamp = datetime.strptime(str(raw), "%Y-%m-%d %H:%M:%S")
     except ValueError:
         return str(raw)
+    if stored_utc:
+        stamp = utc_naive_to_msk(stamp)
+    return stamp.strftime("%d.%m %H:%M")
 
 
 async def edit_badges_for(user: dict) -> tuple[str | None, str | None, bool]:
@@ -193,7 +214,7 @@ def _history_entry(row: dict) -> dict | None:
     if not changes:
         return None
     return {
-        "when": format_edited_date(row.get("changed_at")),
+        "when": format_edited_date(row.get("changed_at"), stored_utc=True),
         "source_label": EDITED_SOURCE_LABELS.get(row.get("source"), row.get("source") or ""),
         "changes": changes,
     }

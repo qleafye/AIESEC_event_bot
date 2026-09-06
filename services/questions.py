@@ -104,21 +104,27 @@ def format_stamp(raw: str | None, *, stored_utc: bool = True) -> str:
     Quick 260904-kk6 (Q1): `stored_utc=True` (по умолчанию) переводит разобранную метку в
     МСК (`utc_naive_to_msk`) ПЕРЕД `strftime` — до этой правки метка печаталась как есть, и
     менеджер читал время вопроса в UTC вместо московского. Что реально пишется в БД (факт из
-    `database/db.py`, а не догадка):
+    `database/db.py`, а не догадка, обновлено квиком 260906-52m):
 
-        UTC (`datetime.utcnow().isoformat()`)         -> stored_utc=True (по умолчанию):
-            delegate_questions.asked_at      (create_question)
-            delegate_questions.answered_at   (claim_question)
-            delegate_questions.delivered_at  (set_question_answer)
+        UTC (`datetime.utcnow().isoformat()` / `.strftime(...)`)  -> stored_utc=True (по умолчанию):
+            delegate_questions.asked_at        (create_question)
+            delegate_questions.answered_at     (claim_question)
+            delegate_questions.delivered_at    (set_question_answer)
+            reg_answer_history.changed_at      (record_answer_history, квик 260906-52m)
 
-        НЕ UTC (`datetime.now().strftime(...)`)        -> stored_utc=False, единственный вызов:
-            reg_answer_history.changed_at    (record_answer_history)
+        НЕ UTC (`datetime.now().strftime(...)`)   -> stored_utc=False:
+            (вызывающих у этого режима больше нет — режим сохранён для меток, которые ещё
+            пишутся локальным временем контейнера и печатаются другой функцией,
+            `services/applications.py::format_edited_date`: edited_at, approved_at,
+            registration_date)
 
-    На проде (Dockerfile без `ENV TZ`, контейнер живёт на UTC) `datetime.now()` и
-    `datetime.utcnow()` совпадают — то есть «История правок» на проде ТОЖЕ отстаёт от
-    московского времени на 3 часа. Это отдельный долг (перевести `record_answer_history` на
-    `utcnow()`, отдельный тикет): здесь мы только не ломаем существующее поведение листа —
-    `stored_utc=False` печатает метку как раньше, без сдвига."""
+    Долг «`reg_answer_history.changed_at` пишется локальным временем» закрыт квиком
+    260906-52m: `record_answer_history` переведена на `datetime.utcnow()`, все три точки
+    показа (`services/sheet_logs.py`, `services/applications.py::_history_entry`,
+    `handlers/admin_moderation.py::appr_history`) переключены на сдвиг в МСК. Остаток —
+    семья `edited_at`/`approved_at`/`registration_date` — по-прежнему пишется
+    `datetime.now()` и на проде отстаёт от московского времени на 3 часа; это отдельный
+    долг, см. `.planning/backlog.md`."""
     if not raw:
         return ""
     stamp = _parse_stamp(raw)
