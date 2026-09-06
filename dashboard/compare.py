@@ -39,6 +39,14 @@ CACHE_TTL_SECONDS = 60
 # протухать по времени, только по числу вызовов, см. RESEARCH «Alternatives Considered»).
 _CACHE: dict[tuple, tuple[float, dict]] = {}
 
+# Orchestrator-ревью плана 26.1-01 (T-26.1-02, находка 1): ключ кэша собирается из СЫРЫХ
+# значений `seasons` до их валидации внутри цикла по событиям (`valid_seasons` там же) —
+# `?seasons=<код>:<мусор-1>`, `?seasons=<код>:<мусор-2>`, ... каждый раз даёт новый ключ и
+# растит `_CACHE` без предела. Поведение кэша иначе не меняется: просто на КАЖДЫЙ промах
+# сначала выкидываются протухшие по TTL записи, а если после этого записей всё ещё больше
+# потолка — старейшие по времени постройки (не по времени последнего обращения: кэш не LRU).
+_CACHE_MAX_ENTRIES = 64
+
 # Каноничный порядок ступеней воронки — тот же, что в `queries.funnel()`. "Оплатили" —
 # единственная ступень, которой может не быть у события (тумблер `payment_enabled`);
 # остальные пять `queries.funnel()` отдаёт всегда.
@@ -61,6 +69,20 @@ def reset_cache() -> None:
     сброса из админки (план не заводит для этого маршрут — при необходимости добавляется
     отдельно)."""
     _CACHE.clear()
+
+
+def _prune_cache(now_ts: float) -> None:
+    """Вызывается на КАЖДЫЙ промах кэша, до вставки новой записи. Сначала — все протухшие по
+    TTL (дёшево и достаточно почти всегда), затем, если записей всё ещё `>= _CACHE_MAX_ENTRIES`
+    — старейшие по времени постройки, пока не освободится место под новую запись."""
+    expired = [key for key, (built_at, _ctx) in _CACHE.items() if now_ts - built_at >= CACHE_TTL_SECONDS]
+    for key in expired:
+        del _CACHE[key]
+    if len(_CACHE) >= _CACHE_MAX_ENTRIES:
+        oldest_first = sorted(_CACHE.items(), key=lambda item: item[1][0])
+        overflow = len(_CACHE) - _CACHE_MAX_ENTRIES + 1
+        for key, _ in oldest_first[:overflow]:
+            del _CACHE[key]
 
 
 # ── маленькие read-only помощники (дублируют `dashboard.main._read_setting` НАРОЧНО — тот
@@ -300,6 +322,8 @@ def build_compare_context(cfg, *, codes=None, axis="day_n", seasons=None, now=No
         cached_at, cached_ctx = cached
         if now.timestamp() - cached_at < CACHE_TTL_SECONDS:
             return cached_ctx
+
+    _prune_cache(now.timestamp())
 
     event_ctxs: list[dict] = []
     unavailable: list[dict] = []

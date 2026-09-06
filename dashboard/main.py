@@ -37,10 +37,17 @@ import web_theme
 from dashboard import queries
 from dashboard.access import has_stats, staff_city, viewer_scope
 from dashboard.auth import session_middleware_kwargs, verify_login_payload
+from dashboard.cf_access import require_superadmin_email
+from dashboard.compare import build_compare_context
 from dashboard.config import DashboardConfig, load_config
 from dashboard.db import read_conn
 from dashboard.files import FILE_ID_RE, fetch_theme_asset, is_theme_asset
 from dashboard.notify import notify_access_request
+from dashboard.registry import multi_mode
+
+# Ось динамики /compare — белый список (T-26.1-02-08: query не должен попадать в контекст
+# непроверенным значением дальше "day_n"/"calendar").
+_COMPARE_AXES = ("day_n", "calendar")
 
 # D-14: разрезы (сверх городов/тарифа, у которых своя логика показа) — фиксированный порядок
 # страницы (источник, вуз, курс, направление, трек), связь колонки/тумблера/подписи. `None`
@@ -375,12 +382,83 @@ def _build_asgi_app(cfg: DashboardConfig) -> FastAPI:
         request.session.clear()
         return RedirectResponse(url="/login", status_code=302)
 
+    @app.get("/compare", response_class=HTMLResponse)
+    def compare_page(
+        request: Request,
+        events: Optional[str] = None,
+        axis: str = "day_n",
+        seasons: Optional[str] = None,
+    ):
+        # Phase 26.1-02 (SD-08): на стеке одного события экрана нет вовсе — не редирект на
+        # `/` (тот не намекает, что где-то есть сводка), а честный 404.
+        if not multi_mode(cfg.events):
+            raise HTTPException(404)
+
+        # Периметр — ТОЛЬКО подписанный токен Access + список e-mail (owner_decision_260906):
+        # сессия Telegram, has_stats, resolve_capabilities, notify_access_request здесь не
+        # участвуют вовсе.
+        email, reason = require_superadmin_email(request, cfg)
+        if reason != "ok":
+            logger.warning("супердашборд: отказ в допуске к /compare (%s)", reason)
+            return templates.TemplateResponse(
+                request,
+                "no_access.html",
+                {"super_only": True},
+                status_code=403,
+            )
+
+        known_codes = {event.code for event in cfg.events}
+
+        selected_codes = None
+        if events:
+            requested = [code.strip() for code in events.split(",") if code.strip()]
+            filtered = [code for code in requested if code in known_codes]
+            if len(filtered) >= 2:
+                selected_codes = filtered
+            # < 2 известных кодов после фильтра — берутся все события реестра (selected_codes
+            # остаётся None, build_compare_context(codes=None) сам берёт cfg.events).
+
+        if axis not in _COMPARE_AXES:
+            axis = "day_n"
+
+        selected_seasons: dict[str, str] = {}
+        if seasons:
+            for pair in seasons.split(","):
+                pair = pair.strip()
+                if not pair or ":" not in pair:
+                    continue
+                code, _, season_value = pair.partition(":")
+                code = code.strip()
+                season_value = season_value.strip()
+                # Сам сезон здесь НЕ валидируется (build_compare_context откатывается к
+                # текущему сезону события при мусоре) — только код должен быть известным.
+                if code in known_codes and season_value:
+                    selected_seasons[code] = season_value
+
+        context = build_compare_context(cfg, codes=selected_codes, axis=axis, seasons=selected_seasons)
+        # `context` может быть тем же объектом из TTL-кэша (compare.py: «считать
+        # неизменяемым») — не мутировать его, собрать новый словарь для шаблона.
+        page_context = {
+            **context,
+            "viewer_email": email,
+            "axis": axis,
+            "selected_codes": [e["code"] for e in context["events"]],
+            "selected_seasons": selected_seasons,
+        }
+        return templates.TemplateResponse(request, "compare.html", page_context)
+
     @app.get("/", response_class=HTMLResponse)
     def dashboard_page(
         request: Request,
         city: Optional[str] = None,
         season: Optional[str] = None,
     ):
+        # Phase 26.1-02 (SD-08): на хосте супердашборда Telegram-вход не работает и не должен
+        # (домен за ботом не закреплён) — показывать заведомо нерабочий /login хуже, чем
+        # редирект на /compare. Одиночный реестр (multi_mode ложно) этот маршрут НЕ трогает.
+        if multi_mode(cfg.events):
+            return RedirectResponse(url="/compare", status_code=302)
+
         telegram_id = request.session.get("telegram_id")
         if telegram_id is None:
             return RedirectResponse(url="/login", status_code=302)
