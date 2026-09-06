@@ -1,9 +1,60 @@
 {% extends "base.html" %}
 {% block title %}Сводная статистика{% endblock %}
+
+{%- macro compare_url(events=None, axis=None, seasons=None) -%}
+{%- set parts = [] -%}
+{%- if events %}{% set _ = parts.append('events=' ~ (events | join(','))) %}{% endif -%}
+{%- if axis %}{% set _ = parts.append('axis=' ~ axis) %}{% endif -%}
+{%- if seasons %}
+  {%- set season_pairs = [] -%}
+  {%- for pcode, pval in seasons.items() %}{% set _ = season_pairs.append(pcode ~ ':' ~ pval) %}{% endfor -%}
+  {%- if season_pairs %}{% set _ = parts.append('seasons=' ~ (season_pairs | join(','))) %}{% endif -%}
+{%- endif -%}
+{{- '?' ~ (parts | join('&')) if parts else '/compare' -}}
+{%- endmacro -%}
+
 {% block body %}
+
   <header class="site-header">
-    <h1>Сводная статистика</h1>
-    <div class="viewer-email">Вы вошли как {{ viewer_email }}</div>
+    <div class="brand-row">
+      <a class="brand" href="/compare" aria-label="АЙСЕК — сводная статистика">
+        <img class="brand-light" src="/static/brand/aisek-logo-ru.png" alt="АЙСЕК">
+        <img class="brand-dark" src="/static/brand/aiesec-logo-white.svg" alt="" aria-hidden="true">
+      </a>
+      <div class="title-block">
+        <h1>Сводная статистика</h1>
+        <div class="subtitle">
+          {{ events | length }} {{ "события" if events | length in (2, 3, 4) else "событий" }} рядом
+        </div>
+      </div>
+      <div class="viewer-email">Вы вошли как {{ viewer_email }}</div>
+    </div>
+
+    {# Ряд «фишек» событий — имя с точкой акцентного цвета. Переключение подмножества доступно,
+       только когда сейчас показаны БОЛЬШЕ двух событий: исключённые события route не отдаёт
+       вовсе (build_compare_context фильтрует ДО сборки контекста), вернуть их без справочника
+       имён нечем — единственный самообслуживаемый путь назад — «Показать все события» ниже. #}
+    <nav class="switchers event-chips" aria-label="События в сравнении">
+      {% for e in events %}
+      <span class="event-chip">
+        <span class="series-dot" aria-hidden="true" style="--series-color: {{ e.accent or 'var(--chart-1)' }}"></span>
+        {% if events | length > 2 %}
+        {% set remaining = events | rejectattr('code', 'equalto', e.code) | map(attribute='code') | list %}
+        <a class="switch-link" href="{{ compare_url(events=remaining, axis=axis, seasons=selected_seasons) }}"
+           title="Убрать {{ e.name }} из сравнения">{{ e.name }}</a>
+        {% else %}
+        <span>{{ e.name }}</span>
+        {% endif %}
+      </span>
+      {% endfor %}
+      {% if selected_codes or events | length > 2 %}
+      <a class="switch-link" href="{{ compare_url(axis=axis) }}">Показать все события</a>
+      {% endif %}
+    </nav>
+
+    <div class="updated-note">
+      Данные на момент открытия страницы. Обновляется не чаще раза в минуту (сборка {{ generated_at }}).
+    </div>
   </header>
 
   {% if unavailable %}
@@ -14,14 +65,129 @@
   </div>
   {% endif %}
 
+  {# Сводная таблица KPI (строка = событие) #}
   <section class="block">
-    <h2 class="block-title">События</h2>
-    <ul>
-      {% for e in events %}
-      <li>{{ e.name }} — {% if e.available %}{{ e.kpi.total | thousands }} заявок{% else %}недоступно{% endif %}</li>
-      {% endfor %}
-    </ul>
+    <h2 class="block-title">Событие рядом</h2>
+    <div class="card">
+      <div class="table-wrap">
+        <table class="responsive compare-table">
+          <thead>
+            <tr>
+              <th>Событие</th>
+              <th class="num">Заявок</th>
+              <th class="num">Одобрено</th>
+              <th class="num">Конверсия старт → заявка</th>
+              <th class="num">За 7 дней (Δ)</th>
+              <th>Дата события</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for e in events %}
+            <tr>
+              <td data-label="Событие">
+                <span class="series-dot" aria-hidden="true" style="--series-color: {{ e.accent or 'var(--chart-1)' }}"></span>
+                {{ e.name }}
+                {% if not e.available %}
+                <span class="cell-empty" title="{{ e.error }}">— недоступно</span>
+                {% elif e.season_options | length > 1 %}
+                <nav class="switchers season-switch" aria-label="Сезон {{ e.name }}">
+                  {% for season in e.season_options %}
+                  {% set new_seasons = selected_seasons.copy() %}
+                  {% set _ = new_seasons.update({e.code: season.value}) %}
+                  <a class="switch-link{% if season.value == e.season %} active{% endif %}"
+                     {% if season.value == e.season %}aria-current="page"{% endif %}
+                     href="{{ compare_url(events=selected_codes, axis=axis, seasons=new_seasons) }}">{{ season.label }}</a>
+                  {% endfor %}
+                </nav>
+                {% elif e.season %}
+                <div class="subtitle">Сезон {{ e.season }}</div>
+                {% endif %}
+              </td>
+              {% if not e.available %}
+              <td class="num" data-label="Заявок"><span class="cell-empty">—</span></td>
+              <td class="num" data-label="Одобрено"><span class="cell-empty">—</span></td>
+              <td class="num" data-label="Конверсия старт → заявка"><span class="cell-empty">—</span></td>
+              <td class="num" data-label="За 7 дней (Δ)"><span class="cell-empty">—</span></td>
+              <td data-label="Дата события"><span class="cell-empty">—</span></td>
+              {% else %}
+              <td class="num" data-label="Заявок">{{ e.kpi.total | thousands }}</td>
+              <td class="num" data-label="Одобрено">{{ e.approved | thousands }}</td>
+              <td class="num" data-label="Конверсия старт → заявка">
+                {% if e.kpi.conversion is none %}
+                <span class="cell-empty" title="Появится, когда бот начнёт отслеживать входы">—</span>
+                {% else %}{{ e.kpi.conversion }}%{% endif %}
+              </td>
+              <td class="num" data-label="За 7 дней (Δ)">
+                {{ e.kpi.week | thousands }}
+                {% if e.kpi.week_delta > 0 %}
+                <span class="delta up"><span aria-hidden="true">▲</span> <span class="visually-hidden">рост на</span>{{ e.kpi.week_delta | thousands }}</span>
+                {% elif e.kpi.week_delta < 0 %}
+                <span class="delta down"><span aria-hidden="true">▼</span> <span class="visually-hidden">снижение на</span>{{ (-e.kpi.week_delta) | thousands }}</span>
+                {% else %}
+                <span class="delta">без изменений</span>
+                {% endif %}
+              </td>
+              <td data-label="Дата события">
+                {{ e.event_date or "—" }}
+                {% if e.days_to_event is not none %}
+                <div class="subtitle">через {{ e.days_to_event }} дней</div>
+                {% endif %}
+              </td>
+              {% endif %}
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+      <p class="empty-note">Обратный отсчёт появляется только когда дата события задана календарём — сейчас это свободный текст в настройках мероприятия.</p>
+    </div>
   </section>
 
-  {# Задачи 3-4 плана 26.1-02: сводная таблица KPI, воронки рядом, динамика, разрезы. #}
+  {# Воронки рядом (строка = ступень, столбец = событие) #}
+  <section class="block">
+    <h2 class="block-title">Воронка рядом</h2>
+    <div class="card">
+      {% if funnel_labels %}
+      <div class="table-wrap">
+        <table class="responsive compare-table">
+          <thead>
+            <tr>
+              <th>Ступень</th>
+              {% for e in events %}
+              <th class="num"{% if not e.available %} title="{{ e.error }}"{% endif %}>
+                <span class="series-dot" aria-hidden="true" style="--series-color: {{ e.accent or 'var(--chart-1)' }}"></span>
+                {{ e.name }}{% if not e.available %} (недоступно){% endif %}
+              </th>
+              {% endfor %}
+            </tr>
+          </thead>
+          <tbody>
+            {% for row in funnel_table %}
+            <tr>
+              <td data-label="Ступень">{{ row.label }}</td>
+              {% for e in events %}
+              {% if not e.available %}
+              <td class="num" data-label="{{ e.name }}"><span class="cell-empty" title="{{ e.error }}">—</span></td>
+              {% else %}
+              {% set cell = row.cells.get(e.code) %}
+              {% if cell is none %}
+              <td class="num" data-label="{{ e.name }}"><span class="cell-empty" title="{{ row.reason or 'у этого события этот шаг не отслеживается' }}">—</span></td>
+              {% else %}
+              <td class="num" data-label="{{ e.name }}">{{ cell.count | thousands }} <span class="subtitle">{{ cell.pct }}%</span></td>
+              {% endif %}
+              {% endif %}
+              {% endfor %}
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+      {% else %}
+      <p class="empty-note">Появится, когда хотя бы у одного события есть данные воронки.</p>
+      {% endif %}
+    </div>
+  </section>
+
+  {# Задача 4 плана 26.1-02: динамика несколькими сериями и разрезы. #}
+
 {% endblock %}

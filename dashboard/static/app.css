@@ -641,6 +641,55 @@ tr:last-child td { border-bottom: none; }
 
 .site-footer img { height: 18px; width: auto; display: block; }
 
+/* ── Compare screen (Phase 26.1-02, супердашборд) ─────────────────────────────────────
+   Цвет серии события — акцент его собственного пресета (--series-color), а не палитра
+   графика: приходит инлайном из Jinja (`style="--series-color: {{ e.accent }}"`), запасной
+   вариант — --chart-1, если у события ещё нет акцента. Второго компонента для точки серии
+   не заводим — тот же класс переиспользуется и в таблицах, и в шапке (--series-color). */
+
+.viewer-email {
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: .08em;
+  line-height: 1.3;
+  color: var(--text-muted);
+  white-space: nowrap;
+}
+
+.event-chips { margin-top: var(--sp-4); }
+
+.event-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--sp-1);
+}
+
+.series-dot {
+  display: inline-block;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: var(--series-color, var(--chart-1));
+  flex: 0 0 auto;
+}
+
+.compare-note {
+  border-left: 3px solid var(--warn);
+  margin-bottom: var(--gap);
+}
+
+.compare-note p { margin: 0 0 var(--sp-1); color: var(--text-muted); }
+.compare-note p:last-child { margin-bottom: 0; }
+
+/* Первая колонка (имя события) не должна ломаться на узком экране — .table-wrap уже даёт
+   горизонтальную прокрутку, здесь только минимальная ширина, чтобы название/сезон не сжимались. */
+.compare-table th:first-child,
+.compare-table td:first-child { min-width: 180px; }
+
+.compare-table .season-switch { margin-top: var(--sp-2); }
+
+.cell-empty { color: var(--text-muted); }
+
 /* ── Reduced motion ─────────────────────────────────────────────────────────────────── */
 
 @media (prefers-reduced-motion: reduce) {
