@@ -787,6 +787,12 @@ from handlers import admin_reg_percity  # noqa: E402
 from handlers import admin_questions  # noqa: E402
 
 
+# Quick 260906-8uq (FAQ-01..06): shared-router seam import for the manager FAQ screen
+# («❓ Частые вопросы») — registers admin_faq/afaq_*/FaqItem.* right after the questions
+# journal seam (golden snapshot: a clean insertion, no reorder of admin_questions handlers).
+from handlers import admin_faq  # noqa: E402
+
+
 # Phase 13 (13-06, REFAC-01): shared-router seam import for the moderation seam, inserted AT
 # THE BLOCK'S ORIGINAL POSITION -- appr_*/rcpt_* sat immediately after reg-question config and
 # before the guide+roles seam in original top-to-bottom order. Also re-wires
