@@ -476,8 +476,10 @@ async def process_consent_accept(callback: types.CallbackQuery, state: FSMContex
 @router.message(Registration.consent_pending)
 async def process_consent_ignore(message: types.Message):
     # SC#2: consent cannot be skipped via text — only the consent button advances.
-    # Phase 27 (27-05): НЕ переводим — цитирует РУССКУЮ подпись кнопки согласия (LANG-09:
-    # экран/текст согласия не переводится), перевод одной половины предложения дал бы смесь
-    # языков, которая только запутает делегата.
+    # Quick 260906 (UAT-фикс 27-05): btn_text (LANG-09, группа "consent") остаётся русским
+    # всегда — переводим ТОЛЬКО обёртку вокруг него, через шаблон с {btn} в ярусе A
+    # (i18n_ui_en.UI_EN), не машинным переводом всей склеенной строки (btn_text — переменная
+    # настройка, статичный словарь не смог бы её матчить целиком).
     btn_text = await get_setting("consent_button_text") or "Согласен(-на)"
-    await message.answer(f"Нажми кнопку «{btn_text}» для продолжения.")
+    template = await reg_i18n.tr_for(message, "Нажми кнопку «{btn}» для продолжения.")
+    await message.answer(template.format(btn=btn_text))
