@@ -64,13 +64,33 @@ class EmbeddedArgosDriver(TranslationDriver):
         if self._unavailable or self._ready:
             return
         try:
-            os.environ.setdefault(
+            packages_dir = os.environ.setdefault(
                 "ARGOS_PACKAGES_DIR", os.path.join("data", "argos"),
             )
-            import argostranslate.package  # noqa: F401 — регистрирует установленные пакеты
+            import argostranslate.package
             import argostranslate.translate
 
             self._translate = argostranslate.translate
+
+            if not self._has_ru_en_package(argostranslate.package):
+                # Наличие `.argosmodel` в ARGOS_PACKAGES_DIR — необходимое, но НЕ достаточное
+                # условие: argos-translate-lt читает установленные пакеты (распакованные в
+                # тот же каталог), а не файлы-архивы лежащие рядом. Без install_from_path()
+                # get_installed_packages() пуст и translate() падает на NoneType, даже если
+                # .argosmodel физически на месте (найдено на стенде, ручная доставка scp
+                # кладёт именно архив).
+                self._install_from_dir(argostranslate.package, packages_dir)
+
+            if not self._has_ru_en_package(argostranslate.package):
+                logger.error(
+                    "EmbeddedArgosDriver: пакет ru->en не установлен и не найден "
+                    "в %s — положите файл translate-ru_en-1_9.argosmodel в этот каталог "
+                    "(ручная доставка scp, см. 27-01-SUMMARY.md); драйвер отключается на "
+                    "оставшееся время жизни процесса, делегат видит русский", packages_dir,
+                )
+                self._unavailable = True
+                return
+
             self._ready = True
         except Exception as exc:  # noqa: BLE001 — намеренно широкий (D-04, fail-soft)
             logger.error(
@@ -78,6 +98,35 @@ class EmbeddedArgosDriver(TranslationDriver):
                 "оставшееся время жизни процесса, делегат видит русский", exc,
             )
             self._unavailable = True
+
+    @staticmethod
+    def _has_ru_en_package(package_module) -> bool:
+        installed = package_module.get_installed_packages()
+        return any(
+            getattr(pkg, "from_code", None) == "ru" and getattr(pkg, "to_code", None) == "en"
+            for pkg in installed
+        )
+
+    @staticmethod
+    def _install_from_dir(package_module, packages_dir: str) -> None:
+        if not os.path.isdir(packages_dir):
+            return
+        for name in sorted(os.listdir(packages_dir)):
+            if not name.endswith(".argosmodel"):
+                continue
+            path = os.path.join(packages_dir, name)
+            package_module.install_from_path(path)
+            logger.info("EmbeddedArgosDriver: установлен пакет из %s", path)
+
+    @staticmethod
+    def _is_no_translation_installed_error(exc: Exception) -> bool:
+        """Фактический сбой на стенде: пакет НЕ установлен (только `.argosmodel`-архив лежит
+        рядом, ничего не распаковано) -> `argostranslate.translate.get_translation_from_codes`
+        отдаёт `None`, и вызов `.translate()` падает `AttributeError` на `NoneType`. Эта
+        ошибка ловится на КАЖДОЙ строке батча одинаково — логировать её построчно значит
+        заспамить лог N одинаковыми строками на пустом месте; отличается от единичного сбоя
+        перевода конкретной строки (тот остаётся per-line, batch продолжается)."""
+        return isinstance(exc, AttributeError) and "get_translation" in str(exc)
 
     def translate_batch(self, texts: list[str]) -> list[str]:
         if not texts:
@@ -90,7 +139,18 @@ class EmbeddedArgosDriver(TranslationDriver):
         for text in texts:
             try:
                 out.append(self._translate.translate(text, "ru", "en"))
-            except Exception as exc:  # noqa: BLE001 — одна строка не должна ронять батч
+            except Exception as exc:  # noqa: BLE001 — намеренно широкий (fail-soft)
+                if self._is_no_translation_installed_error(exc):
+                    logger.error(
+                        "EmbeddedArgosDriver: модель не установлена (%s) — драйвер "
+                        "отключается на оставшееся время жизни процесса, делегат видит "
+                        "русский", exc,
+                    )
+                    self._unavailable = True
+                    out.extend("" for _ in range(len(texts) - len(out)))
+                    return out
+                # Сбой конкретной строки (не «драйвер сломан целиком») не должен ронять
+                # остальной батч — одна строка теряется, соседние переводятся как обычно.
                 logger.error("EmbeddedArgosDriver: перевод строки не удался (%s)", exc)
                 out.append("")
         return out
