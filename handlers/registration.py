@@ -307,15 +307,23 @@ async def _stamp_reg_step(step_key: str, message: types.Message, state: FSMConte
         logger.error(f"reg_draft step-stamp failed for {message.chat.id} @ {step_key}: {e}")
 
 
-def _recall_display(step_key: str, value) -> str:
+async def _recall_display(step_key: str, value, lang: str = "ru", tr_map: dict | None = None) -> str:
     """Human-readable rendering of a prior answer for the recall screen. Booleans (Python
     True/False, or SQLite's int 0/1 -- aiosqlite returns is_ambassador_candidate as an int,
     not a bool, since SQLite has no native boolean type) render as «Да»/«Нет»; everything else
     is str()'d. The result is HTML-escaped here (not by the caller) -- the value came out of
-    the users row and is about to land inside an HTML message (T-073-04-02)."""
+    the users row and is about to land inside an HTML message (T-073-04-02).
+
+    UAT-фикс (стенд, lang=en): `lang`/`tr_map` — НЕОБЯЗАТЕЛЬНЫЕ (дефолт "ru" не меняет
+    поведение). Bool/int-ветка — «Да»/«Нет» СИНТЕЗИРОВАНЫ кодом (не свободный ввод делегата,
+    гарантия — сам isinstance-гейт), переводятся напрямую через tr_text (ярус A). Строковая
+    ветка — канон закрытого варианта шага (`reg_i18n.display_value_for_step`, тот же контур,
+    что у `_build_summary`); свободный ввод (шаг без опций) остаётся как есть."""
     if isinstance(value, bool) or (isinstance(value, int) and value in (0, 1)):
-        return "Да" if value else "Нет"
-    return html.escape(str(value))
+        text = "Да" if value else "Нет"
+        return html.escape(reg_i18n.tr_text(text, lang, tr_map or {}))
+    text = await reg_i18n.display_value_for_step(step_key, str(value), lang, tr_map or {})
+    return html.escape(text)
 
 
 async def _ask_step(step_key: str, message: types.Message, state: FSMContext, step: int, total: int):
@@ -645,7 +653,10 @@ async def _advance(after_step: str, message: types.Message, state: FSMContext, b
         # отдельно от общей врезки внутри _safe_answer (та переведёт саму клавиатуру
         # подтверждения и не тронет уже готовый текст — его хеш не совпадёт ни с чем в карте).
         lang, tr_map = await reg_i18n.ctx_for(message)
-        summary = _build_summary(data, lang, tr_map)
+        # UAT-фикс (стенд, lang=en): карта закрытых вариантов сводки — один поход в БД на
+        # рендер, не по полю (докстринг reg_i18n.summary_value_maps).
+        value_maps = await reg_i18n.summary_value_maps(lang, tr_map)
+        summary = _build_summary(data, lang, tr_map, value_maps)
         await _safe_answer(message, summary, reply_markup=get_confirm_kb(), parse_mode="HTML")
         await state.set_state(Registration.confirm)
 
@@ -692,11 +703,18 @@ async def _show_recall_screen(step_key: str, value, message: types.Message, stat
                               data: dict, step: int, total: int):
     """Экран «Прошлый ответ … ✅ Оставить / ✏️ Изменить» для одного шага. Вынесен из
     _ask_step_or_recall (UAT 19.08), чтобы тот же экран показывать и для ФИО, которое
-    спрашивается вне движка шагов (_ask_full_name). step=0 -> без префикса прогресса."""
+    спрашивается вне движка шагов (_ask_full_name). step=0 -> без префикса прогресса.
+
+    UAT-фикс (стенд, lang=en): `label`/`display` переводятся тем же контуром, что и сводка
+    (`_build_summary`) — `label` (REG_LABELS, уже в корпусе) через `tr_text`, `display`
+    (закрытый вариант шага) через `reg_i18n.display_value_for_step`. Сам шаблон
+    `recall_generic_prompt_text` НЕ переводится (группа реестра "event" вне DELEGATE_GROUPS,
+    27-CONTEXT.md «вне объёма v1») — намеренно частичный перевод экрана, не расширение границы."""
     await _stamp_reg_step(step_key, message, state, data)
     p = await _progress(step, total) if step else ""
-    label = dropout_step_label(step_key)
-    display = _recall_display(step_key, value)
+    lang, tr_map = await reg_i18n.ctx_for(message)
+    label = reg_i18n.tr_text(dropout_step_label(step_key), lang, tr_map)
+    display = await _recall_display(step_key, value, lang, tr_map)
     # Phase 17.1 (17.1-02): экран «прошлый ответ» — из реестра. Подстановка цепочкой
     # .replace, не .format: текст менеджера может содержать посторонние {}.
     tpl = await get_setting_typed("recall_generic_prompt_text")
@@ -1312,7 +1330,8 @@ def _esc(value) -> str:
     return html.escape(str(text))
 
 
-def _build_summary(data: dict, lang: str = "ru", tr_map: dict | None = None) -> str:
+def _build_summary(data: dict, lang: str = "ru", tr_map: dict | None = None,
+                    value_maps: dict | None = None) -> str:
     """QW-01 pre-finalize summary of the full-form answers (HTML, escaped). Phase 21 (21-06,
     Task 3): голые (label, value) теперь считает reg_engine.summary_fields (T-21-03: движок не
     собирает HTML) — эта функция осталась тонкой обёрткой, которая склеивает их в HTML своим
@@ -1321,15 +1340,21 @@ def _build_summary(data: dict, lang: str = "ru", tr_map: dict | None = None) -> 
     Phase 27 (27-05, LANG-02): `lang`/`tr_map` — НЕОБЯЗАТЕЛЬНЫЕ, дефолт `lang="ru"` не меняет
     поведение (существующие вызовы/тесты без правок). Составная строка (шапка + подписи +
     значения) не найдётся в карте переводов как единое целое (27-CONTEXT.md, A-03) — переводим
-    АДРЕСНО здесь: шапку и подписи REG_LABELS через `reg_i18n.tr_text`/`services.i18n.tr`,
-    значения ответов делегата НЕ трогаем никогда (они уже на том языке, на котором введены, а
-    варианты уже канонизированы на приёме — план 27-05, Задача 3)."""
+    АДРЕСНО здесь: шапку и подписи REG_LABELS через `reg_i18n.tr_text`/`services.i18n.tr`.
+
+    UAT-фикс (стенд, lang=en): `value_maps` (`reg_i18n.summary_value_maps`, посчитана
+    вызывающим — `_advance` ниже, ОДИН поход в БД на весь рендер, не по полю) переводит значения
+    closed-option шагов (город/образование/цель участия/...) канон -> подпись; свободный ввод и
+    даты остаются как есть (`reg_i18n.display_summary_value`, тот же контур, что LANG-06 уже
+    закрыла на ВВОДЕ). Функция остаётся синхронной — сам перевод значений (сетевые/БД чтения)
+    уже выполнен вызывающим ДО этого вызова, здесь только словарные обращения."""
     tr_map = tr_map or {}
     header = reg_i18n.tr_text("Проверь свои ответы:", lang, tr_map)
     lines = [f"<b>{header}</b>", ""]
     for label, value in summary_fields(data):
+        display = reg_i18n.display_summary_value(label, value, lang, tr_map, value_maps)
         label = reg_i18n.tr_text(label, lang, tr_map)
-        lines.append(f"<b>{label}:</b> {_esc(value)}")
+        lines.append(f"<b>{label}:</b> {_esc(display)}")
     return "\n".join(lines)
 
 
