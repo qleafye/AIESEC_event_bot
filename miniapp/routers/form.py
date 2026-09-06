@@ -17,6 +17,14 @@
 ответ делегату в ЕГО ЖЕ чат через `telegram_api.send_message` (тот же приём, что
 `miniapp/routers/review.py::_notify_delegate`) — не эффект над чужими данными, а копия того,
 что уже отдано в ответе HTTP.
+
+Phase 27 (27-04, LANG-02/LANG-06): `_draft_response`/`draft_patch` — вторая (после чата бота,
+план 27-05) воронка вывода делегатского текста. `services.i18n.context()` грузит `(lang,
+tr_map)` РОВНО ОДИН раз на запрос (не по разу на текст — см. докстринг `_draft_response`);
+`reg_engine` о языках не знает (A-03, 27-CONTEXT.md) — перевод прогоняется НАД уже собранной
+спекой (`prompt`/`help`/`label`/`options`), контракт JSON не меняется. `draft_patch`
+канонизирует английскую подпись варианта в русский канон ДО `reg_engine.validate_answer`
+(`_canonicalize_answer`, T-27-04-01) — иначе она молча уехала бы в `users`/Google-таблицу.
 """
 from __future__ import annotations
 
@@ -39,6 +47,7 @@ from database.db import (
     upsert_reg_draft,
 )
 from settings_schema import get_setting_typed
+from services import i18n
 from services.consent import outstanding_consents
 from services.reg_finalize import finalize_data, resolve_delegate_text
 from services.reg_handoff import SURFACE_APP, SURFACE_BOT, draft_holder
@@ -147,6 +156,7 @@ async def _load_context(telegram_id: int) -> dict:
 
 async def _pre_items(
     pre_tokens: list[str], prior_city: str | None = None, prior_track: str | None = None,
+    lang: str = "ru", tr_map: dict[str, str] | None = None,
 ) -> list[dict]:
     """Данные для рендера pre-flow экранов мастера (план 21-11): согласия — карточка с
     названием/PDF/подписью чекбокса; вилки города/трека — интерактивные пикеры: `field` —
@@ -161,7 +171,16 @@ async def _pre_items(
     только когда `kind == "new" and is_returning` — тот же признак, что открывает `prior` для
     шагов анкеты); кладутся в `value`, который пикер уже умеет предвыбирать (`drawFork` в
     `miniapp/static/js/screens/form.js` ищет `options.find(o => o.code === item.value)`),
-    JS не менялся."""
+    JS не менялся.
+
+    Phase 27 (27-04, LANG-02/LANG-09): `lang`/`tr_map` (одна карта на запрос, `_draft_response`
+    её и загружает) переводят `text`/`options[].label` вилок города и трека — `options[].code`
+    остаётся русским кодом всегда (PATCH шлёт `code`, не подпись, канонизация тут не нужна,
+    см. `reg_engine.validate_city_choice`/`validate_track_choice`). Карточка согласия — ИСКЛЮЧЕНИЕ
+    (LANG-09): `label`/`button_text` не переводятся машиной — ручной английский текст живёт в
+    отдельном плане (27-06), пока его нет — делегат видит русский тем же fail-soft, что и
+    everywhere else в проекте."""
+    tr_map = tr_map or {}
     if not pre_tokens:
         return []
     items: list[dict] = []
@@ -170,6 +189,7 @@ async def _pre_items(
     button_text = await get_setting_typed("consent_button_text") if consent_tokens else None
     for token in pre_tokens:
         if token.startswith("consent:"):
+            # LANG-09: НЕ переводится машиной -- ни здесь, ни где-либо ещё в этом плане.
             key = token.split(":", 1)[1]
             items.append({
                 "type": "consent",
@@ -179,16 +199,24 @@ async def _pre_items(
                 "button_text": button_text,
             })
         elif token == "city_fork":
+            text = await get_setting_typed("city_fork_text")
+            options = await reg_engine.city_fork_options()
+            if lang != "ru":
+                text = i18n.tr(text, lang, tr_map)
+                options = [{**o, "label": i18n.tr(o["label"], lang, tr_map)} for o in options]
             items.append({
                 "type": "city_fork", "field": "event_city",
-                "text": await get_setting_typed("city_fork_text"),
-                "options": await reg_engine.city_fork_options(), "value": prior_city,
+                "text": text, "options": options, "value": prior_city,
             })
         elif token == "party_fork":
+            text = await get_setting_typed("party_fork_text")
+            options = await reg_engine.party_track_options()
+            if lang != "ru":
+                text = i18n.tr(text, lang, tr_map)
+                options = [{**o, "label": i18n.tr(o["label"], lang, tr_map)} for o in options]
             items.append({
                 "type": "party_fork", "field": "participant_type",
-                "text": await get_setting_typed("party_fork_text"),
-                "options": await reg_engine.party_track_options(), "value": prior_track,
+                "text": text, "options": options, "value": prior_track,
             })
     return items
 
@@ -214,6 +242,13 @@ def _continue_deeplink(bot_username: str | None) -> str | None:
 
 async def _draft_response(telegram_id: int, ctx: dict | None = None, *, bot_username: str | None = None) -> dict:
     ctx = ctx or await _load_context(telegram_id)
+    # Phase 27 (27-04, LANG-02): ОДНА загрузка карты переводов на запрос (не по разу на каждый
+    # шаг/текст — form_spec резолвит ~43 шага, наивная врезка удвоила бы число чтений реестра
+    # на рендер формы, см. 27-04-PLAN.md). `"ask"` (язык ещё не выбран, делегат не отвечал на
+    # экран выбора — Mini App его не показывает, это поверхность бота) трактуется как "ru" —
+    # тот же фоллбэк, что `services.i18n.context` уже применяет к `tr_map` для этого случая.
+    lang, tr_map = await i18n.context(telegram_id)
+    lang = lang if lang in ("ru", "en") else "ru"
     closed = ctx["kind"] == "new" and await _registration_closed(ctx["event_city"])
     # UAT 21-12 находка 1: мастер переспрашивал согласие на КАЖДОЕ открытие, даже секунды
     # после подписи в чате той же сессией. `outstanding_consents` — тот же фильтр версий, что
@@ -235,6 +270,18 @@ async def _draft_response(telegram_id: int, ctx: dict | None = None, *, bot_user
         if step_spec_row["key"] == "resume":
             step_spec_row["has_prior_resume"] = reg_engine.has_prior_resume(ctx["user_row"])
         step_spec_row["locked"] = ctx["kind"] == "edit" and step_spec_row["key"] in reg_engine.EDIT_LOCKED_STEPS
+        # Phase 27 (27-04, LANG-02): перевод НАД уже собранной спекой — reg_engine сам о
+        # языках не знает (A-03, 27-CONTEXT.md). Контракт не меняется: `options` остаётся
+        # `list[str]` (те же строки, что options() и так уже вернула для этого шага, просто
+        # прогнанные через tr() — второй поход в options() через option_pairs() не нужен).
+        if lang != "ru":
+            step_spec_row["prompt"] = i18n.tr(step_spec_row["prompt"], lang, tr_map)
+            step_spec_row["help"] = i18n.tr(step_spec_row["help"], lang, tr_map)
+            step_spec_row["label"] = i18n.tr(step_spec_row["label"], lang, tr_map)
+            if step_spec_row["options"] is not None:
+                step_spec_row["options"] = [
+                    i18n.tr(opt, lang, tr_map) for opt in step_spec_row["options"]
+                ]
     user_row = ctx["user_row"]
     show_progress = await get_setting_typed("reg_show_progress") == "on"
     # Quick 260904-3vm (эстафета): плита «анкета сейчас в чате» — ТОЛЬКО когда держит бот;
@@ -255,7 +302,9 @@ async def _draft_response(telegram_id: int, ctx: dict | None = None, *, bot_user
         "step": ctx["step"],
         "version": ctx["version"],
         "pre": spec["pre"],
-        "pre_items": await _pre_items(spec["pre"], ctx.get("prior_city"), ctx.get("prior_track")),
+        "pre_items": await _pre_items(
+            spec["pre"], ctx.get("prior_city"), ctx.get("prior_track"), lang, tr_map,
+        ),
         "steps": spec["steps"],
         "progress": spec["progress"],
         "closed": closed,
@@ -352,6 +401,25 @@ def _unwrap_other(raw: Any) -> Any:
     return raw
 
 
+async def _canonicalize_answer(step_key: str, raw: Any, lang: str, tr_map: dict[str, str]) -> Any:
+    """Phase 27 (27-04, LANG-06, T-27-04-01): английская подпись варианта -> русский канон —
+    ОБЯЗАТЕЛЬНО до `validate_answer`. Шаги `_CHOICE_STEPS`/`_BESPOKE_CHOICE`/`_MEMBERSHIP_STEPS`
+    принимают любой текст и сохранили бы английскую подпись молча (без ошибки, но с
+    расползанием базы и Google-таблицы на два языка). `option_pairs` на шаге без вариантов
+    отдаёт `[]` -> `canonical_option` тривиально `None` -> `raw` без изменений (свободный
+    текст/шаги без выбора не трогаются). Multi-шаги (список) канонизируются поэлементно —
+    тождественно на каноне, если элемент и так канон (см. докстринг задачи 3 плана)."""
+    pairs = await reg_engine.option_pairs(step_key, lang, tr_map)
+    if not pairs:
+        return raw
+    if isinstance(raw, list):
+        return [reg_engine.canonical_option(pairs, item) or item for item in raw]
+    if isinstance(raw, str):
+        canon = reg_engine.canonical_option(pairs, raw)
+        return canon if canon is not None else raw
+    return raw
+
+
 @router.patch("/app/api/reg/draft")
 async def draft_patch(
     body: DraftPatch,
@@ -396,13 +464,23 @@ async def draft_patch(
     # "full" (дефолт до резолва), пока GET того же черновика уже отдаёт короткий набор шагов.
     effective_track = pre_patch.get("participant_type") or ctx["effective_track"]
 
+    # Phase 27 (27-04, LANG-06, T-27-04-01): канонизация ДО validate_answer — см. докстринг
+    # _canonicalize_answer. lang=="ru" (module off/делегат ещё не выбрал английский) пропускает
+    # саму загрузку карты переводов через тот же ноль-чтений фоллбэк, что _draft_response —
+    # PATCH при выключенном модуле не получает ни одного нового похода в БД.
+    answer_lang, answer_tr_map = await i18n.context(p.telegram_id)
+    answer_lang = answer_lang if answer_lang in ("ru", "en") else "ru"
+
     step_patch: dict[str, Any] = {}
     for column, raw in body.answers.items():
         step_key = reg_engine.column_to_step(column)
         if step_key is None:
             raise HTTPException(400, {"reason": "bad_field", "field": column})
+        unwrapped = _unwrap_other(raw)
+        if answer_lang != "ru":
+            unwrapped = await _canonicalize_answer(step_key, unwrapped, answer_lang, answer_tr_map)
         value, err = reg_engine.validate_answer(
-            step_key, _unwrap_other(raw), participant_type=effective_track,
+            step_key, unwrapped, participant_type=effective_track,
         )
         if err:
             errors[column] = err
