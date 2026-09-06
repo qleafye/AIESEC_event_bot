@@ -236,7 +236,7 @@ def test_registry_coverage_event():
         # SETTINGS_FIELDS, как reg_questions.
         "reg_prompts",
     }
-    allowed_types = {"toggle", "int", "list", "date", "text", "enum", "photo", "file"}
+    allowed_types = {"toggle", "int", "list", "multi", "date", "text", "enum", "photo", "file"}
 
     event_keys_seen = set()
     for key, entry in SETTINGS_SCHEMA.items():
@@ -833,9 +833,9 @@ def test_scheduler_and_reminder_keys_declared_with_code_defaults(tmp_path):
 
 def test_full_registry_coverage():
     """D-17/WARNING-2: iterate ALL SETTINGS_SCHEMA entries unconditionally — the
-    catch-all coverage gate across every type (text/int/list/date/enum/toggle/photo/file),
-    not just the migrated-so-far groups."""
-    allowed_types = {"toggle", "int", "list", "date", "text", "enum", "photo", "file"}
+    catch-all coverage gate across every type (text/int/list/multi/date/enum/toggle/photo/
+    file), not just the migrated-so-far groups."""
+    allowed_types = {"toggle", "int", "list", "multi", "date", "text", "enum", "photo", "file"}
     seen_keys = set()
 
     for key, entry in SETTINGS_SCHEMA.items():

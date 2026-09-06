@@ -220,7 +220,11 @@ def test_menu_order_and_adjust_unchanged(tmp_path):
     # menu_miniapp рисуется только при miniapp_enabled=on И непустом DASHBOARD_PUBLIC_URL
     # (keyboards/builders.py, Phase 19 D-10); здесь оба гейта в дефолте выключены, отсутствие
     # кнопки — ожидаемое поведение, гейт проверяется собственными тестами 19-08.
-    expected_order = [label for key, label in MENU_BUTTONS if key != "menu_miniapp"]
+    # menu_faq рисуется только при непустом FAQ (has_faq_for_city, quick 260906-8uq); в
+    # свежей БД пунктов FAQ нет, отсутствие кнопки — ожидаемое поведение.
+    expected_order = [
+        label for key, label in MENU_BUTTONS if key not in ("menu_miniapp", "menu_faq")
+    ]
     assert texts == expected_order
 
 

@@ -36,6 +36,7 @@ MINIAPP_KEYS = [
     "miniapp_section_leaderboard",
     "miniapp_section_profile",
     "miniapp_section_form",  # Phase 21 Plan 02 (FORM-SYNC-05, D-08): раздел «📝 Анкета»
+    "miniapp_section_faq",  # Quick 260906-8uq (FAQ-05): раздел «❓ Частые вопросы»
     "miniapp_section_review",
     "miniapp_section_admin_tasks",
     "miniapp_section_stats",
@@ -168,6 +169,9 @@ MINIAPP_KEYS = [
     # Quick 260904-kk6 (Q2): плейсхолдер поля ответа + подпись кнопки-тоггла (доступность)
     "miniapp_questions_answer_placeholder",
     "miniapp_questions_answer_toggle_label",
+    # Quick 260906-8uq (FAQ-06): кнопка «В FAQ» под отвеченным вопросом журнала + тост
+    "miniapp_questions_to_faq_button",
+    "miniapp_questions_to_faq_saved_toast",
     # Phase 22 Plan 02 (WEB-SET-02/03, D-15): веб-экран «⚙️ Настройки» Mini App
     "miniapp_settings_search_placeholder_text",
     "miniapp_settings_search_count_text",
@@ -239,7 +243,7 @@ THEME_ENUM_KEYS = [
 _ALLOWED_TYPES = {"toggle", "int", "list", "date", "text", "enum", "photo", "file"}
 
 
-def test_exactly_144_miniapp_keys_and_no_extra():
+def test_exactly_170_miniapp_keys_and_no_extra():
     # D-17 Task 3: +3 заголовка колонок матрицы «трек × вопрос» (144 -> 147); имя теста
     # осталось историческим (числовые сторожа этого проекта именуются по факту на момент
     # заведения, см. соседние test_module_size_convention_260816.py KNOWN_OVERAGES).
@@ -264,7 +268,10 @@ def test_exactly_144_miniapp_keys_and_no_extra():
     # (miniapp_applications_hide_all) (165 -> 166).
     # Quick 260904-liz: +1 ключ строки причины отказа на плите «Заявка отклонена»
     # (miniapp_hub_rejected_reason_text) (166 -> 167).
-    assert len(MINIAPP_KEYS) == 167
+    # Quick 260906-8uq (FAQ-05/FAQ-06): +3 ключа FAQ в приложении — раздел-чекбокс
+    # miniapp_section_faq и кнопка «В FAQ» с тостом под вопросом журнала
+    # (miniapp_questions_to_faq_button/_saved_toast) (167 -> 170).
+    assert len(MINIAPP_KEYS) == 170
     present = sorted(k for k in SETTINGS_SCHEMA if k.startswith("miniapp_"))
     assert present == sorted(MINIAPP_KEYS)
 
@@ -282,7 +289,7 @@ def test_every_miniapp_key_has_label_group_and_valid_type():
 def test_toggle_defaults():
     assert SETTINGS_SCHEMA["miniapp_enabled"]["default"] == "off"
     assert SETTINGS_SCHEMA["miniapp_staff_only"]["default"] == "off"
-    assert len(SECTION_KEYS) == 11  # Quick 260904-2cj: +miniapp_section_questions (10 -> 11)
+    assert len(SECTION_KEYS) == 12  # Quick 260906-8uq: +miniapp_section_faq (11 -> 12)
     for key in SECTION_KEYS:
         entry = SETTINGS_SCHEMA[key]
         assert entry["type"] == "enum" and entry["options"] == ["on", "off"], key
@@ -320,7 +327,9 @@ def test_text_keys_have_human_defaults():
     # подпись кнопки-тоггла (133 -> 135).
     # Quick 260904-kk6 (D17): +1 текстовый ключ «Свернуть» (135 -> 136).
     # Quick 260904-liz: +1 текстовый ключ строки причины отказа (136 -> 137).
-    assert len(text_keys) == 137
+    # Quick 260906-8uq (FAQ-06): +2 текстовых ключа кнопки «В FAQ» и тоста под вопросом
+    # журнала (137 -> 139).
+    assert len(text_keys) == 139
     for key in text_keys:
         default = SETTINGS_SCHEMA[key]["default"]
         assert isinstance(default, str) and default.strip(), key
