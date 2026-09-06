@@ -934,6 +934,27 @@ SETTINGS_SCHEMA = {
         ),
         "default": "off",
     },
+    # Phase 27 (27-03, LANG-04/LANG-10): выбор драйвера машинного перевода делегатской
+    # анкеты. Служебный ключ — в SETTINGS_GROUPS/_REG_FIELD_ORDER намеренно НЕ добавляется
+    # (тот же приём, что у toggle_reg_edit_remoderation выше: живёт в реестре ради
+    # get_setting_typed/валидации/дефолта, но не для повседневной настройки менеджером —
+    # переключение делает разработчик/план 27-06 напрямую). Дефолт "embedded" — решение
+    # владельца на чекпоинте 27-01 (модель грузится только пока очередь непуста и
+    # выгружается сразу после — см. services/i18n_engine.py::EmbeddedArgosDriver.unload).
+    "delegate_lang_driver": {
+        "type": "enum", "group": "reg", "label": "Драйвер перевода анкеты (служебное)",
+        "options": ["embedded", "http"],
+        "prompt": None,
+        "default": "embedded",
+    },
+    # HTTP-фоллбэк для delegate_lang_driver="http" — адрес сайдкара LibreTranslate
+    # (docker-compose.yml, профиль "i18n", НЕ поднимается по умолчанию). Правило владельца
+    # 18.08: настройки живут внутри бота, не в .env — даже для служебного значения.
+    "delegate_lang_http_url": {
+        "type": "text", "group": "reg", "label": "Адрес HTTP-драйвера перевода (служебное)",
+        "prompt": None,
+        "default": "http://libretranslate:5000",
+    },
     # НЕ в реестре намеренно (служебные значения bot_settings, менеджеру их не редактировать):
     #   sheet_header_schema  — снимок заголовков вкладки регистраций, пишет reg_schema.py при
     #                          смене состава вопросов (JSON, читает registration.py при синке);

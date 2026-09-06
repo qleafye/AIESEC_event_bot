@@ -7,6 +7,15 @@ gspread>=6.0,<7.0
 google-auth
 apscheduler==3.11.2
 sqlalchemy>=2.0,<3.0
+
+# Phase 27 (27-03, LANG-04/LANG-10): встроенный драйвер перевода делегатской анкеты
+# (services/i18n_engine.py::EmbeddedArgosDriver). Пин `-lt` (torch-free форк, MIT), а не
+# обычный `argostranslate` 1.11.0 — тот тянет `stanza`+`spacy` (-> torch, сотни МБ в образ,
+# общий с сервисом `miniapp`). Ровно та библиотека, на которой работает сам LibreTranslate
+# 1.9.6 (27-RESEARCH.md, `requires_dist`). Модель (`translate-ru_en-1_9`, 156 МБ) в образ НЕ
+# кладётся — доставляется в том `./data/argos/` при развёртывании (см. 27-03-SUMMARY.md,
+# офлайн-фоллбэк: ручная доставка `.argosmodel` через `scp`, `argos-net.com` не проверен из РФ).
+argos-translate-lt==1.12.1
 # явная база часовых поясов: ZoneInfo(Europe/Moscow) в services/scheduler.py не должен зависеть от системной tzdb в python:3.11-slim
 tzdata
 

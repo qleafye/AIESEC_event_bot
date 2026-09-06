@@ -84,6 +84,35 @@ services:
         max-size: "10m"
         max-file: "3"
 
+  # Phase 27 (27-03, LANG-10): HTTP-фоллбэк драйвера перевода делегатской анкеты
+  # (services/i18n_engine.py::HttpLibreTranslateDriver) — ВЫКЛЮЧЕН по умолчанию (owner-decision
+  # 27-01, чекпоинт: драйвер = embedded с выгрузкой, не сайдкар — на хосте физически свободно
+  # 237 МБ на ~26 контейнеров, постоянные 400-700 МБ сайдкара туда не влезают). `docker compose
+  # up` без явного профиля поднимает стек ровно как сегодня — этот сервис не запускается.
+  # Поднять вручную: `docker compose --profile i18n up -d libretranslate`, затем переключить
+  # реестровую настройку `delegate_lang_driver` на "http" (код готов, автопереключения нет).
+  # `LT_LOAD_ONLY=en,ru` обязателен — без него грузятся 30+ языков (8 ГБ+ RAM, ~10 ГБ диска).
+  # Сеть — `edge` (один сайдкар на сервер для всех стеков мероприятий, D-02 доменной схемы);
+  # ВАЖНО: сервис `bot` этого стека сам в `edge` не входит (см. комментарий у `yl26-dashboard`
+  # выше) — чтобы КОНКРЕТНО этот бот достучался до сайдкара по имени `libretranslate`, `bot`
+  # тоже пришлось бы добавить в сеть `edge` (не сделано: owner выбрал embedded, это
+  # задокументированный задел на будущее, не рабочая связка «из коробки»).
+  libretranslate:
+    image: libretranslate/libretranslate:v1.9.6
+    profiles: ["i18n"]
+    restart: unless-stopped
+    environment:
+      - LT_LOAD_ONLY=en,ru
+    volumes:
+      - ./data/libretranslate:/home/libretranslate/.local
+    networks:
+      - edge
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
 networks:
   # Создаётся один раз на сервер руками (подсеть фиксирована — на неё настроен
   # DASHBOARD_TRUSTED_PROXIES):  docker network create --subnet 172.31.0.0/16 edge
