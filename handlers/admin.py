@@ -792,6 +792,11 @@ from handlers import admin_questions  # noqa: E402
 # journal seam (golden snapshot: a clean insertion, no reorder of admin_questions handlers).
 from handlers import admin_faq  # noqa: E402
 
+# Phase 27 (27-06, LANG-05/LANG-09): shared-router seam import for the manager screen
+# «🌐 Английские тексты» — registers admin_i18n/admin_i18n_*/AdminI18nEdit.* right after the
+# FAQ seam (golden snapshot: a clean insertion, no reorder of admin_faq handlers).
+from handlers import admin_i18n  # noqa: E402
+
 
 # Phase 13 (13-06, REFAC-01): shared-router seam import for the moderation seam, inserted AT
 # THE BLOCK'S ORIGINAL POSITION -- appr_*/rcpt_* sat immediately after reg-question config and
