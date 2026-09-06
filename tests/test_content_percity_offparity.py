@@ -210,9 +210,14 @@ def test_menu_buttons_unaffected_by_city_overrides(tmp_path):
     assert after_texts == before_texts
     # menu_miniapp рисуется только при miniapp_enabled=on И непустом DASHBOARD_PUBLIC_URL
     # (keyboards/builders.py, Phase 19 D-10); здесь оба гейта в дефолте выключены.
-    expected_texts = [label for key, label in MENU_BUTTONS if key != "menu_miniapp"]
+    # menu_faq рисуется только при непустом FAQ (has_faq_for_city, quick 260906-8uq); в
+    # свежей БД пунктов FAQ нет.
+    expected_texts = [
+        label for key, label in MENU_BUTTONS if key not in ("menu_miniapp", "menu_faq")
+    ]
     assert after_texts == expected_texts, (
-        "должны быть ВСЕ кнопки меню (дефолт on), кроме «📱 Приложение» — Mini App выключен"
+        "должны быть ВСЕ кнопки меню (дефолт on), кроме «📱 Приложение» и «❓ Частые вопросы» "
+        "— Mini App выключен, FAQ пуст"
     )
 
 

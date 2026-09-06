@@ -136,6 +136,9 @@ def test_registry_event_order_unchanged_for_old_keys():
         "ask_question_prompt_text", "ask_question_sent_text",
         # Опросы (22.08): вступительный текст перед опросом -- в группе «событие».
         "poll_intro_text",
+        # Quick 260906-8uq (FAQ-01..06): экран «❓ Частые вопросы» перед формой «Задать
+        # вопрос» -- три текста в той же группе «событие».
+        "faq_intro_text", "faq_empty_text", "faq_ask_button_text",
     }
     filtered = [k for k in admin_settings._EVENT_FIELD_ORDER if k not in new_keys]
     assert filtered == old_order_literal
