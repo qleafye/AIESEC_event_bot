@@ -241,7 +241,13 @@ def test_registry_keys_live_in_apps_group():
         entry = SETTINGS_SCHEMA[key]
         assert entry["group"] == "apps"
         _parse_setting(key, entry["default"])  # не падает
-    assert SETTINGS_SCHEMA["modcard_fields"]["type"] == "list"
+    # Quick 260906-6xe: modcard_fields переведён на закрытый тип `multi` — веб рисует
+    # чекбоксы с подписями (см. tests/test_settings_multi_260906.py), чтение бота (эта
+    # ветка _parse_setting) не изменилось ни на йоту.
+    modcard_entry = SETTINGS_SCHEMA["modcard_fields"]
+    assert modcard_entry["type"] == "multi"
+    assert modcard_entry["options_ref"] == "moderation_card:CARD_STEPS"
+    assert modcard_entry["empty_value"] == mc.EMPTY_SENTINEL
     assert SETTINGS_SCHEMA["modcard_answer_limit"]["type"] == "int"
 
 
