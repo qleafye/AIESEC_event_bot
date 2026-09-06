@@ -17,6 +17,18 @@ admin, payment` (полный бот на бот-фреймворке, см. д�
 раньше жившие в `handlers/reg_schema.py`, переехали СЮДА; `handlers/reg_schema.py` теперь
 реэкспортирует их обратно (тот же приём, каким она уже реэкспортирует `REG_LABELS` из
 корневого `reg_labels.py` — комментарий там же).
+
+Phase 27 (27-04, LANG-06): к разрешённым импортам «наверх» добавляются `services.i18n` (сама
+функция `tr()` — чистая, зависит только от `database.db`/`i18n_ui_en`/`settings_schema`, из
+`handlers` не импортирует ничего, цикл невозможен) и корневой `i18n_ui_en` (ярус A — обратный
+индекс `EN_TO_RU` для служебных слов «Other»/«Skip»/«Yes»/«No», тот же класс модуля-словаря без
+проекта импортов, что `reg_labels`/`reg_options`, уже входящие в этот список). Оба используются
+ТОЛЬКО в `option_pairs`/`canonical_option` ниже — ни одна из существующих функций движка
+(`options`/`prompt`/`help_text`/`step_spec`/`form_spec`/`validate_answer`) языков не знает и не
+меняет поведения ни при включённом, ни при выключенном модуле (A-03, 27-CONTEXT.md): перевод
+врезается в воронки вывода поверхностей (Mini App — план 27-04, чат бота — план 27-05), а не в
+ядро — золотые снимки (`tests/test_reg_engine_parity.py`, `tests/test_refac_snapshot_260816.py`)
+эту фазу не видят вообще.
 """
 from datetime import datetime
 
@@ -29,6 +41,8 @@ from cities import (
 )
 from reg_labels import REG_LABELS
 import reg_options as _opts
+from services.i18n import tr as _tr
+from i18n_ui_en import EN_TO_RU as _EN_TO_RU
 
 # ── Registration Flow Engine: REG_FLOW + непосредственные зависимости ──────────────────────
 # Перенесено дословно из handlers/reg_schema.py (было там с Phase 13 REFAC 13-02) — только
@@ -264,6 +278,49 @@ async def options(step_key: str) -> list[str]:
             return [line.strip() for line in uni_opts.splitlines() if line.strip()]
         return list(config.UNIVERSITIES)
     return list(_LITERAL_OPTIONS.get(step_key, []))
+
+
+# ── Перевод вариантов ответа (Phase 27, 27-04, LANG-06) ─────────────────────────────────────
+# Единственное место в проекте, где подпись варианта расходится с каноном. Ядро само языков не
+# знает (A-03) — эти две функции существуют РЯДОМ с ним как явный, узкий вход: воронки вывода
+# поверхностей (Mini App здесь, план 27-05 — чат бота) зовут `option_pairs` перед рендером и
+# `canonical_option` перед `validate_answer`, само ядро их не вызывает нигде внутри себя.
+
+async def option_pairs(step_key: str, lang: str, tr_map: dict[str, str]) -> list[tuple[str, str]]:
+    """`[(канон_ru, подпись_для_показа), ...]` — общий источник для Mini App (план 27-04) и
+    чата бота (план 27-05). При `lang == "ru"` подпись — ТОТ ЖЕ объект, что канон (`tr()`
+    отдаёт `text` по `is`, не копию — обязательное условие снимков `test_miniapp_labels_drift`/
+    `test_reg_engine_parity`). Для шага без вариантов (`options()` вернула `[]`) — пустой
+    список; `canonical_option` на пустом списке безопасен (падает сразу в ярус A/`None`)."""
+    return [(opt, _tr(opt, lang, tr_map)) for opt in await options(step_key)]
+
+
+def canonical_option(pairs: list[tuple[str, str]], text) -> str | None:
+    """Подпись любого языка -> русский канон. Порядок разрешения:
+    1) точное совпадение по ПОДПИСИ (обычный путь — делегат выбрал вариант на своём языке);
+    2) точное совпадение по КАНОНУ (подпись совпала с русским текстом — `lang == "ru"`, или
+       перевод этого конкретного варианта ещё не готов и `tr()` fail-soft вернул русский же
+       текст, см. `services/i18n.py::tr`);
+    3) служебные слова яруса A (`i18n_ui_en.EN_TO_RU`: «Other» -> «Другое», «Skip» ->
+       «Пропустить», «Yes»/«No» -> «Да»/«Нет», …) — покрывает generic-подсказки движка, которые
+       не входят в `options()` этого шага, но встречаются в его допустимых литералах
+       (`_CHOICE_STEPS`/`_MEMBERSHIP_STEPS`);
+    4) `None` — это НЕ ошибка, это сигнал «свободный ввод»: вызывающий сохраняет `text` как
+       есть (шаги с `other_allowed`/`_BESPOKE_CHOICE` разрешают делегату написать свой вариант).
+
+    Сравнение — по `strip()`-нутой строке; регистр НЕ игнорируется НАМЕРЕННО (варианты могут
+    отличаться регистром осмысленно, например `Offline`/`online` были бы разными ответами) —
+    не «чинить» на предположении, что это опечатка."""
+    if not isinstance(text, str):
+        return None
+    stripped = text.strip()
+    for canon, label in pairs:
+        if label == stripped:
+            return canon
+    for canon, _label in pairs:
+        if canon == stripped:
+            return canon
+    return _EN_TO_RU.get(stripped)
 
 
 # ── Гейт «включён ли шаг для трека» + список включённых шагов ──────────────────────────────
