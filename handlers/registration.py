@@ -72,6 +72,11 @@ from handlers.reg_schema import (
     DEFAULT_APPROVE_TEXT, _is_module_enabled, _approve_text_for,
     send_completion_and_bonus, approve_user,
 )
+# Phase 27 (27-05, LANG-02): единственная воронка отправки вопросов (_safe_answer ниже) и
+# сводка ответов (_build_summary) переводят через этот шов — верхнеуровневый импорт безопасен,
+# handlers/reg_i18n.py НЕ импортирует handlers.registration на уровне модуля (только лениво
+# внутри say(), которым пользуются остальные пять швов анкеты), цикла нет.
+from handlers import reg_i18n
 
 router = Router()
 logger = logging.getLogger(__name__)
@@ -230,7 +235,18 @@ async def _safe_answer(message: types.Message, text: str, **kwargs):
 
     Слишком длинный текст режется ДО первой отправки: ретрай без разметки её не спас бы
     (лимит не про HTML), а усечённый summary + клавиатура подтверждения лучше вечного клина.
+
+    Phase 27 (27-05, LANG-02): единственная точка врезки перевода делегатской анкеты чата —
+    ниже, ДО обрезки/фолбэка (T-27-05-02: HTML-фолбэк обязан покрывать и переведённый текст,
+    поэтому врезка идёт раньше него, не в обход). `lang == "ru"` (модуль выключен или делегат
+    на русском) -> `reg_i18n.tr_text`/`tr_kb` отдают ТЕ ЖЕ объекты текста/разметки (`is`, не
+    копия) — `test_registration_send_guard_260816.py` сверяет это напрямую, golden-снимки
+    текстов бота эту фазу не видят вовсе.
     """
+    lang, tr_map = await reg_i18n.ctx_for(message)
+    text = reg_i18n.tr_text(text, lang, tr_map)
+    if "reply_markup" in kwargs and kwargs["reply_markup"] is not None:
+        kwargs["reply_markup"] = reg_i18n.tr_kb(kwargs["reply_markup"], lang, tr_map)
     if text is not None and len(text) > _TG_TEXT_LIMIT:
         logger.warning(
             f"Message to {getattr(getattr(message, 'chat', None), 'id', '?')} truncated: "
@@ -624,7 +640,13 @@ async def _advance(after_step: str, message: types.Message, state: FSMContext, b
         await _ask_step_or_recall(enabled[next_idx], message, state, step, total)
     else:
         # QW-01: show a summary + confirm keyboard before finalizing the full form (D-01).
-        await _safe_answer(message, _build_summary(data), reply_markup=get_confirm_kb(), parse_mode="HTML")
+        # Phase 27 (27-05, LANG-02): подписи сводки переводятся ЗДЕСЬ (составная строка не
+        # найдётся в карте переводов как единое целое — см. докстринг _build_summary),
+        # отдельно от общей врезки внутри _safe_answer (та переведёт саму клавиатуру
+        # подтверждения и не тронет уже готовый текст — его хеш не совпадёт ни с чем в карте).
+        lang, tr_map = await reg_i18n.ctx_for(message)
+        summary = _build_summary(data, lang, tr_map)
+        await _safe_answer(message, summary, reply_markup=get_confirm_kb(), parse_mode="HTML")
         await state.set_state(Registration.confirm)
 
 
@@ -1290,13 +1312,23 @@ def _esc(value) -> str:
     return html.escape(str(text))
 
 
-def _build_summary(data: dict) -> str:
+def _build_summary(data: dict, lang: str = "ru", tr_map: dict | None = None) -> str:
     """QW-01 pre-finalize summary of the full-form answers (HTML, escaped). Phase 21 (21-06,
     Task 3): голые (label, value) теперь считает reg_engine.summary_fields (T-21-03: движок не
     собирает HTML) — эта функция осталась тонкой обёрткой, которая склеивает их в HTML своим
-    существующим _esc, байт-в-байт то же самое, что делал прежний инлайн-цикл."""
-    lines = ["<b>Проверь свои ответы:</b>", ""]
+    существующим _esc, байт-в-байт то же самое, что делал прежний инлайн-цикл.
+
+    Phase 27 (27-05, LANG-02): `lang`/`tr_map` — НЕОБЯЗАТЕЛЬНЫЕ, дефолт `lang="ru"` не меняет
+    поведение (существующие вызовы/тесты без правок). Составная строка (шапка + подписи +
+    значения) не найдётся в карте переводов как единое целое (27-CONTEXT.md, A-03) — переводим
+    АДРЕСНО здесь: шапку и подписи REG_LABELS через `reg_i18n.tr_text`/`services.i18n.tr`,
+    значения ответов делегата НЕ трогаем никогда (они уже на том языке, на котором введены, а
+    варианты уже канонизированы на приёме — план 27-05, Задача 3)."""
+    tr_map = tr_map or {}
+    header = reg_i18n.tr_text("Проверь свои ответы:", lang, tr_map)
+    lines = [f"<b>{header}</b>", ""]
     for label, value in summary_fields(data):
+        label = reg_i18n.tr_text(label, lang, tr_map)
         lines.append(f"<b>{label}:</b> {_esc(value)}")
     return "\n".join(lines)
 
