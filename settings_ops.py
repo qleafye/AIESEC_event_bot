@@ -34,7 +34,7 @@ from config import config
 from cities import PER_CITY_SEP, city_codes, normalize_city, split_per_city_key
 from database.db import delete_setting, get_setting, get_staff_city, set_setting
 from services.sheets import _reset_sheet_cache
-from settings_schema import SETTINGS_SCHEMA, get_setting_typed
+from settings_schema import SETTINGS_SCHEMA, get_setting_typed, multi_labels, multi_options
 from settings_validation import is_command_like, validate_setting_value
 
 
@@ -413,14 +413,24 @@ def item_spec(key: str, *, raw: str | None, value, is_default: bool) -> dict:
     (планы 22-02/22-04)."""
     base = base_setting_key(key)
     entry = SETTINGS_SCHEMA.get(base, {})
+    options = entry.get("options")
+    default = entry.get("default")
+    if entry.get("type") == "multi":
+        # Quick 260906-6xe: закрытый набор `multi` уезжает в JSON ПОДПИСЯМИ — коды
+        # (`options`/`default` в реестре — коды) не должны попасть в ответ API нигде
+        # (CLAUDE.md). `value` уже пришёл подписями от вызывающего (роутер, Task 2) —
+        # здесь конвертируются только options/default, `item_spec` остаётся чистым
+        # конструктором из реестра.
+        options = [label for _code, label in multi_options(base)]
+        default = multi_labels(base, default or [])
     spec = {
         "key": key,
         "base_key": base,
         "label": entry.get("label", key),
         "type": entry.get("type"),
-        "options": entry.get("options"),
+        "options": options,
         "help": entry.get("prompt"),
-        "default": entry.get("default"),
+        "default": default,
         "value": value,
         "raw": raw,
         "is_default": is_default,
@@ -518,8 +528,13 @@ async def validate_batch_item(
     if value is not None:
         value = value.strip()
         if not value:
-            return BatchCheck(None, error=EMPTY_VALUE_TEXT)
-        if is_command_like(value):
+            # Quick 260906-6xe: снятие ВСЕХ галочек `multi` — законный ввод («ни одного
+            # варианта»), не «менеджер стёр текст» — пропускаем дальше, до
+            # `validate_setting_value`, который превращает пустой набор в сентинел реестра.
+            base_type = SETTINGS_SCHEMA.get(base_setting_key(key), {}).get("type")
+            if base_type != "multi":
+                return BatchCheck(None, error=EMPTY_VALUE_TEXT)
+        elif is_command_like(value):
             return BatchCheck(None, error=command_like_text(value))
 
     if PER_CITY_SEP in key:
