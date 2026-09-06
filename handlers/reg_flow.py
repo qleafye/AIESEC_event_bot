@@ -45,6 +45,11 @@ from reg_engine import CITY_CHOICE_INVALID_TEXT, CITY_CLOSED_TEXT, PARTY_CLOSED_
 # Phase 25 (CITYQ-02): режим приёма резюме («файл или текст» / «только текст») по городу
 # делегата — общий резолвер движка, гейт на входе в шаг документа.
 from reg_engine import resume_mode
+# Phase 27 (27-05, LANG-02/LANG-06/LANG-08): say()/tr_for() переводят делегатские отправки
+# этого шва на отправке; служебные слова фильтров (CANCEL_WORDS/CONFIRM_WORDS/EDIT_WORDS) —
+# ярус A i18n_ui_en, не второй список литералов.
+from handlers import reg_i18n
+from i18n_ui_en import CANCEL_WORDS, CONFIRM_WORDS, EDIT_WORDS
 
 logger = logging.getLogger(__name__)
 
@@ -62,12 +67,12 @@ async def party_pick(callback: types.CallbackQuery, state: FSMContext):
     elif token in _PARTY_TAG_MAP:
         chosen_track = _PARTY_TAG_MAP[token]
     else:
-        await callback.answer(CITY_CHOICE_INVALID_TEXT, show_alert=True)
+        await callback.answer(await reg_i18n.tr_for(callback, CITY_CHOICE_INVALID_TEXT), show_alert=True)
         return
 
     if chosen_track and await get_setting_typed("party_enabled") != "on":  # REG-02: registry-backed
         # Render-then-flip window (T-05-04-01): the track closed between render and tap.
-        await callback.answer(PARTY_CLOSED_TEXT, show_alert=True)
+        await callback.answer(await reg_i18n.tr_for(callback, PARTY_CLOSED_TEXT), show_alert=True)
         return
 
     await callback.answer()
@@ -89,6 +94,8 @@ async def admin_rereg(callback: types.CallbackQuery, state: FSMContext):
     sole guard — anyone who guessed this callback_data could otherwise reset their own FSM and
     start a registration (T-4pj-01)."""
     if callback.from_user.id not in config.ADMIN_IDS:
+        # Phase 27 (27-05): НЕ переводим — админский гейт (кто угодно с угаданным callback_data
+        # получает отказ), не делегатская анкета (LANG-08 boundary: админка не переводится).
         await callback.answer("Недостаточно прав", show_alert=True)
         return
     await callback.answer()
@@ -125,7 +132,10 @@ async def rereg_start(callback: types.CallbackQuery, state: FSMContext):
     user = await get_user(callback.from_user.id)
     event_season = await get_setting("event_season")
     if not _is_returning_row(user, event_season):
-        await callback.answer("Ты уже зарегистрирован(а) на этот сезон", show_alert=True)
+        await callback.answer(
+            await reg_i18n.tr_for(callback, "Ты уже зарегистрирован(а) на этот сезон"),
+            show_alert=True,
+        )
         return
     await callback.answer()
     try:
@@ -179,11 +189,11 @@ async def city_pick(callback: types.CallbackQuery, state: FSMContext):
     is picked back up there, not passed again here."""
     code = callback.data.split(":", 1)[1]
     if code not in {c["code"] for c in CITIES}:
-        await callback.answer(CITY_CHOICE_INVALID_TEXT, show_alert=True)
+        await callback.answer(await reg_i18n.tr_for(callback, CITY_CHOICE_INVALID_TEXT), show_alert=True)
         return
 
     if not await is_city_enabled(code):
-        await callback.answer(CITY_CLOSED_TEXT, show_alert=True)
+        await callback.answer(await reg_i18n.tr_for(callback, CITY_CLOSED_TEXT), show_alert=True)
         return
 
     await callback.answer()
@@ -204,12 +214,15 @@ _CANCEL_CONFIRM_KB = InlineKeyboardMarkup(inline_keyboard=[[
 ]])
 
 
-@router.message(StateFilter(Registration), F.text.in_({"Отмена", "/cancel"}))
+# Phase 27 (27-05, LANG-06): CANCEL_WORDS = {"Отмена", "Cancel", "/cancel"} — тот же набор,
+# выведенный из UI_EN (ярус A), а не второй список литералов рядом с ним.
+@router.message(StateFilter(Registration), F.text.in_(CANCEL_WORDS))
 async def cancel_registration(message: types.Message, state: FSMContext):
     # Confirm before wiping the form — one accidental tap on the «Отмена» reply
     # button used to drop the whole registration with no undo. State is left intact
     # so «Нет, продолжить» resumes exactly where the user was.
-    await message.answer(
+    await reg_i18n.say(
+        message,
         "Точно отменить регистрацию? Все введённые ответы сотрутся.",
         reply_markup=_CANCEL_CONFIRM_KB,
     )
@@ -233,7 +246,8 @@ async def cancel_registration_confirm(callback: types.CallbackQuery, state: FSMC
     # UAT 19.08: при отмене повторной регистрации (rereg) у делегата есть строка в БД и
     # главное меню ему положено; новичку меню тоже не мешает — кнопки упираются в
     # ensure_registered («сначала /start»). Раньше ReplyKeyboardRemove оставлял без меню.
-    await callback.message.answer(
+    await reg_i18n.say(
+        callback.message,
         "Регистрация отменена. Чтобы начать заново, отправь /start.",
         reply_markup=await get_main_menu_kb(callback.from_user.id),
     )
@@ -248,17 +262,19 @@ async def cancel_registration_dismiss(callback: types.CallbackQuery):
         await callback.message.edit_reply_markup(reply_markup=None)
     except Exception:
         pass
-    await callback.answer("Продолжаем 👍")
+    await callback.answer(await reg_i18n.tr_for(callback, "Продолжаем 👍"))
 
 
 # --- QW-01 confirmation step ---
 
-@router.message(Registration.confirm, F.text == "Всё верно")
+# Phase 27 (27-05, LANG-06): CONFIRM_WORDS/EDIT_WORDS = {"Всё верно"/"Looks good"} и
+# {"Изменить"/"Edit"} — выведены из UI_EN, не второй список литералов.
+@router.message(Registration.confirm, F.text.in_(CONFIRM_WORDS))
 async def process_confirm_ok(message: types.Message, state: FSMContext, bot: Bot):
     await finalize_registration(message, state, bot)
 
 
-@router.message(Registration.confirm, F.text == "Изменить")
+@router.message(Registration.confirm, F.text.in_(EDIT_WORDS))
 async def process_confirm_edit(message: types.Message, state: FSMContext):
     # D-02: 'Изменить' restarts the whole flow — no per-field editing.
     await _start_registration_flow(message, state)
@@ -275,13 +291,13 @@ async def process_resume(message: types.Message, state: FSMContext, bot: Bot):
     # месте — делегат отвечает текстом, его ловит process_resume_text ниже.
     data = await state.get_data()
     if await resume_mode(data.get("event_city")) == "text_only":
-        await message.answer(await get_setting_typed("reg_form_resume_text_only_text"))
+        await reg_i18n.say(message, await get_setting_typed("reg_form_resume_text_only_text"))
         return
     if not _is_allowed_resume(message.document.file_name):
-        await message.answer("Принимаются только PDF или DOCX. Прикрепи файл ещё раз.")
+        await reg_i18n.say(message, "Принимаются только PDF или DOCX. Прикрепи файл ещё раз.")
         return
     if _resume_too_large(message.document.file_size):
-        await message.answer("❌ Файл слишком большой (максимум 10 МБ). Прикрепи резюме меньшего размера.")
+        await reg_i18n.say(message, "❌ Файл слишком большой (максимум 10 МБ). Прикрепи резюме меньшего размера.")
         return
     # file_id only, no download (D-10). Keep the original file name in FSM (non-persisted,
     # no DB/sheet column) so the Nextcloud upload preserves the real .pdf/.docx extension.
@@ -297,7 +313,7 @@ async def process_resume_text(message: types.Message, state: FSMContext, bot: Bo
     # Tatiana: резюме можно либо файлом, либо текстом. Обязательно (без «Пропустить»).
     value, err = validate_answer("resume", message.text)
     if err:
-        await message.answer(err)
+        await reg_i18n.say(message, err)
         return
     await state.update_data(resume_text=value)
     await _advance("resume", message, state, bot)
@@ -310,9 +326,9 @@ async def process_resume_invalid(message: types.Message, state: FSMContext):
     # документа (один источник формулировки на всё событие), не отдельный литерал про файл.
     data = await state.get_data()
     if await resume_mode(data.get("event_city")) == "text_only":
-        await message.answer(await get_setting_typed("reg_form_resume_text_only_text"))
+        await reg_i18n.say(message, await get_setting_typed("reg_form_resume_text_only_text"))
         return
-    await message.answer("Пришли резюме текстом или прикрепи файл (PDF или DOCX).")
+    await reg_i18n.say(message, "Пришли резюме текстом или прикрепи файл (PDF или DOCX).")
 
 
 # --- Phase 4: date-type step (MOD-02) ---
@@ -326,7 +342,7 @@ async def process_date_input(message: types.Message, state: FSMContext, bot: Bot
     step_key = data.get("_current_date_step", "arrival_date")
     value, err = validate_answer(step_key, message.text)
     if err:
-        await message.answer(err)
+        await reg_i18n.say(message, err)
         return
     await state.update_data(**{step_key: value})
     await _advance(step_key, message, state, bot)
@@ -340,7 +356,7 @@ async def process_select_input(message: types.Message, state: FSMContext, bot: B
     step_key = data.get("_current_select_step", "study_field")
     value, err = validate_answer(step_key, message.text)
     if err:
-        await message.answer(err, reply_markup=_err_kb(message.text))
+        await reg_i18n.say(message, err, reply_markup=_err_kb(message.text))
         return
     await state.update_data(**{step_key: value})
     await _advance(step_key, message, state, bot)
@@ -369,8 +385,14 @@ async def process_multi_toggle(callback: types.CallbackQuery, state: FSMContext)
         selected.add(idx)
     await state.update_data(**{f"_multi_{step_key}": sorted(selected)})
     options = await _multi_options(step_key)
+    # Phase 27 (27-05, Rule 1): edit_reply_markup — не message.answer, say() тут не подходит,
+    # но перевод обязателен: без него первичный рендер (_ask_step -> _safe_answer, задача 1)
+    # уходит по-английски, а любой тап по чекбоксу тут же откатывает клавиатуру на русский.
+    lang, tr_map = await reg_i18n.ctx_for(callback)
     try:
-        await callback.message.edit_reply_markup(reply_markup=_multi_kb(step_key, options, selected))
+        await callback.message.edit_reply_markup(
+            reply_markup=reg_i18n.tr_kb(_multi_kb(step_key, options, selected), lang, tr_map)
+        )
     except Exception:
         pass
     await callback.answer()
@@ -388,29 +410,33 @@ async def process_multi_done(callback: types.CallbackQuery, state: FSMContext, b
     chosen = [options[i] for i in selected if 0 <= i < len(options)]
     value, err = validate_answer(step_key, chosen)
     if err:
-        await callback.answer(err, show_alert=True)
+        await callback.answer(await reg_i18n.tr_for(callback, err), show_alert=True)
         return
     await state.update_data(**{step_key: value})
     try:
         await callback.message.edit_reply_markup(reply_markup=None)
     except Exception:
         pass
-    await callback.answer("Сохранено")
+    await callback.answer(await reg_i18n.tr_for(callback, "Сохранено"))
     await _advance(step_key, callback.message, state, bot)
 
 
 @router.message(Registration.multi_input)
 async def process_multi_ignore(message: types.Message):
-    await message.answer("Отмечай варианты кнопками выше и нажми «Готово».")
+    await reg_i18n.say(message, "Отмечай варианты кнопками выше и нажми «Готово».")
 
 
 # --- YL'26: ambassador yes/no ---
 
 @router.message(Registration.ambassador)
 async def process_ambassador(message: types.Message, state: FSMContext, bot: Bot):
-    value, err = validate_answer("ambassador", message.text)
+    # Phase 27 (27-05, Задача 3, LANG-06): пятая и последняя точка канонизации — «Да!»/«Пока
+    # нет» это _validate_answer_core-ветка без записи в _CHOICE_STEPS/_BESPOKE_CHOICE, но с
+    # тем же риском молчаливой английской записи в is_ambassador_candidate.
+    canon_text = await reg_i18n.canonicalize(message, "ambassador", message.text)
+    value, err = validate_answer("ambassador", canon_text)
     if err:
-        await message.answer(err)
+        await reg_i18n.say(message, err)
         return
     await state.update_data(is_ambassador_candidate=value)
     await _advance("ambassador", message, state, bot)
@@ -429,7 +455,9 @@ async def process_consent_accept(callback: types.CallbackQuery, state: FSMContex
         await callback.answer()
         return
     await record_user_consent(callback.from_user.id, consent_key)  # D-02 audit row
-    await callback.answer("✅ Принято")
+    # "✅ Принято" — обвязка экрана согласия (кнопка сработала), не сам текст согласия
+    # (LANG-09 запрещает переводить ТОЛЬКО текст/PDF согласия, не UI вокруг него).
+    await callback.answer(await reg_i18n.tr_for(callback, "✅ Принято"))
     # Defense-in-depth: disable the tapped card's button so it can't be re-used.
     try:
         await callback.message.edit_reply_markup(reply_markup=None)
@@ -448,5 +476,8 @@ async def process_consent_accept(callback: types.CallbackQuery, state: FSMContex
 @router.message(Registration.consent_pending)
 async def process_consent_ignore(message: types.Message):
     # SC#2: consent cannot be skipped via text — only the consent button advances.
+    # Phase 27 (27-05): НЕ переводим — цитирует РУССКУЮ подпись кнопки согласия (LANG-09:
+    # экран/текст согласия не переводится), перевод одной половины предложения дал бы смесь
+    # языков, которая только запутает делегата.
     btn_text = await get_setting("consent_button_text") or "Согласен(-на)"
     await message.answer(f"Нажми кнопку «{btn_text}» для продолжения.")

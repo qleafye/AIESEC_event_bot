@@ -37,6 +37,11 @@ from services import i18n as i18n_service
 # машинного перевода контента (services/i18n_worker.py) — переиспользуем её и здесь, а не
 # заводим вторую копию регулярки.
 from services.i18n_glossary import split_leading_symbols
+# Задача 3 (LANG-06): канонизация английской подписи варианта в русский канон ДО
+# validate_answer — reg_engine сам о языках не знает (A-03), эти две функции существуют
+# РЯДОМ с ним как узкий вход (план 27-04). reg_engine НЕ импортирует handlers ни при каких
+# условиях — обратного цикла нет.
+from reg_engine import option_pairs, canonical_option
 
 logger = logging.getLogger(__name__)
 
@@ -125,6 +130,23 @@ async def tr_for(message_or_callback, text: str) -> str:
     `registration._safe_answer` (алерты не отправляются через `message.answer`)."""
     lang, tr_map = await ctx_for(message_or_callback)
     return tr_text(text, lang, tr_map)
+
+
+async def canonicalize(message, step_key: str, text):
+    """Английская (или любая другая) подпись варианта -> русский канон, ДО `validate_answer`
+    (LANG-06, план 27-05 Задача 3). Общая точка для пяти мест приёма ответа в чате
+    (`reg_steps._thin_step`/`_store_choice`/`process_education_status`/`process_work_status`,
+    `reg_flow.process_ambassador`) — вместо инлайна `option_pairs`/`canonical_option` в каждом
+    (тот же контур, вынесенный в шов, а не продублированный пять раз).
+
+    `canonical_option` вернувший `None` — сигнал «свободный ввод» (шаги с `other_allowed`
+    разрешают делегату написать свой вариант): `text` возвращается КАК ЕСТЬ, не пустой строкой.
+    Не-`str`/пустой `text` идёт напрямую в `canonical_option` (там же — `None` сразу для
+    не-`str`), поведение не меняется, если так и было раньше."""
+    lang, tr_map = await ctx_for(message)
+    pairs = await option_pairs(step_key, lang, tr_map)
+    canon = canonical_option(pairs, text)
+    return canon if canon is not None else text
 
 
 async def say(message, text, **kwargs):

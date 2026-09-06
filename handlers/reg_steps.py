@@ -21,6 +21,9 @@ from handlers.registration import (
     _advance, _err_kb,
 )
 from reg_engine import validate_answer, apply_answer, STEP_TO_COLUMN
+# Phase 27 (27-05, LANG-02): say() переводит делегатские отправки этого шва на отправке —
+# ноль правок публичных сигнатур хендлеров.
+from handlers import reg_i18n
 
 # --- Core Registration ---
 
@@ -35,7 +38,7 @@ from reg_engine import validate_answer, apply_answer, STEP_TO_COLUMN
 async def process_full_name(message: types.Message, state: FSMContext, bot: Bot):
     value, err = validate_answer("full_name", message.text)
     if err:
-        await message.answer(err)
+        await reg_i18n.say(message, err)
         return
     await state.update_data(full_name=value)
 
@@ -60,11 +63,21 @@ async def process_full_name(message: types.Message, state: FSMContext, bot: Bot)
 
 async def _thin_step(step_key: str, message: types.Message, state: FSMContext, bot: Bot,
                       *, kb_on_error: bool = False):
-    """Общий контур «валидировать → сохранить под своей колонкой → _advance», без побочных
-    правил (education_status/work_status используют apply_answer напрямую — см. ниже)."""
-    value, err = validate_answer(step_key, message.text)
+    """Общий контур «канонизировать → валидировать → сохранить под своей колонкой →
+    _advance», без побочных правил (education_status/work_status используют apply_answer
+    напрямую — см. ниже).
+
+    Phase 27 (27-05, Задача 3, LANG-06): `reg_i18n.canonicalize` — ДО `validate_answer`.
+    Английская подпись варианта (`_CHOICE_STEPS`/`_BESPOKE_CHOICE`/`_MEMBERSHIP_STEPS`, часть
+    из них идёт через ЭТУ функцию: city/source/local_committee/position/university/
+    attendance_format/informal_day) иначе легла бы в базу и в таблицу молча на английском —
+    у шагов без вариантов (`option_pairs` вернула `[]`) канонизация безопасный no-op."""
+    canon_text = await reg_i18n.canonicalize(message, step_key, message.text)
+    value, err = validate_answer(step_key, canon_text)
     if err:
-        await message.answer(err, reply_markup=_err_kb(message.text) if kb_on_error else None)
+        # _err_kb смотрит на canon_text (не «сырой» message.text): английское «Other» уже
+        # канонизировано в «Другое» — та же клавиатура «Отмена», что и у русского делегата.
+        await reg_i18n.say(message, err, reply_markup=_err_kb(canon_text) if kb_on_error else None)
         return
     column = STEP_TO_COLUMN.get(step_key, step_key)
     await state.update_data(**{column: value})
@@ -122,9 +135,13 @@ async def process_position(message: types.Message, state: FSMContext, bot: Bot):
 
 @router.message(Registration.education_status)
 async def process_education_status(message: types.Message, state: FSMContext, bot: Bot):
-    value, err = validate_answer("education_status", message.text)
+    # Phase 27 (27-05, Задача 3, LANG-06): канонизация ДО validate_answer — та же причина,
+    # что у _thin_step (см. её докстринг): без этого английская подпись легла бы в apply_answer
+    # молча (education_status используется для условной ветки «Да…» -> ВУЗ/курс/специальность).
+    canon_text = await reg_i18n.canonicalize(message, "education_status", message.text)
+    value, err = validate_answer("education_status", canon_text)
     if err:
-        await message.answer(err)
+        await reg_i18n.say(message, err)
         return
     data = await state.get_data()
     # apply_answer (APPLY_GOLDEN): не «Да…» -> ВУЗ/курс/специальность/направление прочерком.
@@ -149,9 +166,13 @@ async def process_specialty(message: types.Message, state: FSMContext, bot: Bot)
 
 @router.message(Registration.work_status)
 async def process_work_status(message: types.Message, state: FSMContext, bot: Bot):
-    value, err = validate_answer("work_status", message.text)
+    # Phase 27 (27-05, Задача 3, LANG-06): work_status — _MEMBERSHIP_STEPS («Да»/«Нет» ->
+    # bool); без канонизации английские «Yes»/«No» упёрлись бы в жёсткую ошибку
+    # «Выбери «Да» или «Нет».» (второй режим отказа из докстринга _thin_step).
+    canon_text = await reg_i18n.canonicalize(message, "work_status", message.text)
+    value, err = validate_answer("work_status", canon_text)
     if err:
-        await message.answer(err)
+        await reg_i18n.say(message, err)
         return
     data = await state.get_data()
     # apply_answer (APPLY_GOLDEN): work_status=Нет -> work_sphere прочерком.
@@ -196,9 +217,13 @@ async def _store_choice(field: str, after: str, message: types.Message, state: F
     # needs_certificate, english_level, alumni_status, arrival, housing, bed_sharing, transport,
     # volunteer) — reg_engine._CHOICE_STEPS covers the same set with the same generic error/
     # «Другое»-prompt text this function used to inline.
-    value, err = validate_answer(field, message.text)
+    # Phase 27 (27-05, Задача 3, LANG-06): канонизация ДО validate_answer — _CHOICE_STEPS
+    # принимает любой текст и записал бы английскую подпись молча (первый режим отказа из
+    # докстринга _thin_step).
+    canon_text = await reg_i18n.canonicalize(message, field, message.text)
+    value, err = validate_answer(field, canon_text)
     if err:
-        await message.answer(err, reply_markup=_err_kb(message.text))
+        await reg_i18n.say(message, err, reply_markup=_err_kb(canon_text))
         return
     await state.update_data(**{field: value})
     await _advance(after, message, state, bot)
@@ -207,7 +232,7 @@ async def _store_choice(field: str, after: str, message: types.Message, state: F
 async def _store_text(field: str, after: str, message: types.Message, state: FSMContext, bot: Bot):
     value, err = validate_answer(field, message.text)
     if err:
-        await message.answer(err)
+        await reg_i18n.say(message, err)
         return
     await state.update_data(**{field: value})
     await _advance(after, message, state, bot)

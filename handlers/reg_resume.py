@@ -25,6 +25,9 @@ from handlers.registration import (
     _get_enabled_steps, _get_consent_steps, _ask_step_or_recall, _ask_full_name,
     _build_summary, finalize_registration, _start_registration_flow,
 )
+# Phase 27 (27-05, LANG-02): say()/tr_for() переводят делегатские отправки этого шва на
+# отправке.
+from handlers import reg_i18n
 
 
 async def offer_resume(message: types.Message, draft: dict) -> None:
@@ -51,7 +54,7 @@ async def offer_resume(message: types.Message, draft: dict) -> None:
         [InlineKeyboardButton(text=continue_label, callback_data="reg_resume:continue")],
         [InlineKeyboardButton(text=restart_label, callback_data="reg_resume:restart")],
     ])
-    await message.answer("У тебя есть незаконченная анкета — что дальше?", reply_markup=kb)
+    await reg_i18n.say(message, "У тебя есть незаконченная анкета — что дальше?", reply_markup=kb)
 
 
 async def resume_from_draft(tap_message: types.Message, state: FSMContext, bot: Bot, draft: dict) -> None:
@@ -114,7 +117,10 @@ async def reg_resume_continue(callback: types.CallbackQuery, state: FSMContext, 
     telegram_id = callback.from_user.id
     draft = await get_reg_draft(telegram_id)
     if not draft:
-        await callback.answer("Черновик не найден — начни заново с /start.", show_alert=True)
+        await callback.answer(
+            await reg_i18n.tr_for(callback, "Черновик не найден — начни заново с /start."),
+            show_alert=True,
+        )
         return
     try:
         await callback.message.edit_reply_markup(reply_markup=None)
@@ -143,7 +149,7 @@ async def reg_resume_restart(callback: types.CallbackQuery, state: FSMContext):
         InlineKeyboardButton(text="Да, начать заново", callback_data="reg_resume:restart_yes"),
         InlineKeyboardButton(text="Нет, продолжить", callback_data="reg_resume:continue"),
     ]])
-    await callback.message.answer(text, reply_markup=kb, parse_mode="HTML")
+    await reg_i18n.say(callback.message, text, reply_markup=kb, parse_mode="HTML")
     await callback.answer()
 
 
@@ -162,7 +168,8 @@ async def reg_resume_restart_yes(callback: types.CallbackQuery, state: FSMContex
         # значит «отменить изменения», не «начать регистрацию заново» (делегат уже
         # зарегистрирован в этом сезоне и остаётся им).
         await state.clear()
-        await callback.message.answer(
+        await reg_i18n.say(
+            callback.message,
             "Изменения отменены — анкета осталась прежней.",
             reply_markup=await get_main_menu_kb(callback.from_user.id),
         )
