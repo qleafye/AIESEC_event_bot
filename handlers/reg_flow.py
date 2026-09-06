@@ -340,7 +340,12 @@ async def process_resume_invalid(message: types.Message, state: FSMContext):
 async def process_date_input(message: types.Message, state: FSMContext, bot: Bot):
     data = await state.get_data()
     step_key = data.get("_current_date_step", "arrival_date")
-    value, err = validate_answer(step_key, message.text)
+    # Phase 27 (27-05 Deviation 4 fix, LANG-06): дата-шаги (arrival_date/birth_date/
+    # payment_plan_date) конфигурируются пресет-кнопками (option_pairs может вернуть непустой
+    # список для date-типа с preset-вариантами) — та же канонизация ДО validate_answer, что и
+    # у _thin_step/_store_choice; у шагов без вариантов option_pairs вернёт [], no-op.
+    canon_text = await reg_i18n.canonicalize(message, step_key, message.text)
+    value, err = validate_answer(step_key, canon_text)
     if err:
         await reg_i18n.say(message, err)
         return
@@ -354,9 +359,15 @@ async def process_date_input(message: types.Message, state: FSMContext, bot: Bot
 async def process_select_input(message: types.Message, state: FSMContext, bot: Bot):
     data = await state.get_data()
     step_key = data.get("_current_select_step", "study_field")
-    value, err = validate_answer(step_key, message.text)
+    # Phase 27 (27-05 Deviation 4 fix, LANG-06): select-шаги (study_field/goal и т.п.) несут
+    # вариант-кнопки ровно как _CHOICE_STEPS/_BESPOKE_CHOICE — без канонизации английская
+    # подпись («IT and technology») ложится в базу/таблицу молча (UAT 27-05 нашёл именно это
+    # на study_field). `_err_kb` смотрит на canon_text — английское «Other» уже канонизировано
+    # в «Другое», та же клавиатура «Отмена», что у русского делегата.
+    canon_text = await reg_i18n.canonicalize(message, step_key, message.text)
+    value, err = validate_answer(step_key, canon_text)
     if err:
-        await reg_i18n.say(message, err, reply_markup=_err_kb(message.text))
+        await reg_i18n.say(message, err, reply_markup=_err_kb(canon_text))
         return
     await state.update_data(**{step_key: value})
     await _advance(step_key, message, state, bot)
