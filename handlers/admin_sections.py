@@ -59,6 +59,11 @@ SECTIONS: list[tuple[str, str, list[tuple]]] = [
         ("toggle", "toggle_party_fork_question"),
         ("toggle", "toggle_consent_enabled"),
         ("screen", "admin_consent_pdfs", "🧾 PDF согласий"),
+        # Phase 27 (27-02, LANG-01): английский язык анкеты — рядом с прочими тумблерами
+        # анкеты, не в «📦 Прочие» (SETTINGS_SCHEMA group="toggles", в SETTINGS_FIELDS не
+        # входит — тот же приём, что у toggle_reg_edit_remoderation в разделе «📋 Заявки»).
+        ("toggle", "toggle_delegate_lang_enabled"),
+        ("toggle", "toggle_delegate_lang_ask_on_start"),
         ("group", "reg"),
         ("group", "party"),
         ("group", "consent"),
