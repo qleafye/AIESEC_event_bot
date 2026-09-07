@@ -1705,6 +1705,15 @@ SETTINGS_SCHEMA = {
         "type": "enum", "group": "toggles", "label": "🎁 Предлагать свою ссылку после анкеты",
         "options": ["on", "off"], "prompt": None, "default": "off",
     },
+    # Phase 28 (28-09, SU-10, D-05): имя файла резюме в облаке — дефолт "off" ("ФИО + ник +
+    # ID + дата", прежнее поведение байт-в-байт); "on" — "только ID + дата" (без ФИО и ника,
+    # T-28-09-02). Читает `services/reg_finalize.py::_resume_filename_mode` (Pitfall 4: сама
+    # `_resume_file_stem` в реестр не ходит).
+    "resume_filename_short_mode": {
+        "type": "enum", "group": "toggles",
+        "label": "📄 Имя файла резюме: только ID и дата",
+        "options": ["on", "off"], "prompt": None, "default": "off",
+    },
     "registration_mode": {
         "type": "enum", "group": "toggles", "label": "📝 Форма регистрации",
         "options": ["short", "full"], "prompt": None, "default": "short",

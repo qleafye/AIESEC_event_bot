@@ -40,7 +40,7 @@ DEFAULT_CEILING = 850
 # edit the number + reason together, in the same commit as the growth that needs it.
 KNOWN_OVERAGES: dict[str, tuple[int, str]] = {
     "registration.py": (
-        2318,
+        2328,
         "Phase 21 (21-01, FORM-SYNC-01): REG_STEP_TYPES/STEP_TO_COLUMN/RECALLABLE_STEPS/"
         "SELECT_CONFIG/MULTI_CONFIG/enabled_steps/prompt-резолюция/pre-flow гейты/"
         "prior-answer правило переехали в корневой reg_engine.py (2309 -> 2099 строк) -- "
@@ -84,7 +84,11 @@ KNOWN_OVERAGES: dict[str, tuple[int, str]] = {
         "файла + вызов `offer_ref_link` в самом хвосте `finalize_registration` (только "
         "`mode == \"new\"`, в try/except — сбой предложения не должен ронять сохранённую "
         "заявку); сам экран/хендлеры `regamb:want`/`regamb:later` живут в шве; потолок "
-        "поднят до фактического размера.",
+        "поднят до фактического размера. "
+        "+10 строк (Phase 28, 28-09, SU-10): `_resume_file_stem` получила третий параметр "
+        "`mode` (\"full\"/\"id\") + расширенный докстринг — сама функция остаётся чистой "
+        "sync, режим читает async-вызывающий (`services/reg_finalize.py`); потолок поднят "
+        "до фактического размера.",
     ),
     "admin_gamification.py": (
         2020,

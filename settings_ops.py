@@ -309,6 +309,9 @@ TOGGLE_SECTION: dict[str, str] = {
     "reg_skip_source_for_referred": "form",
     "reg_referrer_must_be_ambassador": "form",
     "reg_offer_ref_link": "form",
+    # Phase 28 (28-09, SU-10): имя файла резюме в облаке — строка ("toggle", …) раздела
+    # «📝 Анкета» в admin_sections.SECTIONS, рядом с реф-механикой СкиллАпа выше.
+    "resume_filename_short_mode": "form",
     # Phase 28 (28-08, SU-08): сортировка очереди заявок — строка ("toggle", …) раздела
     # «📋 Заявки» в admin_sections.SECTIONS.
     "apps_queue_sort_by_score": "apps",

@@ -438,6 +438,7 @@ admin|callback_query|toggle_delegate_lang_ask_on_start|toggle_delegate_lang_ask_
 admin|callback_query|toggle_reg_skip_source_for_referred|toggle_reg_skip_source_for_referred
 admin|callback_query|toggle_reg_referrer_must_be_ambassador|toggle_reg_referrer_must_be_ambassador
 admin|callback_query|toggle_reg_offer_ref_link|toggle_reg_offer_ref_link
+admin|callback_query|toggle_resume_filename_short_mode|toggle_resume_filename_short_mode
 admin|callback_query|toggle_reg_scoring_enabled|toggle_reg_scoring_enabled
 admin|callback_query|toggle_apps_queue_sort_by_score|toggle_apps_queue_sort_by_score
 admin|callback_query|toggle_reg_edit_remoderation|toggle_reg_edit_remoderation
@@ -827,6 +828,9 @@ def test_snapshot_total_handler_count_is_292():
     """Second, independent invariant besides content — a handler silently added/removed
     without touching this file's golden text (impossible for a normal edit, but this guards
     against a golden-string typo slipping past review) is caught by count alone."""
+    # Phase 28 (28-09, SU-10, задача 2): +1 admin_settings.py callback_query
+    # toggle_resume_filename_short_mode, встал сразу после toggle_reg_offer_ref_link и перед
+    # toggle_reg_scoring_enabled (472 -> 473).
     # Phase 28 (28-08, SU-08, задача 1): +5 handlers/admin_reg_scoring.py callback_query
     # (admin_reg_scoring/scoring_toggle/scoring_drop/scoring_limit/scoring_noop), шов
     # импортируется из хвоста admin_moderation.py сразу после admin_modcard и перед
@@ -850,7 +854,7 @@ def test_snapshot_total_handler_count_is_292():
     # poll_wizard_cancel = два декоратора) в хвост admin.message, 15 callback (список/карточка
     # admin_polls + мастер admin_poll_wizard) в хвост admin.callback_query; чистый аппенд,
     # перепроверен прогоном _build_snapshot_lines() и diff'ом с прежним 334-строчным снапшотом.
-    assert len(GOLDEN_SNAPSHOT) == 472  # Phase 28 (28-08): +5, +1; (28-07): +1; (28-06): +3, +2
+    assert len(GOLDEN_SNAPSHOT) == 473  # Phase 28 (28-09): +1; (28-08): +5, +1; (28-07): +1; (28-06): +3, +2
     # handlers/reg_resume_fork.py — message process_resume_link (хвост message-блока
     # registration.router, сразу после process_case_optin и перед первым callback_query
     # recall_keep) + callback_query regfork_pick (хвост callback_query-блока
