@@ -226,6 +226,16 @@ MINIAPP_KEYS = [
     "miniapp_settings_reg_matrix_full_label_text",
     "miniapp_settings_reg_matrix_party_label_text",
     "miniapp_settings_reg_matrix_short_label_text",
+    # Phase 28 (28-06, SU-07): +7 текстов финального экрана «Хочу свою ссылку» в приложении;
+    # Phase 28 (28-08): +1 пометка исчезнувшего варианта в чекбокс-строках настроек (170 -> 178).
+    "miniapp_form_ambassador_offer_heading_text",
+    "miniapp_form_ambassador_offer_body_text",
+    "miniapp_form_ambassador_cta_text",
+    "miniapp_form_ambassador_later_text",
+    "miniapp_form_ambassador_link_heading_text",
+    "miniapp_form_ambassador_copy_button_text",
+    "miniapp_form_ambassador_copied_toast_text",
+    "miniapp_settings_option_gone_text",
 ]
 
 # Phase 22 Plan 02: новые тексты веб-экрана настроек — используются в проверках ниже.
@@ -271,7 +281,9 @@ def test_exactly_170_miniapp_keys_and_no_extra():
     # Quick 260906-8uq (FAQ-05/FAQ-06): +3 ключа FAQ в приложении — раздел-чекбокс
     # miniapp_section_faq и кнопка «В FAQ» с тостом под вопросом журнала
     # (miniapp_questions_to_faq_button/_saved_toast) (167 -> 170).
-    assert len(MINIAPP_KEYS) == 170
+    # Phase 28: +7 текстов финального экрана амбассадора + 1 пометка «варианта больше нет»
+    # (170 -> 178).
+    assert len(MINIAPP_KEYS) == 178
     present = sorted(k for k in SETTINGS_SCHEMA if k.startswith("miniapp_"))
     assert present == sorted(MINIAPP_KEYS)
 
@@ -329,7 +341,9 @@ def test_text_keys_have_human_defaults():
     # Quick 260904-liz: +1 текстовый ключ строки причины отказа (136 -> 137).
     # Quick 260906-8uq (FAQ-06): +2 текстовых ключа кнопки «В FAQ» и тоста под вопросом
     # журнала (137 -> 139).
-    assert len(text_keys) == 139
+    # Phase 28: +7 текстов финального экрана амбассадора + 1 пометка «варианта больше нет»
+    # (139 -> 147).
+    assert len(text_keys) == 147
     for key in text_keys:
         default = SETTINGS_SCHEMA[key]["default"]
         assert isinstance(default, str) and default.strip(), key
@@ -461,8 +475,9 @@ def test_settings_screen_keys_count_and_shape():
     `_settings_group_keys("misc")` сегодня пуста (см. docstring). Phase 22 Plan 07 (D-16):
     +3 текста стартового экрана-плиток (два заголовка ряда + счётчик настроек) = 44.
     Phase 22 Plan 07 (D-17 Task 3): +3 заголовка колонок матрицы «трек × вопрос» = 47.
-    Quick 260904-8o3 Task 3 (E5/E6): +3 надписи мини-плиты живого превью оформления = 50."""
-    assert len(MINIAPP_SETTINGS_SCREEN_KEYS) == 50
+    Quick 260904-8o3 Task 3 (E5/E6): +3 надписи мини-плиты живого превью оформления = 50.
+    Phase 28 (28-08): +1 пометка исчезнувшего варианта в чекбокс-строках = 51."""
+    assert len(MINIAPP_SETTINGS_SCREEN_KEYS) == 51
     assert "miniapp_settings_misc_group_label_text" not in MINIAPP_SETTINGS_SCREEN_KEYS
     for key in MINIAPP_SETTINGS_SCREEN_KEYS:
         entry = SETTINGS_SCHEMA[key]
