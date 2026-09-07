@@ -215,6 +215,11 @@ export async function render(root, params, ctx) {
   function renderComplete(res) {
     onRefresh = null;
     setMainButton(null);
+    // Phase 28 (28-06, SU-07, D-09): блок-предложение реф-ссылки — доп. узел ПОД стандартным
+    // сообщением, только если сервер прислал `res.ambassador` (mode == "new" И тумблер
+    // reg_offer_ref_link включён). Тумблер выключен -> ключа нет вовсе -> слот остаётся
+    // пустым, экран идентичен контракту фазы 21 (28-UI-SPEC.md §6, стадия A/выключено).
+    const ambassadorSlot = h("div");
     holder.replaceChildren(
       h("section", { class: "state" },
         h("div", { class: "icon" }, icon("check")),
@@ -223,6 +228,62 @@ export async function render(root, params, ctx) {
         h("div", { class: "actions" },
           h("button", { class: "btn", type: "button", onClick: goHome }, icon("check")),
         ),
+        ambassadorSlot,
+      ),
+    );
+    if (res.ambassador) renderAmbassadorOffer(ambassadorSlot, res.ambassador);
+  }
+
+  // Стадия A (28-UI-SPEC.md §6): заголовок/тело + «Хочу свою ссылку» (primary accent) /
+  // «Позже» (ghost) в один ряд. «Позже» — блок просто исчезает, остаётся стандартный экран
+  // (SU-07 «Позже -> просто завершение»); никакой записи в БД для этой ветки нет.
+  function renderAmbassadorOffer(slot, amb) {
+    slot.replaceChildren(
+      h("div", { class: "ambassador-offer" },
+        h("h2", { text: amb.heading || "" }),
+        amb.body ? h("p", { text: amb.body }) : null,
+        h("div", { class: "actions" },
+          h("button", { class: "btn", type: "button", text: amb.cta || "", onClick: () => wantRefLink(slot) }),
+          h("button", { class: "btn ghost", type: "button", text: amb.later || "", onClick: () => slot.replaceChildren() }),
+        ),
+      ),
+    );
+  }
+
+  // Тап «Хочу свою ссылку» — POST /app/api/reg/ambassador (ставит is_ambassador=1 на
+  // сервере), ТОТ ЖЕ экран переходит в стадию B (без перехода на новый маршрут, A2 UI-SPEC).
+  async function wantRefLink(slot) {
+    try {
+      const res = await api("/reg/ambassador", { method: "POST" });
+      renderAmbassadorLink(slot, res);
+    } catch (err) {
+      if (!isAuthError(err)) say(errorText(err, ""), "warn");
+    }
+  }
+
+  // Стадия B: ссылка — текстовый узел в моноширинном блоке (НЕ <a href> — делегат должен
+  // скопировать, не уйти из приложения кликом, Accessibility 28-UI-SPEC.md), «Скопировать»
+  // через Clipboard API + haptic success + чип «Скопировано» (say(), тот же паттерн, что
+  // review.js/applications.js), автоскрытие через 2000ms.
+  function renderAmbassadorLink(slot, res) {
+    const copyBtn = h("button", { class: "btn ghost", type: "button", text: res.copy_button || "" });
+    copyBtn.addEventListener("click", async () => {
+      if (!res.link || !navigator.clipboard || typeof navigator.clipboard.writeText !== "function") return;
+      try {
+        await navigator.clipboard.writeText(res.link);
+        haptic("success");
+        say(res.copied_toast || "", "success");
+        setTimeout(() => say(""), 2000);
+      } catch (_) {
+        // Clipboard API недоступен/отклонён — ссылка всё равно видна текстом, копирование
+        // руками остаётся возможным.
+      }
+    });
+    slot.replaceChildren(
+      h("div", { class: "ambassador-offer" },
+        h("h2", { text: res.heading || "" }),
+        h("div", { class: "ambassador-link-box", text: res.link || "" }),
+        h("div", { class: "actions" }, copyBtn),
       ),
     );
   }
