@@ -25,6 +25,7 @@ from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
 from config import config
 from database.db import get_user, get_setting, record_user_consent, delete_reg_draft
 from settings_schema import get_setting_typed
+from services.consent import tapped_button_text
 from cities import CITIES, is_city_enabled
 from handlers.states import Registration
 from keyboards.builders import get_main_menu_kb
@@ -465,7 +466,11 @@ async def process_consent_accept(callback: types.CallbackQuery, state: FSMContex
     if not _consent_key_matches(consent_key, data.get("_consent_key")):
         await callback.answer()
         return
-    await record_user_consent(callback.from_user.id, consent_key)  # D-02 audit row
+    # Quick 260907-4ai: снимок текста НАЖАТОЙ кнопки — читаем markup ДО edit_reply_markup
+    # ниже (после него разметки уже нет). Фолбэк — тот же литерал/настройка, что и в
+    # _send_renew_card/process_consent_ignore, третьего варианта дефолта не заводим.
+    raw_button = tapped_button_text(callback) or await get_setting("consent_button_text") or "Согласен(-на)"
+    await record_user_consent(callback.from_user.id, consent_key, raw_button=raw_button)  # D-02 audit row
     # "✅ Принято" — обвязка экрана согласия (кнопка сработала), не сам текст согласия
     # (LANG-09 запрещает переводить ТОЛЬКО текст/PDF согласия, не UI вокруг него).
     await callback.answer(await reg_i18n.tr_for(callback, "✅ Принято"))
