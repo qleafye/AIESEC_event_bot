@@ -98,6 +98,10 @@ EXPECTED_PER_CITY_KEYS = {
     "reg_prompt_mini_direction", "reg_prompt_case_optin",
     # Phase 25 (CITYQ-01): режим приёма резюме — file_or_text/text_only по городу.
     "reg_resume_mode",
+    # Phase 28 (28-03, SU-02): подсказка формата лимита мультивыбора — обращена к делегату,
+    # per_city как соседние тексты анкеты (счётчик/ошибка — нет, нейтральный технический
+    # текст, 28-UI-SPEC таблица новых ключей).
+    "reg_multi_limit_hint_text",
 }
 
 
