@@ -299,6 +299,78 @@ function consentControl(h, spec, value, onChange) {
   );
 }
 
+// Phase 28 (28-05, SU-04, 28-UI-SPEC §1): развилка резюме R1 — три равноправные full-width
+// кнопки друг под другом (`.choice-stack`, не `.choice-chips` — подписи длинные, каждая ведёт
+// в свою под-форму, не выбирает значение поля). Ни одна не accent'ом (см. app.css) — тап
+// СРАЗУ вызывает onChange(code) — это переход, а не значение, ждущее «Дальше» (spec.type
+// остаётся "resume-fork", вызывающий экран сам решает, что делать с onChange дальше — тот же
+// контракт, что у остальных типов buildControl, никакой сетевой логики здесь).
+function resumeForkControl(h, spec, value, onChange) {
+  const box = h("div", { class: "choice-stack", role: "group", "aria-label": spec.label });
+  for (const opt of spec.fork_options || []) {
+    box.append(h("button", {
+      class: "btn secondary", type: "button", "aria-label": opt.label,
+      onClick: () => onChange(opt.code),
+    }, icon(opt.icon), h("span", { text: opt.label })));
+  }
+  return { control: box };
+}
+
+// Phase 28 (28-05, SU-04, 28-UI-SPEC §2): ссылка на резюме — обычный `url`-инпут + нейтральный
+// маркер домена под полем (chip, ОБА случая — из вайтлиста и личный сайт — визуально
+// ОДИНАКОВЫ, различаются только иконкой/текстом, A3 28-UI-SPEC: «не ошибка, а нейтральная
+// пометка»). Сверка домена — на клиенте (`spec.link_whitelist` уже пришёл с шагом, без
+// отдельного запроса); решение `link_verified` всё равно пересчитывает сервер на submit
+// (T-28-04-01) — маркер здесь ТОЛЬКО подсказка (T-28-05-02).
+function parseUrlHost(raw) {
+  let url;
+  try {
+    url = new URL(String(raw || "").trim());
+  } catch (_) {
+    return null;
+  }
+  if (url.protocol !== "http:" && url.protocol !== "https:" || !url.hostname) return null;
+  const host = url.hostname.toLowerCase();
+  return host.startsWith("www.") ? host.slice(4) : host;
+}
+
+function urlControl(h, spec, value, onChange) {
+  const input = h("input", { class: "input", type: "url", inputmode: "url", id: `f-${spec.key}` });
+  input.value = value || "";
+  const marker = h("p", { class: "resume-link-marker hidden", "aria-live": "polite" });
+  let debounce = null;
+
+  function paint() {
+    const raw = input.value.trim();
+    if (!raw) { marker.classList.add("hidden"); return; }
+    const host = parseUrlHost(raw);
+    if (!host) {
+      marker.replaceChildren(h("span", { text: spec.invalid_hint_text || "" }));
+      marker.classList.remove("hidden");
+      marker.classList.add("is-error");
+      return;
+    }
+    marker.classList.remove("is-error");
+    const whitelist = (spec.link_whitelist || []).map((d) => String(d).toLowerCase());
+    const verified = whitelist.includes(host);
+    const template = verified ? spec.whitelist_hint_text : spec.other_hint_text;
+    marker.replaceChildren(
+      icon(verified ? "check-circle-2" : "circle"),
+      h("span", { text: String(template || "").replace("{domain}", host) }),
+    );
+    marker.classList.remove("hidden");
+  }
+
+  input.addEventListener("input", () => {
+    onChange(input.value);
+    if (debounce) clearTimeout(debounce);
+    debounce = setTimeout(paint, 300);
+  });
+  input.addEventListener("blur", paint);
+  paint();
+  return { control: input, extra: marker };
+}
+
 function buildControl(h, spec, value, onChange) {
   switch (spec.type) {
     case "text":
@@ -309,6 +381,10 @@ function buildControl(h, spec, value, onChange) {
       return textControl(h, spec, value, onChange, "tel", "tel");
     case "email":
       return textControl(h, spec, value, onChange, "email", "email");
+    case "url":
+      return urlControl(h, spec, value, onChange);
+    case "resume-fork":
+      return resumeForkControl(h, spec, value, onChange);
     case "int":
       return intControl(h, spec, value, onChange);
     case "date":

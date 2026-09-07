@@ -1123,8 +1123,14 @@ async def step_spec(step_key: str, participant_type: str | None = None,
     # Phase 28 (28-04, SU-04): ссылка на резюме публикует вайтлист доменов — сверка домена
     # происходит на клиенте БЕЗ отдельного запроса (28-UI-SPEC.md §2), финальное решение
     # `link_verified` всё равно пересчитывает сервер на финале (T-28-04-01).
+    # Phase 28 (28-05, SU-04, deviation Rule 3): шаблоны нейтрального маркера домена
+    # (`{domain}` подставляет клиент) — без них form.js не может нарисовать текст маркера,
+    # только иконку; те же реестровые ключи, что уже читает бот в R2b (handlers/reg_resume_fork.py).
     if step_key == "resume_link":
         spec["link_whitelist"] = await resume_link_whitelist()
+        spec["whitelist_hint_text"] = await get_setting_typed("reg_resume_link_whitelist_hint_text")
+        spec["other_hint_text"] = await get_setting_typed("reg_resume_link_other_hint_text")
+        spec["invalid_hint_text"] = await get_setting_typed("reg_resume_link_invalid_text")
     if ui_type in ("choice-chips", "select", "multi", "yesno"):
         spec["options"] = await options(step_key)
     # Phase 28 (28-03, SU-02, A-06): лимит мультивыбора — публикуется ВСЕГДА для multi-шага
@@ -1149,6 +1155,12 @@ async def step_spec(step_key: str, participant_type: str | None = None,
         spec["description"] = await get_setting_typed_for_city(
             "reg_case_optin_description_text", event_city
         )
+    # Phase 28 (28-05, SU-04, deviation Rule 3): подпись кнопки-пропуска второго мини-подшага —
+    # без неё Mini App не может нарисовать третью футер-кнопку (28-UI-SPEC.md §3), только
+    # Назад/Дальше. Публикуется ТОЛЬКО для этого шага (не для всех skip_allowed — остальные
+    # шаги-пропуски продолжают обходиться пустым «Дальше», D-06 byte-for-byte).
+    if step_key == "mini_portfolio":
+        spec["skip_label"] = await get_setting_typed("reg_mini_portfolio_skip_label")
     return spec
 
 

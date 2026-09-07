@@ -711,6 +711,30 @@ a.flat-row:active, button.flat-row:active { background: var(--surface-alt); }
    pointer-events, новых токенов не заводим. Тач-таргет не уменьшается — только визуал. */
 .multi-limit-counter { color: var(--text-faint); margin: 0 0 var(--sp-1); }
 .check.is-limit-disabled { opacity: .5; pointer-events: none; }
+
+/* Phase 28 (28-05, SU-04, 28-UI-SPEC §1): развилка резюме R1 — три равноправные кнопки друг
+   под другом, ни одна не accent'ом (.btn.secondary уже full-width + отступ через .btn+.btn,
+   .choice-stack — просто вертикальный контейнер без своей ширины/цвета). */
+.choice-stack { display: flex; flex-direction: column; gap: var(--sp-2); }
+.choice-stack .btn { margin: 0; }
+
+/* Phase 28 (28-05, SU-04, 28-UI-SPEC §2): маркер домена под полем ссылки R2b — нейтральный
+   ОБА случая (вайтлист/личный сайт, A3 28-UI-SPEC: не success/danger, различие только в
+   иконке/тексте); is-error — единственная ветка, где маркер красится (--danger-text),
+   когда URL не распознан вовсе (T-28-04-02: ошибка формата, не «не проверено»). */
+.resume-link-marker {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  margin-top: var(--sp-1);
+  padding: 2px var(--sp-3);
+  border-radius: var(--radius-pill);
+  background: var(--surface-alt);
+  color: var(--text-faint);
+  font-size: 12px;
+  width: fit-content;
+}
+.resume-link-marker.is-error { color: var(--danger-text); }
 .confirm-box {
   padding: var(--sp-3);
   border: 1px solid var(--warn);

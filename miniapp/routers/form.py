@@ -471,6 +471,16 @@ async def draft_patch(
     answer_lang, answer_tr_map = await i18n.context(p.telegram_id)
     answer_lang = answer_lang if answer_lang in ("ru", "en") else "ru"
 
+    # Phase 28 (28-05, SU-04, T-28-05-01, deviation Rule 3): выбор ветки развилки резюме
+    # (`resume_type`) — закрытый словарь из трёх токенов, тот же контракт, что
+    # `regfork:file|link|mini` в боте (handlers/reg_resume_fork.py). Обрабатывается ОТДЕЛЬНО
+    # от общего цикла ниже: `resume_type` НЕ REG_FLOW-шаг и не проходит через
+    # `reg_engine.column_to_step`/`validate_answer` — попади он в общий цикл, схлопнулся бы в
+    # 400 bad_field, как любая незнакомая колонка.
+    resume_type_patch = body.answers.pop("resume_type", None)
+    if resume_type_patch is not None and resume_type_patch not in ("file", "link", "mini"):
+        raise HTTPException(400, {"reason": "bad_field", "field": "resume_type"})
+
     step_patch: dict[str, Any] = {}
     for column, raw in body.answers.items():
         step_key = reg_engine.column_to_step(column)
@@ -508,6 +518,12 @@ async def draft_patch(
     new_answers = reg_engine.apply_answers(
         ctx["answers"], step_patch, studying_statuses=edu_studying_set,
     )
+    # Phase 28 (28-05, SU-04): `resume_type` кладётся В ОБХОД apply_answers (не REG_FLOW-шаг,
+    # нет своей колонки/правила APPLY_GOLDEN) — сразу в merged-словарь, ДО расчёта delta, чтобы
+    # он попал и в сохранённый патч, и в `enabled_now` ниже (условие resume_link/mini_* читает
+    # именно это поле, reg_engine.enabled_steps).
+    if resume_type_patch is not None:
+        new_answers["resume_type"] = resume_type_patch
     delta = {col: val for col, val in new_answers.items() if ctx["answers"].get(col) != val}
 
     # Quick 260904-3vm (D2): контракт `reg_drafts.step` = шаг, который ЕЩЁ НЕ ОТВЕЧЕН — ровно
