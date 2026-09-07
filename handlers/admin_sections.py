@@ -72,6 +72,8 @@ SECTIONS: list[tuple[str, str, list[tuple]]] = [
         ("toggle", "toggle_reg_skip_source_for_referred"),
         ("toggle", "toggle_reg_referrer_must_be_ambassador"),
         ("toggle", "toggle_reg_offer_ref_link"),
+        # Phase 28 (28-09, SU-10): имя файла резюме в облаке — рядом с реф-механикой выше.
+        ("toggle", "toggle_resume_filename_short_mode"),
         ("group", "reg"),
         ("group", "party"),
         ("group", "consent"),

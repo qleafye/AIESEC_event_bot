@@ -329,9 +329,17 @@ async def finalize_data(telegram_id: int, username: str | None, draft: dict) -> 
     }
 
 
-def _resume_file_stem(full: dict, telegram_id: int) -> str:
+def _resume_file_stem(full: dict, telegram_id: int, mode: str = "full") -> str:
     from handlers.registration import _resume_file_stem as _stem
-    return _stem({**full, "telegram_id": telegram_id})
+    return _stem({**full, "telegram_id": telegram_id}, mode=mode)
+
+
+async def _resume_filename_mode() -> str:
+    """Phase 28 (28-09, SU-10, Pitfall 4): реестровый тумблер `resume_filename_short_mode`
+    (enum on/off, дефолт "off" — прежнее имя байт-в-байт) -> режим `_resume_file_stem`.
+    Читается ЗДЕСЬ (async-вызывающий), не самой `_resume_file_stem` — она остаётся чистой
+    sync-функцией без обращений к БД."""
+    return "id" if await get_setting_typed("resume_filename_short_mode") == "on" else "full"
 
 
 def _column_label(column: str) -> str:
@@ -468,7 +476,8 @@ async def post_finalize(
     resume_url = None
     if resume_file_id:
         try:
-            stem = _resume_file_stem(await get_user(telegram_id) or {}, telegram_id)
+            stem_mode = await _resume_filename_mode()
+            stem = _resume_file_stem(await get_user(telegram_id) or {}, telegram_id, mode=stem_mode)
             ext = os.path.splitext(resume_file_name or "")[1]
             resume_url = await asyncio.wait_for(
                 upload_resume(bot, resume_file_id, f"{stem}{ext}"), timeout=20
@@ -477,7 +486,8 @@ async def post_finalize(
             logger.error(f"Nextcloud resume upload failed for {telegram_id}: {e}")
     elif resume_text:
         try:
-            stem = _resume_file_stem(await get_user(telegram_id) or {}, telegram_id)
+            stem_mode = await _resume_filename_mode()
+            stem = _resume_file_stem(await get_user(telegram_id) or {}, telegram_id, mode=stem_mode)
             resume_url = await asyncio.wait_for(
                 upload_text_resume(resume_text, f"{stem}.txt"), timeout=20
             )
@@ -613,7 +623,8 @@ async def handle_resume_upload(bot, telegram_id: int, file_id: str, filename: st
 
     full = await get_user(telegram_id) or {}
     try:
-        stem = _resume_file_stem(full, telegram_id)
+        stem_mode = await _resume_filename_mode()
+        stem = _resume_file_stem(full, telegram_id, mode=stem_mode)
         ext = os.path.splitext(filename or "")[1]
         url = await asyncio.wait_for(upload_resume(bot, file_id, f"{stem}{ext}"), timeout=20)
     except Exception as e:
@@ -659,6 +670,11 @@ async def retry_pending_resume_uploads(bot, limit: int = 20) -> int:
         datetime.now() - timedelta(minutes=_RESUME_RETRY_MIN_AGE_MINUTES)
     ).strftime("%Y-%m-%d %H:%M:%S")
     rows = await get_resume_upload_backlog(cutoff, limit)
+    if not rows:
+        return 0
+    # Тумблер не меняется посреди одного тика джобы — читаем один раз на прогон, тот же
+    # приём, что `kb`/`text` в nudge_incomplete_registrations (services/scheduler.py).
+    stem_mode = await _resume_filename_mode()
 
     done = 0
     for row in rows:
@@ -666,7 +682,7 @@ async def retry_pending_resume_uploads(bot, limit: int = 20) -> int:
         if tid in _resume_retry_dead:
             continue
         try:
-            stem = _resume_file_stem(row, tid)
+            stem = _resume_file_stem(row, tid, mode=stem_mode)
             url = None
             file_id = row.get("resume_file_id")
             if file_id:

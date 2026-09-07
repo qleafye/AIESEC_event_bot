@@ -609,6 +609,15 @@ async def settings_toggle_rows(admin_id: int | None = None, *, header_code=_HEAD
     offer_ref_label = SETTINGS_SCHEMA["reg_offer_ref_link"]["label"]
     offer_ref_text = (f"{offer_ref_label}: ✅ Вкл → ❌ Выкл" if offer_ref_on == "on"
                       else f"{offer_ref_label}: ❌ Выкл → ✅ Вкл")
+    # Phase 28 (28-09, SU-10): строка показывает ТЕКУЩИЙ режим человеческими словами (не
+    # кодами "on"/"off") — менеджер должен понять, что стоит сейчас, до тапа.
+    resume_mode_on = await get_setting_typed("resume_filename_short_mode")
+    _RESUME_MODE_FULL = "ФИО + ник + ID + дата"
+    _RESUME_MODE_SHORT = "только ID + дата"
+    resume_mode_text = (
+        f"📄 Имя файла резюме: {_RESUME_MODE_SHORT} → {_RESUME_MODE_FULL}" if resume_mode_on == "on"
+        else f"📄 Имя файла резюме: {_RESUME_MODE_FULL} → {_RESUME_MODE_SHORT}"
+    )
     # Phase 28 (28-07, SU-08): reg_scoring_enabled — SETTINGS_SCHEMA type "toggle" (не "enum",
     # см. комментарий у ключа) — get_setting_typed отдаёт bool, не строку "on"/"off", поэтому
     # сравнение со строкой здесь (в отличие от соседей выше) было бы всегда ложным.
@@ -663,6 +672,7 @@ async def settings_toggle_rows(admin_id: int | None = None, *, header_code=_HEAD
         "toggle_reg_skip_source_for_referred": _row(skip_src_text, "toggle_reg_skip_source_for_referred"),
         "toggle_reg_referrer_must_be_ambassador": _row(referrer_amb_text, "toggle_reg_referrer_must_be_ambassador"),
         "toggle_reg_offer_ref_link": _row(offer_ref_text, "toggle_reg_offer_ref_link"),
+        "toggle_resume_filename_short_mode": _row(resume_mode_text, "toggle_resume_filename_short_mode"),
         "toggle_reg_scoring_enabled": _row(scoring_text, "toggle_reg_scoring_enabled"),
         "toggle_apps_queue_sort_by_score": _row(queue_sort_text, "toggle_apps_queue_sort_by_score"),
     }
@@ -1143,6 +1153,16 @@ async def toggle_reg_offer_ref_link(callback: types.CallbackQuery):
     await _toggle_module_setting(
         callback, "reg_offer_ref_link",
         SETTINGS_SCHEMA["reg_offer_ref_link"]["label"],
+    )
+
+
+@router.callback_query(F.data == "toggle_resume_filename_short_mode")
+async def toggle_resume_filename_short_mode(callback: types.CallbackQuery):
+    # Phase 28 (28-09, SU-10): имя файла резюме в облаке — enum on/off, дефолт OFF («ФИО +
+    # ник + ID + дата», прежнее поведение байт-в-байт); "on" — «только ID + дата».
+    await _toggle_module_setting(
+        callback, "resume_filename_short_mode",
+        SETTINGS_SCHEMA["resume_filename_short_mode"]["label"],
     )
 
 
