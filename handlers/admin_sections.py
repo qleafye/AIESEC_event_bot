@@ -94,6 +94,9 @@ SECTIONS: list[tuple[str, str, list[tuple]]] = [
         ("toggle", "toggle_nudge_enabled"),
         ("toggle", "toggle_reg_edit_remoderation"),
         ("toggle", "toggle_quiet_hours"),
+        # Phase 28 (28-07, SU-08): главный выключатель автоскоринга — рядом с прочими
+        # тумблерами очереди заявок; сами правила (множества/пороги) — в группе "apps" ниже.
+        ("toggle", "toggle_reg_scoring_enabled"),
         ("group", "apps"),
     ]),
     ("pay", "💳 Оплата", [

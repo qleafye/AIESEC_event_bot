@@ -554,6 +554,7 @@ ADMIN_CAPS: dict[str, str] = {
     "toggle_reg_skip_source_for_referred": "settings",  # Phase 28 (28-06)
     "toggle_reg_referrer_must_be_ambassador": "settings",  # Phase 28 (28-06)
     "toggle_reg_offer_ref_link": "settings",  # Phase 28 (28-06)
+    "toggle_reg_scoring_enabled": "settings",  # Phase 28 (28-07)
     "toggle_show_progress": "settings",
     "toggle_uni_mode": "settings",
 

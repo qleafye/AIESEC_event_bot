@@ -154,6 +154,13 @@ _APPS_FIELD_ORDER = [
     # Phase 23 (APP-TINDER-01, D-05): шаблоны причин отказа шторки Mini App — общий списочный
     # редактор (admin_settings_lists.py) достаётся бесплатно попаданием в этот список.
     "reject_reason_templates",
+    # Phase 28 (28-07, SU-08, A-04, СкиллАп 5): шесть скоринговых правил — до экрана-пикера
+    # (план 28-08) правятся тем же общим текстовым редактором, что *_options (иначе менеджер
+    # их в боте не увидит вовсе, правило файла). Сам тумблер reg_scoring_enabled — НЕ здесь
+    # (он type "toggle", живёт в settings_toggle_rows/admin_sections.SECTIONS, как остальные
+    # тумблеры «📋 Заявки»).
+    "score_it_fields", "score_senior_statuses", "score_readiness_counts",
+    "score_experience_counts", "score_course_from", "score_stack_from",
     # Quick 260904-dq1: «🌙 Тихие часы» — редактор экрана и per-city пикер достаются
     # бесплатно попаданием в этот список; сам тумблер живёт в settings_toggle_rows.
     "quiet_hours_start", "quiet_hours_end", "quiet_hours_manager_notice_text",
@@ -601,6 +608,13 @@ async def settings_toggle_rows(admin_id: int | None = None, *, header_code=_HEAD
     offer_ref_label = SETTINGS_SCHEMA["reg_offer_ref_link"]["label"]
     offer_ref_text = (f"{offer_ref_label}: ✅ Вкл → ❌ Выкл" if offer_ref_on == "on"
                       else f"{offer_ref_label}: ❌ Выкл → ✅ Вкл")
+    # Phase 28 (28-07, SU-08): reg_scoring_enabled — SETTINGS_SCHEMA type "toggle" (не "enum",
+    # см. комментарий у ключа) — get_setting_typed отдаёт bool, не строку "on"/"off", поэтому
+    # сравнение со строкой здесь (в отличие от соседей выше) было бы всегда ложным.
+    scoring_on = await get_setting_typed("reg_scoring_enabled")
+    scoring_label = SETTINGS_SCHEMA["reg_scoring_enabled"]["label"]
+    scoring_text = (f"{scoring_label}: ✅ Вкл → ❌ Выкл" if scoring_on
+                    else f"{scoring_label}: ❌ Выкл → ✅ Вкл")
 
     reg_rows = [[InlineKeyboardButton(text=toggle_text, callback_data="settings_toggle_reg")]]
     # Phase 09.3 (04, CITY-09): registration_mode has no settings_edit:{key} screen of its
@@ -642,6 +656,7 @@ async def settings_toggle_rows(admin_id: int | None = None, *, header_code=_HEAD
         "toggle_reg_skip_source_for_referred": _row(skip_src_text, "toggle_reg_skip_source_for_referred"),
         "toggle_reg_referrer_must_be_ambassador": _row(referrer_amb_text, "toggle_reg_referrer_must_be_ambassador"),
         "toggle_reg_offer_ref_link": _row(offer_ref_text, "toggle_reg_offer_ref_link"),
+        "toggle_reg_scoring_enabled": _row(scoring_text, "toggle_reg_scoring_enabled"),
     }
 
 
@@ -1121,6 +1136,25 @@ async def toggle_reg_offer_ref_link(callback: types.CallbackQuery):
         callback, "reg_offer_ref_link",
         SETTINGS_SCHEMA["reg_offer_ref_link"]["label"],
     )
+
+
+@router.callback_query(F.data == "toggle_reg_scoring_enabled")
+async def toggle_reg_scoring_enabled(callback: types.CallbackQuery):
+    # Phase 28 (28-07, SU-08): reg_scoring_enabled — SETTINGS_SCHEMA type "toggle" НАРОЧНО (не
+    # "enum" — см. комментарий у ключа), поэтому get_setting_typed отдаёт bool, не строку
+    # "on"/"off". Общий _toggle_module_setting сравнивает со строкой "on" — для этого ключа
+    # сравнение bool == str всегда False, кнопка не смогла бы выключиться обратно, поэтому
+    # здесь bool-приём, тот же, что у reg_q_* тумблера (handlers/admin_reg_percity.py::
+    # toggle_reg_question).
+    current_on = await get_setting_typed("reg_scoring_enabled")
+    new_val = "off" if current_on else "on"
+    await set_setting("reg_scoring_enabled", new_val)
+    label = SETTINGS_SCHEMA["reg_scoring_enabled"]["label"]
+    status = "✅ Вкл" if new_val == "on" else "❌ Выкл"
+    await callback.answer(f"{label}: {status}", show_alert=True)
+    from handlers.admin_sections import settings_return_screen  # ленивый шов (20-04)
+    text, kb = await settings_return_screen(callback.from_user.id, callback_data=callback.data)
+    await callback.message.edit_text(text, parse_mode="HTML", reply_markup=kb)
 
 
 @router.callback_query(F.data == "toggle_reg_edit_remoderation")
