@@ -2121,10 +2121,18 @@ async def _continue_after_city(
 # approve_user moved to handlers/reg_schema.py (13-02, REFAC-02); imported above.
 
 
-def _resume_file_stem(data, now: datetime | None = None) -> str:
-    """Unique resume filename stem: "<ФИО>_<username>_<telegram_id>_<YYYYMMDD-HHMMSS>"
-    (username is "@name" or "-" in finalize; "@" stripped, "-"/empty dropped so the id is
-    never doubled). Kept RAW here (cyrillic preserved) — sanitised later by _safe_name.
+def _resume_file_stem(data, now: datetime | None = None, mode: str = "full") -> str:
+    """Unique resume filename stem.
+
+    `mode="full"` (default, byte-identical to pre-28-09 behaviour):
+    "<ФИО>_<username>_<telegram_id>_<YYYYMMDD-HHMMSS>" (username is "@name" or "-" in
+    finalize; "@" stripped, "-"/empty dropped so the id is never doubled). Kept RAW here
+    (cyrillic preserved) — sanitised later by _safe_name.
+
+    `mode="id"` (Phase 28, 28-09, SU-10): "<telegram_id>_<YYYYMMDD-HHMMSS>" — no ФИО, no
+    username. Менеджер выбирает режим тумблером реестра (`resume_filename_short_mode`);
+    ЭТА функция остаётся чистой sync (Pitfall 4) и в реестр не ходит — режим читает
+    async-вызывающий (`services/reg_finalize.py`) и передаёт параметром.
 
     Nextcloud WebDAV PUT overwrites silently. Two delegates with the same display name — or
     one delegate re-submitting — used to replace each other's file while the stored link
@@ -2132,10 +2140,12 @@ def _resume_file_stem(data, now: datetime | None = None) -> str:
     upload land in its own file; sanitisation is still done by services.nextcloud._safe_name
     (keeps [\\w.-], so digits/underscores/hyphen survive).
     """
-    name = (data.get("full_name") or "").strip()
-    uname = (data.get("username") or "").strip().lstrip("@")
     tid = str(data.get("telegram_id"))
     ts = (now or datetime.now()).strftime("%Y%m%d-%H%M%S")
+    if mode == "id":
+        return f"{tid}_{ts}"
+    name = (data.get("full_name") or "").strip()
+    uname = (data.get("username") or "").strip().lstrip("@")
     parts = [name]
     if uname and uname != "-" and uname != tid:
         parts.append(uname)

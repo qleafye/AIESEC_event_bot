@@ -43,3 +43,24 @@ def test_safe_name_preserves_uniqueness_segments():
     remote = _safe_name(_resume_file_stem(data, now=_NOW) + ".pdf")
     assert remote == "Иван_Петров_qleafye_424242_20260819-140509.pdf"
     assert re.search(r"_424242_\d{8}-\d{6}\.pdf$", remote)
+
+
+# ── Phase 28 (28-09, SU-10): mode="id" — «только ID + дата», без ФИО и ника ───────────────
+
+def test_id_mode_format():
+    data = {"full_name": "Иван Петров", "username": "@qleafye", "telegram_id": 424242}
+    assert _resume_file_stem(data, now=_NOW, mode="id") == "424242_20260819-140509"
+
+
+def test_id_mode_still_unique_per_upload():
+    data = {"full_name": "Иван Петров", "username": "@x", "telegram_id": 1}
+    t1 = datetime(2026, 8, 19, 14, 5, 9)
+    t2 = datetime(2026, 8, 19, 14, 5, 10)
+    assert _resume_file_stem(data, now=t1, mode="id") != _resume_file_stem(data, now=t2, mode="id")
+
+
+def test_id_mode_has_no_cyrillic():
+    data = {"full_name": "Иван Петров", "username": "@qleafye", "telegram_id": 424242}
+    stem = _resume_file_stem(data, now=_NOW, mode="id")
+    assert not re.search(r"[а-яА-ЯёЁ]", stem)
+    assert "Иван" not in stem and "qleafye" not in stem
