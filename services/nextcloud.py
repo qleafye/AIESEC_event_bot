@@ -52,6 +52,20 @@ def _ssl_arg():
     return None
 
 
+def is_configured() -> bool:
+    """Единственный источник тройной проверки: облако включено, только если заполнены ВСЕ
+    три параметра (WebDAV-урл, публичный урл шары, токен папки). Используется и
+    upload_resume/upload_text_resume, и фоновой джобой повтора (services/reg_finalize.py) —
+    один источник правды вместо продублированной проверки в двух местах."""
+    if (
+        not config.NEXTCLOUD_WEBDAV_URL
+        or not config.NEXTCLOUD_PUBLIC_URL
+        or not config.NEXTCLOUD_FOLDER_SHARE_TOKEN
+    ):
+        return False
+    return True
+
+
 def _resume_max_bytes() -> int:
     return int(config.RESUME_MAX_MB) * 1024 * 1024
 
@@ -96,11 +110,7 @@ async def upload_resume(bot, file_id: str, filename: str) -> str | None:
     manual folder share. Returns None on any failure or when the feature is unconfigured.
     Never raises."""
     try:
-        if (
-            not config.NEXTCLOUD_WEBDAV_URL
-            or not config.NEXTCLOUD_PUBLIC_URL
-            or not config.NEXTCLOUD_FOLDER_SHARE_TOKEN
-        ):
+        if not is_configured():
             logger.debug(
                 "nextcloud disabled (WEBDAV_URL/PUBLIC_URL/FOLDER_SHARE_TOKEN empty) — skipping upload"
             )
@@ -138,11 +148,7 @@ async def upload_text_resume(text: str, filename: str) -> str | None:
     manual folder share. No Bot needed. Returns None on failure / when unconfigured.
     Never raises."""
     try:
-        if (
-            not config.NEXTCLOUD_WEBDAV_URL
-            or not config.NEXTCLOUD_PUBLIC_URL
-            or not config.NEXTCLOUD_FOLDER_SHARE_TOKEN
-        ):
+        if not is_configured():
             logger.debug(
                 "nextcloud disabled (WEBDAV_URL/PUBLIC_URL/FOLDER_SHARE_TOKEN empty) — skipping upload"
             )

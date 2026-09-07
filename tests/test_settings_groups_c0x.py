@@ -804,8 +804,10 @@ def test_scheduler_and_reminder_keys_declared_with_code_defaults(tmp_path):
     assert _parse_setting("incomplete_sync_hours", "3") == 3
     assert sched._int_or_default("abc", 15) == 15
     # группы: system рендерит три новых int-поля, reg -- два поля догонялки
-    assert admin_settings._settings_group_keys("system")[-3:] == [
-        "nudge_scan_minutes", "allowlist_refresh_minutes", "incomplete_sync_hours"]
+    # Quick 260907-4ai: resume_retry_minutes — новый хвост _SYSTEM_FIELD_ORDER.
+    assert admin_settings._settings_group_keys("system")[-4:] == [
+        "nudge_scan_minutes", "allowlist_refresh_minutes", "incomplete_sync_hours",
+        "resume_retry_minutes"]
     # Phase 20 (20-01): поля догонялки переехали из «📝 Регистрация» в «📋 Заявки» вместе
     # с остальными послеподачными текстами — сама пара ключей и её порядок не менялись.
     # Phase 23-01 (APP-TINDER-01, D-05): reject_reason_templates добавлен хвостом _APPS_FIELD_ORDER.
