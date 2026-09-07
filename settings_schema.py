@@ -532,7 +532,7 @@ SETTINGS_SCHEMA = {
     # (Body-роль, не Label) — per_city, как остальные тексты, обращённые к делегату.
     "reg_case_optin_description_text": {
         "type": "text", "group": "reg", "label": "🏆 Кейс-чемпионат: пояснение",
-        "prompt": "Текст-пояснение под вопросом «Участвуете в кейс-чемпионате?».",
+        "prompt": "Текст-пояснение под вопросом «Участвуешь в кейс-чемпионате?».",
         "default": (
             "Финал — очно на СкиллАп 5, командами по 3–4 человека. Опыт не нужен, важно "
             "желание пробовать."
@@ -633,7 +633,7 @@ SETTINGS_SCHEMA = {
     "reg_resume_link_invalid_text": {
         "type": "text", "group": "reg", "label": "🔗 Ссылка на резюме: ошибка формата",
         "prompt": "Текст ошибки, если делегат прислал не ссылку целиком.",
-        "default": "Пришлите ссылку целиком, начиная с http:// или https://",
+        "default": "Пришли ссылку целиком, начиная с http:// или https://",
     },
     "reg_mini_portfolio_skip_label": {
         "type": "text", "group": "reg", "label": "🖼 Мини-профиль: кнопка «Пропустить»",
@@ -3578,12 +3578,12 @@ SETTINGS_SCHEMA = {
     "miniapp_form_ambassador_offer_heading_text": {
         "type": "text", "group": "miniapp", "label": "🎁 Заголовок предложения реф-ссылки",
         "prompt": "Заголовок блока-предложения на финальном экране анкеты (бот и приложение).",
-        "default": "Приводите друзей в АЙСЕК", "per_city": True,
+        "default": "Приводи друзей в АЙСЕК", "per_city": True,
     },
     "miniapp_form_ambassador_offer_body_text": {
         "type": "text", "group": "miniapp", "label": "🎁 Текст предложения реф-ссылки",
         "prompt": "Текст под заголовком того же блока-предложения.",
-        "default": "Каждый, кто зарегистрируется по вашей ссылке, попадёт на СкиллАп 5 через вас.",
+        "default": "Каждый, кто зарегистрируется по твоей ссылке, попадёт на СкиллАп 5 через тебя.",
         "per_city": True,
     },
     "miniapp_form_ambassador_cta_text": {
@@ -3597,9 +3597,9 @@ SETTINGS_SCHEMA = {
         "default": "Позже",
     },
     "miniapp_form_ambassador_link_heading_text": {
-        "type": "text", "group": "miniapp", "label": "🎁 Заголовок «Ваша ссылка»",
+        "type": "text", "group": "miniapp", "label": "🎁 Заголовок «Твоя ссылка»",
         "prompt": "Заголовок блока со ссылкой после тапа «Хочу свою ссылку» (только приложение).",
-        "default": "Ваша ссылка",
+        "default": "Твоя ссылка",
     },
     "miniapp_form_ambassador_copy_button_text": {
         "type": "text", "group": "miniapp", "label": "🎁 Кнопка «Скопировать»",
