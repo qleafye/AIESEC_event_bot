@@ -276,7 +276,7 @@ SECTION_GROUPS: tuple[tuple[str, str, tuple[str, ...]], ...] = (
 SETTINGS_MAIN_SECTIONS: frozenset[str] = frozenset({"event", "form", "apps", "pay", "game", "data"})
 
 # Ключ группы "toggles" -> раздел, куда его кладёт соответствующая строка ("toggle", …) в
-# handlers.admin_sections.SECTIONS (двадцать один ключ группы "toggles" в SETTINGS_SCHEMA,
+# handlers.admin_sections.SECTIONS (двадцать три ключа группы "toggles" в SETTINGS_SCHEMA,
 # распределены ровно по одному разу — сторож tests/test_settings_ops.py).
 TOGGLE_SECTION: dict[str, str] = {
     "reg_bonus_enabled": "event",
@@ -300,6 +300,10 @@ TOGGLE_SECTION: dict[str, str] = {
     "event_city_enabled": "manage",
     "quiet_hours_enabled": "apps",
     "reg_resume_mode": "form",
+    # Phase 27 (LANG-01): тумблеры английского языка анкеты — строки ("toggle", …) раздела
+    # «📝 Анкета» в admin_sections.SECTIONS.
+    "delegate_lang_enabled": "form",
+    "delegate_lang_ask_on_start": "form",
 }
 
 # Единственный источник «что подтверждаем» для ОБЕИХ поверхностей (UI-SPEC A6): вкладки
