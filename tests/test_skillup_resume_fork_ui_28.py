@@ -5,9 +5,21 @@
 не резюме»). pytest-asyncio недоступен в этом окружении — async через `asyncio.run()`, стиль
 Fake-объектов aiogram — тот же приём, что `tests/test_reg_resume_draft.py`/
 `tests/test_skillup_steps_28.py`.
+
+Задача 3: паритет в Mini App — поведенческие тесты `form.js::field()` (развилка/маркер домена)
+через node (без jsdom, тот же приём, что `tests/test_settings_toggle_js.py`) + структурные
+сторожа `screens/form.js` (футер mini_portfolio, «Назад» на развилку) через
+`tests/test_miniapp_frontend.py::_js_without_comments` (импорт, не правка) + HTTP-тесты
+PATCH `resume_type` (`miniapp/routers/form.py`, deviation Rule 3 — без него развилка в
+приложении не могла бы записать выбор ветки вообще).
 """
 import asyncio
+import json
+import shutil
+import subprocess
+from pathlib import Path
 
+import pytest
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.storage.base import StorageKey
 from aiogram.fsm.storage.memory import MemoryStorage
@@ -20,6 +32,12 @@ from handlers import reg_extra_steps
 from handlers import reg_flow
 from handlers import reg_resume_fork
 from handlers.states import Registration
+
+from tests.test_miniapp_frontend import _js_without_comments
+
+ROOT = Path(__file__).resolve().parent.parent
+FORM_JS = ROOT / "miniapp" / "static" / "js" / "form.js"
+FORM_SCREEN_JS = ROOT / "miniapp" / "static" / "js" / "screens" / "form.js"
 
 UID = 900805000
 
@@ -311,3 +329,288 @@ def test_file_or_text_text_still_accepted(tmp_path):
 
     data = asyncio.run(go())
     assert data.get("resume_text") == "Мой опыт: продажи 3 года"
+
+
+# ══════════════════════════════════════════════════════════════════════════════════════════
+# Задача 3: паритет в Mini App
+# ══════════════════════════════════════════════════════════════════════════════════════════
+
+_FAKE_DOM_PRELUDE = """
+class FakeClassList {
+  constructor(el) { this._el = el; this._set = new Set(); }
+  add(...names) { for (const n of names) this._set.add(n); this._sync(); }
+  remove(...names) { for (const n of names) this._set.delete(n); this._sync(); }
+  toggle(name, force) {
+    const has = this._set.has(name);
+    const next = force === undefined ? !has : Boolean(force);
+    if (next) this._set.add(name); else this._set.delete(name);
+    this._sync();
+    return next;
+  }
+  contains(name) { return this._set.has(name); }
+  _sync() { this._el._className = [...this._set].join(" "); }
+  _fromString(v) { this._set = new Set(String(v || "").split(/\\s+/).filter(Boolean)); }
+}
+
+class FakeText { constructor(text) { this.nodeType = 3; this.textContent = String(text); } }
+
+class FakeElement {
+  constructor(tag) {
+    this.tagName = String(tag).toUpperCase();
+    this._attrs = new Map();
+    this._className = "";
+    this.children = [];
+    this._listeners = {};
+    this.classList = new FakeClassList(this);
+  }
+  get className() { return this._className; }
+  set className(v) { this._className = v; this.classList._fromString(v); }
+  setAttribute(name, value) { this._attrs.set(name, String(value)); }
+  getAttribute(name) { return this._attrs.has(name) ? this._attrs.get(name) : null; }
+  addEventListener(type, fn) { (this._listeners[type] ||= []).push(fn); }
+  dispatch(type, evt) { for (const fn of (this._listeners[type] || []).slice()) fn(evt); }
+  appendChild(node) { this.children.push(node); return node; }
+  append(...nodes) { for (const n of nodes) if (n != null && n !== false) this.appendChild(n); }
+  replaceChildren(...nodes) { this.children = []; this.append(...nodes); }
+  get textContent() {
+    return this.children.filter((c) => c.nodeType === 3).map((c) => c.textContent).join("");
+  }
+  set textContent(v) { this.children = [new FakeText(v)]; }
+  get value() { return this._value || ""; }
+  set value(v) { this._value = v; }
+  querySelector(sel) {
+    const cls = sel.startsWith(".") ? sel.slice(1) : null;
+    const stack = [...this.children];
+    while (stack.length) {
+      const node = stack.shift();
+      if (!node || node.nodeType === 3) continue;
+      if (cls && node.classList && node.classList.contains(cls)) return node;
+      if (node.children) stack.push(...node.children);
+    }
+    return null;
+  }
+}
+
+globalThis.document = {
+  createElement(tag) { return new FakeElement(tag); },
+  createElementNS(ns, tag) { return new FakeElement(tag); },
+  createTextNode(text) { return new FakeText(text); },
+};
+
+function h(tag, attrs, ...children) {
+  const el = document.createElement(tag);
+  if (attrs) {
+    for (const [key, value] of Object.entries(attrs)) {
+      if (value == null || value === false) continue;
+      if (key === "class") el.className = value;
+      else if (key === "text") el.textContent = value;
+      else if (key.startsWith("on") && typeof value === "function") el.addEventListener(key.slice(2).toLowerCase(), value);
+      else el.setAttribute(key, value === true ? "" : String(value));
+    }
+  }
+  for (const child of children.flat()) {
+    if (child == null || child === false) continue;
+    el.append(typeof child === "object" ? child : document.createTextNode(String(child)));
+  }
+  return el;
+}
+"""
+
+NODE_SCRIPT = _FAKE_DOM_PRELUDE + """
+const m = await import(%(url)s);
+
+// 1) resume-fork (R1): три full-width кнопки, тап -> onChange(code) сразу.
+const calls = [];
+const forkSpec = {
+  key: "resume", type: "resume-fork", label: "Резюме",
+  fork_options: [
+    { code: "file", label: "\\ud83d\\udcce Загрузить файл", icon: "upload" },
+    { code: "link", label: "\\ud83d\\udd17 Дать ссылку", icon: "link" },
+    { code: "mini", label: "\\ud83e\\udd85 У меня нет резюме", icon: "x" },
+  ],
+};
+const forkWrap = m.field(h, forkSpec, null, (v) => calls.push(v));
+const stack = forkWrap.querySelector(".choice-stack");
+const buttons = stack ? stack.children.filter((c) => c.tagName === "BUTTON") : [];
+buttons[1].dispatch("click", {});
+
+// 2) url control (R2b): домен из вайтлиста -> нейтральный маркер с check-circle-2.
+const urlSpec = {
+  key: "resume_link", type: "url", label: "Ссылка",
+  link_whitelist: ["hh.ru", "github.com"],
+  whitelist_hint_text: "{domain} — сайт из списка проверенных",
+  other_hint_text: "Личный сайт — тоже подойдёт",
+  invalid_hint_text: "Пришлите ссылку целиком, начиная с http:// или https://",
+};
+
+const wrapWhitelist = m.field(h, urlSpec, null, () => {});
+const inputWhitelist = wrapWhitelist._nodes.control;
+inputWhitelist.value = "https://hh.ru/resume/1";
+inputWhitelist.dispatch("blur", {});
+const markerWhitelist = wrapWhitelist.querySelector(".resume-link-marker");
+
+// 3) тот же контрол — домен НЕ из вайтлиста -> тот же нейтральный визуал, другой текст/иконка.
+const wrapOther = m.field(h, urlSpec, null, () => {});
+const inputOther = wrapOther._nodes.control;
+inputOther.value = "https://my-portfolio.example";
+inputOther.dispatch("blur", {});
+const markerOther = wrapOther.querySelector(".resume-link-marker");
+
+// 4) невалидный URL -> error-состояние маркера, не нейтральная пометка.
+const wrapInvalid = m.field(h, urlSpec, null, () => {});
+const inputInvalid = wrapInvalid._nodes.control;
+inputInvalid.value = "not-a-url-at-all";
+inputInvalid.dispatch("blur", {});
+const markerInvalid = wrapInvalid.querySelector(".resume-link-marker");
+
+// 5) пустое поле -> маркер скрыт вовсе (ни ошибки, ни нейтральной пометки).
+const wrapEmpty = m.field(h, urlSpec, null, () => {});
+const inputEmpty = wrapEmpty._nodes.control;
+inputEmpty.dispatch("blur", {});
+const markerEmpty = wrapEmpty.querySelector(".resume-link-marker");
+
+function allText(el) {
+  let s = "";
+  for (const c of (el.children || [])) {
+    if (c.nodeType === 3) s += c.textContent;
+    else s += allText(c);
+  }
+  return s;
+}
+
+console.log(JSON.stringify({
+  buttonCount: buttons.length,
+  buttonClasses: buttons.map((b) => b.className),
+  forkCalls: calls,
+  whitelist: {
+    hidden: markerWhitelist.classList.contains("hidden"),
+    isError: markerWhitelist.classList.contains("is-error"),
+    text: allText(markerWhitelist),
+  },
+  other: {
+    hidden: markerOther.classList.contains("hidden"),
+    isError: markerOther.classList.contains("is-error"),
+    text: allText(markerOther),
+  },
+  invalid: {
+    hidden: markerInvalid.classList.contains("hidden"),
+    isError: markerInvalid.classList.contains("is-error"),
+    text: allText(markerInvalid),
+  },
+  empty: {
+    hidden: markerEmpty.classList.contains("hidden"),
+  },
+}));
+"""
+
+
+@pytest.fixture(scope="module")
+def js_result() -> dict:
+    node = shutil.which("node")
+    if not node:
+        pytest.skip("node не найден в PATH — поведенческий тест развилки резюме form.js пропущен")
+    script = NODE_SCRIPT % {"url": json.dumps(FORM_JS.resolve().as_uri())}
+    proc = subprocess.run(
+        [node, "--input-type=module", "-e", script],
+        cwd=str(ROOT), capture_output=True, text=True, encoding="utf-8", timeout=120,
+    )
+    assert proc.returncode == 0, proc.stderr[-3000:]
+    return json.loads(proc.stdout.strip().splitlines()[-1])
+
+
+def test_resume_fork_renders_three_full_width_buttons(js_result):
+    assert js_result["buttonCount"] == 3
+    for cls in js_result["buttonClasses"]:
+        assert "btn" in cls and "secondary" in cls, cls
+        assert "accent" not in cls
+    # Тап по второй кнопке (индекс 1, «Дать ссылку») сразу зовёт onChange("link") — тап и есть
+    # переход, никакого «Дальше» на этом экране.
+    assert js_result["forkCalls"] == ["link"]
+
+
+def test_url_marker_neutral_for_both_cases(js_result):
+    whitelist = js_result["whitelist"]
+    other = js_result["other"]
+    assert whitelist["hidden"] is False
+    assert whitelist["isError"] is False
+    assert "hh.ru" in whitelist["text"]
+    assert other["hidden"] is False
+    assert other["isError"] is False
+    assert "Личный сайт" in other["text"]
+
+
+def test_url_invalid_shows_error_not_marker(js_result):
+    invalid = js_result["invalid"]
+    assert invalid["hidden"] is False
+    assert invalid["isError"] is True
+    assert "http" in invalid["text"]
+    assert js_result["empty"]["hidden"] is True
+
+
+# ── screens/form.js: футер mini_portfolio + «Назад» на развилку (структурные сторожа) ───────
+
+def test_portfolio_footer_has_three_buttons():
+    text = _js_without_comments(FORM_SCREEN_JS)
+    assert "spec.skip_label" in text
+    assert "goSkip" in text
+    # Третья кнопка футера рисуется ТОЛЬКО когда у шага есть skip_label (сегодня —
+    # единственно mini_portfolio, reg_engine.step_spec) — остальные skip_allowed шаги не
+    # меняются (D-06). Область — от `isForkPick` (начало сборки футера) до самого вызова
+    # `setMainButton(isForkPick...)`, оба маркера встречаются в файле ровно один раз.
+    footer_start = text.index("const isForkPick")
+    footer_end = text.index("setMainButton(isForkPick", footer_start)
+    footer_body = text[footer_start:footer_end]
+    assert "spec.skip_label" in footer_body
+    assert "onClick: goSkip" in footer_body
+
+
+def test_back_returns_to_fork_screen():
+    text = _js_without_comments(FORM_SCREEN_JS)
+    assert "FORK_BACK_STEPS" in text
+    for step_key in ("resume_link", "mini_projects", "mini_portfolio", "mini_direction"):
+        assert f'"{step_key}"' in text
+    # Область — от объявления `goBack` до следующего стабильного маркера drawStep()
+    # (`const showProgress`), оба встречаются в файле ровно один раз.
+    go_back_start = text.index("function goBack(")
+    go_back_end = text.index("const showProgress", go_back_start)
+    go_back_body = text[go_back_start:go_back_end]
+    assert 'stepIndexFromKey(state.specs, "resume")' in go_back_body
+    assert "resumeForkBranch = null" in go_back_body
+
+
+# ── miniapp/routers/form.py: PATCH resume_type (deviation Rule 3, необходим для паритета) ──
+
+from database import db as bot_db  # noqa: E402
+from tests.test_miniapp_routes import (  # noqa: E402
+    DELEGATE_ID, _cfg, _client, _hdr, _set, _standard_seed, _use_tmp_db as _use_tmp_routes_db,
+)
+
+
+@pytest.fixture
+def http_client(tmp_path):
+    path = _use_tmp_routes_db(tmp_path, "test_skillup_resume_fork_ui_28_http.db")
+    _standard_seed()
+    return _client(_cfg(path))
+
+
+def test_patch_resume_type_invalid_token_is_bad_field(http_client):
+    resp = http_client.patch(
+        "/app/api/reg/draft", headers=_hdr(DELEGATE_ID),
+        json={"version": 0, "answers": {"resume_type": "garbage"}},
+    )
+    assert resp.status_code == 400
+    assert resp.json() == {"reason": "bad_field", "field": "resume_type"}
+
+
+def test_patch_resume_type_link_persists_and_reveals_resume_link_step(http_client):
+    _set("reg_resume_mode", "fork")
+    _set("reg_q_resume", "on")
+    _set("reg_q_resume_link", "on")
+    resp = http_client.patch(
+        "/app/api/reg/draft", headers=_hdr(DELEGATE_ID),
+        json={"version": 0, "answers": {"resume_type": "link"}, "step": "resume"},
+    )
+    assert resp.status_code == 200, resp.text
+    row = asyncio.run(bot_db.get_reg_draft(DELEGATE_ID))
+    assert row["answers"]["resume_type"] == "link"
+    assert row["step"] == "resume_link"
