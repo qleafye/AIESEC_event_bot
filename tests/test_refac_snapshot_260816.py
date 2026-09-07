@@ -438,6 +438,7 @@ admin|callback_query|toggle_delegate_lang_ask_on_start|toggle_delegate_lang_ask_
 admin|callback_query|toggle_reg_skip_source_for_referred|toggle_reg_skip_source_for_referred
 admin|callback_query|toggle_reg_referrer_must_be_ambassador|toggle_reg_referrer_must_be_ambassador
 admin|callback_query|toggle_reg_offer_ref_link|toggle_reg_offer_ref_link
+admin|callback_query|toggle_reg_scoring_enabled|toggle_reg_scoring_enabled
 admin|callback_query|toggle_reg_edit_remoderation|toggle_reg_edit_remoderation
 admin|callback_query|toggle_payment_reminders|toggle_payment_reminders
 admin|callback_query|toggle_uni_mode|toggle_uni_mode
@@ -820,6 +821,9 @@ def test_snapshot_total_handler_count_is_292():
     """Second, independent invariant besides content — a handler silently added/removed
     without touching this file's golden text (impossible for a normal edit, but this guards
     against a golden-string typo slipping past review) is caught by count alone."""
+    # Phase 28 (28-07, SU-08, задача 3): +1 admin_settings.py callback_query
+    # toggle_reg_scoring_enabled, встал сразу после toggle_reg_offer_ref_link и перед
+    # toggle_reg_edit_remoderation (465 -> 466).
     # Phase 28 (28-06, SU-05/SU-06/SU-07, задача 2): +2 handlers/reg_ambassador.py
     # (callback_query regamb_want/regamb_later), хвост callback_query-блока
     # registration.router, сразу после regfork_pick и перед user_actions.message
@@ -834,7 +838,7 @@ def test_snapshot_total_handler_count_is_292():
     # poll_wizard_cancel = два декоратора) в хвост admin.message, 15 callback (список/карточка
     # admin_polls + мастер admin_poll_wizard) в хвост admin.callback_query; чистый аппенд,
     # перепроверен прогоном _build_snapshot_lines() и diff'ом с прежним 334-строчным снапшотом.
-    assert len(GOLDEN_SNAPSHOT) == 465  # Phase 28 (28-06, SU-05/SU-06/SU-07): +3, +2
+    assert len(GOLDEN_SNAPSHOT) == 466  # Phase 28 (28-07): +1; (28-06, SU-05/SU-06/SU-07): +3, +2
     # handlers/reg_resume_fork.py — message process_resume_link (хвост message-блока
     # registration.router, сразу после process_case_optin и перед первым callback_query
     # recall_keep) + callback_query regfork_pick (хвост callback_query-блока

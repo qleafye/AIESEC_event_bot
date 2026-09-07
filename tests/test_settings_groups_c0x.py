@@ -479,6 +479,9 @@ def test_render_snapshot_apps(tmp_path):
         "nudge_after_minutes", "nudge_text",
         # Phase 23-01 (APP-TINDER-01, D-05): шаблоны причин отказа шторки Mini App.
         "reject_reason_templates",
+        # Phase 28 (28-07, SU-08): шесть скоринговых правил — до экрана-пикера (план 28-08).
+        "score_it_fields", "score_senior_statuses", "score_readiness_counts",
+        "score_experience_counts", "score_course_from", "score_stack_from",
         # Quick 260904-dq1: «🌙 Тихие часы» — «с»/«до» и приписка менеджеру, в хвосте группы.
         "quiet_hours_start", "quiet_hours_end", "quiet_hours_manager_notice_text",
     ]
@@ -488,6 +491,9 @@ def test_render_snapshot_apps(tmp_path):
         "🎯 Предотбор: нет @username", "🎯 Предотбор: не прошёл", "🎯 Предотбор: ссылка",
         "⏰ Догонялка: через сколько минут", "⏰ Догонялка: текст напоминания",
         "✍️ Причины отказа",
+        "🧮 Балл: IT-направления", "🧮 Балл: старшие статусы образования",
+        "🧮 Балл: какая готовность засчитывается", "🧮 Балл: какой опыт засчитывается",
+        "🧮 Балл: курс от", "🧮 Балл: сколько пунктов стека засчитывать",
         "🌙 Тихие часы: с", "🌙 Тихие часы: до", "🌙 Приписка менеджеру о тихих часах",
     ]
     defaulted_labels = {
@@ -496,6 +502,10 @@ def test_render_snapshot_apps(tmp_path):
         # Quick 260904-dq1: все три ключа тихих часов имеют дефолт в реестре.
         "🌙 Тихие часы: с", "🌙 Тихие часы: до", "🌙 Приписка менеджеру о тихих часах",
     }
+    # Phase 28 (28-07): "по умолчанию" флаг в этом экране считается ТОЛЬКО по
+    # _SETTINGS_DISPLAY_DEFAULTS (type == "text"), см. admin_settings.py — пороги курса/стека
+    # (type "int", как nudge_after_minutes/pending_reminder_interval рядом) всегда «не задано»,
+    # пока менеджер явно не впишет число, даже имея функциональный дефолт 3/2 в реестре.
     for label in defaulted_labels:
         assert f"{label}: <i>по умолчанию</i>" in text, f"missing/wrong flag for {label}"
     for label in expected_labels:
@@ -650,6 +660,10 @@ _FROZEN_REG_DEFAULTS_ORACLE = {
     "reg_q_mini_portfolio": "off",
     "reg_q_mini_direction": "off",
     "reg_q_case_optin": "off",
+    # Phase 28 (28-07, SU-08): reg_scoring_enabled — тип "toggle" НАРОЧНО (не парный шаг
+    # REG_FLOW, см. комментарий у ключа в settings_schema.py), поэтому REG_DEFAULTS его тоже
+    # подхватывает; default "off" (D-06).
+    "reg_scoring_enabled": "off",
 }
 
 # NOTE (deviation, Rule 1): 06-04-PLAN.md's interfaces table labels this a "44-key" oracle,
@@ -658,7 +672,8 @@ _FROZEN_REG_DEFAULTS_ORACLE = {
 # pins the VERIFIED source count (43), not the plan's stated count, per the "byte-for-byte
 # matches registration.py:197-241 exactly" acceptance criterion (source is the ground truth).
 # Phase 28 (28-01): +8 новых reg_q_* ключей (default "off") — 43 + 8 = 51.
-assert len(_FROZEN_REG_DEFAULTS_ORACLE) == 51  # sanity — must match the live table (source-verified)
+# Phase 28 (28-07): +1 reg_scoring_enabled (default "off") — 51 + 1 = 52.
+assert len(_FROZEN_REG_DEFAULTS_ORACLE) == 52  # sanity — must match the live table (source-verified)
 
 # Feature-switch (enum) defaults verified byte-for-byte from the live call sites
 # (06-04-PLAN.md interfaces table) — DO NOT guess, DO NOT edit without re-checking the

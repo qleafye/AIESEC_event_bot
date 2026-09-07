@@ -30,6 +30,7 @@ Phase 27 (27-04, LANG-06): к разрешённым импортам «наве
 ядро — золотые снимки (`tests/test_reg_engine_parity.py`, `tests/test_refac_snapshot_260816.py`)
 эту фазу не видят вообще.
 """
+import re
 from datetime import datetime
 from urllib.parse import urlparse
 
@@ -1835,6 +1836,89 @@ def summary_fields(answers: dict) -> list:
     elif answers.get("resume_text"):
         out.append(("Резюме", answers.get("resume_text")))
     return out
+
+
+# ── Автоскоринг заявки (Phase 28-07, SU-08, A-04) ───────────────────────────────────────────
+# Формула ТЗ §3.6: веса жёсткие (2/2/1/1/1, максимум 7), множества/пороги — реестровые
+# (менеджер решает, какие направления считать IT и какой курс считать старшим, D-01). Пустое
+# множество/невыставленный порог = ЭТОТ пункт никому не начисляется (не «всем») — выключенный
+# по умолчанию скоринг не должен раздавать баллы на других событиях (D-06). Чистая функция —
+# та же форма, что `decide_status` ниже: тестируется без БД и без aiogram.
+
+async def scoring_rules() -> dict:
+    """Один поход в реестр за все семь скоринговых значений (T-28-07-03: ни одного лишнего
+    запроса на кандидата — вызывающий (`services/reg_finalize.py`) зовёт это один раз и
+    передаёт готовый `rules` в чистый `compute_score`). Списки — через `option_list_for` с
+    ПУСТЫМ дефолтом (не путать с дефолтами вариантов вопросов): невыставленное множество
+    значит «правило не срабатывает», а не «стандартный набор» (D-06)."""
+    return {
+        "it_fields": await option_list_for("score_it_fields", []),
+        "senior_statuses": await option_list_for("score_senior_statuses", []),
+        "readiness_counts": await option_list_for("score_readiness_counts", []),
+        "experience_counts": await option_list_for("score_experience_counts", []),
+        "course_from": await get_setting_typed("score_course_from"),
+        "stack_from": await get_setting_typed("score_stack_from"),
+    }
+
+
+def course_number(value) -> int | None:
+    """Ведущее число из подписи варианта курса (R-A3b CONTEXT): «3» -> 3, «5+» -> 5.
+    «Магистратура/Аспирантура» числа не имеет -> `None` — курс НЕ засчитывается порогом
+    «курс от N», это направление берёт только множество «старшие статусы» образования."""
+    match = re.match(r"\d+", str(value or "").strip())
+    return int(match.group()) if match else None
+
+
+def compute_score(answers: dict, rules: dict) -> tuple[int, bool]:
+    """Чистая формула ТЗ §3.6 — без БД, без aiogram, синхронная (тот же класс функции, что
+    `decide_status`). `rules` — заранее собранный словарь `scoring_rules()`; `answers` — плоский
+    словарь ответов анкеты (те же ключи, что кладёт `with_defaults`/`add_user`, включая
+    `resume_file_id`/`resume_url`, если они там есть).
+
+    `is_it_3plus` — ОБЕ половины формулы одновременно (направление/стек И курс/статус), а не
+    просто «сумма набрала порог» — читается прямо из формулы ТЗ, не выводится из `score`."""
+    answers = answers or {}
+    it_fields = rules.get("it_fields") or []
+    senior_statuses = rules.get("senior_statuses") or []
+    readiness_counts = rules.get("readiness_counts") or []
+    experience_counts = rules.get("experience_counts") or []
+    course_from = rules.get("course_from")
+    stack_from = rules.get("stack_from")
+
+    stack_raw = str(answers.get("stack") or "")
+    stack_selected = [item.strip() for item in stack_raw.split(", ") if item.strip()]
+    is_it_direction = bool(it_fields) and answers.get("study_field") in it_fields
+    is_it_stack = stack_from is not None and len(stack_selected) >= stack_from
+    direction_condition = is_it_direction or is_it_stack
+
+    course_num = course_number(answers.get("course"))
+    is_senior_course = (
+        course_from is not None and course_num is not None and course_num >= course_from
+    )
+    is_senior_status = bool(senior_statuses) and answers.get("education_status") in senior_statuses
+    course_condition = is_senior_course or is_senior_status
+
+    has_resume = (
+        answers.get("resume_type") in ("file", "link")
+        or bool(answers.get("resume_file_id"))
+        or bool(answers.get("resume_url"))
+    )
+    has_readiness = bool(readiness_counts) and answers.get("readiness") in readiness_counts
+    has_experience = bool(experience_counts) and answers.get("experience") in experience_counts
+
+    score = 0
+    if direction_condition:
+        score += 2
+    if course_condition:
+        score += 2
+    if has_resume:
+        score += 1
+    if has_readiness:
+        score += 1
+    if has_experience:
+        score += 1
+
+    return score, bool(direction_condition and course_condition)
 
 
 def decide_status(reg_mode: str, full_setting: str, short_setting: str,
