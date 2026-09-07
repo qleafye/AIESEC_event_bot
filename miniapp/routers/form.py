@@ -479,8 +479,18 @@ async def draft_patch(
         unwrapped = _unwrap_other(raw)
         if answer_lang != "ru":
             unwrapped = await _canonicalize_answer(step_key, unwrapped, answer_lang, answer_tr_map)
+        # Phase 28 (28-03, SU-02, T-28-03-01): второй барьер лимита мультивыбора — веб-PATCH
+        # не проходит через `process_multi_toggle` (бот), поэтому здесь этот лимит и есть
+        # единственный реальный гейт (клиентский дизейбл в form.js — только подсказка).
+        max_select = None
+        limit_error_text = None
+        if reg_engine.REG_STEP_TYPES.get(step_key) == "multi":
+            max_select = await reg_engine.multi_max(step_key)
+            if max_select is not None:
+                limit_error_text = await get_setting_typed("reg_multi_limit_error_text")
         value, err = reg_engine.validate_answer(
             step_key, unwrapped, participant_type=effective_track,
+            max_select=max_select, limit_error_text=limit_error_text,
         )
         if err:
             errors[column] = err
