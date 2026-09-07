@@ -97,6 +97,7 @@ SETTINGS_SYNONYMS: dict[str, list[str]] = {
     "reg_resume_link_other_hint_text": ["маркер личный сайт", "домен не из вайтлиста"],
     "reg_resume_link_invalid_text": ["ошибка ссылки на резюме", "неверный формат ссылки"],
     "reg_mini_portfolio_skip_label": ["пропустить портфолио", "кнопка пропуска мини-профиля"],
+    "reg_resume_fork_pick_hint_text": ["подсказка выбери способ резюме", "текст мимо кнопок резюме"],
     "goal_options": ["зачем на форум", "мотивация участия"],
     "formats_options": ["офлайн онлайн", "варианты формата"],
     "university_options": ["университеты", "вузы список"],
