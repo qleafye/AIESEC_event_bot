@@ -550,6 +550,13 @@ async def _ask_step(step_key: str, message: types.Message, state: FSMContext, st
                 await message.answer(caption, reply_markup=kb, parse_mode=None)
         await state.update_data(_consent_key=consent_key)
         await state.set_state(Registration.consent_pending)
+    else:
+        # Phase 28 (28-02, SU-01/SU-04): общий хвост — шаг без собственной ветки выше
+        # (стек/опыт/готовность уже покрыты generic select/multi, остаются пять новых
+        # шагов резюме-развилки и кейс-чемпионата) уходит в шов вместо того, чтобы молча
+        # замереть без вопроса и без state.set_state(...).
+        from handlers import reg_extra_steps  # ленивый шов (цикл импортов), приём admin_sections
+        await reg_extra_steps.ask_step(step_key, message, state, p, participant_type, city_code)
 
 
 async def _sync_draft_in(state: FSMContext, telegram_id: int, message: types.Message,
@@ -2262,4 +2269,10 @@ from handlers import reg_resume  # noqa: E402
 # Quick 260904-3vm (эстафета): imported LAST OF ALL — registers RegHandoffGuard as OUTER
 # middleware on registration.router (message + callback_query) and the reg_handoff:to_bot
 # callback at the very TAIL, same seam pattern as reg_resume just above.
-from handlers import reg_handoff  # noqa: E402
+from handlers import reg_handoff
+
+# Phase 28 (28-02, SU-01/SU-04): imported AFTER reg_handoff — its four message handlers
+# (mini_projects/mini_portfolio/mini_direction/case_optin; resume_link is show-only in this
+# plan) land at the very TAIL of registration.router, so the golden order+filter snapshot
+# (tests/test_refac_snapshot_260816.py) only gets APPENDED to, never reordered.
+from handlers import reg_extra_steps  # noqa: E402, F401  # noqa: E402
