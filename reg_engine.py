@@ -1040,6 +1040,13 @@ async def step_spec(step_key: str, participant_type: str | None = None,
         spec["resume_mode"] = resume_mode_value
     if ui_type in ("choice-chips", "select", "multi", "yesno"):
         spec["options"] = await options(step_key)
+    # Phase 28 (28-02, SU-08, СкиллАп 5): пояснение под заголовком экрана кейс-чемпионата
+    # (28-UI-SPEC.md §5, Body-абзац) — публикуется в спеку, чтобы Mini App нарисовало его
+    # существующим узлом подсказки, без нового компонента (Reuse Contract).
+    if step_key == "case_optin":
+        spec["description"] = await get_setting_typed_for_city(
+            "reg_case_optin_description_text", event_city
+        )
     return spec
 
 

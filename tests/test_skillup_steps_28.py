@@ -172,3 +172,64 @@ def test_ask_step_unknown_state_is_fail_soft(tmp_path):
     # что вызов не поднял исключение и функция вернулась.
     state_name = asyncio.run(go())
     assert state_name != Registration.mini_direction.state  # анкета не встала на мусорный шаг
+
+
+# ── Задача 3: паритет Mini App (form_spec/step_spec) ────────────────────────────────────────
+
+def test_form_spec_contains_new_steps_when_enabled(tmp_path):
+    _use_tmp_db(tmp_path)
+
+    async def go():
+        await db.init_db()
+        for key in ("reg_q_stack", "reg_q_experience", "reg_q_readiness", "reg_q_case_optin"):
+            await db.set_setting(key, "on")
+        spec = await reg_engine.form_spec({}, participant_type="full", event_city=None)
+        return spec
+
+    spec = asyncio.run(go())
+    steps_by_key = {s["key"]: s for s in spec["steps"]}
+    assert steps_by_key["stack"]["type"] == "multi"
+    assert steps_by_key["experience"]["type"] == "select"
+    assert steps_by_key["readiness"]["type"] == "select"
+    assert steps_by_key["case_optin"]["type"] == "yesno"
+    assert steps_by_key["case_optin"]["options"] == ["Да", "Нет"]
+
+
+def test_form_spec_hides_new_steps_by_default(tmp_path):
+    _use_tmp_db(tmp_path)
+
+    async def go():
+        await db.init_db()
+        return await reg_engine.form_spec({}, participant_type="full", event_city=None)
+
+    spec = asyncio.run(go())
+    keys = {s["key"] for s in spec["steps"]}
+    for step_key in ("stack", "experience", "readiness", "case_optin", "resume_link",
+                      "mini_projects", "mini_portfolio", "mini_direction"):
+        assert step_key not in keys, f"{step_key} должен быть скрыт по умолчанию (default OFF)"
+
+
+def test_case_optin_spec_carries_description(tmp_path):
+    _use_tmp_db(tmp_path)
+
+    async def go():
+        await db.init_db()
+        await db.set_setting("reg_case_optin_description_text", "Пояснение менеджера.")
+        return await reg_engine.step_spec("case_optin", participant_type="full", event_city=None)
+
+    spec = asyncio.run(go())
+    assert spec.get("description") == "Пояснение менеджера."
+
+
+def test_mini_lengths_enforced_by_validator():
+    too_long_value, err = reg_engine.validate_answer("mini_projects", "x" * 501)
+    assert too_long_value is None
+    assert err is not None
+
+    ok_value, err = reg_engine.validate_answer("mini_projects", "x" * 500)
+    assert err is None
+    assert ok_value == "x" * 500
+
+    too_long_direction, err_dir = reg_engine.validate_answer("mini_direction", "y" * 201)
+    assert too_long_direction is None
+    assert err_dir is not None

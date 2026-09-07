@@ -2269,10 +2269,10 @@ from handlers import reg_resume  # noqa: E402
 # Quick 260904-3vm (эстафета): imported LAST OF ALL — registers RegHandoffGuard as OUTER
 # middleware on registration.router (message + callback_query) and the reg_handoff:to_bot
 # callback at the very TAIL, same seam pattern as reg_resume just above.
-from handlers import reg_handoff
+from handlers import reg_handoff  # noqa: E402
 
 # Phase 28 (28-02, SU-01/SU-04): imported AFTER reg_handoff — its four message handlers
 # (mini_projects/mini_portfolio/mini_direction/case_optin; resume_link is show-only in this
 # plan) land at the very TAIL of registration.router, so the golden order+filter snapshot
 # (tests/test_refac_snapshot_260816.py) only gets APPENDED to, never reordered.
-from handlers import reg_extra_steps  # noqa: E402, F401  # noqa: E402
+from handlers import reg_extra_steps  # noqa: E402, F401
