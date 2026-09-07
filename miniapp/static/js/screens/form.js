@@ -415,6 +415,13 @@ export async function render(root, params, ctx) {
     let preIndex = 0;
     let busy = false;
     const signedConsents = new Set();
+    // Phase 28 (28-05, SU-04, A-03 CONTEXT): «файл» — единственная ветка развилки резюме без
+    // своего REG_FLOW-шага на веб-поверхности (бот остаётся в том же состоянии Registration.
+    // resume — R2a переиспользует существующий приём документа). Здесь то же самое: шаг
+    // "resume" остаётся текущим (stepIndex не двигается), но локально перерисовывается как
+    // обычная дропзона (type: "file", тот же контрол, что режим file_or_text). Чисто клиентский
+    // флаг — сбрасывается при уходе с шага "resume" в любую сторону.
+    let resumeForkBranch = null;
 
     onRefresh = async () => {
       try {
@@ -614,11 +621,23 @@ export async function render(root, params, ctx) {
       return h("div", {}, sectionTitle(h, d.questions_eyebrow), list, more);
     }
 
+    // Шаги-ветки развилки резюме (28-UI-SPEC.md §1/§3): единственные, где «Назад» ведёт не на
+    // предыдущий вопрос анкеты, а на экран выбора способа (A-03 CONTEXT) — тот же закрытый
+    // список, что `handlers/reg_extra_steps._FORK_BACK_STEPS` в боте (сверено, не общий
+    // импорт — тот же приём дублирования, что литералы «Пропустить»/«Отмена» в проекте).
+    const FORK_BACK_STEPS = new Set(["resume_link", "mini_projects", "mini_portfolio", "mini_direction"]);
+
     // ── шаги анкеты: один вопрос на экран (D-03) ────────────────────────────────────────
     function drawStep() {
       const specs = state.specs;
       if (!specs.length || stepIndex >= specs.length) { submitForm(); return; }
-      const spec = specs[stepIndex];
+      const rawSpec = specs[stepIndex];
+      // Phase 28 (28-05, SU-04): «файл» — клиентская подмена этого же шага дропзоной (см.
+      // докстринг `resumeForkBranch` выше) — сервер про эту подмену не знает, stepIndex/шаг
+      // черновика не двигаются.
+      const spec = (rawSpec.key === "resume" && resumeForkBranch === "file")
+        ? { ...rawSpec, type: "file" }
+        : rawSpec;
       const column = spec.column;
       const value = state.value(column);
 
@@ -630,6 +649,13 @@ export async function render(root, params, ctx) {
       // help: null — подсказку формата уже рисует плита (`plate-sub` ниже); field() рисует
       // spec.help как `.field-help` ВСЕГДА, без этого получились бы два одинаковых абзаца.
       const el = field(h, { ...spec, help: null }, value, (v) => {
+        // Phase 28 (28-05, SU-04, 28-UI-SPEC §1): развилка резюме — тап кнопки И ЕСТЬ переход
+        // (никакого «Дальше» на этом экране), поэтому onChange здесь не копит liveValue, а
+        // сразу ведёт свою ветку (см. pickResumeBranch ниже).
+        if (spec.type === "resume-fork") {
+          pickResumeBranch(v);
+          return;
+        }
         liveValue = v;
         // D9: файл резюме грузится СРАЗУ по выбору — goNext() ниже его в JSON PATCH не кладёт
         // (markServerDirty уже отработал здесь).
@@ -647,6 +673,53 @@ export async function render(root, params, ctx) {
       }
 
       const errorZone = el._nodes && el._nodes.errorZone;
+
+      // Phase 28 (28-05, SU-04): выбор ветки развилки резюме — отдельный PATCH (`resume_type`,
+      // закрытый словарь трёх токенов, T-28-05-01), не через общий `answers[column]` (шаг
+      // "resume" в режиме fork не пишет свой обычный column вовсе). «file» не двигает шаг
+      // (сервер получает `step: null` -> COALESCE сохраняет прежний `reg_drafts.step`,
+      // database/db.py::upsert_reg_draft), «link»/«mini» продвигают как обычный шаг — сервер
+      // сам находит следующий (уже включённый resume_link/mini_projects, reg_engine.enabled_steps).
+      async function pickResumeBranch(code) {
+        if (busy) return;
+        busy = true;
+        setMainButton(null);
+        try {
+          const res = await api("/reg/draft", {
+            method: "PATCH",
+            body: { version: d.version, answers: { resume_type: code }, step: code === "file" ? null : spec.key },
+          });
+          busy = false;
+          if (code === "file") {
+            // Ветка «файл» — клиентская подмена ЭТОГО ЖЕ шага (resumeForkBranch выше);
+            // resume_type уже сохранён сервером (нужен последующим PATCH для enabled_steps),
+            // но список шагов/индекс не меняются — adoptDraft() здесь не нужен.
+            d = res;
+            resumeForkBranch = "file";
+            drawStep();
+          } else {
+            // «link»/«mini» — сервер уже пересчитал enabled_steps (resume_link/mini_projects
+            // стали доступны) и вернул res.step = следующий шаг; пересобираем state целиком —
+            // applyServer НЕ обновляет state.specs (только значения, form.js::createFormState),
+            // тот же приём, что adoptDraft() в drawFork() выше (выбор трека тоже меняет список
+            // шагов).
+            adoptDraft(res);
+            drawCurrent();
+          }
+        } catch (err) {
+          busy = false;
+          if (err && err.status === 403 && err.reason === "registration_closed") { showClosed(err); return; }
+          if (err && err.status === 409 && err.reason === "held_by_bot") {
+            try { showHandoff((await api("/reg/draft")).handoff || (err.payload || {})); }
+            catch (_) { showHandoff(err.payload || {}); }
+            return;
+          }
+          if (!isAuthError(err) && errorZone) {
+            errorZone.textContent = errorText(err, ""); errorZone.classList.remove("hidden");
+          }
+          drawStep();
+        }
+      }
 
       async function goNext() {
         if (busy) return;
@@ -689,8 +762,30 @@ export async function render(root, params, ctx) {
         }
       }
 
+      // Phase 28 (28-05, SU-04): «Пропустить» второго мини-подшага (mini_portfolio) — та же
+      // семантика, что в боте (validate_answer пишет «-»), третья футер-кнопка ниже.
+      async function goSkip() {
+        if (busy) return;
+        liveValue = "-";
+        await goNext();
+      }
+
       function goBack() {
         if (busy) return;
+        // Phase 28 (28-05, SU-04, A-03 CONTEXT): единственные исключения из «Назад = предыдущий
+        // вопрос» — ветка «файл» (клиентская подмена этого же шага) и четыре шага-ветки
+        // (resume_link/mini_*) — все возвращают на экран развилки (R1), не на stepIndex-1.
+        if (rawSpec.key === "resume" && resumeForkBranch === "file") {
+          resumeForkBranch = null;
+          drawStep();
+          return;
+        }
+        if (FORK_BACK_STEPS.has(rawSpec.key)) {
+          resumeForkBranch = null;
+          stepIndex = stepIndexFromKey(state.specs, "resume");
+          drawStep();
+          return;
+        }
         stepIndex = Math.max(0, stepIndex - 1);
         drawStep();
       }
@@ -732,13 +827,24 @@ export async function render(root, params, ctx) {
         spec.help ? h("p", { class: "plate-sub", text: spec.help }) : null,
       );
 
+      // Phase 28 (28-05, SU-04, 28-UI-SPEC §1/§3): развилка резюме — тап кнопки И ЕСТЬ переход,
+      // футера «Дальше» на этом экране нет вовсе (isForkPick); mini_portfolio — единственный
+      // шаг с третьей футер-кнопкой «Пропустить» (spec.skip_label публикует ТОЛЬКО этот шаг,
+      // reg_engine.step_spec — остальные skip_allowed шаги не меняются ни на байт, D-06).
+      const isForkPick = spec.type === "resume-fork";
       const footer = h("div", { class: "task-actions" },
         stepIndex > 0
           ? h("button", { class: "btn ghost", type: "button", "aria-label": d.back_cta_text || "", onClick: goBack },
             icon("arrow-right", { class: "icon-flip" }), h("span", { text: d.back_cta_text || "" }))
           : null,
-        h("button", { class: "btn", type: "button", disabled: busy, "aria-label": d.next_cta_text || "", onClick: goNext },
-          h("span", { text: d.next_cta_text || "" }), icon("arrow-right")),
+        spec.skip_label
+          ? h("button", { class: "btn ghost", type: "button", "aria-label": spec.skip_label, onClick: goSkip },
+            h("span", { text: spec.skip_label }))
+          : null,
+        isForkPick
+          ? null
+          : h("button", { class: "btn", type: "button", disabled: busy, "aria-label": d.next_cta_text || "", onClick: goNext },
+            h("span", { text: d.next_cta_text || "" }), icon("arrow-right")),
       );
 
       holder.replaceChildren(...[
@@ -749,7 +855,7 @@ export async function render(root, params, ctx) {
         chatLink(d.continue_in_chat_text, d.continue_deeplink),
         footer,
       ].filter(Boolean));
-      setMainButton(d.next_cta_text || null, goNext, { disabled: busy });
+      setMainButton(isForkPick ? null : (d.next_cta_text || null), goNext, { disabled: busy });
     }
 
     async function submitForm() {
