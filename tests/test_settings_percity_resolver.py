@@ -102,6 +102,10 @@ EXPECTED_PER_CITY_KEYS = {
     # per_city как соседние тексты анкеты (счётчик/ошибка — нет, нейтральный технический
     # текст, 28-UI-SPEC таблица новых ключей).
     "reg_multi_limit_hint_text",
+    # Phase 28 (28-06, SU-07): финальный экран «Хочу свою ссылку» в приложении — тексты
+    # делегату, per_city как остальные тексты анкеты.
+    "miniapp_form_ambassador_offer_heading_text",
+    "miniapp_form_ambassador_offer_body_text",
 }
 
 
