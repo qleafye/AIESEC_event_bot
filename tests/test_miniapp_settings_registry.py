@@ -40,6 +40,12 @@ ITEM_FIELDS = {
     # Quick 260904-8o3 Task 3 (E5/E6): различает ключи оформления внутри группы "miniapp"
     # (вперемешку с обычными текстами) — без второго хардкод-списка ключей во фронте.
     "theme_key",
+    # Phase 28 (28-08, SU-08, A5): `list` + `options_from_step` — динамический набор
+    # (options_from_step — сам атрибут ключа, всегда присутствует, None у обычных ключей);
+    # stale_options/stale_option_text — подписи, отмеченные раньше и пропавшие из текущего
+    # списка вариантов вопроса (28-UI-SPEC §8), всегда присутствуют (пустой список/None у
+    # ключей без options_from_step либо когда пропавших подписей нет).
+    "options_from_step", "stale_options", "stale_option_text",
 }
 
 
@@ -141,6 +147,12 @@ def test_item_shape_and_registry_sourced_fields(tmp_path):
             # проверка ниже (test_multi_item_never_leaks_step_codes) сверяет с
             # settings_schema.multi_options напрямую.
             assert item["options"] != meta.get("options")
+        elif meta.get("options_from_step"):
+            # Phase 28 (28-08, SU-08, A5): динамический набор — реестр вообще не хранит
+            # "options" (только атрибут "options_from_step"), роутер резолвит текущий список
+            # вариантов вопроса анкеты (см. test_settings_all_resolves_options_from_step).
+            assert meta.get("options") is None
+            assert isinstance(item["options"], list)
         else:
             assert item["options"] == meta.get("options")
         assert item["per_city"] == bool(meta.get("per_city"))

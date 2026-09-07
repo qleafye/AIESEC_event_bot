@@ -316,8 +316,27 @@ async def _item_for(base: str, ctx: _CityCtx) -> dict:
     is_multi = meta.get("type") == "multi"
     value_for_spec = multi_labels(base, value) if is_multi else value
 
+    # Phase 28 (28-08, SU-08, A5): `options_from_step` — динамический набор (в отличие от
+    # закрытого `options_ref` у `multi`) — актуальные подписи резолвит РОУТЕР (доступ к
+    # `reg_engine`), а не `item_spec` (тот остаётся чистым конструктором из реестра). Подпись,
+    # сохранённая раньше и отсутствующая в текущем списке вариантов, не выбрасывается молча
+    # (28-UI-SPEC §8) — попадает в `stale_options`, текст маркера — из реестра (D-13, тот же
+    # приём, что `miniapp_settings_stale_badge_text` у другого вида «устарело»).
+    options_step = meta.get("options_from_step")
+    resolved_options = None
+    stale_options: list[str] = []
+    stale_option_text = None
+    if options_step:
+        resolved_options = await reg_engine.options(options_step)
+        current_labels = value_for_spec if isinstance(value_for_spec, list) else []
+        stale_options = [label for label in current_labels if label not in resolved_options]
+        if stale_options:
+            stale_option_text = await get_setting_typed("miniapp_settings_option_gone_text")
+
     spec = settings_ops.item_spec(key, raw=raw, value=value_for_spec, is_default=_is_default(raw, meta))
     spec.setdefault("max_len", None)
+    if resolved_options is not None:
+        spec["options"] = resolved_options
     spec.update({
         # Запятая, а не перевод строки: строка уезжает в «было» диалога сохранения и в
         # маркер строки списка, где перенос строки выглядит мусором (multi-специфика,
@@ -336,6 +355,8 @@ async def _item_for(base: str, ctx: _CityCtx) -> dict:
         # ключ там 403, случайно попавшая в pending НЕ-тема правка не должна ронять весь запрос
         # превью и уводить экран в «нет доступа», см. api.js::authErrorHandler на любой 403).
         "theme_key": base in web_theme.THEME_KEYS.values(),
+        "stale_options": stale_options,
+        "stale_option_text": stale_option_text,
     })
     return spec
 

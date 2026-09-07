@@ -449,6 +449,11 @@ def item_spec(key: str, *, raw: str | None, value, is_default: bool) -> dict:
         "per_city": bool(entry.get("per_city")),
         "html": base in HTML_SETTINGS,
         "dangerous": key in DANGEROUS_KEYS or base in DANGEROUS_KEYS,
+        # Phase 28 (28-08, SU-08, A5): атрибут ключа реестра, не значение для показа —
+        # пробрасывается КАК ЕСТЬ (или None), сам конструктор остаётся чистым (без реестра
+        # вариантов вопроса). Резолвит реальные `options`/`stale_options` роутер
+        # (`miniapp/routers/settings.py::_item_for`) — тому есть доступ к reg_engine.
+        "options_from_step": entry.get("options_from_step"),
     }
     max_len = entry.get("max_len")
     if max_len is not None:
@@ -543,8 +548,14 @@ async def validate_batch_item(
             # Quick 260906-6xe: снятие ВСЕХ галочек `multi` — законный ввод («ни одного
             # варианта»), не «менеджер стёр текст» — пропускаем дальше, до
             # `validate_setting_value`, который превращает пустой набор в сентинел реестра.
-            base_type = SETTINGS_SCHEMA.get(base_setting_key(key), {}).get("type")
-            if base_type != "multi":
+            # Phase 28 (28-08, SU-08, A5): то же самое верно для `list` с `options_from_step`
+            # (чекбокс-пикеры скоринга, form.js рисует их тем же `multiControl`) — без этого
+            # снятие ВСЕХ галочек в веб-настройках падало бы с «не понял значение», хотя
+            # пустой набор здесь — обычное, ожидаемое правило («ни один вариант не даёт балл»,
+            # см. settings_schema.py).
+            base_meta = SETTINGS_SCHEMA.get(base_setting_key(key), {})
+            is_checkbox_set = base_meta.get("type") == "multi" or bool(base_meta.get("options_from_step"))
+            if not is_checkbox_set:
                 return BatchCheck(None, error=EMPTY_VALUE_TEXT)
         elif is_command_like(value):
             return BatchCheck(None, error=command_like_text(value))
