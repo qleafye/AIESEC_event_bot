@@ -704,6 +704,13 @@ a.flat-row:active, button.flat-row:active { background: var(--surface-alt); }
 .choice-grid .btn, .choice-grid .check { width: 100%; margin: 0; }
 .choice-grid .field { grid-column: 1 / -1; }
 .choice-grid .btn.chosen { outline: 2px solid var(--accent); outline-offset: 1px; }
+
+/* Phase 28 (28-03, SU-02, 28-UI-SPEC §4): лимит мультивыбора — счётчик нейтральный
+   (--text-faint, БЕЗ accent, D-04 SU-04), дизейбл невыбранных чекбоксов ТОЧЕЧНО на строке
+   (не на всём поле, как .field.is-disabled) — те же значения матрицы состояний opacity/
+   pointer-events, новых токенов не заводим. Тач-таргет не уменьшается — только визуал. */
+.multi-limit-counter { color: var(--text-faint); margin: 0 0 var(--sp-1); }
+.check.is-limit-disabled { opacity: .5; pointer-events: none; }
 .confirm-box {
   padding: var(--sp-3);
   border: 1px solid var(--warn);
