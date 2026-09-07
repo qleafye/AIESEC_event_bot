@@ -85,6 +85,9 @@ SECTIONS: list[tuple[str, str, list[tuple]]] = [
         # Quick 260906-8uq (FAQ-01..06): раздел ведения FAQ, сразу после журнала вопросов.
         ("op", "admin_faq"),
         ("screen", "modcard_open", "🧾 Поля карточки заявки"),
+        # Phase 28 (28-08, SU-08): чекбокс-пикеры скоринговых множеств — рядом с «🧾 Поля
+        # карточки заявки» (тот же класс экрана: динамический набор, кнопки вместо кодов).
+        ("screen", "admin_reg_scoring", "🧮 Правила балла"),
         ("toggle", "settings_toggle_full_approval"),
         ("toggle", "settings_toggle_short_approval"),
         ("toggle", "settings_toggle_party_approval"),
