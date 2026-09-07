@@ -40,7 +40,7 @@ DEFAULT_CEILING = 850
 # edit the number + reason together, in the same commit as the growth that needs it.
 KNOWN_OVERAGES: dict[str, tuple[int, str]] = {
     "registration.py": (
-        2294,
+        2308,
         "Phase 21 (21-01, FORM-SYNC-01): REG_STEP_TYPES/STEP_TO_COLUMN/RECALLABLE_STEPS/"
         "SELECT_CONFIG/MULTI_CONFIG/enabled_steps/prompt-резолюция/pre-flow гейты/"
         "prior-answer правило переехали в корневой reg_engine.py (2309 -> 2099 строк) -- "
@@ -72,7 +72,15 @@ KNOWN_OVERAGES: dict[str, tuple[int, str]] = {
         "режиму (`resume_mode(city_code) == \"fork\"` зовёт `reg_resume_fork.ask_fork` ленивым "
         "импортом, иначе прежний код без изменений) + импорт `resume_mode` + шов-импорт "
         "`reg_resume_fork` в хвосте файла — сам экран развилки и её callback-хендлеры живут в "
-        "шве; потолок поднят до фактического размера.",
+        "шве; потолок поднят до фактического размера. "
+        "+1 строка (fix ecac315, вне этого плана): переименование затенённого импорта "
+        "`options` -> `engine_options` не поднимало потолок в своём коммите — обнаружено "
+        "как уже красный тест при старте плана 28-06, зафиксировано здесь же по ходу. "
+        "+13 строк (Phase 28, 28-06, SU-05/SU-06/SU-07): шестой деп-линк-экстрактор "
+        "`extract_ambassador_ref`/`resolve_referrer` — импорт из reg_engine + резолюция "
+        "referrer_id в `cmd_start` (числовой формат БЕЗ проверки существования, D-06 "
+        "byte-for-byte; `resolve_referrer` — только для нового amb_-формата, OQ-2 CONTEXT); "
+        "потолок поднят до фактического размера.",
     ),
     "admin_gamification.py": (
         2020,

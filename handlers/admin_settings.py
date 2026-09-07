@@ -587,6 +587,20 @@ async def settings_toggle_rows(admin_id: int | None = None, *, header_code=_HEAD
     reg_edit_remod_label = SETTINGS_SCHEMA["toggle_reg_edit_remoderation"]["label"]
     reg_edit_remod_text = (f"🔁 {reg_edit_remod_label}: ✅ Вкл → ❌ Выкл" if reg_edit_remod == "on"
                            else f"🔁 {reg_edit_remod_label}: ❌ Выкл → ✅ Вкл")
+    # Phase 28 (28-06, SU-05/SU-06/SU-07): подписи — из реестра, тот же приём, что у
+    # delegate_lang_* выше.
+    skip_src_on = await get_setting_typed("reg_skip_source_for_referred")
+    skip_src_label = SETTINGS_SCHEMA["reg_skip_source_for_referred"]["label"]
+    skip_src_text = (f"{skip_src_label}: ✅ Вкл → ❌ Выкл" if skip_src_on == "on"
+                     else f"{skip_src_label}: ❌ Выкл → ✅ Вкл")
+    referrer_amb_on = await get_setting_typed("reg_referrer_must_be_ambassador")
+    referrer_amb_label = SETTINGS_SCHEMA["reg_referrer_must_be_ambassador"]["label"]
+    referrer_amb_text = (f"{referrer_amb_label}: ✅ Вкл → ❌ Выкл" if referrer_amb_on == "on"
+                         else f"{referrer_amb_label}: ❌ Выкл → ✅ Вкл")
+    offer_ref_on = await get_setting_typed("reg_offer_ref_link")
+    offer_ref_label = SETTINGS_SCHEMA["reg_offer_ref_link"]["label"]
+    offer_ref_text = (f"{offer_ref_label}: ✅ Вкл → ❌ Выкл" if offer_ref_on == "on"
+                      else f"{offer_ref_label}: ❌ Выкл → ✅ Вкл")
 
     reg_rows = [[InlineKeyboardButton(text=toggle_text, callback_data="settings_toggle_reg")]]
     # Phase 09.3 (04, CITY-09): registration_mode has no settings_edit:{key} screen of its
@@ -625,6 +639,9 @@ async def settings_toggle_rows(admin_id: int | None = None, *, header_code=_HEAD
         "toggle_quiet_hours": _row(quiet_hours_toggle_text, "toggle_quiet_hours"),
         "toggle_delegate_lang_enabled": _row(delegate_lang_toggle_text, "toggle_delegate_lang_enabled"),
         "toggle_delegate_lang_ask_on_start": _row(delegate_lang_ask_text, "toggle_delegate_lang_ask_on_start"),
+        "toggle_reg_skip_source_for_referred": _row(skip_src_text, "toggle_reg_skip_source_for_referred"),
+        "toggle_reg_referrer_must_be_ambassador": _row(referrer_amb_text, "toggle_reg_referrer_must_be_ambassador"),
+        "toggle_reg_offer_ref_link": _row(offer_ref_text, "toggle_reg_offer_ref_link"),
     }
 
 
@@ -1074,6 +1091,35 @@ async def toggle_delegate_lang_ask_on_start(callback: types.CallbackQuery):
     await _toggle_module_setting(
         callback, "delegate_lang_ask_on_start",
         SETTINGS_SCHEMA["delegate_lang_ask_on_start"]["label"],
+    )
+
+
+@router.callback_query(F.data == "toggle_reg_skip_source_for_referred")
+async def toggle_reg_skip_source_for_referred(callback: types.CallbackQuery):
+    # Phase 28 (28-06, SU-06): пропуск «Источника» у пришедших по реф-ссылке — enum on/off,
+    # дефолт OFF (D-06: YL/РилТолк байт-в-байт).
+    await _toggle_module_setting(
+        callback, "reg_skip_source_for_referred",
+        SETTINGS_SCHEMA["reg_skip_source_for_referred"]["label"],
+    )
+
+
+@router.callback_query(F.data == "toggle_reg_referrer_must_be_ambassador")
+async def toggle_reg_referrer_must_be_ambassador(callback: types.CallbackQuery):
+    # Phase 28 (28-06, SU-05): реферер засчитывается, только если он амбассадор — enum on/off,
+    # дефолт OFF (по умолчанию засчитывается любой зарегистрированный).
+    await _toggle_module_setting(
+        callback, "reg_referrer_must_be_ambassador",
+        SETTINGS_SCHEMA["reg_referrer_must_be_ambassador"]["label"],
+    )
+
+
+@router.callback_query(F.data == "toggle_reg_offer_ref_link")
+async def toggle_reg_offer_ref_link(callback: types.CallbackQuery):
+    # Phase 28 (28-06, SU-07): предложение своей ссылки после анкеты — enum on/off, дефолт OFF.
+    await _toggle_module_setting(
+        callback, "reg_offer_ref_link",
+        SETTINGS_SCHEMA["reg_offer_ref_link"]["label"],
     )
 
 
