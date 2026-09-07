@@ -119,21 +119,24 @@ def test_backlog_orders_by_registration_date_ascending_and_respects_limit(tmp_pa
 # ── Задача 2: retry_pending_resume_uploads ───────────────────────────────────────────────
 
 class _FakeTgFile:
-    def __init__(self, file_path):
+    def __init__(self, file_path, file_size=None):
         self.file_path = file_path
+        self.file_size = file_size
 
 
 class _FakeBot:
-    def __init__(self, file_path="resumes/r1.pdf", get_file_error: Exception | None = None):
+    def __init__(self, file_path="resumes/r1.pdf", get_file_error: Exception | None = None,
+                 file_size=None):
         self._file_path = file_path
         self._get_file_error = get_file_error
+        self._file_size = file_size
         self.get_file_calls = []
 
     async def get_file(self, file_id):
         self.get_file_calls.append(file_id)
         if self._get_file_error:
             raise self._get_file_error
-        return _FakeTgFile(self._file_path)
+        return _FakeTgFile(self._file_path, self._file_size)
 
 
 def _configure_nextcloud(monkeypatch):
@@ -298,6 +301,38 @@ def test_retry_dead_file_id_warns_and_is_skipped_until_restart(tmp_path, monkeyp
     assert result2 == 0
     assert bad_bot2.get_file_calls == []
     reg_finalize._resume_retry_dead.discard(105)
+
+
+def test_retry_oversized_file_is_marked_dead_and_not_uploaded(tmp_path, monkeypatch):
+    """Файл больше RESUME_MAX_MB облако не примет никогда — строка помечается, как и
+    недоступный file_id, иначе одно и то же предупреждение каждые N минут до рестарта."""
+    _ready(tmp_path)
+    _configure_nextcloud(monkeypatch)
+    _insert_user(telegram_id=108, full_name="Большой файл", registration_date=_ts(30),
+                 resume_file_id="FILE108", resume_url=None)
+
+    from services import reg_finalize
+    from services import nextcloud as nextcloud_mod
+    reg_finalize._resume_retry_dead.discard(108)
+
+    upload_calls = []
+
+    async def _fake_upload_resume(bot, file_id, filename):
+        upload_calls.append(file_id)
+        return "should-not-be-called"
+
+    monkeypatch.setattr(nextcloud_mod, "upload_resume", _fake_upload_resume)
+    monkeypatch.setattr(config, "RESUME_MAX_MB", 10)
+
+    big_bot = _FakeBot(file_size=11 * 1024 * 1024)
+    assert asyncio.run(reg_finalize.retry_pending_resume_uploads(big_bot)) == 0
+    assert upload_calls == []
+    assert 108 in reg_finalize._resume_retry_dead
+
+    big_bot2 = _FakeBot(file_size=11 * 1024 * 1024)
+    asyncio.run(reg_finalize.retry_pending_resume_uploads(big_bot2))
+    assert big_bot2.get_file_calls == []
+    reg_finalize._resume_retry_dead.discard(108)
 
 
 def test_retry_one_bad_row_does_not_block_the_next(tmp_path, monkeypatch):

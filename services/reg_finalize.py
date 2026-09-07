@@ -566,7 +566,7 @@ async def retry_pending_resume_uploads(bot, limit: int = 20) -> int:
 
     Гейт ДО любого обращения к БД и боту — на стендах без настроенного Nextcloud (например
     тестовый стенд) тик джобы не стоит ни одного запроса."""
-    from services.nextcloud import is_configured, upload_resume, upload_text_resume
+    from services.nextcloud import _resume_max_bytes, is_configured, upload_resume, upload_text_resume
 
     if not is_configured():
         return 0
@@ -595,6 +595,14 @@ async def retry_pending_resume_uploads(bot, limit: int = 20) -> int:
                         _resume_retry_dead.add(tid)
                         continue
                     raise
+                # Файл больше лимита облако не примет никогда (upload_resume вернёт None
+                # каждый тик) — помечаем, как и недоступный файл, чтобы не шуметь в логах
+                # каждые N минут одной и той же строкой.
+                size = getattr(tg_file, "file_size", None)
+                if size is not None and size > _resume_max_bytes():
+                    logger.warning(f"resume_upload_retry: файл делегата {tid} больше лимита размера, пропускаем")
+                    _resume_retry_dead.add(tid)
+                    continue
                 ext = os.path.splitext(tg_file.file_path or "")[1] or ".pdf"
                 url = await asyncio.wait_for(upload_resume(bot, file_id, f"{stem}{ext}"), timeout=20)
             elif row.get("resume_text"):
