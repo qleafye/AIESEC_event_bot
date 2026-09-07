@@ -115,6 +115,10 @@ _REG_FIELD_ORDER = [
     "stack_options", "experience_options", "readiness_options", "education_status_options",
     "edu_studying_statuses",
     "reg_case_optin_description_text",
+    # Phase 28 (28-03, SU-02): лимит мультивыбора — числа + тексты, рядом с остальными
+    # анкетными ключами формы (иначе менеджер не увидит их в боте, правило файла).
+    "reg_multi_max_goal", "reg_multi_max_stack",
+    "reg_multi_limit_hint_text", "reg_multi_limit_counter_text", "reg_multi_limit_error_text",
     "goal_options", "formats_options", "university_options",
     # Phase 17.1 (17.1-03, schema-completeness): экран выбора города при /start — читался из
     # bot_settings, но менеджер его в UI не видел.

@@ -379,6 +379,10 @@ def test_render_snapshot_reg(tmp_path):
         "stack_options", "experience_options", "readiness_options", "education_status_options",
         "edu_studying_statuses",
         "reg_case_optin_description_text",
+        # Phase 28 (28-03, SU-02): лимит мультивыбора — числа + тексты, сразу после
+        # reg_case_optin_description_text (handlers/admin_settings.py::_REG_FIELD_ORDER).
+        "reg_multi_max_goal", "reg_multi_max_stack",
+        "reg_multi_limit_hint_text", "reg_multi_limit_counter_text", "reg_multi_limit_error_text",
         "goal_options", "formats_options", "university_options",
         # Phase 17.1 (17.1-03, schema-completeness): экран выбора города при /start —
         # в хвосте группы.
@@ -389,6 +393,9 @@ def test_render_snapshot_reg(tmp_path):
         "🧰 Стек (варианты)", "💼 Опыт (варианты)", "🚀 Готовность (варианты)",
         "🎓 Статусы образования (варианты)", "🎓 Кто считается учащимся",
         "🏆 Кейс-чемпионат: пояснение",
+        "🎯 Максимум вариантов: Цель участия", "🧰 Максимум вариантов: Стек",
+        "📝 Мультивыбор: подсказка лимита", "📝 Мультивыбор: счётчик выбранного",
+        "📝 Мультивыбор: ошибка превышения лимита",
         "🎯 Цель участия (варианты)", "📋 Форматы форума (варианты)", "🏫 Список ВУЗов",
         "🏙 Выбор города: вопрос",
     ]
@@ -402,7 +409,14 @@ def test_render_snapshot_reg(tmp_path):
     # «⏰ Догонялка: через сколько минут» -- int, как pending_reminder_interval: функциональный
     # parse-дефолт НЕ показывается как display-дефолт (_SETTINGS_DISPLAY_DEFAULTS только text).
     # Phase 28 (28-01): «🏆 Кейс-чемпионат: пояснение» — text с непустым дефолтом, тот же флаг.
-    defaulted_labels = {"🏙 Выбор города: вопрос", "🏆 Кейс-чемпионат: пояснение"}
+    # Phase 28 (28-03): три текста лимита мультивыбора — тоже text с непустым дефолтом (тот же
+    # флаг); оба числовых ключа (reg_multi_max_goal/stack) — int, парс-дефолт не показывается
+    # (тот же приём, что nudge_after_minutes) -> «— не задано».
+    defaulted_labels = {
+        "🏙 Выбор города: вопрос", "🏆 Кейс-чемпионат: пояснение",
+        "📝 Мультивыбор: подсказка лимита", "📝 Мультивыбор: счётчик выбранного",
+        "📝 Мультивыбор: ошибка превышения лимита",
+    }
     for label in defaulted_labels:
         assert f"{label}: <i>по умолчанию</i>" in text, f"missing/wrong flag for {label}"
     for label in expected_labels:
