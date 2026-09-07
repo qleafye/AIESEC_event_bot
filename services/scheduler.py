@@ -810,6 +810,29 @@ async def quiet_hours_flush_job():
         logger.error(f"quiet_hours_flush_job failed: {e}")
 
 
+async def _nudge_remaining_for(tid: int) -> int | None:
+    """Phase 28 (28-09, SU-09, Pitfall 6): остаток вопросов для ОДНОГО кандидата — свой
+    `get_reg_draft` + `reg_engine.enabled_steps` внутри цикла (не пересчёт по батчу разом,
+    иначе все делегаты получили бы одно и то же число). Зовётся ТОЛЬКО когда `nudge_text`
+    реально содержит `{remaining}` (T-28-09-01) — редкий батч, но лишний запрос на кандидата
+    без надобности не тратим.
+
+    `None` — черновика нет или остаток посчитать не удалось; вызывающий подставляет
+    нейтральное слово вместо числа, а не пустые фигурные скобки (T-28-09-04)."""
+    try:
+        from database.db import get_reg_draft
+        import reg_engine
+        draft = await get_reg_draft(tid)
+        if not draft:
+            return None
+        answers = draft.get("answers") or {}
+        enabled = await reg_engine.enabled_steps(answers, draft.get("event_city"))
+        return sum(1 for step_key in enabled if not answers.get(step_key))
+    except Exception as e:
+        logger.warning(f"nudge remaining count failed for {tid}: {e}")
+        return None
+
+
 async def nudge_incomplete_registrations():
     """Interval-job target (no args, picklable). Nudge each incomplete registration
     older than the threshold exactly once, then stamp nudged_at (D-14).
@@ -819,7 +842,13 @@ async def nudge_incomplete_registrations():
     `nudge_scan_minutes` (default 15) and will pick the same candidate up again right after
     the window ends. A queue entry here would be the wrong tool twice over: it would burn the
     one-shot `mark_nudged` budget (D-14) on a message that hasn't gone out yet, and the delay
-    is short enough (one scan tick past the window) that a persisted row buys nothing."""
+    is short enough (one scan tick past the window) that a persisted row buys nothing.
+
+    Phase 28 (28-09, SU-09): `nudge_text` без `{remaining}` не читает ни одного черновика —
+    байт-в-байт прежнее поведение. С плейсхолдером текст ПОДСТАВЛЯЕТСЯ (`.replace`, не
+    `.format` — текст менеджера может содержать посторонние фигурные скобки, T-28-09-04)
+    заново на КАЖДОГО кандидата внутри цикла (`_nudge_remaining_for`), сам `text`
+    (общий, прочитанный один раз) не перезаписывается."""
     try:
         from database.db import get_nudge_candidates, mark_nudged
         if not _nudge_enabled(await get_setting("nudge_enabled")):
@@ -838,6 +867,7 @@ async def nudge_incomplete_registrations():
         if not candidates:
             return
         text = await get_setting("nudge_text") or DEFAULT_NUDGE_TEXT
+        has_remaining_placeholder = "{remaining}" in text
         # Phase 21 (21-09, D-21): вторая поверхность — «в чате» (deep-link ?start=continue) и
         # «📱 в приложении» (web_app, только при включённом разделе «📝 Анкета» и самом Mini
         # App). Построены ОДИН раз на весь прогон джобы, не на каждого делегата — get_me()/
@@ -851,11 +881,19 @@ async def nudge_incomplete_registrations():
         for tid in candidates:
             if await quiet_hours.defer_until(now, tid) is not None:
                 continue  # тихие часы -- пропуск без mark_nudged, заберёт следующий тик
+            msg_text = text
+            if has_remaining_placeholder:
+                remaining = await _nudge_remaining_for(tid)
+                if remaining is None:
+                    fallback = await get_setting_typed("nudge_remaining_fallback_text")
+                    msg_text = text.replace("{remaining}", fallback)
+                else:
+                    msg_text = text.replace("{remaining}", str(remaining))
             # A blocked user can never receive the nudge, so stamping nudged_at on permanent
             # failure is what keeps the "exactly once" contract (D-14) from degenerating into
             # "forever" — the give-up is the one-shot.
             ok = await _safe_send(
-                lambda cid: _bot.send_message(cid, text, reply_markup=kb), tid,
+                lambda cid, mt=msg_text: _bot.send_message(cid, mt, reply_markup=kb), tid,
                 on_permanent_failure=mark_nudged,
             )
             if ok:
