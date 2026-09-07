@@ -31,6 +31,7 @@ Phase 27 (27-04, LANG-06): к разрешённым импортам «наве
 эту фазу не видят вообще.
 """
 from datetime import datetime
+from urllib.parse import urlparse
 
 from config import config
 from database.db import get_setting
@@ -654,14 +655,52 @@ _GENERIC_FALLBACK_LABEL = {"select": "Выбери вариант", "multi": "В
 
 
 async def resume_mode(city_code: str | None = None) -> str:
-    """Режим приёма резюме (Phase 25, CITYQ-01): `file_or_text` (дефолт, как всегда было) или
-    `text_only`. `reg_resume_mode` — обычный реестровый ключ БЕЗ трекового суффикса, поэтому
+    """Режим приёма резюме (Phase 25, CITYQ-01; Phase 28-04, SU-04): `file_or_text` (дефолт,
+    как всегда было), `text_only` или `fork` (развилка «файл / ссылка / нет резюме», R-A3
+    CONTEXT). `reg_resume_mode` — обычный реестровый ключ БЕЗ трекового суффикса, поэтому
     общий резолвер `cities.get_setting_typed_for_city` уместен напрямую (в отличие от
     `_city_override`, который существует ради суффиксных `reg_q_*__party`/`__short`)."""
     value = await get_setting_typed_for_city("reg_resume_mode", city_code)
-    if value not in ("file_or_text", "text_only"):
+    if value not in ("file_or_text", "text_only", "fork"):
         return "file_or_text"
     return value
+
+
+# Phase 28 (28-04, SU-04): вайтлист доменов ссылки на резюме — редактируемый список (D-01),
+# дефолт — пять сайтов ТЗ §3.3. Чужой домен НЕ ошибка (D-04) — принимается с `link_verified=0`.
+RESUME_LINK_WHITELIST_DEFAULT = ["hh.ru", "github.com", "gitlab.com", "linkedin.com", "notion.so"]
+
+
+async def resume_link_whitelist() -> list[str]:
+    """Editable-list вайтлист доменов для развилки резюме (SU-04) — правится из админки тем же
+    приёмом, что `stack_options`/`goal_options` (`option_list_for`); пусто = пять сайтов ТЗ."""
+    return await option_list_for("reg_resume_link_whitelist", RESUME_LINK_WHITELIST_DEFAULT)
+
+
+# Дефолт-текст ошибки формата ссылки — используется, если вызывающий не резолвил реестровый
+# `reg_resume_link_invalid_text` сам (та же защита, что `_DEFAULT_MULTI_LIMIT_ERROR_TEXT`,
+# 28-03): движок синхронный, в БД не ходит, дословно совпадает с дефолтом ключа реестра.
+_RESUME_LINK_INVALID_TEXT_DEFAULT = "Пришлите ссылку целиком, начиная с http:// или https://"
+
+
+def validate_resume_link(raw, whitelist) -> tuple[str | None, bool, str | None]:
+    """Чистая функция проверки ссылки на резюме (SU-04, T-28-04-02): обрезает пробелы; без
+    схемы `http(s)://` или без хоста — ошибка (текст дословно `reg_resume_link_invalid_text`,
+    сам реестровый оверрайд резолвит вызывающий — эта функция синхронная, в БД не ходит, тот
+    же приём, что `_DEFAULT_MULTI_LIMIT_ERROR_TEXT`); домен достаётся `urllib.parse` (без
+    регулярок-самоделок), сравнение — по ПОЛНОМУ хосту без ведущего `www.` (не `endswith` —
+    поддомен/похожий домен чужого сайта, например `hh.ru.evil.com`, не выдаёт себя за
+    вайтлист, T-28-04-02). Домен не из списка — НЕ ошибка (ТЗ §3.3, D-04): `(url, False,
+    None)`, ссылка принимается как есть."""
+    text = (raw or "").strip()
+    parsed = urlparse(text)
+    if parsed.scheme not in ("http", "https") or not parsed.netloc:
+        return None, False, _RESUME_LINK_INVALID_TEXT_DEFAULT
+    host = parsed.netloc.lower()
+    if host.startswith("www."):
+        host = host[4:]
+    allowed = {d.strip().lower() for d in (whitelist or []) if d and d.strip()}
+    return text, host in allowed, None
 
 
 async def _default_prompt_text(
@@ -955,6 +994,9 @@ _UI_TYPE_OVERRIDES = {
     "ambassador": "choice-chips",
     # Phase 28 (28-01, SU-01, СкиллАп 5): case_optin — жёсткие «Да»/«Нет», как work_status.
     "case_optin": "yesno",
+    # Phase 28 (28-04, SU-04): R2b — новый под-тип поля `url` (Component Contracts §2
+    # 28-UI-SPEC.md), соседствует с существующими text/phone/email.
+    "resume_link": "url",
 }
 _TEXTAREA_STEPS = {"expectations", "comments", "mini_projects"}
 
@@ -996,7 +1038,10 @@ def _max_len_for(step_key: str, ui_type: str) -> int | None:
         return MAX_LEN_FULL_NAME
     if step_key in _LONG_TEXT_STEPS:
         return MAX_LEN_LONG
-    if ui_type in ("text", "textarea", "phone", "email"):
+    # Phase 28 (28-04, SU-04, T-28-04-04): "url" (resume_link) делит лимит с "text" — тот же
+    # DoS-барьер, что был у него ДО смены ui_type на "url" (28-01 регистрировал resume_link как
+    # обычный "text"-шаг); смена типа поля не должна снимать существовавшую защиту длины.
+    if ui_type in ("text", "textarea", "phone", "email", "url"):
         return MAX_LEN_DEFAULT
     return None
 
@@ -1013,6 +1058,25 @@ _SKIP_ALLOWED_STEPS = {
 # local_committee/position/department/aiesec_role через builders.py.
 _OTHER_ALLOWED_STEPS = {"city", "study_field", "local_committee", "position", "department", "aiesec_role"}
 
+# Phase 28 (28-04, SU-04, A-03 CONTEXT): три записи развилки резюме R1 — code (не показывается
+# делегату, только Mini App/бот решают, куда вести дальше) / реестровый ключ подписи / иконка
+# Lucide-подсета (28-UI-SPEC.md §Component Contracts 1, upload/link/x).
+_RESUME_FORK_OPTIONS = [
+    ("file", "reg_resume_fork_file_label", "upload"),
+    ("link", "reg_resume_fork_link_label", "link"),
+    ("mini", "reg_resume_fork_none_label", "x"),
+]
+
+
+async def resume_fork_options() -> list[dict]:
+    """Спека трёх кнопок развилки резюме (SU-04) — код/человеческая подпись из реестра
+    (Copywriting Contract 28-UI-SPEC.md)/иконка; менеджер меняет подписи, коды и порядок
+    закрыты (D-01/D-02 — коду делегат не видит, порядок — часть UX-контракта развилки)."""
+    return [
+        {"code": code, "label": await get_setting_typed(setting_key), "icon": icon}
+        for code, setting_key, icon in _RESUME_FORK_OPTIONS
+    ]
+
 
 async def step_spec(step_key: str, participant_type: str | None = None,
                      event_city: str | None = None) -> dict:
@@ -1023,7 +1087,12 @@ async def step_spec(step_key: str, participant_type: str | None = None,
     городу делегата, а шаг `resume` в режиме `reg_resume_mode(event_city) == "text_only"`
     рисуется текстовым полем вместо дропзоны (`_UI_TYPE_OVERRIDES` не трогается — оверрайд
     режима резюме считается здесь, где уже известен город). Для всех прочих шагов вывод не
-    меняется."""
+    меняется.
+
+    Phase 28-04 (SU-04): `reg_resume_mode(event_city) == "fork"` рисует развилку («Файл» /
+    «Ссылка» / «Нет резюме», R1 UI-SPEC) вместо дропзоны/текстового поля — `type` становится
+    `"resume-fork"`, спека получает `fork_options` (см. `resume_fork_options()`). Экранов
+    делегат для этого режима ещё не видит (план 28-05) — здесь только контракт спеки."""
     step_type = REG_STEP_TYPES.get(step_key, "text")
     ui_type = _ui_type_for(step_key, step_type)
     label = label_for(step_key)
@@ -1032,6 +1101,8 @@ async def step_spec(step_key: str, participant_type: str | None = None,
         resume_mode_value = await resume_mode(event_city)
         if resume_mode_value == "text_only":
             ui_type = "textarea"
+        elif resume_mode_value == "fork":
+            ui_type = "resume-fork"
     spec = {
         "key": step_key,
         "column": STEP_TO_COLUMN.get(step_key, step_key),
@@ -1047,6 +1118,13 @@ async def step_spec(step_key: str, participant_type: str | None = None,
     }
     if step_key == "resume":
         spec["resume_mode"] = resume_mode_value
+        if resume_mode_value == "fork":
+            spec["fork_options"] = await resume_fork_options()
+    # Phase 28 (28-04, SU-04): ссылка на резюме публикует вайтлист доменов — сверка домена
+    # происходит на клиенте БЕЗ отдельного запроса (28-UI-SPEC.md §2), финальное решение
+    # `link_verified` всё равно пересчитывает сервер на финале (T-28-04-01).
+    if step_key == "resume_link":
+        spec["link_whitelist"] = await resume_link_whitelist()
     if ui_type in ("choice-chips", "select", "multi", "yesno"):
         spec["options"] = await options(step_key)
     # Phase 28 (28-03, SU-02, A-06): лимит мультивыбора — публикуется ВСЕГДА для multi-шага
@@ -1468,6 +1546,7 @@ _DEFAULT_MULTI_LIMIT_ERROR_TEXT = "Можно выбрать не больше {
 def validate_answer(
     step_key: str, raw, *, participant_type: str | None = None,
     max_select: int | None = None, limit_error_text: str | None = None,
+    whitelist: list[str] | None = None,
 ) -> tuple:
     """Единая точка проверки ответа — и для текста из чата бота, и (план 21-10) для JSON из
     Mini App (T-21-05). Возвращает `(value, error_text)`; `error_text is None` значит `value`
@@ -1488,7 +1567,13 @@ def validate_answer(
     гонка «клавиатура рассинхронизировалась с настройкой, изменённой посреди анкеты» (Anti-
     Pattern RESEARCH: второго валидатора нет, ЭТА ветка — единственное место, где multi-лимит
     проверяется по-настоящему). Проверка — по количеству выбранных ДО joins-а в строку (core
-    хранит multi-ответ как строку через `", ".join`, считать по запятым после — хрупко)."""
+    хранит multi-ответ как строку через `", ".join`, считать по запятым после — хрупко).
+
+    `whitelist` (Phase 28-04, SU-04) — НОВЫЙ keyword-only параметр, дефолт `None`: применяется
+    ТОЛЬКО к шагу `resume_link` (единая проверка ссылки — `validate_resume_link`, тот же приём
+    keyword-only-с-безопасным-дефолтом, что `max_select`/`limit_error_text` выше). При `None`
+    ссылка проверяется только на схему `http(s)://` — домен ни с чем не сверяется (пустой
+    вайтлист), `VALIDATION_GOLDEN` не двигается, т.к. `resume_link` в нём не участвует."""
     if raw is None and step_key in _NULL_SKIP_STEPS:
         raw = "Пропустить"
     if max_select is not None and REG_STEP_TYPES.get(step_key) == "multi":
@@ -1496,7 +1581,11 @@ def validate_answer(
         if len(chosen) > max_select:
             text = limit_error_text or _DEFAULT_MULTI_LIMIT_ERROR_TEXT
             return None, text.replace("{max}", str(max_select))
-    value, error = _validate_answer_core(step_key, raw, participant_type)
+    if step_key == "resume_link":
+        url, _verified, error = validate_resume_link(raw, whitelist)
+        value = url
+    else:
+        value, error = _validate_answer_core(step_key, raw, participant_type)
     if error is None and isinstance(value, str):
         ui_type = _ui_type_for(step_key, REG_STEP_TYPES.get(step_key, "text"))
         max_len = _max_len_for(step_key, ui_type)

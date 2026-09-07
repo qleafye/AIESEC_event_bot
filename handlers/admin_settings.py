@@ -123,6 +123,13 @@ _REG_FIELD_ORDER = [
     # Phase 17.1 (17.1-03, schema-completeness): экран выбора города при /start — читался из
     # bot_settings, но менеджер его в UI не видел.
     "city_fork_text",
+    # Phase 28 (28-04, SU-04): развилка резюме — вайтлист доменов + подписи трёх кнопок R1 +
+    # маркеры/ошибка ссылки R2b + «Пропустить» мини-подшага (иначе менеджер не увидит их в
+    # боте, правило файла).
+    "reg_resume_link_whitelist",
+    "reg_resume_fork_file_label", "reg_resume_fork_link_label", "reg_resume_fork_none_label",
+    "reg_resume_link_whitelist_hint_text", "reg_resume_link_other_hint_text",
+    "reg_resume_link_invalid_text", "reg_mini_portfolio_skip_label",
 ]
 
 # Phase 20 (20-01, ADMIN-IA-01): группа «📋 Заявки» — всё, что делегат видит ПОСЛЕ подачи
