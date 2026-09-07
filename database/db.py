@@ -2238,6 +2238,35 @@ async def get_pending_users(limit: int = 1, offset: int = 0, *, city_scope=None,
             return [dict(row) for row in await cursor.fetchall()]
 
 
+async def get_resume_upload_backlog(before: str, limit: int = 20) -> list[dict]:
+    """Очередь недогруженных резюме — отдельной таблицы нет, это сами строки `users`:
+    `resume_url` пуст, а `resume_file_id`/`resume_text` есть (делегат прислал файл/текст на
+    финале, но выгрузка в Nextcloud сорвалась или облако было выключено).
+
+    `before` — отсечка «строка не моложе N минут», сравнение СТРОКОВОЕ, потому что
+    `registration_date` пишется `strftime("%Y-%m-%d %H:%M:%S")` по часам контейнера
+    (services/reg_finalize.py:161) — сравнивать с московским временем здесь НЕЛЬЗЯ, та же
+    ловушка, что разобрана в комментарии `nudge_incomplete_registrations`
+    (services/scheduler.py). Свежие строки (моложе отсечки) не берём — финал ещё может быть
+    «в полёте» под своим таймаутом.
+
+    Порядок — по `registration_date` по возрастанию (старые в очереди первыми), лимит батча
+    ограничивает число строк за один тик джобы."""
+    async with _connect() as db:
+        db.row_factory = aiosqlite.Row
+        async with db.execute(
+            "SELECT * FROM users WHERE (resume_url IS NULL OR TRIM(resume_url) = '') "
+            "AND ("
+            "(resume_file_id IS NOT NULL AND TRIM(resume_file_id) != '') "
+            "OR (resume_text IS NOT NULL AND TRIM(resume_text) != '')"
+            ") "
+            "AND (registration_date IS NULL OR registration_date <= ?) "
+            "ORDER BY registration_date ASC, telegram_id ASC LIMIT ?",
+            (before, limit),
+        ) as cursor:
+            return [dict(row) for row in await cursor.fetchall()]
+
+
 async def get_pending_count(*, city_scope=None, track: str | None = None,
                              changed_only: bool = False) -> int:
     extra, params = _pending_where(city_scope, track, changed_only)

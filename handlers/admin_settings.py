@@ -197,6 +197,7 @@ _SYSTEM_FIELD_ORDER = [
     "proxy_recheck_seconds", "proxy_connect_timeout",
     # Quick 260819 (schema-completeness): интервалы фоновых джоб (после перезапуска).
     "nudge_scan_minutes", "allowlist_refresh_minutes", "incomplete_sync_hours",
+    "resume_retry_minutes",
 ]
 
 # Quick 260815-3hw (TABS-01/02/03): every Google Sheets tab NAME in one group — «📄 Вкладки
