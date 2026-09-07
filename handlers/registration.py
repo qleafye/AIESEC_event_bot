@@ -2269,6 +2269,12 @@ async def finalize_registration(message: types.Message, state: FSMContext, bot: 
     # тапы по кнопкам до одобрения упираются в pending-гейт ensure_registered.
     menu_kb = await get_main_menu_kb(uid)
     await _safe_answer(message, submitted, reply_markup=menu_kb, parse_mode="HTML")  # Quick 260906
+    if result["mode"] == "new":
+        try:
+            from handlers import reg_ambassador  # ленивый импорт шва (SU-07)
+            await reg_ambassador.offer_ref_link(message, uid, data.get("event_city"))
+        except Exception as e:
+            logger.error(f"offer_ref_link failed for {uid}: {e}")
 
 
 # Phase 13 REFAC (13-03, REFAC-02): seam imports trigger decoration of the moved handler
@@ -2306,3 +2312,7 @@ from handlers import reg_extra_steps  # noqa: E402, F401
 # handlers land at the very TAIL of registration.router (after mini_projects/mini_portfolio/
 # mini_direction/case_optin above), golden order+filter snapshot only gets APPENDED to.
 from handlers import reg_resume_fork  # noqa: E402, F401
+
+# Phase 28 (28-06, SU-07): imported LAST — regamb:want/regamb:later handlers land at the very
+# TAIL of registration.router, golden order+filter snapshot only gets APPENDED to.
+from handlers import reg_ambassador  # noqa: E402, F401
