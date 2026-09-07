@@ -377,6 +377,7 @@ def test_render_snapshot_reg(tmp_path):
         # Phase 28 (28-01, SU-01/SU-08, СкиллАп 5): четыре новых списка вариантов + пояснение
         # кейс-чемпионата, сразу после study_field_options (handlers/admin_settings.py).
         "stack_options", "experience_options", "readiness_options", "education_status_options",
+        "edu_studying_statuses",
         "reg_case_optin_description_text",
         "goal_options", "formats_options", "university_options",
         # Phase 17.1 (17.1-03, schema-completeness): экран выбора города при /start —
@@ -386,7 +387,8 @@ def test_render_snapshot_reg(tmp_path):
     expected_labels = [
         "📢 Источники", "🏙 Города (варианты)", "🎯 Направления обучения (варианты)",
         "🧰 Стек (варианты)", "💼 Опыт (варианты)", "🚀 Готовность (варианты)",
-        "🎓 Статусы образования (варианты)", "🏆 Кейс-чемпионат: пояснение",
+        "🎓 Статусы образования (варианты)", "🎓 Кто считается учащимся",
+        "🏆 Кейс-чемпионат: пояснение",
         "🎯 Цель участия (варианты)", "📋 Форматы форума (варианты)", "🏫 Список ВУЗов",
         "🏙 Выбор города: вопрос",
     ]

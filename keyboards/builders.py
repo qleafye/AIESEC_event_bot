@@ -161,9 +161,13 @@ async def get_source_kb() -> ReplyKeyboardMarkup:
     kb.adjust(2)
     return kb.as_markup(resize_keyboard=True, one_time_keyboard=True)
 
-def get_education_status_kb() -> ReplyKeyboardMarkup:
+def get_education_status_kb(options: list[str] | None = None) -> ReplyKeyboardMarkup:
+    """Phase 28 (28-01, R-A3 CONTEXT): `options=None` строит прежние три кнопки байт-в-байт
+    (D-06) — вызывающий (handlers/registration.py) передаёт `await reg_engine.options(
+    "education_status")`, который сам резолвит реестровый `education_status_options` с
+    фолбэком на `EDUCATION_STATUS_OPTIONS`."""
     kb = ReplyKeyboardBuilder()
-    for opt in EDUCATION_STATUS_OPTIONS:
+    for opt in (options if options is not None else EDUCATION_STATUS_OPTIONS):
         kb.button(text=opt)
     kb.adjust(1)
     return kb.as_markup(resize_keyboard=True, one_time_keyboard=True)

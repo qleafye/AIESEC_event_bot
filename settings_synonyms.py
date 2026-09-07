@@ -83,6 +83,7 @@ SETTINGS_SYNONYMS: dict[str, list[str]] = {
     "experience_options": ["варианты опыта", "уровни опыта"],
     "readiness_options": ["варианты готовности", "когда выходит"],
     "education_status_options": ["статусы образования", "варианты образования"],
+    "edu_studying_statuses": ["учащиеся", "кто учится", "условие курса"],
     "goal_options": ["зачем на форум", "мотивация участия"],
     "formats_options": ["офлайн онлайн", "варианты формата"],
     "university_options": ["университеты", "вузы список"],

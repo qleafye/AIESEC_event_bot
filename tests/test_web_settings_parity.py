@@ -296,10 +296,11 @@ def _reg_questions_group(body: dict) -> dict:
 
 
 def test_reg_questions_matrix_structure_and_track_semantics(tmp_path):
-    """Матрица — одна строка на вопрос REG_FLOW (43, тот же порядок, что бот), три ячейки:
-    полная/party/short; party наследует полную форму при отсутствии `__party` (D-03/D-04
-    reg_engine.is_step_enabled_for_track), short без `__short` — жёсткий off (SHORT-04);
-    флат-список `group["items"]` остаётся рядом (T-19-45, поиск)."""
+    """Матрица — одна строка на вопрос REG_FLOW (51 = 43 + восемь новых СкиллАпа, Phase 28-01
+    SU-01/SU-04, тот же порядок, что бот), три ячейки: полная/party/short; party наследует
+    полную форму при отсутствии `__party` (D-03/D-04 reg_engine.is_step_enabled_for_track),
+    short без `__short` — жёсткий off (SHORT-04); флат-список `group["items"]` остаётся рядом
+    (T-19-45, поиск)."""
     import reg_engine
 
     client = _setup(tmp_path)
@@ -308,7 +309,7 @@ def test_reg_questions_matrix_structure_and_track_semantics(tmp_path):
 
     matrix = group.get("matrix")
     assert matrix and matrix.get("rows"), "у группы reg_questions нет матрицы"
-    assert len(matrix["rows"]) == len(reg_engine.REG_FLOW) == 43
+    assert len(matrix["rows"]) == len(reg_engine.REG_FLOW) == 51
     assert [r["step_key"] for r in matrix["rows"]] == [sk for sk, *_r in reg_engine.REG_FLOW]
 
     # Флат-список для поиска не пропал — то же множество ключей, что и раньше.

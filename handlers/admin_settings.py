@@ -113,6 +113,7 @@ _REG_FIELD_ORDER = [
     # Phase 28 (28-01, SU-01/SU-08, СкиллАп 5): четыре новых списка вариантов + пояснение
     # кейс-чемпионата — иначе менеджер не увидит их в боте (правило файла).
     "stack_options", "experience_options", "readiness_options", "education_status_options",
+    "edu_studying_statuses",
     "reg_case_optin_description_text",
     "goal_options", "formats_options", "university_options",
     # Phase 17.1 (17.1-03, schema-completeness): экран выбора города при /start — читался из

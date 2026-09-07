@@ -506,7 +506,9 @@ def test_multi_item_never_leaks_step_codes(tmp_path):
     body = _all(client).json()
     item = _item(body, "modcard_fields")
     assert item["type"] == "multi"
-    assert len(item["options"]) == 43
+    # Phase 28 (28-01): CARD_STEPS растёт АВТОМАТИЧЕСКИ из STEP_TO_COLUMN/REG_LABELS — 43 + 8
+    # новых шагов СкиллАпа (RESEARCH Pattern 1 п.12), без единой правки moderation_card.py.
+    assert len(item["options"]) == 51
     assert set(item["options"]) == set(mc.CARD_STEPS.values())
     assert item["options"] == [label for _code, label in _multi_options("modcard_fields")]
     # Ни одного кода шага — ровно в этих четырёх полях (root_causes плана); "raw"/"key"

@@ -68,6 +68,13 @@ EXPECTED_PER_CITY_KEYS = {
     "reg_q_position", "reg_q_resume", "reg_q_skills", "reg_q_source", "reg_q_specialty",
     "reg_q_study_field", "reg_q_transport", "reg_q_university", "reg_q_vk", "reg_q_volunteer",
     "reg_q_work", "reg_q_work_sphere",
+    # Phase 28 (28-01, SU-01/SU-04, СкиллАп 5): восемь новых тумблеров вопросов — та же ось,
+    # что остальные reg_q_* выше.
+    "reg_q_stack", "reg_q_experience", "reg_q_readiness", "reg_q_resume_link",
+    "reg_q_mini_projects", "reg_q_mini_portfolio", "reg_q_mini_direction", "reg_q_case_optin",
+    # Phase 28 (28-01, SU-08): пояснение под вопросом кейс-чемпионата — обращено к делегату,
+    # per_city как соседние тексты анкеты.
+    "reg_case_optin_description_text",
     # Phase 25 (CITYQ-01): 44 текста вопросов (группа reg_prompts, литерал REG_PROMPT_STEPS)
     # — та же ось, переопределяются по городу независимо от трека.
     "reg_prompt_age", "reg_prompt_aiesec_role", "reg_prompt_allergies",
@@ -84,6 +91,11 @@ EXPECTED_PER_CITY_KEYS = {
     "reg_prompt_specialty", "reg_prompt_study_field", "reg_prompt_transport",
     "reg_prompt_university", "reg_prompt_vk", "reg_prompt_volunteer", "reg_prompt_work_sphere",
     "reg_prompt_work_status",
+    # Phase 28 (28-01, СкиллАп 5): восемь новых reg_prompt_<step> (REG_PROMPT_STEPS
+    # генерирует их с per_city=True автоматически, как всех соседей выше).
+    "reg_prompt_stack", "reg_prompt_experience", "reg_prompt_readiness",
+    "reg_prompt_resume_link", "reg_prompt_mini_projects", "reg_prompt_mini_portfolio",
+    "reg_prompt_mini_direction", "reg_prompt_case_optin",
     # Phase 25 (CITYQ-01): режим приёма резюме — file_or_text/text_only по городу.
     "reg_resume_mode",
 }

@@ -683,7 +683,9 @@ def test_reg_flow_entry_count_unchanged_from_phase5_start():
     # D-09: Phase 5 itself added no new REG_FLOW step keys — 42 matches the count recorded in
     # the 05-02 SUMMARY ("threads participant_type to all 42 internal _prompt call sites").
     # Post-phase additions bump this deliberately: +alumni_status (quick 260721-msh) → 43.
-    assert len(reg.REG_FLOW) == 43
+    # Phase 28 (28-01, SU-01/SU-04, СкиллАп 5): +8 default-OFF steps (stack/experience/
+    # readiness/resume_link/mini_projects/mini_portfolio/mini_direction/case_optin) → 51.
+    assert len(reg.REG_FLOW) == 51
 
 
 def test_party_pick_token_vocabulary_matches_extract_party_track():
