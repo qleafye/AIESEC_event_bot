@@ -134,19 +134,57 @@ function selectControl(h, spec, value, onChange) {
   return select;
 }
 
+// Phase 28 (28-03, SU-02, 28-UI-SPEC §4): `spec.max_select` отсутствует/`null` — поведение
+// ЦЕЛИКОМ прежнее (та же разметка, никакого счётчика/дизейбла) — существующие мультивыборы
+// (work_format и т.п.) не меняются ни на байт. При заданном лимите — строка-счётчик над
+// чекбоксами (`spec.limit_counter_text`, {selected}/{max} подставляются на каждый тап) и
+// тихий дизейбл НЕвыбранных чекбоксов по достижении лимита (уже выбранные остаются
+// кликабельны — снять выбор можно всегда). Никакого alert/toast на веб-поверхности (A6
+// 28-UI-SPEC): канал диктует форму обратной связи, лимит на сервере один и тот же.
 function multiControl(h, spec, value, onChange) {
   const chosen = new Set(Array.isArray(value) ? value : []);
+  const maxSelect = typeof spec.max_select === "number" ? spec.max_select : null;
+  const counter = maxSelect != null
+    ? h("p", { class: "label-role multi-limit-counter", "aria-live": "polite" })
+    : null;
+  const rows = [];
   const box = h("div", { class: "choice-grid", role: "group", "aria-label": spec.label });
+
+  function renderCounter() {
+    if (!counter) return;
+    counter.textContent = String(spec.limit_counter_text || "")
+      .replace("{selected}", String(chosen.size))
+      .replace("{max}", String(maxSelect));
+  }
+
+  function renderDisabled() {
+    if (maxSelect == null) return;
+    const atLimit = chosen.size >= maxSelect;
+    for (const row of rows) {
+      const disable = atLimit && !chosen.has(row.opt);
+      row.cb.disabled = disable;
+      row.label.classList.toggle("is-limit-disabled", disable);
+    }
+  }
+
   for (const opt of spec.options || []) {
     const cb = h("input", { type: "checkbox" });
     cb.checked = chosen.has(opt);
+    const label = h("label", { class: "check" }, cb, h("span", { text: opt }));
     cb.addEventListener("change", () => {
       if (cb.checked) chosen.add(opt); else chosen.delete(opt);
+      renderCounter();
+      renderDisabled();
       onChange(Array.from(chosen));
     });
-    box.append(h("label", { class: "check" }, cb, h("span", { text: opt })));
+    rows.push({ opt, cb, label });
+    box.append(label);
   }
-  return box;
+  renderCounter();
+  renderDisabled();
+
+  if (!counter) return box;
+  return h("div", { class: "multi-control" }, counter, box);
 }
 
 // Дропзона резюме: default (кнопка «upload») -> success (чип с именем файла + «✕») -> либо
