@@ -641,6 +641,10 @@ PREVIEW_SAMPLES: dict[str, str] = {
     # Quick 260904-dq1: {time} у quiet_hours_manager_notice_text — конец окна тихих часов,
     # подставляется services.quiet_hours.manager_notice тем же .replace-приёмом.
     "time": "09:00",
+    # Phase 28: лимит мультивыбора ({max}/{selected}) и маркер домена ссылки резюме ({domain}).
+    "max": "5",
+    "selected": "2",
+    "domain": "github.com",
 }
 
 
