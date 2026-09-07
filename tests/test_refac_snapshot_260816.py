@@ -602,6 +602,11 @@ admin|callback_query|modcard_open|modcard_open
 admin|callback_query|modcard_toggle|modcard_toggle:*
 admin|callback_query|modcard_limit|modcard_limit:*
 admin|callback_query|modcard_noop|modcard_noop
+admin|callback_query|admin_reg_scoring|admin_reg_scoring
+admin|callback_query|scoring_toggle|scoring_toggle:*
+admin|callback_query|scoring_drop|scoring_drop:*
+admin|callback_query|scoring_limit|scoring_limit:*
+admin|callback_query|scoring_noop|scoring_noop
 admin|callback_query|show_admin_settings_guide|admin_settings_guide
 admin|callback_query|show_roles|admin_roles
 admin|callback_query|toggle_role_enabled|roles_toggle:*
@@ -821,6 +826,10 @@ def test_snapshot_total_handler_count_is_292():
     """Second, independent invariant besides content — a handler silently added/removed
     without touching this file's golden text (impossible for a normal edit, but this guards
     against a golden-string typo slipping past review) is caught by count alone."""
+    # Phase 28 (28-08, SU-08, задача 1): +5 handlers/admin_reg_scoring.py callback_query
+    # (admin_reg_scoring/scoring_toggle/scoring_drop/scoring_limit/scoring_noop), шов
+    # импортируется из хвоста admin_moderation.py сразу после admin_modcard и перед
+    # show_admin_settings_guide (466 -> 471).
     # Phase 28 (28-07, SU-08, задача 3): +1 admin_settings.py callback_query
     # toggle_reg_scoring_enabled, встал сразу после toggle_reg_offer_ref_link и перед
     # toggle_reg_edit_remoderation (465 -> 466).
@@ -838,7 +847,7 @@ def test_snapshot_total_handler_count_is_292():
     # poll_wizard_cancel = два декоратора) в хвост admin.message, 15 callback (список/карточка
     # admin_polls + мастер admin_poll_wizard) в хвост admin.callback_query; чистый аппенд,
     # перепроверен прогоном _build_snapshot_lines() и diff'ом с прежним 334-строчным снапшотом.
-    assert len(GOLDEN_SNAPSHOT) == 466  # Phase 28 (28-07): +1; (28-06, SU-05/SU-06/SU-07): +3, +2
+    assert len(GOLDEN_SNAPSHOT) == 471  # Phase 28 (28-08 задача 1): +5; (28-07): +1; (28-06): +3, +2
     # handlers/reg_resume_fork.py — message process_resume_link (хвост message-блока
     # registration.router, сразу после process_case_optin и перед первым callback_query
     # recall_keep) + callback_query regfork_pick (хвост callback_query-блока
