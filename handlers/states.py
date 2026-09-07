@@ -51,6 +51,15 @@ class Registration(StatesGroup):
     select_input = State()      # configurable single-select step (city / study_field / …)
     multi_input = State()       # configurable multi-select step (goal / formats)
     ambassador = State()        # ambassador yes/no question
+    # Phase 28 (28-02, SU-01/SU-04, СкиллАп 5): пять новых текстовых шагов анкеты — свои
+    # State нужны только им; stack/experience/readiness типа multi/select и обслуживаются
+    # select_input/multi_input выше (RESEARCH Pattern 1, п.6). Показ и приём — в шве
+    # handlers/reg_extra_steps.py.
+    resume_link = State()       # развилка резюме R2b: ссылка (SU-04); обработчик — план 28-04
+    mini_projects = State()     # мини-профиль R2c, подшаг 1/3: над какими проектами работал(а)
+    mini_portfolio = State()    # мини-профиль R2c, подшаг 2/3: портфолио/GitHub (можно пропустить)
+    mini_direction = State()    # мини-профиль R2c, подшаг 3/3: желаемое направление развития
+    case_optin = State()        # участие в кейс-чемпионате (Да/Нет), с пояснением менеджера
 
 class Approval(StatesGroup):
     reason = State()

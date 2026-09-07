@@ -40,7 +40,7 @@ DEFAULT_CEILING = 850
 # edit the number + reason together, in the same commit as the growth that needs it.
 KNOWN_OVERAGES: dict[str, tuple[int, str]] = {
     "registration.py": (
-        2265,
+        2278,
         "Phase 21 (21-01, FORM-SYNC-01): REG_STEP_TYPES/STEP_TO_COLUMN/RECALLABLE_STEPS/"
         "SELECT_CONFIG/MULTI_CONFIG/enabled_steps/prompt-резолюция/pre-flow гейты/"
         "prior-answer правило переехали в корневой reg_engine.py (2309 -> 2099 строк) -- "
@@ -63,7 +63,11 @@ KNOWN_OVERAGES: dict[str, tuple[int, str]] = {
         "тоже переводятся канон -> подпись, не только лейблы; сам перевод (display_summary_value/"
         "display_value_for_step/summary_value_maps) — в handlers/reg_i18n.py, здесь — вызов "
         "value_maps в _advance и async-конвертация _recall_display; потолок поднят до "
-        "фактического размера.",
+        "фактического размера. "
+        "+13 строк (Phase 28, 28-02, SU-01/SU-04): общий хвост `_ask_step` (шаг без "
+        "собственной ветки уходит в шов, не замирает молча) + импорт шва reg_extra_steps в "
+        "хвосте файла — сами экраны и обработчики пяти новых шагов СкиллАпа живут в шве, "
+        "агрегатор получил только точку делегирования; потолок поднят до фактического размера.",
     ),
     "admin_gamification.py": (
         2020,
