@@ -423,6 +423,31 @@ async def is_step_enabled_for_track(
     return await _is_step_enabled(setting_key)
 
 
+# Phase 28 (28-01, SU-03, R-A3 CONTEXT): множество «учащихся» статусов образования настраивается
+# из админки (edu_studying_statuses) — до этого плана условие было захардкожено как
+# `startswith("Да")` (все три литерала EDUCATION_STATUS_OPTIONS начинаются с «Да»).
+def is_studying(value, statuses: list[str] | None = None) -> bool:
+    """Чистый предикат «считается учащимся» — при непустом `statuses` это точное вхождение
+    `str(value)` в список (менеджер настроил семь статусов ТЗ, любой из «учащихся» вариантов);
+    при `statuses is None`/пустом списке — ПРЕЖНЕЕ правило `str(value).startswith("Да")`
+    байт-в-байт (D-06). Синхронная функция — вызывается и из `enabled_steps`/`apply_answer`
+    (уже в async-контексте, но сам предикат данных не читает), и потенциально из тестов без
+    event loop."""
+    if statuses:
+        return str(value) in statuses
+    return str(value).startswith("Да")
+
+
+async def studying_statuses() -> list[str]:
+    """Реестровый список «учащихся» статусов (`edu_studying_statuses`, type: list) — пусто
+    (дефолт) означает «множество не настроено», и `is_studying` откатывается на прежнее
+    правило `startswith("Да")`. Список из реестра сюда приходит уже в виде отдельных строк
+    (`get_setting` + построчный парсинг), без литерального дефолта — старое поведение живёт
+    в `is_studying`, а не здесь."""
+    raw = await get_setting("edu_studying_statuses") or ""
+    return [line.strip() for line in raw.splitlines() if line.strip()]
+
+
 async def enabled_steps(data: dict, city_code: str | None = None) -> list[str]:
     """Список step_key, которые нужно спросить/показать для текущих `data` — единая точка
     правды для условных шагов и пресетов (D-03/FORM-SYNC-01). Перенос дословный из
@@ -430,10 +455,18 @@ async def enabled_steps(data: dict, city_code: str | None = None) -> list[str]:
 
     Phase 25 (CITYQ-01): `city_code`, если передан явно, побеждает `data["event_city"]` (FSM
     бота уже кладёт его туда — handlers/registration.py:1341-1344); ни один сегодняшний
-    вызывающий не обязан меняться (`city_code=None` → берём из `data`, а не глобально)."""
+    вызывающий не обязан меняться (`city_code=None` → берём из `data`, а не глобально).
+
+    Phase 28 (28-01, SU-01/SU-03/SU-04, СкиллАп 5): множество «учусь» резолвится ОДИН раз за
+    вызов (`studying_statuses()`), studying считается через `is_studying` — пустое множество
+    воспроизводит прежнее правило байт-в-байт. Плюс три новых условия: resume_link/mini_* —
+    по `resume_type` (развилка резюме, план 28-04 кладёт значение в data), case_optin — без
+    доп. условия (A-02 CONTEXT)."""
     enabled = []
     edu_conditional = await get_setting_typed("edu_conditional") == "on"
-    studying = str(data.get("education_status", "")).startswith("Да")
+    edu_studying_set = await studying_statuses()
+    studying = is_studying(data.get("education_status", ""), edu_studying_set)
+    resume_type = data.get("resume_type")
     participant_type = data.get("participant_type") or "full"
     city = city_code if city_code is not None else data.get("event_city")
     for step_key, setting_key, *_rest in REG_FLOW:
@@ -459,6 +492,14 @@ async def enabled_steps(data: dict, city_code: str | None = None) -> list[str]:
         if edu_conditional and step_key == "study_field" and not studying:
             continue
         if step_key == "work_sphere" and not data.get("work_status"):
+            continue
+        # Phase 28 (28-01, SU-04, СкиллАп 5): развилка резюме — resume_link только при
+        # resume_type == "link", мини-профиль (mini_*) только при resume_type == "mini".
+        # resume_type кладёт в FSM/черновик план 28-04; до него условие никогда не истинно —
+        # это и есть «выключено по умолчанию».
+        if step_key == "resume_link" and resume_type != "link":
+            continue
+        if step_key in ("mini_projects", "mini_portfolio", "mini_direction") and resume_type != "mini":
             continue
         enabled.append(step_key)
     return enabled
@@ -1414,15 +1455,22 @@ def validate_answer(step_key: str, raw, *, participant_type: str | None = None) 
 
 # ── apply_answer: побочные правила при ответе (APPLY_GOLDEN) ─────────────────────────────────
 
-def apply_answer(answers: dict, step_key: str, value) -> dict:
+def apply_answer(
+    answers: dict, step_key: str, value, *, studying_statuses: list[str] | None = None,
+) -> dict:
     """Кладёт `value` шага в свою колонку (`STEP_TO_COLUMN`) + применяет побочные правила
     (`APPLY_GOLDEN`: не учится -> ВУЗ/курс/специальность/направление обучения прочерком; не
     работает -> сфера работы прочерком). Возвращает НОВЫЙ dict, входной `answers` не мутирует —
-    вызывающий (FSM-хендлер бота или веб-роутер) сам решает, как сохранить результат."""
+    вызывающий (FSM-хендлер бота или веб-роутер) сам решает, как сохранить результат.
+
+    Phase 28 (28-01, SU-03, R-A3 CONTEXT): `studying_statuses` — keyword-only, дефолт `None`
+    воспроизводит прежнее правило `startswith("Да")` байт-в-байт (APPLY_GOLDEN не двигается);
+    вызывающий в async-контексте (handlers/reg_steps.py, miniapp/routers/form.py) передаёт
+    `await reg_engine.studying_statuses()`."""
     result = dict(answers)
     column = STEP_TO_COLUMN.get(step_key, step_key)
     result[column] = value
-    if step_key == "education_status" and not str(value).startswith("Да"):
+    if step_key == "education_status" and not is_studying(value, studying_statuses):
         result["university"] = "-"
         result["course"] = "-"
         result["specialty"] = "-"
@@ -1432,12 +1480,15 @@ def apply_answer(answers: dict, step_key: str, value) -> dict:
     return result
 
 
-def apply_answers(answers: dict, patch: dict) -> dict:
+def apply_answers(
+    answers: dict, patch: dict, *, studying_statuses: list[str] | None = None,
+) -> dict:
     """Применить несколько ответов подряд (Mini App PATCH нескольких полей за один запрос) —
-    тот же `apply_answer` в цикле, в порядке `patch` (обычный dict сохраняет порядок вставки)."""
+    тот же `apply_answer` в цикле, в порядке `patch` (обычный dict сохраняет порядок вставки).
+    `studying_statuses` — тот же keyword-only параметр, что у `apply_answer` (дефолт `None`)."""
     result = dict(answers)
     for step_key, value in patch.items():
-        result = apply_answer(result, step_key, value)
+        result = apply_answer(result, step_key, value, studying_statuses=studying_statuses)
     return result
 
 

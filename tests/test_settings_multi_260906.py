@@ -50,7 +50,8 @@ def test_parse_setting_multi_parity_with_list_type_literal():
 def test_multi_options_matches_card_steps_order_and_length():
     options = multi_options("modcard_fields")
     assert options == list(mc.CARD_STEPS.items())
-    assert len(options) == 43
+    # Phase 28 (28-01): 43 + восемь новых шагов СкиллАпа, CARD_STEPS растёт автоматически.
+    assert len(options) == 51
 
 
 def test_multi_options_empty_for_non_multi_or_unknown_key():

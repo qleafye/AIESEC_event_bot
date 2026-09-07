@@ -493,7 +493,11 @@ async def draft_patch(
     touched_columns = [reg_engine.STEP_TO_COLUMN.get(sk, sk) for sk in step_patch]
     conflicts = reg_engine.conflicts(field_versions, body.version, touched_columns)
 
-    new_answers = reg_engine.apply_answers(ctx["answers"], step_patch)
+    # Phase 28 (28-01, SU-03): множество «учусь» — реестровое, пусто = прежнее правило.
+    edu_studying_set = await reg_engine.studying_statuses()
+    new_answers = reg_engine.apply_answers(
+        ctx["answers"], step_patch, studying_statuses=edu_studying_set,
+    )
     delta = {col: val for col, val in new_answers.items() if ctx["answers"].get(col) != val}
 
     # Quick 260904-3vm (D2): контракт `reg_drafts.step` = шаг, который ЕЩЁ НЕ ОТВЕЧЕН — ровно

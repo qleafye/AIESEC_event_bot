@@ -137,7 +137,7 @@ DEFAULT_REG_COMPLETE_TEXT = (
 # file and in handlers/reg_flow.py, handlers/reg_consent.py, tests/*.py keeps working unchanged.
 from reg_engine import (
     REG_STEP_TYPES, STEP_TO_COLUMN, SELECT_CONFIG, MULTI_CONFIG, RECALLABLE_STEPS,
-    enabled_steps, option_list_for, is_step_enabled_for_track, prompt,
+    enabled_steps, option_list_for, is_step_enabled_for_track, prompt, options,
     is_returning_row, prior_answers_for, has_prior_resume, pre_flow,
     consent_entries, get_consent_steps, DEFAULT_CONSENTS,
     should_show_fork, should_show_city_fork,
@@ -368,8 +368,8 @@ async def _ask_step(step_key: str, message: types.Message, state: FSMContext, st
     elif step_key == "position":
         await _safe_answer(message, f"{p}{await prompt('position', participant_type, city_code)}", reply_markup=get_position_kb())
         await state.set_state(Registration.position)
-    elif step_key == "education_status":
-        await _safe_answer(message, f"{p}{await prompt('education_status', participant_type, city_code)}", reply_markup=get_education_status_kb())
+    elif step_key == "education_status":  # Phase 28 (28-01, R-A3): реестровый список, пусто = прежние три (D-06)
+        await _safe_answer(message, f"{p}{await prompt('education_status', participant_type, city_code)}", reply_markup=get_education_status_kb(await options("education_status")))
         await state.set_state(Registration.education_status)
     elif step_key == "university":
         # Mode toggle (reg_university_mode): "list" = pick from база вузов, "text" = free input.

@@ -20,7 +20,7 @@ from handlers.registration import (
     _get_enabled_steps, _ask_step_or_recall, finalize_registration, _after_full_name,
     _advance, _err_kb,
 )
-from reg_engine import validate_answer, apply_answer, STEP_TO_COLUMN
+from reg_engine import validate_answer, apply_answer, STEP_TO_COLUMN, studying_statuses
 # Phase 27 (27-05, LANG-02): say() переводит делегатские отправки этого шва на отправке —
 # ноль правок публичных сигнатур хендлеров.
 from handlers import reg_i18n
@@ -145,7 +145,9 @@ async def process_education_status(message: types.Message, state: FSMContext, bo
         return
     data = await state.get_data()
     # apply_answer (APPLY_GOLDEN): не «Да…» -> ВУЗ/курс/специальность/направление прочерком.
-    await state.set_data(apply_answer(data, "education_status", value))
+    # Phase 28 (28-01, SU-03): множество «учусь» — реестровое, пусто = прежнее правило.
+    edu_set = await studying_statuses()
+    await state.set_data(apply_answer(data, "education_status", value, studying_statuses=edu_set))
     await _advance("education_status", message, state, bot)
 
 
