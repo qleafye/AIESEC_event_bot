@@ -732,6 +732,7 @@ registration|message|process_mini_projects|state:Registration:*
 registration|message|process_mini_portfolio|state:Registration:*
 registration|message|process_mini_direction|state:Registration:*
 registration|message|process_case_optin|state:Registration:*
+registration|message|process_resume_link|state:Registration:*
 registration|callback_query|recall_keep|recall_keep:*
 registration|callback_query|recall_change|recall_change:*
 registration|callback_query|party_pick|party_pick:*
@@ -750,6 +751,7 @@ registration|callback_query|reg_resume_continue|reg_resume:continue
 registration|callback_query|reg_resume_restart|reg_resume:restart
 registration|callback_query|reg_resume_restart_yes|reg_resume:restart_yes
 registration|callback_query|reg_handoff_to_bot|reg_handoff:to_bot
+registration|callback_query|regfork_pick|regfork:*
 user_actions|message|show_my_coins|
 user_actions|message|show_leaderboard|
 user_actions|message|show_game_tasks|
@@ -818,7 +820,14 @@ def test_snapshot_total_handler_count_is_292():
     # poll_wizard_cancel = два декоратора) в хвост admin.message, 15 callback (список/карточка
     # admin_polls + мастер admin_poll_wizard) в хвост admin.callback_query; чистый аппенд,
     # перепроверен прогоном _build_snapshot_lines() и diff'ом с прежним 334-строчным снапшотом.
-    assert len(GOLDEN_SNAPSHOT) == 458  # Phase 28 (28-02, SU-01/SU-04): +4
+    assert len(GOLDEN_SNAPSHOT) == 460  # Phase 28 (28-05, SU-04): +2
+    # handlers/reg_resume_fork.py — message process_resume_link (хвост message-блока
+    # registration.router, сразу после process_case_optin и перед первым callback_query
+    # recall_keep) + callback_query regfork_pick (хвост callback_query-блока
+    # registration.router, сразу после reg_handoff_to_bot и перед user_actions.message
+    # show_my_coins) — шов импортируется из хвоста registration.py сразу после
+    # reg_extra_steps (458 -> 460).
+    # Phase 28 (28-02, SU-01/SU-04): +4
     # handlers/reg_extra_steps.py (message process_mini_projects/process_mini_portfolio/
     # process_mini_direction/process_case_optin), хвост message-блока registration.router
     # (после menu_lang_open, перед первым callback_query recall_keep) — шов импортируется

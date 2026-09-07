@@ -152,6 +152,9 @@ from reg_engine import (
     # Quick 260904-3vm (D15): «анкета реально подана в этом сезоне» — не то же самое, что
     # «есть строка users» (см. докстринг функции).
     has_submitted_anketa,
+    # Phase 28 (28-05, SU-04): режим приёма резюме — ветка «resume» ниже решает, показывать ли
+    # развилку (шов reg_resume_fork) или прежний экран файл/текст (D-06 byte-for-byte).
+    resume_mode,
 )
 _get_enabled_steps = enabled_steps
 _get_options = option_list_for
@@ -490,13 +493,21 @@ async def _ask_step(step_key: str, message: types.Message, state: FSMContext, st
         await _safe_answer(message, f"{p}{await prompt('volunteer', participant_type, city_code)}", reply_markup=get_yes_no_kb())
         await state.set_state(Registration.volunteer)
     elif step_key == "resume":
-        # Резюме обязательно (Таня п.2): без «Пропустить». Убираем reply-клаву целиком —
-        # ответ = файл (PDF/DOCX) или текст, иначе шаг переспрашивает.
-        await _safe_answer(message,
-            f"{p}{await prompt('resume', participant_type, city_code)}",
-            reply_markup=ReplyKeyboardRemove(),
-        )
-        await state.set_state(Registration.resume)
+        if await resume_mode(city_code) == "fork":
+            # Phase 28 (28-05, SU-04, A-03 CONTEXT): развилка резюме — экран решает шов
+            # reg_resume_fork, лениво (тот же приём цикла импортов, что reg_extra_steps выше:
+            # reg_resume_fork импортирует router/_advance/_safe_answer из ЭТОГО модуля, поэтому
+            # top-level импорт здесь замкнул бы цикл до того, как эти имена определены).
+            from handlers import reg_resume_fork  # ленивый шов (цикл импортов)
+            await reg_resume_fork.ask_fork(message, state, p, participant_type, city_code)
+        else:
+            # Резюме обязательно (Таня п.2): без «Пропустить». Убираем reply-клаву целиком —
+            # ответ = файл (PDF/DOCX) или текст, иначе шаг переспрашивает.
+            await _safe_answer(message,
+                f"{p}{await prompt('resume', participant_type, city_code)}",
+                reply_markup=ReplyKeyboardRemove(),
+            )
+            await state.set_state(Registration.resume)
     elif REG_STEP_TYPES.get(step_key) == "date":
         # Phase 4 (MOD-02): generic date-type step — one handler validates ДД.ММ.ГГГГ.
         await _safe_answer(message, f"{p}{await prompt(step_key, participant_type, city_code)}", reply_markup=get_cancel_kb())
@@ -2276,3 +2287,8 @@ from handlers import reg_handoff  # noqa: E402
 # plan) land at the very TAIL of registration.router, so the golden order+filter snapshot
 # (tests/test_refac_snapshot_260816.py) only gets APPENDED to, never reordered.
 from handlers import reg_extra_steps  # noqa: E402, F401
+
+# Phase 28 (28-05, SU-04): imported AFTER reg_extra_steps — regfork:*/Registration.resume_link
+# handlers land at the very TAIL of registration.router (after mini_projects/mini_portfolio/
+# mini_direction/case_optin above), golden order+filter snapshot only gets APPENDED to.
+from handlers import reg_resume_fork  # noqa: E402, F401
