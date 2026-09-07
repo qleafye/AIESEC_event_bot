@@ -251,6 +251,11 @@ SHEET_COLUMNS = [
     ("Курс", "reg_q_course", lambda d: d.get("course") or "-"),
     ("ВУЗ", "reg_q_university", lambda d: d.get("university") or "-"),
     ("Направление обучения", "reg_q_study_field", lambda d: d.get("study_field") or "-"),
+    # Phase 28 (28-01, SU-01, СкиллАп 5) — свои gate-тумблеры, ширина листа YL/РилТолка не
+    # меняется (Pitfall 5): у них reg_q_stack/reg_q_experience/reg_q_readiness выключены.
+    ("Стек", "reg_q_stack", lambda d: d.get("stack") or "-"),
+    ("Опыт работы", "reg_q_experience", lambda d: d.get("experience") or "-"),
+    ("Готовность", "reg_q_readiness", lambda d: d.get("readiness") or "-"),
     ("Цель участия", "reg_q_goal", lambda d: d.get("goal") or "-"),
     ("Форматы форума", "reg_q_formats", lambda d: d.get("formats") or "-"),
     ("Ожидания", "reg_q_expectations", lambda d: d.get("expectations") or "-"),
@@ -259,6 +264,12 @@ SHEET_COLUMNS = [
     ("Амбассадор", "reg_q_ambassador", lambda d: "Да" if d.get("is_ambassador_candidate") else "-"),
     ("Резюме (текст)", "reg_q_resume", lambda d: d.get("resume_text") or "-"),
     ("Резюме (ссылка)", "reg_q_resume", lambda d: d.get("resume_url") or "-"),
+    # Phase 28 (28-01, SU-04, СкиллАп 5) — развилка резюме R2b/R2c, свои gate-тумблеры.
+    ("Резюме (ссылка на профиль)", "reg_q_resume_link", lambda d: d.get("resume_link") or "-"),
+    ("Проекты", "reg_q_mini_projects", lambda d: d.get("mini_projects") or "-"),
+    ("Портфолио", "reg_q_mini_portfolio", lambda d: d.get("mini_portfolio") or "-"),
+    ("Направление развития", "reg_q_mini_direction", lambda d: d.get("mini_direction") or "-"),
+    ("Кейс-чемпионат", "reg_q_case_optin", lambda d: d.get("case_optin") or "-"),
     ("Email", "reg_q_email", lambda d: d.get("email") or "-"),
     ("Локальный комитет", "reg_q_lc", lambda d: d.get("local_committee") or "-"),
     ("Позиция", "reg_q_position", lambda d: d.get("position") or "-"),
