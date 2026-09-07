@@ -54,6 +54,16 @@ REG_LABELS = {
     "reg_q_formats": "📋 Форматы форума",
     "reg_q_ambassador": "🧡 Амбассадор",
     "reg_q_resume": "\U0001f4c4 Резюме",
+    # Phase 28 (28-01, SU-01/SU-04, СкиллАп 5) — восемь новых шагов, ТОЛЬКО добавлением в
+    # конец словаря (порядок вставки = снимок test_miniapp_labels_drift).
+    "reg_q_stack": "🧰 Стек и инструменты",
+    "reg_q_experience": "💼 Опыт работы",
+    "reg_q_readiness": "🚀 Готовность к работе",
+    "reg_q_resume_link": "🔗 Резюме ссылкой",
+    "reg_q_mini_projects": "🧩 Проекты",
+    "reg_q_mini_portfolio": "🖼 Портфолио",
+    "reg_q_mini_direction": "🧭 Направление развития",
+    "reg_q_case_optin": "🏆 Кейс-чемпионат",
 }
 
 # Статус заявки делегата (модерация) -> подпись. Значения совпадают со
