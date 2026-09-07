@@ -29,13 +29,15 @@ from services.sheets import ensure_sheet_header
 from services.background import spawn as _spawn
 from keyboards.builders import MENU_BUTTONS
 from handlers.reg_schema import (
-    REG_DEFAULTS,
     REG_LABELS,
     REG_PRESETS,
     active_sheet_headers,
     _apply_party_preset,
     _apply_short_preset,
 )
+# Phase 28 (28-10, SU-11): единый bulk-writer пресетов — корневой aiogram-free модуль,
+# тот же, что зовёт веб-путь (settings_ops.apply_event_type_preset).
+from reg_presets import apply_reg_preset
 from cities import (
     ALL_CITIES,
     admin_selected_city,
@@ -251,14 +253,10 @@ async def _refresh_short_sheet_header(city_code: str | None = None, setting_key:
 
 
 async def _apply_event_preset(preset_key: str) -> None:
-    """Bulk-write reg_q_* + payment_enabled for the chosen preset. Every REG_DEFAULTS
-    key is set explicitly (on if in the preset's list, else off) so the result is
-    deterministic regardless of prior per-question overrides."""
-    preset = REG_PRESETS[preset_key]
-    on_set = set(preset["on"])
-    for key in REG_DEFAULTS:
-        await set_setting(key, "on" if key in on_set else "off")
-    await set_setting("payment_enabled", preset["payment_enabled"])
+    """Thin wrapper over the shared bulk-writer (Phase 28, 28-10, SU-11) — body moved to
+    `reg_presets.apply_reg_preset` verbatim so the web path (settings_ops.py) can call the
+    same writer without importing this aiogram module."""
+    await apply_reg_preset(preset_key)
 
 
 @router.callback_query(F.data == "admin_event_preset")
