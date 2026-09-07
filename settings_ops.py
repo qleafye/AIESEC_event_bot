@@ -23,6 +23,9 @@
 Зависимости — ТОЛЬКО `config`/`settings_schema`/`cities`/`database.db`/`services.sheets`
 (тот же `_reset_sheet_cache`, что и раньше), ни одного импорта `aiogram` или `handlers.*`
 (сторож `tests/test_settings_ops.py::test_settings_ops_module_does_not_load_aiogram`).
+
+Phase 28 (28-10, SU-11): плюс корневой `reg_presets` (тоже aiogram-free, см. его докстринг) —
+`apply_event_type_preset("skillup")` зовёт тот же bulk-writer, что кнопка пресета в боте.
 """
 from __future__ import annotations
 
@@ -33,6 +36,7 @@ from dataclasses import dataclass
 from config import config
 from cities import PER_CITY_SEP, city_codes, normalize_city, split_per_city_key
 from database.db import delete_setting, get_setting, get_staff_city, set_setting
+from reg_presets import apply_reg_preset
 from services.sheets import _reset_sheet_cache
 from settings_schema import SETTINGS_SCHEMA, get_setting_typed, multi_labels, multi_options
 from settings_validation import is_command_like, validate_setting_value
@@ -42,13 +46,18 @@ from settings_validation import is_command_like, validate_setting_value
 
 async def apply_event_type_preset(event_type: str):
     """D-05: event type presets module flags; each is still manually overridable after.
-    conference → payment+consent ON; forum → both OFF; custom → no change."""
+    conference → payment+consent ON; forum → both OFF; custom → no change.
+    Phase 28 (28-10, SU-11): fourth branch "skillup" → the whole «🎓 Форум СкиллАп» preset
+    (reg_presets.apply_reg_preset), the same bulk-writer the bot's preset button calls —
+    web and bot apply identical state (T-28-10-01)."""
     if event_type == "conference":
         await set_setting("payment_enabled", "on")
         await set_setting("consent_enabled", "on")
     elif event_type == "forum":
         await set_setting("payment_enabled", "off")
         await set_setting("consent_enabled", "off")
+    elif event_type == "skillup":
+        await apply_reg_preset("skillup")
     # "custom" → no change (manual control)
 
 
@@ -400,6 +409,11 @@ def dangerous_confirm_key(key: str, next_value: str) -> str | None:
         return "miniapp_settings_confirm_reg_mode_text"
     if key in ("full_approval", "short_approval", "party_approval"):
         return "miniapp_settings_confirm_approval_mode_text"
+    if key == "event_type" and next_value == "skillup":
+        # Phase 28 (28-10, SU-11, 28-UI-SPEC.md §8/A7): пресет «СкиллАп» переписывает
+        # десятки настроек разом, не только оплату/согласия — своё подтверждение вместо
+        # общей фразы про два модуля ниже.
+        return "skillup_preset_confirm_text"
     if key == "event_type":
         return "miniapp_settings_confirm_event_type_text"
     return None

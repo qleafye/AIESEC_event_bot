@@ -77,9 +77,40 @@ REG_PRESETS = {
             "reg_q_phone", "reg_q_vk", "reg_q_city", "reg_q_education", "reg_q_course",
         ],
     },
+    # Phase 28 (28-10, SU-11): один пресет настраивает весь форум СкиллАп 5 — восемь новых
+    # вопросов анкеты, скоринг, развилку резюме, догонялку и рефералку — тем, что менеджеру
+    # иначе пришлось бы щёлкать тремя десятками отдельных тумблеров и списков (D-01).
+    "skillup": {
+        "label": "🎓 Форум СкиллАп",
+        "payment_enabled": "off",
+        "on": [
+            "reg_q_phone", "reg_q_vk", "reg_q_city", "reg_q_education", "reg_q_course",
+            "reg_q_university", "reg_q_study_field", "reg_q_stack", "reg_q_experience",
+            "reg_q_readiness", "reg_q_goal", "reg_q_source", "reg_q_resume",
+            "reg_q_resume_link", "reg_q_mini_projects", "reg_q_mini_portfolio",
+            "reg_q_mini_direction", "reg_q_case_optin", "reg_scoring_enabled",
+        ],
+        # Не reg_q_*/toggle ключи — REG_DEFAULTS их не трогает (не toggle-типа), поэтому
+        # пресет пишет их явным вторым проходом. Множества скоринга (score_it_fields и
+        # соседи) сюда НЕ входят намеренно: их значения зависят от списков вариантов
+        # конкретного события — менеджер отмечает галочками на экране «🧮 Правила балла»
+        # (план 28-08), пресет угадывать за него не должен (см. текст
+        # skillup_preset_confirm_text в settings_schema.py, который это же говорит
+        # менеджеру прямо).
+        "settings": {
+            "reg_resume_mode": "fork",
+            "edu_conditional": "on",
+            "reg_skip_source_for_referred": "on",
+            "reg_offer_ref_link": "on",
+            "nudge_enabled": "on",
+            "nudge_after_minutes": "1440",
+            "reg_multi_max_stack": "5",
+            "reg_multi_max_goal": "2",
+            "score_course_from": "3",
+            "score_stack_from": "2",
+        },
+    },
 }
-# Задача 2 (28-10, SU-11) добавит сюда пятый пресет "skillup" с блоком "settings" — bulk-writer
-# ниже уже поддерживает это поле, само наполнение приходит следующим коммитом.
 
 
 async def apply_reg_preset(preset_key: str) -> None:
