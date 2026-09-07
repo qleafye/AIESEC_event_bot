@@ -216,10 +216,15 @@ async def _show_current_card(target: types.Message, state: FSMContext):
     scope, label = await _admin_city_view(admin_id)
     skipped = set((await state.get_data()).get("appr_skipped", []))
     total = await get_pending_count(city_scope=scope)
+    # Phase 28 (28-08, SU-08): тумблер очереди читается ЗДЕСЬ (вызывающий), один раз на
+    # рендер карточки — сама get_pending_users в реестр не ходит (T-23-04, SQL сортирует).
+    order_by_score = await get_setting_typed("apps_queue_sort_by_score") == "on"
     offset = 0
     visible: list[dict] = []
     while not visible and offset < total:
-        batch = await get_pending_users(limit=50, offset=offset, city_scope=scope)
+        batch = await get_pending_users(
+            limit=50, offset=offset, city_scope=scope, order_by_score=order_by_score,
+        )
         if not batch:
             break
         visible = [u for u in batch if u["telegram_id"] not in skipped]

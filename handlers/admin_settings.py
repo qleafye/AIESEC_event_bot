@@ -615,6 +615,12 @@ async def settings_toggle_rows(admin_id: int | None = None, *, header_code=_HEAD
     scoring_label = SETTINGS_SCHEMA["reg_scoring_enabled"]["label"]
     scoring_text = (f"{scoring_label}: ✅ Вкл → ❌ Выкл" if scoring_on
                     else f"{scoring_label}: ❌ Выкл → ✅ Вкл")
+    # Phase 28 (28-08, SU-08): apps_queue_sort_by_score — enum on/off (не toggle), тот же
+    # приём, что у соседей-модулей (preselect_enabled и т.п.) выше.
+    queue_sort_on = await get_setting_typed("apps_queue_sort_by_score")
+    queue_sort_label = SETTINGS_SCHEMA["apps_queue_sort_by_score"]["label"]
+    queue_sort_text = (f"{queue_sort_label}: ✅ Вкл → ❌ Выкл" if queue_sort_on == "on"
+                       else f"{queue_sort_label}: ❌ Выкл → ✅ Вкл")
 
     reg_rows = [[InlineKeyboardButton(text=toggle_text, callback_data="settings_toggle_reg")]]
     # Phase 09.3 (04, CITY-09): registration_mode has no settings_edit:{key} screen of its
@@ -657,6 +663,7 @@ async def settings_toggle_rows(admin_id: int | None = None, *, header_code=_HEAD
         "toggle_reg_referrer_must_be_ambassador": _row(referrer_amb_text, "toggle_reg_referrer_must_be_ambassador"),
         "toggle_reg_offer_ref_link": _row(offer_ref_text, "toggle_reg_offer_ref_link"),
         "toggle_reg_scoring_enabled": _row(scoring_text, "toggle_reg_scoring_enabled"),
+        "toggle_apps_queue_sort_by_score": _row(queue_sort_text, "toggle_apps_queue_sort_by_score"),
     }
 
 
@@ -1155,6 +1162,17 @@ async def toggle_reg_scoring_enabled(callback: types.CallbackQuery):
     from handlers.admin_sections import settings_return_screen  # ленивый шов (20-04)
     text, kb = await settings_return_screen(callback.from_user.id, callback_data=callback.data)
     await callback.message.edit_text(text, parse_mode="HTML", reply_markup=kb)
+
+
+@router.callback_query(F.data == "toggle_apps_queue_sort_by_score")
+async def toggle_apps_queue_sort_by_score(callback: types.CallbackQuery):
+    # Phase 28 (28-08, SU-08): порядок очереди заявок по баллу — enum on/off, дефолт OFF
+    # (byte-в-byte прежний порядок пока менеджер сам не включит). Тот же generic-хелпер, что
+    # у соседей-модулей (preselect_enabled и т.п.) — get_setting_typed отдаёт строку "on"/"off".
+    await _toggle_module_setting(
+        callback, "apps_queue_sort_by_score",
+        SETTINGS_SCHEMA["apps_queue_sort_by_score"]["label"],
+    )
 
 
 @router.callback_query(F.data == "toggle_reg_edit_remoderation")

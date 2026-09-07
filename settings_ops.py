@@ -309,6 +309,9 @@ TOGGLE_SECTION: dict[str, str] = {
     "reg_skip_source_for_referred": "form",
     "reg_referrer_must_be_ambassador": "form",
     "reg_offer_ref_link": "form",
+    # Phase 28 (28-08, SU-08): сортировка очереди заявок — строка ("toggle", …) раздела
+    # «📋 Заявки» в admin_sections.SECTIONS.
+    "apps_queue_sort_by_score": "apps",
 }
 
 # Единственный источник «что подтверждаем» для ОБЕИХ поверхностей (UI-SPEC A6): вкладки

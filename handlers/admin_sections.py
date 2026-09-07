@@ -100,6 +100,9 @@ SECTIONS: list[tuple[str, str, list[tuple]]] = [
         # Phase 28 (28-07, SU-08): главный выключатель автоскоринга — рядом с прочими
         # тумблерами очереди заявок; сами правила (множества/пороги) — в группе "apps" ниже.
         ("toggle", "toggle_reg_scoring_enabled"),
+        # Phase 28 (28-08, SU-08): порядок очереди заявок по баллу — рядом с выключателем
+        # самого скоринга.
+        ("toggle", "toggle_apps_queue_sort_by_score"),
         ("group", "apps"),
     ]),
     ("pay", "💳 Оплата", [

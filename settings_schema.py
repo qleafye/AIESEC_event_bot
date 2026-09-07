@@ -1612,6 +1612,15 @@ SETTINGS_SCHEMA = {
         "type": "enum", "group": "toggles", "label": "🌙 Тихие часы",
         "options": ["on", "off"], "prompt": None, "default": "off",
     },
+    # Phase 28 (28-08, SU-08): порядок очереди заявок — по умолчанию OFF (байт-в-байт прежний
+    # ORDER BY registration_date, telegram_id); включённый тумблер отдаёт заявки с высоким
+    # баллом первыми (database.db.get_pending_users(order_by_score=True)). Enum on/off (не
+    # toggle) — та же форма, что у quiet_hours_enabled/nudge_enabled выше.
+    "apps_queue_sort_by_score": {
+        "type": "enum", "group": "toggles",
+        "label": "🧮 Очередь заявок: сначала с высоким баллом",
+        "options": ["on", "off"], "prompt": None, "default": "off",
+    },
     # Phase 27 (27-02, LANG-01): английский язык делегатской анкеты — модуль целиком.
     # Дефолт OFF ОБЯЗАТЕЛЕН (A-05, 27-CONTEXT.md): при выключенном модуле поведение бота
     # обязано быть байт-в-байт прежним — это условие прохождения golden-снимков

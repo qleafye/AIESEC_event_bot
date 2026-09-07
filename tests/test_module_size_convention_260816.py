@@ -231,14 +231,19 @@ KNOWN_OVERAGES: dict[str, tuple[int, str]] = {
         "«🧮 Правила балла» (admin_reg_scoring/scoring_toggle:*/scoring_limit:*/"
         "scoring_drop:*/scoring_noop, та же капа «settings», что у соседнего modcard_open); "
         "файл был уже у самой границы GUIDELINE (848 строк) — потолок поднят до "
-        "фактического размера (856) + ~5% запаса.",
+        "фактического размера (856) + ~5% запаса. "
+        "+1 строка (задача 3): capability тумблера toggle_apps_queue_sort_by_score рядом с "
+        "toggle_reg_scoring_enabled (856 -> 857, в пределах уже поднятого потолка).",
     ),
     "admin_moderation.py": (
-        894,
+        899,
         "Phase 28 (28-08, SU-08, задача 1): +6 строк — шов-импорт `from handlers import "
         "admin_reg_scoring` в хвосте файла (та же техника, что и соседний импорт "
         "admin_modcard чуть выше); файл был уже у самой границы GUIDELINE (844 строки) — "
-        "потолок поднят до фактического размера (850 -> 851, ~5% запаса).",
+        "потолок поднят до фактического размера (850 -> 851, ~5% запаса). "
+        "+5 строк (задача 3): чтение тумблера apps_queue_sort_by_score в _show_current_card "
+        "перед вызовом get_pending_users (T-23-04: сортирует SQL, не Python) — потолок поднят "
+        "до фактического размера (856) + ~5% запаса.",
     ),
 }
 
