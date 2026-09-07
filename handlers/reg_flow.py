@@ -315,6 +315,15 @@ async def process_resume(message: types.Message, state: FSMContext, bot: Bot):
 @router.message(Registration.resume, F.text)
 async def process_resume_text(message: types.Message, state: FSMContext, bot: Bot):
     # Tatiana: резюме можно либо файлом, либо текстом. Обязательно (без «Пропустить»).
+    # Phase 28 (28-05, SU-04, T-28-05-03): в режиме fork свободный текст мимо трёх кнопок
+    # развилки БОЛЬШЕ НЕ становится резюме молча — иначе делегат, приславший текст вместо тапа
+    # по кнопке, записывался бы способом, которого не выбирал (`resume_type` в FSM не
+    # проставлен вовсе). Гейт ПЕРЕД `validate_answer` — тот же порядок, что у `text_only` ниже
+    # (гейт режима первым, обычная валидация — только если режим её не перехватил).
+    data = await state.get_data()
+    if await resume_mode(data.get("event_city")) == "fork":
+        await reg_i18n.say(message, await get_setting_typed("reg_resume_fork_pick_hint_text"))
+        return
     value, err = validate_answer("resume", message.text)
     if err:
         await reg_i18n.say(message, err)
@@ -331,6 +340,11 @@ async def process_resume_invalid(message: types.Message, state: FSMContext):
     data = await state.get_data()
     if await resume_mode(data.get("event_city")) == "text_only":
         await reg_i18n.say(message, await get_setting_typed("reg_form_resume_text_only_text"))
+        return
+    # Phase 28 (28-05, SU-04): fork-режим — та же подсказка «выбери кнопкой», что и у
+    # свободного текста в process_resume_text (стикер/фото мимо кнопок — тот же промах).
+    if await resume_mode(data.get("event_city")) == "fork":
+        await reg_i18n.say(message, await get_setting_typed("reg_resume_fork_pick_hint_text"))
         return
     await reg_i18n.say(message, "Пришли резюме текстом или прикрепи файл (PDF или DOCX).")
 

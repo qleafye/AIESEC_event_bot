@@ -1,8 +1,10 @@
 """Phase 28 (28-05, SU-04, СкиллАп 5): развилка резюме — делегатская половина.
 
-Задача 1: шов `handlers/reg_resume_fork.py` (экран R1, приём ссылки R2b, «Назад» на развилку).
-pytest-asyncio недоступен в этом окружении — async через `asyncio.run()`, стиль Fake-объектов
-aiogram — тот же приём, что `tests/test_reg_resume_draft.py`/`tests/test_skillup_steps_28.py`.
+Задача 1/2: шов `handlers/reg_resume_fork.py` (экран R1, приём ссылки R2b, «Назад» на
+развилку) + гейт в `handlers/reg_flow.py` («свободный текст мимо кнопок в режиме fork больше
+не резюме»). pytest-asyncio недоступен в этом окружении — async через `asyncio.run()`, стиль
+Fake-объектов aiogram — тот же приём, что `tests/test_reg_resume_draft.py`/
+`tests/test_skillup_steps_28.py`.
 """
 import asyncio
 
@@ -15,6 +17,7 @@ from config import config
 from database import db
 from handlers import registration as reg
 from handlers import reg_extra_steps
+from handlers import reg_flow
 from handlers import reg_resume_fork
 from handlers.states import Registration
 
@@ -66,6 +69,13 @@ class _FakeMessage:
         if update and "from_user" in update:
             new.from_user = update["from_user"]
         return new
+
+
+class _FakeDocument:
+    def __init__(self, file_id="BQACresume", file_name="resume.pdf", file_size=1000):
+        self.file_id = file_id
+        self.file_name = file_name
+        self.file_size = file_size
 
 
 class _FakeCallback:
@@ -226,3 +236,78 @@ def test_file_or_text_mode_unchanged(tmp_path):
     msg, state_name = asyncio.run(go())
     assert not _inline_kbs(msg), "старый режим не должен получить инлайн-клавиатуру развилки"
     assert state_name == Registration.resume.state
+
+
+# ══════════════════════════════════════════════════════════════════════════════════════════
+# Задача 2: свободный текст мимо кнопок больше не резюме
+# ══════════════════════════════════════════════════════════════════════════════════════════
+
+def test_free_text_in_fork_mode_does_not_become_resume(tmp_path):
+    _use_tmp_db(tmp_path)
+    uid = UID + 10
+
+    async def go():
+        await db.set_setting("reg_resume_mode", "fork")
+        state = _state(uid)
+        await state.update_data(participant_type="full", full_name="Тест")
+        await state.set_state(Registration.resume)
+        msg = _FakeMessage(uid, text="Вот моё резюме текстом, 3 года опыта")
+        await reg_flow.process_resume_text(msg, state, bot=None)
+        data = await state.get_data()
+        return data, msg, await state.get_state()
+
+    data, msg, state_name = asyncio.run(go())
+    assert "resume_text" not in data, "текст мимо кнопок не должен молча стать резюме"
+    assert state_name == Registration.resume.state, "шаг не продвигается без выбора ветки"
+    assert msg.sent, "делегат обязан получить подсказку"
+
+
+def test_document_in_fork_mode_still_accepted(tmp_path):
+    _use_tmp_db(tmp_path)
+    uid = UID + 11
+
+    async def go():
+        await db.set_setting("reg_resume_mode", "fork")
+        state = _state(uid)
+        await state.update_data(participant_type="full", full_name="Тест")
+        await state.set_state(Registration.resume)
+        msg = _FakeMessage(uid)
+        msg.document = _FakeDocument()
+        await reg_flow.process_resume(msg, state, bot=None)
+        return await state.get_data()
+
+    data = asyncio.run(go())
+    assert data.get("resume_file_id") == "BQACresume"
+
+
+def test_text_only_mode_gate_unchanged(tmp_path):
+    _use_tmp_db(tmp_path)
+    uid = UID + 12
+
+    async def go():
+        await db.set_setting("reg_resume_mode", "text_only")
+        state = _state(uid)
+        await state.update_data(participant_type="full", full_name="Тест")
+        await state.set_state(Registration.resume)
+        msg = _FakeMessage(uid, text="Мой опыт: маркетинг 2 года")
+        await reg_flow.process_resume_text(msg, state, bot=None)
+        return await state.get_data()
+
+    data = asyncio.run(go())
+    assert data.get("resume_text") == "Мой опыт: маркетинг 2 года"
+
+
+def test_file_or_text_text_still_accepted(tmp_path):
+    _use_tmp_db(tmp_path)
+    uid = UID + 13
+
+    async def go():
+        state = _state(uid)
+        await state.update_data(participant_type="full", full_name="Тест")
+        await state.set_state(Registration.resume)
+        msg = _FakeMessage(uid, text="Мой опыт: продажи 3 года")
+        await reg_flow.process_resume_text(msg, state, bot=None)
+        return await state.get_data()
+
+    data = asyncio.run(go())
+    assert data.get("resume_text") == "Мой опыт: продажи 3 года"
