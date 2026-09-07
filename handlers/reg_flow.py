@@ -46,6 +46,9 @@ from reg_engine import CITY_CHOICE_INVALID_TEXT, CITY_CLOSED_TEXT, PARTY_CLOSED_
 # Phase 25 (CITYQ-02): режим приёма резюме («файл или текст» / «только текст») по городу
 # делегата — общий резолвер движка, гейт на входе в шаг документа.
 from reg_engine import resume_mode
+# Phase 28 (28-03, SU-02, A-06): лимит мультивыбора — читает движок, текст ошибки из реестра
+# (не второй литерал рядом с reg_multi_limit_error_text).
+from reg_engine import multi_max
 # Phase 27 (27-05, LANG-02/LANG-06/LANG-08): say()/tr_for() переводят делегатские отправки
 # этого шва на отправке; служебные слова фильтров (CANCEL_WORDS/CONFIRM_WORDS/EDIT_WORDS) —
 # ярус A i18n_ui_en, не второй список литералов.
@@ -394,6 +397,18 @@ async def process_multi_toggle(callback: types.CallbackQuery, state: FSMContext)
     if idx in selected:
         selected.discard(idx)
     else:
+        # Phase 28 (28-03, SU-02, A-06): лимит проверяется ТОЛЬКО на добавление — снять уже
+        # выбранный вариант можно всегда (28-UI-SPEC §4). Тап сверх лимита игнорируется
+        # СРАЗУ (выбор не мутируется, клавиатура не перерисовывается), а не откатывается
+        # после сохранения — лишнего round-trip настройки не делаем.
+        limit = await multi_max(step_key)
+        if limit is not None and len(selected) >= limit:
+            limit_text = await get_setting_typed("reg_multi_limit_error_text")
+            await callback.answer(
+                await reg_i18n.tr_for(callback, limit_text.replace("{max}", str(limit))),
+                show_alert=True,
+            )
+            return
         selected.add(idx)
     await state.update_data(**{f"_multi_{step_key}": sorted(selected)})
     options = await _multi_options(step_key)
@@ -420,7 +435,12 @@ async def process_multi_done(callback: types.CallbackQuery, state: FSMContext, b
     # stays here; validate_answer takes the resolved label list (empty-check + join — same
     # rule as before, now shared with any future multi-typed step, not just goal/formats).
     chosen = [options[i] for i in selected if 0 <= i < len(options)]
-    value, err = validate_answer(step_key, chosen)
+    # Phase 28 (28-03, SU-02): второй барьер — на случай, если клавиатура рассинхронизировалась
+    # с настройкой лимита, изменённой посреди анкеты (клавиатура строилась раньше, чем
+    # менеджер поднял/снял лимит между тапами).
+    limit = await multi_max(step_key)
+    limit_text = await get_setting_typed("reg_multi_limit_error_text") if limit is not None else None
+    value, err = validate_answer(step_key, chosen, max_select=limit, limit_error_text=limit_text)
     if err:
         await callback.answer(await reg_i18n.tr_for(callback, err), show_alert=True)
         return
