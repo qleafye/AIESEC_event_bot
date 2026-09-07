@@ -44,7 +44,7 @@ import asyncio
 import html
 import logging
 import os
-from datetime import datetime
+from datetime import datetime, timedelta
 
 import reg_engine
 from reg_labels import REG_LABELS
@@ -64,6 +64,7 @@ from database.db import (
     mark_user_edited,
     delete_reg_draft,
     release_reg_draft,
+    get_resume_upload_backlog,
 )
 from settings_schema import get_setting_typed
 
@@ -496,13 +497,35 @@ async def derive_edit_facts(telegram_id: int, full: dict) -> tuple[list, bool, b
     return changed_columns, remoderated, resubmitted
 
 
+async def _apply_resume_url(telegram_id: int, full: dict, url: str) -> None:
+    """Общий хвост записи ссылки на резюме: узкий UPDATE `resume_url` в `users` + обновление
+    ячейки «Резюме (ссылка)» в Google Sheets той же `update_row_by_id`. Используется и
+    моментальной догрузкой из Mini App (`handle_resume_upload`), и фоновой джобой повтора
+    (`retry_pending_resume_uploads`) — единый путь, чтобы поведение (какая ячейка листа
+    обновляется, какая вкладка резолвится) не расходилось между двумя вызывающими.
+    Сбой Sheets — `logger.error`, без проброса: ссылка в БД уже есть, лист догонит
+    «Синхронизацией» (та же дисциплина, что и раньше в `handle_resume_upload`)."""
+    from handlers.registration import _sheet_dispatch
+    from handlers.reg_schema import sheet_city_code
+    from services.sheets import update_row_by_id
+
+    await update_user_answers(telegram_id, {"resume_url": url}, allowed_columns=["resume_url"])
+    try:
+        row_fn, _append_fn = _sheet_dispatch(full.get("participant_type"))
+        city = await sheet_city_code(full.get("event_city"))
+        row = await row_fn({**full, "resume_url": url}, city)
+        tab = await _resolve_update_tab(full.get("event_city"), full.get("participant_type"))
+        await update_row_by_id(tab, telegram_id, row)
+    except Exception as e:
+        logger.error(f"Failed to update resume cell for {telegram_id}: {e}")
+
+
 async def handle_resume_upload(bot, telegram_id: int, file_id: str, filename: str | None) -> None:
     """kind=`reg_resume_upload` (D-05, Pattern 5): резюме, прикреплённое в Mini App — Nextcloud,
     запись `resume_url` узким UPDATE, обновление ячейки «Резюме (ссылка)» той же
-    `update_row_by_id`, копия файла делегату в чат (подпись — `miniapp_upload_caption_resume`,
-    тот же приём, что и у копии сдачи геймы, план 19-05)."""
+    `update_row_by_id` (через `_apply_resume_url`), копия файла делегату в чат (подпись —
+    `miniapp_upload_caption_resume`, тот же приём, что и у копии сдачи геймы, план 19-05)."""
     from services.nextcloud import upload_resume
-    from services.sheets import update_row_by_id
 
     full = await get_user(telegram_id) or {}
     try:
@@ -514,18 +537,7 @@ async def handle_resume_upload(bot, telegram_id: int, file_id: str, filename: st
         url = None
 
     if url:
-        await update_user_answers(telegram_id, {"resume_url": url}, allowed_columns=["resume_url"])
-        try:
-            from handlers.registration import _sheet_dispatch
-            from handlers.reg_schema import sheet_city_code
-
-            row_fn, _append_fn = _sheet_dispatch(full.get("participant_type"))
-            city = await sheet_city_code(full.get("event_city"))
-            row = await row_fn({**full, "resume_url": url}, city)
-            tab = await _resolve_update_tab(full.get("event_city"), full.get("participant_type"))
-            await update_row_by_id(tab, telegram_id, row)
-        except Exception as e:
-            logger.error(f"Failed to update resume cell for {telegram_id}: {e}")
+        await _apply_resume_url(telegram_id, full, url)
 
     try:
         caption = await get_setting("miniapp_upload_caption_resume") or "\U0001f4ce Резюме получено"
@@ -534,7 +546,76 @@ async def handle_resume_upload(bot, telegram_id: int, file_id: str, filename: st
         logger.error(f"Failed to forward resume copy to {telegram_id}: {e}")
 
 
+# Quick 260907-4ai (P0 SkillUp5): строки, чей файл Telegram уже не отдаёт («file not found» /
+# «wrong file_id»), помечаются здесь на время жизни ПРОЦЕССА, чтобы очередь ретрая не крутилась
+# вечно — перезапуск бота сбрасывает пометку намеренно (файл мог вернуться, а не только
+# отвалиться навсегда).
+_resume_retry_dead: set[int] = set()
+
+# Финал грузит резюме под `asyncio.wait_for(timeout=20)` — строка моложе двух минут может быть
+# ещё «в полёте» там; трогать её ретраем рано (двойная параллельная загрузка одного файла).
+_RESUME_RETRY_MIN_AGE_MINUTES = 2
+
+
+async def retry_pending_resume_uploads(bot, limit: int = 20) -> int:
+    """Interval-джоба (services/scheduler.py::resume_upload_retry_job): резюме, не улетевшее в
+    Nextcloud на финале (облако лежало/таймаут) — догружается сюда без участия делегата и
+    менеджера. Делегату НИЧЕГО не шлём (в отличие от `handle_resume_upload` — там копия файла
+    в чат уместна, потому что делегат только что сам её прислал; здесь же файл был прислан
+    давно, повторное сообщение было бы для него неожиданным).
+
+    Гейт ДО любого обращения к БД и боту — на стендах без настроенного Nextcloud (например
+    тестовый стенд) тик джобы не стоит ни одного запроса."""
+    from services.nextcloud import is_configured, upload_resume, upload_text_resume
+
+    if not is_configured():
+        return 0
+
+    cutoff = (
+        datetime.now() - timedelta(minutes=_RESUME_RETRY_MIN_AGE_MINUTES)
+    ).strftime("%Y-%m-%d %H:%M:%S")
+    rows = await get_resume_upload_backlog(cutoff, limit)
+
+    done = 0
+    for row in rows:
+        tid = row["telegram_id"]
+        if tid in _resume_retry_dead:
+            continue
+        try:
+            stem = _resume_file_stem(row, tid)
+            url = None
+            file_id = row.get("resume_file_id")
+            if file_id:
+                try:
+                    tg_file = await bot.get_file(file_id)
+                except Exception as e:
+                    text = str(e).lower()
+                    if "file not found" in text or "wrong file_id" in text:
+                        logger.warning(f"resume_upload_retry: файл делегата {tid} больше недоступен в Telegram")
+                        _resume_retry_dead.add(tid)
+                        continue
+                    raise
+                ext = os.path.splitext(tg_file.file_path or "")[1] or ".pdf"
+                url = await asyncio.wait_for(upload_resume(bot, file_id, f"{stem}{ext}"), timeout=20)
+            elif row.get("resume_text"):
+                url = await asyncio.wait_for(
+                    upload_text_resume(row["resume_text"], f"{stem}.txt"), timeout=20
+                )
+
+            if url:
+                await _apply_resume_url(tid, row, url)
+                logger.info(f"resume_upload_retry: резюме {tid} догружено")
+                done += 1
+            else:
+                logger.warning(f"resume_upload_retry: выгрузка резюме {tid} не удалась, повторим позже")
+        except Exception as e:
+            logger.error(f"resume_upload_retry: строка {tid} упала: {e}")
+        await asyncio.sleep(0.05)
+
+    return done
+
+
 __all__ = [
     "finalize_data", "post_finalize", "resolve_delegate_text",
-    "derive_edit_facts", "handle_resume_upload",
+    "derive_edit_facts", "handle_resume_upload", "retry_pending_resume_uploads",
 ]

@@ -233,6 +233,12 @@ async def init_scheduler(bot):
     sync_hours = _int_or_default(await get_setting("incomplete_sync_hours"), 2)
     _add_interval_job(sync_incomplete_sheet_job, "incomplete_sheet_sync", timedelta(hours=sync_hours))
 
+    # Quick 260907-4ai (P0 SkillUp5): догрузка резюме, не улетевшего в Nextcloud на финале
+    # (облако лежало/таймаут) — джоба сама молчит, когда Nextcloud не настроен, поэтому
+    # отдельного тумблера нет.
+    retry_minutes = _int_or_default(await get_setting("resume_retry_minutes"), 10)
+    _add_interval_job(resume_upload_retry_job, "resume_upload_retry", timedelta(minutes=retry_minutes))
+
     # Phase 19 (08, D-01/Pattern 7): разбор miniapp_outbox — побочные эффекты записи из
     # Mini App (уведомление менеджерам о сдаче, пересборка вкладок геймы). 30с — короче
     # остальных интервалов намеренно: делегат ждёт быстрой реакции менеджеров.
@@ -774,6 +780,20 @@ async def translation_drain_job():
         await drain()
     except Exception as e:
         logger.error(f"translation_drain_job failed: {e}")
+
+
+async def resume_upload_retry_job():
+    """Interval-job target (no args, picklable — Pitfall 3), ровно по образцу
+    `translation_drain_job`/`quiet_hours_flush_job` выше. Ленивый импорт
+    `services.reg_finalize` (сам джоба-модуль ничего не знает про Nextcloud/Sheets —
+    догрузку резюме, не улетевшего в облако на финале). Джоба сама молчит, когда Nextcloud
+    не настроен (`nextcloud.is_configured()` проверяется внутри `retry_pending_resume_uploads`
+    ДО любого обращения к БД/боту) — отдельного тумблера на эту джобу поэтому нет."""
+    try:
+        from services.reg_finalize import retry_pending_resume_uploads
+        await retry_pending_resume_uploads(_bot)
+    except Exception as e:
+        logger.error(f"resume_upload_retry_job failed: {e}")
 
 
 async def quiet_hours_flush_job():
