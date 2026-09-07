@@ -73,57 +73,11 @@ def dropout_step_label(step_key: str | None) -> str:
 # REG_LABELS — см. корневой reg_labels.py (Phase 19), импорт вверху модуля.
 
 # --- Event-type presets (admin one-tap bulk toggle) ---
-# A preset lists the reg_q_* keys to turn ON (everything else in REG_DEFAULTS is turned
-# OFF) plus the payment module flag. Applying a preset is an explicit admin action that
-# writes the same settings the per-question toggles write — it changes NOTHING until
-# tapped, so live bots keep their current flow. Extra questions can still be flipped on
-# individually afterwards (see REG_CATEGORIES «➕ Экстра»).
-REG_PRESETS = {
-    "forum": {
-        "label": "🏛 Форум (Юлид)",
-        "payment_enabled": "off",
-        "on": [
-            "reg_q_age", "reg_q_vk", "reg_q_source", "reg_q_education",
-            "reg_q_university", "reg_q_course", "reg_q_study_field", "reg_q_work",
-            "reg_q_work_sphere", "reg_q_skills", "reg_q_expectations",
-        ],
-    },
-    "conf": {
-        "label": "🎤 Конференция (RusCo)",
-        "payment_enabled": "on",
-        "on": [
-            "reg_q_age", "reg_q_vk", "reg_q_phone", "reg_q_lc", "reg_q_work",
-            "reg_q_department", "reg_q_aiesec_role", "reg_q_english", "reg_q_allergies",
-            "reg_q_food", "reg_q_arrival", "reg_q_bed_sharing", "reg_q_bed_partner",
-            "reg_q_transport", "reg_q_payment_date",
-            "reg_q_cc_shop", "reg_q_exp_organizers", "reg_q_volunteer",
-        ],
-    },
-    "party": {
-        "label": "🎉 Party",
-        # Phase 5 (D-07): NO "payment_enabled" key here — the party preset must never touch
-        # the payment module (party pricing is D-16/D-17 in plan 05-05, a separate concern).
-        # setting_key spellings (not step_keys) — the shared confirm dialog in admin.py
-        # renders REG_LABELS.get(k, k) for k in preset["on"], and REG_LABELS is keyed by
-        # reg_q_*; matches the "forum"/"conf" entries above.
-        "on": [
-            "reg_q_age", "reg_q_phone", "reg_q_alumni_status", "reg_q_vk", "reg_q_city",
-            "reg_q_allergies", "reg_q_food",
-        ],
-    },
-    "short": {
-        "label": "⚡ Акция: 6 вопросов",
-        # Phase 7 (D-07 pattern): NO "payment_enabled" key here either — the promo preset
-        # must never touch the payment module, same reasoning as the party preset above.
-        # preset_apply already tolerates its absence via preset.get("payment_enabled").
-        # Five setting_keys below + ФИО = six questions: ФИО is asked unconditionally by
-        # _ask_full_name and is NOT a REG_FLOW key, so it can never appear in an "on" list —
-        # it is not missing, it just isn't a toggle.
-        "on": [
-            "reg_q_phone", "reg_q_vk", "reg_q_city", "reg_q_education", "reg_q_course",
-        ],
-    },
-}
+# Phase 28 (28-10, SU-11): REG_PRESETS + the bulk-writer moved verbatim to the root
+# aiogram-free `reg_presets.py` — settings_ops.py (Mini App web process) needs the same
+# writer without importing anything from `handlers.*`. Re-exported under the same name so
+# every existing import site here keeps working unchanged.
+from reg_presets import REG_PRESETS  # noqa: F401,E402
 
 
 # WR-03: the D-08 overnight-only questions are excluded from _apply_party_preset's blanket
