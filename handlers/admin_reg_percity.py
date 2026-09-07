@@ -467,17 +467,37 @@ async def toggle_short_question(callback: types.CallbackQuery):
     await callback.message.edit_text(text, parse_mode="HTML", reply_markup=await build_questions_keyboard("short", admin_id))
 
 
-# --- Resume mode (file-or-text vs text-only), Phase 25 (CITYQ-04) ---
+# --- Resume mode (file-or-text vs text-only vs fork), Phase 25 (CITYQ-04) / Phase 28-04 (SU-04) ---
 #
-# Human labels only — the enum's own on-the-wire values (file_or_text/text_only) never reach
-# a manager, same "коды не показываем" rule as everywhere else in the admin surface.
-_RESUME_MODE_HUMAN = {"file_or_text": "файл или текст", "text_only": "только текст"}
+# Human labels only — the enum's own on-the-wire values (file_or_text/text_only/fork) never
+# reach a manager, same "коды не показываем" rule as everywhere else in the admin surface.
+_RESUME_MODE_HUMAN = {
+    "file_or_text": "файл или текст", "text_only": "только текст",
+    # Phase 28 (28-04, SU-04): третье значение цикла — развилка «файл / ссылка / нет резюме».
+    "fork": "спросить способ",
+}
+# Phase 28 (28-04, SU-04): единственное место, где живёт правило перехода — обе ветки
+# `reg_resume_mode_toggle` ниже (городская и глобальная) считают `new_val` через
+# `_next_resume_mode`, не своим выражением (было ДВАЖДЫ дословно — жёсткий двузначный флип).
+_RESUME_MODE_CYCLE = ("file_or_text", "text_only", "fork")
+
+
+def _next_resume_mode(current: str) -> str:
+    """Следующее значение цикла из трёх (Phase 28-04, SU-04). Неизвестное/несуществующее
+    текущее значение (например будущее, ещё не заведённое здесь) безопасно уходит на первый
+    элемент цикла — тот же fail-soft принцип, что у `resume_mode()` в `reg_engine.py`."""
+    try:
+        idx = _RESUME_MODE_CYCLE.index(current)
+    except ValueError:
+        return _RESUME_MODE_CYCLE[0]
+    return _RESUME_MODE_CYCLE[(idx + 1) % len(_RESUME_MODE_CYCLE)]
 
 
 def _resume_mode_toggle_label(current: str) -> str:
     """«Текущее → Новое» direction idiom — same shape as every other direction-toggle button
-    in the admin surface (handlers/admin_settings.py: registration_mode/bonus_enabled/...)."""
-    target = "file_or_text" if current == "text_only" else "text_only"
+    in the admin surface (handlers/admin_settings.py: registration_mode/bonus_enabled/...).
+    Phase 28-04: `target` — следующий элемент цикла из трёх, не жёсткий двузначный флип."""
+    target = _next_resume_mode(current)
     return f"📄 Резюме: {_RESUME_MODE_HUMAN.get(current, current)} → {_RESUME_MODE_HUMAN.get(target, target)}"
 
 
@@ -515,11 +535,11 @@ async def reg_resume_mode_toggle(callback: types.CallbackQuery):
             await callback.answer("Неизвестный город", show_alert=True)
             return
         current = await get_setting_typed_for_city("reg_resume_mode", header_code)
-        new_val = "file_or_text" if current == "text_only" else "text_only"
+        new_val = _next_resume_mode(current)
         await set_setting(composed, new_val)
     else:
         current = await get_setting_typed("reg_resume_mode")
-        new_val = "file_or_text" if current == "text_only" else "text_only"
+        new_val = _next_resume_mode(current)
         await set_setting("reg_resume_mode", new_val)
 
     label = _RESUME_MODE_HUMAN.get(new_val, new_val)
