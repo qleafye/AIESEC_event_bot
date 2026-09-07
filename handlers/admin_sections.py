@@ -67,6 +67,11 @@ SECTIONS: list[tuple[str, str, list[tuple]]] = [
         # Phase 27 (27-06, LANG-05/09): экран правки корпуса английских строк — рядом с
         # тумблерами языка, тот же раздел, что и «✏️ Тексты вопросов».
         ("screen", "admin_i18n", "🌐 Английские тексты"),
+        # Phase 28 (28-06, SU-05/SU-06/SU-07): реф-механика СкиллАпа — рядом с прочими
+        # тумблерами анкеты.
+        ("toggle", "toggle_reg_skip_source_for_referred"),
+        ("toggle", "toggle_reg_referrer_must_be_ambassador"),
+        ("toggle", "toggle_reg_offer_ref_link"),
         ("group", "reg"),
         ("group", "party"),
         ("group", "consent"),

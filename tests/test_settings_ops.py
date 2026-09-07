@@ -172,7 +172,9 @@ def test_every_editable_key_reachable_exactly_once_via_section_maps():
 
 def test_toggle_section_covers_every_toggles_group_key_exactly_once():
     toggle_keys = [k for k, m in SETTINGS_SCHEMA.items() if m.get("group") == "toggles"]
-    assert len(settings_ops.TOGGLE_SECTION) == 23
+    # Phase 28 (28-06, SU-05/SU-06/SU-07): +3 (reg_skip_source_for_referred/
+    # reg_referrer_must_be_ambassador/reg_offer_ref_link) -- 23 -> 26.
+    assert len(settings_ops.TOGGLE_SECTION) == 26
     assert sorted(settings_ops.TOGGLE_SECTION) == sorted(toggle_keys)
     assert len(settings_ops.TOGGLE_SECTION) == len(set(settings_ops.TOGGLE_SECTION))
 

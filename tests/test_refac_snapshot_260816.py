@@ -435,6 +435,9 @@ admin|callback_query|toggle_nudge_enabled|toggle_nudge_enabled
 admin|callback_query|toggle_quiet_hours|toggle_quiet_hours
 admin|callback_query|toggle_delegate_lang_enabled|toggle_delegate_lang_enabled
 admin|callback_query|toggle_delegate_lang_ask_on_start|toggle_delegate_lang_ask_on_start
+admin|callback_query|toggle_reg_skip_source_for_referred|toggle_reg_skip_source_for_referred
+admin|callback_query|toggle_reg_referrer_must_be_ambassador|toggle_reg_referrer_must_be_ambassador
+admin|callback_query|toggle_reg_offer_ref_link|toggle_reg_offer_ref_link
 admin|callback_query|toggle_reg_edit_remoderation|toggle_reg_edit_remoderation
 admin|callback_query|toggle_payment_reminders|toggle_payment_reminders
 admin|callback_query|toggle_uni_mode|toggle_uni_mode
@@ -815,12 +818,16 @@ def test_snapshot_total_handler_count_is_292():
     """Second, independent invariant besides content — a handler silently added/removed
     without touching this file's golden text (impossible for a normal edit, but this guards
     against a golden-string typo slipping past review) is caught by count alone."""
+    # Phase 28 (28-06, SU-05/SU-06/SU-07): +3 admin_settings.py callback_query
+    # (toggle_reg_skip_source_for_referred/toggle_reg_referrer_must_be_ambassador/
+    # toggle_reg_offer_ref_link), встали сразу после toggle_delegate_lang_ask_on_start и перед
+    # toggle_reg_edit_remoderation (460 -> 463).
     # quick 260819: +toggle_preselect_enabled, +coinsman_amount_stale, +toggle_pending_reminder/
     # +toggle_nudge_enabled. Опросы (260822): +20 — 5 message (мастер PollCreate, две строки
     # poll_wizard_cancel = два декоратора) в хвост admin.message, 15 callback (список/карточка
     # admin_polls + мастер admin_poll_wizard) в хвост admin.callback_query; чистый аппенд,
     # перепроверен прогоном _build_snapshot_lines() и diff'ом с прежним 334-строчным снапшотом.
-    assert len(GOLDEN_SNAPSHOT) == 460  # Phase 28 (28-05, SU-04): +2
+    assert len(GOLDEN_SNAPSHOT) == 463  # Phase 28 (28-06, SU-05/SU-06/SU-07): +3
     # handlers/reg_resume_fork.py — message process_resume_link (хвост message-блока
     # registration.router, сразу после process_case_optin и перед первым callback_query
     # recall_keep) + callback_query regfork_pick (хвост callback_query-блока

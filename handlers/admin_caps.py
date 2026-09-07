@@ -551,6 +551,9 @@ ADMIN_CAPS: dict[str, str] = {
     "toggle_pending_reminder": "settings",
     "toggle_quiet_hours": "settings",
     "toggle_reg_edit_remoderation": "settings",
+    "toggle_reg_skip_source_for_referred": "settings",  # Phase 28 (28-06)
+    "toggle_reg_referrer_must_be_ambassador": "settings",  # Phase 28 (28-06)
+    "toggle_reg_offer_ref_link": "settings",  # Phase 28 (28-06)
     "toggle_show_progress": "settings",
     "toggle_uni_mode": "settings",
 
