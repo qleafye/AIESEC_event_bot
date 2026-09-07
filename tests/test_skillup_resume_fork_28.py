@@ -12,6 +12,7 @@ import asyncio
 from config import config
 from database import db
 import reg_engine
+from services import reg_finalize as rf
 
 UID = 900800400
 
@@ -228,3 +229,120 @@ def test_resume_mode_percity_override_cycles_too(tmp_path):
     seen, global_value = asyncio.run(go())
     assert seen == ["text_only", "fork", "file_or_text"]
     assert global_value is None
+
+
+# ══════════════════════════════════════════════════════════════════════════════════════════
+# Задача 3: запись resume_type / resume_link / link_verified и столбцы листа
+# ══════════════════════════════════════════════════════════════════════════════════════════
+
+def test_resume_fields_written_on_new(tmp_path):
+    """Новая анкета с ответом развилки — resume_type/resume_link/link_verified узким UPDATE
+    после `add_user`, ссылка из вайтлиста помечена проверенной."""
+    _ready(tmp_path)
+
+    async def go():
+        draft = {
+            "telegram_id": UID, "kind": "new",
+            "answers": {
+                "full_name": "Игорь Игорев", "resume_type": "link",
+                "resume_link": "https://hh.ru/resume/42",
+            },
+        }
+        await rf.finalize_data(UID, "@igor", draft)
+        return await db.get_user(UID)
+
+    user = asyncio.run(go())
+    assert user["resume_type"] == "link"
+    assert user["resume_link"] == "https://hh.ru/resume/42"
+    assert user["link_verified"] == 1
+
+
+def test_resume_fields_updated_on_edit(tmp_path):
+    """Правка анкеты, меняющая способ резюме, пересчитывает оба производных поля."""
+    _ready(tmp_path)
+
+    async def go():
+        new_draft = {
+            "telegram_id": UID, "kind": "new",
+            "answers": {
+                "full_name": "Мини Профилев", "resume_type": "mini",
+            },
+        }
+        await rf.finalize_data(UID, "@mini", new_draft)
+        edit_draft = {
+            "telegram_id": UID, "kind": "edit", "updated_by": "miniapp",
+            "answers": {"resume_type": "link", "resume_link": "https://github.com/octocat"},
+        }
+        await rf.finalize_data(UID, "@mini", edit_draft)
+        return await db.get_user(UID)
+
+    user = asyncio.run(go())
+    assert user["resume_type"] == "link"
+    assert user["resume_link"] == "https://github.com/octocat"
+    assert user["link_verified"] == 1
+
+
+def test_link_verified_recomputed_by_server(tmp_path):
+    """T-28-04-01: клиент прислал бы `link_verified=1` для чужого домена (это поле вообще не
+    читается из ответов делегата) — сервер пересчитывает его сам и получает ложь."""
+    _ready(tmp_path)
+
+    async def go():
+        new_draft = {
+            "telegram_id": UID, "kind": "new",
+            "answers": {"full_name": "Чужой Домен", "resume_type": "link"},
+        }
+        await rf.finalize_data(UID, "@x", new_draft)
+        edit_draft = {
+            "telegram_id": UID, "kind": "edit", "updated_by": "miniapp",
+            "answers": {
+                "resume_type": "link", "resume_link": "https://evil-tracker.example/cv",
+                # Поле ниже — попытка клиента подделать флаг; finalize_data его не читает.
+                "link_verified": 1,
+            },
+        }
+        await rf.finalize_data(UID, "@x", edit_draft)
+        return await db.get_user(UID)
+
+    user = asyncio.run(go())
+    assert user["resume_link"] == "https://evil-tracker.example/cv"
+    assert user["link_verified"] == 0
+
+
+def test_sheet_shows_human_resume_type(tmp_path):
+    """Лист печатает человеческое слово способа резюме и «Да»/«-» для проверенной ссылки —
+    кода `resume_type` в листе быть не должно."""
+    from handlers import reg_schema
+
+    row = reg_schema._sheet_value_map({"resume_type": "mini", "link_verified": 0})
+    assert row["Способ резюме"] == "Мини-профиль"
+    assert row["Ссылка проверена"] == "-"
+
+    row2 = reg_schema._sheet_value_map({"resume_type": "link", "link_verified": 1})
+    assert row2["Способ резюме"] == "Ссылка"
+    assert row2["Ссылка проверена"] == "Да"
+
+    row3 = reg_schema._sheet_value_map({"resume_type": "file", "link_verified": 0})
+    assert row3["Способ резюме"] == "Файл"
+
+    row4 = reg_schema._sheet_value_map({})
+    assert row4["Способ резюме"] == "-"
+
+
+def test_sheet_width_unchanged_when_resume_question_off(tmp_path):
+    """Вопрос «Резюме» выключен (дефолт) — новые две колонки не просачиваются в ширину листа;
+    включение `reg_q_resume` показывает их (тот же gate, что у существующих колонок резюме)."""
+    _ready(tmp_path)
+    from handlers import reg_schema
+
+    async def go():
+        off_headers = await reg_schema.active_sheet_headers()
+        await db.set_setting("reg_q_resume", "on")
+        on_headers = await reg_schema.active_sheet_headers()
+        return off_headers, on_headers
+
+    off_headers, on_headers = asyncio.run(go())
+    assert "Способ резюме" not in off_headers
+    assert "Ссылка проверена" not in off_headers
+    assert "Способ резюме" in on_headers
+    assert "Ссылка проверена" in on_headers
