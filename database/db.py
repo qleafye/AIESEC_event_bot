@@ -516,6 +516,29 @@ async def init_db():
         # старые/нетронутые строки: вопрос «Источник» в профиле показывается как раньше.
         await _ensure_column(db, "users", "source_from_tag", "INTEGER DEFAULT 0")
 
+        # Phase 28 (28-01, SU-01/SU-04/SU-08): СкиллАп 5 — новые вопросы анкеты (default-off,
+        # тумблеры reg_q_stack/reg_q_experience/reg_q_readiness/reg_q_resume_link/reg_q_mini_*/
+        # reg_q_case_optin) + пять НЕ-REG_FLOW полей резервной цепочки резюме/скоринга/амбассадора.
+        # Только добавление колонок — существующая база (Юлид/РилТолк) открывается без изменений,
+        # новые колонки пусты у всех текущих строк. Восемь колонок ниже — шаги REG_FLOW, они
+        # участвуют в INSERT ниже (add_user); ОСТАЛЬНЫЕ ПЯТЬ (resume_type/link_verified/
+        # is_ambassador/score/is_it_3plus) — НЕ ответы на вопросы анкеты, их пишет узкий
+        # update_user_answers (планы 28-04/28-05/28-06), тем же приёмом, что source_from_tag/
+        # resume_url — в INSERT их сознательно НЕ добавлять (RESEARCH «Don't Hand-Roll»).
+        await _ensure_column(db, "users", "stack", "TEXT")
+        await _ensure_column(db, "users", "experience", "TEXT")
+        await _ensure_column(db, "users", "readiness", "TEXT")
+        await _ensure_column(db, "users", "resume_link", "TEXT")
+        await _ensure_column(db, "users", "mini_projects", "TEXT")
+        await _ensure_column(db, "users", "mini_portfolio", "TEXT")
+        await _ensure_column(db, "users", "mini_direction", "TEXT")
+        await _ensure_column(db, "users", "case_optin", "TEXT")
+        await _ensure_column(db, "users", "resume_type", "TEXT")
+        await _ensure_column(db, "users", "link_verified", "INTEGER DEFAULT 0")
+        await _ensure_column(db, "users", "is_ambassador", "INTEGER DEFAULT 0")
+        await _ensure_column(db, "users", "score", "INTEGER")
+        await _ensure_column(db, "users", "is_it_3plus", "INTEGER DEFAULT 0")
+
         # `content` stores a file_id for photo/pdf proof, raw text for text/link proof — the
         # project never writes uploaded files to disk (README/CLAUDE.md file_id pattern).
         await db.execute('''
@@ -896,8 +919,10 @@ async def add_user(data: dict):
                 payment_status, payment_option, receipt_file_id, payment_due, paid_at,
                 arrival_date, birth_date, study_field, goal, formats, vk_username,
                 transport, payment_plan_date, bed_sharing, bed_partner, participant_type,
-                alumni_status, event_city, season, prev_season
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                alumni_status, event_city, season, prev_season,
+                stack, experience, readiness, resume_link,
+                mini_projects, mini_portfolio, mini_direction, case_optin
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             ON CONFLICT(telegram_id) DO UPDATE SET
                 username=excluded.username,
                 full_name=excluded.full_name,
@@ -963,7 +988,15 @@ async def add_user(data: dict):
                 -- always writes the CURRENT event_season; prev_season is only ever non-NULL when
                 -- the caller (plan 04's finalize_registration) explicitly passes it.
                 season=excluded.season,
-                prev_season=excluded.prev_season
+                prev_season=excluded.prev_season,
+                stack=excluded.stack,
+                experience=excluded.experience,
+                readiness=excluded.readiness,
+                resume_link=excluded.resume_link,
+                mini_projects=excluded.mini_projects,
+                mini_portfolio=excluded.mini_portfolio,
+                mini_direction=excluded.mini_direction,
+                case_optin=excluded.case_optin
         ''', (
             data['telegram_id'],
             data.get('username'),
@@ -1027,6 +1060,14 @@ async def add_user(data: dict):
             data.get('event_city'),
             data.get('season'),
             data.get('prev_season'),
+            data.get('stack'),
+            data.get('experience'),
+            data.get('readiness'),
+            data.get('resume_link'),
+            data.get('mini_projects'),
+            data.get('mini_portfolio'),
+            data.get('mini_direction'),
+            data.get('case_optin'),
         ))
         await db.commit()
 
