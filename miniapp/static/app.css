@@ -345,6 +345,32 @@ body[data-nav="hub"] #nav { display: none; }
   padding-top: var(--sp-3);
 }
 
+/* Phase 28 (28-06, SU-07): блок-предложение реф-ссылки на терминальном экране «Заявка
+   принята» (28-UI-SPEC.md §6) — та же hairline-граница, что у .state .hint выше. */
+.ambassador-offer {
+  margin-top: var(--sp-4);
+  padding-top: var(--sp-4);
+  border-top: 1px solid var(--border);
+}
+.ambassador-offer h2 { font-size: 16px; margin-bottom: var(--sp-1); }
+.ambassador-offer p { color: var(--text-muted); font-size: 14px; margin-bottom: var(--sp-3); }
+.ambassador-offer .actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--sp-2);
+  margin-top: var(--sp-3);
+}
+.ambassador-offer .actions .btn { flex: 1 1 140px; width: auto; }
+.ambassador-link-box {
+  margin-bottom: var(--sp-3);
+  padding: var(--sp-3);
+  background: var(--surface-alt);
+  border-radius: var(--radius);
+  font-family: monospace;
+  font-size: 13px;
+  word-break: break-all;
+}
+
 .error-inline {
   background: var(--surface);
   border-left: 3px solid var(--danger);

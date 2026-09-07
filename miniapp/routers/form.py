@@ -44,6 +44,7 @@ from database.db import (
     get_user_consents,
     record_user_consent,
     set_reg_draft_surface,
+    update_user_answers,
     upsert_reg_draft,
 )
 from settings_schema import get_setting_typed
@@ -691,7 +692,46 @@ async def draft_submit(
                 "reg draft submit: chat notify failed telegram_id=%s (%s)", p.telegram_id, exc.reason,
             )
 
-    return {"mode": result["mode"], "status": result["status"], "heading": heading, "body": body}
+    response = {"mode": result["mode"], "status": result["status"], "heading": heading, "body": body}
+    # Phase 28 (28-06, SU-07, D-09): паритет с чатом бота — блок-предложение реф-ссылки на том
+    # же терминальном экране «Заявка принята», только при mode == "new" и включённом тумблере
+    # (дефолт off, D-06). Ссылка сама НЕ строится здесь — только тексты; сервером выдаётся
+    # отдельным эндпоинтом POST /app/api/reg/ambassador по тапу «Хочу свою ссылку».
+    if result["mode"] == "new" and await get_setting_typed("reg_offer_ref_link") == "on":
+        response["ambassador"] = {
+            "heading": await get_setting_typed_for_city(
+                "miniapp_form_ambassador_offer_heading_text", event_city,
+            ),
+            "body": await get_setting_typed_for_city(
+                "miniapp_form_ambassador_offer_body_text", event_city,
+            ),
+            "cta": await get_setting_typed("miniapp_form_ambassador_cta_text"),
+            "later": await get_setting_typed("miniapp_form_ambassador_later_text"),
+        }
+    return response
+
+
+# ── POST /app/api/reg/ambassador ─────────────────────────────────────────────────────────
+
+@router.post("/app/api/reg/ambassador")
+async def draft_ambassador(
+    request: Request,
+    p: Principal = Depends(form_gate),
+    _: Principal = Depends(require_section("form")),
+) -> dict:
+    """«Хочу свою ссылку» (SU-07, D-09) — паритет с ботовским `regamb:want`. Пишет ТОЛЬКО
+    `is_ambassador` СВОЕЙ строки автора запроса (T-28-06-03: `allowed_columns` из одной
+    колонки, `telegram_id` — из подписанного initData, не из тела запроса). Ссылка строится
+    сервером (`ref_code` = `telegram_id`, OQ-3) — фронт её не собирает и не может подделать."""
+    await update_user_answers(p.telegram_id, {"is_ambassador": 1}, allowed_columns=["is_ambassador"])
+    bot_username = request.app.state.cfg.bot_username
+    link = f"https://t.me/{bot_username}?start=amb_{p.telegram_id}" if bot_username else None
+    return {
+        "link": link,
+        "heading": await get_setting_typed("miniapp_form_ambassador_link_heading_text"),
+        "copy_button": await get_setting_typed("miniapp_form_ambassador_copy_button_text"),
+        "copied_toast": await get_setting_typed("miniapp_form_ambassador_copied_toast_text"),
+    }
 
 
 __all__ = ["router", "DraftPatch"]

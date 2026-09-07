@@ -14,9 +14,15 @@ test_attribution_survives_city_pick_referrer) — `resolve_referrer` приме�
 Задача 2: шов `handlers/reg_ambassador.py` — второе сообщение-предложение после «поздравляем»
 (тумблер `reg_offer_ref_link`), «Хочу свою ссылку» ставит `is_ambassador=1` и шлёт голый URL
 третьим сообщением, «Позже» ничего не пишет.
+
+Задача 3: паритет в Mini App — `POST /app/api/reg/draft/submit` отдаёт блок `ambassador`
+(mode == "new" + тумблер), `POST /app/api/reg/ambassador` ставит `is_ambassador=1` и отдаёт
+ссылку; HTTP-харнесс — `tests/test_miniapp_routes.py`/`tests/test_miniapp_form.py`
+(`TestClient` + временная БД).
 """
 import asyncio
 
+import pytest
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.storage.base import StorageKey
 from aiogram.fsm.storage.memory import MemoryStorage
@@ -27,6 +33,10 @@ from database import db
 import reg_engine
 from handlers import registration as reg
 from handlers import reg_ambassador
+
+from tests.test_miniapp_routes import DELEGATE_ID, UNREGISTERED_ID, _cfg, _client, _hdr, _set, _standard_seed
+from tests.test_miniapp_routes import _use_tmp_db as _use_tmp_http_db
+from tests.test_miniapp_form import _seed_draft, bot_api  # noqa: F401 -- фикстура bot_api
 
 UID = 900806000
 
@@ -313,3 +323,73 @@ def test_offer_failure_does_not_break_finalize(tmp_path):
 
     msg = asyncio.run(go())
     assert not msg.sent
+
+
+# ══════════════════════════════════════════════════════════════════════════════════════════
+# Задача 3: паритет в Mini App — POST /app/api/reg/draft/submit + POST /app/api/reg/ambassador
+# ══════════════════════════════════════════════════════════════════════════════════════════
+
+def _run(coro):
+    return asyncio.run(coro)
+
+
+@pytest.fixture
+def http_db_path(tmp_path):
+    path = _use_tmp_http_db(tmp_path, "test_skillup_referral_28_http.db")
+    _standard_seed()
+    return path
+
+
+@pytest.fixture
+def http_client(http_db_path):
+    return _client(_cfg(http_db_path))
+
+
+def test_submit_has_no_block_when_disabled(http_client, bot_api):
+    _seed_draft(UNREGISTERED_ID, kind="new", patch={"age": 22, "full_name": "Иван Иванов"})
+    resp = http_client.post("/app/api/reg/draft/submit", headers=_hdr(UNREGISTERED_ID))
+    assert resp.status_code == 200, resp.text
+    assert "ambassador" not in resp.json()
+
+
+def test_submit_returns_ambassador_block_when_enabled(http_client, bot_api):
+    _set("reg_offer_ref_link", "on")
+    _seed_draft(UNREGISTERED_ID, kind="new", patch={"age": 22, "full_name": "Иван Иванов"})
+    resp = http_client.post("/app/api/reg/draft/submit", headers=_hdr(UNREGISTERED_ID))
+    assert resp.status_code == 200, resp.text
+    amb = resp.json()["ambassador"]
+    assert amb["heading"]
+    assert amb["cta"]
+    assert amb["later"]
+
+
+def test_ambassador_endpoint_sets_flag_and_returns_link(http_client):
+    resp = http_client.post("/app/api/reg/ambassador", headers=_hdr(DELEGATE_ID))
+    assert resp.status_code == 200, resp.text
+    body = resp.json()
+    assert body["link"] == f"https://t.me/YouLead_test_bot?start=amb_{DELEGATE_ID}"
+    assert body["heading"]
+    assert body["copy_button"]
+    assert body["copied_toast"]
+    user = _run(db.get_user(DELEGATE_ID))
+    assert user["is_ambassador"] == 1
+
+
+def test_ambassador_endpoint_requires_form_section(http_client):
+    _set("miniapp_section_form", "off")
+    resp = http_client.post("/app/api/reg/ambassador", headers=_hdr(DELEGATE_ID))
+    assert resp.status_code == 403
+    assert resp.json() == {"reason": "section_off", "section": "form"}
+
+
+def test_link_rendered_as_text_node_not_anchor():
+    """Accessibility (28-UI-SPEC.md): ссылка в блоке «Ваша ссылка» — текстовый узел `.text`
+    у `h("div", ...)`, НЕ `h("a", {href: ...})` — структурный сторож исходника фронта."""
+    from pathlib import Path
+
+    from tests.test_miniapp_frontend import _js_without_comments
+
+    form_js = Path(__file__).resolve().parent.parent / "miniapp" / "static" / "js" / "screens" / "form.js"
+    src = _js_without_comments(form_js)
+    assert 'h("div", { class: "ambassador-link-box", text: res.link' in src
+    assert "href" not in src.split("ambassador-link-box")[1].split("\n")[0]
