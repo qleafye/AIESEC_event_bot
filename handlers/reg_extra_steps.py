@@ -13,17 +13,23 @@
 `handlers/registration.py` (13-02 приём). Импортируется В ХВОСТЕ `registration.py`, ПОСЛЕ
 `reg_handoff` — обработчики регистрируются последними, золотой снимок порядка
 (`tests/test_refac_snapshot_260816.py`) только дополняется, ничего не переставляется.
+
+Обработчики ответа ниже — тот же контур «канонизировать -> validate_answer -> сохранить под
+своей колонкой -> _advance», что образец шва `handlers/reg_steps.py`. `resume_link` показ
+получает (через `ask_step` выше), но СВОЕГО ОБРАБОТЧИКА НЕ ПОЛУЧАЕТ — валидация ссылки и
+«Назад» на развилку резюме принадлежат плану 28-04.
 """
 import logging
 
-from aiogram import types
+from aiogram import Bot, types
 from aiogram.fsm.context import FSMContext
 
 from cities import get_setting_typed_for_city
-from handlers.registration import _advance, _safe_answer
+from handlers import reg_i18n
+from handlers.registration import _advance, _safe_answer, router
 from handlers.states import Registration
 from keyboards.builders import get_cancel_kb, get_skip_kb, get_yes_no_kb
-from reg_engine import _SKIP_ALLOWED_STEPS, prompt
+from reg_engine import STEP_TO_COLUMN, _SKIP_ALLOWED_STEPS, prompt, validate_answer
 
 logger = logging.getLogger(__name__)
 
@@ -65,3 +71,38 @@ async def ask_step(step_key: str, message: types.Message, state: FSMContext,
 
     await _safe_answer(message, text, reply_markup=kb)
     await state.set_state(target_state)
+
+
+async def _receive_step(step_key: str, message: types.Message, state: FSMContext, bot: Bot) -> None:
+    """Общий контур приёма для четырёх шагов ниже: канонизировать -> `validate_answer` ->
+    сохранить под своей колонкой (`STEP_TO_COLUMN`) -> `_advance`. `case_optin` — жёсткие
+    «Да»/«Нет» через `reg_engine._MEMBERSHIP_STEPS` (валидатор сам объясняет, что нажать);
+    `mini_portfolio` — «Пропустить» уже понимает `validate_answer` (шаг в
+    `_SKIP_ALLOWED_STEPS`, пустое значение станет «-»)."""
+    canon = await reg_i18n.canonicalize(message, step_key, message.text)
+    value, err = validate_answer(step_key, canon)
+    if err:
+        await reg_i18n.say(message, err)
+        return
+    await state.update_data(**{STEP_TO_COLUMN.get(step_key, step_key): value})
+    await _advance(step_key, message, state, bot)
+
+
+@router.message(Registration.mini_projects)
+async def process_mini_projects(message: types.Message, state: FSMContext, bot: Bot):
+    await _receive_step("mini_projects", message, state, bot)
+
+
+@router.message(Registration.mini_portfolio)
+async def process_mini_portfolio(message: types.Message, state: FSMContext, bot: Bot):
+    await _receive_step("mini_portfolio", message, state, bot)
+
+
+@router.message(Registration.mini_direction)
+async def process_mini_direction(message: types.Message, state: FSMContext, bot: Bot):
+    await _receive_step("mini_direction", message, state, bot)
+
+
+@router.message(Registration.case_optin)
+async def process_case_optin(message: types.Message, state: FSMContext, bot: Bot):
+    await _receive_step("case_optin", message, state, bot)
