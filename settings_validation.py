@@ -94,6 +94,23 @@ def validate_setting_value(key: str, value: str) -> tuple[str | None, str | None
             "или «-», чтобы сбросить к значению по умолчанию."
         )
 
+    # Phase 28 (28-08, SU-08, A5): `list` + `options_from_step` (скоринговые чекбокс-пикеры,
+    # form.js рисует их тем же `multiControl`, что закрытый `multi`) — та же поблажка на
+    # пустой набор, что у `multi` ниже, но БЕЗ перевода подпись->код: набор открытый
+    # (варианты — текущий список ответов вопроса анкеты, reg_engine.options(step_key)),
+    # закрытой карты для проверки здесь нет и не будет — эта функция aiogram/reg_engine-free.
+    if entry_type == "list" and entry.get("options_from_step"):
+        segments = [
+            segment.strip()
+            for line in value.splitlines()
+            for segment in line.split(";")
+            if segment.strip()
+        ]
+        if not segments:
+            empty_value = entry.get("empty_value", "—")
+            return empty_value, None
+        return "\n".join(segments), None
+
     if entry_type == "multi":
         # Quick 260906-6xe: закрытый набор, отмеченный галочками в вебе — вход приходит
         # ПОДПИСЯМИ (JSON человеку показывает подписи, коды не уезжают в веб вовсе), теми же
