@@ -394,6 +394,9 @@ def test_render_snapshot_reg(tmp_path):
         "reg_resume_fork_file_label", "reg_resume_fork_link_label", "reg_resume_fork_none_label",
         "reg_resume_link_whitelist_hint_text", "reg_resume_link_other_hint_text",
         "reg_resume_link_invalid_text", "reg_mini_portfolio_skip_label",
+        # Phase 28 (28-05, SU-04): подсказка «выбери кнопкой» — сразу после
+        # reg_mini_portfolio_skip_label (handlers/admin_settings.py::_REG_FIELD_ORDER).
+        "reg_resume_fork_pick_hint_text",
     ]
     expected_labels = [
         "📢 Источники", "🏙 Города (варианты)", "🎯 Направления обучения (варианты)",
@@ -412,6 +415,7 @@ def test_render_snapshot_reg(tmp_path):
         "🔗 Ссылка на резюме: маркер «другой сайт»",
         "🔗 Ссылка на резюме: ошибка формата",
         "🖼 Мини-профиль: кнопка «Пропустить»",
+        "📎 Развилка резюме: подсказка «выбери кнопкой»",
     ]
     # Fresh DB -> nothing configured. Phase 17.1 (17.1-01): «⏳ Заявка на рассмотрении» —
     # первый ключ этой группы с непустым дефолтом в реестре, поэтому у него флаг
@@ -429,6 +433,7 @@ def test_render_snapshot_reg(tmp_path):
     # Phase 28 (28-04): семь текстовых ключей развилки резюме имеют непустой дефолт (тот же
     # флаг «по умолчанию»); вайтлист доменов — list с default=None -> «— не задано», как
     # соседние *_options.
+    # Phase 28 (28-05): подсказка «выбери кнопкой» — тоже text с непустым дефолтом, тот же флаг.
     defaulted_labels = {
         "🏙 Выбор города: вопрос", "🏆 Кейс-чемпионат: пояснение",
         "📝 Мультивыбор: подсказка лимита", "📝 Мультивыбор: счётчик выбранного",
@@ -439,6 +444,7 @@ def test_render_snapshot_reg(tmp_path):
         "🔗 Ссылка на резюме: маркер «другой сайт»",
         "🔗 Ссылка на резюме: ошибка формата",
         "🖼 Мини-профиль: кнопка «Пропустить»",
+        "📎 Развилка резюме: подсказка «выбери кнопкой»",
     }
     for label in defaulted_labels:
         assert f"{label}: <i>по умолчанию</i>" in text, f"missing/wrong flag for {label}"

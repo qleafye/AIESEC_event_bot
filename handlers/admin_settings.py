@@ -130,6 +130,8 @@ _REG_FIELD_ORDER = [
     "reg_resume_fork_file_label", "reg_resume_fork_link_label", "reg_resume_fork_none_label",
     "reg_resume_link_whitelist_hint_text", "reg_resume_link_other_hint_text",
     "reg_resume_link_invalid_text", "reg_mini_portfolio_skip_label",
+    # Phase 28 (28-05, SU-04): подсказка «выбери кнопкой» для свободного текста мимо развилки.
+    "reg_resume_fork_pick_hint_text",
 ]
 
 # Phase 20 (20-01, ADMIN-IA-01): группа «📋 Заявки» — всё, что делегат видит ПОСЛЕ подачи
