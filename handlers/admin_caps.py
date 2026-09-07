@@ -438,6 +438,14 @@ ADMIN_CAPS: dict[str, str] = {
     "modcard_toggle:*": "settings",
     "modcard_limit:*": "settings",
     "modcard_noop": "settings",
+    # Phase 28 (28-08, SU-08): «🧮 Правила балла» — тот же класс экрана настроек, что
+    # «🧾 Поля карточки заявки» выше (не moderate_reg — это конфигурирование правил, а не
+    # действие над конкретной заявкой).
+    "admin_reg_scoring": "settings",
+    "scoring_toggle:*": "settings",
+    "scoring_limit:*": "settings",
+    "scoring_drop:*": "settings",
+    "scoring_noop": "settings",
     "admin_sync_sheet": "settings",
     # Quick 260902-vth: «🕓 Журналы в таблицу» — та же капа, что «🔄 Синхронизация таблицы».
     "sheet_logs_open": "settings",

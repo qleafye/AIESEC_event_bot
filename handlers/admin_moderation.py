@@ -843,3 +843,9 @@ async def appr_full(callback: types.CallbackQuery):
 # same seam-import technique as admin_gamification/admin_polls at the tail of admin.py.
 # Golden snapshot: tests/test_refac_snapshot_260816.py.
 from handlers import admin_modcard  # noqa: E402,F401
+
+# Phase 28 (28-08, SU-08): handlers/admin_reg_scoring.py (экран «🧮 Правила балла» — чекбокс-
+# пикеры скоринговых множеств) decorates the same admin.router. Imported right after
+# admin_modcard above — same seam-import technique, its handlers land right after modcard's
+# in the golden snapshot. Golden snapshot: tests/test_refac_snapshot_260816.py.
+from handlers import admin_reg_scoring  # noqa: E402,F401
