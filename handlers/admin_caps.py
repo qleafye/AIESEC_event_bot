@@ -538,6 +538,8 @@ ADMIN_CAPS: dict[str, str] = {
     "state:StaffAdd:*": "settings",
     "toggle_consent_enabled": "settings",
     "toggle_consent_recollect": "settings",
+    "toggle_delegate_lang_enabled": "settings",  # Phase 27
+    "toggle_delegate_lang_ask_on_start": "settings",  # Phase 27
     "toggle_edu_conditional": "settings",
     "toggle_event_city_enabled": "settings",
     "toggle_nudge_enabled": "settings",
