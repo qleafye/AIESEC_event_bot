@@ -248,6 +248,15 @@ MULTI_CONFIG = {
 }
 
 
+async def multi_max(step_key: str) -> int | None:
+    """Phase 28 (28-03, SU-02, RESEARCH Pattern 2): читает `reg_multi_max_{step_key}` — int
+    больше нуля либо `None` (без лимита, D-06 «дефолт пусто = прежнее поведение байт-в-байт»).
+    Не `per_city` (28-UI-SPEC.md таблица новых ключей): менеджер задаёт число одно на все
+    города события. Ключ, не заведённый в SETTINGS_SCHEMA (любой будущий multi-шаг без своего
+    лимита), безопасно резолвится в `None` через тот же fail-soft `_parse_setting`."""
+    return await get_setting_typed(f"reg_multi_max_{step_key}")
+
+
 async def option_list_for(setting_key: str, defaults: list[str]) -> list[str]:
     """Admin-editable option list (newline text) with a hardcoded fallback. Verbatim
     behaviour of the pre-move handlers/registration.py::_get_options — kept as a generic
@@ -1040,6 +1049,21 @@ async def step_spec(step_key: str, participant_type: str | None = None,
         spec["resume_mode"] = resume_mode_value
     if ui_type in ("choice-chips", "select", "multi", "yesno"):
         spec["options"] = await options(step_key)
+    # Phase 28 (28-03, SU-02, A-06): лимит мультивыбора — публикуется ВСЕГДА для multi-шага
+    # (значение `None` = без лимита, существующие мультивыборы `work_format`/`formats`/`goal`
+    # без настроенного `reg_multi_max_<step>` не меняют поведения). При заданном лимите — ещё
+    # счётчик (текст с подставленным {max}, {selected} остаётся для фронта) и подсказка формата
+    # ДОписывается в существующий узел `help` (Reuse Contract 28-UI-SPEC §4 — отдельного узла
+    # на фронте не заводим).
+    if ui_type == "multi":
+        limit = await multi_max(step_key)
+        spec["max_select"] = limit
+        if limit is not None:
+            counter_text = await get_setting_typed("reg_multi_limit_counter_text")
+            spec["limit_counter_text"] = counter_text.replace("{max}", str(limit))
+            hint_text = await get_setting_typed_for_city("reg_multi_limit_hint_text", event_city)
+            hint_text = hint_text.replace("{max}", str(limit))
+            spec["help"] = f"{spec['help']}\n{hint_text}" if spec.get("help") else hint_text
     # Phase 28 (28-02, SU-08, СкиллАп 5): пояснение под заголовком экрана кейс-чемпионата
     # (28-UI-SPEC.md §5, Body-абзац) — публикуется в спеку, чтобы Mini App нарисовало его
     # существующим узлом подсказки, без нового компонента (Reuse Contract).
@@ -1434,8 +1458,17 @@ def _validate_answer_core(step_key: str, raw, participant_type: str | None) -> t
 # принял бы «Пропустить» как настоящий текст резюме, хотя своего литерала-скипа не имеет).
 _NULL_SKIP_STEPS = _SKIP_ALLOWED_STEPS | {"phone"}
 
+# Phase 28 (28-03, SU-02): дефолт текста ошибки лимита — используется, только если вызывающий
+# не резолвил `reg_multi_limit_error_text` из реестра сам (движок синхронный, в БД не ходит).
+# Подстановка `{max}` — ТОЛЬКО `.replace`, не `.format` (текст менеджера может содержать
+# посторонние фигурные скобки, T-073-03-05).
+_DEFAULT_MULTI_LIMIT_ERROR_TEXT = "Можно выбрать не больше {max} вариантов."
 
-def validate_answer(step_key: str, raw, *, participant_type: str | None = None) -> tuple:
+
+def validate_answer(
+    step_key: str, raw, *, participant_type: str | None = None,
+    max_select: int | None = None, limit_error_text: str | None = None,
+) -> tuple:
     """Единая точка проверки ответа — и для текста из чата бота, и (план 21-10) для JSON из
     Mini App (T-21-05). Возвращает `(value, error_text)`; `error_text is None` значит `value`
     готово класть в состояние/черновик. Для choice-шагов с `other_allowed` литерал «Другое»
@@ -1447,10 +1480,22 @@ def validate_answer(step_key: str, raw, *, participant_type: str | None = None) 
     skip-литерал (`_NULL_SKIP_STEPS`); для остальных шагов `None` остаётся «пустой ввод» и
     получает обычную ошибку «поле обязательно» — конверсия НЕ в роутере (RESEARCH Pattern 2).
 
-    `max_len` (T-21-04, DoS) — единственная НОВАЯ проверка этой фазы: у бота сегодня лимита нет
-    (см. `VALIDATION_GOLDEN`, помечено отдельным комментарием — не перенос, а новое правило)."""
+    `max_len` (T-21-04, DoS) — НОВАЯ проверка фазы 21 (см. `VALIDATION_GOLDEN`).
+
+    `max_select`/`limit_error_text` (Phase 28-03, SU-02, A-06) — НОВЫЕ keyword-only параметры,
+    дефолт `None`: при `None` (никто не передал лимит) поведение multi-шага байт-в-байт прежнее
+    (`VALIDATION_GOLDEN` не двигается). Второй барьер — веб-PATCH мимо клиентского дизейбла и
+    гонка «клавиатура рассинхронизировалась с настройкой, изменённой посреди анкеты» (Anti-
+    Pattern RESEARCH: второго валидатора нет, ЭТА ветка — единственное место, где multi-лимит
+    проверяется по-настоящему). Проверка — по количеству выбранных ДО joins-а в строку (core
+    хранит multi-ответ как строку через `", ".join`, считать по запятым после — хрупко)."""
     if raw is None and step_key in _NULL_SKIP_STEPS:
         raw = "Пропустить"
+    if max_select is not None and REG_STEP_TYPES.get(step_key) == "multi":
+        chosen = list(raw) if raw else []
+        if len(chosen) > max_select:
+            text = limit_error_text or _DEFAULT_MULTI_LIMIT_ERROR_TEXT
+            return None, text.replace("{max}", str(max_select))
     value, error = _validate_answer_core(step_key, raw, participant_type)
     if error is None and isinstance(value, str):
         ui_type = _ui_type_for(step_key, REG_STEP_TYPES.get(step_key, "text"))
