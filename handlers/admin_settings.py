@@ -150,7 +150,8 @@ _APPS_FIELD_ORDER = [
     # bot_settings, но менеджер их в UI не видел.
     "preselect_no_username_text", "preselect_fail_text", "preselect_link",
     # Quick 260819 (schema-completeness): догонялка брошенных анкет (порог и текст).
-    "nudge_after_minutes", "nudge_text",
+    # Phase 28 (28-09, SU-09): слово-фоллбэк для {remaining} — рядом с текстом догонялки.
+    "nudge_after_minutes", "nudge_text", "nudge_remaining_fallback_text",
     # Phase 23 (APP-TINDER-01, D-05): шаблоны причин отказа шторки Mini App — общий списочный
     # редактор (admin_settings_lists.py) достаётся бесплатно попаданием в этот список.
     "reject_reason_templates",
