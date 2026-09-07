@@ -728,6 +728,10 @@ registration|message|process_exp_organizers|state:Registration:*
 registration|message|process_exp_content|state:Registration:*
 registration|message|process_volunteer|state:Registration:*
 registration|message|menu_lang_open|
+registration|message|process_mini_projects|state:Registration:*
+registration|message|process_mini_portfolio|state:Registration:*
+registration|message|process_mini_direction|state:Registration:*
+registration|message|process_case_optin|state:Registration:*
 registration|callback_query|recall_keep|recall_keep:*
 registration|callback_query|recall_change|recall_change:*
 registration|callback_query|party_pick|party_pick:*
@@ -814,7 +818,11 @@ def test_snapshot_total_handler_count_is_292():
     # poll_wizard_cancel = два декоратора) в хвост admin.message, 15 callback (список/карточка
     # admin_polls + мастер admin_poll_wizard) в хвост admin.callback_query; чистый аппенд,
     # перепроверен прогоном _build_snapshot_lines() и diff'ом с прежним 334-строчным снапшотом.
-    assert len(GOLDEN_SNAPSHOT) == 454  # Phase 27-06 (LANG-05/09): +10 handlers/admin_i18n.py
+    assert len(GOLDEN_SNAPSHOT) == 458  # Phase 28 (28-02, SU-01/SU-04): +4
+    # handlers/reg_extra_steps.py (message process_mini_projects/process_mini_portfolio/
+    # process_mini_direction/process_case_optin), хвост message-блока registration.router
+    # (после menu_lang_open, перед первым callback_query recall_keep) — шов импортируется
+    # из хвоста registration.py сразу после reg_handoff (454 -> 458). Phase 27-06 (LANG-05/09): +10 handlers/admin_i18n.py
     # (message admin_i18n_edit_cancel/admin_i18n_edit_step, хвост message-блока
     # admin.router после afaq_text_step; callback_query admin_i18n_entry/admin_i18n_noop/
     # admin_i18n_list_page/admin_i18n_row/admin_i18n_edit_new_start/admin_i18n_edit_start/
