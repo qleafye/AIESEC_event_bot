@@ -579,7 +579,10 @@ async def draft_consent(
     valid_keys = {consent_key for _label, consent_key in await reg_engine.consent_entries()}
     if key not in valid_keys:
         raise HTTPException(400, {"reason": "bad_key"})
-    await record_user_consent(p.telegram_id, key)  # idempotent (INSERT OR IGNORE)
+    # Quick 260907-4ai: в вебе разметки кнопки на сервере нет — снимок берём из той же
+    # настройки, которой отрисована форма (см. строку ~189 этого же файла).
+    raw_button = await get_setting_typed("consent_button_text") or "Согласен(-на)"
+    await record_user_consent(p.telegram_id, key, raw_button=raw_button)  # idempotent (INSERT OR IGNORE)
     return {"ok": True, "key": key}
 
 

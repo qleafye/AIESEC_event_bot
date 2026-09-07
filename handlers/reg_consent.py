@@ -18,7 +18,7 @@ from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
 
 from database.db import get_setting, record_user_consent
 from settings_schema import get_setting_typed
-from services.consent import recollect_gate_on, outstanding_consents
+from services.consent import recollect_gate_on, outstanding_consents, tapped_button_text
 from handlers.registration import router, _consent_entries, _prompt
 # Phase 27 (27-05, LANG-02/LANG-09): say()/tr_for() переводят UI-обвязку экрана пересогласия
 # (интро/подтверждение/алерт) — САМ текст согласия (caption/PDF/кнопка) НЕ переводим нигде в
@@ -84,7 +84,10 @@ async def consent_renew_accept(callback: types.CallbackQuery):
         # Старая карточка в чате после выключения гейта / смены списка — просто гасим.
         await callback.answer()
         return
-    await record_user_consent(user_id, consent_key)  # новая строка аудита с текущей версией
+    # Quick 260907-4ai: снимок текста НАЖАТОЙ кнопки — читаем markup ДО edit_reply_markup
+    # ниже; фолбэк — та же настройка/литерал, что и в _send_renew_card.
+    raw_button = tapped_button_text(callback) or await get_setting("consent_button_text") or "Согласен(-на)"
+    await record_user_consent(user_id, consent_key, raw_button=raw_button)  # новая строка аудита с текущей версией
     await callback.answer(await reg_i18n.tr_for(callback, "✅ Принято"))
     try:
         await callback.message.edit_reply_markup(reply_markup=None)
