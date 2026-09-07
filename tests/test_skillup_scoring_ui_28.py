@@ -12,6 +12,10 @@
 части и node-подпроцесс (без jsdom, тот же приём, что `tests/test_settings_toggle_js.py`) для
 `form.js::settingSpec`/`multiControl`.
 
+Задача 3: сортировка очереди заявок по баллу — тумблер `apps_queue_sort_by_score`, SQL-
+сортировка в `database.db.get_pending_users(order_by_score=...)`, читают вызывающие
+(`services.applications.queue_page` и бот-очередь `admin_moderation._show_current_card`).
+
 pytest-asyncio в проекте не используется — асинхронщина через `asyncio.run()`, БД — временная
 (`config.DB_PATH = tmp_path / "..."` + `database.db.init_db()`), как в соседних тестах фазы.
 """
@@ -26,6 +30,8 @@ from pathlib import Path
 import pytest
 
 import handlers.admin_reg_scoring as admin_reg_scoring
+import services.applications as applications
+import settings_ops
 from config import config
 from database import db as bot_db
 from handlers.admin_caps import required_capability
@@ -453,3 +459,73 @@ def test_stale_value_marked_not_dropped_js(js_result):
     # Крестик убирает пропавший вариант из значения, оставляя валидные отмеченные.
     assert js_result["callsAfterRemove"] == [["Backend"]]
     assert js_result["staleRowCountAfterRemove"] == 0
+
+
+# ══════════════════════════════════════════════════════════════════════════════════════════
+# Задача 3: сортировка очереди заявок по баллу
+# ══════════════════════════════════════════════════════════════════════════════════════════
+
+def _seed_scored_user(tid, *, score=None, minute=0):
+    _run(bot_db.add_user({
+        "telegram_id": tid,
+        "full_name": f"Delegate {tid}",
+        "registration_date": f"2026-01-01 00:00:{minute:02d}",
+    }))
+    _run(bot_db.set_user_status(tid, "pending"))
+    if score is not None:
+        _run(_set_score(tid, score))
+
+
+async def _set_score(tid, score):
+    async with bot_db._connect() as conn:
+        await conn.execute("UPDATE users SET score = ? WHERE telegram_id = ?", (score, tid))
+        await conn.commit()
+
+
+def test_queue_default_order_unchanged(tmp_path):
+    _admin_ready(tmp_path, name="queue_score_order_default.db")
+    _seed_scored_user(1001, score=1, minute=0)
+    _seed_scored_user(1002, score=7, minute=1)
+    _seed_scored_user(1003, score=None, minute=2)
+    rows = _run(bot_db.get_pending_users(limit=10, offset=0))
+    assert [r["telegram_id"] for r in rows] == [1001, 1002, 1003]
+
+
+def test_queue_orders_by_score_when_on(tmp_path):
+    _admin_ready(tmp_path, name="queue_score_order_on.db")
+    _seed_scored_user(2001, score=1, minute=0)
+    _seed_scored_user(2002, score=7, minute=1)
+    _seed_scored_user(2003, score=4, minute=2)
+    rows = _run(bot_db.get_pending_users(limit=10, offset=0, order_by_score=True))
+    assert [r["telegram_id"] for r in rows] == [2002, 2003, 2001]
+
+
+def test_queue_without_score_goes_last(tmp_path):
+    _admin_ready(tmp_path, name="queue_score_order_null.db")
+    _seed_scored_user(3001, score=None, minute=0)
+    _seed_scored_user(3002, score=3, minute=1)
+    rows = _run(bot_db.get_pending_users(limit=10, offset=0, order_by_score=True))
+    assert [r["telegram_id"] for r in rows] == [3002, 3001]
+
+
+def test_toggle_reachable_in_both_surfaces():
+    assert "apps_queue_sort_by_score" in settings_ops.editable_keys()
+    assert settings_ops.TOGGLE_SECTION["apps_queue_sort_by_score"] == "apps"
+    from handlers.admin_sections import SECTIONS
+    apps_rows = next(rows for token, _label, rows in SECTIONS if token == "apps")
+    assert ("toggle", "toggle_apps_queue_sort_by_score") in apps_rows
+
+
+def test_queue_page_reads_toggle_from_registry(tmp_path):
+    _admin_ready(tmp_path, name="queue_page_toggle.db")
+    _seed_scored_user(4001, score=1, minute=0)
+    _seed_scored_user(4002, score=7, minute=1)
+
+    row_off, total_off = _run(applications.queue_page(scope=None, offset=0))
+    assert total_off == 2
+    assert row_off["telegram_id"] == 4001  # тумблер выключен — прежний порядок
+
+    _run(bot_db.set_setting("apps_queue_sort_by_score", "on"))
+    row_on, total_on = _run(applications.queue_page(scope=None, offset=0))
+    assert total_on == 2
+    assert row_on["telegram_id"] == 4002  # тумблер включён — высокий балл первым

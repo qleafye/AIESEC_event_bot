@@ -2268,18 +2268,30 @@ def _pending_where(city_scope, track, changed_only, *, city_column: str = "event
 
 
 async def get_pending_users(limit: int = 1, offset: int = 0, *, city_scope=None,
-                             track: str | None = None, changed_only: bool = False) -> list[dict]:
-    """Pending applications, oldest first (registration_date then telegram_id).
+                             track: str | None = None, changed_only: bool = False,
+                             order_by_score: bool = False) -> list[dict]:
+    """Pending applications, oldest first by default (registration_date then telegram_id).
 
     `track`/`changed_only` splice into the SAME WHERE as `city_scope` — SQL does the
     filtering, not a Python post-filter (T-23-04). Defaults keep bot call sites (which never
-    pass these kwargs) byte-identical to pre-Phase-23 behaviour."""
+    pass these kwargs) byte-identical to pre-Phase-23 behaviour.
+
+    Phase 28 (28-08, SU-08, T-23-04): `order_by_score=True` (тумблер `apps_queue_sort_by_score`,
+    читает вызывающий — сама функция в реестр не ходит) — сортирует SQL, не Python:
+    `score` убывает первым (`COALESCE(score, -1)` — заявка без балла уходит в конец, а не
+    смешивается с нулевым баллом), внутри одного балла порядок прежний (registration_date,
+    telegram_id). Default `False` — байт-в-байт прежний порядок."""
     extra, params = _pending_where(city_scope, track, changed_only)
+    order = (
+        "ORDER BY COALESCE(score, -1) DESC, registration_date ASC, telegram_id ASC"
+        if order_by_score
+        else "ORDER BY registration_date ASC, telegram_id ASC"
+    )
     async with _connect() as db:
         db.row_factory = aiosqlite.Row
         async with db.execute(
             f"SELECT * FROM users WHERE status = 'pending'{extra} "
-            "ORDER BY registration_date ASC, telegram_id ASC LIMIT ? OFFSET ?",
+            f"{order} LIMIT ? OFFSET ?",
             (*params, limit, offset),
         ) as cursor:
             return [dict(row) for row in await cursor.fetchall()]
