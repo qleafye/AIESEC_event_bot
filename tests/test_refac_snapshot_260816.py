@@ -755,6 +755,8 @@ registration|callback_query|reg_resume_restart|reg_resume:restart
 registration|callback_query|reg_resume_restart_yes|reg_resume:restart_yes
 registration|callback_query|reg_handoff_to_bot|reg_handoff:to_bot
 registration|callback_query|regfork_pick|regfork:*
+registration|callback_query|regamb_want|regamb:want
+registration|callback_query|regamb_later|regamb:later
 user_actions|message|show_my_coins|
 user_actions|message|show_leaderboard|
 user_actions|message|show_game_tasks|
@@ -818,7 +820,12 @@ def test_snapshot_total_handler_count_is_292():
     """Second, independent invariant besides content — a handler silently added/removed
     without touching this file's golden text (impossible for a normal edit, but this guards
     against a golden-string typo slipping past review) is caught by count alone."""
-    # Phase 28 (28-06, SU-05/SU-06/SU-07): +3 admin_settings.py callback_query
+    # Phase 28 (28-06, SU-05/SU-06/SU-07, задача 2): +2 handlers/reg_ambassador.py
+    # (callback_query regamb_want/regamb_later), хвост callback_query-блока
+    # registration.router, сразу после regfork_pick и перед user_actions.message
+    # show_my_coins — шов импортируется из хвоста registration.py сразу после
+    # reg_resume_fork (463 -> 465).
+    # Phase 28 (28-06, SU-05/SU-06/SU-07, задача 1): +3 admin_settings.py callback_query
     # (toggle_reg_skip_source_for_referred/toggle_reg_referrer_must_be_ambassador/
     # toggle_reg_offer_ref_link), встали сразу после toggle_delegate_lang_ask_on_start и перед
     # toggle_reg_edit_remoderation (460 -> 463).
@@ -827,7 +834,7 @@ def test_snapshot_total_handler_count_is_292():
     # poll_wizard_cancel = два декоратора) в хвост admin.message, 15 callback (список/карточка
     # admin_polls + мастер admin_poll_wizard) в хвост admin.callback_query; чистый аппенд,
     # перепроверен прогоном _build_snapshot_lines() и diff'ом с прежним 334-строчным снапшотом.
-    assert len(GOLDEN_SNAPSHOT) == 463  # Phase 28 (28-06, SU-05/SU-06/SU-07): +3
+    assert len(GOLDEN_SNAPSHOT) == 465  # Phase 28 (28-06, SU-05/SU-06/SU-07): +3, +2
     # handlers/reg_resume_fork.py — message process_resume_link (хвост message-блока
     # registration.router, сразу после process_case_optin и перед первым callback_query
     # recall_keep) + callback_query regfork_pick (хвост callback_query-блока

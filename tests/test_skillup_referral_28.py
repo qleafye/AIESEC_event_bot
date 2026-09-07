@@ -11,19 +11,22 @@ aiogram — тот же приём, что `tests/test_city_flow_phase71.py`/`te
 test_attribution_survives_city_pick_referrer) — `resolve_referrer` применяется ТОЛЬКО к
 новому `amb_`-формату (CONTEXT OQ-2).
 
-Задача 2 (шов `handlers/reg_ambassador.py`, финальный экран) добавляется отдельным коммитом
-в этот же файл — см. секцию «Задача 2» ниже, дописанную вместе с самим швом.
+Задача 2: шов `handlers/reg_ambassador.py` — второе сообщение-предложение после «поздравляем»
+(тумблер `reg_offer_ref_link`), «Хочу свою ссылку» ставит `is_ambassador=1` и шлёт голый URL
+третьим сообщением, «Позже» ничего не пишет.
 """
 import asyncio
 
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.storage.base import StorageKey
 from aiogram.fsm.storage.memory import MemoryStorage
+from aiogram.types import InlineKeyboardMarkup
 
 from config import config
 from database import db
 import reg_engine
 from handlers import registration as reg
+from handlers import reg_ambassador
 
 UID = 900806000
 
@@ -215,3 +218,98 @@ def test_referrer_must_be_ambassador_gate(tmp_path):
     plain_result, amb_result = asyncio.run(go())
     assert plain_result is None
     assert amb_result == amb_referrer
+
+
+# ══════════════════════════════════════════════════════════════════════════════════════════
+# Задача 2: финальный экран — «Хочу свою ссылку» / «Позже»
+# ══════════════════════════════════════════════════════════════════════════════════════════
+
+def test_offer_hidden_when_toggle_off(tmp_path):
+    _use_tmp_db(tmp_path)
+    uid = UID + 20
+
+    async def go():
+        msg = _FakeMessage(uid)
+        await reg_ambassador.offer_ref_link(msg, uid)
+        return msg
+
+    msg = asyncio.run(go())
+    assert not msg.sent
+
+
+def test_offer_shown_when_toggle_on(tmp_path):
+    _use_tmp_db(tmp_path)
+    uid = UID + 21
+
+    async def go():
+        await db.set_setting("reg_offer_ref_link", "on")
+        msg = _FakeMessage(uid)
+        await reg_ambassador.offer_ref_link(msg, uid)
+        return msg
+
+    msg = asyncio.run(go())
+    assert len(msg.sent) == 1
+    text, markup, _ = msg.sent[0]
+    assert isinstance(markup, InlineKeyboardMarkup)
+    datas = [btn.callback_data for row in markup.inline_keyboard for btn in row]
+    assert datas == ["regamb:want", "regamb:later"]
+
+
+def test_want_sets_is_ambassador_and_sends_bare_link(tmp_path):
+    _use_tmp_db(tmp_path)
+    uid = UID + 22
+
+    async def go():
+        await db.add_user({
+            "telegram_id": uid, "full_name": "Хочет Ссылку",
+            "registration_date": "2026-09-07",
+        })
+        callback = _FakeCallback("regamb:want", uid)
+        await reg_ambassador.regamb_want(callback)
+        user = await db.get_user(uid)
+        return callback, user
+
+    callback, user = asyncio.run(go())
+    assert user["is_ambassador"] == 1
+    assert not user.get("is_ambassador_candidate")
+    texts = _texts(callback.message)
+    assert len(texts) == 1
+    link_text, link_markup, parse_mode = callback.message.sent[0]
+    assert link_text == f"https://t.me/TestBot?start=amb_{uid}"
+    assert parse_mode is None
+    assert link_markup is None
+
+
+def test_later_writes_nothing(tmp_path):
+    _use_tmp_db(tmp_path)
+    uid = UID + 23
+
+    async def go():
+        await db.add_user({
+            "telegram_id": uid, "full_name": "Потом Решит",
+            "registration_date": "2026-09-07",
+        })
+        callback = _FakeCallback("regamb:later", uid)
+        await reg_ambassador.regamb_later(callback)
+        user = await db.get_user(uid)
+        return callback, user
+
+    callback, user = asyncio.run(go())
+    assert not user.get("is_ambassador")
+    assert not callback.message.sent, "«Позже» не шлёт новых сообщений — только гасит клавиатуру"
+
+
+def test_offer_failure_does_not_break_finalize(tmp_path):
+    """get_me() падает (бот без доступа к своему username) — offer_ref_link молча ничего не
+    шлёт, исключение наружу не улетает (сбой предложения не должен ронять заявку)."""
+    _use_tmp_db(tmp_path)
+    uid = UID + 24
+
+    async def go():
+        await db.set_setting("reg_offer_ref_link", "on")
+        msg = _FakeMessage(uid, bot=_FakeBot(fail=True))
+        await reg_ambassador.offer_ref_link(msg, uid)
+        return msg
+
+    msg = asyncio.run(go())
+    assert not msg.sent
