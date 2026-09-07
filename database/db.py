@@ -398,6 +398,12 @@ async def init_db():
                 "SELECT id, user_id, consent_key, accepted_at FROM user_consents_v1"
             )
             await db.execute("DROP TABLE user_consents_v1")
+        # Quick 260907-4ai: какой ИМЕННО текст был на кнопке в момент подписи — подпись
+        # (`consent_button_text`) редактируемая настройка, поэтому доказательством служит
+        # снимок текста, а не текущее значение настройки (которое могло смениться позже).
+        # Порядок важен: колонка добавляется ПОСЛЕ пересборки выше, иначе одноразовая
+        # пересборка её потеряет. Старые строки остаются NULL.
+        await _ensure_column(db, "user_consents", "raw_button", "TEXT")
         await db.execute('CREATE INDEX IF NOT EXISTS idx_consents_user ON user_consents(user_id)')
 
         # Phase 5 migrations (TRACK-01, D-01/D-02) — additive, idempotent, safe against ~590 live users
@@ -2775,19 +2781,22 @@ async def current_consent_version() -> str:
     return (raw or "").strip() or DEFAULT_CONSENT_VERSION
 
 
-async def record_user_consent(user_id: int, consent_key: str, consent_version: str | None = None):
+async def record_user_consent(
+    user_id: int, consent_key: str, consent_version: str | None = None, raw_button: str | None = None,
+):
     """Idempotent consent write — re-tapping «Принимаю» never raises (INSERT OR IGNORE).
     Quick 260822: пишет редакцию согласия на момент подписи (по умолчанию — текущая
     consent_version); повтор того же (user, key, version) дедупится, новая редакция — новая
-    строка."""
+    строка. Quick 260907-4ai: `raw_button` — снимок текста нажатой кнопки (не перечитывается
+    из настройки); опционален, старые вызовы без аргумента пишут NULL."""
     accepted_at = datetime.now().isoformat()
     if consent_version is None:
         consent_version = await current_consent_version()
     async with _connect() as db:
         await db.execute(
-            "INSERT OR IGNORE INTO user_consents (user_id, consent_key, accepted_at, consent_version) "
-            "VALUES (?, ?, ?, ?)",
-            (user_id, consent_key, accepted_at, consent_version),
+            "INSERT OR IGNORE INTO user_consents (user_id, consent_key, accepted_at, consent_version, raw_button) "
+            "VALUES (?, ?, ?, ?, ?)",
+            (user_id, consent_key, accepted_at, consent_version, raw_button),
         )
         await db.commit()
 

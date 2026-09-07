@@ -65,6 +65,28 @@ async def recollect_gate_on() -> bool:
     )
 
 
+def tapped_button_text(callback) -> str | None:
+    """Текст САМОЙ НАЖАТОЙ inline-кнопки (не текущее значение настройки `consent_button_text`)
+    — доказательство «что именно подписал делегат», а не «что написано на кнопке сейчас».
+    Подпись — редактируемая настройка и могла смениться между показом карточки и нажатием;
+    снимок из разметки сообщения на момент тапа единственный источник правды.
+
+    Утиный обход без импорта aiogram (модуль обязан оставаться свободным от него — его тянет
+    и веб-процесс): любая нестыковка структуры (нет message/markup/кнопки, битый объект) —
+    None, никогда не бросает."""
+    try:
+        message = getattr(callback, "message", None)
+        markup = getattr(message, "reply_markup", None)
+        rows = getattr(markup, "inline_keyboard", None) or []
+        for row in rows:
+            for btn in row:
+                if getattr(btn, "callback_data", None) == callback.data:
+                    return btn.text
+        return None
+    except Exception:  # noqa: BLE001 — чистый помощник, никогда не бросает
+        return None
+
+
 async def outstanding_consents(
     user_id: int, entries: list[tuple[str, str]]
 ) -> list[tuple[str, str]]:
