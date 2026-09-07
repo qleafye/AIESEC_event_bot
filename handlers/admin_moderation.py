@@ -49,6 +49,8 @@ from services.applications import (
     format_edited_date as _format_edited_date,
     edit_badges_for as _edit_badges_for,
     prev_reject_line as _prev_reject_line,
+    score_badge_text as _score_badge_text,
+    IT_3PLUS_BADGE_TEXT as _IT_3PLUS_BADGE_TEXT,
 )
 from services.application_effects import apply_decision_effects, mass_approve_effects
 from services.background import spawn as _spawn
@@ -86,7 +88,7 @@ def _parse_appr(data: str) -> tuple[str, int | None]:
     return data, None
 
 
-def _render_application_card(user: dict, position: int, total: int, city_label_text: str | None = None, consent_line: str | None = None, edited_line: str | None = None, resubmit_line: str | None = None, prev_reject_line: str | None = None, fields: list[tuple[str, str]] | None = None, show_resume: bool = True) -> str:
+def _render_application_card(user: dict, position: int, total: int, city_label_text: str | None = None, consent_line: str | None = None, edited_line: str | None = None, resubmit_line: str | None = None, prev_reject_line: str | None = None, fields: list[tuple[str, str]] | None = None, show_resume: bool = True, scoring_enabled: bool = False) -> str:
     """HTML card for one pending application; all free-text escaped. `city_label_text` (Phase
     07.2, CITY-02) appends «· 🏙 {label}» to the header when an admin city is selected; None
     keeps the header byte-identical to the pre-CITY-02 line (module off / no city chosen).
@@ -100,7 +102,11 @@ def _render_application_card(user: dict, position: int, total: int, city_label_t
     анкеты по выбору менеджера (реестр `modcard_fields`); `None` (все старые вызовы) печатает
     ни одной строки вопроса — карточка байт-совместима с версией до этой правки. Шесть
     захардкоженных полей (образование/город/лок.комитет/позиция/аламни/возраст) заменены этим
-    циклом; резюме — отдельный блок ниже, гасится целиком только `show_resume=False`."""
+    циклом; резюме — отдельный блок ниже, гасится целиком только `show_resume=False`.
+    Phase 28 (28-07, SU-08): `scoring_enabled` — пред-резолвлен вызывающим (`_show_current_card`,
+    `get_setting_typed("reg_scoring_enabled")`), функция остаётся ЧИСТЫМ рендерером без похода
+    в БД/реестр; при `False` (дефолт) строка балла не печатается вовсе — байт-в-байт прежняя
+    карточка на событиях без включённого скоринга (D-06)."""
     def esc(v):
         return html_module.escape(str(v)) if v not in (None, "", "-") else None
 
@@ -131,6 +137,17 @@ def _render_application_card(user: dict, position: int, total: int, city_label_t
             lines.append("🔁 Повторный: был(а) на прошлом событии")
         else:
             lines.append(f"🔁 Повторный: был(а) в {html_module.escape(prev_season_raw)}")
+    # Phase 28 (28-07, SU-08): балл/IT 3+ — СРАЗУ после трека/повторного сезона, ДО построчных
+    # ответов анкеты (28-UI-SPEC §7, тот же порядок приоритета, что в карточке Mini App).
+    # Гейт — `scoring_enabled` (пред-резолвлен вызывающим) И непустой `score`; текст —
+    # `score_badge_text`, та же константа-шаблон, что у карточки Mini App (D-09 паритет).
+    if scoring_enabled:
+        score = user.get("score")
+        if score is not None:
+            score_line = f"🧮 {_score_badge_text(score)}"
+            if user.get("is_it_3plus"):
+                score_line += f" · {_IT_3PLUS_BADGE_TEXT}"
+            lines.append(score_line)
     # Quick 260902-tzh: ответы анкеты по выбору менеджера (реестр modcard_fields) — единая
     # схема (moderation_card.card_answers), не девять захардкоженных полей.
     for label, value in fields or []:
@@ -240,6 +257,9 @@ async def _show_current_card(target: types.Message, state: FSMContext):
     steps = moderation_card.enabled_steps(await get_setting_typed("modcard_fields"))
     answer_limit = await get_setting_typed("modcard_answer_limit")
     fields = moderation_card.card_answers(current, [s for s in steps if s != "resume"], answer_limit)
+    # Phase 28 (28-07, SU-08): резолвлен здесь (в async-контексте) и передан значением —
+    # _render_application_card остаётся чистым рендерером без похода в реестр.
+    scoring_enabled = bool(await get_setting_typed("reg_scoring_enabled"))
     card_text, overflow = moderation_card.fit_card(
         _render_application_card(
             current, position, total, city_label_text=card_label,
@@ -247,6 +267,7 @@ async def _show_current_card(target: types.Message, state: FSMContext):
             edited_line=edited_line, resubmit_line=resubmit_line,
             prev_reject_line=prev_reject,
             fields=fields, show_resume=("resume" in steps),
+            scoring_enabled=scoring_enabled,
         )
     )
     await target.answer(
