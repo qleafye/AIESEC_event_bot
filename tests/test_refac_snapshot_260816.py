@@ -439,6 +439,7 @@ admin|callback_query|toggle_reg_skip_source_for_referred|toggle_reg_skip_source_
 admin|callback_query|toggle_reg_referrer_must_be_ambassador|toggle_reg_referrer_must_be_ambassador
 admin|callback_query|toggle_reg_offer_ref_link|toggle_reg_offer_ref_link
 admin|callback_query|toggle_reg_scoring_enabled|toggle_reg_scoring_enabled
+admin|callback_query|toggle_apps_queue_sort_by_score|toggle_apps_queue_sort_by_score
 admin|callback_query|toggle_reg_edit_remoderation|toggle_reg_edit_remoderation
 admin|callback_query|toggle_payment_reminders|toggle_payment_reminders
 admin|callback_query|toggle_uni_mode|toggle_uni_mode
@@ -829,7 +830,9 @@ def test_snapshot_total_handler_count_is_292():
     # Phase 28 (28-08, SU-08, задача 1): +5 handlers/admin_reg_scoring.py callback_query
     # (admin_reg_scoring/scoring_toggle/scoring_drop/scoring_limit/scoring_noop), шов
     # импортируется из хвоста admin_moderation.py сразу после admin_modcard и перед
-    # show_admin_settings_guide (466 -> 471).
+    # show_admin_settings_guide (466 -> 471); (28-08, SU-08, задача 3): +1 admin_settings.py
+    # callback_query toggle_apps_queue_sort_by_score, встал сразу после
+    # toggle_reg_scoring_enabled и перед toggle_reg_edit_remoderation (471 -> 472).
     # Phase 28 (28-07, SU-08, задача 3): +1 admin_settings.py callback_query
     # toggle_reg_scoring_enabled, встал сразу после toggle_reg_offer_ref_link и перед
     # toggle_reg_edit_remoderation (465 -> 466).
@@ -847,7 +850,7 @@ def test_snapshot_total_handler_count_is_292():
     # poll_wizard_cancel = два декоратора) в хвост admin.message, 15 callback (список/карточка
     # admin_polls + мастер admin_poll_wizard) в хвост admin.callback_query; чистый аппенд,
     # перепроверен прогоном _build_snapshot_lines() и diff'ом с прежним 334-строчным снапшотом.
-    assert len(GOLDEN_SNAPSHOT) == 471  # Phase 28 (28-08 задача 1): +5; (28-07): +1; (28-06): +3, +2
+    assert len(GOLDEN_SNAPSHOT) == 472  # Phase 28 (28-08): +5, +1; (28-07): +1; (28-06): +3, +2
     # handlers/reg_resume_fork.py — message process_resume_link (хвост message-блока
     # registration.router, сразу после process_case_optin и перед первым callback_query
     # recall_keep) + callback_query regfork_pick (хвост callback_query-блока

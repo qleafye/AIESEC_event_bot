@@ -256,12 +256,18 @@ async def queue_page(*, scope, offset: int = 0, track: str | None = None,
                       changed_only: bool = False) -> tuple[dict | None, int]:
     """Одна карточка очереди + общий счётчик — СЧЁТЧИК И ВЫБОРКА идут по ОДНОМУ набору
     фильтров (T-23-04), иначе «Осталось: N» врёт. `None` в первом элементе — очередь пуста
-    на этом offset (конец очереди или пустой скоуп)."""
+    на этом offset (конец очереди или пустой скоуп).
+
+    Phase 28 (28-08, SU-08): тумблер `apps_queue_sort_by_score` читается ЗДЕСЬ (вызывающий),
+    не в `database.db.get_pending_users` — та в реестр не ходит. Счётчик от порядка не
+    зависит, второго похода в реестр для него не нужно."""
     total = await get_pending_count(city_scope=scope, track=track, changed_only=changed_only)
     if total == 0 or offset >= total:
         return None, total
+    order_by_score = await get_setting_typed("apps_queue_sort_by_score") == "on"
     rows = await get_pending_users(
         limit=1, offset=offset, city_scope=scope, track=track, changed_only=changed_only,
+        order_by_score=order_by_score,
     )
     return (rows[0] if rows else None), total
 
