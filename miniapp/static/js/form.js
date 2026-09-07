@@ -183,6 +183,41 @@ function multiControl(h, spec, value, onChange) {
   renderCounter();
   renderDisabled();
 
+  // Phase 28 (28-08, SU-08, 28-UI-SPEC §8): подписи, отмеченные РАНЬШЕ и отсутствующие в
+  // текущем `spec.options` (набор вариантов вопроса поменялся — `options_from_step`), не
+  // выбрасываются молча: отдельная строка-чип с пометкой сервера (`spec.stale_option_text`,
+  // D-13 — во фронте своего текста нет) и крестиком. Список стабилен на сессию редактирования
+  // (обычные `multi` его не заполняют вовсе — сервер уже фильтрует закрытый набор).
+  const staleList = Array.isArray(spec.stale_options) ? [...spec.stale_options] : [];
+  let staleNodes = [];
+  if (staleList.length) {
+    function renderStale() {
+      for (const node of staleNodes) if (node.remove) node.remove();
+      staleNodes = [];
+      for (const label of staleList) {
+        if (!chosen.has(label)) continue;
+        const removeBtn = h("button", {
+          class: "chip-remove", type: "button", "aria-label": label,
+          onClick: () => {
+            chosen.delete(label);
+            const idx = staleList.indexOf(label);
+            if (idx !== -1) staleList.splice(idx, 1);
+            renderStale();
+            onChange(Array.from(chosen));
+          },
+        }, icon("x"));
+        const row = h("label", { class: "check is-stale" },
+          h("span", { text: label }),
+          h("span", { class: "label-role", text: spec.stale_option_text || "" }),
+          removeBtn,
+        );
+        staleNodes.push(row);
+        box.append(row);
+      }
+    }
+    renderStale();
+  }
+
   if (!counter) return box;
   return h("div", { class: "multi-control" }, counter, box);
 }
@@ -723,12 +758,19 @@ export function settingSpec(item) {
     case "toggle":
     case "photo":
     case "file":
-    case "list":
     // Quick 260906-6xe: сервер отдаёт закрытый набор `multi` ПОДПИСЯМИ (options/value/
     // default — уже человеческий текст, кодов шагов JS не видит и не собирает, CLAUDE.md).
     // buildControl уже умеет case "multi" (multiControl — те же чекбоксы, что у анкеты).
     case "multi":
       spec.type = it.type;
+      break;
+    case "list":
+      // Phase 28 (28-08, SU-08, A5, 28-UI-SPEC §8): `list` с атрибутом `options_from_step`
+      // (динамический набор — актуальные подписи резолвит сервер в `options`) рисуется
+      // ТЕМИ ЖЕ чекбокс-строками, что закрытый `multi` (`multiControl`), не текстовым полем
+      // списка — компонент один, источник вариантов новый. Обычный `list` (без атрибута —
+      // *_options и т.п.) не меняется ни на байт.
+      spec.type = it.options_from_step ? "multi" : "list";
       break;
     default:
       break;
@@ -741,6 +783,10 @@ export function settingSpec(item) {
     spec.text_allowed = false;
   }
   if (spec.type === "list") spec.placeholder = it.placeholder;
+  if (spec.type === "multi") {
+    spec.stale_options = it.stale_options;
+    spec.stale_option_text = it.stale_option_text;
+  }
   return spec;
 }
 
