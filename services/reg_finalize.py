@@ -71,6 +71,26 @@ from settings_schema import get_setting_typed
 logger = logging.getLogger(__name__)
 
 
+async def _resume_field_patch(resume_type_val, resume_link_val) -> dict:
+    """Phase 28 (28-04, SU-04): пересчитывает `resume_type`/`link_verified` для узкого UPDATE
+    после `add_user` (эталон — `source_from_tag` выше, `resume_url` в `post_finalize` ниже) —
+    большой INSERT не трогаем (RESEARCH Anti-Pattern). `link_verified` — ВСЕГДА серверный
+    расчёт по актуальному вайтлисту (T-28-04-01): присланное клиентом значение НИКОГДА не
+    участвует, эта функция его даже не принимает на вход."""
+    patch: dict = {}
+    if resume_type_val not in (None, ""):
+        patch["resume_type"] = resume_type_val
+    if resume_link_val not in (None, "", "-"):
+        whitelist = await reg_engine.resume_link_whitelist()
+        _, verified, _ = reg_engine.validate_resume_link(resume_link_val, whitelist)
+        patch["link_verified"] = 1 if verified else 0
+    elif resume_type_val == "link":
+        # Развилка привела на R2b, но ссылки почему-то нет (edit стёр её пустым патчем) —
+        # признак «проверено» не может пережить саму ссылку.
+        patch["link_verified"] = 0
+    return patch
+
+
 async def finalize_data(telegram_id: int, username: str | None, draft: dict) -> dict:
     """Синхронная (в смысле «сразу», не «эффекты потом») часть финала — вызывается ПОСЛЕ
     `database.db.claim_reg_draft`. `draft` — строка `reg_drafts` (или псевдо-черновик,
@@ -154,6 +174,21 @@ async def finalize_data(telegram_id: int, username: str | None, draft: dict) -> 
                     await set_user_status(telegram_id, status)
             # Пустой diff (D-14): истории нет, edited_at не выставлен, статус не трогаем —
             # правка без фактических изменений — не событие.
+
+            # Phase 28 (28-04, SU-04): resume_type/link_verified — производные поля, не
+            # входят в `answer_columns()`/`diff()` (комментарий 28-01: сознательно НЕ в
+            # add_user INSERT), поэтому пересчитываются здесь отдельно, а не через `patch`
+            # выше. Гейт по присутствию ключа в самом патче правки (не в `changes`) — правка,
+            # не тронувшая развилку резюме, не должна слать лишний UPDATE (дух D-14).
+            if "resume_type" in raw_answers or "resume_link" in raw_answers:
+                resume_type_val = raw_answers.get("resume_type", old.get("resume_type"))
+                resume_link_val = answers.get("resume_link")
+                resume_patch = await _resume_field_patch(resume_type_val, resume_link_val)
+                if resume_patch:
+                    await update_user_answers(
+                        telegram_id, resume_patch,
+                        allowed_columns=["resume_type", "link_verified"],
+                    )
         else:
             answers = reg_engine.with_defaults(raw_answers)
             data = dict(answers)
@@ -193,6 +228,15 @@ async def finalize_data(telegram_id: int, username: str | None, draft: dict) -> 
             if (draft.get("meta") or {}).get("source_from_tag"):
                 await update_user_answers(
                     telegram_id, {"source_from_tag": 1}, allowed_columns=["source_from_tag"]
+                )
+
+            # Phase 28 (28-04, SU-04): resume_type/link_verified — узкий UPDATE, тот же приём.
+            resume_patch = await _resume_field_patch(
+                data.get("resume_type"), data.get("resume_link")
+            )
+            if resume_patch:
+                await update_user_answers(
+                    telegram_id, resume_patch, allowed_columns=["resume_type", "link_verified"]
                 )
 
             reg_mode = await get_setting_typed("registration_mode")

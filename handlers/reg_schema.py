@@ -227,6 +227,11 @@ def _status_label(data: dict) -> str:
     return STATUS_LABELS.get(data.get("status") or "pending", "Новая")
 
 
+# Phase 28 (28-04, SU-04): человеческие слова способа резюме в листе — код `resume_type`
+# делегату/менеджеру в таблице не показываем (D-02).
+_RESUME_TYPE_SHEET_LABELS = {"file": "Файл", "link": "Ссылка", "mini": "Мини-профиль"}
+
+
 # Google Sheet columns: (header, gate_setting_or_None, value_fn). gate=None → always
 # written (identity/system columns). gate=reg_q_* → column appears only when that question
 # is enabled, so the sheet width tracks the active preset instead of always being 44 wide.
@@ -264,6 +269,13 @@ SHEET_COLUMNS = [
     ("Амбассадор", "reg_q_ambassador", lambda d: "Да" if d.get("is_ambassador_candidate") else "-"),
     ("Резюме (текст)", "reg_q_resume", lambda d: d.get("resume_text") or "-"),
     ("Резюме (ссылка)", "reg_q_resume", lambda d: d.get("resume_url") or "-"),
+    # Phase 28 (28-04, SU-04, СкиллАп 5): развилка резюме — способ и признак проверенного
+    # домена, человеческие слова (D-02); gate reg_q_resume — тот же тумблер, что у вопроса.
+    (
+        "Способ резюме", "reg_q_resume",
+        lambda d: _RESUME_TYPE_SHEET_LABELS.get(d.get("resume_type"), "-"),
+    ),
+    ("Ссылка проверена", "reg_q_resume", lambda d: "Да" if d.get("link_verified") else "-"),
     # Phase 28 (28-01, SU-04, СкиллАп 5) — развилка резюме R2b/R2c, свои gate-тумблеры.
     ("Резюме (ссылка на профиль)", "reg_q_resume_link", lambda d: d.get("resume_link") or "-"),
     ("Проекты", "reg_q_mini_projects", lambda d: d.get("mini_projects") or "-"),
