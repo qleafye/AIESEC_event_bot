@@ -313,6 +313,45 @@ def test_extract_resume_arg_not_event_city():
     assert reg._extract_resume_arg("city_spb") is None
 
 
+# ── Phase 28 (28-06, SU-05, A-05 CONTEXT): _extract_ambassador_ref ("amb_<digits>") joins the
+# SAME closed exact-match vocabulary as the six extractors above — mutually exclusive with all
+# of them and vice versa, same proof shape as _extract_resume_arg's matrix above.
+
+def test_extract_ambassador_ref_basic():
+    assert reg._extract_ambassador_ref("amb_123456", 1) == 123456
+    assert reg._extract_ambassador_ref("amb_123456", 123456) is None  # сам себя — игнор
+    assert reg._extract_ambassador_ref(None, 1) is None
+    assert reg._extract_ambassador_ref("amb_", 1) is None
+    assert reg._extract_ambassador_ref("amb_abc", 1) is None
+
+
+def test_mutual_exclusivity_ambassador_ref_not_numeric_referrer():
+    assert reg._extract_referrer_id("amb_123456", 1) is None
+    assert reg._extract_ambassador_ref("123456", 1) is None
+
+
+def test_mutual_exclusivity_ambassador_ref_not_source_tag():
+    assert reg._extract_source_tag("amb_123456") is None
+    assert reg._extract_ambassador_ref("src_vk", 1) is None
+
+
+def test_mutual_exclusivity_ambassador_ref_not_party_track():
+    assert reg._extract_party_track("amb_123456") is None
+    assert reg._extract_ambassador_ref("party_over", 1) is None
+    assert reg._extract_ambassador_ref("party_noover", 1) is None
+
+
+def test_mutual_exclusivity_ambassador_ref_not_event_city():
+    assert reg._extract_event_city("amb_123456") is None
+    assert reg._extract_ambassador_ref("city_spb", 1) is None
+
+
+def test_mutual_exclusivity_ambassador_ref_not_resume_arg():
+    assert reg._extract_resume_arg("amb_123456") is None
+    assert reg._extract_ambassador_ref("continue", 1) is None
+    assert reg._extract_ambassador_ref("edit", 1) is None
+
+
 def test_event_city_enabled_default_off(tmp_path):
     _use_tmp_db(tmp_path)
 

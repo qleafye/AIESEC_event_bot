@@ -156,6 +156,8 @@ from reg_engine import (
     # Phase 28 (28-05, SU-04): режим приёма резюме — ветка «resume» ниже решает, показывать ли
     # развилку (шов reg_resume_fork) или прежний экран файл/текст (D-06 byte-for-byte).
     resume_mode,
+    # Phase 28 (28-06, SU-05): шестой деп-линк-формат + проверка реферера (общая для обоих).
+    extract_ambassador_ref as _extract_ambassador_ref, resolve_referrer,
 )
 _get_enabled_steps = enabled_steps
 _get_options = option_list_for
@@ -1774,7 +1776,18 @@ async def cmd_start(message: types.Message, state: FSMContext, bot: Bot, command
 
     # user already fetched above (ME-05 gate bypass); do not re-query.
     # args/dl_event_city/source_tag already resolved above (hoisted for the "start" funnel write).
+    # Phase 28 (28-06, SU-05): amb_<id> — второй, именованный формат того же referrer_id;
+    # взаимоисключим с пятью остальными деп-линк-форматами по построению (см. docstring
+    # extract_ambassador_ref). Числовой формат — БЕЗ проверки существования, D-06 byte-for-byte
+    # (tests/test_city_flow_phase71.py::test_attribution_survives_city_pick_referrer);
+    # `resolve_referrer` (существование + опциональный гейт «только амбассадоры») применяется
+    # ТОЛЬКО к новому amb_-формату — CONTEXT OQ-2 говорит именно про него, про числовой такого
+    # условия нет («реферер по amb_<id> засчитывается, если зарегистрирован»).
     referrer_id = _extract_referrer_id(args, user_id)
+    if not referrer_id:
+        amb_referrer_id = _extract_ambassador_ref(args, user_id)
+        if amb_referrer_id:
+            referrer_id = await resolve_referrer(amb_referrer_id)
     party_track = _extract_party_track(args)          # Phase 5 (D-10)
     dl_party_track = party_track  # preserved for the fork-suppression check below (D-10)
     if referrer_id:

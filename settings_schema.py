@@ -1665,6 +1665,21 @@ SETTINGS_SCHEMA = {
         "options": ["file_or_text", "text_only", "fork"], "prompt": None,
         "default": "file_or_text", "per_city": True,
     },
+    # Phase 28 (28-06, SU-05/SU-06/SU-07): три тумблера реф-механики СкиллАпа — все дефолт off
+    # (D-06: YL/РилТолк байт-в-байт, пресет «СкиллАп» включает нужные).
+    "reg_skip_source_for_referred": {
+        "type": "enum", "group": "toggles",
+        "label": "🔗 Не спрашивать «Откуда узнал» у пришедших по ссылке",
+        "options": ["on", "off"], "prompt": None, "default": "off",
+    },
+    "reg_referrer_must_be_ambassador": {
+        "type": "enum", "group": "toggles", "label": "🧡 Засчитывать только амбассадоров",
+        "options": ["on", "off"], "prompt": None, "default": "off",
+    },
+    "reg_offer_ref_link": {
+        "type": "enum", "group": "toggles", "label": "🎁 Предлагать свою ссылку после анкеты",
+        "options": ["on", "off"], "prompt": None, "default": "off",
+    },
     "registration_mode": {
         "type": "enum", "group": "toggles", "label": "📝 Форма регистрации",
         "options": ["short", "full"], "prompt": None, "default": "short",
@@ -3481,6 +3496,50 @@ SETTINGS_SCHEMA = {
         "type": "text", "group": "miniapp", "label": "🧩 Матрица вопросов: колонка «Краткая»",
         "prompt": "Заголовок колонки краткой формы регистрации в матрице вопросов анкеты.",
         "default": "Короткая",
+    },
+
+    # ── Phase 28 (28-06, SU-07): финальный экран — блок «Хочу свою ссылку»/«Позже» (тумблер
+    # reg_offer_ref_link, группа toggles, дефолт off). Own group "miniapp" — те же причины, что
+    # у соседей выше (dashboard_block_*/miniapp_hub_*): самоописательные подписи для поиска,
+    # синонимы не требуются (tests/test_settings_synonyms.py, SEARCH_SELF_DESCRIBING). Дефолты —
+    # дословно из «Copywriting Contract» 28-UI-SPEC.md, бренд «АЙСЕК» кириллицей (D-07). Ссылка
+    # (`https://t.me/<bot>?start=amb_<id>`) НЕ заводит свой ключ — по решению владельца это
+    # единственный «сырой URL без обёрточного текста» (OQ-1).
+    "miniapp_form_ambassador_offer_heading_text": {
+        "type": "text", "group": "miniapp", "label": "🎁 Заголовок предложения реф-ссылки",
+        "prompt": "Заголовок блока-предложения на финальном экране анкеты (бот и приложение).",
+        "default": "Приводите друзей в АЙСЕК", "per_city": True,
+    },
+    "miniapp_form_ambassador_offer_body_text": {
+        "type": "text", "group": "miniapp", "label": "🎁 Текст предложения реф-ссылки",
+        "prompt": "Текст под заголовком того же блока-предложения.",
+        "default": "Каждый, кто зарегистрируется по вашей ссылке, попадёт на СкиллАп 5 через вас.",
+        "per_city": True,
+    },
+    "miniapp_form_ambassador_cta_text": {
+        "type": "text", "group": "miniapp", "label": "🎁 Кнопка «Хочу свою ссылку»",
+        "prompt": "Подпись кнопки-согласия на финальном экране (бот и приложение).",
+        "default": "Хочу свою ссылку",
+    },
+    "miniapp_form_ambassador_later_text": {
+        "type": "text", "group": "miniapp", "label": "🎁 Кнопка «Позже»",
+        "prompt": "Подпись кнопки-отказа на финальном экране (бот и приложение).",
+        "default": "Позже",
+    },
+    "miniapp_form_ambassador_link_heading_text": {
+        "type": "text", "group": "miniapp", "label": "🎁 Заголовок «Ваша ссылка»",
+        "prompt": "Заголовок блока со ссылкой после тапа «Хочу свою ссылку» (только приложение).",
+        "default": "Ваша ссылка",
+    },
+    "miniapp_form_ambassador_copy_button_text": {
+        "type": "text", "group": "miniapp", "label": "🎁 Кнопка «Скопировать»",
+        "prompt": "Подпись кнопки копирования ссылки (только приложение).",
+        "default": "Скопировать",
+    },
+    "miniapp_form_ambassador_copied_toast_text": {
+        "type": "text", "group": "miniapp", "label": "🎁 Подтверждение «Скопировано»",
+        "prompt": "Краткое подтверждение рядом с кнопкой «Скопировать» (только приложение).",
+        "default": "Скопировано",
     },
 
     # ── Quick 260902-tzh: «🧾 Поля карточки заявки» — какие ответы анкеты показывать

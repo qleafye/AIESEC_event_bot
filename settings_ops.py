@@ -304,6 +304,11 @@ TOGGLE_SECTION: dict[str, str] = {
     # «📝 Анкета» в admin_sections.SECTIONS.
     "delegate_lang_enabled": "form",
     "delegate_lang_ask_on_start": "form",
+    # Phase 28 (28-06, SU-05/SU-06/SU-07): реф-механика СкиллАпа — строки ("toggle", …)
+    # раздела «📝 Анкета» в admin_sections.SECTIONS.
+    "reg_skip_source_for_referred": "form",
+    "reg_referrer_must_be_ambassador": "form",
+    "reg_offer_ref_link": "form",
 }
 
 # Единственный источник «что подтверждаем» для ОБЕИХ поверхностей (UI-SPEC A6): вкладки

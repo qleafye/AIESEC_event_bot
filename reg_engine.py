@@ -34,7 +34,7 @@ from datetime import datetime
 from urllib.parse import urlparse
 
 from config import config
-from database.db import get_setting
+from database.db import get_setting, get_user
 from settings_schema import SETTINGS_SCHEMA, get_setting_typed
 from cities import (
     ALL_CITIES, cities_module_on, city_codes, city_label, enabled_cities,
@@ -479,12 +479,18 @@ async def enabled_steps(data: dict, city_code: str | None = None) -> list[str]:
     resume_type = data.get("resume_type")
     participant_type = data.get("participant_type") or "full"
     city = city_code if city_code is not None else data.get("event_city")
+    # Phase 28 (28-06, SU-06): пропуск «Источника» у пришедших по реф-ссылке (`amb_<id>`/
+    # числовой формат — обоим уже дан один и тот же `referrer_id`) — дефолт off (YL/РилТолк
+    # байт-в-байт), `source` при этом уже получает «Реферальная ссылка» из `with_defaults`.
+    skip_source_for_referred = await get_setting_typed("reg_skip_source_for_referred") == "on"
     for step_key, setting_key, *_rest in REG_FLOW:
         if not await is_step_enabled_for_track(setting_key, participant_type, city):
             continue
         if step_key == "informal_day" and data.get("attendance_format") == "Online":
             continue
         if step_key == "source" and data.get("_source_from_tag"):
+            continue
+        if step_key == "source" and skip_source_for_referred and data.get("referrer_id"):
             continue
         if step_key == "housing" and "arrival" in data and data.get("arrival") != "Заранее":
             continue
@@ -881,6 +887,46 @@ PARTY_TRACK_CODES = ("full", "party_overnight", "party_noovernight")
 CITY_CHOICE_INVALID_TEXT = "Некорректный выбор."
 CITY_CLOSED_TEXT = "Регистрация на этот город закрыта."
 PARTY_CLOSED_TEXT = "Регистрация на вечеринку уже закрыта."
+
+
+# ── Amb деп-линк (Phase 28, 28-06, SU-05/SU-06/SU-07) ───────────────────────────────────────
+# Шестой экстрактор — та же строгость, что `handlers.registration._extract_referrer_id`
+# (ASCII-цифры, «сам себя» -> None), но свой префикс "amb_" делает его exact-match
+# взаимоисключающим с числовым referrer_id/"src_"-тегом/party-токенами/"city_"-токенами/
+# "continue"/"edit" (A-05 CONTEXT, тест-матрица tests/test_cities_phase71.py). Живёт здесь,
+# рядом с PARTY_TAG_MAP/_city_tag_map-соседями (handlers/registration.py) — тем же движком,
+# что уже обслуживает и бот, и Mini App.
+def extract_ambassador_ref(command_args: str | None, current_user_id: int) -> int | None:
+    if not command_args:
+        return None
+    arg = command_args.strip()
+    if not (arg.startswith("amb_") and len(arg) > 4):
+        return None
+    digits = arg[4:]
+    if not (digits.isascii() and digits.isdigit()):
+        return None
+    referrer_id = int(digits)
+    if referrer_id == current_user_id:
+        return None
+    return referrer_id
+
+
+async def resolve_referrer(referrer_id: int | None) -> int | None:
+    """SU-05/SU-07 (T-28-06-01/05): реферер обязан реально существовать в `users` —
+    несуществующий/незарегистрированный id идёт по ОБЫЧНОМУ пути без единого сообщения об
+    ошибке делегату (ТЗ §3.2: «реферер не найден -> обычный путь»). Тумблер
+    `reg_referrer_must_be_ambassador` (дефолт off) ужесточает проверку до `is_ambassador OR
+    is_ambassador_candidate` (OQ-2: разная семантика — «стал амбассадором кнопкой после
+    анкеты» и «ответил "да" на вопрос-шаг анкеты внутри неё»; любое из двух засчитывается)."""
+    if not referrer_id:
+        return None
+    user = await get_user(referrer_id)
+    if not user:
+        return None
+    if await get_setting_typed("reg_referrer_must_be_ambassador") == "on":
+        if not (user.get("is_ambassador") or user.get("is_ambassador_candidate")):
+            return None
+    return referrer_id
 
 
 async def resolve_track(candidate: str | None, city_code: str | None = None) -> str:
