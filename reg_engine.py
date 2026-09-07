@@ -66,12 +66,26 @@ REG_FLOW = [
     ("course", "reg_q_course", "text"),
     ("university", "reg_q_university", "text"),
     ("study_field", "reg_q_study_field", "select"),
+    # Phase 28 (28-01, SU-01, СкиллАп 5): стек/опыт/готовность — default OFF, тумблеры
+    # reg_q_stack/reg_q_experience/reg_q_readiness. Место в потоке — сразу после «Направление
+    # обучения», как задано планом; у выключенных шагов порядок ни на что не влияет (D-06).
+    ("stack", "reg_q_stack", "multi"),
+    ("experience", "reg_q_experience", "select"),
+    ("readiness", "reg_q_readiness", "select"),
     ("goal", "reg_q_goal", "multi"),
     ("formats", "reg_q_formats", "multi"),
     ("expectations", "reg_q_expectations", "text"),
     ("source", "reg_q_source", "text"),
     ("ambassador", "reg_q_ambassador", "ambassador"),
     ("resume", "reg_q_resume", "text"),
+    # Phase 28 (28-01, SU-04, СкиллАп 5): развилка резюме R2b/R2c — default OFF, включаются
+    # условно в enabled_steps (Задача 3) через resume_type. case_optin — без доп. условия
+    # (место в потоке = позиция здесь, A-02 CONTEXT).
+    ("resume_link", "reg_q_resume_link", "text"),
+    ("mini_projects", "reg_q_mini_projects", "text"),
+    ("mini_portfolio", "reg_q_mini_portfolio", "text"),
+    ("mini_direction", "reg_q_mini_direction", "text"),
+    ("case_optin", "reg_q_case_optin", "text"),
     # Remaining steps — default OFF, kept for other events (RusCo/Summit).
     ("email", "reg_q_email", "text"),
     ("local_committee", "reg_q_lc", "text"),
@@ -199,6 +213,15 @@ SELECT_CONFIG = {
         "Бизнес и управление", "IT и технологии",
         "Социальные и гуманитарные науки", "Математические и естественные науки",
     ]),
+    # Phase 28 (28-01, SU-01, СкиллАп 5): default OFF (reg_q_experience/reg_q_readiness) —
+    # подписи-варианты, не коды (D-02, ТЗ §1).
+    "experience": ("experience_options", [
+        "Нет опыта", "Пет-проекты", "Стажировка",
+        "Коммерческий опыт до года", "Коммерческий опыт больше года",
+    ]),
+    "readiness": ("readiness_options", [
+        "Готов(а) выйти сейчас", "Через 3–6 месяцев", "После выпуска", "Пока не ищу работу",
+    ]),
 }
 
 # Configurable multi-select steps: step_key → (options_setting_key, default options).
@@ -213,6 +236,14 @@ MULTI_CONFIG = {
     "formats": ("formats_options", [
         "Панельные дискуссии", "Мастер-классы", "Сессии со спикерами",
         "Нетворкинг-сессии", "Ярмарка открытых вакансий",
+    ]),
+    # Phase 28 (28-01, SU-01, СкиллАп 5): default OFF (reg_q_stack) — двенадцать направлений
+    # ТЗ §1, подписями (D-02).
+    "stack": ("stack_options", [
+        "Python", "JavaScript / TypeScript", "Java / Kotlin", "C# / .NET", "Go",
+        "SQL и базы данных", "Аналитика и данные", "Дизайн и UX",
+        "Мобильная разработка", "DevOps и облака", "Тестирование",
+        "Информационная безопасность",
     ]),
 }
 
@@ -252,6 +283,9 @@ _LITERAL_OPTIONS = {
     "work_status": _opts.YES_NO_OPTIONS,
     "needs_certificate": _opts.YES_NO_OPTIONS,
     "volunteer": _opts.YES_NO_OPTIONS,
+    # Phase 28 (28-01, SU-01, СкиллАп 5): жёсткие «Да»/«Нет» (не редактируемый список) —
+    # храним ПОДПИСЬ, не bool (см. _MEMBERSHIP_STEPS ниже, D-02).
+    "case_optin": _opts.YES_NO_OPTIONS,
 }
 
 
@@ -269,6 +303,11 @@ async def options(step_key: str) -> list[str]:
         return await option_list_for(opt_key, default)
     if step_key == "source":
         return await option_list_for("source_options", _opts.DEFAULT_SOURCE_OPTIONS)
+    if step_key == "education_status":
+        # Phase 28 (28-01, R-A3 CONTEXT): editable list, пустой реестр -> прежние три
+        # литерала байт-в-байт (D-06) — единственное расхождение с прежним прямым
+        # `_LITERAL_OPTIONS["education_status"]`.
+        return await option_list_for("education_status_options", _opts.EDUCATION_STATUS_OPTIONS)
     if step_key == "university":
         mode = await get_setting_typed("reg_university_mode")
         if mode == "text":
@@ -467,6 +506,24 @@ PROMPT_DEFAULTS = {
     "exp_organizers": "Ожидания от команды организаторов?",
     "exp_content": "Ожидания от контента?",
     "volunteer": "Хочешь быть волонтёром?",
+    # Phase 28 (28-01, SU-01/SU-04, СкиллАп 5): default OFF — стек/опыт/готовность и
+    # развилка резюме R2b/R2c. Тексты resume_link/mini_*/case_optin — дословно из
+    # «Copywriting Contract» 28-UI-SPEC.md (D-07).
+    "stack": "Что из этого пробовал(а)? Можно выбрать несколько.",
+    "experience": "Какой у тебя опыт работы?",
+    "readiness": "Когда готов(а) выйти на работу?",
+    "resume_link": (
+        "Пришлите ссылку на резюме, портфолио или профиль — например hh.ru, GitHub, LinkedIn"
+    ),
+    "mini_projects": (
+        "Расскажите о своих проектах — учебных, пет-, рабочих. Что делали, какую роль играли?"
+    ),
+    "mini_portfolio": "Есть ссылка на портфолио, GitHub или соцсети с работами? Можно пропустить.",
+    "mini_direction": "В каком направлении хотите развиваться?",
+    "case_optin": (
+        "Кейс-чемпионат — это возможность решить бизнес-кейс от партнёров и получить "
+        "обратную связь. Участвуете?"
+    ),
 }
 
 # ── Подсказки формата (D1, quick 260904-de4) ────────────────────────────────────────────────
@@ -846,8 +903,10 @@ _UI_TYPE_OVERRIDES = {
     "needs_certificate": "yesno",
     "volunteer": "yesno",
     "ambassador": "choice-chips",
+    # Phase 28 (28-01, SU-01, СкиллАп 5): case_optin — жёсткие «Да»/«Нет», как work_status.
+    "case_optin": "yesno",
 }
-_TEXTAREA_STEPS = {"expectations", "comments"}
+_TEXTAREA_STEPS = {"expectations", "comments", "mini_projects"}
 
 
 def _ui_type_for(step_key: str, step_type: str) -> str:
@@ -875,8 +934,14 @@ MAX_LEN_LONG = 4000
 MAX_LEN_FULL_NAME = 200
 _LONG_TEXT_STEPS = {"expectations", "comments", "resume"}
 
+# Phase 28 (28-01, SU-04, СкиллАп 5): персональные лимиты длины — читается ПЕРВЫМ в
+# _max_len_for (лимиты действуют и в боте, validate_answer применяет _max_len_for уже сегодня).
+_MAX_LEN_OVERRIDES = {"mini_projects": 500, "mini_direction": 200}
+
 
 def _max_len_for(step_key: str, ui_type: str) -> int | None:
+    if step_key in _MAX_LEN_OVERRIDES:
+        return _MAX_LEN_OVERRIDES[step_key]
     if step_key == "full_name":
         return MAX_LEN_FULL_NAME
     if step_key in _LONG_TEXT_STEPS:
@@ -890,6 +955,8 @@ def _max_len_for(step_key: str, ui_type: str) -> int | None:
 _SKIP_ALLOWED_STEPS = {
     "specialty", "work_sphere", "missing_skills", "expectations", "comments", "food_pref",
     "bed_partner", "cc_shop", "exp_organizers", "exp_content", "allergies",
+    # Phase 28 (28-01, SU-04, СкиллАп 5): «Пропустить» у второго мини-профильного подшага.
+    "mini_portfolio",
 }
 # Шаги, у которых клавиатура бота сегодня включает кнопку "Другое" (свободный текст поверх
 # списка) — city/study_field через _reply_kb(options, add_other=True) в _ask_step,
@@ -1186,6 +1253,10 @@ _SKIP_TEXT_ERRORS = {
     "cc_shop": "Напиши или нажми «Пропустить».",
     "exp_organizers": "Напиши или нажми «Пропустить».",
     "exp_content": "Напиши или нажми «Пропустить».",
+    # Rule 2 (28-01): без записи здесь _SKIP_ALLOWED_STEPS дал бы кнопку «Пропустить», но
+    # validate_answer хранил бы литеральный текст "Пропустить" вместо "-" — тот же приём, что
+    # у всех остальных skip-allowed шагов выше.
+    "mini_portfolio": "Напиши или нажми «Пропустить».",
 }
 
 # Жёсткая проверка ровно допустимых литералов (без «Другое», без «Пропустить»).
@@ -1194,6 +1265,9 @@ _MEMBERSHIP_STEPS = {
     "work_status": (("Да", "Нет"), "Выбери «Да» или «Нет».", True),
     "informal_day": (("Да", "Нет", "Буду только в онлайне"), "Выбери один из вариантов.", False),
     "attendance_format": (("Offline", "Online"), "Выбери «Offline» или «Online».", False),
+    # Phase 28 (28-01, SU-01, СкиллАп 5): case_optin — храним ПОДПИСЬ («Да»/«Нет»), не bool
+    # (as_bool=False) — колонка листа и карточка печатают человеческое слово (D-02).
+    "case_optin": (("Да", "Нет"), "Выбери «Да» или «Нет».", False),
 }
 
 
@@ -1484,6 +1558,15 @@ _SUMMARY_FIELD_LABELS = [
     ("Волонтёр", "volunteer"),
     ("Цель участия", "goal"),
     ("Форматы форума", "formats"),
+    # Phase 28 (28-01, SU-01/SU-04, СкиллАп 5) — восемь строк в порядке шагов REG_FLOW.
+    ("Стек", "stack"),
+    ("Опыт", "experience"),
+    ("Готовность", "readiness"),
+    ("Резюме (ссылка)", "resume_link"),
+    ("Проекты", "mini_projects"),
+    ("Портфолио", "mini_portfolio"),
+    ("Направление развития", "mini_direction"),
+    ("Кейс-чемпионат", "case_optin"),
 ]
 
 

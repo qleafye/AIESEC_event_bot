@@ -124,9 +124,10 @@ def test_settings_synonyms_module_has_no_handlers_import():
 
 
 def test_reg_questions_synonyms_are_short_topic_words():
-    """Task 2: 43 тумблера вопросов — синонимы это тема вопроса в 1-2 словах, подпись и так
-    человеческая (см. пример плана: «аллергии»/«еда»; «общежитие»/«жильё»)."""
+    """Task 2: 51 тумблер вопросов (43 + восемь новых, Phase 28-01 SU-01/SU-04) — синонимы
+    это тема вопроса в 1-2 словах, подпись и так человеческая (см. пример плана: «аллергии»/
+    «еда»; «общежитие»/«жильё»)."""
     reg_q_keys = [k for k in SETTINGS_SCHEMA if k.startswith("reg_q_")]
-    assert len(reg_q_keys) == 43
+    assert len(reg_q_keys) == 51
     for key in reg_q_keys:
         assert len(SETTINGS_SYNONYMS.get(key, [])) >= 2, key

@@ -374,6 +374,10 @@ def test_render_snapshot_reg(tmp_path):
     # переехали в «📋 Заявки» (см. test_render_snapshot_apps ниже).
     expected_keys = [
         "source_options", "city_options", "study_field_options",
+        # Phase 28 (28-01, SU-01/SU-08, СкиллАп 5): четыре новых списка вариантов + пояснение
+        # кейс-чемпионата, сразу после study_field_options (handlers/admin_settings.py).
+        "stack_options", "experience_options", "readiness_options", "education_status_options",
+        "reg_case_optin_description_text",
         "goal_options", "formats_options", "university_options",
         # Phase 17.1 (17.1-03, schema-completeness): экран выбора города при /start —
         # в хвосте группы.
@@ -381,6 +385,8 @@ def test_render_snapshot_reg(tmp_path):
     ]
     expected_labels = [
         "📢 Источники", "🏙 Города (варианты)", "🎯 Направления обучения (варианты)",
+        "🧰 Стек (варианты)", "💼 Опыт (варианты)", "🚀 Готовность (варианты)",
+        "🎓 Статусы образования (варианты)", "🏆 Кейс-чемпионат: пояснение",
         "🎯 Цель участия (варианты)", "📋 Форматы форума (варианты)", "🏫 Список ВУЗов",
         "🏙 Выбор города: вопрос",
     ]
@@ -393,7 +399,8 @@ def test_render_snapshot_reg(tmp_path):
     # Quick 260819: «⏰ Догонялка: текст напоминания» -- текст с дефолтом (флаг «по умолчанию»);
     # «⏰ Догонялка: через сколько минут» -- int, как pending_reminder_interval: функциональный
     # parse-дефолт НЕ показывается как display-дефолт (_SETTINGS_DISPLAY_DEFAULTS только text).
-    defaulted_labels = {"🏙 Выбор города: вопрос"}
+    # Phase 28 (28-01): «🏆 Кейс-чемпионат: пояснение» — text с непустым дефолтом, тот же флаг.
+    defaulted_labels = {"🏙 Выбор города: вопрос", "🏆 Кейс-чемпионат: пояснение"}
     for label in defaulted_labels:
         assert f"{label}: <i>по умолчанию</i>" in text, f"missing/wrong flag for {label}"
     for label in expected_labels:
@@ -588,6 +595,16 @@ _FROZEN_REG_DEFAULTS_ORACLE = {
     "reg_q_formats": "off",
     "reg_q_ambassador": "off",
     "reg_q_resume": "off",
+    # Phase 28 (28-01, SU-01/SU-04, СкиллАп 5): восемь новых тумблеров, default OFF (D-06) —
+    # оракул расширен добавлением, ни одна из прежних 43 строк не тронута.
+    "reg_q_stack": "off",
+    "reg_q_experience": "off",
+    "reg_q_readiness": "off",
+    "reg_q_resume_link": "off",
+    "reg_q_mini_projects": "off",
+    "reg_q_mini_portfolio": "off",
+    "reg_q_mini_direction": "off",
+    "reg_q_case_optin": "off",
 }
 
 # NOTE (deviation, Rule 1): 06-04-PLAN.md's interfaces table labels this a "44-key" oracle,
@@ -595,7 +612,8 @@ _FROZEN_REG_DEFAULTS_ORACLE = {
 # direct count of the source dict) — the plan's count label was off-by-one. This assertion
 # pins the VERIFIED source count (43), not the plan's stated count, per the "byte-for-byte
 # matches registration.py:197-241 exactly" acceptance criterion (source is the ground truth).
-assert len(_FROZEN_REG_DEFAULTS_ORACLE) == 43  # sanity — must match the live table (source-verified)
+# Phase 28 (28-01): +8 новых reg_q_* ключей (default "off") — 43 + 8 = 51.
+assert len(_FROZEN_REG_DEFAULTS_ORACLE) == 51  # sanity — must match the live table (source-verified)
 
 # Feature-switch (enum) defaults verified byte-for-byte from the live call sites
 # (06-04-PLAN.md interfaces table) — DO NOT guess, DO NOT edit without re-checking the

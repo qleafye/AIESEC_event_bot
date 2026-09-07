@@ -472,6 +472,40 @@ SETTINGS_SCHEMA = {
         ),
         "default": None,
     },
+    # Phase 28 (28-01, SU-01/SU-08, СкиллАп 5, R-A3 CONTEXT): четыре редактируемых списка
+    # вариантов — менеджер правит стек/опыт/готовность/статусы образования кнопками, без
+    # разработчика (D-01). Пусто = стандартный список, byte-for-byte (D-06).
+    "stack_options": {
+        "type": "list", "group": "reg", "label": "🧰 Стек (варианты)",
+        "prompt": "Каждый вариант — на отдельной строке. Пусто = стандартный список.",
+        "default": None,
+    },
+    "experience_options": {
+        "type": "list", "group": "reg", "label": "💼 Опыт (варианты)",
+        "prompt": "Каждый вариант — на отдельной строке. Пусто = стандартный список.",
+        "default": None,
+    },
+    "readiness_options": {
+        "type": "list", "group": "reg", "label": "🚀 Готовность (варианты)",
+        "prompt": "Каждый вариант — на отдельной строке. Пусто = стандартный список.",
+        "default": None,
+    },
+    "education_status_options": {
+        "type": "list", "group": "reg", "label": "🎓 Статусы образования (варианты)",
+        "prompt": "Каждый вариант — на отдельной строке. Пусто = стандартный список.",
+        "default": None,
+    },
+    # Phase 28 (28-01, SU-08, СкиллАп 5): пояснение под заголовком экрана кейс-чемпионата
+    # (Body-роль, не Label) — per_city, как остальные тексты, обращённые к делегату.
+    "reg_case_optin_description_text": {
+        "type": "text", "group": "reg", "label": "🏆 Кейс-чемпионат: пояснение",
+        "prompt": "Текст-пояснение под вопросом «Участвуете в кейс-чемпионате?».",
+        "default": (
+            "Финал — очно на СкиллАп 5, командами по 3–4 человека. Опыт не нужен, важно "
+            "желание пробовать."
+        ),
+        "per_city": True,
+    },
     # Phase 17.1 (17.1-03, schema-completeness): ключи, которые handlers/registration.py
     # давно читал из bot_settings, но которых не было в реестре — менеджер их не видел в UI и
     # мог поменять только через разработчика. Дефолты байт-в-байт равны прежним литералам /
@@ -1393,6 +1427,16 @@ SETTINGS_SCHEMA = {
     "reg_q_formats": {"type": "toggle", "group": "reg_questions", "label": "📋 Форматы форума", "prompt": None, "default": "off", "per_city": True},
     "reg_q_ambassador": {"type": "toggle", "group": "reg_questions", "label": "🧡 Амбассадор", "prompt": None, "default": "off", "per_city": True},
     "reg_q_resume": {"type": "toggle", "group": "reg_questions", "label": "📄 Резюме", "prompt": None, "default": "off", "per_city": True},
+    # Phase 28 (28-01, SU-01/SU-04, СкиллАп 5): восемь новых тумблеров вопросов, default OFF
+    # (D-06) — менеджер включает пресетом «СкиллАп» или вручную.
+    "reg_q_stack": {"type": "toggle", "group": "reg_questions", "label": "🧰 Стек и инструменты", "prompt": None, "default": "off", "per_city": True},
+    "reg_q_experience": {"type": "toggle", "group": "reg_questions", "label": "💼 Опыт работы", "prompt": None, "default": "off", "per_city": True},
+    "reg_q_readiness": {"type": "toggle", "group": "reg_questions", "label": "🚀 Готовность к работе", "prompt": None, "default": "off", "per_city": True},
+    "reg_q_resume_link": {"type": "toggle", "group": "reg_questions", "label": "🔗 Резюме ссылкой", "prompt": None, "default": "off", "per_city": True},
+    "reg_q_mini_projects": {"type": "toggle", "group": "reg_questions", "label": "🧩 Проекты", "prompt": None, "default": "off", "per_city": True},
+    "reg_q_mini_portfolio": {"type": "toggle", "group": "reg_questions", "label": "🖼 Портфолио", "prompt": None, "default": "off", "per_city": True},
+    "reg_q_mini_direction": {"type": "toggle", "group": "reg_questions", "label": "🧭 Направление развития", "prompt": None, "default": "off", "per_city": True},
+    "reg_q_case_optin": {"type": "toggle", "group": "reg_questions", "label": "🏆 Кейс-чемпионат", "prompt": None, "default": "off", "per_city": True},
 
     # ── REG-01 (06-04, D-12): "toggles" group — feature-switch enums. Consumer read-sites
     # (handlers/admin.py, handlers/registration.py, handlers/payment.py, services/scheduler.py)
@@ -3424,12 +3468,21 @@ REG_PROMPT_STEPS: tuple[tuple[str, str | None], ...] = (
     ("course", "reg_q_course"),
     ("university", "reg_q_university"),
     ("study_field", "reg_q_study_field"),
+    # Phase 28 (28-01, СкиллАп 5) — порядок байт-в-байт REG_FLOW.
+    ("stack", "reg_q_stack"),
+    ("experience", "reg_q_experience"),
+    ("readiness", "reg_q_readiness"),
     ("goal", "reg_q_goal"),
     ("formats", "reg_q_formats"),
     ("expectations", "reg_q_expectations"),
     ("source", "reg_q_source"),
     ("ambassador", "reg_q_ambassador"),
     ("resume", "reg_q_resume"),
+    ("resume_link", "reg_q_resume_link"),
+    ("mini_projects", "reg_q_mini_projects"),
+    ("mini_portfolio", "reg_q_mini_portfolio"),
+    ("mini_direction", "reg_q_mini_direction"),
+    ("case_optin", "reg_q_case_optin"),
     ("email", "reg_q_email"),
     ("local_committee", "reg_q_lc"),
     ("position", "reg_q_position"),

@@ -30,6 +30,9 @@ REG_LABELS_KEYS_SNAPSHOT = [
     "reg_q_exp_organizers", "reg_q_exp_content", "reg_q_volunteer", "reg_q_arrival_date",
     "reg_q_birth_date", "reg_q_study_field", "reg_q_goal", "reg_q_formats", "reg_q_ambassador",
     "reg_q_resume",
+    # Phase 28 (28-01, СкиллАп 5) — восемь новых, ТОЛЬКО добавлением в конец (порядок вставки).
+    "reg_q_stack", "reg_q_experience", "reg_q_readiness", "reg_q_resume_link",
+    "reg_q_mini_projects", "reg_q_mini_portfolio", "reg_q_mini_direction", "reg_q_case_optin",
 ]
 
 GAME_LABELS_PUBLIC = ["category_label", "proof_types_label", "render_task_card_text", "task_deadline_short"]

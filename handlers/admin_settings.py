@@ -110,6 +110,10 @@ _EVENT_FIELDS = [
 # order stays byte-identical to the pre-migration literal tables.
 _REG_FIELD_ORDER = [
     "source_options", "city_options", "study_field_options",
+    # Phase 28 (28-01, SU-01/SU-08, СкиллАп 5): четыре новых списка вариантов + пояснение
+    # кейс-чемпионата — иначе менеджер не увидит их в боте (правило файла).
+    "stack_options", "experience_options", "readiness_options", "education_status_options",
+    "reg_case_optin_description_text",
     "goal_options", "formats_options", "university_options",
     # Phase 17.1 (17.1-03, schema-completeness): экран выбора города при /start — читался из
     # bot_settings, но менеджер его в UI не видел.
