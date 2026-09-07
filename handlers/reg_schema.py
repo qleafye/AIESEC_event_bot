@@ -247,6 +247,12 @@ SHEET_COLUMNS = [
     ("Статус", None, _status_label),
     ("ФИО", None, lambda d: d.get("full_name") or "-"),
     ("Детали", None, _sheet_details),
+    # Phase 28 (28-07, SU-08, СкиллАп 5): автоскоринг — сигнал качества заявки, менеджер
+    # видит его раньше построчных ответов анкеты (тот же порядок приоритета, что в карточке
+    # модерации). Свой gate reg_scoring_enabled (default off, D-06) — ширина листа YL/РилТолка
+    # не меняется, пока менеджер не включит скоринг явно (Pitfall 5).
+    ("Балл", "reg_scoring_enabled", lambda d: d.get("score") if d.get("score") is not None else "-"),
+    ("IT 3+", "reg_scoring_enabled", lambda d: "Да" if d.get("is_it_3plus") else "-"),
     # --- вопросы в порядке REG_FLOW ---
     ("Телефон", "reg_q_phone", lambda d: d.get("phone") or "-"),
     ("Аламни/айсекер", "reg_q_alumni_status", lambda d: d.get("alumni_status") or "-"),

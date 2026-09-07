@@ -91,6 +91,24 @@ async def _resume_field_patch(resume_type_val, resume_link_val) -> dict:
     return patch
 
 
+async def _score_patch(answers: dict) -> dict:
+    """Phase 28 (28-07, SU-08, A-04, OQ-4): безусловный пересчёт балла — узкий UPDATE после
+    `add_user` (new) и в ветке `edit`, тот же приём, что `_resume_field_patch` выше. Выключенный
+    `reg_scoring_enabled` -> `{}` СРАЗУ (T-28-07-05): ни одного похода в реестр за правилами,
+    ни одной записи — на других событиях (D-06 default off) ничего не меняется. Сбой скоринга
+    не имеет права потерять заявку (T-28-07-03/принцип season-резолва выше в этом файле) —
+    свой try/except с логом, возврат `{}` (заявка сохраняется без балла)."""
+    if not await get_setting_typed("reg_scoring_enabled"):
+        return {}
+    try:
+        rules = await reg_engine.scoring_rules()
+        score, is_it_3plus = reg_engine.compute_score(answers, rules)
+        return {"score": score, "is_it_3plus": int(is_it_3plus)}
+    except Exception as e:
+        logger.error(f"Scoring failed, application preserved without score: {e}")
+        return {}
+
+
 async def finalize_data(telegram_id: int, username: str | None, draft: dict) -> dict:
     """Синхронная (в смысле «сразу», не «эффекты потом») часть финала — вызывается ПОСЛЕ
     `database.db.claim_reg_draft`. `draft` — строка `reg_drafts` (или псевдо-черновик,
@@ -189,6 +207,19 @@ async def finalize_data(telegram_id: int, username: str | None, draft: dict) -> 
                         telegram_id, resume_patch,
                         allowed_columns=["resume_type", "link_verified"],
                     )
+
+            # Phase 28 (28-07, SU-08, OQ-4): пересчёт БЕЗУСЛОВНЫЙ (не только когда diff задел
+            # влияющие поля) — поле не должно протухать при частичном патче. Запись — только
+            # если значения реально изменились (D-14: «правка без изменений» остаётся
+            # не-событием, тот же принцип, что у diff() выше).
+            score_patch = await _score_patch(answers)
+            if score_patch and (
+                score_patch["score"] != old.get("score")
+                or score_patch["is_it_3plus"] != old.get("is_it_3plus")
+            ):
+                await update_user_answers(
+                    telegram_id, score_patch, allowed_columns=["score", "is_it_3plus"]
+                )
         else:
             answers = reg_engine.with_defaults(raw_answers)
             data = dict(answers)
@@ -237,6 +268,15 @@ async def finalize_data(telegram_id: int, username: str | None, draft: dict) -> 
             if resume_patch:
                 await update_user_answers(
                     telegram_id, resume_patch, allowed_columns=["resume_type", "link_verified"]
+                )
+
+            # Phase 28 (28-07, SU-08, OQ-4): узкий UPDATE, тот же приём, что resume_type/
+            # link_verified/source_from_tag выше — большой INSERT в add_user не трогаем
+            # (RESEARCH Anti-Pattern).
+            score_patch = await _score_patch(data)
+            if score_patch:
+                await update_user_answers(
+                    telegram_id, score_patch, allowed_columns=["score", "is_it_3plus"]
                 )
 
             reg_mode = await get_setting_typed("registration_mode")
