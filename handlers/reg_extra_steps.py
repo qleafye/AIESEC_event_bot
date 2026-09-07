@@ -16,13 +16,25 @@
 
 Обработчики ответа ниже — тот же контур «канонизировать -> validate_answer -> сохранить под
 своей колонкой -> _advance», что образец шва `handlers/reg_steps.py`. `resume_link` показ
-получает (через `ask_step` выше), но СВОЕГО ОБРАБОТЧИКА НЕ ПОЛУЧАЕТ — валидация ссылки и
-«Назад» на развилку резюме принадлежат плану 28-04.
-"""
+получает (через `ask_step` выше), но СВОЕГО ОБРАБОТЧИКА НЕ ПОЛУЧАЕТ — обработчик ответа
+(валидация ссылки) живёт в `handlers/reg_resume_fork.py` (план 28-05).
+
+Phase 28 (28-05, SU-04, deviation Rule 3): `ask_step()`/`_receive_step()` — ЕДИНСТВЕННОЕ
+место, где показываются и принимаются `resume_link`/`mini_projects`/`mini_portfolio`/
+`mini_direction`, независимо от того, попал ли делегат на шаг через развилку (`regfork:link`/
+`regfork:mini`) или через обычный `_advance` (второй/третий мини-подшаг). Поэтому «Назад на
+развилку» (A-03 CONTEXT) для этих четырёх шагов ЛОГИЧЕСКИ обязан жить здесь, а не в
+`reg_resume_fork.py` — тот модуль импортируется ПОСЛЕ этого (см. хвост `registration.py`),
+приклеить туда «более специфичный» обработчик `Registration.mini_projects` и рассчитывать,
+что aiogram выберет его раньше уже зарегистрированного `process_mini_projects` НЕ получится:
+роутер матчит хендлеры в порядке регистрации, не по специфичности фильтра. `_FORK_BACK_LABEL`
+дословно совпадает с `reg_resume_fork.BACK_LABEL` (сверено, не общий импорт — тот же приём
+дублирования служебных литералов, что «Пропустить»/«Отмена» уже дублируются в проекте)."""
 import logging
 
 from aiogram import Bot, types
 from aiogram.fsm.context import FSMContext
+from aiogram.utils.keyboard import ReplyKeyboardBuilder
 
 from cities import get_setting_typed_for_city
 from handlers import reg_i18n
@@ -38,6 +50,24 @@ logger = logging.getLogger(__name__)
 _STEP_DESCRIPTION_SETTING = {
     "case_optin": "reg_case_optin_description_text",
 }
+
+# Phase 28 (28-05, SU-04, A-03 CONTEXT): четыре шага развилки резюме — reply-кнопка «Назад»
+# добавляется к их обычной клавиатуре (skip/cancel), см. `_fork_branch_kb`. Литерал должен
+# дословно совпадать с `handlers.reg_resume_fork.BACK_LABEL`.
+_FORK_BACK_STEPS = {"resume_link", "mini_projects", "mini_portfolio", "mini_direction"}
+_FORK_BACK_LABEL = "⬅️ Назад"
+
+
+def _fork_branch_kb(step_key: str):
+    """Клавиатура текстового подшага развилки резюме (28-UI-SPEC.md §3) — «Пропустить»
+    (только `mini_portfolio`, уже в `_SKIP_ALLOWED_STEPS`) + reply-кнопка «Назад», ведущая на
+    R1 (не на предыдущий вопрос анкеты — A-03 CONTEXT)."""
+    kb = ReplyKeyboardBuilder()
+    if step_key in _SKIP_ALLOWED_STEPS:
+        kb.button(text="Пропустить")
+    kb.button(text=_FORK_BACK_LABEL)
+    kb.adjust(1)
+    return kb.as_markup(resize_keyboard=True, one_time_keyboard=True)
 
 
 async def ask_step(step_key: str, message: types.Message, state: FSMContext,
@@ -56,6 +86,8 @@ async def ask_step(step_key: str, message: types.Message, state: FSMContext,
         if description:
             text = f"{text}\n\n{description}"
         kb = get_yes_no_kb()
+    elif step_key in _FORK_BACK_STEPS:
+        kb = _fork_branch_kb(step_key)
     elif step_key in _SKIP_ALLOWED_STEPS:
         kb = get_skip_kb()
     else:
@@ -78,7 +110,16 @@ async def _receive_step(step_key: str, message: types.Message, state: FSMContext
     сохранить под своей колонкой (`STEP_TO_COLUMN`) -> `_advance`. `case_optin` — жёсткие
     «Да»/«Нет» через `reg_engine._MEMBERSHIP_STEPS` (валидатор сам объясняет, что нажать);
     `mini_portfolio` — «Пропустить» уже понимает `validate_answer` (шаг в
-    `_SKIP_ALLOWED_STEPS`, пустое значение станет «-»)."""
+    `_SKIP_ALLOWED_STEPS`, пустое значение станет «-»).
+
+    Phase 28 (28-05, SU-04): reply-кнопка «Назад» (`_FORK_BACK_LABEL`) проверяется ПЕРВОЙ,
+    до канонизации/валидации — иначе трижды переведённый/канонизированный литерал ушёл бы в
+    `validate_answer` как обычный свободный текст мини-профиля (T-28-05-03 наоборот: там, где
+    свободный текст СТАНОВИТСЯ значением — «Назад» просто обязан не стать текстом ответа)."""
+    if step_key in _FORK_BACK_STEPS and message.text == _FORK_BACK_LABEL:
+        from handlers import reg_resume_fork  # ленивый шов (цикл импортов) — единая точка «Назад»
+        await reg_resume_fork.back_to_fork(message, state)
+        return
     canon = await reg_i18n.canonicalize(message, step_key, message.text)
     value, err = validate_answer(step_key, canon)
     if err:
