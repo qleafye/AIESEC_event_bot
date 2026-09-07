@@ -90,6 +90,16 @@ TRACK_FILTERS: dict[str, tuple[str, ...]] = {
     "short": ("short",),
 }
 
+# Phase 28 (28-07, SU-08, D-09): одна константа-шаблон текста балла — бот и веб печатают
+# ЭТУ же строку (бот добавляет только эмодзи «🧮 » перед ней, веб — нет, чип не несёт эмодзи).
+# «IT 3+» — нейтральная пометка, а не достижение делегата (28-UI-SPEC §7): бейдж есть ТОЛЬКО
+# при истинном признаке, при ложном — бейджа нет вовсе, не «IT 3+: нет».
+def score_badge_text(score) -> str:
+    return f"Балл: {score}/7"
+
+
+IT_3PLUS_BADGE_TEXT = "IT 3+"
+
 # D-12 (23-CONTEXT): окно отмены — 5 секунд, UX-константа, а не настройка менеджера. В реестр
 # сознательно не выносим — «Отменить» тонет, если менеджер будет искать это в настройках.
 UNDO_WINDOW_SECONDS = 5
@@ -268,9 +278,11 @@ async def card_payload(user: dict) -> dict:
     `resume`) в порядке анкеты, БЕЗ обрезки — «Показать всё» (D-01); не пересекается с
     `main_fields`.
     `badges` — `[{kind, text}]`: трек (`TRACK_LABELS`), «🔁 Повторный …» (`prev_season`, тот же
-    разбор служебного литерала `legacy`, что и у карточки бота), `edited`/`resubmit`
-    (`edit_badges_for`), `prev_reject` — «🚫 Ранее отклонена: <причина>» (`prev_reject_line`,
-    quick 260904-liz), ПОСЛЕ `resubmit` и ПЕРЕД `consent` — строка согласия ВСЕГДА последней.
+    разбор служебного литерала `legacy`, что и у карточки бота), `score`/`it_3plus` (Phase
+    28-07, SU-08 — только при включённом скоринге и непустом `score`; `it_3plus` только при
+    истинном признаке), `edited`/`resubmit` (`edit_badges_for`), `prev_reject` — «🚫 Ранее
+    отклонена: <причина>» (`prev_reject_line`, quick 260904-liz), ПОСЛЕ `resubmit` и ПЕРЕД
+    `consent` — строка согласия ВСЕГДА последней.
     `resume` — `{kind: "file"|"text"|"none", file_id, text}`.
     `history` — до 5 записей `get_answer_history` (D-03), КАЖДАЯ уже переведена в
     `{when, source_label, changes:[{label, old, new}]}` — `_history_entry` (найдено планом
@@ -295,6 +307,16 @@ async def card_payload(user: dict) -> dict:
             badges.append({"kind": "prev_season", "text": "🔁 Повторный: был(а) на прошлом событии"})
         else:
             badges.append({"kind": "prev_season", "text": f"🔁 Повторный: был(а) в {prev_season_raw}"})
+    # Phase 28 (28-07, SU-08): балл/IT 3+ — ПЕРЕД edited/resubmit/prev_reject (28-UI-SPEC §7:
+    # сигнал качества заявки виден раньше пометок правки), нейтральный chip (kind не входит в
+    # EDITED_BADGE_KINDS фронта). Гейт — включённый скоринг И непустой score (D-06): пока
+    # скоринг выключен, score всегда None (finalize его не считает), бейджа нет вовсе.
+    if await get_setting_typed("reg_scoring_enabled"):
+        score = user.get("score")
+        if score is not None:
+            badges.append({"kind": "score", "text": score_badge_text(score)})
+            if user.get("is_it_3plus"):
+                badges.append({"kind": "it_3plus", "text": IT_3PLUS_BADGE_TEXT})
     edited_line, resubmit_line, _has_history = await edit_badges_for(user)
     if edited_line:
         badges.append({"kind": "edited", "text": edited_line})
