@@ -256,6 +256,31 @@ def test_malformed_file_id_is_404(tmp_path, monkeypatch, bad_id):
     assert resp.status_code == 404
 
 
+def test_octet_stream_with_image_extension_is_served(tmp_path, monkeypatch):
+    """UAT 07.09 (T-d6t-03): TG отдаёт фото как `application/octet-stream` — `tg_media`
+    угадывает по расширению `file_path`, гейт `image/*` дальше проходит."""
+    db_path = _use_tmp_db(tmp_path)
+    _seed(settings={"miniapp_logo": VALID_FILE_ID})
+    _patch_client(monkeypatch, _mock_handler(content_type="application/octet-stream", file_path="photos/file_1.jpg"))
+    client = _client(_cfg(db_path))
+
+    resp = client.get(f"/api/file/{VALID_FILE_ID}")
+    assert resp.status_code == 200
+    assert resp.headers.get("content-type") == "image/jpeg"
+
+
+def test_octet_stream_with_non_image_extension_is_404(tmp_path, monkeypatch):
+    """Гейт не ослаблен: octet-stream с расширением НЕ картинки резолвится не в image/* —
+    404 остаётся."""
+    db_path = _use_tmp_db(tmp_path)
+    _seed(settings={"miniapp_logo": VALID_FILE_ID})
+    _patch_client(monkeypatch, _mock_handler(content_type="application/octet-stream", file_path="documents/cv.pdf"))
+    client = _client(_cfg(db_path))
+
+    resp = client.get(f"/api/file/{VALID_FILE_ID}")
+    assert resp.status_code == 404
+
+
 def test_non_image_content_type_is_404(tmp_path, monkeypatch):
     db_path = _use_tmp_db(tmp_path)
     _seed(settings={"miniapp_logo": VALID_FILE_ID})

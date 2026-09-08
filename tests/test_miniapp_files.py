@@ -18,6 +18,7 @@ from miniapp import telegram_api
 from tests.test_miniapp_auth import TOKEN
 from tests.test_miniapp_routes import (
     ADMIN_ID,
+    BOUND_MANAGER_ID,
     DELEGATE_ID,
     GAME_MANAGER_ID,
     _cfg,
@@ -55,6 +56,7 @@ class FakeFiles:
     def __init__(self):
         self.calls: list[str] = []
         self.mode = "ok"  # ok | getfile_down | download_404 | network
+        self.content_type = "image/jpeg"  # заголовок, который отдаёт файловый сервер TG
 
     def handler(self, request: httpx.Request) -> httpx.Response:
         path = request.url.path
@@ -70,7 +72,7 @@ class FakeFiles:
         if path.startswith(f"/file/bot{TOKEN}/"):
             if self.mode == "download_404":
                 return httpx.Response(404, text="nope")
-            return httpx.Response(200, content=BODY, headers={"content-type": "image/jpeg"})
+            return httpx.Response(200, content=BODY, headers={"content-type": self.content_type})
         return httpx.Response(404)
 
 
@@ -193,6 +195,67 @@ def test_consent_pdf_open_for_any_delegate(client, files_api):
     assert _get(client, OTHER_ID, PDF_ID).status_code == 200
     _set("consent_list", "")
     assert _get(client, OTHER_ID, PDF_ID).status_code == 403
+
+
+# ── UAT 07.09 (T-d6t-01/T-d6t-03): свой аватар делегата ─────────────────────────────────
+
+AVATAR_ID = "AgACAgIAAxkBAAIavatarOwned0001"
+OTHER_AVATAR_ID = "AgACAgIAAxkBAAIavatarOther0001"
+
+
+def _set_avatar(user_id: int, file_id: str):
+    _run(bot_db.set_user_avatar(user_id, file_id, "2026-09-08 00:00:00"))
+
+
+def test_own_avatar_is_visible_to_owner(client, files_api):
+    _set_avatar(DELEGATE_ID, AVATAR_ID)
+    resp = _get(client, DELEGATE_ID, AVATAR_ID)
+    assert resp.status_code == 200
+    _assert_no_leak(resp)
+
+
+def test_other_delegate_avatar_is_forbidden(client, files_api):
+    _set_avatar(OTHER_ID, OTHER_AVATAR_ID)
+    resp = _get(client, DELEGATE_ID, OTHER_AVATAR_ID)
+    assert resp.status_code == 403
+
+
+def test_own_resume_and_receipt_are_still_forbidden(client, files_api):
+    """Новая ветка self-view сверяет ТОЛЬКО колонку аватара — резюме и чек своего же
+    делегата ей не открываются."""
+    RESUME_ID = "BQACAgIAAxkBAAIresumeOwned0001"
+    RECEIPT_ID = "BQACAgIAAxkBAAIreceiptOwned001"
+
+    async def _go():
+        async with bot_db._connect() as conn:
+            await conn.execute(
+                "UPDATE users SET resume_file_id = ?, receipt_file_id = ? WHERE telegram_id = ?",
+                (RESUME_ID, RECEIPT_ID, DELEGATE_ID),
+            )
+            await conn.commit()
+    _run(_go())
+
+    assert _get(client, DELEGATE_ID, RESUME_ID).status_code == 403
+    assert _get(client, DELEGATE_ID, RECEIPT_ID).status_code == 403
+
+
+def test_bound_manager_still_sees_avatar_in_scope(client, files_api):
+    """Прежнее поведение ветки moderate_reg не сломано self-view веткой."""
+    _set_avatar(DELEGATE_ID, AVATAR_ID)
+    resp = _get(client, BOUND_MANAGER_ID, AVATAR_ID)
+    assert resp.status_code == 200
+
+
+def test_octet_stream_avatar_gets_real_image_content_type(client, files_api):
+    """T-d6t-03: TG отдаёт octet-stream, `file_path` — `.jpg` -> content-type честный, nosniff
+    на месте, ни file_path, ни токен не утекают."""
+    _set_avatar(DELEGATE_ID, AVATAR_ID)
+    files_api.content_type = "application/octet-stream"
+    resp = _get(client, DELEGATE_ID, AVATAR_ID)
+    assert resp.status_code == 200
+    assert resp.headers["content-type"] == "image/jpeg"
+    assert resp.headers["x-content-type-options"] == "nosniff"
+    _assert_no_leak(resp)
 
 
 def test_unset_theme_asset_slot_stays_forbidden(client, files_api):
