@@ -303,6 +303,7 @@ a, button {
 
 @media (min-width: 900px) {
   .kpi-grid { grid-template-columns: repeat(4, 1fr); gap: var(--gap); }
+  .kpi-grid--5 { grid-template-columns: repeat(5, 1fr); }
 }
 
 .kpi {
@@ -325,6 +326,11 @@ a, button {
   line-height: 1.05;
   letter-spacing: -0.02em;
   font-variant-numeric: tabular-nums;
+}
+
+/* Текстовая подпись («2 ч 15 мин») вместо числа — display-кегль 40px рвёт плитку. */
+.kpi .num.text {
+  font-size: clamp(20px, 2.2vw, 28px);
 }
 
 .kpi .lbl {

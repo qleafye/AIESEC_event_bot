@@ -52,7 +52,7 @@ def _use_tmp_db(tmp_path, name: str = "dashboard_render.db") -> str:
 
 async def _seed_async(
     *, cities=None, settings=None, users=None, staff=None, reg_events=None,
-    reg_started=None, game_tasks=None, game_submissions=None,
+    reg_started=None, game_tasks=None, game_submissions=None, application_decisions=None,
 ):
     async with bot_db._connect() as conn:
         for code, label, enabled, sort_order in cities or []:
@@ -109,6 +109,12 @@ async def _seed_async(
             placeholders = ", ".join("?" for _ in row)
             await conn.execute(
                 f"INSERT INTO game_submissions ({cols}) VALUES ({placeholders})", tuple(row.values())
+            )
+        for row in application_decisions or []:
+            cols = ", ".join(row.keys())
+            placeholders = ", ".join("?" for _ in row)
+            await conn.execute(
+                f"INSERT INTO application_decisions ({cols}) VALUES ({placeholders})", tuple(row.values())
             )
         await conn.commit()
 
@@ -371,6 +377,12 @@ def _seed_full_fixture(db_path, *, payment_enabled=True, event_city_enabled=True
                 "submitted_at": "2026-08-01 13:00:00", "status": "approved",
             },
         ],
+        application_decisions=[
+            {
+                "telegram_id": 1, "decision": "approve", "decided_by": ADMIN_ID,
+                "decided_at": "2026-08-01 12:00:00", "effects_due_at": "2026-08-01 12:05:00",
+            },
+        ],
     )
 
 
@@ -382,7 +394,7 @@ def test_all_seven_blocks_present_when_toggles_on(tmp_path):
     assert resp.status_code == 200
     text = resp.text
     assert "<h1>YouLead" in text
-    assert 'class="kpi-grid"' in text
+    assert 'class="kpi-grid' in text
     assert "Воронка регистрации" in text
     assert "Динамика регистраций" in text
     assert "Разрезы" in text
@@ -736,3 +748,26 @@ def test_conversion_shows_dash_until_events_tracked(tmp_path):
     client = _stats_manager_client(db_path)
     resp = client.get("/")
     assert "—" in resp.text
+
+
+# ── плитка «Среднее время обработки» (квик 260908-dbo, DBO-KPI-01) ──────────────────────
+
+def test_processing_avg_tile_shown_with_data(tmp_path):
+    db_path = _use_tmp_db(tmp_path)
+    _seed_full_fixture(db_path)  # делегат 1: +2 ч между регистрацией и решением
+    client = _stats_manager_client(db_path)
+    resp = client.get("/")
+    assert resp.status_code == 200
+    text = resp.text
+    assert "Среднее время обработки" in text
+    assert "2 ч" in text
+    assert "от подачи анкеты до решения менеджера" in text
+
+
+def test_processing_avg_tile_shows_dash_without_decisions(tmp_path):
+    db_path = _use_tmp_db(tmp_path)
+    _seed(settings={"role_caps_reg_manager": "moderate_reg;stats"})
+    client = _stats_manager_client(db_path)
+    resp = client.get("/")
+    assert resp.status_code == 200
+    assert "Среднее время обработки" in resp.text
