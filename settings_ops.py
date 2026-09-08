@@ -474,6 +474,10 @@ def item_spec(key: str, *, raw: str | None, value, is_default: bool) -> dict:
         # вариантов вопроса). Резолвит реальные `options`/`stale_options` роутер
         # (`miniapp/routers/settings.py::_item_for`) — тому есть доступ к reg_engine.
         "options_from_step": entry.get("options_from_step"),
+        # UAT 07.09 (T-d6t-05): человеческая подпись для enum-варианта, код (`options`)
+        # остаётся значением, которое уезжает в batch. Ключи on/off (нет `option_labels`
+        # в реестре) получают None — фронт работает как раньше.
+        "option_labels": entry.get("option_labels"),
     }
     max_len = entry.get("max_len")
     if max_len is not None:

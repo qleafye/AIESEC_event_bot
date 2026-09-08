@@ -59,6 +59,18 @@ class FakeElement {
   set className(v) { this._className = v; this.classList._fromString(v); }
   setAttribute(name, value) { this._attrs.set(name, String(value)); }
   getAttribute(name) { return this._attrs.has(name) ? this._attrs.get(name) : null; }
+  // UAT 07.09 (T-d6t-05): choiceChips::paint() читает `btn.dataset.value` (реальный DOM
+  // отражает `data-*` атрибуты сюда сам) — минимальный `dataset` нужен, чтобы choiceChips
+  // вообще не падал в этом фейковом DOM, не только для нового теста чипов.
+  get dataset() {
+    const out = {};
+    for (const [name, value] of this._attrs) {
+      if (!name.startsWith("data-")) continue;
+      const camel = name.slice(5).replace(/-([a-z])/g, (_, c) => c.toUpperCase());
+      out[camel] = value;
+    }
+    return out;
+  }
   addEventListener(type, fn) { (this._listeners[type] ||= []).push(fn); }
   removeEventListener(type, fn) {
     this._listeners[type] = (this._listeners[type] || []).filter((f) => f !== fn);
@@ -143,11 +155,39 @@ row.dispatch("click", {});
 const afterClickPostRollback = snapshot(row);
 const callsAfterRollbackClick = [...calls];
 
+// ── UAT 07.09 (T-d6t-05): enum-чипы с option_labels — подпись рисуется, data-value/onChange
+// остаются кодом; тот же enum без option_labels рисуется как раньше (подпись = код). ──────
+const chipItem = {
+  key: "registration_mode", type: "enum", label: "test-chip-label",
+  options: ["short", "full"], option_labels: { short: "Краткая", full: "Полная" },
+};
+const chipSpec = m.settingSpec(chipItem);
+const chipCalls = [];
+const chipWrap = m.field(h, chipSpec, "short", (v) => chipCalls.push(v));
+const chipBox = chipWrap._nodes.control;
+const chipButtons = chipBox.children.filter((c) => c.classList && c.classList.contains("chip-choice"));
+const chipLabels = chipButtons.map((b) => b.textContent);
+const chipDataValues = chipButtons.map((b) => b.getAttribute("data-value"));
+chipButtons[1].dispatch("click", {});
+const chipCallsAfterClick = [...chipCalls];
+
+const chipItemNoLabels = {
+  key: "no_labels_enum", type: "enum", label: "test-chip-label-2",
+  options: ["alpha", "beta"],
+};
+const chipSpecNoLabels = m.settingSpec(chipItemNoLabels);
+const chipWrapNoLabels = m.field(h, chipSpecNoLabels, "alpha", () => {});
+const chipBoxNoLabels = chipWrapNoLabels._nodes.control;
+const chipButtonsNoLabels = chipBoxNoLabels.children.filter((c) => c.classList && c.classList.contains("chip-choice"));
+const chipLabelsNoLabels = chipButtonsNoLabels.map((b) => b.textContent);
+
 console.log(JSON.stringify({
   afterFirstClick, callsAfterFirst,
   afterSecondClick, callsAfterSecond,
   afterExternalPaint,
   afterClickPostRollback, callsAfterRollbackClick,
+  chipLabels, chipDataValues, chipCallsAfterClick,
+  chipLabelsNoLabels,
 }));
 """
 
@@ -191,3 +231,21 @@ def test_click_after_external_rollback_offers_on_not_off(result):
     # отдать "on" (переключение от off), а не "off" (застрявшее прежнее намерение).
     assert result["afterClickPostRollback"]["on"] is True
     assert result["callsAfterRollbackClick"][-1] == "on"
+
+
+# ── UAT 07.09 (T-d6t-05): choiceChips с/без option_labels ───────────────────────────────
+
+def test_chip_labels_show_human_text_not_code(result):
+    assert result["chipLabels"] == ["Краткая", "Полная"]
+
+
+def test_chip_data_value_stays_code(result):
+    assert result["chipDataValues"] == ["short", "full"]
+
+
+def test_chip_click_onchange_receives_code_not_label(result):
+    assert result["chipCallsAfterClick"] == ["full"]
+
+
+def test_chip_without_option_labels_renders_code_as_before(result):
+    assert result["chipLabelsNoLabels"] == ["alpha", "beta"]

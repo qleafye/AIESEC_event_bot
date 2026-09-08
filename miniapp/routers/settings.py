@@ -51,7 +51,7 @@ from cities import (
 )
 from database.db import get_setting, set_setting
 from services.sheets import tab_row_count
-from settings_schema import SETTINGS_SCHEMA, get_setting_typed, multi_labels
+from settings_schema import SETTINGS_SCHEMA, get_setting_typed, multi_labels, option_label
 from settings_synonyms import SETTINGS_SYNONYMS
 
 from miniapp.deps import Principal, require_cap, require_section
@@ -337,11 +337,20 @@ async def _item_for(base: str, ctx: _CityCtx) -> dict:
     spec.setdefault("max_len", None)
     if resolved_options is not None:
         spec["options"] = resolved_options
+    # UAT 07.09 (T-d6t-05): `display` — «было» в диалоге сохранения и сено для поиска по
+    # значению; код там человеку не показываем и искать по коду не заставляем. Ветки
+    # multi/options_from_step не трогаем — у них своя подпись выше (value_for_spec уже
+    # подписи, не коды).
+    if spec.get("option_labels") and not is_multi and not options_step and value is not None:
+        display_value = option_label(base, value)
+    else:
+        display_value = ", ".join(value_for_spec) if is_multi else _display(value)
+
     spec.update({
         # Запятая, а не перевод строки: строка уезжает в «было» диалога сохранения и в
         # маркер строки списка, где перенос строки выглядит мусором (multi-специфика,
         # обычные списки продолжают печатать через `\n` — `_display`).
-        "display": ", ".join(value_for_spec) if is_multi else _display(value),
+        "display": display_value,
         "is_city_override": is_city_override,
         "city_override_count": len(override_labels),
         "city_override_labels": override_labels,
