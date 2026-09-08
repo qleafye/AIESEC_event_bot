@@ -15,6 +15,7 @@ from aiogram import Bot, F, types
 from aiogram.fsm.context import FSMContext
 from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
 
+import reg_engine
 from database.db import get_user, get_reg_draft, delete_reg_draft, set_reg_draft_surface
 from settings_schema import get_setting_typed
 from services.reg_handoff import SURFACE_BOT
@@ -49,7 +50,10 @@ async def offer_resume(message: types.Message, draft: dict) -> None:
     enabled = await _get_enabled_steps(probe)
     total = len(enabled) or 1
     step_no = 1
-    if draft.get("step") in enabled:
+    if draft.get("step") == reg_engine.STEP_DONE:
+        # UAT 07.09 (T-d6t-04): анкета дочитана — подпись кнопки не должна врать единицей.
+        step_no = total
+    elif draft.get("step") in enabled:
         step_no = enabled.index(draft["step"]) + 1
     lang, tr_map = await reg_i18n.ctx_for(message)
     continue_label = reg_i18n.tr_fmt(
@@ -94,6 +98,12 @@ async def resume_from_draft(tap_message: types.Message, state: FSMContext, bot: 
     step = draft.get("step")
 
     if not enabled:
+        await finalize_registration(tap_message, state, bot)
+        return
+    if step == reg_engine.STEP_DONE:
+        # UAT 07.09 (T-d6t-04): маркер «все включённые шаги отвечены» — ровно то, что бот
+        # делает сам после последнего ответа в чате (паритет поверхностей); не доезжает до
+        # fallback «согласия -> ФИО» ниже.
         await finalize_registration(tap_message, state, bot)
         return
     if step in enabled:

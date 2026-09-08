@@ -28,6 +28,39 @@ export function errorText(err, fallback) {
   return fallback;
 }
 
+// UAT 07.09 (T-d6t-04): маркер «все включённые шаги отвечены» в `reg_drafts.step` —
+// зеркало `reg_engine.STEP_DONE`, расхождение ловит сторож в тестах (regex по строке ниже).
+export const STEP_DONE = "__done__";
+
+// Перенесено из screens/form.js без изменения прежних веток (неизвестный ключ/null -> 0,
+// известный ключ -> его индекс) + одна новая: маркер STEP_DONE -> specs.length — мастер
+// сам уходит на экран отправки, drawStep() уже так устроен (stepIndex >= specs.length).
+export function stepIndexFromKey(specs, stepKey) {
+  if (!stepKey) return 0;
+  if (stepKey === STEP_DONE) return specs.length;
+  const idx = specs.findIndex((s) => s.key === stepKey);
+  return idx >= 0 ? idx : 0;
+}
+
+// UAT 07.09 (находка 1): 400 с полями ошибок ({reason: "invalid", errors: {column: text}})
+// раньше попадал в общую ветку errorText, у которой для этого кода нет текста — плашка
+// рисовалась пустой, делегат жал «Отправить изменения» и не понимал, почему ничего не
+// происходит. Возвращает карту ошибок только для этого конкретного кода, иначе null.
+export function validationErrors(err) {
+  if (!err || err.status !== 400 || err.reason !== "invalid") return null;
+  const errors = err.payload && err.payload.errors;
+  if (!errors || typeof errors !== "object" || !Object.keys(errors).length) return null;
+  return errors;
+}
+
+// Первая запись карты ошибок (порядок ключей объекта) — {column, text} либо null.
+export function firstFieldError(errors) {
+  if (!errors) return null;
+  const column = Object.keys(errors)[0];
+  if (column === undefined) return null;
+  return { column, text: errors[column] };
+}
+
 export function isAuthError(err, excludeReasons) {
   if (!err) return false;
   if (err.status === 401 || err.status === 503) return true;
