@@ -277,6 +277,14 @@ SETTINGS_SCHEMA = {
         # forum/conference. Подтверждение — свой текст skillup_preset_confirm_text
         # (dangerous_confirm_key в settings_ops.py различает направление по next_value).
         "options": ["forum", "conference", "custom", "skillup"],
+        # UAT 07.09 (T-d6t, деривация плана — грепом планировщика этот ключ был пропущен, но
+        # правило то же): Mini App рисует эти 4 варианта чипами (settingSpec: ≤4 -> choice-chips)
+        # — без подписи показывала бы код. Ввод текстом в боте (prompt ниже) отдельная, более
+        # старая, проблема этого ключа — не трогаем в рамках этого фикса.
+        "option_labels": {
+            "forum": "Форум", "conference": "Конференция", "custom": "Вручную",
+            "skillup": "Форум СкиллАп",
+        },
         "prompt": (
             "Напишите одно слово: forum (форум) / conference (конференция) / custom "
             "(вручную) / skillup (форум СкиллАп — включит всю анкету направления и скоринг "
@@ -1123,6 +1131,7 @@ SETTINGS_SCHEMA = {
     "delegate_lang_driver": {
         "type": "enum", "group": "reg", "label": "Драйвер перевода анкеты (служебное)",
         "options": ["embedded", "http"],
+        "option_labels": {"embedded": "Встроенный (офлайн)", "http": "Внешний сервис (HTTP)"},
         "prompt": None,
         "default": "embedded",
     },
@@ -1687,13 +1696,20 @@ SETTINGS_SCHEMA = {
     },
     "reg_university_mode": {
         "type": "enum", "group": "toggles", "label": "🏫 Режим выбора ВУЗа",
-        "options": ["text", "list"], "prompt": None, "default": "text",
+        "options": ["text", "list"],
+        "option_labels": {"text": "Свободный ввод", "list": "Список из реестра"},
+        "prompt": None, "default": "text",
     },
     "reg_resume_mode": {
         "type": "enum", "group": "toggles", "label": "📄 Резюме",
         # Phase 28 (28-04, SU-04): третье значение "fork" — развилка «файл / ссылка / нет
         # резюме» (D-06: дефолт не тронут, "fork" только добавлен в конец списка вариантов).
-        "options": ["file_or_text", "text_only", "fork"], "prompt": None,
+        "options": ["file_or_text", "text_only", "fork"],
+        "option_labels": {
+            "file_or_text": "Файл или текст", "text_only": "Только текст",
+            "fork": "Спросить, как удобнее",
+        },
+        "prompt": None,
         "default": "file_or_text", "per_city": True,
     },
     # Phase 28 (28-06, SU-05/SU-06/SU-07): три тумблера реф-механики СкиллАпа — все дефолт off
@@ -1722,24 +1738,35 @@ SETTINGS_SCHEMA = {
     },
     "registration_mode": {
         "type": "enum", "group": "toggles", "label": "📝 Форма регистрации",
-        "options": ["short", "full"], "prompt": None, "default": "short",
+        "options": ["short", "full"],
+        # Слово в слово с handlers/admin_settings.py::_enum_human_label (сейчас читает отсюда).
+        "option_labels": {"short": "⚡ Краткая", "full": "📋 Полная"},
+        "prompt": None, "default": "short",
         "per_city": True,
     },
     "pending_notify_mode": {
         "type": "enum", "group": "toggles", "label": "🔔 Уведомление о заявке",
-        "options": ["instant", "batched"], "prompt": None, "default": "batched",
+        "options": ["instant", "batched"],
+        "option_labels": {"instant": "Сразу", "batched": "Пачкой"},
+        "prompt": None, "default": "batched",
     },
     "full_approval": {
         "type": "enum", "group": "toggles", "label": "✅ Модерация (полная форма)",
-        "options": ["manual", "auto"], "prompt": None, "default": "manual",
+        "options": ["manual", "auto"],
+        "option_labels": {"manual": "Вручную", "auto": "Автоматически"},
+        "prompt": None, "default": "manual",
     },
     "short_approval": {
         "type": "enum", "group": "toggles", "label": "✅ Модерация (краткая форма)",
-        "options": ["manual", "auto"], "prompt": None, "default": "auto",
+        "options": ["manual", "auto"],
+        "option_labels": {"manual": "Вручную", "auto": "Автоматически"},
+        "prompt": None, "default": "auto",
     },
     "party_approval": {
         "type": "enum", "group": "toggles", "label": "✅ Модерация вечеринки",
-        "options": ["manual", "auto"], "prompt": None, "default": "manual",
+        "options": ["manual", "auto"],
+        "option_labels": {"manual": "Вручную", "auto": "Автоматически"},
+        "prompt": None, "default": "manual",
     },
     # Phase 07.1 (CITY-01): master gate for the city-selection screen/deep-links. Type
     # "enum" (NOT "toggle" — REG_DEFAULTS/preset auto-overwrite only "toggle"-typed keys,
@@ -2162,6 +2189,9 @@ SETTINGS_SCHEMA = {
     "game_submit_notify_mode": {
         "type": "enum", "group": "game", "label": "📥 Уведомления о сдачах",
         "options": ["each", "digest"],
+        # Слово в слово с GAME_SUBMIT_NOTIFY_MODE_LABELS ниже (третий потребитель тех же
+        # подписей — services/game_digest.py читает свою карту напрямую, эта не заменяет её).
+        "option_labels": {"each": "Каждую сдачу отдельно", "digest": "Пачкой (дайджест)"},
         "prompt": None,
         "default": "each",
     },
@@ -2659,7 +2689,15 @@ SETTINGS_SCHEMA = {
     # «акцентом» ради миграции уже настроенных стендов (UI-SPEC).
     "miniapp_theme_preset": {
         "type": "enum", "group": "miniapp", "label": "🎭 Пресет оформления",
-        "options": ["bluebook", "youlead", "realtalk", "custom"], "prompt": None, "default": "bluebook",
+        "options": ["bluebook", "youlead", "realtalk", "custom"],
+        # Слово в слово с handlers/admin_miniapp_theme.py::_PRESET_LABELS + кнопка «Своя»
+        # (custom — единственный вариант вне web_theme.PRESETS, сторож
+        # tests/test_ru_brand_wording_260824.py:88 держит это соответствие).
+        "option_labels": {
+            "bluebook": "АЙСЕК — классика", "youlead": "ЮЛид", "realtalk": "РилТолк",
+            "custom": "Своя",
+        },
+        "prompt": None, "default": "bluebook",
     },
     "miniapp_theme_secondary": {
         "type": "text", "group": "miniapp", "label": "🎨 Вторичный цвет",
@@ -2679,7 +2717,13 @@ SETTINGS_SCHEMA = {
     },
     "miniapp_theme_heading_font": {
         "type": "enum", "group": "miniapp", "label": "🔤 Шрифт заголовков",
-        "options": ["raleway", "raleway_italic", "lato"], "prompt": None, "default": "raleway",
+        "options": ["raleway", "raleway_italic", "lato"],
+        # Слово в слово с handlers/admin_miniapp_theme.py::_FONT_LABELS, порядок тот же.
+        "option_labels": {
+            "raleway": "Raleway — строгий", "raleway_italic": "Raleway курсив — игривый",
+            "lato": "Lato — нейтральный",
+        },
+        "prompt": None, "default": "raleway",
     },
     "miniapp_theme_playful_tone": {
         "type": "enum", "group": "miniapp", "label": "😄 Игривый тон текстов",
@@ -4007,6 +4051,31 @@ def multi_codes(key: str, labels: list[str]) -> tuple[list[str] | None, str | No
             return None, label
     chosen = {label_to_code[label] for label in wanted}
     return [code for code in mapping if code in chosen], None
+
+
+# UAT 07.09 (T-d6t): «__city__» — то же разделение композитного ключа `{base}__city__{code}`,
+# что `settings_ops.base_setting_key`/`cities.PER_CITY_SEP` (значение то же — "__city__").
+# Не импортируем ни один из этих модулей: `cities.py` сама импортирует `settings_schema`
+# (D-01, докстринг модуля) — импорт назад завёл бы цикл. Литерал здесь единственный дубль,
+# сознательно вместо цикла импортов.
+_PER_CITY_SEP = "__city__"
+
+
+def option_labels(key: str) -> dict[str, str]:
+    """Карта код -> человеческая подпись для enum-ключа (пусто, если у ключа нет
+    `option_labels` в реестре или он не enum). Композитный per-city ключ
+    (`{base}__city__{code}`) нормализуется к базовому — те же подписи, что у общего ключа."""
+    base = key.split(_PER_CITY_SEP)[0]
+    entry = SETTINGS_SCHEMA.get(base)
+    if entry is None or entry.get("type") != "enum":
+        return {}
+    return dict(entry.get("option_labels") or {})
+
+
+def option_label(key: str, code: str) -> str:
+    """Подпись одного кода enum-ключа; неизвестный код или ключ без `option_labels` -> сам
+    код (fail-soft, тот же приём, что `multi_labels`)."""
+    return option_labels(key).get(code, code)
 
 
 async def get_setting_typed(key: str):

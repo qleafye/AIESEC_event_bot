@@ -15,6 +15,9 @@ App — пресеты (BlueBook/YouLead/Своя) и ручки кастома.
 Правило «бот для людей» (CLAUDE.md): код ключа реестра, имя пресета (`bluebook`/`youlead`) и
 код шрифта (`raleway_italic` и т.п.) нигде не показываются человеку напрямую — только через
 человеческие подписи (`_PRESET_LABELS`/`_FONT_LABELS`/`_COLOR_LABELS`/`_ASSET_SLOT_BY_NAME`).
+UAT 07.09 (T-d6t-05): подписи теперь ЖИВУТ в реестре (`settings_schema.SETTINGS_SCHEMA`,
+поле `option_labels`) — `_PRESET_LABELS`/`_FONT_LABELS` здесь только читают их, второй копии
+текста нет (тот же реестр видит и Mini App).
 """
 import html as html_module
 import logging
@@ -29,7 +32,7 @@ from aiogram.types import FSInputFile, InlineKeyboardButton, InlineKeyboardMarku
 
 import web_theme
 from database.db import get_setting, set_setting, delete_setting
-from settings_schema import get_setting_typed
+from settings_schema import get_setting_typed, option_label, option_labels
 from handlers.admin import router
 from handlers.states import MiniAppTheme
 
@@ -48,10 +51,11 @@ PREVIEW_DIR = Path(__file__).resolve().parent.parent / "assets" / "theme-preview
 
 # Quick 260904-183: бренд-материалы РилТолк сняты владельцем 04.09.2026 — третий пресет
 # заведён. Три встроенных пресета; «Своя» вычисляется отдельно (не хранится в этих словарях).
+# UAT 07.09 (T-d6t-05): подписи — из реестра (`option_label`), НЕ повторный литерал;
+# `custom` в реестре есть (для Mini App), но сюда сознательно не попадает — на этом
+# соответствии стоит сторож `tests/test_ru_brand_wording_260824.py:88`.
 _PRESET_LABELS: dict[str, str] = {
-    "bluebook": "АЙСЕК — классика",
-    "youlead": "ЮЛид",
-    "realtalk": "РилТолк",
+    name: option_label("miniapp_theme_preset", name) for name in web_theme.PRESETS
 }
 _PRESET_BLURBS: dict[str, str] = {
     "bluebook": "строгий АЙСЕК: синий акцент, прямые заголовки, плита без паттерна.",
@@ -68,11 +72,8 @@ _COLOR_LABELS: dict[str, str] = {
 }
 
 # RESEARCH Q3 (закрытый список): физически в проекте вшиты только эти три начертания.
-_FONT_LABELS: dict[str, str] = {
-    "raleway": "Raleway — строгий",
-    "raleway_italic": "Raleway курсив — игривый",
-    "lato": "Lato — нейтральный",
-}
+# UAT 07.09 (T-d6t-05): из реестра целиком, порядок реестра = порядок кнопок.
+_FONT_LABELS: dict[str, str] = dict(option_labels("miniapp_theme_heading_font"))
 
 # «Имя слота» (в callback_data и в FSM-состоянии) -> (State, ключ реестра, подпись, где видно).
 # Единственное место, где перечислены десять фото-ручек — клавиатура/загрузка/удаление читают
