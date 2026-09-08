@@ -176,6 +176,11 @@ STEP_TO_COLUMN["resume"] = "resume_text"
 STEP_TO_COLUMN["full_name"] = "full_name"
 RECALLABLE_STEPS = {k for k in STEP_TO_COLUMN if k != "resume"}
 
+# UAT 07.09 (T-d6t-04): маркер «все включённые шаги отвечены» в reg_drafts.step — это НЕ
+# шаг. Он никогда не встречается в REG_FLOW, enabled_steps, column_to_step, STEP_TO_COLUMN,
+# поэтому и выбран вид, который не может совпасть ни с одним ключом шага.
+STEP_DONE = "__done__"
+
 # Phase 21 (gap closure, FORM-SYNC-01): ключ подписи шага в REG_LABELS — это setting_key из
 # тройки REG_FLOW (так бот подписывает шаг в `handlers/admin_reg_config.py`:
 # `REG_LABELS.get(setting_key, setting_key)`), а НЕ `reg_q_{step_key}`. Для девяти шагов
