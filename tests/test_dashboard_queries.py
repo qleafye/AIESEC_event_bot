@@ -305,6 +305,49 @@ def test_kpi_row_processing_avg_scoped_by_season(tmp_path):
     assert past_row["processing_avg_minutes"] == 600.0
 
 
+def test_kpi_row_processing_avg_excludes_decision_from_before_re_registration(tmp_path):
+    """Делегат переоформился на новый сезон -- `users.registration_date`/`season`
+    переписаны UPSERT'ом НА МЕСТЕ (тот же telegram_id, database/db.py), а строка старого
+    решения в `application_decisions` осталась как была. Пока новое решение не принято,
+    старое решение (раньше ТЕКУЩЕЙ регистрации) в среднее не идёт -- иначе разница дат
+    уходит в минус и молча тянет метрику вниз."""
+    path = _use_tmp_db(tmp_path)
+    _seed(
+        users=[
+            # Единственный делегат: решение прошлого сезона (10:30) раньше НОВОЙ регистрации
+            # (2026-09-01) -- в среднем по этому единственному делегату нет данных.
+            {"telegram_id": 1, "registration_date": "2026-09-01 09:00:00"},
+        ],
+        application_decisions=[
+            _decision(1, "2026-08-01 10:30:00", "2026-08-01 10:35:00"),  # решение прошлого сезона
+        ],
+    )
+    with dash_db.read_conn(path) as conn:
+        row = kpi_row(conn, Scope())
+    assert row["processing_avg_minutes"] is None
+    assert row["processing_avg_label"] == "—"
+
+
+def test_kpi_row_processing_avg_stale_decision_does_not_affect_other_delegates(tmp_path):
+    """Тот же сценарий переоформления, но рядом есть второй делегат с валидным решением --
+    среднее считается ТОЛЬКО по нему, переоформившийся делегат просто исключается из
+    выборки, не искажая число."""
+    path = _use_tmp_db(tmp_path)
+    _seed(
+        users=[
+            {"telegram_id": 1, "registration_date": "2026-09-01 09:00:00"},  # переоформился
+            {"telegram_id": 2, "registration_date": "2026-08-01 10:00:00"},  # без переоформления
+        ],
+        application_decisions=[
+            _decision(1, "2026-08-01 10:30:00", "2026-08-01 10:35:00"),  # решение прошлого сезона
+            _decision(2, "2026-08-01 11:00:00", "2026-08-01 11:05:00"),  # +60 мин, валидное
+        ],
+    )
+    with dash_db.read_conn(path) as conn:
+        row = kpi_row(conn, Scope())
+    assert row["processing_avg_minutes"] == 60.0  # только делегат 2, делегат 1 исключён
+
+
 # ── funnel ────────────────────────────────────────────────────────────────────────────────
 
 def test_funnel_payment_stage_only_when_payment_enabled(tmp_path):
