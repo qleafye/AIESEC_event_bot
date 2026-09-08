@@ -177,6 +177,61 @@ def _scope_sql(conn, scope: Scope) -> tuple[list[str], tuple]:
 
 # ── KPI-строка (D-06/D-14/D-16) ──────────────────────────────────────────────────────────
 
+def format_processing_time(minutes: float | None) -> str:
+    """Человеческая подпись для «среднего времени обработки заявки».
+
+    Подписи — для человека, не для машины: единицы сокращены (`мин`/`ч`/`д`) и склонений
+    не требуют. `"—"` означает ОДНОВРЕМЕННО «решений ещё нет» (minutes is None) И «данные
+    битые» (отрицательное значение) — менеджеру эти два случая различать незачем, оба
+    читаются как «метрику показать нечем»."""
+    if minutes is None or minutes < 0:
+        return "—"
+    if minutes < 1:
+        return "меньше минуты"
+    # Форма (минуты/часы/дни) выбирается по СЫРОМУ значению, число внутри — по округлённому
+    # (`total`): иначе, например, 59.6 (< 60 сырых минут) после округления до 60 попало бы в
+    # форму «1 ч» вместо ожидаемой «60 мин» — округление меняет число, но не форму подписи.
+    total = round(minutes)
+    if minutes < 60:
+        return f"{total} мин"
+    if minutes < 1440:
+        hours, mins = divmod(total, 60)
+        return f"{hours} ч" if mins == 0 else f"{hours} ч {mins} мин"
+    days, hours = divmod(total, 1440)
+    hours = hours // 60
+    return f"{days} д" if hours == 0 else f"{days} д {hours} ч"
+
+
+def _avg_processing_minutes(conn, parts: list[str], params: tuple) -> float | None:
+    """Среднее число минут от `users.registration_date` до последнего НЕ отменённого решения
+    в `application_decisions` (в скоупе `parts`/`params`, уже посчитанном `_scope_sql` —
+    вызывать `_scope_sql` здесь повторно не нужно, `kpi_row` считает его один раз).
+
+    Почему запрос устроен именно так:
+    - `MAX(decided_at)` по строковым датам формата `YYYY-MM-DD HH:MM:SS` — лексикографический
+      порядок совпадает с хронологическим, отдельный парсинг не нужен;
+    - фильтр `undone_at IS NULL` стоит ВНУТРИ подзапроса, а не снаружи: снаружи он выбирал бы
+      максимум по ВСЕМ решениям и потом отбрасывал строку целиком — делегат с отменённым
+      ПОЗДНИМ решением молча выпал бы из среднего вместо того, чтобы учесть более раннее
+      не-отменённое;
+    - фрагменты `parts` не квалифицированы именем таблицы — в этом JOIN `event_city`/
+      `season`/`registration_date` есть только у `users`, `telegram_id` квалифицирован явно;
+    - `julianday()` вернёт NULL на битой дате, `AVG` такие строки пропускает — одна кривая
+      строка не роняет метрику (тот же fail-soft, что у `_month_label`);
+    - `AVG` по пустому множеству даёт NULL — это и есть «решений нет».
+    """
+    date_parts = parts + ["registration_date IS NOT NULL", "TRIM(registration_date) != ''"]
+    sql = (
+        "SELECT AVG((julianday(d.decided_at) - julianday(users.registration_date)) * 1440.0) "
+        "FROM users JOIN (SELECT telegram_id, MAX(decided_at) AS decided_at "
+        "FROM application_decisions WHERE undone_at IS NULL "
+        "GROUP BY telegram_id) d ON d.telegram_id = users.telegram_id"
+        f"{_where(date_parts)}"
+    )
+    value = _scalar(conn, sql, params)
+    return round(value, 1) if value is not None else None
+
+
 def kpi_row(conn, scope: Scope) -> dict:
     parts, params = _scope_sql(conn, scope)
 
@@ -216,6 +271,8 @@ def kpi_row(conn, scope: Scope) -> dict:
     ) or 0
     conversion = round(completed / starts * 100, 1) if starts else None
 
+    processing = _avg_processing_minutes(conn, parts, params)
+
     return {
         "total": total,
         "today": today_count,
@@ -223,6 +280,8 @@ def kpi_row(conn, scope: Scope) -> dict:
         "week_delta": week_count - prev_week_count,
         "conversion": conversion,
         "tracking_since": tracking_since,
+        "processing_avg_minutes": processing,
+        "processing_avg_label": format_processing_time(processing),
     }
 
 

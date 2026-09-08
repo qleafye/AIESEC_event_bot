@@ -28,6 +28,7 @@ from dashboard.queries import (
     daily_registrations,
     dashboard_flags,
     dropout_steps,
+    format_processing_time,
     funnel,
     funnel_tracking_since,
     game_block,
@@ -51,7 +52,7 @@ def _use_tmp_db(tmp_path, name="dashboard_queries.db") -> str:
 
 async def _seed_async(
     cities=None, settings=None, users=None, reg_events=None, reg_started=None,
-    game_tasks=None, game_submissions=None,
+    game_tasks=None, game_submissions=None, application_decisions=None,
 ):
     async with bot_db._connect() as conn:
         for code, label, enabled, sort_order in cities or []:
@@ -103,6 +104,12 @@ async def _seed_async(
             await conn.execute(
                 f"INSERT INTO game_submissions ({cols}) VALUES ({placeholders})", tuple(row.values())
             )
+        for row in application_decisions or []:
+            cols = ", ".join(row.keys())
+            placeholders = ", ".join("?" for _ in row)
+            await conn.execute(
+                f"INSERT INTO application_decisions ({cols}) VALUES ({placeholders})", tuple(row.values())
+            )
         await conn.commit()
 
 
@@ -119,6 +126,7 @@ def test_kpi_row_on_empty_db_returns_zeros_and_none(tmp_path):
     assert row == {
         "total": 0, "today": 0, "week": 0, "week_delta": 0,
         "conversion": None, "tracking_since": None,
+        "processing_avg_minutes": None, "processing_avg_label": "—",
     }
 
 
@@ -193,6 +201,108 @@ def test_season_scope_null_lands_in_current_season_other_season_excluded(tmp_pat
         past_row = kpi_row(conn, Scope(season="RusCo25"))
     assert current_row["total"] == 2
     assert past_row["total"] == 1
+
+
+# ── format_processing_time / _avg_processing_minutes (квик 260908-dbo) ──────────────────
+
+def test_format_processing_time_boundaries():
+    cases = [
+        (None, "—"),
+        (0, "меньше минуты"),
+        (0.4, "меньше минуты"),
+        (45, "45 мин"),
+        (59.6, "60 мин"),  # округление до целых минут ДО выбора формы (мин, не «1 ч»)
+        (120, "2 ч"),
+        (135, "2 ч 15 мин"),
+        (1440, "1 д"),
+        (1680, "1 д 4 ч"),
+        (-5, "—"),  # битые данные не показываем как «минус два часа»
+    ]
+    for minutes, expected in cases:
+        assert format_processing_time(minutes) == expected, minutes
+
+
+def _decision(telegram_id, decided_at, effects_due_at, decision="approve", undone_at=None, decided_by=999):
+    return {
+        "telegram_id": telegram_id, "decision": decision, "decided_by": decided_by,
+        "decided_at": decided_at, "effects_due_at": effects_due_at, "undone_at": undone_at,
+    }
+
+
+def test_kpi_row_processing_avg_ignores_delegate_without_decision(tmp_path):
+    path = _use_tmp_db(tmp_path)
+    _seed(
+        users=[
+            {"telegram_id": 1, "registration_date": "2026-08-01 10:00:00"},  # +120 мин
+            {"telegram_id": 2, "registration_date": "2026-08-01 10:00:00"},  # +30 мин
+            {"telegram_id": 3, "registration_date": "2026-08-01 10:00:00"},  # без решения
+        ],
+        application_decisions=[
+            _decision(1, "2026-08-01 12:00:00", "2026-08-01 12:05:00"),
+            _decision(2, "2026-08-01 10:30:00", "2026-08-01 10:35:00"),
+        ],
+    )
+    with dash_db.read_conn(path) as conn:
+        row = kpi_row(conn, Scope())
+    assert row["processing_avg_minutes"] == 75.0
+    assert row["processing_avg_label"] == "1 ч 15 мин"
+
+
+def test_kpi_row_processing_avg_undone_later_decision_falls_back_to_earlier(tmp_path):
+    """У делегата есть более позднее решение с `undone_at` не NULL -- в среднее идёт
+    более раннее не-отменённое, а не отменённое позднее."""
+    path = _use_tmp_db(tmp_path)
+    _seed(
+        users=[{"telegram_id": 1, "registration_date": "2026-08-01 10:00:00"}],
+        application_decisions=[
+            _decision(1, "2026-08-01 10:30:00", "2026-08-01 10:35:00"),  # раннее, не отменено
+            _decision(1, "2026-08-01 14:00:00", "2026-08-01 14:05:00",
+                      decision="reject", undone_at="2026-08-01 15:00:00"),  # позднее, отменено
+        ],
+    )
+    with dash_db.read_conn(path) as conn:
+        row = kpi_row(conn, Scope())
+    assert row["processing_avg_minutes"] == 30.0  # ровно раннее решение, не позднее (240 мин)
+
+
+def test_kpi_row_processing_avg_delegate_with_only_undone_decision_excluded(tmp_path):
+    """У делегата ЕДИНСТВЕННОЕ решение отменено -- он выпадает из среднего целиком."""
+    path = _use_tmp_db(tmp_path)
+    _seed(
+        users=[
+            {"telegram_id": 1, "registration_date": "2026-08-01 10:00:00"},
+            {"telegram_id": 2, "registration_date": "2026-08-01 10:00:00"},
+        ],
+        application_decisions=[
+            _decision(1, "2026-08-01 10:30:00", "2026-08-01 10:35:00",
+                      undone_at="2026-08-01 11:00:00"),
+            _decision(2, "2026-08-01 11:00:00", "2026-08-01 11:05:00"),  # +60 мин
+        ],
+    )
+    with dash_db.read_conn(path) as conn:
+        row = kpi_row(conn, Scope())
+    assert row["processing_avg_minutes"] == 60.0  # только делегат 2
+
+
+def test_kpi_row_processing_avg_scoped_by_season(tmp_path):
+    """Решение делегата другого сезона не влияет на среднее текущего сезона."""
+    path = _use_tmp_db(tmp_path)
+    _seed(
+        settings={"event_season": "YL26"},
+        users=[
+            {"telegram_id": 1, "season": "YL26", "registration_date": "2026-08-01 10:00:00"},
+            {"telegram_id": 2, "season": "RusCo25", "registration_date": "2026-08-01 10:00:00"},
+        ],
+        application_decisions=[
+            _decision(1, "2026-08-01 10:30:00", "2026-08-01 10:35:00"),  # +30 мин, YL26
+            _decision(2, "2026-08-01 20:00:00", "2026-08-01 20:05:00"),  # +600 мин, RusCo25
+        ],
+    )
+    with dash_db.read_conn(path) as conn:
+        current_row = kpi_row(conn, Scope())  # season=None -> текущий (YL26)
+        past_row = kpi_row(conn, Scope(season="RusCo25"))
+    assert current_row["processing_avg_minutes"] == 30.0
+    assert past_row["processing_avg_minutes"] == 600.0
 
 
 # ── funnel ────────────────────────────────────────────────────────────────────────────────
