@@ -59,7 +59,7 @@
   {# KPI-строка (D-14) #}
   <section class="block">
     <h2 class="visually-hidden">Ключевые показатели</h2>
-    <div class="kpi-grid">
+    <div class="kpi-grid kpi-grid--5">
       <div class="kpi primary">
         <div class="num">{{ kpi.total | thousands }}</div>
         <div class="lbl">Всего заявок</div>
@@ -82,6 +82,11 @@
       <div class="kpi">
         <div class="num">{% if kpi.conversion is none %}<span title="Появится, когда бот начнёт отслеживать входы">—</span>{% else %}{{ kpi.conversion }}%{% endif %}</div>
         <div class="lbl">Конверсия старт → заявка</div>
+      </div>
+      <div class="kpi">
+        <div class="num text">{{ kpi.processing_avg_label }}</div>
+        <div class="lbl">Среднее время обработки</div>
+        <div class="delta">от подачи анкеты до решения менеджера</div>
       </div>
     </div>
   </section>

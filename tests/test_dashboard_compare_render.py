@@ -52,7 +52,7 @@ def _use_tmp_db(tmp_path, name: str) -> str:
     return path
 
 
-async def _seed_async(*, settings=None, users=None):
+async def _seed_async(*, settings=None, users=None, application_decisions=None):
     async with bot_db._connect() as conn:
         for key, value in (settings or {}).items():
             await conn.execute(
@@ -64,6 +64,12 @@ async def _seed_async(*, settings=None, users=None):
             cols = ", ".join(row.keys())
             placeholders = ", ".join("?" for _ in row)
             await conn.execute(f"INSERT INTO users ({cols}) VALUES ({placeholders})", tuple(row.values()))
+        for row in application_decisions or []:
+            cols = ", ".join(row.keys())
+            placeholders = ", ".join("?" for _ in row)
+            await conn.execute(
+                f"INSERT INTO application_decisions ({cols}) VALUES ({placeholders})", tuple(row.values())
+            )
         await conn.commit()
 
 
@@ -126,6 +132,12 @@ def _build_two_event_fixture(tmp_path):
             _users_row(3, registration_date="2026-08-03 10:00:00", payment_status="not_paid", source="Реф. ссылка"),
             _users_row(4, registration_date="2026-08-04 10:00:00", payment_status="not_paid", source="ВК"),
             _users_row(5, registration_date="2026-08-05 10:00:00", status="pending", source="Реф. ссылка"),
+        ],
+        application_decisions=[
+            {
+                "telegram_id": 1, "decision": "approve", "decided_by": 1,
+                "decided_at": "2026-08-01 12:00:00", "effects_due_at": "2026-08-01 12:05:00",
+            },
         ],
     )
     path_b = _make_event_db(
@@ -333,3 +345,19 @@ def test_no_hardcoded_colors_in_compare_html_source():
     text = COMPARE_HTML.read_text(encoding="utf-8")
     matches = _HEX_OR_RGB_COLOR.findall(text)
     assert not matches, f"hardcoded color literal in compare.html: {matches}"
+
+
+# ── колонка «Обработка» в таблице «Событие рядом» (квик 260908-dbo, DBO-KPI-01) ──────────
+
+def test_compare_table_processing_column_shows_label_and_dash(tmp_path, monkeypatch):
+    cfg = _build_two_event_fixture(tmp_path)
+    resp = _get_compare(tmp_path, monkeypatch, cfg)
+    assert resp.status_code == 200
+    text = resp.text
+    table_start = text.find("Событие рядом")
+    scoped = text[table_start:]
+    assert "Обработка" in scoped
+    m_a = re.search(r"Юлид.*?data-label=\"Обработка\">\s*([^<]*)", scoped, re.S)
+    m_b = re.search(r"РилТолк.*?data-label=\"Обработка\">\s*([^<]*)", scoped, re.S)
+    assert m_a and "2 ч" in m_a.group(1)  # событие "a" — решение по делегату 1
+    assert m_b and "—" in m_b.group(1)  # событие "b" — решений нет
