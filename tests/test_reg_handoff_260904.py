@@ -721,9 +721,11 @@ def test_patch_stamps_next_unanswered_step_not_just_answered(tmp_path):
     assert draft["step"] == "phone"
 
 
-def test_patch_last_enabled_step_keeps_step_unchanged(tmp_path):
+def test_patch_last_enabled_step_stores_done_marker(tmp_path):
+    """UAT 07.09 (T-d6t-04): единственный включённый шаг ("age") отвечен -- шагу двигаться
+    некуда, `reg_drafts.step` получает `reg_engine.STEP_DONE`, а не остаётся уже отвеченным
+    "age" (иначе бот, читающий тот же столбец, переспрашивает после «Продолжить в чате»)."""
     client = _miniapp_client(tmp_path)
-    # только один включённый шаг ("age") -- отвечаем на него, шагу двигаться некуда
     for step_key, setting_key, *_rest in reg_engine.REG_FLOW:
         _run(bot_db.set_setting(setting_key, "on" if step_key == "age" else "off"))
     resp = client.patch(
@@ -731,8 +733,9 @@ def test_patch_last_enabled_step_keeps_step_unchanged(tmp_path):
         json={"version": 0, "answers": {"age": "20"}, "step": "age"},
     )
     assert resp.status_code == 200, resp.text
+    assert resp.json()["step"] == reg_engine.STEP_DONE
     draft = _draft_row3(UNREGISTERED_ID)
-    assert draft["step"] == "age"
+    assert draft["step"] == reg_engine.STEP_DONE
 
 
 def test_submit_enqueues_fsm_reset_submitted_in_addition_to_reg_finalized(tmp_path, monkeypatch):

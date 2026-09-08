@@ -11,7 +11,7 @@
 
 import {
   field, setFieldState, createFormState, diffView, confirmBox, errorText,
-  isAuthError as isAuthErrorBase,
+  isAuthError as isAuthErrorBase, stepIndexFromKey, validationErrors, firstFieldError,
 } from "../form.js";
 import { flatRow, sectionTitle, labelText } from "../ui.js";
 import { icon } from "../icons.js";
@@ -38,12 +38,6 @@ function answersFromSteps(steps) {
   const out = {};
   for (const s of steps || []) out[s.column] = s.value;
   return out;
-}
-
-function stepIndexFromKey(specs, stepKey) {
-  if (!stepKey) return 0;
-  const idx = specs.findIndex((s) => s.key === stepKey);
-  return idx >= 0 ? idx : 0;
 }
 
 // D13 (quick 260904-de4): «Поделиться номером» — доступно, только когда клиент физически
@@ -382,7 +376,26 @@ export async function render(root, params, ctx) {
           catch (_) { showHandoff(err.payload || {}); }
           return;
         }
-        if (!isAuthError(err)) say(errorText(err, ""), "warn");
+        // UAT 07.09 (находка 1): 400 с полями ошибок — пометить строки + сказать, что именно
+        // не так, а не молчать общей веткой ниже (у которой для этого кода нет текста).
+        const errors = validationErrors(err);
+        if (errors) {
+          for (const column of Object.keys(errors)) {
+            const el = fieldEls[column];
+            // Строка обзора может быть свёрнута — fieldEls[column] тогда пуст, это нормально.
+            if (el) setFieldState(el, "error", { text: errors[column] });
+          }
+          const first = firstFieldError(errors);
+          const spec = first && state.specs.find((s) => s.column === first.column);
+          const label = spec ? spec.label : "";
+          say(label ? `${label}: ${first.text}` : first.text, "warn");
+          drawList();
+          return;
+        }
+        if (!isAuthError(err)) {
+          const t = errorText(err, "");
+          if (t) say(t, "warn");
+        }
         drawList();
       }
     }
