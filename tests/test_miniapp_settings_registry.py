@@ -46,6 +46,9 @@ ITEM_FIELDS = {
     # списка вариантов вопроса (28-UI-SPEC §8), всегда присутствуют (пустой список/None у
     # ключей без options_from_step либо когда пропавших подписей нет).
     "options_from_step", "stale_options", "stale_option_text",
+    # UAT 07.09 (T-d6t-05): подпись варианта enum из реестра (None у ключей без option_labels,
+    # в т.ч. у всех on/off) — settings_schema.SETTINGS_SCHEMA[key]["option_labels"].
+    "option_labels",
 }
 
 

@@ -134,8 +134,12 @@ function choiceChips(h, spec, value, onChange) {
     }
   }
   for (const opt of spec.options || []) {
+    // UAT 07.09 (T-d6t-05): подпись — из реестра (spec.option_labels), значение остаётся
+    // кодом (data-value/onChange). Анкете это не мешает — у её шагов options уже подписи,
+    // option_labels у них нет, ветка `|| opt` даёт прежний рендер байт-в-байт.
+    const label = (spec.option_labels && spec.option_labels[opt]) || opt;
     const btn = h("button", {
-      class: "chip-choice", type: "button", text: opt, "data-value": opt,
+      class: "chip-choice", type: "button", text: label, "data-value": opt,
       onClick: () => { current = opt; onChange(opt); paint(); },
     });
     buttons.push(btn);
@@ -160,7 +164,10 @@ function choiceChips(h, spec, value, onChange) {
 function selectControl(h, spec, value, onChange) {
   const select = h("select", { class: "input", id: `f-${spec.key}` });
   for (const opt of spec.options || []) {
-    select.append(h("option", { value: opt, text: opt }));
+    // UAT 07.09 (T-d6t-05): та же логика, что choiceChips — value уезжает кодом, текст
+    // опции — подпись из реестра, если она есть.
+    const label = (spec.option_labels && spec.option_labels[opt]) || opt;
+    select.append(h("option", { value: opt, text: label }));
   }
   if (value != null) select.value = value;
   select.addEventListener("change", () => onChange(select.value));
@@ -770,7 +777,13 @@ function isOnOffEnum(options) {
  */
 export function settingSpec(item) {
   const it = item || {};
-  const spec = { key: it.key, type: "text", label: it.label, help: it.help, options: it.options, max_len: it.max_len };
+  const spec = {
+    key: it.key, type: "text", label: it.label, help: it.help, options: it.options,
+    max_len: it.max_len,
+    // UAT 07.09 (T-d6t-05): подписи вариантов enum (реестр settings_schema.option_labels) —
+    // choiceChips/selectControl рисуют их вместо кода, data-value/onChange остаются кодом.
+    option_labels: it.option_labels,
+  };
   switch (it.type) {
     case "text":
       spec.type = isLongSettingText(it) ? "textarea" : "text";

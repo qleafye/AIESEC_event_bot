@@ -90,6 +90,8 @@ function defaultDisplayText(item) {
   if (Array.isArray(d)) return d.join(", ");
   if (d === true) return "on";
   if (d === false) return "off";
+  // UAT 07.09 (T-d6t-05): дефолт enum-ключа с подписями — подпись, не код.
+  if (item.option_labels && item.option_labels[d]) return item.option_labels[d];
   return String(d);
 }
 
@@ -110,6 +112,8 @@ function humanDisplayValue(item, v, fileNames) {
   if ((item.type === "photo" || item.type === "file") && fileNames && fileNames.has(item.key)) {
     return fileNames.get(item.key);
   }
+  // UAT 07.09 (T-d6t-05): «станет» для enum с подписями — подпись кода, не сам код.
+  if (item.option_labels && item.option_labels[v]) return item.option_labels[v];
   return String(v);
 }
 

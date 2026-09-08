@@ -21,7 +21,7 @@ from aiogram.filters import Command, StateFilter
 from aiogram.fsm.context import FSMContext
 from aiogram.types import BufferedInputFile, InlineKeyboardButton, InlineKeyboardMarkup
 
-from settings_schema import SETTINGS_SCHEMA, get_setting_typed
+from settings_schema import SETTINGS_SCHEMA, get_setting_typed, option_label
 from database.db import (
     export_users_csv,
     get_setting,
@@ -1811,9 +1811,12 @@ async def settings_receive_file_invalid(message: types.Message):
 
 def _enum_human_label(key: str, value: str) -> str:
     """Human-readable alert text for a per-city enum toggle (CLAUDE.md: no raw values in
-    admin-facing alerts)."""
-    if key == "registration_mode":
-        return {"short": "⚡ Краткая", "full": "📋 Полная"}.get(value, value)
+    admin-facing alerts). UAT 07.09 (T-d6t-05): реестр (`option_label`) — первый источник,
+    затем прежние ветки on/off, затем сам код (fail-soft, ничего не сломано для ключей без
+    подписей)."""
+    labeled = option_label(key, value)
+    if labeled != value:
+        return labeled
     if value == "on":
         return "✅ Вкл"
     if value == "off":
