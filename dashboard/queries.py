@@ -214,13 +214,24 @@ def _avg_processing_minutes(conn, parts: list[str], params: tuple) -> float | No
       максимум по ВСЕМ решениям и потом отбрасывал строку целиком — делегат с отменённым
       ПОЗДНИМ решением молча выпал бы из среднего вместо того, чтобы учесть более раннее
       не-отменённое;
+    - `julianday(d.decided_at) >= julianday(users.registration_date)` — повторная регистрация
+      делегата (новый сезон) переписывает `users.registration_date`/`season` НА МЕСТЕ
+      (`database/db.py`, `registration_date=excluded.registration_date` в UPSERT), но старые
+      строки `application_decisions` остаются как были. Без этого условия делегат, ещё не
+      получивший решения в НОВОМ сезоне, подхватывал бы своё решение из ПРОШЛОГО — разница
+      дат уходила бы в минус и молча тянула среднее вниз. Решения раньше текущей регистрации
+      исключаются целиком, а не только из финального агрегата;
     - фрагменты `parts` не квалифицированы именем таблицы — в этом JOIN `event_city`/
       `season`/`registration_date` есть только у `users`, `telegram_id` квалифицирован явно;
     - `julianday()` вернёт NULL на битой дате, `AVG` такие строки пропускает — одна кривая
       строка не роняет метрику (тот же fail-soft, что у `_month_label`);
     - `AVG` по пустому множеству даёт NULL — это и есть «решений нет».
     """
-    date_parts = parts + ["registration_date IS NOT NULL", "TRIM(registration_date) != ''"]
+    date_parts = parts + [
+        "registration_date IS NOT NULL",
+        "TRIM(registration_date) != ''",
+        "julianday(d.decided_at) >= julianday(users.registration_date)",
+    ]
     sql = (
         "SELECT AVG((julianday(d.decided_at) - julianday(users.registration_date)) * 1440.0) "
         "FROM users JOIN (SELECT telegram_id, MAX(decided_at) AS decided_at "
