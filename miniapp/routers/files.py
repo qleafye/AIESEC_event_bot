@@ -19,6 +19,9 @@
   - держателю `moderate_game` — в пределах городского скоупа сдачи (тот же критерий, что
     `_submission_out_of_scope` в боте: модуль городов выключен или привязки нет -> всё;
     иначе город делегата должен совпадать с привязкой менеджера);
+  - владельцу — его собственный аватар (`users.avatar_file_id`, UAT 07.09, T-d6t-01): его же
+    резюме и чек этой веткой НЕ открываются — сверяется ИМЕННО колонка аватара, тот же
+    принцип, что у ветки `moderate_reg` ниже;
   - держателю `moderate_reg` (Phase 23, 23-03, D-02) — `avatar_file_id` делегата в пределах
     того же городского скоупа, что и очередь заявок; резюме, чек и любой другой `file_id`
     того же делегата этой веткой НЕ открываются — сверяется ИМЕННО колонка `avatar_file_id`
@@ -37,6 +40,7 @@ from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import StreamingResponse
 
 import reg_engine
+import tg_media
 from cities import cities_module_on, normalize_city
 from database.db import (
     find_submissions_by_file_id,
@@ -98,13 +102,16 @@ async def can_read_file(p: Principal, file_id: str) -> bool:
     # является значением photo/file-ключа реестра (settings_ops.file_setting_keys), не любой.
     if "settings" in p.caps and await settings_ops.is_current_file_value(file_id):
         return True
-    # Phase 23 (23-03, D-02): держателю moderate_reg — только avatar_file_id делегата в его
-    # городском скоупе; сверяется КОЛОНКА, а не «любой file_id известного пользователя»
-    # (T-23-11) — резюме и чек того же делегата этой веткой НЕ открываются.
-    if "moderate_reg" in p.caps:
-        avatar_owner = await find_user_by_avatar_file_id(file_id)
-        if avatar_owner and await _city_matches(p, avatar_owner):
-            return True
+    # Phase 23 (23-03, D-02) + UAT 07.09 (T-d6t-01): сверяется КОЛОНКА users.avatar_file_id,
+    # а не «любой file_id известного пользователя» — резюме и чек того же делегата этой
+    # веткой НЕ открываются. Обратный поиск по колонке — один раз на обе ветки:
+    #   владельцу — его собственный аватар (равенство telegram_id принципалу);
+    #   держателю moderate_reg — чужой аватар в его городском скоупе (прежнее поведение).
+    avatar_owner = await find_user_by_avatar_file_id(file_id)
+    if avatar_owner and avatar_owner["telegram_id"] == p.telegram_id:
+        return True
+    if avatar_owner and "moderate_reg" in p.caps and await _city_matches(p, avatar_owner):
+        return True
     submissions = await find_submissions_by_file_id(file_id)
     if any(sub["user_id"] == p.telegram_id for sub in submissions):
         return True
@@ -144,4 +151,5 @@ async def proxy_file(file_id: str, request: Request, p: Principal = Depends(prin
     }
     if stream.content_length is not None:
         headers["Content-Length"] = str(stream.content_length)
-    return StreamingResponse(stream.chunks(), media_type=stream.content_type, headers=headers)
+    media_type = tg_media.media_type_for(stream.content_type, file_path)
+    return StreamingResponse(stream.chunks(), media_type=media_type, headers=headers)

@@ -20,6 +20,7 @@ import httpx
 
 from dashboard.db import read_conn
 
+import tg_media
 import web_theme
 
 logger = logging.getLogger(__name__)
@@ -100,7 +101,10 @@ def fetch_theme_asset(cfg, file_id: str) -> "tuple[bytes, str] | None":
         logger.warning("dashboard.files: скачивание файла вернуло код %s", download_resp.status_code)
         return None
 
-    content_type = download_resp.headers.get("content-type", "")
+    # Резолвер типа обязателен здесь: без него ЛЮБОЙ ассет оформления на дашборде молча
+    # превращался в 404, потому что Telegram отдаёт фото как `application/octet-stream`, а
+    # гейт ниже требует честный `image/*`. Гейт остаётся — не картинка после резолва тоже 404.
+    content_type = tg_media.media_type_for(download_resp.headers.get("content-type", ""), file_path)
     if not content_type.startswith("image/"):
         return None
 
