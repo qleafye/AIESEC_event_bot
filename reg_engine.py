@@ -1006,6 +1006,34 @@ async def validate_track_choice(code, city_code: str | None = None) -> tuple[str
 
 _EXTRA_ANSWER_COLUMNS = ["resume_file_id", "resume_file_name", "resume_text"]
 
+# Quick 260910-wb6: колонки анкеты, у которых НЕТ колонки в `users` — существуют только чтобы
+# доехать до `post_finalize` (расширение файла резюме для Некстклауда, `services/reg_finalize.py`),
+# ни `add_user`, ни `update_user_answers` их не пишут (тот же факт уже задокументирован
+# `tests/test_skillup_core_28.py::_NOT_IN_ADD_USER`). `diff()` ниже обязан их пропускать —
+# иначе правка анкеты с файловым резюме считает их «изменившимися» и ловит
+# `sqlite3.OperationalError: no such column: resume_file_name` на узком UPDATE финала.
+DRAFT_ONLY_COLUMNS = ("resume_file_name",)
+
+
+def columns_for_step(step_key: str | None) -> list[str]:
+    """Колонки-компаньоны шага анкеты — набор, который `_sync_draft_in`/`_sync_draft_out`
+    (`handlers/registration.py`) обязаны читать/писать ОДНИМ патчем, не одной колонкой.
+
+    Прод-баг (с 05.09, квик 260910-wb6): `STEP_TO_COLUMN["resume"] == "resume_text"` — при
+    ответе файлом в чате в черновик уходила ровно эта колонка (`{"resume_text": None}"`), а
+    `resume_file_id`/`resume_file_name` жили только в FSM и терялись на финале, который читает
+    `reg_drafts`, а не FSM. Для шага «resume» набор — все три колонки резюме сразу
+    (`_EXTRA_ANSWER_COLUMNS`, тот же список, без второй копии литералами: делегат мог ответить
+    файлом ИЛИ текстом, черновик обязан унести оба варианта). Для остальных шагов — как и
+    раньше, ровно одна колонка `STEP_TO_COLUMN[step_key]`. Неизвестный/пустой `step_key` ->
+    пустой список (нечего синхронизировать)."""
+    if not step_key:
+        return []
+    if step_key == "resume":
+        return list(_EXTRA_ANSWER_COLUMNS)
+    column = STEP_TO_COLUMN.get(step_key)
+    return [column] if column else []
+
 
 def answer_columns() -> list[str]:
     """Allowlist колонок анкеты — веб-процесс валидирует PATCH-запросы черновика по этому
@@ -1953,11 +1981,16 @@ def decide_status(reg_mode: str, full_setting: str, short_setting: str,
 def diff(old_row: dict | None, new_answers: dict) -> list:
     """Только колонки анкеты (`answer_columns()`); значения, равные с точностью до
     `str().strip()`, изменением не считаются — пустой результат означает «правки не было»
-    (D-14: пометка «изменена» в карточке заявки ставится только при непустом diff)."""
+    (D-14: пометка «изменена» в карточке заявки ставится только при непустом diff).
+
+    Quick 260910-wb6: `DRAFT_ONLY_COLUMNS` (колонки без пары в `users`) исключены — иначе узкий
+    UPDATE финала правки ловит `no such column` (см. докстринг `DRAFT_ONLY_COLUMNS`)."""
     old_row = old_row or {}
     new_answers = new_answers or {}
     changes = []
     for column in answer_columns():
+        if column in DRAFT_ONLY_COLUMNS:
+            continue
         old_value = old_row.get(column)
         new_value = new_answers.get(column)
         old_str = "" if old_value is None else str(old_value).strip()
