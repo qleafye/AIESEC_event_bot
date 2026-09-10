@@ -21,6 +21,7 @@ from dashboard import db as dash_db
 from dashboard.queries import (
     ALLOWED_BREAKDOWNS,
     Scope,
+    _QUESTION_STATUS_CASE,
     _SETTING_DEFAULTS,
     _task_title,
     breakdown,
@@ -35,11 +36,13 @@ from dashboard.queries import (
     game_block,
     kpi_row,
     monthly_table,
+    questions_block,
     registration_start,
     season_options,
     status_totals,
     utm_table,
 )
+from services.questions import question_status
 
 DASHBOARD_QUERIES_FILE = Path(__file__).resolve().parent.parent / "dashboard" / "queries.py"
 
@@ -54,6 +57,7 @@ def _use_tmp_db(tmp_path, name="dashboard_queries.db") -> str:
 async def _seed_async(
     cities=None, settings=None, users=None, reg_events=None, reg_started=None,
     game_tasks=None, game_submissions=None, application_decisions=None, coins=None,
+    delegate_questions=None,
 ):
     async with bot_db._connect() as conn:
         for code, label, enabled, sort_order in cities or []:
@@ -117,6 +121,13 @@ async def _seed_async(
             await conn.execute(
                 f"INSERT INTO coins ({cols}) VALUES ({placeholders})", tuple(row.values())
             )
+        for row in delegate_questions or []:
+            cols = ", ".join(row.keys())
+            placeholders = ", ".join("?" for _ in row)
+            await conn.execute(
+                f"INSERT INTO delegate_questions ({cols}) VALUES ({placeholders})",
+                tuple(row.values()),
+            )
         await conn.commit()
 
 
@@ -135,6 +146,7 @@ def test_kpi_row_on_empty_db_returns_zeros_and_none(tmp_path):
         "conversion": None, "tracking_since": None,
         "processing_avg_minutes": None, "processing_avg_label": "—",
         "game_review_avg_minutes": None, "game_review_avg_label": "—",
+        "question_answer_avg_minutes": None, "question_answer_avg_label": "—",
     }
 
 
@@ -454,6 +466,266 @@ def test_kpi_row_game_review_avg_excludes_reviewed_before_submitted(tmp_path):
         row = kpi_row(conn, Scope())
     assert row["game_review_avg_minutes"] is None
     assert row["game_review_avg_label"] == "—"
+
+
+# ── kpi_row/questions_block: время ответа на вопрос делегата (квик 260910-tt5) ───────────
+#
+# D-1: метрика считается по `asked_at -> delivered_at`, НЕ `answered_at` (штамп захвата
+# вопроса менеджером, а не доставки ответа делегату) -- см. докстринг
+# `_avg_question_answer_minutes`.
+
+def _question(**overrides):
+    question = {
+        "user_id": 1,
+        "question_text": "Когда открывается регистрация?",
+        "asked_at": "2026-08-02 10:00:00",
+    }
+    question.update(overrides)
+    return question
+
+
+def test_kpi_row_question_answer_avg_ignores_question_without_answer(tmp_path):
+    path = _use_tmp_db(tmp_path)
+    _seed(
+        users=[{"telegram_id": 1}, {"telegram_id": 2}],
+        delegate_questions=[
+            _question(user_id=1, asked_at="2026-08-02 10:00:00",
+                      delivered_at="2026-08-02 10:30:00"),  # +30 мин
+            _question(user_id=2, asked_at="2026-08-02 10:00:00"),  # без ответа
+        ],
+    )
+    with dash_db.read_conn(path) as conn:
+        row = kpi_row(conn, Scope())
+    assert row["question_answer_avg_minutes"] == 30.0
+    assert row["question_answer_avg_label"] == "30 мин"
+
+
+def test_kpi_row_question_answer_avg_parses_iso_t_format(tmp_path):
+    path = _use_tmp_db(tmp_path)
+    _seed(
+        users=[{"telegram_id": 1}],
+        delegate_questions=[
+            _question(
+                user_id=1,
+                asked_at="2026-08-17T12:47:00.804496",
+                delivered_at="2026-08-17T13:17:00.804496",  # +30 мин, «T» + микросекунды
+            ),
+        ],
+    )
+    with dash_db.read_conn(path) as conn:
+        row = kpi_row(conn, Scope())
+    assert row["question_answer_avg_minutes"] == 30.0
+    assert row["question_answer_avg_label"] == "30 мин"
+
+
+def test_kpi_row_question_answer_avg_excludes_delivered_before_asked(tmp_path):
+    path = _use_tmp_db(tmp_path)
+    _seed(
+        users=[{"telegram_id": 1}],
+        delegate_questions=[
+            _question(user_id=1, asked_at="2026-08-02 10:00:00",
+                      delivered_at="2026-08-02 09:00:00"),  # раньше asked_at -- битые данные
+        ],
+    )
+    with dash_db.read_conn(path) as conn:
+        row = kpi_row(conn, Scope())
+    assert row["question_answer_avg_minutes"] is None
+    assert row["question_answer_avg_label"] == "—"
+
+
+def test_kpi_row_question_answer_avg_excludes_other_season(tmp_path):
+    path = _use_tmp_db(tmp_path)
+    _seed(
+        settings={"event_season": "YL26"},
+        users=[
+            {"telegram_id": 1, "season": "YL26"},
+            {"telegram_id": 2, "season": "YL25"},
+        ],
+        delegate_questions=[
+            _question(user_id=1, asked_at="2026-08-02 10:00:00",
+                      delivered_at="2026-08-02 10:30:00"),  # +30 мин, текущий сезон
+            _question(user_id=2, asked_at="2026-08-02 10:00:00",
+                      delivered_at="2026-08-02 14:00:00"),  # +240 мин, прошлый сезон
+        ],
+    )
+    with dash_db.read_conn(path) as conn:
+        row = kpi_row(conn, Scope())
+    assert row["question_answer_avg_minutes"] == 30.0
+
+
+def test_kpi_row_question_answer_avg_excludes_other_city(tmp_path):
+    path = _use_tmp_db(tmp_path)
+    _seed(
+        cities=[("msk", "Москва", 1, 0), ("spb", "СПб", 1, 1)],
+        users=[
+            {"telegram_id": 1, "event_city": "msk"},
+            {"telegram_id": 2, "event_city": "spb"},
+        ],
+        delegate_questions=[
+            _question(user_id=1, asked_at="2026-08-02 10:00:00",
+                      delivered_at="2026-08-02 10:30:00"),  # +30 мин, msk
+            _question(user_id=2, asked_at="2026-08-02 10:00:00",
+                      delivered_at="2026-08-02 14:00:00"),  # +240 мин, spb
+        ],
+    )
+    with dash_db.read_conn(path) as conn:
+        row = kpi_row(conn, Scope(city="msk"))
+    assert row["question_answer_avg_minutes"] == 30.0
+
+
+# ── questions_block (квик 260910-tt5) ────────────────────────────────────────────────────
+
+def test_questions_block_none_when_no_questions_in_scope(tmp_path):
+    path = _use_tmp_db(tmp_path)
+    with dash_db.read_conn(path) as conn:
+        assert questions_block(conn, Scope()) is None
+
+    path2 = _use_tmp_db(tmp_path, name="dashboard_queries_2.db")
+    _seed(
+        cities=[("msk", "Москва", 1, 0), ("spb", "СПб", 1, 1)],
+        users=[{"telegram_id": 1, "event_city": "spb"}],
+        delegate_questions=[_question(user_id=1)],
+    )
+    with dash_db.read_conn(path2) as conn:
+        assert questions_block(conn, Scope(city="msk")) is None
+
+
+def test_questions_block_counts_sum_to_total(tmp_path):
+    path = _use_tmp_db(tmp_path)
+    _seed(
+        users=[{"telegram_id": i} for i in range(1, 5)],
+        delegate_questions=[
+            _question(user_id=1),  # new -- ни захвата, ни доставки
+            _question(user_id=2, answered_by=100, answered_by_name="Аня",
+                      answered_at="2026-08-02 10:05:00"),  # in_work
+            _question(user_id=3, answered_by=100, answered_by_name="Аня",
+                      answered_at="2026-08-02 10:05:00",
+                      delivered_at="2026-08-02 10:10:00"),  # answered
+            _question(user_id=4, delivered_at="2026-08-02 10:10:00"),  # легаси: доставлен
+                                                                        # без захвата -> answered
+        ],
+    )
+    with dash_db.read_conn(path) as conn:
+        stats = questions_block(conn, Scope())
+    assert stats["total"] == 4
+    assert stats["new"] == 1
+    assert stats["in_work"] == 1
+    assert stats["answered"] == 2
+    assert stats["new"] + stats["in_work"] + stats["answered"] == stats["total"]
+    assert stats["waiting_now"] == 2
+    assert stats["answered_share"] == 50.0
+
+
+def test_questions_block_oldest_waiting_parses_both_stamp_formats(tmp_path):
+    path = _use_tmp_db(tmp_path)
+    now = datetime.utcnow()
+    older_iso_t = (now - timedelta(minutes=150)).isoformat()
+    newer_legacy = (now - timedelta(minutes=10)).strftime("%Y-%m-%d %H:%M:%S")
+    _seed(
+        users=[{"telegram_id": 1}, {"telegram_id": 2}],
+        delegate_questions=[
+            _question(user_id=1, asked_at=older_iso_t),
+            _question(user_id=2, asked_at=newer_legacy),
+        ],
+    )
+    with dash_db.read_conn(path) as conn:
+        stats = questions_block(conn, Scope())
+    assert stats["oldest_waiting_minutes"] is not None
+    assert abs(stats["oldest_waiting_minutes"] - 150.0) < 1.0
+
+
+def test_questions_block_top_managers_limited_and_unnamed_merged(tmp_path):
+    """Четыре именованных менеджера (Аня/Боря/Вика/Гоша) + две строки с пустым и NULL-именем.
+    Счётчики нарочно РАЗНЫЕ (6/4/2-мёрж/1/1) — без завязки на устойчивость сортировки при
+    равенстве (`ORDER BY answered DESC, name ASC`, где пустая строка «без имени» лексикографически
+    меньше любого непустого имени — это отдельный, честно задокументированный сценарий, покрытый
+    ниже `test_questions_block_unnamed_managers_collapse_into_one_row`)."""
+    path = _use_tmp_db(tmp_path)
+    delivered = "2026-08-02 10:10:00"
+    questions: list[dict] = []
+    uid = 1
+
+    def _answered(manager_id, name, count):
+        nonlocal uid
+        for _ in range(count):
+            questions.append(_question(
+                user_id=uid, answered_by=manager_id, answered_by_name=name,
+                answered_at="2026-08-02 09:00:00", delivered_at=delivered,
+            ))
+            uid += 1
+
+    _answered(101, "Аня", 6)
+    _answered(102, "Боря", 4)
+    _answered(105, "", 1)      # пустое имя
+    _answered(106, None, 1)    # NULL имя -- вместе с пустым мёржится в "без имени" (итого 2)
+    _answered(103, "Вика", 1)
+    _answered(104, "Гоша", 1)
+
+    _seed(
+        users=[{"telegram_id": i} for i in range(1, uid)],
+        delegate_questions=questions,
+    )
+    with dash_db.read_conn(path) as conn:
+        stats = questions_block(conn, Scope())
+    top = stats["top_managers"]
+    assert len(top) == 3
+    assert top[0] == {"name": "Аня", "answered": 6}
+    assert top[1] == {"name": "Боря", "answered": 4}
+    assert top[2] == {"name": "без имени", "answered": 2}
+    # Вика/Гоша (по 1 ответу) отрезаны лимитом-3.
+    assert "Вика" not in [row["name"] for row in top]
+    assert "Гоша" not in [row["name"] for row in top]
+
+
+def test_questions_block_unnamed_managers_collapse_into_one_row(tmp_path):
+    """`answered_by_name` пустая строка и NULL схлопываются в ОДНУ строку «без имени», а не в
+    две разные -- проверяем без давления лимита топ-3 (всего один именованный конкурент)."""
+    path = _use_tmp_db(tmp_path)
+    delivered = "2026-08-02 10:10:00"
+    _seed(
+        users=[{"telegram_id": i} for i in range(1, 4)],
+        delegate_questions=[
+            _question(user_id=1, answered_by=105, answered_by_name="",
+                      answered_at="2026-08-02 09:00:00", delivered_at=delivered),
+            _question(user_id=2, answered_by=106, answered_by_name=None,
+                      answered_at="2026-08-02 09:00:00", delivered_at=delivered),
+            _question(user_id=3, answered_by=101, answered_by_name="Аня",
+                      answered_at="2026-08-02 09:00:00", delivered_at=delivered),
+        ],
+    )
+    with dash_db.read_conn(path) as conn:
+        stats = questions_block(conn, Scope())
+    top = stats["top_managers"]
+    unnamed = [row for row in top if row["name"] == "без имени"]
+    assert len(unnamed) == 1
+    assert unnamed[0]["answered"] == 2
+
+
+def test_question_status_case_matches_services_question_status(tmp_path):
+    """Паритет `_QUESTION_STATUS_CASE` (копия в `dashboard/queries.py`, D-3) с оригиналом
+    `services.questions.question_status` -- перебор всех четырёх сочетаний `answered_by`/
+    `delivered_at`, бакет читается с РЕАЛЬНОЙ БД через то же SQL-выражение, что использует
+    `questions_block`."""
+    combos = [
+        {"answered_by": None, "delivered_at": None},
+        {"answered_by": None, "delivered_at": "2026-08-02 10:10:00"},
+        {"answered_by": 100, "delivered_at": None},
+        {"answered_by": 100, "delivered_at": "2026-08-02 10:10:00"},
+    ]
+    path = _use_tmp_db(tmp_path)
+    questions = [
+        _question(user_id=1, answered_by=combo["answered_by"], delivered_at=combo["delivered_at"])
+        for combo in combos
+    ]
+    _seed(users=[{"telegram_id": 1}], delegate_questions=questions)
+    with dash_db.read_conn(path) as conn:
+        rows = conn.execute(
+            f"SELECT answered_by, delivered_at, {_QUESTION_STATUS_CASE} AS status "
+            "FROM delegate_questions q ORDER BY q.id ASC"
+        ).fetchall()
+    assert len(rows) == len(combos)
+    for row, combo in zip(rows, combos):
+        assert row["status"] == question_status(combo)
 
 
 # ── funnel ────────────────────────────────────────────────────────────────────────────────
