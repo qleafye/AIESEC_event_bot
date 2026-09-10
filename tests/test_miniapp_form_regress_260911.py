@@ -19,6 +19,7 @@ import re
 import reg_engine
 import settings_schema
 import settings_synonyms
+from database import db as bot_db
 
 from tests.test_miniapp_frontend import (
     SCREENS_DIR,
@@ -26,9 +27,10 @@ from tests.test_miniapp_frontend import (
     _STRING_LITERAL,
     _js_without_comments,
 )
-from tests.test_miniapp_form import _fill, _seed_draft
+from tests.test_miniapp_form import _draft_row, _fill, _seed_draft
 from tests.test_miniapp_routes import (
     DELEGATE_ID,
+    UNREGISTERED_ID,
     _cfg,
     _client,
     _hdr,
@@ -296,3 +298,136 @@ def test_form_screen_uses_values_and_columns_without_resume_column_literals():
     assert "spec.columns" in text
     for literal in ('"resume_file_id"', '"resume_file_name"', '"resume_text"'):
         assert literal not in text, literal
+
+
+# ══════════════════════════════════════════════════════════════════════════════════════════
+# Пункт 5: первый PATCH из приложения не обнуляет уже поданную анкету
+# ══════════════════════════════════════════════════════════════════════════════════════════
+
+def test_bootstrap_patch_on_submitted_anketa_persists_snapshot_not_empty(tmp_path):
+    """`uploadResume` бутстрапит черновик именно так — `{version: 0, answers: {}}`. Живой
+    симптом: строка `reg_drafts` создавалась с `answers={}`, вся анкета «слетала»."""
+    db_path = _ready(tmp_path)
+    _fill(DELEGATE_ID, age=25, phone="+79001234567")
+    client = _client(_cfg(db_path))
+    resp = client.patch(
+        "/app/api/reg/draft", headers=_hdr(DELEGATE_ID), json={"version": 0, "answers": {}},
+    )
+    assert resp.status_code == 200, resp.text
+    row = _draft_row(DELEGATE_ID)
+    assert row is not None
+    assert row["answers"] != {}
+    assert row["answers"].get("age") == 25
+    assert row["answers"].get("phone") == "+79001234567"
+    assert row["answers"].get("full_name")
+
+
+def test_get_after_bootstrap_patch_shows_answer_not_prior_or_empty(tmp_path):
+    db_path = _ready(tmp_path)
+    _fill(DELEGATE_ID, age=25)
+    client = _client(_cfg(db_path))
+    resp = client.patch(
+        "/app/api/reg/draft", headers=_hdr(DELEGATE_ID), json={"version": 0, "answers": {}},
+    )
+    assert resp.status_code == 200, resp.text
+    body = client.get("/app/api/reg/draft", headers=_hdr(DELEGATE_ID)).json()
+    age_spec = next(s for s in body["steps"] if s["key"] == "age")
+    assert age_spec["value_source"] == "answer"
+    assert age_spec["value"] == 25
+
+
+def test_bootstrap_patch_drops_underscore_key_and_source_step_stays_off(tmp_path):
+    db_path = _ready(tmp_path)
+    _fill(DELEGATE_ID, source_from_tag=1)
+    client = _client(_cfg(db_path))
+    resp = client.patch(
+        "/app/api/reg/draft", headers=_hdr(DELEGATE_ID), json={"version": 0, "answers": {}},
+    )
+    assert resp.status_code == 200, resp.text
+    row = _draft_row(DELEGATE_ID)
+    assert "_source_from_tag" not in row["answers"]
+    step_keys = [s["key"] for s in resp.json()["steps"]]
+    assert "source" not in step_keys
+
+
+def test_new_delegate_patch_is_byte_for_byte_no_snapshot(tmp_path):
+    """`kind == "new"` (делегат без поданной анкеты) — `ctx["answers"]` и так пуст, снимка
+    заводить неоткуда: PATCH создаёт строку ровно с тем, что делегат ответил."""
+    db_path = _ready(tmp_path)
+    client = _client(_cfg(db_path))
+    resp = client.patch(
+        "/app/api/reg/draft", headers=_hdr(UNREGISTERED_ID),
+        json={"version": 0, "answers": {"full_name": "Иван Иванов"}},
+    )
+    assert resp.status_code == 200, resp.text
+    row = _draft_row(UNREGISTERED_ID)
+    assert set(row["answers"].keys()) == {"full_name"}
+
+
+def test_draft_step_contract_unaffected_by_baseline_change(tmp_path):
+    db_path = _ready(tmp_path)
+    client = _client(_cfg(db_path))
+    resp = client.patch(
+        "/app/api/reg/draft", headers=_hdr(DELEGATE_ID), json={"version": 0, "answers": {}},
+    )
+    assert resp.status_code == 200, resp.text
+    # answers пуст, step не передан -> COALESCE оставляет прежнее/NULL.
+    assert _draft_row(DELEGATE_ID)["step"] is None
+
+    body2 = client.patch(
+        "/app/api/reg/draft", headers=_hdr(DELEGATE_ID),
+        json={"version": resp.json()["version"], "answers": {"age": "25"}, "step": "age"},
+    ).json()
+    step_keys = [s["key"] for s in body2["steps"]]
+    if body2["step"] != reg_engine.STEP_DONE:
+        assert body2["step"] in step_keys
+
+
+def test_lww_field_versions_and_conflicts_not_broken_by_snapshot(tmp_path):
+    db_path = _ready(tmp_path)
+    _fill(DELEGATE_ID, age=25)
+    client = _client(_cfg(db_path))
+    resp = client.patch(
+        "/app/api/reg/draft", headers=_hdr(DELEGATE_ID), json={"version": 0, "answers": {}},
+    )
+    assert resp.status_code == 200, resp.text
+    body = resp.json()
+    assert body["conflicts"] == []
+    row = _draft_row(DELEGATE_ID)
+    field_versions = row["meta"].get("field_versions", {})
+    assert row["version"] == 1
+    assert field_versions.get("age") == 1
+
+    resp2 = client.patch(
+        "/app/api/reg/draft", headers=_hdr(DELEGATE_ID),
+        json={"version": row["version"], "answers": {"phone": "+79000000000"}},
+    )
+    assert resp2.status_code == 200, resp2.text
+    assert resp2.json()["conflicts"] == []
+
+    # Правка ТОЙ ЖЕ колонки из чата — GET из приложения обязан отдать значение чата
+    # (пофилевый LWW не сломан снимком).
+    _run(bot_db.upsert_reg_draft(
+        DELEGATE_ID, kind="edit", participant_type="full", event_city=None,
+        step=None, patch={"age": 30}, source="bot",
+    ))
+    body3 = client.get("/app/api/reg/draft", headers=_hdr(DELEGATE_ID)).json()
+    age_spec = next(s for s in body3["steps"] if s["key"] == "age")
+    assert age_spec["value"] == 30
+
+
+def test_empty_bootstrap_patch_then_submit_writes_no_fake_history(tmp_path):
+    """Пустая правка (создание черновика без изменений) не подделывает историю — submit сразу
+    после такого PATCH не меняет `users` и не пишет `reg_answer_history`."""
+    db_path = _ready(tmp_path)
+    client = _client(_cfg(db_path))
+    resp = client.patch(
+        "/app/api/reg/draft", headers=_hdr(DELEGATE_ID), json={"version": 0, "answers": {}},
+    )
+    assert resp.status_code == 200, resp.text
+    before = _run(bot_db.get_user(DELEGATE_ID))
+    resp2 = client.post("/app/api/reg/draft/submit", headers=_hdr(DELEGATE_ID))
+    assert resp2.status_code == 200, resp2.text
+    after = _run(bot_db.get_user(DELEGATE_ID))
+    assert before == after
+    assert _run(bot_db.get_answer_history(DELEGATE_ID)) == []
