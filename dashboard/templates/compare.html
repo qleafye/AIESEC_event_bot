@@ -83,6 +83,9 @@
               <th class="num">В игре</th>
               <th class="num">Модерация</th>
               {% endif %}
+              {% if show_question_column %}
+              <th class="num">Ответ</th>
+              {% endif %}
               <th>Дата события</th>
             </tr>
           </thead>
@@ -118,6 +121,9 @@
               <td class="num" data-label="В игре"><span class="cell-empty">—</span></td>
               <td class="num" data-label="Модерация"><span class="cell-empty">—</span></td>
               {% endif %}
+              {% if show_question_column %}
+              <td class="num" data-label="Ответ"><span class="cell-empty">—</span></td>
+              {% endif %}
               <td data-label="Дата события"><span class="cell-empty">—</span></td>
               {% else %}
               <td class="num" data-label="Заявок">{{ e.kpi.total | thousands }}</td>
@@ -141,6 +147,9 @@
               {% if show_game_columns %}
               <td class="num" data-label="В игре">{% if e.game_participants is none %}<span class="cell-empty">—</span>{% else %}{{ e.game_participants | thousands }}{% endif %}</td>
               <td class="num" data-label="Модерация">{{ e.kpi.game_review_avg_label }}</td>
+              {% endif %}
+              {% if show_question_column %}
+              <td class="num" data-label="Ответ">{{ e.kpi.question_answer_avg_label }}</td>
               {% endif %}
               <td data-label="Дата события">
                 {{ e.event_date or "—" }}
