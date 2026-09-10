@@ -150,8 +150,10 @@ def test_reg_started_double_mark_upserts(tmp_path):
         "SELECT username FROM reg_started WHERE telegram_id = 666"
     ).fetchall()
     conn.close()
-    assert len(rows) == 1            # exactly one row (upsert, not duplicate)
-    assert rows[0][0] == "new_name"  # username updated
+    assert len(rows) == 1              # exactly one row (upsert, not duplicate)
+    # Квик 260911-0zu (UNAME-04): mark_reg_started теперь канонизирует запись через
+    # store_username -- "с @" (тот же канон, что и у add_user).
+    assert rows[0][0] == "@new_name"   # username updated
 
 
 # ── Subscription flag ────────────────────────────────────────────────────────
