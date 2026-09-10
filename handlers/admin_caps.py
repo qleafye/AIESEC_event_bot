@@ -308,10 +308,16 @@ ADMIN_CAPS: dict[str, str] = {
 
     # ── broadcast ────────────────────────────────────────────────────────────────────────
     "admin_broadcast": "broadcast",
-    # Quick 260910-okb (BC-01..03): превью+подтверждение/прогресс/стоп немедленной рассылки —
-    # та же capability, что и весь остальной раздел «Рассылки».
+    # Quick 260910-okb (BC-05): экран «🗒 Последние рассылки» — та же capability, что весь
+    # раздел; строки списка несут доступ к отзыву (bc_rev*) ниже.
+    "admin_broadcast_log": "broadcast",
+    # Quick 260910-okb (BC-01..06): превью+подтверждение/прогресс/стоп немедленной рассылки и
+    # отзыв у получателей — та же capability, что и весь остальной раздел «Рассылки».
     "bc_go": "broadcast",
     "bc_no": "broadcast",
+    "bc_rev:*": "broadcast",
+    "bc_revgo:*": "broadcast",
+    "bc_revno": "broadcast",
     "bc_stop:*": "broadcast",
     # Quick 260904-dq1: предупреждение о тихих часах на шаге планирования — та же capability,
     # что у соседних шагов рассылки.
@@ -324,6 +330,7 @@ ADMIN_CAPS: dict[str, str] = {
     "broadcast_schedule": "broadcast",
     "broadcast_unsubscribed": "broadcast",
     "cmd:broadcast": "broadcast",
+    "cmd:broadcasts": "broadcast",
     "cmd:scheduled": "broadcast",
     "filter_back": "broadcast",
     "filter_count": "broadcast",
