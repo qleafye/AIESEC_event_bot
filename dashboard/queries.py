@@ -314,11 +314,13 @@ def kpi_row(conn, scope: Scope) -> dict:
     conversion = round(completed / starts * 100, 1) if starts else None
 
     processing = _avg_processing_minutes(conn, parts, params)
-    # `game_review` считается ВСЕГДА (один дешёвый запрос) — гашение плитки «Модерация
-    # заданий» в шаблоне по наличию `game` (не по отдельному чтению тумблера здесь):
-    # шаблон показывает плитку только когда показывается блок геймификации. Следующему
-    # читателю: не «чините» отсутствие проверки `dashboard_block_game` в этом запросе.
+    # `game_review`/`question_answer` считаются ВСЕГДА (один дешёвый запрос каждый) — гашение
+    # соответствующей плитки («Модерация заданий»/«Ответ на вопрос») в шаблоне по наличию
+    # `game`/`questions` (не по отдельному чтению тумблера здесь): шаблон показывает плитку,
+    # только когда показывается сам блок. Следующему читателю: не «чините» отсутствие проверки
+    # `dashboard_block_game`/данных по вопросам в этом запросе.
     game_review = _avg_game_review_minutes(conn, parts, params)
+    question_answer = _avg_question_answer_minutes(conn, parts, params)
 
     return {
         "total": total,
@@ -331,6 +333,8 @@ def kpi_row(conn, scope: Scope) -> dict:
         "processing_avg_label": format_processing_time(processing),
         "game_review_avg_minutes": game_review,
         "game_review_avg_label": format_processing_time(game_review),
+        "question_answer_avg_minutes": question_answer,
+        "question_answer_avg_label": format_processing_time(question_answer),
     }
 
 
@@ -961,3 +965,166 @@ def game_block(conn, scope: Scope) -> dict | None:
     stats["by_category"] = by_category
 
     return stats
+
+
+# ── вопросы делегатов (квик 260910-tt5) ──────────────────────────────────────────────────
+
+_QUESTIONS_TOP_MANAGERS_LIMIT = 3
+
+# Зеркало `services/questions.py::question_status` — ТРИ состояния, порядок веток ФИКСИРОВАН
+# (сначала `delivered_at`, потом `answered_by`): легаси-строка, которой каким-то образом
+# проставили доставку без захвата, обязана читаться как «отвечен», а не «в работе». Копия, а
+# не импорт — по D-3 (`dashboard/Dockerfile` копирует только `dashboard/`, `web_theme.py`,
+# `tg_media.py`; импорт `services.questions` дал бы `ModuleNotFoundError` на старте
+# контейнера, тот же класс аварии, что был с `tg_media` 10.09). Паритет с оригиналом закрыт
+# `test_question_status_case_matches_services_question_status`. В отличие от трёх независимых
+# предикатов (см. `database.db._QUESTION_STATUS_SQL`), ветки CASE взаимоисключающие — три
+# счётчика из `questions_block` гарантированно дают в сумме `total`.
+_QUESTION_STATUS_CASE = (
+    "CASE WHEN q.delivered_at IS NOT NULL THEN 'answered' "
+    "WHEN q.answered_by IS NOT NULL THEN 'in_work' "
+    "ELSE 'new' END"
+)
+
+
+def _avg_question_answer_minutes(conn, parts: list[str], params: tuple) -> float | None:
+    """Среднее число минут от `delegate_questions.asked_at` (вопрос задан) до `delivered_at`
+    (ответ ДОШЁЛ до делегата), в скоупе `parts`/`params`, уже посчитанном `_scope_sql`.
+
+    D-1: считаем ИМЕННО `delivered_at`, а не `answered_at`. `answered_at` в этой схеме ставит
+    `claim_question` — момент, когда менеджер ВЗЯЛ вопрос, а не когда на него ОТВЕТИЛ. Плитка
+    «Ответ на вопрос», посчитанная по `answered_at`, показывала бы время РЕАКЦИИ и
+    систематически занижала бы реальное ожидание делегата (вопрос, взятый за минуту и
+    доставленный только через сутки, дал бы «1 мин»). Единственный штамп «делегат получил
+    ответ» — `delivered_at` (`set_question_answer` ставит его ТОЛЬКО после успешной отправки).
+
+    Скоуп берётся JOIN'ом на `users`, потому что у `delegate_questions` нет ни `event_city`,
+    ни `season`; фрагменты `parts` не квалифицированы именем таблицы — этих колонок нет у
+    второй таблицы в запросе, поэтому `_user_scoped_parts` здесь не нужен (в отличие от
+    `game_block`, где `game_tasks` тоже хранит `event_city`).
+
+    `julianday()` разбирает ОБА формата, что реально пишутся в БД: ISO с «T» и микросекундами
+    (`datetime.utcnow().isoformat()`, текущий формат `create_question`/`set_question_answer`)
+    и легаси-строку с пробелом (`%Y-%m-%d %H:%M:%S`) — обе лексикографически сортируемые формы
+    SQLite понимает без предварительного парсинга. `julianday(q.delivered_at) >=
+    julianday(q.asked_at)` отсекает отрицательные разницы (битая/перепутанная строка) — тот же
+    приём, что в `_avg_processing_minutes`/`_avg_game_review_minutes`; `AVG` по пустому
+    множеству даёт NULL — это и есть «отвеченных вопросов нет».
+    """
+    answer_parts = parts + [
+        "q.delivered_at IS NOT NULL",
+        "TRIM(q.delivered_at) != ''",
+        "julianday(q.delivered_at) >= julianday(q.asked_at)",
+    ]
+    sql = (
+        "SELECT AVG((julianday(q.delivered_at) - julianday(q.asked_at)) * 1440.0) "
+        "FROM delegate_questions q JOIN users ON users.telegram_id = q.user_id"
+        f"{_where(answer_parts)}"
+    )
+    value = _scalar(conn, sql, params)
+    return round(value, 1) if value is not None else None
+
+
+def questions_block(conn, scope: Scope) -> dict | None:
+    """`None`, если в скоупе страницы (город + сезон) нет ни одного вопроса делегата.
+
+    D-2: тумблера `dashboard_block_questions` НЕТ и заводить его не нужно — в отличие от
+    геймы (отключаемый модуль, дефолт «off», может быть выключен при живых данных), вопрос
+    задать может любой делегат, это базовая функция бота, а не модуль. Единственный
+    осмысленный гейт — наличие данных в скоупе, ровно как у `city_cut` в
+    `build_page_context` (тумблера тоже нет, экран появляется по условию). Заводить настройку
+    ради «выключить блок, который и так не показывается без данных» — против правила проекта
+    «менеджер настраивает нужное, а не всё подряд».
+
+    JOIN на `users` — внутренний (как и у `game_block`): вопрос делегата, чья строка в `users`
+    уже удалена, в блок не попадёт — это цена скоупа по городу/сезону. Журнал вопросов в боте
+    (`list_questions_page`) делегата по-прежнему показывает — там LEFT JOIN, другая семантика.
+    """
+    parts, params = _scope_sql(conn, scope)
+
+    total = _scalar(
+        conn,
+        "SELECT COUNT(*) FROM delegate_questions q "
+        f"JOIN users ON users.telegram_id = q.user_id{_where(parts)}",
+        params,
+    ) or 0
+    if total == 0:
+        return None
+
+    counts = {"new": 0, "in_work": 0, "answered": 0}
+    status_sql = (
+        f"SELECT {_QUESTION_STATUS_CASE} AS status, COUNT(*) AS cnt "
+        "FROM delegate_questions q JOIN users ON users.telegram_id = q.user_id"
+        f"{_where(parts)} GROUP BY 1"
+    )
+    for row in conn.execute(status_sql, params).fetchall():
+        if row["status"] in counts:
+            counts[row["status"]] = row["cnt"]
+
+    answered = counts["answered"]
+    answered_share = round(answered / total * 100, 1) if total else None
+    waiting_now = counts["new"] + counts["in_work"]
+
+    avg_answer_minutes = _avg_question_answer_minutes(conn, parts, params)
+
+    # `ORDER BY julianday(q.asked_at) ASC LIMIT 1`, а НЕ `MIN(q.asked_at)`: `MIN` на TEXT-колонке
+    # сравнивает строки побайтово, а формат разделителя даты/времени в проекте не один и тот же
+    # (ISO «T» у текущего кода, легаси-строка с пробелом у старых записей) — при СОВПАДАЮЩЕЙ дате
+    # пробел (0x20) лексикографически МЕНЬШЕ «T» (0x54), и `MIN` мог бы выбрать более новую
+    # легаси-строку вместо реально самой старой ISO-строки того же дня. `julianday()` сравнивает
+    # РАЗОБРАННОЕ время, а не байты, поэтому не подвержен этой ловушке (тот же приём уже
+    # используется для отсечки в `_avg_question_answer_minutes`/`_avg_processing_minutes`).
+    oldest_waiting_raw = _scalar(
+        conn,
+        "SELECT q.asked_at FROM delegate_questions q "
+        f"JOIN users ON users.telegram_id = q.user_id{_where(parts + ['q.delivered_at IS NULL'])} "
+        "ORDER BY julianday(q.asked_at) ASC LIMIT 1",
+        params,
+    )
+    oldest_waiting_minutes = None
+    if oldest_waiting_raw:
+        try:
+            asked = datetime.fromisoformat(oldest_waiting_raw)
+        except (ValueError, TypeError):
+            # Битый штамп -- не роняем страницу, просто нечем посчитать возраст (тот же
+            # fail-soft, что _month_label/game_block.pending_oldest_minutes).
+            asked = None
+        if asked is not None:
+            # D-4: возраст самого старого считаем от datetime.utcnow(), а НЕ datetime.now(),
+            # как соседний game_block. game_submissions.submitted_at пишется локальным
+            # datetime.now() (handlers/user_actions.py) -- у game_block это верно. У вопросов
+            # штампы UTC (create_question/claim_question/set_question_answer пишут
+            # datetime.utcnow().isoformat()) -- разница с локальным "сейчас" завысила бы
+            # ожидание на смещение таймзоны (+3 ч на машине разработчика; в контейнере TZ не
+            # задан -- там бы "случайно совпало", тем хуже: баг жил бы только локально и в
+            # тестах). Копировать now() у game_block здесь НЕЛЬЗЯ.
+            oldest_waiting_minutes = round(
+                (datetime.utcnow() - asked).total_seconds() / 60.0, 1
+            )
+
+    top_sql = (
+        "SELECT COALESCE(NULLIF(TRIM(q.answered_by_name), ''), '') AS name, "
+        "COUNT(*) AS answered "
+        "FROM delegate_questions q JOIN users ON users.telegram_id = q.user_id"
+        f"{_where(parts + ['q.delivered_at IS NOT NULL'])} "
+        "GROUP BY name ORDER BY answered DESC, name ASC LIMIT ?"
+    )
+    top_rows = conn.execute(top_sql, params + (_QUESTIONS_TOP_MANAGERS_LIMIT,)).fetchall()
+    top_managers = [
+        {"name": row["name"] or "без имени", "answered": row["answered"]}
+        for row in top_rows
+    ]
+
+    return {
+        "total": total,
+        "new": counts["new"],
+        "in_work": counts["in_work"],
+        "answered": answered,
+        "answered_share": answered_share,
+        "waiting_now": waiting_now,
+        "avg_answer_minutes": avg_answer_minutes,
+        "avg_answer_label": format_processing_time(avg_answer_minutes),
+        "oldest_waiting_minutes": oldest_waiting_minutes,
+        "oldest_waiting_label": format_processing_time(oldest_waiting_minutes),
+        "top_managers": top_managers,
+    }
