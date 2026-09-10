@@ -23,6 +23,11 @@ CODE = os.environ.get("UAT_CODE", "")
 PORT = int(os.environ.get("UAT_PORT", "8005"))
 HERE = os.path.dirname(os.path.abspath(__file__))
 HTML = open(os.path.join(HERE, "index.html"), "rb").read()
+# Фирменный узор плиты Юлид (копия miniapp/static/pattern/youlead.webp) — фон шапки страницы.
+try:
+    PATTERN = open(os.path.join(HERE, "pattern.webp"), "rb").read()
+except OSError:
+    PATTERN = b""
 
 _lock = threading.Lock()
 _ALLOWED = {"", "ok", "bad", "skip"}
@@ -79,6 +84,13 @@ class Handler(BaseHTTPRequestHandler):
             self._send(200, HTML, "text/html; charset=utf-8")
         elif parts.path == "/health":
             self._send(200, b"ok", "text/plain")
+        elif parts.path == "/pattern.webp" and PATTERN:
+            self.send_response(200)
+            self.send_header("Content-Type", "image/webp")
+            self.send_header("Content-Length", str(len(PATTERN)))
+            self.send_header("Cache-Control", "public, max-age=86400")
+            self.end_headers()
+            self.wfile.write(PATTERN)
         elif parts.path == "/api/state":
             if not self._authed(query):
                 self._json(403, {"error": "no_access"})
