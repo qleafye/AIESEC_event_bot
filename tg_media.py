@@ -28,6 +28,14 @@ _IMAGE_EXT_MAP = {
 
 _OCTET_STREAM = "application/octet-stream"
 
+# Бакет фотографий на файловом сервере Telegram. Живой ответ getFile для фото из настроек
+# (логотип Mini App, 10.09.2026): `file_path = "photos/file_2"` — РАСШИРЕНИЯ НЕТ ВООБЩЕ,
+# поэтому ни карта выше, ни `mimetypes.guess_type` типа не дают, и с `nosniff` браузер
+# отказывается рисовать `<img>`. Всё, что Telegram кладёт в этот бакет, — фотографии, а
+# фотографии он хранит в JPEG (анимации и стикеры лежат в других бакетах со своими
+# расширениями и сюда не попадают).
+_PHOTOS_BUCKET = "photos/"
+
 
 def media_type_for(content_type: str | None, file_path: str | None) -> str:
     """Заголовок непустой и НЕ `application/octet-stream` — вернуть его как есть (регистр
@@ -45,6 +53,11 @@ def media_type_for(content_type: str | None, file_path: str | None) -> str:
     guessed, _ = mimetypes.guess_type(file_path or "")
     if guessed:
         return guessed
+
+    # Фото без расширения — последняя ветка, а не первая: реальное расширение (если Telegram
+    # его всё же прислал) всегда важнее правила про бакет.
+    if not ext and (file_path or "").startswith(_PHOTOS_BUCKET):
+        return "image/jpeg"
 
     return _OCTET_STREAM
 
