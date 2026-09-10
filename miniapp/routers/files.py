@@ -30,18 +30,29 @@
 allow-list не ослабляет это правило: список конечен и явен, а не «любой file_id из настроек»
 регэкспом.
 Недоступный upstream — 404, не 500: картинка в приложении просто не покажется.
+
+Quick 260910-w3j (IMG-01..06): у маршрута — ТРЕТЬЯ ветка аутентификации (`file_principal`),
+и публичные ассеты (лого, оформление, PDF согласий — три ветки `can_read_file`, уже открытые
+ЛЮБОМУ принципалу) отдаются АНОНИМНО, вовсе без принципала. Это не дыра: `is_public_asset`
+перечисляет ровно тот же конечный список, что и раньше был открыт любому авторизованному —
+требование аутентификации ничего не защищало на этих трёх ветках, а тег `<img>` физически не
+может пройти существующую аутентификацию (нет ни заголовка, ни куки). Обложка активной задачи
+(`is_active_task_cover`) НЕ публична — она остаётся за принципалом (initData/cookie/токен
+`t`, см. `miniapp.file_tokens`), это контент задания, а не оформление приложения.
 """
 from __future__ import annotations
 
 import re
 from pathlib import PurePosixPath
 
-from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi import APIRouter, Depends, Header, HTTPException, Query, Request
 from fastapi.responses import StreamingResponse
 
 import reg_engine
 import tg_media
 from cities import cities_module_on, normalize_city
+from dashboard.access import resolve_capabilities, staff_city
+from dashboard.db import read_conn
 from database.db import (
     find_submissions_by_file_id,
     find_user_by_avatar_file_id,
@@ -55,6 +66,7 @@ import settings_ops
 import web_theme
 from miniapp import telegram_api
 from miniapp.deps import Principal, principal
+from miniapp.file_tokens import verify_file_token
 from miniapp.telegram_api import TelegramApiError
 
 router = APIRouter()
@@ -85,9 +97,10 @@ async def _manager_in_scope(p: Principal, submissions: list[dict]) -> bool:
     return False
 
 
-async def can_read_file(p: Principal, file_id: str) -> bool:
-    if await is_active_task_cover(file_id):
-        return True
+async def is_public_asset(file_id: str) -> bool:
+    """Слой A (quick 260910-w3j): три ветки, уже открытые ЛЮБОМУ принципалу ДО этого квика —
+    вынесены сюда, чтобы `proxy_file` мог отдать их вовсе без аутентификации (лого рендерится
+    в шапке `app.html` сервером ДО загрузки JS, принципала в этот момент нет физически)."""
     if (await get_setting_typed("miniapp_logo") or "") == file_id:
         return True
     for key in web_theme.ASSET_KEYS.values():
@@ -98,6 +111,14 @@ async def can_read_file(p: Principal, file_id: str) -> bool:
     for _label, consent_key in await reg_engine.consent_entries():
         if (await get_setting(f"consent_pdf_{consent_key}") or "") == file_id:
             return True
+    return False
+
+
+async def can_read_file(p: Principal, file_id: str) -> bool:
+    if await is_public_asset(file_id):
+        return True
+    if await is_active_task_cover(file_id):
+        return True
     # Phase 22 (22-04, T-22-12): держателю `settings` — только file_id, который прямо сейчас
     # является значением photo/file-ключа реестра (settings_ops.file_setting_keys), не любой.
     if "settings" in p.caps and await settings_ops.is_current_file_value(file_id):
@@ -127,11 +148,40 @@ def _download_name(file_id: str, file_path: str | None) -> str:
     return f"{file_id[:16]}{ext}"
 
 
+def file_principal(
+    request: Request,
+    x_telegram_init_data: str | None = Header(default=None),
+    t: str | None = Query(default=None),
+) -> Principal | None:
+    """Третья ветка аутентификации маршрута файлов (Слой B, quick 260910-w3j). Заголовок
+    initData ИЛИ живая cookie-сессия — как у остальных маршрутов, `principal` целиком (коды
+    ошибок 401 `bad_initdata`/403 `csrf`/403 `staff_only` не меняются, требование 6). Иначе —
+    короткоживущий токен `t` (`miniapp.file_tokens`): тег `<img>` не может послать заголовок и
+    во встроенном браузере Телеграма нет куки. Права и город читаются из БД ТЕМ ЖЕ способом,
+    что и `principal` — БЕЗ КАКОГО-ЛИБО КЭША (D-09/T-19-05): снятое право видно на следующем
+    же запросе. `None` — ни одна ветка не сработала, маршрут ответит 401 `no_auth`."""
+    if x_telegram_init_data or ("session" in request.scope and request.session.get("telegram_id")):
+        return principal(request, x_telegram_init_data)
+    if not t:
+        return None
+    cfg = request.app.state.cfg
+    telegram_id = verify_file_token(t, cfg.bot_token)
+    if telegram_id is None:
+        return None
+    with read_conn(cfg.db_path) as conn:
+        caps = frozenset(resolve_capabilities(conn, telegram_id, cfg.admin_ids))
+        city = staff_city(conn, telegram_id)
+    return Principal(telegram_id=telegram_id, via="token", caps=caps, city=city)
+
+
 @router.get("/app/api/file/{file_id}")
-async def proxy_file(file_id: str, request: Request, p: Principal = Depends(principal)):
+async def proxy_file(file_id: str, request: Request, p: Principal | None = Depends(file_principal)):
     if not FILE_ID_RE.match(file_id):
         raise HTTPException(404, {"reason": "not_found"})
-    if not await can_read_file(p, file_id):
+    if p is None:
+        if not await is_public_asset(file_id):
+            raise HTTPException(401, {"reason": "no_auth"})
+    elif not await can_read_file(p, file_id):
         raise HTTPException(403, {"reason": "forbidden"})
 
     cfg = request.app.state.cfg

@@ -38,6 +38,7 @@ import web_theme
 from miniapp.deps import (
     SECTIONS, Principal, delegate_denial, form_access_denial, form_status, principal, read_setting,
 )
+from miniapp.file_tokens import mint_file_token
 
 router = APIRouter()
 
@@ -230,6 +231,11 @@ def me(request: Request, p: Principal = Depends(principal)) -> dict:
         "event_name": event_name,
         "logo_file_id": logo_file_id,
         "bot_username": cfg.bot_username,
+        # Quick 260910-w3j (IMG-02): токен принципала для чтения файлов — единственное место
+        # выдачи, клиент подмешивает его во все ссылки на файлы (miniapp/static/js/ui.js::
+        # fileUrl). Тег <img> не может послать заголовок initData, а куки во встроенном
+        # браузере Телеграма нет — без токена картинки внутри приложения не грузятся.
+        "file_token": mint_file_token(cfg.bot_token, p.telegram_id),
         # Анкета (gap closure фазы 21, D-24): статус заявки/черновика, доступ к экрану анкеты
         # и признак «дом приложения — анкета» (нет заявки или незаконченный черновик новой).
         # `not p.caps` (находка 21-13): менеджер без своей заявки (`caps` не пустой, строки
