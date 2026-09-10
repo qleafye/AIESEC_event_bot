@@ -59,7 +59,7 @@
   {# KPI-строка (D-14) #}
   <section class="block">
     <h2 class="visually-hidden">Ключевые показатели</h2>
-    <div class="kpi-grid kpi-grid--5">
+    <div class="kpi-grid {% if game %}kpi-grid--6{% else %}kpi-grid--5{% endif %}">
       <div class="kpi primary">
         <div class="num">{{ kpi.total | thousands }}</div>
         <div class="lbl">Всего заявок</div>
@@ -88,6 +88,17 @@
         <div class="lbl">Среднее время обработки</div>
         <div class="delta">от подачи анкеты до решения менеджера</div>
       </div>
+      {# Гашение по `game` (а не по отдельному чтению тумблера) намеренно: `game_block` уже
+         сам возвращает None и при выключенном тумблере, и при отсутствии сдач в скоупе —
+         плитка появляется ровно там же, где и блок, и не висит вечным «—» у события без
+         геймификации. #}
+      {% if game %}
+      <div class="kpi">
+        <div class="num text">{{ kpi.game_review_avg_label }}</div>
+        <div class="lbl">Модерация заданий</div>
+        <div class="delta">от сдачи задания до решения менеджера</div>
+      </div>
+      {% endif %}
     </div>
   </section>
 
@@ -299,17 +310,65 @@
   </section>
   {% endif %}
 
-  {# Гейма (D-12) #}
+  {# Гейма (D-12, расширено квик 260910-qgn) #}
   {% if game %}
   <section class="block">
     <h2 class="block-title">Геймификация</h2>
     <div class="card">
       <div class="kpi-grid secondary">
-        <div class="kpi"><div class="num">{{ game.participants | thousands }}</div><div class="lbl">Участников</div></div>
+        <div class="kpi">
+          <div class="num">{{ game.participants | thousands }}</div>
+          <div class="lbl">Участников</div>
+          {% if game.participants_share is not none %}
+          <div class="delta">{{ game.participants_share }}% одобренных делегатов</div>
+          {% endif %}
+        </div>
         <div class="kpi"><div class="num">{{ game.pending | thousands }}</div><div class="lbl">На проверке</div></div>
-        <div class="kpi"><div class="num">{{ game.approved | thousands }}</div><div class="lbl">Одобрено</div></div>
+        <div class="kpi">
+          <div class="num">{{ game.approved | thousands }}</div>
+          <div class="lbl">Одобрено</div>
+          {% if game.approved_share is not none %}
+          <div class="delta">{{ game.approved_share }}% всех сдач</div>
+          {% endif %}
+        </div>
         <div class="kpi"><div class="num">{{ game.rejected | thousands }}</div><div class="lbl">Отклонено</div></div>
       </div>
+      <div class="kpi-grid secondary">
+        <div class="kpi"><div class="num">{{ game.submissions_total | thousands }}</div><div class="lbl">Сдач всего</div></div>
+        <div class="kpi">
+          <div class="num">{{ game.coins_total | thousands }}</div>
+          <div class="lbl">Коинов начислено</div>
+          <div class="delta">за задания {{ game.coins_task | thousands }} · вручную {{ game.coins_manual | thousands }}</div>
+        </div>
+        <div class="kpi">
+          <div class="num">{{ game.coins_per_participant | thousands }}</div>
+          <div class="lbl">коинов на участника</div>
+        </div>
+        <div class="kpi">
+          <div class="num">{{ game.pending | thousands }}</div>
+          <div class="lbl">Ждут проверки</div>
+          {% if game.pending_oldest_minutes is not none %}
+          <div class="delta">самая старая ждёт {{ game.pending_oldest_label }}</div>
+          {% endif %}
+        </div>
+      </div>
+      {% if game.top_tasks %}
+      <h3 class="cut-title">Топ заданий</h3>
+      <div class="table-wrap">
+      <table class="responsive">
+        <thead><tr><th>Задание</th><th class="num">Сдач</th><th class="num">Принято</th></tr></thead>
+        <tbody>
+          {% for task in game.top_tasks %}
+          <tr>
+            <td data-label="Задание">{{ task.title }}</td>
+            <td class="num" data-label="Сдач">{{ task.submissions | thousands }}</td>
+            <td class="num" data-label="Принято">{{ task.approved | thousands }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+      </div>
+      {% endif %}
       {% if game.by_category %}
       <div class="table-wrap">
       <table class="responsive">

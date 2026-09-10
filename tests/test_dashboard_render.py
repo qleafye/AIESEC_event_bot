@@ -53,6 +53,7 @@ def _use_tmp_db(tmp_path, name: str = "dashboard_render.db") -> str:
 async def _seed_async(
     *, cities=None, settings=None, users=None, staff=None, reg_events=None,
     reg_started=None, game_tasks=None, game_submissions=None, application_decisions=None,
+    coins=None,
 ):
     async with bot_db._connect() as conn:
         for code, label, enabled, sort_order in cities or []:
@@ -115,6 +116,12 @@ async def _seed_async(
             placeholders = ", ".join("?" for _ in row)
             await conn.execute(
                 f"INSERT INTO application_decisions ({cols}) VALUES ({placeholders})", tuple(row.values())
+            )
+        for row in coins or []:
+            cols = ", ".join(row.keys())
+            placeholders = ", ".join("?" for _ in row)
+            await conn.execute(
+                f"INSERT INTO coins ({cols}) VALUES ({placeholders})", tuple(row.values())
             )
         await conn.commit()
 
@@ -771,3 +778,67 @@ def test_processing_avg_tile_shows_dash_without_decisions(tmp_path):
     resp = client.get("/")
     assert resp.status_code == 200
     assert "Среднее время обработки" in resp.text
+
+
+# ── блок геймификации и плитка «Модерация заданий» (квик 260910-qgn) ────────────────────
+
+def _seed_game_review_fixture(db_path):
+    _seed(
+        settings={"dashboard_block_game": "on"},
+        users=[
+            {"telegram_id": 501, "status": "approved",
+             "registration_date": "2026-08-01 10:00:00"},
+            {"telegram_id": 502, "status": "approved",
+             "registration_date": "2026-08-01 10:00:00"},
+        ],
+        game_tasks=[
+            {
+                "id": 1, "title": "Сделать фото стенда", "text": "т", "category": "Соцсети",
+                "coins": 10, "proof_type": "photo", "deadline_at": "2026-09-01 00:00:00",
+                "created_at": "2026-08-01 00:00:00",
+            },
+        ],
+        game_submissions=[
+            {"task_id": 1, "user_id": 501, "content_type": "photo", "content": "a",
+             "submitted_at": "2026-08-02 10:00:00", "status": "approved",
+             "reviewed_at": "2026-08-02 10:30:00"},
+            {"task_id": 1, "user_id": 502, "content_type": "photo", "content": "b",
+             "submitted_at": "2026-08-02 11:00:00", "status": "pending"},
+        ],
+        coins=[
+            {"user_id": 501, "delta": 10, "source": "task", "timestamp": "2026-08-02 10:30:00"},
+            {"user_id": 501, "delta": 5, "source": "manual", "timestamp": "2026-08-02 10:35:00"},
+        ],
+    )
+
+
+def test_game_review_tile_and_extended_block_shown_with_data(tmp_path):
+    db_path = _use_tmp_db(tmp_path)
+    _seed_game_review_fixture(db_path)
+    client = _stats_manager_client(db_path)
+    resp = client.get("/")
+    assert resp.status_code == 200
+    text = resp.text
+    assert "Модерация заданий" in text
+    assert "от сдачи задания до решения менеджера" in text
+    assert "Коинов начислено" in text
+    assert "Ждут проверки" in text
+    assert "Топ заданий" in text
+    assert "Сделать фото стенда" in text  # подпись задания из фикстуры
+    # Кодов статусов/источников коинов в видимом тексте страницы быть не должно (только в
+    # именах переменных Jinja, которые в HTML не попадают).
+    assert ">pending<" not in text
+    assert ">manual<" not in text
+
+
+def test_game_review_tile_absent_without_game_data(tmp_path):
+    """Тумблер включён, но `game_submissions` пуста -- блок и плитка не показываются (D-12),
+    а шестая плитка не ломает существующий пятиплиточный ряд."""
+    db_path = _use_tmp_db(tmp_path)
+    _seed(settings={"dashboard_block_game": "on"})
+    client = _stats_manager_client(db_path)
+    resp = client.get("/")
+    assert resp.status_code == 200
+    text = resp.text
+    assert "Модерация заданий" not in text
+    assert "Среднее время обработки" in text  # шестая плитка не ломает существующий ряд
