@@ -2829,7 +2829,22 @@ _FILTER_COLUMNS = {
     # (precedent: Phase 5 D-19). Handled by its own branch in `_build_filter_clause`,
     # not by the generic `{field} = ?` one — see there.
     "event_city",
+    # Квик 260910-vfl (SEASON-FILTER-01): сезон события как поле фильтра рассылки. Поле
+    # ОБЯЗАНО быть ЗАРЕГИСТРИРОВАНО ДВАЖДЫ (здесь и в `handlers.admin_broadcasts._PICKER_FIELDS`)
+    # — иначе фильтр виден на экране и молча не доходит до SQL (тот же прецедент фазы 5, D-19,
+    # что уже сработал для `event_city`). Обрабатывается собственной веткой в
+    # `_build_filter_clause`, не общей — легаси-строки без сезона нужно ловить сентинелом.
+    "season",
 }
+
+# Квик 260910-vfl (SEASON-FILTER-03): маркер «строк без сезона» в спеке фильтра рассылки.
+# Это НЕ значение из БД (`users.season` для таких строк — NULL/пустая строка), а сентинел,
+# который ездит внутри спеки фильтра ([{field: "season", value: SEASON_NONE}]) и обязан
+# пережить `json.dumps`/`json.loads` отложенной рассылки (`services/scheduler.py`) — поэтому
+# строка, а не `None` (JSON отдаёт `None` обратно как `null`, а не как питоний `None`-объект
+# внутри списка словарей — риск не в этом, риск в читаемости и в случайном совпадении с
+# легитимным отсутствующим ключом; явная строка исключает оба случая).
+SEASON_NONE = "__none__"
 
 
 def _build_filter_clause(filters: list[dict]) -> tuple[str, list]:
@@ -2847,6 +2862,11 @@ def _build_filter_clause(filters: list[dict]) -> tuple[str, list]:
     `cities` — `cities.py` already imports this module, so that would be an import cycle.
     The `exclude` key must therefore also survive the `json.dumps`/`json.loads` round-trip a
     scheduled broadcast's filter spec goes through.
+
+    `season` (квик 260910-vfl) is also not a plain equality when the value is `SEASON_NONE`:
+    that sentinel means "rows with no season stamp at all" (legacy pre-season registrations),
+    which is `season IS NULL OR TRIM(season) = ''`, not a literal `season = '__none__'` bind.
+    A real season value still binds as a plain `season = ?`.
     """
     clauses: list[str] = []
     params: list = []
@@ -2871,6 +2891,19 @@ def _build_filter_clause(filters: list[dict]) -> tuple[str, list]:
             frag, city_params = _city_clause((f.get("value"), tuple(f.get("exclude") or ())))
             clauses.append(frag)
             params.extend(city_params)
+        elif field == "season":
+            # Must come BEFORE the generic `_FILTER_COLUMNS` branch below — the sentinel
+            # SEASON_NONE is not a real value to bind, it means "no season stamp at all".
+            value = f.get("value")
+            if value == SEASON_NONE:
+                clauses.append("(season IS NULL OR TRIM(season) = '')")
+            elif not value:
+                # WR-01, same reasoning as event_city above: an empty value must NOT drop the
+                # condition (that would fan out to the whole base) — emit a false clause.
+                clauses.append("0")
+            else:
+                clauses.append("season = ?")
+                params.append(value)
         elif field in _FILTER_COLUMNS:
             clauses.append(f"{field} = ?")
             params.append(f.get("value"))
@@ -2906,6 +2939,32 @@ async def get_distinct_filter_values(field: str) -> list[str]:
         async with db.execute(sql) as cursor:
             rows = await cursor.fetchall()
     return [str(r[0]) for r in rows if r[0] is not None and str(r[0]).strip()]
+
+
+async def get_season_filter_options() -> list[str]:
+    """Значения для пикера поля «Сезон» — квик 260910-vfl (SEASON-FILTER-03/04).
+
+    Реальные сезоны берёт у `get_distinct_filter_values("season")` (та функция по построению
+    отбрасывает NULL и пустые — поэтому легаси-строки без сезона в списке не появляются) и,
+    если такие строки в базе реально есть, дописывает `SEASON_NONE` В КОНЕЦ списка отдельной
+    кнопкой «Без сезона». Решение по требованию 3: легаси-строки показываем отдельным
+    вариантом выбора, а не прячем — ветка в `_build_filter_clause` стоит трёх строк, а
+    спрятанные строки означали бы аудиторию, до которой менеджеру не дотянуться ничем, кроме
+    «Всем». Сентинел предлагается только когда такие строки реально есть — на базе без легаси
+    экран не меняется.
+
+    Длина этого списка — ровно то число, по которому экран решает, рисовать ли саму кнопку
+    «Сезон» (`len(options) > 1`): фильтровать по одному сезону не по чему, кнопка была бы шумом.
+    """
+    options = await get_distinct_filter_values("season")
+    async with _connect() as db:
+        async with db.execute(
+            "SELECT EXISTS(SELECT 1 FROM users WHERE season IS NULL OR TRIM(season) = '')"
+        ) as cursor:
+            row = await cursor.fetchone()
+    if row and row[0]:
+        options.append(SEASON_NONE)
+    return options
 
 
 async def count_and_list_filtered(filters: list[dict]) -> list[int]:
