@@ -53,7 +53,7 @@ def _use_tmp_db(tmp_path, name: str = "dashboard_render.db") -> str:
 async def _seed_async(
     *, cities=None, settings=None, users=None, staff=None, reg_events=None,
     reg_started=None, game_tasks=None, game_submissions=None, application_decisions=None,
-    coins=None,
+    coins=None, delegate_questions=None,
 ):
     async with bot_db._connect() as conn:
         for code, label, enabled, sort_order in cities or []:
@@ -122,6 +122,13 @@ async def _seed_async(
             placeholders = ", ".join("?" for _ in row)
             await conn.execute(
                 f"INSERT INTO coins ({cols}) VALUES ({placeholders})", tuple(row.values())
+            )
+        for row in delegate_questions or []:
+            cols = ", ".join(row.keys())
+            placeholders = ", ".join("?" for _ in row)
+            await conn.execute(
+                f"INSERT INTO delegate_questions ({cols}) VALUES ({placeholders})",
+                tuple(row.values()),
             )
         await conn.commit()
 
@@ -842,3 +849,81 @@ def test_game_review_tile_absent_without_game_data(tmp_path):
     text = resp.text
     assert "Модерация заданий" not in text
     assert "Среднее время обработки" in text  # шестая плитка не ломает существующий ряд
+
+
+# ── плитка «Ответ на вопрос» и блок «Вопросы делегатов» (квик 260910-tt5) ────────────────
+
+def test_questions_block_hidden_without_questions(tmp_path):
+    """Полный фикстур-сид (`_seed_full_fixture`) без единого вопроса делегата -- ни плитки,
+    ни блока в HTML быть не должно (без тумблера, гейт только по данным, D-2)."""
+    db_path = _use_tmp_db(tmp_path)
+    _seed_full_fixture(db_path)
+    client = _stats_manager_client(db_path)
+    resp = client.get("/")
+    assert resp.status_code == 200
+    text = resp.text
+    assert "Вопросы делегатов" not in text
+    assert "Ответ на вопрос" not in text
+
+
+def _seed_questions_fixture(db_path):
+    _seed(
+        users=[{"telegram_id": uid} for uid in (601, 602, 603)],
+        delegate_questions=[
+            {"user_id": 601, "question_text": "Когда дедлайн подачи резюме?",
+             "asked_at": "2026-08-02 10:00:00"},  # без ответа
+            {"user_id": 602, "question_text": "Где расписание форума?",
+             "asked_at": "2026-08-02 10:00:00", "answered_by": STATS_MANAGER_ID,
+             "answered_by_name": "Аня Менеджер", "answered_at": "2026-08-02 10:05:00"},  # в работе
+            {"user_id": 603, "question_text": "Можно перенести взнос?",
+             "asked_at": "2026-08-02 10:00:00", "answered_by": STATS_MANAGER_ID,
+             "answered_by_name": "Аня Менеджер", "answered_at": "2026-08-02 10:05:00",
+             "delivered_at": "2026-08-02 10:35:00"},  # отвечен, +35 мин
+        ],
+    )
+
+
+def test_questions_block_shows_counters_and_avg(tmp_path):
+    db_path = _use_tmp_db(tmp_path)
+    _seed_questions_fixture(db_path)
+    client = _stats_manager_client(db_path)
+    resp = client.get("/")
+    assert resp.status_code == 200
+    text = resp.text
+    assert "Вопросы делегатов" in text
+    assert "Ответ на вопрос" in text
+    assert "Без ответа" in text
+    assert "В работе" in text
+    assert "Отвечено" in text
+    assert "Ждут ответа" in text
+    assert "35 мин" in text
+
+
+def test_questions_block_top_managers_rendered(tmp_path):
+    db_path = _use_tmp_db(tmp_path)
+    _seed_questions_fixture(db_path)
+    client = _stats_manager_client(db_path)
+    resp = client.get("/")
+    assert resp.status_code == 200
+    text = resp.text
+    assert "Кто отвечает" in text
+    assert "Аня Менеджер" in text
+
+
+def test_kpi_grid_class_counts_visible_tiles(tmp_path):
+    """Три случая: без вопросов и без геймы -> `kpi-grid--5`; с вопросами без геймы ->
+    `kpi-grid--6`; с вопросами и геймой -> `kpi-grid--7` (клиент/логин переиспользуются, БД
+    дополняется между запросами -- тот же приём, что у `test_empty_game_and_disabled_toggle_
+    both_hide_game_block`)."""
+    db_path = _use_tmp_db(tmp_path)
+    client = _stats_manager_client(db_path)
+    resp = client.get("/")
+    assert 'class="kpi-grid kpi-grid--5"' in resp.text
+
+    _seed_questions_fixture(db_path)
+    resp2 = client.get("/")
+    assert 'class="kpi-grid kpi-grid--6"' in resp2.text
+
+    _seed_game_review_fixture(db_path)
+    resp3 = client.get("/")
+    assert 'class="kpi-grid kpi-grid--7"' in resp3.text
