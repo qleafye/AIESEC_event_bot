@@ -518,6 +518,9 @@ admin|callback_query|process_broadcast_local_file|broadcast_local
 admin|callback_query|process_broadcast_unsubscribed|broadcast_unsubscribed
 admin|callback_query|process_broadcast_incomplete|broadcast_incomplete
 admin|callback_query|cancel_broadcast_callback|broadcast_cancel
+admin|callback_query|bc_go|bc_go
+admin|callback_query|bc_no|bc_no
+admin|callback_query|bc_stop|bc_stop:*
 admin|callback_query|broadcast_schedule_start|broadcast_schedule
 admin|callback_query|broadcast_schedule_quiet_choice|bcast_quiet:*
 admin|callback_query|sched_cancel|sched_cancel_*
@@ -854,7 +857,12 @@ def test_snapshot_total_handler_count_is_292():
     # poll_wizard_cancel = два декоратора) в хвост admin.message, 15 callback (список/карточка
     # admin_polls + мастер admin_poll_wizard) в хвост admin.callback_query; чистый аппенд,
     # перепроверен прогоном _build_snapshot_lines() и diff'ом с прежним 334-строчным снапшотом.
-    assert len(GOLDEN_SNAPSHOT) == 473  # Phase 28 (28-09): +1; (28-08): +5, +1; (28-07): +1; (28-06): +3, +2
+    # Quick 260910-okb (BC-01/02/03): +3 handlers/admin_broadcasts.py callback_query (bc_go/
+    # bc_no/bc_stop -- превью+подтверждение/отмена/остановка немедленной рассылки), встали
+    # сразу после cancel_broadcast_callback и перед broadcast_schedule_start (473 -> 476);
+    # чистый аппенд, перепроверен прогоном _build_snapshot_lines() и diff'ом с прежним
+    # 473-строчным снапшотом.
+    assert len(GOLDEN_SNAPSHOT) == 476  # Quick 260910-okb: +3; Phase 28 (28-09): +1; (28-08): +5, +1; (28-07): +1; (28-06): +3, +2
     # handlers/reg_resume_fork.py — message process_resume_link (хвост message-блока
     # registration.router, сразу после process_case_optin и перед первым callback_query
     # recall_keep) + callback_query regfork_pick (хвост callback_query-блока

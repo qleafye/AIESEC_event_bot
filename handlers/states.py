@@ -91,6 +91,10 @@ class FaqItem(StatesGroup):
 class Broadcast(StatesGroup):
     target_selection = State()
     message = State()
+    # Quick 260910-okb (BC-01/02/03): превью+подтверждение перед немедленной рассылкой —
+    # process_broadcast больше не шлёт напрямую из Broadcast.message, а копит FSM и переводит
+    # сюда; "state:Broadcast:*" в handlers/admin_caps.py уже покрывает новое состояние.
+    confirm = State()
     # Phase 3: scheduled broadcast (SCHED-01)
     schedule_when = State()
     schedule_message = State()

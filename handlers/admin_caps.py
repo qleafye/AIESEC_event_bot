@@ -308,6 +308,11 @@ ADMIN_CAPS: dict[str, str] = {
 
     # ── broadcast ────────────────────────────────────────────────────────────────────────
     "admin_broadcast": "broadcast",
+    # Quick 260910-okb (BC-01..03): превью+подтверждение/прогресс/стоп немедленной рассылки —
+    # та же capability, что и весь остальной раздел «Рассылки».
+    "bc_go": "broadcast",
+    "bc_no": "broadcast",
+    "bc_stop:*": "broadcast",
     # Quick 260904-dq1: предупреждение о тихих часах на шаге планирования — та же capability,
     # что у соседних шагов рассылки.
     "bcast_quiet:*": "broadcast",

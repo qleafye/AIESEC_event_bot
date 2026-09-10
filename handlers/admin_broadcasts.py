@@ -14,6 +14,7 @@ import csv
 import html as html_module
 import io
 import json
+import logging
 import os
 import re
 from datetime import datetime
@@ -36,6 +37,9 @@ from database.db import (
     cancel_scheduled_broadcast,
     count_and_list_filtered,
     get_distinct_filter_values,
+    # Quick 260910-okb (BC-01..03): журнал немедленных рассылок.
+    create_broadcast,
+    get_broadcast,
 )
 from services.scheduler import (
     _parse_schedule_dt,
@@ -46,10 +50,13 @@ from services.scheduler import (
 )
 from services.allowlist import refresh_allowlist, allowlist_size
 from services.background import spawn as _spawn
+from services.broadcast_run import run_broadcast, request_stop
 from keyboards.builders import get_cancel_kb
 from handlers.states import Broadcast
 from cities import CITIES, cities_module_on, city_label, city_scope
 from handlers.admin import router
+
+logger = logging.getLogger(__name__)
 
 # INVARIANT (13-01 cap-test, extended by 13-04 to scan every handlers/admin*.py file): every
 # `@router.*` decorator below MUST fit on ONE line.
@@ -225,7 +232,40 @@ async def cancel_broadcast(message: types.Message, state: FSMContext):
     await message.answer("Рассылка отменена.", reply_markup=ReplyKeyboardRemove())
 
 
-async def _wait_and_send_album(media_group_id: str, users_ids: list, bot: Bot, state: FSMContext, admin_id: int):
+# Quick 260910-okb (BC-02): FSM хранит альбом как простые dict'ы ({"type","file_id","caption"}),
+# не объекты aiogram InputMedia* — на подтверждении (bc_go) их собирают заново этой функцией.
+_ALBUM_MEDIA_CLASSES = {
+    "photo": types.InputMediaPhoto,
+    "video": types.InputMediaVideo,
+    "document": types.InputMediaDocument,
+    "audio": types.InputMediaAudio,
+}
+
+
+def _media_from_album_dicts(album: list[dict]) -> list:
+    media = []
+    for item in album:
+        cls = _ALBUM_MEDIA_CLASSES.get(item.get("type"))
+        if cls is None:
+            continue
+        media.append(cls(media=item["file_id"], caption=item.get("caption"), parse_mode="HTML"))
+    return media
+
+
+async def _send_confirm_prompt(bot: Bot, chat_id: int, state: FSMContext, total: int):
+    """Экран подтверждения перед стартом рассылки (BC-01) — общий хвост и для обычного
+    сообщения, и для альбома."""
+    kb = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text=f"✅ Отправить {total} пользователям", callback_data="bc_go")],
+        [InlineKeyboardButton(text="❌ Отмена", callback_data="bc_no")],
+    ])
+    await bot.send_message(chat_id, f"Отправить это {total} пользователям?", reply_markup=kb)
+    await state.set_state(Broadcast.confirm)
+
+
+async def _collect_album_and_preview(media_group_id: str, users_ids: list, bot: Bot, state: FSMContext, admin_id: int):
+    """Бывшая `_wait_and_send_album` (Phase 3, COMM-04) — теперь НЕ шлёт получателям, а копит
+    альбом в FSM и показывает превью+подтверждение (BC-01/02), как и путь одного сообщения."""
     await asyncio.sleep(0.8)
     album_data = pending_albums.pop(media_group_id, None)
     if not album_data:
@@ -233,34 +273,27 @@ async def _wait_and_send_album(media_group_id: str, users_ids: list, bot: Bot, s
 
     messages = album_data["messages"]
     media = []
+    album_dicts = []
 
     for msg in messages:
         caption_text = msg.html_text if getattr(msg, "html_text", None) else None
 
         if msg.photo:
-            media.append(types.InputMediaPhoto(
-                media=msg.photo[-1].file_id,
-                caption=caption_text,
-                parse_mode="HTML"
-            ))
+            file_id = msg.photo[-1].file_id
+            media.append(types.InputMediaPhoto(media=file_id, caption=caption_text, parse_mode="HTML"))
+            album_dicts.append({"type": "photo", "file_id": file_id, "caption": caption_text})
         elif msg.video:
-            media.append(types.InputMediaVideo(
-                media=msg.video.file_id,
-                caption=caption_text,
-                parse_mode="HTML"
-            ))
+            file_id = msg.video.file_id
+            media.append(types.InputMediaVideo(media=file_id, caption=caption_text, parse_mode="HTML"))
+            album_dicts.append({"type": "video", "file_id": file_id, "caption": caption_text})
         elif msg.document:
-            media.append(types.InputMediaDocument(
-                media=msg.document.file_id,
-                caption=caption_text,
-                parse_mode="HTML"
-            ))
+            file_id = msg.document.file_id
+            media.append(types.InputMediaDocument(media=file_id, caption=caption_text, parse_mode="HTML"))
+            album_dicts.append({"type": "document", "file_id": file_id, "caption": caption_text})
         elif msg.audio:
-            media.append(types.InputMediaAudio(
-                media=msg.audio.file_id,
-                caption=caption_text,
-                parse_mode="HTML"
-            ))
+            file_id = msg.audio.file_id
+            media.append(types.InputMediaAudio(media=file_id, caption=caption_text, parse_mode="HTML"))
+            album_dicts.append({"type": "audio", "file_id": file_id, "caption": caption_text})
 
     if not media:
         # WR-04: unsupported-only media group — notify the admin and clear state instead of
@@ -272,40 +305,19 @@ async def _wait_and_send_album(media_group_id: str, users_ids: list, bot: Bot, s
         await state.clear()
         return
 
-    count = 0
-    blocked = 0
-    for chat_id in users_ids:
-        retried_ok = None
-        try:
-            await bot.send_media_group(chat_id, media=media)
-            first_ok = True
-        except TelegramRetryAfter as e:
-            first_ok = False
-            await asyncio.sleep(_retry_delay(e.retry_after))
-            try:
-                await bot.send_media_group(chat_id, media=media)
-                retried_ok = True
-            except Exception:
-                retried_ok = "error"
-        except Exception:
-            first_ok = False
-        delivered_inc, blocked_inc = _classify_outcome(first_ok, retried_ok)
-        count += delivered_inc
-        blocked += blocked_inc
-        await asyncio.sleep(0.05)
-
-    try:
-        await bot.send_message(
-            admin_id,
-            f"Рассылка альбома завершена.\n✅ Успешно: {count}\n❌ Недоступно: {blocked}"
-        )
-    except Exception:
-        pass
-
-    await state.clear()
+    await bot.send_media_group(admin_id, media)
+    await state.update_data(
+        bc_users=users_ids,
+        bc_album=album_dicts,
+        bc_preview=f"[альбом x {len(album_dicts)}]",
+    )
+    await _send_confirm_prompt(bot, admin_id, state, len(users_ids))
 
 @router.message(Broadcast.message)
 async def process_broadcast(message: types.Message, state: FSMContext, bot: Bot):
+    """BC-01: сообщение в состоянии рассылки больше НЕ уходит получателям — складывает превью
+    в FSM и переводит на экран подтверждения (Broadcast.confirm); сама отправка стартует только
+    по нажатию «✅ Отправить N пользователям» (bc_go)."""
     data = await state.get_data()
     target_type = data.get("target_type", "all")
 
@@ -317,48 +329,104 @@ async def process_broadcast(message: types.Message, state: FSMContext, bot: Bot)
              return
     else:
         users_ids = await get_all_users_ids()
+    users_ids = list(set(users_ids))
 
     mgid = message.media_group_id
     if mgid:
         if mgid not in pending_albums:
             pending_albums[mgid] = {"messages": [message]}
-            await message.answer(f"Альбом получен. Начинаю рассылку на {len(users_ids)} пользователей...")
-            _spawn(_wait_and_send_album(mgid, users_ids, bot, state, message.from_user.id))
+            _spawn(_collect_album_and_preview(mgid, users_ids, bot, state, message.from_user.id))
         else:
             pending_albums[mgid]["messages"].append(message)
         return
 
-    count = 0
-    blocked = 0
-
-    await message.answer(f"Начинаю рассылку на {len(users_ids)} пользователей...")  # IN-01: was assigned to unused status_msg
-
-    for chat_id in users_ids:
-        retried_ok = None
-        try:
-            await message.send_copy(chat_id)
-            first_ok = True
-        except TelegramRetryAfter as e:
-            first_ok = False
-            await asyncio.sleep(_retry_delay(e.retry_after))
-            try:
-                await message.send_copy(chat_id)
-                retried_ok = True
-            except Exception:
-                retried_ok = "error"
-        except Exception:
-            first_ok = False
-        delivered_inc, blocked_inc = _classify_outcome(first_ok, retried_ok)
-        count += delivered_inc
-        blocked += blocked_inc
-        await asyncio.sleep(0.05)
-
-    await message.answer(
-        f"Рассылка завершена.\n"
-        f"✅ Успешно: {count}\n"
-        f"❌ Недоступно: {blocked}"
+    preview = message.html_text if (message.text or message.caption) else "[фото]"
+    await state.update_data(
+        bc_chat_id=message.chat.id,
+        bc_message_id=message.message_id,
+        bc_users=users_ids,
+        bc_preview=preview,
     )
+    await message.send_copy(message.chat.id)
+    await _send_confirm_prompt(bot, message.chat.id, state, len(users_ids))
+
+
+@router.callback_query(F.data == "bc_go", Broadcast.confirm)
+async def bc_go(callback: types.CallbackQuery, state: FSMContext, bot: Bot):
+    """BC-01/03: подтверждение запускает фоновый прогон (services/broadcast_run.run_broadcast)
+    и переводит экран в прогресс с кнопкой «⛔ Остановить»."""
+    data = await state.get_data()
+    users_ids = data.get("bc_users", [])
+    preview = data.get("bc_preview") or ""
+    bc_chat_id = data.get("bc_chat_id")
+    bc_message_id = data.get("bc_message_id")
+    bc_album = data.get("bc_album")
+    admin_id = callback.from_user.id
+    total = len(users_ids)
+
+    bid = await create_broadcast(admin_id, preview[:80], total)
+    logger.info("broadcast %s started by %s: total=%s preview=%r", bid, admin_id, total, preview[:80])
     await state.clear()
+
+    if bc_album:
+        async def send_one(chat_id):
+            media = _media_from_album_dicts(bc_album)
+            results = await bot.send_media_group(chat_id, media)
+            return [m.message_id for m in results]
+    else:
+        async def send_one(chat_id):
+            result = await bot.copy_message(chat_id, from_chat_id=bc_chat_id, message_id=bc_message_id)
+            return [result.message_id]
+
+    stop_kb = InlineKeyboardMarkup(inline_keyboard=[[
+        InlineKeyboardButton(text="⛔ Остановить", callback_data=f"bc_stop:{bid}")
+    ]])
+    try:
+        await callback.message.edit_text(f"📨 Отправлено 0 из {total}…", reply_markup=stop_kb)
+    except Exception:
+        pass
+    await callback.answer()
+
+    async def on_progress(delivered, blocked, total_n):
+        try:
+            await callback.message.edit_text(f"📨 Отправлено {delivered} из {total_n}…", reply_markup=stop_kb)
+        except Exception:
+            pass  # "message is not modified" и подобные не должны ронять рассылку
+
+    async def on_finish(status, delivered, blocked):
+        if status == "stopped":
+            text = f"⛔ Остановлено: отправлено {delivered}, недоступно {blocked}"
+        else:
+            text = f"Рассылка завершена. ✅ Отправлено {delivered}, ❌ недоступно {blocked}"
+        try:
+            await callback.message.edit_text(text)
+        except Exception:
+            pass
+
+    _spawn(run_broadcast(bid, users_ids, send_one, on_progress=on_progress, on_finish=on_finish))
+
+
+@router.callback_query(F.data == "bc_no", Broadcast.confirm)
+async def bc_no(callback: types.CallbackQuery, state: FSMContext):
+    await state.clear()
+    await callback.message.edit_text("Рассылка отменена.")
+    await callback.answer()
+
+
+@router.callback_query(F.data.startswith("bc_stop:"))
+async def bc_stop(callback: types.CallbackQuery):
+    """Стоп идущей рассылки/отзыва — тот же адресный флаг для обоих (BC-03)."""
+    try:
+        bid = int(callback.data.split(":", 1)[1])
+    except ValueError:
+        await callback.answer("Некорректные данные.", show_alert=True)
+        return
+    row = await get_broadcast(bid)
+    if not row or row["admin_id"] != callback.from_user.id:
+        await callback.answer("Это не ваша рассылка.", show_alert=True)
+        return
+    request_stop(bid)
+    await callback.answer("Останавливаю…")
 
 
 # ── Phase 3 (SCHED-01): schedule-a-broadcast UI ──────────────────────────────
