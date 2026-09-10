@@ -281,3 +281,263 @@ def test_get_resume_filter_options_empty_base(tmp_path):
     config.DB_PATH = str(tmp_path / "test_resume_options_empty.db")
     asyncio.run(db.init_db())
     assert asyncio.run(db.get_resume_filter_options()) == []
+
+
+# ── Задача 2: «Экран» — кнопка «Резюме», пикер, сводка ──────────────────────────────────
+# Харнес скопирован из tests/test_city_broadcast_phase72.py (тем же приёмом, что и квик
+# 260910-vfl в tests/test_broadcast_season_filter_260910.py).
+
+ADMIN_ID = 940102
+
+
+class FakeUser:
+    def __init__(self, uid):
+        self.id = uid
+
+
+class FakeMessage:
+    def __init__(self):
+        self.text = None
+        self.markup = None
+
+    async def edit_text(self, text, parse_mode=None, reply_markup=None):
+        self.text = text
+        self.markup = reply_markup
+
+    async def edit_reply_markup(self, reply_markup=None):
+        self.markup = reply_markup
+
+    async def answer(self, text, parse_mode=None, reply_markup=None):
+        self.text = text
+        self.markup = reply_markup
+
+
+class FakeCallback:
+    def __init__(self, data, user_id=ADMIN_ID):
+        self.data = data
+        self.from_user = FakeUser(user_id)
+        self.message = FakeMessage()
+        self.answers = []
+
+    async def answer(self, text=None, show_alert=False):
+        self.answers.append((text, show_alert))
+
+
+class FakeState:
+    """Минимальная замена FSMContext — рассылочному фильтру нужны только get_data/update_data."""
+
+    def __init__(self, **data):
+        self._data = dict(data)
+        self.state = None
+
+    async def get_data(self):
+        return dict(self._data)
+
+    async def update_data(self, **kwargs):
+        self._data.update(kwargs)
+        return dict(self._data)
+
+    async def set_state(self, state):
+        self.state = state
+
+
+def _cb_datas(kb):
+    return [b.callback_data for row in kb.inline_keyboard for b in row]
+
+
+def _btn_texts(kb):
+    return [b.text for row in kb.inline_keyboard for b in row]
+
+
+def _seed_resume_users(tmp_path, dbname, rows):
+    """rows: список (telegram_id, extra_dict) — extra_dict кладёт resume_* поля напрямую."""
+    config.DB_PATH = str(tmp_path / dbname)
+    config.ADMIN_IDS = [ADMIN_ID]
+
+    async def go():
+        await db.init_db()
+        for tid, extra in rows:
+            data = {
+                "telegram_id": tid,
+                "full_name": f"User {tid}",
+                "registration_date": f"2026-01-01 09:{tid:02d}:00",
+            }
+            data.update(extra)
+            await db.add_user(data)
+
+    asyncio.run(go())
+
+
+def test_resume_double_registration():
+    """Двойная регистрация поля (прецедент Фазы 5, D-19) — одним тестом на связку."""
+    from handlers import admin_broadcasts
+    assert "resume" in admin_broadcasts._PICKER_FIELDS
+    assert "resume" in db._FILTER_COLUMNS
+
+
+def test_filter_field_label_resume():
+    from handlers import admin_broadcasts
+    assert admin_broadcasts._FILTER_FIELD_LABELS["resume"] == "Резюме"
+
+
+def test_filter_menu_kb_default_has_no_resume_button():
+    from handlers import admin_broadcasts
+    kb = admin_broadcasts._filter_menu_kb([])
+    assert "filter_f_resume" not in _cb_datas(kb)
+
+
+def test_filter_menu_kb_show_resume_adds_exactly_one_button():
+    from handlers import admin_broadcasts
+    kb_before = admin_broadcasts._filter_menu_kb([])
+    kb = admin_broadcasts._filter_menu_kb([], show_resume=True)
+    assert len(kb.inline_keyboard) == len(kb_before.inline_keyboard) + 1
+    assert _cb_datas(kb).count("filter_f_resume") == 1
+
+
+def test_render_filter_menu_mixed_resume_shows_button(tmp_path):
+    _seed_resume_users(tmp_path, "render_mixed_resume.db", [
+        (1, {"resume_file_id": "f1"}), (2, {}),
+    ])
+    from handlers import admin_broadcasts
+    msg = FakeMessage()
+    asyncio.run(admin_broadcasts._render_filter_menu(msg, [], edit=True))
+    assert "filter_f_resume" in _cb_datas(msg.markup)
+
+
+def test_render_filter_menu_all_have_resume_hides_button(tmp_path):
+    _seed_resume_users(tmp_path, "render_all_has_resume.db", [
+        (1, {"resume_file_id": "f1"}), (2, {"resume_text": "text"}),
+    ])
+    from handlers import admin_broadcasts
+    msg = FakeMessage()
+    asyncio.run(admin_broadcasts._render_filter_menu(msg, [], edit=True))
+    assert "filter_f_resume" not in _cb_datas(msg.markup)
+
+
+def test_render_filter_menu_none_have_resume_hides_button(tmp_path):
+    _seed_resume_users(tmp_path, "render_none_has_resume.db", [(1, {}), (2, {})])
+    from handlers import admin_broadcasts
+    msg = FakeMessage()
+    asyncio.run(admin_broadcasts._render_filter_menu(msg, [], edit=True))
+    assert "filter_f_resume" not in _cb_datas(msg.markup)
+
+
+def test_render_filter_menu_empty_base_hides_resume_button(tmp_path):
+    config.DB_PATH = str(tmp_path / "render_empty_resume.db")
+    config.ADMIN_IDS = [ADMIN_ID]
+    asyncio.run(db.init_db())
+    from handlers import admin_broadcasts
+    msg = FakeMessage()
+    asyncio.run(admin_broadcasts._render_filter_menu(msg, [], edit=True))
+    assert "filter_f_resume" not in _cb_datas(msg.markup)
+
+
+def test_filter_pick_field_resume_mixed_base_shows_two_buttons_no_raw_codes(tmp_path):
+    _seed_resume_users(tmp_path, "pick_mixed_resume.db", [
+        (1, {"resume_file_id": "f1"}), (2, {}),
+    ])
+    from handlers import admin_broadcasts
+    cb = FakeCallback("filter_f_resume")
+    state = FakeState()
+    asyncio.run(admin_broadcasts.filter_pick_field(cb, state))
+    texts = _btn_texts(cb.message.markup)
+    # ровно две кнопки-значения + «← Назад»
+    value_texts = [t for t in texts if t != "← Назад"]
+    assert set(value_texts) == {"есть", "нет"}
+    assert db.RESUME_HAS not in texts
+    assert db.RESUME_MISSING not in texts
+
+
+def test_filter_pick_field_resume_single_side_alerts_and_does_not_redraw(tmp_path):
+    """Гейт живёт в хэндлере: инлайн-кнопки не истекают, вчерашнее меню живо сегодня — тот
+    же довод WR-04, что у event_city/season."""
+    _seed_resume_users(tmp_path, "pick_single_side_resume.db", [
+        (1, {"resume_file_id": "f1"}), (2, {"resume_text": "t"}),
+    ])
+    from handlers import admin_broadcasts
+    cb = FakeCallback("filter_f_resume")
+    state = FakeState()
+    asyncio.run(admin_broadcasts.filter_pick_field(cb, state))
+    assert cb.message.text is None
+    assert cb.message.markup is None
+    assert cb.answers
+    text, show_alert = cb.answers[-1]
+    assert show_alert is True
+
+
+def test_filter_pick_value_resume_missing_carries_label(tmp_path):
+    _seed_resume_users(tmp_path, "pick_value_resume_missing.db", [
+        (1, {"resume_file_id": "f1"}), (2, {}),
+    ])
+    from handlers import admin_broadcasts
+    cb = FakeCallback("filter_f_resume")
+    state = FakeState()
+    asyncio.run(admin_broadcasts.filter_pick_field(cb, state))
+    asyncio.run(state.update_data(filters=[]))
+    options = (asyncio.run(state.get_data()))["filter_options"]
+    idx = options.index(db.RESUME_MISSING)
+    pick = FakeCallback(f"filter_opt:{idx}")
+    asyncio.run(admin_broadcasts.filter_pick_value(pick, state))
+    filters = (asyncio.run(state.get_data()))["filters"]
+    assert filters == [{"field": "resume", "value": db.RESUME_MISSING, "label": "нет"}]
+
+
+def test_filter_pick_value_resume_has_carries_label(tmp_path):
+    _seed_resume_users(tmp_path, "pick_value_resume_has.db", [
+        (1, {"resume_file_id": "f1"}), (2, {}),
+    ])
+    from handlers import admin_broadcasts
+    cb = FakeCallback("filter_f_resume")
+    state = FakeState()
+    asyncio.run(admin_broadcasts.filter_pick_field(cb, state))
+    asyncio.run(state.update_data(filters=[]))
+    options = (asyncio.run(state.get_data()))["filter_options"]
+    idx = options.index(db.RESUME_HAS)
+    pick = FakeCallback(f"filter_opt:{idx}")
+    asyncio.run(admin_broadcasts.filter_pick_value(pick, state))
+    filters = (asyncio.run(state.get_data()))["filters"]
+    assert filters == [{"field": "resume", "value": db.RESUME_HAS, "label": "есть"}]
+
+
+def test_filter_summary_resume_missing():
+    from handlers import admin_broadcasts
+    assert admin_broadcasts._filter_summary(
+        [{"field": "resume", "value": db.RESUME_MISSING, "label": "нет"}]
+    ) == "Резюме = нет"
+
+
+def test_filter_summary_resume_and_date_joined_with_and():
+    from handlers import admin_broadcasts
+    summary = admin_broadcasts._filter_summary([
+        {"field": "registration_date", "op": "after", "value": "2026-09-05"},
+        {"field": "resume", "value": db.RESUME_MISSING, "label": "нет"},
+    ])
+    assert "Дата регистрации после 2026-09-05" in summary
+    assert "Резюме = нет" in summary
+    assert " И " in summary
+
+
+def test_count_and_list_filtered_via_picked_resume_spec(tmp_path):
+    """Счётчик меняется: спека, собранная пикером, отдаёт ровно делегатов без резюме."""
+    _seed_resume_users(tmp_path, "counter_resume.db", [
+        (1, {"resume_file_id": "f1"}), (2, {}), (3, {}),
+    ])
+    from handlers import admin_broadcasts
+    cb = FakeCallback("filter_f_resume")
+    state = FakeState()
+    asyncio.run(admin_broadcasts.filter_pick_field(cb, state))
+    asyncio.run(state.update_data(filters=[]))
+    options = (asyncio.run(state.get_data()))["filter_options"]
+    idx = options.index(db.RESUME_MISSING)
+    pick = FakeCallback(f"filter_opt:{idx}")
+    asyncio.run(admin_broadcasts.filter_pick_value(pick, state))
+    filters = (asyncio.run(state.get_data()))["filters"]
+    ids = asyncio.run(db.count_and_list_filtered(filters))
+    assert set(ids) == {2, 3}
+
+
+def test_required_capability_filter_f_resume_is_broadcast():
+    """Доказательство, что записи в ADMIN_CAPS не нужны — `filter_f_*` уже покрывает
+    (`admin_caps.py:343`), префиксный матч в `required_capability`."""
+    from handlers import admin_caps
+    assert admin_caps.required_capability(callback_data="filter_f_resume") == "broadcast"
