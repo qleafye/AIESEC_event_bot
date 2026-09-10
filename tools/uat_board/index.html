@@ -1,0 +1,639 @@
+<!doctype html><html lang="ru"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Большая приёмка Юлид '26</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Lato:wght@400;700&family=Raleway:ital,wght@1,800&display=swap">
+<style>
+:root{
+  --bg:#F3F5F9; --surface:#FFFFFF; --sunken:#EAEEF5;
+  --ink:#151A21; --muted:#56606E; --faint:#8A93A1;
+  --line:#DCE2EB; --line-soft:#E8ECF3;
+  --accent:#037EF3; --accent-ink:#0163C0; --accent-soft:#E3F0FE;
+  --warm:#F48924;
+  --ok:#12855A; --ok-soft:#E1F3EA; --bad:#CF3A24; --bad-soft:#FBE7E3; --skip:#8A6A00; --skip-soft:#FFF3CC;
+  --shadow:0 1px 2px rgba(21,26,33,.06);
+  --font-h:"Raleway","Segoe UI",system-ui,sans-serif;
+  --font-b:"Lato","Segoe UI",system-ui,sans-serif;
+}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){
+  --bg:#12161C; --surface:#1A1F27; --sunken:#151A21;
+  --ink:#E9EDF3; --muted:#A3ADBB; --faint:#7C8695;
+  --line:#2A323D; --line-soft:#232A34;
+  --accent:#4FA6F7; --accent-ink:#8CC5FA; --accent-soft:#16283C;
+  --warm:#F9A44C;
+  --ok:#4FBF8E; --ok-soft:#142A22; --bad:#F0705A; --bad-soft:#2E1A17; --skip:#F0C24B; --skip-soft:#3A3114;
+  --shadow:0 1px 2px rgba(0,0,0,.35);
+}}
+:root[data-theme="dark"]{
+  --bg:#12161C; --surface:#1A1F27; --sunken:#151A21;
+  --ink:#E9EDF3; --muted:#A3ADBB; --faint:#7C8695;
+  --line:#2A323D; --line-soft:#232A34;
+  --accent:#4FA6F7; --accent-ink:#8CC5FA; --accent-soft:#16283C;
+  --warm:#F9A44C;
+  --ok:#4FBF8E; --ok-soft:#142A22; --bad:#F0705A; --bad-soft:#2E1A17; --skip:#F0C24B; --skip-soft:#3A3114;
+  --shadow:0 1px 2px rgba(0,0,0,.35);
+}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font-family:var(--font-b);font-size:15px;line-height:1.5;
+     -webkit-font-smoothing:antialiased;-webkit-text-size-adjust:100%;padding:0 0 96px}
+.wrap{max-width:52rem;margin:0 auto;padding:0 16px}
+
+header.top{padding:24px 0 16px}
+.eyebrow{font:700 11px/1 var(--font-b);letter-spacing:.14em;text-transform:uppercase;color:var(--warm)}
+h1{font:italic 800 clamp(28px,7vw,40px)/1.04 var(--font-h);letter-spacing:-.02em;margin:10px 0 8px;text-wrap:balance}
+.lede{color:var(--muted);max-width:44rem;margin:0}
+.meta{display:flex;flex-wrap:wrap;gap:6px 18px;margin-top:12px;font-size:14px;color:var(--muted)}
+.meta b{color:var(--ink);font-weight:700}
+.warn{display:flex;gap:12px;align-items:flex-start;margin:16px 0 0;padding:12px 14px;
+      background:var(--bad-soft);border-left:3px solid var(--bad);border-radius:0 6px 6px 0}
+.warn p{margin:0;font-size:14px}
+.warn b{color:var(--bad)}
+
+.tabs{position:sticky;top:0;z-index:5;background:var(--bg);padding:10px 0 8px;border-bottom:1px solid var(--line)}
+.tabs .row{display:grid;grid-template-columns:repeat(3,1fr);gap:6px;background:var(--surface);border:1px solid var(--line);
+     border-radius:12px;padding:5px}
+.tab{min-height:44px;border:1px solid transparent;border-radius:9px;background:transparent;color:var(--muted);
+     font:700 13px/1.15 var(--font-b);padding:6px 4px;cursor:pointer;display:flex;flex-direction:column;
+     align-items:center;justify-content:center;gap:3px;text-align:center}
+.tab small{font-weight:400;font-size:11px;color:var(--faint);font-variant-numeric:tabular-nums}
+.tab[aria-selected="true"]{background:var(--accent-soft);border-color:var(--accent);color:var(--accent-ink)}
+.tab[aria-selected="true"] small{color:var(--accent-ink)}
+.progress{display:flex;align-items:center;gap:10px;margin-top:8px;font-size:12.5px;color:var(--muted);font-variant-numeric:tabular-nums}
+.track{flex:1;height:6px;background:var(--sunken);border-radius:99px;overflow:hidden}
+.track i{display:block;height:100%;background:var(--accent);width:0;transition:width .25s ease}
+:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+
+.panel[hidden]{display:none}
+.intro{margin:16px 0 0;padding:12px 14px;background:var(--accent-soft);border:1px solid var(--accent);border-radius:12px;font-size:14px}
+.intro p{margin:0}
+.intro p + p{margin-top:6px}
+
+section.block{margin-top:30px}
+.bh{display:flex;align-items:baseline;gap:10px;flex-wrap:wrap;padding-bottom:8px;border-bottom:2px solid var(--ink)}
+.bn{font:italic 800 13px/1 var(--font-h);letter-spacing:.06em;color:var(--accent);font-variant-numeric:tabular-nums}
+.bh h2{font:italic 800 20px/1.15 var(--font-h);letter-spacing:-.01em;margin:0;flex:1 1 auto;text-wrap:balance}
+.bt{font-size:13px;color:var(--faint);font-variant-numeric:tabular-nums;white-space:nowrap}
+.bnote{color:var(--muted);font-size:14px;margin:10px 0 0}
+.bnote b{color:var(--ink)}
+
+ol.steps{list-style:none;margin:6px 0 0;padding:0}
+li.step{display:grid;grid-template-columns:auto 1fr auto;gap:8px 12px;align-items:start;
+        padding:14px 0;border-bottom:1px solid var(--line-soft)}
+li.step:last-child{border-bottom:0}
+.id{font:700 12px/1.6 ui-monospace,SFMono-Regular,Menlo,monospace;color:var(--faint);
+    font-variant-numeric:tabular-nums;padding-top:2px}
+.txt p{margin:0}
+.txt .do{font-weight:700}
+.txt .exp{color:var(--muted);font-size:14px;margin-top:3px}
+.who-mark{display:block;font-size:12px;color:var(--faint);margin-top:4px;font-variant-numeric:tabular-nums}
+.who-mark[hidden]{display:none}
+.sync{font-size:12px;color:var(--faint);margin-top:6px}
+.sync.ok{color:var(--ok)}
+.sync.bad{color:var(--bad)}
+.txt .exp::before{content:"Должно быть: ";color:var(--faint);font-weight:700}
+.marks{display:flex;gap:6px}
+.mark{width:42px;height:42px;border:1px solid var(--line);background:var(--surface);border-radius:9px;
+      cursor:pointer;font:700 16px/1 var(--font-b);color:var(--faint);display:grid;place-items:center}
+.mark:hover{border-color:var(--accent)}
+li.step[data-s="ok"] .mark.ok{background:var(--ok-soft);border-color:var(--ok);color:var(--ok)}
+li.step[data-s="bad"] .mark.bad{background:var(--bad-soft);border-color:var(--bad);color:var(--bad)}
+li.step[data-s="skip"] .mark.skip{background:var(--skip-soft);border-color:var(--skip);color:var(--skip)}
+li.step[data-s="ok"] .txt .do{color:var(--muted);text-decoration:line-through;text-decoration-color:var(--line)}
+.note-btn{grid-column:2/-1;justify-self:start;min-height:30px;background:transparent;border:0;padding:0;
+      color:var(--accent-ink);font:700 12.5px/1 var(--font-b);cursor:pointer}
+.note{grid-column:2/-1;width:100%;font:400 14px/1.45 var(--font-b);color:var(--ink);background:var(--sunken);
+      border:1px solid var(--line);border-radius:8px;padding:9px 10px;resize:vertical;min-height:62px}
+.note::placeholder{color:var(--faint)}
+.note[hidden]{display:none}
+
+.pre{background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:4px 14px;box-shadow:var(--shadow);margin-top:10px}
+.pre li.step{grid-template-columns:auto auto 1fr;grid-template-areas:"box id txt"}
+.pre .box{grid-area:box}
+.pre .id{grid-area:id}
+.pre .txt{grid-area:txt}
+.pre .marks,.pre .note-btn,.pre .note{display:none}
+.pre .box{width:22px;height:22px;border:1.5px solid var(--line);border-radius:6px;cursor:pointer;
+     display:grid;place-items:center;font:700 13px/1 var(--font-b);color:transparent;margin-top:2px;background:var(--surface)}
+.pre li.step[data-s="ok"] .box{background:var(--ok);border-color:var(--ok);color:#fff}
+.pre .txt .exp::before{content:""}
+
+footer.end{margin-top:40px;padding-top:16px;border-top:1px solid var(--line);color:var(--faint);font-size:13px}
+
+.dock{position:fixed;left:0;right:0;bottom:0;background:var(--surface);border-top:1px solid var(--line);
+      padding:10px 16px calc(10px + env(safe-area-inset-bottom));z-index:6;box-shadow:0 -4px 14px rgba(0,0,0,.06)}
+.dock .row{max-width:52rem;margin:0 auto;display:flex;gap:8px;align-items:center}
+.who{flex:1 1 120px;min-width:0;font:400 14px/1 var(--font-b);color:var(--ink);background:var(--bg);
+     border:1px solid var(--line);border-radius:9px;padding:12px 10px}
+.btn{font:700 14px/1 var(--font-b);color:#fff;background:var(--accent);border:1px solid var(--accent);
+     border-radius:9px;padding:13px 14px;cursor:pointer;white-space:nowrap}
+.btn:hover{background:var(--accent-ink)}
+
+.report{position:fixed;left:0;right:0;bottom:66px;max-height:62vh;background:var(--surface);border-top:1px solid var(--line);
+        box-shadow:0 -6px 18px rgba(0,0,0,.1);z-index:5;padding:12px 16px}
+.report[hidden]{display:none}
+.report .in{max-width:52rem;margin:0 auto;display:flex;flex-direction:column;gap:8px}
+.report .hd{display:flex;justify-content:space-between;align-items:center}
+.report h2{font:italic 800 15px/1 var(--font-h);margin:0}
+.report .x{min-height:32px;min-width:32px;border:1px solid var(--line);background:var(--bg);color:var(--muted);border-radius:8px;cursor:pointer}
+.report p{font-size:12.5px;color:var(--faint);margin:0}
+.report p b{color:var(--ok)}
+#reportText{width:100%;min-height:180px;max-height:40vh;border:1px solid var(--line);border-radius:10px;background:var(--bg);
+        color:var(--ink);font:12px/1.4 ui-monospace,SFMono-Regular,Consolas,monospace;padding:10px;resize:vertical}
+
+@media (max-width:520px){
+  li.step{grid-template-columns:auto 1fr;grid-template-areas:"id txt" ". marks" ". nb" ". note"}
+  .id{grid-area:id}.txt{grid-area:txt}.marks{grid-area:marks}.note-btn{grid-area:nb}.note{grid-area:note}
+  .pre li.step{grid-template-columns:auto auto 1fr;grid-template-areas:"box id txt"}
+}
+@media (prefers-reduced-motion:reduce){*{transition:none!important}}
+</style>
+</head>
+<body>
+<div class="wrap">
+<header class="top">
+  <div class="eyebrow">Тестовый бот · @YouLead_test_bot</div>
+  <h1>Большая приёмка Юлид '26</h1>
+  <p class="lede">Три роли, три телефона. Каждый проходит свою вкладку сверху вниз, отмечает «совпало» или «не так»
+  и пишет заметку своими словами, если что-то пошло не так. Автоматические тесты уже прошли: здесь проверяем то,
+  что они не умеют, — живой Телеграм, телефон в руках, двух человек одновременно.</p>
+  <div class="meta">
+    <span><b>~2,5 часа</b> на всё, можно частями</span>
+    <span>Нужен <b>аккаунт, который никогда не писал тестовому боту</b></span>
+    <span>Отметки <b>общие</b>: что отметил один — видят все, с именем и временем</span>
+  </div>
+  <div class="warn">
+    <p><b>Боевого бота @YouLead2026_bot не трогаем.</b> Всё — только в тестовом @YouLead_test_bot.
+    Рассылки — тем более только там: у тестового бота своя маленькая база, до делегатов ничего не дойдёт.</p>
+  </div>
+</header>
+
+<div class="tabs" role="tablist" aria-label="Роль">
+  <div class="row">
+    <button class="tab" role="tab" data-tab="admin" aria-selected="true">Админ<small id="c-admin"></small></button>
+    <button class="tab" role="tab" data-tab="manager" aria-selected="false">Менеджер<small id="c-manager"></small></button>
+    <button class="tab" role="tab" data-tab="delegate" aria-selected="false">Делегат<small id="c-delegate"></small></button>
+  </div>
+  <div class="progress"><span id="ptext">0 из 0</span><div class="track"><i id="pfill"></i></div></div>
+  <div class="sync" id="sync">Подключаюсь к общей доске…</div>
+</div>
+
+<main id="app"></main>
+
+<footer class="end">
+  ✓ — совпало с «Должно быть». ✕ — не так, откроется поле для заметки: напиши, что увидел, своими словами.
+  ⏭ — пропустил (не было возможности проверить). Отметки общие для всех трёх телефонов. Впиши своё имя внизу, чтобы было видно, кто что проверил. В конце — «Скопировать отчёт» и текст в чат.
+</footer>
+</div>
+
+<div class="report" id="report" hidden>
+  <div class="in">
+    <div class="hd"><h2>Отчёт для копирования</h2><button class="x" id="reportClose" type="button" aria-label="Закрыть">✕</button></div>
+    <p id="reportHint">Текст выделен — зажми и «Копировать», потом вставь в чат.</p>
+    <textarea id="reportText" readonly></textarea>
+  </div>
+</div>
+
+<div class="dock">
+  <div class="row">
+    <input type="text" class="who" id="who" placeholder="Кто проверяет" autocomplete="name">
+    <button class="btn" id="copy" type="button">Скопировать отчёт</button>
+  </div>
+</div>
+
+<script>
+const TABS = { admin: "Админ", manager: "Менеджер", delegate: "Делегат" };
+const DATA = {
+admin: {
+  intro: ["Телефон владельца бота (полные права). Заходишь в бота командой /admin и в приложение из меню бота.",
+          "Заявки и задания делегата, которые нужны дальше по списку, создаёт человек на вкладке «Делегат» — договоритесь, кто когда что делает."],
+  blocks: [
+  {n:"0", title:"Перед стартом", time:"5 мин", pre:true, steps:[
+    {id:"0.1", do:"Роли распределены", exp:"один — админ (владелец), второй — менеджер отбора (аккаунт с правом «Заявки»), третий — новый делегат"},
+    {id:"0.2", do:"Аккаунт нового делегата ни разу не писал тестовому боту", exp:"иначе анкета будет не с нуля"},
+    {id:"0.3", do:"Тестовый бот отвечает на /start, приложение открывается из меню бота", exp:""},
+    {id:"0.4", do:"В настройках включены: «Прогресс-бар анкеты», шаг «Резюме», раздел «Анкета» в приложении, «Английский язык анкеты»", exp:""},
+    {id:"0.5", do:"В боте есть хотя бы одно задание с монетами (раздел «Задания»)", exp:"иначе делегату нечего сдавать"},
+    {id:"0.6", do:"Google-таблица тестового бота открыта", exp:"вкладки города, «Вопросы», «История правок»"},
+    {id:"0.7", do:"Доска статистики открывается: yl26.alekseev.info и all.alekseev.info", exp:"вход через Телеграм, только смотрим"},
+  ]},
+  {n:"1", title:"Рассылка: подтверждение, стоп, удаление", time:"15 мин",
+   note:"Новое после случая 9 сентября, когда «Привет» улетел 950 людям и отмена не сработала. Теперь без кнопки «Отправить» ничего не уходит, а идущую рассылку можно остановить и даже стереть у получателей.",
+   steps:[
+    {id:"1.1", do:"/admin → «Рассылка» → «Всем» → напиши любой текст", exp:"бот показывает копию текста и спрашивает «Отправить N пользователям?» с кнопками «Отправить» / «Отмена». Никому ничего не ушло"},
+    {id:"1.2", do:"Нажми «Отмена»", exp:"«Рассылка отменена», делегатам ничего не пришло (спроси у соседей)"},
+    {id:"1.3", do:"Повтори и нажми «Отправить N пользователям»", exp:"сообщение меняется на «Отправлено X из N…» с кнопкой «Остановить»; у делегата и менеджера сообщение пришло"},
+    {id:"1.4", do:"Запусти ещё одну рассылку и сразу нажми «Остановить»", exp:"итог «Остановлено: отправлено X, недоступно Y», дальше никому не уходит"},
+    {id:"1.5", do:"Попроси менеджера (другой аккаунт) нажать «Остановить» на твоей рассылке", exp:"у него это тоже работает — остановить может любой, у кого есть раздел «Рассылка»"},
+    {id:"1.6", do:"В итоге рассылки нажми «Удалить у получателей»", exp:"вопрос «Сообщение удалится у N человек. Вернуть нельзя. Удалить?» — подтверди. У делегата сообщение исчезло из чата, итог «Удалено X, не удалось Y»"},
+    {id:"1.7", do:"«Рассылка» → «Последние рассылки»", exp:"список последних рассылок: дата, кто отправил, начало текста, сколько дошло; у удалённой — пометка «удалена у получателей»"},
+    {id:"1.8", do:"Отправь рассылку из 2–3 фото альбомом", exp:"тоже сначала копия альбома и вопрос «Отправить?», потом прогресс; получателю приходит альбом целиком"},
+    {id:"1.9", do:"«Запланировать» → время через 2 минуты → текст", exp:"бот подтверждает время; через 2 минуты сообщение приходит; в списке запланированных её можно было отменить до срока"},
+  ]},
+  {n:"2", title:"Настройки: всё кнопками", time:"12 мин",
+   note:"Правило продукта: менеджер настраивает всё сам, без разработчика. Коды и служебные слова человеку не показываются.",
+   steps:[
+    {id:"2.1", do:"«Настройки» → строка поиска → по очереди «реквизиты», «дедлайн», «таблица»", exp:"каждый раз находится нужная настройка, даже если этого слова нет в её названии"},
+    {id:"2.2", do:"Поиск с опечаткой: «дедлаин»", exp:"тоже находит"},
+    {id:"2.3", do:"Открой любую настройку с выбором из вариантов (например, режим резюме)", exp:"варианты подписаны человеческими словами, без кодов вроде «fork» или «file_link»"},
+    {id:"2.4", do:"В приложении → «Настройки» → измени два текста и один переключатель → «Сохранить N изменений»", exp:"перед сохранением показано «было → станет»; после — в боте те же новые значения, бот не перезапускался"},
+    {id:"2.5", do:"В приложении набери новое значение поля (не сохраняя), в боте поменяй то же поле, потом в приложении нажми «Сохранить»", exp:"предупреждение «Изменено в боте» и выбор «Перезаписать» / «Оставить как в боте». Тихой перезаписи нет"},
+    {id:"2.6", do:"«Анкета» → переключи форму на «Краткая», потом обратно на «Полная»", exp:"переключатель меняется на экране, счётчик правок растёт и после сохранения обнуляется"},
+    {id:"2.7", do:"«Анкета» → включи или выключи шаг «Условный вопрос об образовании»", exp:"галочка реально снимается и ставится (в прошлый раз не менялась, а счётчик рос)"},
+    {id:"2.8", do:"«Поля карточки заявки» → выключи один пункт", exp:"галочка у пункта пропадает; в карточке заявки (в боте и в приложении) этого поля больше нет. Верни обратно"},
+    {id:"2.9", do:"«Журналы в таблицу»", exp:"в Google-таблице появились или обновились вкладки «История правок» и «Вопросы»"},
+  ]},
+  {n:"3", title:"Оформление приложения", time:"7 мин",
+   note:"В прошлый раз менялась только полоска сверху, а картинка-узор не появлялась. Проверяем заново.",
+   steps:[
+    {id:"3.1", do:"«Управление» → «Оформление»", exp:"сверху маленький предпросмотр главной плиты приложения"},
+    {id:"3.2", do:"Переключи готовый набор на «РилТолк»", exp:"предпросмотр стал фиолетово-оранжевым, со своим узором; в приложении у делегата главная плита тоже изменилась"},
+    {id:"3.3", do:"Выключи «Узор»", exp:"узор пропал и в предпросмотре, и на плите делегата"},
+    {id:"3.4", do:"Загрузи свою картинку узора", exp:"бот НЕ присылает её обратно с подписью «копия сдачи»; узор виден на плите"},
+    {id:"3.5", do:"Открой приложение, посмотри на шапку", exp:"нет слова «None» рядом с логотипом"},
+    {id:"3.6", do:"Верни набор «Юлид»", exp:"всё вернулось"},
+  ]},
+  {n:"4", title:"Города", time:"5 мин",
+   note:"В прошлый раз менеджер города мог править чужие города. Нужен аккаунт менеджера, привязанный к одному городу.",
+   steps:[
+    {id:"4.1", do:"Аккаунтом менеджера города открой настройку «по городам»", exp:"виден только свой город, чужие нельзя редактировать"},
+    {id:"4.2", do:"Владельцем переключи «шапку» города в боте, менеджером переоткрой экран", exp:"приложение показывает новый город"},
+    {id:"4.3", do:"Менеджер города открывает «Заявки» и доску статистики", exp:"только заявки и цифры своего города"},
+  ]},
+  {n:"5", title:"Анкета: резюме, балл, ссылка амбассадора", time:"12 мин",
+   note:"Новые настройки прошлой недели. Что делегат видит после каждой — проверяет человек на вкладке «Делегат», так что переключай и говори ему.",
+   steps:[
+    {id:"5.1", do:"«Анкета» → «Резюме» → переключай режим по кругу", exp:"три понятных варианта: только файл / только ссылка / на выбор делегата — без кодов"},
+    {id:"5.2", do:"Поставь «на выбор делегата» и скажи делегату пройти шаг резюме", exp:"у делегата экран выбора «Файлом» / «Ссылкой» (см. Делегат 3.4)"},
+    {id:"5.3", do:"Переключатель «Имя файла резюме в облаке»", exp:"переключается; после загрузки резюме файл в облаке назван так, как выбрано (по имени делегата или как прислали)"},
+    {id:"5.4", do:"«Правила балла» → отметь галочками варианты ответов, за которые начислять балл", exp:"галочки по текущим вариантам вопроса, без ввода кодов; сохранилось"},
+    {id:"5.5", do:"Заявки → включи «Сортировать очередь по баллу»", exp:"в очереди заявок сначала те, у кого балл выше; балл виден в карточке одинаково в боте и в приложении"},
+    {id:"5.6", do:"«Только амбассадоры» — включи", exp:"новый делегат без ссылки амбассадора не может подать анкету (сообщение понятное); выключи обратно"},
+    {id:"5.7", do:"Лимит выбора в вопросе с несколькими ответами (например, «Форматы») поставь 2", exp:"делегат не может отметить третий вариант, есть подсказка «не больше 2» (Делегат 3.6)"},
+  ]},
+  {n:"6", title:"Английский язык анкеты", time:"8 мин",
+   note:"Делегат с английским Телеграмом заполняет анкету по-английски, а в таблицу и карточку попадают русские ответы. Главное меню бота остаётся русским — это известно и пока так.",
+   steps:[
+    {id:"6.1", do:"«Анкета» → «Английские тексты» → найди «Город → Town» → «Изменить английский» → «City»", exp:"счётчик «Переведено N из M»; делегат видит «City»; «Перевести заново» спрашивает подтверждение"},
+    {id:"6.2", do:"В «Тексты вопросов» поменяй русский текст любого вопроса, подожди минуту", exp:"у делегата новый английский перевод; у строки с ручной правкой пометка «Русский изменился», старый английский не стёрт"},
+    {id:"6.3", do:"Выключи «Английский язык анкеты», делегат пишет /start", exp:"всё по-русски, кнопка «Язык / Language» пропала. Включи обратно"},
+  ]},
+  {n:"7", title:"Задания и монеты", time:"10 мин",
+   note:"Делегат сдаёт задание (Делегат 5.x), ты проверяешь.",
+   steps:[
+    {id:"7.1", do:"«Задания» → «Создать» → текст, монеты, тип подтверждения (фото), срок завтра", exp:"задание появилось у делегата в приложении и в боте"},
+    {id:"7.2", do:"Когда делегат сдал: «Проверка сдач»", exp:"карточка с фото делегата, кнопки «Принять» / «Отклонить с причиной»"},
+    {id:"7.3", do:"Прими одну сдачу, вторую отклони с причиной", exp:"делегату пришли оба решения; за принятую начислены монеты; в его «Монетах» видно начисление"},
+    {id:"7.4", do:"Начисли делегату 5 монет вручную", exp:"у делегата баланс вырос, в истории монет запись «вручную»"},
+  ]},
+  {n:"8", title:"Доска статистики", time:"8 мин",
+   note:"Смотрим боевую доску yl26.alekseev.info — только смотрим. Новое: время обработки заявок, время проверки заданий, блок про игру.",
+   steps:[
+    {id:"8.1", do:"Открой yl26.alekseev.info → «Войти через Телеграм»", exp:"вход работает, открывается доска Юлид"},
+    {id:"8.2", do:"Плитки сверху", exp:"есть «Обработка» (среднее время от подачи заявки до решения) и «Модерация заданий» (от сдачи до проверки). Время написано словами: «2 ч 15 мин», «1 д 4 ч», не голые минуты"},
+    {id:"8.3", do:"Блок «Геймификация» ниже", exp:"сколько человек в игре и доля от одобренных; сдач всего / ждут / принято / отклонено; монеты за задания и вручную; топ-5 заданий; сколько сдач ждёт проверки и самая старая"},
+    {id:"8.4", do:"Переключи город и сезон вверху", exp:"все цифры, включая блок «Геймификация», меняются вместе"},
+    {id:"8.5", do:"Открой all.alekseev.info (сравнение мероприятий)", exp:"в таблице сравнения есть колонки «Обработка», «Модерация», «В игре»; на телефоне таблица прокручивается вбок, страница целиком — нет"},
+    {id:"8.6", do:"Тёмная тема телефона", exp:"доска читаема, ничего белого на белом"},
+  ]},
+  ]},
+manager: {
+  intro: ["Второй аккаунт: право «Заявки» (отбор), при возможности — «Проверка заданий». Открываешь приложение из меню бота.",
+          "Для большинства пунктов нужна заявка от человека на вкладке «Делегат»: сначала он подаёт, потом ты проверяешь."],
+  blocks: [
+  {n:"1", title:"Отбор заявок в приложении", time:"15 мин",
+   note:"Карточки заявок листаются как в приложении знакомств: вправо — принять, влево — отклонить.",
+   steps:[
+    {id:"1.1", do:"Приложение → «Заявки» → открой очередь", exp:"одна карточка: фото или инициалы, имя, город, пометки (трек / «Повторная» / «Изменена»), балл, счётчик «1 из N»"},
+    {id:"1.2", do:"Дополнительные поля", exp:"свёрнуты; «Показать всё» раскрывает, «Свернуть» сворачивает, подпись меняется"},
+    {id:"1.3", do:"Прокрути длинную карточку вверх-вниз", exp:"приложение не закрывается, карточка не уезжает вбок"},
+    {id:"1.4", do:"Медленно потяни вправо и отпусти, не дотянув", exp:"появляется зелёная галочка, карточка наклоняется и возвращается на место. Дотяни до конца — заявка принята"},
+    {id:"1.5", do:"Жест «назад» от края экрана", exp:"не принимает и не отклоняет заявку случайно"},
+    {id:"1.6", do:"Нажми «Отклонить» (или потяни влево)", exp:"снизу шторка: готовые причины, поле «своя причина», «отклонить без причины». Тап по фону закрывает шторку, карточка под ней не двигается"},
+    {id:"1.7", do:"Выбери готовую причину и отклони", exp:"делегату приходит тот же текст слово в слово, что при отказе из чата бота; на его главном экране плита «Заявка отклонена» и причина"},
+    {id:"1.8", do:"Прими заявку и сразу нажми «Отменить» во всплывающем сообщении снизу (есть ~5 секунд)", exp:"делегату ничего не приходит, заявка снова первая в очереди"},
+    {id:"1.9", do:"Прими ещё одну и дай сообщению исчезнуть самому", exp:"делегату пришло приветствие, в таблице статус обновился"},
+    {id:"1.10", do:"Фильтры «Все» / трек / «Изменённые»", exp:"очередь и число «осталось» меняются согласованно; на пустом фильтре понятный текст, не ошибка"},
+    {id:"1.11", do:"«Принять всех N»", exp:"в подтверждении названы число и город; после — все получили приветствие, в чате бота «Заявки» тоже пусто"},
+    {id:"1.12", do:"Делегат, которого отклонили, подал заново — открой его карточку", exp:"строка «Ранее отклонена: …» с причиной; и в боте, и в приложении"},
+    {id:"1.13", do:"Тёмная тема телефона", exp:"карточка, шторка причин и затемнение читаемы"},
+  ]},
+  {n:"2", title:"Заявки в чате бота", time:"5 мин",
+   steps:[
+    {id:"2.1", do:"Бот → «Заявки» → очередь", exp:"карточка с теми же полями, что в приложении, в том же порядке; балл на месте"},
+    {id:"2.2", do:"Прими одну, отклони одну с причиной", exp:"делегату приходят решения; оба видны в таблице"},
+    {id:"2.3", do:"Карточка заявки, которую делегат менял после подачи", exp:"строка «Изменена …» и кнопка «История» со списком «было → стало»"},
+  ]},
+  {n:"3", title:"Вопросы делегатов", time:"6 мин",
+   steps:[
+    {id:"3.1", do:"Делегат задал вопрос через бота", exp:"тебе пришла карточка вопроса"},
+    {id:"3.2", do:"Приложение → «Вопросы делегатов»", exp:"пометка «1 без ответа», список со статусами"},
+    {id:"3.3", do:"Фильтры «Все / Без ответа / В работе / Отвечены»", exp:"числа совпадают со списком"},
+    {id:"3.4", do:"Ответь из приложения", exp:"делегат получил ответ в чат, статус «отвечен»; время вопроса и ответа московское"},
+    {id:"3.5", do:"Бот → «Заявки» → «Вопросы делегатов»", exp:"тот же список, ответ кнопкой работает"},
+    {id:"3.6", do:"Google-таблица, вкладка «Вопросы»", exp:"строки со статусом и текстом ответа"},
+  ]},
+  {n:"4", title:"Частые вопросы", time:"5 мин",
+   note:"Новый экран в приложении: список готовых ответов, которые видит делегат.",
+   steps:[
+    {id:"4.1", do:"Приложение → «Частые вопросы» → добавь вопрос с ответом", exp:"появился в списке; делегат видит его у себя"},
+    {id:"4.2", do:"Поменяй порядок и отредактируй текст", exp:"порядок и текст поменялись у делегата тоже"},
+    {id:"4.3", do:"Удали вопрос", exp:"спрашивает подтверждение, после удаления у делегата его нет"},
+  ]},
+  {n:"5", title:"Тихие часы", time:"8 мин",
+   note:"Ночные решения копятся и уходят делегату утром одним сообщением. Ответы на вопросы не задерживаются. Включает админ, проверяешь ты.",
+   steps:[
+    {id:"5.1", do:"Админ включил тихие часы так, что «сейчас» внутри окна. Прими заявку делегата из чата бота", exp:"делегату тихо; тебе приписка «делегат узнает в …»"},
+    {id:"5.2", do:"То же из приложения", exp:"всплывающее сообщение с той же припиской"},
+    {id:"5.3", do:"Отклони того же делегата ещё раз", exp:"когда окно закончится, придёт ровно одно последнее решение"},
+    {id:"5.4", do:"Ответь на вопрос делегата", exp:"ответ приходит сразу"},
+    {id:"5.5", do:"Админ сдвинул конец окна на «через минуту»", exp:"отложенное пришло одним пакетом"},
+  ]},
+  {n:"6", title:"Проверка заданий", time:"5 мин",
+   steps:[
+    {id:"6.1", do:"Делегат сдал задание фото. Бот → «Проверка сдач»", exp:"карточка с фото, кнопки «Принять» / «Отклонить с причиной»"},
+    {id:"6.2", do:"Прими", exp:"делегату решение и монеты; в доске статистики «Модерация заданий» посчитала время"},
+    {id:"6.3", do:"Отклони другую сдачу с причиной", exp:"делегат видит причину и может сдать заново"},
+  ]},
+  ]},
+delegate: {
+  intro: ["Аккаунт, который никогда не писал тестовому боту. Ты — новый участник форума: проходишь анкету, ждёшь решения, играешь в задания.",
+          "Ничего не пропускай «потому что понятно» — тут важно именно то, как это выглядит на телефоне."],
+  blocks: [
+  {n:"1", title:"Анкета: чат и приложение", time:"12 мин",
+   note:"Анкета в каждый момент открыта ровно в одном месте: либо в чате, либо в приложении. Переходить можно туда и обратно, ответы не теряются.",
+   steps:[
+    {id:"1.1", do:"/start → ответь на 2–3 вопроса в чате", exp:"бот ведёт анкету; сверху «Шаг N из M»; кнопка «Заполнить в приложении» была ровно один раз после приветствия, не под каждым вопросом"},
+    {id:"1.2", do:"Нажми «Заполнить в приложении»", exp:"плита «Анкета сейчас открыта в чате» и кнопка «Забрать сюда»"},
+    {id:"1.3", do:"Нажми «Забрать сюда»", exp:"в чат приходит «Анкета открыта в приложении…»; приложение открыто на следующем неотвеченном вопросе, прошлые ответы на месте"},
+    {id:"1.4", do:"Напиши боту любой текст", exp:"бот отвечает, что анкета в приложении, и предлагает «Продолжить в чате»; текст ответом не записан"},
+    {id:"1.5", do:"Нажми «Продолжить в чате»", exp:"бот спрашивает именно неотвеченный вопрос, не предыдущий"},
+    {id:"1.6", do:"Нажми «Начать заново»", exp:"предупреждение с числом ответов, которые пропадут. Нажми «Отмена»"},
+    {id:"1.7", do:"Открой одновременно чат на телефоне и приложение на компьютере, ответь в каждом на разные вопросы", exp:"оба ответа на месте, недопечатанное в приложении не потерялось"},
+  ]},
+  {n:"2", title:"Вопросы анкеты", time:"10 мин",
+   steps:[
+    {id:"2.1", do:"Шаг «ВКонтакте»: введи без «@»", exp:"под вопросом есть подсказка формата; на ошибку — понятное объяснение с примером, не «неверный ввод»"},
+    {id:"2.2", do:"Шаг «Телефон» в Телеграме", exp:"кнопка «Поделиться номером», нажатие подставляет номер"},
+    {id:"2.3", do:"Шаги возраста и даты", exp:"у каждого своя подсказка формата, ошибки с примером"},
+    {id:"2.4", do:"Шаг «Резюме» (админ поставил «на выбор»)", exp:"экран выбора «Файлом» / «Ссылкой»; если написать текст мимо кнопок — бот не считает его резюме, а переспрашивает"},
+    {id:"2.5", do:"Выбери «Ссылкой» и вставь ссылку не на hh.ru и не на диск", exp:"понятное сообщение, какие ссылки принимаются; правильная ссылка принимается"},
+    {id:"2.6", do:"Вопрос с несколькими ответами (например, «Форматы»)", exp:"есть счётчик «выбрано 1 из 2»; третий вариант не отмечается, подсказка «не больше 2»; галочки перерисовываются, отмеченные с ✅"},
+    {id:"2.7", do:"Вопрос «Образование»", exp:"варианты открываются, ничего не падает, следующий вопрос зависит от ответа (учусь / работаю)"},
+    {id:"2.8", do:"Тексты вопросов", exp:"обращение на «ты», «АЙСЕК» и «Юлид» написаны кириллицей; латиница только в хэштегах и юзернеймах"},
+    {id:"2.9", do:"Сводка перед отправкой → «Изменить» → поправь один ответ", exp:"сводка обновилась; если ввести неправильно — ошибка видна, а не тишина; после последнего вопроса — финальный экран"},
+    {id:"2.10", do:"Отправь анкету", exp:"финальный экран с кнопками «Хочу свою ссылку» / «Позже». Нажми «Хочу свою ссылку» — пришла личная ссылка для друзей"},
+    {id:"2.11", do:"Сразу напиши боту текст", exp:"«Анкета уже отправлена…», а не продолжение вопросов; на главном экране приложения плита «Анкета на проверке» с числом дней"},
+  ]},
+  {n:"3", title:"Ссылка друга и напоминание", time:"8 мин",
+   note:"Нужен ещё один чистый аккаунт (или попроси кого-то). Напоминание приходит через несколько минут после того, как бросил анкету.",
+   steps:[
+    {id:"3.1", do:"Другим чистым аккаунтом перейди по личной ссылке из шага 2.10", exp:"анкета начинается, вопрос «Откуда узнал» пропущен — источник уже известен"},
+    {id:"3.2", do:"Этим же аккаунтом брось анкету на середине и подожди", exp:"напоминание называет, сколько вопросов осталось, именно тебе, и предлагает продолжить"},
+    {id:"3.3", do:"Согласие на обработку данных", exp:"показалось один раз за сессию, повторно не спрашивает"},
+  ]},
+  {n:"4", title:"Главный экран и профиль", time:"8 мин",
+   steps:[
+    {id:"4.1", do:"Открой приложение", exp:"сверху плита с главным числом и узором; ниже блок «Следующее», а не сетка одинаковых плиток"},
+    {id:"4.2", do:"Первый экран приветствия", exp:"заголовки крупные курсивные, иконки вместо смайликов"},
+    {id:"4.3", do:"Профиль", exp:"твоё фото из Телеграма (или инициалы), имя не «None»"},
+    {id:"4.4", do:"Раздел «Вопросы анкеты» в профиле", exp:"только вопросы твоего трека; резюме текстом видно; строк «Источник» и «Амбассадор» нет"},
+    {id:"4.5", do:"Закрой и снова открой приложение", exp:"приветственного экрана про регистрацию больше нет"},
+    {id:"4.6", do:"После одобрения: профиль → «Изменить анкету» → поправь 1–2 поля → отправь", exp:"кнопка «Отправить изменения» становится активной только после правки; у менеджера в карточке «Изменена» и история"},
+    {id:"4.7", do:"Тёмная тема телефона: те же экраны", exp:"всё читается, нет белого на белом"},
+  ]},
+  {n:"5", title:"Задания, монеты, рейтинг", time:"10 мин",
+   steps:[
+    {id:"5.1", do:"«Задания», «Монеты», «Рейтинг»", exp:"списки плоскими строками во всю ширину, не карточка на каждую строку"},
+    {id:"5.2", do:"Открой карточку задания", exp:"плита на месте, оформление как у остальных экранов"},
+    {id:"5.3", do:"Сдай задание фото из приложения", exp:"в чат пришла «копия сдачи»; на главном экране приложения фото видно, не «None»"},
+    {id:"5.4", do:"Сдай второе задание фото из чата бота", exp:"бот принял, статус «на проверке»"},
+    {id:"5.5", do:"После решения менеджера", exp:"пришли оба решения; за принятое монеты начислены, в «Монетах» запись; после отказа с причиной задание можно сдать заново"},
+    {id:"5.6", do:"«Рейтинг»", exp:"ты в списке с новым балансом"},
+  ]},
+  {n:"6", title:"Вопрос менеджеру и решение по заявке", time:"6 мин",
+   steps:[
+    {id:"6.1", do:"Бот → «Задать вопрос» → отправь", exp:"бот подтвердил; ответ менеджера пришёл в чат"},
+    {id:"6.2", do:"Тебя отклонили с причиной", exp:"пришёл отказ с причиной; на главном экране приложения плита «Заявка отклонена» и причина; второго сообщения об отказе через минуту нет"},
+    {id:"6.3", do:"Подай анкету заново после отказа", exp:"статус снова «Ждёт проверки»; менеджеру ушло уведомление с пометкой «повторная подача»"},
+    {id:"6.4", do:"Тебя приняли", exp:"пришло приветствие с дальнейшими шагами"},
+  ]},
+  {n:"7", title:"Анкета по-английски", time:"10 мин",
+   note:"Если телефон на английском — бот сам предложит язык. Иначе кнопка меню «Язык / Language».",
+   steps:[
+    {id:"7.1", do:"Выбери English и пройди 5–6 вопросов", exp:"вопросы, подсказки и кнопки по-английски; города без хвостов («Kazan», «Moscow and MO»); в приветствии нет «(a)»"},
+    {id:"7.2", do:"Нажми «Skip», «Other», отметь галочку и «Done», напиши «Cancel»", exp:"каждая кнопка работает как русская; «не понял ответ» не появляется"},
+    {id:"7.3", do:"Сводка «Check your answers»", exp:"подписи и выбранные варианты по-английски, свой текст как ввёл; кнопки «Looks good / Edit»"},
+    {id:"7.4", do:"Тем же аккаунтом открой приложение → анкета", exp:"вопросы и варианты по-английски"},
+    {id:"7.5", do:"Дойди до согласия", exp:"текст согласия и документ по-русски, анкета вокруг по-английски"},
+    {id:"7.6", do:"Попроси менеджера открыть твою карточку и вкладку города в таблице", exp:"город, образование, форматы — русскими вариантами, ни одной английской подписи"},
+  ]},
+  ]},
+};
+
+
+const KEY = "uat-big-260911";
+let local = {};
+try { local = JSON.parse(localStorage.getItem(KEY) || "{}"); } catch (_) { local = {}; }
+const saveLocal = () => { try { localStorage.setItem(KEY, JSON.stringify(local)); } catch (_) {} };
+const qk = new URLSearchParams(location.search).get("k");
+if (qk) { local._k = qk; saveLocal(); }
+const CODE = local._k || "";
+let state = { v: 0, steps: {} };
+
+const el = (t, a = {}, ...kids) => {
+  const n = document.createElement(t);
+  for (const [k, v] of Object.entries(a)) {
+    if (k === "class") n.className = v; else if (k === "text") n.textContent = v; else n.setAttribute(k, v);
+  }
+  kids.filter(Boolean).forEach(c => n.append(c));
+  return n;
+};
+const sid = (tab, id) => tab + ":" + id;
+const app = document.getElementById("app");
+const panels = {};
+const rows = {};
+
+async function api(path, body){
+  const r = await fetch(path, {
+    method: body ? "POST" : "GET",
+    headers: Object.assign({ "X-Code": CODE }, body ? { "Content-Type": "application/json" } : {}),
+    body: body ? JSON.stringify(body) : undefined,
+  });
+  if (r.status === 403) { showAccess(); throw new Error("no_access"); }
+  if (!r.ok) throw new Error("http " + r.status);
+  return r.json();
+}
+function setSync(text, cls){
+  const s = document.getElementById("sync");
+  s.textContent = text; s.className = "sync " + (cls || "");
+}
+function showAccess(){ setSync("Нет доступа: открой доску по ссылке из чата (в ней код).", "bad"); }
+
+function counts(tab){
+  const steps = DATA[tab].blocks.filter(b => !b.pre).flatMap(b => b.steps);
+  const done = steps.filter(s => state.steps[sid(tab, s.id)] && state.steps[sid(tab, s.id)].s).length;
+  return { done, total: steps.length };
+}
+function refresh(){
+  for (const tab of Object.keys(DATA)) {
+    const c = counts(tab);
+    document.getElementById("c-" + tab).textContent = c.done + " из " + c.total;
+  }
+  const tab = local._tab || "admin";
+  const c = counts(tab);
+  document.getElementById("ptext").textContent = c.done + " из " + c.total + " — " + TABS[tab];
+  document.getElementById("pfill").style.width = (c.total ? c.done / c.total * 100 : 0) + "%";
+}
+function setTab(tab){
+  local._tab = tab; saveLocal();
+  document.querySelectorAll(".tab").forEach(b => b.setAttribute("aria-selected", b.dataset.tab === tab ? "true" : "false"));
+  Object.keys(panels).forEach(k => { panels[k].hidden = k !== tab; });
+  refresh();
+}
+document.querySelectorAll(".tab").forEach(b => b.addEventListener("click", () => setTab(b.dataset.tab)));
+
+function applyState(){
+  for (const key of Object.keys(rows)) {
+    const r = rows[key];
+    const st = state.steps[key];
+    const s = (st && st.s) || "";
+    r.li.dataset.s = s;
+    if (r.box) r.box.setAttribute("aria-checked", s === "ok" ? "true" : "false");
+    if (document.activeElement !== r.note) {
+      r.note.value = (st && st.note) || "";
+      if (r.note.value || s === "bad") r.showNote(true);
+    }
+    r.who.textContent = st && st.who ? st.who + " · " + st.at : (st && st.at ? st.at : "");
+    r.who.hidden = !r.who.textContent;
+  }
+  refresh();
+}
+
+for (const tab of Object.keys(DATA)) {
+  const panel = el("div", { class: "panel", id: "panel-" + tab });
+  panel.hidden = true;
+  panels[tab] = panel;
+  const intro = el("div", { class: "intro" });
+  DATA[tab].intro.forEach(t => intro.append(el("p", { text: t })));
+  panel.append(intro);
+
+  for (const b of DATA[tab].blocks) {
+    const sec = el("section", { class: "block" });
+    sec.append(el("div", { class: "bh" },
+      el("span", { class: "bn", text: b.pre ? "ДО" : "БЛОК " + b.n }),
+      el("h2", { text: b.title }),
+      el("span", { class: "bt", text: b.time })));
+    if (b.note) sec.append(el("p", { class: "bnote", text: b.note }));
+    const list = el("ol", { class: "steps" });
+    for (const s of b.steps) {
+      const key = sid(tab, s.id);
+      const li = el("li", { class: "step" });
+      li.append(el("span", { class: "id", text: s.id }));
+      const who = el("span", { class: "who-mark" });
+      who.hidden = true;
+      li.append(el("div", { class: "txt" },
+        el("p", { class: "do", text: s.do }),
+        s.exp ? el("p", { class: "exp", text: s.exp }) : null,
+        who));
+
+      const note = el("textarea", { class: "note", placeholder: "Что увидел — своими словами" });
+      note.hidden = true;
+      const noteBtn = el("button", { class: "note-btn", type: "button", text: "+ заметка" });
+      const showNote = v => { note.hidden = !v; noteBtn.textContent = v ? "− заметка" : "+ заметка"; };
+      noteBtn.addEventListener("click", () => showNote(note.hidden));
+
+      const push = () => {
+        const body = { key, s: li.dataset.s, note: note.value, who: local._who || "" };
+        api("/api/step", body).then(st => { state = st; applyState(); setSync("Общая доска · сохранено", "ok"); })
+          .catch(e => { if (e.message !== "no_access") setSync("Нет связи с доской — отметка не сохранена, попробуй ещё раз", "bad"); });
+      };
+      let timer = null;
+      note.addEventListener("input", () => { clearTimeout(timer); timer = setTimeout(push, 700); });
+
+      const set = v => {
+        li.dataset.s = li.dataset.s === v ? "" : v;
+        if (li.dataset.s === "bad") { showNote(true); note.focus(); }
+        state.steps[key] = { s: li.dataset.s, note: note.value, who: local._who || "", at: "…" };
+        refresh();
+        push();
+      };
+
+      const row = { li, note, who, showNote };
+      if (b.pre) {
+        const box = el("span", { class: "box", role: "checkbox", tabindex: "0", "aria-checked": "false", "aria-label": "Готово: " + s.do, text: "✓" });
+        box.addEventListener("click", () => set("ok"));
+        box.addEventListener("keydown", e => { if (e.key === " " || e.key === "Enter") { e.preventDefault(); set("ok"); } });
+        li.prepend(box);
+        row.box = box;
+      } else {
+        const ok = el("button", { class: "mark ok", type: "button", "aria-label": "Совпало: " + s.do, text: "✓" });
+        const bad = el("button", { class: "mark bad", type: "button", "aria-label": "Не так: " + s.do, text: "✕" });
+        const skip = el("button", { class: "mark skip", type: "button", "aria-label": "Пропустил: " + s.do, text: "⏭" });
+        ok.addEventListener("click", () => set("ok"));
+        bad.addEventListener("click", () => set("bad"));
+        skip.addEventListener("click", () => set("skip"));
+        li.append(el("div", { class: "marks" }, ok, bad, skip));
+        li.append(noteBtn);
+      }
+      li.append(note);
+      rows[key] = row;
+      list.append(li);
+    }
+    if (b.pre) sec.append(el("div", { class: "pre" }, list)); else sec.append(list);
+    panel.append(sec);
+  }
+  app.append(panel);
+}
+
+const who = document.getElementById("who");
+who.value = local._who || "";
+who.addEventListener("input", () => { local._who = who.value; saveLocal(); });
+
+async function pull(){
+  try {
+    const st = await api("/api/state");
+    if (st.v !== state.v) { state = st; applyState(); }
+    setSync("Общая доска · обновлено " + new Date().toLocaleTimeString("ru-RU", { hour: "2-digit", minute: "2-digit" }), "ok");
+  } catch (e) {
+    if (e.message !== "no_access") setSync("Нет связи с доской, показываю последнее известное", "bad");
+  }
+}
+setTab(local._tab || "admin");
+pull();
+setInterval(pull, 5000);
+document.addEventListener("visibilitychange", () => { if (!document.hidden) pull(); });
+
+const LABEL = { ok: "✅ ок", bad: "❌ не так", skip: "⏭ пропустил" };
+function buildReport(){
+  const lines = ["БОЛЬШАЯ ПРИЁМКА ЮЛИД '26 — тестовый бот @YouLead_test_bot — общая доска uat.alekseev.info"];
+  lines.push("Отчёт собран: " + new Date().toLocaleString("ru-RU") + (local._who ? " · " + local._who : ""));
+  for (const tab of Object.keys(DATA)) {
+    const c = counts(tab);
+    lines.push(""); lines.push(TABS[tab].toUpperCase() + " (" + c.done + " из " + c.total + " пройдено)");
+    for (const b of DATA[tab].blocks) {
+      lines.push((b.pre ? "Перед стартом" : "Блок " + b.n + ". " + b.title));
+      for (const s of b.steps) {
+        const st = state.steps[sid(tab, s.id)];
+        const mark = st && st.s ? (b.pre ? (st.s === "ok" ? "[x]" : "[ ]") : "[" + LABEL[st.s] + "]") : (b.pre ? "[ ]" : "[не сделано]");
+        const by = st && st.who ? " — " + st.who : "";
+        lines.push("  " + s.id + " " + mark + " " + s.do + by);
+        const n = st && (st.note || "").trim();
+        if (n) lines.push("      заметка: " + n.replace(/\n/g, "\n      "));
+      }
+    }
+  }
+  return lines.join("\n");
+}
+const report = document.getElementById("report");
+const reportText = document.getElementById("reportText");
+document.getElementById("copy").addEventListener("click", async () => {
+  const text = buildReport();
+  reportText.value = text;
+  report.hidden = false;
+  const hint = document.getElementById("reportHint");
+  try { await navigator.clipboard.writeText(text); hint.innerHTML = "<b>Скопировано.</b> Вставь в чат. Если не вставляется — выдели текст ниже и копируй вручную."; }
+  catch (_) { hint.textContent = "Выдели текст ниже, зажми и «Копировать», потом вставь в чат."; }
+  reportText.focus(); reportText.select();
+});
+document.getElementById("reportClose").addEventListener("click", () => { report.hidden = true; });
+</script>
+</body></html>
