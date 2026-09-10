@@ -363,6 +363,14 @@ export async function render(root, params, ctx) {
         const patch = state.collectPatch();
         if (Object.keys(patch).length) {
           d = await api("/reg/draft", { method: "PATCH", body: { version: d.version, answers: patch } });
+          // УАТ 10-11.09 (пункт 1): PATCH мог выключить шаг (например, условный курс после
+          // смены статуса обучения) — сервер каждый ход пересчитывает enabled_steps заново.
+          // `state` держит СПИСОК шагов обзора, не только значения — applyServer() его
+          // намеренно не трогает (D-19, чужие правки из чата не должны схлопывать список
+          // локально редактируемых полей), поэтому список нужно пересобрать целиком тем же
+          // приёмом, что и в мастере (adoptDraft), иначе обзор держит строку уже выключенного
+          // сервером шага.
+          state = buildFormState(d);
         }
         const res = await api("/reg/draft/submit", { method: "POST" });
         haptic("success");
@@ -812,10 +820,18 @@ export async function render(root, params, ctx) {
           const res = await api("/reg/draft", {
             method: "PATCH", body: { version: d.version, answers: patch, step: spec.key },
           });
-          d = res;
-          state.applyServer(answersFromSteps(res.steps), { keepDirty: false });
+          // УАТ 10-11.09 (пункт 1): сервер на КАЖДОМ PATCH пересчитывает enabled_steps — шаг,
+          // выключенный только что данным ответом (условный курс/специальность и т.п.),
+          // обязан исчезнуть из мастера сразу, а не после перезахода. `applyServer` намеренно
+          // обновляет только значения (D-19, чужие правки из чата не двигают список шагов),
+          // поэтому здесь нужна ПОЛНАЯ пересборка — тот же приём, что уже применяет
+          // `pickResumeBranch`/`drawFork` при смене трека (`adoptDraft`). `res.step` — это
+          // «ещё не отвеченный» шаг (form.py переводит «только что отвеченный» в «следующий»
+          // один раз, на сервере); самовыключающихся шагов в `enabled_steps` нет — условие
+          // цикла «сервер вернул тот же шаг» не возникает. `STEP_DONE` сам уводит мастер на
+          // отправку (`stepIndexFromKey` → `specs.length`).
+          adoptDraft(res);
           busy = false;
-          stepIndex += 1;
           drawStep();
         } catch (err) {
           busy = false;
