@@ -2835,7 +2835,24 @@ _FILTER_COLUMNS = {
     # что уже сработал для `event_city`). Обрабатывается собственной веткой в
     # `_build_filter_clause`, не общей — легаси-строки без сезона нужно ловить сентинелом.
     "season",
+    # Квик 260911-0fh (RESUME-FILTER-01): «резюме есть/нет» как поле фильтра рассылки. Та же
+    # двойная регистрация (здесь и в `handlers.admin_broadcasts._PICKER_FIELDS`), тот же
+    # прецедент D-19. Поле ВИРТУАЛЬНОЕ — колонки `users.resume` не существует, условие
+    # собирается из нескольких колонок (`RESUME_COLUMNS`) собственной веткой
+    # `_build_filter_clause`; см. `_FILTER_VIRTUAL_FIELDS` ниже.
+    "resume",
 }
+
+# Квик 260911-0fh (RESUME-FILTER-01): поля whitelist'а `_FILTER_COLUMNS`, у которых НЕТ
+# одноимённой колонки `users` — условие собирается из нескольких колонок, а не читается
+# как `{field} = ?`. Whitelist читают ДВОЕ: `_build_filter_clause` (у него для таких полей
+# есть собственная ветка ВЫШЕ общей) и `get_distinct_filter_values`, который для обычного
+# поля подставляет имя прямо в `SELECT DISTINCT {field} ...` — на виртуальном поле это
+# `OperationalError: no such column`. Поэтому у `get_distinct_filter_values` условие ветки —
+# `elif field in _FILTER_COLUMNS and field not in _FILTER_VIRTUAL_FIELDS`, виртуальное поле
+# уходит в уже существующий `return []` (мина обезврежена ДО того, как её кто-то заденет —
+# сегодня `get_distinct_filter_values("resume")` никто не зовёт, но так не будет всегда).
+_FILTER_VIRTUAL_FIELDS = {"resume"}
 
 # Квик 260910-vfl (SEASON-FILTER-03): маркер «строк без сезона» в спеке фильтра рассылки.
 # Это НЕ значение из БД (`users.season` для таких строк — NULL/пустая строка), а сентинел,
@@ -2845,6 +2862,47 @@ _FILTER_COLUMNS = {
 # внутри списка словарей — риск не в этом, риск в читаемости и в случайном совпадении с
 # легитимным отсутствующим ключом; явная строка исключает оба случая).
 SEASON_NONE = "__none__"
+
+# Квик 260911-0fh (RESUME-FILTER-01/03): единственный источник правды о том, какие колонки
+# `users` считаются «резюме». Прод-инцидент: с 05.09 по 10.09 у 203 делегатов молча
+# потерялось резюме, приложенное файлом (баг починен, `ef315f9`) — их нужно попросить
+# прислать резюме заново, отсекая тех, у кого резюме уже есть.
+#
+# `RESUME_RECALL_COLUMNS` — набор для чат-recall (`reg_engine.has_prior_resume`): «есть
+# артефакт, который можно ПЕРЕИСПОЛЬЗОВАТЬ на шаге резюме вместо повторного вопроса».
+# `RESUME_COLUMNS` — тот же набор ПЛЮС `resume_link` (СкиллАп 5, развилка резюме R2b,
+# `handlers/reg_resume_fork.py`) — ссылка на профиль ВМЕСТО файла. Для менеджера это тоже
+# «резюме есть» (просить прислать заново такого делегата нельзя), но переиспользовать эту
+# ссылку на шаге резюме recall не станет — это не тот же артефакт. Заведено производной
+# (`RESUME_RECALL_COLUMNS + (...)`), а не вторым литералом, чтобы паритет трёх из четырёх
+# колонок был гарантирован кодом, а не совпадением при правке.
+#
+# Константы живут ИМЕННО здесь (а не в `reg_engine.py`), потому что `reg_engine.py` уже
+# импортирует `database.db` (строка 38) — обратный импорт был бы циклом.
+RESUME_RECALL_COLUMNS = ("resume_file_id", "resume_text", "resume_url")
+RESUME_COLUMNS = RESUME_RECALL_COLUMNS + ("resume_link",)
+
+# Сентинелы значений поля фильтра «Резюме» — строки (не булево), чтобы пережить
+# `json.dumps`/`json.loads` спеки отложенной рассылки (`services/scheduler.py`), тот же
+# приём, что `SEASON_NONE` выше. Это НЕ значения из БД.
+RESUME_HAS = "has"
+RESUME_MISSING = "none"
+
+
+def _resume_has_fragment() -> str:
+    """SQL fragment: «резюме есть» — любая из `RESUME_COLUMNS` непуста (`-` тоже пусто).
+    Единственное место, где это условие собрано — и `_build_filter_clause`, и
+    `get_resume_filter_options` вызывают этот хелпер, второй копии условия не заводится."""
+    return " OR ".join(
+        f"COALESCE(TRIM({col}), '') NOT IN ('', '-')" for col in RESUME_COLUMNS
+    )
+
+
+def _resume_missing_fragment() -> str:
+    """SQL fragment: «резюме нет» — ВСЕ `RESUME_COLUMNS` пусты (`-` тоже пусто)."""
+    return " AND ".join(
+        f"COALESCE(TRIM({col}), '') IN ('', '-')" for col in RESUME_COLUMNS
+    )
 
 
 def _build_filter_clause(filters: list[dict]) -> tuple[str, list]:
@@ -2867,6 +2925,12 @@ def _build_filter_clause(filters: list[dict]) -> tuple[str, list]:
     that sentinel means "rows with no season stamp at all" (legacy pre-season registrations),
     which is `season IS NULL OR TRIM(season) = ''`, not a literal `season = '__none__'` bind.
     A real season value still binds as a plain `season = ?`.
+
+    `resume` (квик 260911-0fh) — виртуальное поле, нет колонки `users.resume`: условие
+    собирается по `RESUME_COLUMNS` (четыре реальные колонки). `RESUME_HAS`/`RESUME_MISSING` —
+    сентинелы, не значения из БД. Прочерк `-` считается «не заполнено» — та же конвенция, что
+    в `reg_engine.has_prior_resume`/`prior_answers_for`. Любое другое значение (в т.ч. пустое)
+    — fail closed (`clauses.append("0")`), тот же довод WR-01, что у `event_city`/`season`.
     """
     clauses: list[str] = []
     params: list = []
@@ -2904,6 +2968,23 @@ def _build_filter_clause(filters: list[dict]) -> tuple[str, list]:
             else:
                 clauses.append("season = ?")
                 params.append(value)
+        elif field == "resume":
+            # Квик 260911-0fh (RESUME-FILTER-01): must come BEFORE the generic
+            # `_FILTER_COLUMNS` branch below — there is no `users.resume` column, the general
+            # branch would emit `resume = ?` and blow up with `OperationalError`. Column names
+            # come ONLY from `RESUME_COLUMNS` (code, not user input) — the "value never
+            # interpolated" rule still holds, no binds at all are added by this branch.
+            # `-` (прочерк) считается «не заполнено» — та же конвенция, что в
+            # `reg_engine.has_prior_resume`/`prior_answers_for`.
+            value = f.get("value")
+            if value == RESUME_HAS:
+                clauses.append(f"({_resume_has_fragment()})")
+            elif value == RESUME_MISSING:
+                clauses.append(f"({_resume_missing_fragment()})")
+            else:
+                # WR-01, same reasoning as event_city/season above: an empty or unknown value
+                # must NOT drop the condition (that would fan out to the whole base).
+                clauses.append("0")
         elif field in _FILTER_COLUMNS:
             clauses.append(f"{field} = ?")
             params.append(f.get("value"))
@@ -2928,12 +3009,15 @@ async def get_distinct_filter_values(field: str) -> list[str]:
             "SELECT DISTINCT date(registration_date) AS v FROM users "
             "WHERE registration_date IS NOT NULL AND TRIM(registration_date) != '' ORDER BY v"
         )
-    elif field in _FILTER_COLUMNS:
+    elif field in _FILTER_COLUMNS and field not in _FILTER_VIRTUAL_FIELDS:
         sql = (
             f"SELECT DISTINCT {field} AS v FROM users "
             f"WHERE {field} IS NOT NULL AND TRIM({field}) != '' ORDER BY v"
         )
     else:
+        # Квик 260911-0fh: виртуальные поля (`resume`) не читаются как обычная колонка — у
+        # `resume` нет одноимённой колонки `users`, `SELECT DISTINCT resume` упал бы
+        # `OperationalError`. Такое поле уходит сюда же, что и незарегистрированное.
         return []
     async with _connect() as db:
         async with db.execute(sql) as cursor:
@@ -2964,6 +3048,33 @@ async def get_season_filter_options() -> list[str]:
             row = await cursor.fetchone()
     if row and row[0]:
         options.append(SEASON_NONE)
+    return options
+
+
+async def get_resume_filter_options() -> list[str]:
+    """Значения для пикера поля «Резюме» — квик 260911-0fh (RESUME-FILTER-01/06).
+
+    ОДИН запрос — оба `EXISTS` на фрагментах из `_resume_has_fragment`/
+    `_resume_missing_fragment` (тех же, что и ветка `_build_filter_clause`, второй копии
+    условия не заводится). Возвращает `[RESUME_HAS]` и/или `[RESUME_MISSING]` в этом
+    порядке, `[]` на пустой базе.
+
+    Длина этого списка — ровно то число, по которому экран решает, рисовать ли кнопку
+    «Резюме» (`len(options) > 1`): если все делегаты по одну сторону, фильтровать не по
+    чему — «нет резюме у всех» это кнопка «Всем», а «есть у всех» дало бы пустую выборку.
+    Тот же приём, что у `get_season_filter_options`.
+    """
+    async with _connect() as db:
+        async with db.execute(
+            f"SELECT EXISTS(SELECT 1 FROM users WHERE {_resume_has_fragment()}), "
+            f"EXISTS(SELECT 1 FROM users WHERE {_resume_missing_fragment()})"
+        ) as cursor:
+            row = await cursor.fetchone()
+    options: list[str] = []
+    if row and row[0]:
+        options.append(RESUME_HAS)
+    if row and row[1]:
+        options.append(RESUME_MISSING)
     return options
 
 

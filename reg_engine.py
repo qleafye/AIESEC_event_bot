@@ -35,7 +35,7 @@ from datetime import datetime
 from urllib.parse import urlparse
 
 from config import config
-from database.db import get_setting, get_user
+from database.db import get_setting, get_user, RESUME_RECALL_COLUMNS
 from settings_schema import SETTINGS_SCHEMA, get_setting_typed
 from cities import (
     ALL_CITIES, cities_module_on, city_codes, city_label, enabled_cities,
@@ -1355,12 +1355,19 @@ def answers_from_user_row(user_row: dict | None) -> dict:
 
 def has_prior_resume(user_row: dict | None) -> bool:
     """Карвинг resume (Pitfall 3): наличие любой из resume_file_id/resume_text/resume_url;
-    само значение наружу не отдаётся — показывать raw file_id человеку бессмысленно."""
+    само значение наружу не отдаётся — показывать raw file_id человеку бессмысленно.
+
+    Набор колонок (`RESUME_RECALL_COLUMNS`) приезжает из `database.db` — квик 260911-0fh
+    завёл там единственный источник правды о том, что считается «резюме». Это НЕ то же
+    самое, что `db.RESUME_COLUMNS` фильтра рассылки: там есть ещё `resume_link` (ссылка на
+    профиль, СкиллАп 5) — для менеджера это тоже «резюме есть», но recall не станет
+    переиспользовать эту ссылку как артефакт на шаге резюме, поэтому здесь её нет.
+    Поведение этой функции квиком не меняется."""
     if not user_row:
         return False
     return any(
         user_row.get(col) not in (None, "", "-")
-        for col in ("resume_file_id", "resume_text", "resume_url")
+        for col in RESUME_RECALL_COLUMNS
     )
 
 
