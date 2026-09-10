@@ -4689,3 +4689,153 @@ async def set_user_lang(telegram_id: int, lang: str | None) -> None:
     async with _connect() as db:
         await db.execute("UPDATE users SET lang = ? WHERE telegram_id = ?", (lang, telegram_id))
         await db.commit()
+
+
+# ── Quick 260910-ro7 (DELU-01..08): удаление тестового делегата одной транзакцией ──────────
+# Приёмка требует «чистого» тестового аккаунта — суперадмин должен уметь стереть человека из
+# ВСЕХ делегатских таблиц одним нажатием (handlers/admin_purge.py), без ручного лазания в
+# SQLite на сервере. USER_PURGE_TABLES — ЕДИНСТВЕННЫЙ источник правды: и счёт следа
+# (count_user_footprint), и само удаление (purge_user) ходят по одному и тому же списку,
+# второго списка в коде нет.
+#
+# USER_PURGE_EXCLUDED существует ради теста-сторожа дрейфа схемы (tests/test_delete_user_
+# 260910.py): каждая таблица из DDL init_db с колонкой user_id/telegram_id/chat_id обязана
+# попасть либо в USER_PURGE_TABLES, либо сюда — иначе новая таблица с делегатским следом
+# молча остаётся неудаляемой, и тест краснеет.
+#
+# НЕ трогаем (и почему): staff — роли менеджера, это не делегатский след, удаление аккаунта
+# делегата не должно снимать чужие права; bot_settings/cities/faq_items/game_tasks/polls/
+# broadcasts/scheduled_broadcasts/translations/translation_queue/miniapp_outbox — справочники
+# и объекты, созданные менеджером, а не делегатом. Авторские колонки других таблиц
+# (changed_by/decided_by/answered_by/reviewed_by/created_by/added_by/admin_id) хранят id
+# менеджера, а не удаляемого делегата — таблицы, у которых ТОЛЬКО такие id-колонки, сторог
+# вообще не находит, в список их добавлять не нужно.
+USER_PURGE_TABLES: tuple[tuple[str, str, str], ...] = (
+    ("users", "telegram_id", "application"),
+    ("reg_started", "telegram_id", "draft"),
+    ("reg_drafts", "telegram_id", "draft"),
+    ("reg_answer_history", "telegram_id", "history"),
+    ("reg_events", "telegram_id", "events"),
+    ("user_consents", "user_id", "consents"),
+    ("coins", "user_id", "coins"),
+    ("delegate_questions", "user_id", "questions"),
+    ("game_submissions", "user_id", "game"),
+    ("game_submit_digest_queue", "user_id", "queue"),
+    ("delayed_notifications", "user_id", "queue"),
+    ("application_decisions", "telegram_id", "decisions"),
+    ("poll_answers", "user_id", "deliveries"),
+    ("poll_messages", "chat_id", "deliveries"),
+    ("broadcast_deliveries", "chat_id", "deliveries"),
+    ("scheduled_broadcast_deliveries", "chat_id", "deliveries"),
+)
+
+USER_PURGE_EXCLUDED: frozenset[str] = frozenset({
+    "staff",
+    "bot_settings",
+    "cities",
+    "faq_items",
+    "game_tasks",
+    "polls",
+    "broadcasts",
+    "scheduled_broadcasts",
+    "translations",
+    "translation_queue",
+    "miniapp_outbox",
+})
+
+# Человеческие группы, по которым считается/удаляется след — выведены из USER_PURGE_TABLES,
+# второго списка групп тоже нет. "game" уже включает game_submissions; game_submission_parts
+# (своей user_id/telegram_id колонки у неё нет — только submission_id) суммируется в ту же
+# группу отдельным запросом-подзапросом.
+_PURGE_RESULT_GROUPS: tuple[str, ...] = tuple(sorted({g for _, _, g in USER_PURGE_TABLES}))
+
+
+async def count_user_footprint(telegram_id: int) -> dict[str, int]:
+    """Что пропадёт при purge_user(telegram_id) — заранее, для карточки подтверждения
+    (handlers/admin_purge.py). Все ключи из _PURGE_RESULT_GROUPS присутствуют в результате
+    ВСЕГДА, даже нулевые — вызывающему не приходится гадать, какие бывают. Плюс
+    `referrals_kept` — сколько делегатов привёл этот человек (users.referrer_id): в удаление
+    НЕ входит (purge_user эту связь не трогает), считается только чтобы честно предупредить
+    менеджера в карточке, что чужие заявки останутся."""
+    result: dict[str, int] = {g: 0 for g in _PURGE_RESULT_GROUPS}
+    async with _connect() as db:
+        for table, column, group in USER_PURGE_TABLES:
+            _assert_identifier(table)
+            _assert_identifier(column)
+            async with db.execute(
+                f"SELECT COUNT(*) FROM {table} WHERE {column} = ?", (telegram_id,)
+            ) as cursor:
+                row = await cursor.fetchone()
+                result[group] += row[0] if row else 0
+        async with db.execute(
+            "SELECT COUNT(*) FROM game_submission_parts WHERE submission_id IN "
+            "(SELECT id FROM game_submissions WHERE user_id = ?)",
+            (telegram_id,),
+        ) as cursor:
+            row = await cursor.fetchone()
+            result["game"] += row[0] if row else 0
+        async with db.execute(
+            "SELECT COUNT(*) FROM users WHERE referrer_id = ?", (telegram_id,)
+        ) as cursor:
+            row = await cursor.fetchone()
+            result["referrals_kept"] = row[0] if row else 0
+    return result
+
+
+async def purge_user(telegram_id: int) -> dict[str, int]:
+    """Необратимо удаляет делегата из ВСЕХ таблиц USER_PURGE_TABLES одной транзакцией — одно
+    соединение, один `await db.commit()` в конце, промежуточных коммитов нет: либо стирается
+    всё, либо (при сбое до commit) не стирается ничего. Идемпотентна — повторный вызов на уже
+    удалённом id возвращает нули по всем группам и не падает.
+
+    НЕ трогает: staff (роли менеджера переживают удаление аккаунта делегата), bot_settings/
+    cities/faq_items/game_tasks/polls/broadcasts/scheduled_broadcasts/translations/
+    translation_queue/miniapp_outbox (справочники и объекты менеджера, не делегата) и
+    авторские колонки других таблиц (changed_by/decided_by/answered_by/reviewed_by/
+    created_by/added_by/admin_id) — там id менеджера, не удаляемого делегата. Заявки
+    делегатов, которых этот человек когда-то привёл (users.referrer_id), тоже не трогает —
+    только пересчитывает их в возвращаемом `referrals_kept` (та же логика, что у
+    count_user_footprint), карточка честно предупреждает менеджера до нажатия.
+
+    `game_submission_parts` удаляется ПЕРВОЙ, по подзапросу на submission_id — если удалить
+    её ПОСЛЕ game_submissions, подзапрос вернёт пусто и части останутся сиротами."""
+    result: dict[str, int] = {g: 0 for g in _PURGE_RESULT_GROUPS}
+    async with _connect() as db:
+        cursor = await db.execute(
+            "DELETE FROM game_submission_parts WHERE submission_id IN "
+            "(SELECT id FROM game_submissions WHERE user_id = ?)",
+            (telegram_id,),
+        )
+        result["game"] += cursor.rowcount
+        for table, column, group in USER_PURGE_TABLES:
+            _assert_identifier(table)
+            _assert_identifier(column)
+            cursor = await db.execute(f"DELETE FROM {table} WHERE {column} = ?", (telegram_id,))
+            result[group] += cursor.rowcount
+        async with db.execute(
+            "SELECT COUNT(*) FROM users WHERE referrer_id = ?", (telegram_id,)
+        ) as cur:
+            row = await cur.fetchone()
+            result["referrals_kept"] = row[0] if row else 0
+        await db.commit()
+    return result
+
+
+async def find_user_id_by_username(username: str) -> int | None:
+    """Ищет telegram_id по @username — сперва среди завершивших регистрацию (`users`),
+    потом среди бросивших анкету на середине (`reg_started`; у `reg_drafts` колонки username
+    нет вовсе). «@» можно не писать, регистр не важен (COLLATE NOCASE, как у
+    get_user_by_username). Неизвестный username -> None."""
+    handle = username if username.startswith("@") else f"@{username}"
+    async with _connect() as db:
+        async with db.execute(
+            "SELECT telegram_id FROM users WHERE username = ? COLLATE NOCASE", (handle,)
+        ) as cursor:
+            row = await cursor.fetchone()
+            if row:
+                return row[0]
+        async with db.execute(
+            "SELECT telegram_id FROM reg_started WHERE username = ? COLLATE NOCASE", (handle,)
+        ) as cursor:
+            row = await cursor.fetchone()
+            return row[0] if row else None
