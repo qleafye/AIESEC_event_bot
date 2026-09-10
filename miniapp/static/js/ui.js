@@ -8,6 +8,23 @@
 
 import { icon } from "./icons.js";
 
+// Токен принципала для чтения файлов (quick 260910-w3j): тег <img> физически не может
+// послать заголовок X-Telegram-Init-Data, а куки во встроенном браузере Телеграма нет —
+// ссылки на файлы собираются ТОЛЬКО здесь, единственный клиентский сборщик
+// `/app/api/file/...`. Токен приходит с /app/api/me (app.js вызывает setFileToken после
+// загрузки) и живёт FILE_TOKEN_TTL секунд (miniapp/file_tokens.py) — права по нему
+// перечитываются сервером на каждый запрос, заморозки прав нет.
+let _fileToken = null;
+
+export function setFileToken(token) {
+  _fileToken = token || null;
+}
+
+export function fileUrl(fileId) {
+  const base = `/app/api/file/${encodeURIComponent(fileId)}`;
+  return _fileToken ? `${base}?t=${encodeURIComponent(_fileToken)}` : base;
+}
+
 // Ведущий эмодзи-кластер подписи (одиночный эмодзи, флаг из двух Regional Indicator, ZWJ-
 // последовательность, с необязательным U+FE0F) + пробел(ы) после него.
 const LEADING_EMOJI_RE = new RegExp(
@@ -131,7 +148,7 @@ function stateShell(h, { me, slot, text, action, cls }) {
   const fileId = me ? me[STICKER_FIELD[slot]] : null;
   const wrap = h("div", { class: `empty-state ${cls || ""}`.trim() });
   if (fileId) {
-    const img = h("img", { class: "sticker", alt: "", src: `/app/api/file/${encodeURIComponent(fileId)}` });
+    const img = h("img", { class: "sticker", alt: "", src: fileUrl(fileId) });
     // Стикер не задан менеджером или не грузится — состояние всё равно корректно: текст и
     // кнопка остаются, дыры на месте картинки не возникает (D-18).
     img.addEventListener("error", () => img.remove());

@@ -13,7 +13,7 @@ import {
   field, setFieldState, createFormState, diffView, confirmBox, errorText,
   isAuthError as isAuthErrorBase, stepIndexFromKey, validationErrors, firstFieldError,
 } from "../form.js";
-import { flatRow, sectionTitle, labelText } from "../ui.js";
+import { fileUrl, flatRow, sectionTitle, labelText } from "../ui.js";
 import { icon } from "../icons.js";
 import { haptic } from "../motion.js";
 
@@ -622,7 +622,7 @@ export async function render(root, params, ctx) {
         if (item.pdf_file_id) {
           card.append(h("a", {
             class: "btn ghost", target: "_blank", "aria-label": item.label,
-            href: `/app/api/file/${encodeURIComponent(item.pdf_file_id)}`,
+            href: fileUrl(item.pdf_file_id),
           }, icon("file-text")));
         }
         cards.push(card);

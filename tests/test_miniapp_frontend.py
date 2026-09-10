@@ -549,7 +549,7 @@ def test_card_screen_main_button_submit_and_back():
     text = _js_without_comments(SCREENS_DIR / "card.js")
     assert 'setMainButton("Сдать"' in text
     assert "#/submit/" in text
-    assert "/app/api/file/" in text and '"error"' in text  # обложка деградирует без ошибки
+    assert "fileUrl(task.photo_file_id)" in text and '"error"' in text  # обложка деградирует без ошибки
 
 
 def test_task_card_uses_plate_and_proof_block():
@@ -712,7 +712,7 @@ def test_review_screen_one_card_four_actions_and_already_is_calm():
     already = text[text.index("Уже обработано"):]
     assert "load()" in already[:200]
     # Файлы частей — через прокси, текст — цитатой; счётчик «Осталось».
-    assert "/app/api/file/" in text
+    assert "fileUrl(part.content)" in text
     assert "blockquote" in text
     assert "Осталось:" in text
     # Причина отклонения обязательна, своя сумма — числовое поле с дефолтом из задания.
@@ -783,7 +783,7 @@ def test_task_edit_screen_point_edits_confirmations_and_wizard():
         assert f'title: "{label}"' in text, label
     assert 'icon("pen-line")' in text and 'icon("image")' in text and 'icon("archive")' in text
     assert 'icon("rotate-ccw")' in text and 'icon("trash-2")' in text
-    assert 'method: "PATCH"' in text and "card.text" in text and "/app/api/file/" in text
+    assert 'method: "PATCH"' in text and "card.text" in text and "fileUrl(photoFileId)" in text
     # Превью «как видит делегат» — та же вёрстка, что у карточки делегата (card.js, план
     # 19.1-05): структурные поля, не card_text-блоб.
     assert "card.category_label" in text and "card.deadline_display" in text

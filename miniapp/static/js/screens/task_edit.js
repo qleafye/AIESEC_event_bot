@@ -16,7 +16,7 @@
 //
 // Ошибки сервера показываются человеческим текстом из payload.text, не кодом ответа.
 
-import { flatRow } from "../ui.js";
+import { fileUrl, flatRow } from "../ui.js";
 import { icon } from "../icons.js";
 import { haptic } from "../motion.js";
 import { errorText, isAuthError as isAuthErrorBase } from "../form.js";
@@ -34,10 +34,6 @@ function proofChips(h, raw) {
   return h("div", { class: "proof-chips" },
     ...present.map((code) => h("span", { class: "chip proof" }, icon(PROOF_ICON[code]))),
   );
-}
-
-function fileUrl(fileId) {
-  return `/app/api/file/${encodeURIComponent(fileId)}`;
 }
 
 // errorText/isAuthError — перенесены в form.js (план 21-04, были дословным дублем settings.js).
