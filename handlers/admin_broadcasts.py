@@ -37,9 +37,11 @@ from database.db import (
     cancel_scheduled_broadcast,
     count_and_list_filtered,
     get_distinct_filter_values,
-    # Quick 260910-okb (BC-01..03): журнал немедленных рассылок.
+    # Quick 260910-okb (BC-01..06): журнал немедленных рассылок + отзыв у получателей.
     create_broadcast,
     get_broadcast,
+    list_recent_broadcasts,
+    list_broadcast_messages,
 )
 from services.scheduler import (
     _parse_schedule_dt,
@@ -50,7 +52,7 @@ from services.scheduler import (
 )
 from services.allowlist import refresh_allowlist, allowlist_size
 from services.background import spawn as _spawn
-from services.broadcast_run import run_broadcast, request_stop
+from services.broadcast_run import run_broadcast, run_revoke, request_stop, can_revoke
 from keyboards.builders import get_cancel_kb
 from handlers.states import Broadcast
 from cities import CITIES, cities_module_on, city_label, city_scope
@@ -73,6 +75,7 @@ async def show_admin_broadcast(callback: types.CallbackQuery, state: FSMContext)
         [InlineKeyboardButton(text="📝 Не завершили регистрацию", callback_data="broadcast_incomplete")],
         [InlineKeyboardButton(text="🎯 По фильтру", callback_data="broadcast_filter")],
         [InlineKeyboardButton(text="🕓 Запланировать", callback_data="broadcast_schedule")],
+        [InlineKeyboardButton(text="🗒 Последние рассылки", callback_data="admin_broadcast_log")],
         [InlineKeyboardButton(text="❌ Отмена", callback_data="broadcast_cancel")],
     ])
     await callback.message.edit_text("Выберите целевую аудиторию рассылки:", reply_markup=kb)
@@ -103,6 +106,7 @@ async def cmd_broadcast(message: types.Message, state: FSMContext):
         [InlineKeyboardButton(text="📝 Не завершили регистрацию", callback_data="broadcast_incomplete")],
         [InlineKeyboardButton(text="🎯 По фильтру", callback_data="broadcast_filter")],
         [InlineKeyboardButton(text="🕓 Запланировать", callback_data="broadcast_schedule")],
+        [InlineKeyboardButton(text="🗒 Последние рассылки", callback_data="admin_broadcast_log")],
         [InlineKeyboardButton(text="❌ Отмена", callback_data="broadcast_cancel")],
     ])
     await message.answer("Выберите целевую аудиторию рассылки:", reply_markup=kb)
@@ -394,12 +398,15 @@ async def bc_go(callback: types.CallbackQuery, state: FSMContext, bot: Bot):
             pass  # "message is not modified" и подобные не должны ронять рассылку
 
     async def on_finish(status, delivered, blocked):
-        if status == "stopped":
-            text = f"⛔ Остановлено: отправлено {delivered}, недоступно {blocked}"
+        row = await get_broadcast(bid)
+        if row:
+            text, kb2 = _broadcast_card(row)
         else:
-            text = f"Рассылка завершена. ✅ Отправлено {delivered}, ❌ недоступно {blocked}"
+            text, kb2 = (
+                f"Рассылка завершена. ✅ Отправлено {delivered}, ❌ недоступно {blocked}", None
+            )
         try:
-            await callback.message.edit_text(text)
+            await callback.message.edit_text(text, reply_markup=kb2)
         except Exception:
             pass
 
@@ -427,6 +434,149 @@ async def bc_stop(callback: types.CallbackQuery):
         return
     request_stop(bid)
     await callback.answer("Останавливаю…")
+
+
+# ── Quick 260910-okb (BC-05/06): отзыв у получателей + «Последние рассылки» ─────
+
+_BROADCAST_STATUS_LABELS = {
+    "sending": "отправляется",
+    "done": "завершена",
+    "stopped": "остановлена",
+    "revoked": "удалена у получателей",
+}
+
+
+def _broadcast_card(row: dict) -> tuple[str, InlineKeyboardMarkup | None]:
+    """Один рендер и для итога рассылки (bc_go/bc_revgo on_finish), и для строки списка
+    «Последние рассылки» (BC-05). Заголовок несёт статус+счётчики словами, которые уже видел
+    менеджер на экране прогресса — единый рендер не значит новую формулировку."""
+    status = row.get("status")
+    delivered = row.get("delivered") or 0
+    blocked = row.get("blocked") or 0
+    total = row.get("total") or 0
+    preview = html_module.escape(re.sub(r"<[^>]+>", "", row.get("text_preview") or ""))
+    started_at = row.get("started_at") or "—"
+
+    if status == "sending":
+        headline = f"📨 Отправляется: {delivered} из {total}…"
+    elif status == "stopped":
+        headline = f"⛔ Остановлено: отправлено {delivered}, недоступно {blocked}"
+    elif status == "revoked":
+        headline = "🗑 Удалена у получателей."
+    else:
+        headline = f"Рассылка завершена. ✅ Отправлено {delivered}, ❌ недоступно {blocked}"
+
+    text = (
+        f"#{row.get('id')} — {started_at}\n"
+        f"Автор: {row.get('admin_id')}\n"
+        f"{preview}\n"
+        f"Статус: {_BROADCAST_STATUS_LABELS.get(status, status or '—')}\n"
+        f"{headline}"
+    )
+
+    kb = None
+    if status == "revoked":
+        pass
+    elif can_revoke(started_at):
+        kb = InlineKeyboardMarkup(inline_keyboard=[[
+            InlineKeyboardButton(text="🗑 Удалить у получателей", callback_data=f"bc_rev:{row.get('id')}")
+        ]])
+    else:
+        text += "\nУдалить нельзя: прошло больше 48 часов."
+    return text, kb
+
+
+@router.callback_query(F.data.startswith("bc_rev:"))
+async def bc_rev(callback: types.CallbackQuery):
+    """Подтверждение отзыва — гейт 48 ч перепроверяется ЗДЕСЬ: инлайн-кнопки не истекают,
+    карточка списка могла быть нарисована вчера."""
+    try:
+        bid = int(callback.data.split(":", 1)[1])
+    except ValueError:
+        await callback.answer("Некорректные данные.", show_alert=True)
+        return
+    row = await get_broadcast(bid)
+    if not row:
+        await callback.answer("Рассылка не найдена.", show_alert=True)
+        return
+    if row["status"] == "revoked" or not can_revoke(row.get("started_at")):
+        await callback.answer("Удалить нельзя: прошло больше 48 часов.", show_alert=True)
+        return
+    n = len(await list_broadcast_messages(bid))
+    kb = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="🗑 Да, удалить", callback_data=f"bc_revgo:{bid}")],
+        [InlineKeyboardButton(text="❌ Отмена", callback_data="bc_revno")],
+    ])
+    await callback.message.edit_text(
+        f"Сообщение удалится у {n} человек. Вернуть нельзя. Удалить?", reply_markup=kb,
+    )
+    await callback.answer()
+
+
+@router.callback_query(F.data == "bc_revno")
+async def bc_revno(callback: types.CallbackQuery):
+    await callback.message.edit_text("Удаление отменено.")
+    await callback.answer()
+
+
+@router.callback_query(F.data.startswith("bc_revgo:"))
+async def bc_revgo(callback: types.CallbackQuery, bot: Bot):
+    try:
+        bid = int(callback.data.split(":", 1)[1])
+    except ValueError:
+        await callback.answer("Некорректные данные.", show_alert=True)
+        return
+    row = await get_broadcast(bid)
+    if not row:
+        await callback.answer("Рассылка не найдена.", show_alert=True)
+        return
+    n = len(await list_broadcast_messages(bid))
+
+    stop_kb = InlineKeyboardMarkup(inline_keyboard=[[
+        InlineKeyboardButton(text="⛔ Остановить", callback_data=f"bc_stop:{bid}")
+    ]])
+    try:
+        await callback.message.edit_text(f"🗑 Удалено 0 из {n}…", reply_markup=stop_kb)
+    except Exception:
+        pass
+    await callback.answer()
+
+    async def on_progress(deleted, failed, total_n):
+        try:
+            await callback.message.edit_text(f"🗑 Удалено {deleted} из {total_n}…", reply_markup=stop_kb)
+        except Exception:
+            pass
+
+    async def on_finish(deleted, failed):
+        try:
+            await callback.message.edit_text(f"Удалено {deleted}, не удалось {failed}")
+        except Exception:
+            pass
+
+    _spawn(run_revoke(bot, bid, on_progress=on_progress, on_finish=on_finish))
+
+
+async def _render_broadcast_log(target):
+    """Общий рендер для кнопки «🗒 Последние рассылки» и команды /broadcasts (BC-05) — до 10
+    карточек, каждая — тот же `_broadcast_card`, что и итог рассылки."""
+    rows = await list_recent_broadcasts(10)
+    if not rows:
+        await target.answer("Рассылок пока не было.")
+        return
+    for row in rows:
+        text, kb = _broadcast_card(row)
+        await target.answer(text, reply_markup=kb)
+
+
+@router.callback_query(F.data == "admin_broadcast_log")
+async def admin_broadcast_log(callback: types.CallbackQuery):
+    await callback.answer()
+    await _render_broadcast_log(callback.message)
+
+
+@router.message(Command("broadcasts"))
+async def cmd_broadcasts(message: types.Message):
+    await _render_broadcast_log(message)
 
 
 # ── Phase 3 (SCHED-01): schedule-a-broadcast UI ──────────────────────────────

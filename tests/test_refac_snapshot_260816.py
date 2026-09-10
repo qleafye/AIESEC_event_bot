@@ -365,6 +365,7 @@ admin|message|cmd_broadcast|cmd:broadcast
 admin|message|cancel_broadcast|state:Broadcast:*,state:Broadcast:*
 admin|message|cancel_broadcast|state:Broadcast:*,state:Broadcast:*
 admin|message|process_broadcast|state:Broadcast:*
+admin|message|cmd_broadcasts|cmd:broadcasts
 admin|message|broadcast_schedule_when|state:Broadcast:*
 admin|message|broadcast_schedule_message|state:Broadcast:*
 admin|message|cmd_scheduled|cmd:scheduled
@@ -521,6 +522,10 @@ admin|callback_query|cancel_broadcast_callback|broadcast_cancel
 admin|callback_query|bc_go|bc_go
 admin|callback_query|bc_no|bc_no
 admin|callback_query|bc_stop|bc_stop:*
+admin|callback_query|bc_rev|bc_rev:*
+admin|callback_query|bc_revno|bc_revno
+admin|callback_query|bc_revgo|bc_revgo:*
+admin|callback_query|admin_broadcast_log|admin_broadcast_log
 admin|callback_query|broadcast_schedule_start|broadcast_schedule
 admin|callback_query|broadcast_schedule_quiet_choice|bcast_quiet:*
 admin|callback_query|sched_cancel|sched_cancel_*
@@ -862,7 +867,13 @@ def test_snapshot_total_handler_count_is_292():
     # сразу после cancel_broadcast_callback и перед broadcast_schedule_start (473 -> 476);
     # чистый аппенд, перепроверен прогоном _build_snapshot_lines() и diff'ом с прежним
     # 473-строчным снапшотом.
-    assert len(GOLDEN_SNAPSHOT) == 476  # Quick 260910-okb: +3; Phase 28 (28-09): +1; (28-08): +5, +1; (28-07): +1; (28-06): +3, +2
+    # Quick 260910-okb (BC-05/06): +1 admin.message cmd_broadcasts (/broadcasts, хвост
+    # message-блока рассылки, сразу после process_broadcast и перед broadcast_schedule_when)
+    # +4 admin.callback_query (bc_rev/bc_revno/bc_revgo -- отзыв у получателей;
+    # admin_broadcast_log -- экран «Последние рассылки»), встали сразу после bc_stop и перед
+    # broadcast_schedule_start (476 -> 481); чистый аппенд, перепроверен прогоном
+    # _build_snapshot_lines() и diff'ом с прежним 476-строчным снапшотом.
+    assert len(GOLDEN_SNAPSHOT) == 481  # Quick 260910-okb: +3, +5; Phase 28 (28-09): +1; (28-08): +5, +1; (28-07): +1; (28-06): +3, +2
     # handlers/reg_resume_fork.py — message process_resume_link (хвост message-блока
     # registration.router, сразу после process_case_optin и перед первым callback_query
     # recall_keep) + callback_query regfork_pick (хвост callback_query-блока
