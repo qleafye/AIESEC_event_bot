@@ -328,9 +328,9 @@ def test_stop_button_halts_progress_before_total(tmp_path, monkeypatch):
     asyncio.run(go())
 
 
-def test_stop_on_someone_elses_broadcast_is_refused(tmp_path, monkeypatch):
-    """Стоп чужой рассылки (admin_id в строке broadcasts не совпадает с нажавшим) — флаг не
-    выставляется, менеджеру ответ «Это не ваша рассылка»."""
+def test_stop_on_someone_elses_broadcast_is_allowed(tmp_path, monkeypatch):
+    """Стоп чужой рассылки (admin_id в строке broadcasts не совпадает с нажавшим) — флаг
+    выставляется: сбежавшую рассылку останавливает любой админ раздела, не только автор."""
     _ready(tmp_path)
 
     async def go():
@@ -341,8 +341,9 @@ def test_stop_on_someone_elses_broadcast_is_refused(tmp_path, monkeypatch):
 
         await admin_broadcasts.bc_stop(stop_cb)
 
-        assert stop_cb.answers == [("Это не ваша рассылка.", True)]
-        assert br.is_stopped(bid) is False
+        assert stop_cb.answers == [("Останавливаю…", False)]
+        assert br.is_stopped(bid) is True
+        br.clear_stop(bid)
 
     asyncio.run(go())
 
