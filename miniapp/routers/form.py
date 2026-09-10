@@ -525,7 +525,20 @@ async def draft_patch(
     # именно это поле, reg_engine.enabled_steps).
     if resume_type_patch is not None:
         new_answers["resume_type"] = resume_type_patch
-    delta = {col: val for col, val in new_answers.items() if ctx["answers"].get(col) != val}
+    # УАТ 10-11.09 (квик 260911-2kb, пункт 5): живой баг — первый PATCH из приложения по уже
+    # поданной анкете (например `uploadResume` бутстрапит черновик `{version: 0, answers: {}}`)
+    # обнулял анкету делегату. `_load_context` подставляет снимок ответов из `users`
+    # (`answers_from_user_row`) ТОЛЬКО в ветке «строки `reg_drafts` нет вовсе» — `ctx["answers"]`
+    # уже несёт этот снимок. Но раньше `delta` считалась ПРОТИВ него всегда, а
+    # `upsert_reg_draft` на INSERT кладёт в `answers` НОВОЙ строки ровно `delta` (существующей
+    # строки для слияния ещё нет) — снимок из `users` терялся, оставался только что отвеченный
+    # шаг. База при этом была цела (`finalize_data` в режиме `edit` достраивает полный набор из
+    # `users`), но делегат видел пустую анкету. Когда строка создаётся ЭТИМ запросом
+    # (`ctx["draft"] is None`), базой для дельты берём ПУСТОЙ словарь — тогда весь снимок
+    # (уже подмешанный в `new_answers` через `ctx["answers"]` выше) уезжает в `patch` и
+    # персистится в новой строке. Когда строка уже есть — поведение прежнее байт-в-байт.
+    baseline = ctx["answers"] if ctx["draft"] else {}
+    delta = {col: val for col, val in new_answers.items() if baseline.get(col) != val}
 
     # Quick 260904-3vm (D2): контракт `reg_drafts.step` = шаг, который ЕЩЁ НЕ ОТВЕЧЕН — ровно
     # то, что штампует бот последним действием хода (registration.py::_stamp_reg_step штампует
