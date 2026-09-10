@@ -907,3 +907,9 @@ from handlers import admin_polls  # noqa: E402
 # from here at that moment registered its 15 handlers BEFORE admin_gamification's own
 # (cancel_game_task_edit would then lose first-match to game_task_editdesc_step). Chaining the
 # import off admin_gamification's last line makes the order identical for every import order.
+
+# Квик 260910-ro7 (DELU-01..08): shared-router seam import for the hidden superadmin command
+# «/delete_user» — registers cmd_delete_user/delu_go:*/delu_no on the shared router right
+# after the gamification+polls tail (golden snapshot: a clean append, no reorder of anything
+# above). Command is intentionally invisible everywhere else — see handlers/admin_purge.py.
+from handlers import admin_purge  # noqa: E402

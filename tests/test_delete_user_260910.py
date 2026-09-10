@@ -216,3 +216,183 @@ def test_user_purge_tables_is_the_single_list():
     """USER_PURGE_TABLES объявлен ровно один раз в database/db.py (второго списка троек нет)."""
     src = DB_SRC_PATH.read_text(encoding="utf-8")
     assert src.count("USER_PURGE_TABLES: tuple[tuple[str, str, str], ...] = (") == 1
+
+
+# ── Хендлер handlers/admin_purge.py ─────────────────────────────────────────────────────────
+# Фейки — по образцу tests/test_roles_phase8.py (запись текстов ответов, edit_text, answer),
+# хендлеры вызываются напрямую функцией, как в большинстве admin-тестов проекта.
+
+class _FakeUser:
+    def __init__(self, uid):
+        self.id = uid
+
+
+class _FakeEditableMessage:
+    def __init__(self):
+        self.edits = []
+
+    async def edit_text(self, text, parse_mode=None, reply_markup=None):
+        self.edits.append((text, parse_mode, reply_markup))
+
+
+class _FakeMessage:
+    def __init__(self, text, user_id):
+        self.text = text
+        self.from_user = _FakeUser(user_id)
+        self.answers = []
+
+    async def answer(self, text, parse_mode=None, reply_markup=None):
+        self.answers.append((text, parse_mode, reply_markup))
+
+
+class _FakeCallback:
+    def __init__(self, data, user_id):
+        self.data = data
+        self.from_user = _FakeUser(user_id)
+        self.message = _FakeEditableMessage()
+        self.answer_calls = []
+
+    async def answer(self, text=None, show_alert=False):
+        self.answer_calls.append((text, show_alert))
+
+
+def _import_handlers():
+    # Ленивый импорт: handlers.admin_purge тянет aiogram + весь пакет handlers, тестам БД-
+    # слоя выше он не нужен.
+    from handlers import admin_purge
+    return admin_purge
+
+
+def test_stranger_without_admin_ids_gets_insufficient_rights_and_nothing_deleted(tmp_path):
+    _ready(tmp_path)
+    admin_purge = _import_handlers()
+    asyncio.run(_seed_full_footprint(DELEGATE_ID, username="@seeded"))
+    config.ADMIN_IDS = [ADMIN_ID]  # MANAGER_ID сознательно не суперадмин
+
+    message = _FakeMessage("/delete_user @seeded", MANAGER_ID)
+    asyncio.run(admin_purge.cmd_delete_user(message))
+
+    assert message.answers == [("Недостаточно прав.", None, None)]
+    assert asyncio.run(db.get_user(DELEGATE_ID)) is not None
+
+
+def test_delete_user_without_argument_shows_both_format_examples(tmp_path):
+    _ready(tmp_path)
+    admin_purge = _import_handlers()
+
+    message = _FakeMessage("/delete_user", ADMIN_ID)
+    asyncio.run(admin_purge.cmd_delete_user(message))
+
+    text = message.answers[0][0]
+    assert "/delete_user 123456789" in text
+    assert "@username" in text
+
+
+def test_delete_user_unknown_username_reports_not_found(tmp_path):
+    _ready(tmp_path)
+    admin_purge = _import_handlers()
+
+    message = _FakeMessage("/delete_user @нет_такого", ADMIN_ID)
+    asyncio.run(admin_purge.cmd_delete_user(message))
+
+    text = message.answers[0][0]
+    assert text.startswith("Не нашёл пользователя")
+
+
+def test_delete_user_card_shows_delegate_summary_and_confirm_keyboard(tmp_path):
+    _ready(tmp_path)
+    admin_purge = _import_handlers()
+    asyncio.run(_seed_full_footprint(DELEGATE_ID, username="@seeded"))
+
+    message = _FakeMessage("/delete_user @seeded", ADMIN_ID)
+    asyncio.run(admin_purge.cmd_delete_user(message))
+
+    text, parse_mode, kb = message.answers[0]
+    assert "Тестовый Делегат" in text
+    assert "@seeded" in text
+    assert str(DELEGATE_ID) in text
+    assert "Одобрена" in text  # STATUS_LABELS["approved"] — дефолтный статус новой заявки
+    assert "Город" in text
+    assert "заявка" in text
+    assert "сдачи заданий" in text
+    assert "Google-таблице" in text
+    assert "Вернуть нельзя" in text
+    buttons = [b.callback_data for row in kb.inline_keyboard for b in row]
+    assert f"delu_go:{DELEGATE_ID}" in buttons
+    assert "delu_no" in buttons
+
+
+def test_delete_user_card_warns_about_staff_roles(tmp_path):
+    _ready(tmp_path)
+    admin_purge = _import_handlers()
+    asyncio.run(_seed_full_footprint(DELEGATE_ID, username="@seeded"))
+    asyncio.run(db.add_staff(DELEGATE_ID, "reg_manager", ADMIN_ID))
+
+    message = _FakeMessage("/delete_user @seeded", ADMIN_ID)
+    asyncio.run(admin_purge.cmd_delete_user(message))
+
+    text = message.answers[0][0]
+    assert "роль" in text.lower()
+
+
+def test_delete_user_confirm_deletes_and_reports_same_numbers(tmp_path):
+    _ready(tmp_path)
+    admin_purge = _import_handlers()
+    asyncio.run(_seed_full_footprint(DELEGATE_ID, username="@seeded"))
+    asyncio.run(db.add_staff(DELEGATE_ID, "reg_manager", ADMIN_ID))
+
+    message = _FakeMessage("/delete_user @seeded", ADMIN_ID)
+    asyncio.run(admin_purge.cmd_delete_user(message))
+    card_text = message.answers[0][0]
+
+    callback = _FakeCallback(f"delu_go:{DELEGATE_ID}", ADMIN_ID)
+    asyncio.run(admin_purge.delete_user_confirm(callback))
+
+    edit_text = callback.message.edits[0][0]
+    assert edit_text.startswith("🗑")
+    assert "Удалено" in edit_text
+    assert "сдачи заданий: 3" in edit_text
+    assert "сдачи заданий: 3" in card_text  # те же числа, что показала карточка до удаления
+
+    assert asyncio.run(db.get_user(DELEGATE_ID)) is None
+    assert asyncio.run(db.get_staff_roles(DELEGATE_ID)) == ["reg_manager"]
+
+
+def test_delete_user_confirm_repeated_reports_already_deleted(tmp_path):
+    _ready(tmp_path)
+    admin_purge = _import_handlers()
+    asyncio.run(_seed_full_footprint(DELEGATE_ID, username="@seeded"))
+
+    first = _FakeCallback(f"delu_go:{DELEGATE_ID}", ADMIN_ID)
+    asyncio.run(admin_purge.delete_user_confirm(first))
+
+    second = _FakeCallback(f"delu_go:{DELEGATE_ID}", ADMIN_ID)
+    asyncio.run(admin_purge.delete_user_confirm(second))
+
+    assert second.message.edits[0][0] == "Уже удалено."
+
+
+def test_delete_user_cancel_deletes_nothing(tmp_path):
+    _ready(tmp_path)
+    admin_purge = _import_handlers()
+    asyncio.run(_seed_full_footprint(DELEGATE_ID, username="@seeded"))
+
+    callback = _FakeCallback("delu_no", ADMIN_ID)
+    asyncio.run(admin_purge.delete_user_cancel(callback))
+
+    assert callback.message.edits[0][0].startswith("Отменено")
+    assert asyncio.run(db.get_user(DELEGATE_ID)) is not None
+
+
+def test_delete_user_confirm_refuses_non_admin_and_keeps_data(tmp_path):
+    _ready(tmp_path)
+    admin_purge = _import_handlers()
+    asyncio.run(_seed_full_footprint(DELEGATE_ID, username="@seeded"))
+    config.ADMIN_IDS = [ADMIN_ID]
+
+    callback = _FakeCallback(f"delu_go:{DELEGATE_ID}", MANAGER_ID)
+    asyncio.run(admin_purge.delete_user_confirm(callback))
+
+    assert callback.answer_calls == [("Недостаточно прав.", True)]
+    assert callback.message.edits == []
+    assert asyncio.run(db.get_user(DELEGATE_ID)) is not None
