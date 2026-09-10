@@ -31,7 +31,10 @@ def _use_tmp_db(tmp_path, name: str) -> str:
     return path
 
 
-async def _seed_async(*, cities=None, settings=None, users=None, reg_events=None):
+async def _seed_async(
+    *, cities=None, settings=None, users=None, reg_events=None,
+    game_tasks=None, game_submissions=None,
+):
     async with bot_db._connect() as conn:
         for code, label, enabled, sort_order in cities or []:
             await conn.execute(
@@ -56,6 +59,18 @@ async def _seed_async(*, cities=None, settings=None, users=None, reg_events=None
             placeholders = ", ".join("?" for _ in row)
             await conn.execute(
                 f"INSERT INTO reg_events ({cols}) VALUES ({placeholders})", tuple(row.values())
+            )
+        for row in game_tasks or []:
+            cols = ", ".join(row.keys())
+            placeholders = ", ".join("?" for _ in row)
+            await conn.execute(
+                f"INSERT INTO game_tasks ({cols}) VALUES ({placeholders})", tuple(row.values())
+            )
+        for row in game_submissions or []:
+            cols = ", ".join(row.keys())
+            placeholders = ", ".join("?" for _ in row)
+            await conn.execute(
+                f"INSERT INTO game_submissions ({cols}) VALUES ({placeholders})", tuple(row.values())
             )
         await conn.commit()
 
@@ -443,3 +458,91 @@ def test_cache_key_from_unvalidated_garbage_seasons_does_not_grow_without_bound(
         compare.build_compare_context(cfg, seasons={"a": f"garbage-season-{i}"}, now=now)
 
     assert len(compare._CACHE) <= compare._CACHE_MAX_ENTRIES
+
+
+# ── геймификация в сравнении (квик 260910-qgn) ───────────────────────────────────────────
+
+def _game_task(**overrides):
+    task = {
+        "id": 1, "text": "t", "category": "photo", "coins": 10, "proof_type": "photo",
+        "deadline_at": "2026-09-01 00:00:00", "created_at": "2026-08-01 00:00:00",
+    }
+    task.update(overrides)
+    return task
+
+
+def test_game_participants_and_review_label_per_event(tmp_path):
+    path_a = _make_event_db(
+        tmp_path, "a.db",
+        settings={"dashboard_block_game": "on"},
+        users=[_users_row(1, registration_date="2026-08-01 10:00:00")],
+        game_tasks=[_game_task()],
+        game_submissions=[
+            {"task_id": 1, "user_id": 1, "content_type": "photo", "content": "a",
+             "submitted_at": "2026-08-02 10:00:00", "status": "approved",
+             "reviewed_at": "2026-08-02 10:30:00"},
+        ],
+    )
+    path_b = _make_event_db(
+        tmp_path, "b.db",
+        users=[_users_row(1, registration_date="2026-08-01 10:00:00")],
+    )
+    cfg = _cfg((EventSource(code="a", db_path=path_a), EventSource(code="b", db_path=path_b)))
+    ctx = compare.build_compare_context(cfg)
+    by_code = {e["code"]: e for e in ctx["events"]}
+    assert by_code["a"]["game_participants"] == 1
+    assert by_code["a"]["kpi"]["game_review_avg_label"] == "30 мин"
+    assert by_code["b"]["game_participants"] is None
+    assert by_code["b"]["kpi"]["game_review_avg_label"] == "—"
+
+
+def test_show_game_columns_true_only_when_any_event_has_game_data(tmp_path):
+    path_a = _make_event_db(
+        tmp_path, "a.db",
+        users=[_users_row(1, registration_date="2026-08-01 10:00:00")],
+    )
+    path_b = _make_event_db(
+        tmp_path, "b.db",
+        users=[_users_row(1, registration_date="2026-08-01 10:00:00")],
+    )
+    cfg = _cfg((EventSource(code="a", db_path=path_a), EventSource(code="b", db_path=path_b)))
+    ctx_none = compare.build_compare_context(cfg)
+    assert ctx_none["show_game_columns"] is False
+
+    compare.reset_cache()
+    path_c = _make_event_db(
+        tmp_path, "c.db",
+        settings={"dashboard_block_game": "on"},
+        users=[_users_row(1, registration_date="2026-08-01 10:00:00")],
+        game_tasks=[_game_task()],
+        game_submissions=[
+            {"task_id": 1, "user_id": 1, "content_type": "photo", "content": "a",
+             "submitted_at": "2026-08-02 10:00:00", "status": "approved"},
+        ],
+    )
+    cfg2 = _cfg((EventSource(code="a", db_path=path_a), EventSource(code="c", db_path=path_c)))
+    ctx_some = compare.build_compare_context(cfg2)
+    assert ctx_some["show_game_columns"] is True
+
+
+def test_unavailable_event_game_participants_none_does_not_break_context(tmp_path):
+    path_ok = _make_event_db(
+        tmp_path, "ok.db",
+        settings={"dashboard_block_game": "on"},
+        users=[_users_row(1, registration_date="2026-08-01 10:00:00")],
+        game_tasks=[_game_task()],
+        game_submissions=[
+            {"task_id": 1, "user_id": 1, "content_type": "photo", "content": "a",
+             "submitted_at": "2026-08-02 10:00:00", "status": "approved"},
+        ],
+    )
+    bad_path = str(tmp_path / "does_not_exist" / "forum.db")
+    cfg = _cfg((
+        EventSource(code="ok", db_path=path_ok),
+        EventSource(code="bad", db_path=bad_path),
+    ))
+    ctx = compare.build_compare_context(cfg)
+    by_code = {e["code"]: e for e in ctx["events"]}
+    assert by_code["ok"]["game_participants"] == 1
+    assert by_code["bad"]["game_participants"] is None
+    assert by_code["bad"]["available"] is False
