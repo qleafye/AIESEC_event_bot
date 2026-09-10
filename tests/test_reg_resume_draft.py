@@ -26,8 +26,10 @@ from config import config
 from database import db
 from handlers import registration as reg
 from handlers import reg_flow
+from handlers import reg_resume_fork
 from handlers import reg_steps
 from handlers.states import Registration
+from services import reg_finalize as rf
 
 from tests.test_reg_resume_ttl_260820 import USER_ID
 
@@ -99,6 +101,25 @@ class _FakeCallback:
 class FakeCommand:
     def __init__(self, args=None):
         self.args = args
+
+
+class _FakeDocument:
+    """Тот же приём, что `tests/test_percity_questions_consumers_25.py:81` —
+    process_resume/process_resume_invalid трогают только .file_id/.file_name/.file_size."""
+
+    def __init__(self, file_id="FILE_ID_1", file_name="cv.pdf", file_size=1024):
+        self.file_id = file_id
+        self.file_name = file_name
+        self.file_size = file_size
+
+
+class _FakeResumeMessage(_KBCapturingMessage):
+    """`_KBCapturingMessage` + `.document` — единственное, чего не хватает
+    `handlers/reg_flow.py::process_resume` (message.chat.id/.answer уже есть в базовом классе)."""
+
+    def __init__(self, uid, username=None, document=None):
+        super().__init__(uid, username)
+        self.document = document
 
 
 def _texts(msg: _KBCapturingMessage):
@@ -568,3 +589,140 @@ def test_short_track_new_registration_saves_full_name_to_users(tmp_path, monkeyp
     user = asyncio.run(go())
     assert user is not None
     assert user["full_name"] == "Новый Делегат"
+
+
+# ══════════════════════════════════════════════════════════════════════════════════════════
+# Квик 260910-wb6 (RED, задача 1): сторожа round-trip файлового резюме.
+#
+# Прод-баг с 05.09 (потеряно 202 заявки, 100 уже отклонены): делегат присылает резюме ФАЙЛОМ
+# в чате — `resume_file_id`/`resume_file_name` уходили ТОЛЬКО в FSM, а финал анкеты с коммита
+# b460826 читает `reg_drafts` (не FSM). `_sync_draft_out` кладёт в черновик ровно одну колонку
+# шага (`STEP_TO_COLUMN["resume"] == "resume_text"`), поэтому файловое резюме в черновике не
+# появлялось никогда — эти тесты обязаны падать на текущем коде ДО фикса (задача 2).
+# ══════════════════════════════════════════════════════════════════════════════════════════
+
+RESUME_UID_1 = USER_ID + 900
+RESUME_UID_2 = USER_ID + 901
+RESUME_UID_3 = USER_ID + 902
+RESUME_UID_3B = USER_ID + 903
+RESUME_UID_4 = USER_ID + 904
+
+
+def test_resume_file_lands_in_draft_answers(tmp_path):
+    """Тест 1: резюме файлом в чате -> `reg_drafts.answers` содержит и `resume_file_id`, и
+    `resume_file_name` сразу после шага, не только `resume_text: None`."""
+    _use_tmp_db(tmp_path, "wb6_draft_in.db")
+
+    async def go():
+        await db.upsert_reg_draft(
+            RESUME_UID_1, kind="new", participant_type="full", source="bot",
+        )
+        state = _new_state(RESUME_UID_1)
+        await state.update_data(participant_type="full", _draft_kind="new")
+        msg = _FakeResumeMessage(
+            RESUME_UID_1, "delegate",
+            document=_FakeDocument(file_id="FILE_ID_1", file_name="cv.pdf"),
+        )
+        await reg_flow.process_resume(msg, state, bot=None)
+        return await db.get_reg_draft(RESUME_UID_1)
+
+    draft = asyncio.run(go())
+    assert draft is not None
+    answers = draft["answers"]
+    assert answers.get("resume_file_id") == "FILE_ID_1", (
+        "СЕГОДНЯ (до фикса) в черновике только resume_text — file_id из чата туда не доезжает"
+    )
+    assert answers.get("resume_file_name") == "cv.pdf"
+
+
+def test_resume_file_reaches_users_and_post_finalize_args(tmp_path):
+    """Тест 2: тот же приём файла -> финал анкеты (`finalize_data`) отдаёт `resume_file_id`/
+    `resume_file_name` в результате (аргументы `post_finalize`, `handlers/registration.py:2244`)
+    И записывает `resume_file_id` в `users`. Sheets/Некстклауд `finalize_data` не зовёт —
+    монкипатчить нечего."""
+    _use_tmp_db(tmp_path, "wb6_finalize.db")
+
+    async def go():
+        await db.upsert_reg_draft(
+            RESUME_UID_2, kind="new", participant_type="full", source="bot",
+        )
+        state = _new_state(RESUME_UID_2)
+        await state.update_data(participant_type="full", _draft_kind="new")
+        msg = _FakeResumeMessage(
+            RESUME_UID_2, "delegate",
+            document=_FakeDocument(file_id="FILE_ID_1", file_name="cv.pdf"),
+        )
+        await reg_flow.process_resume(msg, state, bot=None)
+        draft = await db.get_reg_draft(RESUME_UID_2)
+        result = await rf.finalize_data(RESUME_UID_2, "@delegate", draft)
+        user = await db.get_user(RESUME_UID_2)
+        return result, user
+
+    result, user = asyncio.run(go())
+    assert result["resume_file_id"] == "FILE_ID_1"
+    assert result["resume_file_name"] == "cv.pdf"
+    assert user is not None
+    assert user["resume_file_id"] == "FILE_ID_1", (
+        "СЕГОДНЯ (до фикса) users.resume_file_id пуст — post_finalize не грузит файл в Некстклауд"
+    )
+
+
+def test_resume_fork_choice_survives_draft_and_back_resets_it(tmp_path):
+    """Тест 3: выбор ветки развилки резюме (`resume_type`) переживает черновик — не только
+    живую FSM-сессию (иначе продолжение анкеты из черновика после рестарта воскрешает отменённую
+    ветку/теряет выбранную). `regfork:back` обязан сбросить `resume_type` и в черновике тоже."""
+    _use_tmp_db(tmp_path, "wb6_fork.db")
+
+    async def go():
+        await db.set_setting("reg_resume_mode", "fork")
+        await db.set_setting("reg_q_resume_link", "on")
+        await db.upsert_reg_draft(
+            RESUME_UID_3, kind="new", participant_type="full", source="bot",
+        )
+        state = _new_state(RESUME_UID_3)
+        await state.update_data(
+            participant_type="full", _draft_kind="new", _reg_step=3, _reg_total=6,
+        )
+        await reg_resume_fork.regfork_pick(_FakeCallback("regfork:link", RESUME_UID_3), state)
+        after_pick = await db.get_reg_draft(RESUME_UID_3)
+
+        await reg_resume_fork.regfork_pick(_FakeCallback("regfork:back", RESUME_UID_3), state)
+        after_back = await db.get_reg_draft(RESUME_UID_3)
+        return after_pick, after_back
+
+    after_pick, after_back = asyncio.run(go())
+    assert after_pick is not None
+    assert after_pick["answers"].get("resume_type") == "link", (
+        "СЕГОДНЯ (до фикса) resume_type не пишется в черновик вообще — regfork_pick его туда не кладёт"
+    )
+    assert after_back is not None
+    assert after_back["answers"].get("resume_type") is None, (
+        "«Назад» обязан сбросить resume_type и в черновике, не только в FSM"
+    )
+
+
+def test_resume_file_edit_patch_does_not_crash_on_missing_column(tmp_path):
+    """Тест 4: правка уже поданной анкеты с файловым резюме сохраняется, не падает на
+    `sqlite3.OperationalError: no such column: resume_file_name` (колонки `users.resume_file_name`
+    НЕТ — она есть только в `reg_engine.answer_columns()`/allowlist Mini App)."""
+    _use_tmp_db(tmp_path, "wb6_edit.db")
+
+    async def go():
+        await db.add_user({
+            "telegram_id": RESUME_UID_4,
+            "full_name": "Уже Поданный",
+            "registration_date": "2026-09-01 12:00:00",
+            "resume_file_id": "FILE_ID_OLD",
+        })
+        await db.upsert_reg_draft(
+            RESUME_UID_4, kind="edit", source="bot",
+            patch={"resume_file_id": "FILE_ID_2", "resume_file_name": "new.pdf"},
+        )
+        draft = await db.get_reg_draft(RESUME_UID_4)
+        result = await rf.finalize_data(RESUME_UID_4, "@delegate", draft)
+        user = await db.get_user(RESUME_UID_4)
+        return result, user
+
+    result, user = asyncio.run(go())
+    assert user is not None
+    assert user["resume_file_id"] == "FILE_ID_2"
