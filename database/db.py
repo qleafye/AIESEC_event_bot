@@ -1028,7 +1028,9 @@ async def add_user(data: dict):
                 case_optin=excluded.case_optin
         ''', (
             data['telegram_id'],
-            data.get('username'),
+            # UNAME-03 (квик 260911-0zu): канон записи "с @" -- единственная точка, где
+            # сходятся ОБА пути анкеты (чат и Mini App, через services/reg_finalize.py).
+            store_username(data.get('username')),
             data.get('full_name', ''),
             data.get('email', '-'),
             data.get('age'),
@@ -1111,13 +1113,38 @@ async def get_user(telegram_id: int):
             logger.info(f"get_user: {telegram_id} not found in {os.path.abspath(config.DB_PATH)}")
             return None
 
+def store_username(raw: str | None) -> str | None:
+    """Канон ХРАНЕНИЯ username: "user" -> "@user", "@user" -> "@user", "@@user" -> "@user".
+    Плейсхолдеры остаются как есть — None -> None, "" -> "", "-" -> "-", "@" -> "@". Не трогать
+    их важно: прочерк/пусто в базе значит «юзернейма нет», а не «пользователь @-» — 30 прод-строк
+    `users` уже хранят такие плейсхолдеры, и превращать их в «@-» нельзя (квик 260911-0zu)."""
+    if raw is None or raw in ("", "-", "@"):
+        return raw
+    return "@" + raw.lstrip("@")
+
+
+def username_needle(raw: str | None) -> str | None:
+    """Ключ ПОИСКА: срезает пробелы и ведущие «@». Пусто/«-»/«@»/None -> None — вызывающий
+    обязан вернуть «не найдено», НЕ делая запроса (иначе срезанный ltrim от username сравнялся
+    бы с `''`/`'-'` — совпал бы с плейсхолдерными строками users, и /delete_user показал бы
+    карточку случайного делегата, квик 260911-0zu, T-0zu-01/02)."""
+    if raw is None:
+        return None
+    needle = raw.strip().lstrip("@")
+    if not needle or needle == "-":
+        return None
+    return needle
+
+
 async def get_user_by_username(username: str):
+    needle = username_needle(username)
+    if needle is None:
+        return None
     async with _connect() as db:
         db.row_factory = aiosqlite.Row
-        if not username.startswith('@'):
-            username = f"@{username}"
-
-        async with db.execute('SELECT * FROM users WHERE username = ? COLLATE NOCASE', (username,)) as cursor:
+        async with db.execute(
+            "SELECT * FROM users WHERE ltrim(username, '@') = ? COLLATE NOCASE", (needle,)
+        ) as cursor:
             row = await cursor.fetchone()
             if row:
                 return dict(row)
@@ -1638,6 +1665,11 @@ async def mark_reg_started(
     event_city: str | None = None,
 ):
     started_at = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    # UNAME-04 (квик 260911-0zu): канон "с @" -- 2149 прод-строк users уже лежат с собакой,
+    # менять их формат без миграции нельзя (миграция вне скоупа квика), поэтому к ним
+    # подтягивается reg_started, а не наоборот. Старые 947 строк reg_started без собаки НЕ
+    # мигрируем -- их находит двусторонний поиск find_user_id_by_username (ltrim по username).
+    username = store_username(username)
     async with _connect() as db:
         await db.execute('''
             INSERT INTO reg_started (telegram_id, username, started_at, participant_type, event_city)
@@ -4994,18 +5026,23 @@ async def purge_user(telegram_id: int) -> dict[str, int]:
 async def find_user_id_by_username(username: str) -> int | None:
     """Ищет telegram_id по @username — сперва среди завершивших регистрацию (`users`),
     потом среди бросивших анкету на середине (`reg_started`; у `reg_drafts` колонки username
-    нет вовсе). «@» можно не писать, регистр не важен (COLLATE NOCASE, как у
-    get_user_by_username). Неизвестный username -> None."""
-    handle = username if username.startswith("@") else f"@{username}"
+    нет вовсе). Терпимо и к формату ВВОДА, и к формату ХРАНЕНИЯ («@» можно не писать ни там,
+    ни там — двусторонний ltrim по username, квик 260911-0zu, UNAME-02): 947 прод-строк
+    `reg_started` заведены без собаки и без этого сравнения не находились НИКОГДА. Регистр
+    не важен (COLLATE NOCASE). Пустой ввод/«-»/«@»/None -> None без запроса (иначе плейсхолдер
+    в базе стал бы находимым, T-0zu-01)."""
+    needle = username_needle(username)
+    if needle is None:
+        return None
     async with _connect() as db:
         async with db.execute(
-            "SELECT telegram_id FROM users WHERE username = ? COLLATE NOCASE", (handle,)
+            "SELECT telegram_id FROM users WHERE ltrim(username, '@') = ? COLLATE NOCASE", (needle,)
         ) as cursor:
             row = await cursor.fetchone()
             if row:
                 return row[0]
         async with db.execute(
-            "SELECT telegram_id FROM reg_started WHERE username = ? COLLATE NOCASE", (handle,)
+            "SELECT telegram_id FROM reg_started WHERE ltrim(username, '@') = ? COLLATE NOCASE", (needle,)
         ) as cursor:
             row = await cursor.fetchone()
             return row[0] if row else None
