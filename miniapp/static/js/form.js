@@ -161,17 +161,36 @@ function choiceChips(h, spec, value, onChange) {
   return box;
 }
 
+// УАТ 10-11.09 (пункт 2): пустой закрытый список подсвечивал браузером первый реальный
+// вариант, `change` на нём не стрелял — делегат «выбирал», не касаясь селекта, а сервер на
+// пустой обязательный ввод отвечал своей ошибкой, отправить которую было нечем. Первым
+// узлом — служебный placeholder-option (value=""), выбор его отдаёт наверх `null`, а не
+// пустую строку (сервер обязан ответить своей ошибкой обязательности, а не записать "").
+// «Другое» собрано ТЕМ ЖЕ приёмом, что choiceChips (chip-other/field-other) — общий контейнер
+// заводится, только когда spec.other_allowed, иначе разметка остаётся байт-в-байт: голый
+// <select> с id на нём же (связь с <label for>).
 function selectControl(h, spec, value, onChange) {
   const select = h("select", { class: "input", id: `f-${spec.key}` });
+  select.append(h("option", { value: "", text: spec.placeholder || "" }));
   for (const opt of spec.options || []) {
     // UAT 07.09 (T-d6t-05): та же логика, что choiceChips — value уезжает кодом, текст
     // опции — подпись из реестра, если она есть.
     const label = (spec.option_labels && spec.option_labels[opt]) || opt;
     select.append(h("option", { value: opt, text: label }));
   }
-  if (value != null) select.value = value;
-  select.addEventListener("change", () => onChange(select.value));
-  return select;
+  select.value = value != null && value !== "" ? value : "";
+  select.addEventListener("change", () => onChange(select.value === "" ? null : select.value));
+  if (!spec.other_allowed) return select;
+  const otherInput = h("input", { class: "input field-other hidden", type: "text" });
+  const otherBtn = h("button", {
+    class: "chip-choice chip-other", type: "button", "aria-label": spec.label,
+    onClick: () => {
+      otherInput.classList.toggle("hidden");
+      if (!otherInput.classList.contains("hidden")) otherInput.focus();
+    },
+  }, icon("pen-line"));
+  otherInput.addEventListener("input", () => onChange(otherInput.value));
+  return h("div", { class: "select-with-other" }, select, otherBtn, otherInput);
 }
 
 // Phase 28 (28-03, SU-02, 28-UI-SPEC §4): `spec.max_select` отсутствует/`null` — поведение

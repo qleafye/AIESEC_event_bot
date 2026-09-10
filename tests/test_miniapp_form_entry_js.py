@@ -113,7 +113,10 @@ def test_wizard_field_call_suppresses_duplicate_help():
     `.field-help` ВСЕГДА (см. `form.js::field`) — второй одинаковый абзац на экране, если не
     погасить подсказку в спеке, отдаваемой полю."""
     text = _js_without_comments(FORM_SCREEN_JS)
-    assert "{ ...spec, help: null }" in text
+    # Квик 260911-2kb (пункт 2): та же спека теперь несёт ещё и `placeholder` для закрытого
+    # списка (`d.not_set_text`) — `help: null` в ней остаётся, порядок ключей не важен.
+    assert "help: null" in text
+    assert "spec, help: null, placeholder: d.not_set_text" in text
 
 
 # ── D9 (quick 260904-de4): резюме файлом реально загружается ────────────────────────────
