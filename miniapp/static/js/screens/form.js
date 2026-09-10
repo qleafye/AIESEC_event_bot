@@ -427,7 +427,9 @@ export async function render(root, params, ctx) {
         panel.classList.add("hidden");
         panel.replaceChildren();
         if (!wasHidden) return;
-        const el = field(h, spec, value, (v) => {
+        // УАТ 10-11.09 (пункт 2): placeholder закрытого списка — реестровый плейсхолдер
+        // незаполненного поля (d.not_set_text, reg_form_not_set_text), не литерал JS.
+        const el = field(h, { ...spec, placeholder: d.not_set_text }, value, (v) => {
           liveValue = v;
           // D9: файл резюме грузится СРАЗУ по выбору, не дожидаясь галки — галка остаётся
           // способом подтвердить текстовый ввод ({text: …}).
@@ -730,7 +732,9 @@ export async function render(root, params, ctx) {
       // подпись — параметром из ответа сервера ниже, не литерал. Снимается первым касанием.
       // help: null — подсказку формата уже рисует плита (`plate-sub` ниже); field() рисует
       // spec.help как `.field-help` ВСЕГДА, без этого получились бы два одинаковых абзаца.
-      const el = field(h, { ...spec, help: null }, value, (v) => {
+      // УАТ 10-11.09 (пункт 2): placeholder закрытого списка — тот же реестровый текст, что
+      // и в обзоре правки (d.not_set_text).
+      const el = field(h, { ...spec, help: null, placeholder: d.not_set_text }, value, (v) => {
         // Phase 28 (28-05, SU-04, 28-UI-SPEC §1): развилка резюме — тап кнопки И ЕСТЬ переход
         // (никакого «Дальше» на этом экране), поэтому onChange здесь не копит liveValue, а
         // сразу ведёт свою ветку (см. pickResumeBranch ниже).
