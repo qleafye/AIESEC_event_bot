@@ -553,9 +553,10 @@ def test_portfolio_footer_has_three_buttons():
     text = _js_without_comments(FORM_SCREEN_JS)
     assert "spec.skip_label" in text
     assert "goSkip" in text
-    # Третья кнопка футера рисуется ТОЛЬКО когда у шага есть skip_label (сегодня —
-    # единственно mini_portfolio, reg_engine.step_spec) — остальные skip_allowed шаги не
-    # меняются (D-06). Область — от `isForkPick` (начало сборки футера) до самого вызова
+    # Третья кнопка футера рисуется по наличию skip_label в спеке (reg_engine.step_spec) —
+    # квик 260911-2kb (пункт 3) расширил публикацию этой подписи с одного mini_portfolio на
+    # все шаги `_SKIP_ALLOWED_STEPS`, сам механизм рендера футера не поменялся ни на байт.
+    # Область — от `isForkPick` (начало сборки футера) до самого вызова
     # `setMainButton(isForkPick...)`, оба маркера встречаются в файле ровно один раз.
     footer_start = text.index("const isForkPick")
     footer_end = text.index("setMainButton(isForkPick", footer_start)

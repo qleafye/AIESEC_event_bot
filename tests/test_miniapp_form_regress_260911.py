@@ -16,6 +16,8 @@ import asyncio
 import re
 
 import reg_engine
+import settings_schema
+import settings_synonyms
 
 from tests.test_miniapp_frontend import (
     SCREENS_DIR,
@@ -102,3 +104,76 @@ def test_form_screen_still_has_no_human_literals_or_innerhtml():
         assert not _CYRILLIC.search(m.group(0)), m.group(0)
     assert "innerHTML" not in text
     assert not _HEX_OR_RGB_COLOR.search(text)
+
+
+# ══════════════════════════════════════════════════════════════════════════════════════════
+# Пункт 3: кнопка «Пропустить» на всех необязательных шагах
+# ══════════════════════════════════════════════════════════════════════════════════════════
+
+def test_every_skip_allowed_step_gets_skip_label(tmp_path):
+    _ready(tmp_path)
+
+    async def go():
+        return {
+            step: (await reg_engine.step_spec(step)).get("skip_label")
+            for step in reg_engine._SKIP_ALLOWED_STEPS
+        }
+
+    labels = _run(go())
+    for step, label in labels.items():
+        assert label, step
+    mini_label = labels.pop("mini_portfolio")
+    assert mini_label
+    # Одиннадцать остальных делят один общий текст реестра (reg_form_skip_cta_text).
+    assert len(set(labels.values())) == 1
+
+
+def test_only_skip_allowed_steps_get_skip_label(tmp_path):
+    _ready(tmp_path)
+
+    async def go():
+        out = {}
+        for step_key, *_rest in reg_engine.REG_FLOW:
+            out[step_key] = (await reg_engine.step_spec(step_key)).get("skip_label")
+        return out
+
+    specs = _run(go())
+    for step_key, label in specs.items():
+        if step_key in reg_engine._SKIP_ALLOWED_STEPS:
+            assert label, step_key
+        else:
+            assert label is None, step_key
+
+
+def test_skip_allowed_and_skip_text_errors_sets_match():
+    """Сторож пары наборов: расхождение означало бы, что будущий skip-шаг получит кнопку
+    «Пропустить», а `validate_answer` не примет буквальный «-» (делегат снова упрётся), либо
+    наоборот — «-» проходит валидатор без кнопки, которая его отправляет."""
+    assert set(reg_engine._SKIP_ALLOWED_STEPS) == set(reg_engine._SKIP_TEXT_ERRORS)
+
+
+def test_skip_dash_validates_and_empty_still_errors():
+    for step in reg_engine._SKIP_ALLOWED_STEPS:
+        value, err = reg_engine.validate_answer(step, "-")
+        assert (value, err) == ("-", None), step
+        empty_value, empty_err = reg_engine.validate_answer(step, "")
+        assert empty_value is None, step
+        assert empty_err, step
+
+
+def test_manager_can_change_skip_button_label_seen_by_delegate(tmp_path):
+    _ready(tmp_path)
+    _set("reg_form_skip_cta_text", "Скип")
+
+    async def go():
+        return await reg_engine.step_spec("comments")
+
+    spec = _run(go())
+    assert spec["skip_label"] == "Скип"
+
+
+def test_skip_cta_text_registered_in_schema_and_synonyms():
+    entry = settings_schema.SETTINGS_SCHEMA["reg_form_skip_cta_text"]
+    assert entry["group"] == "reg"
+    assert entry["default"] == "Пропустить"
+    assert len(settings_synonyms.SETTINGS_SYNONYMS["reg_form_skip_cta_text"]) >= 2
