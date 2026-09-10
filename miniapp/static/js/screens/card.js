@@ -4,7 +4,7 @@
 // доказательства, строки фактов (статус/проверка). MainButton «Сдать» -> #/submit/{id}.
 
 import { icon } from "../icons.js";
-import { flatRow, sectionTitle } from "../ui.js";
+import { fileUrl, flatRow, sectionTitle } from "../ui.js";
 
 const PROOF_ICON = { photo: "image", pdf: "file-text", text: "pen-line", link: "link" };
 const PROOF_ORDER = ["photo", "pdf", "text", "link"];
@@ -28,7 +28,7 @@ export async function render(root, params, ctx) {
     const img = h("img", {
       class: "cover",
       alt: "",
-      src: `/app/api/file/${encodeURIComponent(task.photo_file_id)}`,
+      src: fileUrl(task.photo_file_id),
     });
     img.addEventListener("error", () => img.remove());
     plate.append(img);

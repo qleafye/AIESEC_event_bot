@@ -11,7 +11,7 @@
 import { visibleNav, NAV_ICONS, SECTION_GROUPS } from "../app.js";
 import { icon } from "../icons.js";
 import { countUp } from "../motion.js";
-import { flatRow, sectionTitle, labelText, tile } from "../ui.js";
+import { fileUrl, flatRow, sectionTitle, labelText, tile } from "../ui.js";
 
 // Quick 260904-aup (UAT D11 + Q4): разделение ролей — СЕРВЕР (`me.show_onboarding`, `/app/api/me`)
 // решает, кому вообще положено видеть привет-экран (не сотруднику и не делегату с уже поданной
@@ -83,7 +83,7 @@ function renderOnboarding(root, ctx, onDone) {
 
   const plate = h("section", { class: "plate plate--onboarding" });
   if (coverId) {
-    const img = h("img", { class: "onboarding-cover", src: `/app/api/file/${coverId}`, alt: "" });
+    const img = h("img", { class: "onboarding-cover", src: fileUrl(coverId), alt: "" });
     img.addEventListener("error", () => img.remove()); // обложки нет/не грузится — экран всё равно корректен
     plate.append(img);
   }

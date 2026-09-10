@@ -45,7 +45,7 @@ from cities import ALL_CITIES, cities_module_on, city_label, normalize_city
 from services import applications, quiet_hours
 from settings_schema import get_setting_typed
 
-from miniapp import outbox
+from miniapp import file_tokens, outbox
 from miniapp.avatars import initials, resolve_avatar
 from miniapp.deps import Principal, require_cap, require_section
 from miniapp.timeutil import now_msk_naive
@@ -83,10 +83,10 @@ def _parse_offset(raw) -> int:
         return 0
 
 
-def _resume_block(card_resume: dict) -> dict:
+def _resume_block(card_resume: dict, token: str) -> dict:
     kind = card_resume.get("kind")
     if kind == "file":
-        return {"kind": "file", "url": f"/app/api/file/{card_resume['file_id']}"}
+        return {"kind": "file", "url": file_tokens.file_url(card_resume["file_id"], token)}
     if kind == "text":
         return {"kind": "text", "text": card_resume.get("text")}
     return {"kind": "none"}
@@ -122,9 +122,14 @@ async def applications_next(
         return {"empty": True, "remaining": total, "offset": off, "empty_text": text}
 
     card = await applications.card_payload(row)
-    avatar_file_id = await resolve_avatar(request.app.state.cfg, row)
+    cfg = request.app.state.cfg
+    # Токен МЕНЕДЖЕРА (p.telegram_id), не заявителя: маршрут файла проверит can_read_file под
+    # менеджером — городской скоуп сохраняется, право проверяется и здесь (очередь заявок уже
+    # отфильтрована скоупом), и в маршруте файла (quick 260910-w3j, требование 3).
+    file_token = file_tokens.mint_file_token(cfg.bot_token, p.telegram_id)
+    avatar_file_id = await resolve_avatar(cfg, row)
     avatar = {
-        "url": f"/app/api/file/{avatar_file_id}" if avatar_file_id else None,
+        "url": file_tokens.file_url(avatar_file_id, file_token) if avatar_file_id else None,
         "initials": initials(row.get("full_name")),
     }
 
@@ -149,7 +154,7 @@ async def applications_next(
         "badges": card["badges"],
         "main_fields": [{"label": label, "value": value} for label, value in card["main_fields"]],
         "extra_fields": [{"label": label, "value": value} for label, value in card["extra_fields"]],
-        "resume": _resume_block(card["resume"]),
+        "resume": _resume_block(card["resume"], file_token),
         "history": card["history"],
         "remaining": total,
         "position": off + 1,
