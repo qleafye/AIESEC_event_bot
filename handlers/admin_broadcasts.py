@@ -429,10 +429,13 @@ async def bc_stop(callback: types.CallbackQuery):
         await callback.answer("Некорректные данные.", show_alert=True)
         return
     row = await get_broadcast(bid)
-    if not row or row["admin_id"] != callback.from_user.id:
-        await callback.answer("Это не ваша рассылка.", show_alert=True)
+    if not row:
+        await callback.answer("Рассылка не найдена.", show_alert=True)
         return
+    # Стоп нажимает ЛЮБОЙ админ с capability раздела, не только автор: 09.09 остановить
+    # чужую рассылку хотел второй менеджер — сбежавшая рассылка общая беда, не личная.
     request_stop(bid)
+    logger.info("broadcast %s stop requested by %s (author %s)", bid, callback.from_user.id, row["admin_id"])
     await callback.answer("Останавливаю…")
 
 
