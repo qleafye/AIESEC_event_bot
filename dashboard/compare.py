@@ -344,6 +344,7 @@ def build_compare_context(cfg, *, codes=None, axis="day_n", seasons=None, now=No
                 kpi = queries.kpi_row(conn, scope)
                 status = queries.status_totals(conn, scope)
                 game = queries.game_block(conn, scope)
+                questions = queries.questions_block(conn, scope)
                 funnel_rows = queries.funnel(conn, scope)
                 daily_rows = queries.daily_registrations(conn, scope)
                 reg_start = queries.registration_start(conn, scope)
@@ -371,7 +372,7 @@ def build_compare_context(cfg, *, codes=None, axis="day_n", seasons=None, now=No
                 "available": False, "error": error, "kpi": None, "approved": None,
                 "pending": None, "event_date": None, "days_to_event": None, "funnel": [],
                 "registration_start": None, "day_zero": None, "day_zero_note": None,
-                "season_options": [], "game_participants": None,
+                "season_options": [], "game_participants": None, "questions_total": None,
             })
             unavailable.append({"code": event.code, "name": event.code, "error": error})
             continue
@@ -396,6 +397,7 @@ def build_compare_context(cfg, *, codes=None, axis="day_n", seasons=None, now=No
             "day_zero_note": day_zero_note,
             "season_options": season_options,
             "game_participants": game["participants"] if game else None,
+            "questions_total": questions["total"] if questions else None,
         })
         raw_by_code[event.code] = {
             "funnel_rows": funnel_rows,
@@ -433,6 +435,11 @@ def build_compare_context(cfg, *, codes=None, axis="day_n", seasons=None, now=No
     # попадает», что уже применён к разрезам (`_build_cut`) и ступеням воронки
     # (`present_labels`).
     show_game_columns = any(e["game_participants"] for e in event_ctxs)
+    # Колонка «Ответ» — тот же приём, но гейт берётся от `questions_total` (есть ли вопросы
+    # ВООБЩЕ), а НЕ от `kpi["question_answer_avg_minutes"]` (есть ли уже посчитанное среднее):
+    # у события, где вопросы есть, но ни на один ещё не ответили, честное «—» в колонке —
+    # полезная информация, и колонка обязана остаться.
+    show_question_column = any(e["questions_total"] for e in event_ctxs)
 
     context = {
         "events": event_ctxs,
@@ -443,6 +450,7 @@ def build_compare_context(cfg, *, codes=None, axis="day_n", seasons=None, now=No
         "unavailable": unavailable,
         "generated_at": now.isoformat(),
         "show_game_columns": show_game_columns,
+        "show_question_column": show_question_column,
     }
     _CACHE[cache_key] = (now.timestamp(), context)
     return context
