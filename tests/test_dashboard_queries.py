@@ -22,6 +22,7 @@ from dashboard.queries import (
     ALLOWED_BREAKDOWNS,
     Scope,
     _SETTING_DEFAULTS,
+    _task_title,
     breakdown,
     city_comparison,
     city_options,
@@ -52,7 +53,7 @@ def _use_tmp_db(tmp_path, name="dashboard_queries.db") -> str:
 
 async def _seed_async(
     cities=None, settings=None, users=None, reg_events=None, reg_started=None,
-    game_tasks=None, game_submissions=None, application_decisions=None,
+    game_tasks=None, game_submissions=None, application_decisions=None, coins=None,
 ):
     async with bot_db._connect() as conn:
         for code, label, enabled, sort_order in cities or []:
@@ -110,6 +111,12 @@ async def _seed_async(
             await conn.execute(
                 f"INSERT INTO application_decisions ({cols}) VALUES ({placeholders})", tuple(row.values())
             )
+        for row in coins or []:
+            cols = ", ".join(row.keys())
+            placeholders = ", ".join("?" for _ in row)
+            await conn.execute(
+                f"INSERT INTO coins ({cols}) VALUES ({placeholders})", tuple(row.values())
+            )
         await conn.commit()
 
 
@@ -127,6 +134,7 @@ def test_kpi_row_on_empty_db_returns_zeros_and_none(tmp_path):
         "total": 0, "today": 0, "week": 0, "week_delta": 0,
         "conversion": None, "tracking_since": None,
         "processing_avg_minutes": None, "processing_avg_label": "—",
+        "game_review_avg_minutes": None, "game_review_avg_label": "—",
     }
 
 
@@ -346,6 +354,106 @@ def test_kpi_row_processing_avg_stale_decision_does_not_affect_other_delegates(t
     with dash_db.read_conn(path) as conn:
         row = kpi_row(conn, Scope())
     assert row["processing_avg_minutes"] == 60.0  # только делегат 2, делегат 1 исключён
+
+
+# ── kpi_row: game_review_avg_minutes/_label (квик 260910-qgn) ────────────────────────────
+
+def _game_task(**overrides):
+    task = {
+        "id": 1, "text": "t", "category": "photo", "coins": 10, "proof_type": "photo",
+        "deadline_at": "2026-09-01 00:00:00", "created_at": "2026-08-01 00:00:00",
+    }
+    task.update(overrides)
+    return task
+
+
+def test_kpi_row_game_review_avg_ignores_submission_without_decision(tmp_path):
+    path = _use_tmp_db(tmp_path)
+    _seed(
+        users=[
+            {"telegram_id": 1, "registration_date": "2026-08-01 00:00:00"},
+            {"telegram_id": 2, "registration_date": "2026-08-01 00:00:00"},
+            {"telegram_id": 3, "registration_date": "2026-08-01 00:00:00"},
+        ],
+        game_tasks=[_game_task()],
+        game_submissions=[
+            {"task_id": 1, "user_id": 1, "content_type": "photo", "content": "a",
+             "submitted_at": "2026-08-02 10:00:00", "status": "approved",
+             "reviewed_at": "2026-08-02 12:00:00"},  # +120 мин
+            {"task_id": 1, "user_id": 2, "content_type": "photo", "content": "b",
+             "submitted_at": "2026-08-02 10:00:00", "status": "approved",
+             "reviewed_at": "2026-08-02 10:30:00"},  # +30 мин
+            {"task_id": 1, "user_id": 3, "content_type": "photo", "content": "c",
+             "submitted_at": "2026-08-02 10:00:00", "status": "pending"},  # без решения
+        ],
+    )
+    with dash_db.read_conn(path) as conn:
+        row = kpi_row(conn, Scope())
+    assert row["game_review_avg_minutes"] == 75.0
+    assert row["game_review_avg_label"] == "1 ч 15 мин"
+
+
+def test_kpi_row_game_review_avg_excludes_other_season(tmp_path):
+    path = _use_tmp_db(tmp_path)
+    _seed(
+        settings={"event_season": "YL26"},
+        users=[
+            {"telegram_id": 1, "registration_date": "2026-08-01 00:00:00", "season": "YL26"},
+            {"telegram_id": 2, "registration_date": "2025-08-01 00:00:00", "season": "YL25"},
+        ],
+        game_tasks=[_game_task()],
+        game_submissions=[
+            {"task_id": 1, "user_id": 1, "content_type": "photo", "content": "a",
+             "submitted_at": "2026-08-02 10:00:00", "status": "approved",
+             "reviewed_at": "2026-08-02 10:30:00"},  # +30 мин, текущий сезон
+            {"task_id": 1, "user_id": 2, "content_type": "photo", "content": "b",
+             "submitted_at": "2026-08-02 10:00:00", "status": "approved",
+             "reviewed_at": "2026-08-02 14:00:00"},  # +240 мин, прошлый сезон
+        ],
+    )
+    with dash_db.read_conn(path) as conn:
+        row = kpi_row(conn, Scope())
+    assert row["game_review_avg_minutes"] == 30.0
+
+
+def test_kpi_row_game_review_avg_excludes_other_city(tmp_path):
+    path = _use_tmp_db(tmp_path)
+    _seed(
+        cities=[("msk", "Москва", 1, 0), ("spb", "СПб", 1, 1)],
+        users=[
+            {"telegram_id": 1, "registration_date": "2026-08-01 00:00:00", "event_city": "msk"},
+            {"telegram_id": 2, "registration_date": "2026-08-01 00:00:00", "event_city": "spb"},
+        ],
+        game_tasks=[_game_task()],
+        game_submissions=[
+            {"task_id": 1, "user_id": 1, "content_type": "photo", "content": "a",
+             "submitted_at": "2026-08-02 10:00:00", "status": "approved",
+             "reviewed_at": "2026-08-02 10:30:00"},  # +30 мин, msk
+            {"task_id": 1, "user_id": 2, "content_type": "photo", "content": "b",
+             "submitted_at": "2026-08-02 10:00:00", "status": "approved",
+             "reviewed_at": "2026-08-02 14:00:00"},  # +240 мин, spb
+        ],
+    )
+    with dash_db.read_conn(path) as conn:
+        row = kpi_row(conn, Scope(city="msk"))
+    assert row["game_review_avg_minutes"] == 30.0
+
+
+def test_kpi_row_game_review_avg_excludes_reviewed_before_submitted(tmp_path):
+    path = _use_tmp_db(tmp_path)
+    _seed(
+        users=[{"telegram_id": 1, "registration_date": "2026-08-01 00:00:00"}],
+        game_tasks=[_game_task()],
+        game_submissions=[
+            {"task_id": 1, "user_id": 1, "content_type": "photo", "content": "a",
+             "submitted_at": "2026-08-02 10:00:00", "status": "approved",
+             "reviewed_at": "2026-08-02 09:00:00"},  # раньше submitted_at -- битые данные
+        ],
+    )
+    with dash_db.read_conn(path) as conn:
+        row = kpi_row(conn, Scope())
+    assert row["game_review_avg_minutes"] is None
+    assert row["game_review_avg_label"] == "—"
 
 
 # ── funnel ────────────────────────────────────────────────────────────────────────────────
@@ -1122,7 +1230,21 @@ def test_game_block_none_when_toggle_on_but_no_submissions(tmp_path):
         assert game_block(conn, Scope()) is None
 
 
+def _game_task(**overrides):
+    task = {
+        "id": 1, "text": "t", "category": "photo", "coins": 10, "proof_type": "photo",
+        "deadline_at": "2026-09-01 00:00:00", "created_at": "2026-08-01 00:00:00",
+    }
+    task.update(overrides)
+    return task
+
+
 def test_game_block_matches_get_game_stats_on_same_fixture(tmp_path):
+    """Раньше эта фикстура (БЕЗ строк `users`) сверяла блок с `bot_db.get_game_stats()`
+    побайтно — блок считался по ВСЕЙ базе. С квик 260910-qgn блок сужен скоупом страницы
+    (JOIN на `users`), и та же фикстура без единой строки `users` больше не даёт ни одного
+    играющего в скоупе — `None`, а не совпадение с `get_game_stats()`. Сверка чисел с
+    `get_game_stats()` теперь живёт в тесте ниже, на фикстуре С `users`."""
     path = _use_tmp_db(tmp_path)
     _seed(
         settings={"dashboard_block_game": "on"},
@@ -1141,10 +1263,276 @@ def test_game_block_matches_get_game_stats_on_same_fixture(tmp_path):
              "submitted_at": "2026-08-02 00:00:00", "status": "rejected"},
         ],
     )
+    with dash_db.read_conn(path) as conn:
+        assert game_block(conn, Scope()) is None  # без users в скоупе играющих не найти
+
+
+def test_game_block_status_counts_match_get_game_stats_when_users_in_scope(tmp_path):
+    """Тот же сторож, что раньше — блок и `get_game_stats()` считают одни и те же числа по
+    статусам сдач и категориям, — но теперь на фикстуре С `users` в текущем сезоне (иначе
+    блок сузит всех в 0, см. тест выше). Сравнение по КЛЮЧАМ, не dict целиком: у блока теперь
+    больше ключей, чем у `get_game_stats()`."""
+    path = _use_tmp_db(tmp_path)
+    _seed(
+        settings={"dashboard_block_game": "on"},
+        users=[
+            {"telegram_id": 1, "status": "approved"},
+            {"telegram_id": 2, "status": "approved"},
+        ],
+        game_tasks=[
+            {"id": 1, "text": "t1", "category": "photo", "coins": 10, "proof_type": "photo",
+             "deadline_at": "2026-09-01 00:00:00", "created_at": "2026-08-01 00:00:00"},
+            {"id": 2, "text": "t2", "category": "video", "coins": 20, "proof_type": "video",
+             "deadline_at": "2026-09-01 00:00:00", "created_at": "2026-08-01 00:00:00"},
+        ],
+        game_submissions=[
+            {"task_id": 1, "user_id": 1, "content_type": "photo", "content": "a",
+             "submitted_at": "2026-08-02 00:00:00", "status": "approved"},
+            {"task_id": 2, "user_id": 1, "content_type": "video", "content": "b",
+             "submitted_at": "2026-08-02 00:00:00", "status": "pending"},
+            {"task_id": 1, "user_id": 2, "content_type": "photo", "content": "c",
+             "submitted_at": "2026-08-02 00:00:00", "status": "rejected"},
+        ],
+    )
     reference = asyncio.run(bot_db.get_game_stats())
     with dash_db.read_conn(path) as conn:
         dashboard_stats = game_block(conn, Scope())
-    assert dashboard_stats == reference
+    for key in ("participants", "pending", "approved", "rejected", "by_category"):
+        assert dashboard_stats[key] == reference[key]
+
+
+def test_game_block_excludes_submission_from_other_season_or_city(tmp_path):
+    path = _use_tmp_db(tmp_path)
+    _seed(
+        settings={"dashboard_block_game": "on", "event_season": "YL26"},
+        cities=[("msk", "Москва", 1, 0), ("spb", "СПб", 1, 1)],
+        users=[
+            {"telegram_id": 1, "registration_date": "2026-08-01 00:00:00", "season": "YL26",
+             "event_city": "msk", "status": "approved"},
+            {"telegram_id": 2, "registration_date": "2025-08-01 00:00:00", "season": "YL25",
+             "event_city": "msk", "status": "approved"},  # другой сезон
+            {"telegram_id": 3, "registration_date": "2026-08-01 00:00:00", "season": "YL26",
+             "event_city": "spb", "status": "approved"},  # другой город
+        ],
+        game_tasks=[_game_task()],
+        game_submissions=[
+            {"task_id": 1, "user_id": 1, "content_type": "photo", "content": "a",
+             "submitted_at": "2026-08-02 00:00:00", "status": "approved"},
+            {"task_id": 1, "user_id": 2, "content_type": "photo", "content": "b",
+             "submitted_at": "2026-08-02 00:00:00", "status": "approved"},
+            {"task_id": 1, "user_id": 3, "content_type": "photo", "content": "c",
+             "submitted_at": "2026-08-02 00:00:00", "status": "approved"},
+        ],
+    )
+    with dash_db.read_conn(path) as conn:
+        stats = game_block(conn, Scope(city="msk"))
+    assert stats["participants"] == 1
+    assert stats["submissions_total"] == 1
+
+
+def test_game_block_participants_and_submissions_shares(tmp_path):
+    path = _use_tmp_db(tmp_path)
+    _seed(
+        settings={"dashboard_block_game": "on"},
+        users=[
+            {"telegram_id": 1, "status": "approved"},
+            {"telegram_id": 2, "status": "approved"},
+            {"telegram_id": 3, "status": "approved"},
+            {"telegram_id": 4, "status": "approved"},
+        ],
+        game_tasks=[_game_task(), _game_task(id=2)],
+        game_submissions=[
+            {"task_id": 1, "user_id": 1, "content_type": "photo", "content": "a",
+             "submitted_at": "2026-08-02 00:00:00", "status": "approved"},
+            # второе задание -- тот же делегат, другая задача (иначе конфликт с partial
+            # unique index idx_game_submissions_active на (task_id, user_id) для не-rejected)
+            {"task_id": 2, "user_id": 1, "content_type": "photo", "content": "b",
+             "submitted_at": "2026-08-02 01:00:00", "status": "pending"},
+            {"task_id": 1, "user_id": 2, "content_type": "photo", "content": "c",
+             "submitted_at": "2026-08-02 02:00:00", "status": "rejected"},
+        ],
+    )
+    with dash_db.read_conn(path) as conn:
+        stats = game_block(conn, Scope())
+    assert stats["participants"] == 2
+    assert stats["participants_share"] == 50.0
+    assert stats["submissions_total"] == 3
+    assert (stats["pending"], stats["approved"], stats["rejected"]) == (1, 1, 1)
+    assert stats["approved_share"] == 33.3
+
+
+def test_game_block_coins_totals_and_per_participant(tmp_path):
+    path = _use_tmp_db(tmp_path)
+    _seed(
+        settings={"dashboard_block_game": "on"},
+        users=[
+            {"telegram_id": 1, "status": "approved"},
+            {"telegram_id": 2, "status": "approved"},
+        ],
+        game_tasks=[_game_task()],
+        game_submissions=[
+            {"task_id": 1, "user_id": 1, "content_type": "photo", "content": "a",
+             "submitted_at": "2026-08-02 00:00:00", "status": "approved"},
+            {"task_id": 1, "user_id": 2, "content_type": "photo", "content": "b",
+             "submitted_at": "2026-08-02 00:00:00", "status": "approved"},
+        ],
+        coins=[
+            {"user_id": 1, "delta": 10, "source": "task", "timestamp": "2026-08-02 00:00:00"},
+            {"user_id": 1, "delta": 5, "source": "manual", "timestamp": "2026-08-02 00:00:00"},
+            {"user_id": 1, "delta": -3, "source": "manual", "timestamp": "2026-08-02 00:00:00"},
+        ],
+    )
+    with dash_db.read_conn(path) as conn:
+        stats = game_block(conn, Scope())
+    assert stats["coins_total"] == 15  # списание -3 в начисления не входит
+    assert stats["coins_task"] == 10
+    assert stats["coins_manual"] == 5
+    assert stats["coins_per_participant"] == 7.5
+
+
+def test_game_block_coins_exclude_delegate_out_of_scope(tmp_path):
+    path = _use_tmp_db(tmp_path)
+    _seed(
+        settings={"dashboard_block_game": "on"},
+        cities=[("msk", "Москва", 1, 0), ("spb", "СПб", 1, 1)],
+        users=[
+            {"telegram_id": 1, "status": "approved", "event_city": "msk"},
+            {"telegram_id": 2, "status": "approved", "event_city": "spb"},
+        ],
+        game_tasks=[_game_task()],
+        game_submissions=[
+            {"task_id": 1, "user_id": 1, "content_type": "photo", "content": "a",
+             "submitted_at": "2026-08-02 00:00:00", "status": "approved"},
+        ],
+        coins=[
+            {"user_id": 1, "delta": 10, "source": "task", "timestamp": "2026-08-02 00:00:00"},
+            {"user_id": 2, "delta": 50, "source": "task", "timestamp": "2026-08-02 00:00:00"},
+        ],
+    )
+    with dash_db.read_conn(path) as conn:
+        stats = game_block(conn, Scope(city="msk"))
+    assert stats["coins_total"] == 10
+
+
+def test_game_block_top_tasks_ordered_limited_and_use_title_rule(tmp_path):
+    tasks = []
+    submissions = []
+    users = []
+    uid = 1
+    # (task_id, title, text, число_сдач, число_одобренных) -- шестое задание отрезается
+    # лимитом top-5.
+    task_specs = [
+        (1, "Заданный заголовок", "t1", 3, 3),
+        (2, "", "первая строка второго задания", 2, 1),
+        (3, "", "t3", 2, 0),
+        (4, "", "t4", 1, 1),
+        (5, "", "t5", 1, 0),
+        (6, "", "t6", 1, 0),
+    ]
+    for task_id, title, text, submissions_cnt, approved_cnt in task_specs:
+        tasks.append(_game_task(id=task_id, title=title, text=text))
+        for i in range(submissions_cnt):
+            status = "approved" if i < approved_cnt else "pending"
+            submissions.append({
+                "task_id": task_id, "user_id": uid, "content_type": "photo", "content": "x",
+                "submitted_at": "2026-08-02 00:00:00", "status": status,
+            })
+            users.append({"telegram_id": uid, "status": "approved"})
+            uid += 1
+    path = _use_tmp_db(tmp_path)
+    _seed(settings={"dashboard_block_game": "on"}, users=users, game_tasks=tasks,
+          game_submissions=submissions)
+    with dash_db.read_conn(path) as conn:
+        stats = game_block(conn, Scope())
+    top = stats["top_tasks"]
+    assert len(top) == 5
+    assert [row["submissions"] for row in top] == [3, 2, 2, 1, 1]
+    assert top[0] == {"title": "Заданный заголовок", "submissions": 3, "approved": 3}
+    assert top[1]["title"] == "первая строка второго задания"
+    assert top[1]["approved"] == 1
+
+
+def test_game_block_pending_oldest_minutes_and_label(tmp_path):
+    path = _use_tmp_db(tmp_path)
+    now = datetime.now()
+    older = (now - timedelta(minutes=150)).strftime("%Y-%m-%d %H:%M:%S")
+    newer = (now - timedelta(minutes=10)).strftime("%Y-%m-%d %H:%M:%S")
+    _seed(
+        settings={"dashboard_block_game": "on"},
+        users=[
+            {"telegram_id": 1, "status": "approved"},
+            {"telegram_id": 2, "status": "approved"},
+        ],
+        game_tasks=[_game_task()],
+        game_submissions=[
+            {"task_id": 1, "user_id": 1, "content_type": "photo", "content": "a",
+             "submitted_at": older, "status": "pending"},
+            {"task_id": 1, "user_id": 2, "content_type": "photo", "content": "b",
+             "submitted_at": newer, "status": "pending"},
+        ],
+    )
+    with dash_db.read_conn(path) as conn:
+        stats = game_block(conn, Scope())
+    assert abs(stats["pending_oldest_minutes"] - 150.0) < 1.0
+    assert stats["pending_oldest_label"] == "2 ч 30 мин"
+
+
+def test_game_block_pending_oldest_none_when_queue_empty(tmp_path):
+    path = _use_tmp_db(tmp_path)
+    _seed(
+        settings={"dashboard_block_game": "on"},
+        users=[{"telegram_id": 1, "status": "approved"}],
+        game_tasks=[_game_task()],
+        game_submissions=[
+            {"task_id": 1, "user_id": 1, "content_type": "photo", "content": "a",
+             "submitted_at": "2026-08-02 00:00:00", "status": "approved"},
+        ],
+    )
+    with dash_db.read_conn(path) as conn:
+        stats = game_block(conn, Scope())
+    assert stats["pending_oldest_minutes"] is None
+    assert stats["pending_oldest_label"] == "—"
+
+
+def test_game_block_by_category_scoped(tmp_path):
+    """`by_category` (существующий ключ) сохраняется и тоже сужается скоупом."""
+    path = _use_tmp_db(tmp_path)
+    _seed(
+        settings={"dashboard_block_game": "on"},
+        cities=[("msk", "Москва", 1, 0), ("spb", "СПб", 1, 1)],
+        users=[
+            {"telegram_id": 1, "status": "approved", "event_city": "msk"},
+            {"telegram_id": 2, "status": "approved", "event_city": "spb"},
+        ],
+        game_tasks=[
+            {"id": 1, "text": "t1", "category": "photo", "coins": 10, "proof_type": "photo",
+             "deadline_at": "2026-09-01 00:00:00", "created_at": "2026-08-01 00:00:00"},
+            {"id": 2, "text": "t2", "category": "video", "coins": 20, "proof_type": "video",
+             "deadline_at": "2026-09-01 00:00:00", "created_at": "2026-08-01 00:00:00"},
+        ],
+        game_submissions=[
+            {"task_id": 1, "user_id": 1, "content_type": "photo", "content": "a",
+             "submitted_at": "2026-08-02 00:00:00", "status": "approved"},
+            {"task_id": 2, "user_id": 2, "content_type": "video", "content": "b",
+             "submitted_at": "2026-08-02 00:00:00", "status": "approved"},
+        ],
+    )
+    with dash_db.read_conn(path) as conn:
+        stats = game_block(conn, Scope(city="msk"))
+    assert stats["by_category"] == {"photo": 1}
+
+
+# ── _task_title / database.db.task_title (квик 260910-qgn): дрейф правила подписи задания ─
+
+def test_task_title_matches_bot_db_task_title():
+    cases = [
+        {"title": "", "text": ""},
+        {"title": "", "text": "короткий text"},
+        {"title": "", "text": "длинная первая строка ровно сорок с лишним символов текста\nвторая строка"},
+        {"title": "Задан заголовок", "text": "неважно"},
+    ]
+    for task in cases:
+        assert _task_title(task.get("title"), task.get("text")) == bot_db.task_title(task)
 
 
 # ── T-15-03-03 (D-17): нет ПД в исходнике модуля ─────────────────────────────────────────

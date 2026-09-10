@@ -243,6 +243,37 @@ def _avg_processing_minutes(conn, parts: list[str], params: tuple) -> float | No
     return round(value, 1) if value is not None else None
 
 
+def _avg_game_review_minutes(conn, parts: list[str], params: tuple) -> float | None:
+    """Среднее число минут от `game_submissions.submitted_at` до `reviewed_at` (решение
+    менеджера по сдаче задания), в скоупе `parts`/`params`, уже посчитанном `_scope_sql`
+    (вызывать `_scope_sql` здесь повторно не нужно, `kpi_row` считает его один раз).
+
+    Почему запрос устроен именно так:
+    - решение сдачи = непустой `reviewed_at`, а не `status IN ('approved', 'rejected')`:
+      статус может смениться и без штампа времени в старых строках, а без штампа считать
+      нечего — фильтр по `reviewed_at` и есть определение «решение принято»;
+    - скоуп берётся JOIN'ом на `users`, потому что у `game_submissions` нет ни `event_city`,
+      ни `season`; фрагменты `parts` не квалифицированы — эти колонки есть только у `users`,
+      а `telegram_id`/`user_id` квалифицированы явно;
+    - `julianday(s.reviewed_at) >= julianday(s.submitted_at)` отсекает отрицательные разницы
+      (перерешённая/перенесённая строка) — иначе они молча тянули бы среднее вниз, тот же
+      приём, что в `_avg_processing_minutes`;
+    - `AVG` по пустому множеству даёт NULL — это и есть «решений нет».
+    """
+    review_parts = parts + [
+        "s.reviewed_at IS NOT NULL",
+        "TRIM(s.reviewed_at) != ''",
+        "julianday(s.reviewed_at) >= julianday(s.submitted_at)",
+    ]
+    sql = (
+        "SELECT AVG((julianday(s.reviewed_at) - julianday(s.submitted_at)) * 1440.0) "
+        "FROM game_submissions s JOIN users ON users.telegram_id = s.user_id"
+        f"{_where(review_parts)}"
+    )
+    value = _scalar(conn, sql, params)
+    return round(value, 1) if value is not None else None
+
+
 def kpi_row(conn, scope: Scope) -> dict:
     parts, params = _scope_sql(conn, scope)
 
@@ -283,6 +314,11 @@ def kpi_row(conn, scope: Scope) -> dict:
     conversion = round(completed / starts * 100, 1) if starts else None
 
     processing = _avg_processing_minutes(conn, parts, params)
+    # `game_review` считается ВСЕГДА (один дешёвый запрос) — гашение плитки «Модерация
+    # заданий» в шаблоне по наличию `game` (не по отдельному чтению тумблера здесь):
+    # шаблон показывает плитку только когда показывается блок геймификации. Следующему
+    # читателю: не «чините» отсутствие проверки `dashboard_block_game` в этом запросе.
+    game_review = _avg_game_review_minutes(conn, parts, params)
 
     return {
         "total": total,
@@ -293,6 +329,8 @@ def kpi_row(conn, scope: Scope) -> dict:
         "tracking_since": tracking_since,
         "processing_avg_minutes": processing,
         "processing_avg_label": format_processing_time(processing),
+        "game_review_avg_minutes": game_review,
+        "game_review_avg_label": format_processing_time(game_review),
     }
 
 
@@ -775,36 +813,151 @@ def monthly_table(conn, scope: Scope) -> list[dict]:
 
 # ── гейма (D-12) ─────────────────────────────────────────────────────────────────────────
 
+_GAME_TOP_TASKS_LIMIT = 5
+
+
+def _task_title(title, text) -> str:
+    """Приватная копия правила `database.db.task_title` — тем модулем и владеет (импортировать
+    нельзя, он тянет aiosqlite, см. модульный докстринг файла). Дрейф между двумя копиями
+    ловит `test_task_title_matches_bot_db_task_title`, тот же приём, что у `_SETTING_DEFAULTS`
+    / `_STEP_LABELS`."""
+    title = str(title or "").strip()
+    if title:
+        return title
+    text = str(text or "")
+    first_line = text.splitlines()[0] if text else ""
+    if len(first_line) > 40:
+        return first_line[:40] + "…"
+    return first_line
+
+
+def _user_scoped_parts(parts: list[str]) -> list[str]:
+    """`_scope_sql` фрагменты не квалифицированы (`event_city`/`season`) — этого достаточно,
+    когда `users` — единственная таблица в запросе с такими колонками. Но `game_tasks` ТОЖЕ
+    хранит `event_city` (задания по городу) — любой запрос, джойнящий и `users`, и
+    `game_tasks`, должен квалифицировать имя, иначе SQLite падает на «ambiguous column
+    name». Фрагменты `_city_fragment`/`_season_sql` содержат `event_city`/`season` только как
+    имена колонок (не как часть другого идентификатора или строки), поэтому текстовая замена
+    безопасна."""
+    return [p.replace("event_city", "users.event_city").replace("season", "users.season") for p in parts]
+
+
 def game_block(conn, scope: Scope) -> dict | None:
-    """`None`, если тумблер `dashboard_block_game` выключен ИЛИ в `game_submissions` нет ни
-    одной строки (D-12: «включён» = тумблер + наличие данных — глобального флага модуля
-    геймификации в реестре нет). Числа — по образцу `database.db.get_game_stats` (не
-    переписаны «на глазок», сверены с ним тестом на одной фикстуре). Без сужения по
-    городу/сезону: `game_submissions` не хранит ни то, ни другое, ровно как `get_game_stats`
-    в боте."""
+    """`None`, если тумблер `dashboard_block_game` выключен ИЛИ в скоупе страницы (город +
+    сезон) нет ни одной сдачи (D-12: «включён» = тумблер + наличие данных В СКОУПЕ).
+
+    ВАЖНОЕ ИЗМЕНЕНИЕ СЕМАНТИКИ (квик 260910-qgn): раньше блок считался ПО ВСЕЙ базе
+    (зеркалило `database.db.get_game_stats`), теперь — по скоупу страницы, через
+    `JOIN users ON users.telegram_id = s.user_id` + `parts` из `_scope_sql`. Причина: при
+    включённом модуле городов менеджер, привязанный к своему городу, видел в этом блоке чужие
+    города — остальной дашборд так не делает («чужой город не виден вообще»), и по
+    городу/сезону блок расходился со всеми соседними числами на той же странице. Каждый
+    играющий — одобренный делегат, у него всегда есть строка в `users`, поэтому JOIN никого
+    не теряет; сезон `NULL` попадает в текущий сезон обычной веткой `_season_sql`.
+    """
     flags = dashboard_flags(conn)
     if flags.get("dashboard_block_game") != "on":
         return None
 
-    participants = _scalar(conn, "SELECT COUNT(DISTINCT user_id) FROM game_submissions") or 0
+    parts, params = _scope_sql(conn, scope)
+
+    participants_sql = (
+        "SELECT COUNT(DISTINCT s.user_id) FROM game_submissions s "
+        "JOIN users ON users.telegram_id = s.user_id"
+        f"{_where(parts)}"
+    )
+    participants = _scalar(conn, participants_sql, params) or 0
     if participants == 0:
         return None
 
     stats = {"participants": participants, "pending": 0, "approved": 0, "rejected": 0}
-    rows = conn.execute(
-        "SELECT status, COUNT(*) AS cnt FROM game_submissions GROUP BY status"
-    ).fetchall()
-    for row in rows:
+    status_sql = (
+        "SELECT s.status AS status, COUNT(*) AS cnt FROM game_submissions s "
+        "JOIN users ON users.telegram_id = s.user_id"
+        f"{_where(parts)} GROUP BY s.status"
+    )
+    for row in conn.execute(status_sql, params).fetchall():
         if row["status"] in stats:
             stats[row["status"]] = row["cnt"]
+    submissions_total = stats["pending"] + stats["approved"] + stats["rejected"]
+    stats["submissions_total"] = submissions_total
+    stats["approved_share"] = (
+        round(stats["approved"] / submissions_total * 100, 1) if submissions_total else None
+    )
+
+    approved_delegates = _scalar(
+        conn, f"SELECT COUNT(*) FROM users{_where(parts + ['status = ?'])}",
+        params + ("approved",),
+    ) or 0
+    stats["participants_share"] = (
+        round(participants / approved_delegates * 100, 1) if approved_delegates else None
+    )
+
+    # `c.delta > 0` — вопрос менеджера «сколько НАЧИСЛЕНО», а не «каков баланс»: журнал
+    # append-only, списания в магазине не должны уменьшать начисленное. `coins_legacy`
+    # отдельным ключом НЕ заводится — `coins_total` не равен сумме `coins_task + coins_manual`
+    # ровно на легаси-строки с `source IS NULL` (записи из прошлого/системные) — это ожидаемое
+    # расхождение, а не баг.
+    coins_sql = (
+        "SELECT SUM(c.delta), "
+        "SUM(CASE WHEN c.source = 'task' THEN c.delta ELSE 0 END), "
+        "SUM(CASE WHEN c.source = 'manual' THEN c.delta ELSE 0 END) "
+        "FROM coins c JOIN users ON users.telegram_id = c.user_id"
+        f"{_where(parts + ['c.delta > 0'])}"
+    )
+    coins_row = conn.execute(coins_sql, params).fetchone()
+    coins_total = coins_row[0] or 0
+    stats["coins_total"] = coins_total
+    stats["coins_task"] = coins_row[1] or 0
+    stats["coins_manual"] = coins_row[2] or 0
+    stats["coins_per_participant"] = round(coins_total / participants, 1)
+
+    top_sql = (
+        "SELECT t.id AS id, t.title AS title, t.text AS text, COUNT(*) AS submissions, "
+        "SUM(CASE WHEN s.status = 'approved' THEN 1 ELSE 0 END) AS approved "
+        "FROM game_submissions s JOIN users ON users.telegram_id = s.user_id "
+        "JOIN game_tasks t ON t.id = s.task_id"
+        f"{_where(_user_scoped_parts(parts))} GROUP BY t.id ORDER BY submissions DESC, t.id ASC LIMIT ?"
+    )
+    top_rows = conn.execute(top_sql, params + (_GAME_TOP_TASKS_LIMIT,)).fetchall()
+    stats["top_tasks"] = [
+        {
+            "title": _task_title(row["title"], row["text"]),
+            "submissions": row["submissions"],
+            "approved": row["approved"],
+        }
+        for row in top_rows
+    ]
+
+    pending_oldest_raw = _scalar(
+        conn,
+        "SELECT MIN(s.submitted_at) FROM game_submissions s "
+        "JOIN users ON users.telegram_id = s.user_id"
+        f"{_where(parts + ['s.status = ?'])}",
+        params + ("pending",),
+    )
+    pending_oldest_minutes = None
+    if pending_oldest_raw:
+        try:
+            submitted = datetime.strptime(pending_oldest_raw, "%Y-%m-%d %H:%M:%S")
+        except ValueError:
+            # Битая дата в submitted_at -- не роняем страницу, просто нечем посчитать
+            # возраст (тот же fail-soft, что _month_label/_fill_missing_days).
+            submitted = None
+        if submitted is not None:
+            pending_oldest_minutes = round((datetime.now() - submitted).total_seconds() / 60.0, 1)
+    stats["pending_oldest_minutes"] = pending_oldest_minutes
+    stats["pending_oldest_label"] = format_processing_time(pending_oldest_minutes)
 
     by_category: dict[str, int] = {}
-    rows = conn.execute(
+    category_sql = (
         "SELECT t.category AS category, COUNT(*) AS cnt FROM game_submissions s "
-        "JOIN game_tasks t ON t.id = s.task_id "
-        "WHERE s.status = 'approved' GROUP BY t.category"
-    ).fetchall()
-    for row in rows:
+        "JOIN users ON users.telegram_id = s.user_id "
+        "JOIN game_tasks t ON t.id = s.task_id"
+        f"{_where(_user_scoped_parts(parts) + ['s.status = ?'])} GROUP BY t.category"
+    )
+    for row in conn.execute(category_sql, params + ("approved",)).fetchall():
         by_category[row["category"]] = row["cnt"]
     stats["by_category"] = by_category
+
     return stats
