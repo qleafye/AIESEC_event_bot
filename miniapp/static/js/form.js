@@ -320,7 +320,10 @@ function fileControl(h, spec, value, onChange) {
 
   function paint(v) {
     const local = Boolean(v && v.name);
-    const stored = !local && Boolean((v != null && v !== "") || spec.preview_url);
+    // УАТ 10-11.09 (пункт 4): резюме файлом лежит не в основной колонке (`v` для него
+    // пуст) — «уже сохранено» обязано считаться и по spec.display (подпись файла из
+    // непустой колонки-компаньона), иначе загруженное резюме показывалось как «не заполнено».
+    const stored = !local && Boolean((v != null && v !== "") || spec.preview_url || spec.display);
     status.textContent = local ? v.name : (stored ? (spec.display || "") : "");
     const src = local ? localPreviewUrl(v) : (stored ? spec.preview_url : null);
     if (src) {

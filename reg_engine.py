@@ -1197,6 +1197,12 @@ async def step_spec(step_key: str, participant_type: str | None = None,
         "required": step_key not in _SKIP_ALLOWED_STEPS,
         "max_len": _max_len_for(step_key, ui_type),
     }
+    # УАТ 10-11.09 (квик 260911-2kb, пункт 4): набор колонок-компаньонов шага — та же функция,
+    # что уже синхронизирует черновик (`columns_for_step`, квик 260910-wb6), второй копии
+    # правила здесь не заводим. Для резюме — три колонки разом, у всех остальных шагов —
+    # список из одной `spec["column"]` (columns_for_step на неизвестном/legacy ключе отдаёт
+    # пустой список — `or [spec["column"]]` не даёт шагу остаться вовсе без набора).
+    spec["columns"] = columns_for_step(step_key) or [spec["column"]]
     if step_key == "resume":
         spec["resume_mode"] = resume_mode_value
         if resume_mode_value == "fork":
@@ -1260,6 +1266,13 @@ def _display_value(value) -> str:
     return str(value)
 
 
+# УАТ 10-11.09 (квик 260911-2kb, пункт 4): колонки, у которых значение — не для показа
+# человеку (сырой Telegram file_id). Тот же принцип, что уже применяет `has_prior_resume`
+# (Pitfall 3): наличие проверяем, само значение наружу не отдаём. Сегодня одна колонка —
+# `resume_file_id`; `resume_file_name`/`resume_text` — человекочитаемые, в набор не входят.
+_OPAQUE_COLUMNS = {"resume_file_id"}
+
+
 async def form_spec(answers: dict, participant_type: str | None = None,
                      event_city: str | None = None, prior: dict | None = None,
                      pending_consent_keys: list[str] | None = None) -> dict:
@@ -1298,7 +1311,12 @@ async def form_spec(answers: dict, participant_type: str | None = None,
     for step_key in enabled:
         spec = await step_spec(step_key, participant_type, event_city)
         column = spec["column"]
-        has_answer = column in answers and answers.get(column) not in (None, "", "-")
+        # УАТ 10-11.09 (пункт 4): «отвечен» решает НАБОР колонок шага, не одна главная —
+        # резюме файлом уходит в resume_file_id/resume_file_name, а не в spec["column"]
+        # (resume_text), поэтому проверка одной колонки видела «не заполнено» на реально
+        # загруженном файле.
+        spec["values"] = {col: answers.get(col) for col in spec["columns"]}
+        has_answer = any(v not in (None, "", "-") for v in spec["values"].values())
         prior_value = prior.get(step_key)
         if prior_value not in (None, "", "-"):
             spec["prior"] = {"value": prior_value, "display": _display_value(prior_value)}
@@ -1308,6 +1326,22 @@ async def form_spec(answers: dict, participant_type: str | None = None,
             spec["value"] = answers.get(column)
             spec["value_source"] = "answer"
             done += 1
+            # Пункт 4: основная колонка пуста (файл резюме), а набор отвечен — подпись
+            # берём с первой непустой НЕ-опасной колонки набора (для резюме это
+            # resume_file_name). Опасную (`_OPAQUE_COLUMNS`, сырой file_id) и пустые
+            # колонки пропускаем; если показываемой колонки нет вовсе (легаси-строка с
+            # одним file_id) — display не выставляем, шаг всё равно считается отвеченным.
+            if spec["value"] in (None, "", "-"):
+                display_col = next(
+                    (
+                        col for col in spec["columns"]
+                        if col not in _OPAQUE_COLUMNS
+                        and spec["values"].get(col) not in (None, "", "-")
+                    ),
+                    None,
+                )
+                if display_col is not None:
+                    spec["display"] = _display_value(spec["values"][display_col])
         elif spec["prior"] is not None:
             spec["value"] = prior_value
             spec["value_source"] = "prior"
@@ -1355,8 +1389,24 @@ def answers_from_user_row(user_row: dict | None) -> dict:
     ключи `prior_answers_for` просто перекладываются в свою колонку. Нужна веб-обзору правки
     уже поданной анкеты (`miniapp/routers/form.py::_load_context`, D-26) для делегата без
     строки `reg_drafts` — тем же способом, каким чат-recall уже читает `users` напрямую
-    (UAT 21-12 находка 4: обзор показывал «Не заполнено» вместо реальных значений)."""
-    return {STEP_TO_COLUMN[step]: value for step, value in prior_answers_for(user_row).items()}
+    (UAT 21-12 находка 4: обзор показывал «Не заполнено» вместо реальных значений).
+
+    УАТ 10-11.09 (квик 260911-2kb, пункт 4): `prior_answers_for` резюме исключает намеренно
+    (Pitfall 3) — здесь дополняем результат колонками шага резюме (`columns_for_step("resume")`)
+    НАПРЯМУЮ из `user_row`, только непустые значения. Иначе у одобренного делегата БЕЗ строки
+    `reg_drafts` (обзор правки читает эту функцию, `miniapp/routers/form.py::_load_context`)
+    резюме-файл не был виден в обзоре даже с исправленной спекой шага (пункт 4 выше) — снимка,
+    из которого спека берёт `values`, просто не было. `prior_answers_for` не трогается — чат-recall
+    остаётся байт-в-байт. Ловушка: `resume_url` (Nextcloud) НЕ входит в `columns_for_step`/
+    `answer_columns()` — в снимок его не класть, иначе узкий UPDATE финала поймает
+    `no such column`."""
+    out = {STEP_TO_COLUMN[step]: value for step, value in prior_answers_for(user_row).items()}
+    if user_row:
+        for col in columns_for_step("resume"):
+            value = user_row.get(col)
+            if value not in (None, "", "-"):
+                out[col] = value
+    return out
 
 
 def has_prior_resume(user_row: dict | None) -> bool:
