@@ -6,6 +6,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import time
 from datetime import datetime, timedelta
 
 import httpx
@@ -14,6 +15,7 @@ import pytest
 from database import db as bot_db
 
 from miniapp import telegram_api
+from miniapp.file_tokens import file_url, mint_file_token, verify_file_token
 
 from tests.test_miniapp_auth import TOKEN
 from tests.test_miniapp_routes import (
@@ -110,6 +112,46 @@ def _assert_no_leak(resp):
     assert FILE_PATH not in resp.text
     for k, v in resp.headers.items():
         assert TOKEN not in v and FILE_PATH not in v, k
+
+
+# ── quick 260910-w3j (IMG-01..06): токен доступа к файлам ────────────────────────────────
+
+def test_mint_and_verify_file_token_round_trip():
+    token = mint_file_token(TOKEN, DELEGATE_ID)
+    assert verify_file_token(token, TOKEN) == DELEGATE_ID
+
+
+@pytest.mark.parametrize("bad", ["", "garbage", "1.2", "1.2.3.4", "not.an.int"])
+def test_verify_file_token_rejects_garbage(bad):
+    assert verify_file_token(bad, TOKEN) is None
+
+
+def test_verify_file_token_rejects_tampered_signature():
+    token = mint_file_token(TOKEN, DELEGATE_ID)
+    tampered = token[:-1] + ("0" if token[-1] != "0" else "1")
+    assert verify_file_token(tampered, TOKEN) is None
+
+
+def test_verify_file_token_rejects_wrong_bot_token():
+    token = mint_file_token(TOKEN, DELEGATE_ID)
+    assert verify_file_token(token, "999999:OTHER-token") is None
+
+
+def test_verify_file_token_rejects_expired():
+    now = time.time()
+    token = mint_file_token(TOKEN, DELEGATE_ID, now=now - 100000)
+    assert verify_file_token(token, TOKEN, now=now) is None
+
+
+def test_verify_file_token_accepts_fresh_at_edge():
+    now = time.time()
+    token = mint_file_token(TOKEN, DELEGATE_ID, now=now)
+    assert verify_file_token(token, TOKEN, now=now + 1000) == DELEGATE_ID
+
+
+def test_file_url_appends_token_or_omits_it():
+    assert file_url("AgAC123") == "/app/api/file/AgAC123"
+    assert file_url("AgAC123", "tok") == "/app/api/file/AgAC123?t=tok"
 
 
 # ── валидация и доступ ───────────────────────────────────────────────────────────────────
@@ -281,3 +323,39 @@ def test_unavailable_upstream_is_404_without_token_in_logs(client, files_api, mo
     for record in caplog.records:
         msg = record.getMessage()
         assert TOKEN not in msg and FILE_PATH not in msg and "api.telegram.org" not in msg
+
+
+# ── quick 260910-w3j: слой A (публичные ассеты) и слой B (токен) без заголовков ──────────
+
+def test_logo_theme_asset_and_consent_pdf_open_with_zero_headers(client, files_api):
+    """Ровно то, что делает настоящий тег <img> — GET совсем без headers=."""
+    LOGO_ID = "AgACAgIAAxkBAAIlogoNoHead0001"
+    STICKER_ID = "AgACAgIAAxkBAAIstickerNoHead1"
+    PDF_ID = "BQACAgIAAxkBAAIconsentNoHead1"
+    _set("miniapp_logo", LOGO_ID)
+    _set("miniapp_sticker_empty", STICKER_ID)
+    _set("consent_list", "Согласие | personal")
+    _set("consent_pdf_personal", PDF_ID)
+
+    assert client.get(f"/app/api/file/{LOGO_ID}").status_code == 200
+    assert client.get(f"/app/api/file/{STICKER_ID}").status_code == 200
+    assert client.get(f"/app/api/file/{PDF_ID}").status_code == 200
+
+
+def test_avatar_without_headers_and_without_token_is_401(client, files_api):
+    _set_avatar(DELEGATE_ID, AVATAR_ID)
+    resp = client.get(f"/app/api/file/{AVATAR_ID}")
+    assert resp.status_code == 401
+    assert resp.json()["reason"] == "no_auth"
+
+
+def test_avatar_with_own_token_is_200_with_others_token_is_403(client, files_api):
+    _set_avatar(DELEGATE_ID, AVATAR_ID)
+    own_token = mint_file_token(TOKEN, DELEGATE_ID)
+    resp = client.get(f"/app/api/file/{AVATAR_ID}?t={own_token}")
+    assert resp.status_code == 200
+    _assert_no_leak(resp)
+
+    other_token = mint_file_token(TOKEN, OTHER_ID)
+    resp = client.get(f"/app/api/file/{AVATAR_ID}?t={other_token}")
+    assert resp.status_code == 403
