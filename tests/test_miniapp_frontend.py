@@ -1971,3 +1971,28 @@ def test_admin_faq_route_and_nav_registered_with_moderate_reg_cap():
     nav_block = text[text.index("export const NAV ="):text.index("export const NAV_ICONS")]
     assert '"#/admin-faq"' in nav_block and 'cap: "moderate_reg"' in nav_block and 'group: "apps"' in nav_block
 
+
+# ── quick 260910-w3j (задача 3): сторож на возврат ручной сборки /app/api/file/... ─────────
+# Главная причина трёх неудачных починок картинок — ссылки собирались в десяти местах руками.
+# `fileUrl` в ui.js — ЕДИНСТВЕННЫЙ сборщик; любое другое появление паттерна (в т.ч. внутри
+# ui.js вне тела самого хелпера) — регресс.
+
+_MANUAL_FILE_URL_MARKER = "/app/api/file/${"
+_FILE_URL_HELPER_LINE = "const base = `/app/api/file/${encodeURIComponent(fileId)}`;"
+
+
+def test_no_manual_file_url_assembly_outside_fileUrl_helper():
+    ui_js = MINIAPP_STATIC / "js" / "ui.js"
+    paths = [ui_js, *sorted(SCREENS_DIR.glob("*.js"))]
+    for path in paths:
+        for lineno, raw in enumerate(path.read_text(encoding="utf-8").splitlines(), start=1):
+            stripped = raw.strip()
+            if stripped.startswith("//") or stripped.startswith("*"):
+                continue
+            if _MANUAL_FILE_URL_MARKER not in raw:
+                continue
+            assert path == ui_js and stripped == _FILE_URL_HELPER_LINE, (
+                f"{path.name}:{lineno} строит ссылку на файл вручную — используйте "
+                f"fileUrl(...) из ui.js: {raw.strip()!r}"
+            )
+

@@ -359,3 +359,65 @@ def test_avatar_with_own_token_is_200_with_others_token_is_403(client, files_api
     other_token = mint_file_token(TOKEN, OTHER_ID)
     resp = client.get(f"/app/api/file/{AVATAR_ID}?t={other_token}")
     assert resp.status_code == 403
+
+
+# ── «как настоящий тег img» (задача 3): НИ заголовка, НИ куки — ровно так браузер запрашивает
+# картинку. Главная причина трёх неудачных починок — все прежние тесты подставляли заголовок
+# руками, чего живой <img> не делает; этот блок закрывает именно этот пробел. ─────────────
+
+def test_no_headers_public_assets_ok_and_no_leak(client, files_api):
+    LOGO_ID = "AgACAgIAAxkBAAIlogoImgTag00001"
+    _set("miniapp_logo", LOGO_ID)
+    resp = client.get(f"/app/api/file/{LOGO_ID}")
+    assert resp.status_code == 200
+    _assert_no_leak(resp)
+
+
+def test_no_headers_submission_owner_needs_token(client, files_api):
+    """Сдача владельца — публичной веткой не открыта (это НЕ layer A): без токена 401,
+    с собственным токеном 200 (ровно так `screens/review.js`/`card.js` грузят фото сдачи)."""
+    resp = client.get(f"/app/api/file/{FILE_ID}")
+    assert resp.status_code == 401
+
+    own_token = mint_file_token(TOKEN, DELEGATE_ID)
+    resp = client.get(f"/app/api/file/{FILE_ID}?t={own_token}")
+    assert resp.status_code == 200
+    _assert_no_leak(resp)
+
+
+def test_no_headers_tampered_token_is_401(client, files_api):
+    _set_avatar(DELEGATE_ID, AVATAR_ID)
+    token = mint_file_token(TOKEN, DELEGATE_ID)
+    tampered = token[:-1] + ("0" if token[-1] != "0" else "1")
+    resp = client.get(f"/app/api/file/{AVATAR_ID}?t={tampered}")
+    assert resp.status_code == 401
+    assert resp.json()["reason"] == "no_auth"
+
+
+def test_no_headers_expired_token_is_401(client, files_api):
+    _set_avatar(DELEGATE_ID, AVATAR_ID)
+    expired = mint_file_token(TOKEN, DELEGATE_ID, now=time.time() - 100000)
+    resp = client.get(f"/app/api/file/{AVATAR_ID}?t={expired}")
+    assert resp.status_code == 401
+
+
+def test_no_headers_unknown_file_id_with_valid_token_is_403(client, files_api):
+    """Токен подтверждает ПРИНЦИПАЛА, не право на конкретный file_id — незнакомый файл
+    по-прежнему закрыт allow-list'ом `can_read_file`."""
+    token = mint_file_token(TOKEN, DELEGATE_ID)
+    resp = client.get(f"/app/api/file/AgACAgIAAxkBAAIunknownFileId1?t={token}")
+    assert resp.status_code == 403
+
+
+def test_no_headers_revoked_right_closes_same_token_immediately(client, files_api):
+    """D-09/T-19-05: право пересчитывается на КАЖДЫЙ запрос — снятие moderate_reg у менеджера
+    закрывает файл на следующем же запросе ТЕМ ЖЕ токеном, без ожидания истечения TTL."""
+    _set_avatar(DELEGATE_ID, AVATAR_ID)
+    token = mint_file_token(TOKEN, BOUND_MANAGER_ID)
+    resp = client.get(f"/app/api/file/{AVATAR_ID}?t={token}")
+    assert resp.status_code == 200
+
+    _run(bot_db.remove_staff(BOUND_MANAGER_ID, "reg_manager"))
+
+    resp = client.get(f"/app/api/file/{AVATAR_ID}?t={token}")
+    assert resp.status_code == 403
