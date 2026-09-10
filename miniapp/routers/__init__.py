@@ -191,9 +191,18 @@
   незарегистрированный/pending/rejected с черновиком kind='new' обязан пройти) + section "form":
   GET  /app/api/reg/draft          -> {exists, kind: new|edit, step, version,
                                        pre[consent:key|city_fork|party_fork], steps[{key, column,
-                                       type, label, prompt, options, other_allowed, skip_allowed,
-                                       required, max_len, prior{value,display}|null, value,
-                                       value_source: answer|prior|null}], progress{done,total},
+                                       columns[] (набор колонок-компаньонов шага, quick
+                                       260911-2kb — для resume три колонки сразу, у остальных
+                                       шагов одна), values{column:value} (снимок ВСЕХ колонок
+                                       набора), type, label, prompt, options, other_allowed,
+                                       skip_allowed (bool), skip_label|null (подпись кнопки
+                                       «Пропустить» — теперь публикуется у ЛЮБОГО необязательного
+                                       шага, не только у mini_portfolio), required, max_len,
+                                       prior{value,display}|null, value, value_source:
+                                       answer|prior|null, display|null (человекочитаемая подпись
+                                       уже сохранённого значения, когда основная колонка пуста —
+                                       например имя файла резюме; сырой file_id сюда не попадает,
+                                       quick 260911-2kb)}], progress{done,total},
                                        closed, closed_text|null, prior_badge_text|null}
                                        resume-шаг дополнительно несёт has_prior_resume (bool,
                                        без самого file_id/URL — Pitfall 3)

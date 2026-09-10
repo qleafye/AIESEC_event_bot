@@ -13,6 +13,7 @@ pytest-asyncio в этом окружении не установлен — ка
 from __future__ import annotations
 
 import asyncio
+import json
 import re
 
 import reg_engine
@@ -25,7 +26,7 @@ from tests.test_miniapp_frontend import (
     _STRING_LITERAL,
     _js_without_comments,
 )
-from tests.test_miniapp_form import _seed_draft
+from tests.test_miniapp_form import _fill, _seed_draft
 from tests.test_miniapp_routes import (
     DELEGATE_ID,
     _cfg,
@@ -177,3 +178,121 @@ def test_skip_cta_text_registered_in_schema_and_synonyms():
     assert entry["group"] == "reg"
     assert entry["default"] == "Пропустить"
     assert len(settings_synonyms.SETTINGS_SYNONYMS["reg_form_skip_cta_text"]) >= 2
+
+
+# ══════════════════════════════════════════════════════════════════════════════════════════
+# Пункт 4: шаг заполнен по НАБОРУ своих колонок, а не по одной
+# ══════════════════════════════════════════════════════════════════════════════════════════
+
+def test_step_spec_columns_match_columns_for_step_for_every_step(tmp_path):
+    _ready(tmp_path)
+
+    async def go():
+        return {
+            step_key: (await reg_engine.step_spec(step_key))["columns"]
+            for step_key, *_rest in reg_engine.REG_FLOW
+        }
+
+    columns_by_step = _run(go())
+    for step_key, columns in columns_by_step.items():
+        expected = reg_engine.columns_for_step(step_key) or [reg_engine.STEP_TO_COLUMN.get(step_key, step_key)]
+        assert columns == expected, step_key
+    assert columns_by_step["resume"] == list(reg_engine._EXTRA_ANSWER_COLUMNS)
+    assert len(columns_by_step["resume"]) == 3
+    assert columns_by_step["specialty"] == ["specialty"]
+    assert columns_by_step["vk"] == ["vk_username"]
+
+
+def test_form_spec_resume_file_answered_shows_filename_not_raw_id(tmp_path):
+    _ready(tmp_path)
+    _set("reg_q_resume", "on")
+
+    async def go():
+        return await reg_engine.form_spec(
+            {"resume_file_id": "RAWFILEID_SENTINEL_1", "resume_file_name": "resume.pdf"},
+            participant_type="full",
+        )
+
+    spec_form = _run(go())
+    resume_spec = next(s for s in spec_form["steps"] if s["key"] == "resume")
+    assert resume_spec["value_source"] == "answer"
+    assert resume_spec["display"] == "resume.pdf"
+    assert resume_spec["value"] is None
+    assert set(resume_spec["values"].keys()) == set(reg_engine.columns_for_step("resume"))
+    assert spec_form["progress"]["done"] >= 1
+
+
+def test_form_spec_legacy_resume_file_id_only_hides_raw_id_everywhere(tmp_path):
+    """Легаси-строка: только resume_file_id, без имени файла — шаг отвечен, но показать
+    нечего (нет человекочитаемой колонки-компаньона), сырой id не уходит НИ В ОДНОМ поле
+    спеки, кроме самого `values` (там он законно лежит под своим именем колонки)."""
+    _ready(tmp_path)
+    _set("reg_q_resume", "on")
+    sentinel = "RAWFILEID_SENTINEL_LEGACY_2"
+
+    async def go():
+        return await reg_engine.form_spec({"resume_file_id": sentinel}, participant_type="full")
+
+    spec_form = _run(go())
+    resume_spec = next(s for s in spec_form["steps"] if s["key"] == "resume")
+    assert resume_spec["value_source"] == "answer"
+    spec_without_values = {k: v for k, v in resume_spec.items() if k != "values"}
+    assert sentinel not in json.dumps(spec_without_values)
+    assert resume_spec.get("display") in (None, "")
+
+
+def test_form_spec_resume_text_unchanged(tmp_path):
+    _ready(tmp_path)
+    _set("reg_q_resume", "on")
+
+    async def go():
+        return await reg_engine.form_spec({"resume_text": "Мой опыт в продажах"}, participant_type="full")
+
+    spec_form = _run(go())
+    resume_spec = next(s for s in spec_form["steps"] if s["key"] == "resume")
+    assert resume_spec["value"] == "Мой опыт в продажах"
+    assert resume_spec.get("display") in (None, "")
+
+
+def test_answers_from_user_row_carries_resume_columns_prior_does_not():
+    user_row = {
+        "full_name": "Тест Тестов", "resume_file_id": "RAWFILEID_SENTINEL_3",
+        "resume_file_name": "cv.pdf", "resume_text": None,
+    }
+    out = reg_engine.answers_from_user_row(user_row)
+    assert out.get("resume_file_id") == "RAWFILEID_SENTINEL_3"
+    assert out.get("resume_file_name") == "cv.pdf"
+    prior = reg_engine.prior_answers_for(user_row)
+    assert "resume" not in prior
+    # Узкий UPDATE финала обязан знать каждую колонку снимка — иначе `no such column`.
+    for col in out:
+        assert col in reg_engine.answer_columns(), col
+
+
+def test_http_get_draft_shows_resume_answered_for_edit_without_draft_row(tmp_path):
+    """Одобренный делегат с резюме-файлом в `users` и БЕЗ строки `reg_drafts` — раньше шаг
+    резюме читался «не заполнено» (`answers_from_user_row` резюме не знал вовсе). Теперь
+    `value_source` становится "answer"; человекочитаемого имени файла у такого делегата в
+    базе физически нет (`resume_file_name` не персистится в `users`, см. `DRAFT_ONLY_COLUMNS`,
+    только `reg_drafts`/финал) — раскрытие сырого id при этом всё равно исключено."""
+    db_path = _ready(tmp_path)
+    _set("reg_q_resume", "on")
+    sentinel = "RAWFILEID_SENTINEL_HTTP_4"
+    _fill(DELEGATE_ID, resume_file_id=sentinel, participant_type="full")
+    client = _client(_cfg(db_path))
+    resp = client.get("/app/api/reg/draft", headers=_hdr(DELEGATE_ID))
+    assert resp.status_code == 200, resp.text
+    body = resp.json()
+    assert body["exists"] is False
+    resume_spec = next(s for s in body["steps"] if s["key"] == "resume")
+    assert resume_spec["value_source"] == "answer"
+    spec_without_values = {k: v for k, v in resume_spec.items() if k != "values"}
+    assert sentinel not in json.dumps(spec_without_values)
+
+
+def test_form_screen_uses_values_and_columns_without_resume_column_literals():
+    text = _js_without_comments(FORM_SCREEN_JS)
+    assert "s.values" in text
+    assert "spec.columns" in text
+    for literal in ('"resume_file_id"', '"resume_file_name"', '"resume_text"'):
+        assert literal not in text, literal
