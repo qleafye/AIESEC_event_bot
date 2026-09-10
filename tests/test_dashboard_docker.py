@@ -71,6 +71,30 @@ def test_dashboard_dockerfile_copies_web_theme_module():
     assert any(ln.startswith("COPY --chown=appuser:appuser web_theme.py /app/web_theme.py") for ln in body)
 
 
+def test_dashboard_dockerfile_copies_every_root_module_the_package_imports():
+    """Каждый корневой модуль репозитория (`<name>.py` в корне), который импортирует пакет
+    dashboard/, должен быть скопирован в образ явной строкой COPY. Прод падал дважды на одном и
+    том же: web_theme (31.08) и tg_media (10.09) — импорт добавили, Dockerfile не тронули, pytest
+    образ не собирает. Сторож ловит это статически, без docker."""
+    import re
+    root = ROOT
+    root_modules = {p.stem for p in root.glob("*.py")}
+    imported = set()
+    for src in (root / "dashboard").glob("*.py"):
+        for m in re.finditer(r"^\s*(?:from\s+([A-Za-z_][\w]*)\s+import|import\s+([A-Za-z_][\w]*))",
+                             src.read_text(encoding="utf-8"), re.M):
+            name = m.group(1) or m.group(2)
+            if name in root_modules:
+                imported.add(name)
+    assert imported, "ожидались корневые импорты (web_theme, tg_media) — регэксп сломан?"
+    body = _body(DOCKERFILE)
+    missing = [
+        name for name in sorted(imported)
+        if not any(ln.startswith(f"COPY --chown=appuser:appuser {name}.py /app/{name}.py") for ln in body)
+    ]
+    assert not missing, f"в dashboard/Dockerfile нет COPY для корневых модулей: {missing}"
+
+
 def test_dashboard_dockerfile_copies_only_pattern_assets_from_miniapp():
     """Фаза 26-01 (RT-01): дашборд раздаёт растры орнамента с себя (COPY из `miniapp/`), но
     в образ не должен попасть НИ ОДИН `.py` Mini App — второго кода приложения в образе нет."""

@@ -21,6 +21,9 @@ RUN groupadd --gid 1000 appuser \
 COPY --chown=appuser:appuser dashboard/ /app/dashboard/
 # Корневой модуль темы веб-слоя (19.1): чистый Python без зависимостей, общий с ботом и Mini App.
 COPY --chown=appuser:appuser web_theme.py /app/web_theme.py
+# Корневой резолвер типов медиа (08.09): чистая stdlib, общий с ботом — без него образ падает
+# на старте `ModuleNotFoundError: tg_media` (прод 10.09). Сторож: tests/test_dashboard_docker.py.
+COPY --chown=appuser:appuser tg_media.py /app/tg_media.py
 # Фаза 26-01 (RT-01): в образ едут ТОЛЬКО растры орнамента, ни одного `.py` Mini App —
 # раскладка каталогов в образе совпадает с репозиторием, поэтому `dashboard.main.PATTERN_DIR`
 # (`BASE_DIR.parent / "miniapp" / "static" / "pattern"`) резолвится одинаково и локально, и
