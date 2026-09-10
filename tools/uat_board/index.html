@@ -48,6 +48,15 @@ h1{font:italic 800 clamp(28px,7vw,40px)/1.04 var(--font-h);letter-spacing:-.02em
 .warn p{margin:0;font-size:14px}
 .warn b{color:var(--bad)}
 
+.tip{margin:12px 0 0;padding:12px 14px;background:var(--surface);border:1px solid var(--line);border-radius:12px}
+.tip h2{font:italic 800 15px/1.2 var(--font-h);margin:0 0 6px;color:var(--accent-text)}
+.tip p{margin:0;font-size:14px;color:var(--muted)}
+.tip p + p{margin-top:6px}
+.tip b{color:var(--ink)}
+.tip code{font:700 13.5px/1.4 ui-monospace,SFMono-Regular,Menlo,monospace;color:var(--ink);
+     background:var(--sunken);border-radius:5px;padding:1px 5px}
+.tip .small{font-size:13px;color:var(--faint)}
+
 .tabs{position:sticky;top:0;z-index:5;background:var(--bg);padding:10px 0 8px;border-bottom:1px solid var(--line)}
 .tabs .row{display:grid;grid-template-columns:repeat(3,1fr);gap:6px;background:var(--surface);border:1px solid var(--line);
      border-radius:12px;padding:5px}
@@ -169,6 +178,13 @@ footer.end{margin-top:40px;padding-top:16px;border-top:1px solid var(--line);col
   </div>
   <div class="warn">
     <p><b>Боевого бота @YouLead2026_bot не трогаем.</b> Всё только в тестовом @YouLead_test_bot. Рассылки тем более только там: у тестового бота своя маленькая база, до настоящих делегатов ничего не дойдёт.</p>
+  </div>
+
+  <div class="tip">
+    <h2>Как сбросить аккаунт и пройти анкету заново</h2>
+    <p>Половина пунктов ниже требует человека, который ещё ни разу не писал тестовому боту. Если такого аккаунта нет или анкету уже начали, админ стирает делегата из базы и тот снова становится новым.</p>
+    <p>Админ отправляет боту <code>/delete_user @юзернейм</code> (или номер, если юзернейма нет). Бот показывает карточку: имя, статус заявки и что именно пропадёт, то есть анкета, ответы, сдачи заданий, монеты, вопросы. Нажимаешь «Удалить навсегда», после этого <code>/start</code> с того аккаунта начинает анкету с первого вопроса.</p>
+    <p class="small">Команда скрытая: её нет ни в меню, ни в разделах <code>/admin</code>, работает только у владельцев бота. Роли менеджеров она не трогает. Строка в Google-таблице остаётся, её при желании удаляем руками.</p>
   </div>
 </header>
 
