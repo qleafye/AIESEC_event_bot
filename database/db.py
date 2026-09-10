@@ -97,6 +97,8 @@ _HOT_PATH_INDEXES: dict[str, tuple[str, tuple[str, ...]]] = {
     "idx_reg_started_nudge": ("reg_started", ("nudged_at", "started_at")),
     # game submission queue: WHERE s.status='pending' ORDER BY s.submitted_at, s.id
     "idx_game_submissions_status_at": ("game_submissions", ("status", "submitted_at")),
+    # run_revoke / _broadcast_card: WHERE broadcast_id = ? (list_broadcast_messages)
+    "idx_broadcast_deliveries_bid": ("broadcast_deliveries", ("broadcast_id",)),
 }
 
 
@@ -360,6 +362,33 @@ async def init_db():
             )
         ''')
         await _ensure_column(db, "scheduled_broadcasts", "sending_since", "TEXT")
+
+        # Quick 260910-okb (BC-01..06): журнал НЕМЕДЛЕННЫХ рассылок («отправить сейчас» из
+        # handlers/admin_broadcasts.py). Отдельный путь от scheduled_broadcasts* выше — те
+        # держат отложенные рассылки APScheduler'а, эти таблицы их не трогают и не смешивают.
+        await db.execute('''
+            CREATE TABLE IF NOT EXISTS broadcasts (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                admin_id INTEGER,
+                text_preview TEXT,
+                started_at TEXT,
+                finished_at TEXT,
+                status TEXT,
+                total INTEGER,
+                delivered INTEGER,
+                blocked INTEGER
+            )
+        ''')
+        # БЕЗ PRIMARY KEY: альбом отдаёт несколько message_id на один chat_id — по одной строке
+        # на каждое доставленное сообщение, не одна на получателя.
+        await db.execute('''
+            CREATE TABLE IF NOT EXISTS broadcast_deliveries (
+                broadcast_id INTEGER NOT NULL,
+                chat_id INTEGER NOT NULL,
+                message_id INTEGER NOT NULL,
+                sent_at TEXT
+            )
+        ''')
 
         # Phase 4 migrations (additive, idempotent — safe against ~590 live users)
         await _ensure_column(db, "users", "payment_status", "TEXT DEFAULT 'not_paid'")
@@ -2645,6 +2674,84 @@ async def cleanup_deliveries(broadcast_id: int):
             "DELETE FROM scheduled_broadcast_deliveries WHERE broadcast_id = ?", (broadcast_id,)
         )
         await db.commit()
+
+
+# ── Quick 260910-okb (BC-01..06): immediate-broadcast log store ──────────────
+# `services/broadcast_run.py` is the only caller of the write helpers below — kept here (not
+# there) so the module stays a pure send-loop with no DB-shape knowledge beyond these calls.
+
+async def create_broadcast(admin_id: int, text_preview: str, total: int) -> int:
+    """Insert a 'sending' row for an immediate broadcast; return its new id."""
+    started_at = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    async with _connect() as db:
+        cursor = await db.execute(
+            "INSERT INTO broadcasts "
+            "(admin_id, text_preview, started_at, status, total, delivered, blocked) "
+            "VALUES (?, ?, ?, 'sending', ?, 0, 0)",
+            (admin_id, text_preview, started_at, total),
+        )
+        await db.commit()
+        return cursor.lastrowid
+
+
+async def record_broadcast_delivery(broadcast_id: int, chat_id: int, message_id: int):
+    """One row per delivered message (several per chat_id for an album)."""
+    now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    async with _connect() as db:
+        await db.execute(
+            "INSERT INTO broadcast_deliveries (broadcast_id, chat_id, message_id, sent_at) "
+            "VALUES (?, ?, ?, ?)",
+            (broadcast_id, chat_id, message_id, now),
+        )
+        await db.commit()
+
+
+async def finish_broadcast(broadcast_id: int, status: str, delivered: int, blocked: int):
+    finished_at = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    async with _connect() as db:
+        await db.execute(
+            "UPDATE broadcasts SET status = ?, delivered = ?, blocked = ?, finished_at = ? "
+            "WHERE id = ?",
+            (status, delivered, blocked, finished_at, broadcast_id),
+        )
+        await db.commit()
+
+
+async def set_broadcast_status(broadcast_id: int, status: str):
+    async with _connect() as db:
+        await db.execute("UPDATE broadcasts SET status = ? WHERE id = ?", (status, broadcast_id))
+        await db.commit()
+
+
+async def get_broadcast(broadcast_id: int) -> dict | None:
+    async with _connect() as db:
+        db.row_factory = aiosqlite.Row
+        async with db.execute(
+            "SELECT * FROM broadcasts WHERE id = ?", (broadcast_id,)
+        ) as cursor:
+            row = await cursor.fetchone()
+            return dict(row) if row else None
+
+
+async def list_recent_broadcasts(limit: int = 10) -> list[dict]:
+    async with _connect() as db:
+        db.row_factory = aiosqlite.Row
+        async with db.execute(
+            "SELECT * FROM broadcasts ORDER BY id DESC LIMIT ?", (limit,)
+        ) as cursor:
+            rows = await cursor.fetchall()
+            return [dict(r) for r in rows]
+
+
+async def list_broadcast_messages(broadcast_id: int) -> list[tuple[int, int]]:
+    """(chat_id, message_id) pairs in insertion order — the send order, for run_revoke."""
+    async with _connect() as db:
+        async with db.execute(
+            "SELECT chat_id, message_id FROM broadcast_deliveries "
+            "WHERE broadcast_id = ? ORDER BY rowid",
+            (broadcast_id,),
+        ) as cursor:
+            return [(r[0], r[1]) for r in await cursor.fetchall()]
 
 
 async def list_sending_broadcasts() -> list[dict]:
