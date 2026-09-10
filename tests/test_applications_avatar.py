@@ -298,13 +298,14 @@ def test_game_manager_without_moderate_reg_is_forbidden(avatar_client, avatar_do
     assert avatar_download.calls == []
 
 
-def test_delegate_cannot_read_own_avatar_via_manager_branch(avatar_client, avatar_download):
+def test_delegate_reads_own_avatar(avatar_client, avatar_download):
+    """Владелец видит свой аватар (UAT 07.09, T-d6t-01) — сверка идёт по колонке
+    users.avatar_file_id, capability moderate_reg для своего фото не нужна."""
     _set_avatar(DELEGATE_ID, AVATAR_FILE_ID)
 
     resp = _get_file(avatar_client, DELEGATE_ID, AVATAR_FILE_ID)
 
-    assert resp.status_code == 403
-    assert avatar_download.calls == []
+    assert resp.status_code == 200, resp.text
 
 
 def test_resume_file_id_of_same_delegate_not_opened_via_avatar_branch(avatar_client, avatar_download):
