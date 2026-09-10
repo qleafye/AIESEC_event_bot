@@ -199,13 +199,16 @@ KNOWN_OVERAGES: dict[str, tuple[int, str]] = {
         "роли + settings-guide (13-04)",
     ),
     "admin.py": (
-        910,
+        915,
         "сам агрегатор-ядро после 13-06, уже на границе GUIDELINE; +52 строки (Phase 15, "
         "STAT-03/D-10/D-18) -- городской скоуп render_stats_text по привязке staff.city + "
         "кнопка «🌐 Открыть дашборд» (_stats_keyboard_for). "
         "Потолок поднят 900->910 в quick 260906-8uq (FAQ-01..06): шов-импорт "
         "`from handlers import admin_faq` с комментарием, вставлен сразу после импорта "
-        "admin_questions (900 -> 904).",
+        "admin_questions (900 -> 904). "
+        "Потолок поднят 910->915 в квике 260910-ro7 (DELU-01..08): шов-импорт "
+        "`from handlers import admin_purge` (скрытая команда «/delete_user») в самый хвост "
+        "файла, после блока admin_gamification/admin_polls (909 -> 915).",
     ),
     "user_actions.py": (
         1320,

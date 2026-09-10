@@ -664,6 +664,15 @@ ADMIN_CAPS: dict[str, str] = {
 
     # checkin: no keys yet -- Phase 12. Capability already exists in
     # ALL_CAPABILITIES/ROLES so a future phase adds handlers, not registry plumbing.
+
+    # Квик 260910-ro7 (DELU-01..08): скрытая команда «/delete_user» — то же положение, что у
+    # «admin_season_reset»/«season_reset_go» выше: «settings» тут необходимо, но НЕ
+    # достаточно — настоящий гейт `config.ADMIN_IDS`, повторно проверяется внутри КАЖДОГО из
+    # трёх хендлеров handlers/admin_purge.py. Команда нигде не выведена в интерфейс — только
+    # по точному имени.
+    "cmd:delete_user": "settings",
+    "delu_go:*": "settings",
+    "delu_no": "settings",
 }
 
 

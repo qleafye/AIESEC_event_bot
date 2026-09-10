@@ -413,6 +413,7 @@ admin|message|poll_wizard_cancel|state:PollCreate:*,state:PollCreate:*
 admin|message|poll_question_step|state:PollCreate:*
 admin|message|poll_options_step|state:PollCreate:*
 admin|message|poll_schedule_when|state:PollCreate:*
+admin|message|cmd_delete_user|cmd:delete_user
 admin|callback_query|show_admin_stats|admin_stats
 admin|callback_query|show_admin_monthly_stats|admin_monthly_stats
 admin|callback_query|show_admin_source_stats|admin_source_stats
@@ -691,6 +692,8 @@ admin|callback_query|poll_settings_next|poll_settings_next
 admin|callback_query|poll_audience_pick|poll_aud:*
 admin|callback_query|poll_send_now|poll_send_now
 admin|callback_query|poll_schedule_start|poll_schedule
+admin|callback_query|delete_user_confirm|delu_go:*
+admin|callback_query|delete_user_cancel|delu_no
 payment|message|process_receipt_document|state:Registration:*
 payment|message|process_receipt_photo|state:Registration:*
 payment|message|process_receipt_invalid|state:Registration:*
@@ -873,7 +876,13 @@ def test_snapshot_total_handler_count_is_292():
     # admin_broadcast_log -- экран «Последние рассылки»), встали сразу после bc_stop и перед
     # broadcast_schedule_start (476 -> 481); чистый аппенд, перепроверен прогоном
     # _build_snapshot_lines() и diff'ом с прежним 476-строчным снапшотом.
-    assert len(GOLDEN_SNAPSHOT) == 481  # Quick 260910-okb: +3, +5; Phase 28 (28-09): +1; (28-08): +5, +1; (28-07): +1; (28-06): +3, +2
+    # Квик 260910-ro7 (DELU-01..08): +3 handlers/admin_purge.py (скрытая команда
+    # «/delete_user») -- message cmd_delete_user, хвост admin.message (сразу после
+    # poll_schedule_when); callback_query delete_user_confirm/delete_user_cancel, хвост
+    # admin.callback_query (сразу после poll_schedule_start) -- шов импортируется из самого
+    # хвоста admin.py, после admin_gamification/admin_polls (481 -> 484); чистый аппенд,
+    # перепроверен прогоном _build_snapshot_lines() и diff'ом с прежним 481-строчным снапшотом.
+    assert len(GOLDEN_SNAPSHOT) == 484  # Квик 260910-ro7: +3; Quick 260910-okb: +3, +5; Phase 28 (28-09): +1; (28-08): +5, +1; (28-07): +1; (28-06): +3, +2
     # handlers/reg_resume_fork.py — message process_resume_link (хвост message-блока
     # registration.router, сразу после process_case_optin и перед первым callback_query
     # recall_keep) + callback_query regfork_pick (хвост callback_query-блока
