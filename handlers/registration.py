@@ -158,6 +158,10 @@ from reg_engine import (
     resume_mode,
     # Phase 28 (28-06, SU-05): шестой деп-линк-формат + проверка реферера (общая для обоих).
     extract_ambassador_ref as _extract_ambassador_ref, resolve_referrer,
+    # Quick 260910-wb6: колонки-компаньоны шага (резюме файлом теряло свои две колонки, см.
+    # докстринг функции) — единственная точка правды, _sync_draft_in/_sync_draft_out ниже её
+    # используют вместо голого STEP_TO_COLUMN.get(step_key).
+    columns_for_step,
 )
 _get_enabled_steps = enabled_steps
 _get_options = option_list_for
@@ -573,13 +577,30 @@ async def _ask_step(step_key: str, message: types.Message, state: FSMContext, st
         await reg_extra_steps.ask_step(step_key, message, state, p, participant_type, city_code)
 
 
+def _cols_list(cols: str | list[str] | tuple | None) -> list[str]:
+    """Quick 260910-wb6: `_sync_draft_in`/`_sync_draft_out` принимают либо одну колонку
+    (совместимость с существующим вызовом `answered_col="full_name"`, строка 1586, ломать
+    нельзя), либо набор колонок шага (`reg_engine.columns_for_step`, шаг «resume» -> три
+    колонки сразу). Нормализация в одном месте, а не в обеих функциях по отдельности."""
+    if not cols:
+        return []
+    if isinstance(cols, str):
+        return [cols]
+    return list(cols)
+
+
 async def _sync_draft_in(state: FSMContext, telegram_id: int, message: types.Message,
-                          just_answered: str | None = None) -> dict:
+                          just_answered: str | list[str] | None = None) -> dict:
     """Phase 21 (21-09, Pattern 3/D-19): перед выбором следующего шага — подмешать в FSM
     data чужие правки (Mini App), не теряя то, на что делегат ТОЛЬКО ЧТО ответил в чате
     (`just_answered` исключается из подмешивания; его собственная версия станет новее следующим
     _sync_draft_out). Fail-soft: сбой чтения черновика оставляет FSM data как есть — синхрон
     просто пропускается на этот шаг, вопрос всё равно будет задан вызывающим.
+
+    Quick 260910-wb6: `just_answered` — строка ИЛИ набор колонок шага (`columns_for_step`).
+    Пропустить нужно ВСЕ колонки шага, а не одну — иначе свежий `resume_file_id`, только что
+    отданный в `_sync_draft_out` НИЖЕ по `_advance`, тут же был бы затёрт старым значением из
+    черновика на следующем шаге (порядок вызовов в `_advance` — сперва этот хелпер).
 
     ПОРЯДОК ВЫЗОВА в _advance ниже — этот хелпер ПЕРЕД _sync_draft_out (не как в наброске
     RESEARCH Pattern 3): если сперва писать бот-ответ, `updated_by` в БД тут же станет 'bot' и
@@ -587,6 +608,7 @@ async def _sync_draft_in(state: FSMContext, telegram_id: int, message: types.Mes
     даже когда подмешивание реально произошло. Сперва читаем/мержим (видим 'miniapp', если он
     там есть), потом бот пишет свой ответ поверх."""
     data = await state.get_data()
+    skip_cols = set(_cols_list(just_answered))
     try:
         draft = await get_reg_draft(telegram_id)
     except Exception as e:
@@ -594,7 +616,7 @@ async def _sync_draft_in(state: FSMContext, telegram_id: int, message: types.Mes
         return data
     if draft and draft["version"] > data.get("_draft_version", -1):
         for col, val in draft["answers"].items():
-            if col == just_answered:
+            if col in skip_cols:
                 continue
             data[col] = val
         data["_draft_version"] = draft["version"]
@@ -608,11 +630,17 @@ async def _sync_draft_in(state: FSMContext, telegram_id: int, message: types.Mes
 
 
 async def _sync_draft_out(telegram_id: int, state: FSMContext, data: dict, step_key: str | None,
-                           answered_col: str | None = None) -> None:
+                           answered_col: str | list[str] | None = None) -> None:
     """Phase 21 (21-09, Pattern 3): пишет только что данный в чате ответ (и текущий шаг) в
     общий reg_drafts, чтобы Mini App видел прогресс бота в реальном времени. Fail-soft — тот же
     посыл, что и у _stamp_reg_step: любая ошибка логируется и НЕ блокирует переход к следующему
     вопросу.
+
+    Quick 260910-wb6: `answered_col` — строка (совместимость с `_after_full_name`, строка 1586)
+    ИЛИ набор колонок шага (`columns_for_step`) — прод-баг с 05.09: резюме файлом писало в
+    черновик только `resume_text` (одну колонку шага), `resume_file_id`/`resume_file_name`
+    терялись насовсем (жили только в FSM, финал читает черновик). Патч теперь собирается по
+    ВСЕМ колонкам набора.
 
     Quick 260904-3vm (эстафета): сознательно НЕ передаёт `active_surface` — единственный путь
     бота к записи ответа теперь проходит через `handlers/reg_handoff.py::RegHandoffGuard`
@@ -621,7 +649,8 @@ async def _sync_draft_out(telegram_id: int, state: FSMContext, data: dict, step_
     проскочившим мимо гварда — ровно ту беззвучную смену владельца, которую эстафета убирает."""
     try:
         kind = data.get("_draft_kind") or "new"
-        patch = {answered_col: data.get(answered_col)} if answered_col else None
+        cols = _cols_list(answered_col)
+        patch = {col: data.get(col) for col in cols} if cols else None
         meta_patch = {}
         if data.get("referrer_id"):
             meta_patch["referrer_id"] = data.get("referrer_id")
@@ -642,12 +671,14 @@ async def _advance(after_step: str, message: types.Message, state: FSMContext, b
     # (and the ONLY attribute _advance's existing test doubles guarantee, see
     # tests/test_registration_send_guard_260816.py::_FakeMessage's docstring).
     telegram_id = message.chat.id
-    answered_col = STEP_TO_COLUMN.get(after_step)
+    # Quick 260910-wb6: колонки-компаньоны шага (резюме -> все три колонки резюме разом, не
+    # только `STEP_TO_COLUMN[after_step]`) — см. докстринг `reg_engine.columns_for_step`.
+    cols = columns_for_step(after_step)
     # Phase 21 (21-09): подмешать чужие правки ПЕРЕД тем, как посчитать enabled_steps (иначе
     # условные шаги посчитаются по устаревшим данным) и ПЕРЕД тем, как бот запишет свой
     # собственный ответ (см. докстринг _sync_draft_in — порядок load-bearing).
-    data = await _sync_draft_in(state, telegram_id, message, just_answered=answered_col)
-    await _sync_draft_out(telegram_id, state, data, after_step, answered_col=answered_col)
+    data = await _sync_draft_in(state, telegram_id, message, just_answered=cols)
+    await _sync_draft_out(telegram_id, state, data, after_step, answered_col=cols)
     enabled = await _get_enabled_steps(data)
 
     try:

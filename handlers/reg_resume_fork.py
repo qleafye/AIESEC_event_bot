@@ -26,7 +26,7 @@ from aiogram.fsm.context import FSMContext
 from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
 
 from handlers import reg_extra_steps
-from handlers.registration import _advance, _progress, _safe_answer, router
+from handlers.registration import _advance, _progress, _safe_answer, _sync_draft_out, router
 from handlers.states import Registration
 from handlers import reg_i18n
 from settings_schema import get_setting_typed
@@ -66,9 +66,16 @@ async def back_to_fork(message: types.Message, state: FSMContext) -> None:
     где «Назад» ведёт не на предыдущий вопрос анкеты, а на экран выбора способа (R1). Сбрасывает
     `resume_type` (подвисший выбор ветки не должен просачиваться в `enabled_steps` на возврате)
     и пересчитывает префикс прогресса из уже сохранённых `_reg_step`/`_reg_total` (та же пара,
-    что использует `_advance`/`_ask_step_or_recall` в `handlers/registration.py`)."""
+    что использует `_advance`/`_ask_step_or_recall` в `handlers/registration.py`).
+
+    Quick 260910-wb6: сброс синхронизируется и в общий черновик (`_sync_draft_out`, шаг
+    `step_key=None` — `upsert_reg_draft` не трогает `step` через `COALESCE`) — иначе отменённая
+    ветка воскресала бы при продолжении анкеты из черновика после рестарта (черновик так и не
+    узнавал, что делегат нажал «Назад» на развилке)."""
     data = await state.get_data()
     await state.update_data(resume_type=None)
+    data["resume_type"] = None
+    await _sync_draft_out(message.chat.id, state, data, None, answered_col=("resume_type",))
     participant_type = data.get("participant_type") or "full"
     city_code = data.get("event_city")
     progress_prefix = await _progress(data.get("_reg_step", 1), data.get("_reg_total", 1))
@@ -95,7 +102,12 @@ async def regfork_pick(callback: types.CallbackQuery, state: FSMContext):
     фильтр по состоянию `Registration.resume` НАРОЧНО узкий (R1 и R2a — оба в этом состоянии,
     текстовые подшаги R2b/R2c используют reply-кнопку, не этот callback, см. докстринг модуля).
     `file`/`link`/`mini` кладут `resume_type` в FSM и ведут в свою ветку; `back` (доступен и
-    из R2a — та же клавиатура) сбрасывает выбор и возвращает на R1."""
+    из R2a — та же клавиатура) сбрасывает выбор и возвращает на R1.
+
+    Quick 260910-wb6: выбор ветки синхронизируется в общий черновик В МОМЕНТ ТАПА
+    (`_sync_draft_out`), а не на шаге — ветки «ссылка»/«мини-профиль» уходят в свои шаги и
+    через `_advance("resume")` никогда не проходят, так что `resume_type` иначе терялся бы при
+    продолжении анкеты из черновика после рестарта (не только живой FSM-сессии)."""
     raw = callback.data or ""
     token = raw.split(":", 1)[1] if ":" in raw else ""
     try:
@@ -115,6 +127,7 @@ async def regfork_pick(callback: types.CallbackQuery, state: FSMContext):
 
     await state.update_data(resume_type=token)
     data = await state.get_data()
+    await _sync_draft_out(tap_message.chat.id, state, data, None, answered_col=("resume_type",))
     participant_type = data.get("participant_type") or "full"
     city_code = data.get("event_city")
     p = await _progress(data.get("_reg_step", 1), data.get("_reg_total", 1))
