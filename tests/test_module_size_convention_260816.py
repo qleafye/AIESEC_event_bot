@@ -40,7 +40,7 @@ DEFAULT_CEILING = 850
 # edit the number + reason together, in the same commit as the growth that needs it.
 KNOWN_OVERAGES: dict[str, tuple[int, str]] = {
     "registration.py": (
-        2328,
+        2359,
         "Phase 21 (21-01, FORM-SYNC-01): REG_STEP_TYPES/STEP_TO_COLUMN/RECALLABLE_STEPS/"
         "SELECT_CONFIG/MULTI_CONFIG/enabled_steps/prompt-резолюция/pre-flow гейты/"
         "prior-answer правило переехали в корневой reg_engine.py (2309 -> 2099 строк) -- "
@@ -88,7 +88,13 @@ KNOWN_OVERAGES: dict[str, tuple[int, str]] = {
         "+10 строк (Phase 28, 28-09, SU-10): `_resume_file_stem` получила третий параметр "
         "`mode` (\"full\"/\"id\") + расширенный докстринг — сама функция остаётся чистой "
         "sync, режим читает async-вызывающий (`services/reg_finalize.py`); потолок поднят "
-        "до фактического размера.",
+        "до фактического размера. "
+        "+31 строка (quick 260910-wb6, коммит ef315f9): `columns_for_step` из reg_engine + "
+        "хелпер `_cols_list` + `just_answered`/`answered_col` приняли набор колонок шага "
+        "вместо одной (`_sync_draft_in`/`_sync_draft_out`/`_advance`) — прод-баг с 05.09: "
+        "файловое резюме писало в черновик только `resume_text`, `resume_file_id`/"
+        "`resume_file_name` терялись на финале; сама резолюция колонок живёт в корневом "
+        "`reg_engine.py`, здесь — точки врезки; потолок поднят до фактического размера.",
     ),
     "admin_gamification.py": (
         2020,
