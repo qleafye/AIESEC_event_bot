@@ -1236,12 +1236,18 @@ async def step_spec(step_key: str, participant_type: str | None = None,
         spec["description"] = await get_setting_typed_for_city(
             "reg_case_optin_description_text", event_city
         )
-    # Phase 28 (28-05, SU-04, deviation Rule 3): подпись кнопки-пропуска второго мини-подшага —
-    # без неё Mini App не может нарисовать третью футер-кнопку (28-UI-SPEC.md §3), только
-    # Назад/Дальше. Публикуется ТОЛЬКО для этого шага (не для всех skip_allowed — остальные
-    # шаги-пропуски продолжают обходиться пустым «Дальше», D-06 byte-for-byte).
-    if step_key == "mini_portfolio":
-        spec["skip_label"] = await get_setting_typed("reg_mini_portfolio_skip_label")
+    # УАТ 10-11.09 (квик 260911-2kb, пункт 3): D-06 («остальные одиннадцать skip-шагов
+    # обходятся пустым «Дальше») снят — на живом стенде пустой ввод на этих шагах не проходит
+    # validate_answer (нужен буквально «-»), а слово «Пропустить» из UI отправить нечем: делегат
+    # упирался в тупик там, где в чате бота кнопка «Пропустить» есть всегда. Подпись теперь
+    # публикуется для ЛЮБОГО шага из `_SKIP_ALLOWED_STEPS` — `mini_portfolio` оставляет СВОЙ
+    # реестровый ключ (он уже в админке с фазы 28, переименование стало бы регрессом для
+    # менеджера), остальные одиннадцать делят один общий `reg_form_skip_cta_text`.
+    if step_key in _SKIP_ALLOWED_STEPS:
+        spec["skip_label"] = await get_setting_typed(
+            "reg_mini_portfolio_skip_label" if step_key == "mini_portfolio"
+            else "reg_form_skip_cta_text"
+        )
     return spec
 
 
