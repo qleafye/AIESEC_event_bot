@@ -39,6 +39,10 @@ from database.db import (
     get_distinct_filter_values,
     SEASON_NONE,
     get_season_filter_options,
+    # Квик 260911-0fh (RESUME-FILTER-02): поле фильтра «Резюме» — выбор «есть»/«нет».
+    RESUME_HAS,
+    RESUME_MISSING,
+    get_resume_filter_options,
     # Quick 260910-okb (BC-01..06): журнал немедленных рассылок + отзыв у получателей.
     create_broadcast,
     get_broadcast,
@@ -770,6 +774,10 @@ _FILTER_FIELD_LABELS = {
     # Квик 260910-vfl (SEASON-FILTER-02). Это сезон СОБЫТИЯ, которым помечена регистрация
     # (настройка «🎉 Сезон события», `settings_schema.event_season`) — не «Статус» и не «Трек».
     "season": "Сезон",
+    # Квик 260911-0fh (RESUME-FILTER-02): это НАЛИЧИЕ резюме в любом виде (файл / текст /
+    # ссылка Nextcloud / ссылка на профиль), а не какое-то одно поле анкеты — набор колонок
+    # это db.RESUME_COLUMNS, второй карты здесь нет.
+    "resume": "Резюме",
 }
 
 # Fields whose value is chosen from a DB-distinct picker (buttons pulled from real data).
@@ -789,6 +797,10 @@ _PICKER_FIELDS = {
     # `db._FILTER_COLUMNS`, see there. No separate handler needed for the same reason as
     # `event_city` above.
     "season",
+    # Квик 260911-0fh (RESUME-FILTER-02) — same двойная регистрация rule: also in
+    # `db._FILTER_COLUMNS` (see there — `resume` is virtual there). No separate handler
+    # needed for the same reason as `event_city`/`season` above.
+    "resume",
 }
 
 # How many value buttons per picker page (long cyrillic values → 1 per row).
@@ -855,7 +867,7 @@ def _filter_summary(filters: list[dict]) -> str:
 
 
 def _filter_menu_kb(filters: list[dict], *, show_city: bool = False,
-                     show_season: bool = False) -> InlineKeyboardMarkup:
+                     show_season: bool = False, show_resume: bool = False) -> InlineKeyboardMarkup:
     kb = [
         [InlineKeyboardButton(text="Комитет АЙСЕК", callback_data="filter_f_local_committee"),
          InlineKeyboardButton(text="Департамент", callback_data="filter_f_department")],
@@ -883,6 +895,11 @@ def _filter_menu_kb(filters: list[dict], *, show_city: bool = False,
     # байт-в-байт прежней.
     if show_season:
         kb.append([InlineKeyboardButton(text="Сезон", callback_data="filter_f_season")])
+    # Квик 260911-0fh (RESUME-FILTER-02): кнопка только когда в базе есть и делегаты с
+    # резюме, и без — фильтровать не по чему, когда все по одну сторону (тот же довод, что
+    # у «Сезона»). Дефолт False держит клавиатуру байт-в-байт прежней.
+    if show_resume:
+        kb.append([InlineKeyboardButton(text="📄 Резюме", callback_data="filter_f_resume")])
     if filters:
         kb.append([InlineKeyboardButton(text="📊 Показать и отправить", callback_data="filter_count")])
     kb.append([InlineKeyboardButton(text="❌ Отмена", callback_data="broadcast_cancel")])
@@ -902,8 +919,13 @@ async def _render_filter_menu(target, filters: list[dict], *, edit: bool):
     # Квик 260910-vfl (SEASON-FILTER-02): порог считается по тому же списку, который потом
     # покажет пикер (get_season_filter_options) — второй карты значений нет.
     season_options = await get_season_filter_options()
+    # Квик 260911-0fh (RESUME-FILTER-02): порог считается по тому же списку, который потом
+    # покажет пикер (get_resume_filter_options) — второй карты значений нет; когда все
+    # делегаты по одну сторону, фильтровать не по чему и кнопка была бы шумом.
+    resume_options = await get_resume_filter_options()
     kb = _filter_menu_kb(filters, show_city=await cities_module_on(),
-                         show_season=len(season_options) > 1)
+                         show_season=len(season_options) > 1,
+                         show_resume=len(resume_options) > 1)
     if edit:
         await target.edit_text(text, reply_markup=kb)
     else:
@@ -960,6 +982,21 @@ async def _show_value_picker(callback: types.CallbackQuery, state: FSMContext, f
             await callback.answer("В базе один сезон — фильтровать не по чему.", show_alert=True)
             return
         labels = {SEASON_NONE: "Без сезона"}
+    elif field == "resume":
+        # Квик 260911-0fh (RESUME-FILTER-05): гейт живёт В ХЭНДЛЕРЕ, а не только в отрисовке
+        # клавиатуры — тот же довод WR-04, что у event_city/season: инлайн-кнопки не
+        # истекают, вчерашнее меню с кнопкой «Резюме» живо и сегодня, когда все делегаты
+        # снова по одну сторону.
+        options = await get_resume_filter_options()
+        if len(options) < 2:
+            await callback.answer(
+                "У всех делегатов резюме в одном состоянии — фильтровать не по чему.",
+                show_alert=True,
+            )
+            return
+        # Человеку показываем только эти два слова — коды (has/none) не показываем и ввести
+        # не просим (правило «бот для людей»).
+        labels = {RESUME_HAS: "есть", RESUME_MISSING: "нет"}
     elif field == "participant_type":
         # Phase 14 (CFG-02, IN-01): RU labels instead of raw codes (party_noovernight etc.);
         # fail-soft for a value not in _TRACK_LABELS — falls back to the raw code as the label
@@ -1067,6 +1104,12 @@ async def filter_pick_value(callback: types.CallbackQuery, state: FSMContext):
         if value in labels:
             entry["label"] = labels[value]
         filters.append(entry)
+    elif field == "resume":
+        # Квик 260911-0fh (RESUME-FILTER-06): `label` есть ВСЕГДА — в отличие от «Сезона»,
+        # оба значения (RESUME_HAS/RESUME_MISSING) — сентинелы, без подписи сводка читалась
+        # бы «Резюме = none».
+        labels = data.get("filter_option_labels") or {}
+        filters.append({"field": field, "value": value, "label": labels.get(value, value)})
     else:
         filters.append({"field": field, "value": value})
     await state.update_data(
