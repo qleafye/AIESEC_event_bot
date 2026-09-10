@@ -61,6 +61,7 @@ class FakeElement {
   set className(v) { this._className = v; this.classList._fromString(v); }
   setAttribute(name, value) { this._attrs.set(name, String(value)); }
   getAttribute(name) { return this._attrs.has(name) ? this._attrs.get(name) : null; }
+  removeAttribute(name) { this._attrs.delete(name); }
   addEventListener(type, fn) { (this._listeners[type] ||= []).push(fn); }
   dispatch(type, evt) { for (const fn of (this._listeners[type] || []).slice()) fn(evt); }
   appendChild(node) { this.children.push(node); return node; }
@@ -163,6 +164,20 @@ otherInput.dispatch("input", {});
 const wrapPlain = m.field(h, baseSpec, null, () => {});
 const controlPlain = wrapPlain._nodes.control;
 
+// 7) fileControl (пункт 4): пустое значение + spec.display -> «уже сохранено» (статус —
+// подпись файла, кнопка удаления видна); без display и без значения — прежнее поведение.
+const fileSpecDisplay = { key: "resume", type: "file", label: "Резюме", display: "resume.pdf" };
+const wrapFileDisplay = m.field(h, fileSpecDisplay, null, () => {});
+const controlFileDisplay = wrapFileDisplay._nodes.control;
+const statusFileDisplay = controlFileDisplay.querySelector(".dropzone-status");
+const removeFileDisplay = controlFileDisplay.querySelector(".dropzone-remove");
+
+const fileSpecEmpty = { key: "resume", type: "file", label: "Резюме" };
+const wrapFileEmpty = m.field(h, fileSpecEmpty, null, () => {});
+const controlFileEmpty = wrapFileEmpty._nodes.control;
+const statusFileEmpty = controlFileEmpty.querySelector(".dropzone-status");
+const removeFileEmpty = controlFileEmpty.querySelector(".dropzone-remove");
+
 console.log(JSON.stringify({
   firstOptionEmptyValue: firstOptionEmpty.getAttribute("value"),
   firstOptionEmptyText: firstOptionEmpty.textContent,
@@ -181,6 +196,10 @@ console.log(JSON.stringify({
   plainControlTag: controlPlain.tagName,
   plainHasOtherBtn: Boolean(controlPlain.querySelector(".chip-other")),
   plainHasOtherInput: Boolean(controlPlain.querySelector(".field-other")),
+  fileDisplayStatus: statusFileDisplay.textContent,
+  fileDisplayRemoveHidden: removeFileDisplay.classList.contains("hidden"),
+  fileEmptyStatus: statusFileEmpty.textContent,
+  fileEmptyRemoveHidden: removeFileEmpty.classList.contains("hidden"),
 }));
 """
 
@@ -232,3 +251,13 @@ def test_other_allowed_false_has_no_other_markup(js_result):
     assert js_result["plainControlTag"] == "SELECT"
     assert js_result["plainHasOtherBtn"] is False
     assert js_result["plainHasOtherInput"] is False
+
+
+def test_file_control_with_display_shows_stored_status_and_remove_button(js_result):
+    assert js_result["fileDisplayStatus"] == "resume.pdf"
+    assert js_result["fileDisplayRemoveHidden"] is False
+
+
+def test_file_control_without_display_or_value_stays_empty(js_result):
+    assert js_result["fileEmptyStatus"] == ""
+    assert js_result["fileEmptyRemoveHidden"] is True

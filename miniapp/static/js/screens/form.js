@@ -27,17 +27,39 @@ function isAuthError(err) {
 let activatedHandler = null;
 let tgRef = null;
 
+// УАТ 10-11.09 (квик 260911-2kb, пункт 4): состояние формы заводит ВСЕ колонки шага
+// (`s.values`, набор — `s.columns`), не только основную `s.column` — иначе `state.value()`
+// не знает про `resume_file_id`/`resume_file_name` (резюме файлом), и `applyServer` после
+// загрузки файла их не подхватывает. Сервер, который ещё не обновлён (`s.values` нет), даёт
+// прежнее поведение байт-в-байт — второй веткой ниже.
 function buildFormState(draft) {
   const specs = (draft.steps || []).map((s) => ({ ...s }));
   const values = {};
-  for (const s of specs) values[s.column] = s.value;
+  for (const s of specs) {
+    if (s.values) Object.assign(values, s.values);
+    else values[s.column] = s.value;
+  }
   return createFormState(specs, values);
 }
 
 function answersFromSteps(steps) {
   const out = {};
-  for (const s of steps || []) out[s.column] = s.value;
+  for (const s of steps || []) {
+    if (s.values) Object.assign(out, s.values);
+    else out[s.column] = s.value;
+  }
   return out;
+}
+
+// Один хелпер «шаг заполнен» на мастер и на обзор правки (пункт 4): заполнен, если непусто
+// ЛЮБОЕ из `spec.columns` — не только основная колонка (резюме файлом уходит в
+// resume_file_id/resume_file_name, а не в spec.column). Имён колонок анкеты здесь нет — только
+// `spec.columns`, набор приходит с сервера.
+function stepAnswered(spec, state) {
+  return (spec.columns || [spec.column]).some((col) => {
+    const v = state.value(col);
+    return v != null && v !== "";
+  });
 }
 
 // D13 (quick 260904-de4): «Поделиться номером» — доступно, только когда клиент физически
@@ -85,13 +107,19 @@ function shareContactButton(h, spec, el, text, onNumber) {
 function questionRow(h, spec, opts = {}) {
   const { onEdit, notSetText, value: valueOverride, extraCls } = opts;
   const raw = valueOverride !== undefined ? valueOverride : spec.value;
-  const answered = raw != null && raw !== "";
+  // УАТ 10-11.09 (пункт 4): spec.display — уже существующий контракт «подпись сохранённого
+  // файла» (form.js::fileControl) — резюме файлом отвечено, а `raw` (spec.value/opts.value)
+  // пуст (файл лежит не в основной колонке). Показываем display, когда он есть, иначе
+  // прежнее значение.
+  const hasDisplay = spec.display != null && spec.display !== "";
+  const answered = (raw != null && raw !== "") || hasDisplay;
+  const shown = hasDisplay ? spec.display : raw;
   return flatRow(h, {
     icon: answered ? "check" : "circle",
     // D-04: строка уже с Lucide-иконкой слева (check/circle) — labelText (ui.js) снимает
     // ведущий эмодзи подписи вопроса REG_LABELS, не дублируя его рядом с иконкой (23.1-07).
     title: labelText(spec.label),
-    value: answered ? String(raw) : (notSetText || ""),
+    value: answered ? String(shown) : (notSetText || ""),
     valueCls: answered ? "strong" : null,
     cls: [answered ? "q-done" : "q-empty", extraCls].filter(Boolean).join(" "),
     trailing: onEdit ? icon("pen-line") : null,
@@ -416,7 +444,10 @@ export async function render(root, params, ctx) {
       const column = spec.column;
       const locked = Boolean(spec.locked);
       const value = state.value(column);
-      const empty = value == null || value === "";
+      // Пункт 4: «заполнен» — по НАБОРУ колонок шага (state.value на каждой), не только по
+      // основной — иначе резюме файлом (значение в resume_file_id, не в spec.column) в обзоре
+      // считалось незаполненным и получало пометку "q-required".
+      const empty = !stepAnswered(spec, state);
       if (locked) {
         return questionRow(h, spec, { value, notSetText: d.not_set_text });
       }
@@ -686,8 +717,9 @@ export async function render(root, params, ctx) {
     function drawQuestionWindow(specs) {
       let prevIdx = -1;
       for (let i = stepIndex - 1; i >= 0; i -= 1) {
-        const v = specs[i].value;
-        if (v != null && v !== "") { prevIdx = i; break; }
+        // Пункт 4: «отвечен» — по НАБОРУ колонок шага (резюме файлом уходит в
+        // resume_file_id/resume_file_name, а не в spec.value основной колонки).
+        if (stepAnswered(specs[i], state)) { prevIdx = i; break; }
       }
       const rows = [];
       if (prevIdx >= 0) rows.push(specs[prevIdx]);
