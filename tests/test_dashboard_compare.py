@@ -33,7 +33,7 @@ def _use_tmp_db(tmp_path, name: str) -> str:
 
 async def _seed_async(
     *, cities=None, settings=None, users=None, reg_events=None,
-    game_tasks=None, game_submissions=None,
+    game_tasks=None, game_submissions=None, delegate_questions=None,
 ):
     async with bot_db._connect() as conn:
         for code, label, enabled, sort_order in cities or []:
@@ -71,6 +71,13 @@ async def _seed_async(
             placeholders = ", ".join("?" for _ in row)
             await conn.execute(
                 f"INSERT INTO game_submissions ({cols}) VALUES ({placeholders})", tuple(row.values())
+            )
+        for row in delegate_questions or []:
+            cols = ", ".join(row.keys())
+            placeholders = ", ".join("?" for _ in row)
+            await conn.execute(
+                f"INSERT INTO delegate_questions ({cols}) VALUES ({placeholders})",
+                tuple(row.values()),
             )
         await conn.commit()
 
@@ -545,4 +552,85 @@ def test_unavailable_event_game_participants_none_does_not_break_context(tmp_pat
     by_code = {e["code"]: e for e in ctx["events"]}
     assert by_code["ok"]["game_participants"] == 1
     assert by_code["bad"]["game_participants"] is None
+    assert by_code["bad"]["available"] is False
+
+
+# ── колонка «Ответ» в сравнении (квик 260910-tt5) ────────────────────────────────────────
+
+def _question(**overrides):
+    question = {
+        "user_id": 1,
+        "question_text": "Когда открывается регистрация?",
+        "asked_at": "2026-08-02 10:00:00",
+    }
+    question.update(overrides)
+    return question
+
+
+def test_show_question_column_true_only_when_any_event_has_questions(tmp_path):
+    path_a = _make_event_db(
+        tmp_path, "a.db",
+        users=[_users_row(1, registration_date="2026-08-01 10:00:00")],
+    )
+    path_b = _make_event_db(
+        tmp_path, "b.db",
+        users=[_users_row(1, registration_date="2026-08-01 10:00:00")],
+    )
+    cfg = _cfg((EventSource(code="a", db_path=path_a), EventSource(code="b", db_path=path_b)))
+    ctx_none = compare.build_compare_context(cfg)
+    assert ctx_none["show_question_column"] is False
+
+    compare.reset_cache()
+    path_c = _make_event_db(
+        tmp_path, "c.db",
+        users=[_users_row(1, registration_date="2026-08-01 10:00:00")],
+        delegate_questions=[_question(user_id=1)],
+    )
+    cfg2 = _cfg((EventSource(code="a", db_path=path_a), EventSource(code="c", db_path=path_c)))
+    ctx_some = compare.build_compare_context(cfg2)
+    assert ctx_some["show_question_column"] is True
+
+
+def test_question_answer_label_per_event(tmp_path):
+    path_a = _make_event_db(
+        tmp_path, "a.db",
+        users=[_users_row(1, registration_date="2026-08-01 10:00:00")],
+        delegate_questions=[
+            _question(user_id=1, asked_at="2026-08-02 10:00:00",
+                      delivered_at="2026-08-02 10:30:00"),  # +30 мин
+        ],
+    )
+    path_b = _make_event_db(
+        tmp_path, "b.db",
+        users=[_users_row(1, registration_date="2026-08-01 10:00:00")],
+        delegate_questions=[
+            _question(user_id=1, asked_at="2026-08-02 10:00:00"),  # без ответа
+        ],
+    )
+    cfg = _cfg((EventSource(code="a", db_path=path_a), EventSource(code="b", db_path=path_b)))
+    ctx = compare.build_compare_context(cfg)
+    by_code = {e["code"]: e for e in ctx["events"]}
+    assert by_code["a"]["kpi"]["question_answer_avg_label"] == "30 мин"
+    assert by_code["b"]["kpi"]["question_answer_avg_label"] == "—"
+    # Числа событий не смешиваются -- у обоих есть ровно один вопрос в скоупе, но только у
+    # события "a" он отвечен.
+    assert by_code["a"]["questions_total"] == 1
+    assert by_code["b"]["questions_total"] == 1
+
+
+def test_unavailable_event_questions_total_none_does_not_break_context(tmp_path):
+    path_ok = _make_event_db(
+        tmp_path, "ok.db",
+        users=[_users_row(1, registration_date="2026-08-01 10:00:00")],
+        delegate_questions=[_question(user_id=1)],
+    )
+    bad_path = str(tmp_path / "does_not_exist" / "forum.db")
+    cfg = _cfg((
+        EventSource(code="ok", db_path=path_ok),
+        EventSource(code="bad", db_path=bad_path),
+    ))
+    ctx = compare.build_compare_context(cfg)
+    by_code = {e["code"]: e for e in ctx["events"]}
+    assert by_code["ok"]["questions_total"] == 1
+    assert by_code["bad"]["questions_total"] is None
     assert by_code["bad"]["available"] is False
