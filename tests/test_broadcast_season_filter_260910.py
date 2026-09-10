@@ -160,3 +160,249 @@ def test_get_season_filter_options_empty_base(tmp_path):
     config.DB_PATH = str(tmp_path / "test_season_filter_empty_260910.db")
     asyncio.run(db.init_db())
     assert asyncio.run(db.get_season_filter_options()) == []
+
+
+# ── Задача 2: «Экран» — кнопка «Сезон», пикер, сводка ───────────────────────────────────
+# Харнес скопирован из tests/test_city_broadcast_phase72.py.
+
+ADMIN_ID = 940102
+
+
+class FakeUser:
+    def __init__(self, uid):
+        self.id = uid
+
+
+class FakeMessage:
+    def __init__(self):
+        self.text = None
+        self.markup = None
+
+    async def edit_text(self, text, parse_mode=None, reply_markup=None):
+        self.text = text
+        self.markup = reply_markup
+
+    async def edit_reply_markup(self, reply_markup=None):
+        self.markup = reply_markup
+
+    async def answer(self, text, parse_mode=None, reply_markup=None):
+        self.text = text
+        self.markup = reply_markup
+
+
+class FakeCallback:
+    def __init__(self, data, user_id=ADMIN_ID):
+        self.data = data
+        self.from_user = FakeUser(user_id)
+        self.message = FakeMessage()
+        self.answers = []
+
+    async def answer(self, text=None, show_alert=False):
+        self.answers.append((text, show_alert))
+
+
+class FakeState:
+    """Минимальная замена FSMContext — рассылочному фильтру нужны только get_data/update_data."""
+
+    def __init__(self, **data):
+        self._data = dict(data)
+        self.state = None
+
+    async def get_data(self):
+        return dict(self._data)
+
+    async def update_data(self, **kwargs):
+        self._data.update(kwargs)
+        return dict(self._data)
+
+    async def set_state(self, state):
+        self.state = state
+
+
+def _cb_datas(kb):
+    return [b.callback_data for row in kb.inline_keyboard for b in row]
+
+
+def _btn_texts(kb):
+    return [b.text for row in kb.inline_keyboard for b in row]
+
+
+def _seed_users(tmp_path, dbname, rows):
+    """rows: список (telegram_id, season) — season=None пишет легаси-строку без сезона."""
+    config.DB_PATH = str(tmp_path / dbname)
+    config.ADMIN_IDS = [ADMIN_ID]
+
+    async def go():
+        await db.init_db()
+        for tid, season in rows:
+            await db.add_user({
+                "telegram_id": tid,
+                "full_name": f"User {tid}",
+                "registration_date": f"2026-01-01 09:{tid:02d}:00",
+                "season": season,
+            })
+
+    asyncio.run(go())
+
+
+def test_season_double_registration():
+    """Двойная регистрация поля (прецедент Фазы 5, D-19) — одним тестом на связку."""
+    from handlers import admin_broadcasts
+    assert "season" in admin_broadcasts._PICKER_FIELDS
+    assert "season" in db._FILTER_COLUMNS
+
+
+def test_filter_field_label_season():
+    from handlers import admin_broadcasts
+    assert admin_broadcasts._FILTER_FIELD_LABELS["season"] == "Сезон"
+
+
+def test_filter_menu_kb_default_has_no_season_button():
+    from handlers import admin_broadcasts
+    kb = admin_broadcasts._filter_menu_kb([])
+    assert "filter_f_season" not in _cb_datas(kb)
+
+
+def test_filter_menu_kb_show_season_adds_exactly_one_button():
+    from handlers import admin_broadcasts
+    kb_before = admin_broadcasts._filter_menu_kb([])
+    kb = admin_broadcasts._filter_menu_kb([], show_season=True)
+    assert len(kb.inline_keyboard) == len(kb_before.inline_keyboard) + 1
+    assert _cb_datas(kb).count("filter_f_season") == 1
+    season_btn = [b for row in kb.inline_keyboard for b in row
+                  if b.callback_data == "filter_f_season"][0]
+    assert season_btn.text == "Сезон"
+
+
+def test_render_filter_menu_two_seasons_shows_button(tmp_path):
+    _seed_users(tmp_path, "render_two_seasons.db", [(1, "YL 26/2"), (2, "YL 26/1")])
+    from handlers import admin_broadcasts
+    msg = FakeMessage()
+    asyncio.run(admin_broadcasts._render_filter_menu(msg, [], edit=True))
+    assert "filter_f_season" in _cb_datas(msg.markup)
+
+
+def test_render_filter_menu_one_season_no_legacy_hides_button(tmp_path):
+    _seed_users(tmp_path, "render_one_season.db", [(1, "YL 26/2"), (2, "YL 26/2")])
+    from handlers import admin_broadcasts
+    msg = FakeMessage()
+    asyncio.run(admin_broadcasts._render_filter_menu(msg, [], edit=True))
+    assert "filter_f_season" not in _cb_datas(msg.markup)
+
+
+def test_render_filter_menu_one_season_plus_legacy_shows_button(tmp_path):
+    """Один настоящий сезон + легаси-строки — кнопка всё равно нужна (два варианта выбора:
+    сезон и «Без сезона»)."""
+    _seed_users(tmp_path, "render_one_season_legacy.db", [(1, "YL 26/2"), (2, None)])
+    from handlers import admin_broadcasts
+    msg = FakeMessage()
+    asyncio.run(admin_broadcasts._render_filter_menu(msg, [], edit=True))
+    assert "filter_f_season" in _cb_datas(msg.markup)
+
+
+def test_filter_pick_field_season_two_seasons_shows_real_values(tmp_path):
+    _seed_users(tmp_path, "pick_two_seasons.db", [(1, "YL 26/2"), (2, "YL 26/2"), (3, "YL 26/1")])
+    from handlers import admin_broadcasts
+    cb = FakeCallback("filter_f_season")
+    state = FakeState()
+    asyncio.run(admin_broadcasts.filter_pick_field(cb, state))
+    texts = _btn_texts(cb.message.markup)
+    assert "YL 26/1" in texts
+    assert "YL 26/2" in texts
+
+
+def test_filter_pick_field_season_with_legacy_last_option_reads_none_label(tmp_path):
+    _seed_users(tmp_path, "pick_legacy.db", [(1, "YL 26/2"), (2, "YL 26/1"), (3, None)])
+    from handlers import admin_broadcasts
+    cb = FakeCallback("filter_f_season")
+    state = FakeState()
+    asyncio.run(admin_broadcasts.filter_pick_field(cb, state))
+    data = asyncio.run(state.get_data())
+    assert data["filter_options"][-1] == db.SEASON_NONE
+    texts = _btn_texts(cb.message.markup)
+    # последняя кнопка перед «← Назад» — легаси-вариант, читается «Без сезона», не сентинелом
+    assert texts[-2] == "Без сезона"
+    assert db.SEASON_NONE not in texts
+
+
+def test_filter_pick_field_season_single_season_alerts_and_does_not_redraw(tmp_path):
+    """Гейт живёт в хэндлере: инлайн-кнопки не истекают, вчерашнее меню с кнопкой «Сезон»
+    сегодня (после того как второй сезон исчез бы) не должно давать бессмысленный фильтр."""
+    _seed_users(tmp_path, "pick_single_season.db", [(1, "YL 26/2"), (2, "YL 26/2")])
+    from handlers import admin_broadcasts
+    cb = FakeCallback("filter_f_season")
+    state = FakeState()
+    asyncio.run(admin_broadcasts.filter_pick_field(cb, state))
+    assert cb.message.text is None
+    assert cb.message.markup is None
+    assert cb.answers
+    text, show_alert = cb.answers[-1]
+    assert show_alert is True
+
+
+def test_filter_pick_value_season_real_value(tmp_path):
+    _seed_users(tmp_path, "pick_value_real.db", [(1, "YL 26/2"), (2, "YL 26/1")])
+    from handlers import admin_broadcasts
+    cb = FakeCallback("filter_f_season")
+    state = FakeState()
+    asyncio.run(admin_broadcasts.filter_pick_field(cb, state))
+    asyncio.run(state.update_data(filters=[]))
+    options = (asyncio.run(state.get_data()))["filter_options"]
+    idx = options.index("YL 26/2")
+    pick = FakeCallback(f"filter_opt:{idx}")
+    asyncio.run(admin_broadcasts.filter_pick_value(pick, state))
+    filters = (asyncio.run(state.get_data()))["filters"]
+    assert filters == [{"field": "season", "value": "YL 26/2"}]
+
+
+def test_filter_pick_value_season_none_sentinel_carries_label(tmp_path):
+    _seed_users(tmp_path, "pick_value_none.db", [(1, "YL 26/2"), (2, None)])
+    from handlers import admin_broadcasts
+    cb = FakeCallback("filter_f_season")
+    state = FakeState()
+    asyncio.run(admin_broadcasts.filter_pick_field(cb, state))
+    asyncio.run(state.update_data(filters=[]))
+    options = (asyncio.run(state.get_data()))["filter_options"]
+    idx = options.index(db.SEASON_NONE)
+    pick = FakeCallback(f"filter_opt:{idx}")
+    asyncio.run(admin_broadcasts.filter_pick_value(pick, state))
+    filters = (asyncio.run(state.get_data()))["filters"]
+    assert filters == [{"field": "season", "value": db.SEASON_NONE, "label": "Без сезона"}]
+
+
+def test_filter_summary_season_real_value():
+    from handlers import admin_broadcasts
+    assert admin_broadcasts._filter_summary(
+        [{"field": "season", "value": "YL 26/2"}]
+    ) == "Сезон = YL 26/2"
+
+
+def test_filter_summary_season_none_sentinel_shows_label():
+    from handlers import admin_broadcasts
+    assert admin_broadcasts._filter_summary(
+        [{"field": "season", "value": db.SEASON_NONE, "label": "Без сезона"}]
+    ) == "Сезон = Без сезона"
+
+
+def test_count_and_list_filtered_via_picked_season_spec(tmp_path):
+    """Счётчик меняется: спека, собранная пикером, отдаёт только делегатов выбранного сезона."""
+    _seed_users(tmp_path, "counter.db", [(1, "YL 26/2"), (2, "YL 26/2"), (3, "YL 26/1")])
+    from handlers import admin_broadcasts
+    cb = FakeCallback("filter_f_season")
+    state = FakeState()
+    asyncio.run(admin_broadcasts.filter_pick_field(cb, state))
+    asyncio.run(state.update_data(filters=[]))
+    options = (asyncio.run(state.get_data()))["filter_options"]
+    idx = options.index("YL 26/2")
+    pick = FakeCallback(f"filter_opt:{idx}")
+    asyncio.run(admin_broadcasts.filter_pick_value(pick, state))
+    filters = (asyncio.run(state.get_data()))["filters"]
+    ids = asyncio.run(db.count_and_list_filtered(filters))
+    assert set(ids) == {1, 2}
+
+
+def test_required_capability_filter_f_season_is_broadcast():
+    """Доказательство, что записи в ADMIN_CAPS не нужны — `filter_f_*` уже покрывает
+    (`admin_caps.py:343`), префиксный матч в `required_capability`."""
+    from handlers import admin_caps
+    assert admin_caps.required_capability(callback_data="filter_f_season") == "broadcast"

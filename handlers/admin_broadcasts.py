@@ -37,6 +37,8 @@ from database.db import (
     cancel_scheduled_broadcast,
     count_and_list_filtered,
     get_distinct_filter_values,
+    SEASON_NONE,
+    get_season_filter_options,
     # Quick 260910-okb (BC-01..06): журнал немедленных рассылок + отзыв у получателей.
     create_broadcast,
     get_broadcast,
@@ -765,6 +767,9 @@ _FILTER_FIELD_LABELS = {
     # The two labels sit in the same menu and must stay visually distinguishable on screen —
     # confusing them is the most expensive mistake this feature can make.
     "event_city": "Город мероприятия",
+    # Квик 260910-vfl (SEASON-FILTER-02). Это сезон СОБЫТИЯ, которым помечена регистрация
+    # (настройка «🎉 Сезон события», `settings_schema.event_season`) — не «Статус» и не «Трек».
+    "season": "Сезон",
 }
 
 # Fields whose value is chosen from a DB-distinct picker (buttons pulled from real data).
@@ -780,6 +785,10 @@ _PICKER_FIELDS = {
     # import time. Its values are the ONLY ones not sourced from a DB DISTINCT (see
     # `_show_value_picker`).
     "event_city",
+    # Квик 260910-vfl (SEASON-FILTER-01) — same двойная регистрация rule: also in
+    # `db._FILTER_COLUMNS`, see there. No separate handler needed for the same reason as
+    # `event_city` above.
+    "season",
 }
 
 # How many value buttons per picker page (long cyrillic values → 1 per row).
@@ -836,16 +845,17 @@ def _filter_summary(filters: list[dict]) -> str:
         elif f["field"] == "payment_status":
             parts.append(f"{label} = {_PAYMENT_STATUS_LABELS.get(f.get('value'), val)}")
         elif f.get("label"):
-            # Phase 07.2 (CITY-02): a filter may carry its own human display text (a city code
-            # is unreadable in the summary). Generic — not a city special case. Escaped like
-            # every other value; the label comes from bot_settings and is admin-editable.
+            # Phase 07.2 (CITY-02) / квик 260910-vfl: a filter may carry its own human display
+            # text (a city code / the SEASON_NONE sentinel is unreadable in the summary).
+            # Generic — not a city special case. Escaped like every other value.
             parts.append(f"{label} = {html_module.escape(str(f['label']))}")
         else:
             parts.append(f"{label} = {val}")
     return " И ".join(parts)
 
 
-def _filter_menu_kb(filters: list[dict], *, show_city: bool = False) -> InlineKeyboardMarkup:
+def _filter_menu_kb(filters: list[dict], *, show_city: bool = False,
+                     show_season: bool = False) -> InlineKeyboardMarkup:
     kb = [
         [InlineKeyboardButton(text="Комитет АЙСЕК", callback_data="filter_f_local_committee"),
          InlineKeyboardButton(text="Департамент", callback_data="filter_f_department")],
@@ -868,6 +878,11 @@ def _filter_menu_kb(filters: list[dict], *, show_city: bool = False) -> InlineKe
     if show_city:
         kb.append([InlineKeyboardButton(text="🏙 Город мероприятия",
                                         callback_data="filter_f_event_city")])
+    # Квик 260910-vfl (SEASON-FILTER-02): кнопка только когда сезонов больше одного — на одном
+    # сезоне фильтровать не по чему, кнопка была бы шумом. Дефолт False держит клавиатуру
+    # байт-в-байт прежней.
+    if show_season:
+        kb.append([InlineKeyboardButton(text="Сезон", callback_data="filter_f_season")])
     if filters:
         kb.append([InlineKeyboardButton(text="📊 Показать и отправить", callback_data="filter_count")])
     kb.append([InlineKeyboardButton(text="❌ Отмена", callback_data="broadcast_cancel")])
@@ -884,7 +899,11 @@ async def _render_filter_menu(target, filters: list[dict], *, edit: bool):
     # filter (07.2-04 decision). A broadcast has an asymmetric risk: a condition the manager
     # never set is exactly how a message reaches a third of the base while they believe it
     # reached everyone. Moderation/export can't fail that way (an empty screen is visible).
-    kb = _filter_menu_kb(filters, show_city=await cities_module_on())
+    # Квик 260910-vfl (SEASON-FILTER-02): порог считается по тому же списку, который потом
+    # покажет пикер (get_season_filter_options) — второй карты значений нет.
+    season_options = await get_season_filter_options()
+    kb = _filter_menu_kb(filters, show_city=await cities_module_on(),
+                         show_season=len(season_options) > 1)
     if edit:
         await target.edit_text(text, reply_markup=kb)
     else:
@@ -932,6 +951,15 @@ async def _show_value_picker(callback: types.CallbackQuery, state: FSMContext, f
         # offered. A city with zero applications so far would be unofferable too.
         options = [c["code"] for c in CITIES]
         labels = {code: await city_label(code) for code in options}
+    elif field == "season":
+        # Квик 260910-vfl (SEASON-FILTER-04): гейт живёт В ХЭНДЛЕРЕ, а не только в отрисовке
+        # клавиатуры — тот же довод, что WR-04 у event_city: инлайн-кнопки не истекают, меню,
+        # нарисованное вчера при двух сезонах, живо и сегодня, когда сезон снова один.
+        options = await get_season_filter_options()
+        if len(options) < 2:
+            await callback.answer("В базе один сезон — фильтровать не по чему.", show_alert=True)
+            return
+        labels = {SEASON_NONE: "Без сезона"}
     elif field == "participant_type":
         # Phase 14 (CFG-02, IN-01): RU labels instead of raw codes (party_noovernight etc.);
         # fail-soft for a value not in _TRACK_LABELS — falls back to the raw code as the label
@@ -1030,6 +1058,15 @@ async def filter_pick_value(callback: types.CallbackQuery, state: FSMContext):
             "exclude": list(scope[1]) if scope else [],
             "label": labels.get(value, value),
         })
+    elif field == "season":
+        # Квик 260910-vfl (SEASON-FILTER-04): «label» только для сентинела SEASON_NONE — у
+        # настоящих сезонов подписи нет (значение и есть подпись, «YL 26/2»). Сводку уже
+        # рисует существующая ветка `f.get("label")` в `_filter_summary`.
+        entry = {"field": field, "value": value}
+        labels = data.get("filter_option_labels") or {}
+        if value in labels:
+            entry["label"] = labels[value]
+        filters.append(entry)
     else:
         filters.append({"field": field, "value": value})
     await state.update_data(
