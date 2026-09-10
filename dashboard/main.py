@@ -233,6 +233,9 @@ def build_page_context(conn, cfg: DashboardConfig, scope: queries.Scope, viewer:
         cuts.append({"title": title, "rows": _bar_rows(rows), "has_data": bool(rows)})
 
     game_stats = queries.game_block(conn, scope) if flags.get("dashboard_block_game") == "on" else None
+    # `questions_block` без чтения тумблера (D-2 квика 260910-tt5): вопрос делегата — базовая
+    # функция, не отключаемый модуль, гейт по наличию данных живёт ВНУТРИ самой функции.
+    questions_stats = queries.questions_block(conn, scope)
 
     daily_chart = None
     if daily_rows is not None and daily_rows:
@@ -276,6 +279,7 @@ def build_page_context(conn, cfg: DashboardConfig, scope: queries.Scope, viewer:
         ),
         "bot_username": cfg.bot_username,
         "game": game_stats,
+        "questions": questions_stats,
     }
 
 

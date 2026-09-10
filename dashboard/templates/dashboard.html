@@ -59,7 +59,8 @@
   {# KPI-строка (D-14) #}
   <section class="block">
     <h2 class="visually-hidden">Ключевые показатели</h2>
-    <div class="kpi-grid {% if game %}kpi-grid--6{% else %}kpi-grid--5{% endif %}">
+    {% set kpi_tiles = 5 + (1 if questions else 0) + (1 if game else 0) %}
+    <div class="kpi-grid kpi-grid--{{ kpi_tiles }}">
       <div class="kpi primary">
         <div class="num">{{ kpi.total | thousands }}</div>
         <div class="lbl">Всего заявок</div>
@@ -88,6 +89,17 @@
         <div class="lbl">Среднее время обработки</div>
         <div class="delta">от подачи анкеты до решения менеджера</div>
       </div>
+      {# Гашение по `questions` (а не по отдельному чтению настройки) намеренно: у вопросов
+         делегатов нет тумблера (D-2 квика 260910-tt5) — `questions_block` сам возвращает None
+         при отсутствии вопросов в скоупе, плитка появляется ровно там же, где и блок, и не
+         висит вечным «—» у события без единого вопроса. #}
+      {% if questions %}
+      <div class="kpi">
+        <div class="num text">{{ kpi.question_answer_avg_label }}</div>
+        <div class="lbl">Ответ на вопрос</div>
+        <div class="delta">от вопроса делегата до доставленного ответа</div>
+      </div>
+      {% endif %}
       {# Гашение по `game` (а не по отдельному чтению тумблера) намеренно: `game_block` уже
          сам возвращает None и при выключенном тумблере, и при отсутствии сдач в скоупе —
          плитка появляется ровно там же, где и блок, и не висит вечным «—» у события без
@@ -378,6 +390,65 @@
           <tr>
             <td data-label="Категория">{{ category }}</td>
             <td class="num" data-label="Одобрено">{{ count | thousands }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+      </div>
+      {% endif %}
+    </div>
+  </section>
+  {% endif %}
+
+  {# Вопросы делегатов (квик 260910-tt5): без тумблера (D-2), гейт по наличию данных живёт в
+     questions_block -- секция целиком под {% if questions %}, ровно как у геймы. #}
+  {% if questions %}
+  <section class="block">
+    <h2 class="block-title">Вопросы делегатов</h2>
+    <div class="card">
+      {# Подписи состояний -- те же, что у чипов журнала вопросов в боте
+         (services/questions.py::FILTER_LABELS): два экрана обязаны называть одни и те же
+         состояния одинаково. #}
+      <div class="kpi-grid secondary">
+        <div class="kpi"><div class="num">{{ questions.total | thousands }}</div><div class="lbl">Всего вопросов</div></div>
+        <div class="kpi"><div class="num">{{ questions.new | thousands }}</div><div class="lbl">Без ответа</div></div>
+        <div class="kpi">
+          <div class="num">{{ questions.in_work | thousands }}</div>
+          <div class="lbl">В работе</div>
+          <div class="delta">взяты, ответ ещё не доставлен</div>
+        </div>
+        <div class="kpi">
+          <div class="num">{{ questions.answered | thousands }}</div>
+          <div class="lbl">Отвечено</div>
+          {% if questions.answered_share is not none %}
+          <div class="delta">{{ questions.answered_share }}% всех вопросов</div>
+          {% endif %}
+        </div>
+      </div>
+      <div class="kpi-grid secondary">
+        <div class="kpi">
+          <div class="num text">{{ questions.avg_answer_label }}</div>
+          <div class="lbl">Среднее время ответа</div>
+          <div class="delta">от вопроса до доставленного ответа</div>
+        </div>
+        <div class="kpi">
+          <div class="num">{{ questions.waiting_now | thousands }}</div>
+          <div class="lbl">Ждут ответа</div>
+          {% if questions.oldest_waiting_minutes is not none %}
+          <div class="delta">самый старый ждёт {{ questions.oldest_waiting_label }}</div>
+          {% endif %}
+        </div>
+      </div>
+      {% if questions.top_managers %}
+      <h3 class="cut-title">Кто отвечает</h3>
+      <div class="table-wrap">
+      <table class="responsive">
+        <thead><tr><th>Менеджер</th><th class="num">Ответов</th></tr></thead>
+        <tbody>
+          {% for manager in questions.top_managers %}
+          <tr>
+            <td data-label="Менеджер">{{ manager.name }}</td>
+            <td class="num" data-label="Ответов">{{ manager.answered | thousands }}</td>
           </tr>
           {% endfor %}
         </tbody>
