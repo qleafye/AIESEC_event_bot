@@ -119,7 +119,7 @@ def test_profile_avatar_url_from_positive_cache_no_network(client):
     # Позитивный кеш (avatar_file_id уже записан) — resolve_avatar не ходит в сеть.
     _fill_profile(DELEGATE_ID, avatar_file_id="AgACavatar")
     body = client.get("/app/api/profile", headers=_hdr(DELEGATE_ID)).json()
-    assert body["avatar_url"] == "/app/api/file/AgACavatar"
+    assert body["avatar_url"].startswith("/app/api/file/AgACavatar?t=")
 
 
 def test_profile_avatar_url_none_with_fresh_negative_cache(client):

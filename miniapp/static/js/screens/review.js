@@ -15,7 +15,7 @@
 // успеха остаётся — это обратная связь по нажатию, не праздничный momentum.
 
 import { icon } from "../icons.js";
-import { emptyState } from "../ui.js";
+import { emptyState, fileUrl } from "../ui.js";
 import { haptic } from "../motion.js";
 
 const PART_ICON = { photo: "image", document: "file-text", text: "pen-line", link: "link" };
@@ -32,10 +32,6 @@ export async function render(root, params, ctx) {
   function say(text, kind) {
     notice.textContent = text || "";
     notice.className = `chip ${kind || "accent"}${text ? "" : " hidden"}`;
-  }
-
-  function fileUrl(fileId) {
-    return `/app/api/file/${encodeURIComponent(fileId)}`;
   }
 
   function partNode(part) {

@@ -15,6 +15,7 @@
 import { api, ApiError, esc, setAuthErrorHandler } from "./api.js";
 import { icon } from "./icons.js";
 import { applyMotionTier } from "./motion.js";
+import { setFileToken } from "./ui.js";
 
 const tg = window.Telegram && window.Telegram.WebApp;
 const root = document.documentElement;
@@ -549,6 +550,9 @@ async function start() {
     }
     return;
   }
+  // Токен доступа к файлам (quick 260910-w3j) — до первой отрисовки экрана, иначе первый же
+  // <img> (лого/аватар/стикер) отрисуется без него.
+  setFileToken(me.file_token);
   // Бренд-паттерн hero (D-17/D-04): класс на <body>, CSS сам гейтит motion "full" внутри.
   body.classList.toggle("pattern-enabled", Boolean(me.pattern_enabled));
   window.addEventListener("hashchange", route);
