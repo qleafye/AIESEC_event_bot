@@ -343,6 +343,7 @@ def build_compare_context(cfg, *, codes=None, axis="day_n", seasons=None, now=No
                 accent = _event_accent(conn)
                 kpi = queries.kpi_row(conn, scope)
                 status = queries.status_totals(conn, scope)
+                game = queries.game_block(conn, scope)
                 funnel_rows = queries.funnel(conn, scope)
                 daily_rows = queries.daily_registrations(conn, scope)
                 reg_start = queries.registration_start(conn, scope)
@@ -370,7 +371,7 @@ def build_compare_context(cfg, *, codes=None, axis="day_n", seasons=None, now=No
                 "available": False, "error": error, "kpi": None, "approved": None,
                 "pending": None, "event_date": None, "days_to_event": None, "funnel": [],
                 "registration_start": None, "day_zero": None, "day_zero_note": None,
-                "season_options": [],
+                "season_options": [], "game_participants": None,
             })
             unavailable.append({"code": event.code, "name": event.code, "error": error})
             continue
@@ -394,6 +395,7 @@ def build_compare_context(cfg, *, codes=None, axis="day_n", seasons=None, now=No
             "day_zero": day_zero.isoformat() if day_zero else None,
             "day_zero_note": day_zero_note,
             "season_options": season_options,
+            "game_participants": game["participants"] if game else None,
         })
         raw_by_code[event.code] = {
             "funnel_rows": funnel_rows,
@@ -426,6 +428,12 @@ def build_compare_context(cfg, *, codes=None, axis="day_n", seasons=None, now=No
         if cut is not None:
             cuts.append(cut)
 
+    # Две колонки геймификации в и без того широкой таблице появляются ТОЛЬКО когда хотя бы
+    # у одного события есть данные игры -- тот же приём «погашенное у всех в таблицу не
+    # попадает», что уже применён к разрезам (`_build_cut`) и ступеням воронки
+    # (`present_labels`).
+    show_game_columns = any(e["game_participants"] for e in event_ctxs)
+
     context = {
         "events": event_ctxs,
         "funnel_labels": present_labels,
@@ -434,6 +442,7 @@ def build_compare_context(cfg, *, codes=None, axis="day_n", seasons=None, now=No
         "cuts": cuts,
         "unavailable": unavailable,
         "generated_at": now.isoformat(),
+        "show_game_columns": show_game_columns,
     }
     _CACHE[cache_key] = (now.timestamp(), context)
     return context
