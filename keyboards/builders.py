@@ -6,8 +6,10 @@ from database.db import get_user, has_faq_for_city
 from settings_schema import get_setting_typed
 from cities import get_setting_typed_for_city, cities_module_on, normalize_city
 # Квик 260912 (W5, Задача 2/3): i18n_ui_en — литеральный модуль-словарь, ни одного импорта
-# проекта (инвариант), цикла тут нет.
+# проекта (инвариант), цикла тут нет. services.i18n — aiogram-free/handlers-free (см. его
+# докстринг), тоже без цикла.
 from i18n_ui_en import MENU_EN
+from services.i18n import resolve_lang
 # Phase 21 (21-01, FORM-SYNC-01): литеральные списки вариантов ответа живут в корневом
 # aiogram-free reg_options.py — общая точка правды для бота (эти клавиатуры) и будущего
 # Mini App (reg_engine.step_spec()). Сами клавиатуры (ReplyKeyboardBuilder, add_other/
@@ -78,20 +80,60 @@ MENU_TEXTS["menu_payment"] = frozenset({"💳 Оплата", MENU_EN.get("💳 �
 
 
 async def get_main_menu_kb(telegram_id: int | None = None) -> ReplyKeyboardMarkup:
-    # Phase 09.2 (B): resolve the delegate's city ONCE, before the button loop -- module off
-    # (or no telegram_id, e.g. the two legacy tests that call get_main_menu_kb() bare) means
-    # get_user is never even called, so there is not a single extra DB read over today.
-    # A resolve failure (bad row, exception) must not break the menu -- buttons matter more
-    # than the city, so it fails soft to code=None (global values), same idiom as
+    # Квик 260912 (W5, Задача 3): lang_module_on резолвится ПЕРВЫМ (раньше жил ниже, рядом с
+    # miniapp_on/faq_on) — он нужен, чтобы решить, требуется ли единый `get_user` ниже, наравне
+    # с cities_module_on(). Каждый резолв — в своём try/except, тот же fail-soft идиом, что и
+    # остальные в этой функции: сбой чтения значит «нет перевода/города», меню цело.
+    lang_module_on = False
+    try:
+        lang_module_on = await get_setting_typed("delegate_lang_enabled") == "on"
+    except Exception as e:
+        logger.error(f"get_main_menu_kb: delegate_lang_enabled resolve failed: {e}")
+        lang_module_on = False
+
+    cities_on = False
+    try:
+        cities_on = await cities_module_on()
+    except Exception as e:
+        logger.error(f"get_main_menu_kb: cities_module_on resolve failed: {e}")
+        cities_on = False
+
+    # Один `get_user` на ОБА резолва ниже (город + язык) — не два отдельных чтения. Модуль
+    # off (или нет telegram_id, как у legacy-тестов, зовущих get_main_menu_kb() голым) —
+    # `get_user` не зовётся вовсе, ни одного лишнего чтения БД сверх сегодняшнего.
+    user = None
+    if telegram_id is not None and (cities_on or lang_module_on):
+        try:
+            user = await get_user(telegram_id)
+        except Exception as e:
+            logger.error(f"get_main_menu_kb: get_user failed for {telegram_id}: {e}")
+            user = None
+
+    # Phase 09.2 (B): city resolve failure must not break the menu -- buttons matter more than
+    # the city, so it fails soft to code=None (global values), same idiom as
     # handlers/user_actions.py::show_game_tasks.
     code = None
     try:
-        if telegram_id is not None and await cities_module_on():
-            user = await get_user(telegram_id)
+        if cities_on:
             code = normalize_city(user.get("event_city") if user else None)
     except Exception as e:
         logger.error(f"get_main_menu_kb: city resolve failed for {telegram_id}: {e}")
         code = None
+
+    # Квик 260912 (W5, Задача 3): язык делегата резолвится ровно как везде в проекте --
+    # `services.i18n.resolve_lang`, `language_code` клиента здесь намеренно не передаётся
+    # (D-06 уже отработал на /start, здесь ничего не угадываем повторно). Исход "ask"
+    # (модуль включён, выбор ещё не сохранён) трактуется как "ru" -- то же самое, что и любая
+    # ошибка резолюции: меню важнее языка.
+    lang = "ru"
+    try:
+        if lang_module_on:
+            stored_lang = user.get("lang") if user else None
+            if resolve_lang(True, stored_lang, None) == "en":
+                lang = "en"
+    except Exception as e:
+        logger.error(f"get_main_menu_kb: lang resolve failed for {telegram_id}: {e}")
+        lang = "ru"
 
     # Phase 19 (D-10, WR-05): miniapp_enabled resolved ONCE before the loop (same idiom as the
     # city code above) -- a single extra DB read per menu render, not one per button. Fail-soft:
@@ -111,15 +153,6 @@ async def get_main_menu_kb(telegram_id: int | None = None) -> ReplyKeyboardMarku
     except Exception as e:
         logger.error(f"get_main_menu_kb: has_faq_for_city resolve failed for {telegram_id}: {e}")
         faq_on = False
-
-    # Phase 27 (27-04, LANG-01): тот же идиом, что miniapp_on/faq_on выше — одно доп. чтение
-    # ПЕРЕД циклом, не одно на кнопку. Fail-soft: сбой чтения значит «нет кнопки», меню цело.
-    lang_module_on = False
-    try:
-        lang_module_on = await get_setting_typed("delegate_lang_enabled") == "on"
-    except Exception as e:
-        logger.error(f"get_main_menu_kb: delegate_lang_enabled resolve failed: {e}")
-        lang_module_on = False
 
     kb = ReplyKeyboardBuilder()
     for key, text in MENU_BUTTONS:
@@ -145,14 +178,18 @@ async def get_main_menu_kb(telegram_id: int | None = None) -> ReplyKeyboardMarku
             # выше общей веткой `if val == "on"`) недостаточна, пока не включён модуль.
             if key == "menu_lang" and not lang_module_on:
                 continue
-            kb.button(text=text)
+            # Квик 260912 (W5, Задача 3): перевод подписи в ОДНОМ месте, прямо перед
+            # добавлением кнопки -- не через services.i18n.tr() (та лезла бы в UI_EN/tr_map,
+            # подписей меню там нет и быть не должно, см. i18n_ui_en.py::MENU_EN).
+            kb.button(text=MENU_EN.get(text, text) if lang == "en" else text)
     # Persistent "upload receipt" entry — only while the user still owes one.
     # Lazy import avoids a circular import (payment imports get_main_menu_kb); fail-soft.
     if telegram_id is not None:
         try:
             from handlers.payment import should_offer_receipt_upload
             if await should_offer_receipt_upload(telegram_id):
-                kb.button(text="💳 Оплата")
+                payment_text = "💳 Оплата"
+                kb.button(text=MENU_EN.get(payment_text, payment_text) if lang == "en" else payment_text)
         except Exception:
             pass
     kb.adjust(2)
