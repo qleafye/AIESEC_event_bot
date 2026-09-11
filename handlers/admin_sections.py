@@ -99,6 +99,10 @@ SECTIONS: list[tuple[str, str, list[tuple]]] = [
         ("toggle", "toggle_nudge_enabled"),
         ("toggle", "toggle_reg_edit_remoderation"),
         ("toggle", "toggle_quiet_hours"),
+        # Quick 260911-805 (W4-03): вход на экран «🌙 Тихие часы» — СРАЗУ ПОД строкой тумблера
+        # (D-04): менеджер, включивший тишину, тут же видит, где задать «с»/«до», а не ищет
+        # поле времени в обезличенной «⚙️ Тексты и настройки».
+        ("screen", "admin_quiet_hours", "🌙 Когда молчим: «с» и «до»"),
         # Phase 28 (28-07, SU-08): главный выключатель автоскоринга — рядом с прочими
         # тумблерами очереди заявок; сами правила (множества/пороги) — в группе "apps" ниже.
         ("toggle", "toggle_reg_scoring_enabled"),
@@ -485,3 +489,9 @@ async def show_admin_section(callback: types.CallbackQuery):
 # этого модуля), чтобы его строка в GOLDEN_SNAPSHOT (tests/test_refac_snapshot_260816.py)
 # встала строго в хвосте, а не разъехалась порядком с уже существующими хендлерами раздела.
 from handlers import admin_sheet_logs  # noqa: E402,F401
+
+# Quick 260911-805 (W4-03, D-03): шов «🌙 Тихие часы» — импорт СРАЗУ ПОСЛЕ admin_sheet_logs
+# (тот же хвостовой приём), а не в handlers/admin.py: тот модуль на своём документированном
+# потолке 915 строк (см. tests/test_module_size_convention_260816.py), и вставка ещё одного
+# шва-импорта туда потребовала бы поднимать потолок агрегатора-ядра ради одной строки.
+from handlers import admin_quiet_hours  # noqa: E402,F401

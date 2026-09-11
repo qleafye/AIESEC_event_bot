@@ -493,6 +493,7 @@ admin|callback_query|show_admin_section|admin_sec:*
 admin|callback_query|sheet_logs_open|sheet_logs_open
 admin|callback_query|sheet_logs_autosync_toggle|sheet_logs_autosync_toggle
 admin|callback_query|sheet_logs_sync_go|sheet_logs_sync_go
+admin|callback_query|admin_quiet_hours|admin_quiet_hours
 admin|callback_query|sync_sheet|admin_sync_sheet
 admin|callback_query|rebuild_sheet_confirm|admin_rebuild_sheet
 admin|callback_query|rebuild_sheet|admin_rebuild_sheet_go
@@ -882,7 +883,14 @@ def test_snapshot_total_handler_count_is_292():
     # admin.callback_query (сразу после poll_schedule_start) -- шов импортируется из самого
     # хвоста admin.py, после admin_gamification/admin_polls (481 -> 484); чистый аппенд,
     # перепроверен прогоном _build_snapshot_lines() и diff'ом с прежним 481-строчным снапшотом.
-    assert len(GOLDEN_SNAPSHOT) == 484  # Квик 260910-ro7: +3; Quick 260910-okb: +3, +5; Phase 28 (28-09): +1; (28-08): +5, +1; (28-07): +1; (28-06): +3, +2
+    # Quick 260911-805 (W4-03): +1 handlers/admin_quiet_hours.py (callback_query
+    # admin_quiet_hours -- экран «🌙 Тихие часы»), встал сразу после sheet_logs_sync_go и перед
+    # sync_sheet: шов импортируется из хвоста handlers/admin_sections.py, СРАЗУ ПОСЛЕ импорта
+    # admin_sheet_logs (D-03) -- та же точка регистрации, что у sheet_logs_* выше (484 -> 485);
+    # чистая вставка, перепроверена прогоном _build_snapshot_lines() и diff'ом с прежним
+    # 484-строчным снапшотом (единственная строка сдвинула всё после неё на одну позицию, ни
+    # одна другая строка не поменялась и не переставилась).
+    assert len(GOLDEN_SNAPSHOT) == 485  # Quick 260911-805: +1; Квик 260910-ro7: +3; Quick 260910-okb: +3, +5; Phase 28 (28-09): +1; (28-08): +5, +1; (28-07): +1; (28-06): +3, +2
     # handlers/reg_resume_fork.py — message process_resume_link (хвост message-блока
     # registration.router, сразу после process_case_optin и перед первым callback_query
     # recall_keep) + callback_query regfork_pick (хвост callback_query-блока
