@@ -1273,6 +1273,19 @@ def _display_value(value) -> str:
 _OPAQUE_COLUMNS = {"resume_file_id"}
 
 
+def _published_value(column: str, value):
+    """Значение колонки, которое реально уезжает клиенту в спеке шага. Для обычной колонки —
+    как есть; для `_OPAQUE_COLUMNS` (сырой Telegram file_id) — только признак «непусто»
+    (`True`/`None`), само значение на сервере и наружу не отдаётся. Клиенту
+    (`screens/form.js::stepAnswered`) нужен именно этот признак — набор `spec.columns` не
+    меняется, а PATCH с такой колонкой всё равно поймает `400 bad_field`
+    (`_COLUMN_TO_STEP` её не знает, см. квик 260911-6i9 пункт 3), поэтому признак физически не
+    может доехать обратно до БД."""
+    if column not in _OPAQUE_COLUMNS:
+        return value
+    return True if value not in (None, "", "-") else None
+
+
 async def form_spec(answers: dict, participant_type: str | None = None,
                      event_city: str | None = None, prior: dict | None = None,
                      pending_consent_keys: list[str] | None = None) -> dict:
@@ -1315,15 +1328,20 @@ async def form_spec(answers: dict, participant_type: str | None = None,
         # резюме файлом уходит в resume_file_id/resume_file_name, а не в spec["column"]
         # (resume_text), поэтому проверка одной колонки видела «не заполнено» на реально
         # загруженном файле.
-        spec["values"] = {col: answers.get(col) for col in spec["columns"]}
-        has_answer = any(v not in (None, "", "-") for v in spec["values"].values())
+        # Квик 260911-6i9 (пункт 3): значения читаем один раз в raw_values — has_answer и
+        # выбор display_col решаются на СЫРЫХ значениях (поведение W1 не меняется), а наружу
+        # (spec["values"]) публикуется результат _published_value: опаковая колонка
+        # (`_OPAQUE_COLUMNS`, сырой file_id) уезжает клиенту признаком True/None, а не строкой.
+        raw_values = {col: answers.get(col) for col in spec["columns"]}
+        spec["values"] = {col: _published_value(col, val) for col, val in raw_values.items()}
+        has_answer = any(v not in (None, "", "-") for v in raw_values.values())
         prior_value = prior.get(step_key)
         if prior_value not in (None, "", "-"):
             spec["prior"] = {"value": prior_value, "display": _display_value(prior_value)}
         else:
             spec["prior"] = None
         if has_answer:
-            spec["value"] = answers.get(column)
+            spec["value"] = _published_value(column, answers.get(column))
             spec["value_source"] = "answer"
             done += 1
             # Пункт 4: основная колонка пуста (файл резюме), а набор отвечен — подпись
@@ -1336,14 +1354,14 @@ async def form_spec(answers: dict, participant_type: str | None = None,
                     (
                         col for col in spec["columns"]
                         if col not in _OPAQUE_COLUMNS
-                        and spec["values"].get(col) not in (None, "", "-")
+                        and raw_values.get(col) not in (None, "", "-")
                     ),
                     None,
                 )
                 if display_col is not None:
-                    spec["display"] = _display_value(spec["values"][display_col])
+                    spec["display"] = _display_value(raw_values[display_col])
         elif spec["prior"] is not None:
-            spec["value"] = prior_value
+            spec["value"] = _published_value(column, prior_value)
             spec["value_source"] = "prior"
         else:
             spec["value"] = None

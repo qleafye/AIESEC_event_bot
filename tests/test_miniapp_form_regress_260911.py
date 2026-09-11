@@ -221,13 +221,19 @@ def test_form_spec_resume_file_answered_shows_filename_not_raw_id(tmp_path):
     assert resume_spec["display"] == "resume.pdf"
     assert resume_spec["value"] is None
     assert set(resume_spec["values"].keys()) == set(reg_engine.columns_for_step("resume"))
+    # Квик 260911-6i9 (пункт 3): опаковая колонка (сырой file_id) публикуется признаком True,
+    # человекочитаемая — как есть; сентинел не уезжает клиенту НИ В ОДНОМ поле спеки.
+    assert resume_spec["values"]["resume_file_id"] is True
+    assert resume_spec["values"]["resume_file_name"] == "resume.pdf"
+    assert "RAWFILEID_SENTINEL_1" not in json.dumps(resume_spec)
     assert spec_form["progress"]["done"] >= 1
 
 
 def test_form_spec_legacy_resume_file_id_only_hides_raw_id_everywhere(tmp_path):
     """Легаси-строка: только resume_file_id, без имени файла — шаг отвечен, но показать
     нечего (нет человекочитаемой колонки-компаньона), сырой id не уходит НИ В ОДНОМ поле
-    спеки, кроме самого `values` (там он законно лежит под своим именем колонки)."""
+    спеки — включая `values`, где он теперь лежит признаком True, а не строкой (квик
+    260911-6i9, пункт 3)."""
     _ready(tmp_path)
     _set("reg_q_resume", "on")
     sentinel = "RAWFILEID_SENTINEL_LEGACY_2"
@@ -238,8 +244,8 @@ def test_form_spec_legacy_resume_file_id_only_hides_raw_id_everywhere(tmp_path):
     spec_form = _run(go())
     resume_spec = next(s for s in spec_form["steps"] if s["key"] == "resume")
     assert resume_spec["value_source"] == "answer"
-    spec_without_values = {k: v for k, v in resume_spec.items() if k != "values"}
-    assert sentinel not in json.dumps(spec_without_values)
+    assert sentinel not in json.dumps(resume_spec)
+    assert resume_spec["values"]["resume_file_id"] is True
     assert resume_spec.get("display") in (None, "")
 
 
@@ -254,6 +260,62 @@ def test_form_spec_resume_text_unchanged(tmp_path):
     resume_spec = next(s for s in spec_form["steps"] if s["key"] == "resume")
     assert resume_spec["value"] == "Мой опыт в продажах"
     assert resume_spec.get("display") in (None, "")
+
+
+def test_form_spec_no_resume_answer_publishes_opaque_column_as_none(tmp_path):
+    """Шаг без резюме вовсе — опаковая колонка публикуется `None`, не `False`/«» (пункт 3):
+    признак «непусто» не должен ложно выглядеть как «делегат ответил пустотой»."""
+    _ready(tmp_path)
+    _set("reg_q_resume", "on")
+
+    async def go():
+        return await reg_engine.form_spec({}, participant_type="full")
+
+    spec_form = _run(go())
+    resume_spec = next(s for s in spec_form["steps"] if s["key"] == "resume")
+    assert resume_spec["value_source"] is None
+    assert resume_spec["values"]["resume_file_id"] is None
+
+
+def test_published_value_masks_every_opaque_column_as_true_and_hides_raw(tmp_path):
+    """Параметрический сторож по `reg_engine._OPAQUE_COLUMNS` (пункт 3): для каждой опаковой
+    колонки непустое значение публикуется признаком `True`, а сырое значение не появляется ни
+    в одном поле спеки — на случай, если набор `_OPAQUE_COLUMNS` расширится."""
+    _ready(tmp_path)
+    _set("reg_q_resume", "on")
+    # `column_to_step` не знает `resume_file_id` НАРОЧНО (контекст п.6 плана — иначе PATCH с
+    # этой колонкой не ловил бы 400 bad_field), поэтому владеющий шаг ищем через
+    # `columns_for_step` по всему REG_FLOW, а не через `column_to_step`.
+    for column in reg_engine._OPAQUE_COLUMNS:
+        step_key = next(
+            (
+                key for key, *_rest in reg_engine.REG_FLOW
+                if column in reg_engine.columns_for_step(key)
+            ),
+            None,
+        )
+        assert step_key, column
+        sentinel = f"RAWFILEID_SENTINEL_PARAM_{column}"
+
+        async def go(column=column, sentinel=sentinel):
+            return await reg_engine.form_spec({column: sentinel}, participant_type="full")
+
+        spec_form = _run(go())
+        step_spec_out = next(s for s in spec_form["steps"] if s["key"] == step_key)
+        assert step_spec_out["values"][column] is True, column
+        assert sentinel not in json.dumps(step_spec_out), column
+
+
+def test_form_screen_stepanswered_contract_unchanged():
+    """Гарантия для будущей правки фронта: `stepAnswered` по-прежнему ходит по
+    `spec.columns` и считает заполненным по `v != null && v !== ""` — признак `True` из
+    `_published_value` обязан продолжать означать «отвечено»."""
+    text = _js_without_comments(FORM_SCREEN_JS)
+    start = text.index("function stepAnswered(")
+    end = text.index("\n}", start)
+    body = text[start:end]
+    assert "spec.columns" in body
+    assert 'v != null && v !== ""' in body
 
 
 def test_answers_from_user_row_carries_resume_columns_prior_does_not():
@@ -288,8 +350,8 @@ def test_http_get_draft_shows_resume_answered_for_edit_without_draft_row(tmp_pat
     assert body["exists"] is False
     resume_spec = next(s for s in body["steps"] if s["key"] == "resume")
     assert resume_spec["value_source"] == "answer"
-    spec_without_values = {k: v for k, v in resume_spec.items() if k != "values"}
-    assert sentinel not in json.dumps(spec_without_values)
+    assert sentinel not in json.dumps(body)
+    assert resume_spec["values"]["resume_file_id"] is True
 
 
 def test_form_screen_uses_values_and_columns_without_resume_column_literals():
