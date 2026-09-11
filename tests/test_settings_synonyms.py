@@ -19,18 +19,28 @@ EDITABLE_KEYS = set(editable_keys())
 # (тексты веб-экрана настроек и «настроек-лайт» Mini App — управляющие тексты интерфейса
 # менеджера, написаны обычным русским языком: «Кнопка «Сохранить N изменений»», «Реквизиты» и
 # т.п.), плюс сам факт, что это единственная группа, где почти всё самоописательно — на неё
-# указывают Task 2/3 22-02-PLAN.md явно (единственное исключение — `miniapp_enabled`, у него в
-# подписи английский термин «Mini App», а не «приложение»/«мини-апп», которыми его назовёт
-# менеджер, поэтому он покрыт явным синонимом в SETTINGS_SYNONYMS).
+# указывают Task 2/3 22-02-PLAN.md явно. Исключения (короткие подписи без узнаваемых слов,
+# явные синонимы в SETTINGS_SYNONYMS): `miniapp_enabled` (в подписи английский термин
+# «Mini App», а не «приложение»/«мини-апп»), и пять ключей quick 260911-5ij (W2) — тексты
+# состояний ошибки/гейта сдачи, подпись которых не содержит слов, которыми менеджер спросит
+# про них вслух.
 #
 # Группа `reg_prompts` (Phase 25, CITYQ-01): 44 ключа `reg_prompt_<step>`, сгенерированные из
 # `settings_schema.REG_PROMPT_STEPS` — подпись каждого дословно «✏️ Текст: <подпись вопроса>»,
 # т.е. уже содержит те же слова, по которым менеджер ищет сам вопрос (например «✏️ Текст:
 # 🎂 Возраст» находится по «возраст»). Ручные синонимы задублировали бы 44 записи, которые
 # reg_q_* уже покрывает в SETTINGS_SYNONYMS.
+_SELF_DESCRIBING_MINIAPP_EXCEPTIONS = {
+    "miniapp_enabled",
+    "miniapp_load_error_text",
+    "miniapp_retry_button",
+    "miniapp_submit_pending_text",
+    "miniapp_submit_approved_text",
+    "miniapp_submit_limit_text",
+}
 SEARCH_SELF_DESCRIBING = {
     k for k, v in SETTINGS_SCHEMA.items()
-    if (v.get("group") == "miniapp" and k != "miniapp_enabled")
+    if (v.get("group") == "miniapp" and k not in _SELF_DESCRIBING_MINIAPP_EXCEPTIONS)
     or v.get("group") == "reg_prompts"
 }
 SEARCH_SELF_DESCRIBING_REASON = (

@@ -53,6 +53,13 @@ MINIAPP_KEYS = [
     "miniapp_disabled_text",
     "miniapp_no_access_text",
     "miniapp_upload_too_large_text",
+    # Quick 260911-5ij (W2): пять текстов состояний — отказ первичной загрузки экрана
+    # (Пилар 6) + гейт закрытой сдачи по task.can_submit (Пилар 5, известная находка №5).
+    "miniapp_load_error_text",
+    "miniapp_retry_button",
+    "miniapp_submit_pending_text",
+    "miniapp_submit_approved_text",
+    "miniapp_submit_limit_text",
     "miniapp_profile_edit_hint",
     "miniapp_upload_caption_delegate",
     "miniapp_upload_caption_staff",
@@ -283,7 +290,9 @@ def test_exactly_170_miniapp_keys_and_no_extra():
     # (miniapp_questions_to_faq_button/_saved_toast) (167 -> 170).
     # Phase 28: +7 текстов финального экрана амбассадора + 1 пометка «варианта больше нет»
     # (170 -> 178).
-    assert len(MINIAPP_KEYS) == 178
+    # Quick 260911-5ij (W2): +5 текстов состояний — ошибка загрузки/кнопка повтора + три
+    # состояния закрытой сдачи (178 -> 183).
+    assert len(MINIAPP_KEYS) == 183
     present = sorted(k for k in SETTINGS_SCHEMA if k.startswith("miniapp_"))
     assert present == sorted(MINIAPP_KEYS)
 
@@ -343,7 +352,8 @@ def test_text_keys_have_human_defaults():
     # журнала (137 -> 139).
     # Phase 28: +7 текстов финального экрана амбассадора + 1 пометка «варианта больше нет»
     # (139 -> 147).
-    assert len(text_keys) == 147
+    # Quick 260911-5ij (W2): +5 текстовых ключей состояний (147 -> 152).
+    assert len(text_keys) == 152
     for key in text_keys:
         default = SETTINGS_SCHEMA[key]["default"]
         assert isinstance(default, str) and default.strip(), key

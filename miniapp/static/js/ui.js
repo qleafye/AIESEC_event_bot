@@ -5,6 +5,14 @@
 //
 // h передаётся вызывающим экраном (ctx.h) — ui.js не импортирует ядро app.js напрямую, тот же
 // приём, что и во внутренних хелперах screens/hub.js (tile(h, navigate, {...})).
+//
+// Quick 260911-5ij (W2, Пилар 6): тексты состояния «не удалось загрузить» и подпись кнопки
+// «Повторить» приходят из `document.body.dataset.screenTexts` — оболочки, а не ответа API.
+// Иначе неоткуда взять текст ИМЕННО в момент, когда сам API недоступен (тот же приём, что уже
+// есть у экрана «Откройте через бота»/«Заявок»: `page.py::STATE_TEXT_KEYS`/
+// `APPLICATIONS_TEXT_KEYS` -> `data-*` на `<body>`). `guardedRender` — единая точка входа
+// первичной загрузки всех делегатских экранов: рисует состояние ошибки на любом отказе
+// `draw()`, КРОМЕ тех трёх кодов, которые уже покрасило ядро (`api.js:53-62`).
 
 import { icon } from "./icons.js";
 
@@ -169,7 +177,60 @@ export function emptyState(h, { me, slot = "empty", text, action } = {}) {
 // То же самое на слоте «ошибка» + кнопка повтора вместо произвольного action.
 export function errorState(h, { me, text, retry } = {}) {
   const action = retry
-    ? h("button", { class: "btn secondary", type: "button", text: "Повторить", onClick: retry })
+    ? h("button", { class: "btn secondary", type: "button", text: screenText("retry"), onClick: retry })
     : null;
   return stateShell(h, { me, slot: "error", text, action, cls: "error-state" });
+}
+
+// Разбор data-screen-texts мемоизирован — атрибут неизменен на всё время жизни страницы
+// (задаётся один раз сервером при рендере оболочки), повторный JSON.parse на каждый вызов
+// не нужен. Битый JSON/отсутствие атрибута — тихий пустой объект, а не исключение (fail-soft,
+// тот же принцип, что applications.js::applicationsTexts).
+let _screenTextsCache = null;
+
+export function screenText(name) {
+  if (_screenTextsCache === null) {
+    try {
+      _screenTextsCache = JSON.parse((document.body && document.body.dataset.screenTexts) || "{}");
+    } catch (_) {
+      _screenTextsCache = {};
+    }
+  }
+  return _screenTextsCache[name] || "";
+}
+
+// Экран уже покрасило ядро (app.js -> api.js::authErrorHandler): 401, 403 и 503 РОВНО с
+// reason "miniapp_off" — источник истины `api.js:53-62`. Копии этой проверки в отдельных
+// экранах (`faq.js`/`form.js`) сверяли только `status === 503` целиком — для 503 с другим
+// reason (сам аппсервер лежит) это ложное «ядро покрасило», хотя оно не красило. Общая
+// проверка обязана смотреть и на reason.
+export function isCoreHandledError(err) {
+  if (!err) return false;
+  if (err.status === 401 || err.status === 403) return true;
+  return err.status === 503 && err.reason === "miniapp_off";
+}
+
+// Единая точка входа первичной загрузки делегатского экрана (Пилар 6, BLOCKER Топ-10 п.1):
+// без неё отказ сервера/обрыв сети на первом api() оставляет `root` пустым или навсегда
+// «Загрузка…» — роутер ядра на ApiError делает `return;` (app.js:524), сам экран себя не красит.
+// `draw` — прежнее тело render() экрана; `guardedRender` чистит `root` перед каждой попыткой
+// (повтор не дописывает второй экран под первым) и не трогает `root`, если экран уже покрасило
+// ядро (см. isCoreHandledError) — иначе перекрасили бы «Нет доступа»/«Сессия истекла» текстом
+// «не удалось загрузить».
+export async function guardedRender(root, ctx, draw) {
+  root.replaceChildren();
+  try {
+    await draw();
+  } catch (err) {
+    if (isCoreHandledError(err)) return;
+    root.replaceChildren(errorState(ctx.h, {
+      me: ctx.me,
+      text: screenText("load_error"),
+      // Возвращает промис (а не «дозвонился и забыл») — guardedRender сам никогда не
+      // отклоняется (ловит всё внутри), поэтому неперехваченного отказа тут не будет; форма
+      // как у "Показать ещё" в tasks.js (onClick: load) — вызывающий МОЖЕТ await, тестам это
+      // нужно для детерминизма клика.
+      retry: () => guardedRender(root, ctx, draw),
+    }));
+  }
 }

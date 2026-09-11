@@ -82,6 +82,18 @@ APPLICATIONS_TEXT_KEYS = {
     "reject_cancel": "miniapp_applications_reject_cancel",
 }
 
+# Quick 260911-5ij (W2, Пилар 6 + гейт сдачи): тексты состояний, нужные ИМЕННО тогда, когда
+# API недоступно (отказ первичной загрузки экрана) или до первого запроса решают, рисовать ли
+# форму (гейт `submit.js` по `task.can_submit`) — тот же приём JSON-атрибута оболочки, что
+# `APPLICATIONS_TEXT_KEYS` -> `data-applications-texts`.
+SCREEN_TEXT_KEYS = {
+    "load_error": "miniapp_load_error_text",
+    "retry": "miniapp_retry_button",
+    "submit_pending": "miniapp_submit_pending_text",
+    "submit_approved": "miniapp_submit_approved_text",
+    "submit_limit": "miniapp_submit_limit_text",
+}
+
 
 def deep_link(bot_username: str | None) -> str:
     return f"https://t.me/{bot_username}?start=app" if bot_username else ""
@@ -125,6 +137,10 @@ def _shell_context(request: Request, conn) -> dict:
             {name: read_setting(conn, key) or "" for name, key in APPLICATIONS_TEXT_KEYS.items()},
             ensure_ascii=False,
         ),
+        "screen_texts": json.dumps(
+            {name: read_setting(conn, key) or "" for name, key in SCREEN_TEXT_KEYS.items()},
+            ensure_ascii=False,
+        ),
     }
 
 
@@ -143,6 +159,7 @@ def render_disabled_page(request: Request) -> HTMLResponse:
             "section_labels": "{}",
             "texts": {name: "" for name in STATE_TEXT_KEYS},
             "applications_texts": "{}",
+            "screen_texts": "{}",
         }
     context["disabled_text"] = (
         context["texts"].get("disabled") or "Приложение временно недоступно."
