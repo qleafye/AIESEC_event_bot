@@ -4009,6 +4009,47 @@ async def mark_miniapp_outbox_failed(row_id: int, error: str) -> None:
         await db.commit()
 
 
+async def purge_miniapp_outbox_for_user(telegram_id: int) -> int:
+    """Квик 260911-mx6 (сеялка состояний приёмки): хвост, который `purge_user` сознательно
+    НЕ трогает — `miniapp_outbox` в `USER_PURGE_EXCLUDED`, потому что это очередь побочных
+    эффектов Mini App (объект бота, не делегатский след, см. комментарий у
+    USER_PURGE_EXCLUDED выше). Но сеялке эта таблица всё же нужна: если после сброса тестера
+    в ней остаётся необработанное событие по старому состоянию, делегату после /start
+    прилетает стухшее уведомление Mini App (и, отдельно, напоминание об оплате — то снимает
+    `cancel_payment_reminders`, это не про jobs.sqlite).
+
+    Удаляет только НЕобработанные (`processed_at IS NULL`) события, чей payload несёт этого
+    человека (`user_id` ИЛИ `telegram_id` внутри JSON) — уже обработанные и чужие события не
+    трогает. Разбор JSON в Python (`json.loads` в try/except, битая строка пропускается) —
+    НЕ `json_extract`: JSON1 нигде в проекте не используется, заводить зависимость от сборки
+    SQLite ради одной функции незачем. Возвращает число удалённых строк; на пустой очереди —
+    0 без падения."""
+    async with _connect() as db:
+        db.row_factory = aiosqlite.Row
+        async with db.execute(
+            "SELECT id, payload FROM miniapp_outbox WHERE processed_at IS NULL"
+        ) as cursor:
+            rows = await cursor.fetchall()
+        matched_ids: list[int] = []
+        for row in rows:
+            try:
+                payload = json.loads(row["payload"])
+            except (TypeError, ValueError):
+                continue
+            if not isinstance(payload, dict):
+                continue
+            if payload.get("user_id") == telegram_id or payload.get("telegram_id") == telegram_id:
+                matched_ids.append(row["id"])
+        if not matched_ids:
+            return 0
+        placeholders = ",".join("?" * len(matched_ids))
+        cursor = await db.execute(
+            f"DELETE FROM miniapp_outbox WHERE id IN ({placeholders})", matched_ids
+        )
+        await db.commit()
+        return cursor.rowcount
+
+
 async def get_active_submission(task_id: int, user_id: int) -> dict | None:
     """Most recent non-rejected submission for this pair, or None. Rejected submissions are
     invisible here on purpose — a fresh resubmission after rejection is a NEW row (D-05)."""
