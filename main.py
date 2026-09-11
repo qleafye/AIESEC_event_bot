@@ -7,7 +7,7 @@ from aiogram import Bot, Dispatcher
 from aiogram.fsm.storage.memory import MemoryStorage
 from config import config
 from database.db import init_db, get_setting, set_setting
-from handlers import registration, user_actions, admin, payment, polls
+from handlers import registration, user_actions, admin, payment, polls, uat_seed
 from services.reminders import pending_reminder_loop
 from services.scheduler import init_scheduler
 from services.allowlist import warm_allowlist_if_gating_on
@@ -372,6 +372,11 @@ async def main():
     # Quick 260904-3vm (эстафета): MemoryStorage бота никто извне не сбрасывает — это
     # единственный путь веб-процесса (miniapp_outbox::reg_fsm_reset) к FSM бота.
     miniapp_outbox.init_fsm_storage(dp.storage)
+    # Квик 260911-mx6: свой роутер сеялки приёмки — ПЕРВЫМ, раньше admin.router. Он не висит
+    # на CapabilityMiddleware (deny-by-default admin_caps отрезал бы тестера-делегата без
+    # ролей навсегда) и перехватывает /uat раньше state-хендлеров registration.router — иначе
+    # тестер, зависший посреди своей анкеты, не смог бы сбросить себя сам.
+    dp.include_router(uat_seed.router)
     dp.include_router(admin.router) # Admin first to intercept commands
     dp.include_router(payment.router)  # payment callbacks/states checked before registration
     dp.include_router(registration.router)
