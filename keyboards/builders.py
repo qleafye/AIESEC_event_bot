@@ -5,6 +5,9 @@ from config import config
 from database.db import get_user, has_faq_for_city
 from settings_schema import get_setting_typed
 from cities import get_setting_typed_for_city, cities_module_on, normalize_city
+# Квик 260912 (W5, Задача 2/3): i18n_ui_en — литеральный модуль-словарь, ни одного импорта
+# проекта (инвариант), цикла тут нет.
+from i18n_ui_en import MENU_EN
 # Phase 21 (21-01, FORM-SYNC-01): литеральные списки вариантов ответа живут в корневом
 # aiogram-free reg_options.py — общая точка правды для бота (эти клавиатуры) и будущего
 # Mini App (reg_engine.step_spec()). Сами клавиатуры (ReplyKeyboardBuilder, add_other/
@@ -57,6 +60,22 @@ MENU_BUTTONS = [
     # нарушением «бот для людей».
     ("menu_lang", "🌐 Язык / Language"),
 ]
+
+# Квик 260912 (W5, Задача 2) — множества «русская подпись + английская подпись» для входного
+# матчинга фильтров aiogram (`F.text.in_(MENU_TEXTS[key])` вместо `F.text == "..."`). Собрано
+# ВЫЧИСЛЕНИЕМ из `MENU_BUTTONS` + `i18n_ui_en.MENU_EN`, а не выписано руками — расширение
+# набора подписей идёт по построению, без риска забыть одну из точек входа. Ключи — все ключи
+# `MENU_BUTTONS` (12) плюс синтетический `"menu_payment"` для литерала «💳 Оплата» ниже (этот
+# литерал НЕ входит в `MENU_BUTTONS` намеренно — экран тумблеров админки и реестр перебирают
+# именно `MENU_BUTTONS`, несуществующий ключ `menu_payment` там сломал бы сверку со
+# `SETTINGS_SCHEMA`). `MENU_EN.get(text, text)` — русская подпись без записи в `MENU_EN`
+# (сейчас такой нет, кроме `menu_lang`, которая и так двуязычна) даёт множество из одного
+# элемента, а не падает.
+MENU_TEXTS: dict[str, frozenset[str]] = {
+    key: frozenset({text, MENU_EN.get(text, text)}) for key, text in MENU_BUTTONS
+}
+MENU_TEXTS["menu_payment"] = frozenset({"💳 Оплата", MENU_EN.get("💳 Оплата", "💳 Оплата")})
+
 
 async def get_main_menu_kb(telegram_id: int | None = None) -> ReplyKeyboardMarkup:
     # Phase 09.2 (B): resolve the delegate's city ONCE, before the button loop -- module off

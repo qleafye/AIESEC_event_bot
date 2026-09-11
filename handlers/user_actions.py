@@ -44,7 +44,8 @@ from keyboards.builders import (
     get_cancel_kb,
     get_main_menu_kb,
     get_info_submenu_kb,
-    get_socials_kb
+    get_socials_kb,
+    MENU_TEXTS,
 )
 from handlers.states import Question, GameSubmit
 from settings_schema import get_setting_typed  # Phase 09.1 (A): flow texts live in the registry
@@ -204,7 +205,7 @@ async def _balance_history_screen(user_id: int, offset: int = 0) -> tuple[str, I
     return text, InlineKeyboardMarkup(inline_keyboard=buttons)
 
 
-@router.message(F.text == "🪙 Мои монеты")
+@router.message(F.text.in_(MENU_TEXTS["menu_coins"]))
 async def show_my_coins(message: types.Message):
     if not await ensure_registered(message):
         return
@@ -372,7 +373,7 @@ async def _game_task_list_screen(
     return "\n\n".join(lines), kb
 
 
-@router.message(F.text == "🎯 Задания")
+@router.message(F.text.in_(MENU_TEXTS["menu_game_tasks"]))
 async def show_game_tasks(message: types.Message):
     if not await ensure_registered(message):
         return
@@ -806,7 +807,7 @@ async def gs_cancel(callback: types.CallbackQuery, state: FSMContext):
     )
 
 
-@router.message(F.text == "💳 Оплата")
+@router.message(F.text.in_(MENU_TEXTS["menu_payment"]))
 async def upload_receipt_entry(message: types.Message, bot: Bot):
     """Re-entry into the payment step for a user who deferred (or lost FSM state on a
     bot restart). The button only appears while a receipt is owed, but re-check here in
@@ -842,7 +843,7 @@ async def _delegate_city(telegram_id: int) -> str | None:
 
 
 #ℹ️ Информация о форуме
-@router.message(F.text == "ℹ️ Информация о форуме")
+@router.message(F.text.in_(MENU_TEXTS["menu_info"]))
 async def show_info_menu(message: types.Message):
     if not await ensure_registered(message):
         return
@@ -920,7 +921,7 @@ async def info_place(callback: types.CallbackQuery):
 # как побочный эффект загрузки фото) — их пер-городной вариант отложен, см.
 # 09.2-RESEARCH Pitfall 1.
 # 📅 Программа форума
-@router.message(F.text == "📅 Программа форума")
+@router.message(F.text.in_(MENU_TEXTS["menu_program"]))
 async def show_program(message: types.Message):
     if not await ensure_registered(message):
         return
@@ -946,7 +947,7 @@ async def show_program(message: types.Message):
         await message.answer(await get_setting_typed("program_empty_text"))
 
 # 🗣 Спикеры
-@router.message(F.text == "🗣 Спикеры")
+@router.message(F.text.in_(MENU_TEXTS["menu_speakers"]))
 async def show_speakers(message: types.Message):
     if not await ensure_registered(message):
         return
@@ -968,7 +969,7 @@ async def show_speakers(message: types.Message):
     await message.answer(await get_setting_typed("speakers_empty_text"))
 
 # 📞 Контакты
-@router.message(F.text == "📞 Контакты")
+@router.message(F.text.in_(MENU_TEXTS["menu_contacts"]))
 async def show_contacts(message: types.Message):
     if not await ensure_registered(message):
         return
@@ -1005,7 +1006,7 @@ async def show_contacts(message: types.Message):
         logger.error(f"show_contacts send failed for {message.from_user.id}: {e}")
         await message.answer(text, parse_mode=None)
 
-@router.message(F.text == "🔗 Моя реферальная ссылка")
+@router.message(F.text.in_(MENU_TEXTS["menu_referral"]))
 async def my_referral_link(message: types.Message, bot: Bot):
     if not await ensure_registered(message):
         return
@@ -1017,7 +1018,7 @@ async def my_referral_link(message: types.Message, bot: Bot):
     await message.answer(tpl.format(link=referral_link))
 
 
-@router.message(F.text == "👥 Мои приглашённые")
+@router.message(F.text.in_(MENU_TEXTS["menu_invites"]))
 async def my_referrals(message: types.Message, bot: Bot):
     if not await ensure_registered(message):
         return
@@ -1121,7 +1122,7 @@ async def _start_question_form(message: types.Message, state: FSMContext) -> Non
     await state.set_state(Question.waiting_for_question)
 
 
-@router.message(F.text == "❓ Частые вопросы")
+@router.message(F.text.in_(MENU_TEXTS["menu_faq"]))
 async def show_faq(message: types.Message):
     if not await ensure_registered(message):
         return
@@ -1181,7 +1182,7 @@ async def faq_ask(callback: types.CallbackQuery, state: FSMContext):
 
 
 # ❓ Задать вопрос
-@router.message(F.text == "❓ Задать вопрос")
+@router.message(F.text.in_(MENU_TEXTS["menu_question"]))
 async def ask_organizer_start(message: types.Message, state: FSMContext):
     if not await ensure_registered(message):
         return
@@ -1270,7 +1271,7 @@ async def process_question(message: types.Message, state: FSMContext, bot: Bot):
 # KeyboardButton(web_app=...) в reply-клавиатуре даёт simple web view БЕЗ initData, делегат не
 # аутентифицируется). Хендлер шлёт сообщение с inline web_app-кнопкой — только там initData
 # полный. Полностью вне CapabilityMiddleware (кнопка делегатская, права не нужны).
-@router.message(F.text == "📱 Приложение")
+@router.message(F.text.in_(MENU_TEXTS["menu_miniapp"]))
 async def open_miniapp_button(message: types.Message):
     try:
         enabled = await get_setting_typed("miniapp_enabled") == "on"
