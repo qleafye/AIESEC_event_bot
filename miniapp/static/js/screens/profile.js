@@ -6,6 +6,7 @@
 
 import { icon } from "../icons.js";
 import { flatRow, sectionTitle, labelText } from "../ui.js";
+import { personNode } from "../person.js";
 
 // Соответствие «ключ вопроса анкеты -> иконка строки контактов» — модульный словарь, а не
 // строковое угадывание на каждый рендер; ключ вне словаря -> строка без иконки, не падаем.
@@ -30,28 +31,10 @@ export async function render(root, params, ctx) {
   }
 
   const personSub = [me.username, me.city_label].filter(Boolean).join(" · ");
-  // Аватар делегата из Telegram (UAT D10) — тот же приём, что screens/applications.js::
-  // avatarNode: img с обработчиком error, заменяющим её на прежний узел монограммы (файл
-  // протух/удалён у Telegram — без аватара плита всё равно корректна).
-  function monoNode() {
-    return me.initials ? h("span", { class: "plate-mono", text: me.initials }) : null;
-  }
-  let avatarNode;
-  if (me.avatar_url) {
-    const img = h("img", { class: "plate-avatar", src: me.avatar_url, alt: "" });
-    img.addEventListener("error", () => img.replaceWith(monoNode() || h("span", {})));
-    avatarNode = img;
-  } else {
-    avatarNode = monoNode();
-  }
+  // Квик 260911-6i9: аватар/монограмма — общий сборщик person.js, второй копии логики
+  // «аватар с фолбэком на монограмму» здесь больше нет (была здесь до этой правки).
   const plate = h("section", { class: "plate plate--profile" },
-    h("div", { class: "plate-person" },
-      avatarNode,
-      h("div", {},
-        h("h1", { text: me.display_name || "" }),
-        personSub ? h("p", { class: "plate-sub", text: personSub }) : null,
-      ),
-    ),
+    personNode(h, { avatarUrl: me.avatar_url, initials: me.initials, name: me.display_name, sub: personSub }),
     chips.length ? h("hr", { class: "plate-rule" }) : null,
     chips.length ? h("div", { class: "plate-chips" }, ...chips) : null,
   );

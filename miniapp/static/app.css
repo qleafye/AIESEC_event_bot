@@ -1734,6 +1734,14 @@ a.flat-row:active, button.flat-row:active { background: var(--surface-alt); }
 /* ── Профиль делегата на плите (план 23.1-05, макет 04-profile.png) ──────────────────────── */
 .plate-person { display: flex; align-items: center; gap: var(--sp-3); }
 .plate-person h1 { font-size: 26px; }
+/* Квик 260911-6i9 (пункт 1): компактный вид той же плиты — на хабе, рядом с балансом монет.
+   17px/15px — уже существующие роли шкалы (Heading/Body), 40px — геометрия аватара, не
+   размер шрифта; волна не добавляет ни одного нового значения font-size в этот файл. */
+.plate-person--sm { margin-bottom: var(--sp-3); }
+.plate-person--sm h1 { font-size: 17px; }
+.plate-person--sm .plate-mono,
+.plate-person--sm .plate-avatar { width: 40px; height: 40px; flex: 0 0 40px; }
+.plate-person--sm .plate-mono { font-size: 15px; }
 .plate-chips { display: flex; flex-wrap: wrap; gap: var(--sp-2); }
 .profile-note {
   display: flex; align-items: flex-start; gap: var(--sp-2);
