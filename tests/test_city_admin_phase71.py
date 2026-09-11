@@ -212,7 +212,9 @@ def test_get_incomplete_rows_with_city_returns_six_tuple(tmp_path):
         row = rows[0]
         assert len(row) == 6
         assert row[0] == 1
-        assert row[1] == "vasya"
+        # UNAME-03: канон хранения — «с @» (database/db.py::store_username), вход без
+        # собаки нормализуется на записи.
+        assert row[1] == "@vasya"
         assert row[5] == "spb"
 
     asyncio.run(go())
