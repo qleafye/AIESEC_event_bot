@@ -40,7 +40,12 @@ DEFAULT_CEILING = 850
 # edit the number + reason together, in the same commit as the growth that needs it.
 KNOWN_OVERAGES: dict[str, tuple[int, str]] = {
     "registration.py": (
-        2359,
+        2368,
+        "+9 строк (квик 260911-w2m): врезка гейта правки анкеты в ветку (b) `cmd_start` — "
+        "перед входом в `offer_resume`/`?start=edit` спрашивает `services.reg_edit_policy."
+        "edit_gate(user)`, при отказе отвечает текстом реестра и главным меню; само правило "
+        "живёт в services/reg_edit_policy.py, здесь только точка врезки; потолок поднят до "
+        "фактического размера. "
         "Phase 21 (21-01, FORM-SYNC-01): REG_STEP_TYPES/STEP_TO_COLUMN/RECALLABLE_STEPS/"
         "SELECT_CONFIG/MULTI_CONFIG/enabled_steps/prompt-резолюция/pre-flow гейты/"
         "prior-answer правило переехали в корневой reg_engine.py (2309 -> 2099 строк) -- "
