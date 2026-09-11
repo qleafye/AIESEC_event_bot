@@ -30,8 +30,10 @@ from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup, ReplyKeybo
 from database.db import (
     clear_translation_manual,
     enqueue_translation,
+    fetch_translations,
     get_translation,
     list_translations,
+    reset_translation_attempts,
     upsert_translation,
 )
 from handlers.admin import router
@@ -39,7 +41,7 @@ from handlers.states import AdminI18nEdit
 from keyboards.builders import get_cancel_kb
 from services.i18n import src_hash as compute_src_hash
 from services.i18n_sources import corpus
-from services.i18n_worker import progress
+from services.i18n_worker import bulk_seed, progress
 from settings_schema import SETTINGS_SCHEMA, get_setting_typed
 
 LANG = "en"
@@ -93,6 +95,19 @@ async def _corpus_hash_index() -> dict[str, dict[str, str]]:
             continue
         idx.setdefault(origin_key, {})[compute_src_hash(text)] = text
     return idx
+
+
+async def _corpus_gap() -> tuple[int, int]:
+    """Квик 260912 (W5, Задача 4) — `(всего_в_корпусе, без_перевода)`. `corpus()` перечисляет
+    ВЕСЬ делегатский текст анкеты (`services/i18n_sources.py`), включая строки, которые
+    никогда не ставились в очередь перевода вовсе — дыру, которую `progress()['total']`
+    принципиально не видит: тот счётчик считает строки, УЖЕ лежащие в `translations`, а не
+    размер корпуса. `fetch_translations` фильтрует пустые `text` — та же карта, которой
+    пользуется `services.i18n.tr()`, то есть ровно то, что делегат ещё увидит по-русски."""
+    items = await corpus()
+    translated = await fetch_translations(LANG)
+    without = sum(1 for _origin_key, text in items if compute_src_hash(text) not in translated)
+    return len(items), without
 
 
 def _is_stale_manual(row: dict, corpus_idx: dict[str, dict[str, str]]) -> bool:
@@ -177,6 +192,12 @@ async def render_i18n_list(state_token: str = "all", page: int = 0) -> tuple[str
 
     prog = await progress(LANG)
     module_on = (await get_setting_typed("delegate_lang_enabled")) == "on"
+    # Квик 260912 (W5, Задача 4): `prog['total']` считает только строки, УЖЕ лежащие в
+    # `translations` — дыру «строка корпуса никогда не ставилась в очередь» этот счётчик
+    # принципиально не видит (bulk_seed при включении тумблера — одноразовый фоновый спавн,
+    # не переживающий рестарт/сбой посреди посева). corpus_total/corpus_without считают ВЕСЬ
+    # корпус — это и есть метрика, которую видит менеджер, и число на кнопке догонялки.
+    corpus_total, corpus_without = await _corpus_gap()
 
     rows, total = await _load_page(state_token, page)
     pages = max(1, (total + PAGE_SIZE - 1) // PAGE_SIZE)
@@ -197,10 +218,21 @@ async def render_i18n_list(state_token: str = "all", page: int = 0) -> tuple[str
         f"Переведено {prog['done']} из {prog['total']}, вручную {prog['manual']}, "
         f"не удалось {prog['failed']}."
     )
+    lines.append(
+        f"В корпусе анкеты {corpus_total} строк, делегат всё ещё увидит по-русски "
+        f"{corpus_without}."
+    )
     lines.append("")
     lines.append(f"Страница {page + 1} из {pages} (всего {total})." if total else "Пусто в этом фильтре.")
 
     buttons: list[list[InlineKeyboardButton]] = []
+    # Задача 4: кнопка ВСЕГДА видна (менеджеру нужна и тогда, когда он не уверен, есть ли
+    # дыра) — число в подписи только когда оно больше нуля, само нажатие неразрушительно
+    # (ручные правки менеджера защищены upsert_translation/bulk_seed, INSERT OR IGNORE не
+    # плодит дублей) — экран подтверждения был бы шумом (CLAUDE.md: только для разрушительных).
+    seed_label = "⟳ Догнать перевод" if not corpus_without else f"⟳ Догнать перевод ({corpus_without})"
+    buttons.append([InlineKeyboardButton(text=seed_label, callback_data="admin_i18n_seed")])
+
     filter_buttons = [
         InlineKeyboardButton(
             text=(f"• {label}" if token == state_token else label),
@@ -520,3 +552,47 @@ async def admin_i18n_retranslate_go(callback: types.CallbackQuery):
     text, kb, _row = screen
     await callback.message.edit_text(text, parse_mode="HTML", reply_markup=kb)
     await callback.answer("Поставлено в очередь на перевод.")
+
+
+# ── Догонялка перевода (Квик 260912, W5, Задача 4) ──────────────────────────────────────────
+
+@router.callback_query(F.data == "admin_i18n_seed")
+async def admin_i18n_seed(callback: types.CallbackQuery):
+    """Наполняет очередь недостающими строками корпуса — см. докстринг модуля и `_corpus_gap`
+    про то, почему счётчика `progress()['total']` менеджеру недостаточно. `reset_translation_
+    attempts` ПЕРЕД `bulk_seed` — иначе строки, застрявшие на `MAX_ATTEMPTS`, останутся вне
+    очереди (`enqueue_translation` для уже стоящей строки — `INSERT OR IGNORE`, не сброс
+    попыток). Разбор — фоновая джоба `translation_drain`, ничего тяжёлого не грузится тут же.
+
+    Две независимые метрики в алерте: `reset_count` (строки, УЖЕ стоявшие в очереди, но
+    исчерпавшие попытки — ожили) и `queued` (строки, которых в очереди не было вовсе —
+    `bulk_seed` вернёт 0 для тех, что уже там или под ручной правкой). Они не пересекаются по
+    построению (`reset_translation_attempts` трогает только уже существующие строки,
+    `bulk_seed` считает только новые вставки), поэтому суммарный «нечего делать» — это ровно
+    оба нуля, а не эвристика."""
+    reset_count = await reset_translation_attempts(LANG)
+    queued = await bulk_seed(LANG)
+
+    text, kb = await render_i18n_list("all", 0)
+    try:
+        await callback.message.edit_text(text, parse_mode="HTML", reply_markup=kb)
+    except Exception:
+        pass
+
+    if not queued and not reset_count:
+        await callback.answer(
+            "Догонять нечего — весь корпус уже переведён, в очереди или под ручной правкой.",
+            show_alert=True,
+        )
+        return
+
+    parts = []
+    if queued:
+        parts.append(f"новых строк в очереди: {queued}")
+    if reset_count:
+        parts.append(f"застрявших строк оживлено: {reset_count}")
+    await callback.answer(
+        "Готово — " + ", ".join(parts) + ". Перевод идёт фоном — обновите экран через "
+        "минуту-другую, чтобы увидеть результат.",
+        show_alert=True,
+    )
