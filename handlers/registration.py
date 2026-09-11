@@ -46,6 +46,7 @@ from services.background import spawn as _spawn
 # Mini App outbox job (services/miniapp_outbox.py) — finalize_registration below is now a
 # thin wrapper around these two.
 from services.reg_finalize import finalize_data, post_finalize, resolve_delegate_text
+from services import reg_edit_policy  # Квик 260911-w2m: гейт правки уже поданной анкеты
 # Phase 21 (21-01, FORM-SYNC-01): литеральные списки без своей клавиатуры в builders.py —
 # reg_options.py, та же точка правды, что читает reg_engine.step_spec() для Mini App.
 from reg_options import (
@@ -1909,6 +1910,14 @@ async def cmd_start(message: types.Message, state: FSMContext, bot: Bot, command
             _cur_season = None
         if (user.get("season") or None) == _cur_season:
             _edit_draft = _draft_probe if (_draft_probe and _draft_probe.get("kind") == "edit") else None
+            if _edit_draft or resume_arg == "edit":
+                # Квик 260911-w2m (Р-4 #1, #2): гейт СТОИТ ТОЛЬКО когда делегат реально идёт
+                # в правку — обычный /start зарегистрированного не платит лишним чтением
+                # реестра и не теряет свой обычный экран (ветка ниже, вне этого if).
+                _edit_can, _edit_text = await reg_edit_policy.edit_gate(user)
+                if not _edit_can:
+                    await reg_i18n.say(message, _edit_text, reply_markup=await get_main_menu_kb(user_id))
+                    return
             if _edit_draft:
                 from handlers.reg_resume import offer_resume
                 await offer_resume(message, _edit_draft)
