@@ -17,12 +17,19 @@ from __future__ import annotations
 import html
 import json
 
+from database import db as bot_db
+
 from miniapp.routers import page as page_module
 from settings_schema import SETTINGS_SCHEMA
 from settings_synonyms import SETTINGS_SYNONYMS
 
 from tests.test_miniapp_frontend import _client
 from tests.test_miniapp_routes import (
+    ADMIN_ID,
+    DELEGATE_ID,
+    _cfg,
+    _client as _client_cfg,
+    _hdr,
     _seed,
     _set,
     _standard_seed,
@@ -114,3 +121,84 @@ def test_render_disabled_page_fallback_dict_has_screen_texts_key():
 
     source = inspect.getsource(page_module.render_disabled_page)
     assert '"screen_texts": "{}"' in source
+
+
+# ── задача 3: серверный контракт can_submit/status на GET /app/api/tasks/{id} ────────────
+#
+# Гейт `submit.js` опирается на поле, которое сервер уже отдаёт (`submission_state`,
+# `routers/tasks.py:67-89`) — этот файл НЕ трогаем, только читаем контракт.
+
+def _task_route_client(db_path: str):
+    return _client_cfg(_cfg(db_path))
+
+
+def test_can_submit_true_and_status_new_when_no_submission_yet(tmp_path):
+    from tests.test_miniapp_submissions import _task
+
+    db_path = _use_tmp_db(tmp_path, "miniapp_can_submit_new.db")
+    _standard_seed()
+    task_id = _task()
+    resp = _task_route_client(db_path).get(f"/app/api/tasks/{task_id}", headers=_hdr(DELEGATE_ID))
+    body = resp.json()
+    assert body["can_submit"] is True
+    assert body["status"] == "new"
+
+
+def test_can_submit_false_and_status_pending_when_submission_awaits_review(tmp_path):
+    from tests.test_miniapp_submissions import _run, _task
+
+    db_path = _use_tmp_db(tmp_path, "miniapp_can_submit_pending.db")
+    _standard_seed()
+    task_id = _task()
+    _run(bot_db.create_submission(task_id, DELEGATE_ID, "text", "мой ответ", "2026-01-01 00:00:00"))
+    resp = _task_route_client(db_path).get(f"/app/api/tasks/{task_id}", headers=_hdr(DELEGATE_ID))
+    body = resp.json()
+    assert body["can_submit"] is False
+    assert body["status"] == "pending"
+
+
+def test_can_submit_false_and_status_approved_when_submission_accepted(tmp_path):
+    from tests.test_miniapp_submissions import _run, _task
+
+    db_path = _use_tmp_db(tmp_path, "miniapp_can_submit_approved.db")
+    _standard_seed()
+    task_id = _task()
+    sub_id = _run(bot_db.create_submission(task_id, DELEGATE_ID, "text", "мой ответ", "2026-01-01 00:00:00"))
+    _run(bot_db.claim_submission(sub_id, ADMIN_ID, "approved", coins_awarded=5))
+    resp = _task_route_client(db_path).get(f"/app/api/tasks/{task_id}", headers=_hdr(DELEGATE_ID))
+    body = resp.json()
+    assert body["can_submit"] is False
+    assert body["status"] == "approved"
+
+
+def test_can_submit_false_and_status_rejected_when_resubmit_limit_exhausted(tmp_path):
+    from tests.test_miniapp_submissions import _run, _task
+
+    db_path = _use_tmp_db(tmp_path, "miniapp_can_submit_limit.db")
+    _standard_seed()
+    _set("game_resubmit_limit", "1")
+    task_id = _task()
+    sub_id = _run(bot_db.create_submission(task_id, DELEGATE_ID, "text", "попытка 1", "2026-01-01 00:00:00"))
+    _run(bot_db.claim_submission(sub_id, ADMIN_ID, "rejected", reject_reason="не подходит"))
+    resp = _task_route_client(db_path).get(f"/app/api/tasks/{task_id}", headers=_hdr(DELEGATE_ID))
+    body = resp.json()
+    assert body["can_submit"] is False
+    assert body["status"] == "rejected"
+
+
+def test_post_submissions_still_returns_409_already_submitted_on_closed_task(tmp_path):
+    """Серверная защита 409 остаётся — гейт клиента её не заменяет, дублирующий POST по уже
+    поданному заданию по-прежнему отвергается (Пилар 5, обе линии обороны)."""
+    from tests.test_miniapp_submissions import _run, _task
+
+    db_path = _use_tmp_db(tmp_path, "miniapp_can_submit_409.db")
+    _standard_seed()
+    task_id = _task()
+    _run(bot_db.create_submission(task_id, DELEGATE_ID, "text", "первая", "2026-01-01 00:00:00"))
+    resp = _task_route_client(db_path).post(
+        "/app/api/submissions",
+        json={"task_id": task_id, "parts": [{"kind": "text", "content": "вторая"}]},
+        headers=_hdr(DELEGATE_ID),
+    )
+    assert resp.status_code == 409
+    assert resp.json() == {"reason": "already_submitted"}

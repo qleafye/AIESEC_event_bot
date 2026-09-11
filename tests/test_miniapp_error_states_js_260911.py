@@ -584,3 +584,139 @@ def test_tasks_show_more_failure_shows_error_state(tasks_result):
 
 def test_coins_show_more_failure_shows_error_state(coins_result):
     assert coins_result["showMoreFailShowsError"] is True
+
+
+# ── задача 3: submit.js — гейт закрытой сдачи + порядок карточки ────────────────────────
+
+_SUBMIT_SCRIPT = _FAKE_DOM_PRELUDE + """
+document.body.dataset.screenTexts = JSON.stringify({
+  load_error: "ошибка", retry: "повтор",
+  submit_pending: "уже на проверке", submit_approved: "уже принято",
+  submit_limit: "попытки кончились",
+});
+const mod = await import(%(url)s);
+
+const limits = {
+  max_parts: 5, max_bytes: 1000000, photo_max_bytes: 500000, max_text: 500,
+  too_large_text: "слишком большой", empty_hint: "нечего отправлять",
+};
+function noopMainButton() {}
+
+async function gateCase(status) {
+  const root = document.createElement("div");
+  async function api(path) {
+    if (path.startsWith("/tasks/")) return { id: 1, can_submit: false, status, title: "T" };
+    if (path.startsWith("/uploads/limits")) return limits;
+    throw new Error("unexpected " + path);
+  }
+  const mainButtonCalls = [];
+  await mod.render(root, { id: "1" }, {
+    h, api, navigate: () => {}, setMainButton: (...args) => mainButtonCalls.push(args), tg: null, me: {},
+  });
+  return {
+    hasForm: Boolean(
+      root.querySelector(".submit-actions") || root.querySelector(".parts-counter")
+      || root.querySelector(".parts-list"),
+    ),
+    text: root.querySelector(".empty-state-text") ? root.querySelector(".empty-state-text").textContent : null,
+    mainButtonCalledWithNull: mainButtonCalls.length > 0 && mainButtonCalls[0][0] === null,
+  };
+}
+
+const pending = await gateCase("pending");
+const approved = await gateCase("approved");
+const rejectedLimit = await gateCase("rejected");
+
+// can_submit: true -> форма рисуется, порядок карточки, «Готово» внутри карточки.
+const rootForm = document.createElement("div");
+async function apiForm(path) {
+  if (path.startsWith("/tasks/")) return { id: 1, can_submit: true, status: "new", title: "T", proof_hint: "фото" };
+  if (path.startsWith("/uploads/limits")) return limits;
+  throw new Error("unexpected " + path);
+}
+await mod.render(rootForm, { id: "1" }, { h, api: apiForm, navigate: () => {}, setMainButton: noopMainButton, tg: null, me: {} });
+const card = rootForm.querySelector(".submit-card");
+const cardChildClasses = card.children.map((c) => c.className);
+const actionsIdx = cardChildClasses.findIndex((c) => c.includes("submit-actions"));
+const counterIdx = cardChildClasses.findIndex((c) => c.includes("parts-counter"));
+const listIdx = cardChildClasses.findIndex((c) => c.includes("parts-list"));
+const lastChild = card.children[card.children.length - 1];
+const rootHasButtonAfterCard = rootForm.children.some((c) => c !== card && c.tagName === "BUTTON");
+
+// первичная загрузка через guardedRender: отказ -> ошибка -> повтор рисует форму.
+const rootFail = document.createElement("div");
+let calls5 = 0;
+async function apiFail(path) {
+  if (path.startsWith("/tasks/")) {
+    calls5++;
+    if (calls5 === 1) throw err(500, "server_error");
+    return { id: 1, can_submit: true, status: "new", title: "T", proof_hint: "фото" };
+  }
+  if (path.startsWith("/uploads/limits")) return limits;
+  throw new Error("unexpected " + path);
+}
+await mod.render(rootFail, { id: "1" }, { h, api: apiFail, navigate: () => {}, setMainButton: noopMainButton, tg: null, me: {} });
+const errorAfterFirst = Boolean(rootFail.querySelector(".error-state"));
+const retryBtn = rootFail.querySelector(".error-state").querySelector(".btn");
+await retryBtn._listeners.click[0]();
+const hasFormAfterRetry = Boolean(rootFail.querySelector(".submit-card"));
+
+// 403 — ядро уже покрасило, submit.js не дописывает свой error-state поверх.
+const rootForbidden = document.createElement("div");
+async function apiForbidden(path) {
+  rootForbidden.replaceChildren(h("section", { class: "state", text: "core-painted" }));
+  throw err(403);
+}
+await mod.render(rootForbidden, { id: "1" }, { h, api: apiForbidden, navigate: () => {}, setMainButton: noopMainButton, tg: null, me: {} });
+
+console.log(JSON.stringify({
+  pending, approved, rejectedLimit,
+  cardOrderOk: actionsIdx >= 0 && actionsIdx < counterIdx && counterIdx < listIdx,
+  lastChildIsDoneButton: lastChild.tagName === "BUTTON",
+  rootHasButtonAfterCard,
+  errorAfterFirst, hasFormAfterRetry,
+  coreChildCount: rootForbidden.children.length,
+  coreText: rootForbidden.children[0] ? rootForbidden.children[0].textContent : null,
+}));
+"""
+
+
+@pytest.fixture(scope="module")
+def submit_result(node) -> dict:
+    url = json.dumps((SCREENS_DIR / "submit.js").resolve().as_uri())
+    return _run_script(node, _SUBMIT_SCRIPT % {"url": url})
+
+
+def test_submit_gate_pending_shows_state_text_no_form_and_clears_main_button(submit_result):
+    pending = submit_result["pending"]
+    assert pending["hasForm"] is False
+    assert pending["text"] == "уже на проверке"
+    assert pending["mainButtonCalledWithNull"] is True
+
+
+def test_submit_gate_approved_shows_state_text_no_form(submit_result):
+    approved = submit_result["approved"]
+    assert approved["hasForm"] is False
+    assert approved["text"] == "уже принято"
+
+
+def test_submit_gate_rejected_limit_exhausted_shows_state_text_no_form(submit_result):
+    rejected = submit_result["rejectedLimit"]
+    assert rejected["hasForm"] is False
+    assert rejected["text"] == "попытки кончились"
+
+
+def test_submit_can_submit_true_renders_form_with_correct_card_order(submit_result):
+    assert submit_result["cardOrderOk"] is True
+    assert submit_result["lastChildIsDoneButton"] is True
+    assert submit_result["rootHasButtonAfterCard"] is False
+
+
+def test_submit_primary_load_failure_shows_error_then_retry_renders_form(submit_result):
+    assert submit_result["errorAfterFirst"] is True
+    assert submit_result["hasFormAfterRetry"] is True
+
+
+def test_submit_403_leaves_core_painted_content_untouched(submit_result):
+    assert submit_result["coreChildCount"] == 1
+    assert submit_result["coreText"] == "core-painted"
