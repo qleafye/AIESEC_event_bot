@@ -5,7 +5,7 @@
 // топ-10 в DOM не попадают (T-19.1-18). Топ-1 у самого зрителя — хаптик успеха (все уровни) и
 // конфетти (только motion "full").
 
-import { flatRow, emptyState } from "../ui.js";
+import { flatRow, emptyState, guardedRender } from "../ui.js";
 import { icon } from "../icons.js";
 import { confetti, haptic } from "../motion.js";
 
@@ -68,7 +68,12 @@ function pinnedRow(h, board) {
   return wrap;
 }
 
-export async function render(root, params, ctx) {
+// Quick 260911-5ij (W2, Пилар 6): тело прежнего render() — вызывается ТОЛЬКО через
+// guardedRender (см. export ниже). Внутренняя load() уже перерисовывает root целиком (в т.ч.
+// на клик «Обновить» пустого состояния) — обёртка ставится только на render, load остаётся
+// как есть (её собственный повторный отказ по-прежнему не ловится — тот же необработанный
+// промис, что и раньше; не в объёме этой волны).
+async function draw(root, params, ctx) {
   const { h, api, me } = ctx;
 
   let hub = {};
@@ -127,4 +132,8 @@ export async function render(root, params, ctx) {
   }
 
   await load();
+}
+
+export async function render(root, params, ctx) {
+  await guardedRender(root, ctx, () => draw(root, params, ctx));
 }
