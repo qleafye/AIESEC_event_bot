@@ -11,7 +11,7 @@ from urllib.parse import quote
 from config import config
 from database import db
 from handlers import registration as reg
-from services.nextcloud import _file_link, upload_resume, upload_text_resume
+from services.nextcloud import _file_link, file_name_from_link, upload_resume, upload_text_resume
 
 
 def _use_tmp_db(tmp_path):
@@ -78,6 +78,33 @@ def test_file_link_deep_link_format():
     finally:
         config.NEXTCLOUD_PUBLIC_URL = ""
         config.NEXTCLOUD_FOLDER_SHARE_TOKEN = ""
+
+
+# ── file_name_from_link: обратная функция к _file_link (квик 260911-6i9) ─────
+
+def test_file_name_from_link_round_trips_with_file_link():
+    config.NEXTCLOUD_PUBLIC_URL = "https://x:8443"
+    config.NEXTCLOUD_FOLDER_SHARE_TOKEN = "TOK"
+    try:
+        for name in ("Фамилия_Имя_YL26.pdf", "resume.txt", "im_ya__skobki_.docx"):
+            assert file_name_from_link(_file_link(name)) == name
+    finally:
+        config.NEXTCLOUD_PUBLIC_URL = ""
+        config.NEXTCLOUD_FOLDER_SHARE_TOKEN = ""
+
+
+def test_file_name_from_link_falls_back_to_path_segment_with_dot():
+    assert file_name_from_link("https://x:8443/s/TOK/download/resume.pdf") == "resume.pdf"
+
+
+def test_file_name_from_link_no_files_param_and_no_dot_segment_returns_none():
+    assert file_name_from_link("https://x:8443/s/TOK/download?path=%2F") is None
+    assert file_name_from_link("https://x:8443/s/TOK/download") is None
+
+
+def test_file_name_from_link_garbage_input_returns_none_without_raising():
+    for garbage in ("", None, "не ссылка", "://???", "   "):
+        assert file_name_from_link(garbage) is None
 
 
 # ── upload_resume: any error is swallowed → None, never raises ───────────────
