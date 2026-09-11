@@ -596,6 +596,7 @@ admin|callback_query|admin_i18n_edit_new_start|admin_i18n_edit_new:*
 admin|callback_query|admin_i18n_edit_start|admin_i18n_edit:*
 admin|callback_query|admin_i18n_retranslate_confirm|admin_i18n_retr:*
 admin|callback_query|admin_i18n_retranslate_go|admin_i18n_retr_go:*
+admin|callback_query|admin_i18n_seed|admin_i18n_seed
 admin|callback_query|show_applications|admin_applications
 admin|callback_query|appr_skip|appr_skip:*
 admin|callback_query|appr_resume|appr_resume:*
@@ -891,7 +892,7 @@ def test_snapshot_total_handler_count_is_292():
     # чистая вставка, перепроверена прогоном _build_snapshot_lines() и diff'ом с прежним
     # 484-строчным снапшотом (единственная строка сдвинула всё после неё на одну позицию, ни
     # одна другая строка не поменялась и не переставилась).
-    assert len(GOLDEN_SNAPSHOT) == 486  # Квик 260911-w2m: +1 admin_settings.py toggle_reg_edit_policy (callback_query, сразу после toggle_reg_edit_scoring/apps_queue_sort_by_score блока и перед toggle_reg_edit_remoderation); Quick 260911-805: +1; Квик 260910-ro7: +3; Quick 260910-okb: +3, +5; Phase 28 (28-09): +1; (28-08): +5, +1; (28-07): +1; (28-06): +3, +2
+    assert len(GOLDEN_SNAPSHOT) == 487  # Квик 260912-0jc (W5, Задача 4): +1 admin_i18n.py admin_i18n_seed (callback_query, «догонялка перевода» -- встал сразу после admin_i18n_retranslate_go и перед show_applications, шов импортируется из хвоста admin.py на том же месте, что и остальные admin_i18n_* хендлеры) (486 -> 487); чистая вставка, переснята прогоном _build_snapshot_lines() и сдиффена с прежним 486-строчным снапшотом -- единственная вставленная строка, всё остальное байт-в-байт и в том же относительном порядке. Квик 260911-w2m: +1 admin_settings.py toggle_reg_edit_policy (callback_query, сразу после toggle_reg_edit_scoring/apps_queue_sort_by_score блока и перед toggle_reg_edit_remoderation); Quick 260911-805: +1; Квик 260910-ro7: +3; Quick 260910-okb: +3, +5; Phase 28 (28-09): +1; (28-08): +5, +1; (28-07): +1; (28-06): +3, +2
     # handlers/reg_resume_fork.py — message process_resume_link (хвост message-блока
     # registration.router, сразу после process_case_optin и перед первым callback_query
     # recall_keep) + callback_query regfork_pick (хвост callback_query-блока

@@ -292,6 +292,8 @@ ADMIN_CAPS: dict[str, str] = {
     "admin_i18n_edit_new:*": "settings",
     "admin_i18n_retr:*": "settings",
     "admin_i18n_retr_go:*": "settings",
+    # Квик 260912 (W5, Задача 4) — «догонялка перевода».
+    "admin_i18n_seed": "settings",
     "state:AdminI18nEdit:*": "settings",
     "cmd:create_link": "moderate_reg",
     "cmd:find": "moderate_reg",
