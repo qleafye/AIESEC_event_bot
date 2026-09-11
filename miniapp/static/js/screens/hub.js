@@ -12,6 +12,7 @@ import { visibleNav, NAV_ICONS, SECTION_GROUPS } from "../app.js";
 import { icon } from "../icons.js";
 import { countUp } from "../motion.js";
 import { fileUrl, flatRow, sectionTitle, labelText, tile } from "../ui.js";
+import { personNode } from "../person.js";
 
 // Quick 260904-aup (UAT D11 + Q4): разделение ролей — СЕРВЕР (`me.show_onboarding`, `/app/api/me`)
 // решает, кому вообще положено видеть привет-экран (не сотруднику и не делегату с уже поданной
@@ -149,6 +150,10 @@ async function renderDelegateHub(root, ctx) {
 
   // Плита баланса — в DOM сразу, без ожидания сети (сегодняшнее поведение): число
   // докручивается countUp'ом, надзаголовок/единица/факты дозаполняются ответом /hub.
+  // Квик 260911-6i9 (пункт 1): личность делегата — предсозданный пустой слот ПЕРВЫМ узлом
+  // плиты, как и остальные слоты здесь, — ответ /profile приезжает позже первого кадра,
+  // DOM-порядок плиты не должен зависеть от порядка ответов Promise.allSettled ниже.
+  const personSlot = h("div", {});
   const plateEyebrow = h("div", { class: "plate-eyebrow", text: "" });
   const plateBig = h("div", { class: "plate-big", text: "0" });
   const plateUnit = h("span", { text: "" });
@@ -156,7 +161,7 @@ async function renderDelegateHub(root, ctx) {
     plateBig, h("span", { class: "plate-coin" }, icon("coin")), plateUnit,
   );
   const factsSlot = h("div", {});
-  root.append(h("section", { class: "plate plate--hub" }, plateEyebrow, plateRow, factsSlot));
+  root.append(h("section", { class: "plate plate--hub" }, personSlot, plateEyebrow, plateRow, factsSlot));
 
   // Приоритетное действие — заполняется только когда известны и текст надзаголовка (/hub),
   // и само задание (/tasks); до тех пор слот пуст, никакой пустой рамки не рисуется.
@@ -217,9 +222,18 @@ async function renderDelegateHub(root, ctx) {
   if (historyR.status === "fulfilled") {
     setSectionValue("#/coins", `${historyR.value.total} операций`);
   }
-  if (profileR.status === "fulfilled" && profileR.value.payment_status_label) {
-    // D-08: пусто = модуль оплаты выключен — строка «Профиль» остаётся без значения.
-    setSectionValue("#/profile", profileR.value.payment_status_label);
+  if (profileR.status === "fulfilled") {
+    const p = profileR.value;
+    // Квик 260911-6i9 (пункт 1): личность плиты из уже выполняемого запроса /profile —
+    // второго запроса к серверу не заводим. Отказ ручки (ветка "rejected" выше по allSettled)
+    // оставляет слот пустым — плита остаётся рабочей, просто без имени.
+    personSlot.append(personNode(h, {
+      avatarUrl: p.avatar_url, initials: p.initials, name: p.display_name,
+    }, { compact: true }));
+    if (p.payment_status_label) {
+      // D-08: пусто = модуль оплаты выключен — строка «Профиль» остаётся без значения.
+      setSectionValue("#/profile", p.payment_status_label);
+    }
   }
   if (tasksR.status === "fulfilled") {
     setSectionValue("#/tasks", `${tasksR.value.total} активных`);
