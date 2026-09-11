@@ -53,6 +53,15 @@ D-10 (владелец, `23.1-CONTEXT.md` O-2): `users.approved_at` проста
 НАПРЯМУЮ, минуя `services.applications.claim_approve_all` (`handlers/admin_moderation.py`,
 `appr_all_yes`) — стамповать `approved_at` только в обёртках сервиса означало бы пропустить
 чатовое «Принять всех». Профиль здесь просто читает уже проставленную колонку.
+
+Квик 260911-6i9 (пункт 2, T-6i9-01): значение строки «Резюме» — человекочитаемое (текст
+резюме или имя файла), НИКОГДА не `resume_url`. Ссылка Nextcloud указывает на ОБЩУЮ
+расшаренную папку (`services/nextcloud.py::_file_link` — один токен на всех делегатов сразу),
+`files=` в ней — только указатель на файл внутри этой папки; отдать её делегату значит отдать
+устройство хранилища (хост, порт, токен общей папки), а не просто «некрасиво показать ссылку».
+Имени файла в `users` нет вовсе (`resume_file_name` — `DRAFT_ONLY_COLUMNS`, живёт только в
+`reg_drafts.answers`), поэтому единственный источник человекочитаемого имени — разбор
+`resume_url` функцией `services.nextcloud.file_name_from_link` (обратная к `_file_link`).
 """
 from __future__ import annotations
 
@@ -63,6 +72,7 @@ from cities import cities_module_on, city_label as resolve_city_label, normalize
 from database.db import get_user
 from reg_labels import PAYMENT_STATUS_LABELS, REG_LABELS, STATUS_LABELS
 from services.applications import format_edited_date
+from services.nextcloud import file_name_from_link
 from settings_schema import get_setting_typed
 
 from miniapp import file_tokens
@@ -159,11 +169,35 @@ async def _enabled_label_keys(user: dict) -> set[str]:
     return {reg_engine.label_key_for(step_key) for step_key in enabled}
 
 
+# Квик 260911-6i9 (пункт 2): ключ вопроса «Резюме» — через движок (setting_key из REG_FLOW),
+# без строкового литерала имени ключа (сторож в тестах требует именно вызов, а не строку —
+# движок остаётся единственным источником этого соответствия).
+_RESUME_LABEL_KEY = reg_engine.label_key_for("resume")
+
+
+def _resume_display(user: dict) -> str | None:
+    """Человекочитаемое значение строки «Резюме» — единственное, что видит делегат: текст
+    резюме как есть; если резюме файлом — имя файла, разобранное из ссылки Nextcloud
+    (`services.nextcloud.file_name_from_link`, обратная к `_file_link`). `resume_url` сюда
+    НИКОГДА не попадает как есть (T-6i9-01) — ссылка ведёт в ОБЩУЮ расшаренную папку, отдать её
+    делегату значит отдать устройство хранилища. Резюме нет вовсе, ссылка пуста или не
+    разобралась (загрузка в Nextcloud не удалась — известный инцидент 202 файлов 05-10.09) ->
+    `None`, строки «Резюме» тогда нет вовсе — то же сегодняшнее поведение для пустых значений,
+    новым текстом-заглушкой не подменяется."""
+    text = _value(user, "resume_text")
+    if text:
+        return text
+    url = _value(user, "resume_url")
+    return file_name_from_link(url) if url else None
+
+
 def profile_fields(user: dict, enabled_label_keys: set[str]) -> list[dict]:
     """`[{key, label, value}]` в порядке REG_LABELS, только непустые значения ВОПРОСОВ,
     включённых для трека и условий делегата (`enabled_label_keys`, см. `_enabled_label_keys`),
     БЕЗ вопросов из `_CONTACT_LABEL_KEYS` (они — отдельный раздел «Контакты», `contact_fields()`
-    ниже; один и тот же вопрос не показывается дважды)."""
+    ниже; один и тот же вопрос не показывается дважды). Вопрос «Резюме» — единственное адресное
+    исключение из общего `" / ".join(values)`: у него составное представление
+    (`resume_text`/`resume_url`), а `resume_url` делегату не показывается (см. `_resume_display`)."""
     out = []
     columns_by_key = _profile_columns()
     for key, label in REG_LABELS.items():
@@ -173,6 +207,11 @@ def profile_fields(user: dict, enabled_label_keys: set[str]) -> list[dict]:
             continue
         columns = columns_by_key.get(key)
         if not columns:
+            continue
+        if key == _RESUME_LABEL_KEY:
+            value = _resume_display(user)
+            if value:
+                out.append({"key": key, "label": label, "value": value})
             continue
         values = [v for v in (_value(user, c) for c in columns) if v]
         if values:
