@@ -11,6 +11,8 @@
 """
 import asyncio
 
+import pytest
+
 from config import config
 from database import db
 from handlers import admin_faq
@@ -98,6 +100,22 @@ def test_show_hidden_item_gives_its_own_alert(tmp_path):
     assert "виден делегатам" in text.lower()
 
 
+@pytest.fixture
+def _restore_cities_cache():
+    """`cities.reload_cities()` мутирует `cities.CITIES` НА МЕСТЕ (другие модули держат
+    `from cities import CITIES`, ребинд сломал бы их алиасы), а conftest.py проекта намеренно
+    не сбрасывает состояние между тестами. Прежний ручной `CITIES.clear()` в хвосте теста
+    оставлял СЛЕДУЮЩИМ файлам того же процесса ПУСТОЙ список городов (и не срабатывал вовсе,
+    если тест падал раньше) — городская статистика, вкладки таблицы и percity-анкета
+    валились в полном прогоне. Снимок с восстановлением — форма
+    `tests/test_quiet_hours_screen_260911.py::_restore_cities_cache`."""
+    import cities
+    snapshot = list(cities.CITIES)
+    yield
+    cities.CITIES.clear()
+    cities.CITIES.extend(snapshot)
+
+
 # ── Кнопки скрытия и удаления никогда не соседние ──────────────────────────────────────────
 
 def test_hide_and_delete_buttons_not_adjacent_without_cities_module(tmp_path):
@@ -111,7 +129,9 @@ def test_hide_and_delete_buttons_not_adjacent_without_cities_module(tmp_path):
     assert abs(toggle_row - delete_row) > 1
 
 
-def test_hide_and_delete_buttons_not_adjacent_with_cities_module_bound_header(tmp_path, monkeypatch):
+def test_hide_and_delete_buttons_not_adjacent_with_cities_module_bound_header(
+    tmp_path, monkeypatch, _restore_cities_cache
+):
     _admin_ready(tmp_path)
     import cities as cities_mod
     _run(db.insert_city("msk", "Москва", "", 0))
@@ -125,8 +145,6 @@ def test_hide_and_delete_buttons_not_adjacent_with_cities_module_bound_header(tm
     toggle_row = next(i for i, r in enumerate(rows) if any(b.callback_data == f"afaq_t:{item_id}" for b in r))
     delete_row = next(i for i, r in enumerate(rows) if any(b.callback_data == f"afaq_d:{item_id}" for b in r))
     assert abs(toggle_row - delete_row) > 1
-
-    cities_mod.CITIES.clear()
 
 
 # ── Подписи ──────────────────────────────────────────────────────────────────────────────
