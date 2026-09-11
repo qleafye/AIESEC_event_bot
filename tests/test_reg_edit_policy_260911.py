@@ -389,3 +389,192 @@ def test_submit_kind_new_passes_even_when_never(tmp_path, monkeypatch):
     resp = client.post("/app/api/reg/draft/submit", headers=_hdr(UNREGISTERED_ID))
     assert resp.status_code == 200, resp.text
     assert resp.json()["mode"] == "new"
+
+
+# ══════════════════════════════════════════════════════════════════════════════════════════
+# Задача 3 — вход в правку из чата: `cmd_start`, `reg_resume`, `reg_handoff`
+# ══════════════════════════════════════════════════════════════════════════════════════════
+
+from handlers import registration as reg
+from handlers import reg_handoff
+from handlers import reg_resume
+
+from tests.test_returning_delegate_073 import (
+    FakeCommand,
+    _callback_datas,
+    _inline_kb_msgs,
+    _new_state,
+    _register,
+    _texts,
+)
+from tests.test_returning_delegate_073 import _FakeCallback
+from tests.test_returning_delegate_073 import _KBCapturingMessage as _KBMsg
+
+CHAT_UID = 800300
+
+
+def _chat_ready(tmp_path, name="reg_edit_policy_chat.db"):
+    config.DB_PATH = str(tmp_path / name)
+    _run(db.init_db())
+    _run(db.set_setting("event_season", "YL'26"))
+
+
+def test_start_edit_deeplink_blocked_when_never(tmp_path):
+    """`/start edit` (T-w2m-03): у одобренного делегата при «нельзя» — текст реестра + главное
+    меню, мастер правки не стартует, FSM пуст."""
+    _chat_ready(tmp_path)
+
+    async def go():
+        await _register(CHAT_UID, "delegate", status="approved", season="YL'26")
+        await db.set_setting("reg_edit_policy", "never")
+        await db.set_setting("reg_edit_closed_text", "Нельзя, пишите менеджеру.")
+        msg = _KBMsg(CHAT_UID, "delegate")
+        state = _new_state(CHAT_UID)
+        await reg.cmd_start(msg, state, bot=object(), command=FakeCommand("edit"))
+        data = await state.get_data()
+        return msg, data
+
+    msg, data = _run(go())
+    assert any(t == "Нельзя, пишите менеджеру." for t in _texts(msg))
+    assert "_prior_answers" not in data
+    assert not any("consent" in (t or "").lower() for t in _texts(msg))
+
+
+def test_start_edit_deeplink_passes_when_always(tmp_path):
+    _chat_ready(tmp_path)
+
+    async def go():
+        await _register(CHAT_UID, "delegate", status="approved", season="YL'26")
+        msg = _KBMsg(CHAT_UID, "delegate")
+        state = _new_state(CHAT_UID)
+        await reg.cmd_start(msg, state, bot=object(), command=FakeCommand("edit"))
+        data = await state.get_data()
+        return msg, data
+
+    msg, data = _run(go())
+    assert not any(t == "Изменить анкету сейчас нельзя. Если нужно что-то поправить — напишите "
+                       "менеджеру мероприятия." for t in _texts(msg))
+    assert "_prior_answers" in data  # byte-в-byte прежний путь ветки (b) resume_arg == "edit"
+
+
+def test_start_with_edit_draft_blocked_when_never(tmp_path):
+    """`/start` у делегата с черновиком kind='edit' при «нельзя» — тот же ответ, экрана
+    «Продолжить/Заново» нет."""
+    _chat_ready(tmp_path)
+
+    async def go():
+        await _register(CHAT_UID, "delegate", status="approved", season="YL'26")
+        await db.upsert_reg_draft(
+            CHAT_UID, kind="edit", participant_type="full", step="phone",
+            patch={"phone": "+7999"}, source="bot",
+        )
+        await db.set_setting("reg_edit_policy", "never")
+        msg = _KBMsg(CHAT_UID, "delegate")
+        state = _new_state(CHAT_UID)
+        await reg.cmd_start(msg, state, bot=object(), command=None)
+        return msg
+
+    msg = _run(go())
+    inline = _inline_kb_msgs(msg)
+    assert not any("reg_resume:continue" in _callback_datas(rm) for (_, rm, _) in inline)
+
+
+def test_start_with_new_kind_draft_still_offers_resume_when_never(tmp_path):
+    """Регресс: черновик kind='new' при «нельзя» -> экран «Продолжить/Заново» как сегодня —
+    гейт вообще не касается первичной подачи."""
+    _chat_ready(tmp_path)
+
+    async def go():
+        await db.upsert_reg_draft(
+            CHAT_UID, kind="new", participant_type="full", step="phone",
+            patch={"age": "20"}, source="bot",
+        )
+        await db.set_setting("reg_edit_policy", "never")
+        msg = _KBMsg(CHAT_UID, "delegate")
+        state = _new_state(CHAT_UID)
+        await reg.cmd_start(msg, state, bot=object(), command=None)
+        return msg
+
+    msg = _run(go())
+    inline = _inline_kb_msgs(msg)
+    assert any("reg_resume:continue" in _callback_datas(rm) for (_, rm, _) in inline)
+
+
+def test_rejected_delegate_passes_through_at_any_policy(tmp_path):
+    _chat_ready(tmp_path)
+
+    async def go():
+        await _register(CHAT_UID, "delegate", status="rejected", season=None)
+        await db.set_setting("reg_edit_policy", "never")
+        msg = _KBMsg(CHAT_UID, "delegate")
+        state = _new_state(CHAT_UID)
+        await reg.cmd_start(msg, state, bot=object(), command=None)
+        return msg
+
+    msg = _run(go())
+    inline = _inline_kb_msgs(msg)
+    assert len(inline) == 1
+    assert _callback_datas(inline[0][1]) == ["rereg_start"]
+
+
+def test_reg_resume_continue_blocked_when_kind_edit_and_never(tmp_path):
+    _chat_ready(tmp_path)
+
+    async def go():
+        await _register(CHAT_UID, "delegate", status="approved", season="YL'26")
+        await db.upsert_reg_draft(
+            CHAT_UID, kind="edit", participant_type="full", step="phone",
+            patch={"phone": "+7999"}, source="bot",
+        )
+        await db.set_setting("reg_edit_policy", "never")
+        cb = _FakeCallback("reg_resume:continue", CHAT_UID, "delegate")
+        state = _new_state(CHAT_UID)
+        await reg_resume.reg_resume_continue(cb, state, bot=object())
+        data = await state.get_data()
+        return cb, data
+
+    cb, data = _run(go())
+    assert _texts(cb.message)  # что-то отправлено делегату
+    assert "_draft_kind" not in data  # FSM не восстановлен
+
+
+def test_reg_handoff_to_bot_blocked_when_kind_edit_and_never(tmp_path):
+    _chat_ready(tmp_path)
+
+    async def go():
+        await _register(CHAT_UID, "delegate", status="approved", season="YL'26")
+        await db.upsert_reg_draft(
+            CHAT_UID, kind="edit", participant_type="full", step="phone",
+            patch={"phone": "+7999"}, source="bot",
+        )
+        await db.set_setting("reg_edit_policy", "never")
+        cb = _FakeCallback("reg_handoff:to_bot", CHAT_UID, "delegate")
+        state = _new_state(CHAT_UID)
+        await reg_handoff.reg_handoff_to_bot(cb, state, bot=object())
+        data = await state.get_data()
+        return cb, data
+
+    cb, data = _run(go())
+    assert "_draft_kind" not in data
+
+
+def test_reg_resume_restart_yes_still_works_when_never(tmp_path):
+    """Р-4 #4: отмена правки (не открывает мастер) остаётся открытой при любом положении."""
+    _chat_ready(tmp_path)
+
+    async def go():
+        await _register(CHAT_UID, "delegate", status="approved", season="YL'26")
+        await db.upsert_reg_draft(
+            CHAT_UID, kind="edit", participant_type="full", step="phone",
+            patch={"phone": "+7999"}, source="bot",
+        )
+        await db.set_setting("reg_edit_policy", "never")
+        cb = _FakeCallback("reg_resume:restart_yes", CHAT_UID, "delegate")
+        state = _new_state(CHAT_UID)
+        await reg_resume.reg_resume_restart_yes(cb, state, bot=object())
+        draft = await db.get_reg_draft(CHAT_UID)
+        return cb, draft
+
+    cb, draft = _run(go())
+    assert draft is None  # черновик всё равно удалён
+    assert any("Изменения отменены" in (t or "") for t in _texts(cb.message))

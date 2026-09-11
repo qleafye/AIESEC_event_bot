@@ -19,6 +19,7 @@ import reg_engine
 from database.db import get_user, get_reg_draft, delete_reg_draft, set_reg_draft_surface
 from settings_schema import get_setting_typed
 from services.reg_handoff import SURFACE_BOT
+from services import reg_edit_policy  # Квик 260911-w2m: гейт правки уже поданной анкеты
 from handlers.states import Registration
 from keyboards.builders import get_confirm_kb, get_main_menu_kb
 from handlers.registration import (
@@ -75,6 +76,18 @@ async def resume_from_draft(tap_message: types.Message, state: FSMContext, bot: 
     приложения). Черновик передаётся вызывающим — он уже прочитан ПО СОБСТВЕННОМУ id тапнувшего
     (T-21-01/T-3vm-05), здесь второй раз не перечитывается."""
     telegram_id = tap_message.from_user.id
+    # Квик 260911-w2m (Р-4 #3): единственная врезка, закрывающая ДВА входа —
+    # `reg_resume:continue` (ниже) и `reg_handoff.py::reg_handoff_to_bot` («✍️ Продолжить в
+    # чате») — оба зовут это общее тело. `reg_resume:restart_yes` НЕ проходит через эту
+    # функцию и остаётся открытым намеренно (Р-4 #4): та ветка не открывает мастер, а
+    # отменяет правку (удаляет черновик, «Изменения отменены») — закрыть её значило бы
+    # запереть делегата с черновиком, который нельзя ни отправить, ни отменить.
+    if (draft.get("kind") or "new") == "edit":
+        user_row = await get_user(telegram_id)
+        can_edit, closed_text = await reg_edit_policy.edit_gate(user_row)
+        if not can_edit:
+            await reg_i18n.say(tap_message, closed_text, reply_markup=await get_main_menu_kb(telegram_id))
+            return
     await state.clear()
     fsm_patch = dict(draft.get("answers") or {})
     if draft.get("participant_type"):
