@@ -4,7 +4,7 @@
 // доказательства, строки фактов (статус/проверка). MainButton «Сдать» -> #/submit/{id}.
 
 import { icon } from "../icons.js";
-import { fileUrl, flatRow, sectionTitle } from "../ui.js";
+import { fileUrl, flatRow, sectionTitle, guardedRender } from "../ui.js";
 
 const PROOF_ICON = { photo: "image", pdf: "file-text", text: "pen-line", link: "link" };
 const PROOF_ORDER = ["photo", "pdf", "text", "link"];
@@ -19,8 +19,12 @@ function proofChips(h, raw) {
   );
 }
 
-export async function render(root, params, ctx) {
-  const { h, api, navigate, setMainButton } = ctx;
+// Quick 260911-5ij (W2, Пилар 6): тело прежнего render() — вызывается ТОЛЬКО через
+// guardedRender (см. export ниже), чтобы отказ первого api() красил состояние ошибки, а не
+// оставлял белый экран. `me` достаётся из ctx — errorState (внутри guardedRender) просит его
+// для стикер-слота.
+async function draw(root, params, ctx) {
+  const { h, api, navigate, setMainButton, me } = ctx;
   const task = await api(`/tasks/${encodeURIComponent(params.id)}`);
 
   const plate = h("article", { class: "plate plate--task" });
@@ -84,6 +88,10 @@ export async function render(root, params, ctx) {
   } else {
     setMainButton(null);
   }
+}
+
+export async function render(root, params, ctx) {
+  await guardedRender(root, ctx, () => draw(root, params, ctx));
 }
 
 export function unmount() {

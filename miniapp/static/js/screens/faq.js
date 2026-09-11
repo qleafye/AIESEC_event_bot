@@ -5,7 +5,7 @@
 // Правило видимости (город делегата, перекрытие общего пункта городским) — на сервере
 // (`services/faq.py` через `miniapp/routers/faq.py`), клиент только рисует готовый список.
 
-import { flatRow, emptyState, labelText } from "../ui.js";
+import { flatRow, emptyState, labelText, guardedRender } from "../ui.js";
 import { icon } from "../icons.js";
 
 // Та же форма, что screens/questions.js::sectionLabel — подпись раздела из реестра
@@ -19,11 +19,10 @@ function sectionLabel(section) {
   }
 }
 
-function isAuthError(err) {
-  return Boolean(err && (err.status === 401 || err.status === 403 || err.status === 503));
-}
-
-export async function render(root, params, ctx) {
+// Quick 260911-5ij (W2, Пилар 6): тело прежнего render() — вызывается ТОЛЬКО через
+// guardedRender (см. export ниже). Своя копия isAuthError и литерал ошибки снесены — общая
+// обёртка смотрит и на reason (503+miniapp_off), а не только на код статуса целиком.
+async function draw(root, params, ctx) {
   const { h, api, me } = ctx;
 
   let items = [];
@@ -52,15 +51,12 @@ export async function render(root, params, ctx) {
     for (const item of items) list.append(faqRow(item));
   }
 
-  try {
-    const page = await api("/faq");
-    items = page.items || [];
-    emptyText = page.empty_text || "";
-  } catch (err) {
-    if (!isAuthError(err)) {
-      list.append(h("p", { class: "error-inline", text: "Не удалось загрузить список — попробуйте ещё раз." }));
-    }
-    return;
-  }
+  const page = await api("/faq");
+  items = page.items || [];
+  emptyText = page.empty_text || "";
   renderList();
+}
+
+export async function render(root, params, ctx) {
+  await guardedRender(root, ctx, () => draw(root, params, ctx));
 }

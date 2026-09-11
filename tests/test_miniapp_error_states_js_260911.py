@@ -24,7 +24,24 @@ from tests.test_miniapp_frontend import _STRING_LITERAL, _js_without_comments
 ROOT = Path(__file__).resolve().parent.parent
 MINIAPP_JS = ROOT / "miniapp" / "static" / "js"
 UI_JS = MINIAPP_JS / "ui.js"
+SCREENS_DIR = MINIAPP_JS / "screens"
 _CYRILLIC = re.compile(r"[А-Яа-яЁё]")
+
+
+# ── задача 2: пять экранов ловят отказ первичной загрузки ───────────────────────────────
+
+@pytest.mark.parametrize("name", ["tasks.js", "card.js", "coins.js", "leaderboard.js", "faq.js"])
+def test_screen_has_no_local_is_auth_error_copy(name):
+    """Своя копия `isAuthError`/`errorText` снесена — только общая `isCoreHandledError`
+    из `ui.js` (faq.js её носила, `card.js`/`coins.js`/`leaderboard.js`/`tasks.js` никогда
+    не имели своей — сторож на будущее, чтобы седьмой не завёлся)."""
+    text = _js_without_comments(SCREENS_DIR / name)
+    assert "function isAuthError" not in text, name
+
+
+def test_faq_js_no_longer_has_the_removed_literal_error_text():
+    text = _js_without_comments(SCREENS_DIR / "faq.js")
+    assert "Не удалось загрузить список — попробуйте ещё раз." not in text
 
 
 def test_ui_js_has_no_cyrillic_string_literal():
@@ -276,3 +293,294 @@ def test_guarded_render_repeated_failure_does_not_stack_error_states(task1_resul
 def test_guarded_render_does_not_touch_root_when_core_already_painted_it(task1_result):
     assert task1_result["root3ChildCount"] == 1
     assert task1_result["root3StateText"] == "state-painted-by-core"
+
+
+# ── задача 2: пять экранов через guardedRender ───────────────────────────────────────────
+#
+# Общий сценарий на экран: (1) первый api()-вызов первичной загрузки бросает ApiError(500) ->
+# root показывает ровно состояние ошибки; клик «Повторить» с уже работающим api() рисует
+# нормальный экран, состояния ошибки больше нет; (2) 403 — «ядро» красит root СИНХРОННО
+# внутри api() (тот же порядок, что showState делает в api.js:53-62 до throw) — guardedRender
+# не трогает root повторно, чужой error-state не дописывается поверх. tasks.js/coins.js
+# дополнительно: отказ на «Показать ещё» тоже даёт состояние ошибки (сегодня — необработанный
+# rejected promise после завершения render).
+
+_TASKS_SCRIPT = _FAKE_DOM_PRELUDE + """
+const mod = await import(%(url)s);
+
+const root1 = document.createElement("div");
+let calls1 = 0;
+async function api1(path) {
+  if (path.startsWith("/hub")) return {};
+  if (path.startsWith("/tasks?")) {
+    calls1++;
+    if (calls1 === 1) throw err(500, "server_error");
+    return { items: [{ id: 1, title: "Задание", category: "cat", category_label: "Категория",
+      coins: 5, deadline_at: null, deadline_short: "скоро", overdue: false, status: "new" }],
+      total: 1, empty_text: null };
+  }
+  throw new Error("unexpected " + path);
+}
+await mod.render(root1, {}, { h, api: api1, navigate: () => {}, me: {} });
+const errorAfterFirst = Boolean(root1.querySelector(".error-state"));
+const retryBtn = root1.querySelector(".error-state").querySelector(".btn");
+await retryBtn._listeners.click[0]();
+const hasContentAfterRetry = Boolean(root1.querySelector(".flat-row"));
+const errorAfterRetry = Boolean(root1.querySelector(".error-state"));
+
+const root2 = document.createElement("div");
+async function api2(path) {
+  if (path.startsWith("/hub")) return {};
+  root2.replaceChildren(h("section", { class: "state", text: "core-painted" }));
+  throw err(403);
+}
+await mod.render(root2, {}, { h, api: api2, navigate: () => {}, me: {} });
+const coreChildCount = root2.children.length;
+const coreText = root2.children[0] ? root2.children[0].textContent : null;
+
+const root3 = document.createElement("div");
+let calls3 = 0;
+async function api3(path) {
+  if (path.startsWith("/hub")) return {};
+  if (path.startsWith("/tasks?")) {
+    calls3++;
+    if (calls3 === 1) return { items: [{ id: 1, title: "T1", category: "c", category_label: "C",
+      coins: 1, deadline_at: null, deadline_short: "x", overdue: false, status: "new" }],
+      total: 5, empty_text: null };
+    throw err(500, "server_error");
+  }
+  throw new Error("unexpected " + path);
+}
+await mod.render(root3, {}, { h, api: api3, navigate: () => {}, me: {} });
+const moreBtn = root3.children.flatMap((c) => c.children || []).find(
+  (b) => b.tagName === "BUTTON" && (b.textContent || "").startsWith("Показать ещё"),
+) || root3.querySelector(".list-foot").children.find((b) => b.tagName === "BUTTON");
+await moreBtn._listeners.click[0]();
+const showMoreFailShowsError = Boolean(root3.querySelector(".error-state"));
+
+console.log(JSON.stringify({
+  errorAfterFirst, hasContentAfterRetry, errorAfterRetry,
+  coreChildCount, coreText, showMoreFailShowsError,
+}));
+"""
+
+_CARD_SCRIPT = _FAKE_DOM_PRELUDE + """
+const mod = await import(%(url)s);
+const task = {
+  id: 1, title: "Задание", category_label: "Категория", deadline_short: "скоро",
+  coins: 5, deadline_left_text: null, overdue_hint: null, todo_eyebrow: "Что сделать",
+  text: "Текст задания", proof_hint: "Фото", proof_eyebrow: "Нужно прислать",
+  proof_note: "заметка", proof_type: "photo", status_line: "новое", review_note: "проверка",
+  overdue: false, can_submit: true, photo_file_id: null,
+};
+
+const root1 = document.createElement("div");
+let calls1 = 0;
+async function api1(path) {
+  calls1++;
+  if (calls1 === 1) throw err(500, "server_error");
+  return task;
+}
+await mod.render(root1, { id: "1" }, { h, api: api1, navigate: () => {}, setMainButton: () => {}, me: {} });
+const errorAfterFirst = Boolean(root1.querySelector(".error-state"));
+const retryBtn = root1.querySelector(".error-state").querySelector(".btn");
+await retryBtn._listeners.click[0]();
+const hasContentAfterRetry = Boolean(root1.children[0] && root1.children[0].className.includes("plate--task"));
+const errorAfterRetry = Boolean(root1.querySelector(".error-state"));
+
+const root2 = document.createElement("div");
+async function api2(path) {
+  root2.replaceChildren(h("section", { class: "state", text: "core-painted" }));
+  throw err(403);
+}
+await mod.render(root2, { id: "1" }, { h, api: api2, navigate: () => {}, setMainButton: () => {}, me: {} });
+const coreChildCount = root2.children.length;
+const coreText = root2.children[0] ? root2.children[0].textContent : null;
+
+console.log(JSON.stringify({ errorAfterFirst, hasContentAfterRetry, errorAfterRetry, coreChildCount, coreText }));
+"""
+
+_COINS_SCRIPT = _FAKE_DOM_PRELUDE + """
+const mod = await import(%(url)s);
+
+const root1 = document.createElement("div");
+let balCalls = 0;
+async function api1(path) {
+  if (path.startsWith("/coins/balance")) {
+    balCalls++;
+    if (balCalls === 1) throw err(500, "server_error");
+    return { balance: 100, rank: 2, participants: 10 };
+  }
+  if (path.startsWith("/hub")) return {};
+  if (path.startsWith("/coins/history")) {
+    return { items: [{ reason: "тест", created_at: "2026-01-01 00:00:00", delta: 5 }], total: 1 };
+  }
+  throw new Error("unexpected " + path);
+}
+await mod.render(root1, {}, { h, api: api1, navigate: () => {}, me: {} });
+const errorAfterFirst = Boolean(root1.querySelector(".error-state"));
+const retryBtn = root1.querySelector(".error-state").querySelector(".btn");
+await retryBtn._listeners.click[0]();
+const hasContentAfterRetry = Boolean(root1.querySelector(".flat-row"));
+const errorAfterRetry = Boolean(root1.querySelector(".error-state"));
+
+const root2 = document.createElement("div");
+async function api2(path) {
+  if (path.startsWith("/coins/balance")) {
+    root2.replaceChildren(h("section", { class: "state", text: "core-painted" }));
+    throw err(403);
+  }
+  throw new Error("unexpected " + path);
+}
+await mod.render(root2, {}, { h, api: api2, navigate: () => {}, me: {} });
+const coreChildCount = root2.children.length;
+const coreText = root2.children[0] ? root2.children[0].textContent : null;
+
+const root3 = document.createElement("div");
+let histCalls = 0;
+async function api3(path) {
+  if (path.startsWith("/coins/balance")) return { balance: 50, rank: null };
+  if (path.startsWith("/hub")) return {};
+  if (path.startsWith("/coins/history")) {
+    histCalls++;
+    if (histCalls === 1) return { items: [{ reason: "x", created_at: "2026-01-01 00:00:00", delta: 1 }], total: 5 };
+    throw err(500, "server_error");
+  }
+  throw new Error("unexpected " + path);
+}
+await mod.render(root3, {}, { h, api: api3, navigate: () => {}, me: {} });
+const moreBtn = root3.querySelector(".list-foot").children.find((b) => b.tagName === "BUTTON");
+await moreBtn._listeners.click[0]();
+const showMoreFailShowsError = Boolean(root3.querySelector(".error-state"));
+
+console.log(JSON.stringify({
+  errorAfterFirst, hasContentAfterRetry, errorAfterRetry,
+  coreChildCount, coreText, showMoreFailShowsError,
+}));
+"""
+
+_LEADERBOARD_SCRIPT = _FAKE_DOM_PRELUDE + """
+const mod = await import(%(url)s);
+const board = {
+  me: { rank: 5, balance: 20 },
+  items: [
+    { rank: 1, name: "A", balance: 100 }, { rank: 2, name: "B", balance: 90 },
+    { rank: 3, name: "C", balance: 80 }, { rank: 4, name: "D", balance: 70 },
+    { rank: 5, name: "E", balance: 20, is_me: true },
+  ],
+  total: 5, empty_text: null,
+};
+
+const root1 = document.createElement("div");
+let calls1 = 0;
+async function api1(path) {
+  if (path.startsWith("/hub")) return {};
+  if (path.startsWith("/leaderboard")) {
+    calls1++;
+    if (calls1 === 1) throw err(500, "server_error");
+    return board;
+  }
+  throw new Error("unexpected " + path);
+}
+await mod.render(root1, {}, { h, api: api1, me: {} });
+const errorAfterFirst = Boolean(root1.querySelector(".error-state"));
+const retryBtn = root1.querySelector(".error-state").querySelector(".btn");
+await retryBtn._listeners.click[0]();
+const hasContentAfterRetry = Boolean(root1.querySelector(".podium"));
+const errorAfterRetry = Boolean(root1.querySelector(".error-state"));
+
+const root2 = document.createElement("div");
+async function api2(path) {
+  if (path.startsWith("/hub")) return {};
+  root2.replaceChildren(h("section", { class: "state", text: "core-painted" }));
+  throw err(403);
+}
+await mod.render(root2, {}, { h, api: api2, me: {} });
+const coreChildCount = root2.children.length;
+const coreText = root2.children[0] ? root2.children[0].textContent : null;
+
+console.log(JSON.stringify({ errorAfterFirst, hasContentAfterRetry, errorAfterRetry, coreChildCount, coreText }));
+"""
+
+_FAQ_SCRIPT = _FAKE_DOM_PRELUDE + """
+document.body.dataset.sectionLabels = JSON.stringify({ faq: "❓ Частые вопросы" });
+const mod = await import(%(url)s);
+
+const root1 = document.createElement("div");
+let calls1 = 0;
+async function api1(path) {
+  calls1++;
+  if (calls1 === 1) throw err(500, "server_error");
+  return { items: [{ id: 1, question: "Q1", answer: "A1" }], empty_text: null };
+}
+await mod.render(root1, {}, { h, api: api1, me: {} });
+const errorAfterFirst = Boolean(root1.querySelector(".error-state"));
+const retryBtn = root1.querySelector(".error-state").querySelector(".btn");
+await retryBtn._listeners.click[0]();
+const hasContentAfterRetry = Boolean(root1.querySelector(".flat-row"));
+const errorAfterRetry = Boolean(root1.querySelector(".error-state"));
+
+const root2 = document.createElement("div");
+async function api2(path) {
+  root2.replaceChildren(h("section", { class: "state", text: "core-painted" }));
+  throw err(403);
+}
+await mod.render(root2, {}, { h, api: api2, me: {} });
+const coreChildCount = root2.children.length;
+const coreText = root2.children[0] ? root2.children[0].textContent : null;
+
+console.log(JSON.stringify({ errorAfterFirst, hasContentAfterRetry, errorAfterRetry, coreChildCount, coreText }));
+"""
+
+
+@pytest.fixture(scope="module")
+def tasks_result(node) -> dict:
+    url = json.dumps((SCREENS_DIR / "tasks.js").resolve().as_uri())
+    return _run_script(node, _TASKS_SCRIPT % {"url": url})
+
+
+@pytest.fixture(scope="module")
+def card_result(node) -> dict:
+    url = json.dumps((SCREENS_DIR / "card.js").resolve().as_uri())
+    return _run_script(node, _CARD_SCRIPT % {"url": url})
+
+
+@pytest.fixture(scope="module")
+def coins_result(node) -> dict:
+    url = json.dumps((SCREENS_DIR / "coins.js").resolve().as_uri())
+    return _run_script(node, _COINS_SCRIPT % {"url": url})
+
+
+@pytest.fixture(scope="module")
+def leaderboard_result(node) -> dict:
+    url = json.dumps((SCREENS_DIR / "leaderboard.js").resolve().as_uri())
+    return _run_script(node, _LEADERBOARD_SCRIPT % {"url": url})
+
+
+@pytest.fixture(scope="module")
+def faq_result(node) -> dict:
+    url = json.dumps((SCREENS_DIR / "faq.js").resolve().as_uri())
+    return _run_script(node, _FAQ_SCRIPT % {"url": url})
+
+
+@pytest.mark.parametrize("fixture_name", ["tasks_result", "card_result", "coins_result", "leaderboard_result", "faq_result"])
+def test_screen_primary_load_failure_shows_error_then_retry_recovers(fixture_name, request):
+    result = request.getfixturevalue(fixture_name)
+    assert result["errorAfterFirst"] is True
+    assert result["hasContentAfterRetry"] is True
+    assert result["errorAfterRetry"] is False
+
+
+@pytest.mark.parametrize("fixture_name", ["tasks_result", "card_result", "coins_result", "leaderboard_result", "faq_result"])
+def test_screen_403_leaves_core_painted_content_untouched(fixture_name, request):
+    result = request.getfixturevalue(fixture_name)
+    assert result["coreChildCount"] == 1
+    assert result["coreText"] == "core-painted"
+
+
+def test_tasks_show_more_failure_shows_error_state(tasks_result):
+    assert tasks_result["showMoreFailShowsError"] is True
+
+
+def test_coins_show_more_failure_shows_error_state(coins_result):
+    assert coins_result["showMoreFailShowsError"] is True
