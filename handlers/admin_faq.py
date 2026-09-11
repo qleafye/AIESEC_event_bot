@@ -61,7 +61,13 @@ def _card_out_of_scope(row: dict, scope) -> bool:
 async def render_faq_screen(admin_id: int, offset: int = 0) -> tuple[str, InlineKeyboardMarkup]:
     """Список пунктов в scope текущей шапки — пустой список не рисует пустое сообщение,
     а зовёт добавить первый пункт кнопкой (CLAUDE.md: разрушительная пустота объясняется,
-    а не молчит)."""
+    а не молчит).
+
+    Quick 260911-805 (W4-02): менеджер видит и скрытые пункты (`list_faq_items` без
+    `enabled_only` — иначе «скрыть» стало бы неотличимо от «удалить» в другую сторону), но
+    список ДОЛЖЕН словами отличать «скрыт» от «удалён» — иконки одной оказалось мало (УАТ:
+    «не удаляется вопрос, только скрывается»). Строка объяснения и счётчик скрытых рисуются
+    ТОЛЬКО когда скрытые есть — пустой набор молчит, экран как раньше (без шума)."""
     scope, label = await _admin_city_view(admin_id)
     items = await list_faq_items(city_scope=scope)
 
@@ -70,6 +76,13 @@ async def render_faq_screen(admin_id: int, offset: int = 0) -> tuple[str, Inline
         lines.append(html_module.escape(str(label)))
     if items:
         lines.append(f"Всего пунктов: {len(items)}")
+        hidden_count = sum(1 for it in items if not it.get("enabled"))
+        if hidden_count:
+            lines.append(f"Из них скрыто от делегатов: {hidden_count}")
+            lines.append(
+                "«скрыт» — пункт остался у вас в списке, делегаты его не видят; "
+                "удалённый пункт из списка пропадает совсем."
+            )
     else:
         lines.append("")
         lines.append("Пока ни одного пункта — добавьте первый кнопкой ниже.")
@@ -78,14 +91,22 @@ async def render_faq_screen(admin_id: int, offset: int = 0) -> tuple[str, Inline
     buttons: list[list[InlineKeyboardButton]] = []
     page = items[offset: offset + FAQ_PAGE]
     for idx, item in enumerate(page, start=offset + 1):
-        status_icon = "✅" if item.get("enabled") else "🚫"
+        enabled = bool(item.get("enabled"))
+        status_icon = "✅" if enabled else "🚫"
         item_city = item.get("city")
         city_label_text = await city_label(item_city) if item_city else None
         badge = faq_service.city_badge(city_label_text)
-        row_label = (
-            f"{idx}. {status_icon} {badge} "
-            f"{faq_service.short(str(item.get('question') or ''), 40)}"
-        )
+        if enabled:
+            row_label = (
+                f"{idx}. {status_icon} {badge} "
+                f"{faq_service.short(str(item.get('question') or ''), 40)}"
+            )
+        else:
+            # Лимит короче обычного — слово «скрыт» уже занимает часть подписи кнопки.
+            row_label = (
+                f"{idx}. {status_icon} скрыт · {badge} "
+                f"{faq_service.short(str(item.get('question') or ''), 28)}"
+            )
         buttons.append([InlineKeyboardButton(text=row_label, callback_data=f"afaq_v:{item['id']}")])
 
     buttons.append([InlineKeyboardButton(text="➕ Добавить", callback_data="afaq_new")])
@@ -121,7 +142,12 @@ async def render_faq_card(admin_id: int, item_id: int) -> tuple[str, InlineKeybo
     row_city = row.get("city")
     city_label_text = await city_label(row_city) if row_city else None
     badge = faq_service.city_badge(city_label_text)
-    status_text = "✅ показывается делегатам" if row.get("enabled") else "🚫 скрыт от делегатов"
+    status_text = (
+        "✅ показывается делегатам" if row.get("enabled")
+        # Quick 260911-805 (W4-02): скрытый пункт — не удалённый, честная строка статуса
+        # называет это прямо (УАТ: менеджер подумал, что «скрыть» не работает вовсе).
+        else "🚫 скрыт от делегатов — не удалён, остался в вашем списке"
+    )
 
     lines = [
         "❓ <b>Пункт FAQ</b>",
@@ -133,17 +159,21 @@ async def render_faq_card(admin_id: int, item_id: int) -> tuple[str, InlineKeybo
         f"<b>Ответ:</b> {html_module.escape(str(row.get('answer') or ''))}",
     ]
 
+    # Quick 260911-805 (W4-02): ряд скрытия/показа стоит ВЫШЕ ⬆️⬇️ (который присутствует
+    # всегда), а «Удалить навсегда» — последним перед «← К списку», так что скрытие и
+    # удаление никогда не стоят соседними строками — ни при выключенном модуле городов
+    # (ряд ⬆️⬇️ между ними), ни при включённом (между ними встаёт ещё и ряд города).
     buttons: list[list[InlineKeyboardButton]] = [
         [InlineKeyboardButton(text="✏️ Вопрос", callback_data=f"afaq_eq:{item_id}")],
         [InlineKeyboardButton(text="✏️ Ответ", callback_data=f"afaq_ea:{item_id}")],
+        [InlineKeyboardButton(
+            text=("🚫 Скрыть от делегатов" if row.get("enabled") else "✅ Показать делегатам"),
+            callback_data=f"afaq_t:{item_id}",
+        )],
         [
             InlineKeyboardButton(text="⬆️", callback_data=f"afaq_up:{item_id}"),
             InlineKeyboardButton(text="⬇️", callback_data=f"afaq_dn:{item_id}"),
         ],
-        [InlineKeyboardButton(
-            text=("🚫 Скрыть" if row.get("enabled") else "✅ Показать"),
-            callback_data=f"afaq_t:{item_id}",
-        )],
     ]
 
     # T-FAQ-01/CLAUDE.md: переключатель города только когда шапка называет КОНКРЕТНЫЙ город —
@@ -162,7 +192,7 @@ async def render_faq_card(admin_id: int, item_id: int) -> tuple[str, InlineKeybo
             "конкретный город."
         )
 
-    buttons.append([InlineKeyboardButton(text="🗑 Удалить", callback_data=f"afaq_d:{item_id}")])
+    buttons.append([InlineKeyboardButton(text="🗑 Удалить навсегда", callback_data=f"afaq_d:{item_id}")])
     buttons.append([InlineKeyboardButton(text="← К списку", callback_data="afaq_p:0")])
 
     return "\n".join(lines), InlineKeyboardMarkup(inline_keyboard=buttons)
@@ -250,6 +280,9 @@ async def afaq_move_down(callback: types.CallbackQuery):
 
 @router.callback_query(F.data.startswith("afaq_t:"))
 async def afaq_toggle_enabled(callback: types.CallbackQuery):
+    """Quick 260911-805 (W4-02): раньше отвечал голым `callback.answer()` — нажатие «скрыть»
+    не подтверждало НИЧЕГО, менеджер решал, что бага удаления нет вовсе. Теперь алерт
+    называет новое состояние словами по обе стороны переключателя."""
     item_id = _parse_id(callback.data)
     if item_id is None:
         await callback.answer("Пункт не найден.", show_alert=True)
@@ -259,11 +292,19 @@ async def afaq_toggle_enabled(callback: types.CallbackQuery):
     if row is None or _card_out_of_scope(row, scope):
         await callback.answer("Пункт недоступен — обновите список.", show_alert=True)
         return
-    await update_faq_item(item_id, enabled=0 if row.get("enabled") else 1)
+    now_enabled = 0 if row.get("enabled") else 1
+    await update_faq_item(item_id, enabled=now_enabled)
     screen = await render_faq_card(callback.from_user.id, item_id)
     text, kb = screen
     await callback.message.edit_text(text, parse_mode="HTML", reply_markup=kb)
-    await callback.answer()
+    if now_enabled:
+        await callback.answer("✅ Пункт снова виден делегатам.", show_alert=True)
+    else:
+        await callback.answer(
+            "🚫 Пункт скрыт от делегатов, но остался в вашем списке. "
+            "Удалить насовсем — кнопкой «🗑 Удалить навсегда».",
+            show_alert=True,
+        )
 
 
 @router.callback_query(F.data.startswith("afaq_c:"))
@@ -304,14 +345,23 @@ async def afaq_delete_confirm(callback: types.CallbackQuery):
     city_label_text = await city_label(row_city) if row_city else None
     who = "у всех городов" if city_label_text is None else f"у делегатов города «{city_label_text}»"
     text = (
-        "🗑 <b>Удалить пункт FAQ?</b>\n\n"
+        "🗑 <b>Удалить пункт FAQ навсегда?</b>\n\n"
         f"«{html_module.escape(str(row.get('question') or ''))}»\n\n"
-        f"Пропадёт {who}. Отменить нельзя."
+        f"Пропадёт {who}. Отменить нельзя — если не уверены, можно вместо этого скрыть "
+        "пункт от делегатов: он останется в вашем списке, и его можно будет снова показать."
     )
-    kb = InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="🗑 Да, удалить", callback_data=f"afaq_dgo:{item_id}")],
-        [InlineKeyboardButton(text="← Отмена", callback_data=f"afaq_v:{item_id}")],
-    ])
+    buttons: list[list[InlineKeyboardButton]] = [
+        [InlineKeyboardButton(text="🗑 Да, удалить навсегда", callback_data=f"afaq_dgo:{item_id}")],
+    ]
+    # Quick 260911-805 (D-02): второй callback тут не заводим — переиспользуем afaq_t: (тот же
+    # хендлер, что кнопка «Скрыть» в карточке). Уже скрытому пункту нечего предлагать скрыть
+    # ещё раз — кнопка встаёт только когда пункт сейчас виден делегатам.
+    if row.get("enabled"):
+        buttons.append(
+            [InlineKeyboardButton(text="🚫 Скрыть вместо удаления", callback_data=f"afaq_t:{item_id}")]
+        )
+    buttons.append([InlineKeyboardButton(text="← Отмена", callback_data=f"afaq_v:{item_id}")])
+    kb = InlineKeyboardMarkup(inline_keyboard=buttons)
     await callback.message.edit_text(text, parse_mode="HTML", reply_markup=kb)
     await callback.answer()
 
@@ -330,7 +380,7 @@ async def afaq_delete_go(callback: types.CallbackQuery):
     await delete_faq_item(item_id)
     text, kb = await render_faq_screen(callback.from_user.id)
     await callback.message.edit_text(text, parse_mode="HTML", reply_markup=kb)
-    await callback.answer("Пункт удалён.")
+    await callback.answer("Пункт удалён навсегда.")
 
 
 # ── Quick 260906-8uq (FAQ-04): «❓ В FAQ» из журнала вопросов делегатов ──────────────────────
