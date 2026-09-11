@@ -444,6 +444,7 @@ admin|callback_query|toggle_resume_filename_short_mode|toggle_resume_filename_sh
 admin|callback_query|toggle_reg_scoring_enabled|toggle_reg_scoring_enabled
 admin|callback_query|toggle_apps_queue_sort_by_score|toggle_apps_queue_sort_by_score
 admin|callback_query|toggle_reg_edit_remoderation|toggle_reg_edit_remoderation
+admin|callback_query|toggle_reg_edit_policy|toggle_reg_edit_policy
 admin|callback_query|toggle_payment_reminders|toggle_payment_reminders
 admin|callback_query|toggle_uni_mode|toggle_uni_mode
 admin|callback_query|toggle_edu_conditional|toggle_edu_conditional
@@ -890,7 +891,7 @@ def test_snapshot_total_handler_count_is_292():
     # чистая вставка, перепроверена прогоном _build_snapshot_lines() и diff'ом с прежним
     # 484-строчным снапшотом (единственная строка сдвинула всё после неё на одну позицию, ни
     # одна другая строка не поменялась и не переставилась).
-    assert len(GOLDEN_SNAPSHOT) == 485  # Quick 260911-805: +1; Квик 260910-ro7: +3; Quick 260910-okb: +3, +5; Phase 28 (28-09): +1; (28-08): +5, +1; (28-07): +1; (28-06): +3, +2
+    assert len(GOLDEN_SNAPSHOT) == 486  # Квик 260911-w2m: +1 admin_settings.py toggle_reg_edit_policy (callback_query, сразу после toggle_reg_edit_scoring/apps_queue_sort_by_score блока и перед toggle_reg_edit_remoderation); Quick 260911-805: +1; Квик 260910-ro7: +3; Quick 260910-okb: +3, +5; Phase 28 (28-09): +1; (28-08): +5, +1; (28-07): +1; (28-06): +3, +2
     # handlers/reg_resume_fork.py — message process_resume_link (хвост message-блока
     # registration.router, сразу после process_case_optin и перед первым callback_query
     # recall_keep) + callback_query regfork_pick (хвост callback_query-блока

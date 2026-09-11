@@ -575,6 +575,7 @@ ADMIN_CAPS: dict[str, str] = {
     "toggle_payment_reminders": "settings",
     "toggle_pending_reminder": "settings",
     "toggle_quiet_hours": "settings",
+    "toggle_reg_edit_policy": "settings",  # Квик 260911-w2m
     "toggle_reg_edit_remoderation": "settings",
     "toggle_reg_skip_source_for_referred": "settings",  # Phase 28 (28-06)
     "toggle_reg_referrer_must_be_ambassador": "settings",  # Phase 28 (28-06)

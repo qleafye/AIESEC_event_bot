@@ -102,7 +102,13 @@ KNOWN_OVERAGES: dict[str, tuple[int, str]] = {
         "(Phase 14/16)",
     ),
     "admin_settings.py": (
-        2174,
+        2185,
+        "+11 строк (квик 260911-w2m): переключатель «✏️ Правка анкеты делегатом» — "
+        "_next_enum_value/_cycle_enum_setting (общий цикл enum-настройки из N положений, "
+        "рядом с _toggle_module_setting), строка reg_edit_policy_text в settings_toggle_rows/"
+        "_row, хендлер toggle_reg_edit_policy по форме toggle_reg_edit_remoderation; само "
+        "правило «можно ли редактировать» живёт в services/reg_edit_policy.py, здесь только "
+        "переключатель и человеческий алерт; потолок поднят до фактического размера. "
         "+13 строк (quick 260904-dq1, «🌙 Тихие часы») -- три текстовых ключа в "
         "_APPS_FIELD_ORDER (редактор экрана и per-city пикер достаются бесплатно), строка "
         "тумблера quiet_hours_toggle_text в settings_toggle_rows и хендлер toggle_quiet_hours "

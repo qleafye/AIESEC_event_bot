@@ -97,6 +97,10 @@ SECTIONS: list[tuple[str, str, list[tuple]]] = [
         ("toggle", "toggle_preselect_enabled"),
         ("toggle", "toggle_pending_reminder"),
         ("toggle", "toggle_nudge_enabled"),
+        # Квик 260911-w2m: «можно ли делегату сейчас править анкету» — СРАЗУ ПЕРЕД
+        # «что делать с правкой» (toggle_reg_edit_remoderation): читается парой, сначала
+        # разрешение, потом последствие правки.
+        ("toggle", "toggle_reg_edit_policy"),
         ("toggle", "toggle_reg_edit_remoderation"),
         ("toggle", "toggle_quiet_hours"),
         # Quick 260911-805 (W4-03): вход на экран «🌙 Тихие часы» — СРАЗУ ПОД строкой тумблера

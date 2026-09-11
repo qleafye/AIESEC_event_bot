@@ -486,6 +486,8 @@ def test_render_snapshot_apps(tmp_path):
         "score_experience_counts", "score_course_from", "score_stack_from",
         # Quick 260904-dq1: «🌙 Тихие часы» — «с»/«до» и приписка менеджеру, в хвосте группы.
         "quiet_hours_start", "quiet_hours_end", "quiet_hours_manager_notice_text",
+        # Квик 260911-w2m: текст делегату при закрытой правке анкеты — в хвосте группы.
+        "reg_edit_closed_text",
     ]
     expected_labels = [
         "✅ После регистрации", "🎉 После одобрения", "🚫 При отклонении",
@@ -498,6 +500,7 @@ def test_render_snapshot_apps(tmp_path):
         "🧮 Балл: какая готовность засчитывается", "🧮 Балл: какой опыт засчитывается",
         "🧮 Балл: курс от", "🧮 Балл: сколько пунктов стека засчитывать",
         "🌙 Тихие часы: с", "🌙 Тихие часы: до", "🌙 Приписка менеджеру о тихих часах",
+        "✏️ Правка закрыта: текст делегату",
     ]
     defaulted_labels = {
         "⏳ Заявка на рассмотрении", "🎯 Предотбор: нет @username",
@@ -506,6 +509,8 @@ def test_render_snapshot_apps(tmp_path):
         "⏰ Догонялка: слово вместо числа при сбое",
         # Quick 260904-dq1: все три ключа тихих часов имеют дефолт в реестре.
         "🌙 Тихие часы: с", "🌙 Тихие часы: до", "🌙 Приписка менеджеру о тихих часах",
+        # Квик 260911-w2m: дефолтный текст отказа в правке — тоже настоящий текстовый дефолт.
+        "✏️ Правка закрыта: текст делегату",
     }
     # Phase 28 (28-07): "по умолчанию" флаг в этом экране считается ТОЛЬКО по
     # _SETTINGS_DISPLAY_DEFAULTS (type == "text"), см. admin_settings.py — пороги курса/стека
@@ -895,8 +900,10 @@ def test_scheduler_and_reminder_keys_declared_with_code_defaults(tmp_path):
     # с остальными послеподачными текстами — сама пара ключей и её порядок не менялись.
     # Phase 23-01 (APP-TINDER-01, D-05): reject_reason_templates добавлен хвостом _APPS_FIELD_ORDER.
     # Quick 260904-dq1: три ключа «🌙 Тихие часы» — новый хвост _APPS_FIELD_ORDER.
-    assert admin_settings._settings_group_keys("apps")[-3:] == [
-        "quiet_hours_start", "quiet_hours_end", "quiet_hours_manager_notice_text"]
+    # Квик 260911-w2m: reg_edit_closed_text — новый хвост _APPS_FIELD_ORDER.
+    assert admin_settings._settings_group_keys("apps")[-4:] == [
+        "quiet_hours_start", "quiet_hours_end", "quiet_hours_manager_notice_text",
+        "reg_edit_closed_text"]
     text = asyncio.run(admin_settings.render_settings_group_text("system"))
     # int без значения в БД -- «— не задано» (как proxy_*: parse-дефолт не display-дефолт)
     assert "⏱ Догонялка: как часто проверять: <i>— не задано</i>" in text
