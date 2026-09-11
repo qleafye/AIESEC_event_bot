@@ -59,7 +59,8 @@ def test_get_incomplete_rows_none_partial_data_for_row_without_snapshot(tmp_path
         row = rows[0]
         # indices 0..3 unchanged in meaning/order — old positional tests keep passing
         assert row[0] == 1
-        assert row[1] == "vasya"
+        # UNAME-03: канон хранения — «с @» (database/db.py::store_username).
+        assert row[1] == "@vasya"
         assert row[3] == "city"
         assert row[4] is None
 
