@@ -224,6 +224,8 @@ _SYSTEM_FIELD_ORDER = [
     # Quick 260819 (schema-completeness): интервалы фоновых джоб (после перезапуска).
     "nudge_scan_minutes", "allowlist_refresh_minutes", "incomplete_sync_hours",
     "resume_retry_minutes",
+    # Квик 260911-mx6: два ключа сеялки — новый хвост _SYSTEM_FIELD_ORDER.
+    "uat_seed_enabled", "uat_seed_testers",
 ]
 
 # Quick 260815-3hw (TABS-01/02/03): every Google Sheets tab NAME in one group — «📄 Вкладки
