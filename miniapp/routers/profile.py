@@ -27,6 +27,11 @@
 публикуется (`edit_deeplink`/`edit_hint` убраны); признак `can_edit` + подпись кнопки
 `edit_cta_text` из реестра `reg_form_profile_edit_cta_text`.
 
+Квик 260911-w2m: `can_edit` больше не литерал `True` — единственное место правила
+`services.reg_edit_policy.edit_gate` решает, можно ли делегату сейчас редактировать уже
+поданную анкету (три положения реестрового ключа `reg_edit_policy`); `edit_closed_text`
+(`None` при разрешённой правке) заменяет кнопку в `screens/profile.js`, когда правка закрыта.
+
 Плита профиля (план 23.1-05, макет `mockups/04-profile.png`): монограмма (`initials`, до двух
 заглавных букв из `full_name` — считается ЗДЕСЬ, а не строковой логикой на клиенте, тот же
 принцип, что и у `miniapp.avatars.initials`, но с другим пустым исходом — «» вместо «?», у
@@ -71,6 +76,7 @@ import reg_engine
 from cities import cities_module_on, city_label as resolve_city_label, normalize_city
 from database.db import get_user
 from reg_labels import PAYMENT_STATUS_LABELS, REG_LABELS, STATUS_LABELS
+from services import reg_edit_policy
 from services.applications import format_edited_date
 from services.nextcloud import file_name_from_link
 from settings_schema import get_setting_typed
@@ -290,6 +296,7 @@ def _form_meta_text(user: dict, submitted_tpl: str | None, edited_tpl: str | Non
 async def profile(request: Request, p: Principal = Depends(delegate_gate),
                   _: Principal = Depends(require_section("profile"))) -> dict:
     user = await get_user(p.telegram_id) or {}
+    can_edit, edit_closed_text = await reg_edit_policy.edit_gate(user)
     status = user.get("status") or "approved"
     payment_status = user.get("payment_status") or "not_paid"
     # Тумблер «💳 Модуль оплаты» выключен -> статус оплаты не существует как понятие:
@@ -358,6 +365,11 @@ async def profile(request: Request, p: Principal = Depends(delegate_gate),
         # параметр запуска нигде не обрабатывался — кнопка «Изменить» вела в никуда, RESEARCH
         # Pitfall 1; `?start=edit` остаётся fallback-путём ИЗ БОТА, план 21-09, но профиль его
         # больше не публикует — навигация внутри приложения, `screens/profile.js`).
-        "can_edit": True,
+        # Квик 260911-w2m: `can_edit` больше не литерал — `services.reg_edit_policy.edit_gate`
+        # (единственное место правила) решает по положению `reg_edit_policy` + статусу
+        # анкеты; `edit_closed_text` непуст ТОЛЬКО когда правка закрыта, `profile.js` рисует
+        # его вместо кнопки.
+        "can_edit": can_edit,
+        "edit_closed_text": edit_closed_text,
         "edit_cta_text": await get_setting_typed("reg_form_profile_edit_cta_text"),
     }

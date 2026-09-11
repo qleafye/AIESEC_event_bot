@@ -203,3 +203,189 @@ def test_toggle_redraws_apps_section_screen(tmp_path):
 def test_admin_caps_maps_toggle_to_settings_capability():
     from handlers.admin_caps import ADMIN_CAPS
     assert ADMIN_CAPS["toggle_reg_edit_policy"] == "settings"
+
+
+# ══════════════════════════════════════════════════════════════════════════════════════════
+# Задача 2 — HTTP-контракт Mini App: профиль, PATCH/submit черновика
+# ══════════════════════════════════════════════════════════════════════════════════════════
+
+import httpx
+
+from database import db as bot_db
+
+from tests.test_miniapp_form import FakeBotApi
+from tests.test_miniapp_routes import (
+    DELEGATE_ID,
+    PENDING_ID,
+    UNREGISTERED_ID,
+    _cfg,
+    _client,
+    _hdr,
+    _standard_seed,
+    _use_tmp_db,
+)
+from tests.test_miniapp_form import _draft_row, _seed_draft
+from miniapp import telegram_api
+
+
+def _miniapp_ready(tmp_path, name="reg_edit_policy_miniapp.db"):
+    db_path = _use_tmp_db(tmp_path, name)
+    _standard_seed()
+    return db_path
+
+
+def _bot_api(monkeypatch):
+    fake = FakeBotApi()
+    monkeypatch.setattr(
+        telegram_api, "_make_client",
+        lambda cfg, timeout: httpx.AsyncClient(transport=httpx.MockTransport(fake.handler)),
+    )
+    return fake
+
+
+# ── GET /app/api/profile ─────────────────────────────────────────────────────────────────
+
+def test_profile_can_edit_true_by_default(tmp_path):
+    db_path = _miniapp_ready(tmp_path)
+    client = _client(_cfg(db_path))
+    resp = client.get("/app/api/profile", headers=_hdr(DELEGATE_ID))
+    body = resp.json()
+    assert body["can_edit"] is True
+    assert body["edit_closed_text"] is None
+
+
+def test_profile_can_edit_false_with_text_when_never(tmp_path):
+    db_path = _miniapp_ready(tmp_path)
+    _run(bot_db.set_setting("reg_edit_policy", "never"))
+    client = _client(_cfg(db_path))
+    resp = client.get("/app/api/profile", headers=_hdr(DELEGATE_ID))
+    body = resp.json()
+    assert body["can_edit"] is False
+    assert body["edit_closed_text"]
+
+
+async def _seed_unsubmitted_approved_row(telegram_id: int) -> None:
+    """Строка `users` без поданной анкеты (пустой `registration_date`, D15) — тот же
+    артефакт, что предзаведённая строка амбассадора/менеджера, на который опирается
+    докстринг `reg_engine.has_submitted_anketa`. Проходит `delegate_gate` (status="approved"
+    читается как разрешённый), но `has_submitted_anketa` для неё ложна."""
+    async with bot_db._connect() as conn:
+        await conn.execute(
+            "INSERT INTO users (telegram_id, full_name, status, registration_date) "
+            "VALUES (?, ?, 'approved', NULL)",
+            (telegram_id, f"User {telegram_id}"),
+        )
+        await conn.commit()
+
+
+NO_SUBMISSION_ID = 900199
+
+
+def test_profile_can_edit_true_without_submission_even_when_never(tmp_path):
+    db_path = _miniapp_ready(tmp_path)
+    _run(bot_db.set_setting("reg_edit_policy", "never"))
+    _run(_seed_unsubmitted_approved_row(NO_SUBMISSION_ID))
+    client = _client(_cfg(db_path))
+    resp = client.get("/app/api/profile", headers=_hdr(NO_SUBMISSION_ID))
+    body = resp.json()
+    assert body["can_edit"] is True
+    assert body["edit_closed_text"] is None
+
+
+# ── GET /app/api/reg/draft ────────────────────────────────────────────────────────────────
+
+def test_draft_get_edit_closed_true_when_kind_edit_and_never(tmp_path):
+    db_path = _miniapp_ready(tmp_path)
+    _run(bot_db.set_setting("reg_edit_policy", "never"))
+    _seed_draft(DELEGATE_ID, kind="edit", patch={"age": 25})
+    client = _client(_cfg(db_path))
+    resp = client.get("/app/api/reg/draft", headers=_hdr(DELEGATE_ID))
+    body = resp.json()
+    assert body["edit_closed"] is True
+    assert body["edit_closed_text"]
+
+
+def test_draft_get_edit_closed_false_when_kind_new_regardless_of_policy(tmp_path):
+    db_path = _miniapp_ready(tmp_path)
+    _run(bot_db.set_setting("reg_edit_policy", "never"))
+    client = _client(_cfg(db_path))
+    resp = client.get("/app/api/reg/draft", headers=_hdr(UNREGISTERED_ID))
+    body = resp.json()
+    assert body["kind"] == "new"
+    assert body["edit_closed"] is False
+    assert body["edit_closed_text"] is None
+
+
+# ── PATCH /app/api/reg/draft ──────────────────────────────────────────────────────────────
+
+def test_patch_submitted_anketa_409_edit_closed_no_write(tmp_path):
+    db_path = _miniapp_ready(tmp_path)
+    _run(bot_db.set_setting("reg_edit_policy", "never"))
+    client = _client(_cfg(db_path))
+    resp = client.patch(
+        "/app/api/reg/draft", headers=_hdr(DELEGATE_ID),
+        json={"version": 0, "answers": {"phone": "+79997776655"}},
+    )
+    assert resp.status_code == 409
+    body = resp.json()
+    assert body["reason"] == "edit_closed"
+    assert body["text"]
+    assert _draft_row(DELEGATE_ID) is None  # ничего не записано
+    user = _run(bot_db.get_user(DELEGATE_ID))
+    assert user.get("phone") != "+79997776655"
+
+
+def test_patch_kind_new_passes_even_when_never(tmp_path):
+    """Главный регресс-сторож: первичная подача не гейтится ни при каком положении."""
+    db_path = _miniapp_ready(tmp_path)
+    _run(bot_db.set_setting("reg_edit_policy", "never"))
+    client = _client(_cfg(db_path))
+    resp = client.patch(
+        "/app/api/reg/draft", headers=_hdr(UNREGISTERED_ID),
+        json={"version": 0, "answers": {"age": "22"}},
+    )
+    assert resp.status_code == 200, resp.text
+
+
+def test_patch_until_decision_pending_passes_approved_blocked(tmp_path):
+    db_path = _miniapp_ready(tmp_path)
+    _run(bot_db.set_setting("reg_edit_policy", "until_decision"))
+    client = _client(_cfg(db_path))
+
+    resp_pending = client.patch(
+        "/app/api/reg/draft", headers=_hdr(PENDING_ID),
+        json={"version": 0, "answers": {"phone": "+79997776655"}},
+    )
+    assert resp_pending.status_code == 200, resp_pending.text
+
+    resp_approved = client.patch(
+        "/app/api/reg/draft", headers=_hdr(DELEGATE_ID),
+        json={"version": 0, "answers": {"phone": "+79997776655"}},
+    )
+    assert resp_approved.status_code == 409
+    assert resp_approved.json()["reason"] == "edit_closed"
+
+
+# ── POST /app/api/reg/draft/submit ────────────────────────────────────────────────────────
+
+def test_submit_submitted_anketa_409_edit_closed_no_claim(tmp_path, monkeypatch):
+    db_path = _miniapp_ready(tmp_path)
+    _bot_api(monkeypatch)
+    _run(bot_db.set_setting("reg_edit_policy", "never"))
+    _seed_draft(DELEGATE_ID, kind="edit", patch={"age": 25})
+    client = _client(_cfg(db_path))
+    resp = client.post("/app/api/reg/draft/submit", headers=_hdr(DELEGATE_ID))
+    assert resp.status_code == 409
+    assert resp.json()["reason"] == "edit_closed"
+    assert _draft_row(DELEGATE_ID) is not None  # черновик НЕ захвачен claim_reg_draft
+
+
+def test_submit_kind_new_passes_even_when_never(tmp_path, monkeypatch):
+    db_path = _miniapp_ready(tmp_path)
+    _bot_api(monkeypatch)
+    _run(bot_db.set_setting("reg_edit_policy", "never"))
+    _seed_draft(UNREGISTERED_ID, kind="new", patch={"age": 22, "full_name": "Иван Иванов"})
+    client = _client(_cfg(db_path))
+    resp = client.post("/app/api/reg/draft/submit", headers=_hdr(UNREGISTERED_ID))
+    assert resp.status_code == 200, resp.text
+    assert resp.json()["mode"] == "new"

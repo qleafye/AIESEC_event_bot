@@ -78,6 +78,10 @@ export async function render(root, params, ctx) {
     : null;
 
   const actions = h("div", { class: "actions" });
+  // Квик 260911-w2m: `can_edit` больше не всегда true — при закрытой правке (реестровое
+  // положение "until_decision"/"never") сервер отдаёт `edit_closed_text` вместо кнопки.
+  // Пустой сервером -> узла нет вовсе, своих кириллических строк здесь не заводим.
+  let editClosedNote = null;
   if (me.can_edit) {
     const go = () => navigate("#/form");
     actions.append(h("button", {
@@ -86,9 +90,14 @@ export async function render(root, params, ctx) {
     setMainButton(me.edit_cta_text || null, go);
   } else {
     setMainButton(null);
+    if (me.edit_closed_text) {
+      editClosedNote = h("p", { class: "profile-note" }, icon("lock"), h("span", { text: me.edit_closed_text }));
+    }
   }
 
-  root.append(plate, ...sections, note, actions);
+  // filter(Boolean): `note`/`editClosedNote` бывают null (сервер не отдал текст) —
+  // `Element.append()` иначе вставил бы текстовый узел "null".
+  root.append(plate, ...sections, ...[note, editClosedNote].filter(Boolean), actions);
 }
 
 export function unmount() {

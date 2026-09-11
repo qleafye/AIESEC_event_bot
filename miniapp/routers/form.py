@@ -48,7 +48,7 @@ from database.db import (
     upsert_reg_draft,
 )
 from settings_schema import get_setting_typed
-from services import i18n
+from services import i18n, reg_edit_policy
 from services.consent import outstanding_consents
 from services.reg_finalize import finalize_data, resolve_delegate_text
 from services.reg_handoff import SURFACE_APP, SURFACE_BOT, draft_holder
@@ -233,6 +233,21 @@ async def _registration_closed(event_city: str | None) -> bool:
     return not await is_city_enabled(event_city)
 
 
+async def _edit_gate(ctx: dict) -> tuple[bool, str | None]:
+    """Квик 260911-w2m: можно ли делегату сейчас записать/отправить правку УЖЕ ПОДАННОЙ
+    анкеты — тонкая обёртка над `services.reg_edit_policy.edit_gate`.
+
+    Первичная подача (`ctx["kind"] != "edit"`) НЕ гейтится и не платит лишним чтением
+    реестра — `(True, None)` немедленно. Проверка дублирует признак `kind`, а не полагается
+    только на статус пользователя ВНУТРИ `edit_gate`, потому что `kind` может прийти из
+    строки `reg_drafts` (черновик правки, заведённый ДО того, как менеджер закрыл правку) —
+    источник правды один и тот же (`reg_engine.has_submitted_anketa` внутри `edit_gate`),
+    здесь просто короткое замыкание для самого частого случая (новая анкета)."""
+    if ctx["kind"] != "edit":
+        return True, None
+    return await reg_edit_policy.edit_gate(ctx["user_row"])
+
+
 def _continue_deeplink(bot_username: str | None) -> str | None:
     """D-17: «Продолжить в чате» — deep-link строится на сервере, тем же приёмом, что
     построение deep-link в `miniapp/routers/profile.py`; фронт не собирает `t.me/...` строкой
@@ -251,6 +266,7 @@ async def _draft_response(telegram_id: int, ctx: dict | None = None, *, bot_user
     lang, tr_map = await i18n.context(telegram_id)
     lang = lang if lang in ("ru", "en") else "ru"
     closed = ctx["kind"] == "new" and await _registration_closed(ctx["event_city"])
+    edit_can_edit, edit_closed_text = await _edit_gate(ctx)
     # UAT 21-12 находка 1: мастер переспрашивал согласие на КАЖДОЕ открытие, даже секунды
     # после подписи в чате той же сессией. `outstanding_consents` — тот же фильтр версий, что
     # уже использует гейт пересогласия (services/consent.py) — подпись старой редакции ИЛИ
@@ -312,6 +328,11 @@ async def _draft_response(telegram_id: int, ctx: dict | None = None, *, bot_user
         "closed_text": (
             await get_setting_typed_for_city("reg_form_closed_text", ctx["event_city"]) if closed else None
         ),
+        # Квик 260911-w2m: отдельная пара «правка выключена» — своя причина и свой текст,
+        # намеренно НЕ смешана с `closed`/`closed_text` выше (тот гейт закрыт сторожами
+        # плана 21-10 и означает совсем другое — «регистрация закрыта режимом города»).
+        "edit_closed": not edit_can_edit,
+        "edit_closed_text": edit_closed_text,
         "prior_badge_text": (
             await get_setting_typed("reg_form_prior_answer_badge_text") if ctx["prior"] else None
         ),
@@ -436,6 +457,13 @@ async def draft_patch(
             "reason": "held_by_bot",
             "text": await get_setting_typed("reg_form_held_by_bot_text"),
         })
+    # Квик 260911-w2m: чужая поверхность (выше) -> правка выключена (здесь) -> регистрация
+    # закрыта (ниже) — именно в этом порядке. 409, не 403 (Р-3 плана): `api.js` красит ЛЮБОЙ
+    # 403 экраном «Нет доступа» поверх уже отрисованного, а `errorText()` уже достаёт текст
+    # из `payload.text` для 409 — новых веток в JS заводить не нужно.
+    edit_can_edit, edit_closed_text = await _edit_gate(ctx)
+    if not edit_can_edit:
+        raise HTTPException(409, {"reason": "edit_closed", "text": edit_closed_text})
     if ctx["kind"] == "new" and await _registration_closed(ctx["event_city"]):
         raise HTTPException(403, {
             "reason": "registration_closed",
@@ -641,6 +669,15 @@ async def draft_submit(
     p: Principal = Depends(form_gate),
     _: Principal = Depends(require_section("form")),
 ) -> dict:
+    # Квик 260911-w2m: ПЕРВОЕ действие функции — до согласий, обязательно до
+    # `claim_reg_draft` (захваченный при отказе черновик остался бы залоченным). Маршрут не
+    # собирал `ctx` сам до этого квика — один лишний проход по `_load_context` (тому же
+    # источнику правды, что GET/PATCH), не вторая копия правила.
+    ctx = await _load_context(p.telegram_id)
+    edit_can_edit, edit_closed_text = await _edit_gate(ctx)
+    if not edit_can_edit:
+        raise HTTPException(409, {"reason": "edit_closed", "text": edit_closed_text})
+
     # T-21-05/D-23: серверная проверка обязательна — скрытия кнопки на фронте недостаточно.
     consent_steps = await reg_engine.get_consent_steps()
     required_keys = [step_key.split(":", 1)[1] for step_key in consent_steps]
