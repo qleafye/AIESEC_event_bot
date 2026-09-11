@@ -31,7 +31,9 @@ from services.i18n import delegate_lang
 from handlers.registration import router
 # Задача 1 (смена языка из меню): keyboards.builders хендлеры не импортирует на уровне модуля
 # (докстринг handlers/__init__.py) -- обратного цикла нет, импорт статический.
-from keyboards.builders import get_main_menu_kb
+# Задача 2 (260912): MENU_TEXTS -- множество "русская+английская подпись" для F.text.in_(...),
+# та же точка импорта, что и get_main_menu_kb выше.
+from keyboards.builders import get_main_menu_kb, MENU_TEXTS
 
 LANG_PICK_PREFIX = "lang_pick:"
 LANG_MENU_BUTTON_TEXT = "🌐 Язык / Language"
@@ -91,7 +93,7 @@ async def offer_language(message: types.Message, state: FSMContext, raw_args: st
     return True
 
 
-@router.message(F.text == LANG_MENU_BUTTON_TEXT)
+@router.message(F.text.in_(MENU_TEXTS["menu_lang"]))
 async def menu_lang_open(message: types.Message) -> None:
     """Переключатель в главном меню — делегат сам просит сменить язык в ЛЮБОЙ момент, поэтому
     `delegate_lang_ask_on_start` (решает, спрашивать ли САМИМ на /start) здесь не гейтит: только
