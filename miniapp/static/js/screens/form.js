@@ -318,12 +318,15 @@ export async function render(root, params, ctx) {
     return;
   }
 
-  if (draft.closed) {
+  // Квик 260911-w2m: `edit_closed` — вторая, независимая причина того же состояния «сюда
+  // сейчас нельзя» (правка выключена, а не регистрация закрыта режимом города) — один блок
+  // на оба флага, текст различается, иконка та же (новых ассетов не заводим).
+  if (draft.closed || draft.edit_closed) {
     onRefresh = null;
     setMainButton(null);
     holder.replaceChildren(h("section", { class: "state" },
       h("div", { class: "icon" }, icon("clock")),
-      h("p", { text: draft.closed_text || "" }),
+      h("p", { text: draft.closed_text || draft.edit_closed_text || "" }),
     ));
     return;
   }
