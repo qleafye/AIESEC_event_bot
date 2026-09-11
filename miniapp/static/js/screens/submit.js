@@ -8,7 +8,7 @@
 // отказа из реестра (miniapp_upload_too_large_text), чисел и текстов в JS нет. Пустая отправка
 // — подсказка, черновик не сбрасывается (паритет с ботом).
 
-import { emptyState, errorState } from "../ui.js";
+import { emptyState, errorState, guardedRender, isCoreHandledError, screenText } from "../ui.js";
 import { icon } from "../icons.js";
 import { confetti, haptic } from "../motion.js";
 
@@ -31,7 +31,25 @@ function isLink(text) {
   return t.startsWith("http://") || t.startsWith("https://");
 }
 
-export async function render(root, params, ctx) {
+// Quick 260911-5ij (W2, известная находка №5): одна подпись «К заданиям» — общий литерал
+// между гейтом закрытой сдачи ниже и showAccepted (уже существовал там) — число литералов
+// файла не растёт.
+function backToTasksButton(h, navigate) {
+  return h("button", { class: "btn", type: "button", text: "К заданиям", onClick: () => navigate("#/tasks") });
+}
+
+// Выбор ключа реестра по task.status — код, не текст; сами три строки все в реестре
+// (page.py::SCREEN_TEXT_KEYS).
+function closedSubmitText(status) {
+  if (status === "pending") return screenText("submit_pending");
+  if (status === "approved") return screenText("submit_approved");
+  return screenText("submit_limit");
+}
+
+// Quick 260911-5ij (W2, Пилар 6): тело прежнего render() — вызывается ТОЛЬКО через
+// guardedRender (см. export ниже), чтобы отказ первого api() красил состояние ошибки, а не
+// оставлял белый экран.
+async function draw(root, params, ctx) {
   const { h, api, navigate, setMainButton, tg, me } = ctx;
   const taskId = params.id;
 
@@ -39,6 +57,21 @@ export async function render(root, params, ctx) {
     api(`/tasks/${encodeURIComponent(taskId)}`),
     api("/uploads/limits"),
   ]);
+
+  // Гейт закрытой сдачи (Пилар 5 + известная находка №5): прямой заход/«назад»/закладка на
+  // #/submit/{id} по заданию, которое уже на проверке, уже принято или у которого исчерпаны
+  // попытки, обходили ГЕЙТ КАРТОЧКИ (card.js) — единственной защитой оставался 409
+  // already_submitted ПОСЛЕ того, как делегат уже собрал сдачу. Сервер уже отдаёт can_submit
+  // (routers/tasks.py::submission_state) — здесь читаем готовое поле, форму не рисуем вовсе.
+  if (!task.can_submit) {
+    setMainButton(null);
+    root.append(emptyState(h, {
+      me,
+      text: closedSubmitText(task.status),
+      action: backToTasksButton(h, navigate),
+    }));
+    return;
+  }
 
   // Черновик: { kind, content, part_token?, caption?, status: "ready"|"uploading"|"error", label }
   const parts = [];
@@ -200,7 +233,7 @@ export async function render(root, params, ctx) {
       me,
       slot: "success",
       text: acceptedText || "",
-      action: h("button", { class: "btn", type: "button", text: "К заданиям", onClick: () => navigate("#/tasks") }),
+      action: backToTasksButton(h, navigate),
     });
     root.replaceChildren(view);
     haptic("success");
@@ -233,19 +266,21 @@ export async function render(root, params, ctx) {
         say(err.payload.hint);
       } else if (err && err.status === 400 && err.reason === "too_many_parts") {
         say(`Не больше ${err.payload.limit} частей — уберите лишние.`);
-      } else if (!(err && (err.status === 401 || err.status === 403 || err.status === 503))) {
+      } else if (!isCoreHandledError(err)) {
+        // Quick 260911-5ij (W2): общая проверка вместо локального
+        // `!(err.status === 401 || 403 || 503)` — та смотрела на 503 целиком, поэтому
+        // 503 не-miniapp_off (сам аппсервер лежит) ложно считался «ядро уже покрасило».
         say("Не удалось отправить — попробуйте ещё раз.");
       }
       redraw();
     }
   }
 
+  // Quick 260911-5ij (W2, «фотка подгружается странно, над текстом вне ui» — владелец):
+  // submit-actions ПЕРЕД превью частей (счётчик/список), «Готово» — последний ребёнок
+  // .card.submit-card, а не сиблинг под карточкой.
   root.append(
     h("div", { class: "card submit-card" },
-      counter,
-      list,
-      notice,
-      uploadError,
       h("div", { class: "submit-actions" },
         h("button", { class: "btn", type: "button", onClick: () => fileInput.click() },
           icon("image"), h("span", { text: "Добавить фото или файл" }),
@@ -257,12 +292,20 @@ export async function render(root, params, ctx) {
         ),
         removeBtn,
       ),
-    ),
-    h("button", { class: "btn", type: "button", onClick: finish },
-      icon("check"), h("span", { text: "Готово" }),
+      notice,
+      uploadError,
+      counter,
+      list,
+      h("button", { class: "btn", type: "button", onClick: finish },
+        icon("check"), h("span", { text: "Готово" }),
+      ),
     ),
   );
   redraw();
+}
+
+export async function render(root, params, ctx) {
+  await guardedRender(root, ctx, () => draw(root, params, ctx));
 }
 
 export function unmount() {
