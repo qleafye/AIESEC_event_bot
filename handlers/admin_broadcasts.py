@@ -264,7 +264,34 @@ def _media_from_album_dicts(album: list[dict]) -> list:
 
 async def _send_confirm_prompt(bot: Bot, chat_id: int, state: FSMContext, total: int):
     """Экран подтверждения перед стартом рассылки (BC-01) — общий хвост и для обычного
-    сообщения, и для альбома."""
+    сообщения, и для альбома.
+
+    Quick 260911-805 (W4-01): в отличие от отложенной ветки (broadcast_schedule_when:622),
+    мгновенная рассылка НЕ переносится на конец тихих часов — она копирует уже разрешённый
+    список получателей (bc_users) и не умеет сохранить альбом обратно в filter_spec (D-01).
+    Попадание «сейчас» в глобальное окно (window_for_city(None)) — только честное
+    предупреждение с явным «всё равно сейчас»; тумблер выключен/окна нет/время вне окна —
+    экран байт-в-байт прежний (паритет обязателен)."""
+    from services import quiet_hours
+    now = _now_moscow_naive()
+    window = await quiet_hours.window_for_city(None)
+    if window is not None and quiet_hours.is_quiet(now, *window):
+        start, end = window
+        window_end = quiet_hours.next_window_end(now, start, end)
+        text = (
+            f"🌙 Сейчас тихие часы ({start.strftime('%H:%M')}–{end.strftime('%H:%M')}) — "
+            "делегаты получат сообщение ночью. Мгновенная рассылка тишину не ждёт.\n"
+            "Если хотите подождать — отмените и отправьте через «🕓 Запланировать» "
+            f"на время после {window_end.strftime('%H:%M')}.\n\n"
+            f"Отправить это {total} пользователям?"
+        )
+        kb = InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(text=f"🌙 Всё равно отправить сейчас ({total})", callback_data="bc_go")],
+            [InlineKeyboardButton(text="❌ Отмена", callback_data="bc_no")],
+        ])
+        await bot.send_message(chat_id, text, reply_markup=kb)
+        await state.set_state(Broadcast.confirm)
+        return
     kb = InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text=f"✅ Отправить {total} пользователям", callback_data="bc_go")],
         [InlineKeyboardButton(text="❌ Отмена", callback_data="bc_no")],
