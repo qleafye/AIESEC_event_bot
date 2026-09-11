@@ -324,6 +324,10 @@ TOGGLE_SECTION: dict[str, str] = {
     # Phase 28 (28-08, SU-08): сортировка очереди заявок — строка ("toggle", …) раздела
     # «📋 Заявки» в admin_sections.SECTIONS.
     "apps_queue_sort_by_score": "apps",
+    # Квик 260911-w2m: «можно ли делегату сейчас править анкету» — строка ("toggle", …)
+    # раздела «📋 Заявки» в admin_sections.SECTIONS, сразу перед toggle_reg_edit_remoderation
+    # (тот вне этого словаря — его SETTINGS_SCHEMA group="reg", не "toggles").
+    "reg_edit_policy": "apps",
 }
 
 # Единственный источник «что подтверждаем» для ОБЕИХ поверхностей (UI-SPEC A6): вкладки

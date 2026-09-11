@@ -165,6 +165,10 @@ _APPS_FIELD_ORDER = [
     # Quick 260904-dq1: «🌙 Тихие часы» — редактор экрана и per-city пикер достаются
     # бесплатно попаданием в этот список; сам тумблер живёт в settings_toggle_rows.
     "quiet_hours_start", "quiet_hours_end", "quiet_hours_manager_notice_text",
+    # Квик 260911-w2m: текст делегату при закрытой правке анкеты — редактор достаётся
+    # бесплатно попаданием в этот список; сам переключатель положения (reg_edit_policy) —
+    # group "toggles", живёт в settings_toggle_rows, здесь НЕ добавляется.
+    "reg_edit_closed_text",
 ]
 _PAY_FIELD_ORDER = [
     "payment_options", "payment_requisites", "payment_requisites_by_lc",
@@ -597,6 +601,17 @@ async def settings_toggle_rows(admin_id: int | None = None, *, header_code=_HEAD
     reg_edit_remod_label = SETTINGS_SCHEMA["toggle_reg_edit_remoderation"]["label"]
     reg_edit_remod_text = (f"🔁 {reg_edit_remod_label}: ✅ Вкл → ❌ Выкл" if reg_edit_remod == "on"
                            else f"🔁 {reg_edit_remod_label}: ❌ Выкл → ✅ Вкл")
+    # Квик 260911-w2m: «можно ли делегату сейчас править поданную анкету» — цикл из трёх
+    # положений (см. _next_enum_value/_cycle_enum_setting ниже), подпись строится тем же
+    # приёмом «текущее → новое», что и её сосед reg_edit_remod_text выше (эта кнопка стоит
+    # ПЕРЕД ним в разделе «📋 Заявки» — сначала «можно ли», потом «что делать с правкой»).
+    reg_edit_policy_val = await get_setting_typed("reg_edit_policy")
+    reg_edit_policy_label = SETTINGS_SCHEMA["reg_edit_policy"]["label"]
+    reg_edit_policy_next = _next_enum_value("reg_edit_policy", reg_edit_policy_val)
+    reg_edit_policy_text = (
+        f"{reg_edit_policy_label}: {option_label('reg_edit_policy', reg_edit_policy_val)} → "
+        f"{option_label('reg_edit_policy', reg_edit_policy_next)}"
+    )
     # Phase 28 (28-06, SU-05/SU-06/SU-07): подписи — из реестра, тот же приём, что у
     # delegate_lang_* выше.
     skip_src_on = await get_setting_typed("reg_skip_source_for_referred")
@@ -667,6 +682,7 @@ async def settings_toggle_rows(admin_id: int | None = None, *, header_code=_HEAD
         "toggle_preselect_enabled": _row(preselect_toggle_text, "toggle_preselect_enabled"),
         "toggle_pending_reminder": _row(pending_rem_text, "toggle_pending_reminder"),
         "toggle_nudge_enabled": _row(nudge_toggle_text, "toggle_nudge_enabled"),
+        "toggle_reg_edit_policy": _row(reg_edit_policy_text, "toggle_reg_edit_policy"),
         "toggle_reg_edit_remoderation": _row(reg_edit_remod_text, "toggle_reg_edit_remoderation"),
         "toggle_quiet_hours": _row(quiet_hours_toggle_text, "toggle_quiet_hours"),
         "toggle_delegate_lang_enabled": _row(delegate_lang_toggle_text, "toggle_delegate_lang_enabled"),
@@ -1045,6 +1061,39 @@ async def toggle_party_approval(callback: types.CallbackQuery):
     await _toggle_approval_setting(callback, "party_approval", "manual", "Модерация вечеринки")
 
 
+# ── Квик 260911-w2m: общий цикл enum-настройки из N положений (первое использование —
+# reg_edit_policy: always → until_decision → never → always) ──────────────────────────
+
+def _next_enum_value(key: str, current: str) -> str:
+    """Следующее значение цикла `SETTINGS_SCHEMA[key]["options"]` по кругу — тот же приём,
+    что `_next_resume_mode` в `handlers/admin_reg_percity.py`, но без второй копии цикла:
+    источник — сам реестр, не литеральный кортеж. Неизвестное/несуществующее текущее
+    значение безопасно уходит на первый элемент (fail-soft)."""
+    options = SETTINGS_SCHEMA[key]["options"]
+    try:
+        idx = options.index(current)
+    except ValueError:
+        return options[0]
+    return options[(idx + 1) % len(options)]
+
+
+async def _cycle_enum_setting(callback: types.CallbackQuery, key: str, hints: dict[str, str]):
+    """Переключить enum-настройку на следующее положение цикла, ответить человеческим
+    алертом (никогда не кодом значения) и перерисовать раздел — тот же хвост, что у
+    `_toggle_module_setting`. `hints` — код положения -> короткое пояснение последствия,
+    подставляется В ДОПОЛНЕНИЕ к подписи `option_label`, не вместо неё."""
+    label = SETTINGS_SCHEMA[key]["label"]
+    current = await get_setting_typed(key)
+    new_val = _next_enum_value(key, current)
+    await set_setting(key, new_val)
+    human = option_label(key, new_val)
+    hint = hints.get(new_val, "")
+    await callback.answer(f"{label}: {human}\n\n{hint}", show_alert=True)
+    from handlers.admin_sections import settings_return_screen  # ленивый шов (20-04)
+    text, kb = await settings_return_screen(callback.from_user.id, callback_data=callback.data)
+    await callback.message.edit_text(text, parse_mode="HTML", reply_markup=kb)
+
+
 # ── Phase 4: module on/off toggles (payment, consent) + event-type preset ────
 
 async def _toggle_module_setting(callback: types.CallbackQuery, key: str, title: str):
@@ -1207,6 +1256,18 @@ async def toggle_reg_edit_remoderation(callback: types.CallbackQuery):
         callback, "toggle_reg_edit_remoderation",
         SETTINGS_SCHEMA["toggle_reg_edit_remoderation"]["label"],
     )
+
+
+@router.callback_query(F.data == "toggle_reg_edit_policy")
+async def toggle_reg_edit_policy(callback: types.CallbackQuery):
+    # Квик 260911-w2m: цикл из трёх положений — правило само живёт в
+    # `services/reg_edit_policy.py`, здесь только переключатель и человеческий алерт.
+    # Лимит `answerCallbackQuery` — 200 символов, подсказки короткие.
+    await _cycle_enum_setting(callback, "reg_edit_policy", {
+        "always": "Правит когда захочет — как было.",
+        "until_decision": "До одобрения можно, после — нет. Отклонённый исправит и подаст заново.",
+        "never": "Поданную анкету не изменить. Первичная подача работает.",
+    })
 
 
 @router.callback_query(F.data == "toggle_payment_reminders")
