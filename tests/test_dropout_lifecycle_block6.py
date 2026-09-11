@@ -39,7 +39,8 @@ def test_md03_mark_reg_started_preserves_started_at_on_reentry(tmp_path):
         assert _read_started_at(1) == "2020-01-01 00:00:00"  # NOT reset to now
         # username still updates on re-entry
         row = await db.get_incomplete_rows()
-        assert row and row[0][1] == "user1_renamed"
+        # UNAME-03: канон хранения — «с @» (database/db.py::store_username).
+        assert row and row[0][1] == "@user1_renamed"
 
     asyncio.run(go())
 
