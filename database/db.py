@@ -4918,6 +4918,24 @@ async def bump_translation_attempt(row_id: int, error: str | None = None) -> Non
         await db.commit()
 
 
+async def reset_translation_attempts(lang: str) -> int:
+    """Квик 260912 (W5, Задача 4) — «догонялка перевода»: сбрасывает `attempts`/`last_error`
+    ВСЕМ строкам очереди этого языка, включая застрявшие после `MAX_ATTEMPTS`
+    (`services/i18n_worker.py::drain` их больше не выбирает — `list_pending_translations`
+    фильтрует `attempts < max_attempts`). Возврат `rowcount` — сколько строк реально ожило.
+
+    Почему сброс безопасен: строка либо переведётся движком на следующем прогоне `drain()`,
+    либо снова упрётся в тот же потолок попыток — данные не теряются ни в каком исходе, это
+    не «прощение» ошибки, а просто новый шанс той же строке."""
+    async with _connect() as db:
+        cursor = await db.execute(
+            "UPDATE translation_queue SET attempts = 0, last_error = NULL WHERE lang = ?",
+            (lang,),
+        )
+        await db.commit()
+        return cursor.rowcount
+
+
 _ALLOWED_USER_LANGS = frozenset({"ru", "en"})
 
 
