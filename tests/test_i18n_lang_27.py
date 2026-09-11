@@ -163,7 +163,8 @@ def test_module_on_non_russian_client_shows_two_buttons(tmp_path):
         inline = _inline_kb_msgs(msg)
         assert len(inline) == 1
         datas = _callback_datas(inline[0][1])
-        assert datas == ["lang_pick:ru", "lang_pick:en"]
+        # Задача 1 (260912): третий сегмент — происхождение экрана, /start даёт "start".
+        assert datas == ["lang_pick:ru:start", "lang_pick:en:start"]
 
     asyncio.run(go())
 
@@ -177,7 +178,9 @@ def test_lang_pick_en_persists(tmp_path):
         await _enable_module()
         await db.add_user({"telegram_id": UID, "full_name": "Тест Тестов", "registration_date": None})
 
-        cb = _FakeCallback("lang_pick:en", UID)
+        # Задача 1 (260912): origin "start" — та же ветка (алерт + реинвоук cmd_start), что и
+        # до введения происхождения; ветка "menu" покрыта отдельно tests/test_lang_switch_260912.py.
+        cb = _FakeCallback("lang_pick:en:start", UID)
         state = _new_state(UID)
         await reg_lang.lang_pick_choose(cb, state, bot=object())
 
@@ -254,7 +257,8 @@ def test_menu_lang_open_shows_screen_regardless_of_current_lang(tmp_path):
             await reg_lang.menu_lang_open(msg)
             inline = _inline_kb_msgs(msg)
             assert len(inline) == 1
-            assert _callback_datas(inline[0][1]) == ["lang_pick:ru", "lang_pick:en"]
+            # Задача 1 (260912): экран из меню несёт origin "menu" — не реинвокает cmd_start.
+            assert _callback_datas(inline[0][1]) == ["lang_pick:ru:menu", "lang_pick:en:menu"]
 
     asyncio.run(go())
 

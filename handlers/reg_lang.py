@@ -29,6 +29,9 @@ from database.db import set_user_lang
 from settings_schema import get_setting_typed
 from services.i18n import delegate_lang
 from handlers.registration import router
+# Задача 1 (смена языка из меню): keyboards.builders хендлеры не импортирует на уровне модуля
+# (докстринг handlers/__init__.py) -- обратного цикла нет, импорт статический.
+from keyboards.builders import get_main_menu_kb
 
 LANG_PICK_PREFIX = "lang_pick:"
 LANG_MENU_BUTTON_TEXT = "🌐 Язык / Language"
@@ -43,11 +46,21 @@ _LANG_CONFIRM = {"ru": "✅ Русский язык выбран.", "en": "✅ E
 # языка (см. докстринг модуля). Не путать с языком — тот живёт исключительно в users.lang.
 _DEEPLINK_RESUME_KEY = "_deeplink_resume_args"
 
+# Находка живой приёмки стенда YL26 (ночь 10-11.09): экран выбора языка из `/start` — пауза
+# ВНУТРИ воронки регистрации, её обязаны продолжить (реинвоук `cmd_start`, deep-link
+# атрибуция). Экран из главного меню — самостоятельное действие человека, который уже
+# где-то находится (в т.ч. зарегистрированный делегат вне анкеты); реинвоук `cmd_start` в
+# этом случае выбрасывал его на `offer_resume` («у тебя есть незаконченная анкета») из-за
+# висящего `kind="edit"` черновика. Третий сегмент callback_data несёт это происхождение,
+# закрытым множеством — как и код языка (T-27-04-02), он приходит от клиента.
+_ORIGINS = ("start", "menu")
+_ORIGIN_DEFAULT = "menu"
 
-def _lang_pick_kb() -> InlineKeyboardMarkup:
+
+def _lang_pick_kb(origin: str) -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(inline_keyboard=[[
-        InlineKeyboardButton(text="🇷🇺 Русский", callback_data=f"{LANG_PICK_PREFIX}ru"),
-        InlineKeyboardButton(text="🇬🇧 English", callback_data=f"{LANG_PICK_PREFIX}en"),
+        InlineKeyboardButton(text="🇷🇺 Русский", callback_data=f"{LANG_PICK_PREFIX}ru:{origin}"),
+        InlineKeyboardButton(text="🇬🇧 English", callback_data=f"{LANG_PICK_PREFIX}en:{origin}"),
     ]])
 
 
@@ -74,7 +87,7 @@ async def offer_language(message: types.Message, state: FSMContext, raw_args: st
         return False
     if raw_args:
         await state.update_data(**{_DEEPLINK_RESUME_KEY: raw_args})
-    await message.answer(_LANG_PICK_TEXT, reply_markup=_lang_pick_kb())
+    await message.answer(_LANG_PICK_TEXT, reply_markup=_lang_pick_kb("start"))
     return True
 
 
@@ -87,7 +100,7 @@ async def menu_lang_open(message: types.Message) -> None:
     менеджер выключил модуль ПОСЛЕ того, как кнопка уже была отправлена делегату)."""
     if await get_setting_typed("delegate_lang_enabled") != "on":
         return
-    await message.answer(_LANG_PICK_TEXT, reply_markup=_lang_pick_kb())
+    await message.answer(_LANG_PICK_TEXT, reply_markup=_lang_pick_kb("menu"))
 
 
 @router.callback_query(F.data.startswith("lang_pick:"))
@@ -95,27 +108,60 @@ async def lang_pick_choose(callback: types.CallbackQuery, state: FSMContext, bot
     """T-27-04-02: закрытое множество `{"ru", "en"}` — токен приходит из НАШИХ ЖЕ кнопок,
     но приходит от клиента, поэтому проверяется как недоверенный ввод. Незнакомый код — алерт
     и выход, `set_user_lang` не зовётся вовсе (второй рубеж — сам `set_user_lang` тоже отверг
-    бы чужое значение, но здесь дешевле остановиться до похода в БД)."""
-    code = callback.data[len(LANG_PICK_PREFIX):]
+    бы чужое значение, но здесь дешевле остановиться до похода в БД).
+
+    Второй сегмент payload (origin, тем же приёмом закрытого множества) решает, ПРОДОЛЖАТЬ ли
+    воронку `/start` или нет — см. докстринг `_ORIGINS` выше. Экран из `/start` — пауза внутри
+    воронки, которую делегат обязан продолжить (реинвоук `cmd_start` с восстановленной
+    deep-link атрибуцией). Экран из меню — самостоятельное действие уже находящегося где-то
+    делегата: реинвоук `cmd_start` здесь выбрасывал зарегистрированного делегата на экран
+    «У тебя есть незаконченная анкета» из-за висящего `kind="edit"` черновика (находка живой
+    приёмки стенда YL26, ночь 10-11.09) — поэтому ветка `"menu"` `cmd_start` не зовёт никогда.
+    Легаси-payload без разделителя (старое сообщение `lang_pick:ru`, висящее в чате с прошлой
+    версии бота) и незнакомый origin при валидном коде деградируют в `_ORIGIN_DEFAULT`
+    ("menu") — консервативный исход, не рвущий анкету."""
+    payload = callback.data[len(LANG_PICK_PREFIX):]
+    code, _sep, origin_raw = payload.partition(":")
     if code not in ("ru", "en"):
         await callback.answer()
         return
+    origin = origin_raw if origin_raw in _ORIGINS else _ORIGIN_DEFAULT
+
     # T-27-04-02/докстринг модуля: язык — ТОЛЬКО users.lang, никогда FSM.
     await set_user_lang(callback.from_user.id, code)
-    await callback.answer(_LANG_CONFIRM[code])
+
+    if origin == "start":
+        await callback.answer(_LANG_CONFIRM[code])
+        try:
+            await callback.message.edit_reply_markup(reply_markup=None)
+        except Exception:
+            pass
+        data = await state.get_data()
+        raw_args = data.get(_DEEPLINK_RESUME_KEY) if data else None
+        if raw_args:
+            await state.update_data(**{_DEEPLINK_RESUME_KEY: None})
+        # Продолжаем ТОТ ЖЕ путь, что был бы без вопроса о языке — реинвоук cmd_start тем же
+        # приёмом подмены from_user, что party_pick (T-05-01 deviation): callback.message.from_user
+        # — это бот, а не тапнувший делегат. command — облегчённый дубль CommandObject (только
+        # .args, единственное поле, которое читает cmd_start) с восстановленной deep-link строкой.
+        tap_message = callback.message.model_copy(update={"from_user": callback.from_user})
+        command = SimpleNamespace(args=raw_args) if raw_args else None
+        from handlers.registration import cmd_start
+        await cmd_start(tap_message, state, bot, command=command)
+        return
+
+    # origin == "menu": та же зачистка инлайн-разметки под экраном выбора, что и в ветке
+    # "start", но БЕЗ реинвоука cmd_start ни при каких условиях.
     try:
         await callback.message.edit_reply_markup(reply_markup=None)
     except Exception:
         pass
-    data = await state.get_data()
-    raw_args = data.get(_DEEPLINK_RESUME_KEY) if data else None
-    if raw_args:
-        await state.update_data(**{_DEEPLINK_RESUME_KEY: None})
-    # Продолжаем ТОТ ЖЕ путь, что был бы без вопроса о языке — реинвоук cmd_start тем же
-    # приёмом подмены from_user, что party_pick (T-05-01 deviation): callback.message.from_user
-    # — это бот, а не тапнувший делегат. command — облегчённый дубль CommandObject (только
-    # .args, единственное поле, которое читает cmd_start) с восстановленной deep-link строкой.
-    tap_message = callback.message.model_copy(update={"from_user": callback.from_user})
-    command = SimpleNamespace(args=raw_args) if raw_args else None
-    from handlers.registration import cmd_start
-    await cmd_start(tap_message, state, bot, command=command)
+    if await state.get_state() is not None:
+        # Делегат посреди анкеты (или другого FSM-шага) — только подтверждение, ни одного
+        # нового сообщения и никакой подмены текущей клавиатуры ответа.
+        await callback.answer(_LANG_CONFIRM[code])
+        return
+    await callback.answer()
+    await callback.message.answer(
+        _LANG_CONFIRM[code], reply_markup=await get_main_menu_kb(callback.from_user.id),
+    )
