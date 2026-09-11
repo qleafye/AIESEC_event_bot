@@ -15,7 +15,7 @@ No password is ever read, logged, or returned by this module — only the deep-l
 import logging
 import re
 import ssl
-from urllib.parse import quote
+from urllib.parse import parse_qs, quote, unquote, urlsplit
 
 import aiohttp
 
@@ -103,6 +103,33 @@ def _file_link(remote_name: str) -> str:
         f"{config.NEXTCLOUD_PUBLIC_URL.rstrip('/')}/s/{config.NEXTCLOUD_FOLDER_SHARE_TOKEN}"
         f"/download?path=%2F&files={quote(remote_name)}"
     )
+
+
+def file_name_from_link(url: str | None) -> str | None:
+    """Обратная функция к `_file_link`: достаёт имя файла обратно из ссылки. Живёт рядом с
+    `_file_link` НАРОЧНО — если формат ссылки когда-нибудь поменяется (докстринг `_file_link`
+    прямым текстом это допускает), обе функции правятся в одном месте.
+
+    Разбирает `files=` из query-строки (текущий формат `_file_link`); если параметра нет —
+    берёт последний непустой сегмент `path`, если в нём есть точка (расширение) и это не
+    служебное имя `download`. Мусор на входе (`""`, `None`, произвольный текст, битый URL)
+    → `None`, без исключений — вызывающая сторона (`miniapp/routers/profile.py`) не должна
+    падать, если формат когда-то разойдётся. Ничего не логирует: URL — ПД-адъяцентное
+    значение (несёт токен ОБЩЕЙ папки), в логи попадать не должно."""
+    if not url:
+        return None
+    try:
+        parts = urlsplit(url)
+        query = parse_qs(parts.query)
+        files = query.get("files")
+        if files and files[0]:
+            return unquote(files[0])
+        segment = parts.path.rsplit("/", 1)[-1] if parts.path else ""
+        if segment and "." in segment and segment != "download":
+            return unquote(segment)
+        return None
+    except Exception:
+        return None
 
 
 async def upload_resume(bot, file_id: str, filename: str) -> str | None:
