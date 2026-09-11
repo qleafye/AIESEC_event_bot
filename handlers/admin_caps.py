@@ -458,6 +458,11 @@ ADMIN_CAPS: dict[str, str] = {
     "scoring_limit:*": "settings",
     "scoring_drop:*": "settings",
     "scoring_noop": "settings",
+    # Quick 260911-805 (W4-03): «🌙 Тихие часы» — тот же класс экрана настроек, что «🧾 Поля
+    # карточки заявки»/«🧮 Правила балла» выше (D-02: deny-by-default — без записи строка
+    # раздела не рисуется вовсе); строка-вход требует `settings`, менеджер только с
+    # `moderate_reg` продолжает видеть раздел «📋 Заявки» набором операций.
+    "admin_quiet_hours": "settings",
     "admin_sync_sheet": "settings",
     # Quick 260902-vth: «🕓 Журналы в таблицу» — та же капа, что «🔄 Синхронизация таблицы».
     "sheet_logs_open": "settings",

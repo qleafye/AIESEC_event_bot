@@ -307,6 +307,32 @@ def test_apps_section_for_moderate_reg_has_operations_only():
     assert not [r for r in rows if r[0] in ("toggle", "group")]
 
 
+def test_quiet_hours_entry_row_is_declared_once_right_after_its_toggle():
+    """Quick 260911-805 (W4-03, D-04): строка-вход на экран «🌙 Тихие часы» объявлена ровно
+    один раз в разделе «apps», сразу после строки тумблера — той же строкой раздела, а не
+    второй картой."""
+    rows = sec._declared_rows("apps")
+    callbacks = [sec.row_callback(r) for r in rows]
+    assert callbacks.count("admin_quiet_hours") == 1
+    toggle_idx = callbacks.index("toggle_quiet_hours")
+    entry_idx = callbacks.index("admin_quiet_hours")
+    assert entry_idx == toggle_idx + 1
+
+    # ни один другой раздел эту строку не объявляет — второй карты «кнопка -> раздел» нет.
+    for token, _label, section_rows_ in sec.SECTIONS:
+        if token == "apps":
+            continue
+        assert "admin_quiet_hours" not in [sec.row_callback(r) for r in section_rows_]
+
+
+def test_quiet_hours_back_button_targets_apps_section():
+    """`back_button("admin_quiet_hours")` целит в `admin_sec:apps` — раздел-владелец строки
+    выводится из SECTIONS, второй карты «экран -> раздел» не заводим."""
+    from handlers import admin_sections as sec_mod
+    btn = sec_mod.back_button("admin_quiet_hours")
+    assert btn.callback_data == "admin_sec:apps"
+
+
 def test_season_reset_row_is_superadmin_only():
     caps = {"settings"}
     superadmin = [sec.row_callback(r) for r in sec.visible_rows("manage", caps, True)]
