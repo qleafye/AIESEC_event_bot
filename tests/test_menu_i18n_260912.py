@@ -191,6 +191,75 @@ def test_no_handler_file_matches_menu_label_by_exact_equality():
     )
 
 
-# Задача 3, утверждения 3 и 4 (реальная переведённая клавиатура + паритет ru/выключенный
-# модуль) — дописываются НИЖЕ этой строки самой Задачей 3, ПОСЛЕ того как get_main_menu_kb
-# начнёт переводить подписи (до этого момента переведённой клавиатуры не существует).
+# ── Задача 3, утверждение 3: реальная клавиатура lang=en -- каждая подпись узнаваема ─────────
+#
+# menu_miniapp (пустой DASHBOARD_PUBLIC_URL по умолчанию) и menu_faq (нет ни одного пункта FAQ
+# в пустой тестовой БД) гейтятся ДО перевода -- их не будет ни на одной из клавиатур этого
+# файла независимо от языка, это тот же паритет, что и до Задачи 3. menu_lang по умолчанию
+# "off" (единственное исключение из конвенции menu_* default "on") -- тоже не будет без
+# отдельного явного `db.set_setting("menu_lang", "on")`, которого ни один тест этого файла не
+# делает.
+_GATED_KEYS = ("menu_miniapp", "menu_faq", "menu_lang")
+_BASELINE_RU_LABELS = {text for key, text in MENU_BUTTONS if key not in _GATED_KEYS}
+
+
+def test_english_keyboard_labels_are_all_recognizable(tmp_path):
+    _use_tmp_db(tmp_path)
+
+    async def go():
+        await _enable_lang_module()
+        # `add_user` не знает колонки `lang` (INSERT со своим явным списком колонок) -- писать
+        # язык нужно через `set_user_lang`, тот же приём, что и во всех остальных тестах фазы 27.
+        await db.add_user({"telegram_id": UID, "full_name": "Delegate", "registration_date": None})
+        await db.set_user_lang(UID, "en")
+        kb = await get_main_menu_kb(UID)
+        labels = [btn.text for row in kb.keyboard for btn in row]
+        assert labels, "английская клавиатура пуста"
+        for label in labels:
+            recognized = any(label in texts for texts in MENU_TEXTS.values())
+            assert recognized, f"подпись {label!r} не лежит ни в одном MENU_TEXTS"
+        # английские подписи реально отличаются от русских -- перевод действительно применился,
+        # и это ровно ожидаемый переведённый набор (без гейтнутых кнопок).
+        expected_en = {MENU_EN[text] for text in _BASELINE_RU_LABELS}
+        assert set(labels) == expected_en
+        assert not (set(labels) & _BASELINE_RU_LABELS)
+
+    asyncio.run(go())
+
+
+# ── Задача 3, утверждение 4: паритет ru / выключенный модуль -- байт-в-байт как раньше ───────
+
+def test_russian_keyboard_matches_baseline_regardless_of_lang_module(tmp_path):
+    _use_tmp_db(tmp_path)
+
+    async def go():
+        await _enable_lang_module()
+        await db.add_user({"telegram_id": UID, "full_name": "Delegate", "registration_date": None})
+        await db.set_user_lang(UID, "ru")
+        kb_ru = await get_main_menu_kb(UID)
+        labels_ru = {btn.text for row in kb_ru.keyboard for btn in row}
+
+        await db.set_user_lang(UID, None)
+        # Модуль включён, но lang не выбран -- resolve_lang("ask") трактуется как "ru".
+        kb_ask = await get_main_menu_kb(UID)
+        labels_ask = {btn.text for row in kb_ask.keyboard for btn in row}
+
+        assert labels_ru == _BASELINE_RU_LABELS
+        assert labels_ask == _BASELINE_RU_LABELS
+
+    asyncio.run(go())
+
+
+def test_module_off_keyboard_matches_baseline_even_with_stored_en(tmp_path):
+    _use_tmp_db(tmp_path, name="test_menu_i18n_260912_off.db")
+
+    async def go():
+        # delegate_lang_enabled НЕ включаем -- модуль выключен.
+        await db.add_user({"telegram_id": UID, "full_name": "Delegate", "registration_date": None})
+        await db.set_user_lang(UID, "en")
+        kb = await get_main_menu_kb(UID)
+        labels = {btn.text for row in kb.keyboard for btn in row}
+        # Модуль выключен -- lang="en" в БД не имеет значения (resolve_lang это гарантирует).
+        assert labels == _BASELINE_RU_LABELS
+
+    asyncio.run(go())
