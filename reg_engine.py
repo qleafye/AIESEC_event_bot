@@ -1223,6 +1223,55 @@ def degrade_kind(kind: str, flags: dict[str, bool]) -> str:
     return kind
 
 
+# Phase 30 (30-01, A2-01): паритет проекций — ЯВНАЯ таблица «тип -> модуль, который умеет
+# нарисовать этот шаг ЦЕЛИКОМ», а не grep произвольного токена (T-30-02 threat register).
+# Для «легаси»-типов (select/multi/link/text — сегодня уже отрисованы существующим
+# агрегатором inline-кнопками бота/полями Mini App) значение — сегодняшний агрегатор, а не
+# новый шов: это письменная фиксация факта, а не предположение (нет отдельного файла для
+# того, что уже работает). `lookup`/`composite`/`repeatable` получают выделенный шов — они не
+# существовали до этой фазы вообще.
+CHAT_PROJECTION: dict[str, str] = {
+    "select": "handlers.registration",
+    "multi": "handlers.registration",
+    "text": "handlers.registration",
+    "link": "handlers.registration",
+    "lookup": "handlers.reg_types_lookup",
+    "composite": "handlers.reg_types_composite",
+    "repeatable": "handlers.reg_types_repeatable",
+}
+
+# Тот же принцип для Mini App: `form_types.js` — новый модуль этой фазы (план 30-03 заводит
+# файл, 30-04 дописывает composite/repeatable); `form.js` — сегодняшний рендер, легаси-путь
+# для типов, которые Mini App уже умеет рисовать (просто другим полем ui_type).
+APP_PROJECTION: dict[str, str] = {
+    "select": "miniapp/static/js/form.js",
+    "multi": "miniapp/static/js/form.js",
+    "text": "miniapp/static/js/form.js",
+    "link": "miniapp/static/js/form.js",
+    "lookup": "miniapp/static/js/form_types.js",
+    "composite": "miniapp/static/js/form_types.js",
+    "repeatable": "miniapp/static/js/form_types.js",
+}
+
+# Phase 30 (30-01, A2-01): временные заглушки паритета — тип, у которого проекция из таблиц
+# выше ещё физически не написана (модуль не существует / в файле фронта нет ветки `case`).
+# Сторож `tests/test_reg_step_type_v2_260912.py::test_step_type_v2_has_both_projections`
+# пропускает импорт/проверку файла для типов из этого списка — КАЖДАЯ запись обязана называть
+# план, который её снимает (сам сторож это проверяет: пустой комментарий — красный тест).
+# Сегодня (план 30-01) сюда попадают ВСЕ семь типов — ни `form_types.js`, ни
+# `handlers/reg_types_*.py` ещё не существуют; список опустошается по мере хода планов
+# 30-03..30-06, полностью пустым становится к плану 30-08 (30-VALIDATION.md Wave 0 Gaps).
+PENDING_PROJECTIONS: dict[str, str] = {
+    "select": "план 30-03 — рестайл form.js/screens/form.js под новую ось (тумблер v2_enabled)",
+    "multi": "план 30-03 — рестайл form.js/screens/form.js под новую ось (счётчик/чипы)",
+    "link": "план 30-03 — карточка ссылки, form_types.js",
+    "text": "план 30-03 — рестайл form.js/screens/form.js (кнопка requestContact у phone)",
+    "lookup": "планы 30-03 (Mini App, form_types.js) и 30-06 (чат, handlers/reg_types_lookup.py)",
+    "composite": "планы 30-04 (Mini App, form_types.js) и 30-06 (чат, handlers/reg_types_composite.py)",
+    "repeatable": "планы 30-04 (Mini App, form_types.js) и 30-06 (чат, handlers/reg_types_repeatable.py)",
+}
+
+
 # Права/безопасность формы (RESEARCH § «Права / безопасность формы»): ФИО 200,
 # expectations/comments/resume(текст) 4000, остальной текст 1000. Бот сегодня лимита не
 # применяет (summary режется по 4096 Telegram-лимиту отдельно) — эти константы предназначены
