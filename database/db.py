@@ -146,6 +146,7 @@ _MSK_MIGRATION_COLUMNS: tuple[tuple[str, str], ...] = (
     ("reg_started", "nudged_at"),
     ("reg_drafts", "updated_at"),
     ("reg_drafts", "submitting_at"),
+    ("reg_drafts", "created_at"),
     ("reg_events", "ts"),
     ("application_decisions", "decided_at"),
     ("application_decisions", "effects_due_at"),
