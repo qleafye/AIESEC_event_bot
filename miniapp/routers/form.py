@@ -284,8 +284,10 @@ async def _draft_response(telegram_id: int, ctx: dict | None = None, *, bot_user
     # (движок знает список REG_FLOW-шагов), а не экран по названию колонки (Task 2
     # acceptance: JS не содержит литералов "city"/"participant_type").
     for step_spec_row in spec["steps"]:
-        if step_spec_row["key"] == "resume":
-            step_spec_row["has_prior_resume"] = reg_engine.has_prior_resume(ctx["user_row"])
+        # Квик 260912-l53 (задача 3): мёртвый ключ контракта убран — факт сохранённого резюме
+        # несут `spec.values`/`spec.display` (квик 260911-2kb, пункт 4), отдельный булев флаг
+        # фронт не читал ни разу (`grep has_prior_resume miniapp/static/js/` пуст). Функция
+        # `reg_engine.has_prior_resume` не трогается — на ней чат-рекол бота и фильтр рассылки.
         step_spec_row["locked"] = ctx["kind"] == "edit" and step_spec_row["key"] in reg_engine.EDIT_LOCKED_STEPS
         # Phase 27 (27-04, LANG-02): перевод НАД уже собранной спекой — reg_engine сам о
         # языках не знает (A-03, 27-CONTEXT.md). Контракт не меняется: `options` остаётся

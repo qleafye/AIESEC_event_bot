@@ -204,8 +204,10 @@
                                        например имя файла резюме; сырой file_id сюда не попадает,
                                        quick 260911-2kb)}], progress{done,total},
                                        closed, closed_text|null, prior_badge_text|null}
-                                       resume-шаг дополнительно несёт has_prior_resume (bool,
-                                       без самого file_id/URL — Pitfall 3)
+                                       сохранённое резюме видно через values/display (квик
+                                       260912-l53: мёртвый отдельный булев has_prior_resume из
+                                       контракта убран — сырой file_id всё так же не публикуется,
+                                       _OPAQUE_COLUMNS)
   PATCH /app/api/reg/draft {version, answers:{column: value|null|{"other":text}}, step?,
                             event_city?, participant_type?, clear:[step_key]?}
                                        — выбор из пикеров pre-flow
