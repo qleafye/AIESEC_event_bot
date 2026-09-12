@@ -5,8 +5,9 @@
 С 05.09 16:04 UTC до накатки фикса `finalize_data` строила `users` только из
 `draft["answers"]`, не заглядывая в колонки черновика (`event_city`, `participant_type`) и
 `draft["meta"]` (`source`/`referrer_id`). Итог у новых пользователей за это окно:
-`event_city` NULL, `source` подменён дефолтом «Самостоятельно» (даже если делегат пришёл по
-деп-линку с меткой кампании), `referrer_id` потерян.
+`event_city` NULL, `source` подменён дефолтом «Самостоятельно» (квик 260912: подстановка
+переименована в «Вопрос не задавался», скрипт узнаёт обе подписи) — даже если делегат пришёл
+по деп-линку с меткой кампании, `referrer_id` потерян.
 
 Этот скрипт — ОДНОРАЗОВЫЙ ремонт уже накопленных строк, работает напрямую с sqlite-файлом
 (без aiosqlite/config — тот же приём, что `_ensure_column` в `database/db.py`, только тут
@@ -40,7 +41,13 @@ from __future__ import annotations
 import argparse
 import re
 import sqlite3
+import sys
 from datetime import datetime
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+
+import reg_options
 
 SOURCE_TAG_RE = re.compile(r"Saved source_tag=([A-Za-z0-9_-]+) for user (\d+)")
 REFERRER_RE = re.compile(r"Saved referrer_id=(\d+) for user (\d+)")
@@ -48,7 +55,9 @@ LOG_LINE_TS_RE = re.compile(r"^(\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}),\d{3}")
 
 _SINCE_FORMATS = ("%Y-%m-%d %H:%M:%S", "%Y-%m-%d %H:%M", "%Y-%m-%d")
 
-SELF_SOURCE_DEFAULT = "Самостоятельно"
+# Обе подписи одной подстановки (квик 260912 переименовал «Самостоятельно» в «Вопрос не
+# задавался») — скрипт запускают и по свежим базам, и по копиям, снятым до переименования.
+SUBSTITUTED_SOURCE_DEFAULTS = (reg_options.SOURCE_NOT_ASKED, reg_options.SOURCE_NOT_ASKED_LEGACY)
 
 
 def parse_since(raw: str) -> datetime:
@@ -146,7 +155,7 @@ def plan_changes(
             if new_city:
                 patch["event_city"] = (event_city, new_city)
 
-        if source == SELF_SOURCE_DEFAULT:
+        if source in SUBSTITUTED_SOURCE_DEFAULTS:
             tag = source_tags.get(telegram_id)
             if tag:
                 patch["source"] = (source, tag)

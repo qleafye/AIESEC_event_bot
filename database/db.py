@@ -5,6 +5,7 @@ import re
 from datetime import datetime, timedelta
 
 import aiosqlite
+import reg_options
 from config import config
 
 logger = logging.getLogger(__name__)
@@ -827,6 +828,20 @@ async def init_db():
         # Indexes under the hot admin/scheduler queries. Each one mirrors a real WHERE/ORDER BY
         # in this module (see the comments in _HOT_PATH_INDEXES); nothing speculative.
         await _ensure_hot_path_indexes(db)
+
+        # Квик 260912 (QUICK-260912-LWY): накопленные строки с прежней подписью подстановки
+        # `users.source` приводятся к новой. Безопасно — значение НЕ входит в
+        # `reg_options.DEFAULT_SOURCE_OPTIONS`, кнопкой шага «Откуда узнал» его выбрать было
+        # нельзя, значит любая строка с этой подписью — подстановка бота, а не ответ делегата;
+        # единственный теоретический путь честного совпадения — свободный ввод «Другое → напиши
+        # свой» ровно этим словом, за сезон таких случаев не встречалось. Идемпотентно: после
+        # первого прогона под WHERE не попадает ни одна строка, стоимость — один скан `users`
+        # на старте. Колонка `users.transport` с тем же словом («Самостоятельно» — реальный
+        # вариант ответа шага «Трансфер») не задета — WHERE привязан к колонке `source`.
+        await db.execute(
+            "UPDATE users SET source = ? WHERE source = ?",
+            (reg_options.SOURCE_NOT_ASKED, reg_options.SOURCE_NOT_ASKED_LEGACY),
+        )
 
         await db.commit()
 
