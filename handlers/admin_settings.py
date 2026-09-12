@@ -648,6 +648,67 @@ async def settings_toggle_rows(admin_id: int | None = None, *, header_code=_HEAD
     queue_sort_label = SETTINGS_SCHEMA["apps_queue_sort_by_score"]["label"]
     queue_sort_text = (f"{queue_sort_label}: ✅ Вкл → ❌ Выкл" if queue_sort_on == "on"
                        else f"{queue_sort_label}: ❌ Выкл → ✅ Вкл")
+    # Phase 30 (30-01, A2-08): девять тумблеров «Анкета 2.0» — сами хендлеры живут в шве
+    # `handlers/admin_reg_form.py` (потолок этого файла, tests/test_module_size_convention_
+    # 260816.py), строки кнопок — здесь, как у всех остальных тумблеров раздела «📝 Анкета»
+    # (сторож tests/test_admin_sections_ia20.py::test_toggle_rows_are_shared_with_the_
+    # settings_screen требует общий источник строки). Мастер-тумблер показывает человеческие
+    # положения («Старая анкета» / «Новая анкета»), не «Вкл/Выкл» — те же option_labels, что
+    # у registration_mode выше.
+    reg_form_v2_on = await get_setting_typed("reg_form_v2_enabled")
+    reg_form_v2_label = SETTINGS_SCHEMA["reg_form_v2_enabled"]["label"]
+    reg_form_v2_next = "off" if reg_form_v2_on == "on" else "on"
+    reg_form_v2_text = (
+        f"{reg_form_v2_label}: {option_label('reg_form_v2_enabled', reg_form_v2_on)} → "
+        f"{option_label('reg_form_v2_enabled', reg_form_v2_next)}"
+    )
+
+    reg_form_chips_on = await get_setting_typed("reg_form_chips")
+    reg_form_chips_label = SETTINGS_SCHEMA["reg_form_chips"]["label"]
+    reg_form_chips_text = (f"{reg_form_chips_label}: ✅ Вкл → ❌ Выкл" if reg_form_chips_on == "on"
+                           else f"{reg_form_chips_label}: ❌ Выкл → ✅ Вкл")
+    reg_form_lookup_search_on = await get_setting_typed("reg_form_lookup_search")
+    reg_form_lookup_search_label = SETTINGS_SCHEMA["reg_form_lookup_search"]["label"]
+    reg_form_lookup_search_text = (
+        f"{reg_form_lookup_search_label}: ✅ Вкл → ❌ Выкл" if reg_form_lookup_search_on == "on"
+        else f"{reg_form_lookup_search_label}: ❌ Выкл → ✅ Вкл"
+    )
+    reg_form_edu_card_on = await get_setting_typed("reg_form_edu_card")
+    reg_form_edu_card_label = SETTINGS_SCHEMA["reg_form_edu_card"]["label"]
+    reg_form_edu_card_text = (
+        f"{reg_form_edu_card_label}: ✅ Вкл → ❌ Выкл" if reg_form_edu_card_on == "on"
+        else f"{reg_form_edu_card_label}: ❌ Выкл → ✅ Вкл"
+    )
+    reg_form_repeatable_on = await get_setting_typed("reg_form_repeatable")
+    reg_form_repeatable_label = SETTINGS_SCHEMA["reg_form_repeatable"]["label"]
+    reg_form_repeatable_text = (
+        f"{reg_form_repeatable_label}: ✅ Вкл → ❌ Выкл" if reg_form_repeatable_on == "on"
+        else f"{reg_form_repeatable_label}: ❌ Выкл → ✅ Вкл"
+    )
+    reg_form_limit_counter_on = await get_setting_typed("reg_form_limit_counter")
+    reg_form_limit_counter_label = SETTINGS_SCHEMA["reg_form_limit_counter"]["label"]
+    reg_form_limit_counter_text = (
+        f"{reg_form_limit_counter_label}: ✅ Вкл → ❌ Выкл" if reg_form_limit_counter_on == "on"
+        else f"{reg_form_limit_counter_label}: ❌ Выкл → ✅ Вкл"
+    )
+    reg_form_status_screen_on = await get_setting_typed("reg_form_status_screen")
+    reg_form_status_screen_label = SETTINGS_SCHEMA["reg_form_status_screen"]["label"]
+    reg_form_status_screen_text = (
+        f"{reg_form_status_screen_label}: ✅ Вкл → ❌ Выкл" if reg_form_status_screen_on == "on"
+        else f"{reg_form_status_screen_label}: ❌ Выкл → ✅ Вкл"
+    )
+    reg_form_header_settings_on = await get_setting_typed("reg_form_header_settings")
+    reg_form_header_settings_label = SETTINGS_SCHEMA["reg_form_header_settings"]["label"]
+    reg_form_header_settings_text = (
+        f"{reg_form_header_settings_label}: ✅ Вкл → ❌ Выкл" if reg_form_header_settings_on == "on"
+        else f"{reg_form_header_settings_label}: ❌ Выкл → ✅ Вкл"
+    )
+    reg_form_haptics_on = await get_setting_typed("reg_form_haptics")
+    reg_form_haptics_label = SETTINGS_SCHEMA["reg_form_haptics"]["label"]
+    reg_form_haptics_text = (
+        f"{reg_form_haptics_label}: ✅ Вкл → ❌ Выкл" if reg_form_haptics_on == "on"
+        else f"{reg_form_haptics_label}: ❌ Выкл → ✅ Вкл"
+    )
 
     reg_rows = [[InlineKeyboardButton(text=toggle_text, callback_data="settings_toggle_reg")]]
     # Phase 09.3 (04, CITY-09): registration_mode has no settings_edit:{key} screen of its
@@ -693,6 +754,16 @@ async def settings_toggle_rows(admin_id: int | None = None, *, header_code=_HEAD
         "toggle_resume_filename_short_mode": _row(resume_mode_text, "toggle_resume_filename_short_mode"),
         "toggle_reg_scoring_enabled": _row(scoring_text, "toggle_reg_scoring_enabled"),
         "toggle_apps_queue_sort_by_score": _row(queue_sort_text, "toggle_apps_queue_sort_by_score"),
+        # Phase 30 (30-01, A2-08): девять тумблеров «Анкета 2.0».
+        "toggle_reg_form_v2": _row(reg_form_v2_text, "toggle_reg_form_v2"),
+        "toggle_reg_form_chips": _row(reg_form_chips_text, "toggle_reg_form_chips"),
+        "toggle_reg_form_lookup_search": _row(reg_form_lookup_search_text, "toggle_reg_form_lookup_search"),
+        "toggle_reg_form_edu_card": _row(reg_form_edu_card_text, "toggle_reg_form_edu_card"),
+        "toggle_reg_form_repeatable": _row(reg_form_repeatable_text, "toggle_reg_form_repeatable"),
+        "toggle_reg_form_limit_counter": _row(reg_form_limit_counter_text, "toggle_reg_form_limit_counter"),
+        "toggle_reg_form_status_screen": _row(reg_form_status_screen_text, "toggle_reg_form_status_screen"),
+        "toggle_reg_form_header_settings": _row(reg_form_header_settings_text, "toggle_reg_form_header_settings"),
+        "toggle_reg_form_haptics": _row(reg_form_haptics_text, "toggle_reg_form_haptics"),
     }
 
 
