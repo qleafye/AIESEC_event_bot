@@ -1104,6 +1104,11 @@ async def _toggle_approval_setting(callback: types.CallbackQuery, key: str, defa
     # short_approval/party_approval), registry default byte-identical to the `default` param.
     current = await get_setting_typed(key)
     new_val = "auto" if current == "manual" else "manual"
+    if new_val == "auto":
+        # Квик 260913-16o: выключение модерации требует подтверждения + шлёт алерт держателям
+        # moderate_reg — сам экран и запись живут в шве, ничего не пишем до «Да».
+        from handlers.admin_settings_audit import ask_auto_confirm  # ленивый шов
+        return await ask_auto_confirm(callback, key, title)
     await set_setting_by_admin(callback.from_user.id, key, new_val)
     await callback.answer(f"{title}: {'👮 Ручная' if new_val == 'manual' else '⚡ Авто'}", show_alert=True)
     # Phase 20 (20-04): одна правка на generic-хелпер покрывает все его callback'и — раздел

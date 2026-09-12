@@ -702,6 +702,11 @@ def test_toggle_inside_section_redraws_that_section(tmp_path, handler_name, call
     """Тумблеры из четырёх разных разделов и из трёх разных generic-хелперов: после тапа
     менеджер остаётся ТАМ, где нажал, а не проваливается на плоский экран из 26 кнопок."""
     _roles_ready(tmp_path)
+    if handler_name == "toggle_full_approval":
+        # Квик 260913-16o: manual -> auto теперь уходит в экран подтверждения (другая
+        # клавиатура, не раздел) — эта проверка про мгновенный путь auto -> manual,
+        # который остался byte-for-byte прежним.
+        asyncio.run(db.set_setting("full_approval", "auto"))
     cb = FakeCallback(callback_data)
     asyncio.run(getattr(st, handler_name)(cb))
 
