@@ -198,10 +198,8 @@ async def _read_family(conn: aiosqlite.Connection) -> dict:
         "SELECT updated_at, created_at FROM reg_drafts WHERE telegram_id = ?", (1,)
     ) as cur:
         draft_row = await cur.fetchone()
-    async with conn.execute(
-        "SELECT value FROM bot_settings WHERE key = ?", (db._MSK_MIGRATION_MARKER_KEY,)
-    ) as cur:
-        marker_row = await cur.fetchone()
+    async with conn.execute("PRAGMA user_version") as cur:
+        version_row = await cur.fetchone()
     return {
         "registration_date": user_row["registration_date"],
         "edited_at": user_row["edited_at"],
@@ -213,17 +211,19 @@ async def _read_family(conn: aiosqlite.Connection) -> dict:
         "decided_at": dec_row["decided_at"],
         "effects_due_at": dec_row["effects_due_at"],
         "accepted_at": consent_row["accepted_at"],
-        "marker": marker_row["value"] if marker_row else None,
+        "user_version": version_row[0] if version_row else 0,
     }
 
 
 def _reset_marker_and_seed(db_path: str) -> None:
+    """Пост-фикс (полный прогон 260912): гейт миграции — `PRAGMA user_version`, не строка
+    `bot_settings` (та засоряла реестр настроек, см. докстринг `_migrate_local_timestamps_to_msk`).
+    Сброс гейта здесь — `PRAGMA user_version = 0`, а не DELETE по таблице."""
+
     async def _do():
         config.DB_PATH = db_path
         async with db._connect() as conn:
-            await conn.execute(
-                "DELETE FROM bot_settings WHERE key = ?", (db._MSK_MIGRATION_MARKER_KEY,)
-            )
+            await conn.execute("PRAGMA user_version = 0")
             await conn.commit()
             await _seed_pre_migration_rows(conn)
 
@@ -253,7 +253,7 @@ def test_migration_shifts_family_by_3_hours_when_process_clock_is_utc(tmp_path):
     assert result["accepted_at"] == "2026-09-01T13:00:00.500000"
     assert result["draft_updated_at"] == "2026-09-01 13:00:00"
     assert result["draft_created_at"] == "2026-09-01 12:55:00"
-    assert result["marker"] == "1"
+    assert result["user_version"] == db._MSK_MIGRATION_USER_VERSION
 
 
 def test_migration_is_idempotent_on_second_boot(tmp_path):
@@ -286,9 +286,7 @@ def test_migration_shifts_reg_draft_created_at_and_second_boot_is_a_noop(tmp_pat
     async def seed():
         config.DB_PATH = db_path
         async with db._connect() as conn:
-            await conn.execute(
-                "DELETE FROM bot_settings WHERE key = ?", (db._MSK_MIGRATION_MARKER_KEY,)
-            )
+            await conn.execute("PRAGMA user_version = 0")
             await conn.execute(
                 "INSERT INTO reg_drafts (telegram_id, kind, updated_by, updated_at, created_at) "
                 "VALUES (?, ?, ?, ?, ?)",
@@ -345,7 +343,7 @@ def test_migration_skips_shift_when_process_clock_is_already_moscow(tmp_path):
     assert result["draft_updated_at"] == "2026-09-01 10:00:00"
     assert result["draft_created_at"] == "2026-09-01 09:55:00"
     # Но маркер стоит -- иначе каждый старт на этой же машине пересчитывал бы часы заново.
-    assert result["marker"] == "1"
+    assert result["user_version"] == db._MSK_MIGRATION_USER_VERSION
 
 
 def test_migration_survives_curved_and_empty_values(tmp_path):
@@ -354,9 +352,7 @@ def test_migration_survives_curved_and_empty_values(tmp_path):
     async def seed_curved():
         config.DB_PATH = db_path
         async with db._connect() as conn:
-            await conn.execute(
-                "DELETE FROM bot_settings WHERE key = ?", (db._MSK_MIGRATION_MARKER_KEY,)
-            )
+            await conn.execute("PRAGMA user_version = 0")
             await conn.execute(
                 "INSERT INTO users (telegram_id, registration_date, edited_at, approved_at, "
                 "paid_at) VALUES (?, ?, ?, ?, ?)",
@@ -412,7 +408,7 @@ def test_migration_skips_columns_missing_in_old_schema(tmp_path):
 
     result = asyncio.run(_run_conn(db_path, _read_family))
     assert result["registration_date"] == "2026-09-01 13:00:00"
-    assert result["marker"] == "1"
+    assert result["user_version"] == db._MSK_MIGRATION_USER_VERSION
 
 
 # ── 4. Дашборд: свой timeutil, tzdata объявлена, ноль импортов бота ──────────────────────
