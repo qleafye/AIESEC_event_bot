@@ -52,6 +52,7 @@ from settings_schema import get_setting_typed  # Phase 09.1 (A): flow texts live
 from services.background import spawn as _spawn
 from services.game_digest import notify_submission as notify_game_submission  # Quick 260822
 from services.faq import apply_city_overrides, short as _faq_short  # Quick 260906-8uq
+from services.timeutil import msk_now  # Квик 260912-mcj: сравнение с deadline_at (ввод МСК)
 from config import config
 
 router = Router()
@@ -630,7 +631,7 @@ async def mytask_submit_start(callback: types.CallbackQuery, state: FSMContext):
     prompt = await _build_proof_prompt(task)
     try:
         deadline_passed = (
-            datetime.strptime(task["deadline_at"], "%Y-%m-%d %H:%M:%S") <= datetime.now()
+            datetime.strptime(task["deadline_at"], "%Y-%m-%d %H:%M:%S") <= msk_now()
         )
     except (TypeError, ValueError):
         deadline_passed = False
@@ -740,7 +741,7 @@ async def finalize_game_submission(callback: types.CallbackQuery, bot: Bot, stat
         task_id, callback.from_user.id,
         content_type=_LEGACY_CONTENT_TYPE.get(first["kind"], "text"),
         content=first.get("content") or "",
-        submitted_at=datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+        submitted_at=msk_now().strftime("%Y-%m-%d %H:%M:%S"),
     )
     if submission_id is None:
         # T-09-01/D-05: гонка -- параллельная сдача той же пары успела раньше. Партиционный

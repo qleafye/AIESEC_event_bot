@@ -40,7 +40,7 @@ DEFAULT_CEILING = 850
 # edit the number + reason together, in the same commit as the growth that needs it.
 KNOWN_OVERAGES: dict[str, tuple[int, str]] = {
     "registration.py": (
-        2368,
+        2369,
         "+9 строк (квик 260911-w2m): врезка гейта правки анкеты в ветку (b) `cmd_start` — "
         "перед входом в `offer_resume`/`?start=edit` спрашивает `services.reg_edit_policy."
         "edit_gate(user)`, при отказе отвечает текстом реестра и главным меню; само правило "
@@ -99,7 +99,10 @@ KNOWN_OVERAGES: dict[str, tuple[int, str]] = {
         "вместо одной (`_sync_draft_in`/`_sync_draft_out`/`_advance`) — прод-баг с 05.09: "
         "файловое резюме писало в черновик только `resume_text`, `resume_file_id`/"
         "`resume_file_name` терялись на финале; сама резолюция колонок живёт в корневом "
-        "`reg_engine.py`, здесь — точки врезки; потолок поднят до фактического размера.",
+        "`reg_engine.py`, здесь — точки врезки; потолок поднят до фактического размера. "
+        "+1 строка (квик 260912-mcj): импорт `services.timeutil.msk_now` — семья «сейчас» "
+        "бота (TTL черновика, имя файла резюме) переведена на московское время; потолок "
+        "поднят до фактического размера.",
     ),
     "admin_gamification.py": (
         2020,

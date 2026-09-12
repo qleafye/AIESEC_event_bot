@@ -58,6 +58,7 @@ from datetime import datetime
 import aiosqlite
 
 from database.db import enqueue_miniapp_outbox
+from miniapp.timeutil import now_msk_naive
 
 logger = logging.getLogger(__name__)
 
@@ -79,7 +80,7 @@ async def enqueue(kind: str, payload: dict) -> int | None:
     """`id` новой строки или None (таблицы нет / БД недоступна — залогировано)."""
     if kind not in OUTBOX_KINDS:
         raise ValueError(f"unknown miniapp outbox kind: {kind!r}")
-    created_at = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    created_at = now_msk_naive().strftime("%Y-%m-%d %H:%M:%S")
     try:
         return await enqueue_miniapp_outbox(kind, dict(payload), created_at)
     except aiosqlite.Error as exc:

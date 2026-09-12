@@ -19,6 +19,7 @@ from datetime import datetime, timedelta
 from database.db import set_user_avatar
 from miniapp import telegram_api
 from miniapp.telegram_api import TelegramApiError
+from miniapp.timeutil import now_msk_naive
 
 logger = logging.getLogger(__name__)
 
@@ -29,7 +30,7 @@ _TS_FORMAT = "%Y-%m-%d %H:%M:%S"
 
 
 def _now() -> str:
-    return datetime.now().strftime(_TS_FORMAT)
+    return now_msk_naive().strftime(_TS_FORMAT)
 
 
 def _negative_cache_fresh(checked_at: str | None) -> bool:
@@ -39,7 +40,7 @@ def _negative_cache_fresh(checked_at: str | None) -> bool:
         checked = datetime.strptime(checked_at, _TS_FORMAT)
     except ValueError:
         return False
-    return datetime.now() - checked < timedelta(seconds=TTL_SECONDS)
+    return now_msk_naive() - checked < timedelta(seconds=TTL_SECONDS)
 
 
 async def resolve_avatar(cfg, user: dict) -> str | None:

@@ -21,6 +21,7 @@ from database.db import (
     record_broadcast_delivery,
     set_broadcast_status,
 )
+from services.timeutil import msk_now
 
 logger = logging.getLogger(__name__)
 
@@ -59,7 +60,7 @@ def can_revoke(started_at: str | None) -> bool:
         started = datetime.strptime(started_at, "%Y-%m-%d %H:%M:%S")
     except ValueError:
         return False
-    return datetime.now() - started < timedelta(hours=REVOKE_WINDOW_HOURS)
+    return msk_now() - started < timedelta(hours=REVOKE_WINDOW_HOURS)
 
 
 def _retry_delay(retry_after: int) -> int:
