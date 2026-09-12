@@ -285,7 +285,7 @@ SECTION_GROUPS: tuple[tuple[str, str, tuple[str, ...]], ...] = (
 SETTINGS_MAIN_SECTIONS: frozenset[str] = frozenset({"event", "form", "apps", "pay", "game", "data"})
 
 # Ключ группы "toggles" -> раздел, куда его кладёт соответствующая строка ("toggle", …) в
-# handlers.admin_sections.SECTIONS (двадцать три ключа группы "toggles" в SETTINGS_SCHEMA,
+# handlers.admin_sections.SECTIONS (тридцать два ключа группы "toggles" в SETTINGS_SCHEMA,
 # распределены ровно по одному разу — сторож tests/test_settings_ops.py).
 TOGGLE_SECTION: dict[str, str] = {
     "reg_bonus_enabled": "event",
@@ -328,6 +328,19 @@ TOGGLE_SECTION: dict[str, str] = {
     # раздела «📋 Заявки» в admin_sections.SECTIONS, сразу перед toggle_reg_edit_remoderation
     # (тот вне этого словаря — его SETTINGS_SCHEMA group="reg", не "toggles").
     "reg_edit_policy": "apps",
+    # Phase 30 (30-01, A2-08): девять тумблеров «Анкета 2.0» — строки ("toggle", …) раздела
+    # «📝 Анкета» в admin_sections.SECTIONS, сразу после toggle_resume_filename_short_mode
+    # (артборд 13, порядок: мастер → чипы → поиск → образование → повторяемые → счётчик →
+    # статус → шапка → вибрация).
+    "reg_form_v2_enabled": "form",
+    "reg_form_chips": "form",
+    "reg_form_lookup_search": "form",
+    "reg_form_edu_card": "form",
+    "reg_form_repeatable": "form",
+    "reg_form_limit_counter": "form",
+    "reg_form_status_screen": "form",
+    "reg_form_header_settings": "form",
+    "reg_form_haptics": "form",
 }
 
 # Единственный источник «что подтверждаем» для ОБЕИХ поверхностей (UI-SPEC A6): вкладки
