@@ -668,6 +668,28 @@ def test_golden_recall_has_no_empty_or_dash_values():
     assert GOLDEN["recall"]["answers"]  # непустой раздел
 
 
+# Phase 30 (30-01, A2-01): вторая ось `spec["kind"]` публикуется РЯДОМ со старой `spec["type"]`
+# — обе оси одновременно, `type` не тронут ни одним символом (Pitfall 1 30-RESEARCH.md).
+# `_collect_snapshot`/GOLDEN выше не видят этот тест вообще (снимок собирается через
+# prompt()/options() по отдельности, не через step_spec() целиком) — эта проверка отдельная,
+# ровно про новую ось.
+def test_step_spec_publishes_kind_alongside_untouched_type(tmp_path):
+    _ready(tmp_path)
+
+    async def go():
+        return [await SOURCE.step_spec(step_key) for step_key, _sk, _t in REG_FLOW]
+
+    specs = asyncio.run(go())
+    canonical_kinds = {"select", "lookup", "composite", "link", "multi", "repeatable", "text"}
+    for spec in specs:
+        assert "kind" in spec, spec["key"]
+        assert spec["kind"] in canonical_kinds, spec["key"]
+        assert spec["kind"] == SOURCE.step_type_v2(spec["key"])
+        # Обе оси — РАЗНЫЕ поля одновременно: старая `type` (HTML-контрол, `_ui_type_for`)
+        # никуда не делась и продолжает публиковаться так же, как до этого плана.
+        assert "type" in spec and spec["type"]
+
+
 # ── form_spec: префилл возвращенца (D-07, Task 3 acceptance criteria) ──────────────────────
 
 def test_form_spec_prefills_returning_delegate(tmp_path):
