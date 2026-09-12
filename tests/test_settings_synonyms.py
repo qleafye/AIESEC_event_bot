@@ -37,6 +37,11 @@ _SELF_DESCRIBING_MINIAPP_EXCEPTIONS = {
     "miniapp_submit_pending_text",
     "miniapp_submit_approved_text",
     "miniapp_submit_limit_text",
+    # Квик 12.09 (UI-аудит, пункты 2/3): те же соображения, что у пятёрки quick 260911-5ij
+    # выше — служебные тексты состояний ошибки/выхода, подпись которых не содержит слов,
+    # которыми менеджер спросит про них вслух.
+    "miniapp_network_error_text",
+    "miniapp_form_complete_home_cta_text",
 }
 SEARCH_SELF_DESCRIBING = {
     k for k, v in SETTINGS_SCHEMA.items()

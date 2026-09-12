@@ -783,7 +783,12 @@ async def draft_submit(
                 "reg draft submit: chat notify failed telegram_id=%s (%s)", p.telegram_id, exc.reason,
             )
 
-    response = {"mode": result["mode"], "status": result["status"], "heading": heading, "body": body}
+    response = {
+        "mode": result["mode"], "status": result["status"], "heading": heading, "body": body,
+        # Квик 12.09 (UI-аудит, пункт 2): подпись кнопки выхода на терминальном экране —
+        # раньше это была одна иконка check без текста и без aria-label (accessibility BLOCKER).
+        "home_cta": await get_setting_typed("miniapp_form_complete_home_cta_text"),
+    }
     # Phase 28 (28-06, SU-07, D-09): паритет с чатом бота — блок-предложение реф-ссылки на том
     # же терминальном экране «Заявка принята», только при mode == "new" и включённом тумблере
     # (дефолт off, D-06). Ссылка сама НЕ строится здесь — только тексты; сервером выдаётся

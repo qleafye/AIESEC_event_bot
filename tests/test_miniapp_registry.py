@@ -243,6 +243,11 @@ MINIAPP_KEYS = [
     "miniapp_form_ambassador_copy_button_text",
     "miniapp_form_ambassador_copied_toast_text",
     "miniapp_settings_option_gone_text",
+    # Квик 12.09 (UI-аудит, пункты 2 и 3): текст «нет связи» доставляется во фронт через
+    # data-screen-texts (page.py::SCREEN_TEXT_KEYS) и подпись кнопки выхода на терминальном
+    # экране анкеты «Заявка принята» (183 -> 185).
+    "miniapp_network_error_text",
+    "miniapp_form_complete_home_cta_text",
 ]
 
 # Phase 22 Plan 02: новые тексты веб-экрана настроек — используются в проверках ниже.
@@ -292,7 +297,9 @@ def test_exactly_170_miniapp_keys_and_no_extra():
     # (170 -> 178).
     # Quick 260911-5ij (W2): +5 текстов состояний — ошибка загрузки/кнопка повтора + три
     # состояния закрытой сдачи (178 -> 183).
-    assert len(MINIAPP_KEYS) == 183
+    # Квик 12.09 (UI-аудит): +2 ключа — текст «нет связи» в приложении и подпись кнопки
+    # выхода на терминальном экране анкеты (183 -> 185).
+    assert len(MINIAPP_KEYS) == 185
     present = sorted(k for k in SETTINGS_SCHEMA if k.startswith("miniapp_"))
     assert present == sorted(MINIAPP_KEYS)
 
@@ -353,7 +360,9 @@ def test_text_keys_have_human_defaults():
     # Phase 28: +7 текстов финального экрана амбассадора + 1 пометка «варианта больше нет»
     # (139 -> 147).
     # Quick 260911-5ij (W2): +5 текстовых ключей состояний (147 -> 152).
-    assert len(text_keys) == 152
+    # Квик 12.09 (UI-аудит): +2 текстовых ключа — «нет связи» в анкете и кнопка выхода на
+    # терминальном экране (152 -> 154).
+    assert len(text_keys) == 154
     for key in text_keys:
         default = SETTINGS_SCHEMA[key]["default"]
         assert isinstance(default, str) and default.strip(), key

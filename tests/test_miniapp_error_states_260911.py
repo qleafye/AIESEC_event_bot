@@ -42,6 +42,8 @@ NEW_KEYS = [
     "miniapp_submit_pending_text",
     "miniapp_submit_approved_text",
     "miniapp_submit_limit_text",
+    # Квик 12.09 (UI-аудит, пункт 3): шестой ключ — обрыв сети на любом шаге анкеты.
+    "miniapp_network_error_text",
 ]
 
 
@@ -55,7 +57,7 @@ def _screen_texts_from_html(text: str) -> dict:
 # ── реестр: пять новых ключей ────────────────────────────────────────────────────────────
 
 def test_five_new_keys_are_group_miniapp_text_with_human_defaults_and_prompts():
-    assert len(NEW_KEYS) == 5
+    assert len(NEW_KEYS) == 6
     for key in NEW_KEYS:
         entry = SETTINGS_SCHEMA[key]
         assert entry["group"] == "miniapp", key
@@ -75,8 +77,8 @@ def test_five_new_keys_have_at_least_two_lowercase_synonyms():
 
 # ── page.SCREEN_TEXT_KEYS: доставка без седьмого errorText ──────────────────────────────
 
-def test_screen_text_keys_has_exactly_five_entries_matching_new_keys():
-    assert len(page_module.SCREEN_TEXT_KEYS) == 5
+def test_screen_text_keys_has_exactly_six_entries_matching_new_keys():
+    assert len(page_module.SCREEN_TEXT_KEYS) == 6
     assert set(page_module.SCREEN_TEXT_KEYS.values()) == set(NEW_KEYS)
 
 

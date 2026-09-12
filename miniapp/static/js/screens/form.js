@@ -13,13 +13,21 @@ import {
   field, setFieldState, createFormState, diffView, confirmBox, errorText,
   isAuthError as isAuthErrorBase, stepIndexFromKey, validationErrors, firstFieldError,
 } from "../form.js";
-import { fileUrl, flatRow, sectionTitle, labelText, noticeBox } from "../ui.js";
+import { fileUrl, flatRow, sectionTitle, labelText, noticeBox, screenText } from "../ui.js";
 import { icon } from "../icons.js";
 import { haptic } from "../motion.js";
 
 const AUTH_EXCEPT_REASONS = [];
 function isAuthError(err) {
   return isAuthErrorBase(err, AUTH_EXCEPT_REASONS);
+}
+
+// Квик 12.09 (UI-аудит, пункт 3): 12 мест ниже звали errorText(err, "") — обрыв сети даёт
+// ответ БЕЗ payload.text, и делегат видел пустую плашку вместо человеческого текста. Общий
+// фоллбэк из оболочки (data-screen-texts, page.py::SCREEN_TEXT_KEYS) вместо пустой строки —
+// одно место правки на все 12 (заменены на failText(err) ниже).
+function failText(err) {
+  return errorText(err, screenText("network_error"));
 }
 
 // activated-подписка живёт на модуле (не на экземпляре render()), чтобы unmount() могла её
@@ -171,7 +179,7 @@ export async function render(root, params, ctx) {
         if (res.kind === "edit") await renderOverview(res);
         else await renderWizard(res);
       } catch (err) {
-        if (!isAuthError(err)) say(errorText(err, ""), "warn");
+        if (!isAuthError(err)) say(failText(err), "warn");
       }
     } }, icon("smartphone"), h("span", { text: handoff.takeover_text || "" }));
     holder.replaceChildren(h("section", { class: "state" },
@@ -270,7 +278,10 @@ export async function render(root, params, ctx) {
         h("h1", { text: res.heading || "" }),
         res.body ? h("p", { text: res.body }) : null,
         h("div", { class: "actions" },
-          h("button", { class: "btn", type: "button", onClick: goHome }, icon("check")),
+          // Квик 12.09 (UI-аудит, пункт 2): раньше — одна иконка check без текста и без
+          // aria-label (accessibility BLOCKER на самом просматриваемом терминальном экране).
+          h("button", { class: "btn", type: "button", "aria-label": res.home_cta || "", onClick: goHome },
+            h("span", { text: res.home_cta || "" }), icon("arrow-right")),
         ),
         ambassadorSlot,
       ),
@@ -301,7 +312,7 @@ export async function render(root, params, ctx) {
       const res = await api("/reg/ambassador", { method: "POST" });
       renderAmbassadorLink(slot, res);
     } catch (err) {
-      if (!isAuthError(err)) say(errorText(err, ""), "warn");
+      if (!isAuthError(err)) say(failText(err), "warn");
     }
   }
 
@@ -336,7 +347,7 @@ export async function render(root, params, ctx) {
   try {
     draft = await api("/reg/draft");
   } catch (err) {
-    if (!isAuthError(err)) holder.replaceChildren(h("p", { class: "error-inline", text: errorText(err, "") }));
+    if (!isAuthError(err)) holder.replaceChildren(h("p", { class: "error-inline", text: failText(err) }));
     return;
   }
 
@@ -396,7 +407,7 @@ export async function render(root, params, ctx) {
           cancelBox.close();
           drawList();
         } catch (err) {
-          if (!isAuthError(err)) say(errorText(err, ""), "warn");
+          if (!isAuthError(err)) say(failText(err), "warn");
         }
       },
       onCancel: () => {},
@@ -454,7 +465,7 @@ export async function render(root, params, ctx) {
           return;
         }
         if (!isAuthError(err)) {
-          const t = errorText(err, "");
+          const t = failText(err);
           if (t) say(t, "warn");
         }
         drawList();
@@ -655,7 +666,7 @@ export async function render(root, params, ctx) {
         } catch (err) {
           busy = false;
           if (err && err.status === 400 && err.reason === "invalid" && err.payload && err.payload.errors) {
-            showError(err.payload.errors[item.field] || errorText(err, ""));
+            showError(err.payload.errors[item.field] || failText(err));
           } else if (err && err.status === 409 && err.reason === "already_set") {
             // Значение уже зафиксировано в чате — перечитать черновик, экран исчезнет сам.
             try { adoptDraft(await api("/reg/draft")); } catch (_) { /* фон — экран не падает */ }
@@ -663,7 +674,7 @@ export async function render(root, params, ctx) {
           } else if (err && err.status === 403 && err.reason === "registration_closed") {
             showClosed(err);
           } else if (!isAuthError(err)) {
-            showError(errorText(err, ""));
+            showError(failText(err));
           }
         }
       }
@@ -728,7 +739,7 @@ export async function render(root, params, ctx) {
         } catch (err) {
           busy = false;
           if (!isAuthError(err)) {
-            errorBox.textContent = errorText(err, "");
+            errorBox.textContent = failText(err);
             errorBox.classList.remove("hidden");
           }
         }
@@ -875,7 +886,7 @@ export async function render(root, params, ctx) {
             return;
           }
           if (!isAuthError(err) && errorZone) {
-            errorZone.textContent = errorText(err, ""); errorZone.classList.remove("hidden");
+            errorZone.textContent = failText(err); errorZone.classList.remove("hidden");
           }
           drawStep();
         }
@@ -924,7 +935,7 @@ export async function render(root, params, ctx) {
             try { showHandoff((await api("/reg/draft")).handoff || (err.payload || {})); }
             catch (_) { showHandoff(err.payload || {}); }
           } else if (!isAuthError(err)) {
-            if (errorZone) { errorZone.textContent = errorText(err, ""); errorZone.classList.remove("hidden"); }
+            if (errorZone) { errorZone.textContent = failText(err); errorZone.classList.remove("hidden"); }
             setMainButton(d.next_cta_text || null, goNext);
           }
         }
@@ -1018,6 +1029,10 @@ export async function render(root, params, ctx) {
       holder.replaceChildren(...[
         progressRow,
         plate,
+        // Квик 12.09 (UI-аудит, пункт 9): пояснение шага (например case_optin.description) —
+        // Body-роль (28-UI-SPEC §5, 15px, var(--text)), поэтому живёт ВНЕ акцентной плиты, а
+        // не среди spec.prompt/spec.help, которые плита уже рисует выше.
+        spec.description ? h("p", { class: "step-description", text: spec.description }) : null,
         h("div", { class: "wizard-field" }, el, contactBtn),
         drawQuestionWindow(specs),
         chatLink(d.continue_in_chat_text, d.continue_deeplink),
@@ -1037,10 +1052,10 @@ export async function render(root, params, ctx) {
         busy = false;
         if (err && err.status === 409 && err.reason === "consent_required") {
           preIndex = 0;
-          say(errorText(err, ""), "warn");
+          say(failText(err), "warn");
           drawCurrent();
         } else if (!isAuthError(err)) {
-          say(errorText(err, ""), "warn");
+          say(failText(err), "warn");
           stepIndex = Math.max(0, state.specs.length - 1);
           drawStep();
         }

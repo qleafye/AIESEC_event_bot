@@ -1723,6 +1723,11 @@ a.flat-row:active, button.flat-row:active { background: var(--surface-alt); }
   color: var(--on-accent-soft);
 }
 
+/* Квик 12.09 (UI-аудит, пункт 9): пояснение шага (spec.description, например
+   case_optin.description) — Body-роль (28-UI-SPEC §5: 15px, var(--text), НЕ muted), живёт
+   между плитой и полем, не внутри акцентной плиты. */
+.step-description { font-size: 15px; line-height: 1.45; color: var(--text); margin: var(--sp-3) 0 0; }
+
 /* Крупное поле мастера: вопрос уже задан плитой, поле обязано выглядеть главным
    действием экрана, а не подписью из настроек. */
 .wizard-field { margin-bottom: var(--sp-5); }
