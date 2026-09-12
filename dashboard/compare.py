@@ -26,6 +26,7 @@ import web_theme
 from dashboard import queries
 from dashboard.db import read_conn
 from dashboard.queries import Scope
+from dashboard.timeutil import msk_now
 
 logger = logging.getLogger(__name__)
 
@@ -302,11 +303,11 @@ def build_compare_context(cfg, *, codes=None, axis="day_n", seasons=None, now=No
     перехватывается ПО СОБЫТИЮ: запись в `events` получает `available=False` и человеческий
     `error`, `logger.warning` пишется, остальные события считаются дальше (T-26.1-01-06).
 
-    `now` — параметр только для тестов (иначе `datetime.now()`); используется и для отсечки
-    TTL-кэша, и для `days_to_event`/меток свежести — так тест может управлять «течением
-    времени» одной ручкой.
+    `now` — параметр только для тестов (иначе московский `dashboard.timeutil.msk_now()`,
+    квик 260912-mcj); используется и для отсечки TTL-кэша, и для `days_to_event`/меток
+    свежести — так тест может управлять «течением времени» одной ручкой.
     """
-    now = now or datetime.now()
+    now = now or msk_now()
     seasons = seasons or {}
     events = cfg.events
     if codes is not None:

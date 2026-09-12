@@ -20,6 +20,8 @@ import os
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 
+from dashboard.timeutil import msk_now
+
 
 @dataclass(frozen=True)
 class Scope:
@@ -279,7 +281,7 @@ def kpi_row(conn, scope: Scope) -> dict:
 
     total = _scalar(conn, f"SELECT COUNT(*) FROM users{_where(parts)}", params) or 0
 
-    now = datetime.now()
+    now = msk_now()
     today = now.strftime("%Y-%m-%d")
     week_start = (now - timedelta(days=6)).strftime("%Y-%m-%d")
     prev_week_start = (now - timedelta(days=13)).strftime("%Y-%m-%d")
@@ -473,7 +475,7 @@ def _fill_missing_days(sparse: list[tuple[str, int]]) -> list[tuple[str, int]]:
     if not counts:
         return sparse
     first = datetime.strptime(min(counts), "%Y-%m-%d").date()
-    last = max(datetime.strptime(max(counts), "%Y-%m-%d").date(), datetime.now().date())
+    last = max(datetime.strptime(max(counts), "%Y-%m-%d").date(), msk_now().date())
     result: list[tuple[str, int]] = []
     cursor = first
     while cursor <= last:
@@ -949,7 +951,7 @@ def game_block(conn, scope: Scope) -> dict | None:
             # возраст (тот же fail-soft, что _month_label/_fill_missing_days).
             submitted = None
         if submitted is not None:
-            pending_oldest_minutes = round((datetime.now() - submitted).total_seconds() / 60.0, 1)
+            pending_oldest_minutes = round((msk_now() - submitted).total_seconds() / 60.0, 1)
     stats["pending_oldest_minutes"] = pending_oldest_minutes
     stats["pending_oldest_label"] = format_processing_time(pending_oldest_minutes)
 
@@ -1090,14 +1092,14 @@ def questions_block(conn, scope: Scope) -> dict | None:
             # fail-soft, что _month_label/game_block.pending_oldest_minutes).
             asked = None
         if asked is not None:
-            # D-4: возраст самого старого считаем от datetime.utcnow(), а НЕ datetime.now(),
-            # как соседний game_block. game_submissions.submitted_at пишется локальным
-            # datetime.now() (handlers/user_actions.py) -- у game_block это верно. У вопросов
-            # штампы UTC (create_question/claim_question/set_question_answer пишут
-            # datetime.utcnow().isoformat()) -- разница с локальным "сейчас" завысила бы
-            # ожидание на смещение таймзоны (+3 ч на машине разработчика; в контейнере TZ не
-            # задан -- там бы "случайно совпало", тем хуже: баг жил бы только локально и в
-            # тестах). Копировать now() у game_block здесь НЕЛЬЗЯ.
+            # D-4: возраст самого старого считаем от datetime.utcnow(), а НЕ msk_now(),
+            # как соседний game_block. Квик 260912-mcj перевёл game_submissions.submitted_at
+            # на московский msk_now() (handlers/user_actions.py) -- у game_block это по-прежнему
+            # верно (обе стороны сравнения теперь на одних часах). У вопросов штампы остаются
+            # UTC (create_question/claim_question/set_question_answer пишут
+            # datetime.utcnow().isoformat()) -- разница с московским "сейчас" завысила бы
+            # ожидание на смещение таймзоны (+3 ч). Копировать msk_now() у game_block здесь
+            # НЕЛЬЗЯ -- это разные семьи меток времени.
             oldest_waiting_minutes = round(
                 (datetime.utcnow() - asked).total_seconds() / 60.0, 1
             )

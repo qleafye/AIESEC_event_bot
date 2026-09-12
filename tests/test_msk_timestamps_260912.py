@@ -351,3 +351,33 @@ def test_migration_skips_columns_missing_in_old_schema(tmp_path):
     assert result["registration_date"] == "2026-09-01 13:00:00"
     assert result["marker"] == "1"
 
+
+# ── 4. Дашборд: свой timeutil, tzdata объявлена, ноль импортов бота ──────────────────────
+
+def test_dashboard_requirements_declares_tzdata():
+    req = Path("dashboard/requirements.txt").read_text(encoding="utf-8")
+    assert any(line.strip() == "tzdata" for line in req.splitlines()), (
+        "dashboard/timeutil.py резолвит ZoneInfo('Europe/Moscow') -- в slim-образе системной "
+        "базы поясов может не быть, как и у бота"
+    )
+
+
+def test_dashboard_modules_never_import_bot_services_or_database():
+    """Тот же класс падения образа, что ловит `test_dashboard_docker.py` для корневых
+    модулей (web_theme 31.08, tg_media 10.09) -- `dashboard/Dockerfile` копирует ТОЛЬКО
+    `dashboard/` + несколько корневых файлов, `services.timeutil.msk_now` уронил бы контейнер
+    на старте `ModuleNotFoundError`."""
+    offenders = {}
+    for path_str in glob.glob("dashboard/*.py"):
+        tree = ast.parse(Path(path_str).read_text(encoding="utf-8"), filename=path_str)
+        for node in ast.walk(tree):
+            names = []
+            if isinstance(node, ast.Import):
+                names = [alias.name for alias in node.names]
+            elif isinstance(node, ast.ImportFrom) and node.module:
+                names = [node.module]
+            bad = [n for n in names if n == "services" or n.startswith("services.")
+                   or n == "database" or n.startswith("database.")]
+            if bad:
+                offenders.setdefault(path_str.replace("\\", "/"), []).extend(bad)
+    assert not offenders, f"dashboard/*.py не должен импортировать бота: {offenders}"
