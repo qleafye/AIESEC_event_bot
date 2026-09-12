@@ -514,20 +514,30 @@ async def post_finalize(
             # sheet_city_code), сверять их результат друг с другом не нужно.
             city = await sheet_city_code(full.get("event_city"))
             row = await row_fn(full, city)
-            if mode == "new":
-                tab = await city_row_tab(full.get("event_city"), full.get("participant_type"))
-                if tab is None:
-                    await append_fn(row)
-                else:
-                    await append_to_named_sheet(tab, row)
-            else:
-                tab = await _resolve_update_tab(full.get("event_city"), full.get("participant_type"))
-                found = await update_row_by_id(tab, telegram_id, row)
-                if not found:
+            # Инцидент 13.09: mode="new" описывает ПУТЬ анкеты (обычная регистрация ИЛИ
+            # повторная подача — отклонённый после /start, делегат прошлого сезона
+            # is_returning_row, человек после /delete_user), а НЕ факт отсутствия строки в
+            # таблице. Старый код аппендил всегда для mode="new" — три источника повторной
+            # подачи копили дубли по ID (в листе МСК до 5 на делегата). Теперь наличие строки
+            # спрашиваем у самой таблицы: сначала update_row_by_id в ту же вкладку, куда ушёл
+            # бы append (_resolve_update_tab повторяет маршрут city_row_tab), и только если
+            # строки там нет — append. Если старая строка делегата лежит на главном листе, а
+            # он теперь в городе с вкладкой, update_row_by_id найдёт её фоллбэком на главном
+            # листе и обновит на месте — строка остаётся там, где была, второй не появляется.
+            update_tab = await _resolve_update_tab(full.get("event_city"), full.get("participant_type"))
+            found = await update_row_by_id(update_tab, telegram_id, row)
+            if not found:
+                if mode == "new":
+                    tab = await city_row_tab(full.get("event_city"), full.get("participant_type"))
                     if tab is None:
                         await append_fn(row)
                     else:
                         await append_to_named_sheet(tab, row)
+                else:
+                    if update_tab is None:
+                        await append_fn(row)
+                    else:
+                        await append_to_named_sheet(update_tab, row)
         except Exception as e:
             logger.error(f"Failed to write sheet row for {telegram_id}: {e}")
 

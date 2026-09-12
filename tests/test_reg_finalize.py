@@ -295,9 +295,24 @@ def test_finalize_data_failure_releases_draft_for_retry(tmp_path, monkeypatch):
 # ── post_finalize: new -> append, edit -> update_row_by_id, fallback ────────────────────
 
 def test_post_finalize_new_mode_appends_row(tmp_path, monkeypatch):
+    """Регрессия «новый делегат» (инцидент 13.09): строки в таблице ЕЩЁ нет —
+    `update_row_by_id` честно возвращает False, и только тогда идёт append. До фикса этот
+    тест утверждал, что `update_row_by_id` вообще не звался для mode="new" — теперь он
+    зовётся ВСЕГДА (наличие строки спрашиваем у таблицы, а не выводим из режима), просто для
+    настоящего нового делегата отвечает False."""
     _ready(tmp_path)
     _offline(monkeypatch)
-    calls = _patch_sheet_calls(monkeypatch)
+    calls = []
+
+    async def fake_append(row):
+        calls.append(("append", None, list(row)))
+
+    async def fake_update_row_by_id(tab_name, telegram_id, row):
+        calls.append(("update_row_by_id", tab_name, list(row)))
+        return False  # строки в таблице ещё нет
+
+    monkeypatch.setattr(reg_mod, "append_to_sheet", fake_append)
+    monkeypatch.setattr(sheets_service, "update_row_by_id", fake_update_row_by_id)
     monkeypatch.setattr(config, "ADMIN_IDS", [])
 
     async def go():
@@ -305,8 +320,52 @@ def test_post_finalize_new_mode_appends_row(tmp_path, monkeypatch):
         await rf.post_finalize(FakeBot(), UID, "new")
 
     asyncio.run(go())
-    assert [c for c in calls if c[0] == "append"], "новая анкета обязана идти append-путём"
-    assert not any(c[0] == "update_row_by_id" for c in calls)
+    assert [c[0] for c in calls] == ["update_row_by_id", "append"]
+
+
+def test_post_finalize_resubmit_rejected_updates_existing_row_no_append(tmp_path, monkeypatch):
+    """Отклонённый, перезаполнивший анкету после /start: `finalize_data`/бот шлют сюда
+    mode="new" (путь анкеты — обычная регистрация), но строка делегата в таблице УЖЕ есть от
+    прошлой подачи — `update_row_by_id` находит её и обновляет на месте, append не идёт
+    вовсе (инцидент 13.09: без этого фикса — вторая строка-дубль по тому же ID)."""
+    _ready(tmp_path)
+    _offline(monkeypatch)
+    calls = _patch_sheet_calls(monkeypatch)  # fake_update_row_by_id тут всегда True
+    monkeypatch.setattr(config, "ADMIN_IDS", [])
+
+    async def go():
+        await _seed_user(UID, status="rejected", event_city=None)
+        await rf.post_finalize(FakeBot(), UID, "new")
+
+    asyncio.run(go())
+    assert [c[0] for c in calls] == ["update_row_by_id"]
+    assert not any(c[0] == "append" for c in calls)
+
+
+def test_post_finalize_resubmit_with_city_tab_updates_named_tab(tmp_path, monkeypatch):
+    """Делегат прошлого сезона (is_returning_row) перезаполнил анкету и теперь числится в
+    городе с именованной вкладкой: `update_row_by_id` обязан получить ИМЯ ТОЙ ЖЕ вкладки,
+    куда ушёл бы append (`_resolve_update_tab` повторяет маршрут `city_row_tab`) — иначе
+    строка на главном листе не найдётся и уедет дублем в городскую вкладку."""
+    _ready(tmp_path)
+    _offline(monkeypatch)
+    calls = _patch_sheet_calls(monkeypatch)
+    monkeypatch.setattr(config, "ADMIN_IDS", [])
+
+    async def fake_city_row_tab(event_city, participant_type):
+        return "СПб"
+
+    monkeypatch.setattr(reg_mod, "city_row_tab", fake_city_row_tab)
+
+    async def go():
+        await _seed_user(UID, status="pending", event_city="spb")
+        await rf.post_finalize(FakeBot(), UID, "new")
+
+    asyncio.run(go())
+    update_calls = [c for c in calls if c[0] == "update_row_by_id"]
+    assert len(update_calls) == 1
+    assert update_calls[0][1] == "СПб"
+    assert not any(c[0] == "append" for c in calls)
 
 
 def test_post_finalize_edit_mode_updates_row_by_id(tmp_path, monkeypatch):
