@@ -397,6 +397,13 @@ class DraftPatch(BaseModel):
     # валидаторами, что тап по развилке в боте; уже заданное значение -> 409 already_set.
     event_city: str | None = None
     participant_type: str | None = None
+    # Квик 260912-l53: СПИСОК КЛЮЧЕЙ ШАГОВ (не колонок) — «×» на дропзоне резюме и её
+    # аналоги. Отдельное поле, а не `null` в `answers`: `null` уже занят под «Пропустить» для
+    # `_NULL_SKIP_STEPS`, а для обязательного шага (например «resume») пустой ответ обязан
+    # ловить валидацию, а не молча очищаться — «очистить» и «прислал пустой ввод» это разные
+    # намерения. Клиент называет шаг, набор колонок для очистки разворачивает сервер
+    # (`reg_engine.columns_for_step`) — клиент имён колонок не знает.
+    clear: list[str] = Field(default_factory=list)
 
 
 # (имя поля PATCH, валидатор движка) — порядок важен: трек резолвится с учётом города.
@@ -510,6 +517,21 @@ async def draft_patch(
     if resume_type_patch is not None and resume_type_patch not in ("file", "link", "mini"):
         raise HTTPException(400, {"reason": "bad_field", "field": "resume_type"})
 
+    # Квик 260912-l53: `clear` называет ШАГ, набор колонок для очистки — единственный источник
+    # правды `reg_engine.columns_for_step` (тот же, которым живут `_sync_draft_in/out` и
+    # `step_spec` в чате бота). Неизвестный/пустой шаг -> 400 bad_field, как и незнакомая
+    # колонка в `answers` выше. `body.step` этой веткой не трогается: «×» шаг анкеты не
+    # двигает, `resume_type` (выбранная ветка развилки) при очистке не сбрасывается —
+    # делегат остаётся в ветке «файл», чтобы приложить другой.
+    cleared_columns: list[str] = []
+    for step_key in body.clear:
+        cols = reg_engine.columns_for_step(step_key)
+        if not cols:
+            raise HTTPException(400, {"reason": "bad_field", "field": step_key})
+        for col in cols:
+            if col not in cleared_columns:
+                cleared_columns.append(col)
+
     step_patch: dict[str, Any] = {}
     for column, raw in body.answers.items():
         step_key = reg_engine.column_to_step(column)
@@ -539,7 +561,9 @@ async def draft_patch(
         raise HTTPException(400, {"reason": "invalid", "errors": errors})
 
     field_versions = ctx["meta"].get("field_versions", {})
-    touched_columns = [reg_engine.STEP_TO_COLUMN.get(sk, sk) for sk in step_patch]
+    # Очистка — такая же правка поля, как ответ: гонку с чатом (кто-то параллельно принёс
+    # резюме в бота, пока делегат жал «×» в приложении) обязана показывать тоже она.
+    touched_columns = [reg_engine.STEP_TO_COLUMN.get(sk, sk) for sk in step_patch] + cleared_columns
     conflicts = reg_engine.conflicts(field_versions, body.version, touched_columns)
 
     # Phase 28 (28-01, SU-03): множество «учусь» — реестровое, пусто = прежнее правило.
@@ -553,6 +577,10 @@ async def draft_patch(
     # именно это поле, reg_engine.enabled_steps).
     if resume_type_patch is not None:
         new_answers["resume_type"] = resume_type_patch
+    # Квик 260912-l53: обнуляем ВЕСЬ набор колонок шага в объединённых ответах — до расчёта
+    # `delta`, чтобы дальнейший код (spec/`enabled_now`) видел уже очищенное состояние.
+    for col in cleared_columns:
+        new_answers[col] = None
     # УАТ 10-11.09 (квик 260911-2kb, пункт 5): живой баг — первый PATCH из приложения по уже
     # поданной анкете (например `uploadResume` бутстрапит черновик `{version: 0, answers: {}}`)
     # обнулял анкету делегату. `_load_context` подставляет снимок ответов из `users`
@@ -567,6 +595,13 @@ async def draft_patch(
     # персистится в новой строке. Когда строка уже есть — поведение прежнее байт-в-байт.
     baseline = ctx["answers"] if ctx["draft"] else {}
     delta = {col: val for col, val in new_answers.items() if baseline.get(col) != val}
+    # Пункт 5 objective (квик 260912-l53): у делегата без строки `reg_drafts` `baseline` для
+    # очищаемой колонки часто вообще НЕ содержит ключ (снимок из `users` без файла резюме) —
+    # «не было ключа -> стало None» даёт `baseline.get(col) != val` == False, и очистка не
+    # попала бы в `delta`, то есть не персистировалась бы. Кладём принудительно, после
+    # расчёта дельты, а не полагаемся на сравнение со снимком.
+    for col in cleared_columns:
+        delta[col] = None
 
     # Quick 260904-3vm (D2): контракт `reg_drafts.step` = шаг, который ЕЩЁ НЕ ОТВЕЧЕН — ровно
     # то, что штампует бот последним действием хода (registration.py::_stamp_reg_step штампует
@@ -605,8 +640,9 @@ async def draft_patch(
         await enqueue("reg_fsm_reset", {"telegram_id": p.telegram_id, "reason": "takeover"})
     # T-21-08: в лог — только имена полей/колонок, значения не пишутся.
     logger.info(
-        "reg draft patch telegram_id=%s step=%s base_version=%s pre=%s columns=%s",
+        "reg draft patch telegram_id=%s step=%s base_version=%s pre=%s columns=%s cleared=%s",
         p.telegram_id, step_to_store, body.version, sorted(pre_patch), sorted(delta.keys()),
+        sorted(cleared_columns),
     )
     resp = await _draft_response(p.telegram_id, bot_username=request.app.state.cfg.bot_username)
     resp["conflicts"] = conflicts
