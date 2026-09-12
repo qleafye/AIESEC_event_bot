@@ -411,7 +411,15 @@ def test_resume_prior_is_flag_only_no_raw_value_leaks(client):
     assert resp.status_code == 200
     assert "Секретный текст" not in resp.text
     resume_step = next(s for s in resp.json()["steps"] if s["key"] == "resume")
-    assert resume_step["has_prior_resume"] is True
+    # Квик 260912-l53 (задача 3, deviation Rule 1 — см. SUMMARY): мёртвый ключ has_prior_resume
+    # убран из контракта. Для ЭТОГО сценария (REJECTED_ID, kind=new) замена — value_source по
+    # набору колонок шага — ничего не показывает: `prior_answers_for` намеренно исключает шаг
+    # "resume" (Pitfall 3), а `ctx["answers"]` для kind=new пуст, поэтому value_source остаётся
+    # None байт-в-байт, как и ДО этого квика (`has_prior_resume` был отдельным сигналом,
+    # читавшим `user_row` напрямую, в обход value_source). Проверка не ослаблена: по-прежнему
+    # ловит утечку сырого текста резюме и теперь дополнительно ловит воскрешение мёртвого ключа.
+    assert "has_prior_resume" not in resume_step
+    assert resume_step["value_source"] is None
     assert resume_step["prior"] is None
 
 
