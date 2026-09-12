@@ -325,6 +325,15 @@ def _build_snapshot_lines():
 # insertions/deletions, the same three lines relocated from right before `settings_back_to_admin`
 # to right after `sheet_logs_sync_go` (and before `show_admin_cities`), all other lines
 # byte-for-byte identical in the same order.
+# Drift note (Phase 30, 30-01, A2-08, 487 -> 496 handlers -- PURE APPEND): девять новых
+# callback-хендлеров тумблеров «Анкета 2.0» (`handlers/admin_reg_form.py`, шов, декорирующий
+# общий `admin.router`, импортируется последним в хвостовой цепочке `handlers/admin_sections.py`
+# -- сразу после `admin_quiet_hours`) регистрируются ПОСЛЕ `admin_quiet_hours` и ПЕРЕД
+# `admin_sync_sheet` (`handlers/admin_sheets.py`, импортируется в `handlers/admin.py` только
+# после того, как весь хвост `admin_settings.py`, включая `admin_sections`, отработал).
+# Re-captured by RUNNING `_build_snapshot_lines()` against HEAD after this plan's changes и
+# diffed против прежнего 487-строчного снимка (`difflib.SequenceMatcher`): ровно одна вставка
+# из 9 строк в позиции 169, ни одна существующая строка не сдвинулась и не изменилась.
 GOLDEN_SNAPSHOT = """
 admin|message|cmd_admin_help|cmd:admin
 admin|message|cmd_coins|cmd:coins
@@ -495,6 +504,15 @@ admin|callback_query|sheet_logs_open|sheet_logs_open
 admin|callback_query|sheet_logs_autosync_toggle|sheet_logs_autosync_toggle
 admin|callback_query|sheet_logs_sync_go|sheet_logs_sync_go
 admin|callback_query|admin_quiet_hours|admin_quiet_hours
+admin|callback_query|toggle_reg_form_v2|toggle_reg_form_v2
+admin|callback_query|toggle_reg_form_chips|toggle_reg_form_chips
+admin|callback_query|toggle_reg_form_lookup_search|toggle_reg_form_lookup_search
+admin|callback_query|toggle_reg_form_edu_card|toggle_reg_form_edu_card
+admin|callback_query|toggle_reg_form_repeatable|toggle_reg_form_repeatable
+admin|callback_query|toggle_reg_form_limit_counter|toggle_reg_form_limit_counter
+admin|callback_query|toggle_reg_form_status_screen|toggle_reg_form_status_screen
+admin|callback_query|toggle_reg_form_header_settings|toggle_reg_form_header_settings
+admin|callback_query|toggle_reg_form_haptics|toggle_reg_form_haptics
 admin|callback_query|sync_sheet|admin_sync_sheet
 admin|callback_query|rebuild_sheet_confirm|admin_rebuild_sheet
 admin|callback_query|rebuild_sheet|admin_rebuild_sheet_go
@@ -892,7 +910,16 @@ def test_snapshot_total_handler_count_is_292():
     # чистая вставка, перепроверена прогоном _build_snapshot_lines() и diff'ом с прежним
     # 484-строчным снапшотом (единственная строка сдвинула всё после неё на одну позицию, ни
     # одна другая строка не поменялась и не переставилась).
-    assert len(GOLDEN_SNAPSHOT) == 487  # Квик 260912-0jc (W5, Задача 4): +1 admin_i18n.py admin_i18n_seed (callback_query, «догонялка перевода» -- встал сразу после admin_i18n_retranslate_go и перед show_applications, шов импортируется из хвоста admin.py на том же месте, что и остальные admin_i18n_* хендлеры) (486 -> 487); чистая вставка, переснята прогоном _build_snapshot_lines() и сдиффена с прежним 486-строчным снапшотом -- единственная вставленная строка, всё остальное байт-в-байт и в том же относительном порядке. Квик 260911-w2m: +1 admin_settings.py toggle_reg_edit_policy (callback_query, сразу после toggle_reg_edit_scoring/apps_queue_sort_by_score блока и перед toggle_reg_edit_remoderation); Quick 260911-805: +1; Квик 260910-ro7: +3; Quick 260910-okb: +3, +5; Phase 28 (28-09): +1; (28-08): +5, +1; (28-07): +1; (28-06): +3, +2
+    assert len(GOLDEN_SNAPSHOT) == 496  # Phase 30 (30-01, A2-08): +9 handlers/admin_reg_form.py
+    # (callback_query toggle_reg_form_v2/chips/lookup_search/edu_card/repeatable/limit_counter/
+    # status_screen/header_settings/haptics — девять тумблеров «Анкета 2.0»), встали сразу после
+    # admin_quiet_hours и перед sync_sheet: шов импортируется из хвоста
+    # handlers/admin_sections.py, СРАЗУ ПОСЛЕ импорта admin_quiet_hours — та же точка
+    # регистрации, что у admin_quiet_hours выше (487 -> 496); чистая вставка, перепроверена
+    # прогоном _build_snapshot_lines() и diff'ом (difflib.SequenceMatcher) с прежним
+    # 487-строчным снапшотом — ровно одна вставка из 9 строк, ни одна другая строка не
+    # поменялась и не переставилась.
+    # Квик 260912-0jc (W5, Задача 4): +1 admin_i18n.py admin_i18n_seed (callback_query, «догонялка перевода» -- встал сразу после admin_i18n_retranslate_go и перед show_applications, шов импортируется из хвоста admin.py на том же месте, что и остальные admin_i18n_* хендлеры) (486 -> 487); чистая вставка, переснята прогоном _build_snapshot_lines() и сдиффена с прежним 486-строчным снапшотом -- единственная вставленная строка, всё остальное байт-в-байт и в том же относительном порядке. Квик 260911-w2m: +1 admin_settings.py toggle_reg_edit_policy (callback_query, сразу после toggle_reg_edit_scoring/apps_queue_sort_by_score блока и перед toggle_reg_edit_remoderation); Quick 260911-805: +1; Квик 260910-ro7: +3; Quick 260910-okb: +3, +5; Phase 28 (28-09): +1; (28-08): +5, +1; (28-07): +1; (28-06): +3, +2
     # handlers/reg_resume_fork.py — message process_resume_link (хвост message-блока
     # registration.router, сразу после process_case_optin и перед первым callback_query
     # recall_keep) + callback_query regfork_pick (хвост callback_query-блока
