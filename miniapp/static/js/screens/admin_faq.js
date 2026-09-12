@@ -61,7 +61,7 @@ export async function render(root, params, ctx) {
   const editErrors = {}; // `${id}:${field}` -> ошибка сохранения поля
 
   const notice = h("p", { class: "chip success hidden" });
-  const addBtn = h("button", { class: "btn", type: "button", text: "Добавить" });
+  const addBtn = h("button", { class: "btn", type: "button" }, icon("plus"), h("span", { text: " Добавить" }));
   const addHolder = h("div");
   const list = h("div", { class: "flat-list" });
   const foot = h("div", { class: "list-foot" });

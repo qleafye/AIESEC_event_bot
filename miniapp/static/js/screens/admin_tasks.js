@@ -44,7 +44,7 @@ export async function render(root, params, ctx) {
   const newBtn = h("button", {
     class: "btn", type: "button",
     onClick: () => navigate("#/task-edit/new"),
-  }, icon("check"), h("span", { text: " Новое задание" }));
+  }, icon("plus"), h("span", { text: " Новое задание" }));
 
   root.append(h("h1", { text: "Задания" }), toggle, newBtn, list, foot);
 

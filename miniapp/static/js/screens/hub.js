@@ -153,10 +153,13 @@ async function renderDelegateHub(root, ctx) {
   // Квик 260911-6i9 (пункт 1): личность делегата — предсозданный пустой слот ПЕРВЫМ узлом
   // плиты, как и остальные слоты здесь, — ответ /profile приезжает позже первого кадра,
   // DOM-порядок плиты не должен зависеть от порядка ответов Promise.allSettled ниже.
-  const personSlot = h("div", {});
-  const plateEyebrow = h("div", { class: "plate-eyebrow", text: "" });
+  // Квик 12.09 (UI-аудит, пункт 11): пока личность/надзаголовок/единица не дозаполнены
+  // ответами ниже, слоты несут скелетон-плейсхолдер вместо пустоты — снимается одним местом
+  // сразу после Promise.allSettled, независимо от того, какая ручка отказала.
+  const personSlot = h("div", { class: "skeleton skeleton--person" });
+  const plateEyebrow = h("div", { class: "plate-eyebrow skeleton skeleton--eyebrow", text: "" });
   const plateBig = h("div", { class: "plate-big", text: "0" });
-  const plateUnit = h("span", { text: "" });
+  const plateUnit = h("span", { class: "skeleton skeleton--unit", text: "" });
   const plateRow = h("div", { class: "plate-row" },
     plateBig, h("span", { class: "plate-coin" }, icon("coin")), plateUnit,
   );
@@ -207,6 +210,12 @@ async function renderDelegateHub(root, ctx) {
     api("/tasks?offset=0&limit=2"),
     api("/hub"),
   ]);
+
+  // Снять скелетон одним местом, до разбора результатов: отказ любой ручки не должен
+  // оставить вечный плейсхолдер вместо пустой строки.
+  personSlot.classList.remove("skeleton", "skeleton--person");
+  plateEyebrow.classList.remove("skeleton", "skeleton--eyebrow");
+  plateUnit.classList.remove("skeleton", "skeleton--unit");
 
   if (balanceR.status === "fulfilled") {
     const bal = balanceR.value;
