@@ -73,6 +73,15 @@ _FUNNEL_BASELINE_LABELS: dict[str, str] = {
     "Оплатили": "оплативших",
 }
 
+# Квик 12.09 (UI-аудит, пункт 5): первые три ступени воронки считаются по событийному
+# трекингу (`reg_events`), а не по `users.status` — у делегатов, импортированных мимо
+# анкеты (Excel/прошлый сезон), событий физически нет. Раньше это давало невозможную на вид
+# последовательность «Дошли до конца: 0» рядом с «На модерации: 4» — менеджер читал её как
+# «все потерялись на последнем шаге», хотя на самом деле трекинга не было вовсе. Остальные
+# ступени считаются по состоянию записи (`users.status`/`payment_status`) — у них такой
+# проблемы нет, `users`-запись есть у каждого делегата независимо от источника.
+_FUNNEL_EVENT_STAGES: tuple[str, ...] = ("Зашли", "Начали анкету", "Дошли до конца")
+
 logger = logging.getLogger(__name__)
 
 BASE_DIR = Path(__file__).resolve().parent
@@ -160,6 +169,13 @@ def _funnel_display(rows: "list[tuple[str, int]] | None", tracking_since: "str |
             baseline_index = idx
             break
     has_data = any(count for _, count in rows)
+    # Квик 12.09 (UI-аудит, пункт 5): максимум по ступеням состояния записи (НЕ событийным) —
+    # если он положительный, а конкретная событийная ступень пуста, это не «все потерялись»,
+    # это «трекинга не было» (импорт мимо анкеты). Если и ступени состояния пусты тоже (вся
+    # воронка на нулях) — противоречить нечему, работает прежняя заглушка `has_data`.
+    non_event_max = max(
+        (count for label, count in rows if label not in _FUNNEL_EVENT_STAGES), default=0,
+    )
     # Базовой ступени процент не подписываем: «100% от зашедших» под «Зашли» — тавтология
     # (владелец, 06.09). Шаблон вместо процента ставит «база для процентов ниже».
     steps = [
@@ -168,6 +184,7 @@ def _funnel_display(rows: "list[tuple[str, int]] | None", tracking_since: "str |
             "count": count,
             "pct": round(count / baseline * 100, 1) if baseline else 0,
             "is_baseline": idx == baseline_index,
+            "untracked": label in _FUNNEL_EVENT_STAGES and count == 0 and non_event_max > 0,
         }
         for idx, (label, count) in enumerate(rows)
     ]
