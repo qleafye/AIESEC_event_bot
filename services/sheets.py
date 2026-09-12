@@ -584,16 +584,24 @@ async def _resolve_status_tab(telegram_id: int) -> str | None:
 
 def _update_status_in_row_range(sheet, target: str, label: str) -> bool:
     """Shared row scan for a single (sheet, telegram_id) pair — find col1==target and write
-    label into the «Статус» column. False if the status column or the row isn't on this sheet."""
+    label into the «Статус» column. False if the status column or the row isn't on this sheet.
+
+    Инцидент 13.09: при нескольких строках с одним telegram_id (дубли, не разгребённые
+    «Убрать дубли») пишем в ПОСЛЕДНЮЮ совпавшую строку, а не в первую — последняя подача
+    самая свежая, и это ровно та строка, которую оставляет `_dedupe_sheet_sync`. Обновлять
+    все совпадения дороже по квоте API и маскирует сам факт дублей."""
     status_col = _status_col_index(sheet)  # 0-based
     if status_col < 0:
         return False
     col1 = sheet.col_values(1)
+    last_idx = None
     for row_idx, val in enumerate(col1[1:], start=2):  # skip header
         if (val or "").strip() == target:
-            sheet.update_cell(row_idx, status_col + 1, label)  # update_cell 1-based col
-            return True
-    return False
+            last_idx = row_idx
+    if last_idx is None:
+        return False
+    sheet.update_cell(last_idx, status_col + 1, label)  # update_cell 1-based col
+    return True
 
 
 def _update_status_in_sheet_sync(telegram_id: int, label: str, tab_name: str | None) -> bool:
@@ -628,15 +636,23 @@ def _update_row_by_id_in_range(sheet, telegram_id: int, row: list) -> bool:
     """Point single-row update (D-16): col1 scan with the same normalization as
     _update_status_in_row_range (`(val or "").strip()`, header row skipped), then ONE
     `sheet.update` call over the whole matched row — never update_cell in a loop, never
-    rebuild. Width is exactly len(row); the frozen header and every other row are untouched."""
+    rebuild. Width is exactly len(row); the frozen header and every other row are untouched.
+
+    Инцидент 13.09: при нескольких строках с одним telegram_id пишем в ПОСЛЕДНЮЮ совпавшую
+    строку — последняя подача самая свежая, и это ровно та строка, которую оставляет
+    `_dedupe_sheet_sync`; обновлять все совпадения дороже по квоте API и маскирует сам факт
+    дублей."""
     target = str(telegram_id)
     col1 = sheet.col_values(1)
+    last_idx = None
     for row_idx, val in enumerate(col1[1:], start=2):  # skip header
         if (val or "").strip() == target:
-            end = gspread.utils.rowcol_to_a1(row_idx, len(row))
-            sheet.update(values=[row], range_name=f"A{row_idx}:{end}")
-            return True
-    return False
+            last_idx = row_idx
+    if last_idx is None:
+        return False
+    end = gspread.utils.rowcol_to_a1(last_idx, len(row))
+    sheet.update(values=[row], range_name=f"A{last_idx}:{end}")
+    return True
 
 
 def _update_row_by_id_sync(tab_name: str | None, telegram_id: int, row: list) -> bool:
@@ -696,19 +712,25 @@ async def update_row_by_id(tab_name: str | None, telegram_id: int, row: list) ->
 
 def _bulk_update_status_row_range(sheet, wanted: set[str], id_to_label: dict[str, str]) -> tuple[int, set[str]]:
     """Shared batch_update pass for one worksheet: writes every id in `wanted` that's found on
-    this sheet's col1, one batch_update for the whole sheet. Returns (updated_count, found_ids)."""
+    this sheet's col1, one batch_update for the whole sheet. Returns (updated_count, found_ids).
+
+    Инцидент 13.09: при нескольких строках с одним telegram_id пишем ТОЛЬКО в последнюю
+    совпавшую — та же причина, что и в точечных хелперах выше (последняя подача самая
+    свежая, это строка, которую оставляет `_dedupe_sheet_sync`; писать во все дубли дороже
+    по квоте и маскирует сам факт дублей). `updated_count` — число УНИКАЛЬНЫХ id, записанных
+    на этом листе, а не число совпавших строк."""
     status_col = _status_col_index(sheet)  # 0-based
     if status_col < 0:
         return 0, set()
     col1 = sheet.col_values(1)
-    updates = []
-    found: set[str] = set()
+    updates_by_key: dict[str, dict] = {}
     for row_idx, val in enumerate(col1[1:], start=2):  # skip header
         key = (val or "").strip()
         if key in wanted:
             a1 = gspread.utils.rowcol_to_a1(row_idx, status_col + 1)
-            updates.append({"range": a1, "values": [[id_to_label[key]]]})
-            found.add(key)
+            updates_by_key[key] = {"range": a1, "values": [[id_to_label[key]]]}  # последнее совпадение затирает предыдущее
+    updates = list(updates_by_key.values())
+    found = set(updates_by_key.keys())
     if updates:
         sheet.batch_update(updates)
     return len(updates), found
