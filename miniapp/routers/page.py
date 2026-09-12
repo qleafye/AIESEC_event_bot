@@ -92,6 +92,9 @@ SCREEN_TEXT_KEYS = {
     "submit_pending": "miniapp_submit_pending_text",
     "submit_approved": "miniapp_submit_approved_text",
     "submit_limit": "miniapp_submit_limit_text",
+    # Квик 12.09 (UI-аудит, пункт 3): обрыв сети на любом шаге анкеты — общий фоллбэк вместо
+    # пустой плашки (12 мест в screens/form.js звали errorText(err, "")).
+    "network_error": "miniapp_network_error_text",
 }
 
 
