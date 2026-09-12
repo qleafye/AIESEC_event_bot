@@ -248,6 +248,9 @@ MINIAPP_KEYS = [
     # экране анкеты «Заявка принята» (183 -> 185).
     "miniapp_network_error_text",
     "miniapp_form_complete_home_cta_text",
+    # Квик 12.09 (UI-аудит, пункт 4): счётчик «N из M» в шапке карточки группы настроек
+    # (185 -> 186).
+    "miniapp_settings_group_count_text",
 ]
 
 # Phase 22 Plan 02: новые тексты веб-экрана настроек — используются в проверках ниже.
@@ -298,8 +301,9 @@ def test_exactly_170_miniapp_keys_and_no_extra():
     # Quick 260911-5ij (W2): +5 текстов состояний — ошибка загрузки/кнопка повтора + три
     # состояния закрытой сдачи (178 -> 183).
     # Квик 12.09 (UI-аудит): +2 ключа — текст «нет связи» в приложении и подпись кнопки
-    # выхода на терминальном экране анкеты (183 -> 185).
-    assert len(MINIAPP_KEYS) == 185
+    # выхода на терминальном экране анкеты (183 -> 185); +1 ключ счётчика группы настроек
+    # «N из M» (185 -> 186).
+    assert len(MINIAPP_KEYS) == 186
     present = sorted(k for k in SETTINGS_SCHEMA if k.startswith("miniapp_"))
     assert present == sorted(MINIAPP_KEYS)
 
@@ -361,8 +365,8 @@ def test_text_keys_have_human_defaults():
     # (139 -> 147).
     # Quick 260911-5ij (W2): +5 текстовых ключей состояний (147 -> 152).
     # Квик 12.09 (UI-аудит): +2 текстовых ключа — «нет связи» в анкете и кнопка выхода на
-    # терминальном экране (152 -> 154).
-    assert len(text_keys) == 154
+    # терминальном экране (152 -> 154); +1 текстовый ключ счётчика группы настроек (154 -> 155).
+    assert len(text_keys) == 155
     for key in text_keys:
         default = SETTINGS_SCHEMA[key]["default"]
         assert isinstance(default, str) and default.strip(), key
@@ -495,8 +499,9 @@ def test_settings_screen_keys_count_and_shape():
     +3 текста стартового экрана-плиток (два заголовка ряда + счётчик настроек) = 44.
     Phase 22 Plan 07 (D-17 Task 3): +3 заголовка колонок матрицы «трек × вопрос» = 47.
     Quick 260904-8o3 Task 3 (E5/E6): +3 надписи мини-плиты живого превью оформления = 50.
-    Phase 28 (28-08): +1 пометка исчезнувшего варианта в чекбокс-строках = 51."""
-    assert len(MINIAPP_SETTINGS_SCREEN_KEYS) == 51
+    Phase 28 (28-08): +1 пометка исчезнувшего варианта в чекбокс-строках = 51.
+    Квик 12.09 (UI-аудит, пункт 4): +1 счётчик группы настроек «N из M» = 52."""
+    assert len(MINIAPP_SETTINGS_SCREEN_KEYS) == 52
     assert "miniapp_settings_misc_group_label_text" not in MINIAPP_SETTINGS_SCREEN_KEYS
     for key in MINIAPP_SETTINGS_SCREEN_KEYS:
         entry = SETTINGS_SCHEMA[key]
