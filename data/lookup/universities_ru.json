@@ -1,0 +1,77 @@
+{
+  "meta": {
+    "source_query": "офлайн-фолбэк: config.UNIVERSITIES (сеть до query.wikidata.org недоступна на момент выгрузки — см. data/lookup/README.md)",
+    "count_base": 0,
+    "count_closure": 0,
+    "excluded_dissolved": 0,
+    "fetched_at": "2026-09-13 01:01:08"
+  },
+  "items": [
+    {
+      "canonical": "ИТМО",
+      "aliases": [],
+      "source": "config_fallback",
+      "dissolved": false
+    },
+    {
+      "canonical": "Политех",
+      "aliases": [],
+      "source": "config_fallback",
+      "dissolved": false
+    },
+    {
+      "canonical": "ЛЭТИ",
+      "aliases": [],
+      "source": "config_fallback",
+      "dissolved": false
+    },
+    {
+      "canonical": "ГУАП",
+      "aliases": [],
+      "source": "config_fallback",
+      "dissolved": false
+    },
+    {
+      "canonical": "БОООНЧ",
+      "aliases": [],
+      "source": "config_fallback",
+      "dissolved": false
+    },
+    {
+      "canonical": "Горный",
+      "aliases": [],
+      "source": "config_fallback",
+      "dissolved": false
+    },
+    {
+      "canonical": "Военмех",
+      "aliases": [],
+      "source": "config_fallback",
+      "dissolved": false
+    },
+    {
+      "canonical": "СПбГАСУ",
+      "aliases": [],
+      "source": "config_fallback",
+      "dissolved": false
+    },
+    {
+      "canonical": "СПбГУТ",
+      "aliases": [],
+      "source": "config_fallback",
+      "dissolved": false
+    },
+    {
+      "canonical": "Технологический институт (СПбГТИ)",
+      "aliases": [],
+      "source": "config_fallback",
+      "dissolved": false
+    },
+    {
+      "canonical": "ВШЭ (Питер)",
+      "aliases": [],
+      "source": "config_fallback",
+      "dissolved": false
+    }
+  ]
+}

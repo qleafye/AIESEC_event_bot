@@ -1,0 +1,71 @@
+{
+  "meta": {
+    "source_query": "офлайн-фолбэк: города бота (config.EVENT_CITIES) + SELECT_CONFIG['city'] — лицензия arbaev/russia-cities не подтверждена (см. data/lookup/README.md)",
+    "count_base": 0,
+    "count_closure": 0,
+    "excluded_dissolved": 0,
+    "fetched_at": "2026-09-13 01:01:08"
+  },
+  "items": [
+    {
+      "canonical": "Москва",
+      "aliases": [],
+      "source": "bot_cities_fallback",
+      "dissolved": false
+    },
+    {
+      "canonical": "Санкт-Петербург",
+      "aliases": [],
+      "source": "bot_cities_fallback",
+      "dissolved": false
+    },
+    {
+      "canonical": "Тюмень",
+      "aliases": [],
+      "source": "bot_cities_fallback",
+      "dissolved": false
+    },
+    {
+      "canonical": "Москва и МО",
+      "aliases": [],
+      "source": "bot_cities_fallback",
+      "dissolved": false
+    },
+    {
+      "canonical": "Новосибирск",
+      "aliases": [],
+      "source": "bot_cities_fallback",
+      "dissolved": false
+    },
+    {
+      "canonical": "Екатеринбург",
+      "aliases": [],
+      "source": "bot_cities_fallback",
+      "dissolved": false
+    },
+    {
+      "canonical": "Казань",
+      "aliases": [],
+      "source": "bot_cities_fallback",
+      "dissolved": false
+    },
+    {
+      "canonical": "Нижний Новгород",
+      "aliases": [],
+      "source": "bot_cities_fallback",
+      "dissolved": false
+    },
+    {
+      "canonical": "Красноярск",
+      "aliases": [],
+      "source": "bot_cities_fallback",
+      "dissolved": false
+    },
+    {
+      "canonical": "Уфа",
+      "aliases": [],
+      "source": "bot_cities_fallback",
+      "dissolved": false
+    }
+  ]
+}
