@@ -7,6 +7,7 @@ from datetime import datetime, timedelta
 import aiosqlite
 import reg_options
 from config import config
+from services.timeutil import msk_now, process_clock_is_utc
 
 logger = logging.getLogger(__name__)
 
@@ -126,6 +127,166 @@ async def _ensure_hot_path_indexes(db: aiosqlite.Connection) -> list[str]:
         )
         created.append(name)
     return created
+
+
+# Квик 260912-mcj: семья «сейчас» бота (все точки записи в этом файле переведены на
+# `services.timeutil.msk_now()` — см. коммит, добавивший этот модуль-уровневый импорт).
+# strftime-колонки ("%Y-%m-%d %H:%M:%S") — одним UPDATE через SQLite `datetime(col, '+3 hours')`.
+# НЕ входят: `datetime.utcnow()`-семья (staff.added_at, delegate_questions.*,
+# reg_answer_history.changed_at, translations.updated_at), уже-московские поля ввода менеджера
+# (delayed_notifications.*, scheduled_broadcasts.scheduled_at, polls.scheduled_at,
+# game_tasks.deadline_at, users.payment_due) и служебные `translation_queue.created_at`/
+# avatar-кэш `users` (не критичны — TTL/очередь по attempts, не по человеку читаемому времени).
+_MSK_MIGRATION_COLUMNS: tuple[tuple[str, str], ...] = (
+    ("users", "registration_date"),
+    ("users", "edited_at"),
+    ("users", "approved_at"),
+    ("coins", "timestamp"),
+    ("reg_started", "started_at"),
+    ("reg_started", "nudged_at"),
+    ("reg_drafts", "updated_at"),
+    ("reg_drafts", "submitting_at"),
+    ("reg_events", "ts"),
+    ("application_decisions", "decided_at"),
+    ("application_decisions", "effects_due_at"),
+    ("application_decisions", "effects_sent_at"),
+    ("application_decisions", "undone_at"),
+    ("scheduled_broadcasts", "created_at"),
+    ("scheduled_broadcasts", "sending_since"),
+    ("scheduled_broadcast_deliveries", "sent_at"),
+    ("broadcasts", "started_at"),
+    ("broadcasts", "finished_at"),
+    ("broadcast_deliveries", "sent_at"),
+    ("game_tasks", "created_at"),
+    ("game_tasks", "archived_at"),
+    ("game_submissions", "submitted_at"),
+    ("game_submissions", "reviewed_at"),
+    ("game_submit_digest_queue", "created_at"),
+    ("game_submit_digest_queue", "sent_at"),
+    ("polls", "created_at"),
+    ("polls", "sending_since"),
+    ("polls", "closed_at"),
+    ("poll_answers", "answered_at"),
+    ("miniapp_outbox", "created_at"),
+    ("miniapp_outbox", "processed_at"),
+    ("cities", "created_at"),
+)
+
+# isoformat-колонки (`.isoformat()`, не strftime) — SQLite `datetime(col,'+3 hours')` вернул бы
+# `'YYYY-MM-DD HH:MM:SS'` и потерял бы `T`-разделитель и микросекунды, которые
+# `datetime.fromisoformat` на показе ожидает обратно — эти две колонки сдвигаются построчно
+# в python, не одним UPDATE.
+_MSK_MIGRATION_ISO_COLUMNS: tuple[tuple[str, str], ...] = (
+    ("users", "paid_at"),
+    ("user_consents", "accepted_at"),
+)
+
+_MSK_MIGRATION_MARKER_KEY = "_ts_msk_migrated"
+
+
+async def _migrate_local_timestamps_to_msk(db: aiosqlite.Connection) -> None:
+    """Одноразовая гейтированная миграция семьи «сейчас» бота (квик 260912-mcj) — до этого
+    квика вся семья писалась часами процесса (UTC на проде/стенде, `TZ` в docker-compose.yml
+    намеренно не задан), с этого квика пишется московским `msk_now()`. Накопленные строки
+    обязаны переехать один раз — иначе карточка заявки, дашборд и фильтр рассылки по дате
+    склеили бы UTC и МСК в одной колонке.
+
+    Вызывается из `init_db` НА ТОМ ЖЕ соединении `db`, ДО финального `await db.commit()` —
+    маркер и сдвиг ложатся ОДНОЙ транзакцией: либо сдвинуты все колонки и маркер стоит, либо
+    (при сбое до commit) не тронуто ничего. Свой `_connect()` внутри намеренно не открывается.
+
+    Гейт — служебный ключ `bot_settings` (`_ts_msk_migrated`), читается/пишется ПРЯМЫМ SQL по
+    `db`, а не через `get_setting`/`set_setting`: те открывают собственное соединение (что
+    разбило бы транзакцию надвое) и `set_setting` вдобавок логирует значение и дёргает очередь
+    перевода — оба эффекта здесь не нужны и не безопасны посреди миграции. Ключ намеренно вне
+    `SETTINGS_SCHEMA` — менеджеру он не показывается и не редактируется.
+
+    Логика:
+    1. Маркер уже стоит -> выходим немедленно (цена повторного старта — один SELECT).
+    2. `process_clock_is_utc()` (`services.timeutil`) лжёт "нет" -> часы процесса не UTC,
+       значит все старые строки уже писались локальным (московским) временем этой же машины
+       (ноутбук разработчика, хост с локальным TZ) — сдвигать НЕЧЕГО. Экзотика «часы = UTC+1»
+       намеренно тоже попадает в эту ветку: сдвигать вслепую по одному лишь «не UTC» опаснее,
+       чем не сдвигать вовсе. Маркер всё равно ставится — иначе каждый старт пересчитывал бы
+       часы заново.
+    3. Иначе — часы процесса UTC, все прежние строки писал UTC-контейнер: сдвигаем `+3 hours`
+       по `_MSK_MIGRATION_COLUMNS`/`_MSK_MIGRATION_ISO_COLUMNS`. Таблица/колонка, которой ещё
+       нет (старая БД, `_ensure_column` для неё не отработал) — пропускается молча, а не
+       роняет миграцию: `_column_exists` фильтрует список ДО SQL.
+
+    Кривые/пустые значения переживают сдвиг: strftime-UPDATE защищён `datetime(c) IS NOT NULL`
+    (SQLite вернул бы NULL и затёр бы мусорную строку без этого фильтра), isoformat-путь ловит
+    `ValueError`/`TypeError` на построчном разборе и оставляет такую строку как есть.
+    """
+    async with db.execute(
+        "SELECT value FROM bot_settings WHERE key = ?", (_MSK_MIGRATION_MARKER_KEY,)
+    ) as cursor:
+        row = await cursor.fetchone()
+    if row is not None:
+        return
+
+    if not process_clock_is_utc():
+        logger.info(
+            "_migrate_local_timestamps_to_msk: часы процесса не UTC — старые строки семьи уже "
+            "московские, сдвиг не нужен"
+        )
+        await db.execute(
+            "INSERT OR REPLACE INTO bot_settings (key, value) VALUES (?, ?)",
+            (_MSK_MIGRATION_MARKER_KEY, "1"),
+        )
+        return
+
+    shifted_columns = 0
+    for table, column in _MSK_MIGRATION_COLUMNS:
+        if not await _column_exists(db, table, column):
+            continue
+        _assert_identifier(table)
+        _assert_identifier(column)
+        cursor = await db.execute(
+            f"UPDATE {table} SET {column} = datetime({column}, '+3 hours') "
+            f"WHERE {column} IS NOT NULL AND TRIM({column}) != '' "
+            f"AND datetime({column}) IS NOT NULL"
+        )
+        logger.info(
+            f"_migrate_local_timestamps_to_msk: {table}.{column} — сдвинуто строк: {cursor.rowcount}"
+        )
+        shifted_columns += 1
+
+    shifted_iso_rows = 0
+    for table, column in _MSK_MIGRATION_ISO_COLUMNS:
+        if not await _column_exists(db, table, column):
+            continue
+        _assert_identifier(table)
+        _assert_identifier(column)
+        async with db.execute(f"SELECT rowid, {column} FROM {table}") as cursor:
+            rows = await cursor.fetchall()
+        table_rows = 0
+        for rowid, raw in rows:
+            if not raw:
+                continue
+            try:
+                shifted = datetime.fromisoformat(raw) + timedelta(hours=3)
+            except (ValueError, TypeError):
+                continue
+            await db.execute(
+                f"UPDATE {table} SET {column} = ? WHERE rowid = ?",
+                (shifted.isoformat(), rowid),
+            )
+            table_rows += 1
+        logger.info(
+            f"_migrate_local_timestamps_to_msk: {table}.{column} (isoformat) — сдвинуто строк: {table_rows}"
+        )
+        shifted_iso_rows += table_rows
+
+    logger.info(
+        "_migrate_local_timestamps_to_msk: итог — strftime-колонок сдвинуто "
+        f"{shifted_columns}/{len(_MSK_MIGRATION_COLUMNS)}, isoformat-строк сдвинуто "
+        f"{shifted_iso_rows} по {len(_MSK_MIGRATION_ISO_COLUMNS)} колонкам"
+    )
+    await db.execute(
+        "INSERT OR REPLACE INTO bot_settings (key, value) VALUES (?, ?)",
+        (_MSK_MIGRATION_MARKER_KEY, "1"),
+    )
 
 
 async def init_db():
@@ -843,6 +1004,10 @@ async def init_db():
             (reg_options.SOURCE_NOT_ASKED, reg_options.SOURCE_NOT_ASKED_LEGACY),
         )
 
+        # Квик 260912-mcj: одноразовый сдвиг семьи «сейчас» бота на московское время — на
+        # этом же соединении, до финального commit (см. докстринг функции).
+        await _migrate_local_timestamps_to_msk(db)
+
         await db.commit()
 
 async def get_setting(key: str) -> str | None:
@@ -1516,7 +1681,7 @@ async def add_coins(user_id: int, delta: int, reason: str | None = None, changed
     Phase 14 (GAME-09): `source` distinguishes a manual manager edit ('manual') from a
     task-award credit ('task') at the data level. Default None preserves every pre-existing
     call site's behavior byte-for-byte (NULL = legacy/system, per Pitfall 6 in 14-RESEARCH.md)."""
-    timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    timestamp = msk_now().strftime("%Y-%m-%d %H:%M:%S")
     async with _connect() as db:
         await db.execute(
             "INSERT INTO coins (user_id, delta, reason, changed_by, timestamp, source) VALUES (?, ?, ?, ?, ?, ?)",
@@ -1679,7 +1844,7 @@ async def mark_reg_started(
     participant_type: str | None = None,
     event_city: str | None = None,
 ):
-    started_at = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    started_at = msk_now().strftime("%Y-%m-%d %H:%M:%S")
     # UNAME-04 (квик 260911-0zu): канон "с @" -- 2149 прод-строк users уже лежат с собакой,
     # менять их формат без миграции нельзя (миграция вне скоупа квика), поэтому к ним
     # подтягивается reg_started, а не наоборот. Старые 947 строк reg_started без собаки НЕ
@@ -1760,7 +1925,7 @@ async def upsert_reg_draft(
     silently steals ownership from whoever holds the draft (see `_sync_draft_out` comment in
     `handlers/registration.py` for why that matters). On INSERT — whoever creates the row owns
     it: `active_surface or ("app" if source == "miniapp" else "bot")`."""
-    now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    now = msk_now().strftime("%Y-%m-%d %H:%M:%S")
     clean_patch = {k: v for k, v in (patch or {}).items() if not k.startswith("_")}
 
     async with _connect() as db:
@@ -1834,7 +1999,7 @@ async def claim_reg_draft(telegram_id: int) -> dict | None:
     caller that flips `submitting_at` from NULL wins (rowcount == 1) and gets the draft row
     back; a concurrent second finalize call (bot vs Mini App, T-21-02) gets None and must
     tell the user "уже отправляется"."""
-    now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    now = msk_now().strftime("%Y-%m-%d %H:%M:%S")
     async with _connect() as db:
         cursor = await db.execute(
             "UPDATE reg_drafts SET submitting_at = ? WHERE telegram_id = ? AND submitting_at IS NULL",
@@ -1873,7 +2038,7 @@ async def touch_reg_draft_activity(telegram_id: int) -> None:
     heartbeat. Called every time the Mini App writes a step/answer so the delegate stops
     looking abandoned to the dropout-nudge scan while they are actively answering there
     (D-21: reg_started itself is never touched by this). No-op if the draft is already gone."""
-    now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    now = msk_now().strftime("%Y-%m-%d %H:%M:%S")
     async with _connect() as db:
         await db.execute(
             "UPDATE reg_drafts SET updated_at = ? WHERE telegram_id = ?", (now, telegram_id)
@@ -1922,9 +2087,9 @@ async def record_answer_history(
     и `services/applications.py::format_edited_date`. Показ переводит метку в МСК на всех трёх
     экранах (`services/sheet_logs.py`, `services/applications.py::_history_entry`,
     `handlers/admin_moderation.py::appr_history`). Соседняя `mark_user_edited` (`edited_at`)
-    ОСТАЁТСЯ на `datetime.now()` (локальное время контейнера) — это разные поля с разной
-    историей, синхронный перевод обеих не входит в этот квик. Старые строки, записанные до
-    этой правки локальным временем, не мигрированы — граница по времени внедрения, не по коду."""
+    квиком 260912-mcj переведена на московский `msk_now()` (раньше писала локальное время
+    контейнера) — это по-прежнему РАЗНЫЕ семьи: `changed_at` остаётся UTC и переводится на
+    показе, `edited_at` теперь пишется уже московским и переводить его больше не нужно."""
     if not changes:
         return
     changed_at = datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S")
@@ -1987,7 +2152,7 @@ async def list_answer_history(limit: int = 5000) -> list[dict]:
 async def mark_user_edited(telegram_id: int, source: str) -> None:
     """Stamp users.edited_at/edited_source ('bot' | 'miniapp') — the «✏️ Изменена» flag on the
     moderation card (D-12). Repeat calls simply advance edited_at to the latest edit time."""
-    edited_at = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    edited_at = msk_now().strftime("%Y-%m-%d %H:%M:%S")
     async with _connect() as db:
         await db.execute(
             "UPDATE users SET edited_at = ?, edited_source = ? WHERE telegram_id = ?",
@@ -2023,7 +2188,7 @@ async def record_reg_event(
         logger.warning(
             "record_reg_event: unexpected event kind %r for telegram_id=%s", event, telegram_id
         )
-    ts = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    ts = msk_now().strftime("%Y-%m-%d %H:%M:%S")
     async with _connect() as db:
         await db.execute(
             "INSERT INTO reg_events (telegram_id, event, event_city, season, ts, source_tag) "
@@ -2058,13 +2223,14 @@ async def backfill_reg_event_city(telegram_id: int, event_city: str) -> None:
 
 def _reg_started_cutoff(max_age_hours: int | None) -> str | None:
     """Нижняя граница `started_at` для восстановления брошенной анкеты, в том же формате и по
-    тем же часам, которыми `mark_reg_started` эту колонку пишет (`datetime.now()`, локальное
-    время процесса). Специально НЕ `datetime('now')` на стороне SQLite: тот считает в UTC, и
+    тем же часам, которыми `mark_reg_started` эту колонку пишет (`msk_now()`, московское время
+    — квик 260912-mcj, раньше были часы контейнера). Обе стороны сравнения теперь одинаково
+    московские. Специально НЕ `datetime('now')` на стороне SQLite: тот считает в UTC, и
     на сервере в любой не-UTC зоне отсечка уехала бы на несколько часов. `None`/непозитивное
     значение — «без ограничения», прежнее поведение."""
     if not max_age_hours or max_age_hours <= 0:
         return None
-    return (datetime.now() - timedelta(hours=max_age_hours)).strftime("%Y-%m-%d %H:%M:%S")
+    return (msk_now() - timedelta(hours=max_age_hours)).strftime("%Y-%m-%d %H:%M:%S")
 
 
 # Phase 5 (D-02): read the track recorded at flow start, before finalize_registration clears
@@ -2236,7 +2402,7 @@ async def approve_user_atomic(telegram_id: int) -> bool:
     approved_at (D-10, Phase 23.1-05) is stamped in the SAME UPDATE — this is the shared seam
     for both the bot's single-approve (appr_approve) and the web's single-approve
     (services.applications.claim_approve), so a second timestamp write is never needed."""
-    approved_at = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    approved_at = msk_now().strftime("%Y-%m-%d %H:%M:%S")
     async with _connect() as db:
         cursor = await db.execute(
             "UPDATE users SET status = 'approved', approved_at = ? "
@@ -2378,12 +2544,11 @@ async def get_resume_upload_backlog(before: str, limit: int = 20) -> list[dict]:
     `resume_url` пуст, а `resume_file_id`/`resume_text` есть (делегат прислал файл/текст на
     финале, но выгрузка в Nextcloud сорвалась или облако было выключено).
 
-    `before` — отсечка «строка не моложе N минут», сравнение СТРОКОВОЕ, потому что
-    `registration_date` пишется `strftime("%Y-%m-%d %H:%M:%S")` по часам контейнера
-    (services/reg_finalize.py:161) — сравнивать с московским временем здесь НЕЛЬЗЯ, та же
-    ловушка, что разобрана в комментарии `nudge_incomplete_registrations`
-    (services/scheduler.py). Свежие строки (моложе отсечки) не берём — финал ещё может быть
-    «в полёте» под своим таймаутом.
+    `before` — отсечка «строка не моложе N минут», сравнение СТРОКОВОЕ. Квик 260912-mcj:
+    `registration_date` пишется `strftime("%Y-%m-%d %H:%M:%S")` от московского `msk_now()`
+    (services/reg_finalize.py:161) — обе стороны сравнения теперь на одних часах, отсечка
+    ОБЯЗАНА приходить тоже московской (`msk_now()`), иначе разъезд на 3 часа. Свежие строки
+    (моложе отсечки) не берём — финал ещё может быть «в полёте» под своим таймаутом.
 
     Порядок — по `registration_date` по возрастанию (старые в очереди первыми), лимит батча
     ограничивает число строк за один тик джобы."""
@@ -2427,7 +2592,7 @@ async def approve_all_pending(*, city_scope=None) -> list[int]:
     for BOTH mass-approve callers: the bot's appr_all_yes calls this function directly (not
     through services.applications.claim_approve_all), so stamping only in the service wrapper
     would silently miss the chat path."""
-    approved_at = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    approved_at = msk_now().strftime("%Y-%m-%d %H:%M:%S")
     frag, city_params = _city_clause(city_scope)
     extra = f" AND {frag}" if frag else ""
     async with _connect() as db:
@@ -2481,7 +2646,7 @@ async def claim_application_undo(decision_id: int) -> dict | None:
             "UPDATE application_decisions SET undone_at = ? "
             "WHERE id = ? AND effects_sent_at IS NULL AND undone_at IS NULL "
             "RETURNING *",
-            (datetime.now().strftime("%Y-%m-%d %H:%M:%S"), decision_id),
+            (msk_now().strftime("%Y-%m-%d %H:%M:%S"), decision_id),
         ) as cursor:
             row = await cursor.fetchone()
         await db.commit()
@@ -2599,7 +2764,7 @@ async def create_scheduled_broadcast(
     created_by: int,
 ) -> int:
     """Insert a pending scheduled broadcast; return its new id (the job's only arg)."""
-    created_at = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    created_at = msk_now().strftime("%Y-%m-%d %H:%M:%S")
     async with _connect() as db:
         cursor = await db.execute(
             "INSERT INTO scheduled_broadcasts "
@@ -2630,7 +2795,7 @@ async def mark_broadcast_sending(broadcast_id: int) -> int:
     'pending' so it is re-armed; the send loop then skips every chat already recorded in
     scheduled_broadcast_deliveries, so the re-run reaches only the unsent tail (review 260817
     §B2). `sending_since` is stamped here so that staleness can be measured."""
-    now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    now = msk_now().strftime("%Y-%m-%d %H:%M:%S")
     async with _connect() as db:
         cursor = await db.execute(
             "UPDATE scheduled_broadcasts SET status = 'sending', sending_since = ? "
@@ -2657,7 +2822,7 @@ async def reclaim_stale_sending(max_age_minutes: int) -> list[int]:
     scheduled_broadcast_deliveries — the re-run reaches the unsent tail, not the whole audience.
     Rows with NULL `sending_since` (claimed by a build older than this column) are deliberately
     left alone: they have no delivery log, so a re-run WOULD blast everyone a second time."""
-    cutoff = (datetime.now() - timedelta(minutes=max_age_minutes)).strftime("%Y-%m-%d %H:%M:%S")
+    cutoff = (msk_now() - timedelta(minutes=max_age_minutes)).strftime("%Y-%m-%d %H:%M:%S")
     async with _connect() as db:
         async with db.execute(
             "SELECT id FROM scheduled_broadcasts "
@@ -2690,7 +2855,7 @@ async def list_delivered_chat_ids(broadcast_id: int) -> set[int]:
 async def mark_delivery(broadcast_id: int, chat_id: int, ok: bool):
     """Checkpoint one send attempt. INSERT OR REPLACE so a retry after a crash that landed
     between the send and this write just overwrites the row."""
-    now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    now = msk_now().strftime("%Y-%m-%d %H:%M:%S")
     async with _connect() as db:
         await db.execute(
             "INSERT OR REPLACE INTO scheduled_broadcast_deliveries "
@@ -2729,7 +2894,7 @@ async def cleanup_deliveries(broadcast_id: int):
 
 async def create_broadcast(admin_id: int, text_preview: str, total: int) -> int:
     """Insert a 'sending' row for an immediate broadcast; return its new id."""
-    started_at = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    started_at = msk_now().strftime("%Y-%m-%d %H:%M:%S")
     async with _connect() as db:
         cursor = await db.execute(
             "INSERT INTO broadcasts "
@@ -2743,7 +2908,7 @@ async def create_broadcast(admin_id: int, text_preview: str, total: int) -> int:
 
 async def record_broadcast_delivery(broadcast_id: int, chat_id: int, message_id: int):
     """One row per delivered message (several per chat_id for an album)."""
-    now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    now = msk_now().strftime("%Y-%m-%d %H:%M:%S")
     async with _connect() as db:
         await db.execute(
             "INSERT INTO broadcast_deliveries (broadcast_id, chat_id, message_id, sent_at) "
@@ -2754,7 +2919,7 @@ async def record_broadcast_delivery(broadcast_id: int, chat_id: int, message_id:
 
 
 async def finish_broadcast(broadcast_id: int, status: str, delivered: int, blocked: int):
-    finished_at = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    finished_at = msk_now().strftime("%Y-%m-%d %H:%M:%S")
     async with _connect() as db:
         await db.execute(
             "UPDATE broadcasts SET status = ?, delivered = ?, blocked = ?, finished_at = ? "
@@ -2852,7 +3017,7 @@ async def get_nudge_candidates(cutoff: str) -> list[int]:
 
 async def mark_nudged(telegram_id: int):
     """Stamp nudged_at so a user is never nudged twice (one-shot dedup, D-14)."""
-    nudged_at = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    nudged_at = msk_now().strftime("%Y-%m-%d %H:%M:%S")
     async with _connect() as db:
         await db.execute(
             "UPDATE reg_started SET nudged_at = ? WHERE telegram_id = ?",
@@ -3166,7 +3331,7 @@ async def record_user_consent(
     consent_version); повтор того же (user, key, version) дедупится, новая редакция — новая
     строка. Quick 260907-4ai: `raw_button` — снимок текста нажатой кнопки (не перечитывается
     из настройки); опционален, старые вызовы без аргумента пишут NULL."""
-    accepted_at = datetime.now().isoformat()
+    accepted_at = msk_now().isoformat()
     if consent_version is None:
         consent_version = await current_consent_version()
     async with _connect() as db:
@@ -3249,7 +3414,7 @@ async def update_payment_status(
     params: list = [status]
     extras = dict(kwargs)
     if status == "paid" and "paid_at" not in extras:
-        extras["paid_at"] = datetime.now().isoformat()
+        extras["paid_at"] = msk_now().isoformat()
     for col in ("receipt_file_id", "paid_at", "payment_option", "payment_due"):
         if col in extras:
             sets.append(f"{col} = ?")
@@ -3698,7 +3863,7 @@ async def create_task(text: str, category: str, coins: int, proof_type: str,
     task unless a caller opts in. `title`/`photo_file_id` (quick 260819-gtl) are kwarg-only
     for the same reason -- every pre-existing call site keeps creating a NULL-title/NULL-photo
     task (rendered via task_title()'s fallback) unless a caller opts in."""
-    created_at = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    created_at = msk_now().strftime("%Y-%m-%d %H:%M:%S")
     async with _connect() as db:
         cursor = await db.execute(
             "INSERT INTO game_tasks (text, category, coins, proof_type, deadline_at, "
@@ -4086,7 +4251,7 @@ async def get_active_submission(task_id: int, user_id: int) -> dict | None:
 async def archive_task(task_id: int) -> bool:
     """True iff THIS call archived the task (rowcount == 1) — a no-op on an already-archived
     task returns False, same idiom as claim_submission."""
-    archived_at = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    archived_at = msk_now().strftime("%Y-%m-%d %H:%M:%S")
     async with _connect() as db:
         cursor = await db.execute(
             "UPDATE game_tasks SET archived_at = ? WHERE id = ? AND archived_at IS NULL",
@@ -4293,7 +4458,7 @@ async def claim_submission(submission_id: int, admin_id: int, status: str, *,
     submission_id returns False and its coins_awarded/reject_reason never lands (T-09-02).
     Crediting coins via add_coins is NOT done here — the caller (wave 4) does it as a separate
     step, only after this returns True, same two-step shape as appr_approve -> approve_user."""
-    reviewed_at = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    reviewed_at = msk_now().strftime("%Y-%m-%d %H:%M:%S")
     async with _connect() as db:
         cursor = await db.execute(
             "UPDATE game_submissions SET status = ?, reviewed_by = ?, reviewed_at = ?, "
@@ -4389,7 +4554,7 @@ async def insert_city(code: str, label: str, tab_base: str | None, sort_order: i
         await db.execute(
             "INSERT INTO cities (code, label, tab_base, enabled, sort_order, created_at) "
             "VALUES (?, ?, ?, ?, ?, ?)",
-            (code, label, tab_base, enabled, sort_order, datetime.now().strftime("%Y-%m-%d %H:%M:%S")),
+            (code, label, tab_base, enabled, sort_order, msk_now().strftime("%Y-%m-%d %H:%M:%S")),
         )
         await db.commit()
 
@@ -4467,7 +4632,7 @@ POLL_STATUS_LABELS = {
 
 
 def _now_str() -> str:
-    return datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    return msk_now().strftime("%Y-%m-%d %H:%M:%S")
 
 
 async def create_poll(
@@ -4552,7 +4717,7 @@ async def reclaim_stale_sending_polls(max_age_minutes: int) -> list[int]:
     """Опросы, застрявшие в 'sending' дольше порога (крах посреди рассылки) → 'scheduled',
     чтобы реконсиляция на буте дослала хвост. Повтор безопасен: deliver пропускает чаты,
     уже записанные в poll_messages."""
-    cutoff = (datetime.now() - timedelta(minutes=max_age_minutes)).strftime("%Y-%m-%d %H:%M:%S")
+    cutoff = (msk_now() - timedelta(minutes=max_age_minutes)).strftime("%Y-%m-%d %H:%M:%S")
     async with _connect() as db:
         async with db.execute(
             "SELECT id FROM polls WHERE status = 'sending' AND sending_since IS NOT NULL "
@@ -4782,7 +4947,7 @@ async def upsert_translation(
     вправе перезаписывать только машинный же). Если оба условия ложны (машинная попытка
     поверх ручной правки), INSERT ... DO UPDATE молча ничего не делает — это и есть защита,
     не побочный эффект."""
-    updated_at = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    updated_at = msk_now().strftime("%Y-%m-%d %H:%M:%S")
     async with _connect() as db:
         await db.execute(
             '''
@@ -4874,7 +5039,7 @@ async def enqueue_translation(
     СХЕМЕ через `UNIQUE(lang, src_hash)` (T-27-02-02), не в коде воркера. Возвращает
     `lastrowid` новой строки или `None`, если строка с этим `(lang, src_hash)` уже стоит
     в очереди."""
-    ts = created_at or datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    ts = created_at or msk_now().strftime("%Y-%m-%d %H:%M:%S")
     async with _connect() as db:
         cursor = await db.execute(
             "INSERT OR IGNORE INTO translation_queue (lang, src_hash, src_text, origin_key, created_at) "

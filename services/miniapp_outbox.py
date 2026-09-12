@@ -53,7 +53,6 @@ At-least-once, с ретраями (T-19-56): исключение -> `mark_mini
 может нести ПД, например имя делегата).
 """
 import logging
-from datetime import datetime
 
 from database.db import (
     list_unprocessed_miniapp_outbox,
@@ -65,6 +64,7 @@ from services.application_effects import apply_decision_effects, mass_approve_ef
 from services.game_digest import notify_submission
 from services.game_sync import request_resync
 from services.reg_finalize import post_finalize, derive_edit_facts, handle_resume_upload
+from services.timeutil import msk_now
 from settings_schema import get_setting_typed
 
 logger = logging.getLogger(__name__)
@@ -187,5 +187,5 @@ async def drain(bot) -> int:
         done_ids.append(row_id)
 
     if done_ids:
-        await mark_miniapp_outbox_processed(done_ids, datetime.now().strftime("%Y-%m-%d %H:%M:%S"))
+        await mark_miniapp_outbox_processed(done_ids, msk_now().strftime("%Y-%m-%d %H:%M:%S"))
     return len(done_ids)

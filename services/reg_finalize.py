@@ -67,6 +67,7 @@ from database.db import (
     get_resume_upload_backlog,
 )
 from settings_schema import get_setting_typed
+from services.timeutil import msk_now
 
 logger = logging.getLogger(__name__)
 
@@ -225,7 +226,7 @@ async def finalize_data(telegram_id: int, username: str | None, draft: dict) -> 
             data = dict(answers)
             data["telegram_id"] = telegram_id
             data["username"] = username or "-"
-            data["registration_date"] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+            data["registration_date"] = msk_now().strftime("%Y-%m-%d %H:%M:%S")
             # Phase 5 (D-01): a flow that never saw a party link writes the default explicitly.
             data.setdefault("participant_type", "full")
 
@@ -667,7 +668,7 @@ async def retry_pending_resume_uploads(bot, limit: int = 20) -> int:
         return 0
 
     cutoff = (
-        datetime.now() - timedelta(minutes=_RESUME_RETRY_MIN_AGE_MINUTES)
+        msk_now() - timedelta(minutes=_RESUME_RETRY_MIN_AGE_MINUTES)
     ).strftime("%Y-%m-%d %H:%M:%S")
     rows = await get_resume_upload_backlog(cutoff, limit)
     if not rows:

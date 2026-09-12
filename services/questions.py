@@ -112,19 +112,19 @@ def format_stamp(raw: str | None, *, stored_utc: bool = True) -> str:
             delegate_questions.delivered_at    (set_question_answer)
             reg_answer_history.changed_at      (record_answer_history, квик 260906-52m)
 
-        НЕ UTC (`datetime.now().strftime(...)`)   -> stored_utc=False:
-            (вызывающих у этого режима больше нет — режим сохранён для меток, которые ещё
-            пишутся локальным временем контейнера и печатаются другой функцией,
+        МСК (`msk_now().strftime(...)`, квик 260912-mcj)  -> stored_utc=False:
+            (вызывающих у этого режима больше нет — режим сохранён для меток, которые
+            пишутся уже московским `msk_now()` и печатаются другой функцией,
             `services/applications.py::format_edited_date`: edited_at, approved_at,
             registration_date)
 
     Долг «`reg_answer_history.changed_at` пишется локальным временем» закрыт квиком
     260906-52m: `record_answer_history` переведена на `datetime.utcnow()`, все три точки
     показа (`services/sheet_logs.py`, `services/applications.py::_history_entry`,
-    `handlers/admin_moderation.py::appr_history`) переключены на сдвиг в МСК. Остаток —
-    семья `edited_at`/`approved_at`/`registration_date` — по-прежнему пишется
-    `datetime.now()` и на проде отстаёт от московского времени на 3 часа; это отдельный
-    долг, см. `.planning/backlog.md`."""
+    `handlers/admin_moderation.py::appr_history`) переключены на сдвиг в МСК. Долг «семья
+    `edited_at`/`approved_at`/`registration_date` пишется локальным временем контейнера и
+    отстаёт от Москвы на 3 часа» закрыт квиком 260912-mcj — эта семья теперь сама пишется
+    московским `msk_now()`, показ (`format_edited_date`) больше не сдвигает её."""
     if not raw:
         return ""
     stamp = _parse_stamp(raw)

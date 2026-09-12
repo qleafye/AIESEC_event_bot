@@ -47,6 +47,7 @@ from services.background import spawn as _spawn
 # thin wrapper around these two.
 from services.reg_finalize import finalize_data, post_finalize, resolve_delegate_text
 from services import reg_edit_policy  # Квик 260911-w2m: гейт правки уже поданной анкеты
+from services.timeutil import msk_now  # Квик 260912-mcj: семья «сейчас» бота — московское время
 # Phase 21 (21-01, FORM-SYNC-01): литеральные списки без своей клавиатуры в builders.py —
 # reg_options.py, та же точка правды, что читает reg_engine.step_spec() для Mini App.
 from reg_options import (
@@ -951,7 +952,7 @@ def _draft_is_fresh(draft: dict, ttl_hours: int) -> bool:
         created_dt = datetime.strptime(created, "%Y-%m-%d %H:%M:%S")
     except Exception:
         return True
-    return datetime.now() - created_dt < timedelta(hours=ttl_hours)
+    return msk_now() - created_dt < timedelta(hours=ttl_hours)
 
 
 async def _reg_form_cta_kb() -> InlineKeyboardMarkup | None:
@@ -2181,7 +2182,7 @@ def _resume_file_stem(data, now: datetime | None = None, mode: str = "full") -> 
     (keeps [\\w.-], so digits/underscores/hyphen survive).
     """
     tid = str(data.get("telegram_id"))
-    ts = (now or datetime.now()).strftime("%Y%m%d-%H%M%S")
+    ts = (now or msk_now()).strftime("%Y%m%d-%H%M%S")
     if mode == "id":
         return f"{tid}_{ts}"
     name = (data.get("full_name") or "").strip()
