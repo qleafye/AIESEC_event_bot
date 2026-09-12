@@ -8,11 +8,21 @@ broadcast job immediately to the whole audience instead of rejecting the input.
 
 Fixed by introducing a single Moscow-wall-clock helper (`_now_moscow_naive`) sourced from the
 SAME `MOSCOW_TZ` constant the scheduler pin already uses, and switching the three admin-input
-comparison points onto it. `scheduler.py:413` (`_nudge_cutoff` call site) is deliberately left
-on the container clock — it compares against a value the bot itself stamped via `datetime.now()`,
-not against admin input, so "fixing" it by symmetry would be a regression.
+comparison points onto it. `scheduler.py:413` (`_nudge_cutoff` call site) was deliberately left
+on the container clock at the time — it compared against a value the bot itself stamped via
+`datetime.now()` (the container/UTC clock), not against admin input, so "fixing" it by symmetry
+would have been a regression THEN.
 
-See .planning/TZFIX-260816.md for the full brief and decision log.
+Квик 260912-mcj перевернул эту часть вывода: вся семья «сейчас» бота (включая
+`reg_started.started_at`, которую сравнивает `_nudge_cutoff`) теперь пишется московским
+`services.timeutil.msk_now()`, а не часами контейнера, и все старые строки сдвинуты
+одноразовой миграцией. Прежний вывод не «сломался» — он был верен, пока колонка хранила
+часы контейнера; теперь, когда колонка хранит Москву, симметрия ОБЯЗАНА быть восстановлена:
+`test_nudge_cutoff_stays_on_container_clock` заменён на `test_nudge_cutoff_uses_moscow_clock`
+ниже — та же механика проверки (перехват `now`, дошедшего до `_nudge_cutoff`), но обратное
+утверждение.
+
+See .planning/TZFIX-260816.md for the full original brief and decision log.
 
 pytest-asyncio is unavailable in this env — every async helper is driven via asyncio.run() and
 config.DB_PATH points at a tmp_path file, the established convention across tests/ (see
@@ -245,21 +255,34 @@ def test_payment_sweep_uses_moscow_wall_clock(tmp_path):
         sched_mod._bot = None
 
 
-def test_nudge_cutoff_stays_on_container_clock():
-    """scheduler.py:413 сознательно на часах контейнера, ТЗ TZFIX-260816 — приведение к
-    Москве по симметрии с точками 345/admin:2312/admin:4711 было бы регрессом (129 уже
-    записанных started_at «постареют» на 3 часа)."""
+def test_nudge_cutoff_uses_moscow_clock():
+    """Квик 260912-mcj, инверсия `test_nudge_cutoff_stays_on_container_clock` (TZFIX-260816).
+
+    `reg_started.started_at` теперь пишется московским `msk_now()` (раньше — часами
+    контейнера), старые строки сдвинуты одноразовой миграцией квика на +3 часа — значит
+    `_nudge_cutoff` ОБЯЗАН получать московское «сейчас» (`_now_moscow_naive()`), а не часы
+    контейнера. Симметрия с точками 345/admin:2312/admin:4711 больше не нарушается: TZFIX-260816
+    держал `_nudge_cutoff` на часах контейнера ровно потому, что колонка была на часах
+    контейнера — эта причина исчезла вместе со сменой зоны хранения, а не «отменена по ошибке».
+    Та же механика проверки, что у прежнего теста (перехват `now`, дошедшего до
+    `_nudge_cutoff`), но утверждение обратное."""
     orig_now_moscow = sched_mod._now_moscow_naive
     orig_cutoff = sched_mod._nudge_cutoff
     orig_get_setting = sched_mod.get_setting
     orig_get_candidates = db.get_nudge_candidates
 
     cutoff_doc = inspect.getdoc(orig_cutoff)
-    assert "container clock" in cutoff_doc, (
-        "docstring anchor missing — future editor could 'fix' scheduler.py:413 by symmetry"
+    assert "container clock" not in cutoff_doc, (
+        "docstring anchor must no longer point at the container clock — 260912-mcj inverted "
+        "the invariant"
+    )
+    assert "москов" in cutoff_doc.lower(), (
+        "docstring anchor missing — future editor could 'fix' scheduler.py by symmetry back "
+        "to the container clock"
     )
 
     captured_now = []
+    sentinel = datetime(2031, 5, 17, 8, 0, 0)
 
     def fake_cutoff(now, minutes):
         captured_now.append(now)
@@ -275,7 +298,7 @@ def test_nudge_cutoff_stays_on_container_clock():
     async def fake_get_candidates(_cutoff):
         return []  # no candidates -> job returns before needing a bot
 
-    sched_mod._now_moscow_naive = lambda: datetime(2000, 1, 1)
+    sched_mod._now_moscow_naive = lambda: sentinel
     sched_mod._nudge_cutoff = fake_cutoff
     sched_mod.get_setting = fake_get_setting
     db.get_nudge_candidates = fake_get_candidates
@@ -283,10 +306,9 @@ def test_nudge_cutoff_stays_on_container_clock():
         asyncio.run(sched_mod.nudge_incomplete_registrations())
         assert len(captured_now) == 1
         now = captured_now[0]
-        assert abs((now - datetime.now()).total_seconds()) <= 5, (
-            "cutoff must be fed the container clock, not the (patched, absurd) Moscow helper"
+        assert now == sentinel, (
+            "cutoff must be fed the Moscow helper's value, not the container clock"
         )
-        assert now != datetime(2000, 1, 1)
     finally:
         sched_mod._now_moscow_naive = orig_now_moscow
         sched_mod._nudge_cutoff = orig_cutoff

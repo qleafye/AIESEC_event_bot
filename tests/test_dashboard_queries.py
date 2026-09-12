@@ -18,6 +18,7 @@ from database import db as bot_db
 from settings_schema import SETTINGS_SCHEMA
 
 from dashboard import db as dash_db
+from dashboard.timeutil import msk_now
 from dashboard.queries import (
     ALLOWED_BREAKDOWNS,
     Scope,
@@ -152,7 +153,7 @@ def test_kpi_row_on_empty_db_returns_zeros_and_none(tmp_path):
 
 def test_kpi_week_delta_against_previous_seven_days(tmp_path):
     path = _use_tmp_db(tmp_path)
-    now = datetime.now()
+    now = msk_now()
 
     def _d(offset_days: int) -> str:
         return (now - timedelta(days=offset_days)).strftime("%Y-%m-%d 12:00:00")
@@ -950,14 +951,14 @@ def test_daily_registrations_groups_by_day_ascending(tmp_path):
     assert rows[:2] == [("2026-08-01", 2), ("2026-08-02", 1)]
     # Хвост до сегодняшнего дня — нули (календарь плотный, см. ниже).
     assert all(cnt == 0 for _, cnt in rows[2:])
-    assert rows[-1][0] == datetime.now().strftime("%Y-%m-%d")
+    assert rows[-1][0] == msk_now().strftime("%Y-%m-%d")
 
 
 def test_daily_registrations_fills_gaps_with_zero_days(tmp_path):
     """Дни без заявок между первым и последним — нулями, а не пропуском: иначе линия
     графика соединяет соседние «непустые» дни и скрывает провалы темпа."""
     path = _use_tmp_db(tmp_path)
-    now = datetime.now()
+    now = msk_now()
     d0 = (now - timedelta(days=4)).strftime("%Y-%m-%d")
     d4 = now.strftime("%Y-%m-%d")
     _seed(users=[
@@ -1726,7 +1727,7 @@ def test_game_block_top_tasks_ordered_limited_and_use_title_rule(tmp_path):
 
 def test_game_block_pending_oldest_minutes_and_label(tmp_path):
     path = _use_tmp_db(tmp_path)
-    now = datetime.now()
+    now = msk_now()
     older = (now - timedelta(minutes=150)).strftime("%Y-%m-%d %H:%M:%S")
     newer = (now - timedelta(minutes=10)).strftime("%Y-%m-%d %H:%M:%S")
     _seed(

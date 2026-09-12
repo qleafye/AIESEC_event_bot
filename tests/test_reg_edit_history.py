@@ -376,8 +376,12 @@ def test_toggle_flips_on_and_back_off(tmp_path):
 
 # ── Quick 260906-52m: format_edited_date(stored_utc=...) — новый keyword-only флаг ───────────
 # reg_answer_history.changed_at пишется UTC (record_answer_history), а edited_at/approved_at/
-# registration_date — локальным временем контейнера; format_edited_date default остаётся
-# байт-в-байт прежним для трёх из четырёх вызывающих (Rule: T-52m-02 accept).
+# registration_date — квиком 260912-mcj переведены на московское время (`msk_now()`, до этого
+# квика — локальным временем контейнера); format_edited_date default (stored_utc=False,
+# «уже московское») остаётся байт-в-байт прежним для трёх из четырёх вызывающих, поведение
+# функции этот квик не менял (Rule: T-52m-02 accept). Тесты ниже проверяют только
+# stored_utc=True (`changed_at`, UTC) — семьи edited_at/approved_at/registration_date своего
+# теста на сдвиг не имеют (stored_utc=False — сдвига нет по определению).
 
 def test_format_edited_date_stored_utc_true_shifts_plus_3h():
     from services.applications import format_edited_date
