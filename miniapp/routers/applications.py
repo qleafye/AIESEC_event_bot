@@ -36,7 +36,6 @@
 from __future__ import annotations
 
 import asyncio
-from datetime import datetime
 
 from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel
@@ -63,7 +62,7 @@ REASON_MAX = 500
 # ── сметатель просроченных решений (D-06) ────────────────────────────────────────────────
 
 async def _flush() -> None:
-    await outbox.flush_application_decisions(datetime.now())
+    await outbox.flush_application_decisions(now_msk_naive())
 
 
 async def _delayed_flush() -> None:
@@ -71,7 +70,7 @@ async def _delayed_flush() -> None:
     запрос кого-то другого может не случиться ещё долго — эта задача доносит эффекты сама
     через окно отмены + 1с, независимо от того, придёт ли ещё хоть один HTTP-запрос."""
     await asyncio.sleep(applications.UNDO_WINDOW_SECONDS + 1)
-    await outbox.flush_application_decisions(datetime.now())
+    await outbox.flush_application_decisions(now_msk_naive())
 
 
 # ── GET /app/api/applications/next ───────────────────────────────────────────────────────
@@ -189,7 +188,7 @@ async def _decide(tid: int, decision: str, reason: str | None, p: Principal) -> 
     won = await claim(tid)
     if not won:
         return {"ok": False, "reason": "already"}
-    decision_id = await applications.record_decision(tid, decision, reason, p.telegram_id, datetime.now())
+    decision_id = await applications.record_decision(tid, decision, reason, p.telegram_id, now_msk_naive())
     asyncio.create_task(_delayed_flush())
     # Quick 260904-dq1: приписка «делегат узнает в 09:00» для тоста менеджера. Сама проверка
     # окна при отправке живёт в apply_decision_effects (вызовется позже, после окна отмены,

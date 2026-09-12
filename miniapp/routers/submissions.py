@@ -22,8 +22,9 @@
 (импортировать нельзя — aiogram): та же модель частей (`kind` photo|document|text|link, тот
 же `content_type` первой части, тот же `ord`), `create_submission -> None` -> 409
 `already_submitted` (partial UNIQUE, гонка с ботом — D-05), уведомление менеджерам — через
-`miniapp_outbox` (`submission_created`), его делает бот (D-01). Время — `datetime.now()`
-без TZ, ровно как бот: сервис обязан жить в той же TZ контейнера.
+`miniapp_outbox` (`submission_created`), его делает бот (D-01). Время — `now_msk_naive()`
+(квик 260912-mcj: та же naive-московская семья, что и `game_submissions.submitted_at`,
+которую теперь пишет бот через `services.timeutil.msk_now()`).
 
 `POST /app/api/uploads?target=resume` (план 21-10, D-05, Pattern 5) — ТОТ ЖЕ маршрут, третий
 сценарий: делегат с живым черновиком анкеты (`upload_actor` третья ветка, `miniapp/deps.py`)
@@ -42,7 +43,6 @@ from __future__ import annotations
 import hashlib
 import hmac
 import logging
-from datetime import datetime
 
 from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel, Field
@@ -58,6 +58,7 @@ from miniapp.deps import Principal, UploadActor, delegate_gate, require_section,
 from miniapp.outbox import enqueue
 from miniapp.routers.tasks import submission_state
 from miniapp.telegram_api import TelegramApiError
+from miniapp.timeutil import now_msk_naive
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -319,7 +320,7 @@ async def create_submission_route(
         task["id"], p.telegram_id,
         content_type=LEGACY_CONTENT_TYPE.get(first["kind"], "text"),
         content=first["content"] or "",
-        submitted_at=datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+        submitted_at=now_msk_naive().strftime("%Y-%m-%d %H:%M:%S"),
     )
     if submission_id is None:
         # T-09-01/D-05: гонка с ботом — индекс отверг вторую активную сдачу.

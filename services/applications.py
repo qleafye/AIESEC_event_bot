@@ -110,21 +110,24 @@ def format_edited_date(raw: str | None, *, stored_utc: bool = False) -> str:
     Нераспознанный формат — печатаем как есть, а не роняем карточку заявки.
 
     Quick 260906-52m: `stored_utc` — какое время лежит в поле, которое сюда передали.
+    Квик 260912-mcj перевёл всю семью «сейчас» бота на московское время — таблица ниже
+    обновлена, поведение самого флага и функции НЕ менялось.
 
         Поле                    | Пишется          | stored_utc
         -------------------------|------------------|------------
-        edited_at                | datetime.now()   | False (по умолчанию)
-        registration_date        | datetime.now()   | False (по умолчанию)
-        approved_at              | datetime.now()   | False (по умолчанию)
+        edited_at                | msk_now()        | False (по умолчанию)
+        registration_date        | msk_now()        | False (по умолчанию)
+        approved_at              | msk_now()        | False (по умолчанию)
         reg_answer_history.changed_at | datetime.utcnow() | True
 
     По умолчанию `False` — три из четырёх вызывающих (`edit_badges_for` для `edited_at`,
     `miniapp/routers/profile.py` для `registration_date` и `approved_at`) обязаны остаться
-    байт-в-байт прежними: эти поля пишутся локальным временем контейнера, сдвигать их в МСК
-    было бы новым багом, а не фиксом. `stored_utc=True` используют только вызывающие
-    `changed_at` (`_history_entry` здесь и `appr_history` в `handlers/admin_moderation.py`) —
-    им поле приходит в UTC. Ветки «пусто» и «не разобралось» флаг не трогает — fail-soft
-    остаётся как был."""
+    байт-в-байт прежними: эти поля пишутся уже московским временем (до квика 260912-mcj —
+    локальным временем контейнера), сдвигать их повторно в МСК было бы новым багом, а не
+    фиксом — `stored_utc=False` значит «значение уже московское». `stored_utc=True`
+    используют только вызывающие `changed_at` (`_history_entry` здесь и `appr_history` в
+    `handlers/admin_moderation.py`) — им поле приходит в UTC. Ветки «пусто» и «не разобралось»
+    флаг не трогает — fail-soft остаётся как был."""
     if not raw:
         return ""
     try:

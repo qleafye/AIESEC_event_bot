@@ -22,7 +22,7 @@ from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup, WebAppInfo
 from config import config
 from database.db import get_setting
 from settings_schema import get_setting_typed
-from services.timeutil import MOSCOW_TZ
+from services.timeutil import MOSCOW_TZ, msk_now
 
 logger = logging.getLogger(__name__)
 
@@ -109,18 +109,24 @@ def _now_moscow_naive() -> datetime:
     validation that should reject a past broadcast/deadline time instead let it through — and
     `misfire_grace_time=86400` then fired the stale job immediately to the whole audience.
 
-    Do NOT use this helper where the comparison is against a value the bot itself stamped via
-    `datetime.now()` (see `_nudge_cutoff` — that one stays on the container clock).
+    Quick 260912-mcj: семья меток времени, которую бот сам стамповал (`reg_started.started_at`
+    и вся остальная семья naive-local в `database/db.py`), теперь ТОЖЕ московская
+    (`services.timeutil.msk_now()`), а не часы контейнера — поэтому сравнивать с ней НУЖНО
+    именно этим хелпером (см. `_nudge_cutoff` ниже — прежний запрет снят вместе со сменой
+    зоны хранения).
     """
-    return datetime.now(MOSCOW_TZ).replace(tzinfo=None)
+    return msk_now()
 
 
 def _nudge_cutoff(now: datetime, minutes: int) -> str:
     """now minus `minutes`, ISO-formatted — the started_at threshold for the scan.
 
-    TZFIX-260816: `now` here is deliberately the container clock — see the call site comment
-    at nudge_incomplete_registrations (scheduler.py:413) for why this must NOT switch to
-    _now_moscow_naive().
+    Quick 260912-mcj: `reg_started.started_at` теперь пишется московским `msk_now()` (раньше —
+    часами контейнера/UTC на проде), а старые строки сдвинуты одноразовой миграцией квика на
+    +3 часа. Обе стороны сравнения обязаны быть на одних часах — `now` сюда приходит из
+    `_now_moscow_naive()` (см. вызов в `nudge_incomplete_registrations`). Инверсия решения
+    TZFIX-260816 (тогда обе стороны держали на часах контейнера) — не регрессия, а следствие
+    смены зоны хранения самой колонки.
     """
     return (now - timedelta(minutes=minutes)).strftime("%Y-%m-%d %H:%M:%S")
 
@@ -758,7 +764,7 @@ async def miniapp_outbox_drain_job():
     inside the undo window (known limit: effect delay then grows from 5s to <= this job's
     30s interval, documented in the plan's SUMMARY)."""
     try:
-        await _flush_due_application_decisions(datetime.now())
+        await _flush_due_application_decisions(_now_moscow_naive())
         from services.miniapp_outbox import drain
         await drain(_bot)
     except Exception as e:
@@ -854,15 +860,13 @@ async def nudge_incomplete_registrations():
         if not _nudge_enabled(await get_setting("nudge_enabled")):
             return
         after_minutes = _int_or_default(await get_setting("nudge_after_minutes"), 120)
-        # TZFIX-260816: deliberately NOT _now_moscow_naive() here. This compares against
-        # reg_started.started_at, which the bot itself stamped via datetime.now() on the
-        # container clock — both sides of the comparison are already the container clock, so
-        # the invariant holds as-is. Switching to Moscow would be a REGRESSION: the ~129
-        # already-recorded started_at rows would instantly "age" by 3 hours and nudges would
-        # fire early. This is not the same bug class as scheduler.py:345 / admin.py:2312 /
-        # admin.py:4711 (those compare against human input in Moscow time) — do not "fix" this
-        # by symmetry. See .planning/TZFIX-260816.md.
-        cutoff = _nudge_cutoff(datetime.now(), after_minutes)
+        # Quick 260912-mcj: инверсия TZFIX-260816. Раньше `reg_started.started_at` писался
+        # часами контейнера (UTC на проде) и обе стороны сравнения намеренно держали на
+        # container clock. С этого квика колонка пишется московским `msk_now()`, а все старые
+        # строки сдвинуты одноразовой миграцией на +3 часа — значит и «сейчас» здесь обязано
+        # быть московским, иначе разъезд на 3 часа возникнет в обратную сторону. См.
+        # `_nudge_cutoff` и `_now_moscow_naive` выше.
+        cutoff = _nudge_cutoff(_now_moscow_naive(), after_minutes)
         candidates = await get_nudge_candidates(cutoff)
         if not candidates:
             return

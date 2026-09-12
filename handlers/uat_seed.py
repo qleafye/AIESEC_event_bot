@@ -31,7 +31,6 @@ observers `admin.router` и работает deny-by-default — тестер-д
 import html
 import logging
 import re
-from datetime import datetime
 
 from aiogram import F, Router, types
 from aiogram.filters import Command
@@ -55,6 +54,7 @@ from handlers import admin_caps
 from handlers.admin_purge import _footprint_lines
 from reg_engine import SHORT_TRACK, answer_columns, columns_for_step
 from services.scheduler import cancel_payment_reminders
+from services.timeutil import msk_now
 from settings_schema import get_setting_typed
 
 logger = logging.getLogger(__name__)
@@ -185,7 +185,7 @@ async def _seed_state(tid: int, username: str | None, state_code: str) -> None:
         "telegram_id": tid,
         "username": username,
         "full_name": "Тестовый Делегат (приёмка)",
-        "registration_date": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+        "registration_date": msk_now().strftime("%Y-%m-%d %H:%M:%S"),
         "season": await get_setting_typed("event_season"),
     }
     if state_code == "short":

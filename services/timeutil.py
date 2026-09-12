@@ -36,3 +36,29 @@ def utc_naive_to_msk(dt: datetime) -> datetime:
     остальным кодом, тип метки времени.
     """
     return dt.replace(tzinfo=timezone.utc).astimezone(MOSCOW_TZ).replace(tzinfo=None)
+
+
+def msk_now() -> datetime:
+    """Naive московское «сейчас» — ЕДИНСТВЕННЫЙ источник для всей семьи меток времени,
+
+    которые бот пишет и по которым сам же бьёт сутки (карточка заявки, профиль Mini App,
+    строка листа, дашборд, фильтр рассылки по дате). Naive — весь проект сравнивает naive
+    с naive, как и `utc_naive_to_msk` выше. Контейнер бота живёт в UTC (`TZ` в
+    `docker-compose.yml` намеренно не задан — TZFIX-260816), поэтому голый `datetime.now()`
+    в местах, которые печатают время человеку, запрещён: он отстаёт от Москвы на 3 часа
+    (квик 260912-mcj).
+    """
+    return datetime.now(MOSCOW_TZ).replace(tzinfo=None)
+
+
+def process_clock_is_utc() -> bool:
+    """True, если часы процесса (`datetime.now()`) совпадают с UTC (`datetime.utcnow()`)
+
+    с точностью до минуты. Используется РОВНО один раз — гейтом одноразовой миграции старых
+    строк семьи (`database/db.py::_migrate_local_timestamps_to_msk`, квик 260912-mcj):
+    «часы процесса = UTC» означает «все прежние строки этой семьи писал UTC-контейнер
+    (прод/стенд), их нужно сдвинуть на +3 часа». Вынесена в отдельную функцию, а не инлайн-
+    выражение внутри миграции, ровно чтобы тесты могли её замокать независимо от реальных
+    часов машины, на которой запускаются.
+    """
+    return abs((datetime.now() - datetime.utcnow()).total_seconds()) < 60

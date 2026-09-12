@@ -31,6 +31,7 @@ from database.db import (
 )
 from settings_schema import GAME_SUBMIT_NOTIFY_MODE_LABELS, get_setting_typed
 from services import scheduler as _sched
+from services.timeutil import msk_now
 
 logger = logging.getLogger(__name__)
 
@@ -117,7 +118,7 @@ async def notify_submission(bot, *, submission_id: int, user_id: int, task_id: i
     if mode == "digest":
         await enqueue_game_digest(
             submission_id, user_id, task_id, city,
-            datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+            msk_now().strftime("%Y-%m-%d %H:%M:%S"),
         )
         minutes = await get_setting_typed("game_submit_digest_minutes")
         arm_digest_job(city, minutes)
@@ -144,7 +145,7 @@ async def send_game_digest(city: str | None) -> int:
         text = build_digest_text(aggregate_rows(rows, names))
         sent = await notify_by_capability(_sched._bot, CAP, text, parse_mode="HTML", city=city)
         await mark_game_digest_sent(
-            [r["id"] for r in rows], datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+            [r["id"] for r in rows], msk_now().strftime("%Y-%m-%d %H:%M:%S")
         )
         return sent
     except Exception as e:

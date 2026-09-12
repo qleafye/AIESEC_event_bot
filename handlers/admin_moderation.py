@@ -22,7 +22,6 @@ file's handler bodies and order untouched (same technique as `settings_ops.py`, 
 """
 import html as html_module
 import logging
-from datetime import datetime
 
 from aiogram import F, types
 from aiogram.fsm.context import FSMContext
@@ -350,15 +349,15 @@ async def appr_approve(callback: types.CallbackQuery, state: FSMContext):
         # effects_already_sent=True — иначе flush_due_decisions отправил бы его повторно
         # (см. докстринг services.applications.record_decision). fail-soft: не записали историю
         # — менеджер и делегат уже получили своё, вторая попытка не нужна.
+        from services.scheduler import _now_moscow_naive
         try:
             await record_decision(
-                tid, "approved", None, callback.from_user.id, datetime.now(),
+                tid, "approved", None, callback.from_user.id, _now_moscow_naive(),
                 effects_already_sent=True,
             )
         except Exception as e:
             logger.error(f"admin={callback.from_user.id} action=approve user={tid}: не удалось записать журнал решения: {e}")
         from services import quiet_hours
-        from services.scheduler import _now_moscow_naive
         notice = await quiet_hours.manager_notice(_now_moscow_naive(), tid)
         await callback.answer(f"Одобрено · {notice}" if notice else "Одобрено")
     else:
@@ -418,15 +417,15 @@ async def appr_reject_reason(message: types.Message, state: FSMContext):
         # записи истории) — effects_already_sent=True, иначе flush_due_decisions отправил бы
         # отказ делегату ВТОРОЙ раз (см. докстринг services.applications.record_decision).
         # fail-soft: не записали историю — менеджер и делегат уже получили своё.
+        from services.scheduler import _now_moscow_naive
         try:
             await record_decision(
-                tid, "rejected", reason, message.from_user.id, datetime.now(),
+                tid, "rejected", reason, message.from_user.id, _now_moscow_naive(),
                 effects_already_sent=True,
             )
         except Exception as e:
             logger.error(f"admin={message.from_user.id} action=reject user={tid}: не удалось записать журнал решения: {e}")
         from services import quiet_hours
-        from services.scheduler import _now_moscow_naive
         notice = await quiet_hours.manager_notice(_now_moscow_naive(), tid)
         reject_text = f"Заявка отклонена. {notice}" if notice else "Заявка отклонена."
         await message.answer(reject_text, reply_markup=ReplyKeyboardRemove())
