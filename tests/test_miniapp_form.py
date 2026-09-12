@@ -16,6 +16,7 @@ import aiosqlite
 import httpx
 import pytest
 
+import reg_options
 from database import db as bot_db
 
 from miniapp import telegram_api
@@ -178,7 +179,7 @@ def test_edit_review_seeds_answers_from_users_row_without_draft(client):
     поля. `exists` остаётся False (черновика физически нет) — но `steps[].value` не пуст."""
     _fill(
         DELEGATE_ID, age=25, education_status="Нет, не получал(а) образование",
-        source="Самостоятельно",
+        source=reg_options.SOURCE_NOT_ASKED,
     )
     resp = client.get("/app/api/reg/draft", headers=_hdr(DELEGATE_ID))
     body = resp.json()
@@ -186,7 +187,8 @@ def test_edit_review_seeds_answers_from_users_row_without_draft(client):
     assert body["exists"] is False
     for key, expected in (
         ("age", 25),
-        ("education_status", "Нет, не получал(а) образование"), ("source", "Самостоятельно"),
+        ("education_status", "Нет, не получал(а) образование"),
+        ("source", reg_options.SOURCE_NOT_ASKED),
     ):
         step = next(s for s in body["steps"] if s["key"] == key)
         assert step["value"] == expected, f"{key}: {step}"

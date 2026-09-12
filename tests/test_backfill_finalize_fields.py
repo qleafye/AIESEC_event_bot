@@ -6,6 +6,7 @@ import sqlite3
 
 import pytest
 
+import reg_options
 from tools.backfill_finalize_fields import (
     apply_changes,
     main,
@@ -13,6 +14,9 @@ from tools.backfill_finalize_fields import (
     parse_since,
     plan_changes,
 )
+
+SOURCE_NOT_ASKED = reg_options.SOURCE_NOT_ASKED
+SOURCE_NOT_ASKED_LEGACY = reg_options.SOURCE_NOT_ASKED_LEGACY
 
 
 def _make_db(path):
@@ -91,30 +95,40 @@ def test_plan_changes_covers_city_source_and_referrer(tmp_path):
     )
     conn.execute("INSERT INTO reg_started (telegram_id, event_city) VALUES (101, 'ekb')")
 
-    # 102: source == 'Самостоятельно', есть тег в логе -> подмена + source_from_tag.
+    # 102: source == SOURCE_NOT_ASKED, есть тег в логе -> подмена + source_from_tag.
     conn.execute(
         "INSERT INTO users (telegram_id, event_city, source, referrer_id, registration_date) "
-        "VALUES (102, 'msk', 'Самостоятельно', NULL, '2026-09-05 19:00:00')"
+        "VALUES (102, 'msk', ?, NULL, '2026-09-05 19:00:00')",
+        (SOURCE_NOT_ASKED,),
     )
 
     # 103: до since — НЕ должен попасть в выборку вовсе.
     conn.execute(
         "INSERT INTO users (telegram_id, event_city, source, referrer_id, registration_date) "
-        "VALUES (103, NULL, 'Самостоятельно', NULL, '2026-09-05 10:00:00')"
+        "VALUES (103, NULL, ?, NULL, '2026-09-05 10:00:00')",
+        (SOURCE_NOT_ASKED,),
+    )
+
+    # 104: старая подпись той же подстановки (до квика 260912) — скрипт должен узнавать обе.
+    conn.execute(
+        "INSERT INTO users (telegram_id, event_city, source, referrer_id, registration_date) "
+        "VALUES (104, 'spb', ?, NULL, '2026-09-05 19:30:00')",
+        (SOURCE_NOT_ASKED_LEGACY,),
     )
     conn.commit()
 
-    source_tags = {102: "website_1"}
+    source_tags = {102: "website_1", 104: "website_2"}
     referrers = {}
 
     changes = plan_changes(conn, "2026-09-05 16:04", source_tags, referrers)
     by_uid = {c["telegram_id"]: c for c in changes}
 
-    assert set(by_uid) == {100, 101, 102}
+    assert set(by_uid) == {100, 101, 102, 104}
     assert by_uid[100]["event_city"] == (None, "spb")  # самое свежее по ts, не по event-порядку
     assert by_uid[101]["event_city"] == (None, "ekb")
-    assert by_uid[102]["source"] == ("Самостоятельно", "website_1")
+    assert by_uid[102]["source"] == (SOURCE_NOT_ASKED, "website_1")
     assert by_uid[102]["source_from_tag"] == (None, 1)
+    assert by_uid[104]["source"] == (SOURCE_NOT_ASKED_LEGACY, "website_2")
     assert "referrer_id" not in by_uid[100]  # уже был непустой — трогать нечего
 
 
@@ -123,14 +137,15 @@ def test_apply_changes_writes_and_is_one_transaction(tmp_path):
     conn = _make_db(str(db_path))
     conn.execute(
         "INSERT INTO users (telegram_id, event_city, source, referrer_id, registration_date) "
-        "VALUES (200, NULL, 'Самостоятельно', NULL, '2026-09-05 20:00:00')"
+        "VALUES (200, NULL, ?, NULL, '2026-09-05 20:00:00')",
+        (SOURCE_NOT_ASKED,),
     )
     conn.commit()
 
     changes = [{
         "telegram_id": 200,
         "event_city": (None, "spb"),
-        "source": ("Самостоятельно", "website_9"),
+        "source": (SOURCE_NOT_ASKED, "website_9"),
         "source_from_tag": (None, 1),
     }]
     apply_changes(conn, changes)
@@ -147,7 +162,8 @@ def test_dry_run_does_not_touch_db_end_to_end(tmp_path, capsys):
     conn = _make_db(str(db_path))
     conn.execute(
         "INSERT INTO users (telegram_id, event_city, source, referrer_id, registration_date) "
-        "VALUES (300, NULL, 'Самостоятельно', NULL, '2026-09-05 20:00:00')"
+        "VALUES (300, NULL, ?, NULL, '2026-09-05 20:00:00')",
+        (SOURCE_NOT_ASKED,),
     )
     conn.execute(
         "INSERT INTO reg_events (telegram_id, event, event_city, ts) "
@@ -171,7 +187,7 @@ def test_dry_run_does_not_touch_db_end_to_end(tmp_path, capsys):
         "SELECT event_city, source FROM users WHERE telegram_id = 300"
     ).fetchone()
     check.close()
-    assert row == (None, "Самостоятельно"), "dry-run без --apply не должен ничего писать"
+    assert row == (None, SOURCE_NOT_ASKED), "dry-run без --apply не должен ничего писать"
 
 
 def test_apply_flag_end_to_end_writes_through_main(tmp_path, capsys):
@@ -180,7 +196,8 @@ def test_apply_flag_end_to_end_writes_through_main(tmp_path, capsys):
     conn = _make_db(str(db_path))
     conn.execute(
         "INSERT INTO users (telegram_id, event_city, source, referrer_id, registration_date) "
-        "VALUES (400, NULL, 'Самостоятельно', NULL, '2026-09-05 20:00:00')"
+        "VALUES (400, NULL, ?, NULL, '2026-09-05 20:00:00')",
+        (SOURCE_NOT_ASKED,),
     )
     conn.execute(
         "INSERT INTO reg_events (telegram_id, event, event_city, ts) "

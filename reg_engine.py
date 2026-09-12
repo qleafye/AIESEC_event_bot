@@ -1848,14 +1848,16 @@ def with_defaults(answers: dict) -> dict:
     """Дефолты финала анкеты — прежний setdefault-блок `finalize_registration` (~20 полей),
     перенесён дословно, без изменения значений по умолчанию. Возвращает НОВЫЙ dict (копия
     `answers` + дефолты) — чистая функция, в отличие от прежнего `data.setdefault(...)` на живом
-    FSM-словаре; единая для бота и будущего веб-финала (план 21-08)."""
+    FSM-словаре; единая для бота и будущего веб-финала (план 21-08).
+    Квик 260912: подпись подстановки `source` — `_opts.SOURCE_NOT_ASKED`, а не «Самостоятельно»,
+    — прежняя подпись читалась менеджером на дашборде как осознанный ответ делегата."""
     result = dict(answers)
     result.setdefault("email", "-")
     result.setdefault("phone", "-")
     result.setdefault("city", "-")
     result.setdefault("is_aiesec_member", False)
     result.setdefault(
-        "source", "Реферальная ссылка" if result.get("referrer_id") else "Самостоятельно",
+        "source", "Реферальная ссылка" if result.get("referrer_id") else _opts.SOURCE_NOT_ASKED,
     )
     result.setdefault("source_details", f"Referrer ID: {result.get('referrer_id', '-')}")
     result.setdefault("education_status", "-")
