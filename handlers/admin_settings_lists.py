@@ -32,7 +32,8 @@ from aiogram.fsm.context import FSMContext
 from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
 
 from settings_schema import SETTINGS_SCHEMA
-from database.db import get_setting, set_setting, delete_setting
+from database.db import get_setting
+from settings_audit import set_setting_by_admin, delete_setting_by_admin
 from cities import ALL_CITIES, admin_selected_city, is_per_city, per_city_key
 from handlers.states import EditSetting
 from handlers.settings_validation import is_command_like
@@ -100,11 +101,11 @@ async def _current_items(target: str, base: str | None) -> list[str]:
     return split_list_items(raw)
 
 
-async def _write_items(target: str, items: list[str]) -> None:
+async def _write_items(admin_id: int | None, target: str, items: list[str]) -> None:
     if items:
-        await set_setting(target, "\n".join(items))
+        await set_setting_by_admin(admin_id, target, "\n".join(items))
     else:
-        await delete_setting(target)
+        await delete_setting_by_admin(admin_id, target)
 
 
 async def _rerender(callback: types.CallbackQuery, key: str) -> None:
@@ -209,7 +210,7 @@ async def settings_list_add_item(message: types.Message, state: FSMContext):
 
     items.append(value)
     logger.info(f"admin {message.from_user.id} добавляет пункт в {target}")
-    await _write_items(target, items)
+    await _write_items(message.from_user.id, target, items)
     await state.clear()
 
     header = await admin_selected_city(message.from_user.id)
@@ -269,7 +270,7 @@ async def settings_list_rm_go(callback: types.CallbackQuery, state: FSMContext):
         return
     removed = items.pop(idx)
     logger.info(f"admin {callback.from_user.id} убирает пункт из {target}")
-    await _write_items(target, items)
+    await _write_items(callback.from_user.id, target, items)
     await _rerender(callback, key)
     await callback.answer(f"🗑 Убрал «{removed[:60]}»", show_alert=True)
 

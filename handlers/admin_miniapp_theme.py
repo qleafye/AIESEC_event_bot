@@ -31,7 +31,8 @@ from aiogram.fsm.state import State
 from aiogram.types import FSInputFile, InlineKeyboardButton, InlineKeyboardMarkup
 
 import web_theme
-from database.db import get_setting, set_setting, delete_setting
+from database.db import get_setting
+from settings_audit import set_setting_by_admin, delete_setting_by_admin
 from settings_schema import get_setting_typed, option_label, option_labels
 from handlers.admin import router
 from handlers.states import MiniAppTheme
@@ -361,8 +362,8 @@ async def miniapp_preset_apply(callback: types.CallbackQuery):
     # D-03: применение пишет ВСЕ ручки пресета разом, одним проходом, плюс сам ключ пресета —
     # частичная запись оставила бы reзе рассинхрон, задокументированный в 19.1-02-SUMMARY.
     for handle, value in web_theme.PRESETS[name].items():
-        await set_setting(web_theme.THEME_KEYS[handle], value)
-    await set_setting(web_theme.THEME_KEYS["preset"], name)
+        await set_setting_by_admin(callback.from_user.id, web_theme.THEME_KEYS[handle], value)
+    await set_setting_by_admin(callback.from_user.id, web_theme.THEME_KEYS["preset"], name)
     await callback.answer(f"Применено: {_PRESET_LABELS[name]}")
     await callback.message.answer(
         await render_miniapp_theme_text(),
@@ -403,7 +404,7 @@ async def miniapp_theme_reset_go(callback: types.CallbackQuery):
     preset_name, _is_custom = await _current_preset_and_custom()
     preset = web_theme.PRESETS[preset_name]
     for handle in ("accent", "secondary", "bg", "heading_font", "playful_tone", "pattern_enabled"):
-        await set_setting(web_theme.THEME_KEYS[handle], preset[handle])
+        await set_setting_by_admin(callback.from_user.id, web_theme.THEME_KEYS[handle], preset[handle])
     await callback.answer("Сброшено к пресету")
     await _rerender_theme(callback)
 
@@ -442,7 +443,7 @@ async def miniapp_theme_color_step(message: types.Message, state: FSMContext):
             "Нужно шесть символов после решётки, например #037EF3. Пришлите цвет ещё раз."
         )
         return
-    await set_setting(web_theme.THEME_KEYS[handle], value)
+    await set_setting_by_admin(message.from_user.id, web_theme.THEME_KEYS[handle], value)
     await state.set_state(None)
     note = await _contrast_note(handle, value)
     await message.answer(f"Готово: {label} — {value} {_swatch_emoji(value)}. {note}")
@@ -461,7 +462,7 @@ async def miniapp_theme_font_pick(callback: types.CallbackQuery):
     if font_key not in web_theme.FONT_STACKS:
         await callback.answer("Неизвестная кнопка", show_alert=True)
         return
-    await set_setting(web_theme.THEME_KEYS["heading_font"], font_key)
+    await set_setting_by_admin(callback.from_user.id, web_theme.THEME_KEYS["heading_font"], font_key)
     await callback.answer(f"Шрифт: {_FONT_LABELS[font_key]}")
     await _rerender_theme(callback)
 
@@ -473,7 +474,7 @@ async def miniapp_theme_toggle_playful(callback: types.CallbackQuery):
     key = web_theme.THEME_KEYS["playful_tone"]
     current = await get_setting_typed(key)
     new_val = "off" if current == "on" else "on"
-    await set_setting(key, new_val)
+    await set_setting_by_admin(callback.from_user.id, key, new_val)
     await callback.answer("Игривый тон: " + ("да" if new_val == "on" else "нет"))
     await _rerender_theme(callback)
 
@@ -483,7 +484,7 @@ async def miniapp_theme_toggle_pattern(callback: types.CallbackQuery):
     key = web_theme.THEME_KEYS["pattern_enabled"]
     current = await get_setting_typed(key)
     new_val = "off" if current == "on" else "on"
-    await set_setting(key, new_val)
+    await set_setting_by_admin(callback.from_user.id, key, new_val)
     await callback.answer("Бренд-паттерн: " + ("включён" if new_val == "on" else "выключен"))
     await _rerender_theme(callback)
 
@@ -515,7 +516,7 @@ async def miniapp_theme_remove_photo(callback: types.CallbackQuery):
         await callback.answer("Неизвестная кнопка", show_alert=True)
         return
     _state, key, label, _hint = entry
-    await delete_setting(key)
+    await delete_setting_by_admin(callback.from_user.id, key)
     await callback.answer(f"«{label}» убран(а)")
     await _rerender_theme(callback)
 
@@ -533,7 +534,7 @@ async def miniapp_theme_photo_step(message: types.Message, state: FSMContext):
         return
     key, label, _hint = entry
     file_id = message.photo[-1].file_id
-    await set_setting(key, file_id)
+    await set_setting_by_admin(message.from_user.id, key, file_id)
     await state.set_state(None)
     await message.answer(f"Готово: «{label}» обновлён(а).")
     await message.answer(

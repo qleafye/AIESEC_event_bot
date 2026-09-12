@@ -28,8 +28,8 @@ from aiogram import F, types
 from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
 
 import reg_engine
-from database.db import set_setting
 from moderation_card import EMPTY_SENTINEL
+from settings_audit import set_setting_by_admin
 from settings_schema import SETTINGS_SCHEMA, get_setting_typed
 from handlers.admin import router
 
@@ -72,9 +72,13 @@ async def _group_state(key: str, step_key: str) -> tuple[list[str], list[str], l
     return variants, valid, stale
 
 
-async def _save_group(key: str, variants: list[str], chosen: set[str], stale: list[str]) -> None:
+async def _save_group(
+    admin_id: int | None, key: str, variants: list[str], chosen: set[str], stale: list[str],
+) -> None:
     new_value = [v for v in variants if v in chosen] + stale
-    await set_setting(key, "\n".join(new_value) if new_value else EMPTY_SENTINEL)
+    await set_setting_by_admin(
+        admin_id, key, "\n".join(new_value) if new_value else EMPTY_SENTINEL,
+    )
 
 
 async def render_scoring_text() -> str:
@@ -188,7 +192,7 @@ async def scoring_toggle(callback: types.CallbackQuery):
     else:
         chosen.add(variant)
         toast = f"{variant}: отмечено"
-    await _save_group(key, variants, chosen, stale)
+    await _save_group(callback.from_user.id, key, variants, chosen, stale)
     await callback.answer(toast)
     await _show_scoring(callback)
 
@@ -213,7 +217,7 @@ async def scoring_drop(callback: types.CallbackQuery):
         return
     dropped = stale[idx]
     new_stale = [label for i, label in enumerate(stale) if i != idx]
-    await _save_group(key, variants, set(valid), new_stale)
+    await _save_group(callback.from_user.id, key, variants, set(valid), new_stale)
     await callback.answer(f"{dropped}: убрано")
     await _show_scoring(callback)
 
@@ -233,7 +237,7 @@ async def scoring_limit(callback: types.CallbackQuery):
     if value not in allowed:
         await callback.answer(_UNKNOWN_VALUE_TEXT, show_alert=True)
         return
-    await set_setting(key, str(value))
+    await set_setting_by_admin(callback.from_user.id, key, str(value))
     label = SETTINGS_SCHEMA[key]["label"]
     await callback.answer(f"{label}: {value}")
     await _show_scoring(callback)

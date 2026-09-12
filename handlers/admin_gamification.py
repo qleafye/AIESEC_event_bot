@@ -75,6 +75,7 @@ from database.db import (
     update_task_photo,
     update_task_title,
 )
+from settings_audit import set_setting_by_admin
 from keyboards.builders import get_cancel_kb
 from services.sheets import sync_named_worksheet
 from services.game_sheets import describe_plan, game_tab_plan, rows_for_entry
@@ -1404,7 +1405,7 @@ async def toggle_game_submit_notify(callback: types.CallbackQuery):
     from services.game_digest import notify_mode_label
     current = await get_setting_typed("game_submit_notify_mode")
     new_mode = "digest" if current != "digest" else "each"
-    await set_setting("game_submit_notify_mode", new_mode)
+    await set_setting_by_admin(callback.from_user.id, "game_submit_notify_mode", new_mode)
     await callback.answer(f"📥 Сдачи менеджеру: {notify_mode_label(new_mode)}", show_alert=True)
     text = await render_settings_group_text("game", callback.from_user.id)
     await callback.message.edit_text(text, parse_mode="HTML", reply_markup=await build_settings_group_keyboard("game", callback.from_user.id))

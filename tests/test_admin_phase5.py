@@ -209,7 +209,7 @@ def test_preset_confirm_party_routes_to_apply_party_preset(tmp_path, monkeypatch
     _admin_ready(tmp_path)
     calls = {"party": 0, "event": 0}
 
-    async def fake_party():
+    async def fake_party(admin_id=None):
         calls["party"] += 1
 
     async def fake_event(key):

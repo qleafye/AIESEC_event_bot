@@ -14,7 +14,7 @@ Phase 13.
 from aiogram import F, types
 from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
 
-from database.db import set_setting
+from settings_audit import set_setting_by_admin
 from settings_schema import SETTINGS_SCHEMA, get_setting_typed
 from handlers.admin import router
 
@@ -87,7 +87,7 @@ async def toggle_dashboard_block(callback: types.CallbackQuery):
 
     current = await get_setting_typed(key)
     new_val = "off" if current == "on" else "on"
-    await set_setting(key, new_val)
+    await set_setting_by_admin(callback.from_user.id, key, new_val)
     label = SETTINGS_SCHEMA[key]["label"]
     toast = f"{label}: {'показываем' if new_val == 'on' else 'скрыта'}"
     await callback.answer(toast)

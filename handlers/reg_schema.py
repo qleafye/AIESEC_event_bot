@@ -21,6 +21,7 @@ import logging
 from aiogram import Bot
 
 from database.db import get_setting, set_setting, get_user
+from settings_audit import set_setting_by_admin
 from settings_schema import get_setting_typed
 # Phase 19 (Mini App): подписи анкеты живут в корневом aiogram-free `reg_labels.py`;
 # здесь — реэкспорт ТЕХ ЖЕ объектов (admin.py, admin_reg_config.py, admin_moderation.py
@@ -89,7 +90,7 @@ from reg_presets import REG_PRESETS  # noqa: F401,E402
 _PARTY_PRESET_OVERNIGHT_EXEMPT = {"reg_q_housing", "reg_q_bed_sharing", "reg_q_bed_partner"}
 
 
-async def _apply_party_preset() -> None:
+async def _apply_party_preset(admin_id: int | None = None) -> None:
     """D-07: bulk-write __party overrides ONLY — mirrors _apply_event_preset's
     determinism guarantee (handlers/admin.py:2040-2048) but targets the __party
     namespace exclusively. Every REG_FLOW step EXCEPT the D-08 overnight-only trio
@@ -107,10 +108,12 @@ async def _apply_party_preset() -> None:
     for _step_key, setting_key, *_rest in REG_FLOW:
         if setting_key in _PARTY_PRESET_OVERNIGHT_EXEMPT:
             continue
-        await set_setting(f"{setting_key}__party", "on" if setting_key in on_set else "off")
+        await set_setting_by_admin(
+            admin_id, f"{setting_key}__party", "on" if setting_key in on_set else "off",
+        )
 
 
-async def _apply_short_preset() -> None:
+async def _apply_short_preset(admin_id: int | None = None) -> None:
     """Phase 7 (SHORT-03): bulk-write __short overrides ONLY — mirrors _apply_party_preset's
     determinism guarantee, targets the __short namespace exclusively. Unlike the party preset,
     there is no exempt set here: _PARTY_PRESET_OVERNIGHT_EXEMPT exists purely to protect D-08's
@@ -124,7 +127,9 @@ async def _apply_short_preset() -> None:
     registration cannot alter a full or party delegate's question set."""
     on_set = set(REG_PRESETS["short"]["on"])
     for _step_key, setting_key, *_rest in REG_FLOW:
-        await set_setting(f"{setting_key}__short", "on" if setting_key in on_set else "off")
+        await set_setting_by_admin(
+            admin_id, f"{setting_key}__short", "on" if setting_key in on_set else "off",
+        )
 
 
 # Display grouping for the admin question-toggle view. Disjoint buckets covering every

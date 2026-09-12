@@ -26,7 +26,8 @@ from aiogram.fsm.context import FSMContext
 from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
 
 from settings_schema import get_setting_typed
-from database.db import get_setting, set_setting, delete_setting
+from database.db import get_setting
+from settings_audit import set_setting_by_admin, delete_setting_by_admin
 from handlers.states import EditSetting
 from handlers.reg_schema import REG_FLOW, REG_LABELS, REG_CATEGORIES
 from cities import (
@@ -306,7 +307,7 @@ async def toggle_reg_question(callback: types.CallbackQuery):
         # reg_q_* is SETTINGS_SCHEMA type "toggle" -> already a bool, see _question_effective_and_own.
         current_on = await get_setting_typed_for_city(setting_key, header_code)
         new_val = "off" if current_on else "on"
-        await set_setting(composed, new_val)
+        await set_setting_by_admin(admin_id, composed, new_val)
         label = REG_LABELS.get(setting_key, setting_key)
         status = "✅ Вкл" if new_val == "on" else "❌ Выкл"
         city_txt = await city_label(header_code)
@@ -323,7 +324,7 @@ async def toggle_reg_question(callback: types.CallbackQuery):
     current_on = await get_setting_typed(setting_key)
 
     new_val = "off" if current_on else "on"
-    await set_setting(setting_key, new_val)
+    await set_setting_by_admin(admin_id, setting_key, new_val)
 
     label = REG_LABELS.get(setting_key, setting_key)
     status = "✅ Вкл" if new_val == "on" else "❌ Выкл"
@@ -381,9 +382,9 @@ async def toggle_party_question(callback: types.CallbackQuery):
         current = await get_setting(composed)  # None | "on" | "off" — do NOT collapse
         new_val = _party_tri_state_advance(current)
         if new_val is None:
-            await delete_setting(composed)  # back to inherit — key ABSENCE is the inherit state
+            await delete_setting_by_admin(admin_id, composed)  # back to inherit — key ABSENCE is the inherit state
         else:
-            await set_setting(composed, new_val)
+            await set_setting_by_admin(admin_id, composed, new_val)
         label = _party_tri_state_label(new_val)
         city_txt = await city_label(header_code)
 
@@ -399,9 +400,9 @@ async def toggle_party_question(callback: types.CallbackQuery):
     current = await get_setting(party_key)  # None | "on" | "off" — do NOT collapse
     new_val = _party_tri_state_advance(current)
     if new_val is None:
-        await delete_setting(party_key)  # back to inherit — key ABSENCE is the inherit state
+        await delete_setting_by_admin(admin_id, party_key)  # back to inherit — key ABSENCE is the inherit state
     else:
-        await set_setting(party_key, new_val)
+        await set_setting_by_admin(admin_id, party_key, new_val)
     label = _party_tri_state_label(new_val)
 
     await _refresh_party_sheet_header(setting_key=setting_key)  # MEDIUM-01: keep the party tab aligned
@@ -443,7 +444,7 @@ async def toggle_short_question(callback: types.CallbackQuery):
             return
         current = await get_setting(composed)  # None | "on" | "off"
         new_val = "off" if current == "on" else "on"
-        await set_setting(composed, new_val)  # always an explicit write, never delete_setting
+        await set_setting_by_admin(admin_id, composed, new_val)  # always an explicit write, never delete_setting
         label = "✅ Вкл" if new_val == "on" else "❌ Выкл"
         city_txt = await city_label(header_code)
 
@@ -458,7 +459,7 @@ async def toggle_short_question(callback: types.CallbackQuery):
 
     current = await get_setting(short_key)  # None | "on" | "off"
     new_val = "off" if current == "on" else "on"
-    await set_setting(short_key, new_val)  # always an explicit write, never delete_setting
+    await set_setting_by_admin(admin_id, short_key, new_val)  # always an explicit write, never delete_setting
     label = "✅ Вкл" if new_val == "on" else "❌ Выкл"
 
     await _refresh_short_sheet_header(setting_key=setting_key)  # keep the short tab header aligned
@@ -536,11 +537,11 @@ async def reg_resume_mode_toggle(callback: types.CallbackQuery):
             return
         current = await get_setting_typed_for_city("reg_resume_mode", header_code)
         new_val = _next_resume_mode(current)
-        await set_setting(composed, new_val)
+        await set_setting_by_admin(admin_id, composed, new_val)
     else:
         current = await get_setting_typed("reg_resume_mode")
         new_val = _next_resume_mode(current)
-        await set_setting("reg_resume_mode", new_val)
+        await set_setting_by_admin(admin_id, "reg_resume_mode", new_val)
 
     label = _RESUME_MODE_HUMAN.get(new_val, new_val)
     await callback.answer(f"📄 Резюме: {label}{_REBUILD_HINT}", show_alert=True)
@@ -640,7 +641,7 @@ async def reg_q_reset_city_go(callback: types.CallbackQuery):
     for _header, setting_key in _categorized_question_keys():
         override_key = _question_override_key(track, setting_key, code)
         if override_key:
-            await delete_setting(override_key)
+            await delete_setting_by_admin(admin_id, override_key)
 
     if track == "party":
         await _refresh_party_sheet_header(code)
@@ -960,7 +961,7 @@ async def reg_prompt_rst_go(callback: types.CallbackQuery):
 
     composed = per_city_key(_prompt_base_key(track, step_key), code)
     if composed:
-        await delete_setting(composed)  # idempotent -- deleting an already-absent key is a no-op
+        await delete_setting_by_admin(admin_id, composed)  # idempotent -- deleting an already-absent key is a no-op
 
     city_txt = await city_label(code)
     await callback.answer(f"Готово: {city_txt} — как везде", show_alert=True)
@@ -1086,7 +1087,7 @@ async def reg_help_rst_go(callback: types.CallbackQuery):
     if denial:
         await callback.answer(denial, show_alert=True)
         return
-    await delete_setting(f"reg_help_{step_key}")  # idempotent -- deleting an already-absent key is a no-op
+    await delete_setting_by_admin(admin_id, f"reg_help_{step_key}")  # idempotent -- deleting an already-absent key is a no-op
     await callback.answer("Готово: стандартная подсказка", show_alert=True)
     text = await render_prompts_text(track, admin_id)
     await callback.message.edit_text(text, parse_mode="HTML", reply_markup=await build_prompts_keyboard(track, admin_id))

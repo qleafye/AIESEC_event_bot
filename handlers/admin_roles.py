@@ -29,9 +29,9 @@ from database.db import (
     get_user_by_username,
     list_staff,
     remove_staff,
-    set_setting,
     set_staff_city,
 )
+from settings_audit import set_setting_by_admin
 from handlers.states import StaffAdd
 from handlers.admin_caps import (
     ALL_CAPABILITIES,
@@ -458,7 +458,7 @@ async def toggle_role_enabled(callback: types.CallbackQuery):
     key = role_enabled_key(role)
     current = await get_setting_typed(key)
     new_val = "off" if current == "on" else "on"
-    await set_setting(key, new_val)
+    await set_setting_by_admin(callback.from_user.id, key, new_val)
     label = "✅ Вкл" if new_val == "on" else "❌ Выкл"
     await callback.answer(f"{ROLES[role]['label']}: {label}", show_alert=True)
 
@@ -565,7 +565,9 @@ async def toggle_role_cap(callback: types.CallbackQuery):
         caps = [c for c in ALL_CAPABILITIES if c == cap or c in caps]
         toast = f"{CAP_LABELS.get(cap, cap)}: разрешено"
 
-    await set_setting(role_caps_key(role), "\n".join(caps) if caps else _CAPS_EMPTY_SENTINEL)
+    await set_setting_by_admin(
+        callback.from_user.id, role_caps_key(role), "\n".join(caps) if caps else _CAPS_EMPTY_SENTINEL,
+    )
     await callback.answer(toast)
     await _show_role_caps(callback, role)
 
