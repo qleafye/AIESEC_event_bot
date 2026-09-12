@@ -110,7 +110,13 @@ KNOWN_OVERAGES: dict[str, tuple[int, str]] = {
         "(Phase 14/16)",
     ),
     "admin_settings.py": (
-        2185,
+        2256,
+        "Phase 30 (30-01, A2-08): девять строк тумблеров новой анкеты в settings_toggle_rows "
+        "(текст «подпись: Вкл → Выкл» на каждый плюс option_labels-текст мастер-тумблера "
+        "reg_form_v2_enabled) — сами хендлеры в шве handlers/admin_reg_form.py, здесь только "
+        "общий источник строки кнопки (сторож tests/test_admin_sections_ia20.py::"
+        "test_toggle_rows_are_shared_with_the_settings_screen); потолок поднят до фактического "
+        "размера (2185 -> 2256). "
         "+11 строк (квик 260911-w2m): переключатель «✏️ Правка анкеты делегатом» — "
         "_next_enum_value/_cycle_enum_setting (общий цикл enum-настройки из N положений, "
         "рядом с _toggle_module_setting), строка reg_edit_policy_text в settings_toggle_rows/"

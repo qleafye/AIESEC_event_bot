@@ -587,6 +587,16 @@ ADMIN_CAPS: dict[str, str] = {
     "toggle_apps_queue_sort_by_score": "settings",  # Phase 28 (28-08)
     "toggle_show_progress": "settings",
     "toggle_uni_mode": "settings",
+    # Phase 30 (30-01, A2-08): девять тумблеров «Анкета 2.0» — handlers/admin_reg_form.py.
+    "toggle_reg_form_v2": "settings",
+    "toggle_reg_form_chips": "settings",
+    "toggle_reg_form_lookup_search": "settings",
+    "toggle_reg_form_edu_card": "settings",
+    "toggle_reg_form_repeatable": "settings",
+    "toggle_reg_form_limit_counter": "settings",
+    "toggle_reg_form_status_screen": "settings",
+    "toggle_reg_form_header_settings": "settings",
+    "toggle_reg_form_haptics": "settings",
 
     # ── moderate_game (Phase 9) ─────────────────────────────────────────────────────────
     # 09-01 (interface-first): all 15 future gamification callback/state keys registered

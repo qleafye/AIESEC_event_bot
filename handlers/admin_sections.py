@@ -74,6 +74,18 @@ SECTIONS: list[tuple[str, str, list[tuple]]] = [
         ("toggle", "toggle_reg_offer_ref_link"),
         # Phase 28 (28-09, SU-10): имя файла резюме в облаке — рядом с реф-механикой выше.
         ("toggle", "toggle_resume_filename_short_mode"),
+        # Phase 30 (30-01, A2-08): девять тумблеров «Анкета 2.0» (артборд 13) — порядок:
+        # мастер -> чипы -> поиск -> образование -> повторяемые -> счётчик -> статус -> шапка
+        # -> вибрация. Хендлеры — handlers/admin_reg_form.py, строки — settings_toggle_rows.
+        ("toggle", "toggle_reg_form_v2"),
+        ("toggle", "toggle_reg_form_chips"),
+        ("toggle", "toggle_reg_form_lookup_search"),
+        ("toggle", "toggle_reg_form_edu_card"),
+        ("toggle", "toggle_reg_form_repeatable"),
+        ("toggle", "toggle_reg_form_limit_counter"),
+        ("toggle", "toggle_reg_form_status_screen"),
+        ("toggle", "toggle_reg_form_header_settings"),
+        ("toggle", "toggle_reg_form_haptics"),
         ("group", "reg"),
         ("group", "party"),
         ("group", "consent"),
@@ -499,3 +511,10 @@ from handlers import admin_sheet_logs  # noqa: E402,F401
 # потолке 915 строк (см. tests/test_module_size_convention_260816.py), и вставка ещё одного
 # шва-импорта туда потребовала бы поднимать потолок агрегатора-ядра ради одной строки.
 from handlers import admin_quiet_hours  # noqa: E402,F401
+
+# Phase 30 (30-01, A2-08): шов «📝 Анкета» (девять тумблеров «Анкета 2.0») — импорт СРАЗУ ПОСЛЕ
+# admin_quiet_hours, тот же хвостовой приём; `handlers.admin_reg_form` читает
+# `_toggle_module_setting` из `handlers.admin_settings`, который к этому моменту импорта уже
+# полностью определён (admin_settings.py импортирует этот модуль (admin_sections) последним в
+# своей собственной хвостовой цепочке). Golden snapshot: tests/test_refac_snapshot_260816.py.
+from handlers import admin_reg_form  # noqa: E402,F401
