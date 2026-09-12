@@ -223,6 +223,33 @@ export async function render(root, params, ctx) {
     }
   }
 
+  // Квик 260912-l53 (задача 2): «×» на дропзоне резюме — симметрично uploadResume выше: файл
+  // загружается СРАЗУ по выбору (D9), значит и удаление обязано уезжать сразу, а не ждать
+  // «Дальше» — обязательный шаг «resume» с пустым ответом поймал бы 400 invalid
+  // (validate_answer на пустой строке), ленивая отправка до сервера в принципе не доедет.
+  // `ctx.stepKey` — ключ ШАГА (не колонки, D-01 квика): сервер сам разворачивает набор
+  // колонок через `reg_engine.columns_for_step`. Ранней ветки «черновика нет — выходим» НЕТ
+  // НАМЕРЕННО: именно этот PATCH создаёт строку `reg_drafts` одобренному делегату, правящему
+  // анкету впервые с удаления резюме — без него файл остался бы висеть только в `users`.
+  async function removeResume(el, ctx) {
+    const current = ctx.getDraft();
+    setFieldState(el, "uploading", { text: "" });
+    try {
+      const fresh = await api("/reg/draft", {
+        method: "PATCH",
+        body: { version: current.version, answers: {}, clear: [ctx.stepKey] },
+      });
+      ctx.setDraft(fresh);
+      ctx.state.applyServer(answersFromSteps(fresh.steps), { keepDirty: true });
+      ctx.state.markServerDirty(ctx.column);
+      setFieldState(el, "default");
+      if (ctx.onDone) ctx.onDone(fresh);
+    } catch (err) {
+      if (isAuthError(err)) return;
+      setFieldState(el, "error", { text: errorText(err, ctx.getDraft().resume_upload_error_text) });
+    }
+  }
+
   // ── activated: подхват чужих правок из чата (D-19) — регистрируется ДО первого await,
   // чтобы unmount() могла снять обработчик, даже если запрос черновика ещё не вернулся. ────
   let onRefresh = null; // выставляется renderWizard()/renderOverview() ниже
@@ -465,6 +492,16 @@ export async function render(root, params, ctx) {
         // незаполненного поля (d.not_set_text, reg_form_not_set_text), не литерал JS.
         const el = field(h, { ...spec, placeholder: d.not_set_text }, value, (v) => {
           liveValue = v;
+          // Квик 260912-l53: «×» на дропзоне — немедленное удаление, симметрично загрузке
+          // ниже (D9). Привязка к spec.type === "file" обязательна: плейсхолдер закрытого
+          // списка (selectControl, W1 пункт 2) тоже отдаёт null, и он удалением не является.
+          if (v === null && spec.type === "file") {
+            removeResume(el, {
+              getDraft: () => d, setDraft: (nd) => { d = nd; }, state, column, stepKey: spec.key,
+              onDone: () => drawList(),
+            });
+            return;
+          }
           // D9: файл резюме грузится СРАЗУ по выбору, не дожидаясь галки — галка остаётся
           // способом подтвердить текстовый ввод ({text: …}).
           if (typeof File !== "undefined" && v instanceof File) {
@@ -778,6 +815,13 @@ export async function render(root, params, ctx) {
           return;
         }
         liveValue = v;
+        // Квик 260912-l53: «×» на дропзоне — немедленное удаление, симметрично загрузке ниже
+        // (D9). Привязка к spec.type === "file" обязательна: плейсхолдер закрытого списка
+        // (selectControl, W1 пункт 2) тоже отдаёт null, и он удалением не является.
+        if (v === null && spec.type === "file") {
+          removeResume(el, { getDraft: () => d, setDraft: (nd) => { d = nd; }, state, column, stepKey: spec.key });
+          return;
+        }
         // D9: файл резюме грузится СРАЗУ по выбору — goNext() ниже его в JSON PATCH не кладёт
         // (markServerDirty уже отработал здесь).
         if (typeof File !== "undefined" && v instanceof File) {

@@ -300,6 +300,12 @@ function localPreviewUrl(file) {
 
 function fileControl(h, spec, value, onChange) {
   const textAllowed = spec.text_allowed !== false;
+  // Квик 260912-l53 (задача 2): после «×» spec.display/spec.preview_url — уже НЕ правда
+  // (та же спека, полученная до клика, ещё несёт подпись удалённого файла), а свежий ответ
+  // сервера (screens/form.js::removeResume) придёт только после сетевого PATCH — экран
+  // обязан перестать врать НЕМЕДЛЕННО, не дожидаясь его. Флаг живёт в замыкании, как
+  // textAllowed — никакой сети в form.js не появляется (Reuse Contract).
+  let cleared = false;
   const input = h("input", { type: "file", class: "hidden", accept: spec.accept || ".pdf,.doc,.docx" });
   const trigger = h("button", {
     class: "btn secondary dropzone-trigger", type: "button", "aria-label": spec.label, onClick: () => input.click(),
@@ -309,7 +315,7 @@ function fileControl(h, spec, value, onChange) {
   const progress = h("span", { class: "dropzone-progress hidden", "aria-live": "polite" });
   const remove = h("button", {
     class: "btn ghost dropzone-remove hidden", type: "button", "aria-label": spec.label,
-    onClick: () => { onChange(null); paint(null); },
+    onClick: () => { cleared = true; onChange(null); paint(null); },
   }, icon("x"));
   const textarea = textAllowed ? h("textarea", { class: "input hidden", rows: "4" }) : null;
   const toggleText = textAllowed ? h("button", {
@@ -323,7 +329,7 @@ function fileControl(h, spec, value, onChange) {
     // УАТ 10-11.09 (пункт 4): резюме файлом лежит не в основной колонке (`v` для него
     // пуст) — «уже сохранено» обязано считаться и по spec.display (подпись файла из
     // непустой колонки-компаньона), иначе загруженное резюме показывалось как «не заполнено».
-    const stored = !local && Boolean((v != null && v !== "") || spec.preview_url || spec.display);
+    const stored = !local && !cleared && Boolean((v != null && v !== "") || spec.preview_url || spec.display);
     status.textContent = local ? v.name : (stored ? (spec.display || "") : "");
     const src = local ? localPreviewUrl(v) : (stored ? spec.preview_url : null);
     if (src) {
@@ -340,6 +346,7 @@ function fileControl(h, spec, value, onChange) {
     const file = (input.files || [])[0];
     input.value = "";
     if (!file) return;
+    cleared = false;
     onChange(file);
     paint(file);
   });
