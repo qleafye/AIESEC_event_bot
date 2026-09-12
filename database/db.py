@@ -289,6 +289,86 @@ async def _migrate_local_timestamps_to_msk(db: aiosqlite.Connection) -> None:
     await db.execute(f"PRAGMA user_version = {_MSK_MIGRATION_USER_VERSION}")
 
 
+# Phase 30 (30-02, A2-03): имя файла снапшота на `kind` — таблица закрытая (`kind` — словарь
+# "university"/"city" из `services/lookup.py`), а НЕ строковый шаблон `"<kind>s_ru.json"`: для
+# "city" такой шаблон дал бы "citys_ru.json", а не существующий `cities_ru.json`.
+_LOOKUP_SNAPSHOT_FILES = {
+    "university": "universities_ru.json",
+    "city": "cities_ru.json",
+}
+
+
+async def seed_lookup_from_snapshot(db: aiosqlite.Connection, kind: str) -> None:
+    """Идемпотентный посев `lookup_entries` из офлайн-снапшота `data/lookup/<file>.json`
+    (30-CONTEXT.md решение №1 — без внешних API в рантайме). Срабатывает, ТОЛЬКО если для
+    этого `kind` в таблице ещё нет ни одной строки — иначе менеджер, закрепивший чипы или
+    добавивший псевдонимы руками (план 30-07), увидел бы их не тронутыми при каждом рестарте
+    бота (снапшот не синхронизируется автоматически — решение владельца «разовая выгрузка»).
+
+    Fail-soft (30-RESEARCH.md § Build Artifacts): отсутствующий/битый/пустой файл — запись в
+    лог, не исключение. Бот обязан подняться и без снапшота (просто со скудным справочником)."""
+    async with db.execute(
+        "SELECT COUNT(*) FROM lookup_entries WHERE kind = ?", (kind,)
+    ) as cursor:
+        row = await cursor.fetchone()
+    if row and row[0] > 0:
+        return
+
+    filename = _LOOKUP_SNAPSHOT_FILES.get(kind)
+    if not filename:
+        logger.warning("seed_lookup_from_snapshot: неизвестный kind=%r — пропуск", kind)
+        return
+
+    path = os.path.join("data", "lookup", filename)
+    try:
+        with open(path, "r", encoding="utf-8") as f:
+            payload = json.load(f)
+    except (OSError, ValueError) as exc:
+        logger.warning(
+            "seed_lookup_from_snapshot: не удалось прочитать %s (%s) — старт без справочника %s",
+            path, exc, kind,
+        )
+        return
+
+    items = payload.get("items") if isinstance(payload, dict) else None
+    if not isinstance(items, list):
+        logger.warning("seed_lookup_from_snapshot: %s без списка items — старт без справочника", path)
+        return
+
+    # Отложенный импорт (та же дисциплина разрыва цикла, что у `services/i18n_sources.py`/
+    # `services/scheduler.py`, читающих `database.db._connect()` тем же приёмом в обратную
+    # сторону): `services.lookup` на верхнем уровне не импортирует `database.db`.
+    from services.lookup import normalize_alias
+
+    now = msk_now().strftime("%Y-%m-%d %H:%M:%S")
+    inserted = 0
+    for item in items:
+        if not isinstance(item, dict):
+            continue
+        canonical = (item.get("canonical") or "").strip()
+        if not canonical or item.get("dissolved"):
+            continue
+        aliases = item.get("aliases") or []
+        source = item.get("source") or "seed"
+        for alias in [canonical, *aliases]:
+            alias = (alias or "").strip()
+            if not alias:
+                continue
+            alias_norm = normalize_alias(alias)
+            if not alias_norm:
+                continue
+            cursor = await db.execute(
+                "INSERT OR IGNORE INTO lookup_entries "
+                "(kind, canonical, alias, alias_norm, source, pinned, added_by, created_at) "
+                "VALUES (?, ?, ?, ?, ?, 0, NULL, ?)",
+                (kind, canonical, alias, alias_norm, source, now),
+            )
+            inserted += cursor.rowcount or 0
+    logger.info(
+        "seed_lookup_from_snapshot: kind=%s вставлено строк=%d (из %s)", kind, inserted, path,
+    )
+
+
 async def init_db():
     async with _connect() as db:
         await _enable_wal(db)
@@ -985,6 +1065,64 @@ async def init_db():
                 UNIQUE (poll_id, user_id)
             )
         ''')
+
+        # Phase 30 (30-02, A2-03): справочники ВУЗов/городов для типа шага `lookup` — общий
+        # модуль правил `services/lookup.py` (нормализация/поиск/чипы/очередь) — единственный
+        # читатель/писатель этих двух таблиц, бот и Mini App ищут по ОДНИМ данным. Уникальность
+        # по (kind, alias_norm): один и тот же нормализованный псевдоним не должен попасть в
+        # справочник дважды под разные каноники — на этот индекс полагаются и идемпотентный
+        # посев (`seed_lookup_from_snapshot`, `INSERT OR IGNORE`), и `enqueue_merge`, чтобы
+        # «СПбГАСУ» и «спбгасу» остались одной записью, а не двумя.
+        await db.execute('''
+            CREATE TABLE IF NOT EXISTS lookup_entries (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                kind TEXT NOT NULL,
+                canonical TEXT NOT NULL,
+                alias TEXT NOT NULL,
+                alias_norm TEXT NOT NULL,
+                source TEXT NOT NULL,
+                pinned INTEGER NOT NULL DEFAULT 0,
+                added_by INTEGER,
+                created_at TEXT NOT NULL
+            )
+        ''')
+        await db.execute(
+            "CREATE UNIQUE INDEX IF NOT EXISTS idx_lookup_entries_uniq "
+            "ON lookup_entries(kind, alias_norm)"
+        )
+        await db.execute(
+            "CREATE INDEX IF NOT EXISTS idx_lookup_entries_kind_norm "
+            "ON lookup_entries(kind, alias_norm, canonical)"
+        )
+
+        # Очередь «Другое → влить как псевдоним» (A2-03, тонкая настройка менеджера, план
+        # 30-07, необязательна): делегат ответил свободным текстом на шаге типа `lookup`,
+        # `services.lookup.enqueue_merge` кладёт сюда сырой ответ вместо того, чтобы его
+        # потерять. `status`: `new` — ждёт решения менеджера, `merged` — менеджер добавил как
+        # псевдоним (новой или существующей) каноники, `rejected` — решил не заводить (мусор/
+        # опечатка/спам). Дубль по (kind, raw_norm, status='new') не плодится — `enqueue_merge`
+        # проверяет наличие необработанной записи перед вставкой (T-30-05: объём сезона
+        # 1000-1500 делегатов, rate-limit вне фазы).
+        await db.execute('''
+            CREATE TABLE IF NOT EXISTS lookup_merge_queue (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                kind TEXT NOT NULL,
+                raw_text TEXT NOT NULL,
+                raw_norm TEXT NOT NULL,
+                step_key TEXT NOT NULL,
+                telegram_id INTEGER NOT NULL,
+                status TEXT NOT NULL DEFAULT 'new',
+                decided_by INTEGER,
+                decided_at TEXT,
+                created_at TEXT NOT NULL
+            )
+        ''')
+        await db.execute(
+            "CREATE INDEX IF NOT EXISTS idx_lookup_merge_queue_kind_status "
+            "ON lookup_merge_queue(kind, status)"
+        )
+        await seed_lookup_from_snapshot(db, "university")
+        await seed_lookup_from_snapshot(db, "city")
 
         # Indexes under the hot admin/scheduler queries. Each one mirrors a real WHERE/ORDER BY
         # in this module (see the comments in _HOT_PATH_INDEXES); nothing speculative.
