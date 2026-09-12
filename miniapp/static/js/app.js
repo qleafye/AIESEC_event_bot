@@ -15,7 +15,7 @@
 import { api, ApiError, esc, setAuthErrorHandler } from "./api.js";
 import { icon } from "./icons.js";
 import { applyMotionTier } from "./motion.js";
-import { setFileToken } from "./ui.js";
+import { setFileToken, labelText } from "./ui.js";
 
 const tg = window.Telegram && window.Telegram.WebApp;
 const root = document.documentElement;
@@ -338,7 +338,7 @@ function isActive(activeHash, hash) {
 }
 
 function navLabel(item) {
-  return sectionLabels[item.section] || item.section;
+  return labelText(sectionLabels[item.section] || item.section);
 }
 
 // «Ещё» (раскладка A, nav.html:186-192) — оверлей, не маршрут: закрывается тапом вне листа
@@ -424,8 +424,10 @@ function renderToptabs(activeHash) {
     bar.append(h("a", {
       href: item.hash,
       class: isActive(activeHash, item.hash) ? "on" : null,
-      text: navLabel(item),
-    }));
+    },
+      icon(NAV_ICONS[item.hash] || "chevron-right"),
+      h("span", { text: navLabel(item) }),
+    ));
   }
   navEl.append(bar);
   const activeEl = bar.querySelector(".on");

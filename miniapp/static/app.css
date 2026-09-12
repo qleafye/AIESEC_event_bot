@@ -206,6 +206,7 @@ body[data-nav="toptabs"] .toptabs a {
   position: relative;
   display: flex;
   align-items: center;
+  gap: var(--sp-2);
   min-height: var(--tap-min);
   padding: var(--sp-2) 0 var(--sp-3);
   color: var(--text-muted);
@@ -214,6 +215,7 @@ body[data-nav="toptabs"] .toptabs a {
   font-weight: 700;
   transition: color var(--dur) var(--ease);
 }
+body[data-nav="toptabs"] .toptabs a .icon { width: 18px; height: 18px; }
 body[data-nav="toptabs"] .toptabs a.on { color: var(--text); }
 body[data-nav="toptabs"] .toptabs a.on::after {
   content: "";
@@ -1559,6 +1561,23 @@ a.flat-row:active, button.flat-row:active { background: var(--surface-alt); }
   height: 1px; border: 0; background: var(--on-accent-rule);
   margin: var(--sp-4) 0 var(--sp-3);
 }
+/* Квик 12.09 (UI-аудит, пункт 11): плейсхолдер плиты хаба на время гидратации — снимается
+   в hub.js сразу после Promise.allSettled, до разбора результатов ручек. */
+.skeleton {
+  display: block;
+  border-radius: var(--radius-sm);
+  background: var(--on-accent-rule);
+  animation: skeleton-pulse 1.2s ease-in-out infinite;
+}
+.skeleton--person { width: 96px; height: 20px; }
+.skeleton--eyebrow { width: 72px; height: 11px; }
+.skeleton--unit { width: 36px; height: 13px; }
+@keyframes skeleton-pulse {
+  0%, 100% { opacity: .45; }
+  50% { opacity: .9; }
+}
+:root[data-motion="off"] .skeleton { animation: none; }
+
 .plate-row { display: flex; align-items: flex-end; gap: var(--sp-2); }
 .plate-facts {
   display: flex; flex-wrap: wrap; gap: var(--sp-3) var(--sp-6);
