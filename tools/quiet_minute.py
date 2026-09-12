@@ -14,11 +14,18 @@ import argparse
 import sqlite3
 import sys
 import time
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timedelta
+from zoneinfo import ZoneInfo
 
-# `reg_drafts.updated_at` пишется `datetime.now()` процесса бота (UTC в контейнере), формат
-# 'YYYY-MM-DD HH:MM:SS'. Сравниваем в Python, а не в SQL, чтобы не зависеть от TZ хоста.
+# Квик 260912-mcj: `reg_drafts.updated_at` пишется московским `services.timeutil.msk_now()`
+# процесса бота (до этого квика — `datetime.now()` часов контейнера, UTC на проде/стенде),
+# формат 'YYYY-MM-DD HH:MM:SS'. Скрипт запускается на хосте (stdlib, без импортов проекта),
+# поэтому свой литерал пояса — тот же приём, что у `dashboard/timeutil.py`/
+# `services/timeutil.py`/`miniapp/timeutil.py`, но эти сторожа «один литерал» покрывают
+# только `services/`+`handlers/` и `miniapp/`, не `tools/`. Сравниваем в Python, а не в SQL,
+# чтобы не зависеть от TZ хоста.
 _FMT = "%Y-%m-%d %H:%M:%S"
+_MOSCOW_TZ = ZoneInfo("Europe/Moscow")
 
 
 def _recent_activity(db_path: str, since_seconds: int) -> list[tuple]:
@@ -30,7 +37,7 @@ def _recent_activity(db_path: str, since_seconds: int) -> list[tuple]:
         ).fetchall()
     finally:
         conn.close()
-    now = datetime.now(timezone.utc).replace(tzinfo=None)
+    now = datetime.now(_MOSCOW_TZ).replace(tzinfo=None)
     cutoff = now - timedelta(seconds=since_seconds)
     active = []
     for tid, step, upd in rows:
@@ -68,7 +75,7 @@ def main() -> int:
             print(f"Тихо: правок черновиков не было {args.quiet} с. Можно рестартовать.")
             return 0
         waited = int(time.monotonic() - started)
-        who = ", ".join(f"{tid} ({step}, {upd[11:19]} UTC)" for tid, step, upd in active[:5])
+        who = ", ".join(f"{tid} ({step}, {upd[11:19]} МСК)" for tid, step, upd in active[:5])
         print(f"[{waited:4d}s] в анкете сейчас {len(active)}: {who} — жду…", flush=True)
         if waited >= args.max_wait:
             print(f"Не дождались тишины за {args.max_wait} с.", file=sys.stderr)
