@@ -1098,6 +1098,131 @@ def _ui_type_for(step_key: str, step_type: str) -> str:
     return "text"
 
 
+# Phase 30 (30-01, A2-01): вторая ось типа шага — «Анкета 2.0». `_ui_type_for` выше отвечает
+# «каким HTML-контролом рисовать поле» (text/select/choice-chips/...), эта ось отвечает «какой
+# ЦЕЛЬНЫЙ тип шага это с точки зрения нового дизайна» (select/lookup/composite/link/multi/
+# repeatable/text, A2-01) — то, чем управляют девять тумблеров «📝 Анкета» ниже. Обе оси живут
+# в spec ОДНОВРЕМЕННЕ (`spec["type"]` не тронут ни одним символом, Pitfall 1 30-RESEARCH.md) —
+# `step_type_v2()`/`spec["kind"]` читает только новый фронт (план 30-03+) и `degrade_kind()`;
+# сегодняшний бот и сегодняшний Mini App продолжают читать `spec["type"]` как раньше.
+_STEP_TYPE_V2_OVERRIDES = {
+    # ВУЗ/город — свой справочник с поиском (A2-03), не общий choice-chips список.
+    "university": "lookup",
+    "city": "lookup",
+    # Ссылки — карточка с иконкой сервиса и распознаванием формата (A2-06).
+    "vk": "link",
+    "resume_link": "link",
+    # Опыт и проекты — единственный потребитель repeatable-блоков в этой фазе (A2-05).
+    "mini_portfolio": "repeatable",
+    # Явный override, а не «упало через default»: `phone` в новой анкете получает встроенную
+    # кнопку `requestContact` (30-UI-SPEC.md §7), но остаётся типом `text`, а не отдельным
+    # типом — решение оркестратора 12.09 (30-CONTEXT.md «Пять тумблероподобных подписей»).
+    "phone": "text",
+}
+
+# Единственная composite-группа фазы — «Образование» (условная развилка reg_engine.py:467-624,
+# читать `enabled_steps`/`_is_step_enabled` для контекста веток). Формат — на случай, если
+# будущая фаза заведёт вторую композитную группу: имя группы -> список входящих step_key.
+_COMPOSITE_GROUPS: dict[str, list[str]] = {
+    "education": ["education_status", "university", "course", "study_field"],
+}
+
+
+def composite_group_of(step_key: str) -> str | None:
+    """Имя composite-группы шага (сегодня только `"education"`) — `None`, если шаг ни в какой
+    группе не состоит. `university` состоит и в группе, и в `_STEP_TYPE_V2_OVERRIDES` — это НЕ
+    противоречие: `step_type_v2("university")` всё равно вернёт `"lookup"` (override проверяется
+    первым), а эта функция отдельно отвечает на вопрос «чьей карточки часть», не «как рисовать»
+    (нужно `composite`-рендеру, чтобы найти под-поле ВУЗ внутри карточки «Образование»)."""
+    for group_name, group_steps in _COMPOSITE_GROUPS.items():
+        if step_key in group_steps:
+            return group_name
+    return None
+
+
+def step_type_v2(step_key: str) -> str:
+    """Тип шага по новой оси (A2-01) — одно из `select`/`lookup`/`composite`/`link`/`multi`/
+    `repeatable`/`text`. Порядок вывода дословно из таблицы 30-RESEARCH.md Pattern 1 (verified
+    чтением REG_FLOW/`_ui_type_for`, не догадка): override -> composite-группа -> `_ui_type_for`
+    (choice-chips/select/yesno -> select, multi -> multi) -> text. Чистая функция (без похода в
+    БД) — дефолт по сегодняшнему поведению шага, ничего не спрашивает у тумблеров (это отдельно
+    делает `degrade_kind` ниже, читая `form_v2_flags()`)."""
+    if step_key in _STEP_TYPE_V2_OVERRIDES:
+        return _STEP_TYPE_V2_OVERRIDES[step_key]
+    if composite_group_of(step_key) is not None:
+        return "composite"
+    step_type = REG_STEP_TYPES.get(step_key, "text")
+    ui_type = _ui_type_for(step_key, step_type)
+    if ui_type in ("choice-chips", "select", "yesno"):
+        return "select"
+    if ui_type == "multi":
+        return "multi"
+    return "text"
+
+
+# Phase 30 (30-01, A2-08): девять тумблеров группы «📝 Анкета» — имена без префикса `reg_form_`
+# (сам префикс добавляет `form_v2_flags` при чтении реестра), порядок — как в артборде 13
+# (мастер первым). Единственное место, откуда обе поверхности (Mini App/чат) читают набор имён —
+# `settings_schema.py`/`handlers/admin_reg_form.py` строят свои списки из тех же девяти строк.
+FORM_V2_TOGGLE_KEYS = (
+    "v2_enabled", "chips", "lookup_search", "edu_card", "repeatable",
+    "limit_counter", "status_screen", "header_settings", "haptics",
+)
+
+
+async def form_v2_flags(event_city: str | None = None) -> dict[str, bool]:
+    """Девять тумблеров «📝 Анкета» одним словарём `{имя_без_префикса: bool}` — контракт для
+    `degrade_kind` ниже и для планов 30-03..30-08, которые ничего не резолвят из реестра сами
+    (единая точка чтения). `reg_form_*` — обычные реестровые ключи БЕЗ трекового суффикса (как
+    `reg_resume_mode` выше), поэтому общий резолвер `get_setting_typed_for_city` уместен
+    напрямую. Дефолт каждого ключа — `"off"` (SETTINGS_SCHEMA) — пустой реестр отдаёт девять
+    `False`, а `degrade_kind` при всех `False` отдаёт `"legacy"` для любого типа: делегат не
+    видит ничего нового, пока менеджер явно не включит хотя бы мастер-тумблер (acceptance этого
+    плана — GOLDEN не сдвинут)."""
+    return {
+        name: await get_setting_typed_for_city(f"reg_form_{name}", event_city) == "on"
+        for name in FORM_V2_TOGGLE_KEYS
+    }
+
+
+def degrade_kind(kind: str, flags: dict[str, bool]) -> str:
+    """Единственное место с правилами деградации типа при выключенных тумблерах (T-30-02 threat
+    register — обе поверхности зовут эту функцию и не копируют правила). Таблицы — дословно из
+    `30-UI-SPEC.md` § «По типу шага» → «Деградация» каждого типа. Возвращает канонический тип
+    (шаг рисуется как есть) либо `"legacy"` («рисуй как сегодня» — весь путь до-фазы-30, чат и
+    Mini App это уже умеют без единой новой строчки кода)."""
+    if not flags.get("v2_enabled"):
+        # 30-UI-SPEC.md §1 «select» / общее правило: выключенный master switch откатывает
+        # ЛЮБОЙ тип к сегодняшнему поведению обеих поверхностей — единственная деградация,
+        # применяющаяся раньше любого более узкого тумблера.
+        return "legacy"
+    if kind == "lookup":
+        # 30-UI-SPEC.md §2: оба тумблера выключены -> голое текстовое поле («Впиши {entity}»).
+        if not flags.get("chips") and not flags.get("lookup_search"):
+            return "text"
+        return "lookup"
+    if kind == "multi":
+        # 30-UI-SPEC.md §5: без чипов остаётся только свободный ввод с лимитом — фактический
+        # откат к `text` (лимит остаётся подсказкой, не структурой).
+        if not flags.get("chips"):
+            return "text"
+        return "multi"
+    if kind == "composite":
+        # 30-UI-SPEC.md §3: без карточки — 4 классических шага (архитектура шага меняется
+        # целиком, не только визуал) — четыре шага, а не «урезанная карточка».
+        if not flags.get("edu_card"):
+            return "legacy"
+        return "composite"
+    if kind == "repeatable":
+        # 30-UI-SPEC.md §6: без повторяемости — один блок максимум (сегодняшнее поведение).
+        if not flags.get("repeatable"):
+            return "text"
+        return "repeatable"
+    # select/link/text (30-UI-SPEC.md §1/§4/§7): собственного под-тумблера нет — деградация
+    # только через master switch, уже обработанный выше.
+    return kind
+
+
 # Права/безопасность формы (RESEARCH § «Права / безопасность формы»): ФИО 200,
 # expectations/comments/resume(текст) 4000, остальной текст 1000. Бот сегодня лимита не
 # применяет (summary режется по 4096 Telegram-лимиту отдельно) — эти константы предназначены
@@ -1196,6 +1321,13 @@ async def step_spec(step_key: str, participant_type: str | None = None,
         "skip_allowed": step_key in _SKIP_ALLOWED_STEPS,
         "required": step_key not in _SKIP_ALLOWED_STEPS,
         "max_len": _max_len_for(step_key, ui_type),
+        # Phase 30 (30-01, A2-01): новая ось «Анкета 2.0» — публикуется РЯДОМ с `spec["type"]`
+        # (старая ось `_ui_type_for`, выше), не заменяя его ни одним символом (Pitfall 1
+        # 30-RESEARCH.md). GOLDEN (tests/test_reg_engine_parity.py) собирает снимок через
+        # prompt()/options()/enabled_steps() по отдельности, а не через step_spec() целиком —
+        # добавление этих двух ключей не меняет ни одного байта GOLDEN.
+        "kind": step_type_v2(step_key),
+        "composite_group": composite_group_of(step_key),
     }
     # УАТ 10-11.09 (квик 260911-2kb, пункт 4): набор колонок-компаньонов шага — та же функция,
     # что уже синхронизирует черновик (`columns_for_step`, квик 260910-wb6), второй копии
