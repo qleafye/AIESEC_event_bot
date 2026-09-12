@@ -5,15 +5,10 @@
 // готовые подписи (status_label/filters[].label/answer_button/sent_toast/empty_text) —
 // доменные тексты в JS не хардкодятся.
 
-import { flatRow, emptyState, labelText } from "../ui.js";
+import { flatRow, emptyState, labelText, errorText, noticeBox } from "../ui.js";
 import { icon } from "../icons.js";
 
 const PAGE = 20;
-
-function errorText(err, fallback) {
-  if (err && err.payload && err.payload.text) return err.payload.text;
-  return fallback;
-}
 
 function isAuthError(err) {
   return Boolean(err && (err.status === 401 || err.status === 403 || err.status === 503));
@@ -53,9 +48,8 @@ export async function render(root, params, ctx) {
   const formErrors = {};
   const faqDrafts = {};
   const faqErrors = {};
-  let noticeTimer = null;
 
-  const notice = h("p", { class: "chip success hidden" });
+  const { el: notice, say } = noticeBox(h, { kind: "success", autoHideMs: 3000 });
   const filtersRow = h("div", { class: "chip-row" });
   const list = h("div", { class: "flat-list" });
   const foot = h("div", { class: "list-foot" });
@@ -67,13 +61,6 @@ export async function render(root, params, ctx) {
     list,
     foot,
   );
-
-  function say(text) {
-    if (noticeTimer) { clearTimeout(noticeTimer); noticeTimer = null; }
-    notice.textContent = text || "";
-    notice.className = `chip success${text ? "" : " hidden"}`;
-    if (text) noticeTimer = setTimeout(() => say(""), 3000);
-  }
 
   function renderFilters(filters) {
     filtersRow.replaceChildren();

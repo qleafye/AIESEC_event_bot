@@ -8,17 +8,12 @@
 //
 // Ошибки сервера — человеческим текстом из payload.text, не кодом ответа.
 
-import { flatRow, emptyState } from "../ui.js";
+import { flatRow, emptyState, errorText, noticeBox } from "../ui.js";
 import { icon } from "../icons.js";
 import { haptic } from "../motion.js";
 
 const SEARCH_DEBOUNCE_MS = 300;
 const JOURNAL_PAGE = 20;
-
-function errorText(err, fallback) {
-  if (err && err.payload && err.payload.text) return err.payload.text;
-  return fallback;
-}
 
 function isAuthError(err) {
   return Boolean(err && (err.status === 401 || (err.status === 403 && err.reason !== "out_of_scope" && err.reason !== "not_found") || err.status === 503));
@@ -36,7 +31,7 @@ function journalRow(h, item) {
 export async function render(root, params, ctx) {
   const { h, api, me } = ctx;
 
-  const notice = h("p", { class: "chip accent hidden" });
+  const { el: notice, say } = noticeBox(h);
   const input = h("input", { class: "input", type: "text", placeholder: "@username, id или часть имени" });
   const results = h("div");
   const holder = h("div");
@@ -56,11 +51,6 @@ export async function render(root, params, ctx) {
     journalList,
     journalFoot,
   );
-
-  function say(text, kind) {
-    notice.textContent = text || "";
-    notice.className = `chip ${kind || "accent"}${text ? "" : " hidden"}`;
-  }
 
   let presets = null;
   async function getPresets() {

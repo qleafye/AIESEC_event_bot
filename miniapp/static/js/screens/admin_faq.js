@@ -7,17 +7,12 @@
 // (miniapp/routers/faq.py); в этом файле только служебные строки («Сохранить», «Отмена»,
 // «Добавить», «Да, удалить», «Показать ещё», «Загрузка…», generic-ошибки сети).
 
-import { flatRow, emptyState, labelText } from "../ui.js";
+import { flatRow, emptyState, labelText, errorText, noticeBox } from "../ui.js";
 import { icon } from "../icons.js";
 import { haptic } from "../motion.js";
 
 const PAGE = 25;
 const RELOAD_LIMIT_MAX = 50; // server-side ADMIN_LIMIT_MAX — потолок «перезагрузи видимое»
-
-function errorText(err, fallback) {
-  if (err && err.payload && err.payload.text) return err.payload.text;
-  return fallback;
-}
 
 function isAuthError(err) {
   return Boolean(err && (err.status === 401 || (err.status === 403 && err.reason !== "out_of_scope" && err.reason !== "not_found") || err.status === 503));
@@ -41,7 +36,6 @@ export async function render(root, params, ctx) {
   let total = 0;
   let items = [];
   let loading = false;
-  let noticeTimer = null;
 
   let emptyText = "";
   let cityChoice = false;
@@ -60,7 +54,7 @@ export async function render(root, params, ctx) {
   const editDrafts = {}; // `${id}:${field}` -> черновик текста, переживает перерисовку
   const editErrors = {}; // `${id}:${field}` -> ошибка сохранения поля
 
-  const notice = h("p", { class: "chip success hidden" });
+  const { el: notice, say } = noticeBox(h, { kind: "success", autoHideMs: 3000 });
   const addBtn = h("button", { class: "btn", type: "button" }, icon("plus"), h("span", { text: " Добавить" }));
   const addHolder = h("div");
   const list = h("div", { class: "flat-list" });
@@ -74,13 +68,6 @@ export async function render(root, params, ctx) {
     list,
     foot,
   );
-
-  function say(text) {
-    if (noticeTimer) { clearTimeout(noticeTimer); noticeTimer = null; }
-    notice.textContent = text || "";
-    notice.className = `chip success${text ? "" : " hidden"}`;
-    if (text) noticeTimer = setTimeout(() => say(""), 3000);
-  }
 
   function applyPageMeta(page) {
     emptyText = page.empty_text || "";

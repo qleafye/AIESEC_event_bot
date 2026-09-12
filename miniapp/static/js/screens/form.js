@@ -13,7 +13,7 @@ import {
   field, setFieldState, createFormState, diffView, confirmBox, errorText,
   isAuthError as isAuthErrorBase, stepIndexFromKey, validationErrors, firstFieldError,
 } from "../form.js";
-import { fileUrl, flatRow, sectionTitle, labelText } from "../ui.js";
+import { fileUrl, flatRow, sectionTitle, labelText, noticeBox } from "../ui.js";
 import { icon } from "../icons.js";
 import { haptic } from "../motion.js";
 
@@ -131,14 +131,9 @@ export async function render(root, params, ctx) {
   const { h, api, navigate, setMainButton, tg } = ctx;
   tgRef = tg;
 
-  const notice = h("p", { class: "chip accent hidden" });
+  const { el: notice, say } = noticeBox(h);
   const holder = h("div");
   root.append(notice, holder);
-
-  function say(text, kind) {
-    notice.textContent = text || "";
-    notice.className = `chip ${kind || "accent"}${text ? "" : " hidden"}`;
-  }
 
   function goHome() {
     navigate("#/hub");
