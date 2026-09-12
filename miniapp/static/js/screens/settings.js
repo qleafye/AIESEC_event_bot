@@ -1200,7 +1200,7 @@ async function renderSection(root, code, ctx) {
 
   // ── карточка группы: заголовок-кнопка (счётчик + шеврон, вращение — CSS .collapsed) +
   // тело со строками (или матрицей — reg_questions, см. выше). ────────────────────────────
-  function buildGroupCard(group, isFirst) {
+  function buildGroupCard(group, isFirst, sectionTotal) {
     const rowsWrap = h("div", { class: "settings-group-body" });
     if (group.theme_preview) {
       rowsWrap.append(buildThemePreviewBlock(group));
@@ -1216,14 +1216,28 @@ async function renderSection(root, code, ctx) {
         rowsWrap.append(row.el);
       }
     }
-    const countEl = h("span", { class: "settings-group-count", text: String(group.items.length) });
+    // Квик 12.09 (UI-аудит, пункт 4): «N из M» — M считает не только эту карточку, а весь
+    // раздел (тумблеры раздела подняты над карточками групп, см. renderSectionBody), иначе
+    // карточка «Оплата» показывала «12» вместо «12 из 14» и выглядела так, будто в ней ВСЕ
+    // настройки раздела.
+    const countText = (texts.miniapp_settings_group_count_text || "")
+      .replace("{shown}", String(group.items.length)).replace("{total}", String(sectionTotal));
+    const countEl = h("span", { class: "settings-group-count", text: countText });
     const chevron = h("span", { class: "settings-group-chevron" }, icon("chevron-down"));
     const wrap = h("div", { class: "settings-group" });
     wrap.dataset.token = group.token;
+    // Квик 12.09 (UI-аудит, пункт 14): группа с той же подписью, что раздел (например
+    // «💳 Оплата» внутри раздела «Оплата»), не повторяет заголовок под шапкой раздела —
+    // сравниваем СЫРЫЕ подписи (до labelText), aria-label шапки остаётся group.label, так что
+    // для скринридера заголовок не пропадает.
+    const sameAsSection = Boolean(section && group.label === section.label);
     const head = h("button", {
       class: "settings-group-head", type: "button", "aria-label": group.label, "aria-expanded": "true",
       onClick: () => onGroupHeadClick(group.token, wrap),
-    }, h("span", { class: "settings-group-title", text: group.label }), countEl, chevron);
+    },
+      sameAsSection ? null : h("span", { class: "settings-group-title", text: group.label }),
+      countEl, chevron,
+    );
     wrap.append(head, rowsWrap);
 
     const stored = loadCollapsed(group.token);
@@ -1256,8 +1270,12 @@ async function renderSection(root, code, ctx) {
       }
       sectionsWrap.append(toggleList);
     }
+    // Квик 12.09 (UI-аудит, пункт 4): M считается один раз на раздел — тумблеры раздела +
+    // items всех групп раздела (тумблеры не входят ни в одну карточку группы).
+    const sectionTotal = section.toggles.length
+      + section.groups.reduce((sum, g) => sum + (g.items ? g.items.length : 0), 0);
     section.groups.forEach((group, idx) => {
-      sectionsWrap.append(buildGroupCard(group, idx === 0 && !section.toggles.length));
+      sectionsWrap.append(buildGroupCard(group, idx === 0 && !section.toggles.length, sectionTotal));
     });
   }
 

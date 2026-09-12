@@ -42,6 +42,9 @@ _SELF_DESCRIBING_MINIAPP_EXCEPTIONS = {
     # которыми менеджер спросит про них вслух.
     "miniapp_network_error_text",
     "miniapp_form_complete_home_cta_text",
+    # Квик 12.09 (UI-аудит, пункт 4): «счётчик в заголовке группы» не содержит слова «формат»/
+    # «шаблон» — явный синоним точнее самоописания.
+    "miniapp_settings_group_count_text",
 }
 SEARCH_SELF_DESCRIBING = {
     k for k, v in SETTINGS_SCHEMA.items()
