@@ -170,6 +170,11 @@ async def _seed_pre_migration_rows(conn: aiosqlite.Connection) -> None:
         "INSERT INTO user_consents (user_id, consent_key, accepted_at) VALUES (?, ?, ?)",
         (1, "main", "2026-09-01T10:00:00.500000"),
     )
+    await conn.execute(
+        "INSERT INTO reg_drafts (telegram_id, kind, updated_by, updated_at, created_at) "
+        "VALUES (?, ?, ?, ?, ?)",
+        (1, "new", "bot", "2026-09-01 10:00:00", "2026-09-01 09:55:00"),
+    )
     await conn.commit()
 
 
@@ -190,6 +195,10 @@ async def _read_family(conn: aiosqlite.Connection) -> dict:
     ) as cur:
         consent_row = await cur.fetchone()
     async with conn.execute(
+        "SELECT updated_at, created_at FROM reg_drafts WHERE telegram_id = ?", (1,)
+    ) as cur:
+        draft_row = await cur.fetchone()
+    async with conn.execute(
         "SELECT value FROM bot_settings WHERE key = ?", (db._MSK_MIGRATION_MARKER_KEY,)
     ) as cur:
         marker_row = await cur.fetchone()
@@ -199,6 +208,8 @@ async def _read_family(conn: aiosqlite.Connection) -> dict:
         "approved_at": user_row["approved_at"],
         "paid_at": user_row["paid_at"],
         "ts": ev_row["ts"],
+        "draft_updated_at": draft_row["updated_at"],
+        "draft_created_at": draft_row["created_at"],
         "decided_at": dec_row["decided_at"],
         "effects_due_at": dec_row["effects_due_at"],
         "accepted_at": consent_row["accepted_at"],
@@ -240,6 +251,8 @@ def test_migration_shifts_family_by_3_hours_when_process_clock_is_utc(tmp_path):
     assert result["decided_at"] == "2026-09-01 13:00:00"
     assert result["effects_due_at"] == "2026-09-01 13:00:05"
     assert result["accepted_at"] == "2026-09-01T13:00:00.500000"
+    assert result["draft_updated_at"] == "2026-09-01 13:00:00"
+    assert result["draft_created_at"] == "2026-09-01 12:55:00"
     assert result["marker"] == "1"
 
 
@@ -259,6 +272,54 @@ def test_migration_is_idempotent_on_second_boot(tmp_path):
         db.process_clock_is_utc = orig
 
     assert after_first == after_second
+
+
+def test_migration_shifts_reg_draft_created_at_and_second_boot_is_a_noop(tmp_path):
+    """Доработка по решению оркестратора (после исходного исполнения квика): `created_at`
+    черновика анкеты пишется тем же `msk_now()`, что и соседние `updated_at`/`submitting_at`
+    (которые уже были в списке миграции) — оставлять одну колонку той же строки на 3 часа
+    позади остальных бессмысленно, `_draft_is_fresh` (TTL черновика,
+    `handlers/registration.py`) читает именно `created_at`. Отдельный, независимый от общего
+    `_read_family` кейс — колонка сдвинулась один раз, второй прогон её больше не трогает."""
+    db_path = _fresh_db(tmp_path, "migrate_draft_created_at.db")
+
+    async def seed():
+        config.DB_PATH = db_path
+        async with db._connect() as conn:
+            await conn.execute(
+                "DELETE FROM bot_settings WHERE key = ?", (db._MSK_MIGRATION_MARKER_KEY,)
+            )
+            await conn.execute(
+                "INSERT INTO reg_drafts (telegram_id, kind, updated_by, updated_at, created_at) "
+                "VALUES (?, ?, ?, ?, ?)",
+                (42, "new", "bot", "2026-09-01 10:00:00", "2026-09-01 09:50:00"),
+            )
+            await conn.commit()
+
+    asyncio.run(seed())
+
+    async def read_created_at():
+        config.DB_PATH = db_path
+        async with db._connect() as conn:
+            async with conn.execute(
+                "SELECT created_at FROM reg_drafts WHERE telegram_id = ?", (42,)
+            ) as cur:
+                row = await cur.fetchone()
+                return row[0]
+
+    orig = db.process_clock_is_utc
+    db.process_clock_is_utc = lambda: True
+    try:
+        config.DB_PATH = db_path
+        asyncio.run(db.init_db())  # first boot -- shifts +3h
+        after_first = asyncio.run(read_created_at())
+        asyncio.run(db.init_db())  # second boot -- marker already set, no-op
+        after_second = asyncio.run(read_created_at())
+    finally:
+        db.process_clock_is_utc = orig
+
+    assert after_first == "2026-09-01 12:50:00"
+    assert after_second == "2026-09-01 12:50:00"
 
 
 def test_migration_skips_shift_when_process_clock_is_already_moscow(tmp_path):
@@ -281,6 +342,8 @@ def test_migration_skips_shift_when_process_clock_is_already_moscow(tmp_path):
     assert result["paid_at"] == "2026-09-01T10:10:00.123456"
     assert result["ts"] == "2026-09-01 10:00:00"
     assert result["accepted_at"] == "2026-09-01T10:00:00.500000"
+    assert result["draft_updated_at"] == "2026-09-01 10:00:00"
+    assert result["draft_created_at"] == "2026-09-01 09:55:00"
     # Но маркер стоит -- иначе каждый старт на этой же машине пересчитывал бы часы заново.
     assert result["marker"] == "1"
 
