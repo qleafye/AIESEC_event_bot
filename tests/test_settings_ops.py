@@ -172,12 +172,14 @@ def test_every_editable_key_reachable_exactly_once_via_section_maps():
 
 def test_toggle_section_covers_every_toggles_group_key_exactly_once():
     toggle_keys = [k for k, m in SETTINGS_SCHEMA.items() if m.get("group") == "toggles"]
+    # Phase 30 (30-01, A2-08): +9 (reg_form_v2_enabled/chips/lookup_search/edu_card/
+    # repeatable/limit_counter/status_screen/header_settings/haptics) -- 29 -> 38.
     # Квик 260911-w2m: +1 (reg_edit_policy) -- 28 -> 29.
     # Phase 28 (28-09, SU-10): +1 (resume_filename_short_mode) -- 27 -> 28.
     # Phase 28 (28-08, SU-08): +1 (apps_queue_sort_by_score) -- 26 -> 27.
     # Phase 28 (28-06, SU-05/SU-06/SU-07): +3 (reg_skip_source_for_referred/
     # reg_referrer_must_be_ambassador/reg_offer_ref_link) -- 23 -> 26.
-    assert len(settings_ops.TOGGLE_SECTION) == 29
+    assert len(settings_ops.TOGGLE_SECTION) == 38
     assert sorted(settings_ops.TOGGLE_SECTION) == sorted(toggle_keys)
     assert len(settings_ops.TOGGLE_SECTION) == len(set(settings_ops.TOGGLE_SECTION))
 

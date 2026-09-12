@@ -1762,6 +1762,65 @@ SETTINGS_SCHEMA = {
         "label": "📄 Имя файла резюме: только ID и дата",
         "options": ["on", "off"], "prompt": None, "default": "off",
     },
+    # Phase 30 (30-01, A2-08): девять тумблеров «Анкета 2.0» — раздел «📝 Анкета» (артборд 13,
+    # 30-UI-SPEC.md). Дефолт КАЖДОГО — "off" (правило оркестратора: при всех дефолтах делегат
+    # видит сегодняшнюю анкету байт-в-байт — GOLDEN tests/test_reg_engine_parity.py и
+    # tests/test_refac_snapshot_260816.py это проверяют). Подписи/пояснения — дословно из
+    # принятого макета (30-UI-SPEC.md § «Экран менеджера "Анкета мероприятия"»), кодовых имён
+    # ключей менеджер нигде не видит. Правила деградации самих типов при выключенном элементе
+    # живут в `reg_engine.degrade_kind` — единственном месте (T-30-02), а не здесь.
+    "reg_form_v2_enabled": {
+        "type": "enum", "group": "toggles", "label": "🆕 Новая анкета",
+        "options": ["on", "off"],
+        "option_labels": {"on": "Новая анкета", "off": "Старая анкета"},
+        "default": "off",
+        "prompt": (
+            "Мастер-тумблер всей «Анкеты 2.0»: «Старая анкета» — сегодняшний вид без "
+            "изменений, «Новая анкета» — плитки, чипы, карточки и экран статуса этой фазы. "
+            "Сломается — вернёшь одним нажатием, ответы делегатов останутся на месте."
+        ),
+    },
+    "reg_form_chips": {
+        "type": "enum", "group": "toggles", "label": "🧩 Чипы частых значений",
+        "options": ["on", "off"], "default": "off",
+        "prompt": "Восемь популярных ответов сразу под вопросом.",
+    },
+    "reg_form_lookup_search": {
+        "type": "enum", "group": "toggles", "label": "🔎 Поиск в справочнике",
+        "options": ["on", "off"], "default": "off",
+        "prompt": "Города и ВУЗы ищутся по первым буквам.",
+    },
+    "reg_form_edu_card": {
+        "type": "enum", "group": "toggles", "label": "🎓 Образование одним экраном",
+        "options": ["on", "off"], "default": "off",
+        "prompt": "ВУЗ, курс и программа вместо четырёх вопросов.",
+    },
+    "reg_form_repeatable": {
+        "type": "enum", "group": "toggles", "label": "➕ Повторяемые блоки",
+        "options": ["on", "off"], "default": "off",
+        "prompt": "«Добавить ещё проект» в опыте и портфолио.",
+    },
+    "reg_form_limit_counter": {
+        "type": "enum", "group": "toggles", "label": "🔢 Счётчик лимита в заголовке",
+        "options": ["on", "off"], "default": "off",
+        "prompt": "«Навыки 0/3» вместо ошибки при четвёртом выборе.",
+    },
+    "reg_form_status_screen": {
+        "type": "enum", "group": "toggles",
+        "label": "📶 Экран статуса заявки во всю ширину",
+        "options": ["on", "off"], "default": "off",
+        "prompt": "Вместо строчки «Анкета: одобрена» в профиле.",
+    },
+    "reg_form_header_settings": {
+        "type": "enum", "group": "toggles", "label": "⚙️ Настройки в шапке анкеты",
+        "options": ["on", "off"], "default": "off",
+        "prompt": "Тема, язык и вибрация — выбирает делегат.",
+    },
+    "reg_form_haptics": {
+        "type": "enum", "group": "toggles", "label": "📳 Вибрация",
+        "options": ["on", "off"], "default": "off",
+        "prompt": "Короткий отклик на выбор и на ошибку.",
+    },
     "registration_mode": {
         "type": "enum", "group": "toggles", "label": "📝 Форма регистрации",
         "options": ["short", "full"],
