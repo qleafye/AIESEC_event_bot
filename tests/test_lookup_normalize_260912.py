@@ -31,6 +31,17 @@ def _ready(tmp_path, name="lookup_260912.db"):
     _run(init_db())
 
 
+async def _clear_lookup(kind):
+    """Снапшоты `data/lookup/*.json` (задача 3) реальны и посеяны настоящим `init_db()` — без
+    этой очистки тесты искали бы совпадения/коллизии со СЛУЧАЙНЫМИ именами реальных вузов/
+    городов из снапшота (например «ИТМО»/«ЛЭТИ» есть в `config.UNIVERSITIES`-фолбэке).
+    Каждый тест с СВОИМИ фикстурами `_insert_entry` очищает kind ПЕРЕД вставкой — детерминизм
+    не должен зависеть от содержимого снапшота на диске."""
+    async with _connect() as conn:
+        await conn.execute("DELETE FROM lookup_entries WHERE kind = ?", (kind,))
+        await conn.commit()
+
+
 async def _insert_entry(kind, canonical, alias, *, source="test", pinned=0):
     async with _connect() as conn:
         await conn.execute(
@@ -100,6 +111,7 @@ def test_normalize_none_and_blank_are_empty_string():
 
 def test_search_finds_university_by_old_abbreviation(tmp_path):
     _ready(tmp_path)
+    _run(_clear_lookup("university"))
     _run(_insert_entry("university", "СПбГЭТУ", "СПбГЭТУ"))
     _run(_insert_entry("university", "СПбГЭТУ", "ЛЭТИ"))
 
@@ -109,6 +121,7 @@ def test_search_finds_university_by_old_abbreviation(tmp_path):
 
 def test_search_ranks_exact_above_prefix_above_substring(tmp_path):
     _ready(tmp_path)
+    _run(_clear_lookup("university"))
     _run(_insert_entry("university", "Точное совпадение", "вшэ"))
     _run(_insert_entry("university", "Только префикс", "вшэ-питер"))
     _run(_insert_entry("university", "Только подстрока", "невская вшэ школа"))
@@ -121,6 +134,7 @@ def test_search_ranks_exact_above_prefix_above_substring(tmp_path):
 
 def test_search_dedups_by_canonical(tmp_path):
     _ready(tmp_path)
+    _run(_clear_lookup("university"))
     _run(_insert_entry("university", "ИТМО", "ИТМО"))
     _run(_insert_entry("university", "ИТМО", "итмо университет"))
 
@@ -130,6 +144,7 @@ def test_search_dedups_by_canonical(tmp_path):
 
 def test_search_q_percent_returns_not_all_and_not_more_than_limit(tmp_path):
     _ready(tmp_path)
+    _run(_clear_lookup("university"))
     for i in range(20):
         _run(_insert_entry("university", f"ВУЗ {i}", f"вуз {i}"))
 
@@ -140,6 +155,7 @@ def test_search_q_percent_returns_not_all_and_not_more_than_limit(tmp_path):
 
 def test_search_underscore_and_quote_do_not_crash_or_match_everything(tmp_path):
     _ready(tmp_path)
+    _run(_clear_lookup("university"))
     for i in range(10):
         _run(_insert_entry("university", f"ВУЗ {i}", f"вуз {i}"))
 
@@ -156,6 +172,7 @@ def test_search_underscore_and_quote_do_not_crash_or_match_everything(tmp_path):
 
 def test_search_limit_respected(tmp_path):
     _ready(tmp_path)
+    _run(_clear_lookup("university"))
     for i in range(10):
         _run(_insert_entry("university", f"Общий {i}", f"общий {i}"))
 
@@ -165,6 +182,7 @@ def test_search_limit_respected(tmp_path):
 
 def test_search_empty_query_returns_empty_list(tmp_path):
     _ready(tmp_path)
+    _run(_clear_lookup("university"))
     _run(_insert_entry("university", "ИТМО", "ИТМО"))
     assert _run(search_lookup("university", "")) == []
     assert _run(search_lookup("university", "   ")) == []
@@ -172,6 +190,8 @@ def test_search_empty_query_returns_empty_list(tmp_path):
 
 def test_search_unknown_kind_returns_empty_when_no_entries(tmp_path):
     _ready(tmp_path)
+    _run(_clear_lookup("university"))
+    _run(_clear_lookup("city"))
     _run(_insert_entry("university", "ИТМО", "ИТМО"))
     assert _run(search_lookup("city", "итмо")) == []
 
@@ -180,11 +200,14 @@ def test_search_unknown_kind_returns_empty_when_no_entries(tmp_path):
 
 def test_repeated_init_db_does_not_grow_lookup_entries(tmp_path):
     _ready(tmp_path)
-    _run(_insert_entry("university", "ИТМО", "ИТМО"))
+    _run(_clear_lookup("university"))
+    _run(_insert_entry("university", "Тестовый ВУЗ вне снапшота", "тестовый вуз"))
 
     async def _count():
         async with _connect() as conn:
-            cursor = await conn.execute("SELECT COUNT(*) FROM lookup_entries")
+            cursor = await conn.execute(
+                "SELECT COUNT(*) FROM lookup_entries WHERE kind = 'university'"
+            )
             row = await cursor.fetchone()
             return row[0]
 
@@ -198,6 +221,7 @@ def test_repeated_init_db_does_not_grow_lookup_entries(tmp_path):
 
 def test_top_chips_pinned_first_then_frequency(tmp_path):
     _ready(tmp_path)
+    _run(_clear_lookup("university"))
     _run(_insert_entry("university", "Закреплённый", "закреплённый", pinned=1))
     _run(_insert_entry("university", "Частый", "частый"))
     _run(_set_setting("event_season", "YL 26/2"))
@@ -211,6 +235,7 @@ def test_top_chips_pinned_first_then_frequency(tmp_path):
 
 def test_top_chips_empty_season_only_pinned(tmp_path):
     _ready(tmp_path)
+    _run(_clear_lookup("university"))
     _run(_insert_entry("university", "Закреплённый", "закреплённый", pinned=1))
 
     chips = _run(top_chips("university", None, limit=8))
@@ -219,6 +244,7 @@ def test_top_chips_empty_season_only_pinned(tmp_path):
 
 def test_top_chips_no_entries_returns_empty_list(tmp_path):
     _ready(tmp_path)
+    _run(_clear_lookup("city"))
     assert _run(top_chips("city", None, limit=8)) == []
 
 
@@ -270,6 +296,7 @@ def test_enqueue_merge_blank_text_is_noop(tmp_path):
 
 def test_pin_chip_and_pinned_chips_roundtrip(tmp_path):
     _ready(tmp_path)
+    _run(_clear_lookup("city"))
     _run(_insert_entry("city", "Москва", "москва"))
     _run(_insert_entry("city", "Санкт-Петербург", "спб"))
 
@@ -282,6 +309,7 @@ def test_pin_chip_and_pinned_chips_roundtrip(tmp_path):
 
 def test_pin_chip_affects_all_aliases_of_canonical(tmp_path):
     _ready(tmp_path)
+    _run(_clear_lookup("university"))
     _run(_insert_entry("university", "СПбГЭТУ", "СПбГЭТУ"))
     _run(_insert_entry("university", "СПбГЭТУ", "ЛЭТИ"))
     _run(pin_chip("university", "СПбГЭТУ", True))
