@@ -182,7 +182,7 @@ _MSK_MIGRATION_ISO_COLUMNS: tuple[tuple[str, str], ...] = (
     ("user_consents", "accepted_at"),
 )
 
-_MSK_MIGRATION_MARKER_KEY = "_ts_msk_migrated"
+_MSK_MIGRATION_USER_VERSION = 1
 
 
 async def _migrate_local_timestamps_to_msk(db: aiosqlite.Connection) -> None:
@@ -193,23 +193,29 @@ async def _migrate_local_timestamps_to_msk(db: aiosqlite.Connection) -> None:
     склеили бы UTC и МСК в одной колонке.
 
     Вызывается из `init_db` НА ТОМ ЖЕ соединении `db`, ДО финального `await db.commit()` —
-    маркер и сдвиг ложатся ОДНОЙ транзакцией: либо сдвинуты все колонки и маркер стоит, либо
-    (при сбое до commit) не тронуто ничего. Свой `_connect()` внутри намеренно не открывается.
+    гейт и сдвиг ложатся ОДНОЙ транзакцией: либо сдвинуты все колонки и `user_version` поднят,
+    либо (при сбое до commit) не тронуто ничего. Свой `_connect()` внутри намеренно не
+    открывается.
 
-    Гейт — служебный ключ `bot_settings` (`_ts_msk_migrated`), читается/пишется ПРЯМЫМ SQL по
-    `db`, а не через `get_setting`/`set_setting`: те открывают собственное соединение (что
-    разбило бы транзакцию надвое) и `set_setting` вдобавок логирует значение и дёргает очередь
-    перевода — оба эффекта здесь не нужны и не безопасны посреди миграции. Ключ намеренно вне
-    `SETTINGS_SCHEMA` — менеджеру он не показывается и не редактируется.
+    Пост-фикс (полный прогон 260912): гейт изначально был служебным ключом `bot_settings`
+    (`_ts_msk_migrated`) — обнаружилось, что любой код, читающий/экспортирующий настройки
+    построчно (`tests/test_city_admin_phase71.py::test_city_toggle_unknown_code_rejected_no_write`
+    считает строки `bot_settings` напрямую), видел эту служебную строку как настройку.
+    Перенесено на `PRAGMA user_version` (CLAUDE.md: «PRAGMA user_version вместо custom
+    migrations table» — ровно этот случай) — счётчик схемы живёт в заголовке файла БД, не в
+    прикладной таблице, и никаким другим кодом проекта не используется (проверено `grep -rn
+    user_version`). `_ensure_column`/CREATE TABLE миграции продолжают идти по своему пути
+    (idempotent DDL) — этот гейт закрывает только одноразовый ДАННЫЙ сдвиг, а не схему.
 
     Логика:
-    1. Маркер уже стоит -> выходим немедленно (цена повторного старта — один SELECT).
+    1. `PRAGMA user_version` уже >= `_MSK_MIGRATION_USER_VERSION` -> выходим немедленно (цена
+       повторного старта — один `PRAGMA` без сети/диска сверх открытого файла).
     2. `process_clock_is_utc()` (`services.timeutil`) лжёт "нет" -> часы процесса не UTC,
        значит все старые строки уже писались локальным (московским) временем этой же машины
        (ноутбук разработчика, хост с локальным TZ) — сдвигать НЕЧЕГО. Экзотика «часы = UTC+1»
        намеренно тоже попадает в эту ветку: сдвигать вслепую по одному лишь «не UTC» опаснее,
-       чем не сдвигать вовсе. Маркер всё равно ставится — иначе каждый старт пересчитывал бы
-       часы заново.
+       чем не сдвигать вовсе. `user_version` всё равно поднимается — иначе каждый старт
+       пересчитывал бы часы заново.
     3. Иначе — часы процесса UTC, все прежние строки писал UTC-контейнер: сдвигаем `+3 hours`
        по `_MSK_MIGRATION_COLUMNS`/`_MSK_MIGRATION_ISO_COLUMNS`. Таблица/колонка, которой ещё
        нет (старая БД, `_ensure_column` для неё не отработал) — пропускается молча, а не
@@ -219,11 +225,10 @@ async def _migrate_local_timestamps_to_msk(db: aiosqlite.Connection) -> None:
     (SQLite вернул бы NULL и затёр бы мусорную строку без этого фильтра), isoformat-путь ловит
     `ValueError`/`TypeError` на построчном разборе и оставляет такую строку как есть.
     """
-    async with db.execute(
-        "SELECT value FROM bot_settings WHERE key = ?", (_MSK_MIGRATION_MARKER_KEY,)
-    ) as cursor:
+    async with db.execute("PRAGMA user_version") as cursor:
         row = await cursor.fetchone()
-    if row is not None:
+    current_version = row[0] if row else 0
+    if current_version >= _MSK_MIGRATION_USER_VERSION:
         return
 
     if not process_clock_is_utc():
@@ -231,10 +236,7 @@ async def _migrate_local_timestamps_to_msk(db: aiosqlite.Connection) -> None:
             "_migrate_local_timestamps_to_msk: часы процесса не UTC — старые строки семьи уже "
             "московские, сдвиг не нужен"
         )
-        await db.execute(
-            "INSERT OR REPLACE INTO bot_settings (key, value) VALUES (?, ?)",
-            (_MSK_MIGRATION_MARKER_KEY, "1"),
-        )
+        await db.execute(f"PRAGMA user_version = {_MSK_MIGRATION_USER_VERSION}")
         return
 
     shifted_columns = 0
@@ -284,10 +286,7 @@ async def _migrate_local_timestamps_to_msk(db: aiosqlite.Connection) -> None:
         f"{shifted_columns}/{len(_MSK_MIGRATION_COLUMNS)}, isoformat-строк сдвинуто "
         f"{shifted_iso_rows} по {len(_MSK_MIGRATION_ISO_COLUMNS)} колонкам"
     )
-    await db.execute(
-        "INSERT OR REPLACE INTO bot_settings (key, value) VALUES (?, ?)",
-        (_MSK_MIGRATION_MARKER_KEY, "1"),
-    )
+    await db.execute(f"PRAGMA user_version = {_MSK_MIGRATION_USER_VERSION}")
 
 
 async def init_db():
@@ -1000,10 +999,18 @@ async def init_db():
         # первого прогона под WHERE не попадает ни одна строка, стоимость — один скан `users`
         # на старте. Колонка `users.transport` с тем же словом («Самостоятельно» — реальный
         # вариант ответа шага «Трансфер») не задета — WHERE привязан к колонке `source`.
-        await db.execute(
-            "UPDATE users SET source = ? WHERE source = ?",
-            (reg_options.SOURCE_NOT_ASKED, reg_options.SOURCE_NOT_ASKED_LEGACY),
-        )
+        #
+        # Пост-фикс (полный прогон 260912): на легаси-схеме `users` без колонки `source`
+        # (тестовые БД старых миграций — `test_db_phase1`/`test_db_phase4`/`test_db_phase5`/
+        # `test_cities_phase71`/`test_db_hot_path_indexes`/`test_i18n_store_27`) голый UPDATE
+        # ронял `init_db` целиком: `sqlite3.OperationalError: no such column: source`. Тот же
+        # приём, что у `_ensure_hot_path_indexes` («index skipped when column missing») —
+        # `_column_exists` ДО UPDATE, не try/except (глотать реальную ошибку схемы нельзя).
+        if await _column_exists(db, "users", "source"):
+            await db.execute(
+                "UPDATE users SET source = ? WHERE source = ?",
+                (reg_options.SOURCE_NOT_ASKED, reg_options.SOURCE_NOT_ASKED_LEGACY),
+            )
 
         # Квик 260912-mcj: одноразовый сдвиг семьи «сейчас» бота на московское время — на
         # этом же соединении, до финального commit (см. докстринг функции).
