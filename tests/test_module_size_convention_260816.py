@@ -110,7 +110,12 @@ KNOWN_OVERAGES: dict[str, tuple[int, str]] = {
         "(Phase 14/16)",
     ),
     "admin_settings.py": (
-        2256,
+        2260,
+        "квик 260913-16o: врезка ветки подтверждения в `_toggle_approval_setting` — сам экран "
+        "и алерт живут в шве handlers/admin_settings_audit.py, здесь только ветка "
+        "`if new_val == \"auto\"` с ленивым импортом и return; плюс воронка "
+        "set_setting_by_admin/delete_setting_by_admin (задача 1, без изменения числа строк "
+        "хендлеров, только импорт). "
         "Phase 30 (30-01, A2-08): девять строк тумблеров новой анкеты в settings_toggle_rows "
         "(текст «подпись: Вкл → Выкл» на каждый плюс option_labels-текст мастер-тумблера "
         "reg_form_v2_enabled) — сами хендлеры в шве handlers/admin_reg_form.py, здесь только "

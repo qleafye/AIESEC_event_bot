@@ -371,6 +371,8 @@ ADMIN_CAPS: dict[str, str] = {
     "state:PollCreate:*": "broadcast",
 
     # ── settings ─────────────────────────────────────────────────────────────────────────
+    "approval_auto_go:*": "settings",
+    "approval_auto_no:*": "settings",
     # admin_cities/toggle_event_city_enabled/city_toggle:* (Phase 07.2, CITY-02/CITY-04) are
     # module-config screens, same shape as the other toggle_*/settings_* config rows below --
     # they predate 08-RESEARCH's worked capability_map example, same as the city-scoping keys

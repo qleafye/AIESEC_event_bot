@@ -518,3 +518,8 @@ from handlers import admin_quiet_hours  # noqa: E402,F401
 # полностью определён (admin_settings.py импортирует этот модуль (admin_sections) последним в
 # своей собственной хвостовой цепочке). Golden snapshot: tests/test_refac_snapshot_260816.py.
 from handlers import admin_reg_form  # noqa: E402,F401
+
+# Квик 260913-16o: шов «подтверждение выключения модерации» — импорт СРАЗУ ПОСЛЕ admin_reg_form,
+# тот же хвостовой приём; `handlers.admin_settings_audit` читает `settings_return_screen` отсюда
+# ленивым импортом внутри своих хендлеров (обратный порядок загрузки не важен).
+from handlers import admin_settings_audit  # noqa: E402,F401
