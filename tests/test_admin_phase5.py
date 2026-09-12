@@ -280,8 +280,12 @@ def test_toggle_party_approval_is_independent_of_full_and_short(tmp_path):
     _admin_ready(tmp_path)
     asyncio.run(db.set_setting("full_approval", "auto"))
     asyncio.run(db.set_setting("short_approval", "auto"))
+    # Квик 260913-16o: party_approval начинает с "auto", чтобы тумблер пошёл по мгновенной
+    # ветке auto -> manual (переход в auto теперь требует отдельного подтверждения — см.
+    # tests/test_approval_auto_confirm_260913.py).
+    asyncio.run(db.set_setting("party_approval", "auto"))
     asyncio.run(admin_settings.toggle_party_approval(FakeCallback("settings_toggle_party_approval")))
-    assert asyncio.run(db.get_setting("party_approval")) == "auto"
+    assert asyncio.run(db.get_setting("party_approval")) == "manual"
     # full/short untouched by the party toggle
     assert asyncio.run(db.get_setting("full_approval")) == "auto"
     assert asyncio.run(db.get_setting("short_approval")) == "auto"

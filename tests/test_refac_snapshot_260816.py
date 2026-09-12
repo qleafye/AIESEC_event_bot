@@ -34,6 +34,18 @@ admin.router gained `game_task_title_step`/`game_task_photo_step`/`game_task_pho
 `game_task_edittitle_start`/`game_task_editphoto_start`/`game_task_removephoto` (new
 moderate_game callbacks); user_actions.router gained `mytask_open`/`mytask_back` (the new
 delegate task-card open/back-navigation flow).
+
+Drift note (2026-09-13, квик 260913-16o, подтверждение выключения модерации): 2 хендлера
+вставлены (496 -> 498), re-captured by RUNNING `_build_snapshot_lines()` against HEAD and
+diffed against the prior 496-line snapshot -- pure insert, zero reorders: admin.router gained
+`approval_auto_go`/`approval_auto_no` (шов `handlers/admin_settings_audit.py`), встав СРАЗУ
+после `toggle_reg_form_haptics` (хвост шва `admin_reg_form`, который тот же шов-модуль
+`admin_settings_audit` импортирует следующим по цепочке `admin_sections.py`) и ПЕРЕД
+`sync_sheet` (первый хендлер, который `handlers/admin.py` импортирует напрямую после
+`admin_settings` в своём собственном теле) -- НЕ в хвосте всего admin.router, вопреки
+изначальному предположению плана: реальная точка вставки определяется цепочкой импортов
+(`admin_settings.py` -> ... -> `admin_sections.py` -> `admin_reg_form` -> тут), не позицией
+файла на диске.
 """
 import asyncio
 import time
@@ -513,6 +525,8 @@ admin|callback_query|toggle_reg_form_limit_counter|toggle_reg_form_limit_counter
 admin|callback_query|toggle_reg_form_status_screen|toggle_reg_form_status_screen
 admin|callback_query|toggle_reg_form_header_settings|toggle_reg_form_header_settings
 admin|callback_query|toggle_reg_form_haptics|toggle_reg_form_haptics
+admin|callback_query|approval_auto_go|approval_auto_go:*
+admin|callback_query|approval_auto_no|approval_auto_no:*
 admin|callback_query|sync_sheet|admin_sync_sheet
 admin|callback_query|rebuild_sheet_confirm|admin_rebuild_sheet
 admin|callback_query|rebuild_sheet|admin_rebuild_sheet_go
@@ -910,7 +924,13 @@ def test_snapshot_total_handler_count_is_292():
     # чистая вставка, перепроверена прогоном _build_snapshot_lines() и diff'ом с прежним
     # 484-строчным снапшотом (единственная строка сдвинула всё после неё на одну позицию, ни
     # одна другая строка не поменялась и не переставилась).
-    assert len(GOLDEN_SNAPSHOT) == 496  # Phase 30 (30-01, A2-08): +9 handlers/admin_reg_form.py
+    # Квик 260913-16o: +2 handlers/admin_settings_audit.py (callback_query approval_auto_go/
+    # approval_auto_no — подтверждение выключения модерации), встали сразу после
+    # toggle_reg_form_haptics и перед sync_sheet: шов импортируется из хвоста
+    # handlers/admin_sections.py, СРАЗУ ПОСЛЕ admin_reg_form (496 -> 498); чистая вставка,
+    # перепроверена прогоном _build_snapshot_lines() и diff'ом с прежним 496-строчным
+    # снапшотом — ровно две новые строки, ни одна другая не поменялась и не переставилась.
+    assert len(GOLDEN_SNAPSHOT) == 498  # Phase 30 (30-01, A2-08): +9 handlers/admin_reg_form.py
     # (callback_query toggle_reg_form_v2/chips/lookup_search/edu_card/repeatable/limit_counter/
     # status_screen/header_settings/haptics — девять тумблеров «Анкета 2.0»), встали сразу после
     # admin_quiet_hours и перед sync_sheet: шов импортируется из хвоста
