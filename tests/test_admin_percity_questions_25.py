@@ -252,12 +252,13 @@ def test_toggle_short_question_city_explicit_on_off_no_delete(tmp_path, monkeypa
     composed = cities.per_city_key(f"{SETTING_KEY}__short", "spb")
 
     deleted = []
-    real_delete = db.delete_setting
+    from settings_audit import delete_setting_by_admin as real_delete_by_admin
 
-    async def _tracking_delete(key):
+    async def _tracking_delete(admin_id, key):
         deleted.append(key)
-        return await real_delete(key)
-    monkeypatch.setattr(admin_reg_percity, "delete_setting", _tracking_delete)
+        return await real_delete_by_admin(admin_id, key)
+    # Квик 260913-16o: прямой `delete_setting` заменён воронкой `delete_setting_by_admin`.
+    monkeypatch.setattr(admin_reg_percity, "delete_setting_by_admin", _tracking_delete)
 
     asyncio.run(admin_reg_percity.toggle_short_question(FakeCallback(f"reg_q_stoggle:{SETTING_KEY}")))
     assert asyncio.run(db.get_setting(composed)) == "on"

@@ -17,7 +17,7 @@ import logging
 from aiogram import F, types
 from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
 
-from database.db import set_setting
+from settings_audit import set_setting_by_admin
 from settings_schema import get_setting_typed
 from services.consent import (
     purpose_reminder_text, PURPOSE_REMINDER_BUTTON, PURPOSE_REMINDER_CALLBACK,
@@ -79,7 +79,7 @@ def consent_group_extra_buttons() -> list[list[InlineKeyboardButton]]:
 async def toggle_consent_recollect(callback: types.CallbackQuery):
     current = await get_setting_typed("consent_recollect_enabled")
     new_val = "off" if current == "on" else "on"
-    await set_setting("consent_recollect_enabled", new_val)
+    await set_setting_by_admin(callback.from_user.id, "consent_recollect_enabled", new_val)
     if new_val == "on":
         note = (
             "✅ Вкл. Делегаты, подписавшие старую редакцию, при следующем /start "

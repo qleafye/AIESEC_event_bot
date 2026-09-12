@@ -16,7 +16,7 @@ UX: после сохранения `_group_of_setting_key` вернёт `None` 
 from aiogram import F, types
 from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
 
-from database.db import set_setting
+from settings_audit import set_setting_by_admin
 from settings_schema import get_setting_typed, SETTINGS_SCHEMA
 from services.sheet_logs import sync_sheet_logs
 from handlers.admin import router
@@ -76,7 +76,7 @@ async def sheet_logs_open(callback: types.CallbackQuery):
 async def sheet_logs_autosync_toggle(callback: types.CallbackQuery):
     autosync_on = await get_setting_typed("sheet_logs_autosync") == "on"
     new_value = "off" if autosync_on else "on"
-    await set_setting("sheet_logs_autosync", new_value)
+    await set_setting_by_admin(callback.from_user.id, "sheet_logs_autosync", new_value)
     toast = "Автообновление журналов: включено" if new_value == "on" else "Автообновление журналов: выключено"
     await callback.answer(toast)
     await _show_sheet_logs(callback)
