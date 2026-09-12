@@ -23,10 +23,9 @@ from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup, ReplyKeybo
 
 from config import config
 from settings_schema import get_setting_typed, SETTINGS_SCHEMA
+from settings_audit import set_setting_by_admin, delete_setting_by_admin
 from database.db import (
     get_setting,
-    set_setting,
-    delete_setting,
     get_staff_city,
     update_city,
     insert_city,
@@ -179,7 +178,7 @@ async def show_admin_cities(callback: types.CallbackQuery):
 async def toggle_event_city_enabled(callback: types.CallbackQuery):
     current = await get_setting_typed("event_city_enabled")
     new_val = "off" if current == "on" else "on"
-    await set_setting("event_city_enabled", new_val)
+    await set_setting_by_admin(callback.from_user.id, "event_city_enabled", new_val)
     label = "✅ Вкл" if new_val == "on" else "❌ Выкл"
     await callback.answer(f"Выбор города: {label}", show_alert=True)
 
@@ -202,7 +201,7 @@ async def city_toggle(callback: types.CallbackQuery):
     await update_city(code, enabled=new_val)
     # Легаси-ключ (Phase 07.1) имеет приоритет в is_city_enabled — если его не убрать,
     # тумблер перестанет менять фактическое поведение после первого же переключения.
-    await delete_setting(f"city_enabled__{code}")
+    await delete_setting_by_admin(callback.from_user.id, f"city_enabled__{code}")
     await reload_cities()
     label_text = "✅ Вкл" if new_val else "⛔ Выкл"
     await callback.answer(f"{await city_label(code)}: {label_text}", show_alert=True)
@@ -377,7 +376,7 @@ async def city_edit_label_step(message: types.Message, state: FSMContext):
         await message.answer("Подпись не может быть пустой. Как теперь называть город?")
         return
     await update_city(code, label=label)
-    await delete_setting(f"city_label__{code}")  # легаси-override иначе продолжит перекрывать колонку
+    await delete_setting_by_admin(message.from_user.id, f"city_label__{code}")  # легаси-override иначе продолжит перекрывать колонку
     await reload_cities()
 
     await state.set_state(None)
@@ -395,7 +394,7 @@ async def city_edit_tab_step(message: types.Message, state: FSMContext):
     code = data.get("city_code")
     tab_base = _dash_or_text(message.text)
     await update_city(code, tab_base=tab_base)
-    await delete_setting(f"city_tab__{code}")  # легаси-override иначе продолжит перекрывать колонку
+    await delete_setting_by_admin(message.from_user.id, f"city_tab__{code}")  # легаси-override иначе продолжит перекрывать колонку
     await reload_cities()
 
     await state.set_state(None)
@@ -623,7 +622,7 @@ async def season_reset_passphrase_step(message: types.Message, state: FSMContext
     # as the old value, then flip event_season last — makes the switch atomic from a delegate's
     # point of view.
     affected = await mark_season_ended(old or None)
-    await set_setting("event_season", new)
+    await set_setting_by_admin(message.from_user.id, "event_season", new)
     logger.warning(
         f"SEASON RESET by admin {message.from_user.id}: '{old}' -> '{new}', marked {affected} users"
     )

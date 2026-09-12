@@ -24,7 +24,8 @@ from aiogram import F, types
 from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
 
 from settings_schema import get_setting_typed
-from database.db import get_setting, set_setting, delete_setting
+from database.db import get_setting
+from settings_audit import set_setting_by_admin, delete_setting_by_admin
 from services.sheets import ensure_sheet_header
 from services.background import spawn as _spawn
 from keyboards.builders import MENU_BUTTONS
@@ -340,7 +341,7 @@ async def preset_confirm(callback: types.CallbackQuery):
         # D-07: route to the isolated __party-only bulk writer. _apply_event_preset writes
         # GLOBAL reg_q_* keys for every REG_DEFAULTS entry — routing the party key there
         # would erase the live full-delegate question set, exactly what D-07 exists to prevent.
-        await _apply_party_preset()
+        await _apply_party_preset(admin_id)
         await callback.answer(f"Пресет применён: {preset['label']}", show_alert=True)
         text = await render_questions_text("party")
         await callback.message.edit_text(
@@ -357,7 +358,7 @@ async def preset_confirm(callback: types.CallbackQuery):
         # would erase the live full-delegate question set. The promo preset changes no global
         # setting, so the MAIN sheet header cannot have drifted — only the SHORT tab's own
         # header needs a resync.
-        await _apply_short_preset()
+        await _apply_short_preset(admin_id)
         await callback.answer(f"Пресет применён: {preset['label']}", show_alert=True)
         text = await render_questions_text("short")
         await callback.message.edit_text(
@@ -471,7 +472,7 @@ async def toggle_menu_button(callback: types.CallbackQuery):
             return
         current_on = await get_setting_typed_for_city(key, header_code) == "on"
         new_val = "off" if current_on else "on"
-        await set_setting(composed, new_val)
+        await set_setting_by_admin(admin_id, composed, new_val)
         label = dict(MENU_BUTTONS).get(key, key)
         city_txt = await city_label(header_code)
         status = "✅ Вкл" if new_val == "on" else "❌ Выкл"
@@ -479,7 +480,7 @@ async def toggle_menu_button(callback: types.CallbackQuery):
     else:
         current_on = await get_setting_typed(key) == "on"
         new_val = "off" if current_on else "on"
-        await set_setting(key, new_val)
+        await set_setting_by_admin(admin_id, key, new_val)
         label = dict(MENU_BUTTONS).get(key, key)
         status = "✅ Вкл" if new_val == "on" else "❌ Выкл"
         await callback.answer(f"{label}: {status}", show_alert=True)
@@ -579,7 +580,7 @@ async def menu_reset_city_go(callback: types.CallbackQuery):
     for key, _ in MENU_BUTTONS:
         override_key = per_city_key(key, code)
         if override_key:
-            await delete_setting(override_key)
+            await delete_setting_by_admin(admin_id, override_key)
 
     city_txt = await city_label(code)
     await callback.answer(f"Готово: {city_txt} — как везде", show_alert=True)

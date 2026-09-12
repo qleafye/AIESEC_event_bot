@@ -25,10 +25,9 @@ from settings_schema import SETTINGS_SCHEMA, get_setting_typed, option_label
 from database.db import (
     export_users_csv,
     get_setting,
-    set_setting,
-    delete_setting,
     get_dropout_step_stats,
 )
+from settings_audit import set_setting_by_admin, delete_setting_by_admin
 from services.sheets import (
     sync_named_worksheet,
     tab_row_count,
@@ -983,7 +982,7 @@ async def toggle_registration_mode(callback: types.CallbackQuery):
             return
         current = await get_setting_typed_for_city("registration_mode", header_code)
         new_mode = "full" if current == "short" else "short"
-        await set_setting(composed, new_mode)
+        await set_setting_by_admin(admin_id, composed, new_mode)
         city_txt = await city_label(header_code)
         human = _enum_human_label("registration_mode", new_mode)
         await callback.answer(f"Форма регистрации для {city_txt}: {human}", show_alert=True)
@@ -991,7 +990,7 @@ async def toggle_registration_mode(callback: types.CallbackQuery):
         # REG-02 (06-05): current-value read migrated to the registry; write path unchanged.
         current = await get_setting_typed("registration_mode")
         new_mode = "full" if current == "short" else "short"
-        await set_setting("registration_mode", new_mode)
+        await set_setting_by_admin(admin_id, "registration_mode", new_mode)
         label = "📋 Полная" if new_mode == "full" else "⚡ Краткая"
         await callback.answer(f"Форма регистрации: {label}", show_alert=True)
 
@@ -1093,7 +1092,7 @@ async def settings_regmode_reset_go(callback: types.CallbackQuery):
         await callback.message.edit_text(text, parse_mode="HTML", reply_markup=kb)
         return
 
-    await delete_setting(composed)  # idempotent — safe if already absent
+    await delete_setting_by_admin(admin_id, composed)  # idempotent — safe if already absent
     city_txt = await city_label(code)
     await callback.answer(f"Готово: {city_txt} — как везде", show_alert=True)
     text, kb = await settings_return_screen(admin_id, callback_data="settings_toggle_reg")
@@ -1105,7 +1104,7 @@ async def _toggle_approval_setting(callback: types.CallbackQuery, key: str, defa
     # short_approval/party_approval), registry default byte-identical to the `default` param.
     current = await get_setting_typed(key)
     new_val = "auto" if current == "manual" else "manual"
-    await set_setting(key, new_val)
+    await set_setting_by_admin(callback.from_user.id, key, new_val)
     await callback.answer(f"{title}: {'👮 Ручная' if new_val == 'manual' else '⚡ Авто'}", show_alert=True)
     # Phase 20 (20-04): одна правка на generic-хелпер покрывает все его callback'и — раздел
     # выводится из `callback.data` через SECTIONS, а не задаётся словарём (см. комментарий
@@ -1156,7 +1155,7 @@ async def _cycle_enum_setting(callback: types.CallbackQuery, key: str, hints: di
     label = SETTINGS_SCHEMA[key]["label"]
     current = await get_setting_typed(key)
     new_val = _next_enum_value(key, current)
-    await set_setting(key, new_val)
+    await set_setting_by_admin(callback.from_user.id, key, new_val)
     human = option_label(key, new_val)
     hint = hints.get(new_val, "")
     await callback.answer(f"{label}: {human}\n\n{hint}", show_alert=True)
@@ -1173,7 +1172,7 @@ async def _toggle_module_setting(callback: types.CallbackQuery, key: str, title:
     # (payment_enabled/consent_enabled/party_enabled/party_fork_question), all default "off".
     current = await get_setting_typed(key)
     new_val = "off" if current == "on" else "on"
-    await set_setting(key, new_val)
+    await set_setting_by_admin(callback.from_user.id, key, new_val)
     label = "✅ Вкл" if new_val == "on" else "❌ Выкл"
     await callback.answer(f"{title}: {label}", show_alert=True)
     from handlers.admin_sections import settings_return_screen  # ленивый шов (20-04)
@@ -1298,7 +1297,7 @@ async def toggle_reg_scoring_enabled(callback: types.CallbackQuery):
     # toggle_reg_question).
     current_on = await get_setting_typed("reg_scoring_enabled")
     new_val = "off" if current_on else "on"
-    await set_setting("reg_scoring_enabled", new_val)
+    await set_setting_by_admin(callback.from_user.id, "reg_scoring_enabled", new_val)
     label = SETTINGS_SCHEMA["reg_scoring_enabled"]["label"]
     status = "✅ Вкл" if new_val == "on" else "❌ Выкл"
     await callback.answer(f"{label}: {status}", show_alert=True)
@@ -1357,7 +1356,7 @@ async def _toggle_value_setting(callback, key, val_a, val_b, default, title_a, t
     # in SETTINGS_SCHEMA with a registry default byte-identical to the `default` param.
     current = await get_setting_typed(key)
     new_val = val_b if current == val_a else val_a
-    await set_setting(key, new_val)
+    await set_setting_by_admin(callback.from_user.id, key, new_val)
     await callback.answer(title_a if new_val == val_a else title_b, show_alert=True)
     from handlers.admin_sections import settings_return_screen  # ленивый шов (20-04)
     text, kb = await settings_return_screen(callback.from_user.id, callback_data=callback.data)
@@ -1393,7 +1392,7 @@ async def toggle_notify_mode(callback: types.CallbackQuery):
     # REG-02 (06-05): current-value read migrated to the registry; write path unchanged.
     current = await get_setting_typed("pending_notify_mode")
     new_val = "batched" if current == "instant" else "instant"
-    await set_setting("pending_notify_mode", new_val)
+    await set_setting_by_admin(callback.from_user.id, "pending_notify_mode", new_val)
     await callback.answer(f"Уведомление: {'📨 Сразу' if new_val == 'instant' else '🕒 Пачкой'}", show_alert=True)
     from handlers.admin_sections import settings_return_screen  # ленивый шов (20-04)
     text, kb = await settings_return_screen(callback.from_user.id, callback_data=callback.data)
@@ -1405,7 +1404,7 @@ async def toggle_bonus(callback: types.CallbackQuery):
     # REG-02 (06-05): current-value read migrated to the registry; write path unchanged.
     current = await get_setting_typed("reg_bonus_enabled")
     new_val = "on" if current == "off" else "off"
-    await set_setting("reg_bonus_enabled", new_val)
+    await set_setting_by_admin(callback.from_user.id, "reg_bonus_enabled", new_val)
 
     label = "✅ Вкл" if new_val == "on" else "❌ Выкл"
     await callback.answer(f"Бонус за регистрацию: {label}", show_alert=True)
@@ -1688,7 +1687,7 @@ async def settings_reset_city_go(callback: types.CallbackQuery):
         await callback.message.edit_text(text, parse_mode="HTML", reply_markup=kb)
         return
 
-    await delete_setting(composed)  # idempotent — safe if already absent
+    await delete_setting_by_admin(admin_id, composed)  # idempotent — safe if already absent
     city_txt = await city_label(code)
     await callback.answer(f"Готово: {city_txt} — как везде", show_alert=True)
     text, kb = await _settings_edit_screen(key, current)
@@ -1854,12 +1853,12 @@ async def settings_receive_photo(message: types.Message, state: FSMContext):
     prefix = data.get("photo_setting", "program")
 
     file_id = message.photo[-1].file_id
-    await set_setting(f"{prefix}_photo_file_id", file_id)
+    await set_setting_by_admin(message.from_user.id, f"{prefix}_photo_file_id", file_id)
 
     if message.caption:
-        await set_setting(f"{prefix}_caption", message.html_text)
+        await set_setting_by_admin(message.from_user.id, f"{prefix}_caption", message.html_text)
     else:
-        await delete_setting(f"{prefix}_caption")
+        await delete_setting_by_admin(message.from_user.id, f"{prefix}_caption")
 
     await state.clear()
     await message.answer("✅ Фото обновлено!")
@@ -1884,13 +1883,13 @@ async def settings_receive_file_photo(message: types.Message, state: FSMContext)
     prefix = data.get("file_setting", "reg_bonus")
 
     file_id = message.photo[-1].file_id
-    await set_setting(f"{prefix}_photo_file_id", file_id)
-    await delete_setting(f"{prefix}_doc_file_id")
+    await set_setting_by_admin(message.from_user.id, f"{prefix}_photo_file_id", file_id)
+    await delete_setting_by_admin(message.from_user.id, f"{prefix}_doc_file_id")
 
     if message.caption:
-        await set_setting(f"{prefix}_caption", message.html_text)
+        await set_setting_by_admin(message.from_user.id, f"{prefix}_caption", message.html_text)
     else:
-        await delete_setting(f"{prefix}_caption")
+        await delete_setting_by_admin(message.from_user.id, f"{prefix}_caption")
 
     await state.clear()
     await message.answer("✅ Файл обновлён!")
@@ -1912,7 +1911,7 @@ async def settings_receive_file_doc(message: types.Message, state: FSMContext):
         if (message.document.mime_type or "") != "application/pdf":
             await message.answer("Принимается только PDF-документ. Пришли PDF.")
             return
-        await set_setting(raw_key, message.document.file_id)
+        await set_setting_by_admin(message.from_user.id, raw_key, message.document.file_id)
         await state.clear()
         await message.answer("✅ PDF согласия сохранён!")
         # Phase 20 (20-04): `raw_file_key` вида «consent_pdf_{key}» — не ключ SETTINGS_SCHEMA,
@@ -1924,13 +1923,13 @@ async def settings_receive_file_doc(message: types.Message, state: FSMContext):
     prefix = data.get("file_setting", "reg_bonus")
 
     file_id = message.document.file_id
-    await set_setting(f"{prefix}_doc_file_id", file_id)
-    await delete_setting(f"{prefix}_photo_file_id")
+    await set_setting_by_admin(message.from_user.id, f"{prefix}_doc_file_id", file_id)
+    await delete_setting_by_admin(message.from_user.id, f"{prefix}_photo_file_id")
 
     if message.caption:
-        await set_setting(f"{prefix}_caption", message.html_text)
+        await set_setting_by_admin(message.from_user.id, f"{prefix}_caption", message.html_text)
     else:
-        await delete_setting(f"{prefix}_caption")
+        await delete_setting_by_admin(message.from_user.id, f"{prefix}_caption")
 
     await state.clear()
     await message.answer("✅ Файл обновлён!")
@@ -2066,9 +2065,9 @@ async def settings_edit_value(message: types.Message, state: FSMContext):
 
     warning = ""
     if value == "-":
-        await delete_setting(key)
+        await delete_setting_by_admin(message.from_user.id, key)
     else:
-        await set_setting(key, value)
+        await set_setting_by_admin(message.from_user.id, key, value)
         # Phase 4 (D-05): saving event_type applies the module-toggle preset.
         if key == "event_type":
             await _apply_event_type_preset(value.strip().lower())
@@ -2122,7 +2121,7 @@ async def sheets_tab_confirm_go(callback: types.CallbackQuery, state: FSMContext
     value = data.get("pending_tab_value")
     await state.clear()
     if key and value is not None:
-        await set_setting(key, value)
+        await set_setting_by_admin(callback.from_user.id, key, value)
         if key in _SHEET_TAB_WRITE_MODE:
             await _after_tab_setting_saved(key)
     from handlers.admin_sections import settings_return_screen  # ленивый шов

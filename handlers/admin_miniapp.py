@@ -29,7 +29,7 @@ from aiogram.types import (
 )
 
 from config import config
-from database.db import set_setting
+from settings_audit import set_setting_by_admin
 from settings_schema import SETTINGS_SCHEMA, get_setting_typed
 from handlers.admin import router
 
@@ -173,7 +173,7 @@ async def open_miniapp_settings(callback: types.CallbackQuery, state: FSMContext
 async def toggle_miniapp_enabled(callback: types.CallbackQuery):
     current = await get_setting_typed("miniapp_enabled")
     new_val = "off" if current == "on" else "on"
-    await set_setting("miniapp_enabled", new_val)
+    await set_setting_by_admin(callback.from_user.id, "miniapp_enabled", new_val)
     toast = "Приложение: " + ("включено" if new_val == "on" else "выключено")
     # T-19-52: kept in sync with the toggle immediately, not only at next restart. Fail-soft —
     # an unreachable Telegram must not break this screen, only delay the chat menu button.
@@ -190,7 +190,7 @@ async def toggle_miniapp_enabled(callback: types.CallbackQuery):
 async def toggle_miniapp_staff_only(callback: types.CallbackQuery):
     current = await get_setting_typed("miniapp_staff_only")
     new_val = "off" if current == "on" else "on"
-    await set_setting("miniapp_staff_only", new_val)
+    await set_setting_by_admin(callback.from_user.id, "miniapp_staff_only", new_val)
     await callback.answer("Только менеджерам: " + ("да" if new_val == "on" else "нет"))
     await _rerender(callback)
 
@@ -205,7 +205,7 @@ async def toggle_miniapp_section(callback: types.CallbackQuery):
 
     current = await get_setting_typed(key)
     new_val = "off" if current == "on" else "on"
-    await set_setting(key, new_val)
+    await set_setting_by_admin(callback.from_user.id, key, new_val)
     label = SETTINGS_SCHEMA[key]["label"]
     toast = f"{label}: {'показываем' if new_val == 'on' else 'скрыт'}"
     await callback.answer(toast)

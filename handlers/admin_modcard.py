@@ -16,7 +16,7 @@ from aiogram import F, types
 from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
 
 import moderation_card
-from database.db import set_setting
+from settings_audit import set_setting_by_admin
 from settings_schema import get_setting_typed
 from handlers.admin import router
 
@@ -106,7 +106,8 @@ async def modcard_toggle(callback: types.CallbackQuery):
         # render_modcard_text не прыгал между перерисовками (тот же приём, что roles_cap).
         steps = [s for s in moderation_card.CARD_STEPS if s == step_key or s in steps]
         toast = f"{label}: показываем"
-    await set_setting(
+    await set_setting_by_admin(
+        callback.from_user.id,
         "modcard_fields",
         "\n".join(steps) if steps else moderation_card.EMPTY_SENTINEL,
     )
@@ -122,7 +123,7 @@ async def modcard_limit(callback: types.CallbackQuery):
     except ValueError:
         await callback.answer("Неизвестное значение", show_alert=True)
         return
-    await set_setting("modcard_answer_limit", str(value))
+    await set_setting_by_admin(callback.from_user.id, "modcard_answer_limit", str(value))
     await callback.answer(f"Длина ответа: {_limit_label(value)}")
     await _show_modcard(callback)
 

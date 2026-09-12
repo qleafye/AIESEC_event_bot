@@ -956,12 +956,9 @@ def test_toggle_current_value_equiv_across_generic_helpers(tmp_path):
     async def go():
         cases = [
             # (handler, key, raw_values, flip_fn(current) -> expected_new_val)
-            (admin_settings.toggle_full_approval, "full_approval", [None, "", "manual", "auto"],
-             lambda cur: "auto" if cur == "manual" else "manual"),
-            (admin_settings.toggle_short_approval, "short_approval", [None, "", "manual", "auto"],
-             lambda cur: "auto" if cur == "manual" else "manual"),
-            (admin_settings.toggle_party_approval, "party_approval", [None, "", "manual", "auto"],
-             lambda cur: "auto" if cur == "manual" else "manual"),
+            # Квик 260913-16o: full/short/party_approval исключены отсюда — переход в "auto"
+            # теперь идёт через экран подтверждения и не пишет сразу, см. отдельный цикл
+            # ниже (test_approval_manual_to_auto_needs_confirm_gate_not_immediate_write).
             (admin_settings.toggle_payment_enabled, "payment_enabled", [None, "", "on", "off"],
              lambda cur: "off" if cur == "on" else "on"),
             (admin_settings.toggle_consent_enabled, "consent_enabled", [None, "", "on", "off"],
@@ -1014,6 +1011,43 @@ def test_toggle_current_value_equiv_across_generic_helpers(tmp_path):
                 f"render_settings_text registration_mode label mismatch for raw={raw!r}"
             )
     asyncio.run(go_render())
+
+
+def test_approval_manual_to_auto_needs_confirm_gate_not_immediate_write(tmp_path):
+    """Квик 260913-16o: `full_approval`/`short_approval`/`party_approval` больше не пишутся
+    немедленно, когда результат переключения — "auto" (инцидент 06.09: 38 заявок одобрились
+    молча, установить автора было нечем). Переход в "manual" остаётся мгновенным, как раньше
+    (см. urezanный список `cases` выше в этом файле)."""
+    _admin_ready(tmp_path)
+
+    async def go():
+        approval_cases = [
+            (admin_settings.toggle_full_approval, "full_approval"),
+            (admin_settings.toggle_short_approval, "short_approval"),
+            (admin_settings.toggle_party_approval, "party_approval"),
+        ]
+        for handler, key in approval_cases:
+            default = SETTINGS_SCHEMA[key]["default"]
+            for raw in [None, "", "manual", "auto"]:
+                await db.delete_setting(key)
+                if raw is not None:
+                    await db.set_setting(key, raw)
+                cb = FakeCallback("noop")
+                await handler(cb)
+                new_val = await db.get_setting(key)
+                current_oracle = raw or default
+                if current_oracle == "manual":
+                    # -> auto: экран подтверждения, ничего не записано.
+                    assert new_val == raw, (
+                        f"{key}: raw={raw!r} — переход в auto обязан ждать подтверждения, "
+                        f"а не писать сразу (got {new_val!r})"
+                    )
+                else:
+                    # -> manual: как раньше, пишет сразу, без подтверждения.
+                    assert new_val == "manual", (
+                        f"{key}: raw={raw!r} -> new_val={new_val!r}, ожидали 'manual'"
+                    )
+    asyncio.run(go())
 
 
 def test_generic_toggle_helpers_wired_to_registry():
