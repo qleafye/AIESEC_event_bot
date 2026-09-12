@@ -813,7 +813,9 @@ def test_task_edit_screen_point_edits_confirmations_and_wizard():
     # Ошибки сервера — человеческим текстом из payload.text. Сама логика перенесена в form.js
     # (план 21-04, был дословный дубль с settings.js) — экран только импортирует и зовёт.
     assert 'from "../form.js"' in text and "errorText(err," in text
-    assert "err.payload.text" in _js_without_comments(FORM_JS)
+    # Квик 12.09 (UI-аудит, пункт 8): сама логика errorText переехала в ui.js (form.js
+    # реэкспортирует), поэтому тело ищем там, а не в form.js.
+    assert "err.payload.text" in _js_without_comments(MINIAPP_STATIC / "js" / "ui.js")
     # Архив/возврат/удаление — литеральные пути (сторож путей их сверяет с маршрутами).
     assert "/archive`" in text and "/unarchive`" in text and 'method: "DELETE"' in text
     assert "${action}" not in text
@@ -1235,9 +1237,14 @@ def test_form_js_exports_shared_components():
     text = _js_without_comments(FORM_JS)
     for name in (
         "field", "setFieldState", "createFormState", "diffView", "confirmBox",
-        "listChips", "searchFilter", "groupCollapse", "errorText", "isAuthError",
+        "listChips", "searchFilter", "groupCollapse", "isAuthError",
     ):
         assert re.search(rf"export\s+(async\s+)?function\s+{name}\s*\(", text), name
+    # Квик 12.09 (UI-аудит, пункт 8): errorText переехал в ui.js (единственная реализация,
+    # tests/test_miniapp_notice_single_source_260912.py) — form.js оставляет реэкспорт, чтобы
+    # существующие импортёры (screens/applications.js, screens/task_edit.js) не переписывались.
+    assert "errorText" in text and 'from "./ui.js"' in text
+    assert not re.search(r"export\s+function\s+errorText\s*\(", text)
 
 
 def test_form_js_covers_every_spec_type():

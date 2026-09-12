@@ -8,25 +8,24 @@
 // `confirmText`/`cancelText`/`text` в confirmBox). Здесь этому правилу подчиняется КАЖДАЯ
 // строка — даже подпись кнопки confirmBox приходит параметром, как в screens/settings.js.
 //
-// `errorText`/`isAuthError` перенесены сюда из screens/task_edit.js и screens/settings.js
-// (были дословными дублями) — сигнатура `isAuthError` расширена вторым необязательным
-// параметром `excludeReasons`, чтобы оба экрана сохранили СВОЁ прежнее поведение (какие
-// причины 403 не считаются гейтом авторизации) без копии тела функции.
+// `isAuthError` перенесён сюда из screens/task_edit.js и screens/settings.js (был дословным
+// дублем) — сигнатура расширена вторым необязательным параметром `excludeReasons`, чтобы оба
+// экрана сохранили СВОЁ прежнее поведение (какие причины 403 не считаются гейтом авторизации)
+// без копии тела функции. `errorText` квиком 12.09 (UI-аудит, пункт 8) переехал в ui.js
+// (общий примитив тоста живёт рядом) — здесь оставлен реэкспорт, чтобы существующие импорты
+// (screens/applications.js, screens/task_edit.js) не переписывались.
 
 import { icon } from "./icons.js";
-import { flatRow } from "./ui.js";
+import { flatRow, errorText } from "./ui.js";
+
+export { errorText };
 
 // Фаза 22 (D-05, Reuse Contract 21-UI-SPEC): тот же рендерер обслуживает реестр настроек —
 // ветки toggle/photo/list, адаптер settingSpec(), нестрогий поиск (D-15). Модуль остаётся
 // импортируемым в чистом node (поведенческий тест поиска): на уровне модуля нет обращений
 // к document/window — DOM только внутри функций, вызываемых экраном.
 
-// ── errorText/isAuthError (перенос из task_edit.js/settings.js) ─────────────────────────
-
-export function errorText(err, fallback) {
-  if (err && err.payload && err.payload.text) return err.payload.text;
-  return fallback;
-}
+// ── isAuthError (перенос из task_edit.js/settings.js) ────────────────────────────────────
 
 // UAT 07.09 (T-d6t-04): маркер «все включённые шаги отвечены» в `reg_drafts.step` —
 // зеркало `reg_engine.STEP_DONE`, расхождение ловит сторож в тестах (regex по строке ниже).

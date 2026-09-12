@@ -15,7 +15,7 @@
 // успеха остаётся — это обратная связь по нажатию, не праздничный momentum.
 
 import { icon } from "../icons.js";
-import { emptyState, fileUrl } from "../ui.js";
+import { emptyState, fileUrl, noticeBox } from "../ui.js";
 import { haptic } from "../motion.js";
 
 const PART_ICON = { photo: "image", document: "file-text", text: "pen-line", link: "link" };
@@ -25,14 +25,9 @@ export async function render(root, params, ctx) {
 
   let offset = 0;
   let busy = false;
-  const notice = h("p", { class: "chip accent hidden" });
+  const { el: notice, say } = noticeBox(h);
   const holder = h("div");
   root.append(h("h1", { text: "Проверка сдач" }), notice, holder);
-
-  function say(text, kind) {
-    notice.textContent = text || "";
-    notice.className = `chip ${kind || "accent"}${text ? "" : " hidden"}`;
-  }
 
   function partNode(part) {
     const iconName = PART_ICON[part.kind] || "file-text";

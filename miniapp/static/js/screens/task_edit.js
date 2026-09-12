@@ -16,7 +16,7 @@
 //
 // Ошибки сервера показываются человеческим текстом из payload.text, не кодом ответа.
 
-import { fileUrl, flatRow } from "../ui.js";
+import { fileUrl, flatRow, noticeBox } from "../ui.js";
 import { icon } from "../icons.js";
 import { haptic } from "../motion.js";
 import { errorText, isAuthError as isAuthErrorBase } from "../form.js";
@@ -48,14 +48,9 @@ export async function render(root, params, ctx) {
   const { h, api, navigate, setMainButton, tg } = ctx;
   const isNew = params.id === "new";
 
-  const notice = h("p", { class: "chip accent hidden" });
+  const { el: notice, say } = noticeBox(h);
   const holder = h("div");
   root.append(notice, holder);
-
-  function say(text, kind) {
-    notice.textContent = text || "";
-    notice.className = `chip ${kind || "accent"}${text ? "" : " hidden"}`;
-  }
 
   // ── превью (та же вёрстка, что у карточки делегата, план 19.1-05) ──
   function preview(card, photoFileId) {
