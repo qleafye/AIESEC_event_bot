@@ -18,7 +18,7 @@
 // decide-кнопки ниже).
 
 import { icon } from "../icons.js";
-import { emptyState, flatRow, labelText } from "../ui.js";
+import { emptyState, flatRow, labelText, noticeBox } from "../ui.js";
 import { haptic } from "../motion.js";
 import { confirmBox, errorText } from "../form.js";
 import { attachSwipe } from "../swipe.js";
@@ -61,7 +61,7 @@ export async function render(root, params, ctx) {
   let currentCard = null;
   let filtersData = null; // последний непустой filters — чипы/шаблоны переживают пустую страницу
 
-  const notice = h("p", { class: "chip warn hidden" });
+  const { el: notice, say } = noticeBox(h, { kind: "warn" });
   const filtersRow = h("div", { class: "appl-filters" });
   const approveAllBtn = h("button", { class: "btn ghost hidden", type: "button", onClick: () => openApproveAllConfirm() });
   const cardHolder = h("div", { class: "appl-card-holder" });
@@ -120,11 +120,6 @@ export async function render(root, params, ctx) {
     toast,
     rejectBackdrop,
   );
-
-  function say(text, kind) {
-    notice.textContent = text || "";
-    notice.className = `chip ${kind || "warn"}${text ? "" : " hidden"}`;
-  }
 
   // ── тост отмены (D-06): один шаг, живёт undo_seconds из ответа сервера ──────────────────
   function hideToast() {

@@ -182,6 +182,37 @@ export function errorState(h, { me, text, retry } = {}) {
   return stateShell(h, { me, slot: "error", text, action, cls: "error-state" });
 }
 
+// Квик 12.09 (UI-аудит, пункт 8): канонический разбор текста ошибки ответа API — было
+// дословным дублем в form.js (перенесено сюда, form.js оставляет реэкспорт, чтобы
+// screens/applications.js и screens/task_edit.js не переписывали импорт).
+export function errorText(err, fallback) {
+  if (err && err.payload && err.payload.text) return err.payload.text;
+  return fallback;
+}
+
+// Квик 12.09 (UI-аудит, пункт 8): единственная реализация тоста-«чипа» вместо девяти копий
+// (`review.js`, `admin_coins.js`, `admin_faq.js`, `task_edit.js`, `applications.js`,
+// `questions.js`, `screens/form.js`) — узел + функция `say(text, kindOverride)`, повторяющая
+// прежнее поведение каждой копии: снять предыдущий таймер автоскрытия, поставить текст,
+// пересобрать className из `chip`, актуального kind'а и суффикса ` hidden` при пустом тексте,
+// и — если `autoHideMs > 0` и текст непустой — поставить новый таймер на очистку. Текст
+// приходит всегда параметром (0-хардкода — здесь нет ни одного литерала для человека).
+// `screens/submit.js::say` НЕ переводится на этот примитив — другая вёрстка (`.error-inline`,
+// `classList.toggle`) и другая роль (инлайн-ошибка формы, не тост).
+export function noticeBox(h, { kind = "accent", autoHideMs = 0 } = {}) {
+  const el = h("p", { class: `chip ${kind} hidden` });
+  let timer = null;
+  function say(text, kindOverride) {
+    if (timer) { clearTimeout(timer); timer = null; }
+    el.textContent = text || "";
+    el.className = `chip ${kindOverride || kind}${text ? "" : " hidden"}`;
+    if (text && autoHideMs > 0) {
+      timer = setTimeout(() => say(""), autoHideMs);
+    }
+  }
+  return { el, say };
+}
+
 // Разбор data-screen-texts мемоизирован — атрибут неизменен на всё время жизни страницы
 // (задаётся один раз сервером при рендере оболочки), повторный JSON.parse на каждый вызов
 // не нужен. Битый JSON/отсутствие атрибута — тихий пустой объект, а не исключение (fail-soft,
