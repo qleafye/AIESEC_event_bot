@@ -11,6 +11,9 @@
 `reg_engine.column_to_step`, ни один из маршрутов не принимает чужой `telegram_id` ни в пути,
 ни в теле. Логи — только `telegram_id`/`step`/`version`/коды ошибок, НИКОГДА `answers` (T-21-08).
 
+Phase 30 (30-02, A2-03): то же правило действует и у ручки поиска по справочнику (`reg_suggest`
+ниже) — НИКОГДА `q` (поисковый текст делегата), только длина/факт запроса (T-30-06).
+
 Веб-процесс не ходит в Telegram Bot API/Sheets сам (D-01 фазы 19): `submit`/резюме ставят
 события в `miniapp.outbox`, их разбирает `services/miniapp_outbox.py` в боте
 (`post_finalize`/`handle_resume_upload`, план 21-08). Единственное исключение — мгновенный
@@ -50,6 +53,7 @@ from database.db import (
 from settings_schema import get_setting_typed
 from services import i18n, reg_edit_policy
 from services.consent import outstanding_consents
+from services.lookup import search_lookup, top_chips
 from services.reg_finalize import finalize_data, resolve_delegate_text
 from services.reg_handoff import SURFACE_APP, SURFACE_BOT, draft_holder
 
@@ -828,6 +832,63 @@ async def draft_ambassador(
         "copy_button": await get_setting_typed("miniapp_form_ambassador_copy_button_text"),
         "copied_toast": await get_setting_typed("miniapp_form_ambassador_copied_toast_text"),
     }
+
+
+# ── Поиск по справочнику ВУЗ/город (A2-03) ──────────────────────────────────────────────────
+
+# Phase 30 (30-02, A2-03): шаг -> вид справочника `services.lookup` (закрытый словарь
+# "university"/"city"). Кроме этих двух шагов у `step_type_v2` в этой фазе типа `lookup`
+# нет (30-01-SUMMARY.md) — карта заведомо покрывает всё множество lookup-шагов сегодня, расти
+# ей вместе с `_STEP_TYPE_V2_OVERRIDES` в `reg_engine.py`, если появится третий.
+_STEP_TO_LOOKUP_KIND = {"university": "university", "city": "city"}
+
+# Короче двух символов — «поиск» по одной букве не сигнал, а лишняя нагрузка на БД на каждое
+# нажатие клавиши (T-30-04); чипы всё равно отдаются.
+_SUGGEST_MIN_QUERY_LEN = 2
+_SUGGEST_CHIPS_LIMIT = 8
+_SUGGEST_RESULTS_LIMIT = 10
+
+
+@router.get("/app/api/reg/suggest")
+async def reg_suggest(
+    step: str = "",
+    q: str = "",
+    p: Principal = Depends(form_gate),
+    _: Principal = Depends(require_section("form")),
+) -> dict:
+    """Поиск по справочнику ВУЗ/город для типа шага `lookup` (A2-03, задача 4 плана 30-02) —
+    рендер экрана делает план 30-03, здесь только данные. Судья формата — `services.lookup`
+    (нормализация/ранжирование/чипы), этот роутер не содержит собственных правил сравнения
+    строк — та же дисциплина, что у `validate_answer` выше (T-21-05).
+
+    `step` — ключ шага анкеты (не `kind` напрямую: фронт знает шаг, `kind` — закрытый словарь
+    `services.lookup`). Шаг ОБЯЗАН быть `reg_engine.step_type_v2(step) == "lookup"` — иначе
+    (неизвестный шаг, шаг другого типа, делегат на устаревшей версии клиента после того, как
+    менеджер выключил тумблер) отдаётся пустой ответ, НЕ 500 (T-30-04, тот же fail-soft
+    принцип, что у `_STEP_TO_LOOKUP_KIND.get`).
+
+    `q` обрезается по `reg_engine.MAX_LEN_DEFAULT` (T-30-04, DoS длинным `q`); короче
+    `_SUGGEST_MIN_QUERY_LEN` символов — только чипы, без похода в `search_lookup` вовсе.
+    `other_allowed` — из `reg_engine._OTHER_ALLOWED_STEPS` (та же атрибутная модель списка,
+    что у сегодняшних choice-шагов с «Другое»; план 30-07 заведёт отдельный экран атрибутов).
+    """
+    step_key = (step or "").strip()
+    kind = _STEP_TO_LOOKUP_KIND.get(step_key)
+    if kind is None or reg_engine.step_type_v2(step_key) != "lookup":
+        return {"chips": [], "results": [], "other_allowed": False}
+
+    query_text = (q or "")[: reg_engine.MAX_LEN_DEFAULT]
+    other_allowed = step_key in reg_engine._OTHER_ALLOWED_STEPS
+
+    # `event_city` зарезервирован контрактом `top_chips` (`services/lookup.py`) на будущую
+    # city-scoped политику чипов — сегодня не читается функцией, поэтому здесь не тратим
+    # лишний поход в БД за городом делегата ради параметра, который пока ни на что не влияет.
+    chips = await top_chips(kind, None, limit=_SUGGEST_CHIPS_LIMIT)
+    results: list[dict] = []
+    if len(query_text.strip()) >= _SUGGEST_MIN_QUERY_LEN:
+        results = await search_lookup(kind, query_text, limit=_SUGGEST_RESULTS_LIMIT)
+
+    return {"chips": chips, "results": results, "other_allowed": other_allowed}
 
 
 __all__ = ["router", "DraftPatch"]
