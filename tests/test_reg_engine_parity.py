@@ -22,6 +22,7 @@ async идёт через `asyncio.run()` (правило проекта).
 """
 import asyncio
 
+import reg_options
 from config import config
 from database.db import init_db
 from reg_engine import REG_FLOW
@@ -995,7 +996,7 @@ FINALIZE_GOLDEN = [
         "defaults": {
             "full_name": "Иван Иванов",
             "email": "-", "phone": "-", "city": "-", "is_aiesec_member": False,
-            "source": "Самостоятельно", "source_details": "Referrer ID: -",
+            "source": reg_options.SOURCE_NOT_ASKED, "source_details": "Referrer ID: -",
             "education_status": "-", "university": "-", "course": "-", "specialty": "-",
             "work_status": False, "work_sphere": "-", "missing_skills": "-",
             "expectations": "-", "local_committee": "-", "position": "-",
@@ -1029,7 +1030,7 @@ FINALIZE_GOLDEN = [
         "defaults": {
             "participant_type": "party_overnight",
             "email": "-", "phone": "-", "city": "-", "is_aiesec_member": False,
-            "source": "Самостоятельно", "source_details": "Referrer ID: -",
+            "source": reg_options.SOURCE_NOT_ASKED, "source_details": "Referrer ID: -",
             "education_status": "-", "university": "-", "course": "-", "specialty": "-",
             "work_status": False, "work_sphere": "-", "missing_skills": "-",
             "expectations": "-", "local_committee": "-", "position": "-",

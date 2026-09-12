@@ -18,6 +18,7 @@ from aiogram.fsm.storage.memory import MemoryStorage
 from aiogram.types import InlineKeyboardMarkup, ReplyKeyboardMarkup
 
 import cities as cities_mod
+import reg_options
 from config import config
 from database import db
 from handlers import registration as reg
@@ -498,9 +499,9 @@ def test_advance_summary_always_carries_confirm_keyboard(tmp_path):
             await conn.execute(
                 "UPDATE users SET age=25, vk_username='@delegate', "
                 "education_status='Нет, не получал(а) образование', "
-                "expectations='Нетворкинг', source='Самостоятельно', work_status=0, "
+                "expectations='Нетворкинг', source=?, work_status=0, "
                 "missing_skills='Тайм-менеджмент' WHERE telegram_id=?",
-                (UID,),
+                (reg_options.SOURCE_NOT_ASKED, UID),
             )
             await conn.commit()
 
