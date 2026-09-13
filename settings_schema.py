@@ -1965,6 +1965,105 @@ SETTINGS_SCHEMA = {
         "prompt": "Вторая строка плитки select под названием варианта.",
         "default": "Пришёл(ла) на форум впервые", "per_city": True,
     },
+    # Phase 30 (30-04, A2-04, 30-UI-SPEC.md § «composite "Образование"»): тексты составной
+    # карточки. Публикуются в `spec["v2_texts"]` (`reg_engine.py::_v2_texts_for`), читает
+    # `form_types.js`. Чат-ключи (`_chat_*`) заводятся здесь для плана 30-06 (30-04-PLAN.md
+    # `<action>`: «чат-ключи заводятся здесь, а используются планом 30-06 — так план 30-06 не
+    # трогает реестр»).
+    "reg_composite_edu_subtitle_text": {
+        "type": "text", "group": "reg_prompts", "label": "🎓 Подзаголовок карточки (composite)",
+        "prompt": "Подзаголовок на плите шага «Образование».",
+        "default": "Один экран вместо четырёх вопросов подряд.", "per_city": True,
+    },
+    "reg_composite_edu_toggle_on_label": {
+        "type": "text", "group": "reg_prompts", "label": "🎓 Тумблер «учусь» — заголовок (вкл)",
+        "prompt": "Заголовок тумблера «Сейчас учусь здесь», когда он включён.",
+        "default": "Сейчас учусь здесь", "per_city": True,
+    },
+    "reg_composite_edu_toggle_off_label": {
+        "type": "text", "group": "reg_prompts", "label": "🎓 Тумблер «учусь» — заголовок (выкл)",
+        "prompt": "Заголовок тумблера «Сейчас учусь здесь», когда он выключен.",
+        "default": "Уже не учусь здесь", "per_city": True,
+    },
+    "reg_composite_edu_toggle_on_hint": {
+        "type": "text", "group": "reg_prompts", "label": "🎓 Тумблер «учусь» — подпись (вкл)",
+        "prompt": "Подпись под тумблером, когда он включён.",
+        "default": "Выключи, если уже закончил(а)", "per_city": True,
+    },
+    "reg_composite_edu_toggle_off_hint": {
+        "type": "text", "group": "reg_prompts", "label": "🎓 Тумблер «учусь» — подпись (выкл)",
+        "prompt": "Подпись под тумблером, когда он выключен.",
+        "default": "Включи, если ещё студент(ка)", "per_city": True,
+    },
+    "reg_composite_edu_done_hint_text": {
+        "type": "text", "group": "reg_prompts", "label": "🎓 Пояснение в свёрнутой карточке",
+        "prompt": "Показывается вместо ВУЗа/курса/программы после выключения тумблера.",
+        "default": "ВУЗ, курс и программу больше не спрашиваем — этих шагов просто нет.",
+        "per_city": True,
+    },
+    "reg_composite_toggle_note_text": {
+        "type": "text", "group": "reg_prompts", "label": "🎓 Сноска под карточкой (composite)",
+        "prompt": "`.note` под карточкой «Образование».",
+        "default": (
+            "Скипать нечего, если шага нет: выключенный тумблер убирает вопросы, а не "
+            "помечает их «пропущено»."
+        ),
+    },
+    "reg_repeatable_add_button_text": {
+        "type": "text", "group": "reg_prompts", "label": "➕ Кнопка «Добавить ещё» (шаблон)",
+        "prompt": "Общий шаблон кнопки добавления блока — {noun} задаёт конкретный шаг.",
+        "default": "+ Добавить ещё {noun}", "per_city": True,
+    },
+    "reg_composite_chat_check_heading_text": {
+        "type": "text", "group": "reg_prompts", "label": "🎓 Заголовок рекапа (composite, чат)",
+        "prompt": "Заголовок карточки-рекапа «Проверь образование» в чате.",
+        "default": "Проверь образование",
+    },
+    "reg_composite_chat_confirm_button_text": {
+        "type": "text", "group": "reg_prompts", "label": "🎓 Кнопка «Всё верно» (composite, чат)",
+        "prompt": "Кнопка подтверждения рекапа composite в чате.",
+        "default": "Всё верно",
+    },
+    "reg_composite_chat_fix_button_text": {
+        "type": "text", "group": "reg_prompts", "label": "🎓 Кнопка «Исправить» (composite, чат)",
+        "prompt": "Кнопка правки рекапа composite в чате.",
+        "default": "Исправить",
+    },
+    # Phase 30 (30-04, A2-05, 30-UI-SPEC.md § «repeatable»): тексты повторяемого блока —
+    # первый потребитель «Опыт и проекты» (`mini_portfolio`). Чат-ключи для плана 30-06.
+    "reg_repeatable_item_label_text": {
+        "type": "text", "group": "reg_prompts", "label": "➕ Заголовок блока (repeatable)",
+        "prompt": "Заголовок карточки блока — {n} подставляет номер клиент.",
+        "default": "Проект {n}", "per_city": True,
+    },
+    "reg_repeatable_edit_action_text": {
+        "type": "text", "group": "reg_prompts", "label": "➕ Ссылка «Изменить» (repeatable)",
+        "prompt": "Действие в заголовке блока repeatable.",
+        "default": "Изменить",
+    },
+    "reg_repeatable_chat_parity_note_text": {
+        "type": "text", "group": "reg_prompts", "label": "➕ Сноска про чат (repeatable)",
+        "prompt": "`.note` под карточками repeatable в приложении.",
+        "default": (
+            "В чате тот же шаг спрашивает «Добавить ещё? Да / Готово» — способ ответить есть "
+            "на любой поверхности."
+        ),
+    },
+    "reg_repeatable_chat_prompt_text": {
+        "type": "text", "group": "reg_prompts", "label": "➕ «Добавить ещё?» (repeatable, чат)",
+        "prompt": "Текст сообщения бота между блоками repeatable.",
+        "default": "Добавить ещё?",
+    },
+    "reg_repeatable_chat_yes_button_text": {
+        "type": "text", "group": "reg_prompts", "label": "➕ Кнопка «Да» (repeatable, чат)",
+        "prompt": "Кнопка «Да» в чате между блоками repeatable.",
+        "default": "Да",
+    },
+    "reg_repeatable_chat_done_button_text": {
+        "type": "text", "group": "reg_prompts", "label": "➕ Кнопка «Готово» (repeatable, чат)",
+        "prompt": "Кнопка «Готово» в чате между блоками repeatable.",
+        "default": "Готово",
+    },
     "registration_mode": {
         "type": "enum", "group": "toggles", "label": "📝 Форма регистрации",
         "options": ["short", "full"],
