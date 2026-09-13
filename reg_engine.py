@@ -1356,9 +1356,10 @@ async def _v2_texts_for(degraded_kind: str, step_key: str, event_city: str | Non
         texts["limit_hint_max"] = await get_setting_typed_for_city(
             "reg_multi_limit_hint_max_text", event_city
         )
-        texts["own_option"] = await get_setting_typed_for_city(
-            "reg_form_own_option_text", event_city
-        )
+        # `reg_form_own_option_text` НЕ публикуется здесь: это целое предложение с `{entity}`
+        # для пустого состояния lookup (см. ветку выше), не короткий placeholder поля «свой
+        # вариант» multi — Copywriting Contract не заводит отдельного ключа под это поле
+        # (30-UI-SPEC.md § «5. multi» не перечисляет его текстом, только иконку `+`).
     elif degraded_kind == "link":
         texts["recognized"] = await get_setting_typed_for_city(
             "reg_link_recognized_text", event_city
