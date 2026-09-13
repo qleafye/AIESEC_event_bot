@@ -1267,11 +1267,10 @@ APP_PROJECTION: dict[str, str] = {
 # `handlers/reg_types_*.py` ещё не существуют; список опустошается по мере хода планов
 # 30-03..30-06, полностью пустым становится к плану 30-08 (30-VALIDATION.md Wave 0 Gaps).
 PENDING_PROJECTIONS: dict[str, str] = {
-    "select": "план 30-03 — рестайл form.js/screens/form.js под новую ось (тумблер v2_enabled)",
-    "multi": "план 30-03 — рестайл form.js/screens/form.js под новую ось (счётчик/чипы)",
-    "link": "план 30-03 — карточка ссылки, form_types.js",
-    "text": "план 30-03 — рестайл form.js/screens/form.js (кнопка requestContact у phone)",
-    "lookup": "планы 30-03 (Mini App, form_types.js) и 30-06 (чат, handlers/reg_types_lookup.py)",
+    # select/multi/link/text сняты планом 30-03 (задача 5): `form_types.js` теперь несёт
+    # литеральные `case "..."` для всех четырёх (задачи 2/3), `CHAT_PROJECTION` для них и так
+    # указывал на уже существующий `handlers.registration` с 30-01 — обе проекции реальны.
+    "lookup": "чат — план 30-06 (handlers/reg_types_lookup.py); Mini App готова — form_types.js",
     "composite": "планы 30-04 (Mini App, form_types.js) и 30-06 (чат, handlers/reg_types_composite.py)",
     "repeatable": "планы 30-04 (Mini App, form_types.js) и 30-06 (чат, handlers/reg_types_repeatable.py)",
 }
