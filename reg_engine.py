@@ -1426,19 +1426,11 @@ APP_PROJECTION: dict[str, str] = {
 # Сторож `tests/test_reg_step_type_v2_260912.py::test_step_type_v2_has_both_projections`
 # пропускает импорт/проверку файла для типов из этого списка — КАЖДАЯ запись обязана называть
 # план, который её снимает (сам сторож это проверяет: пустой комментарий — красный тест).
-# Сегодня (план 30-01) сюда попадают ВСЕ семь типов — ни `form_types.js`, ни
-# `handlers/reg_types_*.py` ещё не существуют; список опустошается по мере хода планов
-# 30-03..30-06, полностью пустым становится к плану 30-08 (30-VALIDATION.md Wave 0 Gaps).
-PENDING_PROJECTIONS: dict[str, str] = {
-    # select/multi/link/text сняты планом 30-03 (задача 5): `form_types.js` теперь несёт
-    # литеральные `case "..."` для всех четырёх (задачи 2/3), `CHAT_PROJECTION` для них и так
-    # указывал на уже существующий `handlers.registration` с 30-01 — обе проекции реальны.
-    "lookup": "чат — план 30-06 (handlers/reg_types_lookup.py); Mini App готова — form_types.js",
-    # Mini App снята планом 30-04 (задача 3, `case "composite"`/`case "repeatable"` в
-    # form_types.js) — остаётся только чат-заглушка, план 30-06 заведёт handlers/reg_types_*.
-    "composite": "чат — план 30-06 (handlers/reg_types_composite.py); Mini App готова — form_types.js",
-    "repeatable": "чат — план 30-06 (handlers/reg_types_repeatable.py); Mini App готова — form_types.js",
-}
+# Пусто с плана 30-06 (задача 4): `handlers/reg_types_lookup.py`/`reg_types_composite.py`/
+# `reg_types_repeatable.py` заведены, `form_types.js` уже нёс их `case` с плана 30-04 — сторож
+# паритета (`test_step_type_v2_has_both_projections`) теперь требует обе проекции для ВСЕХ
+# семи типов, ни одного пропуска не осталось.
+PENDING_PROJECTIONS: dict[str, str] = {}
 
 
 # Phase 30 (30-03, A2-02, 30-UI-SPEC.md § «1. select»): пояснения к вариантам плитки select —
