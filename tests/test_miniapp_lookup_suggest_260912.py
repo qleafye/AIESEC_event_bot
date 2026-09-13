@@ -20,6 +20,7 @@ from tests.test_miniapp_routes import (
     _cfg,
     _client,
     _hdr,
+    _set,
     _standard_seed,
     _use_tmp_db,
 )
@@ -196,7 +197,12 @@ def test_suggest_long_q_is_truncated_not_500(client):
     assert resp.status_code == 200
 
 
-def test_suggest_other_allowed_true_for_city_false_for_university(client):
+def test_suggest_other_allowed_true_by_default_for_city_and_university(client):
+    """Phase 30 (30-07, задача 4): дефолт атрибута «свой вариант» — `"on"` для ОБОИХ списков
+    (сегодняшнее поведение `_OTHER_ALLOWED_STEPS`, город и ВУЗ оба в нём — 30-06). До задачи 4
+    этот тест ошибочно ожидал `False` для ВУЗа — 30-06 уже добавил "university" в
+    `_OTHER_ALLOWED_STEPS` (deviation Rule 2 того плана), но этот файл не был обновлён;
+    задача 4 заменяет источник правды на реестровый атрибут и заодно чинит стухшую проверку."""
     resp_city = client.get(
         "/app/api/reg/suggest", params={"step": "city", "q": ""},
         headers=_hdr(DELEGATE_ID),
@@ -206,4 +212,20 @@ def test_suggest_other_allowed_true_for_city_false_for_university(client):
         headers=_hdr(DELEGATE_ID),
     )
     assert resp_city.json()["other_allowed"] is True
+    assert resp_uni.json()["other_allowed"] is True
+
+
+def test_suggest_other_allowed_false_when_attribute_off(client):
+    """Phase 30 (30-07, задача 4): выключенный атрибут `university_options_other_allowed`
+    гасит `other_allowed` для ШАГА university, но НЕ трогает city (атрибут per-list)."""
+    _set("university_options_other_allowed", "off")
+    resp_uni = client.get(
+        "/app/api/reg/suggest", params={"step": "university", "q": ""},
+        headers=_hdr(DELEGATE_ID),
+    )
+    resp_city = client.get(
+        "/app/api/reg/suggest", params={"step": "city", "q": ""},
+        headers=_hdr(DELEGATE_ID),
+    )
     assert resp_uni.json()["other_allowed"] is False
+    assert resp_city.json()["other_allowed"] is True

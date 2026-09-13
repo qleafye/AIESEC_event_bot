@@ -1613,6 +1613,29 @@ _SKIP_ALLOWED_STEPS = {
 # через `_reply_kb(options, add_other=True)`), поэтому добавление сюда не двигает GOLDEN.
 _OTHER_ALLOWED_STEPS = {"city", "study_field", "local_committee", "position", "department", "aiesec_role", "university"}
 
+# Phase 30 (30-07, задача 4, A2-03, 30-CONTEXT.md § «Решения оркестратора», п.2): атрибут
+# «свой вариант» конкретного списка-справочника — источник правды для `other_allowed` у ШАГОВ
+# ТИПА `lookup` (university/city), заменяет `_OTHER_ALLOWED_STEPS` выше ТОЛЬКО для них; для
+# остальных choice-шагов множество выше не трогается (city/university тоже в нём остаются —
+# `_OTHER_ALLOWED_STEPS` продолжает обслуживать легаси-ветку при выключенной новой анкете,
+# 30-CONTEXT.md: «Атрибуты влияют только на новую анкету»). `университет`/`city` — единственные
+# сегодняшние lookup-шаги (reg_engine.step_type_v2), второй карты имён не заводится —
+# `_LOOKUP_LIST_KEY` дословно совпадает с `services.lookup._SEASON_COLUMN`/`_STEP_TO_LOOKUP_KIND`
+# (miniapp/routers/form.py), но живёт здесь отдельной картой: это связка step_key -> ключ
+# СПИСКА реестра (`*_options`), а не step_key -> kind справочника.
+_LOOKUP_LIST_KEY = {"university": "university_options", "city": "city_options"}
+
+
+async def lookup_other_allowed(step_key: str) -> bool:
+    """«Свой вариант» для шага типа `lookup` — читает атрибут списка (`<list_key>_other_
+    allowed`, план 30-07 задача 4, дефолт `"on"` = сегодняшнее поведение не меняется, пока
+    менеджер явно не выключит). Для любого другого step_key (не lookup) — старое поведение,
+    `_OTHER_ALLOWED_STEPS` НЕ подменяется."""
+    list_key = _LOOKUP_LIST_KEY.get(step_key)
+    if list_key is None:
+        return step_key in _OTHER_ALLOWED_STEPS
+    return await get_setting_typed(f"{list_key}_other_allowed") == "on"
+
 # Phase 28 (28-04, SU-04, A-03 CONTEXT): три записи развилки резюме R1 — code (не показывается
 # делегату, только Mini App/бот решают, куда вести дальше) / реестровый ключ подписи / иконка
 # Lucide-подсета (28-UI-SPEC.md §Component Contracts 1, upload/link/x).

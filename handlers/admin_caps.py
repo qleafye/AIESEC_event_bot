@@ -545,6 +545,7 @@ ADMIN_CAPS: dict[str, str] = {
     "settings_list_del:*": "settings",
     "settings_list_rm:*": "settings",
     "settings_list_replace:*": "settings",
+    "settings_list_attr:*": "settings",  # Phase 30 (30-07, задача 4): атрибуты списка-справочника
     "settings_group:*": "settings",
     "settings_group_noop": "settings",
     "settings_photo:*": "settings",

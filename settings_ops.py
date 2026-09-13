@@ -341,6 +341,17 @@ TOGGLE_SECTION: dict[str, str] = {
     "reg_form_status_screen": "form",
     "reg_form_header_settings": "form",
     "reg_form_haptics": "form",
+    # Phase 30 (30-07, задача 4, A2-03): три атрибута списка-справочника (чипы/поиск/свой
+    # вариант) на каждый из двух lookup-списков (university_options/city_options) — правятся
+    # кнопками на экране правки СПИСКА (handlers/admin_settings_lists.py), не отдельной
+    # строкой раздела в admin_sections.SECTIONS (в отличие от девяти тумблеров выше) —
+    # достаточно попасть в раздел «form» здесь, второй ("toggle", …) строки не заводится.
+    "university_options_chips_enabled": "form",
+    "university_options_search_enabled": "form",
+    "university_options_other_allowed": "form",
+    "city_options_chips_enabled": "form",
+    "city_options_search_enabled": "form",
+    "city_options_other_allowed": "form",
 }
 
 # Единственный источник «что подтверждаем» для ОБЕИХ поверхностей (UI-SPEC A6): вкладки

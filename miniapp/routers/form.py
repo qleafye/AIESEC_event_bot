@@ -915,8 +915,9 @@ async def reg_suggest(
 
     `q` обрезается по `reg_engine.MAX_LEN_DEFAULT` (T-30-04, DoS длинным `q`); короче
     `_SUGGEST_MIN_QUERY_LEN` символов — только чипы, без похода в `search_lookup` вовсе.
-    `other_allowed` — из `reg_engine._OTHER_ALLOWED_STEPS` (та же атрибутная модель списка,
-    что у сегодняшних choice-шагов с «Другое»; план 30-07 заведёт отдельный экран атрибутов).
+    `other_allowed` — план 30-07 задача 4: `reg_engine.lookup_other_allowed(step_key)` читает
+    атрибут «свой вариант» списка-справочника (`<list_key>_other_allowed`), а не статический
+    `reg_engine._OTHER_ALLOWED_STEPS` — тот теперь обслуживает только легаси choice-шаги.
     """
     step_key = (step or "").strip()
     kind = _STEP_TO_LOOKUP_KIND.get(step_key)
@@ -924,7 +925,7 @@ async def reg_suggest(
         return {"chips": [], "results": [], "other_allowed": False}
 
     query_text = (q or "")[: reg_engine.MAX_LEN_DEFAULT]
-    other_allowed = step_key in reg_engine._OTHER_ALLOWED_STEPS
+    other_allowed = await reg_engine.lookup_other_allowed(step_key)
 
     # `event_city` зарезервирован контрактом `top_chips` (`services/lookup.py`) на будущую
     # city-scoped политику чипов — сегодня не читается функцией, поэтому здесь не тратим

@@ -277,6 +277,15 @@ SETTINGS_SYNONYMS: dict[str, list[str]] = {
     "reg_form_status_screen": ["экран статуса заявки", "статус заявки во всю ширину"],
     "reg_form_header_settings": ["настройки в шапке анкеты", "тема язык вибрация в анкете"],
     "reg_form_haptics": ["вибрация анкеты", "отклик на выбор в анкете"],
+    # Phase 30 (30-07, задача 4, A2-03): три атрибута списка-справочника (чипы/поиск/свой
+    # вариант) на university_options/city_options — group="toggles", не "reg_prompts",
+    # явные синонимы обязательны.
+    "university_options_chips_enabled": ["чипы у списка вузов", "популярные вузы чипами"],
+    "university_options_search_enabled": ["поиск по вузам", "искать вуз по буквам"],
+    "university_options_other_allowed": ["свой вариант вуза", "разрешить вписать вуз вручную"],
+    "city_options_chips_enabled": ["чипы у списка городов", "популярные города чипами"],
+    "city_options_search_enabled": ["поиск по городам", "искать город по буквам"],
+    "city_options_other_allowed": ["свой вариант города", "разрешить вписать город вручную"],
     # Phase 30 (30-03, A2-02/A2-03/A2-06): тексты новых типов шага (select/lookup/multi/link/
     # phone) заведены группой `reg_prompts` — ручных синонимов НЕ заводим: тест-файл
     # `tests/test_settings_synonyms.py` относит ВЕСЬ `group == "reg_prompts"` к
