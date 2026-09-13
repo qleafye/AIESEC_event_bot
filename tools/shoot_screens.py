@@ -79,6 +79,11 @@ MIN_PNG_BYTES = 2000  # пустой/белый снимок PNG сжимает�
 DELEGATE_ID = 900100
 GAME_MANAGER_ID = 900600
 ADMIN_ID = 900001
+# Phase 30 (30-08, задача 2): DELEGATE_ID уже подал анкету (registration_date задан) -- #/form
+# у него рисует «обзор точечной правки» (kind='edit'), не мастер новой анкеты. FORM_DEMO_ID --
+# отдельный делегат БЕЗ поданной анкеты (demo_server.py), реальный reg_drafts (kind='new'),
+# ставит #/form ровно на составную карточку «Образование» — см. DELEGATE_SCREEN_PRINCIPAL ниже.
+FORM_DEMO_ID = 900800
 
 # ── экраны делегата/менеджера (маршруты app.js::ROUTES) ─────────────────────────────────────
 DELEGATE_SCREENS = [
@@ -90,6 +95,7 @@ DELEGATE_SCREENS = [
     ("leaderboard", "#/leaderboard"),
     ("profile", "#/profile"),
     ("form", "#/form"),  # Phase 23.1 задача 1: мастер анкеты -- штатный экран съёмки
+    ("status", "#/status"),  # Phase 30 (30-08, A2-07): полноэкранный статус заявки
 ]
 MANAGER_SCREENS = [
     ("hub-manager", "#/hub"),
@@ -115,6 +121,8 @@ MANAGER_SCREENS = [
 # сеет только game_manager); ADMIN_ID держит все 7 capability через bootstrap ADMIN_IDS
 # (handlers/admin_caps.py::resolve_capabilities).
 MANAGER_SCREEN_PRINCIPAL = {"settings": ADMIN_ID, "settings-pay": ADMIN_ID, "applications": ADMIN_ID}
+# Phase 30 (30-08, задача 2): "form" снимается от лица FORM_DEMO_ID (см. выше), не DELEGATE_ID.
+DELEGATE_SCREEN_PRINCIPAL = {"form": FORM_DEMO_ID}
 
 NAV_LAYOUT_RE = re.compile(r'const NAV_LAYOUT = "(\w+)";')
 
@@ -168,6 +176,9 @@ SCREEN_CONTENT_SELECTOR = {
     "settings": ".tiles .tile",
     "settings-pay": ".settings-group, .settings-row",
     "applications": ".appl-card, .empty-state",
+    # Phase 30 (30-08, A2-07): #/status ждёт GET /app/api/hub/status (screens/status.js::draw)
+    # прежде чем нарисовать что-либо — та же пустая оболочка ДО ответа, что у "form" выше.
+    "status": ".plate--status, .status-title",
 }
 
 # Экран -> секунды ожидания content_selector сверх дефолтных 10 (см. _wait_screen_ready).
@@ -271,6 +282,73 @@ def _shoot_manager_bonus_screens(driver) -> None:
     except Exception as exc:  # noqa: BLE001 -- бонус-кадр, не часть манифеста; кнопки может не
         # быть, если у первой карточки очереди нет extra_fields (посев demo_server.py).
         print(f"ПРОПУСК бонус-кадра applications-showall: {exc}", file=sys.stderr)
+
+
+# Phase 30 (30-08, задача 2, A2-07): три состояния экрана статуса — «через параметр посева, а
+# не три разных пользователя» (текст задачи): один и тот же DELEGATE_ID, `users.status`
+# переключается напрямую в demo.db между тремя кадрами (тот же приём, что `write_setting`/
+# `write_preset` уже делают для реестра/пресета — прямой sqlite3, без async `database.db`,
+# т.к. скрипт работает с ЧУЖИМ, уже остановленным на этот момент процессом БД). Снимается
+# ТОЛЬКО bluebook light (тот же выбор, что и `_shoot_manager_bonus_screens`) — вне манифеста
+# `build_manifest()`/`--check`, обёрнуто в try/except: бонус-кадры не должны ронять весь прогон.
+def _shoot_status_bonus_screens(driver, db_path: Path) -> None:
+    import sqlite3
+
+    status_hash = dict(DELEGATE_SCREENS)["status"]
+    url = f"{MINIAPP_BASE_URL}/app?as={DELEGATE_ID}"
+
+    def _set_status(status: str) -> None:
+        conn = sqlite3.connect(str(db_path))
+        try:
+            now = time.strftime("%Y-%m-%d %H:%M:%S")
+            if status == "rejected":
+                conn.execute(
+                    "UPDATE users SET status = 'rejected', rejected_at = ? WHERE telegram_id = ?",
+                    (now, DELEGATE_ID),
+                )
+                # last_rejection_reason() (services/applications.py) читает эту таблицу —
+                # без строки причина пустая, карточка «Причина» просто не рисуется (не падает),
+                # но кадр менее полезен ревьюеру.
+                conn.execute(
+                    "INSERT INTO application_decisions "
+                    "(telegram_id, decision, reason, decided_by, decided_at, effects_due_at) "
+                    "VALUES (?, 'rejected', ?, ?, ?, ?)",
+                    (
+                        DELEGATE_ID,
+                        "Не хватает деталей об опыте — напиши, пожалуйста, подробнее в анкете.",
+                        GAME_MANAGER_ID, now, now,
+                    ),
+                )
+            elif status == "approved":
+                conn.execute(
+                    "UPDATE users SET status = 'approved', approved_at = ? WHERE telegram_id = ?",
+                    (now, DELEGATE_ID),
+                )
+            else:
+                conn.execute(
+                    "UPDATE users SET status = ? WHERE telegram_id = ?", (status, DELEGATE_ID),
+                )
+            conn.commit()
+        finally:
+            conn.close()
+
+    original_status = "approved"  # DELEGATE_ID сегодня всегда одобрен (_standard_seed())
+    try:
+        for status in ("pending", "approved", "rejected"):
+            _set_status(status)
+            driver.get(url)
+            driver.execute_script(f"localStorage.setItem('{ONBOARDING_KEY}', '1');")
+            driver.get(f"{url}{status_hash}")
+            _wait_screen_ready(driver, content_selector=SCREEN_CONTENT_SELECTOR["status"])
+            time.sleep(0.3)
+            save_screenshot(
+                driver, SHOTS_DIR / f"miniapp-status-{status}-bluebook-light-hub.png", MINIAPP_WINDOW,
+            )
+            print(f"OK: bonus — status {status}")
+    except Exception as exc:  # noqa: BLE001 -- бонус-кадры, не часть манифеста
+        print(f"ПРОПУСК бонус-кадров status: {exc}", file=sys.stderr)
+    finally:
+        _set_status(original_status)  # не оставлять DELEGATE_ID в "rejected" для остальных кадров
 
 
 # ── дашборд ──────────────────────────────────────────────────────────────────────────────────
@@ -388,11 +466,14 @@ def _shoot_delegate_only(db_path: Path, task_id: int) -> int:
             for name, hash_tpl in DELEGATE_SCREENS:
                 tid = task_id if "{task_id}" in hash_tpl else None
                 shoot_miniapp_screen(
-                    driver_light, MINIAPP_BASE_URL, DELEGATE_ID, hash_tpl,
+                    driver_light, MINIAPP_BASE_URL, DELEGATE_SCREEN_PRINCIPAL.get(name, DELEGATE_ID), hash_tpl,
                     SHOTS_DIR / f"miniapp-{name}-{preset}-light-hub.png", task_id=tid,
                     content_selector=SCREEN_CONTENT_SELECTOR.get(name),
                 )
             print(f"OK: {preset} light — delegate screens")
+
+            if preset == "bluebook":
+                _shoot_status_bonus_screens(driver_light, db_path)
     finally:
         driver_light.quit()
 
@@ -404,7 +485,7 @@ def _shoot_delegate_only(db_path: Path, task_id: int) -> int:
         for name, hash_tpl in DELEGATE_SCREENS:
             tid = task_id if "{task_id}" in hash_tpl else None
             shoot_miniapp_screen(
-                driver_dark, MINIAPP_BASE_URL, DELEGATE_ID, hash_tpl,
+                driver_dark, MINIAPP_BASE_URL, DELEGATE_SCREEN_PRINCIPAL.get(name, DELEGATE_ID), hash_tpl,
                 SHOTS_DIR / f"miniapp-{name}-bluebook-dark-hub.png", task_id=tid,
                 content_selector=SCREEN_CONTENT_SELECTOR.get(name),
             )
@@ -494,7 +575,7 @@ def run_full_pass(delegate_only: bool = False) -> int:
                 for name, hash_tpl in DELEGATE_SCREENS:
                     tid = task_id if "{task_id}" in hash_tpl else None
                     shoot_miniapp_screen(
-                        driver_light, MINIAPP_BASE_URL, DELEGATE_ID, hash_tpl,
+                        driver_light, MINIAPP_BASE_URL, DELEGATE_SCREEN_PRINCIPAL.get(name, DELEGATE_ID), hash_tpl,
                         SHOTS_DIR / f"miniapp-{name}-{preset}-light-hub.png", task_id=tid,
                         content_selector=SCREEN_CONTENT_SELECTOR.get(name),
                     )
@@ -515,6 +596,7 @@ def run_full_pass(delegate_only: bool = False) -> int:
                 # здесь не должно ронять весь прогон -- см. модульный докстринг задачи 2.
                 if preset == "bluebook":
                     _shoot_manager_bonus_screens(driver_light)
+                    _shoot_status_bonus_screens(driver_light, db_path)
 
             write_preset(db_path, "bluebook")  # вернуть дефолт перед раскладками/состояниями
 
@@ -632,7 +714,7 @@ def run_full_pass(delegate_only: bool = False) -> int:
             for name, hash_tpl in DELEGATE_SCREENS:
                 tid = task_id if "{task_id}" in hash_tpl else None
                 shoot_miniapp_screen(
-                    driver_dark, MINIAPP_BASE_URL, DELEGATE_ID, hash_tpl,
+                    driver_dark, MINIAPP_BASE_URL, DELEGATE_SCREEN_PRINCIPAL.get(name, DELEGATE_ID), hash_tpl,
                     SHOTS_DIR / f"miniapp-{name}-bluebook-dark-hub.png", task_id=tid,
                     content_selector=SCREEN_CONTENT_SELECTOR.get(name),
                 )
