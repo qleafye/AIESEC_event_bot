@@ -16,6 +16,37 @@ import {
 import { fileUrl, flatRow, sectionTitle, labelText, noticeBox, screenText, formV2Text } from "../ui.js";
 import { icon } from "../icons.js";
 import { haptic } from "../motion.js";
+import { applyTheme, themeOverride, setThemeOverride } from "../app.js";
+
+// Phase 30 (30-05, задача 4, A2-08, T-30-13): личный override вибрации анкеты — ПОВЕРХ
+// тумблера `reg_form_haptics`, но менеджерский тумблер СИЛЬНЕЕ (порядок проверки в
+// `wizardHaptic` ниже: сначала flags.haptics, потом этот флаг). Клиентский, в БД не пишется —
+// тот же localStorage-приём, что онбординг-флаг 19.1/`themeOverride` выше.
+const HAPTICS_OVERRIDE_KEY = "aiesec_miniapp_form_haptics_override_v1"; // "on" | "off"
+
+function hapticsOverrideOn() {
+  try {
+    return localStorage.getItem(HAPTICS_OVERRIDE_KEY) !== "off";
+  } catch (_) {
+    return true;
+  }
+}
+
+function setHapticsOverride(on) {
+  try {
+    localStorage.setItem(HAPTICS_OVERRIDE_KEY, on ? "on" : "off");
+  } catch (_) { /* приватный режим/недоступный localStorage — override просто не сохранится */ }
+}
+
+// Единый хелпер вибрации всего модуля анкеты (задача 4, "Вызовы tg.HapticFeedback... идут
+// через один хелпер") — используют попап настроек и попытка тапа по его сегментам; остальные
+// `haptic("success")` файла (копирование ссылки амбассадора, финальная отправка) — старое
+// поведение обеих версий анкеты, эта фаза его не трогает (не относится к новым 30-05
+// настройкам темы/языка/вибрации).
+function wizardHaptic(flags) {
+  if (!flags || !flags.haptics || !hapticsOverrideOn()) return;
+  haptic("light");
+}
 
 const AUTH_EXCEPT_REASONS = [];
 function isAuthError(err) {
@@ -826,6 +857,88 @@ export async function render(root, params, ctx) {
     // импорт — тот же приём дублирования, что литералы «Пропустить»/«Отмена» в проекте).
     const FORK_BACK_STEPS = new Set(["resume_link", "mini_projects", "mini_portfolio", "mini_direction"]);
 
+    // Phase 30 (30-05, задача 4, A2-08, 30-UI-SPEC.md § «Настройки в шапке анкеты»): поповер
+    // темы/языка/вибрации — виден только при `flags.header_settings`. Строится заново на
+    // каждый вызов (та же дисциплина, что `holder.replaceChildren` у шага/обзора — состояние
+    // выбора темы/вибрации живёт в localStorage, не в этом замыкании), закрывается тапом
+    // мимо листа или после смены языка (шаг перерисовывается заново).
+    function buildHeaderSettingsGear(flags) {
+      if (!flags || !flags.header_settings) return null;
+      const backdrop = h("div", { class: "sheet-backdrop hidden" });
+      const sheet = h("div", { class: "sheet" });
+      backdrop.append(sheet);
+      function close() { backdrop.classList.add("hidden"); }
+      backdrop.addEventListener("click", (e) => { if (e.target === backdrop) close(); });
+
+      function segRow(labelText_, options, currentValue, onPick) {
+        const seg = h("div", { class: "hub-seg" });
+        for (const [value, text] of options) {
+          const btn = h("button", {
+            class: `hub-seg-btn${value === currentValue ? " active" : ""}`, type: "button", text: text || "",
+            onClick: () => {
+              wizardHaptic(flags);
+              for (const b of seg.children) b.classList.remove("active");
+              btn.classList.add("active");
+              onPick(value);
+            },
+          });
+          seg.append(btn);
+        }
+        return h("div", {}, labelText_ ? h("p", { class: "label-role", text: labelText_ }) : null, seg);
+      }
+
+      sheet.append(segRow(
+        formV2Text("header_settings_theme_label"),
+        [
+          ["auto", formV2Text("header_settings_theme_auto")],
+          ["dark", formV2Text("header_settings_theme_dark")],
+          ["light", formV2Text("header_settings_theme_light")],
+        ],
+        themeOverride(),
+        (value) => setThemeOverride(value),
+      ));
+
+      // Язык анкеты — только когда включён модуль (фаза 27); переключение зовёт существующий
+      // механизм (POST /reg/lang -> set_user_lang) и перерисовывает ТЕКУЩИЙ шаг заново, ответы
+      // не трогает (30-CONTEXT.md реш. 7).
+      if (d.lang_module_enabled) {
+        sheet.append(segRow(
+          formV2Text("header_settings_lang_label"), [["ru", "RU"], ["en", "EN"]], d.lang,
+          async (value) => {
+            if (value === d.lang) return;
+            try {
+              await api("/reg/lang", { method: "POST", body: { lang: value } });
+              const fresh = await api("/reg/draft");
+              d = fresh;
+              state = buildFormState(fresh);
+              stepIndex = stepIndexFromKey(state.specs, fresh.step);
+              close();
+              drawCurrent();
+            } catch (_) {
+              // fail-soft: язык не переключился — поповер остаётся открытым, ответы целы.
+            }
+          },
+        ));
+      }
+
+      sheet.append(segRow(
+        formV2Text("header_settings_haptics_label"),
+        [["on", formV2Text("header_settings_haptics_on")], ["off", formV2Text("header_settings_haptics_off")]],
+        hapticsOverrideOn() ? "on" : "off",
+        (value) => setHapticsOverride(value === "on"),
+      ));
+
+      sheet.append(h("p", { class: "label-role", text: formV2Text("header_settings_scope_note") || "" }));
+
+      const gear = h("button", {
+        class: "wizard-header-gear", type: "button",
+        "aria-label": formV2Text("header_settings_theme_label") || "",
+        onClick: () => { wizardHaptic(flags); backdrop.classList.remove("hidden"); },
+      }, icon("settings"));
+
+      return { gear, backdrop };
+    }
+
     // ── шаги анкеты: один вопрос на экран (D-03) ────────────────────────────────────────
     function drawStep() {
       const specs = state.specs;
@@ -1141,7 +1254,14 @@ export async function render(root, params, ctx) {
         mainBtnEl,
       );
 
+      // Phase 30 (30-05, задача 4): шестерёнка — над плитой, видна только при
+      // `flags.header_settings` (степень v2, но НЕ зависит от `isV2`/`degraded_kind` шага —
+      // тумблер отдельный, может быть включён у легаси-типа тоже).
+      const headerSettings = buildHeaderSettingsGear(spec.flags);
+      const headerRow = headerSettings ? h("div", { class: "wizard-header-row" }, headerSettings.gear) : null;
+
       holder.replaceChildren(...[
+        headerRow,
         progressRow,
         plate,
         // Квик 12.09 (UI-аудит, пункт 9): пояснение шага (например case_optin.description) —
@@ -1152,6 +1272,7 @@ export async function render(root, params, ctx) {
         drawQuestionWindow(specs),
         chatLink(d.continue_in_chat_text, d.continue_deeplink),
         footer,
+        headerSettings ? headerSettings.backdrop : null,
       ].filter(Boolean));
       syncMainButton();
     }

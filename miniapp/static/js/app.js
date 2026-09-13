@@ -182,14 +182,48 @@ function applySafeArea() {
   root.style.setProperty("--tg-safe-bottom", `${(inset.bottom || 0) + (safe.bottom || 0)}px`);
 }
 
-function applyTheme() {
-  if (!tg) return;
-  if (tg.colorScheme === "dark") {
+// Phase 30 (30-05, задача 4, A2-08): личный override темы поверх `tg.colorScheme` — поповер
+// настроек в шапке анкеты (`screens/form.js`), клиентский флаг, в БД не пишется (30-UI-SPEC.md
+// § «Настройки в шапке анкеты», решение оркестратора 12.09: «меняет только эту анкету у тебя»
+// на уровне ЭФФЕКТА — сама тема технически меняет всё приложение до сброса, потому что токены
+// оформления висят на `:root`, второй набор токенов только для анкеты не заводим).
+const THEME_OVERRIDE_KEY = "aiesec_miniapp_theme_override_v1"; // "auto" | "dark" | "light"
+
+export function themeOverride() {
+  try {
+    const v = localStorage.getItem(THEME_OVERRIDE_KEY);
+    return v === "dark" || v === "light" ? v : "auto";
+  } catch (_) {
+    return "auto";
+  }
+}
+
+export function setThemeOverride(value) {
+  try {
+    if (value === "auto") localStorage.removeItem(THEME_OVERRIDE_KEY);
+    else localStorage.setItem(THEME_OVERRIDE_KEY, value);
+  } catch (_) { /* приватный режим/недоступный localStorage — override просто не сохранится */ }
+  applyTheme();
+}
+
+export function applyTheme() {
+  const override = themeOverride();
+  const auto = override === "auto";
+  const dark = override === "dark" || (auto && tg && tg.colorScheme === "dark");
+  if (dark) {
     root.dataset.theme = "dark";
-    const params = tg.themeParams || {};
     // Только bg/text из themeParams (D-02); остальные токены — из :root[data-theme="dark"].
-    if (params.bg_color) root.style.setProperty("--bg", params.bg_color);
-    if (params.text_color) root.style.setProperty("--text", params.text_color);
+    // Реальные themeParams Telegram подставляются ТОЛЬКО когда тема реально авто (совпадает с
+    // Telegram) — принудительный override рисует чистую тёмную тему токенов, не смешивает с
+    // цветами клиента Telegram, под который override как раз обходит.
+    if (auto && tg) {
+      const params = tg.themeParams || {};
+      if (params.bg_color) root.style.setProperty("--bg", params.bg_color);
+      if (params.text_color) root.style.setProperty("--text", params.text_color);
+      return;
+    }
+    root.style.removeProperty("--bg");
+    root.style.removeProperty("--text");
   } else {
     delete root.dataset.theme;
     root.style.removeProperty("--bg");

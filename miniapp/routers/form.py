@@ -49,6 +49,7 @@ from database.db import (
     set_reg_draft_surface,
     update_user_answers,
     upsert_reg_draft,
+    set_user_lang,
 )
 from settings_schema import get_setting_typed
 from services import i18n, reg_edit_policy
@@ -394,6 +395,11 @@ async def _draft_response(telegram_id: int, ctx: dict | None = None, *, bot_user
         "resume_upload_error_text": await get_setting_typed("reg_form_resume_upload_error_text"),
         # D13: подпись кнопки «Поделиться номером» на шаге телефона — из реестра, не литерал JS.
         "share_contact_text": await get_setting_typed("reg_form_share_contact_text"),
+        # Phase 30 (30-05, задача 4, A2-08): группа «Язык анкеты» в поповере настроек шапки
+        # видна только при включённом модуле (фаза 27) — `lang` здесь ТОТ ЖЕ, что уже
+        # резолвлен выше для перевода текстов спеки, второго похода в `i18n.context` не нужно.
+        "lang_module_enabled": await get_setting_typed("delegate_lang_enabled") == "on",
+        "lang": lang,
     }
 
 
@@ -715,6 +721,32 @@ async def draft_consent(
     raw_button = await get_setting_typed("consent_button_text") or "Согласен(-на)"
     await record_user_consent(p.telegram_id, key, raw_button=raw_button)  # idempotent (INSERT OR IGNORE)
     return {"ok": True, "key": key}
+
+
+# ── POST /app/api/reg/lang (план 30-05, задача 4, A2-07) ─────────────────────────────────
+#
+# Настройки в шапке мастера: группа «Язык анкеты» видна только при включённом модуле
+# (`delegate_lang_enabled`, фаза 27), переключение зовёт ТОТ ЖЕ `set_user_lang`, что бот
+# (`handlers/reg_lang.py`) — второй точки записи `users.lang` не заводим. `form_gate`, не
+# `delegate_gate` — тот же гейт, что у остальных ручек анкеты (незарегистрированный делегат
+# посреди мастера тоже может переключить язык).
+
+class LangPatch(BaseModel):
+    lang: str
+
+
+@router.post("/app/api/reg/lang")
+async def set_lang(
+    body: LangPatch,
+    p: Principal = Depends(form_gate),
+    _: Principal = Depends(require_section("form")),
+) -> dict:
+    if await get_setting_typed("delegate_lang_enabled") != "on":
+        raise HTTPException(403, {"reason": "lang_module_off"})
+    if body.lang not in ("ru", "en"):
+        raise HTTPException(400, {"reason": "bad_field", "field": "lang"})
+    await set_user_lang(p.telegram_id, body.lang)
+    return {"lang": body.lang}
 
 
 # ── POST /app/api/reg/draft/submit ───────────────────────────────────────────────────────
