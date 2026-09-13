@@ -97,9 +97,11 @@ def test_corpus_empty_db_does_not_crash_and_is_in_expected_range(tmp_path):
     _db_ready(tmp_path)
     result = asyncio.run(i18n_sources.corpus())
     assert result, "корпус не должен схлопнуться до нуля"
-    # Research оценивает ~265 уникальных строк; 150-400 — коридор «не схлопнулось до нуля и
-    # не разъехалось на весь реестр» (493 ключа).
-    assert 150 <= len(result) <= 400, len(result)
+    # Research оценивает ~265 уникальных строк; 150-600 — коридор «не схлопнулось до нуля и
+    # не разъехалось на весь реестр». Верхняя граница поднята с 400 квик-фиксом 260913: Phase 30
+    # добавила ~90 ключей анкеты 2.0, корпус вырос до 467 — нижнюю границу (реальный признак
+    # схлопывания) не трогаем.
+    assert 150 <= len(result) <= 600, len(result)
 
     texts = [text for _origin, text in result]
     assert len(texts) == len(set(texts)), "дедупликация по strip()-нутому тексту не сработала"
