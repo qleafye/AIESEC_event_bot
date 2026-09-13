@@ -1066,6 +1066,69 @@ a.flat-row:active, button.flat-row:active { background: var(--surface-alt); }
    интерактивный цвет (30-UI-SPEC.md § Color). Заведена сейчас по явному требованию задачи 1. */
 .card.brand { border-left: 3px solid var(--secondary); }
 
+/* Rule 1 (30-04 задача 3): контейнер `.chips` (курс composite ниже, а также ряд топ-8
+   `lookupControl`/чипы `multiChips` из 30-03) не имел собственного flex-правила — `.chip-pick`
+   сам по себе `inline-flex`, чипы визуально ЛЕПИЛИСЬ друг к другу без зазора. Добавление
+   безопасно (класс до сих пор нигде не описан правилом, регрессии быть не может) и чинит
+   заодно уже выпущенные 30-03 контролы, не только новую композитную строку курса. */
+.chips { display: flex; flex-wrap: wrap; gap: var(--sp-2); }
+
+/* Часть составной карточки `composite` (30-UI-SPEC.md § «3. composite», план 30-04 задача 3) —
+   одна секция на под-поле (ВУЗ/курс/программа/тумблер), разделитель-хairline между секциями,
+   последняя без нижней рамки. `.cl` — надзаголовок части (UPPERCASE, тот же приём, что подпись
+   select-варианта), `.opt` внутри `.cl` — бейдж «необязательно» с автополями вправо; `.cv` —
+   значение части (обычный текст, .pick/.chips ниже рисуют интерактивные варианты). */
+.cpart { padding: var(--sp-3) var(--sp-4); border-bottom: 1px solid var(--border); }
+.cpart:last-child { border-bottom: 0; }
+.cpart .cl {
+  display: flex; align-items: center; gap: 7px;
+  font-weight: 700; font-size: 12px; letter-spacing: .02em; text-transform: uppercase;
+  color: var(--text-faint); margin-bottom: var(--sp-2);
+}
+.cpart .cl .opt { margin-left: auto; text-transform: none; letter-spacing: 0; font-weight: 400; }
+.cpart .cv { font-size: var(--fs-input); line-height: 1.3; }
+.cpart .cv.ph { color: var(--text-faint); }
+.cpart .field-error { margin-top: var(--sp-1); }
+
+/* Тумблер части составной карточки (`role="switch"`, 30-UI-SPEC.md § Accessibility) — своя
+   пара классов, не переиспользует `.settings-matrix-toggle` (та — плитка админ-матрицы, эта —
+   пилюля delegate-facing строки, других визуальных вариантов «пилюли» в проекте ещё нет). */
+.swrow { display: flex; align-items: center; gap: var(--sp-3); min-height: var(--tap-min); cursor: pointer; }
+.swrow .st { font-weight: 700; font-size: var(--fs-input); }
+.swrow .ss { font-size: 12.5px; color: var(--text-faint); margin-top: 2px; }
+.sw {
+  margin-left: auto; flex: none; width: 46px; height: 28px;
+  border-radius: var(--radius-pill); background: var(--border-strong);
+  position: relative; transition: background var(--dur) var(--ease);
+}
+.sw i {
+  position: absolute; top: 2px; left: 2px; width: 24px; height: 24px;
+  border-radius: 50%; background: var(--surface);
+  box-shadow: var(--shadow-card);
+  transition: transform var(--dur) var(--ease);
+}
+.sw.on { background: var(--accent); }
+.sw.on i { transform: translateX(18px); }
+
+/* Пунктирная кнопка «+ Добавить» (repeatable/composite, 30-UI-SPEC.md § «6. repeatable») —
+   chrome-рамка (border-strong), не интерактивный цвет: сам факт «можно нажать» несёт форма
+   (пунктир), а не заливка. `.soft` — приглушённый вариант (composite «+ Добавить ещё
+   образование», сегодня НЕ рисуется — см. докстринг `compositeCard` в form_types.js). */
+.dash {
+  margin: 0; min-height: var(--tap-min); border: 1.5px dashed var(--border-strong);
+  border-radius: var(--radius-lg); background: transparent; cursor: pointer;
+  display: flex; align-items: center; justify-content: center; gap: var(--sp-2);
+  font-weight: 700; font-size: var(--fs-control); color: var(--accent-text);
+}
+.dash.soft { font-weight: 400; color: var(--text-muted); }
+.dash:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+/* Карточка блока `repeatable` (30-UI-SPEC.md § «6. repeatable») — заголовок «{Проект N}» +
+   действие «Изменить», название heading-стилем, описание — обычным текстом приглушённого
+   цвета. Переиспользует `.card`/`.cpart` (без `.brand` — repeatable не составной шаг). */
+.rep-title { font: 800 16.5px/1.25 var(--font-heading); }
+.rep-desc { font-size: 13px; color: var(--text-faint); margin-top: 5px; white-space: pre-wrap; }
+
 /* Дропзона резюме — default/success по классам-переключателям (см. правило выше про .hidden). */
 .dropzone { display: flex; align-items: center; flex-wrap: wrap; gap: var(--sp-2); }
 .dropzone-status { color: var(--text-muted); font-size: 13px; }

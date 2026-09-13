@@ -27,6 +27,7 @@
 // вычислениями, что дали начальные `footerLabel`/`disabled`, второй копии условий в модуле нет.
 
 import { icon } from "./icons.js";
+import { labelText } from "./ui.js";
 // `api.js` — ДИНАМИЧЕСКИЙ импорт внутри `lookupControl` (ниже), не статический здесь: его
 // модульный верх читает `window.Telegram` немедленно при импорте (D-12), а node-подпроцессы
 // JS-сторожей (`tests/test_miniapp_form_controls_js_260911.py` и соседи) стабят только
@@ -467,6 +468,272 @@ function textField(h, spec, value, onChange) {
   return { control: input, footerLabel: null, disabled: false };
 }
 
+// ── composite: карточка «Образование» (30-UI-SPEC.md § «3. composite», план 30-04) ─────────
+// Карточка собирается ТОЛЬКО из частей, которые реально прислал сервер (`spec.composite.parts`
+// — `reg_engine.composite_parts()` уже отфильтровала по событию, 30-CONTEXT.md реш. 2): одна
+// включённая часть — карточка из одной строки, а не откат к легаси-шагу. Рендер ищет части ПО
+// `key`, не хардкодит «у события ровно четыре части».
+//
+// ВУЗ переиспользует ОБЩИЙ диспетчер (`buildV2Control` рекурсивно) — у него собственный
+// `degraded_kind` (`"lookup"`, независимо от группы, T-30-04-02 в reg_engine.py), второго
+// поиска не заводим. Курс/программа — часть группы (их `degraded_kind` тоже `"composite"`,
+// рекурсивный вызов `buildV2Control` на НИХ дал бы бесконечный рендер этой же карточки внутри
+// себя) — рисуются точечно: курс чипами из `part.options`, программа — обычным полем.
+//
+// `onChange` карточки отдаёт наверх ОБЪЕКТ `{step_key: value, ...}` (патч НЕСКОЛЬКИХ колонок
+// одним шагом), а не скаляр, как у остальных типов — composite ЕДИНСТВЕННЫЙ тип, отвечающий
+// сразу за четыре колонки одной карточкой. Сегодняшний `screens/form.js::goNext()` шлёт PATCH
+// одной колонки (`patch[column] = liveValue`) — многоколоночный commit этой карточки ждёт
+// отдельного плана, который довяжет `goNext()` к объектному `onChange` (см. SUMMARY плана
+// 30-04, раздел «Known Stubs»); здесь — только корректный контракт данных на будущее.
+
+function compositeCard(h, spec, value, onChange, flags) {
+  const texts = spec.v2_texts || {};
+  const comp = spec.composite || { parts: [], toggle_step: null };
+  const partByKey = {};
+  for (const part of comp.parts) partByKey[part.key] = part;
+  const toggleKey = comp.toggle_step;
+  const togglePart = toggleKey ? partByKey[toggleKey] : null;
+  // Визуальный порядок карточки — фиксированный (ВУЗ, курс, программа), НЕ порядок REG_FLOW
+  // (`composite_parts()` отдаёт `education_status` первым) — рисуются только части из ответа.
+  const fieldKeys = ["university", "course", "study_field"].filter(
+    (key) => key !== toggleKey && partByKey[key],
+  );
+
+  const state = {};
+  for (const key of fieldKeys) state[key] = (partByKey[key] && partByKey[key].value) || "";
+  // Дефолт тумблера — «учится» (тот же дефолт, что у первого варианта самого вопроса); сервер
+  // сегодня не публикует текущее значение `education_status` внутрь `composite.parts` (сама
+  // карточка — новый шаг мастера, черновика с прошлым ответом на неё ещё нет ни у одного
+  // делегата). Известное ограничение — см. SUMMARY плана 30-04.
+  let studying = true;
+
+  const errorZones = {};
+  let footerCb = null;
+
+  function emit() {
+    onChange({ ...state });
+  }
+
+  function footerState() {
+    const hasError = Object.values(errorZones).some((zone) => !zone.classList.contains("hidden"));
+    return { label: null, disabled: hasError };
+  }
+  function notifyFooter() {
+    if (!footerCb) return;
+    const s = footerState();
+    footerCb(s.label, s.disabled);
+  }
+  function setError(key, text) {
+    const zone = errorZones[key];
+    if (!zone) return;
+    if (text) { zone.textContent = text; zone.classList.remove("hidden"); }
+    else { zone.textContent = ""; zone.classList.add("hidden"); }
+    notifyFooter();
+  }
+
+  function optionalBadge(part) {
+    return part.required === false
+      ? h("span", { class: "opt", text: texts.optional_badge_text || "" })
+      : null;
+  }
+
+  function buildUniversityPart(part) {
+    const errorZone = h("p", { class: "field-error hidden" });
+    errorZones[part.key] = errorZone;
+    const sub = buildV2Control(h, part, state[part.key], (v) => {
+      state[part.key] = v;
+      emit();
+    }, flags);
+    return h("div", { class: "cpart" },
+      h("div", { class: "cl" }, h("span", { text: labelText(part.label) })),
+      sub.control, errorZone,
+    );
+  }
+
+  function buildChipsPart(part) {
+    const errorZone = h("p", { class: "field-error hidden" });
+    errorZones[part.key] = errorZone;
+    const box = h("div", { class: "chips" });
+    const chipEls = [];
+    for (const opt of part.options || []) {
+      const optLabel = (part.option_labels && part.option_labels[opt]) || opt;
+      const chip = h("button", { class: "chip-pick", type: "button" }, h("span", { text: optLabel }));
+      chip.addEventListener("click", () => {
+        state[part.key] = opt;
+        for (const c of chipEls) c.el.classList.toggle("on", c.opt === opt);
+        setError(part.key, null);
+        emit();
+        haptic("light", flags);
+      });
+      chipEls.push({ opt, el: chip });
+      box.append(chip);
+    }
+    for (const c of chipEls) c.el.classList.toggle("on", c.opt === state[part.key]);
+    return h("div", { class: "cpart" },
+      h("div", { class: "cl" }, h("span", { text: labelText(part.label) })),
+      box, errorZone,
+    );
+  }
+
+  function buildTextPart(part) {
+    const errorZone = h("p", { class: "field-error hidden" });
+    errorZones[part.key] = errorZone;
+    const input = h("input", { class: "input", type: "text" });
+    input.value = state[part.key] || "";
+    if (part.max_len) input.setAttribute("maxlength", String(part.max_len));
+    input.addEventListener("input", () => {
+      state[part.key] = input.value;
+      setError(part.key, null);
+      emit();
+    });
+    return h("div", { class: "cpart" },
+      h("div", { class: "cl" }, h("span", { text: labelText(part.label) }), optionalBadge(part)),
+      h("div", { class: "field" }, input), errorZone,
+    );
+  }
+
+  function buildPart(key) {
+    const part = partByKey[key];
+    if (!part) return null;
+    if (key === "university") return buildUniversityPart(part);
+    if (Array.isArray(part.options) && part.options.length) return buildChipsPart(part);
+    return buildTextPart(part);
+  }
+
+  const fullParts = fieldKeys.map(buildPart).filter(Boolean);
+  const doneCpart = h("div", { class: "cpart hidden" },
+    h("div", { class: "cl", text: texts.subtitle || "" }),
+    h("div", { class: "cv", text: texts.done_hint || "" }),
+  );
+
+  function paintToggleVisibility() {
+    for (const node of fullParts) {
+      node.classList.toggle("hidden", !studying);
+      node.setAttribute("aria-hidden", studying ? "false" : "true");
+    }
+    doneCpart.classList.toggle("hidden", studying);
+  }
+
+  const toggleTitle = h("div", { class: "st" });
+  const toggleHint = h("div", { class: "ss" });
+  const togglePill = h("span", { class: "sw" }, h("i", {}));
+  function paintToggleLabels() {
+    toggleTitle.textContent = studying ? (texts.toggle_on_label || "") : (texts.toggle_off_label || "");
+    toggleHint.textContent = studying ? (texts.toggle_on_hint || "") : (texts.toggle_off_hint || "");
+    togglePill.classList.toggle("on", studying);
+  }
+  const toggleRow = h("div", { class: "swrow", role: "switch", "aria-checked": "true" },
+    h("div", {}, toggleTitle, toggleHint), togglePill,
+  );
+  toggleRow.addEventListener("click", () => {
+    studying = !studying;
+    toggleRow.setAttribute("aria-checked", studying ? "true" : "false");
+    paintToggleLabels();
+    paintToggleVisibility();
+    if (togglePart) state[togglePart.key] = studying;
+    emit();
+    haptic("light", flags);
+  });
+  paintToggleLabels();
+  paintToggleVisibility();
+
+  const card = h("div", { class: "card brand" }, ...fullParts, doneCpart,
+    togglePart ? h("div", { class: "cpart" }, toggleRow) : null);
+  const note = texts.toggle_note ? h("p", { class: "label-role", text: texts.toggle_note }) : null;
+
+  return {
+    control: h("div", {}, card, note),
+    footerLabel: null,
+    disabled: false,
+    onFooterChange: (cb) => { footerCb = cb; notifyFooter(); },
+  };
+}
+
+// ── repeatable: несколько блоков «название + описание» (30-UI-SPEC.md § «6. repeatable») ───
+// Хранение — список объектов `{title, description}` (30-CONTEXT.md, решение владельца 12.09);
+// сериализацию в JSON делает СЕРВЕР (`reg_engine.dump_repeatable`, `validate_answer`) — здесь
+// второй копии формата нет, `onChange` отдаёт наружу голый массив объектов как есть.
+
+function repeatableBlockView(h, item, index, texts, onEditClick) {
+  const editAction = h("span", { class: "opt", text: texts.edit_action || "" });
+  editAction.addEventListener("click", onEditClick);
+  const label = String(texts.item_label || "").replace("{n}", String(index + 1));
+  return h("div", { class: "card" },
+    h("div", { class: "cpart" },
+      h("div", { class: "cl" }, h("span", { text: label }), editAction),
+      h("div", { class: "rep-title", text: item.title || "" }),
+      item.description ? h("div", { class: "rep-desc", text: item.description }) : null,
+    ),
+  );
+}
+
+function repeatableBlockEdit(h, item, index, texts, onDone) {
+  const label = String(texts.item_label || "").replace("{n}", String(index + 1));
+  const titleInput = h("input", { class: "input", type: "text", placeholder: label });
+  titleInput.value = item.title || "";
+  const descInput = h("textarea", { class: "input" });
+  descInput.value = item.description || "";
+  titleInput.addEventListener("input", () => onDone({ title: titleInput.value, description: item.description }, true));
+  descInput.addEventListener("input", () => onDone({ title: item.title, description: descInput.value }, true));
+  const doneBtn = h("button", { class: "chip-pick", type: "button" }, h("span", { text: texts.edit_action || "" }));
+  doneBtn.addEventListener("click", () => onDone({ title: titleInput.value, description: descInput.value }, false));
+  return h("div", { class: "card" },
+    h("div", { class: "cpart" },
+      h("div", { class: "cl", text: label }),
+      h("div", { class: "field" }, titleInput),
+      h("div", { class: "field" }, descInput),
+      doneBtn,
+    ),
+  );
+}
+
+function repeatableList(h, spec, value, onChange, flags) {
+  const texts = spec.v2_texts || {};
+  const maxItems = typeof spec.repeatable_max === "number" ? spec.repeatable_max : null;
+  const items = (Array.isArray(value) ? value : []).map((it) => ({
+    title: (it && it.title) || "", description: (it && it.description) || "",
+  }));
+  const editing = new Set(items.length ? [] : []);
+  const list = h("div", {});
+  const addBtn = h("button", { class: "dash", type: "button" },
+    icon("plus"), h("span", { text: texts.add_button || "" }));
+  const note = texts.chat_parity_note ? h("p", { class: "label-role", text: texts.chat_parity_note }) : null;
+
+  function emit() {
+    onChange(items.map((it) => ({ title: it.title, description: it.description })));
+  }
+
+  function paintAddButton() {
+    addBtn.classList.toggle("hidden", maxItems != null && items.length >= maxItems);
+  }
+
+  function paint() {
+    list.replaceChildren(...items.map((item, index) => (
+      editing.has(index)
+        ? repeatableBlockEdit(h, item, index, texts, (patch, keepEditing) => {
+          items[index] = patch;
+          emit();
+          if (!keepEditing) { editing.delete(index); paint(); }
+        })
+        : repeatableBlockView(h, item, index, texts, () => { editing.add(index); paint(); })
+    )));
+    paintAddButton();
+  }
+
+  addBtn.addEventListener("click", () => {
+    if (maxItems != null && items.length >= maxItems) return;
+    items.push({ title: "", description: "" });
+    editing.add(items.length - 1);
+    emit();
+    paint();
+    haptic("light", flags);
+  });
+
+  paint();
+  return { control: h("div", {}, list, addBtn, note), footerLabel: null, disabled: false };
+}
+
 // ── диспетчер ────────────────────────────────────────────────────────────────────────────
 
 /**
@@ -491,10 +758,14 @@ export function buildV2Control(h, spec, value, onChange, flags) {
       return lookupControl(h, spec, value, onChange, flags);
     case "text":
       return textField(h, spec, value, onChange);
+    case "composite":
+      return compositeCard(h, spec, value, onChange, flags);
+    case "repeatable":
+      return repeatableList(h, spec, value, onChange, flags);
     default:
-      // Незнакомый/ещё не реализованный kind (composite/repeatable — план 30-04) —
-      // безопасный откат к голому текстовому полю, а не исключение: делегат всё ещё может
-      // ответить, менеджер увидит проблему в логах, а не в разбитом шаге.
+      // Незнакомый/ещё не реализованный kind — безопасный откат к голому текстовому полю, а
+      // не исключение: делегат всё ещё может ответить, менеджер увидит проблему в логах, а
+      // не в разбитом шаге.
       return textField(h, { ...spec, type: "text" }, value, onChange);
   }
 }
