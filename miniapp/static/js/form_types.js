@@ -259,8 +259,17 @@ function isHttpUrl(raw) {
 
 function linkCard(h, spec, value, onChange, flags) {
   const texts = spec.v2_texts || {};
+  // Не каждый `link`-шаг — URL: ВК хранит `@юзернейм` (`spec.type` остаётся `"text"`,
+  // `step_type_v2` override — только новая ось), резюме-ссылка — настоящий `url`
+  // (`_UI_TYPE_OVERRIDES["resume_link"] = "url"`). Клавиатура/валидация формата дальше
+  // зависят от РЕАЛЬНОГО формата поля, не от факта попадания в тип `link`.
+  const isUrlShaped = spec.type === "url";
   const fieldWrap = h("div", { class: "field" });
-  const input = h("input", { class: "input", type: "url", inputmode: "url", id: `f-${spec.key}` });
+  const input = h("input", {
+    class: "input", id: `f-${spec.key}`,
+    type: isUrlShaped ? "url" : "text",
+    inputmode: isUrlShaped ? "url" : undefined,
+  });
   input.value = value || "";
   const row = h("div", { class: "pick" },
     h("span", { class: "svc-icon" }, icon(spec.link_icon || "link")),
@@ -291,7 +300,11 @@ function linkCard(h, spec, value, onChange, flags) {
     okline.classList.add("hidden");
     errorLine.classList.add("hidden");
     if (raw) {
-      if (isHttpUrl(raw)) {
+      // Формат проверяем ТОЛЬКО у настоящего URL (резюме-ссылка) — у ВК-подобного
+      // юзернейма нет клиентского регэкспа в этом модуле (правило `validate_answer`
+      // сервера не дублируем второй копией, T-21-05); непустое значение сразу — «ok».
+      const recognized = isUrlShaped ? isHttpUrl(raw) : true;
+      if (recognized) {
         fieldWrap.classList.add("ok");
         okline.classList.remove("hidden");
       } else {
@@ -348,7 +361,6 @@ function lookupControl(h, spec, value, onChange, flags) {
   const list = h("div", { class: "list" });
   const emptyState = h("div", { class: "hidden" });
   const ownInput = h("input", { class: "input hidden", type: "text" });
-  const blockedHint = h("p", { class: "field-error hidden" });
 
   function selectValue(canonical) {
     onChange(canonical);
@@ -392,16 +404,16 @@ function lookupControl(h, spec, value, onChange, flags) {
     }
     if (!query) { emptyState.classList.add("hidden"); return; }
     const title = String(texts.empty_title || "").replace("{query}", query);
+    // «Свой вариант» выключен (`other_allowed=false`, атрибут списка — план 30-07): пустое
+    // состояние показывает только заголовок запроса, БЕЗ приглашения вписать своё — второй
+    // строки-приглашения без включённого атрибута тоже нет. Отдельный текст «такого нет в
+    // списке» (30-UI-SPEC.md §2) заводит план 30-07 вместе с самим атрибутом — сегодня
+    // `other_allowed` уже приходит `false` по умолчанию почти для всех lookup-шагов
+    // (`_OTHER_ALLOWED_STEPS` не включает `university`/`city` целиком), плодить неточный
+    // текст без ключа реестра раньше срока не станем (правило 0-хардкода).
+    emptyState.replaceChildren(h("p", { class: "label-role", text: title }));
     if (otherAllowed) {
-      emptyState.replaceChildren(
-        h("p", { class: "label-role", text: title }),
-        h("p", { class: "label-role", text: texts.own_option || "" }),
-      );
-      blockedHint.classList.add("hidden");
-    } else {
-      emptyState.replaceChildren(h("p", { class: "label-role", text: title }));
-      blockedHint.textContent = texts.blocked_hint || "";
-      blockedHint.classList.remove("hidden");
+      emptyState.append(h("p", { class: "label-role", text: texts.own_option || "" }));
     }
     emptyState.classList.remove("hidden");
   }
@@ -422,7 +434,6 @@ function lookupControl(h, spec, value, onChange, flags) {
   if (showSearch) {
     searchInput.addEventListener("input", () => {
       onChange(searchInput.value);
-      blockedHint.classList.add("hidden");
       if (debounceId) clearTimeout(debounceId);
       const q = searchInput.value.trim();
       if (q.length < LOOKUP_MIN_QUERY) { list.replaceChildren(); emptyState.classList.add("hidden"); return; }
@@ -435,7 +446,7 @@ function lookupControl(h, spec, value, onChange, flags) {
   const hint = texts.hint_default ? h("p", { class: "label-role", text: texts.hint_default }) : null;
   const children = [];
   if (showSearch) { children.push(searchRow, hint); }
-  children.push(chipsBox, list, emptyState, ownInput, blockedHint);
+  children.push(chipsBox, list, emptyState, ownInput);
 
   return { control: h("div", {}, ...children), footerLabel: null, disabled: false };
 }
