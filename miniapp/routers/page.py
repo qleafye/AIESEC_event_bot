@@ -114,6 +114,33 @@ FORM_V2_TEXT_KEYS = {
     "header_settings_haptics_on": "reg_header_settings_haptics_on_text",
     "header_settings_haptics_off": "reg_header_settings_haptics_off_text",
     "header_settings_scope_note": "reg_header_settings_scope_note_text",
+    # Phase 30 (30-07, задача 1, A2-08): экран менеджера «Анкета мероприятия»
+    # (screens/settings.js, раздел «form») — подписи/пояснения девяти тумблеров + пять
+    # текстов самого экрана, дословно из 30-UI-SPEC.md. Кодовых имён настроек
+    # (`reg_form_chips` и т.п.) в разметке экрана нет — только эти готовые подписи.
+    "mgr_master_label": "reg_form_v2_master_label_text",
+    "mgr_master_hint": "reg_form_v2_master_hint_text",
+    "mgr_chips_label": "reg_form_chips_label_text",
+    "mgr_chips_hint": "reg_form_chips_hint_text",
+    "mgr_lookup_search_label": "reg_form_lookup_search_label_text",
+    "mgr_lookup_search_hint": "reg_form_lookup_search_hint_text",
+    "mgr_edu_card_label": "reg_form_edu_card_label_text",
+    "mgr_edu_card_hint": "reg_form_edu_card_hint_text",
+    "mgr_repeatable_label": "reg_form_repeatable_label_text",
+    "mgr_repeatable_hint": "reg_form_repeatable_hint_text",
+    "mgr_limit_counter_label": "reg_form_limit_counter_label_text",
+    "mgr_limit_counter_hint": "reg_form_limit_counter_hint_text",
+    "mgr_status_screen_label": "reg_form_status_screen_label_text",
+    "mgr_status_screen_hint": "reg_form_status_screen_hint_text",
+    "mgr_header_settings_label": "reg_form_header_settings_label_text",
+    "mgr_header_settings_hint": "reg_form_header_settings_hint_text",
+    "mgr_haptics_label": "reg_form_haptics_label_text",
+    "mgr_haptics_hint": "reg_form_haptics_hint_text",
+    "mgr_title": "reg_form_manager_title_text",
+    "mgr_subtitle": "reg_form_manager_subtitle_text",
+    "mgr_included_eyebrow": "reg_form_manager_included_eyebrow_text",
+    "mgr_degrade_note": "reg_form_manager_degrade_note_text",
+    "mgr_preview_button": "reg_form_manager_preview_button_text",
 }
 
 # Quick 260911-5ij (W2, Пилар 6 + гейт сдачи): тексты состояний, нужные ИМЕННО тогда, когда
