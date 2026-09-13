@@ -790,6 +790,8 @@ registration|message|process_mini_portfolio|state:Registration:*
 registration|message|process_mini_direction|state:Registration:*
 registration|message|process_case_optin|state:Registration:*
 registration|message|process_resume_link|state:Registration:*
+registration|message|receive_lookup_text|
+registration|message|receive_repeat_field|state:Registration:*
 registration|callback_query|recall_keep|recall_keep:*
 registration|callback_query|recall_change|recall_change:*
 registration|callback_query|party_pick|party_pick:*
@@ -811,6 +813,9 @@ registration|callback_query|reg_handoff_to_bot|reg_handoff:to_bot
 registration|callback_query|regfork_pick|regfork:*
 registration|callback_query|regamb_want|regamb:want
 registration|callback_query|regamb_later|regamb:later
+registration|callback_query|reglookup_pick|reglookup:*
+registration|callback_query|regedu_pick|regedu:*
+registration|callback_query|regrepeat_pick|regrepeat:*
 user_actions|message|show_my_coins|
 user_actions|message|show_leaderboard|
 user_actions|message|show_game_tasks|
@@ -930,7 +935,17 @@ def test_snapshot_total_handler_count_is_292():
     # handlers/admin_sections.py, СРАЗУ ПОСЛЕ admin_reg_form (496 -> 498); чистая вставка,
     # перепроверена прогоном _build_snapshot_lines() и diff'ом с прежним 496-строчным
     # снапшотом — ровно две новые строки, ни одна другая не поменялась и не переставилась.
-    assert len(GOLDEN_SNAPSHOT) == 498  # Phase 30 (30-01, A2-08): +9 handlers/admin_reg_form.py
+    # Phase 30 (30-06, задача 4, A2-01/03/04/05): +5 handlers/reg_types_lookup.py,
+    # handlers/reg_types_composite.py, handlers/reg_types_repeatable.py — message
+    # receive_lookup_text/receive_repeat_field встали в хвост message-блока registration.router
+    # (сразу после process_resume_link, перед recall_keep — первым callback_query registration);
+    # callback_query reglookup_pick/regedu_pick/regrepeat_pick встали в хвост callback_query-блока
+    # registration.router (сразу после regamb_later, перед началом user_actions.router) — три
+    # новых шва импортируются из хвоста handlers/registration.py, СРАЗУ ПОСЛЕ reg_ambassador
+    # (498 -> 503); чистая вставка (два места, оба хвосты своих observer-блоков), перепроверена
+    # прогоном `_build_snapshot_lines()` и diff'ом с прежним 498-строчным снапшотом — ровно пять
+    # новых строк, ни одна другая строка не поменялась и не переставилась.
+    assert len(GOLDEN_SNAPSHOT) == 503  # Phase 30 (30-01, A2-08): +9 handlers/admin_reg_form.py
     # (callback_query toggle_reg_form_v2/chips/lookup_search/edu_card/repeatable/limit_counter/
     # status_screen/header_settings/haptics — девять тумблеров «Анкета 2.0»), встали сразу после
     # admin_quiet_hours и перед sync_sheet: шов импортируется из хвоста
