@@ -1837,7 +1837,11 @@ a.flat-row:active, button.flat-row:active { background: var(--surface-alt); }
 .wizard-field { margin-bottom: var(--sp-5); }
 .wizard-field .field { margin-bottom: 0; }
 .wizard-field .input, .wizard-field textarea.input {
-  min-height: 56px; font-size: 17px; border-width: 2px; border-radius: var(--radius-lg);
+  /* Phase 30 (30-03, 30-UI-SPEC.md § Typography «Input Text»): 17px -> var(--fs-input) (16px)
+     — единственная точка применения новой роли, антизум iOS Safari; правка применяется ко
+     ВСЕМ полям мастера (легаси и v2 — сама роль не гейтится тумблером, см. UI-SPEC «Что из
+     21-UI-SPEC остаётся без изменений»), 1px разницы тестами не покрыт и не меняет структуру. */
+  min-height: 56px; font-size: var(--fs-input); border-width: 2px; border-radius: var(--radius-lg);
 }
 .wizard-field .field-label-row label { font-size: 13px; font-weight: 700; color: var(--text-muted); }
 

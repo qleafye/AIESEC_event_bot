@@ -17,6 +17,7 @@
 
 import { icon } from "./icons.js";
 import { flatRow, errorText } from "./ui.js";
+import { buildV2Control } from "./form_types.js";
 
 export { errorText };
 
@@ -474,7 +475,18 @@ function urlControl(h, spec, value, onChange) {
   return { control: input, extra: marker };
 }
 
+// Phase 30 (30-03, A2-01..A2-06, интерфейс 30-03-PLAN.md): ранний выход на новую ось типа.
+// `spec.kind` публикуется БЕЗУСЛОВНО с плана 30-01 (вторая ось живёт рядом со старой, не
+// заменяет её) — сам по себе он НЕ признак «рисуй по-новому». Признак — `spec.degraded_kind`
+// (план 30-03 задача 4, `reg_engine.degrade_kind()`): при выключенном мастер-тумблере сервер
+// всегда отдаёт `"legacy"`, и делегат не видит ни одного нового пикселя — свитч ниже
+// (старая ось `spec.type`) остаётся ЕДИНСТВЕННЫМ путём рендера, байт-в-байт. Проверка на
+// truthy `spec.degraded_kind` (а не только `!== "legacy"`) — до задачи 4 поле не публикуется
+// вовсе, `undefined !== "legacy"` не должно включать новый путь раньше срока.
 function buildControl(h, spec, value, onChange) {
+  if (spec.kind && spec.degraded_kind && spec.degraded_kind !== "legacy") {
+    return buildV2Control(h, spec, value, onChange, spec.flags || {});
+  }
   switch (spec.type) {
     case "text":
       return textControl(h, spec, value, onChange, "text");
@@ -538,7 +550,7 @@ export function field(h, spec, value, onChange) {
   const label = h("label", { text: spec.label, for: `f-${spec.key}`, class: spec.type === "toggle" ? "hidden" : null });
   const labelRow = h("div", { class: "field-label-row" }, label, badge);
   const help = spec.help ? h("p", { class: "field-help label-role", text: spec.help }) : null;
-  const { control, extra, progress } = buildControl(h, spec, value, onChange);
+  const { control, extra, progress, footerLabel, disabled, onFooterChange } = buildControl(h, spec, value, onChange);
   const placeholder = h("p", { class: "field-not-set hidden" });
   const errorZone = h("p", { class: "field-error hidden", "aria-live": "polite" });
 
@@ -554,6 +566,13 @@ export function field(h, spec, value, onChange) {
     label,
     help,
     progress: progress || null,
+    // Phase 30 (30-03/30-04): состояние главной кнопки мастера для типов v2 (`buildV2Control`
+    // возвращает их, легаси-типы отдают `undefined` -> null/false, поведение не меняется).
+    // `onFooterChange` — подписка на дальнейшие изменения (счётчик multi, распознанная
+    // ссылка) без полной перерисовки шага (`screens/form.js::drawStep`, план 30-04).
+    footerLabel: footerLabel || null,
+    footerDisabled: !!disabled,
+    onFooterChange: onFooterChange || null,
   };
   return wrap;
 }
