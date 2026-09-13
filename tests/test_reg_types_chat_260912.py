@@ -8,8 +8,9 @@
 саму врезку в `_ask_step`.
 
 Задача 1 (A2-03, `handlers/reg_types_lookup.py`): «напиши первые буквы» → до пяти кнопок
-совпадений + «Другое». Задачи 2/3 (composite/repeatable) дописываются последующими коммитами
-этого же плана.
+совпадений + «Другое». Задача 2 (A2-04, `handlers/reg_types_composite.py`): карточка-рекап
+«Проверь образование» после последнего под-поля группы. Задача 3 (repeatable) дописывается
+следующим коммитом этого же плана.
 """
 import asyncio
 
@@ -21,7 +22,7 @@ from aiogram.types import InlineKeyboardMarkup
 from config import config
 from database import db
 from handlers import registration as reg
-from handlers import reg_types_lookup
+from handlers import reg_types_composite, reg_types_lookup
 from handlers.states import Registration
 
 UID = 300912000
@@ -231,3 +232,121 @@ def test_lookup_other_button_then_free_text_enqueues_merge(tmp_path):
     data, rows = asyncio.run(go())
     assert data.get("university") == "Мой институт мечты"
     assert rows and rows[0][0] == "Мой институт мечты" and rows[0][1] == "new"
+
+
+# ── composite (задача 2, A2-04) ──────────────────────────────────────────────────────────────
+
+def _fill_education_group(state, studying_label="Да, в ВУЗе или колледже"):
+    return state.update_data(
+        participant_type="full",
+        education_status=studying_label,
+        course="2",
+        university="СПбГУ",
+        study_field="Информационные технологии",
+    )
+
+
+def test_composite_disabled_edu_card_shows_no_recap(tmp_path):
+    """`reg_form_edu_card` выключен — рекапа нет, следующий шаг спрашивается как обычно
+    (30-UI-SPEC.md: «если тумблер выключен, чат тоже не строит рекап»)."""
+    _use_tmp_db(tmp_path)
+    uid = UID + 10
+
+    async def go():
+        await db.set_setting("reg_form_v2_enabled", "on")  # edu_card остаётся "off" по умолчанию
+        state = _state(uid)
+        await _fill_education_group(state)
+        msg = _FakeMessage(uid)
+        await reg._ask_step("work_status", msg, state, 5, 10)
+        return msg, await state.get_state()
+
+    msg, state_name = asyncio.run(go())
+    assert state_name == Registration.work_status.state
+    assert msg.sent
+
+
+def test_composite_recap_shown_after_group_completed(tmp_path):
+    _use_tmp_db(tmp_path)
+    uid = UID + 11
+
+    async def go():
+        await _enable_v2(reg_form_edu_card="on")
+        state = _state(uid)
+        await _fill_education_group(state)
+        msg = _FakeMessage(uid)
+        await reg._ask_step("work_status", msg, state, 5, 10)
+        return msg, await state.get_state()
+
+    msg, state_name = asyncio.run(go())
+    assert state_name == reg_types_composite._CompositeChat.confirm.state
+    kbs = _kbs(msg)
+    assert kbs
+    assert _callback_datas(kbs[0]) == ["regedu:confirm", "regedu:fix"]
+    text = _texts(msg)[-1]
+    assert "СПбГУ" in text and "Информационные технологии" in text
+
+
+def test_composite_recap_confirm_advances_to_pending_step(tmp_path):
+    _use_tmp_db(tmp_path)
+    uid = UID + 12
+
+    async def go():
+        await _enable_v2(reg_form_edu_card="on")
+        state = _state(uid)
+        await _fill_education_group(state)
+        await reg._ask_step("work_status", _FakeMessage(uid), state, 5, 10)
+
+        confirm_cb = _FakeCallback("regedu:confirm", uid)
+        await reg_types_composite.regedu_pick(confirm_cb, state)
+        data = await state.get_data()
+        return data, confirm_cb.message, await state.get_state()
+
+    data, msg, state_name = asyncio.run(go())
+    assert data.get("_composite_recap_done_education") is True
+    assert state_name == Registration.work_status.state
+    assert msg.sent
+
+
+def test_composite_recap_fix_returns_to_first_part_keeping_values(tmp_path):
+    _use_tmp_db(tmp_path)
+    uid = UID + 13
+
+    async def go():
+        await _enable_v2(reg_form_edu_card="on")
+        state = _state(uid)
+        await _fill_education_group(state)
+        await reg._ask_step("work_status", _FakeMessage(uid), state, 5, 10)
+
+        fix_cb = _FakeCallback("regedu:fix", uid)
+        await reg_types_composite.regedu_pick(fix_cb, state)
+        data = await state.get_data()
+        return data, fix_cb.message, await state.get_state()
+
+    data, msg, state_name = asyncio.run(go())
+    assert state_name == Registration.education_status.state
+    assert data.get("university") == "СПбГУ", "уже введённое значение не должно теряться"
+    assert msg.sent
+
+
+def test_composite_single_enabled_part_still_gets_a_card(tmp_path):
+    """30-CONTEXT.md реш. 2: карточка всегда, из включённых частей — даже когда включён только
+    тумблер «Учишься сейчас?»."""
+    _use_tmp_db(tmp_path)
+    uid = UID + 14
+
+    async def go():
+        await _enable_v2(reg_form_edu_card="on")
+        await db.set_setting("reg_q_university", "off")
+        await db.set_setting("reg_q_course", "off")
+        await db.set_setting("reg_q_study_field", "off")
+        state = _state(uid)
+        await state.update_data(
+            participant_type="full", education_status="Нет, завершил(а) обучение",
+        )
+        msg = _FakeMessage(uid)
+        await reg._ask_step("work_status", msg, state, 5, 10)
+        return msg, await state.get_state()
+
+    msg, state_name = asyncio.run(go())
+    assert state_name == reg_types_composite._CompositeChat.confirm.state
+    assert msg.sent
