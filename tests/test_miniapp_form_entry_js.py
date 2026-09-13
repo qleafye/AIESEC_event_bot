@@ -157,3 +157,38 @@ def test_share_contact_label_from_server_not_hardcoded():
     for m in _STRING_LITERAL.finditer(text):
         assert not _CYRILLIC.search(m.group(0)), m.group(0)
 
+
+
+# ── Phase 30 (30-05, задача 4, A2-08): настройки в шапке анкеты ──────────────────────────
+
+def test_header_settings_gear_gated_by_flags_header_settings():
+    """Шестерёнка строится ТОЛЬКО когда `flags.header_settings` истинен — выключенный тумблер
+    не рендерит вовсе (не disabled-кнопку), `buildHeaderSettingsGear` возвращает `null`."""
+    text = _js_without_comments(FORM_SCREEN_JS)
+    assert "function buildHeaderSettingsGear(flags)" in text
+    fn_start = text.index("function buildHeaderSettingsGear(flags)")
+    fn_body = text[fn_start:fn_start + 400]
+    assert "if (!flags || !flags.header_settings) return null;" in fn_body
+
+
+def test_header_settings_theme_and_haptics_use_localstorage_not_server():
+    text = _js_without_comments(FORM_SCREEN_JS)
+    assert "aiesec_miniapp_form_haptics_override_v1" in text
+    assert "themeOverride" in text and "setThemeOverride" in text
+
+
+def test_wizard_haptic_checks_server_flag_before_personal_override():
+    """T-30-13: менеджерский тумблер `reg_form_haptics` (`flags.haptics`) обязан проверяться
+    ПЕРВЫМ — личный override решает только когда тумблер включён."""
+    text = _js_without_comments(FORM_SCREEN_JS)
+    fn_start = text.index("function wizardHaptic(flags)")
+    fn_body = text[fn_start:fn_start + 200]
+    haptics_pos = fn_body.index("flags.haptics")
+    override_pos = fn_body.index("hapticsOverrideOn()")
+    assert haptics_pos < override_pos
+
+
+def test_lang_segment_only_appended_when_lang_module_enabled():
+    text = _js_without_comments(FORM_SCREEN_JS)
+    assert "d.lang_module_enabled" in text
+    assert "/reg/lang" in text

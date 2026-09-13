@@ -206,3 +206,45 @@ def test_single_fetch_translations_call_per_draft_response(client, monkeypatch):
     resp = client.get("/app/api/reg/draft", headers=_hdr(DELEGATE_ID))
     assert resp.status_code == 200, resp.text
     assert len(calls) == 1
+
+
+# ── POST /app/api/reg/lang (план 30-05, задача 4, A2-07): переключатель языка в шапке ───────
+
+def test_lang_endpoint_off_by_default_returns_403(client):
+    resp = client.post("/app/api/reg/lang", headers=_hdr(DELEGATE_ID), json={"lang": "en"})
+    assert resp.status_code == 403, resp.text
+    assert resp.json()["reason"] == "lang_module_off"
+
+
+def test_lang_endpoint_writes_users_lang_via_existing_mechanism(client):
+    _seed(settings={"delegate_lang_enabled": "on"})
+    resp = client.post("/app/api/reg/lang", headers=_hdr(DELEGATE_ID), json={"lang": "en"})
+    assert resp.status_code == 200, resp.text
+    assert resp.json() == {"lang": "en"}
+
+    async def go():
+        return await bot_db.get_user(DELEGATE_ID)
+
+    user = _run(go())
+    assert user["lang"] == "en"
+
+
+def test_lang_endpoint_rejects_unknown_code(client):
+    _seed(settings={"delegate_lang_enabled": "on"})
+    resp = client.post("/app/api/reg/lang", headers=_hdr(DELEGATE_ID), json={"lang": "fr"})
+    assert resp.status_code == 400, resp.text
+    assert resp.json()["reason"] == "bad_field"
+
+
+def test_lang_endpoint_switch_back_to_ru_translates_next_draft_read(client):
+    """Переключение перерисовывает текущий шаг — следующий GET /reg/draft обязан вернуть
+    текст на новом языке немедленно, без похода делегата куда-то ещё."""
+    _seed(settings={"delegate_lang_enabled": "on"})
+    _fill(DELEGATE_ID, lang="en")
+    client.post("/app/api/reg/lang", headers=_hdr(DELEGATE_ID), json={"lang": "ru"})
+
+    async def go():
+        return await bot_db.get_user(DELEGATE_ID)
+
+    user = _run(go())
+    assert user["lang"] == "ru"
