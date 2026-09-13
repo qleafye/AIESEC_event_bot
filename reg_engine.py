@@ -1731,6 +1731,11 @@ async def step_spec(step_key: str, participant_type: str | None = None,
         spec["composite"] = await _composite_spec_for(
             spec["composite_group"], participant_type, event_city, resolved_flags,
         )
+    if degraded_kind == "repeatable":
+        # Phase 30 (30-04, A2-05, задача 3): клиенту нужно число, чтобы скрыть «+ Добавить»
+        # по достижении лимита (T-30-10) — второй, серверный барьер того же числа уже стоит в
+        # `validate_answer(..., repeatable_max_items=...)`, здесь только публикация для UI.
+        spec["repeatable_max"] = await repeatable_max(step_key)
     # УАТ 10-11.09 (квик 260911-2kb, пункт 4): набор колонок-компаньонов шага — та же функция,
     # что уже синхронизирует черновик (`columns_for_step`, квик 260910-wb6), второй копии
     # правила здесь не заводим. Для резюме — три колонки разом, у всех остальных шагов —
