@@ -5314,6 +5314,13 @@ USER_PURGE_TABLES: tuple[tuple[str, str, str], ...] = (
     ("poll_messages", "chat_id", "deliveries"),
     ("broadcast_deliveries", "chat_id", "deliveries"),
     ("scheduled_broadcast_deliveries", "chat_id", "deliveries"),
+    # Phase 30 (30-03, дефект дрейфа схемы после 30-02): lookup_merge_queue.telegram_id —
+    # сырой ответ «Другое» делегата в очереди слияния справочника (`services/lookup.py::
+    # enqueue_merge`). Это делегатский след — уходит вместе с человеком. Группа "draft" —
+    # та же, что у reg_drafts: запись рождается из того же незавершённого шага анкеты.
+    # decided_by в этой таблице — id менеджера, принявшего решение по очереди, не трогаем
+    # (авторская колонка, не делегатский след).
+    ("lookup_merge_queue", "telegram_id", "draft"),
 )
 
 USER_PURGE_EXCLUDED: frozenset[str] = frozenset({
