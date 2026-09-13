@@ -31,7 +31,7 @@ from aiogram import F, types
 from aiogram.fsm.context import FSMContext
 from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
 
-from settings_schema import SETTINGS_SCHEMA
+from settings_schema import SETTINGS_SCHEMA, get_setting_typed
 from database.db import get_setting
 from settings_audit import set_setting_by_admin, delete_setting_by_admin
 from cities import ALL_CITIES, admin_selected_city, is_per_city, per_city_key
@@ -50,6 +50,32 @@ logger = logging.getLogger(__name__)
 # недостижим для выбора — предупреждаем, но сохраняем.
 _RESERVED_WORDS = {"отмена", "другое", "пропустить"}
 
+# Phase 30 (30-07, задача 4, A2-03, 30-CONTEXT.md § «Решения оркестратора», п.2): списки-
+# справочники типа `lookup` (university_options/city_options) получают три атрибута кнопками
+# на СВОЁМ экране правки списка — НЕ десятый тумблер группы «📝 Анкета». Ключ-спутник —
+# `<list_key>_<suffix>` (settings_schema.py, group="toggles"), второй карты имён не заводится.
+LOOKUP_LIST_ATTR_SUFFIXES = ("chips_enabled", "search_enabled", "other_allowed")
+_LOOKUP_ATTR_LABELS = {
+    "chips_enabled": "Чипы", "search_enabled": "Поиск", "other_allowed": "Свой вариант",
+}
+
+
+async def _lookup_attr_rows(list_key: str) -> list[list[InlineKeyboardButton]]:
+    """Три ряда-кнопки атрибутов текущим состоянием (✅/⬜) — только для списков-справочников
+    (`university_options`/`city_options`, определяются по наличию ключа-спутника в реестре);
+    для любого другого `type: "list"` ключа — пустой список (кнопок нет)."""
+    if f"{list_key}_{LOOKUP_LIST_ATTR_SUFFIXES[0]}" not in SETTINGS_SCHEMA:
+        return []
+    rows = []
+    for suffix in LOOKUP_LIST_ATTR_SUFFIXES:
+        on = await get_setting_typed(f"{list_key}_{suffix}") == "on"
+        icon = "✅" if on else "⬜"
+        rows.append([InlineKeyboardButton(
+            text=f"{icon} {_LOOKUP_ATTR_LABELS[suffix]}",
+            callback_data=f"settings_list_attr:{list_key}:{suffix}",
+        )])
+    return rows
+
 
 def split_list_items(raw: str | None) -> list[str]:
     """Тот же разбор, что у `get_setting_typed` для `type == "list"`: строки + «;»."""
@@ -64,16 +90,21 @@ def _item_tag(item: str) -> str:
     return f"{zlib.crc32(item.encode('utf-8')) & 0xFFFF:04x}"
 
 
-def list_edit_rows(key: str) -> list[list[InlineKeyboardButton]]:
+async def list_edit_rows(key: str) -> list[list[InlineKeyboardButton]]:
     """Ряды кнопок экрана `settings_edit:{key}` для списочного ключа. Вставляются
-    `_settings_edit_screen` перед «❌ Отмена»."""
-    return [
+    `_settings_edit_screen` перед «❌ Отмена». Phase 30 (30-07, задача 4): для списков-
+    справочников (`university_options`/`city_options`) дополняются тремя рядами атрибутов
+    (чипы/поиск/свой вариант) — `_lookup_attr_rows` возвращает пустой список для любого
+    другого списочного ключа, второй ветки не заводится."""
+    rows = [
         [InlineKeyboardButton(text="➕ Добавить пункт", callback_data=f"settings_list_add:{key}")],
         [InlineKeyboardButton(text="🗑 Удалить пункт", callback_data=f"settings_list_del:{key}")],
         [InlineKeyboardButton(
             text="✏️ Заменить список целиком", callback_data=f"settings_list_replace:{key}",
         )],
     ]
+    rows.extend(await _lookup_attr_rows(key))
+    return rows
 
 
 async def _resolve_target(admin_id: int, key: str) -> tuple[str | None, str | None, str | None]:
@@ -306,3 +337,26 @@ async def settings_list_replace_start(callback: types.CallbackQuery, state: FSMC
     else:
         await state.update_data(setting_key=target)
     await callback.answer()
+
+
+# ── атрибуты списка-справочника: чипы / поиск / свой вариант (30-07 задача 4) ───────────────
+
+@router.callback_query(F.data.startswith("settings_list_attr:"))
+async def settings_list_attr_toggle(callback: types.CallbackQuery):
+    """Глобальный ключ-спутник (`<list_key>_<suffix>`, group="toggles") — атрибуты списка-
+    справочника НЕ per-city (влияют только на новую анкету целиком, 30-CONTEXT.md), поэтому
+    без `_resolve_target`/шапки города, в отличие от самих пунктов списка выше."""
+    try:
+        _, list_key, suffix = callback.data.split(":", 2)
+    except ValueError:
+        await callback.answer("Не понял атрибут", show_alert=True)
+        return
+    attr_key = f"{list_key}_{suffix}"
+    if attr_key not in SETTINGS_SCHEMA:
+        await callback.answer("Атрибут не найден", show_alert=True)
+        return
+    current = await get_setting_typed(attr_key) == "on"
+    await set_setting_by_admin(callback.from_user.id, attr_key, "off" if current else "on")
+    await _rerender(callback, list_key)
+    label = _LOOKUP_ATTR_LABELS[suffix]
+    await callback.answer(f"{label}: {'выключено' if current else 'включено'}")

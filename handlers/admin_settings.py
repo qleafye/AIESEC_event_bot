@@ -1493,7 +1493,7 @@ async def _settings_edit_screen(key: str, header_code: str | None) -> tuple[str,
             )],
         ]
         if is_list:
-            rows = admin_settings_lists.list_edit_rows(key)
+            rows = await admin_settings_lists.list_edit_rows(key)
         if own_value:
             rows.append([InlineKeyboardButton(text="↩️ Как везде", callback_data=f"settings_reset_city:{key}")])
         rows.append([InlineKeyboardButton(text="❌ Отмена", callback_data="settings_cancel")])
@@ -1537,7 +1537,7 @@ async def _settings_edit_screen(key: str, header_code: str | None) -> tuple[str,
             names = ", ".join([await city_label(c) for c in override_codes])
             text += f"\n\nПереопределено для: {names}"
 
-    rows = admin_settings_lists.list_edit_rows(key) if is_list else []
+    rows = await admin_settings_lists.list_edit_rows(key) if is_list else []
     rows.append([InlineKeyboardButton(text="❌ Отмена", callback_data="settings_cancel")])
     return text, InlineKeyboardMarkup(inline_keyboard=rows)
 
