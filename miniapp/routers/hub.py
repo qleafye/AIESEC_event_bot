@@ -25,6 +25,7 @@ from fastapi import APIRouter, Depends
 
 from cities import get_setting_typed_for_city
 from database.db import get_setting, get_user
+from payment_options import parse_options
 from services import applications
 from settings_schema import get_setting_typed
 
@@ -72,17 +73,18 @@ async def _payment_card(user: dict) -> dict | None:
     """Карточка оплаты экрана «Одобрена» — сумма и срок ТОЛЬКО когда модуль оплаты включён и у
     делегата есть тариф (30-CONTEXT.md решение оркестратора: «следует за payment_enabled и
     наличием тарифа, отдельного ключа нет»). Переиспользует существующий парсер
-    `payment_options` (`handlers.payment._parse_options`) — новой логики оплаты не пишем."""
+    `payment_options` (корневой `payment_options.parse_options`, без aiogram-зависимости —
+    `handlers/payment.py` держит `_parse_options` как реэкспорт оттуда же) — новой логики
+    оплаты не пишем."""
     if await get_setting_typed("payment_enabled") != "on":
         return None
     option_label = user.get("payment_option")
     payment_due = user.get("payment_due")
     if not option_label or not payment_due:
         return None
-    from handlers.payment import _parse_options  # локальный импорт — без цикла на старте бота
 
     amount = None
-    for label, price, _tracks in _parse_options(await get_setting("payment_options") or ""):
+    for label, price, _tracks in parse_options(await get_setting("payment_options") or ""):
         if label == option_label:
             amount = price
             break
