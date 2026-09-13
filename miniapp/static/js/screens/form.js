@@ -85,9 +85,15 @@ function canShareContact(tg) {
 // `responseUnsafe.contact` — в старой форме колбэка его нет, тогда просто ничего не делаем
 // (ручной ввод остаётся). Номер без «+», состоящий из цифр, нормализуем добавлением «+»
 // (валидатор `phone` принимает и то, и то — человеку показываем канонический вид).
-function shareContactButton(h, spec, el, text, onNumber) {
+// Phase 30 (30-03, A2-08, 30-UI-SPEC.md § «7. text»): `opts.iconName`/`opts.hint` —
+// рестайл ТОЛЬКО у мастера новой анкеты (вызывающий передаёт их при `degraded_kind !==
+// "legacy"`, см. `drawStep()` ниже); обзор точечной правки (второй call site, line ~523)
+// их не передаёт — там кнопка остаётся byte-в-byte прежней (иконка `smartphone`, без
+// подсказки), 21-UI-SPEC этот экран не переопределяет. Сам вызов `requestContact` —
+// БЕЗ изменений (30-PATTERNS.md: «не реализуем второй раз»).
+function shareContactButton(h, spec, el, text, onNumber, opts = {}) {
   if (spec.type !== "phone" || !canShareContact(tgRef)) return null;
-  return h("button", {
+  const button = h("button", {
     class: "btn secondary", type: "button", "aria-label": spec.label,
     onClick: () => {
       tgRef.requestContact((ok, res) => {
@@ -102,7 +108,9 @@ function shareContactButton(h, spec, el, text, onNumber) {
         onNumber(normalized);
       });
     },
-  }, icon("smartphone"), h("span", { text: text || "" }));
+  }, icon(opts.iconName || "smartphone"), h("span", { text: text || "" }));
+  if (!opts.hint) return button;
+  return h("div", {}, button, h("p", { class: "label-role", text: opts.hint }));
 }
 
 // Строка списка вопросов анкеты (обзор 19.1 находка №6): общий помощник для окна вопросов
@@ -836,7 +844,16 @@ export async function render(root, params, ctx) {
       });
       // D13: контакт из Telegram — та же кнопка, что и в обзоре правки, только без немедленной
       // отправки на сервер (мастер и так шлёт PATCH по кнопке «Дальше»).
-      const contactBtn = shareContactButton(h, spec, el, d.share_contact_text, (v) => { liveValue = v; });
+      // Phase 30 (30-03, A2-08, 30-UI-SPEC.md § «7. text»): v2-рестайл ТОЛЬКО у мастера новой
+      // анкеты — иконка `phone-outgoing` + подсказка под кнопкой из `spec.v2_texts`; обзор
+      // точечной правки (второй call site `shareContactButton`) не трогается.
+      const v2Texts = spec.v2_texts || {};
+      const contactBtn = shareContactButton(
+        h, spec, el,
+        (isV2 && v2Texts.phone_share_button) || d.share_contact_text,
+        (v) => { liveValue = v; },
+        isV2 ? { iconName: "phone-outgoing", hint: v2Texts.phone_share_hint } : {},
+      );
       if (spec.value_source === "prior" && !state.isDirty(column)) {
         setFieldState(el, "updated-in-chat", { text: d.prior_badge_text });
         el.addEventListener("input", () => setFieldState(el, "default", {}), { once: true });
@@ -928,7 +945,10 @@ export async function render(root, params, ctx) {
             const msg = err.payload.errors[column];
             if (errorZone && msg) { errorZone.textContent = msg; errorZone.classList.remove("hidden"); }
             setMainButton(null, null);
-            setMainButton(d.next_cta_text || null, goNext);
+            // Phase 30 (30-03): подпись после ошибки — та же, что была на кнопке до запроса
+            // (v2-типы держат свою через `currentMainLabel()`, легаси — `d.next_cta_text`
+            // без изменений).
+            setMainButton(currentMainLabel(), goNext);
           } else if (err && err.status === 403 && err.reason === "registration_closed") {
             showClosed(err);
           } else if (err && err.status === 409 && err.reason === "held_by_bot") {
@@ -936,7 +956,7 @@ export async function render(root, params, ctx) {
             catch (_) { showHandoff(err.payload || {}); }
           } else if (!isAuthError(err)) {
             if (errorZone) { errorZone.textContent = failText(err); errorZone.classList.remove("hidden"); }
-            setMainButton(d.next_cta_text || null, goNext);
+            setMainButton(currentMainLabel(), goNext);
           }
         }
       }
@@ -993,6 +1013,12 @@ export async function render(root, params, ctx) {
 
       // Плита шага: номер + вопрос крупным курсивом (обзор 19.1 находка №5) — тумблер
       // reg_show_progress выключен целиком гасит номерной блок, а не показывает его пусто.
+      // Phase 30 (30-03, A2-08): плита сама уже существует байт-в-байт для ЛЮБОГО шага с
+      // Phase 23.1 (`.plate--form`) — 30-UI-SPEC.md описывает её как «новую» ошибочно
+      // (сверено с кодом задачей 4). Единственная фактическая правка — роль Step Title
+      // (курсив 27px вместо некурсивного 28px) на самом заголовке, и ТОЛЬКО когда
+      // `degraded_kind != "legacy"` — класс `.step-title` ниже, легаси-путь не трогается.
+      const isV2 = !!(spec.degraded_kind && spec.degraded_kind !== "legacy");
       const plateRow = showProgress
         ? h("div", { class: "plate-row" },
           h("span", { class: "plate-big", text: String(stepIndex + 1).padStart(2, "0") }),
@@ -1002,28 +1028,65 @@ export async function render(root, params, ctx) {
         : null;
       const plate = h("section", { class: "plate plate--form" },
         plateRow,
-        h("h1", { text: spec.prompt || spec.label }),
+        h("h1", { text: spec.prompt || spec.label, class: isV2 ? "step-title" : null }),
         spec.help ? h("p", { class: "plate-sub", text: spec.help }) : null,
       );
 
       // Phase 28 (28-05, SU-04, 28-UI-SPEC §1/§3): развилка резюме — тап кнопки И ЕСТЬ переход,
       // футера «Дальше» на этом экране нет вовсе (isForkPick); mini_portfolio — единственный
-      // шаг с третьей футер-кнопкой «Пропустить» (spec.skip_label публикует ТОЛЬКО этот шаг,
-      // reg_engine.step_spec — остальные skip_allowed шаги не меняются ни на байт, D-06).
+      // легаси-шаг с третьей футер-кнопкой «Пропустить» (spec.skip_label публикует ТОЛЬКО этот
+      // шаг, reg_engine.step_spec — остальные skip_allowed шаги не меняются ни на байт, D-06).
+      //
+      // Phase 30 (30-03, A2-02/A2-08, 30-UI-SPEC.md §§ «5. multi»/«1. select»): у v2-типов —
+      // ОДНА кнопка вместо пары «Пропустить»/«Дальше», подпись и disabled — из `footerLabel`/
+      // `footerDisabled`, которые `field()` положила в `el._nodes` (buildV2Control, план
+      // 30-03 задачи 2/3). `onFooterChange` обновляет ОБЕ поверхности (`.btn` футера и
+      // нативный `MainButton`) без полной пересборки шага — drawStep() вызывается один раз
+      // за шаг (см. докстринг файла), сам onChange контрола этого не делает.
       const isForkPick = spec.type === "resume-fork";
+      const footerNodes = el._nodes || {};
+      let v2Label = footerNodes.footerLabel || null;
+      let v2Disabled = !!footerNodes.footerDisabled;
+
+      function currentMainLabel() {
+        return (isV2 && v2Label) ? v2Label : (d.next_cta_text || "");
+      }
+      function currentMainDisabled() {
+        return busy || (isV2 && v2Disabled);
+      }
+      function syncMainButton() {
+        if (mainLabelNode) mainLabelNode.textContent = currentMainLabel();
+        if (mainBtnEl) {
+          mainBtnEl.disabled = currentMainDisabled();
+          mainBtnEl.setAttribute("aria-label", currentMainLabel());
+        }
+        setMainButton(isForkPick ? null : currentMainLabel(), goNext, { disabled: currentMainDisabled() });
+      }
+
+      const mainLabelNode = h("span", { text: currentMainLabel() });
+      const mainBtnEl = isForkPick ? null : h("button", {
+        class: "btn", type: "button", disabled: currentMainDisabled(), "aria-label": currentMainLabel(),
+        onClick: goNext,
+      }, mainLabelNode, icon("arrow-right"));
+
+      if (isV2 && footerNodes.onFooterChange) {
+        footerNodes.onFooterChange((label, disabled) => {
+          v2Label = label;
+          v2Disabled = !!disabled;
+          syncMainButton();
+        });
+      }
+
       const footer = h("div", { class: "task-actions" },
         stepIndex > 0
           ? h("button", { class: "btn ghost", type: "button", "aria-label": d.back_cta_text || "", onClick: goBack },
             icon("arrow-right", { class: "icon-flip" }), h("span", { text: d.back_cta_text || "" }))
           : null,
-        spec.skip_label
+        (!isV2 && spec.skip_label)
           ? h("button", { class: "btn ghost", type: "button", "aria-label": spec.skip_label, onClick: goSkip },
             h("span", { text: spec.skip_label }))
           : null,
-        isForkPick
-          ? null
-          : h("button", { class: "btn", type: "button", disabled: busy, "aria-label": d.next_cta_text || "", onClick: goNext },
-            h("span", { text: d.next_cta_text || "" }), icon("arrow-right")),
+        mainBtnEl,
       );
 
       holder.replaceChildren(...[
@@ -1038,7 +1101,7 @@ export async function render(root, params, ctx) {
         chatLink(d.continue_in_chat_text, d.continue_deeplink),
         footer,
       ].filter(Boolean));
-      setMainButton(isForkPick ? null : (d.next_cta_text || null), goNext, { disabled: busy });
+      syncMainButton();
     }
 
     async function submitForm() {

@@ -276,6 +276,12 @@ SETTINGS_SYNONYMS: dict[str, list[str]] = {
     "reg_form_status_screen": ["экран статуса заявки", "статус заявки во всю ширину"],
     "reg_form_header_settings": ["настройки в шапке анкеты", "тема язык вибрация в анкете"],
     "reg_form_haptics": ["вибрация анкеты", "отклик на выбор в анкете"],
+    # Phase 30 (30-03, A2-02/A2-03/A2-06): тексты новых типов шага (select/lookup/multi/link/
+    # phone) заведены группой `reg_prompts` — ручных синонимов НЕ заводим: тест-файл
+    # `tests/test_settings_synonyms.py` относит ВЕСЬ `group == "reg_prompts"` к
+    # `SEARCH_SELF_DESCRIBING` автоматически (подпись ключа уже содержит искомые слова, тот
+    # же приём, что у сорока четырёх `reg_prompt_<step>`) — ручная запись здесь дала бы
+    # `test_synonym_and_self_describing_sets_do_not_overlap` красным.
     "delegate_lang_driver": ["драйвер перевода", "движок перевода анкеты"],
     "delegate_lang_http_url": ["адрес перевода", "сайдкар перевода url"],
     "registration_mode": ["краткая форма", "полная анкета"],

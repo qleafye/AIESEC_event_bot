@@ -1821,6 +1821,138 @@ SETTINGS_SCHEMA = {
         "options": ["on", "off"], "default": "off",
         "prompt": "Короткий отклик на выбор и на ошибку.",
     },
+    # Phase 30 (30-03, A2-02/A2-03/A2-06, 30-UI-SPEC.md § Copywriting Contract): тексты новых
+    # типов шага (select/lookup/multi/link/phone), которые видит делегат в новой анкете.
+    # Публикуются в `spec["v2_texts"]` (`reg_engine.py::_v2_texts_for`), читает
+    # `form_types.js`. Дефолты — дословно из принятого макета, `per_city` — колонка-в-колонку
+    # из таблицы UI-SPEC. Группа `reg_prompts` уже маршрутизируется в раздел «📝 Анкета»
+    # (`settings_ops.py::SECTION_GROUPS`), второй регистрации раздела не требуется.
+    "reg_form_optional_badge_text": {
+        "type": "text", "group": "reg_prompts", "label": "🏷 Бейдж «необязательно» (анкета 2.0)",
+        "prompt": "Подпись рядом с лейблом любого необязательного поля новой анкеты.",
+        "default": "необязательно",
+    },
+    "reg_form_skip_button_text": {
+        "type": "text", "group": "reg_prompts", "label": "⏭ Кнопка «Пропустить» (анкета 2.0)",
+        "prompt": "Главная кнопка мастера, когда необязательный шаг пуст (multi/link/repeatable).",
+        "default": "Пропустить",
+    },
+    "reg_form_continue_button_text": {
+        "type": "text", "group": "reg_prompts", "label": "➡️ Кнопка «Продолжить» (анкета 2.0)",
+        "prompt": "Главная кнопка мастера, когда есть что продолжать.",
+        "default": "Продолжить",
+    },
+    "reg_form_own_option_text": {
+        "type": "text", "group": "reg_prompts", "label": "✍️ Подсказка «впиши сам» (справочник)",
+        "prompt": "Пустое состояние справочника lookup — {entity} подставляет «город»/«ВУЗ».",
+        "default": "Впиши {entity} сам — менеджер увидит его как есть.",
+    },
+    "reg_form_own_chip_text": {
+        "type": "text", "group": "reg_prompts", "label": "🏷 Ghost-чип «Другой …» (справочник)",
+        "prompt": "Чип «свой вариант» в топ-8 справочника — {entity} подставляет «город»/«ВУЗ».",
+        "default": "Другой {entity}",
+    },
+    "reg_form_pick_option_text": {
+        "type": "text", "group": "reg_prompts", "label": "👉 «Выбери вариант» (select)",
+        "prompt": "Текст неактивной кнопки «Дальше», пока в select-шаге ничего не выбрано.",
+        "default": "Выбери вариант",
+    },
+    "reg_form_selection_visible_note_text": {
+        "type": "text", "group": "reg_prompts", "label": "📝 Подсказка под плитками (select)",
+        "prompt": "Строка под плитками select — что выбор виден и после нажатия.",
+        "default": (
+            "Выбранное видно и после нажатия — не нужно листать чат вверх, чтобы вспомнить "
+            "ответ."
+        ),
+    },
+    "reg_lookup_hint_default_text": {
+        "type": "text", "group": "reg_prompts", "label": "🔎 Подсказка под полем поиска (lookup)",
+        "prompt": "Показывается, пока поле поиска справочника пусто.",
+        "default": "Начни вводить — подскажем. Например: «спб», «вшэ», «политех».",
+    },
+    "reg_lookup_empty_title_text": {
+        "type": "text", "group": "reg_prompts", "label": "🔎 Заголовок «ничего не нашли» (lookup)",
+        "prompt": "Заголовок пустого состояния справочника — {query} подставляет запрос делегата.",
+        "default": "Ничего не нашли по запросу «{query}»",
+    },
+    "reg_lookup_normalized_note_text": {
+        "type": "text", "group": "reg_prompts", "label": "🔎 Подсказка про нормализацию (lookup)",
+        "prompt": "Строка под списком результатов справочника.",
+        "default": (
+            "Справочник грузит менеджер один раз. Название приходит нормализованным — "
+            "«СПбГАСУ» и «спбгасу» не попадут в таблицу двумя разными строками."
+        ),
+    },
+    "reg_multi_limit_hint_zero_text": {
+        "type": "text", "group": "reg_prompts", "label": "🔢 Подсказка лимита: 0 выбрано (multi)",
+        "prompt": "{max} подставляет лимит выбора.",
+        "default": "Выбрано 0 из {max}. Можно ничего не выбирать — шаг необязательный.",
+        "per_city": True,
+    },
+    "reg_multi_limit_hint_mid_text": {
+        "type": "text", "group": "reg_prompts", "label": "🔢 Подсказка лимита: частично (multi)",
+        "prompt": "{n}/{max}/{left} — выбрано/лимит/сколько ещё можно.",
+        "default": "Выбрано {n} из {max}. Можно добавить ещё {left}.",
+        "per_city": True,
+    },
+    "reg_multi_limit_hint_max_text": {
+        "type": "text", "group": "reg_prompts", "label": "🔢 Подсказка лимита: максимум (multi)",
+        "prompt": "{n}/{max} — выбрано/лимит.",
+        "default": "Выбрано {n} из {max}. Больше не нужно — сними лишнее, чтобы поменять.",
+        "per_city": True,
+    },
+    "reg_link_recognized_text": {
+        "type": "text", "group": "reg_prompts", "label": "🔗 «Ссылка распознана» (link, приложение)",
+        "prompt": "Строка-подтверждение под полем ссылки после успешного распознавания формата.",
+        "default": "Профиль узнали — ссылка рабочая", "per_city": True,
+    },
+    "reg_link_recognized_chat_text": {
+        "type": "text", "group": "reg_prompts", "label": "🔗 «Ссылка сохранена» (link, чат)",
+        "prompt": "Реплика бота в чате после получения и распознавания ссылки.",
+        "default": "Ссылку сохранили ✅",
+    },
+    "reg_link_resume_hint_text": {
+        "type": "text", "group": "reg_prompts", "label": "🔗 Подсказка под полем «Резюме ссылкой»",
+        "prompt": "Строка под полем ссылки на резюме.",
+        "default": "Подойдёт любая открытая ссылка: резюме, портфолио, профиль на сайте вакансий.",
+        "per_city": True,
+    },
+    "reg_link_or_file_eyebrow_text": {
+        "type": "text", "group": "reg_prompts", "label": "🔗 Разделитель «Или файлом»",
+        "prompt": "Надпись между карточкой ссылок и дропзоной резюме.",
+        "default": "Или файлом",
+    },
+    "reg_phone_share_button_text": {
+        "type": "text", "group": "reg_prompts", "label": "📱 Кнопка «Поделиться номером»",
+        "prompt": "Вторая кнопка под полем телефона — Telegram передаёт номер сам.",
+        "default": "Поделиться номером из Телеграма", "per_city": True,
+    },
+    "reg_phone_share_hint_text": {
+        "type": "text", "group": "reg_prompts",
+        "label": "📱 Подсказка под кнопкой «Поделиться номером»",
+        "prompt": "Строка под кнопкой «Поделиться номером».",
+        "default": "Телеграм подставит номер сам — вводить руками не нужно.", "per_city": True,
+    },
+    # Пояснения к вариантам select-плитки (30-UI-SPEC.md § «1. select») — заведены сегодня
+    # ТОЛЬКО для `alumni_status` (макет рисует пример именно для него, `reg_engine.py::
+    # _OPTION_HINT_KEYS`); остальные девятнадцать select-шагов пояснений в макете не
+    # получили — тиражировать текст, которого никто не написал, не станем.
+    "reg_option_hint__alumni_status__alumni": {
+        "type": "text", "group": "reg_prompts", "label": "💬 Пояснение к варианту «Аламни»",
+        "prompt": "Вторая строка плитки select под названием варианта.",
+        "default": "Был(а) в АЙСЕК раньше", "per_city": True,
+    },
+    "reg_option_hint__alumni_status__aiesecer": {
+        "type": "text", "group": "reg_prompts", "label": "💬 Пояснение к варианту «Айсекер»",
+        "prompt": "Вторая строка плитки select под названием варианта.",
+        "default": "Сейчас в команде", "per_city": True,
+    },
+    "reg_option_hint__alumni_status__neither": {
+        "type": "text", "group": "reg_prompts",
+        "label": "💬 Пояснение к варианту «Ни то, ни другое»",
+        "prompt": "Вторая строка плитки select под названием варианта.",
+        "default": "Пришёл(ла) на форум впервые", "per_city": True,
+    },
     "registration_mode": {
         "type": "enum", "group": "toggles", "label": "📝 Форма регистрации",
         "options": ["short", "full"],

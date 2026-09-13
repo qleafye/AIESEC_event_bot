@@ -1240,14 +1240,19 @@ CHAT_PROJECTION: dict[str, str] = {
     "repeatable": "handlers.reg_types_repeatable",
 }
 
-# Тот же принцип для Mini App: `form_types.js` — новый модуль этой фазы (план 30-03 заводит
-# файл, 30-04 дописывает composite/repeatable); `form.js` — сегодняшний рендер, легаси-путь
-# для типов, которые Mini App уже умеет рисовать (просто другим полем ui_type).
+# Правка плана 30-03 (задача 4) к решению 30-01: черновик 30-01 предполагал, что рестайл
+# select/multi/link/text приземлится ВНУТРИ существующего `form.js::buildControl` (новыми
+# ветками того же switch). Интерфейс, зафиксированный 30-03-PLAN.md (`buildV2Control` с
+# литеральными `case "select"`/`"multi"`/`"link"`/`"text"`), кладёт эти ветки в НОВЫЙ модуль
+# `form_types.js` — `form.js::buildControl` делает только ранний выход на `buildV2Control`,
+# сам литерал `case "<тип>"` живёт в form_types.js. Обновляем проекцию под фактическую
+# реализацию (единственный источник правды для сторожа паритета — этот файл, не то, что
+# предполагалось на момент 30-01).
 APP_PROJECTION: dict[str, str] = {
-    "select": "miniapp/static/js/form.js",
-    "multi": "miniapp/static/js/form.js",
-    "text": "miniapp/static/js/form.js",
-    "link": "miniapp/static/js/form.js",
+    "select": "miniapp/static/js/form_types.js",
+    "multi": "miniapp/static/js/form_types.js",
+    "text": "miniapp/static/js/form_types.js",
+    "link": "miniapp/static/js/form_types.js",
     "lookup": "miniapp/static/js/form_types.js",
     "composite": "miniapp/static/js/form_types.js",
     "repeatable": "miniapp/static/js/form_types.js",
@@ -1270,6 +1275,111 @@ PENDING_PROJECTIONS: dict[str, str] = {
     "composite": "планы 30-04 (Mini App, form_types.js) и 30-06 (чат, handlers/reg_types_composite.py)",
     "repeatable": "планы 30-04 (Mini App, form_types.js) и 30-06 (чат, handlers/reg_types_repeatable.py)",
 }
+
+
+# Phase 30 (30-03, A2-02, 30-UI-SPEC.md § «1. select»): пояснения к вариантам плитки select —
+# вторая строка под названием варианта. Явная карта (значение -> ключ реестра), НЕ генерация
+# имени ключа шаблоном из сырого значения: значения `_LITERAL_OPTIONS`/`SELECT_CONFIG`
+# содержат пробелы/запятые («Ни то, ни другое»), небезопасные как суффикс имени настройки.
+# Заведена сегодня ТОЛЬКО для `alumni_status` — макет (`30-UI-SPEC.md` § Copywriting Contract
+# «select») рисует пояснение именно для него; тиражировать этот приём на остальные девятнадцать
+# select-шагов (~70 пар значение/пояснение) означало бы завести ключи под текст, которого
+# макет никогда не рисовал — пустые дефолты без визуального образца не проверить глазами.
+# Расширение на другой шаг — просто новая запись здесь + ключ в SETTINGS_SCHEMA.
+_OPTION_HINT_KEYS: dict[str, dict[str, str]] = {
+    "alumni_status": {
+        "Аламни": "reg_option_hint__alumni_status__alumni",
+        "Айсекер": "reg_option_hint__alumni_status__aiesecer",
+        "Ни то, ни другое": "reg_option_hint__alumni_status__neither",
+    },
+}
+
+
+async def option_hints_for(step_key: str) -> dict[str, str]:
+    """Словарь `{значение_варианта: пояснение}` для плитки select — пустой для любого шага
+    вне `_OPTION_HINT_KEYS` (fail-soft: `form_types.js` просто не рисует вторую строку
+    плитки, `KeyError` невозможен ни на клиенте, ни здесь). Пустой текст (менеджер стёр
+    пояснение через настройки) тоже не попадает в результат — та же логика, что у любого
+    optional-хинта в этом файле."""
+    mapping = _OPTION_HINT_KEYS.get(step_key)
+    if not mapping:
+        return {}
+    result: dict[str, str] = {}
+    for value, setting_key in mapping.items():
+        text = await get_setting_typed(setting_key)
+        if text:
+            result[value] = text
+    return result
+
+
+# Phase 30 (30-03, A2-02/A2-03/A2-06, 30-UI-SPEC.md § Copywriting Contract): `{entity}` —
+# человеческое имя справочника lookup, подставляется в `reg_form_own_option_text`/
+# `reg_form_own_chip_text` (тексты объявлены «переиспользуемыми» в UI-SPEC — единственные
+# сегодняшние потребители lookup-типа). Явная карта, а не производная от `spec.label`
+# (`label_for()` отдаёт формулировку вопроса целиком — «Из какого ты города?», не короткое
+# существительное для подстановки в середину фразы).
+_LOOKUP_ENTITY_NAMES: dict[str, str] = {"university": "ВУЗ", "city": "город"}
+
+
+async def _v2_texts_for(degraded_kind: str, step_key: str, event_city: str | None) -> dict:
+    """Тексты новых типов шага (30-UI-SPEC.md § Copywriting Contract), публикуются В
+    `spec["v2_texts"]` — ОДИН словарь, а не двадцать полей верхнего уровня (30-03-PLAN.md
+    задача 4). Читает реестр ТОЛЬКО для типа, который реально рисуется (`degraded_kind`) —
+    легаси-шаг (`degraded_kind == "legacy"`) не тратит ни одного похода в БД на тексты, которые
+    всё равно не попадут на экран. Ключ словаря — короткое имя без `reg_..._text`-обвязки
+    (`form_types.js` читает `texts.pick_option`, не `texts.reg_form_pick_option_text`)."""
+    if degraded_kind == "legacy":
+        return {}
+    texts: dict[str, str] = {}
+    if degraded_kind == "select":
+        texts["pick_option"] = await get_setting_typed("reg_form_pick_option_text")
+        texts["selection_visible_note"] = await get_setting_typed(
+            "reg_form_selection_visible_note_text"
+        )
+    elif degraded_kind == "lookup":
+        entity = _LOOKUP_ENTITY_NAMES.get(step_key, "")
+        own_option = await get_setting_typed("reg_form_own_option_text")
+        own_chip = await get_setting_typed("reg_form_own_chip_text")
+        texts["own_option"] = own_option.replace("{entity}", entity)
+        texts["own_chip"] = own_chip.replace("{entity}", entity)
+        texts["hint_default"] = await get_setting_typed("reg_lookup_hint_default_text")
+        texts["empty_title"] = await get_setting_typed("reg_lookup_empty_title_text")
+        texts["normalized_note"] = await get_setting_typed("reg_lookup_normalized_note_text")
+    elif degraded_kind == "multi":
+        texts["skip_button"] = await get_setting_typed("reg_form_skip_button_text")
+        texts["continue_button"] = await get_setting_typed("reg_form_continue_button_text")
+        texts["limit_hint_zero"] = await get_setting_typed_for_city(
+            "reg_multi_limit_hint_zero_text", event_city
+        )
+        texts["limit_hint_mid"] = await get_setting_typed_for_city(
+            "reg_multi_limit_hint_mid_text", event_city
+        )
+        texts["limit_hint_max"] = await get_setting_typed_for_city(
+            "reg_multi_limit_hint_max_text", event_city
+        )
+        texts["own_option"] = await get_setting_typed_for_city(
+            "reg_form_own_option_text", event_city
+        )
+    elif degraded_kind == "link":
+        texts["recognized"] = await get_setting_typed_for_city(
+            "reg_link_recognized_text", event_city
+        )
+        if step_key == "resume_link":
+            texts["resume_hint"] = await get_setting_typed_for_city(
+                "reg_link_resume_hint_text", event_city
+            )
+    elif degraded_kind == "text" and step_key == "phone":
+        # 30-UI-SPEC.md § «7. text»: кнопка «Поделиться номером» — постоянное поведение шага
+        # `phone` в новой анкете (решение оркестратора 12.09, без отдельного тумблера);
+        # рестайл (`screens/form.js::shareContactButton`) читает эти два текста, только когда
+        # `degraded_kind != "legacy"` — сегодняшний `reg_form_share_contact_text` не трогаем.
+        texts["phone_share_button"] = await get_setting_typed_for_city(
+            "reg_phone_share_button_text", event_city
+        )
+        texts["phone_share_hint"] = await get_setting_typed_for_city(
+            "reg_phone_share_hint_text", event_city
+        )
+    return texts
 
 
 # Права/безопасность формы (RESEARCH § «Права / безопасность формы»): ФИО 200,
@@ -1334,7 +1444,7 @@ async def resume_fork_options() -> list[dict]:
 
 
 async def step_spec(step_key: str, participant_type: str | None = None,
-                     event_city: str | None = None) -> dict:
+                     event_city: str | None = None, flags: dict[str, bool] | None = None) -> dict:
     """Спека одного шага по контракту UI-SPEC — бот берёт из неё текст/варианты по отдельности
     (`prompt()`/`options()`), Mini App (план 21-04a/b) — эту функцию целиком.
 
@@ -1347,7 +1457,14 @@ async def step_spec(step_key: str, participant_type: str | None = None,
     Phase 28-04 (SU-04): `reg_resume_mode(event_city) == "fork"` рисует развилку («Файл» /
     «Ссылка» / «Нет резюме», R1 UI-SPEC) вместо дропзоны/текстового поля — `type` становится
     `"resume-fork"`, спека получает `fork_options` (см. `resume_fork_options()`). Экранов
-    делегат для этого режима ещё не видит (план 28-05) — здесь только контракт спеки."""
+    делегат для этого режима ещё не видит (план 28-05) — здесь только контракт спеки.
+
+    Phase 30 (30-03, A2-08): `flags` — девять тумблеров «📝 Анкета» (`form_v2_flags()`),
+    ОПЦИОНАЛЬНЫЙ параметр. `form_spec()` считает их ОДИН раз на всю форму и передаёт сюда —
+    девять чтений реестра на КАЖДЫЙ из ~43 шагов было бы явным overkill (30-01 докстринг
+    `form_v2_flags` уже называет её «единой точкой чтения», не «читай на каждый шаг заново»).
+    Прямые вызовы `step_spec()` в обход `form_spec()` (сегодня таких нет, `grep` подтверждает
+    единственный call site) остаются рабочими — `None` считает флаги сам, тем же вызовом."""
     step_type = REG_STEP_TYPES.get(step_key, "text")
     ui_type = _ui_type_for(step_key, step_type)
     label = label_for(step_key)
@@ -1378,6 +1495,19 @@ async def step_spec(step_key: str, participant_type: str | None = None,
         "kind": step_type_v2(step_key),
         "composite_group": composite_group_of(step_key),
     }
+    # Phase 30 (30-03, A2-08, задача 4): деградация/тексты/флаги для НОВОГО рендера —
+    # `spec["kind"]` (выше) сам по себе НЕ признак «рисуй по-новому» (публикуется всегда с
+    # 30-01), признак — `degraded_kind` (при выключенном мастер-тумблере ВСЕГДА `"legacy"`,
+    # см. `degrade_kind()`). `v2_texts`/`option_hints` считаются ТОЛЬКО когда реально нужны
+    # (не `"legacy"`/не `"select"` соответственно) — легаси-шаг не платит лишним походом в
+    # реестр за тексты, которые всё равно не попадут на экран.
+    resolved_flags = flags if flags is not None else await form_v2_flags(event_city)
+    degraded_kind = degrade_kind(spec["kind"], resolved_flags)
+    spec["flags"] = resolved_flags
+    spec["degraded_kind"] = degraded_kind
+    spec["v2_texts"] = await _v2_texts_for(degraded_kind, step_key, event_city)
+    if degraded_kind == "select":
+        spec["option_hints"] = await option_hints_for(step_key)
     # УАТ 10-11.09 (квик 260911-2kb, пункт 4): набор колонок-компаньонов шага — та же функция,
     # что уже синхронизирует черновик (`columns_for_step`, квик 260910-wb6), второй копии
     # правила здесь не заводим. Для резюме — три колонки разом, у всех остальных шагов —
@@ -1500,10 +1630,14 @@ async def form_spec(answers: dict, participant_type: str | None = None,
     # глобально даже для делегата города с выключенными вопросами (enabled_steps сама умеет
     # брать event_city из data, но form_spec раньше его не передавал).
     enabled = await enabled_steps({**answers, "participant_type": track, "event_city": event_city})
+    # Phase 30 (30-03, A2-08): девять тумблеров читаются ОДИН раз на всю форму, не по разу на
+    # каждый из ~43 шагов (`form_v2_flags()` — «единая точка чтения», не «читай на каждый
+    # шаг заново», см. её докстринг 30-01) — экономит ~9×N походов в реестр на один запрос.
+    v2_flags = await form_v2_flags(event_city)
     steps_out = []
     done = 0
     for step_key in enabled:
-        spec = await step_spec(step_key, participant_type, event_city)
+        spec = await step_spec(step_key, participant_type, event_city, flags=v2_flags)
         column = spec["column"]
         # УАТ 10-11.09 (пункт 4): «отвечен» решает НАБОР колонок шага, не одна главная —
         # резюме файлом уходит в resume_file_id/resume_file_name, а не в spec["column"]
