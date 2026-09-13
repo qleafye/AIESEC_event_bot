@@ -493,6 +493,7 @@ admin|callback_query|settings_list_add_start|settings_list_add:*
 admin|callback_query|settings_list_del_pick|settings_list_del:*
 admin|callback_query|settings_list_rm_go|settings_list_rm:*
 admin|callback_query|settings_list_replace_start|settings_list_replace:*
+admin|callback_query|settings_list_attr_toggle|settings_list_attr:*
 admin|callback_query|open_dashboard_settings|admin_dashboard_settings
 admin|callback_query|toggle_dashboard_block|dash_block:*
 admin|callback_query|open_miniapp_settings|admin_miniapp_settings
@@ -957,8 +958,9 @@ def test_snapshot_total_handler_count_is_292():
     # прогоном `_build_snapshot_lines()` и diff'ом с прежним 498-строчным снапшотом — ровно пять
     # новых строк, ни одна другая строка не поменялась и не переставилась.
     # Phase 30 (30-01, A2-08): +9 handlers/admin_reg_form.py; (30-07, A2-03): +11
-    # handlers/admin_lookup.py (2 message + 9 callback_query) -> 503 + 11 = 514.
-    assert len(GOLDEN_SNAPSHOT) == 514
+    # handlers/admin_lookup.py (2 message + 9 callback_query) -> 503 + 11 = 514;
+    # (30-07, задача 4): +1 admin_settings_lists.py::settings_list_attr_toggle -> 515.
+    assert len(GOLDEN_SNAPSHOT) == 515
     # (callback_query toggle_reg_form_v2/chips/lookup_search/edu_card/repeatable/limit_counter/
     # status_screen/header_settings/haptics — девять тумблеров «Анкета 2.0»), встали сразу после
     # admin_quiet_hours и перед sync_sheet: шов импортируется из хвоста

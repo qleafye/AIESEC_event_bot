@@ -30,7 +30,10 @@ from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
 
 from handlers import reg_i18n
 from handlers.registration import _advance, _sync_draft_out, router
-from reg_engine import STEP_TO_COLUMN, _LOOKUP_ENTITY_NAMES as _ENTITY_NAMES, prompt, validate_answer
+from reg_engine import (
+    STEP_TO_COLUMN, _LOOKUP_ENTITY_NAMES as _ENTITY_NAMES, lookup_other_allowed, prompt,
+    validate_answer,
+)
 from services.lookup import enqueue_merge, search_lookup
 from settings_schema import get_setting_typed
 
@@ -101,7 +104,12 @@ async def receive_lookup_text(message: types.Message, state: FSMContext, bot):
 
     entity = _ENTITY_NAMES.get(step_key, "")
     results = await search_lookup(step_key, text, limit=_LOOKUP_LIMIT)
-    other_label = (await get_setting_typed("reg_form_own_chip_text") or "").replace("{entity}", entity)
+    # Phase 30 (30-07, задача 4, A2-03): атрибут «свой вариант» списка-справочника гейтит
+    # кнопку «Другое» в чате — выключенный атрибут не показывает её вовсе (а не просто не
+    # принимает свободный текст после неё, кнопки которой нет).
+    other_label = ""
+    if await lookup_other_allowed(step_key):
+        other_label = (await get_setting_typed("reg_form_own_chip_text") or "").replace("{entity}", entity)
     await state.update_data(_lookup_results=results)
     if not results:
         empty_title = (await get_setting_typed("reg_lookup_empty_title_text") or "").replace("{query}", text)

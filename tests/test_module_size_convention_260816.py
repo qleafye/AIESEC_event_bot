@@ -282,7 +282,7 @@ KNOWN_OVERAGES: dict[str, tuple[int, str]] = {
         "роста.",
     ),
     "admin_caps.py": (
-        904,
+        905,
         "Phase 28 (28-08, SU-08, задача 1): +8 строк — capability-записи нового экрана "
         "«🧮 Правила балла» (admin_reg_scoring/scoring_toggle:*/scoring_limit:*/"
         "scoring_drop:*/scoring_noop, та же капа «settings», что у соседнего modcard_open); "
@@ -292,7 +292,9 @@ KNOWN_OVERAGES: dict[str, tuple[int, str]] = {
         "toggle_reg_scoring_enabled (856 -> 857, в пределах уже поднятого потолка). "
         "Phase 30 (30-07, A2-03): +3 строки — capability-записи экрана «📚 Справочники» "
         "(admin_lookup/admin_lookup:*/state:LookupAdmin:*, капа «settings», 857 -> 904 с "
-        "запасом того же порядка, что предыдущее поднятие).",
+        "запасом того же порядка, что предыдущее поднятие). "
+        "+1 строка (задача 4): capability атрибутов списка-справочника "
+        "(settings_list_attr:*, 904 -> 905).",
     ),
     "admin_moderation.py": (
         899,
