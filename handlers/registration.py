@@ -148,6 +148,9 @@ from reg_engine import (
     # (одна проверка для чата и Mini App) + merge_answers/conflicts (пофилевый LWW, D-19).
     validate_answer, apply_answer, apply_answers, merge_answers, conflicts,
     parse_age, is_allowed_resume, resume_too_large, RESUME_MAX_BYTES,
+    # Phase 30 (30-04, A2-05): «отображение прошлого ответа» (_recall_display ниже) для
+    # repeatable-колонки (mini_portfolio) — та же пара, что у листа/карточки заявки.
+    parse_repeatable, repeatable_display, step_type_v2,
     # Phase 21 (21-06, Task 3): дефолты финала / данные сводки / статус модерации / diff.
     with_defaults, summary_fields, decide_status, diff,
     # Gap closure фазы 21 (D-01): выбор трека/города — один код для тапа в боте и PATCH из веба.
@@ -334,6 +337,13 @@ async def _recall_display(step_key: str, value, lang: str = "ru", tr_map: dict |
     if isinstance(value, bool) or (isinstance(value, int) and value in (0, 1)):
         text = "Да" if value else "Нет"
         return html.escape(reg_i18n.tr_text(text, lang, tr_map or {}))
+    # Phase 30 (30-04, A2-05): repeatable-колонка (mini_portfolio) — прошлый ответ мог
+    # сохраниться уже JSON-списком блоков (delegate использовал repeatable-контрол в прошлом
+    # сезоне); показываем ТУ ЖЕ человекочитаемую строку, что лист/карточка заявки, а не сырой
+    # `[{"title": ...}]` в экране «Прошлый ответ … Оставить/Изменить».
+    if step_type_v2(step_key) == "repeatable":
+        text = repeatable_display(parse_repeatable(value))
+        return html.escape(text)
     text = await reg_i18n.display_value_for_step(step_key, str(value), lang, tr_map or {})
     return html.escape(text)
 
