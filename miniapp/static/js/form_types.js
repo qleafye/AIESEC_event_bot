@@ -27,6 +27,12 @@
 // вычислениями, что дали начальные `footerLabel`/`disabled`, второй копии условий в модуле нет.
 
 import { icon } from "./icons.js";
+// `api.js` — ДИНАМИЧЕСКИЙ импорт внутри `lookupControl` (ниже), не статический здесь: его
+// модульный верх читает `window.Telegram` немедленно при импорте (D-12), а node-подпроцессы
+// JS-сторожей (`tests/test_miniapp_form_controls_js_260911.py` и соседи) стабят только
+// `globalThis.document`, не `window` — статический импорт уронил бы КАЖДЫЙ тест `form.js`
+// (он импортирует этот модуль), даже те, что не трогают `lookup` вовсе. Экраны `screens/*.js`
+// той же причине получают `api` параметром `ctx`, а не импортом (`screens/form.js::render`).
 
 /**
  * Локальный хелпер вибрации (30-UI-SPEC.md § Motion) — единственное место в этом модуле, где
@@ -310,6 +316,130 @@ function linkCard(h, spec, value, onChange, flags) {
   };
 }
 
+// ── lookup: поиск + чипы + свой вариант (30-UI-SPEC.md § «2. lookup») ──────────────────────
+// Порядок узлов дословно из спеки: поиск → топ-8 чипов → ghost-чип «Другой {entity}» →
+// построчный список результатов → пустое состояние. Деградация — СТРОГО из `flags`
+// (`chips`/`lookup_search`), собственных правил компонент не изобретает: `chips=false`
+// прячет ряд чипов, `lookup_search=false` прячет поле поиска (чипы остаются статичным
+// списком кнопок — тот же узел `renderChips`, второй разметки не заводим). Оба `false` эта
+// ветка вообще не видит — `degrade_kind()` на сервере уже вернул `"text"`.
+
+const LOOKUP_MIN_QUERY = 2;
+const LOOKUP_DEBOUNCE_MS = 250;
+
+function lookupIconFor(spec) {
+  return spec.key === "university" ? "graduation-cap" : "map-pin";
+}
+
+function lookupControl(h, spec, value, onChange, flags) {
+  const texts = spec.v2_texts || {};
+  const showChips = !!(flags && flags.chips);
+  const showSearch = !!(flags && flags.lookup_search);
+
+  let otherAllowed = false;
+  let debounceId = null;
+
+  const searchInput = h("input", { class: "input", type: "text" });
+  searchInput.value = value || "";
+  const searchRow = h("div", { class: "pick" }, icon("search"), h("div", { class: "cv" }, searchInput));
+  const chipsBox = h("div", { class: "chips" });
+  const ghostChip = h("button", { class: "chip-pick ghost hidden", type: "button" },
+    h("span", { text: texts.own_chip || "" }));
+  const list = h("div", { class: "list" });
+  const emptyState = h("div", { class: "hidden" });
+  const ownInput = h("input", { class: "input hidden", type: "text" });
+  const blockedHint = h("p", { class: "field-error hidden" });
+
+  function selectValue(canonical) {
+    onChange(canonical);
+    searchInput.value = canonical;
+    list.replaceChildren();
+    emptyState.classList.add("hidden");
+  }
+
+  function openOwn(initialText) {
+    if (!otherAllowed) return;
+    ownInput.classList.remove("hidden");
+    ownInput.value = initialText || "";
+    ownInput.focus();
+  }
+
+  ownInput.addEventListener("input", () => onChange(ownInput.value));
+  ghostChip.addEventListener("click", () => openOwn(searchInput.value));
+
+  function renderChips(chips) {
+    chipsBox.replaceChildren();
+    if (!showChips) return;
+    for (const label of chips) {
+      const chip = h("button", { class: "chip-pick", type: "button" }, h("span", { text: label }));
+      chip.addEventListener("click", () => selectValue(label));
+      chipsBox.append(chip);
+    }
+    ghostChip.classList.toggle("hidden", !otherAllowed);
+    if (otherAllowed) chipsBox.append(ghostChip);
+  }
+
+  function renderResults(results, query) {
+    list.replaceChildren();
+    if (results.length) {
+      emptyState.classList.add("hidden");
+      for (const r of results) {
+        const row = h("button", { class: "row", type: "button" }, icon(lookupIconFor(spec)), h("span", { text: r.canonical }));
+        row.addEventListener("click", () => selectValue(r.canonical));
+        list.append(row);
+      }
+      return;
+    }
+    if (!query) { emptyState.classList.add("hidden"); return; }
+    const title = String(texts.empty_title || "").replace("{query}", query);
+    if (otherAllowed) {
+      emptyState.replaceChildren(
+        h("p", { class: "label-role", text: title }),
+        h("p", { class: "label-role", text: texts.own_option || "" }),
+      );
+      blockedHint.classList.add("hidden");
+    } else {
+      emptyState.replaceChildren(h("p", { class: "label-role", text: title }));
+      blockedHint.textContent = texts.blocked_hint || "";
+      blockedHint.classList.remove("hidden");
+    }
+    emptyState.classList.remove("hidden");
+  }
+
+  async function fetchSuggest(q) {
+    let res;
+    try {
+      const { api } = await import("./api.js");
+      res = await api(`/reg/suggest?step=${encodeURIComponent(spec.key)}&q=${encodeURIComponent(q || "")}`);
+    } catch (_) {
+      return;
+    }
+    otherAllowed = !!res.other_allowed;
+    renderChips(res.chips || []);
+    renderResults(res.results || [], q);
+  }
+
+  if (showSearch) {
+    searchInput.addEventListener("input", () => {
+      onChange(searchInput.value);
+      blockedHint.classList.add("hidden");
+      if (debounceId) clearTimeout(debounceId);
+      const q = searchInput.value.trim();
+      if (q.length < LOOKUP_MIN_QUERY) { list.replaceChildren(); emptyState.classList.add("hidden"); return; }
+      debounceId = setTimeout(() => fetchSuggest(q), LOOKUP_DEBOUNCE_MS);
+    });
+  }
+
+  fetchSuggest("");   // первичная загрузка чипов/other_allowed — не ждёт ввода делегата
+
+  const hint = texts.hint_default ? h("p", { class: "label-role", text: texts.hint_default }) : null;
+  const children = [];
+  if (showSearch) { children.push(searchRow, hint); }
+  children.push(chipsBox, list, emptyState, ownInput, blockedHint);
+
+  return { control: h("div", {}, ...children), footerLabel: null, disabled: false };
+}
+
 // ── text/phone: рестайл поля мастера (30-UI-SPEC.md § «7. text») ───────────────────────────
 // Кнопка «Поделиться номером» НЕ рисуется здесь — это отдельный, уже существующий узел
 // (`screens/form.js::shareContactButton`/`canShareContact`, реализован планом 21-11, план
@@ -346,12 +476,14 @@ export function buildV2Control(h, spec, value, onChange, flags) {
       return multiChips(h, spec, value, onChange, flags);
     case "link":
       return linkCard(h, spec, value, onChange, flags);
+    case "lookup":
+      return lookupControl(h, spec, value, onChange, flags);
     case "text":
       return textField(h, spec, value, onChange);
     default:
-      // Незнакомый/ещё не реализованный kind (lookup — план 30-03 задача 3, composite/
-      // repeatable — план 30-04) — безопасный откат к голому текстовому полю, а не исключение:
-      // делегат всё ещё может ответить, менеджер увидит проблему в логах, а не в разбитом шаге.
+      // Незнакомый/ещё не реализованный kind (composite/repeatable — план 30-04) —
+      // безопасный откат к голому текстовому полю, а не исключение: делегат всё ещё может
+      // ответить, менеджер увидит проблему в логах, а не в разбитом шаге.
       return textField(h, { ...spec, type: "text" }, value, onChange);
   }
 }
