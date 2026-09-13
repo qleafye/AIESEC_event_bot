@@ -20,11 +20,13 @@ from database.db import init_db, set_setting
 from reg_engine import (
     APP_PROJECTION,
     CHAT_PROJECTION,
+    FORM_V2_TOGGLE_KEYS,
     PENDING_PROJECTIONS,
     REG_FLOW,
     composite_group_of,
     composite_parts,
     degrade_kind,
+    form_spec,
     step_spec,
     step_type_v2,
 )
@@ -33,6 +35,13 @@ from reg_engine import (
 def _ready(tmp_path, name="reg_step_type_v2.db"):
     config.DB_PATH = str(tmp_path / name)
     asyncio.run(init_db())
+
+
+def _all_form_v2_toggles_on():
+    """Включает девять тумблеров «📝 Анкета» в реестре — `form_spec()` сам читает их из БД
+    (`form_v2_flags`), в отличие от прямых вызовов `step_spec(flags=_ALL_ON_FLAGS)` выше."""
+    for name in FORM_V2_TOGGLE_KEYS:
+        asyncio.run(set_setting(f"reg_form_{name}", "on"))
 
 REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
@@ -250,3 +259,67 @@ def test_composite_sub_specs_do_not_recurse_into_their_own_composite_field(tmp_p
     for part in spec["composite"]["parts"]:
         if part["key"] != "university":
             assert "composite" not in part, part["key"]
+
+
+# ── (5) form_spec подмешивает текущие/прежние значения в composite.parts (план 30-05, задача 0б,
+# хвост 30-04-SUMMARY.md «Composite не получает текущие/прошлые значения делегата») ─────────────
+
+def _education_step(form: dict) -> dict:
+    return next(s for s in form["steps"] if s["key"] == "education_status")
+
+
+def test_composite_parts_get_current_answers_from_form_spec(tmp_path):
+    """Делегат уже ответил на карточку в этой же сессии — `answers` несёт колонки
+    university/course/study_field, части карточки обязаны их увидеть как `part["value"]`, не
+    стартовать пустыми (30-04-SUMMARY.md Known Stubs)."""
+    _ready(tmp_path)
+    _all_form_v2_toggles_on()
+    answers = {
+        "education_status": "Да, очно", "university": "СПбГЭТУ",
+        "course": "3", "study_field": "Информатика",
+    }
+    form = asyncio.run(form_spec(answers, participant_type="full"))
+    parts_by_key = {p["key"]: p for p in _education_step(form)["composite"]["parts"]}
+    assert parts_by_key["university"]["value"] == "СПбГЭТУ"
+    assert parts_by_key["course"]["value"] == "3"
+    assert parts_by_key["study_field"]["value"] == "Информатика"
+
+
+def test_composite_parts_fall_back_to_prior_when_no_current_answer(tmp_path):
+    """Возвращенец без ответа В ЭТОЙ анкете, но с прошлым сезоном (`prior_answers_for`) —
+    части карточки получают значение из `prior`, как и обычные (не composite) шаги."""
+    _ready(tmp_path)
+    _all_form_v2_toggles_on()
+    prior = {"university": "МГУ", "course": "2", "study_field": "Экономика"}
+    form = asyncio.run(form_spec({}, participant_type="full", prior=prior))
+    parts_by_key = {p["key"]: p for p in _education_step(form)["composite"]["parts"]}
+    assert parts_by_key["university"]["value"] == "МГУ"
+    assert parts_by_key["university"]["prior"]["value"] == "МГУ"
+    assert parts_by_key["course"]["value"] == "2"
+
+
+def test_composite_parts_are_none_without_answer_or_prior(tmp_path):
+    """Совсем новый делегат — части карточки НЕ подставляют случайное значение, `value` явно
+    `None` (тот же контракт, что у верхнего уровня спеки, не пустая строка молчаливо)."""
+    _ready(tmp_path)
+    _all_form_v2_toggles_on()
+    form = asyncio.run(form_spec({}, participant_type="full"))
+    parts_by_key = {p["key"]: p for p in _education_step(form)["composite"]["parts"]}
+    assert parts_by_key["university"]["value"] is None
+    assert parts_by_key["university"]["prior"] is None
+
+
+def test_composite_studying_flag_reflects_toggle_answer(tmp_path):
+    """`spec["composite"]["studying"]` — сервер решает «учится/не учится» по тому же реестровому
+    списку статусов (`is_studying`/`studying_statuses`), что `enabled_steps`/`apply_answers`, а
+    не хардкодит `True` (30-04-SUMMARY.md Known Stubs)."""
+    _ready(tmp_path)
+    _all_form_v2_toggles_on()
+    form_not_studying = asyncio.run(form_spec({"education_status": "Уже не учусь"}, participant_type="full"))
+    assert _education_step(form_not_studying)["composite"]["studying"] is False
+
+    form_studying = asyncio.run(form_spec({"education_status": "Да, очно"}, participant_type="full"))
+    assert _education_step(form_studying)["composite"]["studying"] is True
+
+    form_no_answer = asyncio.run(form_spec({}, participant_type="full"))
+    assert _education_step(form_no_answer)["composite"]["studying"] is True

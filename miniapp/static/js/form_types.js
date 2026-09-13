@@ -482,10 +482,12 @@ function textField(h, spec, value, onChange) {
 //
 // `onChange` карточки отдаёт наверх ОБЪЕКТ `{step_key: value, ...}` (патч НЕСКОЛЬКИХ колонок
 // одним шагом), а не скаляр, как у остальных типов — composite ЕДИНСТВЕННЫЙ тип, отвечающий
-// сразу за четыре колонки одной карточкой. Сегодняшний `screens/form.js::goNext()` шлёт PATCH
-// одной колонки (`patch[column] = liveValue`) — многоколоночный commit этой карточки ждёт
-// отдельного плана, который довяжет `goNext()` к объектному `onChange` (см. SUMMARY плана
-// 30-04, раздел «Known Stubs»); здесь — только корректный контракт данных на будущее.
+// сразу за четыре колонки одной карточкой. `screens/form.js::goNext()` (план 30-05, задача 0б)
+// узнаёт объектный патч по `typeof === "object"` и шлёт все его колонки одним PATCH.
+//
+// `spec.composite.parts[*].value`/`.prior` и `spec.composite.studying` подмешивает
+// `reg_engine.form_spec()` (план 30-05, задача 0б) — карточка стартует с прежними ответами
+// делегата, а не всегда пустая (30-04-SUMMARY.md, «Known Stubs»).
 
 function compositeCard(h, spec, value, onChange, flags) {
   const texts = spec.v2_texts || {};
@@ -502,11 +504,11 @@ function compositeCard(h, spec, value, onChange, flags) {
 
   const state = {};
   for (const key of fieldKeys) state[key] = (partByKey[key] && partByKey[key].value) || "";
-  // Дефолт тумблера — «учится» (тот же дефолт, что у первого варианта самого вопроса); сервер
-  // сегодня не публикует текущее значение `education_status` внутрь `composite.parts` (сама
-  // карточка — новый шаг мастера, черновика с прошлым ответом на неё ещё нет ни у одного
-  // делегата). Известное ограничение — см. SUMMARY плана 30-04.
-  let studying = true;
+  // Дефолт тумблера — «учится» (тот же дефолт, что у первого варианта самого вопроса), но
+  // `spec.composite.studying` (план 30-05, задача 0б) побеждает дефолт, когда сервер уже знает
+  // прежний ответ делегата (`reg_engine.form_spec` вычисляет его через `is_studying`, единая
+  // точка правды — клиент не дублирует список «учащихся» статусов реестра).
+  let studying = comp.studying !== false;
 
   // Per-part «есть ошибка» — булев флаг, НЕ текст: клиентский пред-показ лимита длины (ниже, у
   // программы обучения) не дублирует текст ошибки сервера (`reg_engine.validate_answer`,
