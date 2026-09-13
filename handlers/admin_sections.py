@@ -86,6 +86,9 @@ SECTIONS: list[tuple[str, str, list[tuple]]] = [
         ("toggle", "toggle_reg_form_status_screen"),
         ("toggle", "toggle_reg_form_header_settings"),
         ("toggle", "toggle_reg_form_haptics"),
+        # Phase 30 (30-07, A2-03): экран «📚 Справочники» — очередь «Другое → влить как
+        # псевдоним» и закрепление чипов, необязательная тонкая настройка (30-CONTEXT.md).
+        ("screen", "admin_lookup", "📚 Справочники"),
         ("group", "reg"),
         ("group", "party"),
         ("group", "consent"),
@@ -523,3 +526,7 @@ from handlers import admin_reg_form  # noqa: E402,F401
 # тот же хвостовой приём; `handlers.admin_settings_audit` читает `settings_return_screen` отсюда
 # ленивым импортом внутри своих хендлеров (обратный порядок загрузки не важен).
 from handlers import admin_settings_audit  # noqa: E402,F401
+
+# Phase 30 (30-07, A2-03): шов «📚 Справочники» — импорт СРАЗУ ПОСЛЕ admin_settings_audit, тот
+# же хвостовой приём (golden snapshot: tests/test_refac_snapshot_260816.py).
+from handlers import admin_lookup  # noqa: E402,F401
