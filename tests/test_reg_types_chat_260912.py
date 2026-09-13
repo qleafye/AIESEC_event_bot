@@ -235,6 +235,112 @@ def test_lookup_other_button_then_free_text_enqueues_merge(tmp_path):
     assert rows and rows[0][0] == "Мой институт мечты" and rows[0][1] == "new"
 
 
+# ── lookup: атрибуты списка «чипы»/«поиск» сверх глобальных тумблеров (30-08, задача A) ──────
+
+def test_lookup_chips_enabled_shows_pinned_chip_as_initial_keyboard(tmp_path):
+    """Глобальный `reg_form_chips=on` + атрибут списка по умолчанию `"on"` — закреплённый чип
+    приходит СРАЗУ инлайн-кнопкой на самом вопросе шага, тапнуть можно не печатая ни буквы."""
+    from services.lookup import pin_chip
+
+    _use_tmp_db(tmp_path)
+    uid = UID + 6
+
+    async def go():
+        await _enable_v2(reg_form_chips="on")
+        await _insert_lookup("university", "Тестовый Чип-ВУЗ 260912", "чипвуз260912")
+        await pin_chip("university", "Тестовый Чип-ВУЗ 260912", True)
+        state = _state(uid)
+        await state.update_data(participant_type="full")
+        ask_msg = _FakeMessage(uid)
+        await reg._ask_step("university", ask_msg, state, 1, 5)
+        kbs = _kbs(ask_msg)
+        assert kbs, "чип обязан прийти сразу с вопросом шага, не после первого сообщения"
+        callback = _FakeCallback(_callback_datas(kbs[0])[0], uid)
+        await reg_types_lookup.reglookup_pick(callback, state, bot=None)
+        return await state.get_data()
+
+    data = asyncio.run(go())
+    assert data.get("university") == "Тестовый Чип-ВУЗ 260912"
+
+
+def test_lookup_chips_list_attribute_off_hides_initial_keyboard_even_if_global_on(tmp_path):
+    """Правило задачи A: глобальный `on` -> решает атрибут СПИСКА — выключенный
+    `university_options_chips_enabled` прячет чипы даже при включённом `reg_form_chips`."""
+    from services.lookup import pin_chip
+
+    _use_tmp_db(tmp_path)
+    uid = UID + 7
+
+    async def go():
+        await _enable_v2(reg_form_chips="on", university_options_chips_enabled="off")
+        await _insert_lookup("university", "Тестовый Чип-ВУЗ Скрыт 260912", "чипвузскрыт260912")
+        await pin_chip("university", "Тестовый Чип-ВУЗ Скрыт 260912", True)
+        state = _state(uid)
+        await state.update_data(participant_type="full")
+        ask_msg = _FakeMessage(uid)
+        await reg._ask_step("university", ask_msg, state, 1, 5)
+        return ask_msg
+
+    msg = asyncio.run(go())
+    assert not _kbs(msg), "атрибут списка выключен — чипов на вопросе шага быть не должно"
+
+
+def test_lookup_search_list_attribute_off_reprompts_instead_of_searching(tmp_path):
+    """Атрибут списка `..._search_enabled=off` — свободный текст НЕ уходит в `search_lookup`
+    (проверяется по отсутствию клавиатуры результатов поиска), делегата переспрашивают."""
+    _use_tmp_db(tmp_path)
+    uid = UID + 8
+
+    async def go():
+        await _enable_v2(
+            reg_form_chips="on", reg_form_lookup_search="on",
+            university_options_search_enabled="off",
+        )
+        await _insert_lookup("university", "Тестовый Поиск Выкл 260912", "поисквыкл260912")
+        state = _state(uid)
+        await state.update_data(participant_type="full")
+        await reg._ask_step("university", _FakeMessage(uid), state, 1, 5)
+        text_msg = _FakeMessage(uid, text="поисквыкл260912")
+        await reg_types_lookup.receive_lookup_text(text_msg, state, bot=None)
+        return text_msg, await state.get_data()
+
+    msg, data = asyncio.run(go())
+    assert not _kbs(msg), "поиск выключен атрибутом списка — результатов-кнопок быть не должно"
+    assert "university" not in data
+
+
+def test_lookup_both_list_attributes_off_accepts_raw_text_directly(tmp_path):
+    """30-08 задача A: чипы и поиск одновременно выключены атрибутами списка (при включённых
+    глобальных тумблерах) — шаг ведёт себя как обычное текстовое поле, значение пишется сразу,
+    без очереди слияния (в отличие от ветки «Другое»)."""
+    _use_tmp_db(tmp_path)
+    uid = UID + 9
+
+    async def go():
+        await _enable_v2(
+            reg_form_chips="on", reg_form_lookup_search="on",
+            university_options_chips_enabled="off", university_options_search_enabled="off",
+        )
+        state = _state(uid)
+        await state.update_data(participant_type="full")
+        await reg._ask_step("university", _FakeMessage(uid), state, 1, 5)
+        text_msg = _FakeMessage(uid, text="Мой вольный ответ про вуз")
+        await reg_types_lookup.receive_lookup_text(text_msg, state, bot=None)
+        data = await state.get_data()
+
+        from database.db import _connect
+        async with _connect() as conn:
+            cursor = await conn.execute(
+                "SELECT COUNT(*) FROM lookup_merge_queue WHERE kind = 'university'"
+            )
+            (merge_count,) = await cursor.fetchone()
+        return data, merge_count
+
+    data, merge_count = asyncio.run(go())
+    assert data.get("university") == "Мой вольный ответ про вуз"
+    assert merge_count == 0, "оба атрибута выключены — это обычное текстовое поле, не очередь"
+
+
 # ── composite (задача 2, A2-04) ──────────────────────────────────────────────────────────────
 
 def _fill_education_group(state, studying_label="Да, в ВУЗе или колледже"):
