@@ -40,7 +40,7 @@ DEFAULT_CEILING = 850
 # edit the number + reason together, in the same commit as the growth that needs it.
 KNOWN_OVERAGES: dict[str, tuple[int, str]] = {
     "registration.py": (
-        2379,
+        2407,
         "+10 строк (план 30-04, задача 4, A2-05): `_recall_display` — repeatable-колонка "
         "(mini_portfolio) показывает прошлый ответ через `repeatable_display(parse_repeatable("
         "...))`, а не сырой JSON, если делегат в прошлом сезоне пользовался repeatable-"
@@ -107,7 +107,12 @@ KNOWN_OVERAGES: dict[str, tuple[int, str]] = {
         "`reg_engine.py`, здесь — точки врезки; потолок поднят до фактического размера. "
         "+1 строка (квик 260912-mcj): импорт `services.timeutil.msk_now` — семья «сейчас» "
         "бота (TTL черновика, имя файла резюме) переведена на московское время; потолок "
-        "поднят до фактического размера.",
+        "поднят до фактического размера. "
+        "+28 строк (план 30-06, задача 4, A2-01/03/04/05): врезка диспетчера типов новой "
+        "анкеты в `_ask_step` (`degrade_kind`/`form_v2_flags` -> lookup/composite/repeatable "
+        "уходят в свой шов ленивым импортом, `reg_types_composite.maybe_show_recap` проверяется "
+        "первой) + три импорта швов в хвосте файла; сами ветки — в handlers/reg_types_*.py, "
+        "потолок поднят до фактического размера.",
     ),
     "admin_gamification.py": (
         2020,

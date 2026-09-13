@@ -151,6 +151,9 @@ from reg_engine import (
     # Phase 30 (30-04, A2-05): «отображение прошлого ответа» (_recall_display ниже) для
     # repeatable-колонки (mini_portfolio) — та же пара, что у листа/карточки заявки.
     parse_repeatable, repeatable_display, step_type_v2,
+    # Phase 30 (30-06, A2-01): диспетчер типов новой анкеты в _ask_step — единственная точка
+    # делегирования lookup/composite/repeatable в handlers/reg_types_*.py (потолок агрегатора).
+    degrade_kind, form_v2_flags,
     # Phase 21 (21-06, Task 3): дефолты финала / данные сводки / статус модерации / diff.
     with_defaults, summary_fields, decide_status, diff,
     # Gap closure фазы 21 (D-01): выбор трека/города — один код для тапа в боте и PATCH из веба.
@@ -358,6 +361,23 @@ async def _ask_step(step_key: str, message: types.Message, state: FSMContext, st
     city_code = data.get("event_city")
     await _stamp_reg_step(step_key, message, state, data)
     p = await _progress(step, total)
+    # Phase 30 (30-06, A2-01/03/04/05): диспетчер типов новой анкеты — деградация решает, вести
+    # ли шаг через шов reg_types_*.py; сами ветки живут там (CHAT_PROJECTION), не здесь.
+    v2_flags = await form_v2_flags(city_code)
+    from handlers import reg_types_composite  # ленивый шов (цикл импортов)
+    if await reg_types_composite.maybe_show_recap(
+        step_key, message, state, data, step, total, participant_type, city_code, v2_flags,
+    ):
+        return
+    v2_kind = degrade_kind(step_type_v2(step_key), v2_flags)
+    if v2_kind == "lookup":
+        from handlers import reg_types_lookup  # ленивый шов (цикл импортов)
+        await reg_types_lookup.ask_step(step_key, message, state, p, participant_type, city_code)
+        return
+    if v2_kind == "repeatable":
+        from handlers import reg_types_repeatable  # ленивый шов (цикл импортов)
+        await reg_types_repeatable.ask_step(step_key, message, state, p, participant_type, city_code)
+        return
     if step_key == "age":
         await _safe_answer(message, f"{p}{await prompt('age', participant_type, city_code)}", reply_markup=get_cancel_kb())
         await state.set_state(Registration.age)
@@ -2377,3 +2397,11 @@ from handlers import reg_resume_fork  # noqa: E402, F401
 # Phase 28 (28-06, SU-07): imported LAST — regamb:want/regamb:later handlers land at the very
 # TAIL of registration.router, golden order+filter snapshot only gets APPENDED to.
 from handlers import reg_ambassador  # noqa: E402, F401
+
+# Phase 30 (30-06, A2-01/03/04/05): imported AFTER reg_ambassador — reglookup:*/regedu:*/
+# regrepeat:* handlers land at the very TAIL of registration.router, golden order+filter
+# snapshot only gets APPENDED to. `_ask_step` above calls into these three lazily (dispatcher),
+# the import here only registers their message/callback_query handlers on the shared router.
+from handlers import reg_types_lookup  # noqa: E402, F401
+from handlers import reg_types_composite  # noqa: E402, F401
+from handlers import reg_types_repeatable  # noqa: E402, F401
