@@ -8,10 +8,14 @@
 Паритет проверяется по ЯВНОЙ таблице (`reg_engine.CHAT_PROJECTION`/`APP_PROJECTION`), не по
 grep произвольного токена — импорт чат-модуля идёт через `importlib.import_module` (реальная
 проверка «модуль существует и импортируется без ошибок»), а не текстовый поиск имени."""
+import asyncio
 import importlib
 import os
 
 import pytest
+
+from config import config
+from database.db import init_db, set_setting
 
 from reg_engine import (
     APP_PROJECTION,
@@ -19,9 +23,16 @@ from reg_engine import (
     PENDING_PROJECTIONS,
     REG_FLOW,
     composite_group_of,
+    composite_parts,
     degrade_kind,
+    step_spec,
     step_type_v2,
 )
+
+
+def _ready(tmp_path, name="reg_step_type_v2.db"):
+    config.DB_PATH = str(tmp_path / name)
+    asyncio.run(init_db())
 
 REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
@@ -184,3 +195,58 @@ def test_pending_projections_is_empty_only_when_every_module_and_case_actually_e
             importlib.import_module(chat_module)
             app_path = os.path.join(REPO_ROOT, *APP_PROJECTION[kind].split("/"))
             assert os.path.isfile(app_path)
+
+
+# ── (4) composite «Образование»: карточка из включённых частей (30-04, задача 2/4, A2-04) ──
+
+_ALL_ON_FLAGS = {
+    "v2_enabled": True, "chips": True, "lookup_search": True, "edu_card": True,
+    "repeatable": True, "limit_counter": True, "status_screen": True,
+    "header_settings": True, "haptics": True,
+}
+
+
+def test_composite_parts_with_only_toggle_enabled_gives_single_part_card(tmp_path):
+    """30-CONTEXT.md реш. 2: «карточка всегда, из включённых частей» — событие, у которого
+    включён только вопрос «Учишься сейчас?», получает КАРТОЧКУ из одной части, а не откат к
+    одиночному старому шагу (не `degrade_kind` -> `"legacy"`, а composite с `len(parts) == 1`)."""
+    _ready(tmp_path)
+    asyncio.run(set_setting("reg_q_university", "off"))
+    asyncio.run(set_setting("reg_q_course", "off"))
+    asyncio.run(set_setting("reg_q_study_field", "off"))
+
+    parts = asyncio.run(composite_parts("education"))
+    assert parts == ["education_status"]
+
+    spec = asyncio.run(step_spec("education_status", None, None, flags=_ALL_ON_FLAGS))
+    assert spec["degraded_kind"] == "composite"
+    assert spec["composite"]["parts"][0]["key"] == "education_status"
+    assert len(spec["composite"]["parts"]) == 1
+
+
+def test_composite_parts_with_all_four_toggles_on_gives_full_card_in_reg_flow_order(tmp_path):
+    _ready(tmp_path)
+    parts = asyncio.run(composite_parts("education"))
+    assert parts == ["education_status", "course", "university", "study_field"]
+
+
+def test_composite_sub_spec_university_keeps_its_own_lookup_kind(tmp_path):
+    """ВУЗ состоит и в группе (`composite_group_of`), и в `_STEP_TYPE_V2_OVERRIDES` — карточка
+    не разваливается, деградирует только внутренний контрол (30-UI-SPEC.md §3)."""
+    _ready(tmp_path)
+    spec = asyncio.run(step_spec("education_status", None, None, flags=_ALL_ON_FLAGS))
+    parts_by_key = {p["key"]: p for p in spec["composite"]["parts"]}
+    assert parts_by_key["university"]["kind"] == "lookup"
+    assert parts_by_key["university"]["degraded_kind"] == "lookup"
+    assert "composite" not in parts_by_key["university"]
+
+
+def test_composite_sub_specs_do_not_recurse_into_their_own_composite_field(tmp_path):
+    """Защита от бесконечной рекурсии (`step_spec(_in_composite=True)`, docstring reg_engine.py)
+    — course/study_field/education_status сами имеют `kind == "composite"`, но их под-спеки
+    внутри карточки НЕ несут собственный `spec["composite"]`."""
+    _ready(tmp_path)
+    spec = asyncio.run(step_spec("education_status", None, None, flags=_ALL_ON_FLAGS))
+    for part in spec["composite"]["parts"]:
+        if part["key"] != "university":
+            assert "composite" not in part, part["key"]
