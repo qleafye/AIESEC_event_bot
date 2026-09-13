@@ -36,6 +36,7 @@ from reg_engine import (  # noqa: F401
     REG_FLOW, _is_party_track, SHORT_TRACK, _is_short_track,
     REG_DEFAULTS, _is_step_enabled, _is_module_enabled,
     STEP_TO_COLUMN, REG_STEP_TYPES, is_step_enabled_for_track,
+    parse_repeatable, repeatable_display,
 )
 from cities import cities_module_on, normalize_city, is_default_city, city_tab_base, tab_suffix, get_setting_for_city, per_city_key
 from keyboards.builders import get_main_menu_kb
@@ -244,7 +245,12 @@ SHEET_COLUMNS = [
     # Phase 28 (28-01, SU-04, СкиллАп 5) — развилка резюме R2b/R2c, свои gate-тумблеры.
     ("Резюме (ссылка на профиль)", "reg_q_resume_link", lambda d: d.get("resume_link") or "-"),
     ("Проекты", "reg_q_mini_projects", lambda d: d.get("mini_projects") or "-"),
-    ("Портфолио", "reg_q_mini_portfolio", lambda d: d.get("mini_portfolio") or "-"),
+    # Phase 30 (30-04, A2-05): mini_portfolio хранится в двух форматах (JSON-список блоков
+    # `{"title","description"}` ИЛИ легаси-свободный текст) — `parse_repeatable` разбирает
+    # ОБА, `repeatable_display` склеивает их в «Название — описание; …» ОДИНАКОВО что для
+    # старой строки, что для новой. Единственная точка форматирования: лист (`_build_sheet_row`)
+    # и карточка менеджера (`_sheet_value_map`) читают эту же лямбду, второй не заводим.
+    ("Портфолио", "reg_q_mini_portfolio", lambda d: repeatable_display(parse_repeatable(d.get("mini_portfolio"))) or "-"),
     ("Направление развития", "reg_q_mini_direction", lambda d: d.get("mini_direction") or "-"),
     ("Кейс-чемпионат", "reg_q_case_optin", lambda d: d.get("case_optin") or "-"),
     ("Email", "reg_q_email", lambda d: d.get("email") or "-"),

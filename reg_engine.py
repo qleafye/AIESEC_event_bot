@@ -30,6 +30,7 @@ Phase 27 (27-04, LANG-06): к разрешённым импортам «наве
 ядро — золотые снимки (`tests/test_reg_engine_parity.py`, `tests/test_refac_snapshot_260816.py`)
 эту фазу не видят вообще.
 """
+import json
 import re
 from datetime import datetime
 from urllib.parse import urlparse
@@ -1160,6 +1161,102 @@ def step_type_v2(step_key: str) -> str:
     return "text"
 
 
+# ── repeatable: формат хранения + двуформатное чтение (Phase 30, 30-04, A2-05) ──────────────
+# Владелец 12.09 (30-CONTEXT.md § «Решения по итогам 30-RESEARCH.md», п. 1) зафиксировал формат
+# блока `{"title": …, "description": …}` — JSON-список в ТОЙ ЖЕ колонке (`mini_portfolio`), без
+# миграции данных: старый свободный текст читается как legacy и оборачивается в один блок без
+# заголовка. Единственная точка правды для ОБОИХ форматов — четыре функции ниже; ни один
+# читатель (лист/карточка заявки/сводка чата/обзор Mini App) не получает сырой JSON на глаза
+# человеку (T-30-09 threat register).
+_REPEATABLE_TITLE_MAX_LEN = 200
+# Консервативный дефолт барьера DoS (T-30-10), если вызывающий (async-контекст) не передал
+# реальный `await repeatable_max(step_key)` в `validate_answer` — второй барьер не должен
+# исчезать только потому, что кто-то забыл прокинуть лимит из реестра (тот же приём, каким
+# `_DEFAULT_MULTI_LIMIT_ERROR_TEXT` подстраховывает multi-лимит).
+_REPEATABLE_MAX_FALLBACK = 20
+
+
+def _normalize_repeatable_item(item) -> dict:
+    """Один блок к каноническому виду `{"title": str, "description": str}` — не-словарь (битый
+    JSON-элемент/старый мусор) считается блоком без заголовка, тот же приём, что и legacy-текст
+    целиком ниже."""
+    if isinstance(item, dict):
+        return {
+            "title": str(item.get("title") or ""),
+            "description": str(item.get("description") or ""),
+        }
+    return {"title": "", "description": str(item)}
+
+
+def parse_repeatable(raw) -> list[dict]:
+    """Разбор ОБОИХ форматов колонки `mini_portfolio` (контракт 30-04-PLAN.md `<interfaces>`):
+    JSON-список -> список блоков как есть; НЕ JSON-список (в т.ч. битый JSON, обычный старый
+    текст делегата) -> один блок без заголовка (`{"title": "", "description": raw}`); пусто/`-`
+    -> пустой список. `raw` может прийти уже готовым списком (Mini App шлёт `onChange` массивом
+    объектов, `validate_answer` ниже пропускает его сюда же, не через `json.loads`) — второй
+    ветки разбора для этого случая не заводим, просто нормализуем элементы."""
+    if isinstance(raw, list):
+        return [_normalize_repeatable_item(item) for item in raw]
+    text = str(raw or "").strip()
+    if not text or text == "-":
+        return []
+    try:
+        parsed = json.loads(text)
+    except (ValueError, TypeError):
+        parsed = None
+    if isinstance(parsed, list):
+        return [_normalize_repeatable_item(item) for item in parsed]
+    # Legacy: свободный текст ДО этой фазы (или ответ из чата, план 30-06, который присылает
+    # голую строку) — один блок без заголовка, без миграции данных (30-CONTEXT.md).
+    return [{"title": "", "description": text}]
+
+
+def dump_repeatable(items: list[dict]) -> str:
+    """Единственная точка сериализации (контракт `<interfaces>`) — JSON-список, кириллица не
+    экранируется (`ensure_ascii=False`, читаемость сырой колонки в БД/логах). Пустой список ->
+    `"[]"` (не `"-"`) — `parse_repeatable("[]")` даёт обратно пустой список, круглая совместимость
+    важнее сохранения старого литерала прочерка для НОВОГО формата (прочерк остаётся только у
+    легаси-пути, `validate_answer` ниже)."""
+    return json.dumps([_normalize_repeatable_item(item) for item in (items or [])], ensure_ascii=False)
+
+
+def repeatable_display(items: list[dict]) -> str:
+    """Человекочитаемая строка для листа Гугл и карточки заявки менеджера (30-UI-SPEC.md §6):
+    «Название — описание; Название — описание» — разделитель «;», та же конвенция, что
+    `handlers/admin_settings_lists.py::split_list_items` (ловушка Enter=send в Телеграме).
+    Блок без описания не роняется (title-only строка); блок без заголовка отдаёт голое
+    описание — это ЛЕГАСИ-БЛОК (свободный текст до этой фазы), тот же текст, что видел
+    менеджер до плана 30-04."""
+    parts = []
+    for item in items or []:
+        title = str((item or {}).get("title") or "").strip()
+        description = str((item or {}).get("description") or "").strip()
+        if title and description:
+            parts.append(f"{title} — {description}")
+        elif title:
+            parts.append(title)
+        elif description:
+            parts.append(description)
+    return "; ".join(parts)
+
+
+async def repeatable_max(step_key: str) -> int:
+    """Максимум блоков (контракт `<interfaces>`) — ЧИСЛО в реестре (`reg_repeatable_max_<step>`),
+    не тумблер (30-CONTEXT.md A2-05). В отличие от `multi_max` (дефолт `None` = без лимита)
+    здесь дефолт ОБЯЗАН быть конкретным числом (`SETTINGS_SCHEMA["default"]`) — «без лимита» на
+    повторяемый JSON-список делегата открыл бы T-30-10 (DoS бесконечными блоками), а не просто
+    менял бы визуал."""
+    return await get_setting_typed(f"reg_repeatable_max_{step_key}")
+
+
+# Обратная карта «колонка -> это repeatable-формат» — считается из `step_type_v2()`, а не
+# хардкодит имя `mini_portfolio` литералом: второй repeatable-шаг будущей фазы подхватится
+# сюда автоматически, без правки мест чтения ниже (`summary_fields`/`_published_value`).
+_REPEATABLE_COLUMNS: set[str] = {
+    STEP_TO_COLUMN[step_key] for step_key, _sk, _t in REG_FLOW if step_type_v2(step_key) == "repeatable"
+}
+
+
 # Phase 30 (30-01, A2-08): девять тумблеров группы «📝 Анкета» — имена без префикса `reg_form_`
 # (сам префикс добавляет `form_v2_flags` при чтении реестра), порядок — как в артборде 13
 # (мастер первым). Единственное место, откуда обе поверхности (Mini App/чат) читают набор имён —
@@ -1591,7 +1688,15 @@ def _published_value(column: str, value):
     (`screens/form.js::stepAnswered`) нужен именно этот признак — набор `spec.columns` не
     меняется, а PATCH с такой колонкой всё равно поймает `400 bad_field`
     (`_COLUMN_TO_STEP` её не знает, см. квик 260911-6i9 пункт 3), поэтому признак физически не
-    может доехать обратно до БД."""
+    может доехать обратно до БД.
+
+    Phase 30 (30-04, A2-05): `_REPEATABLE_COLUMNS` публикуется УЖЕ РАЗОБРАННЫМ списком
+    (`parse_repeatable`) — единственная точка чтения формата, второй копии правила «не JSON ->
+    legacy» на клиенте нет (30-CONTEXT.md п.1). Проверка стоит РАНЬШЕ `_OPAQUE_COLUMNS`:
+    множества не пересекаются (repeatable-колонка никогда не опаковая), порядок значения не
+    имеет, но так читается как «сначала спрашиваем про формат, потом про опаковость»."""
+    if column in _REPEATABLE_COLUMNS:
+        return parse_repeatable(value)
     if column not in _OPAQUE_COLUMNS:
         return value
     return True if value not in (None, "", "-") else None
@@ -1652,7 +1757,15 @@ async def form_spec(answers: dict, participant_type: str | None = None,
         has_answer = any(v not in (None, "", "-") for v in raw_values.values())
         prior_value = prior.get(step_key)
         if prior_value not in (None, "", "-"):
-            spec["prior"] = {"value": prior_value, "display": _display_value(prior_value)}
+            # Phase 30 (30-04, A2-05): «отображение прошлого ответа» для repeatable-колонки —
+            # ТА ЖЕ пара функций, что у листа/карточки заявки (repeatable_display+parse_
+            # repeatable), не generic `_display_value` (который просто str()-ит значение и
+            # показал бы делегату сырой JSON прошлого сезона).
+            prior_display = (
+                repeatable_display(parse_repeatable(prior_value)) if column in _REPEATABLE_COLUMNS
+                else _display_value(prior_value)
+            )
+            spec["prior"] = {"value": prior_value, "display": prior_display}
         else:
             spec["prior"] = None
         if has_answer:
@@ -2035,7 +2148,7 @@ _DEFAULT_MULTI_LIMIT_ERROR_TEXT = "Можно выбрать не больше {
 def validate_answer(
     step_key: str, raw, *, participant_type: str | None = None,
     max_select: int | None = None, limit_error_text: str | None = None,
-    whitelist: list[str] | None = None,
+    whitelist: list[str] | None = None, repeatable_max_items: int | None = None,
 ) -> tuple:
     """Единая точка проверки ответа — и для текста из чата бота, и (план 21-10) для JSON из
     Mini App (T-21-05). Возвращает `(value, error_text)`; `error_text is None` значит `value`
@@ -2062,7 +2175,19 @@ def validate_answer(
     ТОЛЬКО к шагу `resume_link` (единая проверка ссылки — `validate_resume_link`, тот же приём
     keyword-only-с-безопасным-дефолтом, что `max_select`/`limit_error_text` выше). При `None`
     ссылка проверяется только на схему `http(s)://` — домен ни с чем не сверяется (пустой
-    вайтлист), `VALIDATION_GOLDEN` не двигается, т.к. `resume_link` в нём не участвует."""
+    вайтлист), `VALIDATION_GOLDEN` не двигается, т.к. `resume_link` в нём не участвует.
+
+    `repeatable_max_items` (Phase 30, 30-04, A2-05, T-30-09/T-30-10) — НОВЫЙ keyword-only
+    параметр, тот же приём, что `max_select`/`limit_error_text`: вызывающий (async-контекст,
+    Mini App PATCH/чат) резолвит `await repeatable_max(step_key)` сам и передаёт сюда; при
+    `None` действует консервативный `_REPEATABLE_MAX_FALLBACK` (второй барьер DoS не должен
+    исчезать только потому, что вызывающий забыл его прокинуть). Работает ТОЛЬКО для шагов
+    `step_type_v2(step_key) == "repeatable"` — сегодня это `mini_portfolio`. Raw может прийти
+    ЛИБО списком объектов (Mini App шлёт `onChange` уже массивом, `<interfaces>` 30-04-PLAN.md),
+    ЛИБО голой строкой (чат бота/легаси-текст) — обе формы идут через `parse_repeatable`, ветка
+    ниже НЕ дублирует его правило «не JSON -> legacy» (T-30-09: клиент не может подменить формат
+    колонки произвольным JSON — сервер сам собирает итоговую строку через `dump_repeatable` из
+    уже нормализованных блоков, не сохраняет присланный текст как есть)."""
     if raw is None and step_key in _NULL_SKIP_STEPS:
         raw = "Пропустить"
     if max_select is not None and REG_STEP_TYPES.get(step_key) == "multi":
@@ -2070,6 +2195,24 @@ def validate_answer(
         if len(chosen) > max_select:
             text = limit_error_text or _DEFAULT_MULTI_LIMIT_ERROR_TEXT
             return None, text.replace("{max}", str(max_select))
+    # Phase 30 (30-04, A2-05): ветка входит ТОЛЬКО когда `raw` уже пришёл списком (Mini App
+    # repeatable-контрол шлёт `onChange` массивом объектов, form_types.js докстринг) — голая
+    # строка (сегодняшний бот, `handlers/reg_extra_steps.py::process_mini_portfolio`, ИЛИ
+    # легаси-Mini App при выключенном `reg_form_repeatable`) идёт СТАРЫМ путём ниже
+    # (`_SKIP_TEXT_ERRORS["mini_portfolio"]`) БЕЗ единого изменения байта — иначе включение
+    # этого плана само по себе начало бы JSON-оборачивать текущий свободный ответ делегата,
+    # хотя ни один тумблер ещё не включён (инвариант «выключенный v2 = поведение прежнее»).
+    if step_type_v2(step_key) == "repeatable" and isinstance(raw, list):
+        items = parse_repeatable(raw)
+        limit = repeatable_max_items if repeatable_max_items is not None else _REPEATABLE_MAX_FALLBACK
+        if len(items) > limit:
+            return None, f"Слишком много блоков (максимум {limit})."
+        for item in items:
+            if len(item["title"]) > _REPEATABLE_TITLE_MAX_LEN:
+                return None, f"Слишком длинное название (максимум {_REPEATABLE_TITLE_MAX_LEN} символов)."
+            if len(item["description"]) > MAX_LEN_DEFAULT:
+                return None, f"Слишком длинное описание (максимум {MAX_LEN_DEFAULT} символов)."
+        return (dump_repeatable(items) if items else "-"), None
     if step_key == "resume_link":
         url, _verified, error = validate_resume_link(raw, whitelist)
         value = url
@@ -2257,9 +2400,21 @@ def summary_fields(answers: dict) -> list:
     """QW-01: данные сводки анкеты БЕЗ разметки (T-21-03 — HTML собирает вызывающий, не
     движок). Перенос дословный из handlers/registration.py::_build_summary — тот же список
     полей в том же порядке, то же условие фильтрации пустых значений, то же условие резюме
-    (файл побеждает текст)."""
+    (файл побеждает текст).
+
+    Phase 30 (30-04, A2-05): repeatable-колонка (`mini_portfolio`) — «сводка анкеты в чате»
+    показывает её ЧЕЛОВЕКУ (QW-01 confirm-экран перед отправкой), поэтому идёт через
+    `repeatable_display(parse_repeatable(...))`, ту же пару функций, что лист/карточка заявки —
+    без этого делегат увидел бы в подтверждении сырой JSON-список своих блоков."""
     answers = answers or {}
-    fields = [(label, answers.get(column)) for label, column in _SUMMARY_FIELD_LABELS]
+    fields = [
+        (
+            label,
+            repeatable_display(parse_repeatable(answers.get(column)))
+            if column in _REPEATABLE_COLUMNS else answers.get(column),
+        )
+        for label, column in _SUMMARY_FIELD_LABELS
+    ]
     fields.append(("Работа", "Да" if answers.get("work_status") else "Нет"))
     fields.append(("Амбассадор", "Да" if answers.get("is_ambassador_candidate") else None))
     out = [(label, value) for label, value in fields if not (value is None or str(value) == "")]
