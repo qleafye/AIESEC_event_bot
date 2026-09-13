@@ -1,70 +1,2756 @@
 {
   "meta": {
-    "source_query": "офлайн-фолбэк: города бота (config.EVENT_CITIES) + SELECT_CONFIG['city'] — лицензия arbaev/russia-cities не подтверждена (см. data/lookup/README.md)",
+    "source_query": "SELECT ?item ?itemLabel ?itemAltLabel (MAX(?pop) AS ?maxpop) WHERE {\n  ?item wdt:P31 wd:Q7930989 .\n  ?item wdt:P1082 ?pop .\n  FILTER EXISTS { ?item rdfs:label ?ruLabel . FILTER(LANG(?ruLabel) = \"ru\") }\n  SERVICE wikibase:label { bd:serviceParam wikibase:language \"ru,en\". }\n}\nGROUP BY ?item ?itemLabel ?itemAltLabel\nHAVING (MAX(?pop) >= 50000)",
     "count_base": 0,
-    "count_closure": 0,
+    "count_closure": 323,
     "excluded_dissolved": 0,
-    "fetched_at": "2026-09-13 01:01:08"
+    "fetched_at": "2026-09-13 09:39:41",
+    "curated": true,
+    "license": "CC0 (Wikidata)"
   },
   "items": [
     {
-      "canonical": "Москва",
-      "aliases": [],
-      "source": "bot_cities_fallback",
+      "canonical": "Азов",
+      "aliases": [
+        "Азак",
+        "Азо́в",
+        "Тана"
+      ],
+      "source": "wikidata_curated",
       "dissolved": false
     },
     {
-      "canonical": "Санкт-Петербург",
-      "aliases": [],
-      "source": "bot_cities_fallback",
+      "canonical": "Александров",
+      "aliases": [
+        "Алекса́ндров"
+      ],
+      "source": "wikidata_curated",
       "dissolved": false
     },
     {
-      "canonical": "Тюмень",
-      "aliases": [],
-      "source": "bot_cities_fallback",
+      "canonical": "Алексин",
+      "aliases": [
+        "Але́ксин"
+      ],
+      "source": "wikidata_curated",
       "dissolved": false
     },
     {
-      "canonical": "Москва и МО",
-      "aliases": [],
-      "source": "bot_cities_fallback",
+      "canonical": "Альметьевск",
+      "aliases": [
+        "Альме́тьевск"
+      ],
+      "source": "wikidata_curated",
       "dissolved": false
     },
     {
-      "canonical": "Новосибирск",
-      "aliases": [],
-      "source": "bot_cities_fallback",
+      "canonical": "Анапа",
+      "aliases": [
+        "Горгиппия",
+        "Синдика",
+        "Эвдусия"
+      ],
+      "source": "wikidata_curated",
       "dissolved": false
     },
     {
-      "canonical": "Екатеринбург",
+      "canonical": "Ангарск",
       "aliases": [],
-      "source": "bot_cities_fallback",
+      "source": "wikidata_curated",
+      "dissolved": false
+    },
+    {
+      "canonical": "Анжеро-Судженск",
+      "aliases": [
+        "Анже́ро-Су́дженск",
+        "Анжерка",
+        "Анжеро-Судженские копи"
+      ],
+      "source": "wikidata_curated",
+      "dissolved": false
+    },
+    {
+      "canonical": "Арзамас",
+      "aliases": [
+        "Арзама́с"
+      ],
+      "source": "wikidata_curated",
+      "dissolved": false
+    },
+    {
+      "canonical": "Армавир",
+      "aliases": [
+        "Армави́р (Россия)",
+        "Армавир (Россия)"
+      ],
+      "source": "wikidata_curated",
+      "dissolved": false
+    },
+    {
+      "canonical": "Артём",
+      "aliases": [
+        "Артём (город)",
+        "Г. Артем"
+      ],
+      "source": "wikidata_curated",
+      "dissolved": false
+    },
+    {
+      "canonical": "Архангельск",
+      "aliases": [
+        "Новохолмогоры"
+      ],
+      "source": "wikidata_curated",
+      "dissolved": false
+    },
+    {
+      "canonical": "Асбест",
+      "aliases": [
+        "Асбе́ст"
+      ],
+      "source": "wikidata_curated",
+      "dissolved": false
+    },
+    {
+      "canonical": "Астана",
+      "aliases": [
+        "Акмола",
+        "Акмолинск",
+        "Нур-Султан",
+        "Целиноград"
+      ],
+      "source": "wikidata_curated",
+      "dissolved": false
+    },
+    {
+      "canonical": "Астрахань",
+      "aliases": [
+        "Astracan"
+      ],
+      "source": "wikidata_curated",
+      "dissolved": false
+    },
+    {
+      "canonical": "Ачинск",
+      "aliases": [
+        "А́чинск"
+      ],
+      "source": "wikidata_curated",
+      "dissolved": false
+    },
+    {
+      "canonical": "Балаково",
+      "aliases": [],
+      "source": "wikidata_curated",
+      "dissolved": false
+    },
+    {
+      "canonical": "Балашиха",
+      "aliases": [
+        "Балаши́ха"
+      ],
+      "source": "wikidata_curated",
+      "dissolved": false
+    },
+    {
+      "canonical": "Балашов",
+      "aliases": [
+        "Балашо́в"
+      ],
+      "source": "wikidata_curated",
+      "dissolved": false
+    },
+    {
+      "canonical": "Барнаул",
+      "aliases": [],
+      "source": "wikidata_curated",
+      "dissolved": false
+    },
+    {
+      "canonical": "Батайск",
+      "aliases": [
+        "Бата́йск"
+      ],
+      "source": "wikidata_curated",
+      "dissolved": false
+    },
+    {
+      "canonical": "Бахмут",
+      "aliases": [
+        "Артемовск",
+        "Артёмовск"
+      ],
+      "source": "wikidata_curated",
+      "dissolved": false
+    },
+    {
+      "canonical": "Белгород",
+      "aliases": [],
+      "source": "wikidata_curated",
+      "dissolved": false
+    },
+    {
+      "canonical": "Белово",
+      "aliases": [],
+      "source": "wikidata_curated",
+      "dissolved": false
+    },
+    {
+      "canonical": "Белогорск",
+      "aliases": [
+        "Белогорск (Амурская область)"
+      ],
+      "source": "wikidata_curated",
+      "dissolved": false
+    },
+    {
+      "canonical": "Белореченск",
+      "aliases": [
+        "Белоре́ченск"
+      ],
+      "source": "wikidata_curated",
+      "dissolved": false
+    },
+    {
+      "canonical": "Белхатув",
+      "aliases": [
+        "Белхатов"
+      ],
+      "source": "wikidata_curated",
+      "dissolved": false
+    },
+    {
+      "canonical": "Бердск",
+      "aliases": [
+        "Бердский острог",
+        "Бердское",
+        "Колывань"
+      ],
+      "source": "wikidata_curated",
+      "dissolved": false
+    },
+    {
+      "canonical": "Березники",
+      "aliases": [],
+      "source": "wikidata_curated",
+      "dissolved": false
+    },
+    {
+      "canonical": "Берёзовский",
+      "aliases": [
+        "Берёзовский (город",
+        "Свердловская область)"
+      ],
+      "source": "wikidata_curated",
+      "dissolved": false
+    },
+    {
+      "canonical": "Бийск",
+      "aliases": [],
+      "source": "wikidata_curated",
+      "dissolved": false
+    },
+    {
+      "canonical": "Биробиджан",
+      "aliases": [
+        "Биробиджа́н",
+        "Тихонькая",
+        "Тихонькая-Станция"
+      ],
+      "source": "wikidata_curated",
+      "dissolved": false
+    },
+    {
+      "canonical": "Благовещенск",
+      "aliases": [
+        "Blagoveschensk",
+        "Hailanpao"
+      ],
+      "source": "wikidata_curated",
+      "dissolved": false
+    },
+    {
+      "canonical": "Бор",
+      "aliases": [
+        "Бор (Нижегородская область)"
+      ],
+      "source": "wikidata_curated",
+      "dissolved": false
+    },
+    {
+      "canonical": "Борисоглебск",
+      "aliases": [],
+      "source": "wikidata_curated",
+      "dissolved": false
+    },
+    {
+      "canonical": "Братск",
+      "aliases": [],
+      "source": "wikidata_curated",
+      "dissolved": false
+    },
+    {
+      "canonical": "Брянск",
+      "aliases": [],
+      "source": "wikidata_curated",
+      "dissolved": false
+    },
+    {
+      "canonical": "Бугульма",
+      "aliases": [
+        "Bögelmä"
+      ],
+      "source": "wikidata_curated",
+      "dissolved": false
+    },
+    {
+      "canonical": "Будённовск",
+      "aliases": [
+        "Город Святого Креста",
+        "Креста Святого город"
+      ],
+      "source": "wikidata_curated",
+      "dissolved": false
+    },
+    {
+      "canonical": "Буйнакск",
+      "aliases": [
+        "Темир-Хан-Шура"
+      ],
+      "source": "wikidata_curated",
+      "dissolved": false
+    },
+    {
+      "canonical": "Великий Новгород",
+      "aliases": [
+        "Новгород"
+      ],
+      "source": "wikidata_curated",
+      "dissolved": false
+    },
+    {
+      "canonical": "Верхняя Пышма",
+      "aliases": [
+        "Ве́рхняя ́Пышма"
+      ],
+      "source": "wikidata_curated",
+      "dissolved": false
+    },
+    {
+      "canonical": "Видное",
+      "aliases": [
+        "Ви́дное",
+        "Расторгуево"
+      ],
+      "source": "wikidata_curated",
+      "dissolved": false
+    },
+    {
+      "canonical": "Винница",
+      "aliases": [
+        "Vinica",
+        "Vinnica",
+        "Vinnitsa",
+        "Vinnycja",
+        "Vinnytsa",
+        "Vinnytsya",
+        "Winnica"
+      ],
+      "source": "wikidata_curated",
+      "dissolved": false
+    },
+    {
+      "canonical": "Владикавказ",
+      "aliases": [
+        "Дзауджикау",
+        "Орджоникидзе"
+      ],
+      "source": "wikidata_curated",
+      "dissolved": false
+    },
+    {
+      "canonical": "Владимир",
+      "aliases": [
+        "Владимир (город)",
+        "Владимир-Залесский",
+        "Владимир-на-Клязьме"
+      ],
+      "source": "wikidata_curated",
+      "dissolved": false
+    },
+    {
+      "canonical": "Волгоград",
+      "aliases": [
+        "Сталинград",
+        "Царицын"
+      ],
+      "source": "wikidata_curated",
+      "dissolved": false
+    },
+    {
+      "canonical": "Волгодонск",
+      "aliases": [
+        "Волгодо́нск"
+      ],
+      "source": "wikidata_curated",
+      "dissolved": false
+    },
+    {
+      "canonical": "Волжск",
+      "aliases": [],
+      "source": "wikidata_curated",
+      "dissolved": false
+    },
+    {
+      "canonical": "Волжский",
+      "aliases": [
+        "Во́лжский"
+      ],
+      "source": "wikidata_curated",
+      "dissolved": false
+    },
+    {
+      "canonical": "Вологда",
+      "aliases": [
+        "Во́логда"
+      ],
+      "source": "wikidata_curated",
+      "dissolved": false
+    },
+    {
+      "canonical": "Вольск",
+      "aliases": [],
+      "source": "wikidata_curated",
+      "dissolved": false
+    },
+    {
+      "canonical": "Воркута",
+      "aliases": [
+        "Vörkuta"
+      ],
+      "source": "wikidata_curated",
+      "dissolved": false
+    },
+    {
+      "canonical": "Воронеж",
+      "aliases": [
+        "Воро́неж"
+      ],
+      "source": "wikidata_curated",
+      "dissolved": false
+    },
+    {
+      "canonical": "Воскресенск",
+      "aliases": [
+        "Воскресе́нск"
+      ],
+      "source": "wikidata_curated",
+      "dissolved": false
+    },
+    {
+      "canonical": "Всеволожск",
+      "aliases": [
+        "Все́воложск"
+      ],
+      "source": "wikidata_curated",
+      "dissolved": false
+    },
+    {
+      "canonical": "Выборг",
+      "aliases": [
+        "Виипури"
+      ],
+      "source": "wikidata_curated",
+      "dissolved": false
+    },
+    {
+      "canonical": "Геленджик",
+      "aliases": [
+        "Геленджи́к",
+        "Гептала",
+        "Пагры",
+        "Торик"
+      ],
+      "source": "wikidata_curated",
+      "dissolved": false
+    },
+    {
+      "canonical": "Георгиевск",
+      "aliases": [
+        "Гео́ргиевск"
+      ],
+      "source": "wikidata_curated",
+      "dissolved": false
+    },
+    {
+      "canonical": "Глазов",
+      "aliases": [],
+      "source": "wikidata_curated",
+      "dissolved": false
+    },
+    {
+      "canonical": "Горно-Алтайск",
+      "aliases": [
+        "Ойрот-Тура",
+        "Улала"
+      ],
+      "source": "wikidata_curated",
+      "dissolved": false
+    },
+    {
+      "canonical": "Гродно",
+      "aliases": [
+        "Гродна"
+      ],
+      "source": "wikidata_curated",
+      "dissolved": false
+    },
+    {
+      "canonical": "Грозный",
+      "aliases": [
+        "Джохар",
+        "Столица Чечни"
+      ],
+      "source": "wikidata_curated",
+      "dissolved": false
+    },
+    {
+      "canonical": "Губкин",
+      "aliases": [
+        "Городское поселение «Город Губкин»",
+        "Гу́бкин",
+        "Губкин (город)",
+        "Губкин (городское поселение)",
+        "Коробково"
+      ],
+      "source": "wikidata_curated",
+      "dissolved": false
+    },
+    {
+      "canonical": "Гудермес",
+      "aliases": [
+        "Гудерме́с"
+      ],
+      "source": "wikidata_curated",
+      "dissolved": false
+    },
+    {
+      "canonical": "Гуково",
+      "aliases": [
+        "Гу́ково",
+        "Ковалёво"
+      ],
+      "source": "wikidata_curated",
+      "dissolved": false
+    },
+    {
+      "canonical": "Дербент",
+      "aliases": [
+        "Баб-аль-Абваб",
+        "Дербе́нт",
+        "Чора"
+      ],
+      "source": "wikidata_curated",
+      "dissolved": false
+    },
+    {
+      "canonical": "Джурф аль-Сахар",
+      "aliases": [
+        "jurf alsaker"
+      ],
+      "source": "wikidata_curated",
+      "dissolved": false
+    },
+    {
+      "canonical": "Дзержинск",
+      "aliases": [
+        "Дзержинск (Нижегородская область)",
+        "Растяпино",
+        "Черноречье",
+        "Чёрная Речка",
+        "Чёрное"
+      ],
+      "source": "wikidata_curated",
+      "dissolved": false
+    },
+    {
+      "canonical": "Дзержинский",
+      "aliases": [
+        "Дзержи́нский",
+        "Дзержинский (город)"
+      ],
+      "source": "wikidata_curated",
+      "dissolved": false
+    },
+    {
+      "canonical": "Димитровград",
+      "aliases": [
+        "Димитровгра́д",
+        "Димитровград (Россия)",
+        "Мелекесс"
+      ],
+      "source": "wikidata_curated",
+      "dissolved": false
+    },
+    {
+      "canonical": "Дмитров",
+      "aliases": [
+        "Дми́тров"
+      ],
+      "source": "wikidata_curated",
+      "dissolved": false
+    },
+    {
+      "canonical": "Долгопрудный",
+      "aliases": [
+        "Дирижаблестрой",
+        "Долгопру́дный"
+      ],
+      "source": "wikidata_curated",
+      "dissolved": false
+    },
+    {
+      "canonical": "Домодедово",
+      "aliases": [
+        "Домодедово (город)"
+      ],
+      "source": "wikidata_curated",
+      "dissolved": false
+    },
+    {
+      "canonical": "Донецк",
+      "aliases": [
+        "Александровка",
+        "Сталин",
+        "Сталино",
+        "Юзовка",
+        "Юзово"
+      ],
+      "source": "wikidata_curated",
+      "dissolved": false
+    },
+    {
+      "canonical": "Дружковка",
+      "aliases": [
+        "Druzhkovka"
+      ],
+      "source": "wikidata_curated",
+      "dissolved": false
+    },
+    {
+      "canonical": "Дубна",
+      "aliases": [
+        "Дубна́"
+      ],
+      "source": "wikidata_curated",
+      "dissolved": false
+    },
+    {
+      "canonical": "Евпатория",
+      "aliases": [
+        "Гезлев",
+        "Гёзлев",
+        "Гёзлёв",
+        "Кезлев",
+        "Керкинитида"
+      ],
+      "source": "wikidata_curated",
+      "dissolved": false
+    },
+    {
+      "canonical": "Егорьевск",
+      "aliases": [
+        "Его́рьевск"
+      ],
+      "source": "wikidata_curated",
+      "dissolved": false
+    },
+    {
+      "canonical": "Ейск",
+      "aliases": [],
+      "source": "wikidata_curated",
+      "dissolved": false
+    },
+    {
+      "canonical": "Елабуга",
+      "aliases": [
+        "Ела́буга"
+      ],
+      "source": "wikidata_curated",
+      "dissolved": false
+    },
+    {
+      "canonical": "Елец",
+      "aliases": [
+        "Еле́ц"
+      ],
+      "source": "wikidata_curated",
+      "dissolved": false
+    },
+    {
+      "canonical": "Ессентуки",
+      "aliases": [
+        "Ессентуки́",
+        "Ессентукская"
+      ],
+      "source": "wikidata_curated",
+      "dissolved": false
+    },
+    {
+      "canonical": "Железногорск",
+      "aliases": [
+        "Железногорск (Курская область)"
+      ],
+      "source": "wikidata_curated",
+      "dissolved": false
+    },
+    {
+      "canonical": "Железногорск",
+      "aliases": [
+        "Железногорск (Красноярский край)",
+        "Красноярск-26"
+      ],
+      "source": "wikidata_curated",
+      "dissolved": false
+    },
+    {
+      "canonical": "Жуковский",
+      "aliases": [
+        "Жуко́вский",
+        "Жуковский (Московская область)"
+      ],
+      "source": "wikidata_curated",
+      "dissolved": false
+    },
+    {
+      "canonical": "Заречный",
+      "aliases": [
+        "Заре́чный"
+      ],
+      "source": "wikidata_curated",
+      "dissolved": false
+    },
+    {
+      "canonical": "Зеленогорск",
+      "aliases": [
+        "Заозерный-13",
+        "Заозёрный-13",
+        "Зеленогорск (Красноярский край)",
+        "Красноярск-45"
+      ],
+      "source": "wikidata_curated",
+      "dissolved": false
+    },
+    {
+      "canonical": "Зеленодольск",
+      "aliases": [
+        "Зеленодо́льск",
+        "Парат",
+        "Яшел Узен",
+        "Яшел Үзән"
+      ],
+      "source": "wikidata_curated",
+      "dissolved": false
+    },
+    {
+      "canonical": "Златоуст",
+      "aliases": [
+        "Златоу́ст"
+      ],
+      "source": "wikidata_curated",
+      "dissolved": false
+    },
+    {
+      "canonical": "Ивано-Франковск",
+      "aliases": [
+        "Станислав",
+        "Станиславов"
+      ],
+      "source": "wikidata_curated",
+      "dissolved": false
+    },
+    {
+      "canonical": "Иваново",
+      "aliases": [
+        "Иваново-Вознесенск"
+      ],
+      "source": "wikidata_curated",
+      "dissolved": false
+    },
+    {
+      "canonical": "Ивантеевка",
+      "aliases": [
+        "Иванте́евка"
+      ],
+      "source": "wikidata_curated",
+      "dissolved": false
+    },
+    {
+      "canonical": "Ижевск",
+      "aliases": [
+        "Ижкар",
+        "Устинов"
+      ],
+      "source": "wikidata_curated",
+      "dissolved": false
+    },
+    {
+      "canonical": "Избербаш",
+      "aliases": [
+        "Изберба́ш"
+      ],
+      "source": "wikidata_curated",
+      "dissolved": false
+    },
+    {
+      "canonical": "Ишим",
+      "aliases": [
+        "Иши́м"
+      ],
+      "source": "wikidata_curated",
+      "dissolved": false
+    },
+    {
+      "canonical": "Ишимбай",
+      "aliases": [
+        "Зелёная столица",
+        "Ишембай",
+        "Ишимба́й",
+        "Первооткрыватель башкирской нефтепереработки",
+        "Первооткрыватель башкирской нефти",
+        "Столица Второго Баку"
+      ],
+      "source": "wikidata_curated",
+      "dissolved": false
+    },
+    {
+      "canonical": "Йошкар-Ола",
+      "aliases": [
+        "Краснококшайск",
+        "Царевококшайск"
+      ],
+      "source": "wikidata_curated",
       "dissolved": false
     },
     {
       "canonical": "Казань",
-      "aliases": [],
-      "source": "bot_cities_fallback",
+      "aliases": [
+        "Третья столица России"
+      ],
+      "source": "wikidata_curated",
       "dissolved": false
     },
     {
-      "canonical": "Нижний Новгород",
+      "canonical": "Калининград",
+      "aliases": [
+        "Калининградский городской округ",
+        "Кенигсберг",
+        "Королевец",
+        "Кёнигсберг",
+        "Твангсте"
+      ],
+      "source": "wikidata_curated",
+      "dissolved": false
+    },
+    {
+      "canonical": "Калуга",
+      "aliases": [
+        "Калу́га"
+      ],
+      "source": "wikidata_curated",
+      "dissolved": false
+    },
+    {
+      "canonical": "Калуш",
+      "aliases": [
+        "Калуш (Украина)",
+        "Калуш (город)"
+      ],
+      "source": "wikidata_curated",
+      "dissolved": false
+    },
+    {
+      "canonical": "Каменец-Подольский",
+      "aliases": [
+        "Каменец-Подольск"
+      ],
+      "source": "wikidata_curated",
+      "dissolved": false
+    },
+    {
+      "canonical": "Каменск-Уральский",
+      "aliases": [
+        "Железенское поселье",
+        "Ка́менск-Ура́льский",
+        "Каменск",
+        "Каменская слобода",
+        "Каменский завод"
+      ],
+      "source": "wikidata_curated",
+      "dissolved": false
+    },
+    {
+      "canonical": "Каменск-Шахтинский",
+      "aliases": [
+        "Ка́менск-Ша́хтинский",
+        "Каменск"
+      ],
+      "source": "wikidata_curated",
+      "dissolved": false
+    },
+    {
+      "canonical": "Камышин",
+      "aliases": [
+        "Камы́шин"
+      ],
+      "source": "wikidata_curated",
+      "dissolved": false
+    },
+    {
+      "canonical": "Канск",
       "aliases": [],
-      "source": "bot_cities_fallback",
+      "source": "wikidata_curated",
+      "dissolved": false
+    },
+    {
+      "canonical": "Карачи",
+      "aliases": [
+        "Crotchey",
+        "Heart of Pakistan",
+        "Karatchi",
+        "Kurrachee",
+        "The Lighting City"
+      ],
+      "source": "wikidata_curated",
+      "dissolved": false
+    },
+    {
+      "canonical": "Каспийск",
+      "aliases": [
+        "Каспи́йск"
+      ],
+      "source": "wikidata_curated",
+      "dissolved": false
+    },
+    {
+      "canonical": "Керчь",
+      "aliases": [
+        "Керич",
+        "Пантикапей"
+      ],
+      "source": "wikidata_curated",
+      "dissolved": false
+    },
+    {
+      "canonical": "Киев",
+      "aliases": [
+        "Kief",
+        "Kieff",
+        "Kiew",
+        "Kiof",
+        "Kioff",
+        "Kiou",
+        "Kiovia",
+        "Kiow",
+        "Kiowia",
+        "Kiyev",
+        "Kyiw",
+        "Kyjiw",
+        "Kyïv",
+        "Kyїv"
+      ],
+      "source": "wikidata_curated",
+      "dissolved": false
+    },
+    {
+      "canonical": "Кинешма",
+      "aliases": [],
+      "source": "wikidata_curated",
+      "dissolved": false
+    },
+    {
+      "canonical": "Киров",
+      "aliases": [
+        "Вятка",
+        "Хлынов"
+      ],
+      "source": "wikidata_curated",
+      "dissolved": false
+    },
+    {
+      "canonical": "Кирово-Чепецк",
+      "aliases": [
+        "Ки́рово-Чепе́цк"
+      ],
+      "source": "wikidata_curated",
+      "dissolved": false
+    },
+    {
+      "canonical": "Киселёвск",
+      "aliases": [],
+      "source": "wikidata_curated",
+      "dissolved": false
+    },
+    {
+      "canonical": "Кисловодск",
+      "aliases": [
+        "Кислово́дск"
+      ],
+      "source": "wikidata_curated",
+      "dissolved": false
+    },
+    {
+      "canonical": "Климовск",
+      "aliases": [
+        "Кли́мовск"
+      ],
+      "source": "wikidata_curated",
+      "dissolved": false
+    },
+    {
+      "canonical": "Клин",
+      "aliases": [
+        "Клин (город)",
+        "город"
+      ],
+      "source": "wikidata_curated",
+      "dissolved": false
+    },
+    {
+      "canonical": "Клинцы",
+      "aliases": [
+        "Клинцы́"
+      ],
+      "source": "wikidata_curated",
+      "dissolved": false
+    },
+    {
+      "canonical": "Ковров",
+      "aliases": [
+        "Ковро́в"
+      ],
+      "source": "wikidata_curated",
+      "dissolved": false
+    },
+    {
+      "canonical": "Когалым",
+      "aliases": [],
+      "source": "wikidata_curated",
+      "dissolved": false
+    },
+    {
+      "canonical": "Кокшетау",
+      "aliases": [
+        "Кокчетав"
+      ],
+      "source": "wikidata_curated",
+      "dissolved": false
+    },
+    {
+      "canonical": "Коломна",
+      "aliases": [
+        "Коло́мна"
+      ],
+      "source": "wikidata_curated",
+      "dissolved": false
+    },
+    {
+      "canonical": "Комсомольск-на-Амуре",
+      "aliases": [
+        "КнА",
+        "Комса",
+        "Комсомольск"
+      ],
+      "source": "wikidata_curated",
+      "dissolved": false
+    },
+    {
+      "canonical": "Копейск",
+      "aliases": [
+        "Копе́йск",
+        "город Копейск"
+      ],
+      "source": "wikidata_curated",
+      "dissolved": false
+    },
+    {
+      "canonical": "Королёв",
+      "aliases": [
+        "Калининград",
+        "Королев",
+        "Королёв (город)"
+      ],
+      "source": "wikidata_curated",
+      "dissolved": false
+    },
+    {
+      "canonical": "Кострома",
+      "aliases": [
+        "Кострома́"
+      ],
+      "source": "wikidata_curated",
+      "dissolved": false
+    },
+    {
+      "canonical": "Котельники",
+      "aliases": [
+        "Котéльники"
+      ],
+      "source": "wikidata_curated",
+      "dissolved": false
+    },
+    {
+      "canonical": "Котлас",
+      "aliases": [],
+      "source": "wikidata_curated",
+      "dissolved": false
+    },
+    {
+      "canonical": "Краков",
+      "aliases": [
+        "Cracovie",
+        "Krakiv",
+        "Krakkó",
+        "Krako",
+        "Krakov",
+        "Krakova",
+        "Krakoy",
+        "Krakuv",
+        "Kroke",
+        "Royal Capital City of Kraków",
+        "Royal City of Kraków"
+      ],
+      "source": "wikidata_curated",
+      "dissolved": false
+    },
+    {
+      "canonical": "Краматорск",
+      "aliases": [
+        "Краматорская"
+      ],
+      "source": "wikidata_curated",
+      "dissolved": false
+    },
+    {
+      "canonical": "Красногорск",
+      "aliases": [
+        "Красного́рск"
+      ],
+      "source": "wikidata_curated",
+      "dissolved": false
+    },
+    {
+      "canonical": "Краснокаменск",
+      "aliases": [
+        "Краснока́менск"
+      ],
+      "source": "wikidata_curated",
+      "dissolved": false
+    },
+    {
+      "canonical": "Краснотурьинск",
+      "aliases": [
+        "Турьинские рудники"
+      ],
+      "source": "wikidata_curated",
       "dissolved": false
     },
     {
       "canonical": "Красноярск",
+      "aliases": [
+        "Красноя́рск",
+        "Кызылъяр"
+      ],
+      "source": "wikidata_curated",
+      "dissolved": false
+    },
+    {
+      "canonical": "Кропоткин",
+      "aliases": [
+        "Кропо́ткин"
+      ],
+      "source": "wikidata_curated",
+      "dissolved": false
+    },
+    {
+      "canonical": "Крымск",
+      "aliases": [
+        "Крымская",
+        "станіица Крымская"
+      ],
+      "source": "wikidata_curated",
+      "dissolved": false
+    },
+    {
+      "canonical": "Кстово",
+      "aliases": [
+        "Ксто́во"
+      ],
+      "source": "wikidata_curated",
+      "dissolved": false
+    },
+    {
+      "canonical": "Кудрово",
+      "aliases": [
+        "Косая Гора",
+        "Кудрово (Ленинградская область)",
+        "мыза Косая Гора"
+      ],
+      "source": "wikidata_curated",
+      "dissolved": false
+    },
+    {
+      "canonical": "Кузнецк",
       "aliases": [],
-      "source": "bot_cities_fallback",
+      "source": "wikidata_curated",
+      "dissolved": false
+    },
+    {
+      "canonical": "Кумертау",
+      "aliases": [
+        "Кумерта́у"
+      ],
+      "source": "wikidata_curated",
+      "dissolved": false
+    },
+    {
+      "canonical": "Кунгур",
+      "aliases": [
+        "Кунгур (Кунгурский район)",
+        "Кунгур (Пермский край)",
+        "Кунгур (Россия)",
+        "Кунгур (город)"
+      ],
+      "source": "wikidata_curated",
+      "dissolved": false
+    },
+    {
+      "canonical": "Кунцево",
+      "aliases": [
+        "Кунцево (бывший город)"
+      ],
+      "source": "wikidata_curated",
+      "dissolved": false
+    },
+    {
+      "canonical": "Курган",
+      "aliases": [
+        "Курга́н",
+        "Курган (город)"
+      ],
+      "source": "wikidata_curated",
+      "dissolved": false
+    },
+    {
+      "canonical": "Кызыл",
+      "aliases": [
+        "Белоцарск",
+        "Хем-Бельдир"
+      ],
+      "source": "wikidata_curated",
+      "dissolved": false
+    },
+    {
+      "canonical": "Лабинск",
+      "aliases": [
+        "Станица Лабинская"
+      ],
+      "source": "wikidata_curated",
+      "dissolved": false
+    },
+    {
+      "canonical": "Ленинск-Кузнецкий",
+      "aliases": [
+        "Ле́нинск-Кузне́цкий",
+        "Ленино"
+      ],
+      "source": "wikidata_curated",
+      "dissolved": false
+    },
+    {
+      "canonical": "Лесосибирск",
+      "aliases": [
+        "Лесосиби́рск"
+      ],
+      "source": "wikidata_curated",
+      "dissolved": false
+    },
+    {
+      "canonical": "Липецк",
+      "aliases": [
+        "Ли́пецк"
+      ],
+      "source": "wikidata_curated",
+      "dissolved": false
+    },
+    {
+      "canonical": "Лисичанск",
+      "aliases": [
+        "Лисичанске"
+      ],
+      "source": "wikidata_curated",
+      "dissolved": false
+    },
+    {
+      "canonical": "Лиски",
+      "aliases": [],
+      "source": "wikidata_curated",
+      "dissolved": false
+    },
+    {
+      "canonical": "Лобня",
+      "aliases": [
+        "Ло́бня"
+      ],
+      "source": "wikidata_curated",
+      "dissolved": false
+    },
+    {
+      "canonical": "Луганск",
+      "aliases": [
+        "Ворошиловград",
+        "Луганск (город)",
+        "Луганский завод",
+        "Луганськ",
+        "Святоград"
+      ],
+      "source": "wikidata_curated",
+      "dissolved": false
+    },
+    {
+      "canonical": "Луцк",
+      "aliases": [
+        "Lutsk"
+      ],
+      "source": "wikidata_curated",
+      "dissolved": false
+    },
+    {
+      "canonical": "Лысьва",
+      "aliases": [
+        "Lys'va"
+      ],
+      "source": "wikidata_curated",
+      "dissolved": false
+    },
+    {
+      "canonical": "Лыткарино",
+      "aliases": [
+        "Лытка́рино"
+      ],
+      "source": "wikidata_curated",
+      "dissolved": false
+    },
+    {
+      "canonical": "Люберцы",
+      "aliases": [],
+      "source": "wikidata_curated",
+      "dissolved": false
+    },
+    {
+      "canonical": "Магадан",
+      "aliases": [
+        "Магада́н"
+      ],
+      "source": "wikidata_curated",
+      "dissolved": false
+    },
+    {
+      "canonical": "Магнитогорск",
+      "aliases": [],
+      "source": "wikidata_curated",
+      "dissolved": false
+    },
+    {
+      "canonical": "Мегион",
+      "aliases": [
+        "Мегио́н"
+      ],
+      "source": "wikidata_curated",
+      "dissolved": false
+    },
+    {
+      "canonical": "Междуреченск",
+      "aliases": [
+        "Междуре́ченск"
+      ],
+      "source": "wikidata_curated",
+      "dissolved": false
+    },
+    {
+      "canonical": "Мелеуз",
+      "aliases": [
+        "Мелеу́з"
+      ],
+      "source": "wikidata_curated",
+      "dissolved": false
+    },
+    {
+      "canonical": "Миасс",
+      "aliases": [
+        "Миа́сс"
+      ],
+      "source": "wikidata_curated",
+      "dissolved": false
+    },
+    {
+      "canonical": "Минеральные Воды",
+      "aliases": [
+        "Минера́льные Во́ды"
+      ],
+      "source": "wikidata_curated",
+      "dissolved": false
+    },
+    {
+      "canonical": "Минск",
+      "aliases": [
+        "Менск"
+      ],
+      "source": "wikidata_curated",
+      "dissolved": false
+    },
+    {
+      "canonical": "Минусинск",
+      "aliases": [
+        "Минуси́нск"
+      ],
+      "source": "wikidata_curated",
+      "dissolved": false
+    },
+    {
+      "canonical": "Михайловка",
+      "aliases": [],
+      "source": "wikidata_curated",
+      "dissolved": false
+    },
+    {
+      "canonical": "Михайловск",
+      "aliases": [
+        "Миха́йловск",
+        "Шпаковское"
+      ],
+      "source": "wikidata_curated",
+      "dissolved": false
+    },
+    {
+      "canonical": "Мичуринск",
+      "aliases": [
+        "Козлов",
+        "Мичу́ринск"
+      ],
+      "source": "wikidata_curated",
+      "dissolved": false
+    },
+    {
+      "canonical": "Молепололе",
+      "aliases": [
+        "Молеполе"
+      ],
+      "source": "wikidata_curated",
+      "dissolved": false
+    },
+    {
+      "canonical": "Москва",
+      "aliases": [
+        "Белокаменная",
+        "Златоглавая",
+        "МСК",
+        "Москва (Россия)",
+        "Москва (город)",
+        "Нерезиновая",
+        "Первопрестольная",
+        "Порт пяти морей",
+        "Россия",
+        "Третий Рим"
+      ],
+      "source": "wikidata_curated",
+      "dissolved": false
+    },
+    {
+      "canonical": "Московский",
+      "aliases": [
+        "Моско́вский"
+      ],
+      "source": "wikidata_curated",
+      "dissolved": false
+    },
+    {
+      "canonical": "Мурманск",
+      "aliases": [
+        "Романов-на-Мурмане"
+      ],
+      "source": "wikidata_curated",
+      "dissolved": false
+    },
+    {
+      "canonical": "Муром",
+      "aliases": [
+        "Му́ром"
+      ],
+      "source": "wikidata_curated",
+      "dissolved": false
+    },
+    {
+      "canonical": "Мытищи",
+      "aliases": [
+        "Мыти́щи"
+      ],
+      "source": "wikidata_curated",
+      "dissolved": false
+    },
+    {
+      "canonical": "Набережные Челны",
+      "aliases": [
+        "Брежнев",
+        "Челны"
+      ],
+      "source": "wikidata_curated",
+      "dissolved": false
+    },
+    {
+      "canonical": "Назрань",
+      "aliases": [
+        "Назра́нь"
+      ],
+      "source": "wikidata_curated",
+      "dissolved": false
+    },
+    {
+      "canonical": "Нальчик",
+      "aliases": [],
+      "source": "wikidata_curated",
+      "dissolved": false
+    },
+    {
+      "canonical": "Находка",
+      "aliases": [
+        "Г. Находка",
+        "Муниципальное образование Находка",
+        "Нахо́дка"
+      ],
+      "source": "wikidata_curated",
+      "dissolved": false
+    },
+    {
+      "canonical": "Нерюнгри",
+      "aliases": [],
+      "source": "wikidata_curated",
+      "dissolved": false
+    },
+    {
+      "canonical": "Нефтекамск",
+      "aliases": [
+        "Нефтека́мск"
+      ],
+      "source": "wikidata_curated",
+      "dissolved": false
+    },
+    {
+      "canonical": "Нефтеюганск",
+      "aliases": [
+        "Нефтеюга́нск"
+      ],
+      "source": "wikidata_curated",
+      "dissolved": false
+    },
+    {
+      "canonical": "Нижнекамск",
+      "aliases": [
+        "Нижнека́мск"
+      ],
+      "source": "wikidata_curated",
+      "dissolved": false
+    },
+    {
+      "canonical": "Нижний Новгород",
+      "aliases": [
+        "Горький",
+        "Карман России",
+        "Н. Новгород",
+        "НиНо",
+        "Нижний",
+        "Новгород Низовской земли",
+        "Новград Нижний",
+        "Столица Поволжья",
+        "Чулхула",
+        "Эн-Новгород"
+      ],
+      "source": "wikidata_curated",
+      "dissolved": false
+    },
+    {
+      "canonical": "Нижний Тагил",
+      "aliases": [],
+      "source": "wikidata_curated",
+      "dissolved": false
+    },
+    {
+      "canonical": "Новоалтайск",
+      "aliases": [
+        "Новоалта́йск",
+        "Чесновка"
+      ],
+      "source": "wikidata_curated",
+      "dissolved": false
+    },
+    {
+      "canonical": "Нововятский район",
+      "aliases": [
+        "Нововятск",
+        "Нововятский район (Киров)",
+        "Нововятский район Кирова"
+      ],
+      "source": "wikidata_curated",
+      "dissolved": false
+    },
+    {
+      "canonical": "Новокузнецк",
+      "aliases": [
+        "Кузнецкий острог",
+        "Сталинск"
+      ],
+      "source": "wikidata_curated",
+      "dissolved": false
+    },
+    {
+      "canonical": "Новокуйбышевск",
+      "aliases": [
+        "Новоку́йбышевск"
+      ],
+      "source": "wikidata_curated",
+      "dissolved": false
+    },
+    {
+      "canonical": "Новомосковск",
+      "aliases": [
+        "Бобрики",
+        "Сталиногорск"
+      ],
+      "source": "wikidata_curated",
+      "dissolved": false
+    },
+    {
+      "canonical": "Новороссийск",
+      "aliases": [],
+      "source": "wikidata_curated",
+      "dissolved": false
+    },
+    {
+      "canonical": "Новосибирск",
+      "aliases": [
+        "Александровский",
+        "Ново-Николаевск",
+        "Ново-Николаевский",
+        "Новониколаевск",
+        "Новосиби́рск",
+        "Сибирский Чикаго",
+        "Столица Сибири"
+      ],
+      "source": "wikidata_curated",
+      "dissolved": false
+    },
+    {
+      "canonical": "Новотроицк",
+      "aliases": [
+        "Новотро́ицк"
+      ],
+      "source": "wikidata_curated",
+      "dissolved": false
+    },
+    {
+      "canonical": "Новоуральск",
+      "aliases": [
+        "Новоура́льск",
+        "Свердловск-44"
+      ],
+      "source": "wikidata_curated",
+      "dissolved": false
+    },
+    {
+      "canonical": "Новочебоксарск",
+      "aliases": [],
+      "source": "wikidata_curated",
+      "dissolved": false
+    },
+    {
+      "canonical": "Новочеркасск",
+      "aliases": [
+        "Новочерка́сск"
+      ],
+      "source": "wikidata_curated",
+      "dissolved": false
+    },
+    {
+      "canonical": "Новошахтинск",
+      "aliases": [],
+      "source": "wikidata_curated",
+      "dissolved": false
+    },
+    {
+      "canonical": "Новый Уренгой",
+      "aliases": [],
+      "source": "wikidata_curated",
+      "dissolved": false
+    },
+    {
+      "canonical": "Ногинск",
+      "aliases": [
+        "Богородск",
+        "Рогожи",
+        "Старый Рогожский Ям"
+      ],
+      "source": "wikidata_curated",
+      "dissolved": false
+    },
+    {
+      "canonical": "Норильск",
+      "aliases": [
+        "Нори́льск"
+      ],
+      "source": "wikidata_curated",
+      "dissolved": false
+    },
+    {
+      "canonical": "Ноябрьск",
+      "aliases": [],
+      "source": "wikidata_curated",
+      "dissolved": false
+    },
+    {
+      "canonical": "Нягань",
+      "aliases": [],
+      "source": "wikidata_curated",
+      "dissolved": false
+    },
+    {
+      "canonical": "Одинцово",
+      "aliases": [],
+      "source": "wikidata_curated",
+      "dissolved": false
+    },
+    {
+      "canonical": "Октябрьский",
+      "aliases": [
+        "Октябрьский (город)"
+      ],
+      "source": "wikidata_curated",
+      "dissolved": false
+    },
+    {
+      "canonical": "Омск",
+      "aliases": [],
+      "source": "wikidata_curated",
+      "dissolved": false
+    },
+    {
+      "canonical": "Оренбург",
+      "aliases": [
+        "Оренбу́рг",
+        "Чкалов"
+      ],
+      "source": "wikidata_curated",
+      "dissolved": false
+    },
+    {
+      "canonical": "Орехово-Зуево",
+      "aliases": [
+        "Оре́хово-Зу́ево"
+      ],
+      "source": "wikidata_curated",
+      "dissolved": false
+    },
+    {
+      "canonical": "Орёл",
+      "aliases": [
+        "Orel",
+        "Orël"
+      ],
+      "source": "wikidata_curated",
+      "dissolved": false
+    },
+    {
+      "canonical": "Павлово",
+      "aliases": [
+        "Нижегородская область)",
+        "Па́влово",
+        "Павлово (город",
+        "Павлово-на-Оке"
+      ],
+      "source": "wikidata_curated",
+      "dissolved": false
+    },
+    {
+      "canonical": "Павловский Посад",
+      "aliases": [
+        "Па́вловский Поса́д"
+      ],
+      "source": "wikidata_curated",
+      "dissolved": false
+    },
+    {
+      "canonical": "Пенза",
+      "aliases": [
+        "Pensa"
+      ],
+      "source": "wikidata_curated",
+      "dissolved": false
+    },
+    {
+      "canonical": "Первоуральск",
+      "aliases": [],
+      "source": "wikidata_curated",
+      "dissolved": false
+    },
+    {
+      "canonical": "Пермь",
+      "aliases": [
+        "Молотов"
+      ],
+      "source": "wikidata_curated",
+      "dissolved": false
+    },
+    {
+      "canonical": "Петропавловск-Камчатский",
+      "aliases": [
+        "Петропавловск",
+        "Петропавловск-на-Камчатке"
+      ],
+      "source": "wikidata_curated",
+      "dissolved": false
+    },
+    {
+      "canonical": "Подольск",
+      "aliases": [],
+      "source": "wikidata_curated",
+      "dissolved": false
+    },
+    {
+      "canonical": "Полевской",
+      "aliases": [
+        "Полевской Завод"
+      ],
+      "source": "wikidata_curated",
+      "dissolved": false
+    },
+    {
+      "canonical": "Порт-Морсби",
+      "aliases": [
+        "Port Moresby",
+        "Порт Морсби",
+        "Столица Папуа — Новой Гвинеи"
+      ],
+      "source": "wikidata_curated",
+      "dissolved": false
+    },
+    {
+      "canonical": "Порт-о-Пренс",
+      "aliases": [
+        "Столица Гаити"
+      ],
+      "source": "wikidata_curated",
+      "dissolved": false
+    },
+    {
+      "canonical": "Прокопьевск",
+      "aliases": [
+        "Проко́пьевск"
+      ],
+      "source": "wikidata_curated",
+      "dissolved": false
+    },
+    {
+      "canonical": "Прохладный",
+      "aliases": [
+        "Прохладная"
+      ],
+      "source": "wikidata_curated",
+      "dissolved": false
+    },
+    {
+      "canonical": "Псков",
+      "aliases": [
+        "Pskov",
+        "Плесков"
+      ],
+      "source": "wikidata_curated",
+      "dissolved": false
+    },
+    {
+      "canonical": "Пушкино",
+      "aliases": [
+        "Пу́шкино"
+      ],
+      "source": "wikidata_curated",
+      "dissolved": false
+    },
+    {
+      "canonical": "Раменское",
+      "aliases": [
+        "Ра́менское"
+      ],
+      "source": "wikidata_curated",
+      "dissolved": false
+    },
+    {
+      "canonical": "Ревда",
+      "aliases": [
+        "Ревда́"
+      ],
+      "source": "wikidata_curated",
+      "dissolved": false
+    },
+    {
+      "canonical": "Реутов",
+      "aliases": [
+        "Ре́утово",
+        "городской округ Реутов"
+      ],
+      "source": "wikidata_curated",
+      "dissolved": false
+    },
+    {
+      "canonical": "Ржев",
+      "aliases": [
+        "Rshev"
+      ],
+      "source": "wikidata_curated",
+      "dissolved": false
+    },
+    {
+      "canonical": "Россошь",
+      "aliases": [
+        "Rossosh'"
+      ],
+      "source": "wikidata_curated",
+      "dissolved": false
+    },
+    {
+      "canonical": "Ростов-на-Дону",
+      "aliases": [
+        "РнД",
+        "Росто́в-на-Дону́",
+        "Ростов",
+        "Ростов на Дону"
+      ],
+      "source": "wikidata_curated",
+      "dissolved": false
+    },
+    {
+      "canonical": "Рубцовск",
+      "aliases": [
+        "Рубцо́вск"
+      ],
+      "source": "wikidata_curated",
+      "dissolved": false
+    },
+    {
+      "canonical": "Рыбинск",
+      "aliases": [
+        "Андропов",
+        "Рыбная слобода",
+        "Усть-Шексна",
+        "Щербаков"
+      ],
+      "source": "wikidata_curated",
+      "dissolved": false
+    },
+    {
+      "canonical": "Рязань",
+      "aliases": [
+        "Переяславль-Рязанский",
+        "Ряза́нь",
+        "Страна берёзового ситца",
+        "десантная столица",
+        "есенинская столица",
+        "столица Поочья"
+      ],
+      "source": "wikidata_curated",
+      "dissolved": false
+    },
+    {
+      "canonical": "Салават",
+      "aliases": [],
+      "source": "wikidata_curated",
+      "dissolved": false
+    },
+    {
+      "canonical": "Салехард",
+      "aliases": [
+        "Обдорск"
+      ],
+      "source": "wikidata_curated",
+      "dissolved": false
+    },
+    {
+      "canonical": "Сальск",
+      "aliases": [
+        "Марков",
+        "Торговая",
+        "Торговый"
+      ],
+      "source": "wikidata_curated",
+      "dissolved": false
+    },
+    {
+      "canonical": "Самара",
+      "aliases": [
+        "Куйбышев",
+        "Сама́ра",
+        "г.Самара"
+      ],
+      "source": "wikidata_curated",
+      "dissolved": false
+    },
+    {
+      "canonical": "Санкт-Петербург",
+      "aliases": [
+        "Город белых ночей",
+        "Город на Неве",
+        "Город трёх революций",
+        "Град Петров",
+        "Колыбель революции",
+        "Культурная столица России",
+        "Окно в Европу",
+        "Петербург",
+        "Петра творенье",
+        "Петрополь",
+        "Питер",
+        "С-Петербург",
+        "С.Петербург",
+        "СПб",
+        "Северная Венеция",
+        "Северная столица России",
+        "город Петра"
+      ],
+      "source": "wikidata_curated",
+      "dissolved": false
+    },
+    {
+      "canonical": "Саранск",
+      "aliases": [
+        "Сара́нск"
+      ],
+      "source": "wikidata_curated",
+      "dissolved": false
+    },
+    {
+      "canonical": "Сарапул",
+      "aliases": [],
+      "source": "wikidata_curated",
+      "dissolved": false
+    },
+    {
+      "canonical": "Саратов",
+      "aliases": [
+        "Сара́тов"
+      ],
+      "source": "wikidata_curated",
+      "dissolved": false
+    },
+    {
+      "canonical": "Саров",
+      "aliases": [
+        "Арзамас-16",
+        "Арзамас-75",
+        "Кремлёв (город)",
+        "Саро́в"
+      ],
+      "source": "wikidata_curated",
+      "dissolved": false
+    },
+    {
+      "canonical": "Северодвинск",
+      "aliases": [],
+      "source": "wikidata_curated",
+      "dissolved": false
+    },
+    {
+      "canonical": "Северск",
+      "aliases": [
+        "Се́верск"
+      ],
+      "source": "wikidata_curated",
+      "dissolved": false
+    },
+    {
+      "canonical": "Сергиев Посад",
+      "aliases": [
+        "Загорск",
+        "Се́ргиев Поса́д",
+        "Сергиев",
+        "Сергиев-Посад"
+      ],
+      "source": "wikidata_curated",
+      "dissolved": false
+    },
+    {
+      "canonical": "Серов",
+      "aliases": [
+        "Кабаковск",
+        "Надеждинск",
+        "Серо́в"
+      ],
+      "source": "wikidata_curated",
+      "dissolved": false
+    },
+    {
+      "canonical": "Серпухов",
+      "aliases": [
+        "Се́рпухов"
+      ],
+      "source": "wikidata_curated",
+      "dissolved": false
+    },
+    {
+      "canonical": "Сертолово",
+      "aliases": [
+        "Се́ртолово"
+      ],
+      "source": "wikidata_curated",
+      "dissolved": false
+    },
+    {
+      "canonical": "Сибай",
+      "aliases": [
+        "Сиба́й"
+      ],
+      "source": "wikidata_curated",
+      "dissolved": false
+    },
+    {
+      "canonical": "Симферополь",
+      "aliases": [
+        "Ак-Мечеть",
+        "Акмесджит",
+        "Акмечеть"
+      ],
+      "source": "wikidata_curated",
+      "dissolved": false
+    },
+    {
+      "canonical": "Славянск",
+      "aliases": [
+        "Тор"
+      ],
+      "source": "wikidata_curated",
+      "dissolved": false
+    },
+    {
+      "canonical": "Славянск-на-Кубани",
+      "aliases": [
+        "станица Славянская"
+      ],
+      "source": "wikidata_curated",
+      "dissolved": false
+    },
+    {
+      "canonical": "Снежинск",
+      "aliases": [
+        "Сне́жинск",
+        "Челябинск-70"
+      ],
+      "source": "wikidata_curated",
+      "dissolved": false
+    },
+    {
+      "canonical": "Соликамск",
+      "aliases": [
+        "Усолье Камское"
+      ],
+      "source": "wikidata_curated",
+      "dissolved": false
+    },
+    {
+      "canonical": "Солнечногорск",
+      "aliases": [
+        "Солнечного́рск"
+      ],
+      "source": "wikidata_curated",
+      "dissolved": false
+    },
+    {
+      "canonical": "Сосновый Бор",
+      "aliases": [
+        "Сосновый Бор (город)"
+      ],
+      "source": "wikidata_curated",
+      "dissolved": false
+    },
+    {
+      "canonical": "Сочи",
+      "aliases": [
+        "Со́чи"
+      ],
+      "source": "wikidata_curated",
+      "dissolved": false
+    },
+    {
+      "canonical": "Ставрополь",
+      "aliases": [
+        "Ворошиловск"
+      ],
+      "source": "wikidata_curated",
+      "dissolved": false
+    },
+    {
+      "canonical": "Старый Оскол",
+      "aliases": [
+        "Ста́рый Оско́л"
+      ],
+      "source": "wikidata_curated",
+      "dissolved": false
+    },
+    {
+      "canonical": "Стерлитамак",
+      "aliases": [],
+      "source": "wikidata_curated",
+      "dissolved": false
+    },
+    {
+      "canonical": "Ступино",
+      "aliases": [],
+      "source": "wikidata_curated",
+      "dissolved": false
+    },
+    {
+      "canonical": "Сунжа",
+      "aliases": [
+        "Орджоникидзевская",
+        "Орджоникидзевская (станица)",
+        "Орджоникидзевское сельское поселение (Ингушетия)",
+        "Сельское поселение Орджоникидзевское (Ингушетия)",
+        "Слепцовская",
+        "Слепцовская (станица)",
+        "Сунжа (Ингушетия)"
+      ],
+      "source": "wikidata_curated",
+      "dissolved": false
+    },
+    {
+      "canonical": "Сургут",
+      "aliases": [],
+      "source": "wikidata_curated",
+      "dissolved": false
+    },
+    {
+      "canonical": "Сызрань",
+      "aliases": [
+        "Сы́зрань"
+      ],
+      "source": "wikidata_curated",
+      "dissolved": false
+    },
+    {
+      "canonical": "Сыктывкар",
+      "aliases": [
+        "Сыктывка́р",
+        "Усть-Сысольск"
+      ],
+      "source": "wikidata_curated",
+      "dissolved": false
+    },
+    {
+      "canonical": "Таганрог",
+      "aliases": [
+        "Tahanrih",
+        "Tahanroh"
+      ],
+      "source": "wikidata_curated",
+      "dissolved": false
+    },
+    {
+      "canonical": "Тамбов",
+      "aliases": [
+        "Тамбо́в"
+      ],
+      "source": "wikidata_curated",
+      "dissolved": false
+    },
+    {
+      "canonical": "Тверь",
+      "aliases": [
+        "Калинин"
+      ],
+      "source": "wikidata_curated",
+      "dissolved": false
+    },
+    {
+      "canonical": "Тимашёвск",
+      "aliases": [
+        "Timashëvsk"
+      ],
+      "source": "wikidata_curated",
+      "dissolved": false
+    },
+    {
+      "canonical": "Тирасполь",
+      "aliases": [
+        "Tiraspol'",
+        "Столица Приднестровской Молдавской Республики",
+        "Столица Приднестровья",
+        "Тиришполя"
+      ],
+      "source": "wikidata_curated",
+      "dissolved": false
+    },
+    {
+      "canonical": "Тихвин",
+      "aliases": [
+        "Tihvinä"
+      ],
+      "source": "wikidata_curated",
+      "dissolved": false
+    },
+    {
+      "canonical": "Тихорецк",
+      "aliases": [
+        "Тихоре́цк"
+      ],
+      "source": "wikidata_curated",
+      "dissolved": false
+    },
+    {
+      "canonical": "Тлоквенг",
+      "aliases": [],
+      "source": "wikidata_curated",
+      "dissolved": false
+    },
+    {
+      "canonical": "Тобольск",
+      "aliases": [
+        "Тобо́льск"
+      ],
+      "source": "wikidata_curated",
+      "dissolved": false
+    },
+    {
+      "canonical": "Томск",
+      "aliases": [
+        "Сибирские Афины"
+      ],
+      "source": "wikidata_curated",
+      "dissolved": false
+    },
+    {
+      "canonical": "Торез",
+      "aliases": [
+        "Чистяково"
+      ],
+      "source": "wikidata_curated",
+      "dissolved": false
+    },
+    {
+      "canonical": "Троицк",
+      "aliases": [
+        "Тро́ицк"
+      ],
+      "source": "wikidata_curated",
+      "dissolved": false
+    },
+    {
+      "canonical": "Туапсе",
+      "aliases": [
+        "Туапсе́"
+      ],
+      "source": "wikidata_curated",
+      "dissolved": false
+    },
+    {
+      "canonical": "Туймазы",
+      "aliases": [
+        "Туймазы́"
+      ],
+      "source": "wikidata_curated",
+      "dissolved": false
+    },
+    {
+      "canonical": "Тула",
+      "aliases": [
+        "Ту́ла"
+      ],
+      "source": "wikidata_curated",
+      "dissolved": false
+    },
+    {
+      "canonical": "Улан-Удэ",
+      "aliases": [
+        "Верхнеудинск",
+        "Удинское"
+      ],
+      "source": "wikidata_curated",
+      "dissolved": false
+    },
+    {
+      "canonical": "Ульяновск",
+      "aliases": [
+        "Симбирск",
+        "Синбирск"
+      ],
+      "source": "wikidata_curated",
+      "dissolved": false
+    },
+    {
+      "canonical": "Урус-Мартан",
+      "aliases": [
+        "Уру́с-Марта́н"
+      ],
+      "source": "wikidata_curated",
+      "dissolved": false
+    },
+    {
+      "canonical": "Усолье-Сибирское",
+      "aliases": [
+        "Усо́лье-Сиби́рское",
+        "Усолье"
+      ],
+      "source": "wikidata_curated",
+      "dissolved": false
+    },
+    {
+      "canonical": "Уссурийск",
+      "aliases": [
+        "Ворошилов",
+        "Г. Уссурийск",
+        "Никольск",
+        "Никольск-Уссурийский",
+        "Уссури́йск"
+      ],
+      "source": "wikidata_curated",
+      "dissolved": false
+    },
+    {
+      "canonical": "Усть-Илимск",
+      "aliases": [
+        "Усть-Или́мск"
+      ],
+      "source": "wikidata_curated",
       "dissolved": false
     },
     {
       "canonical": "Уфа",
+      "aliases": [
+        "Город трёх шурупов",
+        "Три шурупа",
+        "Эфэ"
+      ],
+      "source": "wikidata_curated",
+      "dissolved": false
+    },
+    {
+      "canonical": "Ухта",
+      "aliases": [
+        "Ukva"
+      ],
+      "source": "wikidata_curated",
+      "dissolved": false
+    },
+    {
+      "canonical": "Феодосия",
+      "aliases": [
+        "Кафа",
+        "Каффа"
+      ],
+      "source": "wikidata_curated",
+      "dissolved": false
+    },
+    {
+      "canonical": "Фрязино",
+      "aliases": [
+        "Фря́зино"
+      ],
+      "source": "wikidata_curated",
+      "dissolved": false
+    },
+    {
+      "canonical": "Хабаровск",
       "aliases": [],
-      "source": "bot_cities_fallback",
+      "source": "wikidata_curated",
+      "dissolved": false
+    },
+    {
+      "canonical": "Хамхын",
+      "aliases": [
+        "Хамхун"
+      ],
+      "source": "wikidata_curated",
+      "dissolved": false
+    },
+    {
+      "canonical": "Ханты-Мансийск",
+      "aliases": [
+        "Остяко-Вогульск",
+        "Самарово",
+        "Самаровский ям",
+        "Ха́нты-Манси́йск"
+      ],
+      "source": "wikidata_curated",
+      "dissolved": false
+    },
+    {
+      "canonical": "Хасавюрт",
+      "aliases": [
+        "Хасав-Юрт",
+        "Хасавъюрт",
+        "Хасавьюрт",
+        "Хасавю́рт"
+      ],
+      "source": "wikidata_curated",
+      "dissolved": false
+    },
+    {
+      "canonical": "Химки",
+      "aliases": [
+        "Himki"
+      ],
+      "source": "wikidata_curated",
+      "dissolved": false
+    },
+    {
+      "canonical": "Чайковский",
+      "aliases": [],
+      "source": "wikidata_curated",
+      "dissolved": false
+    },
+    {
+      "canonical": "Чапаевск",
+      "aliases": [
+        "Иващенково",
+        "Троцк",
+        "Чапа́евск"
+      ],
+      "source": "wikidata_curated",
+      "dissolved": false
+    },
+    {
+      "canonical": "Чебоксары",
+      "aliases": [],
+      "source": "wikidata_curated",
+      "dissolved": false
+    },
+    {
+      "canonical": "Черемхово",
+      "aliases": [
+        "Черемхово (Иркутская область)"
+      ],
+      "source": "wikidata_curated",
+      "dissolved": false
+    },
+    {
+      "canonical": "Череповец",
+      "aliases": [],
+      "source": "wikidata_curated",
+      "dissolved": false
+    },
+    {
+      "canonical": "Черкесск",
+      "aliases": [
+        "Баталпашинск",
+        "Баталпашинская",
+        "Ежово-Черкесск",
+        "Пашинка",
+        "Сулимов",
+        "станица Баталпашинская"
+      ],
+      "source": "wikidata_curated",
+      "dissolved": false
+    },
+    {
+      "canonical": "Черногорск",
+      "aliases": [
+        "город Черногорск"
+      ],
+      "source": "wikidata_curated",
+      "dissolved": false
+    },
+    {
+      "canonical": "Чехов",
+      "aliases": [
+        "Лопасня",
+        "Че́хов",
+        "Чехов (Московская область)"
+      ],
+      "source": "wikidata_curated",
+      "dissolved": false
+    },
+    {
+      "canonical": "Чистополь",
+      "aliases": [
+        "Chistopol’"
+      ],
+      "source": "wikidata_curated",
+      "dissolved": false
+    },
+    {
+      "canonical": "Чита",
+      "aliases": [
+        "Чита (Забайкальский край)"
+      ],
+      "source": "wikidata_curated",
+      "dissolved": false
+    },
+    {
+      "canonical": "Шадринск",
+      "aliases": [],
+      "source": "wikidata_curated",
+      "dissolved": false
+    },
+    {
+      "canonical": "Шали",
+      "aliases": [
+        "Шали́"
+      ],
+      "source": "wikidata_curated",
+      "dissolved": false
+    },
+    {
+      "canonical": "Шахты",
+      "aliases": [],
+      "source": "wikidata_curated",
+      "dissolved": false
+    },
+    {
+      "canonical": "Шуя",
+      "aliases": [
+        "Shuia"
+      ],
+      "source": "wikidata_curated",
+      "dissolved": false
+    },
+    {
+      "canonical": "Щёкино",
+      "aliases": [
+        "Щекино"
+      ],
+      "source": "wikidata_curated",
+      "dissolved": false
+    },
+    {
+      "canonical": "Щёлково",
+      "aliases": [
+        "Щелково"
+      ],
+      "source": "wikidata_curated",
+      "dissolved": false
+    },
+    {
+      "canonical": "Электросталь",
+      "aliases": [
+        "Электроста́ль"
+      ],
+      "source": "wikidata_curated",
+      "dissolved": false
+    },
+    {
+      "canonical": "Элиста",
+      "aliases": [
+        "Степной"
+      ],
+      "source": "wikidata_curated",
+      "dissolved": false
+    },
+    {
+      "canonical": "Эль-Мукаттам",
+      "aliases": [],
+      "source": "wikidata_curated",
+      "dissolved": false
+    },
+    {
+      "canonical": "Энгельс",
+      "aliases": [
+        "Покровск",
+        "Покровская слобода"
+      ],
+      "source": "wikidata_curated",
+      "dissolved": false
+    },
+    {
+      "canonical": "Южно-Сахалинск",
+      "aliases": [
+        "Владимировка",
+        "Тойохара",
+        "Тоёхара",
+        "Южносахалинск"
+      ],
+      "source": "wikidata_curated",
+      "dissolved": false
+    },
+    {
+      "canonical": "Юрга",
+      "aliases": [
+        "Юрга́"
+      ],
+      "source": "wikidata_curated",
+      "dissolved": false
+    },
+    {
+      "canonical": "Ялта",
+      "aliases": [
+        "уездный город Таврической губернии"
+      ],
+      "source": "wikidata_curated",
+      "dissolved": false
+    },
+    {
+      "canonical": "Ярославль",
+      "aliases": [
+        "Ярик",
+        "городской округ город Ярославль"
+      ],
+      "source": "wikidata_curated",
+      "dissolved": false
+    },
+    {
+      "canonical": "городское поселение Белебей",
+      "aliases": [
+        "Белебе́й"
+      ],
+      "source": "wikidata_curated",
+      "dissolved": false
+    },
+    {
+      "canonical": "городское поселение Лениногорск",
+      "aliases": [
+        "Лениного́рск",
+        "Новая Письмянка"
+      ],
+      "source": "wikidata_curated",
+      "dissolved": false
+    },
+    {
+      "canonical": "городской округ Бузулук",
+      "aliases": [],
+      "source": "wikidata_curated",
+      "dissolved": false
+    },
+    {
+      "canonical": "городской округ Великие Луки",
+      "aliases": [
+        "Луки"
+      ],
+      "source": "wikidata_curated",
+      "dissolved": false
+    },
+    {
+      "canonical": "городской округ Воткинск",
+      "aliases": [
+        "Во́ткинск"
+      ],
+      "source": "wikidata_curated",
+      "dissolved": false
+    },
+    {
+      "canonical": "городской округ Донской",
+      "aliases": [
+        "Донско́й",
+        "Донской (Тульская область)"
+      ],
+      "source": "wikidata_curated",
+      "dissolved": false
+    },
+    {
+      "canonical": "городской округ Искитим",
+      "aliases": [],
+      "source": "wikidata_curated",
       "dissolved": false
     }
   ]
