@@ -1660,6 +1660,14 @@ a.flat-row:active, button.flat-row:active { background: var(--surface-alt); }
   line-height: 1.12; letter-spacing: -.02em;
   font-style: var(--font-heading-style); margin: 0;
 }
+/* Phase 30 (30-03, A2-08, 30-UI-SPEC.md § Typography «Step Title»): роль заголовка мастера
+   новой анкеты — ТОЛЬКО когда `degraded_kind != "legacy"` (`screens/form.js::drawStep`,
+   класс на самом `<h1>`, специфичность выше `.plate h1`). Плита сама уже существовала до
+   этой фазы (Phase 23.1, `.plate--form`) — регресс легаси-пути этим не создаётся, курсив
+   принудительный (не через ручку `--font-heading-style`, роль Step Title курсивная всегда). */
+.plate h1.step-title {
+  font-size: var(--fs-step-title); font-style: italic; line-height: 1.14; letter-spacing: -.02em;
+}
 .plate-sub { font-size: 13px; line-height: 1.3; color: var(--on-accent-strong); }
 .plate-rule {
   height: 1px; border: 0; background: var(--on-accent-rule);

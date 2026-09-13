@@ -305,6 +305,20 @@ async def _draft_response(telegram_id: int, ctx: dict | None = None, *, bot_user
                 step_spec_row["options"] = [
                     i18n.tr(opt, lang, tr_map) for opt in step_spec_row["options"]
                 ]
+            # Phase 30 (30-03, A2-08, задача 4): v2_texts/option_hints — тот же прогон, что
+            # остальные текстовые поля спеки выше; иначе английская анкета показывала бы
+            # русские тексты новых типов (select/lookup/multi/link) поверх переведённого
+            # prompt/help/label/options.
+            if step_spec_row.get("v2_texts"):
+                step_spec_row["v2_texts"] = {
+                    key: i18n.tr(text, lang, tr_map)
+                    for key, text in step_spec_row["v2_texts"].items()
+                }
+            if step_spec_row.get("option_hints"):
+                step_spec_row["option_hints"] = {
+                    value: i18n.tr(text, lang, tr_map)
+                    for value, text in step_spec_row["option_hints"].items()
+                }
     user_row = ctx["user_row"]
     show_progress = await get_setting_typed("reg_show_progress") == "on"
     # Quick 260904-3vm (эстафета): плита «анкета сейчас в чате» — ТОЛЬКО когда держит бот;
