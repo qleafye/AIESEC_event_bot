@@ -1614,7 +1614,12 @@ _SKIP_ALLOWED_STEPS = {
 # Шаги, у которых клавиатура бота сегодня включает кнопку "Другое" (свободный текст поверх
 # списка) — city/study_field через _reply_kb(options, add_other=True) в _ask_step,
 # local_committee/position/department/aiesec_role через builders.py.
-_OTHER_ALLOWED_STEPS = {"city", "study_field", "local_committee", "position", "department", "aiesec_role"}
+# Phase 30 (30-06, A2-03, deviation Rule 2): "university" добавлен — chat-проекция lookup
+# (handlers/reg_types_lookup.py) обязана предлагать «Другое» для ВУЗа так же, как для города
+# (30-UI-SPEC.md § «2. lookup»: «до 5 совпадений + кнопка «Другое»» — без разделения по шагу);
+# `spec["other_allowed"]` для legacy-ветки university не читался (список строится безусловно
+# через `_reply_kb(options, add_other=True)`), поэтому добавление сюда не двигает GOLDEN.
+_OTHER_ALLOWED_STEPS = {"city", "study_field", "local_committee", "position", "department", "aiesec_role", "university"}
 
 # Phase 28 (28-04, SU-04, A-03 CONTEXT): три записи развилки резюме R1 — code (не показывается
 # делегату, только Mini App/бот решают, куда вести дальше) / реестровый ключ подписи / иконка
