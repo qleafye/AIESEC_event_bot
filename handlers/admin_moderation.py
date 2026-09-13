@@ -377,7 +377,12 @@ async def appr_reject_start(callback: types.CallbackQuery, state: FSMContext):
         await callback.answer(_OUT_OF_SCOPE_ALERT, show_alert=True)
         return
     await state.update_data(appr_reject_id=tid)
-    await callback.message.answer("Укажи причину отклонения:", reply_markup=get_cancel_kb())
+    # Phase 30 (30-05, задача 1, решение владельца №5): та же подсказка, что placeholder поля
+    # причины в Mini App (`miniapp_applications_reject_hint_text`) — один ключ на обе
+    # поверхности, менеджер правит формулировку один раз.
+    hint = await get_setting_typed("miniapp_applications_reject_hint_text")
+    prompt = "Укажи причину отклонения:" + (f"\n{hint}" if hint else "")
+    await callback.message.answer(prompt, reply_markup=get_cancel_kb())
     await state.set_state(Approval.reason)
     await callback.answer()
 

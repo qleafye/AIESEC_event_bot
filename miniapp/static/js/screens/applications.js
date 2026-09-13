@@ -78,7 +78,11 @@ export async function render(root, params, ctx) {
   const approveAllCityLine = h("p", { class: "faint hidden" });
   approveAllConfirm.insertBefore(approveAllCityLine, approveAllConfirm.querySelector(".btn.danger"));
 
-  const rejectReasonInput = h("textarea", { class: "input", rows: "2", maxlength: "500" });
+  // Phase 30 (30-05, задача 1, решение владельца №5): placeholder напоминает менеджеру, что
+  // текст уедет делегату дословно (карточка причины на экране статуса, 30-UI-SPEC.md).
+  const rejectReasonInput = h("textarea", {
+    class: "input", rows: "2", maxlength: "500", placeholder: texts.reject_hint || "",
+  });
   const rejectOwnSubmit = h("button", {
     class: "btn danger", type: "button", text: texts.reject_button || "",
     onClick: () => submitReject(rejectReasonInput.value.trim()),

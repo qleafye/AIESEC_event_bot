@@ -153,6 +153,9 @@ MINIAPP_KEYS = [
     "miniapp_applications_reject_own_reason",
     # Квик 260904-7e7 (D18): шторка отказа — модальный лист, своя кнопка отмены.
     "miniapp_applications_reject_cancel",
+    # Phase 30 (30-05, задача 1, решение владельца №5): placeholder поля причины — «это увидит
+    # делегат», тот же ключ читает и аналог в чате бота (handlers/admin_moderation.py).
+    "miniapp_applications_reject_hint_text",
     # Phase 23-05 Task 2 (APP-TINDER-03, D-25): подписи карточки заявки, которых не хватало
     # плану 23-04 (API отдавал только то, что зависит от карточки, не статичные подписи кнопок).
     "miniapp_applications_approve_button",
@@ -303,7 +306,9 @@ def test_exactly_170_miniapp_keys_and_no_extra():
     # Квик 12.09 (UI-аудит): +2 ключа — текст «нет связи» в приложении и подпись кнопки
     # выхода на терминальном экране анкеты (183 -> 185); +1 ключ счётчика группы настроек
     # «N из M» (185 -> 186).
-    assert len(MINIAPP_KEYS) == 186
+    # Phase 30 (30-05, задача 1, решение владельца №5): +1 ключ подсказки у поля причины
+    # отказа в шторке — «это увидит делегат» (186 -> 187).
+    assert len(MINIAPP_KEYS) == 187
     present = sorted(k for k in SETTINGS_SCHEMA if k.startswith("miniapp_"))
     assert present == sorted(MINIAPP_KEYS)
 
@@ -366,7 +371,8 @@ def test_text_keys_have_human_defaults():
     # Quick 260911-5ij (W2): +5 текстовых ключей состояний (147 -> 152).
     # Квик 12.09 (UI-аудит): +2 текстовых ключа — «нет связи» в анкете и кнопка выхода на
     # терминальном экране (152 -> 154); +1 текстовый ключ счётчика группы настроек (154 -> 155).
-    assert len(text_keys) == 155
+    # Phase 30 (30-05, задача 1): +1 текстовый ключ подсказки у поля причины отказа (155 -> 156).
+    assert len(text_keys) == 156
     for key in text_keys:
         default = SETTINGS_SCHEMA[key]["default"]
         assert isinstance(default, str) and default.strip(), key
