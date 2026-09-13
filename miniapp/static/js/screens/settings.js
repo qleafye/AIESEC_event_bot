@@ -24,7 +24,7 @@
 // показывает ОБЩЕЕ число несохранённых правок по всем разделам сразу и одним batch сохраняет
 // все разом (сервер уже давно это умеет — `settings/batch` не завязан на «текущий» раздел).
 
-import { sectionTitle, emptyState, errorState, labelText, tile, formatCount } from "../ui.js";
+import { sectionTitle, emptyState, errorState, labelText, tile, formatCount, formV2Text } from "../ui.js";
 import { icon } from "../icons.js";
 import { haptic } from "../motion.js";
 import {
@@ -54,6 +54,24 @@ const SECTION_ICONS = {
   data: "bar-chart-2",
   manage: "settings",
 };
+
+// Phase 30 (30-07, задача 2, A2-08, 30-UI-SPEC.md § «Экран менеджера "Анкета мероприятия"»,
+// артборд 13): блок «Анкета мероприятия» рисуется ТОЛЬКО для раздела «form» — единственная
+// таблица порядка восьми строк-тумблеров (жёсткий порядок макета, не менять даже для
+// читаемости кода). `text` — префикс имени в `formV2Text`/`page.py::FORM_V2_TEXT_KEYS`
+// (план 30-07 задача 1), не код настройки — код настройки менеджер нигде не видит.
+const FORM_MANAGER_MASTER_KEY = "reg_form_v2_enabled";
+const FORM_MANAGER_ROWS = [
+  { key: "reg_form_chips", text: "chips" },
+  { key: "reg_form_lookup_search", text: "lookup_search" },
+  { key: "reg_form_edu_card", text: "edu_card" },
+  { key: "reg_form_repeatable", text: "repeatable" },
+  { key: "reg_form_limit_counter", text: "limit_counter" },
+  { key: "reg_form_status_screen", text: "status_screen" },
+  { key: "reg_form_header_settings", text: "header_settings" },
+  { key: "reg_form_haptics", text: "haptics" },
+];
+const FORM_MANAGER_KEYS = new Set([FORM_MANAGER_MASTER_KEY, ...FORM_MANAGER_ROWS.map((r) => r.key)]);
 
 // Свёртка групп переживает перезаход (WEB-SET-02, UI-SPEC «Каркас страницы» п.4) — тот же
 // приём try/catch, что HUB_MODE_KEY/ONBOARDING_KEY в screens/hub.js: недоступный localStorage
@@ -1257,12 +1275,123 @@ async function renderSection(root, code, ctx) {
     if (head) head.setAttribute("aria-expanded", next ? "false" : "true");
   }
 
+  // ── блок «Анкета мероприятия» (30-07 задача 2) — сегмент «Старая/Новая анкета» + восемь
+  // строк-тумблеров с человеческими подписями/пояснениями (formV2Text, задача 1). Сохранение
+  // — ТОТ ЖЕ `POST /admin/settings/batch`, что и обычный тумблер `saveToggle` выше (единый
+  // механизм записи), но без `repaintRow`/`itemIndex` (эти 9 строк не входят в обычный
+  // флат-список тумблеров раздела — renderSectionBody их оттуда исключает, см. ниже), поэтому
+  // перекраска — точечная, самим блоком. Сегмент переключается без confirm-box (реш. 6,
+  // 30-CONTEXT.md: обратимо, данные не теряются) — в отличие от `openDangerToggleConfirm`.
+  async function saveManagerToggle(item, nextValue) {
+    if (busyToggle) return null;
+    busyToggle = true;
+    try {
+      const resp = await api("/admin/settings/batch", { method: "POST", body: {
+        changes: [{ key: item.key, value: nextValue }],
+        base: { [item.key]: item.raw },
+        confirm: [],
+      } });
+      if (resp.errors && resp.errors[item.key]) {
+        showToast(errorText({ status: 400 }, texts.miniapp_settings_error_toast_text || ""), "warn");
+        return null;
+      }
+      if (resp.saved && resp.saved.includes(item.key) && resp.items && resp.items[0]) {
+        haptic("success");
+        showToast(texts.miniapp_settings_saved_toast_text, "success");
+        return resp.items[0];
+      }
+      return null;
+    } catch (err) {
+      if (!isAuthError(err)) showToast(errorText(err, texts.miniapp_settings_error_toast_text || ""), "warn");
+      return null;
+    } finally {
+      busyToggle = false;
+    }
+  }
+
+  function buildFormManagerBlock(regFormItems) {
+    const master = regFormItems.get(FORM_MANAGER_MASTER_KEY);
+    if (!master || FORM_MANAGER_ROWS.some((r) => !regFormItems.get(r.key))) return null;
+
+    const card = h("div", { class: "card" });
+    card.append(
+      h("h1", { text: formV2Text("mgr_title") }),
+      h("p", { class: "label-role", text: formV2Text("mgr_subtitle") }),
+    );
+
+    // Сегмент во всю ширину — крупнее обычных `.hub-seg` (48px/36px, `.brand`, ПРАВКА к
+    // макету 50→48/38→36, 30-UI-SPEC.md). Подписи вариантов — `option_labels` реестра
+    // (`reg_form_v2_enabled`, план 30-01), а не новый ключ — та же надпись уже человеческая.
+    const seg = h("div", { class: "hub-seg brand", role: "radiogroup", "aria-label": formV2Text("mgr_master_label") });
+    function paintSeg() {
+      seg.replaceChildren();
+      for (const value of ["off", "on"]) {
+        const optLabel = (master.option_labels && master.option_labels[value]) || value;
+        seg.append(h("button", {
+          class: `hub-seg-btn${master.value === value ? " active" : ""}`,
+          type: "button", role: "radio", "aria-checked": master.value === value ? "true" : "false",
+          text: optLabel,
+          onClick: async () => {
+            if (master.value === value) return;
+            const fresh = await saveManagerToggle(master, value);
+            if (fresh) { master.raw = fresh.raw; master.value = fresh.value; master.option_labels = fresh.option_labels || master.option_labels; }
+            paintSeg();
+          },
+        }));
+      }
+    }
+    paintSeg();
+    card.append(seg, h("p", { class: "label-role", text: formV2Text("mgr_master_hint") }));
+    card.append(h("p", { class: "label-role", text: formV2Text("mgr_included_eyebrow") }));
+
+    const rowsWrap = h("div", { class: "settings-toggle-list" });
+    for (const row of FORM_MANAGER_ROWS) {
+      const item = regFormItems.get(row.key);
+      const title = h("div", { class: "st", text: formV2Text(`mgr_${row.text}_label`) });
+      const hintId = `mgr-${row.key}-hint`;
+      const hint = h("div", { class: "ss", id: hintId, text: formV2Text(`mgr_${row.text}_hint`) });
+      const pill = h("span", { class: `sw${item.value === "on" ? " on" : ""}` }, h("i", {}));
+      const line = h("div", {
+        class: "swrow", role: "switch",
+        "aria-checked": item.value === "on" ? "true" : "false",
+        "aria-label": formV2Text(`mgr_${row.text}_label`), "aria-describedby": hintId,
+        onClick: async () => {
+          const next = item.value === "on" ? "off" : "on";
+          const fresh = await saveManagerToggle(item, next);
+          if (fresh) { item.raw = fresh.raw; item.value = fresh.value; }
+          line.setAttribute("aria-checked", item.value === "on" ? "true" : "false");
+          pill.classList.toggle("on", item.value === "on");
+        },
+      }, h("div", {}, title, hint), pill);
+      rowsWrap.append(line);
+    }
+    card.append(rowsWrap);
+    card.append(h("p", { class: "note", text: formV2Text("mgr_degrade_note") }));
+    card.append(h("button", {
+      class: "btn ghost", type: "button",
+      onClick: () => { location.hash = "#/form"; },
+    }, icon("eye"), h("span", { text: formV2Text("mgr_preview_button") })));
+    return card;
+  }
+
   // ── тело раздела: тумблеры раздела (флат-список строк) + карточки групп. ─────────────────
   function renderSectionBody() {
     sectionsWrap.replaceChildren();
-    if (section.toggles.length) {
+    // 30-07 задача 2: девять ключей «Анкета 2.0» уходят в свой блок выше обычного
+    // флат-списка тумблеров раздела (только для раздела «form») — не показываются дважды.
+    let managerToggles = section.toggles;
+    if (code === "form") {
+      const regFormItems = new Map();
+      for (const item of section.toggles) if (FORM_MANAGER_KEYS.has(item.key)) regFormItems.set(item.key, item);
+      const block = buildFormManagerBlock(regFormItems);
+      if (block) {
+        sectionsWrap.append(block);
+        managerToggles = section.toggles.filter((item) => !FORM_MANAGER_KEYS.has(item.key));
+      }
+    }
+    if (managerToggles.length) {
       const toggleList = h("div", { class: "settings-toggle-list" });
-      for (const item of section.toggles) {
+      for (const item of managerToggles) {
         const row = buildRow(item);
         itemIndex.set(item.key, row);
         setOriginal(item);
@@ -1271,11 +1400,14 @@ async function renderSection(root, code, ctx) {
       sectionsWrap.append(toggleList);
     }
     // Квик 12.09 (UI-аудит, пункт 4): M считается один раз на раздел — тумблеры раздела +
-    // items всех групп раздела (тумблеры не входят ни в одну карточку группы).
+    // items всех групп раздела (тумблеры не входят ни в одну карточку группы). 30-07: девять
+    // ключей «Анкета 2.0» продолжают считаться в M раздела (`section.toggles.length` —
+    // сырой список сервера, не отфильтрованный `managerToggles`) — они по-прежнему настройки
+    // раздела «form», просто показаны в своём блоке, а не флат-строкой.
     const sectionTotal = section.toggles.length
       + section.groups.reduce((sum, g) => sum + (g.items ? g.items.length : 0), 0);
     section.groups.forEach((group, idx) => {
-      sectionsWrap.append(buildGroupCard(group, idx === 0 && !section.toggles.length, sectionTotal));
+      sectionsWrap.append(buildGroupCard(group, idx === 0 && !managerToggles.length, sectionTotal));
     });
   }
 

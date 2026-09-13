@@ -938,6 +938,13 @@ a.flat-row:active, button.flat-row:active { background: var(--surface-alt); }
 }
 .hub-seg-btn.active { background: var(--accent); color: var(--on-accent); }
 
+/* Phase 30 (30-07, задача 2, 30-UI-SPEC.md § «Экран менеджера "Анкета мероприятия"», артборд
+   13): сегмент «Старая/Новая анкета» — крупнее обычного `.hub-seg` (ПРАВКА к макету 50→48px
+   контейнер / 38→36px кнопки, сетка 4px как у `.btn`/`.chip-pick`), тот же компонент, другой
+   размер — не отдельная копия разметки. */
+.hub-seg.brand { min-height: 48px; padding: 6px; }
+.hub-seg.brand .hub-seg-btn { min-height: 36px; font-size: var(--fs-input); }
+
 /* ── формо-компоненты анкеты (form.js, план 21-04, 21-UI-SPEC.md § «Form Components») ────
    Матрица состояний поля (default/focus/error/disabled/updated-in-chat/not-set), чипы
    выбора, дропзона резюме, диф-строка обзора правки, прогресс-бар мастера, чипы списка
