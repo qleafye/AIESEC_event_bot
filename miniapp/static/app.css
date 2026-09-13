@@ -1892,6 +1892,19 @@ a.flat-row:active, button.flat-row:active { background: var(--surface-alt); }
 .status-step .title { font-family: var(--font-heading); font-weight: 800; font-size: 15px; }
 .status-step .body { font-size: 13px; color: var(--text-faint); margin-top: 2px; }
 
+/* Настройки в шапке анкеты (30-UI-SPEC.md § «Настройки в шапке анкеты», план 30-05 задача 4)
+   — шестерёнка 32px (размер `.settings-matrix-toggle`, второй не заводим, UI-SPEC ПРАВКА
+   34->32), сегменты поповера — тот же `.hub-seg`/`.hub-seg-btn`, что переключатель хаба, но
+   активный сегмент нейтральным цветом (`--border-strong`/`--text`), НЕ `--accent» (в отличие
+   от `.hub-seg-btn.active` — тот управляет ролью «делегат/менеджер», разные семантики). */
+.wizard-header-row { display: flex; justify-content: flex-end; margin-bottom: var(--sp-2); }
+.wizard-header-gear {
+  flex: none; width: 32px; height: 32px; border-radius: var(--radius-pill);
+  border: 1px solid var(--border); background: var(--surface); color: var(--text-muted);
+  display: flex; align-items: center; justify-content: center; cursor: pointer;
+}
+.sheet .hub-seg-btn.active { background: var(--border-strong); color: var(--text); }
+
 /* Quick 260904-8o3 Task 3 (E5/E6): мини-плита предпросмотра оформления живёт ВНУТРИ карточки
    группы настроек, не на весь экран — снимаем bleed-margin .plate и уменьшаем плиту-герой,
    геометрию паттерна не трогаем (наследуется от .plate--hub, тот же фрагмент, что у хаба). */
