@@ -22,6 +22,13 @@ inline-кнопок совпадений + «Другое» (30-UI-SPEC.md § «
 Каждая мутация состояния (выбор варианта, ответ «Другим» текстом) — немедленный
 `_sync_draft_out` (MEMORY «restart-during-registration»: без этого делегат после рестарта
 воскресает на прошлой ветке анкеты).
+
+Phase 30 (30-08, задача A): атрибуты списка-справочника «чипы»/«поиск» (`reg_engine.
+lookup_render_flags`, комбинирует их с глобальными тумблерами `reg_form_chips`/`reg_form_
+lookup_search`) управляют этим швом СВЕРХ прежнего поведения — чипы показываются инлайн-
+кнопками сразу на вопросе шага, выключенный атрибутом список поиска не зовёт `search_lookup`
+на печатаемый текст, оба выключенных атрибута разом превращают шаг в обычное текстовое поле
+(та же деградация, что `form_types.js::lookupControl` делает в Mini App).
 """
 from aiogram import F, types
 from aiogram.fsm.context import FSMContext
@@ -31,10 +38,10 @@ from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
 from handlers import reg_i18n
 from handlers.registration import _advance, _sync_draft_out, router
 from reg_engine import (
-    STEP_TO_COLUMN, _LOOKUP_ENTITY_NAMES as _ENTITY_NAMES, lookup_other_allowed, prompt,
-    validate_answer,
+    STEP_TO_COLUMN, _LOOKUP_ENTITY_NAMES as _ENTITY_NAMES, lookup_other_allowed,
+    lookup_render_flags, prompt, validate_answer,
 )
-from services.lookup import enqueue_merge, search_lookup
+from services.lookup import enqueue_merge, search_lookup, top_chips
 from settings_schema import get_setting_typed
 
 _LOOKUP_LIMIT = 5
@@ -58,17 +65,47 @@ def _build_kb(results: list[dict], other_label: str) -> InlineKeyboardMarkup:
 
 
 async def ask_step(step_key: str, message: types.Message, state: FSMContext,
-                    progress_prefix: str, participant_type: str | None, city_code: str | None) -> None:
+                    progress_prefix: str, participant_type: str | None, city_code: str | None,
+                    v2_flags: dict[str, bool] | None = None) -> None:
     """Показ шага — вопрос шага (та же точка правды, что у легаси-ветки, `reg_engine.prompt`)
     плюс подсказка «напиши первые буквы» (`reg_lookup_hint_default_text`, уже заведён планом
-    30-03). Кнопок на этом экране нет — они появляются ПОСЛЕ первого текстового сообщения
-    (30-UI-SPEC.md: «напиши первые буквы» — это и есть чат-эквивалент поиска)."""
+    30-03). Кнопок на этом экране нет ПО УМОЛЧАНИЮ — они появляются ПОСЛЕ первого текстового
+    сообщения (30-UI-SPEC.md: «напиши первые буквы» — это и есть чат-эквивалент поиска).
+
+    Phase 30 (30-08, задача A): `v2_flags` — девять глобальных тумблеров, переданные вызывающим
+    (`handlers/registration.py::_ask_step`, тот же объект, каким уже владеет диспетчер, второго
+    похода в реестр не заводим). `reg_engine.lookup_render_flags` сводит их с атрибутами списка
+    (`<list_key>_chips_enabled`/`_search_enabled`, план 30-07) — результат сохраняется в FSM
+    data (`_lookup_chips_enabled`/`_lookup_search_enabled`), чтобы `receive_lookup_text` не
+    считал их заново на каждое сообщение делегата. Если чипы включены — топ-8 частых значений
+    показываются СРАЗУ инлайн-кнопками (тот же список, что видит Mini App, `services.lookup.
+    top_chips`) — делегат может тапнуть, не печатая ни буквы; `None` (вызов без `v2_flags`,
+    сегодня такого нет) — оба атрибута читаются как выключенные (безопасный дефолт: сегодняшнее
+    поведение без чипов)."""
+    render_flags = await lookup_render_flags(step_key, v2_flags or {})
     hint = await get_setting_typed("reg_lookup_hint_default_text")
     text = f"{progress_prefix}{await prompt(step_key, participant_type, city_code)}"
     if hint:
         text = f"{text}\n\n{hint}"
-    await state.update_data(_lookup_step=step_key, _lookup_results=[], _lookup_other=False)
-    await reg_i18n.say(message, text)
+
+    initial_results: list[dict] = []
+    kb = None
+    if render_flags["chips_enabled"]:
+        chips = await top_chips(step_key, city_code, limit=_LOOKUP_LIMIT)
+        if chips:
+            initial_results = [{"canonical": c} for c in chips]
+            other_label = ""
+            if await lookup_other_allowed(step_key):
+                entity = _ENTITY_NAMES.get(step_key, "")
+                other_label = (await get_setting_typed("reg_form_own_chip_text") or "").replace("{entity}", entity)
+            kb = _build_kb(initial_results, other_label)
+
+    await state.update_data(
+        _lookup_step=step_key, _lookup_results=initial_results, _lookup_other=False,
+        _lookup_chips_enabled=render_flags["chips_enabled"],
+        _lookup_search_enabled=render_flags["search_enabled"],
+    )
+    await reg_i18n.say(message, text, reply_markup=kb)
     await state.set_state(_LookupChat.waiting)
 
 
@@ -100,6 +137,37 @@ async def receive_lookup_text(message: types.Message, state: FSMContext, bot):
             answered_col=STEP_TO_COLUMN.get(step_key, step_key),
         )
         await _advance(step_key, message, state, bot)
+        return
+
+    chips_enabled = bool(data.get("_lookup_chips_enabled"))
+    search_enabled = data.get("_lookup_search_enabled", True)
+    if not search_enabled and not chips_enabled:
+        # Phase 30 (30-08, задача A): оба атрибута списка выключены — тот же локальный разворот
+        # в голое текстовое поле, что `form_types.js::lookupControl` делает при `spec.lookup`
+        # `{chips_enabled:false, search_enabled:false}` (`degrade_kind()` эту комбинацию не
+        # видит, она про атрибуты СПИСКА, не про глобальные тумблеры типа). Сырой текст пишется
+        # НАПРЯМУЮ, без `search_lookup`/`enqueue_merge` — на этом сочетании справочник-с-очередью
+        # уже не действует, шаг ведёт себя как обычное текстовое поле.
+        value, err = validate_answer(step_key, text)
+        if err:
+            await reg_i18n.say(message, err)
+            return
+        await state.update_data(**{STEP_TO_COLUMN.get(step_key, step_key): value})
+        data = await state.get_data()
+        await _sync_draft_out(
+            message.chat.id, state, data, step_key,
+            answered_col=STEP_TO_COLUMN.get(step_key, step_key),
+        )
+        await _advance(step_key, message, state, bot)
+        return
+
+    if not search_enabled:
+        # Phase 30 (30-08, задача A): поиск выключен атрибутом списка, чипы остались — делегат
+        # обязан тапнуть одну из уже показанных кнопок (30-UI-SPEC.md §2: без поиска остаётся
+        # статичный список ≤8 кнопок, не свободный ввод). Свободный текст здесь — переспрос, а
+        # не «Другое» (та ветка гейтится отдельно `_lookup_other`/`lookup_other_allowed` выше).
+        pick_hint = await get_setting_typed("reg_form_pick_option_text")
+        await reg_i18n.say(message, pick_hint or text)
         return
 
     entity = _ENTITY_NAMES.get(step_key, "")

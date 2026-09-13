@@ -225,17 +225,35 @@ chips[0].dispatch("click", {});
 chips[1].dispatch("click", {});   // лимит 1 — второй тап не должен добавиться
 const afterMultiCalls = multiCalls.length ? multiCalls[multiCalls.length - 1] : [];
 
-// 3) lookup без chips — ряда чипов нет.
-const lookupNoChipsSpec = { key: "university", degraded_kind: "lookup", v2_texts: {} };
-const lookupNoChipsResult = m.buildV2Control(h, lookupNoChipsSpec, null, () => {}, { chips: false, lookup_search: true });
+// 3) lookup без chips — ряда чипов нет. Деградация — из `spec.lookup` (30-08 задача A:
+// `reg_engine.lookup_render_flags` уже свёл глобальный тумблер с атрибутом списка, компонент
+// читает готовый результат, не `flags.chips` напрямую).
+const lookupNoChipsSpec = {
+  key: "university", degraded_kind: "lookup", v2_texts: {},
+  lookup: { chips_enabled: false, search_enabled: true },
+};
+const lookupNoChipsResult = m.buildV2Control(h, lookupNoChipsSpec, null, () => {}, {});
 await sleep(30);
 const lookupNoChipsHasChips = findAll(lookupNoChipsResult.control, "chip-pick").length > 0;
 
 // 4) lookup без lookup_search — поля поиска нет (проверяем по отсутствию строки .pick с полем).
-const lookupNoSearchSpec = { key: "city", degraded_kind: "lookup", v2_texts: {} };
-const lookupNoSearchResult = m.buildV2Control(h, lookupNoSearchSpec, null, () => {}, { chips: true, lookup_search: false });
+const lookupNoSearchSpec = {
+  key: "city", degraded_kind: "lookup", v2_texts: {},
+  lookup: { chips_enabled: true, search_enabled: false },
+};
+const lookupNoSearchResult = m.buildV2Control(h, lookupNoSearchSpec, null, () => {}, {});
 await sleep(30);
 const lookupNoSearchHasSearchIcon = findAll(lookupNoSearchResult.control, "pick").length > 0;
+
+// 4b) lookup: оба атрибута списка выключены (при включённых глобальных тумблерах) —
+// компонент разворачивается в голое текстовое поле сам (30-08 задача A), не остаётся
+// полурабочим (ни чипов, ни поиска, ни списка результатов).
+const lookupBothOffSpec = {
+  key: "city", degraded_kind: "lookup", v2_texts: {}, max_len: 100,
+  lookup: { chips_enabled: false, search_enabled: false },
+};
+const lookupBothOffResult = m.buildV2Control(h, lookupBothOffSpec, null, () => {}, {});
+const lookupBothOffIsPlainInput = lookupBothOffResult.control.tagName === "INPUT";
 
 // 5) lookup: свой вариант выключен (other_allowed=false по умолчанию — сеть недоступна в
 // этом окружении, other_allowed остаётся false) — ghost-чипа нет.
@@ -374,6 +392,7 @@ console.log(JSON.stringify({
   afterMultiCalls,
   lookupNoChipsHasChips,
   lookupNoSearchHasSearchIcon,
+  lookupBothOffIsPlainInput,
   lookupOwnOffHasGhost,
   linkFieldOk,
   anyBtnClassLeak,
@@ -421,6 +440,13 @@ def test_lookup_without_chips_renders_no_chips(js_result):
 
 def test_lookup_without_search_renders_no_search_field(js_result):
     assert js_result["lookupNoSearchHasSearchIcon"] is False
+
+
+def test_lookup_both_list_attributes_off_degrades_to_plain_input(js_result):
+    """30-08 задача A: `spec.lookup` — оба атрибута списка выключены при включённых глобальных
+    тумблерах (`degrade_kind()` этого сочетания не видит) — компонент разворачивается в голое
+    `<input>` сам, не оставляет делегата с полурабочим списком без чипов/поиска/результатов."""
+    assert js_result["lookupBothOffIsPlainInput"] is True
 
 
 def test_lookup_own_option_off_has_no_ghost_chip(js_result):

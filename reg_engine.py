@@ -1636,6 +1636,37 @@ async def lookup_other_allowed(step_key: str) -> bool:
         return step_key in _OTHER_ALLOWED_STEPS
     return await get_setting_typed(f"{list_key}_other_allowed") == "on"
 
+
+async def lookup_render_flags(step_key: str, flags: dict[str, bool]) -> dict[str, bool]:
+    """spec['lookup'] (30-08 задача A): атрибуты списка-справочника `<list_key>_chips_enabled`/
+    `<list_key>_search_enabled` (план 30-07, заведены, но до этой задачи ни на что не влияли —
+    30-07-SUMMARY.md Known Stubs) управляют РЕНДЕРОМ типа `lookup` СВЕРХ глобальных тумблеров
+    `reg_form_chips`/`reg_form_lookup_search` — правило задачи A дословно: глобальный `off` →
+    `off` (без похода в реестр списка вовсе — экономия чтения на шаге, где список всё равно
+    ничего не решает), глобальный `on` → решает атрибут конкретного списка. Единственная точка
+    правды для ОБЕИХ поверхностей — `form_types.js` читает `spec.lookup` (`reg_engine.step_
+    spec`), чат (`handlers/reg_types_lookup.py`) зовёт эту же функцию напрямую (там `step_spec`
+    целиком не строится — чат ведёт шаг без полной спеки, тем же приёмом, что и `lookup_other_
+    allowed` выше).
+
+    `degrade_kind()` (A2-01, единственный источник правды для САМОГО ТИПА шага) НЕ трогается —
+    он видит только девять глобальных тумблеров, не атрибуты списков (30-CONTEXT.md: «Атрибуты
+    влияют только на новую анкету», не на классификацию типа). Если оба вычисленных здесь флага
+    ложны, а `degraded_kind` шага всё ещё `"lookup"` (менеджер выключил ОБА атрибута списка при
+    включённых глобальных тумблерах) — обе поверхности рисуют голое поле сами (тот же приём,
+    что уже применяет `degrade_kind` на уровне глобальных тумблеров), эта функция только
+    публикует флаги, решение о развороте — за вызывающим."""
+    list_key = _LOOKUP_LIST_KEY.get(step_key)
+    if list_key is None:
+        return {"chips_enabled": False, "search_enabled": False}
+    chips_enabled = bool(flags.get("chips")) and (
+        await get_setting_typed(f"{list_key}_chips_enabled") == "on"
+    )
+    search_enabled = bool(flags.get("lookup_search")) and (
+        await get_setting_typed(f"{list_key}_search_enabled") == "on"
+    )
+    return {"chips_enabled": chips_enabled, "search_enabled": search_enabled}
+
 # Phase 28 (28-04, SU-04, A-03 CONTEXT): три записи развилки резюме R1 — code (не показывается
 # делегату, только Mini App/бот решают, куда вести дальше) / реестровый ключ подписи / иконка
 # Lucide-подсета (28-UI-SPEC.md §Component Contracts 1, upload/link/x).
@@ -1749,6 +1780,10 @@ async def step_spec(step_key: str, participant_type: str | None = None,
     spec["v2_texts"] = await _v2_texts_for(degraded_kind, step_key, event_city)
     if degraded_kind == "select":
         spec["option_hints"] = await option_hints_for(step_key)
+    if degraded_kind == "lookup":
+        # 30-08 задача A: атрибуты списка-справочника сверх глобальных тумблеров — см.
+        # докстринг `lookup_render_flags`.
+        spec["lookup"] = await lookup_render_flags(step_key, resolved_flags)
     if degraded_kind == "composite" and not _in_composite:
         spec["composite"] = await _composite_spec_for(
             spec["composite_group"], participant_type, event_city, resolved_flags,
