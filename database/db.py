@@ -787,6 +787,15 @@ async def init_db():
         # старые/нетронутые строки: вопрос «Источник» в профиле показывается как раньше.
         await _ensure_column(db, "users", "source_from_tag", "INTEGER DEFAULT 0")
 
+        # Phase 30 (30-05, задача 3, A2-07): дата решения по отказу — экран статуса заявки
+        # подписывает причину отказа ТОЛЬКО датой (30-CONTEXT.md решение владельца №5: без
+        # имени менеджера), для чего дата нужна отдельной колонкой — раньше `users` не хранил
+        # момент отказа вовсе (в отличие от `approved_at`, D-10). Additive, без бэкафилла —
+        # NULL значит «отклонён до этой колонки», экран статуса просто не подписывает причину
+        # датой для таких старых решений. Стампится в `reject_user` (единственный атомарный шов
+        # и бота, и веба — `services.applications.claim_reject`), второй точки записи нет.
+        await _ensure_column(db, "users", "rejected_at", "TEXT")
+
         # Phase 28 (28-01, SU-01/SU-04/SU-08): СкиллАп 5 — новые вопросы анкеты (default-off,
         # тумблеры reg_q_stack/reg_q_experience/reg_q_readiness/reg_q_resume_link/reg_q_mini_*/
         # reg_q_case_optin) + пять НЕ-REG_FLOW полей резервной цепочки резюме/скоринга/амбассадора.
@@ -2560,11 +2569,16 @@ async def approve_user_atomic(telegram_id: int) -> bool:
 
 
 async def reject_user(telegram_id: int) -> bool:
-    """Atomically reject one pending user. True iff one row flipped."""
+    """Atomically reject one pending user. True iff one row flipped.
+    rejected_at (Phase 30, 30-05 задача 3) is stamped in the SAME UPDATE — the shared seam
+    for both the bot's single-reject (appr_reject_reason) and the web's single-reject
+    (services.applications.claim_reject), same discipline as approve_user_atomic/approved_at."""
+    rejected_at = msk_now().strftime("%Y-%m-%d %H:%M:%S")
     async with _connect() as db:
         cursor = await db.execute(
-            "UPDATE users SET status = 'rejected' WHERE telegram_id = ? AND status = 'pending'",
-            (telegram_id,),
+            "UPDATE users SET status = 'rejected', rejected_at = ? "
+            "WHERE telegram_id = ? AND status = 'pending'",
+            (rejected_at, telegram_id),
         )
         await db.commit()
         return cursor.rowcount == 1

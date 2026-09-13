@@ -24,7 +24,7 @@ from datetime import datetime
 from fastapi import APIRouter, Depends
 
 from cities import get_setting_typed_for_city
-from database.db import get_user
+from database.db import get_setting, get_user
 from services import applications
 from settings_schema import get_setting_typed
 
@@ -34,6 +34,68 @@ from miniapp.routers.tasks import delegate_city_scope, tasks_progress
 from miniapp.timeutil import today_msk
 
 router = APIRouter()
+
+
+# ── Phase 30 (30-05, задача 3, A2-07): экран статуса заявки + плита-ссылка на хабе ──────────
+#
+# Расширяет `/app/api/hub/status`, новую ручку не заводит (`<interfaces>` 30-05-PLAN.md).
+# Поля до этой фазы (`status/heading/body/days/cta_text/event_dates/event_place/reason_line`)
+# НЕ трогаются — старый клиент (тумблер `reg_form_status_screen` выключен, дефолт) получает
+# байт-в-байт прежний ответ; новые поля ниже читаются ТОЛЬКО когда `status_screen_enabled`
+# истинен — `screens/status.js`/расширённая плита `hub.js` проверяют именно этот флаг, не
+# наличие отдельных полей поодиночке.
+
+
+_STATUS_SCREEN_EXTRAS_OFF: dict = {
+    "badge": None, "title": None, "screen_body": None,
+    "next_steps_eyebrow": None, "next_steps": [],
+    "edit_button_text": None, "payment": None, "pay_button_text": None,
+    "reason_eyebrow": None, "reason_text": None, "reason_date": None,
+    "fix_eyebrow": None, "fix_fields": None, "saved_answers_label": None,
+    "resubmit_button_text": None, "tile_text": None,
+}
+
+
+async def _next_steps(prefix: str) -> list[dict]:
+    """Три шага «Что дальше» одного состояния — `reg_status_{prefix}_step{1..3}_title_text`/
+    `_body_text`, тот же реестровый шаблон для review/approved (30-UI-SPEC.md таблицы)."""
+    steps = []
+    for i in (1, 2, 3):
+        title = await get_setting_typed(f"reg_status_{prefix}_step{i}_title_text")
+        body = await get_setting_typed(f"reg_status_{prefix}_step{i}_body_text")
+        if title or body:
+            steps.append({"title": title, "body": body})
+    return steps
+
+
+async def _payment_card(user: dict) -> dict | None:
+    """Карточка оплаты экрана «Одобрена» — сумма и срок ТОЛЬКО когда модуль оплаты включён и у
+    делегата есть тариф (30-CONTEXT.md решение оркестратора: «следует за payment_enabled и
+    наличием тарифа, отдельного ключа нет»). Переиспользует существующий парсер
+    `payment_options` (`handlers.payment._parse_options`) — новой логики оплаты не пишем."""
+    if await get_setting_typed("payment_enabled") != "on":
+        return None
+    option_label = user.get("payment_option")
+    payment_due = user.get("payment_due")
+    if not option_label or not payment_due:
+        return None
+    from handlers.payment import _parse_options  # локальный импорт — без цикла на старте бота
+
+    amount = None
+    for label, price, _tracks in _parse_options(await get_setting("payment_options") or ""):
+        if label == option_label:
+            amount = price
+            break
+    if amount is None:
+        return None
+    due_date = str(payment_due).split()[0]
+    due_label_tpl = await get_setting_typed("reg_status_payment_due_label_text")
+    return {
+        "amount": amount,
+        "due_date": due_date,
+        "due_label": due_label_tpl.replace("{дата}", due_date) if due_label_tpl else None,
+        "reminder_note": await get_setting_typed("reg_status_payment_reminder_note_text"),
+    }
 
 
 def _days_until(raw: str | None) -> int | None:
@@ -103,6 +165,14 @@ async def hub_status(p: Principal = Depends(form_gate)) -> dict:
 
     event_dates = await get_setting_typed_for_city("event_date", event_city) or None
     event_place = await get_setting_typed_for_city("event_place_name", event_city) or None
+    # Phase 30 (30-05, задача 3): выключенный тумблер -> ниже опубликованные поля пустые
+    # (`status_screen_enabled: False`), клиент рисует ТОЛЬКО старые поля — сегодняшнее
+    # поведение обеих поверхностей (плита хаба, экрана #/status ещё нет) без изменений.
+    status_screen_on = await get_setting_typed_for_city("reg_form_status_screen", event_city) == "on"
+    # Тумблер вибрации анкеты (30-03) — независим от status_screen: тап по плите хаба обязан
+    # молчать при выключенной вибрации, тем же способом, что form_types.js::haptic (свой
+    # локальный хелпер на файл, второй общий мотор не заводим).
+    haptics_on = await get_setting_typed("reg_form_haptics") == "on"
 
     if status == "pending":
         heading = await get_setting_typed("miniapp_hub_pending_heading_text")
@@ -111,10 +181,24 @@ async def hub_status(p: Principal = Depends(form_gate)) -> dict:
         # Та же подстановка, что applications.py::applications_next делает для «{count}» —
         # `.format()` уронил бы ручку, если менеджер случайно сотрёт фигурные скобки в тексте.
         body = body_tpl.replace("{days}", str(days)) if body_tpl else None
+        extra = {
+            "badge": await get_setting_typed("reg_status_review_badge_text"),
+            "title": await get_setting_typed("reg_status_review_title_text"),
+            "screen_body": await get_setting_typed("reg_status_review_body_text"),
+            "next_steps_eyebrow": await get_setting_typed("reg_status_next_eyebrow_text"),
+            "next_steps": await _next_steps("review"),
+            "edit_button_text": await get_setting_typed("reg_status_edit_button_text"),
+            "payment": None, "pay_button_text": None,
+            "reason_eyebrow": None, "reason_text": None, "reason_date": None,
+            "fix_eyebrow": None, "fix_fields": None, "saved_answers_label": None,
+            "resubmit_button_text": None,
+            "tile_text": await get_setting_typed("reg_status_tile_review_text"),
+        } if status_screen_on else _STATUS_SCREEN_EXTRAS_OFF
         return {
             "status": status, "heading": heading, "body": body, "days": days,
             "cta_text": None, "event_dates": event_dates, "event_place": event_place,
-            "reason_line": None,
+            "reason_line": None, "status_screen_enabled": status_screen_on,
+            "haptics_enabled": haptics_on, **extra,
         }
     if status == "rejected":
         heading = await get_setting_typed("miniapp_hub_rejected_heading_text")
@@ -128,13 +212,64 @@ async def hub_status(p: Principal = Depends(form_gate)) -> dict:
         reason = await applications.last_rejection_reason(p.telegram_id)
         reason_tpl = await get_setting_typed("miniapp_hub_rejected_reason_text")
         reason_line = reason_tpl.replace("{reason}", reason) if (reason and reason_tpl) else None
+        extra = {
+            "badge": await get_setting_typed("reg_status_rejected_badge_text"),
+            "title": await get_setting_typed("reg_status_rejected_title_text"),
+            "screen_body": await get_setting_typed("reg_status_rejected_body_text"),
+            "next_steps_eyebrow": None, "next_steps": [],
+            "edit_button_text": None, "payment": None, "pay_button_text": None,
+            "reason_eyebrow": await get_setting_typed("reg_status_reason_eyebrow_text"),
+            # T-30-11/T-30-12 (threat register): причина строго СВОЯ (та же `last_rejection_
+            # reason(p.telegram_id)`, что и `reason_line` выше — второй запрос не заводим), без
+            # имени менеджера (30-CONTEXT.md решение владельца №5) — под текстом ТОЛЬКО дата
+            # решения (`rejected_at`, план 30-05 задача 3).
+            "reason_text": reason,
+            "reason_date": applications.format_decision_date(user.get("rejected_at")),
+            "fix_eyebrow": await get_setting_typed("reg_status_fix_eyebrow_text"),
+            # Список проблемных полей — нет источника данных (менеджер пишет причину свободным
+            # текстом, структурной разметки «какое поле не так» проект не ведёт): пусто, пока
+            # такая функциональность не появится отдельным планом (см. SUMMARY, Known Stubs).
+            "fix_fields": None,
+            "saved_answers_label": await get_setting_typed("reg_status_saved_answers_label_text"),
+            "resubmit_button_text": await get_setting_typed("reg_status_resubmit_button_text"),
+            "tile_text": await get_setting_typed("reg_status_tile_rejected_text"),
+        } if status_screen_on else _STATUS_SCREEN_EXTRAS_OFF
         return {
             "status": status, "heading": heading, "body": body, "days": None,
             "cta_text": cta_text, "event_dates": event_dates, "event_place": event_place,
-            "reason_line": reason_line,
+            "reason_line": reason_line, "status_screen_enabled": status_screen_on,
+            "haptics_enabled": haptics_on, **extra,
+        }
+    if status == "approved" and status_screen_on:
+        payment = await _payment_card(user)
+        extra = {
+            "badge": await get_setting_typed("reg_status_approved_badge_text"),
+            "title": (await get_setting_typed("reg_status_approved_title_text") or "").replace(
+                "{имя}", user.get("full_name") or "",
+            ),
+            "screen_body": (await get_setting_typed("reg_status_approved_body_text") or "")
+                .replace("{дата}", event_dates or "").replace("{город}", event_place or ""),
+            "next_steps_eyebrow": await get_setting_typed("reg_status_next_eyebrow_text"),
+            "next_steps": await _next_steps("approved"),
+            "edit_button_text": None,
+            "payment": payment,
+            "pay_button_text": await get_setting_typed("reg_status_pay_button_text") if payment else None,
+            "reason_eyebrow": None, "reason_text": None, "reason_date": None,
+            "fix_eyebrow": None, "fix_fields": None, "saved_answers_label": None,
+            "resubmit_button_text": None,
+            "tile_text": (await get_setting_typed("reg_status_tile_approved_text") or "").replace(
+                "{дата}", payment["due_date"] if payment else "",
+            ),
+        }
+        return {
+            "status": status, "heading": None, "body": None, "days": None,
+            "cta_text": None, "event_dates": event_dates, "event_place": event_place,
+            "reason_line": None, "status_screen_enabled": True,
+            "haptics_enabled": haptics_on, **extra,
         }
     return {
         "status": status, "heading": None, "body": None, "days": None,
         "cta_text": None, "event_dates": event_dates, "event_place": event_place,
-        "reason_line": None,
+        "reason_line": None, "status_screen_enabled": status_screen_on,
+        "haptics_enabled": haptics_on, **_STATUS_SCREEN_EXTRAS_OFF,
     }

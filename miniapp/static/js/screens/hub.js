@@ -10,9 +10,21 @@
 
 import { visibleNav, NAV_ICONS, SECTION_GROUPS } from "../app.js";
 import { icon } from "../icons.js";
-import { countUp } from "../motion.js";
+import { countUp, haptic } from "../motion.js";
 import { fileUrl, flatRow, sectionTitle, labelText, tile } from "../ui.js";
 import { personNode } from "../person.js";
+
+// Phase 30 (30-05, задача 3, A2-07): плита статуса заявки. Тумблер `reg_form_status_screen`
+// решает СЕРВЕР (`status.status_screen_enabled`, `miniapp/routers/hub.py::hub_status`) —
+// выключен -> клиент не видит ни одного нового поля, плита остаётся сегодняшней (не кликается).
+const STATUS_TONE = { pending: "accent", approved: "success", rejected: "danger" };
+
+// `motion.js::haptic` не знает про `reg_form_haptics` (та управляет ТОЛЬКО модулем анкеты,
+// form_types.js::haptic — свой локальный хелпер с тем же принципом) — плита статуса живёт в
+// hub.js, третьей копии детекта уровня не заводим, просто гейтим вызов флагом с сервера.
+function statusHaptic(status) {
+  if (status && status.haptics_enabled) haptic("light");
+}
 
 // Quick 260904-aup (UAT D11 + Q4): разделение ролей — СЕРВЕР (`me.show_onboarding`, `/app/api/me`)
 // решает, кому вообще положено видеть привет-экран (не сотруднику и не делегату с уже поданной
@@ -166,6 +178,13 @@ async function renderDelegateHub(root, ctx) {
   const factsSlot = h("div", {});
   root.append(h("section", { class: "plate plate--hub" }, personSlot, plateEyebrow, plateRow, factsSlot));
 
+  // Phase 30 (30-05, задача 3, A2-07): короткая плита-ссылка на статус заявки — у ОДОБРЕННОГО
+  // делегата сегодня нет вообще никакого сигнала «оплати до …»/«собирай монеты», кроме строки
+  // в разделе «Анкета» ниже (`sectionRows["#/form"]`). Слот пуст, пока не пришёл ответ ниже —
+  // тот же fail-soft приём, что у остальных слотов этой плиты (T-19.1-16).
+  const statusSlot = h("div", {});
+  root.append(statusSlot);
+
   // Приоритетное действие — заполняется только когда известны и текст надзаголовка (/hub),
   // и само задание (/tasks); до тех пор слот пуст, никакой пустой рамки не рисуется.
   const nextSlot = h("div", {});
@@ -203,12 +222,13 @@ async function renderDelegateHub(root, ctx) {
     if (cls) valueEl.classList.add(cls);
   };
 
-  const [balanceR, historyR, profileR, tasksR, hubR] = await Promise.allSettled([
+  const [balanceR, historyR, profileR, tasksR, hubR, statusR] = await Promise.allSettled([
     api("/coins/balance"),
     api("/coins/history?offset=0&limit=1"),
     api("/profile"),
     api("/tasks?offset=0&limit=2"),
     api("/hub"),
+    api("/hub/status"),
   ]);
 
   // Снять скелетон одним местом, до разбора результатов: отказ любой ручки не должен
@@ -246,6 +266,25 @@ async function renderDelegateHub(root, ctx) {
   }
   if (tasksR.status === "fulfilled") {
     setSectionValue("#/tasks", `${tasksR.value.total} активных`);
+  }
+
+  // Phase 30 (30-05, задача 3): плита видна, только пока есть активная заявка (сервер прислал
+  // `tile_text`) И включён `reg_form_status_screen` (`status_screen_enabled`) — выключенный
+  // тумблер оставляет слот пустым, делегат не видит ничего нового (сегодняшнее поведение).
+  if (statusR.status === "fulfilled") {
+    const status = statusR.value;
+    if (status && status.status_screen_enabled && status.tile_text) {
+      const tone = STATUS_TONE[status.status] || "accent";
+      const openStatus = () => { statusHaptic(status); navigate("#/status"); };
+      statusSlot.append(h("button", {
+        class: `next-action status-tile status-${tone}`, type: "button",
+        "aria-label": status.tile_text, onClick: openStatus,
+      },
+        icon(status.status === "approved" ? "check" : status.status === "rejected" ? "alert-triangle" : "clock-4"),
+        h("div", { class: "next-action-body" }, h("div", { class: "next-action-title", text: status.tile_text })),
+        h("span", { class: "flat-row-chev" }, icon("chevron-right")),
+      ));
+    }
   }
 
   if (hubR.status === "fulfilled") {
@@ -292,12 +331,14 @@ async function renderTilesOnlyHub(root, ctx, items) {
   // статус вообще может нести текст — approved/none/draft получают heading: None и ручку
   // можно не звать вовсе. Отказ ручки -> плиты нет, плитки на месте (тот же fail-soft, что
   // у MANAGER_FETCHERS ниже по файлу, T-19.1-16).
-  if (ctx.me.form_status === "pending" || ctx.me.form_status === "rejected") {
+  if (ctx.me.form_status === "pending" || ctx.me.form_status === "rejected" || ctx.me.form_status === "approved") {
     try {
       const status = await api("/hub/status");
-      if (status && status.heading) {
+      // Одобренная заявка несёт текст ТОЛЬКО в новых полях (`tile_text`/`title`) — `heading`/
+      // `body` у неё пустые и до этого плана (approved никогда не показывал строку статуса).
+      if (status && (status.heading || status.tile_text)) {
         const plate = h("section", { class: "plate plate--hub" },
-          h("h1", { text: status.heading }),
+          h("h1", { text: status.heading || status.tile_text || "" }),
           h("hr", { class: "plate-rule" }),
           h("p", { class: "plate-sub", text: status.body || "" }),
           // Quick 260904-liz: строка причины отказа — второй узел, создаётся ТОЛЬКО когда
@@ -306,7 +347,22 @@ async function renderTilesOnlyHub(root, ctx, items) {
           // (miniapp/routers/hub.py) — здесь только textContent, никакого форматирования.
           status.reason_line ? h("p", { class: "plate-sub", text: status.reason_line }) : null,
         );
-        if (status.status === "rejected" && status.cta_text) {
+        // Phase 30 (30-05, задача 3): тумблер выключен -> ниже как раньше (инлайн-кнопка
+        // «Поправить»/«Изменить», карточка НЕ кликается) — сегодняшнее поведение без единого
+        // изменения. Тумблер включён -> вся карточка становится ссылкой на #/status (там уже
+        // есть та же кнопка-действие), второй, дублирующей кнопки внутри плиты не остаётся.
+        if (status.status_screen_enabled) {
+          plate.classList.add(`status-${STATUS_TONE[status.status] || "accent"}`, "clickable");
+          plate.setAttribute("role", "button");
+          plate.setAttribute("tabindex", "0");
+          plate.setAttribute("aria-label", status.tile_text || status.heading || "");
+          const openStatus = () => { statusHaptic(status); navigate("#/status"); };
+          plate.addEventListener("click", openStatus);
+          plate.addEventListener("keydown", (e) => {
+            if (e.key === "Enter" || e.key === " ") { e.preventDefault(); openStatus(); }
+          });
+          plate.append(h("span", { class: "flat-row-chev" }, icon("chevron-right")));
+        } else if (status.status === "rejected" && status.cta_text) {
           plate.append(h("button", {
             class: "btn", type: "button", text: status.cta_text,
             onClick: () => navigate("#/form"),
