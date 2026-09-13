@@ -366,6 +366,8 @@ admin|message|settings_list_add_item|state:EditSetting:*
 admin|message|miniapp_theme_color_step|state:MiniAppTheme:*
 admin|message|miniapp_theme_photo_step|state:MiniAppTheme:*
 admin|message|miniapp_theme_photo_step_invalid|state:MiniAppTheme:*
+admin|message|admin_lookup_search_cancel|state:LookupAdmin:*
+admin|message|admin_lookup_search_step|state:LookupAdmin:*
 admin|message|cancel_city_form|state:CityForm:*,state:CityForm:*
 admin|message|cancel_city_form|state:CityForm:*,state:CityForm:*
 admin|message|city_add_label_step|state:CityForm:*
@@ -527,6 +529,15 @@ admin|callback_query|toggle_reg_form_header_settings|toggle_reg_form_header_sett
 admin|callback_query|toggle_reg_form_haptics|toggle_reg_form_haptics
 admin|callback_query|approval_auto_go|approval_auto_go:*
 admin|callback_query|approval_auto_no|approval_auto_no:*
+admin|callback_query|admin_lookup|admin_lookup
+admin|callback_query|admin_lookup_kind|admin_lookup:kind:*
+admin|callback_query|admin_lookup_queue|admin_lookup:q:*
+admin|callback_query|admin_lookup_reject|admin_lookup:qr:*
+admin|callback_query|admin_lookup_merge_start|admin_lookup:qm:*
+admin|callback_query|admin_lookup_chips|admin_lookup:c:*
+admin|callback_query|admin_lookup_unpin|admin_lookup:cu:*
+admin|callback_query|admin_lookup_pin_start|admin_lookup:cp:*
+admin|callback_query|admin_lookup_search_pick|admin_lookup:sel:*
 admin|callback_query|sync_sheet|admin_sync_sheet
 admin|callback_query|rebuild_sheet_confirm|admin_rebuild_sheet
 admin|callback_query|rebuild_sheet|admin_rebuild_sheet_go
@@ -945,7 +956,9 @@ def test_snapshot_total_handler_count_is_292():
     # (498 -> 503); чистая вставка (два места, оба хвосты своих observer-блоков), перепроверена
     # прогоном `_build_snapshot_lines()` и diff'ом с прежним 498-строчным снапшотом — ровно пять
     # новых строк, ни одна другая строка не поменялась и не переставилась.
-    assert len(GOLDEN_SNAPSHOT) == 503  # Phase 30 (30-01, A2-08): +9 handlers/admin_reg_form.py
+    # Phase 30 (30-01, A2-08): +9 handlers/admin_reg_form.py; (30-07, A2-03): +11
+    # handlers/admin_lookup.py (2 message + 9 callback_query) -> 503 + 11 = 514.
+    assert len(GOLDEN_SNAPSHOT) == 514
     # (callback_query toggle_reg_form_v2/chips/lookup_search/edu_card/repeatable/limit_counter/
     # status_screen/header_settings/haptics — девять тумблеров «Анкета 2.0»), встали сразу после
     # admin_quiet_hours и перед sync_sheet: шов импортируется из хвоста
