@@ -998,6 +998,14 @@ export async function render(root, params, ctx) {
       // Phase 30 (30-03, A2-08, 30-UI-SPEC.md § «7. text»): v2-рестайл ТОЛЬКО у мастера новой
       // анкеты — иконка `phone-outgoing` + подсказка под кнопкой из `spec.v2_texts`; обзор
       // точечной правки (второй call site `shareContactButton`) не трогается.
+      // Phase 30 (30-08, задача 2, найдено съёмкой скриншотов): `isV2` читалась здесь ДО
+      // собственного объявления (`const isV2 = …` ниже по функции, TDZ) — `ReferenceError:
+      // Cannot access 'isV2' before initialization` на КАЖДОМ шаге мастера, как только
+      // включался `reg_form_v2_enabled` (существующие тесты/скриншоты до этой задачи не
+      // прогоняли живой рендер `drawStep()` с v2 включённым — только `buildV2Control()`
+      // изолированно). Объявление поднято сюда (единственное место объявления, дальше по
+      // функции — не дублируется).
+      const isV2 = !!(spec.degraded_kind && spec.degraded_kind !== "legacy");
       const v2Texts = spec.v2_texts || {};
       const contactBtn = shareContactButton(
         h, spec, el,
@@ -1183,7 +1191,6 @@ export async function render(root, params, ctx) {
       // (сверено с кодом задачей 4). Единственная фактическая правка — роль Step Title
       // (курсив 27px вместо некурсивного 28px) на самом заголовке, и ТОЛЬКО когда
       // `degraded_kind != "legacy"` — класс `.step-title` ниже, легаси-путь не трогается.
-      const isV2 = !!(spec.degraded_kind && spec.degraded_kind !== "legacy");
       const plateRow = showProgress
         ? h("div", { class: "plate-row" },
           h("span", { class: "plate-big", text: String(stepIndex + 1).padStart(2, "0") }),
