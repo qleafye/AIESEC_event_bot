@@ -40,7 +40,12 @@ DEFAULT_CEILING = 850
 # edit the number + reason together, in the same commit as the growth that needs it.
 KNOWN_OVERAGES: dict[str, tuple[int, str]] = {
     "registration.py": (
-        2369,
+        2379,
+        "+10 строк (план 30-04, задача 4, A2-05): `_recall_display` — repeatable-колонка "
+        "(mini_portfolio) показывает прошлый ответ через `repeatable_display(parse_repeatable("
+        "...))`, а не сырой JSON, если делегат в прошлом сезоне пользовался repeatable-"
+        "контролом (Rule 1, найдено при ревизии `mini_portfolio`-читателей); правило форматирования "
+        "живёт в reg_engine.py, здесь только вызов + два новых импорта. "
         "+9 строк (квик 260911-w2m): врезка гейта правки анкеты в ветку (b) `cmd_start` — "
         "перед входом в `offer_resume`/`?start=edit` спрашивает `services.reg_edit_policy."
         "edit_gate(user)`, при отказе отвечает текстом реестра и главным меню; само правило "

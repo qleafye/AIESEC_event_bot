@@ -46,9 +46,11 @@ def test_no_hardcoded_colors():
     assert not _HEX_OR_RGB_COLOR.search(text)
 
 
-def test_five_literal_kind_branches_present():
+def test_seven_literal_kind_branches_present():
+    """Было пять (30-03) — план 30-04 (задача 3) добавил composite/repeatable, снимая их из
+    `PENDING_PROJECTIONS` со стороны Mini App (чат остаётся под заглушкой до плана 30-06)."""
     text = _js_without_comments(FORM_TYPES_JS)
-    for kind in ("select", "lookup", "multi", "link", "text"):
+    for kind in ("select", "lookup", "multi", "link", "text", "composite", "repeatable"):
         assert f'case "{kind}"' in text, kind
 
 
@@ -256,6 +258,66 @@ const anyBtnClassLeak = findAll(selectResult.control, "btn").length +
   findAll(multiResult.control, "btn").length +
   findAll(linkResult.control, "btn").length;
 
+// 8) composite: единственная включённая часть группы (только тумблер) — карточка НЕ
+// откатывается к легаси-шагу, рисуется из того, что есть (30-CONTEXT.md реш. 2).
+const compositeSingleSpec = {
+  key: "education_status", degraded_kind: "composite", v2_texts: {
+    toggle_on_label: "Сейчас учусь здесь", toggle_off_label: "Уже не учусь",
+    toggle_on_hint: "h1", toggle_off_hint: "h2",
+  },
+  composite: {
+    group: "education", toggle_step: "education_status",
+    parts: [{ key: "education_status", label: "Образование" }],
+  },
+};
+const compositeSingleResult = m.buildV2Control(h, compositeSingleSpec, null, () => {}, {});
+const compositeSingleFieldParts = findAll(compositeSingleResult.control, "cpart")
+  .filter((n) => !n.classList.contains("hidden")).length;
+
+// 9) composite: ошибка в одной части (программа превышает max_len) не блокирует курс —
+// чип курса остаётся кликабельным и переключается независимо от соседней ошибки.
+const compositeFullSpec = {
+  key: "education_status", degraded_kind: "composite", v2_texts: {
+    toggle_on_label: "on", toggle_off_label: "off", toggle_on_hint: "h1", toggle_off_hint: "h2",
+  },
+  composite: {
+    group: "education", toggle_step: "education_status",
+    parts: [
+      { key: "education_status", label: "Образование" },
+      { key: "course", label: "Курс", options: ["1", "2", "3"], option_labels: {} },
+      { key: "study_field", label: "Программа", required: false, max_len: 5 },
+    ],
+  },
+};
+const compositeFooterCalls = [];
+const compositeFullResult = m.buildV2Control(h, compositeFullSpec, null, () => {}, {});
+compositeFullResult.onFooterChange((label, disabled) => compositeFooterCalls.push(disabled));
+const studyFieldInput = findByTag(compositeFullResult.control, "input");
+studyFieldInput.value = "слишком длинная программа обучения";
+studyFieldInput.dispatch("input", {});
+const disabledAfterError = compositeFooterCalls[compositeFooterCalls.length - 1];
+const courseChipsAfterError = findAll(compositeFullResult.control, "chip-pick");
+courseChipsAfterError[1].dispatch("click", {});
+const courseStillClickable = courseChipsAfterError[1].classList.contains("on");
+
+// 10) composite: тумблер выключает видимость частей группы (aria-hidden).
+const toggleRowNode = findAll(compositeFullResult.control, "swrow")[0];
+toggleRowNode.dispatch("click", {});
+const hiddenPartsAfterToggleOff = findAll(compositeFullResult.control, "cpart")
+  .filter((n) => n.getAttribute("aria-hidden") === "true").length;
+
+// 11) repeatable: кнопка «+ Добавить» исчезает по достижении repeatable_max, блоков не больше.
+const repeatableSpec = {
+  key: "mini_portfolio", degraded_kind: "repeatable", repeatable_max: 1,
+  v2_texts: { item_label: "Проект {n}", edit_action: "Изменить", add_button: "+ Добавить проект" },
+};
+const repeatableCalls = [];
+const repeatableResult = m.buildV2Control(h, repeatableSpec, [], (v) => repeatableCalls.push(v), {});
+const repeatableAddBtn = findAll(repeatableResult.control, "dash")[0];
+repeatableAddBtn.dispatch("click", {});
+const repeatableCardsAfterOneAdd = findAll(repeatableResult.control, "card").length;
+const repeatableAddHiddenAtMax = repeatableAddBtn.classList.contains("hidden");
+
 console.log(JSON.stringify({
   beforeChecked, afterChecked,
   afterMultiCalls,
@@ -264,6 +326,12 @@ console.log(JSON.stringify({
   lookupOwnOffHasGhost,
   linkFieldOk,
   anyBtnClassLeak,
+  compositeSingleFieldParts,
+  disabledAfterError,
+  courseStillClickable,
+  hiddenPartsAfterToggleOff,
+  repeatableCardsAfterOneAdd,
+  repeatableAddHiddenAtMax,
 }));
 """
 
@@ -311,3 +379,29 @@ def test_footer_button_uses_btn_class_not_custom_one(js_result):
     # `.btn` в футере рисует screens/form.js (план 30-03 задача 4), не сами v2-контролы —
     # ноль совпадений здесь ожидаемо и означает отсутствие второй, самодельной кнопки.
     assert js_result["anyBtnClassLeak"] == 0
+
+
+# ── composite/repeatable (план 30-04, задача 4, A2-04/A2-05) ───────────────────────────────
+
+def test_composite_renders_from_single_enabled_part_without_falling_back_to_legacy(js_result):
+    """30-CONTEXT.md реш. 2: карточка всегда, из включённых частей — единственная включённая
+    часть (тумблер) не откатывает рендер к легаси-текстовому полю."""
+    assert js_result["compositeSingleFieldParts"] >= 1
+
+
+def test_composite_error_in_one_part_does_not_block_the_others(js_result):
+    """30-UI-SPEC.md § «3. composite» → «Состояния»: ошибка одной части блокирует ТОЛЬКО
+    главную кнопку (через `onFooterChange`), соседняя часть (курс) остаётся кликабельной."""
+    assert js_result["disabledAfterError"] is True
+    assert js_result["courseStillClickable"] is True
+
+
+def test_composite_toggle_hides_parts_via_aria_hidden(js_result):
+    """30-UI-SPEC.md § Accessibility: тумблер переключает `aria-hidden` на скрытых частях, а
+    не просто визуальный `hidden` — скринридер не должен озвучивать исчезнувшие вопросы."""
+    assert js_result["hiddenPartsAfterToggleOff"] >= 1
+
+
+def test_repeatable_add_button_disappears_at_max_and_blocks_are_not_added(js_result):
+    assert js_result["repeatableCardsAfterOneAdd"] == 1
+    assert js_result["repeatableAddHiddenAtMax"] is True

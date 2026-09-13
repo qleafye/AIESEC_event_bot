@@ -1434,8 +1434,10 @@ PENDING_PROJECTIONS: dict[str, str] = {
     # литеральные `case "..."` для всех четырёх (задачи 2/3), `CHAT_PROJECTION` для них и так
     # указывал на уже существующий `handlers.registration` с 30-01 — обе проекции реальны.
     "lookup": "чат — план 30-06 (handlers/reg_types_lookup.py); Mini App готова — form_types.js",
-    "composite": "планы 30-04 (Mini App, form_types.js) и 30-06 (чат, handlers/reg_types_composite.py)",
-    "repeatable": "планы 30-04 (Mini App, form_types.js) и 30-06 (чат, handlers/reg_types_repeatable.py)",
+    # Mini App снята планом 30-04 (задача 3, `case "composite"`/`case "repeatable"` в
+    # form_types.js) — остаётся только чат-заглушка, план 30-06 заведёт handlers/reg_types_*.
+    "composite": "чат — план 30-06 (handlers/reg_types_composite.py); Mini App готова — form_types.js",
+    "repeatable": "чат — план 30-06 (handlers/reg_types_repeatable.py); Mini App готова — form_types.js",
 }
 
 
