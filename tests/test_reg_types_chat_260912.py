@@ -9,8 +9,8 @@
 
 Задача 1 (A2-03, `handlers/reg_types_lookup.py`): «напиши первые буквы» → до пяти кнопок
 совпадений + «Другое». Задача 2 (A2-04, `handlers/reg_types_composite.py`): карточка-рекап
-«Проверь образование» после последнего под-поля группы. Задача 3 (repeatable) дописывается
-следующим коммитом этого же плана.
+«Проверь образование» после последнего под-поля группы. Задача 3 (A2-05,
+`handlers/reg_types_repeatable.py`): «Название проекта?» → «Опиши коротко» → «Добавить ещё?».
 """
 import asyncio
 
@@ -22,8 +22,9 @@ from aiogram.types import InlineKeyboardMarkup
 from config import config
 from database import db
 from handlers import registration as reg
-from handlers import reg_types_composite, reg_types_lookup
+from handlers import reg_types_composite, reg_types_lookup, reg_types_repeatable
 from handlers.states import Registration
+from reg_engine import parse_repeatable
 
 UID = 300912000
 
@@ -350,3 +351,107 @@ def test_composite_single_enabled_part_still_gets_a_card(tmp_path):
     msg, state_name = asyncio.run(go())
     assert state_name == reg_types_composite._CompositeChat.confirm.state
     assert msg.sent
+
+
+# ── repeatable (задача 3, A2-05) ─────────────────────────────────────────────────────────────
+
+def test_repeatable_disabled_falls_back_to_legacy_single_answer_state(tmp_path):
+    _use_tmp_db(tmp_path)
+    uid = UID + 20
+
+    async def go():
+        await db.set_setting("reg_form_v2_enabled", "on")  # repeatable остаётся "off"
+        state = _state(uid)
+        await state.update_data(participant_type="full")
+        await reg._ask_step("mini_portfolio", _FakeMessage(uid), state, 8, 10)
+        return await state.get_state()
+
+    state_name = asyncio.run(go())
+    assert state_name == Registration.mini_portfolio.state
+
+
+def test_repeatable_two_blocks_then_done(tmp_path):
+    _use_tmp_db(tmp_path)
+    uid = UID + 21
+
+    async def go():
+        await _enable_v2(reg_form_repeatable="on")
+        state = _state(uid)
+        await state.update_data(participant_type="full")
+        ask_msg = _FakeMessage(uid)
+        await reg._ask_step("mini_portfolio", ask_msg, state, 8, 10)
+        state_after_ask = await state.get_state()
+
+        title1 = _FakeMessage(uid, text="Сайт для клиента")
+        await reg_types_repeatable.receive_repeat_field(title1, state, bot=None)
+        desc1 = _FakeMessage(uid, text="Фронтенд на React, роль — единственный разработчик")
+        await reg_types_repeatable.receive_repeat_field(desc1, state, bot=None)
+        data_after_block1 = await state.get_data()
+        restart_safe_items = parse_repeatable(data_after_block1.get("mini_portfolio"))
+
+        add_cb = _FakeCallback("regrepeat:add", uid)
+        await reg_types_repeatable.regrepeat_pick(add_cb, state, bot=None)
+
+        title2 = _FakeMessage(uid, text="Бот для чата")
+        await reg_types_repeatable.receive_repeat_field(title2, state, bot=None)
+        desc2 = _FakeMessage(uid, text="aiogram, реферальная система")
+        await reg_types_repeatable.receive_repeat_field(desc2, state, bot=None)
+
+        done_cb = _FakeCallback("regrepeat:done", uid)
+        await reg_types_repeatable.regrepeat_pick(done_cb, state, bot=None)
+        data_final = await state.get_data()
+        state_final = await state.get_state()
+        return state_after_ask, restart_safe_items, data_final, state_final
+
+    state_after_ask, restart_safe_items, data_final, state_final = asyncio.run(go())
+    assert state_after_ask == Registration.mini_portfolio_repeat.state
+    assert len(restart_safe_items) == 1, "рестарт после первого блока не должен терять ввод"
+    assert restart_safe_items[0]["title"] == "Сайт для клиента"
+
+    final_items = parse_repeatable(data_final.get("mini_portfolio"))
+    assert len(final_items) == 2
+    assert final_items[1]["title"] == "Бот для чата"
+    assert state_final != Registration.mini_portfolio_repeat.state, "«Готово» обязано продвинуть анкету дальше"
+
+
+def test_repeatable_skip_first_question_keeps_legacy_skip_behavior(tmp_path):
+    _use_tmp_db(tmp_path)
+    uid = UID + 22
+
+    async def go():
+        await _enable_v2(reg_form_repeatable="on")
+        state = _state(uid)
+        await state.update_data(participant_type="full")
+        await reg._ask_step("mini_portfolio", _FakeMessage(uid), state, 8, 10)
+        skip_msg = _FakeMessage(uid, text="Пропустить")
+        await reg_types_repeatable.receive_repeat_field(skip_msg, state, bot=None)
+        data = await state.get_data()
+        return data, await state.get_state()
+
+    data, state_name = asyncio.run(go())
+    assert data.get("mini_portfolio") == "-"
+    assert state_name != Registration.mini_portfolio_repeat.state
+
+
+def test_repeatable_max_blocks_hides_add_button(tmp_path):
+    _use_tmp_db(tmp_path)
+    uid = UID + 23
+
+    async def go():
+        await _enable_v2(reg_form_repeatable="on")
+        await db.set_setting("reg_repeatable_max_mini_portfolio", "1")
+        state = _state(uid)
+        await state.update_data(participant_type="full")
+        await reg._ask_step("mini_portfolio", _FakeMessage(uid), state, 8, 10)
+
+        title1 = _FakeMessage(uid, text="Единственный проект")
+        await reg_types_repeatable.receive_repeat_field(title1, state, bot=None)
+        desc1 = _FakeMessage(uid, text="Описание проекта")
+        await reg_types_repeatable.receive_repeat_field(desc1, state, bot=None)
+        return desc1, await state.get_state(), await state.get_data()
+
+    desc_msg, state_name, data = asyncio.run(go())
+    assert not _kbs(desc_msg), "при достижении лимита кнопка «Да» не показывается"
+    assert state_name != Registration.mini_portfolio_repeat.state
+    items = parse_repeatable(data.get("mini_portfolio"))
+    assert len(items) == 1
