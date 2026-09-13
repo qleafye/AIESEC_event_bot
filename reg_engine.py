@@ -1141,6 +1141,67 @@ def composite_group_of(step_key: str) -> str | None:
     return None
 
 
+# Шаг-тумблер группы («Сейчас учусь здесь» — часть карточки, не отдельный вопрос снаружи неё).
+# `<interfaces>` 30-04-PLAN.md называет его `toggle_step` в `spec["composite"]`.
+_COMPOSITE_TOGGLE_STEP: dict[str, str] = {"education": "education_status"}
+
+
+async def composite_parts(
+    group: str, participant_type: str | None = None, event_city: str | None = None,
+) -> list[str]:
+    """Список step_key группы, реально включённых у СОБЫТИЯ (контракт `<interfaces>`
+    30-04-PLAN.md), в порядке `REG_FLOW`. Карточка рисуется всегда, из включённых частей
+    (30-CONTEXT.md реш. 2) — «включён» здесь значит «тумблер `reg_q_*` этого шага включён у
+    трека/города», а НЕ «делегат ответил на тумблер образования утвердительно»: composite_parts
+    вызывается из `step_spec()`, у которого нет доступа к текущим ответам делегата (`answers`),
+    только к треку/городу (T-30-04-01) — ветвление по значению «учусь/не учусь» делает СОБСТВЕННО
+    composite-карточка на клиенте (скрывает/показывает уже включённые части), это её работа, не
+    этой функции. Поэтому composite_parts НЕ зовёт `enabled_steps()` целиком (та ветвится по
+    `education_status`/`edu_conditional`) — только структурный гейт `is_step_enabled_for_track`,
+    тот же, каким сегодня фильтруется весь REG_FLOW."""
+    group_steps = _COMPOSITE_GROUPS.get(group)
+    if not group_steps:
+        return []
+    group_set = set(group_steps)
+    out = []
+    for step_key, setting_key, _step_type in REG_FLOW:
+        if step_key not in group_set:
+            continue
+        if await is_step_enabled_for_track(setting_key, participant_type, event_city):
+            out.append(step_key)
+    return out
+
+
+async def validate_composite(
+    group: str, answers: dict, *, participant_type: str | None = None, event_city: str | None = None,
+) -> dict[str, str]:
+    """Валидация КАРТОЧКИ по частям (30-UI-SPEC.md § «3. composite» → «Состояния»): словарь
+    `step_key -> текст ошибки`, пустой словарь значит «карточка валидна целиком». Ошибка одной
+    части не мешает проверить остальные (в отличие от `validate_answer`, который возвращает
+    ПЕРВУЮ ошибку и останавливается) — каждая часть карточки должна светить СВОЮ ошибку
+    независимо от соседних.
+
+    Выключенный тумблер (`education_status` не «учится», `is_studying`) исключает под-шаги
+    ВУЗ/курс/программа из проверки целиком — как если бы их не было у события (тот же принцип,
+    что `enabled_steps`/`apply_answer` уже применяют для этой группы, T-30-04-01: композит не
+    заводит второе правило «когда спрашивать образование», использует то же самое)."""
+    parts = await composite_parts(group, participant_type, event_city)
+    toggle_step = _COMPOSITE_TOGGLE_STEP.get(group)
+    studying = True
+    if toggle_step and toggle_step in parts:
+        studying = is_studying(answers.get(toggle_step, ""), await studying_statuses())
+    errors: dict[str, str] = {}
+    for step_key in parts:
+        if step_key == toggle_step:
+            continue
+        if not studying:
+            continue
+        _value, error = validate_answer(step_key, answers.get(step_key), participant_type=participant_type)
+        if error:
+            errors[step_key] = error
+    return errors
+
+
 def step_type_v2(step_key: str) -> str:
     """Тип шага по новой оси (A2-01) — одно из `select`/`lookup`/`composite`/`link`/`multi`/
     `repeatable`/`text`. Порядок вывода дословно из таблицы 30-RESEARCH.md Pattern 1 (verified
@@ -1255,6 +1316,11 @@ async def repeatable_max(step_key: str) -> int:
 _REPEATABLE_COLUMNS: set[str] = {
     STEP_TO_COLUMN[step_key] for step_key, _sk, _t in REG_FLOW if step_type_v2(step_key) == "repeatable"
 }
+
+# Подстановка `{noun}` в общий шаблон `reg_repeatable_add_button_text` (30-UI-SPEC.md §
+# «composite "Образование"»: «общий шаблон, {noun} задаёт конкретный шаг») — по step_key,
+# единственный repeatable-потребитель этой фазы: «Опыт и проекты».
+_REPEATABLE_NOUNS: dict[str, str] = {"mini_portfolio": "проект"}
 
 
 # Phase 30 (30-01, A2-08): девять тумблеров группы «📝 Анкета» — имена без префикса `reg_form_`
@@ -1476,6 +1542,34 @@ async def _v2_texts_for(degraded_kind: str, step_key: str, event_city: str | Non
         texts["phone_share_hint"] = await get_setting_typed_for_city(
             "reg_phone_share_hint_text", event_city
         )
+    elif degraded_kind == "composite":
+        texts["subtitle"] = await get_setting_typed_for_city(
+            "reg_composite_edu_subtitle_text", event_city
+        )
+        texts["toggle_on_label"] = await get_setting_typed_for_city(
+            "reg_composite_edu_toggle_on_label", event_city
+        )
+        texts["toggle_off_label"] = await get_setting_typed_for_city(
+            "reg_composite_edu_toggle_off_label", event_city
+        )
+        texts["toggle_on_hint"] = await get_setting_typed_for_city(
+            "reg_composite_edu_toggle_on_hint", event_city
+        )
+        texts["toggle_off_hint"] = await get_setting_typed_for_city(
+            "reg_composite_edu_toggle_off_hint", event_city
+        )
+        texts["done_hint"] = await get_setting_typed_for_city(
+            "reg_composite_edu_done_hint_text", event_city
+        )
+        texts["toggle_note"] = await get_setting_typed("reg_composite_toggle_note_text")
+    elif degraded_kind == "repeatable":
+        texts["item_label"] = await get_setting_typed_for_city(
+            "reg_repeatable_item_label_text", event_city
+        )
+        texts["edit_action"] = await get_setting_typed("reg_repeatable_edit_action_text")
+        texts["chat_parity_note"] = await get_setting_typed("reg_repeatable_chat_parity_note_text")
+        add_button = await get_setting_typed_for_city("reg_repeatable_add_button_text", event_city)
+        texts["add_button"] = add_button.replace("{noun}", _REPEATABLE_NOUNS.get(step_key, ""))
     return texts
 
 
@@ -1540,8 +1634,27 @@ async def resume_fork_options() -> list[dict]:
     ]
 
 
+async def _composite_spec_for(
+    group: str | None, participant_type: str | None, event_city: str | None,
+    flags: dict[str, bool],
+) -> dict:
+    """`spec["composite"]` контракт (`<interfaces>` 30-04-PLAN.md): `{group, parts, toggle_step}`
+    — `parts` собираются РЕКУРСИВНЫМ вызовом `step_spec(..., _in_composite=True)` (защита от
+    рекурсии — докстринг `step_spec` выше) для каждого шага, реально включённого у события
+    (`composite_parts()`, T-30-04-01). Карточка с единственной включённой частью — валидный
+    результат (30-CONTEXT.md реш. 2: «карточка всегда, из включённых частей»), не откат к
+    легаси-шагу."""
+    part_keys = await composite_parts(group or "", participant_type, event_city)
+    parts = [
+        await step_spec(part_key, participant_type, event_city, flags=flags, _in_composite=True)
+        for part_key in part_keys
+    ]
+    return {"group": group, "parts": parts, "toggle_step": _COMPOSITE_TOGGLE_STEP.get(group)}
+
+
 async def step_spec(step_key: str, participant_type: str | None = None,
-                     event_city: str | None = None, flags: dict[str, bool] | None = None) -> dict:
+                     event_city: str | None = None, flags: dict[str, bool] | None = None,
+                     _in_composite: bool = False) -> dict:
     """Спека одного шага по контракту UI-SPEC — бот берёт из неё текст/варианты по отдельности
     (`prompt()`/`options()`), Mini App (план 21-04a/b) — эту функцию целиком.
 
@@ -1561,7 +1674,16 @@ async def step_spec(step_key: str, participant_type: str | None = None,
     девять чтений реестра на КАЖДЫЙ из ~43 шагов было бы явным overkill (30-01 докстринг
     `form_v2_flags` уже называет её «единой точкой чтения», не «читай на каждый шаг заново»).
     Прямые вызовы `step_spec()` в обход `form_spec()` (сегодня таких нет, `grep` подтверждает
-    единственный call site) остаются рабочими — `None` считает флаги сам, тем же вызовом."""
+    единственный call site) остаются рабочими — `None` считает флаги сам, тем же вызовом.
+
+    Phase 30 (30-04, A2-04): `_in_composite` — ВНУТРЕННИЙ параметр (не часть публичного
+    контракта, не документирован в `<interfaces>` 30-04-PLAN.md), защита от рекурсии. Карточка
+    «Образование» строит свои под-спеки РЕКУРСИВНЫМ вызовом `step_spec()` для КАЖДОЙ части
+    группы (см. `_composite_spec_for` ниже) — без этого флага под-спека `course`/`study_field`/
+    `education_status` (все трое сами по себе имеют `kind == "composite"`, T-30-04-02) снова
+    попыталась бы построить СВОЙ `spec["composite"]`, снова рекурсивно вызывая `step_spec()` —
+    бесконечная рекурсия. `university` в группе состоит, но её `kind == "lookup"` (override
+    сильнее группы) — флаг её не касается вовсе, сохраняет собственную деградацию lookup."""
     step_type = REG_STEP_TYPES.get(step_key, "text")
     ui_type = _ui_type_for(step_key, step_type)
     label = label_for(step_key)
@@ -1605,6 +1727,10 @@ async def step_spec(step_key: str, participant_type: str | None = None,
     spec["v2_texts"] = await _v2_texts_for(degraded_kind, step_key, event_city)
     if degraded_kind == "select":
         spec["option_hints"] = await option_hints_for(step_key)
+    if degraded_kind == "composite" and not _in_composite:
+        spec["composite"] = await _composite_spec_for(
+            spec["composite_group"], participant_type, event_city, resolved_flags,
+        )
     # УАТ 10-11.09 (квик 260911-2kb, пункт 4): набор колонок-компаньонов шага — та же функция,
     # что уже синхронизирует черновик (`columns_for_step`, квик 260910-wb6), второй копии
     # правила здесь не заводим. Для резюме — три колонки разом, у всех остальных шагов —
