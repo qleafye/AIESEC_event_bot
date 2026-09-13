@@ -555,11 +555,18 @@ def test_portfolio_footer_has_three_buttons():
     assert "goSkip" in text
     # Третья кнопка футера рисуется по наличию skip_label в спеке (reg_engine.step_spec) —
     # квик 260911-2kb (пункт 3) расширил публикацию этой подписи с одного mini_portfolio на
-    # все шаги `_SKIP_ALLOWED_STEPS`, сам механизм рендера футера не поменялся ни на байт.
-    # Область — от `isForkPick` (начало сборки футера) до самого вызова
-    # `setMainButton(isForkPick...)`, оба маркера встречаются в файле ровно один раз.
-    footer_start = text.index("const isForkPick")
-    footer_end = text.index("setMainButton(isForkPick", footer_start)
+    # все шаги `_SKIP_ALLOWED_STEPS`, при выключенном v2 (`!isV2`) сам механизм рендера
+    # футера не поменялся ни на байт — только переехал ниже по файлу (план 30-05, задача 0):
+    # 30-03 вставил перед сборкой футера хелпер `syncMainButton`/`currentMainLabel`
+    # (единая кнопка v2-типов), из-за чего `setMainButton(isForkPick...)` внутри хелпера
+    # стал встречаться РАНЬШЕ фактической сборки `footer`, а не после неё. Область — от
+    # объявления самого footer-узла (`const footer = h("div", { class: "task-actions" }`)
+    # до следующего `holder.replaceChildren(...[` — оба маркера встречаются в файле ровно
+    # один раз ПОСЛЕ первого вхождения `const isForkPick` (уникального маркера начала
+    # этого рендера шага).
+    render_start = text.index("const isForkPick")
+    footer_start = text.index('const footer = h("div", { class: "task-actions" }', render_start)
+    footer_end = text.index("holder.replaceChildren(...[", footer_start)
     footer_body = text[footer_start:footer_end]
     assert "spec.skip_label" in footer_body
     assert "onClick: goSkip" in footer_body

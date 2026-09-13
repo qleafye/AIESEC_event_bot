@@ -290,9 +290,15 @@ def test_app_css_has_compact_person_modifier():
 
 
 def test_app_css_font_size_scale_not_expanded():
+    # 30-UI-SPEC.md § Typography: ровно 4 новые именованные роли (--fs-step-title/
+    # --fs-status-title/--fs-control/--fs-input) поверх исходных 21 хардкод-значения —
+    # разрешено ТОЛЬКО через var(--fs-*), второстепенный текст округляется к уже
+    # существующей роли Label (12px), а не заводит новый литерал (см. фикс .swrow .ss
+    # 12.5px -> 12px, план 30-05 задача 0). На сегодня в файле используются 3 из 4 ролей
+    # (--fs-status-title придёт с экраном статуса, план 30-05 задача 3) — 21 + 3 = 24.
     css = APP_CSS.read_text(encoding="utf-8")
     sizes = sorted(set(re.findall(r"font-size:\s*[^;]+;", css)))
-    assert len(sizes) == 21, sizes
+    assert len(sizes) == 24, sizes
 
 
 def test_app_css_person_sm_rules_have_no_literal_colors():
