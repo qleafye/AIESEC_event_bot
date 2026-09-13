@@ -106,6 +106,19 @@ EXPECTED_PER_CITY_KEYS = {
     # делегату, per_city как остальные тексты анкеты.
     "miniapp_form_ambassador_offer_heading_text",
     "miniapp_form_ambassador_offer_body_text",
+    # Phase 30 (30-03/30-04, 30-UI-SPEC.md § Copywriting Contract): тексты новых типов шагов
+    # обращены к делегату — per_city дословно по таблицам UI-SPEC (select/multi/link/phone/
+    # composite/repeatable), той же осью, что соседние reg_prompt_*/reg_form_* выше.
+    "reg_option_hint__alumni_status__alumni", "reg_option_hint__alumni_status__aiesecer",
+    "reg_option_hint__alumni_status__neither",
+    "reg_multi_limit_hint_zero_text", "reg_multi_limit_hint_mid_text",
+    "reg_multi_limit_hint_max_text",
+    "reg_link_recognized_text", "reg_link_resume_hint_text",
+    "reg_phone_share_button_text", "reg_phone_share_hint_text",
+    "reg_composite_edu_subtitle_text", "reg_composite_edu_toggle_on_label",
+    "reg_composite_edu_toggle_off_label", "reg_composite_edu_toggle_on_hint",
+    "reg_composite_edu_toggle_off_hint", "reg_composite_edu_done_hint_text",
+    "reg_repeatable_add_button_text", "reg_repeatable_item_label_text",
 }
 
 
