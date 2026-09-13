@@ -13,7 +13,7 @@ import {
   field, setFieldState, createFormState, diffView, confirmBox, errorText,
   isAuthError as isAuthErrorBase, stepIndexFromKey, validationErrors, firstFieldError,
 } from "../form.js";
-import { fileUrl, flatRow, sectionTitle, labelText, noticeBox, screenText } from "../ui.js";
+import { fileUrl, flatRow, sectionTitle, labelText, noticeBox, screenText, formV2Text } from "../ui.js";
 import { icon } from "../icons.js";
 import { haptic } from "../motion.js";
 
@@ -68,6 +68,35 @@ function stepAnswered(spec, state) {
     const v = state.value(col);
     return v != null && v !== "";
   });
+}
+
+// Phase 30 (30-05, задача 2, A2-07, 30-UI-SPEC.md § «Обзор перед отправкой»): маппинг шага на
+// одну из трёх групп обзора — ОДНА таблица, а не условия по месту (план прямо требует). Шаг вне
+// таблицы (будущий REG_FLOW-шаг, который планировщик забыл вписать) попадает в третью группу
+// «Форум» — она и так собирает организационные/событийные вопросы, безопасный дефолт.
+const REVIEW_GROUPS = {
+  age: "about", phone: "about", alumni_status: "about", vk: "about", city: "about",
+  email: "about", local_committee: "about", position: "about", department: "about",
+  aiesec_role: "about", needs_certificate: "about", allergies: "about", food_pref: "about",
+  birth_date: "about",
+  education_status: "study", course: "study", university: "study", study_field: "study",
+  stack: "study", experience: "study", readiness: "study", resume: "study",
+  resume_link: "study", mini_projects: "study", mini_portfolio: "study",
+  mini_direction: "study", case_optin: "study", specialty: "study", work_status: "study",
+  work_sphere: "study", missing_skills: "study", english_level: "study",
+};
+
+function reviewGroupOf(stepKey) {
+  return REVIEW_GROUPS[stepKey] || "event";
+}
+
+// Composite-шаг («Образование») — единственное исключение из однострочного паттерна обзора
+// (30-UI-SPEC.md): двустрочная строка, вторая строка — сводка значений включённых частей через
+// «·». Значения частей публикует `reg_engine.form_spec` (план 30-05, задача 0б) — второй раз их
+// не считаем.
+function compositeSummary(spec) {
+  const parts = (spec.composite && spec.composite.parts) || [];
+  return parts.map((p) => p.value).filter((v) => v != null && v !== "").join(" · ");
 }
 
 // D13 (quick 260904-de4): «Поделиться номером» — доступно, только когда клиент физически
@@ -800,7 +829,16 @@ export async function render(root, params, ctx) {
     // ── шаги анкеты: один вопрос на экран (D-03) ────────────────────────────────────────
     function drawStep() {
       const specs = state.specs;
-      if (!specs.length || stepIndex >= specs.length) { submitForm(); return; }
+      if (!specs.length || stepIndex >= specs.length) {
+        // Phase 30 (30-05, задача 2, A2-07): все ответы даны — новая анкета (master switch
+        // `reg_form_v2_enabled`, публикуется В КАЖДОМ `spec.flags` одинаково — `form_spec()`
+        // считает флаги один раз на форму, 30-03) сначала показывает обзор, легаси-анкета
+        // отправляется как раньше, без единого изменения байта.
+        const isV2Form = specs.length > 0 && specs[0].flags && specs[0].flags.v2_enabled;
+        if (isV2Form) { drawReview(); return; }
+        submitForm();
+        return;
+      }
       const rawSpec = specs[stepIndex];
       // Phase 28 (28-05, SU-04): «файл» — клиентская подмена этого же шага дропзоной (см.
       // докстринг `resumeForkBranch` выше) — сервер про эту подмену не знает, stepIndex/шаг
@@ -1116,6 +1154,100 @@ export async function render(root, params, ctx) {
         footer,
       ].filter(Boolean));
       syncMainButton();
+    }
+
+    // Разбивает шаблон с ОДНИМ токеном на три куска (до/значение/после) — так «жирным» можно
+    // пометить только подставленное значение, не весь текст (`.folded` — список пропущенных
+    // шагов жирным, 30-UI-SPEC.md), без `innerHTML`/сборки разметки строкой.
+    function splitTemplate(template, token, value) {
+      const idx = String(template || "").indexOf(token);
+      if (idx === -1) return [String(template || ""), "", ""];
+      return [template.slice(0, idx), value, template.slice(idx + token.length)];
+    }
+
+    // Phase 30 (30-05, задача 2, A2-07, 30-UI-SPEC.md § «Обзор перед отправкой»): три группы
+    // ответов + одна свёрнутая строка пропущенного необязательного — постоянное поведение новой
+    // анкеты (решение оркестратора 12.09), собственных тумблеров у обзора нет.
+    function drawReview() {
+      setMainButton(null);
+      const specs = state.specs;
+      const groups = { about: [], study: [], event: [] };
+      const skipped = [];
+      for (const spec of specs) {
+        if (!stepAnswered(spec, state) && !spec.required) { skipped.push(spec); continue; }
+        groups[reviewGroupOf(spec.key)].push(spec);
+      }
+      const filledCount = specs.length - skipped.length;
+
+      function reviewRow(spec) {
+        const isComposite = spec.kind === "composite" || spec.degraded_kind === "composite";
+        if (isComposite) {
+          return h("div", { class: "row stacked" },
+            h("div", { text: labelText(spec.label) }),
+            h("div", { class: "val filled", text: compositeSummary(spec) }),
+          );
+        }
+        const hasDisplay = spec.display != null && spec.display !== "";
+        const shown = hasDisplay ? spec.display : spec.value;
+        return h("div", { class: "row" },
+          h("div", { text: labelText(spec.label) }),
+          h("div", { class: "val filled", text: shown != null ? String(shown) : "" }),
+        );
+      }
+
+      function groupSection(groupKey, titleKey) {
+        const items = groups[groupKey];
+        if (!items.length) return null;
+        return h("div", {},
+          sectionTitle(h, formV2Text(titleKey)),
+          h("div", { class: "rows compact" }, ...items.map(reviewRow)),
+        );
+      }
+
+      let foldedRow = null;
+      if (skipped.length) {
+        const names = skipped.map((s) => labelText(s.label)).join(", ");
+        const [before, list, after] = splitTemplate(formV2Text("review_skipped_prefix"), "{list}", names);
+        foldedRow = h("button", { class: "folded", type: "button", onClick: () => {
+          stepIndex = stepIndexFromKey(state.specs, skipped[0].key);
+          drawStep();
+        } },
+          h("span", {}, h("span", { text: before }), h("b", { text: list }), h("span", { text: after })),
+          h("span", { class: "opt", text: formV2Text("review_fill_action") || "" }),
+        );
+      }
+
+      const [sBefore, sFilled, sMid1] = splitTemplate(formV2Text("review_summary"), "{filled}", String(filledCount));
+      const midTemplate = sMid1;
+      const [sMid, sTotal, sMid2] = splitTemplate(midTemplate, "{total}", String(specs.length));
+      const [sTail, sSkipped, sEnd] = splitTemplate(sMid2, "{skipped}", String(skipped.length));
+      const summaryLine = h("p", { class: "plate-sub" },
+        h("span", { text: sBefore }), h("span", { text: sFilled }), h("span", { text: sMid }),
+        h("span", { text: sTotal }), h("span", { text: sTail }), h("span", { text: sSkipped }),
+        h("span", { text: sEnd }),
+      );
+
+      const plate = h("section", { class: "plate plate--form" },
+        h("div", { class: "plate-row" }, h("span", { class: "plate-eyebrow", text: formV2Text("review_eyebrow") })),
+        h("h1", { text: formV2Text("review_title") }),
+        summaryLine,
+      );
+
+      const mainLabel = formV2Text("review_submit_button");
+      const mainBtn = h("button", {
+        class: "btn", type: "button", disabled: busy, "aria-label": mainLabel, onClick: submitForm,
+      }, h("span", { text: mainLabel }), icon("arrow-right"));
+      const footer = h("div", { class: "task-actions" }, mainBtn);
+
+      holder.replaceChildren(...[
+        plate,
+        groupSection("about", "review_group_about"),
+        groupSection("study", "review_group_study"),
+        groupSection("event", "review_group_event"),
+        foldedRow,
+        footer,
+      ].filter(Boolean));
+      setMainButton(mainLabel, submitForm, { disabled: busy });
     }
 
     async function submitForm() {

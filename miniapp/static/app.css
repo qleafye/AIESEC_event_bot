@@ -255,6 +255,27 @@ body[data-nav="hub"] #nav { display: none; }
 }
 .row:last-child { border-bottom: 0; }
 
+/* Обзор перед отправкой (30-UI-SPEC.md § «Обзор перед отправкой», план 30-05 задача 2) —
+   компактные строки трёх групп (min-height 44px, короче обычных 56px), значение ответа
+   справа (не «Заполнено»/галочка), composite-шаг двустрочной строкой (`.row.stacked`). */
+.rows { display: flex; flex-direction: column; }
+.rows.compact .row { min-height: 44px; }
+.row.stacked { flex-direction: column; align-items: flex-start; gap: var(--sp-1); }
+.val { color: var(--text-faint); text-align: right; }
+.val.filled { color: var(--text); }
+.row.stacked .val.filled { text-align: left; }
+
+/* Пропущенное необязательное — ОДНА серая пунктирная строка со списком названий жирным и
+   действием «Заполнить» (не строка на вопрос). `.folded` — кнопка целиком, а не строка +
+   отдельная ссылка, тап в любом месте открывает первый пропущенный шаг. */
+.folded {
+  display: flex; justify-content: space-between; align-items: center; gap: var(--sp-3);
+  width: 100%; text-align: left; font: inherit; color: var(--text-muted);
+  background: var(--surface-alt); border: 1px dashed var(--border-strong);
+  border-radius: var(--radius); padding: var(--sp-3); margin-bottom: var(--gap); cursor: pointer;
+}
+.folded .opt { flex: none; color: var(--accent-text); font-weight: 700; }
+
 .chip {
   display: inline-block;
   padding: 2px var(--sp-2);
