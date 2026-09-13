@@ -44,6 +44,9 @@ EXPECTED_ICON_NAMES = {
     "help-circle",
     # Квик 12.09 (UI-аудит, пункт 7): «плюс» на кнопках создания вместо «галочки».
     "plus",
+    # Phase 30 (30-03, 30-UI-SPEC § Icon Inventory): типы шага select/lookup/multi/link/
+    # phone/repeatable анкеты 2.0.
+    "graduation-cap", "map-pin", "pencil", "phone-outgoing", "clock-4", "banknote",
 }
 
 
@@ -117,7 +120,7 @@ def test_icons_js_exports_exactly_expected_icon_names():
         f"расхождение с инвентарём UI-SPEC: лишние {names - EXPECTED_ICON_NAMES}, "
         f"не хватает {EXPECTED_ICON_NAMES - names}"
     )
-    assert len(EXPECTED_ICON_NAMES) == 44  # 26 (19.1) + 6 (Phase 21, form.js) + 1 (Phase 22, preview) + 8 (Phase 23.1, макеты 03.09) + 1 (quick 260906-52m, chevron-up для «Показать всё») + 1 (quick 260906-8uq, help-circle для вкладки FAQ) + 1 (квик 12.09, plus для кнопок создания)
+    assert len(EXPECTED_ICON_NAMES) == 50  # 26 (19.1) + 6 (Phase 21, form.js) + 1 (Phase 22, preview) + 8 (Phase 23.1, макеты 03.09) + 1 (quick 260906-52m, chevron-up для «Показать всё») + 1 (quick 260906-8uq, help-circle для вкладки FAQ) + 1 (квик 12.09, plus для кнопок создания) + 6 (Phase 30, 30-03, типы шага анкеты 2.0)
 
 
 _FILL_OR_STROKE_ATTR = re.compile(r'\b(?:fill|stroke):\s*"([^"]*)"')
