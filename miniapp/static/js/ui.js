@@ -230,6 +230,22 @@ export function screenText(name) {
   return _screenTextsCache[name] || "";
 }
 
+// Phase 30 (30-05, задача 1): обзор перед отправкой и поповер настроек в шапке анкеты — те же
+// приёмы, что `screenText`/`data-screen-texts` (мемоизация, fail-soft на битый JSON), своя
+// карта `data-form-v2-texts` (`page.py::FORM_V2_TEXT_KEYS`), не смешивается со SCREEN_TEXT_KEYS.
+let _formV2TextsCache = null;
+
+export function formV2Text(name) {
+  if (_formV2TextsCache === null) {
+    try {
+      _formV2TextsCache = JSON.parse((document.body && document.body.dataset.formV2Texts) || "{}");
+    } catch (_) {
+      _formV2TextsCache = {};
+    }
+  }
+  return _formV2TextsCache[name] || "";
+}
+
 // Экран уже покрасило ядро (app.js -> api.js::authErrorHandler): 401, 403 и 503 РОВНО с
 // reason "miniapp_off" — источник истины `api.js:53-62`. Копии этой проверки в отдельных
 // экранах (`faq.js`/`form.js`) сверяли только `status === 503` целиком — для 503 с другим
