@@ -16,6 +16,7 @@ from aiogram.fsm.storage.base import StorageKey
 from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
 
 from database.db import get_setting, get_user, update_payment_status, set_payment_due
+from payment_options import parse_options as _parse_options  # квик-фикс 260913: см. ниже
 from settings_schema import get_setting_typed  # REG-02 (06-06): payment_enabled gate
 from handlers.states import Registration
 from keyboards.builders import get_main_menu_kb
@@ -97,44 +98,12 @@ async def should_offer_receipt_upload(telegram_id: int) -> bool:
     return bool(requisites and requisites.strip())
 
 
-def _parse_options(raw: str) -> list[tuple[str, int, set[str] | None]]:
-    """Parse the payment_options setting → [(label, price, tracks)].
-
-    Two accepted shapes:
-    - 'label|price' (unchanged since Phase 4) — tracks is None, meaning "offered to ALL
-      tracks" (D-16's backward-compat guarantee: existing RusCo config keeps working
-      byte-identical).
-    - 'label|price|track1,track2' (Phase 5, D-16) — an optional third field, comma-separated
-      track values (each stripped). An empty/blank third field ("label|price|") ALSO yields
-      tracks None, not an empty set — an empty set would mean "matches nobody", which is not
-      what a trailing empty field means.
-
-    A pipe-less line still yields (line, 0, None), and a non-integer price still falls back
-    to 0, exactly as before Phase 5.
-    """
-    options: list[tuple[str, int, set[str] | None]] = []
-    for line in (raw or "").strip().splitlines():
-        line = line.strip()
-        if not line:
-            continue
-        if "|" in line:
-            parts = line.split("|")
-            label = parts[0].strip() or "Участие"
-            try:
-                price = int(parts[1].strip())
-                if price < 0:  # LOW: a negative fee is meaningless — clamp to 0 like a bad parse
-                    price = 0
-            except ValueError:
-                price = 0
-            tracks: set[str] | None = None
-            if len(parts) >= 3:
-                raw_tracks = parts[2].strip()
-                if raw_tracks:
-                    tracks = {t.strip() for t in raw_tracks.split(",") if t.strip()} or None
-        else:
-            label, price, tracks = line, 0, None
-        options.append((label, price, tracks))
-    return options
+# _parse_options: см. импорт `from payment_options import parse_options as _parse_options`
+# в шапке файла. Сам парсер переехал в корневой `payment_options.py` (без aiogram-зависимости) —
+# Mini App (`miniapp/routers/hub.py`) импортировал его отсюда и тянул за собой весь `handlers/`
+# пакет бота в образ Mini App. Реэкспорт под старым именем — существующие
+# `from handlers.payment import _parse_options` и монкейпатчи `handlers.payment._parse_options`
+# продолжают работать байт-в-байт.
 
 
 def _visible_options(
