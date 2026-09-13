@@ -139,6 +139,32 @@ def format_edited_date(raw: str | None, *, stored_utc: bool = False) -> str:
     return stamp.strftime("%d.%m %H:%M")
 
 
+# Phase 30 (30-05, задача 3, A2-07): подписи месяцев родительным падежом — «12 сентября», а не
+# «12.09» (`format_edited_date` выше — служебный формат карточки заявки менеджеру, здесь текст
+# для делегата). Собирается в Python, не через `locale` — тот же довод, что уже держит
+# `dashboard/queries.py::_MONTH_NAMES` (slim-образ без гарантированной русской локали); вторая
+# копия таблицы месяцев, а не импорт оттуда — `dashboard/` и `miniapp/`/`services/` исторически
+# не делят модули друг с другом (разные процессы, разные образы).
+_MONTH_NAMES_GENITIVE = (
+    "января", "февраля", "марта", "апреля", "мая", "июня",
+    "июля", "августа", "сентября", "октября", "ноября", "декабря",
+)
+
+
+def format_decision_date(raw: str | None) -> str:
+    """'2026-09-12 14:12:00' -> '12 сентября' — подпись под причиной отказа на экране статуса
+    заявки (30-UI-SPEC.md ПРАВКА к макету: только дата, без «Менеджер {имя} ·»). Пусто или
+    нераспознанный формат -> пустая строка (экран статуса просто не подписывает причину датой),
+    тот же fail-soft принцип, что format_edited_date выше."""
+    if not raw:
+        return ""
+    try:
+        stamp = datetime.strptime(str(raw)[:19], "%Y-%m-%d %H:%M:%S")
+    except ValueError:
+        return ""
+    return f"{stamp.day} {_MONTH_NAMES_GENITIVE[stamp.month - 1]}"
+
+
 async def edit_badges_for(user: dict) -> tuple[str | None, str | None, bool]:
     """(edited_line, resubmit_line, has_history) для карточки заявки (D-14/D-15/D-10).
     Пустой `edited_at` -> ничего нет (пометка ставится только при непустом diff — уже гарантия
