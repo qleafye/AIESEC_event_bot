@@ -80,6 +80,40 @@ APPLICATIONS_TEXT_KEYS = {
     "reject_no_reason": "miniapp_applications_reject_no_reason",
     "reject_own_reason": "miniapp_applications_reject_own_reason",
     "reject_cancel": "miniapp_applications_reject_cancel",
+    # Phase 30 (30-05, задача 1, решение владельца №5): placeholder поля причины — «это увидит
+    # делегат», та же подсказка звучит в чате бота (handlers/admin_moderation.py).
+    "reject_hint": "miniapp_applications_reject_hint_text",
+}
+
+# Phase 30 (30-05, задача 1, A2-07): тексты обзора перед отправкой и поповера настроек в
+# шапке анкеты — оба экрана строит `screens/form.js` (планы 30-05 задачи 2/4), но ни в одном
+# ответе `/app/api/reg/draft`/`hub/status` эти подписи не приходят (они не зависят от текущего
+# состояния анкеты/делегата, статичные). Тот же приём, что `APPLICATIONS_TEXT_KEYS` — своя
+# JSON-карта в `data-form-v2-texts`, не смешиваем со `SCREEN_TEXT_KEYS` (та — общие фоллбэки
+# для ЛЮБОГО экрана, эта — специфичные подписи двух конкретных). Тексты самого экрана статуса
+# (`#/status`) сюда НЕ входят — они приходят через `/app/api/hub/status` (уже резолюция города
+# + прогон `i18n.tr`, план 30-05 задача 3), второй копии не заводим.
+FORM_V2_TEXT_KEYS = {
+    # Обзор перед отправкой (30-UI-SPEC.md § «Обзор перед отправкой»).
+    "review_eyebrow": "reg_review_eyebrow_text",
+    "review_title": "reg_review_title_text",
+    "review_summary": "reg_review_summary_text",
+    "review_group_about": "reg_review_group_about_text",
+    "review_group_study": "reg_review_group_study_text",
+    "review_group_event": "reg_review_group_event_text",
+    "review_skipped_prefix": "reg_review_skipped_prefix_text",
+    "review_fill_action": "reg_review_fill_action_text",
+    "review_submit_button": "reg_review_submit_button_text",
+    # Настройки в шапке анкеты (30-UI-SPEC.md § «Настройки в шапке анкеты»).
+    "header_settings_theme_label": "reg_header_settings_theme_label_text",
+    "header_settings_theme_auto": "reg_header_settings_theme_auto_text",
+    "header_settings_theme_dark": "reg_header_settings_theme_dark_text",
+    "header_settings_theme_light": "reg_header_settings_theme_light_text",
+    "header_settings_lang_label": "reg_header_settings_lang_label_text",
+    "header_settings_haptics_label": "reg_header_settings_haptics_label_text",
+    "header_settings_haptics_on": "reg_header_settings_haptics_on_text",
+    "header_settings_haptics_off": "reg_header_settings_haptics_off_text",
+    "header_settings_scope_note": "reg_header_settings_scope_note_text",
 }
 
 # Quick 260911-5ij (W2, Пилар 6 + гейт сдачи): тексты состояний, нужные ИМЕННО тогда, когда
@@ -144,6 +178,10 @@ def _shell_context(request: Request, conn) -> dict:
             {name: read_setting(conn, key) or "" for name, key in SCREEN_TEXT_KEYS.items()},
             ensure_ascii=False,
         ),
+        "form_v2_texts": json.dumps(
+            {name: read_setting(conn, key) or "" for name, key in FORM_V2_TEXT_KEYS.items()},
+            ensure_ascii=False,
+        ),
     }
 
 
@@ -163,6 +201,7 @@ def render_disabled_page(request: Request) -> HTMLResponse:
             "texts": {name: "" for name in STATE_TEXT_KEYS},
             "applications_texts": "{}",
             "screen_texts": "{}",
+            "form_v2_texts": "{}",
         }
     context["disabled_text"] = (
         context["texts"].get("disabled") or "Приложение временно недоступно."

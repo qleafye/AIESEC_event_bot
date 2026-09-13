@@ -2064,6 +2064,277 @@ SETTINGS_SCHEMA = {
         "prompt": "Кнопка «Готово» в чате между блоками repeatable.",
         "default": "Готово",
     },
+    # Phase 30 (30-05, задача 1, A2-07, 30-UI-SPEC.md § «Обзор перед отправкой»): группировка
+    # ответов по трём разделам и свёртка пропущенного необязательного — постоянное поведение
+    # обзора новой анкеты (без отдельных тумблеров, решение оркестратора 12.09).
+    "reg_review_eyebrow_text": {
+        "type": "text", "group": "reg_prompts", "label": "👀 Эйброу обзора",
+        "prompt": "Eyebrow над заголовком обзора перед отправкой.",
+        "default": "Почти всё",
+    },
+    "reg_review_title_text": {
+        "type": "text", "group": "reg_prompts", "label": "👀 Заголовок обзора",
+        "prompt": "Заголовок экрана обзора перед отправкой.",
+        "default": "Проверь перед отправкой", "per_city": True,
+    },
+    "reg_review_summary_text": {
+        "type": "text", "group": "reg_prompts", "label": "👀 Счётчик заполненности",
+        "prompt": "{filled}/{total}/{skipped} подставляют числа заполненных/всего/пропущенных шагов.",
+        "default": "{filled} из {total} заполнено, {skipped} необязательных пропущено.",
+    },
+    "reg_review_group_about_text": {
+        "type": "text", "group": "reg_prompts", "label": "👀 Название группы 1 (обзор)",
+        "prompt": "Название первой группы шагов на обзоре.",
+        "default": "О тебе", "per_city": True,
+    },
+    "reg_review_group_study_text": {
+        "type": "text", "group": "reg_prompts", "label": "👀 Название группы 2 (обзор)",
+        "prompt": "Название второй группы шагов на обзоре.",
+        "default": "Учёба и опыт", "per_city": True,
+    },
+    "reg_review_group_event_text": {
+        "type": "text", "group": "reg_prompts", "label": "👀 Название группы 3 (обзор)",
+        "prompt": "Название третьей группы шагов на обзоре — для конференций правится на «Конференция».",
+        "default": "Форум", "per_city": True,
+    },
+    "reg_review_skipped_prefix_text": {
+        "type": "text", "group": "reg_prompts", "label": "👀 Свёрнутая строка пропущенного",
+        "prompt": "{list} подставляет названия пропущенных необязательных шагов через запятую.",
+        "default": "Пропущено необязательное: {list}",
+    },
+    "reg_review_fill_action_text": {
+        "type": "text", "group": "reg_prompts", "label": "👀 Действие «Заполнить»",
+        "prompt": "Действие в свёрнутой строке — открывает первый пропущенный шаг.",
+        "default": "Заполнить",
+    },
+    "reg_review_submit_button_text": {
+        "type": "text", "group": "reg_prompts", "label": "👀 Кнопка отправки анкеты",
+        "prompt": "Главная кнопка экрана обзора.",
+        "default": "Отправить заявку", "per_city": True,
+    },
+    # Phase 30 (30-05, задача 1, A2-07, 30-UI-SPEC.md § «Экран статуса заявки»): три состояния —
+    # на проверке / одобрена / отклонена. Причина отказа НЕ заводится ключом — рендерится
+    # дословно из `users.reject_reason` (решение владельца №5, 30-CONTEXT.md), без подписи
+    # менеджера; под текстом причины — только дата решения, форматированием фронта.
+    "reg_status_review_badge_text": {
+        "type": "text", "group": "reg_prompts", "label": "📨 Бейдж «на проверке» (статус)",
+        "prompt": "Бейдж на плите экрана статуса, состояние «на проверке».",
+        "default": "Заявка на проверке", "per_city": True,
+    },
+    "reg_status_review_title_text": {
+        "type": "text", "group": "reg_prompts", "label": "📨 Заголовок «на проверке» (статус)",
+        "prompt": "Status Title экрана статуса, состояние «на проверке».",
+        "default": "Мы получили твою заявку", "per_city": True,
+    },
+    "reg_status_review_body_text": {
+        "type": "text", "group": "reg_prompts", "label": "📨 Тело «на проверке» (статус)",
+        "prompt": "Тело плиты экрана статуса, состояние «на проверке».",
+        "default": "Обычно отвечаем за день. Напишем сюда же, в чат, — следить за экраном не нужно.",
+        "per_city": True,
+    },
+    "reg_status_next_eyebrow_text": {
+        "type": "text", "group": "reg_prompts", "label": "📨 Эйброу «Что дальше» (статус)",
+        "prompt": "Eyebrow над нумерованным списком «Что дальше» — общий для состояний «на проверке»/«одобрена».",
+        "default": "Что дальше",
+    },
+    "reg_status_review_step1_title_text": {
+        "type": "text", "group": "reg_prompts", "label": "📨 Шаг 1 заголовок (на проверке)",
+        "prompt": "Заголовок первого шага «Что дальше», состояние «на проверке».",
+        "default": "Менеджер читает анкету", "per_city": True,
+    },
+    "reg_status_review_step1_body_text": {
+        "type": "text", "group": "reg_prompts", "label": "📨 Шаг 1 текст (на проверке)",
+        "prompt": "Текст первого шага «Что дальше», состояние «на проверке».",
+        "default": "Если чего-то не хватит — напишет в чат.", "per_city": True,
+    },
+    "reg_status_review_step2_title_text": {
+        "type": "text", "group": "reg_prompts", "label": "📨 Шаг 2 заголовок (на проверке)",
+        "prompt": "Заголовок второго шага «Что дальше», состояние «на проверке».",
+        "default": "Придёт ответ в чат", "per_city": True,
+    },
+    "reg_status_review_step2_body_text": {
+        "type": "text", "group": "reg_prompts", "label": "📨 Шаг 2 текст (на проверке)",
+        "prompt": "Текст второго шага «Что дальше», состояние «на проверке».",
+        "default": "Одобрение или отказ с причиной.", "per_city": True,
+    },
+    "reg_status_review_step3_title_text": {
+        "type": "text", "group": "reg_prompts", "label": "📨 Шаг 3 заголовок (на проверке)",
+        "prompt": "Заголовок третьего шага «Что дальше», состояние «на проверке».",
+        "default": "После одобрения — оплата", "per_city": True,
+    },
+    "reg_status_review_step3_body_text": {
+        "type": "text", "group": "reg_prompts", "label": "📨 Шаг 3 текст (на проверке)",
+        "prompt": "Текст третьего шага «Что дальше», состояние «на проверке».",
+        "default": "Тариф зависит от трека, реквизиты пришлём.", "per_city": True,
+    },
+    "reg_status_edit_button_text": {
+        "type": "text", "group": "reg_prompts", "label": "📨 Кнопка «Изменить анкету» (статус)",
+        "prompt": "Вторичная кнопка экрана статуса — только пока разрешена правка после отправки.",
+        "default": "Изменить анкету", "per_city": True,
+    },
+    "reg_status_approved_badge_text": {
+        "type": "text", "group": "reg_prompts", "label": "✅ Бейдж «одобрена» (статус)",
+        "prompt": "Бейдж на плите экрана статуса, состояние «одобрена».",
+        "default": "Заявка одобрена", "per_city": True,
+    },
+    "reg_status_approved_title_text": {
+        "type": "text", "group": "reg_prompts", "label": "✅ Заголовок «одобрена» (статус)",
+        "prompt": "Status Title экрана статуса, состояние «одобрена». {имя} подставляет имя делегата из профиля.",
+        "default": "Ты в деле, {имя}!", "per_city": True,
+    },
+    "reg_status_approved_body_text": {
+        "type": "text", "group": "reg_prompts", "label": "✅ Тело «одобрена» (статус)",
+        "prompt": "Тело плиты экрана статуса, состояние «одобрена». {дата}/{город} — из данных мероприятия.",
+        "default": "Осталось оплатить участие — и увидимся {дата} в {город}.", "per_city": True,
+    },
+    "reg_status_payment_due_label_text": {
+        "type": "text", "group": "reg_prompts", "label": "✅ Заголовок карточки оплаты (статус)",
+        "prompt": "Заголовок карточки оплаты — {дата} подставляет срок из платёжного модуля.",
+        "default": "Оплата до {дата}", "per_city": True,
+    },
+    "reg_status_payment_reminder_note_text": {
+        "type": "text", "group": "reg_prompts", "label": "✅ Подсказка под суммой (статус)",
+        "prompt": "Подсказка под суммой в карточке оплаты.",
+        "default": "Напомним за 3 дня и за день до срока.", "per_city": True,
+    },
+    "reg_status_approved_step1_title_text": {
+        "type": "text", "group": "reg_prompts", "label": "✅ Шаг 1 заголовок (одобрена)",
+        "prompt": "Заголовок первого шага «Что дальше», состояние «одобрена».",
+        "default": "Оплати участие", "per_city": True,
+    },
+    "reg_status_approved_step1_body_text": {
+        "type": "text", "group": "reg_prompts", "label": "✅ Шаг 1 текст (одобрена)",
+        "prompt": "Текст первого шага «Что дальше», состояние «одобрена».",
+        "default": "Реквизиты и чек — в одном экране.", "per_city": True,
+    },
+    "reg_status_approved_step2_title_text": {
+        "type": "text", "group": "reg_prompts", "label": "✅ Шаг 2 заголовок (одобрена)",
+        "prompt": "Заголовок второго шага «Что дальше», состояние «одобрена».",
+        "default": "Пришли чек", "per_city": True,
+    },
+    "reg_status_approved_step2_body_text": {
+        "type": "text", "group": "reg_prompts", "label": "✅ Шаг 2 текст (одобрена)",
+        "prompt": "Текст второго шага «Что дальше», состояние «одобрена».",
+        "default": "Менеджер подтвердит за день.", "per_city": True,
+    },
+    "reg_status_approved_step3_title_text": {
+        "type": "text", "group": "reg_prompts", "label": "✅ Шаг 3 заголовок (одобрена)",
+        "prompt": "Заголовок третьего шага «Что дальше», состояние «одобрена».",
+        "default": "Собирай монеты до форума", "per_city": True,
+    },
+    "reg_status_approved_step3_body_text": {
+        "type": "text", "group": "reg_prompts", "label": "✅ Шаг 3 текст (одобрена)",
+        "prompt": "Текст третьего шага «Что дальше», состояние «одобрена».",
+        "default": "Задания уже открыты.", "per_city": True,
+    },
+    "reg_status_pay_button_text": {
+        "type": "text", "group": "reg_prompts", "label": "✅ Главная кнопка (одобрена)",
+        "prompt": "Главная кнопка экрана статуса, состояние «одобрена».",
+        "default": "Оплатить участие", "per_city": True,
+    },
+    "reg_status_rejected_badge_text": {
+        "type": "text", "group": "reg_prompts", "label": "🚫 Бейдж «отклонена» (статус)",
+        "prompt": "Бейдж на плите экрана статуса, состояние «отклонена».",
+        "default": "Заявка отклонена", "per_city": True,
+    },
+    "reg_status_rejected_title_text": {
+        "type": "text", "group": "reg_prompts", "label": "🚫 Заголовок «отклонена» (статус)",
+        "prompt": "Status Title экрана статуса, состояние «отклонена».",
+        "default": "В этот раз не получилось", "per_city": True,
+    },
+    "reg_status_rejected_body_text": {
+        "type": "text", "group": "reg_prompts", "label": "🚫 Тело «отклонена» (статус)",
+        "prompt": "Тело плиты экрана статуса, состояние «отклонена».",
+        "default": "Это не навсегда: можно поправить анкету и подать её заново.", "per_city": True,
+    },
+    "reg_status_reason_eyebrow_text": {
+        "type": "text", "group": "reg_prompts", "label": "🚫 Эйброу «Причина» (статус)",
+        "prompt": "Eyebrow над карточкой причины отказа — сам текст причины дословно из ответа менеджера, ключом не заводится.",
+        "default": "Причина",
+    },
+    "reg_status_fix_eyebrow_text": {
+        "type": "text", "group": "reg_prompts", "label": "🚫 Эйброу «Что поправить» (статус)",
+        "prompt": "Eyebrow над списком проблемных полей заявки.",
+        "default": "Что поправить",
+    },
+    "reg_status_saved_answers_label_text": {
+        "type": "text", "group": "reg_prompts", "label": "🚫 «Остальные ответы сохранены» (статус)",
+        "prompt": "Строка-подтверждение под списком проблемных полей.",
+        "default": "Остальные ответы сохранены",
+    },
+    "reg_status_resubmit_button_text": {
+        "type": "text", "group": "reg_prompts", "label": "🚫 Главная кнопка (отклонена)",
+        "prompt": "Главная кнопка экрана статуса, состояние «отклонена».",
+        "default": "Поправить и подать заново", "per_city": True,
+    },
+    # Phase 30 (30-05, задача 1, A2-07, 30-UI-SPEC.md § «Плита статуса на хабе»): короткая
+    # плита-ссылка на #/status, та же плита, что hub hero (30-CONTEXT.md решение оркестратора
+    # п.1 — точное место подтверждается на первом UAT, план не блокирует).
+    "reg_status_tile_review_text": {
+        "type": "text", "group": "reg_prompts", "label": "🏠 Плита хаба «на проверке»",
+        "prompt": "Однострочный текст плиты статуса на хабе, состояние «на проверке».",
+        "default": "Заявка на проверке", "per_city": True,
+    },
+    "reg_status_tile_approved_text": {
+        "type": "text", "group": "reg_prompts", "label": "🏠 Плита хаба «одобрена»",
+        "prompt": "Текст плиты статуса на хабе, состояние «одобрена». {дата} подставляет срок оплаты.",
+        "default": "Одобрена · оплати до {дата}", "per_city": True,
+    },
+    "reg_status_tile_rejected_text": {
+        "type": "text", "group": "reg_prompts", "label": "🏠 Плита хаба «отклонена»",
+        "prompt": "Текст плиты статуса на хабе, состояние «отклонена».",
+        "default": "Отклонена · поправь и подай снова", "per_city": True,
+    },
+    # Phase 30 (30-05, задача 1, A2-07, 30-UI-SPEC.md § «Настройки в шапке анкеты»): поповер
+    # темы/языка/вибрации — клиентские override поверх системной темы/тумблера менеджера,
+    # в БД не пишутся (кроме языка — существующий механизм фазы 27, `users.lang`).
+    "reg_header_settings_theme_label_text": {
+        "type": "text", "group": "reg_prompts", "label": "⚙️ Заголовок группы «Оформление»",
+        "prompt": "Заголовок группы сегментов темы в поповере настроек шапки анкеты.",
+        "default": "Оформление",
+    },
+    "reg_header_settings_theme_auto_text": {
+        "type": "text", "group": "reg_prompts", "label": "⚙️ Сегмент темы «Как в Телеграме»",
+        "prompt": "Опция 1 сегмента темы — системная тема Telegram.",
+        "default": "Как в Телеграме",
+    },
+    "reg_header_settings_theme_dark_text": {
+        "type": "text", "group": "reg_prompts", "label": "⚙️ Сегмент темы «Тёмная»",
+        "prompt": "Опция 2 сегмента темы.",
+        "default": "Тёмная",
+    },
+    "reg_header_settings_theme_light_text": {
+        "type": "text", "group": "reg_prompts", "label": "⚙️ Сегмент темы «Светлая»",
+        "prompt": "Опция 3 сегмента темы.",
+        "default": "Светлая",
+    },
+    "reg_header_settings_lang_label_text": {
+        "type": "text", "group": "reg_prompts", "label": "⚙️ Заголовок группы «Язык анкеты»",
+        "prompt": "Заголовок группы языка в поповере — строка видна только при включённом модуле языка (фаза 27).",
+        "default": "Язык анкеты",
+    },
+    "reg_header_settings_haptics_label_text": {
+        "type": "text", "group": "reg_prompts", "label": "⚙️ Заголовок группы «Вибрация»",
+        "prompt": "Заголовок группы вибрации в поповере настроек шапки анкеты.",
+        "default": "Вибрация",
+    },
+    "reg_header_settings_haptics_on_text": {
+        "type": "text", "group": "reg_prompts", "label": "⚙️ Сегмент вибрации «Вкл»",
+        "prompt": "Опция сегмента вибрации, включено.",
+        "default": "Вкл",
+    },
+    "reg_header_settings_haptics_off_text": {
+        "type": "text", "group": "reg_prompts", "label": "⚙️ Сегмент вибрации «Выкл»",
+        "prompt": "Опция сегмента вибрации, выключено.",
+        "default": "Выкл",
+    },
+    "reg_header_settings_scope_note_text": {
+        "type": "text", "group": "reg_prompts", "label": "⚙️ Пояснение внизу поповера настроек",
+        "prompt": "Пояснение внизу поповера настроек шапки анкеты.",
+        "default": (
+            "Меняет только эту анкету у тебя. На ответы и на то, что видит менеджер, не влияет."
+        ),
+    },
     "registration_mode": {
         "type": "enum", "group": "toggles", "label": "📝 Форма регистрации",
         "options": ["short", "full"],
@@ -3579,6 +3850,18 @@ SETTINGS_SCHEMA = {
         "type": "text", "group": "miniapp", "label": "🗂 Кнопка «Своя причина»",
         "prompt": "Подпись кнопки, которая открывает поле произвольного текста причины отказа.",
         "default": "Своя причина",
+    },
+    # Phase 30 (30-05, задача 1, решение владельца №5, 30-CONTEXT.md): вторая половина решения —
+    # менеджер видит прямо у поля, что этот текст дословно уедет делегату (`users.reject_reason`
+    # → 30-UI-SPEC.md § «Экран статуса заявки», карточка причины без подписи менеджера). Один
+    # ключ на ОБЕ поверхности: placeholder текстового поля в шторке отказа Mini App
+    # (`miniapp/routers/page.py::APPLICATIONS_TEXT_KEYS`, `screens/applications.js`) и приписка
+    # к тому же вопросу в чате бота (`handlers/admin_moderation.py::appr_reject_start`) — вторым
+    # источником текста не заводим, менеджер правит подсказку один раз для обеих.
+    "miniapp_applications_reject_hint_text": {
+        "type": "text", "group": "miniapp", "label": "🗂 Подсказка у поля причины отказа",
+        "prompt": "Placeholder текстового поля причины (шторка Mini App) и приписка к тому же вопросу в чате бота — это увидит делегат.",
+        "default": "Это увидит делегат — без грубостей и личных данных.",
     },
     # Квик 260904-7e7 (D18): шторка отказа стала модальным низовым листом — своя кнопка отмены.
     "miniapp_applications_reject_cancel": {
