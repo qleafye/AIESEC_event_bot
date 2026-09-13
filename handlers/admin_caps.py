@@ -599,6 +599,11 @@ ADMIN_CAPS: dict[str, str] = {
     "toggle_reg_form_status_screen": "settings",
     "toggle_reg_form_header_settings": "settings",
     "toggle_reg_form_haptics": "settings",
+    # Phase 30 (30-07, A2-03): экран «📚 Справочники» — handlers/admin_lookup.py, весь
+    # семейство callback'ов одним префиксом (`:*` покрывает kind/q/qm/qr/c/cu/cp/sel).
+    "admin_lookup": "settings",
+    "admin_lookup:*": "settings",
+    "state:LookupAdmin:*": "settings",
 
     # ── moderate_game (Phase 9) ─────────────────────────────────────────────────────────
     # 09-01 (interface-first): all 15 future gamification callback/state keys registered

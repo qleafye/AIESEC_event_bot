@@ -244,6 +244,77 @@ async def pin_chip(kind: str, canonical: str, on: bool) -> None:
         await conn.commit()
 
 
+async def merge_queue_items(kind: str, status: str = "new") -> list[dict]:
+    """Очередь «Другое» одного справочника/статуса, новые сверху для менеджера (план 30-07,
+    экран «📚 Справочники») — постраничность режет список СЮДА возвращённый (тот же приём,
+    что `handlers/admin_faq.py::render_faq_screen` — `items[offset:offset+PAGE]` в хендлере,
+    второй копии постраничной логики здесь не заводим)."""
+    from database.db import _connect
+
+    async with _connect() as conn:
+        cursor = await conn.execute(
+            "SELECT id, raw_text, step_key, telegram_id, created_at FROM lookup_merge_queue "
+            "WHERE kind = ? AND status = ? ORDER BY created_at DESC",
+            (kind, status),
+        )
+        rows = await cursor.fetchall()
+    return [
+        {"id": r[0], "raw_text": r[1], "step_key": r[2], "telegram_id": r[3], "created_at": r[4]}
+        for r in rows
+    ]
+
+
+async def merge_apply(item_id: int, canonical: str, admin_id: int) -> bool:
+    """«Влить как псевдоним» (план 30-07): очередной сырой ответ делегата становится алиасом
+    ВЫБРАННОЙ менеджером каноники (новой или уже существующей — `search_lookup` не различает).
+    `INSERT OR IGNORE` — тот же уникальный индекс `(kind, alias_norm)`, что у идемпотентного
+    посева, повторное слияние того же текста не плодит вторую строку `lookup_entries`.
+    Возвращает `False`, если очередь уже не содержит запись со статусом `new` (обработана
+    другим менеджером/из другой вкладки) — хендлер отвечает human-текстом, не тихо молчит."""
+    from database.db import _connect
+
+    async with _connect() as conn:
+        cursor = await conn.execute(
+            "SELECT kind, raw_text, raw_norm FROM lookup_merge_queue "
+            "WHERE id = ? AND status = 'new'", (item_id,),
+        )
+        row = await cursor.fetchone()
+        if row is None:
+            return False
+        row_kind, raw_text, raw_norm = row
+        now = msk_now().strftime("%Y-%m-%d %H:%M:%S")
+        await conn.execute(
+            "INSERT OR IGNORE INTO lookup_entries "
+            "(kind, canonical, alias, alias_norm, source, pinned, added_by, created_at) "
+            "VALUES (?, ?, ?, ?, 'manager_merge', 0, ?, ?)",
+            (row_kind, canonical, raw_text, raw_norm, admin_id, now),
+        )
+        await conn.execute(
+            "UPDATE lookup_merge_queue SET status = 'merged', decided_by = ?, decided_at = ? "
+            "WHERE id = ?",
+            (admin_id, now, item_id),
+        )
+        await conn.commit()
+    return True
+
+
+async def merge_reject(item_id: int, admin_id: int) -> bool:
+    """«Отклонить» (план 30-07) — запись уходит из очереди без записи в справочник (мусор/
+    опечатка/спам). `WHERE status = 'new'` — тот же guard от двойной обработки, что у
+    `merge_apply`."""
+    from database.db import _connect
+
+    now = msk_now().strftime("%Y-%m-%d %H:%M:%S")
+    async with _connect() as conn:
+        cursor = await conn.execute(
+            "UPDATE lookup_merge_queue SET status = 'rejected', decided_by = ?, decided_at = ? "
+            "WHERE id = ? AND status = 'new'",
+            (admin_id, now, item_id),
+        )
+        await conn.commit()
+        return cursor.rowcount > 0
+
+
 async def pinned_chips(kind: str) -> list[str]:
     """Список закреплённых каноник (для экрана менеджера «Справочники», план 30-07) —
     отдельно от `top_chips`, которая уже подмешивает частоту сезона; здесь только то, что

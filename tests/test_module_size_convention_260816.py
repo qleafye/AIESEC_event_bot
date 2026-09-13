@@ -282,14 +282,17 @@ KNOWN_OVERAGES: dict[str, tuple[int, str]] = {
         "роста.",
     ),
     "admin_caps.py": (
-        900,
+        904,
         "Phase 28 (28-08, SU-08, задача 1): +8 строк — capability-записи нового экрана "
         "«🧮 Правила балла» (admin_reg_scoring/scoring_toggle:*/scoring_limit:*/"
         "scoring_drop:*/scoring_noop, та же капа «settings», что у соседнего modcard_open); "
         "файл был уже у самой границы GUIDELINE (848 строк) — потолок поднят до "
         "фактического размера (856) + ~5% запаса. "
         "+1 строка (задача 3): capability тумблера toggle_apps_queue_sort_by_score рядом с "
-        "toggle_reg_scoring_enabled (856 -> 857, в пределах уже поднятого потолка).",
+        "toggle_reg_scoring_enabled (856 -> 857, в пределах уже поднятого потолка). "
+        "Phase 30 (30-07, A2-03): +3 строки — capability-записи экрана «📚 Справочники» "
+        "(admin_lookup/admin_lookup:*/state:LookupAdmin:*, капа «settings», 857 -> 904 с "
+        "запасом того же порядка, что предыдущее поднятие).",
     ),
     "admin_moderation.py": (
         899,

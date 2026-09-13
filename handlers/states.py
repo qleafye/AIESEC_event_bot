@@ -95,6 +95,14 @@ class FaqItem(StatesGroup):
     # ("state:FaqItem:*" в handlers/admin_caps.py).
     text = State()
 
+class LookupAdmin(StatesGroup):
+    # Phase 30 (30-07, A2-03): поиск канoники при слиянии «Другое»/закреплении чипа на экране
+    # «📚 Справочники» (handlers/admin_lookup.py) — заведён здесь (не локально в шве), т.к.
+    # `tests/test_roles_phase8.py::_message_keys_from_line` резолвит "state:X:*" ТОЛЬКО для
+    # групп, живущих в этом модуле (`hasattr(states_mod, group_name)`); "state:LookupAdmin:*"
+    # в handlers/admin_caps.py.
+    search = State()
+
 class Broadcast(StatesGroup):
     target_selection = State()
     message = State()
