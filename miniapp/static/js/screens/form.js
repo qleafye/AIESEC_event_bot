@@ -917,8 +917,22 @@ export async function render(root, params, ctx) {
         // JSON PATCH нельзя (`JSON.stringify(File)` даёт "{}", сервер отвечает 400). Указатель
         // шага всё равно сдвигаем — answers пустой, step идёт отдельным полем.
         const isFileValue = typeof File !== "undefined" && liveValue instanceof File;
+        // Phase 30 (30-05, задача 0б, хвост 30-04): composite-карточка «Образование»
+        // (`form_types.js::compositeCard`) отдаёт onChange ОБЪЕКТОМ `{step_key: value, ...}` —
+        // патч НЕСКОЛЬКИХ колонок одной карточкой, а не скаляром одной колонки `column`, как
+        // остальные типы. Отличаем от файла (`instanceof File`) и repeatable-массива
+        // (`Array.isArray`) — только «голый» объект значит composite-патч; для образования
+        // `step_key === column` (`STEP_TO_COLUMN` — identity-мэп для этих полей, reg_engine.py),
+        // второй карты имён не заводим.
+        const isCompositePatch = !isFileValue && liveValue !== null
+          && typeof liveValue === "object" && !Array.isArray(liveValue);
         const patch = {};
-        if (!isFileValue) {
+        if (isCompositePatch) {
+          for (const [patchColumn, patchValue] of Object.entries(liveValue)) {
+            state.setValue(patchColumn, patchValue);
+            patch[patchColumn] = patchValue;
+          }
+        } else if (!isFileValue) {
           state.setValue(column, liveValue);
           patch[column] = liveValue;
         }

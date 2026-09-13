@@ -1927,6 +1927,41 @@ async def form_spec(answers: dict, participant_type: str | None = None,
         else:
             spec["value"] = None
             spec["value_source"] = None
+        # Phase 30 (30-05, задача 0б, хвост 30-04): `step_spec()`/`_composite_spec_for` строят
+        # части карточки БЕЗ доступа к `answers` (T-30-04-01, докстринг `composite_parts`) —
+        # значения делегата подмешиваются здесь, тем же способом, что верхний уровень спеки
+        # выше (`_published_value`/`prior`), но по СВОЕЙ колонке каждой части (`columns_for_step`,
+        # тот же приём, что `spec["columns"]` строки 1746). Известное ограничение 30-04-SUMMARY.md
+        # («Composite не получает текущие/прошлые значения делегата») закрывается здесь.
+        composite = spec.get("composite")
+        if composite:
+            toggle_key = composite.get("toggle_step")
+            toggle_raw_for_studying = None
+            for part in composite["parts"]:
+                part_column = part.get("column")
+                part_columns = columns_for_step(part["key"]) or ([part_column] if part_column else [])
+                part_raw = {col: answers.get(col) for col in part_columns}
+                part_has_answer = any(v not in (None, "", "-") for v in part_raw.values())
+                part_prior_value = prior.get(part["key"])
+                if part_has_answer:
+                    part["value"] = _published_value(part_column, answers.get(part_column))
+                elif part_prior_value not in (None, "", "-"):
+                    part["value"] = _published_value(part_column, part_prior_value)
+                else:
+                    part["value"] = None
+                if part_prior_value not in (None, "", "-"):
+                    part["prior"] = {"value": part_prior_value, "display": _display_value(part_prior_value)}
+                else:
+                    part["prior"] = None
+                if part["key"] == toggle_key:
+                    toggle_raw_for_studying = part["value"] if part["value"] not in (None, "", "-") \
+                        else part_prior_value
+            # Дефолт тумблера — «учится» (30-CONTEXT.md реш. 6: у делегата без ответа карточка
+            # стартует со всеми частями открытыми), как и клиентский дефолт `compositeCard`.
+            if toggle_key and toggle_raw_for_studying not in (None, "", "-"):
+                composite["studying"] = is_studying(toggle_raw_for_studying, await studying_statuses())
+            elif toggle_key:
+                composite["studying"] = True
         steps_out.append(spec)
     # Вилка трека не показывается, когда трек уже известен (deep-link или выбор в приложении) —
     # паритет с `should_show_fork` в боте. D-27 (гейт владельца, 02.09): `is_registered` в

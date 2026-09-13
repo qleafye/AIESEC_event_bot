@@ -306,6 +306,57 @@ toggleRowNode.dispatch("click", {});
 const hiddenPartsAfterToggleOff = findAll(compositeFullResult.control, "cpart")
   .filter((n) => n.getAttribute("aria-hidden") === "true").length;
 
+// 10б) composite (план 30-05, задача 0б, хвост 30-04): `emit()` отдаёт наружу ОБЪЕКТ-патч
+// нескольких колонок, не скаляр — screens/form.js::goNext() узнаёт его по typeof/Array.isArray.
+const compositeEmitCalls = [];
+const compositeEmitResult = m.buildV2Control(h, compositeFullSpec, null, (v) => compositeEmitCalls.push(v), {});
+const emitCourseChip = findAll(compositeEmitResult.control, "chip-pick")[0];
+emitCourseChip.dispatch("click", {});
+const lastEmitPatch = compositeEmitCalls[compositeEmitCalls.length - 1];
+const emitPatchIsPlainObject = lastEmitPatch !== null && typeof lastEmitPatch === "object"
+  && !Array.isArray(lastEmitPatch);
+const emitPatchHasCourseKey = Object.prototype.hasOwnProperty.call(lastEmitPatch || {}, "course");
+
+// 10в) composite: `spec.composite.studying === false` (сервер уже знает прежний ответ
+// «не учится», reg_engine.form_spec) стартует карточку СО СКРЫТЫМИ частями, без клика по
+// тумблеру — 30-04 раньше всегда стартовал с `studying = true` (30-04-SUMMARY.md Known Stubs).
+const compositeNotStudyingSpec = {
+  key: "education_status", degraded_kind: "composite", v2_texts: {
+    toggle_on_label: "on", toggle_off_label: "off", toggle_on_hint: "h1", toggle_off_hint: "h2",
+  },
+  composite: {
+    group: "education", toggle_step: "education_status", studying: false,
+    parts: [
+      { key: "education_status", label: "Образование" },
+      { key: "course", label: "Курс", options: ["1", "2", "3"], option_labels: {} },
+    ],
+  },
+};
+const compositeNotStudyingResult = m.buildV2Control(h, compositeNotStudyingSpec, null, () => {}, {});
+const hiddenPartsWithoutClick = findAll(compositeNotStudyingResult.control, "cpart")
+  .filter((n) => n.getAttribute("aria-hidden") === "true").length;
+
+// 10г) composite: прежние значения (`part.value`) из спеки предзаполняют поля/чипы карточки.
+const compositeWithValuesSpec = {
+  key: "education_status", degraded_kind: "composite", v2_texts: {
+    toggle_on_label: "on", toggle_off_label: "off", toggle_on_hint: "h1", toggle_off_hint: "h2",
+  },
+  composite: {
+    group: "education", toggle_step: "education_status",
+    parts: [
+      { key: "education_status", label: "Образование" },
+      { key: "course", label: "Курс", options: ["1", "2", "3"], option_labels: {}, value: "2" },
+      { key: "study_field", label: "Программа", required: false, max_len: 40, value: "Менеджмент" },
+    ],
+  },
+};
+const compositeWithValuesResult = m.buildV2Control(h, compositeWithValuesSpec, null, () => {}, {});
+const prefilledCourseChip = findAll(compositeWithValuesResult.control, "chip-pick")
+  .find((c) => c.classList.contains("on"));
+const prefilledCourseText = prefilledCourseChip ? findByTag(prefilledCourseChip, "span").textContent : null;
+const prefilledStudyFieldInput = findByTag(compositeWithValuesResult.control, "input");
+const prefilledStudyFieldValue = prefilledStudyFieldInput ? prefilledStudyFieldInput.value : null;
+
 // 11) repeatable: кнопка «+ Добавить» исчезает по достижении repeatable_max, блоков не больше.
 const repeatableSpec = {
   key: "mini_portfolio", degraded_kind: "repeatable", repeatable_max: 1,
@@ -330,6 +381,11 @@ console.log(JSON.stringify({
   disabledAfterError,
   courseStillClickable,
   hiddenPartsAfterToggleOff,
+  emitPatchIsPlainObject,
+  emitPatchHasCourseKey,
+  hiddenPartsWithoutClick,
+  prefilledCourseText,
+  prefilledStudyFieldValue,
   repeatableCardsAfterOneAdd,
   repeatableAddHiddenAtMax,
 }));
@@ -405,3 +461,25 @@ def test_composite_toggle_hides_parts_via_aria_hidden(js_result):
 def test_repeatable_add_button_disappears_at_max_and_blocks_are_not_added(js_result):
     assert js_result["repeatableCardsAfterOneAdd"] == 1
     assert js_result["repeatableAddHiddenAtMax"] is True
+
+
+# ── хвост 30-04 (план 30-05, задача 0б) ─────────────────────────────────────────────────────
+
+def test_composite_emit_sends_object_patch_not_scalar(js_result):
+    """screens/form.js::goNext() (план 30-05) узнаёт composite-патч по `typeof === "object"` —
+    `emit()` обязан отдавать именно объект с ключами-колонками, не строку/массив."""
+    assert js_result["emitPatchIsPlainObject"] is True
+    assert js_result["emitPatchHasCourseKey"] is True
+
+
+def test_composite_studying_false_starts_with_hidden_parts(js_result):
+    """`spec.composite.studying` (reg_engine.form_spec, план 30-05) — прежний ответ «не учится»
+    обязан скрыть ВУЗ/курс/программу сразу при первой отрисовке, без клика по тумблеру."""
+    assert js_result["hiddenPartsWithoutClick"] >= 1
+
+
+def test_composite_parts_prefill_from_spec_value(js_result):
+    """`spec.composite.parts[*].value` (reg_engine.form_spec, план 30-05) предзаполняет поля
+    карточки прежним ответом делегата — курс чипом, программу текстом."""
+    assert js_result["prefilledCourseText"] == "2"
+    assert js_result["prefilledStudyFieldValue"] == "Менеджмент"
