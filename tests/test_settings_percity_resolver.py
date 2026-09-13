@@ -119,6 +119,26 @@ EXPECTED_PER_CITY_KEYS = {
     "reg_composite_edu_toggle_off_label", "reg_composite_edu_toggle_on_hint",
     "reg_composite_edu_toggle_off_hint", "reg_composite_edu_done_hint_text",
     "reg_repeatable_add_button_text", "reg_repeatable_item_label_text",
+    # Phase 30 (30-05, задача 1, 30-UI-SPEC.md § Copywriting Contract): обзор перед отправкой,
+    # три состояния экрана статуса, плита-ссылка на хабе — тексты обращены к делегату, per_city
+    # дословно по таблицам UI-SPEC, той же осью, что соседние reg_prompt_*/reg_form_* выше.
+    "reg_review_group_about_text", "reg_review_group_event_text", "reg_review_group_study_text",
+    "reg_review_submit_button_text", "reg_review_title_text",
+    "reg_status_review_badge_text", "reg_status_review_title_text", "reg_status_review_body_text",
+    "reg_status_review_step1_title_text", "reg_status_review_step1_body_text",
+    "reg_status_review_step2_title_text", "reg_status_review_step2_body_text",
+    "reg_status_review_step3_title_text", "reg_status_review_step3_body_text",
+    "reg_status_edit_button_text",
+    "reg_status_approved_badge_text", "reg_status_approved_title_text",
+    "reg_status_approved_body_text", "reg_status_payment_due_label_text",
+    "reg_status_payment_reminder_note_text",
+    "reg_status_approved_step1_title_text", "reg_status_approved_step1_body_text",
+    "reg_status_approved_step2_title_text", "reg_status_approved_step2_body_text",
+    "reg_status_approved_step3_title_text", "reg_status_approved_step3_body_text",
+    "reg_status_pay_button_text",
+    "reg_status_rejected_badge_text", "reg_status_rejected_title_text",
+    "reg_status_rejected_body_text", "reg_status_resubmit_button_text",
+    "reg_status_tile_review_text", "reg_status_tile_approved_text", "reg_status_tile_rejected_text",
 }
 
 
