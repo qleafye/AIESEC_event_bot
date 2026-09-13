@@ -508,7 +508,13 @@ function compositeCard(h, spec, value, onChange, flags) {
   // делегата). Известное ограничение — см. SUMMARY плана 30-04.
   let studying = true;
 
-  const errorZones = {};
+  // Per-part «есть ошибка» — булев флаг, НЕ текст: клиентский пред-показ лимита длины (ниже, у
+  // программы обучения) не дублирует текст ошибки сервера (`reg_engine.validate_answer`,
+  // T-21-05 «второго валидатора нет») — только красная рамка `.field.is-error` (уже
+  // существующий класс, `app.css`), сам текст покажет ответ сервера, когда многоколоночный
+  // commit карточки довяжут (см. «Known Stubs» в SUMMARY плана 30-04). Ошибка ОДНОЙ части
+  // блокирует ТОЛЬКО главную кнопку (через `onFooterChange`), не рендер/интерактивность соседних.
+  const errorFlags = {};
   let footerCb = null;
 
   function emit() {
@@ -516,7 +522,7 @@ function compositeCard(h, spec, value, onChange, flags) {
   }
 
   function footerState() {
-    const hasError = Object.values(errorZones).some((zone) => !zone.classList.contains("hidden"));
+    const hasError = Object.values(errorFlags).some(Boolean);
     return { label: null, disabled: hasError };
   }
   function notifyFooter() {
@@ -524,11 +530,8 @@ function compositeCard(h, spec, value, onChange, flags) {
     const s = footerState();
     footerCb(s.label, s.disabled);
   }
-  function setError(key, text) {
-    const zone = errorZones[key];
-    if (!zone) return;
-    if (text) { zone.textContent = text; zone.classList.remove("hidden"); }
-    else { zone.textContent = ""; zone.classList.add("hidden"); }
+  function setError(key, hasError) {
+    errorFlags[key] = !!hasError;
     notifyFooter();
   }
 
@@ -539,21 +542,17 @@ function compositeCard(h, spec, value, onChange, flags) {
   }
 
   function buildUniversityPart(part) {
-    const errorZone = h("p", { class: "field-error hidden" });
-    errorZones[part.key] = errorZone;
     const sub = buildV2Control(h, part, state[part.key], (v) => {
       state[part.key] = v;
       emit();
     }, flags);
     return h("div", { class: "cpart" },
       h("div", { class: "cl" }, h("span", { text: labelText(part.label) })),
-      sub.control, errorZone,
+      sub.control,
     );
   }
 
   function buildChipsPart(part) {
-    const errorZone = h("p", { class: "field-error hidden" });
-    errorZones[part.key] = errorZone;
     const box = h("div", { class: "chips" });
     const chipEls = [];
     for (const opt of part.options || []) {
@@ -562,7 +561,6 @@ function compositeCard(h, spec, value, onChange, flags) {
       chip.addEventListener("click", () => {
         state[part.key] = opt;
         for (const c of chipEls) c.el.classList.toggle("on", c.opt === opt);
-        setError(part.key, null);
         emit();
         haptic("light", flags);
       });
@@ -572,24 +570,26 @@ function compositeCard(h, spec, value, onChange, flags) {
     for (const c of chipEls) c.el.classList.toggle("on", c.opt === state[part.key]);
     return h("div", { class: "cpart" },
       h("div", { class: "cl" }, h("span", { text: labelText(part.label) })),
-      box, errorZone,
+      box,
     );
   }
 
   function buildTextPart(part) {
-    const errorZone = h("p", { class: "field-error hidden" });
-    errorZones[part.key] = errorZone;
+    const fieldWrap = h("div", { class: "field" });
     const input = h("input", { class: "input", type: "text" });
     input.value = state[part.key] || "";
     if (part.max_len) input.setAttribute("maxlength", String(part.max_len));
+    fieldWrap.append(input);
     input.addEventListener("input", () => {
       state[part.key] = input.value;
-      setError(part.key, null);
+      const overLimit = Boolean(part.max_len) && input.value.length > part.max_len;
+      fieldWrap.classList.toggle("is-error", overLimit);
+      setError(part.key, overLimit);
       emit();
     });
     return h("div", { class: "cpart" },
       h("div", { class: "cl" }, h("span", { text: labelText(part.label) }), optionalBadge(part)),
-      h("div", { class: "field" }, input), errorZone,
+      fieldWrap,
     );
   }
 
