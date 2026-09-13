@@ -372,7 +372,7 @@ async def _ask_step(step_key: str, message: types.Message, state: FSMContext, st
     v2_kind = degrade_kind(step_type_v2(step_key), v2_flags)
     if v2_kind == "lookup":
         from handlers import reg_types_lookup  # ленивый шов (цикл импортов)
-        await reg_types_lookup.ask_step(step_key, message, state, p, participant_type, city_code)
+        await reg_types_lookup.ask_step(step_key, message, state, p, participant_type, city_code, v2_flags)
         return
     if v2_kind == "repeatable":
         from handlers import reg_types_repeatable  # ленивый шов (цикл импортов)

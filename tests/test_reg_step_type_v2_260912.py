@@ -323,3 +323,54 @@ def test_composite_studying_flag_reflects_toggle_answer(tmp_path):
 
     form_no_answer = asyncio.run(form_spec({}, participant_type="full"))
     assert _education_step(form_no_answer)["composite"]["studying"] is True
+
+
+# ── (6) spec["lookup"]: атрибуты списка сверх глобальных тумблеров (30-08, задача A) ────────
+# Правило дословно: глобальный `off` -> `off` без похода в атрибут списка; глобальный `on` ->
+# решает атрибут конкретного списка (`reg_engine.lookup_render_flags`).
+
+def test_lookup_spec_global_on_list_attribute_off_disables_render_flag(tmp_path):
+    _ready(tmp_path)
+    asyncio.run(set_setting("university_options_chips_enabled", "off"))
+    spec = asyncio.run(step_spec("university", None, None, flags=_ALL_ON_FLAGS))
+    assert spec["degraded_kind"] == "lookup"
+    assert spec["lookup"] == {"chips_enabled": False, "search_enabled": True}
+
+
+def test_lookup_spec_global_off_wins_even_if_list_attribute_on(tmp_path):
+    """Глобальный тумблер `off` -> `off`, БЕЗ похода в реестр атрибута списка — правило задачи A
+    дословно («глобальный off → off»), список тут ни при чём, даже если сам атрибут = «on»
+    (дефолт)."""
+    _ready(tmp_path)
+    flags_no_chips = dict(_ALL_ON_FLAGS, chips=False)
+    spec = asyncio.run(step_spec("university", None, None, flags=flags_no_chips))
+    assert spec["degraded_kind"] == "lookup"  # lookup_search=True держит kind "lookup"
+    assert spec["lookup"] == {"chips_enabled": False, "search_enabled": True}
+
+
+def test_lookup_spec_per_list_attributes_are_independent_per_step(tmp_path):
+    """`university_options`/`city_options` — разные ключи реестра, атрибут одного списка не
+    протекает в другой."""
+    _ready(tmp_path)
+    asyncio.run(set_setting("university_options_search_enabled", "off"))
+    uni_spec = asyncio.run(step_spec("university", None, None, flags=_ALL_ON_FLAGS))
+    city_spec = asyncio.run(step_spec("city", None, None, flags=_ALL_ON_FLAGS))
+    assert uni_spec["lookup"] == {"chips_enabled": True, "search_enabled": False}
+    assert city_spec["lookup"] == {"chips_enabled": True, "search_enabled": True}
+
+
+def test_lookup_spec_absent_for_non_lookup_kind():
+    """Узел `spec["lookup"]` публикуется ТОЛЬКО у `degraded_kind == "lookup"` — у прочих типов
+    его нет вовсе (не пустой словарь), чтобы фронт не путал «нет узла» с «оба флага false»."""
+    spec = asyncio.run(step_spec("alumni_status", None, None, flags=_ALL_ON_FLAGS))
+    assert spec["degraded_kind"] == "select"
+    assert "lookup" not in spec
+
+
+def test_lookup_render_flags_defaults_to_on_on_when_v2_toggles_default(tmp_path):
+    """Дефолт обоих атрибутов списка — `"on"` (30-07): при включённом мастере и глобальных
+    тумблерах чипов/поиска новый рендер lookup сразу получает и чипы, и поиск, без ручной
+    настройки менеджера."""
+    _ready(tmp_path)
+    spec = asyncio.run(step_spec("university", None, None, flags=_ALL_ON_FLAGS))
+    assert spec["lookup"] == {"chips_enabled": True, "search_enabled": True}

@@ -332,11 +332,16 @@ function linkCard(h, spec, value, onChange, flags) {
 
 // ── lookup: поиск + чипы + свой вариант (30-UI-SPEC.md § «2. lookup») ──────────────────────
 // Порядок узлов дословно из спеки: поиск → топ-8 чипов → ghost-чип «Другой {entity}» →
-// построчный список результатов → пустое состояние. Деградация — СТРОГО из `flags`
-// (`chips`/`lookup_search`), собственных правил компонент не изобретает: `chips=false`
-// прячет ряд чипов, `lookup_search=false` прячет поле поиска (чипы остаются статичным
-// списком кнопок — тот же узел `renderChips`, второй разметки не заводим). Оба `false` эта
-// ветка вообще не видит — `degrade_kind()` на сервере уже вернул `"text"`.
+// построчный список результатов → пустое состояние. Деградация — СТРОГО из `spec.lookup`
+// (30-08 задача A: `reg_engine.lookup_render_flags` уже сводит глобальные тумблеры `chips`/
+// `lookup_search` С атрибутами конкретного списка — глобальный `off` → `off`, глобальный
+// `on` → решает атрибут списка; компонент читает готовый результат, второй раз правило не
+// пересчитывает). `chips_enabled=false` прячет ряд чипов, `search_enabled=false` прячет поле
+// поиска (чипы остаются статичным списком кнопок — тот же узел `renderChips`, второй разметки
+// не заводим). Оба `false` одновременно (менеджер выключил ОБА атрибута списка при включённых
+// глобальных тумблерах — `degrade_kind()` этого не видит, он знает только про глобальные)
+// компонент разворачивает сам, в голое текстовое поле — тот же приём, что уже применяет
+// `degrade_kind()` на глобальном уровне (30-UI-SPEC.md §2 «Оба выключены»).
 
 const LOOKUP_MIN_QUERY = 2;
 const LOOKUP_DEBOUNCE_MS = 250;
@@ -346,9 +351,13 @@ function lookupIconFor(spec) {
 }
 
 function lookupControl(h, spec, value, onChange, flags) {
+  const lk = spec.lookup || {};
+  const showChips = !!lk.chips_enabled;
+  const showSearch = !!lk.search_enabled;
+  if (!showChips && !showSearch) {
+    return textField(h, spec, value, onChange);
+  }
   const texts = spec.v2_texts || {};
-  const showChips = !!(flags && flags.chips);
-  const showSearch = !!(flags && flags.lookup_search);
 
   let otherAllowed = false;
   let debounceId = null;
