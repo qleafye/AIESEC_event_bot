@@ -60,6 +60,13 @@ class Registration(StatesGroup):
     mini_portfolio = State()    # мини-профиль R2c, подшаг 2/3: портфолио/GitHub (можно пропустить)
     mini_direction = State()    # мини-профиль R2c, подшаг 3/3: желаемое направление развития
     case_optin = State()        # участие в кейс-чемпионате (Да/Нет), с пояснением менеджера
+    # Phase 30 (30-06, A2-05): чат-проекция типа `repeatable` (handlers/reg_types_repeatable.py)
+    # — ОДНО состояние на весь цикл «Название? -> Опиши коротко -> Добавить ещё?», стадия блока
+    # хранится в данных FSM (`_repeat_stage`), не отдельным State на под-вопрос (30-06-PLAN.md
+    # <action>). Не переиспользует `Registration.mini_portfolio` — то состояние уже занято
+    # приёмным хендлером `handlers/reg_extra_steps.py::process_mini_portfolio`, зарегистрированным
+    # РАНЬШЕ по порядку импорта хвоста `registration.py` (aiogram матчит по порядку регистрации).
+    mini_portfolio_repeat = State()
 
 class Approval(StatesGroup):
     reason = State()
