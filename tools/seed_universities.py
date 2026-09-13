@@ -197,17 +197,22 @@ def _universities_from_config() -> dict:
 
 def cities_fallback_snapshot() -> dict:
     """Города СЕГОДНЯ всегда фолбэк, не живой запрос (лицензия `arbaev/russia-cities` не
-    подтверждена — README): каноники — города текущих мероприятий бота (`config.EVENT_CITIES`,
+    подтверждена — README): каноники — города текущих мероприятий бота (реестр `cities.py`,
     дата в подписи отрезается по первой запятой) + восемь городов топ-8 из
     `reg_engine.SELECT_CONFIG['city']` (сегодняшний список кнопок делегата на шаге «Город»).
     Псевдонимов нет — короткая база, поиск по ней работает просто на меньшем числе записей
-    (задача 3, «поиск города при этом работает»)."""
+    (задача 3, «поиск города при этом работает»).
+
+    Города берутся через `cities.all_cities()` — тот же публичный аксессор кэша `CITIES`,
+    которым пользуются `handlers/admin_cities.py` и `handlers/registration.py`, а не
+    прямым чтением .env-значения (сторож `tests/test_cities_registry_260818.py` запрещает
+    читать это значение где-либо, кроме `cities.py`). Скрипт не вызывает `reload_cities()`,
+    поэтому список — тот же холодный фолбэк из `.env`, что и раньше, если БД недоступна/пуста."""
     import cities as cities_module
     import reg_engine
-    from config import config
 
     names: list[str] = []
-    for entry in cities_module.parse_cities(config.EVENT_CITIES):
+    for entry in cities_module.all_cities():
         name = entry["label"].split(",")[0].strip()
         if name:
             names.append(name)
@@ -229,7 +234,7 @@ def cities_fallback_snapshot() -> dict:
         "count_closure": 0,
         "excluded_dissolved": 0,
         "source_query": (
-            "офлайн-фолбэк: города бота (config.EVENT_CITIES) + SELECT_CONFIG['city'] — "
+            "офлайн-фолбэк: города бота (cities.all_cities()) + SELECT_CONFIG['city'] — "
             "лицензия arbaev/russia-cities не подтверждена (см. data/lookup/README.md)"
         ),
     }
