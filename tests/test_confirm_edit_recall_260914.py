@@ -263,6 +263,17 @@ def test_confirm_edit_recall_chain_preserves_answers_no_prev_season(tmp_path):
         callback = _FakeCallback("rereg_start", UID, "delegate")
         await reg_flow.rereg_start(callback, state)
         msg = callback.message
+        # `_FakeCallback.message` is built as `_KBCapturingMessage(0)` -- a stand-in for "the
+        # message the bot authored", not "the message the delegate will send next". Production
+        # code never hits this: rereg_start's own `tap_message` (from_user swapped to the
+        # tapping delegate, same model_copy idiom as admin_rereg/party_pick above) is what
+        # downstream handlers actually see, and a REAL subsequent "Изменить" arrives as its own
+        # Telegram message already carrying the delegate's own from_user. Here `msg` is reused
+        # as that next message (process_confirm_edit/finalize_registration below key off
+        # `message.from_user.id`), so the id has to be corrected the same way tap_message's
+        # was -- otherwise finalize_registration operates on telegram_id=0, and the assertions
+        # below silently check an UNTOUCHED UID row instead of the one the flow actually wrote.
+        msg.from_user = _FakeUser(UID, "delegate")
         assert await state.get_state() == Registration.recall_pending.state
 
         await _drain_recall(state, msg)

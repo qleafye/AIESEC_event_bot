@@ -142,7 +142,7 @@ def test_append_to_short_sheet_uses_default_tab_when_unset(tmp_path, monkeypatch
     _use_tmp_db(tmp_path)
     captured = {}
 
-    async def fake_append(tab_name, data):
+    async def fake_append(tab_name, data, headers=None):
         captured["tab"] = tab_name
 
     monkeypatch.setattr(reg, "append_to_named_sheet", fake_append)
@@ -159,7 +159,7 @@ def test_append_to_short_sheet_uses_configured_tab(tmp_path, monkeypatch):
     _use_tmp_db(tmp_path)
     captured = {}
 
-    async def fake_append(tab_name, data):
+    async def fake_append(tab_name, data, headers=None):
         captured["tab"] = tab_name
 
     monkeypatch.setattr(reg, "append_to_named_sheet", fake_append)
