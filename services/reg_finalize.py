@@ -241,7 +241,14 @@ async def finalize_data(telegram_id: int, username: str | None, draft: dict) -> 
             try:
                 season = (await get_setting("event_season") or "").strip() or None
                 data["season"] = season
-                if prior:
+                # Квик 260914-k74 (LEAK-01): снимок со сводки («Изменить») несёт маркер
+                # `_from_confirm` — это ТЕКУЩИЕ ответы этой же анкеты, а не прошлый сезон.
+                # Без этой проверки делегат, просто поправивший поле на сводке, получал
+                # «🔁 Повторный: был(а) на прошлом событии» в карточке модерации
+                # (handlers/admin_moderation.py, services/applications.py) — настоящий
+                # возвращенец (rereg_start / ?start=edit / admin_rereg) маркера не несёт,
+                # для него ветка не меняется.
+                if prior and not prior.get("_from_confirm"):
                     data["prev_season"] = (prior.get("season") or "").strip() or "legacy"
             except Exception as e:
                 logger.error(f"Season resolve failed for {telegram_id}: {e}")
