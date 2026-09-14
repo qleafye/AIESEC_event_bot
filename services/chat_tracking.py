@@ -16,10 +16,19 @@ aiogram-хендлера (те живут в `handlers/group_chat.py` и `handle
 """
 from __future__ import annotations
 
+import asyncio
 import logging
+from datetime import timedelta
 
 from config import config
-from cities import ALL_CITIES, cities_module_on, enabled_cities, per_city_key
+from cities import ALL_CITIES, cities_module_on, city_scope, enabled_cities, per_city_key
+from database.db import (
+    count_and_list_filtered,
+    stale_chat_member_candidates,
+    upsert_chat_member,
+    CHAT_PRESENT_STATUSES,
+)
+from services.timeutil import msk_now
 from settings_audit import delete_setting_by_admin, set_setting_by_admin
 from settings_schema import get_setting_typed
 
@@ -27,6 +36,13 @@ logger = logging.getLogger(__name__)
 
 CHAT_ID_KEY = "delegate_chat_id"
 CHAT_TITLE_KEY = "delegate_chat_title"
+
+# Задача 2 (сверка): батч + пауза держат нагрузку на Telegram API под лимитом (~20 вызовов/с),
+# потолок на один прогон — 1500 делегатов расходятся за 2-3 прогона джобы, а не блокируют её
+# на часы, если чат огромный.
+REFRESH_BATCH = 20
+REFRESH_PAUSE_SECONDS = 1.0
+REFRESH_MAX_CALLS = 500
 
 
 async def tracking_on() -> bool:
@@ -139,3 +155,72 @@ async def is_bot_admin_user(telegram_id: int) -> bool:
     from handlers.admin_caps import resolve_capabilities
 
     return "settings" in await resolve_capabilities(telegram_id)
+
+
+# ── Задача 2: периодическая сверка состава ───────────────────────────────────────────────
+
+async def _approved_ids_for_city(city: str | None) -> list[int]:
+    """Одобренные делегаты города чата, переиспользуя готовый фильтр рассылки
+    (`database.db.count_and_list_filtered`/`_build_filter_clause`) — вторая копия SQL-условия
+    городского скоупа здесь не заводится. `city is None` -> без городского фрагмента вовсе
+    (глобальная привязка или выключенный модуль городов)."""
+    filters = [{"field": "status", "value": "approved"}]
+    scope = city_scope(city) if city is not None else None
+    if scope is not None:
+        code, exclude = scope
+        filters.append({"field": "event_city", "value": code, "exclude": list(exclude)})
+    return await count_and_list_filtered(filters)
+
+
+async def refresh_chat(bot, chat_id: int, city: str | None, *,
+                        max_calls: int = REFRESH_MAX_CALLS) -> dict:
+    """Сверяет состав ОДНОГО чата с Telegram: берёт одобренных делегатов его города, спрашивает
+    `getChatMember` только у тех, чья запись в `chat_members` отсутствует или устарела
+    (`chat_refresh_minutes`), батчами по `REFRESH_BATCH` с паузой `REFRESH_PAUSE_SECONDS` между
+    батчами, каждый вызов — в своём `try/except` (fail-soft: одна ошибка не рвёт прогон)."""
+    threshold_minutes = await get_setting_typed("chat_refresh_minutes")
+    older_than = (msk_now() - timedelta(minutes=threshold_minutes)).strftime("%Y-%m-%d %H:%M:%S")
+    approved_ids = await _approved_ids_for_city(city)
+    candidates = await stale_chat_member_candidates(chat_id, approved_ids, older_than)
+
+    checked = present = absent = errors = 0
+    truncated = False
+    for batch_start in range(0, len(candidates), REFRESH_BATCH):
+        batch = candidates[batch_start:batch_start + REFRESH_BATCH]
+        for telegram_id in batch:
+            if checked >= max_calls:
+                truncated = True
+                break
+            try:
+                member = await bot.get_chat_member(chat_id, telegram_id)
+                await upsert_chat_member(chat_id, telegram_id, member.status, source="refresh")
+                if member.status in CHAT_PRESENT_STATUSES:
+                    present += 1
+                else:
+                    absent += 1
+            except Exception as e:
+                errors += 1
+                logger.warning(
+                    "chat_tracking.refresh_chat: getChatMember(%s, id=%s) failed: %s: %s",
+                    chat_id, telegram_id, type(e).__name__, e,
+                )
+            checked += 1
+        if truncated:
+            break
+        if batch_start + REFRESH_BATCH < len(candidates):
+            await asyncio.sleep(REFRESH_PAUSE_SECONDS)
+
+    return {"checked": checked, "present": present, "absent": absent, "errors": errors,
+            "truncated": truncated}
+
+
+async def refresh_all_chats(bot) -> list[dict]:
+    """Сверяет ВСЕ привязанные чаты. Тумблер выключен -> пустой список, ни одного вызова
+    `get_chat_member` (ни у одного чата)."""
+    if not await tracking_on():
+        return []
+    reports = []
+    for entry in await bound_chats():
+        report = await refresh_chat(bot, entry["chat_id"], entry["city"])
+        reports.append({**report, "chat_id": entry["chat_id"], "city": entry["city"]})
+    return reports
