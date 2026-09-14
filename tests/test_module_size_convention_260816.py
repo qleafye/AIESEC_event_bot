@@ -40,7 +40,7 @@ DEFAULT_CEILING = 850
 # edit the number + reason together, in the same commit as the growth that needs it.
 KNOWN_OVERAGES: dict[str, tuple[int, str]] = {
     "registration.py": (
-        2407,
+        2440,
         "+10 строк (план 30-04, задача 4, A2-05): `_recall_display` — repeatable-колонка "
         "(mini_portfolio) показывает прошлый ответ через `repeatable_display(parse_repeatable("
         "...))`, а не сырой JSON, если делегат в прошлом сезоне пользовался repeatable-"
@@ -112,7 +112,14 @@ KNOWN_OVERAGES: dict[str, tuple[int, str]] = {
         "анкеты в `_ask_step` (`degrade_kind`/`form_v2_flags` -> lookup/composite/repeatable "
         "уходят в свой шов ленивым импортом, `reg_types_composite.maybe_show_recap` проверяется "
         "первой) + три импорта швов в хвосте файла; сами ветки — в handlers/reg_types_*.py, "
-        "потолок поднят до фактического размера.",
+        "потолок поднят до фактического размера. "
+        "+33 строки (квик 260914-k74, T2): `append_to_party_sheet`/`append_to_short_sheet` "
+        "стали сами считать заголовки (`party_sheet_headers`/`short_sheet_headers`) и передавать "
+        "их третьим аргументом в `append_to_named_sheet`, чтобы вкладка, созданная первым "
+        "аппендом, получила строку заголовков ДО первой строки данных (иначе `_status_col_index` "
+        "не находит колонку «Статус» и статусы одобренных не проставляются — инцидент 13.09, "
+        "«СПб Акция»); сам расчёт заголовков уже жил в этом файле, здесь только try/except "
+        "вокруг него и проброс аргумента; потолок поднят до фактического размера.",
     ),
     "admin_gamification.py": (
         2020,
@@ -282,7 +289,7 @@ KNOWN_OVERAGES: dict[str, tuple[int, str]] = {
         "роста.",
     ),
     "admin_caps.py": (
-        905,
+        965,
         "Phase 28 (28-08, SU-08, задача 1): +8 строк — capability-записи нового экрана "
         "«🧮 Правила балла» (admin_reg_scoring/scoring_toggle:*/scoring_limit:*/"
         "scoring_drop:*/scoring_noop, та же капа «settings», что у соседнего modcard_open); "
@@ -294,7 +301,12 @@ KNOWN_OVERAGES: dict[str, tuple[int, str]] = {
         "(admin_lookup/admin_lookup:*/state:LookupAdmin:*, капа «settings», 857 -> 904 с "
         "запасом того же порядка, что предыдущее поднятие). "
         "+1 строка (задача 4): capability атрибутов списка-справочника "
-        "(settings_list_attr:*, 904 -> 905).",
+        "(settings_list_attr:*, 904 -> 905). "
+        "+60 строк (fix 89a70b7): `TelegramForbiddenError` в `notify_by_capability` больше не "
+        "идёт в общий `except Exception` — заблокировавший бота модератор не считается в `sent`, "
+        "первый случай для uid даёт один WARNING и алерт остальным `config.ADMIN_IDS`, повтор в "
+        "течение 24 ч молчит (`logger.debug`); кулдаун — процессный словарь `_blocked_notified_at`, "
+        "не в БД; потолок поднят до фактического размера.",
     ),
     "admin_moderation.py": (
         899,
