@@ -15,13 +15,15 @@ No import from `handlers.admin` here (would create an import cycle — `handlers
 imports this module, not the other way around).
 """
 import logging
+import time
 
 from aiogram import BaseMiddleware
 from aiogram.dispatcher.event.bases import UNHANDLED
+from aiogram.exceptions import TelegramForbiddenError
 from aiogram.types import CallbackQuery, Message, TelegramObject
 
 from config import config
-from database.db import get_staff_roles, get_staff_ids_by_role, get_staff_city
+from database.db import get_staff_roles, get_staff_ids_by_role, get_staff_city, get_user
 from settings_schema import get_setting_typed
 # Phase 09.2 (D): city filter for capability_holders/notify_by_capability. cities.py imports
 # only config/database.db/settings_schema (see cities.py's own module docstring) -- it never
@@ -170,6 +172,23 @@ async def capability_holders(cap: str, *, city: str | None = None) -> list[int]:
     return filtered
 
 
+# Модератор заблокировал бота — сообщаем живым админам не чаще раза в сутки на человека;
+# словарь процессный (не в БД), после рестарта алерт повторится — это приемлемо.
+_blocked_notified_at: dict[int, float] = {}
+_BLOCKED_ALERT_COOLDOWN = 24 * 60 * 60
+
+
+async def _blocked_moderator_alert_text(uid: int) -> str:
+    user = await get_user(uid)
+    raw_username = (user or {}).get("username")
+    uname = (raw_username or "").lstrip("@")
+    who = f"{uid} (@{uname})" if uname and uname != "-" else str(uid)
+    return (
+        f"⚠️ Модератор {who} заблокировал бота — уведомления о заявках ему не доходят.\n"
+        "Чтобы вернуть: пусть откроет бота и нажмёт /start."
+    )
+
+
 async def notify_by_capability(
     bot, cap: str, text: str, *, parse_mode: str | None = None, city: str | None = None
 ) -> int:
@@ -183,17 +202,58 @@ async def notify_by_capability(
 
     Phase 09.2 (D, CITY-06): `city` is passed straight through to `capability_holders` -- see
     its docstring for the narrowing + fallback contract. Default `None` keeps every existing
-    call site (payment.py, and any other caller not yet updated) byte-identical."""
+    call site (payment.py, and any other caller not yet updated) byte-identical.
+
+    A moderator who blocked the bot (`TelegramForbiddenError`) is never counted in `sent` and
+    never keeps retrying silently into the error log on every application -- the first
+    Forbidden for a given uid logs one WARNING and queues one human-readable alert to
+    `config.ADMIN_IDS` (minus the blocked uid and minus anyone else who also failed with
+    Forbidden in this same call); repeats within 24h are `logger.debug` only. The alert send
+    itself is fail-soft and never affects the returned `sent` count."""
     recipients = await capability_holders(cap, city=city)
     if not recipients:
         recipients = list(config.ADMIN_IDS)
     sent = 0
+    blocked: list[int] = []
+    to_alert: list[int] = []
+    now = time.time()
     for uid in recipients:
         try:
             await bot.send_message(uid, text, parse_mode=parse_mode)
             sent += 1
+        except TelegramForbiddenError:
+            blocked.append(uid)
+            if now - _blocked_notified_at.get(uid, 0) >= _BLOCKED_ALERT_COOLDOWN:
+                to_alert.append(uid)
+                _blocked_notified_at[uid] = now
+            else:
+                logger.debug(
+                    "notify_by_capability: %s still has the bot blocked (cap=%s), alert on cooldown",
+                    uid, cap,
+                )
         except Exception as e:
             logger.error("notify_by_capability: failed to notify %s (cap=%s): %s", uid, cap, e)
+
+    if to_alert:
+        try:
+            for uid in to_alert:
+                logger.warning(
+                    "notify_by_capability: moderator %s blocked the bot (cap=%s) -- alerting admins",
+                    uid, cap,
+                )
+                alert_text = await _blocked_moderator_alert_text(uid)
+                alert_recipients = [a for a in config.ADMIN_IDS if a != uid and a not in blocked]
+                for admin_id in alert_recipients:
+                    try:
+                        await bot.send_message(admin_id, alert_text)
+                    except Exception as alert_e:
+                        logger.warning(
+                            "notify_by_capability: failed to alert %s about blocked moderator %s: %s",
+                            admin_id, uid, alert_e,
+                        )
+        except Exception as e:
+            logger.warning("notify_by_capability: blocked-moderator alert block failed: %s", e)
+
     return sent
 
 
