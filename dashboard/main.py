@@ -230,6 +230,10 @@ def build_page_context(conn, cfg: DashboardConfig, scope: queries.Scope, viewer:
     )
 
     city_options = queries.city_options(conn)
+    # Квик 260914-rgr (RGR-01..07): дешёвый запрос (SELECT по bot_settings) — нужен только
+    # чтобы решить, рисовать ли ссылку «💬 Чат» в шапке; сама страница /chat строит СВОЙ
+    # контекст через build_chat_context, здесь второй раз ничего не считается.
+    chat_bindings = queries.chat_bindings(conn)
     bound_city_code = viewer.get("bound_city")
     # D-15: свитчер городов — только когда модуль городов включён И зритель не привязан к
     # своему городу (у привязанного менеджера — статичная подпись, без выбора, D-10).
@@ -271,6 +275,7 @@ def build_page_context(conn, cfg: DashboardConfig, scope: queries.Scope, viewer:
         "scope": scope,
         "city_options": city_options,
         "show_city_switcher": show_city_switcher,
+        "chat_bindings": chat_bindings,
         "bound_city_label": _city_label(conn, bound_city_code),
         "season_options": queries.season_options(conn),
         "kpi": queries.kpi_row(conn, scope),
@@ -297,6 +302,51 @@ def build_page_context(conn, cfg: DashboardConfig, scope: queries.Scope, viewer:
         "bot_username": cfg.bot_username,
         "game": game_stats,
         "questions": questions_stats,
+    }
+
+
+def build_chat_context(conn, cfg: DashboardConfig, scope: queries.Scope, viewer: dict) -> dict:
+    """Квик 260914-rgr (RGR-01..07): собирает ВЕСЬ контекст страницы «Чат» одним вызовом
+    (тот же принцип, что `build_page_context` — шаблон в БД не ходит). Менеджер, привязанный
+    к городу (`viewer["bound_city"]`), видит плитку только своего чата — тот же D-10, что у
+    остальных страниц дашборда."""
+    flags = queries.dashboard_flags(conn)
+    all_chats = queries.chat_bindings(conn)
+    bound_city_code = viewer.get("bound_city")
+    visible_chats = (
+        [c for c in all_chats if c["city"] == bound_city_code] if bound_city_code else all_chats
+    )
+
+    cards = []
+    for chat in visible_chats:
+        joins_rows = queries.chat_joins_daily(conn, chat["chat_id"])
+        messages_rows = queries.chat_messages_daily(conn, chat["chat_id"])
+        # NB: ключ НЕ "values" — та же ловушка, что у daily_chart в build_page_context.
+        joins_chart = (
+            {"labels": [day for day, _ in joins_rows], "counts": [cnt for _, cnt in joins_rows]}
+            if joins_rows else None
+        )
+        messages_chart = (
+            {"labels": [day for day, _ in messages_rows], "counts": [cnt for _, cnt in messages_rows]}
+            if messages_rows else None
+        )
+        cards.append({
+            "chat": chat,
+            "overview": queries.chat_overview(conn, scope, chat),
+            "joins_chart": joins_chart,
+            "messages_chart": messages_chart,
+            "not_joined": queries.chat_not_joined(conn, scope, chat),
+        })
+
+    return {
+        "event_name": flags.get("event_name"),
+        "event_season": scope.season or flags.get("event_season"),
+        "event_logo_url": _event_logo_url(conn),
+        "viewer": viewer,
+        "scope": scope,
+        "chat_bindings": all_chats,
+        "cards": cards,
+        "bot_username": cfg.bot_username,
     }
 
 
@@ -514,6 +564,47 @@ def _build_asgi_app(cfg: DashboardConfig) -> FastAPI:
             context = build_page_context(conn, cfg, scope, viewer)
 
         return templates.TemplateResponse(request, "dashboard.html", context)
+
+    @app.get("/chat", response_class=HTMLResponse)
+    def chat_page(
+        request: Request,
+        city: Optional[str] = None,
+        season: Optional[str] = None,
+    ):
+        """Квик 260914-rgr (RGR-01..07): периметр — КОПИЯ маршрута `/` строка в строку
+        (редирект супердашборда, сессия/логин, пересверка `stats` на каждый запрос,
+        `viewer_scope`+`season`). Выгрузок/CSV нет (D-10 задачи — ПД за периметром, тот же
+        D-17, что у остального дашборда)."""
+        if multi_mode(cfg.events):
+            return RedirectResponse(url="/compare", status_code=302)
+
+        telegram_id = request.session.get("telegram_id")
+        if telegram_id is None:
+            return RedirectResponse(url="/login", status_code=302)
+
+        with read_conn(cfg.db_path) as conn:
+            if not has_stats(conn, telegram_id, cfg.admin_ids):
+                notify_access_request(
+                    cfg,
+                    telegram_id=telegram_id,
+                    username=request.session.get("username"),
+                    first_name=request.session.get("first_name"),
+                )
+                return templates.TemplateResponse(
+                    request,
+                    "no_access.html",
+                    {"bot_username": cfg.bot_username},
+                    status_code=403,
+                )
+
+            scope = replace(viewer_scope(conn, telegram_id, cfg.admin_ids, city), season=season)
+            viewer = {
+                "telegram_id": telegram_id,
+                "bound_city": staff_city(conn, telegram_id),
+            }
+            context = build_chat_context(conn, cfg, scope, viewer)
+
+        return templates.TemplateResponse(request, "chat.html", context)
 
     return app
 

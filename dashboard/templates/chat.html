@@ -1,0 +1,265 @@
+{% extends "base.html" %}
+{% block title %}Чат — {{ event_name or "Дашборд статистики" }}{% endblock %}
+{% block body %}
+
+  <header class="site-header">
+    <div class="brand-row">
+      <a class="brand" href="/" aria-label="АЙСЕК — на главную">
+        <img class="brand-light" src="/static/brand/aisek-logo-ru.png" alt="АЙСЕК">
+        <img class="brand-dark" src="/static/brand/aiesec-logo-white.svg" alt="" aria-hidden="true">
+      </a>
+      <div class="title-block">
+        <h1>💬 Чат делегатов</h1>
+        {% if event_season %}<div class="subtitle">Сезон {{ event_season }}</div>{% endif %}
+      </div>
+      <div class="event-logo-slot">
+        {% if event_logo_url %}
+        <img class="event-logo" src="{{ event_logo_url }}" alt="{{ event_name or 'Логотип мероприятия' }}">
+        {% endif %}
+      </div>
+    </div>
+
+    <nav class="switchers" aria-label="Навигация">
+      <a class="switch-link" href="/">← К статистике</a>
+    </nav>
+
+    <div class="updated-note">Данные на момент открытия страницы.</div>
+  </header>
+
+  {% if not chat_bindings %}
+  <section class="block">
+    <div class="card">
+      <p class="empty-note">
+        Чат ещё не подключён ни к одному городу. Привязка настраивается в боте: добавьте бота
+        в группу делегатов администратором — раздел «📢 Общение» → «💬 Чат» дальше.
+      </p>
+    </div>
+  </section>
+  {% elif not cards %}
+  <section class="block">
+    <div class="card">
+      <p class="empty-note">Для вашего города чат ещё не подключён.</p>
+    </div>
+  </section>
+  {% endif %}
+
+  {% for card in cards %}
+  <section class="block">
+    <h2 class="block-title">{{ card.chat.title }} ({{ card.chat.label }})</h2>
+
+    {# Плитки (D-14-стиль): одобрено / в чате / не в чате / в чате, но не зарегистрированы #}
+    <div class="card">
+      <div class="kpi-grid kpi-grid--4">
+        <div class="kpi primary">
+          <div class="num">{{ card.overview.approved | thousands }}</div>
+          <div class="lbl">Одобрено</div>
+        </div>
+        <div class="kpi">
+          <div class="num">{{ card.overview.in_chat | thousands }}</div>
+          <div class="lbl">В чате</div>
+        </div>
+        <div class="kpi">
+          <div class="num">{{ card.overview.not_in_chat | thousands }}</div>
+          <div class="lbl">Не в чате</div>
+        </div>
+        <div class="kpi">
+          <div class="num">{{ card.overview.unknown_members | thousands }}</div>
+          <div class="lbl">В чате, но не зарегистрированы</div>
+        </div>
+      </div>
+    </div>
+
+    {# График вступлений по дням #}
+    <div class="card">
+      <h3 class="block-title">Вступления по дням</h3>
+      {% if card.joins_chart %}
+      <div class="chart-wrap" data-chat-chart-wrap>
+        <canvas id="joins-chart-{{ loop.index }}"
+                role="img"
+                aria-label="Вступления по дням: {{ card.joins_chart.labels[0] }} — {{ card.joins_chart.labels[-1] }}, вступлений в день"
+                data-labels='{{ card.joins_chart.labels | tojson }}'
+                data-values='{{ card.joins_chart.counts | tojson }}'>График не загрузился — значения по дням в таблице ниже.</canvas>
+      </div>
+      <p class="empty-note" data-chat-chart-fallback hidden>График не загрузился — значения по дням в таблице ниже.</p>
+      <noscript><p class="empty-note">График не загрузился — значения по дням в таблице ниже.</p></noscript>
+      <details class="chart-table">
+        <summary>Таблица</summary>
+        <table>
+          <thead><tr><th>Дата</th><th class="num">Вступлений</th></tr></thead>
+          <tbody>
+            {% for label in card.joins_chart.labels %}
+            <tr><td>{{ label }}</td><td class="num">{{ card.joins_chart.counts[loop.index0] | thousands }}</td></tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </details>
+      {% else %}
+      <p class="empty-note">Появится после первого вступления в чат.</p>
+      {% endif %}
+    </div>
+
+    {# График сообщений по дням #}
+    <div class="card">
+      <h3 class="block-title">Сообщений по дням</h3>
+      {% if card.messages_chart %}
+      <div class="chart-wrap" data-chat-chart-wrap>
+        <canvas id="messages-chart-{{ loop.index }}"
+                role="img"
+                aria-label="Сообщений по дням: {{ card.messages_chart.labels[0] }} — {{ card.messages_chart.labels[-1] }}, сообщений в день"
+                data-labels='{{ card.messages_chart.labels | tojson }}'
+                data-values='{{ card.messages_chart.counts | tojson }}'>График не загрузился — значения по дням в таблице ниже.</canvas>
+      </div>
+      <p class="empty-note" data-chat-chart-fallback hidden>График не загрузился — значения по дням в таблице ниже.</p>
+      <noscript><p class="empty-note">График не загрузился — значения по дням в таблице ниже.</p></noscript>
+      <details class="chart-table">
+        <summary>Таблица</summary>
+        <table>
+          <thead><tr><th>Дата</th><th class="num">Сообщений</th></tr></thead>
+          <tbody>
+            {% for label in card.messages_chart.labels %}
+            <tr><td>{{ label }}</td><td class="num">{{ card.messages_chart.counts[loop.index0] | thousands }}</td></tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </details>
+      {% else %}
+      <p class="empty-note">Появится после первого сообщения в чате (нужен включённый учёт).</p>
+      {% endif %}
+    </div>
+
+    {# Таблица «не в чате» — без выгрузки/CSV (D-10 задачи 4). ФИО/ник здесь НЕТ намеренно:
+       dashboard/queries.py — единственный модуль дашборда с жёстким сторожем «без ПД»
+       (D-17, tests/test_dashboard_queries.py::test_queries_module_never_selects_pii_columns);
+       telegram_id — рабочий идентификатор, по нему человека находят в самом боте
+       («📇 Список заявок»), где ПД уже показывается штатно. #}
+    <div class="card">
+      <h3 class="block-title">Не в чате</h3>
+      {% if card.not_joined %}
+      <div class="table-wrap">
+      <table class="responsive">
+        <thead>
+          <tr>
+            <th>Telegram ID</th>
+            <th>Город</th>
+            <th>Одобрен</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for row in card.not_joined %}
+          <tr>
+            <td data-label="Telegram ID">{{ row.telegram_id }}</td>
+            <td data-label="Город">{{ row.city or "—" }}</td>
+            <td data-label="Одобрен">{{ row.approved_at or "—" }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+      </div>
+      {% else %}
+      <p class="empty-note">Пока все одобренные в чате.</p>
+      {% endif %}
+    </div>
+  </section>
+  {% endfor %}
+
+  <footer class="site-footer">
+    <img src="/static/brand/aiesec-human-blue.svg" alt="" aria-hidden="true">
+    <span>работает на АЙСЕК</span>
+  </footer>
+
+  {% if cards %}
+  <script src="/static/vendor/chart.umd.min.js"></script>
+  <script>
+    (function () {
+      if (typeof Chart === "undefined") {
+        document.querySelectorAll("[data-chat-chart-fallback]").forEach(function (el) { el.hidden = false; });
+        document.querySelectorAll("[data-chat-chart-wrap]").forEach(function (el) { el.hidden = true; });
+        return;
+      }
+      // Все цвета/шрифты — из CSS-токенов (tokens.css), тот же приём, что у dashboard.html.
+      var css = getComputedStyle(document.documentElement);
+      var v = function (name, fallbackValue) {
+        return css.getPropertyValue(name).trim() || fallbackValue || "currentColor";
+      };
+      var reduceMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+      Chart.defaults.font.family = v("--font-body", "sans-serif");
+      Chart.defaults.font.size = 12;
+      Chart.defaults.color = v("--chart-tick");
+
+      function drawLine(canvasId, color, wash, unitLabel) {
+        var canvas = document.getElementById(canvasId);
+        if (!canvas) { return; }
+        var labels = JSON.parse(canvas.getAttribute("data-labels") || "[]");
+        var values = JSON.parse(canvas.getAttribute("data-values") || "[]");
+        new Chart(canvas, {
+          type: "line",
+          data: {
+            labels: labels,
+            datasets: [{
+              data: values,
+              borderColor: color,
+              borderWidth: 2,
+              tension: 0,
+              fill: true,
+              backgroundColor: wash,
+              pointRadius: 2,
+              pointHitRadius: 12,
+              pointHoverRadius: 5,
+              pointBackgroundColor: color,
+              pointHoverBorderColor: v("--surface"),
+              pointHoverBorderWidth: 2
+            }]
+          },
+          options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            locale: "ru-RU",
+            animation: reduceMotion ? false : undefined,
+            interaction: { mode: "index", intersect: false },
+            layout: { padding: { top: 8, right: 12 } },
+            plugins: {
+              legend: { display: false },
+              tooltip: {
+                backgroundColor: v("--surface"),
+                titleColor: v("--text-muted"),
+                bodyColor: v("--text"),
+                bodyFont: { weight: "700", size: 13 },
+                borderColor: v("--border"),
+                borderWidth: 1,
+                cornerRadius: 4,
+                padding: 8,
+                displayColors: false,
+                callbacks: {
+                  label: function (ctx) { return ctx.parsed.y + " " + unitLabel; }
+                }
+              }
+            },
+            scales: {
+              x: {
+                grid: { display: false },
+                border: { color: v("--chart-grid") },
+                ticks: { maxRotation: 0, autoSkip: true, maxTicksLimit: 8, color: v("--chart-tick") }
+              },
+              y: {
+                beginAtZero: true,
+                grid: { color: v("--chart-grid"), drawTicks: false },
+                border: { display: false },
+                ticks: { precision: 0, maxTicksLimit: 5, padding: 6, color: v("--chart-tick") }
+              }
+            }
+          }
+        });
+      }
+
+      {% for card in cards %}
+      {% if card.joins_chart %}
+      drawLine("joins-chart-{{ loop.index }}", v("--chart-1"), v("--chart-1-wash", "transparent"), "вступлений");
+      {% endif %}
+      {% if card.messages_chart %}
+      drawLine("messages-chart-{{ loop.index }}", v("--chart-2"), v("--chart-2-wash", "transparent"), "сообщений");
+      {% endif %}
+      {% endfor %}
+    })();
+  </script>
+  {% endif %}
+{% endblock %}

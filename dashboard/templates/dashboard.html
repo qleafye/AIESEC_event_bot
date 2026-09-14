@@ -50,6 +50,14 @@
     </nav>
     {% endif %}
 
+    {# Квик 260914-rgr (RGR-01..07): ссылка только когда хотя бы один чат привязан — иначе
+       вести некуда, страница /chat сама покажет ту же инструкцию текстом. #}
+    {% if chat_bindings %}
+    <nav class="switchers" aria-label="Разделы">
+      <a class="switch-link" href="/chat">💬 Чат</a>
+    </nav>
+    {% endif %}
+
     <div class="updated-note">
       Данные на момент открытия страницы.
       {% if kpi.tracking_since %}Отслеживаем с {{ kpi.tracking_since }}.{% endif %}
