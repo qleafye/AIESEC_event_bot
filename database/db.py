@@ -3851,6 +3851,101 @@ async def count_questions_by_status(*, city_scope=None) -> dict[str, int]:
     }
 
 
+# ── Квик 260914-rgq (RGQ-01): постраничный список заявок ────────────────────────────────────
+#
+# Та же идиома «фрагменты WHERE словарём + LIMIT/OFFSET в SQL», что у `list_questions_page`/
+# `count_questions_by_status` выше. Статус здесь — чип экрана, а не контракт: неизвестное
+# значение трактуется как "approved" в обеих функциях, второй логики статуса нет.
+_APPLICATION_STATUS_SQL = {
+    "approved": "u.status = 'approved'",
+    "rejected": "u.status = 'rejected'",
+    "pending": "u.status = 'pending'",
+}
+
+# Порядок COALESCE в каждом выражении — три рубежа даты решения, от самого точного к самому
+# надёжному:
+#   1) собственная колонка `users` (`approved_at`/`rejected_at`) — момент ТОГО ЖЕ решения,
+#      стампится в атомарном UPDATE (`approve_user_atomic`/`reject_user`), но не заполнена у
+#      старых строк («rejected_at» заведена БЕЗ бэкафилла, db.py L790-797 — у отказов ДО этой
+#      колонки NULL);
+#   2) последняя ЖИВАЯ (`undone_at IS NULL`) строка `application_decisions` того же решения —
+#      фолбэк для строк без бэкафилла; строка исчезает из этого рубежа, если решение отменено
+#      (WR: отменённое решение датой решения не считается);
+#   3) `registration_date` — последний рубеж, всегда заполнен при регистрации, гарантирует, что
+#      строка никогда не выпадет из ORDER BY.
+_APPLICATION_DATE_SQL = {
+    "approved": (
+        "COALESCE(u.approved_at, "
+        "(SELECT d.decided_at FROM application_decisions d "
+        "WHERE d.telegram_id = u.telegram_id AND d.decision = 'approved' "
+        "AND d.undone_at IS NULL ORDER BY d.decided_at DESC, d.id DESC LIMIT 1), "
+        "u.registration_date)"
+    ),
+    "rejected": (
+        "COALESCE(u.rejected_at, "
+        "(SELECT d.decided_at FROM application_decisions d "
+        "WHERE d.telegram_id = u.telegram_id AND d.decision = 'rejected' "
+        "AND d.undone_at IS NULL ORDER BY d.decided_at DESC, d.id DESC LIMIT 1), "
+        "u.registration_date)"
+    ),
+    "pending": "u.registration_date",
+}
+
+
+async def list_applications_page(*, status: str = "approved", city_scope=None,
+                                   limit: int = 15, offset: int = 0) -> list[dict]:
+    """Страница списка заявок для экрана «📇 Список заявок» (handlers/admin_app_list.py).
+    Неизвестный `status` трактуется как "approved". Городской фильтр — по `u.event_city`
+    (город ДЕЛЕГАТА, та же колонка, что у очереди заявок). `SELECT *` не используется — экрану
+    нужны пять полей, а `users` — широкая таблица (десятки колонок анкеты), таскать её в память
+    постранично незачем. Порядок — `decided_at DESC, telegram_id DESC` (новые сверху, при
+    равных датах — стабильный тай-брейк)."""
+    if status not in _APPLICATION_STATUS_SQL:
+        status = "approved"
+    where = [_APPLICATION_STATUS_SQL[status]]
+    params: list = []
+    city_frag, city_params = _city_clause(city_scope, "u.event_city")
+    if city_frag:
+        where.append(city_frag)
+        params.extend(city_params)
+    where_sql = f"WHERE {' AND '.join(where)}"
+    date_sql = _APPLICATION_DATE_SQL[status]
+    async with _connect() as db:
+        db.row_factory = aiosqlite.Row
+        async with db.execute(
+            "SELECT u.telegram_id, u.full_name, u.username, u.status, u.event_city, "
+            f"{date_sql} AS decided_at "
+            f"FROM users u {where_sql} "
+            "ORDER BY decided_at DESC, u.telegram_id DESC LIMIT ? OFFSET ?",
+            (*params, limit, offset),
+        ) as cursor:
+            return [dict(row) for row in await cursor.fetchall()]
+
+
+async def count_applications(*, city_scope=None) -> dict[str, int]:
+    """Один запрос, три `SUM(CASE …)` по тем же фрагментам `_APPLICATION_STATUS_SQL` и тому же
+    city-фрагменту, что `list_applications_page` — счётчик в шапке экрана не может разойтись со
+    списком под ней (тот же приём WR-05, что у `count_questions_by_status`)."""
+    city_frag, city_params = _city_clause(city_scope, "u.event_city")
+    where_sql = f"WHERE {city_frag}" if city_frag else ""
+    async with _connect() as db:
+        async with db.execute(
+            "SELECT "
+            f"SUM(CASE WHEN {_APPLICATION_STATUS_SQL['approved']} THEN 1 ELSE 0 END), "
+            f"SUM(CASE WHEN {_APPLICATION_STATUS_SQL['rejected']} THEN 1 ELSE 0 END), "
+            f"SUM(CASE WHEN {_APPLICATION_STATUS_SQL['pending']} THEN 1 ELSE 0 END) "
+            f"FROM users u {where_sql}",
+            tuple(city_params),
+        ) as cursor:
+            row = await cursor.fetchone()
+    approved_n, rejected_n, pending_n = row if row else (0, 0, 0)
+    return {
+        "approved": int(approved_n or 0),
+        "rejected": int(rejected_n or 0),
+        "pending": int(pending_n or 0),
+    }
+
+
 # ── Quick 260906-8uq (FAQ-01..06): аксессоры faq_items ───────────────────────────────────────
 #
 # Правило «городской пункт перекрывает общий» здесь НЕ живёт — это одноразовая городская
