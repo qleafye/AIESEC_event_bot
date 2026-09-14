@@ -234,7 +234,11 @@ KNOWN_OVERAGES: dict[str, tuple[int, str]] = {
         "новых модулей не заводит (1073 строки); потолок поднят до фактического размера + ~5%.",
     ),
     "admin_broadcasts.py": (
-        1243,
+        1300,
+        "Квик 260914-rgr (RGR-01..07, задача 3): +38 строк — поле фильтра «Чат делегатов» "
+        "(CHAT_IN/CHAT_OUT в _FILTER_FIELD_LABELS/_PICKER_FIELDS, show_chat в "
+        "_filter_menu_kb/_render_filter_menu, ветка delegate_chat в _show_value_picker и в "
+        "сборке записи фильтра filter_pick_value), 1243 -> 1281 в пределах запаса. "
         "рассылки + pending_albums (13-05). "
         "+23 строки (quick 260904-dq1, «🌙 Тихие часы») -- предупреждение на шаге "
         "«когда» (broadcast_schedule_when) при попадании времени в глобальное окно тишины: "

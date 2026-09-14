@@ -14,6 +14,7 @@ import html as html_module
 import logging
 
 from aiogram import F, types, Bot
+from aiogram.fsm.context import FSMContext
 from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
 
 from cities import city_label, city_scope
@@ -181,3 +182,35 @@ async def chat_unbind_go(callback: types.CallbackQuery):
     text, kb = await render_chat_screen(callback.from_user.id)
     await callback.message.edit_text(text, parse_mode="HTML", reply_markup=kb)
     await callback.answer("Отвязано")
+
+
+@router.callback_query(F.data.startswith("chat_broadcast_out:"))
+async def chat_broadcast_out(callback: types.CallbackQuery, state: FSMContext):
+    """Задача 3: попадает в мастер рассылки с уже проставленным фильтром «не в чате» для
+    этого чата — менеджер не собирает фильтр руками. Ленивые импорты — `handlers.
+    admin_broadcasts`/`handlers.states` тянуть на уровне модуля не нужно (тот же приём, что
+    у остальных ленивых швов этого файла)."""
+    from handlers.admin_broadcasts import _render_filter_menu
+    from handlers.states import Broadcast
+
+    token = callback.data.split(":", 1)[1]
+    city = _decode_city(token)
+    entry = await chat_tracking.chat_for_city(city)
+    if entry is None:
+        await callback.answer("Этот чат больше не привязан.", show_alert=True)
+        return
+    scope = city_scope(entry["city"]) if entry["city"] else None
+    filters = [{
+        "field": "delegate_chat",
+        "value": db.CHAT_OUT,
+        "label": "не в чате",
+        "chats": [{
+            "city": entry["city"],
+            "chat_id": entry["chat_id"],
+            "exclude": list(scope[1]) if scope else [],
+        }],
+    }]
+    await state.update_data(filters=filters)
+    await state.set_state(Broadcast.filter_field)
+    await callback.answer()
+    await _render_filter_menu(callback.message, filters, edit=True)

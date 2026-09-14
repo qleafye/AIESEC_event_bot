@@ -43,6 +43,10 @@ from database.db import (
     RESUME_HAS,
     RESUME_MISSING,
     get_resume_filter_options,
+    # Квик 260914-rgr (RGR-01..07): поле фильтра «Чат делегатов» — выбор «в чате»/«не в чате».
+    CHAT_IN,
+    CHAT_OUT,
+    get_chat_filter_options,
     # Quick 260910-okb (BC-01..06): журнал немедленных рассылок + отзыв у получателей.
     create_broadcast,
     get_broadcast,
@@ -805,6 +809,9 @@ _FILTER_FIELD_LABELS = {
     # ссылка Nextcloud / ссылка на профиль), а не какое-то одно поле анкеты — набор колонок
     # это db.RESUME_COLUMNS, второй карты здесь нет.
     "resume": "Резюме",
+    # Квик 260914-rgr (RGR-01..07): это членство в ЧАТЕ мероприятия (Telegram-группа
+    # делегатов), а не «Город»/«Статус» — подписи двух полей должны различаться на экране.
+    "delegate_chat": "Чат делегатов",
 }
 
 # Fields whose value is chosen from a DB-distinct picker (buttons pulled from real data).
@@ -828,6 +835,10 @@ _PICKER_FIELDS = {
     # `db._FILTER_COLUMNS` (see there — `resume` is virtual there). No separate handler
     # needed for the same reason as `event_city`/`season` above.
     "resume",
+    # Квик 260914-rgr (RGR-01..07) — same двойная регистрация rule: also in
+    # `db._FILTER_COLUMNS` (see there — `delegate_chat` is virtual there). No separate
+    # handler needed for the same reason as `event_city`/`season`/`resume` above.
+    "delegate_chat",
 }
 
 # How many value buttons per picker page (long cyrillic values → 1 per row).
@@ -894,7 +905,8 @@ def _filter_summary(filters: list[dict]) -> str:
 
 
 def _filter_menu_kb(filters: list[dict], *, show_city: bool = False,
-                     show_season: bool = False, show_resume: bool = False) -> InlineKeyboardMarkup:
+                     show_season: bool = False, show_resume: bool = False,
+                     show_chat: bool = False) -> InlineKeyboardMarkup:
     kb = [
         [InlineKeyboardButton(text="Комитет АЙСЕК", callback_data="filter_f_local_committee"),
          InlineKeyboardButton(text="Департамент", callback_data="filter_f_department")],
@@ -927,6 +939,11 @@ def _filter_menu_kb(filters: list[dict], *, show_city: bool = False,
     # у «Сезона»). Дефолт False держит клавиатуру байт-в-байт прежней.
     if show_resume:
         kb.append([InlineKeyboardButton(text="📄 Резюме", callback_data="filter_f_resume")])
+    # Квик 260914-rgr (RGR-01..07): кнопка только когда по обе стороны реально есть люди —
+    # фильтровать не по чему, когда все по одну сторону (тот же довод, что у «Резюме»/
+    # «Сезона»). Дефолт False держит клавиатуру байт-в-байт прежней.
+    if show_chat:
+        kb.append([InlineKeyboardButton(text="💬 Чат делегатов", callback_data="filter_f_delegate_chat")])
     if filters:
         kb.append([InlineKeyboardButton(text="📊 Показать и отправить", callback_data="filter_count")])
     kb.append([InlineKeyboardButton(text="❌ Отмена", callback_data="broadcast_cancel")])
@@ -950,9 +967,17 @@ async def _render_filter_menu(target, filters: list[dict], *, edit: bool):
     # покажет пикер (get_resume_filter_options) — второй карты значений нет; когда все
     # делегаты по одну сторону, фильтровать не по чему и кнопка была бы шумом.
     resume_options = await get_resume_filter_options()
+    # Квик 260914-rgr (RGR-01..07): ленивый импорт — `services` в `handlers` на уровне модуля
+    # не тянем. `chats` — карта из `bound_chats()`, порог считается ТЕМ ЖЕ списком, который
+    # потом покажет пикер (второй карты значений нет).
+    from services import chat_tracking
+
+    chats = await chat_tracking.bound_chats()
+    chat_options = await get_chat_filter_options(chats)
     kb = _filter_menu_kb(filters, show_city=await cities_module_on(),
                          show_season=len(season_options) > 1,
-                         show_resume=len(resume_options) > 1)
+                         show_resume=len(resume_options) > 1,
+                         show_chat=len(chat_options) > 1)
     if edit:
         await target.edit_text(text, reply_markup=kb)
     else:
@@ -1024,6 +1049,29 @@ async def _show_value_picker(callback: types.CallbackQuery, state: FSMContext, f
         # Человеку показываем только эти два слова — коды (has/none) не показываем и ввести
         # не просим (правило «бот для людей»).
         labels = {RESUME_HAS: "есть", RESUME_MISSING: "нет"}
+    elif field == "delegate_chat":
+        # Квик 260914-rgr (RGR-01..07): гейт живёт В ХЭНДЛЕРЕ — тот же довод WR-04, что у
+        # event_city/season/resume выше: инлайн-кнопки не истекают, вчерашнее меню с кнопкой
+        # «Чат делегатов» живо и сегодня, когда чат уже отвязан. Ленивый импорт — `services`
+        # в `handlers` на уровне модуля не тянем.
+        from services import chat_tracking
+
+        chats = await chat_tracking.bound_chats()
+        if not chats:
+            await callback.answer(
+                "Чат делегатов не подключён — фильтровать не по чему.", show_alert=True,
+            )
+            return
+        options = await get_chat_filter_options(chats)
+        if len(options) < 2:
+            await callback.answer(
+                "У всех делегатов чат в одном состоянии — фильтровать не по чему.",
+                show_alert=True,
+            )
+            return
+        # Человеку показываем только эти два слова — коды (in/out) не показываем (правило
+        # «бот для людей»).
+        labels = {CHAT_IN: "в чате", CHAT_OUT: "не в чате"}
     elif field == "participant_type":
         # Phase 14 (CFG-02, IN-01): RU labels instead of raw codes (party_noovernight etc.);
         # fail-soft for a value not in _TRACK_LABELS — falls back to the raw code as the label
@@ -1137,6 +1185,28 @@ async def filter_pick_value(callback: types.CallbackQuery, state: FSMContext):
         # бы «Резюме = none».
         labels = data.get("filter_option_labels") or {}
         filters.append({"field": field, "value": value, "label": labels.get(value, value)})
+    elif field == "delegate_chat":
+        # Квик 260914-rgr (RGR-01..07, D-5): `label` есть ВСЕГДА — оба значения (CHAT_IN/
+        # CHAT_OUT) сентинелы, та же причина, что у «Резюме» выше. Карта `chats` едет ВНУТРИ
+        # записи фильтра — `database/db.py` не может импортировать `cities`, `exclude`
+        # каждого чата берётся из `cities.city_scope`, та же функция, что у `event_city`
+        # (`city is None` -> пустой список — глобальная привязка).
+        from services import chat_tracking
+
+        bound = await chat_tracking.bound_chats()
+        chats_payload = []
+        for entry in bound:
+            scope = city_scope(entry["city"]) if entry["city"] else None
+            chats_payload.append({
+                "city": entry["city"],
+                "chat_id": entry["chat_id"],
+                "exclude": list(scope[1]) if scope else [],
+            })
+        labels = data.get("filter_option_labels") or {}
+        filters.append({
+            "field": field, "value": value, "label": labels.get(value, value),
+            "chats": chats_payload,
+        })
     else:
         filters.append({"field": field, "value": value})
     await state.update_data(

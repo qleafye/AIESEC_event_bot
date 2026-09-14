@@ -564,6 +564,7 @@ admin|callback_query|chat_chat_tracking_toggle|chat_chat_tracking_toggle
 admin|callback_query|chat_refresh_now|chat_refresh_now
 admin|callback_query|chat_unbind|chat_unbind:*
 admin|callback_query|chat_unbind_go|chat_unbind_go:*
+admin|callback_query|chat_broadcast_out|chat_broadcast_out:*
 admin|callback_query|sync_sheet|admin_sync_sheet
 admin|callback_query|rebuild_sheet_confirm|admin_rebuild_sheet
 admin|callback_query|rebuild_sheet|admin_rebuild_sheet_go
@@ -998,7 +999,13 @@ def test_snapshot_total_handler_count_is_292():
     # вставка, перепроверена прогоном `_build_snapshot_lines()` и diff'ом (difflib.
     # SequenceMatcher) с прежним 517-строчным снапшотом — ровно пять новых строк в позиции
     # 194, ни одна другая не поменялась и не переставилась.
-    assert len(GOLDEN_SNAPSHOT) == 522
+    # Квик 260914-rgr (RGR-01..07, задача 3): +1 handlers/admin_chat.py callback_query
+    # chat_broadcast_out (кнопка «📣 Рассылка не вступившим» — попадает в мастер рассылки с
+    # проставленным фильтром «не в чате»), встал сразу после chat_unbind_go и перед
+    # sync_sheet — тот же шов, что остальные хендлеры admin_chat.py (522 -> 523); чистая
+    # вставка, перепроверена прогоном `_build_snapshot_lines()` и diff'ом с прежним
+    # 522-строчным снапшотом.
+    assert len(GOLDEN_SNAPSHOT) == 523
     # (callback_query toggle_reg_form_v2/chips/lookup_search/edu_card/repeatable/limit_counter/
     # status_screen/header_settings/haptics — девять тумблеров «Анкета 2.0»), встали сразу после
     # admin_quiet_hours и перед sync_sheet: шов импортируется из хвоста
