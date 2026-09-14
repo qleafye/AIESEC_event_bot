@@ -229,6 +229,9 @@ _SYSTEM_FIELD_ORDER = [
     "resume_retry_minutes",
     # Квик 260911-mx6: два ключа сеялки — новый хвост _SYSTEM_FIELD_ORDER.
     "uat_seed_enabled", "uat_seed_testers",
+    # Квик 260914-rgr (D-11): интервал сверки чата — редактируемый; сами id/название чата
+    # (delegate_chat_id/delegate_chat_title) НЕ входят сюда намеренно — их пишет сам бот.
+    "chat_refresh_minutes",
 ]
 
 # Quick 260815-3hw (TABS-01/02/03): every Google Sheets tab NAME in one group — «📄 Вкладки

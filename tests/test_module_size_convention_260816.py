@@ -127,7 +127,11 @@ KNOWN_OVERAGES: dict[str, tuple[int, str]] = {
         "(Phase 14/16)",
     ),
     "admin_settings.py": (
-        2260,
+        2270,
+        "Квик 260914-rgr (RGR-01..07): +3 строки — `chat_refresh_minutes` в хвосте "
+        "`_SYSTEM_FIELD_ORDER` (единственный редактируемый ключ чата делегатов, D-11 — "
+        "id/название чата в этот список НЕ входят, их пишет бот сам), 2263 -> 2270 в пределах "
+        "запаса. "
         "квик 260913-16o: врезка ветки подтверждения в `_toggle_approval_setting` — сам экран "
         "и алерт живут в шве handlers/admin_settings_audit.py, здесь только ветка "
         "`if new_val == \"auto\"` с ленивым импортом и return; плюс воронка "
