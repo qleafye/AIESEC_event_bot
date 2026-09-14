@@ -467,8 +467,8 @@ async def post_finalize(
     `reg_finalized`/`reg_edited` (`services/miniapp_outbox.py`) — один и тот же журнал вызовов
     Sheets/уведомлений для обеих поверхностей (T-21-02, Task 3 acceptance)."""
     from handlers.registration import (
-        _sheet_dispatch, append_to_named_sheet, is_subscribed, _normalize_channel_ref,
-        city_row_tab, approve_user, notify_by_capability,
+        _sheet_dispatch, _sheet_headers_fn, append_to_named_sheet, is_subscribed,
+        _normalize_channel_ref, city_row_tab, approve_user, notify_by_capability,
     )
     from handlers.reg_schema import sheet_city_code
     from services.nextcloud import upload_resume, upload_text_resume
@@ -514,6 +514,15 @@ async def post_finalize(
             # sheet_city_code), сверять их результат друг с другом не нужно.
             city = await sheet_city_code(full.get("event_city"))
             row = await row_fn(full, city)
+            # Квик 260914-k74 (T2): заголовки для именованной вкладки — один раз на путь, в
+            # отдельном try/except (вычисление заголовков не имеет права ломать аппенд строки).
+            # append_fn(row) заголовки не принимает — их для своего трека считают сами
+            # append_to_party_sheet/append_to_short_sheet (шаг 2 плана).
+            try:
+                headers = await _sheet_headers_fn(full.get("participant_type"))(city)
+            except Exception as e:
+                logger.warning(f"Failed to compute named sheet headers for {telegram_id}: {e}")
+                headers = None
             # Инцидент 13.09: mode="new" описывает ПУТЬ анкеты (обычная регистрация ИЛИ
             # повторная подача — отклонённый после /start, делегат прошлого сезона
             # is_returning_row, человек после /delete_user), а НЕ факт отсутствия строки в
@@ -532,12 +541,12 @@ async def post_finalize(
                     if tab is None:
                         await append_fn(row)
                     else:
-                        await append_to_named_sheet(tab, row)
+                        await append_to_named_sheet(tab, row, headers)
                 else:
                     if update_tab is None:
                         await append_fn(row)
                     else:
-                        await append_to_named_sheet(update_tab, row)
+                        await append_to_named_sheet(update_tab, row, headers)
         except Exception as e:
             logger.error(f"Failed to write sheet row for {telegram_id}: {e}")
 
