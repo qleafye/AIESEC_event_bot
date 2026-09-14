@@ -11,6 +11,10 @@ uvicorn[standard]>=0.34,<0.53
 jinja2>=3.1,<4.0
 itsdangerous>=2.2,<3.0
 httpx[socks]>=0.28,<0.29
+# miniapp/deps.py импортирует jwt (Cloudflare Access JWKS-проверка) — tests/test_*miniapp*.py
+# тянут этот модуль на collection, не только на вызове; тот же дубль-пин, что и пятёрка выше
+# (tzdata уже стоит в requirements.txt самого бота, второй раз не дублируем).
+PyJWT[crypto]>=2.9,<3.0
 
 # Phase 19.1 (D-14): сабсет шрифтов (fonttools/pyftsubset -> woff2) + сторож кириллицы в
 # tests/test_web_assets_260823.py (fontTools.ttLib.cmap). Не рантайм-зависимость.
