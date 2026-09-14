@@ -540,6 +540,10 @@ ADMIN_CAPS: dict[str, str] = {
     "chat_refresh_now": "settings",
     "chat_unbind:*": "settings",
     "chat_unbind_go:*": "settings",
+    # Квик 260914-rgr, задача 3 (D-1): «📣 Рассылка не вступившим» — это уже действие
+    # рассылки, не настройка интеграции; кнопка рисуется только держателю `broadcast`
+    # (see render_chat_screen), а сам фильтр в мастере рассылки доступен любому с `broadcast`.
+    "chat_broadcast_out:*": "broadcast",
     "admin_sync_sheet": "settings",
     # Quick 260902-vth: «🕓 Журналы в таблицу» — та же капа, что «🔄 Синхронизация таблицы».
     "sheet_logs_open": "settings",

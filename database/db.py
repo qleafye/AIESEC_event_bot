@@ -3253,6 +3253,12 @@ _FILTER_COLUMNS = {
     # собирается из нескольких колонок (`RESUME_COLUMNS`) собственной веткой
     # `_build_filter_clause`; см. `_FILTER_VIRTUAL_FIELDS` ниже.
     "resume",
+    # Квик 260914-rgr (RGR-01..07): членство в ЧАТЕ мероприятия как поле фильтра рассылки. Та
+    # же двойная регистрация (здесь и в `handlers.admin_broadcasts._PICKER_FIELDS`), тот же
+    # прецедент D-19. Поле ВИРТУАЛЬНОЕ — колонки `users.delegate_chat` не существует, условие
+    # собирается по `chat_members` собственной веткой `_build_filter_clause`; см.
+    # `_FILTER_VIRTUAL_FIELDS` ниже.
+    "delegate_chat",
 }
 
 # Квик 260911-0fh (RESUME-FILTER-01): поля whitelist'а `_FILTER_COLUMNS`, у которых НЕТ
@@ -3264,7 +3270,7 @@ _FILTER_COLUMNS = {
 # `elif field in _FILTER_COLUMNS and field not in _FILTER_VIRTUAL_FIELDS`, виртуальное поле
 # уходит в уже существующий `return []` (мина обезврежена ДО того, как её кто-то заденет —
 # сегодня `get_distinct_filter_values("resume")` никто не зовёт, но так не будет всегда).
-_FILTER_VIRTUAL_FIELDS = {"resume"}
+_FILTER_VIRTUAL_FIELDS = {"resume", "delegate_chat"}
 
 # Квик 260910-vfl (SEASON-FILTER-03): маркер «строк без сезона» в спеке фильтра рассылки.
 # Это НЕ значение из БД (`users.season` для таких строк — NULL/пустая строка), а сентинел,
@@ -3299,6 +3305,11 @@ RESUME_COLUMNS = RESUME_RECALL_COLUMNS + ("resume_link",)
 # приём, что `SEASON_NONE` выше. Это НЕ значения из БД.
 RESUME_HAS = "has"
 RESUME_MISSING = "none"
+
+# Сентинелы значений поля фильтра «Чат делегатов» (квик 260914-rgr) — та же причина строки,
+# не булева: спека фильтра переживает `json.dumps`/`json.loads` отложенной рассылки.
+CHAT_IN = "in"
+CHAT_OUT = "out"
 
 
 def _resume_has_fragment() -> str:
@@ -3397,6 +3408,55 @@ def _build_filter_clause(filters: list[dict]) -> tuple[str, list]:
                 # WR-01, same reasoning as event_city/season above: an empty or unknown value
                 # must NOT drop the condition (that would fan out to the whole base).
                 clauses.append("0")
+        elif field == "delegate_chat":
+            # Квик 260914-rgr (RGR-01..07, D-5/D-6): must come BEFORE the generic
+            # `_FILTER_COLUMNS` branch below — there is no `users.delegate_chat` column.
+            # Карта «город -> chat_id» едет ВНУТРИ спеки фильтра под ключом `chats` (список
+            # `{"city": код|None, "chat_id": int, "exclude": [коды]}`), потому что этот модуль
+            # не может импортировать `cities` (цикл) — тот же приём, что `exclude` у
+            # `event_city`. Условие — ИЛИ по чатам, для каждого чата — «городской фрагмент»
+            # (тот же `_city_clause`, что у `event_city`) И «присутствие/отсутствие»
+            # (`EXISTS`/`NOT EXISTS` по `chat_members`). «Не в чате» НАМЕРЕННО ограничено
+            # городами с привязанным чатом (D-6) — иначе рассылка «вступай в чат» уехала бы
+            # тем, кому вступать некуда.
+            value = f.get("value")
+            chats = f.get("chats") or []
+            if value not in (CHAT_IN, CHAT_OUT) or not chats:
+                # WR-01: неизвестное/пустое значение или пустая карта чатов — fail closed,
+                # НЕ «всем» (тот же довод, что у resume/event_city/season выше).
+                clauses.append("0")
+                continue
+            present_ph = ",".join("?" for _ in CHAT_PRESENT_STATUSES)
+            block_parts: list[str] = []
+            block_params: list = []
+            for chat in chats:
+                chat_id = chat.get("chat_id")
+                if chat_id is None:
+                    continue
+                city = chat.get("city")
+                exclude = tuple(chat.get("exclude") or ())
+                if city is None:
+                    city_frag, city_params = "", []
+                else:
+                    city_frag, city_params = _city_clause((city, exclude))
+                exists_frag = (
+                    "EXISTS (SELECT 1 FROM chat_members cm WHERE "
+                    "cm.telegram_id = users.telegram_id AND cm.chat_id = ? "
+                    f"AND cm.status IN ({present_ph}))"
+                )
+                presence_frag = exists_frag if value == CHAT_IN else f"NOT {exists_frag}"
+                if city_frag:
+                    block_parts.append(f"({city_frag} AND {presence_frag})")
+                    block_params.extend(city_params)
+                else:
+                    block_parts.append(f"({presence_frag})")
+                block_params.append(chat_id)
+                block_params.extend(CHAT_PRESENT_STATUSES)
+            if not block_parts:
+                clauses.append("0")
+                continue
+            clauses.append("(" + " OR ".join(block_parts) + ")")
+            params.extend(block_params)
         elif field in _FILTER_COLUMNS:
             clauses.append(f"{field} = ?")
             params.append(f.get("value"))
@@ -3487,6 +3547,33 @@ async def get_resume_filter_options() -> list[str]:
         options.append(RESUME_HAS)
     if row and row[1]:
         options.append(RESUME_MISSING)
+    return options
+
+
+async def get_chat_filter_options(chats: list[dict]) -> list[str]:
+    """Значения для пикера поля «Чат делегатов» — квик 260914-rgr. Та же роль «порога показа
+    кнопки», что у `get_resume_filter_options`/`get_season_filter_options`: `[CHAT_IN]` и/или
+    `[CHAT_OUT]` только когда по обе стороны реально есть люди, `[]` при пустой карте чатов
+    (фильтровать не по чему). Переиспользует ветку `_build_filter_clause` через саму себя —
+    второй копии условия не заводится."""
+    if not chats:
+        return []
+    where_in, params_in = _build_filter_clause(
+        [{"field": "delegate_chat", "value": CHAT_IN, "chats": chats}]
+    )
+    where_out, params_out = _build_filter_clause(
+        [{"field": "delegate_chat", "value": CHAT_OUT, "chats": chats}]
+    )
+    async with _connect() as db:
+        async with db.execute(f"SELECT EXISTS(SELECT 1 FROM users{where_in})", params_in) as cursor:
+            has_in = (await cursor.fetchone())[0]
+        async with db.execute(f"SELECT EXISTS(SELECT 1 FROM users{where_out})", params_out) as cursor:
+            has_out = (await cursor.fetchone())[0]
+    options: list[str] = []
+    if has_in:
+        options.append(CHAT_IN)
+    if has_out:
+        options.append(CHAT_OUT)
     return options
 
 

@@ -450,6 +450,31 @@ async def send_scheduled_broadcast(broadcast_id: int):
                     )
                     target_ids = []
                 else:
+                    # Квик 260914-rgr (RGR-01..07): та же забота, что у event_city выше —
+                    # карта `chats` внутри спеки delegate_chat пересобирается ЗАНОВО на
+                    # момент отправки, а не хранится замороженной со времени планирования.
+                    # Выбрано пересобирать (не отдельный `refresh_*_spec`, как у городов) —
+                    # проще и честнее: чат, отвязанный между планированием и отправкой, не
+                    # должен давать аудиторию «все», а замороженная карта именно так бы и
+                    # сделала (пустой EXISTS -> фрагмент "0" -> пустая, но НЕ ошибочная
+                    # аудитория есть только если карта пуста целиком, а не устарела).
+                    if any(isinstance(f, dict) and f.get("field") == "delegate_chat" for f in spec):
+                        from cities import city_scope as _city_scope
+                        from services.chat_tracking import bound_chats
+
+                        bound = await bound_chats()
+                        chats_payload = []
+                        for entry in bound:
+                            sc = _city_scope(entry["city"]) if entry["city"] else None
+                            chats_payload.append({
+                                "city": entry["city"], "chat_id": entry["chat_id"],
+                                "exclude": list(sc[1]) if sc else [],
+                            })
+                        spec = [
+                            {**f, "chats": chats_payload}
+                            if isinstance(f, dict) and f.get("field") == "delegate_chat" else f
+                            for f in spec
+                        ]
                     target_ids = await count_and_list_filtered(spec)
             except Exception as e:
                 logger.error(f"Scheduled broadcast {broadcast_id} bad filter_spec: {e}")
