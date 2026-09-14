@@ -24,6 +24,9 @@ from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
 
 from config import config
 from database.db import get_user, get_setting, record_user_consent, delete_reg_draft
+# Квик 260914-k74 (LEAK-01): набор колонок резюме для снимка process_confirm_edit — тот же
+# источник правды, которым уже пользуется reg_engine.has_prior_resume, второй список не заводим.
+from database.db import RESUME_RECALL_COLUMNS
 from settings_schema import get_setting_typed
 from services.consent import tapped_button_text
 from cities import CITIES, is_city_enabled
@@ -40,6 +43,9 @@ from handlers.registration import (
 )
 # Phase 21 (21-06, FORM-SYNC-01): validate_answer — единая проверка для чата бота и Mini App.
 from reg_engine import validate_answer, validate_date_range as _validate_date_range
+# Квик 260914-k74 (LEAK-01): карта step_key -> колонка users для снимка process_confirm_edit —
+# тот же источник, что у reg_engine.prior_answers_for/recall_keep, второй литерал не заводим.
+from reg_engine import STEP_TO_COLUMN
 # Gap closure фазы 21: тексты ошибок тапа по развилке — из движка (те же, что получает PATCH
 # из Mini App), не локальные литералы.
 from reg_engine import CITY_CHOICE_INVALID_TEXT, CITY_CLOSED_TEXT, PARTY_CLOSED_TEXT
@@ -280,7 +286,32 @@ async def process_confirm_ok(message: types.Message, state: FSMContext, bot: Bot
 
 @router.message(Registration.confirm, F.text.in_(EDIT_WORDS))
 async def process_confirm_edit(message: types.Message, state: FSMContext):
-    # D-02: 'Изменить' restarts the whole flow — no per-field editing.
+    # Квик 260914-k74 (LEAK-01): «Изменить» на сводке больше НЕ рестарт всей анкеты — прод
+    # 05-14.09 насчитал 175 таких рестартов, 19 делегатов бросили анкету на полпути, увидев
+    # снова пустой первый вопрос. Полный сброс по-прежнему доступен другим путём («Отмена» на
+    # клавиатуре подтверждения + повторный /start) — эта кнопка его не заменяет и не трогает.
+    # «Изменить» теперь ведёт тем же recall-механизмом, каким уже проходит возвращенец
+    # (rereg_start, reg_flow.py:129) — снимок текущих (ещё не сохранённых в БД) ответов кладётся
+    # в `_prior_answers`, и _start_registration_flow переносит его через state.clear() штатным
+    # приёмом saved_prior (handlers/registration.py ~1525/~1549).
+    data = await state.get_data()
+    # Набор колонок — тот же, что использует prior_answers_for/has_prior_resume: шаги движка
+    # (STEP_TO_COLUMN) плюс колонки резюме (RESUME_RECALL_COLUMNS). Второй список литералов не
+    # заводим. Служебные `_`-ключи и `season` в снимок не попадают — их нет ни в одном из наборов.
+    recall_columns = set(STEP_TO_COLUMN.values()) | set(RESUME_RECALL_COLUMNS)
+    snapshot = {
+        column: data[column]
+        for column in recall_columns
+        if data.get(column) not in (None, "", "-")
+    }
+    # Маркер живёт ВНУТРИ снимка (не отдельным FSM-ключом): так он бесплатно переживает
+    # state.clear() вместе с остальным `_prior_answers` и не требует своего saved_x-блока в
+    # _start_registration_flow. reg_finalize.py проверяет его, чтобы НЕ выставлять prev_season —
+    # это текущие ответы этой же анкеты, а не прошлый сезон (T-k74-02: маркер только сужает
+    # права, подделать его снаружи нельзя — `_prior_answers` не пишется в reg_drafts и не
+    # приходит из Mini App).
+    snapshot["_from_confirm"] = True
+    await state.update_data(_prior_answers=snapshot)
     await _start_registration_flow(message, state)
 
 
