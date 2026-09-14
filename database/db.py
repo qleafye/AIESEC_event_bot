@@ -3665,6 +3665,18 @@ async def chat_counts(chat_id: int, city_scope: tuple | None) -> dict:
     }
 
 
+async def chat_last_sync_at(chat_id: int) -> str | None:
+    """Дата последней сверки/события по этому чату — MAX(`updated_at`) по `chat_members`.
+    Нужна экрану «💬 Чат» (`handlers/admin_chat.py`, задача 2, вне изначального списка
+    файлов задачи 1 — маленькая read-only добавка, а не архитектурное расширение)."""
+    async with _connect() as db:
+        async with db.execute(
+            "SELECT MAX(updated_at) FROM chat_members WHERE chat_id = ?", (chat_id,),
+        ) as cursor:
+            row = await cursor.fetchone()
+    return row[0] if row else None
+
+
 async def chat_activity_totals(chat_id: int) -> dict:
     """Сумма `messages` за СЕГОДНЯ и за последние 7 дней (по Москве, включительно) — нужна
     `/chat_stats` (`handlers/group_chat.py`), чтобы админ, разбирающийся прямо в группе, не

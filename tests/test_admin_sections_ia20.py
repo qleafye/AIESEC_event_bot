@@ -281,9 +281,10 @@ def test_settings_holder_sees_every_settings_section(tmp_path):
 
     caps = asyncio.run(resolve_capabilities(MANAGER_ID))
     tokens = [t for t, _ in sec.visible_sections(caps, False)]
-    # «📢 Общение» — единственный раздел без единой настройки: там только рассылка и опросы,
-    # и держатель `settings` в него не попадает (право `broadcast` он не держит).
-    assert tokens == ["event", "form", "apps", "pay", "game", "data", "manage"]
+    # Квик 260914-rgr: «📢 Общение» получил строку-вход «💬 Чат делегатов» (требует `settings`,
+    # та же капа, что у «🌙 Тихие часы») — держатель `settings` без `broadcast` теперь видит
+    # раздел (рассылка/опросы внутри ему по-прежнему недоступны, видна только строка чата).
+    assert tokens == ["event", "form", "apps", "pay", "comms", "game", "data", "manage"]
 
 
 def test_stranger_sees_no_sections(tmp_path):

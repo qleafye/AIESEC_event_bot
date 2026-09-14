@@ -531,6 +531,15 @@ ADMIN_CAPS: dict[str, str] = {
     # раздела не рисуется вовсе); строка-вход требует `settings`, менеджер только с
     # `moderate_reg` продолжает видеть раздел «📋 Заявки» набором операций.
     "admin_quiet_hours": "settings",
+    # Квик 260914-rgr (RGR-01..07, D-1): экран «💬 Чат» — привязка/отвязка/сверка это
+    # настройка интеграции, не действие над конкретной заявкой, та же капа, что у
+    # «🌙 Тихие часы» выше. `chat_broadcast_out:*` — отдельно, право `broadcast` (задача 3):
+    # кнопка рисуется только держателю права рассылки, не `settings`.
+    "admin_chat": "settings",
+    "chat_chat_tracking_toggle": "settings",
+    "chat_refresh_now": "settings",
+    "chat_unbind:*": "settings",
+    "chat_unbind_go:*": "settings",
     "admin_sync_sheet": "settings",
     # Quick 260902-vth: «🕓 Журналы в таблицу» — та же капа, что «🔄 Синхронизация таблицы».
     "sheet_logs_open": "settings",

@@ -293,7 +293,11 @@ KNOWN_OVERAGES: dict[str, tuple[int, str]] = {
         "роста.",
     ),
     "admin_caps.py": (
-        969,
+        990,
+        "Квик 260914-rgr (RGR-01..07, задача 2): +9 строк — capability-записи экрана «💬 Чат» "
+        "(admin_chat/chat_chat_tracking_toggle/chat_refresh_now/chat_unbind:*/"
+        "chat_unbind_go:*, та же капа «settings», что у соседнего admin_quiet_hours), "
+        "969 -> 978 в пределах запаса. "
         "Квик 260914-rgq (RGQ-01): +4 строки — capability-записи экрана «📇 Список заявок» "
         "(admin_app_list/apl:*, та же капа «moderate_reg», что у соседнего admin_questions), "
         "965 -> 969 в пределах ~5% запаса. "
