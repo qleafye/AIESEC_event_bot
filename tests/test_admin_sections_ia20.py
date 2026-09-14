@@ -300,9 +300,10 @@ def test_apps_section_for_moderate_reg_has_operations_only():
     # quick 260904: экран залипших поглощён журналом, callback жив как алиас — раздел несёт
     # "admin_questions", не "admin_stuck_questions".
     # quick 260906-8uq: «❓ Частые вопросы» встал сразу после журнала вопросов, той же капой.
+    # квик 260914-rgq: «📇 Список заявок» встал сразу после "admin_applications", той же капой.
     rows = sec.visible_rows("apps", {"moderate_reg"}, False)
     assert [sec.row_callback(r) for r in rows] == [
-        "admin_applications", "admin_questions", "admin_faq",
+        "admin_applications", "admin_app_list", "admin_questions", "admin_faq",
     ]
     assert not [r for r in rows if r[0] in ("toggle", "group")]
 

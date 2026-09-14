@@ -289,7 +289,10 @@ KNOWN_OVERAGES: dict[str, tuple[int, str]] = {
         "роста.",
     ),
     "admin_caps.py": (
-        965,
+        969,
+        "Квик 260914-rgq (RGQ-01): +4 строки — capability-записи экрана «📇 Список заявок» "
+        "(admin_app_list/apl:*, та же капа «moderate_reg», что у соседнего admin_questions), "
+        "965 -> 969 в пределах ~5% запаса. "
         "Phase 28 (28-08, SU-08, задача 1): +8 строк — capability-записи нового экрана "
         "«🧮 Правила балла» (admin_reg_scoring/scoring_toggle:*/scoring_limit:*/"
         "scoring_drop:*/scoring_noop, та же капа «settings», что у соседнего modcard_open); "

@@ -46,6 +46,16 @@ diffed against the prior 496-line snapshot -- pure insert, zero reorders: admin.
 изначальному предположению плана: реальная точка вставки определяется цепочкой импортов
 (`admin_settings.py` -> ... -> `admin_sections.py` -> `admin_reg_form` -> тут), не позицией
 файла на диске.
+
+Дрифт-нота (2026-09-14, квик 260914-rgq, список заявок): 2 хендлера вставлены (515 -> 517),
+re-captured by RUNNING `_build_snapshot_lines()` against HEAD and diffed against the prior
+515-line snapshot -- pure insert, zero reorders: admin.router gained `admin_app_list_open`/
+`apl_page` (шов `handlers/admin_app_list.py`, экран «📇 Список заявок»), точка вставки — хвост
+цепочки импортов `admin_sections.py` СРАЗУ ПОСЛЕ `admin_lookup` и ПЕРЕД `sync_sheet` (тот же
+хвостовой приём, что у соседних швов раздела «📋 Заявки»). Плановый текст этой задачи оценивал
+базу в 498 -> 500 строк по состоянию на момент авторства плана; фактическая база на HEAD
+исполнения — 515 (после 30-07, задача 4), снимок пересчитан механически, не по плановой
+арифметике.
 """
 import asyncio
 import time
@@ -539,6 +549,8 @@ admin|callback_query|admin_lookup_chips|admin_lookup:c:*
 admin|callback_query|admin_lookup_unpin|admin_lookup:cu:*
 admin|callback_query|admin_lookup_pin_start|admin_lookup:cp:*
 admin|callback_query|admin_lookup_search_pick|admin_lookup:sel:*
+admin|callback_query|admin_app_list_open|admin_app_list
+admin|callback_query|apl_page|apl:*
 admin|callback_query|sync_sheet|admin_sync_sheet
 admin|callback_query|rebuild_sheet_confirm|admin_rebuild_sheet
 admin|callback_query|rebuild_sheet|admin_rebuild_sheet_go
@@ -960,7 +972,13 @@ def test_snapshot_total_handler_count_is_292():
     # Phase 30 (30-01, A2-08): +9 handlers/admin_reg_form.py; (30-07, A2-03): +11
     # handlers/admin_lookup.py (2 message + 9 callback_query) -> 503 + 11 = 514;
     # (30-07, задача 4): +1 admin_settings_lists.py::settings_list_attr_toggle -> 515.
-    assert len(GOLDEN_SNAPSHOT) == 515
+    # Квик 260914-rgq (RGQ-01): +2 handlers/admin_app_list.py (callback_query
+    # admin_app_list_open/apl_page — экран «📇 Список заявок»), встали сразу после
+    # admin_lookup_search_pick и перед sync_sheet: шов импортируется из хвоста
+    # handlers/admin_sections.py, СРАЗУ ПОСЛЕ admin_lookup (515 -> 517); чистая вставка,
+    # перепроверена прогоном `_build_snapshot_lines()` и diff'ом с прежним 515-строчным
+    # снапшотом — ровно две новые строки, ни одна другая не поменялась и не переставилась.
+    assert len(GOLDEN_SNAPSHOT) == 517
     # (callback_query toggle_reg_form_v2/chips/lookup_search/edu_card/repeatable/limit_counter/
     # status_screen/header_settings/haptics — девять тумблеров «Анкета 2.0»), встали сразу после
     # admin_quiet_hours и перед sync_sheet: шов импортируется из хвоста
