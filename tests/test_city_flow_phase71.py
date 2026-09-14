@@ -509,7 +509,7 @@ def _patch_appenders(monkeypatch):
     named_calls = []
     main_calls = []
 
-    async def fake_named(tab_name, data):
+    async def fake_named(tab_name, data, headers=None):
         named_calls.append((tab_name, data))
 
     async def fake_main(data):
