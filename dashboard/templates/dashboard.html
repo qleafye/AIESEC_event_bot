@@ -261,10 +261,13 @@
   </section>
   {% endif %}
 
-  {# «Метки кампаний» (квик 260905-qqg) #}
+  {# «Метки кампаний» (квик 260905-qqg, правка квик 260914-tj3) #}
   {% if utm %}
   <section class="block">
     <h2 class="block-title">Метки кампаний</h2>
+    {% if utm.since %}
+    <div class="updated-note">старты и конверсия — с {{ utm.since }} (начало трекинга событий)</div>
+    {% endif %}
     <div class="card">
       {% if utm.has_data %}
       <div class="table-wrap">
@@ -285,8 +288,22 @@
             <td data-label="Метка">{{ row.tag }}</td>
             <td class="num" data-label="Зашли">{{ row.starts | thousands }}</td>
             <td class="num" data-label="Начали анкету">{{ row.form_started | thousands }}</td>
-            <td class="num" data-label="Заявки">{{ row.completed | thousands }}</td>
-            <td class="num" data-label="Одобрено">{{ row.approved | thousands }}</td>
+            <td class="num" data-label="Заявки">
+              <div class="cell-stack">
+                <div>{{ row.completed_tracked | thousands }}</div>
+                {% if row.completed_tracked != row.completed %}
+                <div class="cell-note">заявки всего: {{ row.completed | thousands }}</div>
+                {% endif %}
+              </div>
+            </td>
+            <td class="num" data-label="Одобрено">
+              <div class="cell-stack">
+                <div>{{ row.approved_tracked | thousands }}</div>
+                {% if row.approved_tracked != row.approved %}
+                <div class="cell-note">одобрено всего: {{ row.approved | thousands }}</div>
+                {% endif %}
+              </div>
+            </td>
             <td class="num" data-label="Конверсия">{% if row.conversion is none %}—{% else %}{{ row.conversion }}%{% endif %}</td>
           </tr>
           {% endfor %}

@@ -145,6 +145,19 @@ def _bar_rows(rows: list[tuple[str, int]]) -> list[dict]:
     ]
 
 
+def _format_since_ddmm(tracking_since: "str | None") -> "str | None":
+    """Дата начала трекинга событий в формате ДД.ММ (`"2026-09-05 22:57:00"` -> `"05.09"`),
+    для подписей «с ДД.ММ — …». `None`, если трекинга ещё нет или `ts` не парсится (сбой
+    формата не должен ронять страницу) — общий хелпер для воронки (`_funnel_display`) и
+    блока «Метки кампаний» (квик 260914-tj3), обе подписи должны читаться одинаково."""
+    if not tracking_since:
+        return None
+    try:
+        return datetime.strptime(tracking_since, "%Y-%m-%d %H:%M:%S").strftime("%d.%m")
+    except ValueError:
+        return None
+
+
 def _funnel_display(rows: "list[tuple[str, int]] | None", tracking_since: "str | None" = None) -> "dict | None":
     """`None` — блок выключен тумблером (D-19: блока нет вовсе). Иначе — ширина бара каждой
     ступени относительно ПЕРВОЙ НЕНУЛЕВОЙ ступени (не обязательно rows[0] — в городе, где
@@ -188,12 +201,7 @@ def _funnel_display(rows: "list[tuple[str, int]] | None", tracking_since: "str |
         }
         for idx, (label, count) in enumerate(rows)
     ]
-    since = None
-    if tracking_since:
-        try:
-            since = datetime.strptime(tracking_since, "%Y-%m-%d %H:%M:%S").strftime("%d.%m")
-        except ValueError:
-            since = None
+    since = _format_since_ddmm(tracking_since)
     return {"steps": steps, "has_data": has_data, "baseline_label": baseline_label, "since": since}
 
 
@@ -224,6 +232,12 @@ def build_page_context(conn, cfg: DashboardConfig, scope: queries.Scope, viewer:
     )
     utm_rows = (
         queries.utm_table(conn, scope) if flags.get("dashboard_block_utm") == "on" else None
+    )
+    # Квик 260914-tj3: «Старты»/конверсия в utm_table считаются только с начала трекинга
+    # событий (см. докстринг utm_table) — та же подпись «с ДД.ММ», что и у воронки, чтобы
+    # менеджер понимал, откуда взялось окно, внутри которого посчитана конверсия.
+    utm_since = (
+        _format_since_ddmm(queries.funnel_tracking_since(conn)) if utm_rows is not None else None
     )
     monthly_rows = (
         queries.monthly_table(conn, scope) if flags.get("dashboard_block_months") == "on" else None
@@ -292,7 +306,8 @@ def build_page_context(conn, cfg: DashboardConfig, scope: queries.Scope, viewer:
             else None
         ),
         "utm": (
-            {"rows": utm_rows, "has_data": bool(utm_rows)} if utm_rows is not None else None
+            {"rows": utm_rows, "has_data": bool(utm_rows), "since": utm_since}
+            if utm_rows is not None else None
         ),
         "months": (
             {"rows": monthly_rows, "has_data": bool(monthly_rows)}

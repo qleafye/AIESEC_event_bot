@@ -177,6 +177,33 @@ def _scope_sql(conn, scope: Scope) -> tuple[list[str], tuple]:
     return parts, params
 
 
+def _event_scope_sql(conn, scope: Scope) -> tuple[list[str], tuple]:
+    """Вариант `_scope_sql` для верха воронки в `reg_events` (квик 260914-tj3): `/start`
+    ещё не знает города — он выбирается позже, внутри анкеты, — поэтому у события `start`
+    `event_city` всегда `NULL`. Обычный `_city_sql` в скоупе НЕ города по умолчанию
+    (`event_city = ?`) отсекал бы такие строки целиком: на проде это роняло `starts` метки
+    website_2 с честных 179 до 51 в скоупе конкретного города — событие есть, просто оно
+    ещё не приписано ни одному городу.
+
+    Единственное отличие от `_scope_sql` — городская часть смягчена: `event_city IS NULL`
+    считается «в скоупе» для ЛЮБОГО города, не только для города по умолчанию (у которого
+    `event_city IS NULL` и так входит в исключающую ветку `_city_fragment`, оборачивать
+    нечего — проверка `"IS NULL" not in city_frag` это и ловит). Сезонная часть не меняется:
+    сезон в deep-link уже есть на старте (`_season_sql` применяется как обычно).
+
+    Используется ТОЛЬКО в `utm_table` для `starts`/`form_started` — не путать со
+    `_scope_sql`, который используют `funnel()`/`kpi_row()`/остальные функции модуля;
+    их поведение (и поведение `_scope_sql` для других вызовов внутри `utm_table`,
+    т.е. подсчёт заявок по `users`) этот хелпер не меняет."""
+    city_frag, city_params = _city_sql(conn, scope.city)
+    if city_frag and "IS NULL" not in city_frag:
+        city_frag = f"({city_frag} OR event_city IS NULL)"
+    season_frag, season_params = _season_sql(conn, scope.season)
+    parts = [p for p in (city_frag, season_frag) if p]
+    params = tuple(city_params) + tuple(season_params)
+    return parts, params
+
+
 # ── KPI-строка (D-06/D-14/D-16) ──────────────────────────────────────────────────────────
 
 def format_processing_time(minutes: float | None) -> str:
@@ -669,11 +696,28 @@ def utm_table(conn, scope: Scope) -> list[dict]:
     по ним уже есть в `users.source`; если бы множество меток бралось только из `source_tag`,
     такая метка выпала бы из таблицы целиком, хотя `users` ясно говорит, что заявки были.
 
-    Заявки (`completed`/`approved`) считаются по метке ВСЕ, без отсечки по началу трекинга
-    событий (`funnel_tracking_since`) — прежняя отсечка обнуляла НЕ ТОЛЬКО верх воронки (что
-    честно), но и низ (что нет): строка по старой метке оставалась пустой во всех колонках
-    вместо того, чтобы показать хотя бы «Заявки». `funnel()`/`kpi_row()` эту отсечку не
-    теряют — она их устройства не касается, снята только здесь.
+    Верх воронки (`starts`/`form_started`) считается через `_event_scope_sql`, а не
+    `_scope_sql` (квик 260914-tj3): `/start` ещё не знает города (тот выбирается позже, в
+    анкете) — обычный городской скоуп отсекал бы почти все старты. Подробности — в докстринге
+    `_event_scope_sql`. Заявки (`completed`/`approved`) по-прежнему в обычном `_scope_sql`:
+    у `users` город к моменту завершения анкеты уже известен.
+
+    Заявки считаются ДВАЖДЫ: `completed`/`approved` — все, без отсечки по началу трекинга
+    событий (`funnel_tracking_since`), и `completed_tracked`/`approved_tracked` — только те,
+    чей `registration_date` не раньше этой отсечки. Обе пары нужны по разным причинам:
+    - `completed`/`approved` без отсечки — прежняя отсечка обнуляла НЕ ТОЛЬКО верх воронки
+      (что честно), но и низ (что нет): строка по старой метке оставалась пустой во всех
+      колонках вместо того, чтобы показать хотя бы «Заявки». `funnel()`/`kpi_row()` эту
+      отсечку не теряют — она их устройства не касается, снята только здесь;
+    - `completed_tracked` — потому что `conversion` делится на `starts`, а `starts` живёт
+      ТОЛЬКО внутри окна трекинга событий (без событий делить не на что). Деление
+      all-time `completed` на `starts`, урезанный окном трекинга, давало на проде >100%
+      (website_2: 114 заявок за всё время / 51 старт внутри окна = 223.5%) — у метки,
+      прожившей на проде дольше трекинга событий, часть заявок физически не могла оставить
+      след в `reg_events`. `conversion` теперь делит tracked-заявки на tracked-старты —
+      те же ворота, что и в `funnel()`. Когда `funnel_tracking_since` пуст (в базе ещё нет
+      ни одного `reg_events`), `completed_tracked`/`approved_tracked` равны `completed`/
+      `approved` — отсекать не от чего.
 
     Риск подмешивания ручного ответа на вопрос «Источник», дословно совпавшего со слагом
     кампании, сохраняется и принят (T-QQG-06, `accept`) — но `_UTM_TAG_PREDICATE` сужает его:
@@ -688,9 +732,11 @@ def utm_table(conn, scope: Scope) -> list[dict]:
     Значения — только `?`-параметры (T-QQG-01/T-DMQ-01): ни метка, ни лимит, ни город/сезон
     не попадают в f-строку; `_UTM_TAG_PREDICATE` — константные фрагменты без подстановок.
     """
+    event_parts, event_params = _event_scope_sql(conn, scope)
     parts, params = _scope_sql(conn, scope)
+    tracking_since = funnel_tracking_since(conn)
 
-    tag_parts = parts + ["source_tag IS NOT NULL", "TRIM(source_tag) != ''"]
+    tag_parts = event_parts + ["source_tag IS NOT NULL", "TRIM(source_tag) != ''"]
     events_sql = (
         "SELECT source_tag AS tag, "
         "COUNT(DISTINCT CASE WHEN event = 'start' THEN telegram_id END) AS starts, "
@@ -698,16 +744,30 @@ def utm_table(conn, scope: Scope) -> list[dict]:
         "FROM reg_events"
         f"{_where(tag_parts)} GROUP BY source_tag"
     )
-    events_rows = conn.execute(events_sql, params).fetchall()
+    events_rows = conn.execute(events_sql, event_params).fetchall()
 
     user_parts = parts + _UTM_TAG_PREDICATE
-    users_sql = (
-        "SELECT source AS tag, COUNT(*) AS completed, "
-        "SUM(CASE WHEN status = 'approved' THEN 1 ELSE 0 END) AS approved "
-        "FROM users"
-        f"{_where(user_parts)} GROUP BY source"
-    )
-    users_rows = conn.execute(users_sql, params).fetchall()
+    if tracking_since is not None:
+        users_sql = (
+            "SELECT source AS tag, COUNT(*) AS completed, "
+            "SUM(CASE WHEN status = 'approved' THEN 1 ELSE 0 END) AS approved, "
+            "SUM(CASE WHEN registration_date >= ? THEN 1 ELSE 0 END) AS completed_tracked, "
+            "SUM(CASE WHEN registration_date >= ? AND status = 'approved' THEN 1 ELSE 0 END) "
+            "AS approved_tracked "
+            "FROM users"
+            f"{_where(user_parts)} GROUP BY source"
+        )
+        users_rows = conn.execute(
+            users_sql, (tracking_since, tracking_since) + params
+        ).fetchall()
+    else:
+        users_sql = (
+            "SELECT source AS tag, COUNT(*) AS completed, "
+            "SUM(CASE WHEN status = 'approved' THEN 1 ELSE 0 END) AS approved "
+            "FROM users"
+            f"{_where(user_parts)} GROUP BY source"
+        )
+        users_rows = conn.execute(users_sql, params).fetchall()
 
     events_by_tag = {row["tag"]: row for row in events_rows}
     users_by_tag = {row["tag"]: row for row in users_rows}
@@ -720,13 +780,21 @@ def utm_table(conn, scope: Scope) -> list[dict]:
         form_started = event_row["form_started"] if event_row is not None else 0
         completed = user_row["completed"] if user_row is not None else 0
         approved = (user_row["approved"] or 0) if user_row is not None else 0
-        conversion = round(completed / starts * 100, 1) if starts else None
+        if tracking_since is not None:
+            completed_tracked = (user_row["completed_tracked"] or 0) if user_row is not None else 0
+            approved_tracked = (user_row["approved_tracked"] or 0) if user_row is not None else 0
+        else:
+            completed_tracked = completed
+            approved_tracked = approved
+        conversion = round(completed_tracked / starts * 100, 1) if starts else None
         result.append({
             "tag": tag,
             "starts": starts,
             "form_started": form_started,
             "completed": completed,
             "approved": approved,
+            "completed_tracked": completed_tracked,
+            "approved_tracked": approved_tracked,
             "conversion": conversion,
         })
     result.sort(key=lambda row: (-row["completed"], -row["starts"], row["tag"]))
