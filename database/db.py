@@ -5754,6 +5754,14 @@ USER_PURGE_TABLES: tuple[tuple[str, str, str], ...] = (
     # decided_by в этой таблице — id менеджера, принявшего решение по очереди, не трогаем
     # (авторская колонка, не делегатский след).
     ("lookup_merge_queue", "telegram_id", "draft"),
+    # Квик 260914-rgr (RGR-01): chat_members/chat_activity/chat_events — след делегата в
+    # групповом чате (статус участника, счётчики активности, лог join/leave/kick). Ключ у
+    # всех трёх — telegram_id, чат не фильтруется: покидает человек проект — стираем след во
+    # ВСЕХ чатах, не только в одном привязанном. Группа "chat" — отдельная, не смешиваем со
+    # "queue"/"draft".
+    ("chat_members", "telegram_id", "chat"),
+    ("chat_activity", "telegram_id", "chat"),
+    ("chat_events", "telegram_id", "chat"),
 )
 
 USER_PURGE_EXCLUDED: frozenset[str] = frozenset({

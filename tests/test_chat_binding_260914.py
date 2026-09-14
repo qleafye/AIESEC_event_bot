@@ -50,13 +50,21 @@ def _cities_on(tmp_path):
 
 
 def _admin_status(user: User) -> ChatMemberAdministrator:
-    return ChatMemberAdministrator(
+    """Собирает `ChatMemberAdministrator` независимо от версии aiogram: код бота читает
+    только `.status`/`.user`, поэтому любые новые обязательные булевы разрешений (например,
+    `can_send_welcome_messages`, добавленный в 3.31) достаточно проставить в False —
+    без этого конструктор Pydantic падает `ValidationError` на каждой новой версии API."""
+    known = dict(
         status="administrator", user=user, can_be_edited=False, is_anonymous=False,
         can_manage_chat=True, can_delete_messages=True, can_manage_video_chats=True,
         can_restrict_members=True, can_promote_members=True, can_change_info=True,
         can_invite_users=True, can_post_stories=False, can_edit_stories=False,
         can_delete_stories=False,
     )
+    for name, field in ChatMemberAdministrator.model_fields.items():
+        if field.is_required() and name not in known:
+            known[name] = False
+    return ChatMemberAdministrator(**known)
 
 
 def _member_status(user: User) -> ChatMemberMember:
