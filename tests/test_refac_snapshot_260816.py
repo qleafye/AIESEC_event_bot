@@ -64,6 +64,15 @@ against the prior 517-line snapshot -- pure insert, zero reorders: admin.router 
 (шов `handlers/admin_chat.py`), точка вставки — хвост цепочки импортов `admin_sections.py`
 СРАЗУ ПОСЛЕ `admin_app_list` и ПЕРЕД `sync_sheet` (тот же хвостовой приём, что у соседнего
 шва «📇 Список заявок» выше).
+
+Дрифт-нота (2026-09-15, правка «привязка через личку админа»): -6/+1 (523 -> 518).
+`handlers/admin_chat.py` снесён целиком (экран «💬 Чат» больше не существует — привязка
+чата идёт через личку промоутера, `handlers/group_chat.py`), из admin.router ушли все шесть
+его хендлеров (пять из квика 260914-rgr + `chat_broadcast_out` отдельной задачи 3); взамен
+`handlers/admin_settings.py` получил один общий тумблер `toggle_chat_tracking_enabled`,
+вставший в хвост блока простых `_toggle_module_setting` тумблеров, сразу после
+`toggle_quiet_hours`. Пересчитано RUNNING `_build_snapshot_lines()` и сверено diff'ом с
+прежним 523-строчным снапшотом.
 """
 import asyncio
 import time
@@ -476,6 +485,7 @@ admin|callback_query|toggle_preselect_enabled|toggle_preselect_enabled
 admin|callback_query|toggle_pending_reminder|toggle_pending_reminder
 admin|callback_query|toggle_nudge_enabled|toggle_nudge_enabled
 admin|callback_query|toggle_quiet_hours|toggle_quiet_hours
+admin|callback_query|toggle_chat_tracking_enabled|toggle_chat_tracking_enabled
 admin|callback_query|toggle_delegate_lang_enabled|toggle_delegate_lang_enabled
 admin|callback_query|toggle_delegate_lang_ask_on_start|toggle_delegate_lang_ask_on_start
 admin|callback_query|toggle_reg_skip_source_for_referred|toggle_reg_skip_source_for_referred
@@ -559,12 +569,6 @@ admin|callback_query|admin_lookup_pin_start|admin_lookup:cp:*
 admin|callback_query|admin_lookup_search_pick|admin_lookup:sel:*
 admin|callback_query|admin_app_list_open|admin_app_list
 admin|callback_query|apl_page|apl:*
-admin|callback_query|admin_chat|admin_chat
-admin|callback_query|chat_chat_tracking_toggle|chat_chat_tracking_toggle
-admin|callback_query|chat_refresh_now|chat_refresh_now
-admin|callback_query|chat_unbind|chat_unbind:*
-admin|callback_query|chat_unbind_go|chat_unbind_go:*
-admin|callback_query|chat_broadcast_out|chat_broadcast_out:*
 admin|callback_query|sync_sheet|admin_sync_sheet
 admin|callback_query|rebuild_sheet_confirm|admin_rebuild_sheet
 admin|callback_query|rebuild_sheet|admin_rebuild_sheet_go
@@ -1005,7 +1009,21 @@ def test_snapshot_total_handler_count_is_292():
     # sync_sheet — тот же шов, что остальные хендлеры admin_chat.py (522 -> 523); чистая
     # вставка, перепроверена прогоном `_build_snapshot_lines()` и diff'ом с прежним
     # 522-строчным снапшотом.
-    assert len(GOLDEN_SNAPSHOT) == 523
+    #
+    # Правка 15.09 (владелец, «привязка через личку админа»): -6/+1 (523 -> 518).
+    # `handlers/admin_chat.py` снесён целиком вместе с экраном «💬 Чат» — пять его хендлеров
+    # (admin_chat/chat_chat_tracking_toggle/chat_refresh_now/chat_unbind/chat_unbind_go) и
+    # шестой, добавленный отдельно задачей 3 (chat_broadcast_out), убраны из admin.router
+    # одним куском (были встык, сразу после apl_page и перед sync_sheet — см. дрифт-ноты
+    # выше). Взамен добавлена ОДНА строка `toggle_chat_tracking_enabled`
+    # (handlers/admin_settings.py) — тумблер учёта чата теперь общий тумблер раздела
+    # «🔧 Управление», встал в хвост уже существующего блока простых `_toggle_module_setting`
+    # тумблеров, СРАЗУ ПОСЛЕ `toggle_quiet_hours` и ПЕРЕД `toggle_delegate_lang_enabled` —
+    # перепроверено прогоном `_build_snapshot_lines()` и diff'ом (difflib.unified_diff) с
+    # прежним 523-строчным снапшотом: ровно одна вставка в позиции ~110 и ровно одно
+    # удаление шести строк в позиции ~193, ни одна другая строка не поменялась и не
+    # переставилась.
+    assert len(GOLDEN_SNAPSHOT) == 518
     # (callback_query toggle_reg_form_v2/chips/lookup_search/edu_card/repeatable/limit_counter/
     # status_screen/header_settings/haptics — девять тумблеров «Анкета 2.0»), встали сразу после
     # admin_quiet_hours и перед sync_sheet: шов импортируется из хвоста

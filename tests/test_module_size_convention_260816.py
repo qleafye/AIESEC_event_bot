@@ -127,7 +127,13 @@ KNOWN_OVERAGES: dict[str, tuple[int, str]] = {
         "(Phase 14/16)",
     ),
     "admin_settings.py": (
-        2270,
+        2301,
+        "Правка 15.09 (владелец, «привязка через личку админа»): +31 строка — снесённый "
+        "экран «💬 Чат» (handlers/admin_chat.py) заменён общим тумблером "
+        "`toggle_chat_tracking_enabled` (текст в settings_toggle_rows + запись в общий "
+        "словарь + сам callback-хендлер через `_toggle_module_setting`) и функцией "
+        "`_chat_status_line` (одна строка «видно без экрана» в группе «🔧 Система»), 2270 -> "
+        "2301; потолок поднят до фактического размера. "
         "Квик 260914-rgr (RGR-01..07): +3 строки — `chat_refresh_minutes` в хвосте "
         "`_SYSTEM_FIELD_ORDER` (единственный редактируемый ключ чата делегатов, D-11 — "
         "id/название чата в этот список НЕ входят, их пишет бот сам), 2263 -> 2270 в пределах "
@@ -298,6 +304,11 @@ KNOWN_OVERAGES: dict[str, tuple[int, str]] = {
     ),
     "admin_caps.py": (
         990,
+        "Правка 15.09 (владелец, «привязка через личку админа»): -8 строк — capability-записи "
+        "снесённого экрана «💬 Чат» (admin_chat/chat_chat_tracking_toggle/chat_refresh_now/"
+        "chat_unbind:*/chat_unbind_go:*/chat_broadcast_out:*) заменены одной строкой "
+        "`toggle_chat_tracking_enabled` (974, в пределах уже существующего потолка — "
+        "снижение размера не требует поднимать потолок, число оставлено как есть). "
         "Квик 260914-rgr (RGR-01..07, задача 2): +9 строк — capability-записи экрана «💬 Чат» "
         "(admin_chat/chat_chat_tracking_toggle/chat_refresh_now/chat_unbind:*/"
         "chat_unbind_go:*, та же капа «settings», что у соседнего admin_quiet_hours), "

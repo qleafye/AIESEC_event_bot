@@ -351,6 +351,9 @@ def build_chat_context(conn, cfg: DashboardConfig, scope: queries.Scope, viewer:
             "joins_chart": joins_chart,
             "messages_chart": messages_chart,
             "not_joined": queries.chat_not_joined(conn, scope, chat),
+            # Владелец 15.09: «последняя сверка» на карточке — тот же MAX(updated_at), что
+            # раньше показывал снесённый экран «💬 Чат» в боте.
+            "last_sync": queries.chat_last_sync_at(conn, chat["chat_id"]),
         })
 
     return {

@@ -1,6 +1,11 @@
 """Квик 260914-rgr (RGR-01..07), задача 3: фильтр рассылки «Чат делегатов» — «в чате» /
 «не в чате».
 
+Правка 15.09 (владелец, «привязка через личку админа»): кнопка «📣 Рассылка не вступившим»
+(экран «💬 Чат» -> мастер рассылки с готовым фильтром) снесена вместе с самим экраном — сам
+фильтр внутри мастера рассылки (ниже) не тронут, менеджер выбирает его руками как любой
+другой фильтр.
+
 pytest-asyncio в проекте нет — async гоняется через asyncio.run(); БД — tmp_path.
 """
 import asyncio
@@ -9,8 +14,6 @@ import json
 from config import config
 from database import db
 from handlers import admin_broadcasts
-from handlers import admin_chat
-from handlers.states import Broadcast
 from services import chat_tracking
 from tests.test_roles_phase8 import FakeCallback, FakeMessage, _fresh_state
 
@@ -207,30 +210,3 @@ def test_picker_shows_human_labels_not_codes(tmp_path):
     labels = data.get("filter_option_labels") or {}
     assert labels.get(db.CHAT_IN) == "в чате"
     assert labels.get(db.CHAT_OUT) == "не в чате"
-
-
-# ── Экран «💬 Чат» -> мастер рассылки с проставленным фильтром ───────────────────────────
-
-def test_chat_broadcast_out_sets_filter_and_state(tmp_path):
-    _ready(tmp_path)
-    asyncio.run(chat_tracking.bind_chat(ADMIN_ID, MSK_CHAT_ID, "Общий чат", None))
-
-    cb = FakeCallback("chat_broadcast_out:global", ADMIN_ID)
-    state = _fresh_state(ADMIN_ID)
-    asyncio.run(admin_chat.chat_broadcast_out(cb, state))
-
-    data = asyncio.run(state.get_data())
-    assert data["filters"][0]["field"] == "delegate_chat"
-    assert data["filters"][0]["value"] == db.CHAT_OUT
-    assert data["filters"][0]["chats"][0]["chat_id"] == MSK_CHAT_ID
-    assert asyncio.run(state.get_state()) == Broadcast.filter_field.state
-
-
-def test_chat_broadcast_out_unknown_chat_refuses(tmp_path):
-    _ready(tmp_path)
-    cb = FakeCallback("chat_broadcast_out:spb", ADMIN_ID)
-    state = _fresh_state(ADMIN_ID)
-
-    asyncio.run(admin_chat.chat_broadcast_out(cb, state))
-
-    assert cb.answers and cb.answers[0][1] is True
