@@ -137,7 +137,13 @@ def test_migration_on_existing_db_keeps_rows_and_allows_new_version(tmp_path):
         INSERT INTO user_consents (user_id, consent_key, accepted_at) VALUES (8, 'data', '2026-07-02T10:00:00');
         """
     )
-    con.commit(); con.close()
+    con.commit()
+    # Гейт одноразовой МСК-миграции (database.db._migrate_local_timestamps_to_msk, квик
+    # 260912-mcj) на UTC-хосте (CI) сдвинул бы accepted_at на +3 часа -- этот тест про
+    # миграцию consent_version, не про сдвиг времени, поэтому помечаем гейт уже пройденным.
+    con.execute(f"PRAGMA user_version = {db._MSK_MIGRATION_USER_VERSION}")
+    con.commit()
+    con.close()
 
     config.DB_PATH = str(path)
     asyncio.run(db.init_db())
