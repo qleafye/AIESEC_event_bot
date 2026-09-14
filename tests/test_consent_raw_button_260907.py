@@ -110,6 +110,11 @@ def test_init_db_on_existing_db_adds_column_and_keeps_rows(tmp_path):
         """
     )
     con.commit()
+    # Гейт одноразовой МСК-миграции (database.db._migrate_local_timestamps_to_msk, квик
+    # 260912-mcj) на UTC-хосте (CI) сдвинул бы accepted_at на +3 часа -- этот тест про
+    # миграцию колонки raw_button, не про сдвиг времени, поэтому помечаем гейт уже пройденным.
+    con.execute(f"PRAGMA user_version = {db._MSK_MIGRATION_USER_VERSION}")
+    con.commit()
     con.close()
 
     config.DB_PATH = str(path)

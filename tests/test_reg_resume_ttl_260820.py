@@ -7,12 +7,19 @@ _should_show_city_fork выходит на непустом городе. Стр
 удаление строк.
 
 pytest-asyncio недоступен — async через asyncio.run(), config.DB_PATH -> tmp.
+
+CI-фикс: `started_at` пишется `mark_reg_started` через `services.timeutil.msk_now()` (квик
+260912-mcj, московское время независимо от часов хоста/контейнера), а `get_reg_started_city`
+сравнивает окно той же `msk_now()` (`database/db.py::_reg_started_cutoff`). Раньше здесь сеялось
+хостовым `datetime.now()` — на CI (UTC, ubuntu) это на 3 часа раньше московского, и
+23.5-часовая метка вываливалась за 24-часовое окно. Сеем тем же часами, что и продовый писатель.
 """
 import asyncio
-from datetime import datetime, timedelta
+from datetime import timedelta
 
 from config import config
 from database import db
+from services.timeutil import msk_now
 from settings_schema import SETTINGS_SCHEMA, _parse_setting
 
 USER_ID = 703402465  # тот самый делегат из разбора
@@ -24,9 +31,9 @@ def _ready(tmp_path):
 
 
 def _seed_started(hours_ago: float, city="tyumen", track="full"):
-    """Строка reg_started с началом hours_ago часов назад (started_at пишется локальным
-    временем процесса — тем же, что и mark_reg_started)."""
-    stamp = (datetime.now() - timedelta(hours=hours_ago)).strftime("%Y-%m-%d %H:%M:%S")
+    """Строка reg_started с началом hours_ago часов назад (started_at пишется тем же
+    `msk_now()`, что и продовый `mark_reg_started` — не часами хоста)."""
+    stamp = (msk_now() - timedelta(hours=hours_ago)).strftime("%Y-%m-%d %H:%M:%S")
 
     async def go():
         await db.mark_reg_started(USER_ID, "dasha", track, city)
