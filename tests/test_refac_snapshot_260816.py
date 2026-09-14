@@ -56,6 +56,14 @@ re-captured by RUNNING `_build_snapshot_lines()` against HEAD and diffed against
 базу в 498 -> 500 строк по состоянию на момент авторства плана; фактическая база на HEAD
 исполнения — 515 (после 30-07, задача 4), снимок пересчитан механически, не по плановой
 арифметике.
+
+Дрифт-нота (2026-09-14, квик 260914-rgr, задача 2, экран «💬 Чат»): 5 хендлеров вставлены
+(517 -> 522), re-captured by RUNNING `_build_snapshot_lines()` against HEAD and diffed
+against the prior 517-line snapshot -- pure insert, zero reorders: admin.router gained
+`admin_chat`/`chat_chat_tracking_toggle`/`chat_refresh_now`/`chat_unbind`/`chat_unbind_go`
+(шов `handlers/admin_chat.py`), точка вставки — хвост цепочки импортов `admin_sections.py`
+СРАЗУ ПОСЛЕ `admin_app_list` и ПЕРЕД `sync_sheet` (тот же хвостовой приём, что у соседнего
+шва «📇 Список заявок» выше).
 """
 import asyncio
 import time
@@ -551,6 +559,11 @@ admin|callback_query|admin_lookup_pin_start|admin_lookup:cp:*
 admin|callback_query|admin_lookup_search_pick|admin_lookup:sel:*
 admin|callback_query|admin_app_list_open|admin_app_list
 admin|callback_query|apl_page|apl:*
+admin|callback_query|admin_chat|admin_chat
+admin|callback_query|chat_chat_tracking_toggle|chat_chat_tracking_toggle
+admin|callback_query|chat_refresh_now|chat_refresh_now
+admin|callback_query|chat_unbind|chat_unbind:*
+admin|callback_query|chat_unbind_go|chat_unbind_go:*
 admin|callback_query|sync_sheet|admin_sync_sheet
 admin|callback_query|rebuild_sheet_confirm|admin_rebuild_sheet
 admin|callback_query|rebuild_sheet|admin_rebuild_sheet_go
@@ -978,7 +991,14 @@ def test_snapshot_total_handler_count_is_292():
     # handlers/admin_sections.py, СРАЗУ ПОСЛЕ admin_lookup (515 -> 517); чистая вставка,
     # перепроверена прогоном `_build_snapshot_lines()` и diff'ом с прежним 515-строчным
     # снапшотом — ровно две новые строки, ни одна другая не поменялась и не переставилась.
-    assert len(GOLDEN_SNAPSHOT) == 517
+    # Квик 260914-rgr (RGR-01..07, задача 2): +5 handlers/admin_chat.py (callback_query
+    # admin_chat/chat_chat_tracking_toggle/chat_refresh_now/chat_unbind/chat_unbind_go —
+    # экран «💬 Чат»), встали сразу после apl_page и перед sync_sheet: шов импортируется из
+    # хвоста handlers/admin_sections.py, СРАЗУ ПОСЛЕ admin_app_list (517 -> 522); чистая
+    # вставка, перепроверена прогоном `_build_snapshot_lines()` и diff'ом (difflib.
+    # SequenceMatcher) с прежним 517-строчным снапшотом — ровно пять новых строк в позиции
+    # 194, ни одна другая не поменялась и не переставилась.
+    assert len(GOLDEN_SNAPSHOT) == 522
     # (callback_query toggle_reg_form_v2/chips/lookup_search/edu_card/repeatable/limit_counter/
     # status_screen/header_settings/haptics — девять тумблеров «Анкета 2.0»), встали сразу после
     # admin_quiet_hours и перед sync_sheet: шов импортируется из хвоста

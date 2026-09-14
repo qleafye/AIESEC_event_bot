@@ -141,6 +141,9 @@ SECTIONS: list[tuple[str, str, list[tuple]]] = [
     ("comms", "📢 Общение", [
         ("op", "admin_broadcast"),
         ("op", "admin_polls"),
+        # Квик 260914-rgr (D-2): рядом с рассылкой — главная ценность экрана для менеджера
+        # это дожать не вступивших, а не «настроить интеграцию».
+        ("screen", "admin_chat", "💬 Чат делегатов"),
     ]),
     ("game", "🎮 Геймификация", [
         ("op", "admin_game_tasks"),
@@ -536,3 +539,7 @@ from handlers import admin_lookup  # noqa: E402,F401
 # Квик 260914-rgq (RGQ-01): шов «📇 Список заявок» — импорт СРАЗУ ПОСЛЕ admin_lookup, тот же
 # хвостовой приём (golden snapshot: tests/test_refac_snapshot_260816.py).
 from handlers import admin_app_list  # noqa: E402,F401
+
+# Квик 260914-rgr (RGR-01..07, задача 2): шов «💬 Чат» — импорт СРАЗУ ПОСЛЕ admin_app_list,
+# тот же хвостовой приём (golden snapshot: tests/test_refac_snapshot_260816.py).
+from handlers import admin_chat  # noqa: E402,F401

@@ -259,6 +259,14 @@ async def init_scheduler(bot):
     # нужен (см. докстринг quiet_hours_flush_job).
     _add_interval_job(quiet_hours_flush_job, "quiet_hours_flush", timedelta(minutes=1))
 
+    # Квик 260914-rgr (RGR-01..07): периодическая сверка состава чата делегатов с Telegram.
+    # Дефолт интервала — 360 мин (6 часов), тот же приём, что у остальных интервалов джоб выше.
+    chat_refresh_minutes = _int_or_default(await get_setting("chat_refresh_minutes"), 360)
+    _add_interval_job(
+        chat_membership_refresh_job, "chat_membership_refresh",
+        timedelta(minutes=chat_refresh_minutes),
+    )
+
     # ME-03: re-arm any pending broadcast whose date job was dropped from the jobstore during a
     # downtime longer than misfire_grace — otherwise it stays 'pending' forever and never fires.
     await reconcile_scheduled_broadcasts()
@@ -966,3 +974,20 @@ async def allowlist_refresh_job():
                     logger.error(f"Allowlist empty-alert to {admin_id} failed: {e}")
     except Exception as e:
         logger.error(f"allowlist_refresh_job failed: {e}")
+
+
+async def chat_membership_refresh_job():
+    """Interval-job target: периодическая сверка состава чата(ов) делегатов с Telegram.
+    Тумблер выключен -> ранний выход без единого вызова `get_chat_member` (та же форма, что
+    `allowlist_refresh_job` с `preselect_enabled` выше). Ленивый импорт — `services.chat_tracking`
+    сама ничего из `services/scheduler.py` не импортирует, но порядок импорта модулей внутри
+    `services/` держим единообразно ленивым для job-таргетов (тот же приём везде в этом файле)."""
+    try:
+        from services.chat_tracking import tracking_on, refresh_all_chats
+
+        if not await tracking_on():
+            logger.debug("Chat membership refresh skipped: chat_tracking_enabled is off")
+            return
+        await refresh_all_chats(_bot)
+    except Exception as e:
+        logger.error(f"chat_membership_refresh_job failed: {e}")
