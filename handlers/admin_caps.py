@@ -335,6 +335,10 @@ ADMIN_CAPS: dict[str, str] = {
     "aq:*": "moderate_reg",
     "aq_answer:*": "moderate_reg",
     "state:QuestionAnswer:*": "moderate_reg",
+    # Квик 260914-rgq (RGQ-01): экран «📇 Список заявок» — тот же гейт, что у очереди заявок
+    # (`admin_applications` выше): список показывает те же персональные данные делегатов.
+    "admin_app_list": "moderate_reg",
+    "apl:*": "moderate_reg",
     # Quick 260906-8uq (FAQ-01..06): раздел «❓ Частые вопросы» — тот же `moderate_reg`, что
     # журнал вопросов выше (FAQ ведут те же люди, что отвечают делегатам; иначе кнопка
     # «❓ В FAQ» из задачи 4 оказалась бы недоступна тому, кто только что ответил). Один

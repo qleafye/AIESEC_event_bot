@@ -95,6 +95,8 @@ SECTIONS: list[tuple[str, str, list[tuple]]] = [
     ]),
     ("apps", "📋 Заявки", [
         ("op", "admin_applications"),
+        # квик 260914-rgq: очередь сверху (что делать сейчас), список — под ней (кто уже прошёл)
+        ("screen", "admin_app_list", "📇 Список заявок"),
         # Quick 260904-2cj: «🔒 Залипшие вопросы» переехал в «❓ Вопросы делегатов» — экран
         # журнала со всеми тремя статусами; старый callback жив как алиас (см.
         # handlers/admin.py::show_stuck_questions).
@@ -530,3 +532,7 @@ from handlers import admin_settings_audit  # noqa: E402,F401
 # Phase 30 (30-07, A2-03): шов «📚 Справочники» — импорт СРАЗУ ПОСЛЕ admin_settings_audit, тот
 # же хвостовой приём (golden snapshot: tests/test_refac_snapshot_260816.py).
 from handlers import admin_lookup  # noqa: E402,F401
+
+# Квик 260914-rgq (RGQ-01): шов «📇 Список заявок» — импорт СРАЗУ ПОСЛЕ admin_lookup, тот же
+# хвостовой приём (golden snapshot: tests/test_refac_snapshot_260816.py).
+from handlers import admin_app_list  # noqa: E402,F401
