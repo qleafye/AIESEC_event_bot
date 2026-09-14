@@ -1130,3 +1130,151 @@ def questions_block(conn, scope: Scope) -> dict | None:
         "oldest_waiting_label": format_processing_time(oldest_waiting_minutes),
         "top_managers": top_managers,
     }
+
+
+# ── Квик 260914-rgr (RGR-01..07): страница «Чат» ─────────────────────────────────────────
+#
+# Повтор `database.db.CHAT_PRESENT_STATUSES` — этот модуль ничего из `database/db.py` не
+# импортирует (см. докстринг наверху файла, D-17: read-only периметр, отдельный процесс).
+# Дрейф между копиями ловит `tests/test_dashboard_chat_260914.py`.
+_CHAT_PRESENT_STATUSES = ("creator", "administrator", "member")
+_CHAT_PER_CITY_SEP = "__city__"
+
+
+def chat_bindings(conn) -> list[dict]:
+    """Список привязанных чатов: `{"city": код|None, "label": подпись города/«Общий чат»,
+    "chat_id": int, "title": название чата из группы}`. Мусорное/неразбираемое значение
+    (не целое число) пропускается — тот же приём, что у `services.chat_tracking.bound_chats`
+    на стороне бота (независимая копия — read-only процесс своей БД не пишет)."""
+    rows = conn.execute(
+        "SELECT key, value FROM bot_settings WHERE key LIKE 'delegate_chat_id%'"
+    ).fetchall()
+    out: list[dict] = []
+    prefix = f"delegate_chat_id{_CHAT_PER_CITY_SEP}"
+    for row in rows:
+        key, value = row["key"], row["value"]
+        if not value:
+            continue
+        try:
+            chat_id = int(value)
+        except (TypeError, ValueError):
+            continue
+        if key == "delegate_chat_id":
+            code = None
+        elif key.startswith(prefix):
+            code = key[len(prefix):]
+            if not code:
+                continue
+        else:
+            continue  # чужой ключ, случайно попавший под LIKE (не должно бывать, но не наш)
+        title_key = "delegate_chat_title" if code is None else f"delegate_chat_title{_CHAT_PER_CITY_SEP}{code}"
+        title_row = conn.execute(
+            "SELECT value FROM bot_settings WHERE key = ?", (title_key,)
+        ).fetchone()
+        title = title_row["value"] if title_row is not None and title_row["value"] else None
+        if code is None:
+            label = "Общий чат"
+        else:
+            city_row = conn.execute("SELECT label FROM cities WHERE code = ?", (code,)).fetchone()
+            label = city_row["label"] if city_row is not None else code
+        out.append({"city": code, "label": label, "chat_id": chat_id, "title": title or label})
+    return out
+
+
+def _chat_scope_ok(scope: Scope, chat: dict) -> bool:
+    """Менеджер, привязанный к городу (`scope.city` задан), не должен получить числа чужого
+    чата — даже если что-то вызовет эту функцию мимо уже отфильтрованного списка чатов."""
+    return scope.city is None or chat["city"] == scope.city
+
+
+def chat_overview(conn, scope: Scope, chat: dict) -> dict:
+    """Одобрено / в чате / не в чате / в чате, но не зарегистрированы — для ОДНОГО чата.
+    Городской фрагмент — тот же `_city_fragment`, что у остальных запросов."""
+    if not _chat_scope_ok(scope, chat):
+        return {"approved": 0, "in_chat": 0, "not_in_chat": 0, "unknown_members": 0}
+    city_frag, city_params = ("", []) if chat["city"] is None else _city_fragment(conn, chat["city"])
+    where_city = f" AND {city_frag}" if city_frag else ""
+    present_ph = ",".join("?" for _ in _CHAT_PRESENT_STATUSES)
+
+    approved = _scalar(
+        conn, f"SELECT COUNT(*) FROM users u WHERE u.status = 'approved'{where_city}", city_params,
+    ) or 0
+    in_chat = _scalar(
+        conn,
+        f"SELECT COUNT(*) FROM users u WHERE u.status = 'approved'{where_city} AND EXISTS "
+        "(SELECT 1 FROM chat_members cm WHERE cm.telegram_id = u.telegram_id AND "
+        f"cm.chat_id = ? AND cm.status IN ({present_ph}))",
+        (*city_params, chat["chat_id"], *_CHAT_PRESENT_STATUSES),
+    ) or 0
+    unknown_members = _scalar(
+        conn,
+        f"SELECT COUNT(*) FROM chat_members cm WHERE cm.chat_id = ? AND cm.status IN "
+        f"({present_ph}) AND NOT EXISTS (SELECT 1 FROM users u WHERE u.telegram_id = cm.telegram_id)",
+        (chat["chat_id"], *_CHAT_PRESENT_STATUSES),
+    ) or 0
+    return {
+        "approved": approved, "in_chat": in_chat,
+        "not_in_chat": approved - in_chat, "unknown_members": unknown_members,
+    }
+
+
+def chat_joins_daily(conn, chat_id: int) -> list[tuple[str, int]]:
+    """Плотный календарь вступлений по дням — из `chat_events` (`event = 'join'`), тот же
+    приём заполнения дыр, что `daily_registrations`."""
+    rows = conn.execute(
+        "SELECT substr(ts, 1, 10) AS day, COUNT(*) AS cnt FROM chat_events "
+        "WHERE chat_id = ? AND event = 'join' GROUP BY day ORDER BY day ASC",
+        (chat_id,),
+    ).fetchall()
+    sparse = [(row["day"], row["cnt"]) for row in rows]
+    return _fill_missing_days(sparse)
+
+
+def chat_messages_daily(conn, chat_id: int) -> list[tuple[str, int]]:
+    """Плотный календарь сообщений по дням — `SUM(messages)` из `chat_activity`."""
+    rows = conn.execute(
+        "SELECT day, SUM(messages) AS cnt FROM chat_activity WHERE chat_id = ? "
+        "GROUP BY day ORDER BY day ASC",
+        (chat_id,),
+    ).fetchall()
+    sparse = [(row["day"], row["cnt"]) for row in rows]
+    return _fill_missing_days(sparse)
+
+
+def chat_not_joined(conn, scope: Scope, chat: dict, limit: int = 200) -> list[dict]:
+    """Одобренные без присутствия в чате — telegram_id, город, дата одобрения, новые сверху.
+
+    Отклонение от планового текста задачи («ФИО, @ник, город, дата одобрения»): имя и ник —
+    персональные данные делегата, а `dashboard/queries.py` — единственный модуль дашборда с
+    ЖЁСТКИМ структурным сторожем «без ПД» (D-17, `tests/test_dashboard_queries.py::
+    test_queries_module_never_selects_pii_columns`, сканирует исходник на колонки-персоналии
+    из карточки заявки). Дашборд — отдельный веб-периметр за Cloudflare Tunnel для держателей
+    права `stats` (шире, чем доступ к самому боту) — персоналии туда осознанно не пускают ни
+    в одном другом запросе модуля. Числовой telegram-идентификатор персоналией не считается
+    (уже используется дашбордом как identity сессии) — менеджер находит человека по нему в
+    самом боте («📇 Список заявок»), где персоналии уже показываются штатно."""
+    if not _chat_scope_ok(scope, chat):
+        return []
+    city_frag, city_params = ("", []) if chat["city"] is None else _city_fragment(conn, chat["city"])
+    where_city = f" AND {city_frag}" if city_frag else ""
+    present_ph = ",".join("?" for _ in _CHAT_PRESENT_STATUSES)
+    rows = conn.execute(
+        "SELECT u.telegram_id, u.event_city, u.approved_at FROM users u "
+        f"WHERE u.status = 'approved'{where_city} AND NOT EXISTS (SELECT 1 FROM chat_members cm "
+        "WHERE cm.telegram_id = u.telegram_id AND cm.chat_id = ? AND cm.status IN "
+        f"({present_ph})) ORDER BY u.approved_at DESC LIMIT ?",
+        (*city_params, chat["chat_id"], *_CHAT_PRESENT_STATUSES, limit),
+    ).fetchall()
+    out: list[dict] = []
+    for row in rows:
+        city_code = row["event_city"]
+        city_label_text = None
+        if city_code:
+            city_row = conn.execute("SELECT label FROM cities WHERE code = ?", (city_code,)).fetchone()
+            city_label_text = city_row["label"] if city_row is not None else city_code
+        out.append({
+            "telegram_id": row["telegram_id"],
+            "city": city_label_text,
+            "approved_at": row["approved_at"],
+        })
+    return out
