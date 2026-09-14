@@ -606,6 +606,36 @@ def test_utm_block_enabled_empty_shows_hint_with_bot_username(tmp_path):
     assert "t.me/YouLead_test_bot?start=src_" in text
 
 
+def test_utm_block_shows_total_line_only_when_tracked_differs_from_total(tmp_path):
+    """Квик 260914-tj3: «Заявки всего» появляется только у метки со старой (до начала
+    трекинга событий) заявкой -- у метки, где tracked == total, отдельной строки нет."""
+    db_path = _use_tmp_db(tmp_path)
+    _seed(
+        settings={"dashboard_block_utm": "on"},
+        reg_events=[
+            {
+                "telegram_id": 2, "event": "start", "event_city": None, "season": None,
+                "ts": "2026-09-01 10:00:00", "source_tag": "website_2",
+            },
+        ],
+        users=[
+            {"telegram_id": 1, "source": "website_2", "status": "approved",
+             "registration_date": "2026-08-01 09:00:00"},  # старая заявка, до трекинга
+            {"telegram_id": 2, "source": "website_2", "status": "approved",
+             "registration_date": "2026-09-02 09:00:00"},  # внутри окна трекинга
+        ],
+    )
+    client = _stats_manager_client(db_path)
+    resp = client.get("/")
+    assert resp.status_code == 200
+    text = resp.text
+    assert "Метки кампаний" in text
+    assert "website_2" in text
+    assert "заявки всего: 2" in text  # completed=2, completed_tracked=1 -- строка есть
+    assert "100.0%" in text  # 1 tracked completed / 1 start, не 200%
+    assert "223.5%" not in text  # прод-баг: 2 all-time / 1 start была бы 200%, не так
+
+
 # ── «По месяцам» (квик 260906-dmq, задача 2) ─────────────────────────────────────────────
 
 def test_months_block_with_data_shows_month_and_tops(tmp_path):
