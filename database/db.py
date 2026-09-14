@@ -1133,6 +1133,46 @@ async def init_db():
         await seed_lookup_from_snapshot(db, "university")
         await seed_lookup_from_snapshot(db, "city")
 
+        # Квик 260914-rgr (RGR-01..07, D-9): учёт чата делегатов. Текст сообщений здесь НЕ
+        # хранится НИКОГДА — только счётчики активности и таймлайн событий вступления/выхода.
+        # Три таблицы: состав (chat_members), обезличенная активность по дням (chat_activity)
+        # и лог событий (chat_events, нужен графику «вступления по дням» на дашборде).
+        await db.execute('''
+            CREATE TABLE IF NOT EXISTS chat_members (
+                chat_id INTEGER NOT NULL,
+                telegram_id INTEGER NOT NULL,
+                status TEXT,
+                joined_at TEXT,
+                left_at TEXT,
+                updated_at TEXT,
+                source TEXT,
+                PRIMARY KEY (chat_id, telegram_id)
+            )
+        ''')
+        await db.execute('''
+            CREATE TABLE IF NOT EXISTS chat_activity (
+                chat_id INTEGER NOT NULL,
+                telegram_id INTEGER NOT NULL,
+                day TEXT NOT NULL,
+                messages INTEGER NOT NULL DEFAULT 0,
+                replies INTEGER NOT NULL DEFAULT 0,
+                media INTEGER NOT NULL DEFAULT 0,
+                PRIMARY KEY (chat_id, telegram_id, day)
+            )
+        ''')
+        await db.execute('''
+            CREATE TABLE IF NOT EXISTS chat_events (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                chat_id INTEGER NOT NULL,
+                telegram_id INTEGER NOT NULL,
+                event TEXT NOT NULL,
+                ts TEXT NOT NULL
+            )
+        ''')
+        await db.execute(
+            "CREATE INDEX IF NOT EXISTS idx_chat_events_chat_ts ON chat_events(chat_id, ts)"
+        )
+
         # Indexes under the hot admin/scheduler queries. Each one mirrors a real WHERE/ORDER BY
         # in this module (see the comments in _HOT_PATH_INDEXES); nothing speculative.
         await _ensure_hot_path_indexes(db)
@@ -3468,6 +3508,191 @@ async def count_and_list_filtered(filters: list[dict]) -> list[int]:
             f"SELECT telegram_id FROM users{where}", params
         ) as cursor:
             return [row[0] for row in await cursor.fetchall()]
+
+
+# ── Квик 260914-rgr (RGR-01..07): учёт чата делегатов ─────────────────────────
+#
+# `CHAT_PRESENT_STATUSES` — единственный источник правды «состоит в чате» для всего проекта
+# (D-8: `restricted` — «не в чате», та же конвенция, что `_membership_status_to_bool` в
+# `handlers/registration.py`). `services`/`handlers`/дашборд читают её отсюда; `db.py` сам
+# ничего из `services`/`cities` не импортирует (циклы).
+CHAT_PRESENT_STATUSES = ("creator", "administrator", "member")
+
+_CHAT_PRESENT_PLACEHOLDERS = ",".join("?" for _ in CHAT_PRESENT_STATUSES)
+
+
+async def upsert_chat_member(chat_id: int, telegram_id: int, status: str, source: str, *,
+                              joined_at: str | None = None, left_at: str | None = None) -> None:
+    """UPSERT в `chat_members`. `joined_at` проставляется САМ при первом переходе в статус из
+    `CHAT_PRESENT_STATUSES` (если явно не передан и ещё не проставлен раньше), `left_at` — при
+    уходе из присутствия (если явно не передан) — оба не затирают прежнее значение на любом
+    другом переходе (D-9: сообщение не хранится, только счётчики и таймлайн событий)."""
+    now = msk_now().strftime("%Y-%m-%d %H:%M:%S")
+    async with _connect() as db:
+        async with db.execute(
+            "SELECT status, joined_at, left_at FROM chat_members WHERE chat_id = ? AND telegram_id = ?",
+            (chat_id, telegram_id),
+        ) as cursor:
+            row = await cursor.fetchone()
+        prev_status, prev_joined_at, prev_left_at = row if row else (None, None, None)
+        was_present = prev_status in CHAT_PRESENT_STATUSES
+        now_present = status in CHAT_PRESENT_STATUSES
+
+        resolved_joined_at = joined_at or prev_joined_at
+        if now_present and not resolved_joined_at:
+            resolved_joined_at = now
+
+        resolved_left_at = left_at if left_at is not None else prev_left_at
+        if left_at is None and not now_present and was_present:
+            resolved_left_at = now
+
+        await db.execute(
+            "INSERT INTO chat_members (chat_id, telegram_id, status, joined_at, left_at, "
+            "updated_at, source) VALUES (?, ?, ?, ?, ?, ?, ?) "
+            "ON CONFLICT(chat_id, telegram_id) DO UPDATE SET status=excluded.status, "
+            "joined_at=excluded.joined_at, left_at=excluded.left_at, "
+            "updated_at=excluded.updated_at, source=excluded.source",
+            (chat_id, telegram_id, status, resolved_joined_at, resolved_left_at, now, source),
+        )
+        await db.commit()
+
+
+async def log_chat_event(chat_id: int, telegram_id: int, event: str) -> None:
+    """`event` — `join`/`leave`/`kick`. Только id и код события — никакого текста (D-9)."""
+    ts = msk_now().strftime("%Y-%m-%d %H:%M:%S")
+    async with _connect() as db:
+        await db.execute(
+            "INSERT INTO chat_events (chat_id, telegram_id, event, ts) VALUES (?, ?, ?, ?)",
+            (chat_id, telegram_id, event, ts),
+        )
+        await db.commit()
+
+
+async def bump_chat_activity(chat_id: int, telegram_id: int, *, reply: bool, media: bool) -> None:
+    """UPSERT счётчиков за СЕГОДНЯ (по Москве). Текст сообщения сюда не попадает вовсе —
+    только факт (D-9)."""
+    day = msk_now().strftime("%Y-%m-%d")
+    async with _connect() as db:
+        await db.execute(
+            "INSERT INTO chat_activity (chat_id, telegram_id, day, messages, replies, media) "
+            "VALUES (?, ?, ?, 1, ?, ?) "
+            "ON CONFLICT(chat_id, telegram_id, day) DO UPDATE SET "
+            "messages = messages + 1, replies = replies + excluded.replies, "
+            "media = media + excluded.media",
+            (chat_id, telegram_id, day, 1 if reply else 0, 1 if media else 0),
+        )
+        await db.commit()
+
+
+async def chat_member_ids(chat_id: int) -> set[int]:
+    """Множество telegram_id, реально присутствующих (`CHAT_PRESENT_STATUSES`) в чате."""
+    async with _connect() as db:
+        async with db.execute(
+            f"SELECT telegram_id FROM chat_members WHERE chat_id = ? "
+            f"AND status IN ({_CHAT_PRESENT_PLACEHOLDERS})",
+            (chat_id, *CHAT_PRESENT_STATUSES),
+        ) as cursor:
+            rows = await cursor.fetchall()
+    return {row[0] for row in rows}
+
+
+async def chat_member_row(chat_id: int, telegram_id: int) -> dict | None:
+    async with _connect() as db:
+        db.row_factory = aiosqlite.Row
+        async with db.execute(
+            "SELECT * FROM chat_members WHERE chat_id = ? AND telegram_id = ?",
+            (chat_id, telegram_id),
+        ) as cursor:
+            row = await cursor.fetchone()
+    return dict(row) if row else None
+
+
+async def stale_chat_member_candidates(chat_id: int, telegram_ids: list[int],
+                                        older_than_ts: str) -> list[int]:
+    """Кому из `telegram_ids` нужна сверка `getChatMember`: нет записи в `chat_members` ВООБЩЕ
+    ИЛИ `updated_at` старше `older_than_ts` (строки формата `%Y-%m-%d %H:%M:%S` сравнимы
+    лексикографически). Нужна периодической сверке (`services/chat_tracking.refresh_chat`)."""
+    if not telegram_ids:
+        return []
+    async with _connect() as db:
+        placeholders = ",".join("?" for _ in telegram_ids)
+        async with db.execute(
+            f"SELECT telegram_id, updated_at FROM chat_members WHERE chat_id = ? "
+            f"AND telegram_id IN ({placeholders})",
+            (chat_id, *telegram_ids),
+        ) as cursor:
+            rows = await cursor.fetchall()
+    known = {row[0]: row[1] for row in rows}
+    return [
+        tid for tid in telegram_ids
+        if tid not in known or not known[tid] or known[tid] < older_than_ts
+    ]
+
+
+async def chat_counts(chat_id: int, city_scope: tuple | None) -> dict:
+    """Четыре сходящихся числа экрана «💬 Чат»: `approved` (одобрено в этом скоупе города),
+    `in_chat`/`not_in_chat` (из них — в чате / не в чате) и `unknown_members` (присутствующие
+    в чате `chat_members`, которых нет в `users` вовсе — «в чате, но не зарегистрированы»).
+    `city_scope` — дескриптор `cities.city_scope(...)`, тот же приём, что у `_city_clause`
+    везде (`db.py` не импортирует `cities` — цикл)."""
+    frag, city_params = _city_clause(city_scope, "u.event_city")
+    where_city = f" AND {frag}" if frag else ""
+    async with _connect() as db:
+        async with db.execute(
+            f"SELECT COUNT(*) FROM users u WHERE u.status = 'approved'{where_city}",
+            city_params,
+        ) as cursor:
+            approved = (await cursor.fetchone())[0]
+        async with db.execute(
+            f"SELECT COUNT(*) FROM users u WHERE u.status = 'approved'{where_city} "
+            "AND EXISTS (SELECT 1 FROM chat_members cm WHERE cm.chat_id = ? "
+            f"AND cm.telegram_id = u.telegram_id AND cm.status IN ({_CHAT_PRESENT_PLACEHOLDERS}))",
+            (*city_params, chat_id, *CHAT_PRESENT_STATUSES),
+        ) as cursor:
+            in_chat = (await cursor.fetchone())[0]
+        async with db.execute(
+            "SELECT COUNT(*) FROM chat_members cm WHERE cm.chat_id = ? "
+            f"AND cm.status IN ({_CHAT_PRESENT_PLACEHOLDERS}) "
+            "AND NOT EXISTS (SELECT 1 FROM users u WHERE u.telegram_id = cm.telegram_id)",
+            (chat_id, *CHAT_PRESENT_STATUSES),
+        ) as cursor:
+            unknown_members = (await cursor.fetchone())[0]
+    return {
+        "approved": approved,
+        "in_chat": in_chat,
+        "not_in_chat": approved - in_chat,
+        "unknown_members": unknown_members,
+    }
+
+
+async def chat_activity_totals(chat_id: int) -> dict:
+    """Сумма `messages` за СЕГОДНЯ и за последние 7 дней (по Москве, включительно) — нужна
+    `/chat_stats` (`handlers/group_chat.py`), чтобы админ, разбирающийся прямо в группе, не
+    шёл за этими цифрами в бота отдельно."""
+    today = msk_now().strftime("%Y-%m-%d")
+    week_ago = (msk_now() - timedelta(days=6)).strftime("%Y-%m-%d")
+    async with _connect() as db:
+        async with db.execute(
+            "SELECT COALESCE(SUM(messages), 0) FROM chat_activity WHERE chat_id = ? AND day = ?",
+            (chat_id, today),
+        ) as cursor:
+            today_total = (await cursor.fetchone())[0]
+        async with db.execute(
+            "SELECT COALESCE(SUM(messages), 0) FROM chat_activity WHERE chat_id = ? AND day >= ?",
+            (chat_id, week_ago),
+        ) as cursor:
+            week_total = (await cursor.fetchone())[0]
+    return {"today": today_total, "week": week_total}
+
+
+async def purge_chat_data(chat_id: int) -> None:
+    """Отвязка чата из админки (задача 2): удаляет строки трёх таблиц по этому чату. Сам
+    Telegram-чат и люди в нём не трогаются — это только локальные данные учёта."""
+    async with _connect() as db:
+        await db.execute("DELETE FROM chat_members WHERE chat_id = ?", (chat_id,))
+        await db.execute("DELETE FROM chat_activity WHERE chat_id = ?", (chat_id,))
+        await db.execute("DELETE FROM chat_events WHERE chat_id = ?", (chat_id,))
+        await db.commit()
 
 
 # ── Phase 4: consent acceptances (CONS-01/02, D-02) ──────────────────────────

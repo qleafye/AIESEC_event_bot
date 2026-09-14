@@ -7,7 +7,7 @@ from aiogram import Bot, Dispatcher
 from aiogram.fsm.storage.memory import MemoryStorage
 from config import config
 from database.db import init_db, get_setting, set_setting
-from handlers import registration, user_actions, admin, payment, polls, uat_seed
+from handlers import registration, user_actions, admin, payment, polls, uat_seed, group_chat
 from services.reminders import pending_reminder_loop
 from services.scheduler import init_scheduler
 from services.allowlist import warm_allowlist_if_gating_on
@@ -376,6 +376,16 @@ async def main():
     # на CapabilityMiddleware (deny-by-default admin_caps отрезал бы тестера-делегата без
     # ролей навсегда) и перехватывает /uat раньше state-хендлеров registration.router — иначе
     # тестер, зависший посреди своей анкеты, не смог бы сбросить себя сам.
+    # Квик 260914-rgr (RGR-01..07): свой роутер учёта чата делегатов — ПЕРВЫМ, раньше
+    # /uat/admin/остальных. Причина не «группа важнее личного», а техническая: он
+    # фильтрован по `chat.type in {group, supergroup}` и заканчивается catch-all'ом
+    # группового сообщения (D-4) — личные апдейты проходят сквозь него насквозь, а
+    # групповые дальше НЕ идут, поэтому личные роутеры в группах и молчат без единой
+    # правки их собственных фильтров. Регистрация `my_chat_member`/`chat_member`
+    # observer'ов здесь — она же и включает эти `allowed_updates` (aiogram собирает их из
+    # зарегистрированных наблюдателей, тот же приём, что `polls.router`, закреплено
+    # tests/test_polls_260822.py).
+    dp.include_router(group_chat.router)
     dp.include_router(uat_seed.router)
     dp.include_router(admin.router) # Admin first to intercept commands
     dp.include_router(payment.router)  # payment callbacks/states checked before registration
