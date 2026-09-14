@@ -1297,11 +1297,24 @@ async def party_sheet_row(data: dict, city_code: str | None = None) -> list:
 PARTY_SHEET_TAB_DEFAULT = "Party"
 
 
-async def append_to_party_sheet(data: list):
+async def append_to_party_sheet(data: list, city_code: str | None = None):
     """D-11: tab name resolved from the admin-configurable party_sheet_tab setting (added in
-    plan 05-03) with a hardcoded fallback — same idiom as services/allowlist.py's DEFAULT_TAB."""
+    plan 05-03) with a hardcoded fallback — same idiom as services/allowlist.py's DEFAULT_TAB.
+
+    Квик 260914-k74 (T2): заголовки вычисляются здесь (не в reg_finalize) и передаются в
+    append_to_named_sheet, чтобы вкладка, созданная первым аппендом, получила строку заголовков
+    ДО первой строки данных — иначе _status_col_index не находит колонку «Статус» и статусы
+    одобренных не проставляются (инцидент 13.09, «СПб Акция»). Дефолт `city_code=None`
+    корректен: append_to_party_sheet достижим только по ветке `append_fn(row)` в reg_finalize,
+    которая берётся ровно тогда, когда city_row_tab вернул None — а по инварианту докстринга
+    sheet_city_code в этих же трёх случаях город тоже None."""
     tab = await get_setting("party_sheet_tab") or PARTY_SHEET_TAB_DEFAULT
-    await append_to_named_sheet(tab, data)
+    try:
+        headers = await party_sheet_headers(city_code)
+    except Exception as e:
+        logger.warning(f"append_to_party_sheet: header calc failed (appending without headers): {e}")
+        headers = None
+    await append_to_named_sheet(tab, data, headers)
 
 
 # --- Phase 7 (SHORT-02, plan 07-02): short-track worksheet tab ------------------------------
@@ -1352,11 +1365,19 @@ async def short_sheet_row(data: dict, city_code: str | None = None) -> list:
 SHORT_SHEET_TAB_DEFAULT = "Краткая"
 
 
-async def append_to_short_sheet(data: list):
+async def append_to_short_sheet(data: list, city_code: str | None = None):
     """Same idiom as append_to_party_sheet: tab name resolved from the admin-configurable
-    short_sheet_tab setting with a hardcoded fallback."""
+    short_sheet_tab setting with a hardcoded fallback; headers passed through для того же
+    манёвра с заголовком при первом аппенде (см. докстринг append_to_party_sheet). Дефолт
+    `city_code=None` корректен по той же причине — достижим только когда city_row_tab вернул
+    None."""
     tab = await get_setting("short_sheet_tab") or SHORT_SHEET_TAB_DEFAULT
-    await append_to_named_sheet(tab, data)
+    try:
+        headers = await short_sheet_headers(city_code)
+    except Exception as e:
+        logger.warning(f"append_to_short_sheet: header calc failed (appending without headers): {e}")
+        headers = None
+    await append_to_named_sheet(tab, data, headers)
 
 
 def _sheet_dispatch(participant_type: str | None) -> tuple:
@@ -1375,6 +1396,18 @@ def _sheet_dispatch(participant_type: str | None) -> tuple:
     if _is_short_track(participant_type):
         return short_sheet_row, append_to_short_sheet
     return active_sheet_row, append_to_sheet
+
+
+def _sheet_headers_fn(participant_type: str | None):
+    """Резолвер функции заголовков для того же трека, что и _sheet_dispatch — ТЕМ ЖЕ порядком
+    проверок (party -> short -> main): порядок load-bearing, второй раз правило не дублируем,
+    см. докстринг _sheet_dispatch. Нужен reg_finalize, чтобы заголовки для именованной вкладки
+    вычислялись один раз на путь (квик 260914-k74, T2)."""
+    if _is_party_track(participant_type):
+        return party_sheet_headers
+    if _is_short_track(participant_type):
+        return short_sheet_headers
+    return active_sheet_headers
 
 
 # --- Phase 07.1 (CITY-02, plan 07.1-02): city selects the TAB, track selects the COLUMNS ----

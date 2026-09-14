@@ -870,6 +870,12 @@ async def rebuild_main_sheet(headers: list[str], rows: list[list]) -> int:
 _named_sheets: dict[str, object] = {}
 _named_sheets_lock = threading.Lock()
 
+# Квик 260914-k74: отметка «заголовок этой вкладки уже сверен в этом процессе» — одно add/один
+# lookup по set, отдельный лок не нужен (тот же посыл, что у fast-path чтения _named_sheets
+# выше). Сбрасывается вместе с кэшем листа в _reset_named_sheet_cache — иначе после
+# пересоздания воркшита заголовок больше никогда не проверится.
+_header_checked_tabs: set[str] = set()
+
 
 def _get_named_sheet(tab_name: str):
     """Lazy double-checked-lock cache keyed by tab name (mirrors _get_sheet). Auto-creates the
@@ -891,19 +897,36 @@ def _get_named_sheet(tab_name: str):
 
 def _reset_named_sheet_cache(tab_name: str):
     _named_sheets.pop(tab_name, None)
+    _header_checked_tabs.discard(tab_name)
 
 
 def _append_to_named_sheet_sync(tab_name: str, data: list):
     _get_named_sheet(tab_name).append_row(data)
 
 
-async def append_to_named_sheet(tab_name: str, data: list):
+async def append_to_named_sheet(tab_name: str, data: list, headers: list[str] | None = None):
     """Fire-and-forget row append to a named (non-main) tab. Mirrors append_to_sheet's
     retry/backoff loop verbatim — same MAX_RETRIES/RETRY_DELAYS, same fail-soft posture.
-    WR-06: log only the id + tab name, never the full row (party rows carry phone/allergy PII)."""
+    WR-06: log only the id + tab name, never the full row (party rows carry phone/allergy PII).
+
+    Инцидент 13.09: короткая форма Питера создала именованную вкладку «СПб Акция» без строки
+    заголовков (_get_named_sheet делает add_worksheet и заголовок не пишет вовсе) — первая
+    строка данных легла в строку 1, _status_col_index вернул -1, статусы 27 одобренных не
+    проставились (20 WARNING «update_status_in_sheet … not found on tab» в логах). `headers`
+    (опционален, `None` — прежнее поведение байт-в-байт) сверяется РОВНО один раз на вкладку за
+    процесс: успешная сверка отмечается в `_header_checked_tabs`, сбой сверки — fail-soft,
+    отметка не ставится, но строка данных всё равно аппендится."""
     if not config.GOOGLE_SHEET_ID or not config.GOOGLE_CREDENTIALS_FILE:
         logger.warning(f"Google Sheet ID or Credentials not set. Skipping named sheet export (tab={tab_name!r}).")
         return
+
+    if headers and tab_name not in _header_checked_tabs:
+        try:
+            await asyncio.to_thread(_ensure_named_header_sync, tab_name, headers)
+            _header_checked_tabs.add(tab_name)
+        except Exception as e:
+            logger.warning(f"append_to_named_sheet: header check failed for tab {tab_name!r} (appending row anyway): {e}")
+            _reset_named_sheet_cache(tab_name)
 
     for attempt in range(MAX_RETRIES):
         try:
