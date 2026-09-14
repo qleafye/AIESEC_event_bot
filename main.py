@@ -386,6 +386,11 @@ async def main():
     # зарегистрированных наблюдателей, тот же приём, что `polls.router`, закреплено
     # tests/test_polls_260822.py).
     dp.include_router(group_chat.router)
+    # Правка 15.09: коллбэк выбора города (`chatbind:*`) теперь приходит ИЗ ЛИЧКИ (бот пишет
+    # промоутеру/ADMIN_IDS, а не в саму группу) — свой лёгкий роутер, отфильтрованный по
+    # `chat.type == "private"`, мимо `admin.router`/`CapabilityMiddleware` (см. докстринг
+    # `handlers/group_chat.py::private_router`).
+    dp.include_router(group_chat.private_router)
     dp.include_router(uat_seed.router)
     dp.include_router(admin.router) # Admin first to intercept commands
     dp.include_router(payment.router)  # payment callbacks/states checked before registration

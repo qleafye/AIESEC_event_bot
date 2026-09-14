@@ -352,11 +352,12 @@ TOGGLE_SECTION: dict[str, str] = {
     "city_options_chips_enabled": "form",
     "city_options_search_enabled": "form",
     "city_options_other_allowed": "form",
-    # Квик 260914-rgr (D-3): главный тумблер учёта чата делегатов — строка ("screen", …) в
-    # разделе бота «comms» («📢 Общение»), которого нет среди SECTION_GROUPS (см. комментарий
-    # выше про «comms»). Ближайший веб-раздел — "manage": там уже живут остальные ключи семьи
-    # чата (chat_refresh_minutes/delegate_chat_id/delegate_chat_title, group="system") —
-    # тумблер остаётся рядом со своими соседями хотя бы в Mini App.
+    # Правка 15.09 (владелец, «привязка через личку админа»): главный тумблер учёта чата
+    # делегатов — строка ("toggle", …) раздела бота «manage» («🔧 Управление») в
+    # `admin_sections.SECTIONS` (экран «💬 Чат» снесён целиком). "manage" — тот же веб-раздел,
+    # где уже живут остальные ключи семьи чата (chat_refresh_minutes/delegate_chat_id/
+    # delegate_chat_title, group="system") — тумблер остаётся рядом со своими соседями и в
+    # боте, и в Mini App.
     "chat_tracking_enabled": "manage",
 }
 

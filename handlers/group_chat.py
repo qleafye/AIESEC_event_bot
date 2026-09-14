@@ -19,29 +19,35 @@ Telegram (aiogram собирает `allowed_updates` из зарегистрир
 `registration.router`, не идут (D-4): личные хендлеры в группе больше не отвечают.
 
 D-9 — железное правило всего модуля: текст сообщения из группы НИГДЕ не читается и не
-логируется (кроме `/chat_stats`, который сам ничего пользовательского не печатает). Каждый
-хендлер ниже работает только с id/статусами/типами вложений, никогда с `message.text`/
-`message.caption`.
+логируется. Каждый хендлер ниже работает только с id/статусами/типами вложений, никогда с
+`message.text`/`message.caption`.
+
+Правка 15.09 (владелец, «привязка через личку админа»): бот БОЛЬШЕ НИКОГДА не пишет В ГРУППУ —
+ни подтверждение привязки, ни вопрос о городе, ни `/chat_stats` (команда снесена целиком).
+Вместо этого `on_bot_membership_changed` пишет ЛИЧНО тому, кто повысил бота до администратора
+(`event.from_user`); если личка не доставилась (человек не открывал бота ни разу) — тот же
+текст/клавиатура уходят веером в `config.ADMIN_IDS`, и привязывает первый ответивший. Сам
+выбор города (`chatbind:{code}:{chat_id}`) — коллбэк из ЛИЧНОГО чата, поэтому живёт в отдельном
+`private_router` этого же модуля (не на `router` выше: тот целиком отфильтрован по
+`chat.type in {group, supergroup}`), но так же мимо `admin.router`/`CapabilityMiddleware` — то
+же обоснование, что у группового `router`: получатель личного сообщения с кнопками уже
+перепроверен `is_bot_admin_user` до отправки, а капа привязывала бы ту же проверку под другим
+именем, не независимый гейт.
 """
 import logging
 
 from aiogram import F, Router, types, Bot
-from aiogram.filters import Command
 from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
 
-from cities import city_codes, city_label, cities_module_on, enabled_cities, city_scope
+from cities import city_codes, city_label, cities_module_on, enabled_cities
 from config import config
 from database.db import (
     CHAT_PRESENT_STATUSES,
     bump_chat_activity,
-    chat_activity_totals,
-    chat_counts,
-    chat_member_ids,
     log_chat_event,
     upsert_chat_member,
 )
 from services import chat_tracking
-from settings_schema import get_setting_typed
 
 logger = logging.getLogger(__name__)
 
@@ -50,13 +56,22 @@ router = Router()
 router.message.filter(F.chat.type.in_({"group", "supergroup"}))
 router.my_chat_member.filter(F.chat.type.in_({"group", "supergroup"}))
 router.chat_member.filter(F.chat.type.in_({"group", "supergroup"}))
-router.callback_query.filter(F.message.chat.type.in_({"group", "supergroup"}))
 
 _MEDIA_ATTRS = ("photo", "video", "document", "voice", "video_note", "animation", "sticker", "audio")
 
 
-async def _event_name() -> str:
-    return await get_setting_typed("event_name") or "мероприятие"
+async def _dm(bot: Bot, user_id: int, text: str, reply_markup=None) -> bool:
+    """Личное сообщение с fail-soft: неудача (человек не открывал бота, заблокировал его и
+    т.п.) не рвёт вызывающий хендлер, только сигналит `False` — вызывающий сам решает, звать
+    ли фолбэк. Лог — только id получателя и класс исключения, без текста сообщения (тот
+    всегда наш собственный, не делегатский, но дисциплина «личка — не для чужих глаз в логе»
+    держится одинаково для всех личных сообщений этого модуля)."""
+    try:
+        await bot.send_message(user_id, text, reply_markup=reply_markup)
+        return True
+    except Exception as e:
+        logger.info("group_chat._dm: не удалось написать id=%s: %s: %s", user_id, type(e).__name__, e)
+        return False
 
 
 @router.my_chat_member()
@@ -64,7 +79,8 @@ async def on_bot_membership_changed(event: types.ChatMemberUpdated, bot: Bot):
     """Единственная точка, где привязывается чат: срабатывает на ЛЮБОЕ изменение статуса
     самого бота в группе, интересуют только переходы в «administrator» (привязка) и
     в «left»/«kicked» (авто-снятие, данные не трогаем — см. докстринг `chat_tracking.
-    unbind_chat`)."""
+    unbind_chat`). Ни один из веток НИКОГДА не пишет В САМ ЧАТ (`event.chat.id`) — только в
+    личку промоутеру/`config.ADMIN_IDS` (правка 15.09)."""
     if event.new_chat_member.user.id != bot.id:
         return  # изменился статус не бота, а другого участника — это дело chat_member ниже
 
@@ -76,29 +92,37 @@ async def on_bot_membership_changed(event: types.ChatMemberUpdated, bot: Bot):
                 "group_chat: администратором бота сделал id=%s (без права settings) в чате id=%s — привязка не выполнена",
                 event.from_user.id, event.chat.id,
             )
-            return
-        event_name = await _event_name()
+            return  # D-1: ни личка, ни группа не получают ни единого сообщения
+
+        title = event.chat.title or "чат"
         if not await cities_module_on():
-            await chat_tracking.bind_chat(event.from_user.id, event.chat.id, event.chat.title or "", None)
-            try:
-                await bot.send_message(event.chat.id, f"Чат подключён к «{event_name}».")
-            except Exception as e:
-                logger.warning("group_chat: не удалось отправить подтверждение привязки в чат id=%s: %s", event.chat.id, e)
+            await chat_tracking.bind_chat(event.from_user.id, event.chat.id, title, None)
+            text = f"Бот добавлен в чат «{title}» и подключён к событию."
+            if not await _dm(bot, event.from_user.id, text):
+                for admin_id in config.ADMIN_IDS:
+                    await _dm(bot, admin_id, text)
+                logger.info(
+                    "group_chat: личка промоутеру id=%s не доставлена, подтверждение привязки "
+                    "чата id=%s разослано ADMIN_IDS", event.from_user.id, event.chat.id,
+                )
             return
 
         codes = await enabled_cities()
         kb = InlineKeyboardMarkup(inline_keyboard=[
-            [InlineKeyboardButton(text=await city_label(c["code"]), callback_data=f"chatbind:{c['code']}")]
+            [InlineKeyboardButton(
+                text=await city_label(c["code"]),
+                callback_data=f"chatbind:{c['code']}:{event.chat.id}",
+            )]
             for c in codes
         ])
-        try:
-            await bot.send_message(
-                event.chat.id,
-                f"Чат подключён к «{event_name}». К какому городу относится?",
-                reply_markup=kb,
+        question = f"Бот добавлен в чат «{title}». К какому городу относится?"
+        if not await _dm(bot, event.from_user.id, question, reply_markup=kb):
+            for admin_id in config.ADMIN_IDS:
+                await _dm(bot, admin_id, question, reply_markup=kb)
+            logger.info(
+                "group_chat: личка промоутеру id=%s не доставлена, вопрос о городе для чата "
+                "id=%s разослан ADMIN_IDS", event.from_user.id, event.chat.id,
             )
-        except Exception as e:
-            logger.warning("group_chat: не удалось спросить город в чате id=%s: %s", event.chat.id, e)
         return
 
     if new_status in ("left", "kicked"):
@@ -108,39 +132,9 @@ async def on_bot_membership_changed(event: types.ChatMemberUpdated, bot: Bot):
             return  # бота выгнали из непривязанного чата — учёту и так нечего было делать
         await chat_tracking.unbind_chat(None, entry["city"])
         title = entry["title"] or event.chat.title or "чат"
+        text = f"⚠️ Бота убрали из чата «{title}» — привязка снята, учёт остановлен."
         for admin_id in config.ADMIN_IDS:
-            try:
-                await bot.send_message(
-                    admin_id,
-                    f"⚠️ Бота убрали из чата «{title}» — привязка снята, учёт остановлен.",
-                )
-            except Exception as e:
-                logger.warning("group_chat: не удалось уведомить admin_id=%s об отвязке: %s", admin_id, e)
-
-
-@router.callback_query(F.data.startswith("chatbind:"))
-async def on_chatbind_pick(callback: types.CallbackQuery):
-    """Инлайн-кнопки не истекают (WR-04, тот же довод, что у `event_city`/`season`/`resume`
-    в мастере рассылки) — право перепроверяется здесь, а не только в момент отрисовки
-    клавиатуры выше."""
-    if not await chat_tracking.is_bot_admin_user(callback.from_user.id):
-        await callback.answer("Привязать чат может только администратор бота.", show_alert=True)
-        return
-    code = callback.data.split(":", 1)[1]
-    if code not in city_codes():
-        await callback.answer("Этот город больше не существует в реестре.", show_alert=True)
-        return
-    chat = callback.message.chat
-    await chat_tracking.bind_chat(callback.from_user.id, chat.id, chat.title or "", code)
-    label = await city_label(code)
-    try:
-        await callback.message.edit_text(
-            f"Чат привязан к городу «{label}». Настройки — в админке бота, раздел "
-            "«📢 Общение» → «💬 Чат»."
-        )
-    except Exception as e:
-        logger.warning("group_chat: не удалось отредактировать сообщение после привязки: %s", e)
-    await callback.answer()
+            await _dm(bot, admin_id, text)
 
 
 @router.chat_member()
@@ -181,37 +175,13 @@ async def on_left_chat_member(message: types.Message):
     await log_chat_event(message.chat.id, user.id, "leave")
 
 
-@router.message(Command("chat_stats"))
-async def on_chat_stats(message: types.Message):
-    """Только для администратора бота — остальным молчит (никакого «недостаточно прав» в
-    общей группе, чтобы не подсказывать посторонним, что здесь вообще что-то настроено)."""
-    if not await chat_tracking.is_bot_admin_user(message.from_user.id):
-        return
-    chat_id = message.chat.id
-    bound = await chat_tracking.bound_chats()
-    entry = next((b for b in bound if b["chat_id"] == chat_id), None)
-    if entry is None:
-        await message.answer("Этот чат ещё не привязан к городу/событию — сводки нет.")
-        return
-    scope = city_scope(entry["city"]) if entry["city"] is not None else None
-    counts = await chat_counts(chat_id, scope)
-    member_ids = await chat_member_ids(chat_id)
-    totals = await chat_activity_totals(chat_id)
-    lines = [
-        f"👥 Участников в базе бота: {len(member_ids)}",
-        f"✅ Одобрено: {counts['approved']} · в чате {counts['in_chat']} · "
-        f"не в чате {counts['not_in_chat']}",
-        f"❓ В чате, но не зарегистрированы: {counts['unknown_members']}",
-        f"💬 Сообщений сегодня: {totals['today']} · за 7 дней: {totals['week']}",
-    ]
-    await message.answer("\n".join(lines))
-
-
 @router.message()
 async def on_group_message(message: types.Message):
     """ПОСЛЕДНИЙ хендлер роутера — catch-all. Сматчился здесь -> дальше, к личным роутерам,
     апдейт не идёт (D-4). Текст/подпись сообщения нигде не читаются (D-9) — только факт
-    наличия ответа/вложения по ИМЕНАМ полей, не по содержимому."""
+    наличия ответа/вложения по ИМЕНАМ полей, не по содержимому. Бот НИЧЕГО не отвечает в
+    группу — только считает (правка 15.09: снесён `/chat_stats`, единственный хендлер,
+    который отвечал прямо в группу)."""
     if message.from_user is None or message.from_user.is_bot:
         return
     if not await chat_tracking.tracking_on():
@@ -222,3 +192,56 @@ async def on_group_message(message: types.Message):
     reply = bool(message.reply_to_message)
     media = any(getattr(message, attr, None) for attr in _MEDIA_ATTRS)
     await bump_chat_activity(message.chat.id, message.from_user.id, reply=reply, media=media)
+
+
+# ── Личка: выбор города после сообщения от бота (правка 15.09) ──────────────────────────
+#
+# Отдельный роутер, НЕ `router` выше (тот целиком отфильтрован по `chat.type in {group,
+# supergroup}`) и НЕ `admin.router` (тот несёт `CapabilityMiddleware`, deny-by-default —
+# `handlers/admin_caps.py`): право привязать чат здесь уже перепроверено `is_bot_admin_user`
+# ДО отправки личного сообщения с кнопками, а капа поверх была бы той же самой проверкой под
+# другим именем, не независимым гейтом (тот же довод, что у группового `router` в докстринге
+# модуля).
+private_router = Router()
+private_router.callback_query.filter(F.message.chat.type == "private")
+
+
+@private_router.callback_query(F.data.startswith("chatbind:"))
+async def on_chatbind_pick(callback: types.CallbackQuery, bot: Bot):
+    """Инлайн-кнопки не истекают (WR-04, тот же довод, что у `event_city`/`season`/`resume`
+    в мастере рассылки) — право перепроверяется здесь, а не только в момент отправки личного
+    сообщения выше. `callback_data` несёт ЦЕЛЕВОЙ `chat_id` (личное сообщение может прийти
+    не только исходному промоутеру, но и веером в `config.ADMIN_IDS` — «первый ответивший
+    привязывает», сам чат-получатель коллбэка тут ни при чём)."""
+    if not await chat_tracking.is_bot_admin_user(callback.from_user.id):
+        await callback.answer("Привязать чат может только администратор бота.", show_alert=True)
+        return
+    _, code, chat_id_raw = callback.data.split(":", 2)
+    if code not in city_codes():
+        await callback.answer("Этот город больше не существует в реестре.", show_alert=True)
+        return
+    try:
+        chat_id = int(chat_id_raw)
+    except (TypeError, ValueError):
+        await callback.answer("Не удалось определить чат — добавьте бота в группу заново.", show_alert=True)
+        return
+
+    title = ""
+    try:
+        chat = await bot.get_chat(chat_id)
+        title = chat.title or ""
+    except Exception as e:
+        logger.warning("group_chat.on_chatbind_pick: не удалось получить чат id=%s: %s", chat_id, e)
+
+    await chat_tracking.bind_chat(callback.from_user.id, chat_id, title, code)
+    label = await city_label(code)
+    confirm = (
+        f"Чат «{title}» привязан к городу «{label}»."
+        if title else f"Чат привязан к городу «{label}»."
+    )
+    confirm += " Учёт можно включить в разделе «🔧 Управление» бота."
+    try:
+        await callback.message.edit_text(confirm)
+    except Exception as e:
+        logger.warning("group_chat: не удалось отредактировать сообщение после привязки: %s", e)
+    await callback.answer()

@@ -1,12 +1,19 @@
 """Квик 260914-rgr (RGR-01..07), задача 1: таблицы чата, привязка группы, учёт участников,
 групповой роутер.
 
+Правка 15.09 (владелец, «привязка через личку админа»): бот больше НИКОГДА не пишет в саму
+группу — ни подтверждение привязки, ни вопрос о городе. `on_bot_membership_changed` пишет
+ЛИЧНО промоутеру (`event.from_user`), с фолбэком на `config.ADMIN_IDS`, если личка не
+доставилась; выбор города (`chatbind:{code}:{chat_id}`) — коллбэк из ЛИЧНОГО чата, живёт в
+`group_chat.private_router`, не в `group_chat.router`.
+
 pytest-asyncio в проекте нет — async гоняется через asyncio.run(); БД — tmp_path (тот же
 приём, что в tests/test_polls_260822.py::_ready).
 """
 import asyncio
 from contextlib import contextmanager
 from datetime import datetime
+from types import SimpleNamespace
 
 from aiogram import Bot, Dispatcher, Router
 from aiogram.filters import Command
@@ -23,6 +30,7 @@ from handlers import group_chat
 from services import chat_tracking
 
 ADMIN_ID = 900701
+SECOND_ADMIN_ID = 900702
 STRANGER_ID = 900704
 CHAT_ID = -1001234567890
 BOT_ID = 777000
@@ -80,12 +88,19 @@ def _kicked_status(user: User) -> ChatMemberBanned:
 
 
 class FakeBot:
-    def __init__(self, bot_id=BOT_ID):
+    def __init__(self, bot_id=BOT_ID, fail_dm_ids=(), chat_title="Делегаты"):
         self.id = bot_id
         self.sent: list[tuple] = []
+        self.fail_dm_ids = set(fail_dm_ids)
+        self.chat_title = chat_title
 
     async def send_message(self, chat_id, text, reply_markup=None, parse_mode=None):
+        if chat_id in self.fail_dm_ids:
+            raise RuntimeError("промоутер ни разу не открывал бота")
         self.sent.append((chat_id, text, reply_markup))
+
+    async def get_chat(self, chat_id):
+        return SimpleNamespace(id=chat_id, title=self.chat_title)
 
 
 class _FakeChat:
@@ -152,9 +167,9 @@ async def _table_columns(table):
     return {row[1] for row in rows}
 
 
-# ── Привязка через my_chat_member ────────────────────────────────────────────────────────
+# ── Привязка через my_chat_member: ЛИЧКА промоутеру, НИКОГДА группа ──────────────────────
 
-def test_bind_on_admin_promotion_writes_numeric_chat_id(tmp_path):
+def test_bind_cities_off_dms_promoter_and_never_posts_to_group(tmp_path):
     _ready(tmp_path)
     bot = FakeBot()
     bot_user = User(id=bot.id, is_bot=True, first_name="Bot")
@@ -171,7 +186,48 @@ def test_bind_on_admin_promotion_writes_numeric_chat_id(tmp_path):
     assert len(chats) == 1
     assert chats[0]["chat_id"] == CHAT_ID
     assert isinstance(chats[0]["chat_id"], int)
-    assert bot.sent  # подтверждение ушло в группу
+    assert not any(chat_id == CHAT_ID for chat_id, _t, _kb in bot.sent)  # НИКОГДА в группу
+    assert any(chat_id == ADMIN_ID and "Делегаты" in text for chat_id, text, _kb in bot.sent)
+
+
+def test_bind_cities_on_asks_promoter_privately_with_city_buttons(tmp_path):
+    with _cities_on(tmp_path):
+        bot = FakeBot()
+        bot_user = User(id=bot.id, is_bot=True, first_name="Bot")
+        admin_user = User(id=ADMIN_ID, is_bot=False, first_name="Менеджер")
+        event = ChatMemberUpdated(
+            chat=Chat(id=CHAT_ID, type="supergroup", title="Делегаты"),
+            from_user=admin_user, date=datetime.now(),
+            old_chat_member=_member_status(bot_user), new_chat_member=_admin_status(bot_user),
+        )
+
+        asyncio.run(group_chat.on_bot_membership_changed(event, bot))
+
+        assert asyncio.run(chat_tracking.bound_chats()) == []  # город ещё не выбран
+        assert not any(chat_id == CHAT_ID for chat_id, _t, _kb in bot.sent)
+        dm = next(s for s in bot.sent if s[0] == ADMIN_ID)
+        assert "К какому городу относится" in dm[1]
+        flat = [btn.callback_data for row in dm[2].inline_keyboard for btn in row]
+        assert any(cd.startswith("chatbind:") and cd.endswith(f":{CHAT_ID}") for cd in flat)
+
+
+def test_bind_falls_back_to_admin_ids_when_promoter_dm_fails(tmp_path):
+    _ready(tmp_path)
+    config.ADMIN_IDS = [ADMIN_ID, SECOND_ADMIN_ID]
+    bot = FakeBot(fail_dm_ids={ADMIN_ID})
+    bot_user = User(id=bot.id, is_bot=True, first_name="Bot")
+    promoter = User(id=ADMIN_ID, is_bot=False, first_name="Менеджер")
+    event = ChatMemberUpdated(
+        chat=Chat(id=CHAT_ID, type="supergroup", title="Делегаты"),
+        from_user=promoter, date=datetime.now(),
+        old_chat_member=_member_status(bot_user), new_chat_member=_admin_status(bot_user),
+    )
+
+    asyncio.run(group_chat.on_bot_membership_changed(event, bot))
+
+    assert not any(chat_id == CHAT_ID for chat_id, _t, _kb in bot.sent)  # группа молчит
+    assert not any(chat_id == ADMIN_ID for chat_id, _t, _kb in bot.sent)  # личка промоутеру упала
+    assert any(chat_id == SECOND_ADMIN_ID for chat_id, _t, _kb in bot.sent)  # фолбэк дошёл
 
 
 def test_bind_rejected_when_promoter_is_not_bot_admin_user(tmp_path):
@@ -188,6 +244,7 @@ def test_bind_rejected_when_promoter_is_not_bot_admin_user(tmp_path):
     asyncio.run(group_chat.on_bot_membership_changed(event, bot))
 
     assert asyncio.run(chat_tracking.bound_chats()) == []
+    assert bot.sent == []  # D-1: ни личка, ни группа — ничего вообще
 
 
 def test_bot_left_chat_unbinds_and_alerts_admins(tmp_path):
@@ -207,14 +264,14 @@ def test_bot_left_chat_unbinds_and_alerts_admins(tmp_path):
     assert any(ADMIN_ID == chat_id for chat_id, _text, _kb in bot.sent)
 
 
-# ── Выбор города по chatbind: ────────────────────────────────────────────────────────────
+# ── Выбор города по chatbind: — коллбэк ИЗ ЛИЧНОГО чата (group_chat.private_router) ──────
 
 def test_chatbind_pick_writes_per_city_key_not_global(tmp_path):
     with _cities_on(tmp_path):
-        chat = _FakeChat(CHAT_ID)
-        cb = FakeCallback("chatbind:spb", ADMIN_ID, chat)
+        bot = FakeBot()
+        cb = FakeCallback(f"chatbind:spb:{CHAT_ID}", ADMIN_ID, _FakeChat(ADMIN_ID))
 
-        asyncio.run(group_chat.on_chatbind_pick(cb))
+        asyncio.run(group_chat.on_chatbind_pick(cb, bot))
 
         raw = asyncio.run(db.get_setting(cities.per_city_key("delegate_chat_id", "spb")))
         assert raw == str(CHAT_ID)
@@ -224,10 +281,10 @@ def test_chatbind_pick_writes_per_city_key_not_global(tmp_path):
 
 def test_chatbind_pick_rejects_unknown_city(tmp_path):
     with _cities_on(tmp_path):
-        chat = _FakeChat(CHAT_ID)
-        cb = FakeCallback("chatbind:not-a-real-city", ADMIN_ID, chat)
+        bot = FakeBot()
+        cb = FakeCallback(f"chatbind:not-a-real-city:{CHAT_ID}", ADMIN_ID, _FakeChat(ADMIN_ID))
 
-        asyncio.run(group_chat.on_chatbind_pick(cb))
+        asyncio.run(group_chat.on_chatbind_pick(cb, bot))
 
         assert cb.answers and cb.answers[0][1] is True  # show_alert
         assert asyncio.run(chat_tracking.bound_chats()) == []
@@ -235,13 +292,27 @@ def test_chatbind_pick_rejects_unknown_city(tmp_path):
 
 def test_chatbind_pick_rejects_non_admin_user(tmp_path):
     with _cities_on(tmp_path):
-        chat = _FakeChat(CHAT_ID)
-        cb = FakeCallback("chatbind:spb", STRANGER_ID, chat)
+        bot = FakeBot()
+        cb = FakeCallback(f"chatbind:spb:{CHAT_ID}", STRANGER_ID, _FakeChat(STRANGER_ID))
 
-        asyncio.run(group_chat.on_chatbind_pick(cb))
+        asyncio.run(group_chat.on_chatbind_pick(cb, bot))
 
         assert cb.answers and cb.answers[0][1] is True
         assert asyncio.run(chat_tracking.bound_chats()) == []
+
+
+def test_chatbind_pick_by_a_different_admin_id_than_the_promoter_still_binds(tmp_path):
+    """Фолбэк-веер уходит ВСЕМ `ADMIN_IDS` — привязывает первый ответивший, не обязательно
+    исходный промоутер (`chat_id` едет В callback_data, а не берётся из чата коллбэка)."""
+    with _cities_on(tmp_path):
+        config.ADMIN_IDS = [ADMIN_ID, SECOND_ADMIN_ID]
+        bot = FakeBot()
+        cb = FakeCallback(f"chatbind:spb:{CHAT_ID}", SECOND_ADMIN_ID, _FakeChat(SECOND_ADMIN_ID))
+
+        asyncio.run(group_chat.on_chatbind_pick(cb, bot))
+
+        raw = asyncio.run(db.get_setting(cities.per_city_key("delegate_chat_id", "spb")))
+        assert raw == str(CHAT_ID)
 
 
 # ── D-7: без фолбэка на глобальный ключ при включённом модуле городов ────────────────────

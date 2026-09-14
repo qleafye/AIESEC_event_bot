@@ -21,6 +21,7 @@ from dashboard.queries import (
     Scope,
     chat_bindings,
     chat_joins_daily,
+    chat_last_sync_at,
     chat_messages_daily,
     chat_not_joined,
     chat_overview,
@@ -156,6 +157,24 @@ def test_chat_joins_and_messages_daily_are_dense_calendars(tmp_path):
     assert messages["2026-01-03"] == 1
 
 
+def test_chat_last_sync_at_reads_max_updated_at(tmp_path):
+    """Владелец 15.09: «последняя сверка» — тот же MAX(`updated_at`), что раньше показывал
+    снесённый экран «💬 Чат» в боте (`database.db.chat_last_sync_at`), независимая read-only
+    копия для дашборда (D-17: read-only периметр, не импортирует `database/db.py`)."""
+    path = _use_tmp_db(tmp_path)
+    _seed(
+        chat_members=[
+            {"chat_id": CHAT_ID, "telegram_id": 1, "status": "member", "source": "test",
+             "updated_at": "2026-01-01 10:00:00"},
+            {"chat_id": CHAT_ID, "telegram_id": 2, "status": "member", "source": "test",
+             "updated_at": "2026-01-05 12:00:00"},
+        ],
+    )
+    with dash_db.read_conn(path) as conn:
+        assert chat_last_sync_at(conn, CHAT_ID) == "2026-01-05 12:00:00"
+        assert chat_last_sync_at(conn, SPB_CHAT_ID) is None
+
+
 def test_chat_not_joined_excludes_those_present(tmp_path):
     """Отклонение от планового текста («ФИО, @ник»): `chat_not_joined` отдаёт telegram_id,
     НЕ full_name/username — dashboard/queries.py под жёстким сторожем «без ПД» (D-17), см.
@@ -254,7 +273,8 @@ def test_chat_route_with_stats_capability_returns_page_with_both_canvases(tmp_pa
             {"telegram_id": 1, "full_name": "А", "status": "approved", "event_city": None,
              "approved_at": "2026-01-01 10:00:00"},
         ],
-        chat_members=[{"chat_id": CHAT_ID, "telegram_id": 1, "status": "member", "source": "test"}],
+        chat_members=[{"chat_id": CHAT_ID, "telegram_id": 1, "status": "member", "source": "test",
+                       "updated_at": "2026-01-05 09:30:00"}],
         chat_events=[{"chat_id": CHAT_ID, "telegram_id": 1, "event": "join", "ts": "2026-01-01 10:00:00"}],
         chat_activity=[
             {"chat_id": CHAT_ID, "telegram_id": 1, "day": "2026-01-01", "messages": 3, "replies": 0, "media": 0},
@@ -269,6 +289,7 @@ def test_chat_route_with_stats_capability_returns_page_with_both_canvases(tmp_pa
     assert "Чат делегатов" in resp.text
     assert 'id="joins-chart-1"' in resp.text
     assert 'id="messages-chart-1"' in resp.text
+    assert "Последняя сверка: 2026-01-05 09:30:00" in resp.text
 
 
 def test_manager_bound_to_city_sees_only_own_city_numbers(tmp_path):
@@ -312,6 +333,25 @@ def test_chat_route_without_bindings_shows_instruction(tmp_path):
 
     assert resp.status_code == 200
     assert "ещё не подключён" in resp.text
+
+
+def test_chat_route_shows_never_synced_when_no_chat_members_rows(tmp_path):
+    path = _use_tmp_db(tmp_path)
+    _seed(
+        staff=[(STATS_MANAGER_ID, "reg_manager", None)],
+        settings={
+            "role_caps_reg_manager": "moderate_reg;stats",
+            "delegate_chat_id": str(CHAT_ID),
+            "delegate_chat_title": "Общий чат",
+        },
+    )
+    client = _client(_cfg(path))
+    _login(client, STATS_MANAGER_ID)
+
+    resp = client.get("/chat")
+
+    assert resp.status_code == 200
+    assert "Последняя сверка: ещё не было" in resp.text
 
 
 def test_chat_route_redirects_to_compare_in_multi_mode(tmp_path):

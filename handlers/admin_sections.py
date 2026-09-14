@@ -141,9 +141,6 @@ SECTIONS: list[tuple[str, str, list[tuple]]] = [
     ("comms", "📢 Общение", [
         ("op", "admin_broadcast"),
         ("op", "admin_polls"),
-        # Квик 260914-rgr (D-2): рядом с рассылкой — главная ценность экрана для менеджера
-        # это дожать не вступивших, а не «настроить интеграцию».
-        ("screen", "admin_chat", "💬 Чат делегатов"),
     ]),
     ("game", "🎮 Геймификация", [
         ("op", "admin_game_tasks"),
@@ -178,6 +175,13 @@ SECTIONS: list[tuple[str, str, list[tuple]]] = [
         # визарда, потому что стейл-клавиатура в чате живёт вечно.
         ("screen_admin", "admin_season_reset", "🔄 Новый сезон"),
         ("screen", "admin_season_import", "📥 Импорт прошлого события"),
+        # Правка 15.09 (владелец, «привязка через личку админа»): экран «💬 Чат» снесён —
+        # тумблер учёта переехал сюда, в общий список тумблеров раздела, тем же способом,
+        # что payment_enabled/consent_enabled выше по файлу (та же общая функция
+        # `settings_toggle_rows`/`_toggle_module_setting`). Состояние привязки (какой чат к
+        # какому городу) видно строкой в тексте группы «🔧 Система» — id/название чата
+        # руками не вводятся, экрана для них по-прежнему нет (D-11).
+        ("toggle", "toggle_chat_tracking_enabled"),
         ("group", "system"),
     ]),
 ]
@@ -539,7 +543,3 @@ from handlers import admin_lookup  # noqa: E402,F401
 # Квик 260914-rgq (RGQ-01): шов «📇 Список заявок» — импорт СРАЗУ ПОСЛЕ admin_lookup, тот же
 # хвостовой приём (golden snapshot: tests/test_refac_snapshot_260816.py).
 from handlers import admin_app_list  # noqa: E402,F401
-
-# Квик 260914-rgr (RGR-01..07, задача 2): шов «💬 Чат» — импорт СРАЗУ ПОСЛЕ admin_app_list,
-# тот же хвостовой приём (golden snapshot: tests/test_refac_snapshot_260816.py).
-from handlers import admin_chat  # noqa: E402,F401
