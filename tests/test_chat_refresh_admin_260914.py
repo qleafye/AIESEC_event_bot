@@ -1,4 +1,9 @@
-"""Квик 260914-rgr (RGR-01..07), задача 2: периодическая сверка состава + экран «💬 Чат».
+"""Квик 260914-rgr (RGR-01..07), задача 2: периодическая сверка состава.
+
+Правка 15.09 (владелец, «привязка через личку админа»): экран «💬 Чат» снесён целиком
+(`handlers/admin_chat.py` удалён) — тесты того экрана ниже удалены вместе с ним. Сверка
+состава (`chat_tracking.refresh_chat`/`refresh_all_chats`) и джоба планировщика — не
+затронуты: манула «🔄 Сверить сейчас» больше нет, но плановая джоба и её тумблер остаются.
 
 pytest-asyncio в проекте нет — async гоняется через asyncio.run(); БД — tmp_path.
 """
@@ -52,22 +57,6 @@ class FakeBot:
 
     async def send_message(self, chat_id, text, reply_markup=None, parse_mode=None):
         self.sent.append((chat_id, text))
-
-
-class _FakeMsg:
-    async def edit_text(self, text, parse_mode=None, reply_markup=None):
-        self.text = text
-
-
-class FakeCallback:
-    def __init__(self, data, user_id):
-        self.data = data
-        self.from_user = SimpleNamespace(id=user_id)
-        self.message = _FakeMsg()
-        self.answers: list[tuple] = []
-
-    async def answer(self, text=None, show_alert=False):
-        self.answers.append((text, show_alert))
 
 
 # ── refresh_chat: батчи/пауза/ошибки/потолок ─────────────────────────────────────────────
@@ -137,84 +126,15 @@ def test_chat_membership_refresh_job_silent_when_disabled(tmp_path):
     assert bot.calls == []
 
 
-# ── экран «💬 Чат» ────────────────────────────────────────────────────────────────────────
+# ── Правка 15.09: тумблер учёта переехал в общий раздел «🔧 Управление» ──────────────────
 
-def test_render_chat_screen_without_bindings_gives_instruction(tmp_path):
-    _ready(tmp_path)
-    from handlers import admin_chat
-
-    text, _kb = asyncio.run(admin_chat.render_chat_screen(ADMIN_ID))
-
-    assert "Добавьте бота в группу делегатов" in text
-
-
-def test_render_chat_screen_with_binding_shows_four_matching_numbers(tmp_path):
-    _ready(tmp_path)
-    from handlers import admin_chat
-
-    asyncio.run(chat_tracking.bind_chat(ADMIN_ID, CHAT_ID, "Делегаты", None))
-    ids = asyncio.run(_seed_approved(3))
-    asyncio.run(db.upsert_chat_member(CHAT_ID, ids[0], "member", source="test"))
-    asyncio.run(db.upsert_chat_member(CHAT_ID, 999999, "member", source="test"))  # не зарегистрирован
-
-    text, _kb = asyncio.run(admin_chat.render_chat_screen(ADMIN_ID))
-    counts = asyncio.run(db.chat_counts(CHAT_ID, None))
-    line = (
-        f"одобрено {counts['approved']} · в чате {counts['in_chat']} · "
-        f"не в чате {counts['not_in_chat']} · в чате, но не зарегистрированы "
-        f"{counts['unknown_members']}"
-    )
-    assert line in text
-    assert counts == {"approved": 3, "in_chat": 1, "not_in_chat": 2, "unknown_members": 1}
-
-
-def test_broadcast_button_hidden_without_broadcast_capability(tmp_path):
-    _ready(tmp_path)
-    from handlers import admin_chat
-
-    asyncio.run(chat_tracking.bind_chat(ADMIN_ID, CHAT_ID, "Делегаты", None))
-
-    _text, kb_stranger = asyncio.run(admin_chat.render_chat_screen(STRANGER_ID))
-    flat_stranger = [btn.callback_data for row in kb_stranger.inline_keyboard for btn in row]
-    assert not any(cd.startswith("chat_broadcast_out") for cd in flat_stranger)
-
-    _text2, kb_admin = asyncio.run(admin_chat.render_chat_screen(ADMIN_ID))
-    flat_admin = [btn.callback_data for row in kb_admin.inline_keyboard for btn in row]
-    assert any(cd.startswith("chat_broadcast_out") for cd in flat_admin)
-
-
-def test_chat_unbind_go_deletes_keys_and_rows_of_three_tables(tmp_path):
-    _ready(tmp_path)
-    from handlers import admin_chat
-
-    asyncio.run(chat_tracking.bind_chat(ADMIN_ID, CHAT_ID, "Делегаты", None))
-    asyncio.run(db.upsert_chat_member(CHAT_ID, 111, "member", source="test"))
-    asyncio.run(db.log_chat_event(CHAT_ID, 111, "join"))
-    asyncio.run(db.bump_chat_activity(CHAT_ID, 111, reply=False, media=False))
-
-    cb = FakeCallback("chat_unbind_go:global", ADMIN_ID)
-    asyncio.run(admin_chat.chat_unbind_go(cb))
-
-    assert asyncio.run(chat_tracking.bound_chats()) == []
-
-    async def _counts():
-        out = {}
-        async with db._connect() as conn:
-            for table in ("chat_members", "chat_activity", "chat_events"):
-                async with conn.execute(
-                    f"SELECT COUNT(*) FROM {table} WHERE chat_id = ?", (CHAT_ID,),
-                ) as cursor:
-                    out[table] = (await cursor.fetchone())[0]
-        return out
-
-    assert asyncio.run(_counts()) == {"chat_members": 0, "chat_activity": 0, "chat_events": 0}
-
-
-def test_new_chat_screen_callbacks_are_registered_in_admin_caps():
+def test_chat_tracking_toggle_is_registered_in_admin_caps():
+    """Экран «💬 Чат» снесён целиком (`handlers/admin_chat.py` удалён) — единственный
+    оставшийся вход в тумблер учёта регистрируется на `admin.router` под общей капой
+    `settings`, как и любой другой тумблер раздела «🔧 Управление»."""
     from handlers.admin_caps import ADMIN_CAPS
 
-    for callback_data in (
-        "admin_chat", "chat_chat_tracking_toggle", "chat_refresh_now",
-        "chat_unbind:*", "chat_unbind_go:*",
-    ):
-        assert callback_data in ADMIN_CAPS
+    assert ADMIN_CAPS["toggle_chat_tracking_enabled"] == "settings"
+    for stale in ("admin_chat", "chat_chat_tracking_toggle", "chat_refresh_now",
+                  "chat_unbind:*", "chat_unbind_go:*", "chat_broadcast_out:*"):
+        assert stale not in ADMIN_CAPS

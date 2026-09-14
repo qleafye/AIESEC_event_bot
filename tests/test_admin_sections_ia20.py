@@ -281,10 +281,13 @@ def test_settings_holder_sees_every_settings_section(tmp_path):
 
     caps = asyncio.run(resolve_capabilities(MANAGER_ID))
     tokens = [t for t, _ in sec.visible_sections(caps, False)]
-    # Квик 260914-rgr: «📢 Общение» получил строку-вход «💬 Чат делегатов» (требует `settings`,
-    # та же капа, что у «🌙 Тихие часы») — держатель `settings` без `broadcast` теперь видит
-    # раздел (рассылка/опросы внутри ему по-прежнему недоступны, видна только строка чата).
-    assert tokens == ["event", "form", "apps", "pay", "comms", "game", "data", "manage"]
+    # Правка 15.09 (владелец, «привязка через личку админа»): строка-вход «💬 Чат делегатов»
+    # (требовала `settings`) снесена вместе с экраном — «📢 Общение» несёт только
+    # admin_broadcast/admin_polls (капа `broadcast`), держателю одного `settings` раздел
+    # больше показать нечего (visible_rows пуст -> раздел не рисуется, docstring
+    # visible_sections выше). Тумблер учёта чата теперь строка «🔧 Управление» (там уже была
+    # видна держателю `settings`) — новый список короче на «comms».
+    assert tokens == ["event", "form", "apps", "pay", "game", "data", "manage"]
 
 
 def test_stranger_sees_no_sections(tmp_path):

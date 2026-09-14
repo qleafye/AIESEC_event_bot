@@ -45,6 +45,7 @@ from settings_ops import (
     tab_check_failed_warning as _tab_check_failed_warning,
 )
 from services.game_digest import game_submit_notify_button_text  # Quick 260822: тумблер дайджеста сдач
+from services import chat_tracking  # Правка 15.09: тумблер учёта чата + строка статуса в «🔧 Система»
 from keyboards.builders import MENU_BUTTONS
 from handlers.reg_schema import (
     REG_FLOW,
@@ -587,6 +588,12 @@ async def settings_toggle_rows(admin_id: int | None = None, *, header_code=_HEAD
     quiet_hours_on = await get_setting_typed("quiet_hours_enabled")
     quiet_hours_toggle_text = ("🌙 Тихие часы: ✅ Вкл → ❌ Выкл" if quiet_hours_on == "on"
                                else "🌙 Тихие часы: ❌ Выкл → ✅ Вкл")
+    # Правка 15.09 (владелец, «привязка через личку админа»): экран «💬 Чат» снесён, тумблер
+    # переехал в общий список тумблеров раздела «🔧 Управление» — тот же generic-хелпер
+    # `_toggle_module_setting`, что у payment_enabled/consent_enabled выше.
+    chat_tracking_on = await get_setting_typed("chat_tracking_enabled")
+    chat_tracking_toggle_text = ("💬 Учёт чата делегатов: ✅ Вкл → ❌ Выкл" if chat_tracking_on == "on"
+                                 else "💬 Учёт чата делегатов: ❌ Выкл → ✅ Вкл")
     # Phase 27 (27-02, LANG-01): подписи — из реестра (SETTINGS_SCHEMA), тот же приём, что у
     # toggle_reg_edit_remoderation ниже — менеджер правит их сам, как любой другой текст.
     delegate_lang_on = await get_setting_typed("delegate_lang_enabled")
@@ -748,6 +755,7 @@ async def settings_toggle_rows(admin_id: int | None = None, *, header_code=_HEAD
         "toggle_reg_edit_policy": _row(reg_edit_policy_text, "toggle_reg_edit_policy"),
         "toggle_reg_edit_remoderation": _row(reg_edit_remod_text, "toggle_reg_edit_remoderation"),
         "toggle_quiet_hours": _row(quiet_hours_toggle_text, "toggle_quiet_hours"),
+        "toggle_chat_tracking_enabled": _row(chat_tracking_toggle_text, "toggle_chat_tracking_enabled"),
         "toggle_delegate_lang_enabled": _row(delegate_lang_toggle_text, "toggle_delegate_lang_enabled"),
         "toggle_delegate_lang_ask_on_start": _row(delegate_lang_ask_text, "toggle_delegate_lang_ask_on_start"),
         "toggle_reg_skip_source_for_referred": _row(skip_src_text, "toggle_reg_skip_source_for_referred"),
@@ -806,6 +814,24 @@ async def build_settings_keyboard(admin_id: int | None = None):
         buttons.append([InlineKeyboardButton(text=label, callback_data=f"settings_group:{token}")])
     buttons.append([InlineKeyboardButton(text="← Назад", callback_data="settings_back")])
     return InlineKeyboardMarkup(inline_keyboard=buttons)
+
+
+async def _chat_status_line() -> str:
+    """Правка 15.09: единственный остаток снесённого экрана «💬 Чат» на живой поверхности
+    бота — одна строка в группе «🔧 Система», без кнопок. Числа (одобрено/в чате/...) на
+    веб-дашборде (`/chat`), а не здесь — экран группы настроек не читает такие объёмные
+    запросы ни для одного другого поля."""
+    chats = await chat_tracking.bound_chats()
+    if not chats:
+        return "💬 Чат делегатов: не подключён"
+    parts = []
+    for entry in chats:
+        title = entry["title"] or "чат"
+        if entry["city"]:
+            parts.append(f"{title} ({await city_label(entry['city'])})")
+        else:
+            parts.append(title)
+    return "💬 Чат делегатов: " + "; ".join(parts)
 
 
 async def render_settings_group_text(token: str, admin_id: int | None = None) -> str:
@@ -867,6 +893,10 @@ async def render_settings_group_text(token: str, admin_id: int | None = None) ->
         lines.append(f"{label}: {flag}{city_suffix}")
 
     if token == "consent": lines += await consent_group_extra_lines()  # quick 260822 (шов admin_consent)
+    # Правка 15.09: одна строка «видно без экрана» на месте снесённого «💬 Чат» — id/название
+    # чата (D-11, выше по этой же функции) пишет сам бот и в общий цикл полей не попадают,
+    # но менеджер должен видеть состояние привязки, не открывая отдельный экран.
+    if token == "system": lines.append(await _chat_status_line())
     if token == PHOTO_FILE_GROUP:
         for prefix, label, _ in PHOTO_FIELDS:
             photo = await get_setting(f"{prefix}_photo_file_id")
@@ -1234,6 +1264,14 @@ async def toggle_nudge_enabled(callback: types.CallbackQuery):
 async def toggle_quiet_hours(callback: types.CallbackQuery):
     # Quick 260904-dq1: «🌙 Тихие часы» (services/quiet_hours.py) — enum on/off, дефолт OFF.
     await _toggle_module_setting(callback, "quiet_hours_enabled", "🌙 Тихие часы")
+
+
+@router.callback_query(F.data == "toggle_chat_tracking_enabled")
+async def toggle_chat_tracking_enabled(callback: types.CallbackQuery):
+    # Правка 15.09: главный тумблер учёта чата делегатов (handlers/group_chat.py,
+    # services/chat_tracking.py) — enum on/off, дефолт OFF. Экрана-хозяина у него больше нет
+    # (снесён вместе с «💬 Чат»), поэтому используется общий хелпер, как у соседей-модулей.
+    await _toggle_module_setting(callback, "chat_tracking_enabled", "💬 Учёт чата делегатов")
 
 
 @router.callback_query(F.data == "toggle_delegate_lang_enabled")

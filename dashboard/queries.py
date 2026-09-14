@@ -1249,6 +1249,17 @@ def chat_bindings(conn) -> list[dict]:
     return out
 
 
+def chat_last_sync_at(conn, chat_id: int) -> str | None:
+    """Дата последней сверки/события по этому чату — MAX(`updated_at`) по `chat_members`.
+    Независимая read-only копия `database.db.chat_last_sync_at` (тот же приём, что у
+    `_CHAT_PRESENT_STATUSES` выше в этом файле) — модуль не импортирует `database/db.py`
+    (D-17: read-only периметр, отдельный процесс)."""
+    row = conn.execute(
+        "SELECT MAX(updated_at) AS last_sync FROM chat_members WHERE chat_id = ?", (chat_id,),
+    ).fetchone()
+    return row["last_sync"] if row is not None else None
+
+
 def _chat_scope_ok(scope: Scope, chat: dict) -> bool:
     """Менеджер, привязанный к городу (`scope.city` задан), не должен получить числа чужого
     чата — даже если что-то вызовет эту функцию мимо уже отфильтрованного списка чатов."""
