@@ -1343,6 +1343,81 @@ def test_utm_table_sorted_by_completed_desc_first(tmp_path):
     assert tags[0] == "few_starts"  # completed=2 против completed=0 у many_starts
 
 
+# ── utm_table: конверсия по-честному (квик 260914-tj3, прод-скриншот 14.09) ─────────────
+
+def test_utm_table_start_event_with_null_city_counted_under_city_scope(tmp_path):
+    """`/start` ещё не знает города (`event_city` = NULL, город выбирается позже в анкете)
+    -- обычный городской скоуп такое событие отсекал бы целиком. На проде это роняло
+    `starts` метки website_2 с честных 179 до 51 в скоупе конкретного города."""
+    path = _use_tmp_db(tmp_path)
+    _seed(
+        cities=[("msk", "Москва", 1, 0), ("spb", "СПб", 1, 1)],
+        settings={"event_city_enabled": "on"},
+        reg_events=[_tag_event(1, "start", "2026-08-01 10:00:00", "website_2", event_city=None)],
+    )
+    with dash_db.read_conn(path) as conn:
+        spb_rows = {row["tag"]: row for row in utm_table(conn, Scope(city="spb"))}
+        msk_rows = {row["tag"]: row for row in utm_table(conn, Scope(city="msk"))}
+    assert spb_rows["website_2"]["starts"] == 1
+    assert msk_rows["website_2"]["starts"] == 1
+
+
+def test_utm_table_conversion_uses_tracked_completed_not_all_time(tmp_path):
+    """`conversion` делит tracked-заявки на `starts` (который живёт только внутри окна
+    трекинга событий), а не все заявки за всё время -- иначе метка со старыми заявками
+    (до начала трекинга событий) давала бы конверсию выше 100% (прод-скриншот 14.09:
+    website_2 114/51 = 223.5%). `completed`/`approved` (all-time) остаются нетронутыми."""
+    path = _use_tmp_db(tmp_path)
+    _seed(
+        # Этот старт задаёт funnel_tracking_since = 2026-09-01 10:00:00.
+        reg_events=[_tag_event(2, "start", "2026-09-01 10:00:00", "website_2")],
+        users=[
+            {"telegram_id": 1, "source": "website_2", "status": "approved",
+             "registration_date": "2026-08-01 09:00:00"},  # до начала трекинга событий
+            {"telegram_id": 2, "source": "website_2", "status": "approved",
+             "registration_date": "2026-09-02 09:00:00"},  # после начала трекинга событий
+        ],
+    )
+    with dash_db.read_conn(path) as conn:
+        rows = {row["tag"]: row for row in utm_table(conn, Scope())}
+    row = rows["website_2"]
+    assert row["starts"] == 1
+    assert row["completed"] == 2  # all-time, отсечки не теряет
+    assert row["approved"] == 2
+    assert row["completed_tracked"] == 1  # только заявка внутри окна трекинга
+    assert row["approved_tracked"] == 1
+    assert row["conversion"] == 100.0  # 1 tracked / 1 start, не 2 / 1 = 200%
+
+
+def test_utm_table_conversion_never_exceeds_100_when_all_completed_have_start(tmp_path):
+    """Регрессия прод-скриншота 14.09: метка с заявками старше трекинга событий (25 заявок
+    до начала окна на проде у infopatner) не должна поднимать конверсию выше 100% -- каждая
+    заявка ВНУТРИ окна трекинга подтверждена своим `start`-событием, поэтому `conversion`
+    не превышает 100%, сколько бы старых (untracked) заявок ни было в `completed`."""
+    path = _use_tmp_db(tmp_path)
+    _seed(
+        reg_events=[
+            _tag_event(2, "start", "2026-09-01 10:00:00", "infopatner"),
+            _tag_event(3, "start", "2026-09-02 10:00:00", "infopatner"),
+        ],
+        users=[
+            {"telegram_id": 1, "source": "infopatner", "status": "approved",
+             "registration_date": "2026-01-01 09:00:00"},  # старая заявка, без start-события
+            {"telegram_id": 2, "source": "infopatner", "status": "approved",
+             "registration_date": "2026-09-01 11:00:00"},
+            {"telegram_id": 3, "source": "infopatner", "status": "pending",
+             "registration_date": "2026-09-02 11:00:00"},
+        ],
+    )
+    with dash_db.read_conn(path) as conn:
+        rows = {row["tag"]: row for row in utm_table(conn, Scope())}
+    row = rows["infopatner"]
+    assert row["starts"] == 2
+    assert row["completed"] == 3  # старая заявка по-прежнему видна в all-time
+    assert row["completed_tracked"] == 2
+    assert row["conversion"] == 100.0  # не 150% (3 / 2)
+
+
 # ── monthly_table (квик 260906-dmq, задача 2) ────────────────────────────────────────────
 
 def test_monthly_table_empty_db_returns_empty_list(tmp_path):

@@ -534,6 +534,11 @@ td.num, th.num { text-align: right; }
 
 td.num { font-variant-numeric: tabular-nums; }
 
+/* Квик 260914-tj3: число + подпись «всего» в одной ячейке («Метки кампаний») — выравнивание
+   вправо флексом, т.к. text-align на td не действует на flex-детей внутри. */
+.cell-stack { display: flex; flex-direction: column; align-items: flex-end; }
+.cell-note { font-size: 11px; font-weight: 400; color: var(--text-muted); }
+
 tr:last-child td { border-bottom: none; }
 
 @media (hover: hover) {
