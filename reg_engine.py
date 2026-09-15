@@ -1146,6 +1146,50 @@ def composite_group_of(step_key: str) -> str | None:
 _COMPOSITE_TOGGLE_STEP: dict[str, str] = {"education": "education_status"}
 
 
+def composite_card_group(step_key: str, flags: dict[str, bool]) -> str | None:
+    """Имя группы, которую НОВАЯ анкета показывает ОДНОЙ карточкой (и потому проходит целиком
+    за один ответ), либо `None` — когда карточка выключена (`reg_form_edu_card`/мастер-тумблер)
+    или шаг вообще не состоит в группе. Правило деградации не переписывается — спрашиваем
+    ту же `degrade_kind`, что и обе поверхности (T-30-02)."""
+    if degrade_kind("composite", flags) != "composite":
+        return None
+    return composite_group_of(step_key)
+
+
+def composite_absorbed_steps(flags: dict[str, bool]) -> dict[str, str]:
+    """Приёмка 15.09 (п.3б «дальше почему-то пошёл вопрос про вуз», п.6 «сбита нумерация»):
+    шаги, которые карточка рисует ВНУТРИ себя, — `step_key -> step_key карточки`. Карточка
+    «Образование» показывает ВУЗ, курс и программу своими строками, поэтому те же шаги не
+    должны появляться в мастере ещё раз отдельными экранами (и попадать в знаменатель «шаг N
+    из M»). Тумблер группы (`education_status`) — и есть шаг-карточка, он остаётся.
+
+    Пустой словарь, когда карточка выключена: тогда все четыре шага идут как сегодня, по
+    одному (30-UI-SPEC.md § «3. composite» → «Деградация»)."""
+    if degrade_kind("composite", flags) != "composite":
+        return {}
+    absorbed: dict[str, str] = {}
+    for group_name, group_steps in _COMPOSITE_GROUPS.items():
+        toggle = _COMPOSITE_TOGGLE_STEP.get(group_name)
+        if toggle is None or toggle not in group_steps:
+            continue
+        for step_key in group_steps:
+            if step_key != toggle:
+                absorbed[step_key] = toggle
+    return absorbed
+
+
+def advance_anchor(step_key: str, enabled: list[str], flags: dict[str, bool]) -> str:
+    """Шаг, ОТ которого искать следующий вопрос после ответа на `step_key`. Обычно это сам
+    `step_key`; для карточки-композита — её ПОСЛЕДНЯЯ включённая часть: одним ответом делегат
+    закрыл всю группу разом, и следующий вопрос — тот, что идёт за группой, а не её же ВУЗ
+    (приёмка 15.09, п.3б). Карточка выключена -> `step_key` без изменений."""
+    group = composite_card_group(step_key, flags)
+    if group is None:
+        return step_key
+    members = [key for key in enabled if key in _COMPOSITE_GROUPS.get(group, [])]
+    return members[-1] if members else step_key
+
+
 async def composite_parts(
     group: str, participant_type: str | None = None, event_city: str | None = None,
 ) -> list[str]:
@@ -1613,6 +1657,15 @@ _SKIP_ALLOWED_STEPS = {
 # через `_reply_kb(options, add_other=True)`), поэтому добавление сюда не двигает GOLDEN.
 _OTHER_ALLOWED_STEPS = {"city", "study_field", "local_committee", "position", "department", "aiesec_role", "university"}
 
+# Приёмка 15.09 (п.5 «Другое: писать негде»): литерал варианта «свой ответ». Уже живёт
+# отдельными ветками в `_validate_answer_core` (там он значит «делегат нажал кнопку, но текста
+# не прислал — переспроси») и в клавиатурах бота (`keyboards/builders.py`). Здесь он нужен
+# спеке шага: новая анкета рисует плитки из `spec["options"]` и без явного маркера не знает,
+# КАКАЯ плитка обязана раскрыть поле «впиши свой вариант» (у старого рендера это была
+# отдельная кнопка-карандаш `spec.other_allowed`, у плиток её нет). Константа, а не литерал по
+# месту — чтобы совпадение с ветками валидатора было видно грепом.
+OTHER_OPTION = "Другое"
+
 # Phase 30 (30-07, задача 4, A2-03, 30-CONTEXT.md § «Решения оркестратора», п.2): атрибут
 # «свой вариант» конкретного списка-справочника — источник правды для `other_allowed` у ШАГОВ
 # ТИПА `lookup` (university/city), заменяет `_OTHER_ALLOWED_STEPS` выше ТОЛЬКО для них; для
@@ -1838,6 +1891,16 @@ async def step_spec(step_key: str, participant_type: str | None = None,
         spec["invalid_hint_text"] = await get_setting_typed("reg_resume_link_invalid_text")
     if ui_type in ("choice-chips", "select", "multi", "yesno"):
         spec["options"] = await options(step_key)
+    # Приёмка 15.09 (п.5): какая ПЛИТКА раскрывает поле «впиши свой вариант». Два источника,
+    # оба уже существуют: шаг с разрешённым свободным ответом (`other_allowed` — старый рендер
+    # рисовал для него отдельную кнопку-карандаш) и шаг, у которого «Другое» и так лежит
+    # ВАРИАНТОМ в списке («Откуда узнал»: `reg_options.DEFAULT_SOURCE_OPTIONS`). В обоих
+    # случаях сервер валидатором отвечает «Напиши свой вариант:» — значит поле для этого текста
+    # обязано быть на экране, а не только в тексте ошибки.
+    if degraded_kind == "select" and (
+        spec["other_allowed"] or OTHER_OPTION in (spec["options"] or [])
+    ):
+        spec["other_option"] = OTHER_OPTION
     # Phase 28 (28-03, SU-02, A-06): лимит мультивыбора — публикуется ВСЕГДА для multi-шага
     # (значение `None` = без лимита, существующие мультивыборы `work_format`/`formats`/`goal`
     # без настроенного `reg_multi_max_<step>` не меняют поведения). При заданном лимите — ещё
@@ -1875,11 +1938,19 @@ async def step_spec(step_key: str, participant_type: str | None = None,
     return spec
 
 
+def _is_yes_no_value(value) -> bool:
+    """«Это ответ да/нет, а не текст» — условие первой ветки `_display_value` отдельной
+    функцией: приёмка 15.09 (п.8) добавила второе место, которое обязано принимать то же
+    решение (`form_spec` публикует подпись), а два одинаковых условия по месту разъезжаются.
+    Булево из черновика (JSON) и 0/1 из строки `users` (SQLite) — одно и то же значение."""
+    return isinstance(value, bool) or (isinstance(value, int) and value in (0, 1))
+
+
 def _display_value(value) -> str:
     """Человекочитаемое представление прошлого ответа — та же логика, что
     `handlers/registration.py::_recall_display`, БЕЗ HTML-экранирования (T-21-03: движок
     отдаёт сырой текст, экранирование — забота поверхности)."""
-    if isinstance(value, bool) or (isinstance(value, int) and value in (0, 1)):
+    if _is_yes_no_value(value):
         return "Да" if value else "Нет"
     return str(value)
 
@@ -1949,9 +2020,20 @@ async def form_spec(answers: dict, participant_type: str | None = None,
     # каждый из ~43 шагов (`form_v2_flags()` — «единая точка чтения», не «читай на каждый
     # шаг заново», см. её докстринг 30-01) — экономит ~9×N походов в реестр на один запрос.
     v2_flags = await form_v2_flags(event_city)
+    # Приёмка 15.09 (п.3б/п.6): части карточки-композита не идут вторым экраном и не считаются
+    # отдельными шагами в «шаг N из M» — карточка уже спрашивает их у себя внутри. Поглощение
+    # действует, ТОЛЬКО пока сам шаг-карточка включён у события: выключил менеджер вопрос
+    # «Учишься сейчас?» — ВУЗ/курс/программа остаются обычными шагами, иначе делегат потерял бы
+    # их вовсе.
+    absorbed = {
+        part: owner for part, owner in composite_absorbed_steps(v2_flags).items()
+        if owner in enabled
+    }
     steps_out = []
     done = 0
     for step_key in enabled:
+        if step_key in absorbed:
+            continue
         spec = await step_spec(step_key, participant_type, event_city, flags=v2_flags)
         column = spec["column"]
         # УАТ 10-11.09 (пункт 4): «отвечен» решает НАБОР колонок шага, не одна главная —
@@ -1998,9 +2080,19 @@ async def form_spec(answers: dict, participant_type: str | None = None,
                 )
                 if display_col is not None:
                     spec["display"] = _display_value(raw_values[display_col])
+            elif _is_yes_no_value(spec["value"]):
+                # Приёмка 15.09 (п.8 «на итоговом просмотре анкеты амбассадор false»): ответы
+                # «да/нет» лежат в БД булевыми (`validate_answer` для ambassador/work_status/
+                # needs_certificate/volunteer/case_optin отдаёт bool) — экран печатал их
+                # `String(value)`, то есть «false». Подпись считает ТА ЖЕ функция, что уже
+                # переводит прошлый ответ возвращенца (`_display_value`), второго правила
+                # «как показать булево» в проекте не заводим.
+                spec["display"] = _display_value(spec["value"])
         elif spec["prior"] is not None:
             spec["value"] = _published_value(column, prior_value)
             spec["value_source"] = "prior"
+            if _is_yes_no_value(spec["value"]):
+                spec["display"] = _display_value(spec["value"])
         else:
             spec["value"] = None
             spec["value_source"] = None
