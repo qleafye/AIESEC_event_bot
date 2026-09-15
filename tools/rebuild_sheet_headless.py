@@ -26,6 +26,7 @@ async def main(apply: bool) -> int:
         build_sheet_batches,
         get_all_users_dicts,
         rebuild_main_sheet,
+        set_sheet_schema,
         sync_named_worksheet,
     )
 
@@ -50,6 +51,12 @@ async def main(apply: bool) -> int:
     for batch in named_batches:
         res = await sync_named_worksheet(batch.tab, batch.headers, batch.rows)
         print(f"вкладка «{batch.tab}»: результат {res}")
+        if res >= 0 and batch.kind == "main":
+            # Как в хендлере: снимок схемы морозим только после успешной записи и только для
+            # полного трека — short/party шапка не является схемой города.
+            await set_sheet_schema(batch.headers, batch.city_code)
+    # CR-9: пересборка — точка пересинхронизации, снимок = только что записанная шапка.
+    await set_sheet_schema(main_batch.headers)
     return 0
 
 
