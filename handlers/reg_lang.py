@@ -19,13 +19,14 @@ D-06 («бот для людей»): язык НИКОГДА не угадыва
 Регистрирует хендлеры на общий `router` владельца (`handlers.registration`), импортируется из
 его хвоста, как reg_consent/reg_resume/reg_handoff.
 """
+import logging
 from types import SimpleNamespace
 
 from aiogram import Bot, F, types
 from aiogram.fsm.context import FSMContext
 from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
 
-from database.db import set_user_lang
+from database.db import get_user, set_user_lang
 from settings_schema import get_setting_typed
 from services.i18n import delegate_lang
 from handlers.registration import router
@@ -34,6 +35,8 @@ from handlers.registration import router
 # Задача 2 (260912): MENU_TEXTS -- множество "русская+английская подпись" для F.text.in_(...),
 # та же точка импорта, что и get_main_menu_kb выше.
 from keyboards.builders import get_main_menu_kb, MENU_TEXTS
+
+logger = logging.getLogger(__name__)
 
 LANG_PICK_PREFIX = "lang_pick:"
 LANG_MENU_BUTTON_TEXT = "🌐 Язык / Language"
@@ -86,6 +89,25 @@ async def offer_language(message: types.Message, state: FSMContext, raw_args: st
     language_code = getattr(message.from_user, "language_code", None)
     lang = await delegate_lang(message.from_user.id, language_code)
     if lang != "ask":
+        if lang == "ru":
+            # Сеть безопасности — C1 в services/i18n.py::tr (переводим строго при lang=="en"),
+            # это лишь избавляет от повторной резолюции "ask" на каждом рендере: без сохранения
+            # users.lang следующий же context() без language_code опять упрётся в ступень 4
+            # resolve_lang. Пишем только когда модуль включён (иначе delegate_lang дал бы "ru"
+            # и при выключенном модуле, ступень 1 -- запись означала бы явный выбор, которого
+            # не было) и только если явного выбора ещё нет (не затираем "🌐 Язык" делегата).
+            # Ограничение: сюда не дойти, если delegate_lang_ask_on_start != "on" (выход выше,
+            # :80-81) -- тогда резолюция просто повторяется на каждом рендере, это ожидаемо.
+            try:
+                if await get_setting_typed("delegate_lang_enabled") == "on":
+                    user = await get_user(message.from_user.id)
+                    if not (user and user.get("lang")):
+                        await set_user_lang(message.from_user.id, "ru")
+            except Exception:
+                logger.warning(
+                    "offer_language: не удалось закрепить ru для %s",
+                    message.from_user.id, exc_info=True,
+                )
         return False
     if raw_args:
         await state.update_data(**{_DEEPLINK_RESUME_KEY: raw_args})

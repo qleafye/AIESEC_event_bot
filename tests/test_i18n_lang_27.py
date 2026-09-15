@@ -142,6 +142,10 @@ def test_module_on_russian_client_no_screen(tmp_path):
         await reg.cmd_start(msg, state, bot=object(), command=None)
 
         assert not any("Choose the form language" in (t or "") for t in _texts(msg))
+        # Свежий делегат -- строки users ещё нет (add_user идёт позже в воронке), поэтому
+        # C2 (закрепление "ru" через UPDATE users.lang) здесь не пишет ничего: нечего
+        # обновлять. Сценарий с уже существующей строкой (users.lang IS NULL) закрыт отдельно
+        # test_offer_language_persists_ru_for_existing_null_lang_row ниже.
         user = await db.get_user(UID)
         assert (user or {}).get("lang") in (None, "")
 
@@ -287,5 +291,80 @@ def test_language_never_stored_in_fsm(tmp_path):
         await reg_lang.lang_pick_choose(cb, state, bot=object())
         data = await state.get_data()
         assert "lang" not in data and all("lang" != k for k in data)
+
+    asyncio.run(go())
+
+
+# ── C2 (quick-260915-twr): "ask" не должно протекать в tr() из-за непосохранённого "ru" ──────
+
+def test_offer_language_persists_ru_for_existing_null_lang_row(tmp_path):
+    """Делегат с уже существующей строкой users (users.lang IS NULL -- ровно сценарий из
+    CONTEXT: повторный /start после незаконченной анкеты, черновик уже завёл строку) и
+    русским клиентом. offer_language не задаёт вопроса (resolve_lang даёт "ru" сразу), но
+    ТЕПЕРЬ закрепляет "ru" в users.lang -- иначе следующий i18n.context(uid) без
+    language_code (напр. рендер Mini App) снова упирается в ступень 4 resolve_lang ("ask")."""
+    _use_tmp_db(tmp_path)
+
+    async def go():
+        await _enable_module()
+        await db.add_user({"telegram_id": UID, "full_name": "Тест Тестов", "registration_date": None})
+        user_before = await db.get_user(UID)
+        assert (user_before or {}).get("lang") in (None, "")
+
+        msg = _KBCapturingMessage(UID, language_code="ru")
+        state = _new_state(UID)
+        shown = await reg_lang.offer_language(msg, state)
+
+        assert shown is False
+        assert msg.sent == []  # ни одного сообщения делегату
+        user = await db.get_user(UID)
+        assert user["lang"] == "ru"
+
+        from services import i18n
+        lang, tr_map = await i18n.context(UID)  # без language_code -- как реальный вызывающий
+        assert (lang, tr_map) == ("ru", {})
+
+    asyncio.run(go())
+
+
+def test_offer_language_module_off_does_not_write_lang(tmp_path):
+    """Парный случай: модуль выключен -- resolve_lang даёт "ru" безусловно (ступень 1), но
+    это НЕ выбор делегата, а поведение по умолчанию. Запись означала бы «делегат выбрал
+    русский», чего не было, и включение модуля позже уже не спросило бы его."""
+    _use_tmp_db(tmp_path)
+
+    async def go():
+        await db.add_user({"telegram_id": UID, "full_name": "Тест Тестов", "registration_date": None})
+        await db.set_setting("delegate_lang_ask_on_start", "on")  # модуль сам выключен (дефолт off)
+
+        msg = _KBCapturingMessage(UID, language_code="ru")
+        state = _new_state(UID)
+        shown = await reg_lang.offer_language(msg, state)
+
+        assert shown is False
+        user = await db.get_user(UID)
+        assert (user or {}).get("lang") in (None, "")
+
+    asyncio.run(go())
+
+
+def test_offer_language_does_not_overwrite_explicit_choice(tmp_path):
+    """Делегат уже явно выбрал "en" через «🌐 Язык» -- offer_language (даже если бы дошёл до
+    ветки ru-персиста) не имеет права затирать явный выбор."""
+    _use_tmp_db(tmp_path)
+
+    async def go():
+        await _enable_module()
+        await db.add_user({"telegram_id": UID, "full_name": "Тест Тестов", "registration_date": None})
+        await db.set_user_lang(UID, "en")
+
+        msg = _KBCapturingMessage(UID, language_code="ru")
+        state = _new_state(UID)
+        shown = await reg_lang.offer_language(msg, state)
+
+        # stored="en" побеждает на ступени 2 resolve_lang -> "en", не "ru", вопрос не задаётся.
+        assert shown is False
+        user = await db.get_user(UID)
+        assert user["lang"] == "en"
 
     asyncio.run(go())
