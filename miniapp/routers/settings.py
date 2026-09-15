@@ -385,19 +385,26 @@ async def _reg_questions_matrix() -> dict:
 
     Тумблер матрицы всегда шлёт явный "on"/"off" (T-22-… D-17): у веба нет кнопки «вернуть
     наследование», как у бота (`reg_q_ptoggle` цикл inherit->on->off->inherit) — наименьшее
-    из решений, отдельный «сбросить трек» откладывается до появления запроса менеджера."""
+    из решений, отдельный «сбросить трек» откладывается до появления запроса менеджера.
+
+    Квик 260915-skg (P2): `full.value`/унаследованный `party.value` отдаются СТРОКОЙ "on"/"off",
+    не bool — `get_setting_typed(setting_key)` для типа "toggle" возвращает `bool`, а фронт
+    (`screens/settings.js::matrixCellDisplay/paint`) сравнивает с `"on"` в трёх местах; колонка
+    «Полная» без этого приведения оставалась вечно пустой (воспроизведено на стенде 15.09:
+    `reg_q_age raw='on' typed=True`, `True !== "on"`)."""
     rows = []
     for step_key, setting_key, *_rest in reg_engine.REG_FLOW:
-        full_value = await get_setting_typed(setting_key)
+        full_on = await get_setting_typed(setting_key)
+        full_str = "on" if full_on else "off"
         party_raw = await get_setting(f"{setting_key}__party")
         short_raw = await get_setting(f"{setting_key}__short")
         rows.append({
             "step_key": step_key,
             "label": reg_engine.label_for(step_key),
-            "full": {"key": setting_key, "value": full_value},
+            "full": {"key": setting_key, "value": full_str},
             "party": {
                 "key": f"{setting_key}__party",
-                "value": party_raw if party_raw is not None else full_value,
+                "value": party_raw if party_raw is not None else full_str,
                 "is_inherited": party_raw is None,
             },
             "short": {
