@@ -28,10 +28,14 @@ def test_card_steps_derived_from_engine_not_a_second_schema():
         assert label == reg_engine.label_for(step_key)
     expected_keys = [
         step for step in reg_engine.STEP_TO_COLUMN
-        if reg_engine.label_key_for(step) in reg_labels.REG_LABELS
+        if step != reg_engine.FULL_NAME_STEP
+        and reg_engine.label_key_for(step) in reg_labels.REG_LABELS
     ]
     assert list(mc.CARD_STEPS.keys()) == expected_keys
-    assert "full_name" not in mc.CARD_STEPS  # ФИО спрашивается вне REG_FLOW, не «вопрос»
+    # ФИО с 16.09 ИМЕЕТ подпись (reg_q_full_name — нужна мастеру приложения), но карточка
+    # заявки печатает имя в заголовке, не строкой ответа — исключение явное, не по отсутствию
+    # подписи (см. комментарий у CARD_STEPS в moderation_card.py).
+    assert "full_name" not in mc.CARD_STEPS
 
 
 def test_default_selection_is_the_selection_set():
