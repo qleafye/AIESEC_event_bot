@@ -664,6 +664,21 @@ async def draft_patch(
         # FSM бота могла остаться в анкете с прошлого захода (делегат начал в чате, ушёл, а
         # потом открыл пустой черновик в приложении) — сбрасываем на всякий случай.
         await enqueue("reg_fsm_reset", {"telegram_id": p.telegram_id, "reason": "takeover"})
+
+    # Квик 260915-4mv: `resume` в `clear` обнуляет колонки-черновика выше (в `reg_drafts`),
+    # но `users.resume_url` (ссылка Некстклауда) и ячейка «Резюме (ссылка)» в листе — за
+    # пределами reg_drafts, их ставит только `_apply_resume_url` (тем же путём, что запись
+    # ссылки при загрузке). Дёргаем его симметрично, только когда есть что чистить (нет
+    # смысла звать Sheets впустую) — fail-soft: сбой не должен ломать ответ PATCH делегату.
+    if "resume" in body.clear:
+        user_row = ctx.get("user_row")
+        if user_row and user_row.get("resume_url"):
+            from services.reg_finalize import _apply_resume_url
+            try:
+                await _apply_resume_url(p.telegram_id, user_row, None)
+            except Exception as e:
+                logger.error(f"Failed to clear resume_url for {p.telegram_id}: {e}")
+
     # T-21-08: в лог — только имена полей/колонок, значения не пишутся.
     logger.info(
         "reg draft patch telegram_id=%s step=%s base_version=%s pre=%s columns=%s cleared=%s",
