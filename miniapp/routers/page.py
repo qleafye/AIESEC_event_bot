@@ -195,6 +195,9 @@ def _shell_context(request: Request, conn) -> dict:
         "bot_username": cfg.bot_username,
         "deep_link": deep_link(cfg.bot_username),
         "logo_file_id": read_setting(conn, "miniapp_logo"),
+        # Quick 260915-4mw: уровень анимаций едет атрибутом <body>, не полем /app/api/me —
+        # applyMotionTier() должен решить уровень ДО первой отрисовки экрана (gotcha 5).
+        "motion_setting": read_setting(conn, "miniapp_motion") or "auto",
         "sections": [s for s in SECTIONS if read_setting(conn, f"miniapp_section_{s}") == "on"],
         "texts": {name: read_setting(conn, key) or "" for name, key in STATE_TEXT_KEYS.items()},
         "applications_texts": json.dumps(
@@ -224,6 +227,7 @@ def render_disabled_page(request: Request) -> HTMLResponse:
             "static_prefix": STATIC_PREFIX,
             "event_name": None, "bot_username": cfg.bot_username,
             "deep_link": deep_link(cfg.bot_username), "logo_file_id": None, "sections": [],
+            "motion_setting": "auto",
             "section_labels": "{}",
             "texts": {name: "" for name in STATE_TEXT_KEYS},
             "applications_texts": "{}",

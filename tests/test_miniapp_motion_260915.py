@@ -248,3 +248,54 @@ def test_off_tier_slide_in_and_stagger_add_zero_classes_and_zero_styles(result):
 
 def test_off_tier_progress_to_sets_final_scale_without_intermediate_state(result):
     assert result["progressOffFinal"] == "scaleX(0.6)"
+
+
+# ── Задача 2: ключ реестра «Анимации приложения» + обе поверхности менеджера ─────────────────
+# Статические сторожа на исходный текст (тот же приём, что многие тесты test_miniapp_frontend.py
+# — grep по файлу), а не полный HTTP-раунд-трип: ключ реестра проверяется напрямую импортом
+# SETTINGS_SCHEMA, поверхности — присутствием ожидаемых строк в исходниках.
+
+from settings_schema import SETTINGS_SCHEMA  # noqa: E402
+
+PAGE_PY = ROOT / "miniapp" / "routers" / "page.py"
+APP_HTML = ROOT / "miniapp" / "templates" / "app.html"
+ADMIN_MINIAPP_PY = ROOT / "handlers" / "admin_miniapp.py"
+
+
+def test_miniapp_motion_key_registered_with_expected_options_labels_and_default():
+    entry = SETTINGS_SCHEMA["miniapp_motion"]
+    assert entry["type"] == "enum"
+    assert entry["group"] == "miniapp"
+    assert entry["options"] == ["auto", "micro", "off"]
+    assert entry["default"] == "auto"
+    # CLAUDE.md «бот для людей»: подписи человеческие, не совпадают с кодом варианта.
+    for code in entry["options"]:
+        label = entry["option_labels"][code]
+        assert label != code
+        assert isinstance(label, str) and label.strip()
+
+
+def test_shell_context_and_disabled_fallback_carry_motion_setting():
+    text = PAGE_PY.read_text(encoding="utf-8")
+    assert '"motion_setting": read_setting(conn, "miniapp_motion") or "auto"' in text
+    assert '"motion_setting": "auto"' in text  # аварийный словарь render_disabled_page
+
+
+def test_app_html_body_carries_motion_setting_attribute():
+    text = APP_HTML.read_text(encoding="utf-8")
+    assert 'data-motion-setting="{{ motion_setting }}"' in text
+
+
+def test_miniapp_settings_keyboard_has_cycle_motion_button_and_handler():
+    text = ADMIN_MINIAPP_PY.read_text(encoding="utf-8")
+    assert 'callback_data="miniapp_cycle_motion"' in text
+    assert '@router.callback_query(F.data == "miniapp_cycle_motion")' in text
+    # Циклит ровно auto -> micro -> off -> auto (D-Motion: менеджер может только ослабить,
+    # но выключить и снова включить обязан мочь одной и той же кнопкой по кругу).
+    assert '_MOTION_CYCLE = {"auto": "micro", "micro": "off", "off": "auto"}' in text
+
+
+def test_render_miniapp_settings_text_shows_motion_label_not_code():
+    text = ADMIN_MINIAPP_PY.read_text(encoding="utf-8")
+    assert "✨ Анимации приложения:" in text
+    assert 'SETTINGS_SCHEMA["miniapp_motion"]["option_labels"]' in text
