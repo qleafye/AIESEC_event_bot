@@ -20,6 +20,9 @@ import pytest
 ROOT = Path(__file__).resolve().parent.parent
 
 REG_LABELS_KEYS_SNAPSHOT = [
+    # Приёмка 16.09 (4a99eee): мастер анкеты в приложении спрашивает ФИО первым шагом
+    # (form_spec(ask_full_name=True)) — подпись добавлена ПЕРВОЙ (порядок вставки в reg_labels.py).
+    "reg_q_full_name",
     "reg_q_age", "reg_q_vk", "reg_q_email", "reg_q_phone", "reg_q_city", "reg_q_source",
     "reg_q_lc", "reg_q_position", "reg_q_education", "reg_q_university", "reg_q_course",
     "reg_q_specialty", "reg_q_work", "reg_q_work_sphere", "reg_q_skills", "reg_q_expectations",
@@ -116,19 +119,25 @@ def test_reg_labels_keys_snapshot():
 
 
 def test_profile_columns_cover_only_known_labels():
-    """Каждый вопрос профиля — ключ REG_LABELS, и каждый шаг движка (кроме `full_name` —
-    отдельное поле профиля, не вопрос) находит подпись через `reg_engine.label_key_for`:
-    новый шаг без подписи или опечатка в REG_FLOW/REG_LABELS ловится здесь, а не молчаливо
-    выпадает из профиля."""
+    """Каждый вопрос профиля — ключ REG_LABELS, и каждый шаг движка находит подпись через
+    `reg_engine.label_key_for`: новый шаг без подписи или опечатка в REG_FLOW/REG_LABELS
+    ловится здесь, а не молчаливо выпадает из профиля.
+
+    Приёмка 16.09 (4a99eee): `full_name` с 16.09 ИМЕЕТ подпись (`reg_q_full_name` — нужна
+    мастеру анкеты в приложении), поэтому больше не попадает в `unresolved` (шаги без
+    подписи) — вместо этого профиль исключает его ЯВНО в `_profile_columns()`
+    (`reg_engine.FULL_NAME_STEP`): имя уже на плите карточки профиля, вторая строка ответа
+    не нужна."""
     import reg_engine
     import reg_labels
     from miniapp.routers.profile import _profile_columns
 
     columns = _profile_columns()
     assert set(columns) <= set(reg_labels.REG_LABELS)
+    assert reg_engine.label_key_for(reg_engine.FULL_NAME_STEP) not in columns
 
     unresolved = {
         step for step in reg_engine.STEP_TO_COLUMN
         if reg_engine.label_key_for(step) not in reg_labels.REG_LABELS
     }
-    assert unresolved == {"full_name"}
+    assert unresolved == set()
