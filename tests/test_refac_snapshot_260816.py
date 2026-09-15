@@ -599,6 +599,7 @@ admin|callback_query|process_broadcast_incomplete|broadcast_incomplete
 admin|callback_query|cancel_broadcast_callback|broadcast_cancel
 admin|callback_query|bc_go|bc_go
 admin|callback_query|bc_no|bc_no
+admin|callback_query|bc_no_after_start|bc_no
 admin|callback_query|bc_stop|bc_stop:*
 admin|callback_query|bc_rev|bc_rev:*
 admin|callback_query|bc_revno|bc_revno
@@ -1024,7 +1025,9 @@ def test_snapshot_total_handler_count_is_292():
     # прежним 523-строчным снапшотом: ровно одна вставка в позиции ~110 и ровно одно
     # удаление шести строк в позиции ~193, ни одна другая строка не поменялась и не
     # переставилась.
-    assert len(GOLDEN_SNAPSHOT) == 519  # +1: cycle_miniapp_motion (квик анимаций, 15.09)
+    # +1: bc_no_after_start — страховочная «Отмена» без фильтра состояния после старта
+    # рассылки (admin_broadcasts.py, 15.09), встал сразу после bc_no и перед bc_stop.
+    assert len(GOLDEN_SNAPSHOT) == 520
     # (callback_query toggle_reg_form_v2/chips/lookup_search/edu_card/repeatable/limit_counter/
     # status_screen/header_settings/haptics — девять тумблеров «Анкета 2.0»), встали сразу после
     # admin_quiet_hours и перед sync_sheet: шов импортируется из хвоста

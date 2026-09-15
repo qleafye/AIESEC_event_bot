@@ -710,6 +710,10 @@ PREVIEW_SAMPLES: dict[str, str] = {
     "page": "1",
     "status": "на проверке",
     "days": "12",
+    # Итог сверки чата делегатов после привязки (services/chat_tracking.py::bind_reconcile_job).
+    "present": "841",
+    "absent": "566",
+    "not_found": "441",
     "done": "3",
     "filled": "14",
     "n": "10",
