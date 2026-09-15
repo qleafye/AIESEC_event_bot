@@ -97,10 +97,21 @@ async def run_broadcast(broadcast_id, chat_ids, send_one, on_progress=None, on_f
             try:
                 message_ids = await send_one(chat_id)
                 retried_ok = True
-            except Exception:
+            except Exception as e2:
                 retried_ok = False
-        except Exception:
+                # Квик 260915-twr (Task B2): раньше причина недоставки терялась полностью —
+                # warning, не error: заблокировавший бота делегат — факт о человеке, не сбой
+                # бота (тот же довод, что в докстринге services/scheduler.py::_safe_send).
+                logger.warning(
+                    "broadcast %s retry send failed for %s: %s: %s",
+                    broadcast_id, chat_id, type(e2).__name__, e2,
+                )
+        except Exception as e:
             first_ok = False
+            logger.warning(
+                "broadcast %s send failed for %s: %s: %s",
+                broadcast_id, chat_id, type(e).__name__, e,
+            )
 
         if first_ok or retried_ok:
             delivered += 1

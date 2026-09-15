@@ -240,7 +240,13 @@ KNOWN_OVERAGES: dict[str, tuple[int, str]] = {
         "новых модулей не заводит (1073 строки); потолок поднят до фактического размера + ~5%.",
     ),
     "admin_broadcasts.py": (
-        1300,
+        1427,
+        "Квик 260915-twr (Task B): +78 строк — журнал запланированных рассылок "
+        "(отправка использует ту же строку broadcasts, что мгновенная — код живёт в "
+        "services/scheduler.py/database/db.py, не здесь), предупреждение об аудитории «Всем» "
+        "на экране подтверждения (_audience_warning) и живой экран прогресса после сбоя "
+        "edit_text в bc_go (fallback-отправка нового сообщения) + страховочный bc_no_after_start "
+        "без фильтра состояния, 1281 -> 1359; потолок поднят до фактического размера + ~5%. "
         "Квик 260914-rgr (RGR-01..07, задача 3): +38 строк — поле фильтра «Чат делегатов» "
         "(CHAT_IN/CHAT_OUT в _FILTER_FIELD_LABELS/_PICKER_FIELDS, show_chat в "
         "_filter_menu_kb/_render_filter_menu, ветка delegate_chat в _show_value_picker и в "
