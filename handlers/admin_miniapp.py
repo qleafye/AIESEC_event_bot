@@ -143,7 +143,12 @@ async def sync_chat_menu_button(bot) -> None:
     only take visible effect on the NEXT bot restart, breaking the "выключение тумблера
     убирает точки входа сразу" success criterion. Fail-soft is the CALLER's job (both call
     sites wrap this in try/except) — an unreachable Telegram must never break the settings
-    screen or block startup."""
+    screen or block startup.
+
+    Квик 260915-skg (P7): кнопка ставится глобально ботом (при старте и по тумблеру) — языка
+    конкретного делегата здесь нет и быть не может, английский текст входа в приложение при
+    lang=en закрыт отдельно в handlers/user_actions.py::open_miniapp_button, эту функцию не
+    трогаем."""
     enabled = await get_setting_typed("miniapp_enabled") == "on"
     url = config.DASHBOARD_PUBLIC_URL
     if enabled and url:
