@@ -414,7 +414,7 @@ def test_rcpt_confirm_resolves_party_track_before_completion(tmp_path, monkeypat
 
     sent = {}
 
-    async def fake_completion(bot, telegram_id, with_menu=True, participant_type=None):
+    async def fake_completion(bot, telegram_id, with_menu=True, participant_type=None, **kw):
         sent["telegram_id"] = telegram_id
         sent["with_menu"] = with_menu
         sent["participant_type"] = participant_type
@@ -551,7 +551,7 @@ def test_rcpt_confirm_full_track_delegate_gets_none_participant_type(tmp_path, m
 
     sent = {}
 
-    async def fake_completion(bot, telegram_id, with_menu=True, participant_type=None):
+    async def fake_completion(bot, telegram_id, with_menu=True, participant_type=None, **kw):
         sent["participant_type"] = participant_type
 
     monkeypatch.setattr("handlers.registration.send_completion_and_bonus", fake_completion)
