@@ -19,12 +19,18 @@ from reg_labels import REG_LABELS
 
 # Вопрос анкеты (step_key) -> человеческая подпись, ТОЛЬКО через reg_engine.label_for —
 # движок сам знает про девять шагов, где setting_key расходится с step_key (план 21-13).
-# Шаги без подписи в REG_LABELS (например full_name — не «вопрос анкеты», а поле профиля,
-# спрашивается вне REG_FLOW) в набор не попадают.
+# Шаги без подписи в REG_LABELS в набор не попадают.
+# Приёмка 16.09 (п.1): ФИО (`reg_engine.FULL_NAME_STEP`) исключён ЯВНО, а не по отсутствию
+# подписи — с 16.09 подпись `reg_q_full_name` у него есть (нужна мастеру приложения), но
+# ФИО не «вопрос анкеты» для карточки заявки, а поле профиля: карточка и так печатает имя
+# в заголовке (`_render_application_card`), второй раз строкой ответа его не показываем —
+# иначе modcard_fields (тумблеры «Поля карточки заявки») предложил бы менеджеру выключить
+# то, что от него не зависит.
 CARD_STEPS: dict[str, str] = {
     step_key: reg_engine.label_for(step_key)
     for step_key in reg_engine.STEP_TO_COLUMN
-    if reg_engine.label_key_for(step_key) in REG_LABELS
+    if step_key != reg_engine.FULL_NAME_STEP
+    and reg_engine.label_key_for(step_key) in REG_LABELS
 }
 
 # Единственное составное поле карточки — ожидания на русском/арабском через « / ». Резюме

@@ -69,7 +69,13 @@ def test_module_off_draft_response_matches_reg_engine_directly(client):
         season = (await bot_db.get_setting("event_season") or "").strip() or None
         answers = reg_engine.answers_from_user_row(user_row)
         prior = {}
-        spec = await reg_engine.form_spec(answers, None, user_row.get("event_city") if user_row else None, prior=prior)
+        # Приёмка 16.09 (п.1): /app/api/reg/draft зовёт form_spec(ask_full_name=True) —
+        # ФИО первым шагом (miniapp/routers/form.py). Эталон здесь обязан звать движок так
+        # же, иначе первый prompt расходится («Напиши свой возраст…» vs «Напиши свои ФИО…»).
+        spec = await reg_engine.form_spec(
+            answers, None, user_row.get("event_city") if user_row else None, prior=prior,
+            ask_full_name=True,
+        )
         return spec
 
     direct = _run(go())
