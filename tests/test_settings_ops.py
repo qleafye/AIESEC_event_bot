@@ -172,6 +172,7 @@ def test_every_editable_key_reachable_exactly_once_via_section_maps():
 
 def test_toggle_section_covers_every_toggles_group_key_exactly_once():
     toggle_keys = [k for k, m in SETTINGS_SCHEMA.items() if m.get("group") == "toggles"]
+    # Квик 260916: +1 (daily_digest_enabled, «📊 Итоги дня» — раздел «🔧 Управление») -- 45 -> 46.
     # Квик 260914-rgr (D-3): +1 (chat_tracking_enabled) -- 44 -> 45.
     # Phase 30 (30-07, задача 4, A2-03): +6 (university_options/city_options ×
     # chips_enabled/search_enabled/other_allowed) -- 38 -> 44.
@@ -182,7 +183,7 @@ def test_toggle_section_covers_every_toggles_group_key_exactly_once():
     # Phase 28 (28-08, SU-08): +1 (apps_queue_sort_by_score) -- 26 -> 27.
     # Phase 28 (28-06, SU-05/SU-06/SU-07): +3 (reg_skip_source_for_referred/
     # reg_referrer_must_be_ambassador/reg_offer_ref_link) -- 23 -> 26.
-    assert len(settings_ops.TOGGLE_SECTION) == 45
+    assert len(settings_ops.TOGGLE_SECTION) == 46
     assert sorted(settings_ops.TOGGLE_SECTION) == sorted(toggle_keys)
     assert len(settings_ops.TOGGLE_SECTION) == len(set(settings_ops.TOGGLE_SECTION))
 

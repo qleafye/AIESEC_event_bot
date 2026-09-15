@@ -899,9 +899,11 @@ def test_scheduler_and_reminder_keys_declared_with_code_defaults(tmp_path):
     # группы: system рендерит три новых int-поля, reg -- два поля догонялки
     # Квик 260911-mx6: два ключа сеялки — новый хвост _SYSTEM_FIELD_ORDER.
     # Квик 260914-rgr (D-11): chat_refresh_minutes — новый хвост _SYSTEM_FIELD_ORDER.
-    assert admin_settings._settings_group_keys("system")[-7:] == [
+    # Квик 260916: daily_digest_time — новый хвост _SYSTEM_FIELD_ORDER.
+    assert admin_settings._settings_group_keys("system")[-8:] == [
         "nudge_scan_minutes", "allowlist_refresh_minutes", "incomplete_sync_hours",
-        "resume_retry_minutes", "uat_seed_enabled", "uat_seed_testers", "chat_refresh_minutes"]
+        "resume_retry_minutes", "uat_seed_enabled", "uat_seed_testers", "chat_refresh_minutes",
+        "daily_digest_time"]
     # Phase 20 (20-01): поля догонялки переехали из «📝 Регистрация» в «📋 Заявки» вместе
     # с остальными послеподачными текстами — сама пара ключей и её порядок не менялись.
     # Phase 23-01 (APP-TINDER-01, D-05): reject_reason_templates добавлен хвостом _APPS_FIELD_ORDER.

@@ -237,6 +237,11 @@ _SYSTEM_FIELD_ORDER = [
     # Квик 260914-rgr (D-11): интервал сверки чата — редактируемый; сами id/название чата
     # (delegate_chat_id/delegate_chat_title) НЕ входят сюда намеренно — их пишет сам бот.
     "chat_refresh_minutes",
+    # Квик 260916: во сколько уходит «📊 Итоги дня» — новый хвост _SYSTEM_FIELD_ORDER, рядом с
+    # остальными таймингами фоновых джоб (применяется после перезапуска, как и они); сам
+    # тумблер живёт строкой раздела «🔧 Управление», ровно как у пары chat_tracking_enabled/
+    # chat_refresh_minutes.
+    "daily_digest_time",
 ]
 
 # Quick 260815-3hw (TABS-01/02/03): every Google Sheets tab NAME in one group — «📄 Вкладки
@@ -676,6 +681,12 @@ async def settings_toggle_rows(admin_id: int | None = None, *, header_code=_HEAD
         f"{reg_notify_label}: {option_label('reg_submit_notify_mode', reg_notify_val)} → "
         f"{option_label('reg_submit_notify_mode', reg_notify_next)}"
     )
+    # Квик 260916: «📊 Итоги дня» — вечерняя сводка менеджерам, дефолт OFF; сама сводка живёт
+    # в services/daily_digest.py, время — ключ daily_digest_time группы «🔧 Система».
+    daily_digest_on = await get_setting_typed("daily_digest_enabled")
+    daily_digest_label = SETTINGS_SCHEMA["daily_digest_enabled"]["label"]
+    daily_digest_text = (f"{daily_digest_label}: ✅ Вкл → ❌ Выкл" if daily_digest_on == "on"
+                         else f"{daily_digest_label}: ❌ Выкл → ✅ Вкл")
     # Phase 30 (30-01, A2-08): девять тумблеров «Анкета 2.0» — сами хендлеры живут в шве
     # `handlers/admin_reg_form.py` (потолок этого файла, tests/test_module_size_convention_
     # 260816.py), строки кнопок — здесь, как у всех остальных тумблеров раздела «📝 Анкета»
@@ -783,8 +794,10 @@ async def settings_toggle_rows(admin_id: int | None = None, *, header_code=_HEAD
         "toggle_resume_filename_short_mode": _row(resume_mode_text, "toggle_resume_filename_short_mode"),
         "toggle_reg_scoring_enabled": _row(scoring_text, "toggle_reg_scoring_enabled"),
         "toggle_apps_queue_sort_by_score": _row(queue_sort_text, "toggle_apps_queue_sort_by_score"),
-        # Квик 260916: режим уведомлений о новых заявках (по одной / пачкой).
+        # Квик 260916: режим уведомлений о новых заявках (по одной / пачкой) и вечерняя
+        # сводка менеджерам «📊 Итоги дня».
         "toggle_reg_submit_notify": _row(reg_notify_text, "toggle_reg_submit_notify"),
+        "toggle_daily_digest": _row(daily_digest_text, "toggle_daily_digest"),
         # Phase 30 (30-01, A2-08): девять тумблеров «Анкета 2.0».
         "toggle_reg_form_v2": _row(reg_form_v2_text, "toggle_reg_form_v2"),
         "toggle_reg_form_chips": _row(reg_form_chips_text, "toggle_reg_form_chips"),
@@ -1293,6 +1306,16 @@ async def toggle_chat_tracking_enabled(callback: types.CallbackQuery):
     # services/chat_tracking.py) — enum on/off, дефолт OFF. Экрана-хозяина у него больше нет
     # (снесён вместе с «💬 Чат»), поэтому используется общий хелпер, как у соседей-модулей.
     await _toggle_module_setting(callback, "chat_tracking_enabled", "💬 Учёт чата делегатов")
+
+
+@router.callback_query(F.data == "toggle_daily_digest")
+async def toggle_daily_digest(callback: types.CallbackQuery):
+    # Квик 260916: «📊 Итоги дня» — вечерняя сводка менеджерам, enum on/off, дефолт OFF.
+    # Тот же generic-хелпер и тот же раздел, что у соседа выше; время сводки правится ключом
+    # «📊 Итоги дня: во сколько» в группе «🔧 Система» и применяется после перезапуска.
+    await _toggle_module_setting(
+        callback, "daily_digest_enabled", SETTINGS_SCHEMA["daily_digest_enabled"]["label"],
+    )
 
 
 @router.callback_query(F.data == "toggle_delegate_lang_enabled")
