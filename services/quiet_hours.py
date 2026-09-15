@@ -7,9 +7,12 @@
    — см. `miniapp/deps.py`: «Модуль aiogram-free»). Всё, что тянет aiogram
    (`services.scheduler`, `services.application_effects`, `services.game_digest` — оно само
    тянет `services.scheduler`) импортируется ЛЕНИВО, внутри функций, которые вызывает ТОЛЬКО
-   бот (`flush_due` и её приватные помощники) — никогда на пути, которым идёт веб-процесс
-   (`window_for_city`/`defer_until`/`send_or_queue_text`/`manager_notice`/`queued_count`
-   намеренно НЕ импортируют `game_digest`/`scheduler` даже лениво — см. `_resolve_delegate_city`).
+   бот (`flush_due` и её приватные помощники `_rebuild_markup`/`_flush_*_row`) — никогда на
+   пути, которым идёт веб-процесс (`window_for_city`/`defer_until`/вся семья
+   `send_or_queue_*`/`serialize_markup`/`manager_notice`/`queued_count` намеренно НЕ
+   импортируют `game_digest`/`scheduler` даже лениво — см. `_resolve_delegate_city`).
+   Клавиатуру веб кладёт в очередь обычным словарём, объекты aiogram собирает `_rebuild_markup`
+   уже у бота.
    `database.db`/`settings_schema`/`cities` — безопасны на уровне модуля (сами aiogram-free).
 
 2. **`now` всегда приходит АРГУМЕНТОМ.** Модуль не заводит свой литерал часового пояса
@@ -35,8 +38,26 @@ logger = logging.getLogger(__name__)
 
 # payload {"status": str, "reason": str | None} — решение по заявке (одобрено/отклонено).
 KIND_APPLICATION_DECISION = "application_decision"
-# payload {"text": str, "parse_mode": str} — произвольный текст (гейма/монеты/напоминания).
+# payload {"text": str, "parse_mode": str, "reply_markup": dict | None} — произвольный текст
+# (гейма/монеты/напоминания/ответ организаторов). `reply_markup` — сериализованная клавиатура
+# (см. `serialize_markup`), None/отсутствует — сообщение без клавиатуры (форма до 16.09).
 KIND_TEXT = "text_html"
+# payload {"method": "send_photo"|"send_document", "file_id": str, "caption": str | None,
+# "parse_mode": str | None} — файл по `file_id` (бонус за регистрацию и подобное). Телеграм
+# хранит файл у себя вечно, поэтому в очереди лежит только идентификатор (см. CLAUDE.md:
+# «Storing files on disk … Use file_id»).
+KIND_MEDIA = "media"
+# payload {"from_chat_id": int, "message_id": int, "caption": str | None} — копия чужого
+# сообщения (`bot.copy_message`): так уходит не-текстовый ответ организаторов, где менеджер
+# прислал голосовое/фото/кружок, а пересылать его «как есть» нельзя (copy, не forward —
+# делегат не должен видеть чат менеджеров).
+KIND_COPY = "copy"
+# payload {"question": str, "options": list[str], "is_anonymous": bool,
+# "allows_multiple_answers": bool, "intro_text": str | None, "poll_id": int | None} — нативный
+# опрос Telegram. `poll_id` — id строки `polls` в НАШЕЙ базе: по нему `flush_due` допишет
+# чекпоинт `poll_messages` (карта «ответ -> наш опрос» и цель для stop_poll), который при
+# немедленной отправке пишет `services/polls.py::deliver_poll`.
+KIND_POLL = "poll"
 
 # Дедуп-заменой («последнее решение выигрывает») живёт ТОЛЬКО application_decision. Результаты
 # проверки заданий и монеты копятся списком (REPLACEABLE_KINDS их не содержит) — схлопывать их
@@ -73,6 +94,34 @@ def is_quiet(now: datetime, start: time, end: time) -> bool:
     if start < end:
         return start <= now_t < end
     return now_t >= start or now_t < end
+
+
+def serialize_markup(markup) -> dict | None:
+    """Клавиатура -> JSON-словарь очереди: `{"type": "inline"|"reply", "data": {...}}`.
+
+    Инвариант 1 докстринга модуля соблюдён: aiogram здесь НЕ импортируется — объект
+    сериализует себя сам (`.model_dump()` — утиный вызов по атрибуту, а не импорт), а тип
+    определяется по форме дампа (`inline_keyboard` / `keyboard`), а не по `isinstance`.
+    Обратную сборку (`model_validate`) делает `_rebuild_markup` — она живёт на стороне бота,
+    в хвосте `flush_due`. Уже готовый словарь пропускается как есть (веб-процесс кладёт в
+    очередь обычные dict'ы). Всё непонятное -> None: сообщение уйдёт без клавиатуры, но
+    уйдёт."""
+    if markup is None:
+        return None
+    if isinstance(markup, dict):
+        data = markup
+    else:
+        dump = getattr(markup, "model_dump", None)
+        if dump is None:
+            return None
+        data = dump(exclude_none=True)
+    if not isinstance(data, dict):
+        return None
+    if "inline_keyboard" in data:
+        return {"type": "inline", "data": data}
+    if "keyboard" in data:
+        return {"type": "reply", "data": data}
+    return None
 
 
 def next_window_end(now: datetime, start: time, end: time) -> datetime:
@@ -147,16 +196,72 @@ async def enqueue(user_id: int, kind: str, payload: dict, due_at: datetime, now:
     )
 
 
-async def send_or_queue_text(now: datetime, user_id: int, text: str, *, sender,
-                             parse_mode: str = "HTML") -> bool:
-    """`sender` — асинхронный колбэк без аргументов (бот передаёт `lambda: bot.send_message(...)`,
-    веб — свой `telegram_api`-путь). `True` — отправлено сейчас, `False` — положено в очередь."""
+async def _send_or_queue(now: datetime, user_id: int, kind: str, payload: dict, sender) -> datetime | None:
+    """Общий хвост всей семьи `send_or_queue_*`: `None` — отправлено сейчас, иначе — момент,
+    на который доставка отложена. Инвариант 3 докстринга модуля держит `defer_until`: при
+    выключенном тумблере она выходит первым же чтением, и `payload` не собирается зря."""
     due = await defer_until(now, user_id)
     if due is None:
         await sender()
-        return True
-    await enqueue(user_id, KIND_TEXT, {"text": text, "parse_mode": parse_mode}, due, now)
-    return False
+        return None
+    await enqueue(user_id, kind, payload, due, now)
+    return due
+
+
+async def send_or_queue_text(now: datetime, user_id: int, text: str, *, sender,
+                             parse_mode: str = "HTML", reply_markup=None) -> bool:
+    """`sender` — асинхронный колбэк без аргументов (бот передаёт `lambda: bot.send_message(...)`,
+    веб — свой `telegram_api`-путь). `True` — отправлено сейчас, `False` — положено в очередь.
+
+    `reply_markup` (16.09) — клавиатура, которую обязано нести и отложенное сообщение: после
+    подтверждения оплаты делегат получает главное меню, и утром оно должно приехать вместе с
+    текстом, а не потеряться. Передаётся объектом aiogram (бот) или словарём (веб) —
+    сериализует `serialize_markup`, aiogram сюда не тянется. `sender` по-прежнему отвечает за
+    немедленную отправку САМ: клавиатуру в него кладёт вызывающий."""
+    return await send_or_queue_text_due(
+        now, user_id, text, sender=sender, parse_mode=parse_mode, reply_markup=reply_markup,
+    ) is None
+
+
+async def send_or_queue_text_due(now: datetime, user_id: int, text: str, *, sender,
+                                 parse_mode: str = "HTML", reply_markup=None) -> datetime | None:
+    """То же, что `send_or_queue_text`, но возвращает МОМЕНТ доставки (`None` — отправлено
+    сейчас). Нужен там, где интерфейс показывает человеку «доставим утром в 09:00»: иначе
+    вызывающему пришлось бы вторым запросом дёргать `defer_until` ради того же ответа."""
+    payload = {"text": text, "parse_mode": parse_mode}
+    markup = serialize_markup(reply_markup)
+    if markup is not None:
+        payload["reply_markup"] = markup
+    return await _send_or_queue(now, user_id, KIND_TEXT, payload, sender)
+
+
+async def send_or_queue_media(now: datetime, user_id: int, *, sender, method: str, file_id: str,
+                              caption: str | None = None, parse_mode: str | None = "HTML") -> bool:
+    """Файл по `file_id` (`send_photo`/`send_document`). `True` — отправлено сейчас."""
+    payload = {"method": method, "file_id": file_id, "caption": caption, "parse_mode": parse_mode}
+    return await _send_or_queue(now, user_id, KIND_MEDIA, payload, sender) is None
+
+
+async def send_or_queue_copy(now: datetime, user_id: int, *, sender, from_chat_id: int,
+                             message_id: int, caption: str | None = None) -> bool:
+    """Копия сообщения (`bot.copy_message`). `True` — отправлено сейчас."""
+    payload = {"from_chat_id": from_chat_id, "message_id": message_id, "caption": caption}
+    return await _send_or_queue(now, user_id, KIND_COPY, payload, sender) is None
+
+
+async def send_or_queue_poll(now: datetime, user_id: int, *, sender, question: str,
+                             options: list, is_anonymous: bool, allows_multiple_answers: bool,
+                             intro_text: str | None = None, poll_id: int | None = None) -> bool:
+    """Нативный опрос Telegram (+ вступление перед ним, если задано). `True` — отправлено
+    сейчас. `poll_id` — id строки `polls`: по нему `flush_due` допишет чекпоинт
+    `poll_messages` за отложенную доставку."""
+    payload = {
+        "question": question, "options": list(options),
+        "is_anonymous": bool(is_anonymous),
+        "allows_multiple_answers": bool(allows_multiple_answers),
+        "intro_text": intro_text, "poll_id": poll_id,
+    }
+    return await _send_or_queue(now, user_id, KIND_POLL, payload, sender) is None
 
 
 async def manager_notice(now: datetime, user_id: int) -> str:
@@ -196,8 +301,21 @@ async def flush_due(now: datetime) -> int:
                 await _sched._bot.send_message(
                     user_id, payload.get("text", ""),
                     parse_mode=payload.get("parse_mode", "HTML"),
+                    reply_markup=_rebuild_markup(payload.get("reply_markup")),
                 )
                 await mark_delayed_notification_sent(row_id, now_str)
+            elif kind == KIND_MEDIA:
+                await _flush_media_row(row_id, user_id, payload, now_str)
+            elif kind == KIND_COPY:
+                await _sched._bot.copy_message(
+                    chat_id=user_id,
+                    from_chat_id=payload.get("from_chat_id"),
+                    message_id=payload.get("message_id"),
+                    **({"caption": payload["caption"]} if payload.get("caption") else {}),
+                )
+                await mark_delayed_notification_sent(row_id, now_str)
+            elif kind == KIND_POLL:
+                await _flush_poll_row(row_id, user_id, payload, now_str)
             elif kind == KIND_APPLICATION_DECISION:
                 await _flush_application_decision_row(row_id, user_id, payload, now_str)
             else:
@@ -208,6 +326,80 @@ async def flush_due(now: datetime) -> int:
             await mark_delayed_notification_sent(row_id, now_str, error=str(e))
         count += 1
     return count
+
+
+def _rebuild_markup(raw: dict | None):
+    """Обратная сторона `serialize_markup` — ТОЛЬКО на стороне бота (инвариант 1 докстринга
+    модуля: aiogram импортируется внутри функции, которую зовёт исключительно `flush_due`).
+    Мусор/незнакомый тип -> None: сообщение уйдёт без клавиатуры, но уйдёт."""
+    if not isinstance(raw, dict) or not raw.get("data"):
+        return None
+    from aiogram.types import InlineKeyboardMarkup, ReplyKeyboardMarkup
+
+    cls = InlineKeyboardMarkup if raw.get("type") == "inline" else ReplyKeyboardMarkup
+    try:
+        return cls.model_validate(raw["data"])
+    except Exception as e:
+        logger.error(f"quiet_hours: не удалось собрать клавиатуру из очереди ({e}) — шлём без неё")
+        return None
+
+
+_MEDIA_METHODS = frozenset({"send_photo", "send_document"})
+
+
+async def _flush_media_row(row_id: int, user_id: int, payload: dict, now_str: str) -> None:
+    """`file_id` -> `bot.send_photo`/`bot.send_document`. Метод — из закрытого набора
+    (`_MEDIA_METHODS`), как и `kind` в самой `flush_due`: строка из БД никогда не превращается
+    в произвольный вызов атрибута бота."""
+    from database.db import mark_delayed_notification_sent
+    from services import scheduler as _sched
+
+    method = payload.get("method")
+    if method not in _MEDIA_METHODS:
+        logger.error(f"quiet_hours: unknown media method={method!r} for row id={row_id} — never executed")
+        await mark_delayed_notification_sent(row_id, now_str, error=f"unknown media method: {method}")
+        return
+    await getattr(_sched._bot, method)(
+        user_id, payload.get("file_id"),
+        caption=payload.get("caption"), parse_mode=payload.get("parse_mode"),
+    )
+    await mark_delayed_notification_sent(row_id, now_str)
+
+
+async def _flush_poll_row(row_id: int, user_id: int, payload: dict, now_str: str) -> None:
+    """Вступление (украшение — его сбой опрос не отменяет, как в `polls._send_one`) + сам
+    опрос, затем чекпоинт `poll_messages`: без него ответ делегата некуда замапить, а
+    `stop_poll` некуда послать. Сбой самого `send_poll` уходит наружу — `flush_due` пометит
+    строку ошибкой."""
+    from database.db import mark_delayed_notification_sent, record_poll_message
+    from services import scheduler as _sched
+
+    poll_id = payload.get("poll_id")
+    intro = payload.get("intro_text")
+    if intro:
+        try:
+            await _sched._bot.send_message(user_id, intro)
+        except Exception as e:
+            logger.warning(f"quiet_hours: вступление к опросу (row id={row_id}) не ушло: {e}")
+    try:
+        msg = await _sched._bot.send_poll(
+            user_id,
+            question=payload.get("question"),
+            options=list(payload.get("options") or []),
+            is_anonymous=bool(payload.get("is_anonymous")),
+            allows_multiple_answers=bool(payload.get("allows_multiple_answers")),
+        )
+    except Exception:
+        if poll_id is not None:
+            # Как в deliver_poll: недоставленный чат фиксируется, чтобы дошлёт не долбил его снова.
+            await record_poll_message(poll_id, user_id, None, None, False)
+        raise
+    if poll_id is not None:
+        await record_poll_message(
+            poll_id, user_id,
+            getattr(getattr(msg, "poll", None), "id", None), getattr(msg, "message_id", None), True,
+        )
+    await mark_delayed_notification_sent(row_id, now_str)
 
 
 async def _flush_application_decision_row(row_id: int, user_id: int, payload: dict, now_str: str) -> None:
