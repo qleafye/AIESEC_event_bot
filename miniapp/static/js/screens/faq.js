@@ -7,6 +7,7 @@
 
 import { flatRow, emptyState, labelText, guardedRender } from "../ui.js";
 import { icon } from "../icons.js";
+import { stagger } from "../motion.js";
 
 // Та же форма, что screens/questions.js::sectionLabel — подпись раздела из реестра
 // (`body.dataset.sectionLabels`, miniapp/routers/page.py::section_labels), не литерал.
@@ -55,6 +56,10 @@ async function draw(root, params, ctx) {
   items = page.items || [];
   emptyText = page.empty_text || "";
   renderList();
+  // Квик 260915-4mw (ANIM-05): лесенка ТОЛЬКО на первой отрисовке — renderList() перерисовывает
+  // список на каждое раскрытие вопроса (gotcha 6), повторный вызов stagger() внутри неё дёргал
+  // бы список на каждый тап.
+  stagger(list);
 }
 
 export async function render(root, params, ctx) {

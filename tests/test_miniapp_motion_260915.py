@@ -333,3 +333,161 @@ def test_status_js_imports_and_calls_confetti_on_approved():
     text = STATUS_JS.read_text(encoding="utf-8")
     assert 'import { confetti } from "../motion.js";' in text
     assert "confetti(plate)" in text
+
+
+# ── Задача 4: лесенка списков и скелетоны первичных загрузок ────────────────────────────────
+
+UI_JS = ROOT / "miniapp" / "static" / "js" / "ui.js"
+TASKS_JS = ROOT / "miniapp" / "static" / "js" / "screens" / "tasks.js"
+FAQ_JS = ROOT / "miniapp" / "static" / "js" / "screens" / "faq.js"
+LEADERBOARD_JS = ROOT / "miniapp" / "static" / "js" / "screens" / "leaderboard.js"
+HUB_JS = ROOT / "miniapp" / "static" / "js" / "screens" / "hub.js"
+
+# guardedRender рисует и снимает скелетон первичной загрузки — прогон в node на минимальной
+# заглушке DOM (свой h(), не app.js::h() — guardedRender получает h только через ctx, второй
+# реализации h() из app.js импортировать не нужно). document — только для screenText() на
+# ветке ошибки (читает document.body.dataset.screenTexts).
+GUARDED_RENDER_NODE_SCRIPT = """
+globalThis.document = { body: { dataset: {} } };
+
+class FakeNode {
+  constructor(tag) {
+    this.tag = tag;
+    this.className = "";
+    this.textContent = "";
+    this._children = [];
+    this._parent = null;
+  }
+  get children() { return this._children; }
+  append(...nodes) {
+    for (const n of nodes.flat()) {
+      if (n == null || n === false) continue;
+      this._children.push(n);
+      n._parent = this;
+    }
+  }
+  replaceChildren(...nodes) {
+    for (const c of this._children) c._parent = null;
+    this._children = [];
+    this.append(...nodes);
+  }
+  remove() {
+    if (this._parent) this._parent._children = this._parent._children.filter((c) => c !== this);
+    this._parent = null;
+  }
+  setAttribute() {}
+  addEventListener() {}
+}
+
+function h(tag, attrs, ...children) {
+  const el = new FakeNode(tag);
+  if (attrs) {
+    for (const [key, value] of Object.entries(attrs)) {
+      if (value == null || value === false) continue;
+      if (key === "class") el.className = value;
+      else if (key === "text") el.textContent = value;
+    }
+  }
+  el.append(...children);
+  return el;
+}
+
+const m = await import(%(url)s);
+
+// ── успех: скелетон виден во время draw(), снят и заменён содержимым после ──
+const rootOk = new FakeNode("div");
+let sawSkeletonDuringDraw = false;
+async function drawOk() {
+  sawSkeletonDuringDraw = rootOk.children.some((c) => c.className === "skeleton-list");
+  rootOk.append(h("div", { class: "content-marker" }));
+}
+await m.guardedRender(rootOk, { h, me: {} }, drawOk);
+const afterOkClasses = rootOk.children.map((c) => c.className);
+
+// ── ошибка: скелетон снимается и на отказе draw(), рисуется errorState ──
+const rootErr = new FakeNode("div");
+async function drawErr() { throw new Error("boom"); }
+await m.guardedRender(rootErr, { h, me: {} }, drawErr);
+const afterErrClasses = rootErr.children.map((c) => c.className);
+
+// ── экран, который сам зовёт replaceChildren() внутри draw() (leaderboard/submit, gotcha 7):
+//    скелетон отваливается раньше guardedRender, node.remove() на отклеенном узле безопасен ──
+const rootReplace = new FakeNode("div");
+async function drawReplace() { rootReplace.replaceChildren(h("div", { class: "own-content" })); }
+let replaceThrew = false;
+try {
+  await m.guardedRender(rootReplace, { h, me: {} }, drawReplace);
+} catch (_) {
+  replaceThrew = true;
+}
+const afterReplaceClasses = rootReplace.children.map((c) => c.className);
+
+console.log(JSON.stringify({
+  exports: Object.keys(m).sort(),
+  sawSkeletonDuringDraw, afterOkClasses, afterErrClasses, replaceThrew, afterReplaceClasses,
+}));
+"""
+
+
+@pytest.fixture(scope="module")
+def guarded_render_result() -> dict:
+    node = shutil.which("node")
+    if not node:
+        pytest.skip("node не найден в PATH — поведенческий тест guardedRender пропущен")
+    script = GUARDED_RENDER_NODE_SCRIPT % {"url": json.dumps(UI_JS.resolve().as_uri())}
+    proc = subprocess.run(
+        [node, "--input-type=module", "-e", script],
+        cwd=str(ROOT), capture_output=True, text=True, encoding="utf-8", timeout=120,
+    )
+    assert proc.returncode == 0, proc.stderr[-3000:]
+    return json.loads(proc.stdout.strip().splitlines()[-1])
+
+
+def test_ui_js_exports_list_skeleton(guarded_render_result):
+    assert "listSkeleton" in guarded_render_result["exports"]
+    assert "guardedRender" in guarded_render_result["exports"]
+
+
+def test_guarded_render_shows_skeleton_during_draw_and_removes_it_on_success(guarded_render_result):
+    assert guarded_render_result["sawSkeletonDuringDraw"] is True
+    assert guarded_render_result["afterOkClasses"] == ["content-marker"]
+
+
+def test_guarded_render_removes_skeleton_on_error_too(guarded_render_result):
+    assert "skeleton-list" not in guarded_render_result["afterErrClasses"]
+    assert any("error-state" in cls for cls in guarded_render_result["afterErrClasses"])
+
+
+def test_guarded_render_finally_remove_is_safe_when_draw_already_replaced_children(guarded_render_result):
+    # gotcha 7 (leaderboard.js/submit.js): draw() сам зовёт root.replaceChildren() — скелетон
+    # отваливается раньше guardedRender, node.remove() на уже откреплённом узле не должен падать.
+    assert guarded_render_result["replaceThrew"] is False
+    assert guarded_render_result["afterReplaceClasses"] == ["own-content"]
+
+
+def test_tasks_js_imports_stagger_and_animates_only_newly_loaded_rows():
+    text = TASKS_JS.read_text(encoding="utf-8")
+    assert "countUp, stagger" in text
+    assert "const before = list.children.length;" in text
+    assert "stagger(list, { from: before });" in text
+
+
+def test_faq_js_calls_stagger_once_outside_render_list_body():
+    text = FAQ_JS.read_text(encoding="utf-8")
+    assert 'import { stagger } from "../motion.js";' in text
+    render_list_start = text.index("function renderList()")
+    render_list_body = text[render_list_start:text.index("\n  }\n", render_list_start)]
+    assert "stagger(" not in render_list_body, "faq.js: stagger не должен звучать на каждое раскрытие вопроса"
+    assert "stagger(list);" in text
+
+
+def test_leaderboard_js_calls_stagger_after_building_rest_rows():
+    text = LEADERBOARD_JS.read_text(encoding="utf-8")
+    assert "confetti, haptic, stagger" in text
+    assert "stagger(list);" in text
+
+
+def test_hub_js_calls_stagger_for_delegate_and_manager_tiles():
+    text = HUB_JS.read_text(encoding="utf-8")
+    assert "countUp, haptic, stagger" in text
+    assert text.count("stagger(tiles)") == 2

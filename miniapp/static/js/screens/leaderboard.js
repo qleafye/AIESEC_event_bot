@@ -7,7 +7,7 @@
 
 import { flatRow, emptyState, guardedRender } from "../ui.js";
 import { icon } from "../icons.js";
-import { confetti, haptic } from "../motion.js";
+import { confetti, haptic, stagger } from "../motion.js";
 
 function placeClass(rank) {
   if (rank === 1) return "first";
@@ -114,6 +114,7 @@ async function draw(root, params, ctx) {
     if (restRows.length) {
       const list = h("div", { class: "flat-list flush" });
       for (const item of restRows) list.append(rankRow(h, item));
+      stagger(list);
       root.append(list);
     }
 

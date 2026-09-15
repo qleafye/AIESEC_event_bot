@@ -7,7 +7,7 @@
 
 import { flatRow, emptyState, guardedRender } from "../ui.js";
 import { icon } from "../icons.js";
-import { countUp } from "../motion.js";
+import { countUp, stagger } from "../motion.js";
 
 const PAGE = 25;
 
@@ -82,7 +82,11 @@ async function draw(root, params, ctx) {
     foot.replaceChildren(h("div", { class: "loading", text: "Загрузка…" }));
     const page = await api(`/tasks?offset=${offset}&limit=${PAGE}`);
     total = page.total;
+    // Квик 260915-4mw (ANIM-05): «Показать ещё» лесенкой анимирует только ДОЗАГРУЖЕННЫЕ
+    // строки — уже показанные не переезжают повторно.
+    const before = list.children.length;
     for (const item of page.items) list.append(taskRow(h, navigate, item));
+    stagger(list, { from: before });
     offset += page.items.length;
     foot.replaceChildren();
     if (counted) {
