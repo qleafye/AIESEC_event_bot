@@ -1702,7 +1702,29 @@ async def _composite_spec_for(
         await step_spec(part_key, participant_type, event_city, flags=flags, _in_composite=True)
         for part_key in part_keys
     ]
-    return {"group": group, "parts": parts, "toggle_step": _COMPOSITE_TOGGLE_STEP.get(group)}
+    # Task 260915-skg (P1, решение владельца «две плитки»): тумблер группы должен писать
+    # СТРОКУ education_status, не bool (form_types.js больше не хардкодит статус) — источник
+    # правды остаётся один и тот же `is_studying`/`studying_statuses` (D-06 фазы 28), клиент
+    # своего списка «учащихся» не держит (T-skg-03). `studying_option` — первый вариант
+    # `options("education_status")`, для которого `is_studying` истинно; `not_studying_options`
+    # — все остальные варианты (пустой список опций -> `studying_option is None`, T-skg-03).
+    edu_opts = await options("education_status")
+    edu_statuses = await studying_statuses()
+    studying_option = None
+    studying_idx = None
+    for idx, opt in enumerate(edu_opts):
+        if is_studying(opt, edu_statuses):
+            studying_option = opt
+            studying_idx = idx
+            break
+    if studying_idx is None:
+        not_studying_options = list(edu_opts)
+    else:
+        not_studying_options = edu_opts[:studying_idx] + edu_opts[studying_idx + 1:]
+    return {
+        "group": group, "parts": parts, "toggle_step": _COMPOSITE_TOGGLE_STEP.get(group),
+        "studying_option": studying_option, "not_studying_options": not_studying_options,
+    }
 
 
 async def step_spec(step_key: str, participant_type: str | None = None,
@@ -2146,10 +2168,15 @@ def is_returning_row(user: dict | None, event_season: str | None) -> bool:
 # знает про aiogram/HTML (T-21-03). validate_answer возвращает голый текст в обоих случаях.
 # ══════════════════════════════════════════════════════════════════════════════════════════════
 
-def parse_age(raw: str | None) -> int | None:
+def parse_age(raw: int | str | None) -> int | None:
     """CR-8: ASCII-digit-safe age parse. Перенос дословный из
-    handlers/registration.py::_parse_age."""
-    raw = (raw or "").strip()
+    handlers/registration.py::_parse_age. Task 260915-skg (P3, T-skg-01): Mini App
+    `<input type="number">` шлёт JSON-число, не строку — `int`/`float` принимаются наравне со
+    строкой; `bool` отсекается первой строкой (bool — подкласс int, `parse_age(True)` иначе
+    молча прошёл бы как `1`)."""
+    if isinstance(raw, bool):
+        return None
+    raw = "" if raw is None else str(raw).strip()
     if not (raw.isascii() and raw.isdigit()):
         return None
     age = int(raw)
@@ -2247,6 +2274,19 @@ _MEMBERSHIP_STEPS = {
 
 
 def _validate_answer_core(step_key: str, raw, participant_type: str | None) -> tuple:
+    # Task 260915-skg (P1/P3, T-skg-01): Mini App PATCH может прислать не-строковый JSON —
+    # тумблер шлёт bool, `<input type="number">` шлёт число, до этого guard'а нижние ветки делают
+    # голый `(raw or "").strip()`/`.startswith(...)` и падают AttributeError -> 500 (возраст,
+    # тумблер «Образование»). Guard узкий: bool -> "" (ПЕРВЫМ, bool — подкласс int), int/float ->
+    # str(raw), контейнер -> "" ТОЛЬКО для не-multi шага (multi легитимно получает список —
+    # ветка ниже, строка 2337; repeatable свой список уже разобрал раньше, в `validate_answer`).
+    # `None` не трогаем — нижние ветки уже пишут `(raw or "").strip()`.
+    if isinstance(raw, bool):
+        raw = ""
+    elif isinstance(raw, (int, float)):
+        raw = str(raw)
+    elif isinstance(raw, (list, tuple, dict, set)) and REG_STEP_TYPES.get(step_key) != "multi":
+        raw = ""
     if step_key == "full_name":
         text = (raw or "").strip()
         if len(text.split()) < 2:

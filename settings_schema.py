@@ -2166,8 +2166,8 @@ SETTINGS_SCHEMA = {
     # трогает реестр»).
     "reg_composite_edu_subtitle_text": {
         "type": "text", "group": "reg_prompts", "label": "🎓 Подзаголовок карточки (composite)",
-        "prompt": "Подзаголовок на плите шага «Образование».",
-        "default": "Один экран вместо четырёх вопросов подряд.", "per_city": True,
+        "prompt": "Подзаголовок на плите шага «Образование». Для делегата, не аннотация дизайна.",
+        "default": "Где и на чём учишься", "per_city": True,
     },
     "reg_composite_edu_toggle_on_label": {
         "type": "text", "group": "reg_prompts", "label": "🎓 Тумблер «учусь» — заголовок (вкл)",
@@ -2192,16 +2192,16 @@ SETTINGS_SCHEMA = {
     "reg_composite_edu_done_hint_text": {
         "type": "text", "group": "reg_prompts", "label": "🎓 Пояснение в свёрнутой карточке",
         "prompt": "Показывается вместо ВУЗа/курса/программы после выключения тумблера.",
-        "default": "ВУЗ, курс и программу больше не спрашиваем — этих шагов просто нет.",
+        "default": "Хорошо — про учёбу больше не спросим.",
         "per_city": True,
     },
     "reg_composite_toggle_note_text": {
         "type": "text", "group": "reg_prompts", "label": "🎓 Сноска под карточкой (composite)",
-        "prompt": "`.note` под карточкой «Образование».",
-        "default": (
-            "Скипать нечего, если шага нет: выключенный тумблер убирает вопросы, а не "
-            "помечает их «пропущено»."
+        "prompt": (
+            "`.note` под карточкой «Образование» — необязательная сноска мелким текстом. "
+            "Пустое значение (дефолт) — сноски под карточкой нет."
         ),
+        "default": "",
     },
     "reg_repeatable_add_button_text": {
         "type": "text", "group": "reg_prompts", "label": "➕ Кнопка «Добавить ещё» (шаблон)",
