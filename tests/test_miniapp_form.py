@@ -886,8 +886,10 @@ def test_draft_get_short_track_returns_only_short_steps_and_progress_total(clien
     resp = client.get("/app/api/reg/draft", headers=_hdr(UNREGISTERED_ID))
     body = resp.json()
     step_keys = [s["key"] for s in body["steps"]]
-    assert step_keys == ["age", "vk"]
-    assert body["progress"]["total"] == 2
+    # Приёмка 16.09 (п.1): первым шагом мастера идёт ФИО — в чате его спрашивает
+    # `_ask_full_name` до движка шагов, у приложения такого «до» нет.
+    assert step_keys == ["full_name", "age", "vk"]
+    assert body["progress"]["total"] == 3
     assert body["progress"]["total"] < 43
 
 
