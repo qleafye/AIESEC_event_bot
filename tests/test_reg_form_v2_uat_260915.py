@@ -6,6 +6,7 @@ pytest-asyncio в окружении нет (см. шапку `tests/test_reg_co
 `asyncio.run()`.
 """
 import asyncio
+import time
 
 import pytest
 
@@ -277,22 +278,30 @@ def test_city_fork_in_app_sees_cities_added_after_start(client):
     подтягивать справочник сам (`cities.ensure_cities_fresh` в `_load_context`)."""
     import cities
 
-    cities.set_cities_for_test([
-        {"code": "msk", "label": "Москва", "tab_base": "", "enabled": 1, "sort_order": 0},
-    ])
-    cities._cities_loaded_at = 0.0
-    asyncio.run(bot_db.insert_city("msk", "Москва", "", 0))
-    asyncio.run(bot_db.insert_city("spb", "Санкт-Петербург", "СПб", 1))
-    asyncio.run(bot_db.insert_city("tyumen", "Тюмень", "Тюмень", 2))
-    asyncio.run(bot_db.insert_city("kzn", "Казань", "Казань", 3))
-    _set("event_city_enabled", "on")
+    # Кэш городов — процессный, его правка переживает тест: восстанавливаем исходный, чтобы
+    # соседи по прогону (xdist кладёт их в тот же воркер) не увидели чужой справочник.
+    saved_cities = cities.all_cities()
+    try:
+        cities.set_cities_for_test([
+            {"code": "msk", "label": "Москва", "tab_base": "", "enabled": 1, "sort_order": 0},
+        ])
+        cities._cities_loaded_at = 0.0
+        asyncio.run(bot_db.insert_city("msk", "Москва", "", 0))
+        asyncio.run(bot_db.insert_city("spb", "Санкт-Петербург", "СПб", 1))
+        asyncio.run(bot_db.insert_city("tyumen", "Тюмень", "Тюмень", 2))
+        asyncio.run(bot_db.insert_city("kzn", "Казань", "Казань", 3))
+        _set("event_city_enabled", "on")
 
-    resp = client.get("/app/api/reg/draft", headers=_hdr(UNREGISTERED_ID))
-    assert resp.status_code == 200, resp.text
-    fork = [it for it in resp.json()["pre_items"] if it.get("field") == "event_city"]
-    assert fork, "развилка города обязана быть, когда модуль включён"
-    codes = [o["code"] for o in fork[0]["options"]]
-    assert codes == ["msk", "spb", "tyumen", "kzn"], codes
+        resp = client.get("/app/api/reg/draft", headers=_hdr(UNREGISTERED_ID))
+        assert resp.status_code == 200, resp.text
+        fork = [it for it in resp.json()["pre_items"] if it.get("field") == "event_city"]
+        assert fork, "развилка города обязана быть, когда модуль включён"
+        codes = [o["code"] for o in fork[0]["options"]]
+        assert codes == ["msk", "spb", "tyumen", "kzn"], codes
+    finally:
+        cities.set_cities_for_test(saved_cities)
+        # Отметка «свежий» — чтобы следующий тест-сосед не утянул кэш обратно из своей БД.
+        cities._cities_loaded_at = time.monotonic()
 
 
 # ── «при отправке текста в резюме пишется, что не дошло до сервера» ───────────────────────
