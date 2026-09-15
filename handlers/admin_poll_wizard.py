@@ -278,6 +278,31 @@ async def poll_settings_next(callback: types.CallbackQuery, state: FSMContext):
     await callback.message.edit_text("Шаг 3 из 4. " + text, parse_mode="HTML", reply_markup=kb)
 
 
+async def _quiet_hours_warning() -> str:
+    """Строка предупреждения для экрана подтверждения — та же идиома, что у рассылок
+    (`handlers/admin_broadcasts.py::_send_confirm_prompt`): модуль оттуда НЕ импортируем,
+    там свой Router и своя цепочка импортов, а формулировка здесь всё равно ДРУГАЯ.
+
+    У рассылки «отправить сейчас» тишину не ждёт (она копирует уже разрешённый список
+    получателей), а опрос — ждёт: каждый делегат получает свой `send_poll`, и попавший в
+    СВОЁ окно ложится в очередь до утра. Поэтому здесь не «получат ночью», а «получат утром».
+    Тумблер выключен / окна нет / время вне окна -> «» и экран байт-в-байт прежний."""
+    from services import quiet_hours
+    from services.scheduler import _now_moscow_naive
+
+    now = _now_moscow_naive()
+    window = await quiet_hours.window_for_city(None)
+    if window is None or not quiet_hours.is_quiet(now, *window):
+        return ""
+    start, end = window
+    window_end = quiet_hours.next_window_end(now, start, end)
+    return (
+        f"\n🌙 Сейчас тихие часы ({start.strftime('%H:%M')}–{end.strftime('%H:%M')}) — "
+        f"делегаты получат опрос утром, после {window_end.strftime('%H:%M')} "
+        "(у делегата со своим городским окном — по его времени).\n"
+    )
+
+
 @router.callback_query(F.data.startswith("poll_aud:"), PollCreate.audience)
 async def poll_audience_pick(callback: types.CallbackQuery, state: FSMContext, bot: Bot):
     choice = callback.data[len("poll_aud:"):]
@@ -303,6 +328,7 @@ async def poll_audience_pick(callback: types.CallbackQuery, state: FSMContext, b
     await callback.message.answer(
         "Шаг 4 из 4. Выше — как опрос увидит делегат (превью закрыто, голосовать нельзя).\n\n"
         f"Кому: <b>{html_module.escape(audience_label(spec))}</b> — {count} чел.\n"
+        f"{await _quiet_hours_warning()}"
         "Отправить сейчас или запланировать?",
         parse_mode="HTML", reply_markup=_confirm_kb(),
     )
@@ -324,8 +350,11 @@ async def _deliver_and_report(bot, poll_id: int, admin_id: int):
     else:
         text = (
             f"📊 Опрос #{poll_id} отправлен.\n✅ Доставлено: {stats['sent']}\n"
-            f"❌ Недоступно: {stats['failed']}\nИтоги — в «📊 Опросы»."
+            f"❌ Недоступно: {stats['failed']}\n"
         )
+        if stats.get("queued"):
+            text += f"🌙 Ждут конца тихих часов: {stats['queued']}\n"
+        text += "Итоги — в «📊 Опросы»."
     try:
         await bot.send_message(admin_id, text)
     except Exception as e:

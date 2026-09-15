@@ -28,6 +28,7 @@ from database.db import (
     count_and_list_filtered,
     _csv_safe,
 )
+from services.timeutil import msk_now
 from settings_schema import get_setting_typed, SETTINGS_SCHEMA
 
 logger = logging.getLogger(__name__)
@@ -79,21 +80,40 @@ def audience_label(spec: list[dict] | None) -> str:
 
 # ── доставка ─────────────────────────────────────────────────────────────────────────────────
 
-async def _send_one(bot, poll: dict, chat_id: int, intro: str | None):
-    """Одна доставка: вступление (если задано) + сам опрос. Возвращает Message опроса."""
-    if intro:
-        try:
-            await bot.send_message(chat_id, intro)
-        except Exception as e:
-            # Вступление — украшение; сам опрос важнее. Логируем и шлём опрос.
-            logger.warning("poll %s intro to %s failed: %s", poll["id"], chat_id, e)
-    return await bot.send_poll(
-        chat_id,
-        question=poll["question"],
-        options=list(poll["options"]),
+async def _send_one(bot, poll: dict, chat_id: int, intro: str | None, now):
+    """Одна доставка: вступление (если задано) + сам опрос.
+
+    Возвращает Message опроса — либо None, если делегат сейчас в СВОИХ тихих часах (окно
+    берётся по его городу, как у рассылок) и опрос лёг в очередь `delayed_notifications`.
+    Чекпоинт `poll_messages` для отложенного пишет уже `quiet_hours.flush_due` — иначе ответ
+    делегата некуда замапить, а `stop_poll` некуда послать (16.09)."""
+    from services import quiet_hours
+
+    delivered = []
+
+    async def _sender():
+        if intro:
+            try:
+                await bot.send_message(chat_id, intro)
+            except Exception as e:
+                # Вступление — украшение; сам опрос важнее. Логируем и шлём опрос.
+                logger.warning("poll %s intro to %s failed: %s", poll["id"], chat_id, e)
+        delivered.append(await bot.send_poll(
+            chat_id,
+            question=poll["question"],
+            options=list(poll["options"]),
+            is_anonymous=bool(poll["is_anonymous"]),
+            allows_multiple_answers=bool(poll["allows_multiple"]),
+        ))
+
+    await quiet_hours.send_or_queue_poll(
+        now, chat_id, sender=_sender,
+        question=poll["question"], options=list(poll["options"]),
         is_anonymous=bool(poll["is_anonymous"]),
         allows_multiple_answers=bool(poll["allows_multiple"]),
+        intro_text=intro, poll_id=poll["id"],
     )
+    return delivered[0] if delivered else None
 
 
 async def deliver_poll(bot, poll_id: int) -> dict | None:
@@ -110,7 +130,8 @@ async def deliver_poll(bot, poll_id: int) -> dict | None:
         targets = await resolve_poll_audience(poll)
         already = await list_poll_sent_chat_ids(poll_id)
         intro = (await get_setting_typed("poll_intro_text") or "").strip() or None
-        sent = failed = skipped = 0
+        now = msk_now()
+        sent = failed = skipped = queued = 0
         for chat_id in targets:
             if chat_id in already:
                 skipped += 1
@@ -120,22 +141,30 @@ async def deliver_poll(bot, poll_id: int) -> dict | None:
             # list_delivered_chat_ids у рассылок). Ошибка записи чекпоинта — это уже крах
             # процесса: она уходит наружу, строка остаётся 'sending', бут дошлёт хвост.
             try:
-                msg = await _send_one(bot, poll, chat_id, intro)
+                msg = await _send_one(bot, poll, chat_id, intro, now)
             except Exception as e:
                 logger.warning("poll %s to %s failed: %s", poll_id, chat_id, e)
                 await record_poll_message(poll_id, chat_id, None, None, False)
                 failed += 1
             else:
-                tg_poll_id = getattr(getattr(msg, "poll", None), "id", None)
-                await record_poll_message(poll_id, chat_id, tg_poll_id, getattr(msg, "message_id", None), True)
-                sent += 1
+                if msg is None:
+                    # Тихие часы делегата: опрос лежит в очереди, чекпоинт запишет flush_due.
+                    # `already` его не увидит, так что аварийный дошлёт после краха ПОСРЕДИ
+                    # рассылки может поставить второй — принятый размен: строка очереди
+                    # переживает рестарт, а клейм 'sending'/'open' и так делает дошлёт редким.
+                    queued += 1
+                else:
+                    tg_poll_id = getattr(getattr(msg, "poll", None), "id", None)
+                    await record_poll_message(poll_id, chat_id, tg_poll_id, getattr(msg, "message_id", None), True)
+                    sent += 1
             await asyncio.sleep(0.05)
         await set_poll_status(poll_id, "open")
         logger.info(
-            "poll %s delivered: sent %s, skipped %s (already), failed %s of %s",
-            poll_id, sent, skipped, failed, len(targets),
+            "poll %s delivered: sent %s, queued %s (quiet hours), skipped %s (already), failed %s of %s",
+            poll_id, sent, queued, skipped, failed, len(targets),
         )
-        return {"sent": sent, "failed": failed, "skipped": skipped, "total": len(targets)}
+        return {"sent": sent, "failed": failed, "skipped": skipped, "queued": queued,
+                "total": len(targets)}
     except Exception as e:
         # Строка остаётся 'sending' — реконсиляция на буте реклеймит её и дошлёт хвост.
         logger.error("deliver_poll(%s) failed mid-way: %s", poll_id, e)

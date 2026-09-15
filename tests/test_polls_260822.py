@@ -197,7 +197,9 @@ def test_deliver_poll_checkpoints_and_resumes_after_crash(tmp_path, monkeypatch)
         bot2 = FakeBot()
         stats = await polls_svc.deliver_poll(bot2, pid)
         assert [p["chat_id"] for p in bot2.sent_polls] == [3, 4, 5]
-        assert stats == {"sent": 3, "failed": 0, "skipped": 2, "total": 5}
+        # «queued» (16.09) — сколько получателей ждут конца СВОИХ тихих часов; тумблер
+        # выключен, поэтому здесь всегда 0 и остальные счётчики прежние.
+        assert stats == {"sent": 3, "failed": 0, "skipped": 2, "queued": 0, "total": 5}
         assert (await db.get_poll(pid))["status"] == "open"
         assert await db.get_poll_id_by_telegram_poll("tg4") == pid
         # Повторный вызов — клейм не проходит, ничего не шлётся.
@@ -219,7 +221,7 @@ def test_deliver_records_failed_and_sends_intro_and_audience_filter(tmp_path, mo
                              allows_multiple=True)
         bot = FakeBot(fail_send={3})
         stats = await polls_svc.deliver_poll(bot, pid)
-        assert stats == {"sent": 1, "failed": 1, "skipped": 0, "total": 2}
+        assert stats == {"sent": 1, "failed": 1, "skipped": 0, "queued": 0, "total": 2}
         assert [c for c, _ in bot.sent_messages] == [1, 3]  # вступление ушло обоим
         assert bot.sent_polls[0]["is_anonymous"] is True and bot.sent_polls[0]["multi"] is True
         assert await db.count_poll_deliveries(pid) == (1, 1)
