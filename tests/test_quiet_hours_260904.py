@@ -230,7 +230,9 @@ def test_quiet_hours_web_facing_functions_never_import_game_digest_or_scheduler(
     import inspect
     web_facing = [
         qh.window_for_city, qh.defer_until, qh._resolve_delegate_city,
-        qh.enqueue, qh.send_or_queue_text, qh.manager_notice, qh.queued_count,
+        qh.enqueue, qh.manager_notice, qh.queued_count, qh.serialize_markup,
+        qh._send_or_queue, qh.send_or_queue_text, qh.send_or_queue_text_due,
+        qh.send_or_queue_media, qh.send_or_queue_copy, qh.send_or_queue_poll,
     ]
     for func in web_facing:
         lines = [ln.strip() for ln in inspect.getsource(func).splitlines()]
@@ -333,9 +335,13 @@ def test_enqueue_replace_does_not_touch_already_sent_rows(tmp_path):
 class _FakeBot:
     def __init__(self):
         self.sent = []
+        self.sent_full = []
 
-    async def send_message(self, chat_id, text, parse_mode=None):
+    async def send_message(self, chat_id, text, parse_mode=None, reply_markup=None):
+        # `sent` — историческая тройка (её ждут тесты ниже); `sent_full` добавлена 16.09
+        # вместе с клавиатурой в очереди (kind text_html несёт reply_markup).
         self.sent.append((chat_id, text, parse_mode))
+        self.sent_full.append((chat_id, text, parse_mode, reply_markup))
 
 
 def test_flush_due_sends_only_due_rows_and_marks_sent(tmp_path):
