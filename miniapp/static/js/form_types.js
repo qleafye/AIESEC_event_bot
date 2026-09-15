@@ -57,13 +57,32 @@ function haptic(kind, flags) {
 
 // ── select: плитки с пояснением (30-UI-SPEC.md § «1. select») ──────────────────────────────
 
+// Приёмка 15.09 (п.5 «Другое: напиши свой вариант — ПИСАТЬ НЕГДЕ»): плитка «свой вариант»
+// (`spec.other_option`, публикует `reg_engine.step_spec`) раскрывает под собой текстовое поле.
+// До этого её тап отправлял на сервер сам маркер, сервер отвечал «Напиши свой вариант:», а
+// писать было негде — тупик. Маркер приходит СТРОКОЙ с сервера (уже переведённой вместе с
+// `options`), клиент литерала «Другое» не знает.
 function selectTiles(h, spec, value, onChange, flags) {
   const texts = spec.v2_texts || {};
   const hints = spec.option_hints || {};
   const box = h("div", { class: "opt-tiles", role: "radiogroup", "aria-label": spec.label });
   const tiles = [];
+  const options = [...(spec.options || [])];
+  const otherOption = spec.other_option || null;
+  if (otherOption && !options.includes(otherOption)) options.push(otherOption);
+  const otherInput = h("input", {
+    class: "input hidden", type: "text", id: `f-${spec.key}-other`, "aria-label": spec.label,
+  });
+  // Прежний ответ, которого нет среди вариантов, и есть «свой вариант» — плитка «Другое»
+  // выбрана, текст лежит в поле (иначе делегат, вернувшийся на шаг, видел бы пустой экран
+  // при непустом ответе).
+  const startsOther = Boolean(
+    otherOption && value != null && value !== "" && !options.includes(value),
+  );
+  let otherMode = startsOther;
   let current = value;
   let footerCb = null;
+  if (startsOther) otherInput.value = value;
 
   function footerState() {
     const picked = current != null && current !== "";
@@ -78,22 +97,25 @@ function selectTiles(h, spec, value, onChange, flags) {
 
   function paint() {
     for (const t of tiles) {
-      const on = t.opt === current;
+      const on = t.opt === otherOption ? otherMode : (!otherMode && t.opt === current);
       t.el.classList.toggle("on", on);
       t.el.setAttribute("aria-checked", on ? "true" : "false");
     }
+    otherInput.classList.toggle("hidden", !otherMode);
     notify();
   }
 
-  for (const opt of spec.options || []) {
+  for (const opt of options) {
     const label = (spec.option_labels && spec.option_labels[opt]) || opt;
     const hint = hints[opt] || "";
     const tile = h("button", {
       class: "opt-tile", type: "button", role: "radio", "aria-checked": "false",
       onClick: () => {
-        current = opt;
-        onChange(opt);
+        otherMode = opt === otherOption;
+        current = otherMode ? otherInput.value.trim() : opt;
+        onChange(current);
         paint();
+        if (otherMode) otherInput.focus();
         haptic("light", flags);
       },
     },
@@ -104,6 +126,11 @@ function selectTiles(h, spec, value, onChange, flags) {
     tiles.push({ opt, el: tile });
     box.append(tile);
   }
+  otherInput.addEventListener("input", () => {
+    current = otherInput.value.trim();
+    onChange(current);
+    notify();
+  });
   paint();
 
   const note = texts.selection_visible_note
@@ -112,7 +139,7 @@ function selectTiles(h, spec, value, onChange, flags) {
 
   const initial = footerState();
   return {
-    control: h("div", {}, box, note),
+    control: h("div", {}, box, otherInput, note),
     footerLabel: initial.label,
     disabled: initial.disabled,
     onFooterChange: (cb) => { footerCb = cb; notify(); },
@@ -545,7 +572,17 @@ function compositeCard(h, spec, value, onChange, flags) {
   if (toggleKey) errorFlags[toggleKey] = !state[toggleKey];
   let footerCb = null;
 
+  // Приёмка 15.09 (п.2 «"Нет, завершил обучение" не работает кнопке далее»): выключенный
+  // тумблер обязан отправлять ТОЛЬКО сам статус. Раньше уезжали и скрытые части («ВУЗ»,
+  // «курс», «программа») пустыми строками — сервер честно отвечал 400 «обязательное поле»
+  // по колонке, которой на экране уже нет, и кнопка «Далее» просто ничего не делала.
+  // 30-UI-SPEC.md § «3. composite»: выключенный тумблер УБИРАЕТ вопросы, а не отвечает на них
+  // пустотой.
   function emit() {
+    if (toggleKey && !studying) {
+      onChange({ [toggleKey]: state[toggleKey] });
+      return;
+    }
     onChange({ ...state });
   }
 
@@ -700,8 +737,11 @@ function compositeCard(h, spec, value, onChange, flags) {
   paintToggleLabels();
   paintToggleVisibility();
 
-  const card = h("div", { class: "card brand" }, ...fullParts, doneCpart, statusChipsCpart,
-    togglePart ? h("div", { class: "cpart" }, toggleRow) : null);
+  // Приёмка 15.09 (п.1): тумблер — ПЕРВОЙ строкой карточки, плитки «нет» сразу под ним. Внизу
+  // страницы делегат его не находил («не сразу видно») и отвечал про ВУЗ, уже не учась.
+  const card = h("div", { class: "card brand" },
+    togglePart ? h("div", { class: "cpart" }, toggleRow) : null,
+    statusChipsCpart, ...fullParts, doneCpart);
   const note = texts.toggle_note ? h("p", { class: "label-role", text: texts.toggle_note }) : null;
 
   return {

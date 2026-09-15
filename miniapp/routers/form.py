@@ -315,6 +315,13 @@ async def _draft_response(telegram_id: int, ctx: dict | None = None, *, bot_user
                     key: i18n.tr(text, lang, tr_map)
                     for key, text in step_spec_row["v2_texts"].items()
                 }
+            # Приёмка 15.09 (п.5): маркер плитки «свой вариант» — та же строка, что уже
+            # переведена в `options` выше; без прогона плитка «Other» не совпала бы с русским
+            # маркером и поле «впиши свой вариант» не раскрылось бы на английской анкете.
+            if step_spec_row.get("other_option"):
+                step_spec_row["other_option"] = i18n.tr(
+                    step_spec_row["other_option"], lang, tr_map,
+                )
             if step_spec_row.get("option_hints"):
                 step_spec_row["option_hints"] = {
                     value: i18n.tr(text, lang, tr_map)
@@ -333,11 +340,24 @@ async def _draft_response(telegram_id: int, ctx: dict | None = None, *, bot_user
             "continue_text": await get_setting_typed("reg_form_continue_in_chat_text"),
             "deeplink": _continue_deeplink(bot_username),
         }
+    # Приёмка 15.09 (п.3в «потом снова кинуло на новую анкету»): в `reg_drafts.step` лежит шаг
+    # для ОБЕИХ поверхностей, а чат ведёт образование четырьмя отдельными вопросами (см.
+    # `handlers/reg_types_composite.py`) — значит там может стоять «university»/«course», шага
+    # с таким ключом в новой анкете нет (карточка поглотила его), и `form.js::stepIndexFromKey`
+    # на незнакомом ключе отдаёт 0 — мастер начинался заново с первого вопроса. Показываем
+    # делегату шаг-карточку: он и есть то место, где эти вопросы задаются в приложении.
+    shown_keys = {row["key"] for row in spec["steps"]}
+    absorbed = {
+        part: owner for part, owner in reg_engine.composite_absorbed_steps(
+            spec["steps"][0]["flags"] if spec["steps"] else {},
+        ).items()
+        if owner in shown_keys and part not in shown_keys
+    }
     return {
         "exists": ctx["draft"] is not None,
         "kind": ctx["kind"],
         "handoff": handoff,
-        "step": ctx["step"],
+        "step": absorbed.get(ctx["step"], ctx["step"]),
         "version": ctx["version"],
         "pre": spec["pre"],
         "pre_items": await _pre_items(
@@ -637,8 +657,15 @@ async def draft_patch(
     step_to_store = body.step
     if body.step:
         enabled_now = await reg_engine.enabled_steps({**new_answers, "participant_type": effective_track})
-        if body.step in enabled_now:
-            idx = enabled_now.index(body.step)
+        # Приёмка 15.09 (п.3б): карточка «Образование» отвечает на ВСЮ группу одним нажатием —
+        # следующий вопрос обязан быть тем, что идёт ЗА группой, а не её же «ВУЗ» (иначе
+        # мастер после карточки переспрашивал ВУЗ отдельным экраном). Считает `reg_engine`,
+        # одним правилом с деградацией типа; карточка выключена -> `body.step` как раньше.
+        anchor = reg_engine.advance_anchor(
+            body.step, enabled_now, await reg_engine.form_v2_flags(ctx["event_city"]),
+        )
+        if anchor in enabled_now:
+            idx = enabled_now.index(anchor)
             if idx + 1 < len(enabled_now):
                 step_to_store = enabled_now[idx + 1]
             else:
