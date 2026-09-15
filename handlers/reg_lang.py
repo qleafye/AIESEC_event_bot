@@ -88,6 +88,9 @@ async def offer_language(message: types.Message, state: FSMContext, raw_args: st
     # файле: отсутствие данных — "ru", никогда не исключение.
     language_code = getattr(message.from_user, "language_code", None)
     lang = await delegate_lang(message.from_user.id, language_code)
+    # Диагностика приёмки 15.09 («английский клиент, а экрана выбора нет»): без этой строки
+    # по логу не отличить «клиент прислал ru» от «модуль/тумблер выключен».
+    logger.info("offer_language: uid=%s language_code=%r -> %s", message.from_user.id, language_code, lang)
     if lang != "ask":
         if lang == "ru":
             # Сеть безопасности — C1 в services/i18n.py::tr (переводим строго при lang=="en"),
