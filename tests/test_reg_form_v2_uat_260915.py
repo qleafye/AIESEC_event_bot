@@ -370,6 +370,50 @@ def test_wizard_advances_on_committed_pick_through_the_same_go_next():
     assert "currentMainDisabled()" in block, block
 
 
+# ── Приёмка 16.09 («номер телефона не работает автопереход... добавь для всех, которые могут
+# автоскипаться») — коммит для контролов мастера, которые `field()` рендерит легаси-билдерами
+# (`V2_KEEPS_LEGACY_CONTROL`: phone/date/consent/file) и которых `opts.commit` не касается
+# напрямую (кнопка «Поделиться номером»/сетевая загрузка файла — отдельные колбэки, не
+# `field()`.onChange).
+
+def test_phone_share_advances_through_the_same_go_next():
+    """«Поделиться номером» — один тап, законченный ответ: тот же отложенный `goNext()`,
+    что даёт `opts.commit` у остальных контролов (второй проверки `currentMainDisabled` не
+    заводим). Второй call site `shareContactButton` (обзор точечной правки) этот переход не
+    получает — там нет мастера/«Далее», только своя кнопка-галочка."""
+    text = _js_without_comments(FORM_SCREEN_JS)
+    idx = text.rindex("const contactBtn = shareContactButton(")
+    block = text[idx:]
+    block = block[:block.index('isV2 ? { iconName: "phone-outgoing"')]
+    assert "goNext()" in block, block
+    assert "currentMainDisabled()" in block, block
+
+
+def test_file_upload_commits_only_after_server_accepts_it():
+    """Файл/фото — коммит ПОСЛЕ успешной загрузки (`onDone` из `uploadResume`, зовётся уже
+    после `POST /uploads`), не в момент выбора файла."""
+    text = _js_without_comments(FORM_SCREEN_JS)
+    idx = text.rindex('if (typeof File !== "undefined" && v instanceof File) {')
+    block = text[idx:]
+    block = block[:block.index("if (opts && opts.commit)")]
+    assert "onDone:" in block, block
+    assert "goNext()" in block, block
+
+
+def test_consent_screen_advances_when_last_required_consent_is_checked():
+    """Последний обязательный чекбокс согласия (pre-flow, `drawPre`) — сам по себе законченный
+    ответ этого экрана: тот же переход `next()`, что кнопка-галочка. Снятие галки НЕ коммитит
+    (делегат мог передумать) — проверяется отдельно веткой `else`."""
+    text = _js_without_comments(FORM_SCREEN_JS)
+    idx = text.index("function drawPre(consentItems, otherItems) {")
+    block = text[idx:]
+    check_branch = block[block.index("if (cb.checked) {"):block.index("} else {")]
+    uncheck_branch = block[block.index("} else {"):block.index("async function next()")]
+    assert "consentItems.every" in check_branch, check_branch
+    assert "next()" in check_branch, check_branch
+    assert "next()" not in uncheck_branch, uncheck_branch
+
+
 def test_composite_patch_is_recognised_by_spec_not_by_value_shape():
     """Структурный сторож: признак composite-патча — спека шага (`spec.composite`), а не
     форма значения; иначе `{text: ...}` дропзоны снова уедет колонкой «text»."""

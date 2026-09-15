@@ -788,8 +788,19 @@ export async function render(root, params, ctx) {
         const cb = h("input", { type: "checkbox" });
         cb.checked = signedConsents.has(item.key);
         cb.addEventListener("change", () => {
-          if (cb.checked) signedConsents.add(item.key);
-          else signedConsents.delete(item.key);
+          if (cb.checked) {
+            signedConsents.add(item.key);
+            // Приёмка 16.09 («автопереход для всех вопросов, которые могут автоскипаться»):
+            // галка на ПОСЛЕДНЕМ обязательном согласии — законченный ответ этого экрана,
+            // дальше нечего отмечать. Тот же переход `next()`, что кнопка-галочка ниже (сама
+            // `next()` перечитывает `signedConsents` заново — второй проверки полноты не
+            // заводим). Снятие галки НЕ коммитит — делегат мог передумать.
+            if (consentItems.every((it) => signedConsents.has(it.key))) {
+              setTimeout(() => next(), 0);
+            }
+          } else {
+            signedConsents.delete(item.key);
+          }
         });
         const card = h("div", { class: "consent-card" },
           icon("shield-check"),
@@ -1011,7 +1022,14 @@ export async function render(root, params, ctx) {
         // D9: файл резюме грузится СРАЗУ по выбору — goNext() ниже его в JSON PATCH не кладёт
         // (markServerDirty уже отработал здесь).
         if (typeof File !== "undefined" && v instanceof File) {
-          uploadResume(v, el, { getDraft: () => d, setDraft: (nd) => { d = nd; }, state, column });
+          uploadResume(v, el, {
+            getDraft: () => d, setDraft: (nd) => { d = nd; }, state, column,
+            // Приёмка 16.09: commit — только ПОСЛЕ того, как сервер принял файл (`onDone`
+            // здесь зовётся из uploadResume уже после успешного POST /uploads), не на самом
+            // выборе файла — тот же отложенный тик, что `opts.commit` ниже, второй проверки
+            // валидности не заводим (currentMainDisabled — общая точка).
+            onDone: () => { setTimeout(() => { if (!currentMainDisabled()) goNext(); }, 0); },
+          });
           return;
         }
         // Приёмка 16.09 (п.4 «при автозаполнении сразу переходить на следующий вопрос»):
@@ -1044,7 +1062,15 @@ export async function render(root, params, ctx) {
       const contactBtn = shareContactButton(
         h, spec, el,
         (isV2 && v2Texts.phone_share_button) || d.share_contact_text,
-        (v) => { liveValue = v; },
+        (v) => {
+          liveValue = v;
+          // Приёмка 16.09 (п. «номер телефона не работает автопереход»): «Поделиться номером»
+          // — один тап даёт законченный ответ, тот же отложенный `goNext`, что `opts.commit`
+          // ниже (этот колбэк — не `field()`.onChange, второй копии проверки не заводим,
+          // просто вызываем тот же переход). Ручной ввод номера (textControl) commit не
+          // ставит — «Далее» там остаётся за делегатом, как раньше.
+          setTimeout(() => { if (!currentMainDisabled()) goNext(); }, 0);
+        },
         isV2 ? { iconName: "phone-outgoing", hint: v2Texts.phone_share_hint } : {},
       );
       if (spec.value_source === "prior" && !state.isDirty(column)) {
