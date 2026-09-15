@@ -325,26 +325,36 @@ def test_process_question_source_has_city_kwarg_and_correct_order():
 # ── Task 3: new-application notification -> same filter ────────────────────────────────────
 
 def test_finalize_registration_source_passes_event_city():
-    # Phase 21 (21-08): notify_by_capability's call site moved from finalize_registration
-    # itself into the shared services.reg_finalize.post_finalize (both the direct bot call
-    # and the Mini App outbox job now share one notify path, T-21-02) — city kwarg lives here.
+    # Phase 21 (21-08) + квик 260916: notify_by_capability's direct call site left
+    # post_finalize a second time — it now hands the delegate's city to
+    # services.reg_digest.notify_application (the shared "each vs digest" funnel for both the
+    # direct bot call and the Mini App outbox job, T-21-02), which is the one that actually
+    # calls notify_by_capability (in "each" mode) or arms a city-scoped digest job. City
+    # scoping must survive both hops, not just the first one.
     from services import reg_finalize as reg_finalize_mod
+    from services import reg_digest as reg_digest_mod
 
-    s = inspect.getsource(reg_finalize_mod.post_finalize)
-    assert "notify_by_capability" in s
-    assert 'city=full.get("event_city")' in s
+    post_finalize_src = inspect.getsource(reg_finalize_mod.post_finalize)
+    assert "notify_application" in post_finalize_src
+    assert 'city_raw=full.get("event_city")' in post_finalize_src
+
+    notify_application_src = inspect.getsource(reg_digest_mod.notify_application)
+    assert "notify_by_capability" in notify_application_src
+    assert "city=city" in notify_application_src  # "each" mode fan-out
+    assert "arm_digest_job(city" in notify_application_src  # "digest" mode: city-scoped job
 
 
 def test_both_fanout_sites_pass_city_kwarg():
     repo_root = Path(__file__).resolve().parent.parent
-    # Phase 21 (21-08): registration's own site moved into services/reg_finalize.py
-    # (post_finalize, shared with the Mini App outbox job) — included here so the invariant
-    # ("both fan-out sites pass a city kwarg") still holds across the move.
-    reg_finalize_src = (repo_root / "services/reg_finalize.py").read_text(encoding="utf-8")
+    # Phase 21 (21-08) + квик 260916: post_finalize's own notify_by_capability call moved out
+    # into services/reg_digest.py — notify_application's "each" branch AND send_reg_digest's
+    # queue flush ("digest" branch) both scope by city; user_actions.py's question-routing
+    # site is untouched by either move. Three fan-out sites now carry the city kwarg.
+    reg_digest_src = (repo_root / "services/reg_digest.py").read_text(encoding="utf-8")
     ua_src = (repo_root / "handlers/user_actions.py").read_text(encoding="utf-8")
-    combined = reg_finalize_src + "\n" + ua_src
+    combined = reg_digest_src + "\n" + ua_src
     calls_with_city = len(re.findall(r"notify_by_capability\([^)]*city=", combined))
-    assert calls_with_city == 2
+    assert calls_with_city == 3
 
 
 def test_new_application_notification_routes_to_delegate_city_manager(tmp_path, monkeypatch):
