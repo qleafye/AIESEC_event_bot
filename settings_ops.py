@@ -352,6 +352,10 @@ TOGGLE_SECTION: dict[str, str] = {
     "city_options_chips_enabled": "form",
     "city_options_search_enabled": "form",
     "city_options_other_allowed": "form",
+    # Квик 260916: «📊 Итоги дня» — строка ("toggle", …) раздела «🔧 Управление» в
+    # `admin_sections.SECTIONS`, рядом с учётом чата: тот же веб-раздел, где лежит и её
+    # собственное время (daily_digest_time, group="system").
+    "daily_digest_enabled": "manage",
     # Правка 15.09 (владелец, «привязка через личку админа»): главный тумблер учёта чата
     # делегатов — строка ("toggle", …) раздела бота «manage» («🔧 Управление») в
     # `admin_sections.SECTIONS` (экран «💬 Чат» снесён целиком). "manage" — тот же веб-раздел,

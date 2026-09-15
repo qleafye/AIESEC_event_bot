@@ -6024,3 +6024,115 @@ async def find_user_id_by_username(username: str) -> int | None:
         ) as cursor:
             row = await cursor.fetchone()
             return row[0] if row else None
+
+
+# ── Квик 260916: «📊 Итоги дня» — цифры одной вечерней сводки менеджерам ─────────────────────
+#
+# Одна функция вместо восьми мелких: сводка всегда спрашивает ВСЁ и сразу, за один день и один
+# городской скоуп, и держать восемь публичных имён ради одного вызывающего значило бы
+# разложить по восьми местам логику, которую читают целиком. `day` — «ГГГГ-ММ-ДД» по Москве
+# (services/timeutil.msk_now), сравнение через substr(...) — тот же приём, что у дашборда
+# (dashboard/queries.py) и у остальных дневных срезов этого файла.
+#
+# `city_scope` — дескриптор `cities.city_scope(...)`, как везде; город берётся у ДЕЛЕГАТА
+# (users.event_city), а не у менеджера: сводку Москвы наполняют московские заявки, кто бы их
+# ни разобрал. JOIN на users поэтому внутренний — строка без делегата (человека снесли через
+# /delete_user) в городской срез попасть не может по определению.
+
+async def daily_digest_stats(day: str, *, city_scope=None) -> dict:
+    """Цифры за один московский день в одном городском скоупе — см. блок выше.
+
+    Решения, отменённые кнопкой «↩️ Отменить» (`undone_at IS NOT NULL`), не считаются вовсе:
+    менеджер их «не принял», и в сводке им делать нечего. Монеты — только ПЛЮСОВЫЕ дельты
+    («начислено за день»); списания и штрафы в эту цифру не входят и её не уменьшают.
+    """
+    city_frag, city_params = _city_clause(city_scope, "u.event_city")
+    join_where = f" AND {city_frag}" if city_frag else ""
+    plain_frag, plain_params = _city_clause(city_scope)
+    users_where = f" AND {plain_frag}" if plain_frag else ""
+
+    stats: dict = {
+        "apps_new": 0, "apps_approved": 0, "apps_rejected": 0, "apps_pending": 0,
+        "app_managers": [], "game_submissions": 0, "game_reviewed": 0,
+        "coins_awarded": 0, "game_managers": [],
+    }
+    async with _connect() as db:
+        async with db.execute(
+            "SELECT COUNT(*) FROM users u WHERE substr(u.registration_date, 1, 10) = ?"
+            + join_where, [day, *city_params],
+        ) as cursor:
+            stats["apps_new"] = (await cursor.fetchone())[0] or 0
+
+        async with db.execute(
+            "SELECT COUNT(*) FROM users WHERE status = 'pending'" + users_where,
+            list(plain_params),
+        ) as cursor:
+            stats["apps_pending"] = (await cursor.fetchone())[0] or 0
+
+        per_manager: dict[int, list[int]] = {}
+        async with db.execute(
+            "SELECT d.decided_by, d.decision, COUNT(*) FROM application_decisions d "
+            "JOIN users u ON u.telegram_id = d.telegram_id "
+            "WHERE substr(d.decided_at, 1, 10) = ? AND d.undone_at IS NULL" + join_where +
+            " GROUP BY d.decided_by, d.decision", [day, *city_params],
+        ) as cursor:
+            for decided_by, decision, count in await cursor.fetchall():
+                slot = per_manager.setdefault(int(decided_by or 0), [0, 0])
+                if decision == "approved":
+                    slot[0] += count
+                    stats["apps_approved"] += count
+                elif decision == "rejected":
+                    slot[1] += count
+                    stats["apps_rejected"] += count
+        stats["app_managers"] = sorted(
+            ((mid, ok, no) for mid, (ok, no) in per_manager.items()),
+            key=lambda row: (-(row[1] + row[2]), row[0]),
+        )
+
+        async with db.execute(
+            "SELECT COUNT(*) FROM game_submissions s JOIN users u ON u.telegram_id = s.user_id "
+            "WHERE substr(s.submitted_at, 1, 10) = ?" + join_where, [day, *city_params],
+        ) as cursor:
+            stats["game_submissions"] = (await cursor.fetchone())[0] or 0
+
+        reviewers: dict[int, int] = {}
+        async with db.execute(
+            "SELECT s.reviewed_by, COUNT(*) FROM game_submissions s "
+            "JOIN users u ON u.telegram_id = s.user_id "
+            "WHERE substr(s.reviewed_at, 1, 10) = ? AND s.reviewed_by IS NOT NULL "
+            "AND s.status IN ('approved', 'rejected')" + join_where +
+            " GROUP BY s.reviewed_by", [day, *city_params],
+        ) as cursor:
+            for reviewed_by, count in await cursor.fetchall():
+                reviewers[int(reviewed_by)] = reviewers.get(int(reviewed_by), 0) + count
+                stats["game_reviewed"] += count
+        stats["game_managers"] = sorted(reviewers.items(), key=lambda row: (-row[1], row[0]))
+
+        async with db.execute(
+            "SELECT COALESCE(SUM(c.delta), 0) FROM coins c "
+            "JOIN users u ON u.telegram_id = c.user_id "
+            "WHERE substr(c.timestamp, 1, 10) = ? AND c.delta > 0" + join_where,
+            [day, *city_params],
+        ) as cursor:
+            stats["coins_awarded"] = (await cursor.fetchone())[0] or 0
+    return stats
+
+
+async def get_display_names(ids) -> dict[int, str]:
+    """`{telegram_id: ФИО}` ОДНИМ запросом по `users` — для сводок, где имён много, а ходить
+    за каждым по отдельности значило бы открыть по соединению на менеджера. Ключей меньше,
+    чем спрошено: у кого строки/ФИО нет (менеджер, не заполнявший анкету), тот в ответе не
+    появляется вовсе — подпись «менеджер #id» выбирает вызывающий, БД имён не выдумывает."""
+    wanted = [int(i) for i in dict.fromkeys(ids) if i is not None]
+    if not wanted:
+        return {}
+    placeholders = ", ".join("?" for _ in wanted)
+    async with _connect() as db:
+        async with db.execute(
+            f"SELECT telegram_id, full_name FROM users WHERE telegram_id IN ({placeholders})",
+            wanted,
+        ) as cursor:
+            return {
+                int(row[0]): row[1] for row in await cursor.fetchall()
+                if row[1] and str(row[1]).strip()
+            }
