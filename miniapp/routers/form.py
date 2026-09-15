@@ -700,10 +700,17 @@ async def draft_takeover(
 ) -> dict:
     """Кнопка «Забрать сюда» на плите «анкета сейчас в чате» — явный захват владения
     приложением. Черновика может не быть вовсе (мастер просто откроется пустым) — маршрут
-    всё равно 200. Всегда ставит РОВНО одно событие сброса FSM бота, даже если владение уже
-    было у приложения (идемпотентный тап — лишний сброс FSM безвреден)."""
+    всё равно 200. Событие сброса FSM бота ставится ТОЛЬКО при реальной смене держателя
+    (holder != app) — повторный тап по уже забранному черновику молчит: outbox
+    (services/miniapp_outbox.py::_reset_fsm) шлёт делегату сообщение о переносе анкеты на
+    КАЖДУЮ такую строку, и без этого условия пять тапов подряд превращались в пять сообщений."""
+    ctx = await _load_context(p.telegram_id)
     await set_reg_draft_surface(p.telegram_id, SURFACE_APP)
-    await enqueue("reg_fsm_reset", {"telegram_id": p.telegram_id, "reason": "takeover"})
+    if ctx["holder"] != SURFACE_APP:
+        await enqueue("reg_fsm_reset", {"telegram_id": p.telegram_id, "reason": "takeover"})
+    # `_draft_response` ниже намеренно зовётся БЕЗ `ctx` — второй `_load_context` внутри неё
+    # стоит дороже, но контекст, снятый здесь (ДО `set_reg_draft_surface`), несёт старый
+    # `holder`, и ответ соврал бы плитой «анкета в чате» делегату, который её только что забрал.
     return await _draft_response(p.telegram_id, bot_username=request.app.state.cfg.bot_username)
 
 
