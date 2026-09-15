@@ -15,7 +15,7 @@ import {
 } from "../form.js";
 import { fileUrl, flatRow, sectionTitle, labelText, noticeBox, screenText, formV2Text } from "../ui.js";
 import { icon } from "../icons.js";
-import { haptic } from "../motion.js";
+import { haptic, slideIn, progressTo } from "../motion.js";
 import { applyTheme, themeOverride, setThemeOverride } from "../app.js";
 
 // Phase 30 (30-05, задача 4, A2-08, T-30-13): личный override вибрации анкеты — ПОВЕРХ
@@ -651,6 +651,11 @@ export async function render(root, params, ctx) {
     // обычная дропзона (type: "file", тот же контрол, что режим file_or_text). Чисто клиентский
     // флаг — сбрасывается при уходе с шага "resume" в любую сторону.
     let resumeForkBranch = null;
+    // Quick 260915-4mw (ANIM-01/02): направление въезда контента шага ("fwd" по умолчанию,
+    // goBack() и возврат на развилку резюме ставят "back") + отметка прогресса прошлого
+    // рендера (drawStep() двигает полосу ОТ неё, не с нуля — "доезжает", а не перепрыгивает).
+    let stepDir = "fwd";
+    let lastProgress = null;
 
     onRefresh = async () => {
       try {
@@ -1144,6 +1149,7 @@ export async function render(root, params, ctx) {
 
       function goBack() {
         if (busy) return;
+        stepDir = "back"; // quick 260915-4mw: все три ветки ниже зовут drawStep()
         // Phase 28 (28-05, SU-04, A-03 CONTEXT): единственные исключения из «Назад = предыдущий
         // вопрос» — ветка «файл» (клиентская подмена этого же шага) и четыре шага-ветки
         // (resume_link/mini_*) — все возвращают на экран развилки (R1), не на stepIndex-1.
@@ -1172,7 +1178,11 @@ export async function render(root, params, ctx) {
       let progressRow = null;
       if (showProgress) {
         const fill = h("div", { class: "wizard-progress-fill" });
-        fill.style.width = `${Math.round(((stepIndex + 1) / specs.length) * 100)}%`;
+        // Quick 260915-4mw (ANIM-02): доезжает трансформом от прошлой отметки, не перепрыгивает
+        // (motion.js::progressTo); первая отрисовка шага — from === to, анимации не видно.
+        const ratio = (stepIndex + 1) / specs.length;
+        progressTo(fill, lastProgress === null ? ratio : lastProgress, ratio);
+        lastProgress = ratio;
         const bar = h("div", {
           class: "wizard-progress flush", role: "progressbar",
           "aria-valuenow": String(stepIndex + 1), "aria-valuemin": "1", "aria-valuemax": String(specs.length),
@@ -1267,7 +1277,11 @@ export async function render(root, params, ctx) {
       const headerSettings = buildHeaderSettingsGear(spec.flags);
       const headerRow = headerSettings ? h("div", { class: "wizard-header-row" }, headerSettings.gear) : null;
 
-      holder.replaceChildren(...[
+      // Quick 260915-4mw (ANIM-02): узлы шага именованы отдельно от replaceChildren — после
+      // отрисовки едет въездом только контент шага, шапка/полоса прогресса остаются на месте
+      // (заголовок и прогресс — не «шаг», а рамка вокруг него). Состав и порядок узлов те же,
+      // что были в inline-массиве раньше — новых обёрток в DOM не добавлено.
+      const stepNodes = [
         headerRow,
         progressRow,
         plate,
@@ -1280,7 +1294,13 @@ export async function render(root, params, ctx) {
         chatLink(d.continue_in_chat_text, d.continue_deeplink),
         footer,
         headerSettings ? headerSettings.backdrop : null,
-      ].filter(Boolean));
+      ].filter(Boolean);
+      holder.replaceChildren(...stepNodes);
+      for (const node of stepNodes) {
+        if (node === headerRow || node === progressRow) continue;
+        slideIn(node, stepDir);
+      }
+      stepDir = "fwd";
       syncMainButton();
     }
 
