@@ -468,6 +468,7 @@ ADMIN_CAPS: dict[str, str] = {
     # "miniapp_edit_logo"/"miniapp_remove_logo"/"miniapp_cancel_edit") заменена этим блоком —
     # правка акцента теперь идёт через "miniapp_theme_color:accent", лого — через
     # "miniapp_theme_photo:logo"/"miniapp_theme_remove_photo:logo".
+    "miniapp_cycle_motion": "settings",  # квик 4mw: кнопка-цикл «✨ Анимации» на экране оформления
     "miniapp_theme_open": "settings",
     "miniapp_theme_noop": "settings",
     "miniapp_theme_cancel_edit": "settings",
