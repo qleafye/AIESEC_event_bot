@@ -14,7 +14,7 @@ REG_LABELS = {
     # ФИО спрашивается ВНЕ REG_FLOW (в чате — `_ask_full_name` до движка шагов, в приложении —
     # первым шагом спеки, `reg_engine.form_spec(ask_full_name=True)`), поэтому у него нет
     # тумблера в админке — но подпись шага нужна обеим поверхностям (`reg_engine.label_for`).
-    "reg_q_full_name": "\U0001f464 ФИО",
+    "reg_q_full_name": "\U0001faaa ФИО",
     "reg_q_age": "\U0001f382 Возраст",
     "reg_q_vk": "\U0001f535 ВК",
     "reg_q_email": "\U0001f4e7 Email",
