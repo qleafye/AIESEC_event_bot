@@ -685,9 +685,15 @@ def test_approve_text_for_signature_and_callers_unchanged():
     assert 'get_setting_for_city("approve_text"' in src
     # Quick 260904-3vm (E2): auto_approved добавлен kw-only с дефолтом False — существующие
     # позиционные/именованные вызовы остаются байт-в-байт прежними.
-    assert list(inspect.signature(reg_mod.send_completion_and_bonus).parameters) == [
+    # 16.09 (тихие часы): тем же приёмом добавлен respect_quiet_hours (kw-only, дефолт False) —
+    # единственный вызывающий с True — подтверждение чека менеджером.
+    sig = inspect.signature(reg_mod.send_completion_and_bonus)
+    assert list(sig.parameters) == [
         "bot", "telegram_id", "with_menu", "participant_type", "auto_approved",
+        "respect_quiet_hours",
     ]
+    assert sig.parameters["respect_quiet_hours"].default is False
+    assert sig.parameters["respect_quiet_hours"].kind is inspect.Parameter.KEYWORD_ONLY
 
 
 # ── Plan 04 Task 3: registration_mode per city + city-fork regression guard ────────────────
