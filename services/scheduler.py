@@ -300,6 +300,11 @@ async def init_scheduler(bot):
     # импорт — game_digest сам импортирует этот модуль.
     from services.game_digest import rearm_pending_digests
     await rearm_pending_digests()
+    # Квик 260916: то же самое для дайджеста ЗАЯВОК (services/reg_digest.py) — своя очередь,
+    # свои джобы reg_digest:{city}. Алиас при импорте: имя функции у обоих модулей одно и то
+    # же (родные братья), а второй импорт затёр бы первый.
+    from services.reg_digest import rearm_pending_digests as rearm_pending_reg_digests
+    await rearm_pending_reg_digests()
     # Опросы: та же реконсиляция для отложенных/недосланных опросов (poll_{id} date jobs).
     await reconcile_scheduled_polls()
     # Nothing (interval or date) may fire until the whole schedule above is assembled.

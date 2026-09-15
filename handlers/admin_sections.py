@@ -111,6 +111,10 @@ SECTIONS: list[tuple[str, str, list[tuple]]] = [
         ("toggle", "settings_toggle_short_approval"),
         ("toggle", "settings_toggle_party_approval"),
         ("toggle", "settings_toggle_notify"),
+        # Квик 260916: КАК приходят уведомления о заявках (по одной / пачкой) — сразу под
+        # «🔔 Уведомление о заявке», которое решает, приходят ли они вообще: пара читается
+        # подряд, сначала «сообщать ли», потом «как именно».
+        ("toggle", "toggle_reg_submit_notify"),
         ("toggle", "toggle_preselect_enabled"),
         ("toggle", "toggle_pending_reminder"),
         ("toggle", "toggle_nudge_enabled"),

@@ -169,6 +169,10 @@ _APPS_FIELD_ORDER = [
     # бесплатно попаданием в этот список; сам переключатель положения (reg_edit_policy) —
     # group "toggles", живёт в settings_toggle_rows, здесь НЕ добавляется.
     "reg_edit_closed_text",
+    # Квик 260916: окно тишины дайджеста заявок — обычное числовое поле; сам режим
+    # (reg_submit_notify_mode) — только тумблер, в этот список НЕ входит (менеджер не должен
+    # печатать код варианта), тот же приём, что у game_submit_digest_minutes в группе "game".
+    "reg_submit_digest_minutes",
 ]
 _PAY_FIELD_ORDER = [
     "payment_options", "payment_requisites", "payment_requisites_by_lc",
@@ -662,6 +666,16 @@ async def settings_toggle_rows(admin_id: int | None = None, *, header_code=_HEAD
     queue_sort_label = SETTINGS_SCHEMA["apps_queue_sort_by_score"]["label"]
     queue_sort_text = (f"{queue_sort_label}: ✅ Вкл → ❌ Выкл" if queue_sort_on == "on"
                        else f"{queue_sort_label}: ❌ Выкл → ✅ Вкл")
+    # Квик 260916: режим уведомлений о новых заявках — подпись строится ТЕМ ЖЕ приёмом
+    # «текущее → новое», что и соседи выше, из подписей реестра (кодов each/digest менеджер
+    # не видит нигде). Второго источника подписей нет: option_label читает option_labels.
+    reg_notify_val = await get_setting_typed("reg_submit_notify_mode")
+    reg_notify_label = SETTINGS_SCHEMA["reg_submit_notify_mode"]["label"]
+    reg_notify_next = _next_enum_value("reg_submit_notify_mode", reg_notify_val)
+    reg_notify_text = (
+        f"{reg_notify_label}: {option_label('reg_submit_notify_mode', reg_notify_val)} → "
+        f"{option_label('reg_submit_notify_mode', reg_notify_next)}"
+    )
     # Phase 30 (30-01, A2-08): девять тумблеров «Анкета 2.0» — сами хендлеры живут в шве
     # `handlers/admin_reg_form.py` (потолок этого файла, tests/test_module_size_convention_
     # 260816.py), строки кнопок — здесь, как у всех остальных тумблеров раздела «📝 Анкета»
@@ -769,6 +783,8 @@ async def settings_toggle_rows(admin_id: int | None = None, *, header_code=_HEAD
         "toggle_resume_filename_short_mode": _row(resume_mode_text, "toggle_resume_filename_short_mode"),
         "toggle_reg_scoring_enabled": _row(scoring_text, "toggle_reg_scoring_enabled"),
         "toggle_apps_queue_sort_by_score": _row(queue_sort_text, "toggle_apps_queue_sort_by_score"),
+        # Квик 260916: режим уведомлений о новых заявках (по одной / пачкой).
+        "toggle_reg_submit_notify": _row(reg_notify_text, "toggle_reg_submit_notify"),
         # Phase 30 (30-01, A2-08): девять тумблеров «Анкета 2.0».
         "toggle_reg_form_v2": _row(reg_form_v2_text, "toggle_reg_form_v2"),
         "toggle_reg_form_chips": _row(reg_form_chips_text, "toggle_reg_form_chips"),
@@ -1370,6 +1386,17 @@ async def toggle_apps_queue_sort_by_score(callback: types.CallbackQuery):
         callback, "apps_queue_sort_by_score",
         SETTINGS_SCHEMA["apps_queue_sort_by_score"]["label"],
     )
+
+
+@router.callback_query(F.data == "toggle_reg_submit_notify")
+async def toggle_reg_submit_notify(callback: types.CallbackQuery):
+    # Квик 260916: «каждую заявку отдельно» / «пачкой (дайджест)». Сам дайджест живёт в
+    # services/reg_digest.py, здесь только переключатель и человеческий алерт — кодов
+    # each/digest менеджер не видит. Лимит answerCallbackQuery — 200 символов.
+    await _cycle_enum_setting(callback, "reg_submit_notify_mode", {
+        "each": "На каждую новую заявку — своё сообщение. Как было.",
+        "digest": "Одна сводка, когда поток стихнет. Окно тишины — «📥 Дайджест заявок» в «⚙️ Тексты и настройки».",
+    })
 
 
 @router.callback_query(F.data == "toggle_reg_edit_remoderation")
