@@ -488,6 +488,9 @@ def test_render_snapshot_apps(tmp_path):
         "quiet_hours_start", "quiet_hours_end", "quiet_hours_manager_notice_text",
         # Квик 260911-w2m: текст делегату при закрытой правке анкеты — в хвосте группы.
         "reg_edit_closed_text",
+        # Квик 260916: окно тишины дайджеста заявок — новый хвост группы (сам режим
+        # reg_submit_notify_mode — тумблер раздела, в группу не входит).
+        "reg_submit_digest_minutes",
     ]
     expected_labels = [
         "✅ После регистрации", "🎉 После одобрения", "🚫 При отклонении",
@@ -501,6 +504,8 @@ def test_render_snapshot_apps(tmp_path):
         "🧮 Балл: курс от", "🧮 Балл: сколько пунктов стека засчитывать",
         "🌙 Тихие часы: с", "🌙 Тихие часы: до", "🌙 Приписка менеджеру о тихих часах",
         "✏️ Правка закрыта: текст делегату",
+        # Квик 260916: окно тишины дайджеста заявок.
+        "📥 Дайджест заявок: окно тишины (мин)",
     ]
     defaulted_labels = {
         "⏳ Заявка на рассмотрении", "🎯 Предотбор: нет @username",
@@ -902,9 +907,10 @@ def test_scheduler_and_reminder_keys_declared_with_code_defaults(tmp_path):
     # Phase 23-01 (APP-TINDER-01, D-05): reject_reason_templates добавлен хвостом _APPS_FIELD_ORDER.
     # Quick 260904-dq1: три ключа «🌙 Тихие часы» — новый хвост _APPS_FIELD_ORDER.
     # Квик 260911-w2m: reg_edit_closed_text — новый хвост _APPS_FIELD_ORDER.
-    assert admin_settings._settings_group_keys("apps")[-4:] == [
+    # Квик 260916: reg_submit_digest_minutes — новый хвост _APPS_FIELD_ORDER.
+    assert admin_settings._settings_group_keys("apps")[-5:] == [
         "quiet_hours_start", "quiet_hours_end", "quiet_hours_manager_notice_text",
-        "reg_edit_closed_text"]
+        "reg_edit_closed_text", "reg_submit_digest_minutes"]
     text = asyncio.run(admin_settings.render_settings_group_text("system"))
     # int без значения в БД -- «— не задано» (как proxy_*: parse-дефолт не display-дефолт)
     assert "⏱ Догонялка: как часто проверять: <i>— не задано</i>" in text

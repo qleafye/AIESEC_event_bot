@@ -661,6 +661,7 @@ ADMIN_CAPS: dict[str, str] = {
     "toggle_reg_scoring_enabled": "settings",  # Phase 28 (28-07)
     "toggle_resume_filename_short_mode": "settings",  # Phase 28 (28-09)
     "toggle_apps_queue_sort_by_score": "settings",  # Phase 28 (28-08)
+    "toggle_reg_submit_notify": "settings",  # Квик 260916: дайджест заявок (раздел «📋 Заявки»)
     "toggle_show_progress": "settings",
     "toggle_uni_mode": "settings",
     # Phase 30 (30-01, A2-08): девять тумблеров «Анкета 2.0» — handlers/admin_reg_form.py.
