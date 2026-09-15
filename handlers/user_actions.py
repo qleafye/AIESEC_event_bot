@@ -29,6 +29,9 @@ from database.db import (
     list_faq_for_city,
 )
 from handlers.admin_caps import notify_by_capability  # D-13: fan out by capability, not bare ADMIN_IDS
+# Квик 260915-skg (P7): перевод входа в приложение при lang=en — тот же общий механизм, что
+# reg_i18n.say() уже применяет к анкете (ярус A -> tr_map -> русский как есть, T-skg).
+from handlers import reg_i18n
 from handlers.game_labels import (  # Phase 16 (16-01): single RU-label source; 16-03: shared card render
     category_label, proof_types_label,
     render_task_card_text as _render_task_card_text, task_deadline_short as _game_task_deadline_short,
@@ -1274,25 +1277,36 @@ async def process_question(message: types.Message, state: FSMContext, bot: Bot):
 # полный. Полностью вне CapabilityMiddleware (кнопка делегатская, права не нужны).
 @router.message(F.text.in_(MENU_TEXTS["menu_miniapp"]))
 async def open_miniapp_button(message: types.Message):
+    # Квик 260915-skg (P7): реестровые тексты/подпись кнопки этого хендлера уходили сырым
+    # message.answer мимо reg_i18n — reply-кнопка меню уже переводится (builders.py::MENU_EN),
+    # а ОТВЕТ хендлера при lang=en оставался русским. Контекст берём один раз — при lang="ru"
+    # tr_text/tr_kb возвращают ТЕ ЖЕ объекты (reg_i18n docstring), русская ветка ничем не платит.
+    lang, tr_map = await reg_i18n.ctx_for(message)
     try:
         enabled = await get_setting_typed("miniapp_enabled") == "on"
         url = config.DASHBOARD_PUBLIC_URL
         # T-19-54/Pitfall 10: выключенный тумблер ИЛИ пустой адрес — короткое человеческое
         # объяснение, что приложение сейчас недоступно, без падения хендлера.
         if not (enabled and url):
-            await message.answer(await get_setting_typed("miniapp_disabled_text"))
+            text = reg_i18n.tr_text(await get_setting_typed("miniapp_disabled_text"), lang, tr_map)
+            await message.answer(text)
             return
         kb = InlineKeyboardMarkup(inline_keyboard=[[
             InlineKeyboardButton(
                 text=await get_setting_typed("miniapp_open_button"),
+                # web_app.url не трогаем переводом — _tr_button переводит только .text
+                # (reg_i18n.py::_tr_button докстринг).
                 web_app=WebAppInfo(url=url.rstrip("/") + "/app"),
             ),
         ]])
-        await message.answer(await get_setting_typed("miniapp_open_text"), reply_markup=kb)
+        kb = reg_i18n.tr_kb(kb, lang, tr_map)
+        text = reg_i18n.tr_text(await get_setting_typed("miniapp_open_text"), lang, tr_map)
+        await message.answer(text, reply_markup=kb)
     except Exception as e:
         # Fail-soft: любая ошибка построения кнопки не должна ронять обработчик.
         logger.error(f"open_miniapp_button: failed for {message.from_user.id}: {e}")
-        await message.answer(await get_setting_typed("miniapp_disabled_text"))
+        text = reg_i18n.tr_text(await get_setting_typed("miniapp_disabled_text"), lang, tr_map)
+        await message.answer(text)
 
 
 # Quick 260904-3vm (эстафета): делегат БЕЗ активного FSM-состояния (Registration уже сброшена —
