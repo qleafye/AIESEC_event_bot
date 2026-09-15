@@ -193,7 +193,9 @@ def test_headers_computed_once_per_kind_and_code(monkeypatch):
     asyncio.run(admin_sheets.build_sheet_batches(users))
 
     assert call_counts["short"] == 1
-    assert call_counts["active"] == 0
+    # Шапка основной вкладки считается всегда ровно один раз, даже без строк на ней —
+    # иначе rebuild_main_sheet получил бы пустую шапку и стёр основную вкладку.
+    assert call_counts["active"] == 1
     assert call_counts["party"] == 0
 
 
