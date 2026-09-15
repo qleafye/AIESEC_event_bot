@@ -89,6 +89,9 @@ async def show_admin_broadcast(callback: types.CallbackQuery, state: FSMContext)
         [InlineKeyboardButton(text="🎯 По фильтру", callback_data="broadcast_filter")],
         [InlineKeyboardButton(text="🕓 Запланировать", callback_data="broadcast_schedule")],
         [InlineKeyboardButton(text="🗒 Последние рассылки", callback_data="admin_broadcast_log")],
+        # UAT 15.09: раньше отложенные рассылки были видны только скрытой командой /scheduled —
+        # кнопка открывает тот же список (_render_scheduled_list), без второго рендера.
+        [InlineKeyboardButton(text="⏰ Запланированные", callback_data="admin_broadcast_scheduled")],
         [InlineKeyboardButton(text="❌ Отмена", callback_data="broadcast_cancel")],
     ])
     await callback.message.edit_text("Выберите целевую аудиторию рассылки:", reply_markup=kb)
@@ -120,6 +123,7 @@ async def cmd_broadcast(message: types.Message, state: FSMContext):
         [InlineKeyboardButton(text="🎯 По фильтру", callback_data="broadcast_filter")],
         [InlineKeyboardButton(text="🕓 Запланировать", callback_data="broadcast_schedule")],
         [InlineKeyboardButton(text="🗒 Последние рассылки", callback_data="admin_broadcast_log")],
+        [InlineKeyboardButton(text="⏰ Запланированные", callback_data="admin_broadcast_scheduled")],
         [InlineKeyboardButton(text="❌ Отмена", callback_data="broadcast_cancel")],
     ])
     await message.answer("Выберите целевую аудиторию рассылки:", reply_markup=kb)
@@ -697,6 +701,24 @@ async def cmd_broadcasts(message: types.Message):
     await _render_broadcast_log(message)
 
 
+@router.callback_query(F.data == "admin_broadcast_scheduled")
+async def admin_broadcast_scheduled(callback: types.CallbackQuery):
+    """UAT 15.09: кнопка «⏰ Запланированные» на экране рассылок открывает тот же список,
+    что и раньше была видна только скрытой командой /scheduled — рендерит его через
+    `_render_scheduled_list` (см. ниже, тот же список для команды и кнопки), не заводя
+    второй копии рендера. Список — это N отдельных карточек, а не один экран, поэтому
+    «Назад» отдельным сообщением с той же клавиатурой и для пустого, и для непустого списка."""
+    await callback.answer()
+    back_kb = InlineKeyboardMarkup(inline_keyboard=[[
+        InlineKeyboardButton(text="◀️ Назад", callback_data="admin_broadcast")
+    ]])
+    shown = await _render_scheduled_list(callback.message)
+    if not shown:
+        await callback.message.answer("Запланированных рассылок нет.", reply_markup=back_kb)
+        return
+    await callback.message.answer("Вернуться в меню рассылок:", reply_markup=back_kb)
+
+
 # ── Phase 3 (SCHED-01): schedule-a-broadcast UI ──────────────────────────────
 
 @router.callback_query(F.data == "broadcast_schedule", Broadcast.target_selection)
@@ -815,21 +837,23 @@ async def broadcast_schedule_message(message: types.Message, state: FSMContext):
     await state.clear()
 
 
-@router.message(Command("scheduled"))
-async def cmd_scheduled(message: types.Message):
+async def _render_scheduled_list(target) -> bool:
+    """Общий рендер списка отложенных рассылок — для скрытой команды /scheduled и для кнопки
+    «⏰ Запланированные» на экране рассылок (UAT 15.09). Возвращает False, если список пуст —
+    вызывающий сам решает, чем заменить пустой экран (команда и кнопка делают это разными
+    словами), поэтому пустая ветка здесь НЕ отправляет никакого сообщения."""
     rows = await list_pending_broadcasts()
     # Review 260817 §B2: a broadcast that is mid-send (or died mid-send and waits for the boot
     # reclaim) is shown too, with its per-recipient checkpoint count — otherwise the manager
     # sees nothing and re-creates it by hand while the original is still going out.
     sending = await list_sending_broadcasts()
     if not rows and not sending:
-        await message.answer("Нет запланированных рассылок.")
-        return
+        return False
     for row in sending:
         ok, failed = await count_deliveries(row["id"])
         preview = re.sub(r"<[^>]+>", "", row.get("text") or "(фото)")[:60]
         tail = f", не доставлено {failed}" if failed else ""
-        await message.answer(
+        await target.answer(
             f"#{row['id']} — {row['scheduled_at']}\n{html_module.escape(preview)}\n"
             f"⏳ Отправляется: доставлено {ok}{tail}"
         )
@@ -840,10 +864,18 @@ async def cmd_scheduled(message: types.Message):
         kb = InlineKeyboardMarkup(inline_keyboard=[[
             InlineKeyboardButton(text="❌ Отменить", callback_data=f"sched_cancel_{row['id']}")
         ]])
-        await message.answer(
+        await target.answer(
             f"#{row['id']} — {row['scheduled_at']}\n{html_module.escape(preview)}",
             reply_markup=kb,
         )
+    return True
+
+
+@router.message(Command("scheduled"))
+async def cmd_scheduled(message: types.Message):
+    shown = await _render_scheduled_list(message)
+    if not shown:
+        await message.answer("Нет запланированных рассылок.")
 
 
 @router.callback_query(F.data.startswith("sched_cancel_"))
