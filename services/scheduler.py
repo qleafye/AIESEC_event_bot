@@ -293,6 +293,18 @@ async def init_scheduler(bot):
         first_run_delay=_BOOT_CATCHUP,
     )
 
+    # Квик 260916: «📊 Итоги дня» — ОДНА cron-джоба на весь бот, время из реестра
+    # (daily_digest_time, ЧЧ:ММ МСК). Регистрируется на каждом старте с replace_existing, как
+    # интервальные соседи выше, поэтому новое время начинает действовать после перезапуска —
+    # ровно это и написано менеджеру в подсказке ключа. Сам тумблер джоба перечитывает у себя
+    # внутри: выключенный даёт ранний выход, снимать джобу не нужно.
+    from services.daily_digest import JOB_ID as _DIGEST_JOB_ID, daily_digest_job, parse_time
+    _digest_hour, _digest_minute = parse_time(await get_setting_typed("daily_digest_time"))
+    _scheduler.add_job(
+        daily_digest_job, "cron", hour=_digest_hour, minute=_digest_minute,
+        id=_DIGEST_JOB_ID, replace_existing=True,
+    )
+
     # ME-03: re-arm any pending broadcast whose date job was dropped from the jobstore during a
     # downtime longer than misfire_grace — otherwise it stays 'pending' forever and never fires.
     await reconcile_scheduled_broadcasts()

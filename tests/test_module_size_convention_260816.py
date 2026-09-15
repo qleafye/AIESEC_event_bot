@@ -127,7 +127,11 @@ KNOWN_OVERAGES: dict[str, tuple[int, str]] = {
         "(Phase 14/16)",
     ),
     "admin_settings.py": (
-        2350,
+        2380,
+        "Квик 260916 («📊 Итоги дня»): +23 строки — строка тумблера вечерней сводки в "
+        "settings_toggle_rows, хендлер toggle_daily_digest (обычный _toggle_module_setting, "
+        "сама сводка живёт в services/daily_digest.py) и daily_digest_time в "
+        "_SYSTEM_FIELD_ORDER, 2337 -> 2360; потолок 2380 с небольшим запасом. "
         "Квик 260916 (дайджест заявок): +27 строк — строка тумблера «📥 Уведомления о заявках» "
         "в settings_toggle_rows, хендлер toggle_reg_submit_notify (обычный _cycle_enum_setting, "
         "сам дайджест живёт в services/reg_digest.py) и reg_submit_digest_minutes в "
