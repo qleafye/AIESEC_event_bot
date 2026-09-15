@@ -55,6 +55,8 @@ from settings_schema import SETTINGS_SCHEMA, get_setting_typed, multi_labels, op
 from settings_synonyms import SETTINGS_SYNONYMS
 
 from miniapp.deps import Principal, require_cap, require_section
+from miniapp.setup_wizard import TEXTS as SETUP_TEXTS
+from miniapp.setup_wizard import step_done, visible_steps
 
 logger = logging.getLogger(__name__)
 
@@ -493,6 +495,60 @@ async def settings_all(
         "city_header": await _city_header(ctx),
         "texts": await _texts(),
         "total": total,
+    }
+
+
+# Квик 260915-4mu (мастер первой настройки): три тумблера модулей решают состав шагов —
+# то же самое, что видит менеджер на экране настроек (event_city_enabled/consent_enabled/
+# payment_enabled), мастер не заводит своих флагов.
+_SETUP_MODULE_FLAGS = ("event_city_enabled", "consent_enabled", "payment_enabled")
+
+
+@router.get("/app/api/admin/setup")
+async def setup_status(
+    p: Principal = Depends(require_cap("settings")),
+    _: Principal = Depends(require_section("settings")),
+) -> dict:
+    """Мастер первой настройки — только чтение (запись идёт через существующий
+    `settings/batch`, план 260915-4mu намеренно не заводит своего пути записи)."""
+    ctx = await _city_ctx(p.telegram_id)
+    event_type = await get_setting_typed("event_type")
+    flags = {name: (await get_setting_typed(name)) == "on" for name in _SETUP_MODULE_FLAGS}
+
+    steps_out = []
+    done_count = 0
+    total = 0
+    for step in visible_steps(event_type, flags):
+        fields_out = [await _item_for(key, ctx) for key in step.fields]
+        filled = {
+            key: (not item["is_default"]) and item["display"] != ""
+            for key, item in zip(step.fields, fields_out)
+        }
+        counts = step.kind == "fields"
+        done = step_done(step, filled)
+        if counts:
+            total += 1
+            if done:
+                done_count += 1
+        steps_out.append({
+            "key": step.key,
+            "title": step.title,
+            "hint": step.hint,
+            "kind": step.kind,
+            "counts": counts,
+            "done": done,
+            "fields": fields_out,
+            "link": {"hash": step.link[0], "label": step.link[1]} if step.link else None,
+        })
+
+    dismissed = (await get_setting_typed("setup_wizard_dismissed")) == "on"
+    return {
+        "event_type": event_type,
+        "steps": steps_out,
+        "done_count": done_count,
+        "total": total,
+        "show_tile": (not dismissed) and done_count < total,
+        "texts": SETUP_TEXTS,
     }
 
 
