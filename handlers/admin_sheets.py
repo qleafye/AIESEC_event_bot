@@ -160,49 +160,42 @@ async def sync_sheet(callback: types.CallbackQuery):
     MAIN tab, even for delegates whose city routes them to a named tab — main tab («МСК») had
     46 rows that actually belonged to СПб/Тюмень. Routes each user through the SAME resolver the
     live append and rebuild_sheet use (city_row_tab), then appends missing rows per-tab, one
-    try/except per city tab so a single tab failure never cancels the rest."""
+    try/except per city tab so a single tab failure never cancels the rest.
+
+    Квик 260915-4is: раскладка «пользователь → вкладка → шапка» теперь через build_sheet_batches
+    (тот же строитель, что и у rebuild_sheet) — именованная short/party вкладка дозаписывается
+    СВОЕЙ шапкой (party_sheet_headers/short_sheet_headers), а не общей по городу. Сама логика
+    сверки id и try/except на вкладку не изменилась — sync только дозаписывает, никогда не
+    перезаписывает/не морозит схему (это по-прежнему работа rebuild_sheet)."""
     from handlers.admin_sections import op_return_keyboard  # ленивый шов
     await callback.answer("🔄 Синхронизация...")
     await callback.message.edit_text("🔄 Получаю данные из таблицы...", parse_mode="HTML")
 
     try:
-        headers = await active_sheet_headers()  # only enabled columns, main tab (code=None)
         all_users = await get_all_users_dicts()
-
-        # Phase 25 (CITYQ-03): each city tab gets its OWN column set (headers_by_code cache,
-        # one active_sheet_headers(code) call per DISTINCT code — T-25-10 quota). The frozen
-        # snapshot is deliberately NOT touched here (sync appends, it never rewrites/re-freezes
-        # a tab's schema — that stays rebuild_sheet's job).
-        headers_by_code: dict[str | None, list[str]] = {None: headers}
-        main_users: list[dict] = []
-        city_users: dict[str, list[dict]] = {}
-        tab_code: dict[str, str] = {}
-        for u in all_users:
-            code = await sheet_city_code(u.get("event_city"))
-            if code not in headers_by_code:
-                headers_by_code[code] = await active_sheet_headers(code)
-            tab = await city_row_tab(u.get("event_city"), u.get("participant_type"))
-            if tab is None:
-                main_users.append(u)
-            else:
-                city_users.setdefault(tab, []).append(u)
-                tab_code[tab] = code
+        batches = await build_sheet_batches(all_users)
+        main_batch, named_batches = batches[0], batches[1:]
+        headers = main_batch.headers
 
         # Основная вкладка — прежний порядок шагов, только теперь на своём подмножестве
-        # пользователей (module off / нет городов -> main_users == all_users, поведение прежнее).
+        # пользователей (module off / нет городов -> main_batch.users == all_users, поведение
+        # прежнее).
         await ensure_sheet_header(headers)  # шапка таблицы, если её ещё нет
         existing_ids = await get_existing_sheet_ids()
-        main_missing = [u for u in main_users if u["telegram_id"] not in existing_ids]
+        main_missing = [
+            (u, r) for u, r in zip(main_batch.users, main_batch.rows)
+            if u["telegram_id"] not in existing_ids
+        ]
         main_count = 0
         if main_missing:
-            main_rows = [[_sheet_value_map(u).get(h, "-") for h in headers] for u in main_missing]
+            main_rows = [r for _u, r in main_missing]
             main_count = await append_rows_to_sheet(main_rows)
 
         # Городские вкладки — каждая в своём try/except: одна упавшая не отменяет остальные.
         city_synced: list[tuple[str, int]] = []
         failed_tabs: list[str] = []
-        for tab, trows in city_users.items():
-            city_headers = headers_by_code[tab_code[tab]]
+        for batch in named_batches:
+            tab, city_headers = batch.tab, batch.headers
             try:
                 # Шапка ДО чтения id: чтение отбрасывает первую строку как шапку, и на вкладке
                 # без шапки первый делегат выпал бы из набора существующих и продублировался.
@@ -211,11 +204,13 @@ async def sync_sheet(callback: types.CallbackQuery):
                 if ids is None:
                     failed_tabs.append(tab)
                     continue
-                missing_named = [u for u in trows if u["telegram_id"] not in ids]
+                missing_named = [
+                    (u, r) for u, r in zip(batch.users, batch.rows) if u["telegram_id"] not in ids
+                ]
                 if not missing_named:
                     city_synced.append((tab, 0))
                     continue
-                rows = [[_sheet_value_map(u).get(h, "-") for h in city_headers] for u in missing_named]
+                rows = [r for _u, r in missing_named]
                 n = await append_rows_to_named_sheet(tab, rows)
                 if n < 0:
                     failed_tabs.append(tab)
@@ -229,11 +224,11 @@ async def sync_sheet(callback: types.CallbackQuery):
         # WR-06: только счётчики по вкладкам и id админа — никаких строк данных в логе.
         logger.info(
             f"admin={callback.from_user.id} action=sync_sheet main_added={main_count} "
-            f"city_tabs={len(city_users)} city_added={total_count - main_count} "
+            f"city_tabs={len(named_batches)} city_added={total_count - main_count} "
             f"failed_tabs={len(failed_tabs)}"
         )
 
-        if not city_users:
+        if not named_batches:
             # Модуль городов выключен (или у всех делегатов основная вкладка) — байт-в-байт
             # прежнее поведение и прежний текст.
             if not main_missing:
