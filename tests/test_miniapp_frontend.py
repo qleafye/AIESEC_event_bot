@@ -240,6 +240,8 @@ EXPECTED_ROUTES = {
     "#/admin-coins": "screens/admin_coins.js",
     "#/settings": "screens/settings.js",
     "#/settings/{code}": "screens/settings.js",
+    # Квик 260915-skg (P5): результат поиска настроек открывает саму настройку.
+    "#/settings/{code}/{key}": "screens/settings.js",
     "#/form": "screens/form.js",
     "#/applications": "screens/applications.js",
     "#/questions": "screens/questions.js",
@@ -279,7 +281,9 @@ def test_route_table_matches_phase_plan_exactly():
     # Quick 260906-nxp: +1 маршрут "#/admin-faq" (18 -> 19).
     # Phase 30 (30-05, задача 3): +1 маршрут "#/status" (19 -> 20).
     # Квик 260915-4mu: +1 маршрут "#/setup" (20 -> 21).
-    assert len(routes) == 21
+    # Квик 260915-skg (P5): +1 маршрут "#/settings/{code}/{key}" (21 -> 22) — результат поиска
+    # настроек открывает саму настройку, не начало раздела.
+    assert len(routes) == 22
     assert set(routes.values()) == set(EXPECTED_ROUTES.values())
     assert "#/task-edit/new" not in routes
 

@@ -174,13 +174,22 @@ const originalItems = new Map(); // key -> последний ПОДТВЕРЖД
 // очищается при уходе с раздела — иначе diff/stale по ключу с ДРУГОГО раздела не нашёл бы item.
 function setOriginal(item) { originalItems.set(item.key, item); }
 
+// Task 260915-skg (P6): single-flight guard для `GET /admin/settings/all` — открытие экрана
+// (renderStart/renderSection) и точки повторного входа (onCityPick, хвост saveToggle) могут
+// позвать loadAndRender почти одновременно; оба loadAndRender ниже берут ЭТОТ промис, если он
+// уже летит, иначе заводят новый и снимают его в finally — «один запрос на открытие экрана и
+// один после сохранения, если иначе никак» (докстринг saveToggle).
+let allInFlight = null;
+
 // Слушатели живут вне замыкания render() (модульные переменные), чтобы unmount() мог снять
 // именно те, что завёл последний render() (паттерн card.js/review.js).
 let activeScrollHandler = null;
 let activeDiffCleanup = null;
 
 export async function render(root, params, ctx) {
-  if (params && params.code) return renderSection(root, params.code, ctx);
+  // Квик 260915-skg (P5): результат поиска несёт третий сегмент hash (`#/settings/{code}/{key}`)
+  // — та же страница раздела, но с ключом, который нужно раскрыть и подсветить.
+  if (params && params.code) return renderSection(root, params.code, ctx, params.key || null);
   return renderStart(root, ctx);
 }
 
@@ -302,7 +311,9 @@ async function renderStart(root, ctx) {
     if (metaEl) metaEl.replaceChildren(...highlightMatch(h, item.help, ranges.help));
     return h("button", {
       type: "button", class: "flat-row", "aria-label": item.label,
-      onClick: () => navigate(`#/settings/${sectionToken}`),
+      // Квик 260915-skg (P5): клик по результату поиска открывает и подсвечивает саму
+      // настройку (renderSection читает params.key), не начало раздела с потерянным ключом.
+      onClick: () => navigate(`#/settings/${sectionToken}/${item.key}`),
     },
       h("div", { class: "flat-row-body" }, titleEl, metaEl),
       h("span", { class: "flat-row-chev" }, icon("chevron-right")),
@@ -387,7 +398,8 @@ async function renderStart(root, ctx) {
     renderSkeleton();
     let data;
     try {
-      data = await api("/admin/settings/all");
+      if (!allInFlight) allInFlight = api("/admin/settings/all").finally(() => { allInFlight = null; });
+      data = await allInFlight;
     } catch (err) {
       clearState();
       if (isAuthError(err)) return;
@@ -414,7 +426,7 @@ async function renderStart(root, ctx) {
 
 // ══ Страница одного раздела: группы/строки + гибридное сохранение ════════════════════════
 
-async function renderSection(root, code, ctx) {
+async function renderSection(root, code, ctx, targetKey) {
   const { h, api, me } = ctx;
 
   // ── состояние экрана (per-render; pending/fileNames/originalItems — модульные, см. верх
@@ -1118,10 +1130,44 @@ async function renderSection(root, code, ctx) {
         setFieldState(el, "error", { text: resp.errors[item.key] });
         return;
       }
-      if (resp.saved && resp.saved.includes(item.key) && resp.items && resp.items[0]) {
-        const row = repaintRow(resp.items[0]); setOriginal(resp.items[0]);
-        row.el.classList.add("is-flash");
-        setTimeout(() => row.el.classList.remove("is-flash"), 400);
+      // Task 260915-skg (P6): «изменено в другом месте»/требует подтверждения по СВОЕМУ ключу
+      // — штатный исход batch (miniapp/routers/settings.py: stale — :671, needs_confirm), не
+      // повод перечитывать весь реестр. Строка красит своё состояние текстом из реестра,
+      // тумблер остаётся кликабельным следующим тапом (менеджер решает сам, что делать).
+      const staleEntry = (resp.stale || []).find((e) => e.key === item.key);
+      if (staleEntry) {
+        if (el._nodes.control && el._nodes.control.paint) el._nodes.control.paint(item.value);
+        setFieldState(el, "updated-in-chat", { text: texts.miniapp_settings_stale_badge_text || "" });
+        showToast(texts.miniapp_settings_stale_badge_text || "", "warn");
+        return;
+      }
+      const needsConfirmEntry = (resp.needs_confirm || []).find((e) => e.key === item.key);
+      if (needsConfirmEntry) {
+        if (el._nodes.control && el._nodes.control.paint) el._nodes.control.paint(item.value);
+        const text = needsConfirmEntry.text || texts.miniapp_settings_sheets_needs_confirm_text || "";
+        setFieldState(el, "updated-in-chat", { text });
+        showToast(text, "warn");
+        return;
+      }
+      if (resp.saved && resp.saved.includes(item.key)) {
+        if (resp.items && resp.items[0]) {
+          const row = repaintRow(resp.items[0]); setOriginal(resp.items[0]);
+          row.el.classList.add("is-flash");
+          setTimeout(() => row.el.classList.remove("is-flash"), 400);
+        } else {
+          // Task 260915-skg (P6): ключ сохранён, но сервер сознательно не прислал item (тот
+          // же приём, что submitDiff уже делает для трек-композитов, 916-921) — красим строку
+          // известным значением сами, без похода за всем реестром.
+          const prevOriginal = originalItems.get(item.key) || { key: item.key, base_key: item.key };
+          const nextItem = {
+            ...prevOriginal, value: nextValue, raw: nextValue, is_default: false,
+            display: humanDisplayValue(prevOriginal, nextValue, fileNames),
+          };
+          setOriginal(nextItem);
+          if (matrixCellPaint.has(item.key)) matrixCellPaint.get(item.key)(nextValue);
+          else if (el._nodes.control && el._nodes.control.paint) el._nodes.control.paint(nextValue);
+          setFieldState(el, "default");
+        }
         haptic("success");
         showToast(
           wasDangerous ? texts.miniapp_settings_dangerous_saved_toast_text : texts.miniapp_settings_saved_toast_text,
@@ -1129,6 +1175,10 @@ async function renderSection(root, code, ctx) {
         );
         return;
       }
+      // Неизвестный/непредвиденный исход batch — единственный оставшийся повод перечитать
+      // реестр целиком; `allInFlight` (модульная переменная выше) не даёт этому совпасть по
+      // времени со вторым таким же вызовом (onCityPick, другой saveToggle) и отправить второй
+      // GET, пока первый ещё летит.
       await loadAndRender();
     } catch (err) {
       if (!isAuthError(err)) {
@@ -1152,8 +1202,16 @@ async function renderSection(root, code, ctx) {
     return texts.miniapp_settings_reg_matrix_full_label_text || "";
   }
 
+  // Task 260915-skg (P2, T-skg matrix): «party»/«short» ячейки матрицы приходят с сервера уже
+  // строкой "on"/"off" (миниapp/routers/settings.py::_reg_questions_matrix), а «Полная» колонка
+  // берёт originalItems из ОБЫЧНОГО item.value — булев из get_setting_typed (_item_for). Обе
+  // формы нормализуются здесь, а не хардкодом `=== "on"` — иначе колонка «Полная» ВСЕГДА пуста.
+  function isOn(value) {
+    return value === "on" || value === true;
+  }
+
   function matrixCellDisplay(value) {
-    return value === "on" ? (texts.miniapp_settings_value_set_text || "") : (texts.miniapp_settings_value_not_set_text || "");
+    return isOn(value) ? (texts.miniapp_settings_value_set_text || "") : (texts.miniapp_settings_value_not_set_text || "");
   }
 
   function buildMatrixToggle(row, track, cell) {
@@ -1175,12 +1233,12 @@ async function renderSection(root, code, ctx) {
       "aria-label": `${row.label} — ${matrixColumnLabel(track)}`,
       "aria-pressed": "false",
       onClick: () => {
-        const next = matrixCellValue(key) === "on" ? "off" : "on";
+        const next = isOn(matrixCellValue(key)) ? "off" : "on";
         setPending(key, next);
       },
     }, icon("check"));
     function paint(value) {
-      const on = value === "on";
+      const on = isOn(value);
       btn.classList.toggle("on", on);
       btn.setAttribute("aria-pressed", on ? "true" : "false");
       const original = originalItems.get(key);
@@ -1411,6 +1469,52 @@ async function renderSection(root, code, ctx) {
     });
   }
 
+  // Квик 260915-skg (P5): развернуть группу-владельца ключа и подсветить строку тем же
+  // приёмом, что saveToggle уже делает после сохранения (класс `is-flash`, 400мс). Ключ без
+  // своей строки в itemIndex (трек-композиты матрицы `reg_q_*__party/__short`, а также «полная»
+  // строка вопроса матрицы — у неё тоже нет отдельного DOM-узла, три ячейки сидят в одной
+  // строке) — скроллим к карточке группы с матрицей целиком, тумблер НЕ переключаем: клик по
+  // результату поиска — «покажи настройку», решение остаётся за менеджером.
+  function expandGroupWrap(wrap) {
+    if (!wrap) return;
+    const token = wrap.dataset.token;
+    groupCollapsedState.set(token, false);
+    saveCollapsed(token, false);
+    wrap.classList.remove("collapsed");
+    const head = wrap.querySelector(".settings-group-head");
+    if (head) head.setAttribute("aria-expanded", "true");
+  }
+
+  function flashEl(el) {
+    if (!el) return;
+    el.classList.add("is-flash");
+    setTimeout(() => el.classList.remove("is-flash"), 400);
+  }
+
+  function revealTargetKey(key) {
+    if (!key) return;
+    const row = itemIndex.get(key);
+    if (row && row.el) {
+      const wrap = row.el.closest ? row.el.closest(".settings-group") : null;
+      expandGroupWrap(wrap);
+      if (row.el.scrollIntoView) row.el.scrollIntoView({ block: "center" });
+      flashEl(row.el);
+      return;
+    }
+    for (const group of section.groups) {
+      if (!group.matrix) continue;
+      const inMatrix = group.matrix.rows.some(
+        (row2) => row2.full.key === key || row2.party.key === key || row2.short.key === key,
+      );
+      if (!inMatrix) continue;
+      const wrap = sectionsWrap.querySelector(`[data-token="${group.token}"]`);
+      expandGroupWrap(wrap);
+      if (wrap && wrap.scrollIntoView) wrap.scrollIntoView({ block: "center" });
+      flashEl(wrap);
+      return;
+    }
+  }
+
   // ── загрузка/перезагрузка ────────────────────────────────────────────────────────────
   async function loadAndRender() {
     itemIndex.clear();
@@ -1419,7 +1523,8 @@ async function renderSection(root, code, ctx) {
     renderSkeleton(Object.keys(texts).length > 0);
     let data;
     try {
-      data = await api("/admin/settings/all");
+      if (!allInFlight) allInFlight = api("/admin/settings/all").finally(() => { allInFlight = null; });
+      data = await allInFlight;
     } catch (err) {
       clearState();
       if (isAuthError(err)) return;
@@ -1444,6 +1549,7 @@ async function renderSection(root, code, ctx) {
     buildCityBar(data.city_header);
     renderSectionBody();
     updateBatchBar();
+    if (targetKey) revealTargetKey(targetKey);
   }
 
   await loadAndRender();

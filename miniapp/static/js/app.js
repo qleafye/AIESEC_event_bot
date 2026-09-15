@@ -63,6 +63,9 @@ export const ROUTES = [
   // (params.code решает, что рисовать), не отдельный screens/*-файл и не строка NAV (плитка
   // раздела строит hash сама, settings.js::SECTION_ICONS).
   ["#/settings/{code}", "screens/settings.js"],
+  // Квик 260915-skg (P5): результат поиска настроек открывает саму настройку, не начало
+  // раздела — settings.js::render читает params.key и подсвечивает строку.
+  ["#/settings/{code}/{key}", "screens/settings.js"],
   ["#/form", "screens/form.js"],
   ["#/applications", "screens/applications.js"],
   ["#/questions", "screens/questions.js"],
