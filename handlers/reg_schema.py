@@ -491,7 +491,8 @@ async def _approve_text_for(participant_type: str | None, city_code: str | None 
 
 async def send_completion_and_bonus(bot: Bot, telegram_id: int, with_menu: bool = True,
                                      participant_type: str | None = None, *,
-                                     auto_approved: bool = False):
+                                     auto_approved: bool = False,
+                                     respect_quiet_hours: bool = False):
     """Deliver approve_text (post-approval script) + the configured registration bonus.
     Reused by the non-payment approval path, the free/single payment path (handlers.payment),
     and the admin receipt-confirm path (handlers.admin). Fail-soft: a blocked/unknown user
@@ -509,7 +510,14 @@ async def send_completion_and_bonus(bot: Bot, telegram_id: int, with_menu: bool 
     Quick 260904-3vm (E2): `auto_approved=True` (short-трек/подобные сценарии без модерации)
     reroutes text resolution to `approve_text__auto` — see `_approve_text_for`. Default False
     keeps every existing caller (manual approve, receipt confirm, payment path) byte-for-byte
-    unchanged."""
+    unchanged.
+    16.09 («все уведомления делегатам подходят под правило тихого часа»): `respect_quiet_hours=
+    True` пропускает и текст, и бонус через `services.quiet_hours` — в окне тишины они лягут в
+    очередь (текст ВМЕСТЕ с главным меню, бонус отдельной строкой kind media) и уедут делегату
+    утром. Единственный вызывающий с True — подтверждение чека менеджером
+    (`handlers/admin_moderation.py::rcpt_confirm`), где менеджер тут же видит приписку «делегат
+    увидит утром». Дефолт False оставляет остальные пути (ручное одобрение, бесплатный/разовый
+    взнос) байт-в-байт прежними — их черёд отдельным проходом."""
     city_code = None
     try:
         if await cities_module_on():
@@ -523,16 +531,41 @@ async def send_completion_and_bonus(bot: Bot, telegram_id: int, with_menu: bool 
         kwargs = {"parse_mode": "HTML"}
         if with_menu:
             kwargs["reply_markup"] = await get_main_menu_kb(telegram_id)
-        await bot.send_message(telegram_id, complete_text, **kwargs)
+        # `quiet_now` — «сейчас» для очереди тихих часов; None = путь без неё (дефолт), и тогда
+        # обе отправки ниже идут напрямую, как до 16.09.
+        quiet_now = None
+        if respect_quiet_hours:
+            from services import quiet_hours
+            from services.scheduler import _now_moscow_naive
+            quiet_now = _now_moscow_naive()
+            await quiet_hours.send_or_queue_text(
+                quiet_now, telegram_id, complete_text,
+                sender=lambda: bot.send_message(telegram_id, complete_text, **kwargs),
+                reply_markup=kwargs.get("reply_markup"),
+            )
+        else:
+            await bot.send_message(telegram_id, complete_text, **kwargs)
 
         if await get_setting_typed("reg_bonus_enabled") == "on":  # REG-02: registry-backed
             bonus_caption = await get_setting("reg_bonus_caption") or "\U0001f381 Бонус за регистрацию!"
             bonus_photo = await get_setting("reg_bonus_photo_file_id")
             bonus_doc = await get_setting("reg_bonus_doc_file_id")
-            if bonus_doc:
-                await bot.send_document(telegram_id, bonus_doc, caption=bonus_caption, parse_mode="HTML")
-            elif bonus_photo:
-                await bot.send_photo(telegram_id, bonus_photo, caption=bonus_caption, parse_mode="HTML")
+            method, file_id = ("send_document", bonus_doc) if bonus_doc else (
+                ("send_photo", bonus_photo) if bonus_photo else (None, None)
+            )
+            if file_id and quiet_now is not None:
+                from services import quiet_hours
+                await quiet_hours.send_or_queue_media(
+                    quiet_now, telegram_id,
+                    sender=lambda: getattr(bot, method)(
+                        telegram_id, file_id, caption=bonus_caption, parse_mode="HTML",
+                    ),
+                    method=method, file_id=file_id, caption=bonus_caption, parse_mode="HTML",
+                )
+            elif file_id:
+                await getattr(bot, method)(
+                    telegram_id, file_id, caption=bonus_caption, parse_mode="HTML",
+                )
     except Exception as e:
         logger.error(f"Failed to send completion/bonus to {telegram_id}: {e}")
 

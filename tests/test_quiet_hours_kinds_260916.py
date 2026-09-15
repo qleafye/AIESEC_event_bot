@@ -296,3 +296,187 @@ def test_flush_marks_row_sent_and_never_resends(tmp_path):
         assert len(bot.copies) == 1 and len(bot.photos) == 1
 
     asyncio.run(scenario())
+
+
+# ── B1: чек — подтверждение, бонус, отказ ─────────────────────────────────────────────────
+
+ADMIN = 960001
+
+
+class _FakeUser:
+    def __init__(self, uid):
+        self.id = uid
+
+
+class _FakeBotChat:
+    """Бот, доступный хендлеру через callback.bot / message.bot."""
+
+    def __init__(self):
+        self.sent = []
+        self.documents = []
+        self.photos = []
+
+    async def send_message(self, chat_id, text, parse_mode=None, reply_markup=None):
+        self.sent.append((chat_id, text, reply_markup))
+
+    async def send_document(self, chat_id, file_id, caption=None, parse_mode=None):
+        self.documents.append((chat_id, file_id, caption))
+
+    async def send_photo(self, chat_id, file_id, caption=None, parse_mode=None):
+        self.photos.append((chat_id, file_id, caption))
+
+
+class _FakeMessage:
+    def __init__(self, text=None, bot=None):
+        self.text = text
+        self.bot = bot or _FakeBotChat()
+        self.answers = []
+
+    async def answer(self, text, parse_mode=None, reply_markup=None):
+        self.answers.append(text)
+
+    async def edit_reply_markup(self, reply_markup=None):
+        pass
+
+    async def delete(self):
+        pass
+
+
+class _FakeCallback:
+    def __init__(self, data, bot):
+        self.data = data
+        self.bot = bot
+        self.from_user = _FakeUser(ADMIN)
+        self.message = _FakeMessage(bot=bot)
+        self.answers = []
+
+    async def answer(self, text=None, show_alert=False):
+        self.answers.append(text)
+
+
+class _FakeState:
+    def __init__(self):
+        self._data = {}
+
+    async def get_data(self):
+        return dict(self._data)
+
+    async def update_data(self, **kw):
+        self._data.update(kw)
+
+    async def set_state(self, state):
+        pass
+
+
+def _receipt_ready(tmp_path, name, monkeypatch):
+    from handlers import admin_moderation
+    import services.scheduler as sched
+
+    _ready(tmp_path, name)
+    config.ADMIN_IDS = [ADMIN]
+    monkeypatch.setattr(sched, "cancel_payment_reminders", lambda user_id: None)
+
+    async def _noop_card(target, state):
+        pass
+
+    monkeypatch.setattr(admin_moderation, "_show_current_receipt_card", _noop_card)
+    return admin_moderation
+
+
+async def _seed_payer():
+    await db.add_user({
+        "telegram_id": DELEGATE, "full_name": "Делегат", "registration_date": "2026-09-16",
+        "participant_type": "full", "payment_status": "receipt_sent",
+    })
+
+
+def test_rcpt_confirm_in_quiet_hours_queues_text_menu_and_bonus(tmp_path, monkeypatch):
+    """Подтверждение чека ночью: делегату не уходит НИЧЕГО, в очереди две строки — текст с
+    главным меню и бонус-файл, — а менеджер видит приписку «увидит утром»."""
+    admin_moderation = _receipt_ready(tmp_path, "qh_rcpt_confirm.db", monkeypatch)
+    bot = _FakeBotChat()
+
+    async def scenario():
+        await _seed_payer()
+        await _quiet_all_day()
+        await db.set_setting("reg_bonus_enabled", "on")
+        await db.set_setting("reg_bonus_doc_file_id", "BONUS-DOC")
+        await db.set_setting("quiet_hours_manager_notice_text", "Делегат увидит в {time}.")
+
+        callback = _FakeCallback(f"rcpt_confirm:{DELEGATE}", bot)
+        await admin_moderation.rcpt_confirm(callback, _FakeState())
+
+        assert bot.sent == [] and bot.documents == [] and bot.photos == []
+        rows = await db.list_due_delayed_notifications("2030-01-01 00:00:00")
+        kinds = [r["kind"] for r in rows]
+        assert kinds == [qh.KIND_TEXT, qh.KIND_TEXT, qh.KIND_MEDIA], kinds
+        # первая строка — «оплата подтверждена» вместе с главным меню (иначе утром приехал
+        # бы текст без клавиатуры), третья — бонус-файл по file_id.
+        assert rows[0]["payload"]["reply_markup"]["type"] == "reply"
+        assert rows[2]["payload"]["file_id"] == "BONUS-DOC"
+        assert any("увидит" in (a or "") for a in callback.answers), callback.answers
+        assert (await db.get_user(DELEGATE))["payment_status"] == "paid"
+
+    asyncio.run(scenario())
+
+
+def test_rcpt_confirm_outside_quiet_hours_sends_immediately(tmp_path, monkeypatch):
+    admin_moderation = _receipt_ready(tmp_path, "qh_rcpt_confirm_off.db", monkeypatch)
+    bot = _FakeBotChat()
+
+    async def scenario():
+        await _seed_payer()
+        await db.set_setting("reg_bonus_enabled", "on")
+        await db.set_setting("reg_bonus_doc_file_id", "BONUS-DOC")
+
+        callback = _FakeCallback(f"rcpt_confirm:{DELEGATE}", bot)
+        await admin_moderation.rcpt_confirm(callback, _FakeState())
+
+        assert [c[0] for c in bot.sent] == [DELEGATE, DELEGATE]  # «оплата подтверждена» + approve_text
+        assert bot.sent[0][2] is not None  # главное меню приехало сразу
+        assert bot.documents == [(DELEGATE, "BONUS-DOC", "🎁 Бонус за регистрацию!")]
+        assert await qh.queued_count() == 0
+        assert callback.answers == ["Оплата подтверждена"]
+
+    asyncio.run(scenario())
+
+
+def test_rcpt_reject_in_quiet_hours_queues_and_tells_manager(tmp_path, monkeypatch):
+    admin_moderation = _receipt_ready(tmp_path, "qh_rcpt_reject.db", monkeypatch)
+    bot = _FakeBotChat()
+
+    async def scenario():
+        await _seed_payer()
+        await _quiet_all_day()
+        await db.set_setting("quiet_hours_manager_notice_text", "Делегат увидит в {time}.")
+
+        state = _FakeState()
+        await state.update_data(rcpt_reject_uid=DELEGATE)
+        message = _FakeMessage(text="чек нечитаемый", bot=bot)
+        await admin_moderation.rcpt_reject_reason(message, state)
+
+        assert bot.sent == []
+        rows = await db.list_due_delayed_notifications("2030-01-01 00:00:00")
+        assert len(rows) == 1 and rows[0]["kind"] == qh.KIND_TEXT
+        assert "Чек отклонён" in rows[0]["payload"]["text"]
+        assert any("увидит" in a for a in message.answers), message.answers
+
+    asyncio.run(scenario())
+
+
+def test_rcpt_reject_outside_quiet_hours_sends_immediately(tmp_path, monkeypatch):
+    admin_moderation = _receipt_ready(tmp_path, "qh_rcpt_reject_off.db", monkeypatch)
+    bot = _FakeBotChat()
+
+    async def scenario():
+        await _seed_payer()
+        state = _FakeState()
+        await state.update_data(rcpt_reject_uid=DELEGATE)
+        message = _FakeMessage(text="чек нечитаемый", bot=bot)
+        await admin_moderation.rcpt_reject_reason(message, state)
+
+        assert len(bot.sent) == 1 and "Чек отклонён" in bot.sent[0][1]
+        assert await qh.queued_count() == 0
+        assert message.answers == ["Готово."]
+
+    asyncio.run(scenario())

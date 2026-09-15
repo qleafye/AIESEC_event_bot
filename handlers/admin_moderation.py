@@ -668,12 +668,21 @@ async def rcpt_confirm(callback: types.CallbackQuery, state: FSMContext):
         pass
     from services.scheduler import cancel_payment_reminders
     cancel_payment_reminders(uid)  # cancel BEFORE notifying — no reminder after paid
+    # 16.09: подтверждение оплаты — такое же уведомление делегату, как решение по заявке, и
+    # ночью будить им нельзя. Клавиатуру главного меню несёт САМА строка очереди (kind
+    # text_html, поле reply_markup) — иначе утром приехал бы текст без меню.
+    from services import quiet_hours
+    from services.scheduler import _now_moscow_naive
+    quiet_now = _now_moscow_naive()
+    paid_text = "✅ <b>Оплата подтверждена!</b>\n\nСпасибо, ваш взнос получен."
+    paid_kb = await get_main_menu_kb(uid)  # first menu after the payment journey
     try:
-        await callback.bot.send_message(
-            uid,
-            "✅ <b>Оплата подтверждена!</b>\n\nСпасибо, ваш взнос получен.",
-            parse_mode="HTML",
-            reply_markup=await get_main_menu_kb(uid),  # first menu after the payment journey
+        await quiet_hours.send_or_queue_text(
+            quiet_now, uid, paid_text,
+            sender=lambda: callback.bot.send_message(
+                uid, paid_text, parse_mode="HTML", reply_markup=paid_kb,
+            ),
+            reply_markup=paid_kb,
         )
         # WR-04: payment-confirm must mirror the non-payment approval path — deliver the
         # configured completion text + registration bonus. Menu already sent above.
@@ -687,10 +696,16 @@ async def rcpt_confirm(callback: types.CallbackQuery, state: FSMContext):
         except Exception as e2:
             logger.error(f"rcpt_confirm: failed to resolve participant_type for {uid}, defaulting to 'full': {e2}")
             participant_type = "full"
-        await send_completion_and_bonus(callback.bot, uid, with_menu=False, participant_type=participant_type)
+        await send_completion_and_bonus(
+            callback.bot, uid, with_menu=False, participant_type=participant_type,
+            respect_quiet_hours=True,
+        )
     except Exception as e:
         logger.error(f"Failed to notify user {uid} of payment confirmation: {e}")
-    await callback.answer("Оплата подтверждена")
+    # Приписка менеджеру — та же, что у решения по заявке (`appr_*`/`rej_*` выше): он должен
+    # знать, что делегат прочитает это утром, а не решить, что уведомление потерялось.
+    notice = await quiet_hours.manager_notice(quiet_now, uid)
+    await callback.answer(f"Оплата подтверждена · {notice}" if notice else "Оплата подтверждена")
     await _show_current_receipt_card(callback.message, state)
 
 
@@ -735,12 +750,23 @@ async def rcpt_reject_reason(message: types.Message, state: FSMContext):
         if reason_text and reason_text != "-":
             user_msg += f" Причина: {html_module.escape(reason_text)}"
         user_msg += "\n\nЗагрузи чек повторно через бота."
+        # 16.09: отказ по чеку — уведомление делегату, ночью не будим (см. rcpt_confirm).
+        from services import quiet_hours
+        from services.scheduler import _now_moscow_naive
+        quiet_now = _now_moscow_naive()
         try:
-            await message.bot.send_message(uid, user_msg, parse_mode="HTML")
+            await quiet_hours.send_or_queue_text(
+                quiet_now, uid, user_msg,
+                sender=lambda: message.bot.send_message(uid, user_msg, parse_mode="HTML"),
+            )
         except Exception as e:
             logger.error(f"Failed to notify user {uid} of receipt rejection: {e}")
+        notice = await quiet_hours.manager_notice(quiet_now, uid)
+        done_text = f"Готово. {notice}" if notice else "Готово."
+    else:
+        done_text = "Готово."
     await state.set_state(None)
-    await message.answer("Готово.", reply_markup=ReplyKeyboardRemove())
+    await message.answer(done_text, reply_markup=ReplyKeyboardRemove())
     await _show_current_receipt_card(message, state)
 
 
