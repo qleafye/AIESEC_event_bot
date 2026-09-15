@@ -11,9 +11,19 @@ import asyncio
 import pytest
 
 import reg_engine
+from config import config
+from database import db
 from i18n_ui_en import UI_EN
 from services.i18n import context, delegate_lang, load_map, resolve_lang, src_hash, tr
 from settings_schema import SETTINGS_SCHEMA
+
+
+def _use_tmp_db(tmp_path, name="test_i18n_core_27.db"):
+    # Та же идиома, что tests/test_i18n_lang_27.py::_use_tmp_db -- делает тест независимым
+    # от порядка запуска файлов (иначе settings_toggle_rows() падает на "no such table:
+    # bot_settings" при запуске файла в одиночку без предшествующей инициализации БД).
+    config.DB_PATH = str(tmp_path / name)
+    asyncio.run(db.init_db())
 
 
 # ── tr() ─────────────────────────────────────────────────────────────────────────────────
@@ -235,7 +245,7 @@ def test_registry_delegate_lang_ask_on_start_has_three_modes():
     }
 
 
-def test_registry_delegate_lang_toggles_are_reachable_from_admin_ui():
+def test_registry_delegate_lang_toggles_are_reachable_from_admin_ui(tmp_path):
     """Отклонение от буквы плана (группа `_REG_FIELD_ORDER`/«📝 Регистрация»): оба ключа —
     enum on/off, показ их через generic settings_edit заставил бы менеджера ВВОДИТЬ "on"/"off"
     текстом — прямое нарушение CLAUDE.md («кодовые значения человеку не показываем и ввести
@@ -243,7 +253,13 @@ def test_registry_delegate_lang_toggles_are_reachable_from_admin_ui():
     (party_enabled/consent_enabled/quiet_hours_enabled): group="toggles",
     settings_toggle_rows()-строка и кнопка в разделе «📝 Анкета» (handlers/admin_sections.py),
     рядом с toggle_party_enabled/toggle_consent_enabled — тот же принцип, что уже применён к
-    toggle_reg_edit_remoderation (group="reg", тоже НЕ в _REG_FIELD_ORDER)."""
+    toggle_reg_edit_remoderation (group="reg", тоже НЕ в _REG_FIELD_ORDER).
+
+    settings_toggle_rows() читает bot_settings из БД -- без _use_tmp_db тест зависит от
+    того, успел ли уже отработать init_db() в другом тесте пакета (проходит внутри полного
+    прогона, падает на "no such table: bot_settings" запущенный в одиночку)."""
+    _use_tmp_db(tmp_path)
+
     from handlers import admin_sections as sec
     from handlers.admin_settings import settings_toggle_rows
 
