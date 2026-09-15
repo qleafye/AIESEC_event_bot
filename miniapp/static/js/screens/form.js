@@ -1089,6 +1089,18 @@ export async function render(root, params, ctx) {
         }
       }
 
+      // Первая ошибка чужой колонки — с подписью части карточки («Программа: …»), если сервер
+      // прислал её в спеке композита; подписи берутся из данных ответа, литералов здесь нет.
+      function compositeErrorText(errors) {
+        const parts = (spec.composite && spec.composite.parts) || [];
+        for (const [errColumn, text] of Object.entries(errors || {})) {
+          const part = parts.find((p) => p.column === errColumn || p.key === errColumn);
+          const partLabel = part ? labelText(part.label) : "";
+          return partLabel ? `${partLabel}: ${text}` : text;
+        }
+        return "";
+      }
+
       async function goNext() {
         if (busy) return;
         busy = true;
@@ -1136,7 +1148,12 @@ export async function render(root, params, ctx) {
         } catch (err) {
           busy = false;
           if (err && err.status === 400 && err.reason === "invalid" && err.payload && err.payload.errors) {
-            const msg = err.payload.errors[column];
+            // Приёмка 15.09 (п.2/п.3а «кнопка далее не работает», «сработало со второго раза»):
+            // карточка-композит патчит НЕСКОЛЬКО колонок, и ошибка приходила по колонке части
+            // (`university`), а не по колонке шага (`education_status`) — сообщение молча
+            // терялось, «Далее» выглядела мёртвой. Берём ошибку своей колонки, если она есть,
+            // иначе первую пришедшую — с названием части, чтобы делегат знал, что чинить.
+            const msg = err.payload.errors[column] || compositeErrorText(err.payload.errors);
             if (errorZone && msg) { errorZone.textContent = msg; errorZone.classList.remove("hidden"); }
             setMainButton(null, null);
             // Phase 30 (30-03): подпись после ошибки — та же, что была на кнопке до запроса
@@ -1280,7 +1297,13 @@ export async function render(root, params, ctx) {
           ? h("button", { class: "btn ghost", type: "button", "aria-label": d.back_cta_text || "", onClick: goBack },
             icon("arrow-right", { class: "icon-flip" }), h("span", { text: d.back_cta_text || "" }))
           : null,
-        (!isV2 && spec.skip_label)
+        // Приёмка 15.09 (п.4 «нет кнопки скип в UI анкете»): необязательный шаг обязан иметь
+        // видимый способ пропуска на ЛЮБОЙ анкете — в чате кнопка «Пропустить» есть всегда, а
+        // новая анкета её теряла: пустой ответ сервер не принимает (`validate_answer` ждёт
+        // хотя бы «-»), и делегат упирался в тупик. Исключение одно — `multi`: там пропуск уже
+        // живёт подписью САМОЙ главной кнопки (30-UI-SPEC.md § «5. multi»: «одна кнопка»),
+        // вторая кнопка рядом была бы дублем.
+        (spec.skip_label && !(isV2 && spec.degraded_kind === "multi"))
           ? h("button", { class: "btn ghost", type: "button", "aria-label": spec.skip_label, onClick: goSkip },
             h("span", { text: spec.skip_label }))
           : null,

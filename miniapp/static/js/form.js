@@ -483,8 +483,18 @@ function urlControl(h, spec, value, onChange) {
 // (старая ось `spec.type`) остаётся ЕДИНСТВЕННЫМ путём рендера, байт-в-байт. Проверка на
 // truthy `spec.degraded_kind` (а не только `!== "legacy"`) — до задачи 4 поле не публикуется
 // вовсе, `undefined !== "legacy"` не должно включать новый путь раньше срока.
+// Приёмка 15.09 (п.7 «при прикреплении резюме нет кнопки прикрепления файла»): у «Анкеты 2.0»
+// нет своего контрола для дропзоны/развилки/календаря — `step_type_v2()` сводит их всех к
+// `"text"`, и шаг «Резюме» рисовался ГОЛЫМ текстовым полем, без кнопки выбора файла. Эти типы
+// поля мастер рисует прежними контролами и при включённой новой анкете: деградация типа
+// (`degrade_kind`) отвечает за НОВЫЕ типы шага, а не за отмену уже существующих.
+const V2_KEEPS_LEGACY_CONTROL = new Set([
+  "file", "photo", "resume-fork", "date", "consent", "toggle", "list",
+]);
+
 function buildControl(h, spec, value, onChange) {
-  if (spec.kind && spec.degraded_kind && spec.degraded_kind !== "legacy") {
+  if (spec.kind && spec.degraded_kind && spec.degraded_kind !== "legacy"
+      && !V2_KEEPS_LEGACY_CONTROL.has(spec.type)) {
     return buildV2Control(h, spec, value, onChange, spec.flags || {});
   }
   switch (spec.type) {
