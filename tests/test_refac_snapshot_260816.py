@@ -605,6 +605,7 @@ admin|callback_query|bc_rev|bc_rev:*
 admin|callback_query|bc_revno|bc_revno
 admin|callback_query|bc_revgo|bc_revgo:*
 admin|callback_query|admin_broadcast_log|admin_broadcast_log
+admin|callback_query|admin_broadcast_scheduled|admin_broadcast_scheduled
 admin|callback_query|broadcast_schedule_start|broadcast_schedule
 admin|callback_query|broadcast_schedule_quiet_choice|bcast_quiet:*
 admin|callback_query|sched_cancel|sched_cancel_*
@@ -1027,7 +1028,10 @@ def test_snapshot_total_handler_count_is_292():
     # переставилась.
     # +1: bc_no_after_start — страховочная «Отмена» без фильтра состояния после старта
     # рассылки (admin_broadcasts.py, 15.09), встал сразу после bc_no и перед bc_stop.
-    assert len(GOLDEN_SNAPSHOT) == 520
+    # +1: admin_broadcast_scheduled — кнопка «⏰ Запланированные» на экране рассылок (UAT
+    # 15.09, admin_broadcasts.py), встал сразу после admin_broadcast_log и перед
+    # broadcast_schedule_start (520 -> 521).
+    assert len(GOLDEN_SNAPSHOT) == 521
     # (callback_query toggle_reg_form_v2/chips/lookup_search/edu_card/repeatable/limit_counter/
     # status_screen/header_settings/haptics — девять тумблеров «Анкета 2.0»), встали сразу после
     # admin_quiet_hours и перед sync_sheet: шов импортируется из хвоста

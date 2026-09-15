@@ -60,11 +60,18 @@ class FakeSentMessage:
         self.text = text
         self.markup = reply_markup
         self.edits = []
+        # UAT 15.09: admin_broadcast_scheduled отвечает НОВЫМИ сообщениями (список карточек +
+        # хвост с «◀️ Назад»), не редактирует экран меню — .answer() ведёт свой журнал так же,
+        # как FakeLogTarget ниже.
+        self.answers_sent = []
 
     async def edit_text(self, text, reply_markup=None):
         self.text = text
         self.markup = reply_markup
         self.edits.append((text, reply_markup))
+
+    async def answer(self, text, reply_markup=None):
+        self.answers_sent.append((text, reply_markup))
 
 
 class FakeCallback:
@@ -261,5 +268,78 @@ def test_broadcast_log_screen_empty_state(tmp_path):
         target = FakeLogTarget()
         await admin_broadcasts._render_broadcast_log(target)
         assert target.answers_sent == [("Рассылок пока не было.", None)]
+
+    asyncio.run(go())
+
+
+# ── UAT 15.09: «⏰ Запланированные» на экране рассылок ──────────────────────────────────────
+
+
+class FakeState:
+    """Минимальный FSMContext-заменитель — show_admin_broadcast использует только set_state."""
+
+    def __init__(self):
+        self.state = None
+
+    async def set_state(self, state):
+        self.state = state
+
+
+def test_broadcast_menu_has_scheduled_button(tmp_path):
+    """Экран рассылок несёт кнопку «⏰ Запланированные» с тем же callback_data, который
+    слушает admin_broadcast_scheduled."""
+    _ready(tmp_path)
+
+    async def go():
+        cb = FakeCallback("admin_broadcast")
+        await admin_broadcasts.show_admin_broadcast(cb, FakeState())
+        texts = _btn_texts(cb.message.markup)
+        datas = _cb_datas(cb.message.markup)
+        assert "⏰ Запланированные" in texts
+        assert "admin_broadcast_scheduled" in datas
+
+    asyncio.run(go())
+
+
+def test_scheduled_button_renders_same_list_as_command(tmp_path):
+    """Кнопка открывает ТОТ ЖЕ список, что скрытая команда /scheduled — общий рендер
+    `_render_scheduled_list`, а не вторая копия. Хвост кнопки — дополнительное сообщение с
+    «◀️ Назад», которого у команды нет."""
+    _ready(tmp_path)
+
+    async def go():
+        when = (datetime.now() + timedelta(days=1)).strftime("%Y-%m-%d %H:%M:%S")
+        await db.create_scheduled_broadcast("hello", None, None, when, created_by=ADMIN_ID)
+
+        cmd_target = FakeLogTarget()
+        await admin_broadcasts.cmd_scheduled(SimpleNamespace(answer=cmd_target.answer))
+        assert cmd_target.answers_sent  # sanity: команда реально что-то показала
+
+        cb = FakeCallback("admin_broadcast_scheduled")
+        await admin_broadcasts.admin_broadcast_scheduled(cb)
+
+        n = len(cmd_target.answers_sent)
+        assert cb.message.answers_sent[:n] == cmd_target.answers_sent
+        back_text, back_kb = cb.message.answers_sent[n]
+        assert "◀️ Назад" in _btn_texts(back_kb)
+        assert _cb_datas(back_kb) == ["admin_broadcast"]
+
+    asyncio.run(go())
+
+
+def test_scheduled_button_empty_state_shows_human_line_and_back_button(tmp_path):
+    """Пустой список запланированных рассылок — человеческая строка, а не пустой экран, и
+    кнопка «◀️ Назад» в меню рассылок."""
+    _ready(tmp_path)
+
+    async def go():
+        cb = FakeCallback("admin_broadcast_scheduled")
+        await admin_broadcasts.admin_broadcast_scheduled(cb)
+
+        assert cb.message.answers_sent
+        text, kb = cb.message.answers_sent[-1]
+        assert text == "Запланированных рассылок нет."
+        assert _btn_texts(kb) == ["◀️ Назад"]
+        assert _cb_datas(kb) == ["admin_broadcast"]
 
     asyncio.run(go())
