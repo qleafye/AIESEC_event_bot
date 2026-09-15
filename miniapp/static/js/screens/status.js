@@ -10,6 +10,7 @@
 
 import { icon } from "../icons.js";
 import { guardedRender } from "../ui.js";
+import { confetti } from "../motion.js";
 
 const BADGE_TONE = { pending: "accent", approved: "success", rejected: "danger" };
 const BADGE_ICON = { pending: "clock-4", approved: "check", rejected: "alert-triangle" };
@@ -111,6 +112,10 @@ async function draw(root, params, ctx) {
   }, h("span", { text: mainLabel }), icon("arrow-right")) : null;
 
   root.append(...[plate, ...sections, mainBtn ? h("div", { class: "task-actions" }, mainBtn) : null].filter(Boolean));
+  // Quick 260915-4mw (ANIM-06): залп сам себя снимает и сам гейтит уровень "full" (motion.js
+  // проверяет dataset.motion внутри) — на micro/off его не будет, отдельного тумблера у него
+  // нет, второй копии детекта уровня здесь не заводим.
+  if (status.status === "approved") confetti(plate);
   setMainButton(mainLabel || null, mainAction);
 }
 

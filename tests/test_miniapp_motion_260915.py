@@ -299,3 +299,37 @@ def test_render_miniapp_settings_text_shows_motion_label_not_code():
     text = ADMIN_MINIAPP_PY.read_text(encoding="utf-8")
     assert "✨ Анимации приложения:" in text
     assert 'SETTINGS_SCHEMA["miniapp_motion"]["option_labels"]' in text
+
+
+# ── Задача 3: подключение — переходы экранов, шаг анкеты, полоса прогресса, конфетти статуса ──
+# Те же статические сторожа на исходный текст, что задача 2 — поведение уже проверено node-
+# тестами задачи 1 (slideIn/progressTo/confetti сами по себе), здесь только «экран действительно
+# зовёт примитив в нужном месте».
+
+APP_JS = ROOT / "miniapp" / "static" / "js" / "app.js"
+FORM_JS = ROOT / "miniapp" / "static" / "js" / "screens" / "form.js"
+STATUS_JS = ROOT / "miniapp" / "static" / "js" / "screens" / "status.js"
+
+
+def test_app_js_sets_back_direction_in_back_to_history_and_slides_in_after_render():
+    text = APP_JS.read_text(encoding="utf-8")
+    assert 'import { applyMotionTier, slideIn } from "./motion.js";' in text
+    back_start = text.index("function backToHistory()")
+    back_body = text[back_start:text.index("}", back_start)]
+    assert 'navDirection = "back"' in back_body
+    assert "history.back()" in back_body
+    assert "slideIn(screenEl" in text
+
+
+def test_form_js_uses_progress_to_instead_of_direct_width_assignment():
+    text = FORM_JS.read_text(encoding="utf-8")
+    assert "fill.style.width" not in text
+    assert "progressTo(fill" in text
+    assert 'import { haptic, slideIn, progressTo } from "../motion.js";' in text
+    assert 'stepDir = "back"' in text
+
+
+def test_status_js_imports_and_calls_confetti_on_approved():
+    text = STATUS_JS.read_text(encoding="utf-8")
+    assert 'import { confetti } from "../motion.js";' in text
+    assert "confetti(plate)" in text
