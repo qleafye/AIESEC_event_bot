@@ -190,6 +190,104 @@ def test_decided_at_pending_always_uses_registration_date(tmp_path):
     _run(go())
 
 
+# ── decided_by: кто принял решение (владелец 16.09) ──────────────────────────────────────────
+
+def test_list_applications_page_decided_by_from_live_decision(tmp_path):
+    _ready(tmp_path)
+
+    async def go():
+        await _add(1, status="approved", approved_at="2026-09-05 12:00:00")
+        await db.record_application_decision(
+            1, "approved", None, 777, "2026-09-05 12:00:00", "2026-09-05 12:05:00",
+        )
+        rows = await db.list_applications_page(status="approved")
+        assert rows[0]["decided_by"] == 777
+
+    _run(go())
+
+
+def test_list_applications_page_decided_by_null_without_decision_row(tmp_path):
+    _ready(tmp_path)
+
+    async def go():
+        # Автоодобрение (services/reg_finalize.py::post_finalize) НЕ пишет строку в
+        # application_decisions вовсе — этот случай и легаси-строки без журнала неотличимы,
+        # оба читаются экраном как «автоматически».
+        await _add(1, status="approved", approved_at="2026-09-05 12:00:00")
+        rows = await db.list_applications_page(status="approved")
+        assert rows[0]["decided_by"] is None
+
+    _run(go())
+
+
+def test_list_applications_page_decided_by_null_when_decision_undone(tmp_path):
+    _ready(tmp_path)
+
+    async def go():
+        await _add(1, status="approved", approved_at=None, registered="2026-09-01 10:00:00")
+        decision_id = await db.record_application_decision(
+            1, "approved", None, 777, "2026-09-03 08:00:00", "2026-09-03 08:05:00",
+        )
+        await db.claim_application_undo(decision_id)
+        rows = await db.list_applications_page(status="approved")
+        assert rows[0]["decided_by"] is None
+
+    _run(go())
+
+
+def test_list_applications_page_decided_by_pending_always_null(tmp_path):
+    _ready(tmp_path)
+
+    async def go():
+        await _add(1, status="pending")
+        rows = await db.list_applications_page(status="pending")
+        assert rows[0]["decided_by"] is None
+
+    _run(go())
+
+
+def test_resolve_decision_managers_prefers_full_name(tmp_path):
+    _ready(tmp_path)
+
+    async def go():
+        await _add(777, name="Марина Иванова", username="marina", status="approved")
+        labels = await db.resolve_decision_managers([777])
+        assert labels == {777: "Марина Иванова"}
+
+    _run(go())
+
+
+def test_resolve_decision_managers_falls_back_to_username_without_full_name(tmp_path):
+    _ready(tmp_path)
+
+    async def go():
+        await _add(777, name="", username="marina", status="approved")
+        labels = await db.resolve_decision_managers([777])
+        assert labels == {777: "@marina"}
+
+    _run(go())
+
+
+def test_resolve_decision_managers_unknown_id_gets_numbered_placeholder(tmp_path):
+    _ready(tmp_path)
+
+    async def go():
+        labels = await db.resolve_decision_managers([999])
+        assert labels == {999: "менеджер #999"}
+
+    _run(go())
+
+
+def test_resolve_decision_managers_ignores_falsy_ids_and_empty_list(tmp_path):
+    _ready(tmp_path)
+
+    async def go():
+        assert await db.resolve_decision_managers([]) == {}
+        assert await db.resolve_decision_managers([None, 0]) == {}
+
+    _run(go())
+
+
 # ── порядок, пагинация, city-scope ───────────────────────────────────────────────────────────
 
 def test_list_applications_page_order_newest_decision_first(tmp_path):
@@ -398,6 +496,88 @@ def test_row_broken_or_empty_timestamp_shows_dash(tmp_path):
         await _add(STRANGER_ID, status="pending", registered="мусор")
         text, _ = await admin_app_list.render_app_list_screen(ADMIN_ID, status="pending")
         assert " — —" in text
+
+    _run(go())
+
+
+# ── строка: кто принял решение (владелец 16.09) ──────────────────────────────────────────────
+
+def test_row_approved_shows_manager_who_accepted(tmp_path):
+    _roles_ready(tmp_path)
+
+    async def go():
+        await _add(777, name="Марина Иванова", username="marina", status="approved")
+        await _add(STRANGER_ID, name="Вася", status="approved",
+                    approved_at="2026-09-12 10:00:00")
+        await db.record_application_decision(
+            STRANGER_ID, "approved", None, 777,
+            "2026-09-12 10:00:00", "2026-09-12 10:05:00",
+        )
+        text, _ = await admin_app_list.render_app_list_screen(ADMIN_ID)
+        row_line = next(line for line in text.split("\n") if line.startswith("1."))
+        assert "· приняла Марина Иванова" in row_line
+
+    _run(go())
+
+
+def test_row_rejected_shows_manager_who_declined(tmp_path):
+    _roles_ready(tmp_path)
+
+    async def go():
+        await _add(777, name="Марина Иванова", username="marina", status="approved")
+        await _add(STRANGER_ID, name="Вася", status="rejected",
+                    rejected_at="2026-09-12 10:00:00")
+        await db.record_application_decision(
+            STRANGER_ID, "rejected", "не подошёл", 777,
+            "2026-09-12 10:00:00", "2026-09-12 10:05:00",
+        )
+        text, _ = await admin_app_list.render_app_list_screen(ADMIN_ID, status="rejected")
+        row_line = next(line for line in text.split("\n") if line.startswith("1."))
+        assert "· отклонил(а) Марина Иванова" in row_line
+
+    _run(go())
+
+
+def test_row_pending_has_no_decision_suffix(tmp_path):
+    _roles_ready(tmp_path)
+
+    async def go():
+        await _add(STRANGER_ID, name="Вася", status="pending")
+        text, _ = await admin_app_list.render_app_list_screen(ADMIN_ID, status="pending")
+        row_line = next(line for line in text.split("\n") if line.startswith("1."))
+        assert "·" not in row_line
+
+    _run(go())
+
+
+def test_row_auto_approved_without_decision_row_shows_automatically(tmp_path):
+    _roles_ready(tmp_path)
+
+    async def go():
+        # Ни одной строки в application_decisions -- короткий трек/автоодобрение
+        # (services/reg_finalize.py::post_finalize), решение принял не человек.
+        await _add(STRANGER_ID, name="Вася", status="approved",
+                    approved_at="2026-09-12 10:00:00")
+        text, _ = await admin_app_list.render_app_list_screen(ADMIN_ID)
+        row_line = next(line for line in text.split("\n") if line.startswith("1."))
+        assert "· автоматически" in row_line
+
+    _run(go())
+
+
+def test_row_manager_without_users_row_shows_numbered_placeholder(tmp_path):
+    _roles_ready(tmp_path)
+
+    async def go():
+        await _add(STRANGER_ID, name="Вася", status="approved",
+                    approved_at="2026-09-12 10:00:00")
+        await db.record_application_decision(
+            STRANGER_ID, "approved", None, 555,
+            "2026-09-12 10:00:00", "2026-09-12 10:05:00",
+        )
+        text, _ = await admin_app_list.render_app_list_screen(ADMIN_ID)
+        row_line = next(line for line in text.split("\n") if line.startswith("1."))
+        assert "· приняла менеджер #555" in row_line
 
     _run(go())
 

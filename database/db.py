@@ -4233,15 +4233,39 @@ _APPLICATION_DATE_SQL = {
     "pending": "u.registration_date",
 }
 
+# Владелец 16.09: строка списка обязана показывать, КТО принял решение — тот же рубеж
+# «последняя ЖИВАЯ (`undone_at IS NULL`) строка `application_decisions`», что у
+# `_APPLICATION_DATE_SQL`, но отдаёт `decided_by`, а не `decided_at`. Для "pending" решения
+# ещё нет — константа `NULL`, а не подзапрос (запрос по несуществующему decision-у на pending
+# строке просто вернул бы NULL каждый раз, но так честнее и дешевле читать). Отсутствие живой
+# строки (отменённое решение / автоодобрение без записи в журнал, см. `services/reg_finalize.py
+# ::post_finalize`) тоже даёт NULL — экран (`handlers/admin_app_list.py`) читает это как
+# «автоматически», а не как ошибку.
+_APPLICATION_DECIDER_SQL = {
+    "approved": (
+        "(SELECT d.decided_by FROM application_decisions d "
+        "WHERE d.telegram_id = u.telegram_id AND d.decision = 'approved' "
+        "AND d.undone_at IS NULL ORDER BY d.decided_at DESC, d.id DESC LIMIT 1)"
+    ),
+    "rejected": (
+        "(SELECT d.decided_by FROM application_decisions d "
+        "WHERE d.telegram_id = u.telegram_id AND d.decision = 'rejected' "
+        "AND d.undone_at IS NULL ORDER BY d.decided_at DESC, d.id DESC LIMIT 1)"
+    ),
+    "pending": "NULL",
+}
+
 
 async def list_applications_page(*, status: str = "approved", city_scope=None,
                                    limit: int = 15, offset: int = 0) -> list[dict]:
     """Страница списка заявок для экрана «📇 Список заявок» (handlers/admin_app_list.py).
     Неизвестный `status` трактуется как "approved". Городской фильтр — по `u.event_city`
     (город ДЕЛЕГАТА, та же колонка, что у очереди заявок). `SELECT *` не используется — экрану
-    нужны пять полей, а `users` — широкая таблица (десятки колонок анкеты), таскать её в память
+    нужны шесть полей, а `users` — широкая таблица (десятки колонок анкеты), таскать её в память
     постранично незачем. Порядок — `decided_at DESC, telegram_id DESC` (новые сверху, при
-    равных датах — стабильный тай-брейк)."""
+    равных датах — стабильный тай-брейк). `decided_by` — сырой telegram_id менеджера (или
+    NULL); имя в человекочитаемую подпись резолвит `resolve_decision_managers` ОДНИМ запросом
+    на страницу — не здесь, чтобы не дублировать JOIN на каждую строку."""
     if status not in _APPLICATION_STATUS_SQL:
         status = "approved"
     where = [_APPLICATION_STATUS_SQL[status]]
@@ -4252,16 +4276,51 @@ async def list_applications_page(*, status: str = "approved", city_scope=None,
         params.extend(city_params)
     where_sql = f"WHERE {' AND '.join(where)}"
     date_sql = _APPLICATION_DATE_SQL[status]
+    decider_sql = _APPLICATION_DECIDER_SQL[status]
     async with _connect() as db:
         db.row_factory = aiosqlite.Row
         async with db.execute(
             "SELECT u.telegram_id, u.full_name, u.username, u.status, u.event_city, "
-            f"{date_sql} AS decided_at "
+            f"{date_sql} AS decided_at, {decider_sql} AS decided_by "
             f"FROM users u {where_sql} "
             "ORDER BY decided_at DESC, u.telegram_id DESC LIMIT ? OFFSET ?",
             (*params, limit, offset),
         ) as cursor:
             return [dict(row) for row in await cursor.fetchall()]
+
+
+async def resolve_decision_managers(decided_by_ids: list[int]) -> dict[int, str]:
+    """Человекочитаемая подпись менеджера по его telegram_id (владелец 16.09, экран «📇 Список
+    заявок»): один запрос на СПИСОК id, а не по одному на строку (вызывающий сам собирает
+    неповторяющиеся `decided_by` со страницы перед вызовом — не N+1). `staff` (`list_staff()`,
+    db.py ~3986) имени/ника не хранит — только telegram_id/role/added_by/added_at/city, поэтому
+    источник подписи — собственная строка менеджера в `users`: `full_name`, а если её нет —
+    `@username`. Кого не нашли вовсе (менеджер никогда не писал боту, роль выдана вручную по
+    id) — подпись `менеджер #<id>`, голый id без слова наружу не идёт (CLAUDE.md: кодовые
+    значения человеку не показываем)."""
+    ids = sorted({i for i in decided_by_ids if i})
+    if not ids:
+        return {}
+    placeholders = ",".join("?" for _ in ids)
+    async with _connect() as db:
+        db.row_factory = aiosqlite.Row
+        async with db.execute(
+            f"SELECT telegram_id, full_name, username FROM users "
+            f"WHERE telegram_id IN ({placeholders})",
+            ids,
+        ) as cursor:
+            rows = await cursor.fetchall()
+    labels: dict[int, str] = {}
+    for row in rows:
+        full_name = (row["full_name"] or "").strip()
+        username = (row["username"] or "").strip()
+        if full_name:
+            labels[row["telegram_id"]] = full_name
+        elif username:
+            labels[row["telegram_id"]] = "@" + username.lstrip("@")
+    for manager_id in ids:
+        labels.setdefault(manager_id, f"менеджер #{manager_id}")
+    return labels
 
 
 async def count_applications(*, city_scope=None) -> dict[str, int]:

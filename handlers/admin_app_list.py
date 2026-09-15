@@ -14,7 +14,7 @@ from datetime import datetime
 from aiogram import F, types
 from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
 
-from database.db import count_applications, list_applications_page
+from database.db import count_applications, list_applications_page, resolve_decision_managers
 from handlers.admin import router
 from handlers.admin_core import _admin_city_view
 
@@ -53,12 +53,39 @@ def _username(raw) -> str:
     return html_module.escape("@" + str(raw).strip().lstrip("@"))
 
 
-def _row_text(number: int, row: dict) -> str:
+# Владелец 16.09: строка списка называет, КТО принял решение — глагол здесь ровно тот, что
+# просил владелец («приняла»/«отклонил(а)»), без согласования по роду — подпись рядом уже
+# несёт имя менеджера, это не текст делегату. Статусы без своего глагола (pending) суффикса
+# не получают вовсе — решения ещё нет.
+_DECISION_VERB = {
+    "approved": "приняла",
+    "rejected": "отклонил(а)",
+}
+
+
+def _decision_suffix(status: str, decided_by, manager_labels: dict[int, str]) -> str:
+    """Пустая строка для pending. Для approved/rejected без живой строки в
+    `application_decisions` (`decided_by` — NULL: отменённое решение или автоодобрение без
+    журнала, `services/reg_finalize.py::post_finalize`) — «автоматически» без глагола, решение
+    принял не человек. Иначе — глагол + подпись менеджера из `resolve_decision_managers`
+    (уже содержит фолбэк `менеджер #<id>`, HTML экранируем здесь — имя менеджера может быть
+    произвольным текстом из анкеты)."""
+    verb = _DECISION_VERB.get(status)
+    if not verb:
+        return ""
+    if not decided_by:
+        return " · автоматически"
+    label = manager_labels.get(decided_by, f"менеджер #{decided_by}")
+    return f" · {verb} {html_module.escape(label)}"
+
+
+def _row_text(number: int, row: dict, status: str, manager_labels: dict[int, str]) -> str:
     name = html_module.escape(str(row.get("full_name") or "") or "—")
     username = _username(row.get("username"))
     stamp = _short_stamp(row.get("decided_at"))
     tg_id = row["telegram_id"]
-    return f'{number}. <a href="tg://user?id={tg_id}">{name}</a> — {username} — {stamp}'
+    suffix = _decision_suffix(status, row.get("decided_by"), manager_labels)
+    return f'{number}. <a href="tg://user?id={tg_id}">{name}</a> — {username} — {stamp}{suffix}'
 
 
 _DATE_CAPTION = {
@@ -79,6 +106,11 @@ async def render_app_list_screen(
     scope, label = await _admin_city_view(admin_id)
     counts = await count_applications(city_scope=scope)
     rows = await list_applications_page(status=status, city_scope=scope, limit=PAGE, offset=offset)
+    # Один запрос на страницу (WR-05-стиль): собрали неповторяющиеся decided_by СО страницы,
+    # резолвим имена одним IN (...), а не дёргаем resolve_decision_managers на каждую строку.
+    manager_labels = await resolve_decision_managers(
+        [row.get("decided_by") for row in rows]
+    )
 
     total = counts.get(status, 0)
     total_pages = max(1, (total + PAGE - 1) // PAGE)
@@ -99,7 +131,7 @@ async def render_app_list_screen(
     else:
         for i, row in enumerate(rows):
             lines.append("")
-            lines.append(_row_text(offset + i + 1, row))
+            lines.append(_row_text(offset + i + 1, row, status, manager_labels))
 
     lines.append("")
     lines.append("Найти конкретного делегата: /find @ник")
