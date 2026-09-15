@@ -45,6 +45,30 @@ REFRESH_BATCH = 20
 REFRESH_PAUSE_SECONDS = 1.0
 REFRESH_MAX_CALLS = 500
 
+# Квик 260915-twr (D2): ключи реестра для личных сообщений админу вокруг разовой сверки
+# после привязки чата — group "system" в settings_schema.py, НЕ в _SYSTEM_FIELD_ORDER
+# (тот же прецедент, что у CHAT_ID_KEY/CHAT_TITLE_KEY: это служебные сообщения о фоновом
+# прогоне, не делегатская копирайтинг-копия, экран настроек их не показывает).
+CHAT_BIND_RECONCILE_START_KEY = "chat_bind_reconcile_start_text"
+CHAT_BIND_RECONCILE_DONE_KEY = "chat_bind_reconcile_done_text"
+
+# Через сколько после привязки ставится разовая сверка — не мгновенно (перепривязка/сетевая
+# пауза после ответа Telegram на chatbind ещё не улеглась), но и не позже "быстрого" ощущения
+# для админа, который только что тапнул кнопку города.
+_BIND_RECONCILE_DELAY = timedelta(seconds=5)
+
+
+def _is_absent_error(exc: Exception) -> bool:
+    """`PARTICIPANT_ID_INVALID` / `USER_ID_INVALID` от `getChatMember` — Telegram отвечает
+    ровно одно: такого участника в этом чате нет (аккаунт удалён, id не виден боту). Это
+    полноценный ответ «нет в чате», а не сбой запроса.
+
+    Сверка по ТЕКСТУ исключения, не по классу `aiogram.exceptions.TelegramBadRequest`: модуль
+    намеренно aiogram-free (докстринг :1-17), а фейковые боты в тестах бросают обычные
+    `Exception` — текстовая сверка работает для обоих и не тянет aiogram в `services/`."""
+    text = str(exc).upper()
+    return "PARTICIPANT_ID_INVALID" in text or "USER_ID_INVALID" in text
+
 
 async def tracking_on() -> bool:
     return await get_setting_typed("chat_tracking_enabled") == "on"
@@ -184,7 +208,7 @@ async def refresh_chat(bot, chat_id: int, city: str | None, *,
     approved_ids = await _approved_ids_for_city(city)
     candidates = await stale_chat_member_candidates(chat_id, approved_ids, older_than)
 
-    checked = present = absent = errors = 0
+    checked = present = absent = not_found = errors = 0
     truncated = False
     for batch_start in range(0, len(candidates), REFRESH_BATCH):
         batch = candidates[batch_start:batch_start + REFRESH_BATCH]
@@ -200,19 +224,31 @@ async def refresh_chat(bot, chat_id: int, city: str | None, *,
                 else:
                     absent += 1
             except Exception as e:
-                errors += 1
-                logger.warning(
-                    "chat_tracking.refresh_chat: getChatMember(%s, id=%s) failed: %s: %s",
-                    chat_id, telegram_id, type(e).__name__, e,
-                )
+                if _is_absent_error(e):
+                    # Квик 260915-twr (D1): 441 такой делегат на проде уходил сюда как «сбой»
+                    # и перепроверялся каждые 6 часов впустую — это ответ «нет в чате», не
+                    # ошибка, поэтому errors НЕ растёт и warning на каждого из 441 не пишется.
+                    await upsert_chat_member(chat_id, telegram_id, "left", source="refresh")
+                    not_found += 1
+                else:
+                    errors += 1
+                    logger.warning(
+                        "chat_tracking.refresh_chat: getChatMember(%s, id=%s) failed: %s: %s",
+                        chat_id, telegram_id, type(e).__name__, e,
+                    )
             checked += 1
         if truncated:
             break
         if batch_start + REFRESH_BATCH < len(candidates):
             await asyncio.sleep(REFRESH_PAUSE_SECONDS)
 
-    return {"checked": checked, "present": present, "absent": absent, "errors": errors,
-            "truncated": truncated}
+    logger.info(
+        "chat_tracking.refresh_chat: chat_id=%s city=%s checked=%s present=%s absent=%s "
+        "not_found=%s errors=%s truncated=%s",
+        chat_id, city, checked, present, absent, not_found, errors, truncated,
+    )
+    return {"checked": checked, "present": present, "absent": absent, "not_found": not_found,
+            "errors": errors, "truncated": truncated}
 
 
 async def refresh_all_chats(bot) -> list[dict]:
@@ -225,3 +261,55 @@ async def refresh_all_chats(bot) -> list[dict]:
         report = await refresh_chat(bot, entry["chat_id"], entry["city"])
         reports.append({**report, "chat_id": entry["chat_id"], "city": entry["city"]})
     return reports
+
+
+# ── Квик 260915-twr (D2): разовая сверка сразу после привязки чата ───────────────────────
+
+async def bind_reconcile_job(chat_id: int, city: str | None, admin_id: int) -> None:
+    """Цель date-джобы APScheduler, поставленной `schedule_bind_reconcile` сразу после
+    привязки чата. Модульного уровня, аргументы — только picklable-скаляры (int / str|None /
+    int): APScheduler пиклит цель по ссылке `модуль:имя`, замыкание или объект здесь не
+    переживёт сериализацию.
+
+    `tracking_on()` здесь НЕ гейтит (в отличие от `refresh_all_chats`): менеджер только что
+    привязал чат явным тапом по кнопке города, эта сверка — прямое следствие ЕГО действия, а
+    не фоновая активность, подчинённая общему тумблеру учёта.
+
+    Весь вызов — в `try/except`: упавшая джоба не должна ронять планировщик, а без личного
+    отчёта админ просто узнает состав чата на общей плановой сверке."""
+    try:
+        import services.scheduler as scheduler_module  # ленивый импорт (aiogram-free модуль)
+
+        bot = scheduler_module.get_bot()
+        report = await refresh_chat(bot, chat_id, city)
+        text = (await get_setting_typed(CHAT_BIND_RECONCILE_DONE_KEY)).format(
+            present=report["present"], absent=report["absent"], not_found=report["not_found"],
+        )
+        await bot.send_message(admin_id, text)
+    except Exception as e:
+        logger.error(
+            "chat_tracking.bind_reconcile_job: сверка чата id=%s после привязки упала: %s: %s",
+            chat_id, type(e).__name__, e,
+        )
+
+
+async def schedule_bind_reconcile(chat_id: int, city: str | None, admin_id: int) -> None:
+    """Ставит разовую сверку этого чата через `_BIND_RECONCILE_DELAY` после привязки.
+    `replace_existing=True` — перепривязка того же чата не плодит вторую джобу.
+
+    Fail-soft ВОКРУГ ВСЕГО вызова (`logger.warning`, не `error`): привязка чата обязана
+    состояться и без планировщика — в существующих тестах `test_chat_binding_260914.py`
+    планировщик не инициализирован вовсе, и это критерий приёмки, не побочная деталь."""
+    try:
+        from services.scheduler import get_scheduler
+
+        get_scheduler().add_job(
+            bind_reconcile_job, "date", run_date=msk_now() + _BIND_RECONCILE_DELAY,
+            args=[chat_id, city, admin_id], id=f"chatbind_reconcile_{chat_id}",
+            replace_existing=True,
+        )
+    except Exception as e:
+        logger.warning(
+            "chat_tracking.schedule_bind_reconcile: не удалось поставить сверку чата id=%s: %s: %s",
+            chat_id, type(e).__name__, e,
+        )

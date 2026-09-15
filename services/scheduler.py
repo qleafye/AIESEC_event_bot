@@ -144,7 +144,20 @@ def get_scheduler() -> AsyncIOScheduler:
     return _scheduler
 
 
-def _add_interval_job(func, job_id: str, interval: timedelta):
+def get_bot():
+    """Тот же Bot, что схватил `init_scheduler` — единственный внешний доступ к модульному
+    `_bot` (Pitfall 3: job-таргеты этого файла берут Bot из `_bot` напрямую, а не как
+    аргумент). Нужен `chat_tracking.bind_reconcile_job` (квик 260915-twr, D2) — job-таргет
+    ДРУГОГО модуля, которому Bot нужен без протаскивания его через picklable-аргументы
+    APScheduler; сам `chat_tracking.py` держит импорт этого модуля ленивым (докстринг :1-17,
+    aiogram-free)."""
+    if _bot is None:
+        raise RuntimeError("Scheduler not initialised — call init_scheduler(bot) first")
+    return _bot
+
+
+def _add_interval_job(func, job_id: str, interval: timedelta, *,
+                       first_run_delay: timedelta | None = None):
     """Register one interval job, KEEPING the schedule persisted in the jobstore.
 
     Night review 260816 (review/services.md #2). Why the explicit `next_run_time` is the whole
@@ -164,7 +177,14 @@ def _add_interval_job(func, job_id: str, interval: timedelta):
         `misfire_grace_time` (executors/base.py:117-127) — the silent loss we are closing;
       * no job yet, or the manager changed the interval in the settings -> no explicit
         `next_run_time` at all, i.e. byte-for-byte the previous behaviour (boot + new
-        interval). A settings change must apply, not be shadowed by an old schedule.
+        interval) — UNLESS `first_run_delay` is given (fourth rule below).
+      * (квик 260915-twr, D3) no job yet / interval changed, AND `first_run_delay` is passed ->
+        `next_run_time = now + first_run_delay`. For a job whose very first run should not
+        wait a full interval (e.g. a 6h chat-membership sweep that should also run 2 minutes
+        after boot instead of 6 hours after it). Never applies to the "same interval, reuse
+        saved schedule" branch above — the whole point of this function is to NOT overwrite a
+        schedule that already lives in the jobstore, and `first_run_delay` only fires the FIRST
+        time a job is registered (or after the manager changes its interval).
 
     Requires the scheduler to be started (paused is enough): while it is STATE_STOPPED,
     `get_job()` only looks at `_pending_jobs` and never reads the jobstore
@@ -183,6 +203,8 @@ def _add_interval_job(func, job_id: str, interval: timedelta):
                 f"Job {job_id}: saved run time {saved} already passed (downtime) — "
                 f"catching up at {kwargs['next_run_time']}"
             )
+    elif first_run_delay is not None:
+        kwargs["next_run_time"] = datetime.now(MOSCOW_TZ) + first_run_delay
     _scheduler.add_job(
         func, "interval", seconds=int(interval.total_seconds()),
         id=job_id, replace_existing=True, **kwargs,
@@ -261,10 +283,14 @@ async def init_scheduler(bot):
 
     # Квик 260914-rgr (RGR-01..07): периодическая сверка состава чата делегатов с Telegram.
     # Дефолт интервала — 360 мин (6 часов), тот же приём, что у остальных интервалов джоб выше.
+    # Квик 260915-twr (D3): первый прогон — через _BOOT_CATCHUP (2 мин) после старта, а не
+    # через полный интервал — иначе новопривязанный чат молчит до 6 часов; сохранённое в
+    # jobstore расписание уже заведённой джобы это не трогает (см. докстринг _add_interval_job).
     chat_refresh_minutes = _int_or_default(await get_setting("chat_refresh_minutes"), 360)
     _add_interval_job(
         chat_membership_refresh_job, "chat_membership_refresh",
         timedelta(minutes=chat_refresh_minutes),
+        first_run_delay=_BOOT_CATCHUP,
     )
 
     # ME-03: re-arm any pending broadcast whose date job was dropped from the jobstore during a

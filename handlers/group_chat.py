@@ -48,6 +48,7 @@ from database.db import (
     upsert_chat_member,
 )
 from services import chat_tracking
+from settings_schema import get_setting_typed
 
 logger = logging.getLogger(__name__)
 
@@ -105,6 +106,11 @@ async def on_bot_membership_changed(event: types.ChatMemberUpdated, bot: Bot):
                     "group_chat: личка промоутеру id=%s не доставлена, подтверждение привязки "
                     "чата id=%s разослано ADMIN_IDS", event.from_user.id, event.chat.id,
                 )
+            # Квик 260915-twr (D2): сверка сразу после привязки, отчёт — личным сообщением,
+            # отдельным от подтверждения выше (два разных события во времени).
+            reconcile_start = await get_setting_typed(chat_tracking.CHAT_BIND_RECONCILE_START_KEY)
+            await _dm(bot, event.from_user.id, reconcile_start)
+            await chat_tracking.schedule_bind_reconcile(event.chat.id, None, event.from_user.id)
             return
 
         codes = await enabled_cities()
@@ -245,3 +251,9 @@ async def on_chatbind_pick(callback: types.CallbackQuery, bot: Bot):
     except Exception as e:
         logger.warning("group_chat: не удалось отредактировать сообщение после привязки: %s", e)
     await callback.answer()
+
+    # Квик 260915-twr (D2): сверка сразу после привязки, отчёт — личным сообщением, отдельным
+    # от подтверждения выше (два разных события во времени).
+    reconcile_start = await get_setting_typed(chat_tracking.CHAT_BIND_RECONCILE_START_KEY)
+    await _dm(bot, callback.from_user.id, reconcile_start)
+    await chat_tracking.schedule_bind_reconcile(chat_id, code, callback.from_user.id)
