@@ -38,7 +38,12 @@ from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel, Field
 
 import reg_engine
-from cities import cities_module_on, get_setting_typed_for_city, is_city_enabled
+from cities import (
+    cities_module_on,
+    ensure_cities_fresh,
+    get_setting_typed_for_city,
+    is_city_enabled,
+)
 from database.db import (
     claim_reg_draft,
     get_reg_draft,
@@ -76,6 +81,11 @@ async def _load_context(telegram_id: int) -> dict:
     `_start_registration_flow` бота (план 21-09, обновлено quick 260904-3vm D15): анкета
     ТЕКУЩЕГО сезона реально подана (непустой `registration_date`) -> `edit`, иначе (новичок /
     ещё не подавал / отклонён / прошлый сезон) -> `new` с префиллом (D-07)."""
+    # Приёмка 16.09 («не показывается 4-й город»): справочник городов в веб-процессе
+    # обновляет только эта строка — `reload_cities()` зовёт процесс бота, у веба своего
+    # `main()` с ним нет, и развилка города рисовалась по холодному списку из `.env`.
+    # См. докстринг `cities.ensure_cities_fresh` (TTL, fail-soft).
+    await ensure_cities_fresh()
     draft = await get_reg_draft(telegram_id)
     user_row = await get_user(telegram_id)
     season = (await get_setting("event_season") or "").strip() or None
@@ -284,6 +294,10 @@ async def _draft_response(telegram_id: int, ctx: dict | None = None, *, bot_user
     spec = await reg_engine.form_spec(
         ctx["answers"], ctx["participant_type"], ctx["event_city"], prior=ctx["prior"],
         pending_consent_keys=pending_consents,
+        # Приёмка 16.09 (п.1): ФИО — первый шаг мастера. В чате его спрашивает
+        # `_ask_full_name` ДО движка шагов (сразу после согласий), у приложения такого «до»
+        # нет, и заявка уезжала в модерацию без имени. См. докстринг `form_spec`.
+        ask_full_name=True,
     )
     # D-13: город/трек/согласия не меняются при правке — «locked» решает сервер по спеке
     # (движок знает список REG_FLOW-шагов), а не экран по названию колонки (Task 2
@@ -657,6 +671,12 @@ async def draft_patch(
     step_to_store = body.step
     if body.step:
         enabled_now = await reg_engine.enabled_steps({**new_answers, "participant_type": effective_track})
+        # Приёмка 16.09 (п.1): порядок шагов приложения = `form_spec(ask_full_name=True)`, и
+        # указатель «следующий шаг» обязан считаться по ТОМУ ЖЕ списку. Иначе ответ на ФИО
+        # (шага нет в `enabled_steps` — он вне REG_FLOW) оставлял `step` == "full_name", и
+        # мастер вечно переспрашивал имя.
+        if reg_engine.FULL_NAME_STEP not in enabled_now:
+            enabled_now = [reg_engine.FULL_NAME_STEP, *enabled_now]
         # Приёмка 15.09 (п.3б): карточка «Образование» отвечает на ВСЮ группу одним нажатием —
         # следующий вопрос обязан быть тем, что идёт ЗА группой, а не её же «ВУЗ» (иначе
         # мастер после карточки переспрашивал ВУЗ отдельным экраном). Считает `reg_engine`,
@@ -827,6 +847,23 @@ async def draft_submit(
                 "keys": missing,
                 "text": await get_setting_typed("reg_form_consent_required_text"),
             })
+
+    # Приёмка 16.09 (п.1): ФИО — обязательный ответ, но он не запись REG_FLOW, и общего
+    # серверного гейта обязательных шагов у submit нет. Судья формата тот же, что у чата и у
+    # PATCH (`reg_engine.validate_answer`) — текст ошибки не переписывается здесь. Проверка
+    # стоит ДО `claim_reg_draft`: захваченный при отказе черновик остался бы залоченным.
+    # При правке уже поданной анкеты имя может лежать ТОЛЬКО в `users` (черновик правки несёт
+    # одно изменённое поле) — там же его берёт и `finalize_data` в режиме `edit`; требовать
+    # его в черновике значило бы отбивать правку телефона у делегата с заполненным ФИО.
+    name_value = ctx["answers"].get("full_name")
+    if not name_value and ctx["kind"] == "edit" and ctx["user_row"]:
+        name_value = ctx["user_row"].get("full_name")
+    _name, name_error = reg_engine.validate_answer(reg_engine.FULL_NAME_STEP, name_value)
+    if name_error:
+        raise HTTPException(400, {
+            "reason": "invalid",
+            "errors": {"full_name": name_error},
+        })
 
     # T-21-02: claim перед финалом — второй submit (гонка с чатом) получает 409, не вторую запись.
     draft = await claim_reg_draft(p.telegram_id)

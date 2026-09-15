@@ -23,6 +23,7 @@ from reg_engine import (
 from tests.test_miniapp_frontend import SCREENS_DIR, _js_without_comments
 from tests.test_miniapp_routes import (
     DELEGATE_ID,
+    UNREGISTERED_ID,
     _cfg,
     _client,
     _hdr,
@@ -194,6 +195,105 @@ def test_other_option_absent_when_new_form_is_off(tmp_path):
 # ══════════════════════════════════════════════════════════════════════════════════════════
 # Приёмка 16.09 — «анкета 2.0 в приложении»
 # ══════════════════════════════════════════════════════════════════════════════════════════
+
+# ── «в анкете в мини-аппе если заполнять сразу не пишется ФИО» ────────────────────────────
+
+def test_full_name_is_the_first_step_of_the_app_wizard(tmp_path):
+    _ready(tmp_path, "reg_form_v2_uat_full_name.db")
+    spec = asyncio.run(form_spec({}, "full", None, ask_full_name=True))
+    keys = [row["key"] for row in spec["steps"]]
+    assert keys[0] == "full_name"
+    assert keys.count("full_name") == 1
+
+
+def test_full_name_step_carries_bot_label_prompt_and_validator(tmp_path):
+    _ready(tmp_path, "reg_form_v2_uat_full_name_spec.db")
+    spec = asyncio.run(form_spec({}, "full", None, ask_full_name=True))
+    row = spec["steps"][0]
+    assert row["label"] != row["key"], "подпись шага обязана быть человеческой"
+    assert row["column"] == "full_name"
+    assert row["required"] is True
+    assert row["prompt"] == reg_engine.PROMPT_DEFAULTS["full_name"]
+    assert reg_engine.validate_answer("full_name", "Мария")[1], "одно слово — не ФИО"
+    assert reg_engine.validate_answer("full_name", "Иванова Мария") == ("Иванова Мария", None)
+
+
+def test_chat_step_list_does_not_gain_full_name(tmp_path):
+    """`enabled_steps` — общий список для бота: ФИО там означало бы второй вопрос об имени."""
+    _ready(tmp_path, "reg_form_v2_uat_full_name_chat.db")
+    enabled = asyncio.run(reg_engine.enabled_steps({"participant_type": "full"}))
+    assert "full_name" not in enabled
+    spec = asyncio.run(form_spec({}, "full", None))
+    assert [row["key"] for row in spec["steps"]][0] != "full_name"
+
+
+def test_app_asks_full_name_and_saves_it(client):
+    resp = client.get("/app/api/reg/draft", headers=_hdr(UNREGISTERED_ID))
+    assert resp.status_code == 200, resp.text
+    body = resp.json()
+    assert body["steps"][0]["key"] == "full_name"
+
+    patch = client.patch(
+        "/app/api/reg/draft", headers=_hdr(UNREGISTERED_ID),
+        json={"version": body["version"], "answers": {"full_name": "Иванова Мария"},
+              "step": "full_name"},
+    )
+    assert patch.status_code == 200, patch.text
+    row = asyncio.run(bot_db.get_reg_draft(UNREGISTERED_ID))
+    assert row["answers"]["full_name"] == "Иванова Мария"
+    # Указатель «следующий шаг» не должен залипнуть на ФИО (его нет в `enabled_steps`).
+    assert row["step"] != "full_name"
+
+
+def test_app_rejects_single_word_full_name_with_bot_text(client):
+    resp = client.patch(
+        "/app/api/reg/draft", headers=_hdr(UNREGISTERED_ID),
+        json={"version": 0, "answers": {"full_name": "Мария"}, "step": "full_name"},
+    )
+    assert resp.status_code == 400
+    assert resp.json()["errors"]["full_name"] == reg_engine.validate_answer("full_name", "Мария")[1]
+
+
+def test_submit_without_full_name_is_400_with_human_text(client):
+    _set("reg_q_age", "on")
+    patch = client.patch(
+        "/app/api/reg/draft", headers=_hdr(UNREGISTERED_ID),
+        json={"version": 0, "answers": {"age": "20"}, "step": "age"},
+    )
+    assert patch.status_code == 200, patch.text
+    resp = client.post("/app/api/reg/draft/submit", headers=_hdr(UNREGISTERED_ID))
+    assert resp.status_code == 400
+    body = resp.json()
+    assert body["reason"] == "invalid"
+    assert "full_name" in body["errors"]
+    assert body["errors"]["full_name"] == reg_engine.validate_answer("full_name", None)[1]
+
+
+# ── «не показывается 4-й город» ───────────────────────────────────────────────────────────
+
+def test_city_fork_in_app_sees_cities_added_after_start(client):
+    """Живой стенд: в `.env` три города, менеджер завёл четвёртый в админке — бот его
+    показывал, приложение нет. `reload_cities()` зовёт только процесс бота; веб обязан
+    подтягивать справочник сам (`cities.ensure_cities_fresh` в `_load_context`)."""
+    import cities
+
+    cities.set_cities_for_test([
+        {"code": "msk", "label": "Москва", "tab_base": "", "enabled": 1, "sort_order": 0},
+    ])
+    cities._cities_loaded_at = 0.0
+    asyncio.run(bot_db.insert_city("msk", "Москва", "", 0))
+    asyncio.run(bot_db.insert_city("spb", "Санкт-Петербург", "СПб", 1))
+    asyncio.run(bot_db.insert_city("tyumen", "Тюмень", "Тюмень", 2))
+    asyncio.run(bot_db.insert_city("kzn", "Казань", "Казань", 3))
+    _set("event_city_enabled", "on")
+
+    resp = client.get("/app/api/reg/draft", headers=_hdr(UNREGISTERED_ID))
+    assert resp.status_code == 200, resp.text
+    fork = [it for it in resp.json()["pre_items"] if it.get("field") == "event_city"]
+    assert fork, "развилка города обязана быть, когда модуль включён"
+    codes = [o["code"] for o in fork[0]["options"]]
+    assert codes == ["msk", "spb", "tyumen", "kzn"], codes
+
 
 # ── «при отправке текста в резюме пишется, что не дошло до сервера» ───────────────────────
 #
