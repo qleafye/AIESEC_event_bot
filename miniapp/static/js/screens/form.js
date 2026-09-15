@@ -237,16 +237,32 @@ export async function render(root, params, ctx) {
   function showHandoff(handoff) {
     onRefresh = null;
     setMainButton(null);
+    // Квик 260915-twr (Task A): `showHandoff` живёт вне замыканий мастера/обзора — переменной
+    // `busy` не видит, поэтому свой локальный гвард на обе кнопки плиты. Без него пять тапов
+    // подряд по «Забрать сюда» ставили пять `reg_fsm_reset` (см. draft_takeover), а двойной тап
+    // по «Продолжить в чате» слал два `release`.
+    let handoffBusy = false;
     const continueBtn = h("button", { class: "btn ghost", type: "button", onClick: async () => {
+      if (handoffBusy) return;
+      handoffBusy = true;
+      continueBtn.disabled = true;
+      takeoverBtn.disabled = true;
       try { await api("/reg/draft/release", { method: "POST" }); } catch (_) { /* fail-soft: чат всё равно откроется */ }
       continueInChat(handoff.deeplink);
     } }, icon("message-circle"), h("span", { text: handoff.continue_text || "" }));
     const takeoverBtn = h("button", { class: "btn", type: "button", onClick: async () => {
+      if (handoffBusy) return;
+      handoffBusy = true;
+      continueBtn.disabled = true;
+      takeoverBtn.disabled = true;
       try {
         const res = await api("/reg/draft/takeover", { method: "POST" });
         if (res.kind === "edit") await renderOverview(res);
         else await renderWizard(res);
       } catch (err) {
+        handoffBusy = false;
+        continueBtn.disabled = false;
+        takeoverBtn.disabled = false;
         if (!isAuthError(err)) say(failText(err), "warn");
       }
     } }, icon("smartphone"), h("span", { text: handoff.takeover_text || "" }));

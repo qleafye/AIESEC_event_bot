@@ -687,6 +687,20 @@ def test_takeover_route_sets_app_and_fires_exactly_one_reset(tmp_path):
     assert len(rows) == 1
 
 
+def test_takeover_route_is_idempotent_across_repeated_calls(tmp_path):
+    client = _miniapp_client(tmp_path)
+    _run(bot_db.upsert_reg_draft(
+        DELEGATE_ID, kind="edit", patch={"age": 20}, source="bot", active_surface="bot",
+    ))
+    for _ in range(5):
+        resp = client.post("/app/api/reg/draft/takeover", headers=_hdr(DELEGATE_ID))
+        assert resp.status_code == 200, resp.text
+    draft = _draft_row3(DELEGATE_ID)
+    assert draft["active_surface"] == "app"
+    rows = [r for r in _run(bot_db.list_unprocessed_miniapp_outbox(limit=50)) if r["kind"] == "reg_fsm_reset"]
+    assert len(rows) == 1
+
+
 def test_takeover_route_works_without_existing_draft(tmp_path):
     client = _miniapp_client(tmp_path)
     resp = client.post("/app/api/reg/draft/takeover", headers=_hdr(UNREGISTERED_ID))
