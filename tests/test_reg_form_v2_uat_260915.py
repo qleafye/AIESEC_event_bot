@@ -20,7 +20,7 @@ from reg_engine import (
     form_spec,
     step_spec,
 )
-from tests.test_miniapp_frontend import SCREENS_DIR, _js_without_comments
+from tests.test_miniapp_frontend import MINIAPP_STATIC, SCREENS_DIR, _js_without_comments
 from tests.test_miniapp_routes import (
     DELEGATE_ID,
     UNREGISTERED_ID,
@@ -325,6 +325,40 @@ def test_text_resume_body_of_old_client_is_the_reported_400(client):
     )
     assert resp.status_code == 400
     assert resp.json() == {"reason": "bad_field", "field": "text"}
+
+
+# ── «кнопку "Пропустить" ставим под местом, где вписываем ответ — внизу не видно» ─────────
+
+def test_skip_button_lives_inside_the_field_not_in_the_footer():
+    text = _js_without_comments(FORM_SCREEN_JS)
+    assert "field-skip" in text, "у кнопки пропуска должен быть свой класс под полем"
+    idx_skip = text.index("if (spec.skip_label")
+    footer = text[text.rindex('class: "task-actions"', 0, idx_skip):idx_skip]
+    assert "skip_label" not in footer, footer
+    block = text[idx_skip:]
+    block = block[:block.index("const headerSettings")]
+    assert "insertBefore" in block and "errorZone" in block, block
+    assert "goSkip" in block, block
+
+
+def test_skip_button_style_is_not_a_full_width_primary_cta():
+    css = (MINIAPP_STATIC / "app.css").read_text(encoding="utf-8")
+    rule = css[css.index(".field-skip {"):]
+    rule = rule[:rule.index("}")]
+    assert "width: auto" in rule, rule
+    assert "var(--tap-min)" in rule, rule
+
+
+# ── «при автозаполнении сразу переходить на следующий вопрос» ─────────────────────────────
+
+def test_wizard_advances_on_committed_pick_through_the_same_go_next():
+    text = _js_without_comments(FORM_SCREEN_JS)
+    assert "opts.commit" in text
+    block = text[text.index("if (opts && opts.commit)"):]
+    block = block[:block.index("});")]
+    # Тот же переход, что кнопка «Далее», и только когда значение прошло клиентскую проверку.
+    assert "goNext()" in block, block
+    assert "currentMainDisabled()" in block, block
 
 
 def test_composite_patch_is_recognised_by_spec_not_by_value_shape():
