@@ -272,7 +272,7 @@ KNOWN_OVERAGES: dict[str, tuple[int, str]] = {
         "роли + settings-guide (13-04)",
     ),
     "admin.py": (
-        915,
+        945,
         "сам агрегатор-ядро после 13-06, уже на границе GUIDELINE; +52 строки (Phase 15, "
         "STAT-03/D-10/D-18) -- городской скоуп render_stats_text по привязке staff.city + "
         "кнопка «🌐 Открыть дашборд» (_stats_keyboard_for). "
@@ -281,7 +281,12 @@ KNOWN_OVERAGES: dict[str, tuple[int, str]] = {
         "admin_questions (900 -> 904). "
         "Потолок поднят 910->915 в квике 260910-ro7 (DELU-01..08): шов-импорт "
         "`from handlers import admin_purge` (скрытая команда «/delete_user») в самый хвост "
-        "файла, после блока admin_gamification/admin_polls (909 -> 915).",
+        "файла, после блока admin_gamification/admin_polls (909 -> 915). "
+        "Потолок поднят 915->945 16.09 (правило тихого часа для всех уведомлений делегату): "
+        "+24 строки в `_deliver_question_reply` — ответ организаторов идёт через "
+        "`services.quiet_hours` (текстовый — kind text_html, не-текстовый — kind copy), плюс "
+        "приписка менеджеру о доставке утром; правка ВНУТРИ существующего хендлера, новых "
+        "точек входа нет (915 -> 939).",
     ),
     "user_actions.py": (
         1335,
