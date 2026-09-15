@@ -135,6 +135,14 @@ _SEASON_FREQ_SQL = {
     ),
 }
 
+# Чат-форма (`reg_engine`) пишет эти значения в `users.university`/`users.city`, когда делегат
+# пропустил шаг — «-»/«Пропустить» не ответы делегата, а служебная отметка пропуска, и в топ-8
+# самых частых ответов попадать не должны (прод 15.09: «-» 125 и «Пропустить» 65 в топ-8 вместо
+# настоящих ВУЗов).
+_PLACEHOLDER_ANSWERS = frozenset(
+    {"-", "—", "–", "пропустить", "skip", "нет", "не учусь", "не получал", "не получала", ""}
+)
+
 
 async def top_chips(kind: str, event_city: str | None, limit: int = 8) -> list[str]:
     """Топ-8 чипов (30-CONTEXT.md решение владельца №4): закреплённые менеджером ПЕРВЫМИ
@@ -147,7 +155,12 @@ async def top_chips(kind: str, event_city: str | None, limit: int = 8) -> list[s
     список), НИКОГДА исключение. `event_city` сегодня не фильтрует выборку (справочник ВУЗов/
     городов не завязан на конкретный event_city иначе, чем через сам список городов
     мероприятия) — параметр зарезервирован контрактом на случай будущей city-scoped политики
-    чипов, читается сигнатурой ради совместимости вызывающих (задача 4)."""
+    чипов, читается сигнатурой ради совместимости вызывающих (задача 4).
+
+    Перед ранжированием сырые ответы `users` очищаются от заглушек пропуска шага
+    (`_PLACEHOLDER_ANSWERS`) и схлопываются через таблицу псевдонимов `lookup_entries`
+    (`alias`/`canonical`, регистронезависимо) — «ВШЭ» и «НИУ ВШЭ» считаются одним ВУЗом, счёт
+    суммируется под именем каноники."""
     from database.db import _connect
 
     async with _connect() as conn:
@@ -187,7 +200,24 @@ async def top_chips(kind: str, event_city: str | None, limit: int = 8) -> list[s
             # что у `database/db.py` UPDATE-миграции source/source_legacy — квик 260912-lwy).
             freq_rows = []
 
-        for value, _cnt in freq_rows:
+        alias_map: dict[str, str] = {}
+        if freq_rows:
+            cursor = await conn.execute(
+                "SELECT alias, canonical FROM lookup_entries WHERE kind = ?", (kind,)
+            )
+            for alias, canonical in await cursor.fetchall():
+                alias_map[alias.strip().lower()] = canonical
+                alias_map[canonical.strip().lower()] = canonical
+
+        folded: dict[str, int] = {}
+        for value, cnt in freq_rows:
+            normalized_value = (value or "").strip().lower()
+            if normalized_value in _PLACEHOLDER_ANSWERS:
+                continue
+            canonical_value = alias_map.get(normalized_value, value)
+            folded[canonical_value] = folded.get(canonical_value, 0) + cnt
+
+        for value in sorted(folded, key=lambda v: folded[v], reverse=True):
             if value in chips:
                 continue
             chips.append(value)

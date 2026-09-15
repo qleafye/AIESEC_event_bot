@@ -248,6 +248,47 @@ def test_top_chips_no_entries_returns_empty_list(tmp_path):
     assert _run(top_chips("city", None, limit=8)) == []
 
 
+def test_top_chips_excludes_placeholders_and_folds_aliases(tmp_path):
+    _ready(tmp_path)
+    _run(_clear_lookup("university"))
+    _run(_insert_entry("university", "НИУ ВШЭ", "НИУ ВШЭ"))
+    _run(_insert_entry("university", "НИУ ВШЭ", "ВШЭ"))
+    _run(_set_setting("event_season", "YL 26/2"))
+
+    _run(_insert_user_answer(1, "university", "-", season="YL 26/2"))
+    _run(_insert_user_answer(2, "university", "Пропустить", season="YL 26/2"))
+    _run(_insert_user_answer(3, "university", "ВШЭ", season="YL 26/2"))
+    _run(_insert_user_answer(4, "university", "ВШЭ", season="YL 26/2"))
+    _run(_insert_user_answer(5, "university", "ВШЭ", season="YL 26/2"))
+    _run(_insert_user_answer(6, "university", "НИУ ВШЭ", season="YL 26/2"))
+    _run(_insert_user_answer(7, "university", "НИУ ВШЭ", season="YL 26/2"))
+    _run(_insert_user_answer(8, "university", "МГУ", season="YL 26/2"))
+
+    chips = _run(top_chips("university", None, limit=8))
+    assert chips == ["НИУ ВШЭ", "МГУ"]
+    assert "-" not in chips
+    assert "Пропустить" not in chips
+    assert "ВШЭ" not in chips
+
+
+def test_top_chips_pinned_stays_first_after_folding(tmp_path):
+    _ready(tmp_path)
+    _run(_clear_lookup("university"))
+    _run(_insert_entry("university", "Закреплённый", "закреплённый", pinned=1))
+    _run(_insert_entry("university", "НИУ ВШЭ", "НИУ ВШЭ"))
+    _run(_insert_entry("university", "НИУ ВШЭ", "ВШЭ"))
+    _run(_set_setting("event_season", "YL 26/2"))
+
+    _run(_insert_user_answer(1, "university", "ВШЭ", season="YL 26/2"))
+    _run(_insert_user_answer(2, "university", "ВШЭ", season="YL 26/2"))
+    _run(_insert_user_answer(3, "university", "НИУ ВШЭ", season="YL 26/2"))
+
+    chips = _run(top_chips("university", None, limit=8))
+    assert chips[0] == "Закреплённый"
+    assert "НИУ ВШЭ" in chips
+    assert "ВШЭ" not in chips
+
+
 # ── enqueue_merge — очередь слияния «Другое» ────────────────────────────────────────────────
 
 def test_enqueue_merge_writes_row(tmp_path):
