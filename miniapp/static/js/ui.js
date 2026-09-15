@@ -257,15 +257,31 @@ export function isCoreHandledError(err) {
   return err.status === 503 && err.reason === "miniapp_off";
 }
 
+// Квик 260915-4mw (ANIM-05): контейнер `div.skeleton-list` с `rows` строками `.skeleton
+// .skeleton--row` (классы — задача 1, app.css) — единственная реализация плейсхолдера
+// первичной загрузки, второй копии по экранам не заводим (см. комментарий в guardedRender).
+export function listSkeleton(h, rows = 3) {
+  const wrap = h("div", { class: "skeleton-list" });
+  for (let i = 0; i < rows; i += 1) wrap.append(h("div", { class: "skeleton skeleton--row" }));
+  return wrap;
+}
+
 // Единая точка входа первичной загрузки делегатского экрана (Пилар 6, BLOCKER Топ-10 п.1):
 // без неё отказ сервера/обрыв сети на первом api() оставляет `root` пустым или навсегда
 // «Загрузка…» — роутер ядра на ApiError делает `return;` (app.js:524), сам экран себя не красит.
 // `draw` — прежнее тело render() экрана; `guardedRender` чистит `root` перед каждой попыткой
 // (повтор не дописывает второй экран под первым) и не трогает `root`, если экран уже покрасило
 // ядро (см. isCoreHandledError) — иначе перекрасили бы «Нет доступа»/«Сессия истекла» текстом
-// «не удалось загрузить».
+// «не удалось загрузить». Квик 260915-4mw: скелетон-плейсхолдер (мерцающие строки вместо
+// надписи «Загрузка…») висит на время `draw()` и снимается в `finally` — и на успехе, и на
+// ошибке; единственная точка первичной загрузки семи делегатских экранов (card, coins, faq,
+// leaderboard, status, submit, tasks), второй копии скелетона по экранам не заводим. Мерцание
+// гасится существующим `:root[data-motion="off"] .skeleton` — сам скелетон рисуется на всех
+// уровнях (состояние загрузки, не движение).
 export async function guardedRender(root, ctx, draw) {
   root.replaceChildren();
+  const placeholder = listSkeleton(ctx.h);
+  root.append(placeholder);
   try {
     await draw();
   } catch (err) {
@@ -279,5 +295,7 @@ export async function guardedRender(root, ctx, draw) {
       // нужно для детерминизма клика.
       retry: () => guardedRender(root, ctx, draw),
     }));
+  } finally {
+    placeholder.remove();
   }
 }
