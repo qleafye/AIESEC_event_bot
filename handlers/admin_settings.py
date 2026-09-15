@@ -600,10 +600,15 @@ async def settings_toggle_rows(admin_id: int | None = None, *, header_code=_HEAD
     delegate_lang_label = SETTINGS_SCHEMA["delegate_lang_enabled"]["label"]
     delegate_lang_toggle_text = (f"{delegate_lang_label}: ✅ Вкл → ❌ Выкл" if delegate_lang_on == "on"
                                  else f"{delegate_lang_label}: ❌ Выкл → ✅ Вкл")
+    # Правка 15.09 (владелец): три положения (см. option_labels в реестре), не тумблер —
+    # тот же приём «текущее → новое», что у reg_edit_policy_text ниже.
     delegate_lang_ask_on = await get_setting_typed("delegate_lang_ask_on_start")
     delegate_lang_ask_label = SETTINGS_SCHEMA["delegate_lang_ask_on_start"]["label"]
-    delegate_lang_ask_text = (f"{delegate_lang_ask_label}: ✅ Вкл → ❌ Выкл" if delegate_lang_ask_on == "on"
-                              else f"{delegate_lang_ask_label}: ❌ Выкл → ✅ Вкл")
+    delegate_lang_ask_next = _next_enum_value("delegate_lang_ask_on_start", delegate_lang_ask_on)
+    delegate_lang_ask_text = (
+        f"{delegate_lang_ask_label}: {option_label('delegate_lang_ask_on_start', delegate_lang_ask_on)} → "
+        f"{option_label('delegate_lang_ask_on_start', delegate_lang_ask_next)}"
+    )
     # Phase 21 (21-07, D-12, FORM-SYNC-04): подпись — из реестра (SETTINGS_SCHEMA), не
     # литерал в коде — менеджер переписывает её сам, как и любой другой текст реестра.
     reg_edit_remod = await get_setting_typed("toggle_reg_edit_remoderation")
@@ -1286,12 +1291,16 @@ async def toggle_delegate_lang_enabled(callback: types.CallbackQuery):
 
 @router.callback_query(F.data == "toggle_delegate_lang_ask_on_start")
 async def toggle_delegate_lang_ask_on_start(callback: types.CallbackQuery):
-    # Phase 27 (27-02, LANG-01): спрашивать язык при /start у не-русского клиента — enum
-    # on/off, дефолт ON.
-    await _toggle_module_setting(
-        callback, "delegate_lang_ask_on_start",
-        SETTINGS_SCHEMA["delegate_lang_ask_on_start"]["label"],
-    )
+    # Phase 27 (27-02, LANG-01) + правка 15.09: спрашивать язык при /start — было on/off,
+    # стало цикл из трёх положений (не спрашивать / только нерусским / всем при первом
+    # /start), тот же generic-хелпер `_cycle_enum_setting`, что у `toggle_reg_edit_policy`
+    # ниже. Callback НЕ переименован (снимок хендлеров не трогаем, LANG-01 остаётся тем же
+    # швом) — меняется только реализация под кнопкой.
+    await _cycle_enum_setting(callback, "delegate_lang_ask_on_start", {
+        "off": "Все начинают анкету на русском, переключатель — в меню делегата.",
+        "on": "Вопрос кнопками — только тем, чей Telegram-клиент не на русском.",
+        "everyone": "Вопрос кнопками — каждому новому делегату при первом /start.",
+    })
 
 
 @router.callback_query(F.data == "toggle_reg_skip_source_for_referred")

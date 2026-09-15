@@ -69,28 +69,67 @@ def _lang_pick_kb(origin: str) -> InlineKeyboardMarkup:
     ]])
 
 
+async def _show_lang_picker(message: types.Message, state: FSMContext, raw_args: str | None) -> bool:
+    """Общий хвост показа экрана выбора для обеих ветвей `offer_language` ("on"/"everyone") —
+    сохранить deep-link атрибуцию (см. докстринг модуля) и отрисовать те же две кнопки."""
+    if raw_args:
+        await state.update_data(**{_DEEPLINK_RESUME_KEY: raw_args})
+    await message.answer(_LANG_PICK_TEXT, reply_markup=_lang_pick_kb("start"))
+    return True
+
+
 async def offer_language(message: types.Message, state: FSMContext, raw_args: str | None = None) -> bool:
     """Вызывается из `cmd_start` ДО первого делегатского текста (party-closed/приветствие/
-    город/вилка трека ниже). Показывает экран ТОЛЬКО когда module on + `delegate_lang_ask_on_start
-    == "on"` + `resolve_lang(...) == "ask"` (клиент не на русском, выбор ещё не сохранён) —
-    иначе `False` без единого сообщения, поток `cmd_start` не меняется ни на шаг.
+    город/вилка трека ниже). `delegate_lang_ask_on_start` — три положения:
+
+    - `"off"` — вопроса нет никогда.
+    - `"on"` — module on + `resolve_lang(...) == "ask"` (клиент не на русском, выбор ещё не
+      сохранён).
+    - `"everyone"` (правка 15.09, сеть безопасности владельца: клиентский `language_code`
+      ненадёжен — часть делегатов держит клиент не на том языке, каким реально пишет) —
+      module on + `users.lang` ещё не сохранён -> экран ВСЕГДА, даже если `language_code`
+      уже "ru"; `resolve_lang`/`delegate_lang` в этой ветке не участвуют вовсе (их ступень 3
+      «клиент ru -> тихо ru» — как раз то, что этот режим обходит).
+
+    Иначе `False` без единого сообщения, поток `cmd_start` не меняется ни на шаг.
 
     `raw_args` — сырая строка `command.args` исходного /start (deep-link) — сохраняется в FSM
     ТОЛЬКО на время ожидания тапа (см. докстринг модуля), чтобы `lang_pick_choose` мог
     реинвокнуть `cmd_start` с той же атрибуцией кампании, как если бы вопроса о языке не было.
 
     Возвращает `True`, если экран показан (вызывающий обязан `return` немедленно)."""
-    if await get_setting_typed("delegate_lang_ask_on_start") != "on":
+    mode = await get_setting_typed("delegate_lang_ask_on_start")
+    if mode == "off":
         return False
     # getattr, не прямой атрибут: множество Fake-message в существующих тестах (написанных до
     # этого плана) не заводят `language_code` вовсе — прямой доступ уронил бы их AttributeError,
     # хотя они никакого отношения к языку не имеют. Тот же fail-soft принцип, что везде в этом
     # файле: отсутствие данных — "ru", никогда не исключение.
     language_code = getattr(message.from_user, "language_code", None)
+
+    if mode == "everyone":
+        # C2/персист "ru" здесь НЕ делаем (в отличие от ветки "on" ниже): в этом режиме
+        # делегат выбирает явно кнопкой, молчаливо закреплять "ru" по клиенту нечего — это и
+        # есть то самое угадывание, от которого владелец просит сеть безопасности.
+        module_on = await get_setting_typed("delegate_lang_enabled") == "on"
+        stored = None
+        if module_on:
+            user = await get_user(message.from_user.id)
+            stored = (user or {}).get("lang") if user else None
+        logger.info(
+            "offer_language: uid=%s language_code=%r mode=%s module_on=%s stored=%r",
+            message.from_user.id, language_code, mode, module_on, stored,
+        )
+        if not module_on or stored in ("ru", "en"):
+            return False
+        return await _show_lang_picker(message, state, raw_args)
+
+    # mode == "on" (и любое незнакомое значение — fail-soft на дефолт): прежнее поведение
+    # байт-в-байт, вопрос только не-русским клиентам.
     lang = await delegate_lang(message.from_user.id, language_code)
     # Диагностика приёмки 15.09 («английский клиент, а экрана выбора нет»): без этой строки
     # по логу не отличить «клиент прислал ru» от «модуль/тумблер выключен».
-    logger.info("offer_language: uid=%s language_code=%r -> %s", message.from_user.id, language_code, lang)
+    logger.info("offer_language: uid=%s language_code=%r mode=%s -> %s", message.from_user.id, language_code, mode, lang)
     if lang != "ask":
         if lang == "ru":
             # Сеть безопасности — C1 в services/i18n.py::tr (переводим строго при lang=="en"),
@@ -99,8 +138,9 @@ async def offer_language(message: types.Message, state: FSMContext, raw_args: st
             # resolve_lang. Пишем только когда модуль включён (иначе delegate_lang дал бы "ru"
             # и при выключенном модуле, ступень 1 -- запись означала бы явный выбор, которого
             # не было) и только если явного выбора ещё нет (не затираем "🌐 Язык" делегата).
-            # Ограничение: сюда не дойти, если delegate_lang_ask_on_start != "on" (выход выше,
-            # :80-81) -- тогда резолюция просто повторяется на каждом рендере, это ожидаемо.
+            # Ограничение: сюда не дойти, если mode != "on" (выходы выше) -- тогда резолюция
+            # просто повторяется на каждом рендере, это ожидаемо. Только эта ветка ("on")
+            # персистит "ru" молча — в "everyone" делегат выбирает явно, нечего закреплять.
             try:
                 if await get_setting_typed("delegate_lang_enabled") == "on":
                     user = await get_user(message.from_user.id)
@@ -112,10 +152,7 @@ async def offer_language(message: types.Message, state: FSMContext, raw_args: st
                     message.from_user.id, exc_info=True,
                 )
         return False
-    if raw_args:
-        await state.update_data(**{_DEEPLINK_RESUME_KEY: raw_args})
-    await message.answer(_LANG_PICK_TEXT, reply_markup=_lang_pick_kb("start"))
-    return True
+    return await _show_lang_picker(message, state, raw_args)
 
 
 @router.message(F.text.in_(MENU_TEXTS["menu_lang"]))
