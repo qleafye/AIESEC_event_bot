@@ -62,6 +62,18 @@ class FakeElement {
   setAttribute(name, value) { this._attrs.set(name, String(value)); }
   getAttribute(name) { return this._attrs.has(name) ? this._attrs.get(name) : null; }
   removeAttribute(name) { this._attrs.delete(name); }
+  get dataset() {
+    // Приёмка 16.09: choiceChips (form.js) читает `btn.dataset.value` — реальный DOM отражает
+    // `data-*` атрибуты сюда сам, фейковому элементу нужен тот же геттер (до этой задачи
+    // choiceChips/yesno в этом харнессе не вызывались вовсе, дырка не была видна).
+    const out = {};
+    for (const [key, value] of this._attrs) {
+      if (!key.startsWith("data-")) continue;
+      const camel = key.slice(5).replace(/-([a-z])/g, (_m, c) => c.toUpperCase());
+      out[camel] = value;
+    }
+    return out;
+  }
   addEventListener(type, fn) { (this._listeners[type] ||= []).push(fn); }
   dispatch(type, evt) { for (const fn of (this._listeners[type] || []).slice()) fn(evt); }
   appendChild(node) { this.children.push(node); return node; }
@@ -178,6 +190,77 @@ const controlFileEmpty = wrapFileEmpty._nodes.control;
 const statusFileEmpty = controlFileEmpty.querySelector(".dropzone-status");
 const removeFileEmpty = controlFileEmpty.querySelector(".dropzone-remove");
 
+// ── Приёмка 16.09 («добавь автопереход для всех вопросов, которые могут автоскипаться») ────
+// один тап/выбор, законченный ответ -> onChange(value, {commit:true}); там, где ответ ещё
+// собирается по кусочкам (ручной ввод, снятие галки, неполная дата) -> второго аргумента нет.
+
+// 8) yesno: тап по чипу коммитит (ровно два варианта — весь смысл вопроса «да/нет»).
+const yesnoCalls = [];
+const yesnoSpec = {
+  key: "work_status", type: "yesno", label: "Работаете",
+  options: ["yes", "no"], option_labels: { yes: "Да", no: "Нет" },
+};
+const yesnoWrap = m.field(h, yesnoSpec, null, (v, o) => yesnoCalls.push(o || null));
+yesnoWrap._nodes.control.children[0].dispatch("click", {});
+const yesnoCommit = yesnoCalls[yesnoCalls.length - 1];
+
+// 9) choice-chips с тремя вариантами — НЕ коммитит (автопереход только у пар «да/нет»-формы).
+const chip3Calls = [];
+const chip3Spec = { key: "source", type: "choice-chips", label: "Откуда", options: ["a", "b", "c"] };
+const chip3Wrap = m.field(h, chip3Spec, null, (v, o) => chip3Calls.push(o || null));
+chip3Wrap._nodes.control.children[0].dispatch("click", {});
+const chip3Commit = chip3Calls[chip3Calls.length - 1];
+
+// 10) телефон, вписанный руками (без «Поделиться номером») — обычный текстовый ввод, коммита
+// нет: «Далее» остаётся за делегатом, как раньше.
+const phoneCalls = [];
+const phoneWrap = m.field(h, { key: "phone", type: "phone", label: "Телефон" }, null, (v, o) => phoneCalls.push(o || null));
+phoneWrap._nodes.control.value = "+79991234567";
+phoneWrap._nodes.control.dispatch("input", {});
+const phoneTypedCommit = phoneCalls[phoneCalls.length - 1];
+
+// 11) дата: полное значение (`change` со значением) коммитит, пустое/частичное — нет.
+const dateCalls = [];
+const dateWrap = m.field(h, { key: "birth_date", type: "date", label: "Дата рождения" }, null, (v, o) => dateCalls.push(o || null));
+dateWrap._nodes.control.value = "2026-09-16";
+dateWrap._nodes.control.dispatch("change", {});
+const dateFullCommit = dateCalls[dateCalls.length - 1];
+dateWrap._nodes.control.value = "";
+dateWrap._nodes.control.dispatch("change", {});
+const datePartialCommit = dateCalls[dateCalls.length - 1];
+
+// 12) согласие: галка коммитит, снятие — нет.
+const consentCalls = [];
+const consentWrap = m.field(h, { key: "gdpr", type: "consent", label: "Согласие" }, null, (v, o) => consentCalls.push(o || null));
+const consentCb = consentWrap._nodes.control.children[1].children[0];
+consentCb.checked = true;
+consentCb.dispatch("change", {});
+const consentCheckCommit = consentCalls[consentCalls.length - 1];
+consentCb.checked = false;
+consentCb.dispatch("change", {});
+const consentUncheckCommit = consentCalls[consentCalls.length - 1];
+
+// 13) тумблер: коммитит по каждому тапу (и включение, и выключение — оба законченный ответ).
+const toggleCalls = [];
+const toggleSpec = { key: "notify", type: "toggle", label: "Уведомления", texts: { on: "Вкл", off: "Выкл" } };
+const toggleWrap = m.field(h, toggleSpec, "off", (v, o) => toggleCalls.push(o || null));
+toggleWrap._nodes.control.dispatch("click", {});
+const toggleOnCommit = toggleCalls[toggleCalls.length - 1];
+toggleWrap._nodes.control.dispatch("click", {});
+const toggleOffCommit = toggleCalls[toggleCalls.length - 1];
+
+// 14) мультивыбор и свободный текст (легаси-контролы) — коммита не дают никогда.
+const multiLegacyCalls = [];
+const multiLegacyWrap = m.field(h, { key: "goal", type: "multi", label: "Цели", options: ["a", "b"] }, null, (v, o) => multiLegacyCalls.push(o || null));
+multiLegacyWrap._nodes.control.children[0].children[0].dispatch("change", {});
+const multiLegacyCommit = multiLegacyCalls[multiLegacyCalls.length - 1];
+
+const textLegacyCalls = [];
+const textLegacyWrap = m.field(h, { key: "expectations", type: "text", label: "Ожидания" }, null, (v, o) => textLegacyCalls.push(o || null));
+textLegacyWrap._nodes.control.value = "текст";
+textLegacyWrap._nodes.control.dispatch("input", {});
+const textLegacyCommit = textLegacyCalls[textLegacyCalls.length - 1];
+
 console.log(JSON.stringify({
   firstOptionEmptyValue: firstOptionEmpty.getAttribute("value"),
   firstOptionEmptyText: firstOptionEmpty.textContent,
@@ -200,6 +283,11 @@ console.log(JSON.stringify({
   fileDisplayRemoveHidden: removeFileDisplay.classList.contains("hidden"),
   fileEmptyStatus: statusFileEmpty.textContent,
   fileEmptyRemoveHidden: removeFileEmpty.classList.contains("hidden"),
+  yesnoCommit, chip3Commit, phoneTypedCommit,
+  dateFullCommit, datePartialCommit,
+  consentCheckCommit, consentUncheckCommit,
+  toggleOnCommit, toggleOffCommit,
+  multiLegacyCommit, textLegacyCommit,
 }));
 """
 
@@ -261,3 +349,38 @@ def test_file_control_with_display_shows_stored_status_and_remove_button(js_resu
 def test_file_control_without_display_or_value_stays_empty(js_result):
     assert js_result["fileEmptyStatus"] == ""
     assert js_result["fileEmptyRemoveHidden"] is True
+
+
+# ── Приёмка 16.09 («добавь автопереход для всех вопросов, которые могут автоскипаться») ─────
+
+
+def test_yesno_tap_commits(js_result):
+    assert js_result["yesnoCommit"] == {"commit": True}
+
+
+def test_three_option_choice_chips_does_not_commit(js_result):
+    assert js_result["chip3Commit"] in (None, {"commit": False})
+
+
+def test_typed_phone_number_does_not_commit(js_result):
+    assert js_result["phoneTypedCommit"] is None
+
+
+def test_full_date_commits_but_partial_does_not(js_result):
+    assert js_result["dateFullCommit"] == {"commit": True}
+    assert js_result["datePartialCommit"] is None
+
+
+def test_consent_check_commits_but_uncheck_does_not(js_result):
+    assert js_result["consentCheckCommit"] == {"commit": True}
+    assert js_result["consentUncheckCommit"] is None
+
+
+def test_toggle_commits_on_every_tap(js_result):
+    assert js_result["toggleOnCommit"] == {"commit": True}
+    assert js_result["toggleOffCommit"] == {"commit": True}
+
+
+def test_multi_and_text_legacy_controls_never_commit(js_result):
+    assert js_result["multiLegacyCommit"] is None
+    assert js_result["textLegacyCommit"] is None

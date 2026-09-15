@@ -115,7 +115,10 @@ function intControl(h, spec, value, onChange) {
 function dateControl(h, spec, value, onChange) {
   const input = h("input", { class: "input", type: "date", id: `f-${spec.key}` });
   if (value) input.value = value;
-  input.addEventListener("change", () => onChange(input.value));
+  // Приёмка 16.09: `change` нативного `<input type="date">` стреляет только на завершённом
+  // выборе (не на каждой цифре, как `input`) — commit ставим, только когда значение непусто:
+  // делегат мог тем же `change` ОЧИСТИТЬ дату (крестик пикера), это не законченный ответ.
+  input.addEventListener("change", () => onChange(input.value, input.value ? { commit: true } : undefined));
   return { control: input };
 }
 
@@ -126,6 +129,12 @@ function choiceChips(h, spec, value, onChange) {
   const box = h("div", { class: "choice-chips", role: "group", "aria-label": spec.label });
   let current = value;
   const buttons = [];
+  const options = spec.options || [];
+  // Приёмка 16.09 (п. «добавь автопереход для всех вопросов, которые могут автоскипаться»):
+  // тап по чипу ровно из двух вариантов (yesno и любой закрытый выбор «да/нет по факту») —
+  // законченный ответ, тот же признак `{commit: true}`, что у плитки `select` (form_types.js).
+  // Список из 3+ вариантов автопереход не ставит — там делегат мог промахнуться мимо нужного.
+  const autoCommit = options.length === 2;
   function paint() {
     for (const btn of buttons) {
       const on = btn.dataset.value === String(current);
@@ -133,14 +142,14 @@ function choiceChips(h, spec, value, onChange) {
       btn.setAttribute("aria-pressed", on ? "true" : "false");
     }
   }
-  for (const opt of spec.options || []) {
+  for (const opt of options) {
     // UAT 07.09 (T-d6t-05): подпись — из реестра (spec.option_labels), значение остаётся
     // кодом (data-value/onChange). Анкете это не мешает — у её шагов options уже подписи,
     // option_labels у них нет, ветка `|| opt` даёт прежний рендер байт-в-байт.
     const label = (spec.option_labels && spec.option_labels[opt]) || opt;
     const btn = h("button", {
       class: "chip-choice", type: "button", text: label, "data-value": opt,
-      onClick: () => { current = opt; onChange(opt); paint(); },
+      onClick: () => { current = opt; onChange(opt, { commit: autoCommit }); paint(); },
     });
     buttons.push(btn);
     box.append(btn);
@@ -374,7 +383,9 @@ function toggleControl(h, spec, value, onChange) {
     onClick: () => {
       const next = isOn(current) ? "off" : "on";
       paint(next);
-      onChange(next);
+      // Приёмка 16.09: тумблер — один тап всегда даёт законченный ответ (и включение, и
+      // выключение), commit ставится без условий, в отличие от чекбокса согласия выше.
+      onChange(next, { commit: true });
     },
   });
   const trailing = row.querySelector(".flat-row-trailing");
@@ -396,7 +407,9 @@ function toggleControl(h, spec, value, onChange) {
 function consentControl(h, spec, value, onChange) {
   const cb = h("input", { type: "checkbox" });
   cb.checked = Boolean(value);
-  cb.addEventListener("change", () => onChange(cb.checked));
+  // Приёмка 16.09: постановка галки — законченный ответ (commit), снятие — нет (делегат ещё
+  // может передумать и поставить обратно, второй тап «Далее» тогда остаётся за ним).
+  cb.addEventListener("change", () => onChange(cb.checked, cb.checked ? { commit: true } : undefined));
   return h("div", { class: "consent-card" },
     icon("shield-check"),
     h("label", { class: "check" }, cb, h("span", { text: spec.label })),
