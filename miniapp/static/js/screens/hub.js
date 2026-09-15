@@ -463,6 +463,29 @@ async function renderManagerHub(root, ctx, opts = {}) {
   const labels = sectionLabelsFromDom();
   const items = visibleNav().filter((item) => !item.delegate);
 
+  // Квик 260915-4mu: плитка мастера первой настройки — первым блоком экрана, ПЕРЕД
+  // подсказками ниже. Решение «показывать/нет» и текст прогресса считает сервер
+  // (`show_tile`/`texts`, `GET /admin/setup`), хаб только рисует. Fail-soft — тот же приём,
+  // что у `/admin/settings/hints` (403 у делегата без права `settings` даёт хаб без плитки,
+  // не падение экрана).
+  let setup = null;
+  try {
+    setup = await api("/admin/setup");
+  } catch (_) {
+    setup = null;
+  }
+  if (setup && setup.show_tile) {
+    const setupTiles = h("div", { class: "tiles" });
+    setupTiles.append(tile(h, {
+      onClick: () => navigate("#/setup"),
+      iconName: "sparkles",
+      label: labelText(setup.texts.tile_label),
+      meta: (setup.texts.progress_note_text || "")
+        .replace("{done}", String(setup.done_count)).replace("{total}", String(setup.total)),
+    }));
+    root.append(setupTiles);
+  }
+
   // Подсказка про незаданную «🗓 Дата отсчёта до форума» (quick 260903, D-06): текст и решение
   // «показывать/нет» считает сервер — hub.js только рисует. Fail-soft — тот же приём, что у
   // MANAGER_FETCHERS ниже: отказ/403 (делегат без права settings) даёт хаб без строки, а не
