@@ -25,6 +25,19 @@ def test_tr_returns_same_object_for_russian():
     assert tr(text, "ru", {src_hash(text): "Should not matter"}) is text
 
 
+def test_tr_returns_same_object_for_ask():
+    # "ask" -- язык ещё не выбран, не "не русский": карта непустая, но игнорируется, как и
+    # для "ru" (C1, quick-260915-twr). Делегат с resolve_lang == "ask" не должен увидеть
+    # рукописный ярус A по-английски до того, как ответил на вопрос о языке.
+    text = "Ещё один уникальный объект строки"
+    assert tr(text, "ask", {src_hash(text): "Should not matter"}) is text
+
+
+def test_tr_returns_same_object_for_arbitrary_non_en_code():
+    text = "Третий уникальный объект строки"
+    assert tr(text, "fr", {src_hash(text): "Should not matter"}) is text
+
+
 def test_tr_fail_soft_on_empty_text():
     assert tr(None, "en", {"x": "y"}) is None
     assert tr("", "en", {"x": "y"}) == ""
