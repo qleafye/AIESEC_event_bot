@@ -45,6 +45,7 @@ from database.db import (
     mark_reg_started,
     purge_miniapp_outbox_for_user,
     purge_user,
+    record_user_consent,
     remove_staff,
     set_user_status,
     upsert_reg_draft,
@@ -52,7 +53,7 @@ from database.db import (
 )
 from handlers import admin_caps
 from handlers.admin_purge import _footprint_lines
-from reg_engine import SHORT_TRACK, answer_columns, columns_for_step
+from reg_engine import SHORT_TRACK, answer_columns, columns_for_step, consent_entries
 from services.scheduler import cancel_payment_reminders
 from services.timeutil import msk_now
 from settings_schema import get_setting_typed
@@ -93,7 +94,15 @@ _ROLE_CODE_TO_ROLES: dict[str, tuple[str, ...]] = {
 
 # Один словарь правдоподобных, явно тестовых ответов по колонкам users — второй копии этих
 # значений в модуле нет. Ключи обязаны лежать в reg_engine.answer_columns() (сторог-тест).
+#
+# `full_name` лежит здесь же (не только в non-draft-ветке `_seed_state`), потому что в
+# реальном флоу ФИО спрашивается ДО REG_FLOW, до шага "резюме" (handlers/registration.py,
+# `cmd_start`/`_ask_full_name`, ~1633-1638) — засеянный черновик на шаге "resume" без ФИО в
+# `answers` изображал состояние, недостижимое в реальной анкете (стенд-инцидент 15.09:
+# `registration_complete … name=None`). `full_name` не входит в `columns_for_step("resume")`,
+# поэтому фильтр черновика в `_seed_state` его не срежет.
 _SEED_ANSWERS: dict[str, object] = {
+    "full_name": "Тестовый Делегат (приёмка)",
     "age": "20",
     "phone": "+7 900 000-00-00",
     "vk_username": "vk.com/uat_test_delegate",
@@ -171,9 +180,24 @@ def _roles_keyboard(state_code: str) -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(inline_keyboard=rows)
 
 
+async def _seed_consent(tid: int) -> None:
+    """Стенд-инцидент 15.09: реальный флоу проходит согласие ДО ФИО, ДО REG_FLOW
+    (`handlers/registration.py` ~1633-1638) — любое состояние с черновиком/заявкой обязано
+    нести ту же подпись, иначе сеялка изображает пользователя, недостижимого в реальной
+    анкете. Пишем через `database.db.record_user_consent` (та же функция, что и
+    `handlers/reg_consent.py::consent_renew_accept`), без сырого SQL; версия — дефолтная
+    (текущая `consent_version`), как и у настоящей подписи. Модуль согласий выключен —
+    ничего не пишем (`outstanding_consents` в реальном флоу тоже промолчал бы)."""
+    if await get_setting_typed("consent_enabled") != "on":
+        return
+    for _label, key in await consent_entries():
+        await record_user_consent(tid, key, raw_button="UAT-сеялка (приёмка)")
+
+
 async def _seed_state(tid: int, username: str | None, state_code: str) -> None:
     if state_code == "fresh":
         return
+    await _seed_consent(tid)
     if state_code == "draft":
         await mark_reg_started(tid, username)
         resume_cols = set(columns_for_step("resume"))
@@ -184,7 +208,6 @@ async def _seed_state(tid: int, username: str | None, state_code: str) -> None:
         **_SEED_ANSWERS,
         "telegram_id": tid,
         "username": username,
-        "full_name": "Тестовый Делегат (приёмка)",
         "registration_date": msk_now().strftime("%Y-%m-%d %H:%M:%S"),
         "season": await get_setting_typed("event_season"),
     }
