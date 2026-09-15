@@ -113,7 +113,12 @@ function selectTiles(h, spec, value, onChange, flags) {
       onClick: () => {
         otherMode = opt === otherOption;
         current = otherMode ? otherInput.value.trim() : opt;
-        onChange(current);
+        // Приёмка 16.09 (п.4 «при автозаполнении сразу переходить на следующий вопрос»):
+        // тап по готовой плитке — законченный ответ, а не начало ввода, и второе нажатие
+        // («Далее») ничего к нему не добавляет. `commit` — ПОДСКАЗКА экрану (мастер её
+        // исполняет, обзор правки игнорирует): контрол сам никуда не переходит и про шаги
+        // не знает. Плитка «Другое» commit НЕ ставит — после неё делегат ещё печатает.
+        onChange(current, { commit: !otherMode });
         paint();
         if (otherMode) otherInput.focus();
         haptic("light", flags);
@@ -400,7 +405,10 @@ function lookupControl(h, spec, value, onChange, flags) {
   const ownInput = h("input", { class: "input hidden", type: "text" });
 
   function selectValue(canonical) {
-    onChange(canonical);
+    // Приёмка 16.09 (п.4): выбор подсказки/чипа справочника — законченный ответ (см.
+    // комментарий у плиток `select` выше). Ввод руками в поле поиска и «свой вариант»
+    // (`ownInput`) commit не ставят — там делегат ещё печатает, и «Далее» остаётся за ним.
+    onChange(canonical, { commit: true });
     searchInput.value = canonical;
     list.replaceChildren();
     emptyState.classList.add("hidden");

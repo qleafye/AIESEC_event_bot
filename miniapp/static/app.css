@@ -959,6 +959,19 @@ a.flat-row:active, button.flat-row:active { background: var(--surface-alt); }
 .field.is-error .input,
 .field.is-error textarea.input,
 .field.is-error select.input { border-color: var(--danger); }
+/* Приёмка 16.09 (п.2): «Пропустить» живёт ПОД контролом ответа, а не в футере экрана —
+   футер уезжает под окно «что дальше» и ссылку на чат, на телефоне это ниже сгиба, и делегат
+   кнопки просто не видел. Вторичная по весу (ghost) и по ширине (не во всю строку, как
+   главная CTA) — это не равноправный с «Далее» выбор, а выход из необязательного шага. */
+.field-skip {
+  width: auto;
+  min-height: var(--tap-min);
+  margin-top: var(--sp-2);
+  padding: var(--sp-2) var(--sp-3);
+  font-weight: 400;
+  color: var(--text-muted);
+}
+
 .field-error { color: var(--danger-text); font-size: 12px; margin: var(--sp-1) 0 0; }
 
 .field.is-disabled { opacity: .5; pointer-events: none; }

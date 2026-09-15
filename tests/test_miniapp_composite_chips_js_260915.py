@@ -218,7 +218,42 @@ const prefillChips = findAll(prefillResult.control, "chip-pick");
 const prefillOnChip = prefillChips.find((c) => c.classList.contains("on"));
 const prefillDisabled = prefillResult.disabled;
 
+// 6) Приёмка 16.09 (п.4): тап по готовой плитке `select` помечает ответ законченным
+// (`{commit: true}` вторым аргументом onChange) — экран по этому признаку уходит на
+// следующий вопрос сам. Плитка «свой вариант», мультивыбор и текстовое поле признак НЕ
+// ставят: там делегат ещё печатает/добирает варианты.
+const selectSpec = {
+  key: "alumni_status", degraded_kind: "select", type: "choice-chips",
+  label: "Статус", options: ["Alumni", "Member"], other_option: "Other", v2_texts: {},
+};
+const selCalls = [];
+const selResult = m.buildV2Control(h, selectSpec, null, (v, o) => selCalls.push(o || null), {});
+const selTiles = findAll(selResult.control, "opt-tile");
+selTiles[0].dispatch("click", {});
+const tileCommit = selCalls[selCalls.length - 1];
+selTiles[2].dispatch("click", {});
+const otherTileCommit = selCalls[selCalls.length - 1];
+
+const multiSpec = {
+  key: "goal", degraded_kind: "multi", type: "multi", label: "Цели",
+  options: ["A", "B"], v2_texts: {},
+};
+const multiCalls = [];
+const multiResult = m.buildV2Control(h, multiSpec, null, (v, o) => multiCalls.push(o || null), {});
+findAll(multiResult.control, "chip-pick")[0].dispatch("click", {});
+const multiCommit = multiCalls[multiCalls.length - 1];
+
+const textCalls = [];
+const textResult = m.buildV2Control(
+  h, { key: "expectations", degraded_kind: "text", type: "text", label: "Ожидания" },
+  null, (v, o) => textCalls.push(o || null), {},
+);
+textResult.control.value = "жду многого";
+textResult.control.dispatch("input", {});
+const textCommit = textCalls[textCalls.length - 1];
+
 console.log(JSON.stringify({
+  tileCommit, otherTileCommit, multiCommit, textCommit,
   onDisabledInitially,
   statusChipsAfterOffCount: statusChipsAfterOff.length,
   disabledAfterToggleOff, stateAfterToggleOffValue,
@@ -268,3 +303,34 @@ def test_toggle_back_on_restores_studying_option(js_result):
 def test_prior_not_studying_answer_preselects_chip_on_first_render(js_result):
     assert js_result["prefillHasOnChip"] is True
     assert js_result["prefillDisabled"] is False
+
+
+# ── Приёмка 16.09 (п.4): «при автозаполнении сразу переходить на следующий вопрос» ─────────
+
+def test_select_tile_pick_marks_answer_committed(js_result):
+    assert js_result["tileCommit"] == {"commit": True}
+
+
+def test_other_tile_does_not_commit(js_result):
+    assert js_result["otherTileCommit"] == {"commit": False}
+
+
+def test_multi_and_text_never_commit(js_result):
+    assert js_result["multiCommit"] is None
+    assert js_result["textCommit"] is None
+
+
+def test_lookup_pick_commits_but_typing_does_not():
+    """`selectValue` (чип и строка результата) помечает ответ законченным; ввод в поле поиска
+    и «свой вариант» — нет. Поведенчески в node не проверить (контрол на старте дёргает
+    `api.js`), поэтому — структурно по исходнику."""
+    text = _js_without_comments(FORM_TYPES_JS)
+    body = text[text.index("function selectValue("):]
+    body = body[:body.index("function openOwn(")]
+    assert "onChange(canonical, { commit: true })" in body, body
+    tail = text[text.index("function openOwn("):]
+    tail = tail[:tail.index("function renderChips(")]
+    assert "commit" not in tail, tail
+    search_handler = text[text.index("searchInput.addEventListener"):]
+    search_handler = search_handler[:search_handler.index("fetchSuggest(\"\")")]
+    assert "commit" not in search_handler, search_handler

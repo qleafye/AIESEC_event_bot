@@ -992,7 +992,7 @@ export async function render(root, params, ctx) {
       // spec.help как `.field-help` ВСЕГДА, без этого получились бы два одинаковых абзаца.
       // УАТ 10-11.09 (пункт 2): placeholder закрытого списка — тот же реестровый текст, что
       // и в обзоре правки (d.not_set_text).
-      const el = field(h, { ...spec, help: null, placeholder: d.not_set_text }, value, (v) => {
+      const el = field(h, { ...spec, help: null, placeholder: d.not_set_text }, value, (v, opts) => {
         // Phase 28 (28-05, SU-04, 28-UI-SPEC §1): развилка резюме — тап кнопки И ЕСТЬ переход
         // (никакого «Дальше» на этом экране), поэтому onChange здесь не копит liveValue, а
         // сразу ведёт свою ветку (см. pickResumeBranch ниже).
@@ -1012,6 +1012,19 @@ export async function render(root, params, ctx) {
         // (markServerDirty уже отработал здесь).
         if (typeof File !== "undefined" && v instanceof File) {
           uploadResume(v, el, { getDraft: () => d, setDraft: (nd) => { d = nd; }, state, column });
+          return;
+        }
+        // Приёмка 16.09 (п.4 «при автозаполнении сразу переходить на следующий вопрос»):
+        // контрол пометил ответ законченным (тап по плитке `select`, по чипу/подсказке
+        // справочника) — переходим тем же `goNext`, что и кнопка «Далее», а не второй веткой
+        // отправки. Мультивыбор, текстовые поля и карточка-композит `commit` не ставят вовсе
+        // (form_types.js), так что отдельного списка исключений здесь нет.
+        //
+        // Переход отложен на следующий тик: `notify()` контрола (а с ним и `footerDisabled`,
+        // на который смотрит `currentMainDisabled`) отрабатывает ПОСЛЕ onChange — проверь мы
+        // валидность прямо здесь, читали бы состояние прошлого нажатия.
+        if (opts && opts.commit) {
+          setTimeout(() => { if (!currentMainDisabled()) goNext(); }, 0);
         }
       });
       // D13: контакт из Telegram — та же кнопка, что и в обзоре правки, только без немедленной
@@ -1305,18 +1318,29 @@ export async function render(root, params, ctx) {
           ? h("button", { class: "btn ghost", type: "button", "aria-label": d.back_cta_text || "", onClick: goBack },
             icon("arrow-right", { class: "icon-flip" }), h("span", { text: d.back_cta_text || "" }))
           : null,
-        // Приёмка 15.09 (п.4 «нет кнопки скип в UI анкете»): необязательный шаг обязан иметь
-        // видимый способ пропуска на ЛЮБОЙ анкете — в чате кнопка «Пропустить» есть всегда, а
-        // новая анкета её теряла: пустой ответ сервер не принимает (`validate_answer` ждёт
-        // хотя бы «-»), и делегат упирался в тупик. Исключение одно — `multi`: там пропуск уже
-        // живёт подписью САМОЙ главной кнопки (30-UI-SPEC.md § «5. multi»: «одна кнопка»),
-        // вторая кнопка рядом была бы дублем.
-        (spec.skip_label && !(isV2 && spec.degraded_kind === "multi"))
-          ? h("button", { class: "btn ghost", type: "button", "aria-label": spec.skip_label, onClick: goSkip },
-            h("span", { text: spec.skip_label }))
-          : null,
         mainBtnEl,
       );
+
+      // Приёмка 15.09 (п.4 «нет кнопки скип в UI анкете»): необязательный шаг обязан иметь
+      // видимый способ пропуска на ЛЮБОЙ анкете — в чате кнопка «Пропустить» есть всегда, а
+      // новая анкета её теряла: пустой ответ сервер не принимает (`validate_answer` ждёт
+      // хотя бы «-»), и делегат упирался в тупик. Исключение одно — `multi`: там пропуск уже
+      // живёт подписью САМОЙ главной кнопки (30-UI-SPEC.md § «5. multi»: «одна кнопка»),
+      // вторая кнопка рядом была бы дублем.
+      //
+      // Приёмка 16.09 (п.2 «кнопку "Пропустить" ставим под местом, где вписываем ответ —
+      // внизу не видно»): кнопка больше не в футере экрана (он уезжает под окно «что дальше»
+      // и ссылку на чат — на телефоне это ниже сгиба), а прямо под контролом ответа, перед
+      // зоной ошибки. Узел `errorZone` — тот же якорь, что уже читает `drawFork` ниже;
+      // обработчик и подпись прежние.
+      if (spec.skip_label && !(isV2 && spec.degraded_kind === "multi")) {
+        const skipBtn = h("button", {
+          class: "btn ghost field-skip", type: "button",
+          "aria-label": spec.skip_label, onClick: goSkip,
+        }, h("span", { text: spec.skip_label }));
+        if (footerNodes.errorZone && el.insertBefore) el.insertBefore(skipBtn, footerNodes.errorZone);
+        else el.append(skipBtn);
+      }
 
       // Phase 30 (30-05, задача 4): шестерёнка — над плитой, видна только при
       // `flags.header_settings` (степень v2, но НЕ зависит от `isV2`/`degraded_kind` шага —
