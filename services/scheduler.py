@@ -440,6 +440,8 @@ async def send_scheduled_broadcast(broadcast_id: int):
             get_scheduled_broadcast, mark_broadcast_sending, mark_broadcast_sent,
             get_all_users_ids, count_and_list_filtered,
             list_delivered_chat_ids, mark_delivery, cleanup_deliveries,
+            create_broadcast, set_scheduled_log_broadcast_id,
+            record_broadcast_delivery, finish_broadcast,
         )
         row = await get_scheduled_broadcast(broadcast_id)
         if not row or row.get("status") != "pending":
@@ -508,23 +510,51 @@ async def send_scheduled_broadcast(broadcast_id: int):
         else:
             target_ids = await get_all_users_ids()
 
+        # Квик 260915-twr (Task B1): один журнал, одна таблица broadcast_deliveries — отложенная
+        # рассылка заводит (или переиспользует после рестарта) ту же строку `broadcasts`, что
+        # мгновенная. `broadcast_id` в этой функции — id строки `scheduled_broadcasts`
+        # (им владеют mark_delivery/cleanup_deliveries — чекпоинт идемпотентности повтора);
+        # `log_bid` — id строки `broadcasts` (им владеют record_broadcast_delivery/
+        # finish_broadcast — журнал «Последние рассылки» и отзыв). Не перепутать.
+        log_bid = row.get("log_broadcast_id")
+        if not log_bid:
+            log_bid = await create_broadcast(
+                row.get("created_by") or 0, (row.get("text") or "")[:80], len(target_ids)
+            )
+            await set_scheduled_log_broadcast_id(broadcast_id, log_bid)
+
         text = row.get("text")
         photo = row.get("photo_file_id")
         # Checkpoint log from a previous (crashed) run: ok AND failed chats are skipped — a
         # failed one is a blocked/deactivated chat, re-hammering it on every resume is pointless.
         already = await list_delivered_chat_ids(broadcast_id)
         sent = skipped = failed = 0
+        # Собираем message_id доставленных сообщений для журнала (record_broadcast_delivery).
+        # _safe_send отдаёт только True/False и менять её нельзя (её зовут ещё три джобы) —
+        # поэтому сама фабрика отправки кладёт id в этот словарь по chat_id. Ретрай-ветка
+        # _safe_send вызовет фабрику повторно — словарь перезапишется актуальным id, это
+        # правильное поведение.
+        sent_message_ids: dict[int, int] = {}
         for chat_id in target_ids:
             if chat_id in already:
                 skipped += 1
                 continue
             if photo:
-                ok = await _safe_send(
-                    lambda cid: _bot.send_photo(cid, photo, caption=text), chat_id
-                )
+                async def _send(cid, _photo=photo, _text=text):
+                    msg = await _bot.send_photo(cid, _photo, caption=_text)
+                    sent_message_ids[cid] = msg.message_id
+                    return msg
+                ok = await _safe_send(_send, chat_id)
             else:
-                ok = await _safe_send(lambda cid: _bot.send_message(cid, text), chat_id)
+                async def _send(cid, _text=text):
+                    msg = await _bot.send_message(cid, _text)
+                    sent_message_ids[cid] = msg.message_id
+                    return msg
+                ok = await _safe_send(_send, chat_id)
             await mark_delivery(broadcast_id, chat_id, bool(ok))
+            if ok and chat_id in sent_message_ids:
+                # fail-soft: отсутствие id (странный ответ API) не должно ронять рассылку
+                await record_broadcast_delivery(log_bid, chat_id, sent_message_ids[chat_id])
             if ok:
                 sent += 1
             else:
@@ -532,6 +562,9 @@ async def send_scheduled_broadcast(broadcast_id: int):
             await asyncio.sleep(0.05)
 
         await mark_broadcast_sent(broadcast_id)
+        # sent + skipped: skipped — доставленные ПРЕДЫДУЩИМ прогоном после рестарта, для
+        # менеджера они доставлены не меньше, чем sent из этого прогона.
+        await finish_broadcast(log_bid, "done", sent + skipped, failed)
         logger.info(
             f"Scheduled broadcast {broadcast_id} done: sent {sent}, "
             f"skipped {skipped} (already), failed {failed} of {len(target_ids)}"

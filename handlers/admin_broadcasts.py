@@ -52,6 +52,8 @@ from database.db import (
     get_broadcast,
     list_recent_broadcasts,
     list_broadcast_messages,
+    # Квик 260915-twr (Task B2): предупреждение об аудитории «Всем» на экране подтверждения.
+    list_staff,
 )
 from services.scheduler import (
     _parse_schedule_dt,
@@ -67,6 +69,7 @@ from keyboards.builders import get_cancel_kb
 from handlers.states import Broadcast
 from cities import CITIES, cities_module_on, city_label, city_scope
 from handlers.admin import router
+from config import config
 
 logger = logging.getLogger(__name__)
 
@@ -266,7 +269,35 @@ def _media_from_album_dicts(album: list[dict]) -> list:
     return media
 
 
-async def _send_confirm_prompt(bot: Bot, chat_id: int, state: FSMContext, total: int):
+async def _audience_warning(state: FSMContext, users_ids: list[int] | None, sender_id: int) -> str:
+    """Квик 260915-twr (Task B2): «Всем» = SELECT telegram_id FROM users — менеджер/админ, не
+    регистрировавшийся делегатом, в аудиторию не входит. Аудиторию не расширяем молча, но
+    экран подтверждения теперь честно говорит, сколько человек из команды рассылку не получат.
+    Пустая строка при K == 0 или аудитории не «Всем» — экран остаётся байт-в-байт прежним.
+
+    `sender_id` (адресат самого экрана подтверждения, личный чат с ботом) исключён из подсчёта
+    сознательно: менеджер, читающий это предупреждение прямо сейчас, и так знает, что он не
+    зарегистрирован делегатом — предупреждать его о нём самом бессмысленно, речь про ОСТАЛЬНУЮ
+    команду."""
+    if users_ids is None:
+        return ""
+    data = await state.get_data()
+    if data.get("target_type", "all") != "all":
+        return ""
+    staff = set(config.ADMIN_IDS) | {s["telegram_id"] for s in await list_staff()}
+    missing = staff - set(users_ids) - {sender_id}
+    if not missing:
+        return ""
+    k = len(missing)
+    return (
+        f"⚠️ {k} из команды (админы и менеджеры) не зарегистрированы как делегаты — "
+        "рассылку они не получат.\n\n"
+    )
+
+
+async def _send_confirm_prompt(
+    bot: Bot, chat_id: int, state: FSMContext, total: int, users_ids: list[int] | None = None,
+):
     """Экран подтверждения перед стартом рассылки (BC-01) — общий хвост и для обычного
     сообщения, и для альбома.
 
@@ -275,7 +306,14 @@ async def _send_confirm_prompt(bot: Bot, chat_id: int, state: FSMContext, total:
     список получателей (bc_users) и не умеет сохранить альбом обратно в filter_spec (D-01).
     Попадание «сейчас» в глобальное окно (window_for_city(None)) — только честное
     предупреждение с явным «всё равно сейчас»; тумблер выключен/окна нет/время вне окна —
-    экран байт-в-байт прежний (паритет обязателен)."""
+    экран байт-в-байт прежний (паритет обязателен).
+
+    Квик 260915-twr (Task B2): `users_ids` — опциональный пятый аргумент, только для
+    предупреждения об аудитории «Всем»; отсутствие аргумента (`None`) сохраняет экран
+    байт-в-байт прежним для любого вызова, который его не передаёт. `chat_id` здесь всегда
+    личный чат отправителя с ботом — используется и как адрес доставки, и как исключаемый из
+    предупреждения sender_id."""
+    warning = await _audience_warning(state, users_ids, chat_id)
     from services import quiet_hours
     now = _now_moscow_naive()
     window = await quiet_hours.window_for_city(None)
@@ -287,7 +325,7 @@ async def _send_confirm_prompt(bot: Bot, chat_id: int, state: FSMContext, total:
             "делегаты получат сообщение ночью. Мгновенная рассылка тишину не ждёт.\n"
             "Если хотите подождать — отмените и отправьте через «🕓 Запланировать» "
             f"на время после {window_end.strftime('%H:%M')}.\n\n"
-            f"Отправить это {total} пользователям?"
+            f"{warning}Отправить это {total} пользователям?"
         )
         kb = InlineKeyboardMarkup(inline_keyboard=[
             [InlineKeyboardButton(text=f"🌙 Всё равно отправить сейчас ({total})", callback_data="bc_go")],
@@ -300,7 +338,7 @@ async def _send_confirm_prompt(bot: Bot, chat_id: int, state: FSMContext, total:
         [InlineKeyboardButton(text=f"✅ Отправить {total} пользователям", callback_data="bc_go")],
         [InlineKeyboardButton(text="❌ Отмена", callback_data="bc_no")],
     ])
-    await bot.send_message(chat_id, f"Отправить это {total} пользователям?", reply_markup=kb)
+    await bot.send_message(chat_id, f"{warning}Отправить это {total} пользователям?", reply_markup=kb)
     await state.set_state(Broadcast.confirm)
 
 
@@ -352,7 +390,7 @@ async def _collect_album_and_preview(media_group_id: str, users_ids: list, bot: 
         bc_album=album_dicts,
         bc_preview=f"[альбом x {len(album_dicts)}]",
     )
-    await _send_confirm_prompt(bot, admin_id, state, len(users_ids))
+    await _send_confirm_prompt(bot, admin_id, state, len(users_ids), users_ids)
 
 @router.message(Broadcast.message)
 async def process_broadcast(message: types.Message, state: FSMContext, bot: Bot):
@@ -389,13 +427,19 @@ async def process_broadcast(message: types.Message, state: FSMContext, bot: Bot)
         bc_preview=preview,
     )
     await message.send_copy(message.chat.id)
-    await _send_confirm_prompt(bot, message.chat.id, state, len(users_ids))
+    await _send_confirm_prompt(bot, message.chat.id, state, len(users_ids), users_ids)
 
 
 @router.callback_query(F.data == "bc_go", Broadcast.confirm)
 async def bc_go(callback: types.CallbackQuery, state: FSMContext, bot: Bot):
     """BC-01/03: подтверждение запускает фоновый прогон (services/broadcast_run.run_broadcast)
-    и переводит экран в прогресс с кнопкой «⛔ Остановить»."""
+    и переводит экран в прогресс с кнопкой «⛔ Остановить».
+
+    Квик 260915-twr (Task B3): раньше `state.clear()` уходил ДО перерисовки экрана, а сама
+    перерисовка была под `except Exception: pass` — сбой edit (сообщение удалено, слишком
+    старое, сеть) оставлял в чате живую карточку «Отправить/Отмена», на которую уже никто не
+    отвечал (`bc_no` больше не ловил её — состояние очищено). Теперь `state.clear()` — ПОСЛЕ
+    отрисовки прогресса, а сбой edit чинится новым сообщением с той же клавиатурой."""
     data = await state.get_data()
     users_ids = data.get("bc_users", [])
     preview = data.get("bc_preview") or ""
@@ -407,7 +451,6 @@ async def bc_go(callback: types.CallbackQuery, state: FSMContext, bot: Bot):
 
     bid = await create_broadcast(admin_id, preview[:80], total)
     logger.info("broadcast %s started by %s: total=%s preview=%r", bid, admin_id, total, preview[:80])
-    await state.clear()
 
     if bc_album:
         async def send_one(chat_id):
@@ -422,19 +465,39 @@ async def bc_go(callback: types.CallbackQuery, state: FSMContext, bot: Bot):
     stop_kb = InlineKeyboardMarkup(inline_keyboard=[[
         InlineKeyboardButton(text="⛔ Остановить", callback_data=f"bc_stop:{bid}")
     ]])
+    progress_msg = callback.message
     try:
-        await callback.message.edit_text(f"📨 Отправлено 0 из {total}…", reply_markup=stop_kb)
-    except Exception:
-        pass
+        await progress_msg.edit_text(f"📨 Отправлено 0 из {total}…", reply_markup=stop_kb)
+    except Exception as e:
+        logger.warning(
+            "broadcast %s: не удалось перерисовать экран подтверждения (%s: %s) — "
+            "шлю новое сообщение с прогрессом", bid, type(e).__name__, e,
+        )
+        try:
+            await callback.message.delete()
+        except Exception:
+            pass  # зависшая карточка могла не удалиться по той же причине — это нормально
+        try:
+            progress_msg = await bot.send_message(
+                callback.message.chat.id, f"📨 Отправлено 0 из {total}…", reply_markup=stop_kb,
+            )
+        except Exception as e3:
+            logger.error("broadcast %s: не удалось отправить экран прогресса: %s", bid, e3)
+            progress_msg = None
     await callback.answer()
+    await state.clear()
 
     async def on_progress(delivered, blocked, total_n):
+        if progress_msg is None:
+            return
         try:
-            await callback.message.edit_text(f"📨 Отправлено {delivered} из {total_n}…", reply_markup=stop_kb)
+            await progress_msg.edit_text(f"📨 Отправлено {delivered} из {total_n}…", reply_markup=stop_kb)
         except Exception:
             pass  # "message is not modified" и подобные не должны ронять рассылку
 
     async def on_finish(status, delivered, blocked):
+        if progress_msg is None:
+            return
         row = await get_broadcast(bid)
         if row:
             text, kb2 = _broadcast_card(row)
@@ -443,7 +506,7 @@ async def bc_go(callback: types.CallbackQuery, state: FSMContext, bot: Bot):
                 f"Рассылка завершена. ✅ Отправлено {delivered}, ❌ недоступно {blocked}", None
             )
         try:
-            await callback.message.edit_text(text, reply_markup=kb2)
+            await progress_msg.edit_text(text, reply_markup=kb2)
         except Exception:
             pass
 
@@ -455,6 +518,21 @@ async def bc_no(callback: types.CallbackQuery, state: FSMContext):
     await state.clear()
     await callback.message.edit_text("Рассылка отменена.")
     await callback.answer()
+
+
+@router.callback_query(F.data == "bc_no")
+async def bc_no_after_start(callback: types.CallbackQuery):
+    """Квик 260915-twr (Task B3): страховочный хендлер БЕЗ фильтра состояния — регистрируется
+    ПОСЛЕ `bc_no` выше, aiogram отдаёт событие первому подошедшему, поэтому порядок объявления
+    здесь и есть контракт. Ловит повторный тап «❌ Отмена» по карточке, которая не была
+    перерисована в прогресс (см. bc_go) — состояние уже очищено, рассылка уже идёт. Ничего не
+    редактирует, только отвечает алертом: право на callback_data `bc_no` уже объявлено в
+    ADMIN_CAPS, новое право заводить не нужно."""
+    await callback.answer(
+        "Рассылка уже запущена. Остановить её можно кнопкой «⛔ Остановить» "
+        "в сообщении с прогрессом.",
+        show_alert=True,
+    )
 
 
 @router.callback_query(F.data.startswith("bc_stop:"))

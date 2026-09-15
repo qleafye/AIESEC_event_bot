@@ -604,6 +604,10 @@ async def init_db():
             )
         ''')
         await _ensure_column(db, "scheduled_broadcasts", "sending_since", "TEXT")
+        # Квик 260915-twr (Task B1): отложенная рассылка при отправке заводит строку в журнале
+        # `broadcasts` (том же, что у мгновенных рассылок) — эта колонка хранит связь, чтобы
+        # resume после рестарта переиспользовал ту же строку журнала, а не плодил вторую.
+        await _ensure_column(db, "scheduled_broadcasts", "log_broadcast_id", "INTEGER")
 
         # Quick 260910-okb (BC-01..06): журнал НЕМЕДЛЕННЫХ рассылок («отправить сейчас» из
         # handlers/admin_broadcasts.py). Отдельный путь от scheduled_broadcasts* выше — те
@@ -3010,6 +3014,17 @@ async def mark_broadcast_sent(broadcast_id: int):
     async with _connect() as db:
         await db.execute(
             "UPDATE scheduled_broadcasts SET status = 'sent' WHERE id = ?", (broadcast_id,)
+        )
+        await db.commit()
+
+
+async def set_scheduled_log_broadcast_id(scheduled_id: int, log_broadcast_id: int):
+    """Link a scheduled_broadcasts row to its journal row in `broadcasts` (Task B1). No getter
+    needed — get_scheduled_broadcast() does SELECT * and the field comes back in the same dict."""
+    async with _connect() as db:
+        await db.execute(
+            "UPDATE scheduled_broadcasts SET log_broadcast_id = ? WHERE id = ?",
+            (log_broadcast_id, scheduled_id),
         )
         await db.commit()
 

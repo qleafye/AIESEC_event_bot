@@ -26,17 +26,24 @@ def _isolate(tmp_path, monkeypatch):
 
 
 class _Bot:
-    """Фейковый Bot: считает отправки, по желанию падает на заданных chat_id."""
+    """Фейковый Bot: считает отправки, по желанию падает на заданных chat_id.
+
+    Квик 260915-twr (Task B1): send_message теперь ДОЛЖЕН отдавать объект с .message_id —
+    send_scheduled_broadcast читает его в журнал (record_broadcast_delivery)."""
 
     def __init__(self, fail_ids=()):
         self.sent = []
         self.fail_ids = set(fail_ids)
+        self._next_id = 7000
 
     async def send_message(self, chat_id, text):
         if chat_id in self.fail_ids:
             from aiogram.exceptions import TelegramForbiddenError
             raise TelegramForbiddenError(method=None, message="bot was blocked by the user")
         self.sent.append(chat_id)
+        self._next_id += 1
+        from types import SimpleNamespace
+        return SimpleNamespace(message_id=self._next_id)
 
 
 def _patch_audience(monkeypatch, ids):
@@ -228,5 +235,87 @@ def test_second_fire_in_same_process_is_still_rejected(tmp_path, monkeypatch):
         bot = _Bot()
         await _run_send(bid, bot)
         assert bot.sent == []
+
+    asyncio.run(go())
+
+
+# ── Квик 260915-twr (Task B1): запланированная рассылка попадает в журнал и отзывается ────
+
+def test_scheduled_broadcast_appears_in_journal_with_message_ids(tmp_path, monkeypatch):
+    """После отправки отложенная рассылка видна в list_recent_broadcasts() со статусом 'done',
+    а list_broadcast_messages отдаёт пары (chat_id, message_id) на каждого получателя —
+    «Последние рассылки» и кнопка «🗑 Удалить у получателей» больше не пропускают отложенные."""
+    _isolate(tmp_path, monkeypatch)
+    _patch_audience(monkeypatch, [1, 2, 3])
+
+    async def go():
+        await db.init_db()
+        bid = await db.create_scheduled_broadcast(
+            "hi всем", None, None, "2026-01-01 10:00:00", created_by=42
+        )
+        bot = _Bot()
+        await _run_send(bid, bot)
+
+        rows = await db.list_recent_broadcasts(10)
+        assert len(rows) == 1
+        log_row = rows[0]
+        assert log_row["status"] == "done"
+        assert log_row["delivered"] == 3
+        assert log_row["blocked"] == 0
+
+        pairs = await db.list_broadcast_messages(log_row["id"])
+        assert sorted(chat_id for chat_id, _ in pairs) == [1, 2, 3]
+        assert all(isinstance(message_id, int) for _, message_id in pairs)
+
+        # Связь сохранена для resume.
+        assert (await db.get_scheduled_broadcast(bid))["log_broadcast_id"] == log_row["id"]
+
+    asyncio.run(go())
+
+
+def test_scheduled_broadcast_resume_reuses_log_row(tmp_path, monkeypatch):
+    """Повторный прогон той же запланированной рассылки (resume после рестарта) переиспользует
+    log_broadcast_id — вторая строка в broadcasts не заводится."""
+    _isolate(tmp_path, monkeypatch)
+    _patch_audience(monkeypatch, [1, 2, 3])
+
+    async def go():
+        await db.init_db()
+        bid = await db.create_scheduled_broadcast(
+            "hi", None, None, "2026-01-01 10:00:00", created_by=1
+        )
+        bot1 = _Bot()
+        real_mark = db.mark_delivery
+        calls = {"n": 0}
+
+        async def mark_then_crash(b, c, ok):
+            await real_mark(b, c, ok)
+            calls["n"] += 1
+            if calls["n"] == 2:
+                raise RuntimeError("process died")
+        monkeypatch.setattr(db, "mark_delivery", mark_then_crash)
+        await _run_send(bid, bot1)
+        assert bot1.sent == [1, 2]
+        first_log_bid = (await db.get_scheduled_broadcast(bid))["log_broadcast_id"]
+        assert first_log_bid is not None
+        assert len(await db.list_recent_broadcasts(10)) == 1
+
+        # Ручной возврат в pending — эмуляция рестарта/реклейма.
+        monkeypatch.setattr(db, "mark_delivery", real_mark)
+        async with db._connect() as conn:
+            await conn.execute(
+                "UPDATE scheduled_broadcasts SET status = 'pending' WHERE id = ?", (bid,)
+            )
+            await conn.commit()
+
+        bot2 = _Bot()
+        await _run_send(bid, bot2)
+        assert bot2.sent == [3]  # 1 и 2 уже доставлены прошлым прогоном
+
+        rows = await db.list_recent_broadcasts(10)
+        assert len(rows) == 1  # НЕ вторая строка журнала
+        assert rows[0]["id"] == first_log_bid
+        assert (await db.get_scheduled_broadcast(bid))["log_broadcast_id"] == first_log_bid
+        assert rows[0]["delivered"] == 3  # sent(1) + skipped(2), не меньше уже доставленного
 
     asyncio.run(go())

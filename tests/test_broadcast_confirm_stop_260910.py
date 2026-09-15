@@ -399,3 +399,134 @@ def test_cancel_on_message_step_still_works(tmp_path):
         assert state.state is None
 
     asyncio.run(go())
+
+
+# ── Квик 260915-twr (Task B2): предупреждение об аудитории «Всем» ─────────────────────────
+
+def test_confirm_prompt_warns_about_missing_staff_for_all_audience(tmp_path, monkeypatch):
+    """Аудитория «Всем», и штатный админ (не сам отправитель) не зарегистрирован как делегат ->
+    в тексте экрана подтверждения есть число K."""
+    _ready(tmp_path)  # config.ADMIN_IDS = [ADMIN_ID, OTHER_ADMIN_ID]
+    _patch_audience(monkeypatch, [1, 2, 3])  # ни ADMIN_ID, ни OTHER_ADMIN_ID не делегаты
+
+    async def go():
+        state = FakeState(target_type="all")
+        bot = FakeBot()
+        msg = FakeMessage(chat_id=ADMIN_ID, message_id=10, text="Всем привет")
+
+        await admin_broadcasts.process_broadcast(msg, state, bot)
+
+        prompt = bot.sent_messages[0]
+        # Сам отправитель (ADMIN_ID) исключён из подсчёта — он и так видит это предупреждение;
+        # OTHER_ADMIN_ID остаётся «пропавшим» -> K == 1.
+        assert "⚠️ 1 из команды" in prompt.text
+        assert "не зарегистрированы как делегаты" in prompt.text
+        assert "Отправить это 3 пользователям?" in prompt.text
+
+    asyncio.run(go())
+
+
+def test_confirm_prompt_no_warning_when_k_is_zero(tmp_path, monkeypatch):
+    """K == 0 (весь штат уже в аудитории) -> экран байт-в-байт прежний, без предупреждения."""
+    _ready(tmp_path)
+    _patch_audience(monkeypatch, [1, 2, 3, ADMIN_ID, OTHER_ADMIN_ID])
+
+    async def go():
+        state = FakeState(target_type="all")
+        bot = FakeBot()
+        msg = FakeMessage(chat_id=ADMIN_ID, message_id=10, text="Всем привет")
+
+        await admin_broadcasts.process_broadcast(msg, state, bot)
+
+        prompt = bot.sent_messages[0]
+        assert prompt.text == "Отправить это 5 пользователям?"
+        assert "⚠️" not in prompt.text
+
+    asyncio.run(go())
+
+
+def test_confirm_prompt_no_warning_for_non_all_audience(tmp_path, monkeypatch):
+    """target_type != 'all' -> предупреждение не считается вовсе, даже если K был бы > 0."""
+    _ready(tmp_path)
+
+    async def go():
+        state = FakeState(target_type="list", target_users=[1, 2])
+        bot = FakeBot()
+        msg = FakeMessage(chat_id=ADMIN_ID, message_id=10, text="Привет списку")
+
+        await admin_broadcasts.process_broadcast(msg, state, bot)
+
+        prompt = bot.sent_messages[0]
+        assert prompt.text == "Отправить это 2 пользователям?"
+        assert "⚠️" not in prompt.text
+
+    asyncio.run(go())
+
+
+# ── Квик 260915-twr (Task B3): «Отмена» не висит после старта отправки ────────────────────
+
+def test_bc_go_sends_new_progress_message_when_edit_fails(tmp_path, monkeypatch):
+    """Сбой edit_text на bc_go -> ушло НОВОЕ сообщение с текстом прогресса и клавиатурой
+    bc_stop:{bid}, а не тишина."""
+    _ready(tmp_path)
+    _fast_sleep(monkeypatch)
+
+    async def go():
+        state = FakeState(
+            bc_chat_id=ADMIN_ID, bc_message_id=42, bc_users=[1, 2, 3], bc_preview="hi всем",
+        )
+        await state.set_state(Broadcast.confirm)
+
+        class BrokenMessage(FakeSentMessage):
+            async def edit_text(self, text, reply_markup=None):
+                raise RuntimeError("message to edit not found")
+
+            async def delete(self):
+                raise RuntimeError("can't delete — too old")
+
+        confirm_msg = BrokenMessage(1, "Отправить это 3 пользователям?")
+        confirm_msg.chat = FakeChat(ADMIN_ID)
+        cb = FakeCallback("bc_go", user_id=ADMIN_ID, message=confirm_msg)
+        bot = FakeBot()
+
+        spawned = []
+        monkeypatch.setattr(admin_broadcasts, "_spawn", lambda coro: spawned.append(coro))
+        await admin_broadcasts.bc_go(cb, state, bot)
+
+        # Новое сообщение прогресса ушло отдельно от (сломанной) карточки подтверждения.
+        assert len(bot.sent_messages) == 1
+        progress = bot.sent_messages[0]
+        assert "Отправлено 0 из 3" in progress.text
+        assert _cb_datas(progress.markup) == [f"bc_stop:{(await db.list_recent_broadcasts(1))[0]['id']}"]
+        assert state.state is None  # FSM всё равно очищен
+
+        await spawned[0]
+        assert "Рассылка завершена" in progress.text  # итог дорисован в НОВОМ сообщении
+
+    asyncio.run(go())
+
+
+def test_bc_no_without_state_answers_alert_instead_of_silence(tmp_path):
+    """Повторный тап «Отмена» по зависшей карточке (состояние уже не Broadcast.confirm, т.к.
+    рассылка уже стартовала) -> алерт, а не тишина; edit_text не вызывается."""
+    _ready(tmp_path)
+
+    async def go():
+        state = FakeState()  # состояние НЕ Broadcast.confirm — как после успешного bc_go
+
+        class NoEditMessage(FakeSentMessage):
+            async def edit_text(self, text, reply_markup=None):
+                raise AssertionError("bc_no_after_start не должен редактировать сообщение")
+
+        confirm_msg = NoEditMessage(1, "📨 Отправлено 2 из 5…")
+        cb = FakeCallback("bc_no", user_id=ADMIN_ID, message=confirm_msg)
+
+        await admin_broadcasts.bc_no_after_start(cb)
+
+        assert len(cb.answers) == 1
+        text, show_alert = cb.answers[0]
+        assert show_alert is True
+        assert "уже запущена" in text
+        assert "⛔ Остановить" in text
+
+    asyncio.run(go())
