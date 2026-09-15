@@ -87,9 +87,22 @@ class FakeElement {
   removeAttribute(name) { this._attrs.delete(name); }
   addEventListener(type, fn) { (this._listeners[type] ||= []).push(fn); }
   dispatch(type, evt) { for (const fn of (this._listeners[type] || []).slice()) fn(evt); }
-  appendChild(node) { this.children.push(node); return node; }
+  appendChild(node) { if (node) node._parent = this; this.children.push(node); return node; }
   append(...nodes) { for (const n of nodes) if (n != null && n !== false) this.appendChild(n); }
-  replaceChildren(...nodes) { this.children = []; this.append(...nodes); }
+  replaceChildren(...nodes) {
+    for (const c of this.children) if (c) c._parent = null;
+    this.children = [];
+    this.append(...nodes);
+  }
+  remove() {
+    // Квик 260915-4mw: guardedRender снимает скелетон-плейсхолдер в finally — узел к этому
+    // моменту может быть уже откреплён чужим replaceChildren() (leaderboard.js/submit.js,
+    // gotcha 7 плана), remove() на уже откреплённом узле обязан быть безопасным no-op.
+    if (this._parent) {
+      this._parent.children = this._parent.children.filter((c) => c !== this);
+      this._parent = null;
+    }
+  }
   get textContent() {
     return this.children.filter((c) => c.nodeType === 3).map((c) => c.textContent).join("");
   }

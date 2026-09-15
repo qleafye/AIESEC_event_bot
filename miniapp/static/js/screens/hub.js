@@ -10,7 +10,7 @@
 
 import { visibleNav, NAV_ICONS, SECTION_GROUPS } from "../app.js";
 import { icon } from "../icons.js";
-import { countUp, haptic } from "../motion.js";
+import { countUp, haptic, stagger } from "../motion.js";
 import { fileUrl, flatRow, sectionTitle, labelText, tile } from "../ui.js";
 import { personNode } from "../person.js";
 
@@ -395,6 +395,7 @@ async function renderTilesOnlyHub(root, ctx, items) {
       meta: item.hash === "#/form" ? (ctx.me.form_status_label || "") : "",
     }));
   }
+  stagger(tiles); // квик 260915-4mw (ANIM-05): плитки хаба появляются лесенкой ≤8 подряд
   root.append(tiles);
 }
 
@@ -566,6 +567,7 @@ async function renderManagerHub(root, ctx, opts = {}) {
       tiles.append(el);
     }
     if (dashTile) tiles.append(dashTile);
+    stagger(tiles); // квик 260915-4mw (ANIM-05): менеджерские плитки — той же лесенкой
     root.append(h("div", { class: "sec", text: label }), tiles);
   }
 
