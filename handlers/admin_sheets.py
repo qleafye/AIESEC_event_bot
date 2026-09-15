@@ -91,10 +91,14 @@ async def build_sheet_batches(users: list[dict]) -> list[SheetBatch]:
 
     Шапка считается один раз на пару `(kind, city_code)` (кэш ниже) — Google Sheets квота
     (T-25-10), как и у `active_sheet_headers`/`sheet_city_code` до этой правки."""
-    main_batch = SheetBatch(tab=None, kind="main", city_code=None)
+    # Шапка основной вкладки считается ВСЕГДА, даже если ни один пользователь на неё не
+    # попал (все — в городах): иначе rebuild_main_sheet получил бы пустую шапку и стёр бы
+    # основную вкладку, а sync_sheet вызвал бы ensure_sheet_header([]).
+    main_headers = await active_sheet_headers()  # code=None: основная вкладка
+    main_batch = SheetBatch(tab=None, kind="main", city_code=None, headers=main_headers)
     named_batches: dict[str, SheetBatch] = {}
     order: list[SheetBatch] = [main_batch]
-    headers_cache: dict[tuple[str, str | None], list[str]] = {}
+    headers_cache: dict[tuple[str, str | None], list[str]] = {("main", None): main_headers}
 
     for u in users:
         participant_type = u.get("participant_type")
@@ -125,7 +129,6 @@ async def build_sheet_batches(users: list[dict]) -> list[SheetBatch]:
         if tab is None:
             # Инвариант sheet_city_code (см. его докстринг): tab is None <=> code is None —
             # основная вкладка всегда основной шапкой, никогда шапкой другого города.
-            main_batch.headers = headers
             main_batch.rows.append(row)
             main_batch.users.append(u)
             continue
