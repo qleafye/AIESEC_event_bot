@@ -249,6 +249,8 @@ EXPECTED_ROUTES = {
     "#/admin-faq": "screens/admin_faq.js",
     # Phase 30 (30-05, задача 3): полноэкранный статус заявки.
     "#/status": "screens/status.js",
+    # Квик 260915-4mu: мастер первой настройки события в приложении.
+    "#/setup": "screens/setup.js",
 }
 _ROUTE_ROW = re.compile(r'\[\s*"(#/[^"]+)"\s*,\s*"(screens/[^"]+\.js)"\s*\]')
 
@@ -276,7 +278,8 @@ def test_route_table_matches_phase_plan_exactly():
     # Quick 260906-8uq (FAQ-05): +1 маршрут "#/faq" (17 -> 18).
     # Quick 260906-nxp: +1 маршрут "#/admin-faq" (18 -> 19).
     # Phase 30 (30-05, задача 3): +1 маршрут "#/status" (19 -> 20).
-    assert len(routes) == 20
+    # Квик 260915-4mu: +1 маршрут "#/setup" (20 -> 21).
+    assert len(routes) == 21
     assert set(routes.values()) == set(EXPECTED_ROUTES.values())
     assert "#/task-edit/new" not in routes
 

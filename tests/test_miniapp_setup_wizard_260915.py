@@ -240,3 +240,52 @@ def test_setup_has_no_post_endpoint(tmp_path):
     client = _setup(tmp_path)
     resp = client.post("/app/api/admin/setup", headers=_hdr(ADMIN_ID), json={})
     assert resp.status_code == 405
+
+
+# ══ Task 2 (2.4): статические сторожа исходника screens/setup.js / hub.js ════════════════
+# Без DOM — тот же приём, что tests/test_miniapp_nav_icons_260912.py: читаем файл, ищем
+# подстроки/литералы регэкспом. Хелперы — из read-only tests/test_miniapp_frontend.py.
+
+from tests.test_miniapp_frontend import (  # noqa: E402
+    SCREENS_DIR,
+    _HEX_OR_RGB_COLOR,
+    _STRING_LITERAL,
+    _js_without_comments,
+)
+
+SETUP_JS = SCREENS_DIR / "setup.js"
+HUB_JS = SCREENS_DIR / "hub.js"
+_CYRILLIC = re.compile(r"[А-Яа-яЁё]")
+
+
+def test_setup_js_reuses_form_controls_no_own_widgets():
+    text = _js_without_comments(SETUP_JS)
+    assert 'from "../form.js"' in text
+    for name in ("field", "settingSpec", "confirmBox"):
+        assert name in text, name
+
+
+def test_setup_js_writes_only_through_settings_batch():
+    text = _js_without_comments(SETUP_JS)
+    assert '"/admin/settings/batch"' in text
+    # "/admin/setup" встречается только в GET-вызовах — рядом с ним не должно быть POST.
+    for m in re.finditer(r'"/admin/setup"', text):
+        window = text[max(0, m.start() - 200): m.start() + 200]
+        assert 'method: "POST"' not in window
+
+
+def test_setup_js_has_no_cyrillic_string_literal():
+    text = _js_without_comments(SETUP_JS)
+    for m in _STRING_LITERAL.finditer(text):
+        assert not _CYRILLIC.search(m.group(0)), m.group(0)
+
+
+def test_setup_js_has_no_hardcoded_colors():
+    text = _js_without_comments(SETUP_JS)
+    assert not _HEX_OR_RGB_COLOR.search(text)
+
+
+def test_hub_js_wires_setup_tile():
+    text = _js_without_comments(HUB_JS)
+    assert "#/setup" in text
+    assert "show_tile" in text
