@@ -528,6 +528,7 @@ admin|callback_query|open_miniapp_settings|admin_miniapp_settings
 admin|callback_query|toggle_miniapp_enabled|miniapp_toggle_enabled
 admin|callback_query|toggle_miniapp_staff_only|miniapp_toggle_staff_only
 admin|callback_query|toggle_miniapp_section|miniapp_section:*
+admin|callback_query|cycle_miniapp_motion|miniapp_cycle_motion
 admin|callback_query|open_miniapp_theme|miniapp_theme_open
 admin|callback_query|miniapp_theme_noop|miniapp_theme_noop
 admin|callback_query|miniapp_theme_cancel_edit|miniapp_theme_cancel_edit
@@ -1023,7 +1024,7 @@ def test_snapshot_total_handler_count_is_292():
     # прежним 523-строчным снапшотом: ровно одна вставка в позиции ~110 и ровно одно
     # удаление шести строк в позиции ~193, ни одна другая строка не поменялась и не
     # переставилась.
-    assert len(GOLDEN_SNAPSHOT) == 518
+    assert len(GOLDEN_SNAPSHOT) == 519  # +1: cycle_miniapp_motion (квик анимаций, 15.09)
     # (callback_query toggle_reg_form_v2/chips/lookup_search/edu_card/repeatable/limit_counter/
     # status_screen/header_settings/haptics — девять тумблеров «Анкета 2.0»), встали сразу после
     # admin_quiet_hours и перед sync_sheet: шов импортируется из хвоста
