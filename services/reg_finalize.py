@@ -618,13 +618,17 @@ async def derive_edit_facts(telegram_id: int, full: dict) -> tuple[list, bool, b
     return changed_columns, remoderated, resubmitted
 
 
-async def _apply_resume_url(telegram_id: int, full: dict, url: str) -> None:
+async def _apply_resume_url(telegram_id: int, full: dict, url: str | None) -> None:
     """Общий хвост записи ссылки на резюме: узкий UPDATE `resume_url` в `users` + обновление
     ячейки «Резюме (ссылка)» в Google Sheets той же `update_row_by_id`. Используется и
     моментальной догрузкой из Mini App (`handle_resume_upload`), и фоновой джобой повтора
-    (`retry_pending_resume_uploads`) — единый путь, чтобы поведение (какая ячейка листа
-    обновляется, какая вкладка резолвится) не расходилось между двумя вызывающими.
-    Сбой Sheets — `logger.error`, без проброса: ссылка в БД уже есть, лист догонит
+    (`retry_pending_resume_uploads`), и очисткой дропзоны резюме в Mini App
+    (`miniapp/routers/form.py::draft_patch`, квик 260915-4mv, `url=None`) — единый путь,
+    чтобы поведение (какая ячейка листа обновляется, какая вкладка резолвится) не расходилось
+    между вызывающими. `url=None` пишет `NULL` в `users.resume_url` и «-» в ячейку листа
+    (`row_fn` уже умеет рендерить пустую ссылку) — файл в Некстклауде при этом НЕ удаляется,
+    ссылка просто перестаёт где-либо отображаться (гигиена хранилища — отдельная тема).
+    Сбой Sheets — `logger.error`, без проброса: ссылка в БД уже обновлена, лист догонит
     «Синхронизацией» (та же дисциплина, что и раньше в `handle_resume_upload`)."""
     from handlers.registration import _sheet_dispatch
     from handlers.reg_schema import sheet_city_code
