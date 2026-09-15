@@ -174,6 +174,7 @@ STEP_TO_COLUMN["ambassador"] = "is_ambassador_candidate"
 # напрямую (handlers/reg_flow.py::process_resume_text), минуя STEP_TO_COLUMN. Теперь совпадают.
 STEP_TO_COLUMN["resume"] = "resume_text"
 # ФИО спрашивается ВНЕ REG_FLOW (_ask_full_name, до движка шагов) — колонка совпадает с ключом.
+FULL_NAME_STEP = "full_name"
 STEP_TO_COLUMN["full_name"] = "full_name"
 RECALLABLE_STEPS = {k for k in STEP_TO_COLUMN if k != "resume"}
 
@@ -535,6 +536,10 @@ async def enabled_steps(data: dict, city_code: str | None = None) -> list[str]:
 # реестра); select/multi/date-generic (study_field, goal, formats, arrival_date, birth_date)
 # вычисляются по REG_LABELS ниже — так же, как это делал сам _ask_step.
 PROMPT_DEFAULTS = {
+    # Приёмка 16.09 (п.1): текст ФИО ДОСЛОВНО тот же, что бот передавал литералом в
+    # `_ask_full_name_plain` (`handlers/registration.py`) — оверрайд `reg_prompt_full_name`
+    # у обеих поверхностей и раньше был общий, здесь появился только общий дефолт.
+    "full_name": "Напиши свои ФИО (Фамилия Имя Отчество):",
     "age": "Напиши свой возраст числом:",
     "phone": "Укажи номер телефона:",
     "alumni_status": "Ты аламни или айсекер?",
@@ -1985,7 +1990,8 @@ def _published_value(column: str, value):
 
 async def form_spec(answers: dict, participant_type: str | None = None,
                      event_city: str | None = None, prior: dict | None = None,
-                     pending_consent_keys: list[str] | None = None) -> dict:
+                     pending_consent_keys: list[str] | None = None,
+                     ask_full_name: bool = False) -> dict:
     """Контракт формы для Mini App (RESEARCH Pattern 2): `{pre, steps, progress}`. `prior` —
     результат `prior_answers_for(user_row)` для возвращенца (D-07); движок НИКУДА prior не
     пишет и не логирует — вызывающий передаёт его на каждый запрос заново (Pitfall 5). Шаг без
@@ -1993,7 +1999,16 @@ async def form_spec(answers: dict, participant_type: str | None = None,
     шаг — `"answer"`; шаг без ответа и без prior — `None`.
 
     `pending_consent_keys` (UAT 21-12 находка 1) — см. докстринг `pre_flow`: `None` (дефолт)
-    не фильтрует согласия вовсе."""
+    не фильтрует согласия вовсе.
+
+    Приёмка 16.09 (п.1, «в анкете в мини-аппе если заполнять сразу не пишется ФИО»):
+    `ask_full_name` ставит ФИО ПЕРВЫМ шагом спеки. ФИО не запись `REG_FLOW` — в чате его
+    спрашивает `_ask_full_name` ДО движка шагов (сразу после согласий), и поверхность, у
+    которой такого «до» нет, обязана спросить его сама, иначе заявка уезжает в модерацию
+    без имени. Флаг, а не безусловное поведение: `enabled_steps` — общий список для бота,
+    и ФИО в нём означало бы второй вопрос об имени в чате. Валидатор/колонка/подпись у шага
+    те же, что у бота (`validate_answer("full_name")`, `STEP_TO_COLUMN["full_name"]`,
+    `REG_LABELS["reg_q_full_name"]`) — второй копии правил не заводим."""
     answers = answers or {}
     prior = prior or {}
     # Живой баг владельца (03.09): `enabled_steps` сам решает трек только по
@@ -2016,6 +2031,8 @@ async def form_spec(answers: dict, participant_type: str | None = None,
     # глобально даже для делегата города с выключенными вопросами (enabled_steps сама умеет
     # брать event_city из data, но form_spec раньше его не передавал).
     enabled = await enabled_steps({**answers, "participant_type": track, "event_city": event_city})
+    if ask_full_name and FULL_NAME_STEP not in enabled:
+        enabled = [FULL_NAME_STEP, *enabled]
     # Phase 30 (30-03, A2-08): девять тумблеров читаются ОДИН раз на всю форму, не по разу на
     # каждый из ~43 шагов (`form_v2_flags()` — «единая точка чтения», не «читай на каждый
     # шаг заново», см. её докстринг 30-01) — экономит ~9×N походов в реестр на один запрос.

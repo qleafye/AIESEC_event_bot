@@ -105,10 +105,16 @@ _CONTACT_LABEL_KEYS = ("reg_q_email", "reg_q_phone", "reg_q_work")
 def _profile_columns() -> dict[str, tuple[str, ...]]:
     """Вопрос анкеты (ключ REG_LABELS) -> колонка(и) `users`, где лежит ответ — выведено из
     `reg_engine.STEP_TO_COLUMN`, единственного источника схемы анкеты (план 21-11). Вопросы
-    без подписи в REG_LABELS (например `full_name` — он не «вопрос», а отдельное поле профиля)
-    в вывод не попадают."""
+    без подписи в REG_LABELS в вывод не попадают.
+
+    Приёмка 16.09 (п.1): ФИО тоже не попадает — но уже ЯВНО, а не «нет подписи в REG_LABELS».
+    Подпись у него появилась (`reg_q_full_name`), потому что мастер в приложении спрашивает
+    ФИО отдельным шагом; профилю она не нужна — имя там живёт на плите карточки, строкой
+    ответа это был бы второй показ одного и того же."""
     out: dict[str, tuple[str, ...]] = {}
     for step_key, column in reg_engine.STEP_TO_COLUMN.items():
+        if step_key == reg_engine.FULL_NAME_STEP:
+            continue
         label_key = reg_engine.label_key_for(step_key)
         if label_key not in REG_LABELS:
             continue

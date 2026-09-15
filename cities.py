@@ -19,6 +19,7 @@ Design (mirrors settings_schema.py's one-directional dependency, D-01):
 """
 import logging
 import re
+import time
 
 from config import config
 from database.db import (
@@ -109,6 +110,36 @@ async def reload_cities() -> list[dict]:
     # Mutate in place — see the docstring above. Never `CITIES = fresh`.
     CITIES.clear()
     CITIES.extend(fresh)
+    return CITIES
+
+
+# Приёмка 16.09 («не показывается 4-й город»): `reload_cities()` зовут ТОЛЬКО процесс бота
+# (`main.py` на старте и `handlers/admin_cities.py` после каждой правки менеджера). Веб-процесс
+# Mini App — отдельный процесс со своим импортом `cities`, и его `CITIES` так и оставался
+# холодным фоллбэком из `.env`: город, заведённый менеджером в админке ПОСЛЕ выката, в
+# приложении не появлялся вовсе (на стенде в `.env` три города, в таблице `cities` — четыре).
+# Перезапуск веба тоже не помогал бы надолго — менеджер добавляет города на ходу.
+# TTL, а не reload на каждый запрос: список городов меняется раз в сезон, лишний SELECT на
+# каждое нажатие в анкете ни к чему.
+CITIES_FRESH_TTL_SECONDS = 60.0
+_cities_loaded_at = 0.0
+
+
+async def ensure_cities_fresh(ttl: float = CITIES_FRESH_TTL_SECONDS) -> list[dict]:
+    """Подтянуть `CITIES` из таблицы, если кэш старше `ttl` (или не грузился ни разу).
+
+    Fail-soft тем же правилом, что `reload_cities()`: сбой чтения оставляет прежний кэш —
+    список городов не должен схлопываться из-за одной неудачной выборки. Отметка времени
+    ставится ДО чтения, чтобы падающая база не превращала каждый запрос в новую попытку."""
+    global _cities_loaded_at
+    now = time.monotonic()
+    if _cities_loaded_at and now - _cities_loaded_at < ttl:
+        return CITIES
+    _cities_loaded_at = now
+    try:
+        await reload_cities()
+    except Exception as e:  # noqa: BLE001 — падение чтения не должно ронять запрос делегата
+        logger.error(f"ensure_cities_fresh failed: {e}")
     return CITIES
 
 

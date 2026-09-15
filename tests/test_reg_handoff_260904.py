@@ -755,9 +755,16 @@ def test_patch_last_enabled_step_stores_done_marker(tmp_path):
 def test_submit_enqueues_fsm_reset_submitted_in_addition_to_reg_finalized(tmp_path, monkeypatch):
     client = _miniapp_client(tmp_path)
     _run(bot_db.set_setting("reg_q_age", "on"))
+    # Приёмка 16.09 (п.1): submit без ФИО отбивается 400 — заявка без имени в модерацию не
+    # уезжает, поэтому новая анкета в приложении начинается с этого ответа.
     resp = client.patch(
         "/app/api/reg/draft", headers=_hdr(UNREGISTERED_ID),
-        json={"version": 0, "answers": {"age": "20"}, "step": "age"},
+        json={"version": 0, "answers": {"full_name": "Иванова Мария"}, "step": "full_name"},
+    )
+    assert resp.status_code == 200, resp.text
+    resp = client.patch(
+        "/app/api/reg/draft", headers=_hdr(UNREGISTERED_ID),
+        json={"version": resp.json()["version"], "answers": {"age": "20"}, "step": "age"},
     )
     assert resp.status_code == 200, resp.text
     resp = client.post("/app/api/reg/draft/submit", headers=_hdr(UNREGISTERED_ID))
@@ -834,14 +841,16 @@ def test_get_and_patch_short_mode_via_http(tmp_path):
     resp = client.get("/app/api/reg/draft", headers=_hdr(UNREGISTERED_ID))
     assert resp.status_code == 200, resp.text
     keys = [s["key"] for s in resp.json()["steps"]]
-    assert keys == ["age"]
+    # Приёмка 16.09 (п.1): ФИО — первый шаг мастера в приложении (в чате его спрашивает
+    # `_ask_full_name` до движка шагов); короткий трек этого не меняет.
+    assert keys == ["full_name", "age"]
 
     patch = client.patch(
         "/app/api/reg/draft", headers=_hdr(UNREGISTERED_ID),
         json={"version": 0, "answers": {"age": "20"}, "step": "age"},
     )
     assert patch.status_code == 200, patch.text
-    assert [s["key"] for s in patch.json()["steps"]] == ["age"]
+    assert [s["key"] for s in patch.json()["steps"]] == ["full_name", "age"]
 
 
 def test_profile_full_track_shows_full_set_during_short_window(tmp_path):
