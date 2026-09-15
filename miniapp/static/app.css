@@ -1166,9 +1166,12 @@ a.flat-row:active, button.flat-row:active { background: var(--surface-alt); }
 .diff-row:last-child { border-bottom: 0; }
 .diff-was { margin: var(--sp-1) 0 0; }
 
-/* Прогресс-бар мастера (UI-SPEC § Wizard Step Screen Contract) — подключает screens/form.js. */
+/* Прогресс-бар мастера (UI-SPEC § Wizard Step Screen Contract) — подключает screens/form.js.
+   Полоса заливки (.wizard-progress-fill: width 100% + transform: scaleX) объявлена в блоке
+   «Motion: примитивы» в конце файла — motion.js::progressTo двигает её трансформом, не
+   шириной (D-Motion, ограничение владельца №3). */
 .wizard-progress { height: 4px; border-radius: var(--radius-pill); background: var(--chart-track); overflow: hidden; margin-bottom: var(--sp-2); }
-.wizard-progress-fill { height: 100%; border-radius: var(--radius-pill); background: var(--accent); transition: width var(--dur) var(--ease); }
+.wizard-progress-fill { height: 100%; border-radius: var(--radius-pill); background: var(--accent); }
 
 /* Чипы списка (list-chips, построены в 21 — потребитель WEB-SET-01, фаза 22). */
 .list-chips { display: flex; flex-wrap: wrap; gap: var(--sp-2); align-items: center; }
@@ -2076,3 +2079,92 @@ a.flat-row:active, button.flat-row:active { background: var(--surface-alt); }
    класса, который где-то сочетается с `hidden`: либо поднимите специфичность (`.cls.hidden`),
    либо переносите новое правило выше этого блока. */
 .hidden { display: none; }
+
+/* ── Motion: примитивы (quick 260915-4mw, ANIM-01..06) ────────────────────────────────────
+   Новые токены `--dur-enter`/`--dur-stagger-step` живут ЗДЕСЬ, не в tokens.css — сторож
+   test_tokens_css_is_byte_for_byte_copy_of_dashboard_tokens держит tokens.css побайтовой
+   копией дашборда (`--dur`/`--dur-swipe-exit` — соседние, но отдельные токены, гасятся там).
+   Гасятся и на data-motion="off" (тумблер менеджера через motion.js::resolveMotionTier), и
+   на prefers-reduced-motion (системный пол, который менеджер обойти не может). Анимируются
+   ТОЛЬКО transform/opacity — ни ширина, ни высота, ни отступы (T-4mw-03: композитные
+   свойства не пересчитывают раскладку, лесенка не даёт джанк на длинном списке). Новый блок
+   намеренно после `.hidden` — он не задаёт `display` ни одному одноклассовому селектору, D17
+   выше по файлу не затрагивает. */
+:root {
+  --dur-enter: 220ms;
+  --dur-stagger-step: 36ms;
+}
+:root[data-motion="micro"] {
+  --dur-enter: 140ms;
+}
+:root[data-motion="off"] {
+  --dur-enter: 0ms;
+  --dur-stagger-step: 0ms;
+}
+@media (prefers-reduced-motion: reduce) {
+  :root {
+    --dur-enter: 0ms;
+    --dur-stagger-step: 0ms;
+  }
+}
+
+/* Въезд экрана/шага сбоку (motion.js::slideIn) — уходящий контент не анимируется (решение и
+   причина — комментарий в app.js рядом с вызовом), едет только входящий. */
+.m-anim { transition: transform var(--dur-enter) var(--ease), opacity var(--dur-enter) var(--ease); }
+.m-from-right { transform: translate3d(14px, 0, 0); opacity: 0; transition: none; }
+.m-from-left { transform: translate3d(-14px, 0, 0); opacity: 0; transition: none; }
+:root[data-motion="micro"] .m-from-right,
+:root[data-motion="micro"] .m-from-left { transform: none; }
+
+/* Лесенка списков (motion.js::stagger) — ≤8 строк, задержка i*step инлайн-стилем из JS. */
+.m-rise { animation: m-rise var(--dur-enter) var(--ease) both; }
+@keyframes m-rise {
+  from { opacity: 0; transform: translate3d(0, 8px, 0); }
+  to { opacity: 1; transform: none; }
+}
+:root[data-motion="micro"] .m-rise { animation-name: m-fade; }
+@keyframes m-fade {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+/* Отклик на тап — плитки/чипы/строки/кнопки уменьшаются под пальцем на всех уровнях кроме
+   off. Существующие правила :active (фон/opacity, см. выше по файлу) НЕ переписаны — здесь
+   только transform, второе правило того же списка селекторов. */
+:root:not([data-motion="off"]) .tile,
+:root:not([data-motion="off"]) .opt-tile,
+:root:not([data-motion="off"]) .chip-pick,
+:root:not([data-motion="off"]) a.flat-row,
+:root:not([data-motion="off"]) button.flat-row,
+:root:not([data-motion="off"]) .btn,
+:root:not([data-motion="off"]) .card.clickable,
+:root:not([data-motion="off"]) .next-action,
+:root:not([data-motion="off"]) .sheet-item {
+  transition: transform 120ms var(--ease);
+}
+:root:not([data-motion="off"]) .tile:active,
+:root:not([data-motion="off"]) .opt-tile:active,
+:root:not([data-motion="off"]) .chip-pick:active,
+:root:not([data-motion="off"]) a.flat-row:active,
+:root:not([data-motion="off"]) button.flat-row:active,
+:root:not([data-motion="off"]) .btn:active,
+:root:not([data-motion="off"]) .card.clickable:active,
+:root:not([data-motion="off"]) .next-action:active,
+:root:not([data-motion="off"]) .sheet-item:active {
+  transform: scale(.97);
+}
+
+/* Полоса прогресса мастера — transform вместо width (motion.js::progressTo, ограничение
+   владельца №3: не анимировать layout-свойство). `.wizard-progress.flush .wizard-progress-fill`
+   выше по файлу только переопределяет цвет/радиус — с transform-версией не конфликтует. */
+.wizard-progress-fill {
+  width: 100%;
+  transform-origin: left center;
+  transform: scaleX(0);
+  transition: transform var(--dur-enter) var(--ease);
+}
+
+/* Скелетон строки списка (ui.js::listSkeleton) — мерцание даёт существующий .skeleton (гасится
+   на off отдельным правилом выше по файлу), здесь только размер строки и отступ между ними. */
+.skeleton--row { height: 56px; border-radius: var(--radius-sm); }
+.skeleton-list > .skeleton--row + .skeleton--row { margin-top: var(--sp-2); }
