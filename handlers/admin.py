@@ -394,40 +394,11 @@ async def cmd_admin_help(message: types.Message, state: FSMContext):
     await message.answer(text, parse_mode="HTML", reply_markup=await admin_keyboard_for(message.from_user.id))
 
 
-# Phase 14 (GAME-09): shared by the button wizard (coinsman_confirm) and /coins -- one place
-# builds the delegate-facing notification text, so the two paths can never drift on wording.
-# `.replace` per placeholder (not `.format`): a manager-edited template may carry a stray `{`/`}`
-# and `.format` would raise on that, breaking the notification entirely. `{delta}` always carries
-# an explicit sign (f"{delta:+d}") since the same template covers both credit and debit (CONTEXT.md
-# B). `{reason}` (free text from a human) is HTML-escaped -- the bot sends with parse_mode="HTML".
-async def _notify_manual_coins(bot: Bot, user_id: int, delta: int, reason: str, balance: int) -> bool:
-    """Returns True on successful delivery OR on being queued for the end of quiet hours
-    (Quick 260904-dq1: for the caller this counts as success — the delegate WILL get the
-    notification, just not right now), False on any failure (delegate blocked the bot,
-    etc.) -- logged, never raised. The ledger write already happened before this is called
-    (T-14-20): a failed notification must never be the reason an operation looks undone."""
-    template = await get_setting_typed("coins_manual_notify_text")
-    if not template:
-        template = SETTINGS_SCHEMA["coins_manual_notify_text"]["default"]
-    text = (
-        str(template)
-        .replace("{delta}", f"{delta:+d}")
-        .replace("{reason}", html_module.escape(str(reason)))
-        .replace("{balance}", str(balance))
-    )
-    try:
-        from services import quiet_hours
-        from services.scheduler import _now_moscow_naive
-        sent_now = await quiet_hours.send_or_queue_text(
-            _now_moscow_naive(), user_id, text,
-            sender=lambda: bot.send_message(user_id, text, parse_mode="HTML"),
-        )
-        if not sent_now:
-            logger.info(f"Manual coins notification for user {user_id} deferred to end of quiet hours")
-        return True
-    except Exception as e:
-        logger.warning(f"Failed to notify user {user_id} of manual coins change: {e}", exc_info=True)
-        return False
+# Phase 14 (GAME-09) -> 16.09: сама функция переехала в `services/coins_notify.py` — ту же
+# формулировку теперь зовёт и разборщик outbox'а Mini App (ручные монеты из приложения
+# делегату не приходили вовсе). Здесь — реэкспорт под прежним приватным именем: `/coins`
+# ниже, `coinsman_confirm` в admin_gamification.py и тесты импортируют его отсюда как раньше.
+from services.coins_notify import notify_manual_coins as _notify_manual_coins  # noqa: E402
 
 
 @router.message(Command("coins"))

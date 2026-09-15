@@ -12,9 +12,13 @@ Telegram или пересобирать таблицу самому — еди�
 - `submission_created` -> `services.game_digest.notify_submission(bot, ...)` — тот же путь
   уведомления менеджеров, что и у сдачи из бота (режим «каждую сдачу»/дайджест решает сама
   функция).
-- `submission_reviewed` / `task_changed` / `coins_manual` -> `services.game_sync.request_resync()`
+- `submission_reviewed` / `task_changed` -> `services.game_sync.request_resync()`
   — debounced, синхронная, схлопывает пачку событий в один ребилд вкладок геймы. Делегата о
   решении по сдаче уведомляет сам Mini App (план 19-05) — повторно НЕ уведомляем.
+- `coins_manual` (16.09) -> `services.coins_notify.notify_manual_coins(bot, ...)` + тот же
+  `request_resync()`. Ручные монеты из приложения делегату НЕ приходили вовсе: ветка умела
+  только ребилд вкладок, тогда как путь из чата (мастер «🪙 Монеты», `/coins`) уведомлял. Текст
+  один на оба пути, уведомление идёт через тихие часы.
 - `reg_finalized` / `reg_edited` -> `services.reg_finalize.post_finalize(bot, telegram_id, mode,
   ...)` (Phase 21, 21-08) — тот же хвост (Sheets/уведомления менеджерам/приветствие при
   auto-approve), что и прямой вызов из чата (`handlers/registration.py::finalize_registration`).
@@ -61,6 +65,7 @@ from database.db import (
     get_user,
 )
 from services.application_effects import apply_decision_effects, mass_approve_effects
+from services.coins_notify import notify_manual_coins
 from services.game_digest import notify_submission
 from services.game_sync import request_resync
 from services.reg_finalize import post_finalize, derive_edit_facts, handle_resume_upload
@@ -108,9 +113,31 @@ async def _reset_fsm(bot, telegram_id: int, reason: str) -> None:
                 "доставлено (%s)", telegram_id, exc,
             )
 
-# Закрытый набор kind -> "просто попросить ребилд" (T-19-55). submission_created обрабатывается
-# отдельной веткой ниже (у неё другой обработчик, не request_resync).
-_RESYNC_KINDS = frozenset({"submission_reviewed", "task_changed", "coins_manual"})
+# Закрытый набор kind -> "просто попросить ребилд" (T-19-55). submission_created и coins_manual
+# обрабатываются отдельными ветками ниже (у них свои обработчики поверх request_resync).
+_RESYNC_KINDS = frozenset({"submission_reviewed", "task_changed"})
+
+
+async def _handle_manual_coins(bot, payload: dict) -> None:
+    """16.09: ручные монеты из Mini App — уведомить делегата ТЕМ ЖЕ текстом, что путь из чата
+    (`services/coins_notify.py`, общий и для мастера «🪙 Монеты», и для `/coins`), через тихие
+    часы. До этой правки ветка только просила ребилд вкладок — делегат не узнавал о монетах
+    вовсе, хотя в чате узнавал.
+
+    `reason`/`balance` строка несёт с 16.09; у строк, поставленных ДО правки, их нет — баланс
+    дочитываем из БД, причину оставляем пустой. Уведомление fail-soft (возвращает bool, не
+    бросает): начисление уже записано, и ретраить весь ребилд из-за заблокировавшего бота
+    делегата незачем."""
+    from database.db import get_balance
+
+    user_id = payload.get("user_id")
+    balance = payload.get("balance")
+    if balance is None:
+        balance = await get_balance(user_id)
+    await notify_manual_coins(
+        bot, user_id, int(payload.get("delta") or 0), payload.get("reason") or "", int(balance),
+    )
+    request_resync()
 
 
 async def _handle_row(bot, kind: str, payload: dict) -> None:
@@ -128,6 +155,9 @@ async def _handle_row(bot, kind: str, payload: dict) -> None:
         return
     if kind in _RESYNC_KINDS:
         request_resync()
+        return
+    if kind == "coins_manual":
+        await _handle_manual_coins(bot, payload)
         return
     if kind in ("reg_finalized", "reg_edited"):
         telegram_id = payload.get("telegram_id")

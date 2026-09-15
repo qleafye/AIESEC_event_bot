@@ -665,3 +665,76 @@ def test_poll_wizard_confirm_screen_warns_about_quiet_hours(tmp_path):
         assert "утром" in warning, warning
 
     asyncio.run(scenario())
+
+
+# ── B4: ручные монеты из Mini App ─────────────────────────────────────────────────────────
+
+def test_manual_coins_text_is_one_function_for_both_paths():
+    """Формулировка живёт в одном месте: `handlers/admin.py` реэкспортирует ту же функцию,
+    что зовёт разборщик outbox'а."""
+    from handlers import admin as admin_mod
+    from services import coins_notify, miniapp_outbox
+
+    assert admin_mod._notify_manual_coins is coins_notify.notify_manual_coins
+    assert miniapp_outbox.notify_manual_coins is coins_notify.notify_manual_coins
+
+
+def _drain_coins_row(monkeypatch, payload):
+    """Ставит строку `coins_manual` в outbox и разбирает её ботом-запоминалкой."""
+    from services import miniapp_outbox
+
+    monkeypatch.setattr(miniapp_outbox, "request_resync", lambda *a, **kw: None)
+    bot = _FakeBotChat()
+
+    async def scenario():
+        await db.enqueue_miniapp_outbox("coins_manual", payload, "2026-09-16 23:30:00")
+        await miniapp_outbox.drain(bot)
+
+    return bot, scenario
+
+
+def test_manual_coins_from_miniapp_notifies_delegate(tmp_path, monkeypatch):
+    """Регрессия 16.09: до правки ручные монеты из приложения делегату не приходили вовсе —
+    ветка умела только пересборку вкладок."""
+    _ready(tmp_path, "qh_coins_outbox.db")
+    bot, scenario = _drain_coins_row(
+        monkeypatch, {"user_id": DELEGATE, "delta": 7, "reason": "помог(ла) команде", "balance": 42},
+    )
+    asyncio.run(scenario())
+
+    assert len(bot.sent) == 1, bot.sent
+    chat_id, text, _markup = bot.sent[0]
+    assert chat_id == DELEGATE
+    assert "+7" in text and "помог" in text and "42" in text
+
+
+def test_manual_coins_from_miniapp_respects_quiet_hours(tmp_path, monkeypatch):
+    _ready(tmp_path, "qh_coins_outbox_quiet.db")
+    asyncio.run(_quiet_all_day())
+    bot, scenario = _drain_coins_row(
+        monkeypatch, {"user_id": DELEGATE, "delta": -3, "reason": "опоздание", "balance": 5},
+    )
+    asyncio.run(scenario())
+
+    assert bot.sent == []
+    rows = asyncio.run(db.list_due_delayed_notifications("2030-01-01 00:00:00"))
+    assert [r["kind"] for r in rows] == [qh.KIND_TEXT]
+    assert "-3" in rows[0]["payload"]["text"]
+
+
+def test_manual_coins_row_of_old_shape_reads_balance_from_db(tmp_path, monkeypatch):
+    """Строки, поставленные ДО 16.09, не несут reason/balance — ретраить их не нужно,
+    баланс дочитывается из журнала монет."""
+    _ready(tmp_path, "qh_coins_outbox_legacy.db")
+
+    async def seed():
+        await db.add_user({"telegram_id": DELEGATE, "full_name": "Д",
+                           "registration_date": "2026-09-16"})
+        await db.add_coins(DELEGATE, 11, reason="старое", changed_by=ADMIN, source="manual")
+
+    asyncio.run(seed())
+    bot, scenario = _drain_coins_row(monkeypatch, {"user_id": DELEGATE, "delta": 11})
+    asyncio.run(scenario())
+
+    assert len(bot.sent) == 1
+    assert "11" in bot.sent[0][1]
