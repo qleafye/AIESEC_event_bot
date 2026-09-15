@@ -494,6 +494,7 @@ admin|callback_query|toggle_reg_offer_ref_link|toggle_reg_offer_ref_link
 admin|callback_query|toggle_resume_filename_short_mode|toggle_resume_filename_short_mode
 admin|callback_query|toggle_reg_scoring_enabled|toggle_reg_scoring_enabled
 admin|callback_query|toggle_apps_queue_sort_by_score|toggle_apps_queue_sort_by_score
+admin|callback_query|toggle_reg_submit_notify|toggle_reg_submit_notify
 admin|callback_query|toggle_reg_edit_remoderation|toggle_reg_edit_remoderation
 admin|callback_query|toggle_reg_edit_policy|toggle_reg_edit_policy
 admin|callback_query|toggle_payment_reminders|toggle_payment_reminders
@@ -1031,7 +1032,13 @@ def test_snapshot_total_handler_count_is_292():
     # +1: admin_broadcast_scheduled — кнопка «⏰ Запланированные» на экране рассылок (UAT
     # 15.09, admin_broadcasts.py), встал сразу после admin_broadcast_log и перед
     # broadcast_schedule_start (520 -> 521).
-    assert len(GOLDEN_SNAPSHOT) == 521
+    # Квик 260916 (дайджест заявок): +1 admin_settings.py toggle_reg_submit_notify
+    # (callback_query, тумблер «каждую заявку отдельно / пачкой» раздела «📋 Заявки»), встал
+    # сразу после toggle_apps_queue_sort_by_score и перед toggle_reg_edit_remoderation
+    # (521 -> 522); чистая вставка, перепроверена прогоном `_build_snapshot_lines()` и diff'ом
+    # (difflib.unified_diff) с прежним 521-строчным снапшотом — ровно одна вставленная строка,
+    # ни одна другая не поменялась и не переставилась.
+    assert len(GOLDEN_SNAPSHOT) == 522
     # (callback_query toggle_reg_form_v2/chips/lookup_search/edu_card/repeatable/limit_counter/
     # status_screen/header_settings/haptics — девять тумблеров «Анкета 2.0»), встали сразу после
     # admin_quiet_hours и перед sync_sheet: шов импортируется из хвоста

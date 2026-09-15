@@ -164,6 +164,8 @@ _MSK_MIGRATION_COLUMNS: tuple[tuple[str, str], ...] = (
     ("game_submissions", "reviewed_at"),
     ("game_submit_digest_queue", "created_at"),
     ("game_submit_digest_queue", "sent_at"),
+    ("reg_submit_digest_queue", "created_at"),
+    ("reg_submit_digest_queue", "sent_at"),
     ("polls", "created_at"),
     ("polls", "sending_since"),
     ("polls", "closed_at"),
@@ -887,6 +889,26 @@ async def init_db():
         await db.execute(
             "CREATE INDEX IF NOT EXISTS idx_game_submit_digest_unsent "
             "ON game_submit_digest_queue(sent_at, city)"
+        )
+
+        # Квик 260916: та же очередь, но для НОВЫХ ЗАЯВОК (режим reg_submit_notify_mode =
+        # digest, services/reg_digest.py). Отдельная таблица, а не общая с играми: у сдач
+        # свои submission_id/task_id, у заявок их нет, а общая таблица с половиной пустых
+        # колонок читалась бы хуже, чем два семилинейных CREATE рядом. city NULL = «без
+        # города» (модуль городов выключен или город в анкете пуст) — одна общая джоба
+        # reg_digest:all.
+        await db.execute('''
+            CREATE TABLE IF NOT EXISTS reg_submit_digest_queue (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                telegram_id INTEGER NOT NULL,
+                city TEXT,
+                created_at TEXT NOT NULL,
+                sent_at TEXT
+            )
+        ''')
+        await db.execute(
+            "CREATE INDEX IF NOT EXISTS idx_reg_submit_digest_unsent "
+            "ON reg_submit_digest_queue(sent_at, city)"
         )
 
         # Quick 260904-dq1: «🌙 Тихие часы» — очередь уведомлений делегату, отложенных до конца
@@ -4728,6 +4750,49 @@ async def mark_game_digest_sent(ids: list[int], sent_at: str) -> None:
         await db.commit()
 
 
+# ── Квик 260916: очередь дайджеста заявок ───────────────────────────────────────────────────
+
+async def enqueue_reg_digest(telegram_id: int, city: str | None, created_at: str) -> int:
+    async with _connect() as db:
+        cursor = await db.execute(
+            "INSERT INTO reg_submit_digest_queue (telegram_id, city, created_at) "
+            "VALUES (?, ?, ?)",
+            (telegram_id, city, created_at),
+        )
+        await db.commit()
+        return cursor.lastrowid
+
+
+async def list_unsent_reg_digest(city: str | None = None, *, all_cities: bool = False) -> list[dict]:
+    """Неотправленные строки очереди. `all_cities=True` — вся очередь (для ре-арма на старте);
+    иначе строго по `city` (None = строки без города, НЕ «все»)."""
+    where = "sent_at IS NULL"
+    params: tuple = ()
+    if not all_cities:
+        if city is None:
+            where += " AND city IS NULL"
+        else:
+            where += " AND city = ?"
+            params = (city,)
+    async with _connect() as db:
+        db.row_factory = aiosqlite.Row
+        async with db.execute(
+            f"SELECT * FROM reg_submit_digest_queue WHERE {where} ORDER BY id", params
+        ) as cursor:
+            return [dict(row) for row in await cursor.fetchall()]
+
+
+async def mark_reg_digest_sent(ids: list[int], sent_at: str) -> None:
+    if not ids:
+        return
+    async with _connect() as db:
+        await db.executemany(
+            "UPDATE reg_submit_digest_queue SET sent_at = ? WHERE id = ?",
+            [(sent_at, i) for i in ids],
+        )
+        await db.commit()
+
+
 # ── Quick 260904-dq1: очередь «🌙 Тихие часы» ──────────────────────────────────────────────
 
 async def enqueue_delayed_notification(user_id: int, kind: str, payload: dict, due_at: str,
@@ -5818,6 +5883,9 @@ USER_PURGE_TABLES: tuple[tuple[str, str, str], ...] = (
     ("delegate_questions", "user_id", "questions"),
     ("game_submissions", "user_id", "game"),
     ("game_submit_digest_queue", "user_id", "queue"),
+    # Квик 260916: очередь дайджеста заявок — такой же делегатский след в очереди, как
+    # соседи выше: строка ждёт отправки сводки менеджерам и уходит вместе с человеком.
+    ("reg_submit_digest_queue", "telegram_id", "queue"),
     ("delayed_notifications", "user_id", "queue"),
     ("application_decisions", "telegram_id", "decisions"),
     ("poll_answers", "user_id", "deliveries"),

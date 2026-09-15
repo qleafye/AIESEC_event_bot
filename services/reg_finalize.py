@@ -475,7 +475,7 @@ async def post_finalize(
     Sheets/уведомлений для обеих поверхностей (T-21-02, Task 3 acceptance)."""
     from handlers.registration import (
         _sheet_dispatch, _sheet_headers_fn, append_to_named_sheet, is_subscribed,
-        _normalize_channel_ref, city_row_tab, approve_user, notify_by_capability,
+        _normalize_channel_ref, city_row_tab, approve_user,
     )
     from handlers.reg_schema import sheet_city_code
     from services.nextcloud import upload_resume, upload_text_resume
@@ -569,8 +569,17 @@ async def post_finalize(
         admin_text = _edit_admin_text(full, resubmitted) if notify_admins else None
 
     if config.ADMIN_IDS and notify_admins and admin_text:
-        await notify_by_capability(
-            bot, "moderate_reg", admin_text, parse_mode="HTML", city=full.get("event_city")
+        # Квик 260916: ЕДИНСТВЕННАЯ дверь уведомления менеджерам о поданной анкете — и для
+        # чата, и для Mini App (её submit приезжает сюда же через miniapp_outbox). Режим
+        # «каждую отдельно / пачкой» и маршрутизация по городу живут в services/reg_digest.py;
+        # прямой notify_by_capability отсюда убран намеренно — иначе настройка режима молча
+        # перестала бы действовать на одном из двух путей. `is_new` отделяет НОВУЮ заявку
+        # (может уйти пачкой) от правки/переподачи (всегда сразу: это не «новая заявка», и
+        # менеджеру нужен текст «что изменилось», а не строчка в счётчике).
+        from services.reg_digest import notify_application  # локальный импорт, как соседи
+        await notify_application(
+            bot, telegram_id=telegram_id, admin_text=admin_text,
+            city_raw=full.get("event_city"), is_new=(mode == "new"),
         )
 
     # HG-01: subscription flag persisted AFTER the row definitely exists (fail-soft + fail-open).
