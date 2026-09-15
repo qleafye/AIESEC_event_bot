@@ -569,14 +569,38 @@ async def _notify_other_moderate_reg_holders(bot: Bot, admin_name: str, user_id:
 async def _deliver_question_reply(message: types.Message, bot: Bot, user_id: int, admin_name: str):
     """Shared delivery: send the reply (text or a copy of the admin's message) to the
     delegate, ack the replying admin, and fan out «who answered» to other moderate_reg
-    holders. Raises on delivery failure -- callers decide what happens to a claim, if any."""
+    holders. Raises on delivery failure -- callers decide what happens to a claim, if any.
+
+    16.09 («все уведомления делегатам подходят под правило тихого часа»): ответ организаторов
+    — такое же уведомление, как решение по заявке. Текстовый идёт в очередь kind text_html,
+    не-текстовый (голосовое/фото/кружок менеджера) — kind copy: утром бот скопирует ТО ЖЕ
+    сообщение из чата менеджеров (`copy_message`, не forward — делегат не должен видеть чат).
+    Менеджер в ответ получает приписку `manager_notice` — «отправлено» без неё было бы
+    полуправдой."""
+    from services import quiet_hours
+    from services.scheduler import _now_moscow_naive
+    now = _now_moscow_naive()
     if message.text:
         reply_text = f"💬 <b>Ответ от организаторов:</b>\n\n{message.html_text}"
-        await bot.send_message(user_id, reply_text, parse_mode="HTML")
+        await quiet_hours.send_or_queue_text(
+            now, user_id, reply_text,
+            sender=lambda: bot.send_message(user_id, reply_text, parse_mode="HTML"),
+        )
     else:
-        await bot.send_message(user_id, "💬 <b>Ответ от организаторов:</b>", parse_mode="HTML")
-        await message.send_copy(user_id)
-    await message.reply("✅ Ответ отправлен пользователю.")
+        header = "💬 <b>Ответ от организаторов:</b>"
+        await quiet_hours.send_or_queue_text(
+            now, user_id, header,
+            sender=lambda: bot.send_message(user_id, header, parse_mode="HTML"),
+        )
+        await quiet_hours.send_or_queue_copy(
+            now, user_id, sender=lambda: message.send_copy(user_id),
+            from_chat_id=message.chat.id, message_id=message.message_id,
+        )
+    notice = await quiet_hours.manager_notice(now, user_id)
+    await message.reply(
+        f"✅ Ответ отправлен пользователю. {notice}" if notice
+        else "✅ Ответ отправлен пользователю."
+    )
     await _notify_other_moderate_reg_holders(bot, admin_name, user_id, message.from_user.id)
 
 

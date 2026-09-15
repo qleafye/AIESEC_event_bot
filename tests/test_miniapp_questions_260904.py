@@ -373,3 +373,42 @@ def test_questions_js_placeholder_from_registry_and_toggle_has_aria_label():
     ).read_text(encoding="utf-8")
     assert "Ответ делегату" not in src
     assert "aria-label" in src
+
+
+# ── 16.09: правило тихого часа (владелец: «все уведомления делегатам подходят под него») ──
+
+def test_answer_in_quiet_hours_queues_instead_of_sending(client, bot_api):
+    """Веб не ходит в Bot API, а кладёт строку в ТУ ЖЕ очередь `delayed_notifications`, что и
+    бот (`services/quiet_hours.py`) — отправит её бот своей джобой. Вопрос при этом считается
+    отвеченным: доставка гарантирована, просто утром."""
+    from services import quiet_hours
+
+    qid = _seed_question(DELEGATE_ID, "Когда дедлайн?")
+    _seed(settings={"quiet_hours_enabled": "on", "quiet_hours_start": "00:00",
+                    "quiet_hours_end": "23:59"})
+
+    resp = client.post(
+        f"/app/api/questions/{qid}/answer", json={"text": "Завтра в 18:00"},
+        headers=_hdr(REG_MANAGER_ID),
+    )
+    assert resp.status_code == 200, resp.text
+    body = resp.json()
+    assert body["ok"] is True and body["status"] == "answered"
+    assert body["queued_until"] == "23:59"  # фронт вправе показать «доставим утром»
+
+    assert bot_api.messages == []
+    assert _run(quiet_hours.queued_count()) == 1
+    assert _get_question(qid)["delivered_at"] is not None
+
+
+def test_answer_outside_quiet_hours_sends_immediately_and_queued_until_is_null(client, bot_api):
+    from services import quiet_hours
+
+    qid = _seed_question(DELEGATE_ID, "Когда дедлайн?")
+    resp = client.post(
+        f"/app/api/questions/{qid}/answer", json={"text": "Завтра в 18:00"},
+        headers=_hdr(REG_MANAGER_ID),
+    )
+    assert resp.json()["queued_until"] is None
+    assert len(bot_api.messages) == 1
+    assert _run(quiet_hours.queued_count()) == 0

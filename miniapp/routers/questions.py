@@ -12,8 +12,9 @@ aiogram), правило статуса и постраничная выборк
         (проиграл, но захват твой же, доставка не прошла в прошлый раз — тот же приём, что
         T-08-33 часть C / `handlers/admin.py::admin_reply_to_question`: это retry, не чужой
         ответ)
-    -> telegram_api.send_message(...) -> ТОЛЬКО при успехе set_question_answer(...)
-    -> {ok: true, status: "answered"}
+    -> quiet_hours.send_or_queue_text_due(...) -> отправка сейчас ИЛИ строка в очередь тихих
+       часов -> ТОЛЬКО при успехе set_question_answer(...)
+    -> {ok: true, status: "answered", queued_until: "09:00" | null}
 
 Quick 260904-kk6 (Q2): обе ветки `ok: false` дописывают `item` — ЧАСТИЧНЫЙ патч полей статуса
 (`_status_patch`, ниже), чтобы список на фронте перерисовал строку без перезагрузки экрана
@@ -42,13 +43,14 @@ from database.db import (
     list_questions_page,
     set_question_answer,
 )
-from services import applications
+from services import applications, quiet_hours
 from services.questions import FILTER_LABELS, STATUSES, format_stamp, is_stuck, question_status, status_label
 from settings_schema import get_setting_typed
 
 from miniapp import telegram_api
 from miniapp.deps import Principal, require_cap, require_section
 from miniapp.telegram_api import TelegramApiError
+from miniapp.timeutil import now_msk_naive
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -226,9 +228,19 @@ async def questions_answer(
                 **({"item": _status_patch(row2)} if row2 else {}),
             }
 
+    # 16.09 («все уведомления делегатам подходят под правило тихого часа»): тот же приём, что
+    # у `miniapp/routers/review.py::_notify_delegate` — попал в окно тишины делегата, веб
+    # кладёт строку в ТУ ЖЕ очередь `delayed_notifications`, отправит её бот своей джобой
+    # (второго писателя в Bot API не появляется, D-01). `parse_mode=None`: веб и раньше слал
+    # текст без разметки. `queued_until` в ответе — «доставим утром в 09:00» для интерфейса.
+    answer_text = f"💬 Ответ от организаторов:\n\n{text}"
     try:
-        await telegram_api.send_message(
-            request.app.state.cfg, row["user_id"], f"💬 Ответ от организаторов:\n\n{text}",
+        queued_until = await quiet_hours.send_or_queue_text_due(
+            now_msk_naive(), row["user_id"], answer_text,
+            sender=lambda: telegram_api.send_message(
+                request.app.state.cfg, row["user_id"], answer_text,
+            ),
+            parse_mode=None,
         )
     except TelegramApiError as exc:
         logger.error("questions: не удалось доставить ответ %s (%s)", qid, exc.reason)
@@ -247,7 +259,12 @@ async def questions_answer(
     # осознанный, та же мотивация, что в ветке delivery_failed выше: патч собирается из факта
     # в строке, а не руками.
     row_after = await get_question(qid)
-    return {"ok": True, "status": "answered", **({"item": _status_patch(row_after)} if row_after else {})}
+    return {
+        "ok": True, "status": "answered",
+        # None — ушло сразу; «09:00» — делегат прочитает утром (фронт вправе это показать).
+        "queued_until": queued_until.strftime("%H:%M") if queued_until else None,
+        **({"item": _status_patch(row_after)} if row_after else {}),
+    }
 
 
 __all__ = ["router"]

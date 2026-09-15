@@ -480,3 +480,188 @@ def test_rcpt_reject_outside_quiet_hours_sends_immediately(tmp_path, monkeypatch
         assert message.answers == ["Готово."]
 
     asyncio.run(scenario())
+
+
+# ── B2: ответ организаторов на «Задать вопрос» ────────────────────────────────────────────
+
+class _FakeChat:
+    def __init__(self, cid):
+        self.id = cid
+
+
+class _AdminReplyMessage(_FakeMessage):
+    """Сообщение менеджера-ответа: текстовое (`text`/`html_text`) либо любое другое
+    (`send_copy` — ровно то, что делает `_deliver_question_reply` для голосового/фото)."""
+
+    def __init__(self, text=None, bot=None):
+        super().__init__(text=text, bot=bot)
+        self.html_text = text
+        self.chat = _FakeChat(ADMIN)
+        self.message_id = 55
+        self.from_user = _FakeUser(ADMIN)
+        self.replies = []
+        self.copies = []
+
+    async def reply(self, text, **kw):
+        self.replies.append(text)
+
+    async def send_copy(self, chat_id):
+        self.copies.append(chat_id)
+
+
+async def _no_fanout(*a, **kw):
+    """«Кто ответил» остальным держателям moderate_reg — не предмет этого теста."""
+
+
+def test_question_reply_text_in_quiet_hours_queues(tmp_path, monkeypatch):
+    from handlers import admin as admin_mod
+
+    _ready(tmp_path, "qh_qreply_text.db")
+    monkeypatch.setattr(admin_mod, "_notify_other_moderate_reg_holders", _no_fanout)
+    bot = _FakeBotChat()
+
+    async def scenario():
+        await _quiet_all_day()
+        await db.set_setting("quiet_hours_manager_notice_text", "Делегат увидит в {time}.")
+        message = _AdminReplyMessage(text="Ответ такой", bot=bot)
+        await admin_mod._deliver_question_reply(message, bot, DELEGATE, "Менеджер")
+
+        assert bot.sent == [] and message.copies == []
+        rows = await db.list_due_delayed_notifications("2030-01-01 00:00:00")
+        assert [r["kind"] for r in rows] == [qh.KIND_TEXT]
+        assert "Ответ такой" in rows[0]["payload"]["text"]
+        assert "увидит" in message.replies[0], message.replies
+
+    asyncio.run(scenario())
+
+
+def test_question_reply_non_text_in_quiet_hours_queues_copy(tmp_path, monkeypatch):
+    """Голосовое/фото менеджера уходит утром копией того же сообщения, а не теряется."""
+    from handlers import admin as admin_mod
+
+    _ready(tmp_path, "qh_qreply_copy.db")
+    monkeypatch.setattr(admin_mod, "_notify_other_moderate_reg_holders", _no_fanout)
+    bot = _FakeBotChat()
+
+    async def scenario():
+        await _quiet_all_day()
+        message = _AdminReplyMessage(text=None, bot=bot)
+        await admin_mod._deliver_question_reply(message, bot, DELEGATE, "Менеджер")
+
+        assert bot.sent == [] and message.copies == []
+        rows = await db.list_due_delayed_notifications("2030-01-01 00:00:00")
+        assert [r["kind"] for r in rows] == [qh.KIND_TEXT, qh.KIND_COPY]
+        assert rows[1]["payload"] == {"from_chat_id": ADMIN, "message_id": 55, "caption": None}
+
+        flush_bot = _install_bot()
+        assert await qh.flush_due(DUE) == 2
+        assert flush_bot.copies == [{"chat_id": DELEGATE, "from_chat_id": ADMIN,
+                                     "message_id": 55, "caption": None}]
+
+    asyncio.run(scenario())
+
+
+def test_question_reply_outside_quiet_hours_sends_immediately(tmp_path, monkeypatch):
+    from handlers import admin as admin_mod
+
+    _ready(tmp_path, "qh_qreply_off.db")
+    monkeypatch.setattr(admin_mod, "_notify_other_moderate_reg_holders", _no_fanout)
+    bot = _FakeBotChat()
+
+    async def scenario():
+        message = _AdminReplyMessage(text=None, bot=bot)
+        await admin_mod._deliver_question_reply(message, bot, DELEGATE, "Менеджер")
+        assert len(bot.sent) == 1 and message.copies == [DELEGATE]
+        assert await qh.queued_count() == 0
+        assert message.replies == ["✅ Ответ отправлен пользователю."]
+
+    asyncio.run(scenario())
+
+
+# ── B3: опросы ────────────────────────────────────────────────────────────────────────────
+
+class _PollBot:
+    def __init__(self):
+        self.polls = []
+        self.messages = []
+
+    async def send_message(self, chat_id, text, parse_mode=None, reply_markup=None):
+        self.messages.append((chat_id, text))
+
+    async def send_poll(self, chat_id, question, options, is_anonymous=False,
+                        allows_multiple_answers=False, is_closed=False, **kw):
+        from types import SimpleNamespace
+        self.polls.append(chat_id)
+        return SimpleNamespace(message_id=1000 + chat_id, poll=SimpleNamespace(id=f"tg{chat_id}"))
+
+
+async def _seed_two_delegates():
+    for tid in (DELEGATE, DELEGATE + 1):
+        await db.add_user({"telegram_id": tid, "full_name": f"Д{tid}",
+                           "registration_date": "2026-09-16"})
+
+
+def test_deliver_poll_in_quiet_hours_queues_per_recipient(tmp_path):
+    """Каждому делегату уходит СВОЙ send_poll — значит и окно тишины считается по нему."""
+    from services import polls as polls_svc
+
+    _ready(tmp_path, "qh_poll_deliver.db")
+    bot = _PollBot()
+
+    async def scenario():
+        await _seed_two_delegates()
+        await _quiet_all_day()
+        await db.set_setting("poll_intro_text", "Пара вопросов 👇")
+        poll_id = await db.create_poll(
+            "Как форум?", ["Огонь", "Норм"], is_anonymous=False, allows_multiple=False,
+            created_by=ADMIN, city=None, audience=[], scheduled_at="2026-09-16 23:30:00",
+        )
+        stats = await polls_svc.deliver_poll(bot, poll_id)
+        assert stats["sent"] == 0 and stats["queued"] == 2
+        assert bot.polls == [] and bot.messages == []
+        assert await qh.queued_count() == 2
+
+        # Утром: опрос уходит ВМЕСТЕ со вступлением, чекпоинт poll_messages записан.
+        flush_bot = _install_bot()
+        assert await qh.flush_due(DUE) == 2
+        assert len(flush_bot.polls) == 2
+        assert [m["text"] for m in flush_bot.messages] == ["Пара вопросов 👇"] * 2
+        assert {r["chat_id"] for r in await db.list_poll_messages(poll_id)} == {
+            DELEGATE, DELEGATE + 1}
+
+    asyncio.run(scenario())
+
+
+def test_deliver_poll_outside_quiet_hours_unchanged(tmp_path):
+    from services import polls as polls_svc
+
+    _ready(tmp_path, "qh_poll_deliver_off.db")
+    bot = _PollBot()
+
+    async def scenario():
+        await _seed_two_delegates()
+        poll_id = await db.create_poll(
+            "Как форум?", ["Огонь", "Норм"], is_anonymous=False, allows_multiple=False,
+            created_by=ADMIN, city=None, audience=[], scheduled_at="2026-09-16 12:00:00",
+        )
+        stats = await polls_svc.deliver_poll(bot, poll_id)
+        assert stats["sent"] == 2 and stats["queued"] == 0
+        assert sorted(bot.polls) == [DELEGATE, DELEGATE + 1]
+        assert await qh.queued_count() == 0
+
+    asyncio.run(scenario())
+
+
+def test_poll_wizard_confirm_screen_warns_about_quiet_hours(tmp_path):
+    from handlers import admin_poll_wizard as wiz
+
+    _ready(tmp_path, "qh_poll_wizard.db")
+
+    async def scenario():
+        assert await wiz._quiet_hours_warning() == ""  # тумблер выключен — экран прежний
+        await _quiet_all_day()
+        warning = await wiz._quiet_hours_warning()
+        assert "🌙" in warning and "тихие часы" in warning
+        assert "утром" in warning, warning
+
+    asyncio.run(scenario())
