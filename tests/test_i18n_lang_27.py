@@ -368,3 +368,62 @@ def test_offer_language_does_not_overwrite_explicit_choice(tmp_path):
         assert user["lang"] == "en"
 
     asyncio.run(go())
+
+
+# ── правка 15.09: режим "everyone" -- спрашивать ВСЕХ при первом /start ─────────────────────
+
+def test_offer_language_everyone_mode_shows_screen_to_russian_client(tmp_path):
+    """Сеть безопасности владельца: клиент на русском, языка ещё нет -- экран показывается
+    ВСЁ РАВНО (в отличие от режима "on", где ступень 3 resolve_lang тихо отдала бы "ru")."""
+    _use_tmp_db(tmp_path)
+
+    async def go():
+        await _enable_module(ask_on_start="everyone")
+        msg = _KBCapturingMessage(UID, language_code="ru")
+        state = _new_state(UID)
+        shown = await reg_lang.offer_language(msg, state)
+
+        assert shown is True
+        inline = _inline_kb_msgs(msg)
+        assert len(inline) == 1
+        assert _callback_datas(inline[0][1]) == ["lang_pick:ru:start", "lang_pick:en:start"]
+        # "everyone" не персистит "ru" молча -- делегат ещё не тапнул ни одну кнопку.
+        user = await db.get_user(UID)
+        assert (user or {}).get("lang") in (None, "")
+
+    asyncio.run(go())
+
+
+def test_offer_language_everyone_mode_no_screen_when_lang_already_stored(tmp_path):
+    """Выбор уже сохранён ("ru" явным тапом ранее) -- второй /start вопроса не задаёт."""
+    _use_tmp_db(tmp_path)
+
+    async def go():
+        await _enable_module(ask_on_start="everyone")
+        await db.add_user({"telegram_id": UID, "full_name": "Тест Тестов", "registration_date": None})
+        await db.set_user_lang(UID, "ru")
+
+        msg = _KBCapturingMessage(UID, language_code="ru")
+        state = _new_state(UID)
+        shown = await reg_lang.offer_language(msg, state)
+
+        assert shown is False
+        assert msg.sent == []
+
+    asyncio.run(go())
+
+
+def test_offer_language_on_mode_russian_client_still_no_screen(tmp_path):
+    """Неизменное поведение режима "on" (соседствует с новым "everyone" в том же тумблере):
+    русский клиент по-прежнему не видит экрана."""
+    _use_tmp_db(tmp_path)
+
+    async def go():
+        await _enable_module(ask_on_start="on")
+        msg = _KBCapturingMessage(UID, language_code="ru")
+        state = _new_state(UID)
+        shown = await reg_lang.offer_language(msg, state)
+
+        assert shown is False
+
+    asyncio.run(go())

@@ -221,6 +221,20 @@ def test_registry_delegate_lang_defaults():
     assert SETTINGS_SCHEMA["delegate_lang_ask_on_start"]["default"] == "on"
 
 
+def test_registry_delegate_lang_ask_on_start_has_three_modes():
+    """Правка 15.09 (владелец, сеть безопасности): третье положение "everyone" — спрашивать
+    язык у ВСЕХ делегатов при первом /start, не только у клиентов с не-русским language_code.
+    `option_labels` — та же форма, что у `game_submit_notify_mode` (реестр рендерит подписи
+    сам, менеджеру коды не показываются ни в боте, ни в Mini App)."""
+    entry = SETTINGS_SCHEMA["delegate_lang_ask_on_start"]
+    assert entry["options"] == ["off", "on", "everyone"]
+    assert entry["option_labels"] == {
+        "off": "Не спрашивать",
+        "on": "Только нерусским клиентам",
+        "everyone": "Всем при первом /start",
+    }
+
+
 def test_registry_delegate_lang_toggles_are_reachable_from_admin_ui():
     """Отклонение от буквы плана (группа `_REG_FIELD_ORDER`/«📝 Регистрация»): оба ключа —
     enum on/off, показ их через generic settings_edit заставил бы менеджера ВВОДИТЬ "on"/"off"
