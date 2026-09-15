@@ -7,7 +7,10 @@ pytest-asyncio в окружении нет (см. шапку `tests/test_reg_co
 """
 import asyncio
 
+import pytest
+
 from config import config
+from database import db as bot_db
 from database.db import init_db, set_setting
 
 import reg_engine
@@ -17,6 +20,27 @@ from reg_engine import (
     form_spec,
     step_spec,
 )
+from tests.test_miniapp_frontend import SCREENS_DIR, _js_without_comments
+from tests.test_miniapp_routes import (
+    DELEGATE_ID,
+    _cfg,
+    _client,
+    _hdr,
+    _set,
+    _standard_seed,
+    _use_tmp_db,
+)
+
+FORM_SCREEN_JS = SCREENS_DIR / "form.js"
+
+
+@pytest.fixture
+def client(tmp_path):
+    """Тот же харнесс HTTP-контракта анкеты, что `tests/test_miniapp_form.py` — второй копии
+    подписи initData/временной БД в проекте не заводим."""
+    cfg_path = _use_tmp_db(tmp_path, "reg_form_v2_uat_260915_routes.db")
+    _standard_seed()
+    return _client(_cfg(cfg_path))
 
 _EDU_PARTS = ("university", "course", "study_field")
 
@@ -165,3 +189,49 @@ def test_other_option_absent_when_new_form_is_off(tmp_path):
     spec = asyncio.run(step_spec("source", "full", None, flags=_ALL_OFF_FLAGS))
     assert spec["degraded_kind"] == "legacy"
     assert "other_option" not in spec
+
+
+# ══════════════════════════════════════════════════════════════════════════════════════════
+# Приёмка 16.09 — «анкета 2.0 в приложении»
+# ══════════════════════════════════════════════════════════════════════════════════════════
+
+# ── «при отправке текста в резюме пишется, что не дошло до сервера» ───────────────────────
+#
+# Дропзона резюме отдаёт текстовый ответ объектом `{text: "..."}` (`form.js::fileControl`), а
+# карточка-композит — объектом `{step_key: value}`. `screens/form.js::goNext` различал их ПО
+# ФОРМЕ значения, поэтому текст резюме уезжал колонкой «text»: `400 bad_field`, который клиент
+# не умеет положить под поле, — делегат видел общий текст «не дошло до сервера».
+
+def test_text_resume_body_from_app_is_accepted(client):
+    """То, что клиент шлёт ПОСЛЕ фикса: обёртка лежит в значении колонки шага, не заменяет её."""
+    _set("reg_q_resume", "on")
+    resp = client.patch(
+        "/app/api/reg/draft", headers=_hdr(DELEGATE_ID),
+        json={"version": 0, "answers": {"resume_text": {"text": "Два года в маркетинге"}},
+              "step": "resume"},
+    )
+    assert resp.status_code == 200, resp.text
+    row = asyncio.run(bot_db.get_reg_draft(DELEGATE_ID))
+    assert row["answers"]["resume_text"] == "Два года в маркетинге"
+
+
+def test_text_resume_body_of_old_client_is_the_reported_400(client):
+    """Регресс-документация живого бага: «text» — не колонка анкеты, ответ 400 `bad_field`
+    не несёт `errors`, и экран не может показать его под полем."""
+    _set("reg_q_resume", "on")
+    resp = client.patch(
+        "/app/api/reg/draft", headers=_hdr(DELEGATE_ID),
+        json={"version": 0, "answers": {"text": "Два года в маркетинге"}, "step": "resume"},
+    )
+    assert resp.status_code == 400
+    assert resp.json() == {"reason": "bad_field", "field": "text"}
+
+
+def test_composite_patch_is_recognised_by_spec_not_by_value_shape():
+    """Структурный сторож: признак composite-патча — спека шага (`spec.composite`), а не
+    форма значения; иначе `{text: ...}` дропзоны снова уедет колонкой «text»."""
+    text = _js_without_comments(FORM_SCREEN_JS)
+    assert "isCompositePatch" in text
+    branch = text[text.index("const isCompositePatch"):]
+    branch = branch[:branch.index(";")]
+    assert "spec.composite" in branch, branch

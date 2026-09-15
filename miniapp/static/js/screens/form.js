@@ -1116,8 +1116,16 @@ export async function render(root, params, ctx) {
         // (`Array.isArray`) — только «голый» объект значит composite-патч; для образования
         // `step_key === column` (`STEP_TO_COLUMN` — identity-мэп для этих полей, reg_engine.py),
         // второй карты имён не заводим.
+        // Приёмка 15.09 (п.5 «при отправке текста в резюме пишется, что не дошло до сервера»):
+        // объектом отдаёт onChange не только карточка-композит — дропзона резюме шлёт текстовый
+        // ответ как `{text: "..."}` (`form.js::fileControl`, распаковывает его сервер,
+        // `routers/form.py::_unwrap_other`). По одной лишь ФОРМЕ значения их не различить, и
+        // текст резюме уезжал колонкой «text» -> `400 bad_field` -> общий текст «не дошло до
+        // сервера». Признак composite-патча — СПЕКА шага (`spec.composite` строит только
+        // `form_spec` для карточки), а не форма значения.
         const isCompositePatch = !isFileValue && liveValue !== null
-          && typeof liveValue === "object" && !Array.isArray(liveValue);
+          && typeof liveValue === "object" && !Array.isArray(liveValue)
+          && Boolean(spec.composite);
         const patch = {};
         if (isCompositePatch) {
           for (const [patchColumn, patchValue] of Object.entries(liveValue)) {
