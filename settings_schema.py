@@ -3322,6 +3322,22 @@ SETTINGS_SCHEMA = {
         "prompt": "Отправьте фото логотипа — оно появится в шапке приложения.",
         "default": None,
     },
+    # Quick 260915-4mw (ANIM-01..06): дефолт "auto" = сегодняшнее поведение приложения — ключ
+    # заводится, ничего не переключая молча. Варианта «принудительно full» НЕТ намеренно: он
+    # снял бы защиту слабых Android в Telegram WebView (motion.js::resolveMotionTier, авто-
+    # понижение на слабых ядрах) — менеджер может только ОСЛАБИТЬ движение, никогда не усилить
+    # его выше того, что уже посчитала автологика. Ключ читает клиент через
+    # `_shell_context()::motion_setting` -> `<body data-motion-setting>` (см. miniapp/routers/
+    # page.py) — CSS/JS решают уровень раньше первой отрисовки, самому /app/api/me для этого
+    # ходить не нужно.
+    "miniapp_motion": {
+        "type": "enum", "group": "miniapp", "label": "✨ Анимации приложения",
+        "options": ["auto", "micro", "off"],
+        "option_labels": {
+            "auto": "Авто — по устройству", "micro": "Только лёгкие", "off": "Выключить",
+        },
+        "prompt": None, "default": "auto",
+    },
     # Разделы-чекбоксы: по одному на экран приложения (делегат + менеджер).
     "miniapp_section_tasks": {
         "type": "enum", "group": "miniapp", "label": "🎯 Задания",
