@@ -14,7 +14,7 @@
 
 import { api, ApiError, esc, setAuthErrorHandler } from "./api.js";
 import { icon } from "./icons.js";
-import { applyMotionTier } from "./motion.js";
+import { applyMotionTier, slideIn } from "./motion.js";
 import { setFileToken, labelText } from "./ui.js";
 
 const tg = window.Telegram && window.Telegram.WebApp;
@@ -23,6 +23,13 @@ const body = document.body;
 const ds = body.dataset;
 const screenEl = document.getElementById("screen");
 const navEl = document.getElementById("nav");
+
+// Quick 260915-4mw (ANIM-01/02): направление перехода между экранами — "fwd" по умолчанию,
+// "back" ставится ТОЛЬКО backToHistory() (Telegram BackButton — основной путь «назад» в
+// WebView) непосредственно перед history.back(). route() снимает флаг в локальную константу
+// в самом начале и сразу возвращает "fwd", чтобы ни одна ветка выхода (missing/error/showState)
+// не оставляла залипшее «назад» следующему обычному переходу вперёд.
+let navDirection = "fwd";
 
 // Раскладка навигации менеджера (D-10, голосование команды не закрыто): "tabbar" (A, нижний
 // таб-бар) / "toptabs" (B, верхние табы) / "hub" (C, счётчики на плитках). Правится ОДНА эта
@@ -236,6 +243,7 @@ export function applyTheme() {
 }
 
 function backToHistory() {
+  navDirection = "back";
   history.back();
 }
 
@@ -513,6 +521,10 @@ function navigate(hash) {
 
 async function route() {
   if (terminal) return;
+  // Снимаем направление СРАЗУ — любая ветка выхода ниже (missing/showState/ошибка) не должна
+  // оставлять "back" залипшим для следующего обычного перехода вперёд.
+  const dir = navDirection;
+  navDirection = "fwd";
   let hash = location.hash;
   // Telegram Web (K/A) открывает вебвью с фрагментом собственных параметров
   // (#tgWebAppData=…&tgWebAppVersion=…) — это не наш маршрут, а транспорт initData.
@@ -564,6 +576,12 @@ async function route() {
   clear(screenEl);
   try {
     await mod.render(screenEl, target.params, { me, tg, h, esc, setMainButton, navigate, showState, api });
+    // Quick 260915-4mw (ANIM-01): анимируется ТОЛЬКО входящий контент — уводящая анимация
+    // потребовала бы отложить отрисовку нового экрана на ~120мс, а route()/drawStep() рисуют
+    // синхронно сразу после готовности данных; отложенная отрисовка сломала бы гонку «пока
+    // грузили — ушли дальше» (проверка выше) и синхронные ожидания вызывающих. Визуально
+    // «въезд справа/слева» и так читается как направление перехода без анимации ухода.
+    slideIn(screenEl, dir);
   } catch (err) {
     if (err instanceof ApiError) return; // api() уже показал экран состояния (если нужно)
     clear(screenEl);
