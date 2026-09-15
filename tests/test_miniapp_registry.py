@@ -30,6 +30,7 @@ MINIAPP_KEYS = [
     "miniapp_staff_only",
     "miniapp_accent",
     "miniapp_logo",
+    "miniapp_motion",  # Quick 260915-4mw (ANIM-01..06): ✨ Анимации приложения (auto/micro/off)
     # разделы-чекбоксы
     "miniapp_section_tasks",
     "miniapp_section_coins",
@@ -308,7 +309,8 @@ def test_exactly_170_miniapp_keys_and_no_extra():
     # «N из M» (185 -> 186).
     # Phase 30 (30-05, задача 1, решение владельца №5): +1 ключ подсказки у поля причины
     # отказа в шторке — «это увидит делегат» (186 -> 187).
-    assert len(MINIAPP_KEYS) == 187
+    # Quick 260915-4mw (ANIM-01..06): +1 ключ «✨ Анимации приложения» (187 -> 188).
+    assert len(MINIAPP_KEYS) == 188
     present = sorted(k for k in SETTINGS_SCHEMA if k.startswith("miniapp_"))
     assert present == sorted(MINIAPP_KEYS)
 

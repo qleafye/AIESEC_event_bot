@@ -65,6 +65,7 @@ _SECTION_BY_SUFFIX = {key[len("miniapp_section_"):]: key for key in SECTION_KEYS
 async def render_miniapp_settings_text() -> str:
     enabled = await get_setting_typed("miniapp_enabled") == "on"
     staff_only = await get_setting_typed("miniapp_staff_only") == "on"
+    motion = await get_setting_typed("miniapp_motion")
 
     lines = ["🎨 <b>Оформление приложения</b>", ""]
     lines.append(
@@ -75,6 +76,8 @@ async def render_miniapp_settings_text() -> str:
         ("✅" if staff_only else "☐")
         + " Только менеджерам — делегаты кнопку не увидят, у менеджеров есть запасной вход."
     )
+    motion_label = SETTINGS_SCHEMA["miniapp_motion"]["option_labels"].get(motion, motion)
+    lines.append(f"✨ Анимации приложения: {motion_label}")
     lines.append("")
     lines.append("Разделы, которые видны в приложении:")
     for key in SECTION_KEYS:
@@ -114,6 +117,13 @@ async def build_miniapp_settings_keyboard() -> InlineKeyboardMarkup:
             text=("✅ " if on else "☐ ") + label,
             callback_data=f"miniapp_section:{suffix}",
         )])
+    # Quick 260915-4mw (ANIM-01..06): циклический тумблер (не чекбокс — три состояния, не два)
+    # той же кнопкой, что мастер первой настройки в приложении подхватывает сам ключ реестра.
+    motion = await get_setting_typed("miniapp_motion")
+    motion_label = SETTINGS_SCHEMA["miniapp_motion"]["option_labels"].get(motion, motion)
+    buttons.append([InlineKeyboardButton(
+        text=f"✨ Анимации: {motion_label}", callback_data="miniapp_cycle_motion",
+    )])
     # Phase 19.1 (07, D-20): вход во второй шов — пресеты BlueBook/YouLead/Своя и ручки
     # кастома (цвета/шрифт/тон/лого/обложка/паттерн/стикеры/иконка монеты).
     # handlers/admin_miniapp_theme.py.
@@ -209,4 +219,20 @@ async def toggle_miniapp_section(callback: types.CallbackQuery):
     label = SETTINGS_SCHEMA[key]["label"]
     toast = f"{label}: {'показываем' if new_val == 'on' else 'скрыт'}"
     await callback.answer(toast)
+    await _rerender(callback)
+
+
+_MOTION_CYCLE = {"auto": "micro", "micro": "off", "off": "auto"}
+
+
+@router.callback_query(F.data == "miniapp_cycle_motion")
+async def cycle_miniapp_motion(callback: types.CallbackQuery):
+    """Quick 260915-4mw (ANIM-01..06): циклический тумблер auto -> micro -> off -> auto — три
+    состояния, не два, поэтому не чекбокс (toggle_miniapp_section), а свой цикл, тем же
+    приёмом (set_setting_by_admin + toast с человеческой подписью + _rerender)."""
+    current = await get_setting_typed("miniapp_motion")
+    new_val = _MOTION_CYCLE.get(current, "auto")
+    await set_setting_by_admin(callback.from_user.id, "miniapp_motion", new_val)
+    label = SETTINGS_SCHEMA["miniapp_motion"]["option_labels"].get(new_val, new_val)
+    await callback.answer(f"Анимации приложения: {label}")
     await _rerender(callback)
