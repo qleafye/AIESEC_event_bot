@@ -505,6 +505,11 @@ function compositeCard(h, spec, value, onChange, flags) {
   for (const part of comp.parts) partByKey[part.key] = part;
   const toggleKey = comp.toggle_step;
   const togglePart = toggleKey ? partByKey[toggleKey] : null;
+  // Task 260915-skg (P1b, решение владельца «две плитки»): сервер отдаёт готовое разбиение
+  // вариантов `education_status` — карточка не держит свой список «учащихся» статусов
+  // (T-skg-03, D-06 фазы 28 — единственная точка правды `is_studying`/`edu_studying_statuses`).
+  const studyingOption = comp.studying_option || null;
+  const notStudying = comp.not_studying_options || [];
   // Визуальный порядок карточки — фиксированный (ВУЗ, курс, программа), НЕ порядок REG_FLOW
   // (`composite_parts()` отдаёт `education_status` первым) — рисуются только части из ответа.
   const fieldKeys = ["university", "course", "study_field"].filter(
@@ -519,6 +524,15 @@ function compositeCard(h, spec, value, onChange, flags) {
   // точка правды — клиент не дублирует список «учащихся» статусов реестра).
   let studying = comp.studying !== false;
 
+  // Task 260915-skg (P1b): `state[toggleKey]` теперь СТРОКА education_status, никогда bool.
+  // ВКЛ -> `studyingOption` с сервера; ВЫКЛ -> прежний ответ делегата, если он входит в
+  // `notStudying` (предвыбор плитки при повторном заходе), иначе пусто (ничего не выбрано).
+  if (toggleKey) {
+    state[toggleKey] = studying
+      ? studyingOption
+      : (togglePart && notStudying.includes(togglePart.value) ? togglePart.value : "");
+  }
+
   // Per-part «есть ошибка» — булев флаг, НЕ текст: клиентский пред-показ лимита длины (ниже, у
   // программы обучения) не дублирует текст ошибки сервера (`reg_engine.validate_answer`,
   // T-21-05 «второго валидатора нет») — только красная рамка `.field.is-error` (уже
@@ -526,6 +540,9 @@ function compositeCard(h, spec, value, onChange, flags) {
   // commit карточки довяжут (см. «Known Stubs» в SUMMARY плана 30-04). Ошибка ОДНОЙ части
   // блокирует ТОЛЬКО главную кнопку (через `onFooterChange`), не рендер/интерактивность соседних.
   const errorFlags = {};
+  // Task 260915-skg (P1b): начальная ошибка тумблера — «выкл и ничего не выбрано» ИЛИ «вкл, но
+  // реестр без учащихся вариантов» — оба случая сводятся к «state[toggleKey] пуст».
+  if (toggleKey) errorFlags[toggleKey] = !state[toggleKey];
   let footerCb = null;
 
   function emit() {
@@ -618,12 +635,36 @@ function compositeCard(h, spec, value, onChange, flags) {
     h("div", { class: "cv", text: texts.done_hint || "" }),
   );
 
+  // Task 260915-skg (P1b): плитки статуса «не учащегося» делегата — тот же приём, что
+  // `buildChipsPart`, но источник подписей — `notStudying` с сервера (голые строки, не
+  // `part.options`/`part.option_labels`).
+  const statusChipEls = [];
+  const statusChipsBox = h("div", { class: "chips" });
+  for (const opt of notStudying) {
+    const chip = h("button", { class: "chip-pick", type: "button" }, h("span", { text: opt }));
+    chip.addEventListener("click", () => {
+      state[toggleKey] = opt;
+      for (const c of statusChipEls) c.el.classList.toggle("on", c.opt === opt);
+      setError(toggleKey, false);
+      emit();
+      haptic("light", flags);
+    });
+    statusChipEls.push({ opt, el: chip });
+    statusChipsBox.append(chip);
+  }
+  for (const c of statusChipEls) c.el.classList.toggle("on", c.opt === state[toggleKey]);
+  const statusChipsCpart = toggleKey ? h("div", { class: "cpart" }, statusChipsBox) : null;
+
   function paintToggleVisibility() {
     for (const node of fullParts) {
       node.classList.toggle("hidden", !studying);
       node.setAttribute("aria-hidden", studying ? "false" : "true");
     }
     doneCpart.classList.toggle("hidden", studying);
+    if (statusChipsCpart) {
+      statusChipsCpart.classList.toggle("hidden", studying);
+      statusChipsCpart.setAttribute("aria-hidden", studying ? "true" : "false");
+    }
   }
 
   const toggleTitle = h("div", { class: "st" });
@@ -642,21 +683,31 @@ function compositeCard(h, spec, value, onChange, flags) {
     toggleRow.setAttribute("aria-checked", studying ? "true" : "false");
     paintToggleLabels();
     paintToggleVisibility();
-    if (togglePart) state[togglePart.key] = studying;
+    // Task 260915-skg (P1b): ВКЛ -> studyingOption; ВЫКЛ -> оставить уже выбранный чип (если он
+    // валиден среди notStudying), иначе пусто. Никогда true/false в state.
+    if (toggleKey) {
+      if (studying) {
+        state[toggleKey] = studyingOption;
+      } else if (!notStudying.includes(state[toggleKey])) {
+        state[toggleKey] = "";
+      }
+      for (const c of statusChipEls) c.el.classList.toggle("on", c.opt === state[toggleKey]);
+      setError(toggleKey, !state[toggleKey]);
+    }
     emit();
     haptic("light", flags);
   });
   paintToggleLabels();
   paintToggleVisibility();
 
-  const card = h("div", { class: "card brand" }, ...fullParts, doneCpart,
+  const card = h("div", { class: "card brand" }, ...fullParts, doneCpart, statusChipsCpart,
     togglePart ? h("div", { class: "cpart" }, toggleRow) : null);
   const note = texts.toggle_note ? h("p", { class: "label-role", text: texts.toggle_note }) : null;
 
   return {
     control: h("div", {}, card, note),
     footerLabel: null,
-    disabled: false,
+    disabled: footerState().disabled,
     onFooterChange: (cb) => { footerCb = cb; notifyFooter(); },
   };
 }
