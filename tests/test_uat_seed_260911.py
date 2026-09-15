@@ -373,6 +373,85 @@ def test_go_short_track_sets_participant_type_and_pending(tmp_path):
     assert user["status"] == "pending"
 
 
+# ── ФИО + согласие в засеянных состояниях (стенд-инцидент 15.09, name=None) ────────────────
+
+def _consents_configured():
+    asyncio.run(db.set_setting("consent_enabled", "on"))
+    asyncio.run(db.set_setting("consent_list", "Согласие на обработку данных|data; Политика|policy"))
+
+
+def test_go_draft_seeds_full_name(tmp_path):
+    _ready(tmp_path)
+    _open_gate()
+    uat_seed = _import_handlers()
+
+    _go(uat_seed, "draft", "none")
+
+    draft = asyncio.run(db.get_reg_draft(TESTER_ID))
+    assert draft["answers"]["full_name"] == uat_seed._SEED_ANSWERS["full_name"]
+
+
+def test_go_pending_seeds_full_name(tmp_path):
+    _ready(tmp_path)
+    _open_gate()
+    uat_seed = _import_handlers()
+
+    _go(uat_seed, "pending", "none")
+
+    user = asyncio.run(db.get_user(TESTER_ID))
+    assert user["full_name"] == uat_seed._SEED_ANSWERS["full_name"]
+
+
+def test_go_draft_records_consent_when_module_on(tmp_path):
+    _ready(tmp_path)
+    _open_gate()
+    _consents_configured()
+    uat_seed = _import_handlers()
+    from reg_engine import consent_entries
+    from services.consent import outstanding_consents
+
+    _go(uat_seed, "draft", "none")
+
+    entries = asyncio.run(consent_entries())
+    assert asyncio.run(outstanding_consents(TESTER_ID, entries)) == []
+
+
+def test_go_pending_records_consent_when_module_on(tmp_path):
+    _ready(tmp_path)
+    _open_gate()
+    _consents_configured()
+    uat_seed = _import_handlers()
+    from reg_engine import consent_entries
+    from services.consent import outstanding_consents
+
+    _go(uat_seed, "pending", "none")
+
+    entries = asyncio.run(consent_entries())
+    assert asyncio.run(outstanding_consents(TESTER_ID, entries)) == []
+
+
+def test_go_fresh_records_no_consent_even_when_module_on(tmp_path):
+    """`fresh` не заводит ни черновик, ни заявку — подписывать нечего."""
+    _ready(tmp_path)
+    _open_gate()
+    _consents_configured()
+    uat_seed = _import_handlers()
+
+    _go(uat_seed, "fresh", "none")
+
+    assert asyncio.run(db.get_user_consent_versions(TESTER_ID)) == []
+
+
+def test_go_pending_records_no_consent_when_module_off(tmp_path):
+    _ready(tmp_path)
+    _open_gate()  # consent_enabled остаётся дефолтным "off" — модуль согласий не настраивали
+    uat_seed = _import_handlers()
+
+    _go(uat_seed, "pending", "none")
+
+    assert asyncio.run(db.get_user_consent_versions(TESTER_ID)) == []
+
+
 def test_go_role_none_leaves_no_staff_rows(tmp_path):
     _ready(tmp_path)
     _open_gate()
