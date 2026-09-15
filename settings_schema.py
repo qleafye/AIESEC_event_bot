@@ -4231,9 +4231,10 @@ SETTINGS_SCHEMA = {
         "type": "text", "group": "miniapp", "label": "🔢 Счётчик в заголовке группы настроек",
         "prompt": (
             "Шапка карточки группы настроек. «{shown}» — настроек в этой группе, «{total}» — "
-            "всего настроек в разделе."
+            "всего настроек в разделе. Квик 15.09: «{shown} из {total}» читалось как «вопросов», "
+            "хотя это счётчик настроек — дефолт называет их явно."
         ),
-        "default": "{shown} из {total}",
+        "default": "{shown} здесь · {total} в разделе",
     },
     "miniapp_settings_search_empty_heading_text": {
         "type": "text", "group": "miniapp", "label": "🔍 Заголовок пустого поиска настроек",
