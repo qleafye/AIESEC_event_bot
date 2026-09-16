@@ -143,6 +143,14 @@ _PLACEHOLDER_ANSWERS = frozenset(
     {"-", "—", "–", "пропустить", "skip", "нет", "не учусь", "не получал", "не получала", ""}
 )
 
+# Квик 260916 (UAT-SEED-06): `/uat` (`handlers/uat_seed.py::_SEED_ANSWERS`) сеет правдоподобные,
+# но фиктивные ответы вроде «Тестовый университет (приёмка)» — до первой настоящей заявки
+# сезона такая строка легко становится топ-1 подсказкой (стенд 16.09). «(приёмка)» — единый
+# маркер засеянной строки в открытых для подсказок колонках (university/city); настоящий
+# делегат его не напишет. Не импортируем `handlers.uat_seed` напрямую (это aiogram-модуль —
+# этот файл читает и Mini App, см. докстринг наверху), сверяем по литеральному суффиксу.
+_UAT_SEED_MARKER = "(приёмка)"
+
 
 async def top_chips(kind: str, event_city: str | None, limit: int = 8) -> list[str]:
     """Топ-8 чипов (30-CONTEXT.md решение владельца №4): закреплённые менеджером ПЕРВЫМИ
@@ -213,6 +221,8 @@ async def top_chips(kind: str, event_city: str | None, limit: int = 8) -> list[s
         for value, cnt in freq_rows:
             normalized_value = (value or "").strip().lower()
             if normalized_value in _PLACEHOLDER_ANSWERS:
+                continue
+            if _UAT_SEED_MARKER in normalized_value:
                 continue
             canonical_value = alias_map.get(normalized_value, value)
             folded[canonical_value] = folded.get(canonical_value, 0) + cnt
