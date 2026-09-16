@@ -1421,7 +1421,6 @@ async function renderSection(root, code, ctx, targetKey) {
       rowsWrap.append(line);
     }
     card.append(rowsWrap);
-    card.append(h("p", { class: "note", text: formV2Text("mgr_degrade_note") }));
     card.append(h("button", {
       class: "btn ghost", type: "button",
       onClick: () => { location.hash = "#/form"; },
