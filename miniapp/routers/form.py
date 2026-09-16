@@ -349,9 +349,9 @@ async def _draft_response(telegram_id: int, ctx: dict | None = None, *, bot_user
     if ctx["holder"] == SURFACE_BOT:
         handoff = {
             "held_by": "bot",
-            "text": await get_setting_typed("reg_form_held_by_bot_text"),
-            "takeover_text": await get_setting_typed("reg_form_takeover_cta_text"),
-            "continue_text": await get_setting_typed("reg_form_continue_in_chat_text"),
+            "text": await i18n.tr_setting("reg_form_held_by_bot_text", lang, tr_map),
+            "takeover_text": await i18n.tr_setting("reg_form_takeover_cta_text", lang, tr_map),
+            "continue_text": await i18n.tr_setting("reg_form_continue_in_chat_text", lang, tr_map),
             "deeplink": _continue_deeplink(bot_username),
         }
     # Приёмка 15.09 (п.3в «потом снова кинуло на новую анкету»): в `reg_drafts.step` лежит шаг
@@ -381,54 +381,64 @@ async def _draft_response(telegram_id: int, ctx: dict | None = None, *, bot_user
         "progress": spec["progress"],
         "closed": closed,
         "closed_text": (
-            await get_setting_typed_for_city("reg_form_closed_text", ctx["event_city"]) if closed else None
+            await i18n.tr_setting_for_city("reg_form_closed_text", ctx["event_city"], lang, tr_map)
+            if closed else None
         ),
         # Квик 260911-w2m: отдельная пара «правка выключена» — своя причина и свой текст,
         # намеренно НЕ смешана с `closed`/`closed_text` выше (тот гейт закрыт сторожами
         # плана 21-10 и означает совсем другое — «регистрация закрыта режимом города»).
         "edit_closed": not edit_can_edit,
-        "edit_closed_text": edit_closed_text,
+        "edit_closed_text": i18n.tr(edit_closed_text, lang, tr_map) if edit_closed_text else edit_closed_text,
         "prior_badge_text": (
-            await get_setting_typed("reg_form_prior_answer_badge_text") if ctx["prior"] else None
+            await i18n.tr_setting("reg_form_prior_answer_badge_text", lang, tr_map) if ctx["prior"] else None
         ),
         # Task 2 (обзор правки, D-26): статус нужен для баннера отклонённой заявки и для
         # решения, какой заголовок покажет submit (в edit-режиме статус не приходит нигде
         # больше — GET /app/api/reg/draft не отдавал его до этого плана).
         "status": (user_row.get("status") or "approved") if (ctx["kind"] == "edit" and user_row) else None,
         "rejected_banner_text": (
-            await get_setting_typed_for_city("reg_form_rejected_banner_text", ctx["event_city"])
+            await i18n.tr_setting_for_city(
+                "reg_form_rejected_banner_text", ctx["event_city"], lang, tr_map,
+            )
             if (ctx["kind"] == "edit" and user_row and user_row.get("status") == "rejected") else None
         ),
-        "not_set_text": await get_setting_typed("reg_form_not_set_text"),
-        "submit_cta_text": await get_setting_typed(
+        "not_set_text": await i18n.tr_setting("reg_form_not_set_text", lang, tr_map),
+        "submit_cta_text": await i18n.tr_setting(
             "reg_form_edit_submit_cta_text" if ctx["kind"] == "edit" else "reg_form_submit_cta_text",
+            lang, tr_map,
         ),
-        "cancel_changes_text": await get_setting_typed("reg_form_cancel_changes_text"),
-        "cancel_changes_confirm_text": await get_setting_typed("reg_form_cancel_changes_confirm_text"),
-        "continue_in_chat_text": await get_setting_typed("reg_form_continue_in_chat_text"),
+        "cancel_changes_text": await i18n.tr_setting("reg_form_cancel_changes_text", lang, tr_map),
+        "cancel_changes_confirm_text": await i18n.tr_setting(
+            "reg_form_cancel_changes_confirm_text", lang, tr_map,
+        ),
+        "continue_in_chat_text": await i18n.tr_setting("reg_form_continue_in_chat_text", lang, tr_map),
         # Phase 23.1 (UI-REDESIGN-04): подписи экрана мастера — надзаголовок списка
         # вопросов, «…и ещё N впереди», пометка сохранения черновика, кнопки дальше/назад.
-        "questions_eyebrow": await get_setting_typed("reg_form_questions_eyebrow"),
-        "more_questions_text": await get_setting_typed("reg_form_more_questions_text"),
-        "draft_saved_text": await get_setting_typed("reg_form_draft_saved_text"),
-        "next_cta_text": await get_setting_typed("reg_form_next_cta_text"),
-        "back_cta_text": await get_setting_typed("reg_form_back_cta_text"),
-        "updated_in_chat_badge_text": await get_setting_typed("reg_form_updated_in_chat_badge_text"),
-        "conflict_text": await get_setting_typed("reg_form_conflict_text"),
-        "consent_required_text": await get_setting_typed("reg_form_consent_required_text"),
+        "questions_eyebrow": await i18n.tr_setting("reg_form_questions_eyebrow", lang, tr_map),
+        "more_questions_text": await i18n.tr_setting("reg_form_more_questions_text", lang, tr_map),
+        "draft_saved_text": await i18n.tr_setting("reg_form_draft_saved_text", lang, tr_map),
+        "next_cta_text": await i18n.tr_setting("reg_form_next_cta_text", lang, tr_map),
+        "back_cta_text": await i18n.tr_setting("reg_form_back_cta_text", lang, tr_map),
+        "updated_in_chat_badge_text": await i18n.tr_setting(
+            "reg_form_updated_in_chat_badge_text", lang, tr_map,
+        ),
+        "conflict_text": await i18n.tr_setting("reg_form_conflict_text", lang, tr_map),
+        "consent_required_text": await i18n.tr_setting("reg_form_consent_required_text", lang, tr_map),
         "show_progress": show_progress,
         # UAT 21-12 находка 2: подпись «N из M» — шаблон из реестра, не литерал JS (D-25);
         # {step}/{total} подставляет фронт `.replace` (Pitfall 11), номер шага меняется без
         # похода на сервер. Только когда тумблер включён — незачем гонять текст, который
         # экран не покажет.
-        "progress_text": (await get_setting_typed("reg_form_progress_text")) if show_progress else None,
+        "progress_text": (
+            await i18n.tr_setting("reg_form_progress_text", lang, tr_map)
+        ) if show_progress else None,
         "continue_deeplink": _continue_deeplink(bot_username),
         # D9 (quick 260904-de4): фолбэк на загрузку резюме файлом, когда сервер не отдал
         # человеческий текст своим (`bad_type`/`too_large` дают его сами — см.
         # `submissions.py::_upload_resume`); отдельный литерал в JS не заводим.
-        "resume_upload_error_text": await get_setting_typed("reg_form_resume_upload_error_text"),
+        "resume_upload_error_text": await i18n.tr_setting("reg_form_resume_upload_error_text", lang, tr_map),
         # D13: подпись кнопки «Поделиться номером» на шаге телефона — из реестра, не литерал JS.
-        "share_contact_text": await get_setting_typed("reg_form_share_contact_text"),
+        "share_contact_text": await i18n.tr_setting("reg_form_share_contact_text", lang, tr_map),
         # Phase 30 (30-05, задача 4, A2-08): группа «Язык анкеты» в поповере настроек шапки
         # видна только при включённом модуле (фаза 27) — `lang` здесь ТОТ ЖЕ, что уже
         # резолвлен выше для перевода текстов спеки, второго похода в `i18n.context` не нужно.
@@ -517,12 +527,17 @@ async def draft_patch(
     _: Principal = Depends(require_section("form")),
 ) -> dict:
     ctx = await _load_context(p.telegram_id)
+    # Phase 27 (задача «Mini App на английском»): одна загрузка карты переводов на весь PATCH —
+    # ниже переиспользуется и для ранних 409/403 (владение/правка/закрытая регистрация), и для
+    # канонизации ответов (было `answer_lang`/`answer_tr_map`, тот же вызов, второй не заводим).
+    lang, tr_map = await i18n.context(p.telegram_id)
+    lang = lang if lang in ("ru", "en") else "ru"
     # Quick 260904-3vm (эстафета): ПЕРВЫМ делом — владение. Бот держит анкету -> приложение не
     # пишет вообще ничего, даже до валидации/проверки «регистрация закрыта».
     if ctx["holder"] == SURFACE_BOT:
         raise HTTPException(409, {
             "reason": "held_by_bot",
-            "text": await get_setting_typed("reg_form_held_by_bot_text"),
+            "text": await i18n.tr_setting("reg_form_held_by_bot_text", lang, tr_map),
         })
     # Квик 260911-w2m: чужая поверхность (выше) -> правка выключена (здесь) -> регистрация
     # закрыта (ниже) — именно в этом порядке. 409, не 403 (Р-3 плана): `api.js` красит ЛЮБОЙ
@@ -530,11 +545,14 @@ async def draft_patch(
     # из `payload.text` для 409 — новых веток в JS заводить не нужно.
     edit_can_edit, edit_closed_text = await _edit_gate(ctx)
     if not edit_can_edit:
-        raise HTTPException(409, {"reason": "edit_closed", "text": edit_closed_text})
+        raise HTTPException(409, {
+            "reason": "edit_closed",
+            "text": i18n.tr(edit_closed_text, lang, tr_map) if edit_closed_text else edit_closed_text,
+        })
     if ctx["kind"] == "new" and await _registration_closed(ctx["event_city"]):
         raise HTTPException(403, {
             "reason": "registration_closed",
-            "text": await get_setting_typed_for_city("reg_form_closed_text", ctx["event_city"]),
+            "text": await i18n.tr_setting_for_city("reg_form_closed_text", ctx["event_city"], lang, tr_map),
         })
 
     errors: dict[str, str] = {}
@@ -561,11 +579,9 @@ async def draft_patch(
     effective_track = pre_patch.get("participant_type") or ctx["effective_track"]
 
     # Phase 27 (27-04, LANG-06, T-27-04-01): канонизация ДО validate_answer — см. докстринг
-    # _canonicalize_answer. lang=="ru" (module off/делегат ещё не выбрал английский) пропускает
-    # саму загрузку карты переводов через тот же ноль-чтений фоллбэк, что _draft_response —
-    # PATCH при выключенном модуле не получает ни одного нового похода в БД.
-    answer_lang, answer_tr_map = await i18n.context(p.telegram_id)
-    answer_lang = answer_lang if answer_lang in ("ru", "en") else "ru"
+    # _canonicalize_answer. `lang`/`tr_map` уже загружены выше (была отдельная пара
+    # `answer_lang`/`answer_tr_map` — тот же вызов `i18n.context`, второй заводить незачем).
+    answer_lang, answer_tr_map = lang, tr_map
 
     # Phase 28 (28-05, SU-04, T-28-05-01, deviation Rule 3): выбор ветки развилки резюме
     # (`resume_type`) — закрытый словарь из трёх токенов, тот же контракт, что
@@ -608,7 +624,7 @@ async def draft_patch(
         if reg_engine.REG_STEP_TYPES.get(step_key) == "multi":
             max_select = await reg_engine.multi_max(step_key)
             if max_select is not None:
-                limit_error_text = await get_setting_typed("reg_multi_limit_error_text")
+                limit_error_text = await i18n.tr_setting("reg_multi_limit_error_text", lang, tr_map)
         value, err = reg_engine.validate_answer(
             step_key, unwrapped, participant_type=effective_track,
             max_select=max_select, limit_error_text=limit_error_text,
@@ -831,9 +847,14 @@ async def draft_submit(
     # собирал `ctx` сам до этого квика — один лишний проход по `_load_context` (тому же
     # источнику правды, что GET/PATCH), не вторая копия правила.
     ctx = await _load_context(p.telegram_id)
+    lang, tr_map = await i18n.context(p.telegram_id)
+    lang = lang if lang in ("ru", "en") else "ru"
     edit_can_edit, edit_closed_text = await _edit_gate(ctx)
     if not edit_can_edit:
-        raise HTTPException(409, {"reason": "edit_closed", "text": edit_closed_text})
+        raise HTTPException(409, {
+            "reason": "edit_closed",
+            "text": i18n.tr(edit_closed_text, lang, tr_map) if edit_closed_text else edit_closed_text,
+        })
 
     # T-21-05/D-23: серверная проверка обязательна — скрытия кнопки на фронте недостаточно.
     consent_steps = await reg_engine.get_consent_steps()
@@ -845,7 +866,7 @@ async def draft_submit(
             raise HTTPException(409, {
                 "reason": "consent_required",
                 "keys": missing,
-                "text": await get_setting_typed("reg_form_consent_required_text"),
+                "text": await i18n.tr_setting("reg_form_consent_required_text", lang, tr_map),
             })
 
     # Приёмка 16.09 (п.1): ФИО — обязательный ответ, но он не запись REG_FLOW, и общего
@@ -876,7 +897,7 @@ async def draft_submit(
         if await get_reg_draft(p.telegram_id) is None:
             raise HTTPException(409, {
                 "reason": "no_draft",
-                "text": await get_setting_typed("reg_form_no_draft_text"),
+                "text": await i18n.tr_setting("reg_form_no_draft_text", lang, tr_map),
             })
         raise HTTPException(409, {"reason": "already_submitting"})
 
@@ -910,6 +931,9 @@ async def draft_submit(
         "reg draft submit telegram_id=%s mode=%s status=%s", p.telegram_id, result["mode"], result["status"],
     )
 
+    # Задача «Mini App на английском»: уведомление в ЧАТ остаётся русским байт-в-байт (перевод
+    # чата — зона другого исполнителя, LANG-08/договорённость плана) — chat_text строится из
+    # НЕпереведённых heading/body. Экран приложения переводится ОТДЕЛЬНОЙ парой ниже.
     chat_text = heading if not body else f"{heading}\n{body}"
     if chat_text:
         try:
@@ -919,11 +943,13 @@ async def draft_submit(
                 "reg draft submit: chat notify failed telegram_id=%s (%s)", p.telegram_id, exc.reason,
             )
 
+    heading_app = i18n.tr(heading, lang, tr_map) if heading else heading
+    body_app = i18n.tr(body, lang, tr_map) if body else body
     response = {
-        "mode": result["mode"], "status": result["status"], "heading": heading, "body": body,
+        "mode": result["mode"], "status": result["status"], "heading": heading_app, "body": body_app,
         # Квик 12.09 (UI-аудит, пункт 2): подпись кнопки выхода на терминальном экране —
         # раньше это была одна иконка check без текста и без aria-label (accessibility BLOCKER).
-        "home_cta": await get_setting_typed("miniapp_form_complete_home_cta_text"),
+        "home_cta": await i18n.tr_setting("miniapp_form_complete_home_cta_text", lang, tr_map),
     }
     # Phase 28 (28-06, SU-07, D-09): паритет с чатом бота — блок-предложение реф-ссылки на том
     # же терминальном экране «Заявка принята», только при mode == "new" и включённом тумблере
@@ -931,14 +957,14 @@ async def draft_submit(
     # отдельным эндпоинтом POST /app/api/reg/ambassador по тапу «Хочу свою ссылку».
     if result["mode"] == "new" and await get_setting_typed("reg_offer_ref_link") == "on":
         response["ambassador"] = {
-            "heading": await get_setting_typed_for_city(
-                "miniapp_form_ambassador_offer_heading_text", event_city,
+            "heading": await i18n.tr_setting_for_city(
+                "miniapp_form_ambassador_offer_heading_text", event_city, lang, tr_map,
             ),
-            "body": await get_setting_typed_for_city(
-                "miniapp_form_ambassador_offer_body_text", event_city,
+            "body": await i18n.tr_setting_for_city(
+                "miniapp_form_ambassador_offer_body_text", event_city, lang, tr_map,
             ),
-            "cta": await get_setting_typed("miniapp_form_ambassador_cta_text"),
-            "later": await get_setting_typed("miniapp_form_ambassador_later_text"),
+            "cta": await i18n.tr_setting("miniapp_form_ambassador_cta_text", lang, tr_map),
+            "later": await i18n.tr_setting("miniapp_form_ambassador_later_text", lang, tr_map),
         }
     return response
 
@@ -966,14 +992,18 @@ async def draft_ambassador(
     link = f"https://t.me/{bot_username}?start=amb_{p.telegram_id}" if bot_username else None
     user = await get_user(p.telegram_id)
     event_city = user.get("event_city") if user else None
-    note_tpl = await get_setting_typed_for_city("miniapp_form_ambassador_link_note_text", event_city)
-    section_label = await get_setting_typed("miniapp_hub_referral_label_text")
+    lang, tr_map = await i18n.context(p.telegram_id)
+    lang = lang if lang in ("ru", "en") else "ru"
+    note_tpl = await i18n.tr_setting_for_city(
+        "miniapp_form_ambassador_link_note_text", event_city, lang, tr_map,
+    )
+    section_label = await i18n.tr_setting("miniapp_hub_referral_label_text", lang, tr_map)
     note = note_tpl.replace("{section}", section_label or "") if note_tpl else None
     return {
         "link": link,
-        "heading": await get_setting_typed("miniapp_form_ambassador_link_heading_text"),
-        "copy_button": await get_setting_typed("miniapp_form_ambassador_copy_button_text"),
-        "copied_toast": await get_setting_typed("miniapp_form_ambassador_copied_toast_text"),
+        "heading": await i18n.tr_setting("miniapp_form_ambassador_link_heading_text", lang, tr_map),
+        "copy_button": await i18n.tr_setting("miniapp_form_ambassador_copy_button_text", lang, tr_map),
+        "copied_toast": await i18n.tr_setting("miniapp_form_ambassador_copied_toast_text", lang, tr_map),
         "note": note,
     }
 
