@@ -5,7 +5,7 @@
 на потолке размера — см. tests/test_module_size_convention_260816.py), как и остальные швы
 Phase 13.
 
-Что здесь: экран с десятью независимыми чекбоксами блоков веб-дашборда (ключи —
+Что здесь: экран с независимыми чекбоксами блоков веб-дашборда (ключи —
 `dashboard_block_*` в SETTINGS_SCHEMA, группа "dashboard", вне SETTINGS_FIELDS — у них своя
 поверхность правки, см. соседний коммит этого плана). Вкл/выкл самого дашборда и ключи API на
 этом экране сознательно ОТСУТСТВУЮТ (D-19) — адрес дашборда задаётся при деплое
@@ -19,7 +19,7 @@ from settings_schema import SETTINGS_SCHEMA, get_setting_typed
 from handlers.admin import router
 
 # Порядок блоков на странице дашборда (D-14): воронка -> динамика ->
-# города/источники/вузы/курсы/направления -> где бросают -> гейма.
+# города/источники/вузы/курсы/направления -> где бросают -> гейма -> рефералы.
 DASHBOARD_BLOCKS = [
     "dashboard_block_funnel",
     "dashboard_block_dynamics",
@@ -31,6 +31,7 @@ DASHBOARD_BLOCKS = [
     "dashboard_block_utm",
     "dashboard_block_months",
     "dashboard_block_game",
+    "dashboard_block_referrals",
 ]
 
 
