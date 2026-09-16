@@ -268,6 +268,9 @@ def test_start_returning_preserves_deeplink(tmp_path):
         await db.init_db()
         await db.set_setting("event_season", "YL'26")
         await _register(UID, "delegate", status="approved", season="YL'25")
+        # Решение владельца (17.09): числовой `?start=<id>` теперь тоже идёт через
+        # `resolve_referrer` — реферер должен существовать в `users`.
+        await _register(777, "referrer777")
 
         msg = _KBCapturingMessage(UID, "delegate")
         state = _new_state(UID)

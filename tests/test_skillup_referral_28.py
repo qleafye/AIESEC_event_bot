@@ -6,10 +6,12 @@ aiogram — тот же приём, что `tests/test_city_flow_phase71.py`/`te
 
 Задача 1: `reg_engine.extract_ambassador_ref`/`resolve_referrer` + пропуск шага «Источник»
 (`reg_skip_source_for_referred`) + тумблер «засчитывать только амбассадоров»
-(`reg_referrer_must_be_ambassador`). Числовой формат `?start=<id>` НЕ проверяется на
-существование реферера (D-06 byte-for-byte, tests/test_city_flow_phase71.py::
-test_attribution_survives_city_pick_referrer) — `resolve_referrer` применяется ТОЛЬКО к
-новому `amb_`-формату (CONTEXT OQ-2).
+(`reg_referrer_must_be_ambassador`). Решение владельца (17.09, одна реферальная ссылка):
+числовой формат `?start=<id>` (уже разосланные ссылки на проде) теперь проходит ТУ ЖЕ
+проверку `resolve_referrer`, что и `amb_`-формат — одна точка разбора для обоих
+(tests/test_city_flow_phase71.py::test_attribution_survives_city_pick_referrer теперь
+регистрирует реферера перед /start). Новые ссылки везде выдаются только в `amb_`-формате
+(`reg_engine.build_referral_link`).
 
 Задача 2: шов `handlers/reg_ambassador.py` — второе сообщение-предложение после «поздравляем»
 (тумблер `reg_offer_ref_link`), «Хочу свою ссылку» ставит `is_ambassador=1` и шлёт голый URL
@@ -179,6 +181,68 @@ def test_amb_unknown_user_falls_through(tmp_path):
     data, msg = asyncio.run(go())
     assert data.get("referrer_id") is None
     assert msg.sent, "делегат должен увидеть обычный экран приветствия, не тишину"
+
+
+# ── Решение владельца (17.09, одна реферальная ссылка): старый числовой `?start=<id>` теперь
+# проходит ТУ ЖЕ проверку `resolve_referrer`, что и `amb_<id>` — одна точка разбора ─────────────
+
+def test_numeric_link_sets_referrer_when_registered(tmp_path):
+    _use_tmp_db(tmp_path)
+    uid = UID + 20
+    referrer = UID + 21
+
+    async def go():
+        await db.add_user({
+            "telegram_id": referrer, "full_name": "Реферер По Числу",
+            "registration_date": "2026-09-07",
+        })
+        state = _state(uid)
+        msg = _FakeMessage(uid, "u")
+        await reg.cmd_start(msg, state, bot=_FakeBot(), command=FakeCommand(str(referrer)))
+        return await state.get_data()
+
+    data = asyncio.run(go())
+    assert data.get("referrer_id") == referrer
+
+
+def test_numeric_link_unknown_user_falls_through(tmp_path):
+    """Старая ссылка `?start=<id>` на несуществующего реферера — обычный путь без referrer_id,
+    та же семантика, что уже была у `amb_<id>` (test_amb_unknown_user_falls_through)."""
+    _use_tmp_db(tmp_path)
+    uid = UID + 22
+    nonexistent = UID + 999
+
+    async def go():
+        state = _state(uid)
+        msg = _FakeMessage(uid, "u")
+        await reg.cmd_start(msg, state, bot=_FakeBot(), command=FakeCommand(str(nonexistent)))
+        return await state.get_data(), msg
+
+    data, msg = asyncio.run(go())
+    assert data.get("referrer_id") is None
+    assert msg.sent, "делегат должен увидеть обычный экран приветствия, не тишину"
+
+
+def test_numeric_link_respects_ambassador_toggle(tmp_path):
+    """Тумблер `reg_referrer_must_be_ambassador` действует на числовой формат так же, как на
+    `amb_` (раньше действовал ТОЛЬКО на `amb_`, см. test_referrer_must_be_ambassador_gate)."""
+    _use_tmp_db(tmp_path)
+    uid = UID + 23
+    plain_referrer = UID + 24
+
+    async def go():
+        await db.add_user({
+            "telegram_id": plain_referrer, "full_name": "Обычный Реферер",
+            "registration_date": "2026-09-07",
+        })
+        await db.set_setting("reg_referrer_must_be_ambassador", "on")
+        state = _state(uid)
+        msg = _FakeMessage(uid, "u")
+        await reg.cmd_start(msg, state, bot=_FakeBot(), command=FakeCommand(str(plain_referrer)))
+        return await state.get_data()
+
+    data = asyncio.run(go())
+    assert data.get("referrer_id") is None
 
 
 def test_source_step_skipped_for_referred_when_toggle_on(tmp_path):

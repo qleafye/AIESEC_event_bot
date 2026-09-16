@@ -764,6 +764,12 @@ def test_cr01_fork_persists_referrer_id_immediately(tmp_path):
         uid = 700001
         referrer = uid + 1
         state = _new_state(uid)
+        # Решение владельца (17.09): числовой `?start=<id>` теперь тоже идёт через
+        # `resolve_referrer` — реферер должен существовать в `users`.
+        await db.add_user({
+            "telegram_id": referrer, "full_name": "Реферер Тестов",
+            "registration_date": "2026-07-21 12:00:00",
+        })
 
         class FakeCommand:
             args = str(referrer)
@@ -849,6 +855,12 @@ def test_high01_bare_restart_on_fork_preserves_referrer(tmp_path):
         uid = 720001
         referrer = uid + 1
         state = _new_state(uid)
+        # Решение владельца (17.09): числовой `?start=<id>` теперь тоже идёт через
+        # `resolve_referrer` — реферер должен существовать в `users`.
+        await db.add_user({
+            "telegram_id": referrer, "full_name": "Реферер Тестов",
+            "registration_date": "2026-07-21 12:00:00",
+        })
 
         class RefCommand:
             args = str(referrer)
@@ -887,6 +899,12 @@ def test_cr01_referred_user_picks_full_still_lands_with_referrer_id(tmp_path):
         uid = 700002
         referrer = uid + 1
         state = _new_state(uid)
+        # Решение владельца (17.09): числовой `?start=<id>` теперь тоже идёт через
+        # `resolve_referrer` — реферер должен существовать в `users`.
+        await db.add_user({
+            "telegram_id": referrer, "full_name": "Реферер Тестов",
+            "registration_date": "2026-07-21 12:00:00",
+        })
 
         class FakeCommand:
             args = str(referrer)

@@ -989,7 +989,7 @@ async def draft_ambassador(
     `GET /app/api/hub`), второй литерал названия раздела не заводим."""
     await update_user_answers(p.telegram_id, {"is_ambassador": 1}, allowed_columns=["is_ambassador"])
     bot_username = request.app.state.cfg.bot_username
-    link = f"https://t.me/{bot_username}?start=amb_{p.telegram_id}" if bot_username else None
+    link = reg_engine.build_referral_link(bot_username, p.telegram_id) if bot_username else None
     user = await get_user(p.telegram_id)
     event_city = user.get("event_city") if user else None
     lang, tr_map = await i18n.context(p.telegram_id)

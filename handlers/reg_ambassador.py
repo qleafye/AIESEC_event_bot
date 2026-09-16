@@ -31,6 +31,7 @@ from cities import get_setting_typed_for_city
 from settings_schema import get_setting_typed
 from handlers.registration import router
 from handlers import reg_i18n
+from reg_engine import build_referral_link  # решение владельца 17.09: один формат amb_<id> везде
 
 logger = logging.getLogger(__name__)
 
@@ -96,7 +97,7 @@ async def regamb_want(callback: types.CallbackQuery):
     bot_username = await _bot_username(callback.bot)
     if not bot_username:
         return
-    link = f"https://t.me/{bot_username}?start=amb_{uid}"
+    link = build_referral_link(bot_username, uid)
     await callback.message.answer(link, parse_mode=None)
     user = await get_user(uid)
     event_city = user.get("event_city") if user else None
