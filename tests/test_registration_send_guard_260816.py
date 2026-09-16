@@ -191,5 +191,8 @@ def test_ask_step_keeps_only_the_two_consent_sends():
 
 
 def test_advance_has_no_unguarded_sends():
-    src = _strip_comment_lines(inspect.getsource(reg._advance))
+    # Perf 260917: _advance стал тонкой обёрткой (settings_snapshot() + вызов _advance_impl,
+    # тело не тронуто) — реальная логика (и гейт, который проверяет этот тест) теперь в
+    # _advance_impl.
+    src = _strip_comment_lines(inspect.getsource(reg._advance_impl))
     assert re.findall(r"message\.answer\(", src) == []
