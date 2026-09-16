@@ -76,7 +76,7 @@ import reg_engine
 from cities import cities_module_on, city_label as resolve_city_label, normalize_city
 from database.db import get_user
 from reg_labels import PAYMENT_STATUS_LABELS, REG_LABELS, STATUS_LABELS
-from services import reg_edit_policy
+from services import i18n, reg_edit_policy
 from services.applications import format_edited_date
 from services.nextcloud import file_name_from_link
 from settings_schema import get_setting_typed
@@ -203,13 +203,24 @@ def _resume_display(user: dict) -> str | None:
     return file_name_from_link(url) if url else None
 
 
-def profile_fields(user: dict, enabled_label_keys: set[str]) -> list[dict]:
+def profile_fields(
+    user: dict, enabled_label_keys: set[str], lang: str = "ru", tr_map: dict | None = None,
+) -> list[dict]:
     """`[{key, label, value}]` в порядке REG_LABELS, только непустые значения ВОПРОСОВ,
     включённых для трека и условий делегата (`enabled_label_keys`, см. `_enabled_label_keys`),
     БЕЗ вопросов из `_CONTACT_LABEL_KEYS` (они — отдельный раздел «Контакты», `contact_fields()`
     ниже; один и тот же вопрос не показывается дважды). Вопрос «Резюме» — единственное адресное
     исключение из общего `" / ".join(values)`: у него составное представление
-    (`resume_text`/`resume_url`), а `resume_url` делегату не показывается (см. `_resume_display`)."""
+    (`resume_text`/`resume_url`), а `resume_url` делегату не показывается (см. `_resume_display`).
+
+    Задача «Mini App на английском»: `label` — из `REG_LABELS` (группа `reg_prompts`, уже в
+    корпусе анкеты, LANG-08) — переводится штатно. `value` — ответ ДЕЛЕГАТА: свободный текст
+    (ФИО, город, вуз) НЕ переводится (это не текст интерфейса, а данные человека); канонический
+    вариант choice/select-шага (уже по-русски после `_canonicalize_answer`, план 27-04) — тоже
+    прогоняется через `tr()`, чтобы совпасть со словом, которое делегат выбирал на английской
+    анкете («Да»/«Нет» и т.п. — ярус A, `i18n_ui_en.py`); свободный текст без перевода в
+    `tr_map`/`UI_EN` fail-soft отдаёт русский как есть (D-04)."""
+    tr_map = tr_map or {}
     out = []
     columns_by_key = _profile_columns()
     for key, label in REG_LABELS.items():
@@ -220,6 +231,7 @@ def profile_fields(user: dict, enabled_label_keys: set[str]) -> list[dict]:
         columns = columns_by_key.get(key)
         if not columns:
             continue
+        label = i18n.tr(label, lang, tr_map)
         if key == _RESUME_LABEL_KEY:
             value = _resume_display(user)
             if value:
@@ -227,16 +239,22 @@ def profile_fields(user: dict, enabled_label_keys: set[str]) -> list[dict]:
             continue
         values = [v for v in (_value(user, c) for c in columns) if v]
         if values:
-            out.append({"key": key, "label": label, "value": " / ".join(values)})
+            out.append({
+                "key": key, "label": label,
+                "value": " / ".join(i18n.tr(v, lang, tr_map) for v in values),
+            })
     return out
 
 
-def contact_fields(user: dict, enabled_label_keys: set[str]) -> list[dict]:
+def contact_fields(
+    user: dict, enabled_label_keys: set[str], lang: str = "ru", tr_map: dict | None = None,
+) -> list[dict]:
     """`[{key, label, value}]` для `_CONTACT_LABEL_KEYS`, в фиксированном порядке кортежа —
     та же `_profile_columns()`, что и `profile_fields`, второй схемы нет; тот же фильтр по
     треку и условиям (`enabled_label_keys`). Вопроса нет в анкете этого события/трека (не в
     `_profile_columns()` или не в `enabled_label_keys`) или значение пусто -> элемента нет,
     список короче, не ошибка (CLAUDE.md: ничего не падает на отсутствии необязательного поля)."""
+    tr_map = tr_map or {}
     out = []
     columns_by_key = _profile_columns()
     for key in _CONTACT_LABEL_KEYS:
@@ -247,19 +265,24 @@ def contact_fields(user: dict, enabled_label_keys: set[str]) -> list[dict]:
             continue
         values = [v for v in (_value(user, c) for c in columns) if v]
         if values:
-            out.append({"key": key, "label": REG_LABELS[key], "value": " / ".join(values)})
+            out.append({
+                "key": key, "label": i18n.tr(REG_LABELS[key], lang, tr_map),
+                "value": " / ".join(i18n.tr(v, lang, tr_map) for v in values),
+            })
     return out
 
 
-async def _profile_city_label(user: dict) -> str | None:
+async def _profile_city_label(user: dict, lang: str, tr_map: dict) -> str | None:
     """Подпись города делегата — ТОТ ЖЕ вызов, что `applications.py::applications_next` уже
     делает для карточки заявки менеджера (не вторая копия правила D-08/CITY-08): модуль городов
     включён и есть `event_city` -> `city_label(normalize_city(event_city))`; иначе — свободный
-    текст `users.city` как есть; ничего не задано -> `None`."""
+    текст `users.city` как есть; ничего не задано -> `None`. Подпись города МЕРОПРИЯТИЯ
+    переводится (`tr()` — та же очередь, что подпись вилки города, см. `database/db.py::
+    insert_city/update_city`); домашний город делегата (`users.city`, свободный текст) — нет."""
     if await cities_module_on():
         event_city = user.get("event_city")
         if event_city:
-            return await resolve_city_label(normalize_city(event_city))
+            return i18n.tr(await resolve_city_label(normalize_city(event_city)), lang, tr_map)
     raw = user.get("city")
     if raw is None:
         return None
@@ -302,7 +325,10 @@ def _form_meta_text(user: dict, submitted_tpl: str | None, edited_tpl: str | Non
 async def profile(request: Request, p: Principal = Depends(delegate_gate),
                   _: Principal = Depends(require_section("profile"))) -> dict:
     user = await get_user(p.telegram_id) or {}
+    lang, tr_map = await i18n.context(p.telegram_id)
+    lang = lang if lang in ("ru", "en") else "ru"
     can_edit, edit_closed_text = await reg_edit_policy.edit_gate(user)
+    edit_closed_text = i18n.tr(edit_closed_text, lang, tr_map) if edit_closed_text else edit_closed_text
     status = user.get("status") or "approved"
     payment_status = user.get("payment_status") or "not_paid"
     # Тумблер «💳 Модуль оплаты» выключен -> статус оплаты не существует как понятие:
@@ -310,22 +336,22 @@ async def profile(request: Request, p: Principal = Depends(delegate_gate),
     payment_on = await get_setting_typed("payment_enabled") == "on"
 
     enabled_label_keys = await _enabled_label_keys(user)
-    fields = profile_fields(user, enabled_label_keys)
-    contacts = contact_fields(user, enabled_label_keys)
+    fields = profile_fields(user, enabled_label_keys, lang, tr_map)
+    contacts = contact_fields(user, enabled_label_keys, lang, tr_map)
     # form_total — только вопросы трека/условий делегата (owner finding 03.09), не все ~43
     # шага анкеты: короткий/party-трек делегат раньше видел прогресс вроде «2 из 43».
     form_total = len(enabled_label_keys & _profile_columns().keys())
     form_filled = len(fields) + len(contacts)
     form_percent = round(100 * form_filled / form_total) if form_total else None
 
-    progress_tpl = await get_setting_typed("miniapp_profile_form_progress_text")
+    progress_tpl = await i18n.tr_setting("miniapp_profile_form_progress_text", lang, tr_map)
     form_progress_text = (
         progress_tpl.format(filled=form_filled, total=form_total) if progress_tpl else None
     )
 
-    submitted_tpl = await get_setting_typed("miniapp_profile_submitted_text")
-    edited_tpl = await get_setting_typed("miniapp_profile_edited_text")
-    approved_tpl = await get_setting_typed("miniapp_profile_approved_text")  # D-10
+    submitted_tpl = await i18n.tr_setting("miniapp_profile_submitted_text", lang, tr_map)
+    edited_tpl = await i18n.tr_setting("miniapp_profile_edited_text", lang, tr_map)
+    approved_tpl = await i18n.tr_setting("miniapp_profile_approved_text", lang, tr_map)  # D-10
     form_meta_text = _form_meta_text(user, submitted_tpl, edited_tpl, approved_tpl)
 
     # Quick 260904-aup (UAT D10): аватар — тот же вызов и тот же кеш, что карточка заявки
@@ -341,7 +367,7 @@ async def profile(request: Request, p: Principal = Depends(delegate_gate),
     )
     display_name = (
         user.get("full_name") or p.first_name
-        or await get_setting_typed("miniapp_profile_greeting_fallback_text")
+        or await i18n.tr_setting("miniapp_profile_greeting_fallback_text", lang, tr_map)
     )
 
     return {
@@ -350,22 +376,23 @@ async def profile(request: Request, p: Principal = Depends(delegate_gate),
         "avatar_url": avatar_url,
         "display_name": display_name,
         "initials": _initials(display_name),
-        "city_label": await _profile_city_label(user),
+        "city_label": await _profile_city_label(user, lang, tr_map),
         "fields": fields,
         "contacts": contacts,
-        "contacts_eyebrow": await get_setting_typed("miniapp_profile_contacts_eyebrow"),
-        "form_eyebrow": await get_setting_typed("miniapp_profile_form_eyebrow"),
+        "contacts_eyebrow": await i18n.tr_setting("miniapp_profile_contacts_eyebrow", lang, tr_map),
+        "form_eyebrow": await i18n.tr_setting("miniapp_profile_form_eyebrow", lang, tr_map),
         "form_filled": form_filled,
         "form_total": form_total,
         "form_percent": form_percent,
         "form_progress_text": form_progress_text,
         "form_meta_text": form_meta_text,
-        "privacy_note": await get_setting_typed("miniapp_profile_privacy_note"),
+        "privacy_note": await i18n.tr_setting("miniapp_profile_privacy_note", lang, tr_map),
         "status": status,
-        "status_label": STATUS_LABELS.get(status, status),
+        "status_label": i18n.tr(STATUS_LABELS.get(status, status), lang, tr_map),
         "payment_status": payment_status if payment_on else "",
         "payment_status_label": (
-            PAYMENT_STATUS_LABELS.get(payment_status, payment_status) if payment_on else ""
+            i18n.tr(PAYMENT_STATUS_LABELS.get(payment_status, payment_status), lang, tr_map)
+            if payment_on else ""
         ),
         # D-24: правка анкеты — экран #/form внутри приложения, не deep-link в бота (прежний
         # параметр запуска нигде не обрабатывался — кнопка «Изменить» вела в никуда, RESEARCH
@@ -377,5 +404,5 @@ async def profile(request: Request, p: Principal = Depends(delegate_gate),
         # его вместо кнопки.
         "can_edit": can_edit,
         "edit_closed_text": edit_closed_text,
-        "edit_cta_text": await get_setting_typed("reg_form_profile_edit_cta_text"),
+        "edit_cta_text": await i18n.tr_setting("reg_form_profile_edit_cta_text", lang, tr_map),
     }
