@@ -292,6 +292,18 @@ async def main():
     await seed_cities_if_empty()
     await reload_cities()
 
+    # Задача «Mini App на английском»: ручные качественные переводы делегатских текстов вне
+    # корпуса анкеты (хаб/задания/монеты/профиль/FAQ, группы `miniapp`/`game`, LANG-08 держит
+    # их вне машинного воркера) — идемпотентно на каждом старте, тем же приёмом, что
+    # `seed_cities_if_empty()` выше. Fail-soft: сбой сида не должен ронять бота (T-27-03-04 —
+    # тот же принцип, что у остальных врезок в этот путь).
+    try:
+        from services.i18n_miniapp_manual import seed as seed_miniapp_manual_translations
+
+        await seed_miniapp_manual_translations()
+    except Exception:
+        logger.warning("Не удалось засеять ручные переводы Mini App", exc_info=True)
+
     # Phase 14 (CFG-01): one-time GOOGLE_SHEET_TAB -> bot_settings.main_sheet_tab migration.
     # MUST run before active_sheet_headers() below — otherwise the very first header resolve
     # would fall through to services/sheets.py stage 2 (reading .env directly) instead of
