@@ -11,7 +11,7 @@
 import { visibleNav, NAV_ICONS, SECTION_GROUPS } from "../app.js";
 import { icon } from "../icons.js";
 import { countUp, haptic, stagger } from "../motion.js";
-import { fileUrl, flatRow, sectionTitle, labelText, tile } from "../ui.js";
+import { fileUrl, flatRow, sectionTitle, labelText, tile, noticeBox, ambassadorLinkBlock } from "../ui.js";
 import { personNode } from "../person.js";
 
 // Phase 30 (30-05, задача 3, A2-07): плита статуса заявки. Тумблер `reg_form_status_screen`
@@ -212,6 +212,13 @@ async function renderDelegateHub(root, ctx) {
   }
   root.append(sectionsEyebrow, sectionsList);
 
+  // Приёмка 17.09 (п.1): постоянное место реф-ссылки — заполняется ниже, только если сервер
+  // прислал `hub.referral` (то же правило видимости, что у кнопки чата «🔗 Моя реферальная
+  // ссылка»: тумблер `menu_referral` + одобренная заявка). Пусто, пока ответ /hub не пришёл —
+  // тот же fail-soft приём, что у остальных слотов этой плиты (T-19.1-16).
+  const referralSlot = h("div", {});
+  root.append(referralSlot);
+
   const anchorSlot = h("div", {});
   root.append(anchorSlot);
 
@@ -301,6 +308,18 @@ async function renderDelegateHub(root, ctx) {
       );
     }
     sectionsEyebrow.textContent = hub.sections_eyebrow || "";
+    // Приёмка 17.09 (п.1): постоянное место реф-ссылки — та же плита-компонент, что финальный
+    // экран анкеты (`ui.js::ambassadorLinkBlock`), второй копии рендера нет. `hub.referral` —
+    // `null`, когда тумблер `menu_referral` выключен для города делегата (кнопки в чате тоже
+    // нет), поэтому слот тогда остаётся пустым.
+    if (hub.referral) {
+      const { el: referralNotice, say: sayReferral } = noticeBox(h);
+      referralSlot.append(
+        sectionTitle(h, hub.referral.label || ""),
+        ambassadorLinkBlock(h, hub.referral, { haptic, say: sayReferral }),
+        referralNotice,
+      );
+    }
     if (tasksR.status === "fulfilled" && tasksR.value.items.length) {
       nextSlot.append(
         sectionTitle(h, hub.next_eyebrow || ""),

@@ -213,6 +213,39 @@ export function noticeBox(h, { kind = "accent", autoHideMs = 0 } = {}) {
   return { el, say };
 }
 
+// Блок «Твоя ссылка» (Phase 28, 28-06, SU-07) — вынесен из `screens/form.js` приёмкой 17.09
+// (п.1), чтобы постоянное место реф-ссылки в хабе (`screens/hub.js`) переиспользовало РОВНО
+// тот же рендер, а не вторую копию (ссылка текстовым узлом, не `<a href>` — делегат должен
+// скопировать, не уйти из приложения кликом, Accessibility 28-UI-SPEC.md). `heading`/`note`/
+// `invites_text` необязательны — пустое поле просто не рисует свой узел, второго набора
+// текстов для хаба заводить не пришлось. `haptic`/`say` — необязательные хуки вызывающего
+// экрана (haptic-фидбек и тост «Скопировано»); без них копирование по-прежнему работает,
+// просто без обратной связи.
+export function ambassadorLinkBlock(h, res, { haptic, say } = {}) {
+  const copyBtn = h("button", { class: "btn ghost", type: "button", text: res.copy_button || "" });
+  copyBtn.addEventListener("click", async () => {
+    if (!res.link || !navigator.clipboard || typeof navigator.clipboard.writeText !== "function") return;
+    try {
+      await navigator.clipboard.writeText(res.link);
+      if (haptic) haptic("success");
+      if (say) {
+        say(res.copied_toast || "", "success");
+        setTimeout(() => say(""), 2000);
+      }
+    } catch (_) {
+      // Clipboard API недоступен/отклонён — ссылка всё равно видна текстом, копирование
+      // руками остаётся возможным.
+    }
+  });
+  return h("div", { class: "ambassador-offer" },
+    res.heading ? h("h2", { text: res.heading }) : null,
+    h("div", { class: "ambassador-link-box", text: res.link || "" }),
+    res.note ? h("p", { text: res.note }) : null,
+    res.invites_text ? h("p", { text: res.invites_text }) : null,
+    h("div", { class: "actions" }, copyBtn),
+  );
+}
+
 // Разбор data-screen-texts мемоизирован — атрибут неизменен на всё время жизни страницы
 // (задаётся один раз сервером при рендере оболочки), повторный JSON.parse на каждый вызов
 // не нужен. Битый JSON/отсутствие атрибута — тихий пустой объект, а не исключение (fail-soft,

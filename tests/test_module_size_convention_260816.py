@@ -40,7 +40,9 @@ DEFAULT_CEILING = 850
 # edit the number + reason together, in the same commit as the growth that needs it.
 KNOWN_OVERAGES: dict[str, tuple[int, str]] = {
     "registration.py": (
-        2445,
+        2455,
+        "+6 строк (17.09, приёмка): подсказка минимума вариантов мультивыбора в тексте вопроса "
+        "чата (reg_engine.multi_requirement_hint) — расчёт в движке, здесь вызов; потолок 2455. "
         "+1 строка (16.09, сторож ввода настроек): подпись админской кнопки «🔄 Пройти регистрацию "
         "заново» берётся из общей константы keyboards.builders.ADMIN_REREG_BUTTON_TEXT (импорт), "
         "чтобы защита ввода настроек знала её без второго литерала; потолок 2445 с небольшим запасом. "
