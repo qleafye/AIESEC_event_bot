@@ -95,6 +95,8 @@ SETTINGS_SYNONYMS: dict[str, list[str]] = {
     "reg_multi_limit_error_text": ["ошибка лимита выбора", "нельзя выбрать больше"],
     "reg_resume_link_whitelist": ["вайтлист резюме", "проверенные сайты для ссылки"],
     "reg_resume_fork_file_label": ["кнопка загрузить файл резюме", "развилка резюме файл"],
+    "reg_form_resume_upload_button_text": ["кнопка загрузить резюме в приложении", "подпись загрузки файла анкеты"],
+    "reg_form_resume_text_button_text": ["кнопка написать резюме текстом", "подпись ответа текстом анкеты"],
     "reg_resume_fork_link_label": ["кнопка дать ссылку резюме", "развилка резюме ссылка"],
     "reg_resume_fork_none_label": ["кнопка нет резюме", "развилка резюме без резюме"],
     "reg_resume_link_whitelist_hint_text": ["маркер сайт проверенный", "домен из вайтлиста"],
