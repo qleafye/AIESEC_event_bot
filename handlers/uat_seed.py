@@ -51,6 +51,7 @@ from database.db import (
     upsert_reg_draft,
     username_needle,
 )
+from cities import cities_module_on, city_label, default_city_code, enabled_cities, normalize_city
 from handlers import admin_caps
 from handlers.admin_purge import _footprint_lines
 from reg_engine import SHORT_TRACK, answer_columns, columns_for_step, consent_entries
@@ -194,22 +195,50 @@ async def _seed_consent(tid: int) -> None:
         await record_user_consent(tid, key, raw_button="UAT-сеялка (приёмка)")
 
 
+async def _seed_event_city() -> str | None:
+    """Квик 260916 (UAT-SEED-05): реальный делегат либо проходит развилку города и ВСЕГДА
+    получает валидный `event_city` (модуль включён — `handlers/registration.py`'s city fork
+    не пропускает дальше без выбора), либо `event_city` вовсе не участвует в резолве настроек
+    (модуль выключен — `cities.get_setting_typed_for_city` тогда читает общее значение
+    независимо от `event_city`, см. `services/reg_finalize.py::finalize_data`). Сеялка раньше
+    всегда оставляла `event_city=NULL` при включённых городах — недостижимое для реальной
+    анкеты состояние (стенд 16.09: тестер получил общий `approve_text` вместо городского).
+
+    Модуль включён -> первый ВКЛЮЧЁННЫЙ город (`cities.enabled_cities()`, порядок как в
+    `CITIES`), с фолбэком на `default_city_code()`, если почему-то ни одного включённого нет.
+    Модуль выключен -> `None`, как у настоящего делегата в этом режиме."""
+    if not await cities_module_on():
+        return None
+    codes = [c["code"] for c in await enabled_cities()]
+    return normalize_city(codes[0]) if codes else default_city_code()
+
+
 async def _seed_state(tid: int, username: str | None, state_code: str) -> None:
     if state_code == "fresh":
         return
     await _seed_consent(tid)
+    event_city_code = await _seed_event_city()
+    seed_answers = dict(_SEED_ANSWERS)
+    if event_city_code:
+        # «Согласованный» city: тот же город, что и event_city, а не оставшаяся от прошлого
+        # состояния «Москва» — иначе засеянный делегат «учится в Москве» на «событии в СПб».
+        seed_answers["city"] = await city_label(event_city_code)
     if state_code == "draft":
         await mark_reg_started(tid, username)
         resume_cols = set(columns_for_step("resume"))
-        patch = {k: v for k, v in _SEED_ANSWERS.items() if k not in resume_cols}
-        await upsert_reg_draft(tid, kind="new", step="resume", patch=patch, source="bot")
+        patch = {k: v for k, v in seed_answers.items() if k not in resume_cols}
+        await upsert_reg_draft(
+            tid, kind="new", step="resume", patch=patch, source="bot",
+            event_city=event_city_code,
+        )
         return
     data = {
-        **_SEED_ANSWERS,
+        **seed_answers,
         "telegram_id": tid,
         "username": username,
         "registration_date": msk_now().strftime("%Y-%m-%d %H:%M:%S"),
         "season": await get_setting_typed("event_season"),
+        "event_city": event_city_code,
     }
     if state_code == "short":
         data["participant_type"] = SHORT_TRACK
