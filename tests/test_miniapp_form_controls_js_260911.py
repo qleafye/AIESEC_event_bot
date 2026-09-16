@@ -219,7 +219,9 @@ phoneWrap._nodes.control.value = "+79991234567";
 phoneWrap._nodes.control.dispatch("input", {});
 const phoneTypedCommit = phoneCalls[phoneCalls.length - 1];
 
-// 11) дата: полное значение (`change` со значением) коммитит, пустое/частичное — нет.
+// 11) дата: приёмка 17.09 (находка 1) — `change` НИКОГДА не коммитит шаг (мобильный пикер
+// стреляет им на каждой смене части даты, до того как делегат выбрал день), ни с полным
+// значением, ни с пустым/частичным.
 const dateCalls = [];
 const dateWrap = m.field(h, { key: "birth_date", type: "date", label: "Дата рождения" }, null, (v, o) => dateCalls.push(o || null));
 dateWrap._nodes.control.value = "2026-09-16";
@@ -366,8 +368,11 @@ def test_typed_phone_number_does_not_commit(js_result):
     assert js_result["phoneTypedCommit"] is None
 
 
-def test_full_date_commits_but_partial_does_not(js_result):
-    assert js_result["dateFullCommit"] == {"commit": True}
+def test_date_never_commits_the_step(js_result):
+    # Приёмка 17.09 (находка 1): дата — единственный тип, у которого «change» с непустым
+    # значением НЕ значит «делегат закончил отвечать» (мобильный пикер стреляет им на смене
+    # месяца/года, день ещё не выбран). Коммит остаётся только за кнопкой «Дальше».
+    assert js_result["dateFullCommit"] is None
     assert js_result["datePartialCommit"] is None
 
 
