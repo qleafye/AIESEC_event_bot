@@ -709,7 +709,7 @@ PREVIEW_SAMPLES: dict[str, str] = {
     "step": "4",
     "date": "02.09.2026 14:30",
     "rank": "5",
-    "link": "https://t.me/YouLead_bot?start=ref_123",
+    "link": "https://t.me/YouLead_bot?start=amb_123",
     "breakdown": "📷 1 фото, ✍️ 1 текст",
     "page": "1",
     "status": "на проверке",

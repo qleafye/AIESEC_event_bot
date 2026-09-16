@@ -57,6 +57,7 @@ from services.game_digest import notify_submission as notify_game_submission  # 
 from services.faq import apply_city_overrides, short as _faq_short  # Quick 260906-8uq
 from services.timeutil import msk_now  # Квик 260912-mcj: сравнение с deadline_at (ввод МСК)
 from config import config
+from reg_engine import build_referral_link  # решение владельца 17.09: один формат amb_<id> везде
 
 router = Router()
 logger = logging.getLogger(__name__)
@@ -1100,7 +1101,7 @@ async def my_referral_link(message: types.Message, bot: Bot):
         return
 
     bot_user = await bot.get_me()
-    referral_link = f"https://t.me/{bot_user.username}?start={message.from_user.id}"
+    referral_link = build_referral_link(bot_user.username, message.from_user.id)
     # Phase 17.1 (17.1-01): текст из реестра, ссылка подставляется в {link}.
     lang, tr_map = await reg_i18n.ctx_for(message)
     tpl = await get_setting_typed("referral_link_prompt_text")
@@ -1117,7 +1118,7 @@ async def my_referrals(message: types.Message, bot: Bot):
 
     if not referrals:
         bot_user = await bot.get_me()
-        referral_link = f"https://t.me/{bot_user.username}?start={message.from_user.id}"
+        referral_link = build_referral_link(bot_user.username, message.from_user.id)
         empty_tpl = await get_setting_typed("referral_list_empty_text")
         await message.answer(reg_i18n.tr_fmt(empty_tpl, lang, tr_map, link=referral_link))
         return

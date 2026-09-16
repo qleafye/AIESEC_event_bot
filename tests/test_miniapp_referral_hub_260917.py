@@ -40,7 +40,7 @@ def client(tmp_path):
     return _client(_cfg(db_path))
 
 
-def test_referral_present_by_default_and_uses_bare_link_format(client):
+def test_referral_present_by_default_and_uses_amb_link_format(client):
     """Формат ссылки — тот же, что у кнопки меню «🔗 Моя реферальная ссылка»
     (`handlers/user_actions.py::my_referral_link`): `?start=<telegram_id>`, БЕЗ префикса
     `amb_` — тот формат принадлежит отдельному потоку «Хочу свою ссылку» финального экрана
@@ -48,7 +48,7 @@ def test_referral_present_by_default_and_uses_bare_link_format(client):
     body = client.get("/app/api/hub", headers=_hdr(DELEGATE_ID)).json()
     referral = body["referral"]
     assert referral is not None
-    assert referral["link"] == f"https://t.me/YouLead_test_bot?start={DELEGATE_ID}"
+    assert referral["link"] == f"https://t.me/YouLead_test_bot?start=amb_{DELEGATE_ID}"
     assert "amb_" not in referral["link"]
     assert referral["label"]
     assert referral["copy_button"]

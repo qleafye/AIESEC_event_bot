@@ -26,6 +26,7 @@ from fastapi import APIRouter, Depends, Request
 from cities import get_setting_typed_for_city
 from database.db import get_referrals, get_setting, get_user
 from payment_options import parse_options
+import reg_engine
 from services import applications, i18n
 from settings_schema import get_setting_typed
 
@@ -143,7 +144,7 @@ async def _referral_block(
         invites_text = invites_tpl.format(count=count) if invites_tpl else None
     return {
         "label": await i18n.tr_setting("miniapp_hub_referral_label_text", lang, tr_map or {}),
-        "link": f"https://t.me/{bot_username}?start={telegram_id}",
+        "link": reg_engine.build_referral_link(bot_username, telegram_id),
         "copy_button": await i18n.tr_setting("miniapp_form_ambassador_copy_button_text", lang, tr_map or {}),
         "copied_toast": await i18n.tr_setting("miniapp_form_ambassador_copied_toast_text", lang, tr_map or {}),
         "invites_text": invites_text,
