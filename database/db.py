@@ -1340,13 +1340,14 @@ async def _maybe_enqueue_translation(key: str, value) -> None:
        `create_task` — слабые ссылки убивают фоновую работу, T-27-03-01). Значение `"off"`
        (или что угодно иное) — ничего не делает. Сам ключ НЕ является делегатским текстом
        (группа `toggles`, не в `DELEGATE_GROUPS`) и во вторую ветку не идёт.
-    2. Любой другой ключ — если модуль включён И ключ делегатский
-       (`services.i18n_sources.is_delegate_dynamic_key`) И значение непусто, каждая непустая
-       строка значения (список разворачивается построчно — `_parse_setting`'овский формат
-       "по строке на вариант") ставится в очередь через `enqueue_translation`
-       (`UNIQUE(lang, src_hash)` дедуплицирует повторы и массовые пресеты в схеме, не здесь).
-       Явная проверка префикса `consent` — страховка сверх границы `DELEGATE_GROUPS`
-       (согласия и так вне `DELEGATE_GROUPS`, LANG-09), а не единственная защита."""
+    2. Любой другой ключ — если модуль включён И (ключ делегатский
+       (`services.i18n_sources.is_delegate_dynamic_key`) ИЛИ ключ из явного списка
+       `_MINIAPP_EXTRA_TRANSLATE_KEYS` ниже) И значение непусто, каждая непустая строка
+       значения (список разворачивается построчно — `_parse_setting`'овский формат "по строке
+       на вариант") ставится в очередь через `enqueue_translation` (`UNIQUE(lang, src_hash)`
+       дедуплицирует повторы и массовые пресеты в схеме, не здесь). Явная проверка префикса
+       `consent` — страховка сверх границы `DELEGATE_GROUPS` (согласия и так вне
+       `DELEGATE_GROUPS`, LANG-09), а не единственная защита."""
     try:
         if key == "delegate_lang_enabled":
             if value == "on":
@@ -1368,7 +1369,7 @@ async def _maybe_enqueue_translation(key: str, value) -> None:
 
         from services.i18n_sources import is_delegate_dynamic_key
 
-        if not is_delegate_dynamic_key(key):
+        if not is_delegate_dynamic_key(key) and not _is_miniapp_extra_translate_key(key):
             return
 
         from services.i18n import src_hash
@@ -1381,6 +1382,36 @@ async def _maybe_enqueue_translation(key: str, value) -> None:
         logger.error(
             "set_setting: постановка в очередь перевода не удалась для %s (%s)", key, exc,
         )
+
+
+# Задача «делегатский интерфейс на английском»: событийные тексты, которые делегат видит на
+# хабе Mini App (`miniapp/routers/hub.py`) ДО начала анкеты и вне её — `event_date`/
+# `event_place_name` и их пара `event_time`/`event_place_address` — свободный текст без
+# дефолта (менеджер печатает даты/адрес каждый сезон заново, `settings_schema.py: default:
+# None`), группа `event` НЕ входит в `DELEGATE_GROUPS` (LANG-08, `services/i18n_sources.py`
+# — намеренная граница для КОРПУСА АНКЕТЫ, трогать её нельзя, `tests/test_i18n_sources_27.py
+# ::test_non_delegate_groups_excluded`). Этот список — НЕ расширение той границы, а отдельный
+# явный whitelist четырёх ключей, которые видны вне анкеты (тот же приём, что у подписи
+# города — `_maybe_enqueue_city_label_translation` выше, но здесь ключ уже в `bot_settings`,
+# второй функции заводить незачем)."""
+_MINIAPP_EXTRA_TRANSLATE_KEYS = frozenset({
+    "event_date", "event_time", "event_place_name", "event_place_address",
+})
+
+
+_CITY_OVERRIDE_SEP = "__city__"  # то же самое значение, что cities.PER_CITY_SEP — литерал, а
+# не импорт: `database/db.py` не имеет права импортировать `cities` (цикл, `cities.py` сам
+# импортирует `database.db`; `tests/test_cities_registry_260818.py::
+# test_db_py_never_imports_cities_module` — структурный сторож этого правила).
+
+
+def _is_miniapp_extra_translate_key(key: str) -> bool:
+    """`key` сам ИЛИ его городской вариант (`{key}__city__{code}`, `per_city: True` в схеме
+    этих четырёх ключей) — из `_MINIAPP_EXTRA_TRANSLATE_KEYS`."""
+    if key in _MINIAPP_EXTRA_TRANSLATE_KEYS:
+        return True
+    base = key.split(_CITY_OVERRIDE_SEP, 1)[0]
+    return base in _MINIAPP_EXTRA_TRANSLATE_KEYS
 
 
 async def delete_setting(key: str):
