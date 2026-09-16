@@ -20,6 +20,10 @@ from aiogram import F, types
 from aiogram.filters import Command, StateFilter
 from aiogram.fsm.context import FSMContext
 from aiogram.types import BufferedInputFile, InlineKeyboardButton, InlineKeyboardMarkup
+# quick-260916: lets aiogram fall through to the NEXT router's real handler for a menu-button
+# tap that landed here as free text (see settings_edit_value) — official aiogram 3 mechanism,
+# not a hack: raising it inside a handler makes that handler's match count as UNHANDLED.
+from aiogram.dispatcher.event.bases import SkipHandler
 
 from settings_schema import SETTINGS_SCHEMA, get_setting_typed, option_label
 from database.db import (
@@ -46,7 +50,7 @@ from settings_ops import (
 )
 from services.game_digest import game_submit_notify_button_text  # Quick 260822: тумблер дайджеста сдач
 from services import chat_tracking  # Правка 15.09: тумблер учёта чата + строка статуса в «🔧 Система»
-from keyboards.builders import MENU_BUTTONS
+from keyboards.builders import MENU_BUTTONS, all_menu_button_texts, ADMIN_MISC_BUTTON_TEXTS
 from handlers.reg_schema import (
     REG_FLOW,
     dropout_step_label,
@@ -2106,6 +2110,35 @@ async def settings_edit_value(message: types.Message, state: FSMContext):
             f"<code>{html_module.escape(value)}</code> — это команда, а не значение настройки, "
             "сохранять её не стал.\n\nПришлите значение текстом, "
             "«-» — сбросить настройку, «❌ Отмена» — выйти без изменений.",
+            parse_mode="HTML",
+        )
+        return
+
+    # Quick 260916: то же семейство, что и команда выше, — подпись кнопки, а не значение.
+    # Settings edit никогда не шлёт свою reply-клавиатуру (только инлайн, см. settings_edit_start),
+    # так что под сообщением у админа всё ещё висит главное меню; привычный тап по «🪙 Мои
+    # монеты» и т.п. приходит сюда как обычный текст и раньше молча ложился в настройку —
+    # 16.09 так в event_place_address попала подпись кнопки. Для подписи с настоящим
+    # обработчиком дальше по роутерам (любой пункт MENU_TEXTS) — не сохраняем и ДАЁМ ТАПУ
+    # СРАБОТАТЬ: чистим FSM и уходим через SkipHandler, admin.router подключён первым
+    # (main.py), поэтому событие продолжит путь к user_actions.router, где живёт реальный
+    # обработчик этой подписи.
+    if value in all_menu_button_texts():
+        await state.clear()
+        logger.info(
+            f"admin {message.from_user.id}: подпись кнопки меню «{value}» пришла как "
+            f"значение настройки {key} — не сохранено, тап передан дальше по роутерам"
+        )
+        raise SkipHandler
+    # Подписи без обработчика ниже по роутерам (например инлайн-кнопка «Пройти регистрацию
+    # заново» — она вообще не текстовая, но её подпись можно случайно прислать сообщением) —
+    # тут "передавать дальше" некому, просто объясняем и ничего не сохраняем.
+    if value in ADMIN_MISC_BUTTON_TEXTS:
+        label = SETTINGS_SCHEMA.get(_base_setting_key(key), {}).get("label", key)
+        await message.answer(
+            "Похоже, это кнопка меню, а не новое значение. Настройка "
+            f"«{html_module.escape(label)}» не изменилась — пришлите текст ещё раз или "
+            "нажмите «❌ Отмена».",
             parse_mode="HTML",
         )
         return
