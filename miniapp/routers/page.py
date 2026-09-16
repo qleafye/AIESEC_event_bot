@@ -34,6 +34,8 @@ from dashboard.db import read_conn
 from reg_labels import STATUS_LABELS
 from settings_schema import SETTINGS_SCHEMA
 
+from services import i18n
+
 import web_theme
 from miniapp.deps import (
     SECTIONS, Principal, delegate_denial, form_access_denial, form_status, principal, read_setting,
@@ -144,6 +146,15 @@ FORM_V2_TEXT_KEYS = {
     "mgr_degrade_note": "reg_form_manager_degrade_note_text",
     "mgr_preview_button": "reg_form_manager_preview_button_text",
 }
+
+# Задача «Mini App на английском»: подмножество FORM_V2_TEXT_KEYS, которое видит ДЕЛЕГАТ
+# (обзор перед отправкой + поповер настроек в шапке мастера) — `mgr_*` это подписи ОТДЕЛЬНОГО
+# экрана менеджера «Анкета мероприятия» (screens/settings.js), делегат их не видит никогда.
+# `/app/api/me` переводит и отдаёт ТОЛЬКО этот срез (см. `me()` ниже) — `data-form-v2-texts`
+# в шапке HTML остаётся русским байт-в-байт (сервер не знает языка на рендере оболочки, нет
+# initData — фрагмент `#tgWebAppData=…` браузер не пересылает), JS перезаписывает атрибут
+# переведённой версией из `/api/me` ДО первого чтения кеша (`app.js::start`).
+_FORM_V2_DELEGATE_KEYS = tuple(k for k in FORM_V2_TEXT_KEYS if not k.startswith("mgr_"))
 
 # Quick 260911-5ij (W2, Пилар 6 + гейт сдачи): тексты состояний, нужные ИМЕННО тогда, когда
 # API недоступно (отказ первичной загрузки экрана) или до первого запроса решают, рисовать ли
@@ -277,8 +288,16 @@ def health() -> dict:
 
 
 @router.get("/app/api/me")
-def me(request: Request, p: Principal = Depends(principal)) -> dict:
+async def me(request: Request, p: Principal = Depends(principal)) -> dict:
     cfg = request.app.state.cfg
+    # Задача «Mini App на английском»: первый запрос, где сервер УЖЕ знает делегата (initData
+    # разобран гейтом `principal`) — в отличие от `/app` (HTML-оболочка рендерится ДО того,
+    # как JS вообще прочитал `Telegram.WebApp.initData`, серверу неоткуда взять язык). Здесь
+    # догружаем переведённые версии текстов, которые оболочка отдала русскими в data-атрибутах
+    # (`section_labels`/`screen_texts`/`form_v2_texts` ниже) — `app.js::start()` перезаписывает
+    # эти атрибуты ДО первого чтения кеша `ui.js`, второй JS-рендер не нужен.
+    lang, tr_map = await i18n.context(p.telegram_id)
+    lang = lang if lang in ("ru", "en") else "ru"
     with read_conn(cfg.db_path) as conn:
         sections = {s: read_setting(conn, f"miniapp_section_{s}") == "on" for s in SECTIONS}
         accent = read_setting(conn, "miniapp_accent")
@@ -306,7 +325,22 @@ def me(request: Request, p: Principal = Depends(principal)) -> dict:
         # Quick 260903: подпись плитки «Дашборд» — из реестра, адрес — из деплойного cfg
         # (см. dashboard_url ниже), не из bot_settings (D-05/D-19).
         dashboard_tile_label = read_setting(conn, "miniapp_tile_dashboard_label") or ""
+        section_labels_raw = section_labels()
+        screen_texts_raw = {name: read_setting(conn, key) or "" for name, key in SCREEN_TEXT_KEYS.items()}
+        form_v2_texts_raw = {
+            name: read_setting(conn, FORM_V2_TEXT_KEYS[name]) or "" for name in _FORM_V2_DELEGATE_KEYS
+        }
     resolved = web_theme.resolve_theme(theme_settings)
+    # Переводы — ПОСЛЕ закрытия `with read_conn`: `i18n.tr()` не ходит в БД (чистая функция над
+    # уже загруженной `tr_map`), второй раз соединение открывать незачем.
+    section_labels_i18n = {name: i18n.tr(text, lang, tr_map) for name, text in section_labels_raw.items()}
+    screen_texts_i18n = {name: i18n.tr(text, lang, tr_map) for name, text in screen_texts_raw.items()}
+    form_v2_texts_i18n = {name: i18n.tr(text, lang, tr_map) for name, text in form_v2_texts_raw.items()}
+    onboarding_text = i18n.tr(onboarding_text, lang, tr_map)
+    onboarding_cta = i18n.tr(onboarding_cta, lang, tr_map)
+    onboarding_hero = i18n.tr(onboarding_hero, lang, tr_map)
+    onboarding_steps_title = i18n.tr(onboarding_steps_title, lang, tr_map)
+    onboarding_steps = i18n.tr(onboarding_steps, lang, tr_map)
     # Плитка «Дашборд» хаба менеджера: адрес виден только staff (is_staff — любое право),
     # и только когда деплой задал `DASHBOARD_PUBLIC_URL` (cfg.public_url) — тот же источник,
     # что у кнопки «🌐 Открыть дашборд» в боте (handlers/admin.py::_stats_keyboard_for).
@@ -334,7 +368,7 @@ def me(request: Request, p: Principal = Depends(principal)) -> dict:
         # `users` нет — статус тоже "none") всегда попадает в хаб, а не на чужую для него
         # анкету; плитка «Анкета» остаётся видна через `form_access`.
         "form_status": status,
-        "form_status_label": STATUS_LABELS.get(status, ""),
+        "form_status_label": i18n.tr(STATUS_LABELS.get(status, ""), lang, tr_map),
         "form_access": form_access,
         "form_first": form_access and sections["form"] and status in ("none", "draft") and not p.caps,
         "show_onboarding": show_onboarding,
@@ -351,5 +385,12 @@ def me(request: Request, p: Principal = Depends(principal)) -> dict:
         "onboarding_steps": onboarding_steps,
         "dashboard_url": dashboard_url,
         "dashboard_tile_label": dashboard_tile_label,
+        # Задача «Mini App на английском»: переведённые версии оболочечных data-атрибутов —
+        # `app.js::start()` перезаписывает `body.dataset.sectionLabels`/`screenTexts`/
+        # `formV2Texts` этими значениями ДО первого чтения кеша `ui.js` (кеш ленивый,
+        # заполняется первым же screenText()/formV2Text() внутри route()).
+        "section_labels": section_labels_i18n,
+        "screen_texts": screen_texts_i18n,
+        "form_v2_texts": form_v2_texts_i18n,
         **assets,
     }

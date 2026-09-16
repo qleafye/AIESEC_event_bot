@@ -15,7 +15,7 @@
 import { api, ApiError, esc, setAuthErrorHandler } from "./api.js";
 import { icon } from "./icons.js";
 import { applyMotionTier, slideIn } from "./motion.js";
-import { setFileToken, labelText } from "./ui.js";
+import { applyServerTexts, setFileToken, labelText } from "./ui.js";
 
 const tg = window.Telegram && window.Telegram.WebApp;
 const root = document.documentElement;
@@ -618,6 +618,16 @@ async function start() {
   // Токен доступа к файлам (quick 260910-w3j) — до первой отрисовки экрана, иначе первый же
   // <img> (лого/аватар/стикер) отрисуется без него.
   setFileToken(me.file_token);
+  // Задача «Mini App на английском»: переведённые версии оболочечных текстов (навигация,
+  // обзор перед отправкой, ошибки) — ДО первого route(), иначе screenText()/formV2Text()
+  // уже замемоизировали бы русский из data-атрибута оболочки.
+  applyServerTexts(me);
+  if (me.section_labels) {
+    // `sectionLabels` здесь уже прочитан из старого (русского) `ds.sectionLabels` строкой
+    // выше — applyServerTexts() обновил сам DOM-атрибут (для hub.js и соседей, которые парсят
+    // его самостоятельно), а этот локальный кеш нав-бара app.js нужно досинхронизировать явно.
+    sectionLabels = me.section_labels;
+  }
   // Бренд-паттерн hero (D-17/D-04): класс на <body>, CSS сам гейтит motion "full" внутри.
   body.classList.toggle("pattern-enabled", Boolean(me.pattern_enabled));
   window.addEventListener("hashchange", route);
