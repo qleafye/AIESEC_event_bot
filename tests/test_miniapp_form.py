@@ -233,7 +233,7 @@ def test_draft_get_exposes_wizard_screen_texts(client):
     resp = client.get("/app/api/reg/draft", headers=_hdr(UNREGISTERED_ID))
     body = resp.json()
     assert body["questions_eyebrow"] == "Вопросы анкеты"
-    assert body["more_questions_text"] == "…и ещё {n} вопросов впереди"
+    assert body["more_questions_text"] == "Впереди ещё вопросов: {n}"
     assert body["draft_saved_text"] == "Черновик сохранён"
     assert body["next_cta_text"] == "Дальше"
     assert body["back_cta_text"] == "Назад"
