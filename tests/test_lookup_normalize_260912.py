@@ -196,11 +196,17 @@ def test_search_unknown_kind_returns_empty_when_no_entries(tmp_path):
     assert _run(search_lookup("city", "итмо")) == []
 
 
-# ── идемпотентный посев (задача 1, T-30-… — таблица не растёт на повторном init_db) ─────────
+# ── идемпотентный посев/дозаливка (16.09.2026: seed_lookup_from_snapshot больше не выходит
+# на непустой таблице — топ-ап на каждом init_db(), см. tests/test_lookup_topup_260916.py для
+# сценария "снапшот дополнили, старая база это подхватывает") ───────────────────────────────
 
-def test_repeated_init_db_does_not_grow_lookup_entries(tmp_path):
+def test_repeated_init_db_on_fully_seeded_db_does_not_grow_lookup_entries(tmp_path):
+    """`_ready` уже прогоняет `init_db()` один раз — kind="university" полностью засеян
+    настоящим снапшотом. Добавляем СВОЮ запись поверх (как будто менеджер влил через «Другое»)
+    и проверяем, что повторный `init_db()` (= рестарт бота) не плодит дублей ни для снапшота,
+    ни для ручной записи — INSERT OR IGNORE по alias_norm держит идемпотентность, а не
+    прежний ранний выход на непустой таблице."""
     _ready(tmp_path)
-    _run(_clear_lookup("university"))
     _run(_insert_entry("university", "Тестовый ВУЗ вне снапшота", "тестовый вуз"))
 
     async def _count():
@@ -214,7 +220,7 @@ def test_repeated_init_db_does_not_grow_lookup_entries(tmp_path):
     before = _run(_count())
     _run(init_db())
     after = _run(_count())
-    assert before == after == 1
+    assert before == after
 
 
 # ── top_chips — закреплённые первыми, частота сезона следом ─────────────────────────────────
