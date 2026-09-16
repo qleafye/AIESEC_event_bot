@@ -52,6 +52,7 @@ from database.db import (
     get_user_consents,
     record_user_consent,
     set_reg_draft_surface,
+    settings_snapshot,
     update_user_answers,
     upsert_reg_draft,
     set_user_lang,
@@ -272,6 +273,16 @@ def _continue_deeplink(bot_username: str | None) -> str | None:
 
 
 async def _draft_response(telegram_id: int, ctx: dict | None = None, *, bot_username: str | None = None) -> dict:
+    # Perf (замер 260917): ~40 последовательных get_setting_typed (тексты экрана) + один
+    # `reg_engine.form_spec` (сам делает ~50-60 соединений на форму без снимка) — итог до
+    # фикса на GET/PATCH /app/api/reg/draft. Ни `_load_context`, ни `form_spec`, ни переводы
+    # ниже не порождают asyncio.create_task — снимок безопасно накрывает всю функцию (тот же
+    # приём, что у `miniapp/routers/settings.py::settings_all`).
+    async with settings_snapshot():
+        return await _draft_response_impl(telegram_id, ctx, bot_username=bot_username)
+
+
+async def _draft_response_impl(telegram_id: int, ctx: dict | None, *, bot_username: str | None) -> dict:
     ctx = ctx or await _load_context(telegram_id)
     # Phase 27 (27-04, LANG-02): ОДНА загрузка карты переводов на запрос (не по разу на каждый
     # шаг/текст — form_spec резолвит ~43 шага, наивная врезка удвоила бы число чтений реестра

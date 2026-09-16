@@ -24,7 +24,7 @@ from datetime import datetime
 from fastapi import APIRouter, Depends, Request
 
 from cities import get_setting_typed_for_city
-from database.db import get_referrals, get_setting, get_user
+from database.db import get_referrals, get_setting, get_user, settings_snapshot
 from payment_options import parse_options
 import reg_engine
 from services import applications, i18n
@@ -153,6 +153,14 @@ async def _referral_block(
 
 @router.get("/app/api/hub")
 async def hub(request: Request, p: Principal = Depends(delegate_gate)) -> dict:
+    # Perf (замер 260917): ~12 последовательных get_setting_typed на один ответ — снимок
+    # bot_settings на весь рендер (тот же приём, что у settings_all/_draft_response); ни
+    # `tasks_progress`, ни `count_participants`, ни `get_referrals` не порождают create_task.
+    async with settings_snapshot():
+        return await _hub_impl(request, p)
+
+
+async def _hub_impl(request: Request, p: Principal) -> dict:
     user = await get_user(p.telegram_id)
     event_city = user.get("event_city") if user else None
     lang, tr_map = await i18n.context(p.telegram_id)

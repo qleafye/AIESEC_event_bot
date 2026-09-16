@@ -14,7 +14,7 @@ from aiogram.types import FSInputFile, ReplyKeyboardRemove, InlineKeyboardMarkup
 from aiogram.utils.keyboard import ReplyKeyboardBuilder
 
 from config import config
-from database.db import add_user, get_user, get_setting, set_setting, mark_reg_started, clear_reg_started, set_reg_step, set_user_subscribed, set_user_status, record_user_consent, get_user_consents, get_reg_started_track, get_reg_started_city, has_short_incomplete, _csv_safe, get_incomplete_rows_with_city, reset_payment_for_new_season, record_reg_event, backfill_reg_event_city, claim_reg_draft, get_reg_draft, upsert_reg_draft, delete_reg_draft, touch_reg_draft_activity  # Phase 15 (STAT-03, D-06): funnel event log; backfill_reg_event_city дозаполняет город на шаге form_started; Phase 21 (21-08): claim_reg_draft/get_reg_draft feed finalize_registration's thin wrapper; Phase 21 (21-09): upsert/delete/touch feed the draft-sync points below
+from database.db import add_user, get_user, get_setting, set_setting, mark_reg_started, clear_reg_started, set_reg_step, set_user_subscribed, set_user_status, record_user_consent, get_user_consents, get_reg_started_track, get_reg_started_city, has_short_incomplete, _csv_safe, get_incomplete_rows_with_city, reset_payment_for_new_season, record_reg_event, backfill_reg_event_city, claim_reg_draft, get_reg_draft, upsert_reg_draft, delete_reg_draft, touch_reg_draft_activity, settings_snapshot  # Phase 15 (STAT-03, D-06): funnel event log; backfill_reg_event_city дозаполняет город на шаге form_started; Phase 21 (21-08): claim_reg_draft/get_reg_draft feed finalize_registration's thin wrapper; Phase 21 (21-09): upsert/delete/touch feed the draft-sync points below
 from settings_schema import SETTINGS_SCHEMA, get_setting_typed  # REG-01/D-06 (06-04): REG_DEFAULTS derivation source; get_setting_typed (06-06 gate migration)
 from cities import CITIES, all_cities, normalize_city, is_default_city, city_tab_base, cities_module_on, is_city_enabled, city_label, enabled_cities, tab_suffix, get_setting_for_city, get_setting_typed_for_city, per_city_key  # Phase 07.1 (CITY-01/CITY-02/CITY-03): city registry — _city_tag_map() + city_row_tab + city fork below; tab_suffix added quick 260815-3hw (TABS-01/02/03, replaces the raw TAB_SUFFIX import); get_setting_for_city/get_setting_typed_for_city added Phase 09.2-04 (CITY-04): per-city text/mode resolver; all_cities added Phase 14 (CITY-07); per_city_key added Phase 25 (CITYQ-03): per-tab sheet_header_schema snapshot key
 from handlers.states import Registration
@@ -715,6 +715,20 @@ async def _sync_draft_out(telegram_id: int, state: FSMContext, data: dict, step_
 
 
 async def _advance(after_step: str, message: types.Message, state: FSMContext, bot: Bot):
+    # Perf (замер 260917): один ответ делегата в чате открывал 60-75 SQLite-соединений —
+    # `_get_enabled_steps` (51 REG_FLOW-ключ) + `_ask_step_or_recall`/`_ask_step` (form_v2_flags,
+    # prompt(), опции) читают bot_settings по одному ключу за раз. Ни один вызов ниже не
+    # порождает asyncio.create_task/ensure_future (проверено грепом по всему подграфу
+    # reg_flow/reg_steps/reg_extra_steps/reg_types_*/reg_resume_fork) — снимок безопасно
+    # накрывает весь рендер следующего вопроса, включая сами Telegram-отправки внутри
+    # `_ask_step` (снимок — просто ContextVar с dict, не блокировка и не соединение, держать
+    # его открытым поперёк сетевого awaits настройками не рискует ничем, кроме их свежести на
+    # доли секунды одного и того же рендера).
+    async with settings_snapshot():
+        return await _advance_impl(after_step, message, state, bot)
+
+
+async def _advance_impl(after_step: str, message: types.Message, state: FSMContext, bot: Bot):
     # message.chat.id == the user's id in private chats — same idiom _stamp_reg_step uses
     # (and the ONLY attribute _advance's existing test doubles guarantee, see
     # tests/test_registration_send_guard_260816.py::_FakeMessage's docstring).
