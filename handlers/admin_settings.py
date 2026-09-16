@@ -30,6 +30,7 @@ from database.db import (
     export_users_csv,
     get_setting,
     get_dropout_step_stats,
+    settings_snapshot,
 )
 from settings_audit import set_setting_by_admin, delete_setting_by_admin
 from services.sheets import (
@@ -537,6 +538,17 @@ _HEADER_UNSET = object()  # «шапку не передавали»; None у н
 
 
 async def settings_toggle_rows(admin_id: int | None = None, *, header_code=_HEADER_UNSET) -> dict[str, list[list[InlineKeyboardButton]]]:
+    # Perf 17.09 (тот же класс N+1, что у Mini App /settings/all): тело ниже — ~45 отдельных
+    # get_setting_typed на каждый рендер этого экрана (не по числу ключей группы — фиксированный
+    # список тумблеров лендинга/раздела). Обёртка — тонкая, тело функции не тронуто и не
+    # переотступлено: `settings_snapshot()` реентерабелен, так что вложенный вызов из
+    # `render_settings_group_text`/`build_settings_group_keyboard` (тоже обёрнуты снимком) не
+    # открывает второе соединение.
+    async with settings_snapshot():
+        return await _settings_toggle_rows_impl(admin_id, header_code=header_code)
+
+
+async def _settings_toggle_rows_impl(admin_id: int | None, *, header_code) -> dict[str, list[list[InlineKeyboardButton]]]:
     if header_code is _HEADER_UNSET:
         header_code = await admin_selected_city(admin_id) if admin_id is not None else None
     per_city_ctx = bool(header_code and header_code != ALL_CITIES)
@@ -880,7 +892,16 @@ async def render_settings_group_text(token: str, admin_id: int | None = None) ->
     Phase 09.3 (05, CITY-09): WR-05 — resolve the header ONCE for this whole render call.
     `admin_id is None` (tests, unknown-caller sites) and `header_code in (None, ALL_CITIES)`
     (module off / explicit «все города») all collapse to the SAME branch below —
-    byte-identical to pre-phase output (CONTEXT D module-off parity)."""
+    byte-identical to pre-phase output (CONTEXT D module-off parity).
+
+    Perf 17.09: группа «🎮 Геймификация» — 45 ключей, каждый — до двух `get_setting`
+    (`city_override_codes` внутри цикла добавляет ещё по одному на город) — снимок
+    `bot_settings` на весь рендер вместо соединения на ключ (тот же приём, что у Mini App)."""
+    async with settings_snapshot():
+        return await _render_settings_group_text_impl(token, admin_id)
+
+
+async def _render_settings_group_text_impl(token: str, admin_id: int | None) -> str:
     header_code = await admin_selected_city(admin_id) if admin_id is not None else None
     per_city_ctx = bool(header_code and header_code != ALL_CITIES)
 
@@ -955,7 +976,18 @@ async def build_settings_group_keyboard(token: str, admin_id: int | None = None)
     Phase 09.3 (05, CITY-09): WR-05 — resolve the header ONCE, same contract as
     render_settings_group_text above (kept as a second read here, not shared across the two
     functions, since they're independent render calls per call site — matches the
-    render_settings_text/build_settings_keyboard precedent from plan 04)."""
+    render_settings_text/build_settings_keyboard precedent from plan 04).
+
+    Perf 17.09: тот же снимок `bot_settings`, что у `render_settings_group_text` — независимая
+    обёртка (не общий снимок двух функций), потому что вызовы этой пары — независимые рендеры
+    по разным call site (см. докстринг выше), а `settings_snapshot()` дёшев сам по себе (один
+    SELECT) — отдельные снимки для текста и клавиатуры дешевле, чем протаскивать общий снимок
+    через все call site пары."""
+    async with settings_snapshot():
+        return await _build_settings_group_keyboard_impl(token, admin_id)
+
+
+async def _build_settings_group_keyboard_impl(token: str, admin_id: int | None):
     header_code = await admin_selected_city(admin_id) if admin_id is not None else None
     per_city_ctx = bool(header_code and header_code != ALL_CITIES)
 
