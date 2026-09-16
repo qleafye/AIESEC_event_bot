@@ -426,6 +426,10 @@ export async function render(root, params, ctx) {
       h("div", { class: "ambassador-offer" },
         h("h2", { text: res.heading || "" }),
         h("div", { class: "ambassador-link-box", text: res.link || "" }),
+        // Приёмка 17.09 (п.1): пояснение — где эту ссылку найти потом (голый URL без контекста
+        // выше не объясняет ничего сам по себе). `.ambassador-offer p` уже стилизован (muted),
+        // второй класс не заводим.
+        res.note ? h("p", { text: res.note }) : null,
         h("div", { class: "actions" }, copyBtn),
       ),
     );

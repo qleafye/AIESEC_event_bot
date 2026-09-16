@@ -954,15 +954,24 @@ async def draft_ambassador(
     """«Хочу свою ссылку» (SU-07, D-09) — паритет с ботовским `regamb:want`. Пишет ТОЛЬКО
     `is_ambassador` СВОЕЙ строки автора запроса (T-28-06-03: `allowed_columns` из одной
     колонки, `telegram_id` — из подписанного initData, не из тела запроса). Ссылка строится
-    сервером (`ref_code` = `telegram_id`, OQ-3) — фронт её не собирает и не может подделать."""
+    сервером (`ref_code` = `telegram_id`, OQ-3) — фронт её не собирает и не может подделать.
+
+    Приёмка 17.09 (п.1): `note` — пояснение под ссылкой, где её найти потом (тот же ключ и та
+    же per_city-подстановка, что у ботовского `reg_ambassador.regamb_want`, D-09 паритет
+    поверхностей)."""
     await update_user_answers(p.telegram_id, {"is_ambassador": 1}, allowed_columns=["is_ambassador"])
     bot_username = request.app.state.cfg.bot_username
     link = f"https://t.me/{bot_username}?start=amb_{p.telegram_id}" if bot_username else None
+    user = await get_user(p.telegram_id)
+    event_city = user.get("event_city") if user else None
     return {
         "link": link,
         "heading": await get_setting_typed("miniapp_form_ambassador_link_heading_text"),
         "copy_button": await get_setting_typed("miniapp_form_ambassador_copy_button_text"),
         "copied_toast": await get_setting_typed("miniapp_form_ambassador_copied_toast_text"),
+        "note": await get_setting_typed_for_city(
+            "miniapp_form_ambassador_link_note_text", event_city,
+        ),
     }
 
 

@@ -106,6 +106,9 @@ EXPECTED_PER_CITY_KEYS = {
     # делегату, per_city как остальные тексты анкеты.
     "miniapp_form_ambassador_offer_heading_text",
     "miniapp_form_ambassador_offer_body_text",
+    # Приёмка 17.09: пояснение «где найти ссылку потом» рядом с самой ссылкой — per_city как
+    # соседние тексты того же блока-предложения.
+    "miniapp_form_ambassador_link_note_text",
     # Phase 30 (30-03/30-04, 30-UI-SPEC.md § Copywriting Contract): тексты новых типов шагов
     # обращены к делегату — per_city дословно по таблицам UI-SPEC (select/multi/link/phone/
     # composite/repeatable), той же осью, что соседние reg_prompt_*/reg_form_* выше.
