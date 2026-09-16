@@ -183,6 +183,38 @@ def test_help_default_birth_date_returns_own_help_with_valid_example():
     assert value == example
 
 
+def test_help_default_resume_app_surface_does_not_mention_chat(tmp_path):
+    """Живой прогон 16.09: Mini App (`surface="app"`) не должен предлагать «текст ответом в
+    чате» — там нет чата под вопросом, есть кнопка «Написать текстом» под самим полем. Дефолт
+    для бота (`surface="chat"`, тоже проверен здесь) не должен измениться ни на байт."""
+    _admin_ready(tmp_path)
+
+    chat_default = asyncio.run(reg_engine.help_default("resume", None, "chat"))
+    assert chat_default == reg_engine.STEP_HELP["resume"]
+    assert "чат" in chat_default
+
+    app_default = asyncio.run(reg_engine.help_default("resume", None, "app"))
+    assert "чат" not in app_default
+    assert app_default == reg_engine._STEP_HELP_RESUME_APP
+
+    _enable_cities()
+    asyncio.run(db.set_setting("reg_resume_mode__city__spb", "text_only"))
+    app_text_only = asyncio.run(reg_engine.help_default("resume", "spb", "app"))
+    assert "чат" not in app_text_only
+
+
+def test_step_spec_resume_help_matches_app_surface(tmp_path):
+    """`step_spec()` — контракт Mini App (докстринг функции) — обязана звать `help_text` с
+    `surface="app"`, а не молча оставаться на дефолте бота."""
+    _admin_ready(tmp_path)
+
+    async def scenario():
+        spec = await reg_engine.step_spec("resume")
+        return spec["help"]
+
+    assert "чат" not in asyncio.run(scenario())
+
+
 # ══════════════════════════════════════════════════════════════════════════════════════════
 # B: help_text — регрессия (семантика `or default` байт-в-байт)
 # ══════════════════════════════════════════════════════════════════════════════════════════

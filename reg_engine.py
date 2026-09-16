@@ -617,6 +617,17 @@ STEP_HELP = {
     "resume": "Файл PDF или DOCX до 10 МБ, либо текст ответом в чате.",
 }
 
+# Живой прогон Mini App на стенде (16.09): подсказка резюме для дропзоны говорила «либо текст
+# ответом в чате» и в приложении — там нет чата под вопросом, есть кнопка «Написать текстом»
+# прямо под полем (form.js::fileControl, toggleText). `help_default`/`help_text` принимают
+# `surface` ("chat" — дефолт, ветка бота не меняется ни на байт; "app" — Mini App,
+# `step_spec()` зовёт с этим значением) и на шаге "resume" отдают версию под приложение.
+# Оверрайд `reg_help_resume` остаётся ОДИН на обе поверхности (D-1 same as before) — меняется
+# только код-дефолт, который админ видит и может переписать сам.
+_STEP_HELP_RESUME_APP = "Файл PDF или DOCX до 10 МБ, либо напиши текстом ниже."
+_STEP_HELP_RESUME_TEXT_ONLY_CHAT = "Коротко, текстом в чате."
+_STEP_HELP_RESUME_TEXT_ONLY_APP = "Коротко, текстом."
+
 # Пример-значение для каждого шага из STEP_HELP — ровно то, что названо в подсказке. Карта
 # существует ради сторожа «подсказка не врёт»: пример, не проходящий собственный валидатор
 # шага, — баг, который иначе видит только делегат.
@@ -640,15 +651,26 @@ _DATE_HELP = "Формат ДД.ММ.ГГГГ, например «01.09.2026»."
 _BIRTH_DATE_HELP = "Формат ДД.ММ.ГГГГ, например «15.03.2007»."
 
 
-async def help_default(step_key: str, city_code: str | None = None) -> str | None:
+async def help_default(
+    step_key: str, city_code: str | None = None, surface: str = "chat",
+) -> str | None:
     """Единственный расчёт СТАНДАРТНОЙ подсказки формата — те же три ветки, в том же порядке,
-    что раньше считал `help_text` сам (квик 260906-7zv, HELP-01): resume/text_only -> `birth_date`
-    -> общий `_DATE_HELP` для остальных шагов типа `date` -> словарь `STEP_HELP`. Аргумента
+    что раньше считал `help_text` сам (квик 260906-7zv, HELP-01): resume -> `birth_date` -> общий
+    `_DATE_HELP` для остальных шагов типа `date` -> словарь `STEP_HELP`. Аргумента
     `participant_type` здесь нет: трековой оси у подсказки нет (D-1) — лишний неиспользуемый
     аргумент её бы подразумевал. `None` означает «у шага нет подсказки формата вовсе» (не
-    «оверрайд ещё не задан»)."""
-    if step_key == "resume" and await resume_mode(city_code) == "text_only":
-        return "Коротко, текстом в чате."
+    «оверрайд ещё не задан»).
+
+    `surface` ("chat" дефолт | "app"): единственная ось, где формулировка называет РАЗНОЕ
+    физическое место ответа — «в чате» неверно в Mini App (там кнопка «Написать текстом» под
+    самим полем, не чат). Бот (`handlers/reg_resume_fork.py`) зовёт с дефолтом "chat" —
+    поведение не меняется ни на байт; `step_spec()` (Mini App) зовёт с "app"."""
+    if step_key == "resume":
+        mode = await resume_mode(city_code)
+        if mode == "text_only":
+            return _STEP_HELP_RESUME_TEXT_ONLY_APP if surface == "app" else _STEP_HELP_RESUME_TEXT_ONLY_CHAT
+        if surface == "app":
+            return _STEP_HELP_RESUME_APP
     if step_key == "birth_date":
         return _BIRTH_DATE_HELP
     if REG_STEP_TYPES.get(step_key) == "date":
@@ -666,7 +688,8 @@ def has_help(step_key: str) -> bool:
 
 
 async def help_text(
-    step_key: str, participant_type: str | None = None, city_code: str | None = None
+    step_key: str, participant_type: str | None = None, city_code: str | None = None,
+    surface: str = "chat",
 ) -> str | None:
     """Подсказка формата под вопросом веб-анкеты (D1). Дефолт считает `help_default` (единый
     расчёт, квик 260906-7zv) — для шагов типа `date` он же отдаёт общую `_DATE_HELP` (одна
@@ -679,8 +702,12 @@ async def help_text(
 
     Phase 25 (CITYQ-01): шаг `resume` в режиме `reg_resume_mode(city_code) == "text_only"`
     получает свой дефолт («Коротко, текстом в чате.») вместо общего `STEP_HELP["resume"]` —
-    сам литерал `STEP_HELP` не меняется, оверрайд `reg_help_resume` остаётся глобальным."""
-    default = await help_default(step_key, city_code)
+    сам литерал `STEP_HELP` не меняется, оверрайд `reg_help_resume` остаётся глобальным.
+
+    Живой прогон 16.09: `surface` пробрасывается в `help_default` без изменений — единственный
+    параметр, где текст называет разное место ответа (чат бота или поле приложения). Оверрайд
+    `reg_help_{step_key}` по-прежнему один на обе поверхности."""
+    default = await help_default(step_key, city_code, surface)
     if default is None:
         return None
     return await get_setting(f"reg_help_{step_key}") or default
@@ -1849,7 +1876,9 @@ async def step_spec(step_key: str, participant_type: str | None = None,
         "type": ui_type,
         "label": label,
         "prompt": await prompt(step_key, participant_type, event_city),
-        "help": await help_text(step_key, participant_type, event_city),
+        # Живой прогон 16.09: step_spec — контракт Mini App (докстринг функции выше), поэтому
+        # surface="app" — подсказка резюме зовёт «написать текстом ниже», а не «в чате».
+        "help": await help_text(step_key, participant_type, event_city, surface="app"),
         "options": None,
         "other_allowed": step_key in _OTHER_ALLOWED_STEPS,
         "skip_allowed": step_key in _SKIP_ALLOWED_STEPS,
