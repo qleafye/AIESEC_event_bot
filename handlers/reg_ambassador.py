@@ -81,9 +81,11 @@ async def regamb_want(callback: types.CallbackQuery):
     обёртки `reg_i18n.say` (переводить в URL нечего, а обёртка рискует что-то к нему
     приклеить).
 
-    Приёмка 17.09 (п.1): следом — ЧЕТВЁРТОЕ сообщение, пояснение, где эту ссылку найти
-    потом (делегат тапнул один раз и увидел голый URL без контекста). Это обычный текст, не
-    сырой URL из OQ-1 — через `reg_i18n.say` (перевод, тот же приём, что у `offer_ref_link`)."""
+    Приёмка 17.09 (п.2): следом — ЧЕТВЁРТОЕ сообщение, пояснение, где эту ссылку найти потом
+    (делегат тапнул один раз и увидел голый URL без контекста). Это обычный текст, не сырой
+    URL из OQ-1 — через `reg_i18n.say` (перевод, тот же приём, что у `offer_ref_link`).
+    `{section}` в шаблоне — подпись постоянного места реф-ссылки в приложении
+    (`miniapp_hub_referral_label_text`, тот же ключ, что рисует хаб)."""
     uid = callback.from_user.id
     await update_user_answers(uid, {"is_ambassador": 1}, allowed_columns=["is_ambassador"])
     await callback.answer()
@@ -98,8 +100,10 @@ async def regamb_want(callback: types.CallbackQuery):
     await callback.message.answer(link, parse_mode=None)
     user = await get_user(uid)
     event_city = user.get("event_city") if user else None
-    note = await get_setting_typed_for_city("miniapp_form_ambassador_link_note_text", event_city)
-    if note:
+    note_tpl = await get_setting_typed_for_city("miniapp_form_ambassador_link_note_text", event_city)
+    if note_tpl:
+        section_label = await get_setting_typed("miniapp_hub_referral_label_text")
+        note = note_tpl.replace("{section}", section_label or "")
         await reg_i18n.say(callback.message, note)
 
 

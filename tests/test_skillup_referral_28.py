@@ -283,15 +283,16 @@ def test_want_sets_is_ambassador_and_sends_bare_link(tmp_path):
     assert user["is_ambassador"] == 1
     assert not user.get("is_ambassador_candidate")
     texts = _texts(callback.message)
-    # Приёмка 17.09 (п.1): ссылка (сырая) + пояснение, где её найти потом — второе сообщение.
+    # Приёмка 17.09 (п.2): ссылка (сырая) + пояснение, где её найти потом — второе сообщение.
     assert len(texts) == 2
     link_text, link_markup, parse_mode = callback.message.sent[0]
     assert link_text == f"https://t.me/TestBot?start=amb_{uid}"
     assert parse_mode is None
     assert link_markup is None
-    from settings_schema import SETTINGS_SCHEMA
     note_text, _note_markup, _note_parse_mode = callback.message.sent[1]
-    assert note_text == SETTINGS_SCHEMA["miniapp_form_ambassador_link_note_text"]["default"]
+    from settings_schema import SETTINGS_SCHEMA
+    assert "{section}" not in note_text
+    assert SETTINGS_SCHEMA["miniapp_hub_referral_label_text"]["default"] in note_text
 
 
 def test_later_writes_nothing(tmp_path):
@@ -375,7 +376,11 @@ def test_ambassador_endpoint_sets_flag_and_returns_link(http_client):
     assert body["heading"]
     assert body["copy_button"]
     assert body["copied_toast"]
-    assert body["note"]  # Приёмка 17.09 (п.1): пояснение, где ссылку найти потом
+    # Приёмка 17.09 (п.2): пояснение под ссылкой упоминает постоянное место в приложении.
+    assert body["note"]
+    from settings_schema import SETTINGS_SCHEMA
+    assert "{section}" not in body["note"]
+    assert SETTINGS_SCHEMA["miniapp_hub_referral_label_text"]["default"] in body["note"]
     user = _run(db.get_user(DELEGATE_ID))
     assert user["is_ambassador"] == 1
 
@@ -389,13 +394,17 @@ def test_ambassador_endpoint_requires_form_section(http_client):
 
 def test_link_rendered_as_text_node_not_anchor():
     """Accessibility (28-UI-SPEC.md): ссылка в блоке «Ваша ссылка» — текстовый узел `.text`
-    у `h("div", ...)`, НЕ `h("a", {href: ...})` — структурный сторож исходника фронта."""
+    у `h("div", ...)`, НЕ `h("a", {href: ...})` — структурный сторож исходника фронта.
+
+    Приёмка 17.09 (п.1): сам рендер блока вынесен в `ui.js::ambassadorLinkBlock` (общий с
+    постоянным местом реф-ссылки в хабе) — сторож теперь смотрит туда, `form.js` его больше
+    не содержит, а вызывает импортированную функцию."""
     from pathlib import Path
 
     from tests.test_miniapp_frontend import _js_without_comments
 
-    form_js = Path(__file__).resolve().parent.parent / "miniapp" / "static" / "js" / "screens" / "form.js"
-    src = _js_without_comments(form_js)
+    ui_js = Path(__file__).resolve().parent.parent / "miniapp" / "static" / "js" / "ui.js"
+    src = _js_without_comments(ui_js)
     assert 'h("div", { class: "ambassador-link-box", text: res.link' in src
     assert "href" not in src.split("ambassador-link-box")[1].split("\n")[0]
 
@@ -407,9 +416,10 @@ def test_ambassador_link_screen_renders_note():
 
     from tests.test_miniapp_frontend import _js_without_comments
 
-    form_js = Path(__file__).resolve().parent.parent / "miniapp" / "static" / "js" / "screens" / "form.js"
-    src = _js_without_comments(form_js)
-    fn_start = src.index("function renderAmbassadorLink(")
-    fn_end = src.index("\n  }", fn_start)
-    body = src[fn_start:fn_end]
+    # Блок ссылки вынесен в общий `ui.js::ambassadorLinkBlock` (его рисуют финальный экран
+    # анкеты и постоянное место реф-ссылки в хабе) — пояснение проверяется там.
+    ui_js = Path(__file__).resolve().parent.parent / "miniapp" / "static" / "js" / "ui.js"
+    src = _js_without_comments(ui_js)
+    fn_start = src.index("function ambassadorLinkBlock(")
+    body = src[fn_start:fn_start + 3000]
     assert "res.note" in body
