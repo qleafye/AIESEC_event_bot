@@ -49,7 +49,6 @@ def test_referral_present_by_default_and_uses_amb_link_format(client):
     referral = body["referral"]
     assert referral is not None
     assert referral["link"] == f"https://t.me/YouLead_test_bot?start=amb_{DELEGATE_ID}"
-    assert "amb_" not in referral["link"]
     assert referral["label"]
     assert referral["copy_button"]
     assert referral["copied_toast"]
