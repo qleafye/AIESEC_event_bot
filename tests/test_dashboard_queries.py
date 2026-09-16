@@ -38,6 +38,11 @@ from dashboard.queries import (
     kpi_row,
     monthly_table,
     questions_block,
+    referral_block,
+    referral_city_breakdown,
+    referral_daily,
+    referral_summary,
+    referral_top,
     registration_start,
     season_options,
     status_totals,
@@ -1881,6 +1886,200 @@ def test_task_title_matches_bot_db_task_title():
     ]
     for task in cases:
         assert _task_title(task.get("title"), task.get("text")) == bot_db.task_title(task)
+
+
+# ── рефералы ─────────────────────────────────────────────────────────────────────────────
+
+def test_referral_summary_counts_and_share(tmp_path):
+    path = _use_tmp_db(tmp_path)
+    _seed(users=[
+        {"telegram_id": 1, "referrer_id": 100, "status": "approved"},
+        {"telegram_id": 2, "referrer_id": 100, "status": "pending"},
+        {"telegram_id": 3, "referrer_id": 200, "status": "rejected"},
+        {"telegram_id": 4, "referrer_id": None, "status": "approved"},  # без реферера
+        {"telegram_id": 100, "is_ambassador": 1},
+        {"telegram_id": 200, "is_ambassador_candidate": 1},
+    ])
+    with dash_db.read_conn(path) as conn:
+        summary = referral_summary(conn, Scope())
+    assert summary["total_all"] == 6
+    assert summary["referred_total"] == 3
+    assert summary["referred_share"] == round(3 / 6 * 100, 1)
+    assert summary["referred_pending"] == 1
+    assert summary["referred_approved"] == 1
+    assert summary["referred_rejected"] == 1
+    assert summary["ambassadors"] == 1
+    assert summary["candidates"] == 1
+    assert summary["inviters"] == 2  # 100 и 200 привели хотя бы одного
+
+
+def test_referral_summary_share_none_on_empty_db(tmp_path):
+    path = _use_tmp_db(tmp_path)
+    with dash_db.read_conn(path) as conn:
+        summary = referral_summary(conn, Scope())
+    assert summary["total_all"] == 0
+    assert summary["referred_share"] is None
+
+
+def test_referral_top_sorted_and_includes_approved_count(tmp_path):
+    path = _use_tmp_db(tmp_path)
+    _seed(users=[
+        {"telegram_id": 100, "username": "top_inviter", "event_city": None, "status": "approved"},
+        {"telegram_id": 1, "referrer_id": 100, "status": "approved"},
+        {"telegram_id": 2, "referrer_id": 100, "status": "pending"},
+        {"telegram_id": 3, "referrer_id": 100, "status": "approved"},
+        {"telegram_id": 200, "username": "small_inviter", "status": "approved"},
+        {"telegram_id": 4, "referrer_id": 200, "status": "approved"},
+    ])
+    with dash_db.read_conn(path) as conn:
+        rows = referral_top(conn, Scope())
+    assert [r["telegram_id"] for r in rows] == [100, 200]
+    assert rows[0]["username"] == "top_inviter"
+    assert rows[0]["total"] == 3
+    assert rows[0]["approved"] == 2
+    assert rows[0]["deleted"] is False
+    assert rows[0]["status_label"] == "Одобрено"
+
+
+def test_referral_top_handles_deleted_referrer_without_crashing(tmp_path):
+    path = _use_tmp_db(tmp_path)
+    _seed(users=[
+        # 999 нигде не заведён; status="pending" явно (у колонки DB-дефолт 'approved' —
+        # без явного значения approved стал бы 1, а не 0, тест проверял бы не то).
+        {"telegram_id": 1, "referrer_id": 999, "status": "pending"},
+    ])
+    with dash_db.read_conn(path) as conn:
+        rows = referral_top(conn, Scope())
+    assert rows == [{
+        "telegram_id": 999, "username": None, "deleted": True, "city": None,
+        "status_label": "—", "is_ambassador": False, "total": 1, "approved": 0,
+    }]
+
+
+def test_referral_top_username_none_falls_back_to_telegram_id_marker(tmp_path):
+    path = _use_tmp_db(tmp_path)
+    _seed(users=[
+        {"telegram_id": 100, "username": None, "status": "approved"},
+        {"telegram_id": 1, "referrer_id": 100, "status": "approved"},
+    ])
+    with dash_db.read_conn(path) as conn:
+        rows = referral_top(conn, Scope())
+    assert rows[0]["username"] is None  # шаблон сам подставляет "ID <telegram_id>"
+    assert rows[0]["telegram_id"] == 100
+
+
+def test_referral_top_scoped_by_invitee_city_not_referrer_city(tmp_path):
+    path = _use_tmp_db(tmp_path)
+    _seed(
+        cities=[("msk", "Москва", 1, 0), ("spb", "СПб", 1, 1)],
+        settings={"event_city_enabled": "on"},
+        users=[
+            {"telegram_id": 100, "event_city": "spb", "status": "approved"},
+            {"telegram_id": 1, "referrer_id": 100, "event_city": "msk", "status": "approved"},
+        ],
+    )
+    with dash_db.read_conn(path) as conn:
+        msk_rows = referral_top(conn, Scope(city="msk"))
+        spb_rows = referral_top(conn, Scope(city="spb"))
+    assert len(msk_rows) == 1  # приглашённый — в msk
+    assert msk_rows[0]["city"] == "СПб"  # но САМ пригласивший — в spb
+    assert spb_rows == []
+
+
+def test_referral_daily_fills_missing_days(tmp_path):
+    path = _use_tmp_db(tmp_path)
+    _seed(users=[
+        {"telegram_id": 1, "referrer_id": 100, "registration_date": "2026-09-01 10:00:00"},
+        {"telegram_id": 2, "referrer_id": 100, "registration_date": "2026-09-03 10:00:00"},
+        {"telegram_id": 3, "referrer_id": None, "registration_date": "2026-09-02 10:00:00"},
+    ])
+    with dash_db.read_conn(path) as conn:
+        rows = referral_daily(conn, Scope())
+    days = dict(rows)
+    assert days["2026-09-01"] == 1
+    assert days["2026-09-02"] == 0  # день без реф-регистраций — ноль, не дыра
+    assert days["2026-09-03"] == 1
+
+
+def test_referral_city_breakdown_empty_when_city_module_off(tmp_path):
+    path = _use_tmp_db(tmp_path)
+    _seed(users=[{"telegram_id": 1, "referrer_id": 100, "event_city": "msk", "status": "approved"}])
+    with dash_db.read_conn(path) as conn:
+        assert referral_city_breakdown(conn, Scope()) == []
+
+
+def test_referral_city_breakdown_empty_when_scope_narrowed_to_one_city(tmp_path):
+    path = _use_tmp_db(tmp_path)
+    _seed(
+        cities=[("msk", "Москва", 1, 0)],
+        settings={"event_city_enabled": "on"},
+        users=[{"telegram_id": 1, "referrer_id": 100, "event_city": "msk", "status": "approved"}],
+    )
+    with dash_db.read_conn(path) as conn:
+        assert referral_city_breakdown(conn, Scope(city="msk")) == []
+
+
+def test_referral_city_breakdown_labels_and_sorted_desc(tmp_path):
+    path = _use_tmp_db(tmp_path)
+    _seed(
+        cities=[("msk", "Москва", 1, 0), ("spb", "СПб", 1, 1)],
+        settings={"event_city_enabled": "on"},
+        users=[
+            {"telegram_id": 1, "referrer_id": 100, "event_city": "msk", "status": "approved"},
+            {"telegram_id": 2, "referrer_id": 100, "event_city": "msk", "status": "approved"},
+            {"telegram_id": 3, "referrer_id": 100, "event_city": "spb", "status": "approved"},
+        ],
+    )
+    with dash_db.read_conn(path) as conn:
+        rows = referral_city_breakdown(conn, Scope())
+    assert rows == [("Москва", 2), ("СПб", 1)]
+
+
+def test_referral_block_none_when_toggle_off(tmp_path):
+    path = _use_tmp_db(tmp_path)
+    _seed(
+        settings={"dashboard_block_referrals": "off"},
+        users=[{"telegram_id": 1, "referrer_id": 100, "status": "approved"}],
+    )
+    with dash_db.read_conn(path) as conn:
+        assert referral_block(conn, Scope()) is None
+
+
+def test_referral_block_none_when_toggle_on_but_no_data(tmp_path):
+    path = _use_tmp_db(tmp_path)
+    with dash_db.read_conn(path) as conn:
+        assert referral_block(conn, Scope()) is None  # dashboard_block_referrals default "on"
+
+
+def test_referral_block_present_for_ambassadors_even_without_referred_applications(tmp_path):
+    """Владелец: «сколько делегатов имеют свою ссылку» должно считаться даже до того, как
+    по этой ссылке кто-то подал заявку."""
+    path = _use_tmp_db(tmp_path)
+    _seed(users=[{"telegram_id": 100, "is_ambassador": 1, "status": "approved"}])
+    with dash_db.read_conn(path) as conn:
+        block = referral_block(conn, Scope())
+    assert block is not None
+    assert block["summary"]["ambassadors"] == 1
+    assert block["summary"]["referred_total"] == 0
+
+
+def test_referral_block_shape(tmp_path):
+    path = _use_tmp_db(tmp_path)
+    _seed(users=[
+        {"telegram_id": 100, "username": "inviter", "status": "approved"},
+        {
+            "telegram_id": 1, "referrer_id": 100, "status": "approved",
+            "registration_date": "2026-09-01 10:00:00",
+        },
+    ])
+    with dash_db.read_conn(path) as conn:
+        block = referral_block(conn, Scope())
+    assert set(block) == {"summary", "top", "daily", "city_cut"}
+    assert block["top"][0]["username"] == "inviter"
+    # `daily` — плотный календарь до СЕГОДНЯ (_fill_missing_days), не только до последней
+    # заявки — сравниваем конкретный день словарём, а не весь список литералом.
+    assert dict(block["daily"])["2026-09-01"] == 1
+    assert block["city_cut"] == []  # event_city_enabled по умолчанию "off"
 
 
 # ── T-15-03-03 (D-17): нет ПД в исходнике модуля ─────────────────────────────────────────

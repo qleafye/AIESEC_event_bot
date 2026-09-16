@@ -44,6 +44,7 @@ _SETTING_DEFAULTS = {
     "dashboard_block_utm": "on",
     "dashboard_block_months": "on",
     "dashboard_block_game": "off",
+    "dashboard_block_referrals": "on",
     "payment_enabled": "off",
     "event_city_enabled": "off",
     "event_name": None,
@@ -1357,3 +1358,202 @@ def chat_not_joined(conn, scope: Scope, chat: dict, limit: int = 200) -> list[di
             "approved_at": row["approved_at"],
         })
     return out
+
+
+# ── рефералы (задача владельца «считать в дашборде инфу по рефералкам») ─────────────────────
+#
+# Источник — ИСКЛЮЧИТЕЛЬНО `users.referrer_id` (поданные заявки). Ни `reg_started`, ни
+# `reg_drafts` не хранят `referrer_id` отдельной колонкой (`reg_drafts.meta` теоретически может
+# нести его внутри JSON, но парсить построчно ради незавершённых анкет — риск без ценности:
+# бросивший анкету делегат ещё не выбрал ни город, ни сезон, посчитать его в СКОУПЕ страницы
+# нечем) — незавершённые сюда осознанно не попадают, только поданные заявки.
+#
+# Подпись пригласившего — telegram-ник (`users.username`), НЕ ФИО из анкеты: ту колонку этот
+# модуль структурно не читает (D-17, test_queries_module_never_selects_pii_columns). Без ника —
+# показываем telegram_id (тот же приём, что у `chat_not_joined`).
+
+_REFERRAL_TOP_LIMIT = 20
+
+_REFERRAL_STATUS_LABELS = {
+    "pending": "На модерации",
+    "approved": "Одобрено",
+    "rejected": "Отклонено",
+}
+
+
+def _referral_status_label(status: "str | None") -> str:
+    if not status:
+        return "—"
+    return _REFERRAL_STATUS_LABELS.get(status, status)
+
+
+def referral_summary(conn, scope: Scope) -> dict:
+    """Итоги блока «Рефералы» в скоупе (город+сезон): сколько заявок пришло по ссылкам (и
+    какая это доля от всех заявок скоупа), их статусы, сколько делегатов имеют свою ссылку
+    (`is_ambassador`) и сколько ответили «да» на вопрос об амбассадорстве
+    (`is_ambassador_candidate`), сколько человек привели хотя бы одного делегата."""
+    parts, params = _scope_sql(conn, scope)
+    total_all = _scalar(conn, f"SELECT COUNT(*) FROM users{_where(parts)}", params) or 0
+
+    ref_parts = parts + ["referrer_id IS NOT NULL"]
+    referred_total = _scalar(
+        conn, f"SELECT COUNT(*) FROM users{_where(ref_parts)}", params
+    ) or 0
+
+    statuses = {"pending": 0, "approved": 0, "rejected": 0}
+    rows = conn.execute(
+        f"SELECT status, COUNT(*) AS cnt FROM users{_where(ref_parts)} GROUP BY status", params
+    ).fetchall()
+    for row in rows:
+        if row["status"] in statuses:
+            statuses[row["status"]] = row["cnt"]
+
+    ambassadors = _scalar(
+        conn, f"SELECT COUNT(*) FROM users{_where(parts + ['is_ambassador = 1'])}", params
+    ) or 0
+    candidates = _scalar(
+        conn,
+        f"SELECT COUNT(*) FROM users{_where(parts + ['is_ambassador_candidate = 1'])}",
+        params,
+    ) or 0
+    inviters = _scalar(
+        conn, f"SELECT COUNT(DISTINCT referrer_id) FROM users{_where(ref_parts)}", params
+    ) or 0
+
+    return {
+        "total_all": total_all,
+        "referred_total": referred_total,
+        "referred_share": (
+            round(referred_total / total_all * 100, 1) if total_all else None
+        ),
+        "referred_pending": statuses["pending"],
+        "referred_approved": statuses["approved"],
+        "referred_rejected": statuses["rejected"],
+        "ambassadors": ambassadors,
+        "candidates": candidates,
+        "inviters": inviters,
+    }
+
+
+def referral_top(conn, scope: Scope) -> list[dict]:
+    """Топ-`_REFERRAL_TOP_LIMIT` пригласивших — группировка по `referrer_id` СРЕДИ
+    приглашённых В СКОУПЕ страницы (город+сезон приглашённого, а не самого пригласившего:
+    воронка про того, КОГО привели). Пригласивший может быть удалён из `users`
+    (`referrer_id` без соответствующей строки) — такая строка получает `deleted=True` вместо
+    падения (аналог LEFT JOIN, только вторым запросом — тот же приём, что у `city_comparison`,
+    который тоже резолвит справочник по одному коду за раз)."""
+    parts, params = _scope_sql(conn, scope)
+    ref_parts = parts + ["referrer_id IS NOT NULL"]
+    sql = (
+        "SELECT referrer_id, COUNT(*) AS total, "
+        "SUM(CASE WHEN status = 'approved' THEN 1 ELSE 0 END) AS approved "
+        f"FROM users{_where(ref_parts)} GROUP BY referrer_id "
+        "ORDER BY total DESC, referrer_id ASC LIMIT ?"
+    )
+    rows = conn.execute(sql, params + (_REFERRAL_TOP_LIMIT,)).fetchall()
+
+    result: list[dict] = []
+    for row in rows:
+        referrer_id = row["referrer_id"]
+        referrer = conn.execute(
+            "SELECT username, event_city, status, is_ambassador FROM users WHERE telegram_id = ?",
+            (referrer_id,),
+        ).fetchone()
+        if referrer is None:
+            result.append({
+                "telegram_id": referrer_id,
+                "username": None,
+                "deleted": True,
+                "city": None,
+                "status_label": "—",
+                "is_ambassador": False,
+                "total": row["total"],
+                "approved": row["approved"] or 0,
+            })
+            continue
+        city_code = referrer["event_city"]
+        city_label = None
+        if city_code:
+            city_row = conn.execute(
+                "SELECT label FROM cities WHERE code = ?", (city_code,)
+            ).fetchone()
+            city_label = city_row["label"] if city_row is not None else city_code
+        result.append({
+            "telegram_id": referrer_id,
+            "username": referrer["username"],
+            "deleted": False,
+            "city": city_label,
+            "status_label": _referral_status_label(referrer["status"]),
+            "is_ambassador": bool(referrer["is_ambassador"]),
+            "total": row["total"],
+            "approved": row["approved"] or 0,
+        })
+    return result
+
+
+def referral_daily(conn, scope: Scope) -> list[tuple[str, int]]:
+    """Плотный календарь регистраций по реф-ссылкам — тот же приём заполнения дыр, что
+    `daily_registrations`, сужено `referrer_id IS NOT NULL`."""
+    parts, params = _scope_sql(conn, scope)
+    date_parts = parts + [
+        "referrer_id IS NOT NULL",
+        "registration_date IS NOT NULL",
+        "TRIM(registration_date) != ''",
+    ]
+    rows = conn.execute(
+        "SELECT substr(registration_date, 1, 10) AS day, COUNT(*) AS cnt FROM users"
+        f"{_where(date_parts)} GROUP BY day ORDER BY day ASC",
+        params,
+    ).fetchall()
+    sparse = [(row["day"], row["cnt"]) for row in rows]
+    return _fill_missing_days(sparse)
+
+
+def referral_city_breakdown(conn, scope: Scope) -> list[tuple[str, int]]:
+    """Разрез приглашённых по ссылке по городам мероприятия — только когда включён модуль
+    городов (`event_city_enabled`, тот же гейт, что у `breakdown('event_city', …)`) и страница
+    смотрит на «все города» (`scope.city is None`) — менеджеру, привязанному к своему городу,
+    разрез по городам самого себя ничего не добавляет (D-10 показывает такому менеджеру только
+    его город целиком)."""
+    flags = dashboard_flags(conn)
+    if flags.get("event_city_enabled") != "on" or scope.city is not None:
+        return []
+    parts, params = _scope_sql(conn, scope)
+    city_parts = parts + [
+        "referrer_id IS NOT NULL",
+        "event_city IS NOT NULL", "TRIM(event_city) != ''", "event_city != '-'",
+    ]
+    rows = conn.execute(
+        "SELECT event_city AS code, COUNT(*) AS cnt FROM users"
+        f"{_where(city_parts)} GROUP BY event_city ORDER BY cnt DESC",
+        params,
+    ).fetchall()
+    result: list[tuple[str, int]] = []
+    for row in rows:
+        city_row = conn.execute(
+            "SELECT label FROM cities WHERE code = ?", (row["code"],)
+        ).fetchone()
+        label = city_row["label"] if city_row is not None else row["code"]
+        result.append((label, row["cnt"]))
+    return result
+
+
+def referral_block(conn, scope: Scope) -> dict | None:
+    """`None`, если тумблер `dashboard_block_referrals` выключен ИЛИ в скоупе странице
+    нечего показать (нет ни одной заявки по ссылке, ни амбассадоров, ни кандидатов) — та же
+    семантика «тумблер + наличие данных», что у `game_block`/`questions_block`."""
+    flags = dashboard_flags(conn)
+    if flags.get("dashboard_block_referrals") != "on":
+        return None
+
+    summary = referral_summary(conn, scope)
+    if not summary["referred_total"] and not summary["ambassadors"] and not summary["candidates"]:
+        return None
+
+    daily_rows = referral_daily(conn, scope)
+    return {
+        "summary": summary,
+        "top": referral_top(conn, scope),
+        "daily": daily_rows,
+        "city_cut": referral_city_breakdown(conn, scope),
+    }
