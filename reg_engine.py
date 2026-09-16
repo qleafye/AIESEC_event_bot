@@ -1991,6 +1991,16 @@ async def step_spec(step_key: str, participant_type: str | None = None,
         spec["invalid_hint_text"] = await get_setting_typed("reg_resume_link_invalid_text")
     if ui_type in ("choice-chips", "select", "multi", "yesno"):
         spec["options"] = await options(step_key)
+    # Приёмка 17.09 (находка 3, уточнение владельца): «Дальше» неактивна, пока ничего не
+    # выбрано — тот же паттерн, что у V2-select (`v2_texts.pick_option`, `form_types.js::
+    # selectTiles`), применённый к легаси-рендеру choice-chips/yesno (`form.js::choiceChips`,
+    # используется и без включённой «Анкеты 2.0»). Top-level поле, не `v2_texts` — легаси-путь
+    # не читает `v2_texts` вовсе (пусто при `degraded_kind == "legacy"`). Гейт по `required`:
+    # сегодня НИ ОДИН choice-chips/yesno шаг не входит в `_SKIP_ALLOWED_STEPS` (см. докстринг
+    # множества), но будущий необязательный останется кликабельным без выбора, как раньше
+    # (`spec.pick_option_text` отсутствует -> `choiceChips()` не дизейблит).
+    if ui_type in ("choice-chips", "yesno") and spec["required"]:
+        spec["pick_option_text"] = await get_setting_typed("reg_form_pick_option_text")
     # Приёмка 15.09 (п.5): какая ПЛИТКА раскрывает поле «впиши свой вариант». Два источника,
     # оба уже существуют: шаг с разрешённым свободным ответом (`other_allowed` — старый рендер
     # рисовал для него отдельную кнопку-карандаш) и шаг, у которого «Другое» и так лежит

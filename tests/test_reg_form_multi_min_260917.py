@@ -152,6 +152,24 @@ def test_chat_multi_step_message_includes_requirement_hint(tmp_path):
     asyncio.run(scenario())
 
 
+# ── choice-chips/yesno: «Дальше» неактивна, пока ничего не выбрано (находка 3) ─────────────
+
+def test_step_spec_publishes_pick_option_text_for_required_choice_step(tmp_path):
+    _ready(tmp_path)
+    spec = asyncio.run(reg_engine.step_spec("alumni_status"))
+    if spec["type"] in ("choice-chips", "yesno"):
+        assert spec["required"] is True
+        assert spec["pick_option_text"] == "Выбери вариант"
+
+
+def test_step_spec_omits_pick_option_text_for_non_choice_types(tmp_path):
+    """Текстовые/дата/мульти-шаги не получают поле вовсе — контрол этого типа его не читает,
+    но явная проверка ловит случайную утечку поля не туда, куда планировалось."""
+    _ready(tmp_path)
+    spec = asyncio.run(reg_engine.step_spec("age"))
+    assert "pick_option_text" not in spec
+
+
 def test_chat_multi_step_message_merges_min_and_max_hint(tmp_path):
     _ready(tmp_path)
 
