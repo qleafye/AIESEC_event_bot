@@ -529,6 +529,9 @@ async def init_db():
         # Dropout analytics: last question shown before the user abandoned (step_key). NULL
         # for rows created before this column existed / before the user saw any question.
         await _ensure_column(db, "reg_started", "last_step", "TEXT")
+        # Приёмка 16.09: язык анкеты, выбранный ДО появления строки users (экран выбора языка
+        # на первом /start). Переезжает в users.lang в clear_reg_started при подаче анкеты.
+        await _ensure_column(db, "reg_started", "lang", "TEXT")
         # Quick k4y: JSON snapshot of already-answered registration fields (FSM data at the
         # moment of the last question). NULL for rows created before this column existed —
         # no backfill possible, those rows render as "-" on the «Незавершённые» tab. Additive,
@@ -2095,6 +2098,16 @@ async def mark_reg_started(
 
 async def clear_reg_started(telegram_id: int):
     async with _connect() as db:
+        # Язык, выбранный до появления строки users (set_user_lang), не должен пропасть вместе
+        # с reg_started — иначе после подачи анкеты делегата снова спросят язык.
+        await db.execute(
+            """
+            UPDATE users SET lang = (SELECT lang FROM reg_started WHERE telegram_id = ?)
+            WHERE telegram_id = ? AND (lang IS NULL OR lang = '')
+              AND EXISTS (SELECT 1 FROM reg_started WHERE telegram_id = ? AND lang IS NOT NULL)
+            """,
+            (telegram_id, telegram_id, telegram_id),
+        )
         await db.execute("DELETE FROM reg_started WHERE telegram_id = ?", (telegram_id,))
         await db.commit()
 
@@ -5852,8 +5865,32 @@ async def set_user_lang(telegram_id: int, lang: str | None) -> None:
         logger.error(f"set_user_lang: недопустимое значение {lang!r} для {telegram_id}, игнорирую")
         return
     async with _connect() as db:
-        await db.execute("UPDATE users SET lang = ? WHERE telegram_id = ?", (lang, telegram_id))
+        cursor = await db.execute("UPDATE users SET lang = ? WHERE telegram_id = ?", (lang, telegram_id))
+        if cursor.rowcount == 0:
+            # Приёмка 16.09: у нового делегата строки users ещё нет — UPDATE молча ничего не
+            # писал, выбор терялся, и /start спрашивал язык снова по кругу. До подачи анкеты
+            # язык живёт в reg_started (clear_reg_started переносит его в users).
+            await db.execute(
+                """
+                INSERT INTO reg_started (telegram_id, started_at, lang) VALUES (?, ?, ?)
+                ON CONFLICT(telegram_id) DO UPDATE SET lang = excluded.lang
+                """,
+                (telegram_id, msk_now().strftime("%Y-%m-%d %H:%M:%S"), lang),
+            )
         await db.commit()
+
+
+async def get_stored_lang(telegram_id: int) -> str | None:
+    """Сохранённый выбор языка делегата: `users.lang`, а до подачи анкеты — `reg_started.lang`
+    (см. `set_user_lang`). `None` — выбора не было."""
+    async with _connect() as db:
+        async with db.execute("SELECT lang FROM users WHERE telegram_id = ?", (telegram_id,)) as cur:
+            row = await cur.fetchone()
+        if row and row[0]:
+            return row[0]
+        async with db.execute("SELECT lang FROM reg_started WHERE telegram_id = ?", (telegram_id,)) as cur:
+            row = await cur.fetchone()
+        return row[0] if row and row[0] else None
 
 
 # ── Quick 260910-ro7 (DELU-01..08): удаление тестового делегата одной транзакцией ──────────
