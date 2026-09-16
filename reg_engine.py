@@ -1928,6 +1928,13 @@ async def step_spec(step_key: str, participant_type: str | None = None,
         spec["resume_mode"] = resume_mode_value
         if resume_mode_value == "fork":
             spec["fork_options"] = await resume_fork_options()
+        # Живой прогон 16.09 (п.1): подписи кнопок дропзоны (form.js::fileControl) — иконка
+        # без подписи, делегат не понимал, что это загрузка/переключатель на текст. Ветка
+        # «файл» развилки резюме (screens/form.js::goNext, `{...rawSpec, type: "file"}`)
+        # переиспользует ЭТОТ же spec целиком, поэтому поля кладём безусловно, не только для
+        # resume_mode_value == "file_or_text".
+        spec["upload_button_text"] = await get_setting_typed("reg_form_resume_upload_button_text")
+        spec["text_button_text"] = await get_setting_typed("reg_form_resume_text_button_text")
     # Phase 28 (28-04, SU-04): ссылка на резюме публикует вайтлист доменов — сверка домена
     # происходит на клиенте БЕЗ отдельного запроса (28-UI-SPEC.md §2), финальное решение
     # `link_verified` всё равно пересчитывает сервер на финале (T-28-04-01).
