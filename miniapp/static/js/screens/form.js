@@ -106,6 +106,10 @@ function stepAnswered(spec, state) {
 // таблицы (будущий REG_FLOW-шаг, который планировщик забыл вписать) попадает в третью группу
 // «Форум» — она и так собирает организационные/событийные вопросы, безопасный дефолт.
 const REVIEW_GROUPS = {
+  // Живой прогон 16.09 (п.3в): ФИО отсутствовало в таблице вовсе и падало в дефолтную
+  // «Форум» — первый шаг анкеты (приёмка 16.09, п.1) обязан лежать в «О тебе», как остальные
+  // личные данные.
+  full_name: "about",
   age: "about", phone: "about", alumni_status: "about", vk: "about", city: "about",
   email: "about", local_committee: "about", position: "about", department: "about",
   aiesec_role: "about", needs_certificate: "about", allergies: "about", food_pref: "about",
@@ -1423,13 +1427,29 @@ export async function render(root, params, ctx) {
     // Phase 30 (30-05, задача 2, A2-07, 30-UI-SPEC.md § «Обзор перед отправкой»): три группы
     // ответов + одна свёрнутая строка пропущенного необязательного — постоянное поведение новой
     // анкеты (решение оркестратора 12.09), собственных тумблеров у обзора нет.
+    // Живой прогон 16.09 (п.3а): «Пропустить» на необязательном шаге пишет сервер-совместимый
+    // плейсхолдер «-» (goSkip() выше, та же семантика, что в боте) — НЕ пустую строку, значит
+    // общий `stepAnswered` (v != null && v !== "", контракт зафиксирован сторожем
+    // test_form_screen_stepanswered_contract_unchanged, менять нельзя) считает такой шаг
+    // отвеченным, и обзор показывал «12 из 12, 0 пропущено» вместо реальной картины. Сервер
+    // сам уже не считает «-» ответом (`reg_engine.form_spec::has_answer`, `v not in (None, "",
+    // "-")`) — здесь та же граница, но ТОЛЬКО для подсчёта/группировки обзора (окно вопросов
+    // мастера и обзор точечной правки продолжают использовать `stepAnswered` как раньше,
+    // «-» там — валидный сохранённый ответ, например «аллергий нет»).
+    function reviewAnswered(spec, state) {
+      return (spec.columns || [spec.column]).some((col) => {
+        const v = state.value(col);
+        return v != null && v !== "" && v !== "-";
+      });
+    }
+
     function drawReview() {
       setMainButton(null);
       const specs = state.specs;
       const groups = { about: [], study: [], event: [] };
       const skipped = [];
       for (const spec of specs) {
-        if (!stepAnswered(spec, state) && !spec.required) { skipped.push(spec); continue; }
+        if (!reviewAnswered(spec, state) && !spec.required) { skipped.push(spec); continue; }
         groups[reviewGroupOf(spec.key)].push(spec);
       }
       const filledCount = specs.length - skipped.length;
