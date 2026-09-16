@@ -2,6 +2,8 @@ import json
 import logging
 import os
 import re
+from contextlib import asynccontextmanager
+from contextvars import ContextVar
 from datetime import datetime, timedelta
 
 import aiosqlite
@@ -1237,7 +1239,56 @@ async def init_db():
 
         await db.commit()
 
+# Perf (стенд 17.09: `/app/api/admin/settings/all` — 4.65 с / 2239 отдельных SQLite-
+# соединений на один HTTP-запрос — `_connect()` открывается заново на КАЖДЫЙ `get_setting`,
+# а экран настроек читает реестр из ~700 ключей, часть из них per-city — N+1 умножается на
+# число городов). Ниже — опциональный СНИМОК `bot_settings` на время одного запроса/рендера:
+# `ContextVar`, не глобальный кэш модуля — реестр настроек (`settings_schema`/`cities`/
+# `settings_ops`) весь читает через `get_setting`/`get_setting_typed`, ни один модуль не
+# трогает `bot_settings` в обход него (см. ревью 17.09), поэтому снимок покрывает всю цепочку
+# резолвинга без единой правки в этих модулях.
+#
+# `ContextVar` — не threading.local и не process-global: asyncio копирует контекст при
+# создании КАЖДОГО Task (обработка одного HTTP-запроса в FastAPI/Starlette — отдельный Task),
+# поэтому снимок одного запроса не течёт в параллельный (в отличие от кэша между запросами,
+# который CLAUDE.md прямо запрещает без инвалидации: менеджер переключил тумблер — следующий
+# запрос обязан увидеть новое значение). Инвалидация не нужна ВООБЩЕ: снимок живёт строго
+# в пределах одного `async with settings_snapshot():` и никогда не переживает границу запроса.
+_settings_snapshot_var: ContextVar[dict[str, str] | None] = ContextVar(
+    "_settings_snapshot", default=None
+)
+
+
+async def _load_settings_snapshot() -> dict[str, str]:
+    async with _connect() as db:
+        async with db.execute("SELECT key, value FROM bot_settings") as cursor:
+            rows = await cursor.fetchall()
+    return {row[0]: row[1] for row in rows}
+
+
+@asynccontextmanager
+async def settings_snapshot():
+    """Один запрос `bot_settings` целиком на время блока — `get_setting`/`set_setting`/
+    `delete_setting` внутри читают/пишут этот dict вместо открытия соединения на каждый ключ.
+
+    Реентерабельно: вложенный вызов (экран группы настроек вызывает `render_...` и
+    `build_...` подряд, оба сами оборачиваются в этот менеджер) не переоткрывает снимок и не
+    гасит его на выходе из внутреннего блока — снимком владеет самый внешний вызов."""
+    if _settings_snapshot_var.get() is not None:
+        yield
+        return
+    snapshot = await _load_settings_snapshot()
+    token = _settings_snapshot_var.set(snapshot)
+    try:
+        yield
+    finally:
+        _settings_snapshot_var.reset(token)
+
+
 async def get_setting(key: str) -> str | None:
+    snapshot = _settings_snapshot_var.get()
+    if snapshot is not None:
+        return snapshot.get(key)
     async with _connect() as db:
         async with db.execute(
             "SELECT value FROM bot_settings WHERE key = ?", (key,)
@@ -1260,6 +1311,12 @@ async def set_setting(key: str, value: str):
             (key, value),
         )
         await db.commit()
+    # Снимок текущего запроса (если открыт) обновляется той же записью — правка в фазе 2
+    # `settings/batch` обязана быть видна немедленному перечитыванию `_item_for` в конце того
+    # же запроса, а не только следующему HTTP-запросу.
+    snapshot = _settings_snapshot_var.get()
+    if snapshot is not None:
+        snapshot[key] = value
     await _maybe_enqueue_translation(key, value)
 
 
@@ -1331,6 +1388,9 @@ async def delete_setting(key: str):
     async with _connect() as db:
         await db.execute("DELETE FROM bot_settings WHERE key = ?", (key,))
         await db.commit()
+    snapshot = _settings_snapshot_var.get()
+    if snapshot is not None:
+        snapshot.pop(key, None)
 
 
 async def add_user(data: dict):
