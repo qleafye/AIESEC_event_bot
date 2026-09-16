@@ -43,7 +43,7 @@ from database.db import (
     reorder_faq_items,
     update_faq_item,
 )
-from services import applications
+from services import applications, i18n
 from services.faq import apply_city_overrides, city_badge, normalize_question
 from settings_schema import get_setting_typed
 
@@ -76,17 +76,28 @@ async def faq_list(
     _: Principal = Depends(require_section("faq")),
 ) -> dict:
     city = await _delegate_city(p)
+    lang, tr_map = await i18n.context(p.telegram_id)
+    lang = lang if lang in ("ru", "en") else "ru"
     try:
         rows = await list_faq_for_city(city)
     except Exception:
         rows = []
     items = apply_city_overrides(rows, city)
     return {
+        # Вопрос/ответ — свободный текст менеджера (своя таблица `faq_items`, не корпус
+        # `bot_settings` — machine-очередь LANG-08 её не видит): `i18n.tr()` переводит,
+        # только если для ИМЕННО ЭТОГО текста уже есть ручная правка в `translations`
+        # (пока такой пайплайн для FAQ не заведён отдельным планом — fail-soft отдаёт русский,
+        # D-04). Не дыра, а тот же приём, что и везде: перевод не выдумывает то, чего нет.
         "items": [
-            {"id": row["id"], "question": row["question"], "answer": row["answer"]}
+            {
+                "id": row["id"],
+                "question": i18n.tr(row["question"], lang, tr_map),
+                "answer": i18n.tr(row["answer"], lang, tr_map),
+            }
             for row in items
         ],
-        "empty_text": await get_setting_typed("faq_empty_text"),
+        "empty_text": await i18n.tr_setting("faq_empty_text", lang, tr_map),
     }
 
 
