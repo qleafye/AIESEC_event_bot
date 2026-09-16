@@ -61,6 +61,7 @@ REG_FLOW = [
     # YL'26 launch order (Tatiana). Consent + ФИО run before this list (see
     # _start_registration_flow). Order here IS the ask order for the enabled steps.
     ("age", "reg_q_age", "text"),
+    ("birth_date", "reg_q_birth_date", "date"),
     ("phone", "reg_q_phone", "text"),
     ("alumni_status", "reg_q_alumni_status", "text"),  # аламни / айсекер / ни то, ни другое
     ("vk", "reg_q_vk", "text"),
@@ -116,7 +117,6 @@ REG_FLOW = [
     ("exp_content", "reg_q_exp_content", "text"),
     ("volunteer", "reg_q_volunteer", "text"),
     ("arrival_date", "reg_q_arrival_date", "date"),
-    ("birth_date", "reg_q_birth_date", "date"),
     ("payment_plan_date", "reg_q_payment_date", "date"),
 ]
 
