@@ -134,6 +134,10 @@ UI_EN: dict[str, str] = {
     # split_leading_symbols (services/i18n_glossary.py) снимает ведущий «✅ » до словарного
     # поиска, как и у всех остальных кнопок-эмодзи этого словаря.
     "Оставить": "Keep",
+    # Квик 260917-en: алерт после тапа «✅ Оставить» на экране «Прошлый ответ»
+    # (recall_keep, handlers/registration.py) — отдельная словоформа, найдена
+    # tools/i18n_delegate_chat_audit.py.
+    "Оставили": "Kept",
     # cancel_registration_dismiss (handlers/reg_flow.py) — алерт «Продолжаем» после «Нет,
     # продолжить» на экране отмены; тот же класс, что «Сохранено»/«✅ Принято» выше.
     "Продолжаем 👍": "Continuing 👍",
