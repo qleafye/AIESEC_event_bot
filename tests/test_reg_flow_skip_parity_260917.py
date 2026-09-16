@@ -71,3 +71,10 @@ def test_no_multi_step_is_skippable_today():
     assert multi_steps, "в REG_FLOW нет ни одного multi-шага — сторож проверить нечего"
     for step_key in multi_steps:
         assert reg_engine.multi_min_select(step_key) == 1, step_key
+
+
+def test_university_skip_button_saves_placeholder_not_literal():
+    """Приёмка 17.09: «Пропустить» у ВУЗа в текстовом режиме сохранялся как название ВУЗа."""
+    import reg_engine
+    assert reg_engine.validate_answer("university", "Пропустить") == ("-", None)
+    assert reg_engine.validate_answer("university", "МГУ") == ("МГУ", None)
