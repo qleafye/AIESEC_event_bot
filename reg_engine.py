@@ -2584,7 +2584,13 @@ def _validate_answer_core(step_key: str, raw, participant_type: str | None) -> t
         try:
             dt = datetime.strptime(text, "%d.%m.%Y")
         except (ValueError, TypeError):
-            return None, "Формат даты: ДД.ММ.ГГГГ. Попробуй ещё раз."
+            # Mini App шлёт значение нативного <input type="date"> — ISO «ГГГГ-ММ-ДД».
+            # Храним одним форматом с чатом (ДД.ММ.ГГГГ): лист, карточка и сводка его и ждут.
+            try:
+                dt = datetime.strptime(text, "%Y-%m-%d")
+            except (ValueError, TypeError):
+                return None, "Формат даты: ДД.ММ.ГГГГ. Попробуй ещё раз."
+            text = dt.strftime("%d.%m.%Y")
         range_err = validate_date_range(step_key, dt)
         if range_err:
             return None, range_err

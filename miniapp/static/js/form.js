@@ -114,7 +114,10 @@ function intControl(h, spec, value, onChange) {
 
 function dateControl(h, spec, value, onChange) {
   const input = h("input", { class: "input", type: "date", id: `f-${spec.key}` });
-  if (value) input.value = value;
+  // Сервер хранит дату как в чате — «ДД.ММ.ГГГГ», а нативное поле понимает только ISO.
+  const ru = typeof value === "string" ? value.match(/^(\d{2})\.(\d{2})\.(\d{4})$/) : null;
+  if (ru) input.value = `${ru[3]}-${ru[2]}-${ru[1]}`;
+  else if (value) input.value = value;
   // Приёмка 16.09: `change` нативного `<input type="date">` стреляет только на завершённом
   // выборе (не на каждой цифре, как `input`) — commit ставим, только когда значение непусто:
   // делегат мог тем же `change` ОЧИСТИТЬ дату (крестик пикера), это не законченный ответ.
