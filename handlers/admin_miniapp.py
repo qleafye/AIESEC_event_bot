@@ -136,31 +136,43 @@ async def build_miniapp_settings_keyboard() -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(inline_keyboard=buttons)
 
 
-async def sync_chat_menu_button(bot) -> None:
+async def sync_chat_menu_button(bot, chat_id: int | None = None, lang: str = "ru") -> None:
     """Phase 19 (08, D-10/T-19-52): the ONE function that sets the chat menu button, called
-    from TWO places — `main.py` at startup and `toggle_miniapp_enabled` below, right after the
-    setting is written. Without a single shared function called from both, the toggle would
-    only take visible effect on the NEXT bot restart, breaking the "выключение тумблера
-    убирает точки входа сразу" success criterion. Fail-soft is the CALLER's job (both call
-    sites wrap this in try/except) — an unreachable Telegram must never break the settings
-    screen or block startup.
+    from THREE places — `main.py` at startup, `toggle_miniapp_enabled` below (right after the
+    setting is written), and `handlers/reg_lang.py::lang_pick_choose` (right after a delegate
+    picks/switches their language). Without a single shared function called from all three,
+    the toggle would only take visible effect on the NEXT bot restart, breaking the
+    "выключение тумблера убирает точки входа сразу" success criterion. Fail-soft is the
+    CALLER's job (every call site wraps this in try/except) — an unreachable Telegram must
+    never break the settings screen, block startup, or break language selection.
 
-    Квик 260915-skg (P7): кнопка ставится глобально ботом (при старте и по тумблеру) — языка
-    конкретного делегата здесь нет и быть не может, английский текст входа в приложение при
-    lang=en закрыт отдельно в handlers/user_actions.py::open_miniapp_button, эту функцию не
-    трогаем."""
+    Квик 260915-skg (P7) заводил ЭТУ функцию как глобальную (без chat_id/lang) — «языка
+    конкретного делегата здесь нет и быть не может» было верно ТОЛЬКО для двух исходных call
+    site'ов (старт бота, тумблер оформления), у которых действительно нет делегата под рукой.
+    Квик 260917-en (приёмка 17.09, п.1): Telegram Bot API поддерживает `setChatMenuButton` с
+    `chat_id` — кнопку МОЖНО ставить индивидуально на чат, и `lang_pick_choose` знает и chat_id,
+    и только что выбранный язык делегата. `chat_id=None` (два старых call site'а) — глобальный
+    дефолт для чатов, для которых своя кнопка ещё не ставилась, byte-for-byte прежнее поведение
+    (`lang="ru"` по умолчанию — перевод не запускается вовсе, `tr_text` вернёт тот же объект)."""
     enabled = await get_setting_typed("miniapp_enabled") == "on"
     url = config.DASHBOARD_PUBLIC_URL
+    kwargs = {"chat_id": chat_id} if chat_id is not None else {}
     if enabled and url:
         button_text = await get_setting_typed("miniapp_open_button")
+        if lang == "en":
+            from handlers import reg_i18n
+            from services import i18n as i18n_service
+            tr_map = await i18n_service.load_map("en")
+            button_text = reg_i18n.tr_text(button_text, "en", tr_map)
         await bot.set_chat_menu_button(
             menu_button=MenuButtonWebApp(
                 text=button_text,
                 web_app=WebAppInfo(url=url.rstrip("/") + "/app"),
             ),
+            **kwargs,
         )
     else:
-        await bot.set_chat_menu_button(menu_button=MenuButtonDefault())
+        await bot.set_chat_menu_button(menu_button=MenuButtonDefault(), **kwargs)
 
 
 async def _rerender(callback: types.CallbackQuery):

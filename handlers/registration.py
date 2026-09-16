@@ -2161,8 +2161,16 @@ async def _city_fork_then_continue(
         if dl_party_track:
             await state.update_data(_track_from_link=True)
         city_fork_text = await get_setting_typed("city_fork_text")  # Phase 17.1 (17.1-03): реестр
-        # Quick 260906: вопрос переводим, кнопки-города НЕТ (данные v1, не UI-текст).
-        await message.answer(await reg_i18n.tr_for(message, city_fork_text), reply_markup=await _city_fork_kb())
+        # Квик 260917-en: приёмка 17.09 — владелец явно попросил переводить и кнопки городов
+        # («Москва, 30-31 октября»); прежнее решение (Quick 260906, «данные v1, не UI-текст»)
+        # снято этой правкой. Названия городов теперь в делегатском корпусе
+        # (`services/i18n_sources.py::city_texts`), lang/tr_map — один общий контекст на вопрос
+        # и клавиатуру, тот же приём, что и везде в reg_i18n.say().
+        lang, tr_map = await reg_i18n.ctx_for(message)
+        await message.answer(
+            reg_i18n.tr_text(city_fork_text, lang, tr_map),
+            reply_markup=reg_i18n.tr_kb(await _city_fork_kb(), lang, tr_map),
+        )
         return  # wait for the tap; city_pick continues the chain with the chosen city
 
     await _continue_after_city(message, state, effective_city, referrer_id, source_tag, dl_party_track, recovered_track)
