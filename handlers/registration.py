@@ -171,6 +171,10 @@ from reg_engine import (
     # докстринг функции) — единственная точка правды, _sync_draft_in/_sync_draft_out ниже её
     # используют вместо голого STEP_TO_COLUMN.get(step_key).
     columns_for_step,
+    # Приёмка 17.09 (находка 3): подсказка «сколько нужно выбрать» на multi-шаге — та же
+    # строка, что уходит в `spec.help` Mini App (`reg_engine.step_spec`), дописывается в
+    # текст вопроса в чате той же функцией (единая точка правды, второго текста не заводим).
+    multi_requirement_hint,
 )
 _get_enabled_steps = enabled_steps
 _get_options = option_list_for
@@ -565,8 +569,14 @@ async def _ask_step(step_key: str, message: types.Message, state: FSMContext, st
         opt_key, default = MULTI_CONFIG.get(step_key, (f"{step_key}_options", []))
         options = await _get_options(opt_key, default)
         await state.update_data(_current_multi_step=step_key, **{f"_multi_{step_key}": []})
+        # Приёмка 17.09 (находка 3): та же подсказка «сколько нужно выбрать», что видит
+        # делегат в приложении (`step_spec()` дописывает её в `spec.help`) — до этой правки
+        # чат не показывал минимум/максимум мультивыбора вовсе, узнать его можно было только
+        # ошибкой после «Готово».
+        hint = await multi_requirement_hint(step_key, city_code)
+        hint_line = f"\n\n{hint}" if hint else ""
         await _safe_answer(message,
-            f"{p}{await prompt(step_key, participant_type, city_code)}",
+            f"{p}{await prompt(step_key, participant_type, city_code)}{hint_line}",
             reply_markup=_multi_kb(step_key, options, set()),
         )
         await state.set_state(Registration.multi_input)

@@ -183,7 +183,24 @@ function multiChips(h, spec, value, onChange, flags) {
       .replace("{left}", String(Math.max(0, maxSelect - n)));
   }
 
+  // Приёмка 17.09 (находка 2): `spec.min_select` — сервер (`reg_engine.multi_min_select`),
+  // а не догадка клиента «ничего не выбрано -> можно пропустить». Раньше footerState() ВСЕГДА
+  // предлагала `skip_button` при нуле выбранных, даже на шаге, где сервер отвергает пустой
+  // список («Форматы форума» и вообще любой multi — сегодня ни один не входит в
+  // `_SKIP_ALLOWED_STEPS`) — делегат жал рабочую на вид кнопку и получал 400. Ниже минимума
+  // кнопка дизейблится с понятной подписью (`texts.pick_min`, тот же приём, что у select
+  // `texts.pick_option`) — тапнуть и уйти дальше с недобором нельзя вовсе.
   function footerState() {
+    const minSelect = typeof spec.min_select === "number" ? spec.min_select : 0;
+    if (chosen.size < minSelect) {
+      // `texts.pick_min` — сырой шаблон с `{min}` (тот же приём, что `limit_hint_zero/mid/
+      // max` ниже — сервер не знает подстановку заранее, `_v2_texts_for` считается ДО того,
+      // как известен `spec.min_select` конкретного шага).
+      const label = texts.pick_min
+        ? String(texts.pick_min).replace("{min}", String(minSelect))
+        : null;
+      return { label, disabled: true };
+    }
     return {
       label: chosen.size > 0 ? (texts.continue_button || null) : (texts.skip_button || null),
       disabled: false,
