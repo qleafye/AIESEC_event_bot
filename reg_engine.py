@@ -613,7 +613,7 @@ STEP_HELP = {
     "age": "Число от 10 до 120, например «19».",
     "email": "Формат имя@домен, например «ivanova@example.com».",
     "phone": "Цифры, можно с плюсом впереди, например «+79161234567».",
-    "vk": "Ник в ВК начинается с «@» и без пробелов, например «@ivanova_maria».",
+    "vk": "Ник в ВК («@username») или ссылка vk.com/username, без пробелов, например «@ivanova_maria».",
     "resume": "Файл PDF или DOCX до 10 МБ, либо текст ответом в чате.",
 }
 
@@ -2326,6 +2326,41 @@ def resume_too_large(file_size) -> bool:
     return bool(file_size) and file_size > RESUME_MAX_BYTES
 
 
+# Ник ВК: латиница/цифры/`_`/`.` — та же терпимость, что валидатор допускал и раньше (никакого
+# нового ограничения символов не вводим, просто явно называем его вместо неявного "не пробел").
+_VK_NICK_RE = re.compile(r"^[A-Za-z0-9_.]+$")
+
+
+def _extract_vk_nick(text: str) -> str | None:
+    """Единая нормализация ника ВК — и для чата бота, и для Mini App (`validate_answer` — один
+    судья ввода на обе поверхности, T-21-05): помимо голого `@username`, теперь распознаёт то,
+    что делегат чаще всего копирует из адресной строки — `vk.com/username`, `https://vk.com/
+    username`, `http://m.vk.com/username` (мобильный поддомен), `vk.com/id123`, и голый ник без
+    «@». Хост сравнивается через `urllib.parse` (тот же приём, что `validate_resume_link` —
+    "без регулярок-самоделок" для домена): чужой домен (`facebook.com/robot`) или похожий
+    поддомен-обманка (`evilvk.com.attacker.com/robot`, `vk.com` — просто подстрока) НЕ считается
+    ссылкой ВК — падает в ветку «голый текст» и там же отсеивается по символам ниже. Возвращает
+    ник БЕЗ ведущего «@» (его подставляет вызывающий) или `None`, если внутри строки пробел
+    (профиль/ссылка пробелов не содержат по определению)."""
+    if not text or " " in text:
+        return None
+    if text.startswith("@"):
+        return text[1:]
+    lower = text.lower()
+    if "vk.com" in lower or lower.startswith(("http://", "https://")):
+        candidate = text if "://" in text else f"//{text}"
+        parsed = urlparse(candidate)
+        host = parsed.netloc.lower()
+        if host.startswith("www."):
+            host = host[4:]
+        elif host.startswith("m."):
+            host = host[2:]
+        if host != "vk.com":
+            return None
+        return parsed.path.strip("/")
+    return text
+
+
 def validate_date_range(step_key: str, dt: datetime) -> str | None:
     """LOW: sanity range check for a parsed date step. Перенос дословный из
     handlers/reg_flow.py::_validate_date_range."""
@@ -2439,9 +2474,13 @@ def _validate_answer_core(step_key: str, raw, participant_type: str | None) -> t
         return text, None
     if step_key == "vk":
         vk = (raw or "").strip()
-        if not vk.startswith("@") or len(vk) < 2 or " " in vk:
-            return None, "Укажи ник в ВК в формате @username (начинается с @, без пробелов)."
-        return vk, None
+        nick = _extract_vk_nick(vk)
+        if not nick or not _VK_NICK_RE.match(nick):
+            return None, (
+                "Укажи ник в ВК в формате @username или ссылкой vk.com/username, без пробелов "
+                "(например, «@ivanova_maria»)."
+            )
+        return f"@{nick}", None
     if step_key == "resume":
         # Только текстовый вариант (process_resume_text) — файл (process_resume) идёт через
         # is_allowed_resume/resume_too_large напрямую, там другая форма входа (имя файла/размер,

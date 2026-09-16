@@ -844,7 +844,13 @@ def test_form_spec_full_track_matches_golden_enabled_steps(tmp_path):
 AGE_ERROR = "Укажи корректный возраст числом от 10 до 120."
 EMAIL_ERROR = "Укажи корректный email (например, name@example.com)."
 PHONE_ERROR = "Укажи корректный номер телефона или нажми «Пропустить»."
-VK_ERROR = "Укажи ник в ВК в формате @username (начинается с @, без пробелов)."
+# Rule 1 deviation (VK link normalization task): текст ошибки обновлён вместе с расширением
+# принимаемых форматов (`vk.com/username` и т.п., см. reg_engine._extract_vk_nick) — старый
+# текст называл только «@username», новый называет оба принимаемых формата.
+VK_ERROR = (
+    "Укажи ник в ВК в формате @username или ссылкой vk.com/username, без пробелов "
+    "(например, «@ivanova_maria»)."
+)
 FULL_NAME_ERROR = "Укажи ФИО полностью (минимум фамилию и имя)."
 DATE_FORMAT_ERROR = "Формат даты: ДД.ММ.ГГГГ. Попробуй ещё раз."
 BIRTH_FUTURE_ERROR = "Дата рождения не может быть в будущем. Проверь и введи ещё раз."
