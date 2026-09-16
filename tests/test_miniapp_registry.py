@@ -162,6 +162,8 @@ MINIAPP_KEYS = [
     "miniapp_applications_approve_button",
     "miniapp_applications_reject_button",
     "miniapp_applications_resume_open",
+    # Приёмка 17.09 (п.2): развилка резюме R2b — кнопка «Открыть ссылку» (делегат дал ссылку).
+    "miniapp_applications_resume_open_link",
     "miniapp_applications_resume_none",
     "miniapp_applications_history_label",
     # Phase 23-05 Task 3 (APP-TINDER-04, D-07/D-08): «Принять всех N», честное «отменить уже
@@ -314,7 +316,9 @@ def test_exactly_170_miniapp_keys_and_no_extra():
     # Quick 260915-4mw (ANIM-01..06): +1 ключ «✨ Анимации приложения» (187 -> 188).
     # Приёмка 17.09 (п.1): +1 ключ — пояснение «где найти ссылку потом» под ссылкой
     # амбассадора (188 -> 189).
-    assert len(MINIAPP_KEYS) == 189
+    # Приёмка 17.09 (п.2): +1 ключ — кнопка «Открыть ссылку» резюме-развилки в карточке
+    # отбора заявок (189 -> 190).
+    assert len(MINIAPP_KEYS) == 190
     present = sorted(k for k in SETTINGS_SCHEMA if k.startswith("miniapp_"))
     assert present == sorted(MINIAPP_KEYS)
 
@@ -379,7 +383,8 @@ def test_text_keys_have_human_defaults():
     # терминальном экране (152 -> 154); +1 текстовый ключ счётчика группы настроек (154 -> 155).
     # Phase 30 (30-05, задача 1): +1 текстовый ключ подсказки у поля причины отказа (155 -> 156).
     # Приёмка 17.09 (п.1): +1 текстовый ключ — пояснение под ссылкой амбассадора (156 -> 157).
-    assert len(text_keys) == 157
+    # Приёмка 17.09 (п.2): +1 текстовый ключ — кнопка «Открыть ссылку» резюме (157 -> 158).
+    assert len(text_keys) == 158
     for key in text_keys:
         default = SETTINGS_SCHEMA[key]["default"]
         assert isinstance(default, str) and default.strip(), key
