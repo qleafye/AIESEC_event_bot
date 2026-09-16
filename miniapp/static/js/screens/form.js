@@ -1323,16 +1323,23 @@ export async function render(root, params, ctx) {
       // 30-03 задачи 2/3). `onFooterChange` обновляет ОБЕ поверхности (`.btn` футера и
       // нативный `MainButton`) без полной пересборки шага — drawStep() вызывается один раз
       // за шаг (см. докстринг файла), сам onChange контрола этого не делает.
+      //
+      // Приёмка 17.09 (находка 2/3): гейт `isV2 &&` СНЯТ — легаси `multiControl` (form.js)
+      // теперь тоже отдаёт `footerLabel`/`onFooterChange` (минимум мультивыбора не набран),
+      // и это обязано дизейблить кнопку так же, как v2-типы. Второй копии проводки сюда не
+      // заводим — источник (`footerNodes.onFooterChange`) сам решает, есть ли что слушать:
+      // легаси-типы без него (text/date/select/…) не передают колбэк вовсе, `footerLabel`
+      // остаётся `null`, ветка ниже не срабатывает — их поведение не меняется ни на байт.
       const isForkPick = spec.type === "resume-fork";
       const footerNodes = el._nodes || {};
-      let v2Label = footerNodes.footerLabel || null;
-      let v2Disabled = !!footerNodes.footerDisabled;
+      let footerLabelOverride = footerNodes.footerLabel || null;
+      let footerDisabledOverride = !!footerNodes.footerDisabled;
 
       function currentMainLabel() {
-        return (isV2 && v2Label) ? v2Label : (d.next_cta_text || "");
+        return footerLabelOverride || (d.next_cta_text || "");
       }
       function currentMainDisabled() {
-        return busy || (isV2 && v2Disabled);
+        return busy || footerDisabledOverride;
       }
       function syncMainButton() {
         if (mainLabelNode) mainLabelNode.textContent = currentMainLabel();
@@ -1349,10 +1356,10 @@ export async function render(root, params, ctx) {
         onClick: goNext,
       }, mainLabelNode, icon("arrow-right"));
 
-      if (isV2 && footerNodes.onFooterChange) {
+      if (footerNodes.onFooterChange) {
         footerNodes.onFooterChange((label, disabled) => {
-          v2Label = label;
-          v2Disabled = !!disabled;
+          footerLabelOverride = label;
+          footerDisabledOverride = !!disabled;
           syncMainButton();
         });
       }

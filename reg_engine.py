@@ -271,6 +271,41 @@ async def multi_max(step_key: str) -> int | None:
     return await get_setting_typed(f"reg_multi_max_{step_key}")
 
 
+def multi_min_select(step_key: str) -> int:
+    """Минимум вариантов multi-шага — единая точка правды для обеих поверхностей. `0`, если
+    шаг в `_SKIP_ALLOWED_STEPS` (сегодня туда не входит ни один multi-шаг — де-факто везде
+    `1`), иначе `1` (`validate_answer` отвергает пустой список — «Выбери хотя бы один
+    вариант.»). До этой функции Mini App (`form_types.js::multiChips`) решала вопрос «можно
+    ли ничего не выбрать» САМА, по признаку «ничего не выбрано», и расходилась с сервером —
+    делегат видел кнопку «Пропустить» на обязательном шаге, а сервер отвечал 400 (приёмка
+    17.09, находка 2). Синхронная функция (не читает реестр) — `_SKIP_ALLOWED_STEPS` статична,
+    второго похода в БД не требуется, вызывающие места остаются `def`, а не `async def`."""
+    return 0 if step_key in _SKIP_ALLOWED_STEPS else 1
+
+
+async def multi_requirement_hint(step_key: str, event_city: str | None = None) -> str:
+    """Одна строка «сколько вариантов нужно выбрать» — до первого тапа по чипу/чекбоксу,
+    одинаковая на обеих поверхностях (Mini App подмешивает в `spec["help"]` ниже — `field()`
+    рисует его и в `.field-help`, и в `plate-sub`; чат дописывает к `prompt()` в
+    `handlers/registration.py`, второго текста не заводит). Приёмка 17.09 (находка 3):
+    «минимум» и «максимум» — ОДНА строка («Выбери от {min} до {max}»), не отдельные подсказки
+    обязательности и лимита порознь. Без лимита и без минимума (гипотетический будущий
+    необязательный multi без настроенного `reg_multi_max_*`) строка пустая — ничего показывать
+    не нужно, `step_spec()`/чат её не добавляют."""
+    min_select = multi_min_select(step_key)
+    limit = await multi_max(step_key)
+    if min_select <= 0 and limit is None:
+        return ""
+    if min_select > 0 and limit is not None:
+        text = await get_setting_typed_for_city("reg_multi_min_max_hint_text", event_city)
+        return text.replace("{min}", str(min_select)).replace("{max}", str(limit))
+    if min_select > 0:
+        text = await get_setting_typed_for_city("reg_multi_min_hint_text", event_city)
+        return text.replace("{min}", str(min_select))
+    text = await get_setting_typed_for_city("reg_multi_limit_hint_text", event_city)
+    return text.replace("{max}", str(limit))
+
+
 async def option_list_for(setting_key: str, defaults: list[str]) -> list[str]:
     """Admin-editable option list (newline text) with a hardcoded fallback. Verbatim
     behaviour of the pre-move handlers/registration.py::_get_options — kept as a generic
@@ -1600,6 +1635,10 @@ async def _v2_texts_for(degraded_kind: str, step_key: str, event_city: str | Non
     elif degraded_kind == "multi":
         texts["skip_button"] = await get_setting_typed("reg_form_skip_button_text")
         texts["continue_button"] = await get_setting_typed("reg_form_continue_button_text")
+        # Приёмка 17.09 (находка 2/3): подпись неактивной кнопки «Дальше», пока не набран
+        # `spec.min_select` — тот же паттерн, что `pick_option` у select ниже (переиспользуем
+        # приём «неактивная кнопка с понятной подписью», не сам текст — вопросы разные).
+        texts["pick_min"] = await get_setting_typed("reg_form_multi_pick_min_text")
         texts["limit_hint_zero"] = await get_setting_typed_for_city(
             "reg_multi_limit_hint_zero_text", event_city
         )
@@ -1971,11 +2010,27 @@ async def step_spec(step_key: str, participant_type: str | None = None,
     if ui_type == "multi":
         limit = await multi_max(step_key)
         spec["max_select"] = limit
+        # Приёмка 17.09 (находка 2): `min_select` — сколько вариантов реально требует
+        # `validate_answer` (см. `multi_min_select()`), а не догадка клиента по факту «ничего
+        # не выбрано» — `form_types.js::multiChips` брала именно её и рисовала «Пропустить» на
+        # шаге, где пропуск отвергает сервер.
+        spec["min_select"] = multi_min_select(step_key)
+        # Приёмка 17.09 (находка 2/3): подпись неактивной кнопки «Дальше» легаси-мультивыбора
+        # (`form.js::multiControl`) — top-level поле, не `v2_texts` (тот словарь для
+        # `degraded_kind == "legacy"` пуст, `_v2_texts_for` выше). Тот же реестровый ключ, что
+        # v2-путь читает через `v2_texts.pick_min` — второй формулировки не заводим.
+        if spec["min_select"] > 0:
+            pick_min_text = await get_setting_typed("reg_form_multi_pick_min_text")
+            spec["pick_min_text"] = pick_min_text.replace("{min}", str(spec["min_select"]))
         if limit is not None:
             counter_text = await get_setting_typed("reg_multi_limit_counter_text")
             spec["limit_counter_text"] = counter_text.replace("{max}", str(limit))
-            hint_text = await get_setting_typed_for_city("reg_multi_limit_hint_text", event_city)
-            hint_text = hint_text.replace("{max}", str(limit))
+        # Приёмка 17.09 (находка 3): подсказка «сколько нужно выбрать» ДО первого тапа —
+        # одна строка на минимум+максимум (см. докстринг `multi_requirement_hint`), дописана в
+        # `help` тем же приёмом, что раньше был только у лимита (Reuse Contract 28-UI-SPEC §4 —
+        # отдельного узла на фронте не заводим).
+        hint_text = await multi_requirement_hint(step_key, event_city)
+        if hint_text:
             spec["help"] = f"{spec['help']}\n{hint_text}" if spec.get("help") else hint_text
     # Phase 28 (28-02, SU-08, СкиллАп 5): пояснение под заголовком экрана кейс-чемпионата
     # (28-UI-SPEC.md §5, Body-абзац) — публикуется в спеку, чтобы Mini App нарисовало его
