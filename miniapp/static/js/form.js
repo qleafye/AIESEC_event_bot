@@ -131,22 +131,44 @@ function dateControl(h, spec, value, onChange) {
 // Сегмент чипов (choice-chips/yesno, порог options.length<=4, A3 21-UI-SPEC.md). «Другое»
 // (spec.other_allowed) — отдельный чип-переключатель без своего текста (иконка pen-line,
 // aria-label из spec.label — данные, не литерал), раскрывающий текстовое поле рядом.
+//
+// Приёмка 17.09 (находка 3): `spec.pick_option_text` (сервер, только когда шаг обязателен —
+// см. `reg_engine.step_spec`) включает тот же контракт `footerLabel`/`disabled`/
+// `onFooterChange`, что уже есть у V2-плиток `select` (`form_types.js::selectTiles`) и у
+// легаси-мультивыбора выше (`multiControl`) — «Дальше» неактивна, пока ничего не выбрано.
+// Поле отсутствует (админ-настройки через `settingSpec()`, будущий необязательный choice-
+// шаг) — `requiresPick` остаётся `false`, разметка и поведение НЕ меняются ни на байт.
 function choiceChips(h, spec, value, onChange) {
   const box = h("div", { class: "choice-chips", role: "group", "aria-label": spec.label });
   let current = value;
   const buttons = [];
   const options = spec.options || [];
+  const requiresPick = Boolean(spec.pick_option_text);
+  let footerCb = null;
   // Приёмка 16.09 (п. «добавь автопереход для всех вопросов, которые могут автоскипаться»):
   // тап по чипу ровно из двух вариантов (yesno и любой закрытый выбор «да/нет по факту») —
   // законченный ответ, тот же признак `{commit: true}`, что у плитки `select` (form_types.js).
   // Список из 3+ вариантов автопереход не ставит — там делегат мог промахнуться мимо нужного.
   const autoCommit = options.length === 2;
+
+  function footerState() {
+    if (!requiresPick) return { label: null, disabled: false };
+    const picked = current != null && current !== "";
+    return { label: picked ? null : spec.pick_option_text, disabled: !picked };
+  }
+  function notifyFooter() {
+    if (!footerCb) return;
+    const s = footerState();
+    footerCb(s.label, s.disabled);
+  }
+
   function paint() {
     for (const btn of buttons) {
       const on = btn.dataset.value === String(current);
       btn.classList.toggle("chosen", on);
       btn.setAttribute("aria-pressed", on ? "true" : "false");
     }
+    notifyFooter();
   }
   for (const opt of options) {
     // UAT 07.09 (T-d6t-05): подпись — из реестра (spec.option_labels), значение остаётся
@@ -169,11 +191,17 @@ function choiceChips(h, spec, value, onChange) {
         if (!otherInput.classList.contains("hidden")) otherInput.focus();
       },
     }, icon("pen-line"));
-    otherInput.addEventListener("input", () => { current = otherInput.value; onChange(otherInput.value); });
+    otherInput.addEventListener("input", () => { current = otherInput.value; onChange(otherInput.value); notifyFooter(); });
     box.append(otherBtn, otherInput);
   }
   paint();
-  return box;
+  const initial = footerState();
+  return {
+    control: box,
+    footerLabel: initial.label,
+    disabled: initial.disabled,
+    onFooterChange: (cb) => { footerCb = cb; notifyFooter(); },
+  };
 }
 
 // УАТ 10-11.09 (пункт 2): пустой закрытый список подсвечивал браузером первый реальный
@@ -573,13 +601,13 @@ function buildControl(h, spec, value, onChange) {
     case "date":
       return dateControl(h, spec, value, onChange);
     case "choice-chips":
-      return { control: choiceChips(h, spec, value, onChange) };
+      return choiceChips(h, spec, value, onChange);
     case "select":
       return { control: selectControl(h, spec, value, onChange) };
     case "multi":
       return multiControl(h, spec, value, onChange);
     case "yesno":
-      return { control: choiceChips(h, { ...spec, options: spec.options && spec.options.length ? spec.options : [] }, value, onChange) };
+      return choiceChips(h, { ...spec, options: spec.options && spec.options.length ? spec.options : [] }, value, onChange);
     case "file":
       return fileControl(h, spec, value, onChange);
     case "consent":
