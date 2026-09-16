@@ -68,6 +68,8 @@ APPLICATIONS_TEXT_KEYS = {
     "approve_button": "miniapp_applications_approve_button",
     "reject_button": "miniapp_applications_reject_button",
     "resume_open": "miniapp_applications_resume_open",
+    # Приёмка 17.09 (п.2): развилка резюме R2b — ссылка вместо файла, своя подпись кнопки.
+    "resume_open_link": "miniapp_applications_resume_open_link",
     "resume_none": "miniapp_applications_resume_none",
     "history_label": "miniapp_applications_history_label",
     "undo_button": "miniapp_applications_undo_button",

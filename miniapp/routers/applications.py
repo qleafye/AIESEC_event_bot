@@ -83,9 +83,18 @@ def _parse_offset(raw) -> int:
 
 
 def _resume_block(card_resume: dict, token: str) -> dict:
+    """Приёмка 17.09 (п.2): паритет с ботом расширен на все четыре исхода развилки резюме
+    (SU-04) — файл/ссылка/текст/нет, раньше карточка Mini App резюме не показывала вовсе.
+    `kind == "file"`: прямая Nextcloud-ссылка (`card_resume["url"]`), если загрузка удалась,
+    иначе безопасная ссылка по `file_id` через существующий токен-механизм
+    (`miniapp/file_tokens.py`, тот же приём, что у аватара) — сырой `file_id` клиенту не
+    отдаётся ни в одном из двух случаев."""
     kind = card_resume.get("kind")
     if kind == "file":
-        return {"kind": "file", "url": file_tokens.file_url(card_resume["file_id"], token)}
+        url = card_resume.get("url") or file_tokens.file_url(card_resume["file_id"], token)
+        return {"kind": "file", "url": url}
+    if kind == "link":
+        return {"kind": "link", "url": card_resume.get("url")}
     if kind == "text":
         return {"kind": "text", "text": card_resume.get("text")}
     return {"kind": "none"}
