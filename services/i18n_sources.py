@@ -7,7 +7,9 @@
 `handlers/__init__.py`, а тот — `registration, user_actions, admin, payment`, то есть весь бот
 на бот-фреймворке; докстринг `reg_engine.py:11-19` держит тот же инвариант, и этот модуль ему
 следует). Разрешённые импорты — `settings_schema`, `reg_engine`, `reg_labels`, `reg_options`,
-`cities`, `config`, `database.db`.
+`cities`, `config`, `database.db`, `payment_options` (Квик 260917-en — тот же aiogram-free
+корневой модуль, что использует `handlers/payment.py`, нужен для разбора `payment_options`
+на отдельные подписи тарифов, см. `payment_option_texts()` ниже).
 
 ## Граница «делегатское / админское» (LANG-08, расширено Квик 260917-en: полный чат бота)
 
@@ -93,6 +95,7 @@ from settings_schema import SETTINGS_SCHEMA
 import reg_engine
 import reg_labels
 import reg_options
+import payment_options
 
 logger = logging.getLogger(__name__)
 
@@ -121,7 +124,15 @@ _ADMIN_ONLY_GAME_KEYS: frozenset[str] = frozenset({
 
 # Квик 260917-en: `payment_requisites_by_lc`/`penalty_schedule` — построчные данные (ЛК+реквизиты
 # / дата+сумма), не естественный язык, см. докстринг модуля выше про хеш-адресацию подстрок.
-_NON_LANGUAGE_PAY_KEYS: frozenset[str] = frozenset({"payment_requisites_by_lc", "penalty_schedule"})
+# `payment_options` — тот же класс проблемы: строка «Название | Цена[ | треки]» целиком НЕ
+# совпадает по хешу с ПОДСТРОКОЙ «Название», которую реально показывает делегату
+# `handlers/payment.py` (кнопка выбора тарифа, {option} в шаблоне экрана оплаты) — обычный
+# построчный сбор дал бы мёртвый перевод, который tr() никогда не найдёт. Здесь исключаем из
+# общего построчного сбора, но не теряем: `payment_option_texts()` ниже — отдельный извлекатель
+# ИМЕННО подстроки-названия, как `city_texts()` для городов.
+_NON_LANGUAGE_PAY_KEYS: frozenset[str] = frozenset({
+    "payment_requisites_by_lc", "penalty_schedule", "payment_options",
+})
 
 # Квик 260917-en: `contact_person`/`contact_vk`/`contact_tg` — юзернейм/URL, не текст на языке
 # (машинный перевод URL/@username в лучшем случае no-op, в худшем — риск порчи ссылки).
@@ -443,6 +454,28 @@ async def city_texts() -> list[tuple[str, str]]:
     return result
 
 
+async def payment_option_texts() -> list[tuple[str, str]]:
+    """Названия тарифов оплаты (Квик 260917-en, item 4 приёмки 17.09) — `payment_options`
+    исключён из общего построчного сбора (`_NON_LANGUAGE_PAY_KEYS`, см. докстринг там же),
+    здесь читаем ту же настройку и парсим ЕЁ ЖЕ парсером (`payment_options.parse_options`,
+    тот самый, что использует `handlers/payment.py` для рендера), чтобы источник корпуса не
+    разошёлся с источником отображения ни на один символ. Fail-soft (D-04): нет
+    таблицы/базы -> пустой список, исключение не летит наружу."""
+    from database.db import get_setting
+
+    try:
+        raw = await get_setting("payment_options")
+    except Exception as exc:  # noqa: BLE001 — намеренно широкий fail-soft (D-04)
+        logger.warning("i18n_sources.payment_option_texts: payment_options недоступна (%s)", exc)
+        return []
+    if not raw:
+        return []
+    return [
+        ("payment_options", label)
+        for label, _price, _tracks in payment_options.parse_options(raw)
+    ]
+
+
 async def stored_delegate_texts() -> list[tuple[str, str]]:
     """Реально сохранённые в БД делегатские тексты: `SELECT key, value FROM bot_settings`,
     отфильтрованный `is_delegate_dynamic_key`. `list`-ключи разворачиваются построчно — одна
@@ -492,6 +525,7 @@ async def corpus() -> list[tuple[str, str]]:
     items: list[tuple[str, str]] = list(code_literals())
     items.extend(await stored_delegate_texts())
     items.extend(await city_texts())
+    items.extend(await payment_option_texts())
 
     for key in sorted(delegate_registry_keys()):
         spec = SETTINGS_SCHEMA.get(key, {})
