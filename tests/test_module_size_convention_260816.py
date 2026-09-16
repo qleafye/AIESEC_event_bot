@@ -130,7 +130,13 @@ KNOWN_OVERAGES: dict[str, tuple[int, str]] = {
         "(Phase 14/16)",
     ),
     "admin_settings.py": (
-        2400,
+        2440,
+        "Перф 17.09 (N+1 на экране группы настроек, тот же класс, что у Mini App /settings/all): "
+        "+32 строки — `settings_toggle_rows`/`render_settings_group_text`/"
+        "`build_settings_group_keyboard` стали тонкими обёртками над `_impl`-версиями, "
+        "оборачивающими тело в `database.db.settings_snapshot()` (один снимок bot_settings на "
+        "рендер вместо соединения на ключ); импорт `settings_snapshot` добавлен строкой выше, "
+        "2393 -> 2425, потолок 2440 с небольшим запасом. "
         "16.09 (подпись кнопки меню не сохраняется как значение настройки): +13 строк — проверка "
         "в settings_edit_value (подпись меню -> SkipHandler к настоящему хендлеру кнопки, "
         "служебная подпись -> объяснение без записи); сами подписи собирает keyboards.builders; "
