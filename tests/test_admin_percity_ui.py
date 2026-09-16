@@ -561,7 +561,10 @@ def test_group_text_flags_unchanged_alongside_mark_in_all_cities_mode(tmp_path):
 
 def test_render_settings_group_text_uses_registry_helpers():
     import inspect
-    src = inspect.getsource(admin_settings.render_settings_group_text)
+    # Perf 17.09: `render_settings_group_text` — тонкая обёртка `settings_snapshot()` (один
+    # снимок bot_settings на рендер вместо соединения на ключ, N+1 fix); сама разметка теперь
+    # в `_render_settings_group_text_impl`, оборачивающая функция её вызывает без изменений.
+    src = inspect.getsource(admin_settings._render_settings_group_text_impl)
     assert "city_override_codes" in src and "cities_module_on" in src
 
 
