@@ -2321,7 +2321,7 @@ SETTINGS_SCHEMA = {
     "reg_review_summary_text": {
         "type": "text", "group": "reg_prompts", "label": "👀 Счётчик заполненности",
         "prompt": "{filled}/{total}/{skipped} подставляют числа заполненных/всего/пропущенных шагов.",
-        "default": "{filled} из {total} заполнено, {skipped} необязательных пропущено.",
+        "default": "{filled} из {total} заполнено, пропущено необязательных: {skipped}.",
     },
     "reg_review_group_about_text": {
         "type": "text", "group": "reg_prompts", "label": "👀 Название группы 1 (обзор)",
@@ -4623,7 +4623,7 @@ SETTINGS_SCHEMA = {
     "miniapp_form_ambassador_offer_body_text": {
         "type": "text", "group": "miniapp", "label": "🎁 Текст предложения реф-ссылки",
         "prompt": "Текст под заголовком того же блока-предложения.",
-        "default": "Каждый, кто зарегистрируется по твоей ссылке, попадёт на СкиллАп 5 через тебя.",
+        "default": "Каждый, кто зарегистрируется по твоей ссылке, будет засчитан тебе как приглашённый.",
         "per_city": True,
     },
     "miniapp_form_ambassador_cta_text": {
