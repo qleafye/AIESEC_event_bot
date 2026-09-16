@@ -229,8 +229,31 @@ _FORM_INTRO = {
 }
 
 
+# Приёмка 17.09 (второй прогон): тексты, добавленные в тот же день параллельными правками —
+# реф-ссылка в хабе и пояснение под ней, подписи кнопок резюме, подсказки выбора, счётчики.
+_ACCEPTANCE_260917 = {
+    "Эту ссылку всегда можно найти в чате с ботом — кнопка «🔗 Моя реферальная ссылка» — или в приложении, раздел «{section}», после одобрения заявки.":
+        "You can always find this link in the bot chat — the «🔗 My referral link» button — or in the app, section «{section}», once your application is approved.",
+    "🔗 Моя реферальная ссылка": "🔗 My referral link",
+    "{count} приглашённых по твоей ссылке": "People invited with your link: {count}",
+    "Загрузить файл": "Upload a file",
+    "Написать текстом": "Type it instead",
+    "Отметь вариантов: не меньше {min}.": "Pick at least {min}.",
+    "Выбери от {min} до {max}.": "Pick from {min} to {max}.",
+    "Впереди ещё вопросов: {n}": "Questions left: {n}",
+    "Нажми на вариант — сразу перейдём к следующему вопросу.": "Tap an option — we'll move on to the next question right away.",
+    "Открыть ссылку": "Open link",
+    "Выбери вариант": "Choose an option",
+    "Файл PDF или DOCX до 10 МБ, либо напиши текстом ниже.": "A PDF or DOCX file up to 10 MB, or type it below.",
+    "Файл PDF или DOCX до 10 МБ, ссылка на резюме или «нет резюме» — как удобнее.": "A PDF or DOCX file up to 10 MB, a link to your CV, or «no CV» — whatever works for you.",
+    "Формат ДД.ММ.ГГГГ, например «15.03.2007».": "Format DD.MM.YYYY, for example «15.03.2007».",
+    "Коротко, текстом.": "Briefly, in text.",
+    "{filled} из {total} заполнено, пропущено необязательных: {skipped}.": "{filled} of {total} answered, optional skipped: {skipped}.",
+    "Напиши дату рождения в формате ДД.ММ.ГГГГ, например 15.03.2007": "Enter your date of birth as DD.MM.YYYY, for example 15.03.2007",
+}
+
 MANUAL_EN: dict[str, str] = {
-    **_HUB_STATUS, **_TASKS, **_COINS, **_MISC, **_FORM_INTRO,
+    **_HUB_STATUS, **_TASKS, **_COINS, **_MISC, **_FORM_INTRO, **_ACCEPTANCE_260917,
 }
 
 

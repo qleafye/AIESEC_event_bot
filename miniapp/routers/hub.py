@@ -128,7 +128,10 @@ def _days_until(raw: str | None) -> int | None:
 # (`https://t.me/<bot>?start=<telegram_id>`, БЕЗ префикса `amb_` — это формат другого,
 # отдельного потока «Хочу свою ссылку» на финальном экране анкеты, `handlers/reg_ambassador.py`,
 # сюда не переносится: делаем ровно то же самое, что видит делегат по кнопке меню).
-async def _referral_block(telegram_id: int, event_city: str | None, bot_username: str | None) -> dict | None:
+async def _referral_block(
+    telegram_id: int, event_city: str | None, bot_username: str | None,
+    lang: str = "ru", tr_map: dict | None = None,
+) -> dict | None:
     if await get_setting_typed_for_city("menu_referral", event_city) != "on":
         return None
     if not bot_username:
@@ -136,13 +139,13 @@ async def _referral_block(telegram_id: int, event_city: str | None, bot_username
     invites_text = None
     if await get_setting_typed_for_city("menu_invites", event_city) == "on":
         count = len(await get_referrals(telegram_id))
-        invites_tpl = await get_setting_typed("miniapp_hub_referral_invites_text")
+        invites_tpl = await i18n.tr_setting("miniapp_hub_referral_invites_text", lang, tr_map or {})
         invites_text = invites_tpl.format(count=count) if invites_tpl else None
     return {
-        "label": await get_setting_typed("miniapp_hub_referral_label_text"),
+        "label": await i18n.tr_setting("miniapp_hub_referral_label_text", lang, tr_map or {}),
         "link": f"https://t.me/{bot_username}?start={telegram_id}",
-        "copy_button": await get_setting_typed("miniapp_form_ambassador_copy_button_text"),
-        "copied_toast": await get_setting_typed("miniapp_form_ambassador_copied_toast_text"),
+        "copy_button": await i18n.tr_setting("miniapp_form_ambassador_copy_button_text", lang, tr_map or {}),
+        "copied_toast": await i18n.tr_setting("miniapp_form_ambassador_copied_toast_text", lang, tr_map or {}),
         "invites_text": invites_text,
     }
 
@@ -173,7 +176,7 @@ async def hub(request: Request, p: Principal = Depends(delegate_gate)) -> dict:
     total_participants = await count_participants()
     rank_unit = rank_unit_text.format(total=total_participants) if rank_unit_text else None
 
-    referral = await _referral_block(p.telegram_id, event_city, request.app.state.cfg.bot_username)
+    referral = await _referral_block(p.telegram_id, event_city, request.app.state.cfg.bot_username, lang, tr_map)
 
     return {
         "balance_eyebrow": await i18n.tr_setting("miniapp_hub_balance_eyebrow", lang, tr_map),
