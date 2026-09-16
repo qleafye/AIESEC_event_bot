@@ -1374,7 +1374,6 @@ async function renderSection(root, code, ctx, targetKey) {
     const card = h("div", { class: "card" });
     card.append(
       h("h1", { text: formV2Text("mgr_title") }),
-      h("p", { class: "label-role", text: formV2Text("mgr_subtitle") }),
     );
 
     // Сегмент во всю ширину — крупнее обычных `.hub-seg` (48px/36px, `.brand`, ПРАВКА к
@@ -1399,20 +1398,18 @@ async function renderSection(root, code, ctx, targetKey) {
       }
     }
     paintSeg();
-    card.append(seg, h("p", { class: "label-role", text: formV2Text("mgr_master_hint") }));
+    card.append(seg);
     card.append(h("p", { class: "label-role", text: formV2Text("mgr_included_eyebrow") }));
 
     const rowsWrap = h("div", { class: "settings-toggle-list" });
     for (const row of FORM_MANAGER_ROWS) {
       const item = regFormItems.get(row.key);
       const title = h("div", { class: "st", text: formV2Text(`mgr_${row.text}_label`) });
-      const hintId = `mgr-${row.key}-hint`;
-      const hint = h("div", { class: "ss", id: hintId, text: formV2Text(`mgr_${row.text}_hint`) });
       const pill = h("span", { class: `sw${item.value === "on" ? " on" : ""}` }, h("i", {}));
       const line = h("div", {
         class: "swrow", role: "switch",
         "aria-checked": item.value === "on" ? "true" : "false",
-        "aria-label": formV2Text(`mgr_${row.text}_label`), "aria-describedby": hintId,
+        "aria-label": formV2Text(`mgr_${row.text}_label`),
         onClick: async () => {
           const next = item.value === "on" ? "off" : "on";
           const fresh = await saveManagerToggle(item, next);
@@ -1420,7 +1417,7 @@ async function renderSection(root, code, ctx, targetKey) {
           line.setAttribute("aria-checked", item.value === "on" ? "true" : "false");
           pill.classList.toggle("on", item.value === "on");
         },
-      }, h("div", {}, title, hint), pill);
+      }, h("div", {}, title), pill);
       rowsWrap.append(line);
     }
     card.append(rowsWrap);
