@@ -772,7 +772,13 @@ export async function render(root, params, ctx) {
         h("div", { class: "wizard-step" },
           el,
           h("div", { class: "task-actions" },
-            h("button", { class: "btn", type: "button", disabled: busy, "aria-label": item.text || "", onClick: next }, icon("check")),
+            // Живой прогон 16.09 (п.1): кнопка подтверждения (город/формат участия) была
+            // только иконкой check — делегат не понимал, что это кнопка подтверждения выбора.
+            // Подпись — тот же `d.next_cta_text` («Дальше»), что и на остальных шагах мастера
+            // (один и тот же глагол действия на всей анкете, без нового реестрового ключа).
+            h("button", {
+              class: "btn", type: "button", disabled: busy, "aria-label": item.text || "", onClick: next,
+            }, icon("check"), h("span", { text: d.next_cta_text || "" })),
             chatLink(d.continue_in_chat_text, d.continue_deeplink),
           ),
         ),
@@ -849,7 +855,11 @@ export async function render(root, params, ctx) {
         h("div", { class: "wizard-step" },
           ...cards, errorBox,
           h("div", { class: "task-actions" },
-            h("button", { class: "btn", type: "button", disabled: busy, onClick: next }, icon("check")),
+            // Живой прогон 16.09 (п.1): та же правка, что у экрана города/формата выше —
+            // подпись рядом с иконкой, без неё кнопка выглядела нерабочей.
+            h("button", {
+              class: "btn", type: "button", disabled: busy, "aria-label": d.next_cta_text || "", onClick: next,
+            }, icon("check"), h("span", { text: d.next_cta_text || "" })),
             chatLink(d.continue_in_chat_text, d.continue_deeplink),
           ),
         ),

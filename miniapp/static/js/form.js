@@ -316,9 +316,16 @@ function fileControl(h, spec, value, onChange) {
   // textAllowed — никакой сети в form.js не появляется (Reuse Contract).
   let cleared = false;
   const input = h("input", { type: "file", class: "hidden", accept: spec.accept || ".pdf,.doc,.docx" });
+  // Живой прогон 16.09 (п.1): кнопка загрузки была только иконкой — делегат не понимал, что
+  // это кнопка загрузки файла. `spec.upload_button_text` кладёт ТОЛЬКО reg_engine.step_spec()
+  // (шаг "resume") — settingSpec() (веб-настройки, тот же control при spec.text_allowed=false)
+  // его не публикует, поле там просто отсутствует, и кнопка остаётся байт-в-байт прежней
+  // (иконка + aria-label=spec.label, ничего не сломано).
   const trigger = h("button", {
-    class: "btn secondary dropzone-trigger", type: "button", "aria-label": spec.label, onClick: () => input.click(),
-  }, icon(spec.type === "photo" ? "image" : "upload"));
+    class: "btn secondary dropzone-trigger", type: "button",
+    "aria-label": spec.upload_button_text || spec.label, onClick: () => input.click(),
+  }, icon(spec.type === "photo" ? "image" : "upload"),
+    spec.upload_button_text ? h("span", { text: spec.upload_button_text }) : null);
   const preview = h("img", { class: "dropzone-preview hidden", alt: "" });
   const status = h("span", { class: "dropzone-status" });
   const progress = h("span", { class: "dropzone-progress hidden", "aria-live": "polite" });
@@ -327,10 +334,16 @@ function fileControl(h, spec, value, onChange) {
     onClick: () => { cleared = true; onChange(null); paint(null); },
   }, icon("x"));
   const textarea = textAllowed ? h("textarea", { class: "input hidden", rows: "4" }) : null;
+  // Живой прогон 16.09 (п.1): «ответить текстом» была только иконкой pen-line — делегат не
+  // понимал, что это переключатель на текстовый ответ. `spec.text_button_text` — тот же
+  // reg_engine.step_spec()-only приём, что upload_button_text выше (settingSpec() его не
+  // публикует; впрочем, для этой кнопки не важно — она и так рисуется, только когда
+  // textAllowed, а веб-настройки всегда идут с text_allowed:false).
   const toggleText = textAllowed ? h("button", {
-    class: "btn ghost dropzone-toggle-text", type: "button", "aria-label": spec.label,
+    class: "btn ghost dropzone-toggle-text", type: "button",
+    "aria-label": spec.text_button_text || spec.label,
     onClick: () => textarea.classList.toggle("hidden"),
-  }, icon("pen-line")) : null;
+  }, icon("pen-line"), spec.text_button_text ? h("span", { text: spec.text_button_text }) : null) : null;
   if (textarea) textarea.addEventListener("input", () => onChange({ text: textarea.value }));
 
   function paint(v) {
