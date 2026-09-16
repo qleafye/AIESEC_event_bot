@@ -2620,6 +2620,10 @@ def _validate_answer_core(step_key: str, raw, participant_type: str | None) -> t
             return None, empty_err
         if text == "Другое":
             return None, other_prompt
+        # Приёмка 17.09: в текстовом режиме ВУЗа (reg_university_mode=text) чат рисует кнопку
+        # «Пропустить» (get_skip_kb), а ответ сохранялся буквально как название ВУЗа.
+        if step_key == "university" and text == "Пропустить":
+            return "-", None
         return text, None
     if step_key in _CHOICE_STEPS:
         text = (raw or "").strip()
