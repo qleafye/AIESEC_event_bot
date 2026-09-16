@@ -588,9 +588,7 @@ export function field(h, spec, value, onChange) {
     icon("refresh-cw"), h("span", { class: "field-badge-text" }));
   const label = h("label", { text: spec.label, for: `f-${spec.key}`, class: spec.type === "toggle" ? "hidden" : null });
   const labelRow = h("div", { class: "field-label-row" }, label, badge);
-  // Приёмка 16.09 (владелец): у тумблеров серое пояснение под подписью не рисуем — подпись
-  // говорит сама за себя. Подсказка формата у полей ввода (пример значения) остаётся.
-  const help = spec.help && spec.type !== "toggle" ? h("p", { class: "field-help label-role", text: spec.help }) : null;
+  const help = spec.help ? h("p", { class: "field-help label-role", text: spec.help }) : null;
   const { control, extra, progress, footerLabel, disabled, onFooterChange } = buildControl(h, spec, value, onChange);
   const placeholder = h("p", { class: "field-not-set hidden" });
   const errorZone = h("p", { class: "field-error hidden", "aria-live": "polite" });
@@ -855,6 +853,8 @@ function isOnOffEnum(options) {
   return opts.length === 2 && opts.includes("on") && opts.includes("off");
 }
 
+const SETTING_HELP_HIDDEN_TYPES = new Set(["toggle", "choice-chips", "select", "multi"]);
+
 /**
  * Чистый адаптер «элемент ответа API настроек → spec для field()». Тип реестра → тип
  * рендера: text → text/textarea (порог max_len / HTML-ключи), enum → choice-chips/select
@@ -921,6 +921,10 @@ export function settingSpec(item) {
     spec.stale_options = it.stale_options;
     spec.stale_option_text = it.stale_option_text;
   }
+  // Приёмка 16.09 (владелец): серые пояснения у настроек, где значение ВЫБИРАЮТ (тумблер,
+  // варианты), лишние — подпись и варианты говорят сами за себя. У полей, куда значение
+  // печатают, подсказка с примером формата остаётся. Анкету делегата это не трогает.
+  if (SETTING_HELP_HIDDEN_TYPES.has(spec.type)) spec.help = null;
   return spec;
 }
 
