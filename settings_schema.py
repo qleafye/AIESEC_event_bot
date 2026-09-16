@@ -3356,6 +3356,10 @@ SETTINGS_SCHEMA = {
         "type": "enum", "group": "dashboard", "label": "🎮 Гейма",
         "options": ["on", "off"], "prompt": None, "default": "off",
     },
+    "dashboard_block_referrals": {
+        "type": "enum", "group": "dashboard", "label": "🔗 Рефералы",
+        "options": ["on", "off"], "prompt": None, "default": "on",
+    },
 
     # ── Phase 19 (D-06): экран «🎨 Оформление» Mini App — тумблеры, оформление, чекбоксы
     # разделов и тексты, которых нет в группах game/menu. Own group "miniapp": как и
