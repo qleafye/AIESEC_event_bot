@@ -26,7 +26,7 @@ from aiogram.fsm.context import FSMContext
 from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
 
 from settings_schema import get_setting_typed
-from database.db import get_setting
+from database.db import get_setting, settings_snapshot
 from settings_audit import set_setting_by_admin, delete_setting_by_admin
 from handlers.states import EditSetting
 from handlers.reg_schema import REG_FLOW, REG_LABELS, REG_CATEGORIES
@@ -173,7 +173,16 @@ async def render_questions_text(track: str = "full", admin_id: int | None = None
     title names the city, every row shows the city's EFFECTIVE value plus a
     «(своё)»/«(как везде)» mark (same wording as the menu-buttons screen). Header = None
     (module off / no admin_id passed) / ALL_CITIES («все города») -> today's global screen,
-    byte-identical (untouched branch below)."""
+    byte-identical (untouched branch below).
+
+    Perf (замер 260917): ~51 отдельных get_setting на рендер (по ключу REG_FLOW) — тот же
+    класс N+1, что и в admin_settings.py/Mini App settings.py, тем же снимком (thin wrapper,
+    тело не тронуто)."""
+    async with settings_snapshot():
+        return await _render_questions_text_impl(track, admin_id)
+
+
+async def _render_questions_text_impl(track: str, admin_id: int | None) -> str:
     header_code = await admin_selected_city(admin_id) if admin_id is not None else None
     per_city_ctx = bool(header_code and header_code != ALL_CITIES)
 
@@ -226,7 +235,15 @@ async def build_questions_keyboard(track: str = "full", admin_id: int | None = N
     """Same header-aware branch as `render_questions_text` (WR-05: this function resolves the
     header itself, ONCE). Callback data never carries the city code (T-25-14) — every toggle
     button keeps its EXISTING callback_data regardless of header, the write handler re-reads
-    the header itself."""
+    the header itself.
+
+    Perf (замер 260917): ~52 get_setting на рендер — независимый снимок (не общий с
+    `render_questions_text`), тот же приём, что у `admin_settings.py::build_settings_group_keyboard`."""
+    async with settings_snapshot():
+        return await _build_questions_keyboard_impl(track, admin_id)
+
+
+async def _build_questions_keyboard_impl(track: str, admin_id: int | None):
     header_code = await admin_selected_city(admin_id) if admin_id is not None else None
     per_city_ctx = bool(header_code and header_code != ALL_CITIES)
 
@@ -588,10 +605,12 @@ async def reg_q_reset_city(callback: types.CallbackQuery):
 
     track = _track_from_keyboard(callback.message.reply_markup)
     override_count = 0
-    for _header, setting_key in _categorized_question_keys():
-        override_key = _question_override_key(track, setting_key, header_code)
-        if override_key and await get_setting(override_key):
-            override_count += 1
+    # Perf (замер 260917): тот же N+1, что у render_questions_text — снимок на время цикла.
+    async with settings_snapshot():
+        for _header, setting_key in _categorized_question_keys():
+            override_key = _question_override_key(track, setting_key, header_code)
+            if override_key and await get_setting(override_key):
+                override_count += 1
     if override_count == 0:
         await callback.answer("Нет своих настроек для сброса", show_alert=True)
         return
@@ -749,7 +768,15 @@ async def build_prompts_keyboard(track: str = "full", admin_id: int | None = Non
     """Same header-aware branch as `render_prompts_text` (WR-05: this function resolves the
     header itself, ONCE). Callback data never carries the city code (T-25-14 lineage) — every
     button keeps its EXISTING callback_data regardless of header, the edit handler re-reads
-    the header itself."""
+    the header itself.
+
+    Perf (замер 260917): ~61 get_setting на рендер (REG_FLOW × override/help) — тот же приём
+    снимка, что у соседних экранов настроек."""
+    async with settings_snapshot():
+        return await _build_prompts_keyboard_impl(track, admin_id)
+
+
+async def _build_prompts_keyboard_impl(track: str, admin_id: int | None):
     header_code = await admin_selected_city(admin_id) if admin_id is not None else None
     per_city_ctx = bool(header_code and header_code != ALL_CITIES)
 
