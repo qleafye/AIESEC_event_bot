@@ -149,6 +149,61 @@ UI_EN: dict[str, str] = {
         "Tasks, coins and leaderboard in one place. Open the app 👇",
     "Приложение временно недоступно. Всё то же самое есть в боте.":
         "The app is temporarily unavailable. Everything is also here in the bot.",
+
+    # ── Квик 260917-en: полный чат бота на английском — служебные слова/короткие кнопки, не
+    # регистровый текст (значит, машинный перевод им не нужен и не должен подменяться воркером
+    # при апдейте движка — то же обоснование, что у остального яруса A выше). Экраны «🪙 Баланс»/
+    # «🏆 Рейтинг»/«🎯 Задания» (handlers/user_actions.py) и «❓ Частые вопросы».
+    "История": "History",
+    "Рейтинг": "Rating",
+    "Баланс": "Balance",
+    "← Раньше": "← Earlier",
+    "Позже →": "Later →",
+    "← К вопросам": "← Back to questions",
+    "Некорректное задание": "Invalid task",
+    "Задание не найдено": "Task not found",
+    "Это задание для другого города": "This task is for another city",
+    "Уже отправлено, ожидай проверки": "Already submitted, awaiting review",
+    "новое": "new",
+    "на проверке": "under review",
+    "принято": "accepted",
+    "отклонено": "rejected",
+    "до": "until",
+    "срок вышел, сдать ещё можно": "deadline passed, you can still submit",
+    "попытка": "attempt",
+    "из": "of",
+    "сдано": "submitted",
+    "Уже пусто": "Already empty",
+    "Действие отменено.": "Action cancelled.",
+    "Не понял, пришли фото, документ, текст или ссылку.": "Didn't get it — send a photo, document, text or link.",
+    "Сдача отменена, части не сохранены.": "Submission cancelled, parts not saved.",
+    "📜 История": "📜 History",
+    "🏆 Рейтинг": "🏆 Rating",
+    "◀️ Баланс": "◀️ Balance",
+    "📤 Сдать": "📤 Submit",
+    "◀️ Назад": "◀️ Back",
+    "Страница": "Page",
+    "Вопрос не найден.": "Question not found.",
+    "Этот вопрос уже недоступен.": "This question is no longer available.",
+
+    # ── Квик 260917-en: главное меню — «ℹ️ Информация о форуме» / «📞 Контакты» (короткие
+    # структурные слова экранов handlers/user_actions.py, не текст менеджера) ────────────────
+    "Информация о мероприятии": "Event information",
+    "Время": "Time",
+    "Место": "Place",
+    "Адрес": "Address",
+    "Наша площадка": "Our venue",
+    "Форум пройдет": "The forum will take place",
+    "По всем вопросам пиши сюда": "For any questions, message here",
+    "Наши группы": "Our groups",
+
+    # ── Квик 260917-en: экраны оплаты (handlers/payment.py) — короткие структурные слова ────
+    "Реквизиты": "Payment details",
+    "⏭ Оплачу позже": "⏭ I'll pay later",
+    "📅 Дедлайн": "📅 Deadline",
+    "⚠️ Штрафы за отмену": "⚠️ Cancellation penalties",
+    "до": "until",
+    "остаток": "remaining",
 }
 
 # Обратный индекс, построенный из UI_EN (не второй словарь руками) — нужен плану 27-05 для
