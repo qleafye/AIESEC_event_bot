@@ -40,7 +40,9 @@ DEFAULT_CEILING = 850
 # edit the number + reason together, in the same commit as the growth that needs it.
 KNOWN_OVERAGES: dict[str, tuple[int, str]] = {
     "registration.py": (
-        2470,
+        2485,
+        "17.09 (приёмка, нагрузка анкеты): +15 строк — _advance обёрнут снимком bot_settings "
+        "(тело в _advance_impl), N+1 по настройкам на каждом ответе делегата; потолок 2485. "
         "17.09 (приёмка, перевод чата и одна реф-ссылка): +8 строк — перевод кнопок городов "
         "(reg_i18n.tr_kb) и единый разбор реф-ссылки обоих форматов через resolve_referrer; потолок 2470. "
         "+6 строк (17.09, приёмка): подсказка минимума вариантов мультивыбора в тексте вопроса "
