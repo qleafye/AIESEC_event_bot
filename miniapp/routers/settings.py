@@ -49,7 +49,7 @@ from cities import (
     per_city_key,
     set_admin_city,
 )
-from database.db import get_setting, set_setting
+from database.db import get_setting, set_setting, settings_snapshot
 from services.sheets import tab_row_count
 from settings_schema import SETTINGS_SCHEMA, get_setting_typed, multi_labels, option_label
 from settings_synonyms import SETTINGS_SYNONYMS
@@ -96,19 +96,22 @@ DANGER_CONFIRM = {
 
 async def _items() -> list[dict]:
     items = []
-    for key in EDITABLE_KEYS:
-        meta = SETTINGS_SCHEMA[key]
-        group = meta.get("group")
-        value = await get_setting_typed(key)
-        next_value = "off" if value == "on" else "on"
-        confirm_key = DANGER_CONFIRM.get((key, next_value))
-        items.append({
-            "key": key,
-            "label": meta["label"],
-            "value": value,
-            "group_label": GROUP_LABELS.get(group, str(group or "")),
-            "confirm": await get_setting_typed(confirm_key) if confirm_key else None,
-        })
+    # Perf (17.09): один снимок bot_settings на весь список — без него каждый ключ открывал
+    # своё SQLite-соединение (см. database.db.settings_snapshot).
+    async with settings_snapshot():
+        for key in EDITABLE_KEYS:
+            meta = SETTINGS_SCHEMA[key]
+            group = meta.get("group")
+            value = await get_setting_typed(key)
+            next_value = "off" if value == "on" else "on"
+            confirm_key = DANGER_CONFIRM.get((key, next_value))
+            items.append({
+                "key": key,
+                "label": meta["label"],
+                "value": value,
+                "group_label": GROUP_LABELS.get(group, str(group or "")),
+                "confirm": await get_setting_typed(confirm_key) if confirm_key else None,
+            })
     return items
 
 
@@ -199,10 +202,11 @@ async def settings_hints(
     p: Principal = Depends(require_cap("settings")),
     _: Principal = Depends(require_section("settings")),
 ) -> dict:
-    return {
-        "countdown": await _countdown_hint(p.telegram_id),
-        "quiet_queue": await _quiet_queue_hint(),
-    }
+    async with settings_snapshot():  # _countdown_hint обходит все города при «все города»
+        return {
+            "countdown": await _countdown_hint(p.telegram_id),
+            "quiet_queue": await _quiet_queue_hint(),
+        }
 
 
 # ══ Phase 22 (22-04): весь правимый реестр + шапка города ═══════════════════════════════
@@ -495,14 +499,17 @@ async def settings_all(
     p: Principal = Depends(require_cap("settings")),
     _: Principal = Depends(require_section("settings")),
 ) -> dict:
-    ctx = await _city_ctx(p.telegram_id)
-    sections, total = await _sections(ctx)
-    return {
-        "sections": sections,
-        "city_header": await _city_header(ctx),
-        "texts": await _texts(),
-        "total": total,
-    }
+    # Perf (стенд 17.09: 4.65 с / 2239 SQLite-соединений на этот ответ, миниапп-CONTEXT):
+    # весь ~700-ключевой реестр читается из ОДНОГО снимка bot_settings, не по ключу за раз.
+    async with settings_snapshot():
+        ctx = await _city_ctx(p.telegram_id)
+        sections, total = await _sections(ctx)
+        return {
+            "sections": sections,
+            "city_header": await _city_header(ctx),
+            "texts": await _texts(),
+            "total": total,
+        }
 
 
 # Квик 260915-4mu (мастер первой настройки): три тумблера модулей решают состав шагов —
@@ -518,37 +525,38 @@ async def setup_status(
 ) -> dict:
     """Мастер первой настройки — только чтение (запись идёт через существующий
     `settings/batch`, план 260915-4mu намеренно не заводит своего пути записи)."""
-    ctx = await _city_ctx(p.telegram_id)
-    event_type = await get_setting_typed("event_type")
-    flags = {name: (await get_setting_typed(name)) == "on" for name in _SETUP_MODULE_FLAGS}
+    async with settings_snapshot():  # Perf 17.09 — тот же приём, что у settings_all
+        ctx = await _city_ctx(p.telegram_id)
+        event_type = await get_setting_typed("event_type")
+        flags = {name: (await get_setting_typed(name)) == "on" for name in _SETUP_MODULE_FLAGS}
 
-    steps_out = []
-    done_count = 0
-    total = 0
-    for step in visible_steps(event_type, flags):
-        fields_out = [await _item_for(key, ctx) for key in step.fields]
-        filled = {
-            key: (not item["is_default"]) and item["display"] != ""
-            for key, item in zip(step.fields, fields_out)
-        }
-        counts = step.kind == "fields"
-        done = step_done(step, filled)
-        if counts:
-            total += 1
-            if done:
-                done_count += 1
-        steps_out.append({
-            "key": step.key,
-            "title": step.title,
-            "hint": step.hint,
-            "kind": step.kind,
-            "counts": counts,
-            "done": done,
-            "fields": fields_out,
-            "link": {"hash": step.link[0], "label": step.link[1]} if step.link else None,
-        })
+        steps_out = []
+        done_count = 0
+        total = 0
+        for step in visible_steps(event_type, flags):
+            fields_out = [await _item_for(key, ctx) for key in step.fields]
+            filled = {
+                key: (not item["is_default"]) and item["display"] != ""
+                for key, item in zip(step.fields, fields_out)
+            }
+            counts = step.kind == "fields"
+            done = step_done(step, filled)
+            if counts:
+                total += 1
+                if done:
+                    done_count += 1
+            steps_out.append({
+                "key": step.key,
+                "title": step.title,
+                "hint": step.hint,
+                "kind": step.kind,
+                "counts": counts,
+                "done": done,
+                "fields": fields_out,
+                "link": {"hash": step.link[0], "label": step.link[1]} if step.link else None,
+            })
 
-    dismissed = (await get_setting_typed("setup_wizard_dismissed")) == "on"
+        dismissed = (await get_setting_typed("setup_wizard_dismissed")) == "on"
     return {
         "event_type": event_type,
         "steps": steps_out,
@@ -637,95 +645,100 @@ async def settings_batch(
             raise HTTPException(403, {"reason": "not_editable", "key": change.key})
         targets[change.key] = base
 
-    ctx = await _city_ctx(p.telegram_id)
-    confirmed = set(body.confirm)
-    errors: dict[str, str] = {}
-    needs_confirm: list[dict] = []
-    stale: list[dict] = []
-    warnings: dict[str, str] = {}
-    checked: dict[str, str | None] = {}
+    # Perf 17.09: один снимок на весь пакет — фаза 1 (проверки), фаза 2 (запись) и пересборка
+    # `items` в конце читают/пишут его; `set_setting`/`delete_setting` изнутри `commit_batch_item`
+    # обновляют этот же снимок (database.db.settings_snapshot), так что пересборка `items` видит
+    # только что записанные значения, не старые.
+    async with settings_snapshot():
+        ctx = await _city_ctx(p.telegram_id)
+        confirmed = set(body.confirm)
+        errors: dict[str, str] = {}
+        needs_confirm: list[dict] = []
+        stale: list[dict] = []
+        warnings: dict[str, str] = {}
+        checked: dict[str, str | None] = {}
 
-    # Фаза 1 — проверки по всем ключам.
-    for change in body.changes:
-        key = change.key
-        if key in body.base and key not in confirmed:
-            current = await get_setting(key)
-            if current != body.base[key]:
-                stale.append({
-                    "key": key,
-                    "raw": current,
-                    "value": await get_setting_typed(key) if key == targets[key] else current,
-                })
-        probe = None
-        if key in settings_ops.SHEET_TAB_WRITE_MODE and change.value and key not in confirmed:
-            probe = await tab_row_count(change.value.strip())
-        check = await settings_ops.validate_batch_item(
-            key, change.value,
-            visible_codes=ctx.visible, selected_city=ctx.selected, cities_on=ctx.on,
-            tab_probe=probe, confirmed=key in confirmed,
-        )
-        if check.error:
-            errors[key] = check.error
-            continue
-        if check.needs_confirm:
-            needs_confirm.append({"key": key, "text": check.needs_confirm})
-            continue
-        if check.warning:
-            warnings[key] = check.warning
-        checked[key] = check.value
-
-    saved: list[str] = []
-    if not errors and not needs_confirm and not stale:
-        # Фаза 2 — записи. Аудит «кто правит» — та же строка, что у бота (Quick 260820-rms).
+        # Фаза 1 — проверки по всем ключам.
         for change in body.changes:
             key = change.key
-            logger.info(f"admin {p.telegram_id} правит настройку {key}")
-            warning = await settings_ops.commit_batch_item(key, checked[key])
-            if warning:
-                warnings[key] = (warnings.get(key, "") + "\n\n" + warning).strip()
-            saved.append(key)
-        # E5 (quick 260904-de4): смена пресета в вебе обязана дописать ручки пресета — тот же
-        # приём, что у кнопки пресета в боте (`miniapp_preset_apply`). Дозапись — ТОЛЬКО после
-        # успешной фазы 2 (право "settings" уже проверил `require_cap` выше), только по ключам
-        # из `web_theme.THEME_KEYS`, значения — из `PRESETS`, не из тела запроса (T-de4-03).
-        preset_key = web_theme.THEME_KEYS["preset"]
-        if preset_key in saved:
-            preset_name = checked.get(preset_key)
-            if isinstance(preset_name, str) and preset_name in web_theme.PRESETS:
-                preset_writes = web_theme.preset_handle_writes(preset_name, skip_keys=seen)
-                for handle_key, handle_value in preset_writes.items():
-                    await set_setting(handle_key, handle_value)
-                    targets[handle_key] = handle_key
-                    saved.append(handle_key)
-                logger.info(f"admin {p.telegram_id} применил пресет {preset_name} в вебе")
-    else:
-        warnings = {}
+            if key in body.base and key not in confirmed:
+                current = await get_setting(key)
+                if current != body.base[key]:
+                    stale.append({
+                        "key": key,
+                        "raw": current,
+                        "value": await get_setting_typed(key) if key == targets[key] else current,
+                    })
+            probe = None
+            if key in settings_ops.SHEET_TAB_WRITE_MODE and change.value and key not in confirmed:
+                probe = await tab_row_count(change.value.strip())
+            check = await settings_ops.validate_batch_item(
+                key, change.value,
+                visible_codes=ctx.visible, selected_city=ctx.selected, cities_on=ctx.on,
+                tab_probe=probe, confirmed=key in confirmed,
+            )
+            if check.error:
+                errors[key] = check.error
+                continue
+            if check.needs_confirm:
+                needs_confirm.append({"key": key, "text": check.needs_confirm})
+                continue
+            if check.warning:
+                warnings[key] = check.warning
+            checked[key] = check.value
 
-    # Свежие элементы затронутых ключей — экран не перезапрашивает весь реестр. Трек-композит
-    # (D-17 Task 3) и трек×город композит (Phase 25 CITYQ-01) сюда не попадают: у них нет
-    # item_spec-обёртки (targets[key] == key, не обычный ключ реестра), матрица красит свою
-    # ячейку сама — фронт уже знает точное записанное значение (тумблер матрицы всегда шлёт
-    # явное "on"/"off", не сброс). Для всех остальных ключей `base_setting_key` — единственный
-    # нормализатор композита к базе реестра перед `_item_for`/`SETTINGS_SCHEMA[...]`: он же
-    # режет и обычный per-city композит без трека (`{base}__city__{code}`, любой ключ с
-    # `per_city: True`, не только `reg_q_*`), и совпадает с тем, что `_item_for` дальше сам
-    # пересчитывает нужный композит ответа по шапке города (D-03/D-04) — передавать в него уже
-    # готовый композит вместо базы означало бы падение на `SETTINGS_SCHEMA[композит]`.
-    ctx = await _city_ctx(p.telegram_id)
-    items = [
-        await _item_for(settings_ops.base_setting_key(key), ctx)
-        for key in saved
-        if settings_ops.reg_question_track_base(key) is None
-        and settings_ops.reg_setting_city_track_base(key) is None
-    ]
-    return {
-        "saved": saved,
-        "errors": errors,
-        "needs_confirm": needs_confirm,
-        "stale": stale,
-        "warnings": warnings,
-        "items": items,
-    }
+        saved: list[str] = []
+        if not errors and not needs_confirm and not stale:
+            # Фаза 2 — записи. Аудит «кто правит» — та же строка, что у бота (Quick 260820-rms).
+            for change in body.changes:
+                key = change.key
+                logger.info(f"admin {p.telegram_id} правит настройку {key}")
+                warning = await settings_ops.commit_batch_item(key, checked[key])
+                if warning:
+                    warnings[key] = (warnings.get(key, "") + "\n\n" + warning).strip()
+                saved.append(key)
+            # E5 (quick 260904-de4): смена пресета в вебе обязана дописать ручки пресета — тот же
+            # приём, что у кнопки пресета в боте (`miniapp_preset_apply`). Дозапись — ТОЛЬКО после
+            # успешной фазы 2 (право "settings" уже проверил `require_cap` выше), только по ключам
+            # из `web_theme.THEME_KEYS`, значения — из `PRESETS`, не из тела запроса (T-de4-03).
+            preset_key = web_theme.THEME_KEYS["preset"]
+            if preset_key in saved:
+                preset_name = checked.get(preset_key)
+                if isinstance(preset_name, str) and preset_name in web_theme.PRESETS:
+                    preset_writes = web_theme.preset_handle_writes(preset_name, skip_keys=seen)
+                    for handle_key, handle_value in preset_writes.items():
+                        await set_setting(handle_key, handle_value)
+                        targets[handle_key] = handle_key
+                        saved.append(handle_key)
+                    logger.info(f"admin {p.telegram_id} применил пресет {preset_name} в вебе")
+        else:
+            warnings = {}
+
+        # Свежие элементы затронутых ключей — экран не перезапрашивает весь реестр. Трек-композит
+        # (D-17 Task 3) и трек×город композит (Phase 25 CITYQ-01) сюда не попадают: у них нет
+        # item_spec-обёртки (targets[key] == key, не обычный ключ реестра), матрица красит свою
+        # ячейку сама — фронт уже знает точное записанное значение (тумблер матрицы всегда шлёт
+        # явное "on"/"off", не сброс). Для всех остальных ключей `base_setting_key` — единственный
+        # нормализатор композита к базе реестра перед `_item_for`/`SETTINGS_SCHEMA[...]`: он же
+        # режет и обычный per-city композит без трека (`{base}__city__{code}`, любой ключ с
+        # `per_city: True`, не только `reg_q_*`), и совпадает с тем, что `_item_for` дальше сам
+        # пересчитывает нужный композит ответа по шапке города (D-03/D-04) — передавать в него уже
+        # готовый композит вместо базы означало бы падение на `SETTINGS_SCHEMA[композит]`.
+        ctx = await _city_ctx(p.telegram_id)
+        items = [
+            await _item_for(settings_ops.base_setting_key(key), ctx)
+            for key in saved
+            if settings_ops.reg_question_track_base(key) is None
+            and settings_ops.reg_setting_city_track_base(key) is None
+        ]
+        return {
+            "saved": saved,
+            "errors": errors,
+            "needs_confirm": needs_confirm,
+            "stale": stale,
+            "warnings": warnings,
+            "items": items,
+        }
 
 
 # ══ Phase 22 (22-04, D-07): превью — текст глазами делегата, до сохранения ═══════════════
