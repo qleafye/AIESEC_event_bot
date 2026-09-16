@@ -182,8 +182,10 @@ def test_registration_module_calls_record_reg_event_exactly_three_times():
 
 def test_form_completed_write_is_after_add_user_call():
     # Phase 21 (21-08): both call sites moved together into finalize_data's "new" branch.
+    # Perf 260917: finalize_data is now a thin settings_snapshot() wrapper -- real body (and
+    # the ordering this test checks) moved verbatim into _finalize_data_impl.
     from services import reg_finalize as reg_finalize_mod
-    src = inspect.getsource(reg_finalize_mod.finalize_data)
+    src = inspect.getsource(reg_finalize_mod._finalize_data_impl)
     add_user_idx = src.index("add_user(")
     form_completed_idx = src.index('"form_completed"')
     assert form_completed_idx > add_user_idx
