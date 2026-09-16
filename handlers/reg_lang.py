@@ -26,7 +26,7 @@ from aiogram import Bot, F, types
 from aiogram.fsm.context import FSMContext
 from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
 
-from database.db import get_user, set_user_lang
+from database.db import get_stored_lang, get_user, set_user_lang
 from settings_schema import get_setting_typed
 from services.i18n import delegate_lang
 from handlers.registration import router
@@ -114,8 +114,7 @@ async def offer_language(message: types.Message, state: FSMContext, raw_args: st
         module_on = await get_setting_typed("delegate_lang_enabled") == "on"
         stored = None
         if module_on:
-            user = await get_user(message.from_user.id)
-            stored = (user or {}).get("lang") if user else None
+            stored = await get_stored_lang(message.from_user.id)
         logger.info(
             "offer_language: uid=%s language_code=%r mode=%s module_on=%s stored=%r",
             message.from_user.id, language_code, mode, module_on, stored,
@@ -143,8 +142,7 @@ async def offer_language(message: types.Message, state: FSMContext, raw_args: st
             # персистит "ru" молча — в "everyone" делегат выбирает явно, нечего закреплять.
             try:
                 if await get_setting_typed("delegate_lang_enabled") == "on":
-                    user = await get_user(message.from_user.id)
-                    if not (user and user.get("lang")):
+                    if not await get_stored_lang(message.from_user.id):
                         await set_user_lang(message.from_user.id, "ru")
             except Exception:
                 logger.warning(

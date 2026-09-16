@@ -112,8 +112,7 @@ async def delegate_lang(telegram_id: int, language_code: str | None = None) -> s
     показать экран выбора языка."""
     try:
         module_on = await get_setting_typed("delegate_lang_enabled") == "on"
-        user = await db.get_user(telegram_id)
-        stored = user.get("lang") if user else None
+        stored = await db.get_stored_lang(telegram_id)
         return resolve_lang(module_on, stored, language_code)
     except Exception:  # noqa: BLE001 — намеренно широкий fail-soft (D-04)
         logger.error("delegate_lang: сбой резолюции языка для %s", telegram_id, exc_info=True)
