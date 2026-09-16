@@ -294,7 +294,7 @@ def test_card_payload_empty_resume_is_kind_none(tmp_path):
     _seed_user(803)
 
     payload = _run(applications.card_payload(_run(db.get_user(803))))
-    assert payload["resume"] == {"kind": "none", "file_id": None, "text": None}
+    assert payload["resume"] == {"kind": "none", "file_id": None, "text": None, "url": None}
 
 
 # ── prev_reject_line / карточка «Ранее отклонена: …» (quick 260904-liz) ─────────────────────

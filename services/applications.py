@@ -318,7 +318,9 @@ async def card_payload(user: dict) -> dict:
     истинном признаке), `edited`/`resubmit` (`edit_badges_for`), `prev_reject` — «🚫 Ранее
     отклонена: <причина>» (`prev_reject_line`, quick 260904-liz), ПОСЛЕ `resubmit` и ПЕРЕД
     `consent` — строка согласия ВСЕГДА последней.
-    `resume` — `{kind: "file"|"text"|"none", file_id, text}`.
+    `resume` — `{kind: "file"|"link"|"text"|"none", file_id, text, url}` (приёмка 17.09, п.2:
+    паритет с бото́м расширен на развилку резюме R2b — ссылка `resume_link` и Nextcloud-ссылка
+    `resume_url` на файл, ни та ни другая раньше в карточке веба не показывались вовсе).
     `history` — до 5 записей `get_answer_history` (D-03), КАЖДАЯ уже переведена в
     `{when, source_label, changes:[{label, old, new}]}` — `_history_entry` (найдено планом
     23-05 как Known Stub: до 23-06 фронт получал сырые `column`/`source` литералы).
@@ -326,9 +328,14 @@ async def card_payload(user: dict) -> dict:
     steps = moderation_card.enabled_steps(await get_setting_typed("modcard_fields"))
     answer_limit = await get_setting_typed("modcard_answer_limit")
     enabled_set = set(steps)
-    main_steps = [s for s in steps if s != "resume"]
+    # Приёмка 17.09 (п.2): `resume_link` — тот же шаг развилки резюме, что и `resume` (SU-04
+    # R2b), у него теперь тоже свой блок ниже — исключаем из построчных полей карточки той же
+    # логикой, что уже исключает `resume`, иначе ссылка печаталась бы дважды (обычной строкой
+    # ЗДЕСЬ и ссылкой в `resume`-блоке).
+    _RESUME_STEPS = ("resume", "resume_link")
+    main_steps = [s for s in steps if s not in _RESUME_STEPS]
     main_fields = moderation_card.card_answers(user, main_steps, answer_limit)
-    extra_steps = [s for s in moderation_card.CARD_STEPS if s not in enabled_set and s != "resume"]
+    extra_steps = [s for s in moderation_card.CARD_STEPS if s not in enabled_set and s not in _RESUME_STEPS]
     extra_fields = moderation_card.card_answers(user, extra_steps, None)
 
     badges: list[dict] = []
@@ -364,12 +371,22 @@ async def card_payload(user: dict) -> dict:
     if consent_line:
         badges.append({"kind": "consent", "text": consent_line})
 
+    # Приёмка 17.09 (п.2): порядок — файл (самый информативный артефакт) -> ссылка (R2b) ->
+    # текст -> нет. `url` для "file" — прямая Nextcloud-ссылка (`resume_url`), если загрузка
+    # удалась; `None`, если файл лежит только в Telegram (`resume_file_id`) — веб-роутер тогда
+    # соберёт безопасную ссылку через file-токен (`miniapp/file_tokens.py`), сюда сырой
+    # `file_id` НЕ подмешивается (T-6i9-01, тот же принцип, что `profile.py::_resume_display`).
     if user.get("resume_file_id"):
-        resume = {"kind": "file", "file_id": user["resume_file_id"], "text": None}
+        resume = {
+            "kind": "file", "file_id": user["resume_file_id"], "text": None,
+            "url": user.get("resume_url") or None,
+        }
+    elif user.get("resume_link"):
+        resume = {"kind": "link", "file_id": None, "text": None, "url": user["resume_link"]}
     elif user.get("resume_text"):
-        resume = {"kind": "text", "file_id": None, "text": user["resume_text"]}
+        resume = {"kind": "text", "file_id": None, "text": user["resume_text"], "url": None}
     else:
-        resume = {"kind": "none", "file_id": None, "text": None}
+        resume = {"kind": "none", "file_id": None, "text": None, "url": None}
 
     tid = user.get("telegram_id")
     history_raw = await get_answer_history(tid) if tid is not None else []

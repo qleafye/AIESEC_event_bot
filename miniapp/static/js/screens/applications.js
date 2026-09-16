@@ -317,6 +317,14 @@ export async function render(root, params, ctx) {
       return h("a", { class: "btn ghost appl-resume-open", href: resume.url, target: "_blank", rel: "noopener" },
         icon("file-text"), h("span", { text: texts.resume_open || "" }));
     }
+    // Приёмка 17.09 (п.2): развилка резюме R2b (СкиллАп 5) — делегат дал ссылку вместо файла,
+    // карточка отбора раньше эту ветку не показывала вовсе (падала в «нет резюме»). Отдельная
+    // подпись кнопки (resume_open_link), не resume_open — «Открыть резюме» неточно для чужой
+    // ссылки-профиля, а не файла.
+    if (resume.kind === "link") {
+      return h("a", { class: "btn ghost appl-resume-open", href: resume.url, target: "_blank", rel: "noopener" },
+        icon("link"), h("span", { text: texts.resume_open_link || "" }));
+    }
     if (resume.kind === "text") {
       return h("blockquote", { class: "appl-resume-quote pre", text: resume.text || "" });
     }

@@ -193,6 +193,39 @@ def test_next_returns_one_card_oldest_first_with_avatar_and_fields(client):
     assert body["filters"]["reject_templates"][0] == "Анкета заполнена не полностью"
 
 
+def test_next_resume_file_without_nextcloud_url_uses_token_endpoint(client):
+    """Приёмка 17.09 (п.2): файл резюме без успешной загрузки в Nextcloud (`resume_url`
+    пуст) — карточка отдаёт безопасную ссылку через существующий токен-эндпоинт файла, НЕ
+    сырой `file_id`."""
+    _seed_user(930003, resume_file_id="file-abc")
+    resp = client.get("/app/api/applications/next", headers=_hdr(REG_MANAGER_ID))
+    assert resp.status_code == 200, resp.text
+    resume = resp.json()["resume"]
+    assert resume["kind"] == "file"
+    assert resume["url"].startswith("/app/api/file/file-abc?t=")
+    assert "file-abc" not in resume["url"].split("?t=")[1]  # токен, не второй раз file_id
+
+
+def test_next_resume_file_with_nextcloud_url_used_directly(client):
+    """Приёмка 17.09 (п.2): загрузка в Nextcloud удалась (`resume_url` есть) — карточка
+    отдаёт её как есть, без похода за токен-эндпоинтом."""
+    _seed_user(930004, resume_file_id="file-xyz", resume_url="https://cloud.example.com/s/tok/file.pdf")
+    resp = client.get("/app/api/applications/next", headers=_hdr(REG_MANAGER_ID))
+    assert resp.status_code == 200, resp.text
+    resume = resp.json()["resume"]
+    assert resume == {"kind": "file", "url": "https://cloud.example.com/s/tok/file.pdf"}
+
+
+def test_next_resume_link_kind(client):
+    """Приёмка 17.09 (п.2): развилка резюме R2b — делегат дал ссылку, карточка отбора её
+    показывает, а не молча падает в «нет резюме»."""
+    _seed_user(930005, resume_link="https://example.com/cv")
+    resp = client.get("/app/api/applications/next", headers=_hdr(REG_MANAGER_ID))
+    assert resp.status_code == 200, resp.text
+    resume = resp.json()["resume"]
+    assert resume == {"kind": "link", "url": "https://example.com/cv"}
+
+
 # ── история правок: сервер отдаёт готовые подписи, а не сырые коды (23-06, Known Stub 23-05) ──
 
 def test_next_history_carries_labels_and_source_not_raw_columns(client):
@@ -477,3 +510,27 @@ def test_approve_all_requires_matching_city_and_succeeds_then_already(client):
         "/app/api/applications/approve_all", json={"city": "spb"}, headers=_hdr(BOUND_REG_MANAGER_ID)
     )
     assert again.json() == {"ok": False, "reason": "already"}
+
+
+# ── структурный: screens/applications.js — resumeNode рисует все четыре исхода ──────────────
+
+def test_resume_node_handles_link_kind_with_own_button_text():
+    """Приёмка 17.09 (п.2): `resumeNode` рисует `kind === "link"` отдельной кнопкой-ссылкой
+    (`texts.resume_open_link`), не смешивая с `kind === "file"` (`texts.resume_open`)."""
+    from pathlib import Path
+
+    from tests.test_miniapp_frontend import _js_without_comments
+
+    applications_js = (
+        Path(__file__).resolve().parent.parent / "miniapp" / "static" / "js" / "screens" / "applications.js"
+    )
+    src = _js_without_comments(applications_js)
+    fn_start = src.index("function resumeNode(")
+    fn_end = src.index("\n  }", fn_start)
+    body = src[fn_start:fn_end]
+    assert 'resume.kind === "file"' in body
+    assert 'resume.kind === "link"' in body
+    assert 'resume.kind === "text"' in body
+    assert "texts.resume_open_link" in body
+    assert "texts.resume_open ||" in body  # подпись файла — отдельная от ссылки, не подстрока
+    assert "texts.resume_none" in body

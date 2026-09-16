@@ -9,6 +9,7 @@ from __future__ import annotations
 import asyncio
 from datetime import datetime, timedelta
 
+import moderation_card
 import services.applications as applications
 from config import config
 from database import db
@@ -169,9 +170,64 @@ def test_card_payload_resume_kinds(tmp_path):
     p2 = _run(applications.card_payload(_run(db.get_user(1602))))
     p3 = _run(applications.card_payload(_run(db.get_user(1603))))
 
-    assert p1["resume"] == {"kind": "file", "file_id": "file-abc", "text": None}
-    assert p2["resume"] == {"kind": "text", "file_id": None, "text": "текстовое резюме"}
-    assert p3["resume"] == {"kind": "none", "file_id": None, "text": None}
+    assert p1["resume"] == {"kind": "file", "file_id": "file-abc", "text": None, "url": None}
+    assert p2["resume"] == {"kind": "text", "file_id": None, "text": "текстовое резюме", "url": None}
+    assert p3["resume"] == {"kind": "none", "file_id": None, "text": None, "url": None}
+
+
+def test_card_payload_resume_link_kind(tmp_path):
+    """Приёмка 17.09 (п.2): развилка резюме R2b (СкиллАп 5) — делегат дал ссылку вместо файла,
+    карточка обязана показать «kind: link», а не молча падать в «нет резюме»."""
+    _use_tmp_db(tmp_path)
+    _run(db.init_db())
+    _seed_user(1604, resume_link="https://example.com/cv")
+
+    payload = _run(applications.card_payload(_run(db.get_user(1604))))
+    assert payload["resume"] == {
+        "kind": "link", "file_id": None, "text": None, "url": "https://example.com/cv",
+    }
+
+
+def test_card_payload_resume_file_prefers_nextcloud_url(tmp_path):
+    """Приёмка 17.09 (п.2): файл резюме есть в Nextcloud (`resume_url`) — карточка отдаёт
+    прямую ссылку, а не заставляет фронт идти за токен-эндпоинтом файла."""
+    _use_tmp_db(tmp_path)
+    _run(db.init_db())
+    _seed_user(1605, resume_file_id="file-xyz", resume_url="https://cloud.example.com/s/tok/file.pdf")
+
+    payload = _run(applications.card_payload(_run(db.get_user(1605))))
+    assert payload["resume"] == {
+        "kind": "file", "file_id": "file-xyz", "text": None,
+        "url": "https://cloud.example.com/s/tok/file.pdf",
+    }
+
+
+def test_card_payload_resume_priority_file_over_link_over_text(tmp_path):
+    """Файл — самый информативный артефакт, поэтому побеждает даже если заодно заполнены
+    ссылка/текст (в проде это не встречается — развилка отвечает одной веткой, но карточка
+    не должна зависеть от этого предположения)."""
+    _use_tmp_db(tmp_path)
+    _run(db.init_db())
+    _seed_user(
+        1606, resume_file_id="file-priority", resume_link="https://example.com/cv",
+        resume_text="текст",
+    )
+
+    payload = _run(applications.card_payload(_run(db.get_user(1606))))
+    assert payload["resume"]["kind"] == "file"
+
+
+def test_card_payload_excludes_resume_link_step_from_fields(tmp_path):
+    """Приёмка 17.09 (п.2): `resume_link` — та же ось, что `resume`, у неё теперь свой блок —
+    строкой в main_fields/extra_fields она больше не дублируется."""
+    _use_tmp_db(tmp_path)
+    _run(db.init_db())
+    _seed_user(1607, resume_link="https://example.com/cv")
+    _run(db.set_setting("modcard_fields", "age\nresume_link"))
+
+    payload = _run(applications.card_payload(_run(db.get_user(1607))))
+    labels = [label for label, _ in payload["main_fields"]] + [label for label, _ in payload["extra_fields"]]
+    assert moderation_card.CARD_STEPS["resume_link"] not in labels
 
 
 def test_card_payload_show_resume_reflects_enabled_steps(tmp_path):
