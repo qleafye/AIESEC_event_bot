@@ -51,7 +51,7 @@ from __future__ import annotations
 
 import logging
 
-from cities import split_per_city_key
+from cities import CITIES, split_per_city_key
 from config import config
 from settings_schema import SETTINGS_SCHEMA
 import reg_engine
@@ -309,12 +309,23 @@ async def stored_delegate_texts() -> list[tuple[str, str]]:
 
 async def corpus() -> list[tuple[str, str]]:
     """Полный корпус делегатских текстов анкеты: `code_literals()` + `stored_delegate_texts()`
-    + дефолты `delegate_registry_keys()` из схемы — с дедупликацией по `strip()`-нутому тексту
-    (порядок сохранять, отчёт читает человек: первым делом попадаются самые «частые» строки,
-    как правило самые важные). Пустые строки и одиночное «-» (значение «оставить дефолт» в
-    админке) пропускаются — это не текст для перевода."""
+    + дефолты `delegate_registry_keys()` из схемы + подписи городов мероприятия — с
+    дедупликацией по `strip()`-нутому тексту (порядок сохранять, отчёт читает человек: первым
+    делом попадаются самые «частые» строки, как правило самые важные). Пустые строки и
+    одиночное «-» (значение «оставить дефолт» в админке) пропускаются — это не текст для
+    перевода.
+
+    Задача «делегатский интерфейс на английском» (после 27-04): подпись города мероприятия
+    (`cities.CITIES[i]["label"]`, например «Москва, 30-31 октября») — делегат видит её на
+    вилке города ДО первого вопроса анкеты (`form.py::_pre_items`, `city_fork`), но это не
+    ключ `SETTINGS_SCHEMA` и не строка `bot_settings` — своя таблица `cities`, свой источник
+    добавлен явно, а не через `stored_delegate_texts()` (та читает только `bot_settings`)."""
     items: list[tuple[str, str]] = list(code_literals())
     items.extend(await stored_delegate_texts())
+    for city in CITIES:
+        label = (city.get("label") or "").strip()
+        if label:
+            items.append((f"city_label__{city.get('code')}", label))
 
     for key in sorted(delegate_registry_keys()):
         spec = SETTINGS_SCHEMA.get(key, {})

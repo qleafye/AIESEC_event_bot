@@ -5354,6 +5354,7 @@ async def insert_city(code: str, label: str, tab_base: str | None, sort_order: i
             (code, label, tab_base, enabled, sort_order, msk_now().strftime("%Y-%m-%d %H:%M:%S")),
         )
         await db.commit()
+    await _maybe_enqueue_city_label_translation(label, origin_key=f"city_label__{code}")
 
 
 # Closed whitelist of updatable columns -- column names are NEVER taken from a caller argument
@@ -5379,7 +5380,37 @@ async def update_city(
             f"UPDATE cities SET {', '.join(set_parts)} WHERE code = ?", (*values, code),
         )
         await db.commit()
-        return cursor.rowcount == 1
+        result = cursor.rowcount == 1
+    if result and label is not None:
+        await _maybe_enqueue_city_label_translation(label, origin_key=f"city_label__{code}")
+    return result
+
+
+async def _maybe_enqueue_city_label_translation(label: str, *, origin_key: str) -> None:
+    """Задача «делегатский интерфейс на английском»: подпись города мероприятия
+    («Москва, 30-31 октября») — свободный текст, который менеджер вводит на сезон, не дефолт
+    реестра — `services.i18n_sources.is_delegate_dynamic_key` (рассчитана на ключи
+    `bot_settings`, не на строки таблицы `cities`) его не узнаёт, поэтому копия
+    `database.db._maybe_enqueue_translation`, а не вызов той функции: тот же гейт
+    `delegate_lang_enabled`, тот же fail-soft (T-27-03-04 — запись города к этому моменту уже
+    закоммичена, сбой очереди её не откатывает), но без обращения к `is_delegate_dynamic_key`,
+    которое здесь всегда сказало бы «нет» и молча не поставило бы подпись города в очередь."""
+    try:
+        if not label:
+            return
+        from settings_schema import get_setting_typed
+
+        if await get_setting_typed("delegate_lang_enabled") != "on":
+            return
+
+        from services.i18n import src_hash
+
+        await enqueue_translation("en", src_hash(label), label, origin_key=origin_key)
+    except Exception as exc:  # noqa: BLE001 — намеренно широкий fail-soft (T-27-03-04)
+        logger.error(
+            "update_city/insert_city: постановка подписи города в очередь перевода не удалась (%s)",
+            exc,
+        )
 
 
 async def delete_city_row(code: str) -> bool:
