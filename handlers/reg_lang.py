@@ -192,6 +192,23 @@ async def lang_pick_choose(callback: types.CallbackQuery, state: FSMContext, bot
     # T-27-04-02/докстринг модуля: язык — ТОЛЬКО users.lang, никогда FSM.
     await set_user_lang(callback.from_user.id, code)
 
+    # Квик 260917-en (приёмка 17.09, п.1): физическая кнопка меню чата (иконка рядом со
+    # скрепкой) — отдельная точка входа от инлайн-кнопки «Открыть приложение» под сообщением
+    # (handlers/user_actions.py::open_miniapp_button, уже переводится). Telegram хранит её
+    # per-chat — обновляем сразу на выбранном языке, и на «start», и на «menu» (оба origin
+    # меняют users.lang одинаково выше). Fail-soft: недоступный Telegram не должен ронять
+    # выбор языка — тот уже сохранён в БД строкой выше.
+    #
+    # Ленивый импорт: admin_miniapp.py регистрирует свои хендлеры НА ИМПОРТЕ (декораторы
+    # общего router'а владельца) — статический импорт здесь сдвинул бы момент этой регистрации
+    # раньше обычного (reg_lang грузится из хвоста registration.py) и расходился бы с золотым
+    # снимком порядка хендлеров (tests/test_refac_snapshot_260816.py).
+    try:
+        from handlers.admin_miniapp import sync_chat_menu_button
+        await sync_chat_menu_button(bot, chat_id=callback.from_user.id, lang=code)
+    except Exception:
+        logger.warning("lang_pick_choose: sync_chat_menu_button failed for %s", callback.from_user.id, exc_info=True)
+
     if origin == "start":
         await callback.answer(_LANG_CONFIRM[code])
         try:
