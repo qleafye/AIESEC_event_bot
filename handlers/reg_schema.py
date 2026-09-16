@@ -40,6 +40,13 @@ from reg_engine import (  # noqa: F401
 )
 from cities import cities_module_on, normalize_city, is_default_city, city_tab_base, tab_suffix, get_setting_for_city, per_city_key
 from keyboards.builders import get_main_menu_kb
+# Квик 260917-en (приёмка 17.09, п.4): текст после одобрения — самый частый делегатский текст
+# после /start, раньше уходил по-русски даже при lang=en (bot.send_message мимо reg_i18n.say,
+# у этой функции нет message-объекта — только telegram_id). reg_i18n не импортирует
+# handlers.reg_schema ни статически, ни лениво — цикла нет; модуль не заводит Router/хендлеры,
+# порядок регистрации хендлеров (golden-снимок) не затронут.
+from handlers import reg_i18n
+from services import i18n as i18n_service
 
 logger = logging.getLogger(__name__)
 
@@ -526,8 +533,10 @@ async def send_completion_and_bonus(bot: Bot, telegram_id: int, with_menu: bool 
     except Exception as e:
         logger.error(f"per-city resolve for approve text failed for {telegram_id}: {e}")
         city_code = None
+    lang, tr_map = await i18n_service.context(telegram_id)
     try:
         complete_text = await _approve_text_for(participant_type, city_code, auto_approved=auto_approved)
+        complete_text = reg_i18n.tr_text(complete_text, lang, tr_map)
         kwargs = {"parse_mode": "HTML"}
         if with_menu:
             kwargs["reply_markup"] = await get_main_menu_kb(telegram_id)
@@ -547,7 +556,9 @@ async def send_completion_and_bonus(bot: Bot, telegram_id: int, with_menu: bool 
             await bot.send_message(telegram_id, complete_text, **kwargs)
 
         if await get_setting_typed("reg_bonus_enabled") == "on":  # REG-02: registry-backed
-            bonus_caption = await get_setting("reg_bonus_caption") or "\U0001f381 Бонус за регистрацию!"
+            bonus_caption = reg_i18n.tr_text(
+                await get_setting("reg_bonus_caption") or "\U0001f381 Бонус за регистрацию!", lang, tr_map,
+            )
             bonus_photo = await get_setting("reg_bonus_photo_file_id")
             bonus_doc = await get_setting("reg_bonus_doc_file_id")
             method, file_id = ("send_document", bonus_doc) if bonus_doc else (
