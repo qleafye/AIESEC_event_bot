@@ -50,6 +50,7 @@ from pydantic import BaseModel, Field
 import reg_engine
 from cities import cities_module_on, normalize_city
 from database.db import add_submission_part, create_submission, get_reg_draft, get_task, get_user, upsert_reg_draft
+from services import i18n
 from settings_schema import get_setting_typed
 
 from miniapp import telegram_api
@@ -123,13 +124,15 @@ def _extract_file_id(kind: str, result: dict) -> str | None:
 async def upload_limits(actor: UploadActor = Depends(upload_actor)) -> dict:
     """Потолки и тексты для экрана сдачи — фронт не хранит ни чисел, ни текстов: проверка
     `file.size` ДО отправки показывает `miniapp_upload_too_large_text` из реестра."""
+    lang, tr_map = await i18n.context(actor.telegram_id)
+    lang = lang if lang in ("ru", "en") else "ru"
     return {
         "max_bytes": MAX_UPLOAD_BYTES,
         "photo_max_bytes": PHOTO_MAX_BYTES,
         "max_parts": MAX_PARTS,
         "max_text": MAX_TEXT_PART,
-        "too_large_text": await get_setting_typed("miniapp_upload_too_large_text"),
-        "empty_hint": await get_setting_typed("game_proof_empty_hint"),
+        "too_large_text": await i18n.tr_setting("miniapp_upload_too_large_text", lang, tr_map),
+        "empty_hint": await i18n.tr_setting("game_proof_empty_hint", lang, tr_map),
     }
 
 
@@ -143,20 +146,25 @@ async def _upload_resume(request: Request, actor: UploadActor, content: bytes, f
     draft = await get_reg_draft(actor.telegram_id)
     if draft is None:
         raise HTTPException(404, {"reason": "no_draft"})
+    lang, tr_map = await i18n.context(actor.telegram_id)
+    lang = lang if lang in ("ru", "en") else "ru"
     # Phase 25 (CITYQ-02, T-25-04): отказ по режиму «только текст» ДО проверок формата/размера
     # и ДО Bot API — файл не попадает ни в Telegram, ни в reg_drafts; делегат получает «нужен
     # текст», а не «не тот формат».
     if await reg_engine.resume_mode(draft.get("event_city")) == "text_only":
-        raise HTTPException(409, {"reason": "resume_text_only", "text": await get_setting_typed("reg_form_resume_text_only_text")})
+        raise HTTPException(409, {
+            "reason": "resume_text_only",
+            "text": await i18n.tr_setting("reg_form_resume_text_only_text", lang, tr_map),
+        })
     if not reg_engine.is_allowed_resume(filename):
         raise HTTPException(400, {
             "reason": "bad_type",
-            "text": await get_setting_typed("reg_form_resume_wrong_type_text"),
+            "text": await i18n.tr_setting("reg_form_resume_wrong_type_text", lang, tr_map),
         })
     if reg_engine.resume_too_large(len(content)):
         raise HTTPException(413, {
             "reason": "too_large",
-            "text": await get_setting_typed("reg_form_resume_too_large_text"),
+            "text": await i18n.tr_setting("reg_form_resume_too_large_text", lang, tr_map),
         })
 
     caption = (await get_setting_typed("miniapp_upload_caption_resume") or "")[:CAPTION_MAX]
@@ -285,6 +293,8 @@ async def create_submission_route(
     _: Principal = Depends(require_section("tasks")),
 ) -> dict:
     cfg = request.app.state.cfg
+    lang, tr_map = await i18n.context(p.telegram_id)
+    lang = lang if lang in ("ru", "en") else "ru"
     task = await get_task(body.task_id)
     if task is None or task.get("archived_at"):
         raise HTTPException(404, {"reason": "task_not_found"})
@@ -295,7 +305,9 @@ async def create_submission_route(
             raise HTTPException(404, {"reason": "task_not_found"})
 
     if not body.parts:
-        raise HTTPException(400, {"reason": "empty", "hint": await get_setting_typed("game_proof_empty_hint")})
+        raise HTTPException(400, {
+            "reason": "empty", "hint": await i18n.tr_setting("game_proof_empty_hint", lang, tr_map),
+        })
     if len(body.parts) > MAX_PARTS:
         raise HTTPException(400, {"reason": "too_many_parts", "limit": MAX_PARTS})
 
@@ -339,5 +351,5 @@ async def create_submission_route(
     })
     return {
         "submission_id": submission_id,
-        "accepted_text": await get_setting_typed("game_submit_accepted_text"),
+        "accepted_text": await i18n.tr_setting("game_submit_accepted_text", lang, tr_map),
     }

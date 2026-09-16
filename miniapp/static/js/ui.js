@@ -279,6 +279,30 @@ export function formV2Text(name) {
   return _formV2TextsCache[name] || "";
 }
 
+// Задача «Mini App на английском»: `screenText`/`formV2Text` (и подписи разделов навигации,
+// `sectionLabelsFromDom` в screens/hub.js и соседях) читают data-атрибуты оболочки — та
+// рендерится ДО того, как сервер вообще узнаёт делегата (initData ещё не разобран, страница
+// HTML отдана анонимно). `/app/api/me` — первый запрос, где сервер УЖЕ знает язык делегата
+// (`services.i18n.context`), и отдаёт переведённые версии тех же трёх карт. `app.js::start()`
+// зовёт эту функцию СРАЗУ после `me = await api("/me")`, ДО первого рендера экрана — обе
+// строковые карты выше ещё `null` (ничего их не читало), поэтому переопределение кеша и
+// DOM-атрибута (для соседних модулей, которые парсят `dataset` сами — `hub.js::
+// sectionLabelsFromDom`) видят уже переведённые значения с первого чтения, без перерисовки.
+export function applyServerTexts(me) {
+  if (!me || typeof me !== "object") return;
+  if (me.section_labels && typeof me.section_labels === "object") {
+    document.body.dataset.sectionLabels = JSON.stringify(me.section_labels);
+  }
+  if (me.screen_texts && typeof me.screen_texts === "object") {
+    _screenTextsCache = me.screen_texts;
+    document.body.dataset.screenTexts = JSON.stringify(me.screen_texts);
+  }
+  if (me.form_v2_texts && typeof me.form_v2_texts === "object") {
+    _formV2TextsCache = me.form_v2_texts;
+    document.body.dataset.formV2Texts = JSON.stringify(me.form_v2_texts);
+  }
+}
+
 // Экран уже покрасило ядро (app.js -> api.js::authErrorHandler): 401, 403 и 503 РОВНО с
 // reason "miniapp_off" — источник истины `api.js:53-62`. Копии этой проверки в отдельных
 // экранах (`faq.js`/`form.js`) сверяли только `status === 503` целиком — для 503 с другим
