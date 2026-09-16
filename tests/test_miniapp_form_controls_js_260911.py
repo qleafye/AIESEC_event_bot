@@ -281,6 +281,27 @@ requiredMultiLegacyCb.checked = true;
 requiredMultiLegacyCb.dispatch("change", {});
 const requiredMultiLegacyAfterPick = requiredMultiLegacyFooterCalls[requiredMultiLegacyFooterCalls.length - 1];
 
+// 16) Приёмка 17.09 (находка 3): choice-chips обязательного шага (`spec.pick_option_text`,
+// сервер публикует ТОЛЬКО для required-шагов) дизейблит главную кнопку, пока ничего не
+// выбрано — тот же контракт, что у мультивыбора выше и у V2-плиток select.
+const requiredChipsSpec = {
+  key: "source", type: "choice-chips", label: "Откуда", options: ["a", "b", "c"],
+  pick_option_text: "Выбери вариант",
+};
+const requiredChipsWrap = m.field(h, requiredChipsSpec, null, () => {});
+const requiredChipsFooterCalls = [];
+requiredChipsWrap._nodes.onFooterChange((label, disabled) => requiredChipsFooterCalls.push({ label, disabled }));
+const requiredChipsInitialDisabled = requiredChipsWrap._nodes.footerDisabled;
+const requiredChipsInitialLabel = requiredChipsWrap._nodes.footerLabel;
+requiredChipsWrap._nodes.control.children[0].dispatch("click", {});
+const requiredChipsAfterPick = requiredChipsFooterCalls[requiredChipsFooterCalls.length - 1];
+
+// 16б) choice-chips БЕЗ `pick_option_text` (админ-настройки/будущий необязательный шаг) —
+// поведение прежнее байт-в-байт: кнопка никогда не дизейблится.
+const optionalChipsSpec = { key: "source", type: "choice-chips", label: "Откуда", options: ["a", "b", "c"] };
+const optionalChipsWrap = m.field(h, optionalChipsSpec, null, () => {});
+const optionalChipsInitialDisabled = optionalChipsWrap._nodes.footerDisabled;
+
 console.log(JSON.stringify({
   firstOptionEmptyValue: firstOptionEmpty.getAttribute("value"),
   firstOptionEmptyText: firstOptionEmpty.textContent,
@@ -309,6 +330,8 @@ console.log(JSON.stringify({
   toggleOnCommit, toggleOffCommit,
   multiLegacyCommit, textLegacyCommit,
   requiredMultiLegacyInitialDisabled, requiredMultiLegacyInitialLabel, requiredMultiLegacyAfterPick,
+  requiredChipsInitialDisabled, requiredChipsInitialLabel, requiredChipsAfterPick,
+  optionalChipsInitialDisabled,
 }));
 """
 
@@ -418,3 +441,14 @@ def test_legacy_required_multi_disables_main_button_below_min_select(js_result):
     assert js_result["requiredMultiLegacyInitialLabel"] == "Выбери минимум 1"
     after_pick = js_result["requiredMultiLegacyAfterPick"]
     assert after_pick == {"label": None, "disabled": False}
+
+
+def test_required_choice_chips_disable_main_button_until_picked(js_result):
+    """Приёмка 17.09 (находка 3): choice-chips обязательного шага — «Дальше» дизейблена
+    подписью `spec.pick_option_text`, пока ничего не выбрано; тап по любому чипу снимает
+    дизейбл. Без `pick_option_text` (админ-настройки, будущий необязательный шаг) — поведение
+    прежнее, кнопка никогда не дизейблится."""
+    assert js_result["requiredChipsInitialDisabled"] is True
+    assert js_result["requiredChipsInitialLabel"] == "Выбери вариант"
+    assert js_result["requiredChipsAfterPick"] == {"label": None, "disabled": False}
+    assert js_result["optionalChipsInitialDisabled"] is False
