@@ -38,6 +38,7 @@ from keyboards.builders import (
     get_universities_kb,
     get_course_kb,
     get_yes_no_kb,
+    ADMIN_REREG_BUTTON_TEXT,
 )
 from services.sheets import append_to_sheet, append_to_named_sheet
 from services.nextcloud import upload_resume, upload_text_resume
@@ -2026,7 +2027,7 @@ async def cmd_start(message: types.Message, state: FSMContext, bot: Bot, command
             # second ReplyKeyboardMarkup here would overwrite the main menu just sent above,
             # and the old admin-rereg FSM state swallowed the admin's first tap on ANY menu button.
             kb = InlineKeyboardMarkup(inline_keyboard=[[
-                InlineKeyboardButton(text="\U0001f504 Пройти регистрацию заново", callback_data="admin_rereg")
+                InlineKeyboardButton(text=ADMIN_REREG_BUTTON_TEXT, callback_data="admin_rereg")
             ]])
             await message.answer(  # Quick 260906: НЕ переводим — адресовано админу (см. guard allowlist)
                 "Вы админ — можете пройти регистрацию заново для теста.",
