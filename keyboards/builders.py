@@ -78,6 +78,31 @@ MENU_TEXTS: dict[str, frozenset[str]] = {
 }
 MENU_TEXTS["menu_payment"] = frozenset({"💳 Оплата", MENU_EN.get("💳 Оплата", "💳 Оплата")})
 
+# quick-260916: inline (not reply-keyboard) caption sent alongside the delegate's welcome-back
+# message to an admin — single source shared with handlers/registration.py so the literal is
+# never typed twice; see ADMIN_MISC_BUTTON_TEXTS below for why it matters outside registration.
+ADMIN_REREG_BUTTON_TEXT = "\U0001f504 Пройти регистрацию заново"
+
+# quick-260916: captions that LOOK like a button tap but have no downstream `F.text` handler
+# (e.g. the admin-rereg button above is inline-only — a callback_query, never a text message).
+# Kept separate from `all_menu_button_texts()`: an admin settings guard that sees one of THESE
+# strings can only refuse to save it and explain, never "let the real handler run".
+ADMIN_MISC_BUTTON_TEXTS: frozenset[str] = frozenset({ADMIN_REREG_BUTTON_TEXT})
+
+
+def all_menu_button_texts() -> frozenset[str]:
+    """Every caption the persistent main-menu reply keyboard can show right now, RU+EN,
+    flattened into one set. Single source of truth used both to BUILD the keyboard (via
+    MENU_TEXTS above) and to GUARD against silently saving a stray button tap as free text
+    elsewhere (handlers/admin_settings.py::settings_edit_value) — the admin's reply keyboard
+    stays the main menu while they type a setting value (settings edit never sends its own
+    reply keyboard), so a habitual tap on e.g. "🪙 Мои монеты" sends its caption here as a
+    normal text message."""
+    texts: set[str] = set()
+    for values in MENU_TEXTS.values():
+        texts |= set(values)
+    return frozenset(texts)
+
 
 async def get_main_menu_kb(telegram_id: int | None = None) -> ReplyKeyboardMarkup:
     # Квик 260912 (W5, Задача 3): lang_module_on резолвится ПЕРВЫМ (раньше жил ниже, рядом с
