@@ -34,13 +34,19 @@ async def _send_renew_card(message: types.Message, label: str, consent_key: str)
     """Та же карточка, что у шага consent:* в анкете (registration._ask_step), но с
     callback'ом пересогласия.
 
-    Phase 27 (27-05): НЕ переводим ничего в этой функции — caption это САМ текст согласия
-    (`_prompt(f"consent_{consent_key}", label)`), btn_text это подпись кнопки согласия
-    (`consent_button_text`) — LANG-09 запрещает машинный перевод обоих, PDF тоже остаётся
-    русским. Прямые `message.answer_document`/`message.answer`, не `say()` — намеренно."""
+    Phase 27 (27-05) / Квик 260917-en: `caption` — САМ текст согласия
+    (`_prompt(f"consent_{consent_key}", label)`) — LANG-09 запрещает его машинный перевод,
+    PDF тоже остаётся русским, здесь не переводим НИЧЕГО из этого. `btn_text` (подпись кнопки
+    «Согласен(-на)») — не юридический текст, переводится (ярус A / ручная правка менеджера).
+    Прямые `message.answer_document`/`message.answer`, не `say()` — намеренно (say() перевёл
+    бы и caption)."""
     pdf_file_id = await get_setting(f"consent_pdf_{consent_key}")
     caption = html.escape(await _prompt(f"consent_{consent_key}", label))
     btn_text = await get_setting("consent_button_text") or "Согласен(-на)"
+    # Квик 260917-en (приёмка 17.09): кнопка — не текст согласия (caption/PDF выше остаются
+    # русскими, LANG-09), переводим только её (см. handlers/registration.py::_ask_step,
+    # тот же приём).
+    btn_text = await reg_i18n.tr_for(message, btn_text)
     kb = InlineKeyboardMarkup(inline_keyboard=[[
         InlineKeyboardButton(text=btn_text, callback_data=f"{RENEW_PREFIX}{consent_key}")
     ]])

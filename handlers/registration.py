@@ -596,6 +596,11 @@ async def _ask_step(step_key: str, message: types.Message, state: FSMContext, st
         # Ссылки на документы уже в приветственном сообщении — показываем короткий вопрос.
         caption = html.escape(await _prompt(f'consent_{consent_key}', label, participant_type))  # Quick 260906: LANG-09, не переводим
         btn_text = await get_setting("consent_button_text") or "Согласен(-на)"
+        # Квик 260917-en (приёмка 17.09): кнопка — не юридический текст согласия (caption/PDF
+        # выше остаются НЕпереведёнными, LANG-09), переводим только её через reg_i18n (ярус A
+        # содержит «Согласен(-на)» → «I agree»; ручная правка менеджера через «🌐 Английские
+        # тексты» → «📄 Согласия» тоже сработает — tr_text проверяет tr_map после яруса A).
+        btn_text = await reg_i18n.tr_for(message, btn_text)
         kb = InlineKeyboardMarkup(inline_keyboard=[[
             InlineKeyboardButton(text=btn_text, callback_data=f"consent_accept:{consent_key}")
         ]])

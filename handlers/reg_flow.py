@@ -562,5 +562,9 @@ async def process_consent_ignore(message: types.Message):
     # (i18n_ui_en.UI_EN), не машинным переводом всей склеенной строки (btn_text — переменная
     # настройка, статичный словарь не смог бы её матчить целиком).
     btn_text = await get_setting("consent_button_text") or "Согласен(-на)"
+    # Квик 260917-en: {btn} должен совпадать с тем, что реально на кнопке у ЭТОГО делегата —
+    # если ему уже показали переведённую карточку согласия (registration.py::_ask_step),
+    # подсказка должна цитировать ТУ ЖЕ подпись, не русский оригинал.
+    btn_text = await reg_i18n.tr_for(message, btn_text)
     template = await reg_i18n.tr_for(message, "Нажми кнопку «{btn}» для продолжения.")
     await message.answer(template.format(btn=btn_text))
