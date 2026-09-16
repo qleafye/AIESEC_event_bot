@@ -26,7 +26,7 @@ from fastapi import APIRouter, Depends, Request
 from cities import get_setting_typed_for_city
 from database.db import get_referrals, get_setting, get_user
 from payment_options import parse_options
-from services import applications
+from services import applications, i18n
 from settings_schema import get_setting_typed
 
 from miniapp.deps import Principal, delegate_gate, form_gate
@@ -57,19 +57,19 @@ _STATUS_SCREEN_EXTRAS_OFF: dict = {
 }
 
 
-async def _next_steps(prefix: str) -> list[dict]:
+async def _next_steps(prefix: str, lang: str, tr_map: dict[str, str]) -> list[dict]:
     """Три шага «Что дальше» одного состояния — `reg_status_{prefix}_step{1..3}_title_text`/
     `_body_text`, тот же реестровый шаблон для review/approved (30-UI-SPEC.md таблицы)."""
     steps = []
     for i in (1, 2, 3):
-        title = await get_setting_typed(f"reg_status_{prefix}_step{i}_title_text")
-        body = await get_setting_typed(f"reg_status_{prefix}_step{i}_body_text")
+        title = await i18n.tr_setting(f"reg_status_{prefix}_step{i}_title_text", lang, tr_map)
+        body = await i18n.tr_setting(f"reg_status_{prefix}_step{i}_body_text", lang, tr_map)
         if title or body:
             steps.append({"title": title, "body": body})
     return steps
 
 
-async def _payment_card(user: dict) -> dict | None:
+async def _payment_card(user: dict, lang: str, tr_map: dict[str, str]) -> dict | None:
     """Карточка оплаты экрана «Одобрена» — сумма и срок ТОЛЬКО когда модуль оплаты включён и у
     делегата есть тариф (30-CONTEXT.md решение оркестратора: «следует за payment_enabled и
     наличием тарифа, отдельного ключа нет»). Переиспользует существующий парсер
@@ -91,12 +91,12 @@ async def _payment_card(user: dict) -> dict | None:
     if amount is None:
         return None
     due_date = str(payment_due).split()[0]
-    due_label_tpl = await get_setting_typed("reg_status_payment_due_label_text")
+    due_label_tpl = await i18n.tr_setting("reg_status_payment_due_label_text", lang, tr_map)
     return {
         "amount": amount,
         "due_date": due_date,
         "due_label": due_label_tpl.replace("{дата}", due_date) if due_label_tpl else None,
-        "reminder_note": await get_setting_typed("reg_status_payment_reminder_note_text"),
+        "reminder_note": await i18n.tr_setting("reg_status_payment_reminder_note_text", lang, tr_map),
     }
 
 
@@ -151,39 +151,41 @@ async def _referral_block(telegram_id: int, event_city: str | None, bot_username
 async def hub(request: Request, p: Principal = Depends(delegate_gate)) -> dict:
     user = await get_user(p.telegram_id)
     event_city = user.get("event_city") if user else None
+    lang, tr_map = await i18n.context(p.telegram_id)
+    lang = lang if lang in ("ru", "en") else "ru"
 
     done, total = await tasks_progress(p.telegram_id, await delegate_city_scope(p.telegram_id))
-    tasks_fact_text = await get_setting_typed("miniapp_hub_tasks_fact_text")
+    tasks_fact_text = await i18n.tr_setting("miniapp_hub_tasks_fact_text", lang, tr_map)
     tasks_fact = tasks_fact_text.format(done=done, total=total) if tasks_fact_text else None
 
     countdown_date = await get_setting_typed_for_city("miniapp_hub_countdown_date", event_city)
     days = _days_until(countdown_date)
-    days_fact_text = await get_setting_typed("miniapp_hub_days_fact_text")
+    days_fact_text = await i18n.tr_setting("miniapp_hub_days_fact_text", lang, tr_map)
     days_fact = days_fact_text.format(days=days) if (days is not None and days_fact_text) else None
 
-    event_dates = await get_setting_typed_for_city("event_date", event_city) or None
-    event_place = await get_setting_typed_for_city("event_place_name", event_city) or None
+    event_dates = await i18n.tr_setting_for_city("event_date", event_city, lang, tr_map) or None
+    event_place = await i18n.tr_setting_for_city("event_place_name", event_city, lang, tr_map) or None
 
     # Плита списочного экрана «Рейтинг» (план 23.1-06): «из {total}» подставляется здесь —
     # число участников известно ручке (тот же count_participants, что у /coins/balance и
     # /leaderboard), отдавать шаблон с недоставленной подстановкой нельзя.
-    rank_unit_text = await get_setting_typed("miniapp_leaderboard_plate_unit")
+    rank_unit_text = await i18n.tr_setting("miniapp_leaderboard_plate_unit", lang, tr_map)
     total_participants = await count_participants()
     rank_unit = rank_unit_text.format(total=total_participants) if rank_unit_text else None
 
     referral = await _referral_block(p.telegram_id, event_city, request.app.state.cfg.bot_username)
 
     return {
-        "balance_eyebrow": await get_setting_typed("miniapp_hub_balance_eyebrow"),
-        "balance_unit": await get_setting_typed("miniapp_hub_balance_unit"),
-        "next_eyebrow": await get_setting_typed("miniapp_hub_next_eyebrow"),
-        "sections_eyebrow": await get_setting_typed("miniapp_hub_sections_eyebrow"),
+        "balance_eyebrow": await i18n.tr_setting("miniapp_hub_balance_eyebrow", lang, tr_map),
+        "balance_unit": await i18n.tr_setting("miniapp_hub_balance_unit", lang, tr_map),
+        "next_eyebrow": await i18n.tr_setting("miniapp_hub_next_eyebrow", lang, tr_map),
+        "sections_eyebrow": await i18n.tr_setting("miniapp_hub_sections_eyebrow", lang, tr_map),
         "tasks_fact": tasks_fact,
         "days_fact": days_fact,
         "event_dates": event_dates,
         "event_place": event_place,
-        "tasks_eyebrow": await get_setting_typed("miniapp_tasks_plate_eyebrow"),
-        "rank_eyebrow": await get_setting_typed("miniapp_leaderboard_plate_eyebrow"),
+        "tasks_eyebrow": await i18n.tr_setting("miniapp_tasks_plate_eyebrow", lang, tr_map),
+        "rank_eyebrow": await i18n.tr_setting("miniapp_leaderboard_plate_eyebrow", lang, tr_map),
         "rank_unit": rank_unit,
         "referral": referral,
     }
@@ -199,9 +201,11 @@ async def hub_status(p: Principal = Depends(form_gate)) -> dict:
     user = await get_user(p.telegram_id) or {}
     status = user.get("status") or "approved"
     event_city = user.get("event_city")
+    lang, tr_map = await i18n.context(p.telegram_id)
+    lang = lang if lang in ("ru", "en") else "ru"
 
-    event_dates = await get_setting_typed_for_city("event_date", event_city) or None
-    event_place = await get_setting_typed_for_city("event_place_name", event_city) or None
+    event_dates = await i18n.tr_setting_for_city("event_date", event_city, lang, tr_map) or None
+    event_place = await i18n.tr_setting_for_city("event_place_name", event_city, lang, tr_map) or None
     # Phase 30 (30-05, задача 3): выключенный тумблер -> ниже опубликованные поля пустые
     # (`status_screen_enabled: False`), клиент рисует ТОЛЬКО старые поля — сегодняшнее
     # поведение обеих поверхностей (плита хаба, экрана #/status ещё нет) без изменений.
@@ -212,24 +216,24 @@ async def hub_status(p: Principal = Depends(form_gate)) -> dict:
     haptics_on = await get_setting_typed("reg_form_haptics") == "on"
 
     if status == "pending":
-        heading = await get_setting_typed("miniapp_hub_pending_heading_text")
-        body_tpl = await get_setting_typed("miniapp_hub_pending_body_text")
+        heading = await i18n.tr_setting("miniapp_hub_pending_heading_text", lang, tr_map)
+        body_tpl = await i18n.tr_setting("miniapp_hub_pending_body_text", lang, tr_map)
         days = await get_setting_typed_for_city("miniapp_hub_pending_days", event_city)
         # Та же подстановка, что applications.py::applications_next делает для «{count}» —
         # `.format()` уронил бы ручку, если менеджер случайно сотрёт фигурные скобки в тексте.
         body = body_tpl.replace("{days}", str(days)) if body_tpl else None
         extra = {
-            "badge": await get_setting_typed("reg_status_review_badge_text"),
-            "title": await get_setting_typed("reg_status_review_title_text"),
-            "screen_body": await get_setting_typed("reg_status_review_body_text"),
-            "next_steps_eyebrow": await get_setting_typed("reg_status_next_eyebrow_text"),
-            "next_steps": await _next_steps("review"),
-            "edit_button_text": await get_setting_typed("reg_status_edit_button_text"),
+            "badge": await i18n.tr_setting("reg_status_review_badge_text", lang, tr_map),
+            "title": await i18n.tr_setting("reg_status_review_title_text", lang, tr_map),
+            "screen_body": await i18n.tr_setting("reg_status_review_body_text", lang, tr_map),
+            "next_steps_eyebrow": await i18n.tr_setting("reg_status_next_eyebrow_text", lang, tr_map),
+            "next_steps": await _next_steps("review", lang, tr_map),
+            "edit_button_text": await i18n.tr_setting("reg_status_edit_button_text", lang, tr_map),
             "payment": None, "pay_button_text": None,
             "reason_eyebrow": None, "reason_text": None, "reason_date": None,
             "fix_eyebrow": None, "fix_fields": None, "saved_answers_label": None,
             "resubmit_button_text": None,
-            "tile_text": await get_setting_typed("reg_status_tile_review_text"),
+            "tile_text": await i18n.tr_setting("reg_status_tile_review_text", lang, tr_map),
         } if status_screen_on else _STATUS_SCREEN_EXTRAS_OFF
         return {
             "status": status, "heading": heading, "body": body, "days": days,
@@ -238,38 +242,40 @@ async def hub_status(p: Principal = Depends(form_gate)) -> dict:
             "haptics_enabled": haptics_on, **extra,
         }
     if status == "rejected":
-        heading = await get_setting_typed("miniapp_hub_rejected_heading_text")
-        body = await get_setting_typed("miniapp_hub_rejected_body_text")
-        cta_text = await get_setting_typed("miniapp_hub_rejected_cta_text")
+        heading = await i18n.tr_setting("miniapp_hub_rejected_heading_text", lang, tr_map)
+        body = await i18n.tr_setting("miniapp_hub_rejected_body_text", lang, tr_map)
+        cta_text = await i18n.tr_setting("miniapp_hub_rejected_cta_text", lang, tr_map)
         # Quick 260904-liz: причина последнего НЕ отменённого отказа — `last_rejection_reason`
         # читает СТРОГО по `p.telegram_id` из `form_gate` (T-liz-02: чужую причину узнать
         # нельзя, параметра для этого в ручке нет). `.replace`, не `.format` — та же защита от
         # стёртых менеджером фигурных скобок, что и у `body` выше; строки нет вовсе, если нет
-        # либо причины (старый отказ/отказ без причины), либо самого шаблона.
+        # либо причины (старый отказ/отказ без причины), либо самого шаблона. Сама причина —
+        # свободный текст менеджера (не в реестре) — machine-переводу не подвергается, тот же
+        # fail-soft, что у остальных manager-written строк вне корпуса анкеты (D-04).
         reason = await applications.last_rejection_reason(p.telegram_id)
-        reason_tpl = await get_setting_typed("miniapp_hub_rejected_reason_text")
+        reason_tpl = await i18n.tr_setting("miniapp_hub_rejected_reason_text", lang, tr_map)
         reason_line = reason_tpl.replace("{reason}", reason) if (reason and reason_tpl) else None
         extra = {
-            "badge": await get_setting_typed("reg_status_rejected_badge_text"),
-            "title": await get_setting_typed("reg_status_rejected_title_text"),
-            "screen_body": await get_setting_typed("reg_status_rejected_body_text"),
+            "badge": await i18n.tr_setting("reg_status_rejected_badge_text", lang, tr_map),
+            "title": await i18n.tr_setting("reg_status_rejected_title_text", lang, tr_map),
+            "screen_body": await i18n.tr_setting("reg_status_rejected_body_text", lang, tr_map),
             "next_steps_eyebrow": None, "next_steps": [],
             "edit_button_text": None, "payment": None, "pay_button_text": None,
-            "reason_eyebrow": await get_setting_typed("reg_status_reason_eyebrow_text"),
+            "reason_eyebrow": await i18n.tr_setting("reg_status_reason_eyebrow_text", lang, tr_map),
             # T-30-11/T-30-12 (threat register): причина строго СВОЯ (та же `last_rejection_
             # reason(p.telegram_id)`, что и `reason_line` выше — второй запрос не заводим), без
             # имени менеджера (30-CONTEXT.md решение владельца №5) — под текстом ТОЛЬКО дата
             # решения (`rejected_at`, план 30-05 задача 3).
             "reason_text": reason,
             "reason_date": applications.format_decision_date(user.get("rejected_at")),
-            "fix_eyebrow": await get_setting_typed("reg_status_fix_eyebrow_text"),
+            "fix_eyebrow": await i18n.tr_setting("reg_status_fix_eyebrow_text", lang, tr_map),
             # Список проблемных полей — нет источника данных (менеджер пишет причину свободным
             # текстом, структурной разметки «какое поле не так» проект не ведёт): пусто, пока
             # такая функциональность не появится отдельным планом (см. SUMMARY, Known Stubs).
             "fix_fields": None,
-            "saved_answers_label": await get_setting_typed("reg_status_saved_answers_label_text"),
-            "resubmit_button_text": await get_setting_typed("reg_status_resubmit_button_text"),
-            "tile_text": await get_setting_typed("reg_status_tile_rejected_text"),
+            "saved_answers_label": await i18n.tr_setting("reg_status_saved_answers_label_text", lang, tr_map),
+            "resubmit_button_text": await i18n.tr_setting("reg_status_resubmit_button_text", lang, tr_map),
+            "tile_text": await i18n.tr_setting("reg_status_tile_rejected_text", lang, tr_map),
         } if status_screen_on else _STATUS_SCREEN_EXTRAS_OFF
         return {
             "status": status, "heading": heading, "body": body, "days": None,
@@ -278,23 +284,26 @@ async def hub_status(p: Principal = Depends(form_gate)) -> dict:
             "haptics_enabled": haptics_on, **extra,
         }
     if status == "approved" and status_screen_on:
-        payment = await _payment_card(user)
+        payment = await _payment_card(user, lang, tr_map)
         extra = {
-            "badge": await get_setting_typed("reg_status_approved_badge_text"),
-            "title": (await get_setting_typed("reg_status_approved_title_text") or "").replace(
+            "badge": await i18n.tr_setting("reg_status_approved_badge_text", lang, tr_map),
+            "title": (await i18n.tr_setting("reg_status_approved_title_text", lang, tr_map) or "").replace(
                 "{имя}", user.get("full_name") or "",
             ),
-            "screen_body": (await get_setting_typed("reg_status_approved_body_text") or "")
-                .replace("{дата}", event_dates or "").replace("{город}", event_place or ""),
-            "next_steps_eyebrow": await get_setting_typed("reg_status_next_eyebrow_text"),
-            "next_steps": await _next_steps("approved"),
+            "screen_body": (
+                await i18n.tr_setting("reg_status_approved_body_text", lang, tr_map) or ""
+            ).replace("{дата}", event_dates or "").replace("{город}", event_place or ""),
+            "next_steps_eyebrow": await i18n.tr_setting("reg_status_next_eyebrow_text", lang, tr_map),
+            "next_steps": await _next_steps("approved", lang, tr_map),
             "edit_button_text": None,
             "payment": payment,
-            "pay_button_text": await get_setting_typed("reg_status_pay_button_text") if payment else None,
+            "pay_button_text": (
+                await i18n.tr_setting("reg_status_pay_button_text", lang, tr_map) if payment else None
+            ),
             "reason_eyebrow": None, "reason_text": None, "reason_date": None,
             "fix_eyebrow": None, "fix_fields": None, "saved_answers_label": None,
             "resubmit_button_text": None,
-            "tile_text": (await get_setting_typed("reg_status_tile_approved_text") or "").replace(
+            "tile_text": (await i18n.tr_setting("reg_status_tile_approved_text", lang, tr_map) or "").replace(
                 "{дата}", payment["due_date"] if payment else "",
             ),
         }
