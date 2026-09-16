@@ -12,10 +12,15 @@ import services.i18n_sources as i18n_sources
 
 # Группы реестра, которые НИКОГДА не должны попасть в делегатский корпус (LANG-08 — это
 # сторож границы, а не формальность): чисто административные + `consent` (LANG-09, ручной
-# английский, не машинный) + поверхности, которые делегат видит, не начав анкету.
+# английский, не машинный) + `menu`/`miniapp` (переводятся отдельными точечными словарями,
+# см. докстринг `services/i18n_sources.py`). Квик 260917-en: `event`/`game`/`pay` СНЯТЫ с
+# этого списка — приёмка 17.09 явно расширила объём на весь чат делегата (приветствие,
+# геймификация, оплата); их админские/нелингвистические ключи проверяются отдельно ниже
+# (`test_admin_only_game_keys_excluded`/`test_non_language_pay_event_keys_excluded`), не
+# групповым исключением.
 _NON_DELEGATE_GROUPS = (
     "sheets", "dashboard", "apps", "system", "roles", "toggles",
-    "miniapp", "game", "menu", "event", "pay", "consent",
+    "miniapp", "menu", "consent",
 )
 
 _ADMIN_KEYS = ("reg_edited_admin_label", "reg_prev_reject_admin_label", "reg_resubmit_admin_label")
@@ -55,6 +60,33 @@ def test_admin_rule_is_computed_not_hand_picked():
         if spec.get("group") in i18n_sources.DELEGATE_GROUPS and "admin" in key
     }
     assert computed == i18n_sources.ADMIN_KEYS_IN_DELEGATE_GROUPS
+
+
+def test_admin_only_game_keys_excluded():
+    """Квик 260917-en: визард СОЗДАНИЯ задания (менеджерский экран) не должен протечь в
+    делегатский корпус вместе с остальной группой `game`."""
+    keys = i18n_sources.delegate_registry_keys()
+    for admin_key in i18n_sources._ADMIN_ONLY_GAME_KEYS:
+        assert admin_key in SETTINGS_SCHEMA, f"фикстура теста устарела: {admin_key} пропал из реестра"
+        assert admin_key not in keys, f"{admin_key} — менеджерский экран, не текст для делегата"
+
+
+def test_non_language_pay_event_keys_excluded():
+    """Квик 260917-en: построчные данные (ЛК+реквизиты/дата+сумма) и идентификаторы
+    (юзернейм/URL контактов) — не язык, машинному переводу не подлежат."""
+    keys = i18n_sources.delegate_registry_keys()
+    for key in (*i18n_sources._NON_LANGUAGE_PAY_KEYS, *i18n_sources._NON_LANGUAGE_EVENT_KEYS):
+        assert key in SETTINGS_SCHEMA, f"фикстура теста устарела: {key} пропал из реестра"
+        assert key not in keys, f"{key} — данные/идентификатор, не текст для перевода"
+
+
+def test_delegate_facing_game_pay_event_keys_included():
+    """Позитивная сторона Квик 260917-en: обычные (не исключённые явно) ключи `event`/`game`/
+    `pay` ДОЛЖНЫ попадать в корпус — регресс-гвард на случай, если кто-то по ошибке вернёт
+    групповое исключение вместо точечного."""
+    keys = i18n_sources.delegate_registry_keys()
+    for key in ("start_text", "game_task_list_empty", "payment_receipt_received_text"):
+        assert key in keys, f"{key} должен быть в делегатском корпусе (Квик 260917-en)"
 
 
 def test_is_delegate_dynamic_key_true_cases():

@@ -9,23 +9,40 @@
 следует). Разрешённые импорты — `settings_schema`, `reg_engine`, `reg_labels`, `reg_options`,
 `cities`, `config`, `database.db`.
 
-## Граница «делегатское / админское» (LANG-08)
+## Граница «делегатское / админское» (LANG-08, расширено Квик 260917-en: полный чат бота)
 
 `DELEGATE_GROUPS` — группы реестра настроек (`settings_schema.SETTINGS_SCHEMA`), чьи `text`/
-`list`-ключи считаются текстом анкеты и подлежат переводу в v1:
+`list`-ключи считаются текстом чата делегата и подлежат переводу:
 
 - `reg_prompts` — тексты вопросов анкеты (`reg_prompt_{step}`, генерируются циклом в конце
   `settings_schema.py`);
 - `reg` — остальной текст регистрации: подписи кнопок мастера, тексты после одобрения/отказа,
   списки вариантов с реестровым override (`source_options`, `city_options`, ...);
-- `party` — тексты party-трека (форк «Полная регистрация / Гости»).
+- `party` — тексты party-трека (форк «Полная регистрация / Гости»);
+- `event` — приветствие `/start`, информация о мероприятии, контакты, empty-state'ы
+  (программа/спикеры/FAQ), «Задать вопрос» (Квик 260917-en: владелец снял ограничение
+  27-CONTEXT.md «делегат может увидеть это, не начав анкету — v2» — приёмка 17.09 показала,
+  что именно эти тексты (приветствие) видны раньше всего и остались русскими);
+- `game` — геймификация: список заданий, карточка задания, сдача, баланс/история монет,
+  рейтинг, рефералка (минус визард СОЗДАНИЯ задания — экран МЕНЕДЖЕРА, см.
+  `_ADMIN_ONLY_GAME_KEYS` ниже);
+- `pay` — экраны оплаты: выбор варианта, реквизиты, «оплачу позже», подтверждение чека, текст
+  напоминания (Квик 260917-en: снят статус follow-up из Q7/LANG-07 27-CONTEXT.md — владелец
+  явно включил оплату в объём этой задачи), минус чистые идентификаторы/данные, не язык (см.
+  `_NON_LANGUAGE_PAY_KEYS` ниже).
 
 Группы НЕ в списке — и почему:
 
-- `event`, `menu`, `miniapp`, `game` — делегат может увидеть эти тексты, НЕ начав анкету
-  (главное меню, лендинг мероприятия, геймификация). Правило границы фазы (CONTEXT.md, «вне
-  объёма»): «если делегат может это увидеть, не начав анкету, — это v2».
-- `pay` — оплата размечена как follow-up самой фазой (Q7/LANG-07 в CONTEXT.md), в v1 не входит.
+- `menu` — это НЕ подписи кнопок меню (те — литералы `keyboards/builders.py::MENU_BUTTONS` +
+  `i18n_ui_en.MENU_EN`, переводятся отдельным точечным словарём при рендере клавиатуры).
+  Ключи группы `menu` — тумблеры «показывать ли пункт» на АДМИНСКОМ экране (`type: "enum"`,
+  их `label` менеджеру, не делегату) — `delegate_registry_keys()` их и так не берёт (фильтр
+  по `type in ("text", "list")`), группа явно не добавлена, чтобы это было видно без чтения кода.
+- `miniapp` — тексты входа в Mini App (`miniapp_open_text`/`miniapp_open_button`/
+  `miniapp_disabled_text`) переводятся точечно в `handlers/user_actions.py::open_miniapp_button`
+  через ярус A (`i18n_ui_en.UI_EN`) — то же решение, что уже было принято Квик 260915-skg, не
+  меняем: это три строки, рукописный перевод для них надёжнее машинного (короткие, участвуют в
+  визуальном UAT постоянно).
 - `consent` — LANG-09/D-04: согласия НЕ переводятся машинно. Английская редакция (если вообще
   нужна — вопрос юридический, не технический) вводится менеджером руками в плане 27-06.
 - `sheets`, `dashboard`, `apps`, `system`, `roles`, `toggles` — чисто административные
@@ -36,6 +53,24 @@
 по смыслу — метка для МЕНЕДЖЕРА в карточке заявки, не текст ДЛЯ ДЕЛЕГАТА. Правило: «ключ группы
 `reg` с подстрокой `admin` в имени → админский» — вычислено автоматически, а не выписано руками,
 чтобы новый ключ с тем же паттерном не пролез в корпус молча.
+
+`_ADMIN_ONLY_GAME_KEYS` (Квик 260917-en) — та же граница внутри группы `game`, но БЕЗ общего
+паттерна имени (в отличие от `reg`, здесь нет подстроки вроде «admin» — визард создания задания
+называется `game_task_title_prompt`/`game_wizard_publish_btn`, не «admin_...»), поэтому список
+явный, а не вычисленный: `game_task_title_prompt`/`game_task_photo_prompt` — шаги визарда
+СОЗДАНИЯ задания (видит менеджер, не делегат), `game_task_preview_intro`/
+`game_wizard_preview_title`/`game_wizard_publish_btn` — заголовки менеджерского экрана «👁 Как
+видит делегат» и кнопка публикации, `coins_manual_amount_presets` — CSV чисел для
+кнопок-пресетов менеджерского визарда начисления монет (не язык вообще).
+
+`_NON_LANGUAGE_PAY_KEYS` (Квик 260917-en) — в группе `pay` исключены `payment_requisites_by_lc`
+(формат `ЛК | реквизиты` построчно — при машинном переводе ВСЕЙ строки как одного текста хеш
+переведённой строки никогда не совпадёт с хешем ПОДСТРОКИ реквизитов, которую реально показывает
+`handlers/payment.py::_resolve_requisites` делегату — перевод осел бы в `translations` мёртвым
+грузом, ни разу не найденным `tr()`; отдельный корпус под подстроки — за рамками этой правки,
+задокументировано как известное ограничение) и `penalty_schedule` (формат `дата|сумма` — числа
+и даты, machine-перевод не изменил бы ни одного символа, лишняя строка в очереди). Сама
+`payment_requisites` (одна строка на всё событие, БЕЗ построчного формата) переводится как есть.
 
 ## Два яруса (A-02 в CONTEXT.md)
 
@@ -52,6 +87,7 @@ from __future__ import annotations
 import logging
 
 from cities import CITIES, split_per_city_key
+import cities
 from config import config
 from settings_schema import SETTINGS_SCHEMA
 import reg_engine
@@ -60,7 +96,7 @@ import reg_options
 
 logger = logging.getLogger(__name__)
 
-DELEGATE_GROUPS = ("reg_prompts", "reg", "party")
+DELEGATE_GROUPS = ("reg_prompts", "reg", "party", "event", "game", "pay")
 
 # Правило «`admin` в имени ключа группы `reg`» найдено вычислением, не выписано руками. На
 # 06.09.2026 это ровно три ключа-метки для менеджера в карточке заявки:
@@ -73,6 +109,29 @@ ADMIN_KEYS_IN_DELEGATE_GROUPS: frozenset[str] = frozenset(
     if spec.get("group") in DELEGATE_GROUPS and "admin" in key
 )
 
+# Квик 260917-en: у группы `game` нет общего паттерна имени для «это менеджерский экран»
+# (в отличие от `reg`, где подстрока «admin» вычислима) — визард СОЗДАНИЯ задания называется
+# `game_task_title_prompt`/`game_wizard_publish_btn`, делегат эти экраны не видит никогда
+# (см. докстринг модуля выше). Список явный и должен обновляться руками при добавлении новых
+# менеджерских экранов в группу `game`.
+_ADMIN_ONLY_GAME_KEYS: frozenset[str] = frozenset({
+    "game_task_title_prompt", "game_task_photo_prompt", "game_task_preview_intro",
+    "game_wizard_preview_title", "game_wizard_publish_btn", "coins_manual_amount_presets",
+})
+
+# Квик 260917-en: `payment_requisites_by_lc`/`penalty_schedule` — построчные данные (ЛК+реквизиты
+# / дата+сумма), не естественный язык, см. докстринг модуля выше про хеш-адресацию подстрок.
+_NON_LANGUAGE_PAY_KEYS: frozenset[str] = frozenset({"payment_requisites_by_lc", "penalty_schedule"})
+
+# Квик 260917-en: `contact_person`/`contact_vk`/`contact_tg` — юзернейм/URL, не текст на языке
+# (машинный перевод URL/@username в лучшем случае no-op, в худшем — риск порчи ссылки).
+_NON_LANGUAGE_EVENT_KEYS: frozenset[str] = frozenset({"contact_person", "contact_vk", "contact_tg"})
+
+_NON_DELEGATE_TEXT_KEYS: frozenset[str] = (
+    ADMIN_KEYS_IN_DELEGATE_GROUPS | _ADMIN_ONLY_GAME_KEYS | _NON_LANGUAGE_PAY_KEYS
+    | _NON_LANGUAGE_EVENT_KEYS
+)
+
 # Динамические ключи вне SETTINGS_SCHEMA — только эти два префикса (help_text/prompt
 # докстринги reg_engine.py явно говорят «в SETTINGS_SCHEMA НЕ заводится»).
 _DYNAMIC_PREFIXES = ("reg_prompt_", "reg_help_")
@@ -80,12 +139,13 @@ _TRACK_SUFFIXES = ("__party", "__short")
 
 
 def delegate_registry_keys() -> frozenset[str]:
-    """Ключи `SETTINGS_SCHEMA` из `DELEGATE_GROUPS` типа text/list, минус админские метки."""
+    """Ключи `SETTINGS_SCHEMA` из `DELEGATE_GROUPS` типа text/list, минус админские метки и
+    нелингвистические поля (см. `_NON_DELEGATE_TEXT_KEYS`, докстринг модуля)."""
     return frozenset(
         key for key, spec in SETTINGS_SCHEMA.items()
         if spec.get("group") in DELEGATE_GROUPS
         and spec.get("type") in ("text", "list")
-        and key not in ADMIN_KEYS_IN_DELEGATE_GROUPS
+        and key not in _NON_DELEGATE_TEXT_KEYS
     )
 
 
@@ -271,7 +331,115 @@ def code_literals() -> list[tuple[str, str]]:
         "Напиши свои ФИО (Фамилия Имя Отчество):",
     ))
 
+    # Квик 260917-en: полный чат бота на английском — литералы `handlers/user_actions.py`
+    # (главное меню: инфо/программа/спикеры/контакты/рефералка/FAQ/вопрос менеджеру/
+    # геймификация), `handlers/payment.py` (оплата) и `services/application_effects.py`
+    # (отказ) — эти модули aiogram-зависимы, `i18n_sources.py` их не импортирует (докстринг
+    # модуля), поэтому строки продублированы буквально, тем же приёмом, что и литералы
+    # `registration`/`reg_flow`/`reg_resume`/`reg_consent` выше. `tests/test_i18n_sources_27.py`
+    # держит их байт-в-байт списком.
+    items.append(("lit:user_actions.info_date", "🗓 Дата пока уточняется. Скоро сообщим! 🙂"))
+    items.append((
+        "lit:user_actions.info_place",
+        "📍 Место проведения в процессе подтверждения. Как только всё будет готово, мы напишем!",
+    ))
+    items.append((
+        "lit:user_actions.gtask_open_archived",
+        "Это задание убрали в архив — сдать его больше нельзя. Загляни в «🎯 Задания», "
+        "там актуальный список.",
+    ))
+    items.append((
+        "lit:user_actions.mytask_submit_archived",
+        "Это задание убрали в архив — сдать его больше нельзя. Загляни в «🎯 Мои "
+        "задания», там актуальный список.",
+    ))
+    items.append(("lit:user_actions.mytask_submit_active", "Уже отправлено, ожидай проверки"))
+    items.append((
+        "lit:user_actions.mytask_submit_limit",
+        "Лимит попыток по этому заданию исчерпан ({limit}). Если считаешь, что "
+        "это ошибка — напиши менеджеру через «❓ Задать вопрос».",
+    ))
+    items.append((
+        "lit:user_actions.mytask_submit_deadline_passed",
+        "⏰ Срок сдачи вышел. Отправить можно, но начислять коины будет решать менеджер.",
+    ))
+    items.append(("lit:user_actions.cancel_game_submit", "Действие отменено."))
+    items.append((
+        "lit:user_actions.receive_proof_unrecognized",
+        "Не понял, пришли фото, документ, текст или ссылку.",
+    ))
+    items.append((
+        "lit:user_actions.receive_proof_overflow",
+        "Больше {max_parts} частей в одну сдачу не влезет — нажми «✅ Готово», "
+        "менеджер уже увидит присланное.",
+    ))
+    items.append(("lit:user_actions.finalize_task_gone", "Это задание больше не доступно."))
+    items.append((
+        "lit:user_actions.finalize_race",
+        "Уже отправлено — кто-то опередил на долю секунды. Обнови список заданий.",
+    ))
+    items.append(("lit:user_actions.gs_cancel", "Сдача отменена, части не сохранены."))
+    items.append(("lit:user_actions.upload_receipt_not_owed", "Оплатили или оплата не требуется."))
+    items.append((
+        "lit:user_actions.show_info_menu_empty",
+        "Информация о мероприятии пока заполняется.\n\nВыбери, что тебя интересует:",
+    ))
+    items.append(("lit:user_actions.process_question_text_only", "Пожалуйста, отправь вопрос текстом."))
+    items.append((
+        "lit:user_actions.process_question_no_admins",
+        "Не удалось отправить вопрос, попробуйте позже.",
+    ))
+    items.append(("lit:user_actions.process_question_none_configured", "Администраторы не настроены."))
+    items.append(("lit:user_actions.cancel_question", "Действие отменено."))
+    items.append(("lit:user_actions.not_registered", "Чтобы пользоваться ботом, сначала нужно зарегистрироваться. Отправь команду /start."))
+
+    items.append(("lit:payment.receipt_bad_mime", "❌ Принимается только PDF-документ. Для скриншота используй функцию отправки фото."))
+    items.append(("lit:payment.receipt_too_large_doc", "❌ Файл слишком большой (максимум 10 МБ). Пришли чек меньшего размера."))
+    items.append(("lit:payment.receipt_too_large_photo", "❌ Изображение слишком большое (максимум 10 МБ). Пришли чек меньшего размера."))
+    items.append(("lit:payment.receipt_rate_limited", "⏳ Слишком часто. Подожди пару секунд и попробуй снова."))
+    items.append((
+        "lit:payment.receipt_invalid",
+        "❌ Отправь чек оплаты (PDF-документ или фото).\nИли /start — вернуться в меню "
+        "(загрузить чек можно будет позже).",
+    ))
+    items.append((
+        "lit:payment.tariff_wrong_track",
+        "Этот вариант недоступен для твоего трека.",
+    ))
+    items.append(("lit:payment.tariff_unavailable", "Вариант больше не доступен."))
+    items.append(("lit:payment.tariff_bad_value", "Некорректный вариант."))
+
+    items.append(("lit:application_effects.default_reject_text", "К сожалению, твоя заявка отклонена."))
+    items.append(("lit:reg_schema.default_approve_text", "Твоя заявка одобрена! Добро пожаловать 🎉"))
+    items.append(("lit:reg_schema.default_approve_auto_text", "Заявка принята ✅ Всё получили — ждём тебя!"))
+    items.append(("lit:reg_schema.default_bonus_caption", "\U0001f381 Бонус за регистрацию!"))
+
     return items
+
+
+async def city_texts() -> list[tuple[str, str]]:
+    """Названия городов мероприятия (Квик 260917-en, item 3 приёмки 17.09) — живут в таблице
+    `cities` (`cities.py`), НЕ в `SETTINGS_SCHEMA`/`bot_settings` напрямую, поэтому
+    `stored_delegate_texts()` их не видит вообще (тот сканирует только `bot_settings`).
+    `cities.city_label(code)` уже резолвит override (`city_label__{code}`) поверх базового
+    `cities.label` — берём РОВНО то, что реально покажется делегату на кнопке `_city_fork_kb`
+    (`handlers/registration.py`), одной строкой на город. `ensure_cities_fresh` — та же
+    осторожность, что у `enabled_cities()`: список городов меняется по ходу сезона, читать
+    голый холодный `.env`-кэш здесь было бы неверно, если менеджер только что добавил город."""
+    try:
+        await cities.ensure_cities_fresh()
+    except Exception as exc:  # noqa: BLE001 — намеренно широкий fail-soft (D-04)
+        logger.warning("i18n_sources.city_texts: обновление списка городов не удалось (%s)", exc)
+    result: list[tuple[str, str]] = []
+    for code in cities.city_codes():
+        try:
+            label = await cities.city_label(code)
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("i18n_sources.city_texts: city_label(%r) не удалось (%s)", code, exc)
+            continue
+        if label:
+            result.append((f"city_label__{code}", label))
+    return result
 
 
 async def stored_delegate_texts() -> list[tuple[str, str]]:
@@ -322,10 +490,7 @@ async def corpus() -> list[tuple[str, str]]:
     добавлен явно, а не через `stored_delegate_texts()` (та читает только `bot_settings`)."""
     items: list[tuple[str, str]] = list(code_literals())
     items.extend(await stored_delegate_texts())
-    for city in CITIES:
-        label = (city.get("label") or "").strip()
-        if label:
-            items.append((f"city_label__{city.get('code')}", label))
+    items.extend(await city_texts())
 
     for key in sorted(delegate_registry_keys()):
         spec = SETTINGS_SCHEMA.get(key, {})
