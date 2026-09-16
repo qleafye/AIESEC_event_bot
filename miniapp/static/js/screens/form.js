@@ -13,7 +13,7 @@ import {
   field, setFieldState, createFormState, diffView, confirmBox, errorText,
   isAuthError as isAuthErrorBase, stepIndexFromKey, validationErrors, firstFieldError,
 } from "../form.js";
-import { fileUrl, flatRow, sectionTitle, labelText, noticeBox, screenText, formV2Text } from "../ui.js";
+import { fileUrl, flatRow, sectionTitle, labelText, noticeBox, screenText, formV2Text, ambassadorLinkBlock } from "../ui.js";
 import { icon } from "../icons.js";
 import { haptic, slideIn, progressTo } from "../motion.js";
 import { applyTheme, themeOverride, setThemeOverride } from "../app.js";
@@ -407,32 +407,11 @@ export async function render(root, params, ctx) {
   // Стадия B: ссылка — текстовый узел в моноширинном блоке (НЕ <a href> — делегат должен
   // скопировать, не уйти из приложения кликом, Accessibility 28-UI-SPEC.md), «Скопировать»
   // через Clipboard API + haptic success + чип «Скопировано» (say(), тот же паттерн, что
-  // review.js/applications.js), автоскрытие через 2000ms.
+  // review.js/applications.js), автоскрытие через 2000ms. Приёмка 17.09 (п.1): сам блок —
+  // `ui.js::ambassadorLinkBlock`, общий с постоянным местом реф-ссылки в хабе
+  // (`screens/hub.js`), второй копии рендера нет.
   function renderAmbassadorLink(slot, res) {
-    const copyBtn = h("button", { class: "btn ghost", type: "button", text: res.copy_button || "" });
-    copyBtn.addEventListener("click", async () => {
-      if (!res.link || !navigator.clipboard || typeof navigator.clipboard.writeText !== "function") return;
-      try {
-        await navigator.clipboard.writeText(res.link);
-        haptic("success");
-        say(res.copied_toast || "", "success");
-        setTimeout(() => say(""), 2000);
-      } catch (_) {
-        // Clipboard API недоступен/отклонён — ссылка всё равно видна текстом, копирование
-        // руками остаётся возможным.
-      }
-    });
-    slot.replaceChildren(
-      h("div", { class: "ambassador-offer" },
-        h("h2", { text: res.heading || "" }),
-        h("div", { class: "ambassador-link-box", text: res.link || "" }),
-        // Приёмка 17.09 (п.1): пояснение — где эту ссылку найти потом (голый URL без контекста
-        // выше не объясняет ничего сам по себе). `.ambassador-offer p` уже стилизован (muted),
-        // второй класс не заводим.
-        res.note ? h("p", { text: res.note }) : null,
-        h("div", { class: "actions" }, copyBtn),
-      ),
-    );
+    slot.replaceChildren(ambassadorLinkBlock(h, res, { haptic, say }));
   }
 
   let draft;

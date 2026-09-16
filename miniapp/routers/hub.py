@@ -21,10 +21,10 @@ from __future__ import annotations
 
 from datetime import datetime
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Request
 
 from cities import get_setting_typed_for_city
-from database.db import get_setting, get_user
+from database.db import get_referrals, get_setting, get_user
 from payment_options import parse_options
 from services import applications
 from settings_schema import get_setting_typed
@@ -115,8 +115,40 @@ def _days_until(raw: str | None) -> int | None:
     return delta if delta >= 0 else None
 
 
+# ── Приёмка 17.09 (п.1): постоянное место реф-ссылки в хабе ─────────────────────────────────
+#
+# Правило видимости — ТО ЖЕ, что у кнопки чата «🔗 Моя реферальная ссылка»
+# (`keyboards/builders.py::MENU_BUTTONS`, тумблер `menu_referral`): маршрут уже требует
+# `delegate_gate` (аналог `ensure_registered` — одобренная заявка, любой legacy-статус без
+# записи трактуется как approved), здесь дополнительно тот же тумблер `menu_referral`
+# (per_city) — выключен для города делегата -> `referral: None`, блока в хабе нет вовсе
+# (то же самое «кнопки нет» на клавиатуре бота). Число приглашённых — второй, независимый
+# тумблер `menu_invites` (кнопка «👥 Мои приглашённые»): выключен -> ссылка остаётся,
+# `invites_text` пуст. Ссылка строится в ТОМ ЖЕ формате, что и ботовская кнопка меню
+# (`https://t.me/<bot>?start=<telegram_id>`, БЕЗ префикса `amb_` — это формат другого,
+# отдельного потока «Хочу свою ссылку» на финальном экране анкеты, `handlers/reg_ambassador.py`,
+# сюда не переносится: делаем ровно то же самое, что видит делегат по кнопке меню).
+async def _referral_block(telegram_id: int, event_city: str | None, bot_username: str | None) -> dict | None:
+    if await get_setting_typed_for_city("menu_referral", event_city) != "on":
+        return None
+    if not bot_username:
+        return None
+    invites_text = None
+    if await get_setting_typed_for_city("menu_invites", event_city) == "on":
+        count = len(await get_referrals(telegram_id))
+        invites_tpl = await get_setting_typed("miniapp_hub_referral_invites_text")
+        invites_text = invites_tpl.format(count=count) if invites_tpl else None
+    return {
+        "label": await get_setting_typed("miniapp_hub_referral_label_text"),
+        "link": f"https://t.me/{bot_username}?start={telegram_id}",
+        "copy_button": await get_setting_typed("miniapp_form_ambassador_copy_button_text"),
+        "copied_toast": await get_setting_typed("miniapp_form_ambassador_copied_toast_text"),
+        "invites_text": invites_text,
+    }
+
+
 @router.get("/app/api/hub")
-async def hub(p: Principal = Depends(delegate_gate)) -> dict:
+async def hub(request: Request, p: Principal = Depends(delegate_gate)) -> dict:
     user = await get_user(p.telegram_id)
     event_city = user.get("event_city") if user else None
 
@@ -139,6 +171,8 @@ async def hub(p: Principal = Depends(delegate_gate)) -> dict:
     total_participants = await count_participants()
     rank_unit = rank_unit_text.format(total=total_participants) if rank_unit_text else None
 
+    referral = await _referral_block(p.telegram_id, event_city, request.app.state.cfg.bot_username)
+
     return {
         "balance_eyebrow": await get_setting_typed("miniapp_hub_balance_eyebrow"),
         "balance_unit": await get_setting_typed("miniapp_hub_balance_unit"),
@@ -151,6 +185,7 @@ async def hub(p: Principal = Depends(delegate_gate)) -> dict:
         "tasks_eyebrow": await get_setting_typed("miniapp_tasks_plate_eyebrow"),
         "rank_eyebrow": await get_setting_typed("miniapp_leaderboard_plate_eyebrow"),
         "rank_unit": rank_unit,
+        "referral": referral,
     }
 
 
