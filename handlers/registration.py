@@ -840,7 +840,10 @@ async def recall_keep(callback: types.CallbackQuery, state: FSMContext, bot: Bot
     if not _consent_key_matches(step_key, data.get("_recall_step")):
         await callback.answer()
         return
-    await callback.answer("✅ Оставили")
+    # Квик 260917-en (найдено tools/i18n_delegate_chat_audit.py): алерт «оставили прошлый
+    # ответ» на экране «Прошлый ответ» уходил мимо перевода — той же кнопке «✅ Оставить»
+    # уже сопоставлен перевод в i18n_ui_en.UI_EN, «Оставили» — отдельная словоформа.
+    await callback.answer(await reg_i18n.tr_for(callback, "✅ Оставили"))
     try:
         await callback.message.edit_reply_markup(reply_markup=None)
     except Exception:
