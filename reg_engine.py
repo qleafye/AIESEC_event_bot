@@ -36,7 +36,7 @@ from datetime import datetime
 from urllib.parse import urlparse
 
 from config import config
-from database.db import get_setting, get_user, RESUME_RECALL_COLUMNS
+from database.db import get_setting, get_user, RESUME_RECALL_COLUMNS, settings_snapshot
 from settings_schema import SETTINGS_SCHEMA, get_setting_typed
 from cities import (
     ALL_CITIES, cities_module_on, city_codes, city_label, enabled_cities,
@@ -515,11 +515,23 @@ async def enabled_steps(data: dict, city_code: str | None = None) -> list[str]:
     бота уже кладёт его туда — handlers/registration.py:1341-1344); ни один сегодняшний
     вызывающий не обязан меняться (`city_code=None` → берём из `data`, а не глобально).
 
-    Phase 28 (28-01, SU-01/SU-03/SU-04, СкиллАп 5): множество «учусь» резолвится ОДИН раз за
+    Phase 28 (28-01, СкиллАп 5): множество «учусь» резолвится ОДИН раз за
     вызов (`studying_statuses()`), studying считается через `is_studying` — пустое множество
     воспроизводит прежнее правило байт-в-байт. Плюс три новых условия: resume_link/mini_* —
     по `resume_type` (развилка резюме, план 28-04 кладёт значение в data), case_optin — без
-    доп. условия (A-02 CONTEXT)."""
+    доп. условия (A-02 CONTEXT).
+
+    Perf (замер 260917): горячий путь анкеты — этот цикл проверяет `is_step_enabled_for_track`
+    на все ~51 REG_FLOW-шага КАЖДЫЙ раз, когда делегат отвечает на один вопрос (`_advance`
+    зовёт эту функцию на каждом шаге) — до фикса 51+ отдельных SQLite-соединений на один
+    ответ в чате, тот же класс N+1, что чинили в admin_settings.py/Mini App settings.py.
+    Снимок bot_settings на время всего цикла — тонкая обёртка, тело (`_enabled_steps_impl`)
+    не тронуто."""
+    async with settings_snapshot():
+        return await _enabled_steps_impl(data, city_code)
+
+
+async def _enabled_steps_impl(data: dict, city_code: str | None) -> list[str]:
     enabled = []
     edu_conditional = await get_setting_typed("edu_conditional") == "on"
     edu_studying_set = await studying_statuses()
@@ -1487,11 +1499,16 @@ async def form_v2_flags(event_city: str | None = None) -> dict[str, bool]:
     напрямую. Дефолт каждого ключа — `"off"` (SETTINGS_SCHEMA) — пустой реестр отдаёт девять
     `False`, а `degrade_kind` при всех `False` отдаёт `"legacy"` для любого типа: делегат не
     видит ничего нового, пока менеджер явно не включит хотя бы мастер-тумблер (acceptance этого
-    плана — GOLDEN не сдвинут)."""
-    return {
-        name: await get_setting_typed_for_city(f"reg_form_{name}", event_city) == "on"
-        for name in FORM_V2_TOGGLE_KEYS
-    }
+    плана — GOLDEN не сдвинут).
+
+    Perf (замер 260917): зовётся на каждом _ask_step в чате и на каждой сборке form_spec
+    в Mini App — девять get_setting_typed_for_city подряд, снимок сворачивает их в одно
+    соединение (тот же приём, что у enabled_steps выше)."""
+    async with settings_snapshot():
+        return {
+            name: await get_setting_typed_for_city(f"reg_form_{name}", event_city) == "on"
+            for name in FORM_V2_TOGGLE_KEYS
+        }
 
 
 def degrade_kind(kind: str, flags: dict[str, bool]) -> str:
