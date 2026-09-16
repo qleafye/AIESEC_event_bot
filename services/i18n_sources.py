@@ -344,6 +344,11 @@ def code_literals() -> list[tuple[str, str]]:
         "📍 Место проведения в процессе подтверждения. Как только всё будет готово, мы напишем!",
     ))
     items.append((
+        "lit:user_actions.show_info_menu_ready",
+        "Информация о мероприятии пока заполняется.",
+    ))
+    items.append(("lit:user_actions.show_info_menu_ready", "Выбери, что тебя интересует:"))
+    items.append((
         "lit:user_actions.gtask_open_archived",
         "Это задание убрали в архив — сдать его больше нельзя. Загляни в «🎯 Задания», "
         "там актуальный список.",
@@ -380,10 +385,6 @@ def code_literals() -> list[tuple[str, str]]:
     ))
     items.append(("lit:user_actions.gs_cancel", "Сдача отменена, части не сохранены."))
     items.append(("lit:user_actions.upload_receipt_not_owed", "Оплатили или оплата не требуется."))
-    items.append((
-        "lit:user_actions.show_info_menu_empty",
-        "Информация о мероприятии пока заполняется.\n\nВыбери, что тебя интересует:",
-    ))
     items.append(("lit:user_actions.process_question_text_only", "Пожалуйста, отправь вопрос текстом."))
     items.append((
         "lit:user_actions.process_question_no_admins",
