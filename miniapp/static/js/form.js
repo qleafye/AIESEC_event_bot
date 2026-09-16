@@ -215,14 +215,34 @@ function selectControl(h, spec, value, onChange) {
 // тихий дизейбл НЕвыбранных чекбоксов по достижении лимита (уже выбранные остаются
 // кликабельны — снять выбор можно всегда). Никакого alert/toast на веб-поверхности (A6
 // 28-UI-SPEC): канал диктует форму обратной связи, лимит на сервере один и тот же.
+// Приёмка 17.09 (находка 2/3): `spec.min_select` (сервер, `reg_engine.multi_min_select`) —
+// то же самое единственное правило, что уже правит V2-мультивыбор (`form_types.js::
+// multiChips`), применённое к легаси-контролу (веб-настройки его не видят вовсе — там
+// `settingSpec()` не публикует это поле, `minSelect` остаётся 0, поведение админки не меняется
+// ни на байт). Контрол теперь возвращает объект `{control, footerLabel, disabled,
+// onFooterChange}` — тот же контракт, что уже понимает `field()`/`drawStep()` для V2-типов
+// (план 30-03/30-04), второй копии проводки главной кнопки не заводим.
 function multiControl(h, spec, value, onChange) {
   const chosen = new Set(Array.isArray(value) ? value : []);
   const maxSelect = typeof spec.max_select === "number" ? spec.max_select : null;
+  const minSelect = typeof spec.min_select === "number" ? spec.min_select : 0;
   const counter = maxSelect != null
     ? h("p", { class: "label-role multi-limit-counter", "aria-live": "polite" })
     : null;
   const rows = [];
   const box = h("div", { class: "choice-grid", role: "group", "aria-label": spec.label });
+  let footerCb = null;
+
+  function footerState() {
+    return chosen.size < minSelect
+      ? { label: spec.pick_min_text || null, disabled: true }
+      : { label: null, disabled: false };
+  }
+  function notifyFooter() {
+    if (!footerCb) return;
+    const s = footerState();
+    footerCb(s.label, s.disabled);
+  }
 
   function renderCounter() {
     if (!counter) return;
@@ -249,6 +269,7 @@ function multiControl(h, spec, value, onChange) {
       if (cb.checked) chosen.add(opt); else chosen.delete(opt);
       renderCounter();
       renderDisabled();
+      notifyFooter();
       onChange(Array.from(chosen));
     });
     rows.push({ opt, cb, label });
@@ -292,8 +313,13 @@ function multiControl(h, spec, value, onChange) {
     renderStale();
   }
 
-  if (!counter) return box;
-  return h("div", { class: "multi-control" }, counter, box);
+  const initial = footerState();
+  return {
+    control: counter ? h("div", { class: "multi-control" }, counter, box) : box,
+    footerLabel: initial.label,
+    disabled: initial.disabled,
+    onFooterChange: (cb) => { footerCb = cb; notifyFooter(); },
+  };
 }
 
 // Дропзона резюме: default (кнопка «upload») -> success (чип с именем файла + «✕») -> либо
@@ -551,7 +577,7 @@ function buildControl(h, spec, value, onChange) {
     case "select":
       return { control: selectControl(h, spec, value, onChange) };
     case "multi":
-      return { control: multiControl(h, spec, value, onChange) };
+      return multiControl(h, spec, value, onChange);
     case "yesno":
       return { control: choiceChips(h, { ...spec, options: spec.options && spec.options.length ? spec.options : [] }, value, onChange) };
     case "file":

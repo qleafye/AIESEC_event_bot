@@ -225,6 +225,34 @@ chips[0].dispatch("click", {});
 chips[1].dispatch("click", {});   // лимит 1 — второй тап не должен добавиться
 const afterMultiCalls = multiCalls.length ? multiCalls[multiCalls.length - 1] : [];
 
+// 2b) Приёмка 17.09 (находка 2): `min_select` — обязательный multi (сервер отвергает пустой
+// список, "Форматы форума" и любой сегодняшний multi-шаг) НЕ предлагает «Пропустить» при нуле
+// выбранных — кнопка дизейблена подписью `pick_min`, а не рабочей на вид `skip_button`.
+const requiredMultiSpec = {
+  key: "formats", degraded_kind: "multi", min_select: 1,
+  options: ["Онлайн", "Офлайн"], option_labels: {},
+  v2_texts: { skip_button: "Пропустить", continue_button: "Продолжить", pick_min: "Выбери минимум {min}" },
+};
+const requiredMultiFooterCalls = [];
+const requiredMultiResult = m.buildV2Control(h, requiredMultiSpec, [], () => {}, {});
+requiredMultiResult.onFooterChange((label, disabled) => requiredMultiFooterCalls.push({ label, disabled }));
+const requiredMultiInitial = requiredMultiFooterCalls[requiredMultiFooterCalls.length - 1];
+const requiredMultiChip = findAll(requiredMultiResult.control, "chip-pick")[0];
+requiredMultiChip.dispatch("click", {});
+const requiredMultiAfterPick = requiredMultiFooterCalls[requiredMultiFooterCalls.length - 1];
+
+// 2c) необязательный multi (`min_select: 0`, гипотетический будущий skip-allowed шаг) —
+// прежнее поведение сохранено: ноль выбранных предлагает `skip_button`, не дизейблит кнопку.
+const optionalMultiSpec = {
+  key: "goal", degraded_kind: "multi", min_select: 0,
+  options: ["А", "Б"], option_labels: {},
+  v2_texts: { skip_button: "Пропустить", continue_button: "Продолжить", pick_min: "Выбери минимум {min}" },
+};
+const optionalMultiFooterCalls = [];
+const optionalMultiResult = m.buildV2Control(h, optionalMultiSpec, [], () => {}, {});
+optionalMultiResult.onFooterChange((label, disabled) => optionalMultiFooterCalls.push({ label, disabled }));
+const optionalMultiInitial = optionalMultiFooterCalls[optionalMultiFooterCalls.length - 1];
+
 // 3) lookup без chips — ряда чипов нет. Деградация — из `spec.lookup` (30-08 задача A:
 // `reg_engine.lookup_render_flags` уже свёл глобальный тумблер с атрибутом списка, компонент
 // читает готовый результат, не `flags.chips` напрямую).
@@ -390,6 +418,8 @@ const repeatableAddHiddenAtMax = repeatableAddBtn.classList.contains("hidden");
 console.log(JSON.stringify({
   beforeChecked, afterChecked,
   afterMultiCalls,
+  requiredMultiInitial, requiredMultiAfterPick,
+  optionalMultiInitial,
   lookupNoChipsHasChips,
   lookupNoSearchHasSearchIcon,
   lookupBothOffIsPlainInput,
@@ -432,6 +462,25 @@ def test_select_tile_sets_aria_checked(js_result):
 
 def test_multi_does_not_exceed_max_select(js_result):
     assert js_result["afterMultiCalls"] == ["Python"]
+
+
+def test_required_multi_disables_button_below_min_select(js_result):
+    """Приёмка 17.09 (находка 2): обязательный multi (`min_select: 1`, "Форматы форума" и
+    любой сегодняшний multi-шаг) с нулём выбранных дизейблит главную кнопку с подписью
+    `pick_min`, а НЕ предлагает рабочую на вид `skip_button` (сервер отвергает пустой список)."""
+    initial = js_result["requiredMultiInitial"]
+    assert initial["disabled"] is True
+    assert initial["label"] == "Выбери минимум 1"
+    after_pick = js_result["requiredMultiAfterPick"]
+    assert after_pick["disabled"] is False
+
+
+def test_optional_multi_keeps_skip_button_at_zero(js_result):
+    """`min_select: 0` (гипотетический будущий skip-allowed multi) — прежнее поведение:
+    ноль выбранных предлагает `skip_button`, кнопка НЕ дизейблена."""
+    initial = js_result["optionalMultiInitial"]
+    assert initial["disabled"] is False
+    assert initial["label"] == "Пропустить"
 
 
 def test_lookup_without_chips_renders_no_chips(js_result):

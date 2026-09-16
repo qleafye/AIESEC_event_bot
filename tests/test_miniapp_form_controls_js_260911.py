@@ -263,6 +263,24 @@ textLegacyWrap._nodes.control.value = "текст";
 textLegacyWrap._nodes.control.dispatch("input", {});
 const textLegacyCommit = textLegacyCalls[textLegacyCalls.length - 1];
 
+// 15) Приёмка 17.09 (находка 2/3): легаси-мультивыбор (v2 выключен целиком) с `min_select: 1`
+// («Форматы форума» и любой сегодняшний multi) дизейблит главную кнопку мастера, пока ничего
+// не выбрано, подписью `pick_min_text` (`reg_engine.step_spec`) — тот же контракт
+// `footerLabel`/`onFooterChange`, что уже понимает `screens/form.js::drawStep()` у v2-типов.
+const requiredMultiLegacySpec = {
+  key: "formats", type: "multi", label: "Форматы форума", options: ["Онлайн", "Офлайн"],
+  min_select: 1, pick_min_text: "Выбери минимум 1",
+};
+const requiredMultiLegacyWrap = m.field(h, requiredMultiLegacySpec, null, () => {});
+const requiredMultiLegacyFooterCalls = [];
+requiredMultiLegacyWrap._nodes.onFooterChange((label, disabled) => requiredMultiLegacyFooterCalls.push({ label, disabled }));
+const requiredMultiLegacyInitialDisabled = requiredMultiLegacyWrap._nodes.footerDisabled;
+const requiredMultiLegacyInitialLabel = requiredMultiLegacyWrap._nodes.footerLabel;
+const requiredMultiLegacyCb = requiredMultiLegacyWrap._nodes.control.children[0].children[0];
+requiredMultiLegacyCb.checked = true;
+requiredMultiLegacyCb.dispatch("change", {});
+const requiredMultiLegacyAfterPick = requiredMultiLegacyFooterCalls[requiredMultiLegacyFooterCalls.length - 1];
+
 console.log(JSON.stringify({
   firstOptionEmptyValue: firstOptionEmpty.getAttribute("value"),
   firstOptionEmptyText: firstOptionEmpty.textContent,
@@ -290,6 +308,7 @@ console.log(JSON.stringify({
   consentCheckCommit, consentUncheckCommit,
   toggleOnCommit, toggleOffCommit,
   multiLegacyCommit, textLegacyCommit,
+  requiredMultiLegacyInitialDisabled, requiredMultiLegacyInitialLabel, requiredMultiLegacyAfterPick,
 }));
 """
 
@@ -389,3 +408,13 @@ def test_toggle_commits_on_every_tap(js_result):
 def test_multi_and_text_legacy_controls_never_commit(js_result):
     assert js_result["multiLegacyCommit"] is None
     assert js_result["textLegacyCommit"] is None
+
+
+def test_legacy_required_multi_disables_main_button_below_min_select(js_result):
+    """Приёмка 17.09 (находка 2/3): легаси-мультивыбор (v2 целиком выключен) с
+    `spec.min_select == 1` дизейблит главную кнопку мастера при нуле выбранных, подписью
+    `spec.pick_min_text` — тот же контракт `footerLabel`/`onFooterChange`, что у v2-типов."""
+    assert js_result["requiredMultiLegacyInitialDisabled"] is True
+    assert js_result["requiredMultiLegacyInitialLabel"] == "Выбери минимум 1"
+    after_pick = js_result["requiredMultiLegacyAfterPick"]
+    assert after_pick == {"label": None, "disabled": False}
