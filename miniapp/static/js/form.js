@@ -588,7 +588,9 @@ export function field(h, spec, value, onChange) {
     icon("refresh-cw"), h("span", { class: "field-badge-text" }));
   const label = h("label", { text: spec.label, for: `f-${spec.key}`, class: spec.type === "toggle" ? "hidden" : null });
   const labelRow = h("div", { class: "field-label-row" }, label, badge);
-  const help = spec.help ? h("p", { class: "field-help label-role", text: spec.help }) : null;
+  // Приёмка 16.09 (владелец): у тумблеров серое пояснение под подписью не рисуем — подпись
+  // говорит сама за себя. Подсказка формата у полей ввода (пример значения) остаётся.
+  const help = spec.help && spec.type !== "toggle" ? h("p", { class: "field-help label-role", text: spec.help }) : null;
   const { control, extra, progress, footerLabel, disabled, onFooterChange } = buildControl(h, spec, value, onChange);
   const placeholder = h("p", { class: "field-not-set hidden" });
   const errorZone = h("p", { class: "field-error hidden", "aria-live": "polite" });
