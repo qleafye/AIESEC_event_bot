@@ -31,6 +31,12 @@ SCANNED_FILES = [
     ROOT / "handlers" / "reg_steps.py",
     ROOT / "handlers" / "reg_resume.py",
     ROOT / "handlers" / "reg_handoff.py",
+    # Квик 260917-en: расширение на остальные швы, которые теперь тоже зовут reg_i18n.say/
+    # tr_for/tr_text/tr_fmt — полный чат бота, не только анкета (item 4 приёмки 17.09).
+    ROOT / "handlers" / "user_actions.py",
+    ROOT / "handlers" / "payment.py",
+    ROOT / "handlers" / "reg_lang.py",
+    ROOT / "handlers" / "game_submit_counter.py",
 ]
 
 # Функция -> индекс позиционного аргумента, несущего видимый делегату текст.
