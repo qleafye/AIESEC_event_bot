@@ -65,6 +65,7 @@ from database.db import (
     delete_reg_draft,
     release_reg_draft,
     get_resume_upload_backlog,
+    settings_snapshot,
 )
 from settings_schema import get_setting_typed
 from services.timeutil import msk_now
@@ -117,7 +118,20 @@ async def finalize_data(telegram_id: int, username: str | None, draft: dict) -> 
 
     Возвращает `{"status", "mode", "changed_columns", "remoderated", "resubmitted",
     "resume_file_id", "resume_file_name"}` — этого достаточно и боту, и (в будущем) роутеру
-    Mini App, чтобы решить, какой текст показать и что передать в `post_finalize`."""
+    Mini App, чтобы решить, какой текст показать и что передать в `post_finalize`.
+
+    Perf (замер 260917): десяток последовательных get_setting/get_setting_typed (season,
+    scoring, registration_mode, full/short/party_approval и т.д.) — ни одного сетевого
+    вызова и ни одного create_task в этой функции (только `add_user`/`update_user_answers`/
+    учёт истории — свои соединения, снимок их не трогает), поэтому снимок безопасно
+    накрывает функцию целиком. `post_finalize` (Sheets/Nextcloud/уведомления — сеть) снимком
+    НЕ оборачивается — там держать его открытым поперёк секунд сетевого ожидания уже не
+    стоит той крохи, что он экономит."""
+    async with settings_snapshot():
+        return await _finalize_data_impl(telegram_id, username, draft)
+
+
+async def _finalize_data_impl(telegram_id: int, username: str | None, draft: dict) -> dict:
     mode = draft.get("kind") or "new"
     raw_answers = draft.get("answers") or {}
 
