@@ -129,3 +129,35 @@ async def context(telegram_id: int, language_code: str | None = None) -> tuple[s
     lang = await delegate_lang(telegram_id, language_code)
     tr_map = await load_map(lang if lang in ("ru", "en") else "ru")
     return lang, tr_map
+
+
+# ── Phase 27 → Mini App за пределами анкеты (задача «делегатский интерфейс на английском») ──
+#
+# `tr()` сверху уже не завязан на группу `SETTINGS_SCHEMA`, из которой пришёл текст — ярус B
+# ищет по хешу СОДЕРЖИМОГО (`src_hash`), ярус A — по точному тексту. Поэтому хабу/статусу/
+# заданиям/монетам/рейтингу/профилю/FAQ достаточно тех же двух помощников ниже, а не отдельной
+# копии `DELEGATE_GROUPS` — расширять её ради экранов вне анкеты (LANG-08, i18n_sources.py)
+# не нужно и не нужно трогать: те же самые ключи `get_setting_typed`/`get_setting_typed_for_city`
+# просто читаются через тонкую обёртку, переводящую результат.
+async def tr_setting(key: str, lang: str, tr_map: dict[str, str]) -> str | None:
+    """`get_setting_typed(key)`, прогнанный через `tr()` — один вызов вместо двух на каждый
+    делегатский текст Mini App вне анкеты (хаб, статус, задания, монеты, рейтинг, профиль,
+    FAQ, обзор). Ленивый импорт `settings_schema` — тот же приём, что уже использует
+    `database/db.py::_maybe_enqueue_translation`, ради разрыва цикла (`settings_schema`
+    импортирует `database.db` на уровне модуля)."""
+    from settings_schema import get_setting_typed
+
+    value = await get_setting_typed(key)
+    return tr(value, lang, tr_map) if value else value
+
+
+async def tr_setting_for_city(
+    key: str, city: str | None, lang: str, tr_map: dict[str, str],
+) -> str | None:
+    """То же самое, что `tr_setting`, но для городского оверрайда
+    (`cities.get_setting_typed_for_city`) — хаб и экран статуса читают событийные тексты
+    по городу делегата."""
+    from cities import get_setting_typed_for_city
+
+    value = await get_setting_typed_for_city(key, city)
+    return tr(value, lang, tr_map) if value else value
