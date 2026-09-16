@@ -362,7 +362,7 @@ def _seed_full_fixture(db_path, *, payment_enabled=True, event_city_enabled=True
                 "status": "pending", "payment_status": "not_paid", "payment_option": "Ранняя пташка",
                 "source": "Реф. ссылка", "university": "СПбГУ", "course": "1 курс",
                 "study_field": "IT", "participant_type": "short",
-                "event_city": "spb", "season": "YL26",
+                "event_city": "spb", "season": "YL26", "referrer_id": 1,
                 "registration_date": "2026-08-02 11:00:00",
             },
         ],
@@ -414,6 +414,7 @@ def test_all_seven_blocks_present_when_toggles_on(tmp_path):
     assert "Разрезы" in text
     assert "Где бросают" in text
     assert "Геймификация" in text
+    assert "Рефералы" in text
 
 
 def test_dashboard_footer_powered_by_aiesec_ru(tmp_path):
@@ -524,6 +525,7 @@ def test_daily_chart_data_attributes_are_parseable_json(tmp_path):
         ("dashboard_block_utm", "Метки кампаний"),
         ("dashboard_block_months", "По месяцам"),
         ("dashboard_block_game", "Геймификация"),
+        ("dashboard_block_referrals", "Рефералы"),
     ],
 )
 def test_disabled_toggle_removes_block_entirely(tmp_path, toggle_key, marker):
@@ -654,6 +656,90 @@ def test_months_block_with_data_shows_month_and_tops(tmp_path):
     assert "По месяцам" in text
     assert "Сентябрь 2026" in text
     assert "vk_post_1" in text
+
+
+# ── «Рефералы» ───────────────────────────────────────────────────────────────────────────
+
+def test_referrals_block_shows_summary_and_top_inviter(tmp_path):
+    db_path = _use_tmp_db(tmp_path)
+    _seed(
+        users=[
+            {"telegram_id": 100, "username": "top_inviter", "status": "approved",
+             "is_ambassador": 1},
+            {"telegram_id": 1, "referrer_id": 100, "status": "approved",
+             "registration_date": "2026-08-01 10:00:00"},
+            {"telegram_id": 2, "referrer_id": 100, "status": "pending",
+             "registration_date": "2026-08-02 10:00:00"},
+        ],
+    )
+    client = _stats_manager_client(db_path)
+    resp = client.get("/")
+    assert resp.status_code == 200
+    text = resp.text
+    assert "Рефералы" in text
+    assert "Заявок по ссылкам" in text
+    assert "Топ пригласивших" in text
+    assert "@top_inviter" in text
+    assert "Динамика по дням" in text
+
+
+def test_referrals_block_absent_without_referral_or_ambassador_data(tmp_path):
+    db_path = _use_tmp_db(tmp_path)
+    _seed(users=[{"telegram_id": 1, "status": "approved"}])  # без referrer_id/амбассадоров
+    client = _stats_manager_client(db_path)
+    resp = client.get("/")
+    assert resp.status_code == 200
+    assert "Рефералы" not in resp.text
+
+
+def test_referrals_block_shows_deleted_referrer_without_crash(tmp_path):
+    db_path = _use_tmp_db(tmp_path)
+    _seed(users=[
+        {"telegram_id": 1, "referrer_id": 999, "status": "approved"},  # 999 не заведён
+    ])
+    client = _stats_manager_client(db_path)
+    resp = client.get("/")
+    assert resp.status_code == 200
+    text = resp.text
+    assert "Рефералы" in text
+    assert "Удалён (ID 999)" in text
+
+
+def test_referrals_block_no_pii_full_name_or_phone_leaked(tmp_path):
+    """Топ пригласивших показывает telegram-ник, а НЕ ФИО/телефон из анкеты (D-17)."""
+    db_path = _use_tmp_db(tmp_path)
+    _seed(users=[
+        {
+            "telegram_id": 100, "username": "inviter", "full_name": "Иванов Иван Иванович",
+            "phone": "+79991234567", "status": "approved",
+        },
+        {"telegram_id": 1, "referrer_id": 100, "status": "approved"},
+    ])
+    client = _stats_manager_client(db_path)
+    resp = client.get("/")
+    text = resp.text
+    assert "Рефералы" in text
+    assert "Иванов Иван Иванович" not in text
+    assert "+79991234567" not in text
+    assert "@inviter" in text
+
+
+def test_referrals_city_cut_shown_only_when_city_module_on_and_all_cities_scope(tmp_path):
+    db_path = _use_tmp_db(tmp_path)
+    _seed(
+        cities=[("msk", "Москва", 1, 0), ("spb", "СПб", 1, 1)],
+        settings={"event_city_enabled": "on"},
+        users=[
+            {"telegram_id": 100, "status": "approved"},
+            {"telegram_id": 1, "referrer_id": 100, "event_city": "spb", "status": "approved"},
+        ],
+    )
+    client = _stats_manager_client(db_path)
+    resp = client.get("/")
+    text = resp.text
+    assert "Рефералы" in text
+    assert "По городам" in text
+    assert "СПб" in text
 
 
 # ── воронка: база = первая ненулевая ступень + подпись (квик 260905-iyw) ─────────────────
