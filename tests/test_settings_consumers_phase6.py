@@ -656,7 +656,10 @@ def test_registration_mode_and_reg_university_mode_equiv(tmp_path):
     # services.reg_finalize.finalize_data (shared with the Mini App outbox job).
     from services import reg_finalize as reg_finalize_mod
     process_src = inspect.getsource(reg_steps_mod.process_full_name)
-    finalize_src = inspect.getsource(reg_finalize_mod.finalize_data)
+    # Perf 260917: finalize_data стал тонкой обёрткой (settings_snapshot() + вызов
+    # _finalize_data_impl) — литеральные get_setting_typed-вызовы, которые проверяет этот
+    # тест, теперь живут в _finalize_data_impl (тело перенесено без изменений).
+    finalize_src = inspect.getsource(reg_finalize_mod._finalize_data_impl)
     assert 'get_setting_typed("registration_mode")' not in process_src, (
         "process_full_name should no longer read registration_mode at all (Phase 7, 07-01 Task 2 "
         "moved the short/full fork to _resolve_track at flow start)"
@@ -704,7 +707,10 @@ def test_full_approval_gate_equiv(tmp_path):
     # get_setting_typed("full_approval"), not `get_setting("full_approval") or "manual"`.
     # Phase 21 (21-08): moved from finalize_registration into services.reg_finalize.finalize_data.
     from services import reg_finalize as reg_finalize_mod
-    finalize_src = inspect.getsource(reg_finalize_mod.finalize_data)
+    # Perf 260917: finalize_data стал тонкой обёрткой (settings_snapshot() + вызов
+    # _finalize_data_impl) — литеральные get_setting_typed-вызовы, которые проверяет этот
+    # тест, теперь живут в _finalize_data_impl (тело перенесено без изменений).
+    finalize_src = inspect.getsource(reg_finalize_mod._finalize_data_impl)
     assert 'get_setting_typed("full_approval")' in finalize_src, (
         "finalize_data does not resolve full_approval via get_setting_typed (BLOCKER-1)"
     )
@@ -744,7 +750,10 @@ def test_short_approval_and_party_approval_equiv(tmp_path):
 
     # Phase 21 (21-08): moved from finalize_registration into services.reg_finalize.finalize_data.
     from services import reg_finalize as reg_finalize_mod
-    finalize_src = inspect.getsource(reg_finalize_mod.finalize_data)
+    # Perf 260917: finalize_data стал тонкой обёрткой (settings_snapshot() + вызов
+    # _finalize_data_impl) — литеральные get_setting_typed-вызовы, которые проверяет этот
+    # тест, теперь живут в _finalize_data_impl (тело перенесено без изменений).
+    finalize_src = inspect.getsource(reg_finalize_mod._finalize_data_impl)
     assert 'get_setting_typed("short_approval")' in finalize_src, (
         "finalize_data does not resolve short_approval via get_setting_typed"
     )
@@ -828,7 +837,10 @@ def test_raw_read_sites_preserved(tmp_path):
     # Phase 21 (21-08): moved from finalize_registration into services.reg_finalize.finalize_data.
     from services import reg_finalize as reg_finalize_mod
     process_src = inspect.getsource(reg_steps_mod.process_full_name)
-    finalize_src = inspect.getsource(reg_finalize_mod.finalize_data)
+    # Perf 260917: finalize_data стал тонкой обёрткой (settings_snapshot() + вызов
+    # _finalize_data_impl) — литеральные get_setting_typed-вызовы, которые проверяет этот
+    # тест, теперь живут в _finalize_data_impl (тело перенесено без изменений).
+    finalize_src = inspect.getsource(reg_finalize_mod._finalize_data_impl)
     assert 'get_setting_typed("registration_mode")' not in process_src, (
         "process_full_name should no longer read registration_mode at all (Phase 7, 07-01 Task 2)"
     )
