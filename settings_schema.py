@@ -4925,6 +4925,7 @@ SETTINGS_SCHEMA = {
 REG_PROMPT_STEPS: tuple[tuple[str, str | None], ...] = (
     ("full_name", None),
     ("age", "reg_q_age"),
+    ("birth_date", "reg_q_birth_date"),
     ("phone", "reg_q_phone"),
     ("alumni_status", "reg_q_alumni_status"),
     ("vk", "reg_q_vk"),
@@ -4974,7 +4975,6 @@ REG_PROMPT_STEPS: tuple[tuple[str, str | None], ...] = (
     ("exp_content", "reg_q_exp_content"),
     ("volunteer", "reg_q_volunteer"),
     ("arrival_date", "reg_q_arrival_date"),
-    ("birth_date", "reg_q_birth_date"),
     ("payment_plan_date", "reg_q_payment_date"),
 )
 

@@ -39,12 +39,25 @@ def test_vk_help_names_at_username_format(tmp_path):
     assert "@username" in spec["help"] or "@" in spec["help"]
 
 
-@pytest.mark.parametrize("step_key", ["arrival_date", "birth_date", "payment_plan_date"])
+@pytest.mark.parametrize("step_key", ["arrival_date", "payment_plan_date"])
 def test_date_steps_get_shared_date_help(tmp_path, step_key):
     _ready(tmp_path)
     spec = asyncio.run(reg_engine.step_spec(step_key))
     assert spec["help"] == reg_engine._DATE_HELP
     assert "ДД.ММ.ГГГГ" in spec["help"]
+
+
+def test_birth_date_gets_its_own_valid_example(tmp_path):
+    """birth_date не делит `_DATE_HELP` с остальными датами (задача переноса шага в начало
+    анкеты): её пример года 2026 (`_DATE_HELP`) не проходит собственный валидатор шага —
+    подсказка обязана называть год, реально проходящий `validate_date_range("birth_date", ...)`."""
+    _ready(tmp_path)
+    spec = asyncio.run(reg_engine.step_spec("birth_date"))
+    assert spec["help"] == reg_engine._BIRTH_DATE_HELP
+    assert "ДД.ММ.ГГГГ" in spec["help"]
+    example = spec["help"].split("«")[1].rstrip("».")
+    value, error = reg_engine.validate_answer("birth_date", example)
+    assert error is None, error
 
 
 @pytest.mark.parametrize("step_key", ["city", "education_status"])

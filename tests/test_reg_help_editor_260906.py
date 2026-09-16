@@ -169,7 +169,18 @@ def test_help_default_resume_global_and_text_only_city(tmp_path):
 
 def test_help_default_date_step_returns_shared_date_help(tmp_path):
     _admin_ready(tmp_path)
-    assert asyncio.run(reg_engine.help_default("birth_date", None)) == reg_engine._DATE_HELP
+    assert asyncio.run(reg_engine.help_default("arrival_date", None)) == reg_engine._DATE_HELP
+
+
+def test_help_default_birth_date_returns_own_help_with_valid_example():
+    """birth_date — единственное исключение из общей `_DATE_HELP` (её пример 2026 года не
+    проходит собственный валидатор шага, год рождения обязан быть не позже «текущий − 10»)."""
+    assert asyncio.run(reg_engine.help_default("birth_date", None)) == reg_engine._BIRTH_DATE_HELP
+    assert reg_engine._BIRTH_DATE_HELP != reg_engine._DATE_HELP
+    example = reg_engine._BIRTH_DATE_HELP.split("«")[1].rstrip("».")
+    value, error = reg_engine.validate_answer("birth_date", example)
+    assert error is None, error
+    assert value == example
 
 
 # ══════════════════════════════════════════════════════════════════════════════════════════
