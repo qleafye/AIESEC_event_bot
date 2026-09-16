@@ -246,6 +246,8 @@ MINIAPP_KEYS = [
     "miniapp_form_ambassador_link_heading_text",
     "miniapp_form_ambassador_copy_button_text",
     "miniapp_form_ambassador_copied_toast_text",
+    # Приёмка 17.09: пояснение рядом со ссылкой — где её найти потом (бот и приложение).
+    "miniapp_form_ambassador_link_note_text",
     "miniapp_settings_option_gone_text",
     # Квик 12.09 (UI-аудит, пункты 2 и 3): текст «нет связи» доставляется во фронт через
     # data-screen-texts (page.py::SCREEN_TEXT_KEYS) и подпись кнопки выхода на терминальном
@@ -310,7 +312,9 @@ def test_exactly_170_miniapp_keys_and_no_extra():
     # Phase 30 (30-05, задача 1, решение владельца №5): +1 ключ подсказки у поля причины
     # отказа в шторке — «это увидит делегат» (186 -> 187).
     # Quick 260915-4mw (ANIM-01..06): +1 ключ «✨ Анимации приложения» (187 -> 188).
-    assert len(MINIAPP_KEYS) == 188
+    # Приёмка 17.09 (п.1): +1 ключ — пояснение «где найти ссылку потом» под ссылкой
+    # амбассадора (188 -> 189).
+    assert len(MINIAPP_KEYS) == 189
     present = sorted(k for k in SETTINGS_SCHEMA if k.startswith("miniapp_"))
     assert present == sorted(MINIAPP_KEYS)
 
@@ -374,7 +378,8 @@ def test_text_keys_have_human_defaults():
     # Квик 12.09 (UI-аудит): +2 текстовых ключа — «нет связи» в анкете и кнопка выхода на
     # терминальном экране (152 -> 154); +1 текстовый ключ счётчика группы настроек (154 -> 155).
     # Phase 30 (30-05, задача 1): +1 текстовый ключ подсказки у поля причины отказа (155 -> 156).
-    assert len(text_keys) == 156
+    # Приёмка 17.09 (п.1): +1 текстовый ключ — пояснение под ссылкой амбассадора (156 -> 157).
+    assert len(text_keys) == 157
     for key in text_keys:
         default = SETTINGS_SCHEMA[key]["default"]
         assert isinstance(default, str) and default.strip(), key

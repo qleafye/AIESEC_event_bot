@@ -26,7 +26,7 @@ import logging
 from aiogram import F, types
 from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
 
-from database.db import update_user_answers
+from database.db import get_user, update_user_answers
 from cities import get_setting_typed_for_city
 from settings_schema import get_setting_typed
 from handlers.registration import router
@@ -79,7 +79,11 @@ async def regamb_want(callback: types.CallbackQuery):
     """«Хочу свою ссылку» — ставит `is_ambassador=1` узким UPDATE (`is_ambassador_candidate`
     НЕ трогается, OQ-2) и шлёт ГОЛУЮ ссылку третьим сообщением, `parse_mode=None`, без i18n-
     обёртки `reg_i18n.say` (переводить в URL нечего, а обёртка рискует что-то к нему
-    приклеить)."""
+    приклеить).
+
+    Приёмка 17.09 (п.1): следом — ЧЕТВЁРТОЕ сообщение, пояснение, где эту ссылку найти
+    потом (делегат тапнул один раз и увидел голый URL без контекста). Это обычный текст, не
+    сырой URL из OQ-1 — через `reg_i18n.say` (перевод, тот же приём, что у `offer_ref_link`)."""
     uid = callback.from_user.id
     await update_user_answers(uid, {"is_ambassador": 1}, allowed_columns=["is_ambassador"])
     await callback.answer()
@@ -92,6 +96,11 @@ async def regamb_want(callback: types.CallbackQuery):
         return
     link = f"https://t.me/{bot_username}?start=amb_{uid}"
     await callback.message.answer(link, parse_mode=None)
+    user = await get_user(uid)
+    event_city = user.get("event_city") if user else None
+    note = await get_setting_typed_for_city("miniapp_form_ambassador_link_note_text", event_city)
+    if note:
+        await reg_i18n.say(callback.message, note)
 
 
 @router.callback_query(F.data == "regamb:later")
