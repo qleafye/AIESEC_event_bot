@@ -42,7 +42,7 @@ def test_multi_min_select_is_zero_for_hypothetical_skip_allowed_step(monkeypatch
 def test_requirement_hint_min_only_without_limit(tmp_path):
     _ready(tmp_path)
     hint = asyncio.run(reg_engine.multi_requirement_hint("formats"))
-    assert hint == "Выбери хотя бы 1 вариант."
+    assert hint == "Отметь вариантов: не меньше 1."
 
 
 def test_requirement_hint_merges_min_and_max_into_one_line(tmp_path):
@@ -70,7 +70,7 @@ def test_step_spec_publishes_min_select_and_help_hint(tmp_path):
     _ready(tmp_path)
     spec = asyncio.run(reg_engine.step_spec("formats"))
     assert spec["min_select"] == 1
-    assert "Выбери хотя бы 1 вариант." in spec["help"]
+    assert "Отметь вариантов: не меньше 1." in spec["help"]
     assert spec["pick_min_text"] == "Выбери минимум 1"
 
 
@@ -147,7 +147,7 @@ def test_chat_multi_step_message_includes_requirement_hint(tmp_path):
         msg = _FakeMessage(880101)
         await reg._ask_step("formats", msg, state, 1, 10)
         text, _kwargs = msg.calls[0]
-        assert "Выбери хотя бы 1 вариант." in text
+        assert "Отметь вариантов: не меньше 1." in text
 
     asyncio.run(scenario())
 
