@@ -40,7 +40,10 @@ DEFAULT_CEILING = 850
 # edit the number + reason together, in the same commit as the growth that needs it.
 KNOWN_OVERAGES: dict[str, tuple[int, str]] = {
     "registration.py": (
-        2440,
+        2445,
+        "+1 строка (16.09, сторож ввода настроек): подпись админской кнопки «🔄 Пройти регистрацию "
+        "заново» берётся из общей константы keyboards.builders.ADMIN_REREG_BUTTON_TEXT (импорт), "
+        "чтобы защита ввода настроек знала её без второго литерала; потолок 2445 с небольшим запасом. "
         "+10 строк (план 30-04, задача 4, A2-05): `_recall_display` — repeatable-колонка "
         "(mini_portfolio) показывает прошлый ответ через `repeatable_display(parse_repeatable("
         "...))`, а не сырой JSON, если делегат в прошлом сезоне пользовался repeatable-"
@@ -127,7 +130,11 @@ KNOWN_OVERAGES: dict[str, tuple[int, str]] = {
         "(Phase 14/16)",
     ),
     "admin_settings.py": (
-        2380,
+        2400,
+        "16.09 (подпись кнопки меню не сохраняется как значение настройки): +13 строк — проверка "
+        "в settings_edit_value (подпись меню -> SkipHandler к настоящему хендлеру кнопки, "
+        "служебная подпись -> объяснение без записи); сами подписи собирает keyboards.builders; "
+        "2380 -> 2393, потолок 2400 с небольшим запасом. "
         "Квик 260916 («📊 Итоги дня»): +23 строки — строка тумблера вечерней сводки в "
         "settings_toggle_rows, хендлер toggle_daily_digest (обычный _toggle_module_setting, "
         "сама сводка живёт в services/daily_digest.py) и daily_digest_time в "
