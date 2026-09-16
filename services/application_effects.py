@@ -65,7 +65,12 @@ async def apply_decision_effects(bot, telegram_id: int, status: str, reason: str
             await update_status_in_sheet(telegram_id, STATUS_LABELS["approved"])
     elif status == "rejected":
         if notify_now:
-            text = await reject_message_text(reason)
+            # Квик 260917-en (приёмка 17.09, п.4): «reject_text» — group "reg", уже в
+            # делегатском корпусе — не хватало только точки перевода на отправке (тот же
+            # класс дыры, что у approve_text в handlers/reg_schema.py).
+            from services.i18n import context as _i18n_context
+            lang, tr_map = await _i18n_context(telegram_id)
+            text = await reject_message_text(reason, lang, tr_map)
             try:
                 await bot.send_message(telegram_id, text, parse_mode="HTML")
             except Exception as e:

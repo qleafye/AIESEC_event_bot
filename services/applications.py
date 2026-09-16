@@ -510,11 +510,24 @@ async def flush_due_decisions(now: datetime, enqueue) -> int:
 
 # ── Текст отказа (D-05) ──────────────────────────────────────────────────────────────────
 
-async def reject_message_text(reason: str | None) -> str:
+async def reject_message_text(reason: str | None, lang: str = "ru", tr_map: dict | None = None) -> str:
     """Единственная точка правды по тексту отказа делегату: `reject_text`-префикс (или
     дефолт) + `\\n\\n` + причина, экранирование — как в боте. Пустая/отсутствующая причина —
-    только префикс, без хвоста."""
+    только префикс, без хвоста.
+
+    Квик 260917-en (приёмка 17.09, п.4): `lang`/`tr_map` — необязательные (byte-compat со всеми
+    существующими вызовами, включая Mini App, если он когда-нибудь позовёт эту функцию
+    напрямую), переводят ТОЛЬКО префикс (`reject_text`, group "reg", уже в делегатском
+    корпусе) через `services.i18n.tr` — этот модуль aiogram-free
+    (`test_applications_module_does_not_load_aiogram`), поэтому `handlers.reg_i18n.tr_text`
+    (тянет aiogram-типы) сюда импортировать нельзя; `tr()` без символьного сплита достаточно —
+    `reject_text` не несёт эмодзи-префикса в объявлении реестра. `reason` (причина отказа,
+    введённая менеджером на КОНКРЕТНУЮ заявку) НЕ переводится — тот же принцип, что у
+    `coins_manual_notify_text`/{reason} в user_actions.py: заранее неизвестный текст менеджера
+    вне делегатского корпуса."""
+    from services.i18n import tr as _tr
     prefix = await get_setting("reject_text") or "К сожалению, твоя заявка отклонена."
+    prefix = _tr(prefix, lang, tr_map or {})
     text = html_module.escape(prefix)
     if reason:
         text = f"{text}\n\n{html_module.escape(reason)}"
