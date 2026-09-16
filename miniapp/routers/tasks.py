@@ -28,6 +28,7 @@ from database.db import (
     task_title,
 )
 from game_labels import category_label, proof_types_label, render_task_card_text, task_deadline_short
+from services import i18n
 from settings_schema import get_setting_typed
 
 from miniapp.deps import Principal, delegate_gate, require_section
@@ -89,14 +90,15 @@ async def submission_state(task_id: int, user_id: int) -> dict:
     }
 
 
-async def _list_item(task: dict, user_id: int) -> dict:
+async def _list_item(task: dict, user_id: int, lang: str = "ru", tr_map: dict | None = None) -> dict:
+    tr_map = tr_map or {}
     deadline_short, overdue = task_deadline_short(task)
     state = await submission_state(task["id"], user_id)
     return {
         "id": task["id"],
         "title": task_title(task),
         "category": task["category"],
-        "category_label": await category_label(task["category"]),
+        "category_label": i18n.tr(await category_label(task["category"]), lang, tr_map),
         "coins": task["coins"],
         "deadline_at": task["deadline_at"],
         "deadline_short": deadline_short,
@@ -125,14 +127,18 @@ async def tasks_list(offset: str | None = None, limit: str | None = None,
                      p: Principal = Depends(delegate_gate),
                      _: Principal = Depends(require_section("tasks"))) -> dict:
     off, lim = parse_page(offset, limit)
+    lang, tr_map = await i18n.context(p.telegram_id)
+    lang = lang if lang in ("ru", "en") else "ru"
     all_tasks = await list_active_tasks(city_scope=await delegate_city_scope(p.telegram_id))
     page = all_tasks[off:off + lim]
     return {
-        "items": [await _list_item(t, p.telegram_id) for t in page],
+        "items": [await _list_item(t, p.telegram_id, lang, tr_map) for t in page],
         "total": len(all_tasks),
         "limit": lim,
         "offset": off,
-        "empty_text": await get_setting_typed("game_task_list_empty") if not all_tasks else None,
+        "empty_text": (
+            await i18n.tr_setting("game_task_list_empty", lang, tr_map) if not all_tasks else None
+        ),
     }
 
 
@@ -157,21 +163,36 @@ async def task_card(task_id: int, p: Principal = Depends(delegate_gate),
     task = await get_task(task_id)
     if task is None or task.get("archived_at"):
         raise HTTPException(404, {"reason": "task_not_found"})
-    item = await _list_item(task, p.telegram_id)
-    # Строка статуса — дословно как в боте (`mytask_open`).
+    lang, tr_map = await i18n.context(p.telegram_id)
+    lang = lang if lang in ("ru", "en") else "ru"
+    item = await _list_item(task, p.telegram_id, lang, tr_map)
+    # Строка статуса — дословно как в боте (`mytask_open`) на РУССКОМ (card_text — общий с
+    # ботом рендер, из этой задачи не переводится, T-19-15 держит JS на структурных полях, не
+    # на card_text). Структурное поле `status_line` ниже переводится ОТДЕЛЬНО от card_text:
+    # шаблон переводится ДО подстановки чисел (tr() по уже готовой строке "принято (+3🪙)" не
+    # найдёт перевод — у каждого числа своя строка, у шаблона одна).
     if item["status"] == "pending":
         status_line, attempt = "на проверке", None
+        status_line_tpl = "на проверке"
     elif item["status"] == "approved":
         status_line, attempt = f"принято (+{item['coins_awarded']}🪙)", None
+        status_line_tpl = i18n.tr("принято (+{n}🪙)", lang, tr_map).format(n=item["coins_awarded"])
     else:
         limit, rejected = item["limit"], item["attempt"]
-        status_line = f"новое · попытка {rejected} из {limit}" if limit and rejected else "новое"
+        if limit and rejected:
+            status_line = f"новое · попытка {rejected} из {limit}"
+            status_line_tpl = i18n.tr("новое · попытка {n} из {limit}", lang, tr_map).format(
+                n=rejected, limit=limit,
+            )
+        else:
+            status_line = "новое"
+            status_line_tpl = "новое"
         attempt = rejected
 
     # Phase 23.1-05 (UI-REDESIGN-06): плита с наградой и остатком срока, блок «нужно
     # прислать», строки фактов (макет 05-task.png) — все подписи из реестра, числа
     # подставляются здесь (D-06).
-    deadline_left_tpl = await get_setting_typed("miniapp_task_deadline_left_text")
+    deadline_left_tpl = await i18n.tr_setting("miniapp_task_deadline_left_text", lang, tr_map)
     days_left = _deadline_days_left(task.get("deadline_at"), item["overdue"])
     deadline_left_text = (
         deadline_left_tpl.format(days=days_left) if (days_left is not None and deadline_left_tpl) else None
@@ -180,16 +201,18 @@ async def task_card(task_id: int, p: Principal = Depends(delegate_gate),
     item.update({
         "text": task["text"],
         "proof_type": task.get("proof_type"),
-        "proof_hint": await proof_types_label(task.get("proof_type")),
-        "status_line": status_line,
+        "proof_hint": i18n.tr(await proof_types_label(task.get("proof_type")), lang, tr_map),
+        "status_line": status_line_tpl,
         # Готовый HTML-текст карточки (как в боте) — для паритета и тестов; фронт рисует
         # структурные поля через textContent (innerHTML запрещён, T-19-15).
         "card_text": await render_task_card_text(task, status_line, attempt),
-        "overdue_hint": await get_setting_typed("game_task_overdue_hint_text") if item["overdue"] else None,
+        "overdue_hint": (
+            await i18n.tr_setting("game_task_overdue_hint_text", lang, tr_map) if item["overdue"] else None
+        ),
         "deadline_left_text": deadline_left_text,
-        "todo_eyebrow": await get_setting_typed("miniapp_task_todo_eyebrow"),
-        "proof_eyebrow": await get_setting_typed("miniapp_task_proof_eyebrow"),
-        "proof_note": await get_setting_typed("miniapp_task_proof_note"),
-        "review_note": await get_setting_typed("miniapp_task_review_note"),
+        "todo_eyebrow": await i18n.tr_setting("miniapp_task_todo_eyebrow", lang, tr_map),
+        "proof_eyebrow": await i18n.tr_setting("miniapp_task_proof_eyebrow", lang, tr_map),
+        "proof_note": await i18n.tr_setting("miniapp_task_proof_note", lang, tr_map),
+        "review_note": await i18n.tr_setting("miniapp_task_review_note", lang, tr_map),
     })
     return item

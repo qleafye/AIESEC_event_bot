@@ -17,6 +17,7 @@ from database.db import (
     get_user_rank,
     list_coin_entries_for_user,
 )
+from services import i18n
 from settings_schema import get_setting_typed
 
 from miniapp.deps import Principal, delegate_gate, require_section
@@ -55,10 +56,12 @@ async def history(offset: str | None = None, limit: str | None = None,
                   p: Principal = Depends(delegate_gate),
                   _: Principal = Depends(require_section("coins"))) -> dict:
     off, lim = parse_page(offset, limit)
+    lang, tr_map = await i18n.context(p.telegram_id)
+    lang = lang if lang in ("ru", "en") else "ru"
     total = await count_coin_entries_for_user(p.telegram_id)
     rows = await list_coin_entries_for_user(p.telegram_id, limit=lim, offset=off)
-    manual_label = await get_setting_typed("balance_source_manual_label")
-    task_label = await get_setting_typed("balance_source_task_label")
+    manual_label = await i18n.tr_setting("balance_source_manual_label", lang, tr_map)
+    task_label = await i18n.tr_setting("balance_source_task_label", lang, tr_map)
     items = []
     for row in rows:
         source = row.get("source")
@@ -77,7 +80,9 @@ async def history(offset: str | None = None, limit: str | None = None,
         })
     return {
         "items": items, "total": total, "limit": lim, "offset": off,
-        "empty_text": await get_setting_typed("balance_history_empty") if total == 0 else None,
+        "empty_text": (
+            await i18n.tr_setting("balance_history_empty", lang, tr_map) if total == 0 else None
+        ),
     }
 
 
@@ -85,6 +90,8 @@ async def history(offset: str | None = None, limit: str | None = None,
 async def leaderboard(limit: str | None = None, p: Principal = Depends(delegate_gate),
                       _: Principal = Depends(require_section("leaderboard"))) -> dict:
     _, lim = parse_page(0, limit, default_limit=LEADERBOARD_MAX, max_limit=LEADERBOARD_MAX)
+    lang, tr_map = await i18n.context(p.telegram_id)
+    lang = lang if lang in ("ru", "en") else "ru"
     rows = await get_leaderboard(lim)
     items = [
         {
@@ -99,5 +106,7 @@ async def leaderboard(limit: str | None = None, p: Principal = Depends(delegate_
         "items": items,
         "me": {"rank": await get_user_rank(p.telegram_id), "balance": await get_balance(p.telegram_id)},
         "total": await count_participants(),
-        "empty_text": await get_setting_typed("leaderboard_empty_text") if not rows else None,
+        "empty_text": (
+            await i18n.tr_setting("leaderboard_empty_text", lang, tr_map) if not rows else None
+        ),
     }
