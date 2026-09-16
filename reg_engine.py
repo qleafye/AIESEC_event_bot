@@ -627,6 +627,8 @@ STEP_HELP = {
 _STEP_HELP_RESUME_APP = "Файл PDF или DOCX до 10 МБ, либо напиши текстом ниже."
 _STEP_HELP_RESUME_TEXT_ONLY_CHAT = "Коротко, текстом в чате."
 _STEP_HELP_RESUME_TEXT_ONLY_APP = "Коротко, текстом."
+# Развилка резюме: текста там нет вовсе — файл, ссылка или «нет резюме».
+_STEP_HELP_RESUME_FORK = "Файл PDF или DOCX до 10 МБ, ссылка на резюме или «нет резюме» — как удобнее."
 
 # Пример-значение для каждого шага из STEP_HELP — ровно то, что названо в подсказке. Карта
 # существует ради сторожа «подсказка не врёт»: пример, не проходящий собственный валидатор
@@ -667,6 +669,8 @@ async def help_default(
     поведение не меняется ни на байт; `step_spec()` (Mini App) зовёт с "app"."""
     if step_key == "resume":
         mode = await resume_mode(city_code)
+        if mode == "fork":
+            return _STEP_HELP_RESUME_FORK
         if mode == "text_only":
             return _STEP_HELP_RESUME_TEXT_ONLY_APP if surface == "app" else _STEP_HELP_RESUME_TEXT_ONLY_CHAT
         if surface == "app":
@@ -2149,6 +2153,10 @@ async def form_spec(answers: dict, participant_type: str | None = None,
                 )
                 if display_col is not None:
                     spec["display"] = _display_value(raw_values[display_col])
+                elif step_key == "resume" and answers.get("resume_type") == "none":
+                    # Приёмка 16.09: «У меня нет резюме» в развилке — ответ есть, колонок нет;
+                    # обзор печатал пустую строку. Показываем ту же подпись, что на кнопке.
+                    spec["display"] = await get_setting_typed("reg_resume_fork_none_label")
             elif _is_yes_no_value(spec["value"]):
                 # Приёмка 15.09 (п.8 «на итоговом просмотре анкеты амбассадор false»): ответы
                 # «да/нет» лежат в БД булевыми (`validate_answer` для ambassador/work_status/
