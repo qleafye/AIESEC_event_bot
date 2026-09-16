@@ -453,6 +453,110 @@
   </section>
   {% endif %}
 
+  {# Рефералы: гейт «тумблер + данные» живёт в referral_block, ровно как у геймы/вопросов. #}
+  {% if referrals %}
+  <section class="block">
+    <h2 class="block-title">Рефералы</h2>
+    <div class="card">
+      <div class="kpi-grid secondary">
+        <div class="kpi">
+          <div class="num">{{ referrals.summary.referred_total | thousands }}</div>
+          <div class="lbl">Заявок по ссылкам</div>
+          {% if referrals.summary.referred_share is not none %}
+          <div class="delta">{{ referrals.summary.referred_share }}% всех заявок</div>
+          {% endif %}
+        </div>
+        <div class="kpi"><div class="num">{{ referrals.summary.referred_pending | thousands }}</div><div class="lbl">На модерации</div></div>
+        <div class="kpi"><div class="num">{{ referrals.summary.referred_approved | thousands }}</div><div class="lbl">Одобрено</div></div>
+        <div class="kpi"><div class="num">{{ referrals.summary.referred_rejected | thousands }}</div><div class="lbl">Отклонено</div></div>
+      </div>
+      <div class="kpi-grid secondary">
+        <div class="kpi">
+          <div class="num">{{ referrals.summary.ambassadors | thousands }}</div>
+          <div class="lbl">Имеют свою ссылку</div>
+          <div class="delta">нажали «Хочу свою ссылку»</div>
+        </div>
+        <div class="kpi">
+          <div class="num">{{ referrals.summary.candidates | thousands }}</div>
+          <div class="lbl">Кандидаты в амбассадоры</div>
+          <div class="delta">ответили «да» на вопрос анкеты</div>
+        </div>
+        <div class="kpi">
+          <div class="num">{{ referrals.summary.inviters | thousands }}</div>
+          <div class="lbl">Привели хотя бы одного</div>
+        </div>
+      </div>
+
+      {% if referrals.top %}
+      <h3 class="cut-title">Топ пригласивших</h3>
+      <div class="table-wrap">
+      <table class="responsive">
+        <thead>
+          <tr>
+            <th>Пригласивший</th>
+            <th>Город</th>
+            <th>Статус</th>
+            <th>Амбассадор</th>
+            <th class="num">Привёл всего</th>
+            <th class="num">Из них одобрено</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for row in referrals.top %}
+          <tr>
+            <td data-label="Пригласивший">
+              {% if row.deleted %}Удалён (ID {{ row.telegram_id }}){% elif row.username %}@{{ row.username }}{% else %}ID {{ row.telegram_id }}{% endif %}
+            </td>
+            <td data-label="Город">{{ row.city or "—" }}</td>
+            <td data-label="Статус">{{ row.status_label }}</td>
+            <td data-label="Амбассадор">{{ "Да" if row.is_ambassador else "—" }}</td>
+            <td class="num" data-label="Привёл всего">{{ row.total | thousands }}</td>
+            <td class="num" data-label="Из них одобрено">{{ row.approved | thousands }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+      </div>
+      {% endif %}
+
+      {% if referrals_daily_chart %}
+      <h3 class="cut-title">Динамика по дням</h3>
+      <div class="chart-wrap">
+        <canvas id="referrals-chart"
+                role="img"
+                aria-label="Заявки по реф-ссылкам по дням: {{ referrals_daily_chart.labels[0] }} — {{ referrals_daily_chart.labels[-1] }}, заявок в день"
+                data-labels='{{ referrals_daily_chart.labels | tojson }}'
+                data-values='{{ referrals_daily_chart.counts | tojson }}'>График не загрузился — значения по дням в таблице ниже.</canvas>
+      </div>
+      <p class="empty-note" id="referrals-chart-fallback" hidden>График не загрузился — значения по дням в таблице ниже.</p>
+      <noscript><p class="empty-note">График не загрузился — значения по дням в таблице ниже.</p></noscript>
+      <details class="chart-table">
+        <summary>Таблица</summary>
+        <table>
+          <thead><tr><th>Дата</th><th class="num">Заявок</th></tr></thead>
+          <tbody>
+            {% for label in referrals_daily_chart.labels %}
+            <tr><td>{{ label }}</td><td class="num">{{ referrals_daily_chart.counts[loop.index0] | thousands }}</td></tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </details>
+      {% endif %}
+
+      {% if referrals.city_cut %}
+      <h3 class="cut-title">По городам</h3>
+      {% for row in referrals.city_cut %}
+      <div class="bar-row">
+        <span class="label" title="{{ row.label }}">{{ row.label }}</span>
+        <span class="track" aria-hidden="true"><span class="fill" style="width:{{ row.pct }}%"></span></span>
+        <span class="val">{{ row.count | thousands }}</span>
+      </div>
+      {% endfor %}
+      {% endif %}
+    </div>
+  </section>
+  {% endif %}
+
   {# Вопросы делегатов (квик 260910-tt5): без тумблера (D-2), гейт по наличию данных живёт в
      questions_block -- секция целиком под {% if questions %}, ровно как у геймы. #}
   {% if questions %}
@@ -517,14 +621,18 @@
     <span>работает на АЙСЕК</span>
   </footer>
 
-  {% if daily_chart %}
+  {% if daily_chart or referrals_daily_chart %}
   <script src="/static/vendor/chart.umd.min.js"></script>
   <script>
     (function () {
-      var canvas = document.getElementById("daily-chart");
+      // Общий рендер для обоих графиков «по дням» на странице — оба читают одни и те же
+      // CSS-токены/настройки, различаются только canvas и подпись тултипа (единица
+      // измерения в hover-подсказке).
+      function renderTimelineChart(canvasId, fallbackId, unitLabel) {
+      var canvas = document.getElementById(canvasId);
       if (!canvas) { return; }
       if (typeof Chart === "undefined") {
-        var fallback = document.getElementById("daily-chart-fallback");
+        var fallback = document.getElementById(fallbackId);
         if (fallback) { fallback.hidden = false; }
         canvas.parentNode.hidden = true;
         return;
@@ -582,7 +690,7 @@
               padding: 8,
               displayColors: false,
               callbacks: {
-                label: function (ctx) { return ctx.parsed.y + " заявок"; }
+                label: function (ctx) { return ctx.parsed.y + " " + unitLabel; }
               }
             }
           },
@@ -601,6 +709,14 @@
           }
         }
       });
+      }
+
+      if (document.getElementById("daily-chart")) {
+        renderTimelineChart("daily-chart", "daily-chart-fallback", "заявок");
+      }
+      if (document.getElementById("referrals-chart")) {
+        renderTimelineChart("referrals-chart", "referrals-chart-fallback", "по ссылкам");
+      }
     })();
   </script>
   {% endif %}
