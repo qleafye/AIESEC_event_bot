@@ -61,6 +61,12 @@ REG_FLOW = [
     # YL'26 launch order (Tatiana). Consent + ФИО run before this list (see
     # _start_registration_flow). Order here IS the ask order for the enabled steps.
     ("age", "reg_q_age", "text"),
+    # Дата рождения — рядом с возрастом (прод: age выключен, birth_date включён, т.к.
+    # делегату может не быть 18 при заполнении анкеты, но исполнится к форуму). Раньше стояла
+    # последней в REG_FLOW (после резюме) — задавалась последним вопросом анкеты без всякой
+    # причины кроме исторического порядка добавления; порядок не хранится по индексу нигде
+    # (`reg_drafts.step`/FSM `_recall_step` — ключ шага, не позиция), поэтому перенос безопасен.
+    ("birth_date", "reg_q_birth_date", "date"),
     ("phone", "reg_q_phone", "text"),
     ("alumni_status", "reg_q_alumni_status", "text"),  # аламни / айсекер / ни то, ни другое
     ("vk", "reg_q_vk", "text"),
@@ -116,7 +122,6 @@ REG_FLOW = [
     ("exp_content", "reg_q_exp_content", "text"),
     ("volunteer", "reg_q_volunteer", "text"),
     ("arrival_date", "reg_q_arrival_date", "date"),
-    ("birth_date", "reg_q_birth_date", "date"),
     ("payment_plan_date", "reg_q_payment_date", "date"),
 ]
 
@@ -626,15 +631,26 @@ STEP_HELP_EXAMPLES = {
 
 _DATE_HELP = "Формат ДД.ММ.ГГГГ, например «01.09.2026»."
 
+# `birth_date` — единственное исключение из общей `_DATE_HELP`: её пример («01.09.2026») не
+# проходит собственный валидатор шага (`validate_date_range` требует год рождения не позже
+# «текущий − 10», а 2026 — это текущий год), т.е. общая подсказка для даты рождения лгала бы
+# (сторож `test_examples_pass_their_own_validator`, HELP-01, для дат не проверял ровно потому,
+# что даты не входят в `STEP_HELP_EXAMPLES` — баг был не пойман формально, найден вручную).
+# `arrival_date`/`payment_plan_date` продолжают получать общую `_DATE_HELP` без изменений.
+_BIRTH_DATE_HELP = "Формат ДД.ММ.ГГГГ, например «15.03.2007»."
+
 
 async def help_default(step_key: str, city_code: str | None = None) -> str | None:
     """Единственный расчёт СТАНДАРТНОЙ подсказки формата — те же три ветки, в том же порядке,
-    что раньше считал `help_text` сам (квик 260906-7zv, HELP-01): resume/text_only -> общий
-    `_DATE_HELP` для шагов типа `date` -> словарь `STEP_HELP`. Аргумента `participant_type` здесь
-    нет: трековой оси у подсказки нет (D-1) — лишний неиспользуемый аргумент её бы подразумевал.
-    `None` означает «у шага нет подсказки формата вовсе» (не «оверрайд ещё не задан»)."""
+    что раньше считал `help_text` сам (квик 260906-7zv, HELP-01): resume/text_only -> `birth_date`
+    -> общий `_DATE_HELP` для остальных шагов типа `date` -> словарь `STEP_HELP`. Аргумента
+    `participant_type` здесь нет: трековой оси у подсказки нет (D-1) — лишний неиспользуемый
+    аргумент её бы подразумевал. `None` означает «у шага нет подсказки формата вовсе» (не
+    «оверрайд ещё не задан»)."""
     if step_key == "resume" and await resume_mode(city_code) == "text_only":
         return "Коротко, текстом в чате."
+    if step_key == "birth_date":
+        return _BIRTH_DATE_HELP
     if REG_STEP_TYPES.get(step_key) == "date":
         return _DATE_HELP
     return STEP_HELP.get(step_key)
