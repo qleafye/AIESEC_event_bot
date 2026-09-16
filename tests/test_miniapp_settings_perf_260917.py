@@ -122,10 +122,11 @@ def test_settings_all_response_equals_before_fix_shape(tmp_path):
     assert first == second
 
 
-def test_batch_write_visible_immediately_within_same_request():
+def test_batch_write_visible_immediately_within_same_request(tmp_path):
     """Снимок обязан быть самосогласован внутри ОДНОГО запроса: `settings/batch` пишет через
     `set_setting` и тут же перечитывает записанные ключи для ответа `items` — без обновления
     снимка при записи менеджер увидел бы старое значение в ответе на своё же сохранение."""
+    _use_tmp_db(tmp_path, "settings_perf_batch_write.db")
 
     async def _check():
         async with bot_db.settings_snapshot():
