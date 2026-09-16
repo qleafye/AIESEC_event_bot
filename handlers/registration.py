@@ -1891,18 +1891,14 @@ async def cmd_start(message: types.Message, state: FSMContext, bot: Bot, command
 
     # user already fetched above (ME-05 gate bypass); do not re-query.
     # args/dl_event_city/source_tag already resolved above (hoisted for the "start" funnel write).
-    # Phase 28 (28-06, SU-05): amb_<id> — второй, именованный формат того же referrer_id;
-    # взаимоисключим с пятью остальными деп-линк-форматами по построению (см. docstring
-    # extract_ambassador_ref). Числовой формат — БЕЗ проверки существования, D-06 byte-for-byte
-    # (tests/test_city_flow_phase71.py::test_attribution_survives_city_pick_referrer);
-    # `resolve_referrer` (существование + опциональный гейт «только амбассадоры») применяется
-    # ТОЛЬКО к новому amb_-формату — CONTEXT OQ-2 говорит именно про него, про числовой такого
-    # условия нет («реферер по amb_<id> засчитывается, если зарегистрирован»).
-    referrer_id = _extract_referrer_id(args, user_id)
-    if not referrer_id:
-        amb_referrer_id = _extract_ambassador_ref(args, user_id)
-        if amb_referrer_id:
-            referrer_id = await resolve_referrer(amb_referrer_id)
+    # amb_<id> — второй, именованный формат того же referrer_id; взаимоисключим с пятью
+    # остальными деп-линк-форматами по построению (см. docstring extract_ambassador_ref).
+    # Решение владельца (17.09): один разбор для ОБОИХ форматов — числовой `?start=<id>`
+    # (уже разосланные ссылки на проде) проходит ту же проверку `resolve_referrer`
+    # (существование в `users` + опциональный гейт «только амбассадоры»), что и новый
+    # amb_-формат; отдельной необлегчённой ветки для числового больше нет.
+    raw_referrer_id = _extract_referrer_id(args, user_id) or _extract_ambassador_ref(args, user_id)
+    referrer_id = await resolve_referrer(raw_referrer_id)
     party_track = _extract_party_track(args)          # Phase 5 (D-10)
     dl_party_track = party_track  # preserved for the fork-suppression check below (D-10)
     if referrer_id:

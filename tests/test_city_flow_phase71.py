@@ -384,6 +384,13 @@ def test_attribution_survives_city_pick_referrer(tmp_path):
     async def go():
         await db.init_db()
         await db.set_setting("event_city_enabled", "on")
+        # Решение владельца (17.09): числовой `?start=<id>` теперь тоже идёт через
+        # `resolve_referrer` (существование в `users`) — реферер должен быть зарегистрирован,
+        # иначе deep-link не засчитается (тот же путь, что у `amb_<id>`).
+        await db.add_user({
+            "telegram_id": referrer, "full_name": "Реферер Тестов",
+            "registration_date": "2026-09-07",
+        })
         state = _new_state(uid)
         msg = _FakeMessage(uid, "u")
         await reg.cmd_start(msg, state, bot=object(), command=FakeCommand(str(referrer)))

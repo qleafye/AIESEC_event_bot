@@ -269,7 +269,9 @@ def test_balance_history_header_setting_overrides_default(tmp_path):
 # ── Рефералка: текст ссылки, заголовок списка, пустой список ─────────────────────────────
 
 def _referral_link(uid=DELEGATE_ID):
-    return f"https://t.me/{FakeBotUser.username}?start={uid}"
+    # Решение владельца (17.09, одна реферальная ссылка): везде выдаётся `amb_<id>`,
+    # см. reg_engine.build_referral_link.
+    return f"https://t.me/{FakeBotUser.username}?start=amb_{uid}"
 
 
 def test_referral_link_prompt_uses_registry_default(tmp_path):
