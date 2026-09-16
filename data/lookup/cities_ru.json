@@ -6,7 +6,10 @@
     "excluded_dissolved": 0,
     "fetched_at": "2026-09-13 09:39:41",
     "curated": true,
-    "license": "CC0 (Wikidata)"
+    "license": "CC0 (Wikidata)",
+    "count_supplement": 26,
+    "supplemented_at": "2026-09-16 00:00:00",
+    "supplement_note": "curated_supplement: кураторская правка (без сети) — крупные города РФ, пропущенные исходной выгрузкой Wikidata (население >=50000, см. README)"
   },
   "items": [
     {
@@ -1573,7 +1576,8 @@
         "Новград Нижний",
         "Столица Поволжья",
         "Чулхула",
-        "Эн-Новгород"
+        "Эн-Новгород",
+        "НН"
       ],
       "source": "wikidata_curated",
       "dissolved": false
@@ -1644,7 +1648,9 @@
         "Новониколаевск",
         "Новосиби́рск",
         "Сибирский Чикаго",
-        "Столица Сибири"
+        "Столица Сибири",
+        "Нск",
+        "Новосиб"
       ],
       "source": "wikidata_curated",
       "dissolved": false
@@ -2751,6 +2757,175 @@
       "canonical": "городской округ Искитим",
       "aliases": [],
       "source": "wikidata_curated",
+      "dissolved": false
+    },
+    {
+      "canonical": "Екатеринбург",
+      "aliases": [
+        "Екб",
+        "Свердловск"
+      ],
+      "source": "curated_supplement",
+      "dissolved": false
+    },
+    {
+      "canonical": "Челябинск",
+      "aliases": [
+        "Челяба"
+      ],
+      "source": "curated_supplement",
+      "dissolved": false
+    },
+    {
+      "canonical": "Краснодар",
+      "aliases": [],
+      "source": "curated_supplement",
+      "dissolved": false
+    },
+    {
+      "canonical": "Тюмень",
+      "aliases": [],
+      "source": "curated_supplement",
+      "dissolved": false
+    },
+    {
+      "canonical": "Тольятти",
+      "aliases": [
+        "Ставрополь-на-Волге"
+      ],
+      "source": "curated_supplement",
+      "dissolved": false
+    },
+    {
+      "canonical": "Иркутск",
+      "aliases": [],
+      "source": "curated_supplement",
+      "dissolved": false
+    },
+    {
+      "canonical": "Махачкала",
+      "aliases": [],
+      "source": "curated_supplement",
+      "dissolved": false
+    },
+    {
+      "canonical": "Владивосток",
+      "aliases": [
+        "Владик"
+      ],
+      "source": "curated_supplement",
+      "dissolved": false
+    },
+    {
+      "canonical": "Кемерово",
+      "aliases": [
+        "Щегловск"
+      ],
+      "source": "curated_supplement",
+      "dissolved": false
+    },
+    {
+      "canonical": "Курск",
+      "aliases": [],
+      "source": "curated_supplement",
+      "dissolved": false
+    },
+    {
+      "canonical": "Севастополь",
+      "aliases": [
+        "Ахтиар"
+      ],
+      "source": "curated_supplement",
+      "dissolved": false
+    },
+    {
+      "canonical": "Якутск",
+      "aliases": [],
+      "source": "curated_supplement",
+      "dissolved": false
+    },
+    {
+      "canonical": "Смоленск",
+      "aliases": [],
+      "source": "curated_supplement",
+      "dissolved": false
+    },
+    {
+      "canonical": "Петрозаводск",
+      "aliases": [],
+      "source": "curated_supplement",
+      "dissolved": false
+    },
+    {
+      "canonical": "Нижневартовск",
+      "aliases": [],
+      "source": "curated_supplement",
+      "dissolved": false
+    },
+    {
+      "canonical": "Орск",
+      "aliases": [],
+      "source": "curated_supplement",
+      "dissolved": false
+    },
+    {
+      "canonical": "Абакан",
+      "aliases": [],
+      "source": "curated_supplement",
+      "dissolved": false
+    },
+    {
+      "canonical": "Пятигорск",
+      "aliases": [],
+      "source": "curated_supplement",
+      "dissolved": false
+    },
+    {
+      "canonical": "Майкоп",
+      "aliases": [],
+      "source": "curated_supplement",
+      "dissolved": false
+    },
+    {
+      "canonical": "Обнинск",
+      "aliases": [],
+      "source": "curated_supplement",
+      "dissolved": false
+    },
+    {
+      "canonical": "Невинномысск",
+      "aliases": [],
+      "source": "curated_supplement",
+      "dissolved": false
+    },
+    {
+      "canonical": "Гусь-Хрустальный",
+      "aliases": [],
+      "source": "curated_supplement",
+      "dissolved": false
+    },
+    {
+      "canonical": "Выкса",
+      "aliases": [],
+      "source": "curated_supplement",
+      "dissolved": false
+    },
+    {
+      "canonical": "Белорецк",
+      "aliases": [],
+      "source": "curated_supplement",
+      "dissolved": false
+    },
+    {
+      "canonical": "Гатчина",
+      "aliases": [],
+      "source": "curated_supplement",
+      "dissolved": false
+    },
+    {
+      "canonical": "Жигулёвск",
+      "aliases": [],
+      "source": "curated_supplement",
       "dissolved": false
     }
   ]
