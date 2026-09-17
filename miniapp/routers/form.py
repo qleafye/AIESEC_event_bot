@@ -193,10 +193,15 @@ async def _pre_items(
     Phase 27 (27-04, LANG-02/LANG-09): `lang`/`tr_map` (одна карта на запрос, `_draft_response`
     её и загружает) переводят `text`/`options[].label` вилок города и трека — `options[].code`
     остаётся русским кодом всегда (PATCH шлёт `code`, не подпись, канонизация тут не нужна,
-    см. `reg_engine.validate_city_choice`/`validate_track_choice`). Карточка согласия — ИСКЛЮЧЕНИЕ
-    (LANG-09): `label`/`button_text` не переводятся машиной — ручной английский текст живёт в
-    отдельном плане (27-06), пока его нет — делегат видит русский тем же fail-soft, что и
-    everywhere else в проекте."""
+    см. `reg_engine.validate_city_choice`/`validate_track_choice`). Карточка согласия —
+    ИСКЛЮЧЕНИЕ (LANG-09): `label` переводится ТОЛЬКО ярусом A (`i18n.tr(label, lang, {})` с
+    пустым tr_map — тот же приём, что `handlers/registration.py::_ask_step`/
+    `handlers/reg_consent.py::_send_renew_card`, квик 260917-en): срабатывает исключительно
+    точный рукописный литерал (`i18n_ui_en.UI_EN`) для НАЗВАНИЯ документа по умолчанию,
+    машинный перевод (менеджерский legal-override) сюда не подключается ни при каких условиях
+    — делегат видит его русским тем же fail-soft. `button_text` в разметке Mini App не
+    рендерится (карточка использует чекбокс, не кнопку — см. `drawPre` в
+    `miniapp/static/js/screens/form.js`), поэтому не переводится."""
     tr_map = tr_map or {}
     if not pre_tokens:
         return []
@@ -206,12 +211,14 @@ async def _pre_items(
     button_text = await get_setting_typed("consent_button_text") if consent_tokens else None
     for token in pre_tokens:
         if token.startswith("consent:"):
-            # LANG-09: НЕ переводится машиной -- ни здесь, ни где-либо ещё в этом плане.
             key = token.split(":", 1)[1]
+            label = consent_labels.get(key, key)
+            # LANG-09: ярус A ТОЛЬКО с пустым tr_map -- машинный перевод (менеджерский текст)
+            # сюда не подключается никогда, см. докстринг выше.
             items.append({
                 "type": "consent",
                 "key": key,
-                "label": consent_labels.get(key, key),
+                "label": i18n.tr(label, lang, {}),
                 "pdf_file_id": await get_setting(f"consent_pdf_{key}"),
                 "button_text": button_text,
             })
