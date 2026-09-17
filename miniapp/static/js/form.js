@@ -101,8 +101,38 @@ function textareaControl(h, spec, value, onChange) {
   const area = h("textarea", attrs);
   area.value = value || "";
   const grow = () => { area.style.height = "auto"; area.style.height = `${area.scrollHeight}px`; };
-  area.addEventListener("input", () => { onChange(area.value); grow(); });
-  return { control: area };
+  // Владелец 17.09 (развилка резюме, ветка «Написать текстом»): та же плашка-счётчик, что у
+  // однострочных полей с лимитом (textControl выше) — клиентская подмена типа шага в
+  // `screens/form.js::drawStep` кладёт `spec.max_len` (уже 4000, reg_engine._LONG_TEXT_STEPS)
+  // на этот же textarea, второго лимита не заводим.
+  let extra = null;
+  if (spec.max_len) {
+    extra = h("div", { class: "field-counter hidden" });
+    const paintCounter = () => {
+      const len = area.value.length;
+      extra.textContent = `${len}/${spec.max_len}`;
+      extra.classList.toggle("hidden", len < spec.max_len * 0.9);
+    };
+    area.addEventListener("input", paintCounter);
+    paintCounter();
+  }
+  // Приёмка 17.09 (паттерн «Дальше неактивна без ответа», п.3): гейт — ТОЛЬКО у клиентской
+  // подмены «resume» на ветке «Написать текстом» (`spec.__resumeForkText`, `screens/form.js::
+  // drawStep`) — обычные textarea-шаги (comments/expectations/резюме в режиме text_only)
+  // поведение не меняют ни на байт, у них `disabled` вовсе не публикуется.
+  if (!spec.__resumeForkText) {
+    area.addEventListener("input", () => { onChange(area.value); grow(); });
+    return { control: area, extra };
+  }
+  let footerCb = null;
+  const notifyFooter = () => { if (footerCb) footerCb(null, !area.value.trim()); };
+  area.addEventListener("input", () => { onChange(area.value); grow(); notifyFooter(); });
+  return {
+    control: area,
+    extra,
+    disabled: !area.value.trim(),
+    onFooterChange: (cb) => { footerCb = cb; notifyFooter(); },
+  };
 }
 
 function intControl(h, spec, value, onChange) {
