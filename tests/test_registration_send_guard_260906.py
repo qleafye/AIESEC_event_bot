@@ -51,26 +51,16 @@ _REASSIGN_FUNCS = ("tr_text", "tr_kb", "tr_for", "say")
 # Ключ — (относительный путь файла, имя функции, исходный текст первого аргумента ast.unparse).
 ALLOWED_RAW_SENDS = {
     (
-        "handlers/registration.py", "_ask_step", "caption",
-    ): (
-        "LANG-09: caption — САМ текст вопроса согласия (та же карточка и тот же вызов "
-        "_prompt(f'consent_{consent_key}', label), что и handlers/reg_consent.py::"
-        "_send_renew_card, где это уже документировано как исключение) — машинный перевод "
-        "согласий запрещён."
-    ),
-    (
         "handlers/registration.py", "cmd_start",
         "'Вы админ — можете пройти регистрацию заново для теста.'",
     ): (
         "Адресовано менеджеру-админу (user_id in config.ADMIN_IDS), не делегату — админка "
         "бота остаётся русской, языковой модуль анкеты сюда не относится."
     ),
-    (
-        "handlers/reg_consent.py", "_send_renew_card", "caption",
-    ): (
-        "LANG-09 (документировано в докстринге _send_renew_card): caption — САМ текст "
-        "согласия при пересогласии, PDF/подпись кнопки тоже остаются русскими."
-    ),
+    # Квик 260917-en (находка «б»): caption в _ask_step (consent:*) и _send_renew_card теперь
+    # реально проходит reg_i18n.tr_text(prompt_text, lang, {}) (переприсвоение переменной
+    # caption ниже по коду) — _is_wired() находит их сама, отдельная запись здесь больше не
+    # нужна (test_allowlist_entries_still_exist_in_source считал бы её протухшей).
 }
 
 

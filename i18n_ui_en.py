@@ -271,6 +271,14 @@ UI_EN: dict[str, str] = {
     "Отлично, начинаем регистрацию.": "Great, let's start your application.",
     "Отлично, ты пришёл по приглашению друга. Начинаем регистрацию.":
         "Great, you're here through a friend's invite. Let's start your application.",
+
+    # ── Квик 260917-en (живая проверка 17.09, находка «б»): НАЗВАНИЕ документа согласия
+    # (`reg_engine.DEFAULT_CONSENTS`), не юридический текст самого согласия — тот остаётся
+    # русским всегда (LANG-09). Переводится через `handlers/registration.py::_ask_step` и
+    # `handlers/reg_consent.py::_send_renew_card` с ПУСТЫМ tr_map — только точное совпадение
+    # с этим литералом; менеджерский override (`reg_prompt_consent_personal_data`) с реальным
+    # легальным текстом сюда не попадёт и останется непереведённым намеренно.
+    "Согласие на обработку персональных данных": "Consent to personal data processing",
 }
 
 # Обратный индекс, построенный из UI_EN (не второй словарь руками) — нужен плану 27-05 для
