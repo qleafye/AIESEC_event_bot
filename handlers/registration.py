@@ -594,7 +594,14 @@ async def _ask_step(step_key: str, message: types.Message, state: FSMContext, st
         )
         pdf_file_id = await get_setting(f"consent_pdf_{consent_key}")
         # Ссылки на документы уже в приветственном сообщении — показываем короткий вопрос.
-        caption = html.escape(await _prompt(f'consent_{consent_key}', label, participant_type))  # Quick 260906: LANG-09, не переводим
+        # Квик 260917-en (живая проверка 17.09, находка «б»): caption по умолчанию (без
+        # менеджерского override reg_prompt_consent_{key}) — НАЗВАНИЕ документа (label), не
+        # юридический текст, стоит перевести. tr_map={} намеренно пустая: работает ТОЛЬКО
+        # ярус A (точный рукописный литерал) — машинный перевод (легальный override) сюда не
+        # подключается ни при каких условиях, LANG-09 не нарушается.
+        prompt_text = await _prompt(f'consent_{consent_key}', label, participant_type)
+        lang, _tr_map = await reg_i18n.ctx_for(message)
+        caption = html.escape(reg_i18n.tr_text(prompt_text, lang, {}))
         btn_text = await get_setting("consent_button_text") or "Согласен(-на)"
         # Квик 260917-en (приёмка 17.09): кнопка — не юридический текст согласия (caption/PDF
         # выше остаются НЕпереведёнными, LANG-09), переводим только её через reg_i18n (ярус A
