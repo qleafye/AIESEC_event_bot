@@ -84,9 +84,17 @@ async def ask_step(step_key: str, message: types.Message, state: FSMContext,
     поведение без чипов)."""
     render_flags = await lookup_render_flags(step_key, v2_flags or {})
     hint = await get_setting_typed("reg_lookup_hint_default_text")
-    text = f"{progress_prefix}{await prompt(step_key, participant_type, city_code)}"
+    prompt_text = await prompt(step_key, participant_type, city_code)
+    # Найдено на приёмке (стенд, lang=en, 17.09): вопрос и подсказку раньше склеивали В ОДНУ
+    # строку ДО перевода — `tr()` ищет по хешу ВСЕГО текста, склейка «Выбери свой город\n\n
+    # Начни вводить...» не совпадает ни с одним из двух переводов по отдельности, делегат видел
+    # обе строки русскими даже когда обе давно переведены. Переводим КАЖДЫЙ кусок отдельно, ДО
+    # склейки (`reg_i18n.say` ниже переведёт уже готовую английскую строку ещё раз — это no-op,
+    # `services.i18n.tr` fail-soft отдаёт тот же текст, если перевода для него не нашлось).
+    lang, tr_map = await reg_i18n.ctx_for(message)
+    text = f"{progress_prefix}{reg_i18n.tr_text(prompt_text, lang, tr_map)}"
     if hint:
-        text = f"{text}\n\n{hint}"
+        text = f"{text}\n\n{reg_i18n.tr_text(hint, lang, tr_map)}"
 
     initial_results: list[dict] = []
     kb = None
@@ -180,7 +188,13 @@ async def receive_lookup_text(message: types.Message, state: FSMContext, bot):
         other_label = (await get_setting_typed("reg_form_own_chip_text") or "").replace("{entity}", entity)
     await state.update_data(_lookup_results=results)
     if not results:
-        empty_title = (await get_setting_typed("reg_lookup_empty_title_text") or "").replace("{query}", text)
+        # `{query}` — открытое множество (свободный ввод делегата), в отличие от `{entity}`
+        # (закрытые "ВУЗ"/"город") статическую пару для каждого значения не завести. Переводим
+        # ШАБЛОН, потом подставляем — тот же порядок, что `reg_i18n.tr_fmt` уже вводит для
+        # ровно такого класса плейсхолдеров (докстринг `tr_fmt`).
+        empty_title_template = await get_setting_typed("reg_lookup_empty_title_text") or ""
+        empty_title = await reg_i18n.tr_for(message, empty_title_template)
+        empty_title = empty_title.replace("{query}", text)
         await reg_i18n.say(message, empty_title, reply_markup=_build_kb([], other_label))
         return
     hint = await get_setting_typed("reg_lookup_hint_default_text")

@@ -109,7 +109,12 @@ UI_EN: dict[str, str] = {
     # извне (см. tests/test_i18n_core_27.py — там перечислены явным списком, «сверено с
     # reg_engine.py на дату плана», как и требует план) ────────────────────────────────────
     "Дата рождения не может быть в будущем. Проверь и введи ещё раз.": "Date of birth can't be in the future. Please check and re-enter.",
-    "Проверь дату рождения (год выглядит неправдоподобно) и введи ещё раз.": "Please check your date of birth (the year looks implausible) and re-enter.",
+    # Приёмка (стенд, 17.09, живой прогон): прежняя формулировка была ближе к машинному
+    # порядку слов ("Please check ... and re-enter"); переставлено на более естественное для
+    # английского читателя "problem first" — не текст ошибки-фильтра, правка EN-значения
+    # безопасна (докстринг модуля выше — запрет менять EN касается служебных слов в жёстких
+    # сравнениях aiogram, не текстов ошибок валидации).
+    "Проверь дату рождения (год выглядит неправдоподобно) и введи ещё раз.": "That year doesn't look right — please check your date of birth.",
     "Дата приезда не может быть в прошлом. Введи корректную дату.": "Arrival date can't be in the past. Enter a valid date.",
     "Проверь дату приезда (слишком далеко в будущем) и введи ещё раз.": "Please check your arrival date (too far in the future) and re-enter.",
 
