@@ -418,8 +418,30 @@ function lookupControl(h, spec, value, onChange, flags) {
   const ghostChip = h("button", { class: "chip-pick ghost hidden", type: "button" },
     h("span", { text: texts.own_chip || "" }));
   const list = h("div", { class: "list" });
-  const emptyState = h("div", { class: "hidden" });
+  const emptyState = h("div", { class: "lookup-empty hidden" });
+  // Живой прогон 16.09 (уточнение владельца 17.09, п.2): результаты поиска были ПОСЛЕ подсказки
+  // и чипов — на практике оказывались под экранной клавиатурой, приходилось листать. `resultsBox`
+  // — карточка (`.lookup-results`, app.css) СРАЗУ под полем ввода, до `hint`/`chipsBox`
+  // (см. порядок `children` ниже); сама скрывается, когда показывать нечего (ни результатов,
+  // ни текста «не найдено»), а не остаётся пустой белой рамкой.
+  const resultsBox = h("div", { class: "lookup-results hidden" }, list, emptyState);
   const ownInput = h("input", { class: "input hidden", type: "text" });
+
+  function toggleResults(visible) {
+    resultsBox.classList.toggle("hidden", !visible);
+    // Прокручиваем только если делегат ещё в поле (не после клика по результату — там фокус
+    // уже снят `selectValue()` ниже, повторная прокрутка была бы дёрганьем экрана).
+    if (visible && document.activeElement === searchInput) scrollFieldIntoView();
+  }
+
+  function scrollFieldIntoView() {
+    if (typeof searchInput.scrollIntoView !== "function") return;
+    // `dataset.motion` — тот же флаг уровня движения, что читает `swipe.js`/`app.js` напрямую
+    // (motion.js не импортируется здесь ради того же самого разрыва циклов, что и `api.js`
+    // ниже — не заводим второй канал импорта только для одного чтения атрибута).
+    const behavior = document.documentElement.dataset.motion === "off" ? "auto" : "smooth";
+    searchInput.scrollIntoView({ block: "start", behavior });
+  }
 
   function selectValue(canonical) {
     // Приёмка 16.09 (п.4): выбор подсказки/чипа справочника — законченный ответ (см.
@@ -429,6 +451,10 @@ function lookupControl(h, spec, value, onChange, flags) {
     searchInput.value = canonical;
     list.replaceChildren();
     emptyState.classList.add("hidden");
+    toggleResults(false);
+    // Уточнение владельца 17.09 (п.2): после выбора клавиатура убирается сама, значение уже
+    // видно в поле — держать фокус незачем, а на мобильных именно фокус держит клавиатуру.
+    searchInput.blur();
   }
 
   function openOwn(initialText) {
@@ -453,18 +479,43 @@ function lookupControl(h, spec, value, onChange, flags) {
     if (otherAllowed) chipsBox.append(ghostChip);
   }
 
+  // Подсветка совпавшего подстрочного запроса в подписи результата (уточнение владельца 17.09,
+  // п.2) — простой регистронезависимый `indexOf`, не полнотекстовый `matchSearchWord`
+  // (`screens/form.js`, экран обзора вопросов): там подсветка нужна словам ВНУТРИ уже
+  // отрисованного текста подсказки, здесь — ровно тому, что делегат напечатал в поле, против
+  // результата, который сервер УЖЕ отобрал `LIKE`-поиском (`services/lookup.py`). `h("mark")`
+  // разметку строкой не собирает (T-30-08, `innerHTML` запрещён) — только через `h()`/дочерние
+  // текстовые узлы, тот же приём, что `form.js::highlightMatch`.
+  function highlightQuery(text, query) {
+    const s = text == null ? "" : String(text);
+    const q = (query || "").trim();
+    if (!q) return [s];
+    const idx = s.toLowerCase().indexOf(q.toLowerCase());
+    if (idx < 0) return [s];
+    const out = [];
+    if (idx > 0) out.push(s.slice(0, idx));
+    out.push(h("mark", { text: s.slice(idx, idx + q.length) }));
+    if (idx + q.length < s.length) out.push(s.slice(idx + q.length));
+    return out;
+  }
+
   function renderResults(results, query) {
     list.replaceChildren();
     if (results.length) {
       emptyState.classList.add("hidden");
       for (const r of results) {
-        const row = h("button", { class: "row", type: "button" }, icon(lookupIconFor(spec)), h("span", { text: r.canonical }));
+        const row = h(
+          "button", { class: "lookup-row", type: "button" },
+          icon(lookupIconFor(spec)),
+          h("span", {}, ...highlightQuery(r.canonical, query)),
+        );
         row.addEventListener("click", () => selectValue(r.canonical));
         list.append(row);
       }
+      toggleResults(true);
       return;
     }
-    if (!query) { emptyState.classList.add("hidden"); return; }
+    if (!query) { emptyState.classList.add("hidden"); toggleResults(false); return; }
     const title = String(texts.empty_title || "").replace("{query}", query);
     // «Свой вариант» выключен (`other_allowed=false`, атрибут списка — план 30-07): пустое
     // состояние показывает только заголовок запроса, БЕЗ приглашения вписать своё — второй
@@ -478,6 +529,7 @@ function lookupControl(h, spec, value, onChange, flags) {
       emptyState.append(h("p", { class: "label-role", text: texts.own_option || "" }));
     }
     emptyState.classList.remove("hidden");
+    toggleResults(true);
   }
 
   async function fetchSuggest(q) {
@@ -498,17 +550,31 @@ function lookupControl(h, spec, value, onChange, flags) {
       onChange(searchInput.value);
       if (debounceId) clearTimeout(debounceId);
       const q = searchInput.value.trim();
-      if (q.length < LOOKUP_MIN_QUERY) { list.replaceChildren(); emptyState.classList.add("hidden"); return; }
+      if (q.length < LOOKUP_MIN_QUERY) {
+        list.replaceChildren();
+        emptyState.classList.add("hidden");
+        toggleResults(false);
+        return;
+      }
       debounceId = setTimeout(() => fetchSuggest(q), LOOKUP_DEBOUNCE_MS);
     });
+    // Мобильная клавиатура выезжает не мгновенно — прокрутка сразу на `focus` уводит поле в
+    // зону, которую тут же перекрывает клавиатура (та же гонка, что решает `setTimeout` у
+    // `openOverflowSheet`-подобных экранов). Небольшая задержка — поле и (когда появится) список
+    // результатов остаются видны НАД клавиатурой (`Telegram.WebApp.viewportChanged` нигде в
+    // проекте не используется — везде читают `document.documentElement.dataset.motion` напрямую
+    // или полагаются на нативный `scrollIntoView`, второго канала не заводим).
+    searchInput.addEventListener("focus", () => setTimeout(scrollFieldIntoView, 60));
   }
 
   fetchSuggest("");   // первичная загрузка чипов/other_allowed — не ждёт ввода делегата
 
   const hint = texts.hint_default ? h("p", { class: "label-role", text: texts.hint_default }) : null;
   const children = [];
-  if (showSearch) { children.push(searchRow, hint); }
-  children.push(chipsBox, list, emptyState, ownInput);
+  // Уточнение владельца 17.09 (п.2): `resultsBox` — СРАЗУ после поля ввода, до подсказки и
+  // чипов частых значений (были ниже — расходились с экранной клавиатурой на мобильных).
+  if (showSearch) { children.push(searchRow, resultsBox, hint); }
+  children.push(chipsBox, ownInput);
 
   return { control: h("div", {}, ...children), footerLabel: null, disabled: false };
 }
