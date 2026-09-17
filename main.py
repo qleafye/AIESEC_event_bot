@@ -314,6 +314,21 @@ async def main():
         await seed_form_manual_translations()
     except Exception:
         logger.warning("Не удалось засеять ручные переводы анкеты", exc_info=True)
+    # Квик 260917-en (живая проверка 17.09, находка 1): корпус анкеты (`services/
+    # i18n_sources.py::corpus()`) расширяется кодом (новая группа DELEGATE_GROUPS, новый
+    # литерал в code_literals()) — `bulk_seed()` исторически звался ТОЛЬКО в момент включения
+    # модуля (`database.db._maybe_enqueue_translation`, ветка `delegate_lang_enabled` -> "on").
+    # На стенде, где модуль включён давно, расширение корпуса в очередь не попадало никогда.
+    # Идемпотентно на каждом старте: `bulk_seed` теперь пропускает и ручные, и уже переведённые
+    # строки — повторный вызов не гоняет argos по готовому корпусу, ставит в очередь только
+    # реально непереведённые (см. докстринг `services/i18n_worker.py::bulk_seed`).
+    try:
+        if await get_setting_typed("delegate_lang_enabled") == "on":
+            from services.i18n_worker import bulk_seed
+
+            await bulk_seed()
+    except Exception:
+        logger.warning("Не удалось досеять корпус перевода анкеты", exc_info=True)
 
     # Phase 14 (CFG-01): one-time GOOGLE_SHEET_TAB -> bot_settings.main_sheet_tab migration.
     # MUST run before active_sheet_headers() below — otherwise the very first header resolve
