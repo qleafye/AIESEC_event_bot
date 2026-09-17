@@ -196,7 +196,7 @@ def _status_label(data: dict) -> str:
 
 # Phase 28 (28-04, SU-04): человеческие слова способа резюме в листе — код `resume_type`
 # делегату/менеджеру в таблице не показываем (D-02).
-_RESUME_TYPE_SHEET_LABELS = {"file": "Файл", "link": "Ссылка", "mini": "Мини-профиль"}
+_RESUME_TYPE_SHEET_LABELS = {"file": "Файл", "link": "Ссылка", "text": "Текстом", "mini": "Мини-профиль"}
 
 
 # Google Sheet columns: (header, gate_setting_or_None, value_fn). gate=None → always
