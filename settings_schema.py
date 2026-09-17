@@ -2156,8 +2156,8 @@ SETTINGS_SCHEMA = {
     },
     "reg_multi_limit_hint_zero_text": {
         "type": "text", "group": "reg_prompts", "label": "🔢 Подсказка лимита: 0 выбрано (multi)",
-        "prompt": "{max} подставляет лимит выбора.",
-        "default": "Выбрано 0 из {max}. Можно ничего не выбирать — шаг необязательный.",
+        "prompt": "{max} подставляет лимит выбора. Обязательность шага сообщает отдельная подсказка над вариантами.",
+        "default": "Выбрано 0 из {max}.",
         "per_city": True,
     },
     "reg_multi_limit_hint_mid_text": {
