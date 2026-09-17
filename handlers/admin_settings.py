@@ -132,11 +132,15 @@ _REG_FIELD_ORDER = [
     # маркеры/ошибка ссылки R2b + «Пропустить» мини-подшага (иначе менеджер не увидит их в
     # боте, правило файла).
     "reg_resume_link_whitelist",
-    "reg_resume_fork_file_label", "reg_resume_fork_link_label", "reg_resume_fork_none_label",
+    "reg_resume_fork_file_label", "reg_resume_fork_link_label", "reg_resume_fork_text_label",
+    "reg_resume_fork_none_label",
     "reg_resume_link_whitelist_hint_text", "reg_resume_link_other_hint_text",
     "reg_resume_link_invalid_text", "reg_mini_portfolio_skip_label",
     # Phase 28 (28-05, SU-04): подсказка «выбери кнопкой» для свободного текста мимо развилки.
     "reg_resume_fork_pick_hint_text",
+    # Владелец 17.09: четвёртая ветка развилки — «Написать текстом», вопрос показывается ТОЛЬКО
+    # в этой ветке (не общий reg_q_resume/prompt).
+    "reg_resume_fork_text_prompt_text", "reg_resume_fork_text_invalid_text",
 ]
 
 # Phase 20 (20-01, ADMIN-IA-01): группа «📋 Заявки» — всё, что делегат видит ПОСЛЕ подачи
