@@ -608,7 +608,7 @@ async def draft_patch(
     # `reg_engine.column_to_step`/`validate_answer` — попади он в общий цикл, схлопнулся бы в
     # 400 bad_field, как любая незнакомая колонка.
     resume_type_patch = body.answers.pop("resume_type", None)
-    if resume_type_patch is not None and resume_type_patch not in ("file", "link", "mini"):
+    if resume_type_patch is not None and resume_type_patch not in ("file", "link", "mini", "text"):
         raise HTTPException(400, {"reason": "bad_field", "field": "resume_type"})
 
     # Квик 260912-l53: `clear` называет ШАГ, набор колонок для очистки — единственный источник
