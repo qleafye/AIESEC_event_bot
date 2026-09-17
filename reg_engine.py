@@ -3082,10 +3082,13 @@ def compute_score(answers: dict, rules: dict) -> tuple[int, bool]:
     is_senior_status = bool(senior_statuses) and answers.get("education_status") in senior_statuses
     course_condition = is_senior_course or is_senior_status
 
-    # Владелец 17.09: «текстом» — такое же полноценное резюме для скоринга, как файл/ссылка
-    # (делегат описал опыт словами вместо документа), не «нет резюме» (только "mini"/"none").
+    # Владелец 17.09: четвёртая ветка развилки «text» НЕ добавлена сюда — формула ТЗ балл за
+    # резюме даёт только file/link (см. tests/test_skillup_scoring_28.py::
+    # test_resume_addend_plain_text_does_not_fire, тот же принцип уже применён к резюме голым
+    # текстом в режиме file_or_text/text_only). Решение продукта, не пробел: свободный текст
+    # без файла/ссылки не проверяем как «настоящее» резюме для скоринга.
     has_resume = (
-        answers.get("resume_type") in ("file", "link", "text")
+        answers.get("resume_type") in ("file", "link")
         or bool(answers.get("resume_file_id"))
         or bool(answers.get("resume_url"))
     )
