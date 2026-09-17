@@ -693,6 +693,9 @@ PREVIEW_ADDRESSEE_PLACEHOLDERS: frozenset[str] = frozenset({
 
 PREVIEW_SAMPLES: dict[str, str] = {
     "name": "Иван",
+    # Приёмка 17.09: минимум вариантов мультивыбора и подпись раздела реф-ссылки в приложении.
+    "min": "1",
+    "section": "🔗 Моя реферальная ссылка",
     "season": "Юлид'25",
     "deadline": "15.10.2026",
     "requisites": "Сбербанк, 2202 2000 0000 0000, Иван И.",

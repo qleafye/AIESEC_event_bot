@@ -544,6 +544,12 @@ async def _enabled_steps_impl(data: dict, city_code: str | None) -> list[str]:
     # байт-в-байт), `source` при этом уже получает «Реферальная ссылка» из `with_defaults`.
     skip_source_for_referred = await get_setting_typed("reg_skip_source_for_referred") == "on"
     for step_key, setting_key, *_rest in REG_FLOW:
+        # Приёмка 17.09: в режиме «Спросить, как удобнее» развилка всегда показывает «Дать
+        # ссылку», а шаг ссылки жил за отдельным тумблером reg_q_resume_link (по умолчанию
+        # выкл) — выбор ссылки молча уводил на обзор без вопроса. Шаг ссылки — часть развилки.
+        if step_key == "resume_link" and resume_type == "link" and await resume_mode(city) == "fork":
+            enabled.append(step_key)
+            continue
         if not await is_step_enabled_for_track(setting_key, participant_type, city):
             continue
         if step_key == "informal_day" and data.get("attendance_format") == "Online":
@@ -2250,7 +2256,10 @@ async def form_spec(answers: dict, participant_type: str | None = None,
                 )
                 if display_col is not None:
                     spec["display"] = _display_value(raw_values[display_col])
-                elif step_key == "resume" and answers.get("resume_type") == "none":
+                elif step_key == "resume" and answers.get("resume_type") in ("none", "mini") and not any(
+                    answers.get(col) not in (None, "", "-")
+                    for col in ("mini_projects", "mini_portfolio", "mini_direction")
+                ):
                     # Приёмка 16.09: «У меня нет резюме» в развилке — ответ есть, колонок нет;
                     # обзор печатал пустую строку. Показываем ту же подпись, что на кнопке.
                     spec["display"] = await get_setting_typed("reg_resume_fork_none_label")
