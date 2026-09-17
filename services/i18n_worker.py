@@ -152,19 +152,26 @@ async def drain(limit_batches: int = 1) -> int:
 
 
 async def bulk_seed(lang: str = "en") -> int:
-    """Ставит в очередь ВЕСЬ корпус делегатских текстов анкеты (`services/i18n_sources.py
-    ::corpus()` — единственный перечислитель, второго списка источников в проекте нет) при
-    включении модуля (`delegate_lang_enabled` -> "on", врезка в `database.db.set_setting`).
-    Строки, для которых уже есть ручная правка менеджера (`manual=1`), в очередь не ставятся —
-    LANG-05 действует и здесь, не только в `drain()`. `INSERT OR IGNORE` в `enqueue_translation`
-    (`UNIQUE(lang, src_hash)`) сам не даёт повторному вызову наплодить дублей. Возвращает
-    число реально поставленных строк (не считая пропущенных manual/уже стоящих в очереди)."""
+    """Ставит в очередь корпус делегатских текстов анкеты (`services/i18n_sources.py
+    ::corpus()` — единственный перечислитель, второго списка источников в проекте нет), КОТОРЫЙ
+    ЕЩЁ НЕ ПЕРЕВЕДЁН — ни машинно, ни руками. Зовётся при включении модуля
+    (`delegate_lang_enabled` -> "on", врезка в `database.db.set_setting`) И идемпотентно на
+    каждом старте бота (`main.py`, Квик 260917-en, находка 1) — расширение корпуса кодом
+    (новая группа `DELEGATE_GROUPS`, новый `code_literals()`) иначе никогда не попадало бы в
+    очередь на стенде, где модуль включён задолго до правки корпуса.
+
+    Строка, для которой в `translations` уже ЕСТЬ запись (ручная правка `manual=1` ИЛИ уже
+    готовый машинный перевод), в очередь НЕ ставится повторно — до Квика 260917-en здесь
+    проверялся только `manual`, и идемпотентный вызов на каждом рестарте гонял бы argos по
+    сотням уже переведённых строк заново. `INSERT OR IGNORE` в `enqueue_translation`
+    (`UNIQUE(lang, src_hash)`) сам не даёт повторному вызову наплодить дублей ДЛЯ ещё не
+    переведённых строк, уже стоящих в очереди. Возвращает число реально поставленных строк."""
     items = await corpus()
     queued = 0
     for origin_key, text in items:
         text_hash = src_hash(text)
         existing = await get_translation(lang, text_hash)
-        if existing and existing.get("manual"):
+        if existing:
             continue
         row_id = await enqueue_translation(lang, text_hash, text, origin_key=origin_key)
         if row_id is not None:
