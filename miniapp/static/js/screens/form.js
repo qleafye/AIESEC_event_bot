@@ -984,10 +984,14 @@ export async function render(root, params, ctx) {
       const rawSpec = specs[stepIndex];
       // Phase 28 (28-05, SU-04): «файл» — клиентская подмена этого же шага дропзоной (см.
       // докстринг `resumeForkBranch` выше) — сервер про эту подмену не знает, stepIndex/шаг
-      // черновика не двигаются.
+      // черновика не двигаются. Владелец 17.09: «текстом» — та же подмена, но textarea вместо
+      // дропзоны (`__resumeForkText` — гейт «Дальше» в `form.js::textareaControl`, отличает эту
+      // подмену от обычных textarea-шагов/резюме в режиме text_only).
       const spec = (rawSpec.key === "resume" && resumeForkBranch === "file")
         ? { ...rawSpec, type: "file" }
-        : rawSpec;
+        : (rawSpec.key === "resume" && resumeForkBranch === "text")
+          ? { ...rawSpec, type: "textarea", __resumeForkText: true, prompt: rawSpec.fork_text_prompt || rawSpec.prompt }
+          : rawSpec;
       const column = spec.column;
       const value = state.value(column);
 
@@ -1088,18 +1092,21 @@ export async function render(root, params, ctx) {
         if (busy) return;
         busy = true;
         setMainButton(null);
+        // Владелец 17.09: «текстом» — та же клиентская подмена шага, что «файл» (не двигает
+        // step/index, resumeForkBranch ниже подменяет только контрол), см. drawStep().
+        const staysOnStep = code === "file" || code === "text";
         try {
           const res = await api("/reg/draft", {
             method: "PATCH",
-            body: { version: d.version, answers: { resume_type: code }, step: code === "file" ? null : spec.key },
+            body: { version: d.version, answers: { resume_type: code }, step: staysOnStep ? null : spec.key },
           });
           busy = false;
-          if (code === "file") {
-            // Ветка «файл» — клиентская подмена ЭТОГО ЖЕ шага (resumeForkBranch выше);
+          if (staysOnStep) {
+            // Ветка «файл»/«текстом» — клиентская подмена ЭТОГО ЖЕ шага (resumeForkBranch выше);
             // resume_type уже сохранён сервером (нужен последующим PATCH для enabled_steps),
             // но список шагов/индекс не меняются — adoptDraft() здесь не нужен.
             d = res;
-            resumeForkBranch = "file";
+            resumeForkBranch = code;
             drawStep();
           } else {
             // «link»/«mini» — сервер уже пересчитал enabled_steps (resume_link/mini_projects
@@ -1230,7 +1237,7 @@ export async function render(root, params, ctx) {
         // Phase 28 (28-05, SU-04, A-03 CONTEXT): единственные исключения из «Назад = предыдущий
         // вопрос» — ветка «файл» (клиентская подмена этого же шага) и четыре шага-ветки
         // (resume_link/mini_*) — все возвращают на экран развилки (R1), не на stepIndex-1.
-        if (rawSpec.key === "resume" && resumeForkBranch === "file") {
+        if (rawSpec.key === "resume" && (resumeForkBranch === "file" || resumeForkBranch === "text")) {
           resumeForkBranch = null;
           drawStep();
           return;
