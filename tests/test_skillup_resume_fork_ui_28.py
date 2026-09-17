@@ -124,7 +124,9 @@ def _callback_datas(kb: InlineKeyboardMarkup):
 # Задача 1: развилка в чате
 # ══════════════════════════════════════════════════════════════════════════════════════════
 
-def test_fork_screen_shows_three_buttons(tmp_path):
+def test_fork_screen_shows_four_buttons(tmp_path):
+    """Владелец 17.09: развилка расширена до четырёх кнопок (файл, ссылка, текстом, нет
+    резюме) — «текстом» встаёт МЕЖДУ «ссылкой» и «нет резюме» (порядок владельца)."""
     _use_tmp_db(tmp_path)
     uid = UID + 1
 
@@ -139,7 +141,7 @@ def test_fork_screen_shows_three_buttons(tmp_path):
     msg, state_name = asyncio.run(go())
     kbs = _inline_kbs(msg)
     assert len(kbs) == 1, "экран развилки обязан прийти с инлайн-клавиатурой"
-    assert _callback_datas(kbs[0]) == ["regfork:file", "regfork:link", "regfork:mini"]
+    assert _callback_datas(kbs[0]) == ["regfork:file", "regfork:link", "regfork:text", "regfork:mini"]
     assert state_name == Registration.resume.state
 
 
@@ -163,6 +165,120 @@ def test_pick_link_asks_link_step(tmp_path):
     assert data.get("resume_type") == "link"
     assert state_name == Registration.resume_link.state
     assert msg.sent, "вопрос про ссылку обязан быть задан"
+
+
+# ══════════════════════════════════════════════════════════════════════════════════════════
+# Владелец 17.09: R2d — четвёртая ветка «✍️ Написать текстом»
+# ══════════════════════════════════════════════════════════════════════════════════════════
+
+def test_pick_text_asks_own_prompt_and_stays_on_resume_state(tmp_path):
+    """R2d — своя формулировка вопроса (реестровый `reg_resume_fork_text_prompt_text`, НЕ
+    общий `reg_prompt_resume`/`reg_q_resume` про файл), состояние НЕ двигается вперёд (тот же
+    приём, что ветка «файл» — ответ ловит существующий `process_resume_text`)."""
+    _use_tmp_db(tmp_path)
+    uid = UID + 20
+
+    async def go():
+        await db.set_setting("reg_resume_mode", "fork")
+        await db.set_setting("reg_resume_fork_text_prompt_text", "Опиши свой опыт коротко:")
+        state = _state(uid)
+        await state.update_data(
+            participant_type="full", full_name="Тест", _reg_step=3, _reg_total=6,
+        )
+        callback = _FakeCallback("regfork:text", uid)
+        await reg_resume_fork.regfork_pick(callback, state)
+        data = await state.get_data()
+        return data, callback.message, await state.get_state()
+
+    data, msg, state_name = asyncio.run(go())
+    assert data.get("resume_type") == "text"
+    assert state_name == Registration.resume.state
+    assert msg.sent, "вопрос об опыте обязан быть задан"
+    assert any("Опиши свой опыт коротко:" in (t or "") for t in _texts(msg))
+
+
+def test_text_branch_answer_saved_and_advances(tmp_path):
+    _use_tmp_db(tmp_path)
+    uid = UID + 21
+
+    async def go():
+        await db.set_setting("reg_resume_mode", "fork")
+        state = _state(uid)
+        await state.update_data(participant_type="full", full_name="Тест", resume_type="text")
+        await state.set_state(Registration.resume)
+        msg = _FakeMessage(uid, text="2 года опыта в маркетинге, вела соцсети клиента")
+        await reg_flow.process_resume_text(msg, state, bot=None)
+        data = await state.get_data()
+        return data, await state.get_state()
+
+    data, state_name = asyncio.run(go())
+    assert data.get("resume_text") == "2 года опыта в маркетинге, вела соцсети клиента"
+    assert data.get("resume_type") == "text"
+    assert state_name != Registration.resume.state, "ответ обязан продвинуть анкету дальше"
+
+
+def test_text_branch_empty_answer_rejected(tmp_path):
+    _use_tmp_db(tmp_path)
+    uid = UID + 22
+
+    async def go():
+        await db.set_setting("reg_resume_mode", "fork")
+        state = _state(uid)
+        await state.update_data(participant_type="full", full_name="Тест", resume_type="text")
+        await state.set_state(Registration.resume)
+        msg = _FakeMessage(uid, text="   ")
+        await reg_flow.process_resume_text(msg, state, bot=None)
+        data = await state.get_data()
+        return data, msg, await state.get_state()
+
+    data, msg, state_name = asyncio.run(go())
+    assert "resume_text" not in data
+    assert state_name == Registration.resume.state
+    assert msg.sent, "делегат обязан увидеть ошибку пустого ответа"
+
+
+def test_text_branch_non_text_message_gets_own_error(tmp_path):
+    """Стикер/фото на ветке «Написать текстом» — своя формулировка (не «выбери кнопкой»,
+    кнопка уже нажата, `resume_type == 'text'`)."""
+    _use_tmp_db(tmp_path)
+    uid = UID + 23
+
+    async def go():
+        await db.set_setting("reg_resume_mode", "fork")
+        await db.set_setting("reg_resume_fork_text_invalid_text", "Только текстом, пожалуйста.")
+        state = _state(uid)
+        await state.update_data(participant_type="full", full_name="Тест", resume_type="text")
+        await state.set_state(Registration.resume)
+        msg = _FakeMessage(uid)  # ни text, ни document — стикер/фото
+        await reg_flow.process_resume_invalid(msg, state)
+        return msg
+
+    msg = asyncio.run(go())
+    assert _texts(msg) == ["Только текстом, пожалуйста."]
+
+
+def test_text_branch_back_returns_to_fork_with_four_buttons(tmp_path):
+    _use_tmp_db(tmp_path)
+    uid = UID + 24
+
+    async def go():
+        await db.set_setting("reg_resume_mode", "fork")
+        state = _state(uid)
+        await state.update_data(
+            participant_type="full", full_name="Тест", resume_type="text",
+            _reg_step=3, _reg_total=6,
+        )
+        await state.set_state(Registration.resume)
+        callback = _FakeCallback("regfork:back", uid)
+        await reg_resume_fork.regfork_pick(callback, state)
+        data = await state.get_data()
+        return data, callback.message, await state.get_state()
+
+    data, msg, state_name = asyncio.run(go())
+    assert data.get("resume_type") is None
+    assert state_name == Registration.resume.state
+    kbs = _inline_kbs(msg)
+    assert kbs and _callback_datas(kbs[0]) == ["regfork:file", "regfork:link", "regfork:text", "regfork:mini"]
 
 
 def test_pick_mini_asks_three_substeps_in_order(tmp_path):
@@ -216,7 +332,7 @@ def test_back_from_any_branch_returns_to_fork(tmp_path):
     state_name, msg = asyncio.run(go())
     assert state_name == Registration.resume.state
     kbs = _inline_kbs(msg)
-    assert kbs and _callback_datas(kbs[0]) == ["regfork:file", "regfork:link", "regfork:mini"]
+    assert kbs and _callback_datas(kbs[0]) == ["regfork:file", "regfork:link", "regfork:text", "regfork:mini"]
 
 
 def test_back_resets_resume_type(tmp_path):
@@ -362,6 +478,11 @@ class FakeElement {
     this.children = [];
     this._listeners = {};
     this.classList = new FakeClassList(this);
+    // Владелец 17.09 (гейт textarea развилки резюме): `textareaControl` дергает
+    // `area.style.height` на каждом `input` (auto-grow) — без заглушки `scrollHeight`/`style`
+    // JSDOM-лайт этого файла падает `TypeError: Cannot set properties of undefined`.
+    this.style = {};
+    this.scrollHeight = 0;
   }
   get className() { return this._className; }
   set className(v) { this._className = v; this.classList._fromString(v); }
@@ -586,6 +707,75 @@ def test_back_returns_to_fork_screen():
     assert "resumeForkBranch = null" in go_back_body
 
 
+def test_text_branch_swaps_step_to_textarea_without_moving_step():
+    """Владелец 17.09: «текстом» — та же клиентская подмена, что «файл» (textarea вместо
+    дропзоны, шаг/индекс не двигаются) — drawStep/pickResumeBranch/goBack все трое знают про
+    `resumeForkBranch === "text"`, не только про "file"."""
+    text = _js_without_comments(FORM_SCREEN_JS)
+    draw_step_start = text.index("function drawStep(")
+    draw_step_end = text.index("const column = spec.column", draw_step_start)
+    draw_step_body = text[draw_step_start:draw_step_end]
+    assert 'resumeForkBranch === "text"' in draw_step_body
+    assert "__resumeForkText: true" in draw_step_body
+    assert "type: \"textarea\"" in draw_step_body
+
+    pick_start = text.index("async function pickResumeBranch(")
+    pick_end = text.index("async function goNext(", pick_start)
+    pick_body = text[pick_start:pick_end]
+    assert 'code === "text"' in pick_body
+
+    go_back_start = text.index("function goBack(")
+    go_back_end = text.index("const showProgress", go_back_start)
+    go_back_body = text[go_back_start:go_back_end]
+    assert 'resumeForkBranch === "text"' in go_back_body
+
+
+# ── form.js::textareaControl — гейт «Дальше» на ветке «Написать текстом» ────────────────────
+
+NODE_SCRIPT_FORK_TEXT = _FAKE_DOM_PRELUDE + """
+const m = await import(%(url)s);
+
+const spec = { key: "resume", type: "textarea", label: "Резюме", max_len: 4000, __resumeForkText: true };
+const changes = [];
+const wrap = m.field(h, spec, null, (v) => changes.push(v));
+const nodes = wrap._nodes;
+
+let lastFooter = null;
+nodes.onFooterChange((label, disabled) => { lastFooter = { label, disabled }; });
+
+const initialDisabled = nodes.footerDisabled;
+const area = nodes.control;
+area.value = "Два года опыта в маркетинге";
+area.dispatch("input", {});
+
+console.log(JSON.stringify({
+  initialDisabled,
+  afterTypingDisabled: lastFooter && lastFooter.disabled,
+  changes,
+}));
+"""
+
+
+@pytest.fixture(scope="module")
+def js_result_fork_text() -> dict:
+    node = shutil.which("node")
+    if not node:
+        pytest.skip("node не найден в PATH — поведенческий тест гейта ветки «текстом» пропущен")
+    script = NODE_SCRIPT_FORK_TEXT % {"url": json.dumps(FORM_JS.resolve().as_uri())}
+    proc = subprocess.run(
+        [node, "--input-type=module", "-e", script],
+        cwd=str(ROOT), capture_output=True, text=True, encoding="utf-8", timeout=120,
+    )
+    assert proc.returncode == 0, proc.stderr[-3000:]
+    return json.loads(proc.stdout.strip().splitlines()[-1])
+
+
+def test_fork_text_textarea_gates_next_button_until_typed(js_result_fork_text):
+    assert js_result_fork_text["initialDisabled"] is True, "пустой текст обязан дизейблить «Дальше»"
+    assert js_result_fork_text["afterTypingDisabled"] is False
+    assert js_result_fork_text["changes"] == ["Два года опыта в маркетинге"]
+
+
 # ── miniapp/routers/form.py: PATCH resume_type (deviation Rule 3, необходим для паритета) ──
 
 from database import db as bot_db  # noqa: E402
@@ -622,3 +812,53 @@ def test_patch_resume_type_link_persists_and_reveals_resume_link_step(http_clien
     row = asyncio.run(bot_db.get_reg_draft(DELEGATE_ID))
     assert row["answers"]["resume_type"] == "link"
     assert row["step"] == "resume_link"
+
+
+def test_patch_resume_type_text_persists_and_keeps_resume_step(http_client):
+    """Владелец 17.09: «текстом» — клиентская подмена ТОГО ЖЕ шага (как «файл»), сервер шлёт
+    `step: null`, поэтому черновик обязан сохранить уже стоявший шаг «resume» (COALESCE), не
+    обнулить его и не продвинуть дальше. Черновик сеется НАПРЯМУЮ через `upsert_reg_draft` с
+    `step="resume"` (то состояние, в котором делегат реально видит развилку) — PATCH с
+    `step: "resume"` через HTTP сам по себе означает «resume только что отвечен» и продвигает
+    черновик на следующий шаг (правильное поведение для обычных шагов, но не подходит здесь как
+    приём построения фикстуры)."""
+    _set("reg_resume_mode", "fork")
+    _set("reg_q_resume", "on")
+    asyncio.run(bot_db.upsert_reg_draft(
+        DELEGATE_ID, kind="new", participant_type="full", event_city=None,
+        step="resume", patch={}, source="miniapp",
+    ))
+    row0 = asyncio.run(bot_db.get_reg_draft(DELEGATE_ID))
+    assert row0["step"] == "resume"
+    resp = http_client.patch(
+        "/app/api/reg/draft", headers=_hdr(DELEGATE_ID),
+        json={"version": row0["version"], "answers": {"resume_type": "text"}, "step": None},
+    )
+    assert resp.status_code == 200, resp.text
+    row = asyncio.run(bot_db.get_reg_draft(DELEGATE_ID))
+    assert row["answers"]["resume_type"] == "text"
+    assert row["step"] == "resume"
+
+
+def test_patch_resume_text_after_text_branch_lands_in_resume_text_column(http_client):
+    """`column_to_step("resume_text") == "resume"` (легаси-алиас, reg_engine.py) — PATCH с
+    колонкой `resume_text` обязан пройти `validate_answer("resume", …)`, а не 400 bad_field."""
+    _set("reg_resume_mode", "fork")
+    _set("reg_q_resume", "on")
+    http_client.patch(
+        "/app/api/reg/draft", headers=_hdr(DELEGATE_ID),
+        json={"version": 0, "answers": {"resume_type": "text"}, "step": None},
+    )
+    row0 = asyncio.run(bot_db.get_reg_draft(DELEGATE_ID))
+    resp = http_client.patch(
+        "/app/api/reg/draft", headers=_hdr(DELEGATE_ID),
+        json={
+            "version": row0["version"],
+            "answers": {"resume_text": "Два года опыта в маркетинге, вела соцсети клиента"},
+            "step": "resume",
+        },
+    )
+    assert resp.status_code == 200, resp.text
+    row = asyncio.run(bot_db.get_reg_draft(DELEGATE_ID))
+    assert row["answers"]["resume_text"] == "Два года опыта в маркетинге, вела соцсети клиента"
+    assert row["answers"]["resume_type"] == "text"
