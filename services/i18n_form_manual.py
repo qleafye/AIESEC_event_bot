@@ -68,7 +68,10 @@ _PROMPT_DEFAULTS_EN = {
     "Напиши свой возраст числом:": "Enter your age as a number:",
     "Укажи номер телефона:": "Enter your phone number:",
     "Ты аламни или айсекер?": "Are you an alum or a current AIESEC member?",
-    "Введи свой ник в ВК в формате @username:": "Enter your VK handle as @username:",
+    # Приёмка (стенд, 17.09, находка живого прогона): ВК принимает и ссылку vk.com/... — прежний
+    # перевод («Enter your VK handle as @username:») не называл вторую форму ввода, хотя
+    # STEP_HELP.vk (ниже) её уже упоминает — согласовано терминологией «VK username».
+    "Введи свой ник в ВК в формате @username:": "Enter your VK username (@username) or a profile link:",
     "Из какого ты города?": "What city are you from?",
     "Учишься ли ты сейчас?": "Are you currently studying?",
     "На каком ты курсе?": "What year are you in?",
@@ -116,7 +119,7 @@ _STEP_HELP_EN = {
     "Число от 10 до 120, например «19».": "A number from 10 to 120, e.g. «19».",
     "Формат имя@домен, например «ivanova@example.com».": "Format name@domain, e.g. «anna@example.com».",
     "Цифры, можно с плюсом впереди, например «+79161234567».": "Digits, optionally starting with a plus, e.g. «+79161234567».",
-    "Ник в ВК («@username») или ссылка vk.com/username, без пробелов, например «@ivanova_maria».": "Your VK handle («@username») or a vk.com/username link, no spaces, e.g. «@anna_smith».",
+    "Ник в ВК («@username») или ссылка vk.com/username, без пробелов, например «@ivanova_maria».": "Your VK username (@username) or a vk.com/username profile link, no spaces, e.g. «@anna_smith».",
     "Файл PDF или DOCX до 10 МБ, либо текст ответом в чате.": "A PDF or DOCX file up to 10 MB, or text in your reply in the chat.",
     # STEP_HELP_EXAMPLES — согласованы с примерами выше (то же имя, тот же email).
     "Иванова Мария": "Smith Anna",
@@ -597,7 +600,15 @@ _REGISTRY_TEXTS_EN = {
     "Выбрано {n} из {max}. Больше не нужно — сними лишнее, чтобы поменять.": "Selected {n} of {max}. No more needed — deselect one to change your pick.",
     "Выбрано {n} из {max}. Можно добавить ещё {left}.": "Selected {n} of {max}. You can add {left} more.",
     "Можно выбрать до {max}.": "You can choose up to {max}.",
+    # Легаси: дефолт `reg_multi_limit_hint_zero_text` ДО коммита «счётчик мультивыбора не
+    # обещает…» (main) — обещал необязательность шага, которая не всегда была правдой у
+    # обязательных multi-шагов. Держим перевод строки — она могла осесть как оверрайд события
+    # или machine-перевод в чужой БД (LANG-05, сид не трогает manual=1 чужого происхождения).
     "Выбрано 0 из {max}. Можно ничего не выбирать — шаг необязательный.": "Selected 0 of {max}. You can choose nothing — this step is optional.",
+    # Актуальный дефолт (main, «счётчик мультивыбора не обещает «можно ничего не выбирать» у
+    # обязательного шага») — короче, без обещания необязательности; обязательность шага
+    # сообщает отдельная подсказка над вариантами (см. `settings_schema.py::reg_multi_limit_hint_zero_text`).
+    "Выбрано 0 из {max}.": "Selected 0 of {max}.",
     "📱 Продолжить в приложении": "📱 Continue in the app",
     "💬 Продолжить в чате": "💬 Continue in chat",
     "Сейчас в команде": "Currently on the team",
