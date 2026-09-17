@@ -1083,6 +1083,55 @@ a.flat-row:active, button.flat-row:active { background: var(--surface-alt); }
 .pick .cv { flex: 1 1 auto; min-width: 0; }
 .pick .chev { flex: none; display: flex; color: var(--border-strong); }
 
+/* Автоподсказки lookup-полей (город/ВУЗ, `form_types.js::lookupControl`) — квик 260917-en
+   (живая проверка 17.09, п.2): результаты были голыми `.row` (space-between — пара
+   подпись/значение), с двумя детьми (иконка+текст) это разъезжалось на края. `.lookup-results`
+   — карточка того же радиуса/тени, что `.card`, СРАЗУ под полем ввода (порядок узлов —
+   `form_types.js`, не CSS); `.lookup-row` — ряд по образцу `.sheet-item` (одна строка-действие,
+   не пара). Сама карточка скрывается классом `.hidden` (общий, `ui.css`/`app.css`), когда
+   показывать нечего — не остаётся пустой рамкой. */
+.lookup-results {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-card);
+  margin: var(--sp-2) 0;
+  overflow: hidden;
+}
+.lookup-results .list {
+  gap: 0;
+  /* ~5-6 строк видно сразу (высота — `--tap-min`, тот же минимум тач-цели, что у остальных
+     рядов списков), длиннее — прокрутка внутри карточки, а не растягивание экрана. */
+  max-height: calc(var(--tap-min) * 5.5);
+  overflow-y: auto;
+}
+.lookup-row {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-3);
+  width: 100%;
+  min-height: var(--tap-min);
+  padding: var(--sp-2) var(--sp-4);
+  text-align: left;
+  font: inherit;
+  color: var(--text);
+  background: none;
+  border: 0;
+  border-bottom: 1px solid var(--border);
+  transition: background var(--dur) var(--ease);
+}
+.lookup-row:last-child { border-bottom: 0; }
+.lookup-row:active { background: var(--surface-alt); }
+.lookup-row .icon { flex: none; color: var(--text-muted); }
+.lookup-row mark {
+  background: var(--accent-soft);
+  color: inherit;
+  font-weight: 700;
+  border-radius: var(--radius-sm);
+  padding: 0 1px;
+}
+.lookup-empty { padding: var(--sp-3) var(--sp-4); }
+
 /* Состояния поля типа `link` (ВК/резюме-ссылкой) — параллельны `.field.is-error`, но своя
    пара классов: `link` не переиспользует «ошибку валидации» с той же матрицей состояний,
    у него есть промежуточное «ok»-состояние (ссылка распознана), которого у обычного текста нет. */
