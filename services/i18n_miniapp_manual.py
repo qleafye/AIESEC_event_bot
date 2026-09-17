@@ -232,10 +232,10 @@ _FORM_INTRO = {
 # Приёмка 17.09 (второй прогон): тексты, добавленные в тот же день параллельными правками —
 # реф-ссылка в хабе и пояснение под ней, подписи кнопок резюме, подсказки выбора, счётчики.
 _ACCEPTANCE_260917 = {
-    "Эту ссылку всегда можно найти в чате с ботом — кнопка «🔗 Моя реферальная ссылка» — или в приложении, раздел «{section}», после одобрения заявки.":
-        "You can always find this link in the bot chat — the «🔗 My referral link» button — or in the app, section «{section}», once your application is approved.",
+    "Эту ссылку всегда можно найти по кнопке «{section}» — в чате с ботом и в приложении (в приложении — после одобрения заявки).":
+        "You can always find this link under «{section}» — in the bot chat and in the app (in the app, once your application is approved).",
     "🔗 Моя реферальная ссылка": "🔗 My referral link",
-    "{count} приглашённых по твоей ссылке": "People invited with your link: {count}",
+    "Приглашено по твоей ссылке: {count}": "Invited with your link: {count}",
     "Загрузить файл": "Upload a file",
     "Написать текстом": "Type it instead",
     "Отметь вариантов: не меньше {min}.": "Pick at least {min}.",
