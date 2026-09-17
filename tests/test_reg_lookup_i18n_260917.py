@@ -105,6 +105,48 @@ def test_ask_step_translates_prompt_and_hint_separately(tmp_path, monkeypatch):
     assert "Начни вводить" not in text
 
 
+def test_reglookup_other_translates_entity_composite(tmp_path, monkeypatch):
+    """`{entity}` — закрытое множество («ВУЗ»/«город», `reg_engine._LOOKUP_ENTITY_NAMES`),
+    подставляется В РУССКИЙ шаблон ДО перевода (`reg_engine._v2_texts_for`/`reg_types_lookup.py`
+    зовут `.replace("{entity}", ...)` на сыром значении настройки) — составная строка «Впиши
+    город сам — менеджер увидит его как есть.» обязана переводиться целиком (см.
+    `services/i18n_form_manual.py::_ENGINE_DYNAMIC_EN`)."""
+    _use_tmp_db(tmp_path)
+    composite_ru = "Впиши город сам — менеджер увидит его как есть."
+    _patch_ctx_en(monkeypatch, composite_ru)
+    uid = UID + 3
+
+    async def go():
+        state = _state(uid)
+        await state.update_data(_lookup_step="city")
+        callback = type("Cb", (), {})()
+        callback.data = "reglookup:other"
+        callback.from_user = type("U", (), {"id": uid})()
+        msg = _FakeMessage(uid)
+
+        async def edit_reply_markup(reply_markup=None):
+            return None
+
+        msg.edit_reply_markup = edit_reply_markup
+
+        def model_copy(update=None):
+            return msg
+
+        msg.model_copy = model_copy
+        callback.message = msg
+
+        async def cb_answer(*a, **k):
+            return None
+
+        callback.answer = cb_answer
+        await reg_types_lookup.reglookup_pick(callback, state, bot=None)
+        return msg
+
+    msg = asyncio.run(go())
+    assert msg.sent, "подсказка «впиши сам» обязана прийти"
+    assert msg.sent[0] == "Type your own city — the manager will see it exactly as you wrote it."
+
+
 def test_lookup_empty_result_translates_template_and_substitutes_query(tmp_path, monkeypatch):
     """`{query}` — открытое множество (свободный ввод), фиксированной пары для каждого значения
     не завести — шаблон переводится, `{query}` подставляется ПОСЛЕ (тот же порядок, что
