@@ -1018,13 +1018,18 @@ def _draft_is_fresh(draft: dict, ttl_hours: int) -> bool:
     return msk_now() - created_dt < timedelta(hours=ttl_hours)
 
 
-async def _reg_form_cta_kb() -> InlineKeyboardMarkup | None:
+async def _reg_form_cta_kb(message: types.Message) -> InlineKeyboardMarkup | None:
     """Phase 21 (21-09, D-01): the ONE entry point into the Mini App from the registration
     flow — attached to the newcomer welcome message (`cmd_start`'s tail), never under any
     individual question. Returns None (no button at all) unless the delegate-facing section
     is on, the Mini App master toggle is on, AND a public URL is actually configured — same
     three-way gate `handlers/user_actions.py::open_miniapp_button` already uses, so a
-    half-configured Mini App never renders a dead button."""
+    half-configured Mini App never renders a dead button.
+
+    Квик 260917-en (найдено при живой проверке 17.09): раньше подпись кнопки шла в
+    InlineKeyboardButton прямо из реестра, а `_send_welcome` переводит только caption — кнопка
+    оставалась русской при lang=en, хотя корпус (`reg_form_cta_text` — группа `reg`) уже
+    переведён. Переводим здесь же, тем же ярусом A/tr_map, что и остальной чат."""
     try:
         if await get_setting_typed("miniapp_section_form") != "on":
             return None
@@ -1033,9 +1038,11 @@ async def _reg_form_cta_kb() -> InlineKeyboardMarkup | None:
         url = config.DASHBOARD_PUBLIC_URL
         if not url:
             return None
+        lang, tr_map = await reg_i18n.ctx_for(message)
+        cta_text = reg_i18n.tr_text(await get_setting_typed("reg_form_cta_text"), lang, tr_map)
         return InlineKeyboardMarkup(inline_keyboard=[[
             InlineKeyboardButton(
-                text=await get_setting_typed("reg_form_cta_text"),
+                text=cta_text,
                 web_app=WebAppInfo(url=url.rstrip("/") + "/app"),
             ),
         ]])
@@ -2127,7 +2134,7 @@ async def cmd_start(message: types.Message, state: FSMContext, bot: Bot, command
             logger.error(f"per-city start_text resolve failed for {user_id}: {e}")
 
     logger.info(f"User {user_id} not registered, showing welcome then registration")
-    cta_kb = await _reg_form_cta_kb()  # Phase 21 (21-09, D-01): ОДИН раз, рядом с приветствием
+    cta_kb = await _reg_form_cta_kb(message)  # Phase 21 (21-09, D-01): ОДИН раз, рядом с приветствием
     await _send_welcome(message, start_text, start_photo, cta_kb, user_id)
 
     await _city_fork_then_continue(message, state, effective_city, referrer_id, source_tag, dl_party_track, recovered_track)
