@@ -680,8 +680,10 @@ STEP_HELP = {
 _STEP_HELP_RESUME_APP = "Файл PDF или DOCX до 10 МБ, либо напиши текстом ниже."
 _STEP_HELP_RESUME_TEXT_ONLY_CHAT = "Коротко, текстом в чате."
 _STEP_HELP_RESUME_TEXT_ONLY_APP = "Коротко, текстом."
-# Развилка резюме: текста там нет вовсе — файл, ссылка или «нет резюме».
-_STEP_HELP_RESUME_FORK = "Файл PDF или DOCX до 10 МБ, ссылка на резюме или «нет резюме» — как удобнее."
+# Развилка резюме: файл, ссылка, текст об опыте или «нет резюме» — четыре равноправных пути.
+_STEP_HELP_RESUME_FORK = (
+    "Файл PDF или DOCX до 10 МБ, ссылка на резюме, текст об опыте или «нет резюме» — как удобнее."
+)
 
 # Пример-значение для каждого шага из STEP_HELP — ровно то, что названо в подсказке. Карта
 # существует ради сторожа «подсказка не врёт»: пример, не проходящий собственный валидатор
@@ -1849,18 +1851,22 @@ async def lookup_render_flags(step_key: str, flags: dict[str, bool]) -> dict[str
     )
     return {"chips_enabled": chips_enabled, "search_enabled": search_enabled}
 
-# Phase 28 (28-04, SU-04, A-03 CONTEXT): три записи развилки резюме R1 — code (не показывается
+# Phase 28 (28-04, SU-04, A-03 CONTEXT): записи развилки резюме R1 — code (не показывается
 # делегату, только Mini App/бот решают, куда вести дальше) / реестровый ключ подписи / иконка
 # Lucide-подсета (28-UI-SPEC.md §Component Contracts 1, upload/link/x).
+# Владелец 17.09: добавлена четвёртая ветка «text» («написать текстом об опыте») между
+# «ссылкой» и «нет резюме» — порядок кнопок закреплён владельцем (файл, ссылка, текстом,
+# нет резюме), код "text" закрытого словаря наравне с "file"/"link"/"mini" (T-28-05-01).
 _RESUME_FORK_OPTIONS = [
     ("file", "reg_resume_fork_file_label", "upload"),
     ("link", "reg_resume_fork_link_label", "link"),
+    ("text", "reg_resume_fork_text_label", "pen-line"),
     ("mini", "reg_resume_fork_none_label", "x"),
 ]
 
 
 async def resume_fork_options() -> list[dict]:
-    """Спека трёх кнопок развилки резюме (SU-04) — код/человеческая подпись из реестра
+    """Спека кнопок развилки резюме (SU-04) — код/человеческая подпись из реестра
     (Copywriting Contract 28-UI-SPEC.md)/иконка; менеджер меняет подписи, коды и порядок
     закрыты (D-01/D-02 — коду делегат не видит, порядок — часть UX-контракта развилки)."""
     return [
@@ -2009,6 +2015,10 @@ async def step_spec(step_key: str, participant_type: str | None = None,
         spec["resume_mode"] = resume_mode_value
         if resume_mode_value == "fork":
             spec["fork_options"] = await resume_fork_options()
+            # Владелец 17.09: ветка «Написать текстом» показывает СВОЙ вопрос (не общий
+            # `spec["prompt"]` про файл) — клиентская подмена спеки в screens/form.js::drawStep
+            # берёт его отсюда, тем же приёмом, что fork_options выше.
+            spec["fork_text_prompt"] = await get_setting_typed("reg_resume_fork_text_prompt_text")
         # Живой прогон 16.09 (п.1): подписи кнопок дропзоны (form.js::fileControl) — иконка
         # без подписи, делегат не понимал, что это загрузка/переключатель на текст. Ветка
         # «файл» развилки резюме (screens/form.js::goNext, `{...rawSpec, type: "file"}`)
@@ -3072,8 +3082,10 @@ def compute_score(answers: dict, rules: dict) -> tuple[int, bool]:
     is_senior_status = bool(senior_statuses) and answers.get("education_status") in senior_statuses
     course_condition = is_senior_course or is_senior_status
 
+    # Владелец 17.09: «текстом» — такое же полноценное резюме для скоринга, как файл/ссылка
+    # (делегат описал опыт словами вместо документа), не «нет резюме» (только "mini"/"none").
     has_resume = (
-        answers.get("resume_type") in ("file", "link")
+        answers.get("resume_type") in ("file", "link", "text")
         or bool(answers.get("resume_file_id"))
         or bool(answers.get("resume_url"))
     )

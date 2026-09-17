@@ -1,10 +1,13 @@
-"""Phase 28 (28-05, SU-04, СкиллАп 5): развилка резюме R1/R2a/R2b/R2c в чате бота.
+"""Phase 28 (28-05, SU-04, СкиллАп 5): развилка резюме R1/R2a/R2b/R2c/R2d в чате бота.
 
 Расширение существующего состояния `Registration.resume` (A-03 CONTEXT), НЕ новый узел графа
-FSM: R1 — три инлайн-кнопки выбора способа (`regfork:file|link|mini`), R2a — существующий
-приём документа/текста (`handlers/reg_flow.py::process_resume*`, не тронут), R2b — приём
-ссылки (этот модуль), R2c — три текстовых мини-подшага (`handlers/reg_extra_steps.ask_step`,
-показ уже готов планом 28-02, здесь только точка входа с R1).
+FSM: R1 — четыре инлайн-кнопки выбора способа (`regfork:file|link|text|mini`), R2a —
+существующий приём документа/текста (`handlers/reg_flow.py::process_resume*`, не тронут), R2b —
+приём ссылки (этот модуль), R2c — три текстовых мини-подшага (`handlers/reg_extra_steps.
+ask_step`, показ уже готов планом 28-02, здесь только точка входа с R1). Владелец 17.09: R2d —
+свободный текст об опыте (`_ask_text_branch` ниже), НЕ новое состояние — та же ветка, что R2a
+(`Registration.resume`), ответ ловит существующий `process_resume_text` (`resume_type == "text"`
+снимает гейт «текст мимо кнопок развилки»).
 
 Своего `Router` НЕТ — импортирует и декорирует напрямую `router`, определённый в
 `handlers/registration.py` (13-02 приём). Импортируется В ХВОСТЕ `registration.py`, ПОСЛЕ
@@ -41,7 +44,9 @@ from reg_engine import (
 # «Отмена» в проекте).
 BACK_LABEL = "⬅️ Назад"
 
-_FORK_TOKENS = ("file", "link", "mini")
+# Владелец 17.09: четвёртый токен закрытого словаря — «text» (написать текстом об опыте),
+# между «link» и «mini» (тот же порядок, что в reg_engine._RESUME_FORK_OPTIONS).
+_FORK_TOKENS = ("file", "link", "text", "mini")
 
 
 async def ask_fork(message: types.Message, state: FSMContext, progress_prefix: str,
@@ -96,6 +101,21 @@ async def _ask_file_branch(message: types.Message, state: FSMContext, progress_p
     await state.set_state(Registration.resume)
 
 
+async def _ask_text_branch(message: types.Message, state: FSMContext, progress_prefix: str) -> None:
+    """R2d (владелец 17.09): «✍️ Написать текстом» — своя формулировка вопроса (реестровый
+    ключ `reg_resume_fork_text_prompt_text`, НЕ общий `reg_prompt_resume`/`reg_q_resume` — тот
+    описывает файл, здесь делегат ждёт вопрос конкретно про свободный текст об опыте). Остаётся
+    в `Registration.resume` (тот же приём, что `_ask_file_branch` — ответ ловит существующий
+    `handlers/reg_flow.py::process_resume_text`, гейт «в fork-режиме текст мимо кнопок»
+    пропускает его благодаря уже проставленному `resume_type == "text"`)."""
+    text = f"{progress_prefix}{await get_setting_typed('reg_resume_fork_text_prompt_text')}"
+    kb = InlineKeyboardMarkup(inline_keyboard=[[
+        InlineKeyboardButton(text=BACK_LABEL, callback_data="regfork:back"),
+    ]])
+    await _safe_answer(message, text, reply_markup=kb)
+    await state.set_state(Registration.resume)
+
+
 @router.callback_query(F.data.startswith("regfork:"), Registration.resume)
 async def regfork_pick(callback: types.CallbackQuery, state: FSMContext):
     """R1/R2a — единственная inline-клавиатура закрытого словаря `regfork:*` (T-28-05-01):
@@ -136,6 +156,8 @@ async def regfork_pick(callback: types.CallbackQuery, state: FSMContext):
         await _ask_file_branch(tap_message, state, p, participant_type, city_code)
     elif token == "link":
         await reg_extra_steps.ask_step("resume_link", tap_message, state, p, participant_type, city_code)
+    elif token == "text":
+        await _ask_text_branch(tap_message, state, p)
     else:  # "mini"
         await reg_extra_steps.ask_step("mini_projects", tap_message, state, p, participant_type, city_code)
 
