@@ -304,6 +304,17 @@ async def main():
     except Exception:
         logger.warning("Не удалось засеять ручные переводы Mini App", exc_info=True)
 
+    # Квик 260917-en (приёмка, английский делегат: «перевод интерфейса очень криво сделан») —
+    # тот же приём для КОРПУСА АНКЕТЫ (reg_prompts/reg/party): дефолты кодовой базы
+    # (`FORM_DEFAULT_EN`) + реальные тексты события «Юлид 26/2» на 17.09 (`EVENT_TEXTS_260917`),
+    # см. докстринг `services/i18n_form_manual.py`. Fail-soft — тот же принцип, что выше.
+    try:
+        from services.i18n_form_manual import seed as seed_form_manual_translations
+
+        await seed_form_manual_translations()
+    except Exception:
+        logger.warning("Не удалось засеять ручные переводы анкеты", exc_info=True)
+
     # Phase 14 (CFG-01): one-time GOOGLE_SHEET_TAB -> bot_settings.main_sheet_tab migration.
     # MUST run before active_sheet_headers() below — otherwise the very first header resolve
     # would fall through to services/sheets.py stage 2 (reading .env directly) instead of
