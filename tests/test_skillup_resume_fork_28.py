@@ -113,9 +113,10 @@ def test_whitelist_editable_from_registry(tmp_path):
 
 
 def test_step_spec_publishes_fork_options(tmp_path):
-    """`step_spec("resume")` в режиме `fork` отдаёт `type: "resume-fork"` и три записи
-    `fork_options` с человеческими подписями по умолчанию; `step_spec("resume_link")` отдаёт
-    `type: "url"` и `link_whitelist` (дефолтный список, если менеджер ничего не настраивал)."""
+    """`step_spec("resume")` в режиме `fork` отдаёт `type: "resume-fork"` и четыре записи
+    `fork_options` с человеческими подписями по умолчанию (владелец 17.09: файл/ссылка/текстом/
+    нет резюме); `step_spec("resume_link")` отдаёт `type: "url"` и `link_whitelist` (дефолтный
+    список, если менеджер ничего не настраивал)."""
     _ready(tmp_path)
 
     async def go():
@@ -129,11 +130,13 @@ def test_step_spec_publishes_fork_options(tmp_path):
     assert resume_spec["type"] == "resume-fork"
     assert resume_spec["resume_mode"] == "fork"
     fork_options = resume_spec["fork_options"]
-    assert [o["code"] for o in fork_options] == ["file", "link", "mini"]
+    assert [o["code"] for o in fork_options] == ["file", "link", "text", "mini"]
     assert fork_options[0]["label"] == "📎 Загрузить файл"
     assert fork_options[1]["label"] == "🔗 Дать ссылку"
-    assert fork_options[2]["label"] == "🙅 У меня нет резюме"
+    assert fork_options[2]["label"] == "✍️ Написать текстом"
+    assert fork_options[3]["label"] == "🙅 У меня нет резюме"
     assert all(o["icon"] for o in fork_options)
+    assert resume_spec["fork_text_prompt"]
 
     assert link_spec["type"] == "url"
     assert link_spec["link_whitelist"] == reg_engine.RESUME_LINK_WHITELIST_DEFAULT
@@ -324,6 +327,10 @@ def test_sheet_shows_human_resume_type(tmp_path):
 
     row3 = reg_schema._sheet_value_map({"resume_type": "file", "link_verified": 0})
     assert row3["Способ резюме"] == "Файл"
+
+    # Владелец 17.09: четвёртая ветка развилки — «Написать текстом».
+    row_text = reg_schema._sheet_value_map({"resume_type": "text", "link_verified": 0})
+    assert row_text["Способ резюме"] == "Текстом"
 
     row4 = reg_schema._sheet_value_map({})
     assert row4["Способ резюме"] == "-"
