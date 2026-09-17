@@ -21,8 +21,10 @@ from settings_schema import get_setting_typed
 from services.consent import recollect_gate_on, outstanding_consents, tapped_button_text
 from handlers.registration import router, _consent_entries, _prompt
 # Phase 27 (27-05, LANG-02/LANG-09): say()/tr_for() переводят UI-обвязку экрана пересогласия
-# (интро/подтверждение/алерт) — САМ текст согласия (caption/PDF/кнопка) НЕ переводим нигде в
-# этом файле (LANG-09: машинный перевод согласий запрещён, PDF остаётся русским).
+# (интро/подтверждение/алерт). Сам текст согласия (caption) переводится ТОЛЬКО ярусом A с
+# пустым tr_map (Квик 260917-en, находка «б») — покрывает НАЗВАНИЕ документа по умолчанию,
+# машинный перевод (легальный override менеджера) сюда не подключается ни при каких условиях
+# (LANG-09), PDF остаётся русским всегда.
 from handlers import reg_i18n
 
 logger = logging.getLogger(__name__)
@@ -34,14 +36,18 @@ async def _send_renew_card(message: types.Message, label: str, consent_key: str)
     """Та же карточка, что у шага consent:* в анкете (registration._ask_step), но с
     callback'ом пересогласия.
 
-    Phase 27 (27-05) / Квик 260917-en: `caption` — САМ текст согласия
-    (`_prompt(f"consent_{consent_key}", label)`) — LANG-09 запрещает его машинный перевод,
-    PDF тоже остаётся русским, здесь не переводим НИЧЕГО из этого. `btn_text` (подпись кнопки
-    «Согласен(-на)») — не юридический текст, переводится (ярус A / ручная правка менеджера).
-    Прямые `message.answer_document`/`message.answer`, не `say()` — намеренно (say() перевёл
-    бы и caption)."""
+    Phase 27 (27-05) / Квик 260917-en (находка «б» живой проверки 17.09): `caption` по
+    умолчанию (без менеджерского override `reg_prompt_consent_{key}`) — НАЗВАНИЕ документа
+    (`label`), не юридический текст, переводится через ярус A с ПУСТЫМ `tr_map` (тот же приём,
+    что `handlers/registration.py::_ask_step`) — машинный перевод (легальный override) сюда не
+    подключается ни при каких условиях, LANG-09 не нарушается. PDF остаётся русским. `btn_text`
+    (подпись кнопки «Согласен(-на)») — не юридический текст, переводится обычным ярусом A/tr_map
+    (ручная правка менеджера). Прямые `message.answer_document`/`message.answer`, не `say()` —
+    намеренно (`say()` перевёл бы caption ещё и через машинный ярус)."""
     pdf_file_id = await get_setting(f"consent_pdf_{consent_key}")
-    caption = html.escape(await _prompt(f"consent_{consent_key}", label))
+    prompt_text = await _prompt(f"consent_{consent_key}", label)
+    lang, _tr_map = await reg_i18n.ctx_for(message)
+    caption = html.escape(reg_i18n.tr_text(prompt_text, lang, {}))
     btn_text = await get_setting("consent_button_text") or "Согласен(-на)"
     # Квик 260917-en (приёмка 17.09): кнопка — не текст согласия (caption/PDF выше остаются
     # русскими, LANG-09), переводим только её (см. handlers/registration.py::_ask_step,
