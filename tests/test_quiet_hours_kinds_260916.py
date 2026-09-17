@@ -25,6 +25,16 @@ NOW = datetime(2026, 9, 16, 23, 30)
 DUE = datetime(2026, 9, 17, 9, 0)
 
 
+def _after_quiet_window() -> datetime:
+    """Для сценариев, где очередь ставит сам сервис от РЕАЛЬНОГО «сейчас» (рассылка опроса,
+    ответ на вопрос): фиксированный DUE переставал покрывать окно, как только календарная дата
+    прогона уходила за 17.09. Двое суток вперёд от текущего московского времени — гарантированно
+    после конца окна «00:00–23:59»."""
+    from datetime import timedelta
+    from services.timeutil import msk_now
+    return msk_now() + timedelta(days=2)
+
+
 def _ready(tmp_path, name):
     config.DB_PATH = str(tmp_path / name)
     asyncio.run(db.init_db())
@@ -554,7 +564,7 @@ def test_question_reply_non_text_in_quiet_hours_queues_copy(tmp_path, monkeypatc
         assert rows[1]["payload"] == {"from_chat_id": ADMIN, "message_id": 55, "caption": None}
 
         flush_bot = _install_bot()
-        assert await qh.flush_due(DUE) == 2
+        assert await qh.flush_due(_after_quiet_window()) == 2
         assert flush_bot.copies == [{"chat_id": DELEGATE, "from_chat_id": ADMIN,
                                      "message_id": 55, "caption": None}]
 
@@ -623,7 +633,7 @@ def test_deliver_poll_in_quiet_hours_queues_per_recipient(tmp_path):
 
         # Утром: опрос уходит ВМЕСТЕ со вступлением, чекпоинт poll_messages записан.
         flush_bot = _install_bot()
-        assert await qh.flush_due(DUE) == 2
+        assert await qh.flush_due(_after_quiet_window()) == 2
         assert len(flush_bot.polls) == 2
         assert [m["text"] for m in flush_bot.messages] == ["Пара вопросов 👇"] * 2
         assert {r["chat_id"] for r in await db.list_poll_messages(poll_id)} == {
