@@ -60,6 +60,8 @@ CAP_LABELS = {
 # (role_caps_<role>/role_<role>_enabled), no refactor. D-12: "admin" deliberately has NO
 # entry here and NO registry keys — admin access is config.ADMIN_IDS, un-revocable from the
 # bot; see resolve_capabilities()'s bootstrap short-circuit below.
+# Quick 260919 (ln7): stats_manager is exactly that promised next entry — one row here, two
+# SETTINGS_SCHEMA keys, nothing else.
 ROLES = {
     "reg_manager": {
         "label": "🛂 Менеджер регистраций",
@@ -68,6 +70,10 @@ ROLES = {
     "game_manager": {
         "label": "🎮 Менеджер геймификации",
         "default_caps": ["moderate_game"],
+    },
+    "stats_manager": {
+        "label": "📊 Менеджер статистики",
+        "default_caps": ["stats"],
     },
 }
 

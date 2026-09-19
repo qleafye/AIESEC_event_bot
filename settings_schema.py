@@ -2716,12 +2716,25 @@ SETTINGS_SCHEMA = {
         ),
         "default": ["moderate_game"],
     },
+    # Quick 260919 (ln7): третья роль — 📊 Менеджер статистики, единственное право «stats».
+    "role_caps_stats_manager": {
+        "type": "list", "group": "roles", "label": "📊 Права роли: Менеджер статистики",
+        "prompt": (
+            "Отмечайте права галочками в боте: 🔧 Управление → «👥 Роли и доступы» → "
+            "«✏️ Права роли: 📊 Менеджер статистики»."
+        ),
+        "default": ["stats"],
+    },
     "role_reg_manager_enabled": {
         "type": "enum", "group": "roles", "label": "🛂 Роль «Менеджер регистраций»",
         "options": ["on", "off"], "prompt": None, "default": "on",
     },
     "role_game_manager_enabled": {
         "type": "enum", "group": "roles", "label": "🎮 Роль «Менеджер геймификации»",
+        "options": ["on", "off"], "prompt": None, "default": "on",
+    },
+    "role_stats_manager_enabled": {
+        "type": "enum", "group": "roles", "label": "📊 Роль «Менеджер статистики»",
         "options": ["on", "off"], "prompt": None, "default": "on",
     },
 

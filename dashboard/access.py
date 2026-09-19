@@ -39,6 +39,8 @@ ALL_CAPABILITIES = [
 _ROLE_DEFAULT_CAPS: dict[str, list[str]] = {
     "reg_manager": ["moderate_reg", "moderate_receipts"],
     "game_manager": ["moderate_game"],
+    # Quick 260919 (ln7): без этой записи роль есть в боте, а на веб-дашборде молча не пускает.
+    "stats_manager": ["stats"],
 }
 
 
