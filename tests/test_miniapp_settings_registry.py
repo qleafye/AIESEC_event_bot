@@ -186,7 +186,12 @@ def test_confirm_text_from_registry_only_for_dangerous_direction(tmp_path):
     assert "<" not in staff_only["confirm_text"]
     reg_mode = _item(body, "registration_mode")
     assert reg_mode["confirm_text"] == _run(get_setting_typed("miniapp_settings_confirm_reg_mode_text"))
-    assert _item(body, "main_sheet_tab")["confirm_text"] is None  # считается при записи (строки вкладки)
+    # Квик 260919-mlu: здесь стоял main_sheet_tab («confirm_text считается при записи»).
+    # Имена вкладок больше не отдаются веб-поверхностью вовсе (settings_ops.EXCLUDED_KEYS) —
+    # правка только из бота, где стоит развилка переименования. Вместо проверки «пришёл без
+    # confirm_text» проверяем, что ключа в выдаче нет: сам запрет покрыт
+    # tests/test_sheet_tab_keys_web_locked_260919.py.
+    assert all(item["key"] != "main_sheet_tab" for item in _items(body))
     assert _item(body, "event_name")["confirm_text"] is None
 
     _set("miniapp_staff_only", "on")
