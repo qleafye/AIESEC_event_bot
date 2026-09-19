@@ -4286,14 +4286,38 @@ _QUESTION_STATUS_SQL = {
 }
 
 
+_QUESTION_ORDER_SQL = {
+    # Квик 260919 (P3, находка #03-moderation): раньше «all»/"answered" оба падали в один
+    # `ORDER BY q.id DESC` — на проде 53 из 123 вопросов без ответа (старейшему 33 дня)
+    # уезжали вглубь пагинации за свежими. Каждый статус теперь несёт СВОЙ порядок:
+    "new": "ORDER BY q.asked_at ASC, q.id ASC",  # дольше ждёт -> выше (старые без ответа первыми)
+    "in_work": "ORDER BY q.answered_at ASC, q.id ASC",  # не менялось: «залипло дольше всех» первым
+    "answered": "ORDER BY q.delivered_at DESC, q.id DESC",  # свежие ответы сверху
+}
+# `status is None`/неизвестный ("all"): смешанный список — сначала НЕотвеченные
+# (delivered_at IS NULL, покрывает и "new", и "in_work" разом — обеим ждать ответа делегату),
+# среди них старые первыми (asked_at ASC); отвеченные — ниже, свежие первыми (delivered_at
+# DESC). Один `ORDER BY` с тремя ключами: первый ключ разводит две группы (0 = не отвечен,
+# 1 = отвечен), CASE-выражения дают каждой группе свой ключ и свою прежнюю логику; NULL в
+# "чужом" для строки CASE безопасен — группа уже разведена первым ключом, второй ей не важен.
+_QUESTION_ORDER_ALL_SQL = (
+    "ORDER BY (q.delivered_at IS NOT NULL) ASC, "
+    "CASE WHEN q.delivered_at IS NULL THEN q.asked_at END ASC, "
+    "CASE WHEN q.delivered_at IS NOT NULL THEN q.delivered_at END DESC, "
+    "q.id ASC"
+)
+
+
 async def list_questions_page(*, status: str | None = None, city_scope=None,
                                limit: int = 6, offset: int = 0) -> list[dict]:
     """Страница журнала вопросов для экрана бота и API Mini App. Неизвестный `status`
     трактуется как None (фильтр — чип экрана, а не контракт: тот же приём, что `track_filter`
     в `miniapp/routers/applications.py`). Городской фильтр — по `u.event_city` (город
     ДЕЛЕГАТА, не менеджера), LEFT JOIN не роняет вопрос делегата, которого уже нет в `users`.
-    Порядок: при `status == "in_work"` — `answered_at ASC, id ASC` («залипло дольше всех»
-    первым), иначе — свежие сверху (`id DESC`)."""
+
+    Порядок (квик 260919, P3): у каждого статуса-фильтра свой (`_QUESTION_ORDER_SQL`); «all»/
+    неизвестный статус — смешанный порядок `_QUESTION_ORDER_ALL_SQL` (неотвеченные сверху,
+    старые первыми; отвеченные ниже, свежие первыми) — см. докстринг константы выше."""
     where = []
     params: list = []
     frag = _QUESTION_STATUS_SQL.get(status)
@@ -4304,7 +4328,7 @@ async def list_questions_page(*, status: str | None = None, city_scope=None,
         where.append(city_frag)
         params.extend(city_params)
     where_sql = f"WHERE {' AND '.join(where)}" if where else ""
-    order_sql = "ORDER BY q.answered_at ASC, q.id ASC" if status == "in_work" else "ORDER BY q.id DESC"
+    order_sql = _QUESTION_ORDER_SQL.get(status, _QUESTION_ORDER_ALL_SQL)
     async with _connect() as db:
         db.row_factory = aiosqlite.Row
         async with db.execute(

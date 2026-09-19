@@ -35,6 +35,7 @@ from services.questions import (
     is_stuck,
     question_status,
     status_label,
+    waiting_days,
 )
 
 PAGE = 6
@@ -66,7 +67,13 @@ def _row_text(row: dict) -> str:
         f"🆔 <code>{row['user_id']}</code> {_display_delegate(row)}",
         f"«{html_module.escape(str(row.get('question_text') or '')[:QUESTION_TEXT_LIMIT])}»",
     ]
-    if status == "in_work":
+    if status == "new":
+        # Квик 260919 (P3): «ждёт N дн.» — старые неотвеченные теперь и сверху списка (порядок
+        # в database/db.py::list_questions_page), и видны на глаз без открытия карточки.
+        days = waiting_days(row)
+        if days is not None:
+            lines.append(f"⏳ ждёт {days} дн.")
+    elif status == "in_work":
         who = html_module.escape(str(row.get("answered_by_name") or "—"))
         lines.append(f"✍️ взял(а) {who}")
         if is_stuck(row):
