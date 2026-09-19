@@ -16,6 +16,7 @@ from aiogram import F, types
 from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
 
 import moderation_card
+import reg_engine
 from settings_audit import set_setting_by_admin
 from settings_schema import get_setting_typed
 from handlers.admin import router
@@ -38,30 +39,72 @@ def _limit_label(limit: int) -> str:
     return f"{limit} символов"
 
 
+# Квик 260919-m9x: этот экран и экран вопросов анкеты жили порознь. 16–17.09 на проде
+# выключили «Возраст» и включили «Дату рождения» — карточка заявки об этом не узнала, и
+# менеджер пришёл с «в каких-то заявках пропал возраст, баг?». Теперь вопрос, который анкета
+# спрашивает, а карточка не показывает, помечен прямо в списке, а кнопка ниже включает такие
+# вопросы разом. Обратной автоматики нет намеренно: выключенный в анкете вопрос остаётся в
+# карточке, пока менеджер сам его не снимет, — у старых заявок ответ на него уже есть, и
+# прятать его нельзя (ровно так и пропал возраст у заявок до 17.09).
+async def asked_steps() -> set[str]:
+    """step_key вопросов карточки, которые анкета сейчас спрашивает на основном треке."""
+    asked = set()
+    for step_key in moderation_card.CARD_STEPS:
+        setting_key = reg_engine.SETTING_KEY_BY_STEP.get(step_key)
+        if setting_key and await reg_engine.is_step_enabled_for_track(setting_key, "full"):
+            asked.add(step_key)
+    return asked
+
+
+def step_mark(step_key: str, steps: list[str], asked: set[str]) -> str:
+    """Отметка строки: ✅ показываем · ⚠️ спрашиваем, но не показываем · ☐ не показываем."""
+    if step_key in steps:
+        return "✅"
+    return "⚠️" if step_key in asked else "☐"
+
+
+def missing_steps(steps: list[str], asked: set[str]) -> list[str]:
+    """Вопросы, которые анкета спрашивает, а карточка не показывает — в порядке CARD_STEPS."""
+    return [s for s in moderation_card.CARD_STEPS if s in asked and s not in steps]
+
+
 async def render_modcard_text() -> str:
     steps = moderation_card.enabled_steps(await get_setting_typed("modcard_fields"))
     limit = await get_setting_typed("modcard_answer_limit")
+    asked = await asked_steps()
+    missing = missing_steps(steps, asked)
     lines = [
         "🧾 <b>Поля карточки заявки</b>", "",
         "Отметьте, какие ответы показывать в карточке. Нажатие сразу сохраняется.", "",
         f"Длина ответа: {_limit_label(limit)}.", "",
     ]
+    if missing:
+        lines.append(
+            f"⚠️ Спрашиваем в анкете, но не показываем в карточке: {len(missing)}. "
+            "Кнопка «Показать всё, что спрашиваем» включит их разом.",
+        )
+        lines.append("")
     for step_key, label in moderation_card.CARD_STEPS.items():
-        mark = "✅" if step_key in steps else "☐"
-        lines.append(f"{mark} {label}")
+        lines.append(f"{step_mark(step_key, steps, asked)} {label}")
     return "\n".join(lines)
 
 
-def build_modcard_keyboard(steps: list[str], limit: int) -> InlineKeyboardMarkup:
+def build_modcard_keyboard(steps: list[str], limit: int,
+                           asked: set[str] | None = None) -> InlineKeyboardMarkup:
     from handlers.admin_sections import back_button  # ленивый шов (см. докстринг модуля)
 
+    asked = asked or set()
     buttons = [
         [InlineKeyboardButton(
-            text=("✅ " if step_key in steps else "☐ ") + label,
+            text=f"{step_mark(step_key, steps, asked)} {label}",
             callback_data=f"modcard_toggle:{step_key}",
         )]
         for step_key, label in moderation_card.CARD_STEPS.items()
     ]
+    if missing_steps(steps, asked):
+        buttons.append([InlineKeyboardButton(
+            text="⚠️ Показать всё, что спрашиваем", callback_data="modcard_sync",
+        )])
     buttons.append([InlineKeyboardButton(text="── длина ответа ──", callback_data="modcard_noop")])
     buttons.append([
         InlineKeyboardButton(
@@ -80,7 +123,7 @@ async def _show_modcard(callback: types.CallbackQuery) -> None:
     await callback.message.edit_text(
         await render_modcard_text(),
         parse_mode="HTML",
-        reply_markup=build_modcard_keyboard(steps, limit),
+        reply_markup=build_modcard_keyboard(steps, limit, await asked_steps()),
     )
 
 
@@ -112,6 +155,27 @@ async def modcard_toggle(callback: types.CallbackQuery):
         "\n".join(steps) if steps else moderation_card.EMPTY_SENTINEL,
     )
     await callback.answer(toast)
+    await _show_modcard(callback)
+
+
+@router.callback_query(F.data == "modcard_sync")
+async def modcard_sync(callback: types.CallbackQuery):
+    """Показать в карточке все вопросы, которые анкета спрашивает. Кнопка только ДОБАВЛЯЕТ:
+    уже включённые вопросы не снимаются, даже если анкета их больше не спрашивает (у старых
+    заявок ответ на них есть — см. комментарий у `asked_steps`)."""
+    steps = moderation_card.enabled_steps(await get_setting_typed("modcard_fields"))
+    asked = await asked_steps()
+    added = missing_steps(steps, asked)
+    if not added:
+        await callback.answer("Уже показываем всё, что спрашиваем")
+        return
+    merged = [s for s in moderation_card.CARD_STEPS if s in asked or s in steps]
+    await set_setting_by_admin(
+        callback.from_user.id,
+        "modcard_fields",
+        "\n".join(merged) if merged else moderation_card.EMPTY_SENTINEL,
+    )
+    await callback.answer(f"Добавили в карточку: {len(added)}")
     await _show_modcard(callback)
 
 
