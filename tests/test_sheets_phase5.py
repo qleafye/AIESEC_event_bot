@@ -255,7 +255,10 @@ def test_party_sheet_row_track_cell_noovernight(tmp_path):
     assert values["Трек"] == "Без ночёвки"
 
 
-def test_party_sheet_row_neutralizes_formula_injection(tmp_path):
+def test_party_sheet_row_keeps_formula_look_alike_raw(tmp_path):
+    """Квик 260919 (08-sheets-dashboard): party_sheet_row no longer neutralizes — services/
+    sheets.py always writes with explicit RAW, which Google Sheets never parses as a formula,
+    see database.db._sheet_safe's docstring."""
     _use_tmp_db(tmp_path)
 
     async def go():
@@ -267,7 +270,7 @@ def test_party_sheet_row_neutralizes_formula_injection(tmp_path):
         return dict(zip(headers, row))
 
     values = asyncio.run(go())
-    assert values["ФИО"] == "'=cmd()"
+    assert values["ФИО"] == "=cmd()"
 
 
 # ── Task 2: append_to_party_sheet resolves tab from party_sheet_tab / default ───────────────

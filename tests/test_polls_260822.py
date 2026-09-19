@@ -551,8 +551,10 @@ def test_sheet_rows_non_anonymous_and_anonymous(tmp_path):
         await db.set_poll_message_totals("tg1", {"total": 1, "options": [0, 1]})
         rows = await polls_svc.build_polls_sheet_rows()
         assert len(rows) == 3
-        assert rows[0][1] == "Когда?" and rows[0][2] == 1 and rows[0][3] == "'=Аня"  # CSV-инъекция
-        assert rows[0][4] == "'@anya" and rows[0][6] == "Утро; Вечер"  # «@» — тоже CSV-триггер
+        # Квик 260919 (08-sheets-dashboard): build_polls_sheet_rows больше не нейтрализует
+        # ведущие =/@ — services/sheets.py пишет явным RAW, Google Sheets формулу не считает.
+        assert rows[0][1] == "Когда?" and rows[0][2] == 1 and rows[0][3] == "=Аня"
+        assert rows[0][4] == "@anya" and rows[0][6] == "Утро; Вечер"
         assert rows[1][1] == "Анон?" and rows[1][6] == "Да: 0" and rows[2][6] == "Нет: 1"
         assert rows[1][3] == "— анонимный опрос —"
 
