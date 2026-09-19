@@ -151,16 +151,30 @@ def _render_application_card(user: dict, position: int, total: int, city_label_t
     # схема (moderation_card.card_answers), не девять захардкоженных полей.
     for label, value in fields or []:
         lines.append(f"{label}: {html_module.escape(value)}")
-    # Резюме: файлом, текстом или нет. Текст показываем прямо в карточке (Таня п.4),
-    # обрезая длинные — полный текст доступен по кнопке «📎 Резюме». show_resume=False гасит
-    # блок целиком — шаг «resume» выключен в наборе полей карточки.
+    # Резюме: файлом, ссылкой, текстом, мини-профилем или нет — `moderation_card.resume_summary`
+    # (единая точка правды с веб-карточкой, приёмка 19.09, review-260919 «Модерация» находки
+    # №2/№3). Текст показываем прямо в карточке (Таня п.4), обрезая длинные — полный текст
+    # доступен по кнопке «📎 Резюме». show_resume=False гасит блок целиком — шаг «resume»
+    # выключен в наборе полей карточки.
     if show_resume:
-        if user.get("resume_file_id"):
+        resume = moderation_card.resume_summary(user)
+        if resume["kind"] == "file":
             lines.append("📎 Резюме: файлом (кнопка ниже)")
-        elif esc(user.get("resume_text")):
+        elif resume["kind"] == "link":
+            link = esc(user.get("resume_link")) or "?"
+            lines.append(f"📎 Резюме (ссылка): {link}")
+        elif resume["kind"] == "text":
             rt = str(user.get("resume_text"))
             preview = html_module.escape(rt[:300] + ("…" if len(rt) > 300 else ""))
             lines.append(f"📎 Резюме (текст): {preview}")
+        elif resume["kind"] == "mini":
+            lines.append("📎 Резюме: мини-профиль")
+            for mini_label, mini_value in resume["mini_fields"]:
+                lines.append(f"{mini_label}: {html_module.escape(mini_value)}")
+        elif resume["warning"]:
+            # `resume_type` задан (делегат прошёл развилку), но ни один карман не заполнен —
+            # маркер потери данных, не тихое «нет» (приёмка 19.09, п.2 задания).
+            lines.append("📎 Резюме: ⚠️ резюме не сохранилось")
         else:
             lines.append("📎 Резюме: нет")
     # Phase 21 (21-07, D-14/D-10): «✏️ Изменена …» / «🔁 Повторная подача» — пометки для
@@ -314,17 +328,24 @@ async def appr_skip(callback: types.CallbackQuery, state: FSMContext):
 async def appr_resume(callback: types.CallbackQuery):
     _, tid = _parse_appr(callback.data)
     user = await get_user(tid) if tid is not None else None
-    if user and user.get("resume_file_id"):
+    # Приёмка 19.09: `moderation_card.resume_summary` — та же классификация, что печатает
+    # карточку (см. `_render_application_card` выше), кнопка видна только для file/text
+    # (`has_resume` в `_show_current_card`) — ветки link/mini/none здесь на случай гонки
+    # (карточка перерисовалась между показом кнопки и тапом).
+    resume = moderation_card.resume_summary(user or {})
+    if resume["kind"] == "file":
         try:
             await callback.message.answer_document(user["resume_file_id"])
         except Exception as e:
             logger.error(f"Failed to re-send resume for {tid}: {e}")
             await callback.message.answer("Не удалось открыть резюме.")
-    elif user and user.get("resume_text"):
+    elif resume["kind"] == "text":
         await callback.message.answer(
             f"📄 Резюме (текст):\n\n{html_module.escape(str(user['resume_text']))}",
             parse_mode="HTML",
         )
+    elif resume["kind"] in ("link", "mini"):
+        await callback.message.answer("Резюме уже показано в карточке целиком.")
     else:
         await callback.message.answer("Резюме не приложено.")
     await callback.answer()
