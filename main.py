@@ -7,7 +7,7 @@ from aiogram import Bot, Dispatcher
 from aiogram.fsm.storage.memory import MemoryStorage
 from config import config
 from database.db import init_db, get_setting, set_setting
-from handlers import registration, user_actions, admin, payment, polls, uat_seed, group_chat
+from handlers import registration, user_actions, admin, payment, polls, uat_seed, group_chat, reg_silence_fallback
 from services.reminders import pending_reminder_loop
 from services.scheduler import init_scheduler
 from services.allowlist import warm_allowlist_if_gating_on
@@ -446,6 +446,10 @@ async def main():
     # Без этого роутера aiogram не попросит у Telegram poll_answer/poll (allowed_updates
     # собираются из зарегистрированных observer'ов) — закреплено tests/test_polls_260822.py.
     dp.include_router(polls.router)
+    # Квик 260919-u7e (находка #3): САМЫЙ ПОСЛЕДНИЙ роутер message/callback_query в личке —
+    # срабатывает только если НИ ОДИН хендлер выше (group_chat/uat_seed/admin/payment/
+    # registration/user_actions) не забрал апдейт себе. См. докстринг модуля.
+    dp.include_router(reg_silence_fallback.router)
 
     await bot.delete_webhook(drop_pending_updates=True)
     _spawn(pending_reminder_loop(bot))
