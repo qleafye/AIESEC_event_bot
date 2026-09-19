@@ -852,8 +852,25 @@ async def _show_recall_screen(step_key: str, value, message: types.Message, stat
 @router.callback_query(F.data.startswith("recall_keep:"), Registration.recall_pending)
 async def recall_keep(callback: types.CallbackQuery, state: FSMContext, bot: Bot):
     """T-073-04-01/Pitfall 2: add_user overwrites every non-COALESCE column unconditionally --
-    "Оставить" MUST write the old value back into FSM data (except resume, a true no-op backed
-    by add_user's own COALESCE), or the delegate's confirmed answer is silently lost."""
+    "Оставить" MUST write the old value back into FSM data, or the delegate's confirmed answer
+    is silently lost.
+
+    Квик 260919-u7e (находка #2, регресс продолженного 14.09 фикса «Изменить», 33 подтверждённых
+    потери резюме с 15.09): резюме раньше было ИСКЛЮЧЕНИЕМ из правила выше — комментарий
+    объяснял это COALESCE в `add_user` (database/db.py), которое якобы подставляет старое
+    значение само. Это верно ТОЛЬКО для возвращенца с уже существующей строкой `users`. У
+    новичка, пришедшего сюда со сводки анкеты («Изменить»), строки `users` ещё нет вообще —
+    COALESCE(NULL, NULL) остаётся NULL. А реальный источник финала — не FSM, а `reg_drafts`
+    (`finalize_registration`/`claim_reg_draft`): `_advance` ниже зовёт `_sync_draft_out(
+    answered_col=columns_for_step("resume"))`, чей патч собирается из `data.get(col)` — оставляя
+    `data` пустой, "no-op" писал `{resume_file_id: None, resume_file_name: None, resume_text:
+    None}` поверх уже сохранённого в черновике файла (`upsert_reg_draft`, `answers.update(
+    clean_patch)`) — безвозвратно. Теперь резюме восстанавливается из `_prior_answers` тем же
+    приёмом, что и любой другой шаг, просто по НАБОРУ колонок (`columns_for_step("resume")`),
+    а не по одной. Возвращенца это не портит — если прежнего значения в `_prior_answers` нет
+    под каким-то из ключей (например, `resume_file_name` никогда не жил в `users`), `data`
+    остаётся как раньше по этому ключу, а `add_user`'s COALESCE по-прежнему подстрахует
+    настоящего возвращенца."""
     step_key = callback.data.split(":", 1)[1]
     data = await state.get_data()
     # T-073-04-04: stale tap on a scrolled-up recall card -- same guard shape
@@ -874,8 +891,14 @@ async def recall_keep(callback: types.CallbackQuery, state: FSMContext, bot: Bot
         prior = data.get("_prior_answers") or {}
         value = prior.get(column)
         await state.update_data(**{column: value})
-    # else: resume_file_id/resume_text/resume_url are left untouched in `data` -- add_user's
-    # COALESCE (database/db.py) preserves whatever the prior row already had.
+    else:
+        prior = data.get("_prior_answers") or {}
+        # Только ключи, реально присутствующие в снимке (не .get(col) с дефолтом None) --
+        # так отсутствие, скажем, resume_file_name у ВОЗВРАЩЕНЦА (его нет в users вовсе) не
+        # затирает то, что уже могло лежать в `data` этим же ключом.
+        resume_updates = {col: prior[col] for col in columns_for_step("resume") if col in prior}
+        if resume_updates:
+            await state.update_data(**resume_updates)
     tap_message = callback.message.model_copy(update={"from_user": callback.from_user})
     if step_key == "full_name":
         # ФИО стоит ДО движка шагов: продолжаем так же, как process_full_name после ввода.

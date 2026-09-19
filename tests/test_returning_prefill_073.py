@@ -407,13 +407,21 @@ def test_stale_recall_tap_ignored(tmp_path):
     asyncio.run(go())
 
 
-def test_resume_keep_is_noop(tmp_path):
+def test_resume_keep_restores_prior_into_fsm_and_survives_finalize(tmp_path):
+    """Квик 260919-u7e (находка #2): раньше `recall_keep:resume` был буквальным no-op (комментарий
+    ссылался на COALESCE в `add_user`, которое спасает только ВОЗВРАЩЕНЦА с уже существующей
+    строкой `users` -- ровно этот сценарий). Для новичка со сводки анкеты («Изменить») строки
+    `users` ещё нет, и тот же no-op давал `_sync_draft_out` патч из None, затирая уже сохранённый
+    в `reg_drafts` файл безвозвратно (33 подтверждённых случая с 15.09,
+    `.planning/review-260919-sections/01-reg-chat.md`). Теперь `recall_keep` явно пишет колонки
+    резюме в FSM из `_prior_answers`, тем же приёмом, что и любой другой шаг -- проверяем это
+    напрямую (не просто «no-op, но COALESCE спасёт»), плюс тот же регресс-хвост: финал всё ещё
+    сохраняет прежний файл у ВОЗВРАЩЕНЦА."""
     _use_tmp_db(tmp_path)
 
     async def go():
         await db.init_db()
-        # Seed a real prior DB row with resume_file_id="AAA" -- add_user's own COALESCE
-        # (database/db.py) is what actually preserves it; "keep" must leave `data` untouched.
+        # Seed a real prior DB row with resume_file_id="AAA".
         await _register(UID, "delegate", status="rejected", resume_file_id="AAA")
         msg = _KBCapturingMessage(UID, "delegate")
         state = _new_state(UID)
@@ -433,7 +441,11 @@ def test_resume_keep_is_noop(tmp_path):
         await reg.recall_keep(callback, state, bot=object())
 
         data = await state.get_data()
-        assert not any(k.startswith("resume_") for k in data)
+        assert data.get("resume_file_id") == "AAA", (
+            "recall_keep:resume обязан вернуть резюме из _prior_answers в FSM -- иначе "
+            "_sync_draft_out(answered_col=columns_for_step('resume')) затирает reg_drafts "
+            "значением None (находка #2, 33 подтверждённых потери с 15.09)"
+        )
 
         fmsg = _KBCapturingMessage(UID, "delegate")
         await reg.finalize_registration(fmsg, state, bot=object())
