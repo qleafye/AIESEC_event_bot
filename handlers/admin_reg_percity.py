@@ -564,6 +564,15 @@ async def reg_resume_mode_toggle(callback: types.CallbackQuery):
     await callback.answer(f"📄 Резюме: {label}{_REBUILD_HINT}", show_alert=True)
     text = await render_questions_text("full", admin_id)
     await callback.message.edit_text(text, parse_mode="HTML", reply_markup=await build_questions_keyboard("full", admin_id))
+    # Приёмка 19.09 (review-260919, «Модерация» находки №2/№3): режим `fork` открывает три
+    # колонки мини-профиля в шапке листа (`handlers/reg_schema.active_sheet_headers` через
+    # `mini_resume_branch_active`) — та же синхронизация, что уже стоит у обычных вопросных
+    # тумблеров выше (docstring `_refresh_sheet_header` изначально называл «resume-mode
+    # toggle» в числе триггеров — здесь вызов был пропущен).
+    if per_city_ctx:
+        await _refresh_sheet_header(header_code, "reg_resume_mode")
+    else:
+        await _refresh_sheet_header(setting_key="reg_resume_mode")
 
 
 # --- «↩️ Как везде» for the questions screen, Phase 25 (CITYQ-04) ---
