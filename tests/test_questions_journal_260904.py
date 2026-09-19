@@ -85,6 +85,35 @@ def test_is_stuck_fail_soft_on_empty_or_broken_answered_at():
     assert q.is_stuck({"answered_by": 1, "delivered_at": None, "answered_at": "мусор"}) is False
 
 
+# ── Квик 260919 (P3): waiting_days — «ждёт N дн.» у старых неотвеченных ─────────────────────
+
+def test_waiting_days_none_for_fresh_new_question():
+    fresh = (datetime.utcnow() - timedelta(hours=5)).isoformat()
+    row = {"answered_by": None, "delivered_at": None, "asked_at": fresh}
+    assert q.waiting_days(row) is None
+
+
+def test_waiting_days_counts_full_days_for_old_new_question():
+    old = (datetime.utcnow() - timedelta(days=33, hours=2)).isoformat()
+    row = {"answered_by": None, "delivered_at": None, "asked_at": old}
+    assert q.waiting_days(row) == 33
+
+
+def test_waiting_days_none_for_in_work_and_answered():
+    old = (datetime.utcnow() - timedelta(days=10)).isoformat()
+    in_work = {"answered_by": 1, "delivered_at": None, "asked_at": old}
+    answered = {"answered_by": 1, "delivered_at": "x", "asked_at": old}
+    assert q.waiting_days(in_work) is None
+    assert q.waiting_days(answered) is None
+
+
+def test_waiting_days_fail_soft_on_broken_asked_at():
+    row = {"answered_by": None, "delivered_at": None, "asked_at": "мусор"}
+    assert q.waiting_days(row) is None
+    row_empty = {"answered_by": None, "delivered_at": None, "asked_at": None}
+    assert q.waiting_days(row_empty) is None
+
+
 def test_format_stamp_parses_both_formats():
     # Quick 260904-kk6 (Q1): по умолчанию format_stamp теперь переводит UTC -> МСК (+3ч), эти
     # значения — уже метки, которые format_stamp должна прочитать И сдвинуть в МСК.
@@ -206,7 +235,10 @@ def test_list_questions_page_unknown_status_treated_as_all(tmp_path):
     _run(go())
 
 
-def test_list_questions_page_default_order_freshest_first(tmp_path):
+def test_list_questions_page_default_order_unanswered_oldest_first(tmp_path):
+    """Квик 260919 (P3, находка #03-moderation): «all»-порядок сменился с «свежие сверху»
+    (`id DESC`) на «неотвеченные сверху, среди них старые первыми» — на проде 53 из 123
+    вопросов без ответа (старейшему 33 дня) уезжали вглубь пагинации за свежими."""
     _ready(tmp_path)
 
     async def go():
@@ -214,7 +246,76 @@ def test_list_questions_page_default_order_freshest_first(tmp_path):
         first = await db.create_question(1, "Первый")
         second = await db.create_question(1, "Второй")
         rows = await db.list_questions_page(limit=100)
+        # Оба без ответа -> кто спросил раньше (first), тот и выше.
+        assert [r["id"] for r in rows] == [first, second]
+
+    _run(go())
+
+
+def test_list_questions_page_default_order_unanswered_above_answered(tmp_path):
+    _ready(tmp_path)
+
+    async def go():
+        await _add_user(1)
+        answered = await db.create_question(1, "Отвечен")
+        await db.claim_question(answered, 999, "Менеджер")
+        await db.set_question_answer(answered, "Ответ")
+        new = await db.create_question(1, "Без ответа")
+
+        rows = await db.list_questions_page(limit=100)
+        # "new" родился ПОЗЖЕ отвеченного, но всё равно выше — неотвеченные всегда сверху.
+        assert [r["id"] for r in rows] == [new, answered]
+
+    _run(go())
+
+
+def test_list_questions_page_default_order_answered_group_freshest_first(tmp_path):
+    _ready(tmp_path)
+
+    async def go():
+        await _add_user(1)
+        first = await db.create_question(1, "Первый")
+        second = await db.create_question(1, "Второй")
+        await db.claim_question(first, 999, "Менеджер")
+        await db.claim_question(second, 999, "Менеджер")
+        await db.set_question_answer(first, "Ответ 1")
+        await db.set_question_answer(second, "Ответ 2")
+
+        rows = await db.list_questions_page(limit=100)
+        # Обе строки отвечены -> свежий ответ (second) сверху.
         assert [r["id"] for r in rows] == [second, first]
+
+    _run(go())
+
+
+def test_list_questions_page_answered_filter_freshest_first(tmp_path):
+    _ready(tmp_path)
+
+    async def go():
+        await _add_user(1)
+        first = await db.create_question(1, "Первый")
+        second = await db.create_question(1, "Второй")
+        await db.claim_question(first, 999, "Менеджер")
+        await db.claim_question(second, 999, "Менеджер")
+        await db.set_question_answer(first, "Ответ 1")
+        await db.set_question_answer(second, "Ответ 2")
+
+        rows = await db.list_questions_page(status="answered", limit=100)
+        assert [r["id"] for r in rows] == [second, first]
+
+    _run(go())
+
+
+def test_list_questions_page_new_filter_oldest_first(tmp_path):
+    _ready(tmp_path)
+
+    async def go():
+        await _add_user(1)
+        first = await db.create_question(1, "Первый")
+        second = await db.create_question(1, "Второй")
+
+        rows = await db.list_questions_page(status="new", limit=100)
+        assert [r["id"] for r in rows] == [first, second]
 
     _run(go())
 
@@ -299,6 +400,14 @@ async def _set_answered_at(qid, stamp):
         await conn.commit()
 
 
+async def _set_asked_at(qid, stamp):
+    async with db._connect() as conn:
+        await conn.execute(
+            "UPDATE delegate_questions SET asked_at = ? WHERE id = ?", (stamp, qid),
+        )
+        await conn.commit()
+
+
 class _FakeBot:
     """`send_message` падает `fail_times` раз подряд, потом ведёт себя как обычно — тот же
     приём, что `tests/test_roles_phase8.py::_RaisingBot`."""
@@ -343,8 +452,21 @@ def test_render_screen_new_row_content(tmp_path):
     assert "🆕 без ответа" in text
     assert f"<code>{STRANGER_ID}</code>" in text
     assert "Когда дедлайн?" in text
+    assert "ждёт" not in text  # свежий вопрос — суток ещё не прошло
     buttons = [b.callback_data for row in kb.inline_keyboard for b in row]
     assert f"aq_answer:{qid}" in buttons
+
+
+def test_render_screen_new_row_shows_waiting_days_when_old(tmp_path):
+    """Квик 260919 (P3, находка #03-moderation): старый неотвеченный вопрос несёт «⏳ ждёт N
+    дн.» прямо в списке — не нужно открывать карточку, чтобы понять, что она залежалась."""
+    _roles_ready(tmp_path)
+    qid = _run(db.create_question(STRANGER_ID, "Когда дедлайн?"))
+    old_stamp = (datetime.utcnow() - timedelta(days=33)).isoformat()
+    _run(_set_asked_at(qid, old_stamp))
+
+    text, _ = _run(admin_questions.render_questions_screen(ADMIN_ID))
+    assert "⏳ ждёт 33 дн." in text
 
 
 def test_render_screen_in_work_row_shows_claimant_and_stuck_flag(tmp_path):
