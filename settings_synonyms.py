@@ -120,6 +120,7 @@ SETTINGS_SYNONYMS: dict[str, list[str]] = {
     "reg_resume_continue_label": ["продолжить анкету", "вернуться к заполнению"],
     "reg_resume_restart_label": ["заполнить с нуля", "сбросить анкету"],
     "reg_resume_restart_confirm_text": ["точно с нуля", "подтверждение сброса анкеты"],
+    "reg_resume_after_restart_text": ["бот перезапускался", "анкета сохранилась после рестарта"],
     "reg_sync_from_app_text": ["ответы из веба", "синхронизация анкеты"],
     # Quick 260904-3vm (эстафета): анкета открыта либо в чате, либо в приложении.
     "reg_handoff_held_by_app_text": ["анкета в приложении", "переключить обратно в чат"],

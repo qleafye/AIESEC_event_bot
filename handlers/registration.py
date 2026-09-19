@@ -1048,6 +1048,61 @@ def _draft_is_fresh(draft: dict, ttl_hours: int) -> bool:
     return msk_now() - created_dt < timedelta(hours=ttl_hours)
 
 
+async def _resumable_draft_for(telegram_id: int) -> dict | None:
+    """Квик 260919-u7e (находка #3): «жив ли черновик анкеты» для случаев ВНЕ /start — сейчас
+    единственный вызывающий — `handlers/reg_silence_fallback.py` (делегат пишет боту/жмёт
+    старую кнопку анкеты БЕЗ живого FSM-состояния после рестарта контейнера, MemoryStorage
+    пуст, reg_drafts — нет). Тот же предикат, что первые две ветки `cmd_start` уже применяют
+    для экрана «Продолжить/Заново» (D-18): kind='new' — TTL-свежий (`reg_resume_ttl_hours`,
+    `_draft_is_fresh`, ровно тот же дефолт реестра) и нет уже поданной незаброшенной заявки
+    этого сезона; kind='edit' — без TTL-гейта (правка не протухает), но только если сезон
+    заявки совпадает с текущим (иначе это прошлый сезон — свой путь через `rereg_start`, не
+    этот). Копия НЕ вызывает `cmd_start` напрямую (та функция сплетена с deep-link/языковым/
+    pre-selection гейтами вокруг — трогать её ради этого рискованно), но использует ТЕ ЖЕ
+    примитивы (`_draft_is_fresh`, `get_setting_typed("reg_resume_ttl_hours")`, дефолт
+    `SETTINGS_SCHEMA`) — при изменении семантики TTL/kind в cmd_start эту копию нужно
+    обновить синхронно (тесты обеих сторон это ловят).
+
+    `?start=continue`/`?start=edit` (deep-link обход TTL, только у /start) сюда намеренно не
+    перенесены — у catch-all нет deep-link аргумента вовсе."""
+    try:
+        draft = await get_reg_draft(telegram_id)
+    except Exception as e:
+        logger.error(f"_resumable_draft_for: draft lookup failed for {telegram_id}: {e}")
+        return None
+    if not draft:
+        return None
+    kind = draft.get("kind") or "new"
+    if kind == "new":
+        try:
+            user = await get_user(telegram_id)
+        except Exception as e:
+            logger.error(f"_resumable_draft_for: user lookup failed for {telegram_id}: {e}")
+            user = None
+        not_registered_or_rejected = (not user) or ((user.get("status") or "approved") == "rejected")
+        if not not_registered_or_rejected:
+            return None
+        try:
+            ttl_hours = await get_setting_typed("reg_resume_ttl_hours")
+        except Exception as e:
+            logger.error(f"_resumable_draft_for: reg_resume_ttl_hours resolve failed for {telegram_id}: {e}")
+            ttl_hours = SETTINGS_SCHEMA["reg_resume_ttl_hours"]["default"]
+        return draft if _draft_is_fresh(draft, ttl_hours) else None
+    if kind == "edit":
+        try:
+            user = await get_user(telegram_id)
+            cur_season = await get_setting_typed("event_season") or None
+        except Exception as e:
+            logger.error(f"_resumable_draft_for: edit-kind checks failed for {telegram_id}: {e}")
+            return None
+        if not user or (user.get("status") or "approved") == "rejected":
+            return None
+        if (user.get("season") or None) != cur_season:
+            return None
+        return draft
+    return None
+
+
 async def _reg_form_cta_kb(message: types.Message) -> InlineKeyboardMarkup | None:
     """Phase 21 (21-09, D-01): the ONE entry point into the Mini App from the registration
     flow — attached to the newcomer welcome message (`cmd_start`'s tail), never under any
