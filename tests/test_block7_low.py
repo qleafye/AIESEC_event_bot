@@ -1,7 +1,9 @@
 """BLOCK 7 (LOW) regressions.
 
-- Main-tab formula-injection parity: active_sheet_row must neutralize a crafted cell via
-  _csv_safe, matching the party path.
+- Main-tab Sheets row projection: active_sheet_row must NOT neutralize a crafted cell (квик
+  260919, 08-sheets-dashboard) — services/sheets.py writes with explicit RAW, which Google
+  Sheets never interprets as a formula, so a leading apostrophe would only corrupt real data
+  (phones/usernames) instead of protecting anything. See database.db._sheet_safe's docstring.
 - Negative-amount guard: _parse_options must clamp a negative price to 0.
 """
 import asyncio
@@ -16,7 +18,10 @@ from handlers.reg_flow import _validate_date_range
 from handlers.payment import _parse_options
 
 
-def test_main_tab_active_sheet_row_neutralizes_formula(tmp_path):
+def test_main_tab_active_sheet_row_keeps_cell_raw_no_apostrophe(tmp_path):
+    """Квик 260919: services/sheets.py writes RAW, so the cell must reach the sheet exactly as
+    supplied — no leading apostrophe (that used to corrupt phones/usernames, see
+    database.db._sheet_safe's docstring)."""
     config.DB_PATH = str(tmp_path / "csv_main.db")
 
     async def go():
@@ -29,9 +34,8 @@ def test_main_tab_active_sheet_row_neutralizes_formula(tmp_path):
         return await reg.active_sheet_row(data)
 
     row = asyncio.run(go())
-    # The crafted ФИО must be stored as text (leading apostrophe), never left to evaluate.
-    assert any(isinstance(c, str) and c.startswith("'=HYPERLINK") for c in row), row
-    assert not any(isinstance(c, str) and c.startswith("=HYPERLINK") for c in row), row
+    assert any(c == "=HYPERLINK(\"http://evil\",\"click\")" for c in row), row
+    assert not any(isinstance(c, str) and c.startswith("'=HYPERLINK") for c in row), row
 
 
 def test_parse_options_clamps_negative_price():

@@ -122,14 +122,16 @@ def test_history_rows_missing_user_does_not_crash(tmp_path):
     _run(go())
 
 
-def test_history_rows_csv_safe(tmp_path):
+def test_history_rows_stay_raw_no_apostrophe(tmp_path):
+    """Квик 260919 (08-sheets-dashboard): build_history_sheet_rows больше не нейтрализует —
+    services/sheets.py пишет явным RAW, Google Sheets ячейку формулой не считает."""
     _ready(tmp_path)
 
     async def go():
         await _add_user(1, name="=Аня", username="@anya")
         await db.record_answer_history(1, [{"column": "phone", "old": "1", "new": "2"}], source="bot")
         rows = await sheet_logs.build_history_sheet_rows()
-        assert rows[0][2] == "'=Аня"
+        assert rows[0][2] == "=Аня"
 
     _run(go())
 
