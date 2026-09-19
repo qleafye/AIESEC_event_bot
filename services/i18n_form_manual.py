@@ -505,6 +505,7 @@ _REGISTRY_TEXTS_EN = {
     "🏆 <b>Рейтинг по монетам</b>": "🏆 <b>Coin leaderboard</b>",
     "Твоё место: <b>{rank}</b> · баланс: <b>{balance}</b>": "Your place: <b>{rank}</b> · balance: <b>{balance}</b>",
     "👋 Вы начали регистрацию, но не завершили её. Отправьте /start, чтобы продолжить — это займёт пару минут.": "👋 You started your registration but didn't finish it. Send /start to continue — it takes a couple of minutes.",
+    "🔄 Бот перезапускался, но твоя анкета сохранена — продолжим?": "🔄 The bot restarted, but your application is saved — shall we continue?",
     "Регистрация на вечеринку сейчас закрыта.": "Party registration is currently closed.",
     "💰 <b>Оплата участия</b>\n\nВариант: {option}\nСумма: {amount} ₽\n\n{requisites}{deadline}{penalties}📎 Загрузи чек оплаты (PDF-документ или скриншот).": "💰 <b>Payment for participation</b>\n\nOption: {option}\nAmount: {amount} ₽\n\n{requisites}{deadline}{penalties}📎 Upload your payment receipt (a PDF document or screenshot).",
     "💳 Выбери вариант участия:": "💳 Choose your participation option:",
