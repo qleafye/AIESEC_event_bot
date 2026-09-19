@@ -173,6 +173,7 @@ def test_text_key_editor_unchanged(tmp_path):
 @pytest.mark.parametrize("key", [
     "source_options", "city_options", "goal_options", "formats_options",
     "study_field_options", "role_caps_reg_manager", "role_caps_game_manager",
+    "role_caps_stats_manager",
 ])
 def test_every_list_key_gets_item_buttons(tmp_path, key):
     assert SETTINGS_SCHEMA[key]["type"] == "list"
