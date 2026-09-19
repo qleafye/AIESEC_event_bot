@@ -56,6 +56,7 @@ def test_editable_keys_are_only_miniapp_toggles():
                if k not in ("miniapp_enabled", "miniapp_staff_only"))
     # Вне белого списка -- ни оплата, ни роли, ни Sheets, ни произвольный "bot_token".
     for forbidden in ("payment_enabled", "role_caps_reg_manager", "role_caps_game_manager",
+                       "role_caps_stats_manager",
                        "consent_enabled", "bot_token", "google_sheet_id"):
         assert forbidden not in EDITABLE_KEYS
 
@@ -111,7 +112,8 @@ def test_settings_post_toggles_and_bot_sees_it_immediately(tmp_path):
 
 def test_settings_post_unknown_key_403_not_editable_and_db_unchanged(tmp_path):
     client = _setup(tmp_path)
-    for bad_key in ("bot_token", "payment_enabled", "role_caps_reg_manager", "role_caps_game_manager"):
+    for bad_key in ("bot_token", "payment_enabled", "role_caps_reg_manager", "role_caps_game_manager",
+                     "role_caps_stats_manager"):
         resp = _post(client, bad_key, "on")
         assert resp.status_code == 403, bad_key
         assert resp.json()["reason"] == "not_editable"
