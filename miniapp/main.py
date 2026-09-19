@@ -96,6 +96,50 @@ CONTENT_SECURITY_POLICY = (
 )
 
 
+# Квик 260919-u7e (P5, находка 02-miniapp, пункт 2): одна точка лога на каждый 4xx/5xx ответ
+# API — `_json_errors` уже единственное место, форматирующее ВСЕ такие ответы (см. его
+# докстринг), поэтому лог ставится сюда, а не в каждый роутер по отдельности. `telegram_id`
+# берёт `request.state.telegram_id`, который `miniapp.deps.principal`/`file_principal`
+# проставляют СРАЗУ по извлечении id — раньше любой отказ гейта, включая тот, что случился
+# уже ПОСЛЕ того, как личность делегата установлена (403 no_cap/section_off/edit_closed и
+# т.п.), поэтому телеграм-id известен почти всегда, кроме исходно анонимных 401
+# (no_auth/bad_initdata) — там "anon" и есть честный ответ, личность ещё не проверена.
+# T-21-08/T-30-06: в лог идут ТОЛЬКО ключи полей/причина, никогда значение ответа делегата —
+# `_error_log_extra` читает `errors`/`field`/`cap`/`section`/`kind` тела ответа, а не body как
+# целое, и не касается `text` (человеческий текст могут собрать из ответа делегата в будущем —
+# сюда его подмешивать нельзя).
+_FILE_ROUTE_PREFIX = "/app/api/file/"
+
+
+def _error_log_extra(body: dict) -> str:
+    errors = body.get("errors")
+    if isinstance(errors, dict):
+        return f" fields={sorted(errors.keys())}"
+    for key in ("field", "cap", "section", "kind"):
+        value = body.get(key)
+        if value:
+            return f" {key}={value}"
+    return ""
+
+
+def _log_api_error(request: Request, status_code: int, body: dict) -> None:
+    if status_code < 400:
+        return
+    telegram_id = getattr(request.state, "telegram_id", "anon")
+    reason = body.get("reason", "error") if isinstance(body, dict) else "error"
+    extra = _error_log_extra(body) if isinstance(body, dict) else ""
+    line = "api error: %s %s -> %s reason=%s telegram_id=%s%s"
+    args = (request.method, request.url.path, status_code, reason, telegram_id, extra)
+    if request.url.path.startswith(_FILE_ROUTE_PREFIX) and status_code in (401, 403):
+        # Тег <img> не шлёт initData -- 401/403 на публичной/приватной картинке без токена
+        # штатны на каждый показ карточки, WARNING здесь топит лог шумом, а не сигналом.
+        logger.debug(line, *args)
+    elif status_code >= 500:
+        logger.error(line, *args)
+    else:
+        logger.warning(line, *args)
+
+
 def _miniapp_enabled(db_path: str) -> bool:
     """Тумблер читается на каждый запрос (без кэша — как и права). Недоступная БД
     считается «выключено»: лучше честный 503, чем трассировка с путём к базе."""
@@ -147,6 +191,7 @@ def _build_asgi_app(cfg: DashboardConfig) -> FastAPI:
             body = {"reason": "not_found"}
         else:
             body = {"reason": "error", "detail": detail}
+        _log_api_error(request, exc.status_code, body)
         return JSONResponse(body, status_code=exc.status_code, headers=exc.headers)
 
     # Порядок важен: `@app.middleware` добавляет слои «последний — самый внешний».
