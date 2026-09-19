@@ -2211,6 +2211,21 @@ async def settings_edit_value(message: types.Message, state: FSMContext):
             await message.answer(error, parse_mode="HTML")
             return
 
+    # Quick 260919-mlu (Task 3): развилка «была своя вкладка с данными, имя меняется» — идёт
+    # ДО гейта 260815-3hw ниже (тот смотрит только на НОВОЕ имя, про брошенную старую не
+    # знает). None = развилки нет — гейт ниже работает как раньше, byte-for-byte.
+    if key in _SHEET_TAB_WRITE_MODE and value and value != "-":
+        from handlers.admin_sheet_tabs import current_key_tab_name, tab_change_screen
+        old_value = await current_key_tab_name(key)
+        screen = await tab_change_screen(key, old_value, value)
+        if screen is not None:
+            await state.update_data(
+                pending_tab_key=key, pending_tab_value=value, pending_tab_old=old_value,
+            )
+            await state.set_state(EditSetting.waiting_for_tab_confirm)
+            await message.answer(screen[0], parse_mode="HTML", reply_markup=screen[1])
+            return
+
     # Quick 260815-3hw (Task 3): confirm-gate before silently overwriting an EXISTING Google
     # Sheets tab — only for keys the bot actually writes to (_SHEET_TAB_WRITE_MODE);
     # preselect_tab (read-only) and the city_tab_suffix__* keys never reach this branch, and

@@ -638,6 +638,12 @@ ADMIN_CAPS: dict[str, str] = {
     # Quick 260815-3hw (Task 3): confirm-gate on overwriting an existing Google Sheets tab.
     "sheets_tab_confirm": "settings",
     "sheets_tab_cancel": "settings",
+    # Quick 260919-mlu (Task 3): развилка «была своя вкладка с данными, имя меняется» —
+    # переименовать / писать в существующую / завести новую пустую (отмена — sheets_tab_cancel
+    # выше, тот же гейт).
+    "sheet_tab_rename_go": "settings",
+    "sheet_tab_reuse_go": "settings",
+    "sheet_tab_newtab_go": "settings",
     "settings_toggle_bonus": "settings",
     "settings_toggle_full_approval": "settings",
     "settings_toggle_notify": "settings",
