@@ -423,9 +423,10 @@ def test_two_rotations_in_one_call_send_a_single_episode_alert(monkeypatch):
     dedup). Post-storm-guard, admin alerts are per STABILISED EPISODE, not per rotation --
     both hops here belong to the same episode (the request that finally succeeds on the
     third link stabilises it immediately), so exactly ONE alert goes out, naming the total
-    switch count. `dwell_seconds=0` -- this test is about the chain-hunting behaviour
-    (finding the first live link), not about the storm-guard timing itself (covered by its
-    own tests below)."""
+    switch count. Default dwell_seconds (30, NOT overridden to 0) on purpose -- rule (b)
+    (2026-09-19 review) means hopping through never-succeeded links is never dwell-gated in
+    the first place, so this now also proves the storm guard doesn't slow down chain-hunting
+    even with a real dwell value active."""
     calls = []
     THIRD = "http://third:8080"
     monkeypatch.setattr(AiohttpSession, "make_request", _fake_transport({0, 1}, calls))
@@ -433,7 +434,7 @@ def test_two_rotations_in_one_call_send_a_single_episode_alert(monkeypatch):
     proxy_session.set_alert_bot(fake_bot)
     try:
         async def go():
-            session = FailoverAiohttpSession([PRIMARY, BACKUP, THIRD], dwell_seconds=0)
+            session = FailoverAiohttpSession([PRIMARY, BACKUP, THIRD])
             result = await session.make_request(object(), object())
             await _drain_background()
             return session, result
@@ -888,10 +889,11 @@ def test_three_link_chain_rotates_to_third_when_first_two_dead(monkeypatch):
     monkeypatch.setattr(AiohttpSession, "make_request", _fake_transport({0, 1}, calls))
 
     async def go():
-        # dwell_seconds=0: this test is about hunting through a chain to find the first
-        # live link within one call, not about the storm-guard timing (own tests below).
+        # Default dwell_seconds (rule (b), 2026-09-19 review): hopping through links that
+        # have never carried a successful request is never dwell-gated, so the chain is
+        # hunted through within one call exactly as before the storm guard existed.
         session = FailoverAiohttpSession(
-            build_proxy_chain(PRIMARY, BACKUP + ", api:" + WORKER), dwell_seconds=0
+            build_proxy_chain(PRIMARY, BACKUP + ", api:" + WORKER)
         )
         result = await session.make_request(object(), object())
         await _drain_background()
@@ -909,58 +911,79 @@ def test_three_link_chain_rotates_to_third_when_first_two_dead(monkeypatch):
 # Facts from prod: a 2-link chain (primary, backup) where the backup was ALSO dead all of
 # September -- every TelegramNetworkError rotated the channel, 12 switches in 55 seconds,
 # and the admin alert fired straight through the session that had just failed (all 156 alert
-# attempts across both storms logged "ERROR ... failed"). Tests below cover: (1) dwell caps
-# the number of REAL rotations during a storm, (2) exactly one alert goes out once the
-# episode stabilises, (3) a batch of parallel failures collapses to one rotation (unchanged
-# by dwell), (4) return-to-primary via the background probe still works.
+# attempts across both storms logged "ERROR ... failed").
+#
+# Review finding 2026-09-19: gating dwell unconditionally (first cut of this fix) made the
+# REAL incident shape worse, not better -- a single primary blip would rotate onto the
+# (permanently dead) backup and then sit there in enforced silence for the full dwell
+# window, turning a ~5s hiccup into `dwell_seconds` of downtime for delegates. The rule
+# below fixes that: dwell protects a channel only once it has EARNED it -- primary always,
+# or any link that has already carried a successful request since being applied
+# (`_succeeded_since_rotate`). A never-succeeded, non-primary link is abandoned immediately,
+# dwell or not -- it has nothing to lose.
+#
+# Tests below cover: (1) a lone primary blip with a permanently-dead backup bounces straight
+# back to primary, no dwell wait; (2) the 12-errors/55s storm is bounded to a handful of
+# REAL rotations and ends resting on primary; (3) a 3+-link chain reaches the first live
+# link within one call, no dwell wait, even with a large dwell_seconds; (4) a channel that
+# DID carry traffic is dwell-protected like primary; (5) the delayed alert still fires
+# exactly once, naming the real switch count, once the storm goes quiet; (6) a batch of
+# parallel failures still collapses to one rotation; (7) return-to-primary via the
+# background probe still works.
 
-def test_dwell_blocks_rotation_within_the_window_and_allows_it_after(monkeypatch):
-    """Direct unit test of the gate itself, independent of make_request's retry loop:
-    _rotate_from(observed_index) is a no-op while the ACTIVE link is younger than
-    dwell_seconds, and rotates normally once dwell_seconds has elapsed."""
+def test_single_primary_blip_with_dead_backup_returns_without_dwell_wait(monkeypatch, caplog):
+    """The exact review scenario: primary blips ONCE (only the very first attempt on it
+    fails, then it's fine), backup is permanently dead. The bot must bounce off the dead
+    backup and land back on (recovered) primary within the same ~5s retry cadence as
+    before the storm guard existed -- NOT sit on the dead backup for a full dwell_seconds
+    of silence.
+
+    Asserts via caplog's "Proxy failover:" WARNING count (one line per REAL rotation, see
+    _rotate_from) rather than `_flap_switch_count` -- that counter gets reset to 0 the
+    moment the flap episode's alert fires (the second hop lands back on primary, which then
+    immediately succeeds and stabilises), so it can't be used to count total rotations
+    across a stabilised episode."""
     clock = _Clock()
+    call_n = 0
+
+    async def fake(self, bot, method, timeout=None):
+        nonlocal call_n
+        call_n += 1
+        if self._index == 1:
+            raise TelegramNetworkError(method=method, message="backup dead")
+        if call_n == 1:
+            raise TelegramNetworkError(method=method, message="primary blip")
+        return f"result-{self._index}"
+
+    monkeypatch.setattr(AiohttpSession, "make_request", fake)
+    caplog.set_level(logging.WARNING, logger="services.proxy_session")
 
     async def go():
         session = FailoverAiohttpSession([PRIMARY, BACKUP], dwell_seconds=30, time_source=clock)
-        err = TelegramNetworkError(method=object(), message="simulated")
-        await session._rotate_from(0, err)  # first-ever rotation: never gated
+        with pytest.raises(TelegramNetworkError):
+            await session.make_request(object(), object())  # rotates 0 -> 1, backup dead too
         assert session.active_index == 1
 
-        clock.advance(10)  # well under dwell_seconds
-        await session._rotate_from(1, err)
-        assert session.active_index == 1  # blocked -- still on backup
-
-        clock.advance(20)  # total 30s since the first rotation -- dwell has elapsed
-        await session._rotate_from(1, err)
-        assert session.active_index == 0  # allowed -- rotates back to primary
+        clock.advance(5)  # the prod retry cadence -- nowhere near a full dwell_seconds
+        result = await session.make_request(object(), object())
         await _drain_background()
-        return session
+        return session, result
 
-    asyncio.run(go())
-
-
-def test_dwell_zero_disables_the_guard(monkeypatch):
-    """`dwell_seconds<=0` is the escape hatch, mirroring recheck_seconds/connect_timeout --
-    every rotation is immediate, byte-identical to pre-storm-guard behaviour."""
-    clock = _Clock()
-
-    async def go():
-        session = FailoverAiohttpSession([PRIMARY, BACKUP], dwell_seconds=0, time_source=clock)
-        err = TelegramNetworkError(method=object(), message="simulated")
-        await session._rotate_from(0, err)
-        assert session.active_index == 1
-        await session._rotate_from(1, err)  # zero time elapsed -- still not gated
-        assert session.active_index == 0
-        await _drain_background()
-        return session
-
-    asyncio.run(go())
+    session, result = asyncio.run(go())
+    assert result == "result-0"
+    assert session.active_index == 0
+    rotations = caplog.text.count("Proxy failover:")
+    assert rotations == 2  # 0->1, then straight back 1->0 -- no dwell wait
 
 
-def test_storm_12_errors_in_55s_bounds_real_rotations(monkeypatch):
+def test_storm_12_errors_in_55s_bounds_real_rotations_and_ends_on_primary(monkeypatch):
     """Reproduces the shape of the prod incidents: 12 TelegramNetworkErrors ~5s apart on a
-    2-link chain whose backup is ALSO dead (nothing ever succeeds). With dwell_seconds=30,
-    real rotations are capped at floor(55/30) + 1 = 2 -- nowhere near the 12 the bug caused."""
+    2-link chain where NEITHER link ever succeeds (worst case -- primary stays down for the
+    whole window, not just one blip). Rule (b) means leaving the never-proven backup is
+    always immediate; rule (a) means primary gets a full dwell_seconds each time it's
+    re-entered. With dwell_seconds=30 and a 55s window, that works out to two
+    rotate-out-and-immediately-back cycles (4 real rotations) -- nowhere near the 12 the bug
+    caused, and the bot spends most of the window resting on primary instead of thrashing."""
     clock = _Clock()
 
     async def fake(self, bot, method, timeout=None):
@@ -980,14 +1003,136 @@ def test_storm_12_errors_in_55s_bounds_real_rotations(monkeypatch):
         return session
 
     session = asyncio.run(go())
-    assert session._flap_switch_count <= (55 // 30) + 1
-    assert session._flap_switch_count >= 1
+    assert 2 <= session._flap_switch_count <= 4  # far below the 12 the bug caused
+    assert session.active_index == 0  # ends resting on primary, not thrashed onto backup
+
+
+def test_three_link_chain_reaches_third_link_without_waiting_for_dwell(monkeypatch):
+    """Rule (b) directly fixes the earlier trade-off: hopping through links that have NEVER
+    carried a successful request (primary dead, backup dead) to find the first live link
+    happens within a single call with no dwell wait at all -- proven here with a large
+    dwell_seconds and a clock that never advances."""
+    calls = []
+    THIRD = "http://third:8080"
+    monkeypatch.setattr(AiohttpSession, "make_request", _fake_transport({0, 1}, calls))
+    clock = _Clock()
+
+    async def go():
+        session = FailoverAiohttpSession(
+            [PRIMARY, BACKUP, THIRD], dwell_seconds=300, time_source=clock
+        )
+        result = await session.make_request(object(), object())
+        return session, result
+
+    session, result = asyncio.run(go())
+    assert result == "result-2"
+    assert calls == [0, 1, 2]
+    assert session.active_index == 2
+    assert clock.now == 0  # zero time elapsed -- confirms no dwell wait happened
+
+
+def test_dwell_blocks_leaving_primary_within_the_window_and_allows_it_after(monkeypatch):
+    """Direct unit test of rule (a): _rotate_from(0, ...) (leaving PRIMARY) is a no-op while
+    the window hasn't elapsed since primary was (re)applied, and rotates normally once
+    dwell_seconds has passed -- independent of make_request's retry loop or of rule (b)
+    (index 1/backup here never succeeds, so it would be exempt from dwell on ITS OWN
+    departure; this test is only about leaving primary)."""
+    clock = _Clock()
+
+    async def go():
+        session = FailoverAiohttpSession([PRIMARY, BACKUP], dwell_seconds=30, time_source=clock)
+        err = TelegramNetworkError(method=object(), message="simulated")
+        await session._rotate_from(0, err)  # first-ever rotation off primary: never gated
+        assert session.active_index == 1
+
+        # Force the bot back onto primary (as _rotate_from(1, ...) itself would do, since
+        # index 1 never succeeded and rule (b) exempts it) to isolate rule (a) on its own.
+        session._apply(0)
+        session._last_rotate_at = clock.now
+        session._succeeded_since_rotate = False
+
+        clock.advance(10)  # well under dwell_seconds
+        await session._rotate_from(0, err)
+        assert session.active_index == 0  # blocked -- still on primary
+
+        clock.advance(20)  # total 30s since primary was (re)applied -- dwell has elapsed
+        await session._rotate_from(0, err)
+        assert session.active_index == 1  # allowed -- rotates off primary
+        await _drain_background()
+        return session
+
+    asyncio.run(go())
+
+
+def test_dwell_zero_disables_the_guard_even_for_primary(monkeypatch):
+    """`dwell_seconds<=0` is the escape hatch, mirroring recheck_seconds/connect_timeout --
+    every rotation is immediate, byte-identical to pre-storm-guard behaviour, even when
+    leaving PRIMARY (rule (a) would otherwise always gate that one)."""
+    clock = _Clock()
+
+    async def go():
+        session = FailoverAiohttpSession([PRIMARY, BACKUP], dwell_seconds=0, time_source=clock)
+        err = TelegramNetworkError(method=object(), message="simulated")
+        await session._rotate_from(0, err)
+        assert session.active_index == 1
+
+        session._apply(0)
+        session._last_rotate_at = clock.now  # zero time will elapse before the next hop
+        await session._rotate_from(0, err)  # zero time elapsed -- still not gated (dwell=0)
+        assert session.active_index == 1
+        await _drain_background()
+        return session
+
+    asyncio.run(go())
+
+
+def test_channel_with_a_success_since_applied_is_dwell_protected(monkeypatch, caplog):
+    """Rule (b)'s other half: a NON-primary channel that already carried live traffic since
+    being applied has EARNED the same dwell protection as primary -- it does not get
+    abandoned on the very next blip the way a never-proven link would.
+
+    Asserts via caplog's "Proxy failover:" WARNING count rather than `_flap_switch_count` --
+    see test_single_primary_blip_with_dead_backup_returns_without_dwell_wait's docstring for
+    why that counter resets once the episode's alert fires (it fires here too, right after
+    the success on backup)."""
+    clock = _Clock()
+    backup_should_fail = False
+
+    async def fake(self, bot, method, timeout=None):
+        if self._index == 0:
+            raise TelegramNetworkError(method=method, message="primary dead")
+        if backup_should_fail:
+            raise TelegramNetworkError(method=method, message="backup blip")
+        return "result-1"
+
+    monkeypatch.setattr(AiohttpSession, "make_request", fake)
+    caplog.set_level(logging.WARNING, logger="services.proxy_session")
+
+    async def go():
+        nonlocal backup_should_fail
+        session = FailoverAiohttpSession([PRIMARY, BACKUP], dwell_seconds=30, time_source=clock)
+        result = await session.make_request(object(), object())  # rotates 0 -> 1, succeeds
+        assert result == "result-1"
+        assert session._succeeded_since_rotate is True
+
+        backup_should_fail = True
+        clock.advance(1)  # well under dwell_seconds
+        with pytest.raises(TelegramNetworkError):
+            await session.make_request(object(), object())
+        await _drain_background()
+        return session
+
+    session = asyncio.run(go())
+    assert session.active_index == 1  # still on backup -- dwell protected it (had a success)
+    rotations = caplog.text.count("Proxy failover:")
+    assert rotations == 1  # only the original 0 -> 1 hop -- the later blip was dwell-blocked
 
 
 def test_storm_settles_to_exactly_one_alert_naming_the_switch_count(monkeypatch):
-    """Same storm as above, but let it go quiet afterwards: the background stabilisation
-    loop must fire exactly ONE alert once the active link has held for dwell_seconds with no
-    further rotation, summarising the whole episode (not one per hop)."""
+    """Same worst-case storm as above, but let it go quiet afterwards: the background
+    stabilisation loop must fire exactly ONE alert once the active link has held for
+    dwell_seconds with no further rotation, summarising the whole episode (not one per
+    hop)."""
     clock = _Clock()
     fake_sleep = _FakeSleep()
     fake_bot = _FakeBot()
