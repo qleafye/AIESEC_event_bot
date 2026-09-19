@@ -318,9 +318,12 @@ async def card_payload(user: dict) -> dict:
     истинном признаке), `edited`/`resubmit` (`edit_badges_for`), `prev_reject` — «🚫 Ранее
     отклонена: <причина>» (`prev_reject_line`, quick 260904-liz), ПОСЛЕ `resubmit` и ПЕРЕД
     `consent` — строка согласия ВСЕГДА последней.
-    `resume` — `{kind: "file"|"link"|"text"|"none", file_id, text, url}` (приёмка 17.09, п.2:
-    паритет с бото́м расширен на развилку резюме R2b — ссылка `resume_link` и Nextcloud-ссылка
-    `resume_url` на файл, ни та ни другая раньше в карточке веба не показывались вовсе).
+    `resume` — `{kind: "file"|"link"|"text"|"mini"|"none", file_id, text, url, mini, warning}`
+    (приёмка 17.09, п.2: паритет с бото́м расширен на развилку резюме R2b — ссылка `resume_link`
+    и Nextcloud-ссылка `resume_url` на файл, ни та ни другая раньше в карточке веба не
+    показывались вовсе; приёмка 19.09, находки №2/№3: `kind="mini"` — ветка мини-профиля,
+    `mini` — `[{label, value}]` трёх подполей (`moderation_card.mini_resume_fields`); `warning`
+    — `resume_type` задан, но ни одно поле не заполнено, см. `moderation_card.resume_summary`).
     `history` — до 5 записей `get_answer_history` (D-03), КАЖДАЯ уже переведена в
     `{when, source_label, changes:[{label, old, new}]}` — `_history_entry` (найдено планом
     23-05 как Known Stub: до 23-06 фронт получал сырые `column`/`source` литералы).
@@ -331,11 +334,23 @@ async def card_payload(user: dict) -> dict:
     # Приёмка 17.09 (п.2): `resume_link` — тот же шаг развилки резюме, что и `resume` (SU-04
     # R2b), у него теперь тоже свой блок ниже — исключаем из построчных полей карточки той же
     # логикой, что уже исключает `resume`, иначе ссылка печаталась бы дважды (обычной строкой
-    # ЗДЕСЬ и ссылкой в `resume`-блоке).
-    _RESUME_STEPS = ("resume", "resume_link")
+    # ЗДЕСЬ и ссылкой в `resume`-блоке). Приёмка 19.09 (находки №2/№3): три шага мини-профиля —
+    # тот же приём, свой блок `resume.mini` ниже, второй раз строкой здесь не печатаем.
+    _RESUME_STEPS = ("resume", "resume_link", "mini_projects", "mini_portfolio", "mini_direction")
     main_steps = [s for s in steps if s not in _RESUME_STEPS]
     main_fields = moderation_card.card_answers(user, main_steps, answer_limit)
-    extra_steps = [s for s in moderation_card.CARD_STEPS if s not in enabled_set and s not in _RESUME_STEPS]
+    # Приёмка 19.09 (находка №1): `age`/`birth_date` — если один из них уже в `main_fields`,
+    # второй в `extra_fields` не идёт — иначе `moderation_card.card_answers` вызывается ДВУМЯ
+    # отдельными проходами (main/extra) и не видит собственный дедуп друг друга: та же
+    # реципрокная строка «Возраст: N» напечаталась бы дважды — один раз в основных полях, один
+    # раз в «Показать всё».
+    # Локальная копия пары `age`/`birth_date` — тот же приём, что `_RESUME_STEPS` выше (своя
+    # копия служебной группы шагов в этом файле, не тянем приватное имя из moderation_card).
+    _AGE_BIRTH_STEPS = ("age", "birth_date")
+    _extra_exclude = set(_RESUME_STEPS)
+    if enabled_set & set(_AGE_BIRTH_STEPS):
+        _extra_exclude |= set(_AGE_BIRTH_STEPS)
+    extra_steps = [s for s in moderation_card.CARD_STEPS if s not in enabled_set and s not in _extra_exclude]
     extra_fields = moderation_card.card_answers(user, extra_steps, None)
 
     badges: list[dict] = []
@@ -371,22 +386,40 @@ async def card_payload(user: dict) -> dict:
     if consent_line:
         badges.append({"kind": "consent", "text": consent_line})
 
-    # Приёмка 17.09 (п.2): порядок — файл (самый информативный артефакт) -> ссылка (R2b) ->
-    # текст -> нет. `url` для "file" — прямая Nextcloud-ссылка (`resume_url`), если загрузка
-    # удалась; `None`, если файл лежит только в Telegram (`resume_file_id`) — веб-роутер тогда
-    # соберёт безопасную ссылку через file-токен (`miniapp/file_tokens.py`), сюда сырой
-    # `file_id` НЕ подмешивается (T-6i9-01, тот же принцип, что `profile.py::_resume_display`).
-    if user.get("resume_file_id"):
+    # Приёмка 17.09 (п.2)/19.09 (находки №2/№3): порядок — файл (самый информативный артефакт)
+    # -> ссылка (R2b) -> текст -> мини-профиль -> нет; `moderation_card.resume_summary` —
+    # единая точка правды (та же, что зовёт `handlers/admin_moderation.py`, паритет бот/веб).
+    # `url` для "file" — прямая Nextcloud-ссылка (`resume_url`), если загрузка удалась; `None`,
+    # если файл лежит только в Telegram (`resume_file_id`) — веб-роутер тогда соберёт безопасную
+    # ссылку через file-токен (`miniapp/file_tokens.py`), сюда сырой `file_id` НЕ подмешивается
+    # (T-6i9-01, тот же принцип, что `profile.py::_resume_display`).
+    resume_kind = moderation_card.resume_summary(user)
+    if resume_kind["kind"] == "file":
         resume = {
             "kind": "file", "file_id": user["resume_file_id"], "text": None,
-            "url": user.get("resume_url") or None,
+            "url": user.get("resume_url") or None, "mini": [], "warning": False,
         }
-    elif user.get("resume_link"):
-        resume = {"kind": "link", "file_id": None, "text": None, "url": user["resume_link"]}
-    elif user.get("resume_text"):
-        resume = {"kind": "text", "file_id": None, "text": user["resume_text"], "url": None}
+    elif resume_kind["kind"] == "link":
+        resume = {
+            "kind": "link", "file_id": None, "text": None, "url": user["resume_link"],
+            "mini": [], "warning": False,
+        }
+    elif resume_kind["kind"] == "text":
+        resume = {
+            "kind": "text", "file_id": None, "text": user["resume_text"], "url": None,
+            "mini": [], "warning": False,
+        }
+    elif resume_kind["kind"] == "mini":
+        resume = {
+            "kind": "mini", "file_id": None, "text": None, "url": None,
+            "mini": [{"label": label, "value": value} for label, value in resume_kind["mini_fields"]],
+            "warning": False,
+        }
     else:
-        resume = {"kind": "none", "file_id": None, "text": None, "url": None}
+        resume = {
+            "kind": "none", "file_id": None, "text": None, "url": None, "mini": [],
+            "warning": resume_kind["warning"],
+        }
 
     tid = user.get("telegram_id")
     history_raw = await get_answer_history(tid) if tid is not None else []
