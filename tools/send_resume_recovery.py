@@ -192,8 +192,14 @@ async def build_bot():
         connect_timeout = await get_setting_typed("proxy_connect_timeout")
         if connect_timeout is None:
             connect_timeout = SETTINGS_SCHEMA["proxy_connect_timeout"]["default"]
+        dwell_seconds = await get_setting_typed("proxy_switch_dwell_seconds")
+        if dwell_seconds is None:
+            dwell_seconds = SETTINGS_SCHEMA["proxy_switch_dwell_seconds"]["default"]
         session = FailoverAiohttpSession(
-            chain, recheck_seconds=int(recheck_seconds), connect_timeout=int(connect_timeout),
+            chain,
+            recheck_seconds=int(recheck_seconds),
+            connect_timeout=int(connect_timeout),
+            dwell_seconds=int(dwell_seconds),
         )
     return Bot(token=config.BOT_TOKEN.get_secret_value(), default=default, session=session)
 
