@@ -1951,9 +1951,29 @@ def _csv_safe(value):
     """Neutralize CSV/Excel formula injection (CWE-1236): prefix a single quote to any
     STRING cell that begins with a formula trigger so spreadsheet apps treat it as text.
     Non-string cells (int/None) pass through unchanged. Export-side only — never mutates
-    stored data."""
+    stored data.
+
+    RESERVED FOR GENUINE CSV/EXCEL EXPORTS (export_users_csv, export_coins_journal_csv) —
+    Excel/LibreOffice reopens a raw .csv file and DOES parse a leading =/+/-/@ as a formula.
+    Do NOT call this for Google-Sheets row builders — see `_sheet_safe` below."""
     if isinstance(value, str) and value.startswith(_CSV_INJECTION_PREFIXES):
         return "'" + value
+    return value
+
+
+def _sheet_safe(value):
+    """Identity function — the Google-Sheets counterpart of `_csv_safe` above (находка
+    08-sheets-dashboard, квик 260919). Every gspread write in services/sheets.py passes an
+    EXPLICIT `value_input_option=RAW` (see that module's `_RAW` constant), and Google Sheets
+    NEVER interprets a RAW cell as a formula/date/number — so a crafted cell like
+    `=HYPERLINK(...)` is already inert on arrival, without prefixing a visible apostrophe.
+    Prefixing one anyway (the pre-fix behaviour) corrupted real data instead: `'+79991234567`,
+    `'@username`, `'-` — phones/usernames no longer matched by filter/ВПР in the sheet.
+
+    Used by handlers/registration.py's *_sheet_row builders (active/incomplete/party/short) and
+    by services/sheet_logs.py / services/polls.py's row builders — everywhere a row is destined
+    for Sheets, never for a .csv file. Kept as a named no-op (not just removing the call) so the
+    row builders stay self-documenting about WHY no neutralization happens here."""
     return value
 
 
