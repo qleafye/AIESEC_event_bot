@@ -11,5 +11,7 @@ from game_labels import (  # noqa: F401 — явный реэкспорт пуб
     category_label,
     proof_types_label,
     render_task_card_text,
+    sort_tasks_for_delegate,
+    task_deadline,
     task_deadline_short,
 )
