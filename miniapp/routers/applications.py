@@ -88,16 +88,25 @@ def _resume_block(card_resume: dict, token: str) -> dict:
     `kind == "file"`: прямая Nextcloud-ссылка (`card_resume["url"]`), если загрузка удалась,
     иначе безопасная ссылка по `file_id` через существующий токен-механизм
     (`miniapp/file_tokens.py`, тот же приём, что у аватара) — сырой `file_id` клиенту не
-    отдаётся ни в одном из двух случаев."""
+    отдаётся ни в одном из двух случаев.
+
+    Приёмка 19.09 (review-260919, «Модерация» находки №2/№3): `kind == "mini"` — ветка
+    мини-профиля, `mini` — `[{label, value}]` от `moderation_card.mini_resume_fields` (готовые
+    подписи, D-25 «0 хардкода» на клиенте, см. `screens/applications.js::resumeNode`).
+    `warning` пробрасывается для ЛЮБОГО исхода — `resume_type` задан, но данных нет ни в одном
+    кармане (сигнал потери данных, не «резюме не приложено»)."""
     kind = card_resume.get("kind")
+    warning = bool(card_resume.get("warning"))
     if kind == "file":
         url = card_resume.get("url") or file_tokens.file_url(card_resume["file_id"], token)
-        return {"kind": "file", "url": url}
+        return {"kind": "file", "url": url, "warning": warning}
     if kind == "link":
-        return {"kind": "link", "url": card_resume.get("url")}
+        return {"kind": "link", "url": card_resume.get("url"), "warning": warning}
     if kind == "text":
-        return {"kind": "text", "text": card_resume.get("text")}
-    return {"kind": "none"}
+        return {"kind": "text", "text": card_resume.get("text"), "warning": warning}
+    if kind == "mini":
+        return {"kind": "mini", "mini": card_resume.get("mini") or [], "warning": warning}
+    return {"kind": "none", "warning": warning}
 
 
 @router.get("/app/api/applications/next")
