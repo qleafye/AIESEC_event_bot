@@ -168,6 +168,9 @@ def file_principal(
     telegram_id = verify_file_token(t, cfg.bot_token)
     if telegram_id is None:
         return None
+    # Квик 260919-u7e (P5): та же простановка, что `principal()` -- 403 forbidden ниже по
+    # стеку (can_read_file) должен нести telegram_id, а не "anon", раз токен опознал делегата.
+    request.state.telegram_id = telegram_id
     with read_conn(cfg.db_path) as conn:
         caps = frozenset(resolve_capabilities(conn, telegram_id, cfg.admin_ids))
         city = staff_city(conn, telegram_id)
