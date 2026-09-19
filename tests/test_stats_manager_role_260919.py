@@ -118,3 +118,110 @@ def test_dashboard_has_stats_false_when_role_disabled(tmp_path):
 
     with dash_db.read_conn(path) as conn:
         assert dash_access.has_stats(conn, MANAGER_ID, (ADMIN_ID,)) is False
+
+
+# ═══════════════════════════════════════════════════════════════════════════════════════
+# Задача 2 — UI и доки: экран ролей, справка по настройкам, меню
+# ═══════════════════════════════════════════════════════════════════════════════════════
+
+def _flat_callback_data(kb):
+    return [btn.callback_data for row in kb.inline_keyboard for btn in row]
+
+
+def test_roles_keyboard_has_toggle_and_caps_buttons_for_stats_manager(tmp_path):
+    _ready(tmp_path)
+    from handlers import admin_roles
+
+    asyncio.run(db.add_staff(MANAGER_ID, STATS_ROLE, ADMIN_ID))
+    kb = asyncio.run(admin_roles.build_roles_keyboard())
+    cds = _flat_callback_data(kb)
+    assert f"roles_toggle:{STATS_ROLE}" in cds
+    assert f"roles_caps:{STATS_ROLE}" in cds
+
+
+def test_add_manager_role_picker_offers_stats_manager(tmp_path):
+    from tests.test_roles_phase8 import dispatch_message
+    from aiogram.dispatcher.event.bases import UNHANDLED
+
+    _ready(tmp_path)
+    result, event = dispatch_message(
+        str(NEW_ID), ADMIN_ID, raw_state="StaffAdd:waiting_for_person"
+    )
+    assert result is not UNHANDLED
+    markup = event.answers[-1][2]
+    cds = [b.callback_data for row in markup.inline_keyboard for b in row]
+    assert f"roles_addrole:{NEW_ID}:{STATS_ROLE}" in cds
+
+
+def test_roles_addrole_stats_manager_creates_staff_with_all_cities(tmp_path):
+    from tests.test_roles_phase8 import dispatch_callback
+    from aiogram.dispatcher.event.bases import UNHANDLED
+
+    _ready(tmp_path)
+    result, _ = dispatch_callback(f"roles_addrole:{NEW_ID}:{STATS_ROLE}", ADMIN_ID)
+    assert result is not UNHANDLED
+    roles = asyncio.run(db.get_staff_roles(NEW_ID))
+    assert STATS_ROLE in roles
+    assert asyncio.run(db.get_staff_city(NEW_ID)) is None
+
+
+def test_roles_toggle_stats_manager_flips_enabled_setting(tmp_path):
+    from tests.test_roles_phase8 import dispatch_callback
+    from aiogram.dispatcher.event.bases import UNHANDLED
+    from settings_schema import get_setting_typed
+
+    _ready(tmp_path)
+    result, _ = dispatch_callback(f"roles_toggle:{STATS_ROLE}", ADMIN_ID)
+    assert result is not UNHANDLED
+    assert asyncio.run(get_setting_typed("role_stats_manager_enabled")) == "off"
+
+
+def test_render_roles_text_shows_stats_manager_label_and_cap_label(tmp_path):
+    from handlers import admin_roles
+    from handlers.admin_caps import ROLES
+
+    _ready(tmp_path)
+    asyncio.run(db.add_staff(MANAGER_ID, STATS_ROLE, ADMIN_ID))
+    text = asyncio.run(admin_roles.render_roles_text())
+    assert ROLES[STATS_ROLE]["label"] in text
+    assert "📊 Статистика" in text
+
+
+def test_stats_manager_sees_only_data_section_with_five_ops():
+    from handlers.admin_sections import visible_sections, visible_rows
+
+    caps = {"stats"}
+    assert visible_sections(caps, False) == [("data", "📊 Данные")]
+    rows = visible_rows("data", caps, False)
+    ops = [value for kind, value in rows if kind == "op"]
+    assert ops == [
+        "admin_stats",
+        "admin_monthly_stats",
+        "admin_source_stats",
+        "admin_export_csv",
+        "admin_export_incomplete",
+    ]
+
+
+def test_settings_guide_knows_both_stats_manager_keys():
+    from handlers.admin_roles import SETTINGS_GUIDE_KEYS
+
+    assert "role_caps_stats_manager" in SETTINGS_GUIDE_KEYS
+    assert "role_stats_manager_enabled" in SETTINGS_GUIDE_KEYS
+
+
+def test_settings_guide_renders_label_not_raw_key():
+    from handlers.admin_roles import (
+        SETTINGS_GUIDE_SECTIONS,
+        SETTINGS_GUIDE_KEYS,
+        _render_settings_guide,
+    )
+    from handlers.admin_caps import ROLES
+
+    chunks = _render_settings_guide(
+        SETTINGS_GUIDE_SECTIONS, {k: None for k in SETTINGS_GUIDE_KEYS}
+    )
+    text = "\n".join(chunks)
+    assert ROLES[STATS_ROLE]["label"] in text
+    assert "role_caps_stats_manager" not in text
+    assert STATS_ROLE not in text
