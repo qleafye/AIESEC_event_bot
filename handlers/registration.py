@@ -14,7 +14,7 @@ from aiogram.types import FSInputFile, ReplyKeyboardRemove, InlineKeyboardMarkup
 from aiogram.utils.keyboard import ReplyKeyboardBuilder
 
 from config import config
-from database.db import add_user, get_user, get_setting, set_setting, mark_reg_started, clear_reg_started, set_reg_step, set_user_subscribed, set_user_status, record_user_consent, get_user_consents, get_reg_started_track, get_reg_started_city, has_short_incomplete, _csv_safe, get_incomplete_rows_with_city, reset_payment_for_new_season, record_reg_event, backfill_reg_event_city, claim_reg_draft, get_reg_draft, upsert_reg_draft, delete_reg_draft, touch_reg_draft_activity, settings_snapshot  # Phase 15 (STAT-03, D-06): funnel event log; backfill_reg_event_city дозаполняет город на шаге form_started; Phase 21 (21-08): claim_reg_draft/get_reg_draft feed finalize_registration's thin wrapper; Phase 21 (21-09): upsert/delete/touch feed the draft-sync points below
+from database.db import add_user, get_user, get_setting, set_setting, mark_reg_started, clear_reg_started, set_reg_step, set_user_subscribed, set_user_status, record_user_consent, get_user_consents, get_reg_started_track, get_reg_started_city, has_short_incomplete, _sheet_safe, get_incomplete_rows_with_city, reset_payment_for_new_season, record_reg_event, backfill_reg_event_city, claim_reg_draft, get_reg_draft, upsert_reg_draft, delete_reg_draft, touch_reg_draft_activity, settings_snapshot  # Phase 15 (STAT-03, D-06): funnel event log; backfill_reg_event_city дозаполняет город на шаге form_started; Phase 21 (21-08): claim_reg_draft/get_reg_draft feed finalize_registration's thin wrapper; Phase 21 (21-09): upsert/delete/touch feed the draft-sync points below; квик 260919: _csv_safe -> _sheet_safe (08-sheets-dashboard) — Sheets-строки больше не нейтрализуются, gspread пишет явным RAW
 from settings_schema import SETTINGS_SCHEMA, get_setting_typed  # REG-01/D-06 (06-04): REG_DEFAULTS derivation source; get_setting_typed (06-06 gate migration)
 from cities import CITIES, all_cities, normalize_city, is_default_city, city_tab_base, cities_module_on, is_city_enabled, city_label, enabled_cities, tab_suffix, get_setting_for_city, get_setting_typed_for_city, per_city_key  # Phase 07.1 (CITY-01/CITY-02/CITY-03): city registry — _city_tag_map() + city_row_tab + city fork below; tab_suffix added quick 260815-3hw (TABS-01/02/03, replaces the raw TAB_SUFFIX import); get_setting_for_city/get_setting_typed_for_city added Phase 09.2-04 (CITY-04): per-city text/mode resolver; all_cities added Phase 14 (CITY-07); per_city_key added Phase 25 (CITYQ-03): per-tab sheet_header_schema snapshot key
 from handlers.states import Registration
@@ -1198,13 +1198,14 @@ async def active_sheet_row(data: dict, city_code: str | None = None) -> list:
     delegate's row is always built by the SAME rule that decided the tab's own header (see
     `handlers.reg_schema.sheet_city_code`'s docstring for the shared invariant).
 
-    LOW (formula-injection parity, T-05-06-01): every projected cell is passed through
-    database.db._csv_safe — the same neutralizer the party path already applies — so a crafted
-    ФИО like «=HYPERLINK(...)» is stored as text on the MAIN tab too, not evaluated as a formula.
-    Neutralizes only STRING cells starting with =,+,-,@,\\t,\\r (ints/None pass through)."""
+    Квик 260919 (08-sheets-dashboard): раньше здесь стоял database.db._csv_safe — сейчас
+    database.db._sheet_safe (функция-тождество). services/sheets.py пишет каждый gspread-вызов
+    явным value_input_option=RAW, а RAW-ячейку Google никогда не интерпретирует как формулу —
+    приписанный апостроф был не защитой, а порчей данных (`'+79991234567`, `'@username` не
+    находятся фильтром/ВПР)."""
     headers = await get_sheet_schema(city_code)
     values = _sheet_value_map(data)
-    return [_csv_safe(values.get(h, "-")) for h in headers]
+    return [_sheet_safe(values.get(h, "-")) for h in headers]
 
 
 # Quick k4y: base identity/dropout columns for the «Незавершённые» tab, plus the set of
@@ -1279,7 +1280,7 @@ def incomplete_sheet_row(
     values["Username"] = username or "-"
     values["Начал регистрацию"] = started_at or "-"
     values["Остановился на"] = dropout_step_label(last_step)
-    return [_csv_safe(values.get(h, "-")) for h in headers]
+    return [_sheet_safe(values.get(h, "-")) for h in headers]
 
 
 # --- Phase 5 (D-11/D-12, TRACK-06): party worksheet tab -------------------------------------
@@ -1328,16 +1329,17 @@ async def party_sheet_row(data: dict, city_code: str | None = None) -> list:
     tab (unlike the main sheet's CR-9 sheet_header_schema) — party volume is low enough that
     live headers are acceptable; this is a deliberate scope choice, not an oversight.
 
-    T-05-06-01: every registrant-supplied cell is passed through database.db._csv_safe (the
-    reviewed formula-injection neutralizer, 260713-jgi) before being returned, matching the
-    same mitigation used for the CSV export path. NOTE: the main sheet's active_sheet_row does
-    NOT currently apply _csv_safe — that gap is out of this plan's scope (see SUMMARY).
+    Квик 260919 (08-sheets-dashboard): раньше каждая ячейка шла через database.db._csv_safe
+    (T-05-06-01, 260713-jgi) — теперь через database.db._sheet_safe (функция-тождество).
+    services/sheets.py пишет явным value_input_option=RAW, и Google Sheets никогда не
+    интерпретирует RAW-ячейку как формулу, так что приписанный апостроф защищал от несуществующей
+    угрозы ценой порчи телефонов/юзернеймов на листе (see database.db._sheet_safe docstring).
 
     Phase 25 (CITYQ-03): `city_code` (default `None`) shares the SAME signature shape as
     active_sheet_row/short_sheet_row so `_sheet_dispatch` stays a plain (row_fn, append_fn)
     resolver."""
     headers = await party_sheet_headers(city_code)
-    values = {h: _csv_safe(fn(data)) for h, _g, fn in PARTY_SHEET_COLUMNS}
+    values = {h: _sheet_safe(fn(data)) for h, _g, fn in PARTY_SHEET_COLUMNS}
     return [values.get(h, "-") for h in headers]
 
 
@@ -1397,16 +1399,16 @@ async def short_sheet_headers(city_code: str | None = None) -> list[str]:
 
 async def short_sheet_row(data: dict, city_code: str | None = None) -> list:
     """Mirror party_sheet_row: live headers (no frozen sheet_header_schema snapshot — promo
-    volume is small, same deliberate scope choice as party). Every cell passes through
-    database.db._csv_safe (T-07-04) so a crafted ФИО like «=HYPERLINK(...)» is stored as text,
-    not evaluated as a formula.
+    volume is small, same deliberate scope choice as party). Квик 260919: cells pass through
+    database.db._sheet_safe (identity) now, not _csv_safe (T-07-04) — see _sheet_safe's
+    docstring for why Sheets+RAW needs no formula-injection prefix.
 
     Phase 25 (CITYQ-03): `city_code` (default `None`) shares the SAME signature shape as
     active_sheet_row/party_sheet_row so `_sheet_dispatch` stays a plain (row_fn, append_fn)
     resolver."""
     headers = await short_sheet_headers(city_code)
     values = _sheet_value_map(data)
-    return [_csv_safe(values.get(h, "-")) for h in headers]
+    return [_sheet_safe(values.get(h, "-")) for h in headers]
 
 
 SHORT_SHEET_TAB_DEFAULT = "Краткая"

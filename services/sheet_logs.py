@@ -20,7 +20,7 @@ from database.db import (
     list_answer_history,
     list_questions,
     get_all_users_dicts,
-    _csv_safe,
+    _sheet_safe,  # квик 260919 (08-sheets-dashboard): _csv_safe -> _sheet_safe, см. её докстринг
 )
 from settings_schema import get_setting_typed, SETTINGS_SCHEMA
 from services.questions import format_stamp as _fmt_dt, status_label
@@ -62,7 +62,8 @@ def _column_label(column: str) -> str:
 
 
 def _cell(value) -> str:
-    """None -> пустая строка (не «None»); остальное — в строку, потом через `_csv_safe`."""
+    """None -> пустая строка (не «None»); остальное — в строку, потом через `_sheet_safe`
+    (квик 260919: identity — Sheets-строки не нейтрализуются, см. database.db._sheet_safe)."""
     return "" if value is None else str(value)
 
 
@@ -98,7 +99,7 @@ async def build_history_sheet_rows() -> list[list]:
                 _cell(change.get("new")),
                 _cell(entry.get("season")),
             ])
-    return [[_csv_safe(v) for v in r] for r in rows]
+    return [[_sheet_safe(v) for v in r] for r in rows]
 
 
 async def build_questions_sheet_rows() -> list[list]:
@@ -141,7 +142,7 @@ async def build_questions_sheet_rows() -> list[list]:
             status_label(q),
             _cell(q.get("answer_text")),
         ])
-    return [[_csv_safe(v) for v in r] for r in rows]
+    return [[_sheet_safe(v) for v in r] for r in rows]
 
 
 async def _resolve_tab(key: str) -> str:

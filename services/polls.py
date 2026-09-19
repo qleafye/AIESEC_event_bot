@@ -26,7 +26,7 @@ from database.db import (
     get_poll_results,
     get_all_users_ids,
     count_and_list_filtered,
-    _csv_safe,
+    _sheet_safe,  # квик 260919 (08-sheets-dashboard): _csv_safe -> _sheet_safe, см. её докстринг
 )
 from services.timeutil import msk_now
 from settings_schema import get_setting_typed, SETTINGS_SCHEMA
@@ -251,7 +251,7 @@ async def build_polls_sheet_rows(poll_ids: list[int] | None = None) -> list[list
                 _fmt_date(a.get("answered_at")), q, a["user_id"],
                 a.get("full_name") or "", a.get("username") or "", city, chosen,
             ])
-    return [[_csv_safe(v) for v in r] for r in rows]
+    return [[_sheet_safe(v) for v in r] for r in rows]
 
 
 async def export_polls_to_sheet() -> int:
