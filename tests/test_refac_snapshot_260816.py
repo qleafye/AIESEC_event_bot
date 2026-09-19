@@ -693,6 +693,7 @@ admin|callback_query|appr_history|appr_history:*
 admin|callback_query|appr_full|appr_full:*
 admin|callback_query|modcard_open|modcard_open
 admin|callback_query|modcard_toggle|modcard_toggle:*
+admin|callback_query|modcard_sync|modcard_sync
 admin|callback_query|modcard_limit|modcard_limit:*
 admin|callback_query|modcard_noop|modcard_noop
 admin|callback_query|admin_reg_scoring|admin_reg_scoring
@@ -1044,7 +1045,10 @@ def test_snapshot_total_handler_count_is_292():
     # toggle_chat_tracking_enabled и перед toggle_delegate_lang_enabled (522 -> 523) — тот же
     # хвост блока простых _toggle_module_setting тумблеров, что и у соседа. Чистая вставка,
     # перепроверена прогоном `_build_snapshot_lines()` и diff'ом (difflib.unified_diff).
-    assert len(GOLDEN_SNAPSHOT) == 523
+    # Квик 260919-m9x: +1 handlers/admin_modcard.py callback_query modcard_sync («показать
+    # всё, что спрашиваем»), встал сразу после modcard_toggle и перед modcard_limit —
+    # порядок объявления в файле (523 -> 524).
+    assert len(GOLDEN_SNAPSHOT) == 524
     # (callback_query toggle_reg_form_v2/chips/lookup_search/edu_card/repeatable/limit_counter/
     # status_screen/header_settings/haptics — девять тумблеров «Анкета 2.0»), встали сразу после
     # admin_quiet_hours и перед sync_sheet: шов импортируется из хвоста
