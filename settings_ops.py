@@ -26,6 +26,11 @@
 
 Phase 28 (28-10, SU-11): плюс корневой `reg_presets` (тоже aiogram-free, см. его докстринг) —
 `apply_event_type_preset("skillup")` зовёт тот же bulk-writer, что кнопка пресета в боте.
+
+Quick 260919-mlu (Task 2): плюс расчёт плана переименования вкладок — `SHEET_TAB_NAME_KEYS`,
+`normalize_tab_prefix`, `bot_tab_prefix`, `TabTarget`, `current_tab_titles`,
+`plan_prefix_renames`. Чистая логика (без записи в Sheets — та же граница, что у остального
+модуля: пишет `handlers/admin_sheet_tabs.py`, здесь только «что считать своим и как назвать»).
 """
 from __future__ import annotations
 
@@ -34,7 +39,10 @@ import re
 from dataclasses import dataclass
 
 from config import config
-from cities import PER_CITY_SEP, city_codes, normalize_city, split_per_city_key
+from cities import (
+    PER_CITY_SEP, city_codes, city_label, city_tab_base, normalize_city, split_per_city_key,
+    tab_suffix,
+)
 from database.db import delete_setting, get_setting, get_staff_city, set_setting
 from reg_presets import apply_reg_preset
 from services.sheets import _reset_sheet_cache
@@ -176,6 +184,199 @@ def tab_check_failed_warning(key: str) -> str:
     else:
         tail = "если такая вкладка уже есть, при следующей синхронизации она будет перезаписана."
     return f"\n\n⚠️ Значение сохранено, но проверить вкладку в Google-таблице не удалось — {tail}"
+
+
+# ── Quick 260919-mlu (Task 2): план переименований вкладок ───────────────────────────────
+#
+# SHEET_TAB_NAME_KEYS — все 10 ключей-ИМЁН вкладок из реестра. Это НЕ SHEET_TAB_WRITE_MODE
+# выше (там 6 ключей и только РЕЖИМ записи rewrite/append — определяет текст гейта задачи
+# 260815-3hw). Здесь — полный список ключей, чьё ЗНАЧЕНИЕ является именем реального листа
+# Google-таблицы (включая polls_sheet_tab/preselect_tab/history_sheet_tab/questions_sheet_tab,
+# которых нет в SHEET_TAB_WRITE_MODE, потому что туда бот либо не пишет вовсе, либо пишет не
+# через rebuild/append-путь, который гейт 260815-3hw вообще проверяет).
+SHEET_TAB_NAME_KEYS: tuple[str, ...] = (
+    "main_sheet_tab", "short_sheet_tab", "party_sheet_tab", "incomplete_sheet_tab",
+    "polls_sheet_tab", "game_matrix_tab", "game_history_tab", "preselect_tab",
+    "history_sheet_tab", "questions_sheet_tab",
+)
+
+# Городские треки (kind), у которых есть отдельный лист = база города + приписка
+# (cities.tab_suffix). "main" — не трек, суффикса нет, база города И ЕСТЬ главная вкладка.
+_CITY_TRACK_KINDS: tuple[str, ...] = ("short", "party", "incomplete", "game", "game_history")
+
+_CITY_KIND_LABELS: dict[str, str] = {
+    "main": "основная", "short": "краткая форма", "party": "вечеринка",
+    "incomplete": "незавершённые", "game": "гейма", "game_history": "история сдач",
+}
+
+_PINNED_MAIN_TAB_SETTING_KEY = "sheets_main_tab_pinned_title"
+
+
+def normalize_tab_prefix(raw: str | None) -> str:
+    """Зеркало `cities.tab_suffix`'s нормализации, но с пробелом на ХВОСТЕ, не в начале —
+    префикс приписывается ПЕРЕД именем («🤖 Незавершённые»), суффикс ПОСЛЕ («СПб Акция»).
+    `settings_edit_value` уже делает `.strip()` перед сохранением, поэтому «🤖 », введённое
+    менеджером, долетает досюда как «🤖» — здесь оно снова получает ровно один пробел на
+    конце. Пустая строка и «-» (универсальный «сбросить» для текстовых настроек,
+    см. `handlers/admin_settings.py::settings_edit_value`) означают «без префикса»."""
+    value = (raw or "").strip()
+    if not value or value == "-":
+        return ""
+    return f"{value} "
+
+
+async def bot_tab_prefix() -> str:
+    """Текущий префикс ботовых вкладок — настройка или дефолт реестра, нормализованные."""
+    raw = await get_setting_typed("sheet_tab_bot_prefix") or SETTINGS_SCHEMA[
+        "sheet_tab_bot_prefix"
+    ]["default"]
+    return normalize_tab_prefix(raw)
+
+
+@dataclass(frozen=True)
+class TabTarget:
+    """Одна вкладка Google-таблицы, которую бот считает СВОЕЙ — то, что кнопка «Добавить
+    префикс» готова тронуть, и то, из чего строится развилка задачи 3. `origin` различает
+    ключ-имя настройки (`"key"`, один из SHEET_TAB_NAME_KEYS минус `preselect_tab` — см.
+    `current_tab_titles`) от городской вкладки трека (`"city"`, собранной из
+    `cities.city_tab_base` + `cities.tab_suffix`). `label` — человеческая подпись для экрана
+    подтверждения (CLAUDE.md: коды ключей менеджеру не показываем)."""
+    title: str
+    origin: str  # "key" | "city"
+    key: str | None
+    city_code: str | None
+    kind: str | None
+    label: str
+
+
+async def current_tab_titles() -> list[TabTarget]:
+    """Что сейчас считает своими вкладками бот — вход для `plan_prefix_renames` и для экрана
+    подтверждения массового переименования. `preselect_tab` сюда НАМЕРЕННО не входит: этот
+    лист бот только ЧИТАЕТ, заполняет его менеджер руками, а значок «руками не трогать» на
+    нём был бы ложью (решение планировщика квика 260919-mlu). Города с пустой базой
+    (`tab_base == ""` — например, Москва, чьи строки идут в основную вкладку без города)
+    пропускаются целиком, включая все их треки: пустая база + суффикс сама по себе не имя
+    вкладки. Дублирующиеся заголовки схлопываются — один и тот же лист не переименовывается
+    дважды, даже если на него сослались два разных ключа/города."""
+    targets: list[TabTarget] = []
+    seen_titles: set[str] = set()
+
+    for key in SHEET_TAB_NAME_KEYS:
+        if key == "preselect_tab":
+            continue
+        entry = SETTINGS_SCHEMA.get(key, {})
+        value = await get_setting_typed(key)
+        if not value and key == "main_sheet_tab":
+            # Резолв основной вкладки повторяет 4-ступенчатую цепочку services.sheets._get_sheet
+            # (bot_settings -> .env -> легаси-пин), но без RuntimeError на 4-й ступени — пустой
+            # результат здесь просто означает «эту цель пропускаем», не «бот сломан».
+            env_value = (config.GOOGLE_SHEET_TAB or "").strip().strip('"').strip("'").strip()
+            value = env_value or await get_setting(_PINNED_MAIN_TAB_SETTING_KEY)
+        elif not value:
+            value = entry.get("default")
+        title = (value or "").strip()
+        if not title or title in seen_titles:
+            continue
+        seen_titles.add(title)
+        targets.append(TabTarget(
+            title=title, origin="key", key=key, city_code=None, kind=None,
+            label=entry.get("label", key),
+        ))
+
+    for code in city_codes():
+        base = (await city_tab_base(code)).strip()
+        if not base:
+            continue  # Москва и подобные: строки идут в основную вкладку, своей нет
+        city_lbl = await city_label(code)
+
+        if base not in seen_titles:
+            seen_titles.add(base)
+            targets.append(TabTarget(
+                title=base, origin="city", key=None, city_code=code, kind="main",
+                label=f"{city_lbl} — {_CITY_KIND_LABELS['main']}",
+            ))
+
+        for kind in _CITY_TRACK_KINDS:
+            suffix = await tab_suffix(kind)
+            title = f"{base}{suffix}".strip()
+            if not title or title in seen_titles:
+                continue
+            seen_titles.add(title)
+            targets.append(TabTarget(
+                title=title, origin="city", key=None, city_code=code, kind=kind,
+                label=f"{city_lbl} — {_CITY_KIND_LABELS[kind]}",
+            ))
+
+    return targets
+
+
+def plan_prefix_renames(
+    targets: list[TabTarget], existing_titles: list[str], prefix: str, *, add: bool,
+) -> tuple[list[tuple[TabTarget, str, str]], list[tuple[TabTarget, str, str]]]:
+    """Чистая синхронная функция (без единого вызова записи) — план массового при-/от-соединения
+    префикса. `existing_titles` — то, что реально есть в таблице СЕЙЧАС (`list_worksheet_titles`),
+    `targets` — то, что бот считает своими (`current_tab_titles`). Возвращает `(renames, skipped)`:
+
+    - `renames` — список `(target, old_title, new_title)`, готовый к последовательному
+      исполнению `rename_worksheet`;
+    - `skipped` — список `(target, old_title, причина)` с человеческой причиной-строкой
+      (`"нет в таблице"` / `"уже с префиксом"` / `"имя занято"` / `"без префикса"`), чтобы
+      экран подтверждения мог честно сказать, почему лист не тронут — без причины «просто
+      ничего не произошло» (CLAUDE.md: ошибка объясняет, что сделать).
+
+    `add=True`: `new = prefix + old`. `add=False` (кнопка «Убрать префикс»): `new` — срез
+    `old` без префикса, БЕЗ дополнительного `.strip()` — имя, которое менеджер задал сам,
+    могло начинаться с пробела намеренно, и обрезать его - не наша забота.
+
+    Идемпотентность в обе стороны: второй прогон с тем же `prefix`/`existing_titles` даёт
+    пустой `renames` (всё уже либо с префиксом, либо без него — попадает в `skipped`)."""
+    existing = set(existing_titles)
+    renames: list[tuple[TabTarget, str, str]] = []
+    skipped: list[tuple[TabTarget, str, str]] = []
+    seen_old: set[str] = set()
+
+    for target in targets:
+        old = target.title
+        if old in seen_old:
+            continue
+        seen_old.add(old)
+
+        if not prefix:
+            # Пустой префикс (менеджер сбросил настройку «-») — ни добавлять, ни снимать
+            # нечего; без этой общей проверки "убрать" переименовало бы каждый лист сам в
+            # себя (old.startswith("") всегда True).
+            skipped.append((target, old, "без префикса"))
+            continue
+
+        if add:
+            if old.startswith(prefix):
+                skipped.append((target, old, "уже с префиксом"))
+                continue
+            if old not in existing:
+                skipped.append((target, old, "нет в таблице"))
+                continue
+            new = f"{prefix}{old}"
+            if new in existing:
+                skipped.append((target, old, "имя занято"))
+                continue
+        else:
+            if not old.startswith(prefix):
+                skipped.append((target, old, "без префикса"))
+                continue
+            if old not in existing:
+                skipped.append((target, old, "нет в таблице"))
+                continue
+            new = old[len(prefix):]
+            if not new:
+                skipped.append((target, old, "без префикса"))
+                continue
+            if new in existing:
+                skipped.append((target, old, "имя занято"))
+                continue
+
+        renames.append((target, old, new))
+
+    return renames, skipped
 
 
 # ── plain_text — снятие HTML-разметки для JSON-ответа веб-слоя (D-06) ────────────────────
