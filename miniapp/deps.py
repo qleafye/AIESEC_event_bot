@@ -164,12 +164,17 @@ def principal(
         telegram_id, via = int(data["user"]["id"]), "initdata"
         username = data["user"].get("username")
         first_name = data["user"].get("first_name")
+        # Квик 260919-u7e (P5): личность известна ДО любых дальнейших гейтов (city/caps/
+        # section/edit_closed) -- `miniapp.main._log_api_error` читает отсюда, чтобы 403/409,
+        # случившиеся ПОСЛЕ этой строки, несли telegram_id, а не "anon".
+        request.state.telegram_id = telegram_id
     elif "session" in request.scope and request.session.get("telegram_id"):
         try:
             telegram_id = int(request.session["telegram_id"])
         except (TypeError, ValueError):
             raise HTTPException(401, {"reason": "no_auth"})
         via = "cookie"
+        request.state.telegram_id = telegram_id
         if (
             request.method.upper() in _MUTATING_METHODS
             and request.headers.get(CSRF_HEADER, "").lower() != CSRF_HEADER_VALUE
