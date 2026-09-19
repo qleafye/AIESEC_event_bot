@@ -53,9 +53,12 @@ def test_short_sheet_headers_zero_keys_is_system_only(tmp_path):
     assert headers == ["ID Telegram", "Username", "Дата регистрации", "Статус", "ФИО"]
 
 
-# ── Group 3: formula-injection neutralization (T-07-04) ─────────────────────────────────────
+# ── Group 3: Sheets rows stay RAW, no formula-injection prefix (квик 260919) ────────────────
 
-def test_short_sheet_row_neutralizes_formula_injection(tmp_path):
+def test_short_sheet_row_keeps_formula_look_alike_raw(tmp_path):
+    """services/sheets.py always writes with explicit value_input_option=RAW, which Google
+    Sheets never parses as a formula — short_sheet_row no longer runs _csv_safe (T-07-04),
+    see database.db._sheet_safe's docstring."""
     _use_tmp_db(tmp_path)
 
     async def go():
@@ -69,7 +72,7 @@ def test_short_sheet_row_neutralizes_formula_injection(tmp_path):
         return dict(zip(headers, row))
 
     values = asyncio.run(go())
-    assert values["ФИО"].startswith("'")
+    assert values["ФИО"] == '=HYPERLINK("http://evil","x")'
 
 
 # ── Group 4: exclusivity of _sheet_dispatch (SHORT-04 regression + structural guard) ────────
