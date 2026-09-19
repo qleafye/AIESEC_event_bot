@@ -174,7 +174,7 @@ def _run_one_reminder_iteration(bot, admin_ids, monkeypatch, tmp_path):
 
     monkeypatch.setattr(config, "ADMIN_IDS", admin_ids)
 
-    async def fake_pending_count():
+    async def fake_pending_count(**kwargs):
         return 1
 
     async def fake_sleep(_seconds):
