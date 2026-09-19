@@ -244,12 +244,13 @@ def test_show_value_picker_participant_type_unknown_value_is_fail_soft(tmp_path)
     assert "some_future_track" in texts
 
 
-# ── Task 3 regression: _csv_safe parity on the main sheet (already shipped in 8a9e889;
-# tests/test_block7_low.py::test_main_tab_active_sheet_row_neutralizes_formula covers the
-# `=HYPERLINK` case — this test locks down the other three CSV-injection prefixes so the
-# parity with the party sheet (which _csv_safe protects identically) cannot regress silently.
+# ── Task 3 regression (updated квик 260919, 08-sheets-dashboard): active_sheet_row must leave
+# every cell RAW — no _csv_safe neutralization — because services/sheets.py always writes with
+# explicit value_input_option=RAW, which Google Sheets never parses as a formula. Locks down the
+# same four CSV-injection-looking prefixes tests/test_block7_low.py covers for `=HYPERLINK`, now
+# asserting they pass through byte-for-byte instead of getting a leading apostrophe.
 
-def test_main_tab_active_sheet_row_neutralizes_all_injection_prefixes(tmp_path):
+def test_main_tab_active_sheet_row_keeps_all_injection_look_alike_prefixes_raw(tmp_path):
     from handlers import registration as reg
 
     _db_ready(tmp_path, name="test_config_audit_260818_csv.db")
@@ -270,9 +271,7 @@ def test_main_tab_active_sheet_row_neutralizes_all_injection_prefixes(tmp_path):
 
     row = asyncio.run(go())
     raw_cells = {"=SUM(1)", "+1", "-1", "@x"}
-    for cell in row:
-        if isinstance(cell, str):
-            assert cell not in raw_cells, f"unsafe raw cell leaked into the sheet row: {cell!r}"
-    safe_cells = [c for c in row if isinstance(c, str) and c[1:] in raw_cells]
-    assert len(safe_cells) == 4, row
-    assert all(c.startswith("'") for c in safe_cells)
+    present = [c for c in row if isinstance(c, str) and c in raw_cells]
+    assert len(present) == 4, row
+    # никакой апостроф не приписан — RAW-запись Sheets и так никогда не считает это формулой
+    assert not any(isinstance(c, str) and c.startswith("'") for c in row), row
