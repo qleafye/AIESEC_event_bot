@@ -1,5 +1,4 @@
-"""Quick 260919-mlu (Task 3) — шов admin_sections: развилка при смене одного ключа-имени
-вкладки Google-таблицы.
+"""Quick 260919-mlu — шов admin_sections: операции переименования вкладок Google-таблицы.
 
 Регистрирует хендлеры на общий `router` владельца (`handlers.admin`, техника 13-02) и
 импортируется из ХВОСТА `handlers/admin_sections.py` — `handlers/admin_settings.py` стоит
@@ -11,34 +10,47 @@
 заводит НОВУЮ пустую вкладку, а старая с данными остаётся сиротой. Существующий гейт (квик
 260815-3hw, `sheets_tab_confirm`/`sheets_tab_cancel` в `admin_settings.py`) предупреждает
 только о ДРУГОЙ беде — «вкладка с НОВЫМ именем уже есть, её перезапишут» — и ничего не
-знает о брошенной старой. Этот шов добавляет вторую половину: если у ключа была валидная
-СТАРАЯ вкладка, менеджеру предлагается её ПЕРЕИМЕНОВАТЬ (данные остаются), а не молча
-потерять.
+знает о брошенной старой.
 
-`tab_change_screen` — развилка на 4 клетки таблицы «old_exists × new_exists» (см. её
-докстринг); `admin_settings.py::settings_edit_value` зовёт её ДО существующего гейта
+Task 3: `tab_change_screen` — развилка на 4 клетки таблицы «old_exists × new_exists» (см.
+её докстринг); `admin_settings.py::settings_edit_value` зовёт её ДО существующего гейта
 260815-3hw. `None` = развилки нет — вызывающий код сохраняет как раньше (byte-for-byte для
 веток, которых новая развилка не касается: ключ не про вкладки, старой вкладки нет,
 проверка не удалась).
 
-FSM: те же `EditSetting.waiting_for_tab_confirm` данные, что и у 260815-3hw
+FSM (Task 3): те же `EditSetting.waiting_for_tab_confirm` данные, что и у 260815-3hw
 (`pending_tab_key`/`pending_tab_value`), плюс новый `pending_tab_old` — второе состояние не
 заводим.
+
+Task 4: массовые кнопки «🤖 Добавить префикс ко всем вкладкам бота» / «🧹 Убрать префикс» на
+экране «📄 Вкладки таблицы» — `settings_ops.current_tab_titles`/`plan_prefix_renames`
+считают план, `sheet_tabs_prefix_add`/`_del` показывают экран подтверждения (БЕЗ единого
+вызова записи), `sheet_tabs_prefix_add_go`/`_del_go` исполняют его. План не хранится в FSM
+между экраном подтверждения и исполнением — оба зовут одни и те же чистые функции над
+одним и тем же состоянием настроек, пересчёт идемпотентен и дешевле, чем тащить дataclass
+через сериализацию FSM-хранилища.
 """
 import html as html_module
+import logging
 
 from aiogram import F, types
 from aiogram.fsm.context import FSMContext
 from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
 
 from config import config
-from database.db import get_setting
+from database.db import get_setting, update_city
+from cities import reload_cities
 from handlers.admin import router
 from handlers.states import EditSetting
-from settings_audit import set_setting_by_admin
+from settings_audit import delete_setting_by_admin, set_setting_by_admin
 from settings_schema import SETTINGS_SCHEMA, get_setting_typed
-from settings_ops import SHEET_TAB_WRITE_MODE, after_tab_setting_saved
-from services.sheets import rename_worksheet, tab_row_count
+from settings_ops import (
+    SHEET_TAB_WRITE_MODE, after_tab_setting_saved, bot_tab_prefix, current_tab_titles,
+    plan_prefix_renames,
+)
+from services.sheets import list_worksheet_titles, rename_worksheet, tab_row_count
+
+logger = logging.getLogger(__name__)
 
 # Тот же ключ, что services/sheets.py::_PINNED_MAIN_TAB_SETTING_KEY — легаси-пин основной
 # вкладки, третья ступень резолва main_sheet_tab. Не импортируем константу оттуда (модуль
@@ -226,3 +238,204 @@ async def sheet_tab_newtab_go(callback: types.CallbackQuery, state: FSMContext):
     text, kb = await settings_return_screen(callback.from_user.id, group_token="sheets")
     await callback.message.edit_text(text + warning, parse_mode="HTML", reply_markup=kb)
     await callback.answer("✅ Сохранено")
+
+
+# ═══════════════════════════════════════════════════════════════════════════════════════════
+# Task 4: массовые «Добавить/Убрать префикс» — экран «📄 Вкладки таблицы»
+# ═══════════════════════════════════════════════════════════════════════════════════════════
+
+_PREFIX_PREVIEW_LIMIT = 20
+
+
+def sheet_tabs_group_extra_buttons() -> list[list[InlineKeyboardButton]]:
+    """Две кнопки на экране «📄 Вкладки таблицы» (образец —
+    `handlers/admin_consent.py::consent_group_extra_buttons`)."""
+    return [
+        [InlineKeyboardButton(
+            text="🤖 Добавить префикс ко всем вкладкам бота", callback_data="sheet_tabs_prefix_add",
+        )],
+        [InlineKeyboardButton(text="🧹 Убрать префикс", callback_data="sheet_tabs_prefix_del")],
+    ]
+
+
+def _skip_reason_breakdown(skipped: list[tuple]) -> str:
+    """«нет в таблице (2), имя занято (1)» — без счётчика-обёртки, вызывающий текст сам решает
+    формулировку вокруг (экран подтверждения и итоговый отчёт формулируют по-разному)."""
+    if not skipped:
+        return ""
+    counts: dict[str, int] = {}
+    for _target, _old, reason in skipped:
+        counts[reason] = counts.get(reason, 0) + 1
+    return ", ".join(f"{reason} ({n})" for reason, n in counts.items())
+
+
+async def _prefix_plan_screen(*, add: bool) -> tuple[str, InlineKeyboardMarkup]:
+    """Собирает план (`current_tab_titles` + `list_worksheet_titles` + `bot_tab_prefix` +
+    `plan_prefix_renames`) и рисует экран подтверждения — БЕЗ единого вызова записи."""
+    action_label = (
+        "🤖 Добавить префикс ко всем вкладкам бота" if add
+        else "🧹 Убрать префикс со всех вкладок бота"
+    )
+    cancel_row = [InlineKeyboardButton(text="← Отмена", callback_data="sheets_tab_cancel")]
+
+    titles = await list_worksheet_titles()
+    if titles is None:
+        text = (
+            f"⚠️ <b>{action_label}</b>\n\n"
+            "❌ Не удалось обратиться к Google-таблице — переименовывать вслепую не буду. "
+            "Попробуйте позже."
+        )
+        return text, InlineKeyboardMarkup(inline_keyboard=[cancel_row])
+
+    targets = await current_tab_titles()
+    prefix = await bot_tab_prefix()
+    renames, skipped = plan_prefix_renames(targets, titles, prefix, add=add)
+
+    lines = [f"⚠️ <b>{action_label}</b>", ""]
+    if not renames:
+        if not prefix:
+            lines.append("Префикс не задан — задайте его в «🤖 Префикс вкладок бота» выше.")
+        elif not skipped:
+            lines.append("У бота пока нет ни одной именованной вкладки — нечего трогать.")
+        else:
+            lines.append("Изменений нет — все вкладки уже в нужном состоянии.")
+    else:
+        preview = renames[:_PREFIX_PREVIEW_LIMIT]
+        for _target, old, new in preview:
+            lines.append(f"«{html_module.escape(old)}» → «{html_module.escape(new)}»")
+        if len(renames) > _PREFIX_PREVIEW_LIMIT:
+            lines.append(f"…и ещё {len(renames) - _PREFIX_PREVIEW_LIMIT}")
+
+    if skipped:
+        lines.append(f"\n{len(skipped)} вкладок не трогаю: {_skip_reason_breakdown(skipped)}.")
+
+    lines.append("\n🎯 Отобранные не трогаю — её заполняете вы.")
+    lines.append(
+        "\n⚠️ Формулы и IMPORTRANGE в ДРУГИХ таблицах ссылаются на имя вкладки строкой — "
+        "после переименования они сломаются и их придётся поправить вручную. Внутри этой "
+        "таблицы Google чинит формулы сам."
+    )
+    lines.append(
+        "\nОперация дёргает Google по одному вызову на лист — жать кнопку лучше в тихий "
+        "час, не в разгар регистрации."
+    )
+    text = "\n".join(lines)
+
+    buttons = []
+    if renames:
+        go_cb = "sheet_tabs_prefix_add_go" if add else "sheet_tabs_prefix_del_go"
+        buttons.append([InlineKeyboardButton(
+            text=f"✅ Да, переименовать {len(renames)} вкладок", callback_data=go_cb,
+        )])
+    buttons.append(cancel_row)
+    return text, InlineKeyboardMarkup(inline_keyboard=buttons)
+
+
+@router.callback_query(F.data == "sheet_tabs_prefix_add")
+async def sheet_tabs_prefix_add(callback: types.CallbackQuery):
+    text, kb = await _prefix_plan_screen(add=True)
+    await callback.message.edit_text(text, parse_mode="HTML", reply_markup=kb)
+    await callback.answer()
+
+
+@router.callback_query(F.data == "sheet_tabs_prefix_del")
+async def sheet_tabs_prefix_del(callback: types.CallbackQuery):
+    text, kb = await _prefix_plan_screen(add=False)
+    await callback.message.edit_text(text, parse_mode="HTML", reply_markup=kb)
+    await callback.answer()
+
+
+async def _apply_city_rename_result(admin_id: int, target, new_title: str) -> None:
+    """`origin == "city" and kind == "main"` -> база города переезжает на новое имя листа
+    (зеркало `handlers/admin_cities.py::city_edit_tab_step`); `kind != "main"` -> лист трека
+    уже переименован, настройку (`city_tab_suffix__*`) трогать не нужно — имя трека всегда
+    вычисляется как база + приписка, и после смены БАЗЫ (эта функция, вызванная для
+    `kind == "main"`) оно автоматически становится верным."""
+    if target.kind == "main":
+        await update_city(target.city_code, tab_base=new_title)
+        await delete_setting_by_admin(admin_id, f"city_tab__{target.city_code}")
+        await reload_cities()
+
+
+def _ordered_for_execution(renames: list[tuple]) -> list[tuple]:
+    """Порядок исполнения: сначала цели `origin == "key"` (детерминированно — в порядке
+    `current_tab_titles`), потом городские, СНАЧАЛА треки, ПОТОМ главный лист города — база
+    города пишется последней, иначе промежуточное состояние (переименован трек, база ещё
+    старая) на секунду разъедется с реальными листами."""
+    key_renames = [r for r in renames if r[0].origin == "key"]
+    city_codes_seen: list[str] = []
+    by_city: dict[str, list] = {}
+    for r in renames:
+        if r[0].origin != "city":
+            continue
+        code = r[0].city_code
+        if code not in by_city:
+            by_city[code] = []
+            city_codes_seen.append(code)
+        by_city[code].append(r)
+    ordered_city: list = []
+    for code in city_codes_seen:
+        group = by_city[code]
+        ordered_city.extend(r for r in group if r[0].kind != "main")
+        ordered_city.extend(r for r in group if r[0].kind == "main")
+    return key_renames + ordered_city
+
+
+async def _run_prefix_plan(callback: types.CallbackQuery, *, add: bool) -> None:
+    """Исполнение плана — пересчитан заново (не хранится в FSM, см. докстринг модуля).
+    Ошибка на одной вкладке НЕ прерывает остальные (fail-soft), но попадает в отчёт и лог."""
+    admin_id = callback.from_user.id
+    titles = await list_worksheet_titles()
+    if titles is None:
+        await callback.answer("❌ Таблица недоступна — ничего не сделано", show_alert=True)
+        return
+    targets = await current_tab_titles()
+    prefix = await bot_tab_prefix()
+    renames, skipped = plan_prefix_renames(targets, titles, prefix, add=add)
+    ordered = _ordered_for_execution(renames)
+
+    done = 0
+    failed: list[str] = []
+    total = len(ordered)
+    for i, (target, old, new) in enumerate(ordered, start=1):
+        result = await rename_worksheet(old, new)
+        if result == "ok":
+            if target.origin == "key":
+                await set_setting_by_admin(admin_id, target.key, new)
+                await after_tab_setting_saved(target.key)
+            else:
+                await _apply_city_rename_result(admin_id, target, new)
+            done += 1
+        else:
+            failed.append(f"«{old}» → «{new}» ({result})")
+            logger.error(f"sheet_tabs_prefix_go: переименование {old!r} -> {new!r}: {result}")
+        if total > 10 and i % 10 == 0:
+            try:
+                await callback.message.edit_text(f"⏳ Переименовываю… ({i}/{total})")
+            except Exception:
+                pass
+
+    report = [f"✅ Переименовано {done}."]
+    skip_line = f"Пропущено {len(skipped)}"
+    if skipped:
+        skip_line += f" ({_skip_reason_breakdown(skipped)})"
+    report.append(skip_line + ".")
+    if failed:
+        report.append(f"❌ Не удалось {len(failed)}: " + "; ".join(failed))
+
+    from handlers.admin_sections import settings_return_screen  # ленивый шов
+    text, kb = await settings_return_screen(admin_id, group_token="sheets")
+    await callback.message.edit_text(
+        "\n".join(report) + "\n\n" + text, parse_mode="HTML", reply_markup=kb,
+    )
+    await callback.answer()
+
+
+@router.callback_query(F.data == "sheet_tabs_prefix_add_go")
+async def sheet_tabs_prefix_add_go(callback: types.CallbackQuery):
+    await _run_prefix_plan(callback, add=True)
+
+
+@router.callback_query(F.data == "sheet_tabs_prefix_del_go")
+async def sheet_tabs_prefix_del_go(callback: types.CallbackQuery):
+    await _run_prefix_plan(callback, add=False)

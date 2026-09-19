@@ -644,6 +644,12 @@ ADMIN_CAPS: dict[str, str] = {
     "sheet_tab_rename_go": "settings",
     "sheet_tab_reuse_go": "settings",
     "sheet_tab_newtab_go": "settings",
+    # Quick 260919-mlu (Task 4): массовые кнопки «Добавить/Убрать префикс» на экране
+    # «📄 Вкладки таблицы» — экран подтверждения + исполнение (отмена — sheets_tab_cancel).
+    "sheet_tabs_prefix_add": "settings",
+    "sheet_tabs_prefix_del": "settings",
+    "sheet_tabs_prefix_add_go": "settings",
+    "sheet_tabs_prefix_del_go": "settings",
     "settings_toggle_bonus": "settings",
     "settings_toggle_full_approval": "settings",
     "settings_toggle_notify": "settings",

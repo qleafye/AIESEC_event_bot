@@ -16,7 +16,9 @@ plain `def test_*`, `asyncio.run(go())`, monkeypatch, никаких реаль�
 """
 import asyncio
 
+from aiogram.types import InlineKeyboardButton
 import gspread
+import pytest
 
 import cities
 from config import config
@@ -25,6 +27,21 @@ from handlers import admin_sheet_tabs
 from handlers.admin_caps import ADMIN_CAPS
 import services.sheets as sheets
 import settings_ops
+
+
+@pytest.fixture(autouse=True)
+def _restore_cities_registry():
+    """Task 4 тесты зовут `cities.set_cities_for_test(...)` (город «spb» для проверки
+    городских вкладок) и не восстанавливают реестр сами — без этой авто-фикстуры оставленный
+    тестовый город утекает в СЛЕДУЮЩИЙ тест, запущенный в том же xdist-воркере (обнаружено:
+    `test_admin_percity_ui.py` падал только в общем прогоне, никогда в одиночном — классический
+    симптом утечки `cities.CITIES`, того же рода, что `tests/test_game_city_tabs_260820.py::
+    _city_registry`). Автouse, потому что затрагивает ВЕСЬ файл дёшево и безопасно — Task 1/3
+    тесты `cities` не трогают вовсе, Task 2 восстанавливает реестр сама через
+    `_with_city_registry`, что с этой фикстурой просто идемпотентно."""
+    saved = cities.all_cities()
+    yield
+    cities.set_cities_for_test(saved)
 
 
 def _use_tmp_db(tmp_path):
@@ -610,4 +627,236 @@ def test_sheet_tab_reuse_go_saves_setting(tmp_path):
 
 def test_new_task3_callbacks_are_capability_mapped():
     for cb in ("sheet_tab_rename_go", "sheet_tab_reuse_go", "sheet_tab_newtab_go"):
+        assert ADMIN_CAPS.get(cb) == "settings"
+
+
+# ═══════════════════════════════════════════════════════════════════════════════════════════
+# Task 4: массовые кнопки «Добавить/Убрать префикс»
+# ═══════════════════════════════════════════════════════════════════════════════════════════
+
+ADMIN_ID_T4 = 931944
+_T4_CITY = {
+    "code": "spb", "label": "Санкт-Петербург", "tab_base": "СПб", "enabled": 1, "sort_order": 1,
+}
+# 8 ключей-целей (main_sheet_tab не настроен -- пропущен) + 6 городских (СПб: main + 5 треков).
+_T4_INITIAL_TITLES = [
+    "Краткая", "Party", "Незавершённые", "Опросы", "Гейма", "История сдач",
+    "История правок", "Вопросы",
+    "СПб", "СПб Акция", "СПб Party", "СПб Незавершённые", "СПб Гейма", "СПб История сдач",
+]
+
+
+def _t4_ready(tmp_path):
+    config.DB_PATH = str(tmp_path / "test_sheet_tab_rename_260919_t4.db")
+    asyncio.run(db.init_db())
+    config.ADMIN_IDS = [ADMIN_ID_T4]
+    asyncio.run(db.insert_city("spb", "Санкт-Петербург", "СПб", 1))
+    cities.set_cities_for_test([dict(_T4_CITY)])
+
+
+def _make_fake_sheet(titles):
+    """Стейтфул-мок Google-таблицы: rename_worksheet реально переименовывает в списке, чтобы
+    второй прогон плана видел уже переименованные листы (идемпотентность / round-trip)."""
+    state = {"titles": list(titles)}
+    call_order = []
+
+    async def fake_list_titles():
+        return list(state["titles"])
+
+    async def fake_rename(old, new):
+        call_order.append((old, new))
+        if old not in state["titles"]:
+            return "not_found"
+        if new in state["titles"]:
+            return "duplicate"
+        state["titles"][state["titles"].index(old)] = new
+        return "ok"
+
+    return state, call_order, fake_list_titles, fake_rename
+
+
+def test_prefix_add_screen_shows_plan_without_a_single_write(tmp_path, monkeypatch):
+    _t4_ready(tmp_path)
+    _state, _calls, fake_list_titles, _fake_rename = _make_fake_sheet(_T4_INITIAL_TITLES)
+    monkeypatch.setattr(admin_sheet_tabs, "list_worksheet_titles", fake_list_titles)
+
+    def fail_if_called(*a, **kw):
+        raise AssertionError("экран подтверждения не должен звать rename_worksheet")
+
+    monkeypatch.setattr(admin_sheet_tabs, "rename_worksheet", fail_if_called)
+    callback = _FakeCallback(uid=ADMIN_ID_T4)
+
+    asyncio.run(admin_sheet_tabs.sheet_tabs_prefix_add(callback))
+
+    button_texts = [b.text for row in callback.edited_markup.inline_keyboard for b in row]
+    button_datas = [b.callback_data for row in callback.edited_markup.inline_keyboard for b in row]
+    assert any("14 вкладок" in t for t in button_texts)
+    assert "sheet_tabs_prefix_add_go" in button_datas
+    assert "🎯 Отобранные" in callback.edited_text
+    assert "IMPORTRANGE" in callback.edited_text
+
+
+def test_prefix_add_go_renames_saves_settings_and_updates_city_base_once(tmp_path, monkeypatch):
+    _t4_ready(tmp_path)
+    state, _calls, fake_list_titles, fake_rename = _make_fake_sheet(_T4_INITIAL_TITLES)
+    monkeypatch.setattr(admin_sheet_tabs, "list_worksheet_titles", fake_list_titles)
+    monkeypatch.setattr(admin_sheet_tabs, "rename_worksheet", fake_rename)
+
+    city_update_calls = []
+
+    async def fake_update_city(code, *, tab_base=None, **kw):
+        city_update_calls.append((code, tab_base))
+        return True
+
+    delete_calls = []
+
+    async def fake_delete_setting_by_admin(admin_id, key):
+        delete_calls.append(key)
+
+    async def fake_reload_cities():
+        return []
+
+    monkeypatch.setattr(admin_sheet_tabs, "update_city", fake_update_city)
+    monkeypatch.setattr(admin_sheet_tabs, "delete_setting_by_admin", fake_delete_setting_by_admin)
+    monkeypatch.setattr(admin_sheet_tabs, "reload_cities", fake_reload_cities)
+
+    callback = _FakeCallback(uid=ADMIN_ID_T4)
+
+    async def go():
+        await admin_sheet_tabs.sheet_tabs_prefix_add_go(callback)
+        return await db.get_setting("short_sheet_tab"), await db.get_setting("incomplete_sheet_tab")
+
+    short_tab, incomplete_tab = asyncio.run(go())
+
+    assert short_tab == "🤖 Краткая"
+    assert incomplete_tab == "🤖 Незавершённые"
+    assert "🤖 Краткая" in state["titles"]
+    assert "🤖 СПб" in state["titles"]
+    assert city_update_calls == [("spb", "🤖 СПб")]  # РОВНО один раз
+    assert delete_calls == ["city_tab__spb"]
+    assert "Переименовано 14" in callback.edited_text
+
+
+def test_prefix_add_go_track_tabs_renamed_before_city_main(tmp_path, monkeypatch):
+    _t4_ready(tmp_path)
+    _state, calls, fake_list_titles, fake_rename = _make_fake_sheet(_T4_INITIAL_TITLES)
+    monkeypatch.setattr(admin_sheet_tabs, "list_worksheet_titles", fake_list_titles)
+    monkeypatch.setattr(admin_sheet_tabs, "rename_worksheet", fake_rename)
+    monkeypatch.setattr(admin_sheet_tabs, "update_city", lambda *a, **kw: _noop_true())
+    monkeypatch.setattr(admin_sheet_tabs, "reload_cities", lambda: _noop_none())
+
+    callback = _FakeCallback(uid=ADMIN_ID_T4)
+    asyncio.run(admin_sheet_tabs.sheet_tabs_prefix_add_go(callback))
+
+    city_call_olds = [old for old, _new in calls if old in _T4_INITIAL_TITLES[8:]]
+    assert city_call_olds[-1] == "СПб"  # главный лист города переименован ПОСЛЕДНИМ
+
+
+async def _noop_true():
+    return True
+
+
+async def _noop_none():
+    return None
+
+
+def test_prefix_add_go_error_on_one_tab_does_not_stop_the_rest(tmp_path, monkeypatch):
+    _t4_ready(tmp_path)
+    state, _calls, fake_list_titles, fake_rename = _make_fake_sheet(_T4_INITIAL_TITLES)
+
+    async def flaky_rename(old, new):
+        if old == "Гейма":
+            return "error"
+        return await fake_rename(old, new)
+
+    monkeypatch.setattr(admin_sheet_tabs, "list_worksheet_titles", fake_list_titles)
+    monkeypatch.setattr(admin_sheet_tabs, "rename_worksheet", flaky_rename)
+    monkeypatch.setattr(admin_sheet_tabs, "update_city", lambda *a, **kw: _noop_true())
+    monkeypatch.setattr(admin_sheet_tabs, "reload_cities", lambda: _noop_none())
+
+    callback = _FakeCallback(uid=ADMIN_ID_T4)
+    asyncio.run(admin_sheet_tabs.sheet_tabs_prefix_add_go(callback))
+
+    assert "Переименовано 13" in callback.edited_text
+    assert "Не удалось 1" in callback.edited_text
+    assert "Гейма" in state["titles"]  # не переименован -- осталось старое имя
+    assert "🤖 Гейма" not in state["titles"]
+
+
+def test_prefix_add_go_twice_second_run_gives_empty_plan(tmp_path, monkeypatch):
+    _t4_ready(tmp_path)
+    state, _calls, fake_list_titles, fake_rename = _make_fake_sheet(_T4_INITIAL_TITLES)
+    monkeypatch.setattr(admin_sheet_tabs, "list_worksheet_titles", fake_list_titles)
+    monkeypatch.setattr(admin_sheet_tabs, "rename_worksheet", fake_rename)
+    monkeypatch.setattr(admin_sheet_tabs, "update_city", lambda *a, **kw: _noop_true())
+    monkeypatch.setattr(admin_sheet_tabs, "reload_cities", lambda: _noop_none())
+
+    callback = _FakeCallback(uid=ADMIN_ID_T4)
+    asyncio.run(admin_sheet_tabs.sheet_tabs_prefix_add_go(callback))
+    callback2 = _FakeCallback(uid=ADMIN_ID_T4)
+    asyncio.run(admin_sheet_tabs.sheet_tabs_prefix_add_go(callback2))
+
+    assert "Переименовано 0" in callback2.edited_text
+
+
+def test_prefix_round_trip_add_then_remove_restores_original_names(tmp_path, monkeypatch):
+    """update_city/reload_cities НЕ мокаются заглушкой — только spy поверх настоящей функции:
+    второй прогон плана (del) должен увидеть РЕАЛЬНО обновлённую базу города, иначе
+    current_tab_titles() на втором прогоне продолжит считать базу старой и «Убрать префикс»
+    не найдёт городские вкладки (см. инцидент этого же теста при разработке — реестр city_tab_base
+    читает настоящую таблицу cities, не FSM/память теста)."""
+    _t4_ready(tmp_path)
+    state, _calls, fake_list_titles, fake_rename = _make_fake_sheet(_T4_INITIAL_TITLES)
+    real_update_city = admin_sheet_tabs.update_city
+    city_update_calls = []
+
+    async def spy_update_city(code, *, tab_base=None, **kw):
+        city_update_calls.append((code, tab_base))
+        return await real_update_city(code, tab_base=tab_base, **kw)
+
+    monkeypatch.setattr(admin_sheet_tabs, "list_worksheet_titles", fake_list_titles)
+    monkeypatch.setattr(admin_sheet_tabs, "rename_worksheet", fake_rename)
+    monkeypatch.setattr(admin_sheet_tabs, "update_city", spy_update_city)
+    # reload_cities НЕ мокается -- должен реально освежить cities.CITIES из БД.
+
+    add_cb = _FakeCallback(uid=ADMIN_ID_T4)
+    asyncio.run(admin_sheet_tabs.sheet_tabs_prefix_add_go(add_cb))
+    assert "Переименовано 14" in add_cb.edited_text
+
+    del_cb = _FakeCallback(uid=ADMIN_ID_T4)
+    asyncio.run(admin_sheet_tabs.sheet_tabs_prefix_del_go(del_cb))
+    assert "Переименовано 14" in del_cb.edited_text
+
+    assert sorted(state["titles"]) == sorted(_T4_INITIAL_TITLES)
+    assert asyncio.run(db.get_setting("short_sheet_tab")) == "Краткая"
+    assert city_update_calls == [("spb", "🤖 СПб"), ("spb", "СПб")]
+
+
+def test_prefix_screen_reports_table_unavailable_when_titles_is_none(tmp_path, monkeypatch):
+    _t4_ready(tmp_path)
+
+    async def unavailable():
+        return None
+
+    monkeypatch.setattr(admin_sheet_tabs, "list_worksheet_titles", unavailable)
+
+    def fail_if_called(*a, **kw):
+        raise AssertionError("не должен звать rename_worksheet, когда таблица недоступна")
+
+    monkeypatch.setattr(admin_sheet_tabs, "rename_worksheet", fail_if_called)
+
+    callback = _FakeCallback(uid=ADMIN_ID_T4)
+    asyncio.run(admin_sheet_tabs.sheet_tabs_prefix_add(callback))
+
+    assert "недоступна" in callback.edited_text.lower() or "не удалось" in callback.edited_text.lower()
+    assert callback.edited_markup.inline_keyboard == [
+        [InlineKeyboardButton(text="← Отмена", callback_data="sheets_tab_cancel")],
+    ]
+
+
+def test_new_task4_callbacks_are_capability_mapped():
+    for cb in (
+        "sheet_tabs_prefix_add", "sheet_tabs_prefix_del",
+        "sheet_tabs_prefix_add_go", "sheet_tabs_prefix_del_go",
+    ):
         assert ADMIN_CAPS.get(cb) == "settings"
