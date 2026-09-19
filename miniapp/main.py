@@ -57,6 +57,7 @@ from miniapp.config import (
     load_miniapp_config,
 )
 from miniapp.deps import read_setting
+from miniapp.logging_config import configure_logging
 from miniapp.routers import ALL_ROUTERS
 from miniapp.routers.page import STATIC_PREFIX
 from miniapp.routers.page import render_disabled_page
@@ -185,7 +186,13 @@ def _build_asgi_app(cfg: DashboardConfig) -> FastAPI:
 def create_app(cfg: Optional[DashboardConfig] = None) -> FastAPI:
     """Фабрика для тестов и запуска. Возвращает ASGI-приложение под
     `ProxyHeadersMiddleware`; `fastapi_app` — ссылка на FastAPI-инстанс под middleware
-    (для интроспекции маршрутов), как у `dashboard.main.create_app`."""
+    (для интроспекции маршрутов), как у `dashboard.main.create_app`.
+
+    Квик 260919-u7e (P5): `configure_logging()` — здесь, а не только под
+    `uvicorn miniapp.main:app`, чтобы у логгеров модулей был хендлер и в тестах
+    (`create_app(cfg=...)` зовётся из `tests/test_miniapp_*`), и при реальном запуске.
+    Идемпотентна — повторные вызовы (второй `create_app` в том же процессе) не плодят хендлеры."""
+    configure_logging()
     cfg = cfg or load_miniapp_config()
     inner = _build_asgi_app(cfg)
     wrapped = ProxyHeadersMiddleware(inner, trusted_hosts=cfg.trusted_proxies)
