@@ -11,11 +11,31 @@ aiogram, БЕЗ импорта `miniapp.*`/`handlers.*`. Единственны�
 повторяет `miniapp/routers/profile.py::_profile_columns/_value` — тот же приём, другой набор
 вопросов (карточка модератора печатает не все вопросы анкеты, а выбранные тумблерами; резюме
 печатает свой блок в самом рендере карточки, здесь не дублируется).
+
+Приёмка 19.09 (review-260919, раздел «Модерация», находки №1/№2/№3): два фикса поверх схемы
+выше, оба — единая точка правды для бота (`handlers/admin_moderation.py`) и веба
+(`services/applications.py::card_payload`), второй копии условий не заводим ни там, ни там.
+1. `_column_value` перестаёт печатать сентинел `"-"` (`reg_engine`'а «вопрос пропущен/выключен
+   на анкете», см. `reg_engine.py`, предикат `value not in (None, "", "-")`, использован
+   ~десяток раз) как настоящий ответ — карточка печатала «Поле: -» для КАЖДОГО выключенного
+   вопроса, чей столбец получил сентинел при финализации анкеты (34/34 заявок в очереди).
+2. `age`/`birth_date` — тот же вопрос, переключённый 16-17.09 (`age` off, `birth_date` on):
+   `_age_birth_date_line`/дедуп в `card_answers` показывают то значение, которое реально есть
+   у ЭТОГО делегата, независимо от того, какой из двух шагов менеджер выбрал в «Полях карточки
+   заявки» — без этого 1330 заявок до переключения показывали пустоту вместо возраста.
+3. `resume_summary`/`mini_resume_fields` — развилка резюме (`reg_resume_mode=fork`), ветка
+   «мини-профиль»: карточка резюме раньше умела показать файл/ссылку/текст, но не мини-профиль
+   (32 делегата читались как «резюме не приложено», 8 уже отклонены). `warning=True` — сигнал
+   потери данных (`resume_type` задан, но ни одно из его полей не заполнено), а не «нет
+   резюме» — так вызывающий отличает пустую анкету от бага.
 """
 from __future__ import annotations
 
+from datetime import datetime
+
 import reg_engine
 from reg_labels import REG_LABELS
+from services.timeutil import msk_now
 
 # Вопрос анкеты (step_key) -> человеческая подпись, ТОЛЬКО через reg_engine.label_for —
 # движок сам знает про девять шагов, где setting_key расходится с step_key (план 21-13).
@@ -77,13 +97,19 @@ def enabled_steps(raw: list[str] | None) -> list[str]:
 
 
 def _column_value(user: dict, column: str) -> str | None:
-    """Дословное поведение `miniapp/routers/profile.py::_value` — единственный источник
-    приёма «булева колонка → слово, пустое/None → нет строки»."""
+    """Почти дословное поведение `miniapp/routers/profile.py::_value` — с ОДНИМ расхождением
+    (приёмка 19.09, review-260919 «Модерация» находка №1): `"-"` — сентинел `reg_engine`'а
+    «вопрос анкеты пропущен/выключен» (`reg_engine.py`, предикат `value not in (None, "", "-")`,
+    используется там же ~десяток раз), а не настоящий ответ делегата. Без фильтра карточка
+    печатала «Лок. комитет: -»/«Позиция: -»/… для КАЖДОГО выключенного вопроса, чей столбец
+    получил сентинел при финализации анкеты — 5 таких строк на всех 34 заявках в очереди прода.
+    `miniapp/routers/profile.py::_value` (собственный профиль делегата) этот фильтр НЕ несёт —
+    расхождение осознанное и локальное к этому файлу, не второй случайно разошедшийся источник."""
     raw = user.get(column)
     if column in _BOOL_COLUMNS:
         yes, no = _BOOL_COLUMNS[column]
         return yes if raw else no
-    if raw is None:
+    if raw in (None, "", "-"):
         return None
     text = str(raw).strip()
     return text or None
@@ -96,19 +122,118 @@ def answer_value(user: dict, step_key: str) -> str | None:
     return " / ".join(parts) if parts else None
 
 
+# Приёмка 19.09 (review-260919 «Модерация» находка №1): `age`/`birth_date` — один и тот же
+# вопрос анкеты, переключённый 16-17.09 (`reg_q_age` off, `reg_q_birth_date` on) — у заявок ДО
+# переключения заполнен `age`, у заявок ПОСЛЕ — `birth_date`. Что бы менеджер ни выбрал в
+# «Полях карточки заявки», печатаем то значение, которое реально есть у ЭТОГО делегата.
+_AGE_BIRTH_STEPS = ("age", "birth_date")
+
+
+def _msk_age_from_birth_date(raw: str) -> int | None:
+    """Возраст на сегодня по МСК (`timeutil.msk_now`) из строки `ДД.ММ.ГГГГ` — формат, в
+    котором `reg_engine.validate_answer` хранит `birth_date`. `None` при нераспознанном
+    формате или дате в будущем — вызывающий тогда просто не печатает строку, а не падает."""
+    try:
+        born = datetime.strptime(raw, "%d.%m.%Y")
+    except ValueError:
+        return None
+    today = msk_now()
+    years = today.year - born.year - ((today.month, today.day) < (born.month, born.day))
+    return years if years >= 0 else None
+
+
+def _age_birth_date_line(user: dict, step_key: str) -> tuple[str, str] | None:
+    """`(label, value)` для ОДНОГО шага пары `age`/`birth_date` — своё сырое значение
+    побеждает; если его нет, значение другого шага (для `birth_date` — сырой возраст, как
+    делегат его ввёл; для `age` — возраст, вычисленный из даты рождения). `None` — нет данных
+    ни там, ни там. Дедупликация при включённых ОБОИХ шагах разом — забота `card_answers`."""
+    own = _column_value(user, step_key)
+    if own:
+        return CARD_STEPS[step_key], own
+    if step_key == "age":
+        birth_raw = _column_value(user, "birth_date")
+        if birth_raw:
+            computed = _msk_age_from_birth_date(birth_raw)
+            if computed is not None:
+                return CARD_STEPS["age"], str(computed)
+        return None
+    age_raw = _column_value(user, "age")
+    return (CARD_STEPS["age"], age_raw) if age_raw else None
+
+
 def card_answers(user: dict, steps: list[str], limit: int | None) -> list[tuple[str, str]]:
     """`[(label, value)]` для непустых ответов на выбранные вопросы, в порядке `steps`;
     значение длиннее `limit` обрезается до `limit` символов + «…». `limit=None` — без
-    обрезки (экран «📄 Полная анкета», appr_full: ответ печатается целиком)."""
+    обрезки (экран «📄 Полная анкета», appr_full: ответ печатается целиком).
+
+    `age`/`birth_date` — если оба шага включены разом И у обоих есть СВОЁ значение, обе строки
+    печатаются (разные данные, обе информативны); если у одного из них значение только
+    ВЫЧИСЛЕНО/позаимствовано у другого (`_age_birth_date_line`), вторая строка с ТЕМ ЖЕ
+    содержимым не повторяется (приёмка 19.09)."""
     out: list[tuple[str, str]] = []
+    age_birth_seen: tuple[str, str] | None = None
     for step_key in steps:
-        value = answer_value(user, step_key)
-        if not value:
-            continue
+        if step_key in _AGE_BIRTH_STEPS:
+            resolved = _age_birth_date_line(user, step_key)
+            if resolved is None or resolved == age_birth_seen:
+                continue
+            age_birth_seen = resolved
+            label, value = resolved
+        else:
+            value = answer_value(user, step_key)
+            if not value:
+                continue
+            label = CARD_STEPS.get(step_key, step_key)
         if limit is not None and len(value) > limit:
             value = value[:limit] + "…"
-        out.append((CARD_STEPS.get(step_key, step_key), value))
+        out.append((label, value))
     return out
+
+
+# Приёмка 19.09 (review-260919 «Модерация» находки №2/№3): развилка резюме (`reg_resume_mode
+# = fork`), ветка «мини-профиль» — три текстовых подшага, свои колонки `users`. `mini_portfolio`
+# хранит JSON-список блоков (или легаси голый текст) — тот же формат, что лист/сводка анкеты,
+# читается ТОЙ ЖЕ парой `reg_engine.parse_repeatable`/`repeatable_display`, второй точки
+# форматирования не заводим (докстринг `reg_engine.repeatable_display`).
+_MINI_RESUME_COLUMNS: tuple[str, ...] = ("mini_projects", "mini_portfolio", "mini_direction")
+
+
+def mini_resume_fields(user: dict) -> list[tuple[str, str]]:
+    """`[(подпись, значение)]` непустых подполей мини-профиля, в порядке анкеты (совпадает с
+    `CARD_STEPS`, т.к. `_MINI_RESUME_COLUMNS` — те же три шага REG_FLOW в том же порядке)."""
+    out: list[tuple[str, str]] = []
+    for column in _MINI_RESUME_COLUMNS:
+        if column == "mini_portfolio":
+            value = reg_engine.repeatable_display(reg_engine.parse_repeatable(user.get(column)))
+        else:
+            value = _column_value(user, column)
+        if value:
+            out.append((CARD_STEPS[column], value))
+    return out
+
+
+def resume_summary(user: dict) -> dict:
+    """Единая точка разбора «что делегат реально дал в резюме» — использует и карточка бота
+    (`handlers/admin_moderation.py`), и карточка веба (`services/applications.py::card_payload`),
+    чтобы поверхности не расходились (приёмка 19.09). Приоритет — файл → ссылка → текст →
+    мини-профиль → нет (тот же порядок, что уже был у файла/ссылки/текста до этой приёмки).
+
+    `{"kind": "file"|"link"|"text"|"mini"|"none", "warning": bool, "mini_fields": [...]}`.
+    `warning=True` — ТОЛЬКО при `kind == "none"` и непустом `resume_type`: делегат прошёл
+    развилку и что-то выбрал, но ни один из четырёх карманов (`resume_file_id`/`resume_link`/
+    `resume_text`/`mini_*`) не заполнен — сигнал потери данных (другой баг), а не «резюме не
+    приложено» (делегат вообще не дошёл до вопроса/пропустил)."""
+    if user.get("resume_file_id"):
+        return {"kind": "file", "warning": False, "mini_fields": []}
+    if user.get("resume_link"):
+        return {"kind": "link", "warning": False, "mini_fields": []}
+    if user.get("resume_text"):
+        return {"kind": "text", "warning": False, "mini_fields": []}
+    mini_fields = mini_resume_fields(user)
+    if mini_fields:
+        return {"kind": "mini", "warning": False, "mini_fields": mini_fields}
+    resume_type = str(user.get("resume_type") or "").strip()
+    return {"kind": "none", "warning": bool(resume_type), "mini_fields": []}
 
 
 def fit_card(text: str, limit: int = CARD_TEXT_LIMIT) -> tuple[str, bool]:

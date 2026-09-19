@@ -121,6 +121,96 @@ def test_resume_block_hidden_when_resume_step_off():
     assert "📎 Резюме: нет" in out_on
 
 
+# ── резюме: ссылка/мини-профиль/маркер потери данных (приёмка 19.09, review-260919) ─────────
+
+def test_resume_block_shows_link_kind():
+    """Развилка R2b — ссылка вместо файла; раньше карточка бота эту ветку не печатала вовсе."""
+    user = {"full_name": "Иван", "resume_link": "https://hh.ru/resume/123"}
+    out = am._render_application_card(user, 1, 1)
+    assert "📎 Резюме (ссылка): https://hh.ru/resume/123" in out
+
+
+def test_resume_block_shows_mini_profile_fields():
+    """Находки №2/№3: ветка «мини-профиль» — карточка показывает подполя с подписями, а не
+    «резюме не приложено»."""
+    user = {
+        "full_name": "Иван", "resume_type": "mini",
+        "mini_projects": "Бот для АЙСЕК",
+        "mini_direction": "Бэкенд",
+    }
+    out = am._render_application_card(user, 1, 1)
+    assert "📎 Резюме: мини-профиль" in out
+    assert f"{mc.CARD_STEPS['mini_projects']}: Бот для АЙСЕК" in out
+    assert f"{mc.CARD_STEPS['mini_direction']}: Бэкенд" in out
+    assert "mini_projects" not in out  # кодовое значение делегату/менеджеру не показываем
+
+
+def test_resume_block_warns_when_type_set_but_data_lost():
+    """`resume_type` задан, но ни один карман не заполнен — сигнал потери данных, не тихое
+    «нет резюме»."""
+    user = {"full_name": "Иван", "resume_type": "mini"}
+    out = am._render_application_card(user, 1, 1)
+    assert "📎 Резюме: ⚠️ резюме не сохранилось" in out
+
+
+# ── сентинел «-» и реципрокная пара age/birth_date (приёмка 19.09, review-260919 «Модерация») ─
+
+def test_card_answers_skips_sentinel_dash_for_disabled_questions():
+    """Находка №1: вопрос выключен на анкете, но столбец хранит `reg_engine`'ов сентинел «-» —
+    строка не печатается (раньше карточка печатала «Сфера работы: -»)."""
+    user = {"full_name": "Иван", "work_sphere": "-"}
+    fields = mc.card_answers(user, ["work_sphere"], 300)
+    assert fields == []
+    out = am._render_application_card(user, 1, 1, fields=fields)
+    assert mc.CARD_STEPS["work_sphere"] not in out
+
+
+def test_card_answers_still_shows_real_dash_free_value():
+    """Сентинел фильтруется ТОЛЬКО как литерал «-» — обычный непустой ответ печатается как
+    раньше."""
+    user = {"full_name": "Иван", "work_sphere": "IT"}
+    fields = mc.card_answers(user, ["work_sphere"], 300)
+    assert fields == [(mc.CARD_STEPS["work_sphere"], "IT")]
+
+
+def test_card_shows_age_computed_from_birth_date_when_age_missing():
+    """Находка №1: `age` выключен, у делегата только `birth_date` (новая схема, 17-19.09) — при
+    выбранном шаге `age` карточка вычисляет возраст по МСК, а не молчит."""
+    user = {"full_name": "Иван", "birth_date": "01.09.2007"}
+    fields = mc.card_answers(user, ["age"], 300)
+    assert fields  # непустое — возраст вычислен
+    label, value = fields[0]
+    assert label == mc.CARD_STEPS["age"]
+    assert value.isdigit()
+
+
+def test_card_shows_raw_age_when_birth_date_field_selected_but_empty():
+    """Обратный случай: менеджер выбрал «Дата рождения», у делегата только `age` (старая схема,
+    до 16.09) — карточка показывает «Возраст: N», а не пустоту."""
+    user = {"full_name": "Иван", "age": "19"}
+    fields = mc.card_answers(user, ["birth_date"], 300)
+    assert fields == [(mc.CARD_STEPS["age"], "19")]
+
+
+def test_card_shows_both_when_both_selected_and_both_have_real_data():
+    """И `age`, и `birth_date` включены разом, у делегата есть оба реальных значения — обе
+    строки печатаются (не дублируются, не теряются)."""
+    user = {"full_name": "Иван", "age": "19", "birth_date": "01.09.2007"}
+    fields = mc.card_answers(user, ["age", "birth_date"], 300)
+    assert fields == [
+        (mc.CARD_STEPS["age"], "19"),
+        (mc.CARD_STEPS["birth_date"], "01.09.2007"),
+    ]
+
+
+def test_card_dedups_when_both_selected_but_only_one_has_data():
+    """И `age`, и `birth_date` включены разом, но данные есть только у ОДНОГО — вторая строка
+    не дублирует ту же информацию под своим ярлыком."""
+    user = {"full_name": "Иван", "age": "19"}
+    fields = mc.card_answers(user, ["age", "birth_date"], 300)
+    assert fields == [(mc.CARD_STEPS["age"], "19")]
+
+
 # ── переполнение карточки: fit_card / split_for_telegram / кнопка «📄 Полная анкета» ────────
 
 def test_fit_card_flags_overflow_and_cuts_on_line_boundary():
