@@ -3,7 +3,9 @@
 `GET /app/api/tasks` — зеркало экрана «🎯 Задания» бота (`handlers/user_actions.py`,
 `_game_task_list_screen`/`_render_game_task_line`): те же аксессоры (`list_active_tasks` с
 городским скоупом делегата, `get_active_submission`, `count_rejected_submissions`), те же
-статусы. Дедлайн мягкий (A-05): просроченное задание остаётся в списке с `overdue: true`.
+статусы и тот же порядок (`game_labels.sort_tasks_for_delegate` — открытые первыми,
+просроченные в хвосте; квик 260919-m9x). Дедлайн мягкий (A-05): просроченное задание
+остаётся в списке с `overdue: true`.
 Архивные задания не отдаёт сам `list_active_tasks`.
 
 `GET /app/api/tasks/{id}` — карточка: `card_text` рисует `game_labels.render_task_card_text`
@@ -27,7 +29,13 @@ from database.db import (
     list_active_tasks,
     task_title,
 )
-from game_labels import category_label, proof_types_label, render_task_card_text, task_deadline_short
+from game_labels import (
+    category_label,
+    proof_types_label,
+    render_task_card_text,
+    sort_tasks_for_delegate,
+    task_deadline_short,
+)
 from services import i18n
 from settings_schema import get_setting_typed
 
@@ -129,7 +137,11 @@ async def tasks_list(offset: str | None = None, limit: str | None = None,
     off, lim = parse_page(offset, limit)
     lang, tr_map = await i18n.context(p.telegram_id)
     lang = lang if lang in ("ru", "en") else "ru"
-    all_tasks = await list_active_tasks(city_scope=await delegate_city_scope(p.telegram_id))
+    # Квик 260919-m9x: тот же порядок, что у списка бота (`sort_tasks_for_delegate`) —
+    # открытые задания первыми, просроченные в хвосте; пагинация режет уже отсортированное.
+    all_tasks = sort_tasks_for_delegate(
+        await list_active_tasks(city_scope=await delegate_city_scope(p.telegram_id)),
+    )
     page = all_tasks[off:off + lim]
     return {
         "items": [await _list_item(t, p.telegram_id, lang, tr_map) for t in page],

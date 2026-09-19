@@ -33,7 +33,7 @@ from handlers.admin_caps import notify_by_capability  # D-13: fan out by capabil
 # reg_i18n.say() уже применяет к анкете (ярус A -> tr_map -> русский как есть, T-skg).
 from handlers import reg_i18n
 from handlers.game_labels import (  # Phase 16 (16-01): single RU-label source; 16-03: shared card render
-    category_label, proof_types_label,
+    category_label, proof_types_label, sort_tasks_for_delegate,
     render_task_card_text as _render_task_card_text, task_deadline_short as _game_task_deadline_short,
 )
 from handlers.game_submit_counter import (  # Phase 16 (16-02): editable submission counter (Экран 3)
@@ -376,6 +376,11 @@ async def _game_task_list_screen(
         tasks = await list_active_tasks(city_scope=city_scope(code))
     else:
         tasks = await list_active_tasks()
+    # Квик 260919-m9x: порядок — не тот, в котором отдаёт БД (`ORDER BY deadline_at ASC`,
+    # просроченные сверху): открытые задания идут первыми, просроченные — в хвост. Иначе на
+    # первой странице (шесть штук) делегат видел августовские задания, а свежее уезжало на
+    # вторую — и сдавал ответ в просроченное. Тот же хелпер у списка в Mini App.
+    tasks = sort_tasks_for_delegate(tasks)
     if not tasks:
         return reg_i18n.tr_text(await get_setting_typed("game_task_list_empty"), lang, tr_map), None
 

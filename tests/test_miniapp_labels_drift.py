@@ -38,7 +38,8 @@ REG_LABELS_KEYS_SNAPSHOT = [
     "reg_q_mini_projects", "reg_q_mini_portfolio", "reg_q_mini_direction", "reg_q_case_optin",
 ]
 
-GAME_LABELS_PUBLIC = ["category_label", "proof_types_label", "render_task_card_text", "task_deadline_short"]
+GAME_LABELS_PUBLIC = ["category_label", "proof_types_label", "render_task_card_text",
+                      "sort_tasks_for_delegate", "task_deadline", "task_deadline_short"]
 
 
 def _loaded_aiogram(code: str) -> list[str]:
