@@ -379,12 +379,20 @@ async def main():
         connect_timeout = await get_setting_typed("proxy_connect_timeout")
         if connect_timeout is None:
             connect_timeout = SETTINGS_SCHEMA["proxy_connect_timeout"]["default"]
+        # Квик 260919 (аудит прода, «прокси-шторм»): storm-guard между переключениями --
+        # same registry-with-restart-only story as the pair above (services/proxy_session.py
+        # module docstring has the incident writeup).
+        dwell_seconds = await get_setting_typed("proxy_switch_dwell_seconds")
+        if dwell_seconds is None:
+            dwell_seconds = SETTINGS_SCHEMA["proxy_switch_dwell_seconds"]["default"]
         recheck_seconds = int(recheck_seconds)
         connect_timeout = int(connect_timeout)
+        dwell_seconds = int(dwell_seconds)
         session = FailoverAiohttpSession(
             chain,
             recheck_seconds=recheck_seconds,
             connect_timeout=connect_timeout,
+            dwell_seconds=dwell_seconds,
         )
         logger.info(
             "Using proxy chain: %s (connect_timeout=%s)",
