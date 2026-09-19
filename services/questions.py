@@ -96,6 +96,22 @@ def is_stuck(row: dict, now: datetime | None = None) -> bool:
     return (moment - stamp).total_seconds() > STUCK_AFTER_MINUTES * 60
 
 
+def waiting_days(row: dict, now: datetime | None = None) -> int | None:
+    """Квик 260919 (P3, находка #03-moderation): целых суток, что вопрос ждёт ответа — только
+    для статуса "new" (без ответа И без захвата), иначе `None`. `< 1` суток -> тоже `None`:
+    в шапке строки уже стоит абсолютная метка `asked_at` (`format_stamp`), «ждёт 0 дн.» не
+    добавляет новой информации в первые сутки. Разбор `asked_at` сломан -> `None`
+    (fail-soft — экран уже показывает абсолютную метку, вторая строка не обязательна)."""
+    if question_status(row) != STATUS_NEW:
+        return None
+    stamp = _parse_stamp(str(row.get("asked_at") or ""))
+    if stamp is None:
+        return None
+    moment = now if now is not None else datetime.utcnow()
+    days = int((moment - stamp).total_seconds() // 86400)
+    return days if days >= 1 else None
+
+
 def format_stamp(raw: str | None, *, stored_utc: bool = True) -> str:
     """ПЕРЕЕЗД `services/sheet_logs.py::_fmt_dt` — оба формата времени в проекте разобраны
     одинаково, что для листа «Вопросы», что для экранов бота/приложения. Неразобранное
