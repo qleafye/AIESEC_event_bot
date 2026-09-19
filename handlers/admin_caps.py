@@ -527,6 +527,7 @@ ADMIN_CAPS: dict[str, str] = {
     "modcard_open": "settings",
     "modcard_toggle:*": "settings",
     "modcard_limit:*": "settings",
+    "modcard_sync": "settings",  # Квик 260919-m9x: «показать всё, что спрашиваем»
     "modcard_noop": "settings",
     # Phase 28 (28-08, SU-08): «🧮 Правила балла» — тот же класс экрана настроек, что
     # «🧾 Поля карточки заявки» выше (не moderate_reg — это конфигурирование правил, а не
