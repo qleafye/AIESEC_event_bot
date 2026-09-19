@@ -40,7 +40,10 @@ DEFAULT_CEILING = 850
 # edit the number + reason together, in the same commit as the growth that needs it.
 KNOWN_OVERAGES: dict[str, tuple[int, str]] = {
     "registration.py": (
-        2491,
+        2495,
+        "19.09 (квик 08-sheets-dashboard, коммит 259890f): +2 строки — построители строк листа "
+        "переведены с database.db._csv_safe на _sheet_safe, докстринги объясняют, почему "
+        "нейтрализация формул на RAW-записи не нужна; потолок поднят до фактического размера. "
         "17.09 (живая проверка, находка «б»): +7 строк — заголовок карточки согласия "
         "(_ask_step, ветка consent:*) переводится через reg_i18n.tr_text с пустым tr_map "
         "(ТОЛЬКО ярус A, машинный перевод легального текста по-прежнему исключён); потолок 2491. "
