@@ -56,9 +56,16 @@ def test_registry_keys_present():
 
 
 def test_synonyms_cover_new_keys():
-    for key in ("history_sheet_tab", "questions_sheet_tab", "sheet_logs_autosync"):
-        assert key in SETTINGS_SYNONYMS
-        assert len(SETTINGS_SYNONYMS[key]) >= 2
+    """Квик 260919-mlu: имена вкладок правятся только из бота, поэтому их синонимы переехали
+    из SETTINGS_SYNONYMS (поиск ВЕБ-настроек) в BOT_ONLY_SYNONYMS. Тексты никуда не делись —
+    проверяем их там, где они теперь лежат."""
+    from settings_synonyms import BOT_ONLY_SYNONYMS
+
+    for key in ("history_sheet_tab", "questions_sheet_tab"):
+        assert key in BOT_ONLY_SYNONYMS
+        assert len(BOT_ONLY_SYNONYMS[key]) >= 2
+        assert key not in SETTINGS_SYNONYMS, "ключ вернулся в веб-поиск мимо развилки"
+    assert len(SETTINGS_SYNONYMS["sheet_logs_autosync"]) >= 2
 
 
 # ── Task 1: build_history_sheet_rows ────────────────────────────────────────────────────────
