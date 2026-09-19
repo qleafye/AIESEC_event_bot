@@ -21,6 +21,8 @@ import gspread
 import cities
 from config import config
 from database import db
+from handlers import admin_sheet_tabs
+from handlers.admin_caps import ADMIN_CAPS
 import services.sheets as sheets
 import settings_ops
 
@@ -365,3 +367,247 @@ def test_plan_prefix_renames_empty_prefix_skips_everything_both_directions():
     assert del_renames == []
     assert all(reason == "без префикса" for _t, _old, reason in add_skipped)
     assert all(reason == "без префикса" for _t, _old, reason in del_skipped)
+
+
+# ═══════════════════════════════════════════════════════════════════════════════════════════
+# Task 3: handlers/admin_sheet_tabs.py — развилка при смене одного ключа-имени
+# ═══════════════════════════════════════════════════════════════════════════════════════════
+
+ADMIN_ID_T3 = 931919
+
+
+class _FakeUser:
+    def __init__(self, uid):
+        self.id = uid
+
+
+class _FakeCallback:
+    """Тот же минимальный набор, что tests/test_sheet_tabs_settings_260815.py::
+    _FakeSettingsCallback -- edit_text/answer, ничего больше."""
+
+    def __init__(self, uid=ADMIN_ID_T3):
+        self.from_user = _FakeUser(uid)
+        self.message = self
+        self.edited_text = None
+        self.edited_markup = None
+        self.answered = []
+
+    async def edit_text(self, text, parse_mode=None, reply_markup=None):
+        self.edited_text = text
+        self.edited_markup = reply_markup
+
+    async def answer(self, text=None, show_alert=False):
+        self.answered.append((text, show_alert))
+
+
+class _FakeFSMState:
+    def __init__(self, data=None):
+        self._data = dict(data or {})
+        self._state = None
+
+    async def get_data(self):
+        return dict(self._data)
+
+    async def update_data(self, **kwargs):
+        self._data.update(kwargs)
+
+    async def set_state(self, state):
+        self._state = state
+
+    async def get_state(self):
+        return self._state
+
+    async def clear(self):
+        self._data = {}
+        self._state = None
+
+
+def _t3_ready(tmp_path):
+    config.DB_PATH = str(tmp_path / "test_sheet_tab_rename_260919_t3.db")
+    asyncio.run(db.init_db())
+    config.ADMIN_IDS = [ADMIN_ID_T3]
+
+
+def test_tab_change_screen_old_absent_returns_none_regardless_of_new(tmp_path, monkeypatch):
+    _t3_ready(tmp_path)
+
+    async def probe_missing(title):
+        return (False, 0)
+
+    monkeypatch.setattr(admin_sheet_tabs, "tab_row_count", probe_missing)
+
+    assert asyncio.run(admin_sheet_tabs.tab_change_screen("game_matrix_tab", "", "Новая")) is None
+    assert asyncio.run(
+        admin_sheet_tabs.tab_change_screen("game_matrix_tab", "Старая", "Новая"),
+    ) is None  # probe_missing means old_probe[0] is False -- "no old tab" branch
+
+
+def test_tab_change_screen_old_exists_new_absent_offers_rename_and_newtab(tmp_path, monkeypatch):
+    _t3_ready(tmp_path)
+
+    async def probe(title):
+        if title == "Незавершённые":
+            return (True, 956)
+        return (False, 0)
+
+    monkeypatch.setattr(admin_sheet_tabs, "tab_row_count", probe)
+
+    screen = asyncio.run(
+        admin_sheet_tabs.tab_change_screen("incomplete_sheet_tab", "Незавершённые", "NOT FILLED"),
+    )
+    assert screen is not None
+    text, kb = screen
+    assert "Незавершённые" in text
+    assert "956" in text
+    callback_datas = [b.callback_data for row in kb.inline_keyboard for b in row]
+    assert callback_datas == ["sheet_tab_rename_go", "sheet_tab_newtab_go", "sheets_tab_cancel"]
+
+
+def test_tab_change_screen_old_exists_new_exists_offers_reuse_only(tmp_path, monkeypatch):
+    _t3_ready(tmp_path)
+
+    async def probe(title):
+        if title == "Незавершённые":
+            return (True, 956)
+        if title == "NOT FILLED REGS":
+            return (True, 432)
+        return (False, 0)
+
+    monkeypatch.setattr(admin_sheet_tabs, "tab_row_count", probe)
+
+    screen = asyncio.run(
+        admin_sheet_tabs.tab_change_screen(
+            "incomplete_sheet_tab", "Незавершённые", "NOT FILLED REGS",
+        ),
+    )
+    assert screen is not None
+    text, kb = screen
+    assert "Незавершённые" in text and "NOT FILLED REGS" in text
+    assert "956" in text and "432" in text
+    callback_datas = [b.callback_data for row in kb.inline_keyboard for b in row]
+    assert callback_datas == ["sheet_tab_reuse_go", "sheets_tab_cancel"]
+    assert "sheet_tab_rename_go" not in callback_datas
+
+
+def test_sheet_tab_rename_go_ok_saves_setting_and_calls_rename_worksheet(tmp_path, monkeypatch):
+    _t3_ready(tmp_path)
+    calls = []
+
+    async def fake_rename(old, new):
+        calls.append((old, new))
+        return "ok"
+
+    monkeypatch.setattr(admin_sheet_tabs, "rename_worksheet", fake_rename)
+
+    state = _FakeFSMState({
+        "pending_tab_key": "incomplete_sheet_tab",
+        "pending_tab_value": "NOT FILLED REGS",
+        "pending_tab_old": "Незавершённые",
+    })
+    callback = _FakeCallback()
+
+    async def go():
+        await admin_sheet_tabs.sheet_tab_rename_go(callback, state)
+        return await db.get_setting("incomplete_sheet_tab")
+
+    saved = asyncio.run(go())
+    assert saved == "NOT FILLED REGS"
+    assert calls == [("Незавершённые", "NOT FILLED REGS")]
+    assert "переименована" in callback.edited_text.lower()
+    assert state._data == {}
+
+
+def test_sheet_tab_rename_go_duplicate_does_not_save_setting(tmp_path, monkeypatch):
+    _t3_ready(tmp_path)
+
+    async def fake_rename(old, new):
+        return "duplicate"
+
+    monkeypatch.setattr(admin_sheet_tabs, "rename_worksheet", fake_rename)
+
+    state = _FakeFSMState({
+        "pending_tab_key": "incomplete_sheet_tab",
+        "pending_tab_value": "NOT FILLED REGS",
+        "pending_tab_old": "Незавершённые",
+    })
+    callback = _FakeCallback()
+
+    async def go():
+        await admin_sheet_tabs.sheet_tab_rename_go(callback, state)
+        return await db.get_setting("incomplete_sheet_tab")
+
+    saved = asyncio.run(go())
+    assert saved is None
+    assert "не получилось" in callback.edited_text.lower()
+
+
+def test_sheet_tab_rename_go_main_sheet_tab_saves_even_when_old_came_from_env(
+    tmp_path, monkeypatch,
+):
+    """Ловушка резолва основной вкладки: старое имя пришло НЕ из bot_settings (та пуста), а
+    из .env -- после успешного переименования bot_settings.main_sheet_tab обязан получить
+    новое имя, иначе ступень 1 резолва останется пустой и следующий же вызов _get_sheet
+    угадает ступень 2/3 заново (или упадёт, если .env тоже поменяли)."""
+    _t3_ready(tmp_path)
+    monkeypatch.setattr(config, "GOOGLE_SHEET_TAB", "Реги из .env")
+
+    async def fake_rename(old, new):
+        assert old == "Реги из .env"
+        return "ok"
+
+    monkeypatch.setattr(admin_sheet_tabs, "rename_worksheet", fake_rename)
+
+    state = _FakeFSMState({
+        "pending_tab_key": "main_sheet_tab",
+        "pending_tab_value": "Реги бот",
+        "pending_tab_old": "Реги из .env",
+    })
+    callback = _FakeCallback()
+
+    async def go():
+        await admin_sheet_tabs.sheet_tab_rename_go(callback, state)
+        return await db.get_setting("main_sheet_tab")
+
+    assert asyncio.run(go()) == "Реги бот"
+
+
+def test_sheet_tab_newtab_go_saves_setting_and_never_touches_old_tab(tmp_path, monkeypatch):
+    def fail_if_called(*a, **kw):
+        raise AssertionError("sheet_tab_newtab_go must never call rename_worksheet")
+
+    monkeypatch.setattr(admin_sheet_tabs, "rename_worksheet", fail_if_called)
+    _t3_ready(tmp_path)
+
+    state = _FakeFSMState({
+        "pending_tab_key": "incomplete_sheet_tab",
+        "pending_tab_value": "Новая пустая",
+        "pending_tab_old": "Незавершённые",
+    })
+    callback = _FakeCallback()
+
+    async def go():
+        await admin_sheet_tabs.sheet_tab_newtab_go(callback, state)
+        return await db.get_setting("incomplete_sheet_tab")
+
+    saved = asyncio.run(go())
+    assert saved == "Новая пустая"
+    assert "Незавершённые" in callback.edited_text  # предупреждение про оставленный лист
+
+
+def test_sheet_tab_reuse_go_saves_setting(tmp_path):
+    _t3_ready(tmp_path)
+    state = _FakeFSMState({
+        "pending_tab_key": "incomplete_sheet_tab", "pending_tab_value": "NOT FILLED REGS",
+    })
+    callback = _FakeCallback()
+
+    async def go():
+        await admin_sheet_tabs.sheet_tab_reuse_go(callback, state)
+        return await db.get_setting("incomplete_sheet_tab")
+
+    assert asyncio.run(go()) == "NOT FILLED REGS"
+
+
+def test_new_task3_callbacks_are_capability_mapped():
+    for cb in ("sheet_tab_rename_go", "sheet_tab_reuse_go", "sheet_tab_newtab_go"):
+        assert ADMIN_CAPS.get(cb) == "settings"

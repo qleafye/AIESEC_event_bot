@@ -552,3 +552,7 @@ from handlers import admin_lookup  # noqa: E402,F401
 # Квик 260914-rgq (RGQ-01): шов «📇 Список заявок» — импорт СРАЗУ ПОСЛЕ admin_lookup, тот же
 # хвостовой приём (golden snapshot: tests/test_refac_snapshot_260816.py).
 from handlers import admin_app_list  # noqa: E402,F401
+
+# Квик 260919-mlu (Task 3): шов «развилка при смене имени вкладки» — импорт СРАЗУ ПОСЛЕ
+# admin_app_list, тот же хвостовой приём (golden snapshot: tests/test_refac_snapshot_260816.py).
+from handlers import admin_sheet_tabs  # noqa: E402,F401
