@@ -417,6 +417,19 @@ def test_task_list_pagination_and_limit_ceiling(client):
     assert junk["limit"] == 25 and junk["offset"] == 0 and len(junk["items"]) == 3
 
 
+def test_task_list_puts_overdue_tasks_last(client):
+    """Квик 260919-m9x: порядок — общий с ботом (`game_labels.sort_tasks_for_delegate`):
+    открытые задания сверху, просроченные в хвосте. До фикса список повторял `ORDER BY
+    deadline_at ASC` из БД, и делегат сдавал ответ в августовское задание, висевшее первым."""
+    overdue_old = _task("Августовское", days=-30)
+    overdue_fresh = _task("Позавчерашнее", days=-2)
+    open_far = _task("Дальнее", days=10)
+    open_near = _task("Ближнее", days=1)
+    assert [i["id"] for i in _tasks(client)["items"]] == [
+        open_near, open_far, overdue_fresh, overdue_old,
+    ]
+
+
 def test_task_list_city_scope_mirrors_bot(client):
     mine = _task("Всем", city=None)
     msk = _task("Москва", city="msk")

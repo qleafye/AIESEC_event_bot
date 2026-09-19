@@ -20,6 +20,7 @@ import html
 from datetime import datetime
 
 from database.db import GAME_CATEGORIES, GAME_PROOF_TYPES, parse_proof_types, task_title
+from services.timeutil import msk_now
 from settings_schema import get_setting_typed
 
 # code (GAME_CATEGORIES) -> registry key name (game_category_label_{light,medium,hard,
@@ -65,15 +66,59 @@ async def proof_types_label(raw: str | None) -> str:
     return " + ".join(labels)
 
 
+def task_deadline(task: dict) -> datetime | None:
+    """`deadline_at` строкой -> naive-датой по Москве, как её и вводил менеджер, или `None`
+    (дедлайна нет / строку не разобрать). Единственный разбор этого поля в модуле —
+    `task_deadline_short` и `sort_tasks_for_delegate` зовут его, а не strptime по копии."""
+    try:
+        return datetime.strptime(task["deadline_at"], "%Y-%m-%d %H:%M:%S")
+    except (TypeError, ValueError, KeyError):
+        return None
+
+
 def task_deadline_short(task: dict) -> tuple[str, bool]:
     """(dd.mm display, is_overdue) — shared by the delegate list line, the delegate card and
     the manager preview. Quick 260819-gtl: short dd.mm date (CONTEXT.md decision 3), not the
-    full dd.mm.yyyy hh:mm. Moved here verbatim from user_actions.py in 16-03."""
-    try:
-        dt = datetime.strptime(task["deadline_at"], "%Y-%m-%d %H:%M:%S")
-        return dt.strftime("%d.%m"), dt <= datetime.now()
-    except (TypeError, ValueError):
-        return str(task["deadline_at"] or "—"), False
+    full dd.mm.yyyy hh:mm. Moved here verbatim from user_actions.py in 16-03.
+
+    Квик 260919-m9x: «сейчас» — московское (`services.timeutil.msk_now`), а не
+    `datetime.now()`. Дедлайн менеджер вводит по Москве, а контейнер на проде живёт в UTC:
+    задание «до 23:59» считалось открытым ещё три часа, до 02:59 МСК следующих суток —
+    расходилось и со строкой «срок вышел», и с обратным отсчётом дней в приложении, который
+    уже считался по Москве (`miniapp/routers/tasks.py::_deadline_days_left`)."""
+    dt = task_deadline(task)
+    if dt is None:
+        return str(task.get("deadline_at") or "—"), False
+    return dt.strftime("%d.%m"), dt <= msk_now()
+
+
+# Сортировочный «конец времён» для задания без дедлайна: такое задание не просрочено
+# никогда, и в группе открытых оно должно стоять последним, а не первым.
+_NO_DEADLINE = datetime.max
+
+
+def sort_tasks_for_delegate(tasks: list[dict]) -> list[dict]:
+    """Порядок делегатского списка заданий: сначала ОТКРЫТЫЕ (срок не вышел) — ближайший
+    дедлайн выше, потом ПРОСРОЧЕННЫЕ — свежие выше. Чистая функция: ни БД, ни реестра,
+    исходный список не меняется (общая для бота и Mini App, как и весь этот модуль).
+
+    Зачем (квик 260919-m9x): `database.db.list_active_tasks` отдаёт `ORDER BY deadline_at
+    ASC`, дедлайн мягкий (A-05), архивируют задания руками — поэтому наверху делегатского
+    списка стояли самые старые, августовские задания, а свежее уезжало на вторую страницу
+    (в боте страница — шесть штук). На проде это стоило 200 сдач, ушедших в задания с
+    истёкшим дедлайном, из которых 195 менеджер отклонил руками."""
+    def key(task: dict):
+        dt = task_deadline(task)
+        if dt is None:
+            return (0, _NO_DEADLINE, task.get("id") or 0)
+        if dt <= msk_now():
+            # Просроченные — вторая группа; внутри неё свежие выше (обратный порядок даты).
+            return (1, -dt.timestamp(), task.get("id") or 0)
+        return (0, dt, task.get("id") or 0)
+
+    # Две группы сравниваются только между собой (ключ начинается с номера группы), поэтому
+    # разнотипные вторые элементы (datetime у открытых, float у просроченных) не встречаются.
+    return sorted(tasks, key=key)
 
 
 async def render_task_card_text(task: dict, status_line: str, attempt: int | None) -> str:
@@ -106,5 +151,7 @@ __all__ = [
     "category_label",
     "proof_types_label",
     "render_task_card_text",
+    "sort_tasks_for_delegate",
+    "task_deadline",
     "task_deadline_short",
 ]
