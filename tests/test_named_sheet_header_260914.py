@@ -35,18 +35,18 @@ class _FakeWorksheet:
         self.calls.append(("row_values", row))
         return list(self._row1) if row == 1 else []
 
-    def append_row(self, row):
+    def append_row(self, row, value_input_option=None):
         self.calls.append(("append_row", list(row)))
         if not self._row1:
             self._row1 = list(row)
         else:
             self.data_rows.append(list(row))
 
-    def insert_row(self, row, index):
+    def insert_row(self, row, index, value_input_option=None):
         self.calls.append(("insert_row", list(row), index))
         self._row1 = list(row)
 
-    def update(self, values=None, range_name=None):
+    def update(self, values=None, range_name=None, value_input_option=None):
         self.calls.append(("update", values, range_name))
 
     def add_cols(self, n):

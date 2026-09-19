@@ -58,7 +58,9 @@ def test_update_row_by_id_no_match_returns_false_no_writes():
     assert ws.update_cell_calls == []
 
 
-# ── _update_status_in_row_range: несколько совпадений → ровно один update_cell в последнюю ──
+# ── _update_status_in_row_range: несколько совпадений → ровно один update в последнюю ────────
+# Квик 260919 (08-sheets-dashboard): production switched from gspread's update_cell (hardcodes
+# USER_ENTERED, no RAW override) to an explicit-RAW update() on the single cell.
 
 def test_update_status_in_row_range_writes_last_match_only():
     ws = FakeWorksheet(
@@ -75,7 +77,8 @@ def test_update_status_in_row_range_writes_last_match_only():
     result = sheets._update_status_in_row_range(ws, "777", "Одобрена")
 
     assert result is True
-    assert ws.update_cell_calls == [(4, 2, "Одобрена")]
+    assert ws.update_cell_calls == []
+    assert ws.update_calls == [([["Одобрена"]], "B4")]
 
 
 # ── _bulk_update_status_row_range: дубли → ровно один диапазон на id, в последнюю строку ────
