@@ -16,10 +16,18 @@ that had just failed (all 156 alert attempts across both storms logged "ERROR ..
 admins never heard about either storm). Two fixes below:
 
 - `_rotate_from` now enforces a minimum dwell (`dwell_seconds`, registry
-  `proxy_switch_dwell_seconds`) between real rotations: a channel gets that many seconds to
-  prove itself before the bot concedes it's dead and hops again. While dwell is blocking a
-  hop, the failing request just fails/retries the ordinary way (dp.start_polling's own
-  backoff) -- nothing here changes that path.
+  `proxy_switch_dwell_seconds`) between real rotations -- but ONLY for a channel that has
+  EARNED it: the primary link (always), or any link that has already carried at least one
+  successful request since it was applied. Review finding 2026-09-19: gating dwell
+  unconditionally made things WORSE on the real incident shape -- a single primary blip
+  would rotate onto the (permanently dead) backup and then sit there in silence for the
+  full dwell window, turning a ~5s hiccup into `dwell_seconds` of downtime, because the
+  backup had "earned" the same protection despite never having proven it carries traffic.
+  A channel that has zero successes since being applied has nothing to lose -- leaving it
+  is immediate, no dwell wait, chain-length permitting (a 3+-link chain still finds the
+  first live link within one call, see `_succeeded_since_rotate`). While dwell IS blocking
+  a hop (primary, or a proven link), the failing request just fails/retries the ordinary
+  way (dp.start_polling's own backoff) -- nothing here changes that path.
 - Admin alerts move off the live rotation path entirely: `_flap_alert_loop` (+ the
   success-path hook in `make_request`) waits for the flap to go quiet -- either the channel
   holds for a full `dwell_seconds` with no further rotation, or a live request succeeds on
@@ -298,6 +306,13 @@ class FailoverAiohttpSession(AiohttpSession):
         # (escape hatch, mirrors recheck_seconds/connect_timeout).
         self._dwell_seconds = dwell_seconds
         self._last_rotate_at: float | None = None
+        # Review finding 2026-09-19: dwell must protect only a channel that has EARNED
+        # trust -- primary (always, see _rotate_from), or a non-primary link that has
+        # already carried at least one successful request since being applied. Reset to
+        # False on every rotation/probe-return (the freshly-applied link hasn't proven
+        # anything yet) and set True in make_request's success path -- a bare bool flag on
+        # the hot path, no lock needed for the write (see make_request's comment).
+        self._succeeded_since_rotate = False
         # Literal default (not read from config -- this is wall-clock text for a human,
         # unrelated to the monotonic time_source used for all the dwell/quiet-period math
         # above), overridable for tests same as time_source/sleep_func.
@@ -348,12 +363,21 @@ class FailoverAiohttpSession(AiohttpSession):
         """Idempotent rotation: if another coroutine already rotated past `observed_index`,
         this is a no-op -- the caller simply retries on the link that's already active.
 
-        Storm guard (2026-09-08/09-15): if the CURRENT link was applied less than
-        `dwell_seconds` ago, this is ALSO a no-op -- the link just switched and gets a
-        window to prove itself before the bot concedes it's dead too. The caller's own
-        retry loop still runs its course and the request still fails/retries exactly like
-        today; only the rotation itself is swallowed. See the module docstring for why this
-        exists.
+        Storm guard (2026-09-08/09-15, refined 2026-09-19): if the CURRENT link is one that
+        has EARNED dwell protection -- primary (index 0, always), or any link that has
+        already carried at least one successful request since it was applied
+        (`_succeeded_since_rotate`) -- and it was applied less than `dwell_seconds` ago,
+        this is ALSO a no-op: the link gets a window to prove itself before the bot
+        concedes it's dead too. The caller's own retry loop still runs its course and the
+        request still fails/retries exactly like today; only the rotation itself is
+        swallowed.
+
+        A link that has NEVER carried a successful request (and isn't primary) has nothing
+        to lose -- leaving it is immediate, dwell or not. Review finding 2026-09-19: gating
+        dwell unconditionally made the real incident WORSE, not better -- a single primary
+        blip would rotate onto the (permanently dead) backup and then sit there silently for
+        the whole dwell window, turning a ~5s hiccup into `dwell_seconds` of downtime. See
+        the module docstring for the full incident writeup.
 
         `error` is the TelegramNetworkError that triggered the rotation (None keeps the
         existing stale-index dedup test's direct `_rotate_from(0)` call meaningful, logging
@@ -363,8 +387,10 @@ class FailoverAiohttpSession(AiohttpSession):
             if self._index != observed_index:
                 return
             now = self._time_source()
+            dwell_protected = observed_index == 0 or self._succeeded_since_rotate
             if (
-                self._dwell_seconds > 0
+                dwell_protected
+                and self._dwell_seconds > 0
                 and self._last_rotate_at is not None
                 and (now - self._last_rotate_at) < self._dwell_seconds
             ):
@@ -379,6 +405,9 @@ class FailoverAiohttpSession(AiohttpSession):
             prev_masked = mask_proxy_url(self._chain[observed_index])
             self._apply(nxt)
             self._last_rotate_at = now
+            # The freshly-applied link hasn't carried anything yet -- make_request's
+            # success path is the only place this flips back to True.
+            self._succeeded_since_rotate = False
             self._switched_at = None if nxt == 0 else now
             to_masked = mask_proxy_url(self._chain[nxt])
             logger.warning(
@@ -600,6 +629,11 @@ class FailoverAiohttpSession(AiohttpSession):
                 # get the same dwell grace period as any other rotation, instead of bouncing
                 # straight back to the backup on the very next error.
                 self._last_rotate_at = self._time_source()
+                # The probe only proved the primary carries traffic to a THROWAWAY
+                # connector (_probe_connector), not that the live session's own connector
+                # has served a real request yet -- reset for consistency, even though
+                # primary is dwell-protected unconditionally regardless of this flag.
+                self._succeeded_since_rotate = False
                 if since is not None:
                     logger.info(
                         "Proxy probe: primary %s is back, returning after %.0fs on backup",
@@ -655,6 +689,13 @@ class FailoverAiohttpSession(AiohttpSession):
                     raise first_error
                 await self._rotate_from(current, e)
                 continue
+            # Rule (b) of the storm guard (review finding 2026-09-19): this link has now
+            # carried live traffic, so it has EARNED dwell protection on its next hop.
+            # Plain bool assignment, no lock -- a stale/racy read in a concurrent
+            # _rotate_from would at worst let one extra rotation through, never corrupt
+            # state, and the overwhelming majority of requests never touch this flag's
+            # consumer at all.
+            self._succeeded_since_rotate = True
             # First of the two flap-stabilisation triggers (see _flap_alert_loop's
             # docstring): a live request succeeding on the current link is stronger
             # evidence than a bare timer that the storm is over. Cheap flag check before
