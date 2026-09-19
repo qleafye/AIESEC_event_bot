@@ -183,6 +183,12 @@ FULL_NAME_STEP = "full_name"
 STEP_TO_COLUMN["full_name"] = "full_name"
 RECALLABLE_STEPS = {k for k in STEP_TO_COLUMN if k != "resume"}
 
+# Phase 28 (28-01, SU-04) / приёмка 19.09 (review-260919, «Модерация» находки №2/№3): три шага
+# развилки резюме R2c («мини-профиль») — ЕДИНЫЙ список, используется `_enabled_steps_impl`
+# (bypass личных тумблеров `reg_q_mini_*` ниже) и `handlers/reg_schema.active_sheet_headers`
+# (шапка/строка Google-листа) — второй копии этих трёх имён не заводим.
+MINI_RESUME_STEPS = ("mini_projects", "mini_portfolio", "mini_direction")
+
 # UAT 07.09 (T-d6t-04): маркер «все включённые шаги отвечены» в reg_drafts.step — это НЕ
 # шаг. Он никогда не встречается в REG_FLOW, enabled_steps, column_to_step, STEP_TO_COLUMN,
 # поэтому и выбран вид, который не может совпасть ни с одним ключом шага.
@@ -550,6 +556,15 @@ async def _enabled_steps_impl(data: dict, city_code: str | None) -> list[str]:
         if step_key == "resume_link" and resume_type == "link" and await resume_mode(city) == "fork":
             enabled.append(step_key)
             continue
+        # Приёмка 19.09 (review-260919, «Модерация» находки №2/№3): та же логика для трёх
+        # шагов мини-профиля — развилка сама предлагает ветку «мини», её шаги обязаны
+        # спрашиваться НЕЗАВИСИМО от личных тумблеров `reg_q_mini_*` (дефолт `off`, развилка о
+        # них не знает). Без этого bypass `_advance` не находил `mini_projects`/`mini_portfolio`
+        # в `enabled` (гейт ниже их выключал ДО проверки `resume_type`) и завершал анкету сразу
+        # после первого подшага — 32 делегата теряли шаги 2/3 мини-профиля целиком.
+        if step_key in MINI_RESUME_STEPS and resume_type == "mini" and await mini_resume_branch_active(city):
+            enabled.append(step_key)
+            continue
         if not await is_step_enabled_for_track(setting_key, participant_type, city):
             continue
         if step_key == "informal_day" and data.get("attendance_format") == "Online":
@@ -581,7 +596,7 @@ async def _enabled_steps_impl(data: dict, city_code: str | None) -> list[str]:
         # это и есть «выключено по умолчанию».
         if step_key == "resume_link" and resume_type != "link":
             continue
-        if step_key in ("mini_projects", "mini_portfolio", "mini_direction") and resume_type != "mini":
+        if step_key in MINI_RESUME_STEPS and resume_type != "mini":
             continue
         enabled.append(step_key)
     return enabled
@@ -785,6 +800,17 @@ async def resume_mode(city_code: str | None = None) -> str:
     if value not in ("file_or_text", "text_only", "fork"):
         return "file_or_text"
     return value
+
+
+async def mini_resume_branch_active(city_code: str | None = None) -> bool:
+    """Развилка резюме (`resume_mode(city) == "fork"`) сама рисует плитку «мини-профиль» —
+    три её шага (`MINI_RESUME_STEPS`) обязаны спрашиваться/показываться НЕЗАВИСИМО от того,
+    включены ли их персональные тумблеры `reg_q_mini_*` (приёмка 19.09, review-260919
+    «Модерация» находки №2/№3: 32 делегата выбрали «мини», но получили лишь первый подшаг —
+    `mini_portfolio`/`mini_direction` не задавались вовсе, а Google-лист их не видел). Единая
+    точка правды: `_enabled_steps_impl` (bypass выше в этом файле) и
+    `handlers/reg_schema.active_sheet_headers` (шапка/строка листа) читают её же."""
+    return await resume_mode(city_code) == "fork"
 
 
 # Phase 28 (28-04, SU-04): вайтлист доменов ссылки на резюме — редактируемый список (D-01),
