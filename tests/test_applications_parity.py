@@ -86,7 +86,9 @@ class _FakeBot:
         self.sent.append((chat_id, text, kwargs))
 
 
-def test_apply_decision_effects_approved_calls_welcome_then_sheet(monkeypatch):
+def test_apply_decision_effects_approved_calls_welcome_then_sheet(monkeypatch, tmp_path):
+    _use_tmp_db(tmp_path)
+    _run(db.init_db())
     calls = []
 
     async def fake_approve_user(bot, tid):
@@ -105,7 +107,9 @@ def test_apply_decision_effects_approved_calls_welcome_then_sheet(monkeypatch):
     assert calls == [("approve_user", 501), ("update_status_in_sheet", 501, "Одобрена")]
 
 
-def test_apply_decision_effects_approved_welcome_exactly_once(monkeypatch):
+def test_apply_decision_effects_approved_welcome_exactly_once(monkeypatch, tmp_path):
+    _use_tmp_db(tmp_path)
+    _run(db.init_db())
     count = {"n": 0}
 
     async def fake_approve_user(bot, tid):
@@ -124,7 +128,9 @@ def test_apply_decision_effects_approved_welcome_exactly_once(monkeypatch):
 
 # ── Отказ: ровно одно сообщение, точный текст, порядок, лист ────────────────────────────────
 
-def test_apply_decision_effects_rejected_sends_one_message_then_sheet(monkeypatch):
+def test_apply_decision_effects_rejected_sends_one_message_then_sheet(monkeypatch, tmp_path):
+    _use_tmp_db(tmp_path)
+    _run(db.init_db())
     calls = []
 
     async def fake_update_status_in_sheet(tid, label):
@@ -152,7 +158,9 @@ def test_apply_decision_effects_rejected_sends_one_message_then_sheet(monkeypatc
     assert len([c for c in calls if c[0] == "send_message"]) == 1
 
 
-def test_apply_decision_effects_rejected_send_failure_does_not_block_sheet(monkeypatch):
+def test_apply_decision_effects_rejected_send_failure_does_not_block_sheet(monkeypatch, tmp_path):
+    _use_tmp_db(tmp_path)
+    _run(db.init_db())
     calls = []
 
     async def fake_update_status_in_sheet(tid, label):
@@ -192,7 +200,9 @@ def test_mass_approve_effects_empty_list_no_calls(monkeypatch):
     assert calls == []
 
 
-def test_mass_approve_effects_welcomes_all_then_one_bulk_sync(monkeypatch):
+def test_mass_approve_effects_welcomes_all_then_one_bulk_sync(monkeypatch, tmp_path):
+    _use_tmp_db(tmp_path)
+    _run(db.init_db())
     calls = []
 
     async def fake_approve_user(bot, tid):
@@ -216,7 +226,9 @@ def test_mass_approve_effects_welcomes_all_then_one_bulk_sync(monkeypatch):
     assert calls[-1] == ("bulk", {"601": "Одобрена", "602": "Одобрена", "603": "Одобрена"})
 
 
-def test_mass_approve_effects_retry_after_retries_once_others_continue(monkeypatch):
+def test_mass_approve_effects_retry_after_retries_once_others_continue(monkeypatch, tmp_path):
+    _use_tmp_db(tmp_path)
+    _run(db.init_db())
     from aiogram.exceptions import TelegramRetryAfter
 
     attempts = {}
