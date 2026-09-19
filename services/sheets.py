@@ -8,6 +8,16 @@ from config import config
 
 logger = logging.getLogger(__name__)
 
+# Находка 08-sheets-dashboard (квик 260919): каждый пишущий вызов gspread в этом модуле несёт
+# ЯВНЫЙ value_input_option=RAW, а не полагается на дефолт библиотеки (который сегодня и есть
+# RAW — но апгрейд gspread может это тихо поменять). При RAW Google Sheets НИКОГДА не
+# интерпретирует ячейку как формулу/дату/число — значит нейтрализатор CSV-инъекции
+# (database.db._csv_safe, который приписывает ВИДИМЫЙ апостроф) для записи в Sheets не нужен и
+# не применяется: см. database.db._sheet_safe (функция-тождество для построителей строк листа)
+# и её докстринг. _csv_safe остаётся только для настоящих CSV-экспортов (export_users_csv и
+# т.п.), которые открывают в Excel — там ведущий =/+/-/@ реально триггерит формулу.
+_RAW = gspread.utils.ValueInputOption.raw
+
 # Same busy timeout as database.db._connect(): these worker-thread reads share the file
 # with the async writers, and a concurrent commit must make them wait, not fail.
 _DB_BUSY_TIMEOUT_S = 5.0
@@ -291,7 +301,7 @@ def _reset_sheet_cache():
 
 def _append_to_sheet_sync(data: list):
     sheet = _get_sheet()
-    sheet.append_row(data)
+    sheet.append_row(data, value_input_option=_RAW)
 
 
 def _ensure_header_sync(headers: list[str]):
@@ -307,12 +317,12 @@ def _ensure_header_sync(headers: list[str]):
     col1 = sheet.col_values(1)
     if not col1:
         # empty sheet → header becomes the first row
-        sheet.append_row(headers)
+        sheet.append_row(headers, value_input_option=_RAW)
         return
     first = (col1[0] or "").strip()
     if first.lstrip("-").isdigit():
         # first row is data (a Telegram id) → no header yet, insert one on top
-        sheet.insert_row(headers, 1)
+        sheet.insert_row(headers, 1, value_input_option=_RAW)
         return
     # a text header is already present — reconcile it if it drifted from the
     # current schema (columns added/reordered in code). Overwrite row 1 in place
@@ -320,7 +330,7 @@ def _ensure_header_sync(headers: list[str]):
     current = [h.strip() for h in sheet.row_values(1)]
     if current != headers:
         end = gspread.utils.rowcol_to_a1(1, len(headers))
-        sheet.update(values=[headers], range_name=f"A1:{end}")
+        sheet.update(values=[headers], range_name=f"A1:{end}", value_input_option=_RAW)
 
 
 def _get_existing_ids_sync() -> set[int]:
@@ -337,7 +347,7 @@ def _get_existing_ids_sync() -> set[int]:
 
 def _append_rows_sync(rows: list[list]):
     sheet = _get_sheet()
-    sheet.append_rows(rows)
+    sheet.append_rows(rows, value_input_option=_RAW)
 
 
 def _get_allowlist_rows_sync(tab_name: str) -> list[str]:
@@ -404,7 +414,7 @@ def _sync_named_worksheet_sync(title: str, headers: list[str], rows: list[list])
     except gspread.WorksheetNotFound:
         ws = sh.add_worksheet(title=title, rows=max(len(rows) + 10, 100), cols=max(len(headers), 4))
     ws.clear()
-    ws.update(values=[headers] + [list(r) for r in rows], range_name="A1")
+    ws.update(values=[headers] + [list(r) for r in rows], range_name="A1", value_input_option=_RAW)
     return len(rows)
 
 
@@ -589,7 +599,11 @@ def _update_status_in_row_range(sheet, target: str, label: str) -> bool:
     Инцидент 13.09: при нескольких строках с одним telegram_id (дубли, не разгребённые
     «Убрать дубли») пишем в ПОСЛЕДНЮЮ совпавшую строку, а не в первую — последняя подача
     самая свежая, и это ровно та строка, которую оставляет `_dedupe_sheet_sync`. Обновлять
-    все совпадения дороже по квоте API и маскирует сам факт дублей."""
+    все совпадения дороже по квоте API и маскирует сам факт дублей.
+
+    gspread's `update_cell` hardcodes USER_ENTERED with no way to override it (находка
+    08-sheets-dashboard) — использован `update()` на единственную ячейку вместо него, чтобы
+    и этот пишущий вызов нёс явный RAW, как весь остальной модуль."""
     status_col = _status_col_index(sheet)  # 0-based
     if status_col < 0:
         return False
@@ -600,7 +614,8 @@ def _update_status_in_row_range(sheet, target: str, label: str) -> bool:
             last_idx = row_idx
     if last_idx is None:
         return False
-    sheet.update_cell(last_idx, status_col + 1, label)  # update_cell 1-based col
+    a1 = gspread.utils.rowcol_to_a1(last_idx, status_col + 1)  # 1-based col
+    sheet.update(values=[[label]], range_name=a1, value_input_option=_RAW)
     return True
 
 
@@ -651,7 +666,7 @@ def _update_row_by_id_in_range(sheet, telegram_id: int, row: list) -> bool:
     if last_idx is None:
         return False
     end = gspread.utils.rowcol_to_a1(last_idx, len(row))
-    sheet.update(values=[row], range_name=f"A{last_idx}:{end}")
+    sheet.update(values=[row], range_name=f"A{last_idx}:{end}", value_input_option=_RAW)
     return True
 
 
@@ -732,7 +747,7 @@ def _bulk_update_status_row_range(sheet, wanted: set[str], id_to_label: dict[str
     updates = list(updates_by_key.values())
     found = set(updates_by_key.keys())
     if updates:
-        sheet.batch_update(updates)
+        sheet.batch_update(updates, value_input_option=_RAW)
     return len(updates), found
 
 
@@ -785,7 +800,7 @@ def _rebuild_main_sheet_sync(headers: list[str], rows: list[list]) -> int:
         sheet.add_cols(len(headers) - sheet.col_count)
     sheet.clear()
     values = [headers] + [list(r) for r in rows]
-    sheet.update(values=values, range_name="A1")
+    sheet.update(values=values, range_name="A1", value_input_option=_RAW)
     try:
         _apply_status_formatting_sync(sheet, len(rows))
     except Exception as e:
@@ -901,7 +916,7 @@ def _reset_named_sheet_cache(tab_name: str):
 
 
 def _append_to_named_sheet_sync(tab_name: str, data: list):
-    _get_named_sheet(tab_name).append_row(data)
+    _get_named_sheet(tab_name).append_row(data, value_input_option=_RAW)
 
 
 async def append_to_named_sheet(tab_name: str, data: list, headers: list[str] | None = None):
@@ -950,16 +965,16 @@ def _ensure_named_header_sync(tab_name: str, headers: list[str]):
         sheet.add_cols(len(headers) - sheet.col_count)
     col1 = sheet.col_values(1)
     if not col1:
-        sheet.append_row(headers)
+        sheet.append_row(headers, value_input_option=_RAW)
         return
     first = (col1[0] or "").strip()
     if first.lstrip("-").isdigit():
-        sheet.insert_row(headers, 1)
+        sheet.insert_row(headers, 1, value_input_option=_RAW)
         return
     current = [h.strip() for h in sheet.row_values(1)]
     if current != headers:
         end = gspread.utils.rowcol_to_a1(1, len(headers))
-        sheet.update(values=[headers], range_name=f"A1:{end}")
+        sheet.update(values=[headers], range_name=f"A1:{end}", value_input_option=_RAW)
 
 
 async def ensure_named_sheet_header(tab_name: str, headers: list[str]):
@@ -1009,7 +1024,7 @@ async def get_existing_named_sheet_ids(tab_name: str) -> set[int] | None:
 
 
 def _append_rows_to_named_sheet_sync(tab_name: str, rows: list[list]):
-    _get_named_sheet(tab_name).append_rows(rows)
+    _get_named_sheet(tab_name).append_rows(rows, value_input_option=_RAW)
 
 
 async def append_rows_to_named_sheet(tab_name: str, rows: list[list]) -> int:
