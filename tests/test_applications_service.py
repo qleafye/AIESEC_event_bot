@@ -35,6 +35,13 @@ def _seed_user(tid, **fields):
     _run(db.set_user_status(tid, status))
 
 
+def _set_resume_type(tid, value):
+    """`resume_type` — одна из ПЯТИ колонок резервной цепочки (`database/db.py:818`), НЕ
+    участвующих в INSERT `add_user` (пишет её узкий `update_user_answers`, план 28-04/28-05) —
+    сеять её через `_seed_user(**fields)` молча не сработает (колонка останется NULL)."""
+    _run(db.update_user_answers(tid, {"resume_type": value}, allowed_columns=["resume_type"]))
+
+
 # ── TRACK_FILTERS ────────────────────────────────────────────────────────────────────────
 
 def test_track_filters_shape():
@@ -170,9 +177,18 @@ def test_card_payload_resume_kinds(tmp_path):
     p2 = _run(applications.card_payload(_run(db.get_user(1602))))
     p3 = _run(applications.card_payload(_run(db.get_user(1603))))
 
-    assert p1["resume"] == {"kind": "file", "file_id": "file-abc", "text": None, "url": None}
-    assert p2["resume"] == {"kind": "text", "file_id": None, "text": "текстовое резюме", "url": None}
-    assert p3["resume"] == {"kind": "none", "file_id": None, "text": None, "url": None}
+    assert p1["resume"] == {
+        "kind": "file", "file_id": "file-abc", "text": None, "url": None,
+        "mini": [], "warning": False,
+    }
+    assert p2["resume"] == {
+        "kind": "text", "file_id": None, "text": "текстовое резюме", "url": None,
+        "mini": [], "warning": False,
+    }
+    assert p3["resume"] == {
+        "kind": "none", "file_id": None, "text": None, "url": None,
+        "mini": [], "warning": False,
+    }
 
 
 def test_card_payload_resume_link_kind(tmp_path):
@@ -185,6 +201,7 @@ def test_card_payload_resume_link_kind(tmp_path):
     payload = _run(applications.card_payload(_run(db.get_user(1604))))
     assert payload["resume"] == {
         "kind": "link", "file_id": None, "text": None, "url": "https://example.com/cv",
+        "mini": [], "warning": False,
     }
 
 
@@ -199,6 +216,7 @@ def test_card_payload_resume_file_prefers_nextcloud_url(tmp_path):
     assert payload["resume"] == {
         "kind": "file", "file_id": "file-xyz", "text": None,
         "url": "https://cloud.example.com/s/tok/file.pdf",
+        "mini": [], "warning": False,
     }
 
 
@@ -215,6 +233,75 @@ def test_card_payload_resume_priority_file_over_link_over_text(tmp_path):
 
     payload = _run(applications.card_payload(_run(db.get_user(1606))))
     assert payload["resume"]["kind"] == "file"
+
+
+def test_card_payload_resume_mini_kind(tmp_path):
+    """Приёмка 19.09 (review-260919, находки №2/№3 «Модерация»): развилка резюме, ветка
+    «мини-профиль» — карточка обязана показать три подполя, а не «нет резюме»."""
+    _use_tmp_db(tmp_path)
+    _run(db.init_db())
+    _seed_user(
+        1608, mini_projects="Бот для АЙСЕК",
+        mini_portfolio='[{"title": "GitHub", "description": "github.com/x"}]',
+        mini_direction="Бэкенд",
+    )
+    _set_resume_type(1608, "mini")
+
+    payload = _run(applications.card_payload(_run(db.get_user(1608))))
+    resume = payload["resume"]
+    assert resume["kind"] == "mini"
+    assert resume["warning"] is False
+    values = {f["label"]: f["value"] for f in resume["mini"]}
+    assert values[moderation_card.CARD_STEPS["mini_projects"]] == "Бот для АЙСЕК"
+    assert values[moderation_card.CARD_STEPS["mini_portfolio"]] == "GitHub — github.com/x"
+    assert values[moderation_card.CARD_STEPS["mini_direction"]] == "Бэкенд"
+
+
+def test_card_payload_resume_warning_when_type_set_but_empty(tmp_path):
+    """`resume_type` задан (делегат прошёл развилку), но ни один карман не заполнен — маркер
+    потери данных, а не тихое «резюме не приложено»."""
+    _use_tmp_db(tmp_path)
+    _run(db.init_db())
+    _seed_user(1609)
+    _set_resume_type(1609, "mini")
+
+    payload = _run(applications.card_payload(_run(db.get_user(1609))))
+    assert payload["resume"] == {
+        "kind": "none", "file_id": None, "text": None, "url": None,
+        "mini": [], "warning": True,
+    }
+
+
+def test_card_payload_excludes_mini_resume_steps_from_fields(tmp_path):
+    """Три шага мини-профиля не дублируются построчно — у них свой блок `resume.mini`."""
+    _use_tmp_db(tmp_path)
+    _run(db.init_db())
+    _seed_user(1610, mini_projects="Проект")
+    _set_resume_type(1610, "mini")
+    _run(db.set_setting("modcard_fields", "age\nmini_projects\nmini_portfolio\nmini_direction"))
+
+    payload = _run(applications.card_payload(_run(db.get_user(1610))))
+    labels = [label for label, _ in payload["main_fields"]] + [label for label, _ in payload["extra_fields"]]
+    assert moderation_card.CARD_STEPS["mini_projects"] not in labels
+    assert moderation_card.CARD_STEPS["mini_portfolio"] not in labels
+    assert moderation_card.CARD_STEPS["mini_direction"] not in labels
+
+
+def test_card_payload_age_birth_date_reciprocal_no_cross_section_duplicate(tmp_path):
+    """Находка №1 «Модерация»: `birth_date` выбран в карточке, у делегата только `age` (старая
+    схема) — main_fields печатает «Возраст», а extra_fields («Показать всё») не повторяет ту же
+    строку вторым проходом через `age`."""
+    _use_tmp_db(tmp_path)
+    _run(db.init_db())
+    _seed_user(1611, age=19)
+    _run(db.set_setting("modcard_fields", "birth_date"))
+
+    payload = _run(applications.card_payload(_run(db.get_user(1611))))
+    main_labels = [label for label, _ in payload["main_fields"]]
+    extra_labels = [label for label, _ in payload["extra_fields"]]
+    assert moderation_card.CARD_STEPS["age"] in main_labels
+    assert moderation_card.CARD_STEPS["age"] not in extra_labels
+    assert moderation_card.CARD_STEPS["birth_date"] not in extra_labels
 
 
 def test_card_payload_excludes_resume_link_step_from_fields(tmp_path):

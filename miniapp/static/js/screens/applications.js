@@ -328,6 +328,15 @@ export async function render(root, params, ctx) {
     if (resume.kind === "text") {
       return h("blockquote", { class: "appl-resume-quote pre", text: resume.text || "" });
     }
+    // Приёмка 19.09 (review-260919, находка №2/№3 «Модерация»): развилка резюме — ветка
+    // «мини-профиль», раньше карточка отбора о ней не знала вовсе (падала в «нет резюме»,
+    // хотя текст цел в users.mini_projects/mini_portfolio/mini_direction). Подписи полей —
+    // ГОТОВЫЕ строки сервера (moderation_card.mini_resume_fields), D-25: ни одного литерала
+    // здесь, та же `flatRow`, что main_fields/extra_fields ниже.
+    if (resume.kind === "mini" && (resume.mini || []).length) {
+      return h("div", { class: "flat-list appl-resume-mini" },
+        resume.mini.map((f) => flatRow(h, { title: f.label, meta: f.value })));
+    }
     return h("p", { class: "muted", text: texts.resume_none || "" });
   }
 
