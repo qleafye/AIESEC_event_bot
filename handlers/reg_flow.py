@@ -46,6 +46,10 @@ from reg_engine import validate_answer, validate_date_range as _validate_date_ra
 # Квик 260914-k74 (LEAK-01): карта step_key -> колонка users для снимка process_confirm_edit —
 # тот же источник, что у reg_engine.prior_answers_for/recall_keep, второй литерал не заводим.
 from reg_engine import STEP_TO_COLUMN
+# Квик 260919-u7e (находка #2): набор колонок шага резюме (включая `resume_file_name`, которой
+# нет в `RESUME_RECALL_COLUMNS` — она никогда не жила в `users`, только в reg_drafts/FSM) для
+# того же снимка -- см. докстринг ниже у `recall_columns`.
+from reg_engine import columns_for_step
 # Gap closure фазы 21: тексты ошибок тапа по развилке — из движка (те же, что получает PATCH
 # из Mini App), не локальные литералы.
 from reg_engine import CITY_CHOICE_INVALID_TEXT, CITY_CLOSED_TEXT, PARTY_CLOSED_TEXT
@@ -298,7 +302,12 @@ async def process_confirm_edit(message: types.Message, state: FSMContext):
     # Набор колонок — тот же, что использует prior_answers_for/has_prior_resume: шаги движка
     # (STEP_TO_COLUMN) плюс колонки резюме (RESUME_RECALL_COLUMNS). Второй список литералов не
     # заводим. Служебные `_`-ключи и `season` в снимок не попадают — их нет ни в одном из наборов.
-    recall_columns = set(STEP_TO_COLUMN.values()) | set(RESUME_RECALL_COLUMNS)
+    # Квик 260919-u7e (находка #2): плюс `columns_for_step("resume")` -- `RESUME_RECALL_COLUMNS`
+    # само по себе не содержит `resume_file_name` (её нет в `users`, только в reg_drafts/FSM),
+    # а `handlers/registration.py::recall_keep` теперь восстанавливает резюме именно по этому
+    # набору колонок из `_prior_answers` -- без неё «Оставить прошлое резюме» после файлового
+    # ответа терял бы расширение файла (Nextcloud-загрузка резюме без имени/расширения).
+    recall_columns = set(STEP_TO_COLUMN.values()) | set(RESUME_RECALL_COLUMNS) | set(columns_for_step("resume"))
     snapshot = {
         column: data[column]
         for column in recall_columns
