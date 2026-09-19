@@ -6,10 +6,24 @@ configurable interval — never one push per submission.
 Квик 260919 (P3): получатели БОЛЬШЕ не «только config.ADMIN_IDS» — прод показал 7 менеджеров
 reg_manager в `staff`, ни один не в ADMIN_IDS, и никто из них не получал вообще ничего. Теперь
 это `capability_holders("moderate_reg")` (тот же D-13 примитив, что `reg_digest`/`game_digest`;
-он сам кладёт ADMIN_IDS первыми и не дублирует), а счётчик у каждого получателя СВОЙ — ровно то
-число, что он увидит, открыв «📋 Заявки»: тот же резолвер `handlers.admin_core._admin_city_view`
-(город делegата → `staff.city`, если менеджер привязан, иначе его собственный выбор в шапке
-панели). Нулевой счётчик у получателя -> ему не шлём вовсе (незачем будить пустым «0»).
+он сам кладёт ADMIN_IDS первыми и не дублирует).
+
+Счётчик — ДВЕ ветки, не одна (owner correction поверх первой версии этого квика — тот же день):
+* получатель ПРИВЯЗАН к городу (`staff.city` задан, не суперадмин — D-12: суперадмин никогда
+  не сужается, даже если исторически несёт привязку) -> счётчик СВОЕГО города;
+* любой другой (staff без города, ADMIN_IDS) -> ВСЕГДА общее число + разбивка по городам в
+  одной строке. Первая версия вместо этого использовала `admin_selected_city` («что выбрано в
+  шапке панели») для ВСЕХ — но на проде ни один менеджер не привязан к spb/tyumen, а
+  непривязанные (и ADMIN_IDS) по умолчанию, без выбора, смотрят на дефолтный город (Москва,
+  Phase 09.1/09.3) — заявки других городов не будили НИКОГО. Разбивка не зависит от шапки
+  панели этого получателя вовсе — это фиксированный общий обзор, а не персональный фильтр.
+
+Нулевой счётчик у получателя (или ноль в его городе) -> ему не шлём вовсе (незачем будить
+пустым «0»). Разбивка не включает города с нулём; пуста (без скобок), если модуль городов
+выключен или в реестре меньше двух городов — тогда сама разбивка не несёт новой информации
+сверх общего числа. NULL/незнакомый `event_city` сворачивается в дефолтный город — та же логика,
+что и «По городам» в `render_stats_text` (handlers/admin.py) для непустого total, второй копии
+здесь не заводим.
 
 Тихие часы (`services/quiet_hours.py`) здесь НАРОЧНО не применяются — тот модуль бережёт сон
 ДЕЛЕГАТА, а не менеджера (см. его же докстринг и `services/daily_digest.py`, тот же вывод для
@@ -21,7 +35,8 @@ import logging
 
 from aiogram.exceptions import TelegramBadRequest, TelegramForbiddenError
 
-from database.db import get_pending_count, get_setting
+from config import config
+from database.db import get_city_counts, get_pending_count, get_setting, get_staff_city
 from settings_schema import get_setting_typed
 
 logger = logging.getLogger(__name__)
@@ -67,17 +82,72 @@ def _reminder_interval(raw: str | None) -> int:
     return value if value > 0 else DEFAULT_INTERVAL
 
 
+async def _pending_breakdown_suffix(total: int) -> str:
+    """`" (Город — N, ...)"` для непривязанного получателя — или `""`, если разбивка не несёт
+    новой информации (модуль городов выключен, в реестре меньше двух городов, счётчик уже 0)
+    или в ней нечего показывать (все города нулевые — не должно случаться при total > 0, но
+    fail-soft на случай рассинхрона). Города с нулём в разбивку не попадают. NULL/незнакомый
+    `event_city` сворачивается в дефолтный город тем же приёмом, что «По городам» у
+    `render_stats_text` (handlers/admin.py) — db.py не может импортировать `cities`, поэтому
+    свёртка всегда на стороне вызывающего."""
+    from cities import CITIES, cities_module_on, city_label, normalize_city
+
+    if total <= 0 or len(CITIES) <= 1 or not await cities_module_on():
+        return ""
+    rows = await get_city_counts()
+    per_city: dict[str, int] = {}
+    for raw_city, _total, pending, _approved in rows:
+        code = normalize_city(raw_city)
+        per_city[code] = per_city.get(code, 0) + (pending or 0)
+    parts = []
+    for c in CITIES:
+        n = per_city.get(c["code"], 0)
+        if n > 0:
+            label = await city_label(c["code"])
+            parts.append(f"{label} — {n}")
+    if not parts:
+        return ""
+    return f" ({', '.join(parts)})"
+
+
+async def _text_for_recipient(uid: int) -> str | None:
+    """`None` — этому получателю сейчас нечего слать (его счётчик — 0). Иначе готовый текст.
+
+    Owner correction (тот же день, квик 260919): ПРИВЯЗАННЫЙ к городу (`staff.city`, не
+    суперадмин — D-12) получает счётчик СВОЕГО города; любой другой (staff без города,
+    ADMIN_IDS) — ВСЕГДА общее число + разбивка по городам, независимо от того, что у него
+    выбрано в шапке панели (`cities.admin_selected_city` здесь намеренно не читается)."""
+    from cities import cities_module_on, city_label, city_scope, normalize_city
+
+    bound = None
+    if uid not in config.ADMIN_IDS and await cities_module_on():
+        bound = await get_staff_city(uid)
+
+    if bound:
+        code = normalize_city(bound)
+        count = await get_pending_count(city_scope=city_scope(code))
+        if count <= 0:
+            return None
+        label = await city_label(code)
+        return f"📋 Заявок в ожидании ({label}): {count}. Открой /admin → Заявки."
+
+    count = await get_pending_count()
+    if count <= 0:
+        return None
+    suffix = await _pending_breakdown_suffix(count)
+    return f"📋 Заявок в ожидании: {count}{suffix}. Открой /admin → Заявки."
+
+
 async def pending_reminder_loop(bot):
     """Forever: if enabled, ping every current `moderate_reg` holder (D-13 fan-out — ADMIN_IDS
     plus every staff `reg_manager`-family role, deduped, see module docstring), each with THEIR
-    OWN count, then sleep the configured interval. Fail-soft per iteration and per recipient
-    send.
+    OWN text (`_text_for_recipient`), then sleep the configured interval. Fail-soft per
+    iteration and per recipient send.
 
-    Lazy imports (module docstring precedent — `reg_digest`/`game_digest`/`daily_digest` all do
-    the same): `handlers.admin_caps`/`handlers.admin_core` import back into `handlers`, and
-    `main.py` imports this module at top level before `handlers` is guaranteed loaded."""
+    Lazy import (module docstring precedent — `reg_digest`/`game_digest`/`daily_digest` all do
+    the same): `handlers.admin_caps` imports back into `handlers`, and `main.py` imports this
+    module at top level before `handlers` is guaranteed loaded."""
     from handlers.admin_caps import capability_holders
-    from handlers.admin_core import _admin_city_view
 
     while True:
         interval = DEFAULT_INTERVAL
@@ -90,17 +160,9 @@ async def pending_reminder_loop(bot):
                     if uid in _blocked_admins:
                         continue
                     try:
-                        # WR-05 idiom (handlers/admin_core.py): one read resolves BOTH the
-                        # scope and the label this recipient's own queue screen would show —
-                        # a manager bound to a city gets that city's count, an unbound
-                        # manager/superadmin gets the global one (or whatever they last picked
-                        # in the panel header).
-                        scope, label = await _admin_city_view(uid)
-                        count = await get_pending_count(city_scope=scope)
-                        if count <= 0:
+                        text = await _text_for_recipient(uid)
+                        if text is None:
                             continue  # ничего не ждёт этого получателя — не будим зря
-                        suffix = f" ({label})" if label else ""
-                        text = f"📋 Заявок в ожидании{suffix}: {count}. Открой /admin → Заявки."
                         await bot.send_message(uid, text)
                     except _PERMANENT_SEND_ERRORS as e:
                         _blocked_admins.add(uid)

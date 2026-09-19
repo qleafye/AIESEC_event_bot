@@ -328,27 +328,25 @@ def test_manager_pending_reminder_is_personal_per_recipient_city_scope():
     не в ADMIN_IDS — не доходила до них вовсе. Старое обоснование «привязка отложена в Phase 8»
     устарело фактически: Phase 8 давно случилась.
 
-    Новое обоснование (то же, что у экрана «📋 Заявки», `handlers.admin_core._admin_city_view`):
-    * получатели — `capability_holders("moderate_reg")`, не голый `config.ADMIN_IDS`;
-    * счётчик у каждого получателя СВОЙ, посчитан ТЕМ ЖЕ резолвером, что и его же очередь —
-      привязанный к городу менеджер не может «случайно переключить город» (привязка не в его
-      руках), а непривязанный получает ровно то число, что увидит сам, открыв «📋 Заявки»
-      (риск старого теста про «молча перестал получать» относился к before-Phase-8 миру без
-      этой привязки — сейчас разъезда между напоминанием и экраном как раз и не должно быть,
-      это и есть то, что чинит этот квик).
+    Owner correction (тот же день, поверх первой версии этого квика): персонализация ЧЕРЕЗ
+    `admin_selected_city` («что выбрано в шапке панели», как у экрана «📋 Заявки») оказалась
+    неверной — на проде НИ ОДИН менеджер не привязан к spb/tyumen, а непривязанные (и
+    ADMIN_IDS) по умолчанию, без выбора, смотрят на дефолтный город (Москва) — заявки СПб/
+    Тюмени не будили НИКОГО. Финальное правило (`services/reminders.py::_text_for_recipient`):
+    * ПРИВЯЗАННЫЙ к городу (`staff.city`, не суперадмин — D-12) -> счётчик СВОЕГО города;
+    * любой другой (staff без города, ADMIN_IDS) -> ВСЕГДА общее число + разбивка по городам,
+      независимо от шапки панели.
 
     Если это решение будет пересмотрено снова — тест обязан быть переписан ОСОЗНАННО, как и
     сейчас.
     """
-    src = inspect.getsource(reminders_mod.pending_reminder_loop)
-    assert "capability_holders(" in src
-    assert "city_scope=scope" in src
     module_src = inspect.getsource(reminders_mod)
-    # cities.py само по себе по-прежнему не импортируется здесь напрямую — городской резолвер
-    # (`_admin_city_view`) приходит из `handlers.admin_core` (тот же приём, что у
-    # `reg_digest.py`/`game_digest.py`: ленивый импорт из `handlers`, не из `cities`).
-    assert "import cities" not in module_src
-    assert "from cities" not in module_src
+    assert "capability_holders(" in module_src
+    assert "get_staff_city(" in module_src  # привязка — источник правды, не шапка панели
+    # owner correction: шапка панели (admin_selected_city) больше НЕ вызывается — литерал в
+    # прозе докстринга (объясняет, от чего отказались) не должен ловиться этим гейтом.
+    assert "admin_selected_city(" not in module_src
+    assert "_admin_city_view" not in module_src
 
 
 # ── Doc-safety: docs/ADMIN_GUIDE.md обязан описывать РЕАЛЬНЫЕ экраны и кнопки ─────────────────
