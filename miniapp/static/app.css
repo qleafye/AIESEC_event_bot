@@ -547,9 +547,15 @@ a.flat-row:active, button.flat-row:active { background: var(--surface-alt); }
 /* .task-preview (карточка задания менеджера) делит вёрстку с .task-card (карточка делегата,
    план 19.1-05) — превью «как видит делегат» обязано визуально совпадать с реальностью
    (план 19.1-06), общее правило исключает дрейф между ними. */
+/* Квик 260919-m9x: обложку показываем ЦЕЛИКОМ. Было `object-fit: cover` + потолок высоты —
+   портретная картинка (обложка судоку на проде — 828x1089) обрезалась до горизонтальной
+   полоски в четверть высоты, задание физически нельзя было прочитать в приложении.
+   `contain` + `height: auto` держат пропорции; потолок по высоте экрана оставлен, чтобы
+   очень длинная картинка не съедала весь первый экран (внутри потолка `contain` даёт поля,
+   а не обрезку). */
 .task-card .cover, .task-preview .cover {
   display: block; width: calc(100% + 2 * var(--sp-4)); margin: calc(-1 * var(--sp-4)) calc(-1 * var(--sp-4)) var(--sp-3);
-  border-radius: var(--radius-lg) var(--radius-lg) 0 0; object-fit: cover; max-height: 240px;
+  border-radius: var(--radius-lg) var(--radius-lg) 0 0; height: auto; object-fit: contain; max-height: 70vh;
   background: var(--surface-alt);
 }
 .task-card .pre { margin-top: var(--sp-3); }
@@ -2107,10 +2113,14 @@ a.flat-row:active, button.flat-row:active { background: var(--surface-alt); }
   letter-spacing: -.03em; font-variant-numeric: tabular-nums;
 }
 .plate-reward .icon { width: 24px; height: 24px; color: var(--secondary); }
+/* Та же правка, что у .task-card .cover выше (квик 260919-m9x): картинка целиком, без
+   обрезки. Своей подложки здесь нет намеренно — поля от `contain` (появятся только если
+   картинка упрётся в потолок 70vh) закрашивает сама плита своим акцентом, а не серая
+   плашка поверх неё. */
 .plate .cover {
   display: block; width: calc(100% + 2 * var(--sp-4));
   margin: calc(-1 * var(--sp-5)) calc(-1 * var(--sp-4)) var(--sp-4);
-  max-height: 180px; object-fit: cover;
+  height: auto; max-height: 70vh; object-fit: contain;
 }
 
 /* ── Списочные экраны на плите (план 23.1-06): задания/монеты/рейтинг ────────────────────── */
