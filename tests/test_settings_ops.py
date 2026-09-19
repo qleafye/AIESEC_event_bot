@@ -140,11 +140,22 @@ def test_base_setting_key_strips_per_city_suffix():
 # len(SETTINGS_SCHEMA) - len(группа roles) ключей — формулой, не литералом (план 22-02 той
 # же волны добавляет ~42 ключа группы miniapp).
 
+def _web_excluded_keys() -> set[str]:
+    """Формула исключения целиком, по константам самого модуля: группы (EXCLUDED_GROUPS) плюс
+    отдельные ключи (EXCLUDED_KEYS — имена вкладок Sheets, квик 260919-mlu: правка только из
+    бота, где стоит развилка переименования)."""
+    by_group = {
+        k for k, m in SETTINGS_SCHEMA.items()
+        if m.get("group") in settings_ops.EXCLUDED_GROUPS
+    }
+    return by_group | set(settings_ops.EXCLUDED_KEYS)
+
+
 def test_editable_keys_excludes_roles_group_by_formula():
     roles_keys = [k for k, m in SETTINGS_SCHEMA.items() if m.get("group") == "roles"]
     keys = settings_ops.editable_keys()
     assert not any(k in roles_keys for k in keys)
-    assert len(keys) == len(SETTINGS_SCHEMA) - len(roles_keys)
+    assert len(keys) == len(SETTINGS_SCHEMA) - len(_web_excluded_keys())
     assert len(keys) == len(set(keys)), "editable_keys() не должен задваивать ключи"
 
 
@@ -209,8 +220,7 @@ def test_item_spec_never_returns_none_label_or_key_code_in_label():
 
 
 def test_editable_keys_count_matches_formula():
-    roles_count = len([k for k, m in SETTINGS_SCHEMA.items() if m.get("group") == "roles"])
-    assert len(settings_ops.editable_keys()) == len(SETTINGS_SCHEMA) - roles_count
+    assert len(settings_ops.editable_keys()) == len(SETTINGS_SCHEMA) - len(_web_excluded_keys())
 
 
 # (е) Phase 22 Plan 07 (D-16): SETTINGS_MAIN_SECTIONS — подмножество кодов SECTION_GROUPS,

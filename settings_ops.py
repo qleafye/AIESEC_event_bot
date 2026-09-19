@@ -401,6 +401,23 @@ def plain_text(value: str) -> str:
 # Boundary) — у неё свой экран и своя модель прав (T-22-07: элевация через веб-редактор ролей).
 EXCLUDED_GROUPS = ("roles",)
 
+# Квик 260919-mlu (дыра, найденная исполнителем): ключи-ИМЕНА вкладок Google Sheets правятся
+# только из бота, где стоит развилка «переименовать существующую / писать в имеющуюся /
+# завести новую пустую» (handlers/admin_sheet_tabs.py). Через веб-поверхность эта развилка
+# не проходит: там ключ просто перезаписывался, бот заводил пустую вкладку, а данные
+# оставались в брошенной — ровно так в проде родились три поколения «Незавершённых»
+# (956 / 20 / 432 строки) и два поколения «Геймы». Группу `sheets` целиком исключать нельзя:
+# в ней же живут безобидные `sheet_logs_autosync` и `sheet_tab_bot_prefix`, которые менять
+# из веба безопасно (префикс сам по себе ничего не переименовывает — переименование делает
+# отдельная кнопка с подтверждением).
+#
+# ИЗВЕСТНОЕ ОГРАНИЧЕНИЕ: пять `city_tab_suffix__*` здесь НЕ перечислены. Они тоже задают имена
+# вкладок, но развилки под них нет и в самом боте (гейт смотрит только SHEET_TAB_WRITE_MODE) —
+# запирать их в вебе, оставляя открытыми в боте, значило бы прятать проблему, а не чинить.
+# Гейт для суффиксов — отдельная задача, до неё суффиксы ведут себя как раньше в обеих
+# поверхностях.
+EXCLUDED_KEYS: frozenset[str] = frozenset(SHEET_TAB_NAME_KEYS)
+
 # Токены групп в ТОМ ЖЕ порядке, что экраны бота (handlers.admin_settings.SETTINGS_GROUPS) —
 # литерал, а не импорт: admin_settings.py тянет aiogram, settings_ops.py — нет (D-12), а
 # импортировать оттуда сюда список токенов означало бы либо цикл (admin_settings уже
@@ -412,11 +429,21 @@ _GROUP_SCREEN_ORDER = (
 )
 
 
+def _key_editable_in_web(key: str, group: str | None) -> bool:
+    """Единственный предикат исключения — и для ключей групп экранов бота, и для хвоста.
+    Раньше проверка EXCLUDED_GROUPS стояла ТОЛЬКО во втором цикле: исключить группу из
+    _GROUP_SCREEN_ORDER было нельзя, отфильтровалась бы лишь та её часть, что в хвосте.
+    Сегодня это никого не задевало ("roles" в порядке экранов нет), но ловушка стояла
+    заряженной под следующее исключение — а им как раз и стали вкладки группы `sheets`,
+    которая в _GROUP_SCREEN_ORDER есть."""
+    return group not in EXCLUDED_GROUPS and key not in EXCLUDED_KEYS
+
+
 def editable_keys() -> tuple[str, ...]:
-    """Все ключи SETTINGS_SCHEMA, чья группа не в EXCLUDED_GROUPS (D-01: показываем весь
-    реестр, прячем только явно вынесенное за границу фазы). Порядок — сначала ключи групп
-    экранов бота (_GROUP_SCREEN_ORDER, паритет с ботом), затем остальные (toggles/
-    reg_questions/menu/dashboard/miniapp/...) в порядке реестра."""
+    """Все ключи SETTINGS_SCHEMA, кроме групп из EXCLUDED_GROUPS и отдельных ключей из
+    EXCLUDED_KEYS (D-01: показываем весь реестр, прячем только явно вынесенное за границу
+    фазы). Порядок — сначала ключи групп экранов бота (_GROUP_SCREEN_ORDER, паритет с ботом),
+    затем остальные (toggles/reg_questions/menu/dashboard/miniapp/...) в порядке реестра."""
     by_group: dict[str | None, list[str]] = {}
     for key, meta in SETTINGS_SCHEMA.items():
         by_group.setdefault(meta.get("group"), []).append(key)
@@ -424,12 +451,14 @@ def editable_keys() -> tuple[str, ...]:
     ordered: list[str] = []
     seen_groups: set[str | None] = set()
     for group in _GROUP_SCREEN_ORDER:
-        ordered.extend(by_group.get(group, []))
+        ordered.extend(
+            key for key in by_group.get(group, []) if _key_editable_in_web(key, group)
+        )
         seen_groups.add(group)
 
     for key, meta in SETTINGS_SCHEMA.items():
         group = meta.get("group")
-        if group in EXCLUDED_GROUPS or group in seen_groups:
+        if group in seen_groups or not _key_editable_in_web(key, group):
             continue
         ordered.append(key)
 
