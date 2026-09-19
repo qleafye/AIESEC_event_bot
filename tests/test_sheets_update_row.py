@@ -41,7 +41,7 @@ class RecordingWorksheet(FakeWorksheet):
         self._fail_times = fail_times
         self._fail_count = 0
 
-    def update(self, values, range_name):
+    def update(self, values, range_name, value_input_option=None):
         if self._fail_count < self._fail_times:
             self._fail_count += 1
             raise RuntimeError("simulated gspread API failure")

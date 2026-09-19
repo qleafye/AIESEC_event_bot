@@ -35,7 +35,12 @@ class FakeWorksheet:
         self.title = title
         self.header = ["id", sheets.STATUS_HEADER]
         self.rows = rows or []  # list of [telegram_id_str, status_label]
+        # update_cell_calls: квик 260919 (08-sheets-dashboard) — production no longer calls
+        # gspread's update_cell (it hardcodes USER_ENTERED with no override); kept here, always
+        # empty, so existing "X.update_cell_calls == []" assertions elsewhere keep asserting
+        # exactly that: the method is never used.
         self.update_cell_calls: list[tuple[int, int, str]] = []
+        self.update_calls: list[tuple[list[list], str]] = []
         self.batch_update_calls: list[list[dict]] = []
 
     def row_values(self, n):
@@ -46,11 +51,15 @@ class FakeWorksheet:
         assert n == 1
         return [self.header[0]] + [r[0] for r in self.rows]
 
-    def update_cell(self, row, col, value):
-        self.update_cell_calls.append((row, col, value))
-        self.rows[row - 2][col - 1] = value
+    def update(self, values, range_name, value_input_option=None):
+        """Квик 260919 (08-sheets-dashboard): _update_status_in_row_range now writes a single
+        cell via `update(...)` instead of gspread's update_cell (which hardcodes USER_ENTERED
+        with no override) — this fake only needs to handle that single-cell shape."""
+        self.update_calls.append((values, range_name))
+        row, col = gspread.utils.a1_to_rowcol(range_name)
+        self.rows[row - 2][col - 1] = values[0][0]
 
-    def batch_update(self, updates):
+    def batch_update(self, updates, value_input_option=None):
         self.batch_update_calls.append(updates)
         for u in updates:
             row, col = gspread.utils.a1_to_rowcol(u["range"])

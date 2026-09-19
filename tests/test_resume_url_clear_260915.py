@@ -130,7 +130,7 @@ def test_apply_resume_url_none_clears_db_and_sheet_cell(client, monkeypatch):
     assert captured, "update_row_by_id должен быть вызван"
     headers = asyncio.run(active_sheet_headers(None))
     idx = headers.index("Резюме (ссылка)")
-    # _csv_safe (CWE-1236, database/db.py) экранирует «-» ведущей кавычкой -- ячейка пустой
-    # ссылки на резюме такая же «-», как и любая другая пустая ячейка листа, просто
-    # нейтрализованная той же защитой от formula injection, что и весь ряд.
-    assert captured["row"][idx] == "'-"
+    # Квик 260919 (08-sheets-dashboard): _sheet_safe (identity) заменил _csv_safe для строк
+    # листа -- пустая ячейка резюме остаётся обычным «-», без ведущего апострофа (services/
+    # sheets.py пишет явным RAW, Google Sheets формулу не считает).
+    assert captured["row"][idx] == "-"

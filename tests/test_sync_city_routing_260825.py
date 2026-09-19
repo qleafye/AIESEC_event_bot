@@ -36,7 +36,7 @@ class _FakeNamedSheet:
             raise RuntimeError("boom-read")
         return list(self._col1)
 
-    def append_rows(self, rows):
+    def append_rows(self, rows, value_input_option=None):
         if self.raise_on_append:
             raise RuntimeError("boom-append")
         self.append_rows_calls.append(rows)
