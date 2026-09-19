@@ -962,8 +962,13 @@ def test_notify_skips_disabled_role(tmp_path):
 
 
 def test_technical_alert_sites_still_use_admin_ids():
+    """Квик 260919 (P3): `services/reminders.py` вышел из этого списка — пачка «Заявок в
+    ожидании» больше не технический алерт (квота Google Sheets/сеть), это уведомление
+    менеджерам о ЗАЯВКАХ, той же природы, что registration.py/payment.py ниже — поэтому
+    теперь оно тоже маршрутизируется через `capability_holders`, см.
+    `test_pending_reminder_routes_via_capability`."""
     repo_root = Path(__file__).resolve().parent.parent
-    for rel_path in ("services/sheets.py", "services/scheduler.py", "services/reminders.py"):
+    for rel_path in ("services/sheets.py", "services/scheduler.py"):
         source = (repo_root / rel_path).read_text(encoding="utf-8")
         assert "notify_by_capability" not in source
         assert source.count("for admin_id in config.ADMIN_IDS") == 1
@@ -975,6 +980,16 @@ def test_registration_and_payment_route_via_capability():
     pay_src = (repo_root / "handlers/payment.py").read_text(encoding="utf-8")
     assert reg_src.count("notify_by_capability") >= 1
     assert pay_src.count("notify_by_capability") >= 1
+
+
+def test_pending_reminder_routes_via_capability():
+    """Квик 260919 (P3, находка #03-moderation): 7 reg_manager на проде не получали пачку
+    «Заявок в ожидании», потому что рассылка шла только `config.ADMIN_IDS`. Теперь —
+    `capability_holders("moderate_reg")`, тот же D-13 примитив, что у registration.py/payment.py."""
+    repo_root = Path(__file__).resolve().parent.parent
+    source = (repo_root / "services/reminders.py").read_text(encoding="utf-8")
+    assert "capability_holders(" in source
+    assert "for admin_id in config.ADMIN_IDS" not in source
 
 
 # ── 08-06 Task 2 (D-13/D-14): delegate_questions row created once, before the fan-out ──────
@@ -1434,14 +1449,17 @@ def test_gate_no_capability_cache():
 
 
 def test_gate_technical_alerts_stay_on_admin_ids():
-    """D-13: the three technical-failure sites deliberately stay ADMIN_IDS-only -- a manager
-    who only holds moderate_game can't fix a Google API quota problem, so routing this alert
-    to them via notify_by_capability would only be noise. Same invariant as 08-06's
+    """D-13: the two remaining technical-failure sites deliberately stay ADMIN_IDS-only -- a
+    manager who only holds moderate_game can't fix a Google API quota problem, so routing this
+    alert to them via notify_by_capability would only be noise. Same invariant as 08-06's
     test_technical_alert_sites_still_use_admin_ids, re-asserted here as one of this plan's own
     named final gates (08-07-PLAN.md Task 2 <behavior>), with the comment-line filter applied
-    per T-08-35."""
+    per T-08-35.
+
+    Квик 260919 (P3): `services/reminders.py` dropped OUT of this list -- see
+    `test_technical_alert_sites_still_use_admin_ids`'s updated docstring above."""
     repo_root = Path(__file__).resolve().parent.parent
-    for rel_path in ("services/sheets.py", "services/scheduler.py", "services/reminders.py"):
+    for rel_path in ("services/sheets.py", "services/scheduler.py"):
         source = _non_comment_source(repo_root / rel_path)
         assert "notify_by_capability" not in source
         assert source.count("for admin_id in config.ADMIN_IDS") == 1
