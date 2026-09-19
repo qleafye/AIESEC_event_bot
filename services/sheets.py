@@ -1072,3 +1072,72 @@ async def tab_row_count(title: str) -> tuple[bool, int] | None:
     except Exception as e:
         logger.warning(f"tab_row_count({title!r}) failed (treating as unknown): {e}")
         return None
+
+
+# --- Quick 260919-mlu (Task 1): rename-in-place instead of orphaning the old tab ------------
+# _get_sheet/_get_named_sheet auto-create a NEW empty tab on WorksheetNotFound when an admin
+# just retypes a key's name — the old tab with real data is left an orphan (memory: three
+# generations of "Незавершённые" on prod). gspread.Worksheet.update_title() renames a tab
+# in-place, keeping its rows and letting Google fix in-sheet formula references itself.
+
+def _list_worksheet_titles_sync() -> list[str]:
+    gc = gspread.service_account(filename=config.GOOGLE_CREDENTIALS_FILE)
+    sh = gc.open_by_key(config.GOOGLE_SHEET_ID)
+    return [ws.title for ws in sh.worksheets()]
+
+
+async def list_worksheet_titles() -> list[str] | None:
+    """Read-only probe (same fail-soft contract as `tab_row_count`, no admin alert on
+    failure): `None` if Sheets integration is off/unconfigured or the API call fails; the
+    list of every tab title in the spreadsheet, in sheet order, otherwise."""
+    if not config.GOOGLE_SHEET_ID or not config.GOOGLE_CREDENTIALS_FILE:
+        return None
+    try:
+        return await asyncio.to_thread(_list_worksheet_titles_sync)
+    except Exception as e:
+        logger.warning(f"list_worksheet_titles() failed (treating as unknown): {e}")
+        return None
+
+
+def _rename_worksheet_sync(old: str, new: str) -> str:
+    """Sync worker — opens the spreadsheet fresh (same posture as `_tab_row_count_sync`, does
+    NOT touch the cached `_sheet`/`_named_sheets` handles itself; the async wrapper below does
+    that once it knows the rename actually happened). Returns a string code, never raises:
+    "ok" | "not_found" (no tab named `old`) | "duplicate" (a tab named `new` already exists —
+    Google refuses two worksheets with the same title) | "error" (unexpected exception)."""
+    gc = gspread.service_account(filename=config.GOOGLE_CREDENTIALS_FILE)
+    sh = gc.open_by_key(config.GOOGLE_SHEET_ID)
+    try:
+        ws = sh.worksheet(old)
+    except gspread.WorksheetNotFound:
+        return "not_found"
+    existing_titles = {w.title for w in sh.worksheets()}
+    if new in existing_titles:
+        return "duplicate"
+    ws.update_title(new)
+    return "ok"
+
+
+async def rename_worksheet(old: str, new: str) -> str:
+    """Fail-soft wrapper — NEVER raises (module-wide contract). Returns:
+    "skipped" (old == new, or either name is empty — nothing to do), "ok", "not_found",
+    "duplicate", or "error" (unexpected exception; admins are alerted — unlike the read-only
+    probes above, this is a WRITE operation, a silent failure here leaves the manager thinking
+    a rename happened when it didn't).
+
+    On "ok" both the main-tab cache AND the named-tab cache (under both the old and the new
+    title) are reset, so the very next write resolves the renamed tab by its new name instead
+    of continuing to write through a stale cached handle."""
+    if not old or not new or old == new:
+        return "skipped"
+    try:
+        result = await asyncio.to_thread(_rename_worksheet_sync, old, new)
+    except Exception as e:
+        logger.error(f"rename_worksheet({old!r} -> {new!r}) failed: {e}")
+        await _alert_admins_sheet_failure(f"переименование вкладки {old!r} → {new!r}")
+        return "error"
+    if result == "ok":
+        _reset_sheet_cache()
+        _reset_named_sheet_cache(old)
+        _reset_named_sheet_cache(new)
+    return result
