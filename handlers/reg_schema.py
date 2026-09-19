@@ -37,6 +37,7 @@ from reg_engine import (  # noqa: F401
     REG_DEFAULTS, _is_step_enabled, _is_module_enabled,
     STEP_TO_COLUMN, REG_STEP_TYPES, is_step_enabled_for_track,
     parse_repeatable, repeatable_display,
+    MINI_RESUME_STEPS, mini_resume_branch_active,
 )
 from cities import cities_module_on, normalize_city, is_default_city, city_tab_base, tab_suffix, get_setting_for_city, per_city_key
 from keyboards.builders import get_main_menu_kb
@@ -307,6 +308,11 @@ def _sheet_value_map(data: dict) -> dict:
 # _is_step_enabled moved to reg_engine.py (Phase 21, 21-01); imported above.
 
 
+# Приёмка 19.09 (review-260919, «Модерация» находки №2/№3): колонки трёх шагов мини-профиля —
+# та же группа, что `MINI_RESUME_STEPS`, выраженная в форме gate-ключей `SHEET_COLUMNS`.
+_MINI_RESUME_GATES = tuple(f"reg_q_{step}" for step in MINI_RESUME_STEPS)
+
+
 async def active_sheet_headers(city_code: str | None = None) -> list[str]:
     """Headers for only the columns whose gating question is enabled (system columns
     always included). The sheet width follows the active preset. NOTE: this reflects the
@@ -317,11 +323,24 @@ async def active_sheet_headers(city_code: str | None = None) -> list[str]:
     threads the city layer through `is_step_enabled_for_track(gate, None, city_code)` —
     `participant_type=None` means the full track, which is exactly the track this column set
     (and every named non-default-city tab built from it) belongs to; party/short have their
-    own builders below."""
+    own builders below.
+
+    Приёмка 19.09 (находки №2/№3): три колонки мини-профиля (`_MINI_RESUME_GATES`) появляются
+    ТАКЖЕ когда развилка резюме сейчас предлагает ветку «мини» (`mini_resume_branch_active`),
+    независимо от их персональных тумблеров `reg_q_mini_*` — та же логика, что уже пускает
+    делегата по шагам (`reg_engine._enabled_steps_impl`), иначе ответы есть в `users`, а в
+    листе для них нет столбца."""
+    mini_active = None
     out = []
     for header, gate, _fn in SHEET_COLUMNS:
         if gate is None or await is_step_enabled_for_track(gate, None, city_code):
             out.append(header)
+            continue
+        if gate in _MINI_RESUME_GATES:
+            if mini_active is None:
+                mini_active = await mini_resume_branch_active(city_code)
+            if mini_active:
+                out.append(header)
     return out
 
 
