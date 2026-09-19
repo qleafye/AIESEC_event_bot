@@ -187,7 +187,7 @@ def test_next_returns_one_card_oldest_first_with_avatar_and_fields(client):
     assert body["remaining"] == 2 and body["position"] == 1 and body["offset"] == 0
     assert body["avatar"] == {"url": None, "initials": "ИП"}
     assert {"label": moderation_card.CARD_STEPS["age"], "value": "20"} in body["main_fields"]
-    assert body["resume"] == {"kind": "none"}
+    assert body["resume"] == {"kind": "none", "warning": False}
     assert body["badges"] == []
     assert body["history"] == []
     assert body["filters"]["reject_templates"][0] == "Анкета заполнена не полностью"
@@ -213,7 +213,7 @@ def test_next_resume_file_with_nextcloud_url_used_directly(client):
     resp = client.get("/app/api/applications/next", headers=_hdr(REG_MANAGER_ID))
     assert resp.status_code == 200, resp.text
     resume = resp.json()["resume"]
-    assert resume == {"kind": "file", "url": "https://cloud.example.com/s/tok/file.pdf"}
+    assert resume == {"kind": "file", "url": "https://cloud.example.com/s/tok/file.pdf", "warning": False}
 
 
 def test_next_resume_link_kind(client):
@@ -223,7 +223,35 @@ def test_next_resume_link_kind(client):
     resp = client.get("/app/api/applications/next", headers=_hdr(REG_MANAGER_ID))
     assert resp.status_code == 200, resp.text
     resume = resp.json()["resume"]
-    assert resume == {"kind": "link", "url": "https://example.com/cv"}
+    assert resume == {"kind": "link", "url": "https://example.com/cv", "warning": False}
+
+
+def test_next_resume_mini_kind(client):
+    """Приёмка 19.09 (review-260919, находки №2/№3 «Модерация»): развилка резюме, ветка
+    «мини-профиль» — карточка Mini App показывает три подполя, а не «нет резюме»."""
+    import moderation_card
+
+    _seed_user(930006, mini_projects="Бот для АЙСЕК", mini_direction="Бэкенд")
+    _run(bot_db.update_user_answers(930006, {"resume_type": "mini"}, allowed_columns=["resume_type"]))
+    resp = client.get("/app/api/applications/next", headers=_hdr(REG_MANAGER_ID))
+    assert resp.status_code == 200, resp.text
+    resume = resp.json()["resume"]
+    assert resume["kind"] == "mini"
+    assert resume["warning"] is False
+    values = {f["label"]: f["value"] for f in resume["mini"]}
+    assert values[moderation_card.CARD_STEPS["mini_projects"]] == "Бот для АЙСЕК"
+    assert values[moderation_card.CARD_STEPS["mini_direction"]] == "Бэкенд"
+
+
+def test_next_resume_warning_when_type_set_but_data_lost(client):
+    """`resume_type` задан, но ни один карман не заполнен — карточка сигналит потерю данных,
+    а не молчит «резюме не приложено»."""
+    _seed_user(930007)
+    _run(bot_db.update_user_answers(930007, {"resume_type": "mini"}, allowed_columns=["resume_type"]))
+    resp = client.get("/app/api/applications/next", headers=_hdr(REG_MANAGER_ID))
+    assert resp.status_code == 200, resp.text
+    resume = resp.json()["resume"]
+    assert resume == {"kind": "none", "warning": True}
 
 
 # ── история правок: сервер отдаёт готовые подписи, а не сырые коды (23-06, Known Stub 23-05) ──
