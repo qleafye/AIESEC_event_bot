@@ -1037,6 +1037,9 @@ async def _build_settings_group_keyboard_impl(token: str, admin_id: int | None):
     # настоящий гейт — прежняя перепроверка config.ADMIN_IDS внутри самих хендлеров визарда,
     # потому что стейл-клавиатура в чате живёт вечно.
     if token == "consent": buttons += consent_group_extra_buttons()  # quick 260822 (шов admin_consent)
+    if token == "sheets":
+        from handlers.admin_sheet_tabs import sheet_tabs_group_extra_buttons  # ленивый шов (квик 260919-mlu)
+        buttons += sheet_tabs_group_extra_buttons()
     # Phase 20 (20-04): «Назад» с экрана группы ведёт в РАЗДЕЛ-владелец этой группы
     # («🎪 Событие/Медиа» -> «🎪 Событие», «📋 Заявки» -> «📋 Заявки»), а не на исчезнувший
     # плоский лендинг. Цель считает `section_of` из реестра SECTIONS — второй карты нет.
