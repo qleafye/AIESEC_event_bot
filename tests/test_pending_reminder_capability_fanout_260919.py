@@ -1,10 +1,13 @@
-"""Квик 260919 (P3, находка #03-moderation): `pending_reminder_loop` больше не шлёт только
+"""Квик 260919-u7e (P3, находка #03-moderation): `pending_reminder_loop` больше не шлёт только
 `config.ADMIN_IDS` — на проде 7 reg_manager из `staff` не получали вообще ничего.
 
 Покрывает: получатели = `capability_holders("moderate_reg")` (ADMIN_IDS + role-holders, без
-дублей); счётчик персональный по городскому скоупу получателя (тот же резолвер, что у очереди
-«📋 Заявки», `handlers.admin_core._admin_city_view`); нулевой счётчик -> получателю не шлём;
-блокировка одного получателя не рвёт рассылку остальным (тот же `_blocked_admins`, что раньше).
+дублей); ПРИВЯЗАННЫЙ к городу (`staff.city`) получатель — счётчик своего города; ЛЮБОЙ другой
+(staff без города, ADMIN_IDS) — общее число + разбивка по городам в одной строке, независимо от
+того, что выбрано у него в шапке панели (owner correction поверх первой версии этого квика —
+на проде ни один менеджер не привязан к spb/tyumen, а непривязанные по умолчанию смотрят на
+дефолтный город, и напоминание про эти города не будило никого); нулевой счётчик -> получателю
+не шлём; блокировка одного получателя не рвёт рассылку остальным (тот же `_blocked_admins`).
 
 pytest-asyncio в проекте нет — asyncio.run(); БД — tmp_path.
 """
@@ -112,7 +115,7 @@ def test_recipients_deduped_no_double_send_for_admin_who_is_also_staff(tmp_path,
     assert [uid for uid, _ in bot.sent].count(ADMIN_ID) == 1
 
 
-# ── персональный счётчик по городскому скоупу ───────────────────────────────────────────────
+# ── привязанный к городу получатель — счётчик своего города ────────────────────────────────
 
 def test_city_bound_manager_sees_only_own_city_count(tmp_path, monkeypatch):
     _db_ready(tmp_path)
@@ -121,13 +124,6 @@ def test_city_bound_manager_sees_only_own_city_count(tmp_path, monkeypatch):
     asyncio.run(db.set_staff_city(MSK_MANAGER_ID, "msk"))
     asyncio.run(db.add_staff(SPB_MANAGER_ID, "reg_manager", ADMIN_ID))
     asyncio.run(db.set_staff_city(SPB_MANAGER_ID, "spb"))
-    # Не привязан к городу и явно выбрал «🌍 Все города» в шапке своей панели — та же
-    # семантика, что и у экрана очереди (Phase 09.3, CITY-08): 09.1 (C) заведён, чтобы
-    # непривязанный менеджер по умолчанию видел ДЕФОЛТНЫЙ город, а не «всё» — «всё» это
-    # отдельный, явный выбор.
-    asyncio.run(db.add_staff(UNBOUND_MANAGER_ID, "reg_manager", ADMIN_ID))
-    from cities import ALL_CITIES, set_admin_city
-    asyncio.run(set_admin_city(UNBOUND_MANAGER_ID, ALL_CITIES))
     _add_pending(1, city="msk")
     _add_pending(2, city="msk")
     _add_pending(3, city="spb")
@@ -138,22 +134,106 @@ def test_city_bound_manager_sees_only_own_city_count(tmp_path, monkeypatch):
     _run_one_iteration(bot, monkeypatch)
 
     texts = _texts(bot)
-    assert "Заявок в ожидании (" in texts[MSK_MANAGER_ID]
-    assert "): 2." in texts[MSK_MANAGER_ID]
-    assert "): 1." in texts[SPB_MANAGER_ID]
-    # ALL_CITIES -> глобальный, unscoped счётчик, но со своей меткой «🌍 Все города» — та же
-    # метка, что видна в шапке экрана очереди у этого менеджера.
-    assert "Заявок в ожидании (🌍 Все города): 3." in texts[UNBOUND_MANAGER_ID]
-    # 09.1 (C)/09.3 (CITY-08): суперадмин БЕЗ собственного выбора в шапке — как и любой другой
-    # непривязанный менеджер — по умолчанию видит ДЕФОЛТНЫЙ город (Москва), не «всё»; это
-    # существующее поведение экрана «📋 Заявки» (`admin_selected_city`), не выдумка напоминалки.
-    assert "Заявок в ожидании (" in texts[ADMIN_ID]
-    assert "): 2." in texts[ADMIN_ID]
+    assert "Заявок в ожидании (Москва, 30-31 октября): 2." in texts[MSK_MANAGER_ID]
+    assert "Заявок в ожидании (Санкт-Петербург, 3 октября): 1." in texts[SPB_MANAGER_ID]
 
 
-def test_city_count_matches_what_the_queue_screen_would_show(tmp_path, monkeypatch):
-    """Напоминание обязано называть ТО ЖЕ число, что менеджер увидит, открыв «📋 Заявки» —
-    тот же резолвер (`_admin_city_view`) и тот же `get_pending_count(city_scope=...)`."""
+def test_bound_manager_ignores_own_panel_header_choice(tmp_path, monkeypatch):
+    """Owner correction: привязанный менеджер получает счётчик СВОЕГО города даже если у него
+    в шапке панели (`admin_city__{id}`) сохранён другой выбор — привязка сильнее шапки, и
+    напоминалка её вообще не читает."""
+    _db_ready(tmp_path)
+    asyncio.run(db.set_setting("event_city_enabled", "on"))
+    asyncio.run(db.add_staff(MSK_MANAGER_ID, "reg_manager", ADMIN_ID))
+    asyncio.run(db.set_staff_city(MSK_MANAGER_ID, "msk"))
+    asyncio.run(db.set_setting(f"admin_city__{MSK_MANAGER_ID}", "spb"))
+    _add_pending(1, city="msk")
+    _add_pending(2, city="spb")
+    for tid in (1, 2):
+        asyncio.run(_set_pending(tid))
+
+    bot = _FakeBot()
+    _run_one_iteration(bot, monkeypatch)
+
+    assert "Заявок в ожидании (Москва, 30-31 октября): 1." in _texts(bot)[MSK_MANAGER_ID]
+
+
+# ── непривязанный получатель (в т.ч. ADMIN_IDS) — всегда общее число + разбивка ────────────
+
+def test_unbound_recipient_and_admin_always_see_global_count_with_breakdown(tmp_path, monkeypatch):
+    _db_ready(tmp_path)
+    asyncio.run(db.set_setting("event_city_enabled", "on"))
+    asyncio.run(db.add_staff(UNBOUND_MANAGER_ID, "reg_manager", ADMIN_ID))  # без города
+    _add_pending(1, city="msk")
+    _add_pending(2, city="msk")
+    _add_pending(3, city="spb")
+    _add_pending(4, city="tyumen")
+    for tid in (1, 2, 3, 4):
+        asyncio.run(_set_pending(tid))
+
+    bot = _FakeBot()
+    _run_one_iteration(bot, monkeypatch)
+
+    expected = (
+        "📋 Заявок в ожидании: 4 (Москва, 30-31 октября — 2, "
+        "Санкт-Петербург, 3 октября — 1, Тюмень, 3 октября — 1). Открой /admin → Заявки."
+    )
+    assert _texts(bot)[UNBOUND_MANAGER_ID] == expected
+    assert _texts(bot)[ADMIN_ID] == expected
+
+
+def test_breakdown_skips_zero_cities(tmp_path, monkeypatch):
+    _db_ready(tmp_path)
+    asyncio.run(db.set_setting("event_city_enabled", "on"))
+    _add_pending(1, city="msk")
+    asyncio.run(_set_pending(1))
+
+    bot = _FakeBot()
+    _run_one_iteration(bot, monkeypatch)
+
+    text = _texts(bot)[ADMIN_ID]
+    assert text == "📋 Заявок в ожидании: 1 (Москва, 30-31 октября — 1). Открой /admin → Заявки."
+    assert "Санкт-Петербург" not in text
+    assert "Тюмень" not in text
+
+
+def test_breakdown_folds_empty_event_city_into_default_the_same_way_the_queue_does(tmp_path, monkeypatch):
+    """NULL `event_city` должен попадать в ТУ ЖЕ корзину, что и очередь заявок (city_scope
+    дефолтного города — исключение остальных известных кодов, значит NULL туда тоже входит)."""
+    _db_ready(tmp_path)
+    asyncio.run(db.set_setting("event_city_enabled", "on"))
+    _add_pending(1, city=None)  # без города -> дефолтный город (msk), как и в очереди
+    _add_pending(2, city="spb")
+    for tid in (1, 2):
+        asyncio.run(_set_pending(tid))
+
+    bot = _FakeBot()
+    _run_one_iteration(bot, monkeypatch)
+
+    text = _texts(bot)[ADMIN_ID]
+    assert "Москва, 30-31 октября — 1" in text
+    assert "Санкт-Петербург, 3 октября — 1" in text
+    assert "без города" not in text  # не отдельная корзина — слита с дефолтным городом
+
+
+def test_no_breakdown_when_cities_module_off(tmp_path, monkeypatch):
+    _db_ready(tmp_path)
+    _add_pending(1, city="msk")
+    _add_pending(2, city="spb")
+    for tid in (1, 2):
+        asyncio.run(_set_pending(tid))
+
+    bot = _FakeBot()
+    _run_one_iteration(bot, monkeypatch)
+
+    assert _texts(bot)[ADMIN_ID] == "📋 Заявок в ожидании: 2. Открой /admin → Заявки."
+
+
+# ── совпадение с очередью ────────────────────────────────────────────────────────────────────
+
+def test_city_bound_count_matches_what_the_queue_screen_would_show(tmp_path, monkeypatch):
+    """Напоминание обязано называть ТО ЖЕ число, что привязанный менеджер увидит, открыв
+    «📋 Заявки» — тот же `city_scope`/`get_pending_count`, что использует очередь."""
     _db_ready(tmp_path)
     asyncio.run(db.set_setting("event_city_enabled", "on"))
     asyncio.run(db.add_staff(MSK_MANAGER_ID, "reg_manager", ADMIN_ID))
@@ -164,19 +244,34 @@ def test_city_count_matches_what_the_queue_screen_would_show(tmp_path, monkeypat
     for tid in (1, 2, 3):
         asyncio.run(_set_pending(tid))
 
-    from handlers.admin_core import _admin_city_view
+    from cities import city_scope
     from database.db import get_pending_count as real_get_pending_count
 
-    scope, label = asyncio.run(_admin_city_view(MSK_MANAGER_ID))
-    expected = asyncio.run(real_get_pending_count(city_scope=scope))
+    expected = asyncio.run(real_get_pending_count(city_scope=city_scope("msk")))
 
     bot = _FakeBot()
     _run_one_iteration(bot, monkeypatch)
 
-    text = _texts(bot)[MSK_MANAGER_ID]
-    assert f": {expected}." in text
-    if label:
-        assert f"({label})" in text
+    assert f": {expected}." in _texts(bot)[MSK_MANAGER_ID]
+
+
+def test_unbound_count_matches_global_pending_count(tmp_path, monkeypatch):
+    _db_ready(tmp_path)
+    asyncio.run(db.set_setting("event_city_enabled", "on"))
+    asyncio.run(db.add_staff(UNBOUND_MANAGER_ID, "reg_manager", ADMIN_ID))
+    _add_pending(1, city="msk")
+    _add_pending(2, city="spb")
+    for tid in (1, 2):
+        asyncio.run(_set_pending(tid))
+
+    from database.db import get_pending_count as real_get_pending_count
+
+    expected = asyncio.run(real_get_pending_count())
+
+    bot = _FakeBot()
+    _run_one_iteration(bot, monkeypatch)
+
+    assert f": {expected} (" in _texts(bot)[UNBOUND_MANAGER_ID]
 
 
 # ── нулевой счётчик -> тишина ────────────────────────────────────────────────────────────────
