@@ -18,13 +18,22 @@ import asyncio
 
 import gspread
 
+import cities
 from config import config
 from database import db
 import services.sheets as sheets
+import settings_ops
 
 
 def _use_tmp_db(tmp_path):
     config.DB_PATH = str(tmp_path / "test_sheet_tab_rename_260919.db")
+
+
+def _db_ready(tmp_path):
+    """Task 2+ хелперы (settings_ops) читают/пишут реальные bot_settings — в отличие от Task 1
+    (моки Google, настройки не нужны), здесь БД нужна инициализированной."""
+    config.DB_PATH = str(tmp_path / "test_sheet_tab_rename_260919_ops.db")
+    asyncio.run(db.init_db())
 
 
 def _reset_sheets_module_state():
@@ -206,3 +215,153 @@ def test_list_worksheet_titles_returns_order(tmp_path, monkeypatch):
     titles = asyncio.run(sheets.list_worksheet_titles())
 
     assert titles == ["Первая", "Реги бот", "Краткая"]
+
+
+# ═══════════════════════════════════════════════════════════════════════════════════════════
+# Task 2: settings_ops.py — normalize_tab_prefix / current_tab_titles / plan_prefix_renames
+# ═══════════════════════════════════════════════════════════════════════════════════════════
+
+_CITIES_T2 = [
+    {"code": "msk", "label": "Москва", "tab_base": "", "enabled": 1, "sort_order": 0},
+    {"code": "spb", "label": "Санкт-Петербург", "tab_base": "СПб", "enabled": 1, "sort_order": 1},
+]
+
+
+def _with_city_registry(rows, fn):
+    """save/restore cities registry вокруг вызова — тот же приём, что
+    tests/test_game_city_tabs_260820.py::_city_registry, но без autouse-фикстуры (Task 1
+    тесты этого файла cities вообще не трогают)."""
+    saved = cities.all_cities()
+    cities.set_cities_for_test([dict(c) for c in rows])
+    try:
+        return fn()
+    finally:
+        cities.set_cities_for_test(saved)
+
+
+def test_normalize_tab_prefix_trailing_space_and_dash():
+    assert settings_ops.normalize_tab_prefix("🤖") == "🤖 "
+    assert settings_ops.normalize_tab_prefix("🤖 ") == "🤖 "
+    assert settings_ops.normalize_tab_prefix("-") == ""
+    assert settings_ops.normalize_tab_prefix("") == ""
+    assert settings_ops.normalize_tab_prefix(None) == ""
+
+
+def test_current_tab_titles_collects_keys_and_city_tracks_skips_moscow_and_preselect(tmp_path):
+    _db_ready(tmp_path)
+
+    targets = _with_city_registry(
+        _CITIES_T2, lambda: asyncio.run(settings_ops.current_tab_titles()),
+    )
+
+    assert "preselect_tab" not in [t.key for t in targets]
+    assert not any(t.city_code == "msk" for t in targets)  # пустая база — не собираем
+
+    titles = [t.title for t in targets]
+    for expected in (
+        "Краткая", "Party", "Незавершённые", "Опросы", "Гейма", "История сдач",
+        "История правок", "Вопросы",
+    ):
+        assert expected in titles
+
+    spb_targets = [t for t in targets if t.city_code == "spb"]
+    assert {t.title for t in spb_targets} == {
+        "СПб", "СПб Акция", "СПб Party", "СПб Незавершённые", "СПб Гейма", "СПб История сдач",
+    }
+    assert len(spb_targets) == 6
+    spb_main = next(t for t in spb_targets if t.kind == "main")
+    assert spb_main.origin == "city"
+    assert "Санкт-Петербург" in spb_main.label
+
+
+def test_current_tab_titles_main_sheet_tab_missing_falls_back_to_env(tmp_path, monkeypatch):
+    _db_ready(tmp_path)
+    monkeypatch.setattr(config, "GOOGLE_SHEET_TAB", "Реги из .env")
+
+    targets = _with_city_registry([], lambda: asyncio.run(settings_ops.current_tab_titles()))
+
+    main_targets = [t for t in targets if t.key == "main_sheet_tab"]
+    assert len(main_targets) == 1
+    assert main_targets[0].title == "Реги из .env"
+
+
+def test_current_tab_titles_main_sheet_tab_fully_unset_is_skipped(tmp_path, monkeypatch):
+    _db_ready(tmp_path)
+    monkeypatch.setattr(config, "GOOGLE_SHEET_TAB", "")
+
+    targets = _with_city_registry([], lambda: asyncio.run(settings_ops.current_tab_titles()))
+
+    assert not any(t.key == "main_sheet_tab" for t in targets)
+
+
+def _tab_target(title, key="k"):
+    return settings_ops.TabTarget(
+        title=title, origin="key", key=key, city_code=None, kind=None, label=title,
+    )
+
+
+def test_plan_prefix_renames_add_skips_missing_and_occupied():
+    targets = [
+        _tab_target("Незавершённые", "incomplete_sheet_tab"),
+        _tab_target("Гейма", "game_matrix_tab"),
+        _tab_target("Нет в таблице", "x"),
+        _tab_target("Занятое", "y"),
+    ]
+    existing = ["Незавершённые", "Гейма", "Занятое", "🤖 Занятое"]
+
+    renames, skipped = settings_ops.plan_prefix_renames(targets, existing, "🤖 ", add=True)
+
+    assert (targets[0], "Незавершённые", "🤖 Незавершённые") in renames
+    assert (targets[1], "Гейма", "🤖 Гейма") in renames
+    assert any(r[1] == "Нет в таблице" and r[2] == "нет в таблице" for r in skipped)
+    assert any(r[1] == "Занятое" and r[2] == "имя занято" for r in skipped)
+
+
+def test_plan_prefix_renames_add_is_idempotent_on_second_pass():
+    targets = [_tab_target("Незавершённые"), _tab_target("Гейма")]
+    existing = ["Незавершённые", "Гейма"]
+    renames, _ = settings_ops.plan_prefix_renames(targets, existing, "🤖 ", add=True)
+    assert len(renames) == 2
+
+    prefixed_targets = [
+        _tab_target(new, t.key) for t, _old, new in renames
+    ]
+    prefixed_existing = [new for _t, _old, new in renames]
+
+    renames_2, skipped_2 = settings_ops.plan_prefix_renames(
+        prefixed_targets, prefixed_existing, "🤖 ", add=True,
+    )
+    assert renames_2 == []
+    assert all(reason == "уже с префиксом" for _t, _old, reason in skipped_2)
+
+
+def test_plan_prefix_renames_round_trip_add_then_remove_restores_names():
+    names = ["Незавершённые", "Краткая", "Party", "Опросы", "История правок", "Вопросы"]
+    targets = [_tab_target(n, n) for n in names]
+    prefix = "🤖 "
+
+    renames, skipped = settings_ops.plan_prefix_renames(targets, names, prefix, add=True)
+    assert len(renames) == 6
+    assert skipped == []
+
+    prefixed_titles = [new for _t, _old, new in renames]
+    prefixed_targets = [_tab_target(new, t.key) for t, _old, new in renames]
+
+    back_renames, back_skipped = settings_ops.plan_prefix_renames(
+        prefixed_targets, prefixed_titles, prefix, add=False,
+    )
+    assert sorted(new for _t, _old, new in back_renames) == sorted(names)
+    assert back_skipped == []
+
+
+def test_plan_prefix_renames_empty_prefix_skips_everything_both_directions():
+    targets = [_tab_target("Незавершённые"), _tab_target("🤖 Гейма")]
+    existing = ["Незавершённые", "🤖 Гейма"]
+
+    add_renames, add_skipped = settings_ops.plan_prefix_renames(targets, existing, "", add=True)
+    del_renames, del_skipped = settings_ops.plan_prefix_renames(targets, existing, "", add=False)
+
+    assert add_renames == []
+    assert del_renames == []
+    assert all(reason == "без префикса" for _t, _old, reason in add_skipped)
+    assert all(reason == "без префикса" for _t, _old, reason in del_skipped)
