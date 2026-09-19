@@ -381,6 +381,14 @@ def _build_snapshot_lines():
 # HEAD after this quick's changes и diffed против прежнего 524-строчного снимка
 # (`difflib.SequenceMatcher`): ровно одна вставка из 3 строк в позиции 198, ни одна
 # существующая строка не сдвинулась и не изменилась.
+# Drift note (Quick 260919-mlu, Task 4, 527 -> 531 handlers -- PURE APPEND): четыре новых
+# callback-хендлера массовых кнопок «Добавить/Убрать префикс» (sheet_tabs_prefix_add/_del —
+# экран подтверждения, sheet_tabs_prefix_add_go/_del_go — исполнение), тот же шов
+# `handlers/admin_sheet_tabs.py`, встали ПОСЛЕ sheet_tab_newtab_go и ПЕРЕД sync_sheet (та
+# же точка регистрации, что у Task 3). Re-captured by RUNNING `_build_snapshot_lines()`
+# against HEAD и diffed против прежнего 527-строчного снимка (`difflib.SequenceMatcher`):
+# ровно одна вставка из 4 строк в позиции 201, ни одна существующая строка не сдвинулась и
+# не изменилась.
 GOLDEN_SNAPSHOT = """
 admin|message|cmd_admin_help|cmd:admin
 admin|message|cmd_coins|cmd:coins
@@ -583,6 +591,10 @@ admin|callback_query|apl_page|apl:*
 admin|callback_query|sheet_tab_rename_go|sheet_tab_rename_go
 admin|callback_query|sheet_tab_reuse_go|sheet_tab_reuse_go
 admin|callback_query|sheet_tab_newtab_go|sheet_tab_newtab_go
+admin|callback_query|sheet_tabs_prefix_add|sheet_tabs_prefix_add
+admin|callback_query|sheet_tabs_prefix_del|sheet_tabs_prefix_del
+admin|callback_query|sheet_tabs_prefix_add_go|sheet_tabs_prefix_add_go
+admin|callback_query|sheet_tabs_prefix_del_go|sheet_tabs_prefix_del_go
 admin|callback_query|sync_sheet|admin_sync_sheet
 admin|callback_query|rebuild_sheet_confirm|admin_rebuild_sheet
 admin|callback_query|rebuild_sheet|admin_rebuild_sheet_go
@@ -1066,7 +1078,13 @@ def test_snapshot_total_handler_count_is_292():
     # (524 -> 527); чистая вставка, перепроверена прогоном `_build_snapshot_lines()` и
     # diff'ом (difflib.SequenceMatcher) с прежним 524-строчным снапшотом — ровно три новые
     # строки в позиции 198, ни одна другая не поменялась и не переставилась.
-    assert len(GOLDEN_SNAPSHOT) == 527
+    # Квик 260919-mlu (Task 4): +4 handlers/admin_sheet_tabs.py callback_query
+    # (sheet_tabs_prefix_add/_del/_add_go/_del_go — массовые кнопки «Добавить/Убрать
+    # префикс»), встали сразу после sheet_tab_newtab_go и перед sync_sheet, тот же шов
+    # (527 -> 531); чистая вставка, перепроверена прогоном `_build_snapshot_lines()` и
+    # diff'ом (difflib.SequenceMatcher) с прежним 527-строчным снапшотом — ровно четыре
+    # новые строки в позиции 201, ни одна другая не поменялась и не переставилась.
+    assert len(GOLDEN_SNAPSHOT) == 531
     # (callback_query toggle_reg_form_v2/chips/lookup_search/edu_card/repeatable/limit_counter/
     # status_screen/header_settings/haptics — девять тумблеров «Анкета 2.0»), встали сразу после
     # admin_quiet_hours и перед sync_sheet: шов импортируется из хвоста
