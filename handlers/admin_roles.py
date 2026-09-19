@@ -268,6 +268,23 @@ SETTINGS_GUIDE_SECTIONS = [
                 "default": "moderate_game",
                 "where": "🔧 Управление → «👥 Роли и доступы» → «✏️ Права роли: 🎮 Менеджер геймификации»",
             },
+            {
+                "key": "role_stats_manager_enabled",
+                "label": "Роль «Менеджер статистики»",
+                "what": "Выключенная роль не даёт прав никому из её носителей, но сами люди "
+                        "остаются в списке.",
+                "values": _GUIDE_ONOFF,
+                "default": "on",
+                "where": "🔧 Управление → «👥 Роли и доступы»",
+            },
+            {
+                "key": "role_caps_stats_manager",
+                "label": "Права роли «Менеджер статистики»",
+                "what": "Список прав, по одному на строке (или через «;»): moderate_reg, "
+                        "moderate_receipts, moderate_game, broadcast, settings, stats, checkin.",
+                "default": "stats",
+                "where": "🔧 Управление → «👥 Роли и доступы» → «✏️ Права роли: 📊 Менеджер статистики»",
+            },
         ],
     ),
 ]
