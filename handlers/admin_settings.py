@@ -238,6 +238,9 @@ _GAME_FIELD_ORDER = [
 # Phase 14 (CFG-01): group «🔧 Система» — proxy timings that used to live only in .env.
 _SYSTEM_FIELD_ORDER = [
     "proxy_recheck_seconds", "proxy_connect_timeout",
+    # Квик 260919 (аудит прода, «прокси-шторм»): пауза между переключениями каналов — рядом
+    # с остальными прокси-таймингами выше.
+    "proxy_switch_dwell_seconds",
     # Quick 260819 (schema-completeness): интервалы фоновых джоб (после перезапуска).
     "nudge_scan_minutes", "allowlist_refresh_minutes", "incomplete_sync_hours",
     "resume_retry_minutes",
