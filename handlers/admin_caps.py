@@ -114,13 +114,11 @@ async def has_capability(telegram_id: int, cap: str) -> bool:
 # ── D-13: notification fan-out by capability ────────────────────────────────────────────────
 #
 # Four sites (new application/registration.py, new receipt/payment.py, delegate question/
-# user_actions.py, pending-applications reminder/services.reminders.py — the last one added
-# by quick 260919-u7e/P3, see reminders.py's own module docstring) route to whoever HOLDS the
-# relevant capability, not the bare ADMIN_IDS list -- a reg_manager who isn't in
+# user_actions.py, pending-applications reminder/services.reminders.py) route to whoever HOLDS
+# the relevant capability, not the bare ADMIN_IDS list -- a reg_manager who isn't in
 # config.ADMIN_IDS must still see new/pending applications. Two technical-failure sites
-# (services/sheets.py, services/scheduler.py) deliberately keep the old
-# `for admin_id in config.ADMIN_IDS` shape -- D-13 explicitly does NOT route those to
-# capability holders ("менеджер геймы не починит квоту Google API").
+# (services/sheets.py, services/scheduler.py) deliberately keep the old ADMIN_IDS loop -- D-13
+# explicitly does NOT route those to holders ("менеджер геймы не починит квоту Google API").
 
 async def capability_holders(cap: str, *, city: str | None = None) -> list[int]:
     """Every telegram_id currently entitled to `cap`, order-preserving de-duped (D-08: a
