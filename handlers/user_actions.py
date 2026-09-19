@@ -1427,6 +1427,14 @@ async def open_miniapp_button(message: types.Message):
 # user_actions.router (main.py), он перехватил бы меню первым.
 @router.message(StateFilter(None), F.text)
 async def reg_handoff_idle_fallback(message: types.Message) -> None:
+    """Квик 260919-u7e (находка #3): расширено вторым, самостоятельным поводом молчать боту
+    без ответа. Раньше единственной причиной было «черновик держит приложение» (эстафета,
+    260904-3vm) — теперь ЭТА ЖЕ, последняя реально достижимая точка приватного text-пайплайна
+    (см. докстринг `handlers/reg_silence_fallback.py` — тот модуль своей текстовой веткой сюда
+    физически не дотягивается, аiogram останавливает апдейт уже здесь) обязана поймать и
+    второй случай: черновик держит БОТ (или ничей), а живого FSM-состояния нет, потому что
+    MemoryStorage не пережила рестарт контейнера — 14 из 38 делегатов, оказавшихся в анкете
+    за 20 минут до рестарта 05-16.09, не вернулись ни разу."""
     from services.reg_handoff import draft_holder, SURFACE_APP
     from handlers.reg_handoff import handoff_plate
 
@@ -1435,6 +1443,8 @@ async def reg_handoff_idle_fallback(message: types.Message) -> None:
     except Exception as e:
         logger.error(f"reg_handoff_idle_fallback: draft lookup failed for {message.from_user.id}: {e}")
         return
-    if draft_holder(draft) != SURFACE_APP:
+    if draft_holder(draft) == SURFACE_APP:
+        await handoff_plate(message)
         return
-    await handoff_plate(message)
+    from handlers.reg_silence_fallback import offer_if_resumable
+    await offer_if_resumable(message)
