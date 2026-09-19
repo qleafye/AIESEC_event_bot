@@ -59,10 +59,15 @@ def _batch(client, changes, *, base=None, confirm=None, user=ADMIN_ID):
 
 @pytest.fixture
 def no_tab(monkeypatch):
-    """Sheets: вкладки нет — гейт не срабатывает."""
-    async def probe(title):
-        return (False, 0)
-    monkeypatch.setattr(settings_router, "tab_row_count", probe)
+    """Квик 260919-mlu: фикстура подменяла `settings_router.tab_row_count`, чтобы веб-гейт
+    вкладок не ходил в Google. Пробы в роутере больше нет — имена вкладок правятся только из
+    бота, — но фикстура оставлена пустой: её просит десяток тестов, никак со вкладками не
+    связанных, и переписывать их подписи ради снятия одного аргумента — лишний шум в диффе.
+    Стережёт заодно то, что проба не вернётся в роутер незамеченной."""
+    assert not hasattr(settings_router, "tab_row_count"), (
+        "проба вкладки вернулась в веб-роутер — значит вернулась и правка имён вкладок "
+        "мимо развилки бота (см. tests/test_sheet_tab_keys_web_locked_260919.py)"
+    )
 
 
 # ── атомарность (T-22-02) ────────────────────────────────────────────────────────────────
@@ -137,66 +142,43 @@ def test_batch_without_settings_cap_403(tmp_path, no_tab):
     assert resp.status_code == 403 and resp.json()["reason"] == "no_cap"
 
 
-# ── вкладки Sheets: confirm по числу строк, предупреждение при недоступных Sheets ────────
+# ── вкладки Sheets: из приложения не правятся вовсе (квик 260919-mlu) ───────────────────
+#
+# Раньше здесь жили четыре теста веб-гейта вкладок (проба числа строк, confirm по существующей
+# вкладке, предупреждение при недоступных Sheets, сброс кэша, пропуск пробы на сбросе). Гейт
+# умел ровно одно — «вкладка с таким именем уже есть» — и не умел главного: предложить
+# переименовать СТАРУЮ вкладку вместе с данными. Из-за этого правка имени из приложения
+# оставляла строки в осиротевшем листе; на проде так появились три поколения «Незавершённых»
+# (956 / 20 / 432 строки) и два «Геймы». Развилка живёт в боте
+# (handlers/admin_sheet_tabs.py), а веб-поверхность эти ключи больше не принимает.
 
-def test_existing_sheet_tab_needs_confirm_then_confirm_writes(tmp_path, monkeypatch):
+@pytest.mark.parametrize("key", ["main_sheet_tab", "game_matrix_tab", "incomplete_sheet_tab"])
+def test_tab_name_keys_are_rejected_as_not_editable(tmp_path, key):
     client = _setup(tmp_path)
-    calls = []
-
-    async def probe(title):
-        calls.append(title)
-        return (True, 30)
-    monkeypatch.setattr(settings_router, "tab_row_count", probe)
-
-    resp = _batch(client, [("game_matrix_tab", "GAMIFICATION бот"), ("event_name", "форума")])
-    body = resp.json()
-    assert body["saved"] == []
-    assert [c["key"] for c in body["needs_confirm"]] == ["game_matrix_tab"]
-    text = body["needs_confirm"][0]["text"]
-    assert "GAMIFICATION бот" in text and "30" in text and "<" not in text
-    assert _raw("game_matrix_tab") is None and _raw("event_name") == SEEDED_EVENT_NAME  # ничего не записано
-    assert calls == ["GAMIFICATION бот"]
-
-    resp = _batch(client, [("game_matrix_tab", "GAMIFICATION бот"), ("event_name", "форума")], confirm=["game_matrix_tab"])
-    body = resp.json()
-    assert body["saved"] == ["game_matrix_tab", "event_name"]
-    assert _raw("game_matrix_tab") == "GAMIFICATION бот" and _raw("event_name") == "форума"
-    assert calls == ["GAMIFICATION бот"]  # подтверждённый ключ повторно не проверяется
+    resp = _batch(client, [(key, "Новое имя")])
+    assert resp.status_code == 403
+    assert resp.json()["reason"] == "not_editable"
+    assert _raw(key) is None
 
 
-def test_sheets_unreachable_saves_with_warning(tmp_path, monkeypatch):
+def test_tab_name_key_in_batch_blocks_the_whole_batch(tmp_path):
+    """Отказ приходит на разборе ключей, ДО фазы проверок: соседний безобидный ключ пакета
+    тоже не должен записаться — иначе правка уезжает наполовину."""
     client = _setup(tmp_path)
-
-    async def probe(title):
-        return None
-    monkeypatch.setattr(settings_router, "tab_row_count", probe)
-
-    body = _batch(client, [("incomplete_sheet_tab", "Какая-то вкладка")]).json()
-    assert body["saved"] == ["incomplete_sheet_tab"]
-    assert "проверить вкладку" in body["warnings"]["incomplete_sheet_tab"].lower()
-    assert _raw("incomplete_sheet_tab") == "Какая-то вкладка"
-
-
-def test_tab_key_save_resets_sheet_cache(tmp_path, no_tab, monkeypatch):
-    client = _setup(tmp_path)
-    resets = []
-    monkeypatch.setattr(settings_ops, "_reset_sheet_cache", lambda: resets.append(1))
-    body = _batch(client, [("main_sheet_tab", "Реги бот")]).json()
-    assert body["saved"] == ["main_sheet_tab"]
-    assert resets == [1]
-
-
-def test_reset_of_tab_key_skips_probe(tmp_path, monkeypatch):
-    client = _setup(tmp_path)
-    _set("main_sheet_tab", "Старая")
-
-    async def probe(title):
-        raise AssertionError("сброс не должен проверять вкладку")
-    monkeypatch.setattr(settings_router, "tab_row_count", probe)
-
-    body = _batch(client, [("main_sheet_tab", None)]).json()
-    assert body["saved"] == ["main_sheet_tab"]
+    resp = _batch(client, [("event_name", "форума"), ("main_sheet_tab", "Реги бот")])
+    assert resp.status_code == 403
+    assert _raw("event_name") == SEEDED_EVENT_NAME
     assert _raw("main_sheet_tab") is None
+
+
+def test_city_tab_suffix_keys_still_save_from_web(tmp_path, no_tab):
+    """Известное ограничение (см. tests/test_sheet_tab_keys_web_locked_260919.py): приписки
+    городских вкладок остаются редактируемыми в обеих поверхностях — развилки под них нет и
+    в самом боте, запирать их только в вебе значило бы спрятать проблему."""
+    client = _setup(tmp_path)
+    body = _batch(client, [("city_tab_suffix__incomplete", "Брошенные")]).json()
+    assert body["saved"] == ["city_tab_suffix__incomplete"]
+    assert _raw("city_tab_suffix__incomplete") == "Брошенные"
 
 
 # ── stale: параллельная правка в боте (D-09, T-22-04) ────────────────────────────────────

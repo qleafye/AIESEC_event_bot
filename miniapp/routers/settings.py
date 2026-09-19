@@ -50,7 +50,6 @@ from cities import (
     set_admin_city,
 )
 from database.db import get_setting, set_setting, settings_snapshot
-from services.sheets import tab_row_count
 from settings_schema import SETTINGS_SCHEMA, get_setting_typed, multi_labels, option_label
 from settings_synonyms import SETTINGS_SYNONYMS
 
@@ -631,7 +630,7 @@ async def settings_batch(
 ) -> dict:
     """Две фазы, между ними ни одной записи (D-08, T-22-02): (1) по каждому ключу — право на
     правку, `stale`-сверка `base` с текущим сырым значением, проверки бота
-    (`settings_ops.validate_batch_item`, вкладка Sheets — `tab_row_count` отсюда); (2) только
+    (`settings_ops.validate_batch_item`); (2) только
     при пустых `errors`/`needs_confirm`/`stale` — `commit_batch_item` по каждому ключу.
     HTTP 200 и при непустых `errors` — это состояние формы, а не отказ запроса."""
     seen: set[str] = set()
@@ -669,9 +668,14 @@ async def settings_batch(
                         "raw": current,
                         "value": await get_setting_typed(key) if key == targets[key] else current,
                     })
+            # Квик 260919-mlu: здесь стояла проба вкладки Google Sheets (`tab_row_count`) для
+            # ключей SHEET_TAB_WRITE_MODE — веб-версия гейта 260815-3hw. Ветка стала
+            # недостижимой: все эти ключи ушли из `editable_keys()` (settings_ops.EXCLUDED_KEYS)
+            # и отбиваются выше как `not_editable`, ещё до фазы проверок. Веб-гейт умел только
+            # «новая вкладка уже существует» и НЕ умел главного — предложить переименовать
+            # СТАРУЮ вкладку вместе с данными, из-за чего правка из приложения бросала строки
+            # в осиротевшем листе. Живой гейт — в боте (handlers/admin_sheet_tabs.py).
             probe = None
-            if key in settings_ops.SHEET_TAB_WRITE_MODE and change.value and key not in confirmed:
-                probe = await tab_row_count(change.value.strip())
             check = await settings_ops.validate_batch_item(
                 key, change.value,
                 visible_codes=ctx.visible, selected_city=ctx.selected, cities_on=ctx.on,
