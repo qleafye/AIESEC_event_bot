@@ -115,15 +115,20 @@ def test_every_editable_key_renders_exactly_one_component_of_its_registry_type(t
 # ── Сторож 2: опасное — один источник ────────────────────────────────────────────────────
 
 def test_dangerous_keys_come_only_from_settings_ops_dangerous_keys(tmp_path):
-    """Множество ключей с dangerous=true в ответе == settings_ops.DANGEROUS_KEYS; все ключи
+    """Множество ключей с dangerous=true в ответе == DANGEROUS_KEYS ∩ editable_keys(); все ключи
     SHEET_TAB_WRITE_MODE и обе пары DANGER_CONFIRM миниаппа входят в него; у каждого опасного
     ключа кроме вкладок Sheets confirm_text непуст (вкладки считаются по месту при записи)."""
     client = _setup(tmp_path)
     body = _sections_body(client)
     items = _items(body)
 
+    # Квик 260919-mlu: сравниваем не со всем DANGEROUS_KEYS, а с его пересечением с
+    # editable_keys(). Имена вкладок Sheets остаются опасными ключами (в боте у них своя
+    # развилка), но веб-поверхности они больше не отдаются вовсе — требовать их в ответе
+    # значит требовать ровно ту дыру, которую квик закрыл.
+    web_dangerous = set(settings_ops.DANGEROUS_KEYS) & set(settings_ops.editable_keys())
     response_dangerous = {i["base_key"] for i in items if i["dangerous"]}
-    assert response_dangerous == set(settings_ops.DANGEROUS_KEYS), (
+    assert response_dangerous == web_dangerous, (
         "набор опасных ключей веб-экрана разошёлся с settings_ops.DANGEROUS_KEYS:\n"
         f"  только в ответе: {sorted(response_dangerous - settings_ops.DANGEROUS_KEYS)}\n"
         f"  только в реестре: {sorted(settings_ops.DANGEROUS_KEYS - response_dangerous)}"
