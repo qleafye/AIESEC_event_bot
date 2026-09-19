@@ -139,7 +139,12 @@ KNOWN_OVERAGES: dict[str, tuple[int, str]] = {
         "(Phase 14/16)",
     ),
     "admin_settings.py": (
-        2440,
+        2450,
+        "Квик 260919-mlu (Task 3): +15 строк — развилка «была своя вкладка, имя меняется» "
+        "перед гейтом 260815-3hw в settings_edit_value (ленивый вызов "
+        "handlers/admin_sheet_tabs.py::tab_change_screen, вся ветвящаяся логика и три новых "
+        "хендлера живут в новом шве, не здесь); 2429 -> 2444, потолок 2450 с небольшим "
+        "запасом на задачу 4 того же квика (кнопки префикса вкладок, +1 строка). "
         "Перф 17.09 (N+1 на экране группы настроек, тот же класс, что у Mini App /settings/all): "
         "+32 строки — `settings_toggle_rows`/`render_settings_group_text`/"
         "`build_settings_group_keyboard` стали тонкими обёртками над `_impl`-версиями, "
@@ -362,7 +367,12 @@ KNOWN_OVERAGES: dict[str, tuple[int, str]] = {
         "только точки резолюции контекста и вызовы; потолок поднят до фактического размера.",
     ),
     "admin_caps.py": (
-        990,
+        1000,
+        "Квик 260919-mlu (Task 3): +6 строк — три новые capability-записи развилки «была своя "
+        "вкладка, имя меняется» (sheet_tab_rename_go/sheet_tab_reuse_go/sheet_tab_newtab_go, "
+        "handlers/admin_sheet_tabs.py), рядом с sheets_tab_confirm/sheets_tab_cancel; "
+        "990 -> 993, потолок 1000 с небольшим запасом на задачу 4 того же квика (кнопки "
+        "префикса вкладок). "
         "Правка 15.09 (владелец, «привязка через личку админа»): -8 строк — capability-записи "
         "снесённого экрана «💬 Чат» (admin_chat/chat_chat_tracking_toggle/chat_refresh_now/"
         "chat_unbind:*/chat_unbind_go:*/chat_broadcast_out:*) заменены одной строкой "
