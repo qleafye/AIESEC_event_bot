@@ -307,3 +307,66 @@ def test_keyboard_never_shows_step_codes():
         for button in row:
             assert "_" not in button.text
             assert button.text not in mc.CARD_STEPS
+
+
+# ── Квик 260919-m9x: связь «вопрос анкеты ↔ поле карточки» ───────────────────────────────
+# 16–17.09 на проде выключили «Возраст» и включили «Дату рождения» — карточка заявки об этом
+# не узнала: у новых заявок не появилась дата, у старых пропал возраст, менеджер пришёл с
+# «баг?». Сторож держит пометку ⚠️, кнопку синхронизации и то, что она ничего не снимает.
+
+def _set_q(key: str, value: str) -> None:
+    from database.db import set_setting
+
+    _run(set_setting(key, value))
+
+
+def test_asked_but_hidden_question_is_marked(tmp_path):
+    _db_ready(tmp_path)
+    from database.db import set_setting
+
+    # Анкета спрашивает дату рождения, карточка показывает только возраст.
+    _set_q("reg_q_birth_date", "on")
+    _set_q("reg_q_age", "off")
+    _run(set_setting("modcard_fields", "age"))
+
+    asked = _run(admin_modcard.asked_steps())
+    assert "birth_date" in asked and "age" not in asked
+    missing = admin_modcard.missing_steps(["age"], asked)
+    assert "birth_date" in missing and "age" not in missing
+
+    text = _run(admin_modcard.render_modcard_text())
+    assert "Спрашиваем в анкете, но не показываем" in text
+    assert f"⚠️ {mc.CARD_STEPS['birth_date']}" in text
+    assert f"✅ {mc.CARD_STEPS['age']}" in text
+
+    kb = admin_modcard.build_modcard_keyboard(["age"], 300, asked)
+    sync = [b for row in kb.inline_keyboard for b in row if b.callback_data == "modcard_sync"]
+    assert len(sync) == 1
+
+
+def test_sync_button_absent_when_nothing_is_hidden():
+    kb = admin_modcard.build_modcard_keyboard(["age"], 300, {"age"})
+    assert not [b for row in kb.inline_keyboard for b in row if b.callback_data == "modcard_sync"]
+
+
+def test_sync_adds_asked_questions_and_keeps_old_ones(tmp_path):
+    _db_ready(tmp_path)
+    from database.db import get_setting, set_setting
+
+    _set_q("reg_q_birth_date", "on")
+    _set_q("reg_q_age", "off")
+    _run(set_setting("modcard_fields", "age"))
+
+    callback = _FakeCallback("modcard_sync")
+    _run(admin_modcard.modcard_sync(callback))
+
+    steps = mc.enabled_steps((_run(get_setting("modcard_fields")) or "").split("\n"))
+    # Дата рождения добавлена, возраст НЕ снят: у заявок до переключения ответ на него есть.
+    assert "birth_date" in steps and "age" in steps
+    assert callback.message.edit_calls == 1
+
+    # Повторное нажатие уже нечего добавлять — экран не перерисовывается, только тост.
+    again = _FakeCallback("modcard_sync")
+    _run(admin_modcard.modcard_sync(again))
+    assert again.message.edit_calls == 0
+    assert again.answers and "Уже показываем" in again.answers[0][0]
