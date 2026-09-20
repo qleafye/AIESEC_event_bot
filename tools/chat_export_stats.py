@@ -49,7 +49,7 @@ WEIGHTS = {
 }
 
 CSV_COLUMNS = [
-    "place", "telegram_id", "name", "full_name", "status",
+    "place", "telegram_id", "name", "username", "full_name", "status",
     "score", "volume", "resonance", "regularity", "giving",
     "messages", "bursts", "short", "long", "chars_total", "media", "stickers",
     "replies_given", "replies_received", "reactions_received", "reactions_given",
@@ -226,13 +226,17 @@ def parse_messages(raw_messages: list):
 
         reactions_received, giver_ids = _parse_reactions(raw)
 
+        ts = _parse_message_ts(raw)
+        if ts == datetime.min:
+            continue  # без даты сообщение дало бы фантомный «активный день» 0001-01-01
+
         messages.append(ParsedMessage(
             id=mid if mid is not None else -1,
             type=mtype,
             author_id=author_id,
             author_name=author_name,
-            ts=_parse_message_ts(raw),
-            day=_parse_message_ts(raw).date(),
+            ts=ts,
+            day=ts.date(),
             length=length,
             has_media=_has_media(raw),
             is_sticker_or_gif=raw.get("media_type") in {"sticker", "animation"},
@@ -281,8 +285,10 @@ class AuthorAgg:
     replies_received: int = 0
     reactions_received: int = 0
     reactions_given: int = 0
-    resonance_replies_capped: float = 0.0
-    resonance_reactions_capped: float = 0.0
+    # Сырые счётчики НА СООБЩЕНИЕ: потолки резонанса — это веса, их применяет score_authors
+    # (иначе --weights менял бы потолок в шапке вывода, но не в самом расчёте).
+    reply_counts: list = field(default_factory=list)
+    reaction_counts: list = field(default_factory=list)
     first_seen: datetime | None = None
     last_seen: datetime | None = None
 
@@ -335,7 +341,8 @@ def aggregate(messages, reply_index, *, long_chars=120, burst_gap=120, since=Non
                 agg.stickers += 1
             agg.active_days_set.add(m.day)
             agg.reactions_received += m.reactions_received
-            agg.resonance_reactions_capped += min(WEIGHTS["resonance_reaction_cap"], m.reactions_received)
+            if m.reactions_received:
+                agg.reaction_counts.append(m.reactions_received)
 
             if current is not None and (m.ts - current["last_ts"]).total_seconds() <= burst_gap:
                 current["length"] += m.length
@@ -391,7 +398,7 @@ def aggregate(messages, reply_index, *, long_chars=120, burst_gap=120, since=Non
             agg = AuthorAgg(telegram_id=t_author, name=names.get(t_author, ""))
             aggs[t_author] = agg
         agg.replies_received += count
-        agg.resonance_replies_capped += min(WEIGHTS["resonance_reply_cap"], count)
+        agg.reply_counts.append(count)
 
     for m in in_window:
         for gid in m.reaction_giver_ids:
@@ -430,8 +437,9 @@ def score_authors(aggs: dict, weights: dict | None = None) -> dict:
             day_scores[b.day] += _burst_score(b, w)
         volume = sum(min(w["day_cap"], v) for v in day_scores.values())
         resonance = (
-            w["resonance_reply"] * agg.resonance_replies_capped
-            + w["resonance_reaction"] * agg.resonance_reactions_capped
+            w["resonance_reply"] * sum(min(w["resonance_reply_cap"], c) for c in agg.reply_counts)
+            + w["resonance_reaction"]
+            * sum(min(w["resonance_reaction_cap"], c) for c in agg.reaction_counts)
         )
         regularity = w["regularity_per_day"] * agg.active_days
         giving = w["giving_per_reaction"] * agg.reactions_given
@@ -446,6 +454,15 @@ def score_authors(aggs: dict, weights: dict | None = None) -> dict:
 # ---------------------------------------------------------------------------
 # Контекст из БД: исключение команды + подписи из анкет
 # ---------------------------------------------------------------------------
+
+def _normalize_username(raw) -> str:
+    """В экспорте Telegram Desktop юзернеймов НЕТ (только отображаемое имя) — @ник берём из
+    `users.username`. Там лежат и плейсхолдеры («», «-», «@») — их считаем отсутствием ника."""
+    value = str(raw or "").strip().lstrip("@")
+    if not value or value == "-":
+        return ""
+    return f"@{value}"
+
 
 def load_db_context(db_path: str | None, exclude_ids, exclude_file: str | None):
     """Возвращает (excluded_ids, staff_ids, manual_ids, user_info, warnings).
@@ -494,9 +511,11 @@ def load_db_context(db_path: str | None, exclude_ids, exclude_file: str | None):
                     else:
                         warnings.append(f"Не удалось прочитать staff: {e}")
                 try:
-                    rows = conn.execute("SELECT telegram_id, full_name, status FROM users").fetchall()
-                    for tid, full_name, status in rows:
-                        user_info[tid] = (full_name or "", status or "")
+                    rows = conn.execute(
+                        "SELECT telegram_id, username, full_name, status FROM users"
+                    ).fetchall()
+                    for tid, username, full_name, status in rows:
+                        user_info[tid] = (_normalize_username(username), full_name or "", status or "")
                 except sqlite3.OperationalError as e:
                     warnings.append(f"Не удалось прочитать users: {e}")
             finally:
@@ -514,10 +533,11 @@ def _build_rows(aggs: dict, scores: dict, user_info: dict) -> list:
     rows = []
     for author_id, agg in aggs.items():
         sc = scores[author_id]
-        full_name, status = user_info.get(author_id, ("", ""))
+        username, full_name, status = user_info.get(author_id, ("", "", ""))
         rows.append({
             "telegram_id": author_id,
             "name": agg.name or f"id{author_id}",
+            "username": username,
             "full_name": full_name,
             "status": status,
             "score": round(sc["score"], 2),
@@ -592,12 +612,13 @@ def render_console(*, chat_name, since, until, total_messages, total_authors,
     print("\n".join(lines))
     print()
 
-    headers = ["#", "Имя", "Балл", "Сообщ.", "Реплик", "Длинных", "Ответ.получ.", "Реак.получ.", "Дни"]
-    widths = [3, 22, 7, 7, 7, 8, 12, 11, 4]
+    headers = ["#", "Имя", "Ник", "Балл", "Сообщ.", "Реплик", "Длинных", "Ответ.получ.", "Реак.получ.", "Дни"]
+    widths = [3, 22, 18, 7, 7, 7, 8, 12, 11, 4]
     print(" ".join(h.ljust(w2) for h, w2 in zip(headers, widths)))
     for r in rows[:top]:
         vals = [
-            str(r["place"]), r["name"][:22], f"{r['score']:.1f}", str(r["messages"]),
+            str(r["place"]), r["name"][:22], r["username"][:18], f"{r['score']:.1f}",
+            str(r["messages"]),
             str(r["bursts"]), str(r["long"]), str(r["replies_received"]),
             str(r["reactions_received"]), str(r["active_days"]),
         ]
@@ -684,7 +705,25 @@ def main(argv=None) -> int:
             print(f"Не удалось прочитать --weights «{args.weights}»: {e}", file=sys.stderr)
             return 1
     weights = dict(WEIGHTS)
-    if weights_override:
+    if weights_override is not None:
+        # Опечатка в ключе иначе молча оставила бы дефолтный вес — а менеджер был бы уверен,
+        # что считает по-своему.
+        problem = None
+        if not isinstance(weights_override, dict):
+            problem = "ожидается объект вида {\"day_cap\": 30}"
+        else:
+            unknown = sorted(k for k in weights_override if k not in WEIGHTS)
+            not_numbers = sorted(
+                k for k, v in weights_override.items()
+                if isinstance(v, bool) or not isinstance(v, (int, float))
+            )
+            if unknown:
+                problem = f"неизвестные ключи: {', '.join(unknown)}. Допустимые: {', '.join(WEIGHTS)}"
+            elif not_numbers:
+                problem = f"значения должны быть числами: {', '.join(not_numbers)}"
+        if problem:
+            print(f"Файл --weights «{args.weights}»: {problem}", file=sys.stderr)
+            return 1
         weights.update(weights_override)
 
     scores = score_authors(aggregated, weights)
@@ -717,7 +756,10 @@ def main(argv=None) -> int:
     render_console(
         chat_name=chat_name, since=since, until=until,
         total_messages=total_messages, total_authors=total_authors,
-        staff_excluded=len(staff_ids), manual_excluded=len(manual_ids),
+        # Считаем только тех исключённых, кто реально есть в экспорте: «сотрудники: 40» при
+        # восьми писавших выглядело бы так, будто из рейтинга выкинули пол-чата.
+        staff_excluded=len(staff_ids & aggregated.keys()),
+        manual_excluded=len(manual_ids & aggregated.keys()),
         weights=weights, reactions_present=reactions_present,
         warnings=db_warnings, rows=kept_rows, top=args.top,
     )
