@@ -374,6 +374,12 @@ def code_literals() -> list[tuple[str, str]]:
         "Это задание убрали в архив — сдать его больше нельзя. Загляни в «🎯 Мои "
         "задания», там актуальный список.",
     ))
+    # WR-08 (32-REVIEW.md): прямой callback по task_id (карточка/начало сдачи) обходил
+    # проверку аудитории/волны, которую уже применяет список — общий алерт обеих точек.
+    items.append((
+        "lit:user_actions.task_not_visible",
+        "Это задание сейчас тебе недоступно — загляни в «🎯 Задания».",
+    ))
     items.append(("lit:user_actions.mytask_submit_active", "Уже отправлено, ожидай проверки"))
     items.append((
         "lit:user_actions.mytask_submit_limit",

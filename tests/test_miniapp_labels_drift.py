@@ -41,11 +41,12 @@ REG_LABELS_KEYS_SNAPSHOT = [
 GAME_LABELS_PUBLIC = [
     # Phase 32 (32-04): «без срока», штраф на карточке (задача 1) и видимость/порядок для
     # амбассадора (задача 2) — восемь новых публичных имён добавлены в __all__ рядом со
-    # старыми шестью.
+    # старыми шестью. Фикс WR-08 (32-REVIEW.md): `task_visible_to` — гейт одного задания на
+    # прямом входе по task_id, та же проверка, что уже применяет `visible_tasks_for`.
     "ambassador_block_index", "category_label", "penalized_coins", "penalty_hint_line",
     "proof_types_label", "render_task_card_text", "sort_tasks_for_ambassador",
     "sort_tasks_for_delegate", "task_deadline", "task_deadline_admin", "task_deadline_short",
-    "task_deadline_text", "task_has_deadline", "visible_tasks_for",
+    "task_deadline_text", "task_has_deadline", "task_visible_to", "visible_tasks_for",
 ]
 
 
