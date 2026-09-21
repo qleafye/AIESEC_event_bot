@@ -476,6 +476,26 @@ def _build_snapshot_lines():
 # `wave_create_cancel` (последний хендлер этого шва) и ПЕРЕД `show_admin_polls`. Пересчитано
 # RUNNING `_build_snapshot_lines()` и сверено diff'ом (difflib.SequenceMatcher) с прежним
 # 606-строчным снимком: ровно одна вставка из 3 строк, 0 удалений, 0 реордеров.
+#
+# Drift note (ревизия 32-FIX, CR-04/WR-06: визард волны вынесен в handlers/admin_game_wave_
+# wizard.py, 609 -> 611 handlers -- INSERT + REORDER, ни один хендлер не потерян): визард
+# создания/копии/правки волны (`WaveCreate`/`WaveEdit`, `wavenew`/`wavecopy*`/`waveedit*`/
+# `wc*`) переехал из `handlers/admin_game_waves.py` в новый шов `handlers/admin_game_wave_
+# wizard.py`, импортированный В ХВОСТЕ первого файла (та же цепочка импортов, физическая
+# точка регистрации не изменилась). Message-бакет: 2 новые строки `wave_wizard_cancel`
+# (CR-04 — общий обработчик «Отмена»/любой команды для ОБЕИХ FSM-групп, зарегистрирован
+# ДВУМЯ декораторами, отдельная строка на каждую) вставлены СРАЗУ ПЕРЕД `wave_edit_dates_step`
+# — та же позиция, где раньше начинался блок `wave_edit_*`/`wave_create_*` (чистая вставка,
+# 5 существующих строк этого блока остались на месте в прежнем порядке). Callback_query-
+# бакет — РЕОРДЕР: `wave_edit_field_start`/`wave_copy_from_card`/`wave_create_*` (визард,
+# теперь физически определены В НОВОМ ФАЙЛЕ, импортированном ПОСЛЕ всего, что осталось в
+# `admin_game_waves.py`) переехали с позиции сразу после `show_wave_card` на позицию после
+# `wave_finish_go` (последний хендлер, оставшийся в `admin_game_waves.py`); `show_wave_list`/
+# `wave_finish_screen`/`wave_finish_confirm`/`wave_finish_go` не двигались физически в файле,
+# но поднялись выше в снимке, освободив место визарду. Пересчитано RUNNING
+# `_build_snapshot_lines()` и сверено diff'ом (difflib.SequenceMatcher) с прежним 609-строчным
+# снимком: 1 вставка из 2 строк (message) + 1 блочный реордер из 11 строк (callback_query,
+# 0 добавлений/удалений внутри блока) — итого 609 + 2 = 611.
 GOLDEN_SNAPSHOT = """
 admin|message|cmd_admin_help|cmd:admin
 admin|message|cmd_coins|cmd:coins
@@ -567,6 +587,8 @@ admin|message|grev_reject_reason|state:GameReview:*
 admin|message|game_task_editdesc_step|state:GameTaskEdit:*
 admin|message|game_task_editcoins_step|state:GameTaskEdit:*
 admin|message|game_task_editdeadline_step|state:GameTaskEdit:*
+admin|message|wave_wizard_cancel|state:WaveCreate:*,state:WaveEdit:*
+admin|message|wave_wizard_cancel|state:WaveCreate:*,state:WaveEdit:*
 admin|message|wave_edit_dates_step|state:WaveEdit:*
 admin|message|wave_edit_intro_step|state:WaveEdit:*
 admin|message|wave_edit_prize_step|state:WaveEdit:*
@@ -925,13 +947,16 @@ admin|callback_query|game_task_wizard_edit_field|gtwiz_edit:*
 admin|callback_query|game_task_wave_step|gtwave:*
 admin|callback_query|game_task_audience_step|gtaud:*
 admin|callback_query|show_wave_card|wave:*
-admin|callback_query|wave_edit_field_start|waveedit:*
 admin|callback_query|wave_activate_confirm|waveactivate:*
 admin|callback_query|wave_activate_go|waveactivate_go:*
 admin|callback_query|wave_delete_confirm|wavedel:*
 admin|callback_query|wave_delete_go|wavedel_go:*
-admin|callback_query|wave_copy_from_card|wavecopy:*
 admin|callback_query|show_wave_list|admin_game_waves
+admin|callback_query|wave_finish_screen|wavefin:*
+admin|callback_query|wave_finish_confirm|wavefin_go:*
+admin|callback_query|wave_finish_go|wavefin_do:*
+admin|callback_query|wave_edit_field_start|waveedit:*
+admin|callback_query|wave_copy_from_card|wavecopy:*
 admin|callback_query|wave_create_start|wavenew
 admin|callback_query|wave_copy_last_start|wavecopy
 admin|callback_query|wave_create_intro_skip|wcintro_skip
@@ -939,9 +964,6 @@ admin|callback_query|wave_create_redates|wcredates
 admin|callback_query|wave_create_go|wccreate_go
 admin|callback_query|wave_copy_go|wavecopy_go:*
 admin|callback_query|wave_create_cancel|wccancel
-admin|callback_query|wave_finish_screen|wavefin:*
-admin|callback_query|wave_finish_confirm|wavefin_go:*
-admin|callback_query|wave_finish_go|wavefin_do:*
 admin|callback_query|show_admin_polls|admin_polls
 admin|callback_query|show_admin_polls_closed|admin_polls_closed
 admin|callback_query|show_poll_card|poll_card:*
@@ -1319,7 +1341,7 @@ def test_snapshot_total_handler_count_is_292():
     # точка вставки, что и остальные хендлеры этого шва). Пересчитано RUNNING
     # `_build_snapshot_lines()` и сверено diff'ом с прежним 606-строчным снимком: ровно одна
     # вставка из 3 строк, 0 удалений, 0 реордеров (606 -> 609).
-    assert len(GOLDEN_SNAPSHOT) == 609
+    assert len(GOLDEN_SNAPSHOT) == 611
     # (callback_query toggle_reg_form_v2/chips/lookup_search/edu_card/repeatable/limit_counter/
     # status_screen/header_settings/haptics — девять тумблеров «Анкета 2.0»), встали сразу после
     # admin_quiet_hours и перед sync_sheet: шов импортируется из хвоста
