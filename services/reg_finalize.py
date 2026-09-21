@@ -562,6 +562,26 @@ def _edit_admin_text(full: dict, resubmitted: bool) -> str:
     return f"{heading}\n\U0001f464 {safe_name} ({safe_username})"
 
 
+def _auto_reject_admin_text(full: dict, reject_texts: list) -> str:
+    """D-17: короткое уведомление менеджерам об автоотказе — «🤖 Автоотказ: ФИО (ник) —
+    правило «...»». Правило-подпись — первое предложение первого сработавшего текста, обрезка
+    до 60 символов, тот же приём, что `services.reject_journal._rule_label` (журнал не хранит
+    отдельного поля «имя правила» в снимке — своя копия здесь, тот модуль aiogram-free и не
+    импортирует приватные имена соседа)."""
+    safe_name = html.escape(str(full.get("full_name") or "-"))
+    safe_username = html.escape(str(full.get("username") or "-"))
+    first = (reject_texts[0] if reject_texts else "").strip()
+    for sep in (".", "!", "?"):
+        idx = first.find(sep)
+        if idx != -1:
+            first = first[: idx + 1]
+            break
+    if len(first) > 60:
+        first = first[:57].rstrip() + "…"
+    safe_label = html.escape(first or "-")
+    return f"🤖 <b>Автоотказ:</b> {safe_name} ({safe_username}) — правило «{safe_label}»"
+
+
 async def _resolve_update_tab(event_city: str | None, participant_type: str | None) -> str | None:
     """Имя вкладки для `update_row_by_id` — тот же маршрут, что и append при регистрации
     (`city_row_tab`), с фоллбэком на party/short вкладку ПО УМОЛЧАНИЮ, когда `city_row_tab`
@@ -704,12 +724,88 @@ async def post_finalize(
         except Exception as e:
             logger.error(f"Failed to write sheet row for {telegram_id}: {e}")
 
+    # Phase 31 (31-06, D-21/D-22/D-25): ветка автоотказа — сообщение делегату, строка
+    # application_decisions с сентинелом, снимок текстов правил. Мод-агностична (не завязана
+    # на `mode`): правка, снявшая правило и сработавшая заново (план 31-06, задача 3), даёт тот
+    # же эффект, что и новая заявка.
+    #
+    # Гейт идемпотентности (T-31-06-03): ветка выполняется, только если у делегата ЕСТЬ
+    # непустой `auto_reject_rule_ids` И последнее НЕ отменённое решение делегата — НЕ уже
+    # отправленный автоотказ ЭТОЙ ЖЕ волны (сравнение `decided_at` живой строки
+    # `application_decisions` с `users.auto_rejected_at`). Хвост финала зовётся и ботом
+    # напрямую, и джобой очереди Mini App — при ретрае повторный вызов не имеет права отправить
+    # делегату второе сообщение об отказе.
+    is_new_auto_reject = False
+    auto_reject_texts: list = []
+    if full.get("auto_reject_rule_ids"):
+        from database.db import get_last_application_decision, get_live_auto_reject_log_entry
+        from services.reject_journal import AUTO_DECIDED_BY
+
+        auto_rejected_at = full.get("auto_rejected_at")
+        last_decision = await get_last_application_decision(telegram_id)
+        already_sent = bool(
+            last_decision
+            and last_decision.get("decision") == "rejected"
+            and last_decision.get("decided_by") == AUTO_DECIDED_BY
+            and auto_rejected_at
+            and (last_decision.get("decided_at") or "") >= auto_rejected_at
+        )
+        if not already_sent:
+            is_new_auto_reject = True
+            # Снимок текстов правил берётся из ЖИВОЙ строки журнала (её записала задача 1), не
+            # пересчитывается повторной оценкой — тексты правила могли измениться между
+            # подачей и хвостом (сам журнал хранит их снимком на момент срабатывания).
+            entry = await get_live_auto_reject_log_entry(telegram_id)
+            if entry and entry.get("reject_texts"):
+                try:
+                    auto_reject_texts = json.loads(entry["reject_texts"]) or []
+                except (TypeError, ValueError) as exc:
+                    logger.error(
+                        f"post_finalize: битый снимок reject_texts в журнале {telegram_id}: {exc}"
+                    )
+
+    if is_new_auto_reject:
+        try:
+            from services.i18n import context as _i18n_context, tr as _i18n_tr
+            from services.application_effects import apply_decision_effects
+            from services.applications import record_decision
+            from services.reject_journal import AUTO_DECIDED_BY
+
+            lang, tr_map = await _i18n_context(telegram_id)
+            # D-25/Pitfall 5: перевод ЗДЕСЬ, а не в reject_message_text — та функция уже имеет
+            # существующего вызывающего (ручной отказ), которому перевод причины НЕ нужен
+            # (свободный текст менеджера вне делегатского корпуса). Тексты правил — governed
+            # corpus (D-25), переводятся так же, как остальной делегатский текст: перевод есть
+            # -> он; перевода нет -> русский текст, никогда не пустота.
+            reason = (
+                "\n\n".join(_i18n_tr(t, lang, tr_map) for t in auto_reject_texts)
+                if auto_reject_texts else None
+            )
+            # sheet=False: строка листа уже записана выше в этом же вызове.
+            await apply_decision_effects(bot, telegram_id, "rejected", reason, notify=True, sheet=False)
+            # effects_already_sent=True — без него один из двух сметателей application_
+            # decisions отправит делегату отказ ВТОРОЙ раз (тот же приём, что бот-путь ручного
+            # отказа). decided_at = auto_rejected_at (та же метка) — идемпотентность выше
+            # сравнивает именно эти два значения на равенство при ретрае.
+            decided_at_dt = datetime.strptime(
+                full["auto_rejected_at"], "%Y-%m-%d %H:%M:%S",
+            )
+            await record_decision(
+                telegram_id, "rejected", reason, AUTO_DECIDED_BY, decided_at_dt,
+                effects_already_sent=True,
+            )
+        except Exception as e:
+            logger.error(f"Auto-reject effects failed for {telegram_id}: {e}")
+
     status = full.get("status")
     if mode == "new":
         notify_admins = status == "approved" or (
             status == "pending" and await get_setting_typed("pending_notify_mode") == "instant"
-        )
-        admin_text = _new_admin_text(full, status) if notify_admins else None
+        ) or (status == "rejected" and is_new_auto_reject)
+        if status == "rejected" and is_new_auto_reject:
+            admin_text = _auto_reject_admin_text(full, auto_reject_texts)
+        else:
+            admin_text = _new_admin_text(full, status) if notify_admins else None
     else:
         # D-14: обычная правка НЕ уведомляет менеджеров — только пометка в карточке/«Детали».
         notify_admins = remoderated or resubmitted
@@ -727,6 +823,7 @@ async def post_finalize(
         await notify_application(
             bot, telegram_id=telegram_id, admin_text=admin_text,
             city_raw=full.get("event_city"), is_new=(mode == "new"),
+            auto_rejected=(status == "rejected" and is_new_auto_reject),
         )
 
     # HG-01: subscription flag persisted AFTER the row definitely exists (fail-soft + fail-open).

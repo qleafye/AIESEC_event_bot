@@ -277,6 +277,69 @@ def test_build_digest_text_escapes_and_collapses_the_tail():
     assert "Имя15" not in long
 
 
+# ── Phase 31 (31-06, D-17): счётчик автоотказов в дайджесте ──────────────────
+
+def test_build_digest_text_zero_auto_reject_is_byte_identical():
+    """Событие без правил автоотказа — текст байт-в-байт прежний (дефолт `auto_reject_count=0`
+    не добавляет хвост)."""
+    assert rd.build_digest_text(["Иванова", "Петров"]) == rd.build_digest_text(
+        ["Иванова", "Петров"], 0,
+    )
+    assert ", из них" not in rd.build_digest_text(["Иванова", "Петров"], 0)
+
+
+def test_build_digest_text_appends_auto_reject_suffix_with_ru_plural():
+    text1 = rd.build_digest_text(["Иванова"], 1)
+    text2 = rd.build_digest_text(["Иванова", "Петров"], 2)
+    text5 = rd.build_digest_text(["А", "Б", "В", "Г", "Д"], 5)
+    assert text1.endswith(", из них 🤖 1 автоотказ")
+    assert text2.endswith(", из них 🤖 2 автоотказа")
+    assert text5.endswith(", из них 🤖 5 автоотказов")
+
+
+def test_notify_application_digest_mode_stamps_auto_rejected_flag(tmp_path, monkeypatch):
+    _db_ready(tmp_path)
+    fake = _FakeScheduler()
+    monkeypatch.setattr(sched, "_scheduler", fake)
+    asyncio.run(db.set_setting("reg_submit_notify_mode", "digest"))
+
+    asyncio.run(rd.notify_application(
+        _Bot(), telegram_id=DELEGATE_MSK, admin_text="🤖 Автоотказ: Иванова", auto_rejected=True,
+    ))
+    asyncio.run(rd.notify_application(
+        _Bot(), telegram_id=DELEGATE_SPB, admin_text="📋 Новая заявка", auto_rejected=False,
+    ))
+
+    rows = asyncio.run(db.list_unsent_reg_digest(None))
+    by_tid = {r["telegram_id"]: r["auto_rejected"] for r in rows}
+    assert by_tid[DELEGATE_MSK] == 1
+    assert by_tid[DELEGATE_SPB] == 0
+
+
+def test_send_reg_digest_counts_auto_rejected_from_queue_not_live_status(tmp_path, monkeypatch):
+    """D-17/Pitfall 3: счётчик считается по полю СТРОК очереди (штампуется на постановке), а
+    не перечитыванием `users.status` — менеджер мог вернуть заявку из журнала автоотказов
+    между постановкой в очередь и отправкой дайджеста, и статус уже сменился на `pending`."""
+    _db_ready(tmp_path)
+    calls = _capture_notify(monkeypatch)
+    monkeypatch.setattr(sched, "_bot", _Bot())
+    _add_delegate(DELEGATE_MSK, "msk", "Иванова")
+    _add_delegate(DELEGATE_SPB, "msk", "Петров")
+    now = "2026-09-16 12:00:00"
+    asyncio.run(db.enqueue_reg_digest(DELEGATE_MSK, "msk", now, auto_rejected=1))
+    asyncio.run(db.enqueue_reg_digest(DELEGATE_SPB, "msk", now, auto_rejected=0))
+    # Статус делегата сменился (менеджер вернул на модерацию) ПОСЛЕ постановки в очередь — счётчик
+    # обязан остаться 1 (по флагу строки очереди), а не 0 (по текущему статусу).
+    asyncio.run(db.set_user_status(DELEGATE_MSK, "pending"))
+
+    assert asyncio.run(rd.send_reg_digest("msk")) == 1
+
+    assert len(calls) == 1
+    assert calls[0]["text"] == (
+        "📥 Новые заявки: 2 — Иванова, Петров → 📋 Заявки, из них 🤖 1 автоотказ"
+    )
+
+
 def test_send_reg_digest_sends_once_per_city_and_marks_rows(tmp_path, monkeypatch):
     _db_ready(tmp_path)
     calls = _capture_notify(monkeypatch)

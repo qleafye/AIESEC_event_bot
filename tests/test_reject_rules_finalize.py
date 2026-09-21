@@ -43,7 +43,16 @@ class FakeBot:
         self.sent_documents.append((chat_id, file_id, caption))
 
 
+_NARROW_UPDATE_ONLY = (
+    "auto_reject_rule_ids", "auto_rejected_at", "flagged_rule_ids", "auto_rule_note",
+    "rejected_at", "lang",
+)
+
+
 async def _seed_user(uid, status="pending", **overrides):
+    """`add_user`'s big INSERT only accepts a fixed column list — колонки фазы 31 (и `lang`)
+    в него не входят вовсе; для них — узкий `update_user_answers` ПОСЛЕ `add_user`, тот же
+    приём, что использует сам `services.reg_finalize`."""
     row = {
         "telegram_id": uid,
         "full_name": "Иван Иванов",
@@ -55,9 +64,12 @@ async def _seed_user(uid, status="pending", **overrides):
         "season": "YL'26",
         "course": "1",
     }
+    narrow = {k: overrides.pop(k) for k in list(overrides) if k in _NARROW_UPDATE_ONLY}
     row.update(overrides)
     await db.add_user(row)
     await db.set_user_status(uid, status)
+    if narrow:
+        await db.update_user_answers(uid, narrow, allowed_columns=list(narrow.keys()))
     return row
 
 
@@ -308,3 +320,176 @@ def test_no_active_rules_for_city_takes_normal_path(tmp_path):
     result, user = asyncio.run(go())
     assert result["status"] == "pending"
     assert user.get("auto_reject_rule_ids") in (None, "null")
+
+
+# ══════════════════════════════════════════════════════════════════════════════════════════
+# Задача 2: эффекты автоотказа — сообщение делегату, журнал решений, сводка, лист
+# ══════════════════════════════════════════════════════════════════════════════════════════
+
+async def _seed_live_journal_entry(uid, rule_ids, reject_texts, triggered_at):
+    return await db.upsert_auto_reject_log(
+        uid, json.dumps(rule_ids, ensure_ascii=False),
+        json.dumps(reject_texts, ensure_ascii=False), triggered_at,
+    )
+
+
+def test_delegate_message_composition_ru(tmp_path, monkeypatch):
+    """D-21: сообщение делегату = префикс reject_text плюс склейка текстов ВСЕХ сработавших
+    правил через пустую строку."""
+    _ready(tmp_path)
+    _offline(monkeypatch)
+    _patch_sheet_calls(monkeypatch)
+    monkeypatch.setattr(config, "ADMIN_IDS", [])
+
+    async def go():
+        await db.set_setting("reject_text", "К сожалению, твоя заявка отклонена.")
+        await _seed_user(
+            UID, status="rejected",
+            auto_reject_rule_ids=json.dumps([1, 2]), auto_rejected_at="2026-09-20 10:00:00",
+            auto_rule_note="🤖 Автоотказ 20.09 (правило: Курс закрыт)",
+        )
+        await _seed_live_journal_entry(
+            UID, [1, 2], ["Курс закрыт.", "Резюме обязательно."], "2026-09-20 10:00:00",
+        )
+        bot = FakeBot()
+        await rf.post_finalize(bot, UID, "new")
+        return bot
+
+    bot = asyncio.run(go())
+    assert len(bot.sent_messages) == 1
+    chat_id, text = bot.sent_messages[0]
+    assert chat_id == UID
+    assert "К сожалению, твоя заявка отклонена." in text
+    assert "Курс закрыт." in text
+    assert "Резюме обязательно." in text
+
+
+def test_delegate_message_composition_en_translated_when_available(tmp_path, monkeypatch):
+    """D-25: перевод есть -> английский; перевода нет -> русский текст (никогда пустота)."""
+    _ready(tmp_path)
+    _offline(monkeypatch)
+    _patch_sheet_calls(monkeypatch)
+    monkeypatch.setattr(config, "ADMIN_IDS", [])
+
+    async def go():
+        from services.i18n import src_hash
+
+        await db.set_setting("delegate_lang_enabled", "on")
+        await db.upsert_translation(
+            "en", src_hash("Курс закрыт."), "Курс закрыт.", "The course is closed.",
+        )
+        await _seed_user(
+            UID, status="rejected", lang="en",
+            auto_reject_rule_ids=json.dumps([1, 2]), auto_rejected_at="2026-09-20 10:00:00",
+            auto_rule_note="🤖 Автоотказ 20.09 (правило: Курс закрыт)",
+        )
+        await _seed_live_journal_entry(
+            UID, [1, 2], ["Курс закрыт.", "Резюме обязательно."], "2026-09-20 10:00:00",
+        )
+        bot = FakeBot()
+        await rf.post_finalize(bot, UID, "new")
+        return bot
+
+    bot = asyncio.run(go())
+    _chat_id, text = bot.sent_messages[0]
+    assert "The course is closed." in text
+    # Второй текст перевода не имеет — русский, не пустота.
+    assert "Резюме обязательно." in text
+    assert "Курс закрыт." not in text  # русский оригинал ПЕРВОГО текста заменён переводом
+
+
+def test_retry_of_post_finalize_does_not_send_second_message(tmp_path, monkeypatch):
+    """T-31-06-03: повторный вызов хвоста финала (ретрай очереди Mini App) не шлёт делегату
+    второе сообщение об отказе и не пишет вторую строку application_decisions."""
+    _ready(tmp_path)
+    _offline(monkeypatch)
+    _patch_sheet_calls(monkeypatch)
+    monkeypatch.setattr(config, "ADMIN_IDS", [])
+
+    async def go():
+        await _seed_user(
+            UID, status="rejected",
+            auto_reject_rule_ids=json.dumps([1]), auto_rejected_at="2026-09-20 10:00:00",
+            auto_rule_note="🤖 Автоотказ",
+        )
+        await _seed_live_journal_entry(UID, [1], ["Курс закрыт."], "2026-09-20 10:00:00")
+        bot = FakeBot()
+        await rf.post_finalize(bot, UID, "new")
+        await rf.post_finalize(bot, UID, "new")  # ретрай той же волны
+        decisions_count = await _count_decisions(UID)
+        return bot, decisions_count
+
+    bot, decisions_count = asyncio.run(go())
+    assert len(bot.sent_messages) == 1
+    assert decisions_count == 1
+
+
+async def _count_decisions(uid) -> int:
+    async with db._connect() as conn:
+        async with conn.execute(
+            "SELECT COUNT(*) FROM application_decisions WHERE telegram_id = ?", (uid,),
+        ) as cursor:
+            row = await cursor.fetchone()
+            return row[0] if row else 0
+
+
+def test_application_decisions_row_has_auto_sentinel_and_effects_sent(tmp_path, monkeypatch):
+    """T-31-06-05: каждый автоотказ пишет строку application_decisions с сентинелом
+    AUTO_DECIDED_BY, effects_sent_at непустым (без него один из двух сметателей отправит
+    делегату отказ второй раз)."""
+    _ready(tmp_path)
+    _offline(monkeypatch)
+    _patch_sheet_calls(monkeypatch)
+    monkeypatch.setattr(config, "ADMIN_IDS", [])
+
+    async def go():
+        await _seed_user(
+            UID, status="rejected",
+            auto_reject_rule_ids=json.dumps([1]), auto_rejected_at="2026-09-20 10:00:00",
+            auto_rule_note="🤖 Автоотказ",
+        )
+        await _seed_live_journal_entry(UID, [1], ["Курс закрыт."], "2026-09-20 10:00:00")
+        await rf.post_finalize(FakeBot(), UID, "new")
+        return await db.get_last_application_decision(UID)
+
+    decision = asyncio.run(go())
+    from services.reject_journal import AUTO_DECIDED_BY
+    assert decision is not None
+    assert decision["decision"] == "rejected"
+    assert decision["decided_by"] == AUTO_DECIDED_BY
+    assert decision["effects_sent_at"]
+    assert decision["undone_at"] is None
+
+
+def test_auto_reject_admin_notification_sent_when_admins_configured(tmp_path, monkeypatch):
+    """D-17: менеджер видит короткое уведомление об автоотказе (режим «каждую отдельно»)."""
+    _ready(tmp_path)
+    _offline(monkeypatch)
+    _patch_sheet_calls(monkeypatch)
+    monkeypatch.setattr(config, "ADMIN_IDS", [777])
+
+    async def go():
+        from handlers import admin_caps
+        calls = []
+
+        async def fake_notify(bot, cap, text, **kwargs):
+            calls.append((cap, text, kwargs.get("city")))
+
+        monkeypatch.setattr(admin_caps, "notify_by_capability", fake_notify)
+
+        await _seed_user(
+            UID, status="rejected",
+            auto_reject_rule_ids=json.dumps([1]), auto_rejected_at="2026-09-20 10:00:00",
+            auto_rule_note="🤖 Автоотказ",
+        )
+        await _seed_live_journal_entry(UID, [1], ["Курс закрыт совсем."], "2026-09-20 10:00:00")
+        await rf.post_finalize(FakeBot(), UID, "new")
+        return calls
+
+    calls = asyncio.run(go())
+    assert len(calls) == 1
+    cap, text, _city = calls[0]
+    assert cap == "moderate_reg"
+    assert "🤖" in text
+    assert "Автоотказ" in text
+    assert "Курс закрыт совсем." in text

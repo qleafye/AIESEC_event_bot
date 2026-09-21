@@ -58,16 +58,39 @@ def notify_mode_label(mode) -> str:
     return REG_SUBMIT_NOTIFY_MODE_LABELS.get(mode, REG_SUBMIT_NOTIFY_MODE_LABELS["each"])
 
 
-def build_digest_text(names: list[str]) -> str:
-    """«📥 Новые заявки: N — Иванова, Петров → 📋 Заявки». `names` — уже в нужном порядке;
-    HTML-экранирование здесь, не у вызывающего. Хвост длиннее MAX_NAMES сворачивается."""
+def _auto_reject_suffix(count: int) -> str:
+    """D-17: «, из них 🤖 N автоотказов» — ТОЛЬКО при ненулевом счётчике (пустой хвост
+    оставляет `build_digest_text` байт-в-байт прежним для событий без правил автоотказа).
+    Русское склонение (1/2-4/5-20) — тот же стандартный приём, что `services.proxy_session.
+    _plural_ru`, своя копия здесь (мелкая чистая функция, второй общий модуль не заводим)."""
+    if not count:
+        return ""
+    n = abs(count) % 100
+    if 11 <= n <= 14:
+        word = "автоотказов"
+    else:
+        tail = n % 10
+        if tail == 1:
+            word = "автоотказ"
+        elif 2 <= tail <= 4:
+            word = "автоотказа"
+        else:
+            word = "автоотказов"
+    return f", из них 🤖 {count} {word}"
+
+
+def build_digest_text(names: list[str], auto_reject_count: int = 0) -> str:
+    """«📥 Новые заявки: N — Иванова, Петров → 📋 Заявки[, из них 🤖 K автоотказов]». `names` —
+    уже в нужном порядке; HTML-экранирование здесь, не у вызывающего. Хвост длиннее MAX_NAMES
+    сворачивается. `auto_reject_count` (Phase 31, 31-06, D-17) — хвостовой kwarg с дефолтом 0,
+    существующие вызывающие получают байт-в-байт прежний текст."""
     total = len(names)
     shown = [html.escape(str(n)) for n in names[:MAX_NAMES]]
     people = ", ".join(shown)
     rest = total - len(shown)
     if rest > 0:
         people = f"{people} и ещё {rest}"
-    return f"📥 Новые заявки: {total} — {people} → 📋 Заявки"
+    return f"📥 Новые заявки: {total} — {people} → 📋 Заявки{_auto_reject_suffix(auto_reject_count)}"
 
 
 # ── Async helpers ─────────────────────────────────────────────────────────────
@@ -117,17 +140,21 @@ def arm_digest_job(city: str | None, minutes: int) -> None:
 
 
 async def notify_application(bot, *, telegram_id: int, admin_text: str, city_raw=None,
-                             is_new: bool = True) -> None:
+                             is_new: bool = True, auto_rejected: bool = False) -> None:
     """Точка входа из post_finalize: выбрать режим и отправить/отложить.
 
     `is_new=False` (правка/переподача уже поданной анкеты) уходит немедленно ВСЕГДА — см.
-    докстринг модуля."""
+    докстринг модуля. `auto_rejected` (Phase 31, 31-06, D-17) — хвостовой kwarg с дефолтом
+    `False`, штампуется в очередь дайджеста НА ПОСТАНОВКЕ (не выводится из `users.status` при
+    отправке — к моменту отправки менеджер мог вернуть заявку из журнала, и счётчик соврал
+    бы)."""
     from handlers.admin_caps import notify_by_capability  # lazy: см. докстринг модуля
     city = await resolve_city(city_raw)
     mode = await get_setting_typed("reg_submit_notify_mode") if is_new else "each"
     if mode == "digest":
         await enqueue_reg_digest(
             telegram_id, city, msk_now().strftime("%Y-%m-%d %H:%M:%S"),
+            auto_rejected=1 if auto_rejected else 0,
         )
         minutes = await get_setting_typed("reg_submit_digest_minutes")
         arm_digest_job(city, minutes)
@@ -137,14 +164,20 @@ async def notify_application(bot, *, telegram_id: int, admin_text: str, city_raw
 
 async def send_reg_digest(city: str | None) -> int:
     """Date-job target (аргумент — только строка города, picklable; Bot — из
-    services.scheduler._bot). Пустая очередь -> без сообщения. Возвращает число отправок."""
+    services.scheduler._bot). Пустая очередь -> без сообщения. Возвращает число отправок.
+
+    `auto_reject_count` (D-17) считается по полю СТРОК ОЧЕРЕДИ (`auto_rejected`, штампуется на
+    постановке `notify_application`), а НЕ перечитыванием `users.status` — к моменту отправки
+    статус мог смениться (менеджер вернул заявку из журнала автоотказов), и сводка соврала
+    бы."""
     from handlers.admin_caps import notify_by_capability  # lazy: см. докстринг модуля
     try:
         rows = await list_unsent_reg_digest(city)
         if not rows:
             return 0
         names = [await _display_name(r["telegram_id"]) for r in rows]
-        text = build_digest_text(names)
+        auto_reject_count = sum(1 for r in rows if r.get("auto_rejected"))
+        text = build_digest_text(names, auto_reject_count)
         sent = await notify_by_capability(_sched._bot, CAP, text, parse_mode="HTML", city=city)
         await mark_reg_digest_sent(
             [r["id"] for r in rows], msk_now().strftime("%Y-%m-%d %H:%M:%S")
