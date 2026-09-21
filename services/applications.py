@@ -605,15 +605,16 @@ async def claim_approve(telegram_id: int) -> bool:
     """Правило «выигрывает ровно один» — одно имя для бота и веба. approved_at ставит
     `approve_user_atomic` в той же атомарной записи, что и status (D-10).
 
-    Phase 32 (32-05, D-20): начисление баллов амбассадору за приглашённого — ТОЛЬКО при
-    реально выигранном флипе (`won`), ленивый импорт, чтобы не тянуть services.referrals в
-    цепочку импортов веба. Возвращаемое значение не меняется — все существующие вызывающие
-    этой функции не тронуты."""
-    won = await approve_user_atomic(telegram_id)
-    if won:
-        from services.referrals import credit_for_approved
-        await credit_for_approved(telegram_id)
-    return won
+    Начисление баллов амбассадору за приглашённого раньше происходило прямо здесь при
+    выигранном флипе (Phase 32, 32-05, D-20). Фикс WR-02 фазы 32 перенёс его в
+    `record_decision`/`flush_due_decisions`: бот-путь применяет эффекты решения сразу же
+    после этого вызова и без окна отмены, так что для него ничего не поменялось по факту —
+    начисление просто происходит на пару строк позже, тем же тактом. Веб-путь получил
+    5-секундное окно «Отменить» решения (D-06/D-09): без переноса начисление тут случалось
+    ДО того, как решение стало окончательным, и промах менеджера («Одобрить», затем сразу
+    «Отменить», затем «Отклонить») навсегда дарил амбассадору баллы за делегата, который
+    так и не был одобрен ни секунды (D-22 запрещает их снять)."""
+    return await approve_user_atomic(telegram_id)
 
 
 async def claim_reject(telegram_id: int) -> bool:
@@ -665,10 +666,18 @@ async def record_decision(telegram_id: int, decision: str, reason: str | None, b
     в этом случае тоже ставится в `_stamp(now)` — значение уже не имеет смысла (эффекты не ждут
     его), но колонка NOT NULL. Журнал бот-пути пишется РАДИ ИСТОРИИ (чтобы
     `last_rejection_reason` видел причину независимо от того, кто принял решение), не ради
-    доставки — доставка уже случилась синхронно, до этого вызова."""
+    доставки — доставка уже случилась синхронно, до этого вызова.
+
+    Фикс WR-02 (фаза 32): начисление амбассадору за приглашённого (`claim_approve` раньше
+    делал это само, см. его докстринг) для решения `approved` без окна отмены происходит
+    ИМЕННО здесь — синхронно, тем же вызовом, каким бот-путь помечает эффекты уже
+    отправленными; решение уже необратимо, откладывать нечего."""
     decided_at = _stamp(now)
     if effects_already_sent:
         sent_at = _stamp(now)
+        if decision == "approved":
+            from services.referrals import credit_for_approved
+            await credit_for_approved(telegram_id)
         return await record_application_decision(
             telegram_id, decision, reason, by, decided_at, sent_at, effects_sent_at=sent_at,
         )
@@ -716,8 +725,21 @@ async def undo_decision(decision_id: int) -> dict:
 async def flush_due_decisions(now: datetime, enqueue) -> int:
     """Забирает все просроченные живые решения (`claim_due_application_decisions`) и на каждую
     выигранную строку зовёт переданный `enqueue(kind, payload)`. Колбэк ВНЕДРЯЕТСЯ параметром —
-    модуль остаётся свободен и от `miniapp.outbox`, и от `services.*`-цикла очереди."""
+    модуль остаётся свободен и от `miniapp.outbox`, и от `services.*`-цикла очереди.
+
+    Фикс WR-02 (фаза 32): для `decision == "approved"` — начисление амбассадору за
+    приглашённого (см. докстринг `claim_approve`) происходит ИМЕННО здесь, когда решение уже
+    пережило 5-секундное окно «Отменить» неотменённым — `claim_due_application_decisions`
+    физически не может вернуть строку с `undone_at IS NOT NULL` (T-23-01), так что до этой
+    строки кода доходят только решения, которые никто не откатил. `credit_for_approved` сам
+    перепроверяет `status == "approved"` — повторное решение по тому же делегату (гонка с
+    другим менеджером) начисления не даст."""
     due = await claim_due_application_decisions(_stamp(now))
+    if due:
+        from services.referrals import credit_for_approved
+        for row in due:
+            if row["decision"] == "approved":
+                await credit_for_approved(row["telegram_id"])
     for row in due:
         enqueue(row["decision"], row)
     return len(due)
