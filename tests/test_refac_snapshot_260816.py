@@ -400,6 +400,19 @@ def _build_snapshot_lines():
 # `arr_t`/`arr_noop`/`arr_new`/`arr_preset`), ни одна существующая строка не сдвинулась и не
 # изменилась. Все 7 — callback_query, встали в общем callback_query-бакете СРАЗУ ПОСЛЕ
 # `sheet_tabs_prefix_del_go` и ПЕРЕД `sync_sheet`.
+# Drift note (Phase 31, план 31-08, задача 2, D-09: карточка правила, 538 -> 549 handlers --
+# PURE APPEND): 4 message-хендлера (`arr_text_cancel` зарегистрирован ДВАЖДЫ — на
+# `RejectRuleEdit.name` и `RejectRuleEdit.text`, `arr_name_step`/`arr_text_step`) встали в
+# message-бакете СРАЗУ ПОСЛЕ `admin_lookup_search_step` и ПЕРЕД `cancel_city_form` — раньше по
+# фактическому порядку импорта, чем `handlers/admin_cities.py` (точка вставки определяется
+# цепочкой импортов, а не позицией файла на диске); 7 callback_query-хендлеров (`arr_v`/
+# `arr_act`/`arr_city`/`arr_citypick`/`arr_track`/`arr_name`/`arr_text`) встали СРАЗУ ПОСЛЕ
+# `arr_preset` и ПЕРЕД `sync_sheet`. `arr_t` (`arr_toggle_enabled`) НЕ переехал — его тело
+# поправлено (редрей карточки вместо списка), а РЕГИСТРАЦИЯ осталась ровно там же, где её
+# поставила задача 1 (сразу после `arr_master`, перед `arr_noop`) — иначе строка золотого
+# снимка сдвинулась бы (реордер), а не просто добавилась. Re-captured by RUNNING
+# `_build_snapshot_lines()` against HEAD и diffed (`difflib.SequenceMatcher`) против прежнего
+# 538-строчного снимка: ровно 2 вставки (4 + 7 строк), 0 удалений, 0 реордеров.
 GOLDEN_SNAPSHOT = """
 admin|message|cmd_admin_help|cmd:admin
 admin|message|cmd_coins|cmd:coins
@@ -422,6 +435,10 @@ admin|message|miniapp_theme_photo_step|state:MiniAppTheme:*
 admin|message|miniapp_theme_photo_step_invalid|state:MiniAppTheme:*
 admin|message|admin_lookup_search_cancel|state:LookupAdmin:*
 admin|message|admin_lookup_search_step|state:LookupAdmin:*
+admin|message|arr_text_cancel|state:RejectRuleEdit:*,state:RejectRuleEdit:*
+admin|message|arr_text_cancel|state:RejectRuleEdit:*,state:RejectRuleEdit:*
+admin|message|arr_name_step|state:RejectRuleEdit:*
+admin|message|arr_text_step|state:RejectRuleEdit:*
 admin|message|cancel_city_form|state:CityForm:*,state:CityForm:*
 admin|message|cancel_city_form|state:CityForm:*,state:CityForm:*
 admin|message|city_add_label_step|state:CityForm:*
@@ -613,6 +630,13 @@ admin|callback_query|arr_toggle_enabled|arr_t:*
 admin|callback_query|arr_noop|arr_noop
 admin|callback_query|arr_new_start|arr_new
 admin|callback_query|arr_preset_pick|arr_preset:*
+admin|callback_query|arr_view|arr_v:*
+admin|callback_query|arr_act_toggle|arr_act:*
+admin|callback_query|arr_city_start|arr_city:*
+admin|callback_query|arr_citypick|arr_citypick:*
+admin|callback_query|arr_track_toggle|arr_track:*
+admin|callback_query|arr_name_start|arr_name:*
+admin|callback_query|arr_text_start|arr_text:*
 admin|callback_query|sync_sheet|admin_sync_sheet
 admin|callback_query|rebuild_sheet_confirm|admin_rebuild_sheet
 admin|callback_query|rebuild_sheet|admin_rebuild_sheet_go
@@ -1109,7 +1133,12 @@ def test_snapshot_total_handler_count_is_292():
     # `_build_snapshot_lines()` и diff'ом с прежним 531-строчным снапшотом — 7 новых строк, ни
     # одна другая не поменялась и не переставилась. Задачи 2/3 того же плана заполняют тела
     # существующих функций и добавляют СВОИ хендлеры отдельными коммитами того же плана.
-    assert len(GOLDEN_SNAPSHOT) == 538
+    # Phase 31 (план 31-08, задача 2): +11 handlers/admin_reject_rules.py (4 message —
+    # `arr_text_cancel`x2/`arr_name_step`/`arr_text_step`, 7 callback_query — `arr_v`/`arr_act`/
+    # `arr_city`/`arr_citypick`/`arr_track`/`arr_name`/`arr_text` — карточка правила по макету
+    # D-09) (538 -> 549); чистая вставка, `arr_t` регистрацию не менял (только тело), diff'ом
+    # (difflib.SequenceMatcher) подтверждено 0 удалений/реордеров.
+    assert len(GOLDEN_SNAPSHOT) == 549
     # (callback_query toggle_reg_form_v2/chips/lookup_search/edu_card/repeatable/limit_counter/
     # status_screen/header_settings/haptics — девять тумблеров «Анкета 2.0»), встали сразу после
     # admin_quiet_hours и перед sync_sheet: шов импортируется из хвоста

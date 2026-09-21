@@ -6,18 +6,26 @@ pytest-asyncio недоступна в этом окружении — async ч�
 `tests/test_faq_260906.py::_FakeCallback/_FakeMessage`.
 
 Три пласта сторожей — по задачам плана:
-- Задача 1 (этот срез): экран списка, capability-гейт, общий рубильник, стейл-гард чужого
-  правила, заготовки. Задачи 2/3 дописывают карточку/копирование/удаление отдельными коммитами.
+- Задача 1: экран списка, capability-гейт, общий рубильник, стейл-гард чужого правила, заготовки.
+- Задача 2 (этот срез добавляет): карточка правила по макету D-09, единственная дверь записи,
+  право по городу, треки, FSM имени/текста отказа. Задача 3 (копирование/удаление) — следующим
+  коммитом того же плана.
 """
 from __future__ import annotations
 
 import asyncio
+import inspect
 import json
+
+from aiogram.fsm.context import FSMContext
+from aiogram.fsm.storage.base import StorageKey
+from aiogram.fsm.storage.memory import MemoryStorage
 
 from config import config
 from database import db
 from handlers import admin_reject_rules
 from handlers.admin_caps import required_capability
+from handlers.states import RejectRuleEdit
 from settings_schema import get_setting_typed
 
 
@@ -87,6 +95,10 @@ class _FakeCallback:
 
     async def answer(self, text=None, show_alert=False):
         self.answers.append((text, show_alert))
+
+
+def _new_state(uid: int) -> FSMContext:
+    return FSMContext(storage=MemoryStorage(), key=StorageKey(bot_id=1, chat_id=uid, user_id=uid))
 
 
 def _cbs(kb):
@@ -218,3 +230,131 @@ def test_arr_preset_custom_creates_blank_rule(tmp_path):
     assert len(rules) == 1
     assert rules[0]["name"] is None
     assert json.loads(rules[0]["conditions"]) == []
+
+
+# ── Задача 2: карточка правила по макету D-09, единственная дверь записи, право по городу ───
+
+def test_render_rule_card_matches_layout_and_has_no_raw_codes(tmp_path):
+    _ready(tmp_path)
+    rule_id = _run(_create_rule(
+        city="msk",
+        conditions=json.dumps([
+            [
+                {"step": "course", "op": "in", "values": ["1", "2"]},
+                {"step": "birth_date", "op": "age_on_forum_lt", "values": [21]},
+            ],
+            [{"step": "resume", "op": "no_file", "values": []}],
+        ]),
+        reject_text="Причина отказа",
+    ))
+    text, _kb = _run(admin_reject_rules.render_rule_card(SUPERADMIN_ID, rule_id))
+    assert "Группа 1 (все условия сразу):" in text
+    assert "— ИЛИ —" in text
+    assert "Группа 2:" in text
+    for forbidden in ("course", "birth_date", "msk", "full", "party_overnight"):
+        assert forbidden not in text
+
+
+def test_admin_reject_rules_module_never_calls_update_reject_rule_directly():
+    """T-31-08 (acceptance): единственная дверь записи — save_rule/delete_rule; прямого
+    точечного UPDATE строки базы в этом файле быть не должно."""
+    source = inspect.getsource(admin_reject_rules)
+    assert "update_reject_rule" not in source
+
+
+def test_admin_reject_rules_module_calls_can_edit_city_in_every_mutating_handler():
+    """Сторож T-31-08-01: право по городу перепроверяется в каждом мутирующем хендлере —
+    нижняя граница числа вызовов `can_edit_city` внутри модуля."""
+    source = inspect.getsource(admin_reject_rules)
+    assert source.count("can_edit_city(") >= 10
+
+
+def test_reject_rule_edit_states_exist():
+    assert hasattr(RejectRuleEdit, "name")
+    assert hasattr(RejectRuleEdit, "text")
+
+
+def test_arr_toggle_enabled_now_reopens_card(tmp_path):
+    """Задача 2: как только карточка появилась, arr_t редрейит её (не список)."""
+    _ready(tmp_path)
+    rule_id = _run(_create_rule(reject_text="x", enabled=1))
+    callback = _FakeCallback(f"arr_t:{rule_id}", user_id=SUPERADMIN_ID)
+    _run(admin_reject_rules.arr_toggle_enabled(callback))
+    assert "Правило автоотказа" in callback.message.text_edited
+
+
+def test_arr_act_toggle_changes_only_action(tmp_path):
+    _ready(tmp_path)
+    rule_id = _run(_create_rule(action="reject", reject_text="x", city="msk"))
+    callback = _FakeCallback(f"arr_act:{rule_id}", user_id=SUPERADMIN_ID)
+    _run(admin_reject_rules.arr_act_toggle(callback))
+    row = _run(db.get_reject_rule(rule_id))
+    assert row["action"] == "flag"
+    assert row["city"] == "msk"
+    assert row["reject_text"] == "x"
+
+
+def test_city_assign_screen_does_not_offer_all_cities_to_bound_manager(tmp_path):
+    _ready(tmp_path)
+    _run(_setup_staff())
+    rule_id = _run(_create_rule(city="msk", reject_text="x"))
+    screen = _run(admin_reject_rules.render_city_assign_screen(BOUND_MSK_ID, rule_id))
+    assert screen is not None
+    _text, kb = screen
+    cbs = _cbs(kb)
+    assert f"arr_citypick:{rule_id}:*" not in cbs
+
+
+def test_city_assign_screen_offers_all_cities_to_superadmin(tmp_path):
+    _ready(tmp_path)
+    rule_id = _run(_create_rule(city="msk", reject_text="x"))
+    _text, kb = _run(admin_reject_rules.render_city_assign_screen(SUPERADMIN_ID, rule_id))
+    cbs = _cbs(kb)
+    assert f"arr_citypick:{rule_id}:*" in cbs
+
+
+def test_arr_track_toggle_rejects_unchecking_last_track(tmp_path):
+    _ready(tmp_path)
+    rule_id = _run(_create_rule(tracks=json.dumps(["full"]), reject_text="x"))
+    callback = _FakeCallback(f"arr_track:{rule_id}:full", user_id=SUPERADMIN_ID)
+    _run(admin_reject_rules.arr_track_toggle(callback))
+    assert callback.answers and callback.answers[0][1] is True
+    row = _run(db.get_reject_rule(rule_id))
+    assert json.loads(row["tracks"]) == ["full"]
+
+
+def test_arr_track_toggle_adds_and_removes_party_pair_together(tmp_path):
+    _ready(tmp_path)
+    rule_id = _run(_create_rule(tracks=json.dumps(["full"]), reject_text="x"))
+    callback = _FakeCallback(f"arr_track:{rule_id}:party", user_id=SUPERADMIN_ID)
+    _run(admin_reject_rules.arr_track_toggle(callback))
+    row = _run(db.get_reject_rule(rule_id))
+    tracks = set(json.loads(row["tracks"]))
+    assert {"party_overnight", "party_noovernight"} <= tracks
+
+
+def test_arr_text_step_saves_via_save_rule_not_update_reject_rule_directly(tmp_path, monkeypatch):
+    _ready(tmp_path)
+    rule_id = _run(_create_rule(reject_text="старый", city="msk"))
+    calls = []
+
+    async def _fake_save_rule(admin_id, rid, **fields):
+        calls.append((admin_id, rid, fields))
+        return rid, None
+
+    monkeypatch.setattr(admin_reject_rules, "save_rule", _fake_save_rule)
+
+    def _boom(*args, **kwargs):
+        raise AssertionError("update_reject_rule должен вызываться только внутри save_rule")
+
+    monkeypatch.setattr(db, "update_reject_rule", _boom)
+
+    state = _new_state(SUPERADMIN_ID)
+    _run(state.update_data(rre_rule_id=rule_id))
+    _run(state.set_state(RejectRuleEdit.text))
+    message = _FakeMessage(text="Строка один;Строка два", user_id=SUPERADMIN_ID)
+    _run(admin_reject_rules.arr_text_step(message, state))
+
+    assert len(calls) == 1
+    assert calls[0][1] == rule_id
+    assert calls[0][2]["reject_text"] == "Строка один\nСтрока два"

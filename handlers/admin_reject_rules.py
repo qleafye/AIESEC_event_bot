@@ -16,19 +16,24 @@
 в КАЖДОМ мутирующем хендлере ПЕРЕД действием — клавиатуры в чате не истекают (T-31-08-01, тот
 же приём, что `handlers/admin_faq.py::_card_out_of_scope`).
 
-Задача 1 (этот срез): экран списка, вход в разделе, capability, общий рубильник, заготовки.
-Карточка правила (задача 2) и копирование/удаление (задача 3) — в следующих коммитах того же
-плана; пока `arr_t`/создание из заготовки возвращают на список (задача 2 заменит это открытием
-карточки, как только она появится)."""
+Задача 2 (этот срез): карточка правила по макету D-09, город, треки, имя/текст отказа (FSM).
+Копирование/удаление — задача 3, следующим коммитом того же плана (кнопки на карточке появятся
+вместе с ней)."""
 import html as html_module
 import json
 
 from aiogram import F, types
+from aiogram.fsm.context import FSMContext
+from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup, ReplyKeyboardRemove
 
 from config import config
+from cities import ALL_CITIES, ALL_CITIES_LABEL, city_codes, city_label
 from database.db import get_reject_rule, get_staff_city
 from handlers.admin import router
 from handlers.admin_core import _admin_city_view
+from handlers.states import RejectRuleEdit
+from keyboards.builders import get_cancel_kb
+from reg_engine import label_for
 from services.reject_rules import (
     RULE_PRESETS,
     can_edit_city,
@@ -38,9 +43,31 @@ from services.reject_rules import (
 )
 from settings_audit import set_setting_by_admin
 from settings_schema import get_setting_typed
-from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
 
 RULES_PAGE = 8
+
+# Человеческие подписи операторов (D-01/D-09) — своя копия таблицы `services.reject_rules.
+# rule_summary` (не импорт приватного имени соседнего модуля): карточка печатает условия
+# построчно (bullet-список), автоописание — одной строкой через " и ".
+_OPERATOR_LABELS = {
+    "in": "один из", "not_in": "ни один из",
+    "lt": "меньше", "gt": "больше", "between": "между",
+    "before": "раньше", "after": "позже",
+    "age_on_forum_lt": "возраст на дату форума меньше",
+    "filled": "заполнено", "empty": "не заполнено",
+    "has_file": "есть", "no_file": "нет",
+}
+_NO_VALUE_OPERATORS = ("filled", "empty", "has_file", "no_file")
+
+# D-05: три чекбокса «Полная / Краткая / Вечеринка» — «Вечеринка» покрывает ОБА внутренних
+# кода сразу (как `services.applications.TRACK_FILTERS`); внутренние коды менеджеру не
+# показываются нигде (T-31-08-03: код в callback_data — один из ТРЁХ UI-кодов, закрытое множество).
+_TRACK_UI = (("full", "Полная"), ("short", "Краткая"), ("party", "Вечеринка"))
+_TRACK_CODES = {
+    "full": ("full",),
+    "short": ("short",),
+    "party": ("party_overnight", "party_noovernight"),
+}
 
 
 def _parse_id(callback_data: str) -> int | None:
@@ -48,6 +75,17 @@ def _parse_id(callback_data: str) -> int | None:
         return int(callback_data.split(":", 1)[1])
     except (IndexError, ValueError):
         return None
+
+
+def _parse_id_and_code(callback_data: str) -> tuple[int | None, str | None]:
+    parts = callback_data.split(":", 2)
+    if len(parts) < 3:
+        return None, None
+    try:
+        rule_id = int(parts[1])
+    except ValueError:
+        return None, None
+    return rule_id, parts[2]
 
 
 def _short(text: str | None, limit: int) -> str:
@@ -98,6 +136,38 @@ async def _default_new_rule_city(admin_id: int) -> str | None:
     if admin_id in config.ADMIN_IDS:
         return None
     return await get_staff_city(admin_id)
+
+
+def _tracks_label(tracks: list[str]) -> str:
+    active = [ui_label for ui_code, ui_label in _TRACK_UI if any(c in tracks for c in _TRACK_CODES[ui_code])]
+    return " / ".join(active) if active else "—"
+
+
+def _condition_line(cond: dict) -> str:
+    step = (cond or {}).get("step")
+    op = (cond or {}).get("op")
+    values = (cond or {}).get("values") or []
+    step_label = label_for(step) if step else "?"
+    op_label = _OPERATOR_LABELS.get(op, op or "?")
+    if op in _NO_VALUE_OPERATORS:
+        return f"• {step_label} — {op_label}"
+    if op == "between" and len(values) == 2:
+        return f"• {step_label} — {op_label} {html_module.escape(str(values[0]))} и {html_module.escape(str(values[1]))}"
+    values_text = ", ".join(html_module.escape(str(v)) for v in values)
+    return f"• {step_label} — {op_label}: {values_text}"
+
+
+def _condition_groups_text(conditions: list[list[dict]]) -> str:
+    """Блок условий по макету D-09: «Группа 1 (все условия сразу): •... — ИЛИ — / Группа 2:
+    •...» — квалификатор «(все условия сразу)» только у первой группы, дословно как у владельца."""
+    if not conditions:
+        return "Условий пока нет — добавьте первое кнопкой ниже."
+    blocks = []
+    for idx, group in enumerate(conditions, start=1):
+        header = "Группа 1 (все условия сразу):" if idx == 1 else f"Группа {idx}:"
+        cond_lines = [_condition_line(cond) for cond in (group or [])] or ["• (условий в группе пока нет)"]
+        blocks.append("\n".join([header] + cond_lines))
+    return "\n— ИЛИ —\n".join(blocks)
 
 
 # ── Экран списка ──────────────────────────────────────────────────────────────
@@ -198,8 +268,11 @@ async def arr_master_toggle(callback: types.CallbackQuery):
 
 @router.callback_query(F.data.startswith("arr_t:"))
 async def arr_toggle_enabled(callback: types.CallbackQuery):
-    """Задача 1: перерисовывает СПИСОК после переключения (карточки ещё нет — задача 2
-    заменит редрей на карточку, как только `render_rule_card` появится)."""
+    """Задача 2: теперь редрейит КАРТОЧКУ (задача 1 редрейила список — карточки ещё не было).
+    Регистрация НАМЕРЕННО осталась на этой же позиции файла (сразу после `arr_master`, перед
+    `arr_noop`) — задача 1 уже зарегистрировала этот хендлер здесь; менять его ПОЗИЦИЮ означало
+    бы реордер строки золотого снимка (tests/test_refac_snapshot_260816.py), а не чистую
+    вставку — задача правит только ТЕЛО функции."""
     rule_id = _parse_id(callback.data)
     if rule_id is None:
         await callback.answer("Правило не найдено.", show_alert=True)
@@ -213,7 +286,8 @@ async def arr_toggle_enabled(callback: types.CallbackQuery):
     if error:
         await callback.answer(error, show_alert=True)
         return
-    text, kb = await render_rules_screen(callback.from_user.id)
+    screen = await render_rule_card(callback.from_user.id, rule_id)
+    text, kb = screen
     await callback.message.edit_text(text, parse_mode="HTML", reply_markup=kb)
     if new_enabled:
         await callback.answer("✅ Правило включено и теперь действует на подходящие заявки.", show_alert=True)
@@ -256,8 +330,6 @@ async def arr_new_start(callback: types.CallbackQuery):
 
 @router.callback_query(F.data.startswith("arr_preset:"))
 async def arr_preset_pick(callback: types.CallbackQuery):
-    """Задача 1: после создания возвращает на СПИСОК (карточки ещё нет — задача 2 заменит
-    редрей на открытие созданного правила картой)."""
     n = _parse_id(callback.data)
     if n is None or n < 0:
         await callback.answer("Не понял выбор — откройте экран заново.", show_alert=True)
@@ -283,10 +355,347 @@ async def arr_preset_pick(callback: types.CallbackQuery):
     else:
         await callback.answer("Такой заготовки нет — обновите экран.", show_alert=True)
         return
-    _new_id, error = await save_rule(callback.from_user.id, None, **fields)
+    new_id, error = await save_rule(callback.from_user.id, None, **fields)
     if error:
         await callback.answer(error, show_alert=True)
         return
-    text, kb = await render_rules_screen(callback.from_user.id)
+    screen = await render_rule_card(callback.from_user.id, new_id)
+    if screen is None:
+        await callback.answer("Правило создано, но не открылось — обновите список.", show_alert=True)
+        return
+    text, kb = screen
     await callback.message.edit_text(text, parse_mode="HTML", reply_markup=kb)
-    await callback.answer("Правило создано и выключено — включите его в списке, когда проверите условия.")
+    await callback.answer("Правило создано и выключено — включите его, когда проверите условия.")
+
+
+# ── Карточка правила ──────────────────────────────────────────────────────────
+
+async def render_rule_card(admin_id: int, rule_id: int) -> tuple[str, InlineKeyboardMarkup] | None:
+    """`None` — правило удалили или город правила больше не в праве этого менеджера между
+    рендерами (T-31-08-01) — вызывающий отвечает алертом, не правкой."""
+    rule = await _load_rule(rule_id)
+    if rule is None or not await can_edit_city(admin_id, rule.get("city")):
+        return None
+
+    name = rule.get("name")
+    summary = await rule_summary(rule)
+    lines = ["🚫 <b>Правило автоотказа</b>", ""]
+    if name:
+        lines.append(f"<b>{html_module.escape(str(name))}</b>")
+        lines.append(html_module.escape(summary))
+    else:
+        lines.append(f"<b>{html_module.escape(summary)}</b>")
+
+    status_line = (
+        "⚠️ На паузе" if rule.get("paused_reason")
+        else ("✅ Включено" if rule.get("enabled") else "🚫 Выключено")
+    )
+    lines.append(status_line)
+    if rule.get("paused_reason"):
+        lines.append(
+            f"Опиралось на вопрос «{html_module.escape(str(rule['paused_reason']))}», а он "
+            "выключен или его вариант удалён из анкеты. Поправьте условие или уберите его."
+        )
+
+    lines.append("")
+    lines.append(_condition_groups_text(rule.get("conditions") or []))
+    lines.append("")
+
+    action_label = "🚫 Отклонять" if rule.get("action") == "reject" else "⚠️ Помечать для модератора"
+    city_text = "Все города" if not rule.get("city") else await city_label(rule["city"])
+    lines.append(f"Действие: {action_label}")
+    lines.append(f"Город: {html_module.escape(str(city_text))}")
+    lines.append(f"Треки: {_tracks_label(rule.get('tracks') or ['full'])}")
+
+    lines.append("")
+    if rule.get("reject_text"):
+        lines.append("<b>Текст отказа делегату:</b>")
+        lines.append(html_module.escape(str(rule["reject_text"])))
+    else:
+        lines.append("Текст отказа пока не задан.")
+
+    text = "\n".join(lines)
+
+    buttons: list[list[InlineKeyboardButton]] = []
+    groups = rule.get("conditions") or []
+    if not groups:
+        buttons.append([InlineKeyboardButton(text="➕ условие в группу 1", callback_data="arr_noop")])
+    else:
+        for idx in range(1, len(groups) + 1):
+            buttons.append([InlineKeyboardButton(text=f"➕ условие в группу {idx}", callback_data="arr_noop")])
+    buttons.append([InlineKeyboardButton(text="➕ новая группа (ИЛИ)", callback_data="arr_noop")])
+
+    buttons.append([InlineKeyboardButton(text=f"↔ Действие: {action_label}", callback_data=f"arr_act:{rule_id}")])
+    buttons.append([InlineKeyboardButton(text=f"🏙 Город: {city_text}", callback_data=f"arr_city:{rule_id}")])
+
+    track_codes = rule.get("tracks") or ["full"]
+    track_row = []
+    for ui_code, ui_label in _TRACK_UI:
+        checked = any(code in track_codes for code in _TRACK_CODES[ui_code])
+        mark = "✅" if checked else "⬜"
+        track_row.append(InlineKeyboardButton(text=f"{mark} {ui_label}", callback_data=f"arr_track:{rule_id}:{ui_code}"))
+    buttons.append(track_row)
+
+    buttons.append([InlineKeyboardButton(text="✏ Имя правила", callback_data=f"arr_name:{rule_id}")])
+    buttons.append([InlineKeyboardButton(text="✏ Текст отказа", callback_data=f"arr_text:{rule_id}")])
+    buttons.append([InlineKeyboardButton(
+        text=("🚫 Выключить" if rule.get("enabled") else "✅ Включить"),
+        callback_data=f"arr_t:{rule_id}",
+    )])
+    buttons.append([InlineKeyboardButton(text="← К списку", callback_data="arr_p:0")])
+
+    return text, InlineKeyboardMarkup(inline_keyboard=buttons)
+
+
+@router.callback_query(F.data.startswith("arr_v:"))
+async def arr_view(callback: types.CallbackQuery):
+    rule_id = _parse_id(callback.data)
+    if rule_id is None:
+        await callback.answer("Правило не найдено.", show_alert=True)
+        return
+    screen = await render_rule_card(callback.from_user.id, rule_id)
+    if screen is None:
+        await callback.answer("Правило недоступно — обновите список.", show_alert=True)
+        return
+    text, kb = screen
+    await callback.message.edit_text(text, parse_mode="HTML", reply_markup=kb)
+    await callback.answer()
+
+
+@router.callback_query(F.data.startswith("arr_act:"))
+async def arr_act_toggle(callback: types.CallbackQuery):
+    rule_id = _parse_id(callback.data)
+    if rule_id is None:
+        await callback.answer("Правило не найдено.", show_alert=True)
+        return
+    rule = await _load_rule(rule_id)
+    if rule is None or not await can_edit_city(callback.from_user.id, rule.get("city")):
+        await callback.answer("Правило недоступно — обновите список.", show_alert=True)
+        return
+    new_action = "flag" if rule.get("action") == "reject" else "reject"
+    _, error = await _save_patch(callback.from_user.id, rule, action=new_action)
+    if error:
+        await callback.answer(error, show_alert=True)
+        return
+    screen = await render_rule_card(callback.from_user.id, rule_id)
+    text, kb = screen
+    await callback.message.edit_text(text, parse_mode="HTML", reply_markup=kb)
+    if new_action == "flag":
+        await callback.answer(
+            "⚠️ Теперь правило только помечает заявку для модератора — пробный режим, "
+            "делегат ничего не получает, решение принимает человек.", show_alert=True,
+        )
+    else:
+        await callback.answer(
+            "🚫 Теперь правило отклоняет заявку и отправляет делегату текст отказа.",
+            show_alert=True,
+        )
+
+
+# ── Город правила ─────────────────────────────────────────────────────────────
+
+async def render_city_assign_screen(admin_id: int, rule_id: int) -> tuple[str, InlineKeyboardMarkup] | None:
+    rule = await _load_rule(rule_id)
+    if rule is None or not await can_edit_city(admin_id, rule.get("city")):
+        return None
+    buttons: list[list[InlineKeyboardButton]] = []
+    for code in city_codes():
+        if not await can_edit_city(admin_id, code):
+            continue
+        mark = "✅ " if code == rule.get("city") else ""
+        buttons.append([InlineKeyboardButton(
+            text=f"{mark}{await city_label(code)}", callback_data=f"arr_citypick:{rule_id}:{code}",
+        )])
+    if await can_edit_city(admin_id, None):
+        mark = "✅ " if rule.get("city") is None else ""
+        buttons.append([InlineKeyboardButton(
+            text=f"{mark}{ALL_CITIES_LABEL}", callback_data=f"arr_citypick:{rule_id}:{ALL_CITIES}",
+        )])
+    buttons.append([InlineKeyboardButton(text="← Отмена", callback_data=f"arr_v:{rule_id}")])
+    text = "🏙 <b>Город правила</b>\n\nВыберите город, к которому относится это правило."
+    return text, InlineKeyboardMarkup(inline_keyboard=buttons)
+
+
+@router.callback_query(F.data.startswith("arr_city:"))
+async def arr_city_start(callback: types.CallbackQuery):
+    rule_id = _parse_id(callback.data)
+    if rule_id is None:
+        await callback.answer("Правило не найдено.", show_alert=True)
+        return
+    screen = await render_city_assign_screen(callback.from_user.id, rule_id)
+    if screen is None:
+        await callback.answer("Правило недоступно — обновите список.", show_alert=True)
+        return
+    text, kb = screen
+    await callback.message.edit_text(text, parse_mode="HTML", reply_markup=kb)
+    await callback.answer()
+
+
+@router.callback_query(F.data.startswith("arr_citypick:"))
+async def arr_citypick(callback: types.CallbackQuery):
+    rule_id, code = _parse_id_and_code(callback.data)
+    if rule_id is None or not code:
+        await callback.answer("Не понял выбор — обновите экран.", show_alert=True)
+        return
+    if code != ALL_CITIES and code not in city_codes():
+        await callback.answer("Такого города нет — обновите экран.", show_alert=True)
+        return
+    rule = await _load_rule(rule_id)
+    if rule is None or not await can_edit_city(callback.from_user.id, rule.get("city")):
+        await callback.answer("Правило недоступно — обновите список.", show_alert=True)
+        return
+    new_city = None if code == ALL_CITIES else code
+    if not await can_edit_city(callback.from_user.id, new_city):
+        await callback.answer("Нет прав сохранить правило в этот город.", show_alert=True)
+        return
+    _, error = await _save_patch(callback.from_user.id, rule, city=new_city)
+    if error:
+        await callback.answer(error, show_alert=True)
+        return
+    screen = await render_rule_card(callback.from_user.id, rule_id)
+    text, kb = screen
+    await callback.message.edit_text(text, parse_mode="HTML", reply_markup=kb)
+    await callback.answer("Город правила изменён.")
+
+
+@router.callback_query(F.data.startswith("arr_track:"))
+async def arr_track_toggle(callback: types.CallbackQuery):
+    rule_id, ui_code = _parse_id_and_code(callback.data)
+    if rule_id is None or ui_code not in _TRACK_CODES:
+        await callback.answer("Не понял трек — обновите экран.", show_alert=True)
+        return
+    rule = await _load_rule(rule_id)
+    if rule is None or not await can_edit_city(callback.from_user.id, rule.get("city")):
+        await callback.answer("Правило недоступно — обновите список.", show_alert=True)
+        return
+    current = list(rule.get("tracks") or ["full"])
+    underlying = _TRACK_CODES[ui_code]
+    checked = any(code in current for code in underlying)
+    if checked:
+        remaining_groups = [
+            g for g, codes in _TRACK_CODES.items()
+            if g != ui_code and any(c in current for c in codes)
+        ]
+        if not remaining_groups:
+            await callback.answer(
+                "Без единого трека правило никогда не сработает — оставьте хотя бы один.",
+                show_alert=True,
+            )
+            return
+        new_tracks = [c for c in current if c not in underlying]
+    else:
+        new_tracks = current + [c for c in underlying if c not in current]
+    _, error = await _save_patch(callback.from_user.id, rule, tracks=new_tracks)
+    if error:
+        await callback.answer(error, show_alert=True)
+        return
+    screen = await render_rule_card(callback.from_user.id, rule_id)
+    text, kb = screen
+    await callback.message.edit_text(text, parse_mode="HTML", reply_markup=kb)
+    await callback.answer()
+
+
+# ── Имя и текст отказа (FSM) ──────────────────────────────────────────────────
+
+@router.callback_query(F.data.startswith("arr_name:"))
+async def arr_name_start(callback: types.CallbackQuery, state: FSMContext):
+    rule_id = _parse_id(callback.data)
+    if rule_id is None:
+        await callback.answer("Правило не найдено.", show_alert=True)
+        return
+    rule = await _load_rule(rule_id)
+    if rule is None or not await can_edit_city(callback.from_user.id, rule.get("city")):
+        await callback.answer("Правило недоступно — обновите список.", show_alert=True)
+        return
+    await state.update_data(rre_rule_id=rule_id)
+    await state.set_state(RejectRuleEdit.name)
+    await callback.message.answer(
+        "Пришлите короткое имя правила для списка (необязательно — просто удобная подпись для "
+        "вас, делегат его не увидит). Например: «Младше 18».",
+        reply_markup=get_cancel_kb(),
+    )
+    await callback.answer()
+
+
+@router.callback_query(F.data.startswith("arr_text:"))
+async def arr_text_start(callback: types.CallbackQuery, state: FSMContext):
+    rule_id = _parse_id(callback.data)
+    if rule_id is None:
+        await callback.answer("Правило не найдено.", show_alert=True)
+        return
+    rule = await _load_rule(rule_id)
+    if rule is None or not await can_edit_city(callback.from_user.id, rule.get("city")):
+        await callback.answer("Правило недоступно — обновите список.", show_alert=True)
+        return
+    await state.update_data(rre_rule_id=rule_id)
+    await state.set_state(RejectRuleEdit.text)
+    await callback.message.answer(
+        "Пришлите текст, который увидит делегат при отказе по этому правилу. Можно несколько "
+        "строк — разделите их знаком «;», если пишете одним сообщением с телефона.\n\n"
+        "⚠️ Точная формулировка причины подскажет делегату, как переподать анкету с другим "
+        "ответом и пройти снова — пишите так, как готовы, чтобы он это прочитал.",
+        reply_markup=get_cancel_kb(),
+    )
+    await callback.answer()
+
+
+# WR-03-class guard (форма `afaq_text_cancel`): зарегистрирован ПЕРВЫМ — «Отмена» не уедет в имя/текст.
+@router.message(RejectRuleEdit.name, F.text.in_({"Отмена", "/cancel"}))
+@router.message(RejectRuleEdit.text, F.text.in_({"Отмена", "/cancel"}))
+async def arr_text_cancel(message: types.Message, state: FSMContext):
+    await state.set_state(None)
+    await message.answer("Действие отменено.", reply_markup=ReplyKeyboardRemove())
+
+
+@router.message(RejectRuleEdit.name)
+async def arr_name_step(message: types.Message, state: FSMContext):
+    data = await state.get_data()
+    rule_id = data.get("rre_rule_id")
+    rule = await _load_rule(rule_id) if rule_id is not None else None
+    if rule is None or not await can_edit_city(message.from_user.id, rule.get("city")):
+        await state.set_state(None)
+        await message.answer(
+            "Правило больше недоступно — откройте список заново.", reply_markup=ReplyKeyboardRemove(),
+        )
+        return
+    raw = (message.text or "").strip()
+    name_value = raw if raw and raw != "-" else None
+    await state.set_state(None)
+    _, error = await _save_patch(message.from_user.id, rule, name=name_value)
+    if error:
+        await message.answer(f"Не сохранено: {error}", reply_markup=ReplyKeyboardRemove())
+        return
+    await message.answer("✅ Имя сохранено.", reply_markup=ReplyKeyboardRemove())
+    screen = await render_rule_card(message.from_user.id, rule_id)
+    if screen is not None:
+        text, kb = screen
+        await message.answer(text, parse_mode="HTML", reply_markup=kb)
+
+
+@router.message(RejectRuleEdit.text)
+async def arr_text_step(message: types.Message, state: FSMContext):
+    data = await state.get_data()
+    rule_id = data.get("rre_rule_id")
+    rule = await _load_rule(rule_id) if rule_id is not None else None
+    if rule is None or not await can_edit_city(message.from_user.id, rule.get("city")):
+        await state.set_state(None)
+        await message.answer(
+            "Правило больше недоступно — откройте список заново.", reply_markup=ReplyKeyboardRemove(),
+        )
+        return
+    if not message.text or not message.text.strip():
+        await message.answer("Пожалуйста, пришлите текст сообщением.")
+        return
+    # Ловушка «Enter = отправить» на мобильных (см. CLAUDE.md): «;» разделяет строки.
+    raw = message.text.strip()
+    text_value = "\n".join(part.strip() for part in raw.split(";") if part.strip())
+    await state.set_state(None)
+    _, error = await _save_patch(message.from_user.id, rule, reject_text=text_value)
+    if error:
+        await message.answer(f"Не сохранено: {error}", reply_markup=ReplyKeyboardRemove())
+        return
+    await message.answer("✅ Текст отказа сохранён.", reply_markup=ReplyKeyboardRemove())
+    screen = await render_rule_card(message.from_user.id, rule_id)
+    if screen is not None:
+        text, kb = screen
+        await message.answer(text, parse_mode="HTML", reply_markup=kb)
