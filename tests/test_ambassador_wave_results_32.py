@@ -228,3 +228,163 @@ def test_announce_results_no_coin_writes():
     import inspect
     src = inspect.getsource(aw)
     assert "add_coins" not in src  # D-19: бот не начисляет бонусных коинов призёрам
+
+
+# ══════════════════════════════════════════════════════════════════════════════════════════
+# Задача 2: экран итогов и подтверждение менеджера (handlers/admin_game_waves.py)
+# ══════════════════════════════════════════════════════════════════════════════════════════
+
+def _new_state(uid: int) -> FSMContext:
+    return FSMContext(storage=MemoryStorage(), key=StorageKey(bot_id=1, chat_id=uid, user_id=uid))
+
+
+class FakeUser:
+    def __init__(self, uid):
+        self.id = uid
+
+
+class FakeMessage:
+    def __init__(self, text=None):
+        self.text = text
+        self.html_text = text
+        self.answers = []
+        self.edits = []
+
+    async def answer(self, text, parse_mode=None, reply_markup=None):
+        self.answers.append((text, reply_markup))
+        return self
+
+    async def edit_text(self, text, parse_mode=None, reply_markup=None):
+        self.edits.append((text, reply_markup))
+        return self
+
+
+class FakeCallback:
+    def __init__(self, data, user_id=ADMIN_ID, text=None):
+        self.data = data
+        self.from_user = FakeUser(user_id)
+        self.message = FakeMessage(text)
+        self.answers = []
+
+    async def answer(self, text=None, show_alert=False):
+        self.answers.append((text, show_alert))
+
+
+def _kb_callbacks(kb):
+    if kb is None:
+        return []
+    return [b.callback_data for row in kb.inline_keyboard for b in row]
+
+
+def test_wavefin_screen_shows_top_and_pending_count(tmp_path):
+    _ready(tmp_path)
+    from handlers import admin_game_waves as w
+    wave_id, task_id = _make_wave_with_task(prize_places=2)
+    _seed_ambassador(1)
+    _seed_ambassador(2)
+    _award(1, task_id, 30)
+    _award(2, task_id, 20)
+    sub_id = _run(db.create_submission(task_id, 1, "text", "ещё сдача", "2026-10-05 00:00:00"))
+    assert sub_id  # осталась на проверке
+
+    cb = FakeCallback(f"wavefin:{wave_id}", user_id=ADMIN_ID)
+    state = _new_state(ADMIN_ID)
+    _run(w.wave_finish_screen(cb, state))
+    text, kb = cb.message.edits[-1]
+    assert "закончилась" in text
+    assert "проверке ещё 1" in text
+    callbacks = _kb_callbacks(kb)
+    assert "admin_game_review" in callbacks
+    assert f"wavefin_go:{wave_id}" in callbacks
+
+
+def test_wavefin_screen_no_warning_when_queue_empty(tmp_path):
+    _ready(tmp_path)
+    from handlers import admin_game_waves as w
+    wave_id, task_id = _make_wave_with_task(prize_places=2)
+    _seed_ambassador(1)
+    _award(1, task_id, 30)
+
+    cb = FakeCallback(f"wavefin:{wave_id}", user_id=ADMIN_ID)
+    state = _new_state(ADMIN_ID)
+    _run(w.wave_finish_screen(cb, state))
+    text, kb = cb.message.edits[-1]
+    assert "на проверке" not in text
+    assert "admin_game_review" not in _kb_callbacks(kb)
+
+
+def test_wavefin_go_confirm_mentions_winners_list_wont_change(tmp_path):
+    _ready(tmp_path)
+    from handlers import admin_game_waves as w
+    wave_id, _task_id = _make_wave_with_task()
+
+    cb = FakeCallback(f"wavefin_go:{wave_id}", user_id=ADMIN_ID)
+    state = _new_state(ADMIN_ID)
+    _run(w.wave_finish_confirm(cb, state))
+    text, kb = cb.message.edits[-1]
+    assert "не изменится" in text.lower()
+    assert f"wavefin_do:{wave_id}" in _kb_callbacks(kb)
+
+
+def test_wavefin_do_rejected_for_manager_of_other_city(tmp_path):
+    _ready(tmp_path)
+    from handlers import admin_game_waves as w
+    msk, spb = _codes()
+    _bind_manager(MSK_MANAGER_ID, msk)
+    wave_id, _task_id = _make_wave_with_task(event_city=spb)
+
+    cb = FakeCallback(f"wavefin_do:{wave_id}", user_id=MSK_MANAGER_ID)
+    state = _new_state(MSK_MANAGER_ID)
+    _run(w.wave_finish_go(cb, state))
+    assert cb.answers and cb.answers[-1][1] is True  # show_alert
+    wave = _run(db.get_wave(wave_id))
+    assert wave["state"] == "closing"  # ничего не объявлено
+
+
+def test_wavefin_do_repeat_answers_already_announced_no_second_broadcast(tmp_path, monkeypatch):
+    _ready(tmp_path)
+    from handlers import admin_game_waves as w
+    wave_id, task_id = _make_wave_with_task(prize_places=1)
+    _seed_ambassador(1)
+    _award(1, task_id, 10)
+
+    scheduled = []
+    monkeypatch.setattr(w, "schedule_wave_results_broadcast", lambda wid, standings: scheduled.append(wid))
+
+    cb1 = FakeCallback(f"wavefin_do:{wave_id}", user_id=ADMIN_ID)
+    _run(w.wave_finish_go(cb1, _new_state(ADMIN_ID)))
+    assert scheduled == [wave_id]
+
+    cb2 = FakeCallback(f"wavefin_do:{wave_id}", user_id=ADMIN_ID)
+    _run(w.wave_finish_go(cb2, _new_state(ADMIN_ID)))
+    assert scheduled == [wave_id]  # ни одной новой постановки
+    assert cb2.answers and "объявлены" in (cb2.answers[-1][0] or "").lower()
+
+
+def test_wave_card_has_no_edit_buttons_after_announcement(tmp_path, monkeypatch):
+    _ready(tmp_path)
+    from handlers import admin_game_waves as w
+    wave_id, task_id = _make_wave_with_task(prize_places=1)
+    _seed_ambassador(1)
+    _award(1, task_id, 10)
+    monkeypatch.setattr(w, "schedule_wave_results_broadcast", lambda wid, standings: None)
+
+    cb = FakeCallback(f"wavefin_do:{wave_id}", user_id=ADMIN_ID)
+    _run(w.wave_finish_go(cb, _new_state(ADMIN_ID)))
+    text, kb = cb.message.edits[-1]
+    callbacks = _kb_callbacks(kb)
+    assert not any(c and c.startswith("waveedit:") for c in callbacks)
+    assert not any(c and c.startswith(("wavedel:", "wavecopy:")) for c in callbacks)
+
+
+def test_wavefin_callback_format_matches_scheduler_button():
+    """services.scheduler.send_wave_end_ping ставит кнопку `wavefin:{wave_id}` — формат должен
+    совпадать буква в букву с фильтром обработчика в admin_game_waves.py."""
+    import inspect
+    from handlers import admin_game_waves as w
+    sched_src = inspect.getsource(sched.send_wave_end_ping)
+    assert 'callback_data=f"wavefin:{wave_id}"' in sched_src
+    handlers_src = inspect.getsource(w)
+    assert 'F.data.startswith("wavefin:")' in handlers_src
+
+

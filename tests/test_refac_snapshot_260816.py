@@ -469,6 +469,13 @@ def _build_snapshot_lines():
 # `game_task_wizard_edit_field` и `show_wave_card`. Пересчитано RUNNING
 # `_build_snapshot_lines()` и сверено diff'ом (difflib.SequenceMatcher) с прежним 604-строчным
 # снимком: ровно одна вставка из 2 строк, 0 удалений, 0 реордеров.
+#
+# Drift note (план 32-11, D-16/D-17: экран итогов волны, 606 -> 609 handlers -- PURE APPEND):
+# 3 новых callback_query-хендлера (`wave_finish_screen`/`wave_finish_confirm`/`wave_finish_go`,
+# шов `handlers/admin_game_waves.py`) физически определены В ХВОСТЕ файла, СРАЗУ ПОСЛЕ
+# `wave_create_cancel` (последний хендлер этого шва) и ПЕРЕД `show_admin_polls`. Пересчитано
+# RUNNING `_build_snapshot_lines()` и сверено diff'ом (difflib.SequenceMatcher) с прежним
+# 606-строчным снимком: ровно одна вставка из 3 строк, 0 удалений, 0 реордеров.
 GOLDEN_SNAPSHOT = """
 admin|message|cmd_admin_help|cmd:admin
 admin|message|cmd_coins|cmd:coins
@@ -932,6 +939,9 @@ admin|callback_query|wave_create_redates|wcredates
 admin|callback_query|wave_create_go|wccreate_go
 admin|callback_query|wave_copy_go|wavecopy_go:*
 admin|callback_query|wave_create_cancel|wccancel
+admin|callback_query|wave_finish_screen|wavefin:*
+admin|callback_query|wave_finish_confirm|wavefin_go:*
+admin|callback_query|wave_finish_go|wavefin_do:*
 admin|callback_query|show_admin_polls|admin_polls
 admin|callback_query|show_admin_polls_closed|admin_polls_closed
 admin|callback_query|show_poll_card|poll_card:*
@@ -1303,7 +1313,13 @@ def test_snapshot_total_handler_count_is_292():
     # admin.callback_query (595 -> 604).
     # 32-12 задача 1: шаги «Волна»/«Аудитория» визарда задания, +2 admin.callback_query
     # (game_task_wave_step/game_task_audience_step) (604 -> 606).
-    assert len(GOLDEN_SNAPSHOT) == 606
+    # План 32-11 (D-16/D-17): экран итогов волны, +3 admin.callback_query
+    # (wave_finish_screen/wave_finish_confirm/wave_finish_go, handlers/admin_game_waves.py) —
+    # физически в хвосте файла, СРАЗУ ПОСЛЕ wave_create_cancel и ПЕРЕД show_admin_polls (та же
+    # точка вставки, что и остальные хендлеры этого шва). Пересчитано RUNNING
+    # `_build_snapshot_lines()` и сверено diff'ом с прежним 606-строчным снимком: ровно одна
+    # вставка из 3 строк, 0 удалений, 0 реордеров (606 -> 609).
+    assert len(GOLDEN_SNAPSHOT) == 609
     # (callback_query toggle_reg_form_v2/chips/lookup_search/edu_card/repeatable/limit_counter/
     # status_screen/header_settings/haptics — девять тумблеров «Анкета 2.0»), встали сразу после
     # admin_quiet_hours и перед sync_sheet: шов импортируется из хвоста
