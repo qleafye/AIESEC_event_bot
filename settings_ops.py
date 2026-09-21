@@ -981,6 +981,23 @@ PREVIEW_SAMPLES: dict[str, str] = {
     # шагов через запятую (свёрнутая строка), {skipped} их число (счётчик заполненности).
     "list": "Портфолио, Специальность",
     "skipped": "2",
+    # Амбассадорский слой (291bdd2): тексты волн (wave_start_message_text,
+    # wave_deadline_reminder_text, wave_results_*_text, wave_rating_own_line_text,
+    # game_task_penalty_hint_text, wave_end_manager_text).
+    "wave": "2",
+    "ends": "21.10",
+    "intro": "В этой волне — задания на соцсети.",
+    "tasks": "1. Репост в сторис\n2. Пригласить друга",
+    "task": "Репост в сторис",
+    "coins": "100",
+    "winners": "Иван, Мария, Пётр",
+    "place": "4",
+    "points": "250",
+    "prize": "Мерч АЙСЕК",
+    "gap": "40",
+    "penalized": "70",
+    "top": "1. Иван — 300\n2. Мария — 280",
+    "pending": "5",
 }
 
 

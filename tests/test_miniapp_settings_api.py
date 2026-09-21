@@ -52,8 +52,15 @@ def _post(client, key, value, user=ADMIN_ID):
 def test_editable_keys_are_only_miniapp_toggles():
     assert "miniapp_enabled" in EDITABLE_KEYS
     assert "miniapp_staff_only" in EDITABLE_KEYS
-    assert all(k.startswith("miniapp_section_") for k in EDITABLE_KEYS
-               if k not in ("miniapp_enabled", "miniapp_staff_only"))
+    # `wave_rating_show_names` (группа "game", enum on/off) -- первый ключ, попавший в
+    # EDITABLE_KEYS через ветку "любой game-тумблер on/off" (_is_editable), которая до
+    # 291bdd2 была пустой заготовкой (см. комментарий модуля выше). Это ожидаемо: тот же
+    # тумблер «Показывать имена в рейтинге волны», что и в боевой админке, безопасен для
+    # облегчённого экрана Mini App -- его группа "game" уже подписана в GROUP_LABELS.
+    non_section = {k for k in EDITABLE_KEYS if k not in ("miniapp_enabled", "miniapp_staff_only")}
+    assert non_section - {"wave_rating_show_names"} == {
+        k for k in non_section if k.startswith("miniapp_section_")
+    }
     # Вне белого списка -- ни оплата, ни роли, ни Sheets, ни произвольный "bot_token".
     for forbidden in ("payment_enabled", "role_caps_reg_manager", "role_caps_game_manager",
                        "role_caps_stats_manager",
