@@ -85,12 +85,20 @@ export async function render(root, params, ctx) {
 
   function draw(card) {
     const sid = card.submission.id;
+    // CR-02: сумма со штрафом (если он применится к дефолтному одобрению) — до подтверждения,
+    // не только в ответе после нажатия. penalized_coins пуст, когда штрафа нет / он нулевой.
+    const displayCoins = card.task.penalized_coins != null ? card.task.penalized_coins : card.task.coins;
     const delegateMeta = [card.delegate.name || "—", card.delegate.username ? `@${card.delegate.username}` : null, card.delegate.city]
       .filter(Boolean).join(" · ");
 
     const flags = [];
     if (card.attempt) flags.push(h("span", { class: "chip", text: `Попытка ${card.attempt.k} из ${card.attempt.n}` }));
-    if (card.after_deadline) flags.push(h("span", { class: "chip warn" }, icon("clock"), h("span", { text: " Сдано после дедлайна — решение за вами" })));
+    if (card.after_deadline) {
+      const penaltyHint = card.task.penalty_percent
+        ? ` — при одобрении по умолчанию начислится ${displayCoins} из ${card.task.coins} (штраф ${card.task.penalty_percent}%)`
+        : "";
+      flags.push(h("span", { class: "chip warn" }, icon("clock"), h("span", { text: ` Сдано после дедлайна — решение за вами${penaltyHint}` })));
+    }
     if (card.archived_task) flags.push(h("span", { class: "chip" }, icon("archive"), h("span", { text: " Задание в архиве — сдачу всё равно нужно решить" })));
 
     const coinsInput = h("input", { class: "input", type: "number", min: "1", step: "1", inputmode: "numeric" });
@@ -120,7 +128,7 @@ export async function render(root, params, ctx) {
       if (action === "reject" && !body.reason) { say("Напишите причину — делегат увидит её в сообщении.", "warn"); return; }
       if (action === "approve" && body && !(Number.isInteger(body.coins) && body.coins > 0)) { say("Сумма — целое число больше нуля, например 15.", "warn"); return; }
       busy = true;
-      setMainButton(`Принять · +${card.task.coins}`, approveDefault, { disabled: true });
+      setMainButton(`Принять · +${displayCoins}`, approveDefault, { disabled: true });
       try {
         // Два литеральных пути (не `${action}`): сторожевой тест сверяет их с маршрутами.
         const res = action === "approve"
@@ -167,7 +175,7 @@ export async function render(root, params, ctx) {
         rejectBox,
       ),
     );
-    setMainButton(`Принять · +${card.task.coins}`, approveDefault);
+    setMainButton(`Принять · +${displayCoins}`, approveDefault);
   }
 
   await load();
