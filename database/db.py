@@ -494,6 +494,13 @@ async def init_db():
         # add_coins call site keeps writing NULL until this plan's own call sites pass source=.
         await _ensure_column(db, "coins", "source", "TEXT")
 
+        # Phase 32 (32-01, D-14): ссылка на задание, за которое начислены баллы. NULL у ВСЕХ
+        # существующих строк (ручные начисления, легаси, любая строка до этой колонки) — по
+        # ней сумма волны собирается через JOIN game_tasks, а не по времени начисления
+        # (без неё рейтинг волны врал бы, если делегат сдаёт задание не в дни самой волны).
+        # Пишется только в двух местах — обеих точках начисления за задание (add_coins ниже).
+        await _ensure_column(db, "coins", "task_id", "INTEGER")
+
         # Phase 8 (ROLE-02, D-11): staff roster -- who holds which role, audited (added_by/
         # added_at). Composite PRIMARY KEY naturally supports multi-role (D-08, one row per
         # role held) and rejects a duplicate (telegram_id, role) pair without extra machinery.
@@ -799,6 +806,14 @@ async def init_db():
         await _ensure_column(db, "game_tasks", "title", "TEXT")
         await _ensure_column(db, "game_tasks", "photo_file_id", "TEXT")
 
+        # Phase 32 (32-01, D-08/D-12/D-28): волна и аудитория задания. `wave_id` NULL —
+        # задание вне волн (ровно так уже вело себя каждое существующее задание — оно и
+        # дальше видно всем, кому видно сегодня). `audience` NULL или 'all' — задание видит
+        # каждый делегат; 'ambassadors' — только действующие амбассадоры (D-28). Бэкафилла
+        # нет: у всех текущих заданий обе колонки пусты и читаются как «вне волн, всем».
+        await _ensure_column(db, "game_tasks", "wave_id", "INTEGER")
+        await _ensure_column(db, "game_tasks", "audience", "TEXT")
+
         # Phase 23.1-05 (D-10, 23.1-CONTEXT.md O-2): approval date for the delegate profile
         # («одобрена {date}», mockup 04-profile.png). Additive, no backfill — NULL means
         # "approved before this column existed" (same discipline as edited_at/event_city
@@ -846,6 +861,17 @@ async def init_db():
         await _ensure_column(db, "users", "is_ambassador", "INTEGER DEFAULT 0")
         await _ensure_column(db, "users", "score", "INTEGER")
         await _ensure_column(db, "users", "is_it_3plus", "INTEGER DEFAULT 0")
+
+        # Phase 32 (32-01, D-24/D-31/D-32): статус амбассадора — сам флаг `is_ambassador`
+        # (Phase 28, выше) уже есть, эти три колонки описывают ЕГО ЖИЗНЕННЫЙ ЦИКЛ и не трогают
+        # его семантику. `ambassador_path` — NULL, пока делегат не выбрал путь. `ambassador_since`
+        # — момент, с которого человек стал амбассадором; NULL значит «был им ещё до этой фазы»
+        # (участвует в первой же волне на общих основаниях, а не как новичок). `ambassador_left_at`
+        # — момент ухода; NULL = состоит по сей день. Единственная точка записи всех трёх —
+        # set_ambassador_flag/set_ambassador_path ниже.
+        await _ensure_column(db, "users", "ambassador_path", "TEXT")
+        await _ensure_column(db, "users", "ambassador_since", "TEXT")
+        await _ensure_column(db, "users", "ambassador_left_at", "TEXT")
 
         # `content` stores a file_id for photo/pdf proof, raw text for text/link proof — the
         # project never writes uploaded files to disk (README/CLAUDE.md file_id pattern).
@@ -911,6 +937,70 @@ async def init_db():
         await db.execute(
             "CREATE INDEX IF NOT EXISTS idx_game_submit_digest_unsent "
             "ON game_submit_digest_queue(sent_at, city)"
+        )
+
+        # Phase 32 (32-01, D-10): амбассадорская волна — без названия (колонки под него нет),
+        # у строки есть только номер (свой в пределах города, выдаёт next_wave_number ниже),
+        # даты начала/конца, необязательный вводный текст (NULL = без него, D-11), необязательное
+        # число призовых мест (NULL = взять общую настройку wave_prize_places, D-18) и состояние.
+        # `event_city` NULL — волна общая для всех городов (та же семантика, что у
+        # game_tasks.event_city). `started_notified_at` NULL — стартовые ЛС ещё не ушли;
+        # непустое значение — состав заданий и даты волны заперты (первая рассылка это фиксирует).
+        await db.execute('''
+            CREATE TABLE IF NOT EXISTS ambassador_waves (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                number INTEGER NOT NULL,
+                starts_at TEXT NOT NULL,
+                ends_at TEXT NOT NULL,
+                intro_text TEXT,
+                prize_places INTEGER,
+                state TEXT NOT NULL DEFAULT 'draft',
+                event_city TEXT,
+                started_notified_at TEXT,
+                created_by INTEGER,
+                created_at TEXT NOT NULL
+            )
+        ''')
+        await db.execute(
+            "CREATE INDEX IF NOT EXISTS idx_ambassador_waves_dates "
+            "ON ambassador_waves(event_city, starts_at)"
+        )
+
+        # Phase 32 (32-01, D-17): неизменяемый снимок призёров волны. `PRIMARY KEY (wave_id,
+        # user_id)` — не отдельный AUTOINCREMENT id — физически не даёт повторному «Объявить
+        # итоги» переписать уже объявленную строку: запись идёт только через
+        # `INSERT OR IGNORE`, повтор возвращает 0 вставленных строк, а не тихую перезапись.
+        await db.execute('''
+            CREATE TABLE IF NOT EXISTS wave_results (
+                wave_id INTEGER NOT NULL,
+                user_id INTEGER NOT NULL,
+                place INTEGER NOT NULL,
+                points INTEGER NOT NULL,
+                announced_at TEXT NOT NULL,
+                PRIMARY KEY (wave_id, user_id)
+            )
+        ''')
+
+        # Phase 32 (32-01, D-22): разовое начисление баллов за приглашённого. `invitee_id` —
+        # НАСТОЯЩИЙ PRIMARY KEY (не составной) — один приглашённый получает ровно одну строку
+        # НАВСЕГДА, даже через цикл «отказали -> одобрили снова» (T-32-01-01): запись идёт
+        # через `INSERT OR IGNORE` + `rowcount == 1` (идиома add_staff), без предварительной
+        # проверки в Python — уникальность держит сама схема. `wave_id` — волна, действовавшая
+        # в момент начисления; NULL = начисление случилось вне волн либо это бэкафилл (D-23).
+        # `source` различает обычное начисление при одобрении от разового бэкафилла задним числом.
+        await db.execute('''
+            CREATE TABLE IF NOT EXISTS referral_credits (
+                invitee_id INTEGER PRIMARY KEY,
+                referrer_id INTEGER NOT NULL,
+                coins INTEGER NOT NULL,
+                wave_id INTEGER,
+                credited_at TEXT NOT NULL,
+                source TEXT NOT NULL DEFAULT 'approval'
+            )
+        ''')
+        await db.execute(
+            "CREATE INDEX IF NOT EXISTS idx_referral_credits_referrer "
+            "ON referral_credits(referrer_id, wave_id)"
         )
 
         # Квик 260916: та же очередь, но для НОВЫХ ЗАЯВОК (режим reg_submit_notify_mode =
@@ -5068,6 +5158,23 @@ async def export_auto_reject_log_rows(*, city_scope=None) -> tuple[list[str], li
 # handlers/admin.py and handlers/user_actions.py can never drift on the list of valid values.
 GAME_CATEGORIES = ["Light", "Medium", "Hard", "Referral", "Special"]
 GAME_PROOF_TYPES = ["photo", "pdf", "text", "link"]
+
+# Phase 32 (32-01, D-27): «конца времён» — единственный литерал метки «без срока» для
+# game_tasks.deadline_at (колонка остаётся NOT NULL, перестройки таблицы в проекте нет ни
+# одной, поэтому NULL здесь недопустим). Объявлена РОВНО ОДИН РАЗ здесь; показ человеку и
+# помощники чтения — не задача этого плана (заводит план 32-04, читателей переводят 32-06/
+# 32-07/32-14, сторож от повторного литерала/собственного strptime — тоже план 32-14).
+NO_DEADLINE_AT = "9999-12-31 23:59:59"
+
+# Phase 32 (32-01, D-08/D-28): закрытое множество значений game_tasks.audience — 'ambassadors'
+# требует активный статус амбассадора, любое другое (включая NULL, читается как 'all') видно
+# всем. TASK_AUDIENCES — единственный источник правды для update_task_audience ниже.
+TASK_AUDIENCES = ("all", "ambassadors")
+
+# Phase 32 (32-01, D-10/D-17): жизненный цикл волны — 'draft' (черновик, не разослана),
+# 'active' (идёт), 'closing' (даты вышли, итоги ещё не объявлены), 'announced' (снимок
+# wave_results записан). set_wave_state ниже — единственная точка перехода между ними.
+WAVE_STATES = ("draft", "active", "closing", "announced")
 
 # Phase 09.1 (A): the free-form submission's part storage kind vocabulary -- distinct from
 # GAME_PROOF_TYPES ("pdf" narrows to "document": any file type is accepted now, not only PDF).
