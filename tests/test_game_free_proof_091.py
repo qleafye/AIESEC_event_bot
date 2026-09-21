@@ -111,7 +111,9 @@ def test_game_settings_schema_has_nine_keys_in_game_group():
     # делегатские/менеджерские тексты волны (старт, напоминание о дедлайне, итоги, блок
     # амбассадора, конец волны). Ключ dashboard_block_ambassadors из того же коммита в group
     # "dashboard", в этот счёт не входит.
-    assert len(keys) == 70  # +12 ключей 16-01 (RU-категории, тексты списка/карточки/баланса)
+    # 32-06 (задача 3): +1 -- balance_source_referral_label, третья подпись источника в
+    # истории монет (рядом с manual/task) для авто-начисления за приглашённого.
+    assert len(keys) == 71  # +12 ключей 16-01 (RU-категории, тексты списка/карточки/баланса)
     for k in keys:
         assert s.SETTINGS_SCHEMA[k]["default"] not in (None, "")
 

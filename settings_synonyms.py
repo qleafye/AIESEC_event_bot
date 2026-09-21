@@ -373,6 +373,7 @@ SETTINGS_SYNONYMS: dict[str, list[str]] = {
     "balance_history_empty": ["история монет пусто", "операций не было"],
     "balance_source_manual_label": ["вручную начислено", "ручная операция монеты"],
     "balance_source_task_label": ["монеты за задание", "начисление за задание"],
+    "balance_source_referral_label": ["монеты за приглашённого", "начисление за реферала"],
     "game_proof_type_label_photo": ["тип фото рус", "подтверждение фото"],
     "game_proof_type_label_pdf": ["тип pdf рус", "подтверждение файл"],
     "game_proof_type_label_text": ["тип текст рус", "подтверждение текст"],

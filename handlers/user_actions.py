@@ -141,7 +141,7 @@ async def render_leaderboard(
     return "\n".join(lines)
 
 
-def _format_coin_entry_line(row: dict, manual_label: str, task_label: str) -> str:
+def _format_coin_entry_line(row: dict, manual_label: str, task_label: str, referral_label: str = "") -> str:
     """`"{dd.mm} {sign}{delta}🪙 — {reason or source label}"` — shared by the balance summary
     (last 5) and the paginated «📜 История» screen. `reason` wins when set; otherwise falls
     back to the RU source label (manual/task), or a plain "—" for NULL/legacy rows.
@@ -162,6 +162,8 @@ def _format_coin_entry_line(row: dict, manual_label: str, task_label: str) -> st
         label = manual_label
     elif row.get("source") == "task":
         label = task_label
+    elif row.get("source") == "referral":
+        label = referral_label or "—"
     else:
         label = "—"
     return f"{when} {sign}{delta}🪙 — {label}"
@@ -188,8 +190,9 @@ async def _balance_screen(
     else:
         manual_label = reg_i18n.tr_text(await get_setting_typed("balance_source_manual_label"), lang, tr_map)
         task_label = reg_i18n.tr_text(await get_setting_typed("balance_source_task_label"), lang, tr_map)
+        referral_label = reg_i18n.tr_text(await get_setting_typed("balance_source_referral_label"), lang, tr_map)
         for row in rows:
-            lines.append(_format_coin_entry_line(row, manual_label, task_label))
+            lines.append(_format_coin_entry_line(row, manual_label, task_label, referral_label))
     text = "\n".join(lines)
     kb = InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text=reg_i18n.tr_text("📜 История", lang, tr_map), callback_data="gbal_history:0")],
@@ -221,8 +224,9 @@ async def _balance_history_screen(
         lines.append("")
         manual_label = reg_i18n.tr_text(await get_setting_typed("balance_source_manual_label"), lang, tr_map)
         task_label = reg_i18n.tr_text(await get_setting_typed("balance_source_task_label"), lang, tr_map)
+        referral_label = reg_i18n.tr_text(await get_setting_typed("balance_source_referral_label"), lang, tr_map)
         for row in rows:
-            lines.append(_format_coin_entry_line(row, manual_label, task_label))
+            lines.append(_format_coin_entry_line(row, manual_label, task_label, referral_label))
     text = "\n".join(lines)
 
     buttons: list[list[InlineKeyboardButton]] = []
@@ -1153,17 +1157,59 @@ async def show_contacts(message: types.Message):
         logger.error(f"show_contacts send failed for {message.from_user.id}: {e}")
         await message.answer(text, parse_mode=None)
 
+def _msk_now_str() -> str:
+    return msk_now().strftime("%Y-%m-%d %H:%M:%S")
+
+
+async def _referral_screen(
+    user_id: int, bot: Bot, lang: str = "ru", tr_map: dict | None = None,
+) -> tuple[str, InlineKeyboardMarkup | None]:
+    """Phase 32 (32-06, D-24/D-32/D-38): «Моя ссылка» — единственное место, где живёт
+    амбассадорское самообслуживание (отдельной кнопки в меню не заводим — отклонённая идея).
+    Амбассадору здесь же — выбор пути (меняет только ПОРЯДОК заданий, D-24) и кнопка выхода;
+    не-амбассадору — та же кнопка «Хочу свою ссылку», что и на финальном экране анкеты
+    (`miniapp_form_ambassador_cta_text`), возврат ТОЙ ЖЕ кнопкой, что требует D-38."""
+    tr_map = tr_map or {}
+    user = await get_user(user_id)
+    bot_user = await bot.get_me()
+    referral_link = build_referral_link(bot_user.username, user_id)
+    # Phase 17.1 (17.1-01): текст из реестра, ссылка подставляется в {link}.
+    tpl = await get_setting_typed("referral_link_prompt_text")
+    text = reg_i18n.tr_fmt(tpl, lang, tr_map, link=referral_link)
+
+    buttons: list[list[InlineKeyboardButton]] = []
+    is_ambassador = bool(user and user.get("is_ambassador"))
+    if is_ambassador:
+        prompt = reg_i18n.tr_text(await get_setting_typed("ambassador_path_prompt_text"), lang, tr_map)
+        text += "\n\n" + prompt
+        current_path = user.get("ambassador_path")
+        path_row = []
+        for code, key in (
+            ("invite", "ambassador_path_label_invite"),
+            ("content", "ambassador_path_label_content"),
+            ("none", "ambassador_path_label_none"),
+        ):
+            label = reg_i18n.tr_text(await get_setting_typed(key), lang, tr_map)
+            mark = "✅ " if current_path == code else ""
+            path_row.append(InlineKeyboardButton(text=f"{mark}{label}", callback_data=f"ambpath:{code}"))
+        buttons.append(path_row)
+        leave_label = reg_i18n.tr_text(await get_setting_typed("ambassador_leave_button_text"), lang, tr_map)
+        buttons.append([InlineKeyboardButton(text=leave_label, callback_data="ambleave")])
+    else:
+        cta_label = reg_i18n.tr_text(await get_setting_typed("miniapp_form_ambassador_cta_text"), lang, tr_map)
+        buttons.append([InlineKeyboardButton(text=cta_label, callback_data="ambjoin")])
+
+    kb = InlineKeyboardMarkup(inline_keyboard=buttons) if buttons else None
+    return text, kb
+
+
 @router.message(F.text.in_(MENU_TEXTS["menu_referral"]))
 async def my_referral_link(message: types.Message, bot: Bot):
     if not await ensure_registered(message):
         return
-
-    bot_user = await bot.get_me()
-    referral_link = build_referral_link(bot_user.username, message.from_user.id)
-    # Phase 17.1 (17.1-01): текст из реестра, ссылка подставляется в {link}.
     lang, tr_map = await reg_i18n.ctx_for(message)
-    tpl = await get_setting_typed("referral_link_prompt_text")
-    await message.answer(reg_i18n.tr_fmt(tpl, lang, tr_map, link=referral_link))
+    text, kb = await _referral_screen(message.from_user.id, bot, lang, tr_map)
+    await message.answer(text, reply_markup=kb)
 
 
 @router.message(F.text.in_(MENU_TEXTS["menu_invites"]))
@@ -1581,4 +1627,71 @@ async def show_wave_rating(callback: types.CallbackQuery):
 
     text, kb = await _wave_rating_screen(current_wave["id"], callback.from_user.id, lang, tr_map)
     await callback.message.edit_text(text, parse_mode="HTML", reply_markup=kb)
+    await callback.answer()
+
+
+# ── Phase 32 (32-06, D-24/D-32/D-38): путь, выход и возврат амбассадора ─────────────────────
+# «Моя ссылка» (my_referral_link выше) — единственная точка входа; отсюда кнопки редактируют
+# ЭТО ЖЕ сообщение. Идентификатор ВСЕГДА из callback.from_user.id, никогда из callback.data
+# (T-32-06-04) — чужой telegram_id в data подделать нельзя, но лишний повод не читать его.
+
+@router.callback_query(F.data.startswith("ambpath:"))
+async def ambassador_path_pick(callback: types.CallbackQuery, bot: Bot):
+    """Путь меняет ТОЛЬКО порядок показа заданий (D-24) — состав и баллы не трогает; `path`
+    хранится литералом invite/content/none, экран перерисовывается с отметкой текущего выбора."""
+    path = callback.data.split(":", 1)[1]
+    await set_ambassador_path(callback.from_user.id, path)
+    lang, tr_map = await reg_i18n.ctx_for(callback)
+    text, kb = await _referral_screen(callback.from_user.id, bot, lang, tr_map)
+    await callback.message.edit_text(text, reply_markup=kb)
+    await callback.answer()
+
+
+@router.callback_query(F.data == "ambleave")
+async def ambassador_leave_start(callback: types.CallbackQuery):
+    """CLAUDE.md: разрушительная операция — подтверждение перечисляет, что именно пропадёт
+    (рассылки волны, место в рейтинге ТЕКУЩЕЙ волны), а что останется (баллы общего зачёта,
+    D-32). Ничего в базе ещё не меняется — только показ подтверждения."""
+    lang, tr_map = await reg_i18n.ctx_for(callback)
+    text = reg_i18n.tr_text(await get_setting_typed("ambassador_leave_confirm_text"), lang, tr_map)
+    kb = InlineKeyboardMarkup(inline_keyboard=[[
+        InlineKeyboardButton(text=reg_i18n.tr_text("Да, выйти", lang, tr_map), callback_data="ambleave_go"),
+        InlineKeyboardButton(text=reg_i18n.tr_text("Отмена", lang, tr_map), callback_data="ambleave_no"),
+    ]])
+    await callback.message.edit_text(text, reply_markup=kb)
+    await callback.answer()
+
+
+@router.callback_query(F.data == "ambleave_no")
+async def ambassador_leave_cancel(callback: types.CallbackQuery, bot: Bot):
+    lang, tr_map = await reg_i18n.ctx_for(callback)
+    text, kb = await _referral_screen(callback.from_user.id, bot, lang, tr_map)
+    await callback.message.edit_text(text, reply_markup=kb)
+    await callback.answer()
+
+
+@router.callback_query(F.data == "ambleave_go")
+async def ambassador_leave_confirm(callback: types.CallbackQuery):
+    """`set_ambassador_flag` — единственный аксессор, который пишет is_ambassador/
+    ambassador_left_at (план 32-01); строки `coins` не трогаются — баллы общего зачёта
+    остаются на месте (D-32), из рейтинга ТЕКУЩЕЙ волны человек пропадает автоматически
+    (services.ambassador_waves.wave_eligible смотрит на is_ambassador на чтении)."""
+    await set_ambassador_flag(callback.from_user.id, active=False, at=_msk_now_str())
+    lang, tr_map = await reg_i18n.ctx_for(callback)
+    text = reg_i18n.tr_text(await get_setting_typed("ambassador_leave_done_text"), lang, tr_map)
+    await callback.message.edit_text(text)
+    await callback.answer()
+
+
+@router.callback_query(F.data == "ambjoin")
+async def ambassador_join(callback: types.CallbackQuery, bot: Bot):
+    """Возврат ТОЙ ЖЕ кнопкой, что требует D-38: ссылка не меняется (строится из
+    `telegram_id`, не хранится отдельной колонкой), а `set_ambassador_flag(active=True)`
+    ставит СВЕЖИЙ `ambassador_since` — вернувшийся посреди волны в её рейтинг не попадает,
+    участвует только со следующей (то же правило `wave_eligible`, что и у только что
+    вступившего впервые, D-31)."""
+    await set_ambassador_flag(callback.from_user.id, active=True, at=_msk_now_str())
+    lang, tr_map = await reg_i18n.ctx_for(callback)
+    text, kb = await _referral_screen(callback.from_user.id, bot, lang, tr_map)
+    await callback.message.edit_text(text, reply_markup=kb)
     await callback.answer()

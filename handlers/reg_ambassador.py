@@ -26,12 +26,13 @@ import logging
 from aiogram import F, types
 from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
 
-from database.db import get_user, update_user_answers
+from database.db import get_user, set_ambassador_flag
 from cities import get_setting_typed_for_city
 from settings_schema import get_setting_typed
 from handlers.registration import router
 from handlers import reg_i18n
 from reg_engine import build_referral_link  # решение владельца 17.09: один формат amb_<id> везде
+from services.timeutil import msk_now  # Phase 32 (32-06, D-31): единый момент вступления
 
 logger = logging.getLogger(__name__)
 
@@ -86,9 +87,15 @@ async def regamb_want(callback: types.CallbackQuery):
     (делегат тапнул один раз и увидел голый URL без контекста). Это обычный текст, не сырой
     URL из OQ-1 — через `reg_i18n.say` (перевод, тот же приём, что у `offer_ref_link`).
     `{section}` в шаблоне — подпись постоянного места реф-ссылки в приложении
-    (`miniapp_hub_referral_label_text`, тот же ключ, что рисует хаб)."""
+    (`miniapp_hub_referral_label_text`, тот же ключ, что рисует хаб).
+
+    Phase 32 (32-06, D-31): переведено с узкого точечного UPDATE колонки `is_ambassador`
+    на единый аксессор `set_ambassador_flag` — момент вступления (`ambassador_since`)
+    записывается тем же способом, что и выход/возврат через «Моя ссылка», иначе вступивший
+    отсюда посреди активной волны ошибочно попал бы в её рейтинг (D-31 читает
+    `ambassador_since`, а прежний путь его вообще не заполнял)."""
     uid = callback.from_user.id
-    await update_user_answers(uid, {"is_ambassador": 1}, allowed_columns=["is_ambassador"])
+    await set_ambassador_flag(uid, active=True, at=msk_now().strftime("%Y-%m-%d %H:%M:%S"))
     await callback.answer()
     try:
         await callback.message.edit_reply_markup(reply_markup=None)
