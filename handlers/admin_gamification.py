@@ -84,6 +84,10 @@ from services.game_sync import request_resync as _request_game_resync, set_rebui
 from handlers.states import CoinsManual, GameReview, GameTaskCreate, GameTaskEdit
 from handlers.game_labels import category_label  # Phase 16 (16-01/16-03): RU labels, one source
 from handlers.game_labels import proof_types_label as _registry_proof_types_label
+from handlers.game_labels import (  # Phase 32 (32-07, D-25/D-35): единая формула штрафа/срок
+    penalized_coins,
+    task_has_deadline,
+)
 from handlers.game_review_render import (  # Phase 16 (16-04): pure renders/keyboards (no router) -- shared
     _CARD_MAX, _CARD_PART_MAX, _GAME_PROOF_LABELS, _MEDIA_CAPTION_MAX, MEDIA_GROUP_MAX,  # noqa: F401
     _coinsman_amount_kb, _coinsman_confirm_kb, _coinsman_person_kb, _proof_types_label,  # noqa: F401
@@ -1260,6 +1264,20 @@ async def _get_submission_and_task(submission_id: int) -> tuple[dict | None, dic
     return submission, task
 
 
+async def _award_for(submission: dict, task: dict, base_coins: int) -> tuple[int, bool]:
+    """Сколько начислить за сдачу с учётом просрочки, и была ли просрочка. Единственное место в
+    файле, где считается штраф (T-32-07-01/02) — обе точки одобрения (`grev_approve`,
+    `grev_approve_amount_step`) зовут ЭТО, а не пересчитывают штраф сами. Просрочка — та же
+    строковая идиома, что и у бейджа карточки проверки (`handlers/game_review_render.py`):
+    `submitted_at > deadline_at` как строки. Формула штрафа — единственная на проект,
+    `game_labels.penalized_coins`."""
+    late = task_has_deadline(task) and str(submission["submitted_at"]) > str(task["deadline_at"])
+    if not late:
+        return base_coins, False
+    percent = await get_setting_typed("game_late_penalty_percent")
+    return penalized_coins(base_coins, percent), True
+
+
 async def _show_current_submission(target: types.Message, state: FSMContext):
     """Render the oldest non-skipped pending submission (DB-driven, restart-safe) — byte-for-
     byte the same batched-pagination loop as `_show_current_card` (limit=50 per batch, CLAUDE.md:
@@ -1449,7 +1467,10 @@ async def grev_approve(callback: types.CallbackQuery, state: FSMContext):
     if await _submission_out_of_scope(callback.from_user.id, submission):
         await callback.answer(_SUBMISSION_OUT_OF_SCOPE_ALERT, show_alert=True)
         return
-    coins = task["coins"]
+    base_coins = task["coins"]
+    # Phase 32 (32-07, D-35): штраф за просрочку — ДО claim_submission, одно и то же число
+    # уходит и в запись сдачи, и в журнал монет (T-32-07-02); нулевой процент не меняет coins.
+    coins, late = await _award_for(submission, task, base_coins)
     # T-09-11: add_coins is called ONLY from this branch, after claim_submission's atomic
     # UPDATE ... WHERE status = 'pending' actually flipped the row — a concurrent second tap
     # on the same card gets won=False and never reaches add_coins (exactly one credit, ever).
@@ -1460,6 +1481,7 @@ async def grev_approve(callback: types.CallbackQuery, state: FSMContext):
             reason=f"Задание: {str(task['text'])[:60]}",
             changed_by=callback.from_user.id,
             source="task",
+            task_id=task["id"],  # Phase 32 (32-01, D-14): ссылка для рейтинга волны
         )
         # Phase 09.1 (D, GAME-07): a moderator decision is one of the 3 debounced triggers --
         # only in the branch where claim_submission actually won the race (T-091-15/20-in-a-
@@ -1472,6 +1494,10 @@ async def grev_approve(callback: types.CallbackQuery, state: FSMContext):
             from services import quiet_hours
             from services.scheduler import _now_moscow_naive
             text = f"✅ Задание «{html_module.escape(str(task['text']))}» одобрено! +{coins}🪙"
+            if late and coins != base_coins:
+                # D-25/D-35: делегат должен понимать, почему баллов меньше (T-32-07-04).
+                # Нулевой процент штрафа (coins == base_coins) текста не меняет ни на байт.
+                text += " — сдано после дедлайна, начислено меньше обычного"
             await quiet_hours.send_or_queue_text(
                 _now_moscow_naive(), submission["user_id"], text,
                 sender=lambda: callback.bot.send_message(submission["user_id"], text, parse_mode="HTML"),
@@ -1566,20 +1592,27 @@ async def grev_approve_amount_step(message: types.Message, state: FSMContext):
         await message.answer("Сдача не найдена.", reply_markup=ReplyKeyboardRemove())
         await _show_current_submission(message, state)
         return
-    won = await claim_submission(sid, message.from_user.id, "approved", coins_awarded=amount)
+    base_amount = amount
+    # Phase 32 (32-07, D-35): тот же штраф, что у grev_approve — «своя сумма» не обходит правило
+    # (T-32-07-01).
+    coins, late = await _award_for(submission, task, base_amount)
+    won = await claim_submission(sid, message.from_user.id, "approved", coins_awarded=coins)
     if won:
         await add_coins(
-            submission["user_id"], amount,
+            submission["user_id"], coins,
             reason=f"Задание: {str(task['text'])[:60]}",
             changed_by=message.from_user.id,
             source="task",
+            task_id=task["id"],  # Phase 32 (32-01, D-14): ссылка для рейтинга волны
         )
         _request_game_resync()  # Phase 09.1 (D, GAME-07): same trigger as grev_approve
         try:
             # Quick 260904-dq1: та же обёртка, что grev_approve выше.
             from services import quiet_hours
             from services.scheduler import _now_moscow_naive
-            text = f"✅ Задание «{html_module.escape(str(task['text']))}» одобрено! +{amount}🪙"
+            text = f"✅ Задание «{html_module.escape(str(task['text']))}» одобрено! +{coins}🪙"
+            if late and coins != base_amount:
+                text += " — сдано после дедлайна, начислено меньше обычного"
             await quiet_hours.send_or_queue_text(
                 _now_moscow_naive(), submission["user_id"], text,
                 sender=lambda: message.bot.send_message(submission["user_id"], text, parse_mode="HTML"),
