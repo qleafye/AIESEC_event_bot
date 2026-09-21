@@ -1105,63 +1105,74 @@ async def chat_membership_refresh_job():
 # цель принимает только int-аргументы (picklable, Pitfall 3) и перечитывает живое состояние
 # ПЕРЕД отправкой — джоба, поставленная неделю назад, исполняется в мире, которого не было
 # при постановке (T-32-08-01/T-32-08-03).
+#
+# ОДНА джоба НА ВОЛНУ (не пер-амбассадорский фан-аут на постановке): круг получателей
+# разворачивается в момент СРАБАТЫВАНИЯ (`send_wave_start`), а не в момент постановки
+# (`schedule_wave_start_for_all`). Иначе амбассадор, вступивший ПОСЛЕ активации волны, но ДО
+# её `starts_at`, — полноправный участник по `wave_eligible` — не получал бы стартового
+# сообщения никогда: джобы на него не было, а `reconcile_wave_jobs` пропускает волны с уже
+# выставленной `started_notified_at`. Тот же эффект чинит вторую половину бага: `started_
+# notified_at` теперь ставится при ОТПРАВКЕ, а не при постановке — до этого она вставала
+# сразу после активации волны и запирала правку дат (`wave_editable_fields`) ещё до того, как
+# кто-либо что-либо получил.
 
-def schedule_wave_start_dm(wave_id: int, ambassador_id: int, run_at: datetime) -> None:
-    """Разовая джоба стартового сообщения ОДНОМУ участнику волны. Повторная постановка (та же
-    пара wave_id/ambassador_id — например, переармирование при рестарте) заменяет джобу, а не
-    плодит вторую — `replace_existing=True`, тот же приём, что у `schedule_payment_reminder`."""
-    get_scheduler().add_job(
-        send_wave_start_dm, "date", run_date=run_at, args=[wave_id, ambassador_id],
-        id=f"wave_start_dm_{wave_id}_{ambassador_id}", replace_existing=True,
-    )
-
-
-def cancel_wave_jobs(wave_id: int, ambassador_ids: list[int]) -> None:
-    """Снимает стартовые джобы перечисленных участников волны + джобу конца волны волны.
-    Каждое снятие в своём `try/except` (та же идиома, что `cancel_payment_reminders`) — джоба
-    уже сработала или её вовсе не было, оба случая нормальные, не ошибка вызывающего."""
-    sched = get_scheduler()
-    for ambassador_id in ambassador_ids:
-        try:
-            sched.remove_job(f"wave_start_dm_{wave_id}_{ambassador_id}")
-        except Exception:
-            pass
-    try:
-        sched.remove_job(f"wave_end_{wave_id}")
-    except Exception:
-        pass
-
-
-async def schedule_wave_start_for_all(wave_id: int) -> int:
-    """Фан-аут стартовых джоб на всех ТЕКУЩИХ участников волны (D-30). Момент — `starts_at`
-    волны; если он уже прошёл (волна создана и сразу пущена, либо переармирование после
-    простоя бота) — «сейчас + минута», чтобы попасть в окно `_MISFIRE_GRACE_SECONDS`, а не
-    молча пропустить рассылку. Резолв круга получателей — на момент ПОСТАНОВКИ (не
-    гарантирует состав на момент отправки: это и не нужно — `send_wave_start_dm` перечитывает
-    `wave_eligible` заново прямо перед отправкой, поэтому вступивший после постановки и не
-    попавший в этот фан-аут получит собственную джобу либо от следующего переармирования, либо
-    ничего не получит и не должен — он не был участником на момент старта волны).
-    `mark_wave_started` — атомарная метка (`WHERE started_notified_at IS NULL`): второй вызов
-    для той же волны (переармирование поверх уже стартовавшей) не перезаписывает её, поэтому
-    `reconcile_wave_jobs` смотрит на эту метку и не зовёт эту функцию для волн, где она уже
-    стоит (не плодит новых пачек джоб на каждый рестарт)."""
-    from database.db import get_wave, list_ambassadors, mark_wave_started
+async def _wave_eligible_ambassador_ids(wave: dict) -> list[int]:
+    """Круг амбассадоров, подходящих волне `wave` ПРЯМО СЕЙЧАС (`wave_eligible`) — общий
+    помощник для информативного числа на постановке (`schedule_wave_start_for_all`) и
+    реального фан-аута на отправке (`send_wave_start`). `cities.city_scope(...)` ОБЯЗАТЕЛЕН
+    — `wave["event_city"]` без обёртки роняет `database.db._city_clause` (`code, exclude =
+    scope` на голой строке)."""
+    from database.db import list_ambassadors
     from services.ambassador_waves import wave_eligible
     import cities
 
-    wave = await get_wave(wave_id)
-    if not wave:
-        return 0
-    # T-091-08/CITY-02: `list_ambassadors(city_scope=...)` ждёт дескриптор
-    # `cities.city_scope(...)`, а не сырой код города, — `wave["event_city"]` без обёртки
-    # роняет `database.db._city_clause` (`code, exclude = scope` на голой строке).
     ambassadors = await list_ambassadors(city_scope=cities.city_scope(wave.get("event_city")))
-    eligible_ids: list[int] = []
+    ids: list[int] = []
     for a in ambassadors:
         user = dict(a)
         user["is_ambassador"] = 1  # list_ambassadors уже отфильтровал WHERE is_ambassador = 1
         if wave_eligible(user, wave):
-            eligible_ids.append(int(a["telegram_id"]))
+            ids.append(int(a["telegram_id"]))
+    return ids
+
+
+def schedule_wave_start(wave_id: int, run_at: datetime) -> None:
+    """Разовая джоба старта ОДНОЙ волны, id `wave_start_{wave_id}`. Повторная постановка
+    (переармирование при рестарте, правка дат активной волны до отправки) заменяет джобу, а
+    не плодит вторую — `replace_existing=True`, тот же приём, что у `schedule_payment_
+    reminder`."""
+    get_scheduler().add_job(
+        send_wave_start, "date", run_date=run_at, args=[wave_id],
+        id=f"wave_start_{wave_id}", replace_existing=True,
+    )
+
+
+def cancel_wave_jobs(wave_id: int) -> None:
+    """Снимает джобу старта волны и джобу конца волны. Каждое снятие в своём `try/except`
+    (та же идиома, что `cancel_payment_reminders`) — джоба уже сработала или её вовсе не
+    было, оба случая нормальные, не ошибка вызывающего."""
+    sched = get_scheduler()
+    for job_id in (f"wave_start_{wave_id}", f"wave_end_{wave_id}"):
+        try:
+            sched.remove_job(job_id)
+        except Exception:
+            pass
+
+
+async def schedule_wave_start_for_all(wave_id: int) -> int:
+    """Ставит ОДНУ джобу старта волны (D-30) на `starts_at`; если он уже прошёл (волна
+    создана и сразу пущена, либо переармирование после простоя бота) — «сейчас + минута»,
+    чтобы попасть в окно `_MISFIRE_GRACE_SECONDS`, а не молча пропустить рассылку. Круг
+    получателей сюда больше не входит — это `send_wave_start`, срабатывающая на самой
+    отправке (см. комментарий к разделу выше про главный баг фикса). Имя функции сохранено —
+    её импортируют `handlers/admin_game_waves.py` и мокают тесты. Возвращаемое число — сколько
+    амбассадоров подходят волне ПРЯМО СЕЙЧАС; чисто информативно, вызывающий код его не
+    использует."""
+    from database.db import get_wave
+
+    wave = await get_wave(wave_id)
+    if not wave:
+        return 0
 
     now = _now_moscow_naive()
     try:
@@ -1169,21 +1180,57 @@ async def schedule_wave_start_for_all(wave_id: int) -> int:
     except (TypeError, ValueError, KeyError):
         starts_dt = now
     run_at = starts_dt if starts_dt > now else now + timedelta(minutes=1)
+    schedule_wave_start(wave_id, run_at)
 
-    for ambassador_id in eligible_ids:
-        schedule_wave_start_dm(wave_id, ambassador_id, run_at)
+    return len(await _wave_eligible_ambassador_ids(wave))
 
-    await mark_wave_started(wave_id, now.strftime("%Y-%m-%d %H:%M:%S"))
-    return len(eligible_ids)
+
+async def send_wave_start(wave_id: int) -> None:
+    """Date-job target: единственная джоба старта ОДНОЙ волны (D-30). Круг получателей
+    разворачивается ЗДЕСЬ, на срабатывании, а не на постановке — вступивший в амбассадоры
+    ПОСЛЕ активации волны, но ДО её `starts_at`, тоже участник (`wave_eligible` это уже
+    разрешала), и теперь действительно получает сообщение. Волны нет или она не `active` —
+    молча выходим. `starts_at` сдвинули вперёд после постановки — переставляем джобу на новый
+    момент (тот же приём, что `send_task_deadline_reminder`) и выходим, не рассылая рано.
+
+    `mark_wave_started` ставится ДО фан-аута сознательно: при падении посреди рассылки лучше
+    недослать хвосту получателей, чем задвоить всем после рестарта. Метка атомарна (`WHERE
+    started_notified_at IS NULL`) — повторное срабатывание/переармирование той же волны не
+    проходит и не шлёт ничего."""
+    try:
+        from database.db import get_wave, mark_wave_started
+
+        wave = await get_wave(wave_id)
+        if not wave or wave.get("state") != "active":
+            return
+
+        now = _now_moscow_naive()
+        try:
+            starts_dt = datetime.strptime(wave["starts_at"], "%Y-%m-%d %H:%M:%S")
+        except (TypeError, ValueError, KeyError):
+            starts_dt = now
+        if starts_dt > now:
+            schedule_wave_start(wave_id, starts_dt)
+            return
+
+        if not await mark_wave_started(wave_id, now.strftime("%Y-%m-%d %H:%M:%S")):
+            return  # уже разослано — повторное срабатывание/переармирование, тишина
+
+        for ambassador_id in await _wave_eligible_ambassador_ids(wave):
+            await send_wave_start_dm(wave_id, ambassador_id)
+            await asyncio.sleep(0.05)  # та же пауза между отправками, что в broadcast_run.py
+    except Exception as e:
+        logger.error(f"send_wave_start({wave_id}) failed: {e}")
 
 
 async def send_wave_start_dm(wave_id: int, ambassador_id: int) -> None:
-    """Date-job target: ОДНО стартовое сообщение волны одному участнику (D-30). Аргументы —
-    только int (picklable). Перечитывает живое состояние ПЕРЕД отправкой (T-32-08-01): волна
-    должна существовать и не быть в 'draft', получатель — по-прежнему амбассадор и участник
-    ИМЕННО этой волны (`wave_eligible`). Любое из условий не выполнено — молча выходим, ничего
-    не отправляя (вышедший из амбассадоров и вступивший ПОСЛЕ старта волны не получают ничего
-    — D-30/D-32, тот же приём, что T-32-08-01 требует)."""
+    """Отправка ОДНОГО стартового сообщения волны ОДНОМУ получателю — вызывается из фан-аута
+    `send_wave_start` (D-30). Аргументы — только int. Перечитывает живое состояние ПЕРЕД
+    отправкой (T-32-08-01): волна должна существовать и не быть в 'draft', получатель —
+    по-прежнему амбассадор и участник ИМЕННО этой волны (`wave_eligible`). Любое из условий не
+    выполнено — молча выходим, ничего не отправляя (вышедший из амбассадоров не получает
+    ничего — D-30/D-32); свой try/except — сбой одного получателя (например, заблокировал
+    бота) не обрывает фан-аут остальным."""
     try:
         from database.db import get_wave, get_user, list_wave_tasks, task_title
         from services.ambassador_waves import wave_eligible, wave_number_label
