@@ -179,6 +179,8 @@ MINIAPP_KEYS = [
     "miniapp_applications_filter_party",
     "miniapp_applications_filter_short",
     "miniapp_applications_filter_changed",
+    # Правила автоотказа (D-20): чип «только помеченные правилами» (192 -> 193).
+    "miniapp_applications_filter_flagged",
     # Quick 260904-2cj (QJRN-01..04): журнал вопросов делегатов Mini App
     "miniapp_empty_questions",
     "miniapp_questions_answer_button",
@@ -321,7 +323,9 @@ def test_exactly_170_miniapp_keys_and_no_extra():
     # Приёмка 17.09: +2 ключа постоянного места реф-ссылки в хабе (label + invites), +1 ключ
     # пояснения под ссылкой амбассадора, +1 ключ «Открыть ссылку» резюме в карточке отбора
     # (188 -> 192).
-    assert len(MINIAPP_KEYS) == 192
+    # Правила автоотказа: +1 ключ подписи чипа-фильтра «только помеченные правилами»,
+    # точная копия соседа miniapp_applications_filter_changed (192 -> 193).
+    assert len(MINIAPP_KEYS) == 193
     present = sorted(k for k in SETTINGS_SCHEMA if k.startswith("miniapp_"))
     assert present == sorted(MINIAPP_KEYS)
 
@@ -387,7 +391,9 @@ def test_text_keys_have_human_defaults():
     # Phase 30 (30-05, задача 1): +1 текстовый ключ подсказки у поля причины отказа (155 -> 156).
     # Приёмка 17.09: +3 текстовых ключа — постоянное место реф-ссылки в хабе (label + invites)
     # и пояснение под ссылкой амбассадора, +1 — «Открыть ссылку» резюме (156 -> 160).
-    assert len(text_keys) == 160
+    # Правила автоотказа: +1 текстовый ключ подписи чипа «только помеченные правилами»
+    # (160 -> 161).
+    assert len(text_keys) == 161
     for key in text_keys:
         default = SETTINGS_SCHEMA[key]["default"]
         assert isinstance(default, str) and default.strip(), key

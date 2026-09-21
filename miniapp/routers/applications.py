@@ -115,6 +115,7 @@ async def applications_next(
     offset: str | None = None,
     track: str | None = None,
     changed: str | None = None,
+    flagged: str | None = None,
     p: Principal = Depends(require_cap("moderate_reg")),
     _: Principal = Depends(require_section("applications")),
 ) -> dict:
@@ -123,13 +124,18 @@ async def applications_next(
     # Неизвестное значение трека — не 400: чип фильтра, а не контракт (D-08).
     track_filter = track if track in applications.TRACK_FILTERS else None
     changed_only = str(changed).strip().lower() in ("1", "true")
+    # Phase 31 (31-09, D-20): «только помеченные правилами» — тот же приём разбора, что у
+    # `changed` (T-31-09-02: закрытый список "1"/"true", всё остальное — выключенный фильтр,
+    # чип, а не контракт).
+    flagged_only = str(flagged).strip().lower() in ("1", "true")
 
     scope = await applications.manager_scope(p.city)
     row, total = await applications.queue_page(
         scope=scope, offset=off, track=track_filter, changed_only=changed_only,
+        flagged_only=flagged_only,
     )
     if row is None:
-        filter_active = bool(track_filter) or changed_only
+        filter_active = bool(track_filter) or changed_only or flagged_only
         if total == 0:
             key = "miniapp_empty_applications_filtered" if filter_active else "miniapp_empty_applications"
             text = str(await get_setting_typed(key) or "")
@@ -188,6 +194,7 @@ async def applications_next(
                 "party": await get_setting_typed("miniapp_applications_filter_party"),
                 "short": await get_setting_typed("miniapp_applications_filter_short"),
                 "changed": await get_setting_typed("miniapp_applications_filter_changed"),
+                "flagged": await get_setting_typed("miniapp_applications_filter_flagged"),
             },
         },
     }
