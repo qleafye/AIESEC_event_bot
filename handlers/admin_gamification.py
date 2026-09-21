@@ -1327,10 +1327,13 @@ async def _show_current_submission(target: types.Message, state: FSMContext):
     category_label_text = await category_label(current["task_category"])
     proof_label_text = await _registry_proof_types_label(current.get("task_proof_type"))
     remaining = total - position
+    # Phase 32 (32-07, D-25): резолвится здесь (тот же приём, что city_labels/attempt выше) —
+    # рендер карточки остаётся синхронным.
+    penalty_percent = await get_setting_typed("game_late_penalty_percent")
     card = _render_submission_card(
         current, position, total, parts, city_labels, attempt,
         category_label_text=category_label_text, remaining=remaining,
-        proof_label_text=proof_label_text,
+        proof_label_text=proof_label_text, penalty_percent=penalty_percent,
     )
     if len(card) > _CARD_MAX:
         # CR-01 «Важно 2»: a hard slice can leave a truncated HTML entity tail (the only tag

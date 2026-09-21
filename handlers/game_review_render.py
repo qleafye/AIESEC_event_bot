@@ -19,7 +19,7 @@ from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
 
 from database.db import GAME_CATEGORIES, parse_proof_types, task_title
 from settings_schema import get_setting_typed
-from handlers.game_labels import category_label
+from handlers.game_labels import category_label, penalized_coins
 
 # ── Подписи типов подтверждения (синхронная копия) ──────────────────────────────────────────
 # Human-readable labels for GAME_PROOF_TYPES (D-08/CLAUDE.md «для людей, не для прогеров»):
@@ -66,7 +66,8 @@ def _render_submission_card(row: dict, position: int, total: int, parts: list[di
                              attempt: tuple[int, int] | None = None,
                              category_label_text: str | None = None,
                              remaining: int | None = None,
-                             proof_label_text: str | None = None) -> str:
+                             proof_label_text: str | None = None,
+                             penalty_percent: int | None = None) -> str:
     """HTML card for one pending submission; all free-text (task text, submitter name) escaped
     — T-09-12: this is the FIRST render of delegate-supplied content to a manager.
 
@@ -87,7 +88,13 @@ def _render_submission_card(row: dict, position: int, total: int, parts: list[di
     `remaining` («Осталось: N» под шапкой, только когда > 0) и `proof_label_text` (подпись
     типов подтверждения из реестра) — все три резолвит `_show_current_submission`; дефолт None
     = сырая категория / без строки «Осталось» / синхронная копия подписей — байт-в-байт как
-    до плана."""
+    до плана.
+
+    Phase 32 (32-07, D-25/D-35): `penalty_percent` (`game_late_penalty_percent`, резолвит тот
+    же вызывающий) — при просроченной сдаче и ненулевом проценте под бейджем «после дедлайна»
+    печатается итог «будет начислено», посчитанный ТОЙ ЖЕ `penalized_coins`, что и реальное
+    начисление (T-32-07-02) — обещанное и начисленное разойтись не могут. `None`/`0` (дефолт на
+    каждом живом событии) — карточка байт-в-байт прежняя."""
     def esc(v):
         return html_module.escape(str(v)) if v not in (None, "", "-") else None
 
@@ -156,6 +163,14 @@ def _render_submission_card(row: dict, position: int, total: int, parts: list[di
     deadline_at = row.get("task_deadline_at")
     if submitted_at and deadline_at and str(submitted_at) > str(deadline_at):
         lines.append(f"⏰ Сдано после дедлайна ({deadline_at}) — решение за вами")
+        # Phase 32 (32-07, D-25): итог заранее — та же penalized_coins, что и реальное
+        # начисление (T-32-07-02); при нулевом проценте (дефолт) строка не появляется вовсе.
+        base_coins = row.get("task_coins")
+        if penalty_percent and base_coins is not None:
+            penalized = penalized_coins(base_coins, penalty_percent)
+            lines.append(
+                f"Будет начислено {penalized} из {base_coins} — штраф за просрочку {penalty_percent}%"
+            )
     return "\n".join(lines)
 
 
