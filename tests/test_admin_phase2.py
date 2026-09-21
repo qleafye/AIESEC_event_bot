@@ -5,6 +5,7 @@ import types as _types
 from aiogram import F
 
 from config import config
+from database import db
 from handlers import admin
 from handlers import admin_moderation
 from handlers.admin_moderation import (  # Phase 13 (13-06): moderation moved here
@@ -101,16 +102,23 @@ async def _no_admin_city(admin_id):
     return None
 
 
-def test_wr01_welcome_drain_scheduled_despite_edit_failure(monkeypatch):
+def test_wr01_welcome_drain_scheduled_despite_edit_failure(monkeypatch, tmp_path):
     """WR-01: appr_all_yes must schedule mass_approve_effects (Phase 23, 23-02 — welcome drain +
     sheet sync, formerly _welcome_flipped) BEFORE the fragile confirm edit, so a >48h/deleted
-    card whose edit_text raises still delivers welcome/menu to the approved users."""
+    card whose edit_text raises still delivers welcome/menu to the approved users.
+
+    Own temp DB (не полагаемся на state, оставленный соседними тестами файла/сессии) —
+    appr_all_yes по пути читает тихие часы (`quiet_hours.manager_notice`), которым нужна
+    живая таблица `bot_settings`; без своей инициализации тест ловил «no such table» только
+    при запуске в одиночку/первым в сессии."""
     uid = 42
+    config.DB_PATH = str(tmp_path / "wr01.db")
+    asyncio.run(db.init_db())
     monkeypatch.setattr(config, "ADMIN_IDS", [uid])
     welcomed = []
 
-    async def fake_approve_all_pending(*, city_scope=None):
-        return [1, 2, 3]
+    async def fake_claim_approve_all_with_credits(scope):
+        return [1, 2, 3], {"credited": 0, "coins": 0, "ambassadors": 0}
 
     async def fake_mass_approve_effects(bot, ids):
         welcomed.append(list(ids))
@@ -118,7 +126,7 @@ def test_wr01_welcome_drain_scheduled_despite_edit_failure(monkeypatch):
     async def fake_admin_keyboard_for(admin_id):
         return None
 
-    monkeypatch.setattr(admin_moderation, "approve_all_pending", fake_approve_all_pending)
+    monkeypatch.setattr(admin_moderation, "claim_approve_all_with_credits", fake_claim_approve_all_with_credits)
     monkeypatch.setattr(admin_moderation, "mass_approve_effects", fake_mass_approve_effects)
     monkeypatch.setattr(admin_moderation, "admin_keyboard_for", fake_admin_keyboard_for)
     monkeypatch.setattr(admin_moderation, "admin_selected_city", _no_admin_city)
@@ -180,8 +188,8 @@ def test_wr04_stale_reclick_no_drain_and_honest_message(monkeypatch):
     monkeypatch.setattr(config, "ADMIN_IDS", [uid])
     drained = []
 
-    async def fake_approve_all_pending(*, city_scope=None):
-        return []  # second click on a stale dialog: nothing left to approve
+    async def fake_claim_approve_all_with_credits(scope):
+        return [], {"credited": 0, "coins": 0, "ambassadors": 0}  # second click on a stale dialog: nothing left to approve
 
     async def fake_welcome(bot, ids):
         drained.append(ids)
@@ -192,7 +200,7 @@ def test_wr04_stale_reclick_no_drain_and_honest_message(monkeypatch):
     async def fake_admin_keyboard_for(admin_id):
         return None
 
-    monkeypatch.setattr(admin_moderation, "approve_all_pending", fake_approve_all_pending)
+    monkeypatch.setattr(admin_moderation, "claim_approve_all_with_credits", fake_claim_approve_all_with_credits)
     monkeypatch.setattr(admin_moderation, "mass_approve_effects", fake_welcome)
     monkeypatch.setattr(admin_moderation, "admin_keyboard_for", fake_admin_keyboard_for)
     monkeypatch.setattr(admin_moderation, "_show_current_card", fake_show)
