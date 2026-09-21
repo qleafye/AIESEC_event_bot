@@ -434,7 +434,10 @@ KNOWN_OVERAGES: dict[str, tuple[int, str]] = {
         "callback-хендлеров) дописаны в хвост файла; потолок поднят до фактического размера.",
     ),
     "admin_caps.py": (
-        1050,
+        1057,
+        "План 32-11 (D-16/D-17): +7 строк — capability-записи экрана итогов волны "
+        "(wavefin:*/wavefin_go:*/wavefin_do:*, moderate_game — та же капа, что весь остальной "
+        "экран волн) + комментарий про ловушку префиксов; 1050 -> 1057. "
         "32-10 задача 2: +19 строк — capability-записи экрана «🌊 Волны» (admin_game_waves/"
         "wavenew/wavecopy/wavecopy:*/wave:*/waveedit:*/waveactivate:*/waveactivate_go:*/"
         "wavedel:*/wavedel_go:*/wcintro_skip/wcredates/wccreate_go/wccancel, moderate_game — "

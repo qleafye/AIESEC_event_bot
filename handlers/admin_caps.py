@@ -824,6 +824,13 @@ ADMIN_CAPS: dict[str, str] = {
     "waveactivate_go:*": "moderate_game",
     "wavedel:*": "moderate_game",
     "wavedel_go:*": "moderate_game",
+    # План 32-11 (D-16/D-17): экран итогов волны — кнопка приходит менеджеру ЛС (`services.
+    # scheduler.send_wave_end_ping`), не с карточки волны, но обработчики живут в том же шве
+    # (handlers/admin_game_waves.py). Та же ловушка префиксов: "wavefin:*" НЕ покрывает
+    # "wavefin_go:*"/"wavefin_do:*" — три отдельные строки.
+    "wavefin:*": "moderate_game",
+    "wavefin_go:*": "moderate_game",
+    "wavefin_do:*": "moderate_game",
     # Визардные callback'и (state-gated), их литералы ТОЖЕ резолвятся сторожем test_roles_
     # phase8.py отдельно от state-ключа — оба нужны, а не только "state:WaveCreate:*".
     "wcintro_skip": "moderate_game",
