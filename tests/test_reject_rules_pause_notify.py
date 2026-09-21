@@ -2,9 +2,11 @@
 опиралось на выключенный вопрос или пропавший вариант ответа, встаёт на паузу само, а
 держателям права «Настройки» уходит одно человеческое сообщение.
 
-Задача 1 этого плана: сам сервис (`affects_reject_rules`/`on_setting_written`/
-`on_settings_written_batch`), вызванный НАПРЯМУЮ, без воронки записи настроек — воронку
-(`settings_audit.py`) подключает и покрывает своими тестами задача 2 этого же плана.
+Первая часть покрывает сам сервис (`affects_reject_rules`/`on_setting_written`/
+`on_settings_written_batch`), вызванный НАПРЯМУЮ, без воронки записи настроек. Вторая часть
+покрывает саму воронку (`settings_audit.set_setting_by_admin`/`delete_setting_by_admin`) —
+она реально зовёт хук, исключение внутри хука не мешает записи, строка лога с автором не
+меняется.
 
 pytest-asyncio недоступен в этом окружении — async через `asyncio.run()`, фикстура временной БД
 — тот же приём, что `tests/test_reject_rules_service.py::_ready`.
@@ -13,11 +15,13 @@ from __future__ import annotations
 
 import asyncio
 import json
+import logging
 
 from config import config
 from database import db
 import reg_presets
 import services.reject_rules_notify as rrn
+import settings_audit
 
 SUPERADMIN_ID = 900200001
 
@@ -239,3 +243,72 @@ def test_batch_irrelevant_keys_send_nothing(tmp_path, monkeypatch):
     _run(rrn.on_settings_written_batch(["reject_text", "event_date"]))
 
     assert bot.sent == []
+
+
+# ══════════════════════════════════════════════════════════════════════════════════════════
+# Воронка settings_audit.py действительно зовёт хук
+# ══════════════════════════════════════════════════════════════════════════════════════════
+
+def test_set_setting_by_admin_calls_hook_exactly_once_with_same_key(tmp_path, monkeypatch):
+    _ready(tmp_path)
+    calls = []
+
+    async def _fake_on_setting_written(key):
+        calls.append(key)
+
+    monkeypatch.setattr(rrn, "on_setting_written", _fake_on_setting_written)
+    _run(settings_audit.set_setting_by_admin(777, "reg_q_course", "off"))
+
+    assert calls == ["reg_q_course"]
+    assert _run(db.get_setting("reg_q_course")) == "off"
+
+
+def test_delete_setting_by_admin_calls_hook(tmp_path, monkeypatch):
+    _ready(tmp_path)
+    _run(settings_audit.set_setting_by_admin(777, "reg_q_course", "off"))
+    calls = []
+
+    async def _fake_on_setting_written(key):
+        calls.append(key)
+
+    monkeypatch.setattr(rrn, "on_setting_written", _fake_on_setting_written)
+    _run(settings_audit.delete_setting_by_admin(777, "reg_q_course"))
+
+    assert calls == ["reg_q_course"]
+    assert _run(db.get_setting("reg_q_course")) is None
+
+
+def test_hook_exception_does_not_block_setting_write(tmp_path, monkeypatch):
+    _ready(tmp_path)
+
+    async def _boom(key):
+        raise RuntimeError("хук упал")
+
+    monkeypatch.setattr(rrn, "on_setting_written", _boom)
+    _run(settings_audit.set_setting_by_admin(777, "reg_q_course", "off"))
+
+    assert _run(db.get_setting("reg_q_course")) == "off"
+
+
+def test_admin_log_line_unchanged(tmp_path, caplog):
+    _ready(tmp_path)
+    with caplog.at_level(logging.INFO, logger="settings_audit"):
+        _run(settings_audit.set_setting_by_admin(777, "test_key", "on"))
+    assert any("admin=777 setting test_key" in r.getMessage() for r in caplog.records), [
+        r.getMessage() for r in caplog.records
+    ]
+
+
+def test_end_to_end_through_funnel_pauses_and_notifies(tmp_path, monkeypatch):
+    """Полный путь менеджера: settings_audit -> реакция -> рассылка, без единой подмены
+    промежуточного звена (кроме бота и получателя — реальная сеть недоступна в тесте)."""
+    _ready(tmp_path)
+    _run(db.set_setting("reject_rules_enabled", "on"))
+    _run(db.set_setting("reg_q_course", "on"))
+    _run(_create_course_rule())
+    bot = _FakeBot()
+    monkeypatch.setattr(rrn._sched, "_bot", bot)
+
+    _run(settings_audit.set_setting_by_admin(777, "reg_q_course", "off"))
+
+    assert len(bot.sent) == 1
