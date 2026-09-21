@@ -206,3 +206,128 @@ def test_get_reject_rule_missing_returns_none(tmp_path):
 def test_delete_reject_rule_missing_returns_false(tmp_path):
     _ready(tmp_path)
     assert _run(db.delete_reject_rule(999999)) is False
+
+
+# ══════════════════════════════════════════════════════════════════════════════════════════
+# Задача 2: аксессоры журнала автоотказов
+# ══════════════════════════════════════════════════════════════════════════════════════════
+
+def test_upsert_auto_reject_log_first_trigger_creates_row_with_attempt_1(tmp_path):
+    _ready(tmp_path)
+    _seed_user(2001, event_city="msk")
+    entry_id = _run(db.upsert_auto_reject_log(
+        2001, "[1]", '["текст правила"]', "2026-09-20 10:00:00",
+    ))
+    row = _run(db.get_auto_reject_log_entry(entry_id))
+    assert row["attempt_count"] == 1
+    assert row["first_triggered_at"] == "2026-09-20 10:00:00"
+    assert row["last_triggered_at"] == "2026-09-20 10:00:00"
+    assert row["returned_to_moderation_at"] is None
+
+
+def test_upsert_auto_reject_log_second_trigger_increments_same_row(tmp_path):
+    """Повторное срабатывание того же делегата увеличивает счётчик, а не плодит вторую
+    строку (D-18, D-24) — ровно ОДНА строка в auto_reject_log."""
+    _ready(tmp_path)
+    _seed_user(2002, event_city="msk")
+    first_id = _run(db.upsert_auto_reject_log(2002, "[1]", '["a"]', "2026-09-20 10:00:00"))
+    second_id = _run(db.upsert_auto_reject_log(2002, "[1, 2]", '["a", "b"]', "2026-09-20 11:00:00"))
+    assert first_id == second_id
+
+    row = _run(db.get_auto_reject_log_entry(second_id))
+    assert row["attempt_count"] == 2
+    assert row["rule_ids"] == "[1, 2]"
+    assert row["reject_texts"] == '["a", "b"]'
+    assert row["first_triggered_at"] == "2026-09-20 10:00:00"
+    assert row["last_triggered_at"] == "2026-09-20 11:00:00"
+
+    async def count_rows():
+        async with db._connect() as conn:
+            async with conn.execute(
+                "SELECT COUNT(*) FROM auto_reject_log WHERE telegram_id = ?", (2002,)
+            ) as cursor:
+                r = await cursor.fetchone()
+                return r[0]
+
+    assert _run(count_rows()) == 1
+
+
+def test_claim_auto_reject_return_closes_live_row_and_next_trigger_opens_new_one(tmp_path):
+    _ready(tmp_path)
+    _seed_user(2003, event_city="msk")
+    entry_id = _run(db.upsert_auto_reject_log(2003, "[1]", '["a"]', "2026-09-20 10:00:00"))
+
+    claimed = _run(db.claim_auto_reject_return(entry_id, 777, "2026-09-20 12:00:00"))
+    assert claimed is not None
+    assert claimed["returned_to_moderation_at"] == "2026-09-20 12:00:00"
+    assert claimed["returned_by"] == 777
+
+    # повторный возврат того же id — уже занят, вторая попытка не выигрывает.
+    second_attempt = _run(db.claim_auto_reject_return(entry_id, 888, "2026-09-20 13:00:00"))
+    assert second_attempt is None
+
+    # следующее срабатывание правила заводит НОВУЮ живую строку (живой больше нет).
+    new_id = _run(db.upsert_auto_reject_log(2003, "[1]", '["a"]', "2026-09-20 14:00:00"))
+    assert new_id != entry_id
+    new_row = _run(db.get_auto_reject_log_entry(new_id))
+    assert new_row["attempt_count"] == 1
+
+
+def test_list_and_count_auto_reject_log_share_the_same_filters(tmp_path):
+    """Счётчик и список обязаны ходить по одному набору условий — тот же принцип, что у
+    queue_page (иначе «Всего: N» врёт)."""
+    _ready(tmp_path)
+    _seed_user(2004, event_city="msk")
+    _seed_user(2005, event_city="spb")
+    _run(db.upsert_auto_reject_log(2004, "[1]", '["a"]', "2026-09-20 10:00:00"))
+    _run(db.upsert_auto_reject_log(2005, "[1]", '["a"]', "2026-09-20 10:05:00"))
+
+    msk_rows = _run(db.list_auto_reject_log(city_scope=("msk", ())))
+    msk_count = _run(db.count_auto_reject_log(city_scope=("msk", ())))
+    assert len(msk_rows) == msk_count == 1
+    assert msk_rows[0]["telegram_id"] == 2004
+    assert msk_rows[0]["full_name"] == "Delegate 2004"
+
+    all_rows = _run(db.list_auto_reject_log())
+    all_count = _run(db.count_auto_reject_log())
+    assert len(all_rows) == all_count == 2
+
+
+def test_list_and_count_auto_reject_log_exclude_returned_by_default(tmp_path):
+    _ready(tmp_path)
+    _seed_user(2006, event_city="msk")
+    entry_id = _run(db.upsert_auto_reject_log(2006, "[1]", '["a"]', "2026-09-20 10:00:00"))
+    _run(db.claim_auto_reject_return(entry_id, 1, "2026-09-20 11:00:00"))
+
+    assert _run(db.count_auto_reject_log()) == 0
+    assert _run(db.list_auto_reject_log()) == []
+
+    assert _run(db.count_auto_reject_log(include_returned=True)) == 1
+    assert len(_run(db.list_auto_reject_log(include_returned=True))) == 1
+
+
+def test_export_auto_reject_log_rows_passes_values_through_csv_safe(tmp_path):
+    """ФИО делегата, начинающееся с `=` (анкета — свободный текст, ничем не ограничена),
+    обязано пройти `_csv_safe` (T-31-02-02, CWE-1236) в выгрузке журнала."""
+    _ready(tmp_path)
+    _run(db.add_user({
+        "telegram_id": 2007,
+        "full_name": "=HYPERLINK(\"evil\")",
+        "registration_date": "2026-01-01 00:00:07",
+        "event_city": "msk",
+    }))
+    _run(db.upsert_auto_reject_log(2007, "[1]", '["a"]', "2026-09-20 10:00:00"))
+    headers, rows = _run(db.export_auto_reject_log_rows())
+    assert len(headers) == len(rows[0])
+    full_name_cell = rows[0][headers.index("ФИО")]
+    assert isinstance(full_name_cell, str)
+    assert full_name_cell.startswith("'=")
+
+
+def test_resolve_decision_managers_skips_auto_reject_sentinel(tmp_path):
+    """`resolve_decision_managers([-1, 12345])` не содержит ключа `-1` — сентинел автоотказа
+    не должен уезжать в запрос имён менеджеров (план 31-05, services/reject_journal.py)."""
+    _ready(tmp_path)
+    labels = _run(db.resolve_decision_managers([-1, 12345]))
+    assert -1 not in labels
+    assert 12345 in labels
