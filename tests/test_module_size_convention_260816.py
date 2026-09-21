@@ -304,7 +304,12 @@ KNOWN_OVERAGES: dict[str, tuple[int, str]] = {
         "потолок поднят до фактического размера + ~3 строки запаса.",
     ),
     "admin_broadcasts.py": (
-        1427,
+        1505,
+        "Phase 31 (31-07, D-28): +42 строки — поле фильтра «Автоотказ по правилу» "
+        "(AUTO_REJECT_YES/AUTO_REJECT_NO в _FILTER_FIELD_LABELS/_PICKER_FIELDS, "
+        "show_auto_reject в _filter_menu_kb/_render_filter_menu, ветка auto_reject в "
+        "_show_value_picker и в сборке записи фильтра filter_pick_value), тот же экран, "
+        "новых модулей не заводит, 1391 -> 1433; потолок поднят до фактического размера + ~5%. "
         "Квик 260915-twr (Task B): +78 строк — журнал запланированных рассылок "
         "(отправка использует ту же строку broadcasts, что мгновенная — код живёт в "
         "services/scheduler.py/database/db.py, не здесь), предупреждение об аудитории «Всем» "
