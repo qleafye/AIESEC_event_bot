@@ -45,7 +45,7 @@ from database.db import (
     get_user,
     list_applications_page,
 )
-from services.ambassador_waves import current_wave_for, wave_eligible
+from services.ambassador_waves import current_wave_for_city_raw, wave_eligible
 from settings_schema import get_setting_typed
 
 logger = logging.getLogger(__name__)
@@ -74,9 +74,11 @@ async def credit_for_approved(invitee_id: int, *, changed_by: int | None = None)
     4. `ambassador_referral_coins` больше нуля (дефолт 0 на каждом живом событии — Rule «фича
        выключена по умолчанию»).
 
-    Волна — `current_wave_for(город пригласившего)`, но только если пригласивший в ней
-    участвует (`wave_eligible`, D-31/D-38: вступивший посреди волны в неё не попадает) —
-    иначе `wave_id = None`, баллы идут только в общий зачёт.
+    Волна — `current_wave_for_city_raw(город пригласившего)` (WR-03, 32-REVIEW.md:
+    нормализует сырой `event_city`, иначе легаси-амбассадор дефолтного города теряет волну
+    своего города), но только если пригласивший в ней участвует (`wave_eligible`, D-31/D-38:
+    вступивший посреди волны в неё не попадает) — иначе `wave_id = None`, баллы идут только в
+    общий зачёт.
 
     Запись — `claim_referral_credit_atomic` (WR-01, 32-REVIEW.md): квитанция
     `referral_credits` и начисление в `coins` пишутся ОДНОЙ транзакцией, не двумя отдельными
@@ -106,7 +108,7 @@ async def credit_for_approved(invitee_id: int, *, changed_by: int | None = None)
             return None
 
         wave_id: int | None = None
-        wave = await current_wave_for(referrer.get("event_city"))
+        wave = await current_wave_for_city_raw(referrer.get("event_city"))
         if wave and wave_eligible(referrer, wave):
             wave_id = int(wave["id"])
 
