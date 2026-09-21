@@ -128,7 +128,7 @@ def _auto_rule_label(rule_id, rules_by_id: dict) -> str:
     return short + "…" if len(words) > 6 else short
 
 
-async def _auto_reject_patch(telegram_id: int, answers: dict, status: str) -> dict:
+async def _auto_reject_patch(telegram_id: int, answers: dict) -> dict:
     """Phase 31 (31-06, D-01..D-32): оценка правил автоотказа — рядом с `_score_patch`, по её
     образцу. Гейт первым действием: `active_rules` вернул пустой список (общий рубильник
     `reject_rules_enabled` выключен или для этого города/трека нет активных правил) -> `{}`
@@ -405,7 +405,7 @@ async def _finalize_data_impl(telegram_id: int, username: str | None, draft: dic
                 "event_city": old.get("event_city"),
                 "participant_type": old.get("participant_type"),
             }
-            auto_patch = await _auto_reject_patch(telegram_id, eval_answers, status)
+            auto_patch = await _auto_reject_patch(telegram_id, eval_answers)
             rejects_again = bool(auto_patch) and auto_patch["status_override"] == "rejected"
 
             if rejects_again:
@@ -564,7 +564,7 @@ async def _finalize_data_impl(telegram_id: int, username: str | None, draft: dic
             # (заявка принимается ЦЕЛИКОМ, ни один вопрос анкеты не пропускается) — и только
             # теперь правило может её отклонить. Данные — синхронно, здесь; эффекты делегату/
             # менеджеру/лист — в post_finalize (Pattern 4 «данные синхронно, эффекты async»).
-            auto_patch = await _auto_reject_patch(telegram_id, data, status)
+            auto_patch = await _auto_reject_patch(telegram_id, data)
             if auto_patch:
                 column_patch = {
                     "auto_reject_rule_ids": auto_patch["auto_reject_rule_ids"],
