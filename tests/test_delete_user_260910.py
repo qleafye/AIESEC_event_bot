@@ -141,6 +141,61 @@ def test_purge_is_idempotent(tmp_path):
     assert all(v == 0 for v in second.values())
 
 
+# ── Phase 31/32: auto_reject_log, wave_results, referral_credits ───────────────────────────
+
+def test_purge_deletes_auto_reject_log_and_wave_results_keeps_other_delegate(tmp_path):
+    _ready(tmp_path)
+    asyncio.run(db.upsert_auto_reject_log(DELEGATE_ID, "[1]", "[\"текст\"]", _now()))
+    asyncio.run(db.upsert_auto_reject_log(OTHER_DELEGATE_ID, "[1]", "[\"текст\"]", _now()))
+    asyncio.run(db.insert_wave_results(1, [(DELEGATE_ID, 1, 100), (OTHER_DELEGATE_ID, 2, 50)], _now()))
+
+    footprint = asyncio.run(db.count_user_footprint(DELEGATE_ID))
+    assert footprint["reject_log"] == 1
+    assert footprint["waves"] == 1
+
+    asyncio.run(db.purge_user(DELEGATE_ID))
+
+    assert asyncio.run(db.get_live_auto_reject_log_entry(DELEGATE_ID)) is None
+    # чужой след цел
+    assert asyncio.run(db.get_live_auto_reject_log_entry(OTHER_DELEGATE_ID)) is not None
+    other_wave_rows = asyncio.run(db.get_wave_results(1))
+    assert len(other_wave_rows) == 1
+    assert other_wave_rows[0]["user_id"] == OTHER_DELEGATE_ID
+
+
+def test_purge_deletes_referral_credit_earned_as_referrer(tmp_path):
+    """Удаляемый амбассадор сам заработал начисление за приглашённого — уходит вместе с ним,
+    как и его "coins" (это его личный след)."""
+    _ready(tmp_path)
+    asyncio.run(db.claim_referral_credit(OTHER_DELEGATE_ID, DELEGATE_ID, 5, None))
+
+    footprint = asyncio.run(db.count_user_footprint(DELEGATE_ID))
+    assert footprint["referral_credits"] == 1
+
+    asyncio.run(db.purge_user(DELEGATE_ID))
+
+    assert asyncio.run(db.get_referral_credit(OTHER_DELEGATE_ID)) is None
+
+
+def test_purge_keeps_referral_credit_row_where_deleted_person_was_invitee(tmp_path):
+    """Удаляемый человек был ПРИГЛАШЁННЫМ — строка referral_credits остаётся: заработанные
+    пригласившим баллы не отзываются, а сохранённый invitee_id физически (PRIMARY KEY) не
+    даёт начислить повторно, если тот же Telegram-аккаунт зарегистрируется заново."""
+    _ready(tmp_path)
+    asyncio.run(db.claim_referral_credit(DELEGATE_ID, OTHER_DELEGATE_ID, 5, None))
+
+    asyncio.run(db.purge_user(DELEGATE_ID))
+
+    credit = asyncio.run(db.get_referral_credit(DELEGATE_ID))
+    assert credit is not None
+    assert credit["referrer_id"] == OTHER_DELEGATE_ID
+
+    # повторная попытка начислить за того же приглашённого (например, он снова
+    # зарегистрировался тем же Telegram-аккаунтом) не создаёт вторую строку/начисление
+    claimed_again = asyncio.run(db.claim_referral_credit(DELEGATE_ID, OTHER_DELEGATE_ID, 5, None))
+    assert claimed_again is False
+
+
 # ── find_user_id_by_username ────────────────────────────────────────────────────────────────
 
 def test_find_user_id_by_username_finds_in_users_case_insensitive_without_at(tmp_path):
