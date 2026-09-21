@@ -805,6 +805,30 @@ ADMIN_CAPS: dict[str, str] = {
     "coinsjrn_page:*": "moderate_game",
     "coinsjrn_csv": "moderate_game",
 
+    # Phase 32 (32-10, D-06/D-09/D-10/D-11/D-13): экран «🌊 Волны» — список/создание/карточка/
+    # правка/копия/активация/удаление (handlers/admin_game_waves.py). WARNING: та же ловушка
+    # префиксов, что у gtdelete:*/gtdelete_go:* — "wavedel:*" НЕ покрывает "wavedel_go:*",
+    # "waveactivate:*" НЕ покрывает "waveactivate_go:*", обе пары нужны отдельными строками.
+    "admin_game_waves": "moderate_game",
+    "wavenew": "moderate_game",
+    "wavecopy": "moderate_game",
+    "wavecopy:*": "moderate_game",
+    "wavecopy_go:*": "moderate_game",
+    "wave:*": "moderate_game",
+    "waveedit:*": "moderate_game",
+    "waveactivate:*": "moderate_game",
+    "waveactivate_go:*": "moderate_game",
+    "wavedel:*": "moderate_game",
+    "wavedel_go:*": "moderate_game",
+    # Визардные callback'и (state-gated), их литералы ТОЖЕ резолвятся сторожем test_roles_
+    # phase8.py отдельно от state-ключа — оба нужны, а не только "state:WaveCreate:*".
+    "wcintro_skip": "moderate_game",
+    "wcredates": "moderate_game",
+    "wccreate_go": "moderate_game",
+    "wccancel": "moderate_game",
+    "state:WaveCreate:*": "moderate_game",
+    "state:WaveEdit:*": "moderate_game",
+
     # checkin: no keys yet -- Phase 12. Capability already exists in
     # ALL_CAPABILITIES/ROLES so a future phase adds handlers, not registry plumbing.
 

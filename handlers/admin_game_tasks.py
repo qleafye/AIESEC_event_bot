@@ -404,3 +404,9 @@ __all__ = [
     "game_task_deadline_preset", "game_task_deadline_custom",
     "game_task_wizard_edit_menu", "game_task_wizard_back", "game_task_wizard_edit_field",
 ]
+
+# Phase 32 (32-10): «🌊 Волны» — новый шов, импортирован В ХВОСТЕ этого файла (та же
+# discipline, что admin_gamification.py применяет к ЭТОМУ модулю двумя строками выше в
+# цепочке) — золотой снимок порядка (tests/test_refac_snapshot_260816.py) только дополняется,
+# независимо от того, какой модуль импортировали первым.
+from handlers import admin_game_waves  # noqa: E402,F401

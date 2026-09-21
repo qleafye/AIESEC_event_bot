@@ -434,7 +434,12 @@ KNOWN_OVERAGES: dict[str, tuple[int, str]] = {
         "callback-хендлеров) дописаны в хвост файла; потолок поднят до фактического размера.",
     ),
     "admin_caps.py": (
-        1025,
+        1050,
+        "32-10 задача 2: +19 строк — capability-записи экрана «🌊 Волны» (admin_game_waves/"
+        "wavenew/wavecopy/wavecopy:*/wave:*/waveedit:*/waveactivate:*/waveactivate_go:*/"
+        "wavedel:*/wavedel_go:*/wcintro_skip/wcredates/wccreate_go/wccancel, moderate_game — "
+        "та же капа, что весь остальной экран геймификации); 1021 -> 1040, потолок поднят с "
+        "небольшим запасом на задачу 3 (правка/активация/удаление карточки волны). "
         "План 31-11 (D-18/D-19/D-20): +6 строк — capability-записи журнала «🤖 Автоотказы» "
         "(admin_reject_journal/arj_*, moderate_reg — та же капа, что вся модерация заявок, "
         "хотя вход виден с экрана правил под settings) и чипа «только помеченные правилами» "

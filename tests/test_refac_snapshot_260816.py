@@ -437,6 +437,21 @@ def _build_snapshot_lines():
 # плана). Re-captured by RUNNING `_build_snapshot_lines()` against HEAD и diffed
 # (`difflib.SequenceMatcher`) против прежнего 579-строчного снимка: ровно одна вставка из 5
 # строк, 0 удалений, 0 реордеров.
+#
+# Drift note (32-10, задача 2, D-06/D-10/D-11: «🌊 Волны» — список + визард создания/копии,
+# 584 -> 595 handlers -- PURE APPEND, ДВЕ вставки): 2 message-хендлера
+# (`wave_create_dates_step`/`wave_create_intro_step`, state:WaveCreate:*) встали в
+# message-бакете СРАЗУ ПОСЛЕ `game_task_editdeadline_step` и ПЕРЕД `poll_wizard_cancel` —
+# та же точка, что и остальные хендлеры `handlers/admin_game_tasks.py` (правильная позиция
+# определяется цепочкой импортов, а не позицией нового файла на диске: `handlers/
+# admin_game_waves.py` импортирован В ХВОСТЕ `admin_game_tasks.py`, значит его хендлеры
+# регистрируются сразу вслед за последним хендлером этого файла). 9 callback_query-хендлеров
+# (`show_wave_card`/`show_wave_list`/`wave_create_start`/`wave_copy_last_start`/
+# `wave_create_intro_skip`/`wave_create_redates`/`wave_create_go`/`wave_copy_go`/
+# `wave_create_cancel`) встали СРАЗУ ПОСЛЕ `game_task_wizard_edit_field` (последний
+# callback-хендлер admin_game_tasks.py) и ПЕРЕД `show_admin_polls`. Re-captured by RUNNING
+# `_build_snapshot_lines()` against HEAD и diffed (`difflib.SequenceMatcher`) против прежнего
+# 584-строчного снимка: ровно две вставки (2 + 9 строк), 0 удалений, 0 реордеров.
 GOLDEN_SNAPSHOT = """
 admin|message|cmd_admin_help|cmd:admin
 admin|message|cmd_coins|cmd:coins
@@ -528,6 +543,8 @@ admin|message|grev_reject_reason|state:GameReview:*
 admin|message|game_task_editdesc_step|state:GameTaskEdit:*
 admin|message|game_task_editcoins_step|state:GameTaskEdit:*
 admin|message|game_task_editdeadline_step|state:GameTaskEdit:*
+admin|message|wave_create_dates_step|state:WaveCreate:*
+admin|message|wave_create_intro_step|state:WaveCreate:*
 admin|message|poll_wizard_cancel|state:PollCreate:*,state:PollCreate:*
 admin|message|poll_wizard_cancel|state:PollCreate:*,state:PollCreate:*
 admin|message|poll_question_step|state:PollCreate:*
@@ -878,6 +895,15 @@ admin|callback_query|game_task_deadline_custom|gtdeadline_custom
 admin|callback_query|game_task_wizard_edit_menu|gtwiz_edit_menu
 admin|callback_query|game_task_wizard_back|gtwiz_back
 admin|callback_query|game_task_wizard_edit_field|gtwiz_edit:*
+admin|callback_query|show_wave_card|wave:*
+admin|callback_query|show_wave_list|admin_game_waves
+admin|callback_query|wave_create_start|wavenew
+admin|callback_query|wave_copy_last_start|wavecopy
+admin|callback_query|wave_create_intro_skip|wcintro_skip
+admin|callback_query|wave_create_redates|wcredates
+admin|callback_query|wave_create_go|wccreate_go
+admin|callback_query|wave_copy_go|wavecopy_go:*
+admin|callback_query|wave_create_cancel|wccancel
 admin|callback_query|show_admin_polls|admin_polls
 admin|callback_query|show_admin_polls_closed|admin_polls_closed
 admin|callback_query|show_poll_card|poll_card:*
@@ -1243,7 +1269,9 @@ def test_snapshot_total_handler_count_is_292():
     # (ambwave), хвост user_actions.router (578 -> 579).
     # 32-06 задача 3: путь/выход/возврат амбассадора, +5 user_actions.callback_query, хвост
     # user_actions.router (579 -> 584).
-    assert len(GOLDEN_SNAPSHOT) == 584
+    # 32-10 задача 2: «🌊 Волны» — список + визард создания/копии, +2 admin.message
+    # (state:WaveCreate:*) + +9 admin.callback_query, handlers/admin_game_waves.py (584 -> 595).
+    assert len(GOLDEN_SNAPSHOT) == 595
     # (callback_query toggle_reg_form_v2/chips/lookup_search/edu_card/repeatable/limit_counter/
     # status_screen/header_settings/haptics — девять тумблеров «Анкета 2.0»), встали сразу после
     # admin_quiet_hours и перед sync_sheet: шов импортируется из хвоста
