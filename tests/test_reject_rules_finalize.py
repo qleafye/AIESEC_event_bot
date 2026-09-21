@@ -534,6 +534,261 @@ def test_auto_rejected_referral_earns_nothing(tmp_path):
     assert coins_rows == 0
 
 
+# ══════════════════════════════════════════════════════════════════════════════════════════
+# Ревью-находка (дефект 1): правка, снявшая отказ, но НЕ снявшая пометку — заявка обязана уйти
+# на ручную модерацию, а не остаться зависшей в "rejected".
+# ══════════════════════════════════════════════════════════════════════════════════════════
+
+def test_edit_clears_reject_keeps_flag_goes_to_pending_with_both_badges(tmp_path):
+    """До фикса: правка снимает правило-отказ, но правило-пометка ещё срабатывает — код уходил
+    в ветку «Пометка» (auto_patch truthy) и НИКОГДА не доходил до `elif was_auto_rejected`,
+    поэтому статус навсегда оставался "rejected". После фикса — pending, обнулённые колонки
+    автоотказа, СВЕЖИЙ бейдж пометки и отдельный маркер истории «сменил ответ после
+    автоотказа»."""
+    _ready(tmp_path)
+
+    async def go():
+        await db.set_setting("registration_mode", "full")
+        await db.set_setting("full_approval", "manual")
+        await db.set_setting("reg_q_resume", "on")
+        await _enable_reject_rules()
+        reject_id = await _seed_course_rule(action="reject", reject_text="Курс закрыт.", values=("1",))
+        flag_id = await db.create_reject_rule(
+            name="Пометка нет резюме", city=None, tracks=json.dumps(["full"]),
+            conditions=json.dumps([[{"step": "resume", "op": "no_file", "values": []}]]),
+            action="flag", reject_text=None, enabled=1, created_by=1,
+        )
+
+        draft = {"telegram_id": UID, "kind": "new", "answers": {"course": "1"}}
+        result_new = await rf.finalize_data(UID, "@x", draft)
+        assert result_new["status"] == "rejected"
+
+        # Курс больше не попадает под правило-отказ — резюме по-прежнему не приложено, поэтому
+        # правило-пометка остаётся в силе.
+        edit_draft = {
+            "telegram_id": UID, "kind": "edit",
+            "answers": {"course": "3"}, "updated_by": "miniapp",
+        }
+        result_edit = await rf.finalize_data(UID, "@x", edit_draft)
+        user = await db.get_user(UID)
+        history = await db.get_answer_history(UID, limit=5)
+        return result_edit, user, history, reject_id, flag_id
+
+    result_edit, user, history, reject_id, flag_id = asyncio.run(go())
+
+    assert result_edit["status"] == "pending"
+    assert result_edit["flagged_rule_ids"] == [flag_id]
+    assert user["status"] == "pending"
+    assert user.get("auto_reject_rule_ids") in (None, "null")
+    assert user["auto_rejected_at"] is None
+    assert json.loads(user["flagged_rule_ids"]) == [flag_id]
+    assert "⚠️" in user["auto_rule_note"]
+
+    cleared_rows = [
+        h for h in history
+        if any(c.get("auto_reject_cleared") for c in (h.get("changes") or []))
+    ]
+    assert len(cleared_rows) == 1
+    marker = next(c for c in cleared_rows[0]["changes"] if c.get("auto_reject_cleared"))
+    assert marker["column"] == "status" and marker["old"] == "rejected" and marker["new"] == "pending"
+    assert marker["rule_field"] == "course"
+
+
+# ══════════════════════════════════════════════════════════════════════════════════════════
+# Ревью-находка (дефект 2): взаимодействие с автоодобрением события
+# ══════════════════════════════════════════════════════════════════════════════════════════
+
+def test_reject_rule_new_application_auto_approval_rejects_without_approve_effects(tmp_path, monkeypatch):
+    """(a) Правило-отказ + автоодобрение события ВКЛЮЧЕНО — итог всё равно "rejected", и
+    приветственный скрипт автоприёма (`handlers.registration.approve_user`) НЕ зовётся вовсе —
+    делегат получает только сообщение об автоотказе."""
+    _ready(tmp_path)
+    _offline(monkeypatch)
+    _patch_sheet_calls(monkeypatch)
+    monkeypatch.setattr(config, "ADMIN_IDS", [])
+
+    approve_calls = []
+
+    async def go():
+        async def fake_approve(bot, telegram_id, **kwargs):
+            approve_calls.append((telegram_id, kwargs))
+
+        monkeypatch.setattr(reg_mod, "approve_user", fake_approve)
+
+        await db.set_setting("registration_mode", "full")
+        await db.set_setting("full_approval", "auto")
+        await db.set_setting("reject_text", "К сожалению, твоя заявка отклонена.")
+        await _enable_reject_rules()
+        await _seed_course_rule()
+
+        draft = {"telegram_id": UID, "kind": "new", "answers": {"course": "1"}}
+        result = await rf.finalize_data(UID, "@x", draft)
+        bot = FakeBot()
+        await rf.post_finalize(bot, UID, "new")
+        user = await db.get_user(UID)
+        return result, user, bot, approve_calls
+
+    result, user, bot, approve_calls = asyncio.run(go())
+    assert result["status"] == "rejected"
+    assert user["status"] == "rejected"
+    assert approve_calls == []
+    assert len(bot.sent_messages) == 1
+    assert "отклонена" in bot.sent_messages[0][1]
+
+
+def test_flag_rule_new_application_auto_approval_stays_pending_no_approve_effects(tmp_path, monkeypatch):
+    """(b-1) Правило-пометка (не отказ) + автоодобрение ВКЛЮЧЕНО — заявка обязана уйти на
+    ручную модерацию с бейджем, а не проскочить в "approved" молча (D-03: пометка — пробный
+    режим перед включением отказа, решает человек, тот же принцип, что у D-23)."""
+    _ready(tmp_path)
+    _offline(monkeypatch)
+    _patch_sheet_calls(monkeypatch)
+    monkeypatch.setattr(config, "ADMIN_IDS", [])
+
+    approve_calls = []
+
+    async def go():
+        async def fake_approve(bot, telegram_id, **kwargs):
+            approve_calls.append((telegram_id, kwargs))
+
+        monkeypatch.setattr(reg_mod, "approve_user", fake_approve)
+
+        await db.set_setting("registration_mode", "full")
+        await db.set_setting("full_approval", "auto")
+        await db.set_setting("reg_q_resume", "on")
+        await _enable_reject_rules()
+        flag_id = await db.create_reject_rule(
+            name="Пометка нет резюме", city=None, tracks=json.dumps(["full"]),
+            conditions=json.dumps([[{"step": "resume", "op": "no_file", "values": []}]]),
+            action="flag", reject_text=None, enabled=1, created_by=1,
+        )
+
+        draft = {"telegram_id": UID, "kind": "new", "answers": {"course": "3"}}
+        result = await rf.finalize_data(UID, "@x", draft)
+        bot = FakeBot()
+        await rf.post_finalize(bot, UID, "new")
+        user = await db.get_user(UID)
+        return result, user, bot, approve_calls, flag_id
+
+    result, user, bot, approve_calls, flag_id = asyncio.run(go())
+    assert result["status"] == "pending"
+    assert user["status"] == "pending"
+    assert json.loads(user["flagged_rule_ids"]) == [flag_id]
+    assert "⚠️" in user["auto_rule_note"]
+    assert approve_calls == []
+    # Ни автоприёма, ни автоотказа — делегат вообще ничего не получает на этом шаге, решение
+    # ещё не принято.
+    assert bot.sent_messages == []
+
+
+def test_no_rule_match_new_application_auto_approval_still_approves(tmp_path, monkeypatch):
+    """(b-2) Регресс-гвард: правила модуля включены, но НИ ОДНО не подошло — автоодобрение
+    работает как раньше, заявка получает "approved" и приветственный текст."""
+    _ready(tmp_path)
+    _offline(monkeypatch)
+    _patch_sheet_calls(monkeypatch)
+    monkeypatch.setattr(config, "ADMIN_IDS", [])
+
+    async def go():
+        await db.set_setting("registration_mode", "full")
+        await db.set_setting("full_approval", "auto")
+        await _enable_reject_rules()
+        await _seed_course_rule(values=("5",))  # правило скоупом на курс "5" — не подходит
+
+        draft = {"telegram_id": UID, "kind": "new", "answers": {"course": "3"}}
+        result = await rf.finalize_data(UID, "@x", draft)
+        bot = FakeBot()
+        await rf.post_finalize(bot, UID, "new")
+        return result, bot
+
+    result, bot = asyncio.run(go())
+    assert result["status"] == "approved"
+    assert len(bot.sent_messages) == 1
+
+
+def test_reject_rules_module_off_new_application_auto_approval_still_approves(tmp_path, monkeypatch):
+    """(b-3) Регресс-гвард: общий рубильник `reject_rules_enabled` выключен (дефолт) —
+    автоодобрение работает byte-в-byte как до фазы 31."""
+    _ready(tmp_path)
+    _offline(monkeypatch)
+    _patch_sheet_calls(monkeypatch)
+    monkeypatch.setattr(config, "ADMIN_IDS", [])
+
+    async def go():
+        await db.set_setting("registration_mode", "full")
+        await db.set_setting("full_approval", "auto")
+        # reject_rules_enabled НЕ включён — дефолт off.
+        await _seed_course_rule()
+
+        draft = {"telegram_id": UID, "kind": "new", "answers": {"course": "1"}}
+        result = await rf.finalize_data(UID, "@x", draft)
+        bot = FakeBot()
+        await rf.post_finalize(bot, UID, "new")
+        return result, bot
+
+    result, bot = asyncio.run(go())
+    assert result["status"] == "approved"
+    assert len(bot.sent_messages) == 1
+
+
+# ── (c) EDIT-ветка: никогда не отклонённый approved-делегат задевает правило-пометку ────────
+
+def test_edit_flag_rule_matches_approved_delegate_toggle_off_keeps_approved(tmp_path):
+    """(c) Делегат НИКОГДА не был автоотклонён, статус "approved"; правка задевает поле, из-за
+    которого срабатывает правило-пометка. Тумблер «Изменённая анкета — снова на модерацию»
+    ВЫКЛЮЧЕН — статус остаётся существующим переходом (approved), правило добавляет только
+    бейдж, ничего не падает."""
+    _ready(tmp_path)
+
+    async def go():
+        await db.set_setting("reject_rules_enabled", "on")
+        await db.set_setting("toggle_reg_edit_remoderation", "off")
+        flag_id = await _seed_course_rule(action="flag", reject_text=None, values=("1", "2"))
+        await _seed_user(UID, status="approved", course="3")
+
+        edit_draft = {
+            "telegram_id": UID, "kind": "edit",
+            "answers": {"course": "1"}, "updated_by": "miniapp",
+        }
+        result = await rf.finalize_data(UID, "@x", edit_draft)
+        user = await db.get_user(UID)
+        return result, user, flag_id
+
+    result, user, flag_id = asyncio.run(go())
+    assert result["status"] == "approved"
+    assert result["remoderated"] is False
+    assert user["status"] == "approved"
+    assert json.loads(user["flagged_rule_ids"]) == [flag_id]
+    assert "⚠️" in user["auto_rule_note"]
+
+
+def test_edit_flag_rule_matches_approved_delegate_toggle_on_sets_pending(tmp_path):
+    """(c) Тот же сценарий, тумблер ВКЛЮЧЁН — статус уходит на pending СУЩЕСТВУЮЩЕЙ веткой
+    ремодерации (не новым переходом ради правила), правило по-прежнему только добавляет
+    бейдж."""
+    _ready(tmp_path)
+
+    async def go():
+        await db.set_setting("reject_rules_enabled", "on")
+        await db.set_setting("toggle_reg_edit_remoderation", "on")
+        flag_id = await _seed_course_rule(action="flag", reject_text=None, values=("1", "2"))
+        await _seed_user(UID, status="approved", course="3")
+
+        edit_draft = {
+            "telegram_id": UID, "kind": "edit",
+            "answers": {"course": "1"}, "updated_by": "miniapp",
+        }
+        result = await rf.finalize_data(UID, "@x", edit_draft)
+        user = await db.get_user(UID)
+        return result, user, flag_id
+
+    result, user, flag_id = asyncio.run(go())
+    assert result["status"] == "pending"
+    assert result["remoderated"] is True
+    assert user["status"] == "pending"
+    assert json.loads(user["flagged_rule_ids"]) == [flag_id]
+
+
 def test_no_batch_sweep_functions_exist():
     """Threat register T-31-06-01: пакетного прохода по очереди в проекте нет и не появится —
     структурная проверка отсутствия таких функций (то же, что grep-акцептанс плана)."""
