@@ -9,6 +9,7 @@ Job targets are module-level coroutines taking only picklable primitives (an int
 no args) — never a Bot/closure (Pitfall 3). The Bot is injected once via a module global.
 """
 import asyncio
+import html
 import json
 import logging
 import os
@@ -319,6 +320,10 @@ async def init_scheduler(bot):
     await rearm_pending_reg_digests()
     # Опросы: та же реконсиляция для отложенных/недосланных опросов (poll_{id} date jobs).
     await reconcile_scheduled_polls()
+    # Phase 32 (32-08, T-32-08-07): то же самое для трёх джоб амбассадорских волн (старт,
+    # напоминание о дедлайне, конец волны) — вызывается ПОСЛЕДНЕЙ из реконсиляций namespace'а
+    # (после опросов), тот же порядок, что у остальных «дослать пропущенное на старте» шагов.
+    await reconcile_wave_jobs()
     # Nothing (interval or date) may fire until the whole schedule above is assembled.
     _scheduler.resume()
     logger.info(
@@ -1092,3 +1097,357 @@ async def chat_membership_refresh_job():
         await refresh_all_chats(_bot)
     except Exception as e:
         logger.error(f"chat_membership_refresh_job failed: {e}")
+
+
+# ── Phase 32 (32-08, D-11/D-26/D-30): джобы амбассадорских волн ──────────────────────────
+# Тот же приём, что у напоминаний об оплате выше (schedule_payment_reminder/send_payment_
+# reminder, ~строка 683): разовая `date`-джоба, детерминированный id, `replace_existing=True`,
+# цель принимает только int-аргументы (picklable, Pitfall 3) и перечитывает живое состояние
+# ПЕРЕД отправкой — джоба, поставленная неделю назад, исполняется в мире, которого не было
+# при постановке (T-32-08-01/T-32-08-03).
+
+def schedule_wave_start_dm(wave_id: int, ambassador_id: int, run_at: datetime) -> None:
+    """Разовая джоба стартового сообщения ОДНОМУ участнику волны. Повторная постановка (та же
+    пара wave_id/ambassador_id — например, переармирование при рестарте) заменяет джобу, а не
+    плодит вторую — `replace_existing=True`, тот же приём, что у `schedule_payment_reminder`."""
+    get_scheduler().add_job(
+        send_wave_start_dm, "date", run_date=run_at, args=[wave_id, ambassador_id],
+        id=f"wave_start_dm_{wave_id}_{ambassador_id}", replace_existing=True,
+    )
+
+
+def cancel_wave_jobs(wave_id: int, ambassador_ids: list[int]) -> None:
+    """Снимает стартовые джобы перечисленных участников волны + джобу конца волны волны.
+    Каждое снятие в своём `try/except` (та же идиома, что `cancel_payment_reminders`) — джоба
+    уже сработала или её вовсе не было, оба случая нормальные, не ошибка вызывающего."""
+    sched = get_scheduler()
+    for ambassador_id in ambassador_ids:
+        try:
+            sched.remove_job(f"wave_start_dm_{wave_id}_{ambassador_id}")
+        except Exception:
+            pass
+    try:
+        sched.remove_job(f"wave_end_{wave_id}")
+    except Exception:
+        pass
+
+
+async def schedule_wave_start_for_all(wave_id: int) -> int:
+    """Фан-аут стартовых джоб на всех ТЕКУЩИХ участников волны (D-30). Момент — `starts_at`
+    волны; если он уже прошёл (волна создана и сразу пущена, либо переармирование после
+    простоя бота) — «сейчас + минута», чтобы попасть в окно `_MISFIRE_GRACE_SECONDS`, а не
+    молча пропустить рассылку. Резолв круга получателей — на момент ПОСТАНОВКИ (не
+    гарантирует состав на момент отправки: это и не нужно — `send_wave_start_dm` перечитывает
+    `wave_eligible` заново прямо перед отправкой, поэтому вступивший после постановки и не
+    попавший в этот фан-аут получит собственную джобу либо от следующего переармирования, либо
+    ничего не получит и не должен — он не был участником на момент старта волны).
+    `mark_wave_started` — атомарная метка (`WHERE started_notified_at IS NULL`): второй вызов
+    для той же волны (переармирование поверх уже стартовавшей) не перезаписывает её, поэтому
+    `reconcile_wave_jobs` смотрит на эту метку и не зовёт эту функцию для волн, где она уже
+    стоит (не плодит новых пачек джоб на каждый рестарт)."""
+    from database.db import get_wave, list_ambassadors, mark_wave_started
+    from services.ambassador_waves import wave_eligible
+    import cities
+
+    wave = await get_wave(wave_id)
+    if not wave:
+        return 0
+    # T-091-08/CITY-02: `list_ambassadors(city_scope=...)` ждёт дескриптор
+    # `cities.city_scope(...)`, а не сырой код города, — `wave["event_city"]` без обёртки
+    # роняет `database.db._city_clause` (`code, exclude = scope` на голой строке).
+    ambassadors = await list_ambassadors(city_scope=cities.city_scope(wave.get("event_city")))
+    eligible_ids: list[int] = []
+    for a in ambassadors:
+        user = dict(a)
+        user["is_ambassador"] = 1  # list_ambassadors уже отфильтровал WHERE is_ambassador = 1
+        if wave_eligible(user, wave):
+            eligible_ids.append(int(a["telegram_id"]))
+
+    now = _now_moscow_naive()
+    try:
+        starts_dt = datetime.strptime(wave["starts_at"], "%Y-%m-%d %H:%M:%S")
+    except (TypeError, ValueError, KeyError):
+        starts_dt = now
+    run_at = starts_dt if starts_dt > now else now + timedelta(minutes=1)
+
+    for ambassador_id in eligible_ids:
+        schedule_wave_start_dm(wave_id, ambassador_id, run_at)
+
+    await mark_wave_started(wave_id, now.strftime("%Y-%m-%d %H:%M:%S"))
+    return len(eligible_ids)
+
+
+async def send_wave_start_dm(wave_id: int, ambassador_id: int) -> None:
+    """Date-job target: ОДНО стартовое сообщение волны одному участнику (D-30). Аргументы —
+    только int (picklable). Перечитывает живое состояние ПЕРЕД отправкой (T-32-08-01): волна
+    должна существовать и не быть в 'draft', получатель — по-прежнему амбассадор и участник
+    ИМЕННО этой волны (`wave_eligible`). Любое из условий не выполнено — молча выходим, ничего
+    не отправляя (вышедший из амбассадоров и вступивший ПОСЛЕ старта волны не получают ничего
+    — D-30/D-32, тот же приём, что T-32-08-01 требует)."""
+    try:
+        from database.db import get_wave, get_user, list_wave_tasks, task_title
+        from services.ambassador_waves import wave_eligible, wave_number_label
+        from services import quiet_hours, i18n
+        import game_labels
+
+        wave = await get_wave(wave_id)
+        if not wave or wave.get("state") == "draft":
+            return
+        user = await get_user(ambassador_id)
+        if not user or not wave_eligible(dict(user), wave):
+            return
+
+        tasks = await list_wave_tasks(wave_id, active_only=True)
+        lang, tr_map = await i18n.context(ambassador_id)
+
+        lines = []
+        for t in tasks:
+            deadline_txt = await game_labels.task_deadline_text(t)
+            lines.append(
+                f"• {html.escape(str(task_title(t)))} — {int(t['coins'])} баллов, до {deadline_txt}"
+            )
+        tasks_block = "\n".join(lines)
+
+        try:
+            ends_dt = datetime.strptime(wave["ends_at"], "%Y-%m-%d %H:%M:%S")
+            ends_txt = ends_dt.strftime("%d.%m")
+        except (TypeError, ValueError, KeyError):
+            ends_txt = str(wave.get("ends_at") or "")
+
+        # D-11: вводный текст волны необязателен — {intro} подставляет пустую строку, а не
+        # обрубок/висящее двоеточие; дефолт шаблона несёт перевод строки ПЕРЕД {intro}, так
+        # что пустая подстановка оставляет лишнюю пустую строку — схлопываем её здесь, а не
+        # правкой дефолта реестра (менеджер волен переписать шаблон по-своему).
+        intro = (wave.get("intro_text") or "").strip()
+        intro_block = html.escape(intro) if intro else ""
+
+        template = i18n.tr(await get_setting_typed("wave_start_message_text"), lang, tr_map)
+        text = template.format(
+            wave=wave_number_label(wave), ends=ends_txt, intro=intro_block, tasks=tasks_block,
+        )
+        if not intro:
+            text = text.replace("\n\n\n", "\n\n")
+
+        button_text = i18n.tr(await get_setting_typed("wave_start_button_text"), lang, tr_map)
+        markup = InlineKeyboardMarkup(inline_keyboard=[[
+            # Переиспользуем существующий делегатский экран списка заданий (page 0) —
+            # handlers/user_actions.py::F.data.startswith("gtasks_page:") — вместо нового
+            # обработчика: список заданий уже есть, отдельного «экрана волны» план не заводит.
+            InlineKeyboardButton(text=button_text, callback_data="gtasks_page:0"),
+        ]])
+
+        now = _now_moscow_naive()
+
+        async def _sender():
+            await _safe_send(
+                lambda cid: _bot.send_message(cid, text, parse_mode="HTML", reply_markup=markup),
+                ambassador_id,
+            )
+
+        await quiet_hours.send_or_queue_text(
+            now, ambassador_id, text, sender=_sender, parse_mode="HTML", reply_markup=markup,
+        )
+    except Exception as e:
+        logger.error(f"send_wave_start_dm({wave_id}, {ambassador_id}) failed: {e}")
+
+
+# ── Phase 32 (32-08, D-26): напоминание за сутки до дедлайна задания ─────────────────────
+
+def schedule_task_deadline_reminder(task_id: int, deadline: datetime) -> bool:
+    """Разовая джоба напоминания за сутки до дедлайна ОДНОГО задания, на `deadline - 24h`.
+    Момент уже в прошлом — напоминать поздно, джоба НЕ ставится вовсе (не «догоняющая»
+    отправка задним числом, в отличие от рассылки старта волны). Возвращает признак,
+    поставлена ли она — `reconcile_wave_jobs` использует его, чтобы отличить «уже стоит» от
+    «дедлайн слишком близко, реального пропуска нет»."""
+    run_at = deadline - timedelta(hours=24)
+    if run_at <= _now_moscow_naive():
+        return False
+    get_scheduler().add_job(
+        send_task_deadline_reminder, "date", run_date=run_at, args=[task_id],
+        id=f"task_deadline_reminder_{task_id}", replace_existing=True,
+    )
+    return True
+
+
+def cancel_task_deadline_reminder(task_id: int) -> None:
+    """Fail-soft снятие по тому же id — уже сработала или не стояла вовсе, оба случая ОК."""
+    try:
+        get_scheduler().remove_job(f"task_deadline_reminder_{task_id}")
+    except Exception:
+        pass
+
+
+async def _task_out_of_wave_recipients(task: dict) -> list[int]:
+    """Круг получателей задания ВНЕ волн (D-26, task.wave_id пуст): `audience == 'ambassadors'`
+    — амбассадоры города задания, иначе — все делегаты этого города (`event_city` пуст —
+    все города, без фильтра, тот же смысл, что и везде в проекте). Собственного аксессора в
+    `database/db.py` для «все делегаты одного города» нет — этот план не имеет права трогать
+    этот файл (вне `files_modified`), поэтому фильтрация — здесь, по уже существующим
+    `list_ambassadors`/`get_all_users_dicts`."""
+    from database.db import list_ambassadors, get_all_users_dicts
+    import cities
+
+    if task.get("audience") == "ambassadors":
+        rows = await list_ambassadors(city_scope=cities.city_scope(task.get("event_city")))
+        return [int(r["telegram_id"]) for r in rows]
+    city = task.get("event_city")
+    users = await get_all_users_dicts()
+    if city:
+        return [int(u["telegram_id"]) for u in users if u.get("event_city") == city]
+    return [int(u["telegram_id"]) for u in users]
+
+
+async def send_task_deadline_reminder(task_id: int) -> None:
+    """Date-job target: напоминание за сутки до дедлайна ОДНОГО задания, только тем, кто ещё
+    НЕ сдал (D-26 — `get_active_submission` не видит отклонённые сдачи, поэтому отклонённая
+    сдача тоже считается «не сдал», делегат может пересдать). Перечитывает задание ДО
+    формирования круга получателей: архивное или без срока — выход; срок сдвинули так, что
+    до него снова больше суток — переставляем джобу на новый момент (та же id, `replace_
+    existing=True` не удваивает) и выходим, не рассылая рано."""
+    try:
+        from database.db import get_task, get_active_submission, list_ambassadors, get_wave, task_title
+        from services.ambassador_waves import wave_eligible
+        from services import quiet_hours, i18n
+        import game_labels
+
+        task = await get_task(task_id)
+        if not task or task.get("archived_at"):
+            return
+        deadline = game_labels.task_deadline(task)
+        if deadline is None:
+            return
+        now = _now_moscow_naive()
+        if deadline - timedelta(hours=24) > now:
+            schedule_task_deadline_reminder(task_id, deadline)
+            return
+
+        wave_id = task.get("wave_id")
+        if wave_id:
+            wave = await get_wave(int(wave_id))
+            if not wave:
+                return
+            import cities
+            recipients = []
+            for a in await list_ambassadors(city_scope=cities.city_scope(wave.get("event_city"))):
+                user = dict(a)
+                user["is_ambassador"] = 1
+                if wave_eligible(user, wave):
+                    recipients.append(int(a["telegram_id"]))
+        else:
+            recipients = await _task_out_of_wave_recipients(task)
+
+        template_raw = await get_setting_typed("wave_deadline_reminder_text")
+        title = task_title(task)
+        deadline_txt = await game_labels.task_deadline_text(task)
+
+        for uid in recipients:
+            if await get_active_submission(task_id, uid):
+                continue  # уже сдал (сдача не отклонена) — D-26: только несдавшим
+            lang, tr_map = await i18n.context(uid)
+            template = i18n.tr(template_raw, lang, tr_map)
+            text = template.format(
+                task=html.escape(str(title)), coins=int(task["coins"]), deadline=deadline_txt,
+            )
+
+            async def _sender(cid=uid, txt=text):
+                await _safe_send(lambda c: _bot.send_message(c, txt, parse_mode="HTML"), cid)
+
+            await quiet_hours.send_or_queue_text(now, uid, text, sender=_sender, parse_mode="HTML")
+            await asyncio.sleep(0.05)  # та же пауза между отправками, что в broadcast_run.py
+    except Exception as e:
+        logger.error(f"send_task_deadline_reminder({task_id}) failed: {e}")
+
+
+# ── Phase 32 (32-08, D-16/D-30): сводка менеджеру в конце волны ──────────────────────────
+
+def schedule_wave_end(wave_id: int, ends_at: datetime) -> None:
+    """Разовая джоба `f"wave_end_{wave_id}"` на момент конца волны. `replace_existing=True` —
+    сдвиг даты волны просто перезаписывает джобу, без ручной отмены со стороны вызывающего."""
+    get_scheduler().add_job(
+        send_wave_end_ping, "date", run_date=ends_at, args=[wave_id],
+        id=f"wave_end_{wave_id}", replace_existing=True,
+    )
+
+
+async def send_wave_end_ping(wave_id: int) -> None:
+    """Date-job target: сводка менеджерам о конце волны (D-16/D-30), ровно один раз.
+    `close_wave` — атомарный переход `active -> closing`; `False` (волна уже не 'active' —
+    повторное срабатывание после переармирования, или менеджер уже объявил итоги руками) —
+    молча выходим, ни одного сообщения (T-32-08-03).
+
+    Деволюция от буквального текста плана: `handlers.admin_caps.notify_by_capability` не
+    принимает `reply_markup`, а этот файл (`handlers/admin_caps.py`) в параллели правит
+    другой исполнитель — вне `files_modified` этого плана. Вместо него здесь используется тот
+    же публичный примитив резолва получателей `capability_holders(cap, city=...)`, которым
+    сам `notify_by_capability` резолвит круг адресатов (тот же city-скоуп и тот же fallback на
+    `config.ADMIN_IDS`, если у capability вовсе нет держателей — T-32-08-02), плюс `_safe_send`
+    на отправку — одно сообщение с текстом И клавиатурой, а не текст separate от кнопок."""
+    try:
+        from services.ambassador_waves import close_wave, wave_end_summary, wave_number_label
+        from handlers.admin_caps import capability_holders
+
+        if not await close_wave(wave_id):
+            return
+        summary = await wave_end_summary(wave_id)
+        wave = summary["wave"] or {}
+        city = wave.get("event_city")
+
+        top_lines = [
+            f"{row['place']}. {html.escape(str(row.get('name') or row['user_id']))} — {row['points']}"
+            for row in summary["top"]
+        ]
+        top_txt = "; ".join(top_lines) if top_lines else "пока пусто"
+
+        template = await get_setting_typed("wave_end_manager_text")
+        text = template.format(
+            wave=wave_number_label(wave), top=top_txt, pending=summary["pending"],
+        )
+        markup = InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(text="🏁 Объявить итоги", callback_data=f"wavefin:{wave_id}")],
+            [InlineKeyboardButton(text="📋 Открыть сдачи на проверке", callback_data="admin_game_review")],
+        ])
+
+        recipients = await capability_holders("moderate_game", city=city)
+        if not recipients:
+            recipients = list(config.ADMIN_IDS)
+        for uid in recipients:
+            await _safe_send(
+                lambda cid: _bot.send_message(cid, text, parse_mode="HTML", reply_markup=markup), uid,
+            )
+    except Exception as e:
+        logger.error(f"send_wave_end_ping({wave_id}) failed: {e}")
+
+
+# ── Phase 32 (32-08, T-32-08-07): переармирование джоб волн на старте бота ───────────────
+
+async def reconcile_wave_jobs() -> None:
+    """Вызывается из `init_scheduler` после существующих реконсиляций. По АКТИВНЫМ волнам
+    заново ставит недостающие джобы: стартовую рассылку (только для волн, у которых
+    `started_notified_at` пуст — уже стартовавшая волна не рассылается заново),
+    напоминания по заданиям волны (только для заданий с будущим сроком — прошедшее
+    напоминание не воскрешается) и джобу конца волны. Идемпотентно: все идентификаторы
+    детерминированные, `replace_existing=True` не плодит дублей — повторный вызов на уже
+    полностью взведённом хранилище — no-op по факту (джобы просто перезаписываются теми же
+    значениями)."""
+    try:
+        from database.db import list_waves, list_wave_tasks
+        import game_labels
+
+        waves = await list_waves(states=("active",))
+        for wave in waves:
+            wave_id = int(wave["id"])
+            if not wave.get("started_notified_at"):
+                await schedule_wave_start_for_all(wave_id)
+            try:
+                ends_dt = datetime.strptime(wave["ends_at"], "%Y-%m-%d %H:%M:%S")
+                schedule_wave_end(wave_id, ends_dt)
+            except (TypeError, ValueError, KeyError):
+                pass
+
+            tasks = await list_wave_tasks(wave_id, active_only=True)
+            for t in tasks:
+                deadline = game_labels.task_deadline(t)
+                if deadline is not None:
+                    schedule_task_deadline_reminder(int(t["id"]), deadline)
+    except Exception as e:
+        logger.error(f"reconcile_wave_jobs failed: {e}")
