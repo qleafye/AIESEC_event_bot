@@ -1735,9 +1735,8 @@ def _ambassador_wave_results_snapshot(conn, wave: dict) -> list[dict]:
     `wave_results` (D-17), а НЕ пересчитываем по `coins`/`referral_credits`. Сдача, проверенная
     уже ПОСЛЕ объявления, продолжает пополнять общий зачёт (D-17), но не имеет права задним
     числом изменить то, что увидели амбассадоры в сообщении об итогах — живой пересчёт молча
-    разошёлся бы с уже объявленными числами. `wave_results` несёт только призовые места (не
-    всех участников волны, см. `services.ambassador_waves.announce_results`) — после
-    объявления список короче, чем во время волны, это ожидаемо."""
+    разошёлся бы с уже объявленными числами. Снимок хранит места ВСЕХ участников волны (призёры
+    помечены `is_winner`), поэтому после объявления список той же длины, что и во время волны."""
     rows = conn.execute(
         "SELECT wr.user_id AS user_id, wr.points AS points, users.username AS username "
         "FROM wave_results wr JOIN users ON users.telegram_id = wr.user_id "
