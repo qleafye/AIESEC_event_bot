@@ -41,7 +41,7 @@ from database.db import (
     update_task_text,
 )
 from keyboards.builders import get_cancel_kb
-from services.ambassador_waves import wave_number_label
+from services.ambassador_waves import can_edit_wave, wave_editable_fields, wave_number_label
 from services.scheduler import _fmt_dt, _now_moscow_naive, _parse_schedule_dt
 from services.game_sync import request_resync as _request_game_resync
 from handlers.states import GameTaskCreate, GameTaskEdit
@@ -426,7 +426,7 @@ async def game_task_wizard_edit_field(callback: types.CallbackQuery, state: FSMC
         await message.answer(_PROMPT_COINS, reply_markup=get_cancel_kb())
         await state.set_state(GameTaskCreate.coins)
     elif field == "wave":
-        await _game_task_wave_prompt(message, state)
+        await _game_task_wave_prompt(message, state, callback.from_user.id)
     elif field == "audience":
         await _game_task_audience_prompt(message, state)
     elif field == "deadline":
@@ -444,7 +444,11 @@ async def game_task_wizard_edit_field(callback: types.CallbackQuery, state: FSMC
 async def game_task_wave_step(callback: types.CallbackQuery, state: FSMContext):
     """D-12: «🚫 Вне волн» (`gtwave:none`) или конкретная волна — перечитывается заново на
     каждый тап (T-32-12-01: кнопка из истории чата не двигает состояние на удалённой/чужой
-    волне, тот же фейл-софт, что у `game_task_city_step`)."""
+    волне, тот же фейл-софт, что у `game_task_city_step`).
+
+    WR-07: право на волну и открытый состав перепроверяются тут же — экран мог быть отрисован
+    раньше, чем менеджера привязали к городу, или волна успела разослать стартовое сообщение,
+    пока менеджер листал шаги визарда."""
     raw = callback.data.split(":", 1)[1]
     if raw == "none":
         await state.update_data(gt_wave_id=None, gt_wave_label=None, gt_wave_ends_at=None)
@@ -452,6 +456,11 @@ async def game_task_wave_step(callback: types.CallbackQuery, state: FSMContext):
         wave = await get_wave(int(raw)) if raw.isdigit() else None
         if wave is None or wave.get("state") not in ("draft", "active"):
             await callback.answer("Неизвестная волна", show_alert=True)
+            return
+        if not await can_edit_wave(callback.from_user.id, wave) or "tasks" not in wave_editable_fields(wave):
+            await callback.answer(
+                "В эту волну сейчас нельзя добавить задание — выберите другую", show_alert=True,
+            )
             return
         await state.update_data(
             gt_wave_id=wave["id"], gt_wave_label=wave_number_label(wave),
