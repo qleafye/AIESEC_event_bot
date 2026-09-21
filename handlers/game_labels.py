@@ -7,16 +7,20 @@
 from game_labels import *  # noqa: F401,F403
 from game_labels import (  # noqa: F401 — явный реэкспорт публичных и приватных имён
     _CATEGORY_KEY,
+    _PATH_CATEGORIES,
     _PROOF_TYPE_KEY,
+    ambassador_block_index,
     category_label,
     penalized_coins,
     penalty_hint_line,
     proof_types_label,
     render_task_card_text,
+    sort_tasks_for_ambassador,
     sort_tasks_for_delegate,
     task_deadline,
     task_deadline_admin,
     task_deadline_short,
     task_deadline_text,
     task_has_deadline,
+    visible_tasks_for,
 )
