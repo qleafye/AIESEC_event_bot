@@ -806,6 +806,37 @@ def test_empty_game_and_disabled_toggle_both_hide_game_block(tmp_path):
     assert "Геймификация" not in resp2.text
 
 
+def test_ambassador_block_hidden_when_toggle_off_page_unchanged(tmp_path):
+    """D-33/D-34 (план 32-09): выключенный тумблер (дефолт) — секции блока нет вовсе, даже
+    если в базе есть амбассадор. Страница НЕ сравнивается байт-в-байт с/без такого
+    пользователя: `is_ambassador` уже отражается в существующем блоке «Рефералы» (счётчик
+    «Имеют свою ссылку», план 15/квик) — это поведение другого, не этого плана, блока."""
+    db_path = _use_tmp_db(tmp_path)
+    client = _stats_manager_client(db_path)
+    resp_without = client.get("/")
+    assert "Амбассадоры" not in resp_without.text
+    _seed(users=[
+        {"telegram_id": 501, "username": "amb_x", "is_ambassador": 1, "status": "approved"},
+    ])
+    resp_with = client.get("/")
+    assert "Амбассадоры" not in resp_with.text
+    assert "@amb_x" not in resp_with.text
+
+
+def test_ambassador_block_shown_when_toggle_on_with_data(tmp_path):
+    db_path = _use_tmp_db(tmp_path)
+    client = _stats_manager_client(
+        db_path, extra_settings={"dashboard_block_ambassadors": "on"}
+    )
+    _seed(users=[
+        {"telegram_id": 501, "username": "amb_x", "is_ambassador": 1, "status": "approved"},
+    ])
+    resp = client.get("/")
+    assert "Амбассадоры" in resp.text
+    assert "@amb_x" in resp.text
+    assert "Волна сейчас не идёт" in resp.text  # волн не заведено — блок жив без них
+
+
 def test_bound_manager_has_no_city_switcher_and_no_foreign_city_data(tmp_path):
     db_path = _use_tmp_db(tmp_path)
     _seed_full_fixture(db_path)
