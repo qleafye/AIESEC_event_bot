@@ -245,6 +245,34 @@ def test_waves_overlapping_catches_edge_touch_not_adjacent(tmp_path):
     assert not any(row["id"] == base for row in adjacent)
 
 
+def test_waves_overlapping_all_cities_conflicts_with_city_wave(tmp_path):
+    """WR-04 (32-REVIEW.md): проверка пересечения волн должна быть симметричной — волна «все
+    города» (`event_city=None`) обязана конфликтовать с ЛЮБОЙ городской волной в тех же
+    датах, не только с другой волной «все города». Раньше при `event_city is None` в SQL
+    оставался фильтр `event_city IS NULL`, и городская волна в тех же датах пролетала мимо
+    проверки — вот этот сценарий."""
+    _ready(tmp_path)
+    _run(db.create_wave(
+        "2026-10-01 00:00:00", "2026-10-21 00:00:00", event_city="msk",
+    ))
+    conflicts = _run(db.waves_overlapping(
+        "2026-10-05 00:00:00", "2026-10-25 00:00:00", None, exclude_id=None,
+    ))
+    assert len(conflicts) == 1
+    assert conflicts[0]["event_city"] == "msk"
+
+
+def test_waves_overlapping_city_wave_conflicts_with_all_cities(tmp_path):
+    """Обратное направление (уже работало и раньше) — не должно сломаться фиксом."""
+    _ready(tmp_path)
+    _run(db.create_wave("2026-10-01 00:00:00", "2026-10-21 00:00:00", event_city=None))
+    conflicts = _run(db.waves_overlapping(
+        "2026-10-05 00:00:00", "2026-10-25 00:00:00", "msk", exclude_id=None,
+    ))
+    assert len(conflicts) == 1
+    assert conflicts[0]["event_city"] is None
+
+
 def test_wave_at_returns_none_for_draft(tmp_path):
     _ready(tmp_path)
     wave_id = _run(db.create_wave("2026-10-01 00:00:00", "2026-10-08 00:00:00"))
