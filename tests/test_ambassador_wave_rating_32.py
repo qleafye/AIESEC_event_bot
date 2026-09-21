@@ -67,11 +67,48 @@ def test_wave_eligible_pure_function_since_before_and_after_start():
 
 def test_eligible_wave_ids_pure_wrapper():
     user = {"is_ambassador": 1, "ambassador_since": "2026-10-05 00:00:00"}
+    now = datetime(2026, 10, 12)
     all_waves = [
-        {"id": 1, "starts_at": "2026-10-01 00:00:00"},
-        {"id": 2, "starts_at": "2026-10-10 00:00:00"},
+        {"id": 1, "state": "active", "starts_at": "2026-10-01 00:00:00"},
+        {"id": 2, "state": "active", "starts_at": "2026-10-10 00:00:00"},
     ]
-    assert waves.eligible_wave_ids(user, all_waves) == {2}
+    assert waves.eligible_wave_ids(user, all_waves, now=now) == {2}
+
+
+def test_eligible_wave_ids_excludes_draft_and_not_yet_started_wave():
+    """CR-03 (32-REVIEW.md): черновик (D-13 «Скопировать прошлую» создаёт именно его) и
+    активная волна, чей `starts_at` ещё впереди, не попадают в eligible_wave_ids даже для
+    амбассадора, чей `ambassador_since` формально подходит — задания такой волны не имеют
+    права утекать в список/сдачу раньше срока."""
+    user = {"is_ambassador": 1, "ambassador_since": "2026-01-01 00:00:00"}
+    now = datetime(2026, 10, 12)
+    all_waves = [
+        {"id": 1, "state": "draft", "starts_at": "2026-10-01 00:00:00"},
+        {"id": 2, "state": "active", "starts_at": "2026-11-01 00:00:00"},  # ещё не наступила
+        {"id": 3, "state": "active", "starts_at": "2026-10-01 00:00:00"},  # уже идёт
+    ]
+    assert waves.eligible_wave_ids(user, all_waves, now=now) == {3}
+
+
+def test_wave_open_true_only_for_active_already_started_wave():
+    now = datetime(2026, 10, 12)
+    assert waves.wave_open({"state": "active", "starts_at": "2026-10-01 00:00:00"}, now=now) is True
+    assert waves.wave_open({"state": "active", "starts_at": "2026-11-01 00:00:00"}, now=now) is False
+    assert waves.wave_open({"state": "draft", "starts_at": "2026-10-01 00:00:00"}, now=now) is False
+    assert waves.wave_open({"state": "closing", "starts_at": "2026-10-01 00:00:00"}, now=now) is False
+    assert waves.wave_open({"state": "announced", "starts_at": "2026-10-01 00:00:00"}, now=now) is False
+    assert waves.wave_open(None, now=now) is False
+
+
+def test_open_wave_ids_for_ignores_ambassador_since():
+    """WR-08/CR-03: `open_wave_ids_for` — для НЕ-амбассадора, `ambassador_since` тут ни при
+    чём вовсе, только состояние и даты волны."""
+    now = datetime(2026, 10, 12)
+    all_waves = [
+        {"id": 1, "state": "active", "starts_at": "2026-10-01 00:00:00"},
+        {"id": 2, "state": "draft", "starts_at": "2026-10-01 00:00:00"},
+    ]
+    assert waves.open_wave_ids_for(all_waves, now=now) == {1}
 
 
 def test_current_wave_for_uses_now_param(tmp_path):

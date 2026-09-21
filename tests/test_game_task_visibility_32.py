@@ -245,6 +245,45 @@ def test_non_ambassador_wave_filter_does_not_apply():
     assert [t["id"] for t in visible] == [1]
 
 
+def test_open_wave_ids_none_preserves_prior_behavior_for_non_ambassador():
+    # Байт-в-байт то же, что test_non_ambassador_wave_filter_does_not_apply -- Mini App пока
+    # не передаёт open_wave_ids вовсе (см. отчёт фиксера CR-03/32-REVIEW.md), поведение для
+    # него не должно поменяться ни на йоту.
+    tasks = [_task(id=1, wave_id=5, audience="all")]
+    visible = game_labels.visible_tasks_for(
+        tasks, is_ambassador=False, eligible_wave_ids=set(), open_wave_ids=None,
+    )
+    assert [t["id"] for t in visible] == [1]
+
+
+def test_open_wave_ids_hides_non_ambassador_task_of_unopened_wave():
+    # CR-03 (32-REVIEW.md): когда вызывающая сторона ЗНАЕТ, какие волны открыты (бот всегда
+    # это знает — handlers/user_actions.py), задание закрытой/черновой/будущей волны не
+    # должно быть видно даже не-амбассадору, каким бы ни было audience.
+    tasks = [_task(id=1, wave_id=5, audience="all"), _task(id=2, wave_id=None, audience="all")]
+    visible = game_labels.visible_tasks_for(
+        tasks, is_ambassador=False, eligible_wave_ids=set(), open_wave_ids=set(),
+    )
+    assert [t["id"] for t in visible] == [2]
+
+
+def test_open_wave_ids_shows_non_ambassador_task_of_open_wave():
+    tasks = [_task(id=1, wave_id=5, audience="all")]
+    visible = game_labels.visible_tasks_for(
+        tasks, is_ambassador=False, eligible_wave_ids=set(), open_wave_ids={5},
+    )
+    assert [t["id"] for t in visible] == [1]
+
+
+def test_open_wave_ids_does_not_affect_ambassador_path():
+    # У амбассадора решение принимает eligible_wave_ids, open_wave_ids молча игнорируется.
+    tasks = [_task(id=1, wave_id=5, audience="all")]
+    visible = game_labels.visible_tasks_for(
+        tasks, is_ambassador=True, eligible_wave_ids={5}, open_wave_ids=set(),
+    )
+    assert [t["id"] for t in visible] == [1]
+
+
 def test_visible_tasks_for_does_not_mutate_input():
     tasks = [_task(id=1, audience="ambassadors"), _task(id=2)]
     before = list(tasks)

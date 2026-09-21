@@ -191,6 +191,10 @@ UI_EN: dict[str, str] = {
     "Некорректное задание": "Invalid task",
     "Задание не найдено": "Task not found",
     "Это задание для другого города": "This task is for another city",
+    # WR-08 (32-REVIEW.md): гейт mytask_open/mytask_submit_start — задание чужой волны/
+    # только-амбассадорское для того, кто им сейчас не является.
+    "Это задание сейчас тебе недоступно — загляни в «🎯 Задания».": "This task isn't available "
+    "to you right now — check «🎯 Tasks».",
     "Уже отправлено, ожидай проверки": "Already submitted, awaiting review",
     "новое": "new",
     "на проверке": "under review",
